@@ -1,0 +1,285 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "WCL",
+  "scopeName": "source.wcl",
+  "fileTypes": ["wcl"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#decorators" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#symbols" },
+    { "include": "#keywords" },
+    { "include": "#constants" },
+    { "include": "#builtin-types" },
+    { "include": "#references" },
+    { "include": "#type-names" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.wcl",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.line.number-sign.wcl",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "decorators": {
+      "match": "(@)([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)",
+      "captures": {
+        "1": { "name": "punctuation.definition.decorator.wcl" },
+        "2": { "name": "entity.name.function.decorator.wcl" }
+      }
+    },
+    "strings": {
+      "patterns": [
+        { "include": "#interpolated-heredoc" },
+        { "include": "#plain-heredoc" },
+        { "include": "#interpolated-string" },
+        { "include": "#typed-string" },
+        { "include": "#plain-string" }
+      ]
+    },
+    "plain-string": {
+      "name": "string.quoted.double.wcl",
+      "begin": "\"",
+      "end": "\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.wcl" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.wcl" }
+      },
+      "patterns": [
+        { "include": "#string-escapes" }
+      ]
+    },
+    "typed-string": {
+      "name": "string.quoted.double.wcl",
+      "begin": "(utf8|ascii|utf16|utf32)(\")",
+      "end": "\"",
+      "beginCaptures": {
+        "1": { "name": "storage.type.string.wcl" },
+        "2": { "name": "punctuation.definition.string.begin.wcl" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.wcl" }
+      },
+      "patterns": [
+        { "include": "#string-escapes" }
+      ]
+    },
+    "interpolated-string": {
+      "name": "string.interpolated.wcl",
+      "begin": "(\\$)(utf8|ascii|utf16|utf32)?(\")",
+      "end": "\"",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.interpolation.wcl" },
+        "2": { "name": "storage.type.string.wcl" },
+        "3": { "name": "punctuation.definition.string.begin.wcl" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.wcl" }
+      },
+      "patterns": [
+        { "include": "#interpolation-slot" },
+        { "include": "#string-escapes" }
+      ]
+    },
+    "plain-heredoc": {
+      "name": "string.unquoted.heredoc.wcl",
+      "begin": "(utf8|ascii|utf16|utf32)?(<<)([A-Za-z_][A-Za-z0-9_]*)",
+      "end": "^\\s*\\3\\s*$",
+      "beginCaptures": {
+        "1": { "name": "storage.type.string.wcl" },
+        "2": { "name": "punctuation.definition.string.heredoc.wcl" },
+        "3": { "name": "entity.name.tag.heredoc.wcl" }
+      },
+      "endCaptures": {
+        "0": { "name": "entity.name.tag.heredoc.wcl" }
+      },
+      "patterns": [
+        { "include": "#string-escapes" }
+      ]
+    },
+    "interpolated-heredoc": {
+      "name": "string.interpolated.heredoc.wcl",
+      "begin": "(\\$)(utf8|ascii|utf16|utf32)?(<<)([A-Za-z_][A-Za-z0-9_]*)",
+      "end": "^\\s*\\4\\s*$",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.interpolation.wcl" },
+        "2": { "name": "storage.type.string.wcl" },
+        "3": { "name": "punctuation.definition.string.heredoc.wcl" },
+        "4": { "name": "entity.name.tag.heredoc.wcl" }
+      },
+      "endCaptures": {
+        "0": { "name": "entity.name.tag.heredoc.wcl" }
+      },
+      "patterns": [
+        { "include": "#interpolation-slot" },
+        { "include": "#string-escapes" }
+      ]
+    },
+    "interpolation-slot": {
+      "name": "meta.embedded.line.wcl",
+      "begin": "\\$\\{",
+      "end": "\\}",
+      "beginCaptures": {
+        "0": { "name": "punctuation.section.embedded.begin.wcl" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.section.embedded.end.wcl" }
+      },
+      "patterns": [
+        { "include": "$self" }
+      ]
+    },
+    "string-escapes": {
+      "name": "constant.character.escape.wcl",
+      "match": "\\\\([\\\\\"'nrt0]|x[0-9A-Fa-f]{2}|u\\{[0-9A-Fa-f]{1,6}\\})"
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.wcl",
+          "match": "\\b(0x[0-9a-fA-F_]+)(i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize)?\\b",
+          "captures": {
+            "2": { "name": "storage.type.numeric.wcl" }
+          }
+        },
+        {
+          "name": "constant.numeric.binary.wcl",
+          "match": "\\b(0b[01_]+)(i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize)?\\b",
+          "captures": {
+            "2": { "name": "storage.type.numeric.wcl" }
+          }
+        },
+        {
+          "name": "constant.numeric.octal.wcl",
+          "match": "\\b(0o[0-7_]+)(i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize)?\\b",
+          "captures": {
+            "2": { "name": "storage.type.numeric.wcl" }
+          }
+        },
+        {
+          "name": "constant.numeric.float.wcl",
+          "match": "\\b([0-9][0-9_]*(?:\\.[0-9_]+)(?:[eE][+-]?[0-9_]+)?|[0-9][0-9_]*[eE][+-]?[0-9_]+)(f32|f64)?\\b",
+          "captures": {
+            "2": { "name": "storage.type.numeric.wcl" }
+          }
+        },
+        {
+          "name": "constant.numeric.integer.wcl",
+          "match": "\\b([0-9][0-9_]*)(i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize|f32|f64)?\\b",
+          "captures": {
+            "2": { "name": "storage.type.numeric.wcl" }
+          }
+        }
+      ]
+    },
+    "symbols": {
+      "match": "(:)([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "punctuation.definition.symbol.wcl" },
+        "2": { "name": "constant.other.symbol.wcl" }
+      }
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.wcl",
+          "match": "\\b(if|else|match)\\b"
+        },
+        {
+          "name": "keyword.declaration.wcl",
+          "match": "\\b(type|interface|union|symbol_set|connection|fn|let|in|namespace|import|use|as|extends)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "name": "constant.language.wcl",
+      "match": "\\b(true|false|none)\\b"
+    },
+    "builtin-types": {
+      "name": "support.type.primitive.wcl",
+      "match": "\\b(bool|i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize|f32|f64|utf8|ascii|utf16|utf32|symbol|identifier|list|tensor)\\b"
+    },
+    "references": {
+      "match": "(&)([A-Z][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "keyword.operator.reference.wcl" },
+        "2": { "name": "entity.name.type.wcl" }
+      }
+    },
+    "type-names": {
+      "name": "entity.name.type.wcl",
+      "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arrow.wcl",
+          "match": "=>|->"
+        },
+        {
+          "name": "keyword.operator.path.wcl",
+          "match": "::"
+        },
+        {
+          "name": "keyword.operator.comparison.wcl",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.logical.wcl",
+          "match": "&&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.range.wcl",
+          "match": "\\.\\."
+        },
+        {
+          "name": "keyword.operator.assignment.wcl",
+          "match": "="
+        },
+        {
+          "name": "keyword.operator.arithmetic.wcl",
+          "match": "[+\\-*/%]"
+        },
+        {
+          "name": "keyword.operator.bitwise.wcl",
+          "match": "[&|]"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.section.brace.wcl",
+          "match": "[{}]"
+        },
+        {
+          "name": "punctuation.section.bracket.wcl",
+          "match": "[\\[\\]]"
+        },
+        {
+          "name": "punctuation.section.parens.wcl",
+          "match": "[()]"
+        },
+        {
+          "name": "punctuation.separator.wcl",
+          "match": "[,;:?]"
+        },
+        {
+          "name": "punctuation.accessor.wcl",
+          "match": "\\."
+        }
+      ]
+    }
+  }
+}
