@@ -28,12 +28,23 @@ service "web" {
 ## Development
 
 ```bash
-just build   # cargo build --workspace
-just test    # cargo test --workspace
-just lint    # clippy with -D warnings
-just bench   # criterion benchmarks
-just run -- check examples/basic.wcl
+just workspace-build      # cargo build --workspace
+just workspace-test       # cargo test --workspace
+just workspace-lint       # clippy with -D warnings
+just workspace-bench      # criterion benchmarks
+just cli-run -- check examples/basic.wcl
 ```
+
+Editor + install:
+
+```bash
+just cli-install          # cargo install --path crates/wcl --locked
+just vscode-build         # npm install + tsc compile (editors/vscode)
+just vscode-package       # produce a .vsix via @vscode/vsce
+just vscode-install       # install the .vsix into VS Code via `code --install-extension`
+```
+
+Run `just --list` to see every recipe grouped by purpose.
 
 ## License
 

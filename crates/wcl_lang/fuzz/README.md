@@ -27,9 +27,9 @@ from `crates/wcl_lang/tests/...` example fixtures.
 Requires nightly Rust and `cargo install cargo-fuzz`.
 
 ```bash
-just fuzz parse                          # default budget, runs until killed
-just fuzz parse -- -runs=10000          # bounded
-just fuzz format_round_trip -- -max_total_time=30
+just fuzz-run parse                          # default budget, runs until killed
+just fuzz-run parse -- -runs=10000           # bounded
+just fuzz-run format_round_trip -- -max_total_time=30
 ```
 
 The CI workflow runs `parse` for a 30-second smoke as part of every

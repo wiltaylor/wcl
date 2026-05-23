@@ -7,7 +7,7 @@ This branch (`rewrite`) is a clean restart of WCL. The previous implementation l
 - `crates/wcl_lang` — language library: lexer, parser, AST, document view, lazy evaluator, schema validator, host-binding API
 - `crates/wcl` — `wcl` CLI binary (`wcl parse`, `wcl check`, `wcl eval` / `wcl get`, `wcl set`, `wcl fmt`, `wcl repl`, `wcl lsp`)
 - `crates/wcl_lsp` — `tower-lsp` language server driving `wcl lsp`
-- `crates/wcl_lang/fuzz` — `cargo-fuzz` targets (parse + eval); run via `just fuzz <target>` on nightly
+- `crates/wcl_lang/fuzz` — `cargo-fuzz` targets (parse + eval); run via `just fuzz-run <target>` on nightly
 - `editors/vscode` — minimal VS Code extension stub that spawns `wcl lsp` for `.wcl` files
 - `editors/tree-sitter-wcl` — tree-sitter grammar stub for editors that consume them
 - `examples/` — fixture files used by tests (incl. `imports/` for module loading and `errors/` for negative diagnostics)
@@ -40,12 +40,12 @@ Nothing on a current list. New deferred items get tracked alongside the slice th
 A task is **not done** until all of these pass:
 
 ```bash
-just test    # unit + integration tests across the workspace
-just lint    # clippy --workspace -- -D warnings
+just workspace-test    # unit + integration tests across the workspace
+just workspace-lint    # clippy --workspace -- -D warnings
 cargo fmt --all -- --check
 ```
 
-Run benches with `just bench` when changing the parser hot path.
+Run benches with `just workspace-bench` when changing the parser hot path.
 
 ## Conventions
 
