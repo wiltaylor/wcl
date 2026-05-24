@@ -415,10 +415,15 @@ impl Printer {
         self.write_indent();
         self.print_decorators_inline(&f.decorators);
         self.push(&f.name);
-        self.push(": ");
-        self.print_type_ref(&f.ty);
-        if f.optional {
-            self.push("?");
+        if let Some(expr) = &f.default_expr {
+            self.push(" = ");
+            self.print_expr(expr, 0);
+        } else {
+            self.push(": ");
+            self.print_type_ref(&f.ty);
+            if f.optional {
+                self.push("?");
+            }
         }
         self.newline();
     }

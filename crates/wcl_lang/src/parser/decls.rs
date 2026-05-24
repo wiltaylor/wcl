@@ -10,10 +10,64 @@ use crate::ast::{
 };
 use crate::error::ParseError;
 use crate::lexer::{StringLit, TokenKind};
+use crate::value::{BuiltinType, TypeRef};
 
 use super::Parser;
 use super::describe;
 use super::is_expr_start;
+
+/// `true` when `decorators` contains an `@default` (used to reject
+/// the redundant combination of an inline `=` default with a
+/// `@default(...)` decorator on the same field).
+fn has_default_decorator(decorators: &[Decorator]) -> bool {
+    decorators
+        .iter()
+        .any(|d| d.name.len() == 1 && d.name[0] == "default")
+}
+
+/// Infer a `TypeRef` from an expression used as an inline default in
+/// a type-body field declaration (`name = expr`). Covers the cases
+/// where the user could plausibly want type inference: function
+/// literals (carry full signature), primitive literals, list / record
+/// literals built from them. Returns `None` when inference would
+/// require lookup (identifiers, calls, member access, etc.) — the
+/// parser then reports a focused error.
+pub(super) fn infer_type_from_expr(expr: &Expr) -> Option<TypeRef> {
+    match expr {
+        Expr::Bool(_) => Some(TypeRef::Builtin(BuiltinType::Bool)),
+        Expr::I8(_) => Some(TypeRef::Builtin(BuiltinType::I8)),
+        Expr::I16(_) => Some(TypeRef::Builtin(BuiltinType::I16)),
+        Expr::I32(_) => Some(TypeRef::Builtin(BuiltinType::I32)),
+        Expr::I64(_) => Some(TypeRef::Builtin(BuiltinType::I64)),
+        Expr::I128(_) => Some(TypeRef::Builtin(BuiltinType::I128)),
+        Expr::Isize(_) => Some(TypeRef::Builtin(BuiltinType::Isize)),
+        Expr::U8(_) => Some(TypeRef::Builtin(BuiltinType::U8)),
+        Expr::U16(_) => Some(TypeRef::Builtin(BuiltinType::U16)),
+        Expr::U32(_) => Some(TypeRef::Builtin(BuiltinType::U32)),
+        Expr::U64(_) => Some(TypeRef::Builtin(BuiltinType::U64)),
+        Expr::U128(_) => Some(TypeRef::Builtin(BuiltinType::U128)),
+        Expr::Usize(_) => Some(TypeRef::Builtin(BuiltinType::Usize)),
+        Expr::F32(_) => Some(TypeRef::Builtin(BuiltinType::F32)),
+        Expr::F64(_) => Some(TypeRef::Builtin(BuiltinType::F64)),
+        Expr::Utf8(_) => Some(TypeRef::Builtin(BuiltinType::Utf8)),
+        Expr::Ascii(_) => Some(TypeRef::Builtin(BuiltinType::Ascii)),
+        Expr::Symbol(_) => Some(TypeRef::Builtin(BuiltinType::Symbol)),
+        Expr::Function(lit) => Some(TypeRef::Function {
+            params: lit.params.iter().map(|p| p.ty.clone()).collect(),
+            return_ty: Box::new(lit.return_ty.clone()),
+        }),
+        Expr::ListLit { elements, .. } => {
+            // Pick the first element's inferred type; fall back to
+            // utf8 for empty lists (rare but plausible for stubs).
+            let inner = elements
+                .first()
+                .and_then(infer_type_from_expr)
+                .unwrap_or(TypeRef::Builtin(BuiltinType::Utf8));
+            Some(TypeRef::List(Box::new(inner)))
+        }
+        _ => None,
+    }
+}
 
 impl<'a> Parser<'a> {
     pub(super) fn parse_decorators(&mut self) -> Result<Vec<Decorator>, ParseError> {
@@ -493,33 +547,70 @@ impl<'a> Parser<'a> {
                 "expected identifier",
             ));
         };
-        let colon = self.bump()?;
-        if !matches!(colon.kind, TokenKind::Colon) {
-            return Err(self.err(
+        let next = self.bump()?;
+        match next.kind {
+            TokenKind::Colon => {
+                let (ty, ty_span) = self.parse_type_ref()?;
+                let mut optional = false;
+                let mut end = ty_span.end;
+                if matches!(self.peek()?.kind, TokenKind::Question) {
+                    let q = self.bump()?;
+                    optional = true;
+                    end = q.span.end;
+                }
+                Ok(TypeField {
+                    name: field_name,
+                    ty,
+                    ty_span,
+                    optional,
+                    decorators,
+                    span: Span::new(field_start, end),
+                    default_expr: None,
+                })
+            }
+            TokenKind::Eq => {
+                // Inline-default form: `name = expr`. Type is inferred
+                // from the expression. Optional implicitly true — the
+                // default guarantees a value, so an instance that
+                // omits the field is not a violation.
+                if has_default_decorator(&decorators) {
+                    return Err(self.err(
+                        format!(
+                            "field '{field_name}' uses inline `=` default and `@default(...)` together; pick one"
+                        ),
+                        Span::new(field_start, next.span.end),
+                        "redundant default",
+                    ));
+                }
+                let (expr, expr_span) = self.parse_expr()?;
+                let ty = infer_type_from_expr(&expr).ok_or_else(|| {
+                    self.err(
+                        format!(
+                            "cannot infer type for inline default of '{field_name}'; declare it with `{field_name}: T` and use `@default(...)` instead"
+                        ),
+                        expr_span,
+                        "type not inferable from this expression",
+                    )
+                })?;
+                Ok(TypeField {
+                    name: field_name,
+                    ty,
+                    ty_span: expr_span,
+                    optional: true,
+                    decorators,
+                    span: Span::new(field_start, expr_span.end),
+                    default_expr: Some(expr),
+                })
+            }
+            _ => Err(self.err(
                 format!(
-                    "expected ':' after field name '{field_name}', found {}",
-                    describe(&colon.kind)
+                    "expected ':' or '=' after field name '{field_name}', found {}",
+                    describe(&next.kind)
                 ),
-                colon.span,
-                "expected ':'",
-            ));
+                next.span,
+                "expected ':' or '='",
+            )),
         }
-        let (ty, ty_span) = self.parse_type_ref()?;
-        let mut optional = false;
-        let mut end = ty_span.end;
-        if matches!(self.peek()?.kind, TokenKind::Question) {
-            let q = self.bump()?;
-            optional = true;
-            end = q.span.end;
-        }
-        Ok(TypeField {
-            name: field_name,
-            ty,
-            ty_span,
-            optional,
-            decorators,
-            span: Span::new(field_start, end),
-        })
     }
 
     pub(super) fn parse_union_decl(

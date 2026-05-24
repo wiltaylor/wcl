@@ -348,6 +348,11 @@ pub struct TypeField {
     pub optional: bool,
     pub decorators: Vec<Decorator>,
     pub span: Span,
+    /// Inline default expression, set when the field is declared as
+    /// `name = expr` (no explicit type). The type in `ty` is then
+    /// inferred from the expression. `None` for the classical
+    /// `name: type [?]` form.
+    pub default_expr: Option<Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

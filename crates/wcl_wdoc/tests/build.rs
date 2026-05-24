@@ -141,22 +141,20 @@ union ChainStep {
 @block("inner")
 type Inner extends SvgBlock {
   fill: utf8?
-  @default(fn(i: Inner) -> list<SvgFundamental> [
+  lower = fn(i: Inner) -> list<SvgFundamental> [
     SvgFundamental::Rect {
       x: 5.0, y: 5.0, width: 20.0, height: 20.0,
       fill: i.fill, stroke: none, id: none, class: none,
     }
-  ])
-  lower: fn(Inner) -> list<SvgFundamental>
+  ]
 }
 
 @block("outer")
 type Outer extends SvgBlock {
   fill: utf8?
-  @default(fn(o: Outer) -> list<ChainStep> [
+  lower = fn(o: Outer) -> list<ChainStep> [
     ChainStep::Inner { fill: o.fill }
-  ])
-  lower: fn(Outer) -> list<ChainStep>
+  ]
 }
 
 page index {
@@ -198,10 +196,9 @@ union LoopStep {
 @block("loopy")
 type Loopy extends SvgBlock {
   fill: utf8?
-  @default(fn(l: Loopy) -> list<LoopStep> [
+  lower = fn(l: Loopy) -> list<LoopStep> [
     LoopStep::Loopy { fill: l.fill }
-  ])
-  lower: fn(Loopy) -> list<LoopStep>
+  ]
 }
 
 page index {
@@ -241,13 +238,12 @@ type Badge extends SvgBlock {
   @inline(0) text: utf8
   id: identifier?
   x: f64?  y: f64?
-  @default(fn(b: Badge) -> list<SvgFundamental> [
+  lower = fn(b: Badge) -> list<SvgFundamental> [
     SvgFundamental::Label {
       content: b.text, x: b.x, y: b.y,
       fill: none, id: b.id, class: none,
     }
-  ])
-  lower: fn(Badge) -> list<SvgFundamental>
+  ]
 }
 
 page index {

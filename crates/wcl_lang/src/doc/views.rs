@@ -1019,8 +1019,16 @@ impl<'a> TypeField<'a> {
         dec.positional().ok()?.first()?.as_u64()
     }
 
-    /// If this field carries an `@default(v)` decorator, returns v.
+    /// Default value for this field, if any. Priority:
+    /// 1. The inline `name = expr` form (stored as `default_expr`).
+    /// 2. The `@default(v)` decorator (classic form).
+    ///
+    /// Both forms produce the same `Value`; the inline form just
+    /// avoids spelling the type a second time.
     pub fn default_value(&self) -> Option<Value> {
+        if let Some(expr) = &self.ast.default_expr {
+            return self.doc.eval_literal(expr).ok();
+        }
         let dec = self
             .decorators()
             .find(|d| d.is(BuiltinDecorator::Default))?;

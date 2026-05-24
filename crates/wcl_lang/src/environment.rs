@@ -176,6 +176,7 @@ fn synth_decorator_schema(
             optional: false,
             decorators: Vec::new(),
             span: synthetic_span(),
+            default_expr: None,
         }],
         decorators: vec![ast::Decorator {
             name: vec!["decorator".to_string()],
@@ -274,6 +275,7 @@ impl TypeFieldBuilder {
             optional: self.optional,
             decorators: self.decorators,
             span: synthetic_span(),
+            default_expr: None,
         }
     }
 }

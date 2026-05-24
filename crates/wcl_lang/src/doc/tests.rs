@@ -2700,3 +2700,106 @@ fn interface_function_field_rejects_non_function_impl() {
         ),
     }
 }
+
+#[test]
+fn inline_default_fn_literal_infers_function_type() {
+    let doc = Document::open(
+        r#"
+        @block("widget") type Widget {
+          @inline(0) id: utf8
+          x: i64
+          plus_one = fn(w: Widget) -> i64 [ w.x + 1 ]
+        }
+        @document type Cfg { @child("widget") widget: Widget? }
+        widget "w1" { x = 5 }
+        "#,
+        "t",
+    )
+    .expect("open");
+    let widget_type = doc.type_decl("Widget").expect("Widget type");
+    let plus_one = widget_type.field("plus_one").expect("plus_one field");
+    let val = plus_one.default_value().expect("inline default value");
+    let Value::Function(_) = val else {
+        panic!("expected Value::Function, got {val:?}");
+    };
+}
+
+#[test]
+fn inline_default_primitive_infers_builtin_type() {
+    let doc = Document::open(
+        r#"
+        type Q { port = 8080u32 }
+        "#,
+        "t",
+    )
+    .expect("open");
+    let q = doc.type_decl("Q").expect("Q type");
+    let port = q.field("port").expect("port field");
+    assert_eq!(port.default_value(), Some(Value::U32(8080)));
+}
+
+#[test]
+fn inline_default_rejects_non_inferable_rhs() {
+    let err = Document::open(
+        r#"
+        type X { y = some_name }
+        "#,
+        "t",
+    )
+    .unwrap_err();
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("cannot infer type") && msg.contains("@default"),
+        "{msg}"
+    );
+}
+
+#[test]
+fn inline_default_rejects_redundant_at_default_decorator() {
+    let err = Document::open(
+        r#"
+        type X {
+          @default(7)
+          y = 8
+        }
+        "#,
+        "t",
+    )
+    .unwrap_err();
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("inline `=` default and `@default(...)`"),
+        "{msg}"
+    );
+}
+
+#[test]
+fn inline_default_satisfies_interface_function_field() {
+    // `lower` on interface requires a function-typed field; impl
+    // provides it via `lower = fn(...) -> ...` and inferred type.
+    let doc = Document::open(
+        r#"
+        interface I {
+          x: i64
+          lower: fn(&I) -> i64
+        }
+        @block("widget") type Widget extends I {
+          @inline(0) id: utf8
+          x: i64
+          lower = fn(w: Widget) -> i64 [ w.x ]
+        }
+        @document type Cfg {
+          @child("widget") widget: Widget?
+          ref_w_as_i: &I
+        }
+        widget "w1" { x = 3 }
+        ref_w_as_i = widget
+        "#,
+        "t",
+    )
+    .expect("open");
+    let f = doc.field("ref_w_as_i").unwrap();
+    f.reference()
+        .expect("&I")
+        .expect("Widget conforms via inline-default function");
+}
