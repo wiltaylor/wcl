@@ -9,30 +9,29 @@
 type Site {
   @children("class") classes: list<Class>
   @children("page")  pages:   list<Page>
-
-  // Stdlib lowering functions — declared here so users can shadow
-  // them, and so the schema validator accepts the top-level bindings
-  // in the preamble.
-  h1_lower: fn(H1) -> list<HtmlFundamental>
-  h2_lower: fn(H2) -> list<HtmlFundamental>
-  h3_lower: fn(H3) -> list<HtmlFundamental>
-  h4_lower: fn(H4) -> list<HtmlFundamental>
-  h5_lower: fn(H5) -> list<HtmlFundamental>
-  h6_lower: fn(H6) -> list<HtmlFundamental>
-  process_lower:    fn(Process)    -> list<SvgFundamental>
-  decision_lower:   fn(Decision)   -> list<SvgFundamental>
-  terminator_lower: fn(Terminator) -> list<SvgFundamental>
 }
 
-// Marker interfaces. `WdocBlock` is the page-level domain (renders to
-// HTML today; could target other formats later). `SvgBlock` is the
-// diagram-level domain. User-authored block types opt in with
-// `extends WdocBlock` / `extends SvgBlock` to become legal children of
-// the corresponding `@children(...)` slot. Both interfaces require the
-// shared `id` field — every renderable block has one anyway, so this
-// just makes conformance non-vacuous.
-interface WdocBlock { id: identifier? }
-interface SvgBlock  { id: identifier? }
+// Renderable-block interfaces. `WdocBlock` is the page-level domain
+// (renders to HTML today; could target other formats later).
+// `SvgBlock` is the diagram-level domain. User-authored block types
+// opt in with `extends WdocBlock` / `extends SvgBlock` to become
+// legal children of the corresponding `@children(...)` slot.
+//
+// Each interface requires a `lower` field — a function the renderer
+// calls to turn the block into a list of fundamental variants. The
+// interface signature uses `&Interface` as the parameter; concrete
+// types are free to narrow the parameter to their own type
+// (function-typed interface fields match on return type only).
+// Implementations supply the function via `@default(fn(...) -> ...)`
+// so per-instance overrides are possible but never required.
+interface WdocBlock {
+  id:    identifier?
+  lower: fn(&WdocBlock) -> list<HtmlFundamental>
+}
+interface SvgBlock {
+  id:    identifier?
+  lower: fn(&SvgBlock) -> list<SvgFundamental>
+}
 
 @block("page")
 type Page {
@@ -73,6 +72,10 @@ type Text extends WdocBlock {
   id:    identifier?
   class: list<utf8>?
   @children("span") spans: list<Span>
+  // `text` is itself a fundamental HTML block — the renderer never
+  // invokes its `lower`. Declared only to satisfy the interface.
+  @default(fn(t: Text) -> list<HtmlFundamental> [])
+  lower: fn(Text) -> list<HtmlFundamental>
 }
 
 // Inline run inside a `text`. Style fields beyond `class` are
@@ -92,6 +95,8 @@ type Column extends WdocBlock {
   id:     identifier?
   class:  list<utf8>?
   @children(WdocBlock) children: list<WdocBlock>
+  @default(fn(c: Column) -> list<HtmlFundamental> [])
+  lower: fn(Column) -> list<HtmlFundamental>
 }
 
 // SVG canvas. Width/height define the viewBox and rendered size,
@@ -103,6 +108,8 @@ type Diagram extends WdocBlock {
   id:     identifier?
   class:  list<utf8>?
   @children(SvgBlock) children: list<SvgBlock>
+  @default(fn(d: Diagram) -> list<HtmlFundamental> [])
+  lower: fn(Diagram) -> list<HtmlFundamental>
 }
 
 // SVG <g> group with optional layout. Layout modes:
@@ -139,6 +146,10 @@ type Container extends SvgBlock {
   anchor_bottom: f64?
 
   @children(SvgBlock) children: list<SvgBlock>
+  // `container` is itself rendered directly as <g>; the renderer
+  // never invokes its `lower`. Declared only to satisfy the interface.
+  @default(fn(c: Container) -> list<SvgFundamental> [])
+  lower: fn(Container) -> list<SvgFundamental>
 }
 
 @block("rect")
@@ -156,6 +167,9 @@ type Rect extends SvgBlock {
   anchor_right:  f64?
   anchor_top:    f64?
   anchor_bottom: f64?
+
+  @default(fn(r: Rect) -> list<SvgFundamental> [])
+  lower: fn(Rect) -> list<SvgFundamental>
 }
 
 @block("circle")
@@ -172,6 +186,9 @@ type Circle extends SvgBlock {
   anchor_right:  f64?
   anchor_top:    f64?
   anchor_bottom: f64?
+
+  @default(fn(c: Circle) -> list<SvgFundamental> [])
+  lower: fn(Circle) -> list<SvgFundamental>
 }
 
 @block("line")
@@ -188,6 +205,9 @@ type Line extends SvgBlock {
   anchor_right:  f64?
   anchor_top:    f64?
   anchor_bottom: f64?
+
+  @default(fn(l: Line) -> list<SvgFundamental> [])
+  lower: fn(Line) -> list<SvgFundamental>
 }
 
 // SVG <text> shape. Renamed from `text` to avoid colliding with the
@@ -205,6 +225,9 @@ type Label extends SvgBlock {
   anchor_right:  f64?
   anchor_top:    f64?
   anchor_bottom: f64?
+
+  @default(fn(l: Label) -> list<SvgFundamental> [])
+  lower: fn(Label) -> list<SvgFundamental>
 }
 
 @block("polygon")
@@ -219,6 +242,9 @@ type Polygon extends SvgBlock {
   anchor_right:  f64?
   anchor_top:    f64?
   anchor_bottom: f64?
+
+  @default(fn(p: Polygon) -> list<SvgFundamental> [])
+  lower: fn(Polygon) -> list<SvgFundamental>
 }
 
 // ── Lowering layer ─────────────────────────────────────────────────
@@ -243,99 +269,143 @@ union HtmlFundamental {
 }
 
 // ── Stdlib flowchart shapes ────────────────────────────────────────
+//
+// Each custom shape supplies its lowering via `@default` on the
+// `lower` field. The renderer calls `block.field("lower")` (or the
+// schema default if the instance didn't override) and recursively
+// renders the variants it returns. Per-instance overrides work
+// transparently — set `lower = fn(...) -> ...` on a particular block
+// and that supersedes the default for just that instance.
 
 @block("process")
 type Process extends SvgBlock {
   @inline(0) text: utf8
   x: f64?  y: f64?  width: f64?  height: f64?
   fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
-}
 
-process_lower = fn(p: Process) -> list<SvgFundamental> [
-  SvgFundamental::Rect {
-    x: p.x, y: p.y, width: p.width, height: p.height,
-    fill: p.fill, stroke: p.stroke, id: p.id, class: p.class,
-  },
-  SvgFundamental::Label {
-    content: p.text,
-    x: p.x + p.width / 2.0,
-    y: p.y + p.height / 2.0,
-    fill: none, id: none, class: p.class,
-  },
-]
+  @default(fn(p: Process) -> list<SvgFundamental> [
+    SvgFundamental::Rect {
+      x: p.x, y: p.y, width: p.width, height: p.height,
+      fill: p.fill, stroke: p.stroke, id: p.id, class: p.class,
+    },
+    SvgFundamental::Label {
+      content: p.text,
+      x: p.x + p.width / 2.0,
+      y: p.y + p.height / 2.0,
+      fill: none, id: none, class: p.class,
+    },
+  ])
+  lower: fn(Process) -> list<SvgFundamental>
+}
 
 @block("decision")
 type Decision extends SvgBlock {
   @inline(0) text: utf8
   x: f64?  y: f64?  width: f64?  height: f64?
   fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
+
+  @default(fn(d: Decision) -> list<SvgFundamental> [
+    SvgFundamental::Polygon {
+      points: format(
+        "{},{} {},{} {},{} {},{}",
+        d.x + d.width / 2.0, d.y,
+        d.x + d.width,       d.y + d.height / 2.0,
+        d.x + d.width / 2.0, d.y + d.height,
+        d.x,                 d.y + d.height / 2.0,
+      ),
+      fill: d.fill, stroke: d.stroke, id: d.id, class: d.class,
+    },
+    SvgFundamental::Label {
+      content: d.text,
+      x: d.x + d.width / 2.0,
+      y: d.y + d.height / 2.0,
+      fill: none, id: none, class: d.class,
+    },
+  ])
+  lower: fn(Decision) -> list<SvgFundamental>
 }
 
-decision_lower = fn(d: Decision) -> list<SvgFundamental> [
-  SvgFundamental::Polygon {
-    points: format(
-      "{},{} {},{} {},{} {},{}",
-      d.x + d.width / 2.0, d.y,
-      d.x + d.width,       d.y + d.height / 2.0,
-      d.x + d.width / 2.0, d.y + d.height,
-      d.x,                 d.y + d.height / 2.0,
-    ),
-    fill: d.fill, stroke: d.stroke, id: d.id, class: d.class,
-  },
-  SvgFundamental::Label {
-    content: d.text,
-    x: d.x + d.width / 2.0,
-    y: d.y + d.height / 2.0,
-    fill: none, id: none, class: d.class,
-  },
-]
-
+// Terminator: rounded-corner rect is a single Rect for now — true
+// rounded corners come when SvgFundamental::Rect grows an `rx` field.
 @block("terminator")
 type Terminator extends SvgBlock {
   @inline(0) text: utf8
   x: f64?  y: f64?  width: f64?  height: f64?
   fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
-}
 
-// Terminator: rounded-corner rect is a single Rect for now — true
-// rounded corners come when SvgFundamental::Rect grows an `rx` field.
-terminator_lower = fn(t: Terminator) -> list<SvgFundamental> [
-  SvgFundamental::Rect {
-    x: t.x, y: t.y, width: t.width, height: t.height,
-    fill: t.fill, stroke: t.stroke, id: t.id, class: t.class,
-  },
-  SvgFundamental::Label {
-    content: t.text,
-    x: t.x + t.width / 2.0,
-    y: t.y + t.height / 2.0,
-    fill: none, id: none, class: t.class,
-  },
-]
+  @default(fn(t: Terminator) -> list<SvgFundamental> [
+    SvgFundamental::Rect {
+      x: t.x, y: t.y, width: t.width, height: t.height,
+      fill: t.fill, stroke: t.stroke, id: t.id, class: t.class,
+    },
+    SvgFundamental::Label {
+      content: t.text,
+      x: t.x + t.width / 2.0,
+      y: t.y + t.height / 2.0,
+      fill: none, id: none, class: t.class,
+    },
+  ])
+  lower: fn(Terminator) -> list<SvgFundamental>
+}
 
 // ── Stdlib headings ────────────────────────────────────────────────
 
-@block("h1") type H1 extends WdocBlock { @inline(0) text: utf8  id: identifier? }
-@block("h2") type H2 extends WdocBlock { @inline(0) text: utf8  id: identifier? }
-@block("h3") type H3 extends WdocBlock { @inline(0) text: utf8  id: identifier? }
-@block("h4") type H4 extends WdocBlock { @inline(0) text: utf8  id: identifier? }
-@block("h5") type H5 extends WdocBlock { @inline(0) text: utf8  id: identifier? }
-@block("h6") type H6 extends WdocBlock { @inline(0) text: utf8  id: identifier? }
+@block("h1")
+type H1 extends WdocBlock {
+  @inline(0) text: utf8
+  id: identifier?
+  @default(fn(h: H1) -> list<HtmlFundamental> [
+    HtmlFundamental::Paragraph { id: h.id, class: ["heading-1"], spans: [h.text] }
+  ])
+  lower: fn(H1) -> list<HtmlFundamental>
+}
 
-h1_lower = fn(h: H1) -> list<HtmlFundamental> [
-  HtmlFundamental::Paragraph { id: h.id, class: ["heading-1"], spans: [h.text] }
-]
-h2_lower = fn(h: H2) -> list<HtmlFundamental> [
-  HtmlFundamental::Paragraph { id: h.id, class: ["heading-2"], spans: [h.text] }
-]
-h3_lower = fn(h: H3) -> list<HtmlFundamental> [
-  HtmlFundamental::Paragraph { id: h.id, class: ["heading-3"], spans: [h.text] }
-]
-h4_lower = fn(h: H4) -> list<HtmlFundamental> [
-  HtmlFundamental::Paragraph { id: h.id, class: ["heading-4"], spans: [h.text] }
-]
-h5_lower = fn(h: H5) -> list<HtmlFundamental> [
-  HtmlFundamental::Paragraph { id: h.id, class: ["heading-5"], spans: [h.text] }
-]
-h6_lower = fn(h: H6) -> list<HtmlFundamental> [
-  HtmlFundamental::Paragraph { id: h.id, class: ["heading-6"], spans: [h.text] }
-]
+@block("h2")
+type H2 extends WdocBlock {
+  @inline(0) text: utf8
+  id: identifier?
+  @default(fn(h: H2) -> list<HtmlFundamental> [
+    HtmlFundamental::Paragraph { id: h.id, class: ["heading-2"], spans: [h.text] }
+  ])
+  lower: fn(H2) -> list<HtmlFundamental>
+}
+
+@block("h3")
+type H3 extends WdocBlock {
+  @inline(0) text: utf8
+  id: identifier?
+  @default(fn(h: H3) -> list<HtmlFundamental> [
+    HtmlFundamental::Paragraph { id: h.id, class: ["heading-3"], spans: [h.text] }
+  ])
+  lower: fn(H3) -> list<HtmlFundamental>
+}
+
+@block("h4")
+type H4 extends WdocBlock {
+  @inline(0) text: utf8
+  id: identifier?
+  @default(fn(h: H4) -> list<HtmlFundamental> [
+    HtmlFundamental::Paragraph { id: h.id, class: ["heading-4"], spans: [h.text] }
+  ])
+  lower: fn(H4) -> list<HtmlFundamental>
+}
+
+@block("h5")
+type H5 extends WdocBlock {
+  @inline(0) text: utf8
+  id: identifier?
+  @default(fn(h: H5) -> list<HtmlFundamental> [
+    HtmlFundamental::Paragraph { id: h.id, class: ["heading-5"], spans: [h.text] }
+  ])
+  lower: fn(H5) -> list<HtmlFundamental>
+}
+
+@block("h6")
+type H6 extends WdocBlock {
+  @inline(0) text: utf8
+  id: identifier?
+  @default(fn(h: H6) -> list<HtmlFundamental> [
+    HtmlFundamental::Paragraph { id: h.id, class: ["heading-6"], spans: [h.text] }
+  ])
+  lower: fn(H6) -> list<HtmlFundamental>
+}

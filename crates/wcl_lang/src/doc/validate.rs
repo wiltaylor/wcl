@@ -571,11 +571,14 @@ fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Result<(), Pars
             &mut all_fields,
             &mut seen,
         );
-        // Check pairwise.
+        // Check pairwise. Function-typed fields are compared by
+        // return type only — the same relaxation interface
+        // conformance applies, so a concrete impl can narrow a
+        // `fn(&I) -> R` declared on the parent to `fn(Concrete) -> R`.
         let mut by_name: HashMap<&str, (&TypeRef, Span)> = HashMap::new();
         for (name, ty, span) in &all_fields {
             match by_name.get(name) {
-                Some((existing_ty, _)) if *existing_ty != *ty => {
+                Some((existing_ty, _)) if !extends_field_types_compatible(existing_ty, ty) => {
                     return Err(open_error(
                         source,
                         file,
@@ -596,6 +599,18 @@ fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Result<(), Pars
     }
 
     Ok(())
+}
+
+/// `true` if two `TypeRef`s are compatible across an `extends`
+/// boundary. Strict equality, except for function types which are
+/// purely structural: the child may narrow a parent's
+/// `fn(&Iface) -> R` to `fn(Concrete) -> Whatever`. Mirrors the
+/// relaxation in `interfaces::iface_field_type_compatible`.
+fn extends_field_types_compatible(a: &TypeRef, b: &TypeRef) -> bool {
+    if matches!((a, b), (TypeRef::Function { .. }, TypeRef::Function { .. })) {
+        return true;
+    }
+    a == b
 }
 
 /// Snapshot of the bookkeeping `validate_document` builds up before it

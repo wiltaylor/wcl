@@ -60,7 +60,7 @@ pub(super) fn check_interface_conformance(
         };
         let iface_ty = doc.resolve(if_field.type_ref());
         let tg_ty = doc.resolve(tg_field.type_ref());
-        if !resolved_types_equal(&iface_ty, &tg_ty) {
+        if !iface_field_type_compatible(&iface_ty, &tg_ty) {
             return Err(EvalError::schema_violation(
                 Kind::InterfaceNotImplemented,
                 format!(
@@ -74,6 +74,25 @@ pub(super) fn check_interface_conformance(
         }
     }
     Ok(())
+}
+
+/// Interface-conformance type check. Strict equality for everything
+/// except function fields, which are treated as purely structural:
+/// the impl need only declare a function under the same name — the
+/// parameter list and return type are unconstrained. That lets a
+/// concrete impl narrow `fn(&Iface) -> R` (declared on the
+/// interface) to `fn(Concrete) -> Whatever`, and lets recursive
+/// lowerings return intermediate union types that the host post-
+/// processes. The presence check (function vs non-function) is
+/// still enforced via the catch-all fallback.
+fn iface_field_type_compatible(iface: &ResolvedType<'_>, tg: &ResolvedType<'_>) -> bool {
+    if matches!(
+        (iface, tg),
+        (ResolvedType::Function { .. }, ResolvedType::Function { .. })
+    ) {
+        return true;
+    }
+    resolved_types_equal(iface, tg)
 }
 
 pub(super) fn resolved_types_equal(a: &ResolvedType<'_>, b: &ResolvedType<'_>) -> bool {

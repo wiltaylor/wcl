@@ -14,7 +14,7 @@ fn build_ok(file: &Path, out: &Path) -> usize {
     match build(file, out) {
         Ok(n) => n,
         Err(BuildError::Io(e, ctx)) => panic!("build io error: {ctx}: {e}"),
-        Err(BuildError::Parse(_)) => panic!("build parse error"),
+        Err(BuildError::Parse(r)) => panic!("build parse error: {r:?}"),
         Err(BuildError::Schema(n)) => panic!("build schema error: {n} violations"),
         Err(BuildError::BadPage(m)) => panic!("build bad-page error: {m}"),
         Err(BuildError::DuplicateId { page, id }) => {
@@ -126,35 +126,38 @@ fn build_emits_fundamentals_for_example_site() {
 fn recursive_lowering_terminates_for_chained_custom_shapes() {
     // `outer` lowers to an `inner` variant, which itself lowers to a
     // rect. The renderer must keep lowering until only fundamentals
-    // remain.
+    // remain. Each type carries its lowering via `@default` on its
+    // own `lower` field — no top-level `_lower` bindings.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("chain.wcl");
     std::fs::write(
         &src,
         r##"
-@block("inner")
-type Inner { fill: utf8? }
-
 union ChainStep {
   Inner { fill: utf8? }
-  Rect  { x: f64? y: f64? width: f64? height: f64? fill: utf8? stroke: utf8? class: list<utf8>? }
+  Rect  { x: f64? y: f64? width: f64? height: f64? fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
 }
 
-@schemaless
-inner_lower = fn(i: Inner) -> list<SvgFundamental> [
-  SvgFundamental::Rect {
-    x: 5.0, y: 5.0, width: 20.0, height: 20.0,
-    fill: i.fill, stroke: none, id: none, class: none,
-  }
-]
+@block("inner")
+type Inner extends SvgBlock {
+  fill: utf8?
+  @default(fn(i: Inner) -> list<SvgFundamental> [
+    SvgFundamental::Rect {
+      x: 5.0, y: 5.0, width: 20.0, height: 20.0,
+      fill: i.fill, stroke: none, id: none, class: none,
+    }
+  ])
+  lower: fn(Inner) -> list<SvgFundamental>
+}
 
 @block("outer")
-type Outer { fill: utf8? }
-
-@schemaless
-outer_lower = fn(o: Outer) -> list<ChainStep> [
-  ChainStep::Inner { fill: o.fill }
-]
+type Outer extends SvgBlock {
+  fill: utf8?
+  @default(fn(o: Outer) -> list<ChainStep> [
+    ChainStep::Inner { fill: o.fill }
+  ])
+  lower: fn(Outer) -> list<ChainStep>
+}
 
 page index {
   diagram {
@@ -188,17 +191,18 @@ fn lowering_depth_limit_emits_marker() {
     std::fs::write(
         &src,
         r##"
-@block("loopy")
-type Loopy { fill: utf8? }
-
 union LoopStep {
   Loopy { fill: utf8? }
 }
 
-@schemaless
-loopy_lower = fn(l: Loopy) -> list<LoopStep> [
-  LoopStep::Loopy { fill: l.fill }
-]
+@block("loopy")
+type Loopy extends SvgBlock {
+  fill: utf8?
+  @default(fn(l: Loopy) -> list<LoopStep> [
+    LoopStep::Loopy { fill: l.fill }
+  ])
+  lower: fn(Loopy) -> list<LoopStep>
+}
 
 page index {
   diagram {
@@ -218,6 +222,53 @@ page index {
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
     assert!(
         html.contains("wdoc: lowering depth limit reached"),
+        "{html}"
+    );
+}
+
+#[test]
+fn user_defined_block_lowering_via_at_default() {
+    // A user-authored block in user source, with no top-level
+    // `_lower` binding anywhere — the renderer must still pick up
+    // the lowering from the type's `@default(...)` on `lower`.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("user_block.wcl");
+    std::fs::write(
+        &src,
+        r##"
+@block("badge")
+type Badge extends SvgBlock {
+  @inline(0) text: utf8
+  id: identifier?
+  x: f64?  y: f64?
+  @default(fn(b: Badge) -> list<SvgFundamental> [
+    SvgFundamental::Label {
+      content: b.text, x: b.x, y: b.y,
+      fill: none, id: b.id, class: none,
+    }
+  ])
+  lower: fn(Badge) -> list<SvgFundamental>
+}
+
+page index {
+  diagram {
+    width  = 100
+    height = 50
+    badge "hello" {
+      x = 10.0
+      y = 20.0
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<text x=\"10\" y=\"20\">hello</text>"),
         "{html}"
     );
 }

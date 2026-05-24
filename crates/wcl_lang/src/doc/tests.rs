@@ -2619,3 +2619,84 @@ fn children_interface_accepts_indirect_extends_chain() {
     let errs = doc.schema_errors();
     assert!(errs.is_empty(), "expected no schema errors, got {errs:?}");
 }
+
+#[test]
+fn interface_function_field_accepts_different_param_type() {
+    // Interface declares `lower: fn(&I) -> i64`; impl narrows the
+    // param to its own concrete type. Conformance must allow this —
+    // function fields use return-type-only matching.
+    let doc = Document::open(
+        r#"
+        interface I {
+          x: i64
+          lower: fn(&I) -> i64
+        }
+        @block("widget") type Widget extends I {
+          @inline(0) id: utf8
+          x: i64
+          lower: fn(Widget) -> i64
+        }
+        @document type Cfg {
+          @child("widget") widget: Widget?
+          ref_w_as_i: &I
+        }
+        widget "w1" {
+          x = 1
+          lower = fn(w: Widget) -> i64 [ w.x + 1 ]
+        }
+        ref_w_as_i = widget
+        "#,
+        "t",
+    )
+    .expect("open");
+    let f = doc.field("ref_w_as_i").unwrap();
+    f.reference()
+        .expect("&I field")
+        .expect("Widget conforms to I despite narrowed lower param");
+}
+
+#[test]
+fn interface_function_field_rejects_non_function_impl() {
+    // Interface declares a function field; impl declares a scalar of
+    // the same name. The Function/non-Function split is caught by the
+    // strict-equality fallback inside the relaxed helper.
+    let doc = Document::open(
+        r#"
+        interface I {
+          x: i64
+          lower: fn(&I) -> i64
+        }
+        @block("widget") type Widget {
+          @inline(0) id: utf8
+          x: i64
+          lower: i64
+        }
+        @document type Cfg {
+          @child("widget") widget: Widget?
+          ref_w_as_i: &I
+        }
+        widget "w1" {
+          x = 1
+          lower = 7
+        }
+        ref_w_as_i = widget
+        "#,
+        "t",
+    )
+    .expect("open");
+    let f = doc.field("ref_w_as_i").unwrap();
+    let r = f.reference().expect("&I");
+    match r {
+        Ok(_) => panic!("expected InterfaceNotImplemented when impl field is not a function"),
+        Err(e) => assert!(
+            matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::InterfaceNotImplemented,
+                    ..
+                }
+            ),
+            "{e:?}"
+        ),
+    }
+}

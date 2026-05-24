@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use wcl_lang::{Block, Document, Value, VariantPayload};
+use wcl_lang::{Block, Document, FnValue, Value, VariantPayload};
 
 /// Lowering recursion guard. A lowering may emit other custom kinds
 /// that themselves lower further; this caps how deep we'll follow
@@ -212,9 +212,36 @@ fn render_grid_children(doc: &Document, block: &Block<'_>) -> String {
 
 // ── Lowering dispatch ──────────────────────────────────────────────
 
-/// Custom diagram-shape lowering. Looks up `<kind>_lower`, calls it
-/// with a record built from `block`'s fields, and renders each
-/// returned variant.
+/// Look up the `lower` function for a block kind. Tries the block's
+/// own `lower` field first (per-instance override), then the kind's
+/// `@block` type's `@default(...)` for `lower`. Returns `None` when
+/// neither path produces a callable.
+fn lookup_block_lower(doc: &Document, block: &Block<'_>, kind: &str) -> Option<FnValue> {
+    if let Some(field) = block.field("lower")
+        && let Ok(Value::Function(fv)) = field.value()
+    {
+        return Some(fv.clone());
+    }
+    lookup_type_lower(doc, kind)
+}
+
+/// Look up the `lower` function declared on a `@block` (or plain
+/// `type`) by reading its `lower` field's `@default(...)` value.
+/// Used both for block-side dispatch (after the instance check) and
+/// for recursive variant dispatch (where no instance is available).
+fn lookup_type_lower(doc: &Document, kind: &str) -> Option<FnValue> {
+    let schema = doc
+        .block_schema(kind)
+        .or_else(|| doc.type_decl(&kind_to_typename(kind)))?;
+    match schema.field("lower")?.default_value()? {
+        Value::Function(fv) => Some(fv),
+        _ => None,
+    }
+}
+
+/// Custom diagram-shape lowering. Resolves the block's `lower`
+/// function, calls it with a record built from the block's fields,
+/// and renders each returned variant.
 fn lower_svg_block(
     doc: &Document,
     block: &Block<'_>,
@@ -225,8 +252,10 @@ fn lower_svg_block(
     let Some(arg) = block_to_record(doc, block, kind) else {
         return String::new();
     };
-    let lower_name = format!("{kind}_lower");
-    let result = match doc.call_function(&lower_name, &[arg]) {
+    let Some(fv) = lookup_block_lower(doc, block, kind) else {
+        return String::new();
+    };
+    let result = match doc.call_value(&fv, &[arg]) {
         Ok(v) => v,
         Err(_) => return String::new(),
     };
@@ -244,8 +273,10 @@ fn lower_html_block(doc: &Document, block: &Block<'_>, kind: &str) -> String {
     let Some(arg) = block_to_record(doc, block, kind) else {
         return String::new();
     };
-    let lower_name = format!("{kind}_lower");
-    let result = match doc.call_function(&lower_name, &[arg]) {
+    let Some(fv) = lookup_block_lower(doc, block, kind) else {
+        return String::new();
+    };
+    let result = match doc.call_value(&fv, &[arg]) {
         Ok(v) => v,
         Err(_) => return String::new(),
     };
@@ -288,11 +319,13 @@ fn render_svg_variant(
         "label" => render_label_payload(map),
         "polygon" => render_polygon_payload(map),
         other => {
-            // Custom variant — look up its lowering and recurse with
-            // the variant's record payload as the new arg.
+            // Custom variant — look up its type's `lower` and recurse
+            // with the variant's record payload as the new arg.
             let arg = payload_to_record(map, other);
-            let lower_name = format!("{other}_lower");
-            let result = match doc.call_function(&lower_name, &[arg]) {
+            let Some(fv) = lookup_type_lower(doc, other) else {
+                return String::new();
+            };
+            let result = match doc.call_value(&fv, &[arg]) {
                 Ok(v) => v,
                 Err(_) => return String::new(),
             };
@@ -325,8 +358,10 @@ fn render_html_variant(doc: &Document, value: &Value, depth: usize) -> String {
         "paragraph" => render_paragraph_payload(map),
         other => {
             let arg = payload_to_record(map, other);
-            let lower_name = format!("{other}_lower");
-            let result = match doc.call_function(&lower_name, &[arg]) {
+            let Some(fv) = lookup_type_lower(doc, other) else {
+                return String::new();
+            };
+            let result = match doc.call_value(&fv, &[arg]) {
                 Ok(v) => v,
                 Err(_) => return String::new(),
             };
