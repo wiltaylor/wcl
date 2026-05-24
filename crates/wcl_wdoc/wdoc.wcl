@@ -177,6 +177,19 @@ type Container extends SvgBlock {
   id:    identifier?
   class: list<utf8>?
 
+  // Optional chrome. When either is set the renderer emits a
+  // background <rect> the full size of the container's box,
+  // making the grouping visible. The chrome is purely visual —
+  // it does NOT participate in obstacle routing, so cross-
+  // container edges still pass through cleanly.
+  stroke: utf8?
+  fill:   utf8?
+
+  // Inset applied to children. Grows the container's outer box
+  // by 2*padding on each axis and shifts the children inward
+  // by `padding`, so chrome doesn't touch the shapes inside.
+  padding: f64?
+
   // Declared interior size (used when no layout/anchor is sizing
   // this container — e.g. a top-level container in a diagram).
   width:  f64?

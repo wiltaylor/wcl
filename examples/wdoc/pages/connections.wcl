@@ -112,6 +112,86 @@ page connections {
     norm -> validate :data
   }
 
+  h2 "Dense cross-container graph" {}
+
+  text {
+    span "Three labelled containers form a 3-tier topology. Each container runs its own layered solver internally and auto-fits to its contents (`width` / `height` omitted), so the visible chrome (`stroke = ...`) hugs the shapes inside. The outer diagram uses a 3-cell grid so the containers sit side-by-side. Seven cross-container edges connect shapes across tiers, including a pair sharing `orders` as their source so the edge-separation pass has something to nudge apart. Container chrome is purely visual and does not participate in obstacle routing — arrows cross container borders cleanly." {}
+  }
+
+  diagram {
+    width       = 720
+    height      = 320
+    layout      = :grid
+    columns     = 3
+    cell_width  = 200.0
+    cell_height = 320.0
+    gap         = 40.0
+
+    container {
+      id        = frontend
+      stroke    = "#888"
+      padding   = 12.0
+      layout    = :layered
+      layer_gap = 16.0
+
+      process "Login"    { id = login    width = 120.0 height = 36.0 fill = "#cce" stroke = "#447" }
+      process "Browse"   { id = browse   width = 120.0 height = 36.0 fill = "#cce" stroke = "#447" }
+      process "Cart"     { id = cart     width = 120.0 height = 36.0 fill = "#cce" stroke = "#447" }
+      process "Checkout" { id = checkout width = 120.0 height = 36.0 fill = "#cce" stroke = "#447" }
+
+      // Chain ranks the shapes top-to-bottom; matches a realistic
+      // user flow through the storefront.
+      login  -> browse   :flow
+      browse -> cart     :flow
+      cart   -> checkout :flow
+    }
+
+    container {
+      id        = services
+      stroke    = "#888"
+      padding   = 12.0
+      layout    = :layered
+      layer_gap = 16.0
+
+      decision "Auth"    { id = auth    width = 120.0 height = 50.0 fill = "#fee" stroke = "#a44" }
+      process  "Catalog" { id = catalog width = 120.0 height = 40.0 fill = "#fec" stroke = "#a74" }
+      process  "Orders"  { id = orders  width = 120.0 height = 40.0 fill = "#fec" stroke = "#a74" }
+
+      auth    -> catalog :flow
+      catalog -> orders  :flow
+    }
+
+    container {
+      id        = storage
+      stroke    = "#888"
+      padding   = 12.0
+      layout    = :layered
+      layer_gap = 16.0
+
+      terminator "Users DB"    { id = users_db    width = 120.0 height = 40.0 fill = "#cec" stroke = "#494" }
+      terminator "Products DB" { id = products_db width = 120.0 height = 40.0 fill = "#cec" stroke = "#494" }
+      terminator "Orders DB"   { id = orders_db   width = 120.0 height = 40.0 fill = "#cec" stroke = "#494" }
+
+      // No natural data dependency between the three DBs; chain
+      // them just so the layered solver stacks them vertically
+      // instead of placing them all at rank 0 side-by-side.
+      users_db    -> products_db :flow
+      products_db -> orders_db   :flow
+    }
+
+    // Cross-container edges. Frontend → services.
+    login    -> auth    :flow
+    browse   -> catalog :flow
+    checkout -> orders  :flow
+
+    // Services → storage. Orders writes to both DBs to exercise
+    // the parallel-edge separation pass.
+    auth    -> users_db    :data
+    catalog -> products_db :data
+    orders  -> orders_db   :data
+    orders  -> users_db    :data
+  }
+
   h2 "Obstacle routing" {}
 
   // Three rects laid out left-to-right by the layered solver. The

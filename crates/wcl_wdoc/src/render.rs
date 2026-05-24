@@ -432,7 +432,13 @@ fn collect_shape_positions(
         "container" => {
             let (x, y, w, h) = resolve_container_box(block, parent_w, parent_h);
             record(block, (tx + x, ty + y, w, h), out);
-            collect_layout_children(block, tx + x, ty + y, w, h, out);
+            // Children render inside the container's padded inner
+            // region — mirror that translate here so the router's
+            // obstacle bboxes and the rendered SVG agree.
+            let p = container_padding(block);
+            let inner_w = (w - 2.0 * p).max(0.0);
+            let inner_h = (h - 2.0 * p).max(0.0);
+            collect_layout_children(block, tx + x + p, ty + y + p, inner_w, inner_h, out);
         }
         // Lines and polygons aren't usable as edge endpoints (they
         // have no single anchor point) but their bboxes still
@@ -899,7 +905,18 @@ fn render_shape(doc: &Document, block: &Block<'_>, parent_w: f64, parent_h: f64)
 fn render_container(doc: &Document, block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let cls = class_attr(block);
     let (x, y, w, h) = resolve_container_box(block, parent_w, parent_h);
-    let inner = render_layout_children(doc, block, w, h);
+    let chrome = container_chrome(block, w, h);
+    let padding = container_padding(block);
+    // Children lay out against the *interior* area (outer minus
+    // 2*padding) so anchored / grid-sized children honor the inset.
+    let inner_w = (w - 2.0 * padding).max(0.0);
+    let inner_h = (h - 2.0 * padding).max(0.0);
+    let raw_inner = render_layout_children(doc, block, inner_w, inner_h);
+    let inner = if padding > 0.0 && !raw_inner.is_empty() {
+        format!("<g transform=\"translate({padding} {padding})\">{raw_inner}</g>")
+    } else {
+        raw_inner
+    };
     let transform = if x != 0.0 || y != 0.0 {
         format!(" transform=\"translate({x} {y})\"")
     } else {
@@ -907,7 +924,32 @@ fn render_container(doc: &Document, block: &Block<'_>, parent_w: f64, parent_h: 
     };
     let mut out = format!("<g{cls}");
     append_attr(&mut out, "id", field_id(block, "id").as_deref());
-    write!(out, "{transform}>{inner}</g>").expect("write to String");
+    write!(out, "{transform}>{chrome}{inner}</g>").expect("write to String");
+    out
+}
+
+fn container_padding(block: &Block<'_>) -> f64 {
+    field_f64(block, "padding").unwrap_or(0.0).max(0.0)
+}
+
+/// Synthesise a background `<rect>` covering the container's full
+/// box when the user set `stroke` or `fill`. Emitted as raw SVG
+/// inside `render_container` — it never becomes a `Block`, so the
+/// obstacle collector ignores it and cross-container edges still
+/// pass through unobstructed. When only `stroke` is set, `fill`
+/// defaults to `none` so the chrome doesn't paint over children.
+fn container_chrome(block: &Block<'_>, w: f64, h: f64) -> String {
+    let stroke = field_utf8(block, "stroke");
+    let fill = field_utf8(block, "fill");
+    if stroke.is_none() && fill.is_none() {
+        return String::new();
+    }
+    let fill_value = fill.unwrap_or_else(|| "none".to_string());
+    let mut out = format!("<rect width=\"{w}\" height=\"{h}\"");
+    if let Some(s) = stroke.as_deref() {
+        write!(out, " stroke=\"{}\"", escape_html(s)).expect("write to String");
+    }
+    write!(out, " fill=\"{}\" />", escape_html(&fill_value)).expect("write to String");
     out
 }
 
@@ -1444,8 +1486,38 @@ fn resolve_rect_box(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f6
 fn resolve_container_box(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f64, f64, f64) {
     let mut x = 0.0;
     let mut y = 0.0;
-    let mut w = field_f64(block, "width").unwrap_or(parent_w);
-    let mut h = field_f64(block, "height").unwrap_or(parent_h);
+    // Auto-fit to content. When the container uses :layered or :grid
+    // layout, its natural size is the bbox of its laid-out children
+    // plus 2*padding on each axis; we honor a declared width/height
+    // as a minimum but never as a ceiling. This is what lets
+    // `stroke = "..."` chrome hug the contents (with the requested
+    // inset, if any) instead of painting a fixed-size frame with
+    // empty space inside. :none layout keeps the old behaviour
+    // (parent fallback) since children there carry their own coords.
+    let padding = container_padding(block);
+    let (content_w, content_h) = content_size(block);
+    let outer_w = if content_w > 0.0 {
+        content_w + 2.0 * padding
+    } else {
+        0.0
+    };
+    let outer_h = if content_h > 0.0 {
+        content_h + 2.0 * padding
+    } else {
+        0.0
+    };
+    let decl_w = field_f64(block, "width");
+    let decl_h = field_f64(block, "height");
+    let mut w = match decl_w {
+        Some(d) => d.max(outer_w),
+        None if outer_w > 0.0 => outer_w,
+        None => parent_w,
+    };
+    let mut h = match decl_h {
+        Some(d) => d.max(outer_h),
+        None if outer_h > 0.0 => outer_h,
+        None => parent_h,
+    };
     apply_axis_anchor(
         &mut x,
         &mut w,
@@ -1461,6 +1533,46 @@ fn resolve_container_box(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f6
         parent_h,
     );
     (x, y, w, h)
+}
+
+/// Content bbox (`width`, `height`) implied by a container's layout
+/// and children. Returns `(0.0, 0.0)` for `:none` layout; children
+/// there carry their own positions so there's no single computed
+/// size, and callers fall back to declared / parent dims instead.
+fn content_size(block: &Block<'_>) -> (f64, f64) {
+    let layout = field_symbol(block, "layout").unwrap_or_default();
+    match layout.as_str() {
+        "layered" => {
+            let children: Vec<Block<'_>> = block.blocks().collect();
+            if children.is_empty() {
+                return (0.0, 0.0);
+            }
+            let (offsets, widths, heights) = compute_layered_plan(block, &children);
+            let mut max_x = 0.0_f64;
+            let mut max_y = 0.0_f64;
+            for ((ox, oy), (cw, ch)) in offsets.iter().zip(widths.iter().zip(heights.iter())) {
+                max_x = max_x.max(ox + cw);
+                max_y = max_y.max(oy + ch);
+            }
+            (max_x, max_y)
+        }
+        "grid" => {
+            let cols = field_i64(block, "columns").unwrap_or(1).max(1) as usize;
+            let cw = field_f64(block, "cell_width").unwrap_or(0.0);
+            let ch = field_f64(block, "cell_height").unwrap_or(0.0);
+            let gap = field_f64(block, "gap").unwrap_or(0.0);
+            let n = block.blocks().count();
+            if n == 0 {
+                return (0.0, 0.0);
+            }
+            let rows = n.div_ceil(cols);
+            let used_cols = cols.min(n);
+            let w = used_cols as f64 * cw + used_cols.saturating_sub(1) as f64 * gap;
+            let h = rows as f64 * ch + rows.saturating_sub(1) as f64 * gap;
+            (w, h)
+        }
+        _ => (0.0, 0.0),
+    }
 }
 
 fn apply_axis_anchor(

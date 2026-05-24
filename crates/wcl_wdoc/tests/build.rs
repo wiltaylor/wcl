@@ -291,6 +291,60 @@ page index {
 }
 
 #[test]
+fn build_emits_container_chrome_when_stroke_or_fill_set() {
+    // Two containers: one with `stroke` (should get a chrome rect),
+    // one without (should stay chromeless). The chrome rect is
+    // synthesised by the renderer and therefore does not appear in
+    // the obstacle graph — verified by the connections page where
+    // cross-container edges still route cleanly.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("chrome.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 200
+    height = 100
+    container {
+      id     = framed
+      width  = 100.0
+      height = 80.0
+      stroke = "#abc"
+    }
+    container {
+      id     = bare
+      width  = 100.0
+      height = 80.0
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Chrome rect covers the full declared box and falls back to
+    // fill="none" when only stroke is given.
+    assert!(
+        html.contains("<rect width=\"100\" height=\"80\" stroke=\"#abc\" fill=\"none\" />"),
+        "missing chrome rect for framed container:\n{html}"
+    );
+    // The bare container's <g> must be empty — no synthesised rect.
+    let bare = html
+        .split("id=\"bare\">")
+        .nth(1)
+        .and_then(|s| s.split("</g>").next())
+        .expect("bare container present");
+    assert!(
+        !bare.contains("<rect"),
+        "bare container should have no chrome rect:\n{bare}"
+    );
+}
+
+#[test]
 fn build_resolves_anchor_stretch_without_layout() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("anchors.wcl");

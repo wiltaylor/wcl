@@ -79,7 +79,7 @@ pub(crate) fn route_elbow(
     viewport: (f64, f64),
 ) -> Vec<(f64, f64)> {
     if let Some(path) = astar_route(src, src_side, dst, dst_side, obstacles, viewport) {
-        return snap_endpoints(path, src, dst);
+        return snap_endpoints(path, src, src_side, dst, dst_side);
     }
     fallback_elbow(src, src_side, dst)
 }
@@ -187,7 +187,7 @@ fn astar_route(
             // direction equals `(-goal_dir.0, -goal_dir.1)`.
             let arriving = (-goal_dir.0, -goal_dir.1);
             if node.dir == arriving || node.dir == (0, 0) {
-                return Some(reconstruct(&came_from, node, src, dst));
+                return Some(reconstruct(&came_from, node, src, src_side, dst, dst_side));
             }
             // Otherwise keep searching; another node-arrival from
             // the right direction may surface later.
@@ -284,7 +284,9 @@ fn reconstruct(
     came_from: &HashMap<Node, Node>,
     end: Node,
     src: (f64, f64),
+    src_side: Side,
     dst: (f64, f64),
+    dst_side: Side,
 ) -> Vec<(f64, f64)> {
     // Walk back through came_from, collecting cells, then simplify
     // runs in the same direction into single segments.
@@ -297,7 +299,7 @@ fn reconstruct(
     }
     cells.reverse();
     let pts = cells_to_polyline(&cells);
-    snap_endpoints(pts, src, dst)
+    snap_endpoints(pts, src, src_side, dst, dst_side)
 }
 
 fn cells_to_polyline(cells: &[Cell]) -> Vec<(f64, f64)> {
@@ -332,14 +334,102 @@ fn cells_to_polyline(cells: &[Cell]) -> Vec<(f64, f64)> {
 }
 
 /// Replace the first and last points with the exact anchor coords
-/// (the grid-snapped versions may be off by up to half a cell).
-fn snap_endpoints(mut pts: Vec<(f64, f64)>, src: (f64, f64), dst: (f64, f64)) -> Vec<(f64, f64)> {
+/// (the grid-snapped versions may be off by up to half a cell), then
+/// patch up the adjoining segments so every leg of the polyline
+/// stays axis-aligned. Without the patch-up, the snap can leave the
+/// first or last segment diagonal whenever the anchor doesn't sit on
+/// a cell boundary — the bend gets inserted on the axis perpendicular
+/// to the egress / ingress direction so the leg into / out of the
+/// shape still matches its declared side.
+fn snap_endpoints(
+    mut pts: Vec<(f64, f64)>,
+    src: (f64, f64),
+    src_side: Side,
+    dst: (f64, f64),
+    dst_side: Side,
+) -> Vec<(f64, f64)> {
     if pts.is_empty() {
         return vec![src, dst];
     }
     pts[0] = src;
     *pts.last_mut().unwrap() = dst;
+
+    // Fix the START segment: pts[0] (src) -> pts[1]. The egress
+    // direction comes from src_side (horizontal for East/West,
+    // vertical for North/South); the first leg must travel along
+    // that axis. If pts[1] differs on both axes from src, insert a
+    // corner so the first leg stays axis-aligned.
+    if pts.len() >= 2 && diagonal(pts[0], pts[1]) {
+        let corner = corner_after(src, src_side, pts[1]);
+        pts.insert(1, corner);
+    }
+
+    // Fix the END segment: pts[len-2] -> pts[len-1] (dst). The
+    // final leg must arrive along the ingress axis of dst_side.
+    let n = pts.len();
+    if n >= 2 && diagonal(pts[n - 2], pts[n - 1]) {
+        let corner = corner_before(pts[n - 2], dst, dst_side);
+        pts.insert(n - 1, corner);
+    }
+
+    // The inserted corner can produce a short U-turn (collinear
+    // segments doubling back). Collapse any run of three colinear
+    // points so the polyline reads as a single straight leg.
+    simplify_collinear(&mut pts);
+
     pts
+}
+
+/// Walk `pts` and drop any middle point that's collinear with both
+/// neighbours on the same axis. Handles two cases produced by the
+/// snap fix-up: continuation (A=B=C on one axis, same direction —
+/// drop B) and U-turn (A→B then B→C reverse on the same axis — drop
+/// B and shorten the run).
+fn simplify_collinear(pts: &mut Vec<(f64, f64)>) {
+    let mut i = 1;
+    while i + 1 < pts.len() {
+        let a = pts[i - 1];
+        let b = pts[i];
+        let c = pts[i + 1];
+        let same_x = (a.0 - b.0).abs() < 1e-6 && (b.0 - c.0).abs() < 1e-6;
+        let same_y = (a.1 - b.1).abs() < 1e-6 && (b.1 - c.1).abs() < 1e-6;
+        if same_x || same_y {
+            pts.remove(i);
+            if i > 1 {
+                i -= 1;
+            }
+        } else {
+            i += 1;
+        }
+    }
+}
+
+fn diagonal(a: (f64, f64), b: (f64, f64)) -> bool {
+    (a.0 - b.0).abs() > 1e-6 && (a.1 - b.1).abs() > 1e-6
+}
+
+/// Insert a corner just after `src` so the first leg travels along
+/// `src_side`'s outward axis before turning toward `next`.
+fn corner_after(src: (f64, f64), src_side: Side, next: (f64, f64)) -> (f64, f64) {
+    match src_side {
+        // Horizontal egress: keep y = src.y for the first leg, turn
+        // at next.x.
+        Side::East | Side::West => (next.0, src.1),
+        // Vertical egress: keep x = src.x, turn at next.y.
+        Side::North | Side::South => (src.0, next.1),
+    }
+}
+
+/// Insert a corner just before `dst` so the final leg arrives along
+/// `dst_side`'s ingress axis.
+fn corner_before(prev: (f64, f64), dst: (f64, f64), dst_side: Side) -> (f64, f64) {
+    match dst_side {
+        // Horizontal ingress: final leg lies on y = dst.y, so the
+        // corner sits at (prev.x, dst.y).
+        Side::East | Side::West => (prev.0, dst.1),
+        // Vertical ingress: final leg lies on x = dst.x.
+        Side::North | Side::South => (dst.0, prev.1),
+    }
 }
 
 fn fallback_elbow(src: (f64, f64), src_side: Side, dst: (f64, f64)) -> Vec<(f64, f64)> {
@@ -475,12 +565,43 @@ pub(crate) fn separate_edges(paths: &mut [EdgePath], step: f64) {
 
     // Compute nudge offset per segment.
     let mut nudges: HashMap<(usize, usize), (f64, f64)> = HashMap::new();
+    // Per-path endpoint signatures used to detect bundled groups —
+    // edges that all leave the same anchor (or all arrive at the
+    // same anchor) should overlap in the shared corridor rather
+    // than fan out into parallel lines.
+    let key = |p: (f64, f64)| ((p.0 * 1e3).round() as i64, (p.1 * 1e3).round() as i64);
+    let starts: Vec<_> = paths
+        .iter()
+        .map(|p| p.points.first().copied().map(key))
+        .collect();
+    let ends: Vec<_> = paths
+        .iter()
+        .map(|p| p.points.last().copied().map(key))
+        .collect();
     for (_, members) in groups {
         if members.len() < 2 {
             continue;
         }
         let mut members = members;
         members.sort_by_key(|&i| (segs[i].path_idx, segs[i].seg_idx));
+
+        // If every path contributing to this corridor shares the same
+        // source anchor, or every path shares the same destination,
+        // leave the segments aligned. Visually the bundle reads as a
+        // single trunk that branches at the divergent end — and the
+        // endpoint-segment exclusion already protects the divergent
+        // tail from being nudged.
+        let path_ids: Vec<usize> = members.iter().map(|&i| segs[i].path_idx).collect();
+        let shares_start = path_ids
+            .iter()
+            .all(|&pi| starts[pi].is_some() && starts[pi] == starts[path_ids[0]]);
+        let shares_end = path_ids
+            .iter()
+            .all(|&pi| ends[pi].is_some() && ends[pi] == ends[path_ids[0]]);
+        if shares_start || shares_end {
+            continue;
+        }
+
         let count = members.len();
         let center = (count as f64 - 1.0) / 2.0;
         for (rank, &idx) in members.iter().enumerate() {
@@ -597,6 +718,72 @@ mod tests {
         // horizontal corridor (corner alignment).
         assert!((paths[0].points[2].1 - paths[0].points[1].1).abs() < 1e-6);
         assert!((paths[1].points[2].1 - paths[1].points[1].1).abs() < 1e-6);
+    }
+
+    #[test]
+    fn route_endpoints_stay_axis_aligned_when_anchor_off_grid() {
+        // West-ingress destination at (252, 37) — neither coord lies
+        // on a CELL=10 boundary. Without the corner fix-up, the snap
+        // would leave the final leg diagonal. The patched route must
+        // arrive on a horizontal segment (y=37) coming in from the
+        // west and have every other leg axis-aligned too.
+        let pts = route_elbow(
+            (132.0, 30.0),
+            Side::East,
+            (252.0, 37.0),
+            Side::West,
+            &[],
+            (520.0, 320.0),
+        );
+        assert!(pts.len() >= 2, "route should not be empty");
+        // Every consecutive pair must share either x or y.
+        for w in pts.windows(2) {
+            let (a, b) = (w[0], w[1]);
+            let aligned = (a.0 - b.0).abs() < 1e-6 || (a.1 - b.1).abs() < 1e-6;
+            assert!(aligned, "diagonal segment {a:?} -> {b:?} in {pts:?}");
+        }
+        // First segment goes horizontal (east egress).
+        assert!(
+            (pts[0].1 - pts[1].1).abs() < 1e-6,
+            "first segment not horizontal: {pts:?}"
+        );
+        // Final segment arrives horizontal (west ingress at y=37).
+        let n = pts.len();
+        assert!(
+            (pts[n - 2].1 - 37.0).abs() < 1e-6 && (pts[n - 1].1 - 37.0).abs() < 1e-6,
+            "final segment should hug y=37: {pts:?}"
+        );
+    }
+
+    #[test]
+    fn separate_edges_keeps_bundled_middle_segments_aligned() {
+        // Three edges all leaving the same source (10, 50), bending
+        // east through a common horizontal corridor at y=100, then
+        // turning down to three distinct destinations. The shared
+        // corridor should remain a single line (no nudge), because
+        // visually a bundle of edges leaving one anchor reads better
+        // as one trunk that splits near the destinations.
+        let mut paths = vec![
+            EdgePath {
+                points: vec![(10.0, 50.0), (10.0, 100.0), (200.0, 100.0), (200.0, 30.0)],
+            },
+            EdgePath {
+                points: vec![(10.0, 50.0), (10.0, 100.0), (210.0, 100.0), (210.0, 30.0)],
+            },
+            EdgePath {
+                points: vec![(10.0, 50.0), (10.0, 100.0), (220.0, 100.0), (220.0, 30.0)],
+            },
+        ];
+        separate_edges(&mut paths, 4.0);
+        // All three corridor segments stay at y=100.
+        assert!((paths[0].points[1].1 - 100.0).abs() < 1e-6);
+        assert!((paths[1].points[1].1 - 100.0).abs() < 1e-6);
+        assert!((paths[2].points[1].1 - 100.0).abs() < 1e-6);
+        // And so do the corner alignments on the other endpoint of
+        // each middle segment.
+        assert!((paths[0].points[2].1 - 100.0).abs() < 1e-6);
+        assert!((paths[1].points[2].1 - 100.0).abs() < 1e-6);
+        assert!((paths[2].points[2].1 - 100.0).abs() < 1e-6);
     }
 
     #[test]
