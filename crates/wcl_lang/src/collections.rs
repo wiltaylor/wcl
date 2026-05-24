@@ -2,10 +2,12 @@
 //! plus the tensor constructor/accessors. Registered in
 //! [`Environment::new`](crate::Environment::new).
 
+use std::collections::{BTreeMap, HashMap, HashSet};
+
 use crate::builtins::{BuiltinFn, Caller, from_fn};
 use crate::environment::Environment;
 use crate::numeric::for_each_numeric_variant;
-use crate::value::Value;
+use crate::value::{Value, VariantPayload};
 
 /// Register every collection builtin into `env`.
 pub(crate) fn register(env: &mut Environment) {
@@ -152,6 +154,11 @@ pub(crate) fn register(env: &mut Environment) {
     );
     env.add_builtin("sort", from_fn(sort_pure).with_signature("fn ([T]) -> [T]"));
     env.add_builtin(
+        "sort_connected",
+        from_fn(sort_connected_pure)
+            .with_signature("fn ([T], [{source, destination, ...}]) -> [T]"),
+    );
+    env.add_builtin(
         "unique",
         from_fn(|xs: Vec<Value>| -> Value {
             let mut seen = Vec::with_capacity(xs.len());
@@ -233,6 +240,211 @@ fn sort_pure(xs: Vec<Value>) -> Result<Value, String> {
         "sort: list must be all numeric or all strings, found mixed (first element type: {})",
         first.type_name()
     ))
+}
+
+/// `sort_connected(items, edges)` — reorder a list so that items
+/// participating in the same connections cluster together. Each item
+/// is identified by an `id` field (Record or Variant payload-Record).
+/// Each edge is a record with `source` / `destination` id values
+/// (extra fields are ignored — the projector's `kind` and any custom
+/// fields flow through untouched). Items without an `id` are kept in
+/// their relative source order at the end.
+///
+/// **Recursive lift.** Items with a `children` field that is a
+/// `list` are sorted in place: edges whose both endpoints live
+/// inside a child subtree drive that subtree's order, and edges
+/// whose endpoints straddle two children of this level cause those
+/// children to be ordered next to each other.
+fn sort_connected_pure(items_v: Value, edges_v: Value) -> Result<Value, String> {
+    let items = match items_v {
+        Value::List(xs) => xs,
+        other => {
+            return Err(format!(
+                "sort_connected: first argument must be a list, got {}",
+                other.type_name()
+            ));
+        }
+    };
+    let edges = match edges_v {
+        Value::List(xs) => xs,
+        other => {
+            return Err(format!(
+                "sort_connected: second argument must be a list of edges, got {}",
+                other.type_name()
+            ));
+        }
+    };
+    Ok(Value::List(sort_connected_level(items, &edges)))
+}
+
+fn sort_connected_level(items: Vec<Value>, edges: &[Value]) -> Vec<Value> {
+    if items.is_empty() {
+        return items;
+    }
+    let descendants: Vec<HashSet<String>> = items.iter().map(collect_descendant_ids).collect();
+
+    // Build adjacency by lifting each edge to whichever pair of
+    // top-level items contain its endpoints. Self-loops (both
+    // endpoints in the same subtree) drive the recursive sort, not
+    // this level's adjacency.
+    let mut adj: HashMap<usize, HashSet<usize>> = HashMap::new();
+    for edge in edges {
+        let Some((src, dst)) = edge_endpoint_pair(edge) else {
+            continue;
+        };
+        let src_idx = find_subtree(&descendants, &src);
+        let dst_idx = find_subtree(&descendants, &dst);
+        if let (Some(si), Some(di)) = (src_idx, dst_idx)
+            && si != di
+        {
+            adj.entry(si).or_default().insert(di);
+            adj.entry(di).or_default().insert(si);
+        }
+    }
+
+    let order = greedy_bfs_order(items.len(), &adj);
+
+    // Recurse into each ordered item's children, scoping edges to
+    // that subtree.
+    order
+        .into_iter()
+        .map(|i| {
+            let sub_edges: Vec<Value> = edges
+                .iter()
+                .filter(|e| {
+                    edge_endpoint_pair(e)
+                        .map(|(s, d)| descendants[i].contains(&s) && descendants[i].contains(&d))
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .collect();
+            recurse_sort_children(items[i].clone(), &sub_edges)
+        })
+        .collect()
+}
+
+/// Greedy BFS ordering: start from the highest-degree node, emit its
+/// neighbours by descending degree, repeat for any remaining
+/// component. Items with no edges keep their relative source order
+/// at the end.
+fn greedy_bfs_order(n: usize, adj: &HashMap<usize, HashSet<usize>>) -> Vec<usize> {
+    let degree = |i: usize| adj.get(&i).map(|s| s.len()).unwrap_or(0);
+    let mut visited = vec![false; n];
+    let mut order: Vec<usize> = Vec::with_capacity(n);
+    let mut seeds: Vec<usize> = (0..n).filter(|i| degree(*i) > 0).collect();
+    seeds.sort_by(|a, b| degree(*b).cmp(&degree(*a)).then(a.cmp(b)));
+    for start in seeds {
+        if visited[start] {
+            continue;
+        }
+        let mut queue: Vec<usize> = vec![start];
+        let mut head = 0;
+        while head < queue.len() {
+            let cur = queue[head];
+            head += 1;
+            if visited[cur] {
+                continue;
+            }
+            visited[cur] = true;
+            order.push(cur);
+            if let Some(neighbors) = adj.get(&cur) {
+                let mut neigh: Vec<usize> =
+                    neighbors.iter().copied().filter(|i| !visited[*i]).collect();
+                neigh.sort_by(|a, b| degree(*b).cmp(&degree(*a)).then(a.cmp(b)));
+                queue.extend(neigh);
+            }
+        }
+    }
+    // Append untouched items in their original order.
+    for (i, seen) in visited.iter().enumerate() {
+        if !seen {
+            order.push(i);
+        }
+    }
+    order
+}
+
+fn recurse_sort_children(item: Value, edges: &[Value]) -> Value {
+    match item {
+        Value::Record { ty, mut fields } => {
+            if let Some(Value::List(children)) = fields.get("children").cloned() {
+                let sorted = sort_connected_level(children, edges);
+                fields.insert("children".to_string(), Value::List(sorted));
+            }
+            Value::Record { ty, fields }
+        }
+        Value::Variant {
+            union,
+            variant,
+            payload: VariantPayload::Record(mut map),
+        } => {
+            if let Some(Value::List(children)) = map.get("children").cloned() {
+                let sorted = sort_connected_level(children, edges);
+                map.insert("children".to_string(), Value::List(sorted));
+            }
+            Value::Variant {
+                union,
+                variant,
+                payload: VariantPayload::Record(map),
+            }
+        }
+        other => other,
+    }
+}
+
+fn collect_descendant_ids(item: &Value) -> HashSet<String> {
+    let mut out = HashSet::new();
+    if let Some(id) = item_id(item) {
+        out.insert(id);
+    }
+    if let Some(children) = item_children(item) {
+        for c in children {
+            out.extend(collect_descendant_ids(c));
+        }
+    }
+    out
+}
+
+fn item_id(v: &Value) -> Option<String> {
+    let map = item_fields(v)?;
+    extract_id_string(map.get("id")?)
+}
+
+fn item_children(v: &Value) -> Option<&[Value]> {
+    let map = item_fields(v)?;
+    match map.get("children")? {
+        Value::List(xs) => Some(xs),
+        _ => None,
+    }
+}
+
+fn item_fields(v: &Value) -> Option<&BTreeMap<String, Value>> {
+    match v {
+        Value::Record { fields, .. } => Some(fields),
+        Value::Variant {
+            payload: VariantPayload::Record(map),
+            ..
+        } => Some(map),
+        _ => None,
+    }
+}
+
+fn edge_endpoint_pair(v: &Value) -> Option<(String, String)> {
+    let fields = item_fields(v)?;
+    let src = extract_id_string(fields.get("source")?)?;
+    let dst = extract_id_string(fields.get("destination")?)?;
+    Some((src, dst))
+}
+
+fn extract_id_string(v: &Value) -> Option<String> {
+    match v {
+        Value::Identifier(s) | Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
+        _ => None,
+    }
+}
+
+fn find_subtree(descendants: &[HashSet<String>], target: &str) -> Option<usize> {
+    descendants.iter().position(|s| s.contains(target))
 }
 
 // ── Higher-order ─────────────────────────────────────────────────────

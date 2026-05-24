@@ -1,7 +1,13 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
 
 use wcl_lang::{Block, Document, FnValue, Value, VariantPayload};
+
+/// Absolute SVG bounding box of a named shape, used to anchor edge
+/// endpoints during arrow rendering. Stored as `(x, y, width, height)`
+/// in the diagram's coordinate space (all container/grid translations
+/// already accumulated).
+type ShapePositions = HashMap<String, (f64, f64, f64, f64)>;
 
 /// Lowering recursion guard. A lowering may emit other custom kinds
 /// that themselves lower further; this caps how deep we'll follow
@@ -138,19 +144,161 @@ fn render_diagram(doc: &Document, block: &Block<'_>) -> String {
     let cls = class_attr(block);
     let width = field_i64(block, "width").unwrap_or(0);
     let height = field_i64(block, "height").unwrap_or(0);
+    let mut positions: ShapePositions = HashMap::new();
+    for b in block.blocks() {
+        collect_shape_positions(&b, 0.0, 0.0, width as f64, height as f64, &mut positions);
+    }
     let shapes: String = block
         .blocks()
         .filter_map(|b| render_shape(doc, &b, width as f64, height as f64))
         .collect();
+    let edges = render_edges(block, &positions);
+    let defs = if edges.is_empty() { "" } else { ARROW_MARKER };
     let mut out = format!("<svg{cls}");
     append_attr(&mut out, "id", field_id(block, "id").as_deref());
     write!(
         out,
         " xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" \
-         viewBox=\"0 0 {width} {height}\">{shapes}</svg>"
+         viewBox=\"0 0 {width} {height}\">{defs}{shapes}{edges}</svg>"
     )
     .expect("write to String");
     out
+}
+
+const ARROW_MARKER: &str = "<defs><marker id=\"wdoc-arrow\" viewBox=\"0 0 10 10\" \
+    refX=\"10\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" \
+    orient=\"auto-start-reverse\">\
+    <path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"currentColor\" /></marker></defs>";
+
+/// Walk the diagram subtree once and record each id'd shape's absolute
+/// bounding box. Mirrors the geometry computed by `render_*` but
+/// without producing SVG — so the edge pass can join shapes by id
+/// regardless of how deeply they nest inside containers / grids.
+fn collect_shape_positions(
+    block: &Block<'_>,
+    tx: f64,
+    ty: f64,
+    parent_w: f64,
+    parent_h: f64,
+    out: &mut ShapePositions,
+) {
+    match block.kind() {
+        "rect" => {
+            let (x, y, w, h) = resolve_rect_box(block, parent_w, parent_h);
+            if let Some(id) = field_id(block, "id") {
+                out.insert(id, (tx + x, ty + y, w, h));
+            }
+        }
+        "circle" => {
+            let (cx, cy, r) = resolve_circle(block, parent_w, parent_h);
+            if let Some(id) = field_id(block, "id") {
+                out.insert(id, (tx + cx - r, ty + cy - r, 2.0 * r, 2.0 * r));
+            }
+        }
+        "label" => {
+            let own_x = field_f64(block, "x").unwrap_or(0.0);
+            let own_y = field_f64(block, "y").unwrap_or(0.0);
+            let (x, y) = resolve_point_anchored(block, parent_w, parent_h, own_x, own_y);
+            if let Some(id) = field_id(block, "id") {
+                out.insert(id, (tx + x, ty + y, 0.0, 0.0));
+            }
+        }
+        "container" => {
+            let (x, y, w, h) = resolve_container_box(block, parent_w, parent_h);
+            if let Some(id) = field_id(block, "id") {
+                out.insert(id, (tx + x, ty + y, w, h));
+            }
+            let layout = field_symbol(block, "layout").unwrap_or_default();
+            if layout == "grid" {
+                let cols = field_i64(block, "columns").unwrap_or(1).max(1) as usize;
+                let cw = field_f64(block, "cell_width").unwrap_or(0.0);
+                let ch = field_f64(block, "cell_height").unwrap_or(0.0);
+                let gap = field_f64(block, "gap").unwrap_or(0.0);
+                for (i, child) in block.blocks().enumerate() {
+                    let col = i % cols;
+                    let row = i / cols;
+                    let cx_off = col as f64 * (cw + gap);
+                    let cy_off = row as f64 * (ch + gap);
+                    collect_shape_positions(&child, tx + x + cx_off, ty + y + cy_off, cw, ch, out);
+                }
+            } else {
+                for child in block.blocks() {
+                    collect_shape_positions(&child, tx + x, ty + y, w, h, out);
+                }
+            }
+        }
+        // `line` and `polygon` have no single anchor point usable as
+        // an edge endpoint; they're skipped.
+        "line" | "polygon" => {}
+        // Custom shapes (process, decision, terminator, user-defined,
+        // …) follow the same convention as fundamentals: x/y/width/
+        // height as a bounding box. We read those directly without
+        // lowering so connection endpoints land on the visible
+        // outline rather than on an arbitrary post-lower coordinate.
+        _ => {
+            if let Some(id) = field_id(block, "id")
+                && let (Some(x), Some(y), Some(w), Some(h)) = (
+                    field_f64(block, "x"),
+                    field_f64(block, "y"),
+                    field_f64(block, "width"),
+                    field_f64(block, "height"),
+                )
+            {
+                out.insert(id, (tx + x, ty + y, w, h));
+            }
+        }
+    }
+}
+
+fn render_edges(block: &Block<'_>, positions: &ShapePositions) -> String {
+    // `edges` is a `@connections(Edge)`-projected field, so it lives
+    // on the schema rather than as a literal source-level field.
+    // `typed_field` is the only path that materialises projections.
+    let Some(dr) = block.typed_field("edges") else {
+        return String::new();
+    };
+    let Ok(value) = dr.value() else {
+        return String::new();
+    };
+    let Value::List(items) = value else {
+        return String::new();
+    };
+    let mut out = String::new();
+    for item in &items {
+        if let Some(svg) = render_edge(item, positions) {
+            out.push_str(&svg);
+        }
+    }
+    out
+}
+
+fn render_edge(value: &Value, positions: &ShapePositions) -> Option<String> {
+    let Value::Record { fields, .. } = value else {
+        return None;
+    };
+    let source_id = edge_endpoint_id(fields.get("source")?)?;
+    let dest_id = edge_endpoint_id(fields.get("destination")?)?;
+    let (sx, sy, sw, sh) = positions.get(&source_id)?;
+    let (dx, dy, dw, dh) = positions.get(&dest_id)?;
+    let cx1 = sx + sw / 2.0;
+    let cy1 = sy + sh / 2.0;
+    let cx2 = dx + dw / 2.0;
+    let cy2 = dy + dh / 2.0;
+    let kind_attr = match fields.get("kind") {
+        Some(Value::Symbol(k)) => format!(" data-kind=\"{}\"", escape_html(k)),
+        _ => String::new(),
+    };
+    Some(format!(
+        "<line x1=\"{cx1}\" y1=\"{cy1}\" x2=\"{cx2}\" y2=\"{cy2}\" \
+         stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\"{kind_attr} />"
+    ))
+}
+
+fn edge_endpoint_id(v: &Value) -> Option<String> {
+    match v {
+        Value::Identifier(s) | Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
+        _ => None,
+    }
 }
 
 fn render_shape(doc: &Document, block: &Block<'_>, parent_w: f64, parent_h: f64) -> Option<String> {

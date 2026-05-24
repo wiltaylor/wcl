@@ -525,16 +525,12 @@ impl Document {
     ) -> Option<Value> {
         let (lhs_val, lhs_block_kind) = self.resolve_connection_operand(scope, &stmt.lhs)?;
         let (rhs_val, rhs_block_kind) = self.resolve_connection_operand(scope, &stmt.rhs)?;
-        let lhs_ty = self
-            .block_schema(&lhs_block_kind)
-            .map(|t| t.name_segments().join("."))?;
-        let rhs_ty = self
-            .block_schema(&rhs_block_kind)
-            .map(|t| t.name_segments().join("."))?;
-        if Some(lhs_ty.as_str()) != source_fqn {
+        let lhs_decl = self.block_schema(&lhs_block_kind)?;
+        let rhs_decl = self.block_schema(&rhs_block_kind)?;
+        if !connection_type_matches(&lhs_decl, source_fqn) {
             return None;
         }
-        if Some(rhs_ty.as_str()) != dest_fqn {
+        if !connection_type_matches(&rhs_decl, dest_fqn) {
             return None;
         }
         let kind_name = match &stmt.kind {
@@ -552,14 +548,15 @@ impl Document {
         })
     }
 
-    /// Resolve a `TypeRef::Named` to its dotted FQN, if it points at a
-    /// declared type/interface/union. Returns `None` for builtins,
-    /// references, lists, etc.
+    /// Resolve a `TypeRef::Named` (or `TypeRef::Reference(Named ...)`,
+    /// which is how interface-typed connection endpoints must be
+    /// written) to its dotted FQN. Returns `None` for builtins,
+    /// lists, tensors, etc.
     pub(crate) fn resolve_type_fqn(&self, t: &TypeRef) -> Option<String> {
-        if let TypeRef::Named(path) = t {
-            self.resolve_path(path).map(|p| p.join("."))
-        } else {
-            None
+        match t {
+            TypeRef::Named(path) => self.resolve_path(path).map(|p| p.join(".")),
+            TypeRef::Reference(inner) => self.resolve_type_fqn(inner),
+            _ => None,
         }
     }
 
@@ -1244,12 +1241,15 @@ impl Document {
     }
 }
 
-/// Take a navigator returned from path evaluation and reduce it to a
-/// concrete `Value`. For `Field` targets, this evaluates the field
-/// (auto-deref); for any other target, it errors `NotALeaf`.
-/// Scan a flat slice of items for an `Item::Block` whose first label
-/// (evaluated) matches the given name. Returns the label value plus
-/// the block kind so callers can dispatch on the block's declared type.
+/// Recursively search a slice of items for an `Item::Block` that
+/// identifies as `name`. Identity sources, in priority order:
+///
+///   1. the block's first label (evaluated as a literal)
+///   2. a field named `id` whose value evaluates to the name
+///   3. nested blocks reachable through the block's own `items`
+///
+/// Returns the identifying value plus the block kind so callers can
+/// dispatch on the block's declared type.
 fn match_block_label_in_items(
     doc: &Document,
     items: &[ast::Item],
@@ -1259,16 +1259,57 @@ fn match_block_label_in_items(
         let ast::Item::Block(b) = item else {
             continue;
         };
-        let Some(first) = b.labels.first() else {
-            continue;
-        };
-        let v = doc.eval_in_scope(first, &Scope::root()).ok()?;
-        let s = match &v {
-            Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s.as_str(),
-            _ => continue,
-        };
-        if s == name {
+        if let Some(v) = match_block_first_label(doc, b, name) {
             return Some((v, b.kind.clone()));
+        }
+        if let Some(v) = match_block_id_field(doc, b, name) {
+            return Some((v, b.kind.clone()));
+        }
+        if let Some(found) = match_block_label_in_items(doc, &b.items, name) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+/// `true` when a concrete block's [`TypeDecl`] satisfies a connection
+/// schema's declared source or destination FQN. Direct FQN equality
+/// wins; otherwise we walk the type's `extends` chain so connections
+/// declared against an interface or supertype admit any conforming
+/// concrete block.
+pub(crate) fn connection_type_matches(decl: &TypeDecl<'_>, target_fqn: Option<&str>) -> bool {
+    let Some(target) = target_fqn else {
+        return false;
+    };
+    if decl.name_segments().join(".") == target {
+        return true;
+    }
+    decl.is_descendant_of(target)
+}
+
+fn match_block_first_label(doc: &Document, b: &ast::Block, name: &str) -> Option<Value> {
+    let first = b.labels.first()?;
+    let v = doc.eval_in_scope(first, &Scope::root()).ok()?;
+    let matches = match &v {
+        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s == name,
+        _ => false,
+    };
+    if matches { Some(v) } else { None }
+}
+
+fn match_block_id_field(doc: &Document, b: &ast::Block, name: &str) -> Option<Value> {
+    for it in &b.items {
+        let ast::Item::Field(f) = it else { continue };
+        if f.name != "id" {
+            continue;
+        }
+        let v = doc.eval_literal(&f.expr).ok()?;
+        let matches = match &v {
+            Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s == name,
+            _ => false,
+        };
+        if matches {
+            return Some(v);
         }
     }
     None

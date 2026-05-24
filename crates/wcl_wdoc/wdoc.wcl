@@ -33,6 +33,14 @@ interface SvgBlock {
   lower: fn(&SvgBlock) -> list<SvgFundamental>
 }
 
+// Default connection schema for diagrams. Any pair of SvgBlocks may
+// be connected; renderers draw an arrow from source to destination
+// using the resolved bounding boxes of the named shapes. User code
+// may declare its own `connection ... : ... : ...` and consume it
+// via `@connections(MyEdge)` for custom rendering.
+symbol_set EdgeKind { default flow data }
+connection Edge: &SvgBlock -> &SvgBlock : EdgeKind
+
 @block("page")
 type Page {
   @inline(0) name: identifier
@@ -106,6 +114,7 @@ type Diagram extends WdocBlock {
   id:     identifier?
   class:  list<utf8>?
   @children(SvgBlock) children: list<SvgBlock>
+  @connections(Edge) edges: list<Edge>
   lower = fn(d: Diagram) -> list<HtmlFundamental> []
 }
 

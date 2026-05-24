@@ -1,0 +1,71 @@
+// Connections in wdoc diagrams.
+//
+// Shapes are identified by their `id` field. Connection statements
+// reference those ids — they may sit anywhere within the diagram
+// (including deep inside a container) and the renderer draws an
+// arrow between the resolved shapes.
+//
+// The bundled `Edge` schema (declared in wdoc.wcl) accepts any pair
+// of SvgBlocks. Users can declare their own connection schemas with
+// custom kinds and consume them via `@connections(MyEdge)` on a
+// custom block type.
+
+page index {
+  h1 "Flat connections" {}
+
+  diagram {
+    width  = 320
+    height = 120
+
+    process "Validate" {
+      id = step_a
+      x = 10.0  y = 40.0  width = 80.0  height = 40.0
+      fill = "#eef"  stroke = "#446"
+    }
+    decision "Match?" {
+      id = step_b
+      x = 130.0  y = 30.0  width = 80.0  height = 60.0
+      fill = "#fee"  stroke = "#a44"
+    }
+    terminator "Done" {
+      id = step_c
+      x = 240.0  y = 40.0  width = 70.0  height = 40.0
+      fill = "#efe"  stroke = "#494"
+    }
+
+    step_a -> step_b
+    step_b -> step_c :flow
+  }
+
+  h1 "Cross-container connections" {}
+
+  // Edges may straddle container boundaries. `inner_*` ids live two
+  // levels deep; statements at the diagram level still resolve them.
+  diagram {
+    width  = 320
+    height = 160
+
+    container {
+      id = group_left
+      anchor_left = 0.0  anchor_top = 0.0
+      width = 140.0  height = 160.0
+      rect {
+        id = inner_a
+        x = 30.0  y = 50.0  width = 80.0  height = 40.0
+        fill = "#cce"  stroke = "#446"
+      }
+    }
+    container {
+      id = group_right
+      anchor_left = 180.0  anchor_top = 0.0
+      width = 140.0  height = 160.0
+      rect {
+        id = inner_b
+        x = 30.0  y = 50.0  width = 80.0  height = 40.0
+        fill = "#ecc"  stroke = "#a44"
+      }
+    }
+
+    inner_a -> inner_b :data
+  }
+}

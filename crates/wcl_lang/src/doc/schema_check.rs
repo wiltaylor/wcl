@@ -61,32 +61,26 @@ pub(super) fn validate_connection_stmts(
             ));
             continue;
         };
-        let Some(lhs_ty) = doc
-            .block_schema(&lhs_kind)
-            .map(|t| t.name_segments().join("."))
-        else {
+        let Some(lhs_decl) = doc.block_schema(&lhs_kind) else {
             continue; // block kind without a schema; UnregisteredKind already fires.
         };
-        let Some(rhs_ty) = doc
-            .block_schema(&rhs_kind)
-            .map(|t| t.name_segments().join("."))
-        else {
+        let Some(rhs_decl) = doc.block_schema(&rhs_kind) else {
             continue;
         };
         let mut matches: Vec<crate::doc::ConnectionDecl<'_>> = Vec::new();
         for decl in doc.connection_decls() {
-            let Some(src_fqn) = decl_type_fqn(doc, decl.source_type()) else {
-                continue;
-            };
-            let Some(dst_fqn) = decl_type_fqn(doc, decl.destination_type()) else {
-                continue;
-            };
-            if src_fqn == lhs_ty && dst_fqn == rhs_ty {
+            let src_fqn = decl_type_fqn(doc, decl.source_type());
+            let dst_fqn = decl_type_fqn(doc, decl.destination_type());
+            if crate::doc::connection_type_matches(&lhs_decl, src_fqn.as_deref())
+                && crate::doc::connection_type_matches(&rhs_decl, dst_fqn.as_deref())
+            {
                 matches.push(decl);
             }
         }
         let chosen = match matches.len() {
             0 => {
+                let lhs_ty = lhs_decl.name_segments().join(".");
+                let rhs_ty = rhs_decl.name_segments().join(".");
                 errs.push(EvalError::schema_violation(
                     Kind::UnknownConnection,
                     format!("no connection schema accepts '{lhs_ty} -> {rhs_ty}'",),
@@ -96,6 +90,8 @@ pub(super) fn validate_connection_stmts(
             }
             1 => matches.into_iter().next().unwrap(),
             _ => {
+                let lhs_ty = lhs_decl.name_segments().join(".");
+                let rhs_ty = rhs_decl.name_segments().join(".");
                 let names: Vec<String> = matches
                     .iter()
                     .map(|m| m.name_segments().join("."))

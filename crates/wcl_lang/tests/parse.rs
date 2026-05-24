@@ -1520,6 +1520,118 @@ fn connection_unknown_kind_fixture_reports_violation() {
     );
 }
 
+#[test]
+fn connection_resolves_id_field_inside_nested_blocks() {
+    // Connection operands are identified by an `id` field (not just
+    // first-label), and the resolver recursively descends into
+    // nested blocks. The two `Shape` blocks live inside two
+    // `Group` blocks; the connection statement at the document root
+    // must still find them.
+    let doc = open(
+        r#"
+        symbol_set Kind { default }
+        connection Edge: Shape -> Shape : Kind
+
+        @block("group")
+        type Group {
+          @children("shape") shapes: list<Shape>
+        }
+        @block("shape")
+        type Shape {
+          id: identifier
+        }
+
+        @document
+        type Site {
+          @children("group") groups: list<Group>
+          @connections(Edge) edges: list<Edge>
+        }
+
+        group {
+          shape { id = a }
+        }
+        group {
+          shape { id = b }
+        }
+
+        a -> b
+        "#,
+    );
+    assert!(
+        doc.schema_errors().is_empty(),
+        "expected no schema errors, got: {:#?}",
+        doc.schema_errors(),
+    );
+    let edges = doc
+        .get("edges")
+        .expect("edges field")
+        .value()
+        .expect("eval edges");
+    let Value::List(items) = edges else {
+        panic!("edges should be a list, got {edges:?}");
+    };
+    assert_eq!(items.len(), 1);
+    let Value::Record { fields, .. } = &items[0] else {
+        panic!("expected record");
+    };
+    assert_eq!(fields.get("source"), Some(&Value::Identifier("a".into())));
+    assert_eq!(
+        fields.get("destination"),
+        Some(&Value::Identifier("b".into())),
+    );
+}
+
+#[test]
+fn connection_accepts_interface_typed_endpoints() {
+    // A connection schema declared against an interface (here as
+    // `&Shape`, since interfaces in non-reference position are
+    // rejected) admits any block whose type implements the
+    // interface.
+    let doc = open(
+        r#"
+        symbol_set Kind { default }
+        connection Edge: &Shape -> &Shape : Kind
+
+        interface Shape {
+          id: identifier?
+        }
+        @block("rect_shape")
+        type RectShape extends Shape {
+          id: identifier?
+        }
+        @block("circle_shape")
+        type CircleShape extends Shape {
+          id: identifier?
+        }
+
+        @document
+        type Site {
+          @children("rect_shape")   rects:   list<RectShape>
+          @children("circle_shape") circles: list<CircleShape>
+          @connections(Edge)        edges:   list<Edge>
+        }
+
+        rect_shape { id = r1 }
+        circle_shape { id = c1 }
+        r1 -> c1
+        "#,
+    );
+    assert!(
+        doc.schema_errors().is_empty(),
+        "expected no schema errors, got: {:#?}",
+        doc.schema_errors(),
+    );
+    let edges = doc
+        .get("edges")
+        .expect("edges field")
+        .value()
+        .expect("eval edges");
+    let Value::List(items) = edges else {
+        panic!("edges should be a list, got {edges:?}");
+    };
+    assert_eq!(items.len(), 1);
+}
+
 // ---- heredocs --------------------------------------------------------
 
 #[test]

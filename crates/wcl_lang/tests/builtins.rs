@@ -105,3 +105,138 @@ fn list_index_of_take_drop_contains() {
         Value::Bool(true)
     );
 }
+
+/// Build the exact same value shape that wdoc passes into
+/// `sort_connected` at runtime: a list of `Value::Variant`s whose
+/// record payloads carry `id: Value::Identifier` and `children:
+/// Value::List<...>`. Plus a parallel list of edge records with
+/// `source` / `destination: Value::Identifier`. Constructing the
+/// values in Rust is the only way to get `Value::Identifier` (bare
+/// identifiers can't appear in expression position) without
+/// reparsing through the schema pipeline.
+fn node(id: &str, children: Vec<Value>) -> Value {
+    let mut map = std::collections::BTreeMap::new();
+    map.insert("id".to_string(), Value::Identifier(id.to_string()));
+    map.insert("children".to_string(), Value::List(children));
+    Value::Variant {
+        union: vec!["Node".into()],
+        variant: "N".into(),
+        payload: wcl_lang::VariantPayload::Record(map),
+    }
+}
+
+fn edge(src: &str, dst: &str) -> Value {
+    let mut map = std::collections::BTreeMap::new();
+    map.insert("source".to_string(), Value::Identifier(src.to_string()));
+    map.insert(
+        "destination".to_string(),
+        Value::Identifier(dst.to_string()),
+    );
+    Value::Record {
+        ty: vec!["Edge".into()],
+        fields: map,
+    }
+}
+
+/// `sort_them` is a thin top-level function that just forwards to
+/// the `sort_connected` builtin. We invoke it via
+/// `Document::call_function` so the test never has to parse the
+/// items / edges back into WCL syntax — Rust constructs them
+/// directly with the precise `Value::Identifier` shape wdoc emits
+/// at runtime. `@schemaless` keeps the binding out of any document
+/// type's required-field check.
+const SORT_DOC: &str = r#"
+@schemaless sort_them = fn(xs: list<i64>, es: list<i64>) -> list<i64> sort_connected(xs, es)
+"#;
+
+fn sort_via_doc(items: Vec<Value>, edges: Vec<Value>) -> Vec<Value> {
+    let doc = wcl_lang::Document::open(SORT_DOC, "test").expect("parse");
+    let result = doc
+        .call_function("sort_them", &[Value::List(items), Value::List(edges)])
+        .expect("call sort_them");
+    match result {
+        Value::List(xs) => xs,
+        other => panic!("expected list, got {other:?}"),
+    }
+}
+
+fn variant_id(v: &Value) -> Option<&str> {
+    let wcl_lang::Value::Variant {
+        payload: wcl_lang::VariantPayload::Record(map),
+        ..
+    } = v
+    else {
+        return None;
+    };
+    match map.get("id") {
+        Some(wcl_lang::Value::Identifier(s)) => Some(s.as_str()),
+        _ => None,
+    }
+}
+
+fn variant_children(v: &Value) -> Option<&[Value]> {
+    let wcl_lang::Value::Variant {
+        payload: wcl_lang::VariantPayload::Record(map),
+        ..
+    } = v
+    else {
+        return None;
+    };
+    match map.get("children") {
+        Some(wcl_lang::Value::List(xs)) => Some(xs),
+        _ => None,
+    }
+}
+
+#[test]
+fn sort_connected_flat_groups_adjacent() {
+    // a (no edges), b — c (edge). Greedy BFS picks the highest-degree
+    // seed first (b/c are tied — tie-broken by original index, so b
+    // first), emits its neighbour, then trails the isolated node.
+    let items = sort_via_doc(
+        vec![node("a", vec![]), node("b", vec![]), node("c", vec![])],
+        vec![edge("b", "c")],
+    );
+    let ids: Vec<&str> = items.iter().filter_map(variant_id).collect();
+    assert_eq!(ids, ["b", "c", "a"]);
+}
+
+#[test]
+fn sort_connected_lifts_cross_subtree_edges() {
+    // The edge `deep_a -> deep_b` lives between leaves that are
+    // descendants of two different top-level items. Sort_connected
+    // must lift this edge to make `outer_a` and `outer_b` adjacent
+    // at the top level.
+    let items = sort_via_doc(
+        vec![
+            node("outer_a", vec![node("deep_a", vec![])]),
+            node("middle", vec![]),
+            node("outer_b", vec![node("deep_b", vec![])]),
+        ],
+        vec![edge("deep_a", "deep_b")],
+    );
+    let ids: Vec<&str> = items.iter().filter_map(variant_id).collect();
+    // outer_a and outer_b must end up adjacent; middle drops to the end.
+    assert!(
+        ids == ["outer_a", "outer_b", "middle"] || ids == ["outer_b", "outer_a", "middle"],
+        "expected outer_a/outer_b grouped, got {ids:?}"
+    );
+}
+
+#[test]
+fn sort_connected_recurses_into_children() {
+    // The outer item has three children; an edge connects c1 to c3
+    // inside it. The recursion should reorder its children list.
+    let items = sort_via_doc(
+        vec![node(
+            "outer",
+            vec![node("c1", vec![]), node("c2", vec![]), node("c3", vec![])],
+        )],
+        vec![edge("c1", "c3")],
+    );
+    let outer = &items[0];
+    let children = variant_children(outer).expect("outer children");
+    let ids: Vec<&str> = children.iter().filter_map(variant_id).collect();
+    // c1 and c3 group together; c2 trails as an isolated node.
+    assert_eq!(ids, ["c1", "c3", "c2"]);
+}

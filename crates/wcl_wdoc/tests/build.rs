@@ -514,6 +514,51 @@ page index {
 }
 
 #[test]
+fn build_renders_connections_as_arrows() {
+    let out = TempDir::new().expect("mkdir tempdir");
+    let n = build_ok(
+        &examples_dir().join("wdoc").join("connections.wcl"),
+        out.path(),
+    );
+    assert_eq!(n, 1);
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // One shared <defs><marker> per diagram that has edges.
+    assert!(
+        html.contains("<marker id=\"wdoc-arrow\""),
+        "missing arrow marker:\n{html}"
+    );
+
+    // Flat diagram: process Validate (center 50,60) -> decision Match
+    // (center 170,60), with the default kind.
+    assert!(
+        html.contains(
+            "<line x1=\"50\" y1=\"60\" x2=\"170\" y2=\"60\" \
+             stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\" data-kind=\"default\" />"
+        ),
+        "missing default edge:\n{html}"
+    );
+    // Same diagram: explicit :flow kind.
+    assert!(
+        html.contains(
+            "<line x1=\"170\" y1=\"60\" x2=\"275\" y2=\"60\" \
+             stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\" data-kind=\"flow\" />"
+        ),
+        "missing flow edge:\n{html}"
+    );
+    // Cross-container diagram: inner_a (resolved at 30,50 inside the
+    // left container) -> inner_b (resolved at 180+30=210 in the right
+    // container), centers (70,70) and (250,70).
+    assert!(
+        html.contains(
+            "<line x1=\"70\" y1=\"70\" x2=\"250\" y2=\"70\" \
+             stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\" data-kind=\"data\" />"
+        ),
+        "missing cross-container edge:\n{html}"
+    );
+}
+
+#[test]
 fn build_allows_same_id_across_different_pages() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("two_pages.wcl");
