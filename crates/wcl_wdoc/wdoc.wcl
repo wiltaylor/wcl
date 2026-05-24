@@ -27,6 +27,7 @@ type Site {
 @block("page")
 type Page {
   @inline(0) name: identifier
+  id: identifier?
   @children("text")    texts:    list<Text>
   @children("column")  columns:  list<Column>
   @children("diagram") diagrams: list<Diagram>
@@ -68,6 +69,7 @@ type Class {
 // Paragraph — children are spans rendered in source order.
 @block("text")
 type Text {
+  id:    identifier?
   class: list<utf8>?
   @children("span") spans: list<Span>
 }
@@ -77,6 +79,7 @@ type Text {
 @block("span")
 type Span {
   @inline(0) text: utf8
+  id:    identifier?
   class: list<utf8>?
 }
 
@@ -85,6 +88,7 @@ type Span {
 @block("column")
 type Column {
   widths: list<f64>
+  id:     identifier?
   class:  list<utf8>?
   @children("text")    texts:    list<Text>
   @children("column")  columns:  list<Column>
@@ -97,6 +101,7 @@ type Column {
 type Diagram {
   width:  i64
   height: i64
+  id:     identifier?
   class:  list<utf8>?
   @children("rect")      rects:      list<Rect>
   @children("circle")    circles:    list<Circle>
@@ -122,6 +127,7 @@ type Diagram {
 // can resize the container; that new size flows to its own children.
 @block("container")
 type Container {
+  id:    identifier?
   class: list<utf8>?
 
   // Declared interior size (used when no layout/anchor is sizing
@@ -161,6 +167,7 @@ type Rect {
   height: f64?
   fill:   utf8?
   stroke: utf8?
+  id:     identifier?
   class:  list<utf8>?
 
   anchor_left:   f64?
@@ -176,6 +183,7 @@ type Circle {
   r:      f64?
   fill:   utf8?
   stroke: utf8?
+  id:     identifier?
   class:  list<utf8>?
 
   anchor_left:   f64?
@@ -191,6 +199,7 @@ type Line {
   x2:     f64?
   y2:     f64?
   stroke: utf8?
+  id:     identifier?
   class:  list<utf8>?
 
   anchor_left:   f64?
@@ -207,6 +216,7 @@ type Label {
   x:     f64?
   y:     f64?
   fill:  utf8?
+  id:    identifier?
   class: list<utf8>?
 
   anchor_left:   f64?
@@ -220,6 +230,7 @@ type Polygon {
   points: utf8
   fill:   utf8?
   stroke: utf8?
+  id:     identifier?
   class:  list<utf8>?
 
   anchor_left:   f64?
@@ -238,15 +249,15 @@ type Polygon {
 // same pair in user source.
 
 union SvgFundamental {
-  Rect    { x: f64? y: f64? width: f64? height: f64? fill: utf8? stroke: utf8? class: list<utf8>? }
-  Circle  { cx: f64? cy: f64? r: f64? fill: utf8? stroke: utf8? class: list<utf8>? }
-  Line    { x1: f64? y1: f64? x2: f64? y2: f64? stroke: utf8? class: list<utf8>? }
-  Label   { content: utf8 x: f64? y: f64? fill: utf8? class: list<utf8>? }
-  Polygon { points: utf8 fill: utf8? stroke: utf8? class: list<utf8>? }
+  Rect    { x: f64? y: f64? width: f64? height: f64? fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
+  Circle  { cx: f64? cy: f64? r: f64? fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
+  Line    { x1: f64? y1: f64? x2: f64? y2: f64? stroke: utf8? id: identifier? class: list<utf8>? }
+  Label   { content: utf8 x: f64? y: f64? fill: utf8? id: identifier? class: list<utf8>? }
+  Polygon { points: utf8 fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
 }
 
 union HtmlFundamental {
-  Paragraph { class: list<utf8>? spans: list<utf8> }
+  Paragraph { id: identifier? class: list<utf8>? spans: list<utf8> }
 }
 
 // ── Stdlib flowchart shapes ────────────────────────────────────────
@@ -255,19 +266,19 @@ union HtmlFundamental {
 type Process {
   @inline(0) text: utf8
   x: f64?  y: f64?  width: f64?  height: f64?
-  fill: utf8?  stroke: utf8?  class: list<utf8>?
+  fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
 }
 
 process_lower = fn(p: Process) -> list<SvgFundamental> [
   SvgFundamental::Rect {
     x: p.x, y: p.y, width: p.width, height: p.height,
-    fill: p.fill, stroke: p.stroke, class: p.class,
+    fill: p.fill, stroke: p.stroke, id: p.id, class: p.class,
   },
   SvgFundamental::Label {
     content: p.text,
     x: p.x + p.width / 2.0,
     y: p.y + p.height / 2.0,
-    fill: none, class: p.class,
+    fill: none, id: none, class: p.class,
   },
 ]
 
@@ -275,7 +286,7 @@ process_lower = fn(p: Process) -> list<SvgFundamental> [
 type Decision {
   @inline(0) text: utf8
   x: f64?  y: f64?  width: f64?  height: f64?
-  fill: utf8?  stroke: utf8?  class: list<utf8>?
+  fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
 }
 
 decision_lower = fn(d: Decision) -> list<SvgFundamental> [
@@ -287,13 +298,13 @@ decision_lower = fn(d: Decision) -> list<SvgFundamental> [
       d.x + d.width / 2.0, d.y + d.height,
       d.x,                 d.y + d.height / 2.0,
     ),
-    fill: d.fill, stroke: d.stroke, class: d.class,
+    fill: d.fill, stroke: d.stroke, id: d.id, class: d.class,
   },
   SvgFundamental::Label {
     content: d.text,
     x: d.x + d.width / 2.0,
     y: d.y + d.height / 2.0,
-    fill: none, class: d.class,
+    fill: none, id: none, class: d.class,
   },
 ]
 
@@ -301,7 +312,7 @@ decision_lower = fn(d: Decision) -> list<SvgFundamental> [
 type Terminator {
   @inline(0) text: utf8
   x: f64?  y: f64?  width: f64?  height: f64?
-  fill: utf8?  stroke: utf8?  class: list<utf8>?
+  fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
 }
 
 // Terminator: rounded-corner rect is a single Rect for now — true
@@ -309,40 +320,40 @@ type Terminator {
 terminator_lower = fn(t: Terminator) -> list<SvgFundamental> [
   SvgFundamental::Rect {
     x: t.x, y: t.y, width: t.width, height: t.height,
-    fill: t.fill, stroke: t.stroke, class: t.class,
+    fill: t.fill, stroke: t.stroke, id: t.id, class: t.class,
   },
   SvgFundamental::Label {
     content: t.text,
     x: t.x + t.width / 2.0,
     y: t.y + t.height / 2.0,
-    fill: none, class: t.class,
+    fill: none, id: none, class: t.class,
   },
 ]
 
 // ── Stdlib headings ────────────────────────────────────────────────
 
-@block("h1") type H1 { @inline(0) text: utf8 }
-@block("h2") type H2 { @inline(0) text: utf8 }
-@block("h3") type H3 { @inline(0) text: utf8 }
-@block("h4") type H4 { @inline(0) text: utf8 }
-@block("h5") type H5 { @inline(0) text: utf8 }
-@block("h6") type H6 { @inline(0) text: utf8 }
+@block("h1") type H1 { @inline(0) text: utf8  id: identifier? }
+@block("h2") type H2 { @inline(0) text: utf8  id: identifier? }
+@block("h3") type H3 { @inline(0) text: utf8  id: identifier? }
+@block("h4") type H4 { @inline(0) text: utf8  id: identifier? }
+@block("h5") type H5 { @inline(0) text: utf8  id: identifier? }
+@block("h6") type H6 { @inline(0) text: utf8  id: identifier? }
 
 h1_lower = fn(h: H1) -> list<HtmlFundamental> [
-  HtmlFundamental::Paragraph { class: ["heading-1"], spans: [h.text] }
+  HtmlFundamental::Paragraph { id: h.id, class: ["heading-1"], spans: [h.text] }
 ]
 h2_lower = fn(h: H2) -> list<HtmlFundamental> [
-  HtmlFundamental::Paragraph { class: ["heading-2"], spans: [h.text] }
+  HtmlFundamental::Paragraph { id: h.id, class: ["heading-2"], spans: [h.text] }
 ]
 h3_lower = fn(h: H3) -> list<HtmlFundamental> [
-  HtmlFundamental::Paragraph { class: ["heading-3"], spans: [h.text] }
+  HtmlFundamental::Paragraph { id: h.id, class: ["heading-3"], spans: [h.text] }
 ]
 h4_lower = fn(h: H4) -> list<HtmlFundamental> [
-  HtmlFundamental::Paragraph { class: ["heading-4"], spans: [h.text] }
+  HtmlFundamental::Paragraph { id: h.id, class: ["heading-4"], spans: [h.text] }
 ]
 h5_lower = fn(h: H5) -> list<HtmlFundamental> [
-  HtmlFundamental::Paragraph { class: ["heading-5"], spans: [h.text] }
+  HtmlFundamental::Paragraph { id: h.id, class: ["heading-5"], spans: [h.text] }
 ]
 h6_lower = fn(h: H6) -> list<HtmlFundamental> [
-  HtmlFundamental::Paragraph { class: ["heading-6"], spans: [h.text] }
+  HtmlFundamental::Paragraph { id: h.id, class: ["heading-6"], spans: [h.text] }
 ]

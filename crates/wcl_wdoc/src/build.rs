@@ -1,10 +1,11 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
 use miette::{NamedSource, Report};
-use wcl_lang::{Document, Value};
+use wcl_lang::{Block, Document, Value};
 
-use crate::render::{render_block, render_class, render_page};
+use crate::render::{field_id, render_block, render_class, render_page};
 
 const SCHEMA: &str = include_str!("../wdoc.wcl");
 
@@ -13,6 +14,7 @@ pub enum BuildError {
     Parse(Report),
     Schema(usize),
     BadPage(String),
+    DuplicateId { page: String, id: String },
 }
 
 impl BuildError {
@@ -22,6 +24,9 @@ impl BuildError {
             Self::Parse(r) => eprintln!("{r:?}"),
             Self::Schema(n) => eprintln!("{n} schema violation{}", if *n == 1 { "" } else { "s" }),
             Self::BadPage(msg) => eprintln!("{msg}"),
+            Self::DuplicateId { page, id } => {
+                eprintln!("page \"{page}\": duplicate id \"{id}\"");
+            }
         }
     }
 }
@@ -76,6 +81,14 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
             None => return Err(BuildError::BadPage("page has no name label".into())),
         };
 
+        let mut seen = HashSet::new();
+        if let Some(dup) = collect_duplicate_id(&page, &mut seen) {
+            return Err(BuildError::DuplicateId {
+                page: page_name,
+                id: dup,
+            });
+        }
+
         let rendered_blocks = page.blocks().filter_map(|b| render_block(&doc, &b));
         let html = render_page(&page_name, &css, rendered_blocks);
 
@@ -86,4 +99,21 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
     }
 
     Ok(count)
+}
+
+/// Walk a page's block tree collecting `id` values. Returns the first
+/// duplicate encountered, or `None` if all ids are unique. Used to
+/// enforce per-page id uniqueness so emitted HTML stays valid.
+fn collect_duplicate_id(block: &Block<'_>, seen: &mut HashSet<String>) -> Option<String> {
+    if let Some(id) = field_id(block, "id")
+        && !seen.insert(id.clone())
+    {
+        return Some(id);
+    }
+    for child in block.blocks() {
+        if let Some(dup) = collect_duplicate_id(&child, seen) {
+            return Some(dup);
+        }
+    }
+    None
 }

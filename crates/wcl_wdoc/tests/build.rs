@@ -17,6 +17,9 @@ fn build_ok(file: &Path, out: &Path) -> usize {
         Err(BuildError::Parse(_)) => panic!("build parse error"),
         Err(BuildError::Schema(n)) => panic!("build schema error: {n} violations"),
         Err(BuildError::BadPage(m)) => panic!("build bad-page error: {m}"),
+        Err(BuildError::DuplicateId { page, id }) => {
+            panic!("build duplicate-id error: page {page}: {id}")
+        }
     }
 }
 
@@ -141,7 +144,7 @@ union ChainStep {
 inner_lower = fn(i: Inner) -> list<SvgFundamental> [
   SvgFundamental::Rect {
     x: 5.0, y: 5.0, width: 20.0, height: 20.0,
-    fill: i.fill, stroke: none, class: none,
+    fill: i.fill, stroke: none, id: none, class: none,
   }
 ]
 
@@ -306,6 +309,154 @@ page index {
         Err(BuildError::Io(e, ctx)) => panic!("expected Schema, got Io({ctx}: {e})"),
         Err(BuildError::Parse(_)) => panic!("expected Schema, got Parse"),
         Err(BuildError::BadPage(m)) => panic!("expected Schema, got BadPage({m})"),
+        Err(BuildError::DuplicateId { page, id }) => {
+            panic!("expected Schema, got DuplicateId({page}: {id})")
+        }
         Ok(n) => panic!("expected Schema error, got Ok({n})"),
     }
+}
+
+#[test]
+fn build_emits_id_attributes_across_paths() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("ids.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  h1 "Title" {
+    id = title
+  }
+  text {
+    id = intro
+    span "hello " {
+      id = greeting
+    }
+  }
+  diagram {
+    width  = 100
+    height = 100
+    rect {
+      id = box
+      x = 0.0  y = 0.0
+      width = 10.0  height = 10.0
+      fill = "#abc"
+    }
+    process "Step" {
+      id = step1
+      x = 20.0  y = 20.0
+      width = 50.0  height = 20.0
+      fill = "#def"
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+
+    // Block-side path: rect picks up id directly.
+    assert!(html.contains("id=\"box\""), "{html}");
+    // Lowered HTML payload path: h1 -> paragraph carries id.
+    assert!(
+        html.contains("<p class=\"heading-1\" id=\"title\">"),
+        "{html}"
+    );
+    // Lowered SVG payload path: process -> rect carries id, label does not.
+    assert!(html.contains("id=\"step1\""), "{html}");
+    // The process's label should not inherit the id.
+    let label_chunk = html
+        .split("<text ")
+        .nth(1)
+        .expect("at least one <text> in lowered process output");
+    assert!(
+        !label_chunk.starts_with("x") || !label_chunk.contains("id=\"step1\""),
+        "process label should not carry the process id: {label_chunk}"
+    );
+    // Block-side text and span pick up ids.
+    assert!(html.contains("<p id=\"intro\">"), "{html}");
+    assert!(html.contains("<span id=\"greeting\">"), "{html}");
+}
+
+#[test]
+fn build_rejects_duplicate_id_within_page() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("dupes.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 100
+    height = 100
+    rect {
+      id = shared
+      x = 0.0  y = 0.0  width = 10.0  height = 10.0
+      fill = "#abc"
+    }
+    rect {
+      id = shared
+      x = 20.0  y = 20.0  width = 10.0  height = 10.0
+      fill = "#def"
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path()) {
+        Err(BuildError::DuplicateId { page, id }) => {
+            assert_eq!(page, "index");
+            assert_eq!(id, "shared");
+        }
+        Err(BuildError::Schema(n)) => panic!("expected DuplicateId, got Schema({n})"),
+        Err(BuildError::Io(e, ctx)) => panic!("expected DuplicateId, got Io({ctx}: {e})"),
+        Err(BuildError::Parse(_)) => panic!("expected DuplicateId, got Parse"),
+        Err(BuildError::BadPage(m)) => panic!("expected DuplicateId, got BadPage({m})"),
+        Ok(n) => panic!("expected DuplicateId, got Ok({n})"),
+    }
+}
+
+#[test]
+fn build_allows_same_id_across_different_pages() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("two_pages.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page one {
+  diagram {
+    width  = 50
+    height = 50
+    rect {
+      id = shared
+      x = 0.0  y = 0.0  width = 10.0  height = 10.0
+      fill = "#abc"
+    }
+  }
+}
+page two {
+  diagram {
+    width  = 50
+    height = 50
+    rect {
+      id = shared
+      x = 0.0  y = 0.0  width = 10.0  height = 10.0
+      fill = "#def"
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    let n = build_ok(&src, out.path());
+    assert_eq!(n, 2);
 }

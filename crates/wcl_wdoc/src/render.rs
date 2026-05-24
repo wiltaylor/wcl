@@ -97,13 +97,19 @@ fn render_text(doc: &Document, block: &Block<'_>) -> String {
         .map(|b| render_span(&b))
         .collect();
     let _ = doc;
-    format!("<p{cls}>{spans}</p>")
+    let mut out = format!("<p{cls}");
+    append_attr(&mut out, "id", field_id(block, "id").as_deref());
+    write!(out, ">{spans}</p>").expect("write to String");
+    out
 }
 
 fn render_span(block: &Block<'_>) -> String {
     let cls = class_attr(block);
     let text = label_string(block).unwrap_or_default();
-    format!("<span{cls}>{}</span>", escape_html(&text))
+    let mut out = format!("<span{cls}");
+    append_attr(&mut out, "id", field_id(block, "id").as_deref());
+    write!(out, ">{}</span>", escape_html(&text)).expect("write to String");
+    out
 }
 
 fn render_column(doc: &Document, block: &Block<'_>) -> String {
@@ -118,7 +124,14 @@ fn render_column(doc: &Document, block: &Block<'_>) -> String {
         .blocks()
         .filter_map(|b| render_block(doc, &b))
         .collect();
-    format!("<div{cls} style=\"display:grid;grid-template-columns:{grid_cols};\">{children}</div>")
+    let mut out = format!("<div{cls}");
+    append_attr(&mut out, "id", field_id(block, "id").as_deref());
+    write!(
+        out,
+        " style=\"display:grid;grid-template-columns:{grid_cols};\">{children}</div>"
+    )
+    .expect("write to String");
+    out
 }
 
 fn render_diagram(doc: &Document, block: &Block<'_>) -> String {
@@ -129,10 +142,15 @@ fn render_diagram(doc: &Document, block: &Block<'_>) -> String {
         .blocks()
         .filter_map(|b| render_shape(doc, &b, width as f64, height as f64))
         .collect();
-    format!(
-        "<svg{cls} xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" \
+    let mut out = format!("<svg{cls}");
+    append_attr(&mut out, "id", field_id(block, "id").as_deref());
+    write!(
+        out,
+        " xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" \
          viewBox=\"0 0 {width} {height}\">{shapes}</svg>"
     )
+    .expect("write to String");
+    out
 }
 
 fn render_shape(doc: &Document, block: &Block<'_>, parent_w: f64, parent_h: f64) -> Option<String> {
@@ -165,7 +183,10 @@ fn render_container(doc: &Document, block: &Block<'_>, parent_w: f64, parent_h: 
     } else {
         String::new()
     };
-    format!("<g{cls}{transform}>{inner}</g>")
+    let mut out = format!("<g{cls}");
+    append_attr(&mut out, "id", field_id(block, "id").as_deref());
+    write!(out, "{transform}>{inner}</g>").expect("write to String");
+    out
 }
 
 fn render_grid_children(doc: &Document, block: &Block<'_>) -> String {
@@ -396,6 +417,7 @@ fn render_rect(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let mut out = format!("<rect{cls} x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\"");
     append_attr(&mut out, "fill", field_utf8(block, "fill").as_deref());
     append_attr(&mut out, "stroke", field_utf8(block, "stroke").as_deref());
+    append_attr(&mut out, "id", field_id(block, "id").as_deref());
     out.push_str(" />");
     out
 }
@@ -406,6 +428,7 @@ fn render_circle(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let mut out = format!("<circle{cls} cx=\"{cx}\" cy=\"{cy}\" r=\"{r}\"");
     append_attr(&mut out, "fill", field_utf8(block, "fill").as_deref());
     append_attr(&mut out, "stroke", field_utf8(block, "stroke").as_deref());
+    append_attr(&mut out, "id", field_id(block, "id").as_deref());
     out.push_str(" />");
     out
 }
@@ -425,6 +448,7 @@ fn render_line(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
         y2 = y2 + oy,
     );
     append_attr(&mut out, "stroke", field_utf8(block, "stroke").as_deref());
+    append_attr(&mut out, "id", field_id(block, "id").as_deref());
     out.push_str(" />");
     out
 }
@@ -437,6 +461,7 @@ fn render_label(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let (x, y) = resolve_point_anchored(block, parent_w, parent_h, own_x, own_y);
     let mut out = format!("<text{cls} x=\"{x}\" y=\"{y}\"");
     append_attr(&mut out, "fill", field_utf8(block, "fill").as_deref());
+    append_attr(&mut out, "id", field_id(block, "id").as_deref());
     write!(out, ">{}</text>", escape_html(&content)).expect("write to String");
     out
 }
@@ -451,6 +476,7 @@ fn render_polygon(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     }
     append_attr(&mut out, "fill", field_utf8(block, "fill").as_deref());
     append_attr(&mut out, "stroke", field_utf8(block, "stroke").as_deref());
+    append_attr(&mut out, "id", field_id(block, "id").as_deref());
     out.push_str(" />");
     out
 }
@@ -470,6 +496,7 @@ fn render_rect_payload(map: &BTreeMap<String, Value>) -> String {
     let mut out = format!("<rect{cls} x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\"");
     append_attr(&mut out, "fill", map_utf8(map, "fill").as_deref());
     append_attr(&mut out, "stroke", map_utf8(map, "stroke").as_deref());
+    append_attr(&mut out, "id", map_id(map, "id").as_deref());
     out.push_str(" />");
     out
 }
@@ -482,6 +509,7 @@ fn render_circle_payload(map: &BTreeMap<String, Value>) -> String {
     let mut out = format!("<circle{cls} cx=\"{cx}\" cy=\"{cy}\" r=\"{r}\"");
     append_attr(&mut out, "fill", map_utf8(map, "fill").as_deref());
     append_attr(&mut out, "stroke", map_utf8(map, "stroke").as_deref());
+    append_attr(&mut out, "id", map_id(map, "id").as_deref());
     out.push_str(" />");
     out
 }
@@ -494,6 +522,7 @@ fn render_line_payload(map: &BTreeMap<String, Value>) -> String {
     let y2 = map_f64(map, "y2").unwrap_or(0.0);
     let mut out = format!("<line{cls} x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"");
     append_attr(&mut out, "stroke", map_utf8(map, "stroke").as_deref());
+    append_attr(&mut out, "id", map_id(map, "id").as_deref());
     out.push_str(" />");
     out
 }
@@ -505,6 +534,7 @@ fn render_label_payload(map: &BTreeMap<String, Value>) -> String {
     let y = map_f64(map, "y").unwrap_or(0.0);
     let mut out = format!("<text{cls} x=\"{x}\" y=\"{y}\"");
     append_attr(&mut out, "fill", map_utf8(map, "fill").as_deref());
+    append_attr(&mut out, "id", map_id(map, "id").as_deref());
     write!(out, ">{}</text>", escape_html(&content)).expect("write to String");
     out
 }
@@ -515,6 +545,7 @@ fn render_polygon_payload(map: &BTreeMap<String, Value>) -> String {
     let mut out = format!("<polygon{cls} points=\"{}\"", escape_html(&points));
     append_attr(&mut out, "fill", map_utf8(map, "fill").as_deref());
     append_attr(&mut out, "stroke", map_utf8(map, "stroke").as_deref());
+    append_attr(&mut out, "id", map_id(map, "id").as_deref());
     out.push_str(" />");
     out
 }
@@ -526,7 +557,10 @@ fn render_paragraph_payload(map: &BTreeMap<String, Value>) -> String {
         .iter()
         .map(|s| format!("<span>{}</span>", escape_html(s)))
         .collect();
-    format!("<p{cls}>{inner}</p>")
+    let mut out = format!("<p{cls}");
+    append_attr(&mut out, "id", map_id(map, "id").as_deref());
+    write!(out, ">{inner}</p>").expect("write to String");
+    out
 }
 
 // ── Resolution helpers (block-side) ───────────────────────────────
@@ -697,6 +731,14 @@ fn field_utf8(block: &Block<'_>, name: &str) -> Option<String> {
     }
 }
 
+pub(crate) fn field_id(block: &Block<'_>, name: &str) -> Option<String> {
+    let field = block.field(name)?;
+    match field.value().ok()? {
+        Value::Identifier(s) | Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
+        _ => None,
+    }
+}
+
 fn field_bool(block: &Block<'_>, name: &str) -> Option<bool> {
     let field = block.field(name)?;
     match field.value().ok()? {
@@ -771,6 +813,13 @@ fn classes_attr_from_names(names: &[String]) -> String {
 fn map_utf8(map: &BTreeMap<String, Value>, name: &str) -> Option<String> {
     match map.get(name)? {
         Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
+        _ => None,
+    }
+}
+
+fn map_id(map: &BTreeMap<String, Value>, name: &str) -> Option<String> {
+    match map.get(name)? {
+        Value::Identifier(s) | Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
         _ => None,
     }
 }

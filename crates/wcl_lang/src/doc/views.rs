@@ -1227,6 +1227,11 @@ impl<'a> Field<'a> {
                     let segments = expr_to_path_segments(&self.ast.expr).unwrap_or_default();
                     materialise_dataref_or_path(dr, segments, self.ast.span)
                 })
+        } else if matches!(
+            self.declared_type_ref(),
+            Some(TypeRef::Builtin(BuiltinType::Identifier))
+        ) {
+            self.doc.eval_literal(&self.ast.expr)
         } else {
             self.doc.eval_in_scope(&self.ast.expr, &self.scope)
         };
