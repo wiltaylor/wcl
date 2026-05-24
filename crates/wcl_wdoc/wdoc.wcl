@@ -41,6 +41,13 @@ interface SvgBlock {
 symbol_set EdgeKind { default flow data }
 connection Edge: &SvgBlock -> &SvgBlock : EdgeKind
 
+// Edge-anchor sides for connection rendering. Each renderable SVG
+// shape declares zero or more sides via `connect_points`; the
+// renderer maps each side to the mid-point of the corresponding
+// bounding-box edge and picks the closest source/destination pair
+// when drawing an arrow. Default (field omitted) = all four sides.
+symbol_set AnchorSide { north east south west }
+
 @block("page")
 type Page {
   @inline(0) name: identifier
@@ -151,6 +158,8 @@ type Container extends SvgBlock {
   anchor_top:    f64?
   anchor_bottom: f64?
 
+  connect_points: list<AnchorSide>?
+
   @children(SvgBlock) children: list<SvgBlock>
   // `container` is itself rendered directly as <g>; the renderer
   // never invokes its `lower`. Declared only to satisfy the interface.
@@ -173,6 +182,8 @@ type Rect extends SvgBlock {
   anchor_top:    f64?
   anchor_bottom: f64?
 
+  connect_points: list<AnchorSide>?
+
   lower = fn(r: Rect) -> list<SvgFundamental> []
 }
 
@@ -191,6 +202,8 @@ type Circle extends SvgBlock {
   anchor_top:    f64?
   anchor_bottom: f64?
 
+  connect_points: list<AnchorSide>?
+
   lower = fn(c: Circle) -> list<SvgFundamental> []
 }
 
@@ -208,6 +221,8 @@ type Line extends SvgBlock {
   anchor_right:  f64?
   anchor_top:    f64?
   anchor_bottom: f64?
+
+  connect_points: list<AnchorSide>?
 
   lower = fn(l: Line) -> list<SvgFundamental> []
 }
@@ -228,6 +243,8 @@ type Label extends SvgBlock {
   anchor_top:    f64?
   anchor_bottom: f64?
 
+  connect_points: list<AnchorSide>?
+
   lower = fn(l: Label) -> list<SvgFundamental> []
 }
 
@@ -243,6 +260,8 @@ type Polygon extends SvgBlock {
   anchor_right:  f64?
   anchor_top:    f64?
   anchor_bottom: f64?
+
+  connect_points: list<AnchorSide>?
 
   lower = fn(p: Polygon) -> list<SvgFundamental> []
 }
@@ -282,6 +301,7 @@ type Process extends SvgBlock {
   @inline(0) text: utf8
   x: f64?  y: f64?  width: f64?  height: f64?
   fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
+  connect_points: list<AnchorSide>?
 
   lower = fn(p: Process) -> list<SvgFundamental> [
     SvgFundamental::Rect {
@@ -302,6 +322,7 @@ type Decision extends SvgBlock {
   @inline(0) text: utf8
   x: f64?  y: f64?  width: f64?  height: f64?
   fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
+  connect_points: list<AnchorSide>?
 
   lower = fn(d: Decision) -> list<SvgFundamental> [
     SvgFundamental::Polygon {
@@ -330,6 +351,7 @@ type Terminator extends SvgBlock {
   @inline(0) text: utf8
   x: f64?  y: f64?  width: f64?  height: f64?
   fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
+  connect_points: list<AnchorSide>?
 
   lower = fn(t: Terminator) -> list<SvgFundamental> [
     SvgFundamental::Rect {

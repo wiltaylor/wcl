@@ -3,11 +3,18 @@ use std::fmt::Write as _;
 
 use wcl_lang::{Block, Document, FnValue, Value, VariantPayload};
 
-/// Absolute SVG bounding box of a named shape, used to anchor edge
-/// endpoints during arrow rendering. Stored as `(x, y, width, height)`
-/// in the diagram's coordinate space (all container/grid translations
-/// already accumulated).
-type ShapePositions = HashMap<String, (f64, f64, f64, f64)>;
+/// Per-shape geometry used by the edge pass: the absolute bounding
+/// box (in diagram coords, with all container / grid translates
+/// already baked in) plus the resolved list of edge-anchor points
+/// the shape exposes. When the source block declares no
+/// `connect_points`, the anchors default to the midpoint of each
+/// bounding-box side.
+#[derive(Clone)]
+struct ShapeMetrics {
+    bbox: (f64, f64, f64, f64),
+    anchors: Vec<(f64, f64)>,
+}
+type ShapePositions = HashMap<String, ShapeMetrics>;
 
 /// Lowering recursion guard. A lowering may emit other custom kinds
 /// that themselves lower further; this caps how deep we'll follow
@@ -170,10 +177,11 @@ const ARROW_MARKER: &str = "<defs><marker id=\"wdoc-arrow\" viewBox=\"0 0 10 10\
     orient=\"auto-start-reverse\">\
     <path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"currentColor\" /></marker></defs>";
 
-/// Walk the diagram subtree once and record each id'd shape's absolute
-/// bounding box. Mirrors the geometry computed by `render_*` but
-/// without producing SVG — so the edge pass can join shapes by id
-/// regardless of how deeply they nest inside containers / grids.
+/// Walk the diagram subtree once and record each id'd shape's
+/// absolute bounding box + resolved anchor positions. Mirrors the
+/// geometry computed by `render_*` but without producing SVG — so
+/// the edge pass can join shapes by id regardless of how deeply they
+/// nest inside containers / grids.
 fn collect_shape_positions(
     block: &Block<'_>,
     tx: f64,
@@ -182,32 +190,29 @@ fn collect_shape_positions(
     parent_h: f64,
     out: &mut ShapePositions,
 ) {
+    let record = |block: &Block<'_>, bbox: (f64, f64, f64, f64), out: &mut ShapePositions| {
+        if let Some(id) = field_id(block, "id") {
+            out.insert(id, build_metrics(block, bbox));
+        }
+    };
     match block.kind() {
         "rect" => {
             let (x, y, w, h) = resolve_rect_box(block, parent_w, parent_h);
-            if let Some(id) = field_id(block, "id") {
-                out.insert(id, (tx + x, ty + y, w, h));
-            }
+            record(block, (tx + x, ty + y, w, h), out);
         }
         "circle" => {
             let (cx, cy, r) = resolve_circle(block, parent_w, parent_h);
-            if let Some(id) = field_id(block, "id") {
-                out.insert(id, (tx + cx - r, ty + cy - r, 2.0 * r, 2.0 * r));
-            }
+            record(block, (tx + cx - r, ty + cy - r, 2.0 * r, 2.0 * r), out);
         }
         "label" => {
             let own_x = field_f64(block, "x").unwrap_or(0.0);
             let own_y = field_f64(block, "y").unwrap_or(0.0);
             let (x, y) = resolve_point_anchored(block, parent_w, parent_h, own_x, own_y);
-            if let Some(id) = field_id(block, "id") {
-                out.insert(id, (tx + x, ty + y, 0.0, 0.0));
-            }
+            record(block, (tx + x, ty + y, 0.0, 0.0), out);
         }
         "container" => {
             let (x, y, w, h) = resolve_container_box(block, parent_w, parent_h);
-            if let Some(id) = field_id(block, "id") {
-                out.insert(id, (tx + x, ty + y, w, h));
-            }
+            record(block, (tx + x, ty + y, w, h), out);
             let layout = field_symbol(block, "layout").unwrap_or_default();
             if layout == "grid" {
                 let cols = field_i64(block, "columns").unwrap_or(1).max(1) as usize;
@@ -236,18 +241,73 @@ fn collect_shape_positions(
         // lowering so connection endpoints land on the visible
         // outline rather than on an arbitrary post-lower coordinate.
         _ => {
-            if let Some(id) = field_id(block, "id")
-                && let (Some(x), Some(y), Some(w), Some(h)) = (
-                    field_f64(block, "x"),
-                    field_f64(block, "y"),
-                    field_f64(block, "width"),
-                    field_f64(block, "height"),
-                )
-            {
-                out.insert(id, (tx + x, ty + y, w, h));
+            if let (Some(x), Some(y), Some(w), Some(h)) = (
+                field_f64(block, "x"),
+                field_f64(block, "y"),
+                field_f64(block, "width"),
+                field_f64(block, "height"),
+            ) {
+                record(block, (tx + x, ty + y, w, h), out);
             }
         }
     }
+}
+
+/// Build the `ShapeMetrics` for a shape given its absolute bounding
+/// box. Reads `connect_points` off the block; if the field is absent
+/// (or evaluates to `none`), defaults to all four side midpoints.
+/// An explicit `connect_points = []` empties the anchor list — the
+/// edge pass then falls back to the bbox center.
+fn build_metrics(block: &Block<'_>, bbox: (f64, f64, f64, f64)) -> ShapeMetrics {
+    let sides = match field_symbol_list_opt(block, "connect_points") {
+        Some(list) => list,
+        None => vec!["north".into(), "east".into(), "south".into(), "west".into()],
+    };
+    let anchors = sides
+        .iter()
+        .filter_map(|side| anchor_point_for_side(side, bbox))
+        .collect();
+    ShapeMetrics { bbox, anchors }
+}
+
+fn anchor_point_for_side(side: &str, bbox: (f64, f64, f64, f64)) -> Option<(f64, f64)> {
+    let (x, y, w, h) = bbox;
+    match side {
+        "north" => Some((x + w / 2.0, y)),
+        "east" => Some((x + w, y + h / 2.0)),
+        "south" => Some((x + w / 2.0, y + h)),
+        "west" => Some((x, y + h / 2.0)),
+        _ => None,
+    }
+}
+
+fn bbox_center(bbox: &(f64, f64, f64, f64)) -> (f64, f64) {
+    (bbox.0 + bbox.2 / 2.0, bbox.1 + bbox.3 / 2.0)
+}
+
+/// Pick the source/destination anchor pair with the smallest
+/// Euclidean distance. Returns `None` when either side has no
+/// anchors. When `is_self_loop` is true, pairs whose distance is
+/// zero are excluded so the rendered arrow has a visible length;
+/// the next-shortest pair wins.
+type Point = (f64, f64);
+
+fn pick_closest_pair(src: &[Point], dst: &[Point], is_self_loop: bool) -> Option<(Point, Point)> {
+    let mut best: Option<(f64, Point, Point)> = None;
+    for &s in src {
+        for &d in dst {
+            let dx = s.0 - d.0;
+            let dy = s.1 - d.1;
+            let dist2 = dx * dx + dy * dy;
+            if is_self_loop && dist2 == 0.0 {
+                continue;
+            }
+            if best.map(|(b, _, _)| dist2 < b).unwrap_or(true) {
+                best = Some((dist2, s, d));
+            }
+        }
+    }
+    best.map(|(_, s, d)| (s, d))
 }
 
 fn render_edges(block: &Block<'_>, positions: &ShapePositions) -> String {
@@ -278,18 +338,17 @@ fn render_edge(value: &Value, positions: &ShapePositions) -> Option<String> {
     };
     let source_id = edge_endpoint_id(fields.get("source")?)?;
     let dest_id = edge_endpoint_id(fields.get("destination")?)?;
-    let (sx, sy, sw, sh) = positions.get(&source_id)?;
-    let (dx, dy, dw, dh) = positions.get(&dest_id)?;
-    let cx1 = sx + sw / 2.0;
-    let cy1 = sy + sh / 2.0;
-    let cx2 = dx + dw / 2.0;
-    let cy2 = dy + dh / 2.0;
+    let src = positions.get(&source_id)?;
+    let dst = positions.get(&dest_id)?;
+    let is_self_loop = source_id == dest_id;
+    let ((x1, y1), (x2, y2)) = pick_closest_pair(&src.anchors, &dst.anchors, is_self_loop)
+        .unwrap_or((bbox_center(&src.bbox), bbox_center(&dst.bbox)));
     let kind_attr = match fields.get("kind") {
         Some(Value::Symbol(k)) => format!(" data-kind=\"{}\"", escape_html(k)),
         _ => String::new(),
     };
     Some(format!(
-        "<line x1=\"{cx1}\" y1=\"{cy1}\" x2=\"{cx2}\" y2=\"{cy2}\" \
+        "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" \
          stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\"{kind_attr} />"
     ))
 }
@@ -972,6 +1031,26 @@ fn field_utf8_list(block: &Block<'_>, name: &str) -> Vec<String> {
         return Vec::new();
     };
     items.iter().filter_map(value_as_str).collect()
+}
+
+/// Read a `list<symbol>` field, distinguishing "field absent or
+/// none" (returns `None`, callers apply their own default) from
+/// "explicitly empty list" (returns `Some(vec![])`).
+fn field_symbol_list_opt(block: &Block<'_>, name: &str) -> Option<Vec<String>> {
+    let field = block.field(name)?;
+    let value = field.value().ok()?;
+    let Value::List(items) = value else {
+        return None;
+    };
+    Some(
+        items
+            .iter()
+            .filter_map(|v| match v {
+                Value::Symbol(s) => Some(s.clone()),
+                _ => None,
+            })
+            .collect(),
+    )
 }
 
 // ── Map-side accessors (for variant payloads) ─────────────────────

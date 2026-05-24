@@ -529,32 +529,104 @@ fn build_renders_connections_as_arrows() {
         "missing arrow marker:\n{html}"
     );
 
-    // Flat diagram: process Validate (center 50,60) -> decision Match
-    // (center 170,60), with the default kind.
+    // Flat diagram: process Validate (bbox 10,40,80,40, east side at
+    // 90,60) -> decision Match (bbox 130,30,80,60, west side at
+    // 130,60). The closest source/destination anchor pair is east
+    // -> west.
     assert!(
         html.contains(
-            "<line x1=\"50\" y1=\"60\" x2=\"170\" y2=\"60\" \
+            "<line x1=\"90\" y1=\"60\" x2=\"130\" y2=\"60\" \
              stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\" data-kind=\"default\" />"
         ),
         "missing default edge:\n{html}"
     );
-    // Same diagram: explicit :flow kind.
+    // Same diagram: Match (east at 210,60) -> Done (bbox 240,40,70,40,
+    // west at 240,60). :flow kind tags the line.
     assert!(
         html.contains(
-            "<line x1=\"170\" y1=\"60\" x2=\"275\" y2=\"60\" \
+            "<line x1=\"210\" y1=\"60\" x2=\"240\" y2=\"60\" \
              stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\" data-kind=\"flow\" />"
         ),
         "missing flow edge:\n{html}"
     );
-    // Cross-container diagram: inner_a (resolved at 30,50 inside the
-    // left container) -> inner_b (resolved at 180+30=210 in the right
-    // container), centers (70,70) and (250,70).
+    // Cross-container diagram: inner_a absolute bbox 30,50,80,40
+    // (east side at 110,70) -> inner_b absolute bbox 210,50,80,40
+    // (west side at 210,70). The arrow rides the horizontal gap
+    // between the two containers.
     assert!(
         html.contains(
-            "<line x1=\"70\" y1=\"70\" x2=\"250\" y2=\"70\" \
+            "<line x1=\"110\" y1=\"70\" x2=\"210\" y2=\"70\" \
              stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\" data-kind=\"data\" />"
         ),
         "missing cross-container edge:\n{html}"
+    );
+}
+
+#[test]
+fn build_picks_closest_anchor_pair_and_honors_custom_connect_points() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("anchors.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  // Two rects stacked vertically: the closest anchor pair is
+  // `south of top` -> `north of bottom`.
+  diagram {
+    width  = 100
+    height = 200
+    rect {
+      id = top
+      x = 10.0  y = 10.0  width = 80.0  height = 40.0
+      fill = "#abc"
+    }
+    rect {
+      id = bottom
+      x = 10.0  y = 150.0  width = 80.0  height = 40.0
+      fill = "#abc"
+    }
+    top -> bottom
+  }
+
+  // Custom override: the source attaches only at `:east`, so even
+  // though `top` sits directly above `right_only` (south->north
+  // would be shorter) the arrow must leave from the east side of
+  // `top` (90, 30).
+  diagram {
+    width  = 200
+    height = 200
+    rect {
+      id = top2
+      x = 10.0  y = 10.0  width = 80.0  height = 40.0
+      fill = "#abc"
+      connect_points = [:east]
+    }
+    rect {
+      id = right_only
+      x = 10.0  y = 150.0  width = 80.0  height = 40.0
+      fill = "#abc"
+    }
+    top2 -> right_only
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Vertical stack: south(top) -> north(bottom).
+    assert!(
+        html.contains("x1=\"50\" y1=\"50\" x2=\"50\" y2=\"150\""),
+        "missing vertical south->north edge:\n{html}"
+    );
+    // Custom override: arrow must leave from east of top2 (90,30)
+    // rather than south (50,50), even though south->north would
+    // be the shorter path.
+    assert!(
+        html.contains("x1=\"90\" y1=\"30\""),
+        "expected arrow to leave east of top2 (90,30):\n{html}"
     );
 }
 
