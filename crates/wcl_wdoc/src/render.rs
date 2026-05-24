@@ -6,6 +6,7 @@ use wcl_lang::{Block, Document, FnValue, Value, VariantPayload};
 use crate::inline::InlinePatterns;
 use crate::layered::{self, Direction};
 use crate::routing::{self, EdgePath, Obstacle, Side};
+use crate::text;
 
 /// Per-shape geometry used by the edge pass: the absolute bounding
 /// box (in diagram coords, with all container / grid translates
@@ -310,10 +311,9 @@ fn compute_layered_plan(
         .iter()
         .map(|c| layered::Node {
             id: field_id(c, "id"),
-            size: (
-                field_f64(c, "width").unwrap_or(80.0),
-                field_f64(c, "height").unwrap_or(40.0),
-            ),
+            // Use effective_dims so multi-line text grows the cell
+            // the layered solver allocates for the shape.
+            size: effective_dims(c),
         })
         .collect();
     let edges: Vec<(String, String)> = edge_id_pairs(block);
@@ -438,17 +438,42 @@ fn collect_shape_positions(
         // height as a bounding box. We read those directly without
         // lowering so connection endpoints land on the visible
         // outline rather than on an arbitrary post-lower coordinate.
+        // `effective_dims` grows width/height when the block's
+        // `text` field has multiple lines so the bbox reflects what
+        // will actually render.
         _ => {
-            if let (Some(x), Some(y), Some(w), Some(h)) = (
-                field_f64(block, "x"),
-                field_f64(block, "y"),
-                field_f64(block, "width"),
-                field_f64(block, "height"),
-            ) {
+            if let (Some(x), Some(y)) = (field_f64(block, "x"), field_f64(block, "y")) {
+                let (w, h) = effective_dims(block);
                 record(block, (tx + x, ty + y, w, h), out);
             }
         }
     }
+}
+
+/// Compute the effective bbox dimensions of a text-bearing shape.
+/// Falls back to the declared `width` / `height` when there's no
+/// text field, or returns `max(declared, needed)` so a multi-line
+/// label grows the shape rather than overflowing it.
+fn effective_dims(block: &Block<'_>) -> (f64, f64) {
+    let declared_w = field_f64(block, "width").unwrap_or(80.0);
+    let declared_h = field_f64(block, "height").unwrap_or(40.0);
+    let Some(text) = text_content(block) else {
+        return (declared_w, declared_h);
+    };
+    let (need_w, need_h) = text::min_shape_dims(&text);
+    (declared_w.max(need_w), declared_h.max(need_h))
+}
+
+/// Pull a shape's text content for sizing purposes. Looks for a
+/// literal `text` or `content` field first, then falls back to the
+/// inline label slot — `@inline(0) text: utf8` on Process /
+/// Decision / Terminator lives in `block.labels()`, not in a
+/// literal field.
+fn text_content(block: &Block<'_>) -> Option<String> {
+    if let Some(s) = field_utf8(block, "text").or_else(|| field_utf8(block, "content")) {
+        return Some(s);
+    }
+    label_string(block)
 }
 
 /// Parse a polygon's `points` field ("x1,y1 x2,y2 …") into a
@@ -1075,6 +1100,19 @@ fn block_to_record(doc: &Document, block: &Block<'_>, kind: &str) -> Option<Valu
         };
         map.insert(name.to_string(), val);
     }
+    // Grow width / height in the record so a Process / Decision /
+    // Terminator lowering whose text spans multiple lines (or one
+    // very long line) sees the same effective dimensions the
+    // layered solver did. Without this, the rendered rect would
+    // stay at the declared size while the layout reserved a
+    // larger cell — the text would spill out of the rect.
+    let (eff_w, eff_h) = effective_dims(block);
+    if map.contains_key("width") {
+        map.insert("width".to_string(), Value::F64(eff_w));
+    }
+    if map.contains_key("height") {
+        map.insert("height".to_string(), Value::F64(eff_h));
+    }
     Some(Value::Record {
         ty: vec![kind_to_typename(kind)],
         fields: map,
@@ -1169,11 +1207,21 @@ fn render_label(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let own_x = field_f64(block, "x").unwrap_or(0.0);
     let own_y = field_f64(block, "y").unwrap_or(0.0);
     let (x, y) = resolve_point_anchored(block, parent_w, parent_h, own_x, own_y);
-    let mut out = format!("<text{cls} x=\"{x}\" y=\"{y}\"");
-    append_attr(&mut out, "fill", field_utf8(block, "fill").as_deref());
-    append_attr(&mut out, "id", field_id(block, "id").as_deref());
-    write!(out, ">{}</text>", escape_html(&content)).expect("write to String");
-    out
+    let font_size = resolve_label_font_size(
+        &content,
+        field_f64(block, "font_size"),
+        field_f64(block, "fit_width"),
+        field_f64(block, "fit_height"),
+    );
+    emit_text(
+        &content,
+        x,
+        y,
+        font_size,
+        &cls,
+        field_utf8(block, "fill").as_deref(),
+        field_id(block, "id").as_deref(),
+    )
 }
 
 fn render_polygon(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
@@ -1242,10 +1290,79 @@ fn render_label_payload(map: &BTreeMap<String, Value>) -> String {
     let content = map_utf8(map, "content").unwrap_or_default();
     let x = map_f64(map, "x").unwrap_or(0.0);
     let y = map_f64(map, "y").unwrap_or(0.0);
-    let mut out = format!("<text{cls} x=\"{x}\" y=\"{y}\"");
-    append_attr(&mut out, "fill", map_utf8(map, "fill").as_deref());
-    append_attr(&mut out, "id", map_id(map, "id").as_deref());
-    write!(out, ">{}</text>", escape_html(&content)).expect("write to String");
+    let font_size = resolve_label_font_size(
+        &content,
+        map_f64(map, "font_size"),
+        map_f64(map, "fit_width"),
+        map_f64(map, "fit_height"),
+    );
+    emit_text(
+        &content,
+        x,
+        y,
+        font_size,
+        &cls,
+        map_utf8(map, "fill").as_deref(),
+        map_id(map, "id").as_deref(),
+    )
+}
+
+/// Pick the font size for a label: explicit `font_size` overrides
+/// everything; otherwise auto-fit to the optional `fit_width` /
+/// `fit_height` (with padding applied); otherwise the default.
+fn resolve_label_font_size(
+    content: &str,
+    font_size: Option<f64>,
+    fit_w: Option<f64>,
+    fit_h: Option<f64>,
+) -> f64 {
+    if let Some(fs) = font_size {
+        return fs;
+    }
+    match (fit_w, fit_h) {
+        (Some(w), Some(h)) => text::fit_font_size(content, w - text::H_PAD, h - text::V_PAD),
+        _ => text::DEFAULT_FONT_SIZE,
+    }
+}
+
+/// Emit a centred multi-line `<text>` element. Each line goes in
+/// its own `<tspan x="cx" dy="...">`, the first tspan shifted up
+/// by `(lines-1)/2 * 1.2em` so the whole block straddles `(cx, cy)`
+/// vertically. `text-anchor="middle"` + `dominant-baseline="middle"`
+/// handle horizontal + vertical alignment for each line.
+fn emit_text(
+    content: &str,
+    cx: f64,
+    cy: f64,
+    font_size: f64,
+    class_attr: &str,
+    fill: Option<&str>,
+    id: Option<&str>,
+) -> String {
+    let metrics = text::measure(content);
+    let mut out = format!(
+        "<text{class_attr} x=\"{cx}\" y=\"{cy}\" font-size=\"{font_size}\" \
+         text-anchor=\"middle\" dominant-baseline=\"middle\""
+    );
+    append_attr(&mut out, "fill", fill);
+    append_attr(&mut out, "id", id);
+    out.push('>');
+    let n = metrics.lines.len();
+    let first_dy = if n <= 1 {
+        0.0
+    } else {
+        -((n as f64 - 1.0) / 2.0) * text::LINE_HEIGHT
+    };
+    for (i, line) in metrics.lines.iter().enumerate() {
+        let dy = if i == 0 { first_dy } else { text::LINE_HEIGHT };
+        write!(
+            out,
+            "<tspan x=\"{cx}\" dy=\"{dy}em\">{}</tspan>",
+            escape_html(line)
+        )
+        .expect("write to String");
+    }
+    out.push_str("</text>");
     out
 }
 

@@ -275,6 +275,13 @@ type Label extends SvgBlock {
   @inline(0) content: utf8
   x:     f64?
   y:     f64?
+  // Optional font-size override. When unset, the renderer picks a
+  // size that fits `content` inside `fit_width` × `fit_height`
+  // (capped at the renderer's default), or its default for a
+  // stand-alone label with no fit region.
+  font_size:  f64?
+  fit_width:  f64?
+  fit_height: f64?
   fill:  utf8?
   id:    identifier?
   class: list<utf8>?
@@ -320,7 +327,7 @@ union SvgFundamental {
   Rect    { x: f64? y: f64? width: f64? height: f64? fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
   Circle  { cx: f64? cy: f64? r: f64? fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
   Line    { x1: f64? y1: f64? x2: f64? y2: f64? stroke: utf8? id: identifier? class: list<utf8>? }
-  Label   { content: utf8 x: f64? y: f64? fill: utf8? id: identifier? class: list<utf8>? }
+  Label   { content: utf8 x: f64? y: f64? font_size: f64? fit_width: f64? fit_height: f64? fill: utf8? id: identifier? class: list<utf8>? }
   Polygon { points: utf8 fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
 }
 
@@ -380,6 +387,8 @@ type Process extends SvgBlock {
       content: p.text,
       x: p.x + p.width / 2.0,
       y: p.y + p.height / 2.0,
+      font_size: none,
+      fit_width: p.width,  fit_height: p.height,
       fill: none, id: none, class: p.class,
     },
   ]
@@ -407,6 +416,12 @@ type Decision extends SvgBlock {
       content: d.text,
       x: d.x + d.width / 2.0,
       y: d.y + d.height / 2.0,
+      font_size: none,
+      // Diamond's text region is smaller than its bbox — the
+      // inscribed rect at the middle is roughly half the width
+      // and full height; halve fit_width so long labels shrink
+      // before they hit the diamond's sloped edges.
+      fit_width: d.width / 2.0,  fit_height: d.height,
       fill: none, id: none, class: d.class,
     },
   ]
@@ -430,6 +445,8 @@ type Terminator extends SvgBlock {
       content: t.text,
       x: t.x + t.width / 2.0,
       y: t.y + t.height / 2.0,
+      font_size: none,
+      fit_width: t.width,  fit_height: t.height,
       fill: none, id: none, class: t.class,
     },
   ]
