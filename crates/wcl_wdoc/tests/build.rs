@@ -28,7 +28,7 @@ fn build_ok(file: &Path, out: &Path) -> usize {
 fn build_emits_fundamentals_for_example_site() {
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("site.wcl"), out.path());
-    assert_eq!(n, 2);
+    assert_eq!(n, 3);
 
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
     assert!(index.contains("<title>index</title>"), "{index}");

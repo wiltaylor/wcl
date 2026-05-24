@@ -32,7 +32,7 @@ page index {
   // The link pattern also recognises bare page names — `[About](about)`
   // resolves to the `about` page's HTML file.
   text {
-    span "Try **bold**, _italic_, `code`, [external](https://example.com), and [About](about)." {}
+    span "Try **bold**, _italic_, `code`, [external](https://example.com), [About](about), and [Connections](connections)." {}
   }
 
   column {
@@ -159,5 +159,49 @@ page about {
 
   text {
     span "This is the about page. Back to [the index](index)." {}
+  }
+}
+
+page connections {
+  h1 "Connections" {}
+
+  text {
+    span "Shapes connect via `lhs -> rhs :kind` statements. The renderer routes elbow arrows around obstacles and attaches each leg to the closest `connect_points` side." {}
+  }
+
+  diagram {
+    width     = 320
+    height    = 220
+    layout    = :layered
+    layer_gap = 30.0
+
+    process "Plan" {
+      id     = plan
+      width  = 100.0
+      height = 40.0
+      fill   = "#eef"
+      stroke = "#446"
+    }
+    decision "Approve?" {
+      id     = approve
+      width  = 100.0
+      height = 60.0
+      fill   = "#fee"
+      stroke = "#a44"
+    }
+    terminator "Ship" {
+      id     = ship
+      width  = 100.0
+      height = 40.0
+      fill   = "#efe"
+      stroke = "#494"
+    }
+
+    plan    -> approve :flow
+    approve -> ship    :flow
+  }
+
+  text {
+    span "Back to [the index](index) or read [About](about)." {}
   }
 }
