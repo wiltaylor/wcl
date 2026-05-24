@@ -5,6 +5,7 @@ use std::path::Path;
 use miette::{NamedSource, Report};
 use wcl_lang::{Block, Document, Value};
 
+use crate::inline::InlinePatterns;
 use crate::render::{field_id, render_block, render_class, render_page};
 
 const SCHEMA: &str = include_str!("../wdoc.wcl");
@@ -66,6 +67,11 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         .collect::<Vec<_>>()
         .join("\n");
 
+    // Document-global inline-text pattern engine, compiled once
+    // per build: every `@block("inline_pattern")` (built-in or
+    // user-declared) contributes one regex + `to_span` function.
+    let inline_patterns = InlinePatterns::load(&doc);
+
     let mut count = 0;
     for page in doc.blocks().filter(|b| b.kind() == "page") {
         let labels = page
@@ -89,7 +95,9 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
             });
         }
 
-        let rendered_blocks = page.blocks().filter_map(|b| render_block(&doc, &b));
+        let rendered_blocks = page
+            .blocks()
+            .filter_map(|b| render_block(&doc, &b, &inline_patterns));
         let html = render_page(&page_name, &css, rendered_blocks);
 
         let out_path = out_dir.join(format!("{page_name}.html"));

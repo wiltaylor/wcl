@@ -182,6 +182,18 @@ pub(crate) fn register(env: &mut Environment) {
         .with_signature("fn ([T], T) -> i64"),
     );
     env.add_builtin(
+        "at",
+        from_fn(|xs: Vec<Value>, i: i64| -> Result<Value, String> {
+            if i < 0 {
+                return Err(format!("at: index {i} is negative"));
+            }
+            xs.into_iter()
+                .nth(i as usize)
+                .ok_or_else(|| format!("at: index {i} out of bounds"))
+        })
+        .with_signature("fn ([T], i64) -> T"),
+    );
+    env.add_builtin(
         "take",
         from_fn(|xs: Vec<Value>, n: i64| -> Value {
             let n = n.max(0) as usize;

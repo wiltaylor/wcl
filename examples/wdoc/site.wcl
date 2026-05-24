@@ -26,6 +26,13 @@ page index {
     }
   }
 
+  // Inline patterns: `**bold**`, `_italic_`, backtick-code and
+  // `[label](url)` are recognised inside any span's text and
+  // rendered as styled inline elements. Nesting works recursively.
+  text {
+    span "Try **bold**, _italic_, `code`, and [a link](https://example.com)." {}
+  }
+
   column {
     widths = [50.0, 50.0]
     class  = ["boxed"]

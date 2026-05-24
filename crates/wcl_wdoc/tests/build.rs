@@ -952,3 +952,158 @@ page two {
     let n = build_ok(&src, out.path());
     assert_eq!(n, 2);
 }
+
+// ── Inline pattern tests ────────────────────────────────────────────
+
+fn write_inline_fixture(tmp: &TempDir, body: &str) -> std::path::PathBuf {
+    let src = tmp.path().join("inline.wcl");
+    let full = format!(
+        "page index {{\n  text {{\n    span \"{}\" {{}}\n  }}\n}}\n",
+        body
+    );
+    std::fs::write(&src, full).expect("write fixture");
+    src
+}
+
+#[test]
+fn build_renders_bold_inline() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = write_inline_fixture(&tmp, "Hello **world**");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<span>Hello <span class=\"bold\">world</span></span>"),
+        "bold not rendered:\n{html}"
+    );
+}
+
+#[test]
+fn build_renders_italic_inline() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = write_inline_fixture(&tmp, "an _accent_ here");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<span>an <span class=\"italic\">accent</span> here</span>"),
+        "italic not rendered:\n{html}"
+    );
+}
+
+#[test]
+fn build_renders_code_inline() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    // Escape backticks for the WCL string literal — we want the
+    // input text to contain literal backticks for the code pattern.
+    let src = write_inline_fixture(&tmp, "say `hello`");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<span>say <span class=\"code\">hello</span></span>"),
+        "code not rendered:\n{html}"
+    );
+}
+
+#[test]
+fn build_renders_link_inline() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = write_inline_fixture(&tmp, "see [docs](https://example.com)");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<a href=\"https://example.com\">docs</a>"),
+        "link not rendered:\n{html}"
+    );
+}
+
+#[test]
+fn build_renders_recursive_inline() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = write_inline_fixture(&tmp, "**bold _and italic_**");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // Bold span wraps a literal prefix plus an inner italic span.
+    assert!(
+        html.contains("<span class=\"bold\">bold <span class=\"italic\">and italic</span></span>"),
+        "recursive nesting missing:\n{html}"
+    );
+}
+
+#[test]
+fn build_renders_user_defined_inline_pattern() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("custom.wcl");
+    // Custom pattern matching #tags. Captures one group (the tag
+    // name without the leading #) and wraps it in a class="tag" span.
+    std::fs::write(
+        &src,
+        r##"
+inline_pattern hashtag {
+  pattern = "#(\\w+)"
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Plain { text: at(g, 1), class: ["tag"] }]
+}
+
+page index {
+  text {
+    span "hello #world from #wdoc" {}
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<span class=\"tag\">world</span>"),
+        "missing first hashtag span:\n{html}"
+    );
+    assert!(
+        html.contains("<span class=\"tag\">wdoc</span>"),
+        "missing second hashtag span:\n{html}"
+    );
+}
+
+#[test]
+fn build_inline_pattern_depth_limit() {
+    // A pathological pattern: matches 'X' and emits a Plain whose
+    // text is also 'X', causing infinite recursion unless the depth
+    // guard cuts off. The output must contain *some* rendered span
+    // — we don't care exactly how deeply — without stack-overflowing.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("depth.wcl");
+    std::fs::write(
+        &src,
+        r##"
+inline_pattern selfish {
+  pattern = "X"
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Plain { text: at(g, 0), class: ["loop"] }]
+}
+
+page index {
+  text {
+    span "X" {}
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // At least one wrapper span shows up, and (eventually) a literal X.
+    assert!(
+        html.contains("<span class=\"loop\">"),
+        "missing wrapper:\n{html}"
+    );
+    assert!(
+        html.contains(">X<") || html.contains("X</"),
+        "missing literal X:\n{html}"
+    );
+}

@@ -9,6 +9,7 @@ description = "WCL-driven static site / document generator (library)"
 [dependencies]
 wcl_lang = { workspace = true }
 miette = { workspace = true }
+regex = "1"
 tokio = { workspace = true, features = ["fs", "signal"] }
 axum = { workspace = true }
 notify = { workspace = true }

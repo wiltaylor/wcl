@@ -2193,6 +2193,7 @@ dependencies = [
  "axum",
  "miette",
  "notify",
+ "regex",
  "tempfile",
  "tokio",
  "wcl_lang",

@@ -7,8 +7,9 @@
 
 @document
 type Site {
-  @children("class") classes: list<Class>
-  @children("page")  pages:   list<Page>
+  @children("class")          classes:  list<Class>
+  @children("page")           pages:    list<Page>
+  @children("inline_pattern") patterns: list<InlinePattern>
 }
 
 // Renderable-block interfaces. `WdocBlock` is the page-level domain
@@ -327,6 +328,30 @@ union HtmlFundamental {
   Paragraph { id: identifier? class: list<utf8>? spans: list<utf8> }
 }
 
+// Inline parsed-text variants produced by `inline_pattern` blocks.
+// The renderer dispatches Plain to `<span class="...">…</span>` and
+// Link to `<a href="…" class="…">…</a>`. The `text` field of each
+// variant is re-tokenized through the pattern engine (with a depth
+// cap) so a Bold match can contain an Italic span inside.
+union InlineSpan {
+  Plain { text: utf8 class: list<utf8>? }
+  Link  { text: utf8 href: utf8 class: list<utf8>? }
+}
+
+// Regex-driven inline parser. The `pattern` field holds a regex;
+// when the renderer tokenizes a span's text, every match is handed
+// to `to_span` (with the regex's captured groups as `list<utf8>`,
+// group 0 = whole match, group 1+ = subgroups in order) which
+// returns a list of InlineSpan variants. Built-in patterns ship in
+// this schema; users add their own by declaring more
+// `inline_pattern <name> { ... }` blocks in user `.wcl`.
+@block("inline_pattern")
+type InlinePattern {
+  @inline(0) name: identifier
+  pattern: utf8
+  to_span: fn(list<utf8>) -> list<InlineSpan>
+}
+
 // ── Stdlib flowchart shapes ────────────────────────────────────────
 //
 // Each custom shape supplies its lowering via `@default` on the
@@ -464,4 +489,37 @@ type H6 extends WdocBlock {
   lower = fn(h: H6) -> list<HtmlFundamental> [
     HtmlFundamental::Paragraph { id: h.id, class: ["heading-6"], spans: [h.text] }
   ]
+}
+
+// ── Built-in inline patterns ───────────────────────────────────────
+//
+// Each pattern's `to_span` receives the captured groups as a list,
+// with index 0 = the whole matched string and 1+ = the regex's
+// explicit capture groups. The `at(list, i)` builtin reads a
+// specific index. The renderer applies these to every `span`
+// block's text and re-tokenizes the result with a depth cap so
+// patterns can nest.
+
+inline_pattern bold {
+  pattern = "\\*\\*([^*\n]+)\\*\\*"
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Plain { text: at(g, 1), class: ["bold"] }]
+}
+
+inline_pattern italic {
+  pattern = "_([^_\n]+)_"
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Plain { text: at(g, 1), class: ["italic"] }]
+}
+
+inline_pattern code {
+  pattern = "`([^`\n]+)`"
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Plain { text: at(g, 1), class: ["code"] }]
+}
+
+inline_pattern link {
+  pattern = "\\[([^\\]]+)\\]\\(([^)]+)\\)"
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Link { text: at(g, 1), href: at(g, 2), class: none }]
 }

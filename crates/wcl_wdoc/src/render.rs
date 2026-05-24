@@ -3,6 +3,7 @@ use std::fmt::Write as _;
 
 use wcl_lang::{Block, Document, FnValue, Value, VariantPayload};
 
+use crate::inline::InlinePatterns;
 use crate::layered::{self, Direction};
 use crate::routing::{self, EdgePath, Obstacle, Side};
 
@@ -45,10 +46,14 @@ pub(crate) fn render_page(name: &str, css: &str, blocks: impl Iterator<Item = St
     )
 }
 
-pub(crate) fn render_block(doc: &Document, block: &Block<'_>) -> Option<String> {
+pub(crate) fn render_block(
+    doc: &Document,
+    block: &Block<'_>,
+    patterns: &InlinePatterns,
+) -> Option<String> {
     match block.kind() {
-        "text" => Some(render_text(doc, block)),
-        "column" => Some(render_column(doc, block)),
+        "text" => Some(render_text(doc, block, patterns)),
+        "column" => Some(render_column(doc, block, patterns)),
         "diagram" => Some(render_diagram(doc, block)),
         // Skip the lowering function declarations — they're top-level
         // fields, not blocks, so they don't reach render_block.
@@ -107,30 +112,29 @@ fn push_css(out: &mut String, prop: &str, value: Option<&str>) {
     }
 }
 
-fn render_text(doc: &Document, block: &Block<'_>) -> String {
+fn render_text(doc: &Document, block: &Block<'_>, patterns: &InlinePatterns) -> String {
     let cls = class_attr(block);
     let spans: String = block
         .blocks()
         .filter(|b| b.kind() == "span")
-        .map(|b| render_span(&b))
+        .map(|b| render_span(doc, &b, patterns))
         .collect();
-    let _ = doc;
     let mut out = format!("<p{cls}");
     append_attr(&mut out, "id", field_id(block, "id").as_deref());
     write!(out, ">{spans}</p>").expect("write to String");
     out
 }
 
-fn render_span(block: &Block<'_>) -> String {
+fn render_span(doc: &Document, block: &Block<'_>, patterns: &InlinePatterns) -> String {
     let cls = class_attr(block);
     let text = label_string(block).unwrap_or_default();
     let mut out = format!("<span{cls}");
     append_attr(&mut out, "id", field_id(block, "id").as_deref());
-    write!(out, ">{}</span>", escape_html(&text)).expect("write to String");
+    write!(out, ">{}</span>", patterns.render(doc, &text)).expect("write to String");
     out
 }
 
-fn render_column(doc: &Document, block: &Block<'_>) -> String {
+fn render_column(doc: &Document, block: &Block<'_>, patterns: &InlinePatterns) -> String {
     let cls = class_attr(block);
     let widths = field_f64_list(block, "widths");
     let grid_cols: String = widths
@@ -140,7 +144,7 @@ fn render_column(doc: &Document, block: &Block<'_>) -> String {
         .join(" ");
     let children: String = block
         .blocks()
-        .filter_map(|b| render_block(doc, &b))
+        .filter_map(|b| render_block(doc, &b, patterns))
         .collect();
     let mut out = format!("<div{cls}");
     append_attr(&mut out, "id", field_id(block, "id").as_deref());
