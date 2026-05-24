@@ -9,29 +9,24 @@
 // of SvgBlocks. Users can declare their own connection schemas with
 // custom kinds and consume them via `@connections(MyEdge)` on a
 // custom block type.
+//
+// Every diagram on this page is `:layered` — shapes carry only
+// their `width` / `height` (and id), and the layout system ranks
+// them via the connection graph.
 
 page index {
   h1 "Flat connections" {}
 
   diagram {
-    width  = 320
-    height = 120
+    width     = 360
+    height    = 140
+    layout    = :layered
+    direction = :left_to_right
+    layer_gap = 30.0
 
-    process "Validate" {
-      id = step_a
-      x = 10.0  y = 40.0  width = 80.0  height = 40.0
-      fill = "#eef"  stroke = "#446"
-    }
-    decision "Match?" {
-      id = step_b
-      x = 130.0  y = 30.0  width = 80.0  height = 60.0
-      fill = "#fee"  stroke = "#a44"
-    }
-    terminator "Done" {
-      id = step_c
-      x = 240.0  y = 40.0  width = 70.0  height = 40.0
-      fill = "#efe"  stroke = "#494"
-    }
+    process    "Validate" { id = step_a width = 80.0 height = 40.0 fill = "#eef" stroke = "#446" }
+    decision   "Match?"   { id = step_b width = 80.0 height = 60.0 fill = "#fee" stroke = "#a44" }
+    terminator "Done"     { id = step_c width = 70.0 height = 40.0 fill = "#efe" stroke = "#494" }
 
     step_a -> step_b
     step_b -> step_c :flow
@@ -39,31 +34,32 @@ page index {
 
   h1 "Cross-container connections" {}
 
-  // Edges may straddle container boundaries. `inner_*` ids live two
-  // levels deep; statements at the diagram level still resolve them.
+  // Each container runs its own internal layered layout via its
+  // `@connections(Edge) edges` slot. The outer diagram is `:layered
+  // :left_to_right` and places the two containers side by side —
+  // driven by the diagram-level `inner_a -> inner_b` edge.
   diagram {
-    width  = 320
-    height = 160
+    width     = 360
+    height    = 200
+    layout    = :layered
+    layer_gap = 30.0
+    node_gap  = 40.0
 
     container {
-      id = group_left
-      anchor_left = 0.0  anchor_top = 0.0
-      width = 140.0  height = 160.0
-      rect {
-        id = inner_a
-        x = 30.0  y = 50.0  width = 80.0  height = 40.0
-        fill = "#cce"  stroke = "#446"
-      }
+      id        = group_left
+      width     = 140.0
+      height    = 60.0
+      layout    = :layered
+
+      rect { id = inner_a width = 100.0 height = 40.0 fill = "#cce" stroke = "#446" }
     }
     container {
-      id = group_right
-      anchor_left = 180.0  anchor_top = 0.0
-      width = 140.0  height = 160.0
-      rect {
-        id = inner_b
-        x = 30.0  y = 50.0  width = 80.0  height = 40.0
-        fill = "#ecc"  stroke = "#a44"
-      }
+      id        = group_right
+      width     = 140.0
+      height    = 60.0
+      layout    = :layered
+
+      rect { id = inner_b width = 100.0 height = 40.0 fill = "#ecc" stroke = "#a44" }
     }
 
     inner_a -> inner_b :data
@@ -71,29 +67,21 @@ page index {
 
   h1 "Obstacle routing" {}
 
-  // Elbow routing finds an orthogonal path around shapes that sit
-  // between source and destination. `blocker` is positioned in the
-  // direct horizontal corridor, so the arrow bends around it.
+  // Three rects laid out left-to-right by the layered solver. The
+  // middle node is part of the chain so the A* router still has to
+  // bend the path around it when src and dst share a y.
   diagram {
-    width  = 320
-    height = 200
+    width     = 360
+    height    = 120
+    layout    = :layered
+    direction = :left_to_right
+    layer_gap = 30.0
 
-    rect {
-      id = src_a
-      x = 10.0  y = 80.0  width = 60.0  height = 40.0
-      fill = "#cce"  stroke = "#446"
-    }
-    rect {
-      id = blocker
-      x = 130.0  y = 60.0  width = 60.0  height = 80.0
-      fill = "#ddd"  stroke = "#888"
-    }
-    rect {
-      id = dst_a
-      x = 250.0  y = 80.0  width = 60.0  height = 40.0
-      fill = "#cec"  stroke = "#494"
-    }
+    rect { id = src_a   width = 60.0 height = 40.0 fill = "#cce" stroke = "#446" }
+    rect { id = blocker width = 60.0 height = 80.0 fill = "#ddd" stroke = "#888" }
+    rect { id = dst_a   width = 60.0 height = 40.0 fill = "#cec" stroke = "#494" }
 
-    src_a -> dst_a
+    src_a   -> blocker :flow
+    blocker -> dst_a   :flow
   }
 }

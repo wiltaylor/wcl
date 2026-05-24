@@ -523,12 +523,77 @@ page index {
 
 #[test]
 fn build_renders_connections_as_arrows() {
-    let out = TempDir::new().expect("mkdir tempdir");
-    let n = build_ok(
-        &examples_dir().join("wdoc").join("connections.wcl"),
-        out.path(),
-    );
-    assert_eq!(n, 1);
+    // Self-contained fixture so the test stays stable when the
+    // connections.wcl example file's layout changes. Exercises the
+    // straight-elbow case (same y), the kind-tagged case, and the
+    // cross-container case where the source and destination live
+    // inside different containers.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("arrows.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  // Flat diagram with manual x/y so we can assert exact bbox sides.
+  diagram {
+    width  = 320
+    height = 120
+
+    process "Validate" {
+      id = step_a
+      x = 10.0  y = 40.0  width = 80.0  height = 40.0
+      fill = "#eef"  stroke = "#446"
+    }
+    decision "Match?" {
+      id = step_b
+      x = 130.0  y = 30.0  width = 80.0  height = 60.0
+      fill = "#fee"  stroke = "#a44"
+    }
+    terminator "Done" {
+      id = step_c
+      x = 240.0  y = 40.0  width = 70.0  height = 40.0
+      fill = "#efe"  stroke = "#494"
+    }
+
+    step_a -> step_b
+    step_b -> step_c :flow
+  }
+
+  // Cross-container: anchor each container manually so we can
+  // assert the inner rects' absolute coordinates.
+  diagram {
+    width  = 320
+    height = 160
+
+    container {
+      id = group_left
+      anchor_left = 0.0  anchor_top = 0.0
+      width = 140.0  height = 160.0
+      rect {
+        id = inner_a
+        x = 30.0  y = 50.0  width = 80.0  height = 40.0
+        fill = "#cce"  stroke = "#446"
+      }
+    }
+    container {
+      id = group_right
+      anchor_left = 180.0  anchor_top = 0.0
+      width = 140.0  height = 160.0
+      rect {
+        id = inner_b
+        x = 30.0  y = 50.0  width = 80.0  height = 40.0
+        fill = "#ecc"  stroke = "#a44"
+      }
+    }
+
+    inner_a -> inner_b :data
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
 
     // One shared <defs><marker> per diagram that has edges.
@@ -537,13 +602,7 @@ fn build_renders_connections_as_arrows() {
         "missing arrow marker:\n{html}"
     );
 
-    // Elbow routing emits a <polyline>. For shapes positioned so
-    // the natural orthogonal path is a single horizontal segment,
-    // the polyline degenerates to two same-y points.
-    //
-    // Flat diagram: process Validate (bbox 10,40,80,40, east side at
-    // 90,60) -> decision Match (bbox 130,30,80,60, west side at
-    // 130,60).
+    // Flat diagram: step_a east (90,60) -> step_b west (130,60).
     assert!(
         html.contains(
             "<polyline points=\"90,60 130,60\" fill=\"none\" \
@@ -551,8 +610,7 @@ fn build_renders_connections_as_arrows() {
         ),
         "missing default edge:\n{html}"
     );
-    // Same diagram: Match (east at 210,60) -> Done (bbox 240,40,70,40,
-    // west at 240,60). :flow kind tags the polyline.
+    // Same diagram: step_b east (210,60) -> step_c west (240,60).
     assert!(
         html.contains(
             "<polyline points=\"210,60 240,60\" fill=\"none\" \
@@ -560,10 +618,7 @@ fn build_renders_connections_as_arrows() {
         ),
         "missing flow edge:\n{html}"
     );
-    // Cross-container diagram: inner_a absolute bbox 30,50,80,40
-    // (east side at 110,70) -> inner_b absolute bbox 210,50,80,40
-    // (west side at 210,70). Containers themselves aren't treated
-    // as obstacles when they enclose the source / destination.
+    // Cross-container: inner_a east (110,70) -> inner_b west (210,70).
     assert!(
         html.contains(
             "<polyline points=\"110,70 210,70\" fill=\"none\" \

@@ -166,39 +166,149 @@ page connections {
   h1 "Connections" {}
 
   text {
-    span "Shapes connect via `lhs -> rhs :kind` statements. The renderer routes elbow arrows around obstacles and attaches each leg to the closest `connect_points` side." {}
+    span "Shapes connect via `lhs -> rhs :kind` statements. The renderer ranks shapes via the layered solver, routes elbow paths around other shapes via A*, and nudges parallel segments apart so dense graphs stay readable. The diagrams below stress each piece." {}
   }
 
+  h2 "Branching flow" {}
+
+  // Wide DAG: one entry fans out into two parallel branches that
+  // each visit a couple of stops before reconverging on a single
+  // merge decision and final terminator.
   diagram {
-    width     = 320
-    height    = 220
+    width     = 520
+    height    = 360
     layout    = :layered
     layer_gap = 30.0
 
-    process "Plan" {
-      id     = plan
-      width  = 100.0
-      height = 40.0
-      fill   = "#eef"
-      stroke = "#446"
-    }
-    decision "Approve?" {
-      id     = approve
-      width  = 100.0
-      height = 60.0
-      fill   = "#fee"
-      stroke = "#a44"
-    }
-    terminator "Ship" {
-      id     = ship
-      width  = 100.0
-      height = 40.0
-      fill   = "#efe"
-      stroke = "#494"
+    process    "Start"      { id = start    width = 100.0 height = 40.0 fill = "#eef" stroke = "#446" }
+    decision   "Route?"     { id = branch   width = 100.0 height = 60.0 fill = "#fee" stroke = "#a44" }
+    process    "Path A.1"   { id = path_a1  width = 100.0 height = 40.0 fill = "#cce" stroke = "#447" }
+    process    "Path A.2"   { id = path_a2  width = 100.0 height = 40.0 fill = "#cce" stroke = "#447" }
+    process    "Path B.1"   { id = path_b1  width = 100.0 height = 40.0 fill = "#ecc" stroke = "#744" }
+    process    "Path B.2"   { id = path_b2  width = 100.0 height = 40.0 fill = "#ecc" stroke = "#744" }
+    decision   "Merge OK?"  { id = merge    width = 100.0 height = 60.0 fill = "#fee" stroke = "#a44" }
+    terminator "Done"       { id = done     width = 100.0 height = 40.0 fill = "#efe" stroke = "#494" }
+
+    start  -> branch  :flow
+    branch -> path_a1 :flow
+    branch -> path_b1 :flow
+    path_a1 -> path_a2 :flow
+    path_b1 -> path_b2 :flow
+    path_a2 -> merge  :flow
+    path_b2 -> merge  :flow
+    merge   -> done   :flow
+  }
+
+  h2 "Sub-graphs in containers" {}
+
+  text {
+    span "Each container runs its own layered solver via its `@connections(Edge) edges` field. The diagram-level `norm -> validate` cross-container edge bridges them." {}
+  }
+
+  diagram {
+    width     = 600
+    height    = 280
+    layout    = :layered
+    direction = :left_to_right
+    layer_gap = 60.0
+
+    container {
+      id        = ingest
+      width     = 240.0
+      height    = 240.0
+      layout    = :layered
+      layer_gap = 20.0
+
+      process "Fetch"     { id = fetch width = 120.0 height = 40.0 fill = "#cce" stroke = "#447" }
+      process "Parse"     { id = parse width = 120.0 height = 40.0 fill = "#cce" stroke = "#447" }
+      process "Normalize" { id = norm  width = 120.0 height = 40.0 fill = "#cce" stroke = "#447" }
+
+      fetch -> parse :flow
+      parse -> norm  :flow
     }
 
-    plan    -> approve :flow
-    approve -> ship    :flow
+    container {
+      id        = pipeline
+      width     = 240.0
+      height    = 240.0
+      layout    = :layered
+      layer_gap = 20.0
+
+      decision   "Validate?" { id = validate width = 120.0 height = 60.0 fill = "#fee" stroke = "#a44" }
+      process    "Index"     { id = index    width = 120.0 height = 40.0 fill = "#ecc" stroke = "#744" }
+      terminator "Persist"   { id = persist  width = 120.0 height = 40.0 fill = "#efe" stroke = "#494" }
+
+      validate -> index   :flow
+      index    -> persist :flow
+    }
+
+    // Cross-container bridge. The recursive id resolver finds
+    // `norm` inside `ingest` and `validate` inside `pipeline`.
+    norm -> validate :data
+  }
+
+  h2 "Hub topology" {}
+
+  text {
+    span "One central node receives from three sources and feeds three sinks. The edge-separation pass keeps the six surrounding corridors visible." {}
+  }
+
+  diagram {
+    width     = 520
+    height    = 280
+    layout    = :layered
+    layer_gap = 30.0
+
+    process "Source 1" { id = src1  width = 100.0 height = 40.0 fill = "#cce" stroke = "#447" }
+    process "Source 2" { id = src2  width = 100.0 height = 40.0 fill = "#cce" stroke = "#447" }
+    process "Source 3" { id = src3  width = 100.0 height = 40.0 fill = "#cce" stroke = "#447" }
+    process "Hub"      { id = hub   width = 120.0 height = 50.0 fill = "#fee" stroke = "#a44" }
+    process "Sink 1"   { id = sink1 width = 100.0 height = 40.0 fill = "#ecc" stroke = "#744" }
+    process "Sink 2"   { id = sink2 width = 100.0 height = 40.0 fill = "#ecc" stroke = "#744" }
+    process "Sink 3"   { id = sink3 width = 100.0 height = 40.0 fill = "#ecc" stroke = "#744" }
+
+    src1 -> hub :flow
+    src2 -> hub :flow
+    src3 -> hub :flow
+    hub  -> sink1 :flow
+    hub  -> sink2 :flow
+    hub  -> sink3 :flow
+  }
+
+  h2 "Restricted anchors" {}
+
+  text {
+    span "`connect_points` narrows where an edge may attach. The middle node only accepts arrivals on its `:south` side, so the second arrow has to bend down then over." {}
+  }
+
+  diagram {
+    width     = 360
+    height    = 160
+    layout    = :layered
+    direction = :left_to_right
+    layer_gap = 40.0
+
+    rect {
+      id = sender
+      width = 80.0  height = 40.0
+      fill = "#cce"  stroke = "#447"
+      connect_points = [:east]
+    }
+    rect {
+      id = waystation
+      width = 80.0  height = 40.0
+      fill = "#fee"  stroke = "#a44"
+      connect_points = [:south]
+    }
+    rect {
+      id = receiver
+      width = 80.0  height = 40.0
+      fill = "#cec"  stroke = "#494"
+      connect_points = [:west]
+    }
+
+    sender     -> waystation :data
+    waystation -> receiver   :data
   }
 
   text {

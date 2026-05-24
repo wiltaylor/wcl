@@ -452,16 +452,15 @@ fn pick_closest_pair(
 
 /// Two-step pipeline: first plan every edge into a polyline, then
 /// run the separation pass over the whole set, then serialize.
+/// Edges are gathered from the diagram block and every nested
+/// container so a container's own `@connections(Edge) edges` field
+/// participates in rendering alongside diagram-level edges.
 fn render_edges(block: &Block<'_>, positions: &ShapePositions, viewport: (f64, f64)) -> String {
-    let Some(dr) = block.typed_field("edges") else {
+    let mut items: Vec<Value> = Vec::new();
+    gather_edges_recursive(block, &mut items);
+    if items.is_empty() {
         return String::new();
-    };
-    let Ok(value) = dr.value() else {
-        return String::new();
-    };
-    let Value::List(items) = value else {
-        return String::new();
-    };
+    }
 
     let routing_mode = field_symbol(block, "routing").unwrap_or_default();
     let straight = routing_mode == "straight";
@@ -485,6 +484,23 @@ fn render_edges(block: &Block<'_>, positions: &ShapePositions, viewport: (f64, f
         out.push_str(&serialize_edge(&path, kind.as_deref(), straight));
     }
     out
+}
+
+/// Walk the block tree depth-first and collect every `edges` field
+/// (each emits a `Value::List` of edge records). All edges, no
+/// matter how deeply nested, render into the same outer SVG
+/// coordinate space — `positions` already holds absolute bboxes.
+fn gather_edges_recursive(block: &Block<'_>, out: &mut Vec<Value>) {
+    if let Some(dr) = block.typed_field("edges")
+        && let Ok(Value::List(items)) = dr.value()
+    {
+        out.extend(items);
+    }
+    for child in block.blocks() {
+        if child.kind() == "container" {
+            gather_edges_recursive(&child, out);
+        }
+    }
 }
 
 fn plan_edge(
