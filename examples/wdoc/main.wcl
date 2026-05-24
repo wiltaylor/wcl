@@ -1,0 +1,47 @@
+// Entry point for the wdoc example site.
+//
+//   wcl wdoc serve examples/wdoc/main.wcl
+//   wcl wdoc build --out _site examples/wdoc/main.wcl
+//
+// All shared styles live here; each page lives in its own file
+// under `pages/` and is brought in via the imports below.
+
+class accent {
+  color = "#003a8c"
+  bold  = true
+}
+
+class boxed {
+  border  = "1px solid #999"
+  padding = "0.5rem"
+}
+
+class badge {
+  font_family = "sans-serif"
+  color       = "#444"
+}
+
+// Per-page sources. Each imported file declares exactly one
+// `page <name> { ... }` block; page names must be unique across
+// the whole document.
+import "./pages/overview.wcl"
+import "./pages/about.wcl"
+import "./pages/connections.wcl"
+import "./pages/code.wcl"
+
+// Landing page: short table of contents linking to every other
+// page in the site. Lives in `main.wcl` so its content stays in
+// sync with the import list above.
+page index {
+  h1 "wdoc example site" {}
+
+  text {
+    span "This site exercises the wdoc feature set. Each section below links to a focused demo page." {}
+  }
+
+  h2 "Pages" {}
+  text { span "• [Overview](overview) — text, classes, columns, a diagram, and a flowchart." {} }
+  text { span "• [Connections](connections) — flat edges, cross-container edges, obstacle routing, hubs, restricted anchors." {} }
+  text { span "• [Code blocks](code) — syntax-highlighted listings for Rust, Python, JSON, WCL, and an unknown language." {} }
+  text { span "• [About](about) — what this example demonstrates." {} }
+}

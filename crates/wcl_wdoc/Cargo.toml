@@ -14,6 +14,8 @@ tokio = { workspace = true, features = ["fs", "signal"] }
 axum = { workspace = true }
 notify = { workspace = true }
 tempfile = { workspace = true }
+syntect = { version = "5", default-features = false, features = ["default-fancy", "html"] }
+two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }
 
 [lints]
 workspace = true

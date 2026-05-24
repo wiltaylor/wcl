@@ -1,0 +1,87 @@
+%YAML 1.2
+---
+name: WCL
+file_extensions: [wcl]
+scope: source.wcl
+
+variables:
+  ident: '[A-Za-z_][A-Za-z0-9_]*'
+
+contexts:
+  main:
+    - include: comments
+    - include: decorators
+    - include: keywords
+    - include: types
+    - include: literals
+    - include: symbols
+    - include: strings
+    - include: numbers
+    - include: operators
+    - include: punctuation
+    - include: identifiers
+
+  comments:
+    - match: '//.*$'
+      scope: comment.line.double-slash.wcl
+
+  decorators:
+    - match: '@{{ident}}'
+      scope: entity.name.tag.wcl
+
+  keywords:
+    - match: '\b(let|fn|type|interface|union|extends|import|symbol_set|connection|if|else|return|in)\b'
+      scope: keyword.control.wcl
+
+  types:
+    - match: '\b(utf8|ascii|bool|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|identifier|symbol|list|tensor)\b'
+      scope: storage.type.wcl
+
+  literals:
+    - match: '\b(true|false|none)\b'
+      scope: constant.language.wcl
+
+  symbols:
+    - match: ':{{ident}}'
+      scope: constant.other.symbol.wcl
+
+  strings:
+    - match: '"'
+      scope: punctuation.definition.string.begin.wcl
+      push: string_body
+
+  string_body:
+    - meta_scope: string.quoted.double.wcl
+    - match: '\\.'
+      scope: constant.character.escape.wcl
+    - match: '\$\{'
+      scope: punctuation.section.interpolation.begin.wcl
+      push: interpolation
+    - match: '"'
+      scope: punctuation.definition.string.end.wcl
+      pop: true
+
+  interpolation:
+    - meta_scope: meta.embedded.expression.wcl
+    - match: '\}'
+      scope: punctuation.section.interpolation.end.wcl
+      pop: true
+    - include: main
+
+  numbers:
+    - match: '\b\d+\.\d+([eE][+-]?\d+)?(f32|f64)?\b'
+      scope: constant.numeric.float.wcl
+    - match: '\b\d+(i8|i16|i32|i64|u8|u16|u32|u64)?\b'
+      scope: constant.numeric.integer.wcl
+
+  operators:
+    - match: '->|=>|==|!=|<=|>=|&&|\|\||[+\-*/%<>=!&|]'
+      scope: keyword.operator.wcl
+
+  punctuation:
+    - match: '[\[\]{}(),;:.]'
+      scope: punctuation.wcl
+
+  identifiers:
+    - match: '{{ident}}'
+      scope: variable.other.wcl

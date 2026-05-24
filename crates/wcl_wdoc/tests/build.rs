@@ -26,111 +26,117 @@ fn build_ok(file: &Path, out: &Path) -> usize {
 
 #[test]
 fn build_emits_fundamentals_for_example_site() {
+    // examples/wdoc/main.wcl is the entry point — it pulls in five
+    // per-page files via `import`. All page bodies live in
+    // pages/*.wcl; main.wcl itself only defines the landing index.
     let out = TempDir::new().expect("mkdir tempdir");
-    let n = build_ok(&examples_dir().join("wdoc").join("site.wcl"), out.path());
-    assert_eq!(n, 3);
+    let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
+    assert_eq!(n, 5);
 
-    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
-    assert!(index.contains("<title>index</title>"), "{index}");
+    // The richer content (text + classes + diagram + flowchart) is on
+    // the overview page, not the landing index.
+    let overview =
+        std::fs::read_to_string(out.path().join("overview.html")).expect("read overview.html");
+    assert!(overview.contains("<title>overview</title>"), "{overview}");
     // text + span
     assert!(
-        index.contains("<p><span>Welcome to wdoc </span>"),
-        "{index}"
+        overview.contains("<p><span>Welcome to wdoc </span>"),
+        "{overview}"
     );
     // class system: <style> with both class rules + class= attributes
     assert!(
-        index.contains(".accent { color:#003a8c;font-weight:bold; }"),
-        "{index}"
+        overview.contains(".accent { color:#003a8c;font-weight:bold; }"),
+        "{overview}"
     );
     assert!(
-        index.contains(".boxed { padding:0.5rem;border:1px solid #999; }"),
-        "{index}"
+        overview.contains(".boxed { padding:0.5rem;border:1px solid #999; }"),
+        "{overview}"
     );
     assert!(
-        index.contains("<span class=\"accent\">— now with classes.</span>"),
-        "{index}"
+        overview.contains("<span class=\"accent\">— now with classes.</span>"),
+        "{overview}"
     );
     // column carries `class` AND its inline grid style
     assert!(
-        index.contains(
+        overview.contains(
             "<div class=\"boxed\" style=\"display:grid;grid-template-columns:50% 50%;\">"
         ),
-        "{index}"
+        "{overview}"
     );
     // diagram SVG wrapper — the outer width/height pin the page
     // layout slot; the viewBox is computed to wrap the content
     // bbox, so we don't pin its exact value here.
     assert!(
-        index.contains(
+        overview.contains(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"280\" height=\"130\" viewBox=\""
         ),
-        "{index}"
+        "{overview}"
     );
     // each shape kind
-    assert!(index.contains("<rect "), "{index}");
-    assert!(index.contains("<circle "), "{index}");
-    assert!(index.contains("<line "), "{index}");
+    assert!(overview.contains("<rect "), "{overview}");
+    assert!(overview.contains("<circle "), "{overview}");
+    assert!(overview.contains("<line "), "{overview}");
     // Labels now emit centring attributes + a tspan per line.
     assert!(
-        index.contains("<text x=\"110\" y=\"76\" font-size=\"14\" text-anchor=\"middle\" dominant-baseline=\"middle\"")
-            && index.contains(">halfway</tspan>"),
-        "{index}"
+        overview.contains("<text x=\"110\" y=\"76\" font-size=\"14\" text-anchor=\"middle\" dominant-baseline=\"middle\"")
+            && overview.contains(">halfway</tspan>"),
+        "{overview}"
     );
     assert!(
-        index.contains("<polygon points=\"180,10 230,40 180,70\""),
-        "{index}"
+        overview.contains("<polygon points=\"180,10 230,40 180,70\""),
+        "{overview}"
     );
     // grid-laid container: outer <g class="badge"> with translate to
     // its declared position, then per-cell translates spaced by
     // (cell_width + gap) = 85.
     assert!(
-        index.contains("<g class=\"badge\" transform=\"translate(10 90)\">"),
-        "{index}"
+        overview.contains("<g class=\"badge\" transform=\"translate(10 90)\">"),
+        "{overview}"
     );
     assert!(
-        index.contains("<g transform=\"translate(0 0)\">"),
-        "{index}"
+        overview.contains("<g transform=\"translate(0 0)\">"),
+        "{overview}"
     );
     assert!(
-        index.contains("<g transform=\"translate(85 0)\">"),
-        "{index}"
+        overview.contains("<g transform=\"translate(85 0)\">"),
+        "{overview}"
     );
     assert!(
-        index.contains("<g transform=\"translate(170 0)\">"),
-        "{index}"
+        overview.contains("<g transform=\"translate(170 0)\">"),
+        "{overview}"
     );
     // anchored-rect inside the first cell stretches to cell size.
     assert!(
-        index.contains("<rect x=\"0\" y=\"0\" width=\"80\" height=\"30\" fill=\"#eef\""),
-        "{index}"
+        overview.contains("<rect x=\"0\" y=\"0\" width=\"80\" height=\"30\" fill=\"#eef\""),
+        "{overview}"
     );
     // stdlib heading lowering — h1 reduces to a paragraph with the
     // matching heading class.
     assert!(
-        index.contains("<p class=\"heading-1\"><span>Pipeline overview</span></p>"),
-        "{index}"
+        overview.contains("<p class=\"heading-1\"><span>Pipeline overview</span></p>"),
+        "{overview}"
     );
     // stdlib flowchart lowering — process emits a rect + centered
-    // label. The site example puts the flowchart inside a layered
+    // label. The overview puts the flowchart inside a layered
     // diagram, so each shape renders at (0, 0) inside its own
     // <g transform="translate(...)"> wrapper. The label centers at
     // (50, 20) of its own rect.
     assert!(
-        index.contains("<rect x=\"0\" y=\"0\" width=\"100\" height=\"40\" fill=\"#eef\""),
-        "{index}"
+        overview.contains("<rect x=\"0\" y=\"0\" width=\"100\" height=\"40\" fill=\"#eef\""),
+        "{overview}"
     );
     // Process label centred at (50, 20) inside the layered cell;
     // single-line text gets a single tspan with `dy="0em"`.
     assert!(
-        index.contains("<text x=\"50\" y=\"20\" font-size=\"14\" text-anchor=\"middle\" dominant-baseline=\"middle\"")
-            && index.contains(">Validate</tspan>"),
-        "{index}"
+        overview.contains("<text x=\"50\" y=\"20\" font-size=\"14\" text-anchor=\"middle\" dominant-baseline=\"middle\"")
+            && overview.contains(">Validate</tspan>"),
+        "{overview}"
     );
     // decision lowers to a diamond polygon — using the default 80x40
     // bbox the layered example doesn't override.
     assert!(
-        index.contains("<polygon points=\"50,0 100,30 50,60 0,30\""),
-        "{index}"
+        overview.contains("<polygon points=\"50,0 100,30 50,60 0,30\""),
+        "{overview}"
     );
 }
 
@@ -1585,4 +1591,204 @@ page index {
     );
     // Sanity: font is non-zero and not absurdly large.
     assert!(font_size > 0.0 && font_size <= 14.0);
+}
+
+// ── Code-block tests ───────────────────────────────────────────────
+
+#[test]
+fn build_renders_code_block_with_highlight_classes() {
+    // A Rust `code` block should wrap the source in <pre
+    // class="code-block"><code class="language-rust">…</code></pre>
+    // and produce token spans the bundled theme can style. Exact
+    // span sequence isn't pinned — syntect upgrades shouldn't churn
+    // the test — but a `tok-keyword` (covering `fn`) must appear.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("code.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  code rust {
+    source = "fn main() { let x = 1; }"
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        html.contains("<pre class=\"code-block\""),
+        "missing code-block wrapper:\n{html}"
+    );
+    assert!(
+        html.contains("<code class=\"language-rust\">"),
+        "missing code language class:\n{html}"
+    );
+    assert!(
+        html.contains("tok-keyword") || html.contains("tok-storage"),
+        "no syntect token classes emitted:\n{html}"
+    );
+    // The bundled theme CSS gets injected into every page so
+    // .code-block has styling out of the box.
+    assert!(
+        html.contains("pre.code-block"),
+        "bundled theme CSS missing:\n{html}"
+    );
+}
+
+#[test]
+fn build_renders_wcl_code_block_via_bundled_grammar() {
+    // The wdoc crate ships a wcl.sublime-syntax grammar so the site
+    // can highlight WCL itself. A `code wcl { ... }` block must
+    // produce at least one tok-keyword span (covering `fn`, `let`,
+    // `type`, …).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("wcl_code.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  code wcl {
+    source = "let x = fn(n: i64) -> i64 n + 1"
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        html.contains("<code class=\"language-wcl\">"),
+        "missing wcl language class:\n{html}"
+    );
+    assert!(
+        html.contains("tok-keyword"),
+        "wcl grammar produced no keyword tokens:\n{html}"
+    );
+}
+
+#[test]
+fn build_renders_unknown_language_as_plain_code() {
+    // An unrecognised `language` tag must still render a code
+    // block — just without token spans — rather than dropping the
+    // listing or failing the build.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("unknown.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  code brainfuck {
+    source = "+++.<-"
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        html.contains("<pre class=\"code-block\""),
+        "missing code-block wrapper for unknown language:\n{html}"
+    );
+    assert!(
+        html.contains("<code class=\"language-brainfuck\">"),
+        "language attribute should pass through unmodified:\n{html}"
+    );
+    // The raw source survives escaping (no HTML special chars here).
+    assert!(
+        html.contains("+++.&lt;-") || html.contains("+++.<-"),
+        "{html}"
+    );
+}
+
+#[test]
+fn build_code_block_escapes_html_in_source() {
+    // User source containing HTML special characters must come out
+    // escaped — syntect's HTML generator handles this for us, but
+    // pin the behaviour so a refactor doesn't regress it.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("escape.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  code html {
+    source = "<div class=\"x\">&amp;</div>"
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // Only the rendered <pre> chunk should be inspected — escape
+    // assertions on the surrounding HTML would always pass thanks
+    // to the page chrome's own tags.
+    let pre = html
+        .split("<pre class=\"code-block\"")
+        .nth(1)
+        .and_then(|s| s.split("</pre>").next())
+        .expect("code <pre> present");
+    assert!(pre.contains("&lt;"), "no escaped < in:\n{pre}");
+    assert!(pre.contains("&quot;"), "no escaped quote in:\n{pre}");
+    assert!(
+        !pre.contains("<div class=\"x\">"),
+        "raw HTML leaked:\n{pre}"
+    );
+}
+
+#[test]
+fn build_code_block_carries_user_classes_and_id() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("classes.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  code rust {
+    id    = snippet
+    class = ["framed"]
+    source = "fn main() {}"
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<pre class=\"code-block framed\" id=\"snippet\">"),
+        "missing combined class + id on <pre>:\n{html}"
+    );
+}
+
+#[test]
+fn build_processes_full_code_example_page() {
+    // Smoke test against the code page in the example site, which
+    // exercises Rust, Python, JSON, WCL, and an unknown language
+    // in one page. main.wcl imports it and four other pages, so
+    // we count the code-block wrappers on `code.html`.
+    let out = TempDir::new().expect("mkdir tempdir");
+    let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
+    assert_eq!(n, 5);
+    let html = std::fs::read_to_string(out.path().join("code.html")).expect("read code.html");
+    assert!(
+        html.matches("<pre class=\"code-block\"").count() >= 5,
+        "expected one <pre> per code block on code.html:\n{html}"
+    );
 }

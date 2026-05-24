@@ -508,6 +508,26 @@ type H6 extends WdocBlock {
   ]
 }
 
+// ── Stdlib code block ──────────────────────────────────────────────
+//
+// Syntax-highlighted source listing. Unlike the heading shapes
+// above, `code` has no `lower` field: the renderer special-cases
+// it because the per-token colouring is produced in Rust by
+// syntect rather than expressible in WCL. The `language` tag picks
+// the grammar (`rust`, `python`, `wcl`, …); an unknown tag falls
+// back to plain-text rendering.
+
+@block("code")
+type Code extends WdocBlock {
+  @inline(0) language: identifier
+  source: utf8
+  id:     identifier?
+  class:  list<utf8>?
+  // Declared only to satisfy the WdocBlock interface — the
+  // renderer never calls this; highlighting happens in Rust.
+  lower = fn(c: Code) -> list<HtmlFundamental> []
+}
+
 // ── Built-in inline patterns ───────────────────────────────────────
 //
 // Each pattern's `to_span` receives the captured groups as a list,

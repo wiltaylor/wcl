@@ -72,10 +72,10 @@ ci: fmt-check workspace-lint workspace-test
 cli-run *ARGS:
     cargo run -p wcl -- {{ARGS}}
 
-# Serve examples/wdoc/site.wcl with `wcl wdoc serve`; pass extra flags after --
+# Serve examples/wdoc/main.wcl with `wcl wdoc serve`; pass extra flags after --
 [group('dev')]
 wdoc-serve *ARGS:
-    cargo run -p wcl -- wdoc serve examples/wdoc/site.wcl {{ARGS}}
+    cargo run -p wcl -- wdoc serve examples/wdoc/main.wcl {{ARGS}}
 
 # Run criterion benchmarks
 [group('dev')]

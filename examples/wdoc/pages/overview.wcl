@@ -1,0 +1,140 @@
+// Fundamental-block demo: text + spans, the `class` system, columns,
+// a free-form diagram with shapes, and a layered flowchart.
+
+page overview {
+  h1 "Pipeline overview" {}
+
+  text {
+    span "Welcome to wdoc " {}
+    span "— now with classes." {
+      class = ["accent"]
+    }
+  }
+
+  // Inline patterns: `**bold**`, `_italic_`, backtick-code and
+  // `[label](url)` are recognised inside any span's text and
+  // rendered as styled inline elements. Nesting works recursively.
+  // The link pattern also recognises bare page names — `[About](about)`
+  // resolves to the `about` page's HTML file.
+  text {
+    span "Try **bold**, _italic_, `code`, [external](https://example.com), [About](about), and [Connections](connections)." {}
+  }
+
+  column {
+    widths = [50.0, 50.0]
+    class  = ["boxed"]
+    text { span "Left column." {} }
+    text { span "Right column." {} }
+  }
+
+  diagram {
+    width  = 280
+    height = 130
+
+    rect {
+      x = 10.0
+      y = 10.0
+      width  = 60.0
+      height = 60.0
+      fill   = "#cce"
+    }
+    circle {
+      cx = 120.0
+      cy = 40.0
+      r  = 24.0
+      stroke = "black"
+    }
+    line {
+      x1 = 0.0
+      y1 = 40.0
+      x2 = 280.0
+      y2 = 40.0
+      stroke = "#888"
+    }
+    label "halfway" {
+      x = 110.0
+      y = 76.0
+    }
+    polygon {
+      points = "180,10 230,40 180,70"
+      fill   = "#fc8"
+    }
+
+    // Grid-laid container: 3 cells, each rect stretches to fill its
+    // cell via anchors at all four sides.
+    container {
+      class         = ["badge"]
+      anchor_left   = 10.0
+      anchor_top    = 90.0
+      width         = 260.0
+      height        = 30.0
+      layout        = :grid
+      columns       = 3
+      cell_width    = 80.0
+      cell_height   = 30.0
+      gap           = 5.0
+      rect {
+        anchor_left   = 0.0
+        anchor_right  = 0.0
+        anchor_top    = 0.0
+        anchor_bottom = 0.0
+        fill   = "#eef"
+        stroke = "#99c"
+      }
+      rect {
+        anchor_left   = 0.0
+        anchor_right  = 0.0
+        anchor_top    = 0.0
+        anchor_bottom = 0.0
+        fill   = "#fee"
+        stroke = "#c99"
+      }
+      rect {
+        anchor_left   = 0.0
+        anchor_right  = 0.0
+        anchor_top    = 0.0
+        anchor_bottom = 0.0
+        fill   = "#efe"
+        stroke = "#9c9"
+      }
+    }
+  }
+
+  h2 "Flowchart" {}
+
+  // Layered auto-layout: shapes don't declare x/y. The renderer
+  // topologically ranks them from the connection graph and stacks
+  // each rank top-to-bottom (default direction). Elbow routing
+  // then connects them with right-angled paths.
+  diagram {
+    width     = 320
+    height    = 220
+    layout    = :layered
+    layer_gap = 20.0
+
+    process "Validate" {
+      id     = validate
+      width  = 100.0
+      height = 40.0
+      fill   = "#eef"
+      stroke = "#446"
+    }
+    decision "Match?" {
+      id     = check
+      width  = 100.0
+      height = 60.0
+      fill   = "#fee"
+      stroke = "#a44"
+    }
+    terminator "End" {
+      id     = done
+      width  = 100.0
+      height = 40.0
+      fill   = "#efe"
+      stroke = "#494"
+    }
+
+    validate -> check :flow
+    check    -> done  :flow
+  }
+}

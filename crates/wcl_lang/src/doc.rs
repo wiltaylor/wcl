@@ -117,8 +117,11 @@ impl Document {
     }
 
     /// Variant of [`open_with`] that accepts a base directory for
-    /// resolving relative `import` paths.
-    pub(crate) fn open_at(
+    /// resolving relative `import` paths. Hosts that synthesise
+    /// source in memory (e.g. wdoc prepending a schema) call this
+    /// directly so the source's own imports still resolve relative
+    /// to its on-disk location.
+    pub fn open_at(
         source: &str,
         name: &str,
         base_dir: Option<PathBuf>,

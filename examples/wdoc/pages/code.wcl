@@ -1,0 +1,40 @@
+// Code-block demo: each listing is rendered through syntect at
+// build time. The language tag picks the grammar; an unknown tag
+// falls back to plain text.
+
+page code {
+  h1 "Code blocks" {}
+
+  text {
+    span "Token classes (`tok-keyword`, `tok-string`, …) are wired up to the bundled theme stylesheet. Override them with your own `class` rules." {}
+  }
+
+  h2 "Rust" {}
+  code rust {
+    source = "fn fib(n: u32) -> u64 {\n    match n {\n        0 => 0,\n        1 => 1,\n        _ => fib(n - 1) + fib(n - 2),\n    }\n}"
+  }
+
+  h2 "Python" {}
+  code python {
+    source = "def greet(name: str) -> None:\n    print(f\"hello, {name}\")\n\ngreet(\"world\")"
+  }
+
+  h2 "JSON" {}
+  code json {
+    source = "{\n  \"name\": \"wdoc\",\n  \"languages\": [\"rust\", \"python\", \"wcl\"]\n}"
+  }
+
+  h2 "WCL" {}
+  code wcl {
+    source = "// the wdoc schema ships a custom grammar\n@block(\"greeting\")\ntype Greeting {\n  @inline(0) name: identifier\n  greet = fn(g: Greeting) -> utf8 \"hello, ${g.name}\"\n}"
+  }
+
+  h2 "Unknown tag falls back to plain text" {}
+  code brainfuck {
+    source = "+[----->+++<]>+."
+  }
+
+  text {
+    span "Back to [the index](index)." {}
+  }
+}

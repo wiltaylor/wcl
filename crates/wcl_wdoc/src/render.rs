@@ -3,6 +3,7 @@ use std::fmt::Write as _;
 
 use wcl_lang::{Block, Document, FnValue, Value, VariantPayload};
 
+use crate::highlight;
 use crate::inline::InlinePatterns;
 use crate::layered::{self, Direction};
 use crate::routing::{self, EdgePath, Obstacle, Side};
@@ -68,6 +69,7 @@ pub(crate) fn render_block(
         "text" => Some(render_text(doc, block, patterns)),
         "column" => Some(render_column(doc, block, patterns)),
         "diagram" => Some(render_diagram(doc, block)),
+        "code" => Some(render_code(block)),
         // Skip the lowering function declarations — they're top-level
         // fields, not blocks, so they don't reach render_block.
         kind => Some(lower_html_block(doc, block, kind)),
@@ -186,6 +188,31 @@ fn render_diagram(doc: &Document, block: &Block<'_>) -> String {
         out,
         " xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" \
          viewBox=\"{viewbox}\">{defs}{shapes}{edges}</svg>"
+    )
+    .expect("write to String");
+    out
+}
+
+/// Render a `@block("code")` instance to a `<pre><code>` element
+/// with syntect-produced `<span class="tok-…">` tokens inside. The
+/// `code-block` class is always present so the bundled theme CSS
+/// can style the container; user-declared `class` entries are
+/// appended after it.
+fn render_code(block: &Block<'_>) -> String {
+    // `language` is declared `@inline(0)` on @block("code"), so it
+    // arrives as the block's label rather than a named field.
+    let language = label_string(block).unwrap_or_default();
+    let source = field_utf8(block, "source").unwrap_or_default();
+    let mut classes: Vec<String> = vec!["code-block".to_string()];
+    classes.extend(field_utf8_list(block, "class"));
+    let cls = classes_attr_from_names(&classes);
+    let inner = highlight::highlight_html(&source, &language);
+    let mut out = format!("<pre{cls}");
+    append_attr(&mut out, "id", field_id(block, "id").as_deref());
+    write!(
+        out,
+        "><code class=\"language-{}\">{inner}</code></pre>",
+        escape_html(&language),
     )
     .expect("write to String");
     out

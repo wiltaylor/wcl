@@ -21,18 +21,27 @@ fn wcl_wdoc_build_renders_fundamental_blocks() {
     wcl()
         .arg("wdoc")
         .arg("build")
-        .arg(examples_dir().join("wdoc").join("site.wcl"))
+        .arg(examples_dir().join("wdoc").join("main.wcl"))
         .arg("--out")
         .arg(out.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("wrote 3 pages"));
+        .stdout(predicate::str::contains("wrote 5 pages"));
 
+    // Landing page lives in main.wcl directly.
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
-    assert!(index.contains("<p><span>"), "{index}");
-    assert!(index.contains("<svg"), "{index}");
     assert!(index.contains("<style>"), "{index}");
-    assert!(index.contains("class=\""), "{index}");
-    // stdlib heading lowers via the function-call path.
-    assert!(index.contains("<p class=\"heading-1\">"), "{index}");
+    assert!(
+        index.contains("<p class=\"heading-1\">"),
+        "missing landing heading:\n{index}"
+    );
+
+    // The richer content (text, SVG, classes) sits on the overview
+    // page that main.wcl pulls in via `import`.
+    let overview =
+        std::fs::read_to_string(out.path().join("overview.html")).expect("read overview.html");
+    assert!(overview.contains("<p><span>"), "{overview}");
+    assert!(overview.contains("<svg"), "{overview}");
+    assert!(overview.contains("class=\""), "{overview}");
+    assert!(overview.contains("<p class=\"heading-1\">"), "{overview}");
 }

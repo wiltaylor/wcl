@@ -3,8 +3,9 @@ use std::fs;
 use std::path::Path;
 
 use miette::{NamedSource, Report};
-use wcl_lang::{Block, Document, Value};
+use wcl_lang::{Block, Document, Environment, Value};
 
+use crate::highlight;
 use crate::inline::InlinePatterns;
 use crate::render::{field_id, render_block, render_class, render_page};
 
@@ -48,7 +49,12 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
     let composed = format!("{SCHEMA}\n{user_src}");
     let name = file.display().to_string();
 
-    let doc = Document::open(&composed, &name).map_err(|e| BuildError::Parse(Report::new(e)))?;
+    // Relative `import "./pages/foo.wcl"` statements inside the user
+    // source must resolve against the source file's own directory,
+    // not the wdoc working directory. Pass it through to open_at.
+    let base_dir = file.parent().map(std::path::Path::to_path_buf);
+    let doc = Document::open_at(&composed, &name, base_dir, &Environment::new())
+        .map_err(|e| BuildError::Parse(Report::new(e)))?;
 
     let errs = doc.schema_errors();
     if !errs.is_empty() {
@@ -64,14 +70,16 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
     fs::create_dir_all(out_dir)
         .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", out_dir.display())))?;
 
-    // Document-global stylesheet: every @block("class") becomes one
-    // `.name { ... }` rule. Emitted into <head> on every page.
-    let css: String = doc
+    // Document-global stylesheet: bundled code-block theme + every
+    // @block("class") rule. Emitted into <head> on every page. The
+    // theme comes first so user-declared classes can override it.
+    let class_css: String = doc
         .blocks()
         .filter(|b| b.kind() == "class")
         .filter_map(|b| render_class(&b))
         .collect::<Vec<_>>()
         .join("\n");
+    let css = format!("{}\n{class_css}", highlight::theme_css());
 
     // Page-name set used by the inline link pattern to recognise
     // `[text](page)` cross-page references. Built before rendering
