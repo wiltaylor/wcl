@@ -29,8 +29,10 @@ page index {
   // Inline patterns: `**bold**`, `_italic_`, backtick-code and
   // `[label](url)` are recognised inside any span's text and
   // rendered as styled inline elements. Nesting works recursively.
+  // The link pattern also recognises bare page names — `[About](about)`
+  // resolves to the `about` page's HTML file.
   text {
-    span "Try **bold**, _italic_, `code`, and [a link](https://example.com)." {}
+    span "Try **bold**, _italic_, `code`, [external](https://example.com), and [About](about)." {}
   }
 
   column {
@@ -149,5 +151,13 @@ page index {
 
     validate -> check :flow
     check    -> done  :flow
+  }
+}
+
+page about {
+  h1 "About" {}
+
+  text {
+    span "This is the about page. Back to [the index](index)." {}
   }
 }

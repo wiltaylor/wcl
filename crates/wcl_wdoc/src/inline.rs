@@ -12,7 +12,8 @@
 //! Built-in patterns ship in `wdoc.wcl` (bold / italic / code /
 //! link); user `.wcl` files can declare more.
 
-use std::collections::BTreeMap;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::Write as _;
 
 use regex::Regex;
@@ -27,6 +28,14 @@ const MAX_DEPTH: usize = 8;
 
 pub(crate) struct InlinePatterns {
     compiled: Vec<CompiledPattern>,
+    /// Names of every `page` block in the document, used by
+    /// `render_link` to recognise `[text](page_name)` references
+    /// and rewrite them to `page_name.html`.
+    page_names: HashSet<String>,
+    /// Bare hrefs that didn't match a known page during rendering.
+    /// Build collects these after the page loop and turns them
+    /// into a `BuildError::BadLink`.
+    link_errors: RefCell<Vec<String>>,
 }
 
 struct CompiledPattern {
@@ -40,7 +49,7 @@ impl InlinePatterns {
     /// Patterns whose regex fails to compile or whose `to_span`
     /// isn't a function are silently skipped — schema validation
     /// flags those separately.
-    pub(crate) fn load(doc: &Document) -> Self {
+    pub(crate) fn load(doc: &Document, page_names: HashSet<String>) -> Self {
         let mut compiled = Vec::new();
         for block in doc.blocks() {
             if block.kind() != "inline_pattern" {
@@ -67,7 +76,18 @@ impl InlinePatterns {
                 to_span: fv.clone(),
             });
         }
-        InlinePatterns { compiled }
+        InlinePatterns {
+            compiled,
+            page_names,
+            link_errors: RefCell::new(Vec::new()),
+        }
+    }
+
+    /// Drain accumulated unknown-page link errors. Build calls
+    /// this after every page has rendered and turns a non-empty
+    /// result into a `BuildError::BadLink`.
+    pub(crate) fn take_link_errors(&self) -> Vec<String> {
+        self.link_errors.borrow_mut().drain(..).collect()
     }
 
     /// Tokenize `text` and emit HTML: literal text gets html-escaped,
@@ -185,17 +205,59 @@ impl InlinePatterns {
     fn render_link(&self, doc: &Document, map: &BTreeMap<String, Value>, depth: usize) -> String {
         let text = map_utf8(map, "text").unwrap_or_default();
         let href = map_utf8(map, "href").unwrap_or_default();
+        let resolved = self.resolve_href(&href);
         let inner = self.render_inner(doc, &text, depth + 1);
         let class_attr = class_attr(map);
         let mut out = String::new();
         write!(
             out,
             "<a{class_attr} href=\"{}\">{inner}</a>",
-            escape_html(&href)
+            escape_html(&resolved)
         )
         .expect("write to String");
         out
     }
+
+    /// Rewrite `href` for the rendered `<a href="...">`. External
+    /// URLs (anything with a scheme, anchor-only, or path-relative
+    /// prefix) pass through unchanged. A bare token (or `name#frag`)
+    /// that matches a known page is rewritten to `<page>.html` with
+    /// the fragment preserved. A bare token that doesn't match any
+    /// page is recorded as a link error so build can fail.
+    fn resolve_href(&self, href: &str) -> String {
+        if is_external_href(href) {
+            return href.to_string();
+        }
+        let (page, fragment) = match href.find('#') {
+            Some(i) => (&href[..i], &href[i..]),
+            None => (href, ""),
+        };
+        if self.page_names.contains(page) {
+            return format!("{page}.html{fragment}");
+        }
+        self.link_errors
+            .borrow_mut()
+            .push(format!("link to unknown page '{page}'"));
+        href.to_string()
+    }
+}
+
+fn is_external_href(href: &str) -> bool {
+    if href.starts_with('#') || href.starts_with('/') {
+        return true;
+    }
+    if href.starts_with("./") || href.starts_with("../") {
+        return true;
+    }
+    if href.contains("://") {
+        return true;
+    }
+    for scheme in ["mailto:", "tel:", "data:", "javascript:"] {
+        if href.starts_with(scheme) {
+            return true;
+        }
+    }
+    false
 }
 
 fn map_utf8(map: &BTreeMap<String, Value>, name: &str) -> Option<String> {

@@ -20,6 +20,7 @@ fn build_ok(file: &Path, out: &Path) -> usize {
         Err(BuildError::DuplicateId { page, id }) => {
             panic!("build duplicate-id error: page {page}: {id}")
         }
+        Err(BuildError::BadLink(msgs)) => panic!("build bad-link error: {msgs:?}"),
     }
 }
 
@@ -27,7 +28,7 @@ fn build_ok(file: &Path, out: &Path) -> usize {
 fn build_emits_fundamentals_for_example_site() {
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("site.wcl"), out.path());
-    assert_eq!(n, 1);
+    assert_eq!(n, 2);
 
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
     assert!(index.contains("<title>index</title>"), "{index}");
@@ -364,6 +365,7 @@ page index {
         Err(BuildError::DuplicateId { page, id }) => {
             panic!("expected Schema, got DuplicateId({page}: {id})")
         }
+        Err(BuildError::BadLink(msgs)) => panic!("expected Schema, got BadLink({msgs:?})"),
         Ok(n) => panic!("expected Schema error, got Ok({n})"),
     }
 }
@@ -471,6 +473,7 @@ page index {
         Err(BuildError::Io(e, ctx)) => panic!("expected DuplicateId, got Io({ctx}: {e})"),
         Err(BuildError::Parse(_)) => panic!("expected DuplicateId, got Parse"),
         Err(BuildError::BadPage(m)) => panic!("expected DuplicateId, got BadPage({m})"),
+        Err(BuildError::BadLink(msgs)) => panic!("expected DuplicateId, got BadLink({msgs:?})"),
         Ok(n) => panic!("expected DuplicateId, got Ok({n})"),
     }
 }
@@ -1106,4 +1109,147 @@ page index {
         html.contains(">X<") || html.contains("X</"),
         "missing literal X:\n{html}"
     );
+}
+
+// ── Cross-page link tests ───────────────────────────────────────────
+
+#[test]
+fn build_renders_cross_page_link() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("pages.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  text {
+    span "See [About](about) for more." {}
+  }
+}
+page about {
+  text {
+    span "About page" {}
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
+    assert!(
+        index.contains("<a href=\"about.html\">About</a>"),
+        "cross-page link missing:\n{index}"
+    );
+    assert!(out.path().join("about.html").exists());
+}
+
+#[test]
+fn build_renders_cross_page_link_with_fragment() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("pages.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  text {
+    span "Jump to [deep section](about#section)." {}
+  }
+}
+page about {
+  text {
+    span "About page" {}
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
+    assert!(
+        index.contains("<a href=\"about.html#section\">deep section</a>"),
+        "fragment-bearing cross-page link missing:\n{index}"
+    );
+}
+
+#[test]
+fn build_passes_through_external_url() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("ext.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  text {
+    span "see [docs](https://example.com)" {}
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<a href=\"https://example.com\">docs</a>"),
+        "external url should pass through:\n{html}"
+    );
+}
+
+#[test]
+fn build_passes_through_same_page_anchor() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("anchor.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  text {
+    span "back to [top](#top)" {}
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<a href=\"#top\">top</a>"),
+        "same-page anchor should pass through:\n{html}"
+    );
+}
+
+#[test]
+fn build_errors_on_unknown_page_link() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("broken.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  text {
+    span "see [docs](nonexistent)" {}
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path()) {
+        Err(BuildError::BadLink(msgs)) => {
+            assert!(
+                msgs.iter().any(|m| m.contains("nonexistent")),
+                "missing the unknown page name in errors: {msgs:?}"
+            );
+        }
+        Err(BuildError::Io(e, ctx)) => panic!("expected BadLink, got Io({ctx}: {e})"),
+        Err(BuildError::Parse(_)) => panic!("expected BadLink, got Parse"),
+        Err(BuildError::Schema(n)) => panic!("expected BadLink, got Schema({n})"),
+        Err(BuildError::BadPage(m)) => panic!("expected BadLink, got BadPage({m})"),
+        Err(BuildError::DuplicateId { page, id }) => {
+            panic!("expected BadLink, got DuplicateId({page}: {id})")
+        }
+        Ok(n) => panic!("expected BadLink, got Ok({n})"),
+    }
 }

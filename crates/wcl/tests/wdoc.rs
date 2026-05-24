@@ -26,7 +26,7 @@ fn wcl_wdoc_build_renders_fundamental_blocks() {
         .arg(out.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("wrote 1 page"));
+        .stdout(predicate::str::contains("wrote 2 pages"));
 
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
     assert!(index.contains("<p><span>"), "{index}");

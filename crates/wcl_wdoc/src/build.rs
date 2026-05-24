@@ -16,6 +16,7 @@ pub enum BuildError {
     Schema(usize),
     BadPage(String),
     DuplicateId { page: String, id: String },
+    BadLink(Vec<String>),
 }
 
 impl BuildError {
@@ -27,6 +28,11 @@ impl BuildError {
             Self::BadPage(msg) => eprintln!("{msg}"),
             Self::DuplicateId { page, id } => {
                 eprintln!("page \"{page}\": duplicate id \"{id}\"");
+            }
+            Self::BadLink(msgs) => {
+                for m in msgs {
+                    eprintln!("{m}");
+                }
             }
         }
     }
@@ -67,10 +73,21 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         .collect::<Vec<_>>()
         .join("\n");
 
+    // Page-name set used by the inline link pattern to recognise
+    // `[text](page)` cross-page references. Built before rendering
+    // so a link from `index` to `about` resolves regardless of
+    // source order.
+    let mut page_names: HashSet<String> = HashSet::new();
+    for page in doc.blocks().filter(|b| b.kind() == "page") {
+        if let Some(name) = page_name(&page) {
+            page_names.insert(name);
+        }
+    }
+
     // Document-global inline-text pattern engine, compiled once
     // per build: every `@block("inline_pattern")` (built-in or
     // user-declared) contributes one regex + `to_span` function.
-    let inline_patterns = InlinePatterns::load(&doc);
+    let inline_patterns = InlinePatterns::load(&doc, page_names);
 
     let mut count = 0;
     for page in doc.blocks().filter(|b| b.kind() == "page") {
@@ -106,7 +123,26 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         count += 1;
     }
 
+    // Inline `[text](page)` references that didn't resolve to a
+    // known page block surface as a build error here, after every
+    // page has had a chance to render and report.
+    let link_errors = inline_patterns.take_link_errors();
+    if !link_errors.is_empty() {
+        return Err(BuildError::BadLink(link_errors));
+    }
+
     Ok(count)
+}
+
+/// Extract a page block's first label as a string identifier. The
+/// page-name match for `[text](page)` cross-page links runs against
+/// this set.
+fn page_name(page: &Block<'_>) -> Option<String> {
+    let labels = page.labels().ok()?;
+    match labels.into_iter().next()? {
+        Value::Identifier(s) | Value::Utf8(s) | Value::Symbol(s) => Some(s),
+        _ => None,
+    }
 }
 
 /// Walk a page's block tree collecting `id` values. Returns the first
