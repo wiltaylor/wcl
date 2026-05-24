@@ -33,4 +33,6 @@ fn wcl_wdoc_build_renders_fundamental_blocks() {
     assert!(index.contains("<svg"), "{index}");
     assert!(index.contains("<style>"), "{index}");
     assert!(index.contains("class=\""), "{index}");
+    // stdlib heading lowers via the function-call path.
+    assert!(index.contains("<p class=\"heading-1\">"), "{index}");
 }

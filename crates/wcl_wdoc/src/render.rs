@@ -1,6 +1,12 @@
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use wcl_lang::{Block, Value};
+use wcl_lang::{Block, Document, Value, VariantPayload};
+
+/// Lowering recursion guard. A lowering may emit other custom kinds
+/// that themselves lower further; this caps how deep we'll follow
+/// before bailing.
+const MAX_LOWER_DEPTH: usize = 32;
 
 pub(crate) fn render_page(name: &str, css: &str, blocks: impl Iterator<Item = String>) -> String {
     let mut body = String::new();
@@ -21,12 +27,14 @@ pub(crate) fn render_page(name: &str, css: &str, blocks: impl Iterator<Item = St
     )
 }
 
-pub(crate) fn render_block(block: &Block<'_>) -> Option<String> {
+pub(crate) fn render_block(doc: &Document, block: &Block<'_>) -> Option<String> {
     match block.kind() {
-        "text" => Some(render_text(block)),
-        "column" => Some(render_column(block)),
-        "diagram" => Some(render_diagram(block)),
-        _ => None,
+        "text" => Some(render_text(doc, block)),
+        "column" => Some(render_column(doc, block)),
+        "diagram" => Some(render_diagram(doc, block)),
+        // Skip the lowering function declarations — they're top-level
+        // fields, not blocks, so they don't reach render_block.
+        kind => Some(lower_html_block(doc, block, kind)),
     }
 }
 
@@ -81,13 +89,14 @@ fn push_css(out: &mut String, prop: &str, value: Option<&str>) {
     }
 }
 
-fn render_text(block: &Block<'_>) -> String {
+fn render_text(doc: &Document, block: &Block<'_>) -> String {
     let cls = class_attr(block);
     let spans: String = block
         .blocks()
         .filter(|b| b.kind() == "span")
         .map(|b| render_span(&b))
         .collect();
+    let _ = doc;
     format!("<p{cls}>{spans}</p>")
 }
 
@@ -97,7 +106,7 @@ fn render_span(block: &Block<'_>) -> String {
     format!("<span{cls}>{}</span>", escape_html(&text))
 }
 
-fn render_column(block: &Block<'_>) -> String {
+fn render_column(doc: &Document, block: &Block<'_>) -> String {
     let cls = class_attr(block);
     let widths = field_f64_list(block, "widths");
     let grid_cols: String = widths
@@ -105,17 +114,20 @@ fn render_column(block: &Block<'_>) -> String {
         .map(|w| format!("{w}%"))
         .collect::<Vec<_>>()
         .join(" ");
-    let children: String = block.blocks().filter_map(|b| render_block(&b)).collect();
+    let children: String = block
+        .blocks()
+        .filter_map(|b| render_block(doc, &b))
+        .collect();
     format!("<div{cls} style=\"display:grid;grid-template-columns:{grid_cols};\">{children}</div>")
 }
 
-fn render_diagram(block: &Block<'_>) -> String {
+fn render_diagram(doc: &Document, block: &Block<'_>) -> String {
     let cls = class_attr(block);
     let width = field_i64(block, "width").unwrap_or(0);
     let height = field_i64(block, "height").unwrap_or(0);
     let shapes: String = block
         .blocks()
-        .filter_map(|b| render_shape(&b, width as f64, height as f64))
+        .filter_map(|b| render_shape(doc, &b, width as f64, height as f64))
         .collect();
     format!(
         "<svg{cls} xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" \
@@ -123,28 +135,28 @@ fn render_diagram(block: &Block<'_>) -> String {
     )
 }
 
-fn render_shape(block: &Block<'_>, parent_w: f64, parent_h: f64) -> Option<String> {
+fn render_shape(doc: &Document, block: &Block<'_>, parent_w: f64, parent_h: f64) -> Option<String> {
     match block.kind() {
         "rect" => Some(render_rect(block, parent_w, parent_h)),
         "circle" => Some(render_circle(block, parent_w, parent_h)),
         "line" => Some(render_line(block, parent_w, parent_h)),
         "label" => Some(render_label(block, parent_w, parent_h)),
         "polygon" => Some(render_polygon(block, parent_w, parent_h)),
-        "container" => Some(render_container(block, parent_w, parent_h)),
-        _ => None,
+        "container" => Some(render_container(doc, block, parent_w, parent_h)),
+        kind => Some(lower_svg_block(doc, block, kind, parent_w, parent_h)),
     }
 }
 
-fn render_container(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
+fn render_container(doc: &Document, block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let cls = class_attr(block);
     let (x, y, w, h) = resolve_container_box(block, parent_w, parent_h);
 
     let layout = field_symbol(block, "layout").unwrap_or_default();
     let inner = match layout.as_str() {
-        "grid" => render_grid_children(block),
+        "grid" => render_grid_children(doc, block),
         _ => block
             .blocks()
-            .filter_map(|b| render_shape(&b, w, h))
+            .filter_map(|b| render_shape(doc, &b, w, h))
             .collect::<String>(),
     };
 
@@ -156,7 +168,7 @@ fn render_container(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     format!("<g{cls}{transform}>{inner}</g>")
 }
 
-fn render_grid_children(block: &Block<'_>) -> String {
+fn render_grid_children(doc: &Document, block: &Block<'_>) -> String {
     let cols = field_i64(block, "columns").unwrap_or(1).max(1) as usize;
     let cw = field_f64(block, "cell_width").unwrap_or(0.0);
     let ch = field_f64(block, "cell_height").unwrap_or(0.0);
@@ -165,7 +177,7 @@ fn render_grid_children(block: &Block<'_>) -> String {
         .blocks()
         .enumerate()
         .filter_map(|(i, b)| {
-            let rendered = render_shape(&b, cw, ch)?;
+            let rendered = render_shape(doc, &b, cw, ch)?;
             let col = i % cols;
             let row = i / cols;
             let tx = col as f64 * (cw + gap);
@@ -176,6 +188,207 @@ fn render_grid_children(block: &Block<'_>) -> String {
         })
         .collect()
 }
+
+// ── Lowering dispatch ──────────────────────────────────────────────
+
+/// Custom diagram-shape lowering. Looks up `<kind>_lower`, calls it
+/// with a record built from `block`'s fields, and renders each
+/// returned variant.
+fn lower_svg_block(
+    doc: &Document,
+    block: &Block<'_>,
+    kind: &str,
+    parent_w: f64,
+    parent_h: f64,
+) -> String {
+    let Some(arg) = block_to_record(doc, block, kind) else {
+        return String::new();
+    };
+    let lower_name = format!("{kind}_lower");
+    let result = match doc.call_function(&lower_name, &[arg]) {
+        Ok(v) => v,
+        Err(_) => return String::new(),
+    };
+    let Value::List(items) = result else {
+        return String::new();
+    };
+    items
+        .iter()
+        .map(|v| render_svg_variant(doc, v, parent_w, parent_h, 0))
+        .collect()
+}
+
+/// Custom HTML-block lowering (h1..h6 and friends).
+fn lower_html_block(doc: &Document, block: &Block<'_>, kind: &str) -> String {
+    let Some(arg) = block_to_record(doc, block, kind) else {
+        return String::new();
+    };
+    let lower_name = format!("{kind}_lower");
+    let result = match doc.call_function(&lower_name, &[arg]) {
+        Ok(v) => v,
+        Err(_) => return String::new(),
+    };
+    let Value::List(items) = result else {
+        return String::new();
+    };
+    items
+        .iter()
+        .map(|v| render_html_variant(doc, v, 0))
+        .collect()
+}
+
+// `_parent_w` / `_parent_h` are threaded through so future variant
+// kinds can pick them up; today's fundamentals carry pre-resolved
+// geometry in the payload itself.
+fn render_svg_variant(
+    doc: &Document,
+    value: &Value,
+    _parent_w: f64,
+    _parent_h: f64,
+    depth: usize,
+) -> String {
+    if depth > MAX_LOWER_DEPTH {
+        return depth_marker();
+    }
+    let Value::Variant {
+        variant, payload, ..
+    } = value
+    else {
+        return String::new();
+    };
+    let kind = kind_for_variant(variant);
+    let VariantPayload::Record(map) = payload else {
+        return String::new();
+    };
+    match kind.as_str() {
+        "rect" => render_rect_payload(map),
+        "circle" => render_circle_payload(map),
+        "line" => render_line_payload(map),
+        "label" => render_label_payload(map),
+        "polygon" => render_polygon_payload(map),
+        other => {
+            // Custom variant — look up its lowering and recurse with
+            // the variant's record payload as the new arg.
+            let arg = payload_to_record(map, other);
+            let lower_name = format!("{other}_lower");
+            let result = match doc.call_function(&lower_name, &[arg]) {
+                Ok(v) => v,
+                Err(_) => return String::new(),
+            };
+            let Value::List(items) = result else {
+                return String::new();
+            };
+            items
+                .iter()
+                .map(|v| render_svg_variant(doc, v, _parent_w, _parent_h, depth + 1))
+                .collect()
+        }
+    }
+}
+
+fn render_html_variant(doc: &Document, value: &Value, depth: usize) -> String {
+    if depth > MAX_LOWER_DEPTH {
+        return depth_marker();
+    }
+    let Value::Variant {
+        variant, payload, ..
+    } = value
+    else {
+        return String::new();
+    };
+    let kind = kind_for_variant(variant);
+    let VariantPayload::Record(map) = payload else {
+        return String::new();
+    };
+    match kind.as_str() {
+        "paragraph" => render_paragraph_payload(map),
+        other => {
+            let arg = payload_to_record(map, other);
+            let lower_name = format!("{other}_lower");
+            let result = match doc.call_function(&lower_name, &[arg]) {
+                Ok(v) => v,
+                Err(_) => return String::new(),
+            };
+            let Value::List(items) = result else {
+                return String::new();
+            };
+            items
+                .iter()
+                .map(|v| render_html_variant(doc, v, depth + 1))
+                .collect()
+        }
+    }
+}
+
+fn depth_marker() -> String {
+    "<!-- wdoc: lowering depth limit reached -->".into()
+}
+
+/// Build a `Value::Record` from `block`'s declared fields. Schema is
+/// looked up via `doc.block_schema(kind)`. Each declared field is
+/// populated from either the matching `@inline(N)` label slot or the
+/// literal block field; missing values become `Value::None` so
+/// optional fields cleanly reach the lowering function.
+fn block_to_record(doc: &Document, block: &Block<'_>, kind: &str) -> Option<Value> {
+    let schema = doc.block_schema(kind)?;
+    let labels = block.labels().ok().unwrap_or_default();
+    let mut map = BTreeMap::new();
+    for f in schema.fields() {
+        let name = f.name();
+        let val = if let Some(slot) = f.inline_slot() {
+            labels.get(slot as usize).cloned().unwrap_or(Value::None)
+        } else if let Some(field) = block.field(name) {
+            field.value().cloned().unwrap_or(Value::None)
+        } else {
+            Value::None
+        };
+        map.insert(name.to_string(), val);
+    }
+    Some(Value::Record {
+        ty: vec![kind_to_typename(kind)],
+        fields: map,
+    })
+}
+
+fn payload_to_record(map: &BTreeMap<String, Value>, kind: &str) -> Value {
+    Value::Record {
+        ty: vec![kind_to_typename(kind)],
+        fields: map.clone(),
+    }
+}
+
+/// Best-effort kind→type-name mapping. With our naming convention
+/// (variant name = capitalised kind), `"process"` ↔ `Process`.
+fn kind_to_typename(kind: &str) -> String {
+    let mut s = String::with_capacity(kind.len());
+    let mut up = true;
+    for c in kind.chars() {
+        if c == '_' {
+            up = true;
+            continue;
+        }
+        if up {
+            s.extend(c.to_uppercase());
+            up = false;
+        } else {
+            s.push(c);
+        }
+    }
+    s
+}
+
+fn kind_for_variant(variant: &str) -> String {
+    let mut s = String::with_capacity(variant.len());
+    for (i, c) in variant.chars().enumerate() {
+        if i > 0 && c.is_uppercase() {
+            s.push('_');
+        }
+        s.extend(c.to_lowercase());
+    }
+    s
+}
+
+// ── Fundamental renderers (block-side) ────────────────────────────
 
 fn render_rect(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let cls = class_attr(block);
@@ -242,10 +455,82 @@ fn render_polygon(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     out
 }
 
-/// Resolve a `(x, y, width, height)` box for shapes that have native
-/// width/height fields. Per-axis: opposite anchors pin + stretch, a
-/// single anchor pins (preserving the authored size), missing anchors
-/// leave the authored value alone.
+// ── Fundamental renderers (variant-payload side) ──────────────────
+//
+// Variant payloads carry pre-resolved geometry. Anchors are not
+// honored here — lowering functions are expected to emit final
+// coordinates.
+
+fn render_rect_payload(map: &BTreeMap<String, Value>) -> String {
+    let cls = class_attr_from_map(map);
+    let x = map_f64(map, "x").unwrap_or(0.0);
+    let y = map_f64(map, "y").unwrap_or(0.0);
+    let w = map_f64(map, "width").unwrap_or(0.0);
+    let h = map_f64(map, "height").unwrap_or(0.0);
+    let mut out = format!("<rect{cls} x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\"");
+    append_attr(&mut out, "fill", map_utf8(map, "fill").as_deref());
+    append_attr(&mut out, "stroke", map_utf8(map, "stroke").as_deref());
+    out.push_str(" />");
+    out
+}
+
+fn render_circle_payload(map: &BTreeMap<String, Value>) -> String {
+    let cls = class_attr_from_map(map);
+    let cx = map_f64(map, "cx").unwrap_or(0.0);
+    let cy = map_f64(map, "cy").unwrap_or(0.0);
+    let r = map_f64(map, "r").unwrap_or(0.0);
+    let mut out = format!("<circle{cls} cx=\"{cx}\" cy=\"{cy}\" r=\"{r}\"");
+    append_attr(&mut out, "fill", map_utf8(map, "fill").as_deref());
+    append_attr(&mut out, "stroke", map_utf8(map, "stroke").as_deref());
+    out.push_str(" />");
+    out
+}
+
+fn render_line_payload(map: &BTreeMap<String, Value>) -> String {
+    let cls = class_attr_from_map(map);
+    let x1 = map_f64(map, "x1").unwrap_or(0.0);
+    let y1 = map_f64(map, "y1").unwrap_or(0.0);
+    let x2 = map_f64(map, "x2").unwrap_or(0.0);
+    let y2 = map_f64(map, "y2").unwrap_or(0.0);
+    let mut out = format!("<line{cls} x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"");
+    append_attr(&mut out, "stroke", map_utf8(map, "stroke").as_deref());
+    out.push_str(" />");
+    out
+}
+
+fn render_label_payload(map: &BTreeMap<String, Value>) -> String {
+    let cls = class_attr_from_map(map);
+    let content = map_utf8(map, "content").unwrap_or_default();
+    let x = map_f64(map, "x").unwrap_or(0.0);
+    let y = map_f64(map, "y").unwrap_or(0.0);
+    let mut out = format!("<text{cls} x=\"{x}\" y=\"{y}\"");
+    append_attr(&mut out, "fill", map_utf8(map, "fill").as_deref());
+    write!(out, ">{}</text>", escape_html(&content)).expect("write to String");
+    out
+}
+
+fn render_polygon_payload(map: &BTreeMap<String, Value>) -> String {
+    let cls = class_attr_from_map(map);
+    let points = map_utf8(map, "points").unwrap_or_default();
+    let mut out = format!("<polygon{cls} points=\"{}\"", escape_html(&points));
+    append_attr(&mut out, "fill", map_utf8(map, "fill").as_deref());
+    append_attr(&mut out, "stroke", map_utf8(map, "stroke").as_deref());
+    out.push_str(" />");
+    out
+}
+
+fn render_paragraph_payload(map: &BTreeMap<String, Value>) -> String {
+    let cls = class_attr_from_map(map);
+    let spans = map_utf8_list(map, "spans");
+    let inner: String = spans
+        .iter()
+        .map(|s| format!("<span>{}</span>", escape_html(s)))
+        .collect();
+    format!("<p{cls}>{inner}</p>")
+}
+
+// ── Resolution helpers (block-side) ───────────────────────────────
+
 fn resolve_rect_box(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f64, f64, f64) {
     let mut x = field_f64(block, "x").unwrap_or(0.0);
     let mut y = field_f64(block, "y").unwrap_or(0.0);
@@ -268,8 +553,6 @@ fn resolve_rect_box(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f6
     (x, y, w, h)
 }
 
-/// Same model as `resolve_rect_box` but for `container`, which uses
-/// declared `width`/`height` as the intrinsic interior size.
 fn resolve_container_box(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f64, f64, f64) {
     let mut x = 0.0;
     let mut y = 0.0;
@@ -314,9 +597,6 @@ fn apply_axis_anchor(
     }
 }
 
-/// Circle resolution. When any anchor is set on either axis, derive
-/// a bounding box from anchors + the shape's own radius, then center
-/// + shrink to fit.
 fn resolve_circle(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f64, f64) {
     let cx = field_f64(block, "cx").unwrap_or(0.0);
     let cy = field_f64(block, "cy").unwrap_or(0.0);
@@ -338,9 +618,6 @@ fn resolve_circle(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f64,
     (bx + bw / 2.0, by + bh / 2.0, new_r)
 }
 
-/// Translation-only anchor — used by `line` / `polygon`, which don't
-/// have natural size fields. Returns the `(dx, dy)` offset to add to
-/// the shape's authored coordinates.
 fn resolve_point_anchor(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f64) {
     let dx = match (
         field_f64(block, "anchor_left"),
@@ -361,8 +638,6 @@ fn resolve_point_anchor(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64
     (dx, dy)
 }
 
-/// Anchor resolution for a single `(x, y)` point — used by `label`.
-/// If a near anchor is set, it overrides the authored coordinate.
 fn resolve_point_anchored(
     block: &Block<'_>,
     parent_w: f64,
@@ -389,17 +664,11 @@ fn resolve_point_anchored(
     (x, y)
 }
 
+// ── Block-side accessors ──────────────────────────────────────────
+
 fn class_attr(block: &Block<'_>) -> String {
     let names = field_utf8_list(block, "class");
-    if names.is_empty() {
-        return String::new();
-    }
-    let joined = names
-        .iter()
-        .map(|s| escape_html(s))
-        .collect::<Vec<_>>()
-        .join(" ");
-    format!(" class=\"{joined}\"")
+    classes_attr_from_names(&names)
 }
 
 fn append_attr(out: &mut String, name: &str, value: Option<&str>) {
@@ -446,24 +715,12 @@ fn field_symbol(block: &Block<'_>, name: &str) -> Option<String> {
 
 fn field_f64(block: &Block<'_>, name: &str) -> Option<f64> {
     let field = block.field(name)?;
-    match field.value().ok()? {
-        Value::F64(n) => Some(*n),
-        Value::F32(n) => Some(*n as f64),
-        Value::I64(n) => Some(*n as f64),
-        Value::I32(n) => Some(*n as f64),
-        _ => None,
-    }
+    value_as_f64(field.value().ok()?)
 }
 
 fn field_i64(block: &Block<'_>, name: &str) -> Option<i64> {
     let field = block.field(name)?;
-    match field.value().ok()? {
-        Value::I64(n) => Some(*n),
-        Value::I32(n) => Some(*n as i64),
-        Value::U32(n) => Some(*n as i64),
-        Value::U64(n) => Some(*n as i64),
-        _ => None,
-    }
+    value_as_i64(field.value().ok()?)
 }
 
 fn field_f64_list(block: &Block<'_>, name: &str) -> Vec<f64> {
@@ -476,16 +733,7 @@ fn field_f64_list(block: &Block<'_>, name: &str) -> Vec<f64> {
     let Value::List(items) = value else {
         return Vec::new();
     };
-    items
-        .iter()
-        .filter_map(|v| match v {
-            Value::F64(n) => Some(*n),
-            Value::F32(n) => Some(*n as f64),
-            Value::I64(n) => Some(*n as f64),
-            Value::I32(n) => Some(*n as f64),
-            _ => None,
-        })
-        .collect()
+    items.iter().filter_map(value_as_f64).collect()
 }
 
 fn field_utf8_list(block: &Block<'_>, name: &str) -> Vec<String> {
@@ -498,15 +746,75 @@ fn field_utf8_list(block: &Block<'_>, name: &str) -> Vec<String> {
     let Value::List(items) = value else {
         return Vec::new();
     };
-    items
+    items.iter().filter_map(value_as_str).collect()
+}
+
+// ── Map-side accessors (for variant payloads) ─────────────────────
+
+fn class_attr_from_map(map: &BTreeMap<String, Value>) -> String {
+    let names = map_utf8_list(map, "class");
+    classes_attr_from_names(&names)
+}
+
+fn classes_attr_from_names(names: &[String]) -> String {
+    if names.is_empty() {
+        return String::new();
+    }
+    let joined = names
         .iter()
-        .filter_map(|v| match v {
-            Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s) => {
-                Some(s.clone())
-            }
-            _ => None,
-        })
-        .collect()
+        .map(|s| escape_html(s))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(" class=\"{joined}\"")
+}
+
+fn map_utf8(map: &BTreeMap<String, Value>, name: &str) -> Option<String> {
+    match map.get(name)? {
+        Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
+        _ => None,
+    }
+}
+
+fn map_f64(map: &BTreeMap<String, Value>, name: &str) -> Option<f64> {
+    value_as_f64(map.get(name)?)
+}
+
+fn map_utf8_list(map: &BTreeMap<String, Value>, name: &str) -> Vec<String> {
+    let Some(Value::List(items)) = map.get(name) else {
+        return Vec::new();
+    };
+    items.iter().filter_map(value_as_str).collect()
+}
+
+// ── Value-coercion helpers ────────────────────────────────────────
+
+fn value_as_f64(v: &Value) -> Option<f64> {
+    match v {
+        Value::F64(n) => Some(*n),
+        Value::F32(n) => Some(*n as f64),
+        Value::I64(n) => Some(*n as f64),
+        Value::I32(n) => Some(*n as f64),
+        _ => None,
+    }
+}
+
+fn value_as_i64(v: &Value) -> Option<i64> {
+    match v {
+        Value::I64(n) => Some(*n),
+        Value::I32(n) => Some(*n as i64),
+        Value::U32(n) => Some(*n as i64),
+        Value::U64(n) => Some(*n as i64),
+        _ => None,
+    }
+}
+
+fn value_as_str(v: &Value) -> Option<String> {
+    match v {
+        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s) => {
+            Some(s.clone())
+        }
+        _ => None,
+    }
 }
 
 pub(crate) fn escape_html(s: &str) -> String {
@@ -526,7 +834,7 @@ pub(crate) fn escape_html(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::escape_html;
+    use super::{escape_html, kind_for_variant, kind_to_typename};
 
     #[test]
     fn escapes_html_specials() {
@@ -534,5 +842,19 @@ mod tests {
             escape_html("<a href=\"x\">hi & 'bye'</a>"),
             "&lt;a href=&quot;x&quot;&gt;hi &amp; &#39;bye&#39;&lt;/a&gt;"
         );
+    }
+
+    #[test]
+    fn kind_to_typename_capitalises() {
+        assert_eq!(kind_to_typename("process"), "Process");
+        assert_eq!(kind_to_typename("decision"), "Decision");
+        assert_eq!(kind_to_typename("h1"), "H1");
+    }
+
+    #[test]
+    fn kind_for_variant_lowercases() {
+        assert_eq!(kind_for_variant("Process"), "process");
+        assert_eq!(kind_for_variant("Paragraph"), "paragraph");
+        assert_eq!(kind_for_variant("Rect"), "rect");
     }
 }

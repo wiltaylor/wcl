@@ -17,6 +17,8 @@ class badge {
 }
 
 page index {
+  h1 "Pipeline overview" {}
+
   text {
     span "Welcome to wdoc " {}
     span "— now with classes." {
@@ -101,6 +103,38 @@ page index {
         fill   = "#efe"
         stroke = "#9c9"
       }
+    }
+  }
+
+  h2 "Flowchart" {}
+
+  diagram {
+    width  = 320
+    height = 200
+
+    process "Validate" {
+      x = 10.0
+      y = 10.0
+      width  = 100.0
+      height = 40.0
+      fill   = "#eef"
+      stroke = "#446"
+    }
+    decision "Match?" {
+      x = 10.0
+      y = 70.0
+      width  = 100.0
+      height = 60.0
+      fill   = "#fee"
+      stroke = "#a44"
+    }
+    terminator "End" {
+      x = 10.0
+      y = 150.0
+      width  = 100.0
+      height = 40.0
+      fill   = "#efe"
+      stroke = "#494"
     }
   }
 }

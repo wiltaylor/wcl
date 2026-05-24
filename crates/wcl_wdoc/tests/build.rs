@@ -97,6 +97,126 @@ fn build_emits_fundamentals_for_example_site() {
         index.contains("<rect x=\"0\" y=\"0\" width=\"80\" height=\"30\" fill=\"#eef\""),
         "{index}"
     );
+    // stdlib heading lowering — h1 reduces to a paragraph with the
+    // matching heading class.
+    assert!(
+        index.contains("<p class=\"heading-1\"><span>Pipeline overview</span></p>"),
+        "{index}"
+    );
+    // stdlib flowchart lowering — process emits a rect + centered label.
+    assert!(
+        index.contains("<rect x=\"10\" y=\"10\" width=\"100\" height=\"40\" fill=\"#eef\""),
+        "{index}"
+    );
+    assert!(
+        index.contains("<text x=\"60\" y=\"30\">Validate</text>"),
+        "{index}"
+    );
+    // decision lowers to a diamond polygon.
+    assert!(
+        index.contains("<polygon points=\"60,70 110,100 60,130 10,100\""),
+        "{index}"
+    );
+}
+
+#[test]
+fn recursive_lowering_terminates_for_chained_custom_shapes() {
+    // `outer` lowers to an `inner` variant, which itself lowers to a
+    // rect. The renderer must keep lowering until only fundamentals
+    // remain.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("chain.wcl");
+    std::fs::write(
+        &src,
+        r##"
+@block("inner")
+type Inner { fill: utf8? }
+
+union ChainStep {
+  Inner { fill: utf8? }
+  Rect  { x: f64? y: f64? width: f64? height: f64? fill: utf8? stroke: utf8? class: list<utf8>? }
+}
+
+@schemaless
+inner_lower = fn(i: Inner) -> list<SvgFundamental> [
+  SvgFundamental::Rect {
+    x: 5.0, y: 5.0, width: 20.0, height: 20.0,
+    fill: i.fill, stroke: none, class: none,
+  }
+]
+
+@block("outer")
+type Outer { fill: utf8? }
+
+@schemaless
+outer_lower = fn(o: Outer) -> list<ChainStep> [
+  ChainStep::Inner { fill: o.fill }
+]
+
+page index {
+  diagram {
+    width  = 100
+    height = 100
+    outer {
+      fill = "#abc"
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // The chain `outer -> inner -> Rect` resolves all the way through.
+    assert!(
+        html.contains("<rect x=\"5\" y=\"5\" width=\"20\" height=\"20\" fill=\"#abc\""),
+        "{html}"
+    );
+}
+
+#[test]
+fn lowering_depth_limit_emits_marker() {
+    // A pathological lowering that emits its own kind — must bail at
+    // the depth limit rather than recursing forever.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("loop.wcl");
+    std::fs::write(
+        &src,
+        r##"
+@block("loopy")
+type Loopy { fill: utf8? }
+
+union LoopStep {
+  Loopy { fill: utf8? }
+}
+
+@schemaless
+loopy_lower = fn(l: Loopy) -> list<LoopStep> [
+  LoopStep::Loopy { fill: l.fill }
+]
+
+page index {
+  diagram {
+    width  = 50
+    height = 50
+    loopy {
+      fill = "#fff"
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("wdoc: lowering depth limit reached"),
+        "{html}"
+    );
 }
 
 #[test]
@@ -174,7 +294,7 @@ fn build_reports_schema_error_for_unknown_block() {
         &src,
         r#"
 page index {
-  h1 "nope" {}
+  h7 "nope" {}
 }
 "#,
     )

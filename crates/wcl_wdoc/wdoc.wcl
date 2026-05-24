@@ -9,6 +9,19 @@
 type Site {
   @children("class") classes: list<Class>
   @children("page")  pages:   list<Page>
+
+  // Stdlib lowering functions — declared here so users can shadow
+  // them, and so the schema validator accepts the top-level bindings
+  // in the preamble.
+  h1_lower: fn(H1) -> list<HtmlFundamental>
+  h2_lower: fn(H2) -> list<HtmlFundamental>
+  h3_lower: fn(H3) -> list<HtmlFundamental>
+  h4_lower: fn(H4) -> list<HtmlFundamental>
+  h5_lower: fn(H5) -> list<HtmlFundamental>
+  h6_lower: fn(H6) -> list<HtmlFundamental>
+  process_lower:    fn(Process)    -> list<SvgFundamental>
+  decision_lower:   fn(Decision)   -> list<SvgFundamental>
+  terminator_lower: fn(Terminator) -> list<SvgFundamental>
 }
 
 @block("page")
@@ -17,6 +30,13 @@ type Page {
   @children("text")    texts:    list<Text>
   @children("column")  columns:  list<Column>
   @children("diagram") diagrams: list<Diagram>
+  // Stdlib heading shapes (custom blocks; lower to a Paragraph).
+  @children("h1") h1s: list<H1>
+  @children("h2") h2s: list<H2>
+  @children("h3") h3s: list<H3>
+  @children("h4") h4s: list<H4>
+  @children("h5") h5s: list<H5>
+  @children("h6") h6s: list<H6>
 }
 
 // Style bundle. Referenced from any IR block's `class: list<utf8>?`
@@ -84,6 +104,10 @@ type Diagram {
   @children("label")     labels:     list<Label>
   @children("polygon")   polygons:   list<Polygon>
   @children("container") containers: list<Container>
+  // Stdlib flowchart shapes (custom blocks; lower to SVG primitives).
+  @children("process")    processes:   list<Process>
+  @children("decision")   decisions:   list<Decision>
+  @children("terminator") terminators: list<Terminator>
 }
 
 // SVG <g> group with optional layout. Layout modes:
@@ -124,6 +148,9 @@ type Container {
   @children("label")     labels:     list<Label>
   @children("polygon")   polygons:   list<Polygon>
   @children("container") containers: list<Container>
+  @children("process")    processes:   list<Process>
+  @children("decision")   decisions:   list<Decision>
+  @children("terminator") terminators: list<Terminator>
 }
 
 @block("rect")
@@ -200,3 +227,122 @@ type Polygon {
   anchor_top:    f64?
   anchor_bottom: f64?
 }
+
+// ── Lowering layer ─────────────────────────────────────────────────
+//
+// Custom shapes ship as a `@block` declaration + a top-level
+// `<kind>_lower` function returning `list<SvgFundamental>` (SVG
+// diagram shapes) or `list<HtmlFundamental>` (page-level blocks).
+// The renderer recursively lowers each returned variant until only
+// fundamentals remain. Users add their own shapes by declaring the
+// same pair in user source.
+
+union SvgFundamental {
+  Rect    { x: f64? y: f64? width: f64? height: f64? fill: utf8? stroke: utf8? class: list<utf8>? }
+  Circle  { cx: f64? cy: f64? r: f64? fill: utf8? stroke: utf8? class: list<utf8>? }
+  Line    { x1: f64? y1: f64? x2: f64? y2: f64? stroke: utf8? class: list<utf8>? }
+  Label   { content: utf8 x: f64? y: f64? fill: utf8? class: list<utf8>? }
+  Polygon { points: utf8 fill: utf8? stroke: utf8? class: list<utf8>? }
+}
+
+union HtmlFundamental {
+  Paragraph { class: list<utf8>? spans: list<utf8> }
+}
+
+// ── Stdlib flowchart shapes ────────────────────────────────────────
+
+@block("process")
+type Process {
+  @inline(0) text: utf8
+  x: f64?  y: f64?  width: f64?  height: f64?
+  fill: utf8?  stroke: utf8?  class: list<utf8>?
+}
+
+process_lower = fn(p: Process) -> list<SvgFundamental> [
+  SvgFundamental::Rect {
+    x: p.x, y: p.y, width: p.width, height: p.height,
+    fill: p.fill, stroke: p.stroke, class: p.class,
+  },
+  SvgFundamental::Label {
+    content: p.text,
+    x: p.x + p.width / 2.0,
+    y: p.y + p.height / 2.0,
+    fill: none, class: p.class,
+  },
+]
+
+@block("decision")
+type Decision {
+  @inline(0) text: utf8
+  x: f64?  y: f64?  width: f64?  height: f64?
+  fill: utf8?  stroke: utf8?  class: list<utf8>?
+}
+
+decision_lower = fn(d: Decision) -> list<SvgFundamental> [
+  SvgFundamental::Polygon {
+    points: format(
+      "{},{} {},{} {},{} {},{}",
+      d.x + d.width / 2.0, d.y,
+      d.x + d.width,       d.y + d.height / 2.0,
+      d.x + d.width / 2.0, d.y + d.height,
+      d.x,                 d.y + d.height / 2.0,
+    ),
+    fill: d.fill, stroke: d.stroke, class: d.class,
+  },
+  SvgFundamental::Label {
+    content: d.text,
+    x: d.x + d.width / 2.0,
+    y: d.y + d.height / 2.0,
+    fill: none, class: d.class,
+  },
+]
+
+@block("terminator")
+type Terminator {
+  @inline(0) text: utf8
+  x: f64?  y: f64?  width: f64?  height: f64?
+  fill: utf8?  stroke: utf8?  class: list<utf8>?
+}
+
+// Terminator: rounded-corner rect is a single Rect for now — true
+// rounded corners come when SvgFundamental::Rect grows an `rx` field.
+terminator_lower = fn(t: Terminator) -> list<SvgFundamental> [
+  SvgFundamental::Rect {
+    x: t.x, y: t.y, width: t.width, height: t.height,
+    fill: t.fill, stroke: t.stroke, class: t.class,
+  },
+  SvgFundamental::Label {
+    content: t.text,
+    x: t.x + t.width / 2.0,
+    y: t.y + t.height / 2.0,
+    fill: none, class: t.class,
+  },
+]
+
+// ── Stdlib headings ────────────────────────────────────────────────
+
+@block("h1") type H1 { @inline(0) text: utf8 }
+@block("h2") type H2 { @inline(0) text: utf8 }
+@block("h3") type H3 { @inline(0) text: utf8 }
+@block("h4") type H4 { @inline(0) text: utf8 }
+@block("h5") type H5 { @inline(0) text: utf8 }
+@block("h6") type H6 { @inline(0) text: utf8 }
+
+h1_lower = fn(h: H1) -> list<HtmlFundamental> [
+  HtmlFundamental::Paragraph { class: ["heading-1"], spans: [h.text] }
+]
+h2_lower = fn(h: H2) -> list<HtmlFundamental> [
+  HtmlFundamental::Paragraph { class: ["heading-2"], spans: [h.text] }
+]
+h3_lower = fn(h: H3) -> list<HtmlFundamental> [
+  HtmlFundamental::Paragraph { class: ["heading-3"], spans: [h.text] }
+]
+h4_lower = fn(h: H4) -> list<HtmlFundamental> [
+  HtmlFundamental::Paragraph { class: ["heading-4"], spans: [h.text] }
+]
+h5_lower = fn(h: H5) -> list<HtmlFundamental> [
+  HtmlFundamental::Paragraph { class: ["heading-5"], spans: [h.text] }
+]
+h6_lower = fn(h: H6) -> list<HtmlFundamental> [
+  HtmlFundamental::Paragraph { class: ["heading-6"], spans: [h.text] }
+]

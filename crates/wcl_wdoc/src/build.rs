@@ -76,7 +76,7 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
             None => return Err(BuildError::BadPage("page has no name label".into())),
         };
 
-        let rendered_blocks = page.blocks().filter_map(|b| render_block(&b));
+        let rendered_blocks = page.blocks().filter_map(|b| render_block(&doc, &b));
         let html = render_page(&page_name, &css, rendered_blocks);
 
         let out_path = out_dir.join(format!("{page_name}.html"));
