@@ -136,13 +136,35 @@ fn astar_route(
         return Some(vec![src, dst]);
     }
     // Unblock the start and goal cells so we can enter / leave them
-    // even if they sit inside an obstacle's inflated bbox.
+    // even if they sit inside an obstacle's inflated bbox. Also
+    // unblock the cell *adjacent* to each — for start, the cell in
+    // the egress direction (the first move target); for goal, the
+    // cell in the ingress direction (the cell the arriving move
+    // comes from). Without this, the source/destination shape's
+    // PAD inflation can block the only valid first / last move.
     let mut blocked = blocked;
-    set_blocked(&mut blocked, gw, start_cell, false);
-    set_blocked(&mut blocked, gw, goal_cell, false);
-
     let goal_dir = dst_side.outward();
     let start_dir = src_side.outward();
+    set_blocked(&mut blocked, gw, start_cell, false);
+    set_blocked(&mut blocked, gw, goal_cell, false);
+    set_blocked(
+        &mut blocked,
+        gw,
+        Cell {
+            x: start_cell.x + start_dir.0,
+            y: start_cell.y + start_dir.1,
+        },
+        false,
+    );
+    set_blocked(
+        &mut blocked,
+        gw,
+        Cell {
+            x: goal_cell.x + goal_dir.0,
+            y: goal_cell.y + goal_dir.1,
+        },
+        false,
+    );
 
     let start = Node {
         cell: start_cell,

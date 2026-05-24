@@ -57,11 +57,12 @@ fn build_emits_fundamentals_for_example_site() {
         ),
         "{index}"
     );
-    // diagram SVG wrapper
+    // diagram SVG wrapper — the outer width/height pin the page
+    // layout slot; the viewBox is computed to wrap the content
+    // bbox, so we don't pin its exact value here.
     assert!(
         index.contains(
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"280\" height=\"130\" \
-             viewBox=\"0 0 280 130\">"
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"280\" height=\"130\" viewBox=\""
         ),
         "{index}"
     );
@@ -1306,5 +1307,142 @@ page index {
             panic!("expected BadLink, got DuplicateId({page}: {id})")
         }
         Ok(n) => panic!("expected BadLink, got Ok({n})"),
+    }
+}
+
+// ── Fit-to-viewport test ───────────────────────────────────────────
+
+#[test]
+fn build_fit_viewbox_wraps_layered_content() {
+    // The layered solver produces content much larger than the
+    // declared width/height. The viewBox must wrap the actual
+    // content bbox so it scales to fit instead of being clipped.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("fit.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 100
+    height = 50
+    layout = :layered
+    layer_gap = 30.0
+
+    process "A" { id = a width = 200.0 height = 60.0 }
+    process "B" { id = b width = 200.0 height = 60.0 }
+    process "C" { id = c width = 200.0 height = 60.0 }
+    a -> b
+    b -> c
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Outer width / height match the declared dims (page-layout slot).
+    assert!(
+        html.contains("width=\"100\" height=\"50\""),
+        "outer dims should match declared 100x50:\n{html}"
+    );
+
+    // Extract the viewBox attribute and parse `x y w h`.
+    let vb = html
+        .split("viewBox=\"")
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .expect("viewBox present");
+    let parts: Vec<f64> = vb
+        .split_whitespace()
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    assert_eq!(parts.len(), 4, "expected 4 viewBox numbers, got: {vb}");
+    let (_, _, vw, vh) = (parts[0], parts[1], parts[2], parts[3]);
+    // Content is 200 wide × 3 layers of 60 + 2 gaps of 30 = 240 tall.
+    // The viewBox must encompass that (plus padding).
+    assert!(
+        vw >= 200.0,
+        "viewBox width {vw} should wrap 200-wide content"
+    );
+    assert!(
+        vh >= 240.0,
+        "viewBox height {vh} should wrap 240-tall content"
+    );
+}
+
+#[test]
+fn build_routes_around_destination_shape() {
+    // The destination's `connect_points = [:south]` forces ingress
+    // from below. With src and dst horizontally aligned, the path
+    // must go down, east, and up — not cut straight through the
+    // destination's bbox to reach its south edge.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("dst_obstacle.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 400
+    height = 200
+
+    rect {
+      id = src_node
+      x = 10.0  y = 80.0  width = 80.0  height = 40.0
+      fill = "#cce"
+      connect_points = [:east]
+    }
+    rect {
+      id = dst_node
+      x = 200.0  y = 80.0  width = 80.0  height = 40.0
+      fill = "#cec"
+      connect_points = [:south]
+    }
+    src_node -> dst_node
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // Extract the single polyline.
+    let poly = html
+        .split("<polyline points=\"")
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .expect("polyline present");
+    let points: Vec<(f64, f64)> = poly
+        .split_whitespace()
+        .filter_map(|p| {
+            let mut it = p.split(',');
+            let x: f64 = it.next()?.parse().ok()?;
+            let y: f64 = it.next()?.parse().ok()?;
+            Some((x, y))
+        })
+        .collect();
+    // dst_node bbox: x=200..280, y=80..120. No polyline segment may
+    // have its *interior* cross that rectangle. (Endpoints touch the
+    // south edge at y=120 — that's the anchor and is permitted.)
+    for window in points.windows(2) {
+        let (a, b) = (window[0], window[1]);
+        // Walk along the segment in small steps; if any midpoint is
+        // strictly inside the destination's bbox, the router cut
+        // through the shape.
+        let steps = 20;
+        for i in 1..steps {
+            let t = i as f64 / steps as f64;
+            let x = a.0 + (b.0 - a.0) * t;
+            let y = a.1 + (b.1 - a.1) * t;
+            let inside = x > 200.0 && x < 280.0 && y > 80.0 && y < 120.0;
+            assert!(
+                !inside,
+                "polyline segment {a:?} -> {b:?} crosses dst_node interior at ({x}, {y})\nfull polyline: {poly}"
+            );
+        }
     }
 }

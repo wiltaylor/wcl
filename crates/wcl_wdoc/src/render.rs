@@ -22,6 +22,18 @@ struct ShapeMetrics {
 }
 type ShapePositions = HashMap<String, ShapeMetrics>;
 
+/// Accumulator passed through the position-collection walk. The
+/// `positions` map only stores id'd shapes (it's keyed by id, for
+/// the edge pass to resolve `lhs -> rhs`). The `bboxes` Vec stores
+/// every shape's absolute bbox regardless of id — used by the
+/// fit-to-viewport pass to compute the SVG `viewBox` so content
+/// always fills its declared `width` × `height`.
+#[derive(Default)]
+struct Collector {
+    positions: ShapePositions,
+    bboxes: Vec<(f64, f64, f64, f64)>,
+}
+
 /// Lowering recursion guard. A lowering may emit other custom kinds
 /// that themselves lower further; this caps how deep we'll follow
 /// before bailing.
@@ -161,32 +173,73 @@ fn render_diagram(doc: &Document, block: &Block<'_>) -> String {
     let width = field_i64(block, "width").unwrap_or(0);
     let height = field_i64(block, "height").unwrap_or(0);
     let (vw, vh) = (width as f64, height as f64);
-    let mut positions: ShapePositions = HashMap::new();
-    collect_layout_children(block, 0.0, 0.0, vw, vh, &mut positions);
+    let mut collector = Collector::default();
+    collect_layout_children(block, 0.0, 0.0, vw, vh, &mut collector);
     let shapes: String = render_layout_children(doc, block, vw, vh);
-    let edges = render_edges(block, &positions, (vw, vh));
+    let (edges, edge_bboxes) = render_edges(block, &collector.positions, (vw, vh));
+    let viewbox = fit_viewbox(&collector.bboxes, &edge_bboxes, vw, vh);
     let defs = if edges.is_empty() { "" } else { ARROW_MARKER };
     let mut out = format!("<svg{cls}");
     append_attr(&mut out, "id", field_id(block, "id").as_deref());
     write!(
         out,
         " xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" \
-         viewBox=\"0 0 {width} {height}\">{defs}{shapes}{edges}</svg>"
+         viewBox=\"{viewbox}\">{defs}{shapes}{edges}</svg>"
     )
     .expect("write to String");
     out
 }
 
+/// Compute the SVG viewBox that wraps every rendered shape and
+/// polyline. With default `preserveAspectRatio`, this scales
+/// content to fit the declared `width` × `height` while preserving
+/// aspect ratio. Empty diagrams fall back to `0 0 W H`.
+fn fit_viewbox(
+    shape_bboxes: &[(f64, f64, f64, f64)],
+    edge_bboxes: &[(f64, f64, f64, f64)],
+    width: f64,
+    height: f64,
+) -> String {
+    const PAD: f64 = 10.0;
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for &(x, y, w, h) in shape_bboxes.iter().chain(edge_bboxes.iter()) {
+        if x < min_x {
+            min_x = x;
+        }
+        if y < min_y {
+            min_y = y;
+        }
+        if x + w > max_x {
+            max_x = x + w;
+        }
+        if y + h > max_y {
+            max_y = y + h;
+        }
+    }
+    if !min_x.is_finite() {
+        return format!("0 0 {width} {height}");
+    }
+    let bx = min_x - PAD;
+    let by = min_y - PAD;
+    let bw = (max_x - min_x).max(0.0) + 2.0 * PAD;
+    let bh = (max_y - min_y).max(0.0) + 2.0 * PAD;
+    format!("{bx} {by} {bw} {bh}")
+}
+
 /// Iterate `block`'s children under the layout specified by the
 /// block's `layout` field, recording each id'd shape's absolute
-/// bbox + anchors in `out`. Used for both Diagram and Container.
+/// bbox + anchors in `out.positions` and every shape's bbox in
+/// `out.bboxes`. Used for both Diagram and Container.
 fn collect_layout_children(
     block: &Block<'_>,
     tx: f64,
     ty: f64,
     parent_w: f64,
     parent_h: f64,
-    out: &mut ShapePositions,
+    out: &mut Collector,
 ) {
     let layout = field_symbol(block, "layout").unwrap_or_default();
     match layout.as_str() {
@@ -215,7 +268,7 @@ fn render_layout_children(doc: &Document, block: &Block<'_>, pw: f64, ph: f64) -
     }
 }
 
-fn collect_grid_children(block: &Block<'_>, tx: f64, ty: f64, out: &mut ShapePositions) {
+fn collect_grid_children(block: &Block<'_>, tx: f64, ty: f64, out: &mut Collector) {
     let cols = field_i64(block, "columns").unwrap_or(1).max(1) as usize;
     let cw = field_f64(block, "cell_width").unwrap_or(0.0);
     let ch = field_f64(block, "cell_height").unwrap_or(0.0);
@@ -229,7 +282,7 @@ fn collect_grid_children(block: &Block<'_>, tx: f64, ty: f64, out: &mut ShapePos
     }
 }
 
-fn collect_layered_children(block: &Block<'_>, tx: f64, ty: f64, out: &mut ShapePositions) {
+fn collect_layered_children(block: &Block<'_>, tx: f64, ty: f64, out: &mut Collector) {
     let children: Vec<Block<'_>> = block.blocks().collect();
     let (offsets, _, _) = compute_layered_plan(block, &children);
     for (child, (cx, cy)) in children.iter().zip(offsets) {
@@ -250,8 +303,8 @@ fn compute_layered_plan(
     let direction = field_symbol(block, "direction")
         .and_then(|s| Direction::from_symbol(&s))
         .unwrap_or(Direction::TopToBottom);
-    let layer_gap = field_f64(block, "layer_gap").unwrap_or(30.0);
-    let node_gap = field_f64(block, "node_gap").unwrap_or(20.0);
+    let layer_gap = field_f64(block, "layer_gap").unwrap_or(40.0);
+    let node_gap = field_f64(block, "node_gap").unwrap_or(40.0);
 
     let nodes: Vec<layered::Node> = children
         .iter()
@@ -317,21 +370,21 @@ const ARROW_MARKER: &str = "<defs><marker id=\"wdoc-arrow\" viewBox=\"0 0 10 10\
     <path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"currentColor\" /></marker></defs>";
 
 /// Walk the diagram subtree once and record each id'd shape's
-/// absolute bounding box + resolved anchor positions. Mirrors the
-/// geometry computed by `render_*` but without producing SVG — so
-/// the edge pass can join shapes by id regardless of how deeply they
-/// nest inside containers / grids.
+/// absolute bounding box + resolved anchor positions, plus every
+/// shape's bbox (id or not) for the fit-to-viewport pass. Mirrors
+/// the geometry computed by `render_*` but without producing SVG.
 fn collect_shape_positions(
     block: &Block<'_>,
     tx: f64,
     ty: f64,
     parent_w: f64,
     parent_h: f64,
-    out: &mut ShapePositions,
+    out: &mut Collector,
 ) {
-    let record = |block: &Block<'_>, bbox: (f64, f64, f64, f64), out: &mut ShapePositions| {
+    let record = |block: &Block<'_>, bbox: (f64, f64, f64, f64), out: &mut Collector| {
+        out.bboxes.push(bbox);
         if let Some(id) = field_id(block, "id") {
-            out.insert(id, build_metrics(block, bbox));
+            out.positions.insert(id, build_metrics(block, bbox));
         }
     };
     match block.kind() {
@@ -354,9 +407,32 @@ fn collect_shape_positions(
             record(block, (tx + x, ty + y, w, h), out);
             collect_layout_children(block, tx + x, ty + y, w, h, out);
         }
-        // `line` and `polygon` have no single anchor point usable as
-        // an edge endpoint; they're skipped.
-        "line" | "polygon" => {}
+        // Lines and polygons aren't usable as edge endpoints (they
+        // have no single anchor point) but their bboxes still
+        // matter for the fit-to-viewport pass — push them straight
+        // into `out.bboxes` without going through `record`.
+        "line" => {
+            let x1 = field_f64(block, "x1").unwrap_or(0.0);
+            let y1 = field_f64(block, "y1").unwrap_or(0.0);
+            let x2 = field_f64(block, "x2").unwrap_or(0.0);
+            let y2 = field_f64(block, "y2").unwrap_or(0.0);
+            let (ox, oy) = resolve_point_anchor(block, parent_w, parent_h);
+            let (min_x, max_x) = if x1 < x2 { (x1, x2) } else { (x2, x1) };
+            let (min_y, max_y) = if y1 < y2 { (y1, y2) } else { (y2, y1) };
+            out.bboxes.push((
+                tx + min_x + ox,
+                ty + min_y + oy,
+                max_x - min_x,
+                max_y - min_y,
+            ));
+        }
+        "polygon" => {
+            if let Some(bbox) = polygon_bbox(block) {
+                let (ox, oy) = resolve_point_anchor(block, parent_w, parent_h);
+                out.bboxes
+                    .push((tx + bbox.0 + ox, ty + bbox.1 + oy, bbox.2, bbox.3));
+            }
+        }
         // Custom shapes (process, decision, terminator, user-defined,
         // …) follow the same convention as fundamentals: x/y/width/
         // height as a bounding box. We read those directly without
@@ -373,6 +449,30 @@ fn collect_shape_positions(
             }
         }
     }
+}
+
+/// Parse a polygon's `points` field ("x1,y1 x2,y2 …") into a
+/// bounding box relative to the block's local origin. Returns
+/// `None` when the string is empty or malformed.
+fn polygon_bbox(block: &Block<'_>) -> Option<(f64, f64, f64, f64)> {
+    let points = field_utf8(block, "points")?;
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for pair in points.split_whitespace() {
+        let (xs, ys) = pair.split_once(',')?;
+        let x: f64 = xs.parse().ok()?;
+        let y: f64 = ys.parse().ok()?;
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+    }
+    if !min_x.is_finite() {
+        return None;
+    }
+    Some((min_x, min_y, max_x - min_x, max_y - min_y))
 }
 
 /// Build the `ShapeMetrics` for a shape given its absolute bounding
@@ -412,11 +512,14 @@ fn bbox_center(bbox: &(f64, f64, f64, f64)) -> (f64, f64) {
 
 /// `true` if `(px, py)` sits on or inside the closed bounding box.
 /// Used to skip ancestor containers from the router's obstacle
-/// list — the source/destination anchor sits on the source shape's
-/// outline, which is *inside* any enclosing container.
+/// list — the source/destination anchor sits *strictly inside* any
+/// enclosing container. Boundary points (a shape's own anchor on
+/// its bbox edge) do not count as contained, so a source / dest
+/// shape stays an obstacle while still letting the path leave /
+/// enter via its anchor cell (`astar_route` unblocks that cell).
 fn bbox_contains(bbox: &(f64, f64, f64, f64), p: (f64, f64)) -> bool {
     let (x, y, w, h) = *bbox;
-    p.0 >= x && p.0 <= x + w && p.1 >= y && p.1 <= y + h
+    p.0 > x && p.0 < x + w && p.1 > y && p.1 < y + h
 }
 
 /// Pick the source/destination anchor pair with the smallest
@@ -452,23 +555,43 @@ fn pick_closest_pair(
 
 /// Two-step pipeline: first plan every edge into a polyline, then
 /// run the separation pass over the whole set, then serialize.
-/// Edges are gathered from the diagram block and every nested
-/// container so a container's own `@connections(Edge) edges` field
-/// participates in rendering alongside diagram-level edges.
-fn render_edges(block: &Block<'_>, positions: &ShapePositions, viewport: (f64, f64)) -> String {
+/// Returns the rendered SVG plus a bbox per polyline so the
+/// fit-to-viewport pass in `render_diagram` can include edges in
+/// the content bbox. Edges are gathered from the diagram block
+/// and every nested container so a container's own
+/// `@connections(Edge) edges` field participates alongside
+/// diagram-level edges.
+fn render_edges(
+    block: &Block<'_>,
+    positions: &ShapePositions,
+    viewport: (f64, f64),
+) -> (String, Vec<(f64, f64, f64, f64)>) {
     let mut items: Vec<Value> = Vec::new();
     gather_edges_recursive(block, &mut items);
     if items.is_empty() {
-        return String::new();
+        return (String::new(), Vec::new());
     }
 
     let routing_mode = field_symbol(block, "routing").unwrap_or_default();
     let straight = routing_mode == "straight";
     let separation = field_f64(block, "edge_separation").unwrap_or(4.0);
 
+    // Pre-pass: when a shape participates in multiple edges (as
+    // source or destination), pick a single shared anchor for that
+    // role so every edge converges at the same point rather than
+    // each picking its own closest anchor independently.
+    let (source_overrides, dest_overrides) = build_shared_anchors(&items, positions);
+
     let mut planned: Vec<(EdgePath, Option<String>)> = Vec::new();
     for item in &items {
-        if let Some(plan) = plan_edge(item, positions, viewport, straight) {
+        if let Some(plan) = plan_edge(
+            item,
+            positions,
+            viewport,
+            straight,
+            &source_overrides,
+            &dest_overrides,
+        ) {
             planned.push(plan);
         }
     }
@@ -480,10 +603,31 @@ fn render_edges(block: &Block<'_>, positions: &ShapePositions, viewport: (f64, f
         }
     }
     let mut out = String::new();
+    let mut bboxes: Vec<(f64, f64, f64, f64)> = Vec::new();
     for (path, kind) in planned {
+        if let Some(bbox) = polyline_bbox(&path.points) {
+            bboxes.push(bbox);
+        }
         out.push_str(&serialize_edge(&path, kind.as_deref(), straight));
     }
-    out
+    (out, bboxes)
+}
+
+fn polyline_bbox(points: &[(f64, f64)]) -> Option<(f64, f64, f64, f64)> {
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for &(x, y) in points {
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+    }
+    if !min_x.is_finite() {
+        return None;
+    }
+    Some((min_x, min_y, max_x - min_x, max_y - min_y))
 }
 
 /// Walk the block tree depth-first and collect every `edges` field
@@ -503,11 +647,101 @@ fn gather_edges_recursive(block: &Block<'_>, out: &mut Vec<Value>) {
     }
 }
 
+/// Build the source / destination anchor overrides. When a shape
+/// appears as the source of multiple edges, we pick one shared
+/// egress anchor (the one closest to the centroid of the
+/// destinations' bbox centers). Same for destinations. Self-loops
+/// are excluded. Shapes participating in only one edge get no
+/// override and fall back to per-edge `pick_closest_pair`.
+type AnchorMap = HashMap<String, SidedAnchor>;
+
+fn build_shared_anchors(items: &[Value], positions: &ShapePositions) -> (AnchorMap, AnchorMap) {
+    let mut src_targets: HashMap<String, Vec<(f64, f64)>> = HashMap::new();
+    let mut dst_sources: HashMap<String, Vec<(f64, f64)>> = HashMap::new();
+    for v in items {
+        let Value::Record { fields, .. } = v else {
+            continue;
+        };
+        let Some(s) = fields.get("source").and_then(edge_endpoint_id) else {
+            continue;
+        };
+        let Some(d) = fields.get("destination").and_then(edge_endpoint_id) else {
+            continue;
+        };
+        if s == d {
+            continue;
+        }
+        if let Some(d_metrics) = positions.get(&d) {
+            src_targets
+                .entry(s.clone())
+                .or_default()
+                .push(bbox_center(&d_metrics.bbox));
+        }
+        if let Some(s_metrics) = positions.get(&s) {
+            dst_sources
+                .entry(d)
+                .or_default()
+                .push(bbox_center(&s_metrics.bbox));
+        }
+    }
+    let mut sources = AnchorMap::new();
+    let mut dests = AnchorMap::new();
+    for (id, targets) in src_targets {
+        if targets.len() < 2 {
+            continue;
+        }
+        let Some(metrics) = positions.get(&id) else {
+            continue;
+        };
+        let centroid = centroid_of(&targets);
+        if let Some(anchor) = pick_anchor_toward(&metrics.anchors, centroid) {
+            sources.insert(id, anchor);
+        }
+    }
+    for (id, sources_centers) in dst_sources {
+        if sources_centers.len() < 2 {
+            continue;
+        }
+        let Some(metrics) = positions.get(&id) else {
+            continue;
+        };
+        let centroid = centroid_of(&sources_centers);
+        if let Some(anchor) = pick_anchor_toward(&metrics.anchors, centroid) {
+            dests.insert(id, anchor);
+        }
+    }
+    (sources, dests)
+}
+
+fn centroid_of(points: &[(f64, f64)]) -> (f64, f64) {
+    let n = points.len() as f64;
+    let sx: f64 = points.iter().map(|p| p.0).sum();
+    let sy: f64 = points.iter().map(|p| p.1).sum();
+    (sx / n, sy / n)
+}
+
+fn pick_anchor_toward(anchors: &[SidedAnchor], target: (f64, f64)) -> Option<SidedAnchor> {
+    anchors
+        .iter()
+        .min_by(|a, b| {
+            let da = (a.1 - target.0).powi(2) + (a.2 - target.1).powi(2);
+            let db = (b.1 - target.0).powi(2) + (b.2 - target.1).powi(2);
+            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .copied()
+}
+
+fn pick_closest_to(anchors: &[SidedAnchor], target: (f64, f64)) -> Option<SidedAnchor> {
+    pick_anchor_toward(anchors, target)
+}
+
 fn plan_edge(
     value: &Value,
     positions: &ShapePositions,
     viewport: (f64, f64),
     straight: bool,
+    source_overrides: &AnchorMap,
+    dest_overrides: &AnchorMap,
 ) -> Option<(EdgePath, Option<String>)> {
     let Value::Record { fields, .. } = value else {
         return None;
@@ -517,7 +751,16 @@ fn plan_edge(
     let src = positions.get(&source_id)?;
     let dst = positions.get(&dest_id)?;
     let is_self_loop = source_id == dest_id;
-    let pair = pick_closest_pair(&src.anchors, &dst.anchors, is_self_loop);
+    // Shared-anchor overrides win over per-edge closest-pair, so
+    // edges converging at the same shape end at the same point.
+    let src_override = source_overrides.get(&source_id).copied();
+    let dst_override = dest_overrides.get(&dest_id).copied();
+    let pair = match (src_override, dst_override) {
+        (Some(s), Some(d)) => Some((s, d)),
+        (Some(s), None) => pick_closest_to(&dst.anchors, (s.1, s.2)).map(|d| (s, d)),
+        (None, Some(d)) => pick_closest_to(&src.anchors, (d.1, d.2)).map(|s| (s, d)),
+        (None, None) => pick_closest_pair(&src.anchors, &dst.anchors, is_self_loop),
+    };
     let kind = match fields.get("kind") {
         Some(Value::Symbol(k)) => Some(k.clone()),
         _ => None,
@@ -532,16 +775,18 @@ fn plan_edge(
         }
     } else {
         let ((src_side, sx, sy), (dst_side, dx, dy)) = pair?;
-        // Obstacles: every other shape, excluding the source and
-        // destination shapes themselves, and excluding any shape
-        // whose bbox *contains* either endpoint anchor. The
-        // containing-shape exclusion handles nested containers:
-        // if the source anchor sits inside group_left's bbox,
-        // group_left is an ancestor scope rather than an obstacle
-        // the router must avoid.
+        // Obstacles: every shape *except* those whose bbox strictly
+        // contains an endpoint anchor (ancestor containers — the
+        // source / destination sits inside them). Source / dest
+        // shapes themselves stay in the list: their own anchors are
+        // on the bbox boundary, not strictly inside, so they're
+        // treated as obstacles. `astar_route` unblocks the snapped
+        // start / goal cells so the path can leave / enter via the
+        // anchor without traversing the rest of the shape body —
+        // which is exactly what stops the router cutting through a
+        // shape just because it's the destination.
         let obstacles: Vec<Obstacle> = positions
             .iter()
-            .filter(|(id, _)| id.as_str() != source_id.as_str() && id.as_str() != dest_id.as_str())
             .filter(|(_, m)| !bbox_contains(&m.bbox, (sx, sy)) && !bbox_contains(&m.bbox, (dx, dy)))
             .map(|(_, m)| Obstacle {
                 x: m.bbox.0,
