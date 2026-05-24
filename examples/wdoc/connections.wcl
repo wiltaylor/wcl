@@ -68,4 +68,32 @@ page index {
 
     inner_a -> inner_b :data
   }
+
+  h1 "Obstacle routing" {}
+
+  // Elbow routing finds an orthogonal path around shapes that sit
+  // between source and destination. `blocker` is positioned in the
+  // direct horizontal corridor, so the arrow bends around it.
+  diagram {
+    width  = 320
+    height = 200
+
+    rect {
+      id = src_a
+      x = 10.0  y = 80.0  width = 60.0  height = 40.0
+      fill = "#cce"  stroke = "#446"
+    }
+    rect {
+      id = blocker
+      x = 130.0  y = 60.0  width = 60.0  height = 80.0
+      fill = "#ddd"  stroke = "#888"
+    }
+    rect {
+      id = dst_a
+      x = 250.0  y = 80.0  width = 60.0  height = 40.0
+      fill = "#cec"  stroke = "#494"
+    }
+
+    src_a -> dst_a
+  }
 }

@@ -48,6 +48,17 @@ connection Edge: &SvgBlock -> &SvgBlock : EdgeKind
 // when drawing an arrow. Default (field omitted) = all four sides.
 symbol_set AnchorSide { north east south west }
 
+// Connection routing strategy for a diagram's edges.
+//   :elbow    (default) — orthogonal multi-bend polyline that
+//                         routes around other shapes via A*.
+//   :straight           — single line directly between anchors.
+symbol_set EdgeRouting { elbow straight }
+
+// Auto-layout direction. Only used when `layout = :layered`.
+//   :top_to_bottom (default) — ranks stack downward.
+//   :left_to_right           — ranks stack rightward.
+symbol_set LayoutDirection { top_to_bottom left_to_right }
+
 @block("page")
 type Page {
   @inline(0) name: identifier
@@ -120,19 +131,44 @@ type Diagram extends WdocBlock {
   height: i64
   id:     identifier?
   class:  list<utf8>?
+
+  // Layout: :none (default) honors per-shape x/y; :grid uses the
+  // grid-cell knobs (cell_width/cell_height/columns/gap), same as
+  // Container; :layered topologically ranks shapes via the
+  // diagram's @connections(Edge) graph and assigns x/y.
+  layout:      symbol?
+  direction:   symbol?      // :top_to_bottom (default) | :left_to_right
+  layer_gap:   f64?         // gap between ranks
+  node_gap:    f64?         // gap between nodes within a rank
+  cell_width:  f64?
+  cell_height: f64?
+  columns:     i64?
+  gap:         f64?
+
+  // Edge rendering.
+  routing:         symbol?  // :elbow (default) | :straight
+  edge_separation: f64?     // nudge step for parallel edges (default 4)
+
   @children(SvgBlock) children: list<SvgBlock>
   @connections(Edge) edges: list<Edge>
   lower = fn(d: Diagram) -> list<HtmlFundamental> []
 }
 
 // SVG <g> group with optional layout. Layout modes:
-//   :none  (default) — children render at their own resolved boxes.
-//   :grid            — children are placed into a `columns × rows`
-//                      grid; each cell is `cell_width × cell_height`
-//                      separated by `gap`. Per-cell child receives
-//                      `(cell_width, cell_height)` as its parent
-//                      size, so anchored children stretch to the
-//                      cell.
+//   :none    (default) — children render at their own resolved boxes.
+//   :grid              — children are placed into a `columns × rows`
+//                        grid; each cell is `cell_width × cell_height`
+//                        separated by `gap`. Per-cell child receives
+//                        `(cell_width, cell_height)` as its parent
+//                        size, so anchored children stretch to the
+//                        cell.
+//   :layered           — topological rank from the container's
+//                        @connections(Edge) graph; each rank is
+//                        spaced by `layer_gap`, nodes within a
+//                        rank by `node_gap`. Flow direction is
+//                        controlled by `direction` (default
+//                        :top_to_bottom). Per-shape width/height
+//                        are honored.
 // Anchors on the container itself resolve against the parent box and
 // can resize the container; that new size flows to its own children.
 @block("container")
@@ -151,6 +187,9 @@ type Container extends SvgBlock {
   cell_width:  f64?
   cell_height: f64?
   gap:         f64?
+  direction:   symbol?    // :top_to_bottom (default) | :left_to_right
+  layer_gap:   f64?
+  node_gap:    f64?
 
   // Anchors (resolve against the parent's box).
   anchor_left:   f64?
@@ -161,6 +200,7 @@ type Container extends SvgBlock {
   connect_points: list<AnchorSide>?
 
   @children(SvgBlock) children: list<SvgBlock>
+  @connections(Edge) edges: list<Edge>
   // `container` is itself rendered directly as <g>; the renderer
   // never invokes its `lower`. Declared only to satisfy the interface.
   lower = fn(c: Container) -> list<SvgFundamental> []
@@ -299,7 +339,10 @@ union HtmlFundamental {
 @block("process")
 type Process extends SvgBlock {
   @inline(0) text: utf8
-  x: f64?  y: f64?  width: f64?  height: f64?
+  // Defaults let `:layered` layout position these shapes via a
+  // wrapper transform: the child renders at (0,0) of its assigned
+  // cell rather than failing the lowering when x/y are omitted.
+  x = 0.0  y = 0.0  width = 80.0  height = 40.0
   fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
   connect_points: list<AnchorSide>?
 
@@ -320,7 +363,7 @@ type Process extends SvgBlock {
 @block("decision")
 type Decision extends SvgBlock {
   @inline(0) text: utf8
-  x: f64?  y: f64?  width: f64?  height: f64?
+  x = 0.0  y = 0.0  width = 80.0  height = 40.0
   fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
   connect_points: list<AnchorSide>?
 
@@ -349,7 +392,7 @@ type Decision extends SvgBlock {
 @block("terminator")
 type Terminator extends SvgBlock {
   @inline(0) text: utf8
-  x: f64?  y: f64?  width: f64?  height: f64?
+  x = 0.0  y = 0.0  width = 80.0  height = 40.0
   fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
   connect_points: list<AnchorSide>?
 

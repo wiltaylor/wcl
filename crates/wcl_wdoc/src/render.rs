@@ -3,16 +3,21 @@ use std::fmt::Write as _;
 
 use wcl_lang::{Block, Document, FnValue, Value, VariantPayload};
 
+use crate::layered::{self, Direction};
+use crate::routing::{self, EdgePath, Obstacle, Side};
+
 /// Per-shape geometry used by the edge pass: the absolute bounding
 /// box (in diagram coords, with all container / grid translates
 /// already baked in) plus the resolved list of edge-anchor points
 /// the shape exposes. When the source block declares no
 /// `connect_points`, the anchors default to the midpoint of each
-/// bounding-box side.
+/// bounding-box side. Each anchor records the `Side` it lives on
+/// so the elbow router knows which direction the first / last leg
+/// must travel.
 #[derive(Clone)]
 struct ShapeMetrics {
     bbox: (f64, f64, f64, f64),
-    anchors: Vec<(f64, f64)>,
+    anchors: Vec<(Side, f64, f64)>,
 }
 type ShapePositions = HashMap<String, ShapeMetrics>;
 
@@ -151,15 +156,11 @@ fn render_diagram(doc: &Document, block: &Block<'_>) -> String {
     let cls = class_attr(block);
     let width = field_i64(block, "width").unwrap_or(0);
     let height = field_i64(block, "height").unwrap_or(0);
+    let (vw, vh) = (width as f64, height as f64);
     let mut positions: ShapePositions = HashMap::new();
-    for b in block.blocks() {
-        collect_shape_positions(&b, 0.0, 0.0, width as f64, height as f64, &mut positions);
-    }
-    let shapes: String = block
-        .blocks()
-        .filter_map(|b| render_shape(doc, &b, width as f64, height as f64))
-        .collect();
-    let edges = render_edges(block, &positions);
+    collect_layout_children(block, 0.0, 0.0, vw, vh, &mut positions);
+    let shapes: String = render_layout_children(doc, block, vw, vh);
+    let edges = render_edges(block, &positions, (vw, vh));
     let defs = if edges.is_empty() { "" } else { ARROW_MARKER };
     let mut out = format!("<svg{cls}");
     append_attr(&mut out, "id", field_id(block, "id").as_deref());
@@ -169,6 +170,140 @@ fn render_diagram(doc: &Document, block: &Block<'_>) -> String {
          viewBox=\"0 0 {width} {height}\">{defs}{shapes}{edges}</svg>"
     )
     .expect("write to String");
+    out
+}
+
+/// Iterate `block`'s children under the layout specified by the
+/// block's `layout` field, recording each id'd shape's absolute
+/// bbox + anchors in `out`. Used for both Diagram and Container.
+fn collect_layout_children(
+    block: &Block<'_>,
+    tx: f64,
+    ty: f64,
+    parent_w: f64,
+    parent_h: f64,
+    out: &mut ShapePositions,
+) {
+    let layout = field_symbol(block, "layout").unwrap_or_default();
+    match layout.as_str() {
+        "grid" => collect_grid_children(block, tx, ty, out),
+        "layered" => collect_layered_children(block, tx, ty, out),
+        _ => {
+            for child in block.blocks() {
+                collect_shape_positions(&child, tx, ty, parent_w, parent_h, out);
+            }
+        }
+    }
+}
+
+/// Symmetric: render `block`'s children using its `layout`. Caller
+/// supplies the parent box (`pw`, `ph`) that propagates to children
+/// not assigned an explicit cell.
+fn render_layout_children(doc: &Document, block: &Block<'_>, pw: f64, ph: f64) -> String {
+    let layout = field_symbol(block, "layout").unwrap_or_default();
+    match layout.as_str() {
+        "grid" => render_grid_children(doc, block),
+        "layered" => render_layered_children(doc, block),
+        _ => block
+            .blocks()
+            .filter_map(|b| render_shape(doc, &b, pw, ph))
+            .collect(),
+    }
+}
+
+fn collect_grid_children(block: &Block<'_>, tx: f64, ty: f64, out: &mut ShapePositions) {
+    let cols = field_i64(block, "columns").unwrap_or(1).max(1) as usize;
+    let cw = field_f64(block, "cell_width").unwrap_or(0.0);
+    let ch = field_f64(block, "cell_height").unwrap_or(0.0);
+    let gap = field_f64(block, "gap").unwrap_or(0.0);
+    for (i, child) in block.blocks().enumerate() {
+        let col = i % cols;
+        let row = i / cols;
+        let cx_off = col as f64 * (cw + gap);
+        let cy_off = row as f64 * (ch + gap);
+        collect_shape_positions(&child, tx + cx_off, ty + cy_off, cw, ch, out);
+    }
+}
+
+fn collect_layered_children(block: &Block<'_>, tx: f64, ty: f64, out: &mut ShapePositions) {
+    let children: Vec<Block<'_>> = block.blocks().collect();
+    let (offsets, _, _) = compute_layered_plan(block, &children);
+    for (child, (cx, cy)) in children.iter().zip(offsets) {
+        let pw = field_f64(child, "width").unwrap_or(80.0);
+        let ph = field_f64(child, "height").unwrap_or(40.0);
+        collect_shape_positions(child, tx + cx, ty + cy, pw, ph, out);
+    }
+}
+
+/// Compute the layered layout for a container/diagram's children
+/// and return (per-child offsets, per-child width, per-child height).
+/// The width/height returned reflect the size the renderer should
+/// pass downward as `parent_w` / `parent_h`.
+fn compute_layered_plan(
+    block: &Block<'_>,
+    children: &[Block<'_>],
+) -> (Vec<(f64, f64)>, Vec<f64>, Vec<f64>) {
+    let direction = field_symbol(block, "direction")
+        .and_then(|s| Direction::from_symbol(&s))
+        .unwrap_or(Direction::TopToBottom);
+    let layer_gap = field_f64(block, "layer_gap").unwrap_or(30.0);
+    let node_gap = field_f64(block, "node_gap").unwrap_or(20.0);
+
+    let nodes: Vec<layered::Node> = children
+        .iter()
+        .map(|c| layered::Node {
+            id: field_id(c, "id"),
+            size: (
+                field_f64(c, "width").unwrap_or(80.0),
+                field_f64(c, "height").unwrap_or(40.0),
+            ),
+        })
+        .collect();
+    let edges: Vec<(String, String)> = edge_id_pairs(block);
+    let offsets = layered::assign_layered_offsets(&nodes, &edges, direction, layer_gap, node_gap);
+    let widths: Vec<f64> = nodes.iter().map(|n| n.size.0).collect();
+    let heights: Vec<f64> = nodes.iter().map(|n| n.size.1).collect();
+    (offsets, widths, heights)
+}
+
+fn edge_id_pairs(block: &Block<'_>) -> Vec<(String, String)> {
+    let Some(dr) = block.typed_field("edges") else {
+        return Vec::new();
+    };
+    let Ok(value) = dr.value() else {
+        return Vec::new();
+    };
+    let Value::List(items) = value else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter_map(|v| {
+            let Value::Record { fields, .. } = v else {
+                return None;
+            };
+            let s = edge_endpoint_id(fields.get("source")?)?;
+            let d = edge_endpoint_id(fields.get("destination")?)?;
+            Some((s, d))
+        })
+        .collect()
+}
+
+fn render_layered_children(doc: &Document, block: &Block<'_>) -> String {
+    let children: Vec<Block<'_>> = block.blocks().collect();
+    let (offsets, widths, heights) = compute_layered_plan(block, &children);
+    let mut out = String::new();
+    for ((child, (tx, ty)), (cw, ch)) in children
+        .iter()
+        .zip(offsets)
+        .zip(widths.iter().zip(heights.iter()))
+    {
+        if let Some(rendered) = render_shape(doc, child, *cw, *ch) {
+            out.push_str(&format!(
+                "<g transform=\"translate({tx} {ty})\">{rendered}</g>"
+            ));
+        }
+    }
     out
 }
 
@@ -213,24 +348,7 @@ fn collect_shape_positions(
         "container" => {
             let (x, y, w, h) = resolve_container_box(block, parent_w, parent_h);
             record(block, (tx + x, ty + y, w, h), out);
-            let layout = field_symbol(block, "layout").unwrap_or_default();
-            if layout == "grid" {
-                let cols = field_i64(block, "columns").unwrap_or(1).max(1) as usize;
-                let cw = field_f64(block, "cell_width").unwrap_or(0.0);
-                let ch = field_f64(block, "cell_height").unwrap_or(0.0);
-                let gap = field_f64(block, "gap").unwrap_or(0.0);
-                for (i, child) in block.blocks().enumerate() {
-                    let col = i % cols;
-                    let row = i / cols;
-                    let cx_off = col as f64 * (cw + gap);
-                    let cy_off = row as f64 * (ch + gap);
-                    collect_shape_positions(&child, tx + x + cx_off, ty + y + cy_off, cw, ch, out);
-                }
-            } else {
-                for child in block.blocks() {
-                    collect_shape_positions(&child, tx + x, ty + y, w, h, out);
-                }
-            }
+            collect_layout_children(block, tx + x, ty + y, w, h, out);
         }
         // `line` and `polygon` have no single anchor point usable as
         // an edge endpoint; they're skipped.
@@ -265,19 +383,22 @@ fn build_metrics(block: &Block<'_>, bbox: (f64, f64, f64, f64)) -> ShapeMetrics 
     };
     let anchors = sides
         .iter()
-        .filter_map(|side| anchor_point_for_side(side, bbox))
+        .filter_map(|side| {
+            let s = Side::from_symbol(side)?;
+            let (x, y) = anchor_point_for_side(s, bbox);
+            Some((s, x, y))
+        })
         .collect();
     ShapeMetrics { bbox, anchors }
 }
 
-fn anchor_point_for_side(side: &str, bbox: (f64, f64, f64, f64)) -> Option<(f64, f64)> {
+fn anchor_point_for_side(side: Side, bbox: (f64, f64, f64, f64)) -> (f64, f64) {
     let (x, y, w, h) = bbox;
     match side {
-        "north" => Some((x + w / 2.0, y)),
-        "east" => Some((x + w, y + h / 2.0)),
-        "south" => Some((x + w / 2.0, y + h)),
-        "west" => Some((x, y + h / 2.0)),
-        _ => None,
+        Side::North => (x + w / 2.0, y),
+        Side::East => (x + w, y + h / 2.0),
+        Side::South => (x + w / 2.0, y + h),
+        Side::West => (x, y + h / 2.0),
     }
 }
 
@@ -285,19 +406,34 @@ fn bbox_center(bbox: &(f64, f64, f64, f64)) -> (f64, f64) {
     (bbox.0 + bbox.2 / 2.0, bbox.1 + bbox.3 / 2.0)
 }
 
+/// `true` if `(px, py)` sits on or inside the closed bounding box.
+/// Used to skip ancestor containers from the router's obstacle
+/// list — the source/destination anchor sits on the source shape's
+/// outline, which is *inside* any enclosing container.
+fn bbox_contains(bbox: &(f64, f64, f64, f64), p: (f64, f64)) -> bool {
+    let (x, y, w, h) = *bbox;
+    p.0 >= x && p.0 <= x + w && p.1 >= y && p.1 <= y + h
+}
+
 /// Pick the source/destination anchor pair with the smallest
 /// Euclidean distance. Returns `None` when either side has no
 /// anchors. When `is_self_loop` is true, pairs whose distance is
 /// zero are excluded so the rendered arrow has a visible length;
-/// the next-shortest pair wins.
-type Point = (f64, f64);
+/// the next-shortest pair wins. Returned tuples carry the `Side`
+/// the anchor lives on so the router knows the egress / ingress
+/// direction.
+type SidedAnchor = (Side, f64, f64);
 
-fn pick_closest_pair(src: &[Point], dst: &[Point], is_self_loop: bool) -> Option<(Point, Point)> {
-    let mut best: Option<(f64, Point, Point)> = None;
+fn pick_closest_pair(
+    src: &[SidedAnchor],
+    dst: &[SidedAnchor],
+    is_self_loop: bool,
+) -> Option<(SidedAnchor, SidedAnchor)> {
+    let mut best: Option<(f64, SidedAnchor, SidedAnchor)> = None;
     for &s in src {
         for &d in dst {
-            let dx = s.0 - d.0;
-            let dy = s.1 - d.1;
+            let dx = s.1 - d.1;
+            let dy = s.2 - d.2;
             let dist2 = dx * dx + dy * dy;
             if is_self_loop && dist2 == 0.0 {
                 continue;
@@ -310,10 +446,9 @@ fn pick_closest_pair(src: &[Point], dst: &[Point], is_self_loop: bool) -> Option
     best.map(|(_, s, d)| (s, d))
 }
 
-fn render_edges(block: &Block<'_>, positions: &ShapePositions) -> String {
-    // `edges` is a `@connections(Edge)`-projected field, so it lives
-    // on the schema rather than as a literal source-level field.
-    // `typed_field` is the only path that materialises projections.
+/// Two-step pipeline: first plan every edge into a polyline, then
+/// run the separation pass over the whole set, then serialize.
+fn render_edges(block: &Block<'_>, positions: &ShapePositions, viewport: (f64, f64)) -> String {
     let Some(dr) = block.typed_field("edges") else {
         return String::new();
     };
@@ -323,16 +458,37 @@ fn render_edges(block: &Block<'_>, positions: &ShapePositions) -> String {
     let Value::List(items) = value else {
         return String::new();
     };
-    let mut out = String::new();
+
+    let routing_mode = field_symbol(block, "routing").unwrap_or_default();
+    let straight = routing_mode == "straight";
+    let separation = field_f64(block, "edge_separation").unwrap_or(4.0);
+
+    let mut planned: Vec<(EdgePath, Option<String>)> = Vec::new();
     for item in &items {
-        if let Some(svg) = render_edge(item, positions) {
-            out.push_str(&svg);
+        if let Some(plan) = plan_edge(item, positions, viewport, straight) {
+            planned.push(plan);
         }
+    }
+    if !straight {
+        let mut paths: Vec<EdgePath> = planned.iter().map(|(p, _)| p.clone()).collect();
+        routing::separate_edges(&mut paths, separation);
+        for (slot, path) in planned.iter_mut().zip(paths) {
+            slot.0 = path;
+        }
+    }
+    let mut out = String::new();
+    for (path, kind) in planned {
+        out.push_str(&serialize_edge(&path, kind.as_deref(), straight));
     }
     out
 }
 
-fn render_edge(value: &Value, positions: &ShapePositions) -> Option<String> {
+fn plan_edge(
+    value: &Value,
+    positions: &ShapePositions,
+    viewport: (f64, f64),
+    straight: bool,
+) -> Option<(EdgePath, Option<String>)> {
     let Value::Record { fields, .. } = value else {
         return None;
     };
@@ -341,16 +497,67 @@ fn render_edge(value: &Value, positions: &ShapePositions) -> Option<String> {
     let src = positions.get(&source_id)?;
     let dst = positions.get(&dest_id)?;
     let is_self_loop = source_id == dest_id;
-    let ((x1, y1), (x2, y2)) = pick_closest_pair(&src.anchors, &dst.anchors, is_self_loop)
-        .unwrap_or((bbox_center(&src.bbox), bbox_center(&dst.bbox)));
-    let kind_attr = match fields.get("kind") {
-        Some(Value::Symbol(k)) => format!(" data-kind=\"{}\"", escape_html(k)),
-        _ => String::new(),
+    let pair = pick_closest_pair(&src.anchors, &dst.anchors, is_self_loop);
+    let kind = match fields.get("kind") {
+        Some(Value::Symbol(k)) => Some(k.clone()),
+        _ => None,
     };
-    Some(format!(
-        "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" \
-         stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\"{kind_attr} />"
-    ))
+    let points = if straight {
+        match pair {
+            Some(((_, x1, y1), (_, x2, y2))) => vec![(x1, y1), (x2, y2)],
+            None => {
+                let (a, b) = (bbox_center(&src.bbox), bbox_center(&dst.bbox));
+                vec![a, b]
+            }
+        }
+    } else {
+        let ((src_side, sx, sy), (dst_side, dx, dy)) = pair?;
+        // Obstacles: every other shape, excluding the source and
+        // destination shapes themselves, and excluding any shape
+        // whose bbox *contains* either endpoint anchor. The
+        // containing-shape exclusion handles nested containers:
+        // if the source anchor sits inside group_left's bbox,
+        // group_left is an ancestor scope rather than an obstacle
+        // the router must avoid.
+        let obstacles: Vec<Obstacle> = positions
+            .iter()
+            .filter(|(id, _)| id.as_str() != source_id.as_str() && id.as_str() != dest_id.as_str())
+            .filter(|(_, m)| !bbox_contains(&m.bbox, (sx, sy)) && !bbox_contains(&m.bbox, (dx, dy)))
+            .map(|(_, m)| Obstacle {
+                x: m.bbox.0,
+                y: m.bbox.1,
+                w: m.bbox.2,
+                h: m.bbox.3,
+            })
+            .collect();
+        routing::route_elbow((sx, sy), src_side, (dx, dy), dst_side, &obstacles, viewport)
+    };
+    Some((EdgePath { points }, kind))
+}
+
+fn serialize_edge(path: &EdgePath, kind: Option<&str>, straight: bool) -> String {
+    let kind_attr = match kind {
+        Some(k) => format!(" data-kind=\"{}\"", escape_html(k)),
+        None => String::new(),
+    };
+    if straight && path.points.len() == 2 {
+        let (x1, y1) = path.points[0];
+        let (x2, y2) = path.points[1];
+        return format!(
+            "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" \
+             stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\"{kind_attr} />"
+        );
+    }
+    let points: Vec<String> = path
+        .points
+        .iter()
+        .map(|(x, y)| format!("{x},{y}"))
+        .collect();
+    format!(
+        "<polyline points=\"{}\" fill=\"none\" \
+         stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\"{kind_attr} />",
+        points.join(" ")
+    )
 }
 
 fn edge_endpoint_id(v: &Value) -> Option<String> {
@@ -375,16 +582,7 @@ fn render_shape(doc: &Document, block: &Block<'_>, parent_w: f64, parent_h: f64)
 fn render_container(doc: &Document, block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let cls = class_attr(block);
     let (x, y, w, h) = resolve_container_box(block, parent_w, parent_h);
-
-    let layout = field_symbol(block, "layout").unwrap_or_default();
-    let inner = match layout.as_str() {
-        "grid" => render_grid_children(doc, block),
-        _ => block
-            .blocks()
-            .filter_map(|b| render_shape(doc, &b, w, h))
-            .collect::<String>(),
-    };
-
+    let inner = render_layout_children(doc, block, w, h);
     let transform = if x != 0.0 || y != 0.0 {
         format!(" transform=\"translate({x} {y})\"")
     } else {
@@ -603,7 +801,12 @@ fn block_to_record(doc: &Document, block: &Block<'_>, kind: &str) -> Option<Valu
         } else if let Some(field) = block.field(name) {
             field.value().cloned().unwrap_or(Value::None)
         } else {
-            Value::None
+            // Fall back to the schema's declared default
+            // (`name = expr` inline-default or `@default(expr)`)
+            // so a lowering that consumes `block.x` doesn't crash
+            // when the block omits the field but the type
+            // declared a value-typed default.
+            f.default_value().unwrap_or(Value::None)
         };
         map.insert(name.to_string(), val);
     }
@@ -998,8 +1201,16 @@ fn field_symbol(block: &Block<'_>, name: &str) -> Option<String> {
 }
 
 fn field_f64(block: &Block<'_>, name: &str) -> Option<f64> {
-    let field = block.field(name)?;
-    value_as_f64(field.value().ok()?)
+    if let Some(field) = block.field(name)
+        && let Some(v) = field.value().ok().and_then(value_as_f64)
+    {
+        return Some(v);
+    }
+    // Fall back to a schema-declared default (`name = 0.0` inline
+    // form or `@default(...)` decorator). This is what lets a
+    // layered child render at (x=0, y=0) without forcing every
+    // user to write x = 0.0 themselves.
+    value_as_f64(&block.schema()?.field(name)?.default_value()?)
 }
 
 fn field_i64(block: &Block<'_>, name: &str) -> Option<i64> {

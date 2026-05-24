@@ -108,36 +108,32 @@ page index {
 
   h2 "Flowchart" {}
 
-  // Connections wire the flow together. `validate -> check :flow`
-  // reads as "the `validate` step flows into the `check` step"; the
-  // renderer draws an arrow between the shapes' bounding-box
-  // centers, tagged with the kind for per-kind CSS styling.
+  // Layered auto-layout: shapes don't declare x/y. The renderer
+  // topologically ranks them from the connection graph and stacks
+  // each rank top-to-bottom (default direction). Elbow routing
+  // then connects them with right-angled paths.
   diagram {
-    width  = 320
-    height = 200
+    width     = 320
+    height    = 220
+    layout    = :layered
+    layer_gap = 20.0
 
     process "Validate" {
-      id = validate
-      x = 10.0
-      y = 10.0
+      id     = validate
       width  = 100.0
       height = 40.0
       fill   = "#eef"
       stroke = "#446"
     }
     decision "Match?" {
-      id = check
-      x = 10.0
-      y = 70.0
+      id     = check
       width  = 100.0
       height = 60.0
       fill   = "#fee"
       stroke = "#a44"
     }
     terminator "End" {
-      id = done
-      x = 10.0
-      y = 150.0
+      id     = done
       width  = 100.0
       height = 40.0
       fill   = "#efe"

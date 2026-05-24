@@ -6,7 +6,9 @@
 //! `wcl wdoc build` and `wcl wdoc serve`.
 
 pub mod build;
+mod layered;
 mod render;
+mod routing;
 pub mod serve;
 
 pub use build::{BuildError, build};

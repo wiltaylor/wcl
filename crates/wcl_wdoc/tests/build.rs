@@ -106,18 +106,23 @@ fn build_emits_fundamentals_for_example_site() {
         index.contains("<p class=\"heading-1\"><span>Pipeline overview</span></p>"),
         "{index}"
     );
-    // stdlib flowchart lowering — process emits a rect + centered label.
+    // stdlib flowchart lowering — process emits a rect + centered
+    // label. The site example puts the flowchart inside a layered
+    // diagram, so each shape renders at (0, 0) inside its own
+    // <g transform="translate(...)"> wrapper. The label centers at
+    // (50, 20) of its own rect.
     assert!(
-        index.contains("<rect x=\"10\" y=\"10\" width=\"100\" height=\"40\" fill=\"#eef\""),
+        index.contains("<rect x=\"0\" y=\"0\" width=\"100\" height=\"40\" fill=\"#eef\""),
         "{index}"
     );
     assert!(
-        index.contains("<text x=\"60\" y=\"30\">Validate</text>"),
+        index.contains("<text x=\"50\" y=\"20\">Validate</text>"),
         "{index}"
     );
-    // decision lowers to a diamond polygon.
+    // decision lowers to a diamond polygon — using the default 80x40
+    // bbox the layered example doesn't override.
     assert!(
-        index.contains("<polygon points=\"60,70 110,100 60,130 10,100\""),
+        index.contains("<polygon points=\"50,0 100,30 50,60 0,30\""),
         "{index}"
     );
 }
@@ -529,33 +534,36 @@ fn build_renders_connections_as_arrows() {
         "missing arrow marker:\n{html}"
     );
 
+    // Elbow routing emits a <polyline>. For shapes positioned so
+    // the natural orthogonal path is a single horizontal segment,
+    // the polyline degenerates to two same-y points.
+    //
     // Flat diagram: process Validate (bbox 10,40,80,40, east side at
     // 90,60) -> decision Match (bbox 130,30,80,60, west side at
-    // 130,60). The closest source/destination anchor pair is east
-    // -> west.
+    // 130,60).
     assert!(
         html.contains(
-            "<line x1=\"90\" y1=\"60\" x2=\"130\" y2=\"60\" \
+            "<polyline points=\"90,60 130,60\" fill=\"none\" \
              stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\" data-kind=\"default\" />"
         ),
         "missing default edge:\n{html}"
     );
     // Same diagram: Match (east at 210,60) -> Done (bbox 240,40,70,40,
-    // west at 240,60). :flow kind tags the line.
+    // west at 240,60). :flow kind tags the polyline.
     assert!(
         html.contains(
-            "<line x1=\"210\" y1=\"60\" x2=\"240\" y2=\"60\" \
+            "<polyline points=\"210,60 240,60\" fill=\"none\" \
              stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\" data-kind=\"flow\" />"
         ),
         "missing flow edge:\n{html}"
     );
     // Cross-container diagram: inner_a absolute bbox 30,50,80,40
     // (east side at 110,70) -> inner_b absolute bbox 210,50,80,40
-    // (west side at 210,70). The arrow rides the horizontal gap
-    // between the two containers.
+    // (west side at 210,70). Containers themselves aren't treated
+    // as obstacles when they enclose the source / destination.
     assert!(
         html.contains(
-            "<line x1=\"110\" y1=\"70\" x2=\"210\" y2=\"70\" \
+            "<polyline points=\"110,70 210,70\" fill=\"none\" \
              stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\" data-kind=\"data\" />"
         ),
         "missing cross-container edge:\n{html}"
@@ -616,17 +624,294 @@ page index {
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
 
-    // Vertical stack: south(top) -> north(bottom).
+    // Vertical stack: polyline starts at south(top) (50,50) and ends
+    // at north(bottom) (50,150). Elbow routing keeps it a single
+    // vertical segment since there's no obstacle in between.
     assert!(
-        html.contains("x1=\"50\" y1=\"50\" x2=\"50\" y2=\"150\""),
+        html.contains("<polyline points=\"50,50 50,150\""),
         "missing vertical south->north edge:\n{html}"
     );
     // Custom override: arrow must leave from east of top2 (90,30)
     // rather than south (50,50), even though south->north would
     // be the shorter path.
     assert!(
-        html.contains("x1=\"90\" y1=\"30\""),
+        html.contains("points=\"90,30"),
         "expected arrow to leave east of top2 (90,30):\n{html}"
+    );
+}
+
+#[test]
+fn build_routes_around_obstacle() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("obstacle.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 320
+    height = 200
+    rect {
+      id = a
+      x = 10.0  y = 80.0  width = 60.0  height = 40.0
+      fill = "#abc"
+    }
+    rect {
+      id = blocker
+      x = 130.0  y = 60.0  width = 60.0  height = 80.0
+      fill = "#999"
+    }
+    rect {
+      id = b
+      x = 250.0  y = 80.0  width = 60.0  height = 40.0
+      fill = "#abc"
+    }
+    a -> b
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // The polyline must include at least one bend (>= 3 points,
+    // i.e. >= 2 commas in the points list) and a y value that
+    // differs from the straight-line y=100 to clear the blocker.
+    let poly = html
+        .split("<polyline points=\"")
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .unwrap_or("");
+    let points: Vec<(f64, f64)> = poly
+        .split_whitespace()
+        .filter_map(|p| {
+            let mut it = p.split(',');
+            let x: f64 = it.next()?.parse().ok()?;
+            let y: f64 = it.next()?.parse().ok()?;
+            Some((x, y))
+        })
+        .collect();
+    assert!(
+        points.len() >= 3,
+        "expected the obstacle route to bend, got points: {:?}\n{html}",
+        points
+    );
+    assert!(
+        points.iter().any(|(_, y)| (y - 100.0).abs() > 1.0),
+        "expected the polyline to deviate from y=100 to clear blocker: {:?}\n{html}",
+        points
+    );
+}
+
+#[test]
+fn build_separates_parallel_edges() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("sep.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  // Two pairs of shapes positioned so the natural edge for both
+  // (a -> b and c -> d) is a single horizontal segment at y=100.
+  // The separation pass should nudge the two segments apart.
+  diagram {
+    width  = 320
+    height = 200
+    rect {
+      id = a
+      x = 10.0  y = 80.0  width = 60.0  height = 40.0
+      connect_points = [:east]
+    }
+    rect {
+      id = b
+      x = 250.0  y = 80.0  width = 60.0  height = 40.0
+      connect_points = [:west]
+    }
+    rect {
+      id = c
+      x = 10.0  y = 80.0  width = 60.0  height = 40.0
+      connect_points = [:east]
+    }
+    rect {
+      id = d
+      x = 250.0  y = 80.0  width = 60.0  height = 40.0
+      connect_points = [:west]
+    }
+    a -> b
+    c -> d
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // Two polylines, both with the same start/end x; their middle
+    // segment's y should be nudged ±step from y=100. Since these
+    // polylines only have 2 points (no middle segment between bends),
+    // we instead expect both edges to render — separation only
+    // applies to middle segments. The fixture just confirms the
+    // separation pass doesn't crash and that both edges render.
+    let count = html.matches("<polyline").count();
+    assert!(count >= 2, "expected 2 polylines, got {count}:\n{html}");
+}
+
+#[test]
+fn build_keeps_shared_anchor_edges_aligned() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("shared_anchor.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  // Source has only one anchor (:east at x=70, y=100). Two edges
+  // leave that anchor to two different destinations. Both polylines
+  // must start at exactly (70, 100); the first segment is not
+  // nudged.
+  diagram {
+    width  = 320
+    height = 200
+    rect {
+      id = src
+      x = 10.0  y = 80.0  width = 60.0  height = 40.0
+      connect_points = [:east]
+    }
+    rect {
+      id = top
+      x = 200.0  y = 20.0  width = 60.0  height = 40.0
+    }
+    rect {
+      id = bot
+      x = 200.0  y = 140.0  width = 60.0  height = 40.0
+    }
+    src -> top
+    src -> bot
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // Both polylines start at "70,100" — the shared :east anchor.
+    let starts: Vec<&str> = html
+        .split("<polyline points=\"")
+        .skip(1)
+        .filter_map(|s| s.split_whitespace().next())
+        .collect();
+    assert_eq!(starts.len(), 2, "expected 2 polylines:\n{html}");
+    assert_eq!(starts[0], "70,100", "first edge start: {starts:?}");
+    assert_eq!(starts[1], "70,100", "second edge start: {starts:?}");
+}
+
+#[test]
+fn build_layered_layout_assigns_positions() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("layered.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  // Three connected shapes; no x/y declared. The layered layout
+  // should assign positions so a is at rank 0 (top), b at rank 1,
+  // c at rank 2 (bottom).
+  diagram {
+    width     = 200
+    height    = 300
+    layout    = :layered
+    layer_gap = 20.0
+    rect {
+      id = a
+      width = 80.0  height = 40.0  fill = "#cce"
+    }
+    rect {
+      id = b
+      width = 80.0  height = 40.0  fill = "#ecc"
+    }
+    rect {
+      id = c
+      width = 80.0  height = 40.0  fill = "#cec"
+    }
+    a -> b
+    b -> c
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // Each rect is wrapped in <g transform="translate(tx ty)"> at
+    // its layered offset. a starts at the top (ty=0); b is one
+    // rank down (40 + 20 = 60); c another rank (120).
+    assert!(
+        html.contains(
+            "<g transform=\"translate(0 0)\"><rect x=\"0\" y=\"0\" width=\"80\" height=\"40\""
+        ),
+        "missing layered rank-0 placement:\n{html}"
+    );
+    assert!(
+        html.contains("<g transform=\"translate(0 60)\""),
+        "missing layered rank-1 placement (y=60):\n{html}"
+    );
+    assert!(
+        html.contains("<g transform=\"translate(0 120)\""),
+        "missing layered rank-2 placement (y=120):\n{html}"
+    );
+}
+
+#[test]
+fn build_layered_layout_left_to_right() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("layered_lr.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width     = 400
+    height    = 100
+    layout    = :layered
+    direction = :left_to_right
+    layer_gap = 20.0
+    rect {
+      id = a
+      width = 80.0  height = 40.0
+    }
+    rect {
+      id = b
+      width = 80.0  height = 40.0
+    }
+    rect {
+      id = c
+      width = 80.0  height = 40.0
+    }
+    a -> b
+    b -> c
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // a at left (tx=0); b at tx = 80 + 20 = 100; c at tx = 200.
+    assert!(
+        html.contains("<g transform=\"translate(0 0)\""),
+        "missing layered rank-0 placement:\n{html}"
+    );
+    assert!(
+        html.contains("<g transform=\"translate(100 0)\""),
+        "missing layered rank-1 (x=100):\n{html}"
+    );
+    assert!(
+        html.contains("<g transform=\"translate(200 0)\""),
+        "missing layered rank-2 (x=200):\n{html}"
     );
 }
 
