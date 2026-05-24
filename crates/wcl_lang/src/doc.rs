@@ -379,6 +379,46 @@ impl Document {
         None
     }
 
+    /// Invoke a [`FnValue`] with the supplied arguments. Uses a fresh
+    /// evaluation context rooted at the document — bodies see
+    /// document-level symbols but no caller locals.
+    ///
+    /// Errors propagate as [`EvalError`]: arity mismatch ⇒
+    /// `CallArity`, depth blown ⇒ `CallDepthExceeded`, anything the
+    /// function body raises bubbles up unchanged.
+    pub fn call_value(
+        &self,
+        f: &crate::value::FnValue,
+        args: &[Value],
+    ) -> Result<Value, EvalError> {
+        use crate::doc::eval::EvalCtx;
+        let mut ctx = EvalCtx::new(Scope::root());
+        let span = ast::Span::new(0, 0);
+        self.invoke_fn_value(f, args, &mut ctx, span)
+    }
+
+    /// Look up a top-level binding named `name`, expect a function
+    /// value there, and invoke it with `args`. Convenience over
+    /// [`Self::call_value`] when the host doesn't already hold the
+    /// [`FnValue`].
+    ///
+    /// Returns a `UserError`-shaped diagnostic when the name doesn't
+    /// resolve or resolves to a non-function value; otherwise
+    /// behaves like [`Self::call_value`].
+    pub fn call_function(&self, name: &str, args: &[Value]) -> Result<Value, EvalError> {
+        let span = ast::Span::new(0, 0);
+        let dr = self.get(name).ok_or_else(|| {
+            EvalError::user_error(format!("no top-level binding named '{name}'"), span)
+        })?;
+        match dr.value()? {
+            Value::Function(fv) => self.call_value(&fv, args),
+            other => Err(EvalError::user_error(
+                format!("'{name}' is not a function (got {})", other.type_name()),
+                span,
+            )),
+        }
+    }
+
     pub(crate) fn resolve_root(&self, name: &str) -> Option<crate::data::DataRef<'_>> {
         use crate::data::DataRef;
         // Document-schema-driven projections at the root: a field on

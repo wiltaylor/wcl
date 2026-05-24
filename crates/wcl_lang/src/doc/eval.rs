@@ -888,9 +888,17 @@ impl Document {
     ) -> Result<crate::data::DataRef<'a>, EvalError> {
         use ast::Expr as E;
         match expr {
-            E::Identifier(name, _) => self
-                .scope_lookup(&ctx.scope, name)
-                .ok_or_else(|| EvalError::unresolved_reference(name, span_of(expr))),
+            E::Identifier(name, _) => {
+                // Locals (let-bindings, function parameters) shadow
+                // scope-walked names. Wrap the value as a DataRef so
+                // downstream member access can project record/variant
+                // fields without re-evaluating the receiver.
+                if let Some(v) = ctx.lookup(name) {
+                    return Ok(crate::data::DataRef::from_variant_value(v.clone()));
+                }
+                self.scope_lookup(&ctx.scope, name)
+                    .ok_or_else(|| EvalError::unresolved_reference(name, span_of(expr)))
+            }
             E::SelfKw(_) => Ok(self.self_dataref(&ctx.scope)),
             E::ParentKw(span) => self
                 .parent_dataref(&ctx.scope)
