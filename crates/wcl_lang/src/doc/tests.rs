@@ -2546,3 +2546,76 @@ fn dog_inherited_fields_also_satisfy_drawable_via_self_fields() {
         .expect("&Drawable")
         .expect("DogBlock implements Drawable");
 }
+
+#[test]
+fn children_interface_accepts_extending_type() {
+    // `@children(Renderable)` accepts any nested block whose @block
+    // type transitively `extends Renderable`.
+    let doc = Document::open(
+        r#"
+        @document type Site { @children("parent") parents: list<Parent> }
+        interface Renderable { x: i64 }
+        @block("a") type A extends Renderable { x: i64 }
+        @block("parent") type Parent {
+          @children(Renderable) kids: list<Renderable>
+        }
+        parent root { a { x = 1 } a { x = 2 } }
+        "#,
+        "test",
+    )
+    .expect("open");
+    let errs = doc.schema_errors();
+    assert!(errs.is_empty(), "expected no schema errors, got {errs:?}");
+}
+
+#[test]
+fn children_interface_rejects_non_extending_type() {
+    // Block kind `b` has a @block schema but no `extends Renderable`
+    // chain — child should be rejected.
+    let doc = Document::open(
+        r#"
+        @document type Site { @children("parent") parents: list<Parent> }
+        interface Renderable { x: i64 }
+        @block("a") type A extends Renderable { x: i64 }
+        @block("b") type B { x: i64 }
+        @block("parent") type Parent {
+          @children(Renderable) kids: list<Renderable>
+        }
+        parent root { a { x = 1 } b { x = 2 } }
+        "#,
+        "test",
+    )
+    .expect("open");
+    let errs = doc.schema_errors();
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: crate::error::SchemaViolationKind::DisallowedChild,
+                ..
+            }
+        )),
+        "expected DisallowedChild, got {errs:?}"
+    );
+}
+
+#[test]
+fn children_interface_accepts_indirect_extends_chain() {
+    // C extends B extends Renderable — c blocks must still be accepted.
+    let doc = Document::open(
+        r#"
+        @document type Site { @children("parent") parents: list<Parent> }
+        interface Renderable { x: i64 }
+        type B extends Renderable { x: i64 }
+        @block("c") type C extends B { x: i64 }
+        @block("parent") type Parent {
+          @children(Renderable) kids: list<Renderable>
+        }
+        parent root { c { x = 1 } }
+        "#,
+        "test",
+    )
+    .expect("open");
+    let errs = doc.schema_errors();
+    assert!(errs.is_empty(), "expected no schema errors, got {errs:?}");
+}

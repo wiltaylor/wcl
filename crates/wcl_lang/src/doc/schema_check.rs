@@ -363,6 +363,20 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
                 .or_else(|| f.child_kind_or_union().and_then(|k| k.as_union().copied()))
         })
         .collect();
+    // Interface slots from `@child(SomeInterface)` / `@children(SomeInterface)`.
+    // A nested block is legal here if its `@block` type's `extends`
+    // chain transitively contains the interface.
+    let interface_slots: Vec<crate::doc::InterfaceDecl<'_>> = schema
+        .fields()
+        .filter_map(|f| {
+            f.children_kind_or_union()
+                .and_then(|k| k.as_interface().copied())
+                .or_else(|| {
+                    f.child_kind_or_union()
+                        .and_then(|k| k.as_interface().copied())
+                })
+        })
+        .collect();
 
     // 3. Per-kind: any nested block whose kind isn't in `allowed`
     // AND which doesn't match any union variant is a DisallowedChild.
@@ -374,6 +388,15 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
             crate::doc::variant_dispatch::block_to_variant(block.doc, &nested, *u).is_ok()
         });
         if matches_union {
+            continue;
+        }
+        let matches_interface = !interface_slots.is_empty()
+            && block.doc.block_schema(nested.kind()).is_some_and(|t| {
+                interface_slots
+                    .iter()
+                    .any(|iface| t.is_descendant_of(&iface.full_name()))
+            });
+        if matches_interface {
             continue;
         }
         errs.push(EvalError::schema_violation(

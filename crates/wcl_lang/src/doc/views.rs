@@ -322,20 +322,30 @@ pub enum ChildKind<'a> {
     /// `@child(Component)` — match nested blocks by structural shape
     /// against the union's variants.
     Union(UnionDecl<'a>),
+    /// `@child(SomeInterface)` — match nested blocks whose `@block`
+    /// type transitively `extends` the named interface.
+    Interface(InterfaceDecl<'a>),
 }
 
 impl<'a> ChildKind<'a> {
     pub fn as_kind(&self) -> Option<&str> {
         match self {
             ChildKind::Kind(s) => Some(s.as_str()),
-            ChildKind::Union(_) => None,
+            ChildKind::Union(_) | ChildKind::Interface(_) => None,
         }
     }
 
     pub fn as_union(&self) -> Option<&UnionDecl<'a>> {
         match self {
-            ChildKind::Kind(_) => None,
             ChildKind::Union(u) => Some(u),
+            ChildKind::Kind(_) | ChildKind::Interface(_) => None,
+        }
+    }
+
+    pub fn as_interface(&self) -> Option<&InterfaceDecl<'a>> {
+        match self {
+            ChildKind::Interface(i) => Some(i),
+            ChildKind::Kind(_) | ChildKind::Union(_) => None,
         }
     }
 }
@@ -353,6 +363,11 @@ fn resolve_child_kind_arg<'a>(doc: &'a Document, positional: &[Value]) -> Option
             for fqn in &candidates {
                 if let Some(u) = doc.union_decl(fqn) {
                     return Some(ChildKind::Union(u));
+                }
+            }
+            for fqn in &candidates {
+                if let Some(i) = doc.interface(fqn) {
+                    return Some(ChildKind::Interface(i));
                 }
             }
             None
@@ -1020,7 +1035,7 @@ impl<'a> TypeField<'a> {
     pub fn child_block_kind(&self) -> Option<String> {
         match self.child_kind_or_union()? {
             ChildKind::Kind(s) => Some(s),
-            ChildKind::Union(_) => None,
+            ChildKind::Union(_) | ChildKind::Interface(_) => None,
         }
     }
 
@@ -1030,7 +1045,7 @@ impl<'a> TypeField<'a> {
     pub fn children_block_kind(&self) -> Option<String> {
         match self.children_kind_or_union()? {
             ChildKind::Kind(s) => Some(s),
-            ChildKind::Union(_) => None,
+            ChildKind::Union(_) | ChildKind::Interface(_) => None,
         }
     }
 

@@ -654,7 +654,10 @@ fn check_type_ref(
             Ok(())
         }
         TypeRef::Reference(inner) => check_type_ref(inner, ty_span, true, cx),
-        TypeRef::List(inner) => check_type_ref(inner, ty_span, false, cx),
+        // `list<Interface>` is allowed: the list element is a slot for
+        // a `@children(Interface)` collection; the interface tag never
+        // materialises as a stored value, only routes child blocks.
+        TypeRef::List(inner) => check_type_ref(inner, ty_span, true, cx),
         TypeRef::Tensor { element, .. } => check_type_ref(element, ty_span, false, cx),
         TypeRef::Function { params, return_ty } => {
             for p in params {

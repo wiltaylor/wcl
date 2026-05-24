@@ -24,20 +24,21 @@ type Site {
   terminator_lower: fn(Terminator) -> list<SvgFundamental>
 }
 
+// Marker interfaces. `WdocBlock` is the page-level domain (renders to
+// HTML today; could target other formats later). `SvgBlock` is the
+// diagram-level domain. User-authored block types opt in with
+// `extends WdocBlock` / `extends SvgBlock` to become legal children of
+// the corresponding `@children(...)` slot. Both interfaces require the
+// shared `id` field — every renderable block has one anyway, so this
+// just makes conformance non-vacuous.
+interface WdocBlock { id: identifier? }
+interface SvgBlock  { id: identifier? }
+
 @block("page")
 type Page {
   @inline(0) name: identifier
   id: identifier?
-  @children("text")    texts:    list<Text>
-  @children("column")  columns:  list<Column>
-  @children("diagram") diagrams: list<Diagram>
-  // Stdlib heading shapes (custom blocks; lower to a Paragraph).
-  @children("h1") h1s: list<H1>
-  @children("h2") h2s: list<H2>
-  @children("h3") h3s: list<H3>
-  @children("h4") h4s: list<H4>
-  @children("h5") h5s: list<H5>
-  @children("h6") h6s: list<H6>
+  @children(WdocBlock) children: list<WdocBlock>
 }
 
 // Style bundle. Referenced from any IR block's `class: list<utf8>?`
@@ -68,7 +69,7 @@ type Class {
 
 // Paragraph — children are spans rendered in source order.
 @block("text")
-type Text {
+type Text extends WdocBlock {
   id:    identifier?
   class: list<utf8>?
   @children("span") spans: list<Span>
@@ -86,33 +87,22 @@ type Span {
 // Grid container. `widths` are CSS percentages, one per child slot;
 // children flow in source order across the slots.
 @block("column")
-type Column {
+type Column extends WdocBlock {
   widths: list<f64>
   id:     identifier?
   class:  list<utf8>?
-  @children("text")    texts:    list<Text>
-  @children("column")  columns:  list<Column>
-  @children("diagram") diagrams: list<Diagram>
+  @children(WdocBlock) children: list<WdocBlock>
 }
 
 // SVG canvas. Width/height define the viewBox and rendered size,
 // and the parent box for diagram-level anchored shapes.
 @block("diagram")
-type Diagram {
+type Diagram extends WdocBlock {
   width:  i64
   height: i64
   id:     identifier?
   class:  list<utf8>?
-  @children("rect")      rects:      list<Rect>
-  @children("circle")    circles:    list<Circle>
-  @children("line")      lines:      list<Line>
-  @children("label")     labels:     list<Label>
-  @children("polygon")   polygons:   list<Polygon>
-  @children("container") containers: list<Container>
-  // Stdlib flowchart shapes (custom blocks; lower to SVG primitives).
-  @children("process")    processes:   list<Process>
-  @children("decision")   decisions:   list<Decision>
-  @children("terminator") terminators: list<Terminator>
+  @children(SvgBlock) children: list<SvgBlock>
 }
 
 // SVG <g> group with optional layout. Layout modes:
@@ -126,7 +116,7 @@ type Diagram {
 // Anchors on the container itself resolve against the parent box and
 // can resize the container; that new size flows to its own children.
 @block("container")
-type Container {
+type Container extends SvgBlock {
   id:    identifier?
   class: list<utf8>?
 
@@ -148,19 +138,11 @@ type Container {
   anchor_top:    f64?
   anchor_bottom: f64?
 
-  @children("rect")      rects:      list<Rect>
-  @children("circle")    circles:    list<Circle>
-  @children("line")      lines:      list<Line>
-  @children("label")     labels:     list<Label>
-  @children("polygon")   polygons:   list<Polygon>
-  @children("container") containers: list<Container>
-  @children("process")    processes:   list<Process>
-  @children("decision")   decisions:   list<Decision>
-  @children("terminator") terminators: list<Terminator>
+  @children(SvgBlock) children: list<SvgBlock>
 }
 
 @block("rect")
-type Rect {
+type Rect extends SvgBlock {
   x:      f64?
   y:      f64?
   width:  f64?
@@ -177,7 +159,7 @@ type Rect {
 }
 
 @block("circle")
-type Circle {
+type Circle extends SvgBlock {
   cx:     f64?
   cy:     f64?
   r:      f64?
@@ -193,7 +175,7 @@ type Circle {
 }
 
 @block("line")
-type Line {
+type Line extends SvgBlock {
   x1:     f64?
   y1:     f64?
   x2:     f64?
@@ -211,7 +193,7 @@ type Line {
 // SVG <text> shape. Renamed from `text` to avoid colliding with the
 // paragraph block kind.
 @block("label")
-type Label {
+type Label extends SvgBlock {
   @inline(0) content: utf8
   x:     f64?
   y:     f64?
@@ -226,7 +208,7 @@ type Label {
 }
 
 @block("polygon")
-type Polygon {
+type Polygon extends SvgBlock {
   points: utf8
   fill:   utf8?
   stroke: utf8?
@@ -263,7 +245,7 @@ union HtmlFundamental {
 // ── Stdlib flowchart shapes ────────────────────────────────────────
 
 @block("process")
-type Process {
+type Process extends SvgBlock {
   @inline(0) text: utf8
   x: f64?  y: f64?  width: f64?  height: f64?
   fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
@@ -283,7 +265,7 @@ process_lower = fn(p: Process) -> list<SvgFundamental> [
 ]
 
 @block("decision")
-type Decision {
+type Decision extends SvgBlock {
   @inline(0) text: utf8
   x: f64?  y: f64?  width: f64?  height: f64?
   fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
@@ -309,7 +291,7 @@ decision_lower = fn(d: Decision) -> list<SvgFundamental> [
 ]
 
 @block("terminator")
-type Terminator {
+type Terminator extends SvgBlock {
   @inline(0) text: utf8
   x: f64?  y: f64?  width: f64?  height: f64?
   fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
@@ -332,12 +314,12 @@ terminator_lower = fn(t: Terminator) -> list<SvgFundamental> [
 
 // ── Stdlib headings ────────────────────────────────────────────────
 
-@block("h1") type H1 { @inline(0) text: utf8  id: identifier? }
-@block("h2") type H2 { @inline(0) text: utf8  id: identifier? }
-@block("h3") type H3 { @inline(0) text: utf8  id: identifier? }
-@block("h4") type H4 { @inline(0) text: utf8  id: identifier? }
-@block("h5") type H5 { @inline(0) text: utf8  id: identifier? }
-@block("h6") type H6 { @inline(0) text: utf8  id: identifier? }
+@block("h1") type H1 extends WdocBlock { @inline(0) text: utf8  id: identifier? }
+@block("h2") type H2 extends WdocBlock { @inline(0) text: utf8  id: identifier? }
+@block("h3") type H3 extends WdocBlock { @inline(0) text: utf8  id: identifier? }
+@block("h4") type H4 extends WdocBlock { @inline(0) text: utf8  id: identifier? }
+@block("h5") type H5 extends WdocBlock { @inline(0) text: utf8  id: identifier? }
+@block("h6") type H6 extends WdocBlock { @inline(0) text: utf8  id: identifier? }
 
 h1_lower = fn(h: H1) -> list<HtmlFundamental> [
   HtmlFundamental::Paragraph { id: h.id, class: ["heading-1"], spans: [h.text] }

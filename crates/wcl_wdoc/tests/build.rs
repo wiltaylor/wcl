@@ -424,6 +424,49 @@ page index {
 }
 
 #[test]
+fn build_preserves_source_order_across_mixed_children() {
+    // With the single `@children(WdocBlock)` slot on `Page`, mixed-kind
+    // children must come out in source order (not bucketed by kind).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("order.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  h1 "First" {}
+  text { span "alpha" {} }
+  h2 "Middle" {}
+  diagram {
+    width  = 10
+    height = 10
+  }
+  text { span "omega" {} }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+
+    let order = [
+        "<p class=\"heading-1\"><span>First</span></p>",
+        "<p><span>alpha</span></p>",
+        "<p class=\"heading-2\"><span>Middle</span></p>",
+        "<svg",
+        "<p><span>omega</span></p>",
+    ];
+    let mut cursor = 0;
+    for marker in order {
+        let found = html[cursor..]
+            .find(marker)
+            .unwrap_or_else(|| panic!("marker {marker:?} missing or out of order in:\n{html}"));
+        cursor += found + marker.len();
+    }
+}
+
+#[test]
 fn build_allows_same_id_across_different_pages() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("two_pages.wcl");
