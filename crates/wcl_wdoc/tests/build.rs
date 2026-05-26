@@ -2540,12 +2540,11 @@ page index {
         html.contains(">Q1</tspan>") && html.contains(">Quarter</tspan>"),
         "{html}"
     );
-    // Bundled palette CSS is injected into the page <style>.
-    assert!(html.contains(".wdoc-series-1 { fill: #5e81ac;"), "{html}");
-    assert!(
-        html.contains(".wdoc-axis { stroke: currentColor;"),
-        "{html}"
-    );
+    // Bundled palette CSS is injected into the page <style>. The palette
+    // now rides the `class` system (bundled `class` blocks in wdoc.wcl), so
+    // it serializes via `render_class` — unspaced `prop:value;`.
+    assert!(html.contains(".wdoc-series-1 { fill:#5e81ac;"), "{html}");
+    assert!(html.contains(".wdoc-axis { stroke:currentColor;"), "{html}");
 }
 
 #[test]
@@ -2590,7 +2589,7 @@ page index {
         3,
         "{html}"
     );
-    assert!(html.contains(".wdoc-line { fill: none;"), "{html}");
+    assert!(html.contains(".wdoc-line { fill:none;"), "{html}");
 }
 
 #[test]
@@ -2678,7 +2677,7 @@ page index {
     // Both the bundled default and the user override are present, in
     // that order, so the override wins by source order.
     let default_at = html
-        .find(".wdoc-series-1 { fill: #5e81ac;")
+        .find(".wdoc-series-1 { fill:#5e81ac;")
         .expect("bundled default");
     let override_at = html
         .find(".wdoc-series-1 { fill:#7b2d8e;fill:#c792ea; }")

@@ -86,15 +86,17 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         .filter_map(|b| render_class(&b))
         .collect::<Vec<_>>()
         .join("\n");
+    // Chart styling (palette + axes) is no longer a constant here — it
+    // migrated to bundled `class` blocks in wdoc.wcl and so rides the
+    // `{class_css}` segment (emitted before user classes, after these).
     let css = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{class_css}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{class_css}",
         crate::render::BASE_CSS,
         crate::render::HEADING_CSS,
         highlight::theme_css(),
         crate::render::TABLE_CSS,
         crate::render::SITE_CSS,
         crate::render::BOOK_CSS,
-        crate::render::CHART_CSS,
         crate::render::TERMINAL_CSS,
         crate::render::ICON_CSS,
         crate::render::CALLOUT_CSS,

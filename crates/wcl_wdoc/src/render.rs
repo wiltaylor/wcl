@@ -74,8 +74,9 @@ table.wdoc-table { border-collapse: collapse; }
 
 /// Default styling for the bundled `webpage` template's regions.
 /// Injected like `TABLE_CSS`; user `class` rules can override it.
+// `.site-header`'s colour/weight lives in the bundled `class "site-header"`
+// (wdoc.wcl); only its flex / descendant / display rules stay here.
 pub(crate) const SITE_CSS: &str = "\
-.site-header { font-weight: bold; font-size: 1.4rem; padding: 0.5rem 0; }
 .site-nav { display: flex; gap: 1rem; padding: 0.5rem 0; border-bottom: 1px solid #ccc; margin-bottom: 1rem; }
 .site-nav a { text-decoration: none; }
 .site-main { display: block; }";
@@ -83,55 +84,65 @@ pub(crate) const SITE_CSS: &str = "\
 /// Default styling for the bundled `book` template — a fixed left
 /// chapter sidebar and a centered reading column. Injected like
 /// `SITE_CSS`; user `class` rules can override it.
-// Colours sit on bare single-class selectors (`.book-chapter`,
-// `.book-section`, …) so a user `class \"book-chapter\" { … }` (injected
-// after this) can override them; layout stays on the compound
-// selectors. The active chapter is distinguished by weight, not colour,
-// so it inherits whatever link colour a theme sets.
+// Only the layout that needs compound / descendant / `:hover` selectors
+// lives here; the chapter / section colours and the active-chapter weight
+// moved to bundled `class "book-chapter" / "book-section" / "current"`
+// blocks (wdoc.wcl), which a user `class` of the same name overrides.
 pub(crate) const BOOK_CSS: &str = "\
 .book-sidebar { position: fixed; top: 0; left: 0; width: 16rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem; border-right: 1px solid #ccc; background: #fafafa; }
 .book-title { font-weight: bold; font-size: 1.1rem; margin-bottom: 0.75rem; }
 .book-sidebar ul.book-toc { list-style: none; margin: 0; padding-left: 0; }
 .book-sidebar ul.book-toc ul.book-toc { padding-left: 0.85rem; }
 .book-sidebar a.book-chapter { display: block; padding: 0.2rem 0; }
-.book-chapter { color: #333; text-decoration: none; }
+.book-chapter { text-decoration: none; }
 .book-chapter:hover { text-decoration: underline; }
-.current { font-weight: bold; }
 .book-sidebar .book-section { display: block; padding: 0.35rem 0 0.1rem; font-weight: 600; }
-.book-section { color: #555; }
 .book-content { margin-left: 16rem; padding: 1rem 2.5rem; max-width: 46rem; }
 .theme-toggle { display: block; margin: 0 0 0.75rem; padding: 0.2rem 0.6rem; cursor: pointer; background: transparent; border: 1px solid currentColor; border-radius: 4px; color: inherit; font: inherit; }";
 
-/// Default styling for the `bar_chart` / `line_chart` / `pie_chart`
-/// shapes. Injected like `TABLE_CSS` (before user `class` rules, which
-/// therefore override it). Axes, gridlines, labels, the title, and the
-/// legend paint with `currentColor`, so they adopt whatever text colour
-/// the page theme sets (`class \"wdoc-body\" { color: … }`) and follow
-/// the `book` theme toggle for free — no media queries needed. The
-/// eight-hue series palette carries explicit `fill` + `stroke` so the
-/// same class works for a bar's fill, a line's stroke, and a marker's
-/// fill; redeclare `class \"wdoc-series-N\" { fill = … }` to recolour a
-/// series, or pass an explicit `class` on a series / slice.
-pub(crate) const CHART_CSS: &str = "\
-.wdoc-axis { stroke: currentColor; opacity: 0.45; }
-.wdoc-grid { stroke: currentColor; opacity: 0.12; }
-.wdoc-axis-label { fill: currentColor; opacity: 0.75; }
-.wdoc-chart-title { fill: currentColor; font-weight: bold; }
-.wdoc-legend { fill: currentColor; opacity: 0.85; }
-.wdoc-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.wdoc-series-1 { fill: #5e81ac; stroke: #5e81ac; }
-.wdoc-series-2 { fill: #a3be8c; stroke: #a3be8c; }
-.wdoc-series-3 { fill: #ebcb8b; stroke: #ebcb8b; }
-.wdoc-series-4 { fill: #bf616a; stroke: #bf616a; }
-.wdoc-series-5 { fill: #b48ead; stroke: #b48ead; }
-.wdoc-series-6 { fill: #88c0d0; stroke: #88c0d0; }
-.wdoc-series-7 { fill: #d08770; stroke: #d08770; }
-.wdoc-series-8 { fill: #8fbcbb; stroke: #8fbcbb; }";
+// Note: `bar_chart` / `line_chart` / `pie_chart` styling (the eight-hue
+// series palette + axes / gridlines / labels / title / legend / line) is
+// no longer a Rust constant — it migrated wholesale to bundled `class`
+// blocks in wdoc.wcl (`wdoc-series-1`..`8`, `wdoc-axis`, `wdoc-grid`,
+// `wdoc-axis-label`, `wdoc-chart-title`, `wdoc-legend`, `wdoc-line`).
+// Every rule was a bare single-class selector over allowlisted paint
+// properties, so the class system expresses it directly; recolour a
+// series by redeclaring `class "wdoc-series-N" { fill = … }`.
+//
+// Why the OTHER style constants below can't follow suit — the class
+// system emits only a single bare `.name { … }` rule from a fixed
+// property allowlist (color/background/bold/italic/underline/font_size/
+// font_family/text_align/padding/margin/border + the SVG paints
+// fill/stroke/stroke_width/stroke_linejoin/stroke_linecap/opacity), so
+// none of these are expressible:
+//   - BASE_CSS:     `min-height` is not allowlisted.
+//   - HEADING_CSS:  `line-height`, `text-transform`, `letter-spacing`,
+//                   and numeric `font-weight` (600/700) are not.
+//   - TABLE_CSS:    `table.wdoc-table` (element+class) and `.wdoc-table
+//                   th/td` (descendant) selectors; `border-collapse`.
+//   - SITE/BOOK:    `display:flex`/`gap`, `position:fixed`, descendant
+//                   and `:hover` selectors (the bare-class colours of
+//                   each already moved out — see above).
+//   - TERMINAL_CSS: `@font-face`, `@keyframes`, `:hover`, `[hidden]`,
+//                   descendant `.wdoc-terminal-svg text`, layout props.
+//   - ICON_CSS:     `svg.wdoc-icon` (element+class); display/width/height.
+//   - TILEMAP_CSS:  `.wdoc-tilemap image` (descendant) + `.smooth image`
+//                   (compound); `image-rendering`.
+//   - DIAGRAM_CSS:  position/flex, descendant svg, `.panning`, `:hover`.
+//   - CALLOUT_CSS:  built on a `--callout-accent` custom property +
+//                   `var()`; compound `.callout.note/…`; `:first/last-
+//                   child`.
+//   - code-theme.css (highlight::theme_css): `pre.code-block` compound,
+//                   descendant `pre.code-block code`, compound token
+//                   classes (`.tok-storage.tok-type`).
+// In short: non-bare selectors, pseudo-classes/elements, attribute
+// selectors, @font-face/@keyframes, and var()/custom properties can never
+// be a `class`, nor can any property outside the allowlist.
 
 /// Default styling for `terminal` blocks: the embedded JetBrains Mono
 /// Nerd Font faces (served from `_wdoc/`), the cell-grid font binding,
 /// window chrome, blink/cursor animation, and replay controls. Injected
-/// like `CHART_CSS` (before user `class` rules, so those override it).
+/// like `TABLE_CSS` (before user `class` rules, so those override it).
 /// Only emitted on pages that actually contain a terminal.
 ///
 /// The terminal's colours come from the `class` system: `.wdoc-terminal`
@@ -471,6 +482,16 @@ fn class_props(block: &Block<'_>) -> String {
         &mut props,
         "stroke-width",
         field_utf8(block, "stroke_width").as_deref(),
+    );
+    push_css(
+        &mut props,
+        "stroke-linejoin",
+        field_utf8(block, "stroke_linejoin").as_deref(),
+    );
+    push_css(
+        &mut props,
+        "stroke-linecap",
+        field_utf8(block, "stroke_linecap").as_deref(),
     );
     push_css(
         &mut props,
