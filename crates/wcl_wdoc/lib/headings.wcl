@@ -1,0 +1,56 @@
+// ── Stdlib headings ────────────────────────────────────────────────
+
+@block("h1")
+type H1 extends WdocBlock {
+  @inline(0) text: utf8
+  id: identifier?
+  lower = fn(h: H1) -> list<HtmlFundamental> [
+    HtmlFundamental::Paragraph { id: h.id, class: ["heading-1"], spans: [h.text] }
+  ]
+}
+
+@block("h2")
+type H2 extends WdocBlock {
+  @inline(0) text: utf8
+  id: identifier?
+  lower = fn(h: H2) -> list<HtmlFundamental> [
+    HtmlFundamental::Paragraph { id: h.id, class: ["heading-2"], spans: [h.text] }
+  ]
+}
+
+@block("h3")
+type H3 extends WdocBlock {
+  @inline(0) text: utf8
+  id: identifier?
+  lower = fn(h: H3) -> list<HtmlFundamental> [
+    HtmlFundamental::Paragraph { id: h.id, class: ["heading-3"], spans: [h.text] }
+  ]
+}
+
+@block("h4")
+type H4 extends WdocBlock {
+  @inline(0) text: utf8
+  id: identifier?
+  lower = fn(h: H4) -> list<HtmlFundamental> [
+    HtmlFundamental::Paragraph { id: h.id, class: ["heading-4"], spans: [h.text] }
+  ]
+}
+
+@block("h5")
+type H5 extends WdocBlock {
+  @inline(0) text: utf8
+  id: identifier?
+  lower = fn(h: H5) -> list<HtmlFundamental> [
+    HtmlFundamental::Paragraph { id: h.id, class: ["heading-5"], spans: [h.text] }
+  ]
+}
+
+@block("h6")
+type H6 extends WdocBlock {
+  @inline(0) text: utf8
+  id: identifier?
+  lower = fn(h: H6) -> list<HtmlFundamental> [
+    HtmlFundamental::Paragraph { id: h.id, class: ["heading-6"], spans: [h.text] }
+  ]
+}
+

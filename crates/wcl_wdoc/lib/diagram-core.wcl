@@ -1,0 +1,261 @@
+// SVG canvas. Width/height define the viewBox and rendered size,
+// and the parent box for diagram-level anchored shapes.
+@block("diagram")
+type Diagram extends WdocBlock {
+  width:  i64
+  height: i64
+  id:     identifier?
+  class:  list<utf8>?
+
+  // Layout: :none (default) honors per-shape x/y; :grid uses the
+  // grid-cell knobs (cell_width/cell_height/columns/gap), same as
+  // Container; :layered topologically ranks shapes via the
+  // diagram's @connections(Edge) graph and assigns x/y.
+  layout:      symbol?
+  direction:   symbol?      // :top_to_bottom (default) | :left_to_right
+  layer_gap:   f64?         // gap between ranks
+  node_gap:    f64?         // gap between nodes within a rank
+  cell_width:  f64?
+  cell_height: f64?
+  columns:     i64?
+  gap:         f64?
+
+  // Edge rendering.
+  routing:         symbol?  // :elbow (default) | :straight
+  edge_separation: f64?     // nudge step for parallel edges (default 4)
+
+  // Interactive pan + zoom (client-side). pan_zoom wraps the diagram in
+  // a viewport with wheel-zoom, drag-pan, and +/-/reset buttons. When
+  // zoomed in you can overscroll half a viewport past each content edge;
+  // pan_margin adds extra slack on top.
+  pan_zoom:   bool?         // enable interactive pan + zoom
+  zoom_min:   f64?          // min zoom scale, 1.0 = fitted view (default 1.0)
+  zoom_max:   f64?          // max zoom scale (default 4.0)
+  pan_margin: f64?          // extra overscroll past the content, px (default 0)
+
+  @children(SvgBlock) children: list<SvgBlock>
+  @connections(Edge) edges: list<Edge>
+  lower = fn(d: Diagram) -> list<HtmlFundamental> []
+}
+
+// SVG <g> group with optional layout. Layout modes:
+//   :none    (default) — children render at their own resolved boxes.
+//   :grid              — children are placed into a `columns × rows`
+//                        grid; each cell is `cell_width × cell_height`
+//                        separated by `gap`. Per-cell child receives
+//                        `(cell_width, cell_height)` as its parent
+//                        size, so anchored children stretch to the
+//                        cell.
+//   :layered           — topological rank from the container's
+//                        @connections(Edge) graph; each rank is
+//                        spaced by `layer_gap`, nodes within a
+//                        rank by `node_gap`. Flow direction is
+//                        controlled by `direction` (default
+//                        :top_to_bottom). Per-shape width/height
+//                        are honored.
+// Anchors on the container itself resolve against the parent box and
+// can resize the container; that new size flows to its own children.
+@block("container")
+type Container extends SvgBlock {
+  id:    identifier?
+  class: list<utf8>?
+
+  // Optional chrome. When either is set the renderer emits a
+  // background <rect> the full size of the container's box,
+  // making the grouping visible. The chrome is purely visual —
+  // it does NOT participate in obstacle routing, so cross-
+  // container edges still pass through cleanly.
+  stroke: utf8?
+  fill:   utf8?
+
+  // Inset applied to children. Grows the container's outer box
+  // by 2*padding on each axis and shifts the children inward
+  // by `padding`, so chrome doesn't touch the shapes inside.
+  padding: f64?
+
+  // Declared interior size (used when no layout/anchor is sizing
+  // this container — e.g. a top-level container in a diagram).
+  width:  f64?
+  height: f64?
+
+  // Layout
+  layout:      symbol?
+  columns:     i64?
+  cell_width:  f64?
+  cell_height: f64?
+  gap:         f64?
+  direction:   symbol?    // :top_to_bottom (default) | :left_to_right
+  layer_gap:   f64?
+  node_gap:    f64?
+
+  // Anchors (resolve against the parent's box).
+  anchor_left:   f64?
+  anchor_right:  f64?
+  anchor_top:    f64?
+  anchor_bottom: f64?
+
+  connect_points: list<AnchorSide>?
+
+  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
+
+  @children(SvgBlock) children: list<SvgBlock>
+  @connections(Edge) edges: list<Edge>
+  // `container` is itself rendered directly as <g>; the renderer
+  // never invokes its `lower`. Declared only to satisfy the interface.
+  lower = fn(c: Container) -> list<SvgFundamental> []
+}
+
+@block("rect")
+type Rect extends SvgBlock {
+  x:      f64?
+  y:      f64?
+  width:  f64?
+  height: f64?
+  fill:   utf8?
+  stroke: utf8?
+  id:     identifier?
+  class:  list<utf8>?
+
+  anchor_left:   f64?
+  anchor_right:  f64?
+  anchor_top:    f64?
+  anchor_bottom: f64?
+
+  connect_points: list<AnchorSide>?
+
+  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
+
+  lower = fn(r: Rect) -> list<SvgFundamental> []
+}
+
+@block("circle")
+type Circle extends SvgBlock {
+  cx:     f64?
+  cy:     f64?
+  r:      f64?
+  fill:   utf8?
+  stroke: utf8?
+  id:     identifier?
+  class:  list<utf8>?
+
+  anchor_left:   f64?
+  anchor_right:  f64?
+  anchor_top:    f64?
+  anchor_bottom: f64?
+
+  connect_points: list<AnchorSide>?
+
+  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
+
+  lower = fn(c: Circle) -> list<SvgFundamental> []
+}
+
+@block("line")
+type Line extends SvgBlock {
+  x1:     f64?
+  y1:     f64?
+  x2:     f64?
+  y2:     f64?
+  stroke: utf8?
+  id:     identifier?
+  class:  list<utf8>?
+
+  anchor_left:   f64?
+  anchor_right:  f64?
+  anchor_top:    f64?
+  anchor_bottom: f64?
+
+  connect_points: list<AnchorSide>?
+
+  lower = fn(l: Line) -> list<SvgFundamental> []
+}
+
+// SVG <text> shape. Renamed from `text` to avoid colliding with the
+// paragraph block kind.
+@block("label")
+type Label extends SvgBlock {
+  @inline(0) content: utf8
+  x:     f64?
+  y:     f64?
+  // Optional font-size override. When unset, the renderer picks a
+  // size that fits `content` inside `fit_width` × `fit_height`
+  // (capped at the renderer's default), or its default for a
+  // stand-alone label with no fit region.
+  font_size:  f64?
+  fit_width:  f64?
+  fit_height: f64?
+  fill:  utf8?
+  id:    identifier?
+  class: list<utf8>?
+
+  anchor_left:   f64?
+  anchor_right:  f64?
+  anchor_top:    f64?
+  anchor_bottom: f64?
+
+  connect_points: list<AnchorSide>?
+
+  lower = fn(l: Label) -> list<SvgFundamental> []
+}
+
+@block("polygon")
+type Polygon extends SvgBlock {
+  points: utf8
+  fill:   utf8?
+  stroke: utf8?
+  id:     identifier?
+  class:  list<utf8>?
+
+  anchor_left:   f64?
+  anchor_right:  f64?
+  anchor_top:    f64?
+  anchor_bottom: f64?
+
+  connect_points: list<AnchorSide>?
+
+  lower = fn(p: Polygon) -> list<SvgFundamental> []
+}
+
+// ── Lowering layer ─────────────────────────────────────────────────
+//
+// Custom shapes ship as a `@block` declaration + a top-level
+// `<kind>_lower` function returning `list<SvgFundamental>` (SVG
+// diagram shapes) or `list<HtmlFundamental>` (page-level blocks).
+// The renderer recursively lowers each returned variant until only
+// fundamentals remain. Users add their own shapes by declaring the
+// same pair in user source.
+
+union SvgFundamental {
+  Rect    { x: f64? y: f64? width: f64? height: f64? fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
+  Circle  { cx: f64? cy: f64? r: f64? fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
+  Line    { x1: f64? y1: f64? x2: f64? y2: f64? stroke: utf8? id: identifier? class: list<utf8>? }
+  Label   { content: utf8 x: f64? y: f64? font_size: f64? fit_width: f64? fit_height: f64? fill: utf8? id: identifier? class: list<utf8>? }
+  Polygon { points: utf8 fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
+}
+
+union HtmlFundamental {
+  Paragraph { id: identifier? class: list<utf8>? spans: list<utf8> }
+  // Table — `header` is the heading row (rendered as <th> inside
+  // <thead>; omit or leave empty for a header-less table); `rows` are
+  // the body rows (<td> inside <tbody>). On this lowering path cells
+  // are plain escaped text, mirroring `Paragraph`'s escaped spans.
+  // The user-facing `table` block authors rows with WCL's pipe-table
+  // syntax and additionally runs utf8 cells through inline patterns.
+  Table { id: identifier? class: list<utf8>? header: list<utf8>? rows: list<list<utf8>> }
+  // Generic structural element: `<tag id class attrs…>children</tag>`.
+  // Recursive — `children` are themselves fundamentals — so templates
+  // can build arbitrary layout (header / nav / main / footer / a / …).
+  // `attrs` is a list of `[name, value]` pairs (values escaped), e.g.
+  // `[["href", p.href]]`.
+  Element { tag: utf8 id: identifier? class: list<utf8>? attrs: list<list<utf8>>? children: list<HtmlFundamental> }
+  // Verbatim, pre-rendered HTML — NOT escaped. Used to embed already-
+  // rendered content (e.g. a page's `content` part) inside a template.
+  Raw { html: utf8 }
+  // An icon, resolved against the declared `iconset`s (and, for a
+  // `pack.name`, the compiled-in packs). The renderer records it for
+  // the shared sprite and emits `<svg class="wdoc-icon …"><use …/></svg>`
+  // (currentColor, so it inherits its container's colour). Used by the
+  // stdlib `callout` lowering; available to any HTML lowering.
+  Icon { name: utf8 class: list<utf8>? }
+}
+

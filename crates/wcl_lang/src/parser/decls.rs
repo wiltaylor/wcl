@@ -217,6 +217,50 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_import_decl(&mut self) -> Result<Item, ParseError> {
         let kw = self.bump()?; // 'import'
         let start = kw.span.start;
+
+        // System form: `import < path >`. The bracketed path is not a
+        // single token (it contains `/`, `.`, `-`, …), so we scan to the
+        // matching `>` and recover the path by slicing the raw source
+        // between the `<` and `>` spans.
+        if matches!(self.peek()?.kind, TokenKind::Lt) {
+            let lt = self.bump()?; // '<'
+            loop {
+                let t = self.peek()?;
+                match t.kind {
+                    TokenKind::Gt => break,
+                    TokenKind::Eof => {
+                        let eof_start = t.span.start;
+                        return Err(self.err(
+                            "unterminated system import: expected '>'",
+                            Span::new(lt.span.start, eof_start),
+                            "expected '>'",
+                        ));
+                    }
+                    _ => {
+                        self.bump()?;
+                    }
+                }
+            }
+            let gt = self.bump()?; // '>'
+            let path = self.src[lt.span.end..gt.span.start].trim().to_string();
+            let path_span = Span::new(lt.span.end, gt.span.start);
+            if path.is_empty() {
+                return Err(self.err(
+                    "empty system import path: `import <>`",
+                    Span::new(lt.span.start, gt.span.end),
+                    "expected a path",
+                ));
+            }
+            return Ok(Item::Import(ImportDecl {
+                path,
+                path_span,
+                system: true,
+                span: Span::new(start, gt.span.end),
+                leading_trivia: self.take_item_trivia(),
+            }));
+        }
+
+        // Disk form: `import "path"`.
         let tok = self.bump()?;
         let path_span = tok.span;
         let path = match tok.kind {
@@ -224,7 +268,7 @@ impl<'a> Parser<'a> {
             other => {
                 return Err(self.err(
                     format!(
-                        "expected string path after 'import', found {}",
+                        "expected string path or `<...>` after 'import', found {}",
                         describe(&other)
                     ),
                     path_span,
@@ -235,6 +279,7 @@ impl<'a> Parser<'a> {
         Ok(Item::Import(ImportDecl {
             path,
             path_span,
+            system: false,
             span: Span::new(start, path_span.end),
             leading_trivia: self.take_item_trivia(),
         }))

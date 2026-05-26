@@ -106,6 +106,9 @@ pub(crate) enum ItemCellKind {
         path: String,
         /// Span of the path string literal — used for error labels.
         path_span: Span,
+        /// `true` for an angle-bracket system import resolved through the
+        /// registry; `false` for a quoted disk import.
+        system: bool,
         /// Resolved file directory for path joins. `None` means the
         /// document had no base directory (e.g. `Document::open`),
         /// which surfaces as an `ImportFailed` on first access.
@@ -278,6 +281,7 @@ impl ItemCells {
                 kind: ItemCellKind::Import {
                     path: imp.path.clone(),
                     path_span: imp.path_span,
+                    system: imp.system,
                     base_dir: base_dir.map(Path::to_path_buf),
                     loaded: OnceLock::new(),
                 },

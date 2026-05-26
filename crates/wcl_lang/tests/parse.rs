@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
 use wcl_lang::{
-    DeclName, Document, Environment, EvalError, ProfileKey, ResolvedType, SymbolKind, TypeRef,
-    Value, VariantBodyView, VariantPayload, ast, format, from_fn, parse_for_edit,
+    DeclName, Document, Environment, EvalError, ProfileKey, Registry, ResolvedType, SymbolKind,
+    TypeRef, Value, VariantBodyView, VariantPayload, ast, disk_loader, format, from_fn,
+    parse_for_edit,
 };
 
 fn examples_dir() -> PathBuf {
@@ -965,6 +966,91 @@ fn top_level_import_cycle_detected() {
     std::fs::write(&b, r#"import "./a.wcl""#).unwrap();
 
     let err = Document::from_file(&a).unwrap_err();
+    let rendered = format!("{:?}", miette::Report::new(err));
+    assert!(rendered.contains("cycle"), "rendered: {rendered}");
+}
+
+#[test]
+fn system_import_round_trips() {
+    // Both import forms survive a print → re-parse → print cycle, with
+    // angle brackets for system imports and quotes for disk imports.
+    let src = "import <wdoc/core.wcl>\nimport \"./local.wcl\"\n";
+    let ast = parse_for_edit(src, "test".to_string()).expect("parse");
+    let printed = format::to_source(&ast);
+    assert!(printed.contains("import <wdoc/core.wcl>"), "{printed}");
+    assert!(printed.contains("import \"./local.wcl\""), "{printed}");
+    let ast2 = parse_for_edit(&printed, "test".to_string()).expect("re-parse");
+    assert_eq!(printed, format::to_source(&ast2), "printer not idempotent");
+}
+
+#[test]
+fn registry_resolves_system_import() {
+    let mut reg = Registry::new();
+    reg.register("wdoc/prelude.wcl", "@schemaless\nanswer = 42\n");
+    let loader = reg.loader(disk_loader());
+    let doc = Document::open_at_with_loader(
+        "import <wdoc/prelude.wcl>\n",
+        "test",
+        None,
+        &Environment::new(),
+        loader,
+    )
+    .expect("open with registry loader");
+    assert_eq!(doc.get("answer").unwrap().value().unwrap(), Value::I64(42));
+}
+
+#[test]
+fn registry_system_imports_are_importer_relative() {
+    // The user imports the full path; the prelude reaches a sibling with
+    // a relative path that resolves within the same registry directory.
+    let mut reg = Registry::new();
+    reg.register("wdoc/prelude.wcl", "import <core.wcl>\n");
+    reg.register("wdoc/core.wcl", "@schemaless\ncore_val = 7\n");
+    let loader = reg.loader(disk_loader());
+    let doc = Document::open_at_with_loader(
+        "import <wdoc/prelude.wcl>\n",
+        "test",
+        None,
+        &Environment::new(),
+        loader,
+    )
+    .expect("open with registry loader");
+    assert_eq!(doc.get("core_val").unwrap().value().unwrap(), Value::I64(7));
+}
+
+#[test]
+fn registry_miss_is_reported() {
+    let loader = Registry::new().loader(disk_loader());
+    let err = Document::open_at_with_loader(
+        "import <wdoc/missing.wcl>\n",
+        "test",
+        None,
+        &Environment::new(),
+        loader,
+    )
+    .unwrap_err();
+    let rendered = format!("{:?}", miette::Report::new(err));
+    // miette word-wraps the message, so assert on an unbroken fragment.
+    assert!(
+        rendered.contains("no system import"),
+        "rendered: {rendered}"
+    );
+}
+
+#[test]
+fn system_import_cycle_detected() {
+    let mut reg = Registry::new();
+    reg.register("a.wcl", "import <b.wcl>\n");
+    reg.register("b.wcl", "import <a.wcl>\n");
+    let loader = reg.loader(disk_loader());
+    let err = Document::open_at_with_loader(
+        "import <a.wcl>\n",
+        "test",
+        None,
+        &Environment::new(),
+        loader,
+    )
+    .unwrap_err();
     let rendered = format!("{:?}", miette::Report::new(err));
     assert!(rendered.contains("cycle"), "rendered: {rendered}");
 }

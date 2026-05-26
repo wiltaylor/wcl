@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use crate::ast::{self, Span};
 use crate::error::{EvalError, ParseError};
 use crate::parser::Parser;
+use crate::symbols::SymbolIndex;
 
 use super::cells::{ItemCellKind, ItemCells, LoadedImport};
 use super::loader::FileLoader;
@@ -52,13 +53,26 @@ pub(super) fn push_eager_imports<'a>(imps: &'a [LoadedImport], out: &mut Vec<Blo
     }
 }
 
+/// Collect the symbol index of every eagerly-imported file (recursively)
+/// so the importing file's structural validation can resolve type
+/// references against declarations that live in imports — e.g. a user
+/// `lower` returning `list<SvgFundamental>` where the union is defined in
+/// an imported schema file.
+pub(super) fn collect_import_symbols<'a>(imps: &'a [LoadedImport], out: &mut Vec<&'a SymbolIndex>) {
+    for imp in imps {
+        out.push(&imp.symbols);
+        collect_import_symbols(&imp.eager_imports, out);
+    }
+}
+
 pub(super) fn load_import_lazily(
     path_str: &str,
     base_dir: Option<&Path>,
+    system: bool,
     path_span: Span,
     loader: &FileLoader,
 ) -> Result<LoadedImport, EvalError> {
-    let path = resolve_import_path(base_dir, path_str)
+    let path = resolve_import_path_kind(base_dir, path_str, system)
         .map_err(|e| EvalError::import_failed(path_str, e, path_span))?;
     let src = loader(&path)
         .map_err(|e| EvalError::import_failed(path_str, format!("io: {e}"), path_span))?;
@@ -96,6 +110,62 @@ pub(super) fn load_import_lazily(
         symbols: parsed_symbols,
         eager_imports: child_eager,
     })
+}
+
+/// Virtual root under which every angle-bracket `import <...>` (system)
+/// import resolves. It is never a real filesystem path, so the
+/// cycle-detection keys built from it can't collide with canonicalised
+/// disk paths, and a [`FileLoader`] can route system lookups by stripping
+/// this prefix (see `Registry::loader`).
+pub const SYSTEM_IMPORT_ROOT: &str = "<wcl-system>";
+
+/// Resolve an import path to the key used for loading + cycle detection,
+/// branching on whether it's a system (`import <...>`) or disk
+/// (`import "..."`) import.
+///
+/// System imports are resolved *within the registry namespace*: relative
+/// to the importing file's registry directory when the importer is itself
+/// a system file, otherwise from the registry root. They are never
+/// canonicalised against the filesystem.
+pub(super) fn resolve_import_path_kind(
+    base_dir: Option<&Path>,
+    path: &str,
+    system: bool,
+) -> Result<PathBuf, String> {
+    if !system {
+        return resolve_import_path(base_dir, path);
+    }
+    let sys_root = Path::new(SYSTEM_IMPORT_ROOT);
+    // The importer's directory inside the registry namespace: empty when
+    // the importer is a disk file (or the synthesised root), so its
+    // system imports resolve from the registry root.
+    let dir_rel = match base_dir {
+        Some(d) if d.starts_with(sys_root) => d.strip_prefix(sys_root).unwrap_or(Path::new("")),
+        _ => Path::new(""),
+    };
+    let key = lexical_normalize(&dir_rel.join(path));
+    Ok(sys_root.join(key))
+}
+
+/// Collapse `.`/`..`/empty path components without touching the
+/// filesystem. Used to resolve relative system-import paths within the
+/// registry namespace (e.g. `../shared/x.wcl`).
+fn lexical_normalize(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out: Vec<std::ffi::OsString> = Vec::new();
+    for comp in path.components() {
+        match comp {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::Normal(s) => out.push(s.to_os_string()),
+            // Prefix/RootDir shouldn't appear in registry-relative paths;
+            // keep them verbatim if they do.
+            other => out.push(other.as_os_str().to_os_string()),
+        }
+    }
+    out.iter().collect()
 }
 
 /// Resolve an `import "path"` literal against an optional base
@@ -152,7 +222,7 @@ pub(super) fn expand_top_level_imports(
         let ast::Item::Import(imp) = item else {
             continue;
         };
-        let path = resolve_import_path(base_dir, &imp.path).map_err(|msg| {
+        let path = resolve_import_path_kind(base_dir, &imp.path, imp.system).map_err(|msg| {
             open_error(
                 importer_source,
                 importer_file,

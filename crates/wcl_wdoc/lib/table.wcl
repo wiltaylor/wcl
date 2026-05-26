@@ -1,0 +1,27 @@
+// Tabular grid. Rows are authored with WCL's native pipe-table
+// syntax under a `rows:` header; the first row is the table header.
+//
+//   table {
+//     rows:
+//       | "Name"  | "Role" | "Age" |   // -> <thead>/<th>
+//       | "Alice" | "Dev"  | 30     |   // -> <tbody>/<td>
+//   }
+//
+// Cells may hold any literal: utf8 cells are run through the inline
+// pattern engine (so **bold**, _italic_, `code`, [links](page) work),
+// other types (numbers, bools, symbols) are stringified. The block
+// deliberately declares no `rows` field — the pipe rows arrive as a
+// syntactic `Item::Table` the renderer reads via `Block::tables()`,
+// so tables can be any width with no per-table type. `table` is a
+// fundamental HTML block (rendered directly), so its `lower` is never
+// invoked — declared only to satisfy the WdocBlock interface.
+// Named `TableBlock` (not `Table`) because `Table` is the reserved
+// type name for the `@table` decorator. The block kind is still
+// "table".
+@block("table")
+type TableBlock extends WdocBlock {
+  id:    identifier?
+  class: list<utf8>?
+  lower = fn(t: TableBlock) -> list<HtmlFundamental> []
+}
+

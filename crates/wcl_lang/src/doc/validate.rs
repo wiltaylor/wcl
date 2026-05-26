@@ -97,6 +97,7 @@ pub(crate) fn validate_document(
     ast: &ast::Source,
     symbols: &SymbolIndex,
     synthetic: &[ast::TypeDecl],
+    imported_symbols: &[&SymbolIndex],
     source: &str,
     file: &str,
 ) -> Result<Resolved, ParseError> {
@@ -171,6 +172,35 @@ pub(crate) fn validate_document(
         }
         for n in 1..fqn.len() {
             prefixes.insert(fqn[..n].to_vec());
+        }
+    }
+
+    // 2b. Declarations from eagerly-imported files also participate in
+    // name resolution for this file's type references (e.g. a user
+    // `lower` returning `list<SvgFundamental>` where the union lives in
+    // an imported schema file). Insert-only: imported FQNs never trigger
+    // the duplicate-declaration check — a local declaration may
+    // legitimately coexist with, or shadow, an imported one.
+    for idx in imported_symbols {
+        for rec in idx.iter() {
+            if !matches!(
+                rec.kind,
+                SymbolKind::TypeDecl
+                    | SymbolKind::InterfaceDecl
+                    | SymbolKind::UnionDecl
+                    | SymbolKind::SymbolSetDecl
+                    | SymbolKind::ConnectionDecl
+            ) {
+                continue;
+            }
+            let fqn: Vec<String> = rec.fqn.split('.').map(str::to_string).collect();
+            declared.insert(fqn.clone());
+            if matches!(rec.kind, SymbolKind::InterfaceDecl) {
+                interfaces.insert(fqn.clone());
+            }
+            for n in 1..fqn.len() {
+                prefixes.insert(fqn[..n].to_vec());
+            }
         }
     }
 

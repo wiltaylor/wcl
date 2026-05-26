@@ -18,7 +18,8 @@ mod scope;
 mod validate;
 pub(super) mod variant_dispatch;
 mod views;
-pub use loader::{FileLoader, disk_loader, overlay_loader};
+pub use imports::SYSTEM_IMPORT_ROOT;
+pub use loader::{FileLoader, Registry, disk_loader, overlay_loader};
 pub use views::{
     Block, ChildKind, Connection, ConnectionDecl, DeclName, Decorator, Field, InterfaceDecl,
     NamedArg, ResolvedType, RowView, SymbolEntry, SymbolSetDecl, TableView, TypeDecl, TypeField,
@@ -134,7 +135,7 @@ impl Document {
     /// every imported file. Hosts that maintain in-memory buffers
     /// (e.g. the LSP) pass an [`overlay_loader`] so unsaved edits
     /// participate in import resolution.
-    pub(crate) fn open_at_with_loader(
+    pub fn open_at_with_loader(
         source: &str,
         name: &str,
         base_dir: Option<PathBuf>,
@@ -158,7 +159,9 @@ impl Document {
             &loader,
         )?;
 
-        let resolved = validate_document(&ast, &symbols, &synthetic, source, name)?;
+        let mut import_syms: Vec<&SymbolIndex> = Vec::new();
+        imports::collect_import_symbols(&eager_imports, &mut import_syms);
+        let resolved = validate_document(&ast, &symbols, &synthetic, &import_syms, source, name)?;
         let cells = BlockCells::build(&ast.items, base_dir.as_deref());
         let synthetic_type_cells = synthetic
             .iter()
@@ -692,6 +695,20 @@ impl Document {
             .flat_map(move |src| iter_blocks(src.items, src.cells, doc, Scope::root()))
     }
 
+    /// Like [`blocks`](Self::blocks) but pairs each top-level block with
+    /// the path of the file it was declared in: `None` for the root
+    /// document, `Some(path)` for an eagerly-imported file. Useful when
+    /// emission order must place imported (library) definitions before
+    /// the root's — e.g. CSS, where later rules win and so the user's
+    /// root-level rules should override the library defaults.
+    pub fn blocks_with_source(&self) -> impl Iterator<Item = (Option<&Path>, Block<'_>)> + '_ {
+        let doc = self;
+        self.all_sources().into_iter().flat_map(move |src| {
+            let path = src.path;
+            iter_blocks(src.items, src.cells, doc, Scope::root()).map(move |b| (path, b))
+        })
+    }
+
     /// Returns the file-level namespace path. Empty when the file declared none.
     pub fn namespace(&self) -> &[String] {
         &self.file_ns
@@ -979,6 +996,24 @@ impl Document {
         // Synthetic types live at the root namespace.
         for t in &self.synthetic_types {
             registry.insert(t.name.clone());
+        }
+        // Declarations from eagerly-imported files resolve too — e.g. a
+        // connection whose endpoint type `&SvgBlock` is defined in an
+        // imported schema file. Each source's symbol index already holds
+        // FQNs with that file's namespace composed in.
+        for src in self.all_sources() {
+            for rec in src.symbols.iter() {
+                if matches!(
+                    rec.kind,
+                    SymbolKind::TypeDecl
+                        | SymbolKind::InterfaceDecl
+                        | SymbolKind::UnionDecl
+                        | SymbolKind::SymbolSetDecl
+                        | SymbolKind::ConnectionDecl
+                ) {
+                    registry.insert(rec.fqn.split('.').map(str::to_string).collect());
+                }
+            }
         }
         resolve_path(
             path,

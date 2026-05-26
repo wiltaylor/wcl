@@ -1,0 +1,58 @@
+// Admonition: an icon + a coloured heading over a body. The built-in
+// types — `note` / `info` / `tip` / `warning` / `error` / `success` —
+// are selected by putting the name in `class`; each supplies an accent
+// colour (CALLOUT_CSS) and a default icon (from the bundled Lucide pack,
+// so it works with no `iconset` declared). `icon` overrides the default.
+// It is NOT a fundamental: it lowers (below) to plain `<div>`s plus an
+// `Icon` fundamental, composing the existing HTML fundamentals.
+@block("callout")
+type Callout extends WdocBlock {
+  @inline(0) heading: utf8
+  body:  utf8
+  id:    identifier?
+  class: list<utf8>?
+  icon:  utf8?
+
+  lower = fn(c: Callout) -> list<HtmlFundamental> {
+    let cls = if c.class == none { [] } else { c.class };
+    // Default icon by built-in type (overridden by an explicit `icon`).
+    let kind_icon =
+      if list_contains(cls, "warning") { "lucide.triangle-alert" }
+      else if list_contains(cls, "error") { "lucide.circle-x" }
+      else if list_contains(cls, "success") { "lucide.circle-check" }
+      else if list_contains(cls, "tip") { "lucide.lightbulb" }
+      else if list_contains(cls, "info") { "lucide.info" }
+      else if list_contains(cls, "note") { "lucide.info" }
+      else { "" };
+    let icon_name = if c.icon == none { kind_icon } else { c.icon };
+    let title = HtmlFundamental::Paragraph {
+      id: none, class: ["callout-title"], spans: [c.heading],
+    };
+    let head_children =
+      if icon_name == "" { [title] }
+      else {
+        [
+          HtmlFundamental::Icon { name: icon_name, class: ["callout-icon"] },
+          title,
+        ]
+      };
+    [
+      HtmlFundamental::Element {
+        tag: "div", id: c.id, class: flatten([["callout"], cls]), attrs: none,
+        children: [
+          HtmlFundamental::Element {
+            tag: "div", id: none, class: ["callout-heading"], attrs: none,
+            children: head_children,
+          },
+          HtmlFundamental::Element {
+            tag: "div", id: none, class: ["callout-body"], attrs: none,
+            children: [
+              HtmlFundamental::Paragraph { id: none, class: none, spans: [c.body] },
+            ],
+          },
+        ],
+      },
+    ]
+  }
+}
+

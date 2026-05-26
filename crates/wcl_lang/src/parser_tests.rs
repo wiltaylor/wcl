@@ -1402,7 +1402,36 @@ fn parser_rejects_duplicate_variant() {
 fn parse_top_level_import() {
     let s = parse(r#"import "./foo.wcl""#);
     match &s.items[0] {
-        Item::Import(i) => assert_eq!(i.path, "./foo.wcl"),
+        Item::Import(i) => {
+            assert_eq!(i.path, "./foo.wcl");
+            assert!(!i.system, "quoted import is not a system import");
+        }
+        _ => panic!("expected Item::Import"),
+    }
+}
+
+#[test]
+fn parse_top_level_system_import() {
+    let s = parse("import <wdoc/core.wcl>");
+    match &s.items[0] {
+        Item::Import(i) => {
+            assert_eq!(i.path, "wdoc/core.wcl");
+            assert!(i.system, "angle-bracket import is a system import");
+        }
+        _ => panic!("expected Item::Import"),
+    }
+}
+
+#[test]
+fn parse_system_import_path_with_punctuation() {
+    // Paths carry `/`, `.`, `-`, `_` — all lex into separate tokens, so
+    // the parser must recover the path by slicing the raw source.
+    let s = parse("import <a-b/c_d.e.wcl>");
+    match &s.items[0] {
+        Item::Import(i) => {
+            assert_eq!(i.path, "a-b/c_d.e.wcl");
+            assert!(i.system);
+        }
         _ => panic!("expected Item::Import"),
     }
 }
@@ -1412,6 +1441,29 @@ fn parse_block_level_import() {
     let s = parse(r#"service "web" { import "./x.wcl" }"#);
     let b = blocks(&s.items)[0];
     assert!(matches!(b.items.first(), Some(Item::Import(_))));
+}
+
+#[test]
+fn parse_block_level_system_import() {
+    let s = parse("service \"web\" { import <lib/x.wcl> }");
+    let b = blocks(&s.items)[0];
+    match b.items.first() {
+        Some(Item::Import(i)) => {
+            assert_eq!(i.path, "lib/x.wcl");
+            assert!(i.system);
+        }
+        other => panic!("expected a system import, got {other:?}"),
+    }
+}
+
+#[test]
+fn parser_rejects_empty_system_import() {
+    assert_syntax_err(parse_err("import <>"), "empty system import path");
+}
+
+#[test]
+fn parser_rejects_unterminated_system_import() {
+    assert_syntax_err(parse_err("import <foo/bar"), "unterminated system import");
 }
 
 #[test]

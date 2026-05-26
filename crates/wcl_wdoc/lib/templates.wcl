@@ -1,0 +1,177 @@
+// ── Page templates ─────────────────────────────────────────────────
+//
+// A template wraps a page's rendered content in a surrounding layout.
+// Templates are WCL functions returning fundamentals; the renderer
+// calls a template's `render` with a `TemplateCtx` and the resulting
+// fundamentals become the page <body>. The `<head>` + stylesheet are
+// still emitted by the renderer.
+//
+// "Parts" are just functions returning `list<HtmlFundamental>`: a
+// template composes them and embeds the framework-provided `content`
+// part (the page's own blocks) via `Raw`. There is no built-in menu —
+// a template builds navigation itself from `ctx.pages`.
+
+// Reference to a page, for building navigation. `href` is the page's
+// output file (`<name>.html`).
+type PageRef { name: utf8  href: utf8 }
+
+// A node in the resolved table of contents handed to templates. Built
+// by the renderer from the `site`'s `toc` block. `href` is empty for a
+// grouping heading (a `chapter` with no `page`); `current` is true for
+// the entry linking to the page being rendered; `children` are nested
+// entries (any depth).
+type TocEntry {
+  title:    utf8
+  href:     utf8
+  current:  bool
+  children: list<TocEntry>
+}
+
+// Context handed to a template's (and any part function's) `render`.
+type TemplateCtx {
+  content:      utf8            // the page's rendered body HTML (embed via Raw)
+  title:        utf8            // site title, or the page name if unset
+  page_name:    utf8            // the current page's name
+  pages:        list<PageRef>   // every page in the document, in source order
+  toc:          list<TocEntry>  // the book TOC tree; flat (one per page) if no `toc`
+  theme_toggle: bool            // whether to render a light/dark toggle (site flag)
+}
+
+// One table-of-contents entry. The inline label is the display title;
+// `page` (optional) links it to a page; nested `chapter`s are
+// sub-entries (3+ levels). A `chapter` with no `page` is a heading.
+@block("chapter")
+type Chapter {
+  @inline(0) title: utf8
+  page: identifier?
+  @children("chapter") children: list<Chapter>
+}
+
+// The book's table of contents — an ordered, nestable tree of
+// `chapter` entries. Declared inside the `site` block.
+@block("toc")
+type Toc {
+  @children("chapter") chapters: list<Chapter>
+}
+
+// Document descriptor. One per document; sets the default template and
+// site-level data templates can read. Selected per-page via the
+// page's `template` field, else `default_template` here.
+@block("site")
+type SiteConfig {
+  default_template: symbol?
+  title:            utf8?
+  // Render a light/dark toggle (the `book` template shows it). Pair
+  // with `class` blocks that declare `dark {}` / `light {}` modes.
+  theme_toggle:     bool?
+  @child("toc") toc: Toc?
+}
+
+// A named template. `render` lays out a page body from the context.
+@block("template")
+type Template {
+  @inline(0) name: identifier
+  render: fn(TemplateCtx) -> list<HtmlFundamental>
+}
+
+// Stdlib `webpage` template: a Hugo-style site shell — a title header,
+// a nav built from every page, and the page content in <main>. Users
+// can declare their own `template <name> { render = ... }` blocks and
+// select them with `default_template` / a page's `template` field.
+template webpage {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+    HtmlFundamental::Element {
+      tag: "header", id: none, class: ["site-header"], attrs: none,
+      children: [ HtmlFundamental::Raw { html: c.title } ],
+    },
+    HtmlFundamental::Element {
+      tag: "nav", id: none, class: ["site-nav"], attrs: none,
+      children: map(c.pages, fn(p: PageRef) -> HtmlFundamental
+        HtmlFundamental::Element {
+          tag: "a", id: none, class: none,
+          attrs: [["href", p.href]],
+          children: [ HtmlFundamental::Raw { html: p.name } ],
+        }),
+    },
+    HtmlFundamental::Element {
+      tag: "main", id: none, class: ["site-main"], attrs: none,
+      children: [ HtmlFundamental::Raw { html: c.content } ],
+    },
+  ]
+}
+
+// One sidebar entry: a `<span>` heading when the entry has no page
+// (empty href), otherwise an `<a>` link (with `current` highlighting).
+let book_toc_link = fn(e: TocEntry) -> HtmlFundamental
+  if e.href == "" {
+    HtmlFundamental::Element {
+      tag: "span", id: none, class: ["book-section"], attrs: none,
+      children: [ HtmlFundamental::Raw { html: e.title } ],
+    }
+  } else {
+    HtmlFundamental::Element {
+      tag: "a", id: none,
+      class: if e.current { ["book-chapter", "current"] } else { ["book-chapter"] },
+      attrs: [["href", e.href]],
+      children: [ HtmlFundamental::Raw { html: e.title } ],
+    }
+  }
+
+// Render a list of TOC entries as a nested `<ul>` — recursive, so the
+// tree nests to any depth. An empty list renders nothing (no stray
+// `<ul>`), which also terminates the recursion at the leaves.
+let book_toc = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
+  if len(entries) == 0 { [] }
+  else {
+    [ HtmlFundamental::Element {
+        tag: "ul", id: none, class: ["book-toc"], attrs: none,
+        children: map(entries, fn(e: TocEntry) -> HtmlFundamental
+          HtmlFundamental::Element {
+            tag: "li", id: none, class: none, attrs: none,
+            children: flatten([ [book_toc_link(e)], book_toc(e.children) ]),
+          }),
+      } ]
+  }
+
+// Stdlib `book` template: an mdbook-style layout — a fixed left
+// sidebar holding the book title and the table of contents (nested,
+// current chapter highlighted), and the page content in a reading
+// column. The TOC comes from the `site` block's `toc`; with no `toc`
+// declared the renderer falls back to a flat list of every page.
+template book {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+    HtmlFundamental::Element {
+      tag: "nav", id: none, class: ["book-sidebar"], attrs: none,
+      children: flatten([
+        [ HtmlFundamental::Element {
+            tag: "div", id: none, class: ["book-title"], attrs: none,
+            children: [ HtmlFundamental::Raw { html: c.title } ],
+          } ],
+        if c.theme_toggle { book_theme_toggle } else { [] },
+        book_toc(c.toc),
+      ]),
+    },
+    HtmlFundamental::Element {
+      tag: "main", id: none, class: ["book-content"], attrs: none,
+      children: [ HtmlFundamental::Raw { html: c.content } ],
+    },
+  ]
+}
+
+// Light/dark toggle: a button plus a one-time script. The script
+// applies a persisted choice on load and defines `wdocToggleTheme`,
+// which flips `<html data-theme>` between dark/light (seeded from the
+// system preference) and persists to localStorage. With no
+// `data-theme` set, the `class` `@media (prefers-color-scheme: light)`
+// rules follow the system; the attribute (toggle) overrides them.
+let book_theme_toggle = [
+  HtmlFundamental::Element {
+    tag: "button", id: none, class: ["theme-toggle"],
+    attrs: [["onclick", "wdocToggleTheme()"]],
+    children: [ HtmlFundamental::Raw { html: "◐ Theme" } ],
+  },
+  HtmlFundamental::Raw {
+    html: "<script>(function(){var r=document.documentElement;try{var s=localStorage.getItem('wdoc-theme');if(s){r.setAttribute('data-theme',s);}}catch(e){}window.wdocToggleTheme=function(){var lt=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches;var cur=r.getAttribute('data-theme')||(lt?'light':'dark');var n=(cur==='dark')?'light':'dark';r.setAttribute('data-theme',n);try{localStorage.setItem('wdoc-theme',n);}catch(e){}};})();</script>",
+  },
+]
+

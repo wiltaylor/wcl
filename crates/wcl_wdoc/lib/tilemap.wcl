@@ -1,0 +1,52 @@
+// ── Tilesets + tilemaps (game-dev tile art) ────────────────────────
+//
+// A `tileset` names a spritesheet image plus the geometry needed to
+// slice it into fixed-size tiles. Declared at the document root (like
+// `iconset`); the renderer reads the sheet's pixel dimensions from the
+// file header (PNG / JPEG / GIF) unless `image_width` / `image_height`
+// are given, copies the image into `_wdoc/`, and references it by URL.
+@block("tileset")
+type Tileset {
+  @inline(0) name: identifier        // reference name, e.g. `dungeon`
+  source:       utf8                 // image path, relative to the doc
+  tile_width:   i64                  // source tile pixel width
+  tile_height:  i64                  // source tile pixel height
+  columns:      i64?                 // tiles per sheet row (index -> coord)
+  margin:       i64?                 // px border around the sheet (default 0)
+  spacing:      i64?                 // px gap between tiles (default 0)
+  image_width:  i64?                 // override; else read from the file
+  image_height: i64?                 // override; else read from the file
+}
+
+// One glyph -> tile-index legend entry, a child of `tilemap`. Lets a
+// map be authored with symbols (`#`, `.`, `@`) instead of raw indices.
+@block("tile")
+type TileKey {
+  @inline(0) glyph: utf8             // single character used in `map`
+  index: i64                         // tile index it stands for
+}
+
+// A placeable, index-based tile grid inside a `diagram` / `container`.
+// Author the grid numerically (`tiles`) or symbolically (`map` + `tile`
+// legend; `map` wins when both are present). The `lower` is a stub —
+// the tilemap is special-cased in the renderer (it crops tiles out of
+// the referenced spritesheet, which WCL can't express). It lays out
+// like any other shape (x/y + anchors), so other shapes drawn after it
+// in the same diagram overlay on top.
+@block("tilemap")
+type Tilemap extends SvgBlock {
+  set: identifier                    // which tileset
+  tiles: list<list<i64>>?            // numeric index grid (one list per row)
+  map:   list<utf8>?                 // symbolic grid: each char -> index
+  @children("tile") legend: list<TileKey>?
+  empty: i64?                        // index meaning "no tile" (default -1)
+  scale: f64?                        // display scale (default 1.0)
+  smooth: bool?                      // anti-alias instead of pixelated
+  x = 0.0  y = 0.0
+  id: identifier?  class: list<utf8>?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
+
+  lower = fn(t: Tilemap) -> list<SvgFundamental> []
+}
+

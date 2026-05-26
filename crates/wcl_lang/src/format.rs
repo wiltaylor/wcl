@@ -354,7 +354,15 @@ impl Printer {
         self.print_leading_trivia(&i.leading_trivia);
         self.write_indent();
         self.push("import ");
-        self.print_string_lit(&i.path, StringEncoding::Utf8);
+        if i.system {
+            // System import: `import <path>`. The path is bare identifier /
+            // `/` / `.` / `-` / `_` segments, so it needs no escaping.
+            self.push("<");
+            self.push(&i.path);
+            self.push(">");
+        } else {
+            self.print_string_lit(&i.path, StringEncoding::Utf8);
+        }
         self.newline();
     }
 

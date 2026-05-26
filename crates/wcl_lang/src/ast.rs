@@ -427,6 +427,10 @@ pub struct SymbolEntry {
 pub struct ImportDecl {
     pub path: String,
     pub path_span: Span,
+    /// `true` for an angle-bracket system import (`import <wdoc/core.wcl>`,
+    /// resolved through a registry); `false` for a quoted disk import
+    /// (`import "./foo.wcl"`).
+    pub system: bool,
     pub span: Span,
     pub leading_trivia: Vec<Trivia>,
 }

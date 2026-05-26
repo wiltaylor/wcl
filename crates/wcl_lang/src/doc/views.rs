@@ -1526,13 +1526,20 @@ impl<'a> Block<'a> {
         for cell in items_cells {
             if let ItemCellKind::Import {
                 path,
+                system,
                 base_dir,
                 path_span,
                 loaded,
             } = &cell.kind
             {
                 let _ = loaded.get_or_init(|| {
-                    load_import_lazily(path, base_dir.as_deref(), *path_span, self.doc.loader())
+                    load_import_lazily(
+                        path,
+                        base_dir.as_deref(),
+                        *system,
+                        *path_span,
+                        self.doc.loader(),
+                    )
                 });
             }
         }

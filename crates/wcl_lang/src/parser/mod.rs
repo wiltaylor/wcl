@@ -27,6 +27,10 @@ pub struct Parser<'a> {
     /// across all of this parse's error sites instead of reallocating
     /// the source string per call.
     named_src: std::sync::Arc<NamedSource<String>>,
+    /// The full source text, retained so `parse_import_decl` can slice
+    /// the raw path out of an `import <...>` between the `<` and `>`
+    /// token spans (the bracketed path is not a single token).
+    src: &'a str,
     lexer: Lexer<'a>,
     peeked: Option<Token>,
     peeked2: Option<Token>,
@@ -48,6 +52,7 @@ impl<'a> Parser<'a> {
         Self {
             file,
             named_src,
+            src,
             lexer: Lexer::new(src),
             peeked: None,
             peeked2: None,
@@ -292,7 +297,7 @@ impl<'a> Parser<'a> {
         };
         if let Some(first) = first_ident.as_deref()
             && first == "import"
-            && matches!(self.peek2()?.kind, TokenKind::Str(_))
+            && matches!(self.peek2()?.kind, TokenKind::Str(_) | TokenKind::Lt)
         {
             if !decorators.is_empty() {
                 let span = decorators[0].span;

@@ -1,0 +1,31 @@
+// Paragraph — children are spans rendered in source order.
+@block("text")
+type Text extends WdocBlock {
+  id:    identifier?
+  class: list<utf8>?
+  @children("span") spans: list<Span>
+  // `text` is itself a fundamental HTML block — the renderer never
+  // invokes its `lower`. Declared only to satisfy the interface.
+  lower = fn(t: Text) -> list<HtmlFundamental> []
+}
+
+// Inline run inside a `text`. Style fields beyond `class` are
+// intentionally absent — style flows through @block("class") rules.
+@block("span")
+type Span {
+  @inline(0) text: utf8
+  id:    identifier?
+  class: list<utf8>?
+}
+
+// Grid container. `widths` are CSS percentages, one per child slot;
+// children flow in source order across the slots.
+@block("column")
+type Column extends WdocBlock {
+  widths: list<f64>
+  id:     identifier?
+  class:  list<utf8>?
+  @children(WdocBlock) children: list<WdocBlock>
+  lower = fn(c: Column) -> list<HtmlFundamental> []
+}
+

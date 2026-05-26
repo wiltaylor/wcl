@@ -1,0 +1,36 @@
+// Bundled default `class` instances. These migrate styling that used to
+// live as Rust string constants in `render.rs` into the class system, so
+// the renderer themes them the same way it themes user classes. Because
+// this schema is prepended to the user's source, these emit BEFORE any
+// user `class` block — a user `class "wdoc-series-1" { fill = … }` still
+// wins by cascade. Only rules expressible as a single bare `.name`
+// selector with allowlisted properties live here; selector-, at-rule-,
+// or custom-property-dependent CSS stays in `render.rs` (see the comment
+// above the remaining constants there).
+//
+// Chart series palette + axes / gridlines / labels / title / legend /
+// line. Axes etc. paint with `currentColor` so they follow the page
+// theme; the eight-hue palette carries explicit `fill` + `stroke`.
+class "wdoc-axis"        { stroke = "currentColor"  opacity = "0.45" }
+class "wdoc-grid"        { stroke = "currentColor"  opacity = "0.12" }
+class "wdoc-axis-label"  { fill = "currentColor"  opacity = "0.75" }
+class "wdoc-chart-title" { fill = "currentColor"  bold = true }
+class "wdoc-legend"      { fill = "currentColor"  opacity = "0.85" }
+class "wdoc-line"        { fill = "none"  stroke_width = "2"  stroke_linejoin = "round"  stroke_linecap = "round" }
+class "wdoc-series-1"    { fill = "#5e81ac"  stroke = "#5e81ac" }
+class "wdoc-series-2"    { fill = "#a3be8c"  stroke = "#a3be8c" }
+class "wdoc-series-3"    { fill = "#ebcb8b"  stroke = "#ebcb8b" }
+class "wdoc-series-4"    { fill = "#bf616a"  stroke = "#bf616a" }
+class "wdoc-series-5"    { fill = "#b48ead"  stroke = "#b48ead" }
+class "wdoc-series-6"    { fill = "#88c0d0"  stroke = "#88c0d0" }
+class "wdoc-series-7"    { fill = "#d08770"  stroke = "#d08770" }
+class "wdoc-series-8"    { fill = "#8fbcbb"  stroke = "#8fbcbb" }
+
+// Bare-class colour rules lifted out of the `webpage` / `book` template
+// CSS. Their surrounding layout (flex, fixed sidebar, descendant +
+// `:hover` selectors) is not expressible as a class and stays in Rust.
+class "site-header"  { bold = true  font_size = "1.4rem"  padding = "0.5rem 0" }
+class "book-chapter" { color = "#333" }
+class "book-section" { color = "#555" }
+class "current"      { bold = true }
+

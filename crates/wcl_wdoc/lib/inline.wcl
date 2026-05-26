@@ -1,0 +1,29 @@
+// Inline parsed-text variants produced by `inline_pattern` blocks.
+// The renderer dispatches Plain to `<span class="...">…</span>` and
+// Link to `<a href="…" class="…">…</a>`. The `text` field of each
+// variant is re-tokenized through the pattern engine (with a depth
+// cap) so a Bold match can contain an Italic span inside.
+union InlineSpan {
+  Plain { text: utf8 class: list<utf8>? }
+  Link  { text: utf8 href: utf8 class: list<utf8>? }
+  // An icon, produced by the built-in `:name:` pattern. `name` is the
+  // icon (optionally `set.name`); the renderer resolves it against the
+  // declared `iconset`s and emits a `<use>` of the shared sprite. An
+  // unresolved name renders as the literal `:name:` text.
+  Icon  { name: utf8 class: list<utf8>? }
+}
+
+// Regex-driven inline parser. The `pattern` field holds a regex;
+// when the renderer tokenizes a span's text, every match is handed
+// to `to_span` (with the regex's captured groups as `list<utf8>`,
+// group 0 = whole match, group 1+ = subgroups in order) which
+// returns a list of InlineSpan variants. Built-in patterns ship in
+// this schema; users add their own by declaring more
+// `inline_pattern <name> { ... }` blocks in user `.wcl`.
+@block("inline_pattern")
+type InlinePattern {
+  @inline(0) name: identifier
+  pattern: utf8
+  to_span: fn(list<utf8>) -> list<InlineSpan>
+}
+

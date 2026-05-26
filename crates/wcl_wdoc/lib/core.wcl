@@ -1,0 +1,180 @@
+// Core wdoc schema: the document root (`Site`), the renderable-block
+// interfaces, and the page/class blocks. These are the IR layer that
+// the HTML renderer (and future targets) speak; higher-level blocks
+// lower to these via the per-block `lower` functions.
+//
+// This is one part of the wdoc standard library — `wdoc/prelude.wcl`
+// pulls every part together, and the wdoc binary makes the schema
+// available by prepending a single `import <wdoc/prelude.wcl>` line to
+// the user's source before parsing.
+
+@document
+type Site {
+  @children("class")          classes:   list<Class>
+  @children("page")           pages:     list<Page>
+  @children("inline_pattern") patterns:  list<InlinePattern>
+  @children("template")       templates: list<Template>
+  @children("iconset")        iconsets:  list<IconSet>
+  @children("tileset")        tilesets:  list<Tileset>
+  @child("site")              site:      SiteConfig?
+}
+
+// Renderable-block interfaces. `WdocBlock` is the page-level domain
+// (renders to HTML today; could target other formats later).
+// `SvgBlock` is the diagram-level domain. User-authored block types
+// opt in with `extends WdocBlock` / `extends SvgBlock` to become
+// legal children of the corresponding `@children(...)` slot.
+//
+// Each interface requires a `lower` field — a function the renderer
+// calls to turn the block into a list of fundamental variants. The
+// interface signature uses `&Interface` as the parameter; concrete
+// types are free to narrow the parameter to their own type
+// (function-typed interface fields match on return type only).
+// Implementations supply the function via `@default(fn(...) -> ...)`
+// so per-instance overrides are possible but never required.
+interface WdocBlock {
+  id:    identifier?
+  lower: fn(&WdocBlock) -> list<HtmlFundamental>
+}
+interface SvgBlock {
+  id:    identifier?
+  lower: fn(&SvgBlock) -> list<SvgFundamental>
+}
+
+// Default connection schema for diagrams. Any pair of SvgBlocks may
+// be connected; renderers draw an arrow from source to destination
+// using the resolved bounding boxes of the named shapes. User code
+// may declare its own `connection ... : ... : ...` and consume it
+// via `@connections(MyEdge)` for custom rendering.
+symbol_set EdgeKind { default flow data }
+connection Edge: &SvgBlock -> &SvgBlock : EdgeKind
+
+// Edge-anchor sides for connection rendering. Each renderable SVG
+// shape declares zero or more sides via `connect_points`; the
+// renderer maps each side to the mid-point of the corresponding
+// bounding-box edge and picks the closest source/destination pair
+// when drawing an arrow. Default (field omitted) = all four sides.
+symbol_set AnchorSide { north east south west }
+
+// Connection routing strategy for a diagram's edges.
+//   :elbow    (default) — orthogonal multi-bend polyline that
+//                         routes around other shapes via A*.
+//   :straight           — single line directly between anchors.
+symbol_set EdgeRouting { elbow straight }
+
+// Auto-layout direction. Only used when `layout = :layered`.
+//   :top_to_bottom (default) — ranks stack downward.
+//   :left_to_right           — ranks stack rightward.
+symbol_set LayoutDirection { top_to_bottom left_to_right }
+
+// Placement of an `icon` badge inside a shape's box (see the shared
+// icon fields below). Default `:top_left`.
+symbol_set IconPos { center top_left top_right bottom_left bottom_right left right }
+
+// Shared "icon badge" fields. Any box-like shape (rect / circle /
+// container / process / decision / terminator below — and any custom
+// `extends SvgBlock` shape that declares the same fields) may carry an
+// `icon`; the renderer resolves it against the declared `iconset`s and
+// draws a `<use>` of the shared sprite over the shape's bounding box.
+//   icon       — icon name, optionally `set.name`
+//   icon_size  — badge size in diagram units (default min(w,h) * 0.4)
+//   icon_pos   — placement (default :top_left)
+//   icon_class — classes on the icon (theming via the class system)
+
+@block("page")
+type Page {
+  @inline(0) name: identifier
+  id: identifier?
+  // Template to wrap this page's content in. Overrides the document's
+  // `default_template` (set on the `site` block). When neither is set
+  // the page renders bare (its blocks straight into <body>).
+  template: symbol?
+  @children(WdocBlock) children: list<WdocBlock>
+}
+
+// Style bundle. Referenced from any IR block's `class: list<utf8>?`
+// field; each entry names a class by its inline identifier. Classes
+// are document-global and emitted as `.name { ... }` rules in the
+// page <style> block.
+@block("class")
+type Class {
+  @inline(0) name: identifier
+
+  // Text styling
+  color:       utf8?
+  background:  utf8?
+  bold:        bool?
+  italic:      bool?
+  underline:   bool?
+
+  // Sizing / alignment
+  font_size:   utf8?
+  font_family: utf8?
+  text_align:  utf8?
+
+  // Layout
+  padding:     utf8?
+  margin:      utf8?
+  border:      utf8?
+
+  // SVG painting (diagram shapes + chart series carry `class`es, so
+  // these theme bars / lines / slices the same way `color` themes text).
+  fill:         utf8?
+  stroke:       utf8?
+  stroke_width: utf8?
+  stroke_linejoin: utf8?
+  stroke_linecap:  utf8?
+  opacity:      utf8?
+
+  // Optional per-mode overrides. `dark` is the default mode; `light`
+  // applies under a system `prefers-color-scheme: light` (and either
+  // wins when the reader explicitly toggles). Same fields as the class.
+  @child("dark")  dark:  ClassMode?
+  @child("light") light: ClassModeLight?
+}
+
+// Per-mode styling for a `class`'s `dark {}` / `light {}` block — the
+// same styling fields as `Class` (minus the name).
+@block("dark")
+type ClassMode {
+  color:        utf8?
+  background:   utf8?
+  bold:         bool?
+  italic:       bool?
+  underline:    bool?
+  font_size:    utf8?
+  font_family:  utf8?
+  text_align:   utf8?
+  padding:      utf8?
+  margin:       utf8?
+  border:       utf8?
+  fill:         utf8?
+  stroke:       utf8?
+  stroke_width: utf8?
+  stroke_linejoin: utf8?
+  stroke_linecap:  utf8?
+  opacity:      utf8?
+}
+
+// `light {}` block — structurally identical to `dark {}`.
+@block("light")
+type ClassModeLight {
+  color:        utf8?
+  background:   utf8?
+  bold:         bool?
+  italic:       bool?
+  underline:    bool?
+  font_size:    utf8?
+  font_family:  utf8?
+  text_align:   utf8?
+  padding:      utf8?
+  margin:       utf8?
+  border:       utf8?
+  fill:         utf8?
+  stroke:       utf8?
+  stroke_width: utf8?
+  stroke_linejoin: utf8?
+  stroke_linecap:  utf8?
+  opacity:      utf8?
+}
+

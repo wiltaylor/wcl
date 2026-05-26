@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 
 use miette::{NamedSource, Report};
-use wcl_lang::{Block, Document, Environment, Value};
+use wcl_lang::{Block, Document, Environment, Registry, Value, disk_loader};
 
 use crate::highlight;
 use crate::inline::InlinePatterns;
@@ -12,7 +12,41 @@ use crate::render::{
     render_class, render_page, render_template,
 };
 
-const SCHEMA: &str = include_str!("../wdoc.wcl");
+/// The wdoc standard library, embedded in the binary and registered
+/// under `wdoc/*.wcl` keys. A user document picks it up through the
+/// single `import <wdoc/prelude.wcl>` line we prepend in [`build`]; the
+/// prelude pulls in every other part via importer-relative system
+/// imports (`import <core.wcl>` → `wdoc/core.wcl`).
+fn schema_registry() -> Registry {
+    let mut r = Registry::new();
+    r.register("wdoc/prelude.wcl", include_str!("../lib/prelude.wcl"));
+    r.register("wdoc/core.wcl", include_str!("../lib/core.wcl"));
+    r.register(
+        "wdoc/css-classes.wcl",
+        include_str!("../lib/css-classes.wcl"),
+    );
+    r.register("wdoc/text.wcl", include_str!("../lib/text.wcl"));
+    r.register("wdoc/callout.wcl", include_str!("../lib/callout.wcl"));
+    r.register("wdoc/table.wcl", include_str!("../lib/table.wcl"));
+    r.register(
+        "wdoc/diagram-core.wcl",
+        include_str!("../lib/diagram-core.wcl"),
+    );
+    r.register("wdoc/templates.wcl", include_str!("../lib/templates.wcl"));
+    r.register("wdoc/inline.wcl", include_str!("../lib/inline.wcl"));
+    r.register(
+        "wdoc/inline-patterns.wcl",
+        include_str!("../lib/inline-patterns.wcl"),
+    );
+    r.register("wdoc/icons.wcl", include_str!("../lib/icons.wcl"));
+    r.register("wdoc/tilemap.wcl", include_str!("../lib/tilemap.wcl"));
+    r.register("wdoc/flowchart.wcl", include_str!("../lib/flowchart.wcl"));
+    r.register("wdoc/charts.wcl", include_str!("../lib/charts.wcl"));
+    r.register("wdoc/headings.wcl", include_str!("../lib/headings.wcl"));
+    r.register("wdoc/code.wcl", include_str!("../lib/code.wcl"));
+    r.register("wdoc/terminal.wcl", include_str!("../lib/terminal.wcl"));
+    r
+}
 
 pub enum BuildError {
     Io(std::io::Error, String),
@@ -50,18 +84,28 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
     let user_src = fs::read_to_string(file)
         .map_err(|e| BuildError::Io(e, format!("read {}", file.display())))?;
 
-    // Stitch the schema in front of the user source. Diagnostics
-    // referencing user lines/columns stay correct as long as we never
-    // touch the user portion — the schema lives at the top.
-    let composed = format!("{SCHEMA}\n{user_src}");
+    // Prepend a single line that pulls in the embedded wdoc schema via a
+    // system import. Resolving it through the registry (rather than
+    // inlining ~1.5k lines) keeps user line/column diagnostics shifted by
+    // just one line; the schema itself reports against its own `<wdoc/…>`
+    // source names.
+    let composed = format!("import <wdoc/prelude.wcl>\n{user_src}");
     let name = file.display().to_string();
 
     // Relative `import "./pages/foo.wcl"` statements inside the user
-    // source must resolve against the source file's own directory,
-    // not the wdoc working directory. Pass it through to open_at.
+    // source must resolve against the source file's own directory, not
+    // the wdoc working directory — so disk imports fall through to the
+    // disk loader with that base. The registry serves the system import.
     let base_dir = file.parent().map(std::path::Path::to_path_buf);
-    let doc = Document::open_at(&composed, &name, base_dir.clone(), &Environment::new())
-        .map_err(|e| BuildError::Parse(Report::new(e)))?;
+    let loader = schema_registry().loader(disk_loader());
+    let doc = Document::open_at_with_loader(
+        &composed,
+        &name,
+        base_dir.clone(),
+        &Environment::new(),
+        loader,
+    )
+    .map_err(|e| BuildError::Parse(Report::new(e)))?;
 
     let errs = doc.schema_errors();
     if !errs.is_empty() {
@@ -80,10 +124,33 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
     // Document-global stylesheet: bundled code-block theme + every
     // @block("class") rule. Emitted into <head> on every page. The
     // theme comes first so user-declared classes can override it.
-    let class_css: String = doc
-        .blocks()
-        .filter(|b| b.kind() == "class")
-        .filter_map(|b| render_class(&b))
+    //
+    // The bundled default classes (e.g. the chart palette) live in the
+    // embedded schema (an import); the user's classes live in the root
+    // document. CSS cascades, so the library defaults must come first to
+    // remain overridable — emit imported class rules ahead of root ones,
+    // each group in source order.
+    let (lib_classes, user_classes): (Vec<String>, Vec<String>) = {
+        let mut lib = Vec::new();
+        let mut user = Vec::new();
+        for (origin, b) in doc.blocks_with_source() {
+            if b.kind() != "class" {
+                continue;
+            }
+            if let Some(css) = render_class(&b) {
+                if origin.is_some() {
+                    &mut lib
+                } else {
+                    &mut user
+                }
+                .push(css);
+            }
+        }
+        (lib, user)
+    };
+    let class_css: String = lib_classes
+        .into_iter()
+        .chain(user_classes)
         .collect::<Vec<_>>()
         .join("\n");
     // Chart styling (palette + axes) is no longer a constant here — it
