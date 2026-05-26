@@ -40,6 +40,7 @@ impl Environment {
         let mut env = Self::empty();
         env.types.extend(builtin_decorator_schemas());
         crate::collections::register(&mut env);
+        crate::math::register(&mut env);
         crate::reflect::register(&mut env);
         env
     }

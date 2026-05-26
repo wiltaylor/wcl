@@ -37,6 +37,7 @@ import "./pages/overview.wcl"
 import "./pages/about.wcl"
 import "./pages/connections.wcl"
 import "./pages/code.wcl"
+import "./pages/charts.wcl"
 
 // Landing page: short table of contents linking to every other
 // page in the site. Lives in `main.wcl` so its content stays in
@@ -51,6 +52,7 @@ page index {
   h2 "Pages" {}
   text { span "• [Overview](overview) — text, classes, columns, a diagram, and a flowchart." {} }
   text { span "• [Connections](connections) — flat edges, cross-container edges, obstacle routing, hubs, restricted anchors." {} }
+  text { span "• [Charts](charts) — bar, line, and pie charts with scales, axis labels, multiple series, and class theming." {} }
   text { span "• [Code blocks](code) — syntax-highlighted listings for Rust, Python, JSON, WCL, and an unknown language." {} }
   text { span "• [About](about) — what this example demonstrates." {} }
 }

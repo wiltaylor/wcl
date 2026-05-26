@@ -27,12 +27,12 @@ fn build_ok(file: &Path, out: &Path) -> usize {
 
 #[test]
 fn build_emits_fundamentals_for_example_site() {
-    // examples/wdoc/main.wcl is the entry point — it pulls in five
+    // examples/wdoc/main.wcl is the entry point — it pulls in six
     // per-page files via `import`. All page bodies live in
     // pages/*.wcl; main.wcl itself only defines the landing index.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 5);
+    assert_eq!(n, 6);
 
     // The richer content (text + classes + diagram + flowchart) is on
     // the overview page, not the landing index.
@@ -1859,11 +1859,11 @@ page index {
 fn build_processes_full_code_example_page() {
     // Smoke test against the code page in the example site, which
     // exercises Rust, Python, JSON, WCL, and an unknown language
-    // in one page. main.wcl imports it and four other pages, so
+    // in one page. main.wcl imports it and five other pages, so
     // we count the code-block wrappers on `code.html`.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 5);
+    assert_eq!(n, 6);
     let html = std::fs::read_to_string(out.path().join("code.html")).expect("read code.html");
     assert!(
         html.matches("<pre class=\"code-block\"").count() >= 5,
@@ -2470,6 +2470,218 @@ fn book_example_is_nord_themed() {
     );
     assert!(
         html.contains("<p class=\"heading-2\"><span>Fields</span></p>"),
+        "{html}"
+    );
+}
+
+#[test]
+fn build_renders_bar_chart_with_axes_and_series() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("bar.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 380
+    height = 240
+    bar_chart {
+      width   = 380
+      height  = 240
+      title   = "Revenue"
+      x_label = "Quarter"
+      categories = ["Q1", "Q2"]
+      y_min = 0.0
+      y_max = 100.0
+      series = [
+        ChartSeries::Of { name: "North", values: [40.0, 80.0] },
+        ChartSeries::Of { name: "South", values: [20.0, 60.0] },
+      ]
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Two categories × two series = four bars, each tagged with a
+    // cycling palette class and no inline fill (CSS drives the colour).
+    let bars1 = html.matches("<rect class=\"wdoc-series-1\"").count();
+    let bars2 = html.matches("<rect class=\"wdoc-series-2\"").count();
+    // 2 bars + 1 legend swatch per series.
+    assert_eq!(bars1, 3, "{html}");
+    assert_eq!(bars2, 3, "{html}");
+    // Bars carry no inline fill — colour comes from the palette CSS.
+    assert!(
+        !html.contains(
+            "<rect class=\"wdoc-series-1\" x=\"40\" y=\"22\" width=\"10\" height=\"10\" fill="
+        ),
+        "{html}"
+    );
+    // Axes, title, scale ticks, category + axis labels.
+    assert!(html.contains("class=\"wdoc-axis\""), "{html}");
+    assert!(
+        html.contains("class=\"wdoc-chart-title\"") && html.contains(">Revenue</tspan>"),
+        "{html}"
+    );
+    assert!(
+        html.contains(">100</tspan>") && html.contains(">0</tspan>"),
+        "{html}"
+    );
+    assert!(
+        html.contains(">Q1</tspan>") && html.contains(">Quarter</tspan>"),
+        "{html}"
+    );
+    // Bundled palette CSS is injected into the page <style>.
+    assert!(html.contains(".wdoc-series-1 { fill: #5e81ac;"), "{html}");
+    assert!(
+        html.contains(".wdoc-axis { stroke: currentColor;"),
+        "{html}"
+    );
+}
+
+#[test]
+fn build_renders_line_chart_segments_and_markers() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("line.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 360
+    height = 220
+    line_chart {
+      width  = 360
+      height = 220
+      categories = ["A", "B", "C"]
+      series = [
+        ChartSeries::Of { name: "one", values: [10.0, 30.0, 20.0] },
+      ]
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Three points ⇒ two connecting line segments (compound class) and
+    // three circle markers.
+    assert_eq!(
+        html.matches("<line class=\"wdoc-series-1 wdoc-line\"")
+            .count(),
+        2,
+        "{html}"
+    );
+    assert_eq!(
+        html.matches("<circle class=\"wdoc-series-1\"").count(),
+        3,
+        "{html}"
+    );
+    assert!(html.contains(".wdoc-line { fill: none;"), "{html}");
+}
+
+#[test]
+fn build_renders_pie_slices_as_polygons() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("pie.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 240
+    height = 240
+    pie_chart {
+      width  = 240
+      height = 240
+      title  = "Mix"
+      slices = [
+        ChartSlice::Of { label: "A", value: 50.0 },
+        ChartSlice::Of { label: "B", value: 30.0 },
+        ChartSlice::Of { label: "C", value: 20.0 },
+      ]
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // One polygon per slice, each on its own palette class, plus a
+    // centroid label per slice.
+    assert!(html.contains("<polygon class=\"wdoc-series-1\""), "{html}");
+    assert!(html.contains("<polygon class=\"wdoc-series-2\""), "{html}");
+    assert!(html.contains("<polygon class=\"wdoc-series-3\""), "{html}");
+    assert!(
+        html.contains(">A</tspan>") && html.contains(">B</tspan>") && html.contains(">C</tspan>"),
+        "{html}"
+    );
+    assert!(
+        html.contains("class=\"wdoc-chart-title\"") && html.contains(">Mix</tspan>"),
+        "{html}"
+    );
+}
+
+#[test]
+fn chart_series_class_is_overridable_via_class_block() {
+    // Redeclaring a palette class (quoted, because the name has
+    // hyphens) recolours a series and emits per-mode rules; the
+    // override lands after the bundled default in the stylesheet.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("themed.wcl");
+    std::fs::write(
+        &src,
+        r##"
+class "wdoc-series-1" {
+  fill = "#7b2d8e"
+  dark  { fill = "#c792ea" }
+  light { fill = "#7b2d8e" }
+}
+
+page index {
+  diagram {
+    width  = 200
+    height = 160
+    bar_chart {
+      width  = 200
+      height = 160
+      categories = ["x"]
+      series = [ ChartSeries::Of { name: "s", values: [5.0] } ]
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Both the bundled default and the user override are present, in
+    // that order, so the override wins by source order.
+    let default_at = html
+        .find(".wdoc-series-1 { fill: #5e81ac;")
+        .expect("bundled default");
+    let override_at = html
+        .find(".wdoc-series-1 { fill:#7b2d8e;fill:#c792ea; }")
+        .expect("user override");
+    assert!(default_at < override_at, "{html}");
+    assert!(
+        html.contains("@media (prefers-color-scheme: light) { .wdoc-series-1 { fill:#7b2d8e; } }"),
         "{html}"
     );
 }

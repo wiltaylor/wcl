@@ -1,0 +1,101 @@
+// Data-chart demo: bar / line / pie charts as custom SVG shapes.
+//
+// Charts are placed inside a `diagram { }` like any other shape and
+// take `x` / `y` / `width` / `height`. Data is a list of
+// `ChartSeries::Of { name, values }` (bar / line) or
+// `ChartSlice::Of { label, value }` (pie). Bars, lines, and slices are
+// auto-assigned palette classes (`wdoc-series-1`..`wdoc-series-8`), so
+// they theme through the class system exactly like everything else —
+// see the `wdoc-series-1` override at the bottom of this file.
+
+page charts {
+  h1 "Charts" {}
+
+  text {
+    span "Bar, line, and pie charts are custom shapes that lower to SVG fundamentals through pure-WCL geometry. Set the scale with " {}
+    span "y_min" { class = ["accent"] }
+    span " / " {}
+    span "y_max" { class = ["accent"] }
+    span ", label the axes, and pass any number of series." {}
+  }
+
+  h2 "Grouped bar chart" {}
+
+  // Two series, an explicit 0–100 scale, and axis labels.
+  diagram {
+    width  = 380
+    height = 240
+
+    bar_chart {
+      width   = 380
+      height  = 240
+      title   = "Quarterly revenue ($k)"
+      x_label = "Quarter"
+      y_label = "$k"
+      categories = ["Q1", "Q2", "Q3", "Q4"]
+      y_min = 0.0
+      y_max = 100.0
+      series = [
+        ChartSeries::Of { name: "North", values: [42.0, 55.0, 61.0, 78.0] },
+        ChartSeries::Of { name: "South", values: [30.0, 48.0, 52.0, 66.0] },
+      ]
+    }
+  }
+
+  h2 "Multi-series line chart" {}
+
+  // Three series; the y-axis scale is auto-fit to the data when
+  // `y_max` is omitted.
+  diagram {
+    width  = 420
+    height = 240
+
+    line_chart {
+      width   = 420
+      height  = 240
+      title   = "Weekly latency (ms)"
+      x_label = "Day"
+      categories = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+      series = [
+        ChartSeries::Of { name: "p50", values: [12.0, 14.0, 11.0, 18.0, 13.0] },
+        ChartSeries::Of { name: "p90", values: [26.0, 31.0, 28.0, 40.0, 33.0] },
+        ChartSeries::Of { name: "p99", values: [44.0, 58.0, 51.0, 72.0, 60.0] },
+      ]
+    }
+  }
+
+  h2 "Pie chart" {}
+
+  diagram {
+    width  = 260
+    height = 260
+
+    pie_chart {
+      width  = 260
+      height = 260
+      title  = "Language mix"
+      slices = [
+        ChartSlice::Of { label: "Rust",   value: 55.0 },
+        ChartSlice::Of { label: "TS",     value: 25.0 },
+        ChartSlice::Of { label: "Python", value: 12.0 },
+        ChartSlice::Of { label: "Other",  value: 8.0 },
+      ]
+    }
+  }
+
+  text {
+    span "Every series carries a palette class. Recolour one by redeclaring that class — it follows the light/dark theme like any other." {}
+  }
+}
+
+// Theme the first series. Redeclaring the palette class overrides the
+// bundled default (which comes first in the stylesheet), and the
+// `dark {}` / `light {}` blocks switch with the reader's colour scheme.
+// The name is quoted because it contains hyphens (an identifier
+// label can't), matching how the bundled palette class is named.
+class "wdoc-series-1" {
+  fill   = "#7b2d8e"
+  stroke = "#7b2d8e"
+  dark  { fill = "#c792ea"  stroke = "#c792ea" }
+  light { fill = "#7b2d8e"  stroke = "#7b2d8e" }
+}

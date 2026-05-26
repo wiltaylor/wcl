@@ -98,6 +98,13 @@ type Class {
   margin:      utf8?
   border:      utf8?
 
+  // SVG painting (diagram shapes + chart series carry `class`es, so
+  // these theme bars / lines / slices the same way `color` themes text).
+  fill:         utf8?
+  stroke:       utf8?
+  stroke_width: utf8?
+  opacity:      utf8?
+
   // Optional per-mode overrides. `dark` is the default mode; `light`
   // applies under a system `prefers-color-scheme: light` (and either
   // wins when the reader explicitly toggles). Same fields as the class.
@@ -109,33 +116,41 @@ type Class {
 // same styling fields as `Class` (minus the name).
 @block("dark")
 type ClassMode {
-  color:       utf8?
-  background:  utf8?
-  bold:        bool?
-  italic:      bool?
-  underline:   bool?
-  font_size:   utf8?
-  font_family: utf8?
-  text_align:  utf8?
-  padding:     utf8?
-  margin:      utf8?
-  border:      utf8?
+  color:        utf8?
+  background:   utf8?
+  bold:         bool?
+  italic:       bool?
+  underline:    bool?
+  font_size:    utf8?
+  font_family:  utf8?
+  text_align:   utf8?
+  padding:      utf8?
+  margin:       utf8?
+  border:       utf8?
+  fill:         utf8?
+  stroke:       utf8?
+  stroke_width: utf8?
+  opacity:      utf8?
 }
 
 // `light {}` block — structurally identical to `dark {}`.
 @block("light")
 type ClassModeLight {
-  color:       utf8?
-  background:  utf8?
-  bold:        bool?
-  italic:      bool?
-  underline:   bool?
-  font_size:   utf8?
-  font_family: utf8?
-  text_align:  utf8?
-  padding:     utf8?
-  margin:      utf8?
-  border:      utf8?
+  color:        utf8?
+  background:   utf8?
+  bold:         bool?
+  italic:       bool?
+  underline:    bool?
+  font_size:    utf8?
+  font_family:  utf8?
+  text_align:   utf8?
+  padding:      utf8?
+  margin:       utf8?
+  border:       utf8?
+  fill:         utf8?
+  stroke:       utf8?
+  stroke_width: utf8?
+  opacity:      utf8?
 }
 
 // Paragraph — children are spans rendered in source order.
@@ -728,6 +743,351 @@ type Terminator extends SvgBlock {
       fill: none, id: none, class: t.class,
     },
   ]
+}
+
+// ── Stdlib charts ──────────────────────────────────────────────────
+//
+// `bar_chart`, `line_chart`, and `pie_chart` are custom SvgBlocks that
+// lower to fundamentals through pure-WCL geometry (the math builtins —
+// `sin`/`cos`/`max`/`min`/… — do the work). They are placed inside a
+// `diagram { }` like any other shape and positioned with `x`/`y`.
+//
+// Data is supplied as a list of `ChartSeries::Of` (bar / line) or
+// `ChartSlice::Of` (pie) variants. Every bar / line / slice is tagged
+// with a palette class (`wdoc-series-1`..`wdoc-series-8`, cycled by
+// index) and emits no inline fill, so colours come entirely from CSS:
+// redeclare `class "wdoc-series-N" { fill = … dark {…} light {…} }` to
+// recolour a series the same way you theme anything else. Axes, grid,
+// labels, title, and legend paint with `currentColor` (see CHART_CSS).
+
+union ChartSeries { Of { name: utf8  values: list<f64> } }
+union ChartSlice  { Of { label: utf8  value: f64 } }
+
+// Palette of series classes; cycled by index so the Nth series / slice
+// always lands on a stable class an author can override.
+let chart_palette = [
+  "wdoc-series-1", "wdoc-series-2", "wdoc-series-3", "wdoc-series-4",
+  "wdoc-series-5", "wdoc-series-6", "wdoc-series-7", "wdoc-series-8",
+]
+let chart_series_class = fn(i: i64) -> utf8 at(chart_palette, i % len(chart_palette))
+
+// Largest value across every series — the auto upper bound for the
+// scale when `y_max` is omitted.
+let chart_all_values = fn(series: list<ChartSeries>) -> list<f64>
+  flatten(map(series, fn(s: ChartSeries) -> list<f64> s.values))
+let chart_data_max = fn(series: list<ChartSeries>) -> f64
+  fold(chart_all_values(series), 0.0, fn(acc: f64, v: f64) -> f64 max(acc, v))
+let chart_ncat = fn(series: list<ChartSeries>) -> i64 {
+  let s0 = at(series, 0);
+  len(s0.values)
+}
+
+// Format a scale tick: round to two decimals so auto bounds don't emit
+// long floating-point tails.
+let chart_fmt = fn(v: f64) -> utf8 format("{}", round(v * 100.0) / 100.0)
+
+// Plot-area axes: the x baseline and the y spine.
+let chart_axes = fn(px: f64, py: f64, pw: f64, ph: f64) -> list<SvgFundamental> [
+  SvgFundamental::Line {
+    x1: px, y1: py + ph, x2: px + pw, y2: py + ph,
+    stroke: none, id: none, class: ["wdoc-axis"],
+  },
+  SvgFundamental::Line {
+    x1: px, y1: py, x2: px, y2: py + ph,
+    stroke: none, id: none, class: ["wdoc-axis"],
+  },
+]
+
+// Horizontal gridlines + y-axis value labels for `nticks` divisions.
+let chart_y_ticks = fn(px: f64, py: f64, pw: f64, ph: f64, ymin: f64, ymax: f64, nticks: i64) -> list<SvgFundamental>
+  flatten(map(range(0, nticks + 1), fn(k: i64) -> list<SvgFundamental> {
+    let yy = py + ph - ph * k / nticks;
+    let val = ymin + (ymax - ymin) * k / nticks;
+    [
+      SvgFundamental::Line {
+        x1: px, y1: yy, x2: px + pw, y2: yy,
+        stroke: none, id: none, class: ["wdoc-grid"],
+      },
+      SvgFundamental::Label {
+        content: chart_fmt(val),
+        x: px - 6.0, y: yy, font_size: 10.0,
+        fit_width: 32.0, fit_height: 12.0,
+        fill: none, id: none, class: ["wdoc-axis-label"],
+      },
+    ]
+  }))
+
+// One category label centred under each group / point slot.
+let chart_cat_labels = fn(px: f64, py: f64, pw: f64, ph: f64, cats: list<utf8>) -> list<SvgFundamental> {
+  let ncat = len(cats);
+  map(range(0, ncat), fn(i: i64) -> SvgFundamental {
+    let gw = pw / ncat;
+    SvgFundamental::Label {
+      content: at(cats, i),
+      x: px + gw * i + gw / 2.0, y: py + ph + 12.0, font_size: 10.0,
+      fit_width: gw, fit_height: 12.0,
+      fill: none, id: none, class: ["wdoc-axis-label"],
+    }
+  })
+}
+
+// Optional x-axis title (below the category labels) and y-axis title
+// (above the spine). Empty strings render nothing.
+let chart_axis_titles = fn(px: f64, py: f64, pw: f64, ph: f64, xlab: utf8, ylab: utf8) -> list<SvgFundamental>
+  flatten([
+    if xlab == "" { [] } else {
+      [ SvgFundamental::Label {
+          content: xlab, x: px + pw / 2.0, y: py + ph + 26.0, font_size: 11.0,
+          fit_width: pw, fit_height: 13.0,
+          fill: none, id: none, class: ["wdoc-axis-label"],
+        } ]
+    },
+    if ylab == "" { [] } else {
+      [ SvgFundamental::Label {
+          content: ylab, x: px, y: py - 7.0, font_size: 11.0,
+          fit_width: 90.0, fit_height: 13.0,
+          fill: none, id: none, class: ["wdoc-axis-label"],
+        } ]
+    },
+  ])
+
+// Centred chart title at the top of the box. Empty string ⇒ nothing.
+let chart_title = fn(cx: f64, cy: f64, cw: f64, text: utf8) -> list<SvgFundamental>
+  if text == "" { [] } else {
+    [ SvgFundamental::Label {
+        content: text, x: cx, y: cy + 11.0, font_size: 13.0,
+        fit_width: cw, fit_height: 16.0,
+        fill: none, id: none, class: ["wdoc-chart-title"],
+      } ]
+  }
+
+// Legend row: a coloured swatch + series name per series.
+let chart_legend = fn(px: f64, ly: f64, pw: f64, series: list<ChartSeries>) -> list<SvgFundamental> {
+  let n = len(series);
+  flatten(map(range(0, n), fn(j: i64) -> list<SvgFundamental> {
+    let slot = pw / n;
+    let ix = px + slot * j;
+    let sj = at(series, j);
+    [
+      SvgFundamental::Rect {
+        x: ix, y: ly - 9.0, width: 10.0, height: 10.0,
+        fill: none, stroke: none, id: none, class: [chart_series_class(j)],
+      },
+      SvgFundamental::Label {
+        content: sj.name,
+        x: ix + 15.0 + (slot - 19.0) / 2.0, y: ly - 4.0, font_size: 10.0,
+        fit_width: slot - 19.0, fit_height: 12.0,
+        fill: none, id: none, class: ["wdoc-legend"],
+      },
+    ]
+  }))
+}
+
+// Grouped bars: category i × series j, scaled to the [ymin, ymax] range.
+let chart_bars = fn(series: list<ChartSeries>, px: f64, py: f64, pw: f64, ph: f64, ymin: f64, ymax: f64, ncat: i64) -> list<SvgFundamental>
+  flatten(map(range(0, ncat), fn(i: i64) -> list<SvgFundamental>
+    map(range(0, len(series)), fn(j: i64) -> SvgFundamental {
+      let gw = pw / ncat;
+      let bw = gw * 0.8 / len(series);
+      let sj = at(series, j);
+      let v = at(sj.values, i);
+      let bh = ph * (v - ymin) / (ymax - ymin);
+      SvgFundamental::Rect {
+        x: px + gw * i + gw * 0.1 + bw * j, y: py + ph - bh,
+        width: bw, height: bh,
+        fill: none, stroke: none, id: none, class: [chart_series_class(j)],
+      }
+    })))
+
+// X position of point `i` of `ncat` along the plot width.
+let chart_line_x = fn(px: f64, pw: f64, i: i64, ncat: i64) -> f64
+  if ncat <= 1 { px + pw / 2.0 } else { px + pw * i / (ncat - 1) }
+
+// Polyline (as connected segments) + markers per series.
+let chart_lines = fn(series: list<ChartSeries>, px: f64, py: f64, pw: f64, ph: f64, ymin: f64, ymax: f64, ncat: i64) -> list<SvgFundamental>
+  flatten(map(range(0, len(series)), fn(j: i64) -> list<SvgFundamental> {
+    let sj = at(series, j);
+    let cls = chart_series_class(j);
+    let segs = map(range(0, ncat - 1), fn(i: i64) -> SvgFundamental {
+      let v1 = at(sj.values, i);
+      let v2 = at(sj.values, i + 1);
+      SvgFundamental::Line {
+        x1: chart_line_x(px, pw, i, ncat),
+        y1: py + ph - ph * (v1 - ymin) / (ymax - ymin),
+        x2: chart_line_x(px, pw, i + 1, ncat),
+        y2: py + ph - ph * (v2 - ymin) / (ymax - ymin),
+        stroke: none, id: none, class: [cls, "wdoc-line"],
+      }
+    });
+    let marks = map(range(0, ncat), fn(i: i64) -> SvgFundamental {
+      let v = at(sj.values, i);
+      SvgFundamental::Circle {
+        cx: chart_line_x(px, pw, i, ncat),
+        cy: py + ph - ph * (v - ymin) / (ymax - ymin),
+        r: 2.6, fill: none, stroke: none, id: none, class: [cls],
+      }
+    });
+    flatten([segs, marks])
+  }))
+
+// Build an axis frame (title, legend, grid, axes, category + axis
+// titles) shared by the bar and line charts. `cats` is already
+// resolved to concrete strings and `title`/`xlab`/`ylab` use "" for
+// absent.
+let chart_frame = fn(
+  cx: f64, cy: f64, cw: f64,
+  px: f64, py: f64, pw: f64, ph: f64,
+  ymin: f64, ymax: f64, ly: f64,
+  cats: list<utf8>, title: utf8, xlab: utf8, ylab: utf8,
+  series: list<ChartSeries>, has_legend: bool,
+) -> list<SvgFundamental>
+  flatten([
+    chart_title(cx + cw / 2.0, cy, cw, title),
+    if has_legend { chart_legend(px, ly, pw, series) } else { [] },
+    chart_y_ticks(px, py, pw, ph, ymin, ymax, 4),
+    chart_axes(px, py, pw, ph),
+    chart_cat_labels(px, py, pw, ph, cats),
+    chart_axis_titles(px, py, pw, ph, xlab, ylab),
+  ])
+
+// Resolve the shared per-chart inputs (scale, labels, geometry) used by
+// both bar and line charts, then dispatch to the data layer `draw`.
+let chart_xy = fn(
+  cx: f64, cy: f64, cw: f64, ch: f64,
+  series: list<ChartSeries>,
+  categories: list<utf8>, title: utf8, xlab: utf8, ylab: utf8,
+  ymin: f64, ymax: f64,
+  draw: fn(list<ChartSeries>, f64, f64, f64, f64, f64, f64, i64) -> list<SvgFundamental>,
+) -> list<SvgFundamental> {
+  let nser = len(series);
+  let ncat = if len(categories) == 0 { chart_ncat(series) } else { len(categories) };
+  let cats = if len(categories) == 0 { map(range(0, ncat), fn(i: i64) -> utf8 format("{}", i + 1)) } else { categories };
+  let has_legend = nser > 1;
+  let title_h = if title == "" { 4.0 } else { 20.0 };
+  let legend_h = if has_legend { 16.0 } else { 0.0 };
+  let bottom = if xlab == "" { 26.0 } else { 40.0 };
+  let px = cx + 40.0;
+  let py = cy + title_h + legend_h + 4.0;
+  let pw = cw - 52.0;
+  let ph = ch - title_h - legend_h - 4.0 - bottom;
+  let ly = cy + title_h + 11.0;
+  flatten([
+    chart_frame(cx, cy, cw, px, py, pw, ph, ymin, ymax, ly, cats, title, xlab, ylab, series, has_legend),
+    draw(series, px, py, pw, ph, ymin, ymax, ncat),
+  ])
+}
+
+@block("bar_chart")
+type BarChart extends SvgBlock {
+  // Defaults match the `process` convention so `:layered` / `:grid`
+  // layout can position the chart via a wrapper transform.
+  x = 0.0  y = 0.0  width = 360.0  height = 220.0
+  id: identifier?  class: list<utf8>?
+  title:      utf8?
+  x_label:    utf8?
+  y_label:    utf8?
+  categories: list<utf8>?
+  y_min:      f64?
+  y_max:      f64?
+  series:     list<ChartSeries>
+  connect_points: list<AnchorSide>?
+
+  lower = fn(c: BarChart) -> list<SvgFundamental> {
+    let ymin = if c.y_min == none { 0.0 } else { c.y_min };
+    let ymax0 = if c.y_max == none { chart_data_max(c.series) } else { c.y_max };
+    let ymax = max(ymax0, ymin + 0.000001);
+    chart_xy(
+      c.x, c.y, c.width, c.height, c.series,
+      if c.categories == none { [] } else { c.categories },
+      if c.title == none { "" } else { c.title },
+      if c.x_label == none { "" } else { c.x_label },
+      if c.y_label == none { "" } else { c.y_label },
+      ymin, ymax, chart_bars,
+    )
+  }
+}
+
+@block("line_chart")
+type LineChart extends SvgBlock {
+  x = 0.0  y = 0.0  width = 360.0  height = 220.0
+  id: identifier?  class: list<utf8>?
+  title:      utf8?
+  x_label:    utf8?
+  y_label:    utf8?
+  categories: list<utf8>?
+  y_min:      f64?
+  y_max:      f64?
+  series:     list<ChartSeries>
+  connect_points: list<AnchorSide>?
+
+  lower = fn(c: LineChart) -> list<SvgFundamental> {
+    let ymin = if c.y_min == none { 0.0 } else { c.y_min };
+    let ymax0 = if c.y_max == none { chart_data_max(c.series) } else { c.y_max };
+    let ymax = max(ymax0, ymin + 0.000001);
+    chart_xy(
+      c.x, c.y, c.width, c.height, c.series,
+      if c.categories == none { [] } else { c.categories },
+      if c.title == none { "" } else { c.title },
+      if c.x_label == none { "" } else { c.x_label },
+      if c.y_label == none { "" } else { c.y_label },
+      ymin, ymax, chart_lines,
+    )
+  }
+}
+
+// Cumulative-offset / sweep angles per slice, drawn as polygon
+// approximations of arcs (centre point + sampled points along the
+// edge). Angles are measured clockwise from twelve o'clock.
+let chart_slice_values = fn(slices: list<ChartSlice>) -> list<f64>
+  map(slices, fn(s: ChartSlice) -> f64 s.value)
+let chart_arc = fn(cx: f64, cy: f64, r: f64, a0: f64, sweep: f64, steps: i64) -> utf8
+  join(map(range(0, steps + 1), fn(k: i64) -> utf8 {
+    let th = a0 + sweep * k / steps;
+    format("{},{}", cx + r * sin(th), cy - r * cos(th))
+  }), " ")
+
+@block("pie_chart")
+type PieChart extends SvgBlock {
+  x = 0.0  y = 0.0  width = 240.0  height = 240.0
+  id: identifier?  class: list<utf8>?
+  title:  utf8?
+  slices: list<ChartSlice>
+  connect_points: list<AnchorSide>?
+
+  lower = fn(c: PieChart) -> list<SvgFundamental> {
+    let title = if c.title == none { "" } else { c.title };
+    let title_h = if title == "" { 4.0 } else { 22.0 };
+    let vals = chart_slice_values(c.slices);
+    let total = max(sum(vals), 0.000001);
+    let avail_h = c.height - title_h;
+    let cx = c.x + c.width / 2.0;
+    let cy = c.y + title_h + avail_h / 2.0;
+    let r = min(c.width, avail_h) / 2.0 * 0.86;
+    flatten([
+      chart_title(c.x + c.width / 2.0, c.y, c.width, title),
+      flatten(map(range(0, len(c.slices)), fn(i: i64) -> list<SvgFundamental> {
+        let si = at(c.slices, i);
+        let prefix = take(vals, i);
+        let cum = if len(prefix) == 0 { 0.0 } else { sum(prefix) };
+        let a0 = cum / total * tau();
+        let sweep = si.value / total * tau();
+        let mid = a0 + sweep / 2.0;
+        [
+          SvgFundamental::Polygon {
+            points: format("{},{} {}", cx, cy, chart_arc(cx, cy, r, a0, sweep, 48)),
+            fill: none, stroke: none, id: none, class: [chart_series_class(i)],
+          },
+          SvgFundamental::Label {
+            content: si.label,
+            x: cx + r * 0.62 * sin(mid),
+            y: cy - r * 0.62 * cos(mid),
+            font_size: 10.0, fit_width: 64.0, fit_height: 12.0,
+            fill: none, id: none, class: ["wdoc-legend"],
+          },
+        ]
+      })),
+    ])
+  }
 }
 
 // ── Stdlib headings ────────────────────────────────────────────────

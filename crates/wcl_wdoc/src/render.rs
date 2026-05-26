@@ -99,6 +99,32 @@ pub(crate) const BOOK_CSS: &str = "\
 .book-content { margin-left: 16rem; padding: 1rem 2.5rem; max-width: 46rem; }
 .theme-toggle { display: block; margin: 0 0 0.75rem; padding: 0.2rem 0.6rem; cursor: pointer; background: transparent; border: 1px solid currentColor; border-radius: 4px; color: inherit; font: inherit; }";
 
+/// Default styling for the `bar_chart` / `line_chart` / `pie_chart`
+/// shapes. Injected like `TABLE_CSS` (before user `class` rules, which
+/// therefore override it). Axes, gridlines, labels, the title, and the
+/// legend paint with `currentColor`, so they adopt whatever text colour
+/// the page theme sets (`class \"wdoc-body\" { color: … }`) and follow
+/// the `book` theme toggle for free — no media queries needed. The
+/// eight-hue series palette carries explicit `fill` + `stroke` so the
+/// same class works for a bar's fill, a line's stroke, and a marker's
+/// fill; redeclare `class \"wdoc-series-N\" { fill = … }` to recolour a
+/// series, or pass an explicit `class` on a series / slice.
+pub(crate) const CHART_CSS: &str = "\
+.wdoc-axis { stroke: currentColor; opacity: 0.45; }
+.wdoc-grid { stroke: currentColor; opacity: 0.12; }
+.wdoc-axis-label { fill: currentColor; opacity: 0.75; }
+.wdoc-chart-title { fill: currentColor; font-weight: bold; }
+.wdoc-legend { fill: currentColor; opacity: 0.85; }
+.wdoc-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.wdoc-series-1 { fill: #5e81ac; stroke: #5e81ac; }
+.wdoc-series-2 { fill: #a3be8c; stroke: #a3be8c; }
+.wdoc-series-3 { fill: #ebcb8b; stroke: #ebcb8b; }
+.wdoc-series-4 { fill: #bf616a; stroke: #bf616a; }
+.wdoc-series-5 { fill: #b48ead; stroke: #b48ead; }
+.wdoc-series-6 { fill: #88c0d0; stroke: #88c0d0; }
+.wdoc-series-7 { fill: #d08770; stroke: #d08770; }
+.wdoc-series-8 { fill: #8fbcbb; stroke: #8fbcbb; }";
+
 /// Wrap a page's `body` HTML in the document shell. The `<head>`
 /// (title + global stylesheet) is owned here regardless of template;
 /// templates control the `<body>` contents via `render_template`.
@@ -321,6 +347,20 @@ fn class_props(block: &Block<'_>) -> String {
     );
     push_css(&mut props, "margin", field_utf8(block, "margin").as_deref());
     push_css(&mut props, "border", field_utf8(block, "border").as_deref());
+    // SVG painting — themes diagram shapes and chart series (their
+    // `class`es reach the `<rect>` / `<line>` / `<polygon>` elements).
+    push_css(&mut props, "fill", field_utf8(block, "fill").as_deref());
+    push_css(&mut props, "stroke", field_utf8(block, "stroke").as_deref());
+    push_css(
+        &mut props,
+        "stroke-width",
+        field_utf8(block, "stroke_width").as_deref(),
+    );
+    push_css(
+        &mut props,
+        "opacity",
+        field_utf8(block, "opacity").as_deref(),
+    );
     props
 }
 

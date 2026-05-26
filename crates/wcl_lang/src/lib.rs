@@ -23,6 +23,7 @@ mod environment;
 mod error;
 pub mod format;
 mod lexer;
+mod math;
 mod numeric;
 mod parser;
 mod profile;
