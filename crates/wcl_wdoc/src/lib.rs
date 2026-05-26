@@ -8,6 +8,7 @@
 pub mod build;
 mod highlight;
 mod icons;
+mod image;
 mod inline;
 mod layered;
 mod render;

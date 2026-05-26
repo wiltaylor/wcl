@@ -7,6 +7,7 @@ use std::fmt::Write as _;
 use wcl_lang::{Block, Document, Value};
 
 use crate::icons::{IconRegistry, ShapeOverride};
+use crate::image::{self, ImageRegistry};
 use crate::layered::{self, Direction};
 use crate::routing::{self, EdgePath, Obstacle, Side};
 use crate::text;
@@ -50,14 +51,16 @@ pub(crate) struct RenderCtx<'a> {
     doc: &'a Document,
     icons: &'a IconRegistry,
     tilesets: &'a TilesetRegistry,
+    images: &'a ImageRegistry,
 }
 
 /// Counterpart to [`RenderCtx`] for the geometry-collection pass, which
-/// produces no SVG and so needs only the tileset registry (to size a
-/// `tilemap`'s bbox).
+/// produces no SVG and so needs only the registries that size a shape's
+/// bbox (a `tilemap`'s sheet, an `image`'s natural dimensions).
 #[derive(Clone, Copy)]
 pub(crate) struct CollectCtx<'a> {
     tilesets: &'a TilesetRegistry,
+    images: &'a ImageRegistry,
 }
 
 /// The bundled pan + zoom player, written to `_wdoc/` and loaded once
@@ -78,13 +81,15 @@ pub(crate) fn render_diagram(
     block: &Block<'_>,
     icons: &IconRegistry,
     tilesets: &TilesetRegistry,
+    images: &ImageRegistry,
 ) -> String {
     let ctx = RenderCtx {
         doc,
         icons,
         tilesets,
+        images,
     };
-    let cctx = CollectCtx { tilesets };
+    let cctx = CollectCtx { tilesets, images };
     let cls = class_attr(block);
     let width = field_i64(block, "width").unwrap_or(0);
     let height = field_i64(block, "height").unwrap_or(0);
@@ -408,6 +413,12 @@ pub(crate) fn collect_shape_positions(
             // referenced tileset's tile size; mirror render_tilemap so
             // overlays / edges and the viewBox fit see its true extent.
             let (x, y, w, h) = tileset::tilemap_bbox(block, cctx.tilesets, parent_w, parent_h);
+            record(block, (tx + x, ty + y, w, h), out);
+        }
+        "image" => {
+            // Mirror image::render_svg's geometry (declared or natural
+            // size × scale, anchored) so edges + the viewBox fit see it.
+            let (x, y, w, h) = image::image_bbox(block, cctx.images, parent_w, parent_h);
             record(block, (tx + x, ty + y, w, h), out);
         }
         "container" => {
@@ -904,6 +915,9 @@ pub(crate) fn render_shape(
                 parent_h,
             ));
         }
+        // An `image` embeds an external raster as an SVG `<image>`; the
+        // asset copy + path rewrite is special-cased like `tilemap`.
+        "image" => return Some(image::render_svg(block, ctx.images, parent_w, parent_h)),
         kind => lower_svg_block(ctx.doc, block, kind, parent_w, parent_h),
     };
     Some(with_shape_icon(

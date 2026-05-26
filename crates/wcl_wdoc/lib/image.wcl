@@ -1,0 +1,37 @@
+// ── Image ───────────────────────────────────────────────────────────
+//
+// A raster image, usable two ways from one block:
+//   - on a page (`extends WdocBlock`)   → an `<img>`
+//   - inside a `diagram` / `container`  → a placeable SVG `<image>`
+// `source` is a path relative to the doc (copied into `_wdoc/` and
+// referenced by URL, so it resolves when *served*, not via `file://`) or
+// an external URL / `data:` URI (passed through unchanged). Like
+// `icon` / `tilemap` it's special-cased in the renderer — the asset copy,
+// path rewrite, and natural-size reading aren't expressible in WCL — so
+// the `lower` is a never-called stub.
+@block("image")
+type Image extends WdocBlock, SvgBlock {
+  @inline(0) source: utf8             // doc-relative path, or a URL / data: URI
+  alt:    utf8?                       // page alt text
+  width:  f64?                        // display size; natural size if omitted
+  height: f64?
+  id:     identifier?
+  class:  list<utf8>?
+
+  // Diagram placement (ignored on a page), mirroring `icon` / `tilemap`.
+  x = 0.0  y = 0.0
+  scale: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
+
+  lower = fn(i: Image) -> list<HtmlFundamental> []
+}
+
+// Responsive default for page images. `img.wdoc-image` is an
+// element+class selector (not a bare class), so it's a `stylesheet` rather
+// than a `class`; a user `class` on the image still cascades over it.
+stylesheet "wdoc-image" {
+  css = <<CSS
+    img.wdoc-image { max-width: 100%; height: auto; }
+    CSS
+}

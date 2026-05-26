@@ -20,6 +20,7 @@ use regex::Regex;
 use wcl_lang::{Document, FnValue, Value, VariantPayload};
 
 use crate::icons::IconRegistry;
+use crate::image::ImageRegistry;
 use crate::render::escape_html;
 use crate::tileset::TilesetRegistry;
 
@@ -46,6 +47,10 @@ pub(crate) struct InlinePatterns {
     /// new param through `render_block`, mirroring how `icons` rides
     /// along.
     tilesets: TilesetRegistry,
+    /// Image registry. Carried alongside `tilesets` so both the page
+    /// (`<img>`) and diagram (`<image>`) render paths reach it via
+    /// `images()`; populated lazily as `image` blocks are rendered.
+    images: ImageRegistry,
 }
 
 struct CompiledPattern {
@@ -64,6 +69,7 @@ impl InlinePatterns {
         page_names: HashSet<String>,
         icons: IconRegistry,
         tilesets: TilesetRegistry,
+        images: ImageRegistry,
     ) -> Self {
         let mut compiled = Vec::new();
         for block in doc.blocks() {
@@ -97,6 +103,7 @@ impl InlinePatterns {
             link_errors: RefCell::new(Vec::new()),
             icons,
             tilesets,
+            images,
         }
     }
 
@@ -110,6 +117,12 @@ impl InlinePatterns {
     /// path (diagram `tilemap` blocks) via `render_diagram`.
     pub(crate) fn tilesets(&self) -> &TilesetRegistry {
         &self.tilesets
+    }
+
+    /// The document's image registry, threaded into both the page
+    /// (`<img>`) and diagram (`<image>`) render paths.
+    pub(crate) fn images(&self) -> &ImageRegistry {
+        &self.images
     }
 
     /// Drain accumulated unknown-page link errors. Build calls

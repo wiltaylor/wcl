@@ -184,11 +184,16 @@ pub(crate) fn render_block(
     match block.kind() {
         "column" => Some(render_column(doc, block, patterns, base_dir)),
         "table" => Some(render_table(doc, block, patterns)),
+        // A page image — the asset copy + src rewrite is special-cased in
+        // Rust (the same `image` block is also a diagram shape; see
+        // render_shape). Records usage in the image registry.
+        "image" => Some(crate::image::render_html(block, patterns.images())),
         "diagram" => Some(render_diagram(
             doc,
             block,
             patterns.icons(),
             patterns.tilesets(),
+            patterns.images(),
         )),
         // The terminal is special-cased in Rust: its grid model, ANSI
         // handling, and asciinema replay aren't expressible in WCL.

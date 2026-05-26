@@ -74,4 +74,24 @@ page tilemap {
   text {
     span "Tiles render with nearest-neighbour scaling by default (`image-rendering: pixelated`); set `smooth = true` for the browser's default smoothing. The sheet is copied to `_wdoc/`, so tiles resolve when the site is served." {}
   }
+
+  h2 "Images" {}
+
+  // An `image` embeds a whole raster, no slicing. On a page it's an
+  // `<img>`; the source is resolved relative to main.wcl, copied into
+  // `_wdoc/`, and made responsive by the bundled `wdoc-image` style.
+  text {
+    span "An `image` block embeds a picture directly. Here's the raw spritesheet the tilemaps above slice from:" {}
+  }
+  image "assets/kenney-platformer.png" { alt = "Kenney platformer spritesheet"  width = 220 }
+
+  text {
+    span "The same `image` block is also a diagram shape, so it can be placed and overlaid like any other:" {}
+  }
+  diagram {
+    width  = 200
+    height = 200
+    image "assets/kenney-platformer.png" { x = 0.0  y = 0.0  width = 160.0  height = 160.0 }
+    label "spritesheet" { x = 80.0  y = 150.0  font_size = 12.0  fill = "#fff" }
+  }
 }

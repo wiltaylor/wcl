@@ -3337,6 +3337,126 @@ page index { text { span "no tiles here" {} } }
     );
 }
 
+// ── Images ─────────────────────────────────────────────────────────
+
+/// Build `src` alongside a `pic.png` of the given size, returning the
+/// rendered `index.html` and the output dir (to probe `_wdoc/`).
+fn build_image(src: &str, w: u32, h: u32) -> (String, TempDir) {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    std::fs::write(tmp.path().join("pic.png"), fake_png(w, h)).expect("write png");
+    let file = tmp.path().join("main.wcl");
+    std::fs::write(&file, src).expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&file, out.path());
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+    (index, out)
+}
+
+/// The single `image-…` file copied into `_wdoc/` (panics if not exactly one).
+fn copied_image(out: &TempDir) -> String {
+    let dir = std::fs::read_dir(out.path().join("_wdoc")).expect("read _wdoc");
+    let mut names: Vec<String> = dir
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("image-"))
+        .collect();
+    assert_eq!(names.len(), 1, "expected one copied image, got {names:?}");
+    names.remove(0)
+}
+
+#[test]
+fn build_page_image_emits_img_and_copies_file() {
+    let src = r#"
+page index {
+  image "pic.png" { alt = "A picture"  width = 200  height = 120 }
+}
+"#;
+    let (index, out) = build_image(src, 64, 48);
+    // The copied file has a deterministic `image-pic-<hash>.png` name.
+    let name = copied_image(&out);
+    assert!(
+        name.starts_with("image-pic-") && name.ends_with(".png"),
+        "{name}"
+    );
+    // The <img> references it by `_wdoc/` URL, carries the default class,
+    // the alt text, and the declared size.
+    assert!(
+        index.contains(&format!(
+            "<img class=\"wdoc-image\" src=\"_wdoc/{name}\" alt=\"A picture\" width=\"200\" height=\"120\" />"
+        )),
+        "{index}"
+    );
+    // Responsive default styling is injected.
+    assert!(
+        index.contains("img.wdoc-image { max-width: 100%; height: auto; }"),
+        "{index}"
+    );
+}
+
+#[test]
+fn build_diagram_image_emits_svg_image_with_natural_size() {
+    // No width/height ⇒ the natural 64×48 (from the PNG header) is used,
+    // positioned at x/y.
+    let src = r#"
+page index {
+  diagram {
+    width = 200  height = 200
+    image "pic.png" { x = 10.0  y = 20.0 }
+  }
+}
+"#;
+    let (index, out) = build_image(src, 64, 48);
+    let name = copied_image(&out);
+    assert!(
+        index.contains(&format!(
+            "<image href=\"_wdoc/{name}\" x=\"10\" y=\"20\" width=\"64\" height=\"48\" preserveAspectRatio=\"none\" />"
+        )),
+        "{index}"
+    );
+}
+
+#[test]
+fn build_diagram_image_scales_and_fits_viewbox() {
+    // 64×48 × scale 2 ⇒ 128×96 at (0,0); the diagram viewBox fits it
+    // (with the standard 10px pad), proving the bbox pass saw the image.
+    let src = r#"
+page index {
+  diagram {
+    width = 100  height = 100
+    image "pic.png" { width = 64  height = 48  scale = 2.0 }
+  }
+}
+"#;
+    let (index, _out) = build_image(src, 64, 48);
+    assert!(index.contains("width=\"128\" height=\"96\""), "{index}");
+    assert!(index.contains("viewBox=\"-10 -10 148 116\""), "{index}");
+}
+
+#[test]
+fn build_image_url_source_passes_through_uncopied() {
+    let src = r#"
+page index {
+  image "https://example.com/logo.png" { alt = "Remote" }
+}
+"#;
+    let (index, out) = build_image(src, 64, 48);
+    assert!(
+        index.contains(
+            "<img class=\"wdoc-image\" src=\"https://example.com/logo.png\" alt=\"Remote\" />"
+        ),
+        "{index}"
+    );
+    // Nothing copied: an external URL is referenced verbatim.
+    let wdoc = out.path().join("_wdoc");
+    if wdoc.exists() {
+        let any_image = std::fs::read_dir(&wdoc)
+            .expect("read _wdoc")
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().starts_with("image-"));
+        assert!(!any_image, "external URL must not be copied");
+    }
+}
+
 // ── Diagram pan + zoom ─────────────────────────────────────────────
 
 /// Build `src` as a standalone `main.wcl`, returning the rendered

@@ -312,11 +312,12 @@ pub(crate) fn tilemap_bbox(
     (x, y, w, h)
 }
 
-/// Resolve a tilemap's top-left corner. Like `resolve_point_anchored`
-/// for shapes, but a far anchor (`anchor_right` / `anchor_bottom`)
-/// offsets by the tilemap's own size — the grid is fixed-size raster
-/// data, so anchors position it without resizing.
-fn place(block: &Block<'_>, parent_w: f64, parent_h: f64, w: f64, h: f64) -> (f64, f64) {
+/// Resolve a fixed-size raster's top-left corner. Like
+/// `resolve_point_anchored` for shapes, but a far anchor
+/// (`anchor_right` / `anchor_bottom`) offsets by the raster's own size —
+/// the content is fixed-size, so anchors position it without resizing.
+/// Shared by `tilemap` and the diagram `image` shape.
+pub(crate) fn place(block: &Block<'_>, parent_w: f64, parent_h: f64, w: f64, h: f64) -> (f64, f64) {
     let x = match (
         field_f64(block, "anchor_left"),
         field_f64(block, "anchor_right"),
@@ -401,8 +402,9 @@ fn as_i64(v: &Value) -> Option<i64> {
 /// Read a raster image's pixel dimensions from its header bytes.
 /// Supports PNG, GIF and JPEG with a tiny no-dep reader (no image
 /// decoding); returns `None` for anything else so the caller can fall
-/// back to explicit `image_width` / `image_height`.
-fn image_dims(b: &[u8]) -> Option<(u32, u32)> {
+/// back to explicit `image_width` / `image_height`. Shared with the
+/// `image` block's registry.
+pub(crate) fn image_dims(b: &[u8]) -> Option<(u32, u32)> {
     png_dims(b).or_else(|| gif_dims(b)).or_else(|| jpeg_dims(b))
 }
 

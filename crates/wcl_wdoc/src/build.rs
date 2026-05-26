@@ -39,6 +39,7 @@ fn schema_registry() -> Registry {
         include_str!("../lib/inline-patterns.wcl"),
     );
     r.register("wdoc/icons.wcl", include_str!("../lib/icons.wcl"));
+    r.register("wdoc/image.wcl", include_str!("../lib/image.wcl"));
     r.register("wdoc/tilemap.wcl", include_str!("../lib/tilemap.wcl"));
     r.register("wdoc/flowchart.wcl", include_str!("../lib/flowchart.wcl"));
     r.register("wdoc/charts.wcl", include_str!("../lib/charts.wcl"));
@@ -263,10 +264,16 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
     // `icons`; the SVG path pulls it back out via `tilesets()`.
     let tilesets = crate::tileset::TilesetRegistry::load(&doc, base_dir.as_deref())?;
 
+    // Image registry: populated lazily as `image` blocks render (pages
+    // and diagrams), then its referenced files are copied into `_wdoc/`
+    // after the page loop. Carried inside the pattern engine like the
+    // others; both render paths reach it via `inline_patterns.images()`.
+    let images = crate::image::ImageRegistry::new(base_dir.clone());
+
     // Document-global inline-text pattern engine, compiled once
     // per build: every `@block("inline_pattern")` (built-in or
     // user-declared) contributes one regex + `to_span` function.
-    let inline_patterns = InlinePatterns::load(&doc, page_names, icons, tilesets);
+    let inline_patterns = InlinePatterns::load(&doc, page_names, icons, tilesets, images);
 
     let mut count = 0;
     for page in doc.blocks().filter(|b| b.kind() == "page") {
@@ -353,6 +360,10 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
     // Copy each spritesheet referenced by a rendered tilemap into
     // `_wdoc/`. No-op when the document used no tilemap.
     inline_patterns.tilesets().copy_used_images(out_dir)?;
+
+    // Copy each local image referenced by a rendered `image` block (page
+    // or diagram) into `_wdoc/`. No-op when none were used.
+    inline_patterns.images().copy_used_images(out_dir)?;
 
     // Inline `[text](page)` references that didn't resolve to a
     // known page block surface as a build error here, after every
