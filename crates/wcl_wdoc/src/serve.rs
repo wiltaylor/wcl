@@ -82,6 +82,13 @@ pub async fn serve(
     let shared_out: Arc<PathBuf> = Arc::new(out_dir.clone());
     let app = Router::new()
         .route("/", get(handle_index))
+        // Bundled terminal assets (fonts + replay player) live under
+        // `_wdoc/`; serve them as static files so `@font-face` and the
+        // player `<script src>` resolve.
+        .route(
+            &format!("/{}/{{file}}", crate::terminal::ASSET_DIR),
+            get(handle_asset),
+        )
         .route("/{name}", get(handle_named))
         .with_state(shared_out)
         .layer(middleware::from_fn(log_requests));
@@ -126,6 +133,40 @@ async fn handle_named(
 ) -> Response {
     let trimmed = name.strip_suffix(".html").unwrap_or(&name);
     serve_page(&out, trimmed).await
+}
+
+/// Serve a bundled static asset out of `<out>/_wdoc/`. Single path
+/// segment only — anything with a separator or `..` is rejected so the
+/// dev server can't be walked outside the asset directory.
+async fn handle_asset(
+    State(out): State<Arc<PathBuf>>,
+    AxumPath(file): AxumPath<String>,
+) -> Response {
+    if file.contains('/') || file.contains('\\') || file.contains("..") {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let path = out.join(crate::terminal::ASSET_DIR).join(&file);
+    match tokio::fs::read(&path).await {
+        Ok(bytes) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, asset_content_type(&file))],
+            bytes,
+        )
+            .into_response(),
+        Err(_) => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// Map a bundled asset's extension to a content type.
+fn asset_content_type(file: &str) -> &'static str {
+    match file.rsplit('.').next() {
+        Some("woff2") => "font/woff2",
+        Some("woff") => "font/woff",
+        Some("js") => "text/javascript; charset=utf-8",
+        Some("json") => "application/json; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        _ => "application/octet-stream",
+    }
 }
 
 async fn serve_page(out_dir: &Path, name: &str) -> Response {

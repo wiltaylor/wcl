@@ -27,12 +27,12 @@ fn build_ok(file: &Path, out: &Path) -> usize {
 
 #[test]
 fn build_emits_fundamentals_for_example_site() {
-    // examples/wdoc/main.wcl is the entry point — it pulls in six
+    // examples/wdoc/main.wcl is the entry point — it pulls in seven
     // per-page files via `import`. All page bodies live in
     // pages/*.wcl; main.wcl itself only defines the landing index.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 6);
+    assert_eq!(n, 7);
 
     // The richer content (text + classes + diagram + flowchart) is on
     // the overview page, not the landing index.
@@ -1859,11 +1859,11 @@ page index {
 fn build_processes_full_code_example_page() {
     // Smoke test against the code page in the example site, which
     // exercises Rust, Python, JSON, WCL, and an unknown language
-    // in one page. main.wcl imports it and five other pages, so
+    // in one page. main.wcl imports it and six other pages, so
     // we count the code-block wrappers on `code.html`.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 6);
+    assert_eq!(n, 7);
     let html = std::fs::read_to_string(out.path().join("code.html")).expect("read code.html");
     assert!(
         html.matches("<pre class=\"code-block\"").count() >= 5,
@@ -2683,5 +2683,201 @@ page index {
     assert!(
         html.contains("@media (prefers-color-scheme: light) { .wdoc-series-1 { fill:#7b2d8e; } }"),
         "{html}"
+    );
+}
+
+// ── Terminal ───────────────────────────────────────────────────────
+
+#[test]
+fn terminal_primitives_render_grid_svg() {
+    // A primitives terminal lowers to an inline <svg> grid: a window
+    // rect, a double box (corner glyphs), and styled text runs.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("t.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  terminal {
+    cols = 20 rows = 5 chrome = false
+    term_box { row = 1 col = 1 width = 20 height = 5 border = :double }
+    term_text "OK" { row = 2 col = 2 fg = "green" bold = true }
+    term_text "no" { row = 3 col = 2 fg = "red" inverse = true }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        html.contains("class=\"wdoc-terminal\""),
+        "no terminal div:\n{html}"
+    );
+    assert!(
+        html.contains("wdoc-terminal-svg"),
+        "no terminal svg:\n{html}"
+    );
+    // Double box corners + edges.
+    assert!(
+        html.contains('╔') && html.contains('╗') && html.contains('═'),
+        "no double box:\n{html}"
+    );
+    // Bold green "OK": green fill #4e9a06 + font-weight bold.
+    assert!(
+        html.contains("fill=\"#4e9a06\"") && html.contains("font-weight=\"bold\""),
+        "no bold green:\n{html}"
+    );
+    // Inverse "no": red becomes the background rect, text takes the window bg.
+    assert!(
+        html.contains("<rect x=") && html.contains("fill=\"#cc0000\""),
+        "no inverse bg:\n{html}"
+    );
+}
+
+#[test]
+fn terminal_inline_text_lays_out_via_vt() {
+    // Inline `text` is fed to the virtual terminal and laid out across
+    // rows; newlines start a new line. Each cell is its own centred
+    // <text> glyph (a true character grid), so "hello" is five
+    // separate elements, not one run.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("t.wcl");
+    std::fs::write(
+        &src,
+        "page index {\n  terminal { cols = 12 rows = 3 text = \"hello\\nworld\" }\n}\n",
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // One <text> per cell, centred.
+    assert!(
+        html.contains("text-anchor=\"middle\""),
+        "cells not rendered per-glyph:\n{html}"
+    );
+    // The characters of both lines appear as individual cell glyphs,
+    // and there is no multi-character run element.
+    for ch in ['h', 'e', 'l', 'o', 'w', 'r', 'd'] {
+        assert!(
+            html.contains(&format!(">{ch}</text>")),
+            "missing cell glyph {ch:?}:\n{html}"
+        );
+    }
+    assert!(
+        !html.contains(">hello</text>") && !html.contains(">world</text>"),
+        "cells were grouped into a run instead of per-cell glyphs:\n{html}"
+    );
+}
+
+#[test]
+fn terminal_replay_emits_player_and_assets() {
+    // A `source` recording produces frames JSON, the player wiring, and
+    // writes the bundled font + player assets into `_wdoc/`.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    // Valid asciicast v2: control chars are JSON-escaped (real
+    // .cast files are JSON, so the escape is required).
+    std::fs::write(
+        tmp.path().join("demo.cast"),
+        "{\"version\":2,\"width\":12,\"height\":2}\n[0.0,\"o\",\"\\u001b[31mhi\\u001b[0m\"]\n[0.5,\"o\",\" ok\"]\n",
+    )
+    .expect("write cast");
+    let src = tmp.path().join("t.wcl");
+    std::fs::write(
+        &src,
+        "page index {\n  terminal { source = \"./demo.cast\" loop = true }\n}\n",
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        html.contains("data-term-player="),
+        "no player root:\n{html}"
+    );
+    assert!(
+        html.contains("class=\"term-frames\""),
+        "no frames script:\n{html}"
+    );
+    assert!(html.contains("\"frames\":["), "no frames payload:\n{html}");
+    // New controls: a big centred overlay play button + a chrome
+    // play/pause/replay glyph, and *no* bottom scrubber/speed UI.
+    assert!(
+        html.contains("class=\"term-overlay-play\""),
+        "no centre play button:\n{html}"
+    );
+    assert!(
+        html.contains("class=\"term-chrome-btn\""),
+        "no chrome play control:\n{html}"
+    );
+    assert!(
+        !html.contains("term-controls") && !html.contains("term-seek"),
+        "stale bottom controls still emitted:\n{html}"
+    );
+    // Red "hi" from the recording was interpreted (Tango red #cc0000).
+    assert!(
+        html.contains("#cc0000"),
+        "ansi colour not interpreted:\n{html}"
+    );
+    // The player <script> is loaded once on the page.
+    assert_eq!(
+        html.matches("_wdoc/terminal-player.js").count(),
+        1,
+        "{html}"
+    );
+    // Bundled assets written alongside the pages.
+    assert!(
+        out.path()
+            .join("_wdoc/JetBrainsMonoNerdFontMono-Regular.woff2")
+            .exists()
+    );
+    assert!(
+        out.path()
+            .join("_wdoc/JetBrainsMonoNerdFontMono-Bold.woff2")
+            .exists()
+    );
+    assert!(
+        out.path()
+            .join("_wdoc/JetBrainsMonoNerdFontMono-Italic.woff2")
+            .exists()
+    );
+    assert!(out.path().join("_wdoc/terminal-player.js").exists());
+}
+
+#[test]
+fn terminal_missing_cast_is_marked_not_fatal() {
+    // A `source` that can't be read renders an inline error marker
+    // rather than failing the whole build.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("t.wcl");
+    std::fs::write(
+        &src,
+        "page index {\n  terminal { source = \"./nope.cast\" }\n}\n",
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("wdoc-terminal-error"),
+        "no error marker:\n{html}"
+    );
+}
+
+#[test]
+fn no_terminal_writes_no_assets() {
+    // A document without a terminal must not write the font/player
+    // assets (they're ~3 MB — pages that don't need them pay nothing).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("t.wcl");
+    std::fs::write(&src, "page index {\n  text { span \"hi\" {} }\n}\n").expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    assert!(
+        !out.path().join("_wdoc").exists(),
+        "assets written without a terminal"
     );
 }

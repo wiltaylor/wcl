@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
+use std::path::Path;
 
 use wcl_lang::{Block, Document, FnValue, Value, VariantPayload};
 
@@ -124,6 +125,42 @@ pub(crate) const CHART_CSS: &str = "\
 .wdoc-series-6 { fill: #88c0d0; stroke: #88c0d0; }
 .wdoc-series-7 { fill: #d08770; stroke: #d08770; }
 .wdoc-series-8 { fill: #8fbcbb; stroke: #8fbcbb; }";
+
+/// Default styling for `terminal` blocks: the embedded JetBrains Mono
+/// Nerd Font faces (served from `_wdoc/`), the cell-grid font binding,
+/// window chrome, blink/cursor animation, and replay controls. Injected
+/// like `CHART_CSS` (before user `class` rules, so those override it).
+/// Only emitted on pages that actually contain a terminal.
+///
+/// The terminal's colours come from the `class` system: `.wdoc-terminal`
+/// is the default theme (dark bg + light fg) on bare-class selectors, so
+/// a user `class \"x\" { background = … color = … }` on the terminal
+/// overrides it. Default-fg glyphs paint with `currentColor` (so the
+/// class `color` themes them, dark/light included) and the terminal
+/// background is the `<div>`'s `background`; only explicit ANSI colours
+/// carry inline fills.
+pub(crate) const TERMINAL_CSS: &str = "\
+@font-face { font-family: 'JetBrainsMono Nerd Font'; font-weight: normal; font-style: normal; font-display: swap; src: url('_wdoc/JetBrainsMonoNerdFontMono-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrainsMono Nerd Font'; font-weight: bold; font-style: normal; font-display: swap; src: url('_wdoc/JetBrainsMonoNerdFontMono-Bold.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrainsMono Nerd Font'; font-weight: normal; font-style: italic; font-display: swap; src: url('_wdoc/JetBrainsMonoNerdFontMono-Italic.woff2') format('woff2'); }
+.wdoc-terminal { display: inline-block; max-width: 100%; border-radius: 6px; overflow: hidden; }
+.wdoc-terminal { background: #1c1c1c; color: #d0d0d0; }
+.wdoc-terminal-svg { display: block; max-width: 100%; height: auto; }
+.wdoc-terminal-svg text { font-family: 'JetBrainsMono Nerd Font', ui-monospace, 'Cascadia Code', 'Fira Code', Menlo, Consolas, monospace; }
+.term-chrome-bar { fill: currentColor; opacity: 0.08; }
+.term-title { fill: currentColor; opacity: 0.6; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.75em; }
+.term-close { stroke: currentColor; opacity: 0.55; stroke-width: 1.5; stroke-linecap: round; }
+.term-close:hover { opacity: 1; }
+.term-chrome-btn { fill: currentColor; opacity: 0.55; font-size: 0.8em; cursor: pointer; }
+.term-chrome-btn:hover { opacity: 1; }
+.term-cursor { fill: currentColor; opacity: 0.65; }
+.term-blink { animation: wdoc-term-blink 1s steps(1) infinite; }
+@keyframes wdoc-term-blink { 50% { opacity: 0; } }
+.wdoc-terminal-error { color: #bf616a; font-family: monospace; }
+.wdoc-terminal-player { position: relative; }
+.term-overlay-play { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 4rem; height: 4rem; display: flex; align-items: center; justify-content: center; padding: 0; border: none; border-radius: 50%; cursor: pointer; background: rgba(20,20,20,0.55); color: #fff; font-size: 1.9rem; line-height: 1; }
+.term-overlay-play:hover { background: rgba(20,20,20,0.75); }
+.term-overlay-play[hidden] { display: none; }";
 
 /// Wrap a page's `body` HTML in the document shell. The `<head>`
 /// (title + global stylesheet) is owned here regardless of template;
@@ -290,13 +327,19 @@ pub(crate) fn render_block(
     doc: &Document,
     block: &Block<'_>,
     patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
 ) -> Option<String> {
     match block.kind() {
         "text" => Some(render_text(doc, block, patterns)),
-        "column" => Some(render_column(doc, block, patterns)),
+        "column" => Some(render_column(doc, block, patterns, base_dir)),
         "table" => Some(render_table(doc, block, patterns)),
         "diagram" => Some(render_diagram(doc, block)),
         "code" => Some(render_code(block)),
+        // The terminal is special-cased in Rust (like `code`): its grid
+        // model, ANSI handling, and asciinema replay aren't expressible
+        // in WCL. `base_dir` lets a `source` recording path resolve
+        // relative to the source file.
+        "terminal" => Some(crate::terminal::render_terminal(doc, block, base_dir)),
         // Skip the lowering function declarations — they're top-level
         // fields, not blocks, so they don't reach render_block.
         kind => Some(lower_html_block(doc, block, kind)),
@@ -431,7 +474,12 @@ fn render_span(doc: &Document, block: &Block<'_>, patterns: &InlinePatterns) -> 
     out
 }
 
-fn render_column(doc: &Document, block: &Block<'_>, patterns: &InlinePatterns) -> String {
+fn render_column(
+    doc: &Document,
+    block: &Block<'_>,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
+) -> String {
     let cls = class_attr(block);
     let widths = field_f64_list(block, "widths");
     let grid_cols: String = widths
@@ -441,7 +489,7 @@ fn render_column(doc: &Document, block: &Block<'_>, patterns: &InlinePatterns) -
         .join(" ");
     let children: String = block
         .blocks()
-        .filter_map(|b| render_block(doc, &b, patterns))
+        .filter_map(|b| render_block(doc, &b, patterns, base_dir))
         .collect();
     let mut out = format!("<div{cls}");
     append_attr(&mut out, "id", field_id(block, "id").as_deref());
@@ -2118,7 +2166,7 @@ fn append_attr(out: &mut String, name: &str, value: Option<&str>) {
     }
 }
 
-fn label_string(block: &Block<'_>) -> Option<String> {
+pub(crate) fn label_string(block: &Block<'_>) -> Option<String> {
     let labels = block.labels().ok()?;
     value_as_string(labels.into_iter().next()?)
 }
@@ -2162,7 +2210,7 @@ pub(crate) fn field_symbol(block: &Block<'_>, name: &str) -> Option<String> {
     }
 }
 
-fn field_f64(block: &Block<'_>, name: &str) -> Option<f64> {
+pub(crate) fn field_f64(block: &Block<'_>, name: &str) -> Option<f64> {
     if let Some(field) = block.field(name)
         && let Some(v) = field.value().ok().and_then(value_as_f64)
     {
@@ -2175,7 +2223,7 @@ fn field_f64(block: &Block<'_>, name: &str) -> Option<f64> {
     value_as_f64(&block.schema()?.field(name)?.default_value()?)
 }
 
-fn field_i64(block: &Block<'_>, name: &str) -> Option<i64> {
+pub(crate) fn field_i64(block: &Block<'_>, name: &str) -> Option<i64> {
     let field = block.field(name)?;
     value_as_i64(field.value().ok()?)
 }
@@ -2193,7 +2241,7 @@ fn field_f64_list(block: &Block<'_>, name: &str) -> Vec<f64> {
     items.iter().filter_map(value_as_f64).collect()
 }
 
-fn field_utf8_list(block: &Block<'_>, name: &str) -> Vec<String> {
+pub(crate) fn field_utf8_list(block: &Block<'_>, name: &str) -> Vec<String> {
     let Some(field) = block.field(name) else {
         return Vec::new();
     };

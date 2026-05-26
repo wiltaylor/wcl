@@ -58,7 +58,7 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
     // source must resolve against the source file's own directory,
     // not the wdoc working directory. Pass it through to open_at.
     let base_dir = file.parent().map(std::path::Path::to_path_buf);
-    let doc = Document::open_at(&composed, &name, base_dir, &Environment::new())
+    let doc = Document::open_at(&composed, &name, base_dir.clone(), &Environment::new())
         .map_err(|e| BuildError::Parse(Report::new(e)))?;
 
     let errs = doc.schema_errors();
@@ -85,15 +85,24 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         .collect::<Vec<_>>()
         .join("\n");
     let css = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{class_css}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{class_css}",
         crate::render::BASE_CSS,
         crate::render::HEADING_CSS,
         highlight::theme_css(),
         crate::render::TABLE_CSS,
         crate::render::SITE_CSS,
         crate::render::BOOK_CSS,
-        crate::render::CHART_CSS
+        crate::render::CHART_CSS,
+        crate::render::TERMINAL_CSS,
     );
+
+    // Terminals need the bundled font + replay player written alongside
+    // the pages. Only emit them when the document actually uses a
+    // terminal, so font-free sites pay nothing.
+    let uses_terminals = doc.blocks().any(|b| crate::terminal::uses_terminal(&b));
+    if uses_terminals {
+        write_terminal_assets(out_dir)?;
+    }
 
     // Document descriptor (`site` block): the default template and the
     // site title a template can show. Optional — absent ⇒ pages render
@@ -174,7 +183,7 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         let mut content = String::new();
         for b in page
             .blocks()
-            .filter_map(|b| render_block(&doc, &b, &inline_patterns))
+            .filter_map(|b| render_block(&doc, &b, &inline_patterns, base_dir.as_deref()))
         {
             content.push_str(&b);
             content.push('\n');
@@ -183,7 +192,7 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         // Resolve the template: the page's own `template` overrides the
         // document `default_template`. None ⇒ render content bare.
         let template_name = field_symbol(&page, "template").or_else(|| default_template.clone());
-        let body = match template_name {
+        let mut body = match template_name {
             Some(name) => {
                 let Some(tmpl) = find_template(&doc, &name) else {
                     return Err(BuildError::BadTemplate(name));
@@ -202,6 +211,11 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
             }
             None => content,
         };
+        // Replay terminals are driven by the bundled player; load it once
+        // per page (it no-ops on pages without a replay terminal).
+        if uses_terminals {
+            body.push_str("\n<script src=\"_wdoc/terminal-player.js\" defer></script>\n");
+        }
         let html = render_page(&page_name, &css, &body);
 
         let out_path = out_dir.join(format!("{page_name}.html"));
@@ -219,6 +233,25 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
     }
 
     Ok(count)
+}
+
+/// Write the bundled terminal assets (the JetBrains Mono Nerd Font
+/// faces + the replay player JS) into `<out>/_wdoc/`. Pages reference
+/// them by relative URL, so the dev server and any static host resolve
+/// them the same way.
+fn write_terminal_assets(out_dir: &Path) -> Result<(), BuildError> {
+    let dir = out_dir.join(crate::terminal::ASSET_DIR);
+    fs::create_dir_all(&dir)
+        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
+    for (name, bytes) in crate::terminal::FONT_FILES {
+        let path = dir.join(name);
+        fs::write(&path, bytes)
+            .map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
+    }
+    let player = dir.join("terminal-player.js");
+    fs::write(&player, crate::terminal::PLAYER_JS)
+        .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
+    Ok(())
 }
 
 /// Extract a page block's first label as a string identifier. The

@@ -1166,6 +1166,110 @@ type Code extends WdocBlock {
   lower = fn(c: Code) -> list<HtmlFundamental> []
 }
 
+// ── Stdlib terminal ────────────────────────────────────────────────
+//
+// A `terminal` is a monospace character grid rendered as inline SVG
+// with the bundled JetBrains Mono Nerd Font, so box-drawing glyphs,
+// powerline symbols, and Nerd Font icons all render. Like `code` it
+// has no real `lower` — the renderer special-cases it in Rust (the
+// grid model, ANSI handling, and asciinema replay aren't expressible
+// in WCL). Populate it three ways:
+//
+//   * authored primitives (`term_box` / `term_text` / `term_glyph` /
+//     `term_fill`) placed at 1-based character coordinates, with the
+//     full set of terminal styles;
+//   * `text = "..."` — plain content laid out by a virtual terminal;
+//   * `source = "rec.cast"` — an asciinema recording, replayed by a
+//     small bundled JS player (play / pause / seek / speed).
+//
+// `cols`/`rows` size the grid (defaults 80×24; a `source` recording
+// overrides them with its own header size). Colours are themed by
+// `palette` (:default | :light) plus `fg`/`bg` overrides; chrome
+// draws a title bar.
+
+// Marker interface for the terminal's placement primitives. Every
+// primitive sits at a 1-based (row, col); the renderer reads each
+// child directly, so no `lower` is required.
+interface TermPrimitive {
+  row: i64
+  col: i64
+}
+
+@block("terminal")
+type Terminal extends WdocBlock {
+  cols:        i64?
+  rows:        i64?
+  font_size:   f64?
+  line_height: f64?
+  palette:     symbol?       // :default (dark) | :light
+  fg:          utf8?
+  bg:          utf8?
+  chrome:      bool?         // window title bar (default true)
+  title:       utf8?
+  text:        utf8?         // inline content fed to a virtual terminal
+  source:      utf8?         // path to an asciinema .cast recording
+  autoplay:    bool?
+  loop:        bool?
+  speed:       f64?
+  id:          identifier?
+  class:       list<utf8>?
+  @children(TermPrimitive) children: list<TermPrimitive>
+  // Declared only to satisfy the WdocBlock interface — the renderer
+  // never calls this; the grid is built and painted in Rust.
+  lower = fn(t: Terminal) -> list<HtmlFundamental> []
+}
+
+// A bordered box. `border` picks the line style:
+//   :single (default) :double :rounded :heavy :ascii
+@block("term_box")
+type TermBox extends TermPrimitive {
+  row:    i64
+  col:    i64
+  width:  i64
+  height: i64
+  border: symbol?
+  title:  utf8?
+  fg: utf8?  bg: utf8?
+  bold: bool?  dim: bool?  italic: bool?  underline: bool?
+  strike: bool?  blink: bool?  inverse: bool?  conceal: bool?
+}
+
+// A run of text (may contain `\n` for multiple lines) at (row, col).
+@block("term_text")
+type TermText extends TermPrimitive {
+  @inline(0) content: utf8
+  row: i64
+  col: i64
+  fg: utf8?  bg: utf8?
+  bold: bool?  dim: bool?  italic: bool?  underline: bool?
+  strike: bool?  blink: bool?  inverse: bool?  conceal: bool?
+}
+
+// A single glyph (first char of the label) at (row, col) — handy for
+// Nerd Font icons.
+@block("term_glyph")
+type TermGlyph extends TermPrimitive {
+  @inline(0) glyph: utf8
+  row: i64
+  col: i64
+  fg: utf8?  bg: utf8?
+  bold: bool?  dim: bool?  italic: bool?  underline: bool?
+  strike: bool?  blink: bool?  inverse: bool?  conceal: bool?
+}
+
+// Fill a rectangular region with a repeated char (label's first char).
+@block("term_fill")
+type TermFill extends TermPrimitive {
+  @inline(0) ch: utf8
+  row:    i64
+  col:    i64
+  width:  i64
+  height: i64
+  fg: utf8?  bg: utf8?
+  bold: bool?  dim: bool?  italic: bool?  underline: bool?
+  strike: bool?  blink: bool?  inverse: bool?  conceal: bool?
+}
+
 // ── Built-in inline patterns ───────────────────────────────────────
 //
 // Each pattern's `to_span` receives the captured groups as a list,

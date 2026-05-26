@@ -1,0 +1,78 @@
+// Terminal demo page for the wdoc example site. Shows the three ways
+// to drive a `terminal` (authored primitives, inline text, asciinema
+// replay) and how the WCL `class` system themes terminal colours.
+// Glyphs below come from the bundled JetBrains Mono Nerd Font.
+
+// A terminal colour theme: `background` is the window colour and
+// `color` is the default text colour. dark/light modes ride along with
+// the rest of the class system.
+class "term-mocha" {
+  background = "#1e1e2e"
+  color      = "#cdd6f4"
+  light { background = "#eff1f5"  color = "#4c4f69" }
+}
+
+page terminal {
+  h1 "Terminals" {}
+
+  text {
+    span "wdoc renders terminals as a true character grid in inline SVG, drawn with an embedded Nerd Font. Colours come from the WCL " {}
+    span "class" { class = ["code"] }
+    span " system; build them from primitives, inline text, or an asciinema replay." {}
+  }
+
+  h2 "Authored with primitives" {}
+  text { span "Boxes, text, glyphs, and fills placed at 1-based (row, col), with the full range of terminal colours and styles. This terminal is themed by the `term-mocha` class." {} }
+
+  terminal {
+    class = ["term-mocha"]
+    cols = 58 rows = 13 title = "primitives"
+    term_text "Colours" { row = 1 col = 2 bold = true underline = true }
+    term_text "red" { row = 2 col = 2 fg = "red" }
+    term_text "green" { row = 2 col = 8 fg = "green" }
+    term_text "yellow" { row = 2 col = 16 fg = "yellow" }
+    term_text "blue" { row = 2 col = 25 fg = "blue" }
+    term_text "256:208" { row = 2 col = 32 fg = "208" }
+    term_text "#ff5fd2" { row = 2 col = 42 fg = "#ff5fd2" }
+
+    term_text "Styles" { row = 4 col = 2 bold = true underline = true }
+    term_text "bold" { row = 5 col = 2 bold = true }
+    term_text "italic" { row = 5 col = 8 italic = true }
+    term_text "underline" { row = 5 col = 16 underline = true }
+    term_text "strike" { row = 5 col = 27 strike = true }
+    term_text "inverse" { row = 5 col = 35 inverse = true }
+    term_text "dim" { row = 5 col = 44 dim = true }
+
+    term_text "Nerd Font glyphs" { row = 7 col = 2 bold = true underline = true }
+    term_glyph "" { row = 8 col = 2 fg = "blue" }
+    term_text "src" { row = 8 col = 4 fg = "bright_blue" bold = true }
+    term_glyph "" { row = 8 col = 10 fg = "yellow" }
+    term_text "main.rs" { row = 8 col = 12 }
+    term_glyph "" { row = 8 col = 21 fg = "green" }
+    term_glyph "" { row = 8 col = 24 fg = "bright_yellow" }
+    term_glyph "" { row = 8 col = 27 fg = "magenta" }
+
+    term_box { row = 10 col = 2 width = 44 height = 3 border = :rounded fg = "cyan" title = "progress" }
+    term_fill "█" { row = 11 col = 4 width = 28 height = 1 fg = "green" }
+    term_fill "░" { row = 11 col = 32 width = 12 height = 1 fg = "bright_black" }
+    term_text "71%" { row = 11 col = 46 bold = true }
+  }
+
+  h2 "Inline content" {}
+  text { span "An inline text field is laid out by a virtual terminal. This one overrides the colours directly with the `bg`/`fg` fields instead of a class." {} }
+
+  terminal {
+    cols = 40 rows = 4 chrome = true title = "notes.txt"
+    bg = "#fbf1c7" fg = "#3c3836"
+    text = "  WCL terminals\n  ===============\n  * true character grid\n  * themed by class or fields"
+  }
+
+  h2 "Asciinema replay" {}
+  text { span "Point source at a .cast recording, then click the big play button to run it. Play / pause / replay also live in the title bar." {} }
+
+  terminal {
+    class = ["term-mocha"]
+    source = "./casts/demo.cast"
+    title = "cargo test session"
+  }
+}

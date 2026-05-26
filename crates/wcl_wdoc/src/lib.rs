@@ -12,6 +12,7 @@ mod layered;
 mod render;
 mod routing;
 pub mod serve;
+mod terminal;
 mod text;
 
 pub use build::{BuildError, build};

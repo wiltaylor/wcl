@@ -16,6 +16,8 @@ notify = { workspace = true }
 tempfile = { workspace = true }
 syntect = { version = "5", default-features = false, features = ["default-fancy", "html"] }
 two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }
+avt = "0.18"
+serde_json = { workspace = true }
 
 [lints]
 workspace = true
