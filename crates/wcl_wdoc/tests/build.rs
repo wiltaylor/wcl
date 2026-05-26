@@ -138,6 +138,24 @@ fn build_emits_fundamentals_for_example_site() {
         overview.contains("<polygon points=\"50,0 100,30 50,60 0,30\""),
         "{overview}"
     );
+    // table — pipe-row syntax. First row becomes the <thead> header;
+    // utf8 cells run through inline patterns (**Parse** -> bold,
+    // [see](about) -> cross-page link), numeric cells pass through.
+    assert!(
+        overview.contains(
+            "<table class=\"wdoc-table\"><thead><tr><th>Stage</th><th>Owner</th><th>Steps</th></tr></thead>"
+        ),
+        "{overview}"
+    );
+    assert!(
+        overview.contains("<td><span class=\"bold\">Parse</span></td>"),
+        "{overview}"
+    );
+    assert!(
+        overview.contains("<td><a href=\"about.html\">see</a></td>"),
+        "{overview}"
+    );
+    assert!(overview.contains("<td>3</td>"), "{overview}");
 }
 
 #[test]
@@ -1844,5 +1862,168 @@ fn build_processes_full_code_example_page() {
     assert!(
         html.matches("<pre class=\"code-block\"").count() >= 5,
         "expected one <pre> per code block on code.html:\n{html}"
+    );
+}
+
+#[test]
+fn table_renders_header_row_and_typed_body() {
+    // Pipe-table syntax: first row -> <thead>/<th>, the rest ->
+    // <tbody>/<td>. utf8 cells flow through the inline-pattern engine;
+    // a numeric cell passes through as its stringified value.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("tbl.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  table {
+    rows:
+      | "Name"  | "Age" |
+      | "Alice" | 30    |
+      | "Bob"   | 25    |
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains(
+            "<table class=\"wdoc-table\"><thead><tr><th>Name</th><th>Age</th></tr></thead>\
+             <tbody><tr><td>Alice</td><td>30</td></tr><tr><td>Bob</td><td>25</td></tr></tbody></table>"
+        ),
+        "{html}"
+    );
+}
+
+#[test]
+fn table_cells_support_inline_patterns() {
+    // Inline patterns (**bold**, [link](page)) are recognised inside
+    // utf8 cells, exactly as in a `text` span.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("tbl.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  table {
+    rows:
+      | "Col"          |
+      | "**bold** now" |
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<td><span class=\"bold\">bold</span> now</td>"),
+        "{html}"
+    );
+}
+
+#[test]
+fn table_with_single_row_is_header_only() {
+    // A one-row table is all header: <thead> present, no <tbody>.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("tbl.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  table {
+    rows:
+      | "only" | "header" |
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<thead><tr><th>only</th><th>header</th></tr></thead>"),
+        "{html}"
+    );
+    assert!(
+        !html.contains("<tbody>"),
+        "single-row table should have no body:\n{html}"
+    );
+}
+
+#[test]
+fn empty_table_builds_without_panicking() {
+    // A `table` with no rows produces no output but must not abort
+    // the build.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("tbl.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  table {}
+  text { span "after" {} }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        !html.contains("<table"),
+        "empty table should emit nothing:\n{html}"
+    );
+    assert!(html.contains("<span>after</span>"), "{html}");
+}
+
+#[test]
+fn custom_block_lowers_to_table_fundamental() {
+    // A custom WdocBlock whose `lower` returns an
+    // HtmlFundamental::Table renders through render_table_payload.
+    // `header` is the heading row; `rows` are the body. Cells on this
+    // path are plain escaped text.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("tbl.wcl");
+    std::fs::write(
+        &src,
+        r##"
+@block("datatable")
+type DataTable extends WdocBlock {
+  id: identifier?
+  lower = fn(d: DataTable) -> list<HtmlFundamental> [
+    HtmlFundamental::Table {
+      id: none, class: none,
+      header: ["A", "B"],
+      rows: [["1", "2"], ["3", "4"]],
+    }
+  ]
+}
+
+page index {
+  datatable {}
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains(
+            "<table class=\"wdoc-table\"><thead><tr><th>A</th><th>B</th></tr></thead>\
+             <tbody><tr><td>1</td><td>2</td></tr><tr><td>3</td><td>4</td></tr></tbody></table>"
+        ),
+        "{html}"
     );
 }

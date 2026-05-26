@@ -41,6 +41,15 @@ struct Collector {
 /// before bailing.
 const MAX_LOWER_DEPTH: usize = 32;
 
+/// Default styling for `table` blocks, injected into every page's
+/// `<style>` (before user `class` rules, so those still override it).
+/// Keeps tables legible out of the box without forcing every author
+/// to declare a border class.
+pub(crate) const TABLE_CSS: &str = "\
+table.wdoc-table { border-collapse: collapse; }
+.wdoc-table th, .wdoc-table td { border: 1px solid #ccc; padding: 0.3rem 0.6rem; text-align: left; }
+.wdoc-table th { background: #f4f4f4; }";
+
 pub(crate) fn render_page(name: &str, css: &str, blocks: impl Iterator<Item = String>) -> String {
     let mut body = String::new();
     for b in blocks {
@@ -68,6 +77,7 @@ pub(crate) fn render_block(
     match block.kind() {
         "text" => Some(render_text(doc, block, patterns)),
         "column" => Some(render_column(doc, block, patterns)),
+        "table" => Some(render_table(doc, block, patterns)),
         "diagram" => Some(render_diagram(doc, block)),
         "code" => Some(render_code(block)),
         // Skip the lowering function declarations — they're top-level
@@ -215,6 +225,89 @@ fn render_code(block: &Block<'_>) -> String {
         escape_html(&language),
     )
     .expect("write to String");
+    out
+}
+
+/// Render a `@block("table")` instance. Rows are authored with WCL's
+/// pipe-table syntax (`rows: | a | b |`) and read here via
+/// `Block::tables()` — a `table` declares no typed `rows` field, so
+/// the rows are arbitrary-width and never schema-validated. The first
+/// row is the header (`<th>` inside `<thead>`); the rest are body
+/// rows (`<td>` inside `<tbody>`). Each cell is rendered by
+/// `cell_to_html`, so utf8 cells pick up inline patterns.
+fn render_table(doc: &Document, block: &Block<'_>, patterns: &InlinePatterns) -> String {
+    // Collect every pipe-row in source order. A `table` normally holds
+    // a single `rows:` table; if several are present we concatenate.
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    for table in block.tables() {
+        for row in table.rows() {
+            let Ok(values) = row.values() else {
+                // A row whose cells fail to evaluate is skipped rather
+                // than aborting the whole table.
+                continue;
+            };
+            rows.push(
+                values
+                    .iter()
+                    .map(|v| cell_to_html(doc, patterns, v))
+                    .collect(),
+            );
+        }
+    }
+    if rows.is_empty() {
+        return String::new();
+    }
+    let mut classes: Vec<String> = vec!["wdoc-table".to_string()];
+    classes.extend(field_utf8_list(block, "class"));
+    let header = &rows[0];
+    let body = &rows[1..];
+    table_html(field_id(block, "id").as_deref(), &classes, header, body)
+}
+
+/// Render a single table cell to inner HTML. utf8 cells flow through
+/// the inline-pattern engine (bold / italic / code / links); every
+/// other value kind is stringified via `Value`'s `Display` and
+/// HTML-escaped.
+fn cell_to_html(doc: &Document, patterns: &InlinePatterns, value: &Value) -> String {
+    match value {
+        Value::Utf8(s) | Value::Ascii(s) => patterns.render(doc, s),
+        other => escape_html(&other.to_string()),
+    }
+}
+
+/// Shared `<table>` builder. `header` and `body` cells are already
+/// rendered inner HTML (not escaped again here). An empty `header`
+/// omits the `<thead>` entirely so the lowering path can emit a
+/// header-less table.
+fn table_html(
+    id: Option<&str>,
+    classes: &[String],
+    header: &[String],
+    body: &[Vec<String>],
+) -> String {
+    let cls = classes_attr_from_names(classes);
+    let mut out = format!("<table{cls}");
+    append_attr(&mut out, "id", id);
+    out.push('>');
+    if !header.is_empty() {
+        out.push_str("<thead><tr>");
+        for cell in header {
+            write!(out, "<th>{cell}</th>").expect("write to String");
+        }
+        out.push_str("</tr></thead>");
+    }
+    if !body.is_empty() {
+        out.push_str("<tbody>");
+        for row in body {
+            out.push_str("<tr>");
+            for cell in row {
+                write!(out, "<td>{cell}</td>").expect("write to String");
+            }
+            out.push_str("</tr>");
+        }
+        out.push_str("</tbody>");
+    }
+    out.push_str("</table>");
     out
 }
 
@@ -1120,6 +1213,7 @@ fn render_html_variant(doc: &Document, value: &Value, depth: usize) -> String {
     };
     match kind.as_str() {
         "paragraph" => render_paragraph_payload(map),
+        "table" => render_table_payload(map),
         other => {
             let arg = payload_to_record(map, other);
             let Some(fv) = lookup_type_lower(doc, other) else {
@@ -1457,6 +1551,34 @@ fn render_paragraph_payload(map: &BTreeMap<String, Value>) -> String {
     append_attr(&mut out, "id", map_id(map, "id").as_deref());
     write!(out, ">{inner}</p>").expect("write to String");
     out
+}
+
+/// Render an `HtmlFundamental::Table` variant produced by a custom
+/// block's `lower`. `header` is the (optional) heading row and `rows`
+/// is `list<list<utf8>>` of body rows. Cells are plain escaped text
+/// on this path (no inline patterns), mirroring `Paragraph`'s spans.
+fn render_table_payload(map: &BTreeMap<String, Value>) -> String {
+    let mut classes: Vec<String> = vec!["wdoc-table".to_string()];
+    classes.extend(map_utf8_list(map, "class"));
+    let header: Vec<String> = map_utf8_list(map, "header")
+        .iter()
+        .map(|s| escape_html(s))
+        .collect();
+    let body: Vec<Vec<String>> = match map.get("rows") {
+        Some(Value::List(rows)) => rows
+            .iter()
+            .map(|row| match row {
+                Value::List(cells) => cells
+                    .iter()
+                    .filter_map(value_as_str)
+                    .map(|s| escape_html(&s))
+                    .collect(),
+                _ => Vec::new(),
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    table_html(map_id(map, "id").as_deref(), &classes, &header, &body)
 }
 
 // ── Resolution helpers (block-side) ───────────────────────────────

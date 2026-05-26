@@ -124,6 +124,33 @@ type Column extends WdocBlock {
   lower = fn(c: Column) -> list<HtmlFundamental> []
 }
 
+// Tabular grid. Rows are authored with WCL's native pipe-table
+// syntax under a `rows:` header; the first row is the table header.
+//
+//   table {
+//     rows:
+//       | "Name"  | "Role" | "Age" |   // -> <thead>/<th>
+//       | "Alice" | "Dev"  | 30     |   // -> <tbody>/<td>
+//   }
+//
+// Cells may hold any literal: utf8 cells are run through the inline
+// pattern engine (so **bold**, _italic_, `code`, [links](page) work),
+// other types (numbers, bools, symbols) are stringified. The block
+// deliberately declares no `rows` field — the pipe rows arrive as a
+// syntactic `Item::Table` the renderer reads via `Block::tables()`,
+// so tables can be any width with no per-table type. `table` is a
+// fundamental HTML block (rendered directly), so its `lower` is never
+// invoked — declared only to satisfy the WdocBlock interface.
+// Named `TableBlock` (not `Table`) because `Table` is the reserved
+// type name for the `@table` decorator. The block kind is still
+// "table".
+@block("table")
+type TableBlock extends WdocBlock {
+  id:    identifier?
+  class: list<utf8>?
+  lower = fn(t: TableBlock) -> list<HtmlFundamental> []
+}
+
 // SVG canvas. Width/height define the viewBox and rendered size,
 // and the parent box for diagram-level anchored shapes.
 @block("diagram")
@@ -346,6 +373,13 @@ union SvgFundamental {
 
 union HtmlFundamental {
   Paragraph { id: identifier? class: list<utf8>? spans: list<utf8> }
+  // Table — `header` is the heading row (rendered as <th> inside
+  // <thead>; omit or leave empty for a header-less table); `rows` are
+  // the body rows (<td> inside <tbody>). On this lowering path cells
+  // are plain escaped text, mirroring `Paragraph`'s escaped spans.
+  // The user-facing `table` block authors rows with WCL's pipe-table
+  // syntax and additionally runs utf8 cells through inline patterns.
+  Table { id: identifier? class: list<utf8>? header: list<utf8>? rows: list<list<utf8>> }
 }
 
 // Inline parsed-text variants produced by `inline_pattern` blocks.

@@ -79,7 +79,11 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         .filter_map(|b| render_class(&b))
         .collect::<Vec<_>>()
         .join("\n");
-    let css = format!("{}\n{class_css}", highlight::theme_css());
+    let css = format!(
+        "{}\n{}\n{class_css}",
+        highlight::theme_css(),
+        crate::render::TABLE_CSS
+    );
 
     // Page-name set used by the inline link pattern to recognise
     // `[text](page)` cross-page references. Built before rendering

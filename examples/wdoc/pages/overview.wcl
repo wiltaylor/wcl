@@ -27,6 +27,20 @@ page overview {
     text { span "Right column." {} }
   }
 
+  h2 "Stages" {}
+
+  // Tables use WCL's native pipe-table syntax. The first row is the
+  // header. utf8 cells honour inline patterns (so **bold** and
+  // [links](connections) render), while numeric cells pass straight
+  // through.
+  table {
+    rows:
+      | "Stage"      | "Owner"        | "Steps" |
+      | "**Parse**"  | "lexer"        | 3       |
+      | "Validate"   | "[see](about)" | 5       |
+      | "_Render_"   | "wdoc"         | 8       |
+  }
+
   diagram {
     width  = 280
     height = 130
