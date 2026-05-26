@@ -19,6 +19,7 @@ use std::fmt::Write as _;
 use regex::Regex;
 use wcl_lang::{Document, FnValue, Value, VariantPayload};
 
+use crate::icons::IconRegistry;
 use crate::render::escape_html;
 
 /// Maximum recursion depth when re-tokenizing a match's text
@@ -36,6 +37,9 @@ pub(crate) struct InlinePatterns {
     /// Build collects these after the page loop and turns them
     /// into a `BuildError::BadLink`.
     link_errors: RefCell<Vec<String>>,
+    /// Icon registry, resolving the built-in `:name:` pattern's
+    /// `InlineSpan::Icon` against the declared `iconset`s.
+    icons: IconRegistry,
 }
 
 struct CompiledPattern {
@@ -49,7 +53,7 @@ impl InlinePatterns {
     /// Patterns whose regex fails to compile or whose `to_span`
     /// isn't a function are silently skipped — schema validation
     /// flags those separately.
-    pub(crate) fn load(doc: &Document, page_names: HashSet<String>) -> Self {
+    pub(crate) fn load(doc: &Document, page_names: HashSet<String>, icons: IconRegistry) -> Self {
         let mut compiled = Vec::new();
         for block in doc.blocks() {
             if block.kind() != "inline_pattern" {
@@ -80,7 +84,14 @@ impl InlinePatterns {
             compiled,
             page_names,
             link_errors: RefCell::new(Vec::new()),
+            icons,
         }
+    }
+
+    /// The document's icon registry, threaded into the SVG render path
+    /// (diagram `icon` blocks) via `render_diagram`.
+    pub(crate) fn icons(&self) -> &IconRegistry {
+        &self.icons
     }
 
     /// Drain accumulated unknown-page link errors. Build calls
@@ -188,8 +199,20 @@ impl InlinePatterns {
         match variant.as_str() {
             "Plain" => self.render_plain(doc, map, depth),
             "Link" => self.render_link(doc, map, depth),
+            "Icon" => self.render_icon(map),
             _ => String::new(),
         }
+    }
+
+    /// Render an `InlineSpan::Icon`. Resolves the name against the icon
+    /// registry; a miss (unknown name, or no declared iconsets) emits the
+    /// literal `:name:` so a chance regex match in prose is harmless.
+    fn render_icon(&self, map: &BTreeMap<String, Value>) -> String {
+        let name = map_utf8(map, "name").unwrap_or_default();
+        let classes = class_list(map);
+        self.icons
+            .resolve_inline(&name, &classes)
+            .unwrap_or_else(|| escape_html(&format!(":{name}:")))
     }
 
     fn render_plain(&self, doc: &Document, map: &BTreeMap<String, Value>, depth: usize) -> String {
@@ -268,18 +291,23 @@ fn map_utf8(map: &BTreeMap<String, Value>, name: &str) -> Option<String> {
 }
 
 fn class_attr(map: &BTreeMap<String, Value>) -> String {
-    let Some(Value::List(items)) = map.get("class") else {
+    let names = class_list(map);
+    if names.is_empty() {
         return String::new();
+    }
+    format!(" class=\"{}\"", escape_html(&names.join(" ")))
+}
+
+/// Extract a span's `class: list<utf8>?` field as a plain list.
+fn class_list(map: &BTreeMap<String, Value>) -> Vec<String> {
+    let Some(Value::List(items)) = map.get("class") else {
+        return Vec::new();
     };
-    let names: Vec<String> = items
+    items
         .iter()
         .filter_map(|v| match v {
             Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
             _ => None,
         })
-        .collect();
-    if names.is_empty() {
-        return String::new();
-    }
-    format!(" class=\"{}\"", escape_html(&names.join(" ")))
+        .collect()
 }

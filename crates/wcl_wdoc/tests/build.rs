@@ -32,7 +32,7 @@ fn build_emits_fundamentals_for_example_site() {
     // pages/*.wcl; main.wcl itself only defines the landing index.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 7);
+    assert_eq!(n, 8);
 
     // The richer content (text + classes + diagram + flowchart) is on
     // the overview page, not the landing index.
@@ -1859,11 +1859,11 @@ page index {
 fn build_processes_full_code_example_page() {
     // Smoke test against the code page in the example site, which
     // exercises Rust, Python, JSON, WCL, and an unknown language
-    // in one page. main.wcl imports it and six other pages, so
+    // in one page. main.wcl imports it and seven other pages, so
     // we count the code-block wrappers on `code.html`.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 7);
+    assert_eq!(n, 8);
     let html = std::fs::read_to_string(out.path().join("code.html")).expect("read code.html");
     assert!(
         html.matches("<pre class=\"code-block\"").count() >= 5,
@@ -2880,4 +2880,101 @@ fn no_terminal_writes_no_assets() {
         !out.path().join("_wdoc").exists(),
         "assets written without a terminal"
     );
+}
+
+/// Build `src` (as a standalone `main.wcl`) and return the rendered
+/// `index.html` plus the shared icon sprite (`_wdoc/icons.svg`) if one
+/// was written.
+fn build_icons(src: &str) -> (String, Option<String>) {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("main.wcl");
+    std::fs::write(&file, src).expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&file, out.path());
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+    let sprite = std::fs::read_to_string(out.path().join("_wdoc").join("icons.svg")).ok();
+    (index, sprite)
+}
+
+#[test]
+fn build_resolves_inline_and_diagram_icons() {
+    let src = r##"
+iconset ui {
+  pack  = "lucide"
+  color = "#88c0d0"
+  size  = "1.2em"
+  icon_def "check" { color = "#a3be8c" }
+}
+iconset bs { pack = "bootstrap" }
+
+page index {
+  text {
+    span "Inline :house: :check: :bs.heart: with a missing :nope: and a ratio 10:30." {}
+  }
+  diagram {
+    width = 80
+    height = 40
+    icon "star" { x = 8.0  y = 8.0  width = 24.0  height = 24.0  color = "#ebcb8b" }
+  }
+}
+"##;
+    let (index, sprite) = build_icons(src);
+
+    // Inline icon carries the iconset's default size + colour and
+    // references the shared sprite by id.
+    assert!(
+        index.contains(
+            "<svg class=\"wdoc-icon\" style=\"width:1.2em;height:1.2em;color:#88c0d0;\">\
+             <use href=\"_wdoc/icons.svg#lucide-house\"/></svg>"
+        ),
+        "{index}"
+    );
+    // A per-icon `icon_def` override wins over the set default.
+    assert!(
+        index.contains("color:#a3be8c;") && index.contains("#lucide-check"),
+        "{index}"
+    );
+    // `:set.name:` prefix resolves to the named set's pack.
+    assert!(index.contains("#bootstrap-heart"), "{index}");
+    // An unknown name and a chance `:` pair in prose stay literal.
+    assert!(index.contains(":nope:"), "{index}");
+    assert!(index.contains("10:30"), "{index}");
+    // The diagram icon is a positioned <use>.
+    assert!(
+        index.contains("<use href=\"_wdoc/icons.svg#lucide-star\" x=\"8\" y=\"8\""),
+        "{index}"
+    );
+    // ICON_CSS is injected into the page stylesheet.
+    assert!(
+        index.contains("svg.wdoc-icon { display: inline-block;"),
+        "{index}"
+    );
+
+    // The sprite holds one <symbol> per used icon (and only those),
+    // keeping the presentation attributes that make each pack paint.
+    let sprite = sprite.expect("sprite written when icons are used");
+    assert!(
+        sprite.contains("<symbol id=\"lucide-house\" viewBox=\"0 0 24 24\""),
+        "{sprite}"
+    );
+    assert!(
+        sprite.contains("<symbol id=\"bootstrap-heart\" viewBox=\"0 0 16 16\""),
+        "{sprite}"
+    );
+    assert!(sprite.contains("stroke=\"currentColor\""), "{sprite}");
+    // An icon that was never referenced isn't bundled.
+    assert!(!sprite.contains("lucide-cloud"), "{sprite}");
+}
+
+#[test]
+fn build_without_iconset_leaves_colon_text_literal() {
+    // With no `iconset` declared the `:name:` pattern is inert: text is
+    // untouched and no sprite is written.
+    let src = "page index {\n  text { span \"Status :house: ok at 10:30.\" {} }\n}\n";
+    let (index, sprite) = build_icons(src);
+    assert!(index.contains(":house:"), "{index}");
+    // No icon was actually emitted (the always-present ICON_CSS mentions
+    // `wdoc-icon`, so check for a real sprite reference instead).
+    assert!(!index.contains("_wdoc/icons.svg"), "{index}");
+    assert!(sprite.is_none(), "no sprite without icons");
 }

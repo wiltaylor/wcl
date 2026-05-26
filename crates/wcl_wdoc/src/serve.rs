@@ -165,6 +165,7 @@ fn asset_content_type(file: &str) -> &'static str {
         Some("js") => "text/javascript; charset=utf-8",
         Some("json") => "application/json; charset=utf-8",
         Some("css") => "text/css; charset=utf-8",
+        Some("svg") => "image/svg+xml; charset=utf-8",
         _ => "application/octet-stream",
     }
 }

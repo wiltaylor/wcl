@@ -1,0 +1,62 @@
+// Icon demo: the inline `:name:` handler and scalable diagram icons,
+// drawn from the bundled Lucide / Bootstrap packs and themed through the
+// class system. The `iconset`s + the `icon-accent` class live in
+// main.wcl (icon config is document-global).
+
+page icons {
+  h1 "Icons" {}
+
+  // `:name:` resolves against the declared iconsets; `:set.name:` picks a
+  // specific pack. Icons size to the surrounding text (the `ui` set's
+  // `size = "1.15em"`) and follow `currentColor`, so the iconset's
+  // `color` themes them.
+  text {
+    span "Inline Lucide glyphs :star: :git-branch: :database: :server: and Bootstrap glyphs :bs.github: :bs.gear: :bs.cloud: sit right in the text." {}
+  }
+
+  // A per-icon `icon_def` override recolours just one icon; an unknown
+  // name is left as plain text, and a stray colon pair like 12:00 is
+  // untouched.
+  text {
+    span "The :heart: gets its own colour from an `icon_def`, while `:not-a-real-icon:` and the time 12:00 stay literal." {}
+  }
+
+  h2 "In diagrams" {}
+
+  // Icons are placeable, scalable diagram shapes: give them an id, let
+  // `:layered` rank them from the edge graph, size them with width /
+  // height, recolour with a `class`, or sit one on a tinted background.
+  diagram {
+    width     = 360
+    height    = 90
+    layout    = :layered
+    direction = :left_to_right
+    layer_gap = 70.0
+
+    // Recoloured purely through the `icon-accent` class (the `bs` set
+    // has no default colour, so the class — and its dark-mode override —
+    // drives currentColor).
+    icon "bs.server" {
+      id     = src
+      width  = 44.0
+      height = 44.0
+      class  = ["icon-accent"]
+    }
+    icon "bs.arrow-left-right" {
+      id     = mid
+      width  = 40.0
+      height = 40.0
+    }
+    // Coloured by the `ui` iconset default and sat on a tinted background.
+    icon "database" {
+      id         = dst
+      set        = ui
+      width      = 44.0
+      height     = 44.0
+      background = "#eceff4"
+    }
+
+    src -> mid :data
+    mid -> dst :data
+  }
+}

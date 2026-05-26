@@ -7,6 +7,7 @@
 
 pub mod build;
 mod highlight;
+mod icons;
 mod inline;
 mod layered;
 mod render;

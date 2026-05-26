@@ -11,6 +11,7 @@ type Site {
   @children("page")           pages:     list<Page>
   @children("inline_pattern") patterns:  list<InlinePattern>
   @children("template")       templates: list<Template>
+  @children("iconset")        iconsets:  list<IconSet>
   @child("site")              site:      SiteConfig?
 }
 
@@ -636,6 +637,11 @@ let book_theme_toggle = [
 union InlineSpan {
   Plain { text: utf8 class: list<utf8>? }
   Link  { text: utf8 href: utf8 class: list<utf8>? }
+  // An icon, produced by the built-in `:name:` pattern. `name` is the
+  // icon (optionally `set.name`); the renderer resolves it against the
+  // declared `iconset`s and emits a `<use>` of the shared sprite. An
+  // unresolved name renders as the literal `:name:` text.
+  Icon  { name: utf8 class: list<utf8>? }
 }
 
 // Regex-driven inline parser. The `pattern` field holds a regex;
@@ -650,6 +656,70 @@ type InlinePattern {
   @inline(0) name: identifier
   pattern: utf8
   to_span: fn(list<utf8>) -> list<InlineSpan>
+}
+
+// ── Icons ──────────────────────────────────────────────────────────
+//
+// An `iconset` names a reference to one of the bundled SVG packs (today
+// `lucide` and `bootstrap`, compiled into the binary) and sets the
+// default styling for icons drawn from it. Icons are referenced three
+// ways: the inline `:name:` (or `:set.name:`) handler in `span` text, an
+// `icon` block inside a `diagram`, and they all draw from a shared
+// `_wdoc/icons.svg` sprite the build emits with only the icons used.
+//
+// Styling rides the `class` system. Every icon paints with
+// `currentColor`, so a `color` (on the iconset, an icon, or a referenced
+// `class`) is the universal foreground knob — it recolours both
+// stroke-based (Lucide) and fill-based (Bootstrap) packs. `size` scales
+// inline icons (defaults to the surrounding font size, `1em`); `fill`
+// and `background` are optional overrides.
+@block("iconset")
+type IconSet {
+  @inline(0) name: identifier        // reference name, e.g. `ui`
+  pack: utf8?                         // bundled pack; defaults to `name`
+  size:        utf8?                  // default inline size, e.g. "1em", "20px"
+  color:       utf8?                  // default foreground (drives currentColor)
+  fill:        utf8?                  // optional explicit fill
+  background:  utf8?                  // optional background
+  class:       list<utf8>?            // classes added to every icon from this set
+  @children("icon_def") icons: list<IconDef>
+}
+
+// Per-icon style override inside an `iconset`. Any field set here wins
+// over the set default for that one icon.
+@block("icon_def")
+type IconDef {
+  @inline(0) name: identifier         // icon name (file stem in the pack)
+  size:        utf8?
+  color:       utf8?
+  fill:        utf8?
+  background:  utf8?
+  class:       list<utf8>?
+}
+
+// A placeable, scalable icon inside a `diagram` / `container`. `width` /
+// `height` size it in diagram units (scaled further by `scale`); the
+// anchors position it like any other shape. The `lower` is a stub — the
+// icon is special-cased in the renderer (it resolves a bundled pack and
+// emits a `<use>` of the shared sprite, which WCL can't express).
+@block("icon")
+type Icon extends SvgBlock {
+  @inline(0) name: identifier         // icon name (optionally `set.name`)
+  set: identifier?                    // which iconset (when more than one)
+  size:        utf8?
+  color:       utf8?
+  fill:        utf8?
+  background:  utf8?
+  class: list<utf8>?
+  id: identifier?
+  // Defaults mirror the stdlib shapes so a bare icon lays out in
+  // `:grid` / `:layered` diagrams and gets a bounding box for edges.
+  x = 0.0  y = 0.0  width = 24.0  height = 24.0
+  scale: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
+
+  lower = fn(i: Icon) -> list<SvgFundamental> []
 }
 
 // ── Stdlib flowchart shapes ────────────────────────────────────────
@@ -1303,4 +1373,14 @@ inline_pattern link {
   // block (e.g. for light/dark colours), like any other region.
   to_span = fn(g: list<utf8>) -> list<InlineSpan>
     [InlineSpan::Link { text: at(g, 1), href: at(g, 2), class: ["link"] }]
+}
+
+// `:name:` / `:set.name:` → an icon. The renderer resolves the name
+// against the declared `iconset`s; an unknown name (or no iconsets)
+// falls back to the literal matched text, so prose like `time: 10:30`
+// is left untouched.
+inline_pattern icon {
+  pattern = ":([a-z0-9][a-z0-9._-]*):"
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Icon { name: at(g, 1), class: none }]
 }

@@ -5,6 +5,7 @@ use std::path::Path;
 use wcl_lang::{Block, Document, FnValue, Value, VariantPayload};
 
 use crate::highlight;
+use crate::icons::{IconRegistry, ShapeOverride};
 use crate::inline::InlinePatterns;
 use crate::layered::{self, Direction};
 use crate::routing::{self, EdgePath, Obstacle, Side};
@@ -161,6 +162,15 @@ pub(crate) const TERMINAL_CSS: &str = "\
 .term-overlay-play { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 4rem; height: 4rem; display: flex; align-items: center; justify-content: center; padding: 0; border: none; border-radius: 50%; cursor: pointer; background: rgba(20,20,20,0.55); color: #fff; font-size: 1.9rem; line-height: 1; }
 .term-overlay-play:hover { background: rgba(20,20,20,0.75); }
 .term-overlay-play[hidden] { display: none; }";
+
+/// Default styling for icons. The inline `:name:` handler emits an
+/// `<svg class=\"wdoc-icon\">` sized to the surrounding text (1em); a
+/// per-icon `size` overrides it via inline style. Diagram icons are
+/// `<use>` elements sized by their `width` / `height`, so the size rule
+/// uses the `svg.wdoc-icon` selector and leaves them alone. Icons paint
+/// with `currentColor`, so a user `class`/`color` recolours them.
+pub(crate) const ICON_CSS: &str = "\
+svg.wdoc-icon { display: inline-block; width: 1em; height: 1em; vertical-align: -0.125em; }";
 
 /// Wrap a page's `body` HTML in the document shell. The `<head>`
 /// (title + global stylesheet) is owned here regardless of template;
@@ -333,7 +343,7 @@ pub(crate) fn render_block(
         "text" => Some(render_text(doc, block, patterns)),
         "column" => Some(render_column(doc, block, patterns, base_dir)),
         "table" => Some(render_table(doc, block, patterns)),
-        "diagram" => Some(render_diagram(doc, block)),
+        "diagram" => Some(render_diagram(doc, block, patterns.icons())),
         "code" => Some(render_code(block)),
         // The terminal is special-cased in Rust (like `code`): its grid
         // model, ANSI handling, and asciinema replay aren't expressible
@@ -501,14 +511,14 @@ fn render_column(
     out
 }
 
-fn render_diagram(doc: &Document, block: &Block<'_>) -> String {
+fn render_diagram(doc: &Document, block: &Block<'_>, icons: &IconRegistry) -> String {
     let cls = class_attr(block);
     let width = field_i64(block, "width").unwrap_or(0);
     let height = field_i64(block, "height").unwrap_or(0);
     let (vw, vh) = (width as f64, height as f64);
     let mut collector = Collector::default();
     collect_layout_children(block, 0.0, 0.0, vw, vh, &mut collector);
-    let shapes: String = render_layout_children(doc, block, vw, vh);
+    let shapes: String = render_layout_children(doc, block, vw, vh, icons);
     let (edges, edge_bboxes) = render_edges(block, &collector.positions, (vw, vh));
     let viewbox = fit_viewbox(&collector.bboxes, &edge_bboxes, vw, vh);
     let defs = if edges.is_empty() { "" } else { ARROW_MARKER };
@@ -697,14 +707,20 @@ fn collect_layout_children(
 /// Symmetric: render `block`'s children using its `layout`. Caller
 /// supplies the parent box (`pw`, `ph`) that propagates to children
 /// not assigned an explicit cell.
-fn render_layout_children(doc: &Document, block: &Block<'_>, pw: f64, ph: f64) -> String {
+fn render_layout_children(
+    doc: &Document,
+    block: &Block<'_>,
+    pw: f64,
+    ph: f64,
+    icons: &IconRegistry,
+) -> String {
     let layout = field_symbol(block, "layout").unwrap_or_default();
     match layout.as_str() {
-        "grid" => render_grid_children(doc, block),
-        "layered" => render_layered_children(doc, block),
+        "grid" => render_grid_children(doc, block, icons),
+        "layered" => render_layered_children(doc, block, icons),
         _ => block
             .blocks()
-            .filter_map(|b| render_shape(doc, &b, pw, ph))
+            .filter_map(|b| render_shape(doc, &b, pw, ph, icons))
             .collect(),
     }
 }
@@ -786,7 +802,7 @@ fn edge_id_pairs(block: &Block<'_>) -> Vec<(String, String)> {
         .collect()
 }
 
-fn render_layered_children(doc: &Document, block: &Block<'_>) -> String {
+fn render_layered_children(doc: &Document, block: &Block<'_>, icons: &IconRegistry) -> String {
     let children: Vec<Block<'_>> = block.blocks().collect();
     let (offsets, widths, heights) = compute_layered_plan(block, &children);
     let mut out = String::new();
@@ -795,7 +811,7 @@ fn render_layered_children(doc: &Document, block: &Block<'_>) -> String {
         .zip(offsets)
         .zip(widths.iter().zip(heights.iter()))
     {
-        if let Some(rendered) = render_shape(doc, child, *cw, *ch) {
+        if let Some(rendered) = render_shape(doc, child, *cw, *ch, icons) {
             out.push_str(&format!(
                 "<g transform=\"translate({tx} {ty})\">{rendered}</g>"
             ));
@@ -841,6 +857,18 @@ fn collect_shape_positions(
             let own_y = field_f64(block, "y").unwrap_or(0.0);
             let (x, y) = resolve_point_anchored(block, parent_w, parent_h, own_x, own_y);
             record(block, (tx + x, ty + y, 0.0, 0.0), out);
+        }
+        "icon" => {
+            // Mirror render_icon's geometry exactly (resolved box × scale)
+            // so the icon contributes a correct bbox for edges + viewBox
+            // fit. Read directly rather than via the `_` arm so the icon
+            // name (its inline label) doesn't drive `effective_dims`.
+            let (x, y, mut w, mut h) = resolve_rect_box(block, parent_w, parent_h);
+            if let Some(scale) = field_f64(block, "scale") {
+                w *= scale;
+                h *= scale;
+            }
+            record(block, (tx + x, ty + y, w, h), out);
         }
         "container" => {
             let (x, y, w, h) = resolve_container_box(block, parent_w, parent_h);
@@ -1303,19 +1331,55 @@ fn edge_endpoint_id(v: &Value) -> Option<String> {
     }
 }
 
-fn render_shape(doc: &Document, block: &Block<'_>, parent_w: f64, parent_h: f64) -> Option<String> {
+fn render_shape(
+    doc: &Document,
+    block: &Block<'_>,
+    parent_w: f64,
+    parent_h: f64,
+    icons: &IconRegistry,
+) -> Option<String> {
     match block.kind() {
         "rect" => Some(render_rect(block, parent_w, parent_h)),
         "circle" => Some(render_circle(block, parent_w, parent_h)),
         "line" => Some(render_line(block, parent_w, parent_h)),
         "label" => Some(render_label(block, parent_w, parent_h)),
         "polygon" => Some(render_polygon(block, parent_w, parent_h)),
-        "container" => Some(render_container(doc, block, parent_w, parent_h)),
+        "container" => Some(render_container(doc, block, parent_w, parent_h, icons)),
+        "icon" => Some(render_icon(block, parent_w, parent_h, icons)),
         kind => Some(lower_svg_block(doc, block, kind, parent_w, parent_h)),
     }
 }
 
-fn render_container(doc: &Document, block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
+/// Render a diagram `icon` block: resolve its name against the icon
+/// registry and emit a `<use>` of the shared sprite, sized by the
+/// resolved box (× `scale`). A miss renders nothing (best-effort, like
+/// a failed lowering).
+fn render_icon(block: &Block<'_>, parent_w: f64, parent_h: f64, icons: &IconRegistry) -> String {
+    let name = label_string(block).unwrap_or_default();
+    let set = field_id(block, "set");
+    let (x, y, mut w, mut h) = resolve_rect_box(block, parent_w, parent_h);
+    if let Some(scale) = field_f64(block, "scale") {
+        w *= scale;
+        h *= scale;
+    }
+    let over = ShapeOverride {
+        color: field_utf8(block, "color"),
+        fill: field_utf8(block, "fill"),
+        background: field_utf8(block, "background"),
+        classes: field_utf8_list(block, "class"),
+    };
+    icons
+        .resolve_shape(&name, set.as_deref(), (x, y, w, h), &over)
+        .unwrap_or_default()
+}
+
+fn render_container(
+    doc: &Document,
+    block: &Block<'_>,
+    parent_w: f64,
+    parent_h: f64,
+    icons: &IconRegistry,
+) -> String {
     let cls = class_attr(block);
     let (x, y, w, h) = resolve_container_box(block, parent_w, parent_h);
     let chrome = container_chrome(block, w, h);
@@ -1324,7 +1388,7 @@ fn render_container(doc: &Document, block: &Block<'_>, parent_w: f64, parent_h: 
     // 2*padding) so anchored / grid-sized children honor the inset.
     let inner_w = (w - 2.0 * padding).max(0.0);
     let inner_h = (h - 2.0 * padding).max(0.0);
-    let raw_inner = render_layout_children(doc, block, inner_w, inner_h);
+    let raw_inner = render_layout_children(doc, block, inner_w, inner_h, icons);
     let inner = if padding > 0.0 && !raw_inner.is_empty() {
         format!("<g transform=\"translate({padding} {padding})\">{raw_inner}</g>")
     } else {
@@ -1366,7 +1430,7 @@ fn container_chrome(block: &Block<'_>, w: f64, h: f64) -> String {
     out
 }
 
-fn render_grid_children(doc: &Document, block: &Block<'_>) -> String {
+fn render_grid_children(doc: &Document, block: &Block<'_>, icons: &IconRegistry) -> String {
     let cols = field_i64(block, "columns").unwrap_or(1).max(1) as usize;
     let cw = field_f64(block, "cell_width").unwrap_or(0.0);
     let ch = field_f64(block, "cell_height").unwrap_or(0.0);
@@ -1375,7 +1439,7 @@ fn render_grid_children(doc: &Document, block: &Block<'_>) -> String {
         .blocks()
         .enumerate()
         .filter_map(|(i, b)| {
-            let rendered = render_shape(doc, &b, cw, ch)?;
+            let rendered = render_shape(doc, &b, cw, ch, icons)?;
             let col = i % cols;
             let row = i / cols;
             let tx = col as f64 * (cw + gap);

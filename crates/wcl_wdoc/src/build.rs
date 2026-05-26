@@ -85,7 +85,7 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         .collect::<Vec<_>>()
         .join("\n");
     let css = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{class_css}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{class_css}",
         crate::render::BASE_CSS,
         crate::render::HEADING_CSS,
         highlight::theme_css(),
@@ -94,6 +94,7 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         crate::render::BOOK_CSS,
         crate::render::CHART_CSS,
         crate::render::TERMINAL_CSS,
+        crate::render::ICON_CSS,
     );
 
     // Terminals need the bundled font + replay player written alongside
@@ -150,10 +151,17 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         )));
     }
 
+    // Icon registry: reads every `@block("iconset")` so the inline
+    // `:name:` handler and diagram `icon` blocks can resolve names
+    // against the bundled packs. Stored inside the pattern engine so
+    // inline rendering reaches it with no extra threading; the SVG path
+    // pulls it back out via `inline_patterns.icons()`.
+    let icons = crate::icons::IconRegistry::load(&doc);
+
     // Document-global inline-text pattern engine, compiled once
     // per build: every `@block("inline_pattern")` (built-in or
     // user-declared) contributes one regex + `to_span` function.
-    let inline_patterns = InlinePatterns::load(&doc, page_names);
+    let inline_patterns = InlinePatterns::load(&doc, page_names, icons);
 
     let mut count = 0;
     for page in doc.blocks().filter(|b| b.kind() == "page") {
@@ -224,6 +232,13 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         count += 1;
     }
 
+    // Every icon resolved while rendering goes into one shared sprite
+    // (`_wdoc/icons.svg`) that the pages reference via `<use>`. Written
+    // after the page loop so it holds exactly the icons that were used.
+    if let Some(sprite) = inline_patterns.icons().build_sprite() {
+        write_icon_sprite(out_dir, &sprite)?;
+    }
+
     // Inline `[text](page)` references that didn't resolve to a
     // known page block surface as a build error here, after every
     // page has had a chance to render and report.
@@ -251,6 +266,18 @@ fn write_terminal_assets(out_dir: &Path) -> Result<(), BuildError> {
     let player = dir.join("terminal-player.js");
     fs::write(&player, crate::terminal::PLAYER_JS)
         .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
+    Ok(())
+}
+
+/// Write the shared icon sprite into `<out>/_wdoc/icons.svg`. Pages
+/// reference its `<symbol>`s by relative URL (`_wdoc/icons.svg#id`), so
+/// the dev server and any static host resolve them the same way.
+fn write_icon_sprite(out_dir: &Path, sprite: &str) -> Result<(), BuildError> {
+    let dir = out_dir.join(crate::terminal::ASSET_DIR);
+    fs::create_dir_all(&dir)
+        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
+    let path = dir.join(crate::icons::SPRITE_FILE);
+    fs::write(&path, sprite).map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
     Ok(())
 }
 

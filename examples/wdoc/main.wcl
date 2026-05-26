@@ -21,6 +21,27 @@ class badge {
   color       = "#444"
 }
 
+// Recolour icons through the class system. Icons paint with
+// `currentColor`, so a `color` here themes any icon carrying the class
+// (in a diagram directly, or inline via an iconset / icon_def `class`).
+class "icon-accent" {
+  color = "#5e81ac"
+  dark  { color = "#88c0d0" }
+}
+
+// Icon sets map a reference name to one of the bundled packs and set
+// default styling. `ui` draws from Lucide (stroke-based), `bs` from
+// Bootstrap Icons (fill-based); both honour currentColor.
+iconset ui {
+  pack  = "lucide"
+  size  = "1.15em"
+  color = "#003a8c"
+  icon_def "heart" { color = "#bf616a" }
+}
+iconset bs {
+  pack = "bootstrap"
+}
+
 // Wrap every page in the bundled `webpage` template: a title header
 // plus a top navigation menu (one link per page in document order)
 // above each page's own content. A page can opt out or pick another
@@ -39,6 +60,7 @@ import "./pages/connections.wcl"
 import "./pages/code.wcl"
 import "./pages/charts.wcl"
 import "./pages/terminal.wcl"
+import "./pages/icons.wcl"
 
 // Landing page: short table of contents linking to every other
 // page in the site. Lives in `main.wcl` so its content stays in
@@ -56,5 +78,6 @@ page index {
   text { span "• [Charts](charts) — bar, line, and pie charts with scales, axis labels, multiple series, and class theming." {} }
   text { span "• [Code blocks](code) — syntax-highlighted listings for Rust, Python, JSON, WCL, and an unknown language." {} }
   text { span "• [Terminals](terminal) — character-grid terminals with Nerd Font glyphs, full ANSI styling, and asciinema replay." {} }
+  text { span "• [Icons](icons) — inline `:name:` glyphs and scalable diagram icons from the bundled Lucide / Bootstrap packs, themed via classes." {} }
   text { span "• [About](about) — what this example demonstrates." {} }
 }
