@@ -61,6 +61,7 @@ import "./pages/code.wcl"
 import "./pages/charts.wcl"
 import "./pages/terminal.wcl"
 import "./pages/icons.wcl"
+import "./pages/tilemap.wcl"
 
 // Landing page: short table of contents linking to every other
 // page in the site. Lives in `main.wcl` so its content stays in
@@ -79,5 +80,6 @@ page index {
   text { span "• [Code blocks](code) — syntax-highlighted listings for Rust, Python, JSON, WCL, and an unknown language." {} }
   text { span "• [Terminals](terminal) — character-grid terminals with Nerd Font glyphs, full ANSI styling, and asciinema replay." {} }
   text { span "• [Icons](icons) — inline `:name:` glyphs and scalable diagram icons from the bundled Lucide / Bootstrap packs, themed via classes." {} }
+  text { span "• [Tilemaps](tilemap) — index-based tile grids cut from a spritesheet `tileset`, authored numerically or with a symbol legend, overlaid with other diagram shapes." {} }
   text { span "• [About](about) — what this example demonstrates." {} }
 }

@@ -1,0 +1,77 @@
+// Tilemap demo: a `tileset` names a spritesheet + its tile geometry,
+// and `tilemap` blocks lay out tiles by index inside a diagram, where
+// other shapes can be overlaid on top.
+//
+// The tileset is declared at the document root (like an iconset). Its
+// `source` is resolved relative to the build's entry file (main.wcl),
+// so the path is relative to `examples/wdoc/`. The sheet is Kenney's
+// CC0 "Platformer Pack" (see assets/LICENSE.txt): 5 columns of 64px
+// tiles, so tile index N is at sheet column N%5, row N/5.
+tileset platformer {
+  source      = "assets/kenney-platformer.png"
+  tile_width  = 64
+  tile_height = 64
+  columns     = 5
+}
+
+page tilemap {
+  h1 "Tilemaps" {}
+
+  text {
+    span "A `tilemap` slices tiles out of a `tileset` spritesheet by index and lays them on a grid. It's a diagram shape, so anything drawn after it overlays on top." {}
+  }
+
+  h2 "Symbolic map + legend" {}
+
+  // Author the grid with glyphs: each `tile` entry maps a character to a
+  // tile index, then `map` rows spell out the scene. Unmapped characters
+  // (here `.`) are empty — they show the page through, so the torch /
+  // grass / rock decorations sit over open sky above the ground.
+  diagram {
+    width  = 280
+    height = 230
+    tilemap {
+      set   = "platformer"
+      scale = 0.5
+      tile "#" { index = 25 }   // brown crate — ground
+      tile "~" { index = 1 }    // water surface
+      tile "=" { index = 6 }    // deep water
+      tile "T" { index = 16 }   // torch
+      tile "G" { index = 28 }   // grass tuft
+      tile "r" { index = 27 }   // rock
+      map = [
+        "........",
+        "........",
+        ".T.G..r.",
+        "########",
+        "~~~~~~~~",
+        "========",
+      ]
+    }
+    // Overlaid on top of the tiles, in the same diagram — drawn after
+    // the tilemap, so it sits over the water. `label` is centre-anchored,
+    // so `x` is the midpoint (here the map's horizontal centre).
+    label "Level 1" { x = 128.0  y = 146.0  font_size = 16.0  fill = "#003a8c" }
+  }
+
+  h2 "Numeric index grid" {}
+
+  // The same data can be written as raw index rows (`tiles`). Here a
+  // one-row strip doubles as a tile palette: crate, stone, water ×2,
+  // torch, grass, rock, mushroom.
+  diagram {
+    width  = 320
+    height = 44
+    tilemap {
+      set   = "platformer"
+      scale = 0.6
+      tiles = [
+        [ 25, 9, 1, 6, 16, 28, 27, 37 ],
+      ]
+    }
+  }
+
+  text {
+    span "Tiles render with nearest-neighbour scaling by default (`image-rendering: pixelated`); set `smooth = true` for the browser's default smoothing. The sheet is copied to `_wdoc/`, so tiles resolve when the site is served." {}
+  }
+}

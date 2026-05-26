@@ -166,6 +166,11 @@ fn asset_content_type(file: &str) -> &'static str {
         Some("json") => "application/json; charset=utf-8",
         Some("css") => "text/css; charset=utf-8",
         Some("svg") => "image/svg+xml; charset=utf-8",
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("bmp") => "image/bmp",
         _ => "application/octet-stream",
     }
 }

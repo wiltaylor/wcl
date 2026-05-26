@@ -15,6 +15,7 @@ mod routing;
 pub mod serve;
 mod terminal;
 mod text;
+mod tileset;
 
 pub use build::{BuildError, build};
 pub use serve::serve;

@@ -22,6 +22,7 @@ pub enum BuildError {
     DuplicateId { page: String, id: String },
     BadLink(Vec<String>),
     BadTemplate(String),
+    Tileset(String),
 }
 
 impl BuildError {
@@ -40,6 +41,7 @@ impl BuildError {
                 }
             }
             Self::BadTemplate(name) => eprintln!("unknown template \"{name}\""),
+            Self::Tileset(msg) => eprintln!("{msg}"),
         }
     }
 }
@@ -85,7 +87,7 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         .collect::<Vec<_>>()
         .join("\n");
     let css = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{class_css}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{class_css}",
         crate::render::BASE_CSS,
         crate::render::HEADING_CSS,
         highlight::theme_css(),
@@ -96,6 +98,7 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         crate::render::TERMINAL_CSS,
         crate::render::ICON_CSS,
         crate::render::CALLOUT_CSS,
+        crate::render::TILEMAP_CSS,
     );
 
     // Terminals need the bundled font + replay player written alongside
@@ -159,10 +162,18 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
     // pulls it back out via `inline_patterns.icons()`.
     let icons = crate::icons::IconRegistry::load(&doc);
 
+    // Tileset registry: reads every `@block("tileset")` so diagram
+    // `tilemap` blocks can resolve their `set` against a spritesheet
+    // (and the build can copy the used images into `_wdoc/`). Reads each
+    // sheet's pixel dimensions from disk, so a malformed declaration
+    // fails the build here. Carried inside the pattern engine like
+    // `icons`; the SVG path pulls it back out via `tilesets()`.
+    let tilesets = crate::tileset::TilesetRegistry::load(&doc, base_dir.as_deref())?;
+
     // Document-global inline-text pattern engine, compiled once
     // per build: every `@block("inline_pattern")` (built-in or
     // user-declared) contributes one regex + `to_span` function.
-    let inline_patterns = InlinePatterns::load(&doc, page_names, icons);
+    let inline_patterns = InlinePatterns::load(&doc, page_names, icons, tilesets);
 
     let mut count = 0;
     for page in doc.blocks().filter(|b| b.kind() == "page") {
@@ -240,6 +251,10 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
     if let Some(sprite) = inline_patterns.icons().build_sprite() {
         write_icon_sprite(out_dir, &sprite)?;
     }
+
+    // Copy each spritesheet referenced by a rendered tilemap into
+    // `_wdoc/`. No-op when the document used no tilemap.
+    inline_patterns.tilesets().copy_used_images(out_dir)?;
 
     // Inline `[text](page)` references that didn't resolve to a
     // known page block surface as a build error here, after every

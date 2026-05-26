@@ -10,6 +10,7 @@ use crate::inline::InlinePatterns;
 use crate::layered::{self, Direction};
 use crate::routing::{self, EdgePath, Obstacle, Side};
 use crate::text;
+use crate::tileset::{self, TilesetRegistry};
 
 /// Per-shape geometry used by the edge pass: the absolute bounding
 /// box (in diagram coords, with all container / grid translates
@@ -171,6 +172,16 @@ pub(crate) const TERMINAL_CSS: &str = "\
 /// with `currentColor`, so a user `class`/`color` recolours them.
 pub(crate) const ICON_CSS: &str = "\
 svg.wdoc-icon { display: inline-block; width: 1em; height: 1em; vertical-align: -0.125em; }";
+
+/// Default styling for `tilemap` blocks. Pixel-art tilesets read best
+/// with nearest-neighbour scaling, so tile images render `pixelated` by
+/// default; a `smooth = true` tilemap opts back into the browser's
+/// default smoothing via the extra `smooth` class. Injected like the
+/// other constants (before user `class` rules, which therefore override
+/// it).
+pub(crate) const TILEMAP_CSS: &str = "\
+.wdoc-tilemap image { image-rendering: pixelated; }
+.wdoc-tilemap.smooth image { image-rendering: auto; }";
 
 /// Default styling for `callout` blocks. The per-type accent rides a CSS
 /// custom property so it colours only the heading, the left border, and
@@ -363,7 +374,12 @@ pub(crate) fn render_block(
         "text" => Some(render_text(doc, block, patterns)),
         "column" => Some(render_column(doc, block, patterns, base_dir)),
         "table" => Some(render_table(doc, block, patterns)),
-        "diagram" => Some(render_diagram(doc, block, patterns.icons())),
+        "diagram" => Some(render_diagram(
+            doc,
+            block,
+            patterns.icons(),
+            patterns.tilesets(),
+        )),
         "code" => Some(render_code(block)),
         // The terminal is special-cased in Rust (like `code`): its grid
         // model, ANSI handling, and asciinema replay aren't expressible
@@ -531,14 +547,19 @@ fn render_column(
     out
 }
 
-fn render_diagram(doc: &Document, block: &Block<'_>, icons: &IconRegistry) -> String {
+fn render_diagram(
+    doc: &Document,
+    block: &Block<'_>,
+    icons: &IconRegistry,
+    tilesets: &TilesetRegistry,
+) -> String {
     let cls = class_attr(block);
     let width = field_i64(block, "width").unwrap_or(0);
     let height = field_i64(block, "height").unwrap_or(0);
     let (vw, vh) = (width as f64, height as f64);
     let mut collector = Collector::default();
-    collect_layout_children(block, 0.0, 0.0, vw, vh, &mut collector);
-    let shapes: String = render_layout_children(doc, block, vw, vh, icons);
+    collect_layout_children(block, 0.0, 0.0, vw, vh, tilesets, &mut collector);
+    let shapes: String = render_layout_children(doc, block, vw, vh, icons, tilesets);
     let (edges, edge_bboxes) = render_edges(block, &collector.positions, (vw, vh));
     let viewbox = fit_viewbox(&collector.bboxes, &edge_bboxes, vw, vh);
     let defs = if edges.is_empty() { "" } else { ARROW_MARKER };
@@ -710,15 +731,16 @@ fn collect_layout_children(
     ty: f64,
     parent_w: f64,
     parent_h: f64,
+    tilesets: &TilesetRegistry,
     out: &mut Collector,
 ) {
     let layout = field_symbol(block, "layout").unwrap_or_default();
     match layout.as_str() {
-        "grid" => collect_grid_children(block, tx, ty, out),
-        "layered" => collect_layered_children(block, tx, ty, out),
+        "grid" => collect_grid_children(block, tx, ty, tilesets, out),
+        "layered" => collect_layered_children(block, tx, ty, tilesets, out),
         _ => {
             for child in block.blocks() {
-                collect_shape_positions(&child, tx, ty, parent_w, parent_h, out);
+                collect_shape_positions(&child, tx, ty, parent_w, parent_h, tilesets, out);
             }
         }
     }
@@ -733,19 +755,26 @@ fn render_layout_children(
     pw: f64,
     ph: f64,
     icons: &IconRegistry,
+    tilesets: &TilesetRegistry,
 ) -> String {
     let layout = field_symbol(block, "layout").unwrap_or_default();
     match layout.as_str() {
-        "grid" => render_grid_children(doc, block, icons),
-        "layered" => render_layered_children(doc, block, icons),
+        "grid" => render_grid_children(doc, block, icons, tilesets),
+        "layered" => render_layered_children(doc, block, icons, tilesets),
         _ => block
             .blocks()
-            .filter_map(|b| render_shape(doc, &b, pw, ph, icons))
+            .filter_map(|b| render_shape(doc, &b, pw, ph, icons, tilesets))
             .collect(),
     }
 }
 
-fn collect_grid_children(block: &Block<'_>, tx: f64, ty: f64, out: &mut Collector) {
+fn collect_grid_children(
+    block: &Block<'_>,
+    tx: f64,
+    ty: f64,
+    tilesets: &TilesetRegistry,
+    out: &mut Collector,
+) {
     let cols = field_i64(block, "columns").unwrap_or(1).max(1) as usize;
     let cw = field_f64(block, "cell_width").unwrap_or(0.0);
     let ch = field_f64(block, "cell_height").unwrap_or(0.0);
@@ -755,17 +784,23 @@ fn collect_grid_children(block: &Block<'_>, tx: f64, ty: f64, out: &mut Collecto
         let row = i / cols;
         let cx_off = col as f64 * (cw + gap);
         let cy_off = row as f64 * (ch + gap);
-        collect_shape_positions(&child, tx + cx_off, ty + cy_off, cw, ch, out);
+        collect_shape_positions(&child, tx + cx_off, ty + cy_off, cw, ch, tilesets, out);
     }
 }
 
-fn collect_layered_children(block: &Block<'_>, tx: f64, ty: f64, out: &mut Collector) {
+fn collect_layered_children(
+    block: &Block<'_>,
+    tx: f64,
+    ty: f64,
+    tilesets: &TilesetRegistry,
+    out: &mut Collector,
+) {
     let children: Vec<Block<'_>> = block.blocks().collect();
     let (offsets, _, _) = compute_layered_plan(block, &children);
     for (child, (cx, cy)) in children.iter().zip(offsets) {
         let pw = field_f64(child, "width").unwrap_or(80.0);
         let ph = field_f64(child, "height").unwrap_or(40.0);
-        collect_shape_positions(child, tx + cx, ty + cy, pw, ph, out);
+        collect_shape_positions(child, tx + cx, ty + cy, pw, ph, tilesets, out);
     }
 }
 
@@ -822,7 +857,12 @@ fn edge_id_pairs(block: &Block<'_>) -> Vec<(String, String)> {
         .collect()
 }
 
-fn render_layered_children(doc: &Document, block: &Block<'_>, icons: &IconRegistry) -> String {
+fn render_layered_children(
+    doc: &Document,
+    block: &Block<'_>,
+    icons: &IconRegistry,
+    tilesets: &TilesetRegistry,
+) -> String {
     let children: Vec<Block<'_>> = block.blocks().collect();
     let (offsets, widths, heights) = compute_layered_plan(block, &children);
     let mut out = String::new();
@@ -831,7 +871,7 @@ fn render_layered_children(doc: &Document, block: &Block<'_>, icons: &IconRegist
         .zip(offsets)
         .zip(widths.iter().zip(heights.iter()))
     {
-        if let Some(rendered) = render_shape(doc, child, *cw, *ch, icons) {
+        if let Some(rendered) = render_shape(doc, child, *cw, *ch, icons, tilesets) {
             out.push_str(&format!(
                 "<g transform=\"translate({tx} {ty})\">{rendered}</g>"
             ));
@@ -855,6 +895,7 @@ fn collect_shape_positions(
     ty: f64,
     parent_w: f64,
     parent_h: f64,
+    tilesets: &TilesetRegistry,
     out: &mut Collector,
 ) {
     let record = |block: &Block<'_>, bbox: (f64, f64, f64, f64), out: &mut Collector| {
@@ -890,6 +931,13 @@ fn collect_shape_positions(
             }
             record(block, (tx + x, ty + y, w, h), out);
         }
+        "tilemap" => {
+            // The tilemap's box comes from its grid dimensions × the
+            // referenced tileset's tile size; mirror render_tilemap so
+            // overlays / edges and the viewBox fit see its true extent.
+            let (x, y, w, h) = tileset::tilemap_bbox(block, tilesets, parent_w, parent_h);
+            record(block, (tx + x, ty + y, w, h), out);
+        }
         "container" => {
             let (x, y, w, h) = resolve_container_box(block, parent_w, parent_h);
             record(block, (tx + x, ty + y, w, h), out);
@@ -899,7 +947,15 @@ fn collect_shape_positions(
             let p = container_padding(block);
             let inner_w = (w - 2.0 * p).max(0.0);
             let inner_h = (h - 2.0 * p).max(0.0);
-            collect_layout_children(block, tx + x + p, ty + y + p, inner_w, inner_h, out);
+            collect_layout_children(
+                block,
+                tx + x + p,
+                ty + y + p,
+                inner_w,
+                inner_h,
+                tilesets,
+                out,
+            );
         }
         // Lines and polygons aren't usable as edge endpoints (they
         // have no single anchor point) but their bboxes still
@@ -1357,6 +1413,7 @@ fn render_shape(
     parent_w: f64,
     parent_h: f64,
     icons: &IconRegistry,
+    tilesets: &TilesetRegistry,
 ) -> Option<String> {
     let kind = block.kind();
     let base = match kind {
@@ -1365,9 +1422,12 @@ fn render_shape(
         "line" => render_line(block, parent_w, parent_h),
         "label" => render_label(block, parent_w, parent_h),
         "polygon" => render_polygon(block, parent_w, parent_h),
-        "container" => render_container(doc, block, parent_w, parent_h, icons),
+        "container" => render_container(doc, block, parent_w, parent_h, icons, tilesets),
         // The `icon` block is itself an icon — never give it an icon badge.
         "icon" => return Some(render_icon(block, parent_w, parent_h, icons)),
+        // The tilemap crops tiles out of an external spritesheet — like
+        // `icon`, it's special-cased (not expressible in WCL).
+        "tilemap" => return Some(tileset::render_tilemap(block, tilesets, parent_w, parent_h)),
         kind => lower_svg_block(doc, block, kind, parent_w, parent_h),
     };
     Some(with_shape_icon(
@@ -1479,6 +1539,7 @@ fn render_container(
     parent_w: f64,
     parent_h: f64,
     icons: &IconRegistry,
+    tilesets: &TilesetRegistry,
 ) -> String {
     let cls = class_attr(block);
     let (x, y, w, h) = resolve_container_box(block, parent_w, parent_h);
@@ -1488,7 +1549,7 @@ fn render_container(
     // 2*padding) so anchored / grid-sized children honor the inset.
     let inner_w = (w - 2.0 * padding).max(0.0);
     let inner_h = (h - 2.0 * padding).max(0.0);
-    let raw_inner = render_layout_children(doc, block, inner_w, inner_h, icons);
+    let raw_inner = render_layout_children(doc, block, inner_w, inner_h, icons, tilesets);
     let inner = if padding > 0.0 && !raw_inner.is_empty() {
         format!("<g transform=\"translate({padding} {padding})\">{raw_inner}</g>")
     } else {
@@ -1530,7 +1591,12 @@ fn container_chrome(block: &Block<'_>, w: f64, h: f64) -> String {
     out
 }
 
-fn render_grid_children(doc: &Document, block: &Block<'_>, icons: &IconRegistry) -> String {
+fn render_grid_children(
+    doc: &Document,
+    block: &Block<'_>,
+    icons: &IconRegistry,
+    tilesets: &TilesetRegistry,
+) -> String {
     let cols = field_i64(block, "columns").unwrap_or(1).max(1) as usize;
     let cw = field_f64(block, "cell_width").unwrap_or(0.0);
     let ch = field_f64(block, "cell_height").unwrap_or(0.0);
@@ -1539,7 +1605,7 @@ fn render_grid_children(doc: &Document, block: &Block<'_>, icons: &IconRegistry)
         .blocks()
         .enumerate()
         .filter_map(|(i, b)| {
-            let rendered = render_shape(doc, &b, cw, ch, icons)?;
+            let rendered = render_shape(doc, &b, cw, ch, icons, tilesets)?;
             let col = i % cols;
             let row = i / cols;
             let tx = col as f64 * (cw + gap);

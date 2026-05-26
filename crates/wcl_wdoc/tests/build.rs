@@ -22,17 +22,18 @@ fn build_ok(file: &Path, out: &Path) -> usize {
         }
         Err(BuildError::BadLink(msgs)) => panic!("build bad-link error: {msgs:?}"),
         Err(BuildError::BadTemplate(name)) => panic!("build bad-template error: {name}"),
+        Err(BuildError::Tileset(m)) => panic!("build tileset error: {m}"),
     }
 }
 
 #[test]
 fn build_emits_fundamentals_for_example_site() {
-    // examples/wdoc/main.wcl is the entry point — it pulls in seven
+    // examples/wdoc/main.wcl is the entry point — it pulls in eight
     // per-page files via `import`. All page bodies live in
     // pages/*.wcl; main.wcl itself only defines the landing index.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 8);
+    assert_eq!(n, 9);
 
     // The richer content (text + classes + diagram + flowchart) is on
     // the overview page, not the landing index.
@@ -455,6 +456,7 @@ page index {
         }
         Err(BuildError::BadLink(msgs)) => panic!("expected Schema, got BadLink({msgs:?})"),
         Err(BuildError::BadTemplate(name)) => panic!("expected Schema, got BadTemplate({name})"),
+        Err(BuildError::Tileset(m)) => panic!("expected Schema, got Tileset({m})"),
         Ok(n) => panic!("expected Schema error, got Ok({n})"),
     }
 }
@@ -566,6 +568,7 @@ page index {
         Err(BuildError::BadTemplate(name)) => {
             panic!("expected DuplicateId, got BadTemplate({name})")
         }
+        Err(BuildError::Tileset(m)) => panic!("expected DuplicateId, got Tileset({m})"),
         Ok(n) => panic!("expected DuplicateId, got Ok({n})"),
     }
 }
@@ -1398,6 +1401,7 @@ page index {
             panic!("expected BadLink, got DuplicateId({page}: {id})")
         }
         Err(BuildError::BadTemplate(name)) => panic!("expected BadLink, got BadTemplate({name})"),
+        Err(BuildError::Tileset(m)) => panic!("expected BadLink, got Tileset({m})"),
         Ok(n) => panic!("expected BadLink, got Ok({n})"),
     }
 }
@@ -1859,11 +1863,11 @@ page index {
 fn build_processes_full_code_example_page() {
     // Smoke test against the code page in the example site, which
     // exercises Rust, Python, JSON, WCL, and an unknown language
-    // in one page. main.wcl imports it and seven other pages, so
+    // in one page. main.wcl imports it and eight other pages, so
     // we count the code-block wrappers on `code.html`.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 8);
+    assert_eq!(n, 9);
     let html = std::fs::read_to_string(out.path().join("code.html")).expect("read code.html");
     assert!(
         html.matches("<pre class=\"code-block\"").count() >= 5,
@@ -3087,5 +3091,245 @@ fn build_callout_icon_override_and_plain() {
              <p class=\"callout-title\"><span>Plain</span></p></div>"
         ),
         "{index}"
+    );
+}
+
+// ── Tilesets + tilemaps ────────────────────────────────────────────
+
+/// A fake PNG carrying valid dimensions in its IHDR. The renderer only
+/// reads IHDR (and copies the bytes verbatim), so the pixel data / CRCs
+/// needn't be real.
+fn fake_png(w: u32, h: u32) -> Vec<u8> {
+    let mut v = b"\x89PNG\r\n\x1a\n".to_vec();
+    v.extend_from_slice(&[0, 0, 0, 13]); // IHDR length
+    v.extend_from_slice(b"IHDR");
+    v.extend_from_slice(&w.to_be_bytes());
+    v.extend_from_slice(&h.to_be_bytes());
+    v.extend_from_slice(&[8, 6, 0, 0, 0]);
+    v
+}
+
+/// Build `src` as a standalone `main.wcl` alongside a `sheet.png`,
+/// returning the rendered `index.html` and the live output dir (so the
+/// caller can probe `_wdoc/`). The PNG is `sheet_w`×`sheet_h`.
+fn build_tilemap(src: &str, sheet_w: u32, sheet_h: u32) -> (String, TempDir) {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    std::fs::write(tmp.path().join("sheet.png"), fake_png(sheet_w, sheet_h)).expect("write png");
+    let file = tmp.path().join("main.wcl");
+    std::fs::write(&file, src).expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&file, out.path());
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+    (index, out)
+}
+
+#[test]
+fn build_renders_numeric_tilemap_and_copies_sheet() {
+    // 64px tiles, 4 columns (sheet is 256 wide). Index 5 -> sheet col
+    // 1, row 1 -> source (64, 64). At scale 0.5 it displays 32px, and
+    // the top-left cell (index 0) sits at the tilemap origin.
+    let src = r#"
+tileset world {
+  source      = "sheet.png"
+  tile_width  = 64
+  tile_height = 64
+  columns     = 4
+}
+page index {
+  diagram {
+    width = 128
+    height = 64
+    tilemap {
+      set   = "world"
+      scale = 0.5
+      tiles = [
+        [ 0, 1 ],
+        [ 4, 5 ],
+      ]
+    }
+  }
+}
+"#;
+    let (index, out) = build_tilemap(src, 256, 256);
+
+    // Wrapped in the themable group.
+    assert!(index.contains("<g class=\"wdoc-tilemap\">"), "{index}");
+    // Image dimensions were read from the PNG header (256×256).
+    assert!(
+        index.contains(
+            "href=\"_wdoc/tileset-world.png\" x=\"0\" y=\"0\" width=\"256\" height=\"256\""
+        ),
+        "{index}"
+    );
+    // Index 0 is the origin cell, cropping sheet (0,0) into a 32px box.
+    // The source rect is inset half a pixel each side (64 -> 63 at 0.5).
+    assert!(
+        index.contains(
+            "<svg x=\"0\" y=\"0\" width=\"32\" height=\"32\" viewBox=\"0.5 0.5 63 63\" \
+             preserveAspectRatio=\"none\" shape-rendering=\"crispEdges\">\
+             <image href=\"_wdoc/tileset-world.png\""
+        ),
+        "{index}"
+    );
+    // Index 5 (row 1, col 1) displays at (32,32) and crops sheet (64,64).
+    assert!(
+        index.contains(
+            "<svg x=\"32\" y=\"32\" width=\"32\" height=\"32\" viewBox=\"64.5 64.5 63 63\""
+        ),
+        "{index}"
+    );
+    // TILEMAP_CSS is injected.
+    assert!(
+        index.contains(".wdoc-tilemap image { image-rendering: pixelated; }"),
+        "{index}"
+    );
+    // The spritesheet is copied verbatim into _wdoc/.
+    assert!(
+        out.path().join("_wdoc").join("tileset-world.png").exists(),
+        "sheet copied to _wdoc/"
+    );
+}
+
+#[test]
+fn build_symbolic_map_matches_numeric_and_skips_empty() {
+    // The legend maps glyphs to the same indices as the numeric form;
+    // an unmapped char (`.`) and an explicit `empty` index draw nothing.
+    let src = r#"
+tileset world {
+  source      = "sheet.png"
+  tile_width  = 64
+  tile_height = 64
+  columns     = 4
+}
+page index {
+  diagram {
+    width = 128
+    height = 128
+    tilemap {
+      set = "world"
+      empty = 9
+      tile "a" { index = 0 }
+      tile "b" { index = 5 }
+      tile "x" { index = 9 }
+      map = [
+        "a.b",
+        "x..",
+      ]
+    }
+  }
+}
+"#;
+    let (index, _out) = build_tilemap(src, 256, 256);
+
+    // `a` -> index 0 at (0,0); `b` -> index 5 at (128,0) cropping (64,64).
+    // Source rects are inset half a pixel each side (64 -> 63).
+    assert!(
+        index.contains("<svg x=\"0\" y=\"0\" width=\"64\" height=\"64\" viewBox=\"0.5 0.5 63 63\""),
+        "{index}"
+    );
+    assert!(
+        index.contains(
+            "<svg x=\"128\" y=\"0\" width=\"64\" height=\"64\" viewBox=\"64.5 64.5 63 63\""
+        ),
+        "{index}"
+    );
+    // Only `a` and `b` draw: `.` (unmapped) and `x` (the `empty` index
+    // 9) emit no tile. One <image> is emitted per drawn tile.
+    assert_eq!(
+        index.matches("href=\"_wdoc/tileset-world.png\"").count(),
+        2,
+        "{index}"
+    );
+}
+
+#[test]
+fn build_tilemap_bbox_lets_overlay_follow() {
+    // A 2×1 grid of 64px tiles at scale 1.0 spans 128×64. A label drawn
+    // after the tilemap appears after it in document order (overlay).
+    let src = r#"
+tileset world {
+  source      = "sheet.png"
+  tile_width  = 64
+  tile_height = 64
+  columns     = 4
+}
+page index {
+  diagram {
+    width = 128
+    height = 64
+    tilemap { set = "world"  tiles = [ [ 0, 1 ] ] }
+    label "hi" { x = 4.0  y = 12.0 }
+  }
+}
+"#;
+    let (index, _out) = build_tilemap(src, 256, 256);
+    let tiles_at = index.find("wdoc-tilemap").expect("tilemap present");
+    let label_at = index.find(">hi<").expect("overlay label present");
+    assert!(tiles_at < label_at, "overlay label must follow the tiles");
+}
+
+#[test]
+fn build_tileset_explicit_dims_override_header() {
+    // Explicit image_width / image_height win and avoid the header read,
+    // so a sheet with mismatched real pixels still sizes as declared.
+    let src = r#"
+tileset world {
+  source       = "sheet.png"
+  tile_width   = 16
+  tile_height  = 16
+  columns      = 8
+  image_width  = 128
+  image_height = 64
+}
+page index {
+  diagram {
+    width = 32
+    height = 16
+    tilemap { set = "world"  tiles = [ [ 0 ] ] }
+  }
+}
+"#;
+    let (index, _out) = build_tilemap(src, 256, 256);
+    assert!(
+        index.contains("width=\"128\" height=\"64\" preserveAspectRatio=\"none\"/>"),
+        "{index}"
+    );
+}
+
+#[test]
+fn build_tileset_missing_image_is_an_error() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("main.wcl");
+    std::fs::write(
+        &file,
+        "tileset world {\n  source = \"nope.png\"\n  tile_width = 8\n  tile_height = 8\n}\n\
+         page index { diagram { width = 8  height = 8 } }\n",
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    match build(&file, out.path()) {
+        Err(BuildError::Tileset(msg)) => assert!(msg.contains("world"), "{msg}"),
+        Err(_) => panic!("expected a tileset error, got a different BuildError"),
+        Ok(_) => panic!("expected a tileset error, build succeeded"),
+    }
+}
+
+#[test]
+fn build_no_tilemap_copies_no_sheet() {
+    // A declared-but-unused tileset still validates (dims are read), but
+    // its image is only copied when a tilemap actually references it.
+    let src = r#"
+tileset world {
+  source      = "sheet.png"
+  tile_width  = 64
+  tile_height = 64
+  columns     = 4
+}
+page index { text { span "no tiles here" {} } }
+"#;
+    let (_index, out) = build_tilemap(src, 256, 256);
+    assert!(
+        !out.path().join("_wdoc").join("tileset-world.png").exists(),
+        "unused sheet must not be copied"
     );
 }

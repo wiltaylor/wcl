@@ -21,6 +21,7 @@ use wcl_lang::{Document, FnValue, Value, VariantPayload};
 
 use crate::icons::IconRegistry;
 use crate::render::escape_html;
+use crate::tileset::TilesetRegistry;
 
 /// Maximum recursion depth when re-tokenizing a match's text
 /// fields. Keeps a self-referential pattern from blowing the
@@ -40,6 +41,11 @@ pub(crate) struct InlinePatterns {
     /// Icon registry, resolving the built-in `:name:` pattern's
     /// `InlineSpan::Icon` against the declared `iconset`s.
     icons: IconRegistry,
+    /// Tileset registry. Not used by inline text — carried here so the
+    /// SVG render path reaches it (via `tilesets()`) without threading a
+    /// new param through `render_block`, mirroring how `icons` rides
+    /// along.
+    tilesets: TilesetRegistry,
 }
 
 struct CompiledPattern {
@@ -53,7 +59,12 @@ impl InlinePatterns {
     /// Patterns whose regex fails to compile or whose `to_span`
     /// isn't a function are silently skipped — schema validation
     /// flags those separately.
-    pub(crate) fn load(doc: &Document, page_names: HashSet<String>, icons: IconRegistry) -> Self {
+    pub(crate) fn load(
+        doc: &Document,
+        page_names: HashSet<String>,
+        icons: IconRegistry,
+        tilesets: TilesetRegistry,
+    ) -> Self {
         let mut compiled = Vec::new();
         for block in doc.blocks() {
             if block.kind() != "inline_pattern" {
@@ -85,6 +96,7 @@ impl InlinePatterns {
             page_names,
             link_errors: RefCell::new(Vec::new()),
             icons,
+            tilesets,
         }
     }
 
@@ -92,6 +104,12 @@ impl InlinePatterns {
     /// (diagram `icon` blocks) via `render_diagram`.
     pub(crate) fn icons(&self) -> &IconRegistry {
         &self.icons
+    }
+
+    /// The document's tileset registry, threaded into the SVG render
+    /// path (diagram `tilemap` blocks) via `render_diagram`.
+    pub(crate) fn tilesets(&self) -> &TilesetRegistry {
+        &self.tilesets
     }
 
     /// Drain accumulated unknown-page link errors. Build calls

@@ -1,0 +1,14 @@
+kenney-platformer.png
+=====================
+
+Tileset from Kenney's "Platformer Pack" (64×64), by Kenney — https://kenney.nl
+
+Licensed under Creative Commons Zero (CC0 1.0 Universal, public domain):
+https://creativecommons.org/publicdomain/zero/1.0/
+
+CC0 places no restrictions on use and requires no attribution; the credit
+above is given as a courtesy. Used here only as a sample spritesheet for the
+wdoc `tileset` / `tilemap` example.
+
+Layout: 320×1024 px, 5 columns × 16 rows of 64×64 tiles (no margin/spacing),
+so the tile at index N sits at sheet column N % 5, row N / 5.
