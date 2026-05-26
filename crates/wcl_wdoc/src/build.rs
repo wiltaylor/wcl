@@ -87,7 +87,7 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         .collect::<Vec<_>>()
         .join("\n");
     let css = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{class_css}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{class_css}",
         crate::render::BASE_CSS,
         crate::render::HEADING_CSS,
         highlight::theme_css(),
@@ -99,6 +99,7 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         crate::render::ICON_CSS,
         crate::render::CALLOUT_CSS,
         crate::render::TILEMAP_CSS,
+        crate::render::DIAGRAM_CSS,
     );
 
     // Terminals need the bundled font + replay player written alongside
@@ -107,6 +108,13 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
     let uses_terminals = doc.blocks().any(|b| crate::terminal::uses_terminal(&b));
     if uses_terminals {
         write_terminal_assets(out_dir)?;
+    }
+
+    // Interactive diagrams ship a small pan/zoom player, written + loaded
+    // only when a diagram opts in via `pan_zoom`.
+    let uses_pan_zoom = doc.blocks().any(|b| crate::render::uses_pan_zoom(&b));
+    if uses_pan_zoom {
+        write_diagram_assets(out_dir)?;
     }
 
     // Document descriptor (`site` block): the default template and the
@@ -237,6 +245,11 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         if uses_terminals {
             body.push_str("\n<script src=\"_wdoc/terminal-player.js\" defer></script>\n");
         }
+        // Interactive diagrams are driven by the bundled pan/zoom player,
+        // loaded once per page (it no-ops on pages without one).
+        if uses_pan_zoom {
+            body.push_str("\n<script src=\"_wdoc/diagram-pan-zoom.js\" defer></script>\n");
+        }
         let html = render_page(&page_name, &css, &body);
 
         let out_path = out_dir.join(format!("{page_name}.html"));
@@ -282,6 +295,18 @@ fn write_terminal_assets(out_dir: &Path) -> Result<(), BuildError> {
     }
     let player = dir.join("terminal-player.js");
     fs::write(&player, crate::terminal::PLAYER_JS)
+        .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
+    Ok(())
+}
+
+/// Write the bundled diagram pan/zoom player into `<out>/_wdoc/`. Pages
+/// with an interactive diagram reference it by relative URL.
+fn write_diagram_assets(out_dir: &Path) -> Result<(), BuildError> {
+    let dir = out_dir.join(crate::terminal::ASSET_DIR);
+    fs::create_dir_all(&dir)
+        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
+    let player = dir.join("diagram-pan-zoom.js");
+    fs::write(&player, crate::render::DIAGRAM_PAN_ZOOM_JS)
         .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
     Ok(())
 }

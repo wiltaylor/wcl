@@ -115,7 +115,7 @@ page connections {
   h2 "Dense cross-container graph" {}
 
   text {
-    span "Three labelled containers form a 3-tier topology. Each container runs its own layered solver internally and auto-fits to its contents (`width` / `height` omitted), so the visible chrome (`stroke = ...`) hugs the shapes inside. The outer diagram uses a 3-cell grid so the containers sit side-by-side. Seven cross-container edges connect shapes across tiers, including a pair sharing `orders` as their source so the edge-separation pass has something to nudge apart. Container chrome is purely visual and does not participate in obstacle routing — arrows cross container borders cleanly." {}
+    span "Three labelled containers form a 3-tier topology. Each container runs its own layered solver internally and auto-fits to its contents (`width` / `height` omitted), so the visible chrome (`stroke = ...`) hugs the shapes inside. The outer diagram uses a 3-cell grid so the containers sit side-by-side. Seven cross-container edges connect shapes across tiers, including a pair sharing `orders` as their source so the edge-separation pass has something to nudge apart. Container chrome is purely visual and does not participate in obstacle routing — arrows cross container borders cleanly. This diagram sets `pan_zoom = true`, so you can scroll to zoom, drag to pan, and use the corner +/−/⟲ controls." {}
   }
 
   diagram {
@@ -126,6 +126,12 @@ page connections {
     cell_width  = 200.0
     cell_height = 320.0
     gap         = 40.0
+
+    // Interactive: scroll to zoom, drag to pan, or use the corner
+    // controls. Zoom is capped between the fitted view and 4x.
+    pan_zoom = true
+    zoom_min = 1.0
+    zoom_max = 4.0
 
     container {
       id        = frontend

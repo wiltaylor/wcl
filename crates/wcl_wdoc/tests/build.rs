@@ -3333,3 +3333,93 @@ page index { text { span "no tiles here" {} } }
         "unused sheet must not be copied"
     );
 }
+
+// ── Diagram pan + zoom ─────────────────────────────────────────────
+
+/// Build `src` as a standalone `main.wcl`, returning the rendered
+/// `index.html` and the live output dir (to probe `_wdoc/`).
+fn build_page(src: &str) -> (String, TempDir) {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("main.wcl");
+    std::fs::write(&file, src).expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&file, out.path());
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+    (index, out)
+}
+
+#[test]
+fn build_wraps_pan_zoom_diagram_with_controls() {
+    let src = r##"
+page index {
+  diagram {
+    width = 200  height = 120
+    pan_zoom = true
+    zoom_min = 0.5  zoom_max = 8.0
+    pan_margin = 25.0
+    rect { x = 10.0  y = 10.0  width = 40.0  height = 30.0  fill = "#abc" }
+  }
+}
+"##;
+    let (index, out) = build_page(src);
+
+    // Viewport wrapper + the camera config on the <svg>.
+    assert!(
+        index.contains("<div class=\"wdoc-diagram-viewport\">"),
+        "{index}"
+    );
+    // Base view is the fitted content box (rect 10,10,40,30 + 10px pad).
+    assert!(
+        index.contains(
+            "data-pan-zoom=\"1\" data-base-viewbox=\"0 0 60 50\" \
+             data-zoom-min=\"0.5\" data-zoom-max=\"8\" data-pan-margin=\"25\""
+        ),
+        "{index}"
+    );
+    // The three overlaid controls the player binds.
+    assert!(index.contains("data-zoom=\"in\""), "{index}");
+    assert!(index.contains("data-zoom=\"out\""), "{index}");
+    assert!(index.contains("data-zoom=\"reset\""), "{index}");
+    // DIAGRAM_CSS is injected, and the player script + asset are emitted.
+    assert!(index.contains(".wdoc-diagram-controls button"), "{index}");
+    assert!(
+        index.contains("<script src=\"_wdoc/diagram-pan-zoom.js\" defer></script>"),
+        "{index}"
+    );
+    assert!(
+        out.path()
+            .join("_wdoc")
+            .join("diagram-pan-zoom.js")
+            .exists(),
+        "player asset written to _wdoc/"
+    );
+}
+
+#[test]
+fn build_plain_diagram_has_no_pan_zoom() {
+    // No diagram opts in, so the bare-<svg> path is untouched: no
+    // wrapper element, no data-pan-zoom, no player script/asset. (The
+    // DIAGRAM_CSS rules are still in <style>, which is fine.)
+    let src = r##"
+page index {
+  diagram {
+    width = 120  height = 80
+    rect { x = 10.0  y = 10.0  width = 40.0  height = 30.0  fill = "#abc" }
+  }
+}
+"##;
+    let (index, out) = build_page(src);
+    assert!(
+        !index.contains("<div class=\"wdoc-diagram-viewport\">"),
+        "{index}"
+    );
+    assert!(!index.contains("data-pan-zoom"), "{index}");
+    assert!(!index.contains("diagram-pan-zoom.js"), "{index}");
+    assert!(
+        !out.path()
+            .join("_wdoc")
+            .join("diagram-pan-zoom.js")
+            .exists(),
+        "no player asset when unused"
+    );
+}

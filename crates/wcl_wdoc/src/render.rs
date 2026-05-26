@@ -183,6 +183,33 @@ pub(crate) const TILEMAP_CSS: &str = "\
 .wdoc-tilemap image { image-rendering: pixelated; }
 .wdoc-tilemap.smooth image { image-rendering: auto; }";
 
+/// Styling for interactive (pan + zoom) diagrams. Only `pan_zoom`
+/// diagrams get the `.wdoc-diagram-viewport` wrapper, so plain diagrams
+/// are untouched. The controls paint with `currentColor` (like the
+/// terminal chrome), so they adopt the page theme. Injected before user
+/// `class` rules, which therefore override it. The bundled
+/// `diagram-pan-zoom.js` drives the SVG `viewBox`.
+pub(crate) const DIAGRAM_CSS: &str = "\
+.wdoc-diagram-viewport { position: relative; display: inline-block; max-width: 100%; }
+.wdoc-diagram-viewport svg { display: block; max-width: 100%; height: auto; touch-action: none; cursor: grab; }
+.wdoc-diagram-viewport.panning svg { cursor: grabbing; }
+.wdoc-diagram-controls { position: absolute; top: 6px; right: 6px; display: flex; flex-direction: column; gap: 4px; }
+.wdoc-diagram-controls button { width: 1.6rem; height: 1.6rem; padding: 0; display: flex; align-items: center; justify-content: center; font: inherit; font-size: 1rem; line-height: 1; cursor: pointer; color: inherit; background: rgba(127,127,127,0.12); border: 1px solid currentColor; border-radius: 4px; opacity: 0.6; }
+.wdoc-diagram-controls button:hover { opacity: 1; }";
+
+/// The bundled pan + zoom player, written to `_wdoc/` and loaded once
+/// per page when any diagram sets `pan_zoom`. Mirrors the terminal
+/// player asset pattern.
+pub(crate) const DIAGRAM_PAN_ZOOM_JS: &str = include_str!("../assets/diagram-pan-zoom.js");
+
+/// `true` when `block` is an interactive (`pan_zoom`) diagram or
+/// contains one anywhere in its subtree. Drives the conditional asset
+/// write + per-page script injection (mirrors `terminal::uses_terminal`).
+pub(crate) fn uses_pan_zoom(block: &Block<'_>) -> bool {
+    (block.kind() == "diagram" && field_bool(block, "pan_zoom") == Some(true))
+        || block.blocks().any(|b| uses_pan_zoom(&b))
+}
+
 /// Default styling for `callout` blocks. The per-type accent rides a CSS
 /// custom property so it colours only the heading, the left border, and
 /// the (currentColor) icon — never the body text. Injected like the
@@ -565,14 +592,42 @@ fn render_diagram(
     let defs = if edges.is_empty() { "" } else { ARROW_MARKER };
     let mut out = format!("<svg{cls}");
     append_attr(&mut out, "id", field_id(block, "id").as_deref());
+    // Interactive pan + zoom: carry the fitted view + limits on the
+    // `<svg>` so the bundled player can drive its `viewBox`, and wrap
+    // it in a viewport that hosts the overlaid controls. Plain diagrams
+    // keep the bare-`<svg>` output unchanged.
+    let pan_zoom = field_bool(block, "pan_zoom") == Some(true);
+    if pan_zoom {
+        let zoom_min = field_f64(block, "zoom_min").unwrap_or(1.0);
+        let zoom_max = field_f64(block, "zoom_max").unwrap_or(4.0);
+        let pan_margin = field_f64(block, "pan_margin").unwrap_or(0.0);
+        write!(
+            out,
+            " data-pan-zoom=\"1\" data-base-viewbox=\"{viewbox}\" \
+             data-zoom-min=\"{zoom_min}\" data-zoom-max=\"{zoom_max}\" \
+             data-pan-margin=\"{pan_margin}\""
+        )
+        .expect("write to String");
+    }
     write!(
         out,
         " xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" \
          viewBox=\"{viewbox}\">{defs}{shapes}{edges}</svg>"
     )
     .expect("write to String");
+    if pan_zoom {
+        return format!("<div class=\"wdoc-diagram-viewport\">{out}{DIAGRAM_CONTROLS}</div>");
+    }
     out
 }
+
+/// The +/−/reset control cluster overlaid on an interactive diagram.
+/// The player binds the buttons by their `data-zoom` value.
+const DIAGRAM_CONTROLS: &str = "<div class=\"wdoc-diagram-controls\">\
+<button type=\"button\" data-zoom=\"in\" aria-label=\"Zoom in\">+</button>\
+<button type=\"button\" data-zoom=\"out\" aria-label=\"Zoom out\">\u{2212}</button>\
+<button type=\"button\" data-zoom=\"reset\" aria-label=\"Reset view\">\u{27f2}</button>\
+</div>";
 
 /// Render a `@block("code")` instance to a `<pre><code>` element
 /// with syntect-produced `<span class="tok-…">` tokens inside. The

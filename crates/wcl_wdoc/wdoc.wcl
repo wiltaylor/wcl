@@ -311,6 +311,15 @@ type Diagram extends WdocBlock {
   routing:         symbol?  // :elbow (default) | :straight
   edge_separation: f64?     // nudge step for parallel edges (default 4)
 
+  // Interactive pan + zoom (client-side). pan_zoom wraps the diagram in
+  // a viewport with wheel-zoom, drag-pan, and +/-/reset buttons. When
+  // zoomed in you can overscroll half a viewport past each content edge;
+  // pan_margin adds extra slack on top.
+  pan_zoom:   bool?         // enable interactive pan + zoom
+  zoom_min:   f64?          // min zoom scale, 1.0 = fitted view (default 1.0)
+  zoom_max:   f64?          // max zoom scale (default 4.0)
+  pan_margin: f64?          // extra overscroll past the content, px (default 0)
+
   @children(SvgBlock) children: list<SvgBlock>
   @connections(Edge) edges: list<Edge>
   lower = fn(d: Diagram) -> list<HtmlFundamental> []
