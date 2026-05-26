@@ -34,3 +34,15 @@ class "book-chapter" { color = "#333" }
 class "book-section" { color = "#555" }
 class "current"      { bold = true }
 
+// Heading hierarchy. `h1`..`h6` lower to `<p class="heading-N">`; these
+// give each level its weight and descending scale. Now bare single-class
+// rules (the class system carries `font_weight` / `line_height` /
+// `text_transform` / `letter_spacing`), so a user `class "heading-1"`
+// overrides them by cascade — same as every other bundled class.
+class "heading-1" { font_size = "1.9rem"   font_weight = "700"  line_height = "1.2"   margin = "1.4rem 0 0.6rem" }
+class "heading-2" { font_size = "1.5rem"   font_weight = "700"  line_height = "1.25"  margin = "1.3rem 0 0.5rem" }
+class "heading-3" { font_size = "1.25rem"  font_weight = "600"  margin = "1.1rem 0 0.4rem" }
+class "heading-4" { font_size = "1.1rem"   font_weight = "600"  margin = "1rem 0 0.3rem" }
+class "heading-5" { font_size = "1rem"     font_weight = "600"  margin = "0.9rem 0 0.3rem" }
+class "heading-6" { font_size = "0.9rem"   font_weight = "700"  text_transform = "uppercase"  letter_spacing = "0.05em"  margin = "0.9rem 0 0.3rem" }
+

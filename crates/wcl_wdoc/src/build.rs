@@ -157,9 +157,8 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
     // migrated to bundled `class` blocks in wdoc.wcl and so rides the
     // `{class_css}` segment (emitted before user classes, after these).
     let css = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{class_css}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{class_css}",
         crate::render::BASE_CSS,
-        crate::render::HEADING_CSS,
         highlight::theme_css(),
         crate::render::TABLE_CSS,
         crate::render::SITE_CSS,

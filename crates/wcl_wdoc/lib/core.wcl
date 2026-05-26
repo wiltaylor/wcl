@@ -106,11 +106,15 @@ type Class {
   bold:        bool?
   italic:      bool?
   underline:   bool?
+  font_weight: utf8?
 
   // Sizing / alignment
-  font_size:   utf8?
-  font_family: utf8?
-  text_align:  utf8?
+  font_size:      utf8?
+  line_height:    utf8?
+  font_family:    utf8?
+  text_align:     utf8?
+  text_transform: utf8?
+  letter_spacing: utf8?
 
   // Layout
   padding:     utf8?
@@ -137,14 +141,18 @@ type Class {
 // same styling fields as `Class` (minus the name).
 @block("dark")
 type ClassMode {
-  color:        utf8?
-  background:   utf8?
-  bold:         bool?
-  italic:       bool?
-  underline:    bool?
-  font_size:    utf8?
-  font_family:  utf8?
-  text_align:   utf8?
+  color:          utf8?
+  background:     utf8?
+  bold:           bool?
+  italic:         bool?
+  underline:      bool?
+  font_weight:    utf8?
+  font_size:      utf8?
+  line_height:    utf8?
+  font_family:    utf8?
+  text_align:     utf8?
+  text_transform: utf8?
+  letter_spacing: utf8?
   padding:      utf8?
   margin:       utf8?
   border:       utf8?
@@ -159,14 +167,18 @@ type ClassMode {
 // `light {}` block — structurally identical to `dark {}`.
 @block("light")
 type ClassModeLight {
-  color:        utf8?
-  background:   utf8?
-  bold:         bool?
-  italic:       bool?
-  underline:    bool?
-  font_size:    utf8?
-  font_family:  utf8?
-  text_align:   utf8?
+  color:          utf8?
+  background:     utf8?
+  bold:           bool?
+  italic:         bool?
+  underline:      bool?
+  font_weight:    utf8?
+  font_size:      utf8?
+  line_height:    utf8?
+  font_family:    utf8?
+  text_align:     utf8?
+  text_transform: utf8?
+  letter_spacing: utf8?
   padding:      utf8?
   margin:       utf8?
   border:       utf8?

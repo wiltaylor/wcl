@@ -2463,8 +2463,12 @@ fn book_example_is_nord_themed() {
     // themed too, and headings have default sizing.
     assert!(html.contains(".heading-1 { color:#88c0d0; }"), "{html}");
     assert!(html.contains(".heading-2 { color:#8fbcbb; }"), "{html}");
+    // Default heading sizing now rides a bundled `class "heading-1"`
+    // (emitted before the user's colour override below).
     assert!(
-        html.contains(".heading-1 { font-size: 1.9rem;"),
+        html.contains(
+            ".heading-1 { font-weight:700;font-size:1.9rem;line-height:1.2;margin:1.4rem 0 0.6rem; }"
+        ),
         "default heading sizing missing:\n{html}"
     );
     assert!(html.contains(".link { color:#88c0d0; }"), "{html}");
