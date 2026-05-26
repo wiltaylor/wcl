@@ -27,6 +27,7 @@ fn schema_registry() -> Registry {
     );
     r.register("wdoc/text.wcl", include_str!("../lib/text.wcl"));
     r.register("wdoc/callout.wcl", include_str!("../lib/callout.wcl"));
+    r.register("wdoc/wireframe.wcl", include_str!("../lib/wireframe.wcl"));
     r.register("wdoc/table.wcl", include_str!("../lib/table.wcl"));
     r.register(
         "wdoc/diagram-core.wcl",

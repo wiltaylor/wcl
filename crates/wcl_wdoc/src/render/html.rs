@@ -204,7 +204,7 @@ pub(crate) fn render_block(
         // new `Inline` / `Highlighted` leaf fundamentals), the headings,
         // `callout`, and any custom block. Lowering declarations are
         // top-level fields, not blocks, so they never reach here.
-        kind => Some(lower_html_block(doc, block, kind, patterns)),
+        kind => Some(lower_html_block(doc, block, kind, patterns, base_dir)),
     }
 }
 

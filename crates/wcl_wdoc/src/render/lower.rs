@@ -2,6 +2,7 @@
 //! render the returned fundamental variants (HTML + SVG).
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use wcl_lang::{Block, Document, FnValue, Value, VariantPayload};
 
@@ -13,6 +14,12 @@ use super::*;
 /// that themselves lower further; this caps how deep we'll follow
 /// before bailing.
 pub(crate) const MAX_LOWER_DEPTH: usize = 32;
+
+/// Private placeholder emitted by an `HtmlFundamental::Children` variant.
+/// `lower_html_block` substitutes it with the block's rendered child
+/// blocks. U+FFF9 (interlinear annotation anchor) can't appear in
+/// document content, so it can't collide with real output.
+const WF_CHILDREN_SLOT: &str = "\u{FFF9}wdoc:children\u{FFF9}";
 
 /// Look up the `lower` function for a block kind. Tries the block's
 /// own `lower` field first (per-instance override), then the kind's
@@ -70,12 +77,16 @@ pub(crate) fn lower_svg_block(
         .collect()
 }
 
-/// Custom HTML-block lowering (h1..h6, text, code, callout, and friends).
+/// Custom HTML-block lowering (h1..h6, text, code, callout, wireframe
+/// widgets, and friends). `base_dir` is threaded so a container widget's
+/// `HtmlFundamental::Children` slot can render nested blocks (which may
+/// themselves resolve `source`-relative assets) via `render_block`.
 pub(crate) fn lower_html_block(
     doc: &Document,
     block: &Block<'_>,
     kind: &str,
     patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
 ) -> String {
     let Some(arg) = block_to_record(doc, block, kind) else {
         return String::new();
@@ -90,10 +101,25 @@ pub(crate) fn lower_html_block(
     let Value::List(items) = result else {
         return String::new();
     };
-    items
+    let out: String = items
         .iter()
         .map(|v| render_html_variant(doc, v, 0, patterns))
-        .collect()
+        .collect();
+    // A container widget's `lower` marks where its children go with an
+    // `HtmlFundamental::Children` slot (rendered as WF_CHILDREN_SLOT).
+    // Render this block's nested blocks — each dispatching to its own
+    // `lower` via `render_block` — and splice them in. Leaf blocks never
+    // emit the slot, so they skip this entirely. Nesting resolves bottom
+    // up: a nested container's own slot is filled before it returns here.
+    if out.contains(WF_CHILDREN_SLOT) {
+        let kids: String = block
+            .blocks()
+            .filter_map(|b| render_block(doc, &b, patterns, base_dir))
+            .collect();
+        out.replace(WF_CHILDREN_SLOT, &kids)
+    } else {
+        out
+    }
 }
 
 // `_parent_w` / `_parent_h` are threaded through so future variant
@@ -163,6 +189,13 @@ pub(crate) fn render_html_variant(
         return String::new();
     };
     let kind = kind_for_variant(variant);
+    // The child slot carries no fields — handle it before the record
+    // guard so it works whether authored as `Children {}` or a unit
+    // variant. `lower_html_block` swaps the sentinel for the block's
+    // rendered children.
+    if kind == "children" {
+        return WF_CHILDREN_SLOT.to_string();
+    }
     let VariantPayload::Record(map) = payload else {
         return String::new();
     };
@@ -256,11 +289,14 @@ pub(crate) fn block_to_record(doc: &Document, block: &Block<'_>, kind: &str) -> 
     // layered solver did. Without this, the rendered rect would
     // stay at the declared size while the layout reserved a
     // larger cell — the text would spill out of the rect.
+    // Only the SVG shapes carry numeric `width`/`height` geometry that the
+    // layout solver may have grown; leave non-numeric fields alone (e.g. a
+    // wireframe widget's `width: utf8?` CSS length like "22rem").
     let (eff_w, eff_h) = effective_dims(block);
-    if map.contains_key("width") {
+    if map.get("width").is_some_and(Value::is_numeric) {
         map.insert("width".to_string(), Value::F64(eff_w));
     }
-    if map.contains_key("height") {
+    if map.get("height").is_some_and(Value::is_numeric) {
         map.insert("height".to_string(), Value::F64(eff_h));
     }
     Some(Value::Record {

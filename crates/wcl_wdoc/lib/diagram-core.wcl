@@ -251,6 +251,13 @@ union HtmlFundamental {
   // Verbatim, pre-rendered HTML — NOT escaped. Used to embed already-
   // rendered content (e.g. a page's `content` part) inside a template.
   Raw { html: utf8 }
+  // A child-slot marker for container blocks. A block whose `lower`
+  // emits this (e.g. a wireframe `wf_window`) has its nested child
+  // blocks rendered by the renderer and spliced in at this point —
+  // the one piece of nesting that can't live in WCL (an interface
+  // `@children` list never reaches the lowering record). Renders to
+  // nothing when the block has no children.
+  Children { }
   // An icon, resolved against the declared `iconset`s (and, for a
   // `pack.name`, the compiled-in packs). The renderer records it for
   // the shared sprite and emits `<svg class="wdoc-icon …"><use …/></svg>`

@@ -28,12 +28,12 @@ fn build_ok(file: &Path, out: &Path) -> usize {
 
 #[test]
 fn build_emits_fundamentals_for_example_site() {
-    // examples/wdoc/main.wcl is the entry point — it pulls in eight
+    // examples/wdoc/main.wcl is the entry point — it pulls in nine
     // per-page files via `import`. All page bodies live in
     // pages/*.wcl; main.wcl itself only defines the landing index.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 9);
+    assert_eq!(n, 10);
 
     // The richer content (text + classes + diagram + flowchart) is on
     // the overview page, not the landing index.
@@ -1863,11 +1863,11 @@ page index {
 fn build_processes_full_code_example_page() {
     // Smoke test against the code page in the example site, which
     // exercises Rust, Python, JSON, WCL, and an unknown language
-    // in one page. main.wcl imports it and eight other pages, so
+    // in one page. main.wcl imports it and nine other pages, so
     // we count the code-block wrappers on `code.html`.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 9);
+    assert_eq!(n, 10);
     let html = std::fs::read_to_string(out.path().join("code.html")).expect("read code.html");
     assert!(
         html.matches("<pre class=\"code-block\"").count() >= 5,
@@ -3544,5 +3544,123 @@ page index {
             .join("diagram-pan-zoom.js")
             .exists(),
         "no player asset when unused"
+    );
+}
+
+/// Render a single-page wireframe fixture and return its HTML.
+fn wireframe_html(body: &str) -> String {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("wf.wcl");
+    std::fs::write(&src, format!("page index {{\n{body}\n}}\n")).expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    std::fs::read_to_string(out.path().join("index.html")).expect("read")
+}
+
+#[test]
+fn wireframe_window_nests_child_widgets() {
+    // A container widget's `lower` emits a `Children` slot; the renderer
+    // splices the nested widget blocks (each via its own `lower`) inside
+    // the window body.
+    let html = wireframe_html("  wf_window \"Box\" {\n    wf_button \"OK\" {}\n  }");
+    let win = html
+        .split("<div class=\"wf-window\"")
+        .nth(1)
+        .expect("window present");
+    assert!(
+        win.contains("<div class=\"wf-window-body\">")
+            && win.contains("<div class=\"wf-button\">OK</div>"),
+        "button not nested inside the window body:\n{html}"
+    );
+}
+
+#[test]
+fn wireframe_children_slot_splices_in_source_order() {
+    // Heterogeneous children render where the slot sits, in order.
+    let html = wireframe_html(
+        "  wf_window \"Box\" { controls = false\n    wf_label \"A\" {}\n    wf_dropdown \"B\" {}\n    wf_button \"C\" {}\n  }",
+    );
+    let a = html.find(">A<").expect("label A");
+    let b = html.find(">B<").expect("dropdown B");
+    let c = html.find(">C<").expect("button C");
+    assert!(a < b && b < c, "children out of order:\n{html}");
+}
+
+#[test]
+fn wireframe_nested_containers_resolve_recursively() {
+    // window → row → button: the inner container resolves its own slot
+    // before being spliced into the outer one.
+    let html =
+        wireframe_html("  wf_window \"Box\" {\n    wf_row {\n      wf_button \"X\" {}\n    }\n  }");
+    assert!(
+        html.contains(
+            "<div class=\"wf-window-body\"><div class=\"wf-row\"><div class=\"wf-button\">X</div></div></div>"
+        ),
+        "nested row/button not resolved recursively:\n{html}"
+    );
+}
+
+#[test]
+fn wireframe_state_classes_and_icons() {
+    // Checked / on / placeholder states add their marker classes; the
+    // checkbox tick resolves to a sprite <use>.
+    let html = wireframe_html(
+        "  wf_checkbox \"R\" { checked = true }\n  wf_toggle \"T\" { on = true }\n  wf_input \"ph\" {}",
+    );
+    assert!(
+        html.contains("<span class=\"wf-box wf-checked\">"),
+        "{html}"
+    );
+    assert!(
+        html.contains("href=\"_wdoc/icons.svg#lucide-check\""),
+        "checkbox tick icon missing:\n{html}"
+    );
+    assert!(html.contains("<span class=\"wf-track wf-on\">"), "{html}");
+    assert!(
+        html.contains("wf-input-text wf-placeholder"),
+        "placeholder class missing:\n{html}"
+    );
+}
+
+#[test]
+fn wireframe_class_field_is_threaded_and_overrides_by_cascade() {
+    // A custom class on a widget reaches the element, and a `class`
+    // rule is emitted after the bundled `.wf-button` stylesheet rule so
+    // it wins by source order. (`class` is top-level, not a page child.)
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("wf.wcl");
+    std::fs::write(
+        &src,
+        "page index { wf_button \"P\" { class = [\"primary\"] } }\nclass primary { background = \"#1f6feb\" }\n",
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<div class=\"wf-button primary\">"),
+        "class not threaded onto the element:\n{html}"
+    );
+    let sheet = html.find(".wf-button {").expect("bundled wf-button rule");
+    let user = html.find(".primary {").expect("user primary rule");
+    assert!(
+        sheet < user,
+        "user class rule must come after the bundled stylesheet rule"
+    );
+}
+
+#[test]
+fn wireframe_css_width_field_is_not_clobbered() {
+    // Regression: `width` is a CSS length (utf8) on widgets, not the
+    // numeric SVG-shape geometry that `block_to_record` grows. It must
+    // survive as authored, and an unset width must emit no style attr.
+    let html = wireframe_html("  wf_button \"W\" { width = \"22rem\" }\n  wf_label \"L\" {}");
+    assert!(
+        html.contains("<div class=\"wf-button\" style=\"width:22rem;\">"),
+        "authored width clobbered:\n{html}"
+    );
+    assert!(
+        html.contains("<span class=\"wf-label\">L</span>"),
+        "unset width should emit no style attr:\n{html}"
     );
 }

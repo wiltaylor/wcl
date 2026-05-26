@@ -15,6 +15,7 @@ import <css-classes.wcl>      // bundled default `class` instances
 import <diagram-core.wcl>     // diagram, container, SVG shapes, fundamentals
 import <text.wcl>             // text / span / column
 import <callout.wcl>          // admonition
+import <wireframe.wcl>        // wireframe UI widgets (window/button/…)
 import <table.wcl>            // pipe-table block
 import <templates.wcl>        // page templates (webpage / book) + parts
 import <inline.wcl>           // inline-span union + pattern type

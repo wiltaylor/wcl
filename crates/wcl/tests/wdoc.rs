@@ -26,7 +26,7 @@ fn wcl_wdoc_build_renders_fundamental_blocks() {
         .arg(out.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("wrote 9 pages"));
+        .stdout(predicate::str::contains("wrote 10 pages"));
 
     // Landing page lives in main.wcl directly.
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
