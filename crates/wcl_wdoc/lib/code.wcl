@@ -1,11 +1,11 @@
 // ── Stdlib code block ──────────────────────────────────────────────
 //
-// Syntax-highlighted source listing. Unlike the heading shapes
-// above, `code` has no `lower` field: the renderer special-cases
-// it because the per-token colouring is produced in Rust by
-// syntect rather than expressible in WCL. The `language` tag picks
-// the grammar (`rust`, `python`, `wcl`, …); an unknown tag falls
-// back to plain-text rendering.
+// Syntax-highlighted source listing. Lowers to `<pre class="code-block …">
+// <code class="language-X">…</code></pre>`; the per-token colouring is
+// produced in Rust by syntect (the `Highlighted` fundamental) since it
+// isn't expressible in WCL, but the `<pre>`/`<code>` structure + classes
+// are authored here. The `language` tag picks the grammar (`rust`,
+// `python`, `wcl`, …); an unknown tag falls back to plain-text rendering.
 
 @block("code")
 type Code extends WdocBlock {
@@ -13,8 +13,23 @@ type Code extends WdocBlock {
   source: utf8
   id:     identifier?
   class:  list<utf8>?
-  // Declared only to satisfy the WdocBlock interface — the
-  // renderer never calls this; highlighting happens in Rust.
-  lower = fn(c: Code) -> list<HtmlFundamental> []
+  lower = fn(c: Code) -> list<HtmlFundamental> [
+    HtmlFundamental::Element {
+      tag: "pre", id: c.id,
+      class: flatten([["code-block"], if c.class == none { [] } else { c.class }]),
+      attrs: none,
+      children: [
+        HtmlFundamental::Element {
+          tag: "code", id: none,
+          class: [format("language-{}", c.language)], attrs: none,
+          children: [
+            HtmlFundamental::Highlighted {
+              source: c.source, language: format("{}", c.language),
+            },
+          ],
+        },
+      ],
+    },
+  ]
 }
 

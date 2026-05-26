@@ -114,7 +114,7 @@ pub(crate) fn render_template(
     pages: &[(String, String)],
     toc_nodes: &[TocNode],
     theme_toggle: bool,
-    icons: &IconRegistry,
+    patterns: &InlinePatterns,
 ) -> String {
     let Some(field) = template.field("render") else {
         return String::new();
@@ -171,7 +171,7 @@ pub(crate) fn render_template(
     };
     items
         .iter()
-        .map(|v| render_html_variant(doc, v, 0, icons))
+        .map(|v| render_html_variant(doc, v, 0, patterns))
         .collect()
 }
 
@@ -182,7 +182,6 @@ pub(crate) fn render_block(
     base_dir: Option<&Path>,
 ) -> Option<String> {
     match block.kind() {
-        "text" => Some(render_text(doc, block, patterns)),
         "column" => Some(render_column(doc, block, patterns, base_dir)),
         "table" => Some(render_table(doc, block, patterns)),
         "diagram" => Some(render_diagram(
@@ -191,38 +190,17 @@ pub(crate) fn render_block(
             patterns.icons(),
             patterns.tilesets(),
         )),
-        "code" => Some(render_code(block)),
-        // The terminal is special-cased in Rust (like `code`): its grid
-        // model, ANSI handling, and asciinema replay aren't expressible
-        // in WCL. `base_dir` lets a `source` recording path resolve
-        // relative to the source file.
+        // The terminal is special-cased in Rust: its grid model, ANSI
+        // handling, and asciinema replay aren't expressible in WCL.
+        // `base_dir` lets a `source` recording path resolve relative to
+        // the source file.
         "terminal" => Some(crate::terminal::render_terminal(doc, block, base_dir)),
-        // Skip the lowering function declarations — they're top-level
-        // fields, not blocks, so they don't reach render_block.
-        kind => Some(lower_html_block(doc, block, kind, patterns.icons())),
+        // Everything else lowers via WCL — `text` / `code` (which emit the
+        // new `Inline` / `Highlighted` leaf fundamentals), the headings,
+        // `callout`, and any custom block. Lowering declarations are
+        // top-level fields, not blocks, so they never reach here.
+        kind => Some(lower_html_block(doc, block, kind, patterns)),
     }
-}
-
-pub(crate) fn render_text(doc: &Document, block: &Block<'_>, patterns: &InlinePatterns) -> String {
-    let cls = class_attr(block);
-    let spans: String = block
-        .blocks()
-        .filter(|b| b.kind() == "span")
-        .map(|b| render_span(doc, &b, patterns))
-        .collect();
-    let mut out = format!("<p{cls}");
-    append_attr(&mut out, "id", field_id(block, "id").as_deref());
-    write!(out, ">{spans}</p>").expect("write to String");
-    out
-}
-
-pub(crate) fn render_span(doc: &Document, block: &Block<'_>, patterns: &InlinePatterns) -> String {
-    let cls = class_attr(block);
-    let text = label_string(block).unwrap_or_default();
-    let mut out = format!("<span{cls}");
-    append_attr(&mut out, "id", field_id(block, "id").as_deref());
-    write!(out, ">{}</span>", patterns.render(doc, &text)).expect("write to String");
-    out
 }
 
 pub(crate) fn render_column(
@@ -247,31 +225,6 @@ pub(crate) fn render_column(
     write!(
         out,
         " style=\"display:grid;grid-template-columns:{grid_cols};\">{children}</div>"
-    )
-    .expect("write to String");
-    out
-}
-
-/// Render a `@block("code")` instance to a `<pre><code>` element
-/// with syntect-produced `<span class="tok-…">` tokens inside. The
-/// `code-block` class is always present so the bundled theme CSS
-/// can style the container; user-declared `class` entries are
-/// appended after it.
-pub(crate) fn render_code(block: &Block<'_>) -> String {
-    // `language` is declared `@inline(0)` on @block("code"), so it
-    // arrives as the block's label rather than a named field.
-    let language = label_string(block).unwrap_or_default();
-    let source = field_utf8(block, "source").unwrap_or_default();
-    let mut classes: Vec<String> = vec!["code-block".to_string()];
-    classes.extend(field_utf8_list(block, "class"));
-    let cls = classes_attr_from_names(&classes);
-    let inner = highlight::highlight_html(&source, &language);
-    let mut out = format!("<pre{cls}");
-    append_attr(&mut out, "id", field_id(block, "id").as_deref());
-    write!(
-        out,
-        "><code class=\"language-{}\">{inner}</code></pre>",
-        escape_html(&language),
     )
     .expect("write to String");
     out
@@ -374,6 +327,28 @@ pub(crate) fn render_icon_fundamental(
     icons.resolve_html_icon(&name, &classes).unwrap_or_default()
 }
 
+/// Render an `HtmlFundamental::Inline { text }` by running the inline-
+/// pattern engine (bold / italic / link / icon) over `text`. The Rust
+/// regex engine stays the leaf; the `<p>` / `<span>` wrappers around it
+/// are emitted by the WCL `text` lower (`lib/text.wcl`).
+pub(crate) fn render_inline_fundamental(
+    doc: &Document,
+    map: &BTreeMap<String, Value>,
+    patterns: &InlinePatterns,
+) -> String {
+    let text = map_utf8(map, "text").unwrap_or_default();
+    patterns.render(doc, &text)
+}
+
+/// Render an `HtmlFundamental::Highlighted { source, language }` to the
+/// syntect-produced `<span class="tok-…">` token runs (the code body, no
+/// wrapper). The WCL `code` lower wraps it in `<pre><code class="language-…">`.
+pub(crate) fn render_highlighted_fundamental(map: &BTreeMap<String, Value>) -> String {
+    let source = map_utf8(map, "source").unwrap_or_default();
+    let language = map_utf8(map, "language").unwrap_or_default();
+    highlight::highlight_html(&source, &language)
+}
+
 pub(crate) fn render_paragraph_payload(map: &BTreeMap<String, Value>) -> String {
     let cls = class_attr_from_map(map);
     let spans = map_utf8_list(map, "spans");
@@ -422,7 +397,7 @@ pub(crate) fn render_element_payload(
     doc: &Document,
     map: &BTreeMap<String, Value>,
     depth: usize,
-    icons: &IconRegistry,
+    patterns: &InlinePatterns,
 ) -> String {
     let tag = map_utf8(map, "tag").unwrap_or_else(|| "div".to_string());
     // Only allow simple alphanumeric tag names so a stray value can't
@@ -451,7 +426,7 @@ pub(crate) fn render_element_payload(
     out.push('>');
     if let Some(Value::List(children)) = map.get("children") {
         for child in children {
-            out.push_str(&render_html_variant(doc, child, depth + 1, icons));
+            out.push_str(&render_html_variant(doc, child, depth + 1, patterns));
         }
     }
     write!(out, "</{tag}>").expect("write to String");

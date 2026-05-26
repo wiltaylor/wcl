@@ -320,7 +320,7 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
                     &pages,
                     &toc_nodes,
                     theme_toggle,
-                    inline_patterns.icons(),
+                    &inline_patterns,
                 )
             }
             None => content,

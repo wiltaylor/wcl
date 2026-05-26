@@ -1,12 +1,22 @@
-// Paragraph — children are spans rendered in source order.
+// Paragraph — children are spans rendered in source order. Lowers to a
+// `<p>` whose children are `<span>`s; each span's text runs through the
+// inline-pattern engine via the `Inline` fundamental (the regex engine is
+// Rust, but the `<p>` / `<span>` structure is authored here).
 @block("text")
 type Text extends WdocBlock {
   id:    identifier?
   class: list<utf8>?
   @children("span") spans: list<Span>
-  // `text` is itself a fundamental HTML block — the renderer never
-  // invokes its `lower`. Declared only to satisfy the interface.
-  lower = fn(t: Text) -> list<HtmlFundamental> []
+  lower = fn(t: Text) -> list<HtmlFundamental> [
+    HtmlFundamental::Element {
+      tag: "p", id: t.id, class: t.class, attrs: none,
+      children: map(t.spans, fn(s: Span) -> HtmlFundamental
+        HtmlFundamental::Element {
+          tag: "span", id: s.id, class: s.class, attrs: none,
+          children: [ HtmlFundamental::Inline { text: s.text } ],
+        }),
+    },
+  ]
 }
 
 // Inline run inside a `text`. Style fields beyond `class` are

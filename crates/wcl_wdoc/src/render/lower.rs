@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use wcl_lang::{Block, Document, FnValue, Value, VariantPayload};
 
-use crate::icons::IconRegistry;
+use crate::inline::InlinePatterns;
 
 use super::*;
 
@@ -70,12 +70,12 @@ pub(crate) fn lower_svg_block(
         .collect()
 }
 
-/// Custom HTML-block lowering (h1..h6 and friends).
+/// Custom HTML-block lowering (h1..h6, text, code, callout, and friends).
 pub(crate) fn lower_html_block(
     doc: &Document,
     block: &Block<'_>,
     kind: &str,
-    icons: &IconRegistry,
+    patterns: &InlinePatterns,
 ) -> String {
     let Some(arg) = block_to_record(doc, block, kind) else {
         return String::new();
@@ -92,7 +92,7 @@ pub(crate) fn lower_html_block(
     };
     items
         .iter()
-        .map(|v| render_html_variant(doc, v, 0, icons))
+        .map(|v| render_html_variant(doc, v, 0, patterns))
         .collect()
 }
 
@@ -151,7 +151,7 @@ pub(crate) fn render_html_variant(
     doc: &Document,
     value: &Value,
     depth: usize,
-    icons: &IconRegistry,
+    patterns: &InlinePatterns,
 ) -> String {
     if depth > MAX_LOWER_DEPTH {
         return depth_marker();
@@ -169,12 +169,19 @@ pub(crate) fn render_html_variant(
     match kind.as_str() {
         "paragraph" => render_paragraph_payload(map),
         "table" => render_table_payload(map),
-        "element" => render_element_payload(doc, map, depth, icons),
+        "element" => render_element_payload(doc, map, depth, patterns),
         "raw" => render_raw_payload(map),
         // An icon, resolved against the registry so it records sprite
         // usage. Emitted by the stdlib `callout` lowering (and available
         // to any user HTML lowering).
-        "icon" => render_icon_fundamental(map, icons),
+        "icon" => render_icon_fundamental(map, patterns.icons()),
+        // Inline prose run through the inline-pattern engine (bold /
+        // italic / link / icon). The Rust regex engine stays a leaf; the
+        // `<p>`/`<span>` wrappers around it live in WCL (the `text` lower).
+        "inline" => render_inline_fundamental(doc, map, patterns),
+        // Syntax-highlighted code body (syntect). Like `inline`, the
+        // engine is a leaf; the `<pre><code>` wrapper is the `code` lower.
+        "highlighted" => render_highlighted_fundamental(map),
         other => {
             let arg = payload_to_record(map, other);
             let Some(fv) = lookup_type_lower(doc, other) else {
@@ -189,7 +196,7 @@ pub(crate) fn render_html_variant(
             };
             items
                 .iter()
-                .map(|v| render_html_variant(doc, v, depth + 1, icons))
+                .map(|v| render_html_variant(doc, v, depth + 1, patterns))
                 .collect()
         }
     }
@@ -214,6 +221,25 @@ pub(crate) fn block_to_record(doc: &Document, block: &Block<'_>, kind: &str) -> 
             labels.get(slot as usize).cloned().unwrap_or(Value::None)
         } else if let Some(field) = block.field(name) {
             field.value().cloned().unwrap_or(Value::None)
+        } else if let Some(dr) = block.typed_field(name) {
+            // A schema-projected field with no raw AST entry: either a
+            // leaf typed projection (e.g. a `@connections` list, which
+            // has a `Value`) or a `@children(...)` block list, which has
+            // none. Materialise children by recursively converting each
+            // child block to a record (using its own kind), so a `lower`
+            // can map over them — e.g. `text`'s `@children("span") spans`.
+            match dr.value() {
+                Ok(v) => v,
+                Err(_) => match dr.as_block_list() {
+                    Some(blocks) => Value::List(
+                        blocks
+                            .iter()
+                            .filter_map(|b| block_to_record(doc, b, b.kind()))
+                            .collect(),
+                    ),
+                    None => f.default_value().unwrap_or(Value::None),
+                },
+            }
         } else {
             // Fall back to the schema's declared default
             // (`name = expr` inline-default or `@default(expr)`)

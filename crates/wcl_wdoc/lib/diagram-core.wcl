@@ -257,6 +257,15 @@ union HtmlFundamental {
   // (currentColor, so it inherits its container's colour). Used by the
   // stdlib `callout` lowering; available to any HTML lowering.
   Icon { name: utf8 class: list<utf8>? }
+  // An inline prose run: `text` is fed through the inline-pattern engine
+  // (bold / italic / link / icon) and emitted as HTML. The regex engine
+  // is Rust (a leaf); the `<p>` / `<span>` wrappers come from WCL (the
+  // `text` lower). Authors usually use the `text` block, not this directly.
+  Inline { text: utf8 }
+  // A syntax-highlighted code body: `source` is tokenised by `language`
+  // and emitted as `<span class="tok-…">` runs (no wrapper). syntect is
+  // Rust (a leaf); the `<pre><code>` wrapper comes from the `code` lower.
+  Highlighted { source: utf8 language: utf8 }
 }
 
 // Styling for interactive (pan + zoom) diagrams. Only a `pan_zoom`
