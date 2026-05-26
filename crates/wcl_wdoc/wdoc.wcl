@@ -414,12 +414,42 @@ union HtmlFundamental {
 // output file (`<name>.html`).
 type PageRef { name: utf8  href: utf8 }
 
+// A node in the resolved table of contents handed to templates. Built
+// by the renderer from the `site`'s `toc` block. `href` is empty for a
+// grouping heading (a `chapter` with no `page`); `current` is true for
+// the entry linking to the page being rendered; `children` are nested
+// entries (any depth).
+type TocEntry {
+  title:    utf8
+  href:     utf8
+  current:  bool
+  children: list<TocEntry>
+}
+
 // Context handed to a template's (and any part function's) `render`.
 type TemplateCtx {
-  content:   utf8           // the page's rendered body HTML (embed via Raw)
-  title:     utf8           // site title, or the page name if unset
-  page_name: utf8           // the current page's name
-  pages:     list<PageRef>  // every page in the document, for nav/menus
+  content:   utf8            // the page's rendered body HTML (embed via Raw)
+  title:     utf8            // site title, or the page name if unset
+  page_name: utf8            // the current page's name
+  pages:     list<PageRef>   // every page in the document, in source order
+  toc:       list<TocEntry>  // the book TOC tree; flat (one per page) if no `toc`
+}
+
+// One table-of-contents entry. The inline label is the display title;
+// `page` (optional) links it to a page; nested `chapter`s are
+// sub-entries (3+ levels). A `chapter` with no `page` is a heading.
+@block("chapter")
+type Chapter {
+  @inline(0) title: utf8
+  page: identifier?
+  @children("chapter") children: list<Chapter>
+}
+
+// The book's table of contents — an ordered, nestable tree of
+// `chapter` entries. Declared inside the `site` block.
+@block("toc")
+type Toc {
+  @children("chapter") chapters: list<Chapter>
 }
 
 // Document descriptor. One per document; sets the default template and
@@ -429,6 +459,7 @@ type TemplateCtx {
 type SiteConfig {
   default_template: symbol?
   title:            utf8?
+  @child("toc") toc: Toc?
 }
 
 // A named template. `render` lays out a page body from the context.
@@ -464,9 +495,44 @@ template webpage {
   ]
 }
 
+// One sidebar entry: a `<span>` heading when the entry has no page
+// (empty href), otherwise an `<a>` link (with `current` highlighting).
+let book_toc_link = fn(e: TocEntry) -> HtmlFundamental
+  if e.href == "" {
+    HtmlFundamental::Element {
+      tag: "span", id: none, class: ["book-section"], attrs: none,
+      children: [ HtmlFundamental::Raw { html: e.title } ],
+    }
+  } else {
+    HtmlFundamental::Element {
+      tag: "a", id: none,
+      class: if e.current { ["book-chapter", "current"] } else { ["book-chapter"] },
+      attrs: [["href", e.href]],
+      children: [ HtmlFundamental::Raw { html: e.title } ],
+    }
+  }
+
+// Render a list of TOC entries as a nested `<ul>` — recursive, so the
+// tree nests to any depth. An empty list renders nothing (no stray
+// `<ul>`), which also terminates the recursion at the leaves.
+let book_toc = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
+  if len(entries) == 0 { [] }
+  else {
+    [ HtmlFundamental::Element {
+        tag: "ul", id: none, class: ["book-toc"], attrs: none,
+        children: map(entries, fn(e: TocEntry) -> HtmlFundamental
+          HtmlFundamental::Element {
+            tag: "li", id: none, class: none, attrs: none,
+            children: flatten([ [book_toc_link(e)], book_toc(e.children) ]),
+          }),
+      } ]
+  }
+
 // Stdlib `book` template: an mdbook-style layout — a fixed left
-// sidebar listing every page as a chapter (the current chapter is
-// highlighted) and the page content in a reading column.
+// sidebar holding the book title and the table of contents (nested,
+// current chapter highlighted), and the page content in a reading
+// column. The TOC comes from the `site` block's `toc`; with no `toc`
+// declared the renderer falls back to a flat list of every page.
 template book {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental> [
     HtmlFundamental::Element {
@@ -476,14 +542,7 @@ template book {
             tag: "div", id: none, class: ["book-title"], attrs: none,
             children: [ HtmlFundamental::Raw { html: c.title } ],
           } ],
-        map(c.pages, fn(p: PageRef) -> HtmlFundamental
-          HtmlFundamental::Element {
-            tag: "a", id: none,
-            class: if p.name == c.page_name { ["book-chapter", "current"] }
-                   else { ["book-chapter"] },
-            attrs: [["href", p.href]],
-            children: [ HtmlFundamental::Raw { html: p.name } ],
-          }),
+        book_toc(c.toc),
       ]),
     },
     HtmlFundamental::Element {

@@ -3,14 +3,29 @@
 //   wcl wdoc serve examples/wdoc-book/main.wcl
 //   wcl wdoc build --out _book examples/wdoc-book/main.wcl
 //
-// The `site` block selects `:book` as the default template, so every
-// page renders as a chapter: a fixed left sidebar lists all chapters
-// (the current one highlighted) and the chapter content reads in the
-// right-hand column. Chapters appear in the sidebar in document order.
+// The `site` block selects `:book` as the default template and its
+// `toc` defines the book structure: an ordered, nested table of
+// contents. Each `chapter` shows its inline title in the sidebar;
+// `page = name` links it to a page, and nested `chapter`s become
+// sub-entries (any depth). A `chapter` with no `page` is a grouping
+// heading. The current chapter is highlighted.
 
 site {
   default_template = :book
   title            = "WCL Handbook"
+
+  toc {
+    chapter "Home" { page = index }
+    chapter "Introduction" { page = introduction }
+    chapter "Guide" {                              // heading (no page)
+      chapter "Installation" { page = installation }
+      chapter "Language" {                         // heading, nested
+        chapter "Syntax" { page = syntax }         // level 3
+        chapter "Builtins" { page = builtins }     // level 3
+      }
+    }
+    chapter "Reference" { page = reference }
+  }
 }
 
 // Landing page. The dev server serves `/` from the page named
@@ -47,6 +62,14 @@ page syntax {
   text { span "Fields are `name = expr`; blocks group nested items; `let` declares composition helpers that never appear in the queried document." {} }
   code wcl {
     source = "let port = 8080\n\nserver {\n  host = \"0.0.0.0\"\n  addr = port\n}"
+  }
+}
+
+page builtins {
+  h1 "Builtins" {}
+  text { span "Collections: `map`, `filter`, `fold`, `len`, `flatten`. Strings: `split`, `join`, `format`. Lists: `sort`, `unique`, `index_of`, `at`." {} }
+  code wcl {
+    source = "doubled = map([1, 2, 3], fn(n: i64) -> i64 n * 2)"
   }
 }
 

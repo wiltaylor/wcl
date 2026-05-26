@@ -2186,10 +2186,10 @@ page index { h1 "x" {} }
 }
 
 #[test]
-fn book_template_renders_sidebar_and_highlights_current_chapter() {
-    // The `book` template lays out a left chapter sidebar (one link per
-    // page, current chapter marked `current`) plus the content in
-    // <main class="book-content">.
+fn book_template_without_toc_falls_back_to_flat_page_list() {
+    // With no `toc`, the book sidebar lists every page (flat, one entry
+    // each), wrapped in the same `<ul class="book-toc">` markup; the
+    // current chapter is marked `current`. Content lands in <main>.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("book.wcl");
     std::fs::write(
@@ -2215,6 +2215,7 @@ page usage {
     let intro = std::fs::read_to_string(out.path().join("intro.html")).expect("read");
     // Sidebar with the book title and a link per chapter.
     assert!(intro.contains("<nav class=\"book-sidebar\">"), "{intro}");
+    assert!(intro.contains("<ul class=\"book-toc\">"), "{intro}");
     assert!(
         intro.contains("<div class=\"book-title\">Handbook</div>"),
         "{intro}"
@@ -2241,4 +2242,93 @@ page usage {
         usage.contains("<a class=\"book-chapter current\" href=\"usage.html\">usage</a>"),
         "{usage}"
     );
+}
+
+#[test]
+fn book_toc_renders_nested_ordered_navigation() {
+    // A declared `toc` controls order and nesting (3 levels). Heading
+    // chapters (no `page`) render as <span class="book-section">; the
+    // tree nests via <ul class="book-toc">; the current chapter is
+    // highlighted; entries follow declared order, not page order.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("book.wcl");
+    std::fs::write(
+        &src,
+        r#"
+site {
+  default_template = :book
+  title = "Handbook"
+  toc {
+    chapter "Start Here" { page = intro }
+    chapter "Guide" {
+      chapter "Deep" {
+        chapter "Internals" { page = internals }
+      }
+    }
+  }
+}
+page intro { h1 "Intro" {} }
+page internals { h1 "Internals" {} }
+"#,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("internals.html")).expect("read");
+
+    // Custom titles from the toc (not raw page names).
+    assert!(
+        html.contains("<a class=\"book-chapter\" href=\"intro.html\">Start Here</a>"),
+        "{html}"
+    );
+    // Heading-only chapters are non-link sections.
+    assert!(
+        html.contains("<span class=\"book-section\">Guide</span>"),
+        "{html}"
+    );
+    assert!(
+        html.contains("<span class=\"book-section\">Deep</span>"),
+        "{html}"
+    );
+    // Depth-3 entry, highlighted as the current page.
+    assert!(
+        html.contains("<a class=\"book-chapter current\" href=\"internals.html\">Internals</a>"),
+        "{html}"
+    );
+    // Nesting: at least two levels of <ul class="book-toc"> (Guide > Deep).
+    assert!(
+        html.matches("<ul class=\"book-toc\">").count() >= 3,
+        "expected nested book-toc lists:\n{html}"
+    );
+    // Declared order: "Start Here" precedes the "Guide" section.
+    let start = html.find("Start Here").unwrap();
+    let guide = html.find(">Guide<").unwrap();
+    assert!(start < guide, "toc not in declared order:\n{html}");
+}
+
+#[test]
+fn book_toc_unknown_page_is_build_error() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("book.wcl");
+    std::fs::write(
+        &src,
+        r#"
+site {
+  default_template = :book
+  toc { chapter "Oops" { page = nonexistent } }
+}
+page intro { h1 "Intro" {} }
+"#,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path()) {
+        Err(BuildError::BadTemplate(msg)) => {
+            assert!(msg.contains("nonexistent"), "got: {msg}")
+        }
+        Err(_) => panic!("expected BadTemplate"),
+        Ok(_) => panic!("expected BadTemplate, got Ok"),
+    }
 }

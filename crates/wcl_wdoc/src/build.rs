@@ -8,8 +8,8 @@ use wcl_lang::{Block, Document, Environment, Value};
 use crate::highlight;
 use crate::inline::InlinePatterns;
 use crate::render::{
-    field_id, field_symbol, field_utf8, find_template, render_block, render_class, render_page,
-    render_template,
+    TocNode, field_id, field_symbol, field_utf8, find_template, read_toc, render_block,
+    render_class, render_page, render_template,
 };
 
 const SCHEMA: &str = include_str!("../wdoc.wcl");
@@ -101,6 +101,11 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         .and_then(|b| field_symbol(b, "default_template"));
     let site_title = site.as_ref().and_then(|b| field_utf8(b, "title"));
 
+    // Book table of contents (the `site` block's `toc`), shared by all
+    // pages; the per-page `current` flag is applied at render time.
+    // Empty when there's no `toc` (templates fall back to a flat list).
+    let toc_nodes: Vec<TocNode> = site.as_ref().map(read_toc).unwrap_or_default();
+
     // Ordered (name, href) list of every page, handed to templates so
     // they can build navigation themselves.
     let pages: Vec<(String, String)> = doc
@@ -118,6 +123,15 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         if let Some(name) = page_name(&page) {
             page_names.insert(name);
         }
+    }
+
+    // A `toc` chapter that links to a page that doesn't exist is almost
+    // always a typo — surface it as a build error rather than emitting a
+    // dead link.
+    if let Some(missing) = toc_missing_page(&toc_nodes, &page_names) {
+        return Err(BuildError::BadTemplate(format!(
+            "toc chapter links to unknown page \"{missing}\""
+        )));
     }
 
     // Document-global inline-text pattern engine, compiled once
@@ -168,7 +182,9 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
                     return Err(BuildError::BadTemplate(name));
                 };
                 let title = site_title.clone().unwrap_or_else(|| page_name.clone());
-                render_template(&doc, &tmpl, &content, &title, &page_name, &pages)
+                render_template(
+                    &doc, &tmpl, &content, &title, &page_name, &pages, &toc_nodes,
+                )
             }
             None => content,
         };
@@ -200,6 +216,23 @@ fn page_name(page: &Block<'_>) -> Option<String> {
         Value::Identifier(s) | Value::Utf8(s) | Value::Symbol(s) => Some(s),
         _ => None,
     }
+}
+
+/// Return the first `toc` chapter `page` reference that isn't a known
+/// page name, walking the tree depth-first. `None` if every link
+/// resolves (or no chapter links a page).
+fn toc_missing_page<'a>(nodes: &'a [TocNode], known: &HashSet<String>) -> Option<&'a str> {
+    for n in nodes {
+        if let Some(page) = &n.page
+            && !known.contains(page)
+        {
+            return Some(page);
+        }
+        if let Some(missing) = toc_missing_page(&n.children, known) {
+            return Some(missing);
+        }
+    }
+    None
 }
 
 /// Walk a page's block tree collecting `id` values. Returns the first

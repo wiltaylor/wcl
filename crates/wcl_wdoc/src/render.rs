@@ -64,9 +64,12 @@ pub(crate) const SITE_CSS: &str = "\
 pub(crate) const BOOK_CSS: &str = "\
 .book-sidebar { position: fixed; top: 0; left: 0; width: 16rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem; border-right: 1px solid #ccc; background: #fafafa; }
 .book-title { font-weight: bold; font-size: 1.1rem; margin-bottom: 0.75rem; }
+.book-sidebar ul.book-toc { list-style: none; margin: 0; padding-left: 0; }
+.book-sidebar ul.book-toc ul.book-toc { padding-left: 0.85rem; }
 .book-sidebar a.book-chapter { display: block; padding: 0.2rem 0; color: #333; text-decoration: none; }
 .book-sidebar a.book-chapter:hover { color: #003a8c; }
 .book-sidebar a.current { font-weight: bold; color: #003a8c; }
+.book-sidebar .book-section { display: block; padding: 0.35rem 0 0.1rem; font-weight: 600; color: #555; }
 .book-content { margin-left: 16rem; padding: 1rem 2.5rem; max-width: 46rem; }";
 
 /// Wrap a page's `body` HTML in the document shell. The `<head>`
@@ -92,11 +95,74 @@ pub(crate) fn find_template<'a>(doc: &'a Document, name: &str) -> Option<Block<'
         .find(|b| b.kind() == "template" && label_string(b).as_deref() == Some(name))
 }
 
+/// One node of a book's table of contents, read from the `site`
+/// block's `toc`. `page` is the linked page name (None ⇒ a grouping
+/// heading); `children` are nested entries.
+pub(crate) struct TocNode {
+    pub title: String,
+    pub page: Option<String>,
+    pub children: Vec<TocNode>,
+}
+
+/// Recursively read `chapter` blocks nested inside `block` into
+/// [`TocNode`]s, preserving source order.
+fn read_chapters(block: &Block<'_>) -> Vec<TocNode> {
+    block
+        .blocks()
+        .filter(|b| b.kind() == "chapter")
+        .map(|ch| TocNode {
+            title: label_string(&ch).unwrap_or_default(),
+            page: field_id(&ch, "page"),
+            children: read_chapters(&ch),
+        })
+        .collect()
+}
+
+/// Read the book's table of contents from a `site` block's `toc`
+/// child. Empty when there is no `toc` (callers fall back to a flat
+/// page list).
+pub(crate) fn read_toc(site: &Block<'_>) -> Vec<TocNode> {
+    match site.block("toc") {
+        Some(toc) => read_chapters(&toc),
+        None => Vec::new(),
+    }
+}
+
+/// Build a `list<TocEntry>` `Value` from `nodes`, marking the entry
+/// (if any) that links to `current`.
+fn toc_to_value(nodes: &[TocNode], current: &str) -> Value {
+    Value::List(
+        nodes
+            .iter()
+            .map(|n| {
+                let href = n
+                    .page
+                    .as_ref()
+                    .map(|p| format!("{p}.html"))
+                    .unwrap_or_default();
+                let mut m = BTreeMap::new();
+                m.insert("title".to_string(), Value::Utf8(n.title.clone()));
+                m.insert("href".to_string(), Value::Utf8(href));
+                m.insert(
+                    "current".to_string(),
+                    Value::Bool(n.page.as_deref() == Some(current)),
+                );
+                m.insert("children".to_string(), toc_to_value(&n.children, current));
+                Value::Record {
+                    ty: vec!["TocEntry".to_string()],
+                    fields: m,
+                }
+            })
+            .collect(),
+    )
+}
+
 /// Render a page through `template`'s `render` function. Builds a
-/// `TemplateCtx` record (content + title + page_name + pages) and
+/// `TemplateCtx` record (content + title + page_name + pages + toc) and
 /// invokes the WCL function, then renders the returned fundamentals.
 /// Best-effort: a missing/failed `render` yields an empty body, like
-/// the rest of the lowering pipeline.
+/// the rest of the lowering pipeline. When `toc_nodes` is empty the
+/// `toc` falls back to a flat entry per page.
 pub(crate) fn render_template(
     doc: &Document,
     template: &Block<'_>,
@@ -104,6 +170,7 @@ pub(crate) fn render_template(
     title: &str,
     page_name: &str,
     pages: &[(String, String)],
+    toc_nodes: &[TocNode],
 ) -> String {
     let Some(field) = template.field("render") else {
         return String::new();
@@ -112,25 +179,44 @@ pub(crate) fn render_template(
         return String::new();
     };
     let fv = fv.clone();
-    let pages_val = Value::List(
-        pages
-            .iter()
-            .map(|(n, h)| {
-                let mut m = BTreeMap::new();
-                m.insert("name".to_string(), Value::Utf8(n.clone()));
-                m.insert("href".to_string(), Value::Utf8(h.clone()));
-                Value::Record {
-                    ty: vec!["PageRef".to_string()],
-                    fields: m,
-                }
-            })
-            .collect(),
-    );
+    let page_ref = |n: &str, h: &str| {
+        let mut m = BTreeMap::new();
+        m.insert("name".to_string(), Value::Utf8(n.to_string()));
+        m.insert("href".to_string(), Value::Utf8(h.to_string()));
+        Value::Record {
+            ty: vec!["PageRef".to_string()],
+            fields: m,
+        }
+    };
+    let pages_val = Value::List(pages.iter().map(|(n, h)| page_ref(n, h)).collect());
+    // `toc`: the declared book TOC, or a flat entry per page as a
+    // fallback so a templated page without a `toc` still gets a nav.
+    let toc_val = if toc_nodes.is_empty() {
+        Value::List(
+            pages
+                .iter()
+                .map(|(n, h)| {
+                    let mut m = BTreeMap::new();
+                    m.insert("title".to_string(), Value::Utf8(n.clone()));
+                    m.insert("href".to_string(), Value::Utf8(h.clone()));
+                    m.insert("current".to_string(), Value::Bool(n == page_name));
+                    m.insert("children".to_string(), Value::List(Vec::new()));
+                    Value::Record {
+                        ty: vec!["TocEntry".to_string()],
+                        fields: m,
+                    }
+                })
+                .collect(),
+        )
+    } else {
+        toc_to_value(toc_nodes, page_name)
+    };
     let mut ctx = BTreeMap::new();
     ctx.insert("content".to_string(), Value::Utf8(content.to_string()));
     ctx.insert("title".to_string(), Value::Utf8(title.to_string()));
     ctx.insert("page_name".to_string(), Value::Utf8(page_name.to_string()));
     ctx.insert("pages".to_string(), pages_val);
+    ctx.insert("toc".to_string(), toc_val);
     let arg = Value::Record {
         ty: vec!["TemplateCtx".to_string()],
         fields: ctx,
