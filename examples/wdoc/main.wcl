@@ -21,6 +21,15 @@ class badge {
   color       = "#444"
 }
 
+// Wrap every page in the bundled `webpage` template: a title header
+// plus a top navigation menu (one link per page in document order)
+// above each page's own content. A page can opt out or pick another
+// template with its own `template = :name` field.
+site {
+  default_template = :webpage
+  title            = "wdoc example site"
+}
+
 // Per-page sources. Each imported file declares exactly one
 // `page <name> { ... }` block; page names must be unique across
 // the whole document.
