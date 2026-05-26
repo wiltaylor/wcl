@@ -85,10 +85,11 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         .collect::<Vec<_>>()
         .join("\n");
     let css = format!(
-        "{}\n{}\n{}\n{class_css}",
+        "{}\n{}\n{}\n{}\n{class_css}",
         highlight::theme_css(),
         crate::render::TABLE_CSS,
-        crate::render::SITE_CSS
+        crate::render::SITE_CSS,
+        crate::render::BOOK_CSS
     );
 
     // Document descriptor (`site` block): the default template and the

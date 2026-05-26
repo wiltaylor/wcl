@@ -2184,3 +2184,61 @@ page index { h1 "x" {} }
         Ok(_) => panic!("expected BadTemplate, got Ok"),
     }
 }
+
+#[test]
+fn book_template_renders_sidebar_and_highlights_current_chapter() {
+    // The `book` template lays out a left chapter sidebar (one link per
+    // page, current chapter marked `current`) plus the content in
+    // <main class="book-content">.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("book.wcl");
+    std::fs::write(
+        &src,
+        r#"
+site {
+  default_template = :book
+  title = "Handbook"
+}
+page intro {
+  h1 "Intro" {}
+}
+page usage {
+  h1 "Usage" {}
+}
+"#,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+
+    let intro = std::fs::read_to_string(out.path().join("intro.html")).expect("read");
+    // Sidebar with the book title and a link per chapter.
+    assert!(intro.contains("<nav class=\"book-sidebar\">"), "{intro}");
+    assert!(
+        intro.contains("<div class=\"book-title\">Handbook</div>"),
+        "{intro}"
+    );
+    // On intro.html, `intro` is the current chapter; `usage` is not.
+    assert!(
+        intro.contains("<a class=\"book-chapter current\" href=\"intro.html\">intro</a>"),
+        "current chapter not highlighted:\n{intro}"
+    );
+    assert!(
+        intro.contains("<a class=\"book-chapter\" href=\"usage.html\">usage</a>"),
+        "{intro}"
+    );
+    // Content lands in the reading column.
+    assert!(
+        intro
+            .contains("<main class=\"book-content\"><p class=\"heading-1\"><span>Intro</span></p>"),
+        "{intro}"
+    );
+
+    // On usage.html the highlight moves to the `usage` chapter.
+    let usage = std::fs::read_to_string(out.path().join("usage.html")).expect("read");
+    assert!(
+        usage.contains("<a class=\"book-chapter current\" href=\"usage.html\">usage</a>"),
+        "{usage}"
+    );
+}

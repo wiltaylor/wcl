@@ -464,6 +464,35 @@ template webpage {
   ]
 }
 
+// Stdlib `book` template: an mdbook-style layout — a fixed left
+// sidebar listing every page as a chapter (the current chapter is
+// highlighted) and the page content in a reading column.
+template book {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+    HtmlFundamental::Element {
+      tag: "nav", id: none, class: ["book-sidebar"], attrs: none,
+      children: flatten([
+        [ HtmlFundamental::Element {
+            tag: "div", id: none, class: ["book-title"], attrs: none,
+            children: [ HtmlFundamental::Raw { html: c.title } ],
+          } ],
+        map(c.pages, fn(p: PageRef) -> HtmlFundamental
+          HtmlFundamental::Element {
+            tag: "a", id: none,
+            class: if p.name == c.page_name { ["book-chapter", "current"] }
+                   else { ["book-chapter"] },
+            attrs: [["href", p.href]],
+            children: [ HtmlFundamental::Raw { html: p.name } ],
+          }),
+      ]),
+    },
+    HtmlFundamental::Element {
+      tag: "main", id: none, class: ["book-content"], attrs: none,
+      children: [ HtmlFundamental::Raw { html: c.content } ],
+    },
+  ]
+}
+
 // Inline parsed-text variants produced by `inline_pattern` blocks.
 // The renderer dispatches Plain to `<span class="...">…</span>` and
 // Link to `<a href="…" class="…">…</a>`. The `text` field of each

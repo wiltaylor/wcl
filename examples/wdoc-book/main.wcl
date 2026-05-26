@@ -1,0 +1,57 @@
+// A book built with wdoc's stdlib `book` template (mdbook-style).
+//
+//   wcl wdoc serve examples/wdoc-book/main.wcl
+//   wcl wdoc build --out _book examples/wdoc-book/main.wcl
+//
+// The `site` block selects `:book` as the default template, so every
+// page renders as a chapter: a fixed left sidebar lists all chapters
+// (the current one highlighted) and the chapter content reads in the
+// right-hand column. Chapters appear in the sidebar in document order.
+
+site {
+  default_template = :book
+  title            = "WCL Handbook"
+}
+
+// Landing page. The dev server serves `/` from the page named
+// `index`, so a book needs one — it's the cover / table of contents
+// and the first entry in the sidebar.
+page index {
+  h1 "WCL Handbook" {}
+  text {
+    span "A short guide to the WCL configuration language. Pick a chapter from the sidebar, or start with the [Introduction](introduction)." {}
+  }
+}
+
+page introduction {
+  h1 "Introduction" {}
+  text {
+    span "WCL is a configuration language with a lazy evaluator, a schema system, and a document view layer. This handbook walks through it chapter by chapter." {}
+  }
+  text {
+    span "Use the sidebar to jump between chapters. The chapter you're reading is **highlighted**." {}
+  }
+}
+
+page installation {
+  h1 "Installation" {}
+  text { span "Install the CLI from the workspace:" {} }
+  code bash {
+    source = "cargo install --path crates/wcl"
+  }
+  text { span "Then check a file with `wcl check` or render docs with `wcl wdoc build`." {} }
+}
+
+page syntax {
+  h1 "Syntax" {}
+  text { span "Fields are `name = expr`; blocks group nested items; `let` declares composition helpers that never appear in the queried document." {} }
+  code wcl {
+    source = "let port = 8080\n\nserver {\n  host = \"0.0.0.0\"\n  addr = port\n}"
+  }
+}
+
+page reference {
+  h1 "Reference" {}
+  text { span "The standard library ships collection, string, list, tensor, and control-flow builtins." {} }
+  text { span "See the [Syntax](syntax) chapter for the language basics, or jump back to the [Introduction](introduction)." {} }
+}

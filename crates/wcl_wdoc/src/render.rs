@@ -58,6 +58,17 @@ pub(crate) const SITE_CSS: &str = "\
 .site-nav a { text-decoration: none; }
 .site-main { display: block; }";
 
+/// Default styling for the bundled `book` template — a fixed left
+/// chapter sidebar and a centered reading column. Injected like
+/// `SITE_CSS`; user `class` rules can override it.
+pub(crate) const BOOK_CSS: &str = "\
+.book-sidebar { position: fixed; top: 0; left: 0; width: 16rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem; border-right: 1px solid #ccc; background: #fafafa; }
+.book-title { font-weight: bold; font-size: 1.1rem; margin-bottom: 0.75rem; }
+.book-sidebar a.book-chapter { display: block; padding: 0.2rem 0; color: #333; text-decoration: none; }
+.book-sidebar a.book-chapter:hover { color: #003a8c; }
+.book-sidebar a.current { font-weight: bold; color: #003a8c; }
+.book-content { margin-left: 16rem; padding: 1rem 2.5rem; max-width: 46rem; }";
+
 /// Wrap a page's `body` HTML in the document shell. The `<head>`
 /// (title + global stylesheet) is owned here regardless of template;
 /// templates control the `<body>` contents via `render_template`.
