@@ -77,7 +77,7 @@ cli-run *ARGS:
 wdoc-serve *ARGS:
     cargo run -p wcl -- wdoc serve examples/wdoc/main.wcl {{ARGS}}
 
-# Serve examples/wdoc-book/main.wcl (the mdbook-style `book` template)
+# Serve examples/wdoc-book/main.wcl (Nord-themed mdbook-style `book`)
 [group('dev')]
 wdoc-book-serve *ARGS:
     cargo run -p wcl -- wdoc serve examples/wdoc-book/main.wcl {{ARGS}}

@@ -41,6 +41,25 @@ struct Collector {
 /// before bailing.
 const MAX_LOWER_DEPTH: usize = 32;
 
+/// Base page styling. Resets the body margin and makes it fill the
+/// viewport so a themed `class "wdoc-body" { … }` background reaches
+/// every edge (no white gutter / short-page gap). Colour-neutral, so
+/// un-themed pages look the same as before.
+pub(crate) const BASE_CSS: &str = "\
+.wdoc-body { margin: 0; min-height: 100vh; }";
+
+/// Default heading hierarchy. `h1`..`h6` lower to `<p class=\"heading-N\">`,
+/// which otherwise render at body size; these give them weight and a
+/// descending scale. Bare-class selectors so a user `class \"heading-1\"`
+/// (e.g. to colour a level) overrides them.
+pub(crate) const HEADING_CSS: &str = "\
+.heading-1 { font-size: 1.9rem; font-weight: 700; line-height: 1.2; margin: 1.4rem 0 0.6rem; }
+.heading-2 { font-size: 1.5rem; font-weight: 700; line-height: 1.25; margin: 1.3rem 0 0.5rem; }
+.heading-3 { font-size: 1.25rem; font-weight: 600; margin: 1.1rem 0 0.4rem; }
+.heading-4 { font-size: 1.1rem; font-weight: 600; margin: 1rem 0 0.3rem; }
+.heading-5 { font-size: 1rem; font-weight: 600; margin: 0.9rem 0 0.3rem; }
+.heading-6 { font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin: 0.9rem 0 0.3rem; }";
+
 /// Default styling for `table` blocks, injected into every page's
 /// `<style>` (before user `class` rules, so those still override it).
 /// Keeps tables legible out of the box without forcing every author
@@ -61,16 +80,24 @@ pub(crate) const SITE_CSS: &str = "\
 /// Default styling for the bundled `book` template — a fixed left
 /// chapter sidebar and a centered reading column. Injected like
 /// `SITE_CSS`; user `class` rules can override it.
+// Colours sit on bare single-class selectors (`.book-chapter`,
+// `.book-section`, …) so a user `class \"book-chapter\" { … }` (injected
+// after this) can override them; layout stays on the compound
+// selectors. The active chapter is distinguished by weight, not colour,
+// so it inherits whatever link colour a theme sets.
 pub(crate) const BOOK_CSS: &str = "\
 .book-sidebar { position: fixed; top: 0; left: 0; width: 16rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem; border-right: 1px solid #ccc; background: #fafafa; }
 .book-title { font-weight: bold; font-size: 1.1rem; margin-bottom: 0.75rem; }
 .book-sidebar ul.book-toc { list-style: none; margin: 0; padding-left: 0; }
 .book-sidebar ul.book-toc ul.book-toc { padding-left: 0.85rem; }
-.book-sidebar a.book-chapter { display: block; padding: 0.2rem 0; color: #333; text-decoration: none; }
-.book-sidebar a.book-chapter:hover { color: #003a8c; }
-.book-sidebar a.current { font-weight: bold; color: #003a8c; }
-.book-sidebar .book-section { display: block; padding: 0.35rem 0 0.1rem; font-weight: 600; color: #555; }
-.book-content { margin-left: 16rem; padding: 1rem 2.5rem; max-width: 46rem; }";
+.book-sidebar a.book-chapter { display: block; padding: 0.2rem 0; }
+.book-chapter { color: #333; text-decoration: none; }
+.book-chapter:hover { text-decoration: underline; }
+.current { font-weight: bold; }
+.book-sidebar .book-section { display: block; padding: 0.35rem 0 0.1rem; font-weight: 600; }
+.book-section { color: #555; }
+.book-content { margin-left: 16rem; padding: 1rem 2.5rem; max-width: 46rem; }
+.theme-toggle { display: block; margin: 0 0 0.75rem; padding: 0.2rem 0.6rem; cursor: pointer; background: transparent; border: 1px solid currentColor; border-radius: 4px; color: inherit; font: inherit; }";
 
 /// Wrap a page's `body` HTML in the document shell. The `<head>`
 /// (title + global stylesheet) is owned here regardless of template;
@@ -81,7 +108,7 @@ pub(crate) fn render_page(name: &str, css: &str, body: &str) -> String {
          <html>\n\
          <head><meta charset=\"utf-8\"><title>{title}</title>\n\
          <style>{css}</style></head>\n\
-         <body>\n\
+         <body class=\"wdoc-body\">\n\
          {body}</body>\n\
          </html>\n",
         title = escape_html(name),
@@ -163,6 +190,7 @@ fn toc_to_value(nodes: &[TocNode], current: &str) -> Value {
 /// Best-effort: a missing/failed `render` yields an empty body, like
 /// the rest of the lowering pipeline. When `toc_nodes` is empty the
 /// `toc` falls back to a flat entry per page.
+#[allow(clippy::too_many_arguments)] // cohesive per-page render inputs
 pub(crate) fn render_template(
     doc: &Document,
     template: &Block<'_>,
@@ -171,6 +199,7 @@ pub(crate) fn render_template(
     page_name: &str,
     pages: &[(String, String)],
     toc_nodes: &[TocNode],
+    theme_toggle: bool,
 ) -> String {
     let Some(field) = template.field("render") else {
         return String::new();
@@ -217,6 +246,7 @@ pub(crate) fn render_template(
     ctx.insert("page_name".to_string(), Value::Utf8(page_name.to_string()));
     ctx.insert("pages".to_string(), pages_val);
     ctx.insert("toc".to_string(), toc_val);
+    ctx.insert("theme_toggle".to_string(), Value::Bool(theme_toggle));
     let arg = Value::Record {
         ty: vec!["TemplateCtx".to_string()],
         fields: ctx,
@@ -249,8 +279,10 @@ pub(crate) fn render_block(
 
 /// Emit a CSS rule body for a `@block("class")` instance.
 /// Returns `None` if the block doesn't have an inline name.
-pub(crate) fn render_class(block: &Block<'_>) -> Option<String> {
-    let name = label_string(block)?;
+/// Build the CSS declaration string for one styling block (a `class`
+/// or one of its `light {}` / `dark {}` mode blocks — they share field
+/// names). Empty when no styling fields are set.
+fn class_props(block: &Block<'_>) -> String {
     let mut props = String::new();
     push_css(&mut props, "color", field_utf8(block, "color").as_deref());
     push_css(
@@ -289,7 +321,46 @@ pub(crate) fn render_class(block: &Block<'_>) -> Option<String> {
     );
     push_css(&mut props, "margin", field_utf8(block, "margin").as_deref());
     push_css(&mut props, "border", field_utf8(block, "border").as_deref());
-    Some(format!(".{name} {{ {props} }}"))
+    props
+}
+
+/// Emit the CSS rule(s) for a `@block("class")`. The class's own
+/// fields are shared defaults; optional `dark {}` / `light {}` mode
+/// blocks add per-mode overrides. `dark` is the default mode; `light`
+/// applies under `prefers-color-scheme: light`; an explicit
+/// `:root[data-theme=…]` (set by the theme toggle) overrides both.
+pub(crate) fn render_class(block: &Block<'_>) -> Option<String> {
+    let name = label_string(block)?;
+    let base = class_props(block);
+    let dark = block.block("dark").map(|b| class_props(&b));
+    let light = block.block("light").map(|b| class_props(&b));
+
+    // Default-mode rule: shared fields, with the dark mode merged in
+    // (dark is the default) so a later same-specificity declaration
+    // wins for overlapping properties.
+    let mut default_props = base.clone();
+    if let Some(d) = &dark {
+        default_props.push_str(d);
+    }
+    let mut out = format!(".{name} {{ {default_props} }}");
+
+    if let Some(l) = &light {
+        write!(
+            out,
+            "\n@media (prefers-color-scheme: light) {{ .{name} {{ {l} }} }}"
+        )
+        .expect("write to String");
+    }
+    // Explicit toggle overrides the system preference (higher specificity).
+    if let Some(d) = &dark {
+        write!(out, "\n:root[data-theme=\"dark\"] .{name} {{ {base}{d} }}")
+            .expect("write to String");
+    }
+    if let Some(l) = &light {
+        write!(out, "\n:root[data-theme=\"light\"] .{name} {{ {base}{l} }}")
+            .expect("write to String");
+    }
+    Some(out)
 }
 
 fn push_css(out: &mut String, prop: &str, value: Option<&str>) {
@@ -2035,7 +2106,7 @@ pub(crate) fn field_id(block: &Block<'_>, name: &str) -> Option<String> {
     }
 }
 
-fn field_bool(block: &Block<'_>, name: &str) -> Option<bool> {
+pub(crate) fn field_bool(block: &Block<'_>, name: &str) -> Option<bool> {
     let field = block.field(name)?;
     match field.value().ok()? {
         Value::Bool(b) => Some(*b),

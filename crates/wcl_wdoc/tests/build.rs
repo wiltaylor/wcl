@@ -153,7 +153,7 @@ fn build_emits_fundamentals_for_example_site() {
         "{overview}"
     );
     assert!(
-        overview.contains("<td><a href=\"about.html\">see</a></td>"),
+        overview.contains("<td><a class=\"link\" href=\"about.html\">see</a></td>"),
         "{overview}"
     );
     assert!(overview.contains("<td>3</td>"), "{overview}");
@@ -1164,7 +1164,7 @@ fn build_renders_link_inline() {
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
     assert!(
-        html.contains("<a href=\"https://example.com\">docs</a>"),
+        html.contains("<a class=\"link\" href=\"https://example.com\">docs</a>"),
         "link not rendered:\n{html}"
     );
 }
@@ -1284,7 +1284,7 @@ page about {
     build_ok(&src, out.path());
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
     assert!(
-        index.contains("<a href=\"about.html\">About</a>"),
+        index.contains("<a class=\"link\" href=\"about.html\">About</a>"),
         "cross-page link missing:\n{index}"
     );
     assert!(out.path().join("about.html").exists());
@@ -1314,7 +1314,7 @@ page about {
     build_ok(&src, out.path());
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
     assert!(
-        index.contains("<a href=\"about.html#section\">deep section</a>"),
+        index.contains("<a class=\"link\" href=\"about.html#section\">deep section</a>"),
         "fragment-bearing cross-page link missing:\n{index}"
     );
 }
@@ -1338,7 +1338,7 @@ page index {
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
     assert!(
-        html.contains("<a href=\"https://example.com\">docs</a>"),
+        html.contains("<a class=\"link\" href=\"https://example.com\">docs</a>"),
         "external url should pass through:\n{html}"
     );
 }
@@ -1362,7 +1362,7 @@ page index {
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
     assert!(
-        html.contains("<a href=\"#top\">top</a>"),
+        html.contains("<a class=\"link\" href=\"#top\">top</a>"),
         "same-page anchor should pass through:\n{html}"
     );
 }
@@ -2331,4 +2331,145 @@ page intro { h1 "Intro" {} }
         Err(_) => panic!("expected BadTemplate"),
         Ok(_) => panic!("expected BadTemplate, got Ok"),
     }
+}
+
+// ── Theming via the class system (light/dark) ──────────────────────
+
+#[test]
+fn class_light_dark_modes_emit_themed_css() {
+    // A class with `dark {}` / `light {}` mode blocks emits: a default
+    // (dark) rule, a `@media (prefers-color-scheme: light)` rule, and
+    // explicit `:root[data-theme=…]` overrides (which the toggle uses).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("t.wcl");
+    std::fs::write(
+        &src,
+        r##"
+class "panel" {
+  dark  { background = "#2e3440" }
+  light { background = "#eceff4" }
+}
+page index { text { span "hi" {} } }
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(html.contains(".panel { background:#2e3440; }"), "{html}");
+    assert!(
+        html.contains("@media (prefers-color-scheme: light) { .panel { background:#eceff4; } }"),
+        "{html}"
+    );
+    assert!(
+        html.contains(":root[data-theme=\"dark\"] .panel { background:#2e3440; }"),
+        "{html}"
+    );
+    assert!(
+        html.contains(":root[data-theme=\"light\"] .panel { background:#eceff4; }"),
+        "{html}"
+    );
+}
+
+#[test]
+fn class_without_modes_is_unchanged() {
+    // No `dark`/`light` ⇒ a single bare rule, no media/data-theme.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("t.wcl");
+    std::fs::write(
+        &src,
+        r##"
+class accent { color = "#003a8c"  bold = true }
+page index { text { span "hi" { class = ["accent"] } } }
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains(".accent { color:#003a8c;font-weight:bold; }"),
+        "{html}"
+    );
+    assert!(
+        !html.contains("prefers-color-scheme"),
+        "unthemed class leaked a media rule:\n{html}"
+    );
+    // The page body always carries the themeable hook class.
+    assert!(html.contains("<body class=\"wdoc-body\">"), "{html}");
+}
+
+#[test]
+fn book_theme_toggle_is_gated_by_site_flag() {
+    let fixture = |toggle: bool| -> String {
+        let tmp = TempDir::new().expect("mkdir tempdir");
+        let src = tmp.path().join("t.wcl");
+        std::fs::write(
+            &src,
+            format!(
+                "site {{ default_template = :book  theme_toggle = {toggle} }}\npage index {{ h1 \"H\" {{}} }}\n"
+            ),
+        )
+        .expect("write fixture");
+        let out = TempDir::new().expect("mkdir out");
+        build_ok(&src, out.path());
+        std::fs::read_to_string(out.path().join("index.html")).expect("read")
+    };
+
+    let on = fixture(true);
+    assert!(on.contains("<button class=\"theme-toggle\""), "{on}");
+    assert!(
+        on.contains("wdocToggleTheme"),
+        "toggle script missing:\n{on}"
+    );
+
+    let off = fixture(false);
+    assert!(
+        !off.contains("<button"),
+        "toggle should be gated off:\n{off}"
+    );
+    assert!(
+        !off.contains("wdocToggleTheme"),
+        "toggle script should be gated off:\n{off}"
+    );
+}
+
+#[test]
+fn book_example_is_nord_themed() {
+    // The shipped book example is Nord-themed: dark-default regions +
+    // a light alternative + the toggle.
+    let out = TempDir::new().expect("mkdir tempdir");
+    build_ok(
+        &examples_dir().join("wdoc-book").join("main.wcl"),
+        out.path(),
+    );
+    let html = std::fs::read_to_string(out.path().join("syntax.html")).expect("read");
+    assert!(
+        html.contains(".wdoc-body { color:#d8dee9;background:#2e3440; }"),
+        "{html}"
+    );
+    assert!(
+        html.contains("@media (prefers-color-scheme: light) { .wdoc-body {"),
+        "{html}"
+    );
+    assert!(html.contains("<button class=\"theme-toggle\""), "{html}");
+    // More of the palette: heading levels, inline code, and links are
+    // themed too, and headings have default sizing.
+    assert!(html.contains(".heading-1 { color:#88c0d0; }"), "{html}");
+    assert!(html.contains(".heading-2 { color:#8fbcbb; }"), "{html}");
+    assert!(
+        html.contains(".heading-1 { font-size: 1.9rem;"),
+        "default heading sizing missing:\n{html}"
+    );
+    assert!(html.contains(".link { color:#88c0d0; }"), "{html}");
+    assert!(
+        html.contains("<a class=\"link\" href=\"introduction.html\">links</a>"),
+        "{html}"
+    );
+    assert!(
+        html.contains("<p class=\"heading-2\"><span>Fields</span></p>"),
+        "{html}"
+    );
 }

@@ -97,6 +97,45 @@ type Class {
   padding:     utf8?
   margin:      utf8?
   border:      utf8?
+
+  // Optional per-mode overrides. `dark` is the default mode; `light`
+  // applies under a system `prefers-color-scheme: light` (and either
+  // wins when the reader explicitly toggles). Same fields as the class.
+  @child("dark")  dark:  ClassMode?
+  @child("light") light: ClassModeLight?
+}
+
+// Per-mode styling for a `class`'s `dark {}` / `light {}` block — the
+// same styling fields as `Class` (minus the name).
+@block("dark")
+type ClassMode {
+  color:       utf8?
+  background:  utf8?
+  bold:        bool?
+  italic:      bool?
+  underline:   bool?
+  font_size:   utf8?
+  font_family: utf8?
+  text_align:  utf8?
+  padding:     utf8?
+  margin:      utf8?
+  border:      utf8?
+}
+
+// `light {}` block — structurally identical to `dark {}`.
+@block("light")
+type ClassModeLight {
+  color:       utf8?
+  background:  utf8?
+  bold:        bool?
+  italic:      bool?
+  underline:   bool?
+  font_size:   utf8?
+  font_family: utf8?
+  text_align:  utf8?
+  padding:     utf8?
+  margin:      utf8?
+  border:      utf8?
 }
 
 // Paragraph — children are spans rendered in source order.
@@ -428,11 +467,12 @@ type TocEntry {
 
 // Context handed to a template's (and any part function's) `render`.
 type TemplateCtx {
-  content:   utf8            // the page's rendered body HTML (embed via Raw)
-  title:     utf8            // site title, or the page name if unset
-  page_name: utf8            // the current page's name
-  pages:     list<PageRef>   // every page in the document, in source order
-  toc:       list<TocEntry>  // the book TOC tree; flat (one per page) if no `toc`
+  content:      utf8            // the page's rendered body HTML (embed via Raw)
+  title:        utf8            // site title, or the page name if unset
+  page_name:    utf8            // the current page's name
+  pages:        list<PageRef>   // every page in the document, in source order
+  toc:          list<TocEntry>  // the book TOC tree; flat (one per page) if no `toc`
+  theme_toggle: bool            // whether to render a light/dark toggle (site flag)
 }
 
 // One table-of-contents entry. The inline label is the display title;
@@ -459,6 +499,9 @@ type Toc {
 type SiteConfig {
   default_template: symbol?
   title:            utf8?
+  // Render a light/dark toggle (the `book` template shows it). Pair
+  // with `class` blocks that declare `dark {}` / `light {}` modes.
+  theme_toggle:     bool?
   @child("toc") toc: Toc?
 }
 
@@ -542,6 +585,7 @@ template book {
             tag: "div", id: none, class: ["book-title"], attrs: none,
             children: [ HtmlFundamental::Raw { html: c.title } ],
           } ],
+        if c.theme_toggle { book_theme_toggle } else { [] },
         book_toc(c.toc),
       ]),
     },
@@ -551,6 +595,23 @@ template book {
     },
   ]
 }
+
+// Light/dark toggle: a button plus a one-time script. The script
+// applies a persisted choice on load and defines `wdocToggleTheme`,
+// which flips `<html data-theme>` between dark/light (seeded from the
+// system preference) and persists to localStorage. With no
+// `data-theme` set, the `class` `@media (prefers-color-scheme: light)`
+// rules follow the system; the attribute (toggle) overrides them.
+let book_theme_toggle = [
+  HtmlFundamental::Element {
+    tag: "button", id: none, class: ["theme-toggle"],
+    attrs: [["onclick", "wdocToggleTheme()"]],
+    children: [ HtmlFundamental::Raw { html: "◐ Theme" } ],
+  },
+  HtmlFundamental::Raw {
+    html: "<script>(function(){var r=document.documentElement;try{var s=localStorage.getItem('wdoc-theme');if(s){r.setAttribute('data-theme',s);}}catch(e){}window.wdocToggleTheme=function(){var lt=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches;var cur=r.getAttribute('data-theme')||(lt?'light':'dark');var n=(cur==='dark')?'light':'dark';r.setAttribute('data-theme',n);try{localStorage.setItem('wdoc-theme',n);}catch(e){}};})();</script>",
+  },
+]
 
 // Inline parsed-text variants produced by `inline_pattern` blocks.
 // The renderer dispatches Plain to `<span class="...">…</span>` and
@@ -774,6 +835,8 @@ inline_pattern code {
 
 inline_pattern link {
   pattern = "\\[([^\\]]+)\\]\\(([^)]+)\\)"
+  // Links carry a `link` class so they can be themed with a `class`
+  // block (e.g. for light/dark colours), like any other region.
   to_span = fn(g: list<utf8>) -> list<InlineSpan>
-    [InlineSpan::Link { text: at(g, 1), href: at(g, 2), class: none }]
+    [InlineSpan::Link { text: at(g, 1), href: at(g, 2), class: ["link"] }]
 }

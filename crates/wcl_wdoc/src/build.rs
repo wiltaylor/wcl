@@ -8,7 +8,7 @@ use wcl_lang::{Block, Document, Environment, Value};
 use crate::highlight;
 use crate::inline::InlinePatterns;
 use crate::render::{
-    TocNode, field_id, field_symbol, field_utf8, find_template, read_toc, render_block,
+    TocNode, field_bool, field_id, field_symbol, field_utf8, find_template, read_toc, render_block,
     render_class, render_page, render_template,
 };
 
@@ -85,7 +85,9 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         .collect::<Vec<_>>()
         .join("\n");
     let css = format!(
-        "{}\n{}\n{}\n{}\n{class_css}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{class_css}",
+        crate::render::BASE_CSS,
+        crate::render::HEADING_CSS,
         highlight::theme_css(),
         crate::render::TABLE_CSS,
         crate::render::SITE_CSS,
@@ -100,6 +102,10 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         .as_ref()
         .and_then(|b| field_symbol(b, "default_template"));
     let site_title = site.as_ref().and_then(|b| field_utf8(b, "title"));
+    let theme_toggle = site
+        .as_ref()
+        .and_then(|b| field_bool(b, "theme_toggle"))
+        .unwrap_or(false);
 
     // Book table of contents (the `site` block's `toc`), shared by all
     // pages; the per-page `current` flag is applied at render time.
@@ -183,7 +189,14 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
                 };
                 let title = site_title.clone().unwrap_or_else(|| page_name.clone());
                 render_template(
-                    &doc, &tmpl, &content, &title, &page_name, &pages, &toc_nodes,
+                    &doc,
+                    &tmpl,
+                    &content,
+                    &title,
+                    &page_name,
+                    &pages,
+                    &toc_nodes,
+                    theme_toggle,
                 )
             }
             None => content,

@@ -9,10 +9,15 @@
 // `page = name` links it to a page, and nested `chapter`s become
 // sub-entries (any depth). A `chapter` with no `page` is a grouping
 // heading. The current chapter is highlighted.
+//
+// The book is themed with the Nord palette via `class` blocks (below):
+// dark by default, light under a light system theme, switchable with
+// the ◐ toggle that `theme_toggle = true` adds to the sidebar.
 
 site {
   default_template = :book
   title            = "WCL Handbook"
+  theme_toggle     = true
 
   toc {
     chapter "Home" { page = index }
@@ -26,6 +31,74 @@ site {
     }
     chapter "Reference" { page = reference }
   }
+}
+
+// ── Nord theme (Polar Night = dark/default, Snow Storm = light) ──────
+//
+// Each region class carries a `dark {}` (default) and a `light {}` mode
+// block; wdoc compiles them into the default rule, a
+// `@media (prefers-color-scheme: light)` rule, and `:root[data-theme=…]`
+// overrides the toggle flips. Built-in class names are quoted because
+// they contain hyphens.
+
+class "wdoc-body" {
+  dark  { background = "#2e3440"  color = "#d8dee9" }   // nord0 / nord4
+  light { background = "#eceff4"  color = "#2e3440" }   // nord6 / nord0
+}
+class "book-sidebar" {
+  dark  { background = "#3b4252"  border = "1px solid #434c5e" }   // nord1 / nord2
+  light { background = "#e5e9f0"  border = "1px solid #d8dee9" }   // nord5 / nord4
+}
+// Sidebar: bright Frost title, softer Frost chapter links, and a warm
+// Aurora highlight on the current chapter so the reading position pops.
+class "book-title" {
+  dark  { color = "#88c0d0" }   // nord8
+  light { color = "#5e81ac" }   // nord10
+}
+class "book-chapter" {
+  dark  { color = "#81a1c1" }   // nord9
+  light { color = "#5e81ac" }   // nord10
+}
+class "current" {
+  dark  { color = "#ebcb8b" }   // nord13 (Aurora yellow)
+  light { color = "#bf616a" }   // nord11 (Aurora red)
+}
+class "book-section" {
+  dark  { color = "#8fbcbb" }   // nord7
+  light { color = "#4c566a" }   // nord3
+}
+
+// Content headings descend through the Frost blues so each level reads
+// distinctly (the renderer already sizes them; this colours them).
+class "heading-1" {
+  dark  { color = "#88c0d0" }   // nord8
+  light { color = "#5e81ac" }   // nord10
+}
+class "heading-2" {
+  dark  { color = "#8fbcbb" }   // nord7
+  light { color = "#5e81ac" }   // nord10
+}
+class "heading-3" {
+  dark  { color = "#81a1c1" }   // nord9
+  light { color = "#4c566a" }   // nord3
+}
+
+// Links use Frost; inline code gets an Aurora-green chip.
+class "link" {
+  dark  { color = "#88c0d0" }   // nord8
+  light { color = "#5e81ac" }   // nord10
+}
+class "code" {
+  padding = "0.05rem 0.3rem"
+  dark  { color = "#a3be8c"  background = "#3b4252" }   // nord14 on nord1
+  light { color = "#4c6b2f"  background = "#e5e9f0" }   // green on nord5
+}
+
+// Code blocks stay a light Snow Storm card in both modes so the bundled
+// syntax-token colours remain legible.
+class "code-block" {
+  background = "#e5e9f0"
+  border     = "1px solid #d8dee9"
 }
 
 // Landing page. The dev server serves `/` from the page named
@@ -59,9 +132,24 @@ page installation {
 
 page syntax {
   h1 "Syntax" {}
-  text { span "Fields are `name = expr`; blocks group nested items; `let` declares composition helpers that never appear in the queried document." {} }
+  text { span "WCL source is a tree of **fields** and **blocks**. This chapter shows each level — note how `h1`, `h2`, and `h3` headings take progressively cooler Frost tones." {} }
+
+  h2 "Fields" {}
+  text { span "A field binds a name to an expression with `=`. Inline `code` and [links](introduction) pick up their own theme colours." {} }
   code wcl {
-    source = "let port = 8080\n\nserver {\n  host = \"0.0.0.0\"\n  addr = port\n}"
+    source = "name = \"wcl\"\nport = 8080\nenabled = true"
+  }
+
+  h2 "Blocks" {}
+  text { span "Blocks group nested items and can carry labels." {} }
+  code wcl {
+    source = "server \"web\" {\n  host = \"0.0.0.0\"\n  addr = port\n}"
+  }
+
+  h3 "Let bindings" {}
+  text { span "`let` declares composition helpers that never appear in the queried document — handy for sharing values across fields." {} }
+  code wcl {
+    source = "let port = 8080\nserver { addr = port }"
   }
 }
 
