@@ -1439,3 +1439,49 @@ fn parser_rejects_duplicate_symbol_entry() {
         _ => panic!("expected syntax error"),
     }
 }
+
+#[test]
+fn parse_let_item_top_level_and_in_block() {
+    let s = parse("let base = 10\ncfg c { let n = 3 }");
+    // Top-level let.
+    match &s.items[0] {
+        Item::Let(l) => assert_eq!(l.name, "base"),
+        other => panic!("expected top-level Item::Let, got {other:?}"),
+    }
+    // Block-level let.
+    let Item::Block(b) = &s.items[1] else {
+        panic!("expected block");
+    };
+    assert!(
+        matches!(&b.items[0], Item::Let(l) if l.name == "n"),
+        "expected Item::Let inside block, got {:?}",
+        b.items[0]
+    );
+}
+
+#[test]
+fn parse_let_rejects_decorators() {
+    assert_syntax_err(
+        parse_err("@foo let x = 1"),
+        "decorators are not allowed on let bindings",
+    );
+}
+
+#[test]
+fn let_round_trips_through_formatter() {
+    let src = "let base = 10\nlet scale = fn(n: i64) -> i64 n * base\ncfg c {\n  let title = \"hi\"\n  out = title\n}\n";
+    let ast = parse(src);
+    let printed = crate::format::to_source(&ast);
+    assert!(printed.contains("let base = 10"), "printed:\n{printed}");
+    assert!(printed.contains("let scale = fn"), "printed:\n{printed}");
+    assert!(
+        printed.contains("let title = \"hi\""),
+        "printed:\n{printed}"
+    );
+    // Re-parsing the printed form yields an identical AST.
+    let reparsed = parse(&printed);
+    assert_eq!(
+        ast.items, reparsed.items,
+        "format round-trip changed the AST"
+    );
+}

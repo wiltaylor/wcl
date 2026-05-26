@@ -278,6 +278,20 @@ pub struct Field {
     pub leading_trivia: Vec<Trivia>,
 }
 
+/// A `let name = expr` item declared at the file (global) scope or
+/// inside a block. Unlike a [`Field`], a let binding is a composition
+/// helper: it is resolvable by name from sibling/descendant
+/// expressions but never appears as document data (not queryable, not
+/// iterated, not schema-validated). Distinct from the expression-level
+/// [`LetBinding`] (which lives inside `Expr::Block` and uses `;`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LetItem {
+    pub name: String,
+    pub value: Expr,
+    pub span: Span,
+    pub leading_trivia: Vec<Trivia>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block {
     pub kind: String,
@@ -459,6 +473,7 @@ pub struct ConnectionStmt {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item {
     Field(Field),
+    Let(LetItem),
     Block(Block),
     TypeDecl(TypeDecl),
     InterfaceDecl(InterfaceDecl),

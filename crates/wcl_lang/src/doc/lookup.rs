@@ -10,7 +10,7 @@ use crate::ast;
 
 use super::cells::{ItemCellKind, ItemCells};
 use super::scope::Scope;
-use super::{Block, Document, Field, TableView};
+use super::{Block, Document, Field, LetView, TableView};
 
 pub(super) fn find_field<'a>(
     items: &'a [ast::Item],
@@ -49,6 +49,30 @@ pub(super) fn find_block<'a>(
                 cells,
                 doc,
                 kind_override: None,
+                scope: scope.clone(),
+            }),
+            _ => None,
+        })
+}
+
+/// Find a `let name = expr` binding by name. Mirrors [`find_field`]
+/// but matches `Item::Let`; the resulting [`LetView`] resolves and
+/// caches the bound value on demand.
+pub(super) fn find_let<'a>(
+    items: &'a [ast::Item],
+    cells: &'a [ItemCells],
+    name: &str,
+    doc: &'a Document,
+    scope: &Scope<'a>,
+) -> Option<LetView<'a>> {
+    items
+        .iter()
+        .zip(cells)
+        .find_map(|(item, cells)| match (item, &cells.kind) {
+            (ast::Item::Let(l), ItemCellKind::Let(cell)) if l.name == name => Some(LetView {
+                ast: l,
+                cell,
+                doc,
                 scope: scope.clone(),
             }),
             _ => None,

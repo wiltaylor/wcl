@@ -87,6 +87,11 @@ impl<'a> Parser<'a> {
             Item::UseDecl(_) => {}
             Item::Import(_) => {}
             Item::Table(_) => {}
+            // Let bindings are intentionally NOT registered in the symbol
+            // index: they must stay out of `Document::field`/`block`/`get`
+            // and any query that walks named symbols. Resolution happens by
+            // scanning items directly (see `find_let` / `root_let`).
+            Item::Let(_) => {}
             Item::TypeDecl(t) => {
                 let members = t.fields.iter().map(|f| (f.name.as_str(), f.span));
                 self.register_decl_with_members(
@@ -343,6 +348,17 @@ impl<'a> Parser<'a> {
                     };
                 }
                 "symbol_set" => return self.parse_symbol_set_decl(decorators),
+                "let" => {
+                    if !decorators.is_empty() {
+                        let span = decorators[0].span;
+                        return Err(self.err(
+                            "decorators are not allowed on let bindings",
+                            span,
+                            "remove decorator",
+                        ));
+                    }
+                    return self.parse_let_item();
+                }
                 _ => {}
             }
         }

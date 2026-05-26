@@ -25,7 +25,7 @@ use super::lookup::{iter_blocks, iter_fields, iter_tables};
 use super::schema_check::compute_schema_errors;
 use super::scope::{Scope, ScopeFrame};
 use super::variant_dispatch;
-use super::{Document, find_block, find_field, has_schemaless};
+use super::{Document, find_block, find_field, find_let, has_schemaless};
 use super::{expr_to_path_segments, materialise_dataref_or_path, span_to_miette};
 
 /// Closed set of decorator names the document layer special-cases:
@@ -1404,11 +1404,52 @@ impl<'a> Field<'a> {
     }
 }
 
+/// View over a `let name = expr` item (top-level or block-level). A
+/// composition helper resolved by name during evaluation but never
+/// surfaced as document data. Its value is memoised in a [`FieldCell`]
+/// with the same cycle-detection the field evaluator uses; evaluation
+/// happens lazily on first name resolution.
+#[derive(Clone)]
+pub(crate) struct LetView<'a> {
+    pub(super) ast: &'a ast::LetItem,
+    pub(super) cell: &'a FieldCell,
+    pub(super) doc: &'a Document,
+    /// Scope the let's value expression is evaluated in — the
+    /// declaring block's child scope (or `Scope::root()` for a
+    /// top-level let), so it sees siblings and ancestors.
+    pub(super) scope: Scope<'a>,
+}
+
+impl<'a> LetView<'a> {
+    /// Evaluate (once) and return the bound value. Mirrors
+    /// [`Field::value`]'s cycle-detection: a re-entrant evaluation
+    /// caches and returns an `EvalError::Cycle`.
+    pub(crate) fn value(&self) -> Result<Value, EvalError> {
+        let cell = self.cell;
+        if let Some(cached) = cell.value.get() {
+            return cached.clone();
+        }
+        if cell.evaluating.swap(true, Ordering::Acquire) {
+            let _ = cell.value.set(Err(EvalError::Cycle {
+                field: self.ast.name.clone(),
+                span: span_to_miette(self.ast.span),
+            }));
+            return cell
+                .value
+                .get()
+                .expect("cycle cell was just initialised")
+                .clone();
+        }
+        let result = self.doc.eval_in_scope(&self.ast.value, &self.scope);
+        cell.evaluating.store(false, Ordering::Release);
+        cell.value.get_or_init(|| result).clone()
+    }
+}
+
 /// When a `DataRef` has a statically-known concrete type (because
 /// it's a `Block` whose kind has a `@block`/`@table` schema, or a
 /// `Field` whose declared type is a named type), return that
 /// `TypeDecl`. Otherwise `None`.
-
 #[derive(Clone)]
 pub struct Block<'a> {
     pub(super) ast: &'a ast::Block,
@@ -1518,6 +1559,20 @@ impl<'a> Block<'a> {
         for src in self.realize_and_sources() {
             if let Some(b) = find_block(src.items, src.cells, kind, self.doc, &child_scope) {
                 return Some(b);
+            }
+        }
+        None
+    }
+
+    /// Find a `let` binding named `name` declared directly in this
+    /// block (or a block-level import). The let's value evaluates in
+    /// this block's child scope, so it can reference sibling lets /
+    /// fields and ancestors.
+    pub(crate) fn find_let(&self, name: &str) -> Option<LetView<'a>> {
+        let child_scope = self.child_scope();
+        for src in self.realize_and_sources() {
+            if let Some(l) = find_let(src.items, src.cells, name, self.doc, &child_scope) {
+                return Some(l);
             }
         }
         None

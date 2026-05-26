@@ -2803,3 +2803,149 @@ fn inline_default_satisfies_interface_function_field() {
         .expect("&I")
         .expect("Widget conforms via inline-default function");
 }
+
+// ── `let` items (top-level & block-scoped composition helpers) ──────
+
+#[test]
+fn top_level_let_resolves_in_field() {
+    let doc = open(
+        r#"
+        let base = 10
+        x = base + 5
+        "#,
+    );
+    assert_eq!(doc.field("x").unwrap().value().unwrap(), &Value::I64(15));
+}
+
+#[test]
+fn let_is_not_addressable_as_document_data() {
+    let doc = open(
+        r#"
+        let base = 10
+        x = base + 5
+        "#,
+    );
+    // The helper resolves in expressions but is invisible to queries.
+    assert!(
+        doc.get("base").is_none(),
+        "let should not be path-addressable"
+    );
+    assert!(doc.field("base").is_none(), "let is not a field");
+    let names: Vec<&str> = doc.fields().map(|f| f.name()).collect();
+    assert!(
+        !names.contains(&"base"),
+        "let must not appear in fields(): {names:?}"
+    );
+    assert!(names.contains(&"x"));
+}
+
+#[test]
+fn block_level_let_scopes_to_its_block() {
+    let doc = open(
+        r#"
+        @schemaless cfg conf {
+          let n = 3
+          count = n * 2
+        }
+        "#,
+    );
+    let cfg = doc.block("cfg").unwrap();
+    assert_eq!(cfg.field("count").unwrap().value().unwrap(), &Value::I64(6));
+    // The let isn't a field of the block, nor path-addressable.
+    assert!(cfg.field("n").is_none());
+    assert!(doc.get("cfg.n").is_none());
+    assert!(
+        !cfg.fields().any(|f| f.name() == "n"),
+        "block let leaked into fields()"
+    );
+}
+
+#[test]
+fn let_bound_function_composes_a_field() {
+    let doc = open(
+        r#"
+        let double = fn(n: i64) -> i64 n * 2
+        y = double(21)
+        "#,
+    );
+    assert_eq!(doc.field("y").unwrap().value().unwrap(), &Value::I64(42));
+}
+
+#[test]
+fn top_level_let_visible_inside_blocks() {
+    let doc = open(
+        r#"
+        let scale = fn(n: i64) -> i64 n * 10
+        @schemaless cfg conf {
+          let n = 3
+          label = scale(n)
+        }
+        "#,
+    );
+    let cfg = doc.block("cfg").unwrap();
+    assert_eq!(
+        cfg.field("label").unwrap().value().unwrap(),
+        &Value::I64(30)
+    );
+}
+
+#[test]
+fn let_inside_schemad_block_is_not_a_schema_violation() {
+    // `n` is a let helper inside a schema'd block; it must not be
+    // flagged as an unknown field, and `count` (which uses it) must
+    // still validate/evaluate.
+    let doc = Document::open(
+        r#"
+        @document type Doc { @children("cfg") cfgs: list<Cfg> }
+        @block("cfg") type Cfg { count: i64 }
+        cfg { let n = 3  count = n * 2 }
+        "#,
+        "test",
+    )
+    .expect("open");
+    let cfg = doc.block("cfg").unwrap();
+    assert!(
+        cfg.schema_errors().is_empty(),
+        "let triggered schema errors: {:?}",
+        cfg.schema_errors()
+    );
+    assert_eq!(cfg.field("count").unwrap().value().unwrap(), &Value::I64(6));
+    assert!(
+        doc.schema_errors().is_empty(),
+        "document schema errors: {:?}",
+        doc.schema_errors()
+    );
+}
+
+#[test]
+fn let_cycle_surfaces_as_cycle_error() {
+    let doc = open(
+        r#"
+        let a = b
+        let b = a
+        x = a
+        "#,
+    );
+    let err = doc.field("x").unwrap().value().unwrap_err();
+    assert!(
+        matches!(err, EvalError::Cycle { .. }),
+        "expected Cycle, got {err:?}"
+    );
+}
+
+#[test]
+fn inner_let_shadows_outer() {
+    let doc = open(
+        r#"
+        let v = 1
+        @schemaless cfg conf {
+          let v = 2
+          out = v
+        }
+        top = v
+        "#,
+    );
+    assert_eq!(doc.field("top").unwrap().value().unwrap(), &Value::I64(1));
+    let cfg = doc.block("cfg").unwrap();
+    assert_eq!(cfg.field("out").unwrap().value().unwrap(), &Value::I64(2));
+}

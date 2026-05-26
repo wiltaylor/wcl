@@ -1,0 +1,39 @@
+// `let` items declare composition helpers — named values and
+// functions usable in expressions but absent from the queried
+// document. They live at the file (global) scope or inside any block,
+// and are lexically scoped: a block's let is visible only to that
+// block and its descendants.
+//
+//   wcl get examples/lets.wcl api_port      -> 8000
+//   wcl get examples/lets.wcl service.port  -> 8003
+//   wcl get examples/lets.wcl base_port     -> (not found; helpers
+//                                               are not document data)
+
+@document
+type Config {
+  api_port: i64
+  web_port: i64
+  @child("service") service: Service
+}
+
+@block("service")
+type Service {
+  replicas: i64
+  port:     i64
+}
+
+// Global helpers. `bump` resolves `base_port` through the scope chain
+// at call time, so it composes with the value above it.
+let base_port = 8000
+let bump      = fn(n: i64) -> i64 base_port + n
+
+api_port = bump(0)
+web_port = bump(1)
+
+service {
+  // Block-scoped helper: `count` is visible here and to any nested
+  // block, but never appears as a field of `service`.
+  let count = 3
+  replicas  = count
+  port      = bump(count)
+}

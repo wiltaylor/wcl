@@ -96,9 +96,13 @@ fn lookup_function(doc: &Document, ctx: &EvalCtx<'_>, name: &str) -> Option<FnVa
     if let Some(Value::Function(fv)) = ctx.lookup(name) {
         return Some(fv.clone());
     }
-    let dr = doc.scope_lookup(&ctx.scope, name)?;
-    let span = Span::new(0, 0);
-    match materialise_dataref(dr, span) {
+    // A let-bound or scope-resolved value that fails to evaluate isn't a
+    // function — fall through to None so the caller can try a builtin.
+    // Use `DataRef::value()` (not `materialise_dataref`) so a `let f =
+    // fn(...)` — which resolves to a pre-materialised `VariantValue` —
+    // is unwrapped, not just a top-level `f = fn(...)` field.
+    let dr = doc.scope_lookup(&ctx.scope, name)?.ok()?;
+    match dr.value() {
         Ok(Value::Function(fv)) => Some(fv),
         _ => None,
     }
@@ -310,7 +314,7 @@ impl Document {
                 }
                 let dr = self
                     .scope_lookup(&ctx.scope, name)
-                    .ok_or_else(|| EvalError::unresolved_reference(name, span_of(expr)))?;
+                    .ok_or_else(|| EvalError::unresolved_reference(name, span_of(expr)))??;
                 return materialise_dataref_or_path(dr, vec![name.clone()], span_of(expr));
             }
             E::SelfKw(span) => {
@@ -896,8 +900,11 @@ impl Document {
                 if let Some(v) = ctx.lookup(name) {
                     return Ok(crate::data::DataRef::from_variant_value(v.clone()));
                 }
+                // Outer `?` turns a missing name into "unresolved
+                // reference"; the inner `Result` (a let's eval/cycle
+                // error) propagates as-is.
                 self.scope_lookup(&ctx.scope, name)
-                    .ok_or_else(|| EvalError::unresolved_reference(name, span_of(expr)))
+                    .ok_or_else(|| EvalError::unresolved_reference(name, span_of(expr)))?
             }
             E::SelfKw(_) => Ok(self.self_dataref(&ctx.scope)),
             E::ParentKw(span) => self
@@ -936,18 +943,31 @@ impl Document {
 
     /// Resolve a single name against the scope chain (innermost
     /// frame first) and fall through to the document root.
+    ///
+    /// At each frame a `let` binding is tried before the frame's
+    /// fields/blocks, so an inner `let` shadows a same-named field and
+    /// inner scopes win over outer ones. Returns `None` when the name
+    /// is unresolved; `Some(Err(..))` when a matched `let`'s value
+    /// fails to evaluate (e.g. a cycle), so callers surface the real
+    /// error instead of "unresolved reference".
     pub(crate) fn scope_lookup<'a>(
         &'a self,
         scope: &Scope<'a>,
         name: &str,
-    ) -> Option<crate::data::DataRef<'a>> {
+    ) -> Option<Result<crate::data::DataRef<'a>, EvalError>> {
         for i in (0..scope.frames().len()).rev() {
-            let dr = crate::data::DataRef::from_block(self.frame_as_block(scope, i));
-            if let Some(child) = dr.child(name) {
-                return Some(child);
+            let block = self.frame_as_block(scope, i);
+            if let Some(letv) = block.find_let(name) {
+                return Some(letv.value().map(crate::data::DataRef::from_variant_value));
+            }
+            if let Some(child) = crate::data::DataRef::from_block(block).child(name) {
+                return Some(Ok(child));
             }
         }
-        self.resolve_root(name)
+        if let Some(letv) = self.root_let(name) {
+            return Some(letv.value().map(crate::data::DataRef::from_variant_value));
+        }
+        self.resolve_root(name).map(Ok)
     }
 
     fn self_dataref<'a>(&'a self, scope: &Scope<'a>) -> crate::data::DataRef<'a> {

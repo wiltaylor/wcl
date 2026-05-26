@@ -24,7 +24,7 @@ pub use views::{
     NamedArg, ResolvedType, RowView, SymbolEntry, SymbolSetDecl, TableView, TypeDecl, TypeField,
     UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem, VariantBodyView,
 };
-pub(crate) use views::{BuiltinDecorator, UnionChildKind};
+pub(crate) use views::{BuiltinDecorator, LetView, UnionChildKind};
 
 use crate::ast::{self, Span};
 use crate::environment::Environment;
@@ -36,7 +36,7 @@ use crate::value::{BuiltinType, TensorDim};
 use crate::value::{TypeRef, Value};
 use cells::{BlockCells, ItemCellKind, ItemCells, LoadedImport};
 use imports::expand_top_level_imports;
-use lookup::{find_block, find_field, iter_blocks, iter_fields};
+use lookup::{find_block, find_field, find_let, iter_blocks, iter_fields};
 use schema_check::has_schemaless;
 use scope::Scope;
 use validate::{decl_fqn_matches, resolve_path, validate_document};
@@ -659,6 +659,20 @@ impl Document {
                         scope: Scope::root(),
                     });
                 }
+            }
+        }
+        None
+    }
+
+    /// Resolve a top-level `let name = expr` binding. Lets are not in
+    /// the symbol index (they are composition helpers, not document
+    /// data), so this scans source items directly. The value evaluates
+    /// at document-root scope, so it can reference other top-level
+    /// lets / fields.
+    pub(crate) fn root_let(&self, name: &str) -> Option<LetView<'_>> {
+        for src in self.all_sources() {
+            if let Some(l) = find_let(src.items, src.cells, name, self, &Scope::root()) {
+                return Some(l);
             }
         }
         None

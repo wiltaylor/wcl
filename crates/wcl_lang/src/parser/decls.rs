@@ -887,6 +887,25 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    /// Parse a `let name = expr` item (top-level or inside a block).
+    /// `let` was matched by the dispatcher but not consumed. No
+    /// terminator — the value expression ends exactly where a field's
+    /// `name = expr` value would, so items stay newline-separated.
+    pub(super) fn parse_let_item(&mut self) -> Result<Item, ParseError> {
+        let let_tok = self.bump()?; // consume 'let'
+        let start = let_tok.span.start;
+        let (name, _name_span) = self.bump_ident("expected name after 'let'")?;
+        self.expect(TokenKind::Eq, "expected '=' after let name")?;
+        let (value, value_span) = self.parse_expr()?;
+        let span = Span::new(start, value_span.end);
+        Ok(Item::Let(crate::ast::LetItem {
+            name,
+            value,
+            span,
+            leading_trivia: self.take_item_trivia(),
+        }))
+    }
+
     pub(super) fn parse_block(
         &mut self,
         kind: String,

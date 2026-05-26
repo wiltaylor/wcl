@@ -140,6 +140,7 @@ impl Printer {
     fn print_item(&mut self, item: &Item) {
         match item {
             Item::Field(f) => self.print_field(f),
+            Item::Let(l) => self.print_let_item(l),
             Item::Block(b) => self.print_block(b),
             Item::TypeDecl(t) => self.print_type_decl(t),
             Item::InterfaceDecl(t) => self.print_interface_decl(t),
@@ -161,6 +162,16 @@ impl Printer {
         self.push(&f.name);
         self.push(" = ");
         self.print_expr(&f.expr, 0);
+        self.newline();
+    }
+
+    fn print_let_item(&mut self, l: &crate::ast::LetItem) {
+        self.print_leading_trivia(&l.leading_trivia);
+        self.write_indent();
+        self.push("let ");
+        self.push(&l.name);
+        self.push(" = ");
+        self.print_expr(&l.value, 0);
         self.newline();
     }
 

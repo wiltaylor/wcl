@@ -55,6 +55,10 @@ pub(crate) struct ItemCells {
 #[derive(Debug)]
 pub(crate) enum ItemCellKind {
     Field(FieldCell),
+    /// `let name = expr` item. Reuses `FieldCell` for the memoised
+    /// value + cycle-detection flag; evaluated on first name
+    /// resolution, never as document output.
+    Let(FieldCell),
     Block {
         labels: OnceLock<Result<Vec<Value>, EvalError>>,
         items: Vec<ItemCells>,
@@ -164,6 +168,10 @@ impl ItemCells {
             ast::Item::Field(f) => Self {
                 decorators: make_decorator_cells(&f.decorators),
                 kind: ItemCellKind::Field(FieldCell::new()),
+            },
+            ast::Item::Let(_) => Self {
+                decorators: Vec::new(),
+                kind: ItemCellKind::Let(FieldCell::new()),
             },
             ast::Item::Block(b) => {
                 // Eagerly synthesise per-row Blocks from Item::Table

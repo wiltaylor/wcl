@@ -549,3 +549,40 @@ fn get_json_escapes_special_chars_in_strings() {
     let s = parsed.as_str().expect("JSON string");
     assert_eq!(s, "a\"b\\c\nd");
 }
+
+#[test]
+fn eval_composes_field_from_let_helpers() {
+    // `service.port` is `bump(count)` where `bump` is a global `let`
+    // function and `count` is a block-scoped `let` — both resolve in
+    // the field expression.
+    wcl()
+        .arg("eval")
+        .arg(examples_dir().join("lets.wcl"))
+        .arg("service.port")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("8003"));
+}
+
+#[test]
+fn eval_does_not_expose_let_helpers_as_data() {
+    // A global `let` is usable in expressions but not addressable as
+    // document data.
+    wcl()
+        .arg("eval")
+        .arg(examples_dir().join("lets.wcl"))
+        .arg("base_port")
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains("no such path"));
+}
+
+#[test]
+fn check_ok_on_lets_example() {
+    wcl()
+        .arg("check")
+        .arg(examples_dir().join("lets.wcl"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("OK"));
+}
