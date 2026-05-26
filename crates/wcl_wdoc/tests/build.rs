@@ -21,6 +21,7 @@ fn build_ok(file: &Path, out: &Path) -> usize {
             panic!("build duplicate-id error: page {page}: {id}")
         }
         Err(BuildError::BadLink(msgs)) => panic!("build bad-link error: {msgs:?}"),
+        Err(BuildError::BadTemplate(name)) => panic!("build bad-template error: {name}"),
     }
 }
 
@@ -453,6 +454,7 @@ page index {
             panic!("expected Schema, got DuplicateId({page}: {id})")
         }
         Err(BuildError::BadLink(msgs)) => panic!("expected Schema, got BadLink({msgs:?})"),
+        Err(BuildError::BadTemplate(name)) => panic!("expected Schema, got BadTemplate({name})"),
         Ok(n) => panic!("expected Schema error, got Ok({n})"),
     }
 }
@@ -561,6 +563,9 @@ page index {
         Err(BuildError::Parse(_)) => panic!("expected DuplicateId, got Parse"),
         Err(BuildError::BadPage(m)) => panic!("expected DuplicateId, got BadPage({m})"),
         Err(BuildError::BadLink(msgs)) => panic!("expected DuplicateId, got BadLink({msgs:?})"),
+        Err(BuildError::BadTemplate(name)) => {
+            panic!("expected DuplicateId, got BadTemplate({name})")
+        }
         Ok(n) => panic!("expected DuplicateId, got Ok({n})"),
     }
 }
@@ -1392,6 +1397,7 @@ page index {
         Err(BuildError::DuplicateId { page, id }) => {
             panic!("expected BadLink, got DuplicateId({page}: {id})")
         }
+        Err(BuildError::BadTemplate(name)) => panic!("expected BadLink, got BadTemplate({name})"),
         Ok(n) => panic!("expected BadLink, got Ok({n})"),
     }
 }
@@ -2026,4 +2032,155 @@ page index {
         ),
         "{html}"
     );
+}
+
+// ── Page templates ─────────────────────────────────────────────────
+
+#[test]
+fn template_wraps_content_in_header_nav_main() {
+    // `site { default_template = :webpage }` wraps every page in the
+    // bundled webpage layout: a title <header>, a <nav> built from the
+    // page list, and the page's own blocks inside <main>.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("site.wcl");
+    std::fs::write(
+        &src,
+        r#"
+site {
+  default_template = :webpage
+  title = "My Site"
+}
+page index {
+  h1 "Home" {}
+}
+page about {
+  h1 "About" {}
+}
+"#,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<header class=\"site-header\">My Site</header>"),
+        "{html}"
+    );
+    // Nav is generated from the page list (one <a> per page).
+    assert!(html.contains("<nav class=\"site-nav\">"), "{html}");
+    assert!(html.contains("<a href=\"index.html\">index</a>"), "{html}");
+    assert!(html.contains("<a href=\"about.html\">about</a>"), "{html}");
+    // The page's own content lands inside <main>.
+    assert!(
+        html.contains("<main class=\"site-main\"><p class=\"heading-1\"><span>Home</span></p>"),
+        "{html}"
+    );
+}
+
+#[test]
+fn per_page_template_overrides_and_bare_fallback() {
+    // No `site` block: a page with `template = :webpage` is wrapped; a
+    // page without one renders bare (no <main> wrapper) — backward
+    // compatible with pre-template behavior.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("site.wcl");
+    std::fs::write(
+        &src,
+        r#"
+page index {
+  template = :webpage
+  h1 "Wrapped" {}
+}
+page plain {
+  h1 "Bare" {}
+}
+"#,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let wrapped = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    let bare = std::fs::read_to_string(out.path().join("plain.html")).expect("read");
+    assert!(wrapped.contains("<main class=\"site-main\">"), "{wrapped}");
+    assert!(
+        !bare.contains("<main"),
+        "page without a template should render bare:\n{bare}"
+    );
+    assert!(
+        bare.contains("<p class=\"heading-1\"><span>Bare</span></p>"),
+        "{bare}"
+    );
+}
+
+#[test]
+fn template_uses_user_defined_part_function() {
+    // A "part" is just a top-level function returning fundamentals; a
+    // custom template calls it (resolved at document scope) and embeds
+    // its result. Also exercises HtmlFundamental::Element nesting +
+    // Raw, and attribute escaping.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("site.wcl");
+    std::fs::write(
+        &src,
+        r##"
+let footer = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+  HtmlFundamental::Element {
+    tag: "footer", id: none, class: ["ft"], attrs: [["data-x", "a\"b"]],
+    children: [ HtmlFundamental::Raw { html: c.title } ],
+  }
+]
+template mini {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([
+      [ HtmlFundamental::Element {
+          tag: "main", id: none, class: none, attrs: none,
+          children: [ HtmlFundamental::Raw { html: c.content } ],
+      } ],
+      footer(c),
+    ])
+}
+site { default_template = :mini  title = "T" }
+page index {
+  text { span "body text" {} }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // Part function output is present.
+    assert!(
+        html.contains("<footer class=\"ft\" data-x=\"a&quot;b\">T</footer>"),
+        "part fn / attr escaping wrong:\n{html}"
+    );
+    // Raw embeds the page content verbatim inside <main>.
+    assert!(
+        html.contains("<main><p><span>body text</span></p>"),
+        "{html}"
+    );
+}
+
+#[test]
+fn unknown_template_is_build_error() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("site.wcl");
+    std::fs::write(
+        &src,
+        r#"
+site { default_template = :nope }
+page index { h1 "x" {} }
+"#,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path()) {
+        Err(BuildError::BadTemplate(name)) => assert_eq!(name, "nope"),
+        Err(_) => panic!("expected BadTemplate, got a different BuildError"),
+        Ok(_) => panic!("expected BadTemplate, got Ok"),
+    }
 }

@@ -7,9 +7,11 @@
 
 @document
 type Site {
-  @children("class")          classes:  list<Class>
-  @children("page")           pages:    list<Page>
-  @children("inline_pattern") patterns: list<InlinePattern>
+  @children("class")          classes:   list<Class>
+  @children("page")           pages:     list<Page>
+  @children("inline_pattern") patterns:  list<InlinePattern>
+  @children("template")       templates: list<Template>
+  @child("site")              site:      SiteConfig?
 }
 
 // Renderable-block interfaces. `WdocBlock` is the page-level domain
@@ -64,6 +66,10 @@ symbol_set LayoutDirection { top_to_bottom left_to_right }
 type Page {
   @inline(0) name: identifier
   id: identifier?
+  // Template to wrap this page's content in. Overrides the document's
+  // `default_template` (set on the `site` block). When neither is set
+  // the page renders bare (its blocks straight into <body>).
+  template: symbol?
   @children(WdocBlock) children: list<WdocBlock>
 }
 
@@ -380,6 +386,82 @@ union HtmlFundamental {
   // The user-facing `table` block authors rows with WCL's pipe-table
   // syntax and additionally runs utf8 cells through inline patterns.
   Table { id: identifier? class: list<utf8>? header: list<utf8>? rows: list<list<utf8>> }
+  // Generic structural element: `<tag id class attrs…>children</tag>`.
+  // Recursive — `children` are themselves fundamentals — so templates
+  // can build arbitrary layout (header / nav / main / footer / a / …).
+  // `attrs` is a list of `[name, value]` pairs (values escaped), e.g.
+  // `[["href", p.href]]`.
+  Element { tag: utf8 id: identifier? class: list<utf8>? attrs: list<list<utf8>>? children: list<HtmlFundamental> }
+  // Verbatim, pre-rendered HTML — NOT escaped. Used to embed already-
+  // rendered content (e.g. a page's `content` part) inside a template.
+  Raw { html: utf8 }
+}
+
+// ── Page templates ─────────────────────────────────────────────────
+//
+// A template wraps a page's rendered content in a surrounding layout.
+// Templates are WCL functions returning fundamentals; the renderer
+// calls a template's `render` with a `TemplateCtx` and the resulting
+// fundamentals become the page <body>. The `<head>` + stylesheet are
+// still emitted by the renderer.
+//
+// "Parts" are just functions returning `list<HtmlFundamental>`: a
+// template composes them and embeds the framework-provided `content`
+// part (the page's own blocks) via `Raw`. There is no built-in menu —
+// a template builds navigation itself from `ctx.pages`.
+
+// Reference to a page, for building navigation. `href` is the page's
+// output file (`<name>.html`).
+type PageRef { name: utf8  href: utf8 }
+
+// Context handed to a template's (and any part function's) `render`.
+type TemplateCtx {
+  content:   utf8           // the page's rendered body HTML (embed via Raw)
+  title:     utf8           // site title, or the page name if unset
+  page_name: utf8           // the current page's name
+  pages:     list<PageRef>  // every page in the document, for nav/menus
+}
+
+// Document descriptor. One per document; sets the default template and
+// site-level data templates can read. Selected per-page via the
+// page's `template` field, else `default_template` here.
+@block("site")
+type SiteConfig {
+  default_template: symbol?
+  title:            utf8?
+}
+
+// A named template. `render` lays out a page body from the context.
+@block("template")
+type Template {
+  @inline(0) name: identifier
+  render: fn(TemplateCtx) -> list<HtmlFundamental>
+}
+
+// Stdlib `webpage` template: a Hugo-style site shell — a title header,
+// a nav built from every page, and the page content in <main>. Users
+// can declare their own `template <name> { render = ... }` blocks and
+// select them with `default_template` / a page's `template` field.
+template webpage {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+    HtmlFundamental::Element {
+      tag: "header", id: none, class: ["site-header"], attrs: none,
+      children: [ HtmlFundamental::Raw { html: c.title } ],
+    },
+    HtmlFundamental::Element {
+      tag: "nav", id: none, class: ["site-nav"], attrs: none,
+      children: map(c.pages, fn(p: PageRef) -> HtmlFundamental
+        HtmlFundamental::Element {
+          tag: "a", id: none, class: none,
+          attrs: [["href", p.href]],
+          children: [ HtmlFundamental::Raw { html: p.name } ],
+        }),
+    },
+    HtmlFundamental::Element {
+      tag: "main", id: none, class: ["site-main"], attrs: none,
+      children: [ HtmlFundamental::Raw { html: c.content } ],
+    },
+  ]
 }
 
 // Inline parsed-text variants produced by `inline_pattern` blocks.

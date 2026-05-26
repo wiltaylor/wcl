@@ -329,6 +329,7 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
                     wcl_wdoc::BuildError::BadPage(_) => EXIT_EVAL,
                     wcl_wdoc::BuildError::DuplicateId { .. } => EXIT_SCHEMA,
                     wcl_wdoc::BuildError::BadLink(_) => EXIT_SCHEMA,
+                    wcl_wdoc::BuildError::BadTemplate(_) => EXIT_SCHEMA,
                 };
                 err.report();
                 code

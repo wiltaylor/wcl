@@ -1,0 +1,57 @@
+// wdoc page templates — a Hugo-style site shell.
+//
+//   wcl wdoc build --out _site examples/wdoc_template.wcl
+//
+// A `site` block sets the default template; pages may override it with
+// their own `template` field. Templates are WCL functions returning
+// `HtmlFundamental`s; they lay out the page body and embed the
+// framework-provided `content` part (the page's own blocks) plus
+// anything they build themselves from the document context.
+
+site {
+  default_template = :webpage   // the stdlib template (header + nav + main)
+  title            = "wdoc demo"
+}
+
+// A "part" is just a function returning fundamentals. Templates call
+// it and embed the result — there's no special part syntax.
+let footer = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+  HtmlFundamental::Element {
+    tag: "footer", id: none, class: ["site-footer"], attrs: none,
+    children: [ HtmlFundamental::Raw { html: c.title } ],
+  }
+]
+
+// A custom template: the stdlib nav + content, plus the footer part.
+template guide {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([
+      [
+        HtmlFundamental::Element {
+          tag: "nav", id: none, class: ["site-nav"], attrs: none,
+          children: map(c.pages, fn(p: PageRef) -> HtmlFundamental
+            HtmlFundamental::Element {
+              tag: "a", id: none, class: none,
+              attrs: [["href", p.href]],
+              children: [ HtmlFundamental::Raw { html: p.name } ],
+            }),
+        },
+        HtmlFundamental::Element {
+          tag: "main", id: none, class: ["site-main"], attrs: none,
+          children: [ HtmlFundamental::Raw { html: c.content } ],
+        },
+      ],
+      footer(c),
+    ])
+}
+
+page index {
+  h1 "Home" {}
+  text { span "Welcome — this page uses the default **webpage** template." {} }
+}
+
+page guide {
+  template = :guide
+  h1 "Guide" {}
+  text { span "This page overrides the default and uses the `guide` template (with a footer part)." {} }
+}

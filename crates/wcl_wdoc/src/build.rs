@@ -7,7 +7,10 @@ use wcl_lang::{Block, Document, Environment, Value};
 
 use crate::highlight;
 use crate::inline::InlinePatterns;
-use crate::render::{field_id, render_block, render_class, render_page};
+use crate::render::{
+    field_id, field_symbol, field_utf8, find_template, render_block, render_class, render_page,
+    render_template,
+};
 
 const SCHEMA: &str = include_str!("../wdoc.wcl");
 
@@ -18,6 +21,7 @@ pub enum BuildError {
     BadPage(String),
     DuplicateId { page: String, id: String },
     BadLink(Vec<String>),
+    BadTemplate(String),
 }
 
 impl BuildError {
@@ -35,6 +39,7 @@ impl BuildError {
                     eprintln!("{m}");
                 }
             }
+            Self::BadTemplate(name) => eprintln!("unknown template \"{name}\""),
         }
     }
 }
@@ -80,10 +85,28 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         .collect::<Vec<_>>()
         .join("\n");
     let css = format!(
-        "{}\n{}\n{class_css}",
+        "{}\n{}\n{}\n{class_css}",
         highlight::theme_css(),
-        crate::render::TABLE_CSS
+        crate::render::TABLE_CSS,
+        crate::render::SITE_CSS
     );
+
+    // Document descriptor (`site` block): the default template and the
+    // site title a template can show. Optional — absent ⇒ pages render
+    // bare unless they set their own `template`.
+    let site = doc.blocks().find(|b| b.kind() == "site");
+    let default_template = site
+        .as_ref()
+        .and_then(|b| field_symbol(b, "default_template"));
+    let site_title = site.as_ref().and_then(|b| field_utf8(b, "title"));
+
+    // Ordered (name, href) list of every page, handed to templates so
+    // they can build navigation themselves.
+    let pages: Vec<(String, String)> = doc
+        .blocks()
+        .filter(|b| b.kind() == "page")
+        .filter_map(|p| page_name(&p).map(|n| (n.clone(), format!("{n}.html"))))
+        .collect();
 
     // Page-name set used by the inline link pattern to recognise
     // `[text](page)` cross-page references. Built before rendering
@@ -124,10 +147,31 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
             });
         }
 
-        let rendered_blocks = page
+        // The `content` part: this page's own blocks, rendered exactly
+        // as before (trailing newline per block).
+        let mut content = String::new();
+        for b in page
             .blocks()
-            .filter_map(|b| render_block(&doc, &b, &inline_patterns));
-        let html = render_page(&page_name, &css, rendered_blocks);
+            .filter_map(|b| render_block(&doc, &b, &inline_patterns))
+        {
+            content.push_str(&b);
+            content.push('\n');
+        }
+
+        // Resolve the template: the page's own `template` overrides the
+        // document `default_template`. None ⇒ render content bare.
+        let template_name = field_symbol(&page, "template").or_else(|| default_template.clone());
+        let body = match template_name {
+            Some(name) => {
+                let Some(tmpl) = find_template(&doc, &name) else {
+                    return Err(BuildError::BadTemplate(name));
+                };
+                let title = site_title.clone().unwrap_or_else(|| page_name.clone());
+                render_template(&doc, &tmpl, &content, &title, &page_name, &pages)
+            }
+            None => content,
+        };
+        let html = render_page(&page_name, &css, &body);
 
         let out_path = out_dir.join(format!("{page_name}.html"));
         fs::write(&out_path, html)

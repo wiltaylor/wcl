@@ -50,12 +50,18 @@ table.wdoc-table { border-collapse: collapse; }
 .wdoc-table th, .wdoc-table td { border: 1px solid #ccc; padding: 0.3rem 0.6rem; text-align: left; }
 .wdoc-table th { background: #f4f4f4; }";
 
-pub(crate) fn render_page(name: &str, css: &str, blocks: impl Iterator<Item = String>) -> String {
-    let mut body = String::new();
-    for b in blocks {
-        body.push_str(&b);
-        body.push('\n');
-    }
+/// Default styling for the bundled `webpage` template's regions.
+/// Injected like `TABLE_CSS`; user `class` rules can override it.
+pub(crate) const SITE_CSS: &str = "\
+.site-header { font-weight: bold; font-size: 1.4rem; padding: 0.5rem 0; }
+.site-nav { display: flex; gap: 1rem; padding: 0.5rem 0; border-bottom: 1px solid #ccc; margin-bottom: 1rem; }
+.site-nav a { text-decoration: none; }
+.site-main { display: block; }";
+
+/// Wrap a page's `body` HTML in the document shell. The `<head>`
+/// (title + global stylesheet) is owned here regardless of template;
+/// templates control the `<body>` contents via `render_template`.
+pub(crate) fn render_page(name: &str, css: &str, body: &str) -> String {
     format!(
         "<!DOCTYPE html>\n\
          <html>\n\
@@ -67,6 +73,64 @@ pub(crate) fn render_page(name: &str, css: &str, blocks: impl Iterator<Item = St
         title = escape_html(name),
         body = body,
     )
+}
+
+/// Find a `@block("template")` instance by its inline name.
+pub(crate) fn find_template<'a>(doc: &'a Document, name: &str) -> Option<Block<'a>> {
+    doc.blocks()
+        .find(|b| b.kind() == "template" && label_string(b).as_deref() == Some(name))
+}
+
+/// Render a page through `template`'s `render` function. Builds a
+/// `TemplateCtx` record (content + title + page_name + pages) and
+/// invokes the WCL function, then renders the returned fundamentals.
+/// Best-effort: a missing/failed `render` yields an empty body, like
+/// the rest of the lowering pipeline.
+pub(crate) fn render_template(
+    doc: &Document,
+    template: &Block<'_>,
+    content: &str,
+    title: &str,
+    page_name: &str,
+    pages: &[(String, String)],
+) -> String {
+    let Some(field) = template.field("render") else {
+        return String::new();
+    };
+    let Ok(Value::Function(fv)) = field.value() else {
+        return String::new();
+    };
+    let fv = fv.clone();
+    let pages_val = Value::List(
+        pages
+            .iter()
+            .map(|(n, h)| {
+                let mut m = BTreeMap::new();
+                m.insert("name".to_string(), Value::Utf8(n.clone()));
+                m.insert("href".to_string(), Value::Utf8(h.clone()));
+                Value::Record {
+                    ty: vec!["PageRef".to_string()],
+                    fields: m,
+                }
+            })
+            .collect(),
+    );
+    let mut ctx = BTreeMap::new();
+    ctx.insert("content".to_string(), Value::Utf8(content.to_string()));
+    ctx.insert("title".to_string(), Value::Utf8(title.to_string()));
+    ctx.insert("page_name".to_string(), Value::Utf8(page_name.to_string()));
+    ctx.insert("pages".to_string(), pages_val);
+    let arg = Value::Record {
+        ty: vec!["TemplateCtx".to_string()],
+        fields: ctx,
+    };
+    let Ok(Value::List(items)) = doc.call_value(&fv, &[arg]) else {
+        return String::new();
+    };
+    items
+        .iter()
+        .map(|v| render_html_variant(doc, v, 0))
+        .collect()
 }
 
 pub(crate) fn render_block(
@@ -1214,6 +1278,8 @@ fn render_html_variant(doc: &Document, value: &Value, depth: usize) -> String {
     match kind.as_str() {
         "paragraph" => render_paragraph_payload(map),
         "table" => render_table_payload(map),
+        "element" => render_element_payload(doc, map, depth),
+        "raw" => render_raw_payload(map),
         other => {
             let arg = payload_to_record(map, other);
             let Some(fv) = lookup_type_lower(doc, other) else {
@@ -1581,6 +1647,51 @@ fn render_table_payload(map: &BTreeMap<String, Value>) -> String {
     table_html(map_id(map, "id").as_deref(), &classes, &header, &body)
 }
 
+/// Render an `HtmlFundamental::Element` — `<tag id class attrs>…</tag>`
+/// with its `children` rendered recursively as fundamentals. Powers
+/// template layout (header / nav / main / a / …).
+fn render_element_payload(doc: &Document, map: &BTreeMap<String, Value>, depth: usize) -> String {
+    let tag = map_utf8(map, "tag").unwrap_or_else(|| "div".to_string());
+    // Only allow simple alphanumeric tag names so a stray value can't
+    // inject markup; fall back to `div` otherwise.
+    let tag = if !tag.is_empty() && tag.chars().all(|c| c.is_ascii_alphanumeric()) {
+        tag
+    } else {
+        "div".to_string()
+    };
+    let cls = class_attr_from_map(map);
+    let mut out = format!("<{tag}{cls}");
+    append_attr(&mut out, "id", map_id(map, "id").as_deref());
+    // `attrs` is a list of `[name, value]` pairs.
+    if let Some(Value::List(attrs)) = map.get("attrs") {
+        for a in attrs {
+            if let Value::List(pair) = a
+                && let (Some(name), Some(value)) = (
+                    pair.first().and_then(value_as_str),
+                    pair.get(1).and_then(value_as_str),
+                )
+            {
+                append_attr(&mut out, &name, Some(&value));
+            }
+        }
+    }
+    out.push('>');
+    if let Some(Value::List(children)) = map.get("children") {
+        for child in children {
+            out.push_str(&render_html_variant(doc, child, depth + 1));
+        }
+    }
+    write!(out, "</{tag}>").expect("write to String");
+    out
+}
+
+/// Render an `HtmlFundamental::Raw` — pre-rendered HTML embedded
+/// verbatim (NOT escaped). Used to splice already-rendered content
+/// (e.g. a page's body) into a template.
+fn render_raw_payload(map: &BTreeMap<String, Value>) -> String {
+    map_utf8(map, "html").unwrap_or_default()
+}
+
 // ── Resolution helpers (block-side) ───────────────────────────────
 
 fn resolve_rect_box(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f64, f64, f64) {
@@ -1811,7 +1922,7 @@ fn value_as_string(v: Value) -> Option<String> {
     }
 }
 
-fn field_utf8(block: &Block<'_>, name: &str) -> Option<String> {
+pub(crate) fn field_utf8(block: &Block<'_>, name: &str) -> Option<String> {
     let field = block.field(name)?;
     match field.value().ok()? {
         Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
@@ -1835,7 +1946,7 @@ fn field_bool(block: &Block<'_>, name: &str) -> Option<bool> {
     }
 }
 
-fn field_symbol(block: &Block<'_>, name: &str) -> Option<String> {
+pub(crate) fn field_symbol(block: &Block<'_>, name: &str) -> Option<String> {
     let field = block.field(name)?;
     match field.value().ok()? {
         Value::Symbol(s) => Some(s.clone()),
