@@ -59,4 +59,49 @@ page icons {
     src -> mid :data
     mid -> dst :data
   }
+
+  h2 "Icons on shapes" {}
+
+  // Any box-like shape takes an `icon` property — the renderer draws it
+  // as a badge over the shape's box (default top-left; override with
+  // `icon_pos` / `icon_size` / `icon_class`). The shape keeps its own
+  // label and fill.
+  diagram {
+    width     = 360
+    height    = 240
+    layout    = :layered
+    layer_gap = 26.0
+
+    process "Configure" {
+      id     = cfg
+      width  = 150.0
+      height = 46.0
+      fill   = "#eef"
+      stroke = "#446"
+      icon   = "settings"
+    }
+    decision "Healthy?" {
+      id       = ok
+      width    = 150.0
+      height   = 70.0
+      fill     = "#fee"
+      stroke   = "#a44"
+      icon     = "heart"
+      icon_pos = :top_right
+    }
+    // `bs.database` comes from a set with no default colour, so the
+    // `icon-accent` class (and its dark-mode override) drives its colour.
+    terminator "Store" {
+      id     = store
+      width  = 150.0
+      height = 46.0
+      fill   = "#efe"
+      stroke = "#494"
+      icon   = "bs.database"
+      icon_class = ["icon-accent"]
+    }
+
+    cfg -> ok    :flow
+    ok  -> store :flow
+  }
 }

@@ -2978,3 +2978,62 @@ fn build_without_iconset_leaves_colon_text_literal() {
     assert!(!index.contains("_wdoc/icons.svg"), "{index}");
     assert!(sprite.is_none(), "no sprite without icons");
 }
+
+#[test]
+fn build_attaches_icon_badge_to_shapes() {
+    let src = r##"
+iconset ui { pack = "lucide" color = "#5e81ac" }
+
+page index {
+  diagram {
+    width = 200
+    height = 120
+    process "Validate" {
+      x = 10.0  y = 10.0  width = 120.0  height = 44.0
+      icon = "check"  icon_class = ["accent"]
+    }
+    rect {
+      x = 10.0  y = 70.0  width = 44.0  height = 44.0
+      icon = "star"  icon_pos = :center  icon_size = 24.0
+    }
+    rect { x = 70.0  y = 70.0  width = 44.0  height = 44.0  fill = "#eee" }
+  }
+}
+"##;
+    let (index, sprite) = build_icons(src);
+
+    // The process still renders its box + label, plus a top-left badge
+    // inset by pad = min(120,44)*0.1 = 4.4 at size min(120,44)*0.4 = 17.6.
+    assert!(
+        index.contains("<rect x=\"10\" y=\"10\" width=\"120\" height=\"44\"")
+            && index.contains(">Validate</tspan>"),
+        "{index}"
+    );
+    assert!(
+        index.contains(
+            "<use href=\"_wdoc/icons.svg#lucide-check\" x=\"14.4\" y=\"14.4\" \
+             width=\"17.6\" height=\"17.6\" class=\"wdoc-icon accent\""
+        ),
+        "{index}"
+    );
+    // icon_pos = :center on a 44×44 box at (10,70) with size 24 →
+    // (10 + (44-24)/2, 70 + (44-24)/2) = (20, 80).
+    assert!(
+        index.contains(
+            "<use href=\"_wdoc/icons.svg#lucide-star\" x=\"20\" y=\"80\" width=\"24\" height=\"24\""
+        ),
+        "{index}"
+    );
+    // Exactly two badges — the third rect has no `icon`, so it emits none.
+    assert_eq!(
+        index.matches("<use href=\"_wdoc/icons.svg").count(),
+        2,
+        "{index}"
+    );
+
+    let sprite = sprite.expect("sprite written");
+    assert!(
+        sprite.contains("lucide-check") && sprite.contains("lucide-star"),
+        "{sprite}"
+    );
+}

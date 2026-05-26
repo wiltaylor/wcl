@@ -1338,15 +1338,95 @@ fn render_shape(
     parent_h: f64,
     icons: &IconRegistry,
 ) -> Option<String> {
-    match block.kind() {
-        "rect" => Some(render_rect(block, parent_w, parent_h)),
-        "circle" => Some(render_circle(block, parent_w, parent_h)),
-        "line" => Some(render_line(block, parent_w, parent_h)),
-        "label" => Some(render_label(block, parent_w, parent_h)),
-        "polygon" => Some(render_polygon(block, parent_w, parent_h)),
-        "container" => Some(render_container(doc, block, parent_w, parent_h, icons)),
-        "icon" => Some(render_icon(block, parent_w, parent_h, icons)),
-        kind => Some(lower_svg_block(doc, block, kind, parent_w, parent_h)),
+    let kind = block.kind();
+    let base = match kind {
+        "rect" => render_rect(block, parent_w, parent_h),
+        "circle" => render_circle(block, parent_w, parent_h),
+        "line" => render_line(block, parent_w, parent_h),
+        "label" => render_label(block, parent_w, parent_h),
+        "polygon" => render_polygon(block, parent_w, parent_h),
+        "container" => render_container(doc, block, parent_w, parent_h, icons),
+        // The `icon` block is itself an icon — never give it an icon badge.
+        "icon" => return Some(render_icon(block, parent_w, parent_h, icons)),
+        kind => lower_svg_block(doc, block, kind, parent_w, parent_h),
+    };
+    Some(with_shape_icon(
+        block, kind, parent_w, parent_h, icons, base,
+    ))
+}
+
+/// If `block` carries an `icon` field, draw it as a badge over the
+/// shape's bounding box (default a small `:top_left` inset) and append
+/// it to the already-rendered `base`. Box-like shapes (rect / circle /
+/// container / process / decision / terminator, and any custom shape
+/// that declares the same fields) opt in by setting `icon`; shapes
+/// without a usable box (line / label) are skipped.
+fn with_shape_icon(
+    block: &Block<'_>,
+    kind: &str,
+    parent_w: f64,
+    parent_h: f64,
+    icons: &IconRegistry,
+    mut base: String,
+) -> String {
+    let Some(name) = field_utf8(block, "icon") else {
+        return base;
+    };
+    let Some((bx, by, bw, bh)) = shape_icon_box(block, kind, parent_w, parent_h) else {
+        return base;
+    };
+    let size = field_f64(block, "icon_size").unwrap_or_else(|| bw.min(bh) * 0.4);
+    let pos = field_symbol(block, "icon_pos").unwrap_or_else(|| "top_left".to_string());
+    let (ix, iy) = place_icon(&pos, bx, by, bw, bh, size);
+    let over = ShapeOverride {
+        classes: field_utf8_list(block, "icon_class"),
+        ..ShapeOverride::default()
+    };
+    if let Some(svg) = icons.resolve_shape(&name, None, (ix, iy, size, size), &over) {
+        base.push_str(&svg);
+    }
+    base
+}
+
+/// The bounding box (in the shape's local frame) used to place an icon
+/// badge. Mirrors `collect_shape_positions`'s per-kind geometry.
+fn shape_icon_box(
+    block: &Block<'_>,
+    kind: &str,
+    parent_w: f64,
+    parent_h: f64,
+) -> Option<(f64, f64, f64, f64)> {
+    match kind {
+        "circle" => {
+            let (cx, cy, r) = resolve_circle(block, parent_w, parent_h);
+            Some((cx - r, cy - r, 2.0 * r, 2.0 * r))
+        }
+        "container" => Some(resolve_container_box(block, parent_w, parent_h)),
+        "polygon" => polygon_bbox(block),
+        // No single box to anchor a badge to.
+        "line" | "label" => None,
+        // rect / process / decision / terminator / custom shapes.
+        _ => Some(resolve_rect_box(block, parent_w, parent_h)),
+    }
+}
+
+/// Top-left corner of an `size`×`size` badge within box `(bx,by,bw,bh)`
+/// for a given `IconPos`. Corners are inset by `pad`.
+fn place_icon(pos: &str, bx: f64, by: f64, bw: f64, bh: f64, size: f64) -> (f64, f64) {
+    let pad = (bw.min(bh) * 0.1).max(0.0);
+    let cx = bx + (bw - size) / 2.0;
+    let cy = by + (bh - size) / 2.0;
+    let right = bx + bw - size - pad;
+    let bottom = by + bh - size - pad;
+    match pos {
+        "center" => (cx, cy),
+        "top_right" => (right, by + pad),
+        "bottom_left" => (bx + pad, bottom),
+        "bottom_right" => (right, bottom),
+        "left" => (bx + pad, cy),
+        "right" => (right, cy),
+        // "top_left" and any unrecognised value.
+        _ => (bx + pad, by + pad),
     }
 }
 

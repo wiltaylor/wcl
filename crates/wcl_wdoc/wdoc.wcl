@@ -63,6 +63,20 @@ symbol_set EdgeRouting { elbow straight }
 //   :left_to_right           — ranks stack rightward.
 symbol_set LayoutDirection { top_to_bottom left_to_right }
 
+// Placement of an `icon` badge inside a shape's box (see the shared
+// icon fields below). Default `:top_left`.
+symbol_set IconPos { center top_left top_right bottom_left bottom_right left right }
+
+// Shared "icon badge" fields. Any box-like shape (rect / circle /
+// container / process / decision / terminator below — and any custom
+// `extends SvgBlock` shape that declares the same fields) may carry an
+// `icon`; the renderer resolves it against the declared `iconset`s and
+// draws a `<use>` of the shared sprite over the shape's bounding box.
+//   icon       — icon name, optionally `set.name`
+//   icon_size  — badge size in diagram units (default min(w,h) * 0.4)
+//   icon_pos   — placement (default :top_left)
+//   icon_class — classes on the icon (theming via the class system)
+
 @block("page")
 type Page {
   @inline(0) name: identifier
@@ -301,6 +315,8 @@ type Container extends SvgBlock {
 
   connect_points: list<AnchorSide>?
 
+  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
+
   @children(SvgBlock) children: list<SvgBlock>
   @connections(Edge) edges: list<Edge>
   // `container` is itself rendered directly as <g>; the renderer
@@ -326,6 +342,8 @@ type Rect extends SvgBlock {
 
   connect_points: list<AnchorSide>?
 
+  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
+
   lower = fn(r: Rect) -> list<SvgFundamental> []
 }
 
@@ -345,6 +363,8 @@ type Circle extends SvgBlock {
   anchor_bottom: f64?
 
   connect_points: list<AnchorSide>?
+
+  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
 
   lower = fn(c: Circle) -> list<SvgFundamental> []
 }
@@ -740,6 +760,7 @@ type Process extends SvgBlock {
   x = 0.0  y = 0.0  width = 80.0  height = 40.0
   fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
   connect_points: list<AnchorSide>?
+  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
 
   lower = fn(p: Process) -> list<SvgFundamental> [
     SvgFundamental::Rect {
@@ -763,6 +784,7 @@ type Decision extends SvgBlock {
   x = 0.0  y = 0.0  width = 80.0  height = 40.0
   fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
   connect_points: list<AnchorSide>?
+  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
 
   lower = fn(d: Decision) -> list<SvgFundamental> [
     SvgFundamental::Polygon {
@@ -798,6 +820,7 @@ type Terminator extends SvgBlock {
   x = 0.0  y = 0.0  width = 80.0  height = 40.0
   fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
   connect_points: list<AnchorSide>?
+  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
 
   lower = fn(t: Terminator) -> list<SvgFundamental> [
     SvgFundamental::Rect {
