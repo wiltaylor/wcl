@@ -50,3 +50,15 @@ type Tilemap extends SvgBlock {
   lower = fn(t: Tilemap) -> list<SvgFundamental> []
 }
 
+// Default tilemap styling. Pixel-art tilesets read best with
+// nearest-neighbour scaling, so tile images render `pixelated` by
+// default; a `smooth = true` tilemap opts back into the browser's
+// default smoothing via the extra `smooth` class. Uses descendant +
+// compound selectors, so it can't be a bare `class`.
+stylesheet "wdoc-tilemap" {
+  css = <<CSS
+    .wdoc-tilemap image { image-rendering: pixelated; }
+    .wdoc-tilemap.smooth image { image-rendering: auto; }
+    CSS
+}
+

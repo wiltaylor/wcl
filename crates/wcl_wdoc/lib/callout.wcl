@@ -56,3 +56,25 @@ type Callout extends WdocBlock {
   }
 }
 
+// Default callout styling. The per-type accent rides a CSS custom
+// property so it colours only the heading, the left border, and the
+// (currentColor) icon — never the body text. The background is a
+// theme-neutral translucent grey so callouts read on light + dark pages.
+// Built on `var()`, compound `.callout.note/…`, and `:first/last-child`,
+// so it can't be a bare `class`.
+stylesheet "wdoc-callout" {
+  css = <<CSS
+    .callout { --callout-accent: #888; margin: 1rem 0; padding: 0.6rem 0.9rem; border-left: 4px solid var(--callout-accent); border-radius: 4px; background: rgba(127,127,127,0.08); }
+    .callout-heading { display: flex; align-items: center; gap: 0.45rem; font-weight: 600; color: var(--callout-accent); }
+    .callout-title { margin: 0; }
+    .callout-heading svg.wdoc-icon { width: 1.15em; height: 1.15em; }
+    .callout-body > :first-child { margin-top: 0; }
+    .callout-body > :last-child { margin-bottom: 0; }
+    .callout.note, .callout.info { --callout-accent: #5e81ac; }
+    .callout.tip { --callout-accent: #88c0d0; }
+    .callout.warning { --callout-accent: #d08770; }
+    .callout.error { --callout-accent: #bf616a; }
+    .callout.success { --callout-accent: #a3be8c; }
+    CSS
+}
+

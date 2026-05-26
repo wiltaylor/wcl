@@ -74,12 +74,27 @@ type Template {
   render: fn(TemplateCtx) -> list<HtmlFundamental>
 }
 
+// The `webpage` template's own CSS, embedded as a `<style>` in the page
+// body (browsers honour it). It styles only this template's regions, so
+// it lives with the template rather than as a global rule — uses flex /
+// gap / descendant selectors a bare `class` can't express. `.site-header`
+// colour/weight is the bundled `class "site-header"`.
+let webpage_css = <<CSS
+  .site-nav { display: flex; gap: 1rem; padding: 0.5rem 0; border-bottom: 1px solid #ccc; margin-bottom: 1rem; }
+  .site-nav a { text-decoration: none; }
+  .site-main { display: block; }
+  CSS
+
 // Stdlib `webpage` template: a Hugo-style site shell — a title header,
 // a nav built from every page, and the page content in <main>. Users
 // can declare their own `template <name> { render = ... }` blocks and
 // select them with `default_template` / a page's `template` field.
 template webpage {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+    HtmlFundamental::Element {
+      tag: "style", id: none, class: none, attrs: none,
+      children: [ HtmlFundamental::Raw { html: webpage_css } ],
+    },
     HtmlFundamental::Element {
       tag: "header", id: none, class: ["site-header"], attrs: none,
       children: [ HtmlFundamental::Raw { html: c.title } ],
@@ -133,6 +148,25 @@ let book_toc = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
       } ]
   }
 
+// The `book` template's own CSS — the fixed left sidebar, the nested TOC
+// list, the reading column, and the theme toggle. Embedded as a `<style>`
+// in the body so it loads only on book-templated pages. Uses position /
+// descendant / compound / `:hover` selectors a bare `class` can't express;
+// the chapter / section colours are the bundled `class "book-chapter" /
+// "book-section" / "current"`.
+let book_css = <<CSS
+  .book-sidebar { position: fixed; top: 0; left: 0; width: 16rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem; border-right: 1px solid #ccc; background: #fafafa; }
+  .book-title { font-weight: bold; font-size: 1.1rem; margin-bottom: 0.75rem; }
+  .book-sidebar ul.book-toc { list-style: none; margin: 0; padding-left: 0; }
+  .book-sidebar ul.book-toc ul.book-toc { padding-left: 0.85rem; }
+  .book-sidebar a.book-chapter { display: block; padding: 0.2rem 0; }
+  .book-chapter { text-decoration: none; }
+  .book-chapter:hover { text-decoration: underline; }
+  .book-sidebar .book-section { display: block; padding: 0.35rem 0 0.1rem; font-weight: 600; }
+  .book-content { margin-left: 16rem; padding: 1rem 2.5rem; max-width: 46rem; }
+  .theme-toggle { display: block; margin: 0 0 0.75rem; padding: 0.2rem 0.6rem; cursor: pointer; background: transparent; border: 1px solid currentColor; border-radius: 4px; color: inherit; font: inherit; }
+  CSS
+
 // Stdlib `book` template: an mdbook-style layout — a fixed left
 // sidebar holding the book title and the table of contents (nested,
 // current chapter highlighted), and the page content in a reading
@@ -140,6 +174,10 @@ let book_toc = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
 // declared the renderer falls back to a flat list of every page.
 template book {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+    HtmlFundamental::Element {
+      tag: "style", id: none, class: none, attrs: none,
+      children: [ HtmlFundamental::Raw { html: book_css } ],
+    },
     HtmlFundamental::Element {
       tag: "nav", id: none, class: ["book-sidebar"], attrs: none,
       children: flatten([

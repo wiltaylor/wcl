@@ -102,3 +102,37 @@ type TermFill extends TermPrimitive {
   strike: bool?  blink: bool?  inverse: bool?  conceal: bool?
 }
 
+// Default terminal styling: the embedded JetBrains Mono Nerd Font faces
+// (served from `_wdoc/`, written only when a terminal is used), the
+// cell-grid font binding, window chrome, blink/cursor animation, and
+// replay controls. The terminal's colours come from the `class` system
+// (`.wdoc-terminal` is the bare-class default a user `class` overrides);
+// this carries the parts a class can't express — `@font-face`,
+// `@keyframes`, `:hover`, `[hidden]`, and the descendant `.wdoc-terminal-svg
+// text` selector.
+stylesheet "wdoc-terminal" {
+  css = <<CSS
+    @font-face { font-family: 'JetBrainsMono Nerd Font'; font-weight: normal; font-style: normal; font-display: swap; src: url('_wdoc/JetBrainsMonoNerdFontMono-Regular.woff2') format('woff2'); }
+    @font-face { font-family: 'JetBrainsMono Nerd Font'; font-weight: bold; font-style: normal; font-display: swap; src: url('_wdoc/JetBrainsMonoNerdFontMono-Bold.woff2') format('woff2'); }
+    @font-face { font-family: 'JetBrainsMono Nerd Font'; font-weight: normal; font-style: italic; font-display: swap; src: url('_wdoc/JetBrainsMonoNerdFontMono-Italic.woff2') format('woff2'); }
+    .wdoc-terminal { display: inline-block; max-width: 100%; border-radius: 6px; overflow: hidden; }
+    .wdoc-terminal { background: #1c1c1c; color: #d0d0d0; }
+    .wdoc-terminal-svg { display: block; max-width: 100%; height: auto; }
+    .wdoc-terminal-svg text { font-family: 'JetBrainsMono Nerd Font', ui-monospace, 'Cascadia Code', 'Fira Code', Menlo, Consolas, monospace; }
+    .term-chrome-bar { fill: currentColor; opacity: 0.08; }
+    .term-title { fill: currentColor; opacity: 0.6; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.75em; }
+    .term-close { stroke: currentColor; opacity: 0.55; stroke-width: 1.5; stroke-linecap: round; }
+    .term-close:hover { opacity: 1; }
+    .term-chrome-btn { fill: currentColor; opacity: 0.55; font-size: 0.8em; cursor: pointer; }
+    .term-chrome-btn:hover { opacity: 1; }
+    .term-cursor { fill: currentColor; opacity: 0.65; }
+    .term-blink { animation: wdoc-term-blink 1s steps(1) infinite; }
+    @keyframes wdoc-term-blink { 50% { opacity: 0; } }
+    .wdoc-terminal-error { color: #bf616a; font-family: monospace; }
+    .wdoc-terminal-player { position: relative; }
+    .term-overlay-play { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 4rem; height: 4rem; display: flex; align-items: center; justify-content: center; padding: 0; border: none; border-radius: 50%; cursor: pointer; background: rgba(20,20,20,0.55); color: #fff; font-size: 1.9rem; line-height: 1; }
+    .term-overlay-play:hover { background: rgba(20,20,20,0.75); }
+    .term-overlay-play[hidden] { display: none; }
+    CSS
+}
+

@@ -10,13 +10,37 @@
 
 @document
 type Site {
-  @children("class")          classes:   list<Class>
-  @children("page")           pages:     list<Page>
-  @children("inline_pattern") patterns:  list<InlinePattern>
-  @children("template")       templates: list<Template>
-  @children("iconset")        iconsets:  list<IconSet>
-  @children("tileset")        tilesets:  list<Tileset>
-  @child("site")              site:      SiteConfig?
+  @children("class")          classes:     list<Class>
+  @children("stylesheet")     stylesheets: list<Stylesheet>
+  @children("page")           pages:       list<Page>
+  @children("inline_pattern") patterns:    list<InlinePattern>
+  @children("template")       templates:   list<Template>
+  @children("iconset")        iconsets:    list<IconSet>
+  @children("tileset")        tilesets:    list<Tileset>
+  @child("site")              site:        SiteConfig?
+}
+
+// Raw stylesheet. Carries CSS that the bare-class `class` system can't
+// express (descendant / compound / pseudo selectors, `@font-face`,
+// `@keyframes`, `var()`, …). The build collects every `stylesheet` block
+// — bundled ones (from this stdlib, co-located with the block they style)
+// before user ones — and injects their `css` verbatim into each page's
+// `<head>` ahead of the `class` rules, so user `class`/`stylesheet` rules
+// still win by cascade. A user may declare their own for advanced CSS.
+@block("stylesheet")
+type Stylesheet {
+  @inline(0) name: identifier
+  css: utf8
+}
+
+// Base page styling. Resets the body margin and makes it fill the
+// viewport so a themed `class "wdoc-body" { … }` background reaches every
+// edge (no white gutter / short-page gap). `<body class="wdoc-body">` is
+// emitted by the renderer's page shell.
+stylesheet "wdoc-base" {
+  css = <<CSS
+    .wdoc-body { margin: 0; min-height: 100vh; }
+    CSS
 }
 
 // Renderable-block interfaces. `WdocBlock` is the page-level domain

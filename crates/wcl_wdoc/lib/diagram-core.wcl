@@ -259,3 +259,20 @@ union HtmlFundamental {
   Icon { name: utf8 class: list<utf8>? }
 }
 
+// Styling for interactive (pan + zoom) diagrams. Only a `pan_zoom`
+// diagram gets the `.wdoc-diagram-viewport` wrapper, so plain diagrams
+// are untouched; the controls paint with `currentColor` so they adopt the
+// page theme. The bundled `diagram-pan-zoom.js` drives the SVG `viewBox`.
+// Uses descendant + compound + `:hover` selectors, so it can't be a bare
+// `class`.
+stylesheet "wdoc-diagram" {
+  css = <<CSS
+    .wdoc-diagram-viewport { position: relative; display: inline-block; max-width: 100%; }
+    .wdoc-diagram-viewport svg { display: block; max-width: 100%; height: auto; touch-action: none; cursor: grab; }
+    .wdoc-diagram-viewport.panning svg { cursor: grabbing; }
+    .wdoc-diagram-controls { position: absolute; top: 6px; right: 6px; display: flex; flex-direction: column; gap: 4px; }
+    .wdoc-diagram-controls button { width: 1.6rem; height: 1.6rem; padding: 0; display: flex; align-items: center; justify-content: center; font: inherit; font-size: 1rem; line-height: 1; cursor: pointer; color: inherit; background: rgba(127,127,127,0.12); border: 1px solid currentColor; border-radius: 4px; opacity: 0.6; }
+    .wdoc-diagram-controls button:hover { opacity: 1; }
+    CSS
+}
+

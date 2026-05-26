@@ -62,3 +62,14 @@ type Icon extends SvgBlock {
   lower = fn(i: Icon) -> list<SvgFundamental> []
 }
 
+// Default icon styling. The inline `:name:` handler emits an
+// `<svg class="wdoc-icon">` sized to the surrounding text (1em); a
+// per-icon `size` overrides it via inline style. Diagram icons are
+// `<use>` elements sized by their width/height, so this `svg.wdoc-icon`
+// (element+class) selector leaves them alone. Can't be a bare `class`.
+stylesheet "wdoc-icon" {
+  css = <<CSS
+    svg.wdoc-icon { display: inline-block; width: 1em; height: 1em; vertical-align: -0.125em; }
+    CSS
+}
+

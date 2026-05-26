@@ -25,3 +25,16 @@ type TableBlock extends WdocBlock {
   lower = fn(t: TableBlock) -> list<HtmlFundamental> []
 }
 
+// Default table styling, injected into every page's <head> (before user
+// `class` rules, so those still override it). Keeps tables legible out of
+// the box without forcing every author to declare a border class. Uses
+// element+class (`table.wdoc-table`) and descendant (`.wdoc-table th`)
+// selectors, so it can't be a bare `class`.
+stylesheet "wdoc-table" {
+  css = <<CSS
+    table.wdoc-table { border-collapse: collapse; }
+    .wdoc-table th, .wdoc-table td { border: 1px solid #ccc; padding: 0.3rem 0.6rem; text-align: left; }
+    .wdoc-table th { background: #f4f4f4; }
+    CSS
+}
+

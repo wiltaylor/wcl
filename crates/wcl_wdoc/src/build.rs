@@ -153,22 +153,39 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         .chain(user_classes)
         .collect::<Vec<_>>()
         .join("\n");
-    // Chart styling (palette + axes) is no longer a constant here — it
-    // migrated to bundled `class` blocks in wdoc.wcl and so rides the
-    // `{class_css}` segment (emitted before user classes, after these).
-    let css = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{class_css}",
-        crate::render::BASE_CSS,
-        highlight::theme_css(),
-        crate::render::TABLE_CSS,
-        crate::render::SITE_CSS,
-        crate::render::BOOK_CSS,
-        crate::render::TERMINAL_CSS,
-        crate::render::ICON_CSS,
-        crate::render::CALLOUT_CSS,
-        crate::render::TILEMAP_CSS,
-        crate::render::DIAGRAM_CSS,
-    );
+    // Raw `@block("stylesheet")` rules — the CSS the bare-class `class`
+    // system can't express (descendant / compound / pseudo selectors,
+    // `@font-face`, `var()`, …). Block-level defaults are co-located with
+    // their block in the stdlib; template-region CSS lives in the
+    // templates themselves (emitted into <body>). Same lib-before-user
+    // ordering as `class`, and emitted ahead of `{class_css}` to keep the
+    // old "constants before class rules" cascade.
+    let (lib_sheets, user_sheets): (Vec<String>, Vec<String>) = {
+        let mut lib = Vec::new();
+        let mut user = Vec::new();
+        for (origin, b) in doc.blocks_with_source() {
+            if b.kind() != "stylesheet" {
+                continue;
+            }
+            if let Some(css) = field_utf8(&b, "css") {
+                if origin.is_some() {
+                    &mut lib
+                } else {
+                    &mut user
+                }
+                .push(css);
+            }
+        }
+        (lib, user)
+    };
+    let stylesheet_css: String = lib_sheets
+        .into_iter()
+        .chain(user_sheets)
+        .collect::<Vec<_>>()
+        .join("\n");
+    // The bundled syntax-highlight theme (an external asset) comes first;
+    // then the WCL-authored stylesheets, then the class rules.
+    let css = format!("{}\n{stylesheet_css}\n{class_css}", highlight::theme_css(),);
 
     // Terminals need the bundled font + replay player written alongside
     // the pages. Only emit them when the document actually uses a
