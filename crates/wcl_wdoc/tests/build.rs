@@ -3037,3 +3037,55 @@ page index {
         "{sprite}"
     );
 }
+
+#[test]
+fn build_renders_callout_with_builtin_icon() {
+    // No `iconset` declared: the built-in `warning` glyph still resolves
+    // from the compiled-in Lucide pack and lands in the sprite.
+    let src = "page index {\n  \
+        callout \"Heads up\" { class = [\"warning\"]  body = \"Be careful.\" }\n}\n";
+    let (index, sprite) = build_icons(src);
+
+    assert!(index.contains("<div class=\"callout warning\">"), "{index}");
+    assert!(
+        index.contains(
+            "<div class=\"callout-heading\">\
+             <svg class=\"wdoc-icon callout-icon\">\
+             <use href=\"_wdoc/icons.svg#lucide-triangle-alert\"/></svg>\
+             <p class=\"callout-title\"><span>Heads up</span></p></div>"
+        ),
+        "{index}"
+    );
+    assert!(
+        index.contains("<div class=\"callout-body\"><p><span>Be careful.</span></p></div>"),
+        "{index}"
+    );
+    assert!(index.contains(".callout.warning"), "{index}");
+    assert!(
+        sprite
+            .expect("sprite written")
+            .contains("lucide-triangle-alert"),
+        "sprite missing the built-in callout icon"
+    );
+}
+
+#[test]
+fn build_callout_icon_override_and_plain() {
+    let src = "page index {\n  \
+        callout \"Tip\" { class = [\"tip\"]  body = \"t\"  icon = \"bootstrap.rocket\" }\n  \
+        callout \"Plain\" { body = \"p\" }\n}\n";
+    let (index, _) = build_icons(src);
+
+    // An explicit `icon` (here via a bundled pack name) overrides the
+    // type's default glyph.
+    assert!(index.contains("#bootstrap-rocket"), "{index}");
+    assert!(!index.contains("lucide-lightbulb"), "{index}");
+    // A callout with no built-in type and no icon renders no icon.
+    assert!(
+        index.contains(
+            "<div class=\"callout\"><div class=\"callout-heading\">\
+             <p class=\"callout-title\"><span>Plain</span></p></div>"
+        ),
+        "{index}"
+    );
+}

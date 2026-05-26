@@ -172,6 +172,25 @@ pub(crate) const TERMINAL_CSS: &str = "\
 pub(crate) const ICON_CSS: &str = "\
 svg.wdoc-icon { display: inline-block; width: 1em; height: 1em; vertical-align: -0.125em; }";
 
+/// Default styling for `callout` blocks. The per-type accent rides a CSS
+/// custom property so it colours only the heading, the left border, and
+/// the (currentColor) icon — never the body text. Injected like the
+/// other constants (before user `class` rules, which therefore override
+/// it); the background is a theme-neutral translucent grey so callouts
+/// read on both light and dark pages.
+pub(crate) const CALLOUT_CSS: &str = "\
+.callout { --callout-accent: #888; margin: 1rem 0; padding: 0.6rem 0.9rem; border-left: 4px solid var(--callout-accent); border-radius: 4px; background: rgba(127,127,127,0.08); }
+.callout-heading { display: flex; align-items: center; gap: 0.45rem; font-weight: 600; color: var(--callout-accent); }
+.callout-title { margin: 0; }
+.callout-heading svg.wdoc-icon { width: 1.15em; height: 1.15em; }
+.callout-body > :first-child { margin-top: 0; }
+.callout-body > :last-child { margin-bottom: 0; }
+.callout.note, .callout.info { --callout-accent: #5e81ac; }
+.callout.tip { --callout-accent: #88c0d0; }
+.callout.warning { --callout-accent: #d08770; }
+.callout.error { --callout-accent: #bf616a; }
+.callout.success { --callout-accent: #a3be8c; }";
+
 /// Wrap a page's `body` HTML in the document shell. The `<head>`
 /// (title + global stylesheet) is owned here regardless of template;
 /// templates control the `<body>` contents via `render_template`.
@@ -273,6 +292,7 @@ pub(crate) fn render_template(
     pages: &[(String, String)],
     toc_nodes: &[TocNode],
     theme_toggle: bool,
+    icons: &IconRegistry,
 ) -> String {
     let Some(field) = template.field("render") else {
         return String::new();
@@ -329,7 +349,7 @@ pub(crate) fn render_template(
     };
     items
         .iter()
-        .map(|v| render_html_variant(doc, v, 0))
+        .map(|v| render_html_variant(doc, v, 0, icons))
         .collect()
 }
 
@@ -352,7 +372,7 @@ pub(crate) fn render_block(
         "terminal" => Some(crate::terminal::render_terminal(doc, block, base_dir)),
         // Skip the lowering function declarations — they're top-level
         // fields, not blocks, so they don't reach render_block.
-        kind => Some(lower_html_block(doc, block, kind)),
+        kind => Some(lower_html_block(doc, block, kind, patterns.icons())),
     }
 }
 
@@ -1590,7 +1610,7 @@ fn lower_svg_block(
 }
 
 /// Custom HTML-block lowering (h1..h6 and friends).
-fn lower_html_block(doc: &Document, block: &Block<'_>, kind: &str) -> String {
+fn lower_html_block(doc: &Document, block: &Block<'_>, kind: &str, icons: &IconRegistry) -> String {
     let Some(arg) = block_to_record(doc, block, kind) else {
         return String::new();
     };
@@ -1606,7 +1626,7 @@ fn lower_html_block(doc: &Document, block: &Block<'_>, kind: &str) -> String {
     };
     items
         .iter()
-        .map(|v| render_html_variant(doc, v, 0))
+        .map(|v| render_html_variant(doc, v, 0, icons))
         .collect()
 }
 
@@ -1661,7 +1681,12 @@ fn render_svg_variant(
     }
 }
 
-fn render_html_variant(doc: &Document, value: &Value, depth: usize) -> String {
+fn render_html_variant(
+    doc: &Document,
+    value: &Value,
+    depth: usize,
+    icons: &IconRegistry,
+) -> String {
     if depth > MAX_LOWER_DEPTH {
         return depth_marker();
     }
@@ -1678,8 +1703,12 @@ fn render_html_variant(doc: &Document, value: &Value, depth: usize) -> String {
     match kind.as_str() {
         "paragraph" => render_paragraph_payload(map),
         "table" => render_table_payload(map),
-        "element" => render_element_payload(doc, map, depth),
+        "element" => render_element_payload(doc, map, depth, icons),
         "raw" => render_raw_payload(map),
+        // An icon, resolved against the registry so it records sprite
+        // usage. Emitted by the stdlib `callout` lowering (and available
+        // to any user HTML lowering).
+        "icon" => render_icon_fundamental(map, icons),
         other => {
             let arg = payload_to_record(map, other);
             let Some(fv) = lookup_type_lower(doc, other) else {
@@ -1694,10 +1723,21 @@ fn render_html_variant(doc: &Document, value: &Value, depth: usize) -> String {
             };
             items
                 .iter()
-                .map(|v| render_html_variant(doc, v, depth + 1))
+                .map(|v| render_html_variant(doc, v, depth + 1, icons))
                 .collect()
         }
     }
+}
+
+/// Render an `HtmlFundamental::Icon { name, class? }` by resolving the
+/// name against the icon registry (which records it for the shared
+/// sprite). A miss renders nothing.
+fn render_icon_fundamental(map: &BTreeMap<String, Value>, icons: &IconRegistry) -> String {
+    let Some(name) = map_utf8(map, "name") else {
+        return String::new();
+    };
+    let classes = map_utf8_list(map, "class");
+    icons.resolve_html_icon(&name, &classes).unwrap_or_default()
 }
 
 fn depth_marker() -> String {
@@ -2050,7 +2090,12 @@ fn render_table_payload(map: &BTreeMap<String, Value>) -> String {
 /// Render an `HtmlFundamental::Element` — `<tag id class attrs>…</tag>`
 /// with its `children` rendered recursively as fundamentals. Powers
 /// template layout (header / nav / main / a / …).
-fn render_element_payload(doc: &Document, map: &BTreeMap<String, Value>, depth: usize) -> String {
+fn render_element_payload(
+    doc: &Document,
+    map: &BTreeMap<String, Value>,
+    depth: usize,
+    icons: &IconRegistry,
+) -> String {
     let tag = map_utf8(map, "tag").unwrap_or_else(|| "div".to_string());
     // Only allow simple alphanumeric tag names so a stray value can't
     // inject markup; fall back to `div` otherwise.
@@ -2078,7 +2123,7 @@ fn render_element_payload(doc: &Document, map: &BTreeMap<String, Value>, depth: 
     out.push('>');
     if let Some(Value::List(children)) = map.get("children") {
         for child in children {
-            out.push_str(&render_html_variant(doc, child, depth + 1));
+            out.push_str(&render_html_variant(doc, child, depth + 1, icons));
         }
     }
     write!(out, "</{tag}>").expect("write to String");

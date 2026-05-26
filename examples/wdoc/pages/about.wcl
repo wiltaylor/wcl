@@ -4,4 +4,36 @@ page about {
   text {
     span "This is the about page. It exists to demonstrate cross-page links. Back to [the index](index)." {}
   }
+
+  h2 "Callouts" {}
+
+  // A callout is an admonition: an icon + a coloured heading + a body.
+  // The built-in type is chosen by its `class`; each ships an accent
+  // colour and a default icon from the bundled Lucide pack (no iconset
+  // needed). Set `icon` to override the glyph.
+  callout "Note" {
+    class = ["note"]
+    body  = "Callouts compose down to plain divs plus an icon fundamental — they are not a primitive."
+  }
+  callout "Good to know" {
+    class = ["info"]
+    body  = "Each built-in type ships its own colour and icon; declaring an iconset is not required."
+  }
+  callout "Pro tip" {
+    class = ["tip"]
+    body  = "Pick a type with the class: note, info, tip, warning, error, or success."
+  }
+  callout "Heads up" {
+    class = ["warning"]
+    body  = "Callout headings and bodies are plain text on this lowering path."
+  }
+  callout "Something broke" {
+    class = ["error"]
+    body  = "Use error for failures and blockers."
+  }
+  callout "All done" {
+    class = ["success"]
+    icon  = "lucide.party-popper"
+    body  = "Use success to confirm an action — shown here with a custom icon override."
+  }
 }

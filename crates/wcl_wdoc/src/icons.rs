@@ -145,6 +145,38 @@ impl IconRegistry {
         Some(inline_markup(&pack, icon, &style))
     }
 
+    /// Resolve an `HtmlFundamental::Icon` (e.g. a `callout`'s built-in
+    /// default or an explicit override). Unlike `resolve_inline`, this
+    /// also falls back to a `pack.name` token against a compiled-in pack
+    /// when no matching `iconset` is declared — so the built-in callout
+    /// glyphs render with zero icon configuration. The fallback carries
+    /// no inline colour, so the icon inherits its container's colour via
+    /// `currentColor`.
+    pub(crate) fn resolve_html_icon(&self, raw: &str, extra: &[String]) -> Option<String> {
+        if let Some(svg) = self.resolve_inline(raw, extra) {
+            return Some(svg);
+        }
+        let (hint, icon) = split_set(raw);
+        let pack = hint?;
+        if !ICON_PACKS.iter().any(|p| p.name == pack) {
+            return None;
+        }
+        self.resolve_builtin(pack, icon, extra)
+    }
+
+    /// Resolve `name` directly from a compiled-in `pack`, bypassing the
+    /// declared-iconset lookup. Records usage so the icon lands in the
+    /// shared sprite.
+    fn resolve_builtin(&self, pack: &str, name: &str, extra: &[String]) -> Option<String> {
+        pack_lookup(pack, name)?;
+        self.record(pack, name);
+        let style = IconStyle {
+            classes: extra.to_vec(),
+            ..IconStyle::default()
+        };
+        Some(inline_markup(pack, name, &style))
+    }
+
     /// Resolve a diagram `icon` placement to SVG (a `<use>`, optionally
     /// behind a background `<rect>`), or `None` on a miss.
     pub(crate) fn resolve_shape(

@@ -85,7 +85,7 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         .collect::<Vec<_>>()
         .join("\n");
     let css = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{class_css}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{class_css}",
         crate::render::BASE_CSS,
         crate::render::HEADING_CSS,
         highlight::theme_css(),
@@ -95,6 +95,7 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
         crate::render::CHART_CSS,
         crate::render::TERMINAL_CSS,
         crate::render::ICON_CSS,
+        crate::render::CALLOUT_CSS,
     );
 
     // Terminals need the bundled font + replay player written alongside
@@ -215,6 +216,7 @@ pub fn build(file: &Path, out_dir: &Path) -> Result<usize, BuildError> {
                     &pages,
                     &toc_nodes,
                     theme_toggle,
+                    inline_patterns.icons(),
                 )
             }
             None => content,

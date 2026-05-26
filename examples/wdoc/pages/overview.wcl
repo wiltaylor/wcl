@@ -11,6 +11,15 @@ page overview {
     }
   }
 
+  // Callouts are admonitions: an icon + a coloured heading + a body. The
+  // built-in type is chosen by its `class`; each ships an accent colour
+  // and a default icon (no iconset needed). See the About page for the
+  // full set of types.
+  callout "What this page shows" {
+    class = ["info"]
+    body  = "Text and spans, the class system, columns, callouts, a free-form diagram, and a layered flowchart."
+  }
+
   // Inline patterns: `**bold**`, `_italic_`, backtick-code and
   // `[label](url)` are recognised inside any span's text and
   // rendered as styled inline elements. Nesting works recursively.
@@ -112,6 +121,11 @@ page overview {
         stroke = "#9c9"
       }
     }
+  }
+
+  callout "Tip" {
+    class = ["tip"]
+    body  = "Diagram shapes can carry an icon too — see the Icons page for shape badges."
   }
 
   h2 "Flowchart" {}
