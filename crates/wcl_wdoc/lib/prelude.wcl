@@ -11,6 +11,7 @@
 // so the parts are listed bottom-up by dependency for readability.
 
 import <core.wcl>             // @document Site, block interfaces, Page, Class
+import <theme.wcl>            // ColourTheme / Palette + built-in colour themes
 import <css-classes.wcl>      // bundled default `class` instances
 import <diagram-core.wcl>     // diagram, container, SVG shapes, fundamentals
 import <text.wcl>             // text / span / column

@@ -9,18 +9,21 @@
 //! - [`html`] — page shell, templates, page-level blocks + HTML fundamentals
 //! - [`lower`] — `lower`-function dispatch + recursive variant rendering
 //! - [`svg`] — diagram layout, edge routing, and shape geometry
+//! - [`theme`] — `ColourTheme` → `--wdoc-*` custom-property CSS
 
 mod accessors;
 mod css;
 mod html;
 mod lower;
 mod svg;
+mod theme;
 
 pub(crate) use accessors::*;
 pub(crate) use css::*;
 pub(crate) use html::*;
 pub(crate) use lower::*;
 pub(crate) use svg::*;
+pub(crate) use theme::*;
 
 #[cfg(test)]
 mod tests {

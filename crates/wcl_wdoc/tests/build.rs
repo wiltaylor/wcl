@@ -4136,3 +4136,201 @@ fn multisite_example_root_site_and_subdirs() {
         "the root site's own pages must not carry a back-link:\n{root}"
     );
 }
+
+// ── Colour themes ──────────────────────────────────────────────────
+
+#[test]
+fn site_selects_built_in_theme_with_accent() {
+    // `theme = catppuccin` recolours the site: the dark palette on
+    // `:root`, the light palette under prefers-color-scheme + the
+    // explicit toggle override, and `--wdoc-accent` bound to the chosen
+    // hue, with the apply rules painting body / charts / tokens.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("themed.wcl");
+    std::fs::write(
+        &src,
+        r#"
+site {
+  default_template = :webpage
+  theme  = catppuccin
+  accent = :green
+}
+page index { text { span "Hi" {} } }
+"#,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Mocha (dark) base + Latte (light) base, each emitted on :root.
+    assert!(
+        html.contains("--wdoc-bg:#1e1e2e;"),
+        "mocha bg missing:\n{html}"
+    );
+    assert!(
+        html.contains("--wdoc-bg:#eff1f5;"),
+        "latte bg missing:\n{html}"
+    );
+    // The toggle override side (book/webpage both get it via site_css).
+    assert!(
+        html.contains(":root[data-theme=\"light\"]{--wdoc-bg:#eff1f5;"),
+        "data-theme light override missing:\n{html}"
+    );
+    // Accent resolves to the chosen hue var, and is applied to links.
+    assert!(
+        html.contains("--wdoc-accent:var(--wdoc-green);"),
+        "accent var missing:\n{html}"
+    );
+    assert!(
+        html.contains("a,.link{color:var(--wdoc-accent);}"),
+        "{html}"
+    );
+    // Apply rules reach the body and the chart palette.
+    assert!(
+        html.contains("body,.wdoc-body{background:var(--wdoc-bg);color:var(--wdoc-fg);}"),
+        "{html}"
+    );
+    assert!(
+        html.contains(".wdoc-series-1{fill:var(--wdoc-blue);stroke:var(--wdoc-blue);}"),
+        "{html}"
+    );
+}
+
+#[test]
+fn site_without_theme_defaults_to_nord() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("default.wcl");
+    std::fs::write(
+        &src,
+        r#"
+site { default_template = :webpage }
+page index { text { span "Hi" {} } }
+"#,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Nord polar-night bg (dark) + snow-storm bg (light), and the
+    // default accent (blue) when `accent` is unset.
+    assert!(
+        html.contains("--wdoc-bg:#2e3440;"),
+        "nord dark bg missing:\n{html}"
+    );
+    assert!(
+        html.contains("--wdoc-bg:#eceff4;"),
+        "nord light bg missing:\n{html}"
+    );
+    assert!(
+        html.contains("--wdoc-accent:var(--wdoc-blue);"),
+        "default accent should be blue:\n{html}"
+    );
+}
+
+#[test]
+fn user_defined_theme_is_selectable() {
+    // A `ColourTheme` is an ordinary value, so a user can declare one
+    // and select it the same way as a built-in.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("custom.wcl");
+    std::fs::write(
+        &src,
+        r##"
+let midnight = ColourTheme::Of {
+  name: "Midnight",
+  dark:  Palette::Of {
+    bg: "#0b0b14", bg_alt: "#15151f", bg_inset: "#070710", overlay: "#22223a", border: "#33334d",
+    fg: "#e6e6f0", fg_muted: "#9a9ab0", fg_subtle: "#5a5a72", heading: "#ffffff", selection: "#2a2a44",
+    red: "#ff5577", orange: "#ff9944", yellow: "#ffcc44", green: "#55dd88",
+    cyan: "#44ccdd", blue: "#5599ff", purple: "#aa77ff", pink: "#ff79c6",
+  },
+  light: Palette::Of {
+    bg: "#fafafe", bg_alt: "#eeeef6", bg_inset: "#ffffff", overlay: "#dddde8", border: "#ccccdd",
+    fg: "#1a1a2a", fg_muted: "#55556a", fg_subtle: "#8a8aa0", heading: "#000000", selection: "#d6d6ee",
+    red: "#cc2255", orange: "#cc6611", yellow: "#aa8800", green: "#118844",
+    cyan: "#1188aa", blue: "#2266cc", purple: "#7733cc", pink: "#d6298f",
+  },
+}
+site { default_template = :webpage  theme = midnight  accent = :pink }
+page index { text { span "Hi" {} } }
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        html.contains("--wdoc-bg:#0b0b14;"),
+        "custom dark bg missing:\n{html}"
+    );
+    assert!(
+        html.contains("--wdoc-pink:#ff79c6;"),
+        "custom dark pink missing:\n{html}"
+    );
+    assert!(
+        html.contains("--wdoc-pink:#d6298f;"),
+        "custom light pink missing:\n{html}"
+    );
+    assert!(
+        html.contains("--wdoc-accent:var(--wdoc-pink);"),
+        "accent should be pink:\n{html}"
+    );
+}
+
+#[test]
+fn bare_document_without_site_is_unthemed() {
+    // No `site` block ⇒ pages render bare, with no theme vars (output
+    // unchanged from before colour themes existed).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("bare.wcl");
+    std::fs::write(&src, "page index { text { span \"Hi\" {} } }\n").expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        !html.contains("--wdoc-"),
+        "a bare document should emit no theme custom properties:\n{html}"
+    );
+}
+
+#[test]
+fn per_site_themes_are_independent() {
+    // Each site in a multi-site document carries its own theme.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("multi.wcl");
+    std::fs::write(
+        &src,
+        r#"
+site a { root = true  default_template = :webpage  theme = gruvbox }
+site b { default_template = :webpage  theme = everforest }
+page pa { sites = [:a]  text { span "A" {} } }
+page pb { sites = [:b]  text { span "B" {} } }
+"#,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let a = std::fs::read_to_string(out.path().join("pa.html")).expect("read pa");
+    let b = std::fs::read_to_string(out.path().join("b").join("pb.html")).expect("read pb");
+
+    assert!(
+        a.contains("--wdoc-bg:#282828;"),
+        "site a should be gruvbox:\n{a}"
+    );
+    assert!(
+        !a.contains("--wdoc-bg:#2d353b;"),
+        "site a must not leak everforest:\n{a}"
+    );
+    assert!(
+        b.contains("--wdoc-bg:#2d353b;"),
+        "site b should be everforest:\n{b}"
+    );
+    assert!(
+        !b.contains("--wdoc-bg:#282828;"),
+        "site b must not leak gruvbox:\n{b}"
+    );
+}

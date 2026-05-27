@@ -74,6 +74,14 @@ type SiteConfig {
   // Render a light/dark toggle (the `book` template shows it). Pair
   // with `class` blocks that declare `dark {}` / `light {}` modes.
   theme_toggle:     bool?
+  // Colour theme for this site. Any `ColourTheme` value — a built-in
+  // (`nord` / `gruvbox` / `solarized` / `catppuccin` / `tokyonight` /
+  // `kanagawa` / `everforest`) or one you declare yourself. Unset ⇒ the
+  // renderer applies `nord`. See `theme.wcl`.
+  theme:  ColourTheme?
+  // Which hue drives links / highlights (`--wdoc-accent`): one of
+  // red orange yellow green cyan blue purple pink. Unset ⇒ blue.
+  accent: symbol?
   @child("toc") toc: Toc?
 }
 
@@ -90,7 +98,7 @@ type Template {
 // gap / descendant selectors a bare `class` can't express. `.site-header`
 // colour/weight is the bundled `class "site-header"`.
 let webpage_css = <<CSS
-  .site-nav { display: flex; gap: 1rem; padding: 0.5rem 0; border-bottom: 1px solid #ccc; margin-bottom: 1rem; }
+  .site-nav { display: flex; gap: 1rem; padding: 0.5rem 0; border-bottom: 1px solid var(--wdoc-border, #ccc); margin-bottom: 1rem; }
   .site-nav a { text-decoration: none; }
   // `color: inherit` themes both `:link` and `:visited` (an author rule
   // beats the UA's default link/visited colours), so the back-link
@@ -184,7 +192,7 @@ let book_toc = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
 // the chapter / section colours are the bundled `class "book-chapter" /
 // "book-section" / "current"`.
 let book_css = <<CSS
-  .book-sidebar { position: fixed; top: 0; left: 0; width: 16rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem; border-right: 1px solid rgba(127,127,127,0.3); background: rgba(127,127,127,0.06); }
+  .book-sidebar { position: fixed; top: 0; left: 0; width: 16rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem; border-right: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); background: var(--wdoc-bg-alt, rgba(127,127,127,0.06)); }
   .book-title { font-weight: bold; font-size: 1.1rem; margin-bottom: 0.75rem; }
   .book-home { display: block; margin-bottom: 0.6rem; opacity: 0.8; text-decoration: none; color: inherit; }
   .book-home:hover { opacity: 1; text-decoration: underline; }
@@ -193,10 +201,10 @@ let book_css = <<CSS
   .book-sidebar a.book-chapter { display: block; padding: 0.2rem 0; opacity: 0.85; }
   .book-chapter { text-decoration: none; }
   .book-chapter:hover { opacity: 1; text-decoration: underline; }
-  .book-sidebar a.book-chapter.current { opacity: 1; }
+  .book-sidebar a.book-chapter.current { opacity: 1; color: var(--wdoc-accent, inherit); }
   .book-sidebar .book-section { display: block; padding: 0.35rem 0 0.1rem; font-weight: 600; opacity: 0.7; }
   .book-content { margin-left: 16rem; padding: 1rem 2.5rem; max-width: 46rem; }
-  .theme-toggle { display: block; margin: 0 0 0.75rem; padding: 0.2rem 0.6rem; cursor: pointer; background: transparent; border: 1px solid currentColor; border-radius: 4px; color: inherit; font: inherit; }
+  .theme-toggle { display: block; margin: 0 0 0.75rem; padding: 0.2rem 0.6rem; cursor: pointer; background: transparent; border: 1px solid var(--wdoc-border, currentColor); border-radius: 4px; color: inherit; font: inherit; }
   CSS
 
 // Stdlib `book` template: an mdbook-style layout — a fixed left

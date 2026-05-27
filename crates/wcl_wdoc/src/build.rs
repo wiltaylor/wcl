@@ -10,6 +10,7 @@ use crate::inline::InlinePatterns;
 use crate::render::{
     TocNode, escape_html, field_bool, field_id, field_symbol, field_symbol_list_opt, field_utf8,
     find_template, read_toc, render_block, render_class, render_page, render_template,
+    site_theme_css,
 };
 
 /// The wdoc standard library, embedded in the binary and registered
@@ -21,6 +22,7 @@ fn schema_registry() -> Registry {
     let mut r = Registry::new();
     r.register("wdoc/prelude.wcl", include_str!("../lib/prelude.wcl"));
     r.register("wdoc/core.wcl", include_str!("../lib/core.wcl"));
+    r.register("wdoc/theme.wcl", include_str!("../lib/theme.wcl"));
     r.register(
         "wdoc/css-classes.wcl",
         include_str!("../lib/css-classes.wcl"),
@@ -220,7 +222,7 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
     if multi && root_site.is_none() {
         // No root site ⇒ the root is a generated chooser (site-agnostic,
         // so only the global/unscoped CSS).
-        write_chooser_index(out_dir, &site_css(&doc, None), &build_set)?;
+        write_chooser_index(out_dir, &site_css(&doc, None, None), &build_set)?;
     }
 
     Ok(count)
@@ -352,7 +354,13 @@ fn block_in_site(block: &Block<'_>, site_name: Option<&str>) -> bool {
 /// each filtered to the blocks belonging to `site_name` (blocks with no
 /// `sites` field are global). This lets one site carry its own theme in a
 /// multi-site document without affecting the others.
-fn site_css(doc: &Document, site_name: Option<&str>) -> String {
+///
+/// The site's selected colour theme (its `theme`/`accent` fields, or the
+/// `nord` default) is spliced in between the library and user `class`
+/// rules, so it overrides the built-in defaults (chart palette, syntax
+/// tokens) while user `class` blocks still win. `site_block` is the
+/// `@block("site")` carrying the selection (`None` ⇒ bare/unthemed).
+fn site_css(doc: &Document, site_name: Option<&str>, site_block: Option<&Block<'_>>) -> String {
     let mut lib_sheets = Vec::new();
     let mut user_sheets = Vec::new();
     let mut lib_classes = Vec::new();
@@ -390,8 +398,12 @@ fn site_css(doc: &Document, site_name: Option<&str>) -> String {
         .chain(user_sheets)
         .collect::<Vec<_>>()
         .join("\n");
+    // The colour theme sits between the library classes (whose defaults
+    // it overrides) and the user classes (which still win).
+    let theme_css = site_theme_css(doc, site_block);
     let class_css = lib_classes
         .into_iter()
+        .chain(theme_css.into_iter().filter(|s| !s.is_empty()))
         .chain(user_classes)
         .collect::<Vec<_>>()
         .join("\n");
@@ -417,7 +429,7 @@ fn build_site(
 ) -> Result<usize, BuildError> {
     // The page <style>: bundled theme + stylesheets + class rules, scoped
     // to this site (global blocks plus those whose `sites` list names it).
-    let css = site_css(doc, spec.name.as_deref());
+    let css = site_css(doc, spec.name.as_deref(), spec.block.as_ref());
 
     // Terminal + pan/zoom assets, scoped to this site's pages, so a site
     // that uses neither pays nothing.

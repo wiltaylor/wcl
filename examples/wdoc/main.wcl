@@ -54,16 +54,23 @@ site showcase {
   default_template = :webpage
   title            = "wdoc showcase"
   root             = true
+  // A built-in colour theme. One line recolours the whole site — page
+  // background / text, links, headings, code, charts, callouts, tables.
+  theme            = tokyonight
 }
 
-// A docs book: the `book` template (fixed sidebar from the `toc` below).
-// It's Nord-themed (dark by default) with a light/dark toggle — the
-// theme classes below are scoped to this site, so the showcase and blog
-// keep their default light look.
+// A docs book: the `book` template (fixed sidebar from the `toc` below),
+// with the built-in Nord theme and a light/dark toggle. The `theme` does
+// all the colour work the showcase used to spell out as `class` blocks —
+// dark by default, a light variant under `prefers-color-scheme: light`,
+// and the toggle (`:root[data-theme=…]`) overriding either. `accent`
+// picks the hue for links and the current chapter.
 site docs {
   default_template = :book
   title            = "Project Docs"
   theme_toggle     = true
+  theme            = nord
+  accent           = :cyan
   toc {
     chapter "Introduction" { page = index }
     chapter "Guide" {
@@ -73,36 +80,18 @@ site docs {
   }
 }
 
-// Nord theme for the `docs` site only (`sites = [:docs]`). Dark is the
-// default; `light {}` is the system-light alternative; the sidebar
-// toggle overrides either (it sets `:root[data-theme=…]`). `wdoc-body`
-// is the page background hook.
-class "wdoc-body" { sites = [:docs]
-  color = "#d8dee9"  background = "#2e3440"
-  light { color = "#2e3440"  background = "#eceff4" }
-}
+// A `class` block still overrides the theme per-element by cascade: here
+// the docs book title takes the accent hue (the theme leaves it at the
+// body colour). Demonstrates that themes set the baseline and classes
+// fine-tune on top.
+class "book-title" { sites = [:docs]  color = "#88c0d0"  light { color = "#5e81ac" } }
 
-// Page headings (h1–h6) cycle through the Nord frost + aurora hues over
-// the bundled heading sizing. Each carries a darker Nord shade under
-// light mode so it stays legible on the light background.
-class "heading-1" { sites = [:docs]  color = "#88c0d0"  light { color = "#5e81ac" } }
-class "heading-2" { sites = [:docs]  color = "#81a1c1"  light { color = "#5e81ac" } }
-class "heading-3" { sites = [:docs]  color = "#8fbcbb"  light { color = "#4c566a" } }
-class "heading-4" { sites = [:docs]  color = "#a3be8c"  light { color = "#4c566a" } }
-class "heading-5" { sites = [:docs]  color = "#ebcb8b"  light { color = "#d08770" } }
-class "heading-6" { sites = [:docs]  color = "#b48ead"  light { color = "#b48ead" } }
-
-// Links + the sidebar (menu) headings: the book title, the section
-// grouping labels, and the current chapter, all in Nord frost.
-class "link"         { sites = [:docs]  color = "#88c0d0"  light { color = "#5e81ac" } }
-class "book-title"   { sites = [:docs]  color = "#88c0d0"  light { color = "#5e81ac" } }
-class "book-section" { sites = [:docs]  color = "#8fbcbb"  light { color = "#5e81ac" } }
-class "current"      { sites = [:docs]  color = "#88c0d0"  light { color = "#5e81ac" } }
-
-// A blog: the `webpage` template again, with its own posts.
+// A blog: the `webpage` template again, with its own posts and the
+// Gruvbox theme — so all three sites in this document look distinct.
 site blog {
   default_template = :webpage
   title            = "Project Blog"
+  theme            = gruvbox
 }
 
 // Per-page sources. Each imported file declares one `page <name> { ... }`
