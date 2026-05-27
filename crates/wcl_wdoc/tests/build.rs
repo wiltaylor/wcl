@@ -33,7 +33,7 @@ fn build_emits_fundamentals_for_example_site() {
     // output root; docs/blog go to subdirectories.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 18); // showcase 12 + docs 3 + blog 3
+    assert_eq!(n, 17); // showcase 11 + docs 3 + blog 3
 
     // The richer content (text + classes + diagram + flowchart) is on
     // the showcase overview page (at the root, since showcase is `root`).
@@ -2165,7 +2165,7 @@ fn build_processes_full_code_example_page() {
     // `root` site, so the code page renders flat at the output root.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 18);
+    assert_eq!(n, 17);
     let html = std::fs::read_to_string(out.path().join("code.html")).expect("read code.html");
     assert!(
         html.matches("<pre class=\"code-block\"").count() >= 5,
@@ -4381,12 +4381,12 @@ page index { h1 "H" {} }
 #[test]
 fn multisite_example_root_site_and_subdirs() {
     // The bundled example declares three sites; `showcase` is the `root`
-    // site (flat at the output root, its index is the landing demo), and
+    // site (flat at the output root, its `start` page is the landing), and
     // docs/blog render into subdirectories — no chooser is generated.
     let out = TempDir::new().expect("mkdir tempdir");
     let dir = out.path();
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), dir);
-    assert_eq!(n, 18);
+    assert_eq!(n, 17);
 
     // Showcase is at the root: its pages are flat, and there's no
     // `showcase/` subdirectory.

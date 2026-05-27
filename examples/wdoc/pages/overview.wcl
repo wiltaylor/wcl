@@ -1,7 +1,7 @@
 // Fundamental-block demo: text + spans, the `class` system, columns,
 // a free-form diagram with shapes, and a layered flowchart.
 
-page overview { sites = [:showcase]
+page overview { sites = [:showcase]  start = true
   h1 "Pipeline overview" {}
 
   text {
@@ -20,11 +20,12 @@ page overview { sites = [:showcase]
     body  = "Text and spans, the class system, columns, callouts, a free-form diagram, and a layered flowchart."
   }
 
-  // Cross-site links: `[text](site:page)` jumps to another site declared
-  // in this document. This one builds three — browse the other two here.
-  // The hrefs resolve to the `docs/` and `blog/` output directories.
+  // This page is the showcase's start page (`start = true`), so it's
+  // served at `/`. Cross-site links use `[text](site:page)` to jump to
+  // another site declared in this document; the hrefs resolve into the
+  // `docs/` and `blog/` output directories.
   text {
-    span "This document builds three sites. Browse [the documentation](docs:index) (the `book` template) or [the project blog](blog:index) (a second `webpage` site)." {}
+    span "This document builds three sites. Browse [the documentation](docs:index) (a `book`) — e.g. [getting started](docs:getting_started) or [configuration](docs:config) — and [the project blog](blog:index), e.g. [our launch](blog:post_launch)." {}
   }
 
   // Inline patterns: `**bold**`, `_italic_`, backtick-code and

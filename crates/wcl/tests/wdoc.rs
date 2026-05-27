@@ -27,10 +27,11 @@ fn wcl_wdoc_build_renders_fundamental_blocks() {
         .assert()
         .success()
         // showcase (11) + docs (3) + blog (3) across three sites.
-        .stdout(predicate::str::contains("wrote 18 pages"));
+        .stdout(predicate::str::contains("wrote 17 pages"));
 
-    // `showcase` is the `root` site, so the root index is its landing
-    // demo (not a chooser), with cross-site links into the subdir sites.
+    // `showcase` is the `root` site and its `overview` page sets
+    // `start = true`, so the root index is that page (not a chooser),
+    // with cross-site links into the subdir sites.
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
     assert!(index.contains("<style>"), "{index}");
     assert!(

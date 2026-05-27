@@ -2,7 +2,7 @@ page about { sites = [:showcase]
   h1 "About" {}
 
   text {
-    span "This is the about page. It exists to demonstrate cross-page links. Back to [home](home)." {}
+    span "This is the about page. It exists to demonstrate cross-page links. Back to [the overview](overview)." {}
   }
 
   h2 "Callouts" {}

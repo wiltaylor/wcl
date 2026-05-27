@@ -66,5 +66,5 @@ page math { sites = [:showcase]
     {}
   }
 
-  text { span "Back to [home](home)." {} }
+  text { span "Back to [the overview](overview)." {} }
 }
