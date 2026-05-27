@@ -80,7 +80,7 @@ let nord = ColourTheme::Of {
     cyan: "#88c0d0", blue: "#81a1c1", purple: "#b48ead", pink: "#8fbcbb",
   },
   light: Palette::Of {
-    bg: "#eceff4", bg_alt: "#e5e9f0", bg_inset: "#e5e9f0", overlay: "#d8dee9", border: "#d8dee9",
+    bg: "#eceff4", bg_alt: "#e5e9f0", bg_inset: "#d8dee9", overlay: "#d8dee9", border: "#d8dee9",
     fg: "#2e3440", fg_muted: "#4c566a", fg_subtle: "#7b8794", heading: "#2e3440", selection: "#d8dee9",
     red: "#bf616a", orange: "#d08770", yellow: "#b9952f", green: "#7e9a5c",
     cyan: "#5e81ac", blue: "#5e81ac", purple: "#9d7495", pink: "#8fbcbb",
@@ -148,7 +148,7 @@ let tokyonight = ColourTheme::Of {
     cyan: "#7dcfff", blue: "#7aa2f7", purple: "#bb9af7", pink: "#ff007c",
   },
   light: Palette::Of {
-    bg: "#e1e2e7", bg_alt: "#d0d5e3", bg_inset: "#d0d5e3", overlay: "#a8aecb", border: "#b4b5b9",
+    bg: "#e1e2e7", bg_alt: "#d0d5e3", bg_inset: "#c1c9df", overlay: "#a8aecb", border: "#b4b5b9",
     fg: "#3760bf", fg_muted: "#6172b0", fg_subtle: "#848cb5", heading: "#3760bf", selection: "#b7c1e3",
     red: "#f52a65", orange: "#b15c00", yellow: "#8c6c3e", green: "#587539",
     cyan: "#007197", blue: "#2e7de9", purple: "#9854f1", pink: "#9854f1",
@@ -165,7 +165,7 @@ let kanagawa = ColourTheme::Of {
     cyan: "#7aa89f", blue: "#7e9cd8", purple: "#957fb8", pink: "#d27e99",
   },
   light: Palette::Of {
-    bg: "#f2ecbc", bg_alt: "#e7dba0", bg_inset: "#e5ddb0", overlay: "#dcd7ba", border: "#dcd5ac",
+    bg: "#f2ecbc", bg_alt: "#e7dba0", bg_inset: "#d5cea3", overlay: "#dcd7ba", border: "#dcd5ac",
     fg: "#545464", fg_muted: "#716e61", fg_subtle: "#8a8980", heading: "#43436c", selection: "#c9cbd1",
     red: "#c84053", orange: "#cc6d00", yellow: "#836f4a", green: "#6f894e",
     cyan: "#597b75", blue: "#4d699b", purple: "#624c83", pink: "#b35b79",

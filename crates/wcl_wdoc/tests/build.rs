@@ -2073,6 +2073,22 @@ page about {
     );
     // Nav is generated from the page list (one <a> per page).
     assert!(html.contains("<nav class=\"site-nav\">"), "{html}");
+    // The top nav is a sticky bar so it stays on screen while scrolling.
+    assert!(
+        html.contains(".site-nav { position: sticky; top: 0;"),
+        "webpage nav should be sticky:\n{html}"
+    );
+    // The content sits in a themed card (a distinct surface box).
+    assert!(
+        html.contains(".site-main { display: block; background:"),
+        "webpage content should be a card:\n{html}"
+    );
+    // The template CSS heredoc must be pure CSS — a leaked `// ` line
+    // comment (which CSS doesn't support) silently swallows later rules.
+    assert!(
+        !html.contains("// "),
+        "no `//` comment may leak into the emitted <style>:\n{html}"
+    );
     assert!(html.contains("<a href=\"index.html\">index</a>"), "{html}");
     assert!(html.contains("<a href=\"about.html\">about</a>"), "{html}");
     // The page's own content lands inside <main>.
