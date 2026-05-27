@@ -3043,16 +3043,36 @@ page index {
 }
 
 #[test]
-fn build_without_iconset_leaves_colon_text_literal() {
-    // With no `iconset` declared the `:name:` pattern is inert: text is
-    // untouched and no sprite is written.
-    let src = "page index {\n  text { span \"Status :house: ok at 10:30.\" {} }\n}\n";
+fn build_resolves_builtin_packs_without_iconset() {
+    // The `lucide` / `bootstrap` packs are declared in the embedded lib,
+    // so they resolve with no user `iconset`: a bare `:house:` via the
+    // built-in `lucide`, an explicit `:bootstrap.heart:` via `bootstrap`.
+    // A genuinely-unknown name and a stray `:` pair stay literal.
+    let src = "page index {\n  text { span \"Status :house: :bootstrap.heart: ok :not-a-real-icon: at 10:30.\" {} }\n}\n";
     let (index, sprite) = build_icons(src);
-    assert!(index.contains(":house:"), "{index}");
-    // No icon was actually emitted (the always-present ICON_CSS mentions
-    // `wdoc-icon`, so check for a real sprite reference instead).
-    assert!(!index.contains("_wdoc/icons.svg"), "{index}");
-    assert!(sprite.is_none(), "no sprite without icons");
+    assert!(index.contains("#lucide-house"), "{index}");
+    assert!(index.contains("#bootstrap-heart"), "{index}");
+    assert!(index.contains(":not-a-real-icon:"), "{index}");
+    assert!(index.contains("10:30"), "{index}");
+    assert!(
+        sprite.is_some(),
+        "sprite written when built-in icons resolve"
+    );
+}
+
+#[test]
+fn user_iconset_overrides_builtin() {
+    // A user `iconset` of the same name as a built-in is resolved first
+    // (the root document's sets come before the library defaults), so its
+    // styling wins.
+    let src = "iconset lucide { color = \"#abcdef\" }\n\
+               page index {\n  text { span \"see :lucide.house:\" {} }\n}\n";
+    let (index, _) = build_icons(src);
+    assert!(index.contains("#lucide-house"), "{index}");
+    assert!(
+        index.contains("color:#abcdef;"),
+        "user iconset colour should win over the built-in:\n{index}"
+    );
 }
 
 #[test]

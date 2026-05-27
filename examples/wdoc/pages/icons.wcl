@@ -1,17 +1,17 @@
 // Icon demo: the inline `:name:` handler and scalable diagram icons,
 // drawn from the bundled Lucide / Bootstrap packs and themed through the
-// class system. The `iconset`s + the `icon-accent` class live in
-// main.wcl (icon config is document-global).
+// class system. The `lucide` / `bootstrap` packs are built in (declared
+// in the wdoc stdlib), so `:bootstrap.github:` needs no setup; the custom
+// `ui` iconset + the `icon-accent` class live in main.wcl.
 
 page icons { sites = [:showcase]
   h1 "Icons" {}
 
-  // `:name:` resolves against the declared iconsets; `:set.name:` picks a
-  // specific pack. Icons size to the surrounding text (the `ui` set's
-  // `size = "1.15em"`) and follow `currentColor`, so the iconset's
-  // `color` themes them.
+  // A bare `:name:` resolves against the declared iconsets (here the `ui`
+  // set, sized `1.15em` and coloured), while `:pack.name:` reaches a
+  // built-in pack directly. Icons follow `currentColor`.
   text {
-    span "Inline Lucide glyphs :star: :git-branch: :database: :server: and Bootstrap glyphs :bs.github: :bs.gear: :bs.cloud: sit right in the text." {}
+    span "Inline Lucide glyphs :star: :git-branch: :database: :server: and built-in Bootstrap glyphs :bootstrap.github: :bootstrap.gear: :bootstrap.cloud: sit right in the text." {}
   }
 
   // A per-icon `icon_def` override recolours just one icon; an unknown
@@ -33,16 +33,16 @@ page icons { sites = [:showcase]
     direction = :left_to_right
     layer_gap = 70.0
 
-    // Recoloured purely through the `icon-accent` class (the `bs` set
-    // has no default colour, so the class — and its dark-mode override —
-    // drives currentColor).
-    icon "bs.server" {
+    // From the built-in `bootstrap` pack (no iconset declared), recoloured
+    // purely through the `icon-accent` class — and its dark-mode override —
+    // which drives currentColor.
+    icon "bootstrap.server" {
       id     = src
       width  = 44.0
       height = 44.0
       class  = ["icon-accent"]
     }
-    icon "bs.arrow-left-right" {
+    icon "bootstrap.arrow-left-right" {
       id     = mid
       width  = 40.0
       height = 40.0
@@ -89,7 +89,7 @@ page icons { sites = [:showcase]
       icon     = "heart"
       icon_pos = :top_right
     }
-    // `bs.database` comes from a set with no default colour, so the
+    // `bootstrap.database` (built-in pack, no default colour), so the
     // `icon-accent` class (and its dark-mode override) drives its colour.
     terminator "Store" {
       id     = store
@@ -97,7 +97,7 @@ page icons { sites = [:showcase]
       height = 46.0
       fill   = "#efe"
       stroke = "#494"
-      icon   = "bs.database"
+      icon   = "bootstrap.database"
       icon_class = ["icon-accent"]
     }
 

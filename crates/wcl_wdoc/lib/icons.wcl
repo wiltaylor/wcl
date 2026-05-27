@@ -73,3 +73,13 @@ stylesheet "wdoc-icon" {
     CSS
 }
 
+// Built-in iconsets for the compiled-in packs, so `lucide` and `bootstrap`
+// work with no declaration — `:lucide.heart:`, a diagram `icon "lucide.x"`
+// or `{ set = lucide }`, and (since any declared set feeds bare lookup) a
+// bare `:heart:`. Use an explicit `:lucide.name:` when a bare word might
+// also read as prose. Declare your own `iconset` to rename a pack or set
+// default styling; a user iconset of the same name overrides these
+// (the root document's sets are resolved before these library defaults).
+iconset lucide {}        // `pack` defaults to the set's own name
+iconset bootstrap {}
+

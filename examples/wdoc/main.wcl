@@ -34,17 +34,16 @@ class "icon-accent" {
   dark  { color = "#88c0d0" }
 }
 
-// Icon sets map a reference name to one of the bundled packs and set
-// default styling. `ui` draws from Lucide (stroke-based), `bs` from
-// Bootstrap Icons (fill-based); both honour currentColor.
+// The `lucide` and `bootstrap` packs are built in (declared in the wdoc
+// stdlib), so they need no `iconset` here — see `:bootstrap.github:` on
+// the icons page. Declaring an `iconset` is only for renaming a pack or
+// setting default styling: `ui` is a customized Lucide set (size/colour
+// plus a per-icon `icon_def`), which also drives bare `:name:` lookups.
 iconset ui {
   pack  = "lucide"
   size  = "1.15em"
   color = "#003a8c"
   icon_def "heart" { color = "#bf616a" }
-}
-iconset bs {
-  pack = "bootstrap"
 }
 
 // The feature showcase: the `webpage` template (title header + top nav
