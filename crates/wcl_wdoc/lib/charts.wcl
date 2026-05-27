@@ -16,6 +16,12 @@
 union ChartSeries { Of { name: utf8  values: list<f64> } }
 union ChartSlice  { Of { label: utf8  value: f64 } }
 
+// A custom annotation pinned to a point on a line chart. `category` is a
+// 0-based index into the categories axis (the x slot) and `value` is the
+// y in data units (independent of any series, so a label can sit at any
+// height). Drawn as a marker + label over the lines.
+union ChartPoint { At { label: utf8  category: i64  value: f64 } }
+
 // Palette of series classes; cycled by index so the Nth series / slice
 // always lands on a stable class an author can override.
 let chart_palette = [
@@ -183,6 +189,45 @@ let chart_lines = fn(series: list<ChartSeries>, px: f64, py: f64, pw: f64, ph: f
     flatten([segs, marks])
   }))
 
+// Auto value labels: the numeric value of every series point, drawn just
+// above its marker. Toggled per chart by `point_labels`. The y formula is
+// the same as `chart_lines` so labels land exactly on the markers.
+let chart_point_value_labels = fn(series: list<ChartSeries>, px: f64, py: f64, pw: f64, ph: f64, ymin: f64, ymax: f64, ncat: i64) -> list<SvgFundamental>
+  flatten(map(range(0, len(series)), fn(j: i64) -> list<SvgFundamental> {
+    let sj = at(series, j);
+    map(range(0, ncat), fn(i: i64) -> SvgFundamental {
+      let v = at(sj.values, i);
+      SvgFundamental::Label {
+        content: chart_fmt(v),
+        x: chart_line_x(px, pw, i, ncat),
+        y: py + ph - ph * (v - ymin) / (ymax - ymin) - 8.0,
+        font_size: 9.0, fit_width: 24.0, fit_height: 11.0,
+        fill: none, id: none, class: ["wdoc-point-label"],
+      }
+    })
+  }))
+
+// Custom annotation points: an author-pinned marker + label per
+// `ChartPoint`. `category` selects the x slot, `value` the y (data
+// units). Shares the line chart's coordinate maths.
+let chart_annotations = fn(points: list<ChartPoint>, px: f64, py: f64, pw: f64, ph: f64, ymin: f64, ymax: f64, ncat: i64) -> list<SvgFundamental>
+  flatten(map(points, fn(p: ChartPoint) -> list<SvgFundamental> {
+    let cxp = chart_line_x(px, pw, p.category, ncat);
+    let cyp = py + ph - ph * (p.value - ymin) / (ymax - ymin);
+    [
+      SvgFundamental::Circle {
+        cx: cxp, cy: cyp, r: 3.5,
+        fill: none, stroke: none, id: none, class: ["wdoc-annotation"],
+      },
+      SvgFundamental::Label {
+        content: p.label,
+        x: cxp, y: cyp - 9.0,
+        font_size: 10.0, fit_width: 80.0, fit_height: 12.0,
+        fill: none, id: none, class: ["wdoc-annotation"],
+      },
+    ]
+  }))
+
 // Build an axis frame (title, legend, grid, axes, category + axis
 // titles) shared by the bar and line charts. `cats` is already
 // resolved to concrete strings and `title`/`xlab`/`ylab` use "" for
@@ -210,6 +255,7 @@ let chart_xy = fn(
   series: list<ChartSeries>,
   categories: list<utf8>, title: utf8, xlab: utf8, ylab: utf8,
   ymin: f64, ymax: f64,
+  point_labels: bool, points: list<ChartPoint>,
   draw: fn(list<ChartSeries>, f64, f64, f64, f64, f64, f64, i64) -> list<SvgFundamental>,
 ) -> list<SvgFundamental> {
   let nser = len(series);
@@ -227,6 +273,8 @@ let chart_xy = fn(
   flatten([
     chart_frame(cx, cy, cw, px, py, pw, ph, ymin, ymax, ly, cats, title, xlab, ylab, series, has_legend),
     draw(series, px, py, pw, ph, ymin, ymax, ncat),
+    if point_labels { chart_point_value_labels(series, px, py, pw, ph, ymin, ymax, ncat) } else { [] },
+    chart_annotations(points, px, py, pw, ph, ymin, ymax, ncat),
   ])
 }
 
@@ -255,7 +303,7 @@ type BarChart extends SvgBlock {
       if c.title == none { "" } else { c.title },
       if c.x_label == none { "" } else { c.x_label },
       if c.y_label == none { "" } else { c.y_label },
-      ymin, ymax, chart_bars,
+      ymin, ymax, false, [], chart_bars,
     )
   }
 }
@@ -271,19 +319,27 @@ type LineChart extends SvgBlock {
   y_min:      f64?
   y_max:      f64?
   series:     list<ChartSeries>
+  // Draw every data point's value as a label above its marker.
+  point_labels: bool?
+  // Author-pinned annotation markers + labels (see `ChartPoint`).
+  points: list<ChartPoint>?
   connect_points: list<AnchorSide>?
 
   lower = fn(c: LineChart) -> list<SvgFundamental> {
     let ymin = if c.y_min == none { 0.0 } else { c.y_min };
     let ymax0 = if c.y_max == none { chart_data_max(c.series) } else { c.y_max };
     let ymax = max(ymax0, ymin + 0.000001);
+    // `== true` (not a bare `if c.point_labels`) so an absent optional
+    // bool reads as `false` rather than erroring on `none`.
+    let pl = c.point_labels == true;
+    let pts = if c.points == none { [] } else { c.points };
     chart_xy(
       c.x, c.y, c.width, c.height, c.series,
       if c.categories == none { [] } else { c.categories },
       if c.title == none { "" } else { c.title },
       if c.x_label == none { "" } else { c.x_label },
       if c.y_label == none { "" } else { c.y_label },
-      ymin, ymax, chart_lines,
+      ymin, ymax, pl, pts, chart_lines,
     )
   }
 }

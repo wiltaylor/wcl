@@ -85,6 +85,8 @@ pre.code-block{background:var(--wdoc-bg-inset);color:var(--wdoc-fg);border-color
 .wdoc-series-6{fill:var(--wdoc-cyan);stroke:var(--wdoc-cyan);}
 .wdoc-series-7{fill:var(--wdoc-orange);stroke:var(--wdoc-orange);}
 .wdoc-series-8{fill:var(--wdoc-pink);stroke:var(--wdoc-pink);}
+.wdoc-annotation{fill:var(--wdoc-accent);}
+.wdoc-point-label{fill:var(--wdoc-fg-muted);}
 .callout.note{--callout-accent:var(--wdoc-blue);}
 .callout.info{--callout-accent:var(--wdoc-cyan);}
 .callout.tip{--callout-accent:var(--wdoc-green);}

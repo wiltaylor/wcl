@@ -26,6 +26,13 @@ class "wdoc-series-6"    { fill = "#88c0d0"  stroke = "#88c0d0" }
 class "wdoc-series-7"    { fill = "#d08770"  stroke = "#d08770" }
 class "wdoc-series-8"    { fill = "#8fbcbb"  stroke = "#8fbcbb" }
 
+// Line-chart point decorations. `wdoc-point-label` is the auto value
+// label (`point_labels = true`); `wdoc-annotation` styles author-pinned
+// `ChartPoint` markers + labels. Both paint with `currentColor` so an
+// unthemed doc renders; a themed site recolours them via render/theme.rs.
+class "wdoc-point-label" { fill = "currentColor"  opacity = "0.7" }
+class "wdoc-annotation"  { fill = "currentColor"  bold = true }
+
 // Timeline shape defaults. Markers / connectors / labels paint with
 // `currentColor` so they follow the page theme; phase dividers + their
 // headings also carry a cycled `wdoc-series-N` class, which sets their

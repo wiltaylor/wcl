@@ -64,6 +64,40 @@ page charts { sites = [:showcase]
     }
   }
 
+  h2 "Labelled points" {}
+
+  text {
+    span "Set " {}
+    span "point_labels = true" { class = ["accent"] }
+    span " to print every point's value, and pass " {}
+    span "points" { class = ["accent"] }
+    span " — a list of " {}
+    span "ChartPoint::At { label, category, value }" { class = ["accent"] }
+    span " — to pin a labelled marker to a specific point (category is a 0-based index along the x axis). Annotations pick up the site accent." {}
+  }
+
+  // A single series with auto value labels plus two pinned annotations.
+  diagram {
+    width  = 420
+    height = 240
+
+    line_chart {
+      width   = 420
+      height  = 240
+      title   = "Daily signups"
+      x_label = "Day"
+      categories = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+      point_labels = true
+      series = [
+        ChartSeries::Of { name: "signups", values: [12.0, 18.0, 11.0, 30.0, 22.0] },
+      ]
+      points = [
+        ChartPoint::At { label: "launch",  category: 1, value: 18.0 },
+        ChartPoint::At { label: "outage",  category: 2, value: 11.0 },
+      ]
+    }
+  }
+
   h2 "Pie chart" {}
 
   diagram {

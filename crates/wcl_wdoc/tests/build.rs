@@ -3358,6 +3358,110 @@ page index {
         "{html}"
     );
     assert!(html.contains(".wdoc-line { fill:none;"), "{html}");
+
+    // Without `point_labels` / `points`, no value labels or annotations
+    // are emitted (the features are opt-in). The bundled class rules are
+    // always in the stylesheet, so check for the `class="…"` usage.
+    assert!(!html.contains("class=\"wdoc-point-label\""), "{html}");
+    assert!(!html.contains("class=\"wdoc-annotation\""), "{html}");
+}
+
+#[test]
+fn build_renders_line_chart_point_labels() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("line.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 360
+    height = 220
+    line_chart {
+      width  = 360
+      height = 220
+      categories = ["A", "B", "C"]
+      point_labels = true
+      series = [
+        ChartSeries::Of { name: "one", values: [10.0, 30.0, 20.0] },
+      ]
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // One value label per data point, on the dedicated point-label class.
+    assert_eq!(
+        html.matches("class=\"wdoc-point-label\"").count(),
+        3,
+        "{html}"
+    );
+    // The point values are printed as label text.
+    assert!(
+        html.contains(">10</tspan>")
+            && html.contains(">30</tspan>")
+            && html.contains(">20</tspan>"),
+        "{html}"
+    );
+    // No annotations were declared (the class rule is always in the
+    // stylesheet, so check the `class="…"` usage).
+    assert!(!html.contains("class=\"wdoc-annotation\""), "{html}");
+}
+
+#[test]
+fn build_renders_line_chart_annotations() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("line.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 360
+    height = 220
+    line_chart {
+      width  = 360
+      height = 220
+      categories = ["A", "B", "C"]
+      series = [
+        ChartSeries::Of { name: "one", values: [10.0, 30.0, 20.0] },
+      ]
+      points = [
+        ChartPoint::At { label: "launch", category: 1, value: 30.0 },
+        ChartPoint::At { label: "dip",    category: 2, value: 20.0 },
+      ]
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Each annotation draws a marker circle + a label, both carrying the
+    // annotation class ⇒ two occurrences per point.
+    assert_eq!(
+        html.matches("class=\"wdoc-annotation\"").count(),
+        4,
+        "{html}"
+    );
+    assert!(html.contains("<circle class=\"wdoc-annotation\""), "{html}");
+    assert!(
+        html.contains(">launch</tspan>") && html.contains(">dip</tspan>"),
+        "{html}"
+    );
+    // No value labels without `point_labels` (the class rule is always
+    // in the stylesheet, so check the `class="…"` usage).
+    assert!(!html.contains("class=\"wdoc-point-label\""), "{html}");
 }
 
 #[test]
