@@ -1,0 +1,55 @@
+// ── Dopesheet (animated sprite-sheet playback) ─────────────────────
+//
+// A `dopesheet` plays a range of frames out of a sprite sheet at a set
+// speed. It names the sheet image plus its frame geometry (frame size,
+// the offset to the first frame, and the origin-to-origin stride), then
+// animates a window over the sheet in the browser.
+//
+// It's a placeable diagram shape (`extends SvgBlock`), so it lays out
+// like any other shape (x/y + anchors) and other shapes drawn after it
+// overlay on top. The `lower` is a stub — like `tilemap`/`image`, the
+// dopesheet is special-cased in the renderer (it windows into an
+// external image and is driven by a bundled JS player, which WCL can't
+// express). The sheet image is copied into `_wdoc/` and referenced by
+// URL, so frames resolve when the output is *served*, not via `file://`.
+@block("dopesheet")
+type Dopesheet extends SvgBlock {
+  @inline(0) source: utf8            // sheet image path, relative to the doc
+  frame_width:  i64                  // source frame pixel width
+  frame_height: i64                  // source frame pixel height
+  offset_x: i64?                     // px to the first frame's left edge (default 0)
+  offset_y: i64?                     // px to the first frame's top edge  (default 0)
+  stride_x: i64?                     // origin-to-origin x step (default = frame_width)
+  stride_y: i64?                     // origin-to-origin y step (default = frame_height)
+  columns:  i64?                     // frames per sheet row (default: fit from image width)
+  from: i64?                         // first frame index to play (default 0)
+  to:   i64?                         // last frame index, inclusive (default: last frame)
+  fps:  f64?                         // playback speed in frames/second (default 12)
+  loop:     bool?                    // restart at the end (default true)
+  autoplay: bool?                    // start playing on load (default true)
+  controls: bool?                    // click play/pause toggle (default true)
+  smooth:   bool?                    // anti-alias instead of pixelated
+  scale: f64?                        // display scale (default 1.0)
+  x = 0.0  y = 0.0
+  id: identifier?  class: list<utf8>?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
+
+  lower = fn(d: Dopesheet) -> list<SvgFundamental> []
+}
+
+// Default dopesheet styling. Sprite art reads best with nearest-neighbour
+// scaling, so the frame image renders `pixelated` by default; a
+// `smooth = true` dopesheet opts back into the browser's default
+// smoothing via the extra `smooth` class. The whole group is clickable
+// (play/pause); the `.dope-btn` overlay glyph follows `currentColor`.
+// Descendant + compound selectors, so it can't be a bare `class`.
+stylesheet "wdoc-dopesheet" {
+  css = <<CSS
+    .wdoc-dopesheet { cursor: pointer; }
+    .wdoc-dopesheet image { image-rendering: pixelated; }
+    .wdoc-dopesheet.smooth image { image-rendering: auto; }
+    .dope-btn { fill: currentColor; opacity: 0.7; cursor: pointer; }
+    .dope-btn:hover { opacity: 1; }
+    CSS
+}

@@ -33,7 +33,7 @@ fn build_emits_fundamentals_for_example_site() {
     // output root; docs/blog go to subdirectories.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 17); // showcase 11 + docs 3 + blog 3
+    assert_eq!(n, 18); // showcase 12 + docs 3 + blog 3
 
     // The richer content (text + classes + diagram + flowchart) is on
     // the showcase overview page (at the root, since showcase is `root`).
@@ -2161,11 +2161,11 @@ page index {
 fn build_processes_full_code_example_page() {
     // Smoke test against the code page in the example, which exercises
     // Rust, Python, JSON, WCL, and an unknown language in one page. The
-    // example declares three sites (17 pages total); `showcase` is the
+    // example declares three sites (18 pages total); `showcase` is the
     // `root` site, so the code page renders flat at the output root.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 17);
+    assert_eq!(n, 18);
     let html = std::fs::read_to_string(out.path().join("code.html")).expect("read code.html");
     assert!(
         html.matches("<pre class=\"code-block\"").count() >= 5,
@@ -3740,6 +3740,121 @@ page index { text { span "no tiles here" {} } }
     );
 }
 
+// ── Dopesheets ─────────────────────────────────────────────────────
+//
+// `build_tilemap` doubles as the generic "build `src` alongside a
+// `sheet.png` of the given size" helper, which is exactly what a
+// dopesheet needs.
+
+#[test]
+fn build_renders_dopesheet_group_player_and_copies_sheet() {
+    // A 72×12 sheet of 12×12 frames: columns default to 72/12 = 6, the
+    // range to every frame (0..=5), fps to 12, loop + autoplay on. At
+    // scale 6 the frame displays 72×72 and the initial window is frame 0.
+    let src = r#"
+page index {
+  diagram {
+    width = 96
+    height = 96
+    dopesheet "sheet.png" {
+      frame_width  = 12
+      frame_height = 12
+      scale        = 6.0
+      x            = 12.0
+      y            = 12.0
+    }
+  }
+}
+"#;
+    let (index, out) = build_tilemap(src, 72, 12);
+
+    // The themable group carries the resolved frame geometry + playback
+    // config as data attributes for the player.
+    assert!(
+        index.contains(
+            "<g class=\"wdoc-dopesheet\" data-dope-cols=\"6\" data-dope-fw=\"12\" \
+             data-dope-fh=\"12\" data-dope-ox=\"0\" data-dope-oy=\"0\" data-dope-sx=\"12\" \
+             data-dope-sy=\"12\" data-dope-from=\"0\" data-dope-to=\"5\" data-dope-fps=\"12\" \
+             data-dope-loop=\"1\" data-dope-autoplay=\"1\">"
+        ),
+        "{index}"
+    );
+    // The inner frame SVG windows frame 0 (viewBox 0 0 12 12), displayed
+    // at the anchored position × scale, over the full-sheet image (72×12).
+    assert!(
+        index.contains(
+            "<svg class=\"dope-frame\" x=\"12\" y=\"12\" width=\"72\" height=\"72\" \
+             viewBox=\"0 0 12 12\" preserveAspectRatio=\"none\"><image href=\"_wdoc/image-sheet-"
+        ),
+        "{index}"
+    );
+    assert!(
+        index.contains("width=\"72\" height=\"12\" preserveAspectRatio=\"none\"/></svg>"),
+        "{index}"
+    );
+    // The play overlay glyph (default `controls`) is centred on the frame.
+    assert!(index.contains("<text class=\"dope-btn\""), "{index}");
+    // DOPESHEET_CSS is injected, and the bundled player is referenced +
+    // written once.
+    assert!(
+        index.contains(".wdoc-dopesheet image { image-rendering: pixelated; }"),
+        "{index}"
+    );
+    assert_eq!(
+        index.matches("_wdoc/dopesheet-player.js").count(),
+        1,
+        "player referenced exactly once: {index}"
+    );
+    assert!(out.path().join("_wdoc/dopesheet-player.js").exists());
+    // The sheet is copied via the shared image registry (`image-…`).
+    let name = copied_image(&out);
+    assert!(name.starts_with("image-sheet-") && name.ends_with(".png"));
+}
+
+#[test]
+fn build_dopesheet_range_and_speed_are_honoured() {
+    // A sub-range (`from`/`to`) at an explicit fps, with autoplay off and
+    // explicit slice geometry — the data attributes reflect each field.
+    let src = r#"
+page index {
+  diagram {
+    width = 96
+    height = 96
+    dopesheet "sheet.png" {
+      frame_width  = 12
+      frame_height = 12
+      columns      = 6
+      from         = 1
+      to           = 3
+      fps          = 6.0
+      autoplay     = false
+      scale        = 6.0
+    }
+  }
+}
+"#;
+    let (index, _out) = build_tilemap(src, 72, 12);
+    assert!(
+        index.contains(
+            "data-dope-from=\"1\" data-dope-to=\"3\" data-dope-fps=\"6\" \
+             data-dope-loop=\"1\" data-dope-autoplay=\"0\">"
+        ),
+        "{index}"
+    );
+    // The initial window is the `from` frame (index 1 -> column 1 -> x 12).
+    assert!(index.contains("viewBox=\"12 0 12 12\""), "{index}");
+}
+
+#[test]
+fn build_no_dopesheet_writes_no_player() {
+    let src = r#"
+page index { text { span "nothing animated here" {} } }
+"#;
+    let (index, out) = build_tilemap(src, 72, 12);
+    assert!(!index.contains("dopesheet-player.js"), "{index}");
+    assert!(!out.path().join("_wdoc/dopesheet-player.js").exists());
+}
+
 // ── Images ─────────────────────────────────────────────────────────
 
 /// Build `src` alongside a `pic.png` of the given size, returning the
@@ -4386,7 +4501,7 @@ fn multisite_example_root_site_and_subdirs() {
     let out = TempDir::new().expect("mkdir tempdir");
     let dir = out.path();
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), dir);
-    assert_eq!(n, 17);
+    assert_eq!(n, 18);
 
     // Showcase is at the root: its pages are flat, and there's no
     // `showcase/` subdirectory.

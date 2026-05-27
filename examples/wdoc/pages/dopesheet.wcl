@@ -1,0 +1,72 @@
+// Dopesheet demo: a `dopesheet` plays a range of frames out of a sprite
+// sheet at a set speed. You give it the sheet image plus its frame
+// geometry — frame size, the offset to the first frame, and the
+// origin-to-origin stride — and a frame range + fps; the renderer windows
+// into the sheet and a tiny bundled player animates it in the browser.
+//
+// The sheet path is resolved relative to the build's entry file
+// (main.wcl), so it's relative to `examples/wdoc/`. The sheet is
+// truezipp's CC0 "Pixel Coins Asset" (see assets/LICENSE.txt): a single
+// row of 6 frames of 12×12 px — a seamless coin-spin loop.
+page dopesheet { sites = [:showcase]
+  h1 "Dopesheets" {}
+
+  text {
+    span "A `dopesheet` animates a sprite sheet: name the image, describe its frame grid (`frame_width` / `frame_height`, plus `offset_x` / `offset_y` and `stride_x` / `stride_y` when frames aren't packed flush at the origin), then play a range of frames at a chosen `fps`. It's a diagram shape, so anything drawn after it overlays on top." {}
+  }
+
+  h2 "A looping animation" {}
+
+  // The whole sheet is the animation: 6 frames of 12×12, played at 12 fps
+  // and looped (both defaults). `scale` enlarges the tiny pixel art for
+  // display; `columns` defaults to as many frames as fit across the sheet
+  // (here 72 / 12 = 6), and the range defaults to every frame.
+  diagram {
+    width  = 96
+    height = 96
+    dopesheet "assets/pixel-coin.png" {
+      frame_width  = 12
+      frame_height = 12
+      scale        = 6.0
+      fps          = 12.0
+      x            = 12.0
+      y            = 12.0
+    }
+  }
+
+  text {
+    span "The coin spins on its own (autoplay + loop are on by default). Click it to pause or resume — the play glyph appears whenever it's stopped. Pixel art renders with nearest-neighbour scaling (`image-rendering: pixelated`); set `smooth = true` to opt into the browser's smoothing." {}
+  }
+
+  h2 "Frame range + speed" {}
+
+  // The same sheet, but only the first half of the spin (`from`/`to` pick
+  // an inclusive sub-range) and at half speed. `offset_x` / `stride_x` are
+  // spelled out here to show how a sheet with padding or gaps is sliced —
+  // for this flush-packed strip they're just the defaults (0 and the frame
+  // width). `autoplay = false` leaves it stopped until clicked.
+  diagram {
+    width  = 96
+    height = 96
+    dopesheet "assets/pixel-coin.png" {
+      frame_width  = 12
+      frame_height = 12
+      offset_x     = 0
+      offset_y     = 0
+      stride_x     = 12
+      stride_y     = 12
+      columns      = 6
+      from         = 0
+      to           = 2
+      fps          = 6.0
+      autoplay     = false
+      scale        = 6.0
+      x            = 12.0
+      y            = 12.0
+    }
+  }
+
+  text {
+    span "The sheet is copied to `_wdoc/` and referenced by URL, so — like tilemaps and images — frames resolve when the site is served, not via a direct `file://` open." {}
+  }
+}

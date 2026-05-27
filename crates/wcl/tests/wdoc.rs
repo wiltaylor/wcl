@@ -26,8 +26,8 @@ fn wcl_wdoc_build_renders_fundamental_blocks() {
         .arg(out.path())
         .assert()
         .success()
-        // showcase (11) + docs (3) + blog (3) across three sites.
-        .stdout(predicate::str::contains("wrote 17 pages"));
+        // showcase (12) + docs (3) + blog (3) across three sites.
+        .stdout(predicate::str::contains("wrote 18 pages"));
 
     // `showcase` is the `root` site and its `overview` page sets
     // `start = true`, so the root index is that page (not a chooser),

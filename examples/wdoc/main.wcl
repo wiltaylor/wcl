@@ -67,6 +67,7 @@ site showcase {
       item "Charts"      { page = charts }
       item "Maps"        { page = map }
       item "Tilemaps"    { page = tilemap }
+      item "Dopesheets"  { page = dopesheet }
     }
     item "Content" {
       item "Code"      { page = code }
@@ -127,6 +128,7 @@ import "./pages/charts.wcl"
 import "./pages/terminal.wcl"
 import "./pages/icons.wcl"
 import "./pages/tilemap.wcl"
+import "./pages/dopesheet.wcl"
 import "./pages/map.wcl"
 import "./pages/wireframe.wcl"
 import "./pages/docs.wcl"

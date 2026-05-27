@@ -12,3 +12,20 @@ wdoc `tileset` / `tilemap` example.
 
 Layout: 320×1024 px, 5 columns × 16 rows of 64×64 tiles (no margin/spacing),
 so the tile at index N sits at sheet column N % 5, row N / 5.
+
+
+pixel-coin.png
+==============
+
+"Pixel Coins Asset" (spinning-coin strip), by truezipp —
+https://opengameart.org/content/pixel-coins-asset
+
+Licensed under Creative Commons Zero (CC0 1.0 Universal, public domain):
+https://creativecommons.org/publicdomain/zero/1.0/
+
+CC0 places no restrictions on use and requires no attribution; the credit
+above is given as a courtesy. Used here only as a sample animation
+spritesheet for the wdoc `dopesheet` example.
+
+Layout: 72×12 px, a single row of 6 frames of 12×12 px (no offset/spacing),
+so frame N sits at sheet column N, row 0 — a seamless coin-spin loop.

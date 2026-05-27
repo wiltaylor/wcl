@@ -44,6 +44,7 @@ fn schema_registry() -> Registry {
     r.register("wdoc/icons.wcl", include_str!("../lib/icons.wcl"));
     r.register("wdoc/image.wcl", include_str!("../lib/image.wcl"));
     r.register("wdoc/tilemap.wcl", include_str!("../lib/tilemap.wcl"));
+    r.register("wdoc/dopesheet.wcl", include_str!("../lib/dopesheet.wcl"));
     r.register("wdoc/map.wcl", include_str!("../lib/map.wcl"));
     r.register("wdoc/flowchart.wcl", include_str!("../lib/flowchart.wcl"));
     r.register("wdoc/charts.wcl", include_str!("../lib/charts.wcl"));
@@ -463,6 +464,10 @@ fn build_site(
     if uses_map {
         write_map_assets(out_dir)?;
     }
+    let uses_dopesheet = spec.pages.iter().any(crate::dopesheet::uses_dopesheet);
+    if uses_dopesheet {
+        write_dopesheet_assets(out_dir)?;
+    }
 
     // Site descriptor: the default template + title a template can show.
     // `None` block ⇒ the synthetic default site, so pages render bare
@@ -594,6 +599,11 @@ fn build_site(
         if uses_map {
             body.push_str("\n<script src=\"_wdoc/wdoc-map.js\" defer></script>\n");
         }
+        // Animated dopesheets are driven by the bundled player, loaded
+        // once per page (it no-ops on pages without one).
+        if uses_dopesheet {
+            body.push_str("\n<script src=\"_wdoc/dopesheet-player.js\" defer></script>\n");
+        }
         let html = render_page(&page_name, &css, &body);
 
         let out_path = out_dir.join(format!("{page_name}.html"));
@@ -715,6 +725,18 @@ fn write_map_assets(out_dir: &Path) -> Result<(), BuildError> {
         .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
     let player = dir.join("wdoc-map.js");
     fs::write(&player, crate::render::WDOC_MAP_JS)
+        .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
+    Ok(())
+}
+
+/// Write the bundled dopesheet player into `<out>/_wdoc/`. Pages with a
+/// `dopesheet` reference it by relative URL.
+fn write_dopesheet_assets(out_dir: &Path) -> Result<(), BuildError> {
+    let dir = out_dir.join(crate::terminal::ASSET_DIR);
+    fs::create_dir_all(&dir)
+        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
+    let player = dir.join("dopesheet-player.js");
+    fs::write(&player, crate::render::DOPESHEET_PLAYER_JS)
         .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
     Ok(())
 }

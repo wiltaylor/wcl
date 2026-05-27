@@ -8,6 +8,7 @@ use std::path::Path;
 
 use wcl_lang::{Block, Document, Value};
 
+use crate::dopesheet;
 use crate::force::{self, ForceParams};
 use crate::icons::{IconRegistry, ShapeOverride};
 use crate::image::{self, ImageRegistry};
@@ -88,6 +89,11 @@ pub(crate) const DIAGRAM_PAN_ZOOM_JS: &str = include_str!("../../assets/diagram-
 /// to `_wdoc/` and loaded once per page when any diagram contains a `map`.
 /// Mirrors the pan/zoom + terminal player asset pattern.
 pub(crate) const WDOC_MAP_JS: &str = include_str!("../../assets/wdoc-map.js");
+
+/// The bundled dopesheet player (advances the frame `viewBox` at the
+/// authored fps), written to `_wdoc/` and loaded once per page when any
+/// diagram contains a `dopesheet`. Mirrors the terminal player pattern.
+pub(crate) const DOPESHEET_PLAYER_JS: &str = include_str!("../../assets/dopesheet-player.js");
 
 /// `true` when `block` is an interactive (`pan_zoom`) diagram or
 /// contains one anywhere in its subtree. Drives the conditional asset
@@ -517,6 +523,13 @@ pub(crate) fn collect_shape_positions(
             // Mirror image::render_svg's geometry (declared or natural
             // size × scale, anchored) so edges + the viewBox fit see it.
             let (x, y, w, h) = image::image_bbox(block, cctx.images, parent_w, parent_h);
+            record(block, (tx + x, ty + y, w, h), out);
+        }
+        "dopesheet" => {
+            // A single frame's display size (frame_width/height × scale),
+            // anchored — mirror render_dopesheet so edges + the viewBox
+            // fit see its true extent.
+            let (x, y, w, h) = dopesheet::dopesheet_bbox(block, parent_w, parent_h);
             record(block, (tx + x, ty + y, w, h), out);
         }
         "map" => {
@@ -1066,6 +1079,14 @@ pub(crate) fn render_shape(
                 ctx.tilesets,
                 parent_w,
                 parent_h,
+            ));
+        }
+        // A `dopesheet` windows an animation frame out of a sprite sheet
+        // and is driven by a bundled JS player — special-cased like
+        // `tilemap` (it reuses the image registry to copy the sheet).
+        "dopesheet" => {
+            return Some(dopesheet::render_dopesheet(
+                block, ctx.images, parent_w, parent_h,
             ));
         }
         // An `image` embeds an external raster as an SVG `<image>`; the
