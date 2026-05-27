@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::Path;
 
@@ -131,6 +131,10 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
     let all_pages: Vec<Block> = doc.blocks().filter(|b| b.kind() == "page").collect();
     let specs = collect_site_specs(&site_blocks, &all_pages)?;
 
+    // At most one site may be the `root` site (rendered flat at the
+    // output root instead of a subdirectory).
+    let root_site = root_site_name(&specs)?;
+
     let build_set: Vec<&SiteSpec> = match site_filter {
         Some(want) => {
             let chosen: Vec<&SiteSpec> = specs
@@ -145,29 +149,103 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
         None => specs.iter().collect(),
     };
 
-    // One site (single declared, or `--site`) renders flat at the root;
-    // several render into per-site subdirectories with a chooser index.
+    // Cross-site link context, built from every declared site (so a
+    // `[text](site:page)` link resolves to any site, even under `--site`):
+    // each site's page-name set, and its URL prefix in the full layout
+    // (`""` for the root site, else `"<name>/"`).
+    let mut site_pages: BTreeMap<String, HashSet<String>> = BTreeMap::new();
+    let mut site_prefix: BTreeMap<String, String> = BTreeMap::new();
+    for s in &specs {
+        if let Some(name) = &s.name {
+            site_pages.insert(name.clone(), s.pages.iter().filter_map(page_name).collect());
+            let prefix = if Some(name) == root_site.as_ref() {
+                String::new()
+            } else {
+                format!("{name}/")
+            };
+            site_prefix.insert(name.clone(), prefix);
+        }
+    }
+
+    // The root site's title (or name), used as the "back to the main
+    // site" link text the sub-site templates show.
+    let root_title = match &root_site {
+        Some(name) => specs
+            .iter()
+            .find(|s| s.name.as_ref() == Some(name))
+            .and_then(|s| s.block.as_ref())
+            .and_then(|b| field_utf8(b, "title"))
+            .unwrap_or_else(|| name.clone()),
+        None => "Home".to_string(),
+    };
+
+    // A site renders flat at the root when it's the only one built (a
+    // single declared site or `--site`) or it's the `root` site; the rest
+    // go to `<out>/<name>/`. A chooser index is generated only when there
+    // are several sites and none claims the root.
     let multi = build_set.len() > 1;
     let mut count = 0;
     for spec in &build_set {
-        let site_out = if multi {
-            out_dir.join(spec.name.as_deref().unwrap_or("site"))
+        let at_root = !multi || (root_site.is_some() && spec.name == root_site);
+        let (site_out, current_prefix) = if at_root {
+            (out_dir.to_path_buf(), String::new())
         } else {
-            out_dir.to_path_buf()
+            let name = spec.name.as_deref().unwrap_or("site");
+            (out_dir.join(name), format!("{name}/"))
+        };
+        // Sub-sites (anything not at the root, in a multi-site build) get
+        // a back-link to the root index; the root site itself gets none.
+        let (home_href, home_title) = if at_root || !multi {
+            (String::new(), String::new())
+        } else {
+            ("../index.html".to_string(), root_title.clone())
         };
         fs::create_dir_all(&site_out)
             .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", site_out.display())))?;
-        count += build_site(&doc, base_dir.as_deref(), spec, &site_out)?;
+        count += build_site(
+            &doc,
+            base_dir.as_deref(),
+            spec,
+            &site_out,
+            current_prefix,
+            &site_pages,
+            &site_prefix,
+            &home_href,
+            &home_title,
+        )?;
         if multi {
             ensure_site_index(&site_out, spec)?;
         }
     }
-    if multi {
-        // The chooser is site-agnostic — only the global (unscoped) CSS.
+    if multi && root_site.is_none() {
+        // No root site ⇒ the root is a generated chooser (site-agnostic,
+        // so only the global/unscoped CSS).
         write_chooser_index(out_dir, &site_css(&doc, None), &build_set)?;
     }
 
     Ok(count)
+}
+
+/// The name of the site marked `root = true`, if any. More than one root
+/// site is a build error.
+fn root_site_name(specs: &[SiteSpec<'_>]) -> Result<Option<String>, BuildError> {
+    let mut root: Option<String> = None;
+    for s in specs {
+        let is_root = s
+            .block
+            .as_ref()
+            .and_then(|b| field_bool(b, "root"))
+            .unwrap_or(false);
+        if is_root {
+            if root.is_some() {
+                return Err(BuildError::BadPage(
+                    "more than one `site` is marked `root = true`".into(),
+                ));
+            }
+            root = s.name.clone();
+        }
+    }
+    Ok(root)
 }
 
 /// One site to render: its name (the `site` block's inline label, `None`
@@ -325,11 +403,17 @@ fn site_css(doc: &Document, site_name: Option<&str>) -> String {
 /// set, and `_wdoc/` assets — comes from `spec`, so each site is a
 /// self-contained directory whose pages use plain relative `_wdoc/…`
 /// references. Returns the number of pages written.
+#[allow(clippy::too_many_arguments)]
 fn build_site(
     doc: &Document,
     base_dir: Option<&Path>,
     spec: &SiteSpec<'_>,
     out_dir: &Path,
+    current_prefix: String,
+    site_pages: &BTreeMap<String, HashSet<String>>,
+    site_prefix: &BTreeMap<String, String>,
+    home_href: &str,
+    home_title: &str,
 ) -> Result<usize, BuildError> {
     // The page <style>: bundled theme + stylesheets + class rules, scoped
     // to this site (global blocks plus those whose `sites` list names it).
@@ -384,7 +468,17 @@ fn build_site(
     let icons = crate::icons::IconRegistry::load(doc);
     let tilesets = crate::tileset::TilesetRegistry::load(doc, base_dir)?;
     let images = crate::image::ImageRegistry::new(base_dir.map(Path::to_path_buf));
-    let inline_patterns = InlinePatterns::load(doc, page_names, icons, tilesets, images);
+    let inline_patterns = InlinePatterns::load(
+        doc,
+        page_names,
+        spec.name.clone(),
+        current_prefix,
+        site_pages.clone(),
+        site_prefix.clone(),
+        icons,
+        tilesets,
+        images,
+    );
 
     let mut count = 0;
     for page in &spec.pages {
@@ -438,6 +532,8 @@ fn build_site(
                     &pages,
                     &toc_nodes,
                     theme_toggle,
+                    home_href,
+                    home_title,
                     &inline_patterns,
                 )
             }

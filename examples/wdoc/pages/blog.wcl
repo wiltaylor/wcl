@@ -6,6 +6,9 @@ page index { sites = [:blog]
   text {
     span "Latest updates. Read about our [launch](post_launch) and the [roadmap](post_roadmap)." {}
   }
+  text {
+    span "The nav's `← wdoc showcase` link goes back to the main site; cross-site links also reach sibling sites, e.g. the [docs](docs:index)." {}
+  }
 }
 
 page post_launch { sites = [:blog]

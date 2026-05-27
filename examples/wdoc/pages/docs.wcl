@@ -10,7 +10,10 @@ page index { sites = [:docs]
   }
   callout "Multi-site" {
     class = ["info"]
-    body  = "This is a different site from the showcase — `wcl wdoc serve` lists all three on its index, each rendered into its own subdirectory."
+    body  = "This is a different site from the showcase — `wcl wdoc serve` serves it under /docs/, each site in its own subdirectory."
+  }
+  text {
+    span "The sidebar's `← wdoc showcase` link goes back to the main site; cross-site links also reach sibling sites, e.g. over to the [blog](blog:index)." {}
   }
 }
 

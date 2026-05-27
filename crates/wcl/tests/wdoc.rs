@@ -29,19 +29,23 @@ fn wcl_wdoc_build_renders_fundamental_blocks() {
         // showcase (10) + docs (3) + blog (3) across three sites.
         .stdout(predicate::str::contains("wrote 16 pages"));
 
-    // The document declares three sites, so the root index is the
-    // generated chooser linking to each site's subdirectory.
+    // `showcase` is the `root` site, so the root index is its landing
+    // demo (not a chooser), with cross-site links into the subdir sites.
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
     assert!(index.contains("<style>"), "{index}");
     assert!(
-        index.contains("href=\"showcase/\""),
-        "missing chooser link:\n{index}"
+        index.contains("wdoc showcase"),
+        "root index should be the showcase demo:\n{index}"
+    );
+    assert!(
+        index.contains("href=\"docs/getting_started.html\""),
+        "missing cross-site link:\n{index}"
     );
 
     // The richer content (text, SVG, classes) sits on the showcase
-    // overview page, now under its site subdirectory.
-    let overview = std::fs::read_to_string(out.path().join("showcase").join("overview.html"))
-        .expect("read showcase/overview.html");
+    // overview page, flat at the root since showcase is the root site.
+    let overview =
+        std::fs::read_to_string(out.path().join("overview.html")).expect("read overview.html");
     assert!(overview.contains("<p><span>"), "{overview}");
     assert!(overview.contains("<svg"), "{overview}");
     assert!(overview.contains("class=\""), "{overview}");

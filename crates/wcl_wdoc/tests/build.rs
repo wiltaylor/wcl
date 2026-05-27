@@ -29,16 +29,16 @@ fn build_ok(file: &Path, out: &Path) -> usize {
 #[test]
 fn build_emits_fundamentals_for_example_site() {
     // examples/wdoc/main.wcl declares three sites (showcase / docs /
-    // blog); each renders into its own subdirectory. The feature pages
-    // live under `showcase/`.
+    // blog). `showcase` is the `root` site, so it renders flat at the
+    // output root; docs/blog go to subdirectories.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
     assert_eq!(n, 16); // showcase 10 + docs 3 + blog 3
 
     // The richer content (text + classes + diagram + flowchart) is on
-    // the showcase overview page, not the landing index.
-    let overview = std::fs::read_to_string(out.path().join("showcase").join("overview.html"))
-        .expect("read showcase/overview.html");
+    // the showcase overview page (at the root, since showcase is `root`).
+    let overview =
+        std::fs::read_to_string(out.path().join("overview.html")).expect("read overview.html");
     assert!(overview.contains("<title>overview</title>"), "{overview}");
     // text + span
     assert!(
@@ -1863,13 +1863,12 @@ page index {
 fn build_processes_full_code_example_page() {
     // Smoke test against the code page in the example, which exercises
     // Rust, Python, JSON, WCL, and an unknown language in one page. The
-    // example declares three sites (16 pages total); the code page lives
-    // in the `showcase` site's subdirectory.
+    // example declares three sites (16 pages total); `showcase` is the
+    // `root` site, so the code page renders flat at the output root.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
     assert_eq!(n, 16);
-    let html = std::fs::read_to_string(out.path().join("showcase").join("code.html"))
-        .expect("read showcase/code.html");
+    let html = std::fs::read_to_string(out.path().join("code.html")).expect("read code.html");
     assert!(
         html.matches("<pre class=\"code-block\"").count() >= 5,
         "expected one <pre> per code block on code.html:\n{html}"
@@ -3954,21 +3953,166 @@ fn unknown_site_filter_is_an_error() {
     ));
 }
 
+// A root site (`home`) plus two subdir sites, with cross-site links in
+// every direction.
+const ROOT_SITE_DOC: &str = r##"
+site home { root = true  default_template = :webpage  title = "Home" }
+site docs { default_template = :webpage  title = "Docs" }
+site blog { default_template = :webpage  title = "Blog" }
+page index { sites = [:home]  text { span "see [the docs](docs:guide) and [the blog](blog:post)" {} } }
+page guide { sites = [:docs]  text { span "back [home](home:index), over to the [blog](blog:post)" {} } }
+page post  { sites = [:blog]  text { span "a post" {} } }
+"##;
+
 #[test]
-fn multisite_example_builds_into_subdirs() {
-    // The bundled example declares three sites; each renders into its
-    // own subdirectory with a chooser index at the root.
+fn root_site_renders_flat_others_in_subdirs() {
+    with_multisite_build(ROOT_SITE_DOC, None, |out| {
+        // The root site is flat at the output root; no `home/` subdir.
+        assert!(out.join("index.html").exists(), "root site index at root");
+        assert!(!out.join("home").exists(), "no subdir for the root site");
+        assert!(out.join("docs/guide.html").exists());
+        assert!(out.join("blog/post.html").exists());
+        // No chooser — the root index is the root site's own index.
+        let root = std::fs::read_to_string(out.join("index.html")).expect("root index");
+        assert!(
+            !root.contains("<h1>Sites</h1>"),
+            "root must not be a chooser:\n{root}"
+        );
+    });
+}
+
+#[test]
+fn cross_site_links_resolve_all_directions() {
+    with_multisite_build(ROOT_SITE_DOC, None, |out| {
+        // root → subdir
+        let home = std::fs::read_to_string(out.join("index.html")).expect("home");
+        assert!(
+            home.contains("href=\"docs/guide.html\""),
+            "root→subdir:\n{home}"
+        );
+        assert!(
+            home.contains("href=\"blog/post.html\""),
+            "root→subdir:\n{home}"
+        );
+        // subdir → root, and subdir → other subdir
+        let guide = std::fs::read_to_string(out.join("docs/guide.html")).expect("guide");
+        assert!(
+            guide.contains("href=\"../index.html\""),
+            "subdir→root:\n{guide}"
+        );
+        assert!(
+            guide.contains("href=\"../blog/post.html\""),
+            "subdir→subdir:\n{guide}"
+        );
+    });
+}
+
+fn build_err(src: &str) -> BuildError {
+    let tmp = TempDir::new().unwrap();
+    let file = tmp.path().join("ms.wcl");
+    std::fs::write(&file, src).unwrap();
+    let out = TempDir::new().unwrap();
+    build(&file, out.path(), None).expect_err("build should fail")
+}
+
+#[test]
+fn cross_site_link_to_unknown_site_or_page_errors() {
+    let bad_site = r##"
+site home { root = true  default_template = :webpage }
+site docs { default_template = :webpage }
+page index { sites = [:home]  text { span "[x](nope:guide)" {} } }
+page guide { sites = [:docs]  text { span "g" {} } }
+"##;
+    assert!(matches!(build_err(bad_site), BuildError::BadLink(_)));
+
+    let bad_page = r##"
+site home { root = true  default_template = :webpage }
+site docs { default_template = :webpage }
+page index { sites = [:home]  text { span "[x](docs:missing)" {} } }
+page guide { sites = [:docs]  text { span "g" {} } }
+"##;
+    assert!(matches!(build_err(bad_page), BuildError::BadLink(_)));
+}
+
+#[test]
+fn multiple_root_sites_is_an_error() {
+    let src = r##"
+site a { root = true  default_template = :webpage }
+site b { root = true  default_template = :webpage }
+page index { h1 "H" {} }
+"##;
+    assert!(matches!(build_err(src), BuildError::BadPage(_)));
+}
+
+#[test]
+fn multisite_example_root_site_and_subdirs() {
+    // The bundled example declares three sites; `showcase` is the `root`
+    // site (flat at the output root, its index is the landing demo), and
+    // docs/blog render into subdirectories — no chooser is generated.
     let out = TempDir::new().expect("mkdir tempdir");
     let dir = out.path();
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), dir);
     assert_eq!(n, 16);
-    let chooser = std::fs::read_to_string(dir.join("index.html")).expect("chooser index");
-    for link in ["showcase/", "docs/", "blog/"] {
-        assert!(chooser.contains(&format!("href=\"{link}\"")), "{chooser}");
-    }
-    assert!(dir.join("showcase/overview.html").exists());
+
+    // Showcase is at the root: its pages are flat, and there's no
+    // `showcase/` subdirectory.
+    assert!(dir.join("overview.html").exists(), "showcase page at root");
+    assert!(
+        !dir.join("showcase").exists(),
+        "no showcase/ subdir for the root site"
+    );
     assert!(dir.join("docs/config.html").exists());
     assert!(dir.join("blog/post_launch.html").exists());
-    // The docs book site has its own index, distinct from the showcase's.
-    assert!(dir.join("docs/index.html").exists());
+    assert!(
+        dir.join("docs/index.html").exists(),
+        "docs has its own index"
+    );
+
+    // The root index is the showcase demo (not a chooser), and its
+    // cross-site links reach the subdir sites.
+    let root = std::fs::read_to_string(dir.join("index.html")).expect("root index");
+    assert!(
+        root.contains("wdoc showcase"),
+        "root index should be the showcase demo:\n{root}"
+    );
+    assert!(
+        root.contains("href=\"docs/getting_started.html\""),
+        "{root}"
+    );
+    assert!(root.contains("href=\"blog/post_launch.html\""), "{root}");
+
+    // Subdir → root and subdir → subdir cross-site links.
+    let docs = std::fs::read_to_string(dir.join("docs/index.html")).expect("docs index");
+    assert!(
+        docs.contains("href=\"../index.html\""),
+        "docs→root link:\n{docs}"
+    );
+    assert!(
+        docs.contains("href=\"../blog/index.html\""),
+        "docs→blog link:\n{docs}"
+    );
+
+    // Every sub-site page (not just its index) carries a nav back-link to
+    // the root site; the root site's own pages don't. The book sidebar
+    // uses `.book-home`, the webpage nav `.site-home`.
+    let config = std::fs::read_to_string(dir.join("docs/config.html")).expect("docs config");
+    assert!(
+        config.contains("<a class=\"book-home\" href=\"../index.html\">← wdoc showcase</a>"),
+        "deep book page should link back to the root site:\n{config}"
+    );
+    let post = std::fs::read_to_string(dir.join("blog/post_launch.html")).expect("blog post");
+    assert!(
+        post.contains("<a class=\"site-home\" href=\"../index.html\">← wdoc showcase</a>"),
+        "deep webpage page should link back to the root site:\n{post}"
+    );
+    // The back-link must set `color: inherit` so its `:visited` state is
+    // themed (not the browser's default purple).
+    assert!(
+        config.contains(".book-home {") && config.contains("color: inherit;"),
+        "book back-link should be themed (color: inherit):\n{config}"
+    );
+    assert!(
+        !root.contains("<a class=\"site-home\"") && !root.contains("<a class=\"book-home\""),
+        "the root site's own pages must not carry a back-link:\n{root}"
+    );
 }

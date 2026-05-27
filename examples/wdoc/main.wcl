@@ -49,9 +49,12 @@ iconset bs {
 
 // The feature showcase: the `webpage` template (title header + top nav
 // built from this site's pages). Its pages are tagged `sites = [:showcase]`.
+// `root = true` makes it the site served at `/` (so its index is the
+// landing demo); the docs and blog sites render into subdirectories.
 site showcase {
   default_template = :webpage
   title            = "wdoc showcase"
+  root             = true
 }
 
 // A docs book: the `book` template (fixed sidebar from the `toc` below).
@@ -138,4 +141,11 @@ page index { sites = [:showcase]
   text { span "• [Tilemaps](tilemap) — index-based tile grids cut from a spritesheet `tileset`, authored numerically or with a symbol legend, overlaid with other diagram shapes." {} }
   text { span "• [Wireframes](wireframe) — UI mockups from nesting widgets (windows, buttons, inputs, dropdowns, checkboxes, radios, toggles) arranged with layout blocks and themed via classes." {} }
   text { span "• [About](about) — what this example demonstrates." {} }
+
+  h2 "Other sites in this document" {}
+  text {
+    span "This document also defines two more sites, each served under its own path. Cross-site links use `site:page`:" {}
+  }
+  text { span "• The [docs book](docs:index) — a Nord-themed `book`, e.g. [getting started](docs:getting_started) and [configuration](docs:config)." {} }
+  text { span "• The [blog](blog:index) — e.g. [our launch](blog:post_launch) and the [roadmap](blog:post_roadmap)." {} }
 }

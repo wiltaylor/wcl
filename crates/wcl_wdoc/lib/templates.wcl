@@ -32,9 +32,11 @@ type TemplateCtx {
   content:      utf8            // the page's rendered body HTML (embed via Raw)
   title:        utf8            // site title, or the page name if unset
   page_name:    utf8            // the current page's name
-  pages:        list<PageRef>   // every page in the document, in source order
+  pages:        list<PageRef>   // every page in the current site, in source order
   toc:          list<TocEntry>  // the book TOC tree; flat (one per page) if no `toc`
   theme_toggle: bool            // whether to render a light/dark toggle (site flag)
+  home_href:    utf8            // relative href back to the root site (empty when this IS the root site, or single-site)
+  home_title:   utf8            // the root site's title, for the back-link text
 }
 
 // One table-of-contents entry. The inline label is the display title;
@@ -63,6 +65,10 @@ type SiteConfig {
   // site (it names the output subdirectory and is what `Page.sites`
   // references); omittable for a single-site document.
   @inline(0) name: identifier?
+  // Render this site at the output root (its `index` becomes `/`) instead
+  // of in a `<name>/` subdirectory, and skip the generated chooser. At
+  // most one site may set it; more than one is a build error.
+  root:             bool?
   default_template: symbol?
   title:            utf8?
   // Render a light/dark toggle (the `book` template shows it). Pair
@@ -86,8 +92,24 @@ type Template {
 let webpage_css = <<CSS
   .site-nav { display: flex; gap: 1rem; padding: 0.5rem 0; border-bottom: 1px solid #ccc; margin-bottom: 1rem; }
   .site-nav a { text-decoration: none; }
+  // `color: inherit` themes both `:link` and `:visited` (an author rule
+  // beats the UA's default link/visited colours), so the back-link
+  // follows the page theme instead of going browser-blue/purple.
+  .site-home { font-weight: 600; color: inherit; }
   .site-main { display: block; }
   CSS
+
+// Back-link to the root site, shown by the templates when the current
+// page is on a sub-site (`ctx.home_href` non-empty). Empty otherwise.
+let home_link = fn(c: TemplateCtx, cls: utf8) -> list<HtmlFundamental>
+  if c.home_href == "" { [] }
+  else {
+    [ HtmlFundamental::Element {
+        tag: "a", id: none, class: [cls],
+        attrs: [["href", c.home_href]],
+        children: [ HtmlFundamental::Raw { html: format("← {}", c.home_title) } ],
+    } ]
+  }
 
 // Stdlib `webpage` template: a Hugo-style site shell — a title header,
 // a nav built from every page, and the page content in <main>. Users
@@ -105,12 +127,15 @@ template webpage {
     },
     HtmlFundamental::Element {
       tag: "nav", id: none, class: ["site-nav"], attrs: none,
-      children: map(c.pages, fn(p: PageRef) -> HtmlFundamental
-        HtmlFundamental::Element {
-          tag: "a", id: none, class: none,
-          attrs: [["href", p.href]],
-          children: [ HtmlFundamental::Raw { html: p.name } ],
-        }),
+      children: flatten([
+        home_link(c, "site-home"),
+        map(c.pages, fn(p: PageRef) -> HtmlFundamental
+          HtmlFundamental::Element {
+            tag: "a", id: none, class: none,
+            attrs: [["href", p.href]],
+            children: [ HtmlFundamental::Raw { html: p.name } ],
+          }),
+      ]),
     },
     HtmlFundamental::Element {
       tag: "main", id: none, class: ["site-main"], attrs: none,
@@ -161,6 +186,8 @@ let book_toc = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
 let book_css = <<CSS
   .book-sidebar { position: fixed; top: 0; left: 0; width: 16rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem; border-right: 1px solid rgba(127,127,127,0.3); background: rgba(127,127,127,0.06); }
   .book-title { font-weight: bold; font-size: 1.1rem; margin-bottom: 0.75rem; }
+  .book-home { display: block; margin-bottom: 0.6rem; opacity: 0.8; text-decoration: none; color: inherit; }
+  .book-home:hover { opacity: 1; text-decoration: underline; }
   .book-sidebar ul.book-toc { list-style: none; margin: 0; padding-left: 0; }
   .book-sidebar ul.book-toc ul.book-toc { padding-left: 0.85rem; }
   .book-sidebar a.book-chapter { display: block; padding: 0.2rem 0; opacity: 0.85; }
@@ -190,6 +217,7 @@ template book {
             tag: "div", id: none, class: ["book-title"], attrs: none,
             children: [ HtmlFundamental::Raw { html: c.title } ],
           } ],
+        home_link(c, "book-home"),
         if c.theme_toggle { book_theme_toggle } else { [] },
         book_toc(c.toc),
       ]),

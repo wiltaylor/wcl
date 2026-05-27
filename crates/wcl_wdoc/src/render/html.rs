@@ -114,6 +114,8 @@ pub(crate) fn render_template(
     pages: &[(String, String)],
     toc_nodes: &[TocNode],
     theme_toggle: bool,
+    home_href: &str,
+    home_title: &str,
     patterns: &InlinePatterns,
 ) -> String {
     let Some(field) = template.field("render") else {
@@ -162,6 +164,11 @@ pub(crate) fn render_template(
     ctx.insert("pages".to_string(), pages_val);
     ctx.insert("toc".to_string(), toc_val);
     ctx.insert("theme_toggle".to_string(), Value::Bool(theme_toggle));
+    ctx.insert("home_href".to_string(), Value::Utf8(home_href.to_string()));
+    ctx.insert(
+        "home_title".to_string(),
+        Value::Utf8(home_title.to_string()),
+    );
     let arg = Value::Record {
         ty: vec!["TemplateCtx".to_string()],
         fields: ctx,

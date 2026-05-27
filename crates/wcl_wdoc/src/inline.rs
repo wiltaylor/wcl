@@ -31,10 +31,21 @@ const MAX_DEPTH: usize = 8;
 
 pub(crate) struct InlinePatterns {
     compiled: Vec<CompiledPattern>,
-    /// Names of every `page` block in the document, used by
-    /// `render_link` to recognise `[text](page_name)` references
-    /// and rewrite them to `page_name.html`.
+    /// Names of every `page` in the current site, used by `render_link`
+    /// to recognise bare `[text](page_name)` references and rewrite them
+    /// to `page_name.html`.
     page_names: HashSet<String>,
+    /// The current site's name (`None` for a single unnamed / synthetic
+    /// site) and its output prefix this build (`""` at the root, else
+    /// `"<name>/"`), used to resolve `[text](site:page)` cross-site links.
+    current_site: Option<String>,
+    current_prefix: String,
+    /// Every declared site → its page-name set, and → its URL prefix in
+    /// the full layout (`""` for the root site, else `"<name>/"`). A
+    /// `site:page` link validates against these and builds a relative
+    /// href from `current_prefix` to the target.
+    site_pages: BTreeMap<String, HashSet<String>>,
+    site_prefix: BTreeMap<String, String>,
     /// Bare hrefs that didn't match a known page during rendering.
     /// Build collects these after the page loop and turns them
     /// into a `BuildError::BadLink`.
@@ -64,9 +75,14 @@ impl InlinePatterns {
     /// Patterns whose regex fails to compile or whose `to_span`
     /// isn't a function are silently skipped — schema validation
     /// flags those separately.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn load(
         doc: &Document,
         page_names: HashSet<String>,
+        current_site: Option<String>,
+        current_prefix: String,
+        site_pages: BTreeMap<String, HashSet<String>>,
+        site_prefix: BTreeMap<String, String>,
         icons: IconRegistry,
         tilesets: TilesetRegistry,
         images: ImageRegistry,
@@ -100,6 +116,10 @@ impl InlinePatterns {
         InlinePatterns {
             compiled,
             page_names,
+            current_site,
+            current_prefix,
+            site_pages,
+            site_prefix,
             link_errors: RefCell::new(Vec::new()),
             icons,
             tilesets,
@@ -282,16 +302,42 @@ impl InlinePatterns {
         if is_external_href(href) {
             return href.to_string();
         }
-        let (page, fragment) = match href.find('#') {
+        let (target, fragment) = match href.find('#') {
             Some(i) => (&href[..i], &href[i..]),
             None => (href, ""),
         };
-        if self.page_names.contains(page) {
-            return format!("{page}.html{fragment}");
+        // `site:page` — a cross-site link. `page` names are identifiers
+        // (no `:`), and `mailto:` / `http://` are already handled above,
+        // so a `:` here unambiguously names another site.
+        if let Some((site, page)) = target.split_once(':') {
+            match self.site_pages.get(site) {
+                Some(pages) if pages.contains(page) => {
+                    if Some(site) == self.current_site.as_deref() {
+                        return format!("{page}.html{fragment}");
+                    }
+                    // Walk up out of the current site's subdirectory (if
+                    // any), then down into the target site's prefix.
+                    let up = self.current_prefix.matches('/').count();
+                    let prefix = self.site_prefix.get(site).map_or("", String::as_str);
+                    return format!("{}{prefix}{page}.html{fragment}", "../".repeat(up));
+                }
+                Some(_) => self
+                    .link_errors
+                    .borrow_mut()
+                    .push(format!("link to unknown page '{page}' in site '{site}'")),
+                None => self
+                    .link_errors
+                    .borrow_mut()
+                    .push(format!("link to unknown site '{site}'")),
+            }
+            return href.to_string();
+        }
+        if self.page_names.contains(target) {
+            return format!("{target}.html{fragment}");
         }
         self.link_errors
             .borrow_mut()
-            .push(format!("link to unknown page '{page}'"));
+            .push(format!("link to unknown page '{target}'"));
         href.to_string()
     }
 }
