@@ -45,9 +45,11 @@ fn build_emits_fundamentals_for_example_site() {
         overview.contains("<p><span>Welcome to wdoc </span>"),
         "{overview}"
     );
-    // class system: <style> with both class rules + class= attributes
+    // class system: <style> with both class rules + class= attributes.
+    // The example's `accent` uses the theme accent var so it adapts per
+    // site theme (rather than a fixed colour that muddies on dark themes).
     assert!(
-        overview.contains(".accent { color:#003a8c;font-weight:bold; }"),
+        overview.contains(".accent { color:var(--wdoc-accent);font-weight:bold; }"),
         "{overview}"
     );
     assert!(
@@ -2762,6 +2764,68 @@ page index { text { span "hi" { class = ["accent"] } } }
     );
     // The page body always carries the themeable hook class.
     assert!(html.contains("<body class=\"wdoc-body\">"), "{html}");
+}
+
+#[test]
+fn inline_emphasis_styled_by_class_and_themed() {
+    // `**bold**` / `_italic_` / `` `code` `` lower to the bundled
+    // `bold` / `italic` / `code` classes (structural defaults), and a
+    // themed site colours them per its palette via the theme apply rules
+    // — so emphasis is styled by a class AND varies with the theme.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("emph.wcl");
+    std::fs::write(
+        &src,
+        r##"
+site home { root = true  default_template = :webpage  title = "T"  theme = tokyonight }
+page index { sites = [:home]
+  text { span "Try **bold**, _italic_, `code`." {} }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Bundled structural classes (weight / slant / monospace).
+    assert!(html.contains(".bold { font-weight:bold; }"), "{html}");
+    assert!(html.contains(".italic { font-style:italic; }"), "{html}");
+    assert!(html.contains("font-family:ui-monospace"), "{html}");
+    // Per-theme colour, driven by the palette (so it differs per theme).
+    assert!(html.contains(".bold{color:var(--wdoc-orange);}"), "{html}");
+    assert!(
+        html.contains(".code{background:var(--wdoc-bg-inset);"),
+        "{html}"
+    );
+    // The patterns emit the classes onto the rendered spans.
+    assert!(html.contains("<span class=\"bold\">bold</span>"), "{html}");
+    assert!(
+        html.contains("<span class=\"italic\">italic</span>"),
+        "{html}"
+    );
+    assert!(html.contains("<span class=\"code\">code</span>"), "{html}");
+}
+
+#[test]
+fn inline_bold_unthemed_has_weight_but_no_theme_colour() {
+    // With no site/theme the bundled class still makes bold bold, but the
+    // per-theme colour rule isn't emitted (the doc stays unthemed).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("plain.wcl");
+    std::fs::write(&src, "page index { text { span \"Just **bold**.\" {} } }\n")
+        .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(html.contains(".bold { font-weight:bold; }"), "{html}");
+    assert!(
+        !html.contains(".bold{color:"),
+        "theme colour leaked into an unthemed doc:\n{html}"
+    );
 }
 
 #[test]

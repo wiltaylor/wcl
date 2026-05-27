@@ -94,7 +94,9 @@ pre.code-block{background:var(--wdoc-bg-inset);color:var(--wdoc-fg);border-color
 .wdoc-table th{background:var(--wdoc-bg-alt);}
 .wdoc-table th,.wdoc-table td{border-color:var(--wdoc-border);}
 .wdoc-map-card{background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);}
-.wdoc-card{background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);}";
+.wdoc-card{background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);}
+.bold{color:var(--wdoc-orange);}
+.code{background:var(--wdoc-bg-inset);border-radius:4px;padding:0.05em 0.3em;}";
 
 /// Borrow the named fields of a record-shaped value — a single-variant
 /// union (`Palette::Of {…}` / `ColourTheme::Of {…}`) or a bare record.

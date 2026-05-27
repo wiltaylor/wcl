@@ -61,3 +61,15 @@ class "heading-4" { font_size = "1.1rem"   font_weight = "600"  margin = "1rem 0
 class "heading-5" { font_size = "1rem"     font_weight = "600"  margin = "0.9rem 0 0.3rem" }
 class "heading-6" { font_size = "0.9rem"   font_weight = "700"  text_transform = "uppercase"  letter_spacing = "0.05em"  margin = "0.9rem 0 0.3rem" }
 
+// Built-in inline emphasis. The `**bold**` / `_italic_` / `` `code` ``
+// patterns lower to `<span class="bold|italic|code">`; these are their
+// bundled defaults. They carry only the *structural* part (weight /
+// slant / monospace) with no `--wdoc-*`, so an unthemed doc still renders
+// emphasis correctly. The *colour* is added per selected theme by the
+// theme apply rules in render/theme.rs (`.bold` takes a hue, `.code` a
+// themed chip), so emphasis looks right — and differs — across themes. A
+// user `class "bold" { … }` (optionally `sites = […]`) overrides either.
+class "bold"   { bold = true }
+class "italic" { italic = true }
+class "code"   { font_family = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"  font_size = "0.92em" }
+

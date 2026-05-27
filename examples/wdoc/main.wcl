@@ -11,8 +11,12 @@
 // a page with no `sites` is shared by every site. Shared styles and
 // iconsets below are global, so all three sites can use them.
 
+// Keyword/emphasis accent used across the showcase prose. Uses the
+// theme's accent hue (`var(--wdoc-accent)`) rather than a fixed colour,
+// so it stays bright and readable on every site's theme (a hardcoded
+// dark blue turned to mud on the dark themes).
 class accent {
-  color = "#003a8c"
+  color = "var(--wdoc-accent)"
   bold  = true
 }
 
