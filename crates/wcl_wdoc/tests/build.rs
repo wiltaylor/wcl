@@ -33,7 +33,7 @@ fn build_emits_fundamentals_for_example_site() {
     // output root; docs/blog go to subdirectories.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 18); // showcase 12 + docs 3 + blog 3
+    assert_eq!(n, 19); // showcase 13 + docs 3 + blog 3
 
     // The richer content (text + classes + diagram + flowchart) is on
     // the showcase overview page (at the root, since showcase is `root`).
@@ -2161,11 +2161,11 @@ page index {
 fn build_processes_full_code_example_page() {
     // Smoke test against the code page in the example, which exercises
     // Rust, Python, JSON, WCL, and an unknown language in one page. The
-    // example declares three sites (18 pages total); `showcase` is the
+    // example declares three sites (19 pages total); `showcase` is the
     // `root` site, so the code page renders flat at the output root.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 18);
+    assert_eq!(n, 19);
     let html = std::fs::read_to_string(out.path().join("code.html")).expect("read code.html");
     assert!(
         html.matches("<pre class=\"code-block\"").count() >= 5,
@@ -2932,6 +2932,266 @@ page index {
     // it serializes via `render_class` — unspaced `prop:value;`.
     assert!(html.contains(".wdoc-series-1 { fill:#5e81ac;"), "{html}");
     assert!(html.contains(".wdoc-axis { stroke:currentColor;"), "{html}");
+}
+
+#[test]
+fn build_renders_horizontal_timeline_with_phases_items_ticks() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("timeline.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 500
+    height = 220
+    timeline {
+      width  = 500
+      height = 220
+      title  = "Roadmap"
+      t_min  = 0.0
+      t_max  = 12.0
+      step   = 3.0
+      phases = [
+        TimelinePhase::Of { label: "Design", from: 0.0,  to: 4.0 },
+        TimelinePhase::Of { label: "Build",  from: 4.0,  to: 10.0 },
+        TimelinePhase::Of { label: "Ship",   from: 10.0, to: 12.0 },
+      ]
+      items = [
+        TimelineItem::Of    { label: "Kickoff", at: 0.0 },
+        TimelineItem::Of    { label: "Beta",    at: 6.0 },
+        TimelineItem::Sided { label: "Freeze",  at: 9.0, side: :far },
+        TimelineItem::Of    { label: "Launch",  at: 12.0 },
+      ]
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // One marker + connector + label per item (4).
+    assert_eq!(
+        html.matches("<circle class=\"wdoc-timeline-marker\"")
+            .count(),
+        4,
+        "{html}"
+    );
+    assert_eq!(
+        html.matches("class=\"wdoc-timeline-connector\"").count(),
+        4,
+        "{html}"
+    );
+    for label in ["Kickoff", "Beta", "Freeze", "Launch"] {
+        assert!(html.contains(&format!(">{label}</tspan>")), "{html}");
+    }
+
+    // Three phases → two boundary dividers each (6), each carrying a
+    // cycled palette class, plus three headings.
+    assert_eq!(html.matches("wdoc-timeline-divider\"").count(), 6, "{html}");
+    assert_eq!(
+        html.matches("wdoc-timeline-phase-label\"").count(),
+        3,
+        "{html}"
+    );
+    assert!(
+        html.contains("wdoc-series-1 wdoc-timeline-divider")
+            && html.contains("wdoc-series-2 wdoc-timeline-divider"),
+        "{html}"
+    );
+    for phase in ["Design", "Build", "Ship"] {
+        assert!(html.contains(&format!(">{phase}</tspan>")), "{html}");
+    }
+
+    // Axis spine + numeric ticks from `step` (0, 3, 6, 9, 12).
+    assert!(html.contains("<line class=\"wdoc-axis\""), "{html}");
+    for tick in [
+        ">0</tspan>",
+        ">3</tspan>",
+        ">6</tspan>",
+        ">9</tspan>",
+        ">12</tspan>",
+    ] {
+        assert!(html.contains(tick), "{html}");
+    }
+    assert!(
+        html.contains("class=\"wdoc-chart-title\"") && html.contains(">Roadmap</tspan>"),
+        "{html}"
+    );
+
+    // Bundled timeline CSS rides the class system and is injected into
+    // the page <style>; markers/connectors paint with currentColor.
+    assert!(
+        html.contains(".wdoc-timeline-marker { fill:currentColor;"),
+        "{html}"
+    );
+    assert!(html.contains(".wdoc-timeline-divider {"), "{html}");
+}
+
+#[test]
+fn build_renders_vertical_timeline() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("vtimeline.wcl");
+    // No t_min/t_max — the scale auto-fits from the data (0..5).
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 260
+    height = 320
+    timeline {
+      width     = 260
+      height    = 320
+      direction = :vertical
+      title     = "Releases"
+      items = [
+        TimelineItem::Of { label: "Alpha", at: 0.0 },
+        TimelineItem::Of { label: "Beta",  at: 3.0 },
+        TimelineItem::Of { label: "GA",    at: 5.0 },
+      ]
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Three items resolve.
+    assert_eq!(
+        html.matches("<circle class=\"wdoc-timeline-marker\"")
+            .count(),
+        3,
+        "{html}"
+    );
+    for label in ["Alpha", "Beta", "GA"] {
+        assert!(html.contains(&format!(">{label}</tspan>")), "{html}");
+    }
+    // Vertical orientation: the axis runs down a fixed x (width/2 = 130),
+    // so every marker shares the same `cx` while `cy` advances.
+    assert_eq!(
+        html.matches("<circle class=\"wdoc-timeline-marker\" cx=\"130\"")
+            .count(),
+        3,
+        "{html}"
+    );
+    assert!(
+        html.contains("<line class=\"wdoc-axis\" x1=\"130\"") && html.contains("x2=\"130\""),
+        "{html}"
+    );
+}
+
+#[test]
+fn build_renders_card_shape_in_diagram() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("card.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 260
+    height = 140
+    card {
+      x = 20.0  y = 20.0  width = 200.0  height = 100.0
+      title = "Notes"
+      text { span "A card with " {} span "formatted" { class = ["accent"] } span " text." {} }
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // A card is drawn as an SVG <foreignObject> at its resolved box,
+    // holding an XHTML-namespaced wdoc-card <div>.
+    assert!(
+        html.contains("<foreignObject x=\"20\" y=\"20\" width=\"200\" height=\"100\">"),
+        "{html}"
+    );
+    assert!(
+        html.contains("<div xmlns=\"http://www.w3.org/1999/xhtml\" class=\"wdoc-card\">"),
+        "{html}"
+    );
+    // Title + the body rendered through the inline engine (the accent
+    // span proves render_block ran, not plain SVG text).
+    assert!(
+        html.contains("<div class=\"wdoc-card-title\">Notes</div>"),
+        "{html}"
+    );
+    assert!(
+        html.contains("<span class=\"accent\">formatted</span>"),
+        "{html}"
+    );
+    // Structural card CSS is injected.
+    assert!(html.contains(".wdoc-card-title"), "{html}");
+}
+
+#[test]
+fn build_renders_timeline_cards() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("tlcards.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 600
+    height = 260
+    timeline {
+      width = 600  height = 260
+      t_min = 0.0  t_max = 12.0
+      // No `items` — a cards-only timeline must render.
+      card { at = 6.0  title = "Beta"
+        text { span "First public " {} span "beta" { class = ["accent"] } span " build." {} }
+      }
+      card { at = 12.0  side = :far  title = "GA"
+        text { span "General availability." {} }
+      }
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Two event cards → two foreignObject cards, each with a marker on
+    // the axis. The Beta card sits at the mid-scale position (frac 0.5).
+    assert_eq!(html.matches("<foreignObject").count(), 2, "{html}");
+    assert!(
+        html.contains("<div class=\"wdoc-card-title\">Beta</div>")
+            && html.contains("<div class=\"wdoc-card-title\">GA</div>"),
+        "{html}"
+    );
+    // The card body is run through the inline engine.
+    assert!(
+        html.contains("<span class=\"accent\">beta</span>"),
+        "{html}"
+    );
+    // The axis chrome renders, and each card has its own axis marker.
+    assert!(html.contains("<line class=\"wdoc-axis\""), "{html}");
+    assert_eq!(
+        html.matches("<circle class=\"wdoc-timeline-marker\"")
+            .count(),
+        2,
+        "{html}"
+    );
 }
 
 #[test]
@@ -4501,7 +4761,7 @@ fn multisite_example_root_site_and_subdirs() {
     let out = TempDir::new().expect("mkdir tempdir");
     let dir = out.path();
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), dir);
-    assert_eq!(n, 18);
+    assert_eq!(n, 19);
 
     // Showcase is at the root: its pages are flat, and there's no
     // `showcase/` subdirectory.

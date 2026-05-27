@@ -1,0 +1,53 @@
+// ── Rich-text card shape ───────────────────────────────────────────
+//
+// A `card` is a diagram shape whose body is arbitrary wdoc content —
+// text with inline formatting, lists, code, callouts, even nested
+// diagrams. Because it `extends SvgBlock`, it is a legal child of any
+// `diagram` / `container` (positioned with `x`/`y` or anchors, and
+// connectable by edges via `connect_points`), and it doubles as a
+// `timeline`'s rich event item (a timeline reads each card child's
+// `at` / `side` to place it on the axis).
+//
+// Like `map` / `tilemap`, a card is special-cased in the renderer (its
+// `lower` is a stub): the content is HTML produced by the block
+// renderer + inline engine, which isn't expressible in WCL. The
+// renderer emits an SVG `<foreignObject>` holding a `wdoc-card` `<div>`.
+// Default styling is the `wdoc-card` stylesheet below; a themed site
+// recolours `.wdoc-card` via the theme apply rules in render/theme.rs.
+
+@block("card")
+type Card extends SvgBlock {
+  // Free placement in a diagram / container (anchors like `rect`).
+  x = 0.0  y = 0.0  width = 160.0  height = 90.0
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+
+  // Timeline placement — used only when the card is a `timeline` child.
+  at:   f64?                     // position on the timeline scale
+  side: symbol?                  // :near | :far | :auto (alternates)
+
+  // Content.
+  title: utf8?                   // optional heading (plain text)
+  id: identifier?  class: list<utf8>?
+  connect_points: list<AnchorSide>?
+  @children(WdocBlock) body: list<WdocBlock>
+
+  // Stub: the rich HTML body is rendered in Rust (see src/card.rs).
+  lower = fn(c: Card) -> list<SvgFundamental> []
+}
+
+// Default card styling. Bare-class selectors so user `class`es win, with
+// neutral defaults and no `var(--wdoc-*)` (so a `site`-less doc stays
+// unthemed); a themed site recolours `.wdoc-card` via render/theme.rs.
+stylesheet "wdoc-card" {
+  css = <<CSS
+    .wdoc-card {
+      box-sizing: border-box; overflow: hidden; height: 100%;
+      padding: 0.5rem 0.6rem; border-radius: 6px;
+      font-size: 0.85rem; line-height: 1.4;
+      border: 1px solid #444; background: #262b33; color: #e6e6e6;
+    }
+    .wdoc-card > :first-child { margin-top: 0; }
+    .wdoc-card > :last-child  { margin-bottom: 0; }
+    .wdoc-card-title { font-weight: 600; margin: 0 0 0.3rem; }
+    CSS
+}

@@ -1,0 +1,152 @@
+// Timeline demo: the `timeline` shape, horizontal and vertical.
+//
+// A timeline is a custom SVG shape (like the charts) placed inside a
+// `diagram { }`. It draws a labelled axis with `items` (an event at a
+// scale position, shown as a marker + lead line + text) and `phases`
+// (named spans drawn as boundary divider lines). The scale is numeric
+// `t_min`..`t_max` (auto-fit from the data when omitted), with an
+// optional `step` for evenly-spaced tick labels. Items zig-zag sides by
+// default; force one with `TimelineItem::Sided { … side = :near|:far }`.
+
+page timeline { sites = [:showcase]
+  h1 "Timelines" {}
+
+  text {
+    span "A " {}
+    span "timeline" { class = ["accent"] }
+    span " lays events out along an axis — horizontal or vertical. Each " {}
+    span "item" { class = ["accent"] }
+    span " points to a position on the scale; " {}
+    span "phases" { class = ["accent"] }
+    span " divide the axis into named spans; and " {}
+    span "step" { class = ["accent"] }
+    span " sets the tick interval." {}
+  }
+
+  h2 "Horizontal roadmap" {}
+
+  // An explicit 0–12 scale with quarterly ticks, three phases, and items
+  // that auto-alternate above / below the axis (one is pinned `:far`).
+  diagram {
+    width  = 560
+    height = 220
+
+    timeline {
+      width  = 560
+      height = 220
+      title  = "2026 roadmap (months)"
+      t_min  = 0.0
+      t_max  = 12.0
+      step   = 3.0
+      phases = [
+        TimelinePhase::Of { label: "Discovery", from: 0.0,  to: 3.0 },
+        TimelinePhase::Of { label: "Build",     from: 3.0,  to: 9.0 },
+        TimelinePhase::Of { label: "Launch",    from: 9.0,  to: 12.0 },
+      ]
+      items = [
+        TimelineItem::Of    { label: "Kickoff",       at: 0.0 },
+        TimelineItem::Of    { label: "Design freeze",  at: 3.0 },
+        TimelineItem::Of    { label: "Beta",          at: 7.0 },
+        TimelineItem::Sided { label: "Code freeze",    at: 9.0, side: :far },
+        TimelineItem::Of    { label: "GA",            at: 12.0 },
+      ]
+    }
+  }
+
+  h2 "Vertical, auto-scaled" {}
+
+  // No `t_min`/`t_max`: the scale fits the data. Vertical timelines read
+  // top-to-bottom with items to the left and right of the axis.
+  diagram {
+    width  = 300
+    height = 320
+
+    timeline {
+      width     = 300
+      height    = 320
+      direction = :vertical
+      title     = "Release history"
+      phases = [
+        TimelinePhase::Of { label: "1.x", from: 0.0, to: 2.0 },
+        TimelinePhase::Of { label: "2.x", from: 2.0, to: 5.0 },
+      ]
+      items = [
+        TimelineItem::Of { label: "1.0 alpha", at: 0.0 },
+        TimelineItem::Of { label: "1.0",       at: 2.0 },
+        TimelineItem::Of { label: "2.0 beta",  at: 3.0 },
+        TimelineItem::Of { label: "2.0",       at: 5.0 },
+      ]
+    }
+  }
+
+  text {
+    span "Phase dividers and headings carry a cycled palette class, and markers / connectors paint with " {}
+    span "currentColor" { class = ["accent"] }
+    span " — so a site theme or a `class` override recolours a timeline like anything else." {}
+  }
+
+  h2 "Event cards" {}
+
+  text {
+    span "An " {}
+    span "event" { class = ["accent"] }
+    span " is a " {}
+    span "card" { class = ["accent"] }
+    span " child of the timeline: place it with " {}
+    span "at" { class = ["accent"] }
+    span " and fill it with formatted wdoc content. It renders in place on the axis." {}
+  }
+
+  // `card` children carry rich, inline-formatted bodies. They auto-fit
+  // the scale (no t_min/t_max here) and alternate sides like plain items.
+  diagram {
+    width  = 720
+    height = 320
+
+    timeline {
+      width  = 720
+      height = 320
+      title  = "Release timeline"
+      card { at = 0.0  title = "1.0"  width = 210.0  height = 104.0
+        text { span "First " {} span "stable" { class = ["accent"] } span " release. APIs frozen." {} }
+      }
+      card { at = 3.0  side = :far  title = "1.4"  width = 210.0  height = 104.0
+        text { span "Plugin system + the " {} span "wdoc" { class = ["accent"] } span " generator." {} }
+      }
+      card { at = 6.0  title = "2.0"  width = 210.0  height = 104.0
+        text { span "Rewrite: lazy eval, schema check, LSP." {} }
+      }
+    }
+  }
+
+  h2 "Cards in any diagram" {}
+
+  text {
+    span "Because a " {}
+    span "card" { class = ["accent"] }
+    span " is an ordinary diagram shape, you can drop one into any " {}
+    span "diagram" { class = ["accent"] }
+    span " — positioned with x/y or anchors, and connectable by edges." {}
+  }
+
+  diagram {
+    width  = 320
+    height = 170
+    card {
+      x = 20.0  y = 20.0  width = 280.0  height = 130.0
+      title = "Standalone card"
+      text { span "The " {} span "same" { class = ["accent"] } span " wdoc content as a timeline event — text, code, callouts." {} }
+    }
+  }
+}
+
+// Recolour the timeline connectors. The bundled `wdoc-timeline-connector`
+// default comes first in the stylesheet, so this override wins by
+// cascade; `dark {}` / `light {}` track the reader's colour scheme. The
+// name is quoted because it contains hyphens.
+class "wdoc-timeline-connector" {
+  stroke  = "#7b2d8e"
+  opacity = "0.7"
+  dark  { stroke = "#c792ea" }
+  light { stroke = "#7b2d8e" }
+}

@@ -256,6 +256,11 @@ union SvgFundamental {
   Line    { x1: f64? y1: f64? x2: f64? y2: f64? stroke: utf8? id: identifier? class: list<utf8>? }
   Label   { content: utf8 x: f64? y: f64? font_size: f64? fit_width: f64? fit_height: f64? fill: utf8? id: identifier? class: list<utf8>? }
   Polygon { points: utf8 fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
+  // A rich-text card box. `index` references the emitting block's Nth
+  // `card` child, whose wdoc content the renderer draws as an HTML
+  // `<foreignObject>` (resolved by the timeline renderer, not the
+  // generic variant path). Used by `timeline` to place event cards.
+  Card    { x: f64? y: f64? width: f64? height: f64? index: i64? }
 }
 
 union HtmlFundamental {

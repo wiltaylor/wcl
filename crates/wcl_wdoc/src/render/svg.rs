@@ -494,6 +494,13 @@ pub(crate) fn collect_shape_positions(
                 .expect("rect/circle always resolve a bbox");
             record(block, (tx + x, ty + y, w, h), out);
         }
+        // A `card` is a positioned box (anchor-aware, like `rect`); read
+        // it directly so its bbox feeds viewBox-fit + edge anchoring
+        // without `effective_dims` (it has no text-driven growth).
+        "card" => {
+            let (x, y, w, h) = resolve_rect_box(block, parent_w, parent_h);
+            record(block, (tx + x, ty + y, w, h), out);
+        }
         "label" => {
             let own_x = field_f64(block, "x").unwrap_or(0.0);
             let own_y = field_f64(block, "y").unwrap_or(0.0);
@@ -1096,6 +1103,18 @@ pub(crate) fn render_shape(
         // like `tilemap` (its tiles, icon `<use>`s, and HTML cards aren't
         // expressible in WCL). It pushes its cards into `ctx.overlays`.
         "map" => return Some(map::render_map(block, ctx, parent_w, parent_h)),
+        // A `card` holds rich wdoc content drawn as an HTML
+        // `<foreignObject>` — special-cased like `map` because the body
+        // comes from the block renderer + inline engine, not WCL.
+        "card" => return Some(crate::card::render_card(block, ctx, parent_w, parent_h)),
+        // A `timeline` lowers to SVG fundamentals in WCL, but its event
+        // `card` children render as `<foreignObject>`s in Rust — so it's
+        // special-cased to thread the `RenderCtx` through.
+        "timeline" => {
+            return Some(crate::timeline::render_timeline(
+                block, ctx, parent_w, parent_h,
+            ));
+        }
         kind => lower_svg_block(ctx.doc, block, kind, parent_w, parent_h),
     };
     Some(with_shape_icon(

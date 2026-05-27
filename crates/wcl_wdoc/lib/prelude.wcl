@@ -28,6 +28,8 @@ import <dopesheet.wcl>        // animated sprite-sheet playback
 import <map.wcl>              // zoomable map + pins + cards
 import <flowchart.wcl>        // process / decision / terminator
 import <charts.wcl>           // bar / line / pie charts + geometry
+import <timeline.wcl>         // horizontal / vertical timeline
+import <card.wcl>             // rich-text card shape (foreignObject)
 import <headings.wcl>         // h1..h6
 import <code.wcl>             // syntax-highlighted code block
 import <terminal.wcl>         // terminal grid + primitives

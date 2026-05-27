@@ -6,6 +6,7 @@
 //! `wcl wdoc build` and `wcl wdoc serve`.
 
 pub mod build;
+mod card;
 mod dopesheet;
 mod force;
 mod highlight;
@@ -21,6 +22,7 @@ pub mod serve;
 mod terminal;
 mod text;
 mod tileset;
+mod timeline;
 
 pub use build::{BuildError, build};
 pub use serve::serve;

@@ -1,0 +1,278 @@
+// ── Stdlib timeline ────────────────────────────────────────────────
+//
+// `timeline` is a custom SvgBlock (like the charts) that lowers to SVG
+// fundamentals through pure-WCL geometry. It draws a labelled axis —
+// horizontal (default) or vertical — with:
+//   • items   — an event at a scale position, drawn as a marker on the
+//               axis, a lead line, and a text label. Items auto-alternate
+//               sides (zig-zag) unless a `side` is forced.
+//   • phases   — named spans drawn as perpendicular boundary divider
+//               lines across the axis, with the phase name as a heading.
+//               Each phase cycles the `wdoc-series-N` palette.
+//   • a scale — numeric `t_min`..`t_max` (auto-fit from the data when
+//               omitted); an optional `step` draws evenly-spaced numeric
+//               tick labels along the axis.
+//
+// Like a chart it is placed inside a `diagram { }` and positioned with
+// `x`/`y`/`width`/`height`. Default styling lives in `wdoc-timeline-*`
+// (axis / marker / connector / label / divider / phase-label) classes —
+// see css-classes.wcl — so a `class` or a site `theme` recolours it like
+// anything else. The numeric formatter (`chart_fmt`) and palette cycle
+// (`chart_series_class`) are shared with charts.wcl.
+
+// Two item variants so the common case stays terse: `Of` auto-alternates
+// the side; `Sided` forces it with `side = :near | :far` (a third value
+// falls back to alternation). Variant construction requires every field,
+// so the optional side lives in its own variant rather than as an
+// omittable field.
+union TimelineItem {
+  Of    { label: utf8  at: f64 }
+  Sided { label: utf8  at: f64  side: symbol }
+}
+union TimelinePhase { Of { label: utf8  from: f64  to: f64 } }
+
+// Scale position [0,1] of value `v` within the range.
+let tl_frac = fn(v: f64, tmin: f64, tmax: f64) -> f64 (v - tmin) / (tmax - tmin)
+
+// Orientation-neutral coordinate mapping. `frac` runs 0→1 along the
+// axis; `perp` is a signed pixel offset perpendicular to it (negative =
+// the "near" side, positive = "far"). For a horizontal axis the along
+// direction is x and `perp` shifts y; a vertical axis flips the two, so
+// every drawing helper below works for both orientations unchanged.
+let tl_x = fn(is_h: bool, amain: f64, alo: f64, ahi: f64, frac: f64, perp: f64) -> f64
+  if is_h { alo + (ahi - alo) * frac } else { amain + perp }
+let tl_y = fn(is_h: bool, amain: f64, alo: f64, ahi: f64, frac: f64, perp: f64) -> f64
+  if is_h { amain + perp } else { alo + (ahi - alo) * frac }
+
+// The main axis spine, from one end of the scale to the other.
+let tl_spine = fn(is_h: bool, amain: f64, alo: f64, ahi: f64) -> SvgFundamental
+  SvgFundamental::Line {
+    x1: tl_x(is_h, amain, alo, ahi, 0.0, 0.0),
+    y1: tl_y(is_h, amain, alo, ahi, 0.0, 0.0),
+    x2: tl_x(is_h, amain, alo, ahi, 1.0, 0.0),
+    y2: tl_y(is_h, amain, alo, ahi, 1.0, 0.0),
+    stroke: none, id: none, class: ["wdoc-axis"],
+  }
+
+// Numeric ticks at every `step` from `tmin` up to `tmax`. WCL `range`
+// only takes integers and the scale is float, so we iterate a fixed
+// integer range and drop ticks past `tmax` (cap: 64 ticks — pick a
+// `step` that divides the range into a sane number of marks).
+let tl_ticks = fn(is_h: bool, amain: f64, alo: f64, ahi: f64, tmin: f64, tmax: f64, step: f64) -> list<SvgFundamental>
+  if step == none { [] } else {
+    flatten(map(range(0, 65), fn(k: i64) -> list<SvgFundamental> {
+      let val = tmin + k * step;
+      if val > tmax + 0.0001 { [] } else {
+        let f = tl_frac(val, tmin, tmax);
+        [
+          SvgFundamental::Line {
+            x1: tl_x(is_h, amain, alo, ahi, f, -3.0),
+            y1: tl_y(is_h, amain, alo, ahi, f, -3.0),
+            x2: tl_x(is_h, amain, alo, ahi, f, 3.0),
+            y2: tl_y(is_h, amain, alo, ahi, f, 3.0),
+            stroke: none, id: none, class: ["wdoc-axis"],
+          },
+          SvgFundamental::Label {
+            content: chart_fmt(val),
+            x: tl_x(is_h, amain, alo, ahi, f, 12.0),
+            y: tl_y(is_h, amain, alo, ahi, f, 12.0),
+            font_size: 9.0, fit_width: 40.0, fit_height: 11.0,
+            fill: none, id: none, class: ["wdoc-axis-label"],
+          },
+        ]
+      }
+    }))
+  }
+
+// A single perpendicular divider line at scale position `frac`, spanning
+// `±ext` across the axis. `cls` is the phase's cycled palette class.
+let tl_divider = fn(is_h: bool, amain: f64, alo: f64, ahi: f64, frac: f64, ext: f64, cls: utf8) -> SvgFundamental
+  SvgFundamental::Line {
+    x1: tl_x(is_h, amain, alo, ahi, frac, -ext),
+    y1: tl_y(is_h, amain, alo, ahi, frac, -ext),
+    x2: tl_x(is_h, amain, alo, ahi, frac, ext),
+    y2: tl_y(is_h, amain, alo, ahi, frac, ext),
+    stroke: none, id: none, class: [cls, "wdoc-timeline-divider"],
+  }
+
+// Each phase: a divider at `from` and at `to` plus a heading centred over
+// the span near the axis edge. Adjacent phases share a boundary line
+// (drawn twice, identically) — harmless.
+let tl_phases = fn(is_h: bool, amain: f64, alo: f64, ahi: f64, tmin: f64, tmax: f64, ext: f64, phs: list<TimelinePhase>) -> list<SvgFundamental>
+  flatten(map(range(0, len(phs)), fn(i: i64) -> list<SvgFundamental> {
+    let p = at(phs, i);
+    let cls = chart_series_class(i);
+    let fa = tl_frac(p.from, tmin, tmax);
+    let fb = tl_frac(p.to, tmin, tmax);
+    let fm = (fa + fb) / 2.0;
+    [
+      tl_divider(is_h, amain, alo, ahi, fa, ext, cls),
+      tl_divider(is_h, amain, alo, ahi, fb, ext, cls),
+      SvgFundamental::Label {
+        content: p.label,
+        x: tl_x(is_h, amain, alo, ahi, fm, -ext + 10.0),
+        y: tl_y(is_h, amain, alo, ahi, fm, -ext + 10.0),
+        font_size: 11.0, fit_width: 96.0, fit_height: 14.0,
+        fill: none, id: none, class: [cls, "wdoc-timeline-phase-label"],
+      },
+    ]
+  }))
+
+// Sign of an item's perpendicular offset: -1 (near) / +1 (far). An
+// explicit `:near`/`:far` wins; otherwise alternate by index.
+let tl_sign = fn(side: symbol, i: i64) -> f64
+  if side == :near { -1.0 } else {
+    if side == :far { 1.0 } else {
+      if i % 2 == 0 { -1.0 } else { 1.0 }
+    }
+  }
+
+// One item: a lead line out to `sign` side, a marker on the axis, and
+// the label at the line's end (`Label` is centre-anchored).
+let tl_item = fn(is_h: bool, amain: f64, alo: f64, ahi: f64, tmin: f64, tmax: f64, label: utf8, pos: f64, sign: f64) -> list<SvgFundamental> {
+  let f = tl_frac(pos, tmin, tmax);
+  let lead = 20.0;
+  [
+    SvgFundamental::Line {
+      x1: tl_x(is_h, amain, alo, ahi, f, 0.0),
+      y1: tl_y(is_h, amain, alo, ahi, f, 0.0),
+      x2: tl_x(is_h, amain, alo, ahi, f, sign * lead),
+      y2: tl_y(is_h, amain, alo, ahi, f, sign * lead),
+      stroke: none, id: none, class: ["wdoc-timeline-connector"],
+    },
+    SvgFundamental::Circle {
+      cx: tl_x(is_h, amain, alo, ahi, f, 0.0),
+      cy: tl_y(is_h, amain, alo, ahi, f, 0.0),
+      r: 3.0, fill: none, stroke: none, id: none, class: ["wdoc-timeline-marker"],
+    },
+    SvgFundamental::Label {
+      content: label,
+      x: tl_x(is_h, amain, alo, ahi, f, sign * (lead + 9.0)),
+      y: tl_y(is_h, amain, alo, ahi, f, sign * (lead + 9.0)),
+      font_size: 11.0, fit_width: 88.0, fit_height: 28.0,
+      fill: none, id: none, class: ["wdoc-timeline-label"],
+    },
+  ]
+}
+
+// Walk the items, dispatching each variant to a shared `tl_item`.
+let tl_items = fn(is_h: bool, amain: f64, alo: f64, ahi: f64, tmin: f64, tmax: f64, items: list<TimelineItem>) -> list<SvgFundamental>
+  flatten(map(range(0, len(items)), fn(i: i64) -> list<SvgFundamental> {
+    let it = at(items, i);
+    match it {
+      TimelineItem::Of { label, at: pos } => tl_item(is_h, amain, alo, ahi, tmin, tmax, label, pos, tl_sign(:auto, i)),
+      TimelineItem::Sided { label, at: pos, side } => tl_item(is_h, amain, alo, ahi, tmin, tmax, label, pos, tl_sign(side, i)),
+      _ => [],
+    }
+  }))
+
+// Min / max across a (possibly empty) list, for auto-fitting the scale.
+let tl_min = fn(xs: list<f64>, fallback: f64) -> f64
+  if len(xs) == 0 { fallback } else { fold(xs, at(xs, 0), fn(a: f64, b: f64) -> f64 min(a, b)) }
+let tl_max = fn(xs: list<f64>, fallback: f64) -> f64
+  if len(xs) == 0 { fallback } else { fold(xs, at(xs, 0), fn(a: f64, b: f64) -> f64 max(a, b)) }
+
+// One event card: a marker + connector + a `SvgFundamental::Card` box.
+// The box is placed on the chosen side, its axis-facing edge `lead` px
+// from the axis, centred along-axis on the card's `at`, then clamped into
+// the timeline box (`bx0`/`by0`/`bw`/`bh`) so a card near a scale extreme
+// stays fully on-canvas rather than hanging off the edge. `index` links
+// the box back to the timeline's Nth `card` child, whose wdoc content the
+// renderer draws inside the box (src/timeline.rs + src/card.rs).
+let tl_card = fn(is_h: bool, amain: f64, alo: f64, ahi: f64, bx0: f64, by0: f64, bw: f64, bh: f64, tmin: f64, tmax: f64, index: i64, pos: f64, side: symbol, cw: f64, ch: f64) -> list<SvgFundamental> {
+  let f = tl_frac(pos, tmin, tmax);
+  let s = tl_sign(side, index);
+  let lead = 14.0;
+  let near = s < 0.0;
+  let mx = tl_x(is_h, amain, alo, ahi, f, 0.0);
+  let my = tl_y(is_h, amain, alo, ahi, f, 0.0);
+  let raw_bx = if is_h { mx - cw / 2.0 } else { if near { amain - lead - cw } else { amain + lead } };
+  let raw_by = if is_h { if near { amain - lead - ch } else { amain + lead } } else { my - ch / 2.0 };
+  let bx = clamp(raw_bx, bx0, bx0 + bw - cw);
+  let by = clamp(raw_by, by0, by0 + bh - ch);
+  [
+    SvgFundamental::Line {
+      x1: mx, y1: my,
+      x2: tl_x(is_h, amain, alo, ahi, f, s * lead),
+      y2: tl_y(is_h, amain, alo, ahi, f, s * lead),
+      stroke: none, id: none, class: ["wdoc-timeline-connector"],
+    },
+    SvgFundamental::Circle { cx: mx, cy: my, r: 3.0, fill: none, stroke: none, id: none, class: ["wdoc-timeline-marker"] },
+    SvgFundamental::Card { x: bx, y: by, width: cw, height: ch, index: index },
+  ]
+}
+
+// Walk the event cards, emitting each card's marker + connector + box.
+let tl_cards = fn(is_h: bool, amain: f64, alo: f64, ahi: f64, bx0: f64, by0: f64, bw: f64, bh: f64, tmin: f64, tmax: f64, cds: list<Card>) -> list<SvgFundamental>
+  flatten(map(range(0, len(cds)), fn(i: i64) -> list<SvgFundamental> {
+    let c = at(cds, i);
+    let pos = if c.at == none { 0.0 } else { c.at };
+    let side = if c.side == none { :auto } else { c.side };
+    tl_card(is_h, amain, alo, ahi, bx0, by0, bw, bh, tmin, tmax, i, pos, side, c.width, c.height)
+  }))
+
+// Each event card's `at`, for auto-fitting the scale (a card omitting
+// `at` pins to 0.0).
+let tl_card_ats = fn(cds: list<Card>) -> list<f64>
+  map(cds, fn(c: Card) -> f64 if c.at == none { 0.0 } else { c.at })
+
+@block("timeline")
+type Timeline extends SvgBlock {
+  // Defaults match the chart convention so `:layered` / `:grid` layout
+  // can position the timeline via a wrapper transform.
+  x = 0.0  y = 0.0  width = 480.0  height = 200.0
+  id: identifier?  class: list<utf8>?
+  title:     utf8?
+  direction: symbol?              // :horizontal (default) | :vertical
+  t_min:     f64?                 // scale start (auto-fit from data if omitted)
+  t_max:     f64?                 // scale end
+  step:      f64?                 // numeric tick interval (no ticks if omitted)
+  phases:    list<TimelinePhase>?
+  items:     list<TimelineItem>?          // plain text items (cards-only is fine)
+  @children("card") cards: list<Card>?    // rich-text event cards
+  connect_points: list<AnchorSide>?
+
+  lower = fn(t: Timeline) -> list<SvgFundamental> {
+    let is_h = if t.direction == :vertical { false } else { true };
+    let title = if t.title == none { "" } else { t.title };
+    let title_h = if title == "" { 6.0 } else { 22.0 };
+    let phs = if t.phases == none { [] } else { t.phases };
+    let its = if t.items == none { [] } else { t.items };
+    let cds = if t.cards == none { [] } else { t.cards };
+
+    // Auto-fit the scale from item positions, phase bounds, and cards.
+    let item_ats = map(its, fn(it: TimelineItem) -> f64 it.at);
+    let card_ats = tl_card_ats(cds);
+    let los = flatten([item_ats, card_ats, map(phs, fn(p: TimelinePhase) -> f64 p.from)]);
+    let his = flatten([item_ats, card_ats, map(phs, fn(p: TimelinePhase) -> f64 p.to)]);
+    let tmin = if t.t_min == none { tl_min(los, 0.0) } else { t.t_min };
+    let tmax0 = if t.t_max == none { tl_max(his, 1.0) } else { t.t_max };
+    let tmax = max(tmax0, tmin + 0.000001);
+
+    // The axis line: `amain` is its fixed perpendicular coordinate,
+    // `alo`/`ahi` the along-axis extent; `ext` is the half-span of the
+    // perpendicular drawing area (phase dividers reach to ±ext).
+    let margin = 24.0;
+    let amain = if is_h { t.y + title_h + (t.height - title_h) / 2.0 } else { t.x + t.width / 2.0 };
+    let alo = if is_h { t.x + margin } else { t.y + title_h + margin };
+    let ahi = if is_h { t.x + t.width - margin } else { t.y + t.height - margin };
+    let cross = if is_h { t.height - title_h } else { t.width };
+    let ext = cross * 0.42;
+
+    flatten([
+      if title == "" { [] } else {
+        [ SvgFundamental::Label {
+            content: title,
+            x: t.x + t.width / 2.0, y: t.y + 11.0,
+            font_size: 13.0, fit_width: t.width, fit_height: 16.0,
+            fill: none, id: none, class: ["wdoc-chart-title"],
+          } ]
+      },
+      tl_phases(is_h, amain, alo, ahi, tmin, tmax, ext, phs),
+      [ tl_spine(is_h, amain, alo, ahi) ],
+      tl_ticks(is_h, amain, alo, ahi, tmin, tmax, t.step),
+      tl_items(is_h, amain, alo, ahi, tmin, tmax, its),
+      tl_cards(is_h, amain, alo, ahi, t.x, t.y, t.width, t.height, tmin, tmax, cds),
+    ])
+  }
+}

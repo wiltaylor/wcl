@@ -48,6 +48,20 @@ pub(crate) fn lookup_type_lower(doc: &Document, kind: &str) -> Option<FnValue> {
     }
 }
 
+/// Call a block's `lower` function and return the raw list of
+/// `SvgFundamental` variant values. `None` when the block has no
+/// record, no `lower`, the call errors, or the result isn't a list.
+/// Shared by [`lower_svg_block`] and the `timeline` renderer (which
+/// intercepts `Card` variants before rendering the rest).
+pub(crate) fn lower_to_values(doc: &Document, block: &Block<'_>, kind: &str) -> Option<Vec<Value>> {
+    let arg = block_to_record(doc, block, kind)?;
+    let fv = lookup_block_lower(doc, block, kind)?;
+    match doc.call_value(&fv, &[arg]) {
+        Ok(Value::List(items)) => Some(items),
+        _ => None,
+    }
+}
+
 /// Custom diagram-shape lowering. Resolves the block's `lower`
 /// function, calls it with a record built from the block's fields,
 /// and renders each returned variant.
@@ -58,17 +72,7 @@ pub(crate) fn lower_svg_block(
     parent_w: f64,
     parent_h: f64,
 ) -> String {
-    let Some(arg) = block_to_record(doc, block, kind) else {
-        return String::new();
-    };
-    let Some(fv) = lookup_block_lower(doc, block, kind) else {
-        return String::new();
-    };
-    let result = match doc.call_value(&fv, &[arg]) {
-        Ok(v) => v,
-        Err(_) => return String::new(),
-    };
-    let Value::List(items) = result else {
+    let Some(items) = lower_to_values(doc, block, kind) else {
         return String::new();
     };
     items

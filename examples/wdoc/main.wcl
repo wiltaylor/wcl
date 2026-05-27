@@ -65,6 +65,7 @@ site showcase {
     item "Diagrams" {
       item "Connections" { page = connections }
       item "Charts"      { page = charts }
+      item "Timelines"   { page = timeline }
       item "Maps"        { page = map }
       item "Tilemaps"    { page = tilemap }
       item "Dopesheets"  { page = dopesheet }
@@ -125,6 +126,7 @@ import "./pages/connections.wcl"
 import "./pages/code.wcl"
 import "./pages/math.wcl"
 import "./pages/charts.wcl"
+import "./pages/timeline.wcl"
 import "./pages/terminal.wcl"
 import "./pages/icons.wcl"
 import "./pages/tilemap.wcl"

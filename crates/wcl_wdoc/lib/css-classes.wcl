@@ -26,6 +26,17 @@ class "wdoc-series-6"    { fill = "#88c0d0"  stroke = "#88c0d0" }
 class "wdoc-series-7"    { fill = "#d08770"  stroke = "#d08770" }
 class "wdoc-series-8"    { fill = "#8fbcbb"  stroke = "#8fbcbb" }
 
+// Timeline shape defaults. Markers / connectors / labels paint with
+// `currentColor` so they follow the page theme; phase dividers + their
+// headings also carry a cycled `wdoc-series-N` class, which sets their
+// hue (these rules just set width / weight / opacity, leaving colour to
+// the palette class). Override any of them like a chart series class.
+class "wdoc-timeline-divider"     { stroke = "currentColor"  opacity = "0.5"  stroke_width = "2" }
+class "wdoc-timeline-marker"      { fill = "currentColor" }
+class "wdoc-timeline-connector"   { stroke = "currentColor"  opacity = "0.5" }
+class "wdoc-timeline-label"       { fill = "currentColor" }
+class "wdoc-timeline-phase-label" { fill = "currentColor"  bold = true }
+
 // Bare-class colour rules lifted out of the `webpage` / `book` template
 // CSS. Their surrounding layout (flex, fixed sidebar, descendant +
 // `:hover` selectors) is not expressible as a class and stays in Rust.
