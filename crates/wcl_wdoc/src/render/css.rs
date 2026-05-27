@@ -138,12 +138,23 @@ pub(crate) fn render_class(block: &Block<'_>) -> Option<String> {
         )
         .expect("write to String");
     }
-    // Explicit toggle overrides the system preference (higher specificity).
-    if let Some(d) = &dark {
+    // Explicit toggle (`:root[data-theme=…]`) overrides the system
+    // preference. Emit BOTH sides whenever the class is themed (declares
+    // a `dark` and/or `light` block) — including the side that has no
+    // block of its own, which falls back to the base. This is what makes
+    // the toggle actually switch: a class that only declares `light {}`
+    // still needs a `data-theme="dark"` rule, otherwise on a light-
+    // preferring system the `@media (prefers-color-scheme: light)` rule
+    // (same specificity as the base) keeps winning and toggling to dark
+    // does nothing. The data-theme selector's higher specificity beats
+    // the media rule, so the toggle wins on either side. (`dark` is the
+    // default, so its rule carries the base alone when no `dark {}` is
+    // declared.)
+    if dark.is_some() || light.is_some() {
+        let d = dark.as_deref().unwrap_or("");
+        let l = light.as_deref().unwrap_or("");
         write!(out, "\n:root[data-theme=\"dark\"] .{name} {{ {base}{d} }}")
             .expect("write to String");
-    }
-    if let Some(l) = &light {
         write!(out, "\n:root[data-theme=\"light\"] .{name} {{ {base}{l} }}")
             .expect("write to String");
     }

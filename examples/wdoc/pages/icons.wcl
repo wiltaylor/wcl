@@ -3,7 +3,7 @@
 // class system. The `iconset`s + the `icon-accent` class live in
 // main.wcl (icon config is document-global).
 
-page icons {
+page icons { sites = [:showcase]
   h1 "Icons" {}
 
   // `:name:` resolves against the declared iconsets; `:set.name:` picks a

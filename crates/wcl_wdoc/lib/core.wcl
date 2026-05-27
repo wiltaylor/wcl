@@ -17,7 +17,10 @@ type Site {
   @children("template")       templates:   list<Template>
   @children("iconset")        iconsets:    list<IconSet>
   @children("tileset")        tilesets:    list<Tileset>
-  @child("site")              site:        SiteConfig?
+  // A document may declare several named `site` blocks; each renders to
+  // its own subdirectory (a single site renders flat at the output
+  // root). Absent ⇒ pages render bare. See `Page.sites` for membership.
+  @children("site")           sites:       list<SiteConfig>
 }
 
 // Raw stylesheet. Carries CSS that the bare-class `class` system can't
@@ -31,6 +34,9 @@ type Site {
 type Stylesheet {
   @inline(0) name: identifier
   css: utf8
+  // Limit this stylesheet to specific sites (`sites = [:book]`). Absent
+  // or empty ⇒ every site (like `Page.sites` / `Class.sites`).
+  sites: list<symbol>?
 }
 
 // Base page styling. Resets the body margin and makes it fill the
@@ -113,6 +119,10 @@ type Page {
   // `default_template` (set on the `site` block). When neither is set
   // the page renders bare (its blocks straight into <body>).
   template: symbol?
+  // Which named `site`s this page belongs to (`sites = [:docs, :blog]`).
+  // Absent or empty ⇒ every site (a shared page). A name with no
+  // matching `site` block is a build error.
+  sites: list<symbol>?
   @children(WdocBlock) children: list<WdocBlock>
 }
 
@@ -123,6 +133,11 @@ type Page {
 @block("class")
 type Class {
   @inline(0) name: identifier
+
+  // Limit this class's CSS to specific sites (`sites = [:book]`), so a
+  // multi-site document can theme one site without affecting the others.
+  // Absent or empty ⇒ every site (like `Page.sites`).
+  sites: list<symbol>?
 
   // Text styling
   color:       utf8?

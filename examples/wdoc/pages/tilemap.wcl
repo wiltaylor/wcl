@@ -14,7 +14,7 @@ tileset platformer {
   columns     = 5
 }
 
-page tilemap {
+page tilemap { sites = [:showcase]
   h1 "Tilemaps" {}
 
   text {

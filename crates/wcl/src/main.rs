@@ -162,6 +162,11 @@ enum WdocCommand {
         /// Output directory. Created if missing.
         #[arg(long)]
         out: PathBuf,
+        /// Build only this named `site` (flat at `<out>`). When omitted,
+        /// every site renders into its own `<out>/<name>/` subdirectory
+        /// with a chooser index (a single-site document is unaffected).
+        #[arg(long)]
+        site: Option<String>,
     },
     /// Run a local dev server. Watches the source for `.wcl` changes
     /// and re-renders on each modification — refresh the browser to
@@ -176,6 +181,10 @@ enum WdocCommand {
         /// and removed on shutdown.
         #[arg(long)]
         out: Option<PathBuf>,
+        /// Serve only this named `site` (at `/`). When omitted, every
+        /// site is served under `/<name>/` with a chooser index at `/`.
+        #[arg(long)]
+        site: Option<String>,
     },
 }
 
@@ -316,27 +325,34 @@ fn main() -> ExitCode {
 
 fn run_wdoc(cmd: WdocCommand) -> u8 {
     match cmd {
-        WdocCommand::Build { file, out } => match wcl_wdoc::build(&file, &out) {
-            Ok(n) => {
-                println!("wrote {n} page{}", if n == 1 { "" } else { "s" });
-                EXIT_OK
+        WdocCommand::Build { file, out, site } => {
+            match wcl_wdoc::build(&file, &out, site.as_deref()) {
+                Ok(n) => {
+                    println!("wrote {n} page{}", if n == 1 { "" } else { "s" });
+                    EXIT_OK
+                }
+                Err(err) => {
+                    let code = match &err {
+                        wcl_wdoc::BuildError::Io(..) => EXIT_IO,
+                        wcl_wdoc::BuildError::Parse(_) => EXIT_PARSE,
+                        wcl_wdoc::BuildError::Schema(_) => EXIT_SCHEMA,
+                        wcl_wdoc::BuildError::BadPage(_) => EXIT_EVAL,
+                        wcl_wdoc::BuildError::DuplicateId { .. } => EXIT_SCHEMA,
+                        wcl_wdoc::BuildError::BadLink(_) => EXIT_SCHEMA,
+                        wcl_wdoc::BuildError::BadTemplate(_) => EXIT_SCHEMA,
+                        wcl_wdoc::BuildError::Tileset(_) => EXIT_SCHEMA,
+                    };
+                    err.report();
+                    code
+                }
             }
-            Err(err) => {
-                let code = match &err {
-                    wcl_wdoc::BuildError::Io(..) => EXIT_IO,
-                    wcl_wdoc::BuildError::Parse(_) => EXIT_PARSE,
-                    wcl_wdoc::BuildError::Schema(_) => EXIT_SCHEMA,
-                    wcl_wdoc::BuildError::BadPage(_) => EXIT_EVAL,
-                    wcl_wdoc::BuildError::DuplicateId { .. } => EXIT_SCHEMA,
-                    wcl_wdoc::BuildError::BadLink(_) => EXIT_SCHEMA,
-                    wcl_wdoc::BuildError::BadTemplate(_) => EXIT_SCHEMA,
-                    wcl_wdoc::BuildError::Tileset(_) => EXIT_SCHEMA,
-                };
-                err.report();
-                code
-            }
-        },
-        WdocCommand::Serve { file, addr, out } => {
+        }
+        WdocCommand::Serve {
+            file,
+            addr,
+            out,
+            site,
+        } => {
             let rt = match tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
@@ -347,7 +363,7 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
                     return EXIT_IO;
                 }
             };
-            match rt.block_on(wcl_wdoc::serve(file, out, addr)) {
+            match rt.block_on(wcl_wdoc::serve(file, out, addr, site)) {
                 Ok(()) => EXIT_OK,
                 Err(e) => {
                     eprintln!("serve failed: {e}");

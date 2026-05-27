@@ -11,7 +11,7 @@ fn examples_dir() -> PathBuf {
 }
 
 fn build_ok(file: &Path, out: &Path) -> usize {
-    match build(file, out) {
+    match build(file, out, None) {
         Ok(n) => n,
         Err(BuildError::Io(e, ctx)) => panic!("build io error: {ctx}: {e}"),
         Err(BuildError::Parse(r)) => panic!("build parse error: {r:?}"),
@@ -28,17 +28,17 @@ fn build_ok(file: &Path, out: &Path) -> usize {
 
 #[test]
 fn build_emits_fundamentals_for_example_site() {
-    // examples/wdoc/main.wcl is the entry point — it pulls in nine
-    // per-page files via `import`. All page bodies live in
-    // pages/*.wcl; main.wcl itself only defines the landing index.
+    // examples/wdoc/main.wcl declares three sites (showcase / docs /
+    // blog); each renders into its own subdirectory. The feature pages
+    // live under `showcase/`.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 10);
+    assert_eq!(n, 16); // showcase 10 + docs 3 + blog 3
 
     // The richer content (text + classes + diagram + flowchart) is on
-    // the overview page, not the landing index.
-    let overview =
-        std::fs::read_to_string(out.path().join("overview.html")).expect("read overview.html");
+    // the showcase overview page, not the landing index.
+    let overview = std::fs::read_to_string(out.path().join("showcase").join("overview.html"))
+        .expect("read showcase/overview.html");
     assert!(overview.contains("<title>overview</title>"), "{overview}");
     // text + span
     assert!(
@@ -446,7 +446,7 @@ page index {
     .expect("write fixture");
 
     let out = TempDir::new().expect("mkdir out");
-    match build(&src, out.path()) {
+    match build(&src, out.path(), None) {
         Err(BuildError::Schema(n)) => assert!(n >= 1, "expected at least one violation, got {n}"),
         Err(BuildError::Io(e, ctx)) => panic!("expected Schema, got Io({ctx}: {e})"),
         Err(BuildError::Parse(_)) => panic!("expected Schema, got Parse"),
@@ -555,7 +555,7 @@ page index {
     .expect("write fixture");
 
     let out = TempDir::new().expect("mkdir out");
-    match build(&src, out.path()) {
+    match build(&src, out.path(), None) {
         Err(BuildError::DuplicateId { page, id }) => {
             assert_eq!(page, "index");
             assert_eq!(id, "shared");
@@ -1386,7 +1386,7 @@ page index {
     )
     .expect("write fixture");
     let out = TempDir::new().expect("mkdir out");
-    match build(&src, out.path()) {
+    match build(&src, out.path(), None) {
         Err(BuildError::BadLink(msgs)) => {
             assert!(
                 msgs.iter().any(|m| m.contains("nonexistent")),
@@ -1861,14 +1861,15 @@ page index {
 
 #[test]
 fn build_processes_full_code_example_page() {
-    // Smoke test against the code page in the example site, which
-    // exercises Rust, Python, JSON, WCL, and an unknown language
-    // in one page. main.wcl imports it and nine other pages, so
-    // we count the code-block wrappers on `code.html`.
+    // Smoke test against the code page in the example, which exercises
+    // Rust, Python, JSON, WCL, and an unknown language in one page. The
+    // example declares three sites (16 pages total); the code page lives
+    // in the `showcase` site's subdirectory.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 10);
-    let html = std::fs::read_to_string(out.path().join("code.html")).expect("read code.html");
+    assert_eq!(n, 16);
+    let html = std::fs::read_to_string(out.path().join("showcase").join("code.html"))
+        .expect("read showcase/code.html");
     assert!(
         html.matches("<pre class=\"code-block\"").count() >= 5,
         "expected one <pre> per code block on code.html:\n{html}"
@@ -2182,7 +2183,7 @@ page index { h1 "x" {} }
     .expect("write fixture");
 
     let out = TempDir::new().expect("mkdir out");
-    match build(&src, out.path()) {
+    match build(&src, out.path(), None) {
         Err(BuildError::BadTemplate(name)) => assert_eq!(name, "nope"),
         Err(_) => panic!("expected BadTemplate, got a different BuildError"),
         Ok(_) => panic!("expected BadTemplate, got Ok"),
@@ -2328,7 +2329,7 @@ page intro { h1 "Intro" {} }
     .expect("write fixture");
 
     let out = TempDir::new().expect("mkdir out");
-    match build(&src, out.path()) {
+    match build(&src, out.path(), None) {
         Err(BuildError::BadTemplate(msg)) => {
             assert!(msg.contains("nonexistent"), "got: {msg}")
         }
@@ -2372,6 +2373,51 @@ page index { text { span "hi" {} } }
     );
     assert!(
         html.contains(":root[data-theme=\"light\"] .panel { background:#eceff4; }"),
+        "{html}"
+    );
+}
+
+#[test]
+fn class_with_only_light_mode_still_emits_dark_toggle_rule() {
+    // Regression: a dark-default class that declares only `light {}`
+    // must still emit a `:root[data-theme="dark"]` rule (falling back to
+    // the base), so the theme toggle can switch back to dark. Without it,
+    // on a light-preferring system the `@media (prefers-color-scheme:
+    // light)` rule kept winning and toggling to dark did nothing.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("t.wcl");
+    std::fs::write(
+        &src,
+        r##"
+class "wdoc-body" {
+  color = "#d8dee9"  background = "#2e3440"
+  light { color = "#2e3440"  background = "#eceff4" }
+}
+page index { text { span "hi" {} } }
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // The default (dark) and the system-light media rule.
+    assert!(
+        html.contains(".wdoc-body { color:#d8dee9;background:#2e3440; }"),
+        "{html}"
+    );
+    assert!(
+        html.contains("@media (prefers-color-scheme: light) { .wdoc-body { color:#2e3440;background:#eceff4; } }"),
+        "{html}"
+    );
+    // Both toggle overrides — the dark one falls back to the base.
+    assert!(
+        html.contains(
+            ":root[data-theme=\"dark\"] .wdoc-body { color:#d8dee9;background:#2e3440; }"
+        ),
+        "missing data-theme=dark toggle rule:\n{html}"
+    );
+    assert!(
+        html.contains(":root[data-theme=\"light\"] .wdoc-body { color:#d8dee9;background:#2e3440;color:#2e3440;background:#eceff4; }"),
         "{html}"
     );
 }
@@ -2441,14 +2487,38 @@ fn book_theme_toggle_is_gated_by_site_flag() {
 }
 
 #[test]
-fn book_example_is_nord_themed() {
-    // The shipped book example is Nord-themed: dark-default regions +
-    // a light alternative + the toggle.
-    let out = TempDir::new().expect("mkdir tempdir");
-    build_ok(
-        &examples_dir().join("wdoc-book").join("main.wcl"),
-        out.path(),
-    );
+fn book_theme_classes_and_toggle() {
+    // The `book` template themes through the `class` system: a Nord-style
+    // dark-default `wdoc-body` with a light alternative, themed heading +
+    // link colours layered over the bundled heading sizing, and the
+    // light/dark toggle button (gated by the site `theme_toggle` flag).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("book.wcl");
+    std::fs::write(
+        &src,
+        r##"
+site { default_template = :book  theme_toggle = true }
+
+class "wdoc-body" {
+  color = "#d8dee9"
+  background = "#2e3440"
+  light { color = "#2e3440"  background = "#eceff4" }
+}
+class "heading-1" { color = "#88c0d0" }
+class "heading-2" { color = "#8fbcbb" }
+class "link"      { color = "#88c0d0" }
+
+page introduction { h1 "Introduction" {} }
+page syntax {
+  h1 "Syntax" {}
+  h2 "Fields" {}
+  text { span "See the [links](introduction) page." {} }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("syntax.html")).expect("read");
     assert!(
         html.contains(".wdoc-body { color:#d8dee9;background:#2e3440; }"),
@@ -3310,7 +3380,7 @@ fn build_tileset_missing_image_is_an_error() {
     )
     .expect("write fixture");
     let out = TempDir::new().expect("mkdir out");
-    match build(&file, out.path()) {
+    match build(&file, out.path(), None) {
         Err(BuildError::Tileset(msg)) => assert!(msg.contains("world"), "{msg}"),
         Err(_) => panic!("expected a tileset error, got a different BuildError"),
         Ok(_) => panic!("expected a tileset error, build succeeded"),
@@ -3663,4 +3733,242 @@ fn wireframe_css_width_field_is_not_clobbered() {
         html.contains("<span class=\"wf-label\">L</span>"),
         "unset width should emit no style attr:\n{html}"
     );
+}
+
+// ── Multiple sites ────────────────────────────────────────────────────
+
+/// Build a multi-site fixture into a TempDir and hand the dir to `check`.
+fn with_multisite_build(src: &str, site: Option<&str>, check: impl FnOnce(&Path)) {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("ms.wcl");
+    std::fs::write(&file, src).expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    match build(&file, out.path(), site) {
+        Ok(_) => check(out.path()),
+        Err(e) => {
+            e.report();
+            panic!("multi-site build failed");
+        }
+    }
+}
+
+const TWO_SITES: &str = r##"
+site docs { default_template = :webpage  title = "Docs" }
+site blog { default_template = :webpage  title = "Blog" }
+page index { h1 "Home" {} }
+page guide { sites = [:docs]  h1 "Guide" {} }
+page post1 { sites = [:blog]  h1 "Post" {} }
+page shared { sites = [:docs, :blog]  h1 "Shared" {} }
+"##;
+
+#[test]
+fn multi_site_builds_subdirs_and_chooser() {
+    with_multisite_build(TWO_SITES, None, |out| {
+        // Each site is its own subdirectory.
+        assert!(out.join("docs/index.html").exists(), "missing docs/index");
+        assert!(out.join("blog/index.html").exists(), "missing blog/index");
+        // A top-level chooser links to each site's subdirectory.
+        let chooser = std::fs::read_to_string(out.join("index.html")).expect("chooser");
+        assert!(chooser.contains("href=\"docs/\""), "{chooser}");
+        assert!(chooser.contains("href=\"blog/\""), "{chooser}");
+        assert!(
+            chooser.contains(">Docs</a>") && chooser.contains(">Blog</a>"),
+            "{chooser}"
+        );
+    });
+}
+
+#[test]
+fn page_membership_scopes_per_site() {
+    with_multisite_build(TWO_SITES, None, |out| {
+        // No `sites` ⇒ in every site; `sites = [:docs]` ⇒ docs only;
+        // `sites = [:docs, :blog]` ⇒ both.
+        assert!(out.join("docs/index.html").exists() && out.join("blog/index.html").exists());
+        assert!(
+            out.join("docs/guide.html").exists(),
+            "guide should be in docs"
+        );
+        assert!(
+            !out.join("blog/guide.html").exists(),
+            "guide should NOT be in blog"
+        );
+        assert!(
+            out.join("blog/post1.html").exists(),
+            "post1 should be in blog"
+        );
+        assert!(
+            !out.join("docs/post1.html").exists(),
+            "post1 should NOT be in docs"
+        );
+        assert!(out.join("docs/shared.html").exists() && out.join("blog/shared.html").exists());
+    });
+}
+
+#[test]
+fn nav_lists_only_the_sites_own_pages() {
+    with_multisite_build(TWO_SITES, None, |out| {
+        // The webpage template builds nav from this site's pages only —
+        // blog's nav must not link the docs-only `guide`.
+        let blog = std::fs::read_to_string(out.join("blog/index.html")).expect("blog index");
+        assert!(
+            blog.contains("href=\"post1.html\""),
+            "blog nav missing post1:\n{blog}"
+        );
+        assert!(
+            !blog.contains("href=\"guide.html\""),
+            "blog nav leaked a docs page:\n{blog}"
+        );
+    });
+}
+
+#[test]
+fn site_filter_builds_one_flat() {
+    with_multisite_build(TWO_SITES, Some("blog"), |out| {
+        // `--site blog` ⇒ flat at the root, no subdirs, no chooser link.
+        assert!(out.join("index.html").exists() && out.join("post1.html").exists());
+        assert!(out.join("shared.html").exists());
+        assert!(
+            !out.join("docs").exists() && !out.join("blog").exists(),
+            "should be flat"
+        );
+        assert!(
+            !out.join("guide.html").exists(),
+            "docs-only page leaked into blog"
+        );
+        let idx = std::fs::read_to_string(out.join("index.html")).expect("index");
+        assert!(
+            !idx.contains("href=\"docs/\""),
+            "flat build should not be a chooser"
+        );
+    });
+}
+
+#[test]
+fn class_sites_field_scopes_css_per_site() {
+    // A `class` with a `sites` list themes only that site's pages; the
+    // other sites are unaffected. The shared `index` page (no `sites`)
+    // renders into both, so it's a clean before/after comparison.
+    let src = r##"
+site docs { default_template = :webpage  title = "Docs" }
+site blog { default_template = :webpage  title = "Blog" }
+class "wdoc-body" { sites = [:docs]  background = "#2e3440" }
+page index { h1 "Home" {} }
+"##;
+    with_multisite_build(src, None, |out| {
+        let docs = std::fs::read_to_string(out.join("docs/index.html")).expect("docs index");
+        let blog = std::fs::read_to_string(out.join("blog/index.html")).expect("blog index");
+        assert!(
+            docs.contains(".wdoc-body { background:#2e3440; }"),
+            "docs should carry the scoped theme:\n{docs}"
+        );
+        assert!(
+            !blog.contains(".wdoc-body { background:#2e3440; }"),
+            "blog must NOT carry the docs-scoped theme:\n{blog}"
+        );
+    });
+}
+
+#[test]
+fn same_page_name_reused_across_sites() {
+    let src = r##"
+site docs { default_template = :webpage  title = "Docs" }
+site blog { default_template = :webpage  title = "Blog" }
+page index { sites = [:docs]  h1 "Docs home" {} }
+page index { sites = [:blog]  h1 "Blog home" {} }
+"##;
+    with_multisite_build(src, None, |out| {
+        let docs = std::fs::read_to_string(out.join("docs/index.html")).expect("docs index");
+        let blog = std::fs::read_to_string(out.join("blog/index.html")).expect("blog index");
+        assert!(
+            docs.contains("Docs home") && !docs.contains("Blog home"),
+            "{docs}"
+        );
+        assert!(
+            blog.contains("Blog home") && !blog.contains("Docs home"),
+            "{blog}"
+        );
+    });
+}
+
+#[test]
+fn cross_site_link_is_an_error() {
+    // `a` (docs) links to `post1` (blog only) — unresolved within docs.
+    let src = r##"
+site docs { default_template = :webpage  title = "Docs" }
+site blog { default_template = :webpage  title = "Blog" }
+page a { sites = [:docs]  text { span "see [post](post1)" {} } }
+page post1 { sites = [:blog]  h1 "P" {} }
+"##;
+    let tmp = TempDir::new().unwrap();
+    let file = tmp.path().join("ms.wcl");
+    std::fs::write(&file, src).unwrap();
+    let out = TempDir::new().unwrap();
+    assert!(
+        matches!(build(&file, out.path(), None), Err(BuildError::BadLink(_))),
+        "cross-site link should fail to resolve"
+    );
+}
+
+#[test]
+fn unknown_site_reference_is_an_error() {
+    let src = r##"
+site docs { default_template = :webpage  title = "Docs" }
+page a { sites = [:nope]  h1 "A" {} }
+"##;
+    let tmp = TempDir::new().unwrap();
+    let file = tmp.path().join("ms.wcl");
+    std::fs::write(&file, src).unwrap();
+    let out = TempDir::new().unwrap();
+    assert!(matches!(
+        build(&file, out.path(), None),
+        Err(BuildError::BadPage(_))
+    ));
+}
+
+#[test]
+fn multiple_unnamed_sites_is_an_error() {
+    let src = r##"
+site { default_template = :webpage }
+site { default_template = :book }
+page index { h1 "H" {} }
+"##;
+    let tmp = TempDir::new().unwrap();
+    let file = tmp.path().join("ms.wcl");
+    std::fs::write(&file, src).unwrap();
+    let out = TempDir::new().unwrap();
+    assert!(matches!(
+        build(&file, out.path(), None),
+        Err(BuildError::BadPage(_))
+    ));
+}
+
+#[test]
+fn unknown_site_filter_is_an_error() {
+    let tmp = TempDir::new().unwrap();
+    let file = tmp.path().join("ms.wcl");
+    std::fs::write(&file, TWO_SITES).unwrap();
+    let out = TempDir::new().unwrap();
+    assert!(matches!(
+        build(&file, out.path(), Some("nope")),
+        Err(BuildError::BadPage(_))
+    ));
+}
+
+#[test]
+fn multisite_example_builds_into_subdirs() {
+    // The bundled example declares three sites; each renders into its
+    // own subdirectory with a chooser index at the root.
+    let out = TempDir::new().expect("mkdir tempdir");
+    let dir = out.path();
+    let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), dir);
+    assert_eq!(n, 16);
+    let chooser = std::fs::read_to_string(dir.join("index.html")).expect("chooser index");
+    for link in ["showcase/", "docs/", "blog/"] {
+        assert!(chooser.contains(&format!("href=\"{link}\"")), "{chooser}");
+    }
+    assert!(dir.join("showcase/overview.html").exists());
+    assert!(dir.join("docs/config.html").exists());
+    assert!(dir.join("blog/post_launch.html").exists());
+    // The docs book site has its own index, distinct from the showcase's.
+    assert!(dir.join("docs/index.html").exists());
 }

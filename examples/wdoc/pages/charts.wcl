@@ -8,7 +8,7 @@
 // they theme through the class system exactly like everything else —
 // see the `wdoc-series-1` override at the bottom of this file.
 
-page charts {
+page charts { sites = [:showcase]
   h1 "Charts" {}
 
   text {

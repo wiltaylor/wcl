@@ -73,14 +73,10 @@ cli-run *ARGS:
     cargo run -p wcl -- {{ARGS}}
 
 # Serve examples/wdoc/main.wcl with `wcl wdoc serve`; pass extra flags after --
+# (the example declares three sites — / is the chooser; --site picks one)
 [group('dev')]
 wdoc-serve *ARGS:
     cargo run -p wcl -- wdoc serve examples/wdoc/main.wcl {{ARGS}}
-
-# Serve examples/wdoc-book/main.wcl (Nord-themed mdbook-style `book`)
-[group('dev')]
-wdoc-book-serve *ARGS:
-    cargo run -p wcl -- wdoc serve examples/wdoc-book/main.wcl {{ARGS}}
 
 # Run criterion benchmarks
 [group('dev')]

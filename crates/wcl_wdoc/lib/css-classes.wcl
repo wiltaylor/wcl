@@ -30,8 +30,12 @@ class "wdoc-series-8"    { fill = "#8fbcbb"  stroke = "#8fbcbb" }
 // CSS. Their surrounding layout (flex, fixed sidebar, descendant +
 // `:hover` selectors) is not expressible as a class and stays in Rust.
 class "site-header"  { bold = true  font_size = "1.4rem"  padding = "0.5rem 0" }
-class "book-chapter" { color = "#333" }
-class "book-section" { color = "#555" }
+// TOC links inherit the (themed) body colour rather than a fixed grey,
+// so the sidebar is readable on both light and dark books — an `<a>`
+// would otherwise fall back to the browser's link blue. Emphasis/muting
+// comes from `book_css` (weight + opacity), not the colour.
+class "book-chapter" { color = "inherit" }
+class "book-section" { color = "inherit" }
 class "current"      { bold = true }
 
 // Heading hierarchy. `h1`..`h6` lower to `<p class="heading-N">`; these

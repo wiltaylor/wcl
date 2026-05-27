@@ -8,7 +8,7 @@
 // declare their own connection schemas and consume them via
 // `@connections(MyEdge)` on a custom block type.
 
-page connections {
+page connections { sites = [:showcase]
   h1 "Connections" {}
 
   text {

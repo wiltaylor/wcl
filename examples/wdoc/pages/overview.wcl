@@ -1,7 +1,7 @@
 // Fundamental-block demo: text + spans, the `class` system, columns,
 // a free-form diagram with shapes, and a layered flowchart.
 
-page overview {
+page overview { sites = [:showcase]
   h1 "Pipeline overview" {}
 
   text {

@@ -2,7 +2,7 @@
 // build time. The language tag picks the grammar; an unknown tag
 // falls back to plain text.
 
-page code {
+page code { sites = [:showcase]
   h1 "Code blocks" {}
 
   text {

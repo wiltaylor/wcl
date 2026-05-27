@@ -1,4 +1,4 @@
-page about {
+page about { sites = [:showcase]
   h1 "About" {}
 
   text {

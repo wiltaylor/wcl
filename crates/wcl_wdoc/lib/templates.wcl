@@ -59,6 +59,10 @@ type Toc {
 // page's `template` field, else `default_template` here.
 @block("site")
 type SiteConfig {
+  // Optional site name. Required when a document declares more than one
+  // site (it names the output subdirectory and is what `Page.sites`
+  // references); omittable for a single-site document.
+  @inline(0) name: identifier?
   default_template: symbol?
   title:            utf8?
   // Render a light/dark toggle (the `book` template shows it). Pair
@@ -155,14 +159,15 @@ let book_toc = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
 // the chapter / section colours are the bundled `class "book-chapter" /
 // "book-section" / "current"`.
 let book_css = <<CSS
-  .book-sidebar { position: fixed; top: 0; left: 0; width: 16rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem; border-right: 1px solid #ccc; background: #fafafa; }
+  .book-sidebar { position: fixed; top: 0; left: 0; width: 16rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem; border-right: 1px solid rgba(127,127,127,0.3); background: rgba(127,127,127,0.06); }
   .book-title { font-weight: bold; font-size: 1.1rem; margin-bottom: 0.75rem; }
   .book-sidebar ul.book-toc { list-style: none; margin: 0; padding-left: 0; }
   .book-sidebar ul.book-toc ul.book-toc { padding-left: 0.85rem; }
-  .book-sidebar a.book-chapter { display: block; padding: 0.2rem 0; }
+  .book-sidebar a.book-chapter { display: block; padding: 0.2rem 0; opacity: 0.85; }
   .book-chapter { text-decoration: none; }
-  .book-chapter:hover { text-decoration: underline; }
-  .book-sidebar .book-section { display: block; padding: 0.35rem 0 0.1rem; font-weight: 600; }
+  .book-chapter:hover { opacity: 1; text-decoration: underline; }
+  .book-sidebar a.book-chapter.current { opacity: 1; }
+  .book-sidebar .book-section { display: block; padding: 0.35rem 0 0.1rem; font-weight: 600; opacity: 0.7; }
   .book-content { margin-left: 16rem; padding: 1rem 2.5rem; max-width: 46rem; }
   .theme-toggle { display: block; margin: 0 0 0.75rem; padding: 0.2rem 0.6rem; cursor: pointer; background: transparent; border: 1px solid currentColor; border-radius: 4px; color: inherit; font: inherit; }
   CSS

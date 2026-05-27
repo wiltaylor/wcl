@@ -1,10 +1,15 @@
-// Entry point for the wdoc example site.
+// Entry point for the wdoc example. It declares THREE sites in one
+// document — a feature `showcase`, a `docs` book, and a `blog`:
 //
-//   wcl wdoc serve examples/wdoc/main.wcl
+//   wcl wdoc serve examples/wdoc/main.wcl          # / = chooser, all sites
+//   wcl wdoc serve examples/wdoc/main.wcl --site showcase   # just one
 //   wcl wdoc build --out _site examples/wdoc/main.wcl
+//     → _site/index.html  chooser linking to each site
+//       _site/showcase/…  _site/docs/…  _site/blog/…
 //
-// All shared styles live here; each page lives in its own file
-// under `pages/` and is brought in via the imports below.
+// A page joins a site via its `sites` array (e.g. `sites = [:showcase]`);
+// a page with no `sites` is shared by every site. Shared styles and
+// iconsets below are global, so all three sites can use them.
 
 class accent {
   color = "#003a8c"
@@ -42,18 +47,65 @@ iconset bs {
   pack = "bootstrap"
 }
 
-// Wrap every page in the bundled `webpage` template: a title header
-// plus a top navigation menu (one link per page in document order)
-// above each page's own content. A page can opt out or pick another
-// template with its own `template = :name` field.
-site {
+// The feature showcase: the `webpage` template (title header + top nav
+// built from this site's pages). Its pages are tagged `sites = [:showcase]`.
+site showcase {
   default_template = :webpage
-  title            = "wdoc example site"
+  title            = "wdoc showcase"
 }
 
-// Per-page sources. Each imported file declares exactly one
-// `page <name> { ... }` block; page names must be unique across
-// the whole document.
+// A docs book: the `book` template (fixed sidebar from the `toc` below).
+// It's Nord-themed (dark by default) with a light/dark toggle — the
+// theme classes below are scoped to this site, so the showcase and blog
+// keep their default light look.
+site docs {
+  default_template = :book
+  title            = "Project Docs"
+  theme_toggle     = true
+  toc {
+    chapter "Introduction" { page = index }
+    chapter "Guide" {
+      chapter "Getting started" { page = getting_started }
+      chapter "Configuration"   { page = config }
+    }
+  }
+}
+
+// Nord theme for the `docs` site only (`sites = [:docs]`). Dark is the
+// default; `light {}` is the system-light alternative; the sidebar
+// toggle overrides either (it sets `:root[data-theme=…]`). `wdoc-body`
+// is the page background hook.
+class "wdoc-body" { sites = [:docs]
+  color = "#d8dee9"  background = "#2e3440"
+  light { color = "#2e3440"  background = "#eceff4" }
+}
+
+// Page headings (h1–h6) cycle through the Nord frost + aurora hues over
+// the bundled heading sizing. Each carries a darker Nord shade under
+// light mode so it stays legible on the light background.
+class "heading-1" { sites = [:docs]  color = "#88c0d0"  light { color = "#5e81ac" } }
+class "heading-2" { sites = [:docs]  color = "#81a1c1"  light { color = "#5e81ac" } }
+class "heading-3" { sites = [:docs]  color = "#8fbcbb"  light { color = "#4c566a" } }
+class "heading-4" { sites = [:docs]  color = "#a3be8c"  light { color = "#4c566a" } }
+class "heading-5" { sites = [:docs]  color = "#ebcb8b"  light { color = "#d08770" } }
+class "heading-6" { sites = [:docs]  color = "#b48ead"  light { color = "#b48ead" } }
+
+// Links + the sidebar (menu) headings: the book title, the section
+// grouping labels, and the current chapter, all in Nord frost.
+class "link"         { sites = [:docs]  color = "#88c0d0"  light { color = "#5e81ac" } }
+class "book-title"   { sites = [:docs]  color = "#88c0d0"  light { color = "#5e81ac" } }
+class "book-section" { sites = [:docs]  color = "#8fbcbb"  light { color = "#5e81ac" } }
+class "current"      { sites = [:docs]  color = "#88c0d0"  light { color = "#5e81ac" } }
+
+// A blog: the `webpage` template again, with its own posts.
+site blog {
+  default_template = :webpage
+  title            = "Project Blog"
+}
+
+// Per-page sources. Each imported file declares one `page <name> { ... }`
+// block; page names are unique per site (the showcase, docs, and blog
+// each have their own `index`).
 import "./pages/overview.wcl"
 import "./pages/about.wcl"
 import "./pages/connections.wcl"
@@ -63,12 +115,14 @@ import "./pages/terminal.wcl"
 import "./pages/icons.wcl"
 import "./pages/tilemap.wcl"
 import "./pages/wireframe.wcl"
+import "./pages/docs.wcl"
+import "./pages/blog.wcl"
 
-// Landing page: short table of contents linking to every other
-// page in the site. Lives in `main.wcl` so its content stays in
-// sync with the import list above.
-page index {
-  h1 "wdoc example site" {}
+// The showcase landing page: a table of contents linking to every other
+// showcase page. `sites = [:showcase]` keeps it (and its links) inside
+// the showcase site.
+page index { sites = [:showcase]
+  h1 "wdoc showcase" {}
 
   text {
     span "This site exercises the wdoc feature set. Each section below links to a focused demo page." {}

@@ -26,20 +26,22 @@ fn wcl_wdoc_build_renders_fundamental_blocks() {
         .arg(out.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("wrote 10 pages"));
+        // showcase (10) + docs (3) + blog (3) across three sites.
+        .stdout(predicate::str::contains("wrote 16 pages"));
 
-    // Landing page lives in main.wcl directly.
+    // The document declares three sites, so the root index is the
+    // generated chooser linking to each site's subdirectory.
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
     assert!(index.contains("<style>"), "{index}");
     assert!(
-        index.contains("<p class=\"heading-1\">"),
-        "missing landing heading:\n{index}"
+        index.contains("href=\"showcase/\""),
+        "missing chooser link:\n{index}"
     );
 
-    // The richer content (text, SVG, classes) sits on the overview
-    // page that main.wcl pulls in via `import`.
-    let overview =
-        std::fs::read_to_string(out.path().join("overview.html")).expect("read overview.html");
+    // The richer content (text, SVG, classes) sits on the showcase
+    // overview page, now under its site subdirectory.
+    let overview = std::fs::read_to_string(out.path().join("showcase").join("overview.html"))
+        .expect("read showcase/overview.html");
     assert!(overview.contains("<p><span>"), "{overview}");
     assert!(overview.contains("<svg"), "{overview}");
     assert!(overview.contains("class=\""), "{overview}");

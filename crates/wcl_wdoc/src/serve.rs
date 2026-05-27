@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::body::Body;
-use axum::extract::{Path as AxumPath, State};
+use axum::extract::State;
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -20,6 +20,7 @@ pub async fn serve(
     file: PathBuf,
     out: Option<PathBuf>,
     addr: SocketAddr,
+    site: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Resolve the output directory. If `--out` wasn't given, create a
     // TempDir and hold it for the lifetime of `serve` so cleanup runs
@@ -37,7 +38,7 @@ pub async fn serve(
 
     // Initial build. Failure is non-fatal — the watcher will retry,
     // and requests will 404 in the meantime.
-    match build(&file, &out_dir) {
+    match build(&file, &out_dir, site.as_deref()) {
         Ok(n) => eprintln!("rendered {n} page{}", if n == 1 { "" } else { "s" }),
         Err(err) => {
             eprintln!("initial build failed:");
@@ -61,6 +62,7 @@ pub async fn serve(
 
     let bg_file = file.clone();
     let bg_out = out_dir.clone();
+    let bg_site = site.clone();
     tokio::spawn(async move {
         // Keep the watcher alive for the lifetime of this task; dropping
         // it would silently stop notifications.
@@ -69,7 +71,7 @@ pub async fn serve(
             if !is_relevant(&event) {
                 continue;
             }
-            match build(&bg_file, &bg_out) {
+            match build(&bg_file, &bg_out, bg_site.as_deref()) {
                 Ok(n) => eprintln!("rebuilt: {n} page{}", if n == 1 { "" } else { "s" }),
                 Err(err) => {
                     eprintln!("rebuild failed:");
@@ -79,17 +81,13 @@ pub async fn serve(
         }
     });
 
+    // One generic static handler resolves any request path against the
+    // output tree, so it serves both the flat single-site layout and the
+    // nested multi-site one (`/<site>/…`, `/<site>/_wdoc/…`) plus the
+    // generated chooser at `/`, with no per-route knowledge.
     let shared_out: Arc<PathBuf> = Arc::new(out_dir.clone());
     let app = Router::new()
-        .route("/", get(handle_index))
-        // Bundled terminal assets (fonts + replay player) live under
-        // `_wdoc/`; serve them as static files so `@font-face` and the
-        // player `<script src>` resolve.
-        .route(
-            &format!("/{}/{{file}}", crate::terminal::ASSET_DIR),
-            get(handle_asset),
-        )
-        .route("/{name}", get(handle_named))
+        .fallback(get(handle_static))
         .with_state(shared_out)
         .layer(middleware::from_fn(log_requests));
 
@@ -123,43 +121,71 @@ fn is_relevant(event: &Event) -> bool {
         .any(|p| p.extension().is_some_and(|e| e == "wcl"))
 }
 
-async fn handle_index(State(out): State<Arc<PathBuf>>) -> Response {
-    serve_page(&out, "index").await
-}
-
-async fn handle_named(
-    State(out): State<Arc<PathBuf>>,
-    AxumPath(name): AxumPath<String>,
-) -> Response {
-    let trimmed = name.strip_suffix(".html").unwrap_or(&name);
-    serve_page(&out, trimmed).await
-}
-
-/// Serve a bundled static asset out of `<out>/_wdoc/`. Single path
-/// segment only — anything with a separator or `..` is rejected so the
-/// dev server can't be walked outside the asset directory.
-async fn handle_asset(
-    State(out): State<Arc<PathBuf>>,
-    AxumPath(file): AxumPath<String>,
-) -> Response {
-    if file.contains('/') || file.contains('\\') || file.contains("..") {
+/// Resolve any request path to a file under the output tree and serve
+/// it. Handles `/` and directory paths (→ `index.html`), extension-less
+/// page names (→ `<name>.html`), and explicit files (`.html`, and the
+/// `_wdoc/` assets at any depth). Rejects `..` / backslash components so
+/// the dev server can't be walked outside the output directory.
+async fn handle_static(State(out): State<Arc<PathBuf>>, uri: axum::http::Uri) -> Response {
+    let rel = uri.path().trim_start_matches('/');
+    if rel.split('/').any(|seg| seg == ".." || seg.contains('\\')) {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let path = out.join(crate::terminal::ASSET_DIR).join(&file);
+    let path = resolve_path(&out, rel);
     match tokio::fs::read(&path).await {
         Ok(bytes) => (
             StatusCode::OK,
-            [(header::CONTENT_TYPE, asset_content_type(&file))],
+            [(header::CONTENT_TYPE, content_type(&path))],
             bytes,
         )
             .into_response(),
-        Err(_) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) if e.kind() == ErrorKind::NotFound => (
+            StatusCode::NOT_FOUND,
+            [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            format!(
+                "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Not found</title></head>\
+                 <body><h1>404</h1><p>Nothing at <code>/{rel}</code>.</p></body></html>"
+            ),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            format!("read {}: {e}", path.display()),
+        )
+            .into_response(),
     }
 }
 
-/// Map a bundled asset's extension to a content type.
-fn asset_content_type(file: &str) -> &'static str {
-    match file.rsplit('.').next() {
+/// Map a request-relative path to a file in the output tree: `/` and
+/// directories resolve to their `index.html`, an extension-less name to
+/// `<name>.html` (else a directory index), and an explicit file as-is.
+fn resolve_path(out: &Path, rel: &str) -> PathBuf {
+    if rel.is_empty() {
+        return out.join("index.html");
+    }
+    let candidate = out.join(rel);
+    if candidate.is_dir() {
+        return candidate.join("index.html");
+    }
+    if candidate.extension().is_some() {
+        return candidate;
+    }
+    let as_html = out.join(format!("{rel}.html"));
+    if as_html.exists() {
+        return as_html;
+    }
+    let dir_index = candidate.join("index.html");
+    if dir_index.exists() {
+        return dir_index;
+    }
+    as_html
+}
+
+/// Map an output file's extension to a content type.
+fn content_type(path: &Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some("html" | "htm") => "text/html; charset=utf-8",
         Some("woff2") => "font/woff2",
         Some("woff") => "font/woff",
         Some("js") => "text/javascript; charset=utf-8",
@@ -167,40 +193,11 @@ fn asset_content_type(file: &str) -> &'static str {
         Some("css") => "text/css; charset=utf-8",
         Some("svg") => "image/svg+xml; charset=utf-8",
         Some("png") => "image/png",
-        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("jpg" | "jpeg") => "image/jpeg",
         Some("gif") => "image/gif",
         Some("webp") => "image/webp",
         Some("bmp") => "image/bmp",
         _ => "application/octet-stream",
-    }
-}
-
-async fn serve_page(out_dir: &Path, name: &str) -> Response {
-    let path = out_dir.join(format!("{name}.html"));
-    match tokio::fs::read(&path).await {
-        Ok(bytes) => (
-            StatusCode::OK,
-            [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-            bytes,
-        )
-            .into_response(),
-        Err(e) => match e.kind() {
-            ErrorKind::NotFound => (
-                StatusCode::NOT_FOUND,
-                [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-                format!(
-                    "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Not found</title></head>\
-                     <body><h1>404</h1><p>No page named <code>{name}</code>.</p></body></html>"
-                ),
-            )
-                .into_response(),
-            _ => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-                format!("read {}: {e}", path.display()),
-            )
-                .into_response(),
-        },
     }
 }
 

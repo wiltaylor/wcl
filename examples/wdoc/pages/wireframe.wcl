@@ -1,4 +1,4 @@
-page wireframe {
+page wireframe { sites = [:showcase]
   h1 "Wireframe widgets" {}
 
   text {

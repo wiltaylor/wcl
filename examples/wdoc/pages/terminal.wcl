@@ -12,7 +12,7 @@ class "term-mocha" {
   light { background = "#eff1f5"  color = "#4c4f69" }
 }
 
-page terminal {
+page terminal { sites = [:showcase]
   h1 "Terminals" {}
 
   text {
