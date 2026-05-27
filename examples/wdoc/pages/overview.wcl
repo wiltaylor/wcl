@@ -20,6 +20,13 @@ page overview { sites = [:showcase]
     body  = "Text and spans, the class system, columns, callouts, a free-form diagram, and a layered flowchart."
   }
 
+  // Cross-site links: `[text](site:page)` jumps to another site declared
+  // in this document. This one builds three — browse the other two here.
+  // The hrefs resolve to the `docs/` and `blog/` output directories.
+  text {
+    span "This document builds three sites. Browse [the documentation](docs:index) (the `book` template) or [the project blog](blog:index) (a second `webpage` site)." {}
+  }
+
   // Inline patterns: `**bold**`, `_italic_`, backtick-code and
   // `[label](url)` are recognised inside any span's text and
   // rendered as styled inline elements. Nesting works recursively.

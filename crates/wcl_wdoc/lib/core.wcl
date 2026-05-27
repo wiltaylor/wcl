@@ -123,6 +123,11 @@ type Page {
   // Absent or empty ⇒ every site (a shared page). A name with no
   // matching `site` block is a build error.
   sites: list<symbol>?
+  // Mark this page as the site's start page: it's served when no page is
+  // specified (`/`, or `/<site>/` for a sub-site), instead of requiring a
+  // page literally named `index`. At most one `start` page per site. With
+  // none, a page named `index` is used, else the first page.
+  start: bool?
   @children(WdocBlock) children: list<WdocBlock>
 }
 

@@ -98,6 +98,73 @@ pub(crate) fn toc_to_value(nodes: &[TocNode], current: &str) -> Value {
     )
 }
 
+/// One node of a site's navbar menu, read from the `site` block's
+/// `menu`. `page` is an internal page link (validated), `href` an
+/// external/raw URL; an item with neither (and no children) is a plain
+/// label. `children` are nested sub-menu items.
+pub(crate) struct MenuNode {
+    pub label: String,
+    pub page: Option<String>,
+    pub href: Option<String>,
+    pub children: Vec<MenuNode>,
+}
+
+/// Recursively read `item` blocks nested inside `block` into
+/// [`MenuNode`]s, preserving source order.
+pub(crate) fn read_menu_items(block: &Block<'_>) -> Vec<MenuNode> {
+    block
+        .blocks()
+        .filter(|b| b.kind() == "item")
+        .map(|it| MenuNode {
+            label: label_string(&it).unwrap_or_default(),
+            page: field_id(&it, "page"),
+            href: field_utf8(&it, "href"),
+            children: read_menu_items(&it),
+        })
+        .collect()
+}
+
+/// Read the site's navbar menu from a `site` block's `menu` child.
+/// Empty when there is no `menu` (the `webpage` template then falls
+/// back to a flat page list).
+pub(crate) fn read_menu(site: &Block<'_>) -> Vec<MenuNode> {
+    match site.block("menu") {
+        Some(menu) => read_menu_items(&menu),
+        None => Vec::new(),
+    }
+}
+
+/// Build a `list<MenuEntry>` `Value` from `nodes`, resolving each item's
+/// `href` (an internal `page` wins → `<page>.html`, else the raw `href`,
+/// else empty for a parent/grouping item) and marking the entry that
+/// links to `current`.
+pub(crate) fn menu_to_value(nodes: &[MenuNode], current: &str) -> Value {
+    Value::List(
+        nodes
+            .iter()
+            .map(|n| {
+                let href = match (&n.page, &n.href) {
+                    (Some(p), _) => format!("{p}.html"),
+                    (None, Some(h)) => h.clone(),
+                    (None, None) => String::new(),
+                };
+                let mut m = BTreeMap::new();
+                m.insert("label".to_string(), Value::Utf8(n.label.clone()));
+                m.insert("href".to_string(), Value::Utf8(href));
+                m.insert(
+                    "current".to_string(),
+                    Value::Bool(n.page.as_deref() == Some(current)),
+                );
+                m.insert("children".to_string(), menu_to_value(&n.children, current));
+                Value::Record {
+                    ty: vec!["MenuEntry".to_string()],
+                    fields: m,
+                }
+            })
+            .collect(),
+    )
+}
+
 /// Render a page through `template`'s `render` function. Builds a
 /// `TemplateCtx` record (content + title + page_name + pages + toc) and
 /// invokes the WCL function, then renders the returned fundamentals.
@@ -113,6 +180,7 @@ pub(crate) fn render_template(
     page_name: &str,
     pages: &[(String, String)],
     toc_nodes: &[TocNode],
+    menu_nodes: &[MenuNode],
     theme_toggle: bool,
     home_href: &str,
     home_title: &str,
@@ -163,6 +231,7 @@ pub(crate) fn render_template(
     ctx.insert("page_name".to_string(), Value::Utf8(page_name.to_string()));
     ctx.insert("pages".to_string(), pages_val);
     ctx.insert("toc".to_string(), toc_val);
+    ctx.insert("menu".to_string(), menu_to_value(menu_nodes, page_name));
     ctx.insert("theme_toggle".to_string(), Value::Bool(theme_toggle));
     ctx.insert("home_href".to_string(), Value::Utf8(home_href.to_string()));
     ctx.insert(

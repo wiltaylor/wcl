@@ -319,6 +319,6 @@ page connections { sites = [:showcase]
   }
 
   text {
-    span "Back to [the index](index) or read [About](about)." {}
+    span "Back to [home](home) or read [About](about)." {}
   }
 }

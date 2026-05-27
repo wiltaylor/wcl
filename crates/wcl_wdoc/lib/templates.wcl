@@ -27,6 +27,19 @@ type TocEntry {
   children: list<TocEntry>
 }
 
+// A node in the resolved navbar menu handed to templates. Built by the
+// renderer from the `site`'s `menu` block. `href` is the link target
+// (`<page>.html` for an internal `page`, the raw URL for an external
+// `href`, empty for a parent/grouping item with neither); `current` is
+// true for the entry linking to the page being rendered; `children` are
+// nested sub-menu entries (any depth).
+type MenuEntry {
+  label:    utf8
+  href:     utf8
+  current:  bool
+  children: list<MenuEntry>
+}
+
 // Context handed to a template's (and any part function's) `render`.
 type TemplateCtx {
   content:      utf8            // the page's rendered body HTML (embed via Raw)
@@ -34,6 +47,7 @@ type TemplateCtx {
   page_name:    utf8            // the current page's name
   pages:        list<PageRef>   // every page in the current site, in source order
   toc:          list<TocEntry>  // the book TOC tree; flat (one per page) if no `toc`
+  menu:         list<MenuEntry> // the site's curated navbar menu (empty if no `menu`)
   theme_toggle: bool            // whether to render a light/dark toggle (site flag)
   home_href:    utf8            // relative href back to the root site (empty when this IS the root site, or single-site)
   home_title:   utf8            // the root site's title, for the back-link text
@@ -54,6 +68,27 @@ type Chapter {
 @block("toc")
 type Toc {
   @children("chapter") chapters: list<Chapter>
+}
+
+// One navbar menu item. The inline label is the display text; `page`
+// (optional) links it to a page (validated; rendered as `<page>.html`),
+// `href` (optional) links it to a raw/external URL; nested `item`s are
+// sub-menu entries (any depth). An item with children renders as a
+// click-to-open dropdown parent; an item with neither `page` nor `href`
+// nor children is a plain, non-link label. `page` wins over `href`.
+@block("item")
+type MenuItem {
+  @inline(0) label: utf8
+  page: identifier?
+  href: utf8?
+  @children("item") children: list<MenuItem>
+}
+
+// The site's navbar menu — an ordered, nestable tree of `item`s.
+// Declared inside the `site` block; rendered by the `webpage` template.
+@block("menu")
+type Menu {
+  @children("item") items: list<MenuItem>
 }
 
 // Document descriptor. One per document; sets the default template and
@@ -83,6 +118,10 @@ type SiteConfig {
   // red orange yellow green cyan blue purple pink. Unset ⇒ blue.
   accent: symbol?
   @child("toc") toc: Toc?
+  // Curated navbar menu (the `webpage` template renders it). Items may
+  // link to a page or external URL and nest into dropdowns. With no
+  // `menu`, `webpage` falls back to a flat list of every page.
+  @child("menu") menu: Menu?
 }
 
 // A named template. `render` lays out a page body from the context.
@@ -105,8 +144,10 @@ type Template {
 // The nav is a full-width sticky bar: it breaks out of the column
 // (`max-width: none; margin: 0`) so its background + bottom border span
 // the viewport, stays pinned on scroll (`position: sticky; top: 0`), and
-// re-aligns its links to the 48rem column with auto side gutters
-// (`max(1.25rem, calc((100% - 48rem) / 2))`, floored on narrow screens).
+// re-aligns its links to the header/content column with auto side gutters
+// (`max(1.25rem, calc((100% - 48rem) / 2 + 1.25rem))`, floored on narrow
+// screens). The `+ 1.25rem` matches the header's own inner padding, so the
+// first nav link lines up exactly with the heading text above it.
 // `var(--wdoc-bg)` keeps content from bleeding through; `scroll-padding-top`
 // keeps in-page anchor jumps from landing under the bar.
 //
@@ -128,9 +169,18 @@ type Template {
 let webpage_css = <<CSS
   .site-header, .site-main { max-width: 48rem; margin-left: auto; margin-right: auto; padding-left: 1.25rem; padding-right: 1.25rem; box-sizing: border-box; }
   .site-header { padding-top: 1rem; }
-  .site-nav { position: sticky; top: 0; z-index: 10; display: flex; gap: 1rem; background: var(--wdoc-bg, #fff); border-bottom: 1px solid var(--wdoc-border, #ccc); padding: 0.6rem max(1.25rem, calc((100% - 48rem) / 2)); margin-bottom: 1.5rem; box-sizing: border-box; }
+  .site-nav { position: sticky; top: 0; z-index: 10; display: flex; gap: 1rem; background: var(--wdoc-bg, #fff); border-bottom: 1px solid var(--wdoc-border, #ccc); padding: 0.6rem max(1.25rem, calc((100% - 48rem) / 2 + 1.25rem)); margin-bottom: 1.5rem; box-sizing: border-box; }
   .site-nav a { text-decoration: none; }
   .site-home { font-weight: 600; color: inherit; }
+  .site-nav ul.menu { list-style: none; margin: 0; padding: 0; display: flex; gap: 1rem; align-items: center; }
+  .site-nav ul.menu li { position: relative; }
+  .site-nav .menu-toggle, .site-nav .menu-link, .site-nav .menu-label { display: inline-block; padding: 0.1rem 0; font: inherit; color: inherit; background: none; border: none; cursor: pointer; text-decoration: none; white-space: nowrap; }
+  .site-nav .menu-label { cursor: default; }
+  .site-nav .menu-toggle::after { content: " ▾"; opacity: 0.7; }
+  .site-nav a.menu-link.current { font-weight: 600; color: var(--wdoc-accent, inherit); }
+  .site-nav ul.menu ul.menu { display: none; position: absolute; top: 100%; left: 0; flex-direction: column; align-items: stretch; gap: 0.15rem; min-width: 10rem; padding: 0.4rem; background: var(--wdoc-bg, #fff); border: 1px solid var(--wdoc-border, #ccc); border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,0.18); z-index: 30; }
+  .site-nav li.open > ul.menu { display: flex; }
+  .site-nav ul.menu ul.menu ul.menu { top: 0; left: 100%; }
   .site-main { display: block; background: var(--wdoc-bg-alt, #ffffff); background: color-mix(in srgb, var(--wdoc-bg-alt) 85%, var(--wdoc-fg) 15%); border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 12px; padding: 1.75rem 2rem 2.25rem; margin-bottom: 2.5rem; box-shadow: 0 1px 2px rgba(0,0,0,0.12), 0 12px 30px rgba(0,0,0,0.18); }
   html { scroll-padding-top: 4rem; }
   CSS
@@ -147,37 +197,98 @@ let home_link = fn(c: TemplateCtx, cls: utf8) -> list<HtmlFundamental>
     } ]
   }
 
-// Stdlib `webpage` template: a Hugo-style site shell — a title header,
-// a nav built from every page, and the page content in <main>. Users
-// can declare their own `template <name> { render = ... }` blocks and
-// select them with `default_template` / a page's `template` field.
-template webpage {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+// One navbar menu entry: a click-toggle `<button>` when it has children
+// (a dropdown parent), an `<a>` when it links somewhere, or a plain
+// `<span>` label otherwise. The current page's link carries `current`.
+let menu_entry = fn(m: MenuEntry) -> HtmlFundamental
+  if len(m.children) > 0 {
     HtmlFundamental::Element {
-      tag: "style", id: none, class: none, attrs: none,
-      children: [ HtmlFundamental::Raw { html: webpage_css } ],
-    },
+      tag: "button", id: none, class: ["menu-toggle"],
+      attrs: [["type", "button"]],
+      children: [ HtmlFundamental::Raw { html: m.label } ],
+    }
+  } else if m.href == "" {
     HtmlFundamental::Element {
-      tag: "header", id: none, class: ["site-header"], attrs: none,
-      children: [ HtmlFundamental::Raw { html: c.title } ],
-    },
+      tag: "span", id: none, class: ["menu-label"], attrs: none,
+      children: [ HtmlFundamental::Raw { html: m.label } ],
+    }
+  } else {
     HtmlFundamental::Element {
-      tag: "nav", id: none, class: ["site-nav"], attrs: none,
-      children: flatten([
-        home_link(c, "site-home"),
-        map(c.pages, fn(p: PageRef) -> HtmlFundamental
+      tag: "a", id: none,
+      class: if m.current { ["menu-link", "current"] } else { ["menu-link"] },
+      attrs: [["href", m.href]],
+      children: [ HtmlFundamental::Raw { html: m.label } ],
+    }
+  }
+
+// Render menu entries as a nested `<ul class="menu">` — recursive, so
+// the tree nests to any depth. An empty list renders nothing (no stray
+// `<ul>`), which also terminates the recursion at the leaves.
+let site_menu = fn(entries: list<MenuEntry>) -> list<HtmlFundamental>
+  if len(entries) == 0 { [] }
+  else {
+    [ HtmlFundamental::Element {
+        tag: "ul", id: none, class: ["menu"], attrs: none,
+        children: map(entries, fn(e: MenuEntry) -> HtmlFundamental
           HtmlFundamental::Element {
-            tag: "a", id: none, class: none,
-            attrs: [["href", p.href]],
-            children: [ HtmlFundamental::Raw { html: p.name } ],
+            tag: "li", id: none,
+            class: if len(e.children) > 0 { ["has-submenu"] } else { none },
+            attrs: none,
+            children: flatten([ [menu_entry(e)], site_menu(e.children) ]),
           }),
-      ]),
-    },
-    HtmlFundamental::Element {
-      tag: "main", id: none, class: ["site-main"], attrs: none,
-      children: [ HtmlFundamental::Raw { html: c.content } ],
-    },
-  ]
+      } ]
+  }
+
+// One-time click-toggle script for the navbar dropdowns: a single
+// delegated document listener flips `open` on the clicked toggle's
+// `<li>` (closing any open item that isn't an ancestor, so nested
+// dropdowns work), and a click anywhere else closes all open menus.
+let menu_script = HtmlFundamental::Raw {
+  html: "<script>(function(){function closeAll(keep){var o=document.querySelectorAll('.site-nav li.open');for(var i=0;i<o.length;i++){if(!keep||!o[i].contains(keep)){o[i].classList.remove('open');}}}document.addEventListener('click',function(e){var t=e.target.closest&&e.target.closest('.site-nav .menu-toggle');if(t){e.preventDefault();var li=t.parentNode;var willOpen=!li.classList.contains('open');closeAll(li);if(willOpen){li.classList.add('open');}else{li.classList.remove('open');}}else{closeAll(null);}});})();</script>",
+}
+
+// Stdlib `webpage` template: a Hugo-style site shell — a title header,
+// a nav, and the page content in <main>. The nav comes from the site's
+// `menu` (a curated, nestable dropdown structure); with no `menu` it
+// falls back to a flat link per page. Users can declare their own
+// `template <name> { render = ... }` blocks and select them with
+// `default_template` / a page's `template` field.
+template webpage {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([
+      [
+        HtmlFundamental::Element {
+          tag: "style", id: none, class: none, attrs: none,
+          children: [ HtmlFundamental::Raw { html: webpage_css } ],
+        },
+        HtmlFundamental::Element {
+          tag: "header", id: none, class: ["site-header"], attrs: none,
+          children: [ HtmlFundamental::Raw { html: c.title } ],
+        },
+        HtmlFundamental::Element {
+          tag: "nav", id: none, class: ["site-nav"], attrs: none,
+          children: flatten([
+            home_link(c, "site-home"),
+            if len(c.menu) == 0 {
+              map(c.pages, fn(p: PageRef) -> HtmlFundamental
+                HtmlFundamental::Element {
+                  tag: "a", id: none, class: none,
+                  attrs: [["href", p.href]],
+                  children: [ HtmlFundamental::Raw { html: p.name } ],
+                })
+            } else {
+              site_menu(c.menu)
+            },
+          ]),
+        },
+        HtmlFundamental::Element {
+          tag: "main", id: none, class: ["site-main"], attrs: none,
+          children: [ HtmlFundamental::Raw { html: c.content } ],
+        },
+      ],
+      // The dropdown toggle script, only when there's a menu to drive.
+      if len(c.menu) > 0 { [menu_script] } else { [] },
+    ])
 }
 
 // One sidebar entry: a `<span>` heading when the entry has no page

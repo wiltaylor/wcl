@@ -2,7 +2,7 @@ page wireframe { sites = [:showcase]
   h1 "Wireframe widgets" {}
 
   text {
-    span "Wireframe widgets mock up a UI from composable blocks. Windows and panels hold other widgets, and layout blocks (`wf_row` / `wf_column` / `wf_grid`) arrange them. Back to [the index](index)." {}
+    span "Wireframe widgets mock up a UI from composable blocks. Windows and panels hold other widgets, and layout blocks (`wf_row` / `wf_column` / `wf_grid`) arrange them. Back to [home](home)." {}
   }
 
   h2 "A sign-in window" {}

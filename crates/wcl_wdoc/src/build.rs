@@ -8,9 +8,9 @@ use wcl_lang::{Block, Document, Environment, Registry, Value, disk_loader};
 use crate::highlight;
 use crate::inline::InlinePatterns;
 use crate::render::{
-    TocNode, escape_html, field_bool, field_id, field_symbol, field_symbol_list_opt, field_utf8,
-    find_template, read_toc, render_block, render_class, render_page, render_template,
-    site_theme_css,
+    MenuNode, TocNode, escape_html, field_bool, field_id, field_symbol, field_symbol_list_opt,
+    field_utf8, find_template, read_menu, read_toc, render_block, render_class, render_page,
+    render_template, site_theme_css,
 };
 
 /// The wdoc standard library, embedded in the binary and registered
@@ -217,6 +217,20 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
             &home_href,
             &home_title,
         )?;
+        // Landing page: a page marked `start` is copied to this site's
+        // `index.html`, so `/` (or `/<site>/`) serves it without needing
+        // a page literally named `index`. The page also stays reachable
+        // at its own `<name>.html`.
+        if let Some(start) = site_start_page(spec)?
+            && start != "index"
+        {
+            let src = site_out.join(format!("{start}.html"));
+            let dst = site_out.join("index.html");
+            fs::copy(&src, &dst)
+                .map_err(|e| BuildError::Io(e, format!("copy {} to index.html", src.display())))?;
+        }
+        // Fall back to a redirect index for a multi-site sub-site that has
+        // neither a `start` nor an `index` page (no-op if one now exists).
         if multi {
             ensure_site_index(&site_out, spec)?;
         }
@@ -464,6 +478,7 @@ fn build_site(
         .and_then(|b| field_bool(b, "theme_toggle"))
         .unwrap_or(false);
     let toc_nodes: Vec<TocNode> = spec.block.as_ref().map(read_toc).unwrap_or_default();
+    let menu_nodes: Vec<MenuNode> = spec.block.as_ref().map(read_menu).unwrap_or_default();
 
     // Ordered (name, href) list of this site's pages for template nav,
     // and the name set the inline link pattern resolves `[text](page)`
@@ -479,6 +494,11 @@ fn build_site(
     if let Some(missing) = toc_missing_page(&toc_nodes, &page_names) {
         return Err(BuildError::BadTemplate(format!(
             "toc chapter links to unknown page \"{missing}\""
+        )));
+    }
+    if let Some(missing) = menu_missing_page(&menu_nodes, &page_names) {
+        return Err(BuildError::BadTemplate(format!(
+            "menu item links to unknown page \"{missing}\""
         )));
     }
 
@@ -551,6 +571,7 @@ fn build_site(
                     &page_name,
                     &pages,
                     &toc_nodes,
+                    &menu_nodes,
                     theme_toggle,
                     home_href,
                     home_title,
@@ -721,6 +742,26 @@ fn page_name(page: &Block<'_>) -> Option<String> {
     }
 }
 
+/// The name of the page marked `start = true` in this site, if any —
+/// the page served when no page is specified (`/` or `/<site>/`).
+/// Errors if more than one page in the site claims it.
+fn site_start_page(spec: &SiteSpec<'_>) -> Result<Option<String>, BuildError> {
+    let mut start: Option<String> = None;
+    for p in &spec.pages {
+        if field_bool(p, "start") == Some(true) {
+            let name = page_name(p).unwrap_or_default();
+            if let Some(prev) = &start {
+                return Err(BuildError::BadPage(format!(
+                    "site has multiple start pages (\"{prev}\" and \"{name}\"); \
+                     only one page may set start = true"
+                )));
+            }
+            start = Some(name);
+        }
+    }
+    Ok(start)
+}
+
 /// Return the first `toc` chapter `page` reference that isn't a known
 /// page name, walking the tree depth-first. `None` if every link
 /// resolves (or no chapter links a page).
@@ -732,6 +773,23 @@ fn toc_missing_page<'a>(nodes: &'a [TocNode], known: &HashSet<String>) -> Option
             return Some(page);
         }
         if let Some(missing) = toc_missing_page(&n.children, known) {
+            return Some(missing);
+        }
+    }
+    None
+}
+
+/// Return the first `menu` item `page` reference that isn't a known page
+/// name, walking the tree depth-first. External `href`s are not checked.
+/// `None` if every page link resolves (or no item links a page).
+fn menu_missing_page<'a>(nodes: &'a [MenuNode], known: &HashSet<String>) -> Option<&'a str> {
+    for n in nodes {
+        if let Some(page) = &n.page
+            && !known.contains(page)
+        {
+            return Some(page);
+        }
+        if let Some(missing) = menu_missing_page(&n.children, known) {
             return Some(missing);
         }
     }

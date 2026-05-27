@@ -57,6 +57,27 @@ site showcase {
   // A built-in colour theme. One line recolours the whole site — page
   // background / text, links, headings, code, charts, callouts, tables.
   theme            = tokyonight
+  // Curated navbar: top-level links plus two click-to-open dropdowns and
+  // an external link. An `item` with nested `item`s is a dropdown parent;
+  // `page` links to a page (validated), `href` to an external URL.
+  menu {
+    item "Overview" { page = overview }
+    item "Diagrams" {
+      item "Connections" { page = connections }
+      item "Charts"      { page = charts }
+      item "Maps"        { page = map }
+      item "Tilemaps"    { page = tilemap }
+    }
+    item "Content" {
+      item "Code"      { page = code }
+      item "Math"      { page = math }
+      item "Terminal"  { page = terminal }
+      item "Icons"     { page = icons }
+      item "Wireframe" { page = wireframe }
+    }
+    item "About"  { page = about }
+    item "Source" { href = "https://github.com/wiltaylor/wcl" }
+  }
 }
 
 // A docs book: the `book` template (fixed sidebar from the `toc` below),
@@ -112,9 +133,10 @@ import "./pages/docs.wcl"
 import "./pages/blog.wcl"
 
 // The showcase landing page: a table of contents linking to every other
-// showcase page. `sites = [:showcase]` keeps it (and its links) inside
-// the showcase site.
-page index { sites = [:showcase]
+// showcase page. `start = true` makes it the page served at `/` (no page
+// need be named `index`); `sites = [:showcase]` keeps it (and its links)
+// inside the showcase site.
+page home { sites = [:showcase]  start = true
   h1 "wdoc showcase" {}
 
   text {

@@ -1172,6 +1172,201 @@ page index {
 }
 
 #[test]
+fn build_renders_site_menu_with_nested_dropdowns() {
+    // A site menu with a top link (the current page), a dropdown parent
+    // holding two sub-items, and an external href. The webpage nav
+    // should render a nested <ul class="menu">, a toggle <button> for
+    // the parent, the current page's link tagged `current`, the raw
+    // external href verbatim, and the click-toggle script once.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("menu.wcl");
+    std::fs::write(
+        &src,
+        r##"
+site main {
+  default_template = :webpage
+  title = "Site"
+  menu {
+    item "Home" { page = index }
+    item "More" {
+      item "Second" { page = second }
+      item "Docs"   { href = "https://example.com/docs" }
+    }
+  }
+}
+page index { h1 "Home" {} }
+page second { h1 "Second" {} }
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Nested menu structure: a top <ul class="menu"> and a nested one.
+    assert_eq!(
+        html.matches("<ul class=\"menu\">").count(),
+        2,
+        "expected a top menu + one nested submenu:\n{html}"
+    );
+    // The dropdown parent is a toggle button inside a has-submenu li.
+    assert!(
+        html.contains(
+            "<li class=\"has-submenu\"><button class=\"menu-toggle\" type=\"button\">More</button>"
+        ),
+        "missing dropdown parent toggle:\n{html}"
+    );
+    // The current page's link carries `current`; a sibling does not.
+    assert!(
+        html.contains("<a class=\"menu-link current\" href=\"index.html\">Home</a>"),
+        "current page link not marked current:\n{html}"
+    );
+    assert!(
+        html.contains("<a class=\"menu-link\" href=\"second.html\">Second</a>"),
+        "nested page link missing:\n{html}"
+    );
+    // External href is rendered verbatim (no .html suffix).
+    assert!(
+        html.contains("<a class=\"menu-link\" href=\"https://example.com/docs\">Docs</a>"),
+        "external href not rendered verbatim:\n{html}"
+    );
+    // The click-toggle script is present exactly once.
+    assert_eq!(
+        html.matches("function closeAll(keep)").count(),
+        1,
+        "expected the dropdown toggle script once:\n{html}"
+    );
+}
+
+#[test]
+fn build_webpage_without_menu_falls_back_to_page_list() {
+    // No `menu` declared: the webpage nav keeps its flat per-page link
+    // behaviour and emits no dropdown markup or toggle script.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("nomenu.wcl");
+    std::fs::write(
+        &src,
+        r##"
+site main {
+  default_template = :webpage
+  title = "Site"
+}
+page index { h1 "Home" {} }
+page second { h1 "Second" {} }
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Flat page links, as before — no menu <ul> and no toggle script.
+    assert!(
+        html.contains("<a href=\"index.html\">index</a>")
+            && html.contains("<a href=\"second.html\">second</a>"),
+        "fallback page-list nav missing:\n{html}"
+    );
+    assert!(
+        !html.contains("<ul class=\"menu\">"),
+        "no-menu site should not emit menu markup:\n{html}"
+    );
+    assert!(
+        !html.contains("function closeAll(keep)"),
+        "no-menu site should not emit the toggle script:\n{html}"
+    );
+}
+
+#[test]
+fn build_rejects_menu_item_with_unknown_page() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("badmenu.wcl");
+    std::fs::write(
+        &src,
+        r##"
+site main {
+  default_template = :webpage
+  menu { item "Ghost" { page = nope } }
+}
+page index { h1 "Home" {} }
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::BadTemplate(m)) => {
+            assert!(m.contains("nope"), "unexpected error message: {m}");
+        }
+        Ok(_) => panic!("expected BadTemplate for unknown menu page, but build succeeded"),
+        Err(_) => panic!("expected BadTemplate for unknown menu page, got a different error"),
+    }
+}
+
+#[test]
+fn build_start_page_becomes_site_index() {
+    // No page named `index`; instead `home` is marked `start = true`. The
+    // site root (index.html) should be that page's content, and the page
+    // also stays reachable at its own `home.html`.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("start.wcl");
+    std::fs::write(
+        &src,
+        r##"
+site main {
+  default_template = :webpage
+  title = "Site"
+}
+page home { start = true
+  h1 "Landing" {}
+}
+page other {
+  h1 "Other" {}
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
+    let home = std::fs::read_to_string(out.path().join("home.html")).expect("read home");
+    // The root index is the start page, served directly (not a redirect).
+    assert_eq!(index, home, "index.html should be a copy of the start page");
+    assert!(
+        index.contains("Landing"),
+        "start page content missing:\n{index}"
+    );
+    assert!(
+        !index.contains("http-equiv=\"refresh\""),
+        "start page index should be real content, not a redirect:\n{index}"
+    );
+    // The other page exists at its own name and is not the index.
+    assert!(out.path().join("other.html").exists());
+}
+
+#[test]
+fn build_rejects_multiple_start_pages() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("twostart.wcl");
+    std::fs::write(
+        &src,
+        r##"
+site main { default_template = :webpage }
+page a { start = true  h1 "A" {} }
+page b { start = true  h1 "B" {} }
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::BadPage(m)) => {
+            assert!(m.contains("start"), "unexpected error message: {m}");
+        }
+        Ok(_) => panic!("expected BadPage for multiple start pages, but build succeeded"),
+        Err(_) => panic!("expected BadPage for multiple start pages, got a different error"),
+    }
+}
+
+#[test]
 fn build_allows_same_id_across_different_pages() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("two_pages.wcl");
