@@ -3013,19 +3013,19 @@ page index {
       width  = 500
       height = 220
       title  = "Roadmap"
-      t_min  = 0.0
-      t_max  = 12.0
-      step   = 3.0
+      unit   = :months
+      start  = "2026-01-01"
+      end    = "2026-12-31"
       phases = [
-        TimelinePhase::Of { label: "Design", from: 0.0,  to: 4.0 },
-        TimelinePhase::Of { label: "Build",  from: 4.0,  to: 10.0 },
-        TimelinePhase::Of { label: "Ship",   from: 10.0, to: 12.0 },
+        TimelinePhase::Of { label: "Design", from: "2026-01-01", to: "2026-04-01" },
+        TimelinePhase::Of { label: "Build",  from: "2026-04-01", to: "2026-10-01" },
+        TimelinePhase::Of { label: "Ship",   from: "2026-10-01", to: "2026-12-31" },
       ]
       items = [
-        TimelineItem::Of    { label: "Kickoff", at: 0.0 },
-        TimelineItem::Of    { label: "Beta",    at: 6.0 },
-        TimelineItem::Sided { label: "Freeze",  at: 9.0, side: :far },
-        TimelineItem::Of    { label: "Launch",  at: 12.0 },
+        TimelineItem::On      { label: "Kickoff", on: "2026-01-10" },
+        TimelineItem::On      { label: "Beta",    on: "2026-06-15" },
+        TimelineItem::OnSided { label: "Freeze",  on: "2026-09-01", side: :far },
+        TimelineItem::On      { label: "Launch",  on: "2026-12-20" },
       ]
     }
   }
@@ -3071,14 +3071,15 @@ page index {
         assert!(html.contains(&format!(">{phase}</tspan>")), "{html}");
     }
 
-    // Axis spine + numeric ticks from `step` (0, 3, 6, 9, 12).
+    // Axis spine + calendar month ticks (Jan…Dec; the January tick
+    // carries the year so a multi-year axis reads).
     assert!(html.contains("<line class=\"wdoc-axis\""), "{html}");
+    assert!(html.contains(">Jan 2026</tspan>"), "{html}");
     for tick in [
-        ">0</tspan>",
-        ">3</tspan>",
-        ">6</tspan>",
-        ">9</tspan>",
-        ">12</tspan>",
+        ">Mar</tspan>",
+        ">Jun</tspan>",
+        ">Sep</tspan>",
+        ">Dec</tspan>",
     ] {
         assert!(html.contains(tick), "{html}");
     }
@@ -3100,7 +3101,7 @@ page index {
 fn build_renders_vertical_timeline() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("vtimeline.wcl");
-    // No t_min/t_max — the scale auto-fits from the data (0..5).
+    // No start/end — the scale auto-fits from the event dates.
     std::fs::write(
         &src,
         r##"
@@ -3113,10 +3114,11 @@ page index {
       height    = 320
       direction = :vertical
       title     = "Releases"
+      unit      = :months
       items = [
-        TimelineItem::Of { label: "Alpha", at: 0.0 },
-        TimelineItem::Of { label: "Beta",  at: 3.0 },
-        TimelineItem::Of { label: "GA",    at: 5.0 },
+        TimelineItem::On { label: "Alpha", on: "2026-01-15" },
+        TimelineItem::On { label: "Beta",  on: "2026-03-15" },
+        TimelineItem::On { label: "GA",    on: "2026-06-15" },
       ]
     }
   }
@@ -3216,12 +3218,14 @@ page index {
     height = 260
     timeline {
       width = 600  height = 260
-      t_min = 0.0  t_max = 12.0
+      unit  = :months
+      start = "2026-01-01"
+      end   = "2026-12-31"
       // No `items` — a cards-only timeline must render.
-      card { at = 6.0  title = "Beta"
+      card { on = "2026-06-15"  title = "Beta"
         text { span "First public " {} span "beta" { class = ["accent"] } span " build." {} }
       }
-      card { at = 12.0  side = :far  title = "GA"
+      card { on = "2026-12-01"  side = :far  title = "GA"
         text { span "General availability." {} }
       }
     }
@@ -3256,6 +3260,59 @@ page index {
         2,
         "{html}"
     );
+}
+
+#[test]
+fn build_timeline_every_thins_ticks_and_skips_bad_dates() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("tlevery.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 600
+    height = 200
+    timeline {
+      width = 600  height = 200
+      unit  = :months
+      every = 2
+      start = "2026-01-01"
+      end   = "2026-12-31"
+      items = [
+        TimelineItem::On { label: "Good", on: "2026-02-10" },
+        TimelineItem::On { label: "Bad",  on: "not-a-date" },
+      ]
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // `every = 2` keeps every other month: Jan, Mar, May, Jul, Sep, Nov.
+    for present in [">Jan 2026</tspan>", ">Mar</tspan>", ">Nov</tspan>"] {
+        assert!(html.contains(present), "{html}");
+    }
+    for absent in [">Feb</tspan>", ">Apr</tspan>", ">Dec</tspan>"] {
+        assert!(
+            !html.contains(absent),
+            "thinned tick leaked: {absent}\n{html}"
+        );
+    }
+    // The good-dated item renders; the bad date is skipped (no build
+    // failure, no marker for it) — one marker, the "Good" label present.
+    assert_eq!(
+        html.matches("<circle class=\"wdoc-timeline-marker\"")
+            .count(),
+        1,
+        "{html}"
+    );
+    assert!(html.contains(">Good</tspan>"), "{html}");
 }
 
 #[test]

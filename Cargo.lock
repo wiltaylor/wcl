@@ -2843,6 +2843,7 @@ dependencies = [
  "serde_json",
  "syntect",
  "tempfile",
+ "time",
  "tokio",
  "two-face",
  "wcl_lang",

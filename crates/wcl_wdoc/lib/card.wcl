@@ -22,7 +22,7 @@ type Card extends SvgBlock {
   anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
 
   // Timeline placement — used only when the card is a `timeline` child.
-  at:   f64?                     // position on the timeline scale
+  on:   utf8?                    // ISO date the card is pinned to on the timeline
   side: symbol?                  // :near | :far | :auto (alternates)
 
   // Content.
