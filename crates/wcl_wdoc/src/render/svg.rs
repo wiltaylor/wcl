@@ -8,6 +8,7 @@ use std::path::Path;
 
 use wcl_lang::{Block, Document, Value};
 
+use crate::force::{self, ForceParams};
 use crate::icons::{IconRegistry, ShapeOverride};
 use crate::image::{self, ImageRegistry};
 use crate::inline::InlinePatterns;
@@ -232,7 +233,7 @@ pub(crate) fn collect_layout_children(
     let layout = field_symbol(block, "layout").unwrap_or_default();
     match layout.as_str() {
         "grid" => collect_grid_children(block, tx, ty, cctx, out),
-        "layered" => collect_layered_children(block, tx, ty, cctx, out),
+        "layered" | "force" => collect_planned_children(block, tx, ty, cctx, out),
         _ => {
             for child in block.blocks() {
                 collect_shape_positions(&child, tx, ty, parent_w, parent_h, cctx, out);
@@ -253,7 +254,7 @@ pub(crate) fn render_layout_children(
     let layout = field_symbol(block, "layout").unwrap_or_default();
     match layout.as_str() {
         "grid" => render_grid_children(block, ctx),
-        "layered" => render_layered_children(block, ctx),
+        "layered" | "force" => render_planned_children(block, ctx),
         _ => block
             .blocks()
             .filter_map(|b| render_shape(&b, pw, ph, ctx))
@@ -278,7 +279,10 @@ pub(crate) fn collect_grid_children(
     }
 }
 
-pub(crate) fn collect_layered_children(
+/// Collect positions for a `:layered` or `:force` container/diagram.
+/// Both layouts produce per-child `(tx, ty)` offsets via
+/// `compute_planned_plan`; only the offset solver differs.
+pub(crate) fn collect_planned_children(
     block: &Block<'_>,
     tx: f64,
     ty: f64,
@@ -286,11 +290,16 @@ pub(crate) fn collect_layered_children(
     out: &mut Collector,
 ) {
     let children: Vec<Block<'_>> = block.blocks().collect();
-    let (offsets, _, _) = compute_layered_plan(block, &children);
-    for (child, (cx, cy)) in children.iter().zip(offsets) {
-        let pw = field_f64(child, "width").unwrap_or(80.0);
-        let ph = field_f64(child, "height").unwrap_or(40.0);
-        collect_shape_positions(child, tx + cx, ty + cy, pw, ph, cctx, out);
+    let (offsets, widths, heights) = compute_planned_plan(block, &children);
+    // Size each child's parent box from the plan (effective_dims), not
+    // the raw width/height, so collect and render agree on circles
+    // (sized by diameter) and text-grown shapes alike.
+    for ((child, (cx, cy)), (pw, ph)) in children
+        .iter()
+        .zip(offsets)
+        .zip(widths.iter().zip(heights.iter()))
+    {
+        collect_shape_positions(child, tx + cx, ty + cy, *pw, *ph, cctx, out);
     }
 }
 
@@ -324,6 +333,53 @@ pub(crate) fn compute_layered_plan(
     (offsets, widths, heights)
 }
 
+/// Compute the force-directed layout for a container/diagram's children.
+/// Same return shape as `compute_layered_plan`: per-child offsets +
+/// widths + heights. The optional knob fields (`iterations`,
+/// `repulsion`, `link_distance`, `gravity`, `seed`) fall back to
+/// `ForceParams::default()`.
+pub(crate) fn compute_force_plan(
+    block: &Block<'_>,
+    children: &[Block<'_>],
+) -> (Vec<(f64, f64)>, Vec<f64>, Vec<f64>) {
+    let defaults = ForceParams::default();
+    let params = ForceParams {
+        iterations: field_i64(block, "iterations")
+            .map(|v| v.max(0) as usize)
+            .unwrap_or(defaults.iterations),
+        repulsion: field_f64(block, "repulsion").unwrap_or(defaults.repulsion),
+        link_distance: field_f64(block, "link_distance").unwrap_or(defaults.link_distance),
+        gravity: field_f64(block, "gravity").unwrap_or(defaults.gravity),
+        seed: field_i64(block, "seed").unwrap_or(defaults.seed),
+    };
+
+    let nodes: Vec<layered::Node> = children
+        .iter()
+        .map(|c| layered::Node {
+            id: field_id(c, "id"),
+            size: effective_dims(c),
+        })
+        .collect();
+    let edges: Vec<(String, String)> = edge_id_pairs(block);
+    let offsets = force::assign_force_offsets(&nodes, &edges, params);
+    let widths: Vec<f64> = nodes.iter().map(|n| n.size.0).collect();
+    let heights: Vec<f64> = nodes.iter().map(|n| n.size.1).collect();
+    (offsets, widths, heights)
+}
+
+/// Dispatch to the layout solver named by the block's `layout` field.
+/// Both `:layered` and `:force` produce offsets + sizes in the same
+/// shape, so the collect / render / size paths share one entry point.
+pub(crate) fn compute_planned_plan(
+    block: &Block<'_>,
+    children: &[Block<'_>],
+) -> (Vec<(f64, f64)>, Vec<f64>, Vec<f64>) {
+    match field_symbol(block, "layout").unwrap_or_default().as_str() {
+        "force" => compute_force_plan(block, children),
+        _ => compute_layered_plan(block, children),
+    }
+}
+
 pub(crate) fn edge_id_pairs(block: &Block<'_>) -> Vec<(String, String)> {
     let Some(dr) = block.typed_field("edges") else {
         return Vec::new();
@@ -347,9 +403,9 @@ pub(crate) fn edge_id_pairs(block: &Block<'_>) -> Vec<(String, String)> {
         .collect()
 }
 
-pub(crate) fn render_layered_children(block: &Block<'_>, ctx: RenderCtx<'_>) -> String {
+pub(crate) fn render_planned_children(block: &Block<'_>, ctx: RenderCtx<'_>) -> String {
     let children: Vec<Block<'_>> = block.blocks().collect();
-    let (offsets, widths, heights) = compute_layered_plan(block, &children);
+    let (offsets, widths, heights) = compute_planned_plan(block, &children);
     let mut out = String::new();
     for ((child, (tx, ty)), (cw, ch)) in children
         .iter()
@@ -526,6 +582,14 @@ pub(crate) fn collect_shape_positions(
 /// text field, or returns `max(declared, needed)` so a multi-line
 /// label grows the shape rather than overflowing it.
 pub(crate) fn effective_dims(block: &Block<'_>) -> (f64, f64) {
+    // A circle is sized by its diameter (it carries `r`, not
+    // width/height), so a layout solver allocates a correct square
+    // cell for it instead of the default 80×40.
+    if block.kind() == "circle"
+        && let Some(r) = field_f64(block, "r")
+    {
+        return (2.0 * r, 2.0 * r);
+    }
     let declared_w = field_f64(block, "width").unwrap_or(80.0);
     let declared_h = field_f64(block, "height").unwrap_or(40.0);
     let Some(text) = text_content(block) else {
@@ -1538,12 +1602,12 @@ pub(crate) fn resolve_container_box(
 pub(crate) fn content_size(block: &Block<'_>) -> (f64, f64) {
     let layout = field_symbol(block, "layout").unwrap_or_default();
     match layout.as_str() {
-        "layered" => {
+        "layered" | "force" => {
             let children: Vec<Block<'_>> = block.blocks().collect();
             if children.is_empty() {
                 return (0.0, 0.0);
             }
-            let (offsets, widths, heights) = compute_layered_plan(block, &children);
+            let (offsets, widths, heights) = compute_planned_plan(block, &children);
             let mut max_x = 0.0_f64;
             let mut max_y = 0.0_f64;
             for ((ox, oy), (cw, ch)) in offsets.iter().zip(widths.iter().zip(heights.iter())) {
@@ -1594,8 +1658,11 @@ pub(crate) fn apply_axis_anchor(
 }
 
 pub(crate) fn resolve_circle(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f64, f64) {
-    let cx = field_f64(block, "cx").unwrap_or(0.0);
-    let cy = field_f64(block, "cy").unwrap_or(0.0);
+    // An unpositioned circle centers in its parent box, so it sits in
+    // the middle of a layout cell (and fills it when its diameter was
+    // used to size the cell). Explicit cx/cy still win.
+    let cx = field_f64(block, "cx").unwrap_or(parent_w / 2.0);
+    let cy = field_f64(block, "cy").unwrap_or(parent_h / 2.0);
     let r = field_f64(block, "r").unwrap_or(0.0);
     let al = field_f64(block, "anchor_left");
     let ar = field_f64(block, "anchor_right");

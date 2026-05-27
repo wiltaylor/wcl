@@ -64,6 +64,42 @@ page connections { sites = [:showcase]
     merge   -> done   :flow
   }
 
+  h2 "Force-directed layout" {}
+
+  text {
+    span "`layout = :force` runs a force-directed simulation instead of ranking shapes: every shape repels every other, while `@connections(Edge)` edges act as springs pulling connected shapes together. Nodes start clustered in the centre and settle into an organic spread that surfaces clusters — ideal for cyclic or undirected graphs with no natural rank order. The layout is deterministic for a given `seed`; tune the spread with `repulsion`, `link_distance`, and `gravity`. Straight `routing` suits the radial edges. Here the nodes are labelled `node` circles, colour-coded by role (red core, blue front-end, green workers, amber data)." {}
+  }
+
+  diagram {
+    width         = 460
+    height        = 360
+    layout        = :force
+    routing       = :straight
+    link_distance = 70.0
+
+    node "Core"    { id = mesh_core    width = 64.0 height = 64.0 fill = "#fee" stroke = "#a44" }
+    node "Auth"    { id = mesh_auth    width = 60.0 height = 60.0 fill = "#cce" stroke = "#447" }
+    node "API"     { id = mesh_api     width = 56.0 height = 56.0 fill = "#cce" stroke = "#447" }
+    node "Cache"   { id = mesh_cache   width = 62.0 height = 62.0 fill = "#cce" stroke = "#447" }
+    node "Worker"  { id = mesh_worker  width = 70.0 height = 70.0 fill = "#efe" stroke = "#494" }
+    node "Queue"   { id = mesh_queue   width = 62.0 height = 62.0 fill = "#efe" stroke = "#494" }
+    node "DB"      { id = mesh_db      width = 56.0 height = 56.0 fill = "#fec" stroke = "#a74" }
+    node "Metrics" { id = mesh_metrics width = 72.0 height = 72.0 fill = "#fec" stroke = "#a74" }
+
+    // A cyclic service mesh — no rank order, so :layered would force an
+    // arbitrary one. The spring/repulsion balance lets the clusters
+    // (front-end blue, workers green, data amber) find their own room.
+    mesh_core   -> mesh_auth
+    mesh_core   -> mesh_api
+    mesh_core   -> mesh_metrics
+    mesh_api    -> mesh_cache
+    mesh_api    -> mesh_db
+    mesh_api    -> mesh_queue
+    mesh_queue  -> mesh_worker
+    mesh_worker -> mesh_db
+    mesh_auth   -> mesh_db
+  }
+
   h2 "Sub-graphs in containers" {}
 
   text {

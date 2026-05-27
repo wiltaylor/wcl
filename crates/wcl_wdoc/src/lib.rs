@@ -6,6 +6,7 @@
 //! `wcl wdoc build` and `wcl wdoc serve`.
 
 pub mod build;
+mod force;
 mod highlight;
 mod icons;
 mod image;

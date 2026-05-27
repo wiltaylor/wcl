@@ -1069,6 +1069,75 @@ page index {
 }
 
 #[test]
+fn build_force_layout_spreads_and_is_deterministic() {
+    // A cyclic 4-node graph (circles) with no rank order. :force should
+    // place each shape (no cx/cy declared) via the simulation, wrap each
+    // in its own translate group, and draw a straight edge per
+    // connection. Circles are sized by radius and centered in their cell.
+    let fixture = r##"
+page index {
+  diagram {
+    width         = 300
+    height        = 300
+    layout        = :force
+    routing       = :straight
+    link_distance = 70.0
+    circle { id = a  r = 24.0  fill = "#cce" }
+    circle { id = b  r = 24.0  fill = "#ecc" }
+    circle { id = c  r = 24.0  fill = "#cec" }
+    circle { id = d  r = 24.0  fill = "#fec" }
+    a -> b
+    b -> c
+    c -> a
+    a -> d
+  }
+}
+"##;
+
+    let render = || {
+        let tmp = TempDir::new().expect("mkdir tempdir");
+        let src = tmp.path().join("force.wcl");
+        std::fs::write(&src, fixture).expect("write fixture");
+        let out = TempDir::new().expect("mkdir out");
+        build_ok(&src, out.path());
+        std::fs::read_to_string(out.path().join("index.html")).expect("read")
+    };
+
+    let html = render();
+
+    // One circle + one translate wrapper per node; one arrow per edge.
+    assert_eq!(
+        html.matches("<circle ").count(),
+        4,
+        "expected 4 nodes:\n{html}"
+    );
+    assert_eq!(
+        html.matches("<g transform=\"translate(").count(),
+        4,
+        "expected one wrapper per node:\n{html}"
+    );
+    // Circles are sized by diameter (r=24 → cx=cy=24 within the 48×48
+    // cell), confirming the layout allocated a square cell and centered.
+    assert!(
+        html.contains("cx=\"24\" cy=\"24\" r=\"24\""),
+        "circle not centered in its diameter-sized cell:\n{html}"
+    );
+    assert_eq!(
+        html.matches("url(#wdoc-arrow)").count(),
+        4,
+        "expected one arrow per edge:\n{html}"
+    );
+    // The nodes must actually spread — not all collapsed at the origin.
+    assert!(
+        html.matches("translate(0 0)").count() < 4,
+        "force layout collapsed all nodes to the origin:\n{html}"
+    );
+
+    // Pure, deterministic simulation: a second build is byte-identical.
+    assert_eq!(html, render(), "force layout was not deterministic");
+}
+
+#[test]
 fn build_allows_same_id_across_different_pages() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("two_pages.wcl");

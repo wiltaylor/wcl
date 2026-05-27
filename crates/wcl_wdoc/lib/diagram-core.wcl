@@ -10,7 +10,10 @@ type Diagram extends WdocBlock {
   // Layout: :none (default) honors per-shape x/y; :grid uses the
   // grid-cell knobs (cell_width/cell_height/columns/gap), same as
   // Container; :layered topologically ranks shapes via the
-  // diagram's @connections(Edge) graph and assigns x/y.
+  // diagram's @connections(Edge) graph and assigns x/y; :force
+  // runs a force-directed simulation (shapes repel each other,
+  // @connections(Edge) edges attract) and assigns x/y — best for
+  // cyclic / undirected graphs that have no natural rank order.
   layout:      symbol?
   direction:   symbol?      // :top_to_bottom (default) | :left_to_right
   layer_gap:   f64?         // gap between ranks
@@ -19,6 +22,14 @@ type Diagram extends WdocBlock {
   cell_height: f64?
   columns:     i64?
   gap:         f64?
+
+  // Force-directed (:force) knobs. All optional with sensible
+  // defaults; the layout is deterministic for a given `seed`.
+  iterations:    i64?       // relaxation steps (default 300)
+  repulsion:     f64?       // node repulsion strength (default 9000)
+  link_distance: f64?       // ideal edge-to-edge length (default 60)
+  gravity:       f64?       // centering pull (default 0.05)
+  seed:          i64?       // re-arrange reproducibly (default 1)
 
   // Edge rendering.
   routing:         symbol?  // :elbow (default) | :straight
@@ -53,6 +64,13 @@ type Diagram extends WdocBlock {
 //                        controlled by `direction` (default
 //                        :top_to_bottom). Per-shape width/height
 //                        are honored.
+//   :force             — force-directed: children repel one
+//                        another and @connections(Edge) edges pull
+//                        connected children together, relaxed over
+//                        `iterations` steps. Tunable via
+//                        `repulsion` / `link_distance` / `gravity`
+//                        and deterministic per `seed`. Suits
+//                        cyclic / undirected graphs.
 // Anchors on the container itself resolve against the parent box and
 // can resize the container; that new size flows to its own children.
 @block("container")
@@ -87,6 +105,13 @@ type Container extends SvgBlock {
   direction:   symbol?    // :top_to_bottom (default) | :left_to_right
   layer_gap:   f64?
   node_gap:    f64?
+
+  // Force-directed (:force) knobs. Optional; deterministic per `seed`.
+  iterations:    i64?     // relaxation steps (default 300)
+  repulsion:     f64?     // node repulsion strength (default 9000)
+  link_distance: f64?     // ideal edge-to-edge length (default 60)
+  gravity:       f64?     // centering pull (default 0.05)
+  seed:          i64?     // re-arrange reproducibly (default 1)
 
   // Anchors (resolve against the parent's box).
   anchor_left:   f64?

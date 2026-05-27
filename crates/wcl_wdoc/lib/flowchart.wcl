@@ -68,6 +68,39 @@ type Decision extends SvgBlock {
   ]
 }
 
+// Circular graph node: a labelled circle for network / relationship /
+// force-directed diagrams. Sized by its box (width/height) so layout
+// solvers allocate a square cell; the circle is inscribed in that box
+// and the label is centred inside it. Mirrors `process` but lowers to
+// a Circle instead of a Rect.
+@block("node")
+type GraphNode extends SvgBlock {
+  @inline(0) text: utf8
+  x = 0.0  y = 0.0  width = 56.0  height = 56.0
+  fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
+  connect_points: list<AnchorSide>?
+  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
+
+  lower = fn(n: GraphNode) -> list<SvgFundamental> [
+    SvgFundamental::Circle {
+      cx: n.x + n.width / 2.0,
+      cy: n.y + n.height / 2.0,
+      r:  min(n.width, n.height) / 2.0,
+      fill: n.fill, stroke: n.stroke, id: n.id, class: n.class,
+    },
+    SvgFundamental::Label {
+      content: n.text,
+      x: n.x + n.width / 2.0,
+      y: n.y + n.height / 2.0,
+      font_size: none,
+      // Inset the fit region so the label stays within the circle's
+      // curve instead of touching its left/right edges.
+      fit_width: n.width * 0.82,  fit_height: n.height * 0.82,
+      fill: none, id: none, class: n.class,
+    },
+  ]
+}
+
 // Terminator: rounded-corner rect is a single Rect for now — true
 // rounded corners come when SvgFundamental::Rect grows an `rx` field.
 @block("terminator")
