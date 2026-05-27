@@ -1138,6 +1138,40 @@ page index {
 }
 
 #[test]
+fn build_straight_edges_attach_to_circle_boundary() {
+    // Two circles on a shared horizontal axis. A straight edge should
+    // leave circle A on its boundary toward B's center and arrive on
+    // B's boundary toward A — not at a cardinal anchor midpoint. With
+    // A at (60,100) r=20 and B at (260,100) r=40, the line runs from
+    // (80,100) to (220,100).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("boundary.wcl");
+    std::fs::write(
+        &src,
+        r##"
+page index {
+  diagram {
+    width   = 320
+    height  = 200
+    routing = :straight
+    circle { id = a  cx = 60.0   cy = 100.0  r = 20.0  fill = "#cce" }
+    circle { id = b  cx = 260.0  cy = 100.0  r = 40.0  fill = "#ecc" }
+    a -> b
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<line x1=\"80\" y1=\"100\" x2=\"220\" y2=\"100\""),
+        "straight edge did not attach to the circle boundaries:\n{html}"
+    );
+}
+
+#[test]
 fn build_allows_same_id_across_different_pages() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("two_pages.wcl");

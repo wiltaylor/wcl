@@ -32,6 +32,10 @@ use super::*;
 pub(crate) struct ShapeMetrics {
     bbox: (f64, f64, f64, f64),
     anchors: Vec<(Side, f64, f64)>,
+    /// Whether the shape renders as a circle (`circle` / `node`). Round
+    /// shapes attach straight edges at their boundary along the
+    /// center-to-center line rather than at a cardinal anchor point.
+    round: bool,
 }
 pub(crate) type ShapePositions = HashMap<String, ShapeMetrics>;
 
@@ -653,7 +657,32 @@ pub(crate) fn build_metrics(block: &Block<'_>, bbox: (f64, f64, f64, f64)) -> Sh
             Some((s, x, y))
         })
         .collect();
-    ShapeMetrics { bbox, anchors }
+    // The stdlib's round shapes: the `circle` fundamental and the
+    // `node` graph shape (which lowers to a circle of radius
+    // min(w,h)/2). Edges to these attach on the circle boundary.
+    let round = matches!(block.kind(), "circle" | "node");
+    ShapeMetrics {
+        bbox,
+        anchors,
+        round,
+    }
+}
+
+/// Point on a round shape's circle boundary where a ray from the
+/// center toward `target` exits. The radius mirrors the lowering of
+/// `circle` / `node` (`min(w, h) / 2`), so the arrow lands exactly on
+/// the drawn outline. Returns the center when `target` coincides with
+/// it (a degenerate, zero-length edge).
+pub(crate) fn round_boundary_point(bbox: &(f64, f64, f64, f64), target: (f64, f64)) -> (f64, f64) {
+    let (cx, cy) = bbox_center(bbox);
+    let r = bbox.2.min(bbox.3) / 2.0;
+    let dx = target.0 - cx;
+    let dy = target.1 - cy;
+    let dist = dx.hypot(dy);
+    if r <= 0.0 || dist <= f64::EPSILON {
+        return (cx, cy);
+    }
+    (cx + dx / dist * r, cy + dy / dist * r)
 }
 
 pub(crate) fn anchor_point_for_side(side: Side, bbox: (f64, f64, f64, f64)) -> (f64, f64) {
@@ -932,13 +961,28 @@ pub(crate) fn plan_edge(
         _ => None,
     };
     let points = if straight {
-        match pair {
-            Some(((_, x1, y1), (_, x2, y2))) => vec![(x1, y1), (x2, y2)],
-            None => {
-                let (a, b) = (bbox_center(&src.bbox), bbox_center(&dst.bbox));
-                vec![a, b]
+        let ca = bbox_center(&src.bbox);
+        let cb = bbox_center(&dst.bbox);
+        // Anchor pair gives the default endpoints (cardinal side
+        // midpoints); fall back to centers when no anchors exist.
+        let (mut p1, mut p2) = match pair {
+            Some(((_, x1, y1), (_, x2, y2))) => ((x1, y1), (x2, y2)),
+            None => (ca, cb),
+        };
+        // A round shape (circle / node) instead attaches on its circle
+        // boundary along the center-to-center line, so the arrow points
+        // radially at the node and touches its edge — not one of the
+        // four cardinal anchors. Self-loops keep the anchor behaviour
+        // (a radial point would collapse to the center).
+        if !is_self_loop {
+            if src.round {
+                p1 = round_boundary_point(&src.bbox, cb);
+            }
+            if dst.round {
+                p2 = round_boundary_point(&dst.bbox, ca);
             }
         }
+        vec![p1, p2]
     } else {
         let ((src_side, sx, sy), (dst_side, dx, dy)) = pair?;
         // Obstacles: every shape *except* those whose bbox strictly
