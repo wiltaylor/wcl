@@ -1,0 +1,39 @@
+// ── Stdlib math block ──────────────────────────────────────────────
+//
+// A display-style LaTeX equation. The equation is laid out and rendered
+// to a self-contained inline SVG in Rust by the RaTeX pipeline (the
+// `Math` fundamental) — not expressible in WCL — while this block owns
+// the centring wrapper via the `lower`. The source goes in the inline
+// label, so both a one-liner and a heredoc read naturally:
+//
+//   math "E = mc^2"
+//
+//   math <<TEX
+//     \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+//     TEX
+//
+// The heredoc form needs no backslash escaping. For inline equations in
+// prose use `$…$` (text style) or `$$…$$` (display style); see
+// `inline-patterns.wcl`. Equations paint with `currentColor`, so they
+// follow the surrounding text colour (theme / class / light-dark toggle).
+
+@block("math")
+type Math extends WdocBlock {
+  @inline(0) source: utf8
+  id:    identifier?
+  class: list<utf8>?
+  lower = fn(m: Math) -> list<HtmlFundamental>
+    [HtmlFundamental::Math { latex: m.source, display: true, class: m.class }]
+}
+
+// Centring + scroll-on-overflow for block equations, and the inline
+// error marker. No blanket `path { fill }` rule — the Rust renderer
+// rewrites only the *default* black to `currentColor`, so an explicit
+// `\textcolor{…}` keeps its colour; a CSS override would clobber it.
+stylesheet "wdoc-math" {
+  css = <<CSS
+    .wdoc-math { display: block; text-align: center; margin: 1em 0; overflow-x: auto; overflow-y: hidden; }
+    .wdoc-math svg { max-width: 100%; }
+    .wdoc-math-error { font-family: monospace; color: #bf616a; }
+    CSS
+}

@@ -211,6 +211,11 @@ impl<'a> Lexer<'a> {
                     self.pos += 2; // consume `<<`
                     return self.lex_heredoc(start, StringPrefix::plain(StringEncoding::Utf8));
                 }
+                // Raw heredoc opener: `<<'TAG'` — body taken verbatim.
+                if self.peek_at(1) == Some(b'<') && self.peek_at(2) == Some(b'\'') {
+                    self.pos += 2; // consume `<<`, leaving the cursor at `'`
+                    return self.lex_heredoc(start, StringPrefix::raw_utf8());
+                }
                 Ok(self.two_or_one(start, b'=', TokenKind::LtEq, TokenKind::Lt))
             }
             b'>' => Ok(self.two_or_one(start, b'=', TokenKind::GtEq, TokenKind::Gt)),
@@ -472,6 +477,10 @@ impl<'a> Lexer<'a> {
 struct StringPrefix {
     encoding: StringEncoding,
     interpolated: bool,
+    /// Raw body: no escape processing and no `${…}` interpolation. Only
+    /// the `<<'TAG'` heredoc opener sets this; the body is taken
+    /// verbatim (handy for backslash-heavy text like LaTeX or regexes).
+    raw: bool,
 }
 
 impl StringPrefix {
@@ -479,6 +488,7 @@ impl StringPrefix {
         Self {
             encoding,
             interpolated: false,
+            raw: false,
         }
     }
 
@@ -486,6 +496,16 @@ impl StringPrefix {
         Self {
             encoding,
             interpolated: true,
+            raw: false,
+        }
+    }
+
+    /// A raw (`<<'TAG'`) UTF-8 heredoc: literal body, no escapes/interp.
+    fn raw_utf8() -> Self {
+        Self {
+            encoding: StringEncoding::Utf8,
+            interpolated: false,
+            raw: true,
         }
     }
 
@@ -1094,6 +1114,35 @@ mod tests {
     fn heredoc_interprets_escapes() {
         let s = "<<END\nhi\\tthere\\nline\nEND\n";
         assert_eq!(lex_str(s), StringLit::Utf8("hi\tthere\nline\n".into()));
+    }
+
+    #[test]
+    fn raw_heredoc_takes_body_verbatim() {
+        // `<<'TAG'` — backslashes are literal, no escape interpretation,
+        // so LaTeX (`\frac`, `\theta`) survives unmangled. A plain
+        // heredoc would reject `\f` / turn `\t` into a tab.
+        let s = "<<'TEX'\n\\frac{a}{b} \\theta\nTEX\n";
+        assert_eq!(lex_str(s), StringLit::Utf8("\\frac{a}{b} \\theta\n".into()));
+    }
+
+    #[test]
+    fn raw_heredoc_ignores_interpolation_slots() {
+        // `${…}` is literal in a raw heredoc, not an interpolation slot.
+        let s = "<<'RAW'\na ${b} c\nRAW\n";
+        assert_eq!(lex_str(s), StringLit::Utf8("a ${b} c\n".into()));
+    }
+
+    #[test]
+    fn raw_heredoc_strips_common_indent() {
+        let s = "<<'RAW'\n    \\foo\n\n    \\bar\n    RAW\n";
+        assert_eq!(lex_str(s), StringLit::Utf8("\\foo\n\n\\bar\n".into()));
+    }
+
+    #[test]
+    fn raw_heredoc_unclosed_tag_quote_errors() {
+        let mut lex = Lexer::new("<<'TEX\n\\frac\nTEX\n");
+        let err = lex.next_token().unwrap_err();
+        assert!(err.message.contains("single quote"), "got: {}", err.message);
     }
 
     #[test]

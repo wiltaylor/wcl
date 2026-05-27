@@ -758,25 +758,47 @@ impl Printer {
     }
 
     fn print_heredoc(&mut self, body: &str, prefix: &str, _interpolated: bool) {
-        self.push(prefix);
-        self.push("<<DOC\n");
-        // Indent each line of the body at the current depth + 1 so the
-        // indent-stripping logic at parse time recovers the original
-        // content. Trailing newline of body is significant — the parser
-        // adds one per line so the round-trip is content-with-trailing-\n.
-        let target_indent = self.depth + 1;
-        let prefix_str = self.indent_str.repeat(target_indent as usize);
-        for line in body.split_inclusive('\n') {
-            // The body always ends with `\n` from the heredoc parser.
-            // If the very last "line" doesn't have a `\n`, the user
-            // built it manually; emit it as-is.
-            self.push(&prefix_str);
-            self.push(line);
-        }
-        // Closer line at the current indentation level.
+        // Indent each body line at depth + 1 so parse-time indent
+        // stripping recovers the original content. The trailing newline
+        // is significant — the parser adds one per line, so the
+        // round-trip value ends with `\n`.
+        let body_indent = self.indent_str.repeat((self.depth + 1) as usize);
         let closer_indent = self.indent_str.repeat(self.depth as usize);
+        // Pick a tag that doesn't collide with a (trimmed) body line,
+        // so the closer can't trigger early.
+        let tag = pick_heredoc_tag(body);
+
+        // A plain `<<TAG` body is escape-interpreted on re-parse, so a
+        // backslash would break the round-trip (`\f` → invalid escape).
+        // For utf8 bodies emit a raw `<<'TAG'` heredoc — body taken
+        // verbatim, which also keeps backslash-heavy text (LaTeX,
+        // regexes) readable. The rarer typed-encoding heredocs fall back
+        // to a plain heredoc with backslashes escaped so the value still
+        // round-trips.
+        if prefix.is_empty() && body.contains('\\') {
+            self.push("<<'");
+            self.push(&tag);
+            self.push("'\n");
+            for line in body.split_inclusive('\n') {
+                self.push(&body_indent);
+                self.push(line);
+            }
+            self.push(&closer_indent);
+            self.push(&tag);
+            return;
+        }
+
+        self.push(prefix);
+        self.push("<<");
+        self.push(&tag);
+        self.push("\n");
+        for line in body.split_inclusive('\n') {
+            self.push(&body_indent);
+            // Escape backslashes only; the literal `\n` stays a line break.
+            self.push(&line.replace('\\', "\\\\"));
+        }
         self.push(&closer_indent);
-        self.push("DOC");
+        self.push(&tag);
     }
 
     fn print_block_expr(&mut self, lets: &[LetBinding], tail: &Expr) {
@@ -1052,6 +1074,26 @@ fn bin_op_bp(op: BinOp) -> (u8, u8) {
 const UNARY_BP: u8 = 13;
 const CALL_BP: u8 = 14;
 const MEMBER_BP: u8 = 15;
+
+/// Choose a heredoc tag that no (trimmed) body line equals, so the
+/// closer line can't fire early. Falls back to a numbered tag in the
+/// pathological case where every candidate appears in the body.
+fn pick_heredoc_tag(body: &str) -> String {
+    let lines: std::collections::HashSet<&str> = body.lines().map(str::trim).collect();
+    for cand in ["DOC", "TEX", "RAW", "MATH", "BODY", "END", "HEREDOC"] {
+        if !lines.contains(cand) {
+            return cand.to_string();
+        }
+    }
+    let mut i = 0;
+    loop {
+        let t = format!("DOC{i}");
+        if !lines.contains(t.as_str()) {
+            return t;
+        }
+        i += 1;
+    }
+}
 
 fn escape_inline_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len());

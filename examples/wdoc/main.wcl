@@ -101,6 +101,7 @@ import "./pages/overview.wcl"
 import "./pages/about.wcl"
 import "./pages/connections.wcl"
 import "./pages/code.wcl"
+import "./pages/math.wcl"
 import "./pages/charts.wcl"
 import "./pages/terminal.wcl"
 import "./pages/icons.wcl"
@@ -124,6 +125,7 @@ page index { sites = [:showcase]
   text { span "• [Connections](connections) — flat edges, cross-container edges, obstacle routing, hubs, restricted anchors." {} }
   text { span "• [Charts](charts) — bar, line, and pie charts with scales, axis labels, multiple series, and class theming." {} }
   text { span "• [Code blocks](code) — syntax-highlighted listings for Rust, Python, JSON, WCL, and an unknown language." {} }
+  text { span "• [Math](math) — LaTeX equations (block + inline `$…$` / `$$…$$`) typeset to self-contained SVG via RaTeX, themed by text colour." {} }
   text { span "• [Terminals](terminal) — character-grid terminals with Nerd Font glyphs, full ANSI styling, and asciinema replay." {} }
   text { span "• [Icons](icons) — inline `:name:` glyphs and scalable diagram icons from the bundled Lucide / Bootstrap packs, themed via classes." {} }
   text { span "• [Tilemaps](tilemap) — index-based tile grids cut from a spritesheet `tileset`, authored numerically or with a symbol legend, overlaid with other diagram shapes." {} }

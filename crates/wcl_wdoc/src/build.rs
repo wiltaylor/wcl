@@ -49,6 +49,7 @@ fn schema_registry() -> Registry {
     r.register("wdoc/headings.wcl", include_str!("../lib/headings.wcl"));
     r.register("wdoc/code.wcl", include_str!("../lib/code.wcl"));
     r.register("wdoc/terminal.wcl", include_str!("../lib/terminal.wcl"));
+    r.register("wdoc/math.wcl", include_str!("../lib/math.wcl"));
     r
 }
 

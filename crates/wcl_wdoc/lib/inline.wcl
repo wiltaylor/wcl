@@ -11,6 +11,12 @@ union InlineSpan {
   // declared `iconset`s and emits a `<use>` of the shared sprite. An
   // unresolved name renders as the literal `:name:` text.
   Icon  { name: utf8 class: list<utf8>? }
+  // A LaTeX equation, produced by the built-in `$…$` (text style) and
+  // `$$…$$` (display style) patterns. `latex` is the equation body; the
+  // renderer lays it out with RaTeX and emits a baseline-aligned,
+  // self-contained SVG that follows the text colour. Bad LaTeX renders
+  // as an inline error marker, not a build failure.
+  Math  { latex: utf8 display: bool? class: list<utf8>? }
 }
 
 // Regex-driven inline parser. The `pattern` field holds a regex;

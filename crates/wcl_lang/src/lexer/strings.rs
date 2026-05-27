@@ -218,7 +218,7 @@ impl<'a> Lexer<'a> {
         start: usize,
         prefix: StringPrefix,
     ) -> Result<Token, LexError> {
-        let tag = self.lex_heredoc_opener(start)?;
+        let tag = self.lex_heredoc_opener(start, prefix.raw)?;
         let raw_lines = self.scan_heredoc_body(start, &tag)?;
         let min_indent = raw_lines
             .iter()
@@ -228,7 +228,9 @@ impl<'a> Lexer<'a> {
             .unwrap_or(0);
         let token_span = Span::new(start, self.pos);
         let body_end = self.pos;
-        if prefix.interpolated {
+        if prefix.raw {
+            self.build_heredoc_raw(start, prefix, &raw_lines, min_indent, body_end, token_span)
+        } else if prefix.interpolated {
             self.build_heredoc_interpolated(start, prefix, &raw_lines, min_indent, token_span)
         } else {
             self.build_heredoc_plain(start, prefix, &raw_lines, min_indent, body_end, token_span)
@@ -238,7 +240,12 @@ impl<'a> Lexer<'a> {
     /// Parse the heredoc opener: the tag identifier, same-line trivia
     /// (spaces, tabs, line comments), and the terminating `\n`. Leaves
     /// `self.pos` at the first byte of the body. Returns the tag.
-    fn lex_heredoc_opener(&mut self, start: usize) -> Result<String, LexError> {
+    fn lex_heredoc_opener(&mut self, start: usize, raw: bool) -> Result<String, LexError> {
+        // Raw heredocs quote the tag (`<<'TAG'`); the cursor is at the
+        // opening `'`. Consume it; the closer line is still the bare tag.
+        if raw {
+            self.pos += 1; // opening `'`
+        }
         let tag_start = self.pos;
         while matches!(self.peek(), Some(c) if is_ident_cont(c)) {
             self.pos += 1;
@@ -252,6 +259,15 @@ impl<'a> Lexer<'a> {
         let tag = std::str::from_utf8(&self.src[tag_start..self.pos])
             .expect("ident is ASCII")
             .to_string();
+        if raw {
+            if self.peek() != Some(b'\'') {
+                return Err(LexError {
+                    message: "raw heredoc tag must be closed with a single quote (<<'TAG')".into(),
+                    span: Span::new(start, self.pos),
+                });
+            }
+            self.pos += 1; // closing `'`
+        }
 
         // Same-line trailing trivia. Anything other than ws / line
         // comment is a hard error — the user almost certainly meant to
@@ -380,6 +396,37 @@ impl<'a> Lexer<'a> {
                 &line[min_indent.min(line.len())..]
             };
             interpret_escapes_into(stripped, start, &mut body)?;
+            body.push('\n');
+        }
+        let kind = self.materialise_string(prefix.encoding, body, start, body_end)?;
+        Ok(Token::new(TokenKind::Str(kind), token_span))
+    }
+
+    /// Raw (`<<'TAG'`) body: indent-stripped lines copied verbatim — no
+    /// escape decoding, no `${...}` interpolation. The source is valid
+    /// UTF-8 and indent stripping only removes leading ASCII whitespace,
+    /// so each stripped line stays a valid UTF-8 slice.
+    fn build_heredoc_raw(
+        &self,
+        start: usize,
+        prefix: StringPrefix,
+        raw_lines: &[(usize, &[u8])],
+        min_indent: usize,
+        body_end: usize,
+        token_span: Span,
+    ) -> Result<Token, LexError> {
+        let mut body = String::new();
+        for (line_src_start, line) in raw_lines {
+            let stripped: &[u8] = if is_blank(line) {
+                &[]
+            } else {
+                &line[min_indent.min(line.len())..]
+            };
+            let s = std::str::from_utf8(stripped).map_err(|_| LexError {
+                message: "invalid UTF-8 in raw heredoc".into(),
+                span: Span::new(*line_src_start, line_src_start + stripped.len()),
+            })?;
+            body.push_str(s);
             body.push('\n');
         }
         let kind = self.materialise_string(prefix.encoding, body, start, body_end)?;

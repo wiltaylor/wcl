@@ -215,6 +215,9 @@ pub(crate) fn render_html_variant(
         // Syntax-highlighted code body (syntect). Like `inline`, the
         // engine is a leaf; the `<pre><code>` wrapper is the `code` lower.
         "highlighted" => render_highlighted_fundamental(map),
+        // LaTeX → self-contained SVG via RaTeX. Like `highlighted`, the
+        // SVG is a Rust leaf; the centring `<div>` wrapper is in math.rs.
+        "math" => crate::math::render_math_fundamental(map),
         other => {
             let arg = payload_to_record(map, other);
             let Some(fv) = lookup_type_lower(doc, other) else {

@@ -251,6 +251,7 @@ impl InlinePatterns {
             "Plain" => self.render_plain(doc, map, depth),
             "Link" => self.render_link(doc, map, depth),
             "Icon" => self.render_icon(map),
+            "Math" => crate::math::render_inline_math(map),
             _ => String::new(),
         }
     }

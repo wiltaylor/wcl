@@ -42,3 +42,25 @@ inline_pattern icon {
   to_span = fn(g: list<utf8>) -> list<InlineSpan>
     [InlineSpan::Icon { name: at(g, 1), class: none }]
 }
+
+// `$$…$$` → a display-style inline equation. Declared before the
+// text-style `$…$` so it wins at a `$$` opener. (In a plain string `$`
+// is a literal byte — interpolation needs an interpolated-prefixed
+// string — and `\\$` decodes to the two chars `\$` the regex needs to
+// match a literal dollar.) Lazy body so adjacent equations don't merge.
+inline_pattern math_display {
+  pattern = "\\$\\$([^\n]+?)\\$\\$"
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Math { latex: at(g, 1), display: true, class: none }]
+}
+
+// `$…$` → a text-style inline equation. The body may not touch the
+// delimiters with whitespace (`[^\s$]` at each end), which keeps prose
+// like `it cost $10 or $20` from matching (the `regex` engine has no
+// look-around, so this no-adjacent-space rule is the guard). A
+// malformed equation renders as an inline error marker, not a failure.
+inline_pattern math {
+  pattern = "\\$([^\\s$](?:[^$\n]*[^\\s$])?)\\$"
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Math { latex: at(g, 1), display: false, class: none }]
+}

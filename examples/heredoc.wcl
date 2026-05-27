@@ -8,11 +8,17 @@
 //
 // Typed prefixes (`ascii<<TAG`, `utf16<<TAG`, `utf32<<TAG`) compose
 // with heredocs the same way they compose with `"..."` strings.
+//
+// A *raw* heredoc quotes the tag (`<<'TAG'`): its body is taken
+// verbatim — no escape processing, no `${...}` interpolation — so
+// backslash-heavy text (LaTeX, regexes, Windows paths) needs no
+// doubling. Indentation stripping still applies.
 
 @document
 type Demo {
   message: utf8
   plain:   ascii
+  raw:     utf8
   @child("note") note: Note
 }
 
@@ -32,6 +38,11 @@ plain = ascii<<EOF
   plain ASCII only
   spans two lines
   EOF
+
+// Raw: backslashes and `${...}` survive untouched.
+raw = <<'TEX'
+  \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}  % no ${interpolation} here
+  TEX
 
 note "release" {
   body = <<NOTES

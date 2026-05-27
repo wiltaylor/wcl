@@ -29,3 +29,4 @@ import <charts.wcl>           // bar / line / pie charts + geometry
 import <headings.wcl>         // h1..h6
 import <code.wcl>             // syntax-highlighted code block
 import <terminal.wcl>         // terminal grid + primitives
+import <math.wcl>             // LaTeX equations → SVG (RaTeX)

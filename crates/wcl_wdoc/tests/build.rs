@@ -33,7 +33,7 @@ fn build_emits_fundamentals_for_example_site() {
     // output root; docs/blog go to subdirectories.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 16); // showcase 10 + docs 3 + blog 3
+    assert_eq!(n, 17); // showcase 11 + docs 3 + blog 3
 
     // The richer content (text + classes + diagram + flowchart) is on
     // the showcase overview page (at the root, since showcase is `root`).
@@ -1863,11 +1863,11 @@ page index {
 fn build_processes_full_code_example_page() {
     // Smoke test against the code page in the example, which exercises
     // Rust, Python, JSON, WCL, and an unknown language in one page. The
-    // example declares three sites (16 pages total); `showcase` is the
+    // example declares three sites (17 pages total); `showcase` is the
     // `root` site, so the code page renders flat at the output root.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 16);
+    assert_eq!(n, 17);
     let html = std::fs::read_to_string(out.path().join("code.html")).expect("read code.html");
     assert!(
         html.matches("<pre class=\"code-block\"").count() >= 5,
@@ -4088,7 +4088,7 @@ fn multisite_example_root_site_and_subdirs() {
     let out = TempDir::new().expect("mkdir tempdir");
     let dir = out.path();
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), dir);
-    assert_eq!(n, 16);
+    assert_eq!(n, 17);
 
     // Showcase is at the root: its pages are flat, and there's no
     // `showcase/` subdirectory.
@@ -4348,5 +4348,142 @@ page pb { sites = [:b]  text { span "B" {} } }
     assert!(
         !b.contains("--wdoc-bg:#282828;"),
         "site b must not leak gruvbox:\n{b}"
+    );
+}
+
+// ── Math (RaTeX) tests ──────────────────────────────────────────────
+
+#[test]
+fn build_renders_math_block_self_contained() {
+    // A `math` block authored with a raw heredoc (`<<'TEX'`) — LaTeX
+    // backslashes survive verbatim. With no `site`/template the page is
+    // bare, so the SVG is the only thing in the body: a clean place to
+    // assert the equation embeds its glyph outlines and is themed.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("m.wcl");
+    std::fs::write(
+        &src,
+        "page index {\n  math <<'TEX'\n    \\frac{a}{b}\n    TEX\n  {}\n}\n",
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<div class=\"wdoc-math\">"),
+        "math block should wrap in a centring div:\n{html}"
+    );
+    assert!(html.contains("<svg"), "math should emit an svg:\n{html}");
+    assert!(
+        html.contains("<path"),
+        "glyphs should be embedded as outline paths:\n{html}"
+    );
+    assert!(
+        html.contains("currentColor"),
+        "default fill should become currentColor:\n{html}"
+    );
+    assert!(
+        !html.contains("fill=\"rgba(0,0,0"),
+        "no baked-in black glyph fill should remain (rewritten to currentColor):\n{html}"
+    );
+}
+
+#[test]
+fn build_renders_inline_math() {
+    // `$…$` inline (text style). The span carries the wdoc-math-inline
+    // class and a baseline `vertical-align` so it sits on the text line.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = write_inline_fixture(&tmp, "Energy is $E = mc^2$ today");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("class=\"wdoc-math-inline\""),
+        "inline math span missing:\n{html}"
+    );
+    assert!(
+        html.contains("<svg"),
+        "inline math should emit svg:\n{html}"
+    );
+    assert!(
+        html.contains("vertical-align:-"),
+        "inline math should baseline-align:\n{html}"
+    );
+}
+
+#[test]
+fn build_renders_display_inline_math() {
+    // `$$…$$` inline (display style) renders the same way structurally.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = write_inline_fixture(&tmp, "sum $$x^2 + y^2 = z^2$$ here");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("class=\"wdoc-math-inline\"") && html.contains("<svg"),
+        "display inline math should render an svg span:\n{html}"
+    );
+}
+
+#[test]
+fn build_inline_math_leaves_currency_alone() {
+    // The no-adjacent-space rule keeps `$10 or $20` from matching, so
+    // prices render as literal text with no equation.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = write_inline_fixture(&tmp, "it cost $10 or $20 total");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("$10 or $20"),
+        "currency should pass through literally:\n{html}"
+    );
+    assert!(
+        !html.contains("wdoc-math-inline"),
+        "currency must not be typeset as math:\n{html}"
+    );
+}
+
+#[test]
+fn build_math_preserves_explicit_color() {
+    // An explicit `\textcolor` survives the default-black→currentColor
+    // rewrite (only black is rewritten).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("m.wcl");
+    std::fs::write(
+        &src,
+        "page index {\n  math <<'TEX'\n    \\textcolor{red}{x} + y\n    TEX\n  {}\n}\n",
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("rgba(255,0,0"),
+        "explicit red should be preserved:\n{html}"
+    );
+    assert!(
+        html.contains("currentColor"),
+        "the rest should still theme to currentColor:\n{html}"
+    );
+}
+
+#[test]
+fn build_bad_math_is_error_marker_not_failure() {
+    // Malformed LaTeX degrades to an inline marker; the build still
+    // succeeds (mirrors the terminal block's bad-source behaviour).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("m.wcl");
+    std::fs::write(
+        &src,
+        "page index {\n  math <<'TEX'\n    \\frac{\n    TEX\n  {}\n}\n",
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path()); // must not panic / error
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("wdoc-math-error"),
+        "bad equation should emit an error marker:\n{html}"
     );
 }

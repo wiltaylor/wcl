@@ -273,6 +273,12 @@ union HtmlFundamental {
   // and emitted as `<span class="tok-…">` runs (no wrapper). syntect is
   // Rust (a leaf); the `<pre><code>` wrapper comes from the `code` lower.
   Highlighted { source: utf8 language: utf8 }
+  // A LaTeX equation rendered to a self-contained SVG (RaTeX). `display`
+  // selects display vs text style. The pipeline is Rust (a leaf, like
+  // `Highlighted`); the centring `<div>` wrapper comes from the `math`
+  // lower. Equations paint with `currentColor`, so they follow the
+  // surrounding text colour.
+  Math { latex: utf8 display: bool? class: list<utf8>? }
 }
 
 // Styling for interactive (pan + zoom) diagrams. Only a `pan_zoom`
