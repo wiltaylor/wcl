@@ -1,14 +1,18 @@
 //! SVG diagram rendering: layout (grid / layered), edge routing, shape
 //! geometry, the fundamental shape emitters, and pan/zoom.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
+use std::path::Path;
 
 use wcl_lang::{Block, Document, Value};
 
 use crate::icons::{IconRegistry, ShapeOverride};
 use crate::image::{self, ImageRegistry};
+use crate::inline::InlinePatterns;
 use crate::layered::{self, Direction};
+use crate::map;
 use crate::routing::{self, EdgePath, Obstacle, Side};
 use crate::text;
 use crate::tileset::{self, TilesetRegistry};
@@ -48,10 +52,17 @@ pub(crate) struct Collector {
 /// repeated `doc` / `icons` / `tilesets` trio.
 #[derive(Clone, Copy)]
 pub(crate) struct RenderCtx<'a> {
-    doc: &'a Document,
-    icons: &'a IconRegistry,
-    tilesets: &'a TilesetRegistry,
-    images: &'a ImageRegistry,
+    pub(crate) doc: &'a Document,
+    pub(crate) icons: &'a IconRegistry,
+    pub(crate) tilesets: &'a TilesetRegistry,
+    pub(crate) images: &'a ImageRegistry,
+    /// The full inline-pattern set + source base dir, so a `map`'s pin
+    /// cards can render arbitrary wdoc content via `render_block`.
+    pub(crate) patterns: &'a InlinePatterns,
+    pub(crate) base_dir: Option<&'a Path>,
+    /// Sink for HTML that must sit *outside* the `<svg>` (a `map`'s pin
+    /// cards). `render_diagram` drains it into the viewport wrapper.
+    pub(crate) overlays: &'a RefCell<Vec<String>>,
 }
 
 /// Counterpart to [`RenderCtx`] for the geometry-collection pass, which
@@ -68,6 +79,11 @@ pub(crate) struct CollectCtx<'a> {
 /// player asset pattern.
 pub(crate) const DIAGRAM_PAN_ZOOM_JS: &str = include_str!("../../assets/diagram-pan-zoom.js");
 
+/// The bundled map player (layer level-of-detail + popup cards), written
+/// to `_wdoc/` and loaded once per page when any diagram contains a `map`.
+/// Mirrors the pan/zoom + terminal player asset pattern.
+pub(crate) const WDOC_MAP_JS: &str = include_str!("../../assets/wdoc-map.js");
+
 /// `true` when `block` is an interactive (`pan_zoom`) diagram or
 /// contains one anywhere in its subtree. Drives the conditional asset
 /// write + per-page script injection (mirrors `terminal::uses_terminal`).
@@ -76,20 +92,35 @@ pub(crate) fn uses_pan_zoom(block: &Block<'_>) -> bool {
         || block.blocks().any(|b| uses_pan_zoom(&b))
 }
 
+/// `true` when `block` is, or contains, a `map`. Drives the map asset
+/// write + script injection, and (in `render_diagram`) makes a diagram
+/// holding a map interactive even without an explicit `pan_zoom`.
+pub(crate) fn uses_map(block: &Block<'_>) -> bool {
+    block.kind() == "map" || block.blocks().any(|b| uses_map(&b))
+}
+
 pub(crate) fn render_diagram(
     doc: &Document,
     block: &Block<'_>,
-    icons: &IconRegistry,
-    tilesets: &TilesetRegistry,
-    images: &ImageRegistry,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
 ) -> String {
+    // Pin cards render to HTML that must sit outside the `<svg>`; collect
+    // them here and splice them into the viewport wrapper below.
+    let overlays = RefCell::new(Vec::new());
     let ctx = RenderCtx {
         doc,
-        icons,
-        tilesets,
-        images,
+        icons: patterns.icons(),
+        tilesets: patterns.tilesets(),
+        images: patterns.images(),
+        patterns,
+        base_dir,
+        overlays: &overlays,
     };
-    let cctx = CollectCtx { tilesets, images };
+    let cctx = CollectCtx {
+        tilesets: patterns.tilesets(),
+        images: patterns.images(),
+    };
     let cls = class_attr(block);
     let width = field_i64(block, "width").unwrap_or(0);
     let height = field_i64(block, "height").unwrap_or(0);
@@ -104,10 +135,11 @@ pub(crate) fn render_diagram(
     append_attr(&mut out, "id", field_id(block, "id").as_deref());
     // Interactive pan + zoom: carry the fitted view + limits on the
     // `<svg>` so the bundled player can drive its `viewBox`, and wrap
-    // it in a viewport that hosts the overlaid controls. Plain diagrams
-    // keep the bare-`<svg>` output unchanged.
-    let pan_zoom = field_bool(block, "pan_zoom") == Some(true);
-    if pan_zoom {
+    // it in a viewport that hosts the overlaid controls. A diagram with a
+    // `map` is interactive even without an explicit `pan_zoom` (a map is
+    // inherently zoomable). Plain diagrams keep the bare-`<svg>` output.
+    let interactive = field_bool(block, "pan_zoom") == Some(true) || uses_map(block);
+    if interactive {
         let zoom_min = field_f64(block, "zoom_min").unwrap_or(1.0);
         let zoom_max = field_f64(block, "zoom_max").unwrap_or(4.0);
         let pan_margin = field_f64(block, "pan_margin").unwrap_or(0.0);
@@ -125,8 +157,14 @@ pub(crate) fn render_diagram(
          viewBox=\"{viewbox}\">{defs}{shapes}{edges}</svg>"
     )
     .expect("write to String");
-    if pan_zoom {
-        return format!("<div class=\"wdoc-diagram-viewport\">{out}{DIAGRAM_CONTROLS}</div>");
+    if interactive {
+        // Pin cards (collected while rendering shapes) sit after the SVG,
+        // inside the same relatively-positioned viewport, so the map player
+        // can position them as popups over the map.
+        let cards: String = overlays.borrow().concat();
+        return format!(
+            "<div class=\"wdoc-diagram-viewport\">{out}{DIAGRAM_CONTROLS}{cards}</div>"
+        );
     }
     out
 }
@@ -419,6 +457,13 @@ pub(crate) fn collect_shape_positions(
             // Mirror image::render_svg's geometry (declared or natural
             // size × scale, anchored) so edges + the viewBox fit see it.
             let (x, y, w, h) = image::image_bbox(block, cctx.images, parent_w, parent_h);
+            record(block, (tx + x, ty + y, w, h), out);
+        }
+        "map" => {
+            // The map's box is its declared coordinate space (width ×
+            // height), positioned via the shared anchor helper — so the
+            // viewBox fits the whole map and pins land in-frame.
+            let (x, y, w, h) = map::map_bbox(block, parent_w, parent_h);
             record(block, (tx + x, ty + y, w, h), out);
         }
         "container" => {
@@ -918,6 +963,10 @@ pub(crate) fn render_shape(
         // An `image` embeds an external raster as an SVG `<image>`; the
         // asset copy + path rewrite is special-cased like `tilemap`.
         "image" => return Some(image::render_svg(block, ctx.images, parent_w, parent_h)),
+        // A `map` is a zoomable image + pins + popup cards — special-cased
+        // like `tilemap` (its tiles, icon `<use>`s, and HTML cards aren't
+        // expressible in WCL). It pushes its cards into `ctx.overlays`.
+        "map" => return Some(map::render_map(block, ctx, parent_w, parent_h)),
         kind => lower_svg_block(ctx.doc, block, kind, parent_w, parent_h),
     };
     Some(with_shape_icon(

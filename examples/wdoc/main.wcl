@@ -106,6 +106,7 @@ import "./pages/charts.wcl"
 import "./pages/terminal.wcl"
 import "./pages/icons.wcl"
 import "./pages/tilemap.wcl"
+import "./pages/map.wcl"
 import "./pages/wireframe.wcl"
 import "./pages/docs.wcl"
 import "./pages/blog.wcl"
@@ -129,6 +130,7 @@ page index { sites = [:showcase]
   text { span "• [Terminals](terminal) — character-grid terminals with Nerd Font glyphs, full ANSI styling, and asciinema replay." {} }
   text { span "• [Icons](icons) — inline `:name:` glyphs and scalable diagram icons from the bundled Lucide / Bootstrap packs, themed via classes." {} }
   text { span "• [Tilemaps](tilemap) — index-based tile grids cut from a spritesheet `tileset`, authored numerically or with a symbol legend, overlaid with other diagram shapes." {} }
+  text { span "• [Maps](map) — a zoomable, pinned image (a `map` in a diagram) with clickable markers that open cards of wdoc content; optional tiled multi-zoom layers." {} }
   text { span "• [Wireframes](wireframe) — UI mockups from nesting widgets (windows, buttons, inputs, dropdowns, checkboxes, radios, toggles) arranged with layout blocks and themed via classes." {} }
   text { span "• [About](about) — what this example demonstrates." {} }
 

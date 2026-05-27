@@ -44,6 +44,7 @@ fn schema_registry() -> Registry {
     r.register("wdoc/icons.wcl", include_str!("../lib/icons.wcl"));
     r.register("wdoc/image.wcl", include_str!("../lib/image.wcl"));
     r.register("wdoc/tilemap.wcl", include_str!("../lib/tilemap.wcl"));
+    r.register("wdoc/map.wcl", include_str!("../lib/map.wcl"));
     r.register("wdoc/flowchart.wcl", include_str!("../lib/flowchart.wcl"));
     r.register("wdoc/charts.wcl", include_str!("../lib/charts.wcl"));
     r.register("wdoc/headings.wcl", include_str!("../lib/headings.wcl"));
@@ -439,8 +440,14 @@ fn build_site(
         write_terminal_assets(out_dir)?;
     }
     let uses_pan_zoom = spec.pages.iter().any(crate::render::uses_pan_zoom);
-    if uses_pan_zoom {
+    let uses_map = spec.pages.iter().any(crate::render::uses_map);
+    // A map drives the same viewBox camera as a pan/zoom diagram, so it
+    // needs the pan/zoom player too — plus its own layer/card player.
+    if uses_pan_zoom || uses_map {
         write_diagram_assets(out_dir)?;
+    }
+    if uses_map {
+        write_map_assets(out_dir)?;
     }
 
     // Site descriptor: the default template + title a template can show.
@@ -558,9 +565,13 @@ fn build_site(
             body.push_str("\n<script src=\"_wdoc/terminal-player.js\" defer></script>\n");
         }
         // Interactive diagrams are driven by the bundled pan/zoom player,
-        // loaded once per page (it no-ops on pages without one).
-        if uses_pan_zoom {
+        // loaded once per page (it no-ops on pages without one). A map
+        // needs that camera plus its own layer/card player.
+        if uses_pan_zoom || uses_map {
             body.push_str("\n<script src=\"_wdoc/diagram-pan-zoom.js\" defer></script>\n");
+        }
+        if uses_map {
+            body.push_str("\n<script src=\"_wdoc/wdoc-map.js\" defer></script>\n");
         }
         let html = render_page(&page_name, &css, &body);
 
@@ -671,6 +682,18 @@ fn write_diagram_assets(out_dir: &Path) -> Result<(), BuildError> {
         .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
     let player = dir.join("diagram-pan-zoom.js");
     fs::write(&player, crate::render::DIAGRAM_PAN_ZOOM_JS)
+        .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
+    Ok(())
+}
+
+/// Write the bundled map player (layer level-of-detail + popup cards) into
+/// `<out>/_wdoc/`. Pages with a `map` reference it by relative URL.
+fn write_map_assets(out_dir: &Path) -> Result<(), BuildError> {
+    let dir = out_dir.join(crate::terminal::ASSET_DIR);
+    fs::create_dir_all(&dir)
+        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
+    let player = dir.join("wdoc-map.js");
+    fs::write(&player, crate::render::WDOC_MAP_JS)
         .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
     Ok(())
 }

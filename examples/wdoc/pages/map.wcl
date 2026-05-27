@@ -1,0 +1,135 @@
+// Map demo: a `map` is a zoomable image placed inside a `diagram`, with
+// `pin` markers you can click to open a card of wdoc content. A diagram
+// holding a map is automatically interactive (wheel-zoom, drag-pan, and
+// the +/-/reset controls) and loads the bundled map player.
+//
+// The base image is NASA's public-domain "Blue Marble" (see
+// assets/map/LICENSE.txt). It's equirectangular and 1280×640, so the
+// `map`'s coordinate space is 1280×640 and a pin's x/y are pixel
+// coordinates: x = (lon+180)/360 × 1280, y = (90−lat)/180 × 640.
+
+// Pin theming rides the `class` system (icons paint with currentColor).
+class "pin-city" {
+  color = "#fbbf24"
+  dark  { color = "#fcd34d" }
+}
+
+page map { sites = [:showcase]
+  h1 "Maps" {}
+
+  text {
+    span "A `map` is a zoomable, pinned image — built for game-guide maps. Drop it in a `diagram`, place `pin`s at coordinates, and give each pin a card of wdoc content. **Scroll to zoom, drag to pan**, then click a marker." {}
+  }
+
+  // A single-image map (the common case): `source` is the whole map,
+  // resolved relative to main.wcl and copied into `_wdoc/`. `zoom_max`
+  // lifts the zoom ceiling so you can read the small markers up close.
+  diagram {
+    width    = 720
+    height   = 360
+    zoom_max = 8.0
+    map "earth" {
+      source = "assets/map/blue-marble.png"
+      width  = 1280
+      height = 640
+
+      // A pin themed by `class` (gold). Its card holds rich content —
+      // a callout composes into the popup like any other wdoc block.
+      pin "newyork" {
+        x = 377  y = 175
+        icon  = "lucide.building-2"
+        class = ["pin-city"]
+        title = "New York"
+        text { span "Financial capital on the US east coast." {} }
+        callout "Tip" { class = ["tip"]  body = "Cards accept any wdoc content — text, callouts, code, even images." }
+      }
+
+      pin "london" {
+        x = 640  y = 137
+        icon  = "lucide.landmark"
+        class = ["pin-city"]
+        title = "London"
+        text { span "On the prime meridian (longitude 0)." {} }
+      }
+
+      pin "cairo" {
+        x = 750  y = 213
+        icon  = "lucide.pyramid"
+        class = ["pin-city"]
+        title = "Cairo"
+        text { span "Where the Nile meets the desert." {} }
+      }
+
+      pin "tokyo" {
+        x = 1137  y = 193
+        icon  = "lucide.flag"
+        class = ["pin-city"]
+        title = "Tokyo"
+        text { span "See the [overview](overview) page for more demos." {} }
+      }
+
+      // The one-off `color` sugar themes a single pin without a class.
+      pin "danger" {
+        x = 1177  y = 440
+        icon  = "lucide.triangle-alert"
+        color = "#ef4444"
+        size  = 30.0
+        title = "Here be dragons"
+        text { span "Use `color` for a quick one-off marker colour, or a `class` (with `dark`/`light`) for reusable, themable styling." {} }
+      }
+    }
+  }
+
+  h2 "Tiled, multi-zoom maps" {}
+
+  text {
+    span "Large maps can supply several `layer`s at different resolutions; the player shows the sharpest one that suits the current zoom. A layer is a single image, or a grid of tiles (`cols` × `rows`) cropped from a folder — each tile named by `pattern` (default `{x}_{y}.png`)." {}
+  }
+
+  text {
+    span "**Zoom in** on the map below: at the fitted view it draws a 1024px image; once you magnify it, the player swaps in a 2048px layer assembled from eight 512px tiles, so the detail sharpens instead of pixelating." {}
+  }
+
+  // Two level-of-detail layers over the same 2048×1024 coordinate space:
+  // a single low-res image for the zoomed-out view, and a 4×2 grid of
+  // 512px JPEG tiles for the zoomed-in view (note the `pattern` override
+  // for the `.jpg` extension). The player picks by on-screen resolution.
+  diagram {
+    width    = 720
+    height   = 360
+    zoom_max = 6.0
+    map "earth-detail" {
+      width     = 2048
+      height    = 1024
+      tile_size = 512
+      layer { source = "assets/map/lod/low.jpg" }
+      layer { source = "assets/map/lod"  cols = 4  rows = 2  pattern = "{x}_{y}.jpg" }
+
+      pin "amazon" {
+        x = 683  y = 540
+        icon  = "lucide.trees"
+        class = ["pin-city"]
+        title = "Amazon basin"
+        text { span "The world's largest rainforest." {} }
+      }
+      pin "sahara" {
+        x = 1109  y = 381
+        icon  = "lucide.sun"
+        color = "#f59e0b"
+        title = "Sahara"
+        text { span "The largest hot desert." {} }
+      }
+      pin "himalaya" {
+        x = 1508  y = 353
+        icon  = "lucide.mountain-snow"
+        class = ["pin-city"]
+        title = "Himalayas"
+        text { span "Home to the highest peaks on Earth." {} }
+      }
+    }
+  }
+
+  text {
+    span "Tile / image assets are copied to `_wdoc/` and referenced by URL, so a map resolves when **served**, not via a `file://` open." {}
+  }
+}

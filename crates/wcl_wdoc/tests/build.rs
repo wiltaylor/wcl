@@ -33,7 +33,7 @@ fn build_emits_fundamentals_for_example_site() {
     // output root; docs/blog go to subdirectories.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 17); // showcase 11 + docs 3 + blog 3
+    assert_eq!(n, 18); // showcase 12 + docs 3 + blog 3
 
     // The richer content (text + classes + diagram + flowchart) is on
     // the showcase overview page (at the root, since showcase is `root`).
@@ -1867,7 +1867,7 @@ fn build_processes_full_code_example_page() {
     // `root` site, so the code page renders flat at the output root.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 17);
+    assert_eq!(n, 18);
     let html = std::fs::read_to_string(out.path().join("code.html")).expect("read code.html");
     assert!(
         html.matches("<pre class=\"code-block\"").count() >= 5,
@@ -4088,7 +4088,7 @@ fn multisite_example_root_site_and_subdirs() {
     let out = TempDir::new().expect("mkdir tempdir");
     let dir = out.path();
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), dir);
-    assert_eq!(n, 17);
+    assert_eq!(n, 18);
 
     // Showcase is at the root: its pages are flat, and there's no
     // `showcase/` subdirectory.
@@ -4486,4 +4486,188 @@ fn build_bad_math_is_error_marker_not_failure() {
         html.contains("wdoc-math-error"),
         "bad equation should emit an error marker:\n{html}"
     );
+}
+
+/// Build `src` as a standalone `main.wcl` alongside the named fake PNGs
+/// (each `w`×`h`, parent dirs created), returning the rendered
+/// `index.html` and the live output dir (so the caller can probe
+/// `_wdoc/`). Mirrors `build_tilemap` for the `map` block.
+fn build_map(src: &str, files: &[(&str, u32, u32)]) -> (String, TempDir) {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    for (path, w, h) in files {
+        let p = tmp.path().join(path);
+        if let Some(parent) = p.parent() {
+            std::fs::create_dir_all(parent).expect("mkdir asset dir");
+        }
+        std::fs::write(&p, fake_png(*w, *h)).expect("write png");
+    }
+    let file = tmp.path().join("main.wcl");
+    std::fs::write(&file, src).expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&file, out.path());
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+    (index, out)
+}
+
+/// Count `_wdoc/` files whose name starts with `prefix`.
+fn wdoc_files_with_prefix(out: &TempDir, prefix: &str) -> usize {
+    std::fs::read_dir(out.path().join("_wdoc"))
+        .expect("read _wdoc")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().starts_with(prefix))
+        .count()
+}
+
+#[test]
+fn build_renders_single_image_map_with_pins_and_cards() {
+    // A single-image map (the common case): one `source`, two pins. A
+    // diagram holding a map is interactive even without `pan_zoom`.
+    let src = r##"
+page index {
+  diagram {
+    width = 600
+    height = 400
+    map "world" {
+      source = "map.png"
+      width = 1024
+      height = 1024
+      pin "boss" {
+        x = 512  y = 480
+        icon = "lucide.skull"
+        color = "#e23"
+        title = "Dragon"
+        text { span "Guards the ruins." {} }
+      }
+      pin "town" {
+        x = 200  y = 300
+        icon = "lucide.house"
+        class = ["town-pin"]
+      }
+    }
+  }
+}
+class "town-pin" { color = "#3b82f6" }
+"##;
+    let (index, out) = build_map(src, &[("map.png", 1024, 1024)]);
+
+    // A map makes its diagram interactive (viewport wrapper + camera
+    // attributes) without an explicit `pan_zoom`.
+    assert!(index.contains("wdoc-diagram-viewport"), "{index}");
+    assert!(index.contains("data-pan-zoom=\"1\""), "{index}");
+    // The viewBox fits the map's coordinate box (1024×1024) + 10px pad,
+    // so `map_bbox` feeds the fit.
+    assert!(index.contains("viewBox=\"-10 -10 1044 1044\""), "{index}");
+
+    // The map group + its single image layer (native width read from the
+    // 1024-wide PNG header), covering the full coordinate box.
+    assert!(
+        index.contains("class=\"wdoc-map\" data-map-width=\"1024\" data-map-height=\"1024\""),
+        "{index}"
+    );
+    assert!(
+        index.contains("class=\"wdoc-map-layer\" data-native-width=\"1024\""),
+        "{index}"
+    );
+    assert!(
+        index.contains("width=\"1024\" height=\"1024\" preserveAspectRatio=\"none\""),
+        "{index}"
+    );
+
+    // Pins: a clickable group with a hit rect + the icon `<use>`. The
+    // bottom-centre anchors at (x, y): top-left = (512-12, 480-24).
+    assert!(
+        index.contains("class=\"wdoc-map-pin\" data-map-pin=\"boss\""),
+        "{index}"
+    );
+    assert!(
+        index.contains("x=\"500\" y=\"456\" width=\"24\" height=\"24\" fill=\"transparent\""),
+        "{index}"
+    );
+    assert!(
+        index.contains("href=\"_wdoc/icons.svg#lucide-skull\""),
+        "{index}"
+    );
+    assert!(index.contains("color:#e23"), "{index}");
+    // The class-themed pin carries its class on the icon.
+    assert!(
+        index.contains("data-map-pin=\"town\"") && index.contains("town-pin"),
+        "{index}"
+    );
+
+    // Cards: hidden divs keyed by pin id, with title + rendered wdoc
+    // content (the pin's `text` block). The town pin has no content, so
+    // it gets no card.
+    assert!(
+        index.contains("class=\"wdoc-map-card\" data-map-card=\"boss\" hidden>"),
+        "{index}"
+    );
+    assert!(
+        index.contains("<div class=\"wdoc-map-card-title\">Dragon</div>"),
+        "{index}"
+    );
+    assert!(
+        index.contains("<p><span>Guards the ruins.</span></p>"),
+        "{index}"
+    );
+    assert!(index.contains("wdoc-map-card-close"), "{index}");
+    assert!(!index.contains("data-map-card=\"town\""), "{index}");
+
+    // Assets: the map player + camera player are written, and the source
+    // image is copied into `_wdoc/`.
+    assert!(out.path().join("_wdoc").join("wdoc-map.js").exists());
+    assert!(
+        out.path()
+            .join("_wdoc")
+            .join("diagram-pan-zoom.js")
+            .exists()
+    );
+    assert!(wdoc_files_with_prefix(&out, "image-") >= 1);
+}
+
+#[test]
+fn build_renders_tiled_multi_zoom_map_layers() {
+    // Two level-of-detail layers: a single low-res image and a 2×2 tile
+    // grid. Each layer carries its native pixel width for the JS picker.
+    let src = r##"
+page index {
+  diagram {
+    width = 400
+    height = 400
+    map "world" {
+      width = 512
+      height = 512
+      tile_size = 256
+      layer { source = "low.png" }
+      layer { source = "tiles"  cols = 2  rows = 2 }
+    }
+  }
+}
+"##;
+    let (index, out) = build_map(
+        src,
+        &[
+            ("low.png", 256, 256),
+            ("tiles/0_0.png", 256, 256),
+            ("tiles/1_0.png", 256, 256),
+            ("tiles/0_1.png", 256, 256),
+            ("tiles/1_1.png", 256, 256),
+        ],
+    );
+
+    // Two layer groups; the low-res image's native width is its header
+    // width (256), the tiled layer's is cols × tile_size (512).
+    assert_eq!(
+        index.matches("class=\"wdoc-map-layer\"").count(),
+        2,
+        "{index}"
+    );
+    assert!(index.contains("data-native-width=\"256\""), "{index}");
+    assert!(index.contains("data-native-width=\"512\""), "{index}");
+    // The tiled layer emits one `<image>` per tile (4), each cropped to a
+    // 256×256 cell of the 512-unit map.
+    assert!(index.matches("<image ").count() >= 5, "{index}");
+
+    // Every referenced tile + the low image is copied into `_wdoc/`
+    // (5 distinct images).
+    assert!(wdoc_files_with_prefix(&out, "image-") >= 5);
 }

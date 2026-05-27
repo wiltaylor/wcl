@@ -54,6 +54,12 @@
       x = clampAxis(x, w, bx, bw);
       y = clampAxis(y, h, by, bh);
       svg.setAttribute("viewBox", x + " " + y + " " + w + " " + h);
+      // Broadcast the camera so add-ons (e.g. the map player's layer
+      // level-of-detail + card positioning) can react. No-op when nothing
+      // is listening.
+      svg.dispatchEvent(
+        new CustomEvent("wdoc:camera", { detail: { x: x, y: y, w: w, h: h, z: z } })
+      );
     }
 
     // Zoom about a focal point given as fractions (fx, fy) of the

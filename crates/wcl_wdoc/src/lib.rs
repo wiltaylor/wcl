@@ -11,6 +11,7 @@ mod icons;
 mod image;
 mod inline;
 mod layered;
+mod map;
 mod math;
 mod render;
 mod routing;
