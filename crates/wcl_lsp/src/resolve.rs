@@ -13,7 +13,7 @@
 //! refs, decorators, block kinds) and silent for the ones we can't
 //! (bare identifiers inside expressions).
 
-use wcl_lang::{DeclName, Document, Span, SymbolKind, SymbolRecord, ast};
+use wcl_lang::{DeclName, Document, Span, SymbolKind, SymbolRecord, ast, parse_for_edit};
 
 use crate::walk;
 
@@ -40,6 +40,50 @@ pub(crate) enum LocatedSymbol {
         name: String,
         decl_span: Span,
     },
+}
+
+impl LocatedSymbol {
+    /// The FQN for the variants that index a single declaration directly
+    /// (`SymbolIndex::lookup`-able). `Local`/`UnionVariant`/`SymbolEntry`
+    /// return `None` — they either carry their span inline or resolve
+    /// through a composed parent path.
+    pub(crate) fn simple_fqn(&self) -> Option<&str> {
+        match self {
+            LocatedSymbol::Type(f)
+            | LocatedSymbol::Decorator(f)
+            | LocatedSymbol::BlockKind(f)
+            | LocatedSymbol::Field(f) => Some(f.as_str()),
+            LocatedSymbol::Local { .. }
+            | LocatedSymbol::UnionVariant { .. }
+            | LocatedSymbol::SymbolEntry { .. } => None,
+        }
+    }
+
+    /// One-word label for the hover header.
+    pub(crate) fn kind_label(&self) -> &'static str {
+        match self {
+            LocatedSymbol::Type(_) => "type",
+            LocatedSymbol::Decorator(_) => "decorator",
+            LocatedSymbol::BlockKind(_) => "block kind",
+            LocatedSymbol::UnionVariant { .. } => "variant",
+            LocatedSymbol::SymbolEntry { .. } => "symbol",
+            LocatedSymbol::Field(_) => "field",
+            LocatedSymbol::Local { .. } => "local",
+        }
+    }
+
+    /// Human-facing name for display (dotted for nested variants/entries).
+    pub(crate) fn display_name(&self) -> String {
+        match self {
+            LocatedSymbol::Type(f)
+            | LocatedSymbol::Decorator(f)
+            | LocatedSymbol::BlockKind(f)
+            | LocatedSymbol::Field(f) => f.clone(),
+            LocatedSymbol::UnionVariant { union, variant } => format!("{union}.{variant}"),
+            LocatedSymbol::SymbolEntry { set, entry } => format!("{set}.{entry}"),
+            LocatedSymbol::Local { name, .. } => name.clone(),
+        }
+    }
 }
 
 /// Resolve the identifier under `offset`. Returns the discovered
@@ -113,6 +157,16 @@ pub(crate) fn locate(
             span,
         ));
     }
+    // Match-arm / if-let pattern bindings, innermost first.
+    if let Some((name, decl_span)) = scopes.bindings.iter().rev().find(|(n, _)| *n == word) {
+        return Some((
+            LocatedSymbol::Local {
+                name: (*name).to_string(),
+                decl_span: *decl_span,
+            },
+            span,
+        ));
+    }
 
     // Top-level field as a last resort. SymbolIndex carries fields,
     // but `classify()` deliberately ignores them so we only treat them
@@ -126,6 +180,29 @@ pub(crate) fn locate(
     }
 
     None
+}
+
+/// Open `source` per-file and resolve the identifier at `offset`,
+/// falling back to `root_doc` when the per-file open can't resolve it
+/// (common when the file references cross-file types). Returns the
+/// located symbol, its on-screen span, and the owned per-file
+/// [`Document`] (which several callers still need for follow-up
+/// lookups). Shared by go-to-definition, find-references, and hover.
+pub(crate) fn locate_at(
+    source: &str,
+    uri: &str,
+    offset: usize,
+    root_doc: Option<&Document>,
+) -> Option<(LocatedSymbol, Span, Option<Document>)> {
+    let local_doc = Document::open(source, uri).ok();
+    // `parse_for_edit` is purely syntactic, so the AST is available even
+    // when neither doc type-checks.
+    let ast = parse_for_edit(source, uri).ok()?;
+    let (sym, span) = local_doc
+        .as_ref()
+        .and_then(|d| locate(d, &ast, source, offset))
+        .or_else(|| root_doc.and_then(|d| locate(d, &ast, source, offset)))?;
+    Some((sym, span, local_doc))
 }
 
 /// Slice the identifier (`[A-Za-z_][A-Za-z0-9_]*`) that contains
@@ -257,22 +334,17 @@ fn short_name(fqn: &str) -> &str {
 /// `None` for symbols (builtin decorators) that have no AST site.
 pub(crate) fn declaration_span(doc: &Document, sym: &LocatedSymbol) -> Option<Span> {
     let symbols = doc.symbols();
-    let fqn = match sym {
-        LocatedSymbol::Type(f)
-        | LocatedSymbol::Decorator(f)
-        | LocatedSymbol::BlockKind(f)
-        | LocatedSymbol::Field(f) => f.as_str(),
-        LocatedSymbol::Local { decl_span, .. } => return Some(*decl_span),
-        LocatedSymbol::UnionVariant { union, variant } => {
-            return symbols
-                .lookup(&format!("{union}.{variant}"))
-                .map(|r| r.span);
-        }
+    match sym {
+        LocatedSymbol::Local { decl_span, .. } => Some(*decl_span),
+        LocatedSymbol::UnionVariant { union, variant } => symbols
+            .lookup(&format!("{union}.{variant}"))
+            .map(|r| r.span),
         LocatedSymbol::SymbolEntry { set, entry } => {
-            return symbols.lookup(&format!("{set}.{entry}")).map(|r| r.span);
+            symbols.lookup(&format!("{set}.{entry}")).map(|r| r.span)
         }
-    };
-    symbols.lookup(fqn).map(|r| r.span)
+        // Type / Decorator / BlockKind / Field — direct FQN lookup.
+        _ => symbols.lookup(sym.simple_fqn()?).map(|r| r.span),
+    }
 }
 
 #[cfg(test)]
@@ -354,6 +426,16 @@ mod tests {
         let cursor = src.find("helper + 2").unwrap() + 2;
         let (sym, _) = locate(&d, &a, src, cursor).expect("locate found something");
         assert!(matches!(sym, LocatedSymbol::Local { ref name, .. } if name == "helper"));
+    }
+
+    #[test]
+    fn locate_resolves_match_pattern_binding() {
+        let src = "x = match c1 {\n  Shape::Circle { radius, .. } => radius,\n  _ => 0.0,\n}\n";
+        let d = doc(src);
+        let a = ast(src);
+        let cursor = src.find("=> radius").unwrap() + 3;
+        let (sym, _) = locate(&d, &a, src, cursor).expect("locate found something");
+        assert!(matches!(sym, LocatedSymbol::Local { ref name, .. } if name == "radius"));
     }
 
     #[test]

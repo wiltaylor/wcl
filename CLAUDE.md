@@ -38,8 +38,7 @@ This branch (`rewrite`) is a clean restart of WCL. The previous implementation l
 
 These are deliberate, comment-documented gaps (not bugs) tracked here so the list stays honest:
 
-- **LSP match-arm pattern-binding completion** — `crates/wcl_lsp/src/walk.rs` `push_pattern_bindings` is a deliberate no-op; completion does not yet surface names bound by `match` patterns.
-- **Richer value-type introspection in interface checking** — `crates/wcl_lang/src/doc/eval.rs` `check_value_implements_iface` only structurally introspects variant values with record payloads; anything else gets a pass-through until fuller value-type introspection exists.
+- **Richer value-type introspection in interface checking** — `crates/wcl_lang/src/doc/eval.rs` `check_value_implements_iface` structurally introspects variant-with-record and bare-record values; closures, lists, tensors, and scalars still get a pass-through until the language carries runtime type tags for them.
 
 New deferred items get tracked alongside the slice that introduces them.
 

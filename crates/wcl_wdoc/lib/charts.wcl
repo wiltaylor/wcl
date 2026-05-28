@@ -41,6 +41,20 @@ let chart_ncat = fn(series: list<ChartSeries>) -> i64 {
   len(s0.values)
 }
 
+// Effective y-scale bounds, shared by the bar and line lowers. `y_min`
+// defaults to 0; `y_max` defaults to the largest data value; the upper
+// bound is nudged above the lower so a flat series still spans a
+// non-zero range. (The params take the caller's *optional* fields as
+// non-optional per the WCL param-annotation rule — a `none` value flows
+// in and is guarded here.)
+let chart_ymin = fn(y_min: f64) -> f64 if y_min == none { 0.0 } else { y_min }
+let chart_ymax = fn(series: list<ChartSeries>, ymin: f64, y_max: f64) -> f64
+  max(if y_max == none { chart_data_max(series) } else { y_max }, ymin + 0.000001)
+
+// Optional axis/title text → "" when unset, so `chart_xy` always gets a
+// concrete string.
+let or_blank = fn(s: utf8) -> utf8 if s == none { "" } else { s }
+
 // Format a scale tick: round to two decimals so auto bounds don't emit
 // long floating-point tails.
 let chart_fmt = fn(v: f64) -> utf8 format("{}", round(v * 100.0) / 100.0)
@@ -294,15 +308,12 @@ type BarChart extends SvgBlock {
   connect_points: list<AnchorSide>?
 
   lower = fn(c: BarChart) -> list<SvgFundamental> {
-    let ymin = if c.y_min == none { 0.0 } else { c.y_min };
-    let ymax0 = if c.y_max == none { chart_data_max(c.series) } else { c.y_max };
-    let ymax = max(ymax0, ymin + 0.000001);
+    let ymin = chart_ymin(c.y_min);
+    let ymax = chart_ymax(c.series, ymin, c.y_max);
     chart_xy(
       c.x, c.y, c.width, c.height, c.series,
       if c.categories == none { [] } else { c.categories },
-      if c.title == none { "" } else { c.title },
-      if c.x_label == none { "" } else { c.x_label },
-      if c.y_label == none { "" } else { c.y_label },
+      or_blank(c.title), or_blank(c.x_label), or_blank(c.y_label),
       ymin, ymax, false, [], chart_bars,
     )
   }
@@ -326,9 +337,8 @@ type LineChart extends SvgBlock {
   connect_points: list<AnchorSide>?
 
   lower = fn(c: LineChart) -> list<SvgFundamental> {
-    let ymin = if c.y_min == none { 0.0 } else { c.y_min };
-    let ymax0 = if c.y_max == none { chart_data_max(c.series) } else { c.y_max };
-    let ymax = max(ymax0, ymin + 0.000001);
+    let ymin = chart_ymin(c.y_min);
+    let ymax = chart_ymax(c.series, ymin, c.y_max);
     // `== true` (not a bare `if c.point_labels`) so an absent optional
     // bool reads as `false` rather than erroring on `none`.
     let pl = c.point_labels == true;
@@ -336,9 +346,7 @@ type LineChart extends SvgBlock {
     chart_xy(
       c.x, c.y, c.width, c.height, c.series,
       if c.categories == none { [] } else { c.categories },
-      if c.title == none { "" } else { c.title },
-      if c.x_label == none { "" } else { c.x_label },
-      if c.y_label == none { "" } else { c.y_label },
+      or_blank(c.title), or_blank(c.x_label), or_blank(c.y_label),
       ymin, ymax, pl, pts, chart_lines,
     )
   }

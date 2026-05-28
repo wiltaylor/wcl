@@ -1,17 +1,17 @@
 //! `textDocument/codeAction` handler. Inspects the diagnostics the
-//! client hands us back, recognises a few schema-violation patterns
-//! by message text, and emits `WorkspaceEdit`-bearing code actions.
+//! client hands us back and emits `WorkspaceEdit`-bearing quick-fixes
+//! for the schema violations it understands.
 //!
-//! Pattern matching against the message string is a known shortcut —
-//! it keeps the v1 surface small. A future slice can lift structured
-//! metadata (field name, parent block) onto `SchemaViolation` and
-//! drop the parsing.
+//! Each schema-violation diagnostic carries a structured `data` payload
+//! (`{ "kind", "name" }`, attached in [`crate::diagnostics`]); we
+//! dispatch on `kind` and use `name` for the action title, so there's
+//! no message-string parsing.
 
 use std::collections::HashMap;
 
 use tower_lsp::lsp_types::{
-    CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionResponse, Diagnostic,
-    NumberOrString, Position, Range, TextEdit, Url, WorkspaceEdit,
+    CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionResponse, Diagnostic, Position,
+    Range, TextEdit, Url, WorkspaceEdit,
 };
 
 /// Build code actions for every diagnostic the client knows about.
@@ -24,14 +24,32 @@ pub(crate) fn compute(
 ) -> Option<CodeActionResponse> {
     let mut actions: Vec<CodeActionOrCommand> = Vec::new();
     for diag in diagnostics {
-        if !is_wcl_schema(diag) {
+        let Some((kind, name)) = schema_violation_meta(diag) else {
             continue;
-        }
-        if let Some(action) = unknown_field_fix(uri, source, diag) {
-            actions.push(CodeActionOrCommand::CodeAction(action));
-        } else if let Some(action) = disallowed_child_fix(uri, source, diag) {
-            actions.push(CodeActionOrCommand::CodeAction(action));
-        }
+        };
+        // Each recognised kind deletes the offending line(s); only the
+        // title (and which name it cites) differs.
+        let title = match kind.as_str() {
+            "UnknownField" => format!(
+                "Remove unknown field `{}`",
+                name.as_deref().unwrap_or("field")
+            ),
+            "DisallowedChild" => {
+                format!(
+                    "Remove disallowed `{}` block",
+                    name.as_deref().unwrap_or("block")
+                )
+            }
+            _ => continue,
+        };
+        let range = expand_to_full_lines(source, diag.range);
+        actions.push(CodeActionOrCommand::CodeAction(make_action(
+            title,
+            uri,
+            range,
+            String::new(),
+            diag.clone(),
+        )));
     }
     if actions.is_empty() {
         None
@@ -40,55 +58,20 @@ pub(crate) fn compute(
     }
 }
 
-fn is_wcl_schema(diag: &Diagnostic) -> bool {
-    matches!(
-        (&diag.source, &diag.code),
-        (Some(s), Some(NumberOrString::String(c)))
-            if s == "wcl" && c == "wcl::eval::schema_violation"
-    )
-}
-
-/// "unknown field 'foo'" — delete the entire offending line(s).
-fn unknown_field_fix(uri: &Url, source: &str, diag: &Diagnostic) -> Option<CodeAction> {
-    let name = extract_quoted(&diag.message, "unknown field")?;
-    let range = expand_to_full_lines(source, diag.range);
-    Some(make_action(
-        format!("Remove unknown field `{name}`"),
-        uri,
-        range,
-        String::new(),
-        diag.clone(),
-    ))
-}
-
-/// "disallowed child" — delete the offending line(s) (the diagnostic
-/// span covers the block's leading kind; we widen to line for a
-/// pragmatic fix).
-fn disallowed_child_fix(uri: &Url, source: &str, diag: &Diagnostic) -> Option<CodeAction> {
-    if !diag.message.contains("disallowed child") {
+/// Read the `{ "kind", "name" }` payload off a `wcl` schema-violation
+/// diagnostic. Returns `None` for diagnostics from another source or
+/// without the structured `data` we attach.
+fn schema_violation_meta(diag: &Diagnostic) -> Option<(String, Option<String>)> {
+    if diag.source.as_deref() != Some("wcl") {
         return None;
     }
-    let label =
-        extract_quoted(&diag.message, "disallowed child").unwrap_or_else(|| "block".to_string());
-    let range = expand_to_full_lines(source, diag.range);
-    Some(make_action(
-        format!("Remove disallowed `{label}` block"),
-        uri,
-        range,
-        String::new(),
-        diag.clone(),
-    ))
-}
-
-/// Find the first single-quoted name in `msg` that appears after
-/// `marker`. Returns `None` when the marker isn't present or the
-/// message lacks a quoted token.
-fn extract_quoted(msg: &str, marker: &str) -> Option<String> {
-    let after = msg.split_once(marker).map(|(_, rest)| rest)?;
-    let start = after.find('\'')?;
-    let rest = &after[start + 1..];
-    let end = rest.find('\'')?;
-    Some(rest[..end].to_string())
+    let data = diag.data.as_ref()?;
+    let kind = data.get("kind")?.as_str()?.to_string();
+    let name = data
+        .get("name")
+        .and_then(|n| n.as_str())
+        .map(str::to_string);
+    Some((kind, name))
 }
 
 /// Expand a diagnostic range to cover every full line it touches,
@@ -166,7 +149,9 @@ mod tests {
     use super::*;
     use tower_lsp::lsp_types::DiagnosticSeverity;
 
-    fn diag_at(message: &str, line: u32) -> Diagnostic {
+    /// A diagnostic carrying the structured `{kind, name}` payload that
+    /// real schema violations emit (see `crate::diagnostics`).
+    fn diag_with_data(kind: &str, name: &str, line: u32) -> Diagnostic {
         Diagnostic {
             range: Range {
                 start: Position { line, character: 0 },
@@ -176,37 +161,26 @@ mod tests {
                 },
             },
             severity: Some(DiagnosticSeverity::ERROR),
-            code: Some(NumberOrString::String("wcl::eval::schema_violation".into())),
             source: Some("wcl".into()),
-            message: message.into(),
+            message: "schema violation".into(),
+            data: Some(serde_json::json!({ "kind": kind, "name": name })),
             ..Default::default()
         }
-    }
-
-    #[test]
-    fn extract_quoted_pulls_name_from_message() {
-        assert_eq!(
-            extract_quoted("unknown field 'foo' in block 'bar'", "unknown field"),
-            Some("foo".to_string())
-        );
-        assert_eq!(
-            extract_quoted("disallowed child 'baz' under 'svc'", "disallowed child"),
-            Some("baz".to_string())
-        );
-        assert_eq!(extract_quoted("no quotes here", "unknown field"), None);
     }
 
     #[test]
     fn unknown_field_emits_quickfix_with_line_delete() {
         let src = "name = \"alpha\"\nunexpected = \"boom\"\nport = 8080\n";
         let uri = Url::parse("file:///t.wcl").unwrap();
-        let diag = diag_at("unknown field 'unexpected'", 1);
+        let diag = diag_with_data("UnknownField", "unexpected", 1);
         let resp = compute(&uri, src, &[diag]).expect("some actions");
         assert_eq!(resp.len(), 1);
         let CodeActionOrCommand::CodeAction(action) = &resp[0] else {
             panic!("expected action")
         };
         assert!(action.title.contains("Remove unknown field"));
+        // The name comes from structured data, not message parsing.
+        assert!(action.title.contains("unexpected"));
         let edit = action.edit.as_ref().unwrap();
         let changes = edit.changes.as_ref().unwrap();
         let edits = changes.get(&uri).unwrap();
@@ -219,10 +193,59 @@ mod tests {
     }
 
     #[test]
+    fn disallowed_child_emits_quickfix_with_name() {
+        let uri = Url::parse("file:///t.wcl").unwrap();
+        let diag = diag_with_data("DisallowedChild", "badchild", 1);
+        let resp = compute(&uri, "a {\n  badchild {\n  }\n}\n", &[diag]).expect("some actions");
+        let CodeActionOrCommand::CodeAction(action) = &resp[0] else {
+            panic!("expected action")
+        };
+        assert!(action.title.contains("Remove disallowed"));
+        assert!(action.title.contains("badchild"));
+    }
+
+    #[test]
     fn unrelated_diagnostic_returns_none() {
         let uri = Url::parse("file:///t.wcl").unwrap();
-        let mut diag = diag_at("something else", 0);
+        let mut diag = diag_with_data("UnknownField", "x", 0);
         diag.source = Some("other".into());
         assert!(compute(&uri, "", &[diag]).is_none());
+    }
+
+    #[test]
+    fn wcl_diagnostic_without_data_returns_none() {
+        let uri = Url::parse("file:///t.wcl").unwrap();
+        let diag = Diagnostic {
+            range: Range::default(),
+            source: Some("wcl".into()),
+            message: "parse error".into(),
+            ..Default::default()
+        };
+        assert!(compute(&uri, "x = 1\n", &[diag]).is_none());
+    }
+
+    /// End-to-end: a real unknown-field document → diagnostics (with
+    /// structured data) → a quick-fix that cites the field name.
+    #[test]
+    fn end_to_end_unknown_field_roundtrip() {
+        let src = "@document\ntype Root {\n  region: utf8\n}\n@block(\"service\")\ntype Service {\n  region: utf8\n}\nservice web {\n  region = \"x\"\n  unexpected = \"boom\"\n}\n";
+        let uri = Url::parse("file:///t.wcl").unwrap();
+        let diags = crate::diagnostics::compute(src, uri.as_str());
+        let resp = compute(&uri, src, &diags).expect("some actions");
+        // The doc also flags the top-level `service` block, so search all
+        // actions for the unknown-field fix rather than assuming order.
+        let titles: Vec<&str> = resp
+            .iter()
+            .filter_map(|a| match a {
+                CodeActionOrCommand::CodeAction(c) => Some(c.title.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            titles
+                .iter()
+                .any(|t| t.contains("Remove unknown field") && t.contains("unexpected")),
+            "{titles:?}"
+        );
     }
 }

@@ -8,14 +8,20 @@
 //! in outer-to-inner order. Callers can dedup with later (inner)
 //! entries shadowing earlier ones.
 
+use wcl_lang::Span;
 use wcl_lang::ast::{
     Expr, Field, FunctionLit, Item, LetBinding, Parameter, Pattern, TemplatePart, VariantArgs,
+    VariantPatArgs,
 };
 
 #[derive(Default)]
 pub(crate) struct EnclosingScopes<'a> {
     pub params: Vec<&'a Parameter>,
     pub lets: Vec<&'a LetBinding>,
+    /// Names bound by `match` / `if let` patterns whose arm body spans
+    /// the offset, as `(name, declaration-span)`. Distinct from `lets`
+    /// because pattern bindings aren't `LetBinding`s.
+    pub bindings: Vec<(&'a str, Span)>,
 }
 
 pub(crate) fn enclosing_scopes_at<'a>(items: &'a [Item], offset: usize) -> EnclosingScopes<'a> {
@@ -203,13 +209,34 @@ fn walk_expr<'a>(expr: &'a Expr, offset: usize, out: &mut EnclosingScopes<'a>) {
     }
 }
 
+/// Collect the names a pattern binds into `out.bindings`. Recurses
+/// through `name @ inner` and into variant sub-patterns so a binding
+/// nested inside a destructuring (`Some(x)`, `Point { x, y }`) is
+/// surfaced too. Wildcards and literals bind nothing.
 fn push_pattern_bindings<'a>(pat: &'a Pattern, out: &mut EnclosingScopes<'a>) {
-    // Pattern bindings introduce names but aren't `LetBinding`s.
-    // For v1, render them as synthetic lets so completion treats them
-    // the same — wrap each into a faux LetBinding only if we need
-    // identifier resolution. Simpler: skip them for now; completion
-    // for match-arm bindings is a later refinement.
-    let _ = (pat, out);
+    match pat {
+        Pattern::Binding { name, span } => out.bindings.push((name.as_str(), *span)),
+        Pattern::At { name, inner, span } => {
+            out.bindings.push((name.as_str(), *span));
+            push_pattern_bindings(inner, out);
+        }
+        Pattern::Variant { args, .. } => match args {
+            VariantPatArgs::Positional(inner) => push_pattern_bindings(inner, out),
+            VariantPatArgs::Record { fields, .. } => {
+                for (_, sub) in fields {
+                    push_pattern_bindings(sub, out);
+                }
+            }
+            VariantPatArgs::Unit => {}
+        },
+        Pattern::Wildcard(_)
+        | Pattern::LiteralBool(_, _)
+        | Pattern::LiteralNumber { .. }
+        | Pattern::LiteralUtf8(_, _)
+        | Pattern::LiteralAscii(_, _)
+        | Pattern::LiteralSymbol(_, _)
+        | Pattern::LiteralNone(_) => {}
+    }
 }
 
 fn contains(span: wcl_lang::ast::Span, offset: usize) -> bool {
@@ -295,5 +322,70 @@ mod tests {
         let scopes = enclosing_scopes_at(&s.items, cursor);
         assert!(scopes.lets.is_empty());
         assert!(scopes.params.is_empty());
+    }
+
+    fn binding_names<'a>(scopes: &EnclosingScopes<'a>) -> Vec<&'a str> {
+        scopes.bindings.iter().map(|(n, _)| *n).collect()
+    }
+
+    #[test]
+    fn match_record_binding_visible_in_arm_body() {
+        let src = "x = match c1 {\n  Shape::Circle { radius, .. } => radius,\n  _ => 0.0,\n}\n";
+        let s = ast(src);
+        let cursor = src.find("=> radius").unwrap() + 3;
+        let scopes = enclosing_scopes_at(&s.items, cursor);
+        assert!(
+            binding_names(&scopes).contains(&"radius"),
+            "{:?}",
+            binding_names(&scopes)
+        );
+    }
+
+    #[test]
+    fn match_binding_arm_visible_in_body() {
+        let src = "x = match tag {\n  :red => :stop,\n  other => other,\n}\n";
+        let s = ast(src);
+        let cursor = src.find("=> other").unwrap() + 3;
+        let scopes = enclosing_scopes_at(&s.items, cursor);
+        assert!(
+            binding_names(&scopes).contains(&"other"),
+            "{:?}",
+            binding_names(&scopes)
+        );
+    }
+
+    #[test]
+    fn match_at_binding_visible_in_body() {
+        let src = "x = match c1 {\n  shape @ Shape::Circle { .. } => shape,\n  _ => 0,\n}\n";
+        let s = ast(src);
+        let cursor = src.find("=> shape").unwrap() + 3;
+        let scopes = enclosing_scopes_at(&s.items, cursor);
+        assert!(
+            binding_names(&scopes).contains(&"shape"),
+            "{:?}",
+            binding_names(&scopes)
+        );
+    }
+
+    #[test]
+    fn if_let_binding_visible_in_then_block() {
+        let src = "x = if let Shape::Circle { radius, .. } = c1 { radius } else { 0.0 }\n";
+        let s = ast(src);
+        let cursor = src.find("{ radius }").unwrap() + 2;
+        let scopes = enclosing_scopes_at(&s.items, cursor);
+        assert!(
+            binding_names(&scopes).contains(&"radius"),
+            "{:?}",
+            binding_names(&scopes)
+        );
+    }
+
+    #[test]
+    fn match_binding_not_visible_outside() {
+        let src = "x = match tag {\n  other => other,\n}\ny = 2\n";
+        let s = ast(src);
+        let cursor = src.find("y = 2").unwrap() + 1;
+        let scopes = enclosing_scopes_at(&s.items, cursor);
+        assert!(scopes.bindings.is_empty(), "{:?}", binding_names(&scopes));
     }
 }

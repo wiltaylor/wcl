@@ -6,8 +6,8 @@ use tower_lsp::LanguageServer;
 use tower_lsp::LspService;
 use tower_lsp::lsp_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, Diagnostic, DiagnosticSeverity,
-    DidOpenTextDocumentParams, NumberOrString, PartialResultParams, Position, Range,
-    TextDocumentIdentifier, TextDocumentItem, Url, WorkDoneProgressParams,
+    DidOpenTextDocumentParams, PartialResultParams, Position, Range, TextDocumentIdentifier,
+    TextDocumentItem, Url, WorkDoneProgressParams,
 };
 use wcl_lsp::Backend;
 
@@ -34,9 +34,10 @@ async fn unknown_field_code_action_round_trip() {
     let backend = svc.inner();
     let uri = Url::parse("file:///cfg.wcl").unwrap();
     // The `bogus` field isn't on Config — the validator emits a
-    // wcl::eval::schema_violation that the editor would hand back via
-    // `params.context.diagnostics`. We construct that synthetic
-    // diagnostic here to keep the test self-contained.
+    // wcl::eval::schema_violation that the editor hands back via
+    // `params.context.diagnostics`. We construct that diagnostic here
+    // to keep the test self-contained, including the structured `data`
+    // payload the server attaches (and editors round-trip verbatim).
     let src = "@document\ntype Config {\n  name: utf8\n}\nname = \"a\"\nbogus = 1\n";
     open(backend, &uri, src).await;
     let line_with_bogus = src[..src.find("bogus").unwrap()].matches('\n').count() as u32;
@@ -52,9 +53,9 @@ async fn unknown_field_code_action_round_trip() {
             },
         },
         severity: Some(DiagnosticSeverity::ERROR),
-        code: Some(NumberOrString::String("wcl::eval::schema_violation".into())),
         source: Some("wcl".into()),
         message: "unknown field 'bogus' in document".into(),
+        data: Some(serde_json::json!({ "kind": "UnknownField", "name": "bogus" })),
         ..Default::default()
     };
     let resp = backend

@@ -7,6 +7,17 @@
 // transparently — set `lower = fn(...) -> ...` on a particular block
 // and that supersedes the default for just that instance.
 
+// Every flowchart shape centres the same `Label` over its body — only
+// the fit region varies (a diamond's text box is narrower, a node's is
+// inset). Share the construction so the shapes differ only in geometry.
+// `cls` is the shape's optional `class` list (declared non-optional per
+// the WCL param-annotation rule; a `none` value flows through unchanged).
+let centered_label = fn(text: utf8, cx: f64, cy: f64, fit_w: f64, fit_h: f64, cls: list<utf8>) -> SvgFundamental
+  SvgFundamental::Label {
+    content: text, x: cx, y: cy, font_size: none,
+    fit_width: fit_w, fit_height: fit_h, fill: none, id: none, class: cls,
+  }
+
 @block("process")
 type Process extends SvgBlock {
   @inline(0) text: utf8
@@ -23,14 +34,10 @@ type Process extends SvgBlock {
       x: p.x, y: p.y, width: p.width, height: p.height,
       fill: p.fill, stroke: p.stroke, id: p.id, class: p.class,
     },
-    SvgFundamental::Label {
-      content: p.text,
-      x: p.x + p.width / 2.0,
-      y: p.y + p.height / 2.0,
-      font_size: none,
-      fit_width: p.width,  fit_height: p.height,
-      fill: none, id: none, class: p.class,
-    },
+    centered_label(
+      p.text, p.x + p.width / 2.0, p.y + p.height / 2.0,
+      p.width, p.height, p.class,
+    ),
   ]
 }
 
@@ -53,18 +60,14 @@ type Decision extends SvgBlock {
       ),
       fill: d.fill, stroke: d.stroke, id: d.id, class: d.class,
     },
-    SvgFundamental::Label {
-      content: d.text,
-      x: d.x + d.width / 2.0,
-      y: d.y + d.height / 2.0,
-      font_size: none,
-      // Diamond's text region is smaller than its bbox — the
-      // inscribed rect at the middle is roughly half the width
-      // and full height; halve fit_width so long labels shrink
-      // before they hit the diamond's sloped edges.
-      fit_width: d.width / 2.0,  fit_height: d.height,
-      fill: none, id: none, class: d.class,
-    },
+    // Diamond's text region is smaller than its bbox — the inscribed
+    // rect at the middle is roughly half the width and full height;
+    // halve fit_width so long labels shrink before they hit the
+    // diamond's sloped edges.
+    centered_label(
+      d.text, d.x + d.width / 2.0, d.y + d.height / 2.0,
+      d.width / 2.0, d.height, d.class,
+    ),
   ]
 }
 
@@ -88,16 +91,12 @@ type GraphNode extends SvgBlock {
       r:  min(n.width, n.height) / 2.0,
       fill: n.fill, stroke: n.stroke, id: n.id, class: n.class,
     },
-    SvgFundamental::Label {
-      content: n.text,
-      x: n.x + n.width / 2.0,
-      y: n.y + n.height / 2.0,
-      font_size: none,
-      // Inset the fit region so the label stays within the circle's
-      // curve instead of touching its left/right edges.
-      fit_width: n.width * 0.82,  fit_height: n.height * 0.82,
-      fill: none, id: none, class: n.class,
-    },
+    // Inset the fit region so the label stays within the circle's
+    // curve instead of touching its left/right edges.
+    centered_label(
+      n.text, n.x + n.width / 2.0, n.y + n.height / 2.0,
+      n.width * 0.82, n.height * 0.82, n.class,
+    ),
   ]
 }
 
@@ -116,14 +115,10 @@ type Terminator extends SvgBlock {
       x: t.x, y: t.y, width: t.width, height: t.height,
       fill: t.fill, stroke: t.stroke, id: t.id, class: t.class,
     },
-    SvgFundamental::Label {
-      content: t.text,
-      x: t.x + t.width / 2.0,
-      y: t.y + t.height / 2.0,
-      font_size: none,
-      fit_width: t.width,  fit_height: t.height,
-      fill: none, id: none, class: t.class,
-    },
+    centered_label(
+      t.text, t.x + t.width / 2.0, t.y + t.height / 2.0,
+      t.width, t.height, t.class,
+    ),
   ]
 }
 

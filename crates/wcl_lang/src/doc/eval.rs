@@ -823,11 +823,12 @@ impl Document {
     /// Check that `value`'s effective fields cover the interface's
     /// declared fields with matching types — for `VariantBody::InterfaceRef`.
     ///
-    /// Scope (this pass): only `Value::Variant` payloads whose body is
-    /// a `Record` can be structurally introspected. Other value shapes
-    /// pass through permissively — value→type introspection across
-    /// closures, lists, and tensors would require runtime type tags
-    /// that the language doesn't currently carry.
+    /// Scope: values that carry a named field map — a variant with a
+    /// record payload, or a bare `Value::Record` — are structurally
+    /// introspected. Other value shapes (closures, lists, tensors,
+    /// scalars) pass through permissively, since value→type
+    /// introspection for them would require runtime type tags the
+    /// language doesn't currently carry.
     pub(crate) fn check_value_implements_iface(
         &self,
         value: &Value,
@@ -854,20 +855,24 @@ impl Document {
         let Some(iface) = iface_decl else {
             return Err(EvalError::unknown_union(iface_path.join("."), span));
         };
-        // For now we only structurally introspect variant values with
-        // record payloads. Anything else gets a pass-through; richer
-        // checking lands when value-type introspection exists.
-        let Value::Variant { payload, .. } = value else {
-            return Ok(());
-        };
-        let crate::value::VariantPayload::Record(map) = payload else {
-            return Ok(());
+        // Structurally introspect values that carry a named field map:
+        // a variant with a record payload, or a bare record value. Other
+        // shapes (closures, lists, tensors, scalars, and non-record
+        // variant payloads) carry no field map, so they pass through
+        // permissively until the language tags them at runtime.
+        let fields = match value {
+            Value::Variant {
+                payload: crate::value::VariantPayload::Record(map),
+                ..
+            } => map,
+            Value::Record { fields, .. } => fields,
+            _ => return Ok(()),
         };
         for f in &iface.fields {
-            let Some(v) = map.get(&f.name) else {
+            let Some(v) = fields.get(&f.name) else {
                 return Err(EvalError::variant_shape_mismatch(
                     format!("interface field '{}'", f.name),
-                    "missing on variant payload",
+                    "missing on value",
                     span,
                 ));
             };
@@ -875,7 +880,7 @@ impl Document {
             if !value_matches_type_ref(v, expected) {
                 return Err(EvalError::variant_shape_mismatch(
                     format!("interface field '{}': {expected:?}", f.name),
-                    format!("payload field is {}", v.type_name()),
+                    format!("value field is {}", v.type_name()),
                     span,
                 ));
             }

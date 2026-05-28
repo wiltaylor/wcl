@@ -7,11 +7,33 @@
 //!   - anything else (manual invoke / identifier letter) → locals in the
 //!     enclosing scope, then top-level fields, then registered builtins.
 
+use std::collections::HashSet;
+
 use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind};
 use wcl_lang::{DeclName, Document, SymbolKind, parse_for_edit};
 
 use crate::resolve::preceding_non_ws;
 use crate::walk;
+
+/// Push a completion item, skipping it when a same-`label` item was
+/// already proposed. Centralises the `seen`-set dedup + the
+/// `CompletionItem { .. ..Default }` literal repeated by every builder.
+fn push_unique(
+    out: &mut Vec<CompletionItem>,
+    seen: &mut HashSet<String>,
+    label: String,
+    kind: CompletionItemKind,
+    detail: String,
+) {
+    if seen.insert(label.clone()) {
+        out.push(CompletionItem {
+            label,
+            kind: Some(kind),
+            detail: Some(detail),
+            ..Default::default()
+        });
+    }
+}
 
 /// Builtin decorator names (registered by `Environment`, not declared
 /// in source). Listed here because `Environment` exposes no
@@ -60,16 +82,15 @@ fn decorator_items(
     root_doc: Option<&Document>,
 ) -> Vec<CompletionItem> {
     let mut out = Vec::new();
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen: HashSet<String> = HashSet::new();
     for name in BUILTIN_DECORATORS {
-        if seen.insert((*name).to_string()) {
-            out.push(CompletionItem {
-                label: (*name).to_string(),
-                kind: Some(CompletionItemKind::FUNCTION),
-                detail: Some("builtin decorator".to_string()),
-                ..Default::default()
-            });
-        }
+        push_unique(
+            &mut out,
+            &mut seen,
+            (*name).to_string(),
+            CompletionItemKind::FUNCTION,
+            "builtin decorator".to_string(),
+        );
     }
     for doc in [root_doc, local_doc].into_iter().flatten() {
         // Types carrying `@decorator("foo")` declare decorator `foo`.
@@ -86,18 +107,13 @@ fn decorator_items(
                     wcl_lang::Value::Utf8(s) | wcl_lang::Value::Ascii(s) => s,
                     _ => continue,
                 };
-                if !seen.insert(label.clone()) {
-                    continue;
-                }
-                out.push(CompletionItem {
+                push_unique(
+                    &mut out,
+                    &mut seen,
                     label,
-                    kind: Some(CompletionItemKind::FUNCTION),
-                    detail: Some(format!(
-                        "decorator (schema: {})",
-                        td.name_segments().join(".")
-                    )),
-                    ..Default::default()
-                });
+                    CompletionItemKind::FUNCTION,
+                    format!("decorator (schema: {})", td.name_segments().join(".")),
+                );
             }
         }
     }
@@ -106,50 +122,43 @@ fn decorator_items(
 
 fn type_items(local_doc: Option<&Document>, root_doc: Option<&Document>) -> Vec<CompletionItem> {
     let mut out = Vec::new();
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen: HashSet<String> = HashSet::new();
     for name in BUILTIN_TYPES {
-        if seen.insert((*name).to_string()) {
-            out.push(CompletionItem {
-                label: (*name).to_string(),
-                kind: Some(CompletionItemKind::STRUCT),
-                detail: Some("builtin type".to_string()),
-                ..Default::default()
-            });
-        }
+        push_unique(
+            &mut out,
+            &mut seen,
+            (*name).to_string(),
+            CompletionItemKind::STRUCT,
+            "builtin type".to_string(),
+        );
     }
     for doc in [root_doc, local_doc].into_iter().flatten() {
         for td in doc.type_decls() {
-            let label = td.name_segments().join(".");
-            if seen.insert(label.clone()) {
-                out.push(CompletionItem {
-                    label,
-                    kind: Some(CompletionItemKind::CLASS),
-                    detail: Some("type".to_string()),
-                    ..Default::default()
-                });
-            }
+            push_unique(
+                &mut out,
+                &mut seen,
+                td.name_segments().join("."),
+                CompletionItemKind::CLASS,
+                "type".to_string(),
+            );
         }
         for u in doc.union_decls() {
-            let label = u.name_segments().join(".");
-            if seen.insert(label.clone()) {
-                out.push(CompletionItem {
-                    label,
-                    kind: Some(CompletionItemKind::ENUM),
-                    detail: Some("union".to_string()),
-                    ..Default::default()
-                });
-            }
+            push_unique(
+                &mut out,
+                &mut seen,
+                u.name_segments().join("."),
+                CompletionItemKind::ENUM,
+                "union".to_string(),
+            );
         }
         for i in doc.interfaces() {
-            let label = i.name_segments().join(".");
-            if seen.insert(label.clone()) {
-                out.push(CompletionItem {
-                    label,
-                    kind: Some(CompletionItemKind::INTERFACE),
-                    detail: Some("interface".to_string()),
-                    ..Default::default()
-                });
-            }
+            push_unique(
+                &mut out,
+                &mut seen,
+                i.name_segments().join("."),
+                CompletionItemKind::INTERFACE,
+                "interface".to_string(),
+            );
         }
     }
     out
@@ -166,31 +175,39 @@ fn identifier_items(
     offset: usize,
 ) -> Vec<CompletionItem> {
     let mut out = Vec::new();
-    let mut seen = std::collections::HashSet::new();
+    let mut seen: HashSet<String> = HashSet::new();
 
     // Locals — only computable when we have a parseable AST.
     if let Ok(ast) = parse_for_edit(source, uri) {
         let scopes = walk::enclosing_scopes_at(&ast.items, offset);
         // Inner-most first so they outrank outer same-name entries.
         for p in scopes.params.iter().rev() {
-            if seen.insert(p.name.clone()) {
-                out.push(CompletionItem {
-                    label: p.name.clone(),
-                    kind: Some(CompletionItemKind::VARIABLE),
-                    detail: Some("parameter".to_string()),
-                    ..Default::default()
-                });
-            }
+            push_unique(
+                &mut out,
+                &mut seen,
+                p.name.clone(),
+                CompletionItemKind::VARIABLE,
+                "parameter".to_string(),
+            );
         }
         for lb in scopes.lets.iter().rev() {
-            if seen.insert(lb.name.clone()) {
-                out.push(CompletionItem {
-                    label: lb.name.clone(),
-                    kind: Some(CompletionItemKind::VARIABLE),
-                    detail: Some("let binding".to_string()),
-                    ..Default::default()
-                });
-            }
+            push_unique(
+                &mut out,
+                &mut seen,
+                lb.name.clone(),
+                CompletionItemKind::VARIABLE,
+                "let binding".to_string(),
+            );
+        }
+        // Match-arm / if-let pattern bindings (inner-most first).
+        for (name, _) in scopes.bindings.iter().rev() {
+            push_unique(
+                &mut out,
+                &mut seen,
+                (*name).to_string(),
+                CompletionItemKind::VARIABLE,
+                "pattern binding".to_string(),
+            );
         }
     }
 
@@ -200,28 +217,26 @@ fn identifier_items(
                 continue;
             }
             let short = rec.fqn.rsplit('.').next().unwrap_or(&rec.fqn).to_string();
-            if seen.insert(short.clone()) {
-                out.push(CompletionItem {
-                    label: short,
-                    kind: Some(CompletionItemKind::FIELD),
-                    detail: Some(format!("field — {}", rec.fqn)),
-                    ..Default::default()
-                });
-            }
+            push_unique(
+                &mut out,
+                &mut seen,
+                short,
+                CompletionItemKind::FIELD,
+                format!("field — {}", rec.fqn),
+            );
         }
         for (name, f) in doc.environment().builtins() {
-            if seen.insert(name.to_string()) {
-                let detail = match f.signature() {
-                    Some(sig) => format!("builtin {sig}"),
-                    None => format!("builtin fn ({} args)", f.arity()),
-                };
-                out.push(CompletionItem {
-                    label: name.to_string(),
-                    kind: Some(CompletionItemKind::FUNCTION),
-                    detail: Some(detail),
-                    ..Default::default()
-                });
-            }
+            let detail = match f.signature() {
+                Some(sig) => format!("builtin {sig}"),
+                None => format!("builtin fn ({} args)", f.arity()),
+            };
+            push_unique(
+                &mut out,
+                &mut seen,
+                name.to_string(),
+                CompletionItemKind::FUNCTION,
+                detail,
+            );
         }
     }
 

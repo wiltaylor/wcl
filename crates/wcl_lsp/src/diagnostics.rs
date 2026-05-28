@@ -46,7 +46,24 @@ fn eval_error_to_diagnostic(source: &str, err: &EvalError) -> Diagnostic {
         code: Some(NumberOrString::String(diagnostic_code(err).into())),
         source: Some("wcl".into()),
         message: err.to_string(),
+        data: diagnostic_data(err),
         ..Default::default()
+    }
+}
+
+/// Structured payload round-tripped to the client (and back, on a code
+/// action request) so consumers act on a violation without re-parsing
+/// `message`. For schema violations we carry the kind (its variant name)
+/// and the offending identifier when one is recorded.
+fn diagnostic_data(err: &EvalError) -> Option<serde_json::Value> {
+    match err {
+        EvalError::SchemaViolation { kind, detail, .. } => Some(serde_json::json!({
+            // `{kind:?}` is the variant identifier (e.g. "UnknownField")
+            // — both are field-less variants, so Debug is the stable name.
+            "kind": format!("{kind:?}"),
+            "name": detail,
+        })),
+        _ => None,
     }
 }
 

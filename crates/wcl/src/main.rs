@@ -1,13 +1,10 @@
-use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use wcl_lang::{
-    Block, ConnectionDecl, DeclName, Decorator, Document, Field, ParseError, Profile, ProfileKey,
-    ProfileNode, SymbolSetDecl, TypeDecl, UnionDecl, UnionVariant, UseDeclView, UseFormView, Value,
-    VariantBodyView, ast, format as wcl_format, parse_expr, parse_for_edit,
-};
+use wcl_lang::{Document, ParseError, ast, format as wcl_format, parse_expr, parse_for_edit};
+
+mod dump;
 
 const EXIT_OK: u8 = 0;
 const EXIT_PARSE: u8 = 1;
@@ -25,7 +22,7 @@ fn open_document(file: &Path, profile: bool) -> Result<Document, ParseError> {
 
 fn emit_profile(doc: &Document, profile: bool) {
     if profile && let Some(p) = doc.profile() {
-        let json = profile_to_json(&p);
+        let json = dump::profile_to_json(&p);
         let rendered = serde_json::to_string_pretty(&json)
             .expect("serde_json::Value always serializes (string-keyed objects)");
         eprintln!("{rendered}");
@@ -193,9 +190,7 @@ fn main() -> ExitCode {
     let code = match cli.command {
         Command::Parse { file, profile } => match open_document(&file, profile) {
             Ok(doc) => {
-                let mut out = String::new();
-                dump_document(&doc, &mut out);
-                print!("{out}");
+                print!("{}", dump::document(&doc));
                 emit_profile(&doc, profile);
                 EXIT_OK
             }
@@ -684,254 +679,4 @@ fn levenshtein(a: &str, b: &str) -> usize {
         std::mem::swap(&mut prev, &mut curr);
     }
     prev[n]
-}
-
-fn profile_to_json(p: &Profile) -> serde_json::Value {
-    profile_node_to_json(p.root())
-}
-
-fn profile_node_to_json(n: &ProfileNode) -> serde_json::Value {
-    serde_json::json!({
-        "key": profile_key_to_json(&n.key),
-        "count": n.count,
-        "total_ns": n.total.as_nanos() as u64,
-        "min_ns": if n.count == 0 { 0 } else { n.min.as_nanos() as u64 },
-        "max_ns": n.max.as_nanos() as u64,
-        "mean_ns": n.mean().as_nanos() as u64,
-        "children": n
-            .children
-            .values()
-            .map(profile_node_to_json)
-            .collect::<Vec<_>>(),
-    })
-}
-
-fn profile_key_to_json(k: &ProfileKey) -> serde_json::Value {
-    match k {
-        ProfileKey::Root => serde_json::json!({ "kind": "root" }),
-        ProfileKey::Field { path } => serde_json::json!({ "kind": "field", "path": path }),
-        ProfileKey::UserFn { name } => serde_json::json!({ "kind": "user_fn", "name": name }),
-        ProfileKey::Builtin { name } => serde_json::json!({ "kind": "builtin", "name": name }),
-    }
-}
-
-fn dump_document(doc: &Document, out: &mut String) {
-    if !doc.namespace().is_empty() {
-        writeln!(out, "namespace {}", doc.namespace().join(".")).unwrap();
-    }
-    for u in doc.uses() {
-        dump_use_decl(&u, out);
-    }
-    for t in doc.type_decls() {
-        dump_type_decl(&t, out);
-    }
-    for u in doc.union_decls() {
-        dump_union_decl(&u, out);
-    }
-    for s in doc.symbol_sets() {
-        dump_symbol_set_decl(&s, out);
-    }
-    for c in doc.connection_decls() {
-        dump_connection_decl(&c, out);
-    }
-    for f in doc.fields() {
-        dump_field(&f, 0, out);
-    }
-    for b in doc.blocks() {
-        dump_block(&b, 0, out);
-    }
-    for c in doc.connection_stmts() {
-        match c.kind() {
-            Some(k) => writeln!(out, "{} -> {} :{}", c.source(), c.destination(), k).unwrap(),
-            None => writeln!(out, "{} -> {}", c.source(), c.destination()).unwrap(),
-        }
-    }
-}
-
-fn dump_connection_decl(c: &ConnectionDecl<'_>, out: &mut String) {
-    writeln!(
-        out,
-        "connection {}: {} -> {} : {}",
-        c.full_name(),
-        c.source_type(),
-        c.destination_type(),
-        c.kind_set_path().join("."),
-    )
-    .unwrap();
-}
-
-fn dump_use_decl(u: &UseDeclView<'_>, out: &mut String) {
-    let prefix = u.path().join(".");
-    match u.form() {
-        UseFormView::Bare(None) => writeln!(out, "use {prefix}").unwrap(),
-        UseFormView::Bare(Some(alias)) => writeln!(out, "use {prefix} as {alias}").unwrap(),
-        UseFormView::List => {
-            let parts: Vec<String> = u
-                .items()
-                .map(|it| match it.alias() {
-                    Some(a) => format!("{} as {a}", it.name()),
-                    None => it.name().to_string(),
-                })
-                .collect();
-            writeln!(out, "use {prefix}.{{{}}}", parts.join(", ")).unwrap();
-        }
-    }
-}
-
-fn dump_symbol_set_decl(s: &SymbolSetDecl<'_>, out: &mut String) {
-    dump_decorators(s.decorators(), 0, out);
-    writeln!(out, "symbol_set {} {{", s.name_segments().join(".")).unwrap();
-    for entry in s.symbols() {
-        dump_decorators(entry.decorators(), 1, out);
-        writeln!(out, "  {}", entry.name()).unwrap();
-    }
-    writeln!(out, "}}").unwrap();
-}
-
-fn dump_decorators<'a>(decs: impl Iterator<Item = Decorator<'a>>, depth: usize, out: &mut String) {
-    let pad = "  ".repeat(depth);
-    for d in decs {
-        let name = d.full_name();
-        let positional: Vec<String> = match d.positional() {
-            Ok(vals) => vals.iter().map(Value::to_string).collect(),
-            Err(e) => vec![format!("<error: {e}>")],
-        };
-        let named: Vec<String> = d
-            .named()
-            .map(|n| {
-                let val = match n.value() {
-                    Ok(v) => v.to_string(),
-                    Err(e) => format!("<error: {e}>"),
-                };
-                format!("{} = {}", n.name(), val)
-            })
-            .collect();
-        let args = if positional.is_empty() && named.is_empty() {
-            String::new()
-        } else {
-            let combined: Vec<String> = positional.into_iter().chain(named).collect();
-            format!("({})", combined.join(", "))
-        };
-        writeln!(out, "{pad}@{name}{args}").unwrap();
-    }
-}
-
-fn dump_union_decl(u: &UnionDecl<'_>, out: &mut String) {
-    dump_decorators(u.decorators(), 0, out);
-    writeln!(out, "union {} {{", u.name_segments().join(".")).unwrap();
-    for v in u.variants() {
-        dump_variant(&v, out);
-    }
-    writeln!(out, "}}").unwrap();
-}
-
-fn dump_variant(v: &UnionVariant<'_>, out: &mut String) {
-    dump_decorators(v.decorators(), 1, out);
-    match v.body() {
-        VariantBodyView::Record => {
-            writeln!(out, "  {} {{", v.name()).unwrap();
-            for f in v.fields() {
-                dump_decorators(f.decorators(), 2, out);
-                let ty = f.type_ref();
-                let q = if f.optional() { "?" } else { "" };
-                writeln!(out, "    {}: {ty}{q}", f.name()).unwrap();
-            }
-            writeln!(out, "  }}").unwrap();
-        }
-        VariantBodyView::TypeRef(t) => {
-            writeln!(out, "  {} {}", v.name(), t).unwrap();
-        }
-        VariantBodyView::InterfaceRef(path) => {
-            writeln!(out, "  {} &{}", v.name(), path.join(".")).unwrap();
-        }
-        VariantBodyView::Unit => {
-            writeln!(out, "  {} none", v.name()).unwrap();
-        }
-    }
-}
-
-fn dump_type_decl(t: &TypeDecl<'_>, out: &mut String) {
-    dump_decorators(t.decorators(), 0, out);
-    writeln!(out, "type {} {{", t.name_segments().join(".")).unwrap();
-    for field in t.fields() {
-        dump_decorators(field.decorators(), 1, out);
-        let ty = field.type_ref();
-        let q = if field.optional() { "?" } else { "" };
-        writeln!(out, "  {}: {ty}{q}", field.name()).unwrap();
-    }
-    writeln!(out, "}}").unwrap();
-}
-
-fn dump_field(f: &Field<'_>, depth: usize, out: &mut String) {
-    dump_decorators(f.decorators(), depth, out);
-    let pad = "  ".repeat(depth);
-    let _ = write!(out, "{pad}{} = ", f.name());
-    if let Some(r) = f.reference() {
-        match r {
-            Ok(dr) => writeln!(out, "&{}", dataref_label(&dr)).unwrap(),
-            Err(e) => writeln!(out, "<error: {e}>").unwrap(),
-        }
-        return;
-    }
-    match f.value() {
-        Ok(v) => writeln!(out, "{v}").unwrap(),
-        Err(e) => writeln!(out, "<error: {e}>").unwrap(),
-    }
-}
-
-fn dataref_label(dr: &wcl_lang::DataRef<'_>) -> String {
-    if let Some(b) = dr.as_block()
-        && let Ok(labels) = b.labels()
-        && let Some(first) = labels.first()
-    {
-        return format!("{}({first})", dr.kind());
-    }
-    dr.kind().to_string()
-}
-
-fn dump_block(b: &Block<'_>, depth: usize, out: &mut String) {
-    dump_decorators(b.decorators(), depth, out);
-    let pad = "  ".repeat(depth);
-    let _ = write!(out, "{pad}{}", b.kind());
-    match b.labels() {
-        Ok(labels) => {
-            for label in labels {
-                let _ = write!(out, " {label}");
-            }
-        }
-        Err(e) => {
-            let _ = write!(out, " <label error: {e}>");
-        }
-    }
-    writeln!(out, " {{").unwrap();
-    for f in b.fields() {
-        dump_field(&f, depth + 1, out);
-    }
-    for inner in b.blocks() {
-        dump_block(&inner, depth + 1, out);
-    }
-    for t in b.tables() {
-        dump_table(&t, depth + 1, out);
-    }
-    writeln!(out, "{pad}}}").unwrap();
-}
-
-fn dump_table(t: &wcl_lang::TableView<'_>, depth: usize, out: &mut String) {
-    let pad = "  ".repeat(depth);
-    writeln!(out, "{pad}{}:", t.field_name()).unwrap();
-    let row_pad = "  ".repeat(depth + 1);
-    for r in t.rows() {
-        let _ = write!(out, "{row_pad}|");
-        match r.values() {
-            Ok(vs) => {
-                for v in vs {
-                    let _ = write!(out, " {} |", v);
-                }
-            }
-            Err(e) => {
-                let _ = write!(out, " <row error: {e}> |");
-            }
-        }
-        writeln!(out).unwrap();
-    }
 }

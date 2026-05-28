@@ -4,7 +4,7 @@
 //! occurrence of the resolved identifier.
 
 use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Range, Url};
-use wcl_lang::{Document, parse_for_edit};
+use wcl_lang::Document;
 
 use crate::convert::span_to_range;
 use crate::resolve::{self, LocatedSymbol};
@@ -20,20 +20,15 @@ pub(crate) fn goto_definition(
     root_path: Option<&std::path::Path>,
 ) -> Option<GotoDefinitionResponse> {
     // Per-file open often fails when the file references cross-file
-    // types — that's fine, we fall back to the root doc for both
-    // resolution and the AST (parse_for_edit is purely syntactic).
-    let local_doc = Document::open(source, uri.as_str()).ok();
-    let ast = parse_for_edit(source, uri.as_str()).ok()?;
-    let (sym, _) = local_doc
-        .as_ref()
-        .and_then(|d| resolve::locate(d, &ast, source, offset))
-        .or_else(|| root_doc.and_then(|d| resolve::locate(d, &ast, source, offset)))?;
+    // types — that's fine, `locate_at` falls back to the root doc for
+    // resolution and hands back the (possibly-`None`) per-file doc.
+    let (sym, _, local_doc) = resolve::locate_at(source, uri.as_str(), offset, root_doc)?;
     // Cross-file: if the resolved FQN lives in an imported source,
     // surface that file's URI instead of the request URI. Prefer
     // the root doc's symbol index when present (it sees every
     // transitively-imported file).
     let lookup_doc = root_doc.or(local_doc.as_ref())?;
-    let (location_uri, span) = match symbol_fqn(&sym) {
+    let (location_uri, span) = match sym.simple_fqn() {
         Some(fqn) => match lookup_doc.find_symbol(fqn) {
             Some(hit) => {
                 // A `None` `source_path` means the symbol lives in
@@ -77,22 +72,6 @@ pub(crate) fn goto_definition(
     }))
 }
 
-/// FQN-bearing variants for cross-file lookup. `Local` has no FQN
-/// (it's a function param / let binding); `UnionVariant`/`SymbolEntry`
-/// nest under a parent FQN but their target source is the same file
-/// as the parent — falling back to `declaration_span` is fine.
-fn symbol_fqn(sym: &LocatedSymbol) -> Option<&str> {
-    match sym {
-        LocatedSymbol::Type(f)
-        | LocatedSymbol::Decorator(f)
-        | LocatedSymbol::BlockKind(f)
-        | LocatedSymbol::Field(f) => Some(f.as_str()),
-        LocatedSymbol::Local { .. }
-        | LocatedSymbol::UnionVariant { .. }
-        | LocatedSymbol::SymbolEntry { .. } => None,
-    }
-}
-
 /// Find every occurrence of the identifier under the cursor across
 /// the request document and every imported source. The match is
 /// whole-word on raw source bytes — good enough for the kinds of
@@ -106,13 +85,8 @@ pub(crate) fn references(
     root_doc: Option<&Document>,
     root_path: Option<&std::path::Path>,
 ) -> Option<Vec<Location>> {
-    let local_doc = Document::open(source, uri.as_str()).ok();
-    let ast = parse_for_edit(source, uri.as_str()).ok()?;
-    let (sym, _) = local_doc
-        .as_ref()
-        .and_then(|d| resolve::locate(d, &ast, source, offset))
-        .or_else(|| root_doc.and_then(|d| resolve::locate(d, &ast, source, offset)))?;
-    let needle = display_name(&sym);
+    let (sym, _, local_doc) = resolve::locate_at(source, uri.as_str(), offset, root_doc)?;
+    let needle = search_needle(&sym);
     // Use root doc for cross-file enumeration when present — its
     // `imported_paths` enumerates every transitively-loaded file.
     let doc = root_doc.or(local_doc.as_ref())?;
@@ -145,7 +119,7 @@ pub(crate) fn references(
     // identifier. The declaration of an FQN-bearing symbol may live
     // in one of these files; include or exclude per `include_declaration`.
     if cross_file {
-        let decl_path = match symbol_fqn(&sym) {
+        let decl_path = match sym.simple_fqn() {
             Some(fqn) => doc.find_symbol(fqn).map(|hit| {
                 let p = hit
                     .source_path
@@ -209,10 +183,11 @@ pub(crate) fn references(
     Some(out)
 }
 
-/// The identifier as it appears in source for a given symbol. For
-/// dotted FQNs we take the last segment — that's what's actually
-/// typed at use sites.
-fn display_name(sym: &LocatedSymbol) -> String {
+/// The identifier as it appears in source for a given symbol — the
+/// whole-word search needle. For dotted FQNs we take the last segment,
+/// which is what's actually typed at use sites. (Distinct from
+/// `LocatedSymbol::display_name`, which keeps the full dotted form.)
+fn search_needle(sym: &LocatedSymbol) -> String {
     let fqn = match sym {
         LocatedSymbol::Type(f)
         | LocatedSymbol::Decorator(f)

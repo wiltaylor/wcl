@@ -174,13 +174,14 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
             continue;
         }
         if !declared_field_names.contains(f.name()) {
-            errs.push(EvalError::schema_violation(
+            errs.push(EvalError::schema_violation_named(
                 Kind::UnknownField,
                 format!(
                     "field '{}' is not declared by schema '{}'",
                     f.name(),
                     schema.name()
                 ),
+                f.name(),
                 f.span(),
             ));
         }
@@ -395,13 +396,14 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         if matches_interface {
             continue;
         }
-        errs.push(EvalError::schema_violation(
+        errs.push(EvalError::schema_violation_named(
             Kind::DisallowedChild,
             format!(
                 "block kind '{}' is not allowed inside '{}'",
                 nested.kind(),
                 block.kind()
             ),
+            nested.kind(),
             nested.span(),
         ));
     }

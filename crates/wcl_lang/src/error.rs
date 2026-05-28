@@ -216,6 +216,10 @@ pub enum EvalError {
     #[diagnostic(code(wcl::eval::schema_violation))]
     SchemaViolation {
         kind: SchemaViolationKind,
+        /// The offending identifier (field / child block name) when the
+        /// violation has one, so tools can act on it without parsing
+        /// `message`. `None` for kinds that don't name a single token.
+        detail: Option<String>,
         message: String,
         #[label("schema violation")]
         span: SourceSpan,
@@ -324,6 +328,24 @@ impl EvalError {
     ) -> Self {
         Self::SchemaViolation {
             kind,
+            detail: None,
+            message: message.into(),
+            span: span_to_miette(span),
+        }
+    }
+
+    /// Like [`schema_violation`](Self::schema_violation) but records the
+    /// offending identifier (`detail`) so consumers (e.g. LSP code
+    /// actions) can act on it structurally.
+    pub(crate) fn schema_violation_named(
+        kind: SchemaViolationKind,
+        message: impl Into<String>,
+        name: impl Into<String>,
+        span: crate::ast::Span,
+    ) -> Self {
+        Self::SchemaViolation {
+            kind,
+            detail: Some(name.into()),
             message: message.into(),
             span: span_to_miette(span),
         }

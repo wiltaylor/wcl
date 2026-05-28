@@ -32,11 +32,11 @@ use tower_lsp::lsp_types::{
     DidOpenTextDocumentParams, DocumentFormattingParams, DocumentSymbolParams,
     DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams,
     HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, Location,
-    MessageType, OneOf, PositionEncodingKind, ReferenceParams, SaveOptions, SemanticTokens,
-    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams,
-    SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    TextDocumentSyncSaveOptions, TextEdit, Url,
+    MessageType, OneOf, Position, PositionEncodingKind, ReferenceParams, SaveOptions,
+    SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
+    ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextDocumentSyncOptions, TextDocumentSyncSaveOptions, TextEdit, Url,
 };
 use tower_lsp::{Client, LanguageServer};
 use wcl_lang::{
@@ -79,6 +79,16 @@ impl Backend {
     /// the document hasn't been opened by the client yet.
     pub(crate) fn document_text(&self, uri: &Url) -> Option<String> {
         self.docs.get(uri).map(|r| r.to_string())
+    }
+
+    /// The buffer text plus the byte offset of `pos` within it — the
+    /// shared preamble for the position-bearing request handlers
+    /// (definition / references / hover / completion). `None` when the
+    /// document isn't open.
+    fn source_and_offset(&self, uri: &Url, pos: Position) -> Option<(String, usize)> {
+        let source = self.document_text(uri)?;
+        let offset = position_to_offset(&source, pos);
+        Some((source, offset))
     }
 
     /// Snapshot of every open buffer as `path → text`. Used to build
@@ -314,10 +324,11 @@ impl LanguageServer for Backend {
         params: GotoDefinitionParams,
     ) -> RpcResult<Option<GotoDefinitionResponse>> {
         let uri = params.text_document_position_params.text_document.uri;
-        let Some(source) = self.document_text(&uri) else {
+        let Some((source, offset)) =
+            self.source_and_offset(&uri, params.text_document_position_params.position)
+        else {
             return Ok(None);
         };
-        let offset = position_to_offset(&source, params.text_document_position_params.position);
         let root_doc = self.root_document();
         let root_path = self.root_path();
         Ok(navigation::goto_definition(
@@ -331,10 +342,11 @@ impl LanguageServer for Backend {
 
     async fn references(&self, params: ReferenceParams) -> RpcResult<Option<Vec<Location>>> {
         let uri = params.text_document_position.text_document.uri;
-        let Some(source) = self.document_text(&uri) else {
+        let Some((source, offset)) =
+            self.source_and_offset(&uri, params.text_document_position.position)
+        else {
             return Ok(None);
         };
-        let offset = position_to_offset(&source, params.text_document_position.position);
         let root_doc = self.root_document();
         let root_path = self.root_path();
         Ok(navigation::references(
@@ -349,10 +361,11 @@ impl LanguageServer for Backend {
 
     async fn hover(&self, params: HoverParams) -> RpcResult<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
-        let Some(source) = self.document_text(&uri) else {
+        let Some((source, offset)) =
+            self.source_and_offset(&uri, params.text_document_position_params.position)
+        else {
             return Ok(None);
         };
-        let offset = position_to_offset(&source, params.text_document_position_params.position);
         let root_doc = self.root_document();
         Ok(hover_impl::hover(
             &source,
@@ -364,10 +377,11 @@ impl LanguageServer for Backend {
 
     async fn completion(&self, params: CompletionParams) -> RpcResult<Option<CompletionResponse>> {
         let uri = params.text_document_position.text_document.uri;
-        let Some(source) = self.document_text(&uri) else {
+        let Some((source, offset)) =
+            self.source_and_offset(&uri, params.text_document_position.position)
+        else {
             return Ok(None);
         };
-        let offset = position_to_offset(&source, params.text_document_position.position);
         let root_doc = self.root_document();
         let items = completion::completions(&source, uri.as_str(), offset, root_doc.as_ref());
         Ok(Some(CompletionResponse::Array(items)))

@@ -2949,3 +2949,66 @@ fn inner_let_shadows_outer() {
     let cfg = doc.block("cfg").unwrap();
     assert_eq!(cfg.field("out").unwrap().value().unwrap(), &Value::I64(2));
 }
+
+// ── Value-type interface introspection (check_value_implements_iface) ──
+//
+// Bare `Value::Record`s (e.g. connection projections) are now
+// structurally checked against an interface's fields, alongside the
+// pre-existing variant-with-record-payload path.
+
+fn record_value(pairs: &[(&str, Value)]) -> Value {
+    let fields = pairs
+        .iter()
+        .map(|(k, v)| ((*k).to_string(), v.clone()))
+        .collect();
+    Value::Record {
+        ty: Vec::new(),
+        fields,
+    }
+}
+
+#[test]
+fn bare_record_satisfies_interface() {
+    let doc = open("interface Named {\n  label: utf8\n}\n");
+    let rec = record_value(&[("label", Value::Utf8("hi".to_string()))]);
+    doc.check_value_implements_iface(&rec, &["Named".to_string()], crate::ast::Span::new(0, 0))
+        .expect("record carrying `label: utf8` satisfies Named");
+}
+
+#[test]
+fn bare_record_missing_field_is_rejected() {
+    let doc = open("interface Named {\n  label: utf8\n}\n");
+    let rec = record_value(&[("other", Value::Utf8("hi".to_string()))]);
+    let err = doc
+        .check_value_implements_iface(&rec, &["Named".to_string()], crate::ast::Span::new(0, 0))
+        .expect_err("record missing `label` should fail");
+    assert!(
+        matches!(err, EvalError::VariantShapeMismatch { .. }),
+        "{err:?}"
+    );
+}
+
+#[test]
+fn bare_record_wrong_field_type_is_rejected() {
+    let doc = open("interface Named {\n  label: utf8\n}\n");
+    let rec = record_value(&[("label", Value::I64(3))]);
+    let err = doc
+        .check_value_implements_iface(&rec, &["Named".to_string()], crate::ast::Span::new(0, 0))
+        .expect_err("record whose `label` isn't utf8 should fail");
+    assert!(
+        matches!(err, EvalError::VariantShapeMismatch { .. }),
+        "{err:?}"
+    );
+}
+
+#[test]
+fn non_record_value_passes_through_permissively() {
+    // Scalars carry no field map, so they're not introspected.
+    let doc = open("interface Named {\n  label: utf8\n}\n");
+    doc.check_value_implements_iface(
+        &Value::I64(1),
+        &["Named".to_string()],
+        crate::ast::Span::new(0, 0),
+    )
+    .expect("a scalar passes through (no runtime type tag to check)");
+}

@@ -3,7 +3,7 @@
 //! is, plus a fenced snippet of its source.
 
 use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
-use wcl_lang::{Document, parse_for_edit};
+use wcl_lang::Document;
 
 use crate::convert::span_to_range;
 use crate::resolve::{self, LocatedSymbol};
@@ -14,20 +14,15 @@ pub(crate) fn hover(
     offset: usize,
     root_doc: Option<&Document>,
 ) -> Option<Hover> {
-    let local_doc = Document::open(source, uri).ok();
-    let ast = parse_for_edit(source, uri).ok()?;
-    let (sym, span) = local_doc
-        .as_ref()
-        .and_then(|d| resolve::locate(d, &ast, source, offset))
-        .or_else(|| root_doc.and_then(|d| resolve::locate(d, &ast, source, offset)))?;
+    let (sym, span, local_doc) = resolve::locate_at(source, uri, offset, root_doc)?;
     // The declaration's source text is needed for the hover snippet.
     // Prefer the per-file doc (cheap, in-memory); fall back to reading
     // the declaring file off disk via the root doc's symbol hit.
     let snippet = hover_snippet(local_doc.as_ref(), root_doc, &sym, source);
     let body = format!(
         "**{kind}** `{name}`\n\n```wcl\n{snippet}\n```",
-        kind = kind_label(&sym),
-        name = display_name(&sym),
+        kind = sym.kind_label(),
+        name = sym.display_name(),
         snippet = snippet.as_deref().unwrap_or("<no source>"),
     );
     Some(Hover {
@@ -55,42 +50,12 @@ fn hover_snippet(
         return Some(text.to_string());
     }
     let root = root_doc?;
-    let fqn = match sym {
-        LocatedSymbol::Type(f)
-        | LocatedSymbol::Decorator(f)
-        | LocatedSymbol::BlockKind(f)
-        | LocatedSymbol::Field(f) => f.as_str(),
-        _ => return None,
-    };
+    let fqn = sym.simple_fqn()?;
     let hit = root.find_symbol(fqn)?;
     let path = hit.source_path?;
     let text = std::fs::read_to_string(path).ok()?;
     text.get(hit.record.span.start..hit.record.span.end)
         .map(str::to_string)
-}
-
-fn kind_label(sym: &LocatedSymbol) -> &'static str {
-    match sym {
-        LocatedSymbol::Type(_) => "type",
-        LocatedSymbol::Decorator(_) => "decorator",
-        LocatedSymbol::BlockKind(_) => "block kind",
-        LocatedSymbol::UnionVariant { .. } => "variant",
-        LocatedSymbol::SymbolEntry { .. } => "symbol",
-        LocatedSymbol::Field(_) => "field",
-        LocatedSymbol::Local { .. } => "local",
-    }
-}
-
-fn display_name(sym: &LocatedSymbol) -> String {
-    match sym {
-        LocatedSymbol::Type(f)
-        | LocatedSymbol::Decorator(f)
-        | LocatedSymbol::BlockKind(f)
-        | LocatedSymbol::Field(f) => f.clone(),
-        LocatedSymbol::UnionVariant { union, variant } => format!("{union}.{variant}"),
-        LocatedSymbol::SymbolEntry { set, entry } => format!("{set}.{entry}"),
-        LocatedSymbol::Local { name, .. } => name.clone(),
-    }
 }
 
 #[cfg(test)]
