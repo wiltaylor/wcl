@@ -367,6 +367,10 @@ template book {
         home_link(c, "book-home"),
         if c.theme_toggle { book_theme_toggle } else { [] },
         book_toc(c.toc),
+        // Runs after the TOC is in the DOM (inline script executes at parse
+        // time, so it sees its sibling chapter `<a>`s). Centres the current
+        // chapter in the sidebar's scroll viewport on every book page load.
+        [book_sidebar_scroll],
       ]),
     },
     HtmlFundamental::Element {
@@ -392,4 +396,14 @@ let book_theme_toggle = [
     html: "<script>(function(){var r=document.documentElement;try{var s=localStorage.getItem('wdoc-theme');if(s){r.setAttribute('data-theme',s);}}catch(e){}window.wdocToggleTheme=function(){var lt=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches;var cur=r.getAttribute('data-theme')||(lt?'light':'dark');var n=(cur==='dark')?'light':'dark';r.setAttribute('data-theme',n);try{localStorage.setItem('wdoc-theme',n);}catch(e){}};})();</script>",
   },
 ]
+
+// Centre the current chapter in the sidebar's scroll viewport on page load.
+// The sidebar is `position: fixed`, so it IS the chapter <a>'s offsetParent
+// — `c.offsetTop` reads from the sidebar's top directly. Subtract half the
+// visible height to centre; the browser clamps out-of-range scrollTop values
+// to [0, scrollHeight - clientHeight], so chapters near the top or bottom
+// need no special-case.
+let book_sidebar_scroll = HtmlFundamental::Raw {
+  html: "<script>(function(){var c=document.querySelector('.book-chapter.current');if(!c)return;var n=document.querySelector('.book-sidebar');if(n)n.scrollTop=c.offsetTop-n.clientHeight/2;})();</script>",
+}
 
