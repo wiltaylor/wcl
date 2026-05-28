@@ -126,6 +126,29 @@ pub(crate) fn lower_html_block(
     }
 }
 
+/// Shared tail for a custom (non-fundamental) variant: rebuild its record,
+/// resolve the kind's `lower`, call it, and render each returned variant via
+/// `render_each` at `depth + 1`. Any failure (no `lower`, call error, or a
+/// non-list result) yields an empty string. Used by both the SVG and HTML
+/// dispatchers below; the terminal's `draw_variant` has its own grid-mutating
+/// recursion (no `String` return, no depth marker) and stays separate.
+fn lower_recurse(
+    doc: &Document,
+    map: &BTreeMap<String, Value>,
+    kind: &str,
+    depth: usize,
+    render_each: impl Fn(&Value, usize) -> String,
+) -> String {
+    let arg = payload_to_record(map, kind);
+    let Some(fv) = lookup_type_lower(doc, kind) else {
+        return String::new();
+    };
+    let Ok(Value::List(items)) = doc.call_value(&fv, &[arg]) else {
+        return String::new();
+    };
+    items.iter().map(|v| render_each(v, depth + 1)).collect()
+}
+
 // `_parent_w` / `_parent_h` are threaded through so future variant
 // kinds can pick them up; today's fundamentals carry pre-resolved
 // geometry in the payload itself.
@@ -155,25 +178,11 @@ pub(crate) fn render_svg_variant(
         "line" => render_line_payload(map),
         "label" => render_label_payload(map),
         "polygon" => render_polygon_payload(map),
-        other => {
-            // Custom variant — look up its type's `lower` and recurse
-            // with the variant's record payload as the new arg.
-            let arg = payload_to_record(map, other);
-            let Some(fv) = lookup_type_lower(doc, other) else {
-                return String::new();
-            };
-            let result = match doc.call_value(&fv, &[arg]) {
-                Ok(v) => v,
-                Err(_) => return String::new(),
-            };
-            let Value::List(items) = result else {
-                return String::new();
-            };
-            items
-                .iter()
-                .map(|v| render_svg_variant(doc, v, _parent_w, _parent_h, depth + 1))
-                .collect()
-        }
+        // Custom variant — look up its type's `lower` and recurse with the
+        // variant's record payload as the new arg.
+        other => lower_recurse(doc, map, other, depth, |v, d| {
+            render_svg_variant(doc, v, _parent_w, _parent_h, d)
+        }),
     }
 }
 
@@ -222,23 +231,9 @@ pub(crate) fn render_html_variant(
         // LaTeX → self-contained SVG via RaTeX. Like `highlighted`, the
         // SVG is a Rust leaf; the centring `<div>` wrapper is in math.rs.
         "math" => crate::math::render_math_fundamental(map),
-        other => {
-            let arg = payload_to_record(map, other);
-            let Some(fv) = lookup_type_lower(doc, other) else {
-                return String::new();
-            };
-            let result = match doc.call_value(&fv, &[arg]) {
-                Ok(v) => v,
-                Err(_) => return String::new(),
-            };
-            let Value::List(items) = result else {
-                return String::new();
-            };
-            items
-                .iter()
-                .map(|v| render_html_variant(doc, v, depth + 1, patterns))
-                .collect()
-        }
+        other => lower_recurse(doc, map, other, depth, |v, d| {
+            render_html_variant(doc, v, d, patterns)
+        }),
     }
 }
 

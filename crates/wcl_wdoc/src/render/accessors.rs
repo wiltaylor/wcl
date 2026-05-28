@@ -5,10 +5,104 @@ use std::fmt::Write as _;
 
 use wcl_lang::{Block, Value};
 
-pub(crate) fn class_attr(block: &Block<'_>) -> String {
-    let names = field_utf8_list(block, "class");
-    classes_attr_from_names(&names)
+/// A source of named values — either a `Block`'s declared fields or a
+/// variant-payload `BTreeMap`. The block path goes through a temporary
+/// `Field` view, so the trait yields an owned `Value` rather than a
+/// borrow; the cloned scalars/lists are cheap and live only in the
+/// render path. This is the one seam that lets the `field_*` and `map_*`
+/// reader families share a single body each (the `src_*` fns below).
+pub(crate) trait ValueSource {
+    fn lookup(&self, name: &str) -> Option<Value>;
 }
+
+impl ValueSource for &Block<'_> {
+    fn lookup(&self, name: &str) -> Option<Value> {
+        self.field(name)?.value().ok().cloned()
+    }
+}
+
+impl ValueSource for &BTreeMap<String, Value> {
+    fn lookup(&self, name: &str) -> Option<Value> {
+        self.get(name).cloned()
+    }
+}
+
+// ── Generic readers over any `ValueSource` ────────────────────────
+//
+// Each preserves the exact coercion the old `field_*`/`map_*` pair used;
+// the named wrappers further down just pin `S` to a block or a map.
+
+fn src_utf8<S: ValueSource>(s: S, name: &str) -> Option<String> {
+    match s.lookup(name)? {
+        Value::Utf8(x) | Value::Ascii(x) => Some(x),
+        _ => None,
+    }
+}
+
+fn src_id<S: ValueSource>(s: S, name: &str) -> Option<String> {
+    match s.lookup(name)? {
+        Value::Identifier(x) | Value::Utf8(x) | Value::Ascii(x) => Some(x),
+        _ => None,
+    }
+}
+
+fn src_bool<S: ValueSource>(s: S, name: &str) -> Option<bool> {
+    match s.lookup(name)? {
+        Value::Bool(b) => Some(b),
+        _ => None,
+    }
+}
+
+fn src_symbol<S: ValueSource>(s: S, name: &str) -> Option<String> {
+    match s.lookup(name)? {
+        Value::Symbol(x) => Some(x),
+        _ => None,
+    }
+}
+
+fn src_f64<S: ValueSource>(s: S, name: &str) -> Option<f64> {
+    value_as_f64(&s.lookup(name)?)
+}
+
+fn src_i64<S: ValueSource>(s: S, name: &str) -> Option<i64> {
+    value_as_i64(&s.lookup(name)?)
+}
+
+fn src_utf8_list<S: ValueSource>(s: S, name: &str) -> Vec<String> {
+    match s.lookup(name) {
+        Some(Value::List(items)) => items.iter().filter_map(value_as_str).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn src_class_attr<S: ValueSource>(s: S) -> String {
+    classes_attr_from_names(&src_utf8_list(s, "class"))
+}
+
+/// The paint + identity attributes every diagram shape reads the same
+/// way — `class`, `fill`, `stroke`, `id` — regardless of source. The
+/// `render_*` (block) and `render_*_payload` (variant) pairs differ in
+/// geometry (anchor resolution vs. pre-resolved coords) so they stay
+/// split, but these reads collapse to one generic helper. A shape that
+/// doesn't take a given attribute (a `line` has no fill, a `label` no
+/// stroke) simply ignores that field.
+pub(crate) struct ShapePaint {
+    pub(crate) class: String,
+    pub(crate) fill: Option<String>,
+    pub(crate) stroke: Option<String>,
+    pub(crate) id: Option<String>,
+}
+
+pub(crate) fn shape_paint<S: ValueSource + Copy>(s: S) -> ShapePaint {
+    ShapePaint {
+        class: src_class_attr(s),
+        fill: src_utf8(s, "fill"),
+        stroke: src_utf8(s, "stroke"),
+        id: src_id(s, "id"),
+    }
+}
+
+// ── Shared helpers (source-agnostic) ──────────────────────────────
 
 pub(crate) fn append_attr(out: &mut String, name: &str, value: Option<&str>) {
     if let Some(v) = value {
@@ -28,54 +122,54 @@ pub(crate) fn value_as_string(v: Value) -> Option<String> {
     }
 }
 
-pub(crate) fn field_utf8(block: &Block<'_>, name: &str) -> Option<String> {
-    let field = block.field(name)?;
-    match field.value().ok()? {
-        Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
-        _ => None,
+pub(crate) fn classes_attr_from_names(names: &[String]) -> String {
+    if names.is_empty() {
+        return String::new();
     }
+    let joined = names
+        .iter()
+        .map(|s| escape_html(s))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(" class=\"{joined}\"")
+}
+
+// ── Block-side accessors ──────────────────────────────────────────
+
+pub(crate) fn class_attr(block: &Block<'_>) -> String {
+    src_class_attr(block)
+}
+
+pub(crate) fn field_utf8(block: &Block<'_>, name: &str) -> Option<String> {
+    src_utf8(block, name)
 }
 
 pub(crate) fn field_id(block: &Block<'_>, name: &str) -> Option<String> {
-    let field = block.field(name)?;
-    match field.value().ok()? {
-        Value::Identifier(s) | Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
-        _ => None,
-    }
+    src_id(block, name)
 }
 
 pub(crate) fn field_bool(block: &Block<'_>, name: &str) -> Option<bool> {
-    let field = block.field(name)?;
-    match field.value().ok()? {
-        Value::Bool(b) => Some(*b),
-        _ => None,
-    }
+    src_bool(block, name)
 }
 
 pub(crate) fn field_symbol(block: &Block<'_>, name: &str) -> Option<String> {
-    let field = block.field(name)?;
-    match field.value().ok()? {
-        Value::Symbol(s) => Some(s.clone()),
-        _ => None,
-    }
+    src_symbol(block, name)
 }
 
 pub(crate) fn field_f64(block: &Block<'_>, name: &str) -> Option<f64> {
-    if let Some(field) = block.field(name)
-        && let Some(v) = field.value().ok().and_then(value_as_f64)
-    {
+    if let Some(v) = src_f64(block, name) {
         return Some(v);
     }
     // Fall back to a schema-declared default (`name = 0.0` inline
     // form or `@default(...)` decorator). This is what lets a
     // layered child render at (x=0, y=0) without forcing every
-    // user to write x = 0.0 themselves.
+    // user to write x = 0.0 themselves. Block-only — variant
+    // payloads carry already-resolved geometry.
     value_as_f64(&block.schema()?.field(name)?.default_value()?)
 }
 
 pub(crate) fn field_i64(block: &Block<'_>, name: &str) -> Option<i64> {
-    let field = block.field(name)?;
-    value_as_i64(field.value().ok()?)
+    src_i64(block, name)
 }
 
 pub(crate) fn field_f64_list(block: &Block<'_>, name: &str) -> Vec<f64> {
@@ -92,16 +186,7 @@ pub(crate) fn field_f64_list(block: &Block<'_>, name: &str) -> Vec<f64> {
 }
 
 pub(crate) fn field_utf8_list(block: &Block<'_>, name: &str) -> Vec<String> {
-    let Some(field) = block.field(name) else {
-        return Vec::new();
-    };
-    let Ok(value) = field.value() else {
-        return Vec::new();
-    };
-    let Value::List(items) = value else {
-        return Vec::new();
-    };
-    items.iter().filter_map(value_as_str).collect()
+    src_utf8_list(block, name)
 }
 
 /// Read a `list<symbol>` field, distinguishing "field absent or
@@ -127,56 +212,23 @@ pub(crate) fn field_symbol_list_opt(block: &Block<'_>, name: &str) -> Option<Vec
 // ── Map-side accessors (for variant payloads) ─────────────────────
 
 pub(crate) fn class_attr_from_map(map: &BTreeMap<String, Value>) -> String {
-    let names = map_utf8_list(map, "class");
-    classes_attr_from_names(&names)
-}
-
-pub(crate) fn classes_attr_from_names(names: &[String]) -> String {
-    if names.is_empty() {
-        return String::new();
-    }
-    let joined = names
-        .iter()
-        .map(|s| escape_html(s))
-        .collect::<Vec<_>>()
-        .join(" ");
-    format!(" class=\"{joined}\"")
+    src_class_attr(map)
 }
 
 pub(crate) fn map_utf8(map: &BTreeMap<String, Value>, name: &str) -> Option<String> {
-    match map.get(name)? {
-        Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
-        _ => None,
-    }
+    src_utf8(map, name)
 }
 
 pub(crate) fn map_id(map: &BTreeMap<String, Value>, name: &str) -> Option<String> {
-    match map.get(name)? {
-        Value::Identifier(s) | Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
-        _ => None,
-    }
+    src_id(map, name)
 }
 
 pub(crate) fn map_f64(map: &BTreeMap<String, Value>, name: &str) -> Option<f64> {
-    value_as_f64(map.get(name)?)
-}
-
-pub(crate) fn map_i64(map: &BTreeMap<String, Value>, name: &str) -> Option<i64> {
-    value_as_i64(map.get(name)?)
-}
-
-pub(crate) fn map_bool(map: &BTreeMap<String, Value>, name: &str) -> Option<bool> {
-    match map.get(name)? {
-        Value::Bool(b) => Some(*b),
-        _ => None,
-    }
+    src_f64(map, name)
 }
 
 pub(crate) fn map_utf8_list(map: &BTreeMap<String, Value>, name: &str) -> Vec<String> {
-    let Some(Value::List(items)) = map.get(name) else {
-        return Vec::new();
-    };
-    items.iter().filter_map(value_as_str).collect()
+    src_utf8_list(map, name)
 }
 
 // ── Value-coercion helpers ────────────────────────────────────────
@@ -223,4 +275,72 @@ pub(crate) fn escape_html(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wcl_lang::Document;
+
+    /// Build a tiny doc whose single `marker` block carries the given
+    /// fields, then hand its block to `f`. Lets the accessor tests drive
+    /// the real block-view path rather than a hand-rolled `Value`.
+    fn with_block(body: &str, f: impl FnOnce(&Block<'_>)) {
+        let src = format!(
+            "@schemaless\n@document\ntype Root {{}}\n\
+             @block(\"marker\")\ntype Marker {{\n  \
+             text: utf8?  flag: bool?  count: i64?  ratio: f64?  \
+             tag: symbol?  names: list<utf8>?\n}}\n\
+             marker {{\n{body}\n}}\n"
+        );
+        let doc = Document::open(&src, "test.wcl").expect("doc parses");
+        let block = doc.blocks().next().expect("one block");
+        f(&block);
+    }
+
+    #[test]
+    fn block_and_map_readers_agree() {
+        with_block(
+            "  text = \"hi\"\n  flag = true\n  count = 3\n  ratio = 1.5\n  tag = :sym\n  names = [\"a\", \"b\"]",
+            |block| {
+                // Mirror the block's fields into a payload map and assert
+                // every reader pair produces the same result.
+                let mut map: BTreeMap<String, Value> = BTreeMap::new();
+                map.insert("text".into(), Value::Utf8("hi".into()));
+                map.insert("ratio".into(), Value::F64(1.5));
+                map.insert(
+                    "names".into(),
+                    Value::List(vec![Value::Utf8("a".into()), Value::Utf8("b".into())]),
+                );
+
+                // String / float / list readers exist on both sources and
+                // share the `src_*` body — assert they agree.
+                assert_eq!(field_utf8(block, "text"), map_utf8(&map, "text"));
+                assert_eq!(field_f64(block, "ratio"), map_f64(&map, "ratio"));
+                assert_eq!(
+                    field_utf8_list(block, "names"),
+                    map_utf8_list(&map, "names")
+                );
+                // Bool / i64 / symbol readers are block-only; check they
+                // coerce through the same generic path.
+                assert_eq!(field_bool(block, "flag"), Some(true));
+                assert_eq!(field_i64(block, "count"), Some(3));
+                assert_eq!(field_symbol(block, "tag"), Some("sym".to_string()));
+            },
+        );
+    }
+
+    #[test]
+    fn field_f64_falls_back_to_schema_default_block_only() {
+        // The schema declares `size = 7.0` as an inline default; the block
+        // omits it. The block reader must surface the default; a payload
+        // map with no entry must not (it carries resolved geometry).
+        let src = "@schemaless\n@document\ntype Root {}\n@block(\"marker\")\ntype Marker { size = 7.0 }\nmarker {}\n";
+        let doc = Document::open(src, "test.wcl").expect("doc parses");
+        let block = doc.blocks().next().expect("one block");
+        assert_eq!(field_f64(&block, "size"), Some(7.0));
+
+        let empty: BTreeMap<String, Value> = BTreeMap::new();
+        assert_eq!(map_f64(&empty, "size"), None);
+    }
 }

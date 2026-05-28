@@ -1139,65 +1139,7 @@ impl Document {
                 if has_schemaless(&f.ast.decorators) {
                     continue;
                 }
-                match root {
-                    Some(schema) => {
-                        let Some(declared) = schema.field(f.name()) else {
-                            EvalError::push_schema_violation(
-                                &mut out,
-                                Kind::UnknownField,
-                                format!(
-                                    "top-level field '{}' is not declared by @document schema '{}'",
-                                    f.name(),
-                                    schema.name()
-                                ),
-                                f.span(),
-                            );
-                            continue;
-                        };
-                        if let Ok(v) = f.value() {
-                            if let TypeRef::Named(path) = declared.type_ref()
-                                && let Some(union_decl) = self.union_decl(&path.join("."))
-                            {
-                                if let Value::Variant { union, variant, .. } = v
-                                    && union != &union_decl.ast.name
-                                {
-                                    EvalError::push_schema_violation(
-                                        &mut out,
-                                        Kind::VariantUnionMismatch,
-                                        format!(
-                                            "field '{}' declared as union '{}' but value is {}::{}",
-                                            f.name(),
-                                            union_decl.ast.name.join("."),
-                                            union.join("."),
-                                            variant,
-                                        ),
-                                        f.span(),
-                                    );
-                                }
-                            } else if !value_matches_type_ref(v, declared.type_ref()) {
-                                EvalError::push_schema_violation(
-                                    &mut out,
-                                    Kind::FieldTypeMismatch,
-                                    format!(
-                                        "field '{}' declared as {} but value is {}",
-                                        f.name(),
-                                        declared.type_ref(),
-                                        v.type_name(),
-                                    ),
-                                    f.span(),
-                                );
-                            }
-                        }
-                    }
-                    None => {
-                        EvalError::push_schema_violation(
-                            &mut out,
-                            Kind::NoDocumentSchema,
-                            format!("top-level field '{}' has no @document schema", f.name()),
-                            f.span(),
-                        );
-                    }
-                }
+                self.validate_root_field(&f, root, &mut out);
             }
 
             // Walk the top-level blocks in this source.
@@ -1205,56 +1147,7 @@ impl Document {
                 if has_schemaless(&b.ast.decorators) {
                     continue;
                 }
-                let dispatched_through_union = root_union_slots
-                    .iter()
-                    .any(|u| variant_dispatch::block_to_variant(self, &b, *u).is_ok());
-                if dispatched_through_union {
-                    continue;
-                }
-                if !self.is_registered_kind(b.kind()) {
-                    let mut msg = format!(
-                        "block kind '{}' has no @block or @table declaration",
-                        b.kind()
-                    );
-                    if !root_union_slots.is_empty() {
-                        let variants = format_union_variants_hint(self, &root_union_slots);
-                        if !variants.is_empty() {
-                            msg.push_str(&format!(" (nearby @children union accepts: {variants})"));
-                        }
-                    }
-                    EvalError::push_schema_violation(
-                        &mut out,
-                        Kind::UnregisteredKind,
-                        msg,
-                        b.span(),
-                    );
-                    continue;
-                }
-                if let Some(schema) = root {
-                    let allowed = schema.allowed_child_kinds();
-                    if !allowed.iter().any(|k| k == b.kind()) {
-                        EvalError::push_schema_violation(
-                            &mut out,
-                            Kind::DisallowedChild,
-                            format!(
-                                "block kind '{}' is not allowed at the document root by @document schema '{}'",
-                                b.kind(),
-                                schema.name()
-                            ),
-                            b.span(),
-                        );
-                    }
-                } else {
-                    EvalError::push_schema_violation(
-                        &mut out,
-                        Kind::NoDocumentSchema,
-                        format!("top-level block '{}' has no @document schema", b.kind()),
-                        b.span(),
-                    );
-                }
-                for e in b.schema_errors() {
-                    out.push(e.clone());
-                }
+                self.validate_root_block(&b, root, &root_union_slots, &mut out);
             }
         }
 
@@ -1275,6 +1168,136 @@ impl Document {
         }
 
         out
+    }
+
+    /// Validate one top-level field against the `@document` schema for its
+    /// namespace (`root`), pushing any violation into `out`. Split out of
+    /// [`schema_errors`] for readability; behaviour is unchanged (an
+    /// unknown field reports and stops, mirroring the old loop `continue`).
+    fn validate_root_field(
+        &self,
+        f: &Field<'_>,
+        root: Option<TypeDecl<'_>>,
+        out: &mut Vec<EvalError>,
+    ) {
+        use crate::error::SchemaViolationKind as Kind;
+        let Some(schema) = root else {
+            EvalError::push_schema_violation(
+                out,
+                Kind::NoDocumentSchema,
+                format!("top-level field '{}' has no @document schema", f.name()),
+                f.span(),
+            );
+            return;
+        };
+        let Some(declared) = schema.field(f.name()) else {
+            EvalError::push_schema_violation(
+                out,
+                Kind::UnknownField,
+                format!(
+                    "top-level field '{}' is not declared by @document schema '{}'",
+                    f.name(),
+                    schema.name()
+                ),
+                f.span(),
+            );
+            return;
+        };
+        let Ok(v) = f.value() else {
+            return;
+        };
+        if let TypeRef::Named(path) = declared.type_ref()
+            && let Some(union_decl) = self.union_decl(&path.join("."))
+        {
+            if let Value::Variant { union, variant, .. } = v
+                && union != &union_decl.ast.name
+            {
+                EvalError::push_schema_violation(
+                    out,
+                    Kind::VariantUnionMismatch,
+                    format!(
+                        "field '{}' declared as union '{}' but value is {}::{}",
+                        f.name(),
+                        union_decl.ast.name.join("."),
+                        union.join("."),
+                        variant,
+                    ),
+                    f.span(),
+                );
+            }
+        } else if !value_matches_type_ref(v, declared.type_ref()) {
+            EvalError::push_schema_violation(
+                out,
+                Kind::FieldTypeMismatch,
+                format!(
+                    "field '{}' declared as {} but value is {}",
+                    f.name(),
+                    declared.type_ref(),
+                    v.type_name(),
+                ),
+                f.span(),
+            );
+        }
+    }
+
+    /// Validate one top-level block: union dispatch, kind registration, and
+    /// allowed-child placement under the namespace's `@document` schema.
+    /// `root_union_slots` are that schema's union-typed `@children` slots
+    /// (a structurally-matched block bypasses the kind check). Split out of
+    /// [`schema_errors`]; behaviour is unchanged.
+    fn validate_root_block(
+        &self,
+        b: &Block<'_>,
+        root: Option<TypeDecl<'_>>,
+        root_union_slots: &[UnionDecl<'_>],
+        out: &mut Vec<EvalError>,
+    ) {
+        use crate::error::SchemaViolationKind as Kind;
+        let dispatched_through_union = root_union_slots
+            .iter()
+            .any(|u| variant_dispatch::block_to_variant(self, b, *u).is_ok());
+        if dispatched_through_union {
+            return;
+        }
+        if !self.is_registered_kind(b.kind()) {
+            let mut msg = format!(
+                "block kind '{}' has no @block or @table declaration",
+                b.kind()
+            );
+            if !root_union_slots.is_empty() {
+                let variants = format_union_variants_hint(self, root_union_slots);
+                if !variants.is_empty() {
+                    msg.push_str(&format!(" (nearby @children union accepts: {variants})"));
+                }
+            }
+            EvalError::push_schema_violation(out, Kind::UnregisteredKind, msg, b.span());
+            return;
+        }
+        if let Some(schema) = root {
+            let allowed = schema.allowed_child_kinds();
+            if !allowed.iter().any(|k| k == b.kind()) {
+                EvalError::push_schema_violation(
+                    out,
+                    Kind::DisallowedChild,
+                    format!(
+                        "block kind '{}' is not allowed at the document root by @document schema '{}'",
+                        b.kind(),
+                        schema.name()
+                    ),
+                    b.span(),
+                );
+            }
+        } else {
+            EvalError::push_schema_violation(
+                out,
+                Kind::NoDocumentSchema,
+                format!("top-level block '{}' has no @document schema", b.kind()),
+                b.span(),
+            );
+        }
+        for e in b.schema_errors() {
+            out.push(e.clone());
+        }
     }
 
     fn find_schema(&self, dec: BuiltinDecorator, value: &str) -> Option<TypeDecl<'_>> {

@@ -28,9 +28,9 @@ use std::path::Path;
 use wcl_lang::{Block, Document, Value, VariantPayload};
 
 use crate::render::{
-    MAX_LOWER_DEPTH, block_to_record_raw, escape_html, field_bool, field_f64, field_i64, field_id,
-    field_symbol, field_utf8, field_utf8_list, kind_for_variant, label_string, lookup_block_lower,
-    map_bool, map_i64, map_utf8,
+    MAX_LOWER_DEPTH, ValueSource, block_to_record_raw, escape_html, field_bool, field_f64,
+    field_i64, field_id, field_symbol, field_utf8, field_utf8_list, kind_for_variant, label_string,
+    lookup_block_lower, map_utf8, value_as_i64,
 };
 
 /// Bundled replay player, written into `<out>/_wdoc/` and referenced by
@@ -618,10 +618,13 @@ fn chrome_svg(g: &Geom, title: Option<&str>, replay: bool) -> String {
 
 // ── Populator A: the `term_text` primitive + element lowering ────────
 
-fn pcolor(block: &Block<'_>, name: &str) -> Color {
-    field_utf8(block, name)
-        .map(|s| parse_color(&s))
-        .unwrap_or(Color::Default)
+/// Read a colour field from either a `term_text` block or a lowered
+/// `Text` variant payload (`fg`/`bg`); absent or non-string ⇒ default.
+fn src_color<S: ValueSource>(s: S, name: &str) -> Color {
+    match s.lookup(name) {
+        Some(Value::Utf8(x) | Value::Ascii(x)) => parse_color(&x),
+        _ => Color::Default,
+    }
 }
 
 /// Walk a terminal's children, drawing each into the grid. The one base
@@ -678,7 +681,7 @@ fn populate_lowered(
     let Ok(Value::List(items)) = doc.call_value(&fv, &[arg]) else {
         return;
     };
-    let wbase = offset(base, cell_pos(block));
+    let wbase = offset(base, src_pos(block));
     for item in &items {
         draw_variant(grid, doc, block, item, depth, wbase);
     }
@@ -709,7 +712,7 @@ fn draw_variant(
     match kind_for_variant(variant).as_str() {
         "text" => draw_text_variant(grid, map, wbase),
         "children" => {
-            let cbase = offset(wbase, map_pos(map));
+            let cbase = offset(wbase, src_pos(map));
             for child in block.blocks() {
                 place_child(grid, doc, &child, child.kind(), depth + 1, cbase);
             }
@@ -723,51 +726,28 @@ fn offset(base: (usize, usize), pos: (usize, usize)) -> (usize, usize) {
     (base.0 + pos.0, base.1 + pos.1)
 }
 
-/// Read 1-based `row`/`col` from a block as a 0-based offset (clamped).
-fn cell_pos(block: &Block<'_>) -> (usize, usize) {
-    let row = (field_i64(block, "row").unwrap_or(1) - 1).max(0) as usize;
-    let col = (field_i64(block, "col").unwrap_or(1) - 1).max(0) as usize;
+/// Read 1-based `row`/`col` (block field or variant payload) as a 0-based
+/// offset, clamped at the top-left.
+fn src_pos<S: ValueSource>(s: S) -> (usize, usize) {
+    let read = |name: &str| s.lookup(name).as_ref().and_then(value_as_i64).unwrap_or(1);
+    let row = (read("row") - 1).max(0) as usize;
+    let col = (read("col") - 1).max(0) as usize;
     (row, col)
 }
 
-/// Read 1-based `row`/`col` from a variant payload as a 0-based offset.
-fn map_pos(map: &std::collections::BTreeMap<String, Value>) -> (usize, usize) {
-    let row = (map_i64(map, "row").unwrap_or(1) - 1).max(0) as usize;
-    let col = (map_i64(map, "col").unwrap_or(1) - 1).max(0) as usize;
-    (row, col)
-}
-
-fn prim_style(block: &Block<'_>) -> Style {
+/// Read the eight ANSI style bits from either a `term_text` block or a
+/// lowered `Text` variant payload; an absent or non-bool field is `false`.
+fn src_style<S: ValueSource>(s: S) -> Style {
+    let on = |name: &str| matches!(s.lookup(name), Some(Value::Bool(true)));
     Style {
-        bold: field_bool(block, "bold").unwrap_or(false),
-        dim: field_bool(block, "dim").unwrap_or(false),
-        italic: field_bool(block, "italic").unwrap_or(false),
-        underline: field_bool(block, "underline").unwrap_or(false),
-        strike: field_bool(block, "strike").unwrap_or(false),
-        blink: field_bool(block, "blink").unwrap_or(false),
-        inverse: field_bool(block, "inverse").unwrap_or(false),
-        conceal: field_bool(block, "conceal").unwrap_or(false),
-    }
-}
-
-/// Variant-payload counterpart of [`pcolor`].
-fn vcolor(map: &std::collections::BTreeMap<String, Value>, name: &str) -> Color {
-    map_utf8(map, name)
-        .map(|s| parse_color(&s))
-        .unwrap_or(Color::Default)
-}
-
-/// Variant-payload counterpart of [`prim_style`].
-fn vstyle(map: &std::collections::BTreeMap<String, Value>) -> Style {
-    Style {
-        bold: map_bool(map, "bold").unwrap_or(false),
-        dim: map_bool(map, "dim").unwrap_or(false),
-        italic: map_bool(map, "italic").unwrap_or(false),
-        underline: map_bool(map, "underline").unwrap_or(false),
-        strike: map_bool(map, "strike").unwrap_or(false),
-        blink: map_bool(map, "blink").unwrap_or(false),
-        inverse: map_bool(map, "inverse").unwrap_or(false),
-        conceal: map_bool(map, "conceal").unwrap_or(false),
+        bold: on("bold"),
+        dim: on("dim"),
+        italic: on("italic"),
+        underline: on("underline"),
+        strike: on("strike"),
+        blink: on("blink"),
+        inverse: on("inverse"),
+        conceal: on("conceal"),
     }
 }
 
@@ -801,16 +781,16 @@ fn draw_text(
 /// The `term_text` primitive, read from its `Block` and drawn at
 /// `base + its position`.
 fn prim_text(grid: &mut Grid, block: &Block<'_>, base: (usize, usize)) {
-    let (row, col) = offset(base, cell_pos(block));
+    let (row, col) = offset(base, src_pos(block));
     let content = label_string(block).unwrap_or_default();
     draw_text(
         grid,
         row,
         col,
         &content,
-        pcolor(block, "fg"),
-        pcolor(block, "bg"),
-        prim_style(block),
+        src_color(block, "fg"),
+        src_color(block, "bg"),
+        src_style(block),
     );
 }
 
@@ -821,16 +801,16 @@ fn draw_text_variant(
     map: &std::collections::BTreeMap<String, Value>,
     base: (usize, usize),
 ) {
-    let (row, col) = offset(base, map_pos(map));
+    let (row, col) = offset(base, src_pos(map));
     let content = map_utf8(map, "content").unwrap_or_default();
     draw_text(
         grid,
         row,
         col,
         &content,
-        vcolor(map, "fg"),
-        vcolor(map, "bg"),
-        vstyle(map),
+        src_color(map, "fg"),
+        src_color(map, "bg"),
+        src_style(map),
     );
 }
 
@@ -1220,6 +1200,25 @@ mod tests {
         assert!(matches!(parse_color("200"), Color::Indexed(200)));
         assert!(matches!(parse_color("#102030"), Color::Rgb(16, 32, 48)));
         assert!(matches!(parse_color("default"), Color::Default));
+    }
+
+    #[test]
+    fn src_helpers_read_payload_maps() {
+        use std::collections::BTreeMap;
+        let mut map: BTreeMap<String, Value> = BTreeMap::new();
+        map.insert("fg".into(), Value::Utf8("red".into()));
+        map.insert("row".into(), Value::I64(3));
+        map.insert("col".into(), Value::I64(5));
+        map.insert("bold".into(), Value::Bool(true));
+        map.insert("italic".into(), Value::Bool(true));
+
+        // The generic readers replace the old vcolor / vstyle / map_pos.
+        assert!(matches!(src_color(&map, "fg"), Color::Indexed(1)));
+        assert!(matches!(src_color(&map, "bg"), Color::Default)); // absent ⇒ default
+        assert_eq!(src_pos(&map), (2, 4)); // 1-based row/col → 0-based offset
+        let st = src_style(&map);
+        assert!(st.bold && st.italic);
+        assert!(!st.underline && !st.dim);
     }
 
     #[test]

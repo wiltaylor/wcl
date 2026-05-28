@@ -1299,28 +1299,30 @@ pub(crate) fn render_grid_children(block: &Block<'_>, ctx: RenderCtx<'_>) -> Str
 
 pub(crate) fn render_rect(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let (x, y, w, h) = resolve_rect_box(block, parent_w, parent_h);
+    let p = shape_paint(block);
     emit_rect(
-        &class_attr(block),
+        &p.class,
         x,
         y,
         w,
         h,
-        field_utf8(block, "fill").as_deref(),
-        field_utf8(block, "stroke").as_deref(),
-        field_id(block, "id").as_deref(),
+        p.fill.as_deref(),
+        p.stroke.as_deref(),
+        p.id.as_deref(),
     )
 }
 
 pub(crate) fn render_circle(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let (cx, cy, r) = resolve_circle(block, parent_w, parent_h);
+    let p = shape_paint(block);
     emit_circle(
-        &class_attr(block),
+        &p.class,
         cx,
         cy,
         r,
-        field_utf8(block, "fill").as_deref(),
-        field_utf8(block, "stroke").as_deref(),
-        field_id(block, "id").as_deref(),
+        p.fill.as_deref(),
+        p.stroke.as_deref(),
+        p.id.as_deref(),
     )
 }
 
@@ -1330,19 +1332,19 @@ pub(crate) fn render_line(block: &Block<'_>, parent_w: f64, parent_h: f64) -> St
     let x2 = field_f64(block, "x2").unwrap_or(0.0);
     let y2 = field_f64(block, "y2").unwrap_or(0.0);
     let (ox, oy) = resolve_point_anchor(block, parent_w, parent_h);
+    let p = shape_paint(block);
     emit_line(
-        &class_attr(block),
+        &p.class,
         x1 + ox,
         y1 + oy,
         x2 + ox,
         y2 + oy,
-        field_utf8(block, "stroke").as_deref(),
-        field_id(block, "id").as_deref(),
+        p.stroke.as_deref(),
+        p.id.as_deref(),
     )
 }
 
 pub(crate) fn render_label(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
-    let cls = class_attr(block);
     let content = label_string(block).unwrap_or_default();
     let own_x = field_f64(block, "x").unwrap_or(0.0);
     let own_y = field_f64(block, "y").unwrap_or(0.0);
@@ -1353,28 +1355,30 @@ pub(crate) fn render_label(block: &Block<'_>, parent_w: f64, parent_h: f64) -> S
         field_f64(block, "fit_width"),
         field_f64(block, "fit_height"),
     );
+    let p = shape_paint(block);
     emit_text(
         &content,
         x,
         y,
         font_size,
-        &cls,
-        field_utf8(block, "fill").as_deref(),
-        field_id(block, "id").as_deref(),
+        &p.class,
+        p.fill.as_deref(),
+        p.id.as_deref(),
     )
 }
 
 pub(crate) fn render_polygon(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let points = field_utf8(block, "points").unwrap_or_default();
     let (ox, oy) = resolve_point_anchor(block, parent_w, parent_h);
+    let p = shape_paint(block);
     emit_polygon(
-        &class_attr(block),
+        &p.class,
         &points,
         ox,
         oy,
-        field_utf8(block, "fill").as_deref(),
-        field_utf8(block, "stroke").as_deref(),
-        field_id(block, "id").as_deref(),
+        p.fill.as_deref(),
+        p.stroke.as_deref(),
+        p.id.as_deref(),
     )
 }
 
@@ -1385,44 +1389,46 @@ pub(crate) fn render_polygon(block: &Block<'_>, parent_w: f64, parent_h: f64) ->
 // coordinates.
 
 pub(crate) fn render_rect_payload(map: &BTreeMap<String, Value>) -> String {
+    let p = shape_paint(map);
     emit_rect(
-        &class_attr_from_map(map),
+        &p.class,
         map_f64(map, "x").unwrap_or(0.0),
         map_f64(map, "y").unwrap_or(0.0),
         map_f64(map, "width").unwrap_or(0.0),
         map_f64(map, "height").unwrap_or(0.0),
-        map_utf8(map, "fill").as_deref(),
-        map_utf8(map, "stroke").as_deref(),
-        map_id(map, "id").as_deref(),
+        p.fill.as_deref(),
+        p.stroke.as_deref(),
+        p.id.as_deref(),
     )
 }
 
 pub(crate) fn render_circle_payload(map: &BTreeMap<String, Value>) -> String {
+    let p = shape_paint(map);
     emit_circle(
-        &class_attr_from_map(map),
+        &p.class,
         map_f64(map, "cx").unwrap_or(0.0),
         map_f64(map, "cy").unwrap_or(0.0),
         map_f64(map, "r").unwrap_or(0.0),
-        map_utf8(map, "fill").as_deref(),
-        map_utf8(map, "stroke").as_deref(),
-        map_id(map, "id").as_deref(),
+        p.fill.as_deref(),
+        p.stroke.as_deref(),
+        p.id.as_deref(),
     )
 }
 
 pub(crate) fn render_line_payload(map: &BTreeMap<String, Value>) -> String {
+    let p = shape_paint(map);
     emit_line(
-        &class_attr_from_map(map),
+        &p.class,
         map_f64(map, "x1").unwrap_or(0.0),
         map_f64(map, "y1").unwrap_or(0.0),
         map_f64(map, "x2").unwrap_or(0.0),
         map_f64(map, "y2").unwrap_or(0.0),
-        map_utf8(map, "stroke").as_deref(),
-        map_id(map, "id").as_deref(),
+        p.stroke.as_deref(),
+        p.id.as_deref(),
     )
 }
 
 pub(crate) fn render_label_payload(map: &BTreeMap<String, Value>) -> String {
-    let cls = class_attr_from_map(map);
     let content = map_utf8(map, "content").unwrap_or_default();
     let x = map_f64(map, "x").unwrap_or(0.0);
     let y = map_f64(map, "y").unwrap_or(0.0);
@@ -1432,14 +1438,15 @@ pub(crate) fn render_label_payload(map: &BTreeMap<String, Value>) -> String {
         map_f64(map, "fit_width"),
         map_f64(map, "fit_height"),
     );
+    let p = shape_paint(map);
     emit_text(
         &content,
         x,
         y,
         font_size,
-        &cls,
-        map_utf8(map, "fill").as_deref(),
-        map_id(map, "id").as_deref(),
+        &p.class,
+        p.fill.as_deref(),
+        p.id.as_deref(),
     )
 }
 
@@ -1586,14 +1593,15 @@ pub(crate) fn emit_polygon(
 }
 
 pub(crate) fn render_polygon_payload(map: &BTreeMap<String, Value>) -> String {
+    let p = shape_paint(map);
     emit_polygon(
-        &class_attr_from_map(map),
+        &p.class,
         &map_utf8(map, "points").unwrap_or_default(),
         0.0,
         0.0,
-        map_utf8(map, "fill").as_deref(),
-        map_utf8(map, "stroke").as_deref(),
-        map_id(map, "id").as_deref(),
+        p.fill.as_deref(),
+        p.stroke.as_deref(),
+        p.id.as_deref(),
     )
 }
 
