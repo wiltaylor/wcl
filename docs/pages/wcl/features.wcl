@@ -1,0 +1,153 @@
+// WCL feature tour. Subject is the language; wdoc is one feature among many.
+page features { sites = [:wcl]
+  h1 "Features" {}
+
+  text {
+    span "A quick tour through WCL's major features. The [language reference](reference:index) covers each in detail." {}
+  }
+
+  h2 "Typed configuration" {}
+
+  text {
+    span "Fields bind names to values; blocks group fields under a kind and a label. Numeric literals carry exact-width suffixes (`u32`, `i64`, `f64`), and strings come in four encodings (`utf8`/`ascii`/`utf16`/`utf32`)." {}
+  }
+  code wcl {
+    source = <<'WCL'
+name    = "alpha"
+count   = 3u32
+enabled = true
+
+service "web" {
+  port = 8080u32
+  metadata {
+    region = "us-east-1"
+  }
+}
+WCL
+  }
+
+  h2 "Schema validation" {}
+
+  text {
+    span "A schema declared with decorators describes what's legal at each level. `wcl check` validates a document against its `@document` root, reporting violations with spans." {}
+  }
+  code wcl {
+    source = <<'WCL'
+@block("service")
+type Service {
+  @inline(0)   name: utf8
+  @default(80) port: u32
+}
+
+@document
+type Config {
+  @children("service") services: list<Service>
+}
+WCL
+  }
+
+  h2 "Types, interfaces, and unions" {}
+
+  text {
+    span "Records (`type`), structural contracts (`interface`), and tagged sums (`union`) — with record / typeref / unit variants. Use `extends` to inherit fields or variants, and `&T` for an interface-typed reference field." {}
+  }
+  code wcl {
+    source = <<'WCL'
+union Shape {
+  Circle { radius: f64, stroke: f64 }
+  Polygon i32
+  Empty
+}
+
+interface Drawable { x: f64  y: f64 }
+type Scene { focus: &Drawable }
+WCL
+  }
+
+  h2 "First-class functions" {}
+
+  text {
+    span "Functions are values: `fn(params) -> Return body`. They can take and return other functions, and they participate in lazy field evaluation with cycle detection." {}
+  }
+  code wcl {
+    source = <<'WCL'
+double = fn(x: i32) -> i32 x * 2
+adder  = fn(x: i32) -> fn(i32) -> i32 fn(y: i32) -> i32 x + y
+WCL
+  }
+
+  h2 "Pattern matching" {}
+
+  text {
+    span "`match` tests against literals, bindings, variant patterns, `|` alternatives, `if` guards, the `_` wildcard, and the `..` rest." {}
+  }
+  code wcl {
+    source = <<'WCL'
+area = match shape {
+  Shape::Circle { radius, .. } => pi() * radius * radius,
+  Shape::Polygon(n) if n > 2   => 0.0,
+  _                            => 0.0,
+}
+WCL
+  }
+
+  h2 "CLI tooling" {}
+
+  text {
+    span "The `wcl` binary parses, checks, evaluates, edits, and reformats source. `wcl eval` resolves a dotted path; `wcl set` rewrites a field in place (following imports); `wcl fmt` reformats canonically; `wcl repl` is an interactive evaluator." {}
+  }
+  code bash {
+    source = <<'BASH'
+wcl check site.wcl
+wcl eval  site.wcl service.web.port
+wcl get   site.wcl name --json
+wcl set   site.wcl service.web.port 9090u32
+wcl fmt   site.wcl --in-place
+wcl repl  site.wcl
+BASH
+  }
+  text {
+    span "Each subcommand is covered in the [CLI reference](reference:cli)." {}
+  }
+
+  h2 "Language server" {}
+
+  text {
+    span "`wcl lsp` is a `tower-lsp`-based language server with diagnostics, formatting, document symbols, go-to-definition (cross-file), find-references, hover, completion, semantic tokens (including inside `${…}` interpolation slots), and quick-fix code actions. It speaks stdio by default and TCP with `--tcp ADDR`." {}
+  }
+  callout "Editor stubs" {
+    class = ["info"]
+    body  = "editors/vscode ships a minimal VS Code extension that spawns wcl lsp for .wcl files, and editors/tree-sitter-wcl is a tree-sitter grammar for editors that consume them."
+  }
+
+  h2 "Documentation with wdoc" {}
+
+  text {
+    span "`wcl wdoc` renders WCL `page` blocks to a static documentation site — diagrams, charts, syntax-highlighted code, LaTeX math, character-grid terminals, calendar timelines, icon packs, and built-in colour themes. This very site is built with it." {}
+  }
+  code wcl {
+    source = <<'WCL'
+site mysite {
+  default_template = :webpage
+  title            = "My project"
+  root             = true
+  theme            = nord
+}
+
+page index { sites = [:mysite]  start = true
+  h1 "My project" {}
+  text {
+    span "Authored in WCL, rendered to HTML by **wcl wdoc**." {}
+  }
+}
+WCL
+  }
+  callout "Try it" {
+    class = ["tip"]
+    body  = "wcl wdoc serve docs/main.wcl rebuilds on every .wcl save — see Getting started for the full walkthrough."
+  }
+
+  text {
+    span "Ready to write some WCL? Head to [getting started](getting_started), or jump into the [language reference](reference:index)." {}
+  }
+}

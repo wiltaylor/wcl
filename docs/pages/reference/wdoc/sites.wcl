@@ -1,0 +1,81 @@
+// wdoc section: Sites & Templates.
+page wdoc_sites { sites = [:reference]
+  h1 "Sites & Templates" {}
+
+  text {
+    span "A `site` block configures one output site — its template, title, theme, and navigation. A document can declare several sites; each page joins one or more via its `sites` field." {}
+  }
+
+  h2 "Fields" {}
+
+  table {
+    rows:
+      | "Field"             | "Meaning" |
+      | "`default_template`" | "`:webpage` (header + top nav) or `:book` (sidebar + TOC)" |
+      | "`title`"           | "Site title shown in the header / sidebar" |
+      | "`root`"            | "When `true`, this site renders at `/` (others go under `/<site>/`)" |
+      | "`theme`"           | "Built-in colour theme — see [Classes & Themes](wdoc_themes)" |
+      | "`accent`"          | "Symbol naming the accent hue (`:red`..`:pink`); default `:blue`" |
+      | "`theme_toggle`"    | "When `true`, adds a light/dark toggle button" |
+      | "`menu { … }`"      | "Top navbar entries for the `webpage` template" |
+      | "`toc { … }`"       | "Chapter tree for the `book` template" |
+  }
+
+  h2 "webpage template" {}
+
+  text {
+    span "Hugo-style site header, sticky top navbar built from `menu`, and a reading column." {}
+  }
+  code wcl {
+    source = <<'WCL'
+site marketing {
+  default_template = :webpage
+  title            = "My project"
+  root             = true
+  theme            = nord
+  menu {
+    item "Home"     { page = index }
+    item "Docs"     { href = "docs/" }
+    item "More" {
+      item "About"   { page = about }
+      item "Contact" { page = contact }
+    }
+    item "Source"   { href = "https://github.com/example/proj" }
+  }
+}
+WCL
+  }
+  text {
+    span "Menu items use `page = <name>` for in-site links (validated against pages in this site) or `href = \"…\"` for external or cross-site URLs. Nested `item`s become dropdown groups." {}
+  }
+
+  h2 "book template" {}
+
+  text {
+    span "mdBook-style fixed left sidebar with nested chapters and current-chapter highlight; reading column on the right." {}
+  }
+  code wcl {
+    source = <<'WCL'
+site docs {
+  default_template = :book
+  title            = "Project Docs"
+  theme            = nord
+  theme_toggle     = true
+  toc {
+    chapter "Intro"        { page = index }
+    chapter "Guide" {
+      chapter "Setup"      { page = setup }
+      chapter "First run"  { page = first_run }
+    }
+  }
+}
+WCL
+  }
+  text {
+    span "Chapters nest to any depth. A `chapter` with no `page =` is a grouping heading. A `chapter` pointing at an unknown page is a build error." {}
+  }
+
+  text {
+    span "Next: [Pages](wdoc_pages)." {}
+  }
+}

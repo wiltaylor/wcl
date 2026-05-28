@@ -1,0 +1,69 @@
+// wdoc section: Headings & Callouts.
+page wdoc_callouts { sites = [:reference]
+  h1 "Headings & Callouts" {}
+
+  h2 "Headings" {}
+
+  text {
+    span "Six heading levels, `h1` through `h6`. Each takes an inline label and an optional `id`." {}
+  }
+  code wcl {
+    source = <<'WCL'
+h1 "Title" { id = top }
+h2 "Section" {}
+h3 "Subsection" {}
+h4 "Details" {}
+h5 "Fine points" {}
+h6 "Minutiae" {}
+WCL
+  }
+  callout "Heading text is literal" {
+    class = ["note"]
+    body  = "Heading labels do not run through the inline engine. Use spans inside text blocks if you need bold or links in heading-adjacent prose."
+  }
+
+  h2 "Callouts" {}
+
+  text {
+    span "A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are selected by `class`, each shipping a default colour and icon." {}
+  }
+  code wcl {
+    source = <<'WCL'
+callout "Note" {
+  class = ["note"]
+  body  = "Background context the reader should remember."
+}
+
+callout "Heads up" {
+  class = ["warning"]
+  body  = "Something to be careful about."
+}
+
+callout "All done" {
+  class = ["success"]
+  icon  = "lucide.party-popper"        // override the default icon
+  body  = "Confirm an action completed."
+}
+WCL
+  }
+
+  table {
+    rows:
+      | "Type"      | "Default colour" | "Default icon" |
+      | "`note`"    | "Blue"           | "lucide.info" |
+      | "`info`"    | "Blue"           | "lucide.info" |
+      | "`tip`"     | "Cyan"           | "lucide.lightbulb" |
+      | "`warning`" | "Orange"         | "lucide.triangle-alert" |
+      | "`error`"   | "Red"            | "lucide.circle-x" |
+      | "`success`" | "Green"          | "lucide.circle-check" |
+  }
+
+  callout "Callout body is plain text" {
+    class = ["warning"]
+    body  = "The body field renders verbatim — no inline patterns, no links. Keep callout bodies prose-only; put rich formatting in a nearby text block."
+  }
+
+  text {
+    span "Next: [Code & Math](wdoc_code)." {}
+  }
+}

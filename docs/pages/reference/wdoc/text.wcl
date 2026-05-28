@@ -1,0 +1,71 @@
+// wdoc section: Text & Inline Patterns.
+page wdoc_text { sites = [:reference]
+  h1 "Text & Inline Patterns" {}
+
+  text {
+    span "Prose is authored as `text` blocks holding one or more `span`s. Each span's content runs through an inline pattern engine that recognises markdown-style formatting, links, icons, and math." {}
+  }
+
+  h2 "text and span" {}
+
+  code wcl {
+    source = <<'WCL'
+text {
+  span "One paragraph, several spans." {}
+  span "Each span is a separate inline element." { class = ["accent"] }
+}
+WCL
+  }
+
+  text {
+    span "A `text` block renders as a `<p>`. Each `span` is a `<span>` and may carry its own `class` list for theming." {}
+  }
+
+  h2 "Inline patterns" {}
+
+  text {
+    span "The following patterns are recognised in any span:" {}
+  }
+  code wcl {
+    source = <<'WCL'
+**bold**             // → bold class
+_italic_             // → italic class
+`code`               // → monospace inline code
+[text](page)         // → in-site link to a page
+[text](site:page)    // → cross-site link
+[text](https://...)  // → external link
+:lucide.check:       // → inline icon (pack.name)
+$x^2$                // → inline LaTeX (text style)
+$$\int x \, dx$$     // → display-style LaTeX
+WCL
+  }
+
+  callout "Where inline patterns run" {
+    class = ["info"]
+    body  = "Spans and table cells run through the inline engine. Callout bodies and heading text do NOT — they render as literal prose. Use class-driven spans inside text for emphasis there."
+  }
+
+  h2 "Spans with classes" {}
+
+  text {
+    span "Apply a CSS class with `class = [\"name\"]`. The class can be a user-declared `class` block or a built-in (`bold`, `italic`, `code`, `accent`, …)." {}
+  }
+  code wcl {
+    source = <<'WCL'
+class accent {
+  color = "var(--wdoc-accent)"
+  bold  = true
+}
+
+text {
+  span "Normal " {}
+  span "highlighted" { class = ["accent"] }
+  span " then normal again." {}
+}
+WCL
+  }
+
+  text {
+    span "Next: [Headings & Callouts](wdoc_callouts)." {}
+  }
+}

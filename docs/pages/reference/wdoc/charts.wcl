@@ -1,0 +1,76 @@
+// wdoc section: Charts.
+page wdoc_charts { sites = [:reference]
+  h1 "Charts" {}
+
+  text {
+    span "wdoc ships three chart kinds — `bar_chart`, `line_chart`, and `pie_chart` — that lower to SVG via pure-WCL geometry. Data is supplied as variant-tagged series; styling rides the same `class` and `theme` system as everything else." {}
+  }
+
+  h2 "Bar and line charts" {}
+
+  text {
+    span "Both accept a `series: list<ChartSeries>` of `ChartSeries::Of { name, values }`. Multiple series produce grouped bars or multi-line plots." {}
+  }
+  code wcl {
+    source = <<'WCL'
+bar_chart {
+  title      = "Quarterly revenue"
+  x_label    = "Quarter"
+  y_label    = "USD (m)"
+  categories = ["Q1", "Q2", "Q3", "Q4"]
+  series     = [
+    ChartSeries::Of { name: "2025", values: [12.0, 15.0, 17.0, 22.0] },
+    ChartSeries::Of { name: "2026", values: [14.0, 18.0, 21.0, 25.0] },
+  ]
+}
+WCL
+  }
+
+  h2 "Pie chart" {}
+
+  text {
+    span "A `pie_chart` takes `slices: list<ChartSlice>` of `ChartSlice::Of { label, value }`. Slices are drawn as polygon-approximated arcs." {}
+  }
+  code wcl {
+    source = <<'WCL'
+pie_chart {
+  title  = "Market share"
+  slices = [
+    ChartSlice::Of { label: "Alpha", value: 42.0 },
+    ChartSlice::Of { label: "Beta",  value: 31.0 },
+    ChartSlice::Of { label: "Other", value: 27.0 },
+  ]
+}
+WCL
+  }
+
+  h2 "Line chart annotations" {}
+
+  text {
+    span "On a `line_chart`, set `point_labels = true` to print every data point's value above its marker. For author-named annotations, pass `points: list<ChartPoint>` of `ChartPoint::At { label, category, value }` to pin a custom marker + label to a chosen `(x, y)`." {}
+  }
+
+  h2 "Theming" {}
+
+  text {
+    span "Every bar, line, or slice is auto-tagged with a cycling palette class (`wdoc-series-1` through `wdoc-series-8`) and emits no inline fill — colour comes from CSS. Override one series by redeclaring its palette class (the name has hyphens, so quote it):" {}
+  }
+  code wcl {
+    source = <<'WCL'
+class "wdoc-series-1" {
+  fill = "#88c0d0"
+  dark  { fill = "#88c0d0" }
+  light { fill = "#5e81ac" }
+}
+WCL
+  }
+
+  callout "Built-in chart styling" {
+    class = ["info"]
+    body  = "wdoc injects a default chart stylesheet before user class rules, and themes set the eight series colours through --wdoc-* custom properties. So selecting a theme automatically recolours every chart."
+  }
+
+  text {
+    span "Next: [Terminals & TUI](wdoc_terminals)." {}
+  }
+}

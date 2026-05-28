@@ -1,0 +1,75 @@
+// wdoc section: Classes & Themes.
+page wdoc_themes { sites = [:reference]
+  h1 "Classes & Themes" {}
+
+  text {
+    span "Styling rides the `class` block. Themes set a palette of colour custom properties; class blocks override individual elements. Together they cover most styling needs without authoring raw CSS." {}
+  }
+
+  h2 "class blocks" {}
+
+  text {
+    span "A `class <name> { … }` block declares a CSS class. Apply it by listing the name in any block's `class` field (or a span's). Fields cover text, box, and SVG paint properties; per-mode overrides go in `dark { }` / `light { }` sub-blocks." {}
+  }
+  code wcl {
+    source = <<'WCL'
+class accent {
+  color = "var(--wdoc-accent)"
+  bold  = true
+  dark  { color = "#88c0d0" }
+  light { color = "#5e81ac" }
+}
+
+text {
+  span "Plain " {}
+  span "accented" { class = ["accent"] }
+  span " plain." {}
+}
+WCL
+  }
+
+  table {
+    rows:
+      | "Group" | "Fields" |
+      | "Text"  | "`color`, `background`, `bold`, `italic`, `underline`, `font_size`, `font_family`, `text_align`, `text_transform`, `letter_spacing`, `line_height`" |
+      | "Box"   | "`padding`, `margin`, `border`" |
+      | "SVG"   | "`fill`, `stroke`, `stroke_width`, `stroke_linejoin`, `stroke_linecap`, `opacity`" |
+      | "Modes" | "`dark { … }`, `light { … }` for prefers-color-scheme overrides" |
+  }
+
+  h2 "Built-in themes" {}
+
+  text {
+    span "A `site` selects a colour theme by value. The theme sets `--wdoc-*` custom properties used by every built-in element — page background, links, headings, code, charts, callouts, tables, inline emphasis. User `class` blocks still win over theme defaults." {}
+  }
+  table {
+    rows:
+      | "Theme"        | "Notes" |
+      | "`nord`"       | "Cool blue-grey, the default" |
+      | "`gruvbox`"    | "Warm retro" |
+      | "`solarized`"  | "Classic Solarized" |
+      | "`catppuccin`" | "Soft pastel" |
+      | "`tokyonight`" | "Vivid night palette" |
+      | "`kanagawa`"   | "Muted with hints of indigo" |
+      | "`everforest`" | "Green forest tones" |
+  }
+  code wcl {
+    source = <<'WCL'
+site mysite {
+  default_template = :book
+  theme            = tokyonight
+  accent           = :cyan
+  theme_toggle     = true
+}
+WCL
+  }
+
+  callout "Define your own theme" {
+    class = ["tip"]
+    body  = "Themes are values. Bind your own with let mine = ColourTheme::Of { name dark light } and set theme = mine on the site."
+  }
+
+  text {
+    span "Next: [Diagrams](wdoc_diagrams)." {}
+  }
+}

@@ -1,0 +1,50 @@
+// Language section: Imports & Modules.
+page imports { sites = [:reference]
+  h1 "Imports & Modules" {}
+
+  text {
+    span "An `import` pulls another file's declarations into the current document. There are two forms, distinguished by how the path is written." {}
+  }
+
+  h2 "Disk imports" {}
+
+  text {
+    span "A quoted path imports a file from disk, resolved relative to the importing file." {}
+  }
+  code wcl {
+    source = <<'WCL'
+import "./pages/values.wcl"
+import "../shared/types.wcl"
+WCL
+  }
+
+  h2 "System imports" {}
+
+  text {
+    span "An angle-bracket path imports a **system** module — a file provided by the host program through a registry, not the filesystem. wdoc's standard library is served this way." {}
+  }
+  code wcl {
+    source = <<'WCL'
+import <wdoc/prelude.wcl>
+WCL
+  }
+
+  callout "wdoc auto-imports its prelude" {
+    class = ["info"]
+    body  = "When you build a wdoc site, the build prepends import <wdoc/prelude.wcl> for you, so page / text / code / callout and the rest of the stdlib are already in scope. You only write imports for your own page files."
+  }
+
+  h2 "How imports compose" {}
+
+  text {
+    span "Top-level imports are eager; an `import` inside a block is lazy. Imported declarations participate fully in the importer: they take part in structural validation and in name resolution, so a type or `let` declared in an imported file is usable as if it were local." {}
+  }
+
+  text {
+    span "Hosts that drive WCL can also tag each block with its source file, which lets tooling order imported-versus-local output (wdoc uses this for CSS cascade, for instance)." {}
+  }
+
+  text {
+    span "Move on to the [Reference section's Builtin Functions](builtins)." {}
+  }
+}

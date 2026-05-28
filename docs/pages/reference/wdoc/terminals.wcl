@@ -1,0 +1,68 @@
+// wdoc section: Terminals & TUI.
+page wdoc_terminals { sites = [:reference]
+  h1 "Terminals & TUI" {}
+
+  text {
+    span "`terminal` renders a monospace character grid as inline SVG, drawn with a bundled JetBrains Mono Nerd Font. The grid is populated three ways: authored text primitives, inline ANSI-bearing `text`, or replay of an `asciinema` recording." {}
+  }
+
+  h2 "Authored text" {}
+
+  text {
+    span "`term_text` is the one base primitive — styled text placed at a 1-based `(row, col)` carrying fg/bg/bold/italic/underline. Higher-level helpers (`term_box`, `term_glyph`, `term_fill`, `term_border`) lower to runs of `term_text`, so the renderer only ever paints styled glyphs." {}
+  }
+  code wcl {
+    source = <<'WCL'
+terminal {
+  cols = 60  rows = 12  chrome = true
+  term_box {
+    row = 1  col = 1  width = 60  height = 12
+    style = :rounded
+  }
+  term_text { row = 3  col = 4  fg = :cyan  bold = true  content = "Hello, terminal." }
+}
+WCL
+  }
+
+  h2 "Inline text & asciinema replay" {}
+
+  text {
+    span "Pass a `text` string and the bundled `avt` virtual terminal evaluates it (ANSI sequences included). Or set `source = \"rec.cast\"` for asciinema replay — frames are coalesced and replayed at the recording's pace (override with `speed`)." {}
+  }
+  code wcl {
+    source = <<'WCL'
+terminal {
+  cols = 80  rows = 24  chrome = true
+  source = "examples/casts/demo.cast"
+  loop   = true
+}
+WCL
+  }
+
+  h2 "TUI widgets" {}
+
+  text {
+    span "Inside a `terminal`, stdlib TUI controls compose a small interface. Leaves (`tui_progress`, `tui_button`, `tui_spinner`, `tui_input`, `tui_dropdown`, `tui_checkbox`, `tui_radio`) and containers (`tui_panel`, `tui_group`) all lower to the same styled-text primitives. Coordinates are local to the widget; containers nest by accumulating offset." {}
+  }
+  code wcl {
+    source = <<'WCL'
+terminal {
+  cols = 50  rows = 8
+  tui_panel {
+    row = 1  col = 1  width = 50  height = 8  title = "Status"
+    tui_progress { row = 3  col = 4  width = 30  value = 0.65 }
+    tui_button   { row = 5  col = 4  label = "Run" }
+  }
+}
+WCL
+  }
+
+  callout "Theming" {
+    class = ["info"]
+    body  = "A terminal's class reaches the wrapping div. Set background and color there (with dark / light overrides) to theme the window. Default-coloured cells emit currentColor, so user themes flow through."
+  }
+
+  text {
+    span "Next: [Timelines & Cards](wdoc_timelines)." {}
+  }
+}

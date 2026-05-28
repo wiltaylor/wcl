@@ -78,6 +78,16 @@ cli-run *ARGS:
 wdoc-serve *ARGS:
     cargo run -p wcl -- wdoc serve examples/wdoc/main.wcl {{ARGS}}
 
+# Serve the project's own docs/ site (wdoc landing at /, WCL reference book at /reference/)
+[group('dev')]
+docs-serve *ARGS:
+    cargo run -p wcl -- wdoc serve docs/main.wcl {{ARGS}}
+
+# Build the project's docs/ site into docs/_site/ (gitignored)
+[group('dev')]
+docs-build *ARGS:
+    cargo run -p wcl -- wdoc build docs/main.wcl --out docs/_site {{ARGS}}
+
 # Run criterion benchmarks
 [group('dev')]
 workspace-bench:

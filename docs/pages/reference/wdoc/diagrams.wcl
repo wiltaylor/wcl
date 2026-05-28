@@ -1,0 +1,98 @@
+// wdoc section: Diagrams.
+page wdoc_diagrams { sites = [:reference]
+  h1 "Diagrams" {}
+
+  text {
+    span "A `diagram` block holds SVG shapes. Free-form coordinates, auto-layout, connection routing, and optional pan + zoom are all built in." {}
+  }
+
+  h2 "Basic shapes" {}
+
+  text {
+    span "`rect`, `circle`, `line`, `polygon`, `path`, `label`, `image`, and `container` are the core primitives. Each carries position, size, and paint fields (`fill`, `stroke`, …)." {}
+  }
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width  = 280
+  height = 130
+
+  rect    { x = 10.0  y = 10.0  width = 60.0  height = 60.0  fill = "#cce" }
+  circle  { cx = 120.0  cy = 40.0  r = 24.0  stroke = "black" }
+  line    { x1 = 0.0  y1 = 40.0  x2 = 280.0  y2 = 40.0  stroke = "#888" }
+  polygon { points = "180,10 230,40 180,70"  fill = "#fc8" }
+  label "halfway" { x = 110.0  y = 76.0 }
+}
+WCL
+  }
+
+  h2 "Flowchart shapes" {}
+
+  text {
+    span "`process`, `decision`, and `terminator` are stdlib shapes lowered to primitives. Each takes a label inline and the usual position/size fields." {}
+  }
+  code wcl {
+    source = <<'WCL'
+process    "Validate" { id = validate  width = 100.0  height = 40.0 }
+decision   "Match?"   { id = check     width = 100.0  height = 60.0 }
+terminator "End"      { id = done      width = 100.0  height = 40.0 }
+WCL
+  }
+
+  h2 "Connections" {}
+
+  text {
+    span "Inside a `diagram`, `source -> destination :kind` draws an edge between two shapes (matched by `id`). The renderer picks routing based on the diagram's layout." {}
+  }
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 320  height = 120
+  rect { id = a  x = 10.0   y = 10.0  width = 60.0  height = 40.0 }
+  rect { id = b  x = 200.0  y = 10.0  width = 60.0  height = 40.0 }
+
+  a -> b
+  a -> b :flow
+}
+WCL
+  }
+
+  h2 "Auto-layout" {}
+
+  text {
+    span "Set `layout = :layered` to drop the coordinate game — shapes are topologically ranked from the connection graph and stacked, with elbow-routed edges between them." {}
+  }
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 320  height = 220  layout = :layered  layer_gap = 20.0
+
+  process    "Parse"  { id = parse   width = 100.0  height = 40.0 }
+  decision   "Valid?" { id = valid   width = 100.0  height = 60.0 }
+  terminator "Render" { id = render  width = 100.0  height = 40.0 }
+
+  parse -> valid  :flow
+  valid -> render :flow
+}
+WCL
+  }
+
+  h2 "Pan & zoom" {}
+
+  text {
+    span "Set `pan_zoom = true` to wrap the diagram in an interactive viewport with `+` / `−` / `⟲` controls; the bundled `diagram-pan-zoom.js` (auto-included only on pages that use it) drives the SVG viewBox as a camera." {}
+  }
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 600  height = 400  pan_zoom = true
+  zoom_min = 0.5  zoom_max = 4.0
+  // … shapes …
+}
+WCL
+  }
+
+  text {
+    span "Next: [Charts](wdoc_charts)." {}
+  }
+}

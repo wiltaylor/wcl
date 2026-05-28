@@ -1,0 +1,55 @@
+// wdoc section: Pages.
+page wdoc_pages { sites = [:reference]
+  h1 "Pages" {}
+
+  text {
+    span "A `page` block declares one rendered HTML page. Each page joins one or more sites and holds the content blocks that make up its body." {}
+  }
+
+  h2 "Fields" {}
+
+  table {
+    rows:
+      | "Field"        | "Meaning" |
+      | "`<name>`"     | "Page identifier (the block label position). Must be a valid identifier." |
+      | "`sites`"      | "List of site symbols this page belongs to. Omit to share across all sites." |
+      | "`start`"      | "When `true`, this page is the site's landing (served at `/` or `/<site>/`)." |
+      | "`template`"   | "Override the site's `default_template` for this single page." |
+      | "`id`"         | "Optional explicit HTML id." |
+  }
+
+  h2 "A page" {}
+
+  code wcl {
+    source = <<'WCL'
+page index { sites = [:mysite]  start = true
+  h1 "My project" {}
+  text {
+    span "A short intro." {}
+  }
+}
+WCL
+  }
+
+  callout "Per-site page names" {
+    class = ["note"]
+    body  = "Page names are unique per site, so two different sites can each have a page called index. A page with no sites field is shared with every site."
+  }
+
+  h2 "Cross-page links" {}
+
+  text {
+    span "Inside any `span`, write a markdown-style link where the URL is a bare page name for an in-site link, or `site_name:page_name` for a cross-site link. Links to unknown pages are build errors, so renaming a page can't silently break navigation." {}
+  }
+  code wcl {
+    source = <<'WCL'
+text {
+  span "See [the about page](about) or jump to [the docs](docs:index)." {}
+}
+WCL
+  }
+
+  text {
+    span "Next: [Text & Inline Patterns](wdoc_text)." {}
+  }
+}

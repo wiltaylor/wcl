@@ -1,0 +1,150 @@
+// WCL's own documentation, authored in wdoc and rendered by `wcl wdoc`.
+//
+//   wcl wdoc serve docs/main.wcl                 # / = WCL landing, /reference/ = book
+//   wcl wdoc build docs/main.wcl --out docs/_site
+//     → docs/_site/index.html        WCL landing (webpage template)
+//       docs/_site/reference/…       WCL language reference (book template)
+//
+// One document, two sites. A page joins a site via its `sites` array
+// (`sites = [:wcl]` / `sites = [:reference]`); page names are unique
+// per site, so both sites carry their own `index`. The `wcl wdoc build`
+// pipeline auto-imports `<wdoc/prelude.wcl>`, so every stdlib block
+// (`page` / `text` / `code` / `callout` / `table` / `h1`..`h6` / …) is
+// already in scope — no prelude import here.
+
+// Reused in hero prose: paints with the active theme's accent hue so it
+// stays readable on dark and light.
+class accent {
+  color = "var(--wdoc-accent)"
+  bold  = true
+}
+
+// The WCL landing: the `webpage` template (title header + top navbar).
+// `root = true` serves it at `/`; the reference book renders under
+// `/reference/`. Nord theme, cyan accent. Subject is the language itself —
+// wdoc (the tool rendering this very site) is one of WCL's features.
+site wcl {
+  default_template = :webpage
+  title            = "WCL"
+  root             = true
+  theme            = nord
+  accent           = :cyan
+  menu {
+    item "Home"            { page = index }
+    item "Features"        { page = features }
+    item "Getting started" { page = getting_started }
+    // Cross-site: the reference is another site, so link by output path
+    // (a `page =` here would only resolve within this site).
+    item "Reference"       { href = "reference/" }
+    item "Source"          { href = "https://github.com/wiltaylor/wcl" }
+  }
+}
+
+// The WCL language reference: the `book` template, organized into three
+// top-level sections — Language (one page per feature), Reference (builtins
+// + CLI), wdoc (the documentation generator's blocks).
+site reference {
+  default_template = :book
+  title            = "WCL Language Reference"
+  theme            = nord
+  accent           = :cyan
+  theme_toggle     = true
+  toc {
+    chapter "Introduction" { page = index }
+
+    chapter "Language" {
+      chapter "Fields & Blocks"  { page = fields_blocks }
+      chapter "Tables"           { page = tables }
+      chapter "Identifiers"      { page = identifiers }
+      chapter "Types" {
+        chapter "Numbers"    { page = numbers }
+        chapter "Strings"    { page = strings }
+        chapter "Booleans"   { page = booleans }
+        chapter "Symbols"    { page = symbols }
+        chapter "Optionals"  { page = optionals }
+        chapter "Lists"      { page = lists }
+        chapter "Tensors"    { page = tensors }
+        chapter "Records"    { page = records }
+        chapter "Interfaces" { page = interfaces }
+        chapter "References" { page = references }
+        chapter "Unions"     { page = unions }
+      }
+      chapter "Connections"         { page = connections }
+      chapter "Expressions"         { page = expressions }
+      chapter "Functions"           { page = functions }
+      chapter "Control Flow"        { page = control_flow }
+      chapter "Schema & Decorators" { page = schema }
+      chapter "Imports & Modules"   { page = imports }
+    }
+
+    chapter "Reference" {
+      chapter "Builtin Functions" { page = builtins }
+      chapter "CLI Reference"     { page = cli }
+    }
+
+    chapter "wdoc" {
+      chapter "Overview"              { page = wdoc_overview }
+      chapter "Sites & Templates"     { page = wdoc_sites }
+      chapter "Pages"                 { page = wdoc_pages }
+      chapter "Text & Inline Patterns" { page = wdoc_text }
+      chapter "Headings & Callouts"   { page = wdoc_callouts }
+      chapter "Code & Math"           { page = wdoc_code }
+      chapter "Tables & Columns"      { page = wdoc_tables }
+      chapter "Classes & Themes"      { page = wdoc_themes }
+      chapter "Diagrams"              { page = wdoc_diagrams }
+      chapter "Charts"                { page = wdoc_charts }
+      chapter "Terminals & TUI"       { page = wdoc_terminals }
+      chapter "Timelines & Cards"     { page = wdoc_timelines }
+      chapter "Icons & Image Blocks"  { page = wdoc_icons }
+    }
+  }
+}
+
+// WCL landing pages (sites = [:wcl]).
+import "./pages/wcl/index.wcl"
+import "./pages/wcl/features.wcl"
+import "./pages/wcl/getting-started.wcl"
+
+// Reference book — Introduction.
+import "./pages/reference/intro.wcl"
+
+// Reference book — Language section (one page per feature).
+import "./pages/reference/language/fields-blocks.wcl"
+import "./pages/reference/language/tables.wcl"
+import "./pages/reference/language/identifiers.wcl"
+import "./pages/reference/language/numbers.wcl"
+import "./pages/reference/language/strings.wcl"
+import "./pages/reference/language/booleans.wcl"
+import "./pages/reference/language/symbols.wcl"
+import "./pages/reference/language/optionals.wcl"
+import "./pages/reference/language/lists.wcl"
+import "./pages/reference/language/tensors.wcl"
+import "./pages/reference/language/records.wcl"
+import "./pages/reference/language/interfaces.wcl"
+import "./pages/reference/language/references.wcl"
+import "./pages/reference/language/unions.wcl"
+import "./pages/reference/language/connections.wcl"
+import "./pages/reference/language/expressions.wcl"
+import "./pages/reference/language/functions.wcl"
+import "./pages/reference/language/control-flow.wcl"
+import "./pages/reference/language/schema.wcl"
+import "./pages/reference/language/imports.wcl"
+
+// Reference book — Reference section.
+import "./pages/reference/ref/builtins.wcl"
+import "./pages/reference/ref/cli.wcl"
+
+// Reference book — wdoc section.
+import "./pages/reference/wdoc/overview.wcl"
+import "./pages/reference/wdoc/sites.wcl"
+import "./pages/reference/wdoc/pages.wcl"
+import "./pages/reference/wdoc/text.wcl"
+import "./pages/reference/wdoc/callouts.wcl"
+import "./pages/reference/wdoc/code.wcl"
+import "./pages/reference/wdoc/tables.wcl"
+import "./pages/reference/wdoc/themes.wcl"
+import "./pages/reference/wdoc/diagrams.wcl"
+import "./pages/reference/wdoc/charts.wcl"
+import "./pages/reference/wdoc/terminals.wcl"
+import "./pages/reference/wdoc/timelines.wcl"
+import "./pages/reference/wdoc/icons.wcl"

@@ -1,0 +1,35 @@
+// Language section: Booleans.
+page booleans { sites = [:reference]
+  h1 "Booleans" {}
+
+  text {
+    span "The `bool` type has exactly two values: `true` and `false`." {}
+  }
+  code wcl {
+    source = <<'WCL'
+enabled = true
+strict  = false
+WCL
+  }
+
+  h2 "In expressions" {}
+
+  text {
+    span "Booleans are produced by every comparison and combined with the logical operators `&&`, `||`, and `!`. See [Expressions](expressions) for the full set." {}
+  }
+  code wcl {
+    source = <<'WCL'
+ready    = !pending && enabled
+oversize = width > 100u32 || height > 100u32
+WCL
+  }
+
+  callout "Branching on a bool" {
+    class = ["info"]
+    body  = "An if expression takes a bool condition. See Control Flow for the if / else syntax."
+  }
+
+  text {
+    span "Next: [Symbols](symbols)." {}
+  }
+}

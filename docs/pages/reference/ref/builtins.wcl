@@ -1,0 +1,93 @@
+// Reference book: Builtin Functions.
+page builtins { sites = [:reference]
+  h1 "Builtin Functions" {}
+
+  text {
+    span "WCL ships a standard set of builtins, callable like any function. They group into collections, strings, math, tensors, and control flow." {}
+  }
+
+  h2 "Collections" {}
+
+  text {
+    span "Higher-order and list utilities. `map` / `filter` / `fold` take function arguments." {}
+  }
+  table {
+    rows:
+      | "Function"           | "Purpose" |
+      | "`map(xs, f)`"       | "Apply `f` to each element" |
+      | "`filter(xs, f)`"    | "Keep elements where `f` is true" |
+      | "`fold(xs, init, f)`" | "Reduce to a single value" |
+      | "`len(xs)`"          | "Length" |
+      | "`sum(xs)`"          | "Sum of numbers" |
+      | "`range(a, b)`"      | "List of integers `a`..`b`" |
+      | "`head` / `tail`"    | "First element / everything after it" |
+      | "`flatten` / `zip`"  | "Flatten one level / pair two lists" |
+      | "`reverse` / `sort` / `unique`" | "Reorder / sort / dedupe" |
+      | "`list_contains(xs, x)`" | "Membership test" |
+      | "`index_of(xs, x)`"  | "Position of an element" |
+      | "`at(xs, i)`"        | "Element at index" |
+      | "`take(xs, n)` / `drop(xs, n)`" | "First / all-but-first `n`" |
+  }
+
+  code wcl {
+    source = <<'WCL'
+doubled = map([1, 2, 3], fn(x: i64) -> i64 x * 2)   // [2, 4, 6]
+evens   = filter(range(0, 10), fn(x: i64) -> bool x % 2 == 0)
+total   = fold([1, 2, 3], 0, fn(acc: i64, x: i64) -> i64 acc + x)
+WCL
+  }
+
+  h2 "Strings" {}
+
+  table {
+    rows:
+      | "Function" | "Purpose" |
+      | "`split(s, sep)` / `join(xs, sep)`" | "Split into / join from a list" |
+      | "`replace(s, from, to)`" | "Substring replace" |
+      | "`contains` / `starts_with` / `ends_with`" | "Substring tests" |
+      | "`to_upper` / `to_lower` / `trim`" | "Case and whitespace" |
+      | "`concat(a, b)`" | "Concatenate two strings" |
+      | "`format(fmt, …)`" | "Format with `{}` placeholders" |
+  }
+
+  h2 "Math" {}
+
+  text {
+    span "Math builtins operate in `f64`, widening integer arguments. Angles are in radians." {}
+  }
+  table {
+    rows:
+      | "Group"     | "Functions" |
+      | "Trig"      | "`sin` `cos` `tan` `asin` `acos` `atan` `atan2`" |
+      | "Convert"   | "`radians` `degrees`" |
+      | "Powers"    | "`sqrt` `cbrt` `pow` `hypot` `exp`" |
+      | "Logs"      | "`ln` `log10` `log2`" |
+      | "Rounding"  | "`floor` `ceil` `round` `trunc`" |
+      | "Magnitude" | "`abs` `sign` `min` `max` `clamp`" |
+      | "Constants" | "`pi()` `tau()` `e()`" |
+  }
+
+  h2 "Tensors" {}
+
+  table {
+    rows:
+      | "Function" | "Purpose" |
+      | "`tensor(data, shape)`" | "Build a tensor from a flat list + shape" |
+      | "`tensor_data(t)` / `tensor_shape(t)`" | "Read back the elements / dimensions" |
+      | "`tensor_reshape(t, shape)`" | "Reshape without copying data" |
+  }
+
+  h2 "Control flow" {}
+
+  table {
+    rows:
+      | "Function" | "Purpose" |
+      | "`error(msg)`" | "Abort evaluation with a message" |
+      | "`panic(msg)`" | "Unrecoverable failure" |
+      | "`assert(cond, msg)`" | "Error if `cond` is false" |
+  }
+
+  text {
+    span "Next: [Imports & Modules](imports)." {}
+  }
+}

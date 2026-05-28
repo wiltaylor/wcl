@@ -1,0 +1,45 @@
+// WCL landing page. `start = true` makes it the page served at `/`.
+// The site header already shows "WCL", so the page leads with the
+// motivation (Why WCL?) rather than a redundant H1.
+page index { sites = [:wcl]  start = true
+  h1 "Why WCL?" {}
+
+
+  text {
+    span "WCL was created out of my desire to have a language that could express most forms of data in a natural way." {}
+  }
+
+  text {
+    span "This then enables a lot of different use cases. Detailed configurations, WDoc which lets you model the data in a format that makes sense and then present multiple views on it." {}
+  }
+
+  h2 "A taste" {}
+
+  text {
+    span "A document is fields and blocks; a schema declared with decorators validates the structure." {}
+  }
+
+  code wcl {
+    source = <<'WCL'
+      @block("service")
+      type Service {
+        @inline(0)   name: utf8     // service "web" → name = "web"
+        @default(80) port: u32
+        region: utf8
+      }
+
+      @document
+      type Config {
+        @children("service") services: list<Service>
+      }
+
+      service "web" {
+        region = "us-east-1"
+      }
+      service "api" {
+        port   = 9090u32
+        region = "eu-west-1"
+      }
+      WCL
+  }
+}

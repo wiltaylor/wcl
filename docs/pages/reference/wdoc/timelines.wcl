@@ -1,0 +1,84 @@
+// wdoc section: Timelines & Cards.
+page wdoc_timelines { sites = [:reference]
+  h1 "Timelines & Cards" {}
+
+  h2 "Timelines" {}
+
+  text {
+    span "`timeline` is a **real-time axis** — dates are ISO strings (`\"2026-03-15\"` / `\"…14:30\"`), and tick boundaries land on real calendar dates (month 1sts, Mondays, …). A `unit` (`:minutes`..`:years`) sets granularity; omit it for auto-fit." {}
+  }
+  code wcl {
+    source = <<'WCL'
+timeline {
+  start = "2026-01-01"
+  end   = "2026-12-31"
+  unit  = :months
+  items: list<TimelineItem> = [
+    TimelineItem::On { label: "Kickoff",  on: "2026-02-01" },
+    TimelineItem::On { label: "Beta",     on: "2026-06-15" },
+    TimelineItem::On { label: "Release",  on: "2026-11-01" },
+  ]
+  phases: list<TimelinePhase> = [
+    TimelinePhase::Of { label: "Build",  from: "2026-02-01", to: "2026-06-15" },
+    TimelinePhase::Of { label: "Polish", from: "2026-06-15", to: "2026-11-01" },
+  ]
+}
+WCL
+  }
+
+  table {
+    rows:
+      | "Field"      | "Meaning" |
+      | "`start` / `end`" | "ISO date bounds (auto-fit from items otherwise)" |
+      | "`unit`"     | "`:minutes` / `:hours` / `:days` / `:weeks` / `:months` / `:years`" |
+      | "`every`"    | "Override tick interval (default ~6–12 ticks)" |
+      | "`direction`" | "`:horizontal` (default) or `:vertical`" |
+      | "`items`"    | "List of `TimelineItem::On` or `TimelineItem::OnSided`" |
+      | "`phases`"   | "List of `TimelinePhase::Of` for dated bands" |
+  }
+
+  h2 "Cards" {}
+
+  text {
+    span "`card` is a diagram box whose body is arbitrary wdoc content — text, callouts, lists, even nested diagrams. Because it extends `SvgBlock`, a card is a legal child of any `diagram`, `container`, or `timeline`." {}
+  }
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 400  height = 200
+  card {
+    x = 20.0  y = 20.0  width = 160.0  height = 120.0
+    body {
+      h3 "Service A" {}
+      text { span "Handles auth, sessions, and rate limiting." {} }
+    }
+  }
+}
+WCL
+  }
+
+  h2 "Timeline cards" {}
+
+  text {
+    span "Inside a `timeline`, a card pinned to a date with `on` becomes an event card: the renderer draws a marker + connector and places the card body in a `<foreignObject>` on the chosen side. Long-form annotations sit naturally on the axis." {}
+  }
+  code wcl {
+    source = <<'WCL'
+timeline {
+  start = "2026-01-01"  end = "2026-12-31"
+  card {
+    on    = "2026-06-15"
+    width = 220.0  height = 90.0
+    body {
+      h3 "Beta release" {}
+      text { span "Open invites; feedback drives v1 polish." {} }
+    }
+  }
+}
+WCL
+  }
+
+  text {
+    span "Next: [Icons & Image Blocks](wdoc_icons)." {}
+  }
+}

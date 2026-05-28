@@ -1,0 +1,46 @@
+// Language section: Connections.
+page connections { sites = [:reference]
+  h1 "Connections" {}
+
+  text {
+    span "A `connection` declaration defines a typed relationship between block instances; arrow statements then populate it. The result is a list of records that hosts can consume — render edges, build dependency graphs, validate references." {}
+  }
+
+  h2 "Declaring a connection" {}
+
+  text {
+    span "A `connection` names a relationship's source type, destination type, and (optionally) a tag drawn from a `symbol_set`." {}
+  }
+  code wcl {
+    source = <<'WCL'
+symbol_set EdgeKind { uses  depends_on }
+connection DependsOn: Service -> Service : EdgeKind
+WCL
+  }
+
+  h2 "Connection statements" {}
+
+  text {
+    span "Inside a `@connections(SchemaName)` field, write `source -> destination :tag` to populate it. The tag is optional; omit the `:kind` for an untagged edge." {}
+  }
+  code wcl {
+    source = <<'WCL'
+@document
+type Config {
+  @connections(DependsOn) edges: list<DependsOn>
+}
+
+web   -> db                   // untagged
+web   -> cache :uses
+api   -> db    :depends_on
+WCL
+  }
+
+  text {
+    span "Each statement produces a record with `source`, `destination`, and `kind` slots, ready for a host to interpret." {}
+  }
+
+  text {
+    span "Next: [Expressions](expressions)." {}
+  }
+}
