@@ -15,13 +15,13 @@ tileset platformer {
 }
 
 page tilemap { sites = [:showcase]
-  h1 "Tilemaps" {}
+  h1 "Tilemaps"
 
   text {
-    span "A `tilemap` slices tiles out of a `tileset` spritesheet by index and lays them on a grid. It's a diagram shape, so anything drawn after it overlays on top." {}
+    span "A `tilemap` slices tiles out of a `tileset` spritesheet by index and lays them on a grid. It's a diagram shape, so anything drawn after it overlays on top."
   }
 
-  h2 "Symbolic map + legend" {}
+  h2 "Symbolic map + legend"
 
   // Author the grid with glyphs: each `tile` entry maps a character to a
   // tile index, then `map` rows spell out the scene. Unmapped characters
@@ -54,7 +54,7 @@ page tilemap { sites = [:showcase]
     label "Level 1" { x = 128.0  y = 146.0  font_size = 16.0  fill = "#003a8c" }
   }
 
-  h2 "Numeric index grid" {}
+  h2 "Numeric index grid"
 
   // The same data can be written as raw index rows (`tiles`). Here a
   // one-row strip doubles as a tile palette: crate, stone, water ×2,
@@ -72,21 +72,21 @@ page tilemap { sites = [:showcase]
   }
 
   text {
-    span "Tiles render with nearest-neighbour scaling by default (`image-rendering: pixelated`); set `smooth = true` for the browser's default smoothing. The sheet is copied to `_wdoc/`, so tiles resolve when the site is served." {}
+    span "Tiles render with nearest-neighbour scaling by default (`image-rendering: pixelated`); set `smooth = true` for the browser's default smoothing. The sheet is copied to `_wdoc/`, so tiles resolve when the site is served."
   }
 
-  h2 "Images" {}
+  h2 "Images"
 
   // An `image` embeds a whole raster, no slicing. On a page it's an
   // `<img>`; the source is resolved relative to main.wcl, copied into
   // `_wdoc/`, and made responsive by the bundled `wdoc-image` style.
   text {
-    span "An `image` block embeds a picture directly. Here's the raw spritesheet the tilemaps above slice from:" {}
+    span "An `image` block embeds a picture directly. Here's the raw spritesheet the tilemaps above slice from:"
   }
   image "assets/kenney-platformer.png" { alt = "Kenney platformer spritesheet"  width = 220 }
 
   text {
-    span "The same `image` block is also a diagram shape, so it can be placed and overlaid like any other:" {}
+    span "The same `image` block is also a diagram shape, so it can be placed and overlaid like any other:"
   }
   diagram {
     width  = 200

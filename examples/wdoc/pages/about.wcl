@@ -1,11 +1,11 @@
 page about { sites = [:showcase]
-  h1 "About" {}
+  h1 "About"
 
   text {
-    span "This is the about page. It exists to demonstrate cross-page links. Back to [the overview](overview)." {}
+    span "This is the about page. It exists to demonstrate cross-page links. Back to [the overview](overview)."
   }
 
-  h2 "Callouts" {}
+  h2 "Callouts"
 
   // A callout is an admonition: an icon + a coloured heading + a body.
   // The built-in type is chosen by its `class`; each ships an accent

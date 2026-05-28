@@ -145,8 +145,7 @@ brush primary "matte" {
   port = 9000u32
 }
 
-brush secondary {
-}
+brush secondary
 
 @deprecated("use NewUser instead")
 type AnnotatedUser {

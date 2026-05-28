@@ -9,17 +9,17 @@
 // see the `wdoc-series-1` override at the bottom of this file.
 
 page charts { sites = [:showcase]
-  h1 "Charts" {}
+  h1 "Charts"
 
   text {
-    span "Bar, line, and pie charts are custom shapes that lower to SVG fundamentals through pure-WCL geometry. Set the scale with " {}
+    span "Bar, line, and pie charts are custom shapes that lower to SVG fundamentals through pure-WCL geometry. Set the scale with "
     span "y_min" { class = ["accent"] }
-    span " / " {}
+    span " / "
     span "y_max" { class = ["accent"] }
-    span ", label the axes, and pass any number of series." {}
+    span ", label the axes, and pass any number of series."
   }
 
-  h2 "Grouped bar chart" {}
+  h2 "Grouped bar chart"
 
   // Two series, an explicit 0–100 scale, and axis labels.
   diagram {
@@ -42,7 +42,7 @@ page charts { sites = [:showcase]
     }
   }
 
-  h2 "Multi-series line chart" {}
+  h2 "Multi-series line chart"
 
   // Three series; the y-axis scale is auto-fit to the data when
   // `y_max` is omitted.
@@ -64,16 +64,16 @@ page charts { sites = [:showcase]
     }
   }
 
-  h2 "Labelled points" {}
+  h2 "Labelled points"
 
   text {
-    span "Set " {}
+    span "Set "
     span "point_labels = true" { class = ["accent"] }
-    span " to print every point's value, and pass " {}
+    span " to print every point's value, and pass "
     span "points" { class = ["accent"] }
-    span " — a list of " {}
+    span " — a list of "
     span "ChartPoint::At { label, category, value }" { class = ["accent"] }
-    span " — to pin a labelled marker to a specific point (category is a 0-based index along the x axis). Annotations pick up the site accent." {}
+    span " — to pin a labelled marker to a specific point (category is a 0-based index along the x axis). Annotations pick up the site accent."
   }
 
   // A single series with auto value labels plus two pinned annotations.
@@ -98,7 +98,7 @@ page charts { sites = [:showcase]
     }
   }
 
-  h2 "Pie chart" {}
+  h2 "Pie chart"
 
   diagram {
     width  = 260
@@ -118,7 +118,7 @@ page charts { sites = [:showcase]
   }
 
   text {
-    span "Every series carries a palette class. Recolour one by redeclaring that class — it follows the light/dark theme like any other." {}
+    span "Every series carries a palette class. Recolour one by redeclaring that class — it follows the light/dark theme like any other."
   }
 }
 

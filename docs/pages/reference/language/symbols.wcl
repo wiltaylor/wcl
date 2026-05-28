@@ -1,8 +1,8 @@
 // Language section: Symbols (incl. symbol_set declarations).
 page symbols { sites = [:reference]
-  h1 "Symbols" {}
+  h1 "Symbols"
 
-  p "A **symbol** is an identifier-like value written `:name` — no space between the colon and the name. Symbols are used for tags, enum-like choices, and any time you want a typed name rather than a string." {}
+  p "A **symbol** is an identifier-like value written `:name` — no space between the colon and the name. Symbols are used for tags, enum-like choices, and any time you want a typed name rather than a string."
   code wcl {
     source = <<'WCL'
 shade  = :amber
@@ -11,9 +11,9 @@ edge   = :uses
 WCL
   }
 
-  h2 "The symbol type" {}
+  h2 "The symbol type"
 
-  p "A free-form field accepting any symbol has type `symbol`. There's no validation on which symbols may appear — anything that lexes as `:name` is valid." {}
+  p "A free-form field accepting any symbol has type `symbol`. There's no validation on which symbols may appear — anything that lexes as `:name` is valid."
   code wcl {
     source = <<'WCL'
 type Tag {
@@ -25,9 +25,9 @@ t = Tag { name: "release", kind: :stable }
 WCL
   }
 
-  h2 "Symbol sets" {}
+  h2 "Symbol sets"
 
-  p "A `symbol_set` names a **closed vocabulary** of symbols. A field typed by the symbol set is restricted to exactly those members, giving you an enum-like type without the weight of a union." {}
+  p "A `symbol_set` names a **closed vocabulary** of symbols. A field typed by the symbol set is restricted to exactly those members, giving you an enum-like type without the weight of a union."
   code wcl {
     source = <<'WCL'
 symbol_set Color {
@@ -44,11 +44,11 @@ cream = Paint { shade: :red }
 WCL
   }
 
-  p "Use a symbol set wherever you'd reach for an enum in another language: severity levels, edge kinds, named layout modes, the eight chart palette hues, …" {}
+  p "Use a symbol set wherever you'd reach for an enum in another language: severity levels, edge kinds, named layout modes, the eight chart palette hues, …"
 
-  h2 "When to use which" {}
+  h2 "When to use which"
 
-  p "WCL has three closely-related tools for \"a value that is one of a set of names\". The right pick depends on whether the vocabulary is open and whether each variant carries data." {}
+  p "WCL has three closely-related tools for \"a value that is one of a set of names\". The right pick depends on whether the vocabulary is open and whether each variant carries data."
   table {
     rows:
       | "Need"                                    | "Use" |
@@ -58,5 +58,5 @@ WCL
       | "Free-form symbol (any `:name`)"          | "`symbol`" |
   }
 
-  p "Next: [Optionals](optionals)." {}
+  p "Next: [Optionals](optionals)."
 }

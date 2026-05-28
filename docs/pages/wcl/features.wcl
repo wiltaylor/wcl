@@ -1,12 +1,12 @@
 // WCL feature tour. Subject is the language; wdoc is one feature among many.
 page features { sites = [:wcl]
-  h1 "Features" {}
+  h1 "Features"
 
-  p "A quick tour through WCL's major features. The [language reference](reference:index) covers each in detail." {}
+  p "A quick tour through WCL's major features. The [language reference](reference:index) covers each in detail."
 
-  h2 "Typed configuration" {}
+  h2 "Typed configuration"
 
-  p "Fields bind names to values; blocks group fields under a kind and a label. Numeric literals carry exact-width suffixes (`u32`, `i64`, `f64`), and strings come in four encodings (`utf8`/`ascii`/`utf16`/`utf32`)." {}
+  p "Fields bind names to values; blocks group fields under a kind and a label. Numeric literals carry exact-width suffixes (`u32`, `i64`, `f64`), and strings come in four encodings (`utf8`/`ascii`/`utf16`/`utf32`)."
   code wcl {
     source = <<'WCL'
 name    = "alpha"
@@ -22,9 +22,9 @@ service "web" {
 WCL
   }
 
-  h2 "Schema validation" {}
+  h2 "Schema validation"
 
-  p "A schema declared with decorators describes what's legal at each level. `wcl check` validates a document against its `@document` root, reporting violations with spans." {}
+  p "A schema declared with decorators describes what's legal at each level. `wcl check` validates a document against its `@document` root, reporting violations with spans."
   code wcl {
     source = <<'WCL'
 @block("service")
@@ -40,9 +40,9 @@ type Config {
 WCL
   }
 
-  h2 "Types, interfaces, and unions" {}
+  h2 "Types, interfaces, and unions"
 
-  p "Records (`type`), structural contracts (`interface`), and tagged sums (`union`) — with record / typeref / unit variants. Use `extends` to inherit fields or variants, and `&T` for an interface-typed reference field." {}
+  p "Records (`type`), structural contracts (`interface`), and tagged sums (`union`) — with record / typeref / unit variants. Use `extends` to inherit fields or variants, and `&T` for an interface-typed reference field."
   code wcl {
     source = <<'WCL'
 union Shape {
@@ -56,9 +56,9 @@ type Scene { focus: &Drawable }
 WCL
   }
 
-  h2 "First-class functions" {}
+  h2 "First-class functions"
 
-  p "Functions are values: `fn(params) -> Return body`. They can take and return other functions, and they participate in lazy field evaluation with cycle detection." {}
+  p "Functions are values: `fn(params) -> Return body`. They can take and return other functions, and they participate in lazy field evaluation with cycle detection."
   code wcl {
     source = <<'WCL'
 double = fn(x: i32) -> i32 x * 2
@@ -66,9 +66,9 @@ adder  = fn(x: i32) -> fn(i32) -> i32 fn(y: i32) -> i32 x + y
 WCL
   }
 
-  h2 "Pattern matching" {}
+  h2 "Pattern matching"
 
-  p "`match` tests against literals, bindings, variant patterns, `|` alternatives, `if` guards, the `_` wildcard, and the `..` rest." {}
+  p "`match` tests against literals, bindings, variant patterns, `|` alternatives, `if` guards, the `_` wildcard, and the `..` rest."
   code wcl {
     source = <<'WCL'
 area = match shape {
@@ -79,9 +79,9 @@ area = match shape {
 WCL
   }
 
-  h2 "CLI tooling" {}
+  h2 "CLI tooling"
 
-  p "The `wcl` binary parses, checks, evaluates, edits, and reformats source. `wcl eval` resolves a dotted path; `wcl set` rewrites a field in place (following imports); `wcl fmt` reformats canonically; `wcl repl` is an interactive evaluator." {}
+  p "The `wcl` binary parses, checks, evaluates, edits, and reformats source. `wcl eval` resolves a dotted path; `wcl set` rewrites a field in place (following imports); `wcl fmt` reformats canonically; `wcl repl` is an interactive evaluator."
   code bash {
     source = <<'BASH'
 wcl check site.wcl
@@ -92,19 +92,19 @@ wcl fmt   site.wcl --in-place
 wcl repl  site.wcl
 BASH
   }
-  p "Each subcommand is covered in the [CLI reference](reference:cli)." {}
+  p "Each subcommand is covered in the [CLI reference](reference:cli)."
 
-  h2 "Language server" {}
+  h2 "Language server"
 
-  p "`wcl lsp` is a `tower-lsp`-based language server with diagnostics, formatting, document symbols, go-to-definition (cross-file), find-references, hover, completion, semantic tokens (including inside `${…}` interpolation slots), and quick-fix code actions. It speaks stdio by default and TCP with `--tcp ADDR`." {}
+  p "`wcl lsp` is a `tower-lsp`-based language server with diagnostics, formatting, document symbols, go-to-definition (cross-file), find-references, hover, completion, semantic tokens (including inside `${…}` interpolation slots), and quick-fix code actions. It speaks stdio by default and TCP with `--tcp ADDR`."
   callout "Editor stubs" {
     class = ["info"]
     body  = "editors/vscode ships a minimal VS Code extension that spawns wcl lsp for .wcl files, and editors/tree-sitter-wcl is a tree-sitter grammar for editors that consume them."
   }
 
-  h2 "Documentation with wdoc" {}
+  h2 "Documentation with wdoc"
 
-  p "`wcl wdoc` renders WCL `page` blocks to a static documentation site — diagrams, charts, syntax-highlighted code, LaTeX math, character-grid terminals, calendar timelines, icon packs, and built-in colour themes. This very site is built with it." {}
+  p "`wcl wdoc` renders WCL `page` blocks to a static documentation site — diagrams, charts, syntax-highlighted code, LaTeX math, character-grid terminals, calendar timelines, icon packs, and built-in colour themes. This very site is built with it."
   code wcl {
     source = <<'WCL'
 site mysite {
@@ -115,8 +115,8 @@ site mysite {
 }
 
 page index { sites = [:mysite]  start = true
-  h1 "My project" {}
-  p "Authored in WCL, rendered to HTML by **wcl wdoc**." {}
+  h1 "My project"
+  p "Authored in WCL, rendered to HTML by **wcl wdoc**."
 }
 WCL
   }
@@ -125,5 +125,5 @@ WCL
     body  = "wcl wdoc serve docs/main.wcl rebuilds on every .wcl save — see Getting started for the full walkthrough."
   }
 
-  p "Ready to write some WCL? Head to [getting started](getting_started), or jump into the [language reference](reference:index)." {}
+  p "Ready to write some WCL? Head to [getting started](getting_started), or jump into the [language reference](reference:index)."
 }

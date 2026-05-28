@@ -1,12 +1,12 @@
 // Reference book: Builtin Functions.
 page builtins { sites = [:reference]
-  h1 "Builtin Functions" {}
+  h1 "Builtin Functions"
 
-  p "WCL ships a standard set of builtins, callable like any function. They group into collections, strings, math, tensors, and control flow." {}
+  p "WCL ships a standard set of builtins, callable like any function. They group into collections, strings, math, tensors, and control flow."
 
-  h2 "Collections" {}
+  h2 "Collections"
 
-  p "Higher-order and list utilities. `map` / `filter` / `fold` take function arguments." {}
+  p "Higher-order and list utilities. `map` / `filter` / `fold` take function arguments."
   table {
     rows:
       | "Function"           | "Purpose" |
@@ -33,7 +33,7 @@ total   = fold([1, 2, 3], 0, fn(acc: i64, x: i64) -> i64 acc + x)
 WCL
   }
 
-  h2 "Strings" {}
+  h2 "Strings"
 
   table {
     rows:
@@ -46,9 +46,9 @@ WCL
       | "`format(fmt, …)`" | "Format with `{}` placeholders" |
   }
 
-  h2 "Math" {}
+  h2 "Math"
 
-  p "Math builtins operate in `f64`, widening integer arguments. Angles are in radians." {}
+  p "Math builtins operate in `f64`, widening integer arguments. Angles are in radians."
   table {
     rows:
       | "Group"     | "Functions" |
@@ -61,7 +61,7 @@ WCL
       | "Constants" | "`pi()` `tau()` `e()`" |
   }
 
-  h2 "Tensors" {}
+  h2 "Tensors"
 
   table {
     rows:
@@ -71,7 +71,7 @@ WCL
       | "`tensor_reshape(t, shape)`" | "Reshape without copying data" |
   }
 
-  h2 "Control flow" {}
+  h2 "Control flow"
 
   table {
     rows:
@@ -81,5 +81,5 @@ WCL
       | "`assert(cond, msg)`" | "Error if `cond` is false" |
   }
 
-  p "Next: [Imports & Modules](imports)." {}
+  p "Next: [Imports & Modules](imports)."
 }

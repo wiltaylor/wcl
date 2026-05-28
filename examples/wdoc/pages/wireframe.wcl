@@ -1,11 +1,11 @@
 page wireframe { sites = [:showcase]
-  h1 "Wireframe widgets" {}
+  h1 "Wireframe widgets"
 
   text {
-    span "Wireframe widgets mock up a UI from composable blocks. Windows and panels hold other widgets, and layout blocks (`wf_row` / `wf_column` / `wf_grid`) arrange them. Back to [the overview](overview)." {}
+    span "Wireframe widgets mock up a UI from composable blocks. Windows and panels hold other widgets, and layout blocks (`wf_row` / `wf_column` / `wf_grid`) arrange them. Back to [the overview](overview)."
   }
 
-  h2 "A sign-in window" {}
+  h2 "A sign-in window"
 
   // A `wf_window` is a container: its child widgets render in its body
   // (stacked vertically by default). Drop a `wf_row` / `wf_grid` to
@@ -13,17 +13,17 @@ page wireframe { sites = [:showcase]
   wf_window "Sign in" {
     width = "24rem"
 
-    wf_label "Email" {}
-    wf_input "you@example.com" {}
+    wf_label "Email"
+    wf_input "you@example.com"
 
-    wf_label "Account type" {}
-    wf_dropdown "Personal" {}
+    wf_label "Account type"
+    wf_dropdown "Personal"
 
     wf_panel {
       title = "Billing plan"
       wf_row {
         wf_radio "Monthly" { selected = true }
-        wf_radio "Annual" {}
+        wf_radio "Annual"
       }
     }
 
@@ -33,19 +33,19 @@ page wireframe { sites = [:showcase]
     // A two-column grid of footer buttons.
     wf_grid {
       columns = 2
-      wf_button "Cancel" {}
+      wf_button "Cancel"
       wf_button "Sign in" { icon = "lucide.check" }
     }
   }
 
-  h2 "Theming with class blocks" {}
+  h2 "Theming with class blocks"
 
   text {
-    span "Every widget threads its `class` field onto the rendered element and paints from a bare class (`.wf-button`, `.wf-window`, …). Add a custom class to one instance (the primary button below carries `class = [\"primary\"]`) or redeclare a base class like `class \"wf-button\"` to restyle every button — both override the bundled look by cascade, dark/light modes included." {}
+    span "Every widget threads its `class` field onto the rendered element and paints from a bare class (`.wf-button`, `.wf-window`, …). Add a custom class to one instance (the primary button below carries `class = [\"primary\"]`) or redeclare a base class like `class \"wf-button\"` to restyle every button — both override the bundled look by cascade, dark/light modes included."
   }
 
   wf_row {
-    wf_button "Default" {}
+    wf_button "Default"
     wf_button "Primary" { class = ["primary"] }
     wf_button "Disabled" { disabled = true }
   }

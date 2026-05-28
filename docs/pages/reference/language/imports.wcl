@@ -1,12 +1,12 @@
 // Language section: Imports & Modules.
 page imports { sites = [:reference]
-  h1 "Imports & Modules" {}
+  h1 "Imports & Modules"
 
-  p "An `import` pulls another file's declarations into the current document. There are two forms, distinguished by how the path is written." {}
+  p "An `import` pulls another file's declarations into the current document. There are two forms, distinguished by how the path is written."
 
-  h2 "Disk imports" {}
+  h2 "Disk imports"
 
-  p "A quoted path imports a file from disk, resolved relative to the importing file." {}
+  p "A quoted path imports a file from disk, resolved relative to the importing file."
   code wcl {
     source = <<'WCL'
 import "./pages/values.wcl"
@@ -14,9 +14,9 @@ import "../shared/types.wcl"
 WCL
   }
 
-  h2 "System imports" {}
+  h2 "System imports"
 
-  p "An angle-bracket path imports a **system** module — a file provided by the host program through a registry, not the filesystem. wdoc's standard library is served this way." {}
+  p "An angle-bracket path imports a **system** module — a file provided by the host program through a registry, not the filesystem. wdoc's standard library is served this way."
   code wcl {
     source = <<'WCL'
 import <wdoc/prelude.wcl>
@@ -28,11 +28,11 @@ WCL
     body  = "When you build a wdoc site, the build prepends import <wdoc/prelude.wcl> for you, so page / text / code / callout and the rest of the stdlib are already in scope. You only write imports for your own page files."
   }
 
-  h2 "How imports compose" {}
+  h2 "How imports compose"
 
-  p "Top-level imports are eager; an `import` inside a block is lazy. Imported declarations participate fully in the importer: they take part in structural validation and in name resolution, so a type or `let` declared in an imported file is usable as if it were local." {}
+  p "Top-level imports are eager; an `import` inside a block is lazy. Imported declarations participate fully in the importer: they take part in structural validation and in name resolution, so a type or `let` declared in an imported file is usable as if it were local."
 
-  p "Hosts that drive WCL can also tag each block with its source file, which lets tooling order imported-versus-local output (wdoc uses this for CSS cascade, for instance)." {}
+  p "Hosts that drive WCL can also tag each block with its source file, which lets tooling order imported-versus-local output (wdoc uses this for CSS cascade, for instance)."
 
-  p "Move on to the [Reference section's Builtin Functions](builtins)." {}
+  p "Move on to the [Reference section's Builtin Functions](builtins)."
 }

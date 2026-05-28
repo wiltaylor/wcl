@@ -5,23 +5,23 @@
 // `ui` iconset + the `icon-accent` class live in main.wcl.
 
 page icons { sites = [:showcase]
-  h1 "Icons" {}
+  h1 "Icons"
 
   // A bare `:name:` resolves against the declared iconsets (here the `ui`
   // set, sized `1.15em` and coloured), while `:pack.name:` reaches a
   // built-in pack directly. Icons follow `currentColor`.
   text {
-    span "Inline Lucide glyphs :star: :git-branch: :database: :server: and built-in Bootstrap glyphs :bootstrap.github: :bootstrap.gear: :bootstrap.cloud: sit right in the text." {}
+    span "Inline Lucide glyphs :star: :git-branch: :database: :server: and built-in Bootstrap glyphs :bootstrap.github: :bootstrap.gear: :bootstrap.cloud: sit right in the text."
   }
 
   // A per-icon `icon_def` override recolours just one icon; an unknown
   // name is left as plain text, and a stray colon pair like 12:00 is
   // untouched.
   text {
-    span "The :heart: gets its own colour from an `icon_def`, while `:not-a-real-icon:` and the time 12:00 stay literal." {}
+    span "The :heart: gets its own colour from an `icon_def`, while `:not-a-real-icon:` and the time 12:00 stay literal."
   }
 
-  h2 "In diagrams" {}
+  h2 "In diagrams"
 
   // Icons are placeable, scalable diagram shapes: give them an id, let
   // `:layered` rank them from the edge graph, size them with width /
@@ -60,7 +60,7 @@ page icons { sites = [:showcase]
     mid -> dst :data
   }
 
-  h2 "Icons on shapes" {}
+  h2 "Icons on shapes"
 
   // Any box-like shape takes an `icon` property — the renderer draws it
   // as a badge over the shape's box (default top-left; override with

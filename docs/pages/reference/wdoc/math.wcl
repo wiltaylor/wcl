@@ -1,0 +1,44 @@
+// wdoc section: Math Equations.
+page wdoc_math { sites = [:reference]
+  h1 "Math Equations"
+
+  p "`math` typesets a LaTeX equation to inline SVG via the pure-Rust RaTeX toolchain. Glyph outlines embed in the SVG, so equations render the same on `file://` and over HTTP — no webfont dependency."
+
+  h2 "Block equations"
+
+  p "`math \"…\" {}` (or `math <<TEX … TEX`) renders a centred display equation. Use a raw heredoc for backslash-heavy LaTeX."
+
+  code wcl {
+    source = <<'WCL'
+math "E = mc^2"
+
+math <<'TEX'
+\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+TEX
+WCL
+  }
+
+  h2 "Inline math"
+
+  p "Inside any `p` body or `span`, two inline patterns produce math:"
+
+  code wcl {
+    source = <<'PATTERNS'
+$x^2$           // → inline LaTeX (text style — flows with the prose)
+$$\int x dx$$   // → display style (slightly bigger, same line)
+PATTERNS
+  }
+
+  p "The `$…$` pattern requires a non-space at each delimiter, so currency like `$10 or $20` is left alone."
+
+  h2 "Colour"
+
+  p "RaTeX's default black fill is rewritten to `currentColor`, so equations follow the surrounding text colour — theme changes, light/dark toggles, and a `class \"…\" { color = … }` override all flow through. An explicit `\\textcolor{...}{…}` in the LaTeX survives unchanged."
+
+  callout "Bad LaTeX is non-fatal" {
+    class = ["info"]
+    body  = "RaTeX runs under catch_unwind. Malformed input becomes an inline .wdoc-math-error marker; the rest of the page builds normally."
+  }
+
+  p "Next: [Tables](wdoc_tables)."
+}

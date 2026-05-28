@@ -1,15 +1,15 @@
-// wdoc section: Icons & Image Blocks.
+// wdoc section: Icons.
 page wdoc_icons { sites = [:reference]
-  h1 "Icons & Image Blocks" {}
+  h1 "Icons"
 
-  h2 "Icons" {}
+  p "Full **Lucide** and **Bootstrap Icons** packs ship compiled into the binary. No runtime disk read; only used icons are emitted into the output sprite (`_wdoc/icons.svg`). Icons paint with `currentColor`, so colour follows the surrounding text or class."
 
-  p "Full **Lucide** and **Bootstrap Icons** packs ship compiled into the binary. No runtime disk read; only used icons are emitted into the output sprite (`_wdoc/icons.svg`). Icons paint with `currentColor`, so colour follows the surrounding text or class." {}
-  p "Three ways to use an icon:" {}
+  h2 "Three ways to use an icon"
+
   code wcl {
     source = <<'WCL'
 // 1. Inline pattern in a p (or span):
-p "Status: :lucide.check: ready" {}
+p "Status: :lucide.check: ready"
 
 // 2. Placeable icon block (a legal diagram child):
 diagram {
@@ -30,9 +30,10 @@ process "Validate" {
 WCL
   }
 
-  h2 "Iconsets" {}
+  h2 "Iconsets"
 
-  p "Declare an `iconset` to rename a pack or set default styling. Per-icon `icon_def` children override individual icons within the set." {}
+  p "Declare an `iconset` to rename a pack or set default styling. Per-icon `icon_def` children override individual icons within the set."
+
   code wcl {
     source = <<'WCL'
 iconset ui {
@@ -43,77 +44,18 @@ iconset ui {
 }
 
 // Bare :name: now reads from the ui iconset:
-p "We :heart: WCL." {}
+p "We :heart: WCL."
 WCL
   }
+
+  h2 "Icon-position symbols"
+
+  p "When using `icon` as a shape badge, `icon_pos` accepts one of: `:center`, `:top_left` (default), `:top_right`, `:bottom_left`, `:bottom_right`, `:left`, `:right`."
 
   callout "Icons need serving" {
     class = ["note"]
     body  = "The icon sprite is referenced by <use href>, so icons only resolve when served or hosted — not via file:// directly. Same limitation as terminal fonts and tileset images."
   }
 
-  h2 "Images" {}
-
-  p "`image` embeds a static image at a fixed position inside a diagram. The source path is relative to the doc; the file is copied verbatim into `_wdoc/` at build time." {}
-  code wcl {
-    source = <<'WCL'
-diagram {
-  width = 400  height = 300
-  image {
-    source = "assets/logo.png"
-    x = 10.0  y = 10.0  width = 200.0  height = 80.0
-  }
-}
-WCL
-  }
-
-  h2 "Tilemaps" {}
-
-  p "A `tilemap` draws a 2D grid of indexed tiles cropped from a shared spritesheet declared with `tileset`. Authored numerically (`tiles: list<list<i64>>`) or symbolically via a glyph legend." {}
-  code wcl {
-    source = <<'WCL'
-tileset platformer {
-  source       = "assets/kenney-platformer.png"
-  tile_width   = 16
-  tile_height  = 16
-}
-
-diagram {
-  width = 320  height = 240
-  tilemap {
-    set   = "platformer"
-    scale = 2.0
-    tiles = [
-      [ -1, -1,  0,  0, -1, -1 ],
-      [ -1,  3,  3,  3,  3, -1 ],
-    ]
-  }
-}
-WCL
-  }
-
-  h2 "Dopesheets" {}
-
-  p "`dopesheet` plays a range of frames from a spritesheet at a set `fps`. The bundled `dopesheet-player.js` advances the inner SVG viewBox frame-by-frame. Clicking the group toggles play/pause; set `loop = false` for once-through with a replay glyph." {}
-  code wcl {
-    source = <<'WCL'
-diagram {
-  width = 64  height = 64
-  dopesheet {
-    source       = "assets/pixel-coin.png"
-    frame_width  = 16
-    frame_height = 16
-    fps          = 12
-    scale        = 2.0
-  }
-}
-WCL
-  }
-
-  callout "Hosted, not file://" {
-    class = ["info"]
-    body  = "Tilemaps and dopesheets reference their spritesheet by relative URL, so they only render correctly when served or hosted. wcl wdoc serve handles this for you locally."
-  }
-
-  p "Back to the [reference introduction](index)." {}
+  p "Next: [Images](wdoc_images)."
 }

@@ -1,10 +1,11 @@
-// wdoc section: Code & Math.
+// wdoc section: Code Blocks.
 page wdoc_code { sites = [:reference]
-  h1 "Code & Math" {}
+  h1 "Code Blocks"
 
-  h2 "Code blocks" {}
+  p "`code <lang> { source = ... }` renders a syntax-highlighted listing. The language tag picks the grammar; an unknown tag falls back to plain text."
 
-  p "`code <lang> { source = ... }` renders a syntax-highlighted listing. The language tag picks the grammar; an unknown tag falls back to plain text." {}
+  h2 "Authoring"
+
   code wcl {
     source = <<'WCL'
 code rust {
@@ -21,28 +22,18 @@ RUST
 WCL
   }
 
-  p "Common language tags: `rust`, `python`, `wcl`, `json`, `javascript`, `typescript`, `html`, `css`, `yaml`, `toml`, `sql`, `bash`, `go`, `c`, `cpp`. WCL ships its own grammar, so `code wcl { … }` highlights too." {}
+  h2 "Supported languages"
+
+  p "Common tags include `rust`, `python`, `wcl`, `json`, `javascript`, `typescript`, `html`, `css`, `yaml`, `toml`, `sql`, `bash`, `go`, `c`, `cpp`. WCL ships its own grammar, so `code wcl { … }` highlights too."
 
   callout "Heredocs for source" {
     class = ["tip"]
     body  = "Use a raw heredoc (<<'TAG') for the source field — body taken verbatim, no escapes or interpolation. Plain <<TAG interprets escapes; that breaks LaTeX, regexes, and code containing backslashes."
   }
 
-  h2 "Math equations" {}
+  h2 "Styling"
 
-  p "`math` typesets a LaTeX equation to inline SVG via the pure-Rust RaTeX toolchain. Use the source slot for the LaTeX body." {}
-  code wcl {
-    source = <<'WCL'
-math "E = mc^2" {}
+  p "Highlighted tokens render with `tok-keyword`, `tok-string`, `tok-comment`, … classes. The bundled `code-theme.css` ships colours that fit the active theme; override any of them with a user `class` block."
 
-math <<'TEX'
-\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
-TEX
-  {}
-WCL
-  }
-
-  p "Inline math also works via the `$…$` (text style) and `$$…$$` (display style) inline patterns in any `p` body or `span`. Glyph outlines embed in the SVG, so equations render the same on `file://` and over HTTP." {}
-
-  p "Next: [Tables & Columns](wdoc_tables)." {}
+  p "Next: [Math Equations](wdoc_math)."
 }

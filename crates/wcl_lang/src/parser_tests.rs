@@ -119,6 +119,88 @@ fn parse_block_with_multiple_labels() {
 }
 
 #[test]
+fn parse_empty_block_no_labels() {
+    // `hr` alone — newline / EOF terminates the empty-body block.
+    let s = parse("hr\n");
+    let block = blocks(&s.items)[0];
+    assert_eq!(block.kind, "hr");
+    assert!(block.labels.is_empty());
+    assert!(block.items.is_empty());
+}
+
+#[test]
+fn parse_empty_block_with_label() {
+    // `h1 "Title"` — single label, no body, no `{}`.
+    let s = parse(r#"h1 "Title""#);
+    let block = blocks(&s.items)[0];
+    assert_eq!(block.kind, "h1");
+    assert_eq!(block.labels, vec![Expr::Utf8("Title".into())]);
+    assert!(block.items.is_empty());
+}
+
+#[test]
+fn parse_empty_block_with_multiple_labels() {
+    // Multi-label empty block (e.g. a Terraform-style `resource "type" "name"`
+    // with no body).
+    let s = parse(r#"route "GET" "/users""#);
+    let block = blocks(&s.items)[0];
+    assert_eq!(block.kind, "route");
+    assert_eq!(
+        block.labels,
+        vec![Expr::Utf8("GET".into()), Expr::Utf8("/users".into())]
+    );
+    assert!(block.items.is_empty());
+}
+
+#[test]
+fn parse_two_empty_blocks_back_to_back() {
+    // The whole point of newline-terminated labels: `h2` must not get
+    // gobbled as an extra label for `h1`.
+    let s = parse("h1 \"Title\"\nh2 \"Sub\"\n");
+    let blks = blocks(&s.items);
+    assert_eq!(blks.len(), 2);
+    assert_eq!(blks[0].kind, "h1");
+    assert_eq!(blks[0].labels, vec![Expr::Utf8("Title".into())]);
+    assert!(blks[0].items.is_empty());
+    assert_eq!(blks[1].kind, "h2");
+    assert_eq!(blks[1].labels, vec![Expr::Utf8("Sub".into())]);
+    assert!(blks[1].items.is_empty());
+}
+
+#[test]
+fn parse_block_with_body_on_next_line() {
+    // Allman-style `{` on the next line still attaches as the body
+    // (regression guard for the new label-loop terminator).
+    let s = parse("service \"web\"\n{\n  port = 8080\n}\n");
+    let block = blocks(&s.items)[0];
+    assert_eq!(block.kind, "service");
+    assert_eq!(block.labels, vec![Expr::Utf8("web".into())]);
+    assert_eq!(field(&block.items, "port").expr, Expr::I64(8080));
+}
+
+#[test]
+fn format_round_trip_empty_block_drops_braces() {
+    // Parsing `h1 "Title" {}` and re-emitting yields the canonical short form
+    // `h1 "Title"`, which re-parses to the same AST shape.
+    let s = parse(r#"h1 "Title" {}"#);
+    let printed = crate::format::to_source(&s);
+    assert!(
+        printed.contains("h1 \"Title\""),
+        "expected formatted output to contain 'h1 \"Title\"', got: {printed}"
+    );
+    assert!(
+        !printed.contains("{}"),
+        "formatter should drop empty braces, got: {printed}"
+    );
+    // Re-parse the canonical form; same AST shape.
+    let s2 = parse(&printed);
+    let block = blocks(&s2.items)[0];
+    assert_eq!(block.kind, "h1");
+    assert_eq!(block.labels, vec![Expr::Utf8("Title".into())]);
+    assert!(block.items.is_empty());
+}
+
+#[test]
 fn parse_nested_blocks() {
     let s = parse(
         r#"

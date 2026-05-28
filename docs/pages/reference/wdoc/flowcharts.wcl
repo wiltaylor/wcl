@@ -1,0 +1,52 @@
+// wdoc section: Flowcharts.
+page wdoc_flowcharts { sites = [:reference]
+  h1 "Flowcharts"
+
+  p "Flowchart shapes plus the layered auto-layout mode turn a `diagram` into a flowchart: declare the shapes and the edges, and the renderer ranks them topologically and elbow-routes the connections."
+
+  h2 "Flowchart shapes"
+
+  p "`process`, `decision`, and `terminator` are stdlib shapes that lower to SVG primitives. Each takes a label inline and the usual position / size fields. Inside a `:layered` diagram, omit `x`/`y` — the layout decides them."
+
+  code wcl {
+    source = <<'WCL'
+process    "Validate" { id = validate  width = 100.0  height = 40.0 }
+decision   "Match?"   { id = check     width = 100.0  height = 60.0 }
+terminator "End"      { id = done      width = 100.0  height = 40.0 }
+WCL
+  }
+
+  table {
+    rows:
+      | "Shape"        | "Visual" |
+      | "`process`"    | "Rounded rectangle for actions / steps" |
+      | "`decision`"   | "Diamond for branching" |
+      | "`terminator`" | "Pill / stadium for start / end nodes" |
+  }
+
+  h2 "Layered auto-layout"
+
+  p "Set `layout = :layered` on the diagram. Shapes are topologically ranked from the connection graph and stacked top-to-bottom; elbow routing then connects them with right-angled paths. `layer_gap` controls the spacing between ranks."
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 320  height = 220  layout = :layered  layer_gap = 20.0
+
+  process    "Parse"  { id = parse   width = 100.0  height = 40.0 }
+  decision   "Valid?" { id = valid   width = 100.0  height = 60.0 }
+  terminator "Render" { id = render  width = 100.0  height = 40.0 }
+
+  parse -> valid  :flow
+  valid -> render :flow
+}
+WCL
+  }
+
+  callout "Other layouts" {
+    class = ["info"]
+    body  = "`layout = :force` runs a force-directed simulation for cyclic graphs; tune with `repulsion`, `link_distance`, `gravity`, `seed`. See the examples site for a live demo."
+  }
+
+  p "Next: [Charts](wdoc_charts)."
+}

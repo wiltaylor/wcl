@@ -955,15 +955,31 @@ impl<'a> Parser<'a> {
         &mut self,
         kind: String,
         start: usize,
+        kind_end: usize,
         decorators: Vec<Decorator>,
     ) -> Result<Item, ParseError> {
         // Labels are value expressions in positional slots. Their types are
         // determined by the schema's `@inline(N)`-decorated fields.
+        //
+        // The label loop stops on:
+        //   * `{` — body coming up (consumed below)
+        //   * a token preceded by a newline — block ends here with no body
+        //     (the empty-body shorthand: `h1 "Title"`, `hr`, …)
+        //   * any non-label token — same as today
         let mut labels: Vec<Expr> = Vec::new();
+        let mut end_offset = kind_end;
         loop {
             let p = self.peek()?;
+            if matches!(p.kind, TokenKind::LBrace) {
+                break;
+            }
+            // A newline between the previous token (kind or last label) and
+            // the next one ends the label list — what follows is a new item,
+            // not another label.
+            if p.preceded_by_newline {
+                break;
+            }
             match &p.kind {
-                TokenKind::LBrace => break,
                 TokenKind::Str(StringLit::Utf8(_))
                 | TokenKind::Str(StringLit::Ascii(_))
                 | TokenKind::Str(StringLit::Utf16(_))
@@ -973,15 +989,28 @@ impl<'a> Parser<'a> {
                 | TokenKind::Symbol(_)
                 | TokenKind::Ident(_)
                 | TokenKind::None => {
-                    let (expr, _) = self.parse_value_expr()?;
+                    let (expr, span) = self.parse_value_expr()?;
+                    end_offset = span.end;
                     labels.push(expr);
                 }
-                other => {
-                    let msg = format!("expected label or '{{', found {}", describe(other));
-                    let span = p.span;
-                    return Err(self.err(msg, span, "expected label or '{'"));
-                }
+                // Any other token (EOF, `}`, decorator `@`, …) ends the
+                // label list. The post-loop check below decides whether
+                // the block has a body or is empty.
+                _ => break,
             }
+        }
+        // If no `{` follows, this is an empty-body block — `kind` plus any
+        // labels collected above. The next item will be parsed by the
+        // enclosing `parse_item` loop.
+        if !matches!(self.peek()?.kind, TokenKind::LBrace) {
+            return Ok(Item::Block(Block {
+                kind,
+                labels,
+                items: Vec::new(),
+                decorators,
+                span: Span::new(start, end_offset),
+                leading_trivia: self.take_item_trivia(),
+            }));
         }
         self.bump()?; // consume '{'
         self.block_depth += 1;

@@ -1,10 +1,10 @@
 // wdoc section: Sites & Templates.
 page wdoc_sites { sites = [:reference]
-  h1 "Sites & Templates" {}
+  h1 "Sites & Templates"
 
-  p "A `site` block configures one output site — its template, title, theme, and navigation. A document can declare several sites; each page joins one or more via its `sites` field." {}
+  p "A `site` block configures one output site — its template, title, theme, and navigation. A document can declare several sites; each page joins one or more via its `sites` field."
 
-  h2 "Fields" {}
+  h2 "Fields"
 
   table {
     rows:
@@ -12,16 +12,16 @@ page wdoc_sites { sites = [:reference]
       | "`default_template`" | "`:webpage` (header + top nav) or `:book` (sidebar + TOC)" |
       | "`title`"           | "Site title shown in the header / sidebar" |
       | "`root`"            | "When `true`, this site renders at `/` (others go under `/<site>/`)" |
-      | "`theme`"           | "Built-in colour theme — see [Classes & Themes](wdoc_themes)" |
+      | "`theme`"           | "Built-in colour theme — see [Themes](wdoc_themes)" |
       | "`accent`"          | "Symbol naming the accent hue (`:red`..`:pink`); default `:blue`" |
       | "`theme_toggle`"    | "When `true`, adds a light/dark toggle button" |
       | "`menu { … }`"      | "Top navbar entries for the `webpage` template" |
       | "`toc { … }`"       | "Chapter tree for the `book` template" |
   }
 
-  h2 "webpage template" {}
+  h2 "webpage template"
 
-  p "Hugo-style site header, sticky top navbar built from `menu`, and a reading column." {}
+  p "Hugo-style site header, sticky top navbar built from `menu`, and a reading column."
   code wcl {
     source = <<'WCL'
 site marketing {
@@ -41,11 +41,11 @@ site marketing {
 }
 WCL
   }
-  p "Menu items use `page = <name>` for in-site links (validated against pages in this site) or `href = \"…\"` for external or cross-site URLs. Nested `item`s become dropdown groups." {}
+  p "Menu items use `page = <name>` for in-site links (validated against pages in this site) or `href = \"…\"` for external or cross-site URLs. Nested `item`s become dropdown groups."
 
-  h2 "book template" {}
+  h2 "book template"
 
-  p "mdBook-style fixed left sidebar with nested chapters and current-chapter highlight; reading column on the right." {}
+  p "mdBook-style fixed left sidebar with nested chapters and current-chapter highlight; reading column on the right."
   code wcl {
     source = <<'WCL'
 site docs {
@@ -63,7 +63,7 @@ site docs {
 }
 WCL
   }
-  p "Chapters nest to any depth. A `chapter` with no `page =` is a grouping heading. A `chapter` pointing at an unknown page is a build error." {}
+  p "Chapters nest to any depth. A `chapter` with no `page =` is a grouping heading. A `chapter` pointing at an unknown page is a build error."
 
-  p "Next: [Pages](wdoc_pages)." {}
+  p "Next: [Pages](wdoc_pages)."
 }

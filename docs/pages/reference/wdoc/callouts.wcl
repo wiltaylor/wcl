@@ -1,28 +1,11 @@
-// wdoc section: Headings & Callouts.
+// wdoc section: Callouts.
 page wdoc_callouts { sites = [:reference]
-  h1 "Headings & Callouts" {}
+  h1 "Callouts"
 
-  h2 "Headings" {}
+  p "A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are selected by `class`, each shipping a default colour and icon."
 
-  p "Six heading levels, `h1` through `h6`. Each takes an inline label and an optional `id`." {}
-  code wcl {
-    source = <<'WCL'
-h1 "Title" { id = top }
-h2 "Section" {}
-h3 "Subsection" {}
-h4 "Details" {}
-h5 "Fine points" {}
-h6 "Minutiae" {}
-WCL
-  }
-  callout "Heading text is literal" {
-    class = ["note"]
-    body  = "Heading labels do not run through the inline engine. Use spans inside text blocks if you need bold or links in heading-adjacent prose."
-  }
+  h2 "Authoring"
 
-  h2 "Callouts" {}
-
-  p "A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are selected by `class`, each shipping a default colour and icon." {}
   code wcl {
     source = <<'WCL'
 callout "Note" {
@@ -43,6 +26,8 @@ callout "All done" {
 WCL
   }
 
+  h2 "Built-in types"
+
   table {
     rows:
       | "Type"      | "Default colour" | "Default icon" |
@@ -54,10 +39,22 @@ WCL
       | "`success`" | "Green"          | "lucide.circle-check" |
   }
 
-  callout "Callout body is plain text" {
-    class = ["warning"]
-    body  = "The body field renders verbatim — no inline patterns, no links. Keep callout bodies prose-only; put rich formatting in a nearby text block."
+  h2 "Fields"
+
+  table {
+    rows:
+      | "Field"   | "Meaning" |
+      | "`<heading>`" | "Inline label — the coloured heading at the top of the callout." |
+      | "`body`"  | "The prose under the heading. Plain text — see the warning below." |
+      | "`class`" | "Selects the type: `[\"note\"]` / `[\"tip\"]` / etc. May also carry user classes." |
+      | "`icon`"  | "Override the default icon (any `pack.name` from a built-in or declared iconset)." |
+      | "`id`"    | "Optional explicit HTML id." |
   }
 
-  p "Next: [Code & Math](wdoc_code)." {}
+  callout "Body is plain text" {
+    class = ["warning"]
+    body  = "The body field renders verbatim — no inline patterns, no links, no formatting. Keep callout bodies prose-only; put rich formatting in a nearby p or text block."
+  }
+
+  p "Next: [Code Blocks](wdoc_code)."
 }

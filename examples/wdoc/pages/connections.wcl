@@ -9,13 +9,13 @@
 // `@connections(MyEdge)` on a custom block type.
 
 page connections { sites = [:showcase]
-  h1 "Connections" {}
+  h1 "Connections"
 
   text {
-    span "Shapes connect via `lhs -> rhs :kind` statements. The renderer ranks shapes via the layered solver, routes elbow paths around other shapes via A*, and nudges parallel segments apart so dense graphs stay readable." {}
+    span "Shapes connect via `lhs -> rhs :kind` statements. The renderer ranks shapes via the layered solver, routes elbow paths around other shapes via A*, and nudges parallel segments apart so dense graphs stay readable."
   }
 
-  h2 "Flat connections" {}
+  h2 "Flat connections"
 
   // Manual x/y on each shape — useful when you want pixel-exact
   // placement. Edges are still routed by the elbow A* router.
@@ -34,7 +34,7 @@ page connections { sites = [:showcase]
     step_b -> step_c :flow
   }
 
-  h2 "Branching flow" {}
+  h2 "Branching flow"
 
   // Wide DAG: one entry fans out into two parallel branches that
   // each visit a couple of stops before reconverging on a single
@@ -64,10 +64,10 @@ page connections { sites = [:showcase]
     merge   -> done   :flow
   }
 
-  h2 "Force-directed layout" {}
+  h2 "Force-directed layout"
 
   text {
-    span "`layout = :force` runs a force-directed simulation instead of ranking shapes: every shape repels every other, while `@connections(Edge)` edges act as springs pulling connected shapes together. Nodes start clustered in the centre and settle into an organic spread that surfaces clusters — ideal for cyclic or undirected graphs with no natural rank order. The layout is deterministic for a given `seed`; tune the spread with `repulsion`, `link_distance`, and `gravity`. Straight `routing` suits the radial edges. Here the nodes are labelled `node` circles, colour-coded by role (red core, blue front-end, green workers, amber data)." {}
+    span "`layout = :force` runs a force-directed simulation instead of ranking shapes: every shape repels every other, while `@connections(Edge)` edges act as springs pulling connected shapes together. Nodes start clustered in the centre and settle into an organic spread that surfaces clusters — ideal for cyclic or undirected graphs with no natural rank order. The layout is deterministic for a given `seed`; tune the spread with `repulsion`, `link_distance`, and `gravity`. Straight `routing` suits the radial edges. Here the nodes are labelled `node` circles, colour-coded by role (red core, blue front-end, green workers, amber data)."
   }
 
   diagram {
@@ -100,10 +100,10 @@ page connections { sites = [:showcase]
     mesh_auth   -> mesh_db
   }
 
-  h2 "Sub-graphs in containers" {}
+  h2 "Sub-graphs in containers"
 
   text {
-    span "Each container runs its own layered solver via its `@connections(Edge) edges` field. The diagram-level `norm -> validate` cross-container edge bridges them." {}
+    span "Each container runs its own layered solver via its `@connections(Edge) edges` field. The diagram-level `norm -> validate` cross-container edge bridges them."
   }
 
   diagram {
@@ -148,10 +148,10 @@ page connections { sites = [:showcase]
     norm -> validate :data
   }
 
-  h2 "Dense cross-container graph" {}
+  h2 "Dense cross-container graph"
 
   text {
-    span "Three labelled containers form a 3-tier topology. Each container runs its own layered solver internally and auto-fits to its contents (`width` / `height` omitted), so the visible chrome (`stroke = ...`) hugs the shapes inside. The outer diagram uses a 3-cell grid so the containers sit side-by-side. Seven cross-container edges connect shapes across tiers, including a pair sharing `orders` as their source so the edge-separation pass has something to nudge apart. Container chrome is purely visual and does not participate in obstacle routing — arrows cross container borders cleanly. This diagram sets `pan_zoom = true`, so you can scroll to zoom, drag to pan, and use the corner +/−/⟲ controls." {}
+    span "Three labelled containers form a 3-tier topology. Each container runs its own layered solver internally and auto-fits to its contents (`width` / `height` omitted), so the visible chrome (`stroke = ...`) hugs the shapes inside. The outer diagram uses a 3-cell grid so the containers sit side-by-side. Seven cross-container edges connect shapes across tiers, including a pair sharing `orders` as their source so the edge-separation pass has something to nudge apart. Container chrome is purely visual and does not participate in obstacle routing — arrows cross container borders cleanly. This diagram sets `pan_zoom = true`, so you can scroll to zoom, drag to pan, and use the corner +/−/⟲ controls."
   }
 
   diagram {
@@ -234,7 +234,7 @@ page connections { sites = [:showcase]
     orders  -> users_db    :data
   }
 
-  h2 "Obstacle routing" {}
+  h2 "Obstacle routing"
 
   // Three rects laid out left-to-right by the layered solver. The
   // middle node is part of the chain so the A* router still has to
@@ -254,10 +254,10 @@ page connections { sites = [:showcase]
     blocker -> dst_a   :flow
   }
 
-  h2 "Hub topology" {}
+  h2 "Hub topology"
 
   text {
-    span "One central node receives from three sources and feeds three sinks. The edge-separation pass keeps the six surrounding corridors visible." {}
+    span "One central node receives from three sources and feeds three sinks. The edge-separation pass keeps the six surrounding corridors visible."
   }
 
   diagram {
@@ -282,10 +282,10 @@ page connections { sites = [:showcase]
     hub  -> sink3 :flow
   }
 
-  h2 "Restricted anchors" {}
+  h2 "Restricted anchors"
 
   text {
-    span "`connect_points` narrows where an edge may attach. The middle node only accepts arrivals on its `:south` side, so the second arrow has to bend down then over." {}
+    span "`connect_points` narrows where an edge may attach. The middle node only accepts arrivals on its `:south` side, so the second arrow has to bend down then over."
   }
 
   diagram {
@@ -319,6 +319,6 @@ page connections { sites = [:showcase]
   }
 
   text {
-    span "Back to [the overview](overview) or read [About](about)." {}
+    span "Back to [the overview](overview) or read [About](about)."
   }
 }

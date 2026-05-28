@@ -9,23 +9,23 @@
 // default; force one with `TimelineItem::OnSided { … side = :near|:far }`.
 
 page timeline { sites = [:showcase]
-  h1 "Timelines" {}
+  h1 "Timelines"
 
   text {
-    span "A " {}
+    span "A "
     span "timeline" { class = ["accent"] }
-    span " tracks calendar time along an axis — horizontal or vertical. Each " {}
+    span " tracks calendar time along an axis — horizontal or vertical. Each "
     span "item" { class = ["accent"] }
-    span " is pinned to a date with " {}
+    span " is pinned to a date with "
     span "on" { class = ["accent"] }
-    span "; " {}
+    span "; "
     span "phases" { class = ["accent"] }
-    span " mark named date spans; and " {}
+    span " mark named date spans; and "
     span "unit" { class = ["accent"] }
-    span " (minutes…years) sets the tick granularity." {}
+    span " (minutes…years) sets the tick granularity."
   }
 
-  h2 "Horizontal roadmap" {}
+  h2 "Horizontal roadmap"
 
   // A monthly axis across 2026 with three phases and dated items that
   // auto-alternate above / below the axis (one is pinned `:far`).
@@ -55,7 +55,7 @@ page timeline { sites = [:showcase]
     }
   }
 
-  h2 "Vertical, auto-scaled" {}
+  h2 "Vertical, auto-scaled"
 
   // No `start`/`end`: the scale fits the event dates. Vertical timelines
   // read top-to-bottom with items to the left and right of the axis.
@@ -83,19 +83,19 @@ page timeline { sites = [:showcase]
   }
 
   text {
-    span "Phase dividers and headings carry a cycled palette class, and markers / connectors paint with " {}
+    span "Phase dividers and headings carry a cycled palette class, and markers / connectors paint with "
     span "currentColor" { class = ["accent"] }
-    span " — so a site theme or a `class` override recolours a timeline like anything else." {}
+    span " — so a site theme or a `class` override recolours a timeline like anything else."
   }
 
-  h2 "Event cards" {}
+  h2 "Event cards"
 
   text {
-    span "An event " {}
+    span "An event "
     span "card" { class = ["accent"] }
-    span " is a child of the timeline pinned to a date with " {}
+    span " is a child of the timeline pinned to a date with "
     span "on" { class = ["accent"] }
-    span ", filled with formatted wdoc content. It renders in place on the axis." {}
+    span ", filled with formatted wdoc content. It renders in place on the axis."
   }
 
   // `card` children carry rich, inline-formatted bodies, pinned to a date.
@@ -122,14 +122,14 @@ page timeline { sites = [:showcase]
     }
   }
 
-  h2 "Cards in any diagram" {}
+  h2 "Cards in any diagram"
 
   text {
-    span "Because a " {}
+    span "Because a "
     span "card" { class = ["accent"] }
-    span " is an ordinary diagram shape, you can drop one into any " {}
+    span " is an ordinary diagram shape, you can drop one into any "
     span "diagram" { class = ["accent"] }
-    span " — positioned with x/y or anchors, and connectable by edges." {}
+    span " — positioned with x/y or anchors, and connectable by edges."
   }
 
   diagram {

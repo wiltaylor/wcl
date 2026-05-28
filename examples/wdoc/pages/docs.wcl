@@ -4,48 +4,48 @@
 // distinct from the showcase and blog ones (page names are per-site).
 
 page index { sites = [:docs]
-  h1 "Project Docs" {}
+  h1 "Project Docs"
   text {
-    span "Welcome to the docs book. Use the chapter sidebar to navigate, or jump to [getting started](getting_started)." {}
+    span "Welcome to the docs book. Use the chapter sidebar to navigate, or jump to [getting started](getting_started)."
   }
   callout "Multi-site" {
     class = ["info"]
     body  = "This is a different site from the showcase — `wcl wdoc serve` serves it under /docs/, each site in its own subdirectory."
   }
   text {
-    span "The sidebar's `← wdoc showcase` link goes back to the main site; cross-site links also reach sibling sites, e.g. over to the [blog](blog:index)." {}
+    span "The sidebar's `← wdoc showcase` link goes back to the main site; cross-site links also reach sibling sites, e.g. over to the [blog](blog:index)."
   }
 }
 
 page getting_started { sites = [:docs]
-  h1 "Getting started" {}
+  h1 "Getting started"
   text { span "Install the tool, then read the [configuration](config) reference." {} }
 
-  h2 "Install" {}
+  h2 "Install"
   text { span "Grab a release binary or build from source." {} }
 
-  h2 "First run" {}
+  h2 "First run"
   text { span "Point it at a source file and open the output." {} }
 }
 
 page config { sites = [:docs]
-  h1 "Configuration" {}
+  h1 "Configuration"
   text { span "The configuration reference. Back to [getting started](getting_started)." {} }
 
   // Each level uses a different Nord hue (see the `heading-*` classes in
   // main.wcl) — this page walks h2 through h6 to show them all.
-  h2 "General" {}
+  h2 "General"
   text { span "Top-level settings." {} }
 
-  h3 "Logging" {}
+  h3 "Logging"
   text { span "Verbosity and destinations." {} }
 
-  h4 "Formats" {}
+  h4 "Formats"
   text { span "Plain, JSON, or pretty output." {} }
 
-  h5 "Timestamps" {}
+  h5 "Timestamps"
   text { span "Absolute or relative." {} }
 
-  h6 "Time zones" {}
+  h6 "Time zones"
   text { span "UTC by default." {} }
 }

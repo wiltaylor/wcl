@@ -46,12 +46,12 @@ template guide {
 }
 
 page index {
-  h1 "Home" {}
+  h1 "Home"
   text { span "Welcome — this page uses the default **webpage** template." {} }
 }
 
 page guide {
   template = :guide
-  h1 "Guide" {}
+  h1 "Guide"
   text { span "This page overrides the default and uses the `guide` template (with a footer part)." {} }
 }

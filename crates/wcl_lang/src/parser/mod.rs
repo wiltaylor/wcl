@@ -5,7 +5,7 @@ mod types;
 
 use miette::{NamedSource, SourceSpan};
 
-use crate::ast::{Expr, Item, Source, Span};
+use crate::ast::{Block, Expr, Item, Source, Span};
 use crate::error::ParseError;
 use crate::lexer::{LexError, Lexer, StringLit, Token, TokenKind};
 use crate::symbols::{DuplicateSymbol, SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};
@@ -14,9 +14,7 @@ use crate::symbols::{DuplicateSymbol, SymbolIndex, SymbolKind, SymbolPath, Symbo
 // (included via `mod tests`). Gated to keep lib builds free of unused
 // imports.
 #[cfg(test)]
-use crate::ast::{
-    BinOp, Block, Field, SymbolSetDecl, TypeDecl, UnaryOp, UnionDecl, UseForm, VariantBody,
-};
+use crate::ast::{BinOp, Field, SymbolSetDecl, TypeDecl, UnaryOp, UnionDecl, UseForm, VariantBody};
 #[cfg(test)]
 use crate::value::TypeRef;
 
@@ -418,7 +416,19 @@ impl<'a> Parser<'a> {
             | TokenKind::Number(_)
             | TokenKind::Bool(_)
             | TokenKind::Symbol(_)
-            | TokenKind::None => self.parse_block(name, span_start, decorators),
+            | TokenKind::None => self.parse_block(name, span_start, tok.span.end, decorators),
+            _ if next.preceded_by_newline => {
+                // Empty-body, label-less block: the kind sits alone on
+                // its line. The next token belongs to the next item.
+                Ok(Item::Block(Block {
+                    kind: name,
+                    labels: Vec::new(),
+                    items: Vec::new(),
+                    decorators,
+                    span: Span::new(span_start, tok.span.end),
+                    leading_trivia: self.take_item_trivia(),
+                }))
+            }
             other => {
                 let msg = format!(
                     "expected '=', label, or '{{' after identifier '{}', found {}",

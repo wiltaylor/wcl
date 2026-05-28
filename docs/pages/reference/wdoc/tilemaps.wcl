@@ -1,0 +1,71 @@
+// wdoc section: Tilemaps.
+page wdoc_tilemaps { sites = [:reference]
+  h1 "Tilemaps"
+
+  p "A `tilemap` draws a 2D grid of indexed tiles cropped from a shared spritesheet. Authored numerically (a list of int rows) or symbolically via a glyph legend."
+
+  h2 "Declaring a tileset"
+
+  p "`tileset` names a spritesheet image plus its slice geometry. The sheet's pixel dimensions are read from the image header at build time (PNG / JPEG / GIF supported); set `image_width`/`image_height` to override."
+
+  code wcl {
+    source = <<'WCL'
+tileset platformer {
+  source       = "assets/kenney-platformer.png"
+  tile_width   = 16
+  tile_height  = 16
+  // columns, margin, spacing all default sensibly from the image
+}
+WCL
+  }
+
+  h2 "Numeric tiles"
+
+  p "Inside a `diagram` (or `container`), a `tilemap` draws cells from the named tileset. `tiles` is a list of int rows; `-1` (the default `empty` index) leaves a cell blank."
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 320  height = 240
+  tilemap {
+    set   = "platformer"
+    scale = 2.0
+    tiles = [
+      [ -1, -1,  0,  0, -1, -1 ],
+      [ -1,  3,  3,  3,  3, -1 ],
+    ]
+  }
+}
+WCL
+  }
+
+  h2 "Symbolic maps"
+
+  p "For map-like authoring, declare a glyph legend with `tile` children and supply `map` (a list of utf8 rows). Unmapped glyphs draw nothing."
+
+  code wcl {
+    source = <<'WCL'
+tilemap {
+  set = "platformer"
+  tile "#" { index = 0 }
+  tile "." { index = 3 }
+  map = [
+    "..##..",
+    "..####",
+    "######",
+  ]
+}
+WCL
+  }
+
+  h2 "Scaling"
+
+  p "`scale` sizes the display. `image-rendering: pixelated` is the default (set via the always-injected `TILEMAP_CSS`); `smooth = true` opts into browser smoothing."
+
+  callout "Hosted, not file://" {
+    class = ["note"]
+    body  = "Tilemaps reference the spritesheet by relative URL, so they only render when served / hosted. wcl wdoc serve handles this locally."
+  }
+
+  p "Next: [Dopesheets](wdoc_dopesheets)."
+}

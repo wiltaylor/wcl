@@ -138,6 +138,11 @@ pub struct Token {
     /// after a token end up here as the *next* token's leading trivia
     /// — a known simplification, see [`ast::Trivia`].
     pub leading_trivia: Vec<Trivia>,
+    /// Whether at least one newline (or line comment, which terminates a
+    /// line) was skipped between the previous token and this one. The
+    /// parser uses this so that a block's label loop can end at a line
+    /// break, enabling the `kind labels…` (no `{}`) empty-body form.
+    pub preceded_by_newline: bool,
 }
 
 impl Token {
@@ -150,6 +155,7 @@ impl Token {
             kind,
             span,
             leading_trivia: Vec::new(),
+            preceded_by_newline: false,
         }
     }
 }
@@ -174,17 +180,19 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn next_token(&mut self) -> Result<Token, LexError> {
-        let leading_trivia = self.collect_trivia();
+        let (leading_trivia, preceded_by_newline) = self.collect_trivia();
         let start = self.pos;
         let Some(c) = self.peek() else {
             return Ok(Token {
                 kind: TokenKind::Eof,
                 span: Span::new(start, start),
                 leading_trivia,
+                preceded_by_newline,
             });
         };
         let mut tok = self.lex_after_trivia(start, c)?;
         tok.leading_trivia = leading_trivia;
+        tok.preceded_by_newline = preceded_by_newline;
         Ok(tok)
     }
 
@@ -335,9 +343,10 @@ impl<'a> Lexer<'a> {
     /// without the trailing newline. Multiple consecutive blank-line
     /// breaks collapse to a single [`Trivia::BlankLine`] — canonical
     /// output emits at most one blank between Items.
-    fn collect_trivia(&mut self) -> Vec<Trivia> {
+    fn collect_trivia(&mut self) -> (Vec<Trivia>, bool) {
         let mut out = Vec::new();
         let mut newlines_in_run = 0usize;
+        let mut saw_newline = false;
         loop {
             match self.peek() {
                 Some(b' ' | b'\t' | b'\r') => {
@@ -346,6 +355,7 @@ impl<'a> Lexer<'a> {
                 Some(b'\n') => {
                     self.pos += 1;
                     newlines_in_run += 1;
+                    saw_newline = true;
                     // Two consecutive newlines (with only spaces/tabs
                     // between) indicate a blank line. Subsequent
                     // newlines in the same run don't add more breaks
@@ -362,16 +372,18 @@ impl<'a> Lexer<'a> {
                     // run counter resets for any *additional* blank
                     // lines that follow.
                     newlines_in_run = 1;
+                    saw_newline = true;
                 }
                 Some(b'/') if self.peek_at(1) == Some(b'/') => {
                     let text = self.consume_line_comment(2);
                     out.push(Trivia::LineComment(text));
                     newlines_in_run = 1;
+                    saw_newline = true;
                 }
                 _ => break,
             }
         }
-        out
+        (out, saw_newline)
     }
 
     /// Consume `marker_len` prefix bytes (1 for `#`, 2 for `//`), then

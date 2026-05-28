@@ -1,12 +1,12 @@
 // Language section: Tensors.
 page tensors { sites = [:reference]
-  h1 "Tensors" {}
+  h1 "Tensors"
 
-  p "A `tensor<T, [dims...]>` is an N-dimensional array. Unlike a `list<list<…>>`, it carries an explicit shape, so its rank and per-axis sizes are visible to the type system and to any host consuming the value." {}
+  p "A `tensor<T, [dims...]>` is an N-dimensional array. Unlike a `list<list<…>>`, it carries an explicit shape, so its rank and per-axis sizes are visible to the type system and to any host consuming the value."
 
-  h2 "Shape" {}
+  h2 "Shape"
 
-  p "The second type argument is a list of dimensions. Dimensions may be **fixed integers** or **symbolic names** that the host program resolves." {}
+  p "The second type argument is a list of dimensions. Dimensions may be **fixed integers** or **symbolic names** that the host program resolves."
   code wcl {
     source = <<'WCL'
 weights: tensor<f64, [10, 20]>     // fixed 10 × 20 matrix
@@ -15,18 +15,18 @@ volume:  tensor<u8,  [W, H, D]>    // three symbolic dims
 WCL
   }
 
-  h2 "Construction" {}
+  h2 "Construction"
 
-  p "Build a tensor from a flat list of elements plus a shape. The data length must match the product of the dimensions." {}
+  p "Build a tensor from a flat list of elements plus a shape. The data length must match the product of the dimensions."
   code wcl {
     source = <<'WCL'
 m = tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [2, 3])   // 2×3 matrix
 WCL
   }
 
-  h2 "Inspecting & reshaping" {}
+  h2 "Inspecting & reshaping"
 
-  p "Three builtins cover the basic operations:" {}
+  p "Three builtins cover the basic operations:"
   table {
     rows:
       | "Builtin"                  | "Result" |
@@ -45,5 +45,5 @@ WCL
     body  = "Use a tensor when the data is genuinely rectangular and the rank matters (matrices, images, batches of features). For ragged or one-dimensional data, a list<T> is simpler."
   }
 
-  p "Next: [Records](records)." {}
+  p "Next: [Records](records)."
 }

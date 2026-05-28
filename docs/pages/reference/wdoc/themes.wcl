@@ -1,52 +1,13 @@
-// wdoc section: Classes & Themes.
+// wdoc section: Themes.
 page wdoc_themes { sites = [:reference]
-  h1 "Classes & Themes" {}
+  h1 "Themes"
 
-  p "Styling rides the `class` block. Themes set a palette of colour custom properties; class blocks override individual elements. Together they cover most styling needs without authoring raw CSS." {}
+  p "A theme is a complete colour palette plus the rules that map it onto every built-in element — page background, links, headings, code, charts, callouts, tables, inline emphasis. Selecting a theme in one line recolours the whole site."
 
-  h2 "class blocks" {}
+  h2 "Selecting a built-in theme"
 
-  p "A `class <name> { … }` block declares a CSS class. Apply it by listing the name in any block's `class` field (or a span's). Fields cover text, box, and SVG paint properties; per-mode overrides go in `dark { }` / `light { }` sub-blocks." {}
-  code wcl {
-    source = <<'WCL'
-class accent {
-  color = "var(--wdoc-accent)"
-  bold  = true
-  dark  { color = "#88c0d0" }
-  light { color = "#5e81ac" }
-}
+  p "Set `theme = <name>` on a `site`. Seven built-in palettes ship, each with co-ordinated dark and light variants. `theme_toggle = true` adds a light/dark toggle button to the chrome."
 
-text {
-  span "Plain " {}
-  span "accented" { class = ["accent"] }
-  span " plain." {}
-}
-WCL
-  }
-
-  table {
-    rows:
-      | "Group" | "Fields" |
-      | "Text"  | "`color`, `background`, `bold`, `italic`, `underline`, `font_size`, `font_family`, `text_align`, `text_transform`, `letter_spacing`, `line_height`" |
-      | "Box"   | "`padding`, `margin`, `border`" |
-      | "SVG"   | "`fill`, `stroke`, `stroke_width`, `stroke_linejoin`, `stroke_linecap`, `opacity`" |
-      | "Modes" | "`dark { … }`, `light { … }` for prefers-color-scheme overrides" |
-  }
-
-  h2 "Built-in themes" {}
-
-  p "A `site` selects a colour theme by value. The theme sets `--wdoc-*` custom properties used by every built-in element — page background, links, headings, code, charts, callouts, tables, inline emphasis. User `class` blocks still win over theme defaults." {}
-  table {
-    rows:
-      | "Theme"        | "Notes" |
-      | "`nord`"       | "Cool blue-grey, the default" |
-      | "`gruvbox`"    | "Warm retro" |
-      | "`solarized`"  | "Classic Solarized" |
-      | "`catppuccin`" | "Soft pastel" |
-      | "`tokyonight`" | "Vivid night palette" |
-      | "`kanagawa`"   | "Muted with hints of indigo" |
-      | "`everforest`" | "Green forest tones" |
-  }
   code wcl {
     source = <<'WCL'
 site mysite {
@@ -58,10 +19,32 @@ site mysite {
 WCL
   }
 
-  callout "Define your own theme" {
-    class = ["tip"]
-    body  = "Themes are values. Bind your own with let mine = ColourTheme::Of { name dark light } and set theme = mine on the site."
+  h2 "Built-in themes"
+
+  table {
+    rows:
+      | "Theme"        | "Notes" |
+      | "`nord`"       | "Cool blue-grey, the default" |
+      | "`gruvbox`"    | "Warm retro" |
+      | "`solarized`"  | "Classic Solarized" |
+      | "`catppuccin`" | "Soft pastel" |
+      | "`tokyonight`" | "Vivid night palette" |
+      | "`kanagawa`"   | "Muted with hints of indigo" |
+      | "`everforest`" | "Green forest tones" |
   }
 
-  p "Next: [Diagrams](wdoc_diagrams)." {}
+  h2 "Accent colour"
+
+  p "Independently of the theme, `accent = :cyan` (or `:red`/`:orange`/`:yellow`/`:green`/`:blue`/`:purple`/`:pink`) picks the hue used for links and current-chapter highlights. Default is `:blue`."
+
+  h2 "Custom themes"
+
+  p "Themes are ordinary values. Build your own with `let mine = ColourTheme::Of { name dark light }` (each side a `Palette::Of { … }`) and set `theme = mine` on the site. The 18 palette roles are documented in `lib/theme.wcl`."
+
+  callout "Themes set vars, classes win" {
+    class = ["info"]
+    body  = "Themes emit --wdoc-* custom properties; built-in stylesheets consume them via var(...). User class blocks declared anywhere in the document still take precedence over theme defaults via the cascade, so per-element overrides work as expected."
+  }
+
+  p "Next: [Diagrams](wdoc_diagrams)."
 }

@@ -83,19 +83,29 @@ site reference {
     }
 
     chapter "wdoc" {
-      chapter "Overview"              { page = wdoc_overview }
-      chapter "Sites & Templates"     { page = wdoc_sites }
-      chapter "Pages"                 { page = wdoc_pages }
+      chapter "Overview"               { page = wdoc_overview }
+      chapter "Sites & Templates"      { page = wdoc_sites }
+      chapter "Pages"                  { page = wdoc_pages }
       chapter "Text & Inline Patterns" { page = wdoc_text }
-      chapter "Headings & Callouts"   { page = wdoc_callouts }
-      chapter "Code & Math"           { page = wdoc_code }
-      chapter "Tables & Columns"      { page = wdoc_tables }
-      chapter "Classes & Themes"      { page = wdoc_themes }
-      chapter "Diagrams"              { page = wdoc_diagrams }
-      chapter "Charts"                { page = wdoc_charts }
-      chapter "Terminals & TUI"       { page = wdoc_terminals }
-      chapter "Timelines & Cards"     { page = wdoc_timelines }
-      chapter "Icons & Image Blocks"  { page = wdoc_icons }
+      chapter "Headings"               { page = wdoc_headings }
+      chapter "Callouts"               { page = wdoc_callouts }
+      chapter "Code Blocks"            { page = wdoc_code }
+      chapter "Math Equations"         { page = wdoc_math }
+      chapter "Tables"                 { page = wdoc_tables }
+      chapter "Columns"                { page = wdoc_columns }
+      chapter "Classes"                { page = wdoc_classes }
+      chapter "Themes"                 { page = wdoc_themes }
+      chapter "Diagrams"               { page = wdoc_diagrams }
+      chapter "Flowcharts"             { page = wdoc_flowcharts }
+      chapter "Charts"                 { page = wdoc_charts }
+      chapter "Terminals"              { page = wdoc_terminals }
+      chapter "TUI Widgets"            { page = wdoc_tui }
+      chapter "Timelines"              { page = wdoc_timelines }
+      chapter "Cards"                  { page = wdoc_cards }
+      chapter "Icons"                  { page = wdoc_icons }
+      chapter "Images"                 { page = wdoc_images }
+      chapter "Tilemaps"               { page = wdoc_tilemaps }
+      chapter "Dopesheets"             { page = wdoc_dopesheets }
     }
   }
 }
@@ -139,12 +149,22 @@ import "./pages/reference/wdoc/overview.wcl"
 import "./pages/reference/wdoc/sites.wcl"
 import "./pages/reference/wdoc/pages.wcl"
 import "./pages/reference/wdoc/text.wcl"
+import "./pages/reference/wdoc/headings.wcl"
 import "./pages/reference/wdoc/callouts.wcl"
 import "./pages/reference/wdoc/code.wcl"
+import "./pages/reference/wdoc/math.wcl"
 import "./pages/reference/wdoc/tables.wcl"
+import "./pages/reference/wdoc/columns.wcl"
+import "./pages/reference/wdoc/classes.wcl"
 import "./pages/reference/wdoc/themes.wcl"
 import "./pages/reference/wdoc/diagrams.wcl"
+import "./pages/reference/wdoc/flowcharts.wcl"
 import "./pages/reference/wdoc/charts.wcl"
 import "./pages/reference/wdoc/terminals.wcl"
+import "./pages/reference/wdoc/tui.wcl"
 import "./pages/reference/wdoc/timelines.wcl"
+import "./pages/reference/wdoc/cards.wcl"
 import "./pages/reference/wdoc/icons.wcl"
+import "./pages/reference/wdoc/images.wcl"
+import "./pages/reference/wdoc/tilemaps.wcl"
+import "./pages/reference/wdoc/dopesheets.wcl"

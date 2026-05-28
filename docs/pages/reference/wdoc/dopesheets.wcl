@@ -1,0 +1,48 @@
+// wdoc section: Dopesheets.
+page wdoc_dopesheets { sites = [:reference]
+  h1 "Dopesheets"
+
+  p "`dopesheet` plays a range of frames from a sprite sheet at a set `fps`. Like `tilemap` it's a placeable SVG block — a legal child of any `diagram` or `container` — and like other animated blocks it's special-cased in Rust because the geometry comes from cropping an external image."
+
+  h2 "Authoring"
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 64  height = 64
+  dopesheet {
+    source       = "assets/pixel-coin.png"
+    frame_width  = 16
+    frame_height = 16
+    fps          = 12
+    scale        = 2.0
+  }
+}
+WCL
+  }
+
+  h2 "Frame geometry"
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`source`" | "Path to the spritesheet (relative to the doc)" |
+      | "`frame_width` / `frame_height`" | "Size of one frame in the sheet" |
+      | "`offset_x` / `offset_y`" | "Pixel offset to the first frame (default `0`)" |
+      | "`stride_x` / `stride_y`" | "Origin-to-origin step between frames (default = frame size)" |
+      | "`columns`" | "How many frames per sheet row (default: fit from sheet width)" |
+      | "`from` / `to`" | "Frame range to play (default: every frame)" |
+      | "`fps`" | "Playback rate (default `12`)" |
+  }
+
+  h2 "Playback"
+
+  p "By default, dopesheets are `autoplay`, `loop`, and `controls = true`. Click the centred play / pause glyph to toggle. With `loop = false`, playback stops at the last frame and the glyph flips to a replay arrow."
+
+  callout "Smooth or pixelated" {
+    class = ["tip"]
+    body  = "image-rendering: pixelated is the default, so retro pixel art stays crisp. Set smooth = true on the dopesheet to opt into the browser's smoothing for non-pixel sources."
+  }
+
+  p "Back to the [reference introduction](index)."
+}

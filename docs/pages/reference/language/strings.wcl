@@ -1,10 +1,10 @@
 // Language section: Strings.
 page strings { sites = [:reference]
-  h1 "Strings" {}
+  h1 "Strings"
 
-  p "String literals are UTF-8 by default. A prefix selects another encoding; heredocs offer multi-line and verbatim variants; a `$` prefix opts the string into expression interpolation." {}
+  p "String literals are UTF-8 by default. A prefix selects another encoding; heredocs offer multi-line and verbatim variants; a `$` prefix opts the string into expression interpolation."
 
-  h2 "Literals" {}
+  h2 "Literals"
 
   code wcl {
     source = <<'WCL'
@@ -16,9 +16,9 @@ quad  = utf32"hello"
 WCL
   }
 
-  h2 "Escapes" {}
+  h2 "Escapes"
 
-  p "Inside a double-quoted string, the usual escape sequences apply: `\\\\`, `\\\"`, `\\n`, `\\r`, `\\t`. For backslash-heavy text — regexes, LaTeX, Windows paths — prefer a **raw heredoc** (below)." {}
+  p "Inside a double-quoted string, the usual escape sequences apply: `\\\\`, `\\\"`, `\\n`, `\\r`, `\\t`. For backslash-heavy text — regexes, LaTeX, Windows paths — prefer a **raw heredoc** (below)."
   code wcl {
     source = <<'WCL'
 greeting = "Hello,\nworld!"        // newline embedded
@@ -26,7 +26,7 @@ quoted   = "She said \"hi\"."
 WCL
   }
 
-  h2 "Types" {}
+  h2 "Types"
 
   table {
     rows:
@@ -42,9 +42,9 @@ WCL
     body  = "The encoding is part of the value's type. A field declared utf8 will reject an ascii literal; widen or convert at the host layer."
   }
 
-  h2 "Plain heredocs" {}
+  h2 "Plain heredocs"
 
-  p "`<<TAG ... TAG` introduces a heredoc. The body runs until a line matching the closing tag. Escape sequences (`\\n`, `\\\"`, …) are interpreted. Indentation is stripped to match the closing tag's indentation, so heredocs nest comfortably inside indented blocks." {}
+  p "`<<TAG ... TAG` introduces a heredoc. The body runs until a line matching the closing tag. Escape sequences (`\\n`, `\\\"`, …) are interpreted. Indentation is stripped to match the closing tag's indentation, so heredocs nest comfortably inside indented blocks."
   code wcl {
     source = <<'WCL'
 note = <<END
@@ -54,9 +54,9 @@ END
 WCL
   }
 
-  h2 "Raw heredocs" {}
+  h2 "Raw heredocs"
 
-  p "A **raw heredoc** uses a single-quoted opening tag and takes the body verbatim — no escapes, no interpolation, just literal bytes. Ideal for LaTeX, regexes, code samples with backslashes, or anything where you don't want WCL touching the contents." {}
+  p "A **raw heredoc** uses a single-quoted opening tag and takes the body verbatim — no escapes, no interpolation, just literal bytes. Ideal for LaTeX, regexes, code samples with backslashes, or anything where you don't want WCL touching the contents."
   code wcl {
     source = <<'WCL'
 regex = <<'RAW'
@@ -74,9 +74,9 @@ WCL
     body  = "Even in a raw heredoc, the common leading whitespace (matching the closing tag's indent) is stripped from every line. Both forms behave the same way here — only escape handling differs."
   }
 
-  h2 "Interpolation" {}
+  h2 "Interpolation"
 
-  p "Interpolation is opt-in: prefix the string literal with `$`. Inside a `$\"…\"` (or `$<<TAG`), `${ … }` slots evaluate any expression and splice the result into the string. Without the prefix, `${…}` is literal text — no hidden interpolation." {}
+  p "Interpolation is opt-in: prefix the string literal with `$`. Inside a `$\"…\"` (or `$<<TAG`), `${ … }` slots evaluate any expression and splice the result into the string. Without the prefix, `${…}` is literal text — no hidden interpolation."
   code wcl {
     source = <<'WCL'
 greeting = $"Hello, ${name}! Count: ${count + 1u32}"
@@ -88,7 +88,7 @@ MSG
 WCL
   }
 
-  p "All four encodings accept the `$` prefix (`$\"…\"` / `$ascii\"…\"` / `$utf16\"…\"` / `$utf32\"…\"`)." {}
+  p "All four encodings accept the `$` prefix (`$\"…\"` / `$ascii\"…\"` / `$utf16\"…\"` / `$utf32\"…\"`)."
 
-  p "Next: [Booleans](booleans)." {}
+  p "Next: [Booleans](booleans)."
 }

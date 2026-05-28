@@ -1,0 +1,47 @@
+// wdoc section: Classes.
+page wdoc_classes { sites = [:reference]
+  h1 "Classes"
+
+  p "A `class <name> { … }` block declares a CSS class. Apply it by listing the name in any block's `class` field (or a span's). Fields cover text, box, and SVG paint properties; per-mode overrides go in `dark { }` / `light { }` sub-blocks."
+
+  h2 "Authoring"
+
+  code wcl {
+    source = <<'WCL'
+class accent {
+  color = "var(--wdoc-accent)"
+  bold  = true
+  dark  { color = "#88c0d0" }
+  light { color = "#5e81ac" }
+}
+
+p "Plain text with an " { }
+// Use the class on a span:
+text {
+  span "highlighted segment" { class = ["accent"] }
+}
+WCL
+  }
+
+  h2 "Field groups"
+
+  table {
+    rows:
+      | "Group" | "Fields" |
+      | "Text"  | "`color`, `background`, `bold`, `italic`, `underline`, `font_size`, `font_family`, `text_align`, `text_transform`, `letter_spacing`, `line_height`" |
+      | "Box"   | "`padding`, `margin`, `border`" |
+      | "SVG"   | "`fill`, `stroke`, `stroke_width`, `stroke_linejoin`, `stroke_linecap`, `opacity`" |
+      | "Modes" | "`dark { … }`, `light { … }` for prefers-color-scheme overrides" |
+  }
+
+  h2 "Hyphenated names"
+
+  p "Class names that contain hyphens (or any non-identifier character) must be quoted: `class \"wdoc-series-1\" { fill = \"#88c0d0\" }`. This is how you override built-in classes like the chart palette or callout styles."
+
+  callout "Site scope" {
+    class = ["info"]
+    body  = "Set `sites = [:foo]` on a class to scope it to one site in a multi-site document. Omit the field and the class applies everywhere."
+  }
+
+  p "Next: [Themes](wdoc_themes)."
+}

@@ -1,12 +1,12 @@
 // Language section: Lists.
 page lists { sites = [:reference]
-  h1 "Lists" {}
+  h1 "Lists"
 
-  p "A `list<T>` is an ordered, homogeneous sequence of values of type `T`. Lists are how you write any \"many of the same thing\" — including the data flowing through `@children`, `@connections`, and table rows." {}
+  p "A `list<T>` is an ordered, homogeneous sequence of values of type `T`. Lists are how you write any \"many of the same thing\" — including the data flowing through `@children`, `@connections`, and table rows."
 
-  h2 "Literals" {}
+  h2 "Literals"
 
-  p "Write a list literal with square brackets and commas. The element type is inferred from its contents (or pinned by the field's declared type)." {}
+  p "Write a list literal with square brackets and commas. The element type is inferred from its contents (or pinned by the field's declared type)."
   code wcl {
     source = <<'WCL'
 xs:    list<i64>  = [1, 2, 3, 4]
@@ -15,9 +15,9 @@ empty: list<i64>  = []
 WCL
   }
 
-  h2 "Nested lists" {}
+  h2 "Nested lists"
 
-  p "List elements can themselves be lists. Use this for matrices, lookup tables, or any rectangular grid." {}
+  p "List elements can themselves be lists. Use this for matrices, lookup tables, or any rectangular grid."
   code wcl {
     source = <<'WCL'
 grid: list<list<i64>> = [
@@ -28,9 +28,9 @@ grid: list<list<i64>> = [
 WCL
   }
 
-  h2 "Working with lists" {}
+  h2 "Working with lists"
 
-  p "The collection builtins — `map`, `filter`, `fold`, `len`, `sum`, `head`, `tail`, `range`, `flatten`, `zip`, `reverse`, `sort`, `unique`, `list_contains`, `index_of`, `at`, `take`, `drop` — operate on `list<T>`. See [Builtin Functions](builtins) for signatures." {}
+  p "The collection builtins — `map`, `filter`, `fold`, `len`, `sum`, `head`, `tail`, `range`, `flatten`, `zip`, `reverse`, `sort`, `unique`, `list_contains`, `index_of`, `at`, `take`, `drop` — operate on `list<T>`. See [Builtin Functions](builtins) for signatures."
   code wcl {
     source = <<'WCL'
 doubled = map([1, 2, 3], fn(x: i64) -> i64 x * 2)        // [2, 4, 6]
@@ -44,5 +44,5 @@ WCL
     body  = "A field declared list<RowType> can be populated either by a list literal or by WCL's pipe-row table syntax — see Tables."
   }
 
-  p "Next: [Tensors](tensors)." {}
+  p "Next: [Tensors](tensors)."
 }

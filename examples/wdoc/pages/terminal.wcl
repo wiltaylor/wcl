@@ -34,15 +34,15 @@ type Kbd extends TuiWidget {
 }
 
 page terminal { sites = [:showcase]
-  h1 "Terminals" {}
+  h1 "Terminals"
 
   text {
-    span "wdoc renders terminals as a true character grid in inline SVG, drawn with an embedded Nerd Font. Colours come from the WCL " {}
+    span "wdoc renders terminals as a true character grid in inline SVG, drawn with an embedded Nerd Font. Colours come from the WCL "
     span "class" { class = ["code"] }
-    span " system; build them from primitives, inline text, or an asciinema replay." {}
+    span " system; build them from primitives, inline text, or an asciinema replay."
   }
 
-  h2 "Authored with primitives" {}
+  h2 "Authored with primitives"
   text { span "Boxes, text, glyphs, and fills placed at 1-based (row, col), with the full range of terminal colours and styles. This terminal is themed by the `term-mocha` class." {} }
 
   terminal {
@@ -79,7 +79,7 @@ page terminal { sites = [:showcase]
     term_text "71%" { row = 11 col = 46 bold = true }
   }
 
-  h2 "TUI widgets" {}
+  h2 "TUI widgets"
   text { span "Single-line, colour-forward controls — progress bars, buttons, spinners, inputs, dropdowns, checkboxes, radios — that lower to the same primitives. Colour carries the meaning; accents follow the `term-mocha` theme." {} }
 
   terminal {
@@ -108,7 +108,7 @@ page terminal { sites = [:showcase]
     kbd "K"    { row = 15 col = 47 accent = "blue" }
   }
 
-  h3 "Containers" {}
+  h3 "Containers"
   text { span "A `tui_panel` (or borderless `tui_group`) nests other controls; children carry positions relative to the container, and a `tui_group` inside a `tui_panel` shows the offset compounding." {} }
 
   terminal {
@@ -126,7 +126,7 @@ page terminal { sites = [:showcase]
     }
   }
 
-  h2 "Inline content" {}
+  h2 "Inline content"
   text { span "An inline text field is laid out by a virtual terminal. This one overrides the colours directly with the `bg`/`fg` fields instead of a class." {} }
 
   terminal {
@@ -135,7 +135,7 @@ page terminal { sites = [:showcase]
     text = "  WCL terminals\n  ===============\n  * true character grid\n  * themed by class or fields"
   }
 
-  h2 "Asciinema replay" {}
+  h2 "Asciinema replay"
   text { span "Point source at a .cast recording, then click the big play button to run it. Play / pause / replay also live in the title bar." {} }
 
   terminal {

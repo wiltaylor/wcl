@@ -2,21 +2,21 @@
 // Its pages are tagged `sites = [:blog]` and it has its own `index`.
 
 page index { sites = [:blog]
-  h1 "Project Blog" {}
+  h1 "Project Blog"
   text {
-    span "Latest updates. Read about our [launch](post_launch) and the [roadmap](post_roadmap)." {}
+    span "Latest updates. Read about our [launch](post_launch) and the [roadmap](post_roadmap)."
   }
   text {
-    span "The nav's `← wdoc showcase` link goes back to the main site; cross-site links also reach sibling sites, e.g. the [docs](docs:index)." {}
+    span "The nav's `← wdoc showcase` link goes back to the main site; cross-site links also reach sibling sites, e.g. the [docs](docs:index)."
   }
 }
 
 page post_launch { sites = [:blog]
-  h1 "We launched!" {}
+  h1 "We launched!"
   text { span "We shipped the first release today. Back to [the blog](index)." {} }
 }
 
 page post_roadmap { sites = [:blog]
-  h1 "Roadmap" {}
+  h1 "Roadmap"
   text { span "What's coming next for the project. Back to [the blog](index)." {} }
 }

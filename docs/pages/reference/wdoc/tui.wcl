@@ -1,0 +1,52 @@
+// wdoc section: TUI Widgets.
+page wdoc_tui { sites = [:reference]
+  h1 "TUI Widgets"
+
+  p "Inside a `terminal`, stdlib TUI controls compose a small interface. Each widget lowers to runs of `term_text` — the renderer never paints box-drawing characters as vector shapes, only as glyphs on the same character grid as everything else."
+
+  h2 "Authoring"
+
+  code wcl {
+    source = <<'WCL'
+terminal {
+  cols = 50  rows = 8
+  tui_panel {
+    row = 1  col = 1  width = 50  height = 8  title = "Status"
+    tui_progress { row = 3  col = 4  width = 30  value = 0.65 }
+    tui_button   { row = 5  col = 4  label = "Run" }
+  }
+}
+WCL
+  }
+
+  h2 "Built-in controls"
+
+  table {
+    rows:
+      | "Widget"          | "Purpose" |
+      | "`tui_progress`"  | "Two-tone solid-block progress bar" |
+      | "`tui_button`"    | "Solid accent-fill button with a label" |
+      | "`tui_spinner`"   | "Static braille / circle / line frame" |
+      | "`tui_input`"     | "Single-line text input" |
+      | "`tui_dropdown`"  | "Labelled drop-down field" |
+      | "`tui_checkbox`"  | "On/off checkbox" |
+      | "`tui_radio`"     | "Radio button" |
+      | "`tui_panel`"     | "Bordered container — children render inset" |
+      | "`tui_group`"     | "Borderless container" |
+  }
+
+  h2 "Composition"
+
+  p "Coordinates are **local to the widget**: a widget's `lower` lays its primitives out from its own top-left `(1, 1)`; the renderer offsets them by the widget's placement. Containers nest controls by accumulating the offset, so `tui_panel` children declare their positions relative to the panel."
+
+  h2 "Custom widgets"
+
+  p "The base interface `TuiWidget extends TermPrimitive` is user-extensible. Any `@block(\"…\") type … extends TuiWidget` with a `lower` plugs in (resolved via the same `lookup_block_lower` path as SVG/HTML lowering) and is a legal `terminal` (or container) child."
+
+  callout "Colour over box characters" {
+    class = ["info"]
+    body  = "Accent parts use ANSI colour names so they follow the terminal palette or class theme; label text stays default-coloured (currentColor). Built-in widgets favour solid colour over heavy box-drawing for a clean, modern look."
+  }
+
+  p "Next: [Timelines](wdoc_timelines)."
+}

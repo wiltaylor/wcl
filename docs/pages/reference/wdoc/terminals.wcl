@@ -1,12 +1,13 @@
-// wdoc section: Terminals & TUI.
+// wdoc section: Terminals.
 page wdoc_terminals { sites = [:reference]
-  h1 "Terminals & TUI" {}
+  h1 "Terminals"
 
-  p "`terminal` renders a monospace character grid as inline SVG, drawn with a bundled JetBrains Mono Nerd Font. The grid is populated three ways: authored text primitives, inline ANSI-bearing `text`, or replay of an `asciinema` recording." {}
+  p "`terminal` renders a monospace character grid as inline SVG, drawn with a bundled JetBrains Mono Nerd Font. The grid is populated three ways: authored text primitives, an inline ANSI-bearing `text` field, or replay of an `asciinema` recording."
 
-  h2 "Authored text" {}
+  h2 "Authored text"
 
-  p "`term_text` is the one base primitive — styled text placed at a 1-based `(row, col)` carrying fg/bg/bold/italic/underline. Higher-level helpers (`term_box`, `term_glyph`, `term_fill`, `term_border`) lower to runs of `term_text`, so the renderer only ever paints styled glyphs." {}
+  p "`term_text` is the one base primitive — styled text placed at a 1-based `(row, col)` carrying fg/bg/bold/italic/underline. Higher-level helpers (`term_box`, `term_glyph`, `term_fill`, `term_border`) lower to runs of `term_text`, so the renderer only ever paints styled glyphs."
+
   code wcl {
     source = <<'WCL'
 terminal {
@@ -20,9 +21,14 @@ terminal {
 WCL
   }
 
-  h2 "Inline text & asciinema replay" {}
+  h2 "Inline text"
 
-  p "Pass a `text` string and the bundled `avt` virtual terminal evaluates it (ANSI sequences included). Or set `source = \"rec.cast\"` for asciinema replay — frames are coalesced and replayed at the recording's pace (override with `speed`)." {}
+  p "Set `text = \"...\"` and the bundled `avt` virtual terminal evaluates it (ANSI sequences included). Use this for quick demos of escape codes, cursor movement, and styling."
+
+  h2 "asciinema replay"
+
+  p "Set `source = \"rec.cast\"` for asciinema replay — frames are coalesced and replayed at the recording's pace (override with `speed`). Playback **stops at the end** (replay glyph in the chrome) unless `loop = true` is set."
+
   code wcl {
     source = <<'WCL'
 terminal {
@@ -33,26 +39,14 @@ terminal {
 WCL
   }
 
-  h2 "TUI widgets" {}
+  h2 "Chrome & theming"
 
-  p "Inside a `terminal`, stdlib TUI controls compose a small interface. Leaves (`tui_progress`, `tui_button`, `tui_spinner`, `tui_input`, `tui_dropdown`, `tui_checkbox`, `tui_radio`) and containers (`tui_panel`, `tui_group`) all lower to the same styled-text primitives. Coordinates are local to the widget; containers nest by accumulating offset." {}
-  code wcl {
-    source = <<'WCL'
-terminal {
-  cols = 50  rows = 8
-  tui_panel {
-    row = 1  col = 1  width = 50  height = 8  title = "Status"
-    tui_progress { row = 3  col = 4  width = 30  value = 0.65 }
-    tui_button   { row = 5  col = 4  label = "Run" }
-  }
-}
-WCL
-  }
+  p "`chrome = true` draws a title bar with a close `✕` on the right and (during replay) a play/pause/replay glyph on the left. A terminal's `class` list reaches the wrapping `<div>`, so a `class \"x\" { background = … color = … dark{…} light{…} }` themes the window. Default-coloured cells emit `currentColor`, so user themes flow through."
 
-  callout "Theming" {
+  callout "Bundled assets" {
     class = ["info"]
-    body  = "A terminal's class reaches the wrapping div. Set background and color there (with dark / light overrides) to theme the window. Default-coloured cells emit currentColor, so user themes flow through."
+    body  = "The bundled JetBrains Mono woff2 files and the terminal-player.js are written into <out>/_wdoc/ only when a doc uses a terminal."
   }
 
-  p "Next: [Timelines & Cards](wdoc_timelines)." {}
+  p "Next: [TUI Widgets](wdoc_tui)."
 }

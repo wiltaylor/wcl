@@ -1,21 +1,21 @@
 // Getting started with WCL the language. Install + write + check + edit; wdoc is a tail section.
 page getting_started { sites = [:wcl]
-  h1 "Getting started" {}
+  h1 "Getting started"
 
-  p "Install the CLI, write a config, validate it, then explore — formatting, the REPL, and the language server, and finally rendering a documentation site with wdoc." {}
+  p "Install the CLI, write a config, validate it, then explore — formatting, the REPL, and the language server, and finally rendering a documentation site with wdoc."
 
-  h2 "1. Install" {}
+  h2 "1. Install"
 
-  p "Install the `wcl` CLI from a source checkout:" {}
+  p "Install the `wcl` CLI from a source checkout:"
   code bash {
     source = <<'BASH'
       cargo install --git https://github.com/wiltaylor/wcl -p wcl --locked
     BASH
   }
 
-  h2 "2. Write a config" {}
+  h2 "2. Write a config"
 
-  p "Declare a schema with decorators, then author data that matches it. `@inline(0)` binds the block label to a field; `@default` supplies a value when one is omitted; `@children` collects every nested block of a kind." {}
+  p "Declare a schema with decorators, then author data that matches it. `@inline(0)` binds the block label to a field; `@default` supplies a value when one is omitted; `@children` collects every nested block of a kind."
   code wcl {
     source = <<'WCL'
 // site.wcl
@@ -41,9 +41,9 @@ service "api" {
 WCL
   }
 
-  h2 "3. Check & evaluate" {}
+  h2 "3. Check & evaluate"
 
-  p "`wcl check` validates the document against its `@document` schema — exit `0` is OK, `1` a parse error, `2` a schema violation. `wcl eval` (alias `wcl get`) reads any value out by dotted path; `--json` emits a machine-readable form." {}
+  p "`wcl check` validates the document against its `@document` schema — exit `0` is OK, `1` a parse error, `2` a schema violation. `wcl eval` (alias `wcl get`) reads any value out by dotted path; `--json` emits a machine-readable form."
   code bash {
     source = <<'BASH'
 wcl check site.wcl
@@ -52,9 +52,9 @@ wcl get   site.wcl services --json
 BASH
   }
 
-  h2 "4. Format & edit" {}
+  h2 "4. Format & edit"
 
-  p "`wcl fmt` reformats canonically while preserving comments and blank-line grouping. `wcl set` rewrites a field at a dotted path with a new WCL expression, following imports back to the file that declares it (quote shell-special values)." {}
+  p "`wcl fmt` reformats canonically while preserving comments and blank-line grouping. `wcl set` rewrites a field at a dotted path with a new WCL expression, following imports back to the file that declares it (quote shell-special values)."
   code bash {
     source = <<'BASH'
 wcl fmt site.wcl --in-place
@@ -63,17 +63,17 @@ wcl set site.wcl service.api.port 9091u32
 BASH
   }
 
-  h2 "5. Editor support" {}
+  h2 "5. Editor support"
 
-  p "`wcl lsp` is a full language server (diagnostics, completion, hover, go-to-definition, code actions). It speaks stdio by default." {}
+  p "`wcl lsp` is a full language server (diagnostics, completion, hover, go-to-definition, code actions). It speaks stdio by default."
   callout "VS Code + tree-sitter" {
     class = ["tip"]
     body  = "editors/vscode ships a minimal VS Code extension that spawns wcl lsp; editors/tree-sitter-wcl is a tree-sitter grammar stub for editors that consume them."
   }
 
-  h2 "6. (Optional) Render docs with wdoc" {}
+  h2 "6. (Optional) Render docs with wdoc"
 
-  p "If you want a static documentation site for your project, drop `page` blocks into a `.wcl` file and let `wcl wdoc` render them. The very page you're reading is built this way." {}
+  p "If you want a static documentation site for your project, drop `page` blocks into a `.wcl` file and let `wcl wdoc` render them. The very page you're reading is built this way."
   code bash {
     source = <<'BASH'
 wcl wdoc serve docs/main.wcl              # live preview at http://127.0.0.1:8080
@@ -81,5 +81,5 @@ wcl wdoc build docs/main.wcl --out _site  # one-shot static build
 BASH
   }
 
-  p "Next: skim the [features tour](features), then keep the [WCL language reference](reference:index) handy while you author." {}
+  p "Next: skim the [features tour](features), then keep the [WCL language reference](reference:index) handy while you author."
 }

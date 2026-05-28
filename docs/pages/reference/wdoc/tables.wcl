@@ -1,10 +1,11 @@
-// wdoc section: Tables & Columns.
+// wdoc section: Tables.
 page wdoc_tables { sites = [:reference]
-  h1 "Tables & Columns" {}
+  h1 "Tables"
 
-  h2 "Tables" {}
+  p "`table { rows: | … | }` renders a tabular data grid using WCL's native pipe-row syntax. The first row becomes the `<thead>`; the remaining rows go in `<tbody>`."
 
-  p "`table { rows: | … | }` renders a tabular grid using WCL's native pipe-row syntax. The first row becomes the `<thead>`; the remaining rows go in `<tbody>`. utf8 cells run through the inline pattern engine, so bold, italic, inline code, and links all work inside cells." {}
+  h2 "Authoring"
+
   code wcl {
     source = <<'WCL'
 table {
@@ -16,32 +17,18 @@ table {
 WCL
   }
 
+  h2 "Cells"
+
+  p "Cells are expressions in the row schema's field positions. utf8 cells run through the inline pattern engine, so bold, italic, inline code, links, icons, and math all work inside cells. Numeric / boolean / symbol cells stringify."
+
   callout "Pipes in cells" {
     class = ["warning"]
     body  = "A literal pipe (|) outside a quoted cell will split the row. Wrap any cell that contains pipes — e.g. an inline `code` example showing ||  — in a string literal."
   }
 
-  h2 "Columns" {}
+  h2 "Styling"
 
-  p "`column { widths = […] }` lays its children out in a horizontal grid. `widths` is a list of CSS percentages; each child fills one column." {}
-  code wcl {
-    source = <<'WCL'
-column {
-  widths = [50.0, 50.0]
-  p "Left." {}
-  p "Right." {}
-}
+  p "Tables render with a `wdoc-table` class on the `<table>` element. Override the default look by redeclaring `class \"wdoc-table\" { … }`, or apply your own class on the block."
 
-column {
-  widths = [33.3, 33.3, 33.3]
-  h3 "One" {}
-  h3 "Two" {}
-  h3 "Three" {}
-}
-WCL
-  }
-
-  p "Columns can hold any wdoc content — headings, callouts, code blocks, diagrams. Apply a shared `class` to style them as a group." {}
-
-  p "Next: [Classes & Themes](wdoc_themes)." {}
+  p "Next: [Columns](wdoc_columns)."
 }

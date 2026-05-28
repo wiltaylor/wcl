@@ -1,12 +1,12 @@
 // Language section: Connections.
 page connections { sites = [:reference]
-  h1 "Connections" {}
+  h1 "Connections"
 
-  p "A `connection` declaration defines a typed relationship between block instances; arrow statements then populate it. The result is a list of records that hosts can consume — render edges, build dependency graphs, validate references." {}
+  p "A `connection` declaration defines a typed relationship between block instances; arrow statements then populate it. The result is a list of records that hosts can consume — render edges, build dependency graphs, validate references."
 
-  h2 "Declaring a connection" {}
+  h2 "Declaring a connection"
 
-  p "A `connection` names a relationship's source type, destination type, and (optionally) a tag drawn from a `symbol_set`." {}
+  p "A `connection` names a relationship's source type, destination type, and (optionally) a tag drawn from a `symbol_set`."
   code wcl {
     source = <<'WCL'
 symbol_set EdgeKind { uses  depends_on }
@@ -14,9 +14,9 @@ connection DependsOn: Service -> Service : EdgeKind
 WCL
   }
 
-  h2 "Connection statements" {}
+  h2 "Connection statements"
 
-  p "Inside a `@connections(SchemaName)` field, write `source -> destination :tag` to populate it. The tag is optional; omit the `:kind` for an untagged edge." {}
+  p "Inside a `@connections(SchemaName)` field, write `source -> destination :tag` to populate it. The tag is optional; omit the `:kind` for an untagged edge."
   code wcl {
     source = <<'WCL'
 @document
@@ -30,7 +30,7 @@ api   -> db    :depends_on
 WCL
   }
 
-  p "Each statement produces a record with `source`, `destination`, and `kind` slots, ready for a host to interpret." {}
+  p "Each statement produces a record with `source`, `destination`, and `kind` slots, ready for a host to interpret."
 
-  p "Next: [Expressions](expressions)." {}
+  p "Next: [Expressions](expressions)."
 }

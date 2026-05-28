@@ -1,0 +1,44 @@
+// wdoc section: Images.
+page wdoc_images { sites = [:reference]
+  h1 "Images"
+
+  p "`image` embeds a static image at a fixed position. The source path is relative to the doc; the file is copied verbatim into `_wdoc/` at build time."
+
+  h2 "Inside a diagram"
+
+  p "Use `image { source x y width height }` as a placeable shape, alongside `rect`/`circle`/etc."
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 400  height = 300
+  image {
+    source = "assets/logo.png"
+    x = 10.0  y = 10.0  width = 200.0  height = 80.0
+  }
+}
+WCL
+  }
+
+  h2 "On a page"
+
+  p "An `image` block can also live directly under a `page`, where it renders as a standalone `<img>`. Apply a `class` for styling."
+
+  code wcl {
+    source = <<'WCL'
+page about { sites = [:demo]
+  image {
+    source = "assets/hero.jpg"
+    class  = ["hero"]
+  }
+}
+WCL
+  }
+
+  callout "Asset copying" {
+    class = ["info"]
+    body  = "Image files are copied byte-for-byte into <out>/_wdoc/ once per build, so the output site is self-contained. Update the source path; the build picks up the new bytes on rebuild."
+  }
+
+  p "Next: [Tilemaps](wdoc_tilemaps)."
+}

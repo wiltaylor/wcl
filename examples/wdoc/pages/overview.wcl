@@ -2,10 +2,10 @@
 // a free-form diagram with shapes, and a layered flowchart.
 
 page overview { sites = [:showcase]  start = true
-  h1 "Pipeline overview" {}
+  h1 "Pipeline overview"
 
   text {
-    span "Welcome to wdoc " {}
+    span "Welcome to wdoc "
     span "— now with classes." {
       class = ["accent"]
     }
@@ -25,7 +25,7 @@ page overview { sites = [:showcase]  start = true
   // another site declared in this document; the hrefs resolve into the
   // `docs/` and `blog/` output directories.
   text {
-    span "This document builds three sites. Browse [the documentation](docs:index) (a `book`) — e.g. [getting started](docs:getting_started) or [configuration](docs:config) — and [the project blog](blog:index), e.g. [our launch](blog:post_launch)." {}
+    span "This document builds three sites. Browse [the documentation](docs:index) (a `book`) — e.g. [getting started](docs:getting_started) or [configuration](docs:config) — and [the project blog](blog:index), e.g. [our launch](blog:post_launch)."
   }
 
   // Inline patterns: `**bold**`, `_italic_`, backtick-code and
@@ -34,7 +34,7 @@ page overview { sites = [:showcase]  start = true
   // The link pattern also recognises bare page names — `[About](about)`
   // resolves to the `about` page's HTML file.
   text {
-    span "Try **bold**, _italic_, `code`, [external](https://example.com), [About](about), and [Connections](connections)." {}
+    span "Try **bold**, _italic_, `code`, [external](https://example.com), [About](about), and [Connections](connections)."
   }
 
   column {
@@ -44,7 +44,7 @@ page overview { sites = [:showcase]  start = true
     text { span "Right column." {} }
   }
 
-  h2 "Stages" {}
+  h2 "Stages"
 
   // Tables use WCL's native pipe-table syntax. The first row is the
   // header. utf8 cells honour inline patterns (so **bold** and
@@ -136,7 +136,7 @@ page overview { sites = [:showcase]  start = true
     body  = "Diagram shapes can carry an icon too — see the Icons page for shape badges."
   }
 
-  h2 "Flowchart" {}
+  h2 "Flowchart"
 
   // Layered auto-layout: shapes don't declare x/y. The renderer
   // topologically ranks them from the connection graph and stacks

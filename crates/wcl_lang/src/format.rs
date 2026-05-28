@@ -184,6 +184,14 @@ impl Printer {
             self.push_ch(' ');
             self.print_expr(label, 0);
         }
+        // Empty-body shorthand: omit `{}` entirely when there are no items.
+        // The parser accepts both `kind labels` (no braces) and
+        // `kind labels {}` (explicit empty braces); the canonical form is
+        // the shorter one.
+        if b.items.is_empty() {
+            self.newline();
+            return;
+        }
         self.push(" {");
         self.newline();
         self.depth += 1;
