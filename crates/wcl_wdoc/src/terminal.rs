@@ -30,7 +30,7 @@ use wcl_lang::{Block, Document, Value, VariantPayload};
 use crate::render::{
     MAX_LOWER_DEPTH, block_to_record_raw, escape_html, field_bool, field_f64, field_i64, field_id,
     field_symbol, field_utf8, field_utf8_list, kind_for_variant, label_string, lookup_block_lower,
-    lookup_type_lower, map_bool, map_i64, map_symbol, map_utf8, payload_to_record,
+    map_bool, map_i64, map_utf8,
 };
 
 /// Bundled replay player, written into `<out>/_wdoc/` and referenced by
@@ -616,7 +616,7 @@ fn chrome_svg(g: &Geom, title: Option<&str>, replay: bool) -> String {
     )
 }
 
-// ── Populator A: primitives ─────────────────────────────────────────
+// ── Populator A: the `term_text` primitive + element lowering ────────
 
 fn pcolor(block: &Block<'_>, name: &str) -> Color {
     field_utf8(block, name)
@@ -624,32 +624,23 @@ fn pcolor(block: &Block<'_>, name: &str) -> Color {
         .unwrap_or(Color::Default)
 }
 
-/// Box-drawing glyphs for a border style: (tl, tr, bl, br, horiz, vert).
-fn border_glyphs(style: &str) -> (char, char, char, char, char, char) {
-    match style {
-        "double" => ('╔', '╗', '╚', '╝', '═', '║'),
-        "rounded" => ('╭', '╮', '╰', '╯', '─', '│'),
-        "heavy" => ('┏', '┓', '┗', '┛', '━', '┃'),
-        "ascii" => ('+', '+', '+', '+', '-', '|'),
-        _ => ('┌', '┐', '└', '┘', '─', '│'),
-    }
-}
-
-/// Walk a terminal's children, drawing each into the grid. Hardcoded
-/// primitives draw directly; any other child kind is a widget — its
-/// `lower` function decomposes it into `TermFundamental` variants
-/// (`Box`/`Text`/`Glyph`/`Fill`/`Children`), which we recursively draw
-/// (the cell-grid analogue of the SVG/HTML `lower` dispatch). The root
-/// content origin is `(0, 0)`, so top-level primitives are unaffected.
+/// Walk a terminal's children, drawing each into the grid. The one base
+/// primitive (`term_text`) draws directly; every other child kind is a
+/// higher-level element — its `lower` function decomposes it into
+/// `TermFundamental::Text` runs (boxes, fills, glyphs, and the `tui_*`
+/// controls are all just text), which we recursively draw (the cell-grid
+/// analogue of the SVG/HTML `lower` dispatch). The root content origin is
+/// `(0, 0)`, so top-level text is unaffected.
 fn populate_primitives(grid: &mut Grid, doc: &Document, block: &Block<'_>) {
     for child in block.blocks() {
         place_child(grid, doc, &child, child.kind(), 0, (0, 0));
     }
 }
 
-/// Place one terminal child — a primitive drawn at `base + its position`,
-/// or a widget lowered into primitives. `base` is the parent's content
-/// origin (0-based cell offset); it accumulates as containers nest.
+/// Place one terminal child — the `term_text` primitive drawn at
+/// `base + its position`, or an element lowered into text runs. `base` is
+/// the parent's content origin (0-based cell offset); it accumulates as
+/// containers nest.
 fn place_child(
     grid: &mut Grid,
     doc: &Document,
@@ -659,10 +650,7 @@ fn place_child(
     base: (usize, usize),
 ) {
     match kind {
-        "term_box" => prim_box(grid, block, base),
         "term_text" => prim_text(grid, block, base),
-        "term_glyph" => prim_glyph(grid, block, base),
-        "term_fill" => prim_fill(grid, block, base),
         _ => populate_lowered(grid, doc, block, kind, depth, base),
     }
 }
@@ -697,9 +685,10 @@ fn populate_lowered(
 }
 
 /// Draw one `TermFundamental` variant. `wbase` is the emitting widget's
-/// origin; the four leaf variants draw at `wbase + (their pos − 1)`, a
-/// `Children` slot recurses into the widget's child blocks at the slot's
-/// (local) origin, and any other variant re-lowers (general composition).
+/// origin; a `Text` run draws at `wbase + (its pos − 1)`, and a `Children`
+/// slot recurses into the widget's child blocks at the slot's (local)
+/// origin. There are no other fundamentals — every higher-level element
+/// decomposes to `Text` (nesting is via `Children` + block recursion).
 fn draw_variant(
     grid: &mut Grid,
     doc: &Document,
@@ -718,28 +707,14 @@ fn draw_variant(
         return;
     };
     match kind_for_variant(variant).as_str() {
-        "box" => draw_box_variant(grid, map, wbase),
         "text" => draw_text_variant(grid, map, wbase),
-        "glyph" => draw_glyph_variant(grid, map, wbase),
-        "fill" => draw_fill_variant(grid, map, wbase),
         "children" => {
             let cbase = offset(wbase, map_pos(map));
             for child in block.blocks() {
                 place_child(grid, doc, &child, child.kind(), depth + 1, cbase);
             }
         }
-        other => {
-            let arg = payload_to_record(map, other);
-            let Some(fv) = lookup_type_lower(doc, other) else {
-                return;
-            };
-            let Ok(Value::List(items)) = doc.call_value(&fv, &[arg]) else {
-                return;
-            };
-            for item in &items {
-                draw_variant(grid, doc, block, item, depth + 1, wbase);
-            }
-        }
+        _ => {}
     }
 }
 
@@ -796,7 +771,7 @@ fn vstyle(map: &std::collections::BTreeMap<String, Value>) -> Style {
     }
 }
 
-// ── Drawing primitives (shared by the Block and variant paths) ───────
+// ── Drawing the one primitive: styled text ───────────────────────────
 
 fn draw_text(
     grid: &mut Grid,
@@ -823,111 +798,8 @@ fn draw_text(
     }
 }
 
-fn draw_glyph(
-    grid: &mut Grid,
-    row: usize,
-    col: usize,
-    glyph: &str,
-    fg: Color,
-    bg: Color,
-    st: Style,
-) {
-    if let Some(ch) = glyph.chars().next() {
-        grid.set(
-            row,
-            col,
-            Cell {
-                ch,
-                fg,
-                bg,
-                style: st,
-            },
-        );
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn draw_fill(
-    grid: &mut Grid,
-    row: usize,
-    col: usize,
-    w: usize,
-    h: usize,
-    ch: char,
-    fg: Color,
-    bg: Color,
-    st: Style,
-) {
-    for dr in 0..h {
-        for dc in 0..w {
-            grid.set(
-                row + dr,
-                col + dc,
-                Cell {
-                    ch,
-                    fg,
-                    bg,
-                    style: st,
-                },
-            );
-        }
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn draw_box(
-    grid: &mut Grid,
-    row: usize,
-    col: usize,
-    w: usize,
-    h: usize,
-    border: &str,
-    title: Option<&str>,
-    fg: Color,
-    bg: Color,
-    st: Style,
-) {
-    let (tl, tr, bl, br, horiz, vert) = border_glyphs(border);
-    let put = |grid: &mut Grid, r: usize, c: usize, ch: char| {
-        grid.set(
-            r,
-            c,
-            Cell {
-                ch,
-                fg,
-                bg,
-                style: st,
-            },
-        );
-    };
-    let (r0, c0) = (row, col);
-    let (r1, c1) = (row + h - 1, col + w - 1);
-    // Corners.
-    put(grid, r0, c0, tl);
-    put(grid, r0, c1, tr);
-    put(grid, r1, c0, bl);
-    put(grid, r1, c1, br);
-    // Horizontal edges.
-    for c in (c0 + 1)..c1 {
-        put(grid, r0, c, horiz);
-        put(grid, r1, c, horiz);
-    }
-    // Vertical edges.
-    for r in (r0 + 1)..r1 {
-        put(grid, r, c0, vert);
-        put(grid, r, c1, vert);
-    }
-    // Optional title on the top edge, inset two cells.
-    if let Some(t) = title.filter(|t| !t.is_empty()) {
-        let label: String = t.chars().take(w.saturating_sub(4)).collect();
-        for (i, ch) in label.chars().enumerate() {
-            put(grid, r0, c0 + 2 + i, ch);
-        }
-    }
-}
-
-// ── Primitive readers: Block path ────────────────────────────────────
-
+/// The `term_text` primitive, read from its `Block` and drawn at
+/// `base + its position`.
 fn prim_text(grid: &mut Grid, block: &Block<'_>, base: (usize, usize)) {
     let (row, col) = offset(base, cell_pos(block));
     let content = label_string(block).unwrap_or_default();
@@ -942,60 +814,8 @@ fn prim_text(grid: &mut Grid, block: &Block<'_>, base: (usize, usize)) {
     );
 }
 
-fn prim_glyph(grid: &mut Grid, block: &Block<'_>, base: (usize, usize)) {
-    let (row, col) = offset(base, cell_pos(block));
-    let glyph = label_string(block).unwrap_or_default();
-    draw_glyph(
-        grid,
-        row,
-        col,
-        &glyph,
-        pcolor(block, "fg"),
-        pcolor(block, "bg"),
-        prim_style(block),
-    );
-}
-
-fn prim_fill(grid: &mut Grid, block: &Block<'_>, base: (usize, usize)) {
-    let (row, col) = offset(base, cell_pos(block));
-    let w = field_i64(block, "width").unwrap_or(1).max(0) as usize;
-    let h = field_i64(block, "height").unwrap_or(1).max(0) as usize;
-    let ch = label_string(block)
-        .and_then(|s| s.chars().next())
-        .unwrap_or(' ');
-    draw_fill(
-        grid,
-        row,
-        col,
-        w,
-        h,
-        ch,
-        pcolor(block, "fg"),
-        pcolor(block, "bg"),
-        prim_style(block),
-    );
-}
-
-fn prim_box(grid: &mut Grid, block: &Block<'_>, base: (usize, usize)) {
-    let (row, col) = offset(base, cell_pos(block));
-    let w = field_i64(block, "width").unwrap_or(2).max(1) as usize;
-    let h = field_i64(block, "height").unwrap_or(2).max(1) as usize;
-    draw_box(
-        grid,
-        row,
-        col,
-        w,
-        h,
-        &field_symbol(block, "border").unwrap_or_default(),
-        field_utf8(block, "title").as_deref(),
-        pcolor(block, "fg"),
-        pcolor(block, "bg"),
-        prim_style(block),
-    );
-}
-
-// ── Primitive readers: variant-payload path ──────────────────────────
-
+/// A `TermFundamental::Text` run (emitted by an element's `lower`), read
+/// from its variant payload and drawn at `base + its position`.
 fn draw_text_variant(
     grid: &mut Grid,
     map: &std::collections::BTreeMap<String, Value>,
@@ -1008,70 +828,6 @@ fn draw_text_variant(
         row,
         col,
         &content,
-        vcolor(map, "fg"),
-        vcolor(map, "bg"),
-        vstyle(map),
-    );
-}
-
-fn draw_glyph_variant(
-    grid: &mut Grid,
-    map: &std::collections::BTreeMap<String, Value>,
-    base: (usize, usize),
-) {
-    let (row, col) = offset(base, map_pos(map));
-    let glyph = map_utf8(map, "glyph").unwrap_or_default();
-    draw_glyph(
-        grid,
-        row,
-        col,
-        &glyph,
-        vcolor(map, "fg"),
-        vcolor(map, "bg"),
-        vstyle(map),
-    );
-}
-
-fn draw_fill_variant(
-    grid: &mut Grid,
-    map: &std::collections::BTreeMap<String, Value>,
-    base: (usize, usize),
-) {
-    let (row, col) = offset(base, map_pos(map));
-    let w = map_i64(map, "width").unwrap_or(1).max(0) as usize;
-    let h = map_i64(map, "height").unwrap_or(1).max(0) as usize;
-    let ch = map_utf8(map, "ch")
-        .and_then(|s| s.chars().next())
-        .unwrap_or(' ');
-    draw_fill(
-        grid,
-        row,
-        col,
-        w,
-        h,
-        ch,
-        vcolor(map, "fg"),
-        vcolor(map, "bg"),
-        vstyle(map),
-    );
-}
-
-fn draw_box_variant(
-    grid: &mut Grid,
-    map: &std::collections::BTreeMap<String, Value>,
-    base: (usize, usize),
-) {
-    let (row, col) = offset(base, map_pos(map));
-    let w = map_i64(map, "width").unwrap_or(2).max(1) as usize;
-    let h = map_i64(map, "height").unwrap_or(2).max(1) as usize;
-    draw_box(
-        grid,
-        row,
-        col,
-        w,
-        h,
-        &map_symbol(map, "border").unwrap_or_default(),
-        map_utf8(map, "title").as_deref(),
         vcolor(map, "fg"),
         vcolor(map, "bg"),
         vstyle(map),
@@ -1506,23 +1262,6 @@ mod tests {
         assert_eq!(p.fg, None);
         assert_eq!(p.bg, None);
         assert_eq!(ink(p.fg), "currentColor");
-    }
-
-    #[test]
-    fn box_writes_corner_glyphs() {
-        let mut grid = Grid::new(10, 5);
-        // simulate a double box at row 1 col 1, 5 wide 3 tall
-        let (tl, tr, bl, br, h, v) = border_glyphs("double");
-        assert_eq!((tl, tr, bl, br, h, v), ('╔', '╗', '╚', '╝', '═', '║'));
-        grid.set(
-            0,
-            0,
-            Cell {
-                ch: tl,
-                ..Cell::default()
-            },
-        );
-        assert_eq!(grid.row(0)[0].ch, '╔');
     }
 
     #[test]

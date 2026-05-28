@@ -3631,7 +3631,7 @@ type MyBadge extends TuiWidget {
   @inline(0) text: utf8
   row: i64  col: i64
   lower = fn(b: MyBadge) -> list<TermFundamental> [
-    TermFundamental::Glyph { glyph: "★", row: 1, col: 1, fg: "yellow", bg: none, bold: true },
+    TermFundamental::Text { content: "★", row: 1, col: 1, fg: "yellow", bg: none, bold: true },
     TermFundamental::Text { content: b.text, row: 1, col: 3, fg: none, bg: none, bold: none },
   ]
 }

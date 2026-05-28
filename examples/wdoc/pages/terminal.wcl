@@ -13,9 +13,11 @@ class "term-mocha" {
 }
 
 // A custom TUI control, built by extending the `TuiWidget` base — a
-// keycap pill that lowers to a coloured `Fill` + a `Text` label. Any
-// `@block … extends TuiWidget` whose `lower` returns `list<TermFundamental>`
-// plugs into the terminal renderer exactly like the built-in controls.
+// keycap pill that lowers to styled text: a coloured background run
+// (spaces) with the key label on top, both via the shared `term_run` /
+// `term_repeat` helpers. Any `@block … extends TuiWidget` whose `lower`
+// returns `list<TermFundamental>` plugs into the renderer like the
+// built-in controls.
 @block("kbd")
 type Kbd extends TuiWidget {
   @inline(0) key: utf8
@@ -25,8 +27,8 @@ type Kbd extends TuiWidget {
     let acc = if k.accent == none { "magenta" } else { k.accent };
     let w = len(k.key) + 2;
     [
-      TermFundamental::Fill { ch: " ", row: 1, col: 1, width: w, height: 1, fg: none, bg: acc, bold: none },
-      TermFundamental::Text { content: k.key, row: 1, col: 2, fg: "bright_white", bg: acc, bold: true },
+      term_run(term_repeat(" ", w), 1, 1, none, acc, none),
+      term_run(k.key, 1, 2, "bright_white", acc, true),
     ]
   }
 }

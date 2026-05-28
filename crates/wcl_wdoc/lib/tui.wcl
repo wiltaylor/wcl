@@ -4,19 +4,20 @@
 // buttons, spinners, inputs, dropdowns, checkboxes, radios, and
 // containers — for mocking up text-user-interfaces inside a `terminal`.
 //
-// They are the cell-grid analogue of the wireframe widgets: each is a
-// `@block` whose `lower` decomposes it into the same building blocks the
-// terminal's authored primitives use (`term_box`/`term_text`/
-// `term_glyph`/`term_fill`), expressed here as the `TermFundamental`
-// union. The terminal renderer special-cases the four primitives and,
-// for any other child kind, calls its `lower` and recursively draws the
-// returned fundamentals into the grid (`crates/wcl_wdoc/src/terminal.rs`).
+// THE ONE BUILDING BLOCK IS STYLED TEXT. The terminal renderer draws a
+// single primitive directly — `term_text` (a run of text at a cell, with
+// colours + styles) — and `TermFundamental::Text` is its mirror. Every
+// other element here (the boxes/fills/glyphs and every `tui_*` control)
+// is a higher-level `@block` whose `lower` decomposes it into `Text`
+// runs, which the renderer recursively draws into the grid
+// (`crates/wcl_wdoc/src/terminal.rs`). Box-drawing, fills, and glyphs are
+// just text — see the `term_*_runs` helpers below.
 //
-// COORDINATES ARE LOCAL. A widget's `lower` lays its primitives out from
-// the widget's own top-left `(row 1, col 1)`; the renderer offsets them
-// by the widget's placement (its `row`/`col` within the terminal, plus
-// any enclosing container's content origin). So a widget never reads its
-// own `row`/`col` — the renderer owns placement, which is what lets
+// COORDINATES ARE LOCAL. A widget's `lower` lays its text out from the
+// widget's own top-left `(row 1, col 1)`; the renderer offsets it by the
+// widget's placement (its `row`/`col` within the terminal, plus any
+// enclosing container's content origin). So a widget never reads its own
+// `row`/`col` — the renderer owns placement, which is what lets
 // containers nest controls (a `Children` fundamental marks the content
 // origin, and the renderer recurses the child blocks there).
 //
@@ -27,21 +28,14 @@
 // text is left default-coloured, so it follows the terminal's
 // `currentColor` (its `class` `color`, dark/light included).
 
-// The terminal building blocks a widget lowers into. These mirror the
-// `term_box`/`term_text`/`term_glyph`/`term_fill` primitives (plus a
-// `Children` content-origin slot for containers); the renderer draws
-// each into the cell grid. Coordinates are 1-based and LOCAL to the
-// emitting widget. Every field must be supplied at construction (set
-// `none` to opt out) — that's how WCL variant literals work.
+// The terminal building blocks a widget lowers into: styled text, plus a
+// `Children` content-origin slot for containers. Coordinates are 1-based
+// and LOCAL to the emitting widget. Every field must be supplied at
+// construction (set `none` to opt out) — that's how WCL variant literals
+// work; the `term_run` helper below is the ergonomic constructor.
 union TermFundamental {
-  // A bordered box: :single (default) :double :rounded :heavy :ascii.
-  Box   { row: i64  col: i64  width: i64  height: i64  border: symbol?  title: utf8?  fg: utf8?  bg: utf8?  bold: bool? }
-  // A run of text (may contain `\n`) at (row, col).
-  Text  { content: utf8  row: i64  col: i64  fg: utf8?  bg: utf8?  bold: bool? }
-  // A single glyph (first char) at (row, col).
-  Glyph { glyph: utf8  row: i64  col: i64  fg: utf8?  bg: utf8?  bold: bool? }
-  // Fill a w×h region with a repeated char.
-  Fill  { ch: utf8  row: i64  col: i64  width: i64  height: i64  fg: utf8?  bg: utf8?  bold: bool? }
+  // A run of text (may contain `\n`) at (row, col), in fg/bg + bold.
+  Text { content: utf8  row: i64  col: i64  fg: utf8?  bg: utf8?  bold: bool? }
   // Content-origin slot: a container's child blocks are drawn here, at
   // (row, col) local to the container. The renderer recurses each child
   // (primitive or widget) with this origin as its base.
@@ -51,11 +45,96 @@ union TermFundamental {
 // The base TUI widget — extend this to author your own control. It's a
 // `TermPrimitive`, so an instance is a legal `terminal` child (and a
 // legal child of any container widget). Supply a `lower` that returns
-// the `TermFundamental`s the control draws.
+// the `TermFundamental`s (styled-text runs) the control draws.
 interface TuiWidget extends TermPrimitive {
   row:   i64
   col:   i64
   lower: fn(&TuiWidget) -> list<TermFundamental>
+}
+
+// ── Text helpers ──────────────────────────────────────────────────────
+// Shared composition fns. Every higher-level element builds its output
+// from these, so styled text is the only thing the renderer draws.
+
+// A `Text` run constructor (the ergonomic form — the renderer-only flags
+// stay `none`). Pass `none` for fg/bg to follow the terminal's theme.
+let term_run = fn(content: utf8, row: i64, col: i64, fg: utf8, bg: utf8, bold: bool) -> TermFundamental
+  TermFundamental::Text { content: content, row: row, col: col, fg: fg, bg: bg, bold: bold }
+
+// `ch` repeated `n` times (`n < 1` ⇒ empty, so callers needn't guard).
+let term_repeat = fn(ch: utf8, n: i64) -> utf8
+  if n < 1 { "" } else { join(map(range(0, n), fn(i: i64) -> utf8 ch), "") }
+
+// Box-drawing glyphs for a border style, as [tl, tr, bl, br, horiz, vert].
+// Unknown / unset ⇒ `:single`.
+let term_border = fn(style: symbol) -> list<utf8>
+  if style == :double { ["╔", "╗", "╚", "╝", "═", "║"] }
+  else { if style == :rounded { ["╭", "╮", "╰", "╯", "─", "│"] }
+  else { if style == :heavy { ["┏", "┓", "┗", "┛", "━", "┃"] }
+  else { if style == :ascii { ["+", "+", "+", "+", "-", "|"] }
+  else { ["┌", "┐", "└", "┘", "─", "│"] } } } }
+
+// A w×h rectangle of a repeated char, as `h` text rows from (row, col).
+let term_fill_runs = fn(ch: utf8, row: i64, col: i64, w: i64, h: i64, fg: utf8, bg: utf8, bold: bool) -> list<TermFundamental> {
+  let line = term_repeat(ch, w);
+  if h < 1 { [] }
+  else { map(range(0, h), fn(r: i64) -> TermFundamental term_run(line, row + r, col, fg, bg, bold)) }
+}
+
+// A w×h border box (+ optional title on the top edge) as text runs from
+// (row, col): a top and bottom edge, and a vertical on each side of every
+// interior row. Sizes below 2 collapse gracefully (no negative repeats).
+let term_box_runs = fn(row: i64, col: i64, w: i64, h: i64, border: symbol, title: utf8, fg: utf8, bg: utf8, bold: bool) -> list<TermFundamental> {
+  let g  = term_border(border);
+  let tl = at(g, 0);  let tr = at(g, 1);  let bl = at(g, 2);  let br = at(g, 3);
+  let hz = at(g, 4);  let vt = at(g, 5);
+  let mid = term_repeat(hz, w - 2);
+  let top = term_run(format("{}{}{}", tl, mid, tr), row, col, fg, bg, bold);
+  let bot = term_run(format("{}{}{}", bl, mid, br), row + h - 1, col, fg, bg, bold);
+  let sides = if h > 2 {
+    flatten(map(range(1, h - 1), fn(r: i64) -> list<TermFundamental> [
+      term_run(vt, row + r, col, fg, bg, bold),
+      term_run(vt, row + r, col + w - 1, fg, bg, bold),
+    ]))
+  } else { [] };
+  let title_part = if title == none { [] } else { [ term_run(title, row, col + 2, fg, bg, bold) ] };
+  flatten([ [top], [bot], sides, title_part ])
+}
+
+// ── Box / fill / glyph elements ───────────────────────────────────────
+// The former hardcoded primitives, now authored elements that decompose
+// to styled text. Same names + fields as before; the renderer no longer
+// special-cases them.
+
+// A bordered box: :single (default) :double :rounded :heavy :ascii.
+@block("term_box")
+type TermBox extends TuiWidget {
+  row: i64  col: i64  width: i64  height: i64
+  border: symbol?  title: utf8?
+  fg: utf8?  bg: utf8?  bold: bool?
+  lower = fn(b: TermBox) -> list<TermFundamental>
+    term_box_runs(1, 1, b.width, b.height, b.border, b.title, b.fg, b.bg, b.bold)
+}
+
+// A run of text (may contain `\n`) at (row, col) — convenience alias for
+// a single styled-text fundamental.
+@block("term_glyph")
+type TermGlyph extends TuiWidget {
+  @inline(0) glyph: utf8
+  row: i64  col: i64
+  fg: utf8?  bg: utf8?  bold: bool?
+  lower = fn(g: TermGlyph) -> list<TermFundamental>
+    [ term_run(g.glyph, 1, 1, g.fg, g.bg, g.bold) ]
+}
+
+// Fill a rectangular region with a repeated char (label's first run).
+@block("term_fill")
+type TermFill extends TuiWidget {
+  @inline(0) ch: utf8
+  row: i64  col: i64  width: i64  height: i64
+  fg: utf8?  bg: utf8?  bold: bool?
+  lower = fn(f: TermFill) -> list<TermFundamental>
+    term_fill_runs(f.ch, 1, 1, f.width, f.height, f.fg, f.bg, f.bold)
 }
 
 // ── Leaf widgets ──────────────────────────────────────────────────────
@@ -83,15 +162,11 @@ type TuiProgress extends TuiWidget {
     let empty  = w - filled;
     let bar_col = if p.label == none { 1 } else { len(p.label) + 2 };
     let label_part = if p.label == none { [] }
-      else { [ TermFundamental::Text { content: p.label, row: 1, col: 1, fg: none, bg: none, bold: none } ] };
-    let fill_part = if filled > 0 {
-      [ TermFundamental::Fill { ch: "█", row: 1, col: bar_col, width: filled, height: 1, fg: acc, bg: none, bold: none } ]
-    } else { [] };
-    let track_part = if empty > 0 {
-      [ TermFundamental::Fill { ch: "░", row: 1, col: bar_col + filled, width: empty, height: 1, fg: trk, bg: none, bold: none } ]
-    } else { [] };
+      else { [ term_run(p.label, 1, 1, none, none, none) ] };
+    let fill_part = if filled > 0 { [ term_run(term_repeat("█", filled), 1, bar_col, acc, none, none) ] } else { [] };
+    let track_part = if empty > 0 { [ term_run(term_repeat("░", empty), 1, bar_col + filled, trk, none, none) ] } else { [] };
     let value_part = if p.show_value == false { [] }
-      else { [ TermFundamental::Text { content: format("{}%", v * 100 / mx), row: 1, col: bar_col + w + 1, fg: none, bg: none, bold: true } ] };
+      else { [ term_run(format("{}%", v * 100 / mx), 1, bar_col + w + 1, none, none, true) ] };
     flatten([ label_part, fill_part, track_part, value_part ])
   }
 }
@@ -113,8 +188,8 @@ type TuiButton extends TuiWidget {
     let pad = (w - ll) / 2;
     let lcol = if pad < 1 { 2 } else { pad + 1 };
     [
-      TermFundamental::Fill { ch: " ", row: 1, col: 1, width: w, height: 1, fg: none, bg: acc, bold: none },
-      TermFundamental::Text { content: b.label, row: 1, col: lcol, fg: txt, bg: acc, bold: true },
+      term_run(term_repeat(" ", w), 1, 1, none, acc, none),
+      term_run(b.label, 1, lcol, txt, acc, true),
     ]
   }
 }
@@ -136,9 +211,9 @@ type TuiSpinner extends TuiWidget {
       else { if s.kind == :line { ["|", "/", "—", "\\"] }
       else { ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] } };
     let g = at(frames, f % len(frames));
-    let glyph_part = [ TermFundamental::Glyph { glyph: g, row: 1, col: 1, fg: acc, bg: none, bold: true } ];
+    let glyph_part = [ term_run(g, 1, 1, acc, none, true) ];
     let label_part = if s.label == none { [] }
-      else { [ TermFundamental::Text { content: s.label, row: 1, col: 3, fg: none, bg: none, bold: none } ] };
+      else { [ term_run(s.label, 1, 3, none, none, none) ] };
     flatten([ glyph_part, label_part ])
   }
 }
@@ -156,11 +231,9 @@ type TuiInput extends TuiWidget {
     let acc   = if i.accent == none { "blue" } else { i.accent };
     let shown = if i.value == none { i.placeholder } else { i.value };
     let txtfg = if i.value == none { "bright_black" } else { none };
-    let bar  = [ TermFundamental::Glyph { glyph: "▏", row: 1, col: 1, fg: acc, bg: none, bold: true } ];
-    let text = [ TermFundamental::Text { content: shown, row: 1, col: 3, fg: txtfg, bg: none, bold: none } ];
-    let cur = if i.focused == true {
-      [ TermFundamental::Glyph { glyph: "▏", row: 1, col: 3 + len(shown), fg: acc, bg: none, bold: true } ]
-    } else { [] };
+    let bar  = [ term_run("▏", 1, 1, acc, none, true) ];
+    let text = [ term_run(shown, 1, 3, txtfg, none, none) ];
+    let cur = if i.focused == true { [ term_run("▏", 1, 3 + len(shown), acc, none, true) ] } else { [] };
     flatten([ bar, text, cur ])
   }
 }
@@ -179,8 +252,8 @@ type TuiDropdown extends TuiWidget {
     let w   = if d.width == none { len(d.text) + 3 } else { d.width };
     let chev = if d.open == true { "▴" } else { "▾" };
     [
-      TermFundamental::Text { content: d.text, row: 1, col: 1, fg: none, bg: none, bold: none },
-      TermFundamental::Glyph { glyph: chev, row: 1, col: w, fg: acc, bg: none, bold: true },
+      term_run(d.text, 1, 1, none, none, none),
+      term_run(chev, 1, w, acc, none, true),
     ]
   }
 }
@@ -201,8 +274,8 @@ type TuiCheckbox extends TuiWidget {
     let mark = if on { "■" } else { "□" };
     let mfg  = if on { acc } else { mut };
     [
-      TermFundamental::Glyph { glyph: mark, row: 1, col: 1, fg: mfg, bg: none, bold: true },
-      TermFundamental::Text { content: c.label, row: 1, col: 3, fg: none, bg: none, bold: none },
+      term_run(mark, 1, 1, mfg, none, true),
+      term_run(c.label, 1, 3, none, none, none),
     ]
   }
 }
@@ -223,8 +296,8 @@ type TuiRadio extends TuiWidget {
     let dot = if on { "◉" } else { "○" };
     let dfg = if on { acc } else { mut };
     [
-      TermFundamental::Glyph { glyph: dot, row: 1, col: 1, fg: dfg, bg: none, bold: true },
-      TermFundamental::Text { content: r.label, row: 1, col: 3, fg: none, bg: none, bold: none },
+      term_run(dot, 1, 1, dfg, none, true),
+      term_run(r.label, 1, 3, none, none, none),
     ]
   }
 }
@@ -248,10 +321,10 @@ type TuiPanel extends TuiWidget {
   lower = fn(p: TuiPanel) -> list<TermFundamental> {
     let bdr = if p.border == none { :rounded } else { p.border };
     let acc = if p.accent == none { "bright_black" } else { p.accent };
-    [
-      TermFundamental::Box { row: 1, col: 1, width: p.width, height: p.height, border: bdr, title: p.title, fg: acc, bg: none, bold: none },
-      TermFundamental::Children { row: 2, col: 2 },
-    ]
+    flatten([
+      term_box_runs(1, 1, p.width, p.height, bdr, p.title, acc, none, none),
+      [ TermFundamental::Children { row: 2, col: 2 } ],
+    ])
   }
 }
 
@@ -264,7 +337,7 @@ type TuiGroup extends TuiWidget {
   @children(TermPrimitive) children: list<TermPrimitive>
   lower = fn(g: TuiGroup) -> list<TermFundamental> {
     let title_part = if g.title == none { [] }
-      else { [ TermFundamental::Text { content: g.title, row: 1, col: 1, fg: none, bg: none, bold: true } ] };
+      else { [ term_run(g.title, 1, 1, none, none, true) ] };
     let body_row = if g.title == none { 1 } else { 2 };
     flatten([ title_part, [ TermFundamental::Children { row: body_row, col: 1 } ] ])
   }

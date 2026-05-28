@@ -7,9 +7,10 @@
 // grid model, ANSI handling, and asciinema replay aren't expressible
 // in WCL). Populate it three ways:
 //
-//   * authored primitives (`term_box` / `term_text` / `term_glyph` /
-//     `term_fill`) placed at 1-based character coordinates, with the
-//     full set of terminal styles;
+//   * authored text — `term_text` placed at 1-based character coordinates
+//     with the full terminal style set (the one base primitive), plus the
+//     higher-level elements in `tui.wcl` (`term_box` / `term_glyph` /
+//     `term_fill` and the `tui_*` controls) that lower to text runs;
 //   * `text = "..."` — plain content laid out by a virtual terminal;
 //   * `source = "rec.cast"` — an asciinema recording, replayed by a
 //     small bundled JS player (play / pause / seek / speed).
@@ -19,9 +20,10 @@
 // `palette` (:default | :light) plus `fg`/`bg` overrides; chrome
 // draws a title bar.
 
-// Marker interface for the terminal's placement primitives. Every
-// primitive sits at a 1-based (row, col); the renderer reads each
-// child directly, so no `lower` is required.
+// Marker interface for everything placeable in a terminal — the
+// `term_text` primitive (drawn directly) and every higher-level element
+// in `tui.wcl` (which extends `TuiWidget extends TermPrimitive` and
+// lowers to text). Each sits at a 1-based (row, col).
 interface TermPrimitive {
   row: i64
   col: i64
@@ -51,52 +53,16 @@ type Terminal extends WdocBlock {
   lower = fn(t: Terminal) -> list<HtmlFundamental> []
 }
 
-// A bordered box. `border` picks the line style:
-//   :single (default) :double :rounded :heavy :ascii
-@block("term_box")
-type TermBox extends TermPrimitive {
-  row:    i64
-  col:    i64
-  width:  i64
-  height: i64
-  border: symbol?
-  title:  utf8?
-  fg: utf8?  bg: utf8?
-  bold: bool?  dim: bool?  italic: bool?  underline: bool?
-  strike: bool?  blink: bool?  inverse: bool?  conceal: bool?
-}
-
-// A run of text (may contain `\n` for multiple lines) at (row, col).
+// The one primitive: a run of text (may contain `\n` for multiple lines)
+// at (row, col), with the full terminal style set. The renderer draws it
+// directly; everything else (boxes, fills, glyphs, and the `tui_*`
+// controls in `tui.wcl`) is a higher-level element that lowers to
+// `TermFundamental::Text` runs.
 @block("term_text")
 type TermText extends TermPrimitive {
   @inline(0) content: utf8
   row: i64
   col: i64
-  fg: utf8?  bg: utf8?
-  bold: bool?  dim: bool?  italic: bool?  underline: bool?
-  strike: bool?  blink: bool?  inverse: bool?  conceal: bool?
-}
-
-// A single glyph (first char of the label) at (row, col) — handy for
-// Nerd Font icons.
-@block("term_glyph")
-type TermGlyph extends TermPrimitive {
-  @inline(0) glyph: utf8
-  row: i64
-  col: i64
-  fg: utf8?  bg: utf8?
-  bold: bool?  dim: bool?  italic: bool?  underline: bool?
-  strike: bool?  blink: bool?  inverse: bool?  conceal: bool?
-}
-
-// Fill a rectangular region with a repeated char (label's first char).
-@block("term_fill")
-type TermFill extends TermPrimitive {
-  @inline(0) ch: utf8
-  row:    i64
-  col:    i64
-  width:  i64
-  height: i64
   fg: utf8?  bg: utf8?
   bold: bool?  dim: bool?  italic: bool?  underline: bool?
   strike: bool?  blink: bool?  inverse: bool?  conceal: bool?

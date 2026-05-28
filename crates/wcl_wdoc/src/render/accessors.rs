@@ -172,13 +172,6 @@ pub(crate) fn map_bool(map: &BTreeMap<String, Value>, name: &str) -> Option<bool
     }
 }
 
-pub(crate) fn map_symbol(map: &BTreeMap<String, Value>, name: &str) -> Option<String> {
-    match map.get(name)? {
-        Value::Symbol(s) => Some(s.clone()),
-        _ => None,
-    }
-}
-
 pub(crate) fn map_utf8_list(map: &BTreeMap<String, Value>, name: &str) -> Vec<String> {
     let Some(Value::List(items)) = map.get(name) else {
         return Vec::new();
