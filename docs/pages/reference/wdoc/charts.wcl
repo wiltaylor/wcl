@@ -2,15 +2,11 @@
 page wdoc_charts { sites = [:reference]
   h1 "Charts" {}
 
-  text {
-    span "wdoc ships three chart kinds — `bar_chart`, `line_chart`, and `pie_chart` — that lower to SVG via pure-WCL geometry. Data is supplied as variant-tagged series; styling rides the same `class` and `theme` system as everything else." {}
-  }
+  p "wdoc ships three chart kinds — `bar_chart`, `line_chart`, and `pie_chart` — that lower to SVG via pure-WCL geometry. Data is supplied as variant-tagged series; styling rides the same `class` and `theme` system as everything else." {}
 
   h2 "Bar and line charts" {}
 
-  text {
-    span "Both accept a `series: list<ChartSeries>` of `ChartSeries::Of { name, values }`. Multiple series produce grouped bars or multi-line plots." {}
-  }
+  p "Both accept a `series: list<ChartSeries>` of `ChartSeries::Of { name, values }`. Multiple series produce grouped bars or multi-line plots." {}
   code wcl {
     source = <<'WCL'
 bar_chart {
@@ -28,9 +24,7 @@ WCL
 
   h2 "Pie chart" {}
 
-  text {
-    span "A `pie_chart` takes `slices: list<ChartSlice>` of `ChartSlice::Of { label, value }`. Slices are drawn as polygon-approximated arcs." {}
-  }
+  p "A `pie_chart` takes `slices: list<ChartSlice>` of `ChartSlice::Of { label, value }`. Slices are drawn as polygon-approximated arcs." {}
   code wcl {
     source = <<'WCL'
 pie_chart {
@@ -46,15 +40,11 @@ WCL
 
   h2 "Line chart annotations" {}
 
-  text {
-    span "On a `line_chart`, set `point_labels = true` to print every data point's value above its marker. For author-named annotations, pass `points: list<ChartPoint>` of `ChartPoint::At { label, category, value }` to pin a custom marker + label to a chosen `(x, y)`." {}
-  }
+  p "On a `line_chart`, set `point_labels = true` to print every data point's value above its marker. For author-named annotations, pass `points: list<ChartPoint>` of `ChartPoint::At { label, category, value }` to pin a custom marker + label to a chosen `(x, y)`." {}
 
   h2 "Theming" {}
 
-  text {
-    span "Every bar, line, or slice is auto-tagged with a cycling palette class (`wdoc-series-1` through `wdoc-series-8`) and emits no inline fill — colour comes from CSS. Override one series by redeclaring its palette class (the name has hyphens, so quote it):" {}
-  }
+  p "Every bar, line, or slice is auto-tagged with a cycling palette class (`wdoc-series-1` through `wdoc-series-8`) and emits no inline fill — colour comes from CSS. Override one series by redeclaring its palette class (the name has hyphens, so quote it):" {}
   code wcl {
     source = <<'WCL'
 class "wdoc-series-1" {
@@ -70,7 +60,5 @@ WCL
     body  = "wdoc injects a default chart stylesheet before user class rules, and themes set the eight series colours through --wdoc-* custom properties. So selecting a theme automatically recolours every chart."
   }
 
-  text {
-    span "Next: [Terminals & TUI](wdoc_terminals)." {}
-  }
+  p "Next: [Terminals & TUI](wdoc_terminals)." {}
 }

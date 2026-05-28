@@ -4,16 +4,12 @@ page wdoc_icons { sites = [:reference]
 
   h2 "Icons" {}
 
-  text {
-    span "Full **Lucide** and **Bootstrap Icons** packs ship compiled into the binary. No runtime disk read; only used icons are emitted into the output sprite (`_wdoc/icons.svg`). Icons paint with `currentColor`, so colour follows the surrounding text or class." {}
-  }
-  text {
-    span "Three ways to use an icon:" {}
-  }
+  p "Full **Lucide** and **Bootstrap Icons** packs ship compiled into the binary. No runtime disk read; only used icons are emitted into the output sprite (`_wdoc/icons.svg`). Icons paint with `currentColor`, so colour follows the surrounding text or class." {}
+  p "Three ways to use an icon:" {}
   code wcl {
     source = <<'WCL'
-// 1. Inline pattern in a span:
-text { span "Status: :lucide.check: ready" {} }
+// 1. Inline pattern in a p (or span):
+p "Status: :lucide.check: ready" {}
 
 // 2. Placeable icon block (a legal diagram child):
 diagram {
@@ -36,9 +32,7 @@ WCL
 
   h2 "Iconsets" {}
 
-  text {
-    span "Declare an `iconset` to rename a pack or set default styling. Per-icon `icon_def` children override individual icons within the set." {}
-  }
+  p "Declare an `iconset` to rename a pack or set default styling. Per-icon `icon_def` children override individual icons within the set." {}
   code wcl {
     source = <<'WCL'
 iconset ui {
@@ -49,7 +43,7 @@ iconset ui {
 }
 
 // Bare :name: now reads from the ui iconset:
-text { span "We :heart: WCL." {} }
+p "We :heart: WCL." {}
 WCL
   }
 
@@ -60,9 +54,7 @@ WCL
 
   h2 "Images" {}
 
-  text {
-    span "`image` embeds a static image at a fixed position inside a diagram. The source path is relative to the doc; the file is copied verbatim into `_wdoc/` at build time." {}
-  }
+  p "`image` embeds a static image at a fixed position inside a diagram. The source path is relative to the doc; the file is copied verbatim into `_wdoc/` at build time." {}
   code wcl {
     source = <<'WCL'
 diagram {
@@ -77,9 +69,7 @@ WCL
 
   h2 "Tilemaps" {}
 
-  text {
-    span "A `tilemap` draws a 2D grid of indexed tiles cropped from a shared spritesheet declared with `tileset`. Authored numerically (`tiles: list<list<i64>>`) or symbolically via a glyph legend." {}
-  }
+  p "A `tilemap` draws a 2D grid of indexed tiles cropped from a shared spritesheet declared with `tileset`. Authored numerically (`tiles: list<list<i64>>`) or symbolically via a glyph legend." {}
   code wcl {
     source = <<'WCL'
 tileset platformer {
@@ -104,9 +94,7 @@ WCL
 
   h2 "Dopesheets" {}
 
-  text {
-    span "`dopesheet` plays a range of frames from a spritesheet at a set `fps`. The bundled `dopesheet-player.js` advances the inner SVG viewBox frame-by-frame. Clicking the group toggles play/pause; set `loop = false` for once-through with a replay glyph." {}
-  }
+  p "`dopesheet` plays a range of frames from a spritesheet at a set `fps`. The bundled `dopesheet-player.js` advances the inner SVG viewBox frame-by-frame. Clicking the group toggles play/pause; set `loop = false` for once-through with a replay glyph." {}
   code wcl {
     source = <<'WCL'
 diagram {
@@ -127,7 +115,5 @@ WCL
     body  = "Tilemaps and dopesheets reference their spritesheet by relative URL, so they only render correctly when served or hosted. wcl wdoc serve handles this for you locally."
   }
 
-  text {
-    span "Back to the [reference introduction](index)." {}
-  }
+  p "Back to the [reference introduction](index)." {}
 }

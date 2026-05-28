@@ -2,9 +2,7 @@
 page interfaces { sites = [:reference]
   h1 "Interfaces" {}
 
-  text {
-    span "An `interface` declares a structural contract — a set of fields a type must have to satisfy it. Any type with the right fields satisfies it automatically, no explicit `implements`." {}
-  }
+  p "An `interface` declares a structural contract — a set of fields a type must have to satisfy it. Any type with the right fields satisfies it automatically, no explicit `implements`." {}
 
   h2 "Declaring an interface" {}
 
@@ -27,11 +25,7 @@ WCL
     body  = "A type does not need to be declared as a parent or to implement anything explicitly. If it happens to have all the interface's fields with compatible types, it satisfies the interface."
   }
 
-  text {
-    span "Interfaces have one common consumer: **reference fields** (`&T`), which accept any value that structurally satisfies the interface. That's what the next chapter covers." {}
-  }
+  p "Interfaces have one common consumer: **reference fields** (`&T`), which accept any value that structurally satisfies the interface. That's what the next chapter covers." {}
 
-  text {
-    span "Next: [References](references)." {}
-  }
+  p "Next: [References](references)." {}
 }

@@ -2,15 +2,11 @@
 page builtins { sites = [:reference]
   h1 "Builtin Functions" {}
 
-  text {
-    span "WCL ships a standard set of builtins, callable like any function. They group into collections, strings, math, tensors, and control flow." {}
-  }
+  p "WCL ships a standard set of builtins, callable like any function. They group into collections, strings, math, tensors, and control flow." {}
 
   h2 "Collections" {}
 
-  text {
-    span "Higher-order and list utilities. `map` / `filter` / `fold` take function arguments." {}
-  }
+  p "Higher-order and list utilities. `map` / `filter` / `fold` take function arguments." {}
   table {
     rows:
       | "Function"           | "Purpose" |
@@ -52,9 +48,7 @@ WCL
 
   h2 "Math" {}
 
-  text {
-    span "Math builtins operate in `f64`, widening integer arguments. Angles are in radians." {}
-  }
+  p "Math builtins operate in `f64`, widening integer arguments. Angles are in radians." {}
   table {
     rows:
       | "Group"     | "Functions" |
@@ -87,7 +81,5 @@ WCL
       | "`assert(cond, msg)`" | "Error if `cond` is false" |
   }
 
-  text {
-    span "Next: [Imports & Modules](imports)." {}
-  }
+  p "Next: [Imports & Modules](imports)." {}
 }

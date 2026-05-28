@@ -2,15 +2,11 @@
 page unions { sites = [:reference]
   h1 "Unions" {}
 
-  text {
-    span "A `union` is a tagged set of variants — a value that is exactly one of several alternatives. Each variant carries its own payload (or none), and pattern matching dispatches on the tag." {}
-  }
+  p "A `union` is a tagged set of variants — a value that is exactly one of several alternatives. Each variant carries its own payload (or none), and pattern matching dispatches on the tag." {}
 
   h2 "Variant body forms" {}
 
-  text {
-    span "Three shapes are accepted: a **record** body with named fields, a **typeref** body for a single positional payload, or a **unit** body with no payload." {}
-  }
+  p "Three shapes are accepted: a **record** body with named fields, a **typeref** body for a single positional payload, or a **unit** body with no payload." {}
   code wcl {
     source = <<'WCL'
 union Shape {
@@ -23,9 +19,7 @@ WCL
 
   h2 "Constructing variants" {}
 
-  text {
-    span "Use `Union::Variant` syntax — record payloads in braces, typeref payloads in parentheses, unit constructors bare." {}
-  }
+  p "Use `Union::Variant` syntax — record payloads in braces, typeref payloads in parentheses, unit constructors bare." {}
   code wcl {
     source = <<'WCL'
 a = Shape::Circle { radius: 5.0, stroke: 0.5 }
@@ -36,9 +30,7 @@ WCL
 
   h2 "extends" {}
 
-  text {
-    span "A union can `extends` another, inheriting its variants and adding more — useful when a host wants to extend an open vocabulary without modifying the base declaration." {}
-  }
+  p "A union can `extends` another, inheriting its variants and adding more — useful when a host wants to extend an open vocabulary without modifying the base declaration." {}
   code wcl {
     source = <<'WCL'
 union BaseShape {
@@ -52,7 +44,5 @@ union Shape extends BaseShape {
 WCL
   }
 
-  text {
-    span "See [Control Flow](control_flow) for destructuring variants with `match`. Next: [Connections](connections)." {}
-  }
+  p "See [Control Flow](control_flow) for destructuring variants with `match`. Next: [Connections](connections)." {}
 }

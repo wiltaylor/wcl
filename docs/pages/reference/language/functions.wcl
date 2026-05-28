@@ -2,15 +2,11 @@
 page functions { sites = [:reference]
   h1 "Functions" {}
 
-  text {
-    span "Functions are first-class values. They can be bound by `let`, stored in fields, passed as arguments, and returned from other functions." {}
-  }
+  p "Functions are first-class values. They can be bound by `let`, stored in fields, passed as arguments, and returned from other functions." {}
 
   h2 "Function literals" {}
 
-  text {
-    span "`fn(params) -> Return body`. The body is a single expression, or a `{ … }` block expression." {}
-  }
+  p "`fn(params) -> Return body`. The body is a single expression, or a `{ … }` block expression." {}
   code wcl {
     source = <<'WCL'
 double = fn(x: i32) -> i32 x * 2
@@ -20,9 +16,7 @@ WCL
 
   h2 "Higher-order functions" {}
 
-  text {
-    span "Functions can take and return other functions. This is how the collection builtins like `map`, `filter`, and `fold` are parameterised." {}
-  }
+  p "Functions can take and return other functions. This is how the collection builtins like `map`, `filter`, and `fold` are parameterised." {}
   code wcl {
     source = <<'WCL'
 adder = fn(x: i32) -> fn(i32) -> i32 fn(y: i32) -> i32 x + y
@@ -35,9 +29,7 @@ WCL
 
   h2 "Function types" {}
 
-  text {
-    span "The type `fn(T1, T2, …) -> R` describes a callable. Use it for fields that hold callbacks." {}
-  }
+  p "The type `fn(T1, T2, …) -> R` describes a callable. Use it for fields that hold callbacks." {}
   code wcl {
     source = <<'WCL'
 type Step {
@@ -51,7 +43,5 @@ WCL
     body  = "Function values participate in WCL's lazy field evaluation. Each call evaluates its body in a fresh context, and circular references between fields are detected and reported."
   }
 
-  text {
-    span "Next: [Control Flow](control_flow)." {}
-  }
+  p "Next: [Control Flow](control_flow)." {}
 }

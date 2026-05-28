@@ -2,9 +2,7 @@
 page wdoc_pages { sites = [:reference]
   h1 "Pages" {}
 
-  text {
-    span "A `page` block declares one rendered HTML page. Each page joins one or more sites and holds the content blocks that make up its body." {}
-  }
+  p "A `page` block declares one rendered HTML page. Each page joins one or more sites and holds the content blocks that make up its body." {}
 
   h2 "Fields" {}
 
@@ -24,9 +22,7 @@ page wdoc_pages { sites = [:reference]
     source = <<'WCL'
 page index { sites = [:mysite]  start = true
   h1 "My project" {}
-  text {
-    span "A short intro." {}
-  }
+  p "A short intro." {}
 }
 WCL
   }
@@ -38,18 +34,12 @@ WCL
 
   h2 "Cross-page links" {}
 
-  text {
-    span "Inside any `span`, write a markdown-style link where the URL is a bare page name for an in-site link, or `site_name:page_name` for a cross-site link. Links to unknown pages are build errors, so renaming a page can't silently break navigation." {}
-  }
+  p "Inside any `p` or `span`, write a markdown-style link where the URL is a bare page name for an in-site link, or `site_name:page_name` for a cross-site link. Links to unknown pages are build errors, so renaming a page can't silently break navigation." {}
   code wcl {
     source = <<'WCL'
-text {
-  span "See [the about page](about) or jump to [the docs](docs:index)." {}
-}
+p "See [the about page](about) or jump to [the docs](docs:index)." {}
 WCL
   }
 
-  text {
-    span "Next: [Text & Inline Patterns](wdoc_text)." {}
-  }
+  p "Next: [Text & Inline Patterns](wdoc_text)." {}
 }

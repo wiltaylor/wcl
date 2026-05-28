@@ -2,9 +2,7 @@
 page numbers { sites = [:reference]
   h1 "Numbers" {}
 
-  text {
-    span "WCL has fixed-width signed and unsigned integers, plus two float widths. A bare integer literal defaults to `i64`; a suffix pins the exact type. Underscores may group digits for readability." {}
-  }
+  p "WCL has fixed-width signed and unsigned integers, plus two float widths. A bare integer literal defaults to `i64`; a suffix pins the exact type. Underscores may group digits for readability." {}
 
   h2 "Literals" {}
 
@@ -33,9 +31,7 @@ WCL
 
   h2 "Numeric promotion" {}
 
-  text {
-    span "Arithmetic and comparison widen mixed numeric operands to a common type, so cross-width and integer/float mixing work without explicit casts." {}
-  }
+  p "Arithmetic and comparison widen mixed numeric operands to a common type, so cross-width and integer/float mixing work without explicit casts." {}
   code wcl {
     source = <<'WCL'
 a = 1 + 2.0        // i64 widened to f64 → 3.0
@@ -44,11 +40,7 @@ c = 3.0 * 2u8      // 6.0
 WCL
   }
 
-  text {
-    span "See also [Expressions](expressions) for the full set of arithmetic and comparison operators." {}
-  }
+  p "See also [Expressions](expressions) for the full set of arithmetic and comparison operators." {}
 
-  text {
-    span "Next: [Strings](strings)." {}
-  }
+  p "Next: [Strings](strings)." {}
 }

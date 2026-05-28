@@ -2,30 +2,24 @@
 page wdoc_text { sites = [:reference]
   h1 "Text & Inline Patterns" {}
 
-  text {
-    span "Prose is authored as `text` blocks holding one or more `span`s. Each span's content runs through an inline pattern engine that recognises markdown-style formatting, links, icons, and math." {}
-  }
+  p "Most prose is authored as `p` blocks; the body text runs through an inline pattern engine that recognises markdown-style formatting, links, icons, and math. For a paragraph that needs more than one styled segment, drop down to a `text` block holding one or more `span`s." {}
 
-  h2 "text and span" {}
+  h2 "Paragraphs with p" {}
+
+  p "`p \"...\" {}` is the canonical paragraph shorthand. The label text is the paragraph's content, and inline patterns light up automatically." {}
 
   code wcl {
     source = <<'WCL'
-text {
-  span "One paragraph, several spans." {}
-  span "Each span is a separate inline element." { class = ["accent"] }
-}
+p "Quick prose with **bold** and `inline code`." {}
+p "A whole paragraph in one line." {}
 WCL
   }
 
-  text {
-    span "A `text` block renders as a `<p>`. Each `span` is a `<span>` and may carry its own `class` list for theming." {}
-  }
+  p "A `p` renders as `<p>...inline-formatted content...</p>`. Apply a class to the paragraph itself with `class = [\"…\"]`." {}
 
   h2 "Inline patterns" {}
 
-  text {
-    span "The following patterns are recognised in any span:" {}
-  }
+  p "The following patterns are recognised in any `p` body, in spans inside a `text` block, and in `utf8` table cells:" {}
   code wcl {
     source = <<'WCL'
 **bold**             // → bold class
@@ -42,14 +36,13 @@ WCL
 
   callout "Where inline patterns run" {
     class = ["info"]
-    body  = "Spans and table cells run through the inline engine. Callout bodies and heading text do NOT — they render as literal prose. Use class-driven spans inside text for emphasis there."
+    body  = "p bodies, span bodies, and utf8 table cells all run through the inline engine. Callout bodies and heading text do NOT — they render as literal prose. Use class-driven spans inside a text block for emphasis there."
   }
 
-  h2 "Spans with classes" {}
+  h2 "Multi-span paragraphs" {}
 
-  text {
-    span "Apply a CSS class with `class = [\"name\"]`. The class can be a user-declared `class` block or a built-in (`bold`, `italic`, `code`, `accent`, …)." {}
-  }
+  p "Reach for the long form when one paragraph needs several differently-classed segments — for example, an accent word in the middle of plain prose." {}
+
   code wcl {
     source = <<'WCL'
 class accent {
@@ -65,7 +58,7 @@ text {
 WCL
   }
 
-  text {
-    span "Next: [Headings & Callouts](wdoc_callouts)." {}
-  }
+  p "Each `span` carries its own optional `class` list. Use the multi-span form only when you actually need that per-segment styling; otherwise `p` is shorter and produces less DOM." {}
+
+  p "Next: [Headings & Callouts](wdoc_callouts)." {}
 }

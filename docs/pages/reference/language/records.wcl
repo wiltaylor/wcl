@@ -2,9 +2,7 @@
 page records { sites = [:reference]
   h1 "Records" {}
 
-  text {
-    span "A `type` declares a named record — a fixed set of named, typed fields. Records describe the shape of values, function parameters, and the backing type of every block." {}
-  }
+  p "A `type` declares a named record — a fixed set of named, typed fields. Records describe the shape of values, function parameters, and the backing type of every block." {}
 
   h2 "Declaring a record type" {}
 
@@ -21,9 +19,7 @@ WCL
 
   h2 "extends" {}
 
-  text {
-    span "A record may `extends` another, inheriting all its fields. The child type is a structural superset; it satisfies any context that accepts the parent." {}
-  }
+  p "A record may `extends` another, inheriting all its fields. The child type is a structural superset; it satisfies any context that accepts the parent." {}
   code wcl {
     source = <<'WCL'
 type Dog {
@@ -42,7 +38,5 @@ WCL
     body  = "A record becomes a block kind when decorated with @block(\"kind\") — see Schema & Decorators. The block's labels then bind positionally to fields marked @inline(N)."
   }
 
-  text {
-    span "Next: [Interfaces](interfaces)." {}
-  }
+  p "Next: [Interfaces](interfaces)." {}
 }

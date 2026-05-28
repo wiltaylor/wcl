@@ -2,15 +2,11 @@
 page wdoc_themes { sites = [:reference]
   h1 "Classes & Themes" {}
 
-  text {
-    span "Styling rides the `class` block. Themes set a palette of colour custom properties; class blocks override individual elements. Together they cover most styling needs without authoring raw CSS." {}
-  }
+  p "Styling rides the `class` block. Themes set a palette of colour custom properties; class blocks override individual elements. Together they cover most styling needs without authoring raw CSS." {}
 
   h2 "class blocks" {}
 
-  text {
-    span "A `class <name> { … }` block declares a CSS class. Apply it by listing the name in any block's `class` field (or a span's). Fields cover text, box, and SVG paint properties; per-mode overrides go in `dark { }` / `light { }` sub-blocks." {}
-  }
+  p "A `class <name> { … }` block declares a CSS class. Apply it by listing the name in any block's `class` field (or a span's). Fields cover text, box, and SVG paint properties; per-mode overrides go in `dark { }` / `light { }` sub-blocks." {}
   code wcl {
     source = <<'WCL'
 class accent {
@@ -39,9 +35,7 @@ WCL
 
   h2 "Built-in themes" {}
 
-  text {
-    span "A `site` selects a colour theme by value. The theme sets `--wdoc-*` custom properties used by every built-in element — page background, links, headings, code, charts, callouts, tables, inline emphasis. User `class` blocks still win over theme defaults." {}
-  }
+  p "A `site` selects a colour theme by value. The theme sets `--wdoc-*` custom properties used by every built-in element — page background, links, headings, code, charts, callouts, tables, inline emphasis. User `class` blocks still win over theme defaults." {}
   table {
     rows:
       | "Theme"        | "Notes" |
@@ -69,7 +63,5 @@ WCL
     body  = "Themes are values. Bind your own with let mine = ColourTheme::Of { name dark light } and set theme = mine on the site."
   }
 
-  text {
-    span "Next: [Diagrams](wdoc_diagrams)." {}
-  }
+  p "Next: [Diagrams](wdoc_diagrams)." {}
 }

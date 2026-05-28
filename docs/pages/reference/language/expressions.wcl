@@ -2,9 +2,7 @@
 page expressions { sites = [:reference]
   h1 "Expressions" {}
 
-  text {
-    span "Every field value, function argument, and `let` right-hand side is an **expression** — something that produces a value. WCL's expression grammar is small: literals, identifiers, member access, calls, operators, and a handful of constructor forms." {}
-  }
+  p "Every field value, function argument, and `let` right-hand side is an **expression** — something that produces a value. WCL's expression grammar is small: literals, identifiers, member access, calls, operators, and a handful of constructor forms." {}
 
   callout "Covered elsewhere" {
     class = ["info"]
@@ -22,15 +20,11 @@ page expressions { sites = [:reference]
       | "Unary"      | "`-expr` (negate), `!expr` (not)" |
   }
 
-  text {
-    span "Precedence follows the usual conventions: unary tightest, then `*` `/` `%`, then `+` `-`, then comparison, then `&&`, then `||`. Use parentheses to group when in doubt." {}
-  }
+  p "Precedence follows the usual conventions: unary tightest, then `*` `/` `%`, then `+` `-`, then comparison, then `&&`, then `||`. Use parentheses to group when in doubt." {}
 
   h2 "Numeric promotion" {}
 
-  text {
-    span "Arithmetic and comparison widen mixed numeric operands to a common type, so cross-width and integer/float mixing work without explicit casts." {}
-  }
+  p "Arithmetic and comparison widen mixed numeric operands to a common type, so cross-width and integer/float mixing work without explicit casts." {}
   code wcl {
     source = <<'WCL'
 a = 1 + 2.0        // i64 widened to f64 → 3.0
@@ -41,9 +35,7 @@ WCL
 
   h2 "Member access" {}
 
-  text {
-    span "A dotted path reads a field. Access chains through records, variant payloads, and any composite that exposes named members." {}
-  }
+  p "A dotted path reads a field. Access chains through records, variant payloads, and any composite that exposes named members." {}
   code wcl {
     source = <<'WCL'
 region = service.metadata.region
@@ -53,9 +45,7 @@ WCL
 
   h2 "Function calls" {}
 
-  text {
-    span "Parentheses call a function or constructor. Arguments are expressions, evaluated lazily; the call evaluates the body in a fresh context." {}
-  }
+  p "Parentheses call a function or constructor. Arguments are expressions, evaluated lazily; the call evaluates the body in a fresh context." {}
   code wcl {
     source = <<'WCL'
 n      = len(items)
@@ -66,9 +56,7 @@ WCL
 
   h2 "Variant construction" {}
 
-  text {
-    span "Build a union variant with `Union::Variant`. Record bodies go in braces, typeref payloads in parentheses, unit constructors stand bare." {}
-  }
+  p "Build a union variant with `Union::Variant`. Record bodies go in braces, typeref payloads in parentheses, unit constructors stand bare." {}
   code wcl {
     source = <<'WCL'
 a = Shape::Circle { radius: 5.0, stroke: 0.5 }
@@ -76,15 +64,11 @@ b = Shape::Polygon(7)
 c = Shape::Empty
 WCL
   }
-  text {
-    span "See [Unions](unions) for declaring the surrounding variant set." {}
-  }
+  p "See [Unions](unions) for declaring the surrounding variant set." {}
 
   h2 "List literals" {}
 
-  text {
-    span "Square brackets and commas build a `list<T>`. See [Lists](lists) for nested lists and the collection builtins." {}
-  }
+  p "Square brackets and commas build a `list<T>`. See [Lists](lists) for nested lists and the collection builtins." {}
   code wcl {
     source = <<'WCL'
 xs    = [1, 2, 3]
@@ -93,7 +77,5 @@ empty = []
 WCL
   }
 
-  text {
-    span "Next: [Functions](functions)." {}
-  }
+  p "Next: [Functions](functions)." {}
 }

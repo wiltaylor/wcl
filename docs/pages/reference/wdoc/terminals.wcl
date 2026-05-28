@@ -2,15 +2,11 @@
 page wdoc_terminals { sites = [:reference]
   h1 "Terminals & TUI" {}
 
-  text {
-    span "`terminal` renders a monospace character grid as inline SVG, drawn with a bundled JetBrains Mono Nerd Font. The grid is populated three ways: authored text primitives, inline ANSI-bearing `text`, or replay of an `asciinema` recording." {}
-  }
+  p "`terminal` renders a monospace character grid as inline SVG, drawn with a bundled JetBrains Mono Nerd Font. The grid is populated three ways: authored text primitives, inline ANSI-bearing `text`, or replay of an `asciinema` recording." {}
 
   h2 "Authored text" {}
 
-  text {
-    span "`term_text` is the one base primitive — styled text placed at a 1-based `(row, col)` carrying fg/bg/bold/italic/underline. Higher-level helpers (`term_box`, `term_glyph`, `term_fill`, `term_border`) lower to runs of `term_text`, so the renderer only ever paints styled glyphs." {}
-  }
+  p "`term_text` is the one base primitive — styled text placed at a 1-based `(row, col)` carrying fg/bg/bold/italic/underline. Higher-level helpers (`term_box`, `term_glyph`, `term_fill`, `term_border`) lower to runs of `term_text`, so the renderer only ever paints styled glyphs." {}
   code wcl {
     source = <<'WCL'
 terminal {
@@ -26,9 +22,7 @@ WCL
 
   h2 "Inline text & asciinema replay" {}
 
-  text {
-    span "Pass a `text` string and the bundled `avt` virtual terminal evaluates it (ANSI sequences included). Or set `source = \"rec.cast\"` for asciinema replay — frames are coalesced and replayed at the recording's pace (override with `speed`)." {}
-  }
+  p "Pass a `text` string and the bundled `avt` virtual terminal evaluates it (ANSI sequences included). Or set `source = \"rec.cast\"` for asciinema replay — frames are coalesced and replayed at the recording's pace (override with `speed`)." {}
   code wcl {
     source = <<'WCL'
 terminal {
@@ -41,9 +35,7 @@ WCL
 
   h2 "TUI widgets" {}
 
-  text {
-    span "Inside a `terminal`, stdlib TUI controls compose a small interface. Leaves (`tui_progress`, `tui_button`, `tui_spinner`, `tui_input`, `tui_dropdown`, `tui_checkbox`, `tui_radio`) and containers (`tui_panel`, `tui_group`) all lower to the same styled-text primitives. Coordinates are local to the widget; containers nest by accumulating offset." {}
-  }
+  p "Inside a `terminal`, stdlib TUI controls compose a small interface. Leaves (`tui_progress`, `tui_button`, `tui_spinner`, `tui_input`, `tui_dropdown`, `tui_checkbox`, `tui_radio`) and containers (`tui_panel`, `tui_group`) all lower to the same styled-text primitives. Coordinates are local to the widget; containers nest by accumulating offset." {}
   code wcl {
     source = <<'WCL'
 terminal {
@@ -62,7 +54,5 @@ WCL
     body  = "A terminal's class reaches the wrapping div. Set background and color there (with dark / light overrides) to theme the window. Default-coloured cells emit currentColor, so user themes flow through."
   }
 
-  text {
-    span "Next: [Timelines & Cards](wdoc_timelines)." {}
-  }
+  p "Next: [Timelines & Cards](wdoc_timelines)." {}
 }

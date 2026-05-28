@@ -2,15 +2,11 @@
 page identifiers { sites = [:reference]
   h1 "Identifiers" {}
 
-  text {
-    span "Identifiers are the names you use throughout WCL — for fields, types, block kinds, block labels, variants, symbols, `let` bindings, and imported items. The lexical rule is the same everywhere." {}
-  }
+  p "Identifiers are the names you use throughout WCL — for fields, types, block kinds, block labels, variants, symbols, `let` bindings, and imported items. The lexical rule is the same everywhere." {}
 
   h2 "Lexical rule" {}
 
-  text {
-    span "An identifier starts with an **ASCII letter** (`a`–`z`, `A`–`Z`) or an **underscore** (`_`), and continues with letters, digits, or underscores. No Unicode, no dashes, no spaces." {}
-  }
+  p "An identifier starts with an **ASCII letter** (`a`–`z`, `A`–`Z`) or an **underscore** (`_`), and continues with letters, digits, or underscores. No Unicode, no dashes, no spaces." {}
   code wcl {
     source = <<'WCL'
 name           // ok
@@ -26,9 +22,7 @@ WCL
 
   h2 "Reserved words" {}
 
-  text {
-    span "A handful of words are reserved by the lexer and cannot be used as identifiers in any position:" {}
-  }
+  p "A handful of words are reserved by the lexer and cannot be used as identifiers in any position:" {}
   table {
     rows:
       | "Reserved"             | "Used for" |
@@ -37,9 +31,7 @@ WCL
       | "`if`, `else`, `match`" | "Control flow" |
   }
 
-  text {
-    span "Other words that look special — `type`, `interface`, `union`, `symbol_set`, `let`, `import`, `connection`, `fn`, `extends`, `as` — are recognised only in declaration positions, so they may also appear as ordinary identifiers in field names or expressions. Avoid relying on that: it reads more clearly when these names are kept for their declaration use." {}
-  }
+  p "Other words that look special — `type`, `interface`, `union`, `symbol_set`, `let`, `import`, `connection`, `fn`, `extends`, `as` — are recognised only in declaration positions, so they may also appear as ordinary identifiers in field names or expressions. Avoid relying on that: it reads more clearly when these names are kept for their declaration use." {}
 
   h2 "Where identifiers appear" {}
 
@@ -57,9 +49,7 @@ WCL
 
   h2 "Naming conventions" {}
 
-  text {
-    span "The standard library and these docs follow Rust-like conventions, but the language doesn't enforce them. Pick a style and stay consistent within a codebase." {}
-  }
+  p "The standard library and these docs follow Rust-like conventions, but the language doesn't enforce them. Pick a style and stay consistent within a codebase." {}
   table {
     rows:
       | "Convention" | "Used for" |
@@ -68,7 +58,5 @@ WCL
       | "`SCREAMING`"   | "Rarely; reserve for visibly-constant globals" |
   }
 
-  text {
-    span "Next: explore the [Types](numbers) group, starting with Numbers." {}
-  }
+  p "Next: explore the [Types](numbers) group, starting with Numbers." {}
 }

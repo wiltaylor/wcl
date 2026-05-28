@@ -5,19 +5,13 @@ page index { sites = [:wcl]  start = true
   h1 "Why WCL?" {}
 
 
-  text {
-    span "WCL was created out of my desire to have a language that could express most forms of data in a natural way." {}
-  }
+  p "WCL was created out of my desire to have a language that could express most forms of data in a natural way." {}
 
-  text {
-    span "This then enables a lot of different use cases. Detailed configurations, WDoc which lets you model the data in a format that makes sense and then present multiple views on it." {}
-  }
+  p "This then enables a lot of different use cases. Detailed configurations, WDoc which lets you model the data in a format that makes sense and then present multiple views on it." {}
 
   h2 "A taste" {}
 
-  text {
-    span "A document is fields and blocks; a schema declared with decorators validates the structure." {}
-  }
+  p "A document is fields and blocks; a schema declared with decorators validates the structure." {}
 
   code wcl {
     source = <<'WCL'

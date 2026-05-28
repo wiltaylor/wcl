@@ -2,9 +2,7 @@
 page schema { sites = [:reference]
   h1 "Schema & Decorators" {}
 
-  text {
-    span "Decorators (written `@name` or `@name(args)`) attach schema metadata to declarations and fields. Together they describe a document's legal structure, which `wcl check` validates." {}
-  }
+  p "Decorators (written `@name` or `@name(args)`) attach schema metadata to declarations and fields. Together they describe a document's legal structure, which `wcl check` validates." {}
 
   h2 "Declaration decorators" {}
 
@@ -31,9 +29,7 @@ page schema { sites = [:reference]
 
   h2 "A worked example" {}
 
-  text {
-    span "A document root with one kind of child block, whose label becomes an inline field and whose port has a default:" {}
-  }
+  p "A document root with one kind of child block, whose label becomes an inline field and whose port has a default:" {}
   code wcl {
     source = <<'WCL'
 @block("service")
@@ -50,9 +46,7 @@ type Config {
 WCL
   }
 
-  text {
-    span "Given that schema, this document validates: each `service` block contributes a `Service` to `services`, with `name` taken from the label and `port` defaulting to `80`." {}
-  }
+  p "Given that schema, this document validates: each `service` block contributes a `Service` to `services`, with `name` taken from the label and `port` defaulting to `80`." {}
   code wcl {
     source = <<'WCL'
 service "web" { region = "us-east-1" }
@@ -65,7 +59,5 @@ WCL
     body  = "decorator_names(T) and decorator_arg(T, name, slot) read decorators back at evaluation time — used by libraries (like wdoc) that dispatch on a block's declared kind."
   }
 
-  text {
-    span "Next: [Imports & Modules](imports)." {}
-  }
+  p "Next: [Imports & Modules](imports)." {}
 }

@@ -2,15 +2,11 @@
 page references { sites = [:reference]
   h1 "References" {}
 
-  text {
-    span "A `&T` field accepts any value that structurally satisfies interface `T`. It's how a record or function declares \"give me anything that looks like this\" without committing to a specific concrete type." {}
-  }
+  p "A `&T` field accepts any value that structurally satisfies interface `T`. It's how a record or function declares \"give me anything that looks like this\" without committing to a specific concrete type." {}
 
   h2 "Declaring a reference field" {}
 
-  text {
-    span "Use `&InterfaceName` as the field type. The accepted values are exactly those that satisfy [the interface](interfaces) — every required field, with compatible types." {}
-  }
+  p "Use `&InterfaceName` as the field type. The accepted values are exactly those that satisfy [the interface](interfaces) — every required field, with compatible types." {}
   code wcl {
     source = <<'WCL'
 interface Drawable {
@@ -26,9 +22,7 @@ WCL
 
   h2 "Why a reference?" {}
 
-  text {
-    span "A reference field lets a schema be open-ended without being untyped. A renderer that consumes `&Drawable` can accept any future shape that satisfies the contract — `Circle`, `Image`, `Container`, a user's `Custom` — without knowing what those concrete types are." {}
-  }
+  p "A reference field lets a schema be open-ended without being untyped. A renderer that consumes `&Drawable` can accept any future shape that satisfies the contract — `Circle`, `Image`, `Container`, a user's `Custom` — without knowing what those concrete types are." {}
   code wcl {
     source = <<'WCL'
 type Circle { x: f64  y: f64  radius: f64 }
@@ -44,7 +38,5 @@ WCL
     body  = "A type does not need to explicitly extend or implement the interface. If it happens to have all the required fields with compatible types, it satisfies — and a &T field will accept it."
   }
 
-  text {
-    span "Next: [Unions](unions)." {}
-  }
+  p "Next: [Unions](unions)." {}
 }

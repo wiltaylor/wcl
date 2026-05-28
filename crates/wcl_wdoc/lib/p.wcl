@@ -1,0 +1,21 @@
+// ── Stdlib paragraph ───────────────────────────────────────────────
+//
+// Shorthand for a single-span text block. Lowers to a plain <p> whose
+// child is an `Inline` fundamental, so the body text runs through the
+// inline-pattern engine like any `span` content — `**bold**`, `_italic_`,
+// `` `code` ``, `[links](page)`, `:icons:` and `$math$` all work inside
+// `p "..." {}`. Use the long form `text { span … {} … }` when you need
+// multiple spans with their own classes.
+
+@block("p")
+type P extends WdocBlock {
+  @inline(0) text: utf8
+  id:    identifier?
+  class: list<utf8>?
+  lower = fn(p: P) -> list<HtmlFundamental> [
+    HtmlFundamental::Element {
+      tag: "p", id: p.id, class: p.class, attrs: none,
+      children: [HtmlFundamental::Inline { text: p.text }],
+    },
+  ]
+}

@@ -4,9 +4,7 @@ page wdoc_callouts { sites = [:reference]
 
   h2 "Headings" {}
 
-  text {
-    span "Six heading levels, `h1` through `h6`. Each takes an inline label and an optional `id`." {}
-  }
+  p "Six heading levels, `h1` through `h6`. Each takes an inline label and an optional `id`." {}
   code wcl {
     source = <<'WCL'
 h1 "Title" { id = top }
@@ -24,9 +22,7 @@ WCL
 
   h2 "Callouts" {}
 
-  text {
-    span "A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are selected by `class`, each shipping a default colour and icon." {}
-  }
+  p "A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are selected by `class`, each shipping a default colour and icon." {}
   code wcl {
     source = <<'WCL'
 callout "Note" {
@@ -63,7 +59,5 @@ WCL
     body  = "The body field renders verbatim — no inline patterns, no links. Keep callout bodies prose-only; put rich formatting in a nearby text block."
   }
 
-  text {
-    span "Next: [Code & Math](wdoc_code)." {}
-  }
+  p "Next: [Code & Math](wdoc_code)." {}
 }

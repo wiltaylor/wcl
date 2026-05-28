@@ -2,9 +2,7 @@
 page wdoc_sites { sites = [:reference]
   h1 "Sites & Templates" {}
 
-  text {
-    span "A `site` block configures one output site — its template, title, theme, and navigation. A document can declare several sites; each page joins one or more via its `sites` field." {}
-  }
+  p "A `site` block configures one output site — its template, title, theme, and navigation. A document can declare several sites; each page joins one or more via its `sites` field." {}
 
   h2 "Fields" {}
 
@@ -23,9 +21,7 @@ page wdoc_sites { sites = [:reference]
 
   h2 "webpage template" {}
 
-  text {
-    span "Hugo-style site header, sticky top navbar built from `menu`, and a reading column." {}
-  }
+  p "Hugo-style site header, sticky top navbar built from `menu`, and a reading column." {}
   code wcl {
     source = <<'WCL'
 site marketing {
@@ -45,15 +41,11 @@ site marketing {
 }
 WCL
   }
-  text {
-    span "Menu items use `page = <name>` for in-site links (validated against pages in this site) or `href = \"…\"` for external or cross-site URLs. Nested `item`s become dropdown groups." {}
-  }
+  p "Menu items use `page = <name>` for in-site links (validated against pages in this site) or `href = \"…\"` for external or cross-site URLs. Nested `item`s become dropdown groups." {}
 
   h2 "book template" {}
 
-  text {
-    span "mdBook-style fixed left sidebar with nested chapters and current-chapter highlight; reading column on the right." {}
-  }
+  p "mdBook-style fixed left sidebar with nested chapters and current-chapter highlight; reading column on the right." {}
   code wcl {
     source = <<'WCL'
 site docs {
@@ -71,11 +63,7 @@ site docs {
 }
 WCL
   }
-  text {
-    span "Chapters nest to any depth. A `chapter` with no `page =` is a grouping heading. A `chapter` pointing at an unknown page is a build error." {}
-  }
+  p "Chapters nest to any depth. A `chapter` with no `page =` is a grouping heading. A `chapter` pointing at an unknown page is a build error." {}
 
-  text {
-    span "Next: [Pages](wdoc_pages)." {}
-  }
+  p "Next: [Pages](wdoc_pages)." {}
 }

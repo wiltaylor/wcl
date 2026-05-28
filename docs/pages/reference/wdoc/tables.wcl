@@ -4,9 +4,7 @@ page wdoc_tables { sites = [:reference]
 
   h2 "Tables" {}
 
-  text {
-    span "`table { rows: | … | }` renders a tabular grid using WCL's native pipe-row syntax. The first row becomes the `<thead>`; the remaining rows go in `<tbody>`. utf8 cells run through the inline pattern engine, so bold, italic, inline code, and links all work inside cells." {}
-  }
+  p "`table { rows: | … | }` renders a tabular grid using WCL's native pipe-row syntax. The first row becomes the `<thead>`; the remaining rows go in `<tbody>`. utf8 cells run through the inline pattern engine, so bold, italic, inline code, and links all work inside cells." {}
   code wcl {
     source = <<'WCL'
 table {
@@ -25,15 +23,13 @@ WCL
 
   h2 "Columns" {}
 
-  text {
-    span "`column { widths = […] }` lays its children out in a horizontal grid. `widths` is a list of CSS percentages; each child fills one column." {}
-  }
+  p "`column { widths = […] }` lays its children out in a horizontal grid. `widths` is a list of CSS percentages; each child fills one column." {}
   code wcl {
     source = <<'WCL'
 column {
   widths = [50.0, 50.0]
-  text { span "Left." {} }
-  text { span "Right." {} }
+  p "Left." {}
+  p "Right." {}
 }
 
 column {
@@ -45,11 +41,7 @@ column {
 WCL
   }
 
-  text {
-    span "Columns can hold any wdoc content — headings, callouts, code blocks, diagrams. Apply a shared `class` to style them as a group." {}
-  }
+  p "Columns can hold any wdoc content — headings, callouts, code blocks, diagrams. Apply a shared `class` to style them as a group." {}
 
-  text {
-    span "Next: [Classes & Themes](wdoc_themes)." {}
-  }
+  p "Next: [Classes & Themes](wdoc_themes)." {}
 }

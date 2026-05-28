@@ -2,15 +2,11 @@
 page control_flow { sites = [:reference]
   h1 "Control Flow" {}
 
-  text {
-    span "WCL's expression-level constructs — `if`/`else`, `match` with patterns, `if let`, `let` bindings, and block expressions — combine to compute values from values. Every construct here is an **expression**: it returns a value, never a statement." {}
-  }
+  p "WCL's expression-level constructs — `if`/`else`, `match` with patterns, `if let`, `let` bindings, and block expressions — combine to compute values from values. Every construct here is an **expression**: it returns a value, never a statement." {}
 
   h2 "if / else" {}
 
-  text {
-    span "An `if` is an expression. The branches must agree on a type. `else if` chains for multi-way branches." {}
-  }
+  p "An `if` is an expression. The branches must agree on a type. `else if` chains for multi-way branches." {}
   code wcl {
     source = <<'WCL'
 sign = if x < 0 { :neg } else if x > 0 { :pos } else { :zero }
@@ -19,9 +15,7 @@ WCL
 
   h2 "match" {}
 
-  text {
-    span "`match` tests a value against a sequence of patterns, returning the body of the first one that matches. It's WCL's primary tool for destructuring unions, optionals, and any other shape with multiple cases." {}
-  }
+  p "`match` tests a value against a sequence of patterns, returning the body of the first one that matches. It's WCL's primary tool for destructuring unions, optionals, and any other shape with multiple cases." {}
   code wcl {
     source = <<'WCL'
 area = match shape {
@@ -50,9 +44,7 @@ WCL
 
   h3 "Guards" {}
 
-  text {
-    span "An `if expr` after a pattern adds a runtime test; the arm fires only when both the pattern matches and the guard is true." {}
-  }
+  p "An `if expr` after a pattern adds a runtime test; the arm fires only when both the pattern matches and the guard is true." {}
   code wcl {
     source = <<'WCL'
 classify = match n {
@@ -66,9 +58,7 @@ WCL
 
   h2 "if let" {}
 
-  text {
-    span "`if let pattern = value { … } else { … }` binds and branches in a single step. Use it when you only care about a single variant or pattern." {}
-  }
+  p "`if let pattern = value { … } else { … }` binds and branches in a single step. Use it when you only care about a single variant or pattern." {}
   code wcl {
     source = <<'WCL'
 label = if let Shape::Circle { radius, .. } = s {
@@ -81,15 +71,11 @@ WCL
 
   h2 "let bindings" {}
 
-  text {
-    span "A `let` names a reusable value or function. It resolves by name in sibling and descendant expressions but is **not** document data — it never appears in the output, JSON, or schema validation. Lexically scoped (inner shadows outer), lazily evaluated, cycle-detected." {}
-  }
+  p "A `let` names a reusable value or function. It resolves by name in sibling and descendant expressions but is **not** document data — it never appears in the output, JSON, or schema validation. Lexically scoped (inner shadows outer), lazily evaluated, cycle-detected." {}
 
   h3 "Item form" {}
 
-  text {
-    span "At file (global) scope or inside any block, `let name = expr` introduces a name. No terminator." {}
-  }
+  p "At file (global) scope or inside any block, `let name = expr` introduces a name. No terminator." {}
   code wcl {
     source = <<'WCL'
 let base_port = 8080u32
@@ -103,9 +89,7 @@ service "api" {
 WCL
   }
 
-  text {
-    span "Because a `let` can bind a function, it doubles as a composition helper:" {}
-  }
+  p "Because a `let` can bind a function, it doubles as a composition helper:" {}
   code wcl {
     source = <<'WCL'
 let scale = fn(p: f64) -> f64 p * 2.0
@@ -117,15 +101,11 @@ WCL
 
   h3 "Expression form" {}
 
-  text {
-    span "Inside a `{ … }` block expression, `let name = expr;` introduces a binding scoped to the block's tail. The two forms are distinct: the item form lives in the document's namespace; the expression form is local to one block." {}
-  }
+  p "Inside a `{ … }` block expression, `let name = expr;` introduces a binding scoped to the block's tail. The two forms are distinct: the item form lives in the document's namespace; the expression form is local to one block." {}
 
   h2 "Block expressions" {}
 
-  text {
-    span "A `{ … }` expression holds zero or more `let … ;` bindings followed by a tail expression, which is the block's value." {}
-  }
+  p "A `{ … }` expression holds zero or more `let … ;` bindings followed by a tail expression, which is the block's value." {}
   code wcl {
     source = <<'WCL'
 result = {
@@ -136,7 +116,5 @@ result = {
 WCL
   }
 
-  text {
-    span "Next: [Schema & Decorators](schema)." {}
-  }
+  p "Next: [Schema & Decorators](schema)." {}
 }

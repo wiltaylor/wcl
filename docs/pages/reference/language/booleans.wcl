@@ -2,9 +2,7 @@
 page booleans { sites = [:reference]
   h1 "Booleans" {}
 
-  text {
-    span "The `bool` type has exactly two values: `true` and `false`." {}
-  }
+  p "The `bool` type has exactly two values: `true` and `false`." {}
   code wcl {
     source = <<'WCL'
 enabled = true
@@ -14,9 +12,7 @@ WCL
 
   h2 "In expressions" {}
 
-  text {
-    span "Booleans are produced by every comparison and combined with the logical operators `&&`, `||`, and `!`. See [Expressions](expressions) for the full set." {}
-  }
+  p "Booleans are produced by every comparison and combined with the logical operators `&&`, `||`, and `!`. See [Expressions](expressions) for the full set." {}
   code wcl {
     source = <<'WCL'
 ready    = !pending && enabled
@@ -29,7 +25,5 @@ WCL
     body  = "An if expression takes a bool condition. See Control Flow for the if / else syntax."
   }
 
-  text {
-    span "Next: [Symbols](symbols)." {}
-  }
+  p "Next: [Symbols](symbols)." {}
 }

@@ -2,15 +2,11 @@
 page tables { sites = [:reference]
   h1 "Tables" {}
 
-  text {
-    span "Repeated rows of the same shape can be written with pipe-table syntax under a field name. Each `| … |` row becomes one record." {}
-  }
+  p "Repeated rows of the same shape can be written with pipe-table syntax under a field name. Each `| … |` row becomes one record." {}
 
   h2 "Authoring" {}
 
-  text {
-    span "The field's row type carries a `@table(\"kind\")` decorator. The field declaration uses `name:` (colon, not `=`) and lists rows directly underneath." {}
-  }
+  p "The field's row type carries a `@table(\"kind\")` decorator. The field declaration uses `name:` (colon, not `=`) and lists rows directly underneath." {}
   code wcl {
     source = <<'WCL'
 @table("user")
@@ -34,16 +30,12 @@ WCL
 
   h2 "Why a table" {}
 
-  text {
-    span "A table is just a `list<T>` underneath — the pipe-row syntax is shorthand for writing many records compactly. The same data could be authored as block instances, but the table is denser and reads like a spreadsheet." {}
-  }
+  p "A table is just a `list<T>` underneath — the pipe-row syntax is shorthand for writing many records compactly. The same data could be authored as block instances, but the table is denser and reads like a spreadsheet." {}
 
   callout "Cells are expressions" {
     class = ["info"]
     body  = "Each cell is an expression in the row type's field position. Strings, numbers, booleans, symbols — even computed values via let bindings — all work."
   }
 
-  text {
-    span "Next: [Identifiers](identifiers)." {}
-  }
+  p "Next: [Identifiers](identifiers)." {}
 }

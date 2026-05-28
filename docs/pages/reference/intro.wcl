@@ -2,9 +2,7 @@
 page index { sites = [:reference]
   h1 "WCL Language Reference" {}
 
-  text {
-    span "WCL is a typed configuration language built around two ideas: **fields** (`name = value`) and **blocks** (`kind \"label\" { … }`). On top of that base sit a real type system, first-class functions, pattern matching, and a schema layer that validates a document's structure." {}
-  }
+  p "WCL is a typed configuration language built around two ideas: **fields** (`name = value`) and **blocks** (`kind \"label\" { … }`). On top of that base sit a real type system, first-class functions, pattern matching, and a schema layer that validates a document's structure." {}
 
   callout "How this book is organised" {
     class = ["info"]
@@ -23,9 +21,7 @@ page index { sites = [:reference]
 
   h2 "The mental model" {}
 
-  text {
-    span "A document is a tree of fields and blocks. A field binds a name to a value; a block is a named, labelled group of fields and nested blocks. Here is a small document:" {}
-  }
+  p "A document is a tree of fields and blocks. A field binds a name to a value; a block is a named, labelled group of fields and nested blocks. Here is a small document:" {}
   code wcl {
     source = <<'WCL'
 name    = "alpha"
@@ -41,11 +37,7 @@ service "web" {
 WCL
   }
 
-  text {
-    span "Values carry types (`count` is an `i64`, `enabled` a `bool`). Blocks are validated against a schema declared with decorators. Beyond plain data, WCL has `let` bindings, functions, `if`/`match`, and modules via `import`." {}
-  }
+  p "Values carry types (`count` is an `i64`, `enabled` a `bool`). Blocks are validated against a schema declared with decorators. Beyond plain data, WCL has `let` bindings, functions, `if`/`match`, and modules via `import`." {}
 
-  text {
-    span "Start with [Fields & Blocks](fields_blocks) in the Language section." {}
-  }
+  p "Start with [Fields & Blocks](fields_blocks) in the Language section." {}
 }
