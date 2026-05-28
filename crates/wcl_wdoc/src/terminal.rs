@@ -25,11 +25,12 @@
 
 use std::path::Path;
 
-use wcl_lang::{Block, Document};
+use wcl_lang::{Block, Document, Value, VariantPayload};
 
 use crate::render::{
-    escape_html, field_bool, field_f64, field_i64, field_id, field_symbol, field_utf8,
-    field_utf8_list, label_string,
+    MAX_LOWER_DEPTH, block_to_record_raw, escape_html, field_bool, field_f64, field_i64, field_id,
+    field_symbol, field_utf8, field_utf8_list, kind_for_variant, label_string, lookup_block_lower,
+    lookup_type_lower, map_bool, map_i64, map_symbol, map_utf8, payload_to_record,
 };
 
 /// Bundled replay player, written into `<out>/_wdoc/` and referenced by
@@ -634,22 +635,130 @@ fn border_glyphs(style: &str) -> (char, char, char, char, char, char) {
     }
 }
 
-fn populate_primitives(grid: &mut Grid, block: &Block<'_>) {
+/// Walk a terminal's children, drawing each into the grid. Hardcoded
+/// primitives draw directly; any other child kind is a widget — its
+/// `lower` function decomposes it into `TermFundamental` variants
+/// (`Box`/`Text`/`Glyph`/`Fill`/`Children`), which we recursively draw
+/// (the cell-grid analogue of the SVG/HTML `lower` dispatch). The root
+/// content origin is `(0, 0)`, so top-level primitives are unaffected.
+fn populate_primitives(grid: &mut Grid, doc: &Document, block: &Block<'_>) {
     for child in block.blocks() {
-        match child.kind() {
-            "term_box" => prim_box(grid, &child),
-            "term_text" => prim_text(grid, &child),
-            "term_glyph" => prim_glyph(grid, &child),
-            "term_fill" => prim_fill(grid, &child),
-            _ => {}
+        place_child(grid, doc, &child, child.kind(), 0, (0, 0));
+    }
+}
+
+/// Place one terminal child — a primitive drawn at `base + its position`,
+/// or a widget lowered into primitives. `base` is the parent's content
+/// origin (0-based cell offset); it accumulates as containers nest.
+fn place_child(
+    grid: &mut Grid,
+    doc: &Document,
+    block: &Block<'_>,
+    kind: &str,
+    depth: usize,
+    base: (usize, usize),
+) {
+    match kind {
+        "term_box" => prim_box(grid, block, base),
+        "term_text" => prim_text(grid, block, base),
+        "term_glyph" => prim_glyph(grid, block, base),
+        "term_fill" => prim_fill(grid, block, base),
+        _ => populate_lowered(grid, doc, block, kind, depth, base),
+    }
+}
+
+/// Lower a widget block and draw the primitives it returns. The widget's
+/// own origin (`base + its row/col`) becomes the origin for the variants
+/// its `lower` emits, which use local coordinates from `(1, 1)`.
+fn populate_lowered(
+    grid: &mut Grid,
+    doc: &Document,
+    block: &Block<'_>,
+    kind: &str,
+    depth: usize,
+    base: (usize, usize),
+) {
+    if depth > MAX_LOWER_DEPTH {
+        return;
+    }
+    let Some(arg) = block_to_record_raw(doc, block, kind) else {
+        return;
+    };
+    let Some(fv) = lookup_block_lower(doc, block, kind) else {
+        return;
+    };
+    let Ok(Value::List(items)) = doc.call_value(&fv, &[arg]) else {
+        return;
+    };
+    let wbase = offset(base, cell_pos(block));
+    for item in &items {
+        draw_variant(grid, doc, block, item, depth, wbase);
+    }
+}
+
+/// Draw one `TermFundamental` variant. `wbase` is the emitting widget's
+/// origin; the four leaf variants draw at `wbase + (their pos − 1)`, a
+/// `Children` slot recurses into the widget's child blocks at the slot's
+/// (local) origin, and any other variant re-lowers (general composition).
+fn draw_variant(
+    grid: &mut Grid,
+    doc: &Document,
+    block: &Block<'_>,
+    value: &Value,
+    depth: usize,
+    wbase: (usize, usize),
+) {
+    let Value::Variant {
+        variant, payload, ..
+    } = value
+    else {
+        return;
+    };
+    let VariantPayload::Record(map) = payload else {
+        return;
+    };
+    match kind_for_variant(variant).as_str() {
+        "box" => draw_box_variant(grid, map, wbase),
+        "text" => draw_text_variant(grid, map, wbase),
+        "glyph" => draw_glyph_variant(grid, map, wbase),
+        "fill" => draw_fill_variant(grid, map, wbase),
+        "children" => {
+            let cbase = offset(wbase, map_pos(map));
+            for child in block.blocks() {
+                place_child(grid, doc, &child, child.kind(), depth + 1, cbase);
+            }
+        }
+        other => {
+            let arg = payload_to_record(map, other);
+            let Some(fv) = lookup_type_lower(doc, other) else {
+                return;
+            };
+            let Ok(Value::List(items)) = doc.call_value(&fv, &[arg]) else {
+                return;
+            };
+            for item in &items {
+                draw_variant(grid, doc, block, item, depth + 1, wbase);
+            }
         }
     }
 }
 
-/// Read 1-based `row`/`col` as 0-based usize (clamped at 0).
+/// Add a cell offset to a local position.
+fn offset(base: (usize, usize), pos: (usize, usize)) -> (usize, usize) {
+    (base.0 + pos.0, base.1 + pos.1)
+}
+
+/// Read 1-based `row`/`col` from a block as a 0-based offset (clamped).
 fn cell_pos(block: &Block<'_>) -> (usize, usize) {
     let row = (field_i64(block, "row").unwrap_or(1) - 1).max(0) as usize;
     let col = (field_i64(block, "col").unwrap_or(1) - 1).max(0) as usize;
+    (row, col)
+}
+
+/// Read 1-based `row`/`col` from a variant payload as a 0-based offset.
+fn map_pos(map: &std::collections::BTreeMap<String, Value>) -> (usize, usize) {
+    let row = (map_i64(map, "row").unwrap_or(1) - 1).max(0) as usize;
+    let col = (map_i64(map, "col").unwrap_or(1) - 1).max(0) as usize;
     (row, col)
 }
 
@@ -666,24 +775,63 @@ fn prim_style(block: &Block<'_>) -> Style {
     }
 }
 
-fn prim_text(grid: &mut Grid, block: &Block<'_>) {
-    let (row, col) = cell_pos(block);
-    let fg = pcolor(block, "fg");
-    let bg = pcolor(block, "bg");
-    let style = prim_style(block);
-    let content = label_string(block).unwrap_or_default();
+/// Variant-payload counterpart of [`pcolor`].
+fn vcolor(map: &std::collections::BTreeMap<String, Value>, name: &str) -> Color {
+    map_utf8(map, name)
+        .map(|s| parse_color(&s))
+        .unwrap_or(Color::Default)
+}
+
+/// Variant-payload counterpart of [`prim_style`].
+fn vstyle(map: &std::collections::BTreeMap<String, Value>) -> Style {
+    Style {
+        bold: map_bool(map, "bold").unwrap_or(false),
+        dim: map_bool(map, "dim").unwrap_or(false),
+        italic: map_bool(map, "italic").unwrap_or(false),
+        underline: map_bool(map, "underline").unwrap_or(false),
+        strike: map_bool(map, "strike").unwrap_or(false),
+        blink: map_bool(map, "blink").unwrap_or(false),
+        inverse: map_bool(map, "inverse").unwrap_or(false),
+        conceal: map_bool(map, "conceal").unwrap_or(false),
+    }
+}
+
+// ── Drawing primitives (shared by the Block and variant paths) ───────
+
+fn draw_text(
+    grid: &mut Grid,
+    row: usize,
+    col: usize,
+    content: &str,
+    fg: Color,
+    bg: Color,
+    st: Style,
+) {
     for (dr, line) in content.split('\n').enumerate() {
         for (dc, ch) in line.chars().enumerate() {
-            grid.set(row + dr, col + dc, Cell { ch, fg, bg, style });
+            grid.set(
+                row + dr,
+                col + dc,
+                Cell {
+                    ch,
+                    fg,
+                    bg,
+                    style: st,
+                },
+            );
         }
     }
 }
 
-fn prim_glyph(grid: &mut Grid, block: &Block<'_>) {
-    let (row, col) = cell_pos(block);
-    let fg = pcolor(block, "fg");
-    let bg = pcolor(block, "bg");
-    let glyph = label_string(block).unwrap_or_default();
+fn draw_glyph(
+    grid: &mut Grid,
+    row: usize,
+    col: usize,
+    glyph: &str,
+    fg: Color,
+    bg: Color,
+    st: Style,
+) {
     if let Some(ch) = glyph.chars().next() {
         grid.set(
             row,
@@ -692,40 +840,65 @@ fn prim_glyph(grid: &mut Grid, block: &Block<'_>) {
                 ch,
                 fg,
                 bg,
-                style: prim_style(block),
+                style: st,
             },
         );
     }
 }
 
-fn prim_fill(grid: &mut Grid, block: &Block<'_>) {
-    let (row, col) = cell_pos(block);
-    let w = field_i64(block, "width").unwrap_or(1).max(0) as usize;
-    let h = field_i64(block, "height").unwrap_or(1).max(0) as usize;
-    let fg = pcolor(block, "fg");
-    let bg = pcolor(block, "bg");
-    let ch = label_string(block)
-        .and_then(|s| s.chars().next())
-        .unwrap_or(' ');
-    let style = prim_style(block);
+#[allow(clippy::too_many_arguments)]
+fn draw_fill(
+    grid: &mut Grid,
+    row: usize,
+    col: usize,
+    w: usize,
+    h: usize,
+    ch: char,
+    fg: Color,
+    bg: Color,
+    st: Style,
+) {
     for dr in 0..h {
         for dc in 0..w {
-            grid.set(row + dr, col + dc, Cell { ch, fg, bg, style });
+            grid.set(
+                row + dr,
+                col + dc,
+                Cell {
+                    ch,
+                    fg,
+                    bg,
+                    style: st,
+                },
+            );
         }
     }
 }
 
-fn prim_box(grid: &mut Grid, block: &Block<'_>) {
-    let (row, col) = cell_pos(block);
-    let w = field_i64(block, "width").unwrap_or(2).max(1) as usize;
-    let h = field_i64(block, "height").unwrap_or(2).max(1) as usize;
-    let fg = pcolor(block, "fg");
-    let bg = pcolor(block, "bg");
-    let style = prim_style(block);
-    let (tl, tr, bl, br, horiz, vert) =
-        border_glyphs(&field_symbol(block, "border").unwrap_or_default());
+#[allow(clippy::too_many_arguments)]
+fn draw_box(
+    grid: &mut Grid,
+    row: usize,
+    col: usize,
+    w: usize,
+    h: usize,
+    border: &str,
+    title: Option<&str>,
+    fg: Color,
+    bg: Color,
+    st: Style,
+) {
+    let (tl, tr, bl, br, horiz, vert) = border_glyphs(border);
     let put = |grid: &mut Grid, r: usize, c: usize, ch: char| {
-        grid.set(r, c, Cell { ch, fg, bg, style });
+        grid.set(
+            r,
+            c,
+            Cell {
+                ch,
+                fg,
+                bg,
+                style: st,
+            },
+        );
     };
     let (r0, c0) = (row, col);
     let (r1, c1) = (row + h - 1, col + w - 1);
@@ -745,14 +918,164 @@ fn prim_box(grid: &mut Grid, block: &Block<'_>) {
         put(grid, r, c1, vert);
     }
     // Optional title on the top edge, inset two cells.
-    if let Some(t) = field_utf8(block, "title")
-        && !t.is_empty()
-    {
+    if let Some(t) = title.filter(|t| !t.is_empty()) {
         let label: String = t.chars().take(w.saturating_sub(4)).collect();
         for (i, ch) in label.chars().enumerate() {
             put(grid, r0, c0 + 2 + i, ch);
         }
     }
+}
+
+// ── Primitive readers: Block path ────────────────────────────────────
+
+fn prim_text(grid: &mut Grid, block: &Block<'_>, base: (usize, usize)) {
+    let (row, col) = offset(base, cell_pos(block));
+    let content = label_string(block).unwrap_or_default();
+    draw_text(
+        grid,
+        row,
+        col,
+        &content,
+        pcolor(block, "fg"),
+        pcolor(block, "bg"),
+        prim_style(block),
+    );
+}
+
+fn prim_glyph(grid: &mut Grid, block: &Block<'_>, base: (usize, usize)) {
+    let (row, col) = offset(base, cell_pos(block));
+    let glyph = label_string(block).unwrap_or_default();
+    draw_glyph(
+        grid,
+        row,
+        col,
+        &glyph,
+        pcolor(block, "fg"),
+        pcolor(block, "bg"),
+        prim_style(block),
+    );
+}
+
+fn prim_fill(grid: &mut Grid, block: &Block<'_>, base: (usize, usize)) {
+    let (row, col) = offset(base, cell_pos(block));
+    let w = field_i64(block, "width").unwrap_or(1).max(0) as usize;
+    let h = field_i64(block, "height").unwrap_or(1).max(0) as usize;
+    let ch = label_string(block)
+        .and_then(|s| s.chars().next())
+        .unwrap_or(' ');
+    draw_fill(
+        grid,
+        row,
+        col,
+        w,
+        h,
+        ch,
+        pcolor(block, "fg"),
+        pcolor(block, "bg"),
+        prim_style(block),
+    );
+}
+
+fn prim_box(grid: &mut Grid, block: &Block<'_>, base: (usize, usize)) {
+    let (row, col) = offset(base, cell_pos(block));
+    let w = field_i64(block, "width").unwrap_or(2).max(1) as usize;
+    let h = field_i64(block, "height").unwrap_or(2).max(1) as usize;
+    draw_box(
+        grid,
+        row,
+        col,
+        w,
+        h,
+        &field_symbol(block, "border").unwrap_or_default(),
+        field_utf8(block, "title").as_deref(),
+        pcolor(block, "fg"),
+        pcolor(block, "bg"),
+        prim_style(block),
+    );
+}
+
+// ── Primitive readers: variant-payload path ──────────────────────────
+
+fn draw_text_variant(
+    grid: &mut Grid,
+    map: &std::collections::BTreeMap<String, Value>,
+    base: (usize, usize),
+) {
+    let (row, col) = offset(base, map_pos(map));
+    let content = map_utf8(map, "content").unwrap_or_default();
+    draw_text(
+        grid,
+        row,
+        col,
+        &content,
+        vcolor(map, "fg"),
+        vcolor(map, "bg"),
+        vstyle(map),
+    );
+}
+
+fn draw_glyph_variant(
+    grid: &mut Grid,
+    map: &std::collections::BTreeMap<String, Value>,
+    base: (usize, usize),
+) {
+    let (row, col) = offset(base, map_pos(map));
+    let glyph = map_utf8(map, "glyph").unwrap_or_default();
+    draw_glyph(
+        grid,
+        row,
+        col,
+        &glyph,
+        vcolor(map, "fg"),
+        vcolor(map, "bg"),
+        vstyle(map),
+    );
+}
+
+fn draw_fill_variant(
+    grid: &mut Grid,
+    map: &std::collections::BTreeMap<String, Value>,
+    base: (usize, usize),
+) {
+    let (row, col) = offset(base, map_pos(map));
+    let w = map_i64(map, "width").unwrap_or(1).max(0) as usize;
+    let h = map_i64(map, "height").unwrap_or(1).max(0) as usize;
+    let ch = map_utf8(map, "ch")
+        .and_then(|s| s.chars().next())
+        .unwrap_or(' ');
+    draw_fill(
+        grid,
+        row,
+        col,
+        w,
+        h,
+        ch,
+        vcolor(map, "fg"),
+        vcolor(map, "bg"),
+        vstyle(map),
+    );
+}
+
+fn draw_box_variant(
+    grid: &mut Grid,
+    map: &std::collections::BTreeMap<String, Value>,
+    base: (usize, usize),
+) {
+    let (row, col) = offset(base, map_pos(map));
+    let w = map_i64(map, "width").unwrap_or(2).max(1) as usize;
+    let h = map_i64(map, "height").unwrap_or(2).max(1) as usize;
+    draw_box(
+        grid,
+        row,
+        col,
+        w,
+        h,
+        &map_symbol(map, "border").unwrap_or_default(),
+        map_utf8(map, "title").as_deref(),
+        vcolor(map, "fg"),
+        vcolor(map, "bg"),
+        vstyle(map),
+    );
 }
 
 // ── Populators B & C: avt virtual terminal ──────────────────────────
@@ -1012,7 +1335,7 @@ pub(crate) fn render_terminal(
         Some(text) if !text.is_empty() => populate_inline(def_cols, def_rows, &text),
         _ => {
             let mut grid = Grid::new(def_cols, def_rows);
-            populate_primitives(&mut grid, block);
+            populate_primitives(&mut grid, doc, block);
             grid
         }
     };

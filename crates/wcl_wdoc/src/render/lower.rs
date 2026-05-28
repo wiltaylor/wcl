@@ -246,12 +246,42 @@ pub(crate) fn depth_marker() -> String {
     "<!-- wdoc: lowering depth limit reached -->".into()
 }
 
-/// Build a `Value::Record` from `block`'s declared fields. Schema is
-/// looked up via `doc.block_schema(kind)`. Each declared field is
-/// populated from either the matching `@inline(N)` label slot or the
-/// literal block field; missing values become `Value::None` so
-/// optional fields cleanly reach the lowering function.
+/// Build a `Value::Record` from `block`'s declared fields, then grow any
+/// numeric `width`/`height` to the effective (text-aware) dimensions the
+/// layout solver reserved — see [`effective_dims`]. Used by the SVG /
+/// HTML lowering paths, where a shape's `width`/`height` is geometry.
 pub(crate) fn block_to_record(doc: &Document, block: &Block<'_>, kind: &str) -> Option<Value> {
+    let raw = block_to_record_raw(doc, block, kind)?;
+    let Value::Record { ty, mut fields } = raw else {
+        return Some(raw);
+    };
+    // Grow width / height in the record so a Process / Decision /
+    // Terminator lowering whose text spans multiple lines (or one
+    // very long line) sees the same effective dimensions the
+    // layered solver did. Without this, the rendered rect would
+    // stay at the declared size while the layout reserved a
+    // larger cell — the text would spill out of the rect.
+    // Only the SVG shapes carry numeric `width`/`height` geometry that the
+    // layout solver may have grown; leave non-numeric fields alone (e.g. a
+    // wireframe widget's `width: utf8?` CSS length like "22rem").
+    let (eff_w, eff_h) = effective_dims(block);
+    if fields.get("width").is_some_and(Value::is_numeric) {
+        fields.insert("width".to_string(), Value::F64(eff_w));
+    }
+    if fields.get("height").is_some_and(Value::is_numeric) {
+        fields.insert("height".to_string(), Value::F64(eff_h));
+    }
+    Some(Value::Record { ty, fields })
+}
+
+/// Build a `Value::Record` from `block`'s declared fields, with **no**
+/// dimension grow. Schema is looked up via `doc.block_schema(kind)`. Each
+/// declared field is populated from either the matching `@inline(N)` label
+/// slot or the literal block field; missing values become `Value::None` so
+/// optional fields cleanly reach the lowering function. The terminal-widget
+/// path uses this directly: a TUI widget's `width`/`height` is a cell count
+/// (`i64`), not SVG geometry, so it must not be coerced/grown.
+pub(crate) fn block_to_record_raw(doc: &Document, block: &Block<'_>, kind: &str) -> Option<Value> {
     let schema = doc.block_schema(kind)?;
     let labels = block.labels().ok().unwrap_or_default();
     let mut map = BTreeMap::new();
@@ -289,22 +319,6 @@ pub(crate) fn block_to_record(doc: &Document, block: &Block<'_>, kind: &str) -> 
             f.default_value().unwrap_or(Value::None)
         };
         map.insert(name.to_string(), val);
-    }
-    // Grow width / height in the record so a Process / Decision /
-    // Terminator lowering whose text spans multiple lines (or one
-    // very long line) sees the same effective dimensions the
-    // layered solver did. Without this, the rendered rect would
-    // stay at the declared size while the layout reserved a
-    // larger cell — the text would spill out of the rect.
-    // Only the SVG shapes carry numeric `width`/`height` geometry that the
-    // layout solver may have grown; leave non-numeric fields alone (e.g. a
-    // wireframe widget's `width: utf8?` CSS length like "22rem").
-    let (eff_w, eff_h) = effective_dims(block);
-    if map.get("width").is_some_and(Value::is_numeric) {
-        map.insert("width".to_string(), Value::F64(eff_w));
-    }
-    if map.get("height").is_some_and(Value::is_numeric) {
-        map.insert("height".to_string(), Value::F64(eff_h));
     }
     Some(Value::Record {
         ty: vec![kind_to_typename(kind)],

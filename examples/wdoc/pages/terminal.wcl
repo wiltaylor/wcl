@@ -12,6 +12,25 @@ class "term-mocha" {
   light { background = "#eff1f5"  color = "#4c4f69" }
 }
 
+// A custom TUI control, built by extending the `TuiWidget` base — a
+// keycap pill that lowers to a coloured `Fill` + a `Text` label. Any
+// `@block … extends TuiWidget` whose `lower` returns `list<TermFundamental>`
+// plugs into the terminal renderer exactly like the built-in controls.
+@block("kbd")
+type Kbd extends TuiWidget {
+  @inline(0) key: utf8
+  accent: utf8?
+  row: i64  col: i64
+  lower = fn(k: Kbd) -> list<TermFundamental> {
+    let acc = if k.accent == none { "magenta" } else { k.accent };
+    let w = len(k.key) + 2;
+    [
+      TermFundamental::Fill { ch: " ", row: 1, col: 1, width: w, height: 1, fg: none, bg: acc, bold: none },
+      TermFundamental::Text { content: k.key, row: 1, col: 2, fg: "bright_white", bg: acc, bold: true },
+    ]
+  }
+}
+
 page terminal { sites = [:showcase]
   h1 "Terminals" {}
 
@@ -56,6 +75,53 @@ page terminal { sites = [:showcase]
     term_fill "█" { row = 11 col = 4 width = 28 height = 1 fg = "green" }
     term_fill "░" { row = 11 col = 32 width = 12 height = 1 fg = "bright_black" }
     term_text "71%" { row = 11 col = 46 bold = true }
+  }
+
+  h2 "TUI widgets" {}
+  text { span "Single-line, colour-forward controls — progress bars, buttons, spinners, inputs, dropdowns, checkboxes, radios — that lower to the same primitives. Colour carries the meaning; accents follow the `term-mocha` theme." {} }
+
+  terminal {
+    class = ["term-mocha"]
+    cols = 56 rows = 16 title = "controls"
+    term_text "Progress" { row = 1 col = 2 bold = true underline = true }
+    tui_progress "Upload" { row = 2 col = 2 value = 78 }
+    tui_progress "Sync"   { row = 3 col = 2 value = 40 accent = "cyan" }
+
+    term_text "Buttons" { row = 5 col = 2 bold = true underline = true }
+    tui_button "Save"    { row = 6 col = 2 accent = "green" }
+    tui_button "Discard" { row = 6 col = 11 accent = "red" }
+    tui_button "Help"    { row = 6 col = 23 }
+
+    term_text "Fields" { row = 8 col = 2 bold = true underline = true }
+    tui_spinner "Building…" { row = 9 col = 2 frame = 4 }
+    tui_input "Search projects" { row = 10 col = 2 focused = true }
+    tui_input "Name" { row = 11 col = 2 value = "Ada Lovelace" }
+    tui_dropdown "Release build" { row = 12 col = 2 }
+
+    term_text "Choices" { row = 14 col = 2 bold = true underline = true }
+    tui_checkbox "Telemetry" { row = 15 col = 2 checked = true }
+    tui_radio "Dark"   { row = 15 col = 18 selected = true }
+    tui_radio "Light"  { row = 15 col = 28 }
+    kbd "Ctrl" { row = 15 col = 40 }
+    kbd "K"    { row = 15 col = 47 accent = "blue" }
+  }
+
+  h3 "Containers" {}
+  text { span "A `tui_panel` (or borderless `tui_group`) nests other controls; children carry positions relative to the container, and a `tui_group` inside a `tui_panel` shows the offset compounding." {} }
+
+  terminal {
+    class = ["term-mocha"]
+    cols = 40 rows = 11 title = "settings"
+    tui_panel "Preferences" { row = 1 col = 2 width = 34 height = 9 border = :rounded
+      tui_checkbox "Wi-Fi"     { row = 1 col = 1 checked = true }
+      tui_checkbox "Bluetooth" { row = 2 col = 1 }
+      tui_group "Theme" { row = 3 col = 1
+        tui_radio "Dark"  { row = 1 col = 1 selected = true }
+        tui_radio "Light" { row = 1 col = 11 }
+      }
+      tui_progress "Cache" { row = 6 col = 1 value = 55 width = 18 accent = "cyan" }
+      tui_button "Apply" { row = 7 col = 1 accent = "green" }
+    }
   }
 
   h2 "Inline content" {}

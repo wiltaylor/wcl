@@ -161,6 +161,24 @@ pub(crate) fn map_f64(map: &BTreeMap<String, Value>, name: &str) -> Option<f64> 
     value_as_f64(map.get(name)?)
 }
 
+pub(crate) fn map_i64(map: &BTreeMap<String, Value>, name: &str) -> Option<i64> {
+    value_as_i64(map.get(name)?)
+}
+
+pub(crate) fn map_bool(map: &BTreeMap<String, Value>, name: &str) -> Option<bool> {
+    match map.get(name)? {
+        Value::Bool(b) => Some(*b),
+        _ => None,
+    }
+}
+
+pub(crate) fn map_symbol(map: &BTreeMap<String, Value>, name: &str) -> Option<String> {
+    match map.get(name)? {
+        Value::Symbol(s) => Some(s.clone()),
+        _ => None,
+    }
+}
+
 pub(crate) fn map_utf8_list(map: &BTreeMap<String, Value>, name: &str) -> Vec<String> {
     let Some(Value::List(items)) = map.get(name) else {
         return Vec::new();

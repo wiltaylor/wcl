@@ -33,4 +33,5 @@ import <card.wcl>             // rich-text card shape (foreignObject)
 import <headings.wcl>         // h1..h6
 import <code.wcl>             // syntax-highlighted code block
 import <terminal.wcl>         // terminal grid + primitives
+import <tui.wcl>              // single-line TUI widgets (progress/button/…)
 import <math.wcl>             // LaTeX equations → SVG (RaTeX)

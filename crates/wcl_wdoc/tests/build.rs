@@ -3613,6 +3613,88 @@ page index {
 }
 
 #[test]
+fn terminal_tui_widgets_lower_nest_and_extend() {
+    // The TUI widgets (`tui_*`) are not hardcoded primitives — each
+    // lowers into the four terminal building blocks via its `lower`
+    // function, which the renderer recursively draws into the grid.
+    // This exercises a leaf widget (progress), a container that nests a
+    // control (panel → checkbox), and a *user-defined* widget extending
+    // the `TuiWidget` base. The progress bar's filled width is exact
+    // integer math (62% of 24 = 14 cells) painted in the accent colour.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("t.wcl");
+    std::fs::write(
+        &src,
+        r##"
+@block("my_badge")
+type MyBadge extends TuiWidget {
+  @inline(0) text: utf8
+  row: i64  col: i64
+  lower = fn(b: MyBadge) -> list<TermFundamental> [
+    TermFundamental::Glyph { glyph: "★", row: 1, col: 1, fg: "yellow", bg: none, bold: true },
+    TermFundamental::Text { content: b.text, row: 1, col: 3, fg: none, bg: none, bold: none },
+  ]
+}
+
+page index {
+  terminal {
+    cols = 40 rows = 10 chrome = false
+    tui_progress "Load" { row = 1 col = 1 value = 62 }
+    tui_checkbox "Top" { row = 3 col = 1 checked = true }
+    my_badge "New" { row = 4 col = 1 }
+    tui_panel "Box" { row = 1 col = 22 width = 16 height = 5
+      tui_checkbox "Nested" { row = 1 col = 1 checked = true }
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Progress bar: a filled run (█) and a track run (░).
+    assert!(
+        html.contains('█') && html.contains('░'),
+        "no progress bar runs:\n{html}"
+    );
+    // 62% of width 24 = 14 filled cells, painted in the default accent
+    // (Tango green #4e9a06).
+    assert!(
+        html.contains("fill=\"#4e9a06\""),
+        "progress fill not accent-coloured:\n{html}"
+    );
+    // The rounded panel frame.
+    assert!(
+        html.contains('╭') && html.contains('╮'),
+        "no panel box:\n{html}"
+    );
+    // The user-defined widget lowered (its star glyph rendered).
+    assert!(html.contains('★'), "custom widget did not lower:\n{html}");
+
+    // Two checkboxes lowered to a filled ■ — one top-level, one nested in
+    // the panel — and the nested one is offset to the right of the
+    // top-level one (proving the container's content-origin offset).
+    let xs: Vec<f64> = html
+        .match_indices(">■</text>")
+        .map(|(i, _)| {
+            let head = &html[..i];
+            let xpos = head.rfind("x=\"").expect("x attr before ■");
+            let rest = &head[xpos + 3..];
+            let end = rest.find('"').expect("close quote");
+            rest[..end].parse::<f64>().expect("x is a number")
+        })
+        .collect();
+    assert_eq!(xs.len(), 2, "expected two ■ checkbox marks:\n{html}");
+    let (lo, hi) = (xs[0].min(xs[1]), xs[0].max(xs[1]));
+    assert!(
+        hi > lo + 40.0,
+        "nested checkbox not offset into the panel (xs = {xs:?}):\n{html}"
+    );
+}
+
+#[test]
 fn terminal_inline_text_lays_out_via_vt() {
     // Inline `text` is fed to the virtual terminal and laid out across
     // rows; newlines start a new line. Each cell is its own centred

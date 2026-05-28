@@ -1,0 +1,271 @@
+// ── Stdlib TUI widgets ─────────────────────────────────────────────
+//
+// Single-line, colour-forward terminal controls — progress bars,
+// buttons, spinners, inputs, dropdowns, checkboxes, radios, and
+// containers — for mocking up text-user-interfaces inside a `terminal`.
+//
+// They are the cell-grid analogue of the wireframe widgets: each is a
+// `@block` whose `lower` decomposes it into the same building blocks the
+// terminal's authored primitives use (`term_box`/`term_text`/
+// `term_glyph`/`term_fill`), expressed here as the `TermFundamental`
+// union. The terminal renderer special-cases the four primitives and,
+// for any other child kind, calls its `lower` and recursively draws the
+// returned fundamentals into the grid (`crates/wcl_wdoc/src/terminal.rs`).
+//
+// COORDINATES ARE LOCAL. A widget's `lower` lays its primitives out from
+// the widget's own top-left `(row 1, col 1)`; the renderer offsets them
+// by the widget's placement (its `row`/`col` within the terminal, plus
+// any enclosing container's content origin). So a widget never reads its
+// own `row`/`col` — the renderer owns placement, which is what lets
+// containers nest controls (a `Children` fundamental marks the content
+// origin, and the renderer recurses the child blocks there).
+//
+// THEMING rides the terminal's `class` system. Accent parts use ANSI
+// colour names (`green`/`blue`/`cyan`/`bright_black`/…) that resolve
+// through the terminal palette, so they follow a site `theme` / `class`
+// and are overridable per-instance (`accent = "#ff5fd2"`, etc.). Label
+// text is left default-coloured, so it follows the terminal's
+// `currentColor` (its `class` `color`, dark/light included).
+
+// The terminal building blocks a widget lowers into. These mirror the
+// `term_box`/`term_text`/`term_glyph`/`term_fill` primitives (plus a
+// `Children` content-origin slot for containers); the renderer draws
+// each into the cell grid. Coordinates are 1-based and LOCAL to the
+// emitting widget. Every field must be supplied at construction (set
+// `none` to opt out) — that's how WCL variant literals work.
+union TermFundamental {
+  // A bordered box: :single (default) :double :rounded :heavy :ascii.
+  Box   { row: i64  col: i64  width: i64  height: i64  border: symbol?  title: utf8?  fg: utf8?  bg: utf8?  bold: bool? }
+  // A run of text (may contain `\n`) at (row, col).
+  Text  { content: utf8  row: i64  col: i64  fg: utf8?  bg: utf8?  bold: bool? }
+  // A single glyph (first char) at (row, col).
+  Glyph { glyph: utf8  row: i64  col: i64  fg: utf8?  bg: utf8?  bold: bool? }
+  // Fill a w×h region with a repeated char.
+  Fill  { ch: utf8  row: i64  col: i64  width: i64  height: i64  fg: utf8?  bg: utf8?  bold: bool? }
+  // Content-origin slot: a container's child blocks are drawn here, at
+  // (row, col) local to the container. The renderer recurses each child
+  // (primitive or widget) with this origin as its base.
+  Children { row: i64  col: i64 }
+}
+
+// The base TUI widget — extend this to author your own control. It's a
+// `TermPrimitive`, so an instance is a legal `terminal` child (and a
+// legal child of any container widget). Supply a `lower` that returns
+// the `TermFundamental`s the control draws.
+interface TuiWidget extends TermPrimitive {
+  row:   i64
+  col:   i64
+  lower: fn(&TuiWidget) -> list<TermFundamental>
+}
+
+// ── Leaf widgets ──────────────────────────────────────────────────────
+
+// A progress bar: filled cells in `accent`, the remainder in `muted`,
+// with an optional leading label and a trailing `NN%`. `value` is a
+// percentage of `max` (default 100); `width` is the bar length in cells.
+@block("tui_progress")
+type TuiProgress extends TuiWidget {
+  @inline(0) label: utf8?
+  value:      i64
+  max:        i64?
+  width:      i64?
+  show_value: bool?
+  accent:     utf8?
+  muted:      utf8?
+  row: i64  col: i64
+  lower = fn(p: TuiProgress) -> list<TermFundamental> {
+    let mx  = if p.max == none { 100 } else { if p.max < 1 { 1 } else { p.max } };
+    let w   = if p.width == none { 24 } else { if p.width < 1 { 1 } else { p.width } };
+    let acc = if p.accent == none { "green" } else { p.accent };
+    let trk = if p.muted == none { "bright_black" } else { p.muted };
+    let v   = if p.value < 0 { 0 } else { if p.value > mx { mx } else { p.value } };
+    let filled = v * w / mx;
+    let empty  = w - filled;
+    let bar_col = if p.label == none { 1 } else { len(p.label) + 2 };
+    let label_part = if p.label == none { [] }
+      else { [ TermFundamental::Text { content: p.label, row: 1, col: 1, fg: none, bg: none, bold: none } ] };
+    let fill_part = if filled > 0 {
+      [ TermFundamental::Fill { ch: "█", row: 1, col: bar_col, width: filled, height: 1, fg: acc, bg: none, bold: none } ]
+    } else { [] };
+    let track_part = if empty > 0 {
+      [ TermFundamental::Fill { ch: "░", row: 1, col: bar_col + filled, width: empty, height: 1, fg: trk, bg: none, bold: none } ]
+    } else { [] };
+    let value_part = if p.show_value == false { [] }
+      else { [ TermFundamental::Text { content: format("{}%", v * 100 / mx), row: 1, col: bar_col + w + 1, fg: none, bg: none, bold: true } ] };
+    flatten([ label_part, fill_part, track_part, value_part ])
+  }
+}
+
+// A button: the label centred on a solid `accent`-coloured cell run, in
+// the contrasting `fg`. Colour defines the button — no border glyphs.
+@block("tui_button")
+type TuiButton extends TuiWidget {
+  @inline(0) label: utf8
+  width:  i64?
+  accent: utf8?
+  fg:     utf8?
+  row: i64  col: i64
+  lower = fn(b: TuiButton) -> list<TermFundamental> {
+    let acc = if b.accent == none { "blue" } else { b.accent };
+    let txt = if b.fg == none { "bright_white" } else { b.fg };
+    let ll  = len(b.label);
+    let w   = if b.width == none { ll + 4 } else { b.width };
+    let pad = (w - ll) / 2;
+    let lcol = if pad < 1 { 2 } else { pad + 1 };
+    [
+      TermFundamental::Fill { ch: " ", row: 1, col: 1, width: w, height: 1, fg: none, bg: acc, bold: none },
+      TermFundamental::Text { content: b.label, row: 1, col: lcol, fg: txt, bg: acc, bold: true },
+    ]
+  }
+}
+
+// A spinner. A document is static, so this draws one frame (pick it with
+// `frame`); the `kind` picks the glyph set. `:dots` (braille, default),
+// `:circle`, or `:line`.
+@block("tui_spinner")
+type TuiSpinner extends TuiWidget {
+  @inline(0) label: utf8?
+  frame:  i64?
+  kind:   symbol?
+  accent: utf8?
+  row: i64  col: i64
+  lower = fn(s: TuiSpinner) -> list<TermFundamental> {
+    let acc = if s.accent == none { "cyan" } else { s.accent };
+    let f   = if s.frame == none { 0 } else { if s.frame < 0 { 0 } else { s.frame } };
+    let frames = if s.kind == :circle { ["◐", "◓", "◑", "◒"] }
+      else { if s.kind == :line { ["|", "/", "—", "\\"] }
+      else { ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] } };
+    let g = at(frames, f % len(frames));
+    let glyph_part = [ TermFundamental::Glyph { glyph: g, row: 1, col: 1, fg: acc, bg: none, bold: true } ];
+    let label_part = if s.label == none { [] }
+      else { [ TermFundamental::Text { content: s.label, row: 1, col: 3, fg: none, bg: none, bold: none } ] };
+    flatten([ glyph_part, label_part ])
+  }
+}
+
+// A single-line input. An `accent` left bar, then the `value` (solid) or
+// the `placeholder` (muted) — plus a cursor when `focused`.
+@block("tui_input")
+type TuiInput extends TuiWidget {
+  @inline(0) placeholder: utf8
+  value:   utf8?
+  focused: bool?
+  accent:  utf8?
+  row: i64  col: i64
+  lower = fn(i: TuiInput) -> list<TermFundamental> {
+    let acc   = if i.accent == none { "blue" } else { i.accent };
+    let shown = if i.value == none { i.placeholder } else { i.value };
+    let txtfg = if i.value == none { "bright_black" } else { none };
+    let bar  = [ TermFundamental::Glyph { glyph: "▏", row: 1, col: 1, fg: acc, bg: none, bold: true } ];
+    let text = [ TermFundamental::Text { content: shown, row: 1, col: 3, fg: txtfg, bg: none, bold: none } ];
+    let cur = if i.focused == true {
+      [ TermFundamental::Glyph { glyph: "▏", row: 1, col: 3 + len(shown), fg: acc, bg: none, bold: true } ]
+    } else { [] };
+    flatten([ bar, text, cur ])
+  }
+}
+
+// A dropdown: the selected `text` with a coloured chevron to its right
+// (`▴` when `open`, else `▾`).
+@block("tui_dropdown")
+type TuiDropdown extends TuiWidget {
+  @inline(0) text: utf8
+  width:  i64?
+  open:   bool?
+  accent: utf8?
+  row: i64  col: i64
+  lower = fn(d: TuiDropdown) -> list<TermFundamental> {
+    let acc = if d.accent == none { "blue" } else { d.accent };
+    let w   = if d.width == none { len(d.text) + 3 } else { d.width };
+    let chev = if d.open == true { "▴" } else { "▾" };
+    [
+      TermFundamental::Text { content: d.text, row: 1, col: 1, fg: none, bg: none, bold: none },
+      TermFundamental::Glyph { glyph: chev, row: 1, col: w, fg: acc, bg: none, bold: true },
+    ]
+  }
+}
+
+// A checkbox: a filled `■` (accent) when `checked`, else an empty `□`
+// (muted), followed by the label.
+@block("tui_checkbox")
+type TuiCheckbox extends TuiWidget {
+  @inline(0) label: utf8
+  checked: bool?
+  accent:  utf8?
+  muted:   utf8?
+  row: i64  col: i64
+  lower = fn(c: TuiCheckbox) -> list<TermFundamental> {
+    let on  = c.checked == true;
+    let acc = if c.accent == none { "green" } else { c.accent };
+    let mut = if c.muted == none { "bright_black" } else { c.muted };
+    let mark = if on { "■" } else { "□" };
+    let mfg  = if on { acc } else { mut };
+    [
+      TermFundamental::Glyph { glyph: mark, row: 1, col: 1, fg: mfg, bg: none, bold: true },
+      TermFundamental::Text { content: c.label, row: 1, col: 3, fg: none, bg: none, bold: none },
+    ]
+  }
+}
+
+// A radio selector: a filled `◉` (accent) when `selected`, else an empty
+// `○` (muted), followed by the label.
+@block("tui_radio")
+type TuiRadio extends TuiWidget {
+  @inline(0) label: utf8
+  selected: bool?
+  accent:   utf8?
+  muted:    utf8?
+  row: i64  col: i64
+  lower = fn(r: TuiRadio) -> list<TermFundamental> {
+    let on  = r.selected == true;
+    let acc = if r.accent == none { "green" } else { r.accent };
+    let mut = if r.muted == none { "bright_black" } else { r.muted };
+    let dot = if on { "◉" } else { "○" };
+    let dfg = if on { acc } else { mut };
+    [
+      TermFundamental::Glyph { glyph: dot, row: 1, col: 1, fg: dfg, bg: none, bold: true },
+      TermFundamental::Text { content: r.label, row: 1, col: 3, fg: none, bg: none, bold: none },
+    ]
+  }
+}
+
+// ── Container widgets ─────────────────────────────────────────────────
+// Each holds `@children(TermPrimitive)` (primitives OR other widgets) and
+// emits a `Children` slot marking where they're drawn. Children carry
+// their own (relative) `row`/`col` within the container's content area.
+
+// A bordered panel with an optional title. Children sit inside the
+// border (content origin at local row 2, col 2).
+@block("tui_panel")
+type TuiPanel extends TuiWidget {
+  title:  utf8?
+  width:  i64
+  height: i64
+  border: symbol?
+  accent: utf8?
+  row: i64  col: i64
+  @children(TermPrimitive) children: list<TermPrimitive>
+  lower = fn(p: TuiPanel) -> list<TermFundamental> {
+    let bdr = if p.border == none { :rounded } else { p.border };
+    let acc = if p.accent == none { "bright_black" } else { p.accent };
+    [
+      TermFundamental::Box { row: 1, col: 1, width: p.width, height: p.height, border: bdr, title: p.title, fg: acc, bg: none, bold: none },
+      TermFundamental::Children { row: 2, col: 2 },
+    ]
+  }
+}
+
+// A borderless group with an optional heading. Children sit below the
+// heading (or at the origin when there is none).
+@block("tui_group")
+type TuiGroup extends TuiWidget {
+  title: utf8?
+  row: i64  col: i64
+  @children(TermPrimitive) children: list<TermPrimitive>
+  lower = fn(g: TuiGroup) -> list<TermFundamental> {
+    let title_part = if g.title == none { [] }
+      else { [ TermFundamental::Text { content: g.title, row: 1, col: 1, fg: none, bg: none, bold: true } ] };
+    let body_row = if g.title == none { 1 } else { 2 };
+    flatten([ title_part, [ TermFundamental::Children { row: body_row, col: 1 } ] ])
+  }
+}
