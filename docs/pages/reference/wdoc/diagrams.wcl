@@ -38,6 +38,10 @@ page wdoc_diagrams { sites = [:reference]
 
   h3 "rect"
 
+  diagram { width = 200  height = 90
+    rect { x = 20.0  y = 15.0  width = 120.0  height = 60.0  fill = "#cce"  stroke = "#333" }
+  }
+
   p "An axis-aligned rectangle — the workhorse box."
 
   table {
@@ -57,11 +61,11 @@ diagram { width = 200  height = 90
 WCL
   }
 
-  diagram { width = 200  height = 90
-    rect { x = 20.0  y = 15.0  width = 120.0  height = 60.0  fill = "#cce"  stroke = "#333" }
-  }
-
   h3 "circle"
+
+  diagram { width = 200  height = 100
+    circle { cx = 100.0  cy = 50.0  r = 36.0  fill = "#8fbcbb"  stroke = "#333" }
+  }
 
   p "A circle, positioned by its centre."
 
@@ -82,11 +86,11 @@ diagram { width = 200  height = 100
 WCL
   }
 
-  diagram { width = 200  height = 100
-    circle { cx = 100.0  cy = 50.0  r = 36.0  fill = "#8fbcbb"  stroke = "#333" }
-  }
-
   h3 "line"
+
+  diagram { width = 200  height = 80
+    line { x1 = 20.0  y1 = 60.0  x2 = 180.0  y2 = 20.0  stroke = "#bf616a" }
+  }
 
   p "A straight line segment between two points."
 
@@ -106,11 +110,11 @@ diagram { width = 200  height = 80
 WCL
   }
 
-  diagram { width = 200  height = 80
-    line { x1 = 20.0  y1 = 60.0  x2 = 180.0  y2 = 20.0  stroke = "#bf616a" }
-  }
-
   h3 "label"
+
+  diagram { width = 200  height = 60
+    label "Hello" { x = 100.0  y = 36.0  font_size = 22.0  fill = "#5e81ac" }
+  }
 
   p "An SVG text label. Named `label` (not `text`) to avoid clashing with the paragraph block."
 
@@ -132,11 +136,11 @@ diagram { width = 200  height = 60
 WCL
   }
 
-  diagram { width = 200  height = 60
-    label "Hello" { x = 100.0  y = 36.0  font_size = 22.0  fill = "#5e81ac" }
-  }
-
   h3 "polygon"
+
+  diagram { width = 200  height = 100
+    polygon { points = "40,80 100,15 160,80"  fill = "#ebcb8b"  stroke = "#333" }
+  }
 
   p "An arbitrary closed shape from a list of points."
 
@@ -156,11 +160,19 @@ diagram { width = 200  height = 100
 WCL
   }
 
-  diagram { width = 200  height = 100
-    polygon { points = "40,80 100,15 160,80"  fill = "#ebcb8b"  stroke = "#333" }
-  }
-
   h3 "container"
+
+  diagram { width = 240  height = 130
+    container {
+      anchor_left = 10.0  anchor_top = 10.0
+      fill = "#eef"  stroke = "#88a"  padding = 10.0
+      layout = :grid  columns = 2  cell_width = 90.0  cell_height = 44.0  gap = 10.0
+      rect { fill = "#88c0d0" }
+      rect { fill = "#a3be8c" }
+      rect { fill = "#ebcb8b" }
+      rect { fill = "#b48ead" }
+    }
+  }
 
   p "A grouping box that holds and lays out child shapes (`@children`). Optional chrome makes the group visible; a `layout` arranges the children automatically."
 
@@ -193,19 +205,18 @@ diagram { width = 240  height = 130
 WCL
   }
 
-  diagram { width = 240  height = 130
-    container {
-      anchor_left = 10.0  anchor_top = 10.0
-      fill = "#eef"  stroke = "#88a"  padding = 10.0
-      layout = :grid  columns = 2  cell_width = 90.0  cell_height = 44.0  gap = 10.0
-      rect { fill = "#88c0d0" }
-      rect { fill = "#a3be8c" }
-      rect { fill = "#ebcb8b" }
-      rect { fill = "#b48ead" }
-    }
-  }
-
   h3 "Putting them together"
+
+  diagram {
+    width  = 280
+    height = 130
+
+    rect    { x = 10.0  y = 10.0  width = 60.0  height = 60.0  fill = "#cce" }
+    circle  { cx = 120.0  cy = 40.0  r = 24.0  stroke = "black" }
+    line    { x1 = 0.0  y1 = 40.0  x2 = 280.0  y2 = 40.0  stroke = "#888" }
+    polygon { points = "180,10 230,40 180,70"  fill = "#fc8" }
+    label "halfway" { x = 110.0  y = 76.0 }
+  }
 
   code wcl {
     source = <<'WCL'
@@ -220,17 +231,6 @@ diagram {
   label "halfway" { x = 110.0  y = 76.0 }
 }
 WCL
-  }
-
-  diagram {
-    width  = 280
-    height = 130
-
-    rect    { x = 10.0  y = 10.0  width = 60.0  height = 60.0  fill = "#cce" }
-    circle  { cx = 120.0  cy = 40.0  r = 24.0  stroke = "black" }
-    line    { x1 = 0.0  y1 = 40.0  x2 = 280.0  y2 = 40.0  stroke = "#888" }
-    polygon { points = "180,10 230,40 180,70"  fill = "#fc8" }
-    label "halfway" { x = 110.0  y = 76.0 }
   }
 
   p "An `image` is also a placeable diagram shape — see [Images](wdoc_images)."
