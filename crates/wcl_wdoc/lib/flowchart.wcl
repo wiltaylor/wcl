@@ -18,6 +18,15 @@ let centered_label = fn(text: utf8, cx: f64, cy: f64, fit_w: f64, fit_h: f64, cl
     fit_width: fit_w, fit_height: fit_h, fill: none, id: none, class: cls,
   }
 
+// An oval (ellipse) outline as polygon points — there is no Ellipse
+// fundamental, so a `terminator` is approximated with a 40-point fan
+// around its bounding box (the same trick the pie chart uses for arcs).
+let oval_points = fn(cx: f64, cy: f64, rx: f64, ry: f64) -> utf8
+  join(map(range(0, 40), fn(i: i64) -> utf8 {
+    let th = tau() * i / 40;
+    format("{},{}", cx + rx * cos(th), cy + ry * sin(th))
+  }), " ")
+
 @block("process")
 type Process extends SvgBlock {
   @inline(0) text: utf8
@@ -100,8 +109,8 @@ type GraphNode extends SvgBlock {
   ]
 }
 
-// Terminator: rounded-corner rect is a single Rect for now — true
-// rounded corners come when SvgFundamental::Rect grows an `rx` field.
+// Terminator: an oval (the start/end node), drawn as an ellipse
+// inscribed in the shape's box via `oval_points`.
 @block("terminator")
 type Terminator extends SvgBlock {
   @inline(0) text: utf8
@@ -111,13 +120,17 @@ type Terminator extends SvgBlock {
   icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
 
   lower = fn(t: Terminator) -> list<SvgFundamental> [
-    SvgFundamental::Rect {
-      x: t.x, y: t.y, width: t.width, height: t.height,
+    SvgFundamental::Polygon {
+      points: oval_points(
+        t.x + t.width / 2.0, t.y + t.height / 2.0,
+        t.width / 2.0, t.height / 2.0,
+      ),
       fill: t.fill, stroke: t.stroke, id: t.id, class: t.class,
     },
+    // Inset the text region so the label stays inside the oval's curve.
     centered_label(
       t.text, t.x + t.width / 2.0, t.y + t.height / 2.0,
-      t.width, t.height, t.class,
+      t.width * 0.8, t.height * 0.72, t.class,
     ),
   ]
 }
