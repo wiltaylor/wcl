@@ -1,0 +1,223 @@
+// wdoc section: Maps.
+//
+// Pin theming rides the `class` system — icons paint with currentColor, so a
+// class `color` recolours the marker (with optional `dark` / `light`).
+class "pin-city" {
+  color = "#fbbf24"
+  dark  { color = "#fcd34d" }
+}
+
+page wdoc_maps { sites = [:reference]
+  h1 "Maps"
+
+  p "A `map` is a zoomable, pinned image placed inside a `diagram` — built for game-guide and reference maps. Drop `pin`s at coordinates and give each one a card of wdoc content. A diagram holding a map is **automatically interactive** (wheel to zoom, drag to pan, plus `+` / `−` / `⟲` controls) and loads the bundled map player; you don't need `pan_zoom = true`."
+
+  h2 "A single-image map"
+
+  p "The common case: `source` is the whole map image, resolved relative to the build entry file. `width` / `height` set the map's coordinate space — a `pin`'s `x` / `y` are pixel coordinates within it. Lift `zoom_max` on the diagram so the markers are readable up close. **Scroll to zoom, drag to pan, then click a marker.**"
+
+  diagram {
+    width    = 640
+    height   = 320
+    zoom_max = 8.0
+    map "earth" {
+      source = "assets/map/blue-marble.png"
+      width  = 1280
+      height = 640
+
+      // A pin themed by `class` (gold). Its card holds rich content — a
+      // callout composes into the popup like any other wdoc block.
+      pin "newyork" {
+        x = 377  y = 175
+        icon  = "lucide.building-2"
+        class = ["pin-city"]
+        title = "New York"
+        text { span "Financial capital on the US east coast." {} }
+        callout "Tip" { class = ["tip"]  body = "Cards accept any wdoc content — text, callouts, code, even images." }
+      }
+
+      pin "london" {
+        x = 640  y = 137
+        icon  = "lucide.landmark"
+        class = ["pin-city"]
+        title = "London"
+        text { span "On the prime meridian (longitude 0)." {} }
+      }
+
+      // The one-off `color` sugar themes a single pin without a class.
+      pin "danger" {
+        x = 1177  y = 440
+        icon  = "lucide.triangle-alert"
+        color = "#ef4444"
+        size  = 30.0
+        title = "Here be dragons"
+        text { span "Use `color` for a quick one-off marker colour, or a `class` for reusable, themable styling." {} }
+      }
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width    = 640
+  height   = 320
+  zoom_max = 8.0
+  map "earth" {
+    source = "assets/map/blue-marble.png"
+    width  = 1280
+    height = 640
+
+    pin "newyork" {
+      x = 377  y = 175
+      icon  = "lucide.building-2"
+      class = ["pin-city"]
+      title = "New York"
+      text { span "Financial capital on the US east coast." {} }
+      callout "Tip" { class = ["tip"]  body = "Cards accept any wdoc content." }
+    }
+    pin "london" {
+      x = 640  y = 137
+      icon  = "lucide.landmark"
+      class = ["pin-city"]
+      title = "London"
+      text { span "On the prime meridian (longitude 0)." {} }
+    }
+    // One-off colour, no class.
+    pin "danger" {
+      x = 1177  y = 440
+      icon  = "lucide.triangle-alert"
+      color = "#ef4444"
+      size  = 30.0
+      title = "Here be dragons"
+      text { span "A quick one-off marker colour." {} }
+    }
+  }
+}
+WCL
+  }
+
+  h2 "Pins & cards"
+
+  p "Each `pin` is an icon dropped at `x` / `y` in the map's coordinate space (its `id` is the inline label and must be unique on the page). Style the marker with a `class` (recommended — themable, supports `dark` / `light`) or the one-off `color`. A pin's child blocks become a floating **card** anchored to the marker: click to open, click the `✕` or outside to close. The card body is arbitrary wdoc content — text, lists, callouts, code, images."
+
+  table {
+    rows:
+      | "Field"        | "Meaning" |
+      | "`<id>`"       | "Pin id (the inline label) — links the pin to its card; page-unique." |
+      | "`x` / `y`"    | "Marker position, in the map's coordinate space." |
+      | "`icon`"       | "Icon name (default `lucide.map-pin`); `set.name` or pair with `set`." |
+      | "`set`"        | "Iconset name for a bare `icon`." |
+      | "`size`"       | "Marker size in map units (default `24`)." |
+      | "`class`"      | "Themes the marker (`fill` / `stroke` / `color`, with `dark` / `light`)." |
+      | "`card_class`" | "Themes the card popup (`background` / `color` / `border`)." |
+      | "`color`"      | "One-off inline marker colour (sugar for a class)." |
+      | "`title`"      | "Optional card heading." |
+      | "card children" | "Any wdoc blocks — the card body." |
+  }
+
+  h2 "Level-of-detail layers"
+
+  p "Maps support **different levels of detail**. Omit `layer`s entirely and the map's `source` is the only image. For large maps, supply several `layer`s and the player shows the **sharpest layer that suits the current zoom**: a low-resolution whole image when zoomed out, a higher-resolution one once you magnify in."
+
+  p "A layer is a single image when `cols` / `rows` are `1` (the default), or a grid of tiles otherwise — `source` is then a folder and each tile's filename comes from `pattern` (default `{x}_{y}.png`, 0-based). **Zoom in** on the map below: at the fitted view it draws a 1024px image; magnify it and the player swaps in a 2048px layer assembled from eight 512px tiles, so detail sharpens instead of pixelating."
+
+  diagram {
+    width    = 640
+    height   = 320
+    zoom_max = 6.0
+    map "earth-detail" {
+      width     = 2048
+      height    = 1024
+      tile_size = 512
+      // Low-res whole image for the zoomed-out view.
+      layer { source = "assets/map/lod/low.jpg" }
+      // 4x2 grid of 512px JPEG tiles for the zoomed-in view (note the
+      // `pattern` override for the `.jpg` extension).
+      layer { source = "assets/map/lod"  cols = 4  rows = 2  pattern = "{x}_{y}.jpg" }
+
+      pin "amazon" {
+        x = 683  y = 540
+        icon  = "lucide.trees"
+        class = ["pin-city"]
+        title = "Amazon basin"
+        text { span "The world's largest rainforest." {} }
+      }
+      pin "sahara" {
+        x = 1109  y = 381
+        icon  = "lucide.sun"
+        color = "#f59e0b"
+        title = "Sahara"
+        text { span "The largest hot desert." {} }
+      }
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width    = 640
+  height   = 320
+  zoom_max = 6.0
+  map "earth-detail" {
+    width     = 2048
+    height    = 1024
+    tile_size = 512
+    // Low-res whole image (zoomed-out view).
+    layer { source = "assets/map/lod/low.jpg" }
+    // 4x2 grid of 512px tiles (zoomed-in view).
+    layer { source = "assets/map/lod"  cols = 4  rows = 2  pattern = "{x}_{y}.jpg" }
+
+    pin "amazon" {
+      x = 683  y = 540
+      icon  = "lucide.trees"
+      class = ["pin-city"]
+      title = "Amazon basin"
+      text { span "The world's largest rainforest." {} }
+    }
+    pin "sahara" {
+      x = 1109  y = 381
+      icon  = "lucide.sun"
+      color = "#f59e0b"
+      title = "Sahara"
+      text { span "The largest hot desert." {} }
+    }
+  }
+}
+WCL
+  }
+
+  p "Each `layer` takes:"
+
+  table {
+    rows:
+      | "Field"       | "Meaning" |
+      | "`source`"    | "Image file, or the tile folder when tiled." |
+      | "`cols`"      | "Tiles across (default `1` = a single image)." |
+      | "`rows`"      | "Tiles down (default `1`)." |
+      | "`pattern`"   | "Tile filename pattern (default `{x}_{y}.png`, 0-based)." |
+      | "`tile_size`" | "Override the map's `tile_size` for this layer." |
+  }
+
+  h2 "Fields"
+
+  table {
+    rows:
+      | "Field"        | "Meaning" |
+      | "`<name>`"     | "Optional reference name (the inline label)." |
+      | "`source`"     | "Single whole-map image (the common, layer-less case)." |
+      | "`width` / `height`" | "The map's coordinate space — also the pin coordinate space." |
+      | "`tile_size`"  | "Tile pixel size for tiled layers (default `256`)." |
+      | "`smooth`"     | "`image-rendering: smooth` (default) vs `pixelated` when `false`." |
+      | "`class`"      | "Themes the map group." |
+      | "`x` / `y`"    | "Placement within the enclosing `diagram` / `container`." |
+      | "anchors"      | "`anchor_left/right/top/bottom` + `connect_points` — placed and connectable like any `SvgBlock`." |
+      | "`layer` children" | "Level-of-detail image layers (omit for a single `source`)." |
+      | "`pin` children"   | "Clickable markers with cards." |
+  }
+
+  h2 "Theming"
+
+  p "Maps ride the `class` system. A pin's `class` themes its marker (`fill` / `stroke` / `color`, with `dark` / `light`) and `card_class` themes its popup; the one-off `color` recolours a single marker without a class. The built-in look ships as bare-class defaults that read the `--wdoc-*` theme variables, so a `site` `theme` styles maps for free — no per-map CSS needed."
+
+  p "Next: [Dopesheets](wdoc_dopesheets)."
+}

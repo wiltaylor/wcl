@@ -101,6 +101,7 @@ site reference {
         chapter "Charts"               { page = wdoc_charts }
         chapter "Timelines"            { page = wdoc_timelines }
         chapter "Tilemaps"             { page = wdoc_tilemaps }
+        chapter "Maps"                 { page = wdoc_maps }
         chapter "Dopesheets"           { page = wdoc_dopesheets }
         chapter "Terminal"             { page = wdoc_terminals }
         chapter "Wireframe"            { page = wdoc_wireframe }
@@ -163,4 +164,5 @@ import "./pages/reference/wdoc/timelines.wcl"
 import "./pages/reference/wdoc/icons.wcl"
 import "./pages/reference/wdoc/images.wcl"
 import "./pages/reference/wdoc/tilemaps.wcl"
+import "./pages/reference/wdoc/maps.wcl"
 import "./pages/reference/wdoc/dopesheets.wcl"

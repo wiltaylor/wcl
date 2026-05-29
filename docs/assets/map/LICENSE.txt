@@ -1,0 +1,22 @@
+blue-marble.png
+===============
+
+NASA "Blue Marble 2002" — a true-colour composite of Earth's surface.
+Credit: NASA Goddard Space Flight Center Image by Reto Stöckli (land
+surface, shallow water, clouds).
+
+Source (Wikimedia Commons):
+https://commons.wikimedia.org/wiki/File:Blue_Marble_2002.png
+
+Licence: Public Domain. As a work produced by NASA, this image is not
+subject to copyright and is in the public domain
+(https://www.nasa.gov/multimedia/guidelines/index.html). NASA requests —
+but does not require — that its imagery carry the credit above.
+
+Resized to 1280×640 for the wdoc `map` example. Used here only as a sample
+map image to demonstrate the `map` block (pan/zoom + pins + popup cards).
+
+The `lod/` subdirectory holds derivatives of the same public-domain image,
+for the multi-zoom (level-of-detail) demo: `low.jpg` is a 1024×512 version,
+and `0_0.jpg`…`3_1.jpg` are 512px tiles of a 2048×1024 version (4 columns ×
+2 rows). Same NASA public-domain source and credit as above.
