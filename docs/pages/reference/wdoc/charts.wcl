@@ -2,22 +2,78 @@
 page wdoc_charts { sites = [:reference]
   h1 "Charts"
 
-  p "wdoc ships three chart kinds — `bar_chart`, `line_chart`, and `pie_chart` — that lower to SVG via pure-WCL geometry. Data is supplied as variant-tagged series; styling rides the same `class` and `theme` system as everything else."
+  p "wdoc ships three chart kinds — `bar_chart`, `line_chart`, and `pie_chart` — that lower to SVG via pure-WCL geometry. Each is an `SvgBlock`, so place it inside a `diagram` sharing its size. Data is supplied as variant-tagged series."
 
-  h2 "Bar and line charts"
+  h2 "Bar & line charts"
 
-  p "Both accept a `series: list<ChartSeries>` of `ChartSeries::Of { name, values }`. Multiple series produce grouped bars or multi-line plots."
+  p "Both take a `series: list<ChartSeries>` of `ChartSeries::Of { name, values }`. Multiple series produce grouped bars or multi-line plots; `categories` labels the x-axis."
+
+  diagram { width = 360  height = 200
+    bar_chart { width = 360.0  height = 200.0
+      title = "Revenue"  x_label = "Quarter"  y_label = "$k"
+      categories = ["Q1", "Q2", "Q3", "Q4"]
+      series = [
+        ChartSeries::Of { name: "2025", values: [42.0, 55.0, 61.0, 78.0] },
+        ChartSeries::Of { name: "2026", values: [30.0, 48.0, 52.0, 66.0] },
+      ]
+    }
+  }
+
   code wcl {
     source = <<'WCL'
-bar_chart {
-  title      = "Quarterly revenue"
-  x_label    = "Quarter"
-  y_label    = "USD (m)"
-  categories = ["Q1", "Q2", "Q3", "Q4"]
-  series     = [
-    ChartSeries::Of { name: "2025", values: [12.0, 15.0, 17.0, 22.0] },
-    ChartSeries::Of { name: "2026", values: [14.0, 18.0, 21.0, 25.0] },
-  ]
+diagram { width = 360  height = 200
+  bar_chart { width = 360.0  height = 200.0
+    title = "Revenue"  x_label = "Quarter"  y_label = "$k"
+    categories = ["Q1", "Q2", "Q3", "Q4"]
+    series = [
+      ChartSeries::Of { name: "2025", values: [42.0, 55.0, 61.0, 78.0] },
+      ChartSeries::Of { name: "2026", values: [30.0, 48.0, 52.0, 66.0] },
+    ]
+  }
+}
+WCL
+  }
+
+  p "`bar_chart` and `line_chart` share these fields:"
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`series`"            | "`list<ChartSeries>` — each `ChartSeries::Of { name: utf8, values: list<f64> }`." |
+      | "`categories`"        | "x-axis labels (`list<utf8>`); one per value." |
+      | "`title`"             | "Chart title." |
+      | "`x_label` / `y_label`" | "Axis labels." |
+      | "`y_min` / `y_max`"   | "Scale bounds; auto-fit to the data when omitted." |
+      | "`width` / `height`"  | "Chart size — match the enclosing `diagram`." |
+      | "`point_labels`"      | "*(line only)* print each point's value above its marker." |
+      | "`points`"            | "*(line only)* annotation markers — `list<ChartPoint>`." |
+      | "`id` / `class`"      | "Id + style classes." |
+  }
+
+  h2 "Line chart annotations"
+
+  p "On a `line_chart`, set `point_labels = true` to print every data point's value above its marker. For author-named callouts, pass `points: list<ChartPoint>` of `ChartPoint::At { label, category, value }` — `category` is the 0-based x slot and `value` is the y in data units."
+
+  diagram { width = 360  height = 200
+    line_chart { width = 360.0  height = 200.0
+      title = "Latency (ms)"  x_label = "Day"
+      categories = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+      point_labels = true
+      series = [ ChartSeries::Of { name: "p50", values: [12.0, 14.0, 11.0, 18.0, 13.0] } ]
+      points = [ ChartPoint::At { label: "spike", category: 3, value: 18.0 } ]
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 360  height = 200
+  line_chart { width = 360.0  height = 200.0
+    title = "Latency (ms)"  x_label = "Day"
+    categories = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+    point_labels = true
+    series = [ ChartSeries::Of { name: "p50", values: [12.0, 14.0, 11.0, 18.0, 13.0] } ]
+    points = [ ChartPoint::At { label: "spike", category: 3, value: 18.0 } ]
+  }
 }
 WCL
   }
@@ -25,39 +81,40 @@ WCL
   h2 "Pie chart"
 
   p "A `pie_chart` takes `slices: list<ChartSlice>` of `ChartSlice::Of { label, value }`. Slices are drawn as polygon-approximated arcs."
+
+  diagram { width = 240  height = 240
+    pie_chart { width = 240.0  height = 240.0
+      title = "Market share"
+      slices = [
+        ChartSlice::Of { label: "Alpha", value: 42.0 },
+        ChartSlice::Of { label: "Beta",  value: 31.0 },
+        ChartSlice::Of { label: "Other", value: 27.0 },
+      ]
+    }
+  }
+
   code wcl {
     source = <<'WCL'
-pie_chart {
-  title  = "Market share"
-  slices = [
-    ChartSlice::Of { label: "Alpha", value: 42.0 },
-    ChartSlice::Of { label: "Beta",  value: 31.0 },
-    ChartSlice::Of { label: "Other", value: 27.0 },
-  ]
+diagram { width = 240  height = 240
+  pie_chart { width = 240.0  height = 240.0
+    title = "Market share"
+    slices = [
+      ChartSlice::Of { label: "Alpha", value: 42.0 },
+      ChartSlice::Of { label: "Beta",  value: 31.0 },
+      ChartSlice::Of { label: "Other", value: 27.0 },
+    ]
+  }
 }
 WCL
   }
 
-  h2 "Line chart annotations"
-
-  p "On a `line_chart`, set `point_labels = true` to print every data point's value above its marker. For author-named annotations, pass `points: list<ChartPoint>` of `ChartPoint::At { label, category, value }` to pin a custom marker + label to a chosen `(x, y)`."
-
-  h2 "Theming"
-
-  p "Every bar, line, or slice is auto-tagged with a cycling palette class (`wdoc-series-1` through `wdoc-series-8`) and emits no inline fill — colour comes from CSS. Override one series by redeclaring its palette class (the name has hyphens, so quote it):"
-  code wcl {
-    source = <<'WCL'
-class "wdoc-series-1" {
-  fill = "#88c0d0"
-  dark  { fill = "#88c0d0" }
-  light { fill = "#5e81ac" }
-}
-WCL
-  }
-
-  callout "Built-in chart styling" {
-    class = ["info"]
-    body  = "wdoc injects a default chart stylesheet before user class rules, and themes set the eight series colours through --wdoc-* custom properties. So selecting a theme automatically recolours every chart."
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`slices`"           | "`list<ChartSlice>` — each `ChartSlice::Of { label: utf8, value: f64 }`." |
+      | "`title`"            | "Chart title." |
+      | "`width` / `height`" | "Chart size — match the enclosing `diagram`." |
+      | "`id` / `class`"     | "Id + style classes." |
   }
 
   p "Next: [Timelines](wdoc_timelines)."
