@@ -93,17 +93,18 @@ site reference {
       chapter "Columns"                { page = wdoc_columns }
       chapter "Styling"                { page = wdoc_styling }
       chapter "Diagrams"               { page = wdoc_diagrams
+        chapter "Primitive Shapes"     { page = wdoc_primitives }
         chapter "Flowcharts"           { page = wdoc_flowcharts }
         chapter "Charts"               { page = wdoc_charts }
         chapter "Timelines"            { page = wdoc_timelines }
         chapter "Cards"                { page = wdoc_cards }
         chapter "Tilemaps"             { page = wdoc_tilemaps }
         chapter "Dopesheets"           { page = wdoc_dopesheets }
+        chapter "Terminals"            { page = wdoc_terminals }
+        chapter "TUI Widgets"          { page = wdoc_tui }
+        chapter "Wireframe UI Widgets" { page = wdoc_wireframe }
+        chapter "Icons"                { page = wdoc_icons }
       }
-      chapter "Terminals"              { page = wdoc_terminals }
-      chapter "TUI Widgets"            { page = wdoc_tui }
-      chapter "Wireframe UI Widgets"   { page = wdoc_wireframe }
-      chapter "Icons"                  { page = wdoc_icons }
       chapter "Images"                 { page = wdoc_images }
     }
   }
@@ -153,6 +154,7 @@ import "./pages/reference/wdoc/tables.wcl"
 import "./pages/reference/wdoc/columns.wcl"
 import "./pages/reference/wdoc/styling.wcl"
 import "./pages/reference/wdoc/diagrams.wcl"
+import "./pages/reference/wdoc/primitives.wcl"
 import "./pages/reference/wdoc/flowcharts.wcl"
 import "./pages/reference/wdoc/charts.wcl"
 import "./pages/reference/wdoc/terminals.wcl"

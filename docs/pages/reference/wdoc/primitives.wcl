@@ -1,0 +1,253 @@
+// wdoc section: Primitive Shapes.
+page wdoc_primitives { sites = [:reference]
+  h1 "Primitive Shapes"
+
+
+  p "Primitive shapes are what everything is broken down into for rendering. Higher-level blocks (flowchart nodes, charts, cards, …) all lower to these, so targeting a new backend only means re-implementing the primitives."
+
+  p "Every shape shares a few fields, so the per-shape tables below only list what's distinctive:"
+
+  table {
+    rows:
+      | "Shared field" | "Meaning" |
+      | "`id`"            | "Name used to connect the shape (`a -> b`) and to anchor others to it." |
+      | "`class`"         | "Style classes — text and SVG paint (`fill`, `stroke`, …) via the `class` system." |
+      | "`anchor_left` / `anchor_right` / `anchor_top` / `anchor_bottom`" | "Fractional anchors (0–1) that pin an edge of the shape to the parent box." |
+      | "`connect_points`" | "Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to." |
+  }
+
+  p "The box-like shapes — `rect`, `circle`, and `container` — additionally accept an icon badge: `icon` (a `pack.name`), `icon_size`, `icon_pos` (`:center` / `:top_left` / …), and `icon_class`."
+
+  h2 "rect"
+
+  diagram { width = 200  height = 90
+    rect { x = 20.0  y = 15.0  width = 120.0  height = 60.0  fill = "#cce"  stroke = "#333" }
+  }
+
+  p "An axis-aligned rectangle — the workhorse box."
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`x` / `y`"          | "Top-left corner, in canvas pixels." |
+      | "`width` / `height`" | "Box size." |
+      | "`fill`"             | "Fill colour." |
+      | "`stroke`"           | "Outline colour." |
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 200  height = 90
+  rect { x = 20.0  y = 15.0  width = 120.0  height = 60.0  fill = "#cce"  stroke = "#333" }
+}
+WCL
+  }
+
+  h2 "circle"
+
+  diagram { width = 200  height = 100
+    circle { cx = 100.0  cy = 50.0  r = 36.0  fill = "#8fbcbb"  stroke = "#333" }
+  }
+
+  p "A circle, positioned by its centre."
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`cx` / `cy`" | "Centre point." |
+      | "`r`"         | "Radius." |
+      | "`fill`"      | "Fill colour." |
+      | "`stroke`"    | "Outline colour." |
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 200  height = 100
+  circle { cx = 100.0  cy = 50.0  r = 36.0  fill = "#8fbcbb"  stroke = "#333" }
+}
+WCL
+  }
+
+  h2 "line"
+
+  diagram { width = 200  height = 80
+    line { x1 = 20.0  y1 = 60.0  x2 = 180.0  y2 = 20.0  stroke = "#bf616a" }
+  }
+
+  p "A straight line segment between two points."
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`x1` / `y1`" | "Start point." |
+      | "`x2` / `y2`" | "End point." |
+      | "`stroke`"    | "Line colour." |
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 200  height = 80
+  line { x1 = 20.0  y1 = 60.0  x2 = 180.0  y2 = 20.0  stroke = "#bf616a" }
+}
+WCL
+  }
+
+  h2 "label"
+
+  diagram { width = 200  height = 60
+    label "Hello" { x = 100.0  y = 36.0  font_size = 22.0  fill = "#5e81ac" }
+  }
+
+  p "An SVG text label. Named `label` (not `text`) to avoid clashing with the paragraph block."
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`<inline>`"             | "The text, given as the inline label: `label \"halfway\" { … }`." |
+      | "`x` / `y`"              | "Anchor position." |
+      | "`font_size`"           | "Explicit size; when omitted the text auto-fits its region." |
+      | "`fit_width` / `fit_height`" | "Region the text is auto-sized to fit (when `font_size` is unset)." |
+      | "`fill`"                 | "Text colour." |
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 200  height = 60
+  label "Hello" { x = 100.0  y = 36.0  font_size = 22.0  fill = "#5e81ac" }
+}
+WCL
+  }
+
+  h2 "polygon"
+
+  diagram { width = 200  height = 100
+    polygon { points = "40,80 100,15 160,80"  fill = "#ebcb8b"  stroke = "#333" }
+  }
+
+  p "An arbitrary closed shape from a list of points."
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`points`" | "Space-separated `x,y` pairs, e.g. `\"180,10 230,40 180,70\"`." |
+      | "`fill`"   | "Fill colour." |
+      | "`stroke`" | "Outline colour." |
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 200  height = 100
+  polygon { points = "40,80 100,15 160,80"  fill = "#ebcb8b"  stroke = "#333" }
+}
+WCL
+  }
+
+  h2 "container"
+
+  diagram { width = 240  height = 130
+    container {
+      anchor_left = 10.0  anchor_top = 10.0
+      fill = "#eef"  stroke = "#88a"  padding = 10.0
+      layout = :grid  columns = 2  cell_width = 90.0  cell_height = 44.0  gap = 10.0
+      rect { fill = "#88c0d0" }
+      rect { fill = "#a3be8c" }
+      rect { fill = "#ebcb8b" }
+      rect { fill = "#b48ead" }
+    }
+  }
+
+  p "A grouping box that holds and lays out child shapes (`@children`). Optional chrome makes the group visible; a `layout` arranges the children automatically."
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`width` / `height`"   | "Declared interior size (when no layout/anchor sizes it)." |
+      | "`fill` / `stroke`"    | "Optional chrome — a background rect the size of the box." |
+      | "`padding`"            | "Inset between the chrome and the child shapes." |
+      | "`layout`"             | "`:free` (default, manual) / `:grid` / `:layered` / `:force`." |
+      | "`columns` / `cell_width` / `cell_height` / `gap`" | "Grid layout controls." |
+      | "`direction`"          | "`:top_to_bottom` (default) / `:left_to_right` for layered flow." |
+      | "`layer_gap` / `node_gap`" | "Spacing for `:layered` layout." |
+      | "`iterations` / `repulsion` / `link_distance` / `gravity` / `seed`" | "`:force`-directed tuning (deterministic per `seed`)." |
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 240  height = 130
+  container {
+    anchor_left = 10.0  anchor_top = 10.0
+    fill = "#eef"  stroke = "#88a"  padding = 10.0
+    layout = :grid  columns = 2  cell_width = 90.0  cell_height = 44.0  gap = 10.0
+    rect { fill = "#88c0d0" }
+    rect { fill = "#a3be8c" }
+    rect { fill = "#ebcb8b" }
+    rect { fill = "#b48ead" }
+  }
+}
+WCL
+  }
+
+  h2 "image"
+
+  diagram { width = 200  height = 90
+    image "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiM1ZTgxYWMiLz48Y2lyY2xlIGN4PSI1MCIgY3k9IjMwIiByPSIxOCIgZmlsbD0iI2ViY2I4YiIvPjwvc3ZnPg==" { x = 50.0  y = 15.0  width = 100.0  height = 60.0 }
+  }
+
+  p "A raster image placed as an SVG `<image>`. The source (the inline label) is a doc-relative path — copied into `_wdoc/` — or a URL / `data:` URI passed through unchanged. (The preview above uses an inline `data:` URI so it renders here.)"
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`<inline>`"          | "The `source`: a doc-relative path, a URL, or a `data:` URI." |
+      | "`x` / `y`"           | "Top-left placement in the diagram." |
+      | "`width` / `height`"  | "Display size; natural size if omitted." |
+      | "`scale`"             | "Uniform scale factor applied to the size." |
+      | "`alt`"               | "Alt text (used when the image is a page `<img>`)." |
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 200  height = 90
+  image "logo.png" { x = 50.0  y = 15.0  width = 100.0  height = 60.0 }
+}
+WCL
+  }
+
+  p "See [Images](wdoc_images) for the page-level `<img>` form and asset handling."
+
+  h2 "card"
+
+  diagram { width = 260  height = 110
+    card { x = 20.0  y = 15.0  width = 220.0  height = 80.0
+      title = "Note"
+      p "Rich **text** inside a diagram."
+    }
+  }
+
+  p "A box whose `body` is arbitrary wdoc content (paragraphs, callouts, lists, even nested diagrams), wrapped in an SVG `<foreignObject>` so it scales with the diagram. Timelines accept cards too, pinned to a date with `on`."
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`x` / `y`"          | "Top-left placement (or use anchors)." |
+      | "`width` / `height`" | "Card box size (defaults 160×90)." |
+      | "`title`"            | "Optional plain-text heading." |
+      | "`body`"             | "`@children(WdocBlock)` — the rich content." |
+      | "`on` / `side`"      | "Date + side, used only when the card is a `timeline` child." |
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 260  height = 110
+  card { x = 20.0  y = 15.0  width = 220.0  height = 80.0
+    title = "Note"
+    p "Rich **text** inside a diagram."
+  }
+}
+WCL
+  }
+
+  p "See [Cards](wdoc_cards) for timeline cards and richer bodies."
+
+  p "Next: [Flowcharts](wdoc_flowcharts)."
+}
