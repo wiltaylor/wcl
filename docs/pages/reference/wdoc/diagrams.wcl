@@ -2,9 +2,11 @@
 page wdoc_diagrams { sites = [:reference]
   h1 "Diagrams"
 
-  p "A `diagram` block holds SVG shapes. Coordinates are free-form by default; auto-layout, connection routing, and optional pan + zoom are layered on top via flags on the block."
+  p "Diagram blocks are wdoc's way of drawing diagrams and charts on pages. A diagram is made of shapes that break down into primitive shapes and render as SVG, which lets the same source target different backends."
 
   h2 "The diagram block"
+  
+  p "Diagrams have the following properties that can be set."
 
   table {
     rows:
@@ -19,7 +21,103 @@ page wdoc_diagrams { sites = [:reference]
 
   h2 "Primitive shapes"
 
-  p "`rect`, `circle`, `line`, `polygon`, `path`, `label`, `image`, and `container` are the core primitives. Each carries position, size, and paint fields (`fill`, `stroke`, …)."
+  p "Primitive shapes are what everything is broken down into for rendering. Higher-level blocks (flowchart nodes, charts, cards, …) all lower to these, so targeting a new backend only means re-implementing the primitives."
+
+  p "Every shape shares a few fields, so the per-shape tables below only list what's distinctive:"
+
+  table {
+    rows:
+      | "Shared field" | "Meaning" |
+      | "`id`"            | "Name used to connect the shape (`a -> b`) and to anchor others to it." |
+      | "`class`"         | "Style classes — text and SVG paint (`fill`, `stroke`, …) via the `class` system." |
+      | "`anchor_left` / `anchor_right` / `anchor_top` / `anchor_bottom`" | "Fractional anchors (0–1) that pin an edge of the shape to the parent box." |
+      | "`connect_points`" | "Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to." |
+  }
+
+  p "The box-like shapes — `rect`, `circle`, and `container` — additionally accept an icon badge: `icon` (a `pack.name`), `icon_size`, `icon_pos` (`:center` / `:top_left` / …), and `icon_class`."
+
+  h3 "rect"
+
+  p "An axis-aligned rectangle — the workhorse box."
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`x` / `y`"          | "Top-left corner, in canvas pixels." |
+      | "`width` / `height`" | "Box size." |
+      | "`fill`"             | "Fill colour." |
+      | "`stroke`"           | "Outline colour." |
+  }
+
+  h3 "circle"
+
+  p "A circle, positioned by its centre."
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`cx` / `cy`" | "Centre point." |
+      | "`r`"         | "Radius." |
+      | "`fill`"      | "Fill colour." |
+      | "`stroke`"    | "Outline colour." |
+  }
+
+  h3 "line"
+
+  p "A straight line segment between two points."
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`x1` / `y1`" | "Start point." |
+      | "`x2` / `y2`" | "End point." |
+      | "`stroke`"    | "Line colour." |
+  }
+
+  h3 "label"
+
+  p "An SVG text label. Named `label` (not `text`) to avoid clashing with the paragraph block."
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`<inline>`"             | "The text, given as the inline label: `label \"halfway\" { … }`." |
+      | "`x` / `y`"              | "Anchor position." |
+      | "`font_size`"           | "Explicit size; when omitted the text auto-fits its region." |
+      | "`fit_width` / `fit_height`" | "Region the text is auto-sized to fit (when `font_size` is unset)." |
+      | "`fill`"                 | "Text colour." |
+  }
+
+  h3 "polygon"
+
+  p "An arbitrary closed shape from a list of points."
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`points`" | "Space-separated `x,y` pairs, e.g. `\"180,10 230,40 180,70\"`." |
+      | "`fill`"   | "Fill colour." |
+      | "`stroke`" | "Outline colour." |
+  }
+
+  h3 "container"
+
+  p "A grouping box that holds and lays out child shapes (`@children`). Optional chrome makes the group visible; a `layout` arranges the children automatically."
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`width` / `height`"   | "Declared interior size (when no layout/anchor sizes it)." |
+      | "`fill` / `stroke`"    | "Optional chrome — a background rect the size of the box." |
+      | "`padding`"            | "Inset between the chrome and the child shapes." |
+      | "`layout`"             | "`:free` (default, manual) / `:grid` / `:layered` / `:force`." |
+      | "`columns` / `cell_width` / `cell_height` / `gap`" | "Grid layout controls." |
+      | "`direction`"          | "`:top_to_bottom` (default) / `:left_to_right` for layered flow." |
+      | "`layer_gap` / `node_gap`" | "Spacing for `:layered` layout." |
+      | "`iterations` / `repulsion` / `link_distance` / `gravity` / `seed`" | "`:force`-directed tuning (deterministic per `seed`)." |
+  }
+
+  h3 "Putting them together"
 
   code wcl {
     source = <<'WCL'
@@ -35,6 +133,8 @@ diagram {
 }
 WCL
   }
+
+  p "An `image` is also a placeable diagram shape — see [Images](wdoc_images)."
 
   h2 "Connections"
 
