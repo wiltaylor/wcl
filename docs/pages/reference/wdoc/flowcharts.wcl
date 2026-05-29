@@ -6,27 +6,86 @@ page wdoc_flowcharts { sites = [:reference]
 
   h2 "Flowchart shapes"
 
-  p "`process`, `decision`, and `terminator` are stdlib shapes that lower to SVG primitives. Each takes a label inline and the usual position / size fields. Inside a `:layered` diagram, omit `x`/`y` — the layout decides them."
+  p "These stdlib shapes lower to SVG primitives. Each takes its label inline plus the usual position / size + paint fields (`x` / `y` / `width` / `height`, `fill` / `stroke`, `id` / `class`). Inside a `:layered` diagram, omit `x`/`y` — the layout decides them."
+
+  h3 "process"
+
+  diagram { width = 160  height = 70
+    process "Validate" { x = 20.0  y = 15.0  width = 120.0  height = 40.0  fill = "#88c0d0" }
+  }
+
+  p "A rectangle for an action or step."
 
   code wcl {
     source = <<'WCL'
-process    "Validate" { id = validate  width = 100.0  height = 40.0 }
-decision   "Match?"   { id = check     width = 100.0  height = 60.0 }
-terminator "End"      { id = done      width = 100.0  height = 40.0 }
+diagram { width = 160  height = 70
+  process "Validate" { x = 20.0  y = 15.0  width = 120.0  height = 40.0  fill = "#88c0d0" }
+}
 WCL
   }
 
-  table {
-    rows:
-      | "Shape"        | "Visual" |
-      | "`process`"    | "Rounded rectangle for actions / steps" |
-      | "`decision`"   | "Diamond for branching" |
-      | "`terminator`" | "Pill / stadium for start / end nodes" |
+  h3 "decision"
+
+  diagram { width = 160  height = 90
+    decision "Match?" { x = 20.0  y = 15.0  width = 120.0  height = 60.0  fill = "#ebcb8b" }
+  }
+
+  p "A diamond for a branch — a yes/no test."
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 160  height = 90
+  decision "Match?" { x = 20.0  y = 15.0  width = 120.0  height = 60.0  fill = "#ebcb8b" }
+}
+WCL
+  }
+
+  h3 "node"
+
+  diagram { width = 120  height = 90
+    node "A" { x = 30.0  y = 15.0  width = 60.0  height = 60.0  fill = "#a3be8c" }
+  }
+
+  p "A labelled circle for graph / network nodes — pairs naturally with `layout = :force`."
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 120  height = 90
+  node "A" { x = 30.0  y = 15.0  width = 60.0  height = 60.0  fill = "#a3be8c" }
+}
+WCL
+  }
+
+  h3 "terminator"
+
+  diagram { width = 160  height = 70
+    terminator "Start" { x = 20.0  y = 15.0  width = 120.0  height = 40.0  fill = "#b48ead" }
+  }
+
+  p "A start / end node (rounded-rect)."
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 160  height = 70
+  terminator "Start" { x = 20.0  y = 15.0  width = 120.0  height = 40.0  fill = "#b48ead" }
+}
+WCL
   }
 
   h2 "Layered auto-layout"
 
   p "Set `layout = :layered` on the diagram. Shapes are topologically ranked from the connection graph and stacked top-to-bottom; elbow routing then connects them with right-angled paths. `layer_gap` controls the spacing between ranks."
+
+  diagram {
+    width = 320  height = 220  layout = :layered  layer_gap = 20.0
+
+    process    "Parse"  { id = parse   width = 100.0  height = 40.0 }
+    decision   "Valid?" { id = valid   width = 100.0  height = 60.0 }
+    terminator "Render" { id = render  width = 100.0  height = 40.0 }
+
+    parse -> valid  :flow
+    valid -> render :flow
+  }
 
   code wcl {
     source = <<'WCL'
