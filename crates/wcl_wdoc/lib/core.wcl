@@ -17,6 +17,7 @@ type Site {
   @children("template")       templates:   list<Template>
   @children("iconset")        iconsets:    list<IconSet>
   @children("tileset")        tilesets:    list<Tileset>
+  @children("theme")          themes:      list<ThemeBlock>
   // A document may declare several named `site` blocks; each renders to
   // its own subdirectory (a single site renders flat at the output
   // root). Absent ⇒ pages render bare. See `Page.sites` for membership.

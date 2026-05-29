@@ -109,11 +109,11 @@ type SiteConfig {
   // Render a light/dark toggle (the `book` template shows it). Pair
   // with `class` blocks that declare `dark {}` / `light {}` modes.
   theme_toggle:     bool?
-  // Colour theme for this site. Any `ColourTheme` value — a built-in
-  // (`nord` / `gruvbox` / `solarized` / `catppuccin` / `tokyonight` /
-  // `kanagawa` / `everforest`) or one you declare yourself. Unset ⇒ the
-  // renderer applies `nord`. See `theme.wcl`.
-  theme:  ColourTheme?
+  // Colour theme for this site — a symbol naming a `theme` block: a
+  // built-in (`:nord` / `:gruvbox` / `:solarized` / `:catppuccin` /
+  // `:tokyonight` / `:kanagawa` / `:everforest`) or one you declare
+  // yourself. Unset ⇒ the renderer applies `:nord`. See `theme.wcl`.
+  theme:  symbol?
   // Which hue drives links / highlights (`--wdoc-accent`): one of
   // red orange yellow green cyan blue purple pink. Unset ⇒ blue.
   accent: symbol?

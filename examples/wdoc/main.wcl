@@ -10,6 +10,11 @@
 // A page joins a site via its `sites` array (e.g. `sites = [:showcase]`);
 // a page with no `sites` is shared by every site. Shared styles and
 // iconsets below are global, so all three sites can use them.
+//
+// The `import <wdoc.wcl>` below pulls in the embedded wdoc standard
+// library — every stdlib block is then in scope here and in the pages
+// this file imports.
+import <wdoc.wcl>
 
 // Keyword/emphasis accent used across the showcase prose. Uses the
 // theme's accent hue (`var(--wdoc-accent)`) rather than a fixed colour,
@@ -60,7 +65,7 @@ site showcase {
   root             = true
   // A built-in colour theme. One line recolours the whole site — page
   // background / text, links, headings, code, charts, callouts, tables.
-  theme            = tokyonight
+  theme            = :tokyonight
   // Curated navbar: top-level links plus two click-to-open dropdowns and
   // an external link. An `item` with nested `item`s is a dropdown parent;
   // `page` links to a page (validated), `href` to an external URL.
@@ -96,7 +101,7 @@ site docs {
   default_template = :book
   title            = "Project Docs"
   theme_toggle     = true
-  theme            = nord
+  theme            = :nord
   accent           = :cyan
   toc {
     chapter "Introduction" { page = index }
@@ -118,7 +123,7 @@ class "book-title" { sites = [:docs]  color = "#88c0d0"  light { color = "#5e81a
 site blog {
   default_template = :webpage
   title            = "Project Blog"
-  theme            = gruvbox
+  theme            = :gruvbox
 }
 
 // Per-page sources. Each imported file declares one `page <name> { ... }`

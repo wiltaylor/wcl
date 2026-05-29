@@ -1,23 +1,23 @@
 //! Colour-theme CSS emission.
 //!
-//! A `site` selects a `ColourTheme` value (see `lib/theme.wcl`); this
-//! module reads that value's record and emits the themed stylesheet: the
-//! `--wdoc-*` custom properties on `:root` for the dark palette (the
-//! default), under `@media (prefers-color-scheme: light)` for the light
-//! palette, and per explicit `:root[data-theme=…]` (the book toggle),
-//! plus the [`APPLY`] rules that paint everything the renderer produces
-//! with `var(--wdoc-*)`. `build.rs::site_css` splices the result between
-//! the library `class` rules and the user ones, so a theme overrides the
-//! built-in defaults (chart palette, syntax tokens) while user `class`
-//! blocks still win. The palette *data* lives in WCL; only this CSS
-//! template is Rust (mirroring the other `*_CSS` constants).
+//! A `site` names a `theme` block via its `theme` symbol (see
+//! `lib/theme.wcl`); this module finds that block + its `dark` / `light`
+//! `palette` children and emits the themed stylesheet: the `--wdoc-*`
+//! custom properties on `:root` for the dark palette (the default), under
+//! `@media (prefers-color-scheme: light)` for the light palette, and per
+//! explicit `:root[data-theme=…]` (the book toggle), plus the [`APPLY`]
+//! rules that paint everything the renderer produces with `var(--wdoc-*)`.
+//! `build.rs::site_css` splices the result between the library `class`
+//! rules and the user ones, so a theme overrides the built-in defaults
+//! (chart palette, syntax tokens) while user `class` blocks still win. The
+//! palette *data* lives in WCL; only this CSS template is Rust (mirroring
+//! the other `*_CSS` constants).
 
-use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use wcl_lang::{Block, Document, Value, VariantPayload};
+use wcl_lang::{Block, Document};
 
-use super::field_symbol;
+use super::{field_symbol, field_utf8, label_string};
 
 /// The 18 `Palette` roles, paired with the CSS custom-property suffix
 /// (`bg_alt` → `--wdoc-bg-alt`). Emission order is fixed so output is
@@ -100,45 +100,24 @@ pre.code-block{background:var(--wdoc-bg-inset);color:var(--wdoc-fg);border-color
 .bold{color:var(--wdoc-orange);}
 .code{background:var(--wdoc-bg-inset);border-radius:4px;padding:0.05em 0.3em;}";
 
-/// Borrow the named fields of a record-shaped value — a single-variant
-/// union (`Palette::Of {…}` / `ColourTheme::Of {…}`) or a bare record.
-fn record_fields(v: &Value) -> Option<&BTreeMap<String, Value>> {
-    match v {
-        Value::Variant {
-            payload: VariantPayload::Record(m),
-            ..
-        } => Some(m),
-        Value::Record { fields, .. } => Some(fields),
-        _ => None,
-    }
-}
-
-/// Append `--wdoc-<role>:<hex>;` for every role present in `pal`.
-fn palette_vars(pal: &BTreeMap<String, Value>, out: &mut String) {
+/// Append `--wdoc-<role>:<hex>;` for every role the palette block sets.
+fn palette_vars(pal: &Block<'_>, out: &mut String) {
     for (field, var) in ROLES {
-        if let Some(Value::Utf8(c) | Value::Ascii(c)) = pal.get(*field) {
+        if let Some(c) = field_utf8(pal, field) {
             write!(out, "--wdoc-{var}:{c};").expect("write to String");
         }
     }
 }
 
 /// The themed `<style>` content for one site, or `None` when there is no
-/// `site` block (bare documents stay unthemed) or the selected theme
-/// value is malformed. A `site` without an explicit `theme` defaults to
-/// `nord`.
+/// `site` block (bare documents stay unthemed) or no `theme` block can be
+/// resolved. A `site` without an explicit `theme` defaults to `nord`; an
+/// unknown name also falls back to `nord`.
 pub(crate) fn site_theme_css(doc: &Document, site_block: Option<&Block<'_>>) -> Option<String> {
     let block = site_block?;
 
-    // The selected `ColourTheme` value, or the `nord` default. `nord`
-    // is a top-level `let` in the imported stdlib, so it resolves
-    // through the document's root scope.
-    let theme = match block.field("theme").and_then(|f| f.value().ok()) {
-        Some(v) if !matches!(v, Value::None) => v.clone(),
-        _ => {
-            let expr = wcl_lang::parse_expr("nord", "<wdoc-theme>").ok()?;
-            doc.eval_expr(&expr).ok()?
-        }
-    };
+    // The `theme` symbol names a `theme` block; default to `nord`.
+    let name = field_symbol(block, "theme").unwrap_or_else(|| "nord".to_string());
 
     let accent_raw = field_symbol(block, "accent").unwrap_or_default();
     let accent = if HUES.contains(&accent_raw.as_str()) {
@@ -147,14 +126,25 @@ pub(crate) fn site_theme_css(doc: &Document, site_block: Option<&Block<'_>>) -> 
         "blue"
     };
 
-    let theme = record_fields(&theme)?;
-    let dark = record_fields(theme.get("dark")?)?;
-    let light = record_fields(theme.get("light")?)?;
+    // Find the named `theme` block (built-in or user-declared), falling
+    // back to the built-in `nord` when the name doesn't resolve.
+    let is_theme =
+        |b: &Block<'_>, n: &str| b.kind() == "theme" && label_string(b).as_deref() == Some(n);
+    let theme = doc
+        .blocks()
+        .find(|b| is_theme(b, &name))
+        .or_else(|| doc.blocks().find(|b| is_theme(b, "nord")))?;
 
+    // Pull the `--wdoc-*` vars from its `dark` / `light` palette children.
     let mut dv = String::new();
-    palette_vars(dark, &mut dv);
     let mut lv = String::new();
-    palette_vars(light, &mut lv);
+    for pal in theme.blocks().filter(|b| b.kind() == "palette") {
+        match label_string(&pal).as_deref() {
+            Some("dark") => palette_vars(&pal, &mut dv),
+            Some("light") => palette_vars(&pal, &mut lv),
+            _ => {}
+        }
+    }
 
     let mut out = String::new();
     writeln!(out, ":root{{{dv}}}").expect("write to String");

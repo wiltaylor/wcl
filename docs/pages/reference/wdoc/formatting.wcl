@@ -1,0 +1,199 @@
+// wdoc section: Formatting (text & inline patterns, headings, code).
+page wdoc_formatting { sites = [:reference]
+  h1 "Formatting"
+
+  p "The everyday building blocks of a page: prose paragraphs with inline formatting, the six heading levels, and syntax-highlighted code listings."
+
+  h2 "Paragraphs with p"
+
+  p "`p \"...\"` is the canonical paragraph shorthand. The label text is the paragraph's content, and inline patterns light up automatically."
+
+  code wcl {
+    source = <<'WCL'
+p "Quick prose with **bold** and `inline code`."
+p "A whole paragraph in one line."
+WCL
+  }
+
+  h2 "Inline patterns"
+
+  p "The following patterns are recognised in any `p` body, in spans inside a `text` block, and in `utf8` table cells:"
+  code wcl {
+    source = <<'WCL'
+**bold**             // → bold class
+_italic_             // → italic class
+`code`               // → monospace inline code
+[text](page)         // → in-site link to a page
+[text](site:page)    // → cross-site link
+[text](https://...)  // → external link
+:lucide.check:       // → inline icon (pack.name)
+$x^2$                // → inline LaTeX (text style)
+$$\int x \, dx$$     // → display-style LaTeX
+WCL
+  }
+  
+  h2 "Headings"
+
+  p "Six heading levels are available — `h1` through `h6` — each taking the heading text as a single inline label and an optional `id`."
+
+  code wcl {
+    source = <<'WCL'
+h1 "Title"             { id = top }
+h2 "Section"
+h3 "Subsection"
+h4 "Details"
+h5 "Fine points"
+h6 "Minutiae"
+WCL
+  }
+  
+  h2 "Code blocks"
+
+  p "`code <lang> { source = ... }` renders a syntax-highlighted listing. The language tag picks the grammar; an unknown tag falls back to plain text."
+
+  code wcl {
+    source = <<'WCL'
+code rust {
+  source = <<'RUST'
+fn fib(n: u32) -> u64 {
+    match n {
+        0 => 0,
+        1 => 1,
+        _ => fib(n - 1) + fib(n - 2),
+    }
+}
+RUST
+}
+WCL
+  }
+
+  p "wdoc highlights a wide range of languages (via syntect + two-face). The tag is the language name or a common file extension; WCL ships its own grammar, so `code wcl { … }` highlights too. Supported tags include:"
+
+  column {
+    widths = [33.3, 33.3, 33.3]
+    list {
+      li "`rust`"
+      li "`python`"
+      li "`javascript`"
+      li "`typescript`"
+      li "`go`"
+      li "`c`"
+      li "`cpp`"
+      li "`java`"
+      li "`kotlin`"
+    }
+    list {
+      li "`ruby`"
+      li "`php`"
+      li "`swift`"
+      li "`html`"
+      li "`css`"
+      li "`scss`"
+      li "`json`"
+      li "`yaml`"
+      li "`toml`"
+    }
+    list {
+      li "`xml`"
+      li "`markdown`"
+      li "`sql`"
+      li "`bash`"
+      li "`dockerfile`"
+      li "`lua`"
+      li "`haskell`"
+      li "`scala`"
+      li "`wcl`"
+    }
+  }
+
+  p "The `source` is usually a heredoc — use a raw heredoc (`<<'TAG'`) so the body is taken verbatim, with no escapes or interpolation to mangle backslash-heavy code. See [Strings & Heredocs](strings) for the full syntax."
+
+  h2 "Lists"
+
+  p "A `list` holds `li` items. It's a bullet list by default; set `style = :numbered` for a numbered one. Each `li`'s text runs through the inline-pattern engine, so **bold**, `code`, links, and icons all work inside items."
+
+  code wcl {
+    source = <<'WCL'
+list {
+  li "Plain item"
+  li "With **bold** and a [link](wdoc_overview)"
+}
+
+list { style = :numbered
+  li "First step"
+  li "Second step"
+}
+WCL
+  }
+
+  p "Nest an `li` inside an `li` for a sublist — it inherits the parent list's style, so a numbered list numbers sublists hierarchically (`2.1`, `2.2`). For a sublist with a *different* style, drop a whole `list` block inside the `li` instead."
+
+  code wcl {
+    source = <<'WCL'
+list { style = :numbered
+  li "Setup"
+  li "Build" {
+    li "Compile"          // renders 2.1
+    li "Link"             // renders 2.2
+  }
+  li "Run" {
+    list {                // a bulleted sublist inside a numbered list
+      li "Foreground"
+      li "Background"
+    }
+  }
+}
+WCL
+  }
+
+  h2 "Callouts"
+
+  p "A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are selected by `class`, each shipping a default colour and icon."
+
+  code wcl {
+    source = <<'WCL'
+callout "Note" {
+  class = ["note"]
+  body  = "Background context the reader should remember."
+}
+
+callout "Heads up" {
+  class = ["warning"]
+  body  = "Something to be careful about."
+}
+
+callout "All done" {
+  class = ["success"]
+  icon  = "lucide.party-popper"        // override the default icon
+  body  = "Confirm an action completed."
+}
+WCL
+  }
+
+  p "The built-in types and their default colour + icon:"
+
+  table {
+    rows:
+      | "Type"      | "Default colour" | "Default icon" |
+      | "`note`"    | "Blue"           | "lucide.info" |
+      | "`info`"    | "Blue"           | "lucide.info" |
+      | "`tip`"     | "Cyan"           | "lucide.lightbulb" |
+      | "`warning`" | "Orange"         | "lucide.triangle-alert" |
+      | "`error`"   | "Red"            | "lucide.circle-x" |
+      | "`success`" | "Green"          | "lucide.circle-check" |
+  }
+
+  p "Its fields:"
+
+  table {
+    rows:
+      | "Field"   | "Meaning" |
+      | "`<heading>`" | "Inline label — the coloured heading at the top of the callout." |
+      | "`body`"  | "The prose under the heading. Plain text — see the warning below." |
+      | "`class`" | "Selects the type: `[\"note\"]` / `[\"tip\"]` / etc. May also carry user classes." |
+      | "`icon`"  | "Override the default icon (any `pack.name` from a built-in or declared iconset)." |
+      | "`id`"    | "Optional explicit HTML id." |
+  }
+
+  p "Next: [Math Equations](wdoc_math)."
+}

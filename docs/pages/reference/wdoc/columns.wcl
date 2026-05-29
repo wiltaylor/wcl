@@ -2,9 +2,7 @@
 page wdoc_columns { sites = [:reference]
   h1 "Columns"
 
-  p "`column { widths = […] }` lays its children out in a horizontal grid. `widths` is a list of CSS percentages; each child fills one column."
-
-  h2 "Authoring"
+  p "`column are a way to layout wdoc content in columns on a page instead of just sequentually."
 
   code wcl {
     source = <<'WCL'
@@ -27,10 +25,5 @@ WCL
 
   p "Columns can hold any wdoc content — paragraphs, headings, callouts, code blocks, diagrams, charts, even other columns. Apply a shared `class` to the column itself to style the group."
 
-  callout "Layout vs data" {
-    class = ["info"]
-    body  = "Use a column for visual side-by-side layout. For tabular data with a header row, reach for a table — see the previous chapter."
-  }
-
-  p "Next: [Classes](wdoc_classes)."
+  p "Next: [Styling](wdoc_styling)."
 }

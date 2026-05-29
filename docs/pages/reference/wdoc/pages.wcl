@@ -20,6 +20,8 @@ page wdoc_pages { sites = [:reference]
 
   code wcl {
     source = <<'WCL'
+import <wdoc.wcl>
+
 page index { sites = [:mysite]  start = true
   h1 "My project"
   p "A short intro."
@@ -41,5 +43,5 @@ p "See [the about page](about) or jump to [the docs](docs:index)."
 WCL
   }
 
-  p "Next: [Text & Inline Patterns](wdoc_text)."
+  p "Next: [Formatting](wdoc_formatting)."
 }

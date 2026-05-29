@@ -31,14 +31,5 @@ PATTERNS
 
   p "The `$…$` pattern requires a non-space at each delimiter, so currency like `$10 or $20` is left alone."
 
-  h2 "Colour"
-
-  p "RaTeX's default black fill is rewritten to `currentColor`, so equations follow the surrounding text colour — theme changes, light/dark toggles, and a `class \"…\" { color = … }` override all flow through. An explicit `\\textcolor{...}{…}` in the LaTeX survives unchanged."
-
-  callout "Bad LaTeX is non-fatal" {
-    class = ["info"]
-    body  = "RaTeX runs under catch_unwind. Malformed input becomes an inline .wdoc-math-error marker; the rest of the page builds normally."
-  }
-
   p "Next: [Tables](wdoc_tables)."
 }

@@ -7,10 +7,11 @@
 //
 // One document, two sites. A page joins a site via its `sites` array
 // (`sites = [:wcl]` / `sites = [:reference]`); page names are unique
-// per site, so both sites carry their own `index`. The `wcl wdoc build`
-// pipeline auto-imports `<wdoc/prelude.wcl>`, so every stdlib block
-// (`page` / `text` / `code` / `callout` / `table` / `h1`..`h6` / …) is
-// already in scope — no prelude import here.
+// per site, so both sites carry their own `index`. The single
+// `import <wdoc.wcl>` below pulls in the embedded wdoc standard library,
+// so every stdlib block (`page` / `text` / `code` / `callout` / `table`
+// / `h1`..`h6` / …) is in scope here and in every imported page.
+import <wdoc.wcl>
 
 // Reused in hero prose: paints with the active theme's accent hue so it
 // stays readable on dark and light.
@@ -27,7 +28,7 @@ site wcl {
   default_template = :webpage
   title            = "WCL"
   root             = true
-  theme            = nord
+  theme            = :nord
   accent           = :cyan
   menu {
     item "Home"            { page = index }
@@ -46,7 +47,7 @@ site wcl {
 site reference {
   default_template = :book
   title            = "WCL Language Reference"
-  theme            = nord
+  theme            = :nord
   accent           = :cyan
   theme_toggle     = true
   toc {
@@ -86,15 +87,11 @@ site reference {
       chapter "Overview"               { page = wdoc_overview }
       chapter "Sites & Templates"      { page = wdoc_sites }
       chapter "Pages"                  { page = wdoc_pages }
-      chapter "Text & Inline Patterns" { page = wdoc_text }
-      chapter "Headings"               { page = wdoc_headings }
-      chapter "Callouts"               { page = wdoc_callouts }
-      chapter "Code Blocks"            { page = wdoc_code }
+      chapter "Formatting"             { page = wdoc_formatting }
       chapter "Math Equations"         { page = wdoc_math }
       chapter "Tables"                 { page = wdoc_tables }
       chapter "Columns"                { page = wdoc_columns }
-      chapter "Classes"                { page = wdoc_classes }
-      chapter "Themes"                 { page = wdoc_themes }
+      chapter "Styling"                { page = wdoc_styling }
       chapter "Diagrams"               { page = wdoc_diagrams }
       chapter "Flowcharts"             { page = wdoc_flowcharts }
       chapter "Charts"                 { page = wdoc_charts }
@@ -149,15 +146,11 @@ import "./pages/reference/ref/cli.wcl"
 import "./pages/reference/wdoc/overview.wcl"
 import "./pages/reference/wdoc/sites.wcl"
 import "./pages/reference/wdoc/pages.wcl"
-import "./pages/reference/wdoc/text.wcl"
-import "./pages/reference/wdoc/headings.wcl"
-import "./pages/reference/wdoc/callouts.wcl"
-import "./pages/reference/wdoc/code.wcl"
+import "./pages/reference/wdoc/formatting.wcl"
 import "./pages/reference/wdoc/math.wcl"
 import "./pages/reference/wdoc/tables.wcl"
 import "./pages/reference/wdoc/columns.wcl"
-import "./pages/reference/wdoc/classes.wcl"
-import "./pages/reference/wdoc/themes.wcl"
+import "./pages/reference/wdoc/styling.wcl"
 import "./pages/reference/wdoc/diagrams.wcl"
 import "./pages/reference/wdoc/flowcharts.wcl"
 import "./pages/reference/wdoc/charts.wcl"

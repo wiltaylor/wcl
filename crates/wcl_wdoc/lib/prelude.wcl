@@ -1,11 +1,11 @@
-// wdoc standard library — entry point.
+// wdoc standard library — prelude.
 //
-// The wdoc binary prepends a single `import <wdoc/prelude.wcl>` line to
-// the user's source before parsing; this file pulls in every part of the
-// schema. The parts are embedded in the binary and resolved through the
-// registry (see `crates/wcl_wdoc/src/build.rs`); the angle-bracket paths
-// are importer-relative, so `import <core.wcl>` here resolves to
-// `wdoc/core.wcl`.
+// The public entry point is `wdoc.wcl`, which a user opts into with
+// `import <wdoc.wcl>`; that imports this file, which pulls in every part
+// of the schema. The parts are embedded in the binary and resolved
+// through the registry (see `crates/wcl_wdoc/src/build.rs`); the
+// angle-bracket paths are importer-relative, so `import <core.wcl>` here
+// resolves to `wdoc/core.wcl`.
 //
 // Ordering does not matter — names resolve across every imported file —
 // so the parts are listed bottom-up by dependency for readability.
@@ -18,6 +18,7 @@ import <text.wcl>             // text / span / column
 import <callout.wcl>          // admonition
 import <wireframe.wcl>        // wireframe UI widgets (window/button/…)
 import <table.wcl>            // pipe-table block
+import <list.wcl>             // bullet / numbered lists (list + li)
 import <templates.wcl>        // page templates (webpage / book) + parts
 import <inline.wcl>           // inline-span union + pattern type
 import <inline-patterns.wcl>  // built-in inline patterns (bold/italic/…)

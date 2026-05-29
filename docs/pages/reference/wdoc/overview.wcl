@@ -2,7 +2,7 @@
 page wdoc_overview { sites = [:reference]
   h1 "wdoc Overview"
 
-  p "wdoc is WCL's documentation generator. A `.wcl` source file declares one or more `site`s and `page`s; `wcl wdoc build` renders the pages to static HTML, and `wcl wdoc serve` runs a watch+rebuild dev server. This very book is built with it."
+  p "wdoc is WCL's documentation generator. It supports different types of pages and is designed to allow you to present information in wcl files in a human readable format."
 
   h2 "Build & serve"
 
@@ -19,16 +19,12 @@ BASH
 
   p "A document can declare several `site` blocks. The site with `root = true` renders at the output root (`/`); other sites render into per-site subdirectories (`/<site>/`). A `chooser` index is auto-generated when no site is rooted."
 
-  callout "Prelude is auto-imported" {
-    class = ["info"]
-    body  = "wcl wdoc build prepends import <wdoc/prelude.wcl> for you, so page / text / code / callout / table / h1..h6 / diagram and every other stdlib block is already in scope. Author source files have no prelude line."
-  }
+  h2 "Example"
 
-  h2 "Authoring shape"
-
-  p "Most pages look like this: a `page <name>` block holding text, headings, callouts, code blocks, tables, and (occasionally) diagrams or charts. See [Pages](wdoc_pages) for the page block's fields and [Sites & Templates](wdoc_sites) for how a site is wired up."
   code wcl {
     source = <<'WCL'
+import <wdoc.wcl>
+
 page index { sites = [:mysite]  start = true
   h1 "My project"
   p "Welcome — see [the docs](docs)."

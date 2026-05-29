@@ -7,6 +7,9 @@
 // `HtmlFundamental`s; they lay out the page body and embed the
 // framework-provided `content` part (the page's own blocks) plus
 // anything they build themselves from the document context.
+//
+// `import <wdoc.wcl>` pulls in the embedded wdoc standard library.
+import <wdoc.wcl>
 
 site {
   default_template = :webpage   // the stdlib template (header + nav + main)

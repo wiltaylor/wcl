@@ -11,6 +11,7 @@ path = "src/lib.rs"
 
 [dependencies]
 wcl_lang = { workspace = true }
+wcl_wdoc = { workspace = true }
 tower-lsp = { workspace = true }
 tokio = { workspace = true }
 dashmap = { workspace = true }

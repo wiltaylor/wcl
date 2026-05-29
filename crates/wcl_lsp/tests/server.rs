@@ -390,6 +390,39 @@ async fn overlay_lets_root_see_unsaved_edits_in_imported_file() {
 }
 
 #[tokio::test]
+async fn root_resolves_embedded_wdoc_library() {
+    // A wdoc document opts into the stdlib with `import <wdoc.wcl>`.
+    // The LSP must serve that system import from the embedded registry
+    // (chained into its loader) so the document opens and `page`/`h1`
+    // validate — exactly as `wcl wdoc build` resolves it.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    std::fs::write(
+        &main,
+        "import <wdoc.wcl>\npage index {\n  h1 \"Hello\"\n}\n",
+    )
+    .unwrap();
+
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+
+    // `root_document` returns `None` if the `<wdoc.wcl>` import fails to
+    // load, so opening at all proves the registry is wired in.
+    let root_doc = backend
+        .root_document()
+        .expect("root opens with the embedded wdoc import resolved");
+    assert!(
+        root_doc.schema_errors().is_empty(),
+        "wdoc blocks should validate via the embedded library: {:?}",
+        root_doc.schema_errors()
+    );
+}
+
+#[tokio::test]
 async fn did_change_full_replace_resets_doc() {
     let svc = service();
     let backend = svc.inner();

@@ -111,7 +111,7 @@ site mysite {
   default_template = :webpage
   title            = "My project"
   root             = true
-  theme            = nord
+  theme            = :nord
 }
 
 page index { sites = [:mysite]  start = true

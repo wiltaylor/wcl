@@ -16,16 +16,16 @@ WCL
 
   h2 "System imports"
 
-  p "An angle-bracket path imports a **system** module — a file provided by the host program through a registry, not the filesystem. wdoc's standard library is served this way."
+  p "An angle-bracket path imports a **system** module — a file provided by the host program through a registry, not the filesystem. wdoc's standard library is served this way: a single `import <wdoc.wcl>` pulls in the whole stdlib."
   code wcl {
     source = <<'WCL'
-import <wdoc/prelude.wcl>
+import <wdoc.wcl>
 WCL
   }
 
-  callout "wdoc auto-imports its prelude" {
+  callout "Import the wdoc stdlib once, at the root" {
     class = ["info"]
-    body  = "When you build a wdoc site, the build prepends import <wdoc/prelude.wcl> for you, so page / text / code / callout and the rest of the stdlib are already in scope. You only write imports for your own page files."
+    body  = "Start the document you pass to wcl wdoc build with import <wdoc.wcl>, and page / text / code / callout and the rest of the stdlib are in scope there and in every page file it imports. Imported page files don't repeat the line."
   }
 
   h2 "How imports compose"

@@ -1,43 +1,45 @@
 // ── Colour themes ──────────────────────────────────────────────────
 //
-// A `ColourTheme` is a named, reusable palette pair — a `dark` and a
-// `light` `Palette` — that a `site` selects to recolour everything the
+// A `theme` is a named, reusable palette pair — a `dark` and a `light`
+// `palette` sub-block — that a `site` selects to recolour everything the
 // renderer emits: page background / text, links, headings, code-block
 // syntax highlighting, chart series, callouts, tables, and the template
-// chrome. Selection lives on the `site` block:
+// chrome. Selection lives on the `site` block, by name:
 //
 //   site "docs" {
 //     default_template = :book
-//     theme  = catppuccin   // any ColourTheme value (built-in or your own)
-//     accent = :blue        // red orange yellow green cyan blue purple pink
+//     theme  = :catppuccin   // names a `theme` block (built-in or your own)
+//     accent = :blue         // red orange yellow green cyan blue purple pink
 //   }
 //
-// A `site` with no `theme` defaults to `nord`. A document with no `site`
+// A `site` with no `theme` defaults to `:nord`. A document with no `site`
 // block renders bare (unthemed).
 //
-// HOW IT WORKS: the renderer reads the selected theme's record and emits
-// CSS custom properties (`--wdoc-bg`, `--wdoc-fg`, `--wdoc-blue`, …) on
-// `:root` — once for dark (the default), once under
-// `@media (prefers-color-scheme: light)`, and once per explicit
-// `:root[data-theme=…]` (the book template's toggle). Everything else —
-// the stylesheets, the `class` system, the templates — paints with
-// `var(--wdoc-*)`, so adding a new template needs no theme work: just
-// reference the vars. The accent picks one hue, exposed as `--wdoc-accent`.
+// HOW IT WORKS: the renderer finds the named `theme` block and emits CSS
+// custom properties (`--wdoc-bg`, `--wdoc-fg`, `--wdoc-blue`, …) on
+// `:root` — once for its `dark` palette (the default), once under
+// `@media (prefers-color-scheme: light)` for the `light` palette, and once
+// per explicit `:root[data-theme=…]` (the book template's toggle).
+// Everything else — the stylesheets, the `class` system, the templates —
+// paints with `var(--wdoc-*)`, so adding a new template needs no theme
+// work: just reference the vars. The accent picks one hue, exposed as
+// `--wdoc-accent`.
 //
-// DEFINE YOUR OWN: a `ColourTheme` is an ordinary value, so a user can
-// declare one and select it the same way:
+// DEFINE YOUR OWN: a `theme` is just a block, so author one and select it
+// the same way:
 //
-//   let midnight = ColourTheme::Of {
-//     name: "Midnight",
-//     dark:  Palette::Of { bg: "#0b0b14", … pink: "#ff79c6" },
-//     light: Palette::Of { bg: "#fafafe", … pink: "#d6298f" },
+//   theme midnight {
+//     palette dark  { bg = "#0b0b14"  fg = "#e6e6f0"  blue = "#8be9fd"  … }
+//     palette light { bg = "#fafafe"  fg = "#1b1b28"  … }
 //   }
-//   site "docs" { theme = midnight }
+//   site "docs" { theme = :midnight }
 
-// A full set of colour roles for one mode. Generic on purpose — these
-// 18 roles cover page chrome, text hierarchy, and an 8-hue palette that
-// doubles as the chart cycle and the accent vocabulary — so templates
-// and blocks added later have everything they need.
+// A full set of colour roles for one mode, labelled `dark` or `light`.
+// Generic on purpose — these 18 roles cover page chrome, text hierarchy,
+// and an 8-hue palette that doubles as the chart cycle and the accent
+// vocabulary — so templates and blocks added later have everything they
+// need. Every role is optional: an omitted role simply emits no var (so a
+// partial custom palette inherits the rest from the cascade).
 //   bg          page background
 //   bg_alt      raised surface (sidebar, card, table header)
 //   bg_inset    sunken surface (code block)
@@ -50,19 +52,21 @@
 //   selection   text-selection background
 //   red orange yellow green cyan blue purple pink
 //               the hue ring — chart series 1-8 and the accent options
-union Palette {
-  Of {
-    bg: utf8  bg_alt: utf8  bg_inset: utf8  overlay: utf8  border: utf8
-    fg: utf8  fg_muted: utf8  fg_subtle: utf8  heading: utf8  selection: utf8
-    red: utf8  orange: utf8  yellow: utf8  green: utf8
-    cyan: utf8  blue: utf8  purple: utf8  pink: utf8
-  }
+@block("palette")
+type PaletteBlock {
+  @inline(0) mode: identifier        // `dark` or `light`
+  bg: utf8?  bg_alt: utf8?  bg_inset: utf8?  overlay: utf8?  border: utf8?
+  fg: utf8?  fg_muted: utf8?  fg_subtle: utf8?  heading: utf8?  selection: utf8?
+  red: utf8?  orange: utf8?  yellow: utf8?  green: utf8?
+  cyan: utf8?  blue: utf8?  purple: utf8?  pink: utf8?
 }
 
 // A named theme: a `dark` palette (the default mode) and a `light` one
 // (system `prefers-color-scheme: light`, or the explicit toggle).
-union ColourTheme {
-  Of { name: utf8  dark: Palette  light: Palette }
+@block("theme")
+type ThemeBlock {
+  @inline(0) name: identifier
+  @children("palette") palettes: list<PaletteBlock>
 }
 
 // ── Built-in themes ────────────────────────────────────────────────
@@ -71,120 +75,113 @@ union ColourTheme {
 // step) reuse the nearest hue / shade.
 
 // Nord — nordtheme.com. Light mode is built from the Snow Storm tints.
-let nord = ColourTheme::Of {
-  name: "Nord",
-  dark: Palette::Of {
-    bg: "#2e3440", bg_alt: "#3b4252", bg_inset: "#272c36", overlay: "#434c5e", border: "#4c566a",
-    fg: "#d8dee9", fg_muted: "#9aa5b8", fg_subtle: "#4c566a", heading: "#eceff4", selection: "#434c5e",
-    red: "#bf616a", orange: "#d08770", yellow: "#ebcb8b", green: "#a3be8c",
-    cyan: "#88c0d0", blue: "#81a1c1", purple: "#b48ead", pink: "#8fbcbb",
-  },
-  light: Palette::Of {
-    bg: "#eceff4", bg_alt: "#e5e9f0", bg_inset: "#d8dee9", overlay: "#d8dee9", border: "#d8dee9",
-    fg: "#2e3440", fg_muted: "#4c566a", fg_subtle: "#7b8794", heading: "#2e3440", selection: "#d8dee9",
-    red: "#bf616a", orange: "#d08770", yellow: "#b9952f", green: "#7e9a5c",
-    cyan: "#5e81ac", blue: "#5e81ac", purple: "#9d7495", pink: "#8fbcbb",
-  },
+theme nord {
+  palette dark {
+    bg = "#2e3440"  bg_alt = "#3b4252"  bg_inset = "#272c36"  overlay = "#434c5e"  border = "#4c566a"
+    fg = "#d8dee9"  fg_muted = "#9aa5b8"  fg_subtle = "#4c566a"  heading = "#eceff4"  selection = "#434c5e"
+    red = "#bf616a"  orange = "#d08770"  yellow = "#ebcb8b"  green = "#a3be8c"
+    cyan = "#88c0d0"  blue = "#81a1c1"  purple = "#b48ead"  pink = "#8fbcbb"
+  }
+  palette light {
+    bg = "#eceff4"  bg_alt = "#e5e9f0"  bg_inset = "#d8dee9"  overlay = "#d8dee9"  border = "#d8dee9"
+    fg = "#2e3440"  fg_muted = "#4c566a"  fg_subtle = "#7b8794"  heading = "#2e3440"  selection = "#d8dee9"
+    red = "#bf616a"  orange = "#d08770"  yellow = "#b9952f"  green = "#7e9a5c"
+    cyan = "#5e81ac"  blue = "#5e81ac"  purple = "#9d7495"  pink = "#8fbcbb"
+  }
 }
 
 // Gruvbox — github.com/morhetz/gruvbox (medium contrast, both modes).
-let gruvbox = ColourTheme::Of {
-  name: "Gruvbox",
-  dark: Palette::Of {
-    bg: "#282828", bg_alt: "#3c3836", bg_inset: "#1d2021", overlay: "#504945", border: "#504945",
-    fg: "#ebdbb2", fg_muted: "#a89984", fg_subtle: "#928374", heading: "#fbf1c7", selection: "#504945",
-    red: "#fb4934", orange: "#fe8019", yellow: "#fabd2f", green: "#b8bb26",
-    cyan: "#8ec07c", blue: "#83a598", purple: "#d3869b", pink: "#d3869b",
-  },
-  light: Palette::Of {
-    bg: "#fbf1c7", bg_alt: "#ebdbb2", bg_inset: "#f9f5d7", overlay: "#d5c4a1", border: "#bdae93",
-    fg: "#3c3836", fg_muted: "#7c6f64", fg_subtle: "#928374", heading: "#282828", selection: "#d5c4a1",
-    red: "#9d0006", orange: "#af3a03", yellow: "#b57614", green: "#79740e",
-    cyan: "#427b58", blue: "#076678", purple: "#8f3f71", pink: "#8f3f71",
-  },
+theme gruvbox {
+  palette dark {
+    bg = "#282828"  bg_alt = "#3c3836"  bg_inset = "#1d2021"  overlay = "#504945"  border = "#504945"
+    fg = "#ebdbb2"  fg_muted = "#a89984"  fg_subtle = "#928374"  heading = "#fbf1c7"  selection = "#504945"
+    red = "#fb4934"  orange = "#fe8019"  yellow = "#fabd2f"  green = "#b8bb26"
+    cyan = "#8ec07c"  blue = "#83a598"  purple = "#d3869b"  pink = "#d3869b"
+  }
+  palette light {
+    bg = "#fbf1c7"  bg_alt = "#ebdbb2"  bg_inset = "#f9f5d7"  overlay = "#d5c4a1"  border = "#bdae93"
+    fg = "#3c3836"  fg_muted = "#7c6f64"  fg_subtle = "#928374"  heading = "#282828"  selection = "#d5c4a1"
+    red = "#9d0006"  orange = "#af3a03"  yellow = "#b57614"  green = "#79740e"
+    cyan = "#427b58"  blue = "#076678"  purple = "#8f3f71"  pink = "#8f3f71"
+  }
 }
 
 // Solarized — ethanschoonover.com/solarized (accents shared by both modes).
-let solarized = ColourTheme::Of {
-  name: "Solarized",
-  dark: Palette::Of {
-    bg: "#002b36", bg_alt: "#073642", bg_inset: "#00252e", overlay: "#586e75", border: "#073642",
-    fg: "#839496", fg_muted: "#657b83", fg_subtle: "#586e75", heading: "#93a1a1", selection: "#073642",
-    red: "#dc322f", orange: "#cb4b16", yellow: "#b58900", green: "#859900",
-    cyan: "#2aa198", blue: "#268bd2", purple: "#6c71c4", pink: "#d33682",
-  },
-  light: Palette::Of {
-    bg: "#fdf6e3", bg_alt: "#eee8d5", bg_inset: "#fdf6e3", overlay: "#93a1a1", border: "#eee8d5",
-    fg: "#657b83", fg_muted: "#93a1a1", fg_subtle: "#93a1a1", heading: "#586e75", selection: "#eee8d5",
-    red: "#dc322f", orange: "#cb4b16", yellow: "#b58900", green: "#859900",
-    cyan: "#2aa198", blue: "#268bd2", purple: "#6c71c4", pink: "#d33682",
-  },
+theme solarized {
+  palette dark {
+    bg = "#002b36"  bg_alt = "#073642"  bg_inset = "#00252e"  overlay = "#586e75"  border = "#073642"
+    fg = "#839496"  fg_muted = "#657b83"  fg_subtle = "#586e75"  heading = "#93a1a1"  selection = "#073642"
+    red = "#dc322f"  orange = "#cb4b16"  yellow = "#b58900"  green = "#859900"
+    cyan = "#2aa198"  blue = "#268bd2"  purple = "#6c71c4"  pink = "#d33682"
+  }
+  palette light {
+    bg = "#fdf6e3"  bg_alt = "#eee8d5"  bg_inset = "#fdf6e3"  overlay = "#93a1a1"  border = "#eee8d5"
+    fg = "#657b83"  fg_muted = "#93a1a1"  fg_subtle = "#93a1a1"  heading = "#586e75"  selection = "#eee8d5"
+    red = "#dc322f"  orange = "#cb4b16"  yellow = "#b58900"  green = "#859900"
+    cyan = "#2aa198"  blue = "#268bd2"  purple = "#6c71c4"  pink = "#d33682"
+  }
 }
 
 // Catppuccin — catppuccin.com/palette (Mocha = dark, Latte = light).
-let catppuccin = ColourTheme::Of {
-  name: "Catppuccin",
-  dark: Palette::Of {
-    bg: "#1e1e2e", bg_alt: "#313244", bg_inset: "#181825", overlay: "#6c7086", border: "#45475a",
-    fg: "#cdd6f4", fg_muted: "#a6adc8", fg_subtle: "#7f849c", heading: "#cdd6f4", selection: "#414458",
-    red: "#f38ba8", orange: "#fab387", yellow: "#f9e2af", green: "#a6e3a1",
-    cyan: "#94e2d5", blue: "#89b4fa", purple: "#cba6f7", pink: "#f5c2e7",
-  },
-  light: Palette::Of {
-    bg: "#eff1f5", bg_alt: "#ccd0da", bg_inset: "#e6e9ef", overlay: "#9ca0b0", border: "#bcc0cc",
-    fg: "#4c4f69", fg_muted: "#6c6f85", fg_subtle: "#8c8fa1", heading: "#4c4f69", selection: "#bcc0cc",
-    red: "#d20f39", orange: "#fe640b", yellow: "#df8e1d", green: "#40a02b",
-    cyan: "#179299", blue: "#1e66f5", purple: "#8839ef", pink: "#ea76cb",
-  },
+theme catppuccin {
+  palette dark {
+    bg = "#1e1e2e"  bg_alt = "#313244"  bg_inset = "#181825"  overlay = "#6c7086"  border = "#45475a"
+    fg = "#cdd6f4"  fg_muted = "#a6adc8"  fg_subtle = "#7f849c"  heading = "#cdd6f4"  selection = "#414458"
+    red = "#f38ba8"  orange = "#fab387"  yellow = "#f9e2af"  green = "#a6e3a1"
+    cyan = "#94e2d5"  blue = "#89b4fa"  purple = "#cba6f7"  pink = "#f5c2e7"
+  }
+  palette light {
+    bg = "#eff1f5"  bg_alt = "#ccd0da"  bg_inset = "#e6e9ef"  overlay = "#9ca0b0"  border = "#bcc0cc"
+    fg = "#4c4f69"  fg_muted = "#6c6f85"  fg_subtle = "#8c8fa1"  heading = "#4c4f69"  selection = "#bcc0cc"
+    red = "#d20f39"  orange = "#fe640b"  yellow = "#df8e1d"  green = "#40a02b"
+    cyan = "#179299"  blue = "#1e66f5"  purple = "#8839ef"  pink = "#ea76cb"
+  }
 }
 
 // Tokyo Night — github.com/folke/tokyonight.nvim (Night = dark, Day = light).
-let tokyonight = ColourTheme::Of {
-  name: "Tokyo Night",
-  dark: Palette::Of {
-    bg: "#1a1b26", bg_alt: "#24283b", bg_inset: "#16161e", overlay: "#414868", border: "#3b4261",
-    fg: "#c0caf5", fg_muted: "#a9b1d6", fg_subtle: "#565f89", heading: "#c0caf5", selection: "#283457",
-    red: "#f7768e", orange: "#ff9e64", yellow: "#e0af68", green: "#9ece6a",
-    cyan: "#7dcfff", blue: "#7aa2f7", purple: "#bb9af7", pink: "#ff007c",
-  },
-  light: Palette::Of {
-    bg: "#e1e2e7", bg_alt: "#d0d5e3", bg_inset: "#c1c9df", overlay: "#a8aecb", border: "#b4b5b9",
-    fg: "#3760bf", fg_muted: "#6172b0", fg_subtle: "#848cb5", heading: "#3760bf", selection: "#b7c1e3",
-    red: "#f52a65", orange: "#b15c00", yellow: "#8c6c3e", green: "#587539",
-    cyan: "#007197", blue: "#2e7de9", purple: "#9854f1", pink: "#9854f1",
-  },
+theme tokyonight {
+  palette dark {
+    bg = "#1a1b26"  bg_alt = "#24283b"  bg_inset = "#16161e"  overlay = "#414868"  border = "#3b4261"
+    fg = "#c0caf5"  fg_muted = "#a9b1d6"  fg_subtle = "#565f89"  heading = "#c0caf5"  selection = "#283457"
+    red = "#f7768e"  orange = "#ff9e64"  yellow = "#e0af68"  green = "#9ece6a"
+    cyan = "#7dcfff"  blue = "#7aa2f7"  purple = "#bb9af7"  pink = "#ff007c"
+  }
+  palette light {
+    bg = "#e1e2e7"  bg_alt = "#d0d5e3"  bg_inset = "#c1c9df"  overlay = "#a8aecb"  border = "#b4b5b9"
+    fg = "#3760bf"  fg_muted = "#6172b0"  fg_subtle = "#848cb5"  heading = "#3760bf"  selection = "#b7c1e3"
+    red = "#f52a65"  orange = "#b15c00"  yellow = "#8c6c3e"  green = "#587539"
+    cyan = "#007197"  blue = "#2e7de9"  purple = "#9854f1"  pink = "#9854f1"
+  }
 }
 
 // Kanagawa — github.com/rebelot/kanagawa.nvim (Wave = dark, Lotus = light).
-let kanagawa = ColourTheme::Of {
-  name: "Kanagawa",
-  dark: Palette::Of {
-    bg: "#1f1f28", bg_alt: "#2a2a37", bg_inset: "#16161d", overlay: "#363646", border: "#54546d",
-    fg: "#dcd7ba", fg_muted: "#c8c093", fg_subtle: "#727169", heading: "#dcd7ba", selection: "#2d4f67",
-    red: "#e46876", orange: "#ffa066", yellow: "#e6c384", green: "#98bb6c",
-    cyan: "#7aa89f", blue: "#7e9cd8", purple: "#957fb8", pink: "#d27e99",
-  },
-  light: Palette::Of {
-    bg: "#f2ecbc", bg_alt: "#e7dba0", bg_inset: "#d5cea3", overlay: "#dcd7ba", border: "#dcd5ac",
-    fg: "#545464", fg_muted: "#716e61", fg_subtle: "#8a8980", heading: "#43436c", selection: "#c9cbd1",
-    red: "#c84053", orange: "#cc6d00", yellow: "#836f4a", green: "#6f894e",
-    cyan: "#597b75", blue: "#4d699b", purple: "#624c83", pink: "#b35b79",
-  },
+theme kanagawa {
+  palette dark {
+    bg = "#1f1f28"  bg_alt = "#2a2a37"  bg_inset = "#16161d"  overlay = "#363646"  border = "#54546d"
+    fg = "#dcd7ba"  fg_muted = "#c8c093"  fg_subtle = "#727169"  heading = "#dcd7ba"  selection = "#2d4f67"
+    red = "#e46876"  orange = "#ffa066"  yellow = "#e6c384"  green = "#98bb6c"
+    cyan = "#7aa89f"  blue = "#7e9cd8"  purple = "#957fb8"  pink = "#d27e99"
+  }
+  palette light {
+    bg = "#f2ecbc"  bg_alt = "#e7dba0"  bg_inset = "#d5cea3"  overlay = "#dcd7ba"  border = "#dcd5ac"
+    fg = "#545464"  fg_muted = "#716e61"  fg_subtle = "#8a8980"  heading = "#43436c"  selection = "#c9cbd1"
+    red = "#c84053"  orange = "#cc6d00"  yellow = "#836f4a"  green = "#6f894e"
+    cyan = "#597b75"  blue = "#4d699b"  purple = "#624c83"  pink = "#b35b79"
+  }
 }
 
 // Everforest — github.com/sainnhe/everforest (medium contrast, both modes).
-let everforest = ColourTheme::Of {
-  name: "Everforest",
-  dark: Palette::Of {
-    bg: "#2d353b", bg_alt: "#343f44", bg_inset: "#232a2e", overlay: "#475258", border: "#4f585e",
-    fg: "#d3c6aa", fg_muted: "#9da9a0", fg_subtle: "#859289", heading: "#d3c6aa", selection: "#475258",
-    red: "#e67e80", orange: "#e69875", yellow: "#dbbc7f", green: "#a7c080",
-    cyan: "#83c092", blue: "#7fbbb3", purple: "#d699b6", pink: "#d699b6",
-  },
-  light: Palette::Of {
-    bg: "#fdf6e3", bg_alt: "#f4f0d9", bg_inset: "#efebd4", overlay: "#e0dcc7", border: "#ddd8be",
-    fg: "#5c6a72", fg_muted: "#829181", fg_subtle: "#939f91", heading: "#5c6a72", selection: "#e0dcc7",
-    red: "#f85552", orange: "#f57d26", yellow: "#dfa000", green: "#8da101",
-    cyan: "#35a77c", blue: "#3a94c5", purple: "#df69ba", pink: "#df69ba",
-  },
+theme everforest {
+  palette dark {
+    bg = "#2d353b"  bg_alt = "#343f44"  bg_inset = "#232a2e"  overlay = "#475258"  border = "#4f585e"
+    fg = "#d3c6aa"  fg_muted = "#9da9a0"  fg_subtle = "#859289"  heading = "#d3c6aa"  selection = "#475258"
+    red = "#e67e80"  orange = "#e69875"  yellow = "#dbbc7f"  green = "#a7c080"
+    cyan = "#83c092"  blue = "#7fbbb3"  purple = "#d699b6"  pink = "#d699b6"
+  }
+  palette light {
+    bg = "#fdf6e3"  bg_alt = "#f4f0d9"  bg_inset = "#efebd4"  overlay = "#e0dcc7"  border = "#ddd8be"
+    fg = "#5c6a72"  fg_muted = "#829181"  fg_subtle = "#939f91"  heading = "#5c6a72"  selection = "#e0dcc7"
+    red = "#f85552"  orange = "#f57d26"  yellow = "#dfa000"  green = "#8da101"
+    cyan = "#35a77c"  blue = "#3a94c5"  purple = "#df69ba"  pink = "#df69ba"
+  }
 }

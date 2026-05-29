@@ -2825,6 +2825,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "wcl_lang",
+ "wcl_wdoc",
 ]
 
 [[package]]

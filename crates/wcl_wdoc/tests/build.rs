@@ -10,6 +10,15 @@ fn examples_dir() -> PathBuf {
         .join("examples")
 }
 
+/// Write a wdoc fixture to `path`, prepending the `import <wdoc.wcl>`
+/// line a real document needs now that `build` no longer injects the
+/// stdlib. Repeated imports are a no-op, so this is safe even if `body`
+/// already imports it.
+fn write_fixture(path: impl AsRef<Path>, body: impl AsRef<str>) {
+    let composed = format!("import <wdoc.wcl>\n{}", body.as_ref());
+    std::fs::write(path, composed).expect("write wdoc fixture");
+}
+
 fn build_ok(file: &Path, out: &Path) -> usize {
     match build(file, out, None) {
         Ok(n) => n,
@@ -170,7 +179,7 @@ fn recursive_lowering_terminates_for_chained_custom_shapes() {
     // own `lower` field — no top-level `_lower` bindings.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("chain.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 union ChainStep {
@@ -207,8 +216,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -226,7 +234,7 @@ fn lowering_depth_limit_emits_marker() {
     // the depth limit rather than recursing forever.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("loop.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 union LoopStep {
@@ -251,8 +259,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -270,7 +277,7 @@ fn user_defined_block_lowering_via_at_default() {
     // the lowering from the type's `@default(...)` on `lower`.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("user_block.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 @block("badge")
@@ -298,8 +305,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -321,7 +327,7 @@ fn build_emits_container_chrome_when_stroke_or_fill_set() {
     // cross-container edges still route cleanly.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("chrome.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -342,8 +348,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -370,7 +375,7 @@ page index {
 fn build_resolves_anchor_stretch_without_layout() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("anchors.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -393,8 +398,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -412,7 +416,7 @@ page index {
 fn build_html_escapes_span_text() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("escape.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r#"
 page index {
@@ -422,8 +426,7 @@ page index {
   }
 }
 "#,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -434,18 +437,69 @@ page index {
 }
 
 #[test]
+fn build_renders_bullet_and_numbered_lists_with_nesting() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("lists.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  list {
+    li "Plain with **bold**"
+    li "Has sub" {
+      li "child A"
+      li "child B"
+    }
+  }
+  list { style = :numbered
+    li "Step one"
+    li "Step two" {
+      li "Sub step"
+    }
+  }
+}
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+
+    // Bullet list → <ul>, with an inline-formatted item and a nested <ul>.
+    assert!(
+        html.contains("<ul><li>Plain with <span class=\"bold\">bold</span></li>"),
+        "bullet list / inline patterns:\n{html}"
+    );
+    assert!(
+        html.contains("<li>Has sub<ul><li>child A</li><li>child B</li></ul></li>"),
+        "li-under-li sublist:\n{html}"
+    );
+    // Numbered list → <ol class="wdoc-list-numbered">, nesting the same class.
+    assert!(
+        html.contains(
+            "<ol class=\"wdoc-list-numbered\"><li>Step one</li><li>Step two<ol class=\"wdoc-list-numbered\"><li>Sub step</li></ol></li></ol>"
+        ),
+        "numbered list with nested numbered sublist:\n{html}"
+    );
+    // The CSS-counter rule that produces "1.1" is injected.
+    assert!(
+        html.contains("counters(wdoc-li"),
+        "wdoc-list counter stylesheet missing:\n{html}"
+    );
+}
+
+#[test]
 fn build_reports_schema_error_for_unknown_block() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("bad.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r#"
 page index {
   h7 "nope" {}
 }
 "#,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     match build(&src, out.path(), None) {
@@ -467,7 +521,7 @@ page index {
 fn build_emits_id_attributes_across_paths() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("ids.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -498,8 +552,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -533,7 +586,7 @@ page index {
 fn build_rejects_duplicate_id_within_page() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("dupes.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -553,8 +606,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     match build(&src, out.path(), None) {
@@ -581,7 +633,7 @@ fn build_preserves_source_order_across_mixed_children() {
     // children must come out in source order (not bucketed by kind).
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("order.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -595,8 +647,7 @@ page index {
   text { span "omega" {} }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -627,7 +678,7 @@ fn build_renders_connections_as_arrows() {
     // inside different containers.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("arrows.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -687,8 +738,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -729,7 +779,7 @@ page index {
 fn build_picks_closest_anchor_pair_and_honors_custom_connect_points() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("anchors.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -773,8 +823,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -799,7 +848,7 @@ page index {
 fn build_routes_around_obstacle() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("obstacle.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -825,8 +874,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -863,7 +911,7 @@ page index {
 fn build_separates_parallel_edges() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("sep.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -898,8 +946,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -917,7 +964,7 @@ page index {
 fn build_keeps_shared_anchor_edges_aligned() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("shared_anchor.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -946,8 +993,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -966,7 +1012,7 @@ page index {
 fn build_layered_layout_assigns_positions() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("layered.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -995,8 +1041,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -1023,7 +1068,7 @@ page index {
 fn build_layered_layout_left_to_right() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("layered_lr.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -1050,8 +1095,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -1099,7 +1143,7 @@ page index {
     let render = || {
         let tmp = TempDir::new().expect("mkdir tempdir");
         let src = tmp.path().join("force.wcl");
-        std::fs::write(&src, fixture).expect("write fixture");
+        write_fixture(&src, fixture);
         let out = TempDir::new().expect("mkdir out");
         build_ok(&src, out.path());
         std::fs::read_to_string(out.path().join("index.html")).expect("read")
@@ -1148,7 +1192,7 @@ fn build_straight_edges_attach_to_circle_boundary() {
     // (80,100) to (220,100).
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("boundary.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -1162,8 +1206,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -1182,7 +1225,7 @@ fn build_renders_site_menu_with_nested_dropdowns() {
     // external href verbatim, and the click-toggle script once.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("menu.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 site main {
@@ -1199,8 +1242,7 @@ site main {
 page index { h1 "Home" {} }
 page second { h1 "Second" {} }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -1246,7 +1288,7 @@ fn build_webpage_without_menu_falls_back_to_page_list() {
     // behaviour and emits no dropdown markup or toggle script.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("nomenu.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 site main {
@@ -1256,8 +1298,7 @@ site main {
 page index { h1 "Home" {} }
 page second { h1 "Second" {} }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -1282,7 +1323,7 @@ page second { h1 "Second" {} }
 fn build_rejects_menu_item_with_unknown_page() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("badmenu.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 site main {
@@ -1291,8 +1332,7 @@ site main {
 }
 page index { h1 "Home" {} }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     match build(&src, out.path(), None) {
         Err(BuildError::BadTemplate(m)) => {
@@ -1310,7 +1350,7 @@ fn build_start_page_becomes_site_index() {
     // also stays reachable at its own `home.html`.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("start.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 site main {
@@ -1324,8 +1364,7 @@ page other {
   h1 "Other" {}
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
 
@@ -1349,15 +1388,14 @@ page other {
 fn build_rejects_multiple_start_pages() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("twostart.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 site main { default_template = :webpage }
 page a { start = true  h1 "A" {} }
 page b { start = true  h1 "B" {} }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     match build(&src, out.path(), None) {
         Err(BuildError::BadPage(m)) => {
@@ -1372,7 +1410,7 @@ page b { start = true  h1 "B" {} }
 fn build_allows_same_id_across_different_pages() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("two_pages.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page one {
@@ -1398,8 +1436,7 @@ page two {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     let n = build_ok(&src, out.path());
@@ -1414,7 +1451,7 @@ fn write_inline_fixture(tmp: &TempDir, body: &str) -> std::path::PathBuf {
         "page index {{\n  text {{\n    span \"{}\" {{}}\n  }}\n}}\n",
         body
     );
-    std::fs::write(&src, full).expect("write fixture");
+    write_fixture(&src, full);
     src
 }
 
@@ -1492,7 +1529,7 @@ fn build_renders_user_defined_inline_pattern() {
     let src = tmp.path().join("custom.wcl");
     // Custom pattern matching #tags. Captures one group (the tag
     // name without the leading #) and wraps it in a class="tag" span.
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 inline_pattern hashtag {
@@ -1507,8 +1544,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -1530,7 +1566,7 @@ fn build_inline_pattern_depth_limit() {
     // — we don't care exactly how deeply — without stack-overflowing.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("depth.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 inline_pattern selfish {
@@ -1545,8 +1581,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -1567,7 +1602,7 @@ page index {
 fn build_renders_cross_page_link() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("pages.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -1581,8 +1616,7 @@ page about {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
@@ -1597,7 +1631,7 @@ page about {
 fn build_renders_cross_page_link_with_fragment() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("pages.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -1611,8 +1645,7 @@ page about {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
@@ -1626,7 +1659,7 @@ page about {
 fn build_passes_through_external_url() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("ext.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -1635,8 +1668,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -1650,7 +1682,7 @@ page index {
 fn build_passes_through_same_page_anchor() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("anchor.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -1659,8 +1691,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -1674,7 +1705,7 @@ page index {
 fn build_errors_on_unknown_page_link() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("broken.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -1683,8 +1714,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     match build(&src, out.path(), None) {
         Err(BuildError::BadLink(msgs)) => {
@@ -1715,7 +1745,7 @@ fn build_fit_viewbox_wraps_layered_content() {
     // content bbox so it scales to fit instead of being clipped.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("fit.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -1733,8 +1763,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -1777,7 +1806,7 @@ fn build_routes_around_destination_shape() {
     // destination's bbox to reach its south edge.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("dst_obstacle.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -1801,8 +1830,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -1847,7 +1875,7 @@ page index {
 fn build_centers_label_text() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("center.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -1860,8 +1888,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -1878,7 +1905,7 @@ fn build_resizes_shape_for_multiline_text() {
     // to fit them, and the renderer should emit one tspan per line.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("multiline.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -1893,8 +1920,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -1925,7 +1951,7 @@ fn build_shrinks_font_for_long_text() {
     // renderer should shrink the font below the default 14.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("longtext.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -1940,8 +1966,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -1986,7 +2011,7 @@ fn build_renders_code_block_with_highlight_classes() {
     // the test — but a `tok-keyword` (covering `fn`) must appear.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("code.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -1995,8 +2020,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2030,7 +2054,7 @@ fn build_renders_wcl_code_block_via_bundled_grammar() {
     // `type`, …).
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("wcl_code.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -2039,8 +2063,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2063,7 +2086,7 @@ fn build_renders_unknown_language_as_plain_code() {
     // listing or failing the build.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("unknown.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -2072,8 +2095,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2101,7 +2123,7 @@ fn build_code_block_escapes_html_in_source() {
     // pin the behaviour so a refactor doesn't regress it.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("escape.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -2110,8 +2132,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2136,7 +2157,7 @@ page index {
 fn build_code_block_carries_user_classes_and_id() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("classes.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -2147,8 +2168,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2182,7 +2202,7 @@ fn table_renders_header_row_and_typed_body() {
     // a numeric cell passes through as its stringified value.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("tbl.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -2194,8 +2214,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2215,7 +2234,7 @@ fn table_cells_support_inline_patterns() {
     // utf8 cells, exactly as in a `text` span.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("tbl.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -2226,8 +2245,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2243,7 +2261,7 @@ fn table_with_single_row_is_header_only() {
     // A one-row table is all header: <thead> present, no <tbody>.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("tbl.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -2253,8 +2271,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2275,7 +2292,7 @@ fn empty_table_builds_without_panicking() {
     // the build.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("tbl.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -2283,8 +2300,7 @@ page index {
   text { span "after" {} }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2304,7 +2320,7 @@ fn custom_block_lowers_to_table_fundamental() {
     // path are plain escaped text.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("tbl.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 @block("datatable")
@@ -2323,8 +2339,7 @@ page index {
   datatable {}
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2347,7 +2362,7 @@ fn template_wraps_content_in_header_nav_main() {
     // page list, and the page's own blocks inside <main>.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("site.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r#"
 site {
@@ -2361,8 +2376,7 @@ page about {
   h1 "About" {}
 }
 "#,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2405,7 +2419,7 @@ fn per_page_template_overrides_and_bare_fallback() {
     // compatible with pre-template behavior.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("site.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r#"
 page index {
@@ -2416,8 +2430,7 @@ page plain {
   h1 "Bare" {}
 }
 "#,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2442,7 +2455,7 @@ fn template_uses_user_defined_part_function() {
     // Raw, and attribute escaping.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("site.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 let footer = fn(c: TemplateCtx) -> list<HtmlFundamental> [
@@ -2466,8 +2479,7 @@ page index {
   text { span "body text" {} }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2488,14 +2500,13 @@ page index {
 fn unknown_template_is_build_error() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("site.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r#"
 site { default_template = :nope }
 page index { h1 "x" {} }
 "#,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     match build(&src, out.path(), None) {
@@ -2512,7 +2523,7 @@ fn book_template_without_toc_falls_back_to_flat_page_list() {
     // current chapter is marked `current`. Content lands in <main>.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("book.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r#"
 site {
@@ -2526,8 +2537,7 @@ page usage {
   h1 "Usage" {}
 }
 "#,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2572,7 +2582,7 @@ fn book_toc_renders_nested_ordered_navigation() {
     // highlighted; entries follow declared order, not page order.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("book.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r#"
 site {
@@ -2590,8 +2600,7 @@ site {
 page intro { h1 "Intro" {} }
 page internals { h1 "Internals" {} }
 "#,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2631,7 +2640,7 @@ page internals { h1 "Internals" {} }
 fn book_toc_unknown_page_is_build_error() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("book.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r#"
 site {
@@ -2640,8 +2649,7 @@ site {
 }
 page intro { h1 "Intro" {} }
 "#,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     match build(&src, out.path(), None) {
@@ -2662,7 +2670,7 @@ fn class_light_dark_modes_emit_themed_css() {
     // explicit `:root[data-theme=…]` overrides (which the toggle uses).
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("t.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 class "panel" {
@@ -2671,8 +2679,7 @@ class "panel" {
 }
 page index { text { span "hi" {} } }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2701,7 +2708,7 @@ fn class_with_only_light_mode_still_emits_dark_toggle_rule() {
     // light)` rule kept winning and toggling to dark did nothing.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("t.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 class "wdoc-body" {
@@ -2710,8 +2717,7 @@ class "wdoc-body" {
 }
 page index { text { span "hi" {} } }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -2742,14 +2748,13 @@ fn class_without_modes_is_unchanged() {
     // No `dark`/`light` ⇒ a single bare rule, no media/data-theme.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("t.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 class accent { color = "#003a8c"  bold = true }
 page index { text { span "hi" { class = ["accent"] } } }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2774,16 +2779,15 @@ fn inline_emphasis_styled_by_class_and_themed() {
     // — so emphasis is styled by a class AND varies with the theme.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("emph.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
-site home { root = true  default_template = :webpage  title = "T"  theme = tokyonight }
+site home { root = true  default_template = :webpage  title = "T"  theme = :tokyonight }
 page index { sites = [:home]
   text { span "Try **bold**, _italic_, `code`." {} }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2814,8 +2818,7 @@ fn inline_bold_unthemed_has_weight_but_no_theme_colour() {
     // per-theme colour rule isn't emitted (the doc stays unthemed).
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("plain.wcl");
-    std::fs::write(&src, "page index { text { span \"Just **bold**.\" {} } }\n")
-        .expect("write fixture");
+    write_fixture(&src, "page index { text { span \"Just **bold**.\" {} } }\n");
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -2833,13 +2836,12 @@ fn book_theme_toggle_is_gated_by_site_flag() {
     let fixture = |toggle: bool| -> String {
         let tmp = TempDir::new().expect("mkdir tempdir");
         let src = tmp.path().join("t.wcl");
-        std::fs::write(
+        write_fixture(
             &src,
             format!(
                 "site {{ default_template = :book  theme_toggle = {toggle} }}\npage index {{ h1 \"H\" {{}} }}\n"
             ),
-        )
-        .expect("write fixture");
+        );
         let out = TempDir::new().expect("mkdir out");
         build_ok(&src, out.path());
         std::fs::read_to_string(out.path().join("index.html")).expect("read")
@@ -2871,7 +2873,7 @@ fn book_theme_classes_and_toggle() {
     // light/dark toggle button (gated by the site `theme_toggle` flag).
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("book.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 site { default_template = :book  theme_toggle = true }
@@ -2892,8 +2894,7 @@ page syntax {
   text { span "See the [links](introduction) page." {} }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("syntax.html")).expect("read");
@@ -2933,7 +2934,7 @@ page syntax {
 fn build_renders_bar_chart_with_axes_and_series() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("bar.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -2956,8 +2957,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -3002,7 +3002,7 @@ page index {
 fn build_renders_horizontal_timeline_with_phases_items_ticks() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("timeline.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -3031,8 +3031,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -3102,7 +3101,7 @@ fn build_renders_vertical_timeline() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("vtimeline.wcl");
     // No start/end — the scale auto-fits from the event dates.
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -3124,8 +3123,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -3159,7 +3157,7 @@ page index {
 fn build_renders_card_shape_in_diagram() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("card.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -3174,8 +3172,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -3209,7 +3206,7 @@ page index {
 fn build_renders_timeline_cards() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("tlcards.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -3232,8 +3229,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -3266,7 +3262,7 @@ page index {
 fn build_timeline_every_thins_ticks_and_skips_bad_dates() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("tlevery.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -3287,8 +3283,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -3319,7 +3314,7 @@ page index {
 fn build_renders_line_chart_segments_and_markers() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("line.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -3337,8 +3332,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -3370,7 +3364,7 @@ page index {
 fn build_renders_line_chart_point_labels() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("line.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -3389,8 +3383,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -3418,7 +3411,7 @@ page index {
 fn build_renders_line_chart_annotations() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("line.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -3440,8 +3433,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -3468,7 +3460,7 @@ page index {
 fn build_renders_pie_slices_as_polygons() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("pie.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -3488,8 +3480,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -3517,7 +3508,7 @@ fn chart_series_class_is_overridable_via_class_block() {
     // override lands after the bundled default in the stylesheet.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("themed.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 class "wdoc-series-1" {
@@ -3539,8 +3530,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
 
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
@@ -3569,7 +3559,7 @@ fn terminal_primitives_render_grid_svg() {
     // rect, a double box (corner glyphs), and styled text runs.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("t.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 page index {
@@ -3581,8 +3571,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -3623,7 +3612,7 @@ fn terminal_tui_widgets_lower_nest_and_extend() {
     // integer math (62% of 24 = 14 cells) painted in the accent colour.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("t.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
 @block("my_badge")
@@ -3648,8 +3637,7 @@ page index {
   }
 }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -3702,11 +3690,10 @@ fn terminal_inline_text_lays_out_via_vt() {
     // separate elements, not one run.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("t.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         "page index {\n  terminal { cols = 12 rows = 3 text = \"hello\\nworld\" }\n}\n",
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -3742,11 +3729,10 @@ fn terminal_replay_emits_player_and_assets() {
     )
     .expect("write cast");
     let src = tmp.path().join("t.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         "page index {\n  terminal { source = \"./demo.cast\" loop = true }\n}\n",
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -3810,11 +3796,10 @@ fn terminal_missing_cast_is_marked_not_fatal() {
     // rather than failing the whole build.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("t.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         "page index {\n  terminal { source = \"./nope.cast\" }\n}\n",
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -3830,7 +3815,7 @@ fn no_terminal_writes_no_assets() {
     // assets (they're ~3 MB — pages that don't need them pay nothing).
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("t.wcl");
-    std::fs::write(&src, "page index {\n  text { span \"hi\" {} }\n}\n").expect("write fixture");
+    write_fixture(&src, "page index {\n  text { span \"hi\" {} }\n}\n");
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     assert!(
@@ -3845,7 +3830,7 @@ fn no_terminal_writes_no_assets() {
 fn build_icons(src: &str) -> (String, Option<String>) {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let file = tmp.path().join("main.wcl");
-    std::fs::write(&file, src).expect("write fixture");
+    write_fixture(&file, src);
     let out = TempDir::new().expect("mkdir out");
     build_ok(&file, out.path());
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
@@ -4089,7 +4074,7 @@ fn build_tilemap(src: &str, sheet_w: u32, sheet_h: u32) -> (String, TempDir) {
     let tmp = TempDir::new().expect("mkdir tempdir");
     std::fs::write(tmp.path().join("sheet.png"), fake_png(sheet_w, sheet_h)).expect("write png");
     let file = tmp.path().join("main.wcl");
-    std::fs::write(&file, src).expect("write fixture");
+    write_fixture(&file, src);
     let out = TempDir::new().expect("mkdir out");
     build_ok(&file, out.path());
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
@@ -4273,12 +4258,11 @@ page index {
 fn build_tileset_missing_image_is_an_error() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let file = tmp.path().join("main.wcl");
-    std::fs::write(
+    write_fixture(
         &file,
         "tileset world {\n  source = \"nope.png\"\n  tile_width = 8\n  tile_height = 8\n}\n\
          page index { diagram { width = 8  height = 8 } }\n",
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     match build(&file, out.path(), None) {
         Err(BuildError::Tileset(msg)) => assert!(msg.contains("world"), "{msg}"),
@@ -4430,7 +4414,7 @@ fn build_image(src: &str, w: u32, h: u32) -> (String, TempDir) {
     let tmp = TempDir::new().expect("mkdir tempdir");
     std::fs::write(tmp.path().join("pic.png"), fake_png(w, h)).expect("write png");
     let file = tmp.path().join("main.wcl");
-    std::fs::write(&file, src).expect("write fixture");
+    write_fixture(&file, src);
     let out = TempDir::new().expect("mkdir out");
     build_ok(&file, out.path());
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
@@ -4549,7 +4533,7 @@ page index {
 fn build_page(src: &str) -> (String, TempDir) {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let file = tmp.path().join("main.wcl");
-    std::fs::write(&file, src).expect("write fixture");
+    write_fixture(&file, src);
     let out = TempDir::new().expect("mkdir out");
     build_ok(&file, out.path());
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
@@ -4636,7 +4620,7 @@ page index {
 fn wireframe_html(body: &str) -> String {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("wf.wcl");
-    std::fs::write(&src, format!("page index {{\n{body}\n}}\n")).expect("write fixture");
+    write_fixture(&src, format!("page index {{\n{body}\n}}\n"));
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     std::fs::read_to_string(out.path().join("index.html")).expect("read")
@@ -4714,11 +4698,10 @@ fn wireframe_class_field_is_threaded_and_overrides_by_cascade() {
     // it wins by source order. (`class` is top-level, not a page child.)
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("wf.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         "page index { wf_button \"P\" { class = [\"primary\"] } }\nclass primary { background = \"#1f6feb\" }\n",
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -4756,7 +4739,7 @@ fn wireframe_css_width_field_is_not_clobbered() {
 fn with_multisite_build(src: &str, site: Option<&str>, check: impl FnOnce(&Path)) {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let file = tmp.path().join("ms.wcl");
-    std::fs::write(&file, src).expect("write fixture");
+    write_fixture(&file, src);
     let out = TempDir::new().expect("mkdir out");
     match build(&file, out.path(), site) {
         Ok(_) => check(out.path()),
@@ -4916,7 +4899,7 @@ page post1 { sites = [:blog]  h1 "P" {} }
 "##;
     let tmp = TempDir::new().unwrap();
     let file = tmp.path().join("ms.wcl");
-    std::fs::write(&file, src).unwrap();
+    write_fixture(&file, src);
     let out = TempDir::new().unwrap();
     assert!(
         matches!(build(&file, out.path(), None), Err(BuildError::BadLink(_))),
@@ -4932,7 +4915,7 @@ page a { sites = [:nope]  h1 "A" {} }
 "##;
     let tmp = TempDir::new().unwrap();
     let file = tmp.path().join("ms.wcl");
-    std::fs::write(&file, src).unwrap();
+    write_fixture(&file, src);
     let out = TempDir::new().unwrap();
     assert!(matches!(
         build(&file, out.path(), None),
@@ -4949,7 +4932,7 @@ page index { h1 "H" {} }
 "##;
     let tmp = TempDir::new().unwrap();
     let file = tmp.path().join("ms.wcl");
-    std::fs::write(&file, src).unwrap();
+    write_fixture(&file, src);
     let out = TempDir::new().unwrap();
     assert!(matches!(
         build(&file, out.path(), None),
@@ -4961,7 +4944,7 @@ page index { h1 "H" {} }
 fn unknown_site_filter_is_an_error() {
     let tmp = TempDir::new().unwrap();
     let file = tmp.path().join("ms.wcl");
-    std::fs::write(&file, TWO_SITES).unwrap();
+    write_fixture(&file, TWO_SITES);
     let out = TempDir::new().unwrap();
     assert!(matches!(
         build(&file, out.path(), Some("nope")),
@@ -5026,7 +5009,7 @@ fn cross_site_links_resolve_all_directions() {
 fn build_err(src: &str) -> BuildError {
     let tmp = TempDir::new().unwrap();
     let file = tmp.path().join("ms.wcl");
-    std::fs::write(&file, src).unwrap();
+    write_fixture(&file, src);
     let out = TempDir::new().unwrap();
     build(&file, out.path(), None).expect_err("build should fail")
 }
@@ -5143,18 +5126,17 @@ fn site_selects_built_in_theme_with_accent() {
     // hue, with the apply rules painting body / charts / tokens.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("themed.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r#"
 site {
   default_template = :webpage
-  theme  = catppuccin
+  theme  = :catppuccin
   accent = :green
 }
 page index { text { span "Hi" {} } }
 "#,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -5197,14 +5179,13 @@ page index { text { span "Hi" {} } }
 fn site_without_theme_defaults_to_nord() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("default.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r#"
 site { default_template = :webpage }
 page index { text { span "Hi" {} } }
 "#,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -5227,33 +5208,31 @@ page index { text { span "Hi" {} } }
 
 #[test]
 fn user_defined_theme_is_selectable() {
-    // A `ColourTheme` is an ordinary value, so a user can declare one
-    // and select it the same way as a built-in.
+    // A `theme` is just a block, so a user can declare one and select it
+    // by name the same way as a built-in.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("custom.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r##"
-let midnight = ColourTheme::Of {
-  name: "Midnight",
-  dark:  Palette::Of {
-    bg: "#0b0b14", bg_alt: "#15151f", bg_inset: "#070710", overlay: "#22223a", border: "#33334d",
-    fg: "#e6e6f0", fg_muted: "#9a9ab0", fg_subtle: "#5a5a72", heading: "#ffffff", selection: "#2a2a44",
-    red: "#ff5577", orange: "#ff9944", yellow: "#ffcc44", green: "#55dd88",
-    cyan: "#44ccdd", blue: "#5599ff", purple: "#aa77ff", pink: "#ff79c6",
-  },
-  light: Palette::Of {
-    bg: "#fafafe", bg_alt: "#eeeef6", bg_inset: "#ffffff", overlay: "#dddde8", border: "#ccccdd",
-    fg: "#1a1a2a", fg_muted: "#55556a", fg_subtle: "#8a8aa0", heading: "#000000", selection: "#d6d6ee",
-    red: "#cc2255", orange: "#cc6611", yellow: "#aa8800", green: "#118844",
-    cyan: "#1188aa", blue: "#2266cc", purple: "#7733cc", pink: "#d6298f",
-  },
+theme midnight {
+  palette dark {
+    bg = "#0b0b14"  bg_alt = "#15151f"  bg_inset = "#070710"  overlay = "#22223a"  border = "#33334d"
+    fg = "#e6e6f0"  fg_muted = "#9a9ab0"  fg_subtle = "#5a5a72"  heading = "#ffffff"  selection = "#2a2a44"
+    red = "#ff5577"  orange = "#ff9944"  yellow = "#ffcc44"  green = "#55dd88"
+    cyan = "#44ccdd"  blue = "#5599ff"  purple = "#aa77ff"  pink = "#ff79c6"
+  }
+  palette light {
+    bg = "#fafafe"  bg_alt = "#eeeef6"  bg_inset = "#ffffff"  overlay = "#dddde8"  border = "#ccccdd"
+    fg = "#1a1a2a"  fg_muted = "#55556a"  fg_subtle = "#8a8aa0"  heading = "#000000"  selection = "#d6d6ee"
+    red = "#cc2255"  orange = "#cc6611"  yellow = "#aa8800"  green = "#118844"
+    cyan = "#1188aa"  blue = "#2266cc"  purple = "#7733cc"  pink = "#d6298f"
+  }
 }
-site { default_template = :webpage  theme = midnight  accent = :pink }
+site { default_template = :webpage  theme = :midnight  accent = :pink }
 page index { text { span "Hi" {} } }
 "##,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -5282,7 +5261,7 @@ fn bare_document_without_site_is_unthemed() {
     // unchanged from before colour themes existed).
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("bare.wcl");
-    std::fs::write(&src, "page index { text { span \"Hi\" {} } }\n").expect("write fixture");
+    write_fixture(&src, "page index { text { span \"Hi\" {} } }\n");
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -5298,16 +5277,15 @@ fn per_site_themes_are_independent() {
     // Each site in a multi-site document carries its own theme.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("multi.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         r#"
-site a { root = true  default_template = :webpage  theme = gruvbox }
-site b { default_template = :webpage  theme = everforest }
+site a { root = true  default_template = :webpage  theme = :gruvbox }
+site b { default_template = :webpage  theme = :everforest }
 page pa { sites = [:a]  text { span "A" {} } }
 page pb { sites = [:b]  text { span "B" {} } }
 "#,
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let a = std::fs::read_to_string(out.path().join("pa.html")).expect("read pa");
@@ -5341,11 +5319,10 @@ fn build_renders_math_block_self_contained() {
     // assert the equation embeds its glyph outlines and is themed.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("m.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         "page index {\n  math <<'TEX'\n    \\frac{a}{b}\n    TEX\n  {}\n}\n",
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -5430,11 +5407,10 @@ fn build_math_preserves_explicit_color() {
     // rewrite (only black is rewritten).
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("m.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         "page index {\n  math <<'TEX'\n    \\textcolor{red}{x} + y\n    TEX\n  {}\n}\n",
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -5454,11 +5430,10 @@ fn build_bad_math_is_error_marker_not_failure() {
     // succeeds (mirrors the terminal block's bad-source behaviour).
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("m.wcl");
-    std::fs::write(
+    write_fixture(
         &src,
         "page index {\n  math <<'TEX'\n    \\frac{\n    TEX\n  {}\n}\n",
-    )
-    .expect("write fixture");
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path()); // must not panic / error
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
@@ -5482,7 +5457,7 @@ fn build_map(src: &str, files: &[(&str, u32, u32)]) -> (String, TempDir) {
         std::fs::write(&p, fake_png(*w, *h)).expect("write png");
     }
     let file = tmp.path().join("main.wcl");
-    std::fs::write(&file, src).expect("write fixture");
+    write_fixture(&file, src);
     let out = TempDir::new().expect("mkdir out");
     build_ok(&file, out.path());
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");

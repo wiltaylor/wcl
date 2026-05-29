@@ -105,11 +105,14 @@ impl Backend {
         out
     }
 
-    /// Build a [`FileLoader`] that overlays every open buffer on top
-    /// of disk. Each call snapshots `docs`; long-running consumers
-    /// should rebuild between operations.
+    /// Build a [`FileLoader`] that serves the embedded wdoc standard
+    /// library for `import <wdoc.wcl>` (and the other `<wdoc/…>` system
+    /// imports), falling through to an overlay of every open buffer on
+    /// top of disk. Each call snapshots `docs`; long-running consumers
+    /// should rebuild between operations. Rebuilding the registry per
+    /// call is cheap — it registers `&'static` strings.
     pub(crate) fn loader(&self) -> FileLoader {
-        overlay_loader(self.overlay_snapshot())
+        wcl_wdoc::schema_registry().loader(overlay_loader(self.overlay_snapshot()))
     }
 
     /// Canonical path of the configured root document, if any.

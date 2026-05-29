@@ -1,0 +1,68 @@
+// ── Lists ────────────────────────────────────────────────────────────
+//
+// Bullet and numbered lists:
+//
+//   list {                         // <ul>
+//     li "Plain item"
+//     li "Item with **bold**"      // li text runs through the inline engine
+//     li "Has a sublist" {
+//       li "Nested"                // li-under-li → a sublist (same style)
+//       li "Nested two"
+//     }
+//   }
+//
+//   list { style = :numbered       // <ol>; sublists number "1.1", "1.2", …
+//     li "Step one"
+//     li "Step two" { li "Sub-step → 2.1" }
+//   }
+//
+// An `li` may also hold a full `list` block for a sublist with its own
+// style (e.g. a numbered sublist inside a bulleted list).
+//
+// `list` and `li` are fundamental HTML blocks rendered directly in Rust
+// (like `table`): `list` → `<ul>` / `<ol>`, `li` → `<li>`. The numbered
+// "1.1" sublist numbering is pure CSS (counters), so it needs no Rust
+// per-item state. Their `lower`s are therefore never called.
+
+// Marker for the two things an `li` can contain: another `li`, or a
+// nested `list`. Carries the fields both already declare.
+interface ListNode {
+  id:    identifier?
+  class: list<utf8>?
+}
+
+// Bullet (default) or numbered, chosen with `style`.
+symbol_set ListStyle { bullet numbered }
+
+@block("list")
+type ListBlock extends WdocBlock, ListNode {
+  id:    identifier?
+  class: list<utf8>?
+  style: ListStyle?               // :bullet (default → <ul>) | :numbered (→ <ol>)
+  @children("li") items: list<Li>
+  // Fundamental: rendered directly in Rust, so `lower` is never invoked —
+  // declared only to satisfy the WdocBlock interface (mirrors TableBlock).
+  lower = fn(l: ListBlock) -> list<HtmlFundamental> []
+}
+
+@block("li")
+type Li extends ListNode {
+  @inline(0) text: utf8
+  id:    identifier?
+  class: list<utf8>?
+  @children(ListNode) children: list<ListNode>   // nested `li`s and/or a `list`
+}
+
+// Default list styling, injected into every page's <head>. Numbered lists
+// get hierarchical "1.1" markers via CSS counters: each nested
+// `ol.wdoc-list-numbered` resets its own counter, and `counters(…, ".")`
+// joins every level in scope. Uses element+class selectors and no
+// `--wdoc-*` vars (markers follow the surrounding text colour), so it's a
+// stylesheet rather than a bare class and a user `class` still cascades over it.
+stylesheet "wdoc-list" {
+  css = <<CSS
+    ol.wdoc-list-numbered { counter-reset: wdoc-li; }
+    ol.wdoc-list-numbered > li { counter-increment: wdoc-li; }
+    ol.wdoc-list-numbered > li::marker { content: counters(wdoc-li, ".") ". "; }
+    CSS
+}

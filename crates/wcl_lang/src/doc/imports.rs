@@ -2,7 +2,10 @@
 //!
 //! `expand_top_level_imports` is called from `Document::open_at` to flatten
 //! every `import "..."` at file scope plus its transitive top-level imports
-//! into a single `Vec<LoadedImport>` stashed on the document.
+//! into a single `Vec<LoadedImport>` stashed on the document. Each module is
+//! loaded at most once per document: a repeated or diamond import of an
+//! already-loaded path (by canonical key) is a no-op, while a re-entrant
+//! import of a path still in the active chain is a cycle error.
 //!
 //! `load_import_lazily` is called the first time evaluation crosses into a
 //! block-scoped `import` cell; it parses, builds cells, and runs the same
@@ -27,6 +30,29 @@ use super::validate::open_error;
 pub(super) struct BlockSlice<'a> {
     pub(super) items: &'a [ast::Item],
     pub(super) cells: &'a [ItemCells],
+}
+
+/// Cross-file import bookkeeping threaded down the eager-expansion
+/// recursion. `loading` is the active import chain (re-entering a path
+/// still in it is a cycle error); `seen` is every path already loaded
+/// anywhere in the document (re-importing one is a no-op, so a repeated
+/// `import <wdoc.wcl>` or a diamond loads the module just once).
+#[derive(Default)]
+pub(super) struct ImportState {
+    loading: HashSet<PathBuf>,
+    seen: HashSet<PathBuf>,
+}
+
+impl ImportState {
+    /// Seed the state for a lazily-loaded file whose own `path` is
+    /// already being loaded — so a self re-import is caught and it
+    /// isn't reloaded by its own transitive imports.
+    pub(super) fn for_lazy(path: PathBuf) -> Self {
+        let mut s = Self::default();
+        s.loading.insert(path.clone());
+        s.seen.insert(path);
+        s
+    }
 }
 
 pub(super) fn push_loaded_imports<'a>(cells: &'a [ItemCells], out: &mut Vec<BlockSlice<'a>>) {
@@ -83,13 +109,12 @@ pub(super) fn load_import_lazily(
     let imported_base = path.parent().map(Path::to_path_buf);
     let file_ns = first_namespace(&parsed_ast.items);
 
-    let mut loading: HashSet<PathBuf> = HashSet::new();
-    loading.insert(path.clone());
+    let mut state = ImportState::for_lazy(path.clone());
     let mut child_eager: Vec<LoadedImport> = Vec::new();
     expand_top_level_imports(
         &parsed_ast.items,
         imported_base.as_deref(),
-        &mut loading,
+        &mut state,
         &mut child_eager,
         &display,
         &src,
@@ -212,7 +237,7 @@ pub(super) fn first_namespace(items: &[ast::Item]) -> Vec<String> {
 pub(super) fn expand_top_level_imports(
     items: &[ast::Item],
     base_dir: Option<&Path>,
-    loading: &mut HashSet<PathBuf>,
+    state: &mut ImportState,
     out: &mut Vec<LoadedImport>,
     importer_file: &str,
     importer_source: &str,
@@ -231,7 +256,9 @@ pub(super) fn expand_top_level_imports(
                 "cannot resolve import",
             )
         })?;
-        if !loading.insert(path.clone()) {
+        // A path still in `loading` is an ancestor of the current import
+        // chain — a real cycle, and an error.
+        if state.loading.contains(&path) {
             return Err(open_error(
                 importer_source,
                 importer_file,
@@ -240,6 +267,14 @@ pub(super) fn expand_top_level_imports(
                 "cycle",
             ));
         }
+        // A path already loaded elsewhere in the document — a repeated
+        // import (e.g. `import <wdoc.wcl>` in several files) or a diamond
+        // — is a no-op: the module's declarations are already spliced
+        // into the tree, so importing it again would only duplicate them.
+        if !state.seen.insert(path.clone()) {
+            continue;
+        }
+        state.loading.insert(path.clone());
 
         let src = loader(&path).map_err(|e| {
             open_error(
@@ -260,7 +295,7 @@ pub(super) fn expand_top_level_imports(
         expand_top_level_imports(
             &parsed_ast.items,
             imported_base.as_deref(),
-            loading,
+            state,
             &mut child_eager,
             &display,
             &src,
@@ -283,7 +318,7 @@ pub(super) fn expand_top_level_imports(
             eager_imports: child_eager,
         });
 
-        loading.remove(&path);
+        state.loading.remove(&path);
     }
     Ok(())
 }

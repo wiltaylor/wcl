@@ -14,12 +14,15 @@ use crate::render::{
 };
 
 /// The wdoc standard library, embedded in the binary and registered
-/// under `wdoc/*.wcl` keys. A user document picks it up through the
-/// single `import <wdoc/prelude.wcl>` line we prepend in [`build`]; the
-/// prelude pulls in every other part via importer-relative system
-/// imports (`import <core.wcl>` → `wdoc/core.wcl`).
-fn schema_registry() -> Registry {
+/// under `wdoc/*.wcl` keys plus the public `wdoc.wcl` entry point. A
+/// user document opts in with an explicit `import <wdoc.wcl>` line,
+/// which pulls in the prelude; the prelude pulls in every other part
+/// via importer-relative system imports (`import <core.wcl>` →
+/// `wdoc/core.wcl`). The LSP reuses this registry so editing a wdoc
+/// document resolves the same embedded library.
+pub fn schema_registry() -> Registry {
     let mut r = Registry::new();
+    r.register("wdoc.wcl", include_str!("../lib/wdoc.wcl"));
     r.register("wdoc/prelude.wcl", include_str!("../lib/prelude.wcl"));
     r.register("wdoc/core.wcl", include_str!("../lib/core.wcl"));
     r.register("wdoc/theme.wcl", include_str!("../lib/theme.wcl"));
@@ -31,6 +34,7 @@ fn schema_registry() -> Registry {
     r.register("wdoc/callout.wcl", include_str!("../lib/callout.wcl"));
     r.register("wdoc/wireframe.wcl", include_str!("../lib/wireframe.wcl"));
     r.register("wdoc/table.wcl", include_str!("../lib/table.wcl"));
+    r.register("wdoc/list.wcl", include_str!("../lib/list.wcl"));
     r.register(
         "wdoc/diagram-core.wcl",
         include_str!("../lib/diagram-core.wcl"),
@@ -95,22 +99,17 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
     let user_src = fs::read_to_string(file)
         .map_err(|e| BuildError::Io(e, format!("read {}", file.display())))?;
 
-    // Prepend a single line that pulls in the embedded wdoc schema via a
-    // system import. Resolving it through the registry (rather than
-    // inlining ~1.5k lines) keeps user line/column diagnostics shifted by
-    // just one line; the schema itself reports against its own `<wdoc/…>`
-    // source names.
-    let composed = format!("import <wdoc/prelude.wcl>\n{user_src}");
     let name = file.display().to_string();
 
-    // Relative `import "./pages/foo.wcl"` statements inside the user
-    // source must resolve against the source file's own directory, not
-    // the wdoc working directory — so disk imports fall through to the
-    // disk loader with that base. The registry serves the system import.
+    // The wdoc schema is pulled in by the author's own `import <wdoc.wcl>`
+    // line, resolved through the embedded registry below. Relative
+    // `import "./pages/foo.wcl"` statements resolve against the source
+    // file's own directory, not the wdoc working directory — so disk
+    // imports fall through to the disk loader with that base.
     let base_dir = file.parent().map(std::path::Path::to_path_buf);
     let loader = schema_registry().loader(disk_loader());
     let doc = Document::open_at_with_loader(
-        &composed,
+        &user_src,
         &name,
         base_dir.clone(),
         &Environment::new(),
@@ -121,7 +120,7 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
     let errs = doc.schema_errors();
     if !errs.is_empty() {
         let n = errs.len();
-        let src = NamedSource::new(name.clone(), composed.clone());
+        let src = NamedSource::new(name.clone(), user_src.clone());
         for e in &errs {
             let report = Report::new(e.clone()).with_source_code(src.clone());
             eprintln!("{report:?}");

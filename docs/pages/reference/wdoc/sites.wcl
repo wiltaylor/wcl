@@ -12,7 +12,7 @@ page wdoc_sites { sites = [:reference]
       | "`default_template`" | "`:webpage` (header + top nav) or `:book` (sidebar + TOC)" |
       | "`title`"           | "Site title shown in the header / sidebar" |
       | "`root`"            | "When `true`, this site renders at `/` (others go under `/<site>/`)" |
-      | "`theme`"           | "Built-in colour theme — see [Themes](wdoc_themes)" |
+      | "`theme`"           | "Symbol naming a colour `theme` block (`:nord` …) — see [Styling](wdoc_styling)" |
       | "`accent`"          | "Symbol naming the accent hue (`:red`..`:pink`); default `:blue`" |
       | "`theme_toggle`"    | "When `true`, adds a light/dark toggle button" |
       | "`menu { … }`"      | "Top navbar entries for the `webpage` template" |
@@ -28,7 +28,7 @@ site marketing {
   default_template = :webpage
   title            = "My project"
   root             = true
-  theme            = nord
+  theme            = :nord
   menu {
     item "Home"     { page = index }
     item "Docs"     { href = "docs/" }
@@ -51,7 +51,7 @@ WCL
 site docs {
   default_template = :book
   title            = "Project Docs"
-  theme            = nord
+  theme            = :nord
   theme_toggle     = true
   toc {
     chapter "Intro"        { page = index }

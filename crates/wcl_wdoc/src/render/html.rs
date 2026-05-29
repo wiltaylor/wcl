@@ -260,6 +260,13 @@ pub(crate) fn render_block(
     match block.kind() {
         "column" => Some(render_column(doc, block, patterns, base_dir)),
         "table" => Some(render_table(doc, block, patterns)),
+        // Lists are fundamental HTML blocks rendered directly (like
+        // `table`): a pure-WCL lower can't see `@children`, so it can't
+        // wrap nested items in the `<ul>/<ol>` that valid HTML and the
+        // CSS-counter "1.1" numbering need. An `li` is normally reached
+        // via `render_list`; the arm here is defensive.
+        "list" => Some(render_list(doc, block, patterns, base_dir)),
+        "li" => Some(render_li(doc, block, false, patterns, base_dir)),
         // A page image — the asset copy + src rewrite is special-cased in
         // Rust (the same `image` block is also a diagram shape; see
         // render_shape). Records usage in the image registry.
@@ -302,6 +309,80 @@ pub(crate) fn render_column(
         " style=\"display:grid;grid-template-columns:{grid_cols};\">{children}</div>"
     )
     .expect("write to String");
+    out
+}
+
+/// Render a `@block("list")` instance → `<ul>` (bullet, the default) or
+/// `<ol class="wdoc-list-numbered">` (when `style = :numbered`). Its `li`
+/// children render via [`render_li`]; the numbered class drives the
+/// CSS-counter "1.1" sublist numbering in the bundled `wdoc-list` stylesheet.
+pub(crate) fn render_list(
+    doc: &Document,
+    block: &Block<'_>,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
+) -> String {
+    let numbered = field_symbol(block, "style").as_deref() == Some("numbered");
+    let mut classes: Vec<String> = Vec::new();
+    if numbered {
+        classes.push("wdoc-list-numbered".to_string());
+    }
+    classes.extend(field_utf8_list(block, "class"));
+    let items: String = block
+        .blocks()
+        .filter(|b| b.kind() == "li")
+        .map(|b| render_li(doc, &b, numbered, patterns, base_dir))
+        .collect();
+    list_html(numbered, &classes, field_id(block, "id").as_deref(), &items)
+}
+
+/// Emit `<ul|ol …>{inner}</ul|ol>` — `ol` when `numbered`.
+fn list_html(numbered: bool, classes: &[String], id: Option<&str>, inner: &str) -> String {
+    let tag = if numbered { "ol" } else { "ul" };
+    let cls = classes_attr_from_names(classes);
+    let mut out = format!("<{tag}{cls}");
+    append_attr(&mut out, "id", id);
+    write!(out, ">{inner}</{tag}>").expect("write to String");
+    out
+}
+
+/// Render a single `li` → `<li>inline-text + optional sublist</li>`. The
+/// item text runs through the inline-pattern engine (bold / italic / code /
+/// links / icons / math). `numbered` is the enclosing list's style, so an
+/// `li`-under-`li` sublist keeps the parent's numbering (a numbered list
+/// nests as "1.1"); a nested `list` block instead sets its own style.
+pub(crate) fn render_li(
+    doc: &Document,
+    block: &Block<'_>,
+    numbered: bool,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
+) -> String {
+    let cls = class_attr(block);
+    let mut out = format!("<li{cls}");
+    append_attr(&mut out, "id", field_id(block, "id").as_deref());
+    out.push('>');
+    // `@inline(0) text` arrives as the block's label, not a named field.
+    out.push_str(&patterns.render(doc, &label_string(block).unwrap_or_default()));
+    // A sublist built from nested `li`s, wrapped in a list of the same
+    // style (so numbered sublists count as "1.1").
+    let sub_items: String = block
+        .blocks()
+        .filter(|b| b.kind() == "li")
+        .map(|b| render_li(doc, &b, numbered, patterns, base_dir))
+        .collect();
+    if !sub_items.is_empty() {
+        let mut classes: Vec<String> = Vec::new();
+        if numbered {
+            classes.push("wdoc-list-numbered".to_string());
+        }
+        out.push_str(&list_html(numbered, &classes, None, &sub_items));
+    }
+    // A nested `list` block carries its own bullet/numbered style.
+    for b in block.blocks().filter(|b| b.kind() == "list") {
+        out.push_str(&render_list(doc, &b, patterns, base_dir));
+    }
+    out.push_str("</li>");
     out
 }
 

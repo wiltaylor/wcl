@@ -1,0 +1,10 @@
+// wdoc standard library — public entry point.
+//
+// A wdoc document opts into the schema with a single `import <wdoc.wcl>`
+// line at the top. This file pulls in the prelude, which in turn imports
+// every part of the library. The parts are embedded in the binary and
+// resolved through the registry (see `crates/wcl_wdoc/src/build.rs`); the
+// angle-bracket path is importer-relative within the `<wcl-system>`
+// namespace, so `import <wdoc/prelude.wcl>` here resolves to that key.
+
+import <wdoc/prelude.wcl>

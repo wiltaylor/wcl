@@ -1,0 +1,108 @@
+// wdoc section: Styling (classes + themes).
+page wdoc_styling { sites = [:reference]
+  h1 "Styling"
+
+  p "Two layers control how a site looks: `class` blocks style individual elements, and a site `theme` sets the palette every built-in element draws from. Classes always win over theme defaults via the cascade, so you theme broadly and override locally."
+
+  h2 "Classes"
+
+  p "A `class <name> { … }` block declares a CSS class. Apply it by listing the name in any block's `class` field (or a span's). Fields cover text, box, and SVG paint properties; per-mode overrides go in `dark { }` / `light { }` sub-blocks."
+
+  h3 "Authoring"
+
+  code wcl {
+    source = <<'WCL'
+class accent {
+  color = "var(--wdoc-accent)"
+  bold  = true
+  dark  { color = "#88c0d0" }
+  light { color = "#5e81ac" }
+}
+
+// Use the class on a span:
+text {
+  span "highlighted segment" { class = ["accent"] }
+}
+WCL
+  }
+
+  h3 "Field groups"
+
+  table {
+    rows:
+      | "Group" | "Fields" |
+      | "Text"  | "`color`, `background`, `bold`, `italic`, `underline`, `font_size`, `font_family`, `text_align`, `text_transform`, `letter_spacing`, `line_height`" |
+      | "Box"   | "`padding`, `margin`, `border`" |
+      | "SVG"   | "`fill`, `stroke`, `stroke_width`, `stroke_linejoin`, `stroke_linecap`, `opacity`" |
+      | "Modes" | "`dark { … }`, `light { … }` for prefers-color-scheme overrides" |
+  }
+
+  h3 "Hyphenated names"
+
+  p "Class names that contain hyphens (or any non-identifier character) must be quoted: `class \"wdoc-series-1\" { fill = \"#88c0d0\" }`. This is how you override built-in classes like the chart palette or callout styles."
+
+  callout "Site scope" {
+    class = ["info"]
+    body  = "Set sites = [:foo] on a class to scope it to one site in a multi-site document. Omit the field and the class applies everywhere."
+  }
+
+  h2 "Themes"
+
+  p "A theme is a complete colour palette plus the rules that map it onto every built-in element — page background, links, headings, code, charts, callouts, tables, inline emphasis. Selecting a theme in one line recolours the whole site."
+
+  h3 "Selecting a built-in theme"
+
+  p "Set `theme = :<name>` on a `site` — a symbol naming a `theme` block. Seven built-in palettes ship, each with co-ordinated dark and light variants. `theme_toggle = true` adds a light/dark toggle button to the chrome."
+
+  code wcl {
+    source = <<'WCL'
+site mysite {
+  default_template = :book
+  theme            = :tokyonight
+  accent           = :cyan
+  theme_toggle     = true
+}
+WCL
+  }
+
+  h3 "Built-in themes"
+
+  table {
+    rows:
+      | "Theme"        | "Notes" |
+      | "`nord`"       | "Cool blue-grey, the default" |
+      | "`gruvbox`"    | "Warm retro" |
+      | "`solarized`"  | "Classic Solarized" |
+      | "`catppuccin`" | "Soft pastel" |
+      | "`tokyonight`" | "Vivid night palette" |
+      | "`kanagawa`"   | "Muted with hints of indigo" |
+      | "`everforest`" | "Green forest tones" |
+  }
+
+  h3 "Accent colour"
+
+  p "Independently of the theme, `accent = :cyan` (or `:red`/`:orange`/`:yellow`/`:green`/`:blue`/`:purple`/`:pink`) picks the hue used for links and current-chapter highlights. Default is `:blue`."
+
+  h3 "Custom themes"
+
+  p "A theme is just a `theme` block holding a `dark` and a `light` `palette` sub-block; select it with `theme = :name`. Each palette sets any of the 18 colour roles (documented in `lib/theme.wcl`); omitted roles fall back through the cascade."
+
+  code wcl {
+    source = <<'WCL'
+theme sunset {
+  palette dark {
+    bg = "#1a1a2e"  fg = "#e0e0e0"
+    blue = "#5e81ac"  green = "#a3be8c"
+    // … any of the 18 roles
+  }
+  palette light {
+    bg = "#fdf6e3"  fg = "#073642"
+  }
+}
+
+site mysite { theme = :sunset  accent = :blue }
+WCL
+  }
+
+  p "Next: [Diagrams](wdoc_diagrams)."
+}

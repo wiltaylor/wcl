@@ -147,12 +147,12 @@ impl Document {
 
         // Resolve top-level imports eagerly. Each LoadedImport carries
         // its own (items, cells, symbols).
-        let mut loading: HashSet<PathBuf> = HashSet::new();
+        let mut state = imports::ImportState::default();
         let mut eager_imports: Vec<LoadedImport> = Vec::new();
         expand_top_level_imports(
             &ast.items,
             base_dir.as_deref(),
-            &mut loading,
+            &mut state,
             &mut eager_imports,
             name,
             source,

@@ -26,9 +26,5 @@ WCL
     body  = "A literal pipe (|) outside a quoted cell will split the row. Wrap any cell that contains pipes — e.g. an inline `code` example showing ||  — in a string literal."
   }
 
-  h2 "Styling"
-
-  p "Tables render with a `wdoc-table` class on the `<table>` element. Override the default look by redeclaring `class \"wdoc-table\" { … }`, or apply your own class on the block."
-
   p "Next: [Columns](wdoc_columns)."
 }

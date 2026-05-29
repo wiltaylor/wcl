@@ -1,9 +1,10 @@
 //! WCL-driven static site / document generator.
 //!
-//! Embeds a bundled `wdoc.wcl` schema (page + h1..h6 + p blocks),
-//! renders pages declared in user `.wcl` files to HTML, and ships a
-//! tiny dev server. The `wcl` CLI wires these entry points behind
-//! `wcl wdoc build` and `wcl wdoc serve`.
+//! Embeds a bundled `wdoc.wcl` standard library (page + h1..h6 + p +
+//! diagram + … blocks) that a user document opts into with
+//! `import <wdoc.wcl>`, renders pages declared in user `.wcl` files to
+//! HTML, and ships a tiny dev server. The `wcl` CLI wires these entry
+//! points behind `wcl wdoc build` and `wcl wdoc serve`.
 
 pub mod build;
 mod card;
@@ -24,5 +25,5 @@ mod text;
 mod tileset;
 mod timeline;
 
-pub use build::{BuildError, build};
+pub use build::{BuildError, build, schema_registry};
 pub use serve::serve;
