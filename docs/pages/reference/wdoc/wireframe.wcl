@@ -1,0 +1,96 @@
+// wdoc section: Wireframe UI Widgets.
+page wdoc_wireframe { sites = [:reference]
+  h1 "Wireframe UI Widgets"
+
+  p "Wireframe widgets render UI mockups — windows, buttons, inputs, controls — as styled HTML. Unlike diagram shapes (which lower to flat SVG leaves), widgets render through the HTML path and **container widgets nest other widgets**, so you can compose a window of panels of rows of controls."
+
+  h2 "Window"
+
+  p "`wf_window` is the top-level widget: a titlebar with optional traffic-light controls plus a body that hosts other widgets."
+
+  code wcl {
+    source = <<'WCL'
+wf_window "Account settings" {
+  wf_panel {
+    title = "Profile"
+    wf_input "Display name" { value = "Wil Taylor" }
+    wf_input "Email"        { value = "ai@wiltaylor.dev" }
+  }
+  wf_row {
+    wf_button "Cancel"
+    wf_button "Save" { class = ["primary"] }
+  }
+}
+WCL
+  }
+
+  h2 "Containers"
+
+  table {
+    rows:
+      | "Widget"      | "Purpose" |
+      | "`wf_window`" | "Outer chrome — titlebar + body. `controls = false` hides the traffic lights." |
+      | "`wf_panel`"  | "Bordered group with an optional `title` caption." |
+      | "`wf_column`" | "Stack children vertically (default flow inside a panel)." |
+      | "`wf_row`"    | "Stack children horizontally." |
+      | "`wf_grid`"   | "Two-dimensional grid; takes `columns` (and optionally `rows`)." |
+  }
+
+  p "Every container accepts `@children(Widget)` — drop any other widget inside, nested arbitrarily."
+
+  h2 "Leaf controls"
+
+  table {
+    rows:
+      | "Widget"        | "Inline label" | "Other fields" |
+      | "`wf_label`"    | "the text"     | "—" |
+      | "`wf_button`"   | "the caption"  | "`icon` (e.g. `\"lucide.check\"`)" |
+      | "`wf_input`"    | "the placeholder" | "`value` (fills with solid text)" |
+      | "`wf_dropdown`" | "the placeholder" | "`value`" |
+      | "`wf_checkbox`" | "the label"    | "`checked` (bool)" |
+      | "`wf_radio`"    | "the label"    | "`selected` (bool)" |
+      | "`wf_toggle`"   | "the label"    | "`on` (bool)" |
+  }
+
+  h2 "Common fields"
+
+  p "Every widget extends a shared `Widget` interface and accepts:"
+
+  table {
+    rows:
+      | "Field"      | "Meaning" |
+      | "`id`"       | "Optional HTML id." |
+      | "`class`"    | "Extra CSS classes — see Styling below." |
+      | "`width`"    | "Explicit CSS width (e.g. `\"12rem\"` / `\"100%\"`)." |
+      | "`disabled`" | "When `true`, adds a `wf-disabled` class so styles can dim the control." |
+  }
+
+  h2 "Styling"
+
+  p "Every widget threads its `class` field onto the rendered element and paints from a bare class — `.wf-button`, `.wf-window`, `.wf-input`, etc. The bundled `wdoc-wireframe` stylesheet seeds a clean grey-box palette via `--wf-*` custom properties (dark default + light override + theme-toggle override). Two override paths:"
+
+  code wcl {
+    source = <<'WCL'
+// Recolour every wireframe button:
+class "wf-button" {
+  background = "var(--wdoc-accent)"
+  color      = "#fff"
+}
+
+// Or a one-off variant on a single instance:
+class primary {
+  background = "var(--wdoc-accent)"
+  bold       = true
+}
+
+wf_button "Save" { class = ["primary"] }
+WCL
+  }
+
+  callout "Mockups, not interactivity" {
+    class = ["info"]
+    body  = "Wireframe widgets are visual mockups — they render as styled <div>s and don't respond to clicks. For runnable terminal-style UI, see TUI Widgets."
+  }
+
+  p "Back to the [reference introduction](index)."
+}

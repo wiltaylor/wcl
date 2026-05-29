@@ -100,6 +100,7 @@ site reference {
       chapter "Charts"                 { page = wdoc_charts }
       chapter "Terminals"              { page = wdoc_terminals }
       chapter "TUI Widgets"            { page = wdoc_tui }
+      chapter "Wireframe UI Widgets"   { page = wdoc_wireframe }
       chapter "Timelines"              { page = wdoc_timelines }
       chapter "Cards"                  { page = wdoc_cards }
       chapter "Icons"                  { page = wdoc_icons }
@@ -162,6 +163,7 @@ import "./pages/reference/wdoc/flowcharts.wcl"
 import "./pages/reference/wdoc/charts.wcl"
 import "./pages/reference/wdoc/terminals.wcl"
 import "./pages/reference/wdoc/tui.wcl"
+import "./pages/reference/wdoc/wireframe.wcl"
 import "./pages/reference/wdoc/timelines.wcl"
 import "./pages/reference/wdoc/cards.wcl"
 import "./pages/reference/wdoc/icons.wcl"
