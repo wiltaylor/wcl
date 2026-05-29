@@ -19,32 +19,6 @@ page wdoc_diagrams { sites = [:reference]
       | "`pan_margin`"        | "Overscroll px beyond the content bounds (pan/zoom)" |
   }
 
-  h2 "Connections"
-
-  p "Inside a `diagram`, `source -> destination :kind` draws an edge between two shapes (matched by `id`). The optional `:kind` tag is a symbol; the renderer routes the edge based on the diagram's layout."
-
-  diagram {
-    width = 320  height = 120
-    rect { id = a  x = 10.0   y = 10.0  width = 60.0  height = 40.0  fill = "#88c0d0" }
-    rect { id = b  x = 200.0  y = 10.0  width = 60.0  height = 40.0  fill = "#a3be8c" }
-
-    a -> b
-    a -> b :flow
-  }
-
-  code wcl {
-    source = <<'WCL'
-diagram {
-  width = 320  height = 120
-  rect { id = a  x = 10.0   y = 10.0  width = 60.0  height = 40.0  fill = "#88c0d0" }
-  rect { id = b  x = 200.0  y = 10.0  width = 60.0  height = 40.0  fill = "#a3be8c" }
-
-  a -> b
-  a -> b :flow
-}
-WCL
-  }
-
   h2 "Pan & zoom"
 
   p "Set `pan_zoom = true` to wrap the diagram in an interactive viewport. Wheel zooms toward the cursor, drag pans, the corner buttons zoom about centre / reset. Zoom is clamped to `[zoom_min, zoom_max]`; pan allows half-a-viewport of overscroll past each content edge plus the author's `pan_margin`. Try it on the diagram below:"

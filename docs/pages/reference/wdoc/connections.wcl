@@ -1,0 +1,30 @@
+// wdoc section: Connections.
+page wdoc_connections { sites = [:reference]
+  h1 "Connections"
+
+  p "Inside a `diagram`, `source -> destination :kind` draws an edge between two shapes (matched by `id`). The optional `:kind` tag is a symbol; the renderer routes the edge based on the diagram's layout."
+
+  diagram {
+    width = 320  height = 120
+    rect { id = a  x = 10.0   y = 10.0  width = 60.0  height = 40.0  fill = "#88c0d0" }
+    rect { id = b  x = 200.0  y = 10.0  width = 60.0  height = 40.0  fill = "#a3be8c" }
+
+    a -> b
+    a -> b :flow
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 320  height = 120
+  rect { id = a  x = 10.0   y = 10.0  width = 60.0  height = 40.0  fill = "#88c0d0" }
+  rect { id = b  x = 200.0  y = 10.0  width = 60.0  height = 40.0  fill = "#a3be8c" }
+
+  a -> b
+  a -> b :flow
+}
+WCL
+  }
+
+  p "Next: [Flowcharts](wdoc_flowcharts)."
+}
