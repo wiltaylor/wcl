@@ -88,6 +88,7 @@ site reference {
       chapter "Sites & Templates"      { page = wdoc_sites }
       chapter "Pages"                  { page = wdoc_pages }
       chapter "Formatting"             { page = wdoc_formatting }
+      chapter "Data Views"             { page = wdoc_data_views }
       chapter "Math Equations"         { page = wdoc_math }
       chapter "Tables"                 { page = wdoc_tables }
       chapter "Columns"                { page = wdoc_columns }
@@ -149,6 +150,7 @@ import "./pages/reference/wdoc/overview.wcl"
 import "./pages/reference/wdoc/sites.wcl"
 import "./pages/reference/wdoc/pages.wcl"
 import "./pages/reference/wdoc/formatting.wcl"
+import "./pages/reference/wdoc/data-views.wcl"
 import "./pages/reference/wdoc/math.wcl"
 import "./pages/reference/wdoc/tables.wcl"
 import "./pages/reference/wdoc/columns.wcl"

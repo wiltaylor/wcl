@@ -129,6 +129,68 @@ fn decl_type_fqn(doc: &crate::doc::Document, t: &crate::value::TypeRef) -> Optio
     doc.resolve_type_fqn(t)
 }
 
+/// Validate a `wdoc_component` instance against its definition's slots:
+/// every instance field must name a declared slot, and every slot
+/// without a `default` must be supplied. (The definition itself —
+/// only `wdoc_slot`/`wdoc_body` children, one body — is validated by the
+/// generic schema on the `wdoc_component` block.)
+pub(super) fn validate_component_instance(
+    doc: &crate::doc::Document,
+    instance: &Block<'_>,
+) -> Vec<EvalError> {
+    use crate::error::SchemaViolationKind as Kind;
+    use crate::value::Value;
+    let mut errs = Vec::new();
+    let Some(def) = doc.component_def(instance.kind()) else {
+        return errs;
+    };
+    let slot_name = |s: &Block<'_>| -> Option<String> {
+        match s.labels().ok()?.into_iter().next()? {
+            Value::Identifier(n) | Value::Utf8(n) | Value::Ascii(n) => Some(n),
+            _ => None,
+        }
+    };
+    let slots: Vec<Block<'_>> = def.blocks().filter(|b| b.kind() == "wdoc_slot").collect();
+    let slot_names: std::collections::HashSet<String> =
+        slots.iter().filter_map(slot_name).collect();
+
+    // Every instance field must be a declared slot.
+    for f in instance.fields() {
+        if has_schemaless(&f.ast.decorators) {
+            continue;
+        }
+        if !slot_names.contains(f.name()) {
+            errs.push(EvalError::schema_violation_named(
+                Kind::UnknownField,
+                format!(
+                    "field '{}' is not a slot of component '{}'",
+                    f.name(),
+                    instance.kind()
+                ),
+                f.name(),
+                f.span(),
+            ));
+        }
+    }
+    // Every slot without a default must be supplied.
+    for s in &slots {
+        let Some(name) = slot_name(s) else { continue };
+        let has_default = s.field("default").is_some();
+        if !has_default && instance.field(&name).is_none() {
+            errs.push(EvalError::schema_violation(
+                Kind::MissingRequired,
+                format!(
+                    "component '{}' is missing required slot '{}'",
+                    instance.kind(),
+                    name
+                ),
+                instance.span(),
+            ));
+        }
+    }
+    errs
+}
+
 pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     use crate::error::SchemaViolationKind as Kind;
     let mut errs = Vec::new();
@@ -151,6 +213,12 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     ));
 
     let Some(schema) = block.schema() else {
+        // A `wdoc_component` instance has no `@block` schema of its own —
+        // it's validated against its definition's slots instead.
+        if block.doc.is_component_kind(block.kind()) {
+            errs.extend(validate_component_instance(block.doc, block));
+            return errs;
+        }
         // Strict mode: a block whose kind has no `@block`/`@table`
         // declaration is itself the violation.
         errs.push(EvalError::schema_violation(
@@ -249,6 +317,37 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         let Ok(value) = literal_field.value() else {
             continue;
         };
+
+        // Computed-children splice: a `@children(kind)` / `@child(kind)`
+        // slot authored as `field = <list expr>` instead of nested
+        // blocks. The value is a list spliced into child blocks (see
+        // `Block::computed_children`); its elements are validated as
+        // nested blocks by the kind / disallowed-child walk below, so the
+        // scalar value-vs-type check doesn't apply (a list of records
+        // never "matches" a `list<BlockKind>` value type). A `@children`
+        // slot still requires a list value.
+        let is_children = declared.children_kind_or_union().is_some();
+        let is_child = declared.child_kind_or_union().is_some();
+        if is_children || is_child {
+            if is_children
+                && !matches!(
+                    value,
+                    crate::value::Value::List(_) | crate::value::Value::None
+                )
+            {
+                errs.push(EvalError::schema_violation(
+                    Kind::FieldTypeMismatch,
+                    format!(
+                        "field '{}' is a @children slot spliced from an expression, \
+                         so it must be a list, but the value is {}",
+                        literal_field.name(),
+                        value.type_name(),
+                    ),
+                    literal_field.span(),
+                ));
+            }
+            continue;
+        }
 
         // Union path — preserved verbatim.
         if let crate::value::TypeRef::Named(path) = declared.type_ref()
@@ -408,6 +507,17 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
                     .any(|iface| t.is_descendant_of(&iface.full_name()))
             });
         if matches_interface {
+            continue;
+        }
+        // A user-defined `wdoc_component` instance satisfies a
+        // `@children(WdocBlock)` interface slot (components render to the
+        // HTML/WdocBlock domain). Validate the instance's slot fields
+        // here, since the validator is otherwise shallow.
+        let in_wdoc_slot = interface_slots
+            .iter()
+            .any(|iface| iface.full_name().ends_with("WdocBlock"));
+        if in_wdoc_slot && block.doc.is_component_kind(nested.kind()) {
+            errs.extend(validate_component_instance(block.doc, &nested));
             continue;
         }
         errs.push(EvalError::schema_violation_named(

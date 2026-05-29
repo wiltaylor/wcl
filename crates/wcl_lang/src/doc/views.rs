@@ -376,6 +376,113 @@ fn resolve_child_kind_arg<'a>(doc: &'a Document, positional: &[Value]) -> Option
     }
 }
 
+/// Build one value-backed [`SynthChild`] of `kind` from a spliced list
+/// element. The element is a `Value::Record` / `Value::Variant`
+/// (record payload) whose entries map onto `kind`'s schema fields —
+/// `@inline(N)` entries become block labels, the rest become named
+/// fields — or a bare scalar, which fills the kind's single `@inline(0)`
+/// slot. The synthetic block's label/field cells are pre-seeded with the
+/// values, so `Block::labels` / `Block::field` read them directly and the
+/// placeholder `Expr::None`s are never evaluated. `None` when `kind` has
+/// no `@block` schema (the splice is then a no-op for that element).
+fn synth_child_from_value(
+    doc: &Document,
+    field_name: &str,
+    kind: &str,
+    value: &Value,
+) -> Option<crate::doc::cells::SynthChild> {
+    use crate::value::VariantPayload;
+    use std::collections::BTreeMap;
+
+    let schema = doc.block_schema(kind)?;
+
+    // Normalise the element to a field map.
+    let fields: BTreeMap<String, Value> = match value {
+        Value::Record { fields, .. } => fields.clone(),
+        Value::Variant {
+            payload: VariantPayload::Record(m),
+            ..
+        } => m.clone(),
+        scalar => {
+            // A bare scalar fills the kind's single `@inline(0)` field
+            // (e.g. `list { items = map(names, fn(n) -> n) }` → `li` text).
+            let inline0 = schema.fields().find(|f| f.inline_slot() == Some(0))?;
+            let mut m = BTreeMap::new();
+            m.insert(inline0.name().to_string(), scalar.clone());
+            m
+        }
+    };
+
+    // Partition record entries into `@inline(slot)` labels vs named fields.
+    let mut max_slot: i64 = -1;
+    let mut label_pairs: Vec<(u64, Value)> = Vec::new();
+    let mut named: Vec<(String, Value)> = Vec::new();
+    for (k, v) in &fields {
+        if let Some(slot) = schema
+            .fields()
+            .find(|f| f.name() == k)
+            .and_then(|f| f.inline_slot())
+        {
+            max_slot = max_slot.max(slot as i64);
+            label_pairs.push((slot, v.clone()));
+        } else {
+            named.push((k.clone(), v.clone()));
+        }
+    }
+
+    let label_len = (max_slot + 1).max(0) as usize;
+    let mut label_values = vec![Value::None; label_len];
+    for (slot, v) in label_pairs {
+        label_values[slot as usize] = v;
+    }
+
+    let synth_span = ast::Span::new(0, 0);
+    let items: Vec<ast::Item> = named
+        .iter()
+        .map(|(name, _)| {
+            ast::Item::Field(ast::Field {
+                name: name.clone(),
+                expr: ast::Expr::None,
+                decorators: Vec::new(),
+                span: synth_span,
+                leading_trivia: Vec::new(),
+            })
+        })
+        .collect();
+    let synth_block = ast::Block {
+        kind: String::new(),
+        labels: vec![ast::Expr::None; label_len],
+        items,
+        decorators: Vec::new(),
+        span: synth_span,
+        leading_trivia: Vec::new(),
+    };
+    let synth_cells = ItemCells::build(&ast::Item::Block(synth_block.clone()), None);
+
+    // Pre-seed the label + named-field caches with the record values, so
+    // reads short-circuit the placeholder exprs.
+    if let ItemCellKind::Block {
+        labels,
+        items: item_cells,
+        ..
+    } = &synth_cells.kind
+    {
+        let _ = labels.set(Ok(label_values));
+        for ((_, v), cell) in named.iter().zip(item_cells.iter()) {
+            if let ItemCellKind::Field(fc) = &cell.kind {
+                let _ = fc.value.set(Ok(v.clone()));
+            }
+        }
+    }
+
+    Some(crate::doc::cells::SynthChild {
+        field_name: field_name.to_string(),
+        kind: kind.to_string(),
+        block: synth_block,
+        cells: synth_cells,
+    })
+}
+
 pub enum VariantBodyView<'a> {
     Record,
     TypeRef(&'a TypeRef),
@@ -1276,7 +1383,7 @@ impl<'a> Field<'a> {
     /// `None` means the membership check passes.
     fn schema_membership_error(&self) -> Option<EvalError> {
         use crate::error::SchemaViolationKind as Kind;
-        let parent_schema = match self.scope.frames().last().copied() {
+        let parent_schema = match self.scope.frames().last().cloned() {
             Some(frame) => {
                 // Whole-block opt-out shadows individual fields too.
                 if has_schemaless(&frame.ast.decorators) {
@@ -1338,7 +1445,7 @@ impl<'a> Field<'a> {
     /// it. Top-level fields and fields inside un-schema'd blocks
     /// return `None`.
     pub(super) fn declared_type_ref(&self) -> Option<&'a TypeRef> {
-        if let Some(frame) = self.scope.frames().last().copied() {
+        if let Some(frame) = self.scope.frames().last().cloned() {
             let block = Block {
                 ast: frame.ast,
                 cells: frame.cells,
@@ -1502,18 +1609,93 @@ impl<'a> Block<'a> {
             ast: self.ast,
             cells: self.cells,
             kind_override: self.kind_override,
+            bindings: None,
         })
+    }
+
+    /// How many value-binding frames are in this block's scope — i.e. how
+    /// deep `wdoc_component` / `wdoc_repeater` expansion currently is. The
+    /// renderer caps on this to stop a self-referential component from
+    /// expanding forever (iteration count doesn't inflate it: all elements
+    /// of one repeater share a depth).
+    pub fn binding_scope_depth(&self) -> usize {
+        self.scope
+            .frames()
+            .iter()
+            .filter(|f| f.bindings.is_some())
+            .count()
+    }
+
+    /// Expand `body`'s child blocks once per binding set, each under a
+    /// scope carrying that set's `name → value` bindings **and a fresh
+    /// copy of the body's evaluation cells**. The fresh cells are the
+    /// crux: `Field::value` memoises in a per-cell `OnceLock`, so the same
+    /// body AST evaluated under different bindings (repeated component
+    /// instances, repeater iterations) would otherwise collide on the
+    /// first-seen value. Caching the fresh cells on `self`'s cell (the
+    /// per-expansion owner — a component instance, or the `wdoc_repeater`)
+    /// gives each expansion an independent cache.
+    ///
+    /// Returns one `Vec<Block>` of child views per binding set, in order.
+    /// Child expressions (and `${…}` interpolation) resolve the bindings,
+    /// shadowing like an inner `let`; nested components / repeaters stack
+    /// their own frames and compose. This is the component/repeater
+    /// analogue of the `@children` splice's `computed_children`.
+    pub fn expand_bodies(
+        &self,
+        body: &Block<'a>,
+        binding_sets: Vec<std::sync::Arc<Vec<(String, Value)>>>,
+    ) -> Vec<Vec<Block<'a>>> {
+        let ItemCellKind::Block { expansions, .. } = &self.cells.kind else {
+            return Vec::new();
+        };
+        let groups = expansions.get_or_init(|| {
+            binding_sets
+                .into_iter()
+                .map(|set| crate::doc::cells::Expansion {
+                    bindings: set,
+                    // Fresh cells matching `body.ast`'s structure; only
+                    // the cells are kept (the clone feeds the builder).
+                    cells: ItemCells::build(&ast::Item::Block(body.ast.clone()), None),
+                })
+                .collect()
+        });
+        let doc = self.doc;
+        groups
+            .iter()
+            .map(|g| {
+                let ItemCellKind::Block {
+                    items: fresh_items, ..
+                } = &g.cells.kind
+                else {
+                    return Vec::new();
+                };
+                let scope = body.scope.push(ScopeFrame {
+                    ast: body.ast,
+                    cells: &g.cells,
+                    kind_override: body.kind_override,
+                    bindings: Some(g.bindings.clone()),
+                });
+                iter_blocks(&body.ast.items, fresh_items, doc, scope).collect()
+            })
+            .collect()
     }
 
     /// Evaluated values for each label slot. Cached on first call; later
     /// calls return a clone of the cached `Vec`.
     pub fn labels(&self) -> Result<Vec<Value>, EvalError> {
         let (cell, _) = self.block_inner();
+        // Evaluate labels in the block's own scope (not root) so an
+        // interpolated `$"…${slot}…"` label resolves component/repeater
+        // bindings. Bare identifiers still stay opaque literal names, and
+        // plain literal labels are scope-independent, so this is
+        // behaviour-preserving for every existing label form.
+        let scope = self.scope.clone();
         let result = cell.get_or_init(|| {
             self.ast
                 .labels
                 .iter()
-                .map(|e| self.doc.eval_literal(e))
+                .map(|e| self.doc.eval_literal_in_scope(e, &scope))
                 .collect()
         });
         match result {
@@ -1605,9 +1787,22 @@ impl<'a> Block<'a> {
     pub fn blocks(&self) -> impl Iterator<Item = Block<'a>> + 'a {
         let doc = self.doc;
         let scope = self.child_scope();
+        let synth_scope = scope.clone();
+        // Computed-children splices (`field = <list expr>` for a
+        // `@children`/`@child` slot) appear here too, after the literal
+        // nested blocks, so renderers that walk `blocks()` (e.g.
+        // `render_list`, `render_column`) see generated children.
+        let synth = self.computed_children();
         self.realize_and_sources()
             .into_iter()
             .flat_map(move |src| iter_blocks(src.items, src.cells, doc, scope.clone()))
+            .chain(synth.iter().map(move |sc| Block {
+                ast: &sc.block,
+                cells: &sc.cells,
+                doc,
+                kind_override: Some(sc.kind.as_str()),
+                scope: synth_scope.clone(),
+            }))
     }
 
     /// Source-order iterator over `Item::Table` entries in this block.
@@ -1736,6 +1931,18 @@ impl<'a> Block<'a> {
                 out.push(v);
             }
         }
+        // Computed-children splice (`field = <list expr>`): the field's
+        // declared `list<Union>` type already coerced each bare record to
+        // a variant by shape (`Field::value`), so just splice them in.
+        if let Some(field) = self.field(field_name)
+            && let Ok(Value::List(items)) = field.value()
+        {
+            for it in items {
+                if matches!(it, Value::Variant { .. }) {
+                    out.push(it.clone());
+                }
+            }
+        }
         crate::data::DataRef::from_variant_value_list(out)
     }
 
@@ -1861,6 +2068,89 @@ impl<'a> Block<'a> {
                                 scope: child_scope.clone(),
                             });
                         }
+                    }
+                }
+                _ => {}
+            }
+        }
+        // Computed children: a `field = <list expr>` splice for this
+        // slot (see `computed_children`). Appended after the literal
+        // nested blocks / table rows, preserving the "everything mixes,
+        // in source order" rule (the splice runs last).
+        for sc in self.computed_children() {
+            if sc.field_name == field_name {
+                out.push(Block {
+                    ast: &sc.block,
+                    cells: &sc.cells,
+                    doc: self.doc,
+                    kind_override: Some(sc.kind.as_str()),
+                    scope: child_scope.clone(),
+                });
+            }
+        }
+        out
+    }
+
+    /// Lazily materialise the *computed children* of this block — the
+    /// `@children(kind)` / `@child(kind)` slots authored as a value
+    /// expression (`field = map(data, …)`) instead of nested block
+    /// literals (a "splice"). Each list element becomes one
+    /// value-backed synthetic `Block` of the slot's concrete kind,
+    /// cached in the block cell so repeated projection / `blocks()` /
+    /// validation passes reuse the same owned storage.
+    ///
+    /// Union-typed `@children(SomeUnion)` slots are **not** synthesised
+    /// here — they're consumed as a coerced `Value::List` of variants by
+    /// the value path (`dispatch_union_children` / `block_to_record`).
+    /// Interface slots are skipped too: a bare record carries no kind
+    /// tag, so a concrete child kind can't be inferred for them.
+    pub(crate) fn computed_children(&self) -> &'a [crate::doc::cells::SynthChild] {
+        let ItemCellKind::Block {
+            computed_children, ..
+        } = &self.cells.kind
+        else {
+            return &[];
+        };
+        computed_children
+            .get_or_init(|| self.build_computed_children())
+            .as_slice()
+    }
+
+    fn build_computed_children(&self) -> Vec<crate::doc::cells::SynthChild> {
+        let mut out = Vec::new();
+        let Some(schema) = self.schema() else {
+            return out;
+        };
+        for f in schema.fields() {
+            // Only concrete-kind @children / @child slots.
+            let (kind, is_list) = if let Some(k) = f.children_block_kind() {
+                (k, true)
+            } else if let Some(k) = f.child_block_kind() {
+                (k, false)
+            } else {
+                continue;
+            };
+            // A literal `field = expr` present? (Nested-block / table-row
+            // authoring leaves no `Item::Field` of this name, so a hit
+            // here means the splice form.)
+            let Some(field) = self.field(f.name()) else {
+                continue;
+            };
+            let Ok(value) = field.value() else {
+                continue;
+            };
+            match value {
+                Value::List(items) if is_list => {
+                    for el in items {
+                        if let Some(sc) = synth_child_from_value(self.doc, f.name(), &kind, el) {
+                            out.push(sc);
+                        }
+                    }
+                }
+                // A single-block `@child` slot: the value is one element.
+                single if !is_list && !matches!(single, Value::None) => {
+                    if let Some(sc) = synth_child_from_value(self.doc, f.name(), &kind, single) {
+                        out.push(sc);
                     }
                 }
                 _ => {}

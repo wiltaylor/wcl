@@ -1529,6 +1529,297 @@ fn schema_errors_cached_after_first_call() {
     assert_eq!(p1, p2, "schema_errors should be cached (same Vec address)");
 }
 
+// ─── Computed @children (splice) ──────────────────────────────────
+//
+// A `@children(kind)` slot may be authored as a value expression
+// (`field = map(data, …)`) instead of nested block literals; each list
+// element is materialised into a value-backed synthetic child block.
+
+fn open_splice() -> Document {
+    Document::open(
+        r#"
+        @document
+        type Doc { @children("service") services: list<Service> }
+
+        @block("service")
+        type Service {
+          @inline(0) id: identifier
+          @children("route") routes: list<Route>
+        }
+
+        @block("route")
+        type Route {
+          @inline(0) path: utf8
+          method: utf8?
+        }
+
+        let paths = ["/api", "/healthz", "/metrics"]
+
+        service web {
+          routes = map(paths, fn(p: utf8) -> Route { { path: p } })
+        }
+        "#,
+        "test",
+    )
+    .expect("open")
+}
+
+#[test]
+fn computed_children_project_to_block_list() {
+    let doc = open_splice();
+    let routes = doc.get("service.routes").expect("service.routes");
+    assert_eq!(routes.kind(), "block_list");
+    assert_eq!(routes.len(), Some(3), "three spliced children");
+}
+
+#[test]
+fn computed_children_are_label_addressable_and_schema_completed() {
+    let doc = open_splice();
+    // Addressable by first label (the @inline(0) `path`), like a static
+    // nested block.
+    let route = doc.get("service.routes./healthz").expect("/healthz route");
+    assert_eq!(route.kind(), "block");
+    // A synthetic child behaves exactly like a statically-nested one: its
+    // `@inline(0)` value lands in the label, and an omitted optional field
+    // is simply absent at the AST/view layer (schema-completion to `none`
+    // happens later, at lowering time).
+    let b = route.as_block().expect("block view");
+    let label = b.labels().unwrap();
+    assert_eq!(label.first(), Some(&Value::Utf8("/healthz".into())));
+    assert!(
+        b.field("method").is_none(),
+        "an omitted optional is absent, like a static block"
+    );
+}
+
+#[test]
+fn computed_children_appear_in_blocks_after_static() {
+    // `Block::blocks()` (the render-path walk) surfaces spliced children
+    // after any literal nested blocks, in source order.
+    let doc = Document::open(
+        r#"
+        @document
+        type Doc { @children("service") services: list<Service> }
+        @block("service")
+        type Service { @children("route") routes: list<Route> }
+        @block("route")
+        type Route { @inline(0) path: utf8 }
+        let extra = ["/b", "/c"]
+        service {
+          route "/a"
+          routes = map(extra, fn(p: utf8) -> Route { { path: p } })
+        }
+        "#,
+        "test",
+    )
+    .expect("open");
+    let svc = doc.block("service").unwrap();
+    let labels: Vec<String> = svc
+        .blocks()
+        .filter(|b| b.kind() == "route")
+        .map(|b| match &b.labels().unwrap()[0] {
+            Value::Utf8(s) => s.clone(),
+            other => panic!("expected utf8 label, got {other:?}"),
+        })
+        .collect();
+    assert_eq!(labels, vec!["/a", "/b", "/c"]);
+}
+
+#[test]
+fn computed_children_non_list_is_schema_error() {
+    let doc = Document::open(
+        r#"
+        @document
+        type Doc { @children("service") services: list<Service> }
+        @block("service")
+        type Service { @children("route") routes: list<Route> }
+        @block("route")
+        type Route { @inline(0) path: utf8 }
+        service { routes = 42 }
+        "#,
+        "test",
+    )
+    .expect("open");
+    let errs = doc.block("service").unwrap().schema_errors();
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: crate::error::SchemaViolationKind::FieldTypeMismatch,
+                ..
+            }
+        )),
+        "expected FieldTypeMismatch for a non-list @children splice, got {errs:?}"
+    );
+}
+
+#[test]
+fn computed_children_clean_splice_has_no_schema_errors() {
+    let doc = open_splice();
+    assert!(
+        doc.block("service").unwrap().schema_errors().is_empty(),
+        "a well-formed splice should not flag a value-vs-type mismatch"
+    );
+}
+
+#[test]
+fn computed_children_union_slot_infers_variants_by_shape() {
+    // A `@children(SomeUnion)` slot spliced from bare records coerces
+    // each record to its matching variant by shape (the same matcher the
+    // static union-children path uses).
+    let doc = Document::open(
+        r#"
+        @document
+        type Doc { @children("chart") charts: list<Chart> }
+        union Series { Of { name: utf8  values: list<f64> } }
+        @block("chart")
+        type Chart { @children(Series) series: list<Series> }
+        let data = [ { name: "a", values: [1.0, 2.0] }, { name: "b", values: [3.0] } ]
+        chart { series = data }
+        "#,
+        "test",
+    )
+    .expect("open");
+    let series = doc.get("chart.series").expect("chart.series");
+    let vals = series.value().expect("variant list value");
+    let Value::List(items) = vals else {
+        panic!("expected a list, got {vals:?}");
+    };
+    assert_eq!(items.len(), 2);
+    assert!(
+        items
+            .iter()
+            .all(|v| matches!(v, Value::Variant { variant, .. } if variant == "Of")),
+        "each record should infer the `Of` variant, got {items:?}"
+    );
+}
+
+// ─── Value-binding scope frame (component slots / repeater loop var) ──
+
+#[test]
+fn binding_scope_frame_resolves_injected_name() {
+    use std::sync::Arc;
+    let doc = Document::open(
+        r#"
+        @schemaless outer {
+          inner { greeting = label }
+        }
+        "#,
+        "test",
+    )
+    .expect("open");
+    let outer = doc.block("outer").unwrap();
+    let bindings = Arc::new(vec![("label".to_string(), Value::Utf8("hi".into()))]);
+    let groups = outer.expand_bodies(&outer, vec![bindings]);
+    let inner = groups[0].iter().find(|b| b.kind() == "inner").unwrap();
+    assert_eq!(
+        inner.field("greeting").unwrap().value().unwrap(),
+        &Value::Utf8("hi".into()),
+        "an injected binding resolves in a child block's field expression"
+    );
+}
+
+#[test]
+fn binding_scope_frame_is_read_by_interpolation() {
+    use std::sync::Arc;
+    let doc = Document::open(
+        r#"
+        @schemaless outer {
+          inner { msg = $"value is ${v}" }
+        }
+        "#,
+        "test",
+    )
+    .expect("open");
+    let outer = doc.block("outer").unwrap();
+    let bindings = Arc::new(vec![("v".to_string(), Value::I64(42))]);
+    let groups = outer.expand_bodies(&outer, vec![bindings]);
+    let inner = groups[0].iter().find(|b| b.kind() == "inner").unwrap();
+    assert_eq!(
+        inner.field("msg").unwrap().value().unwrap(),
+        &Value::Utf8("value is 42".into()),
+        "${{…}} interpolation reads the injected binding"
+    );
+}
+
+#[test]
+fn binding_scope_frame_shadows_outer_field() {
+    use std::sync::Arc;
+    // A binding named like an ancestor field shadows it (innermost wins),
+    // matching `let` shadowing semantics.
+    let doc = Document::open(
+        r#"
+        @schemaless outer {
+          x = "from-field"
+          inner { picked = x }
+        }
+        "#,
+        "test",
+    )
+    .expect("open");
+    let outer = doc.block("outer").unwrap();
+    // Without bindings, `x` resolves to the outer field.
+    let plain = outer.block("inner").unwrap();
+    assert_eq!(
+        plain.field("picked").unwrap().value().unwrap(),
+        &Value::Utf8("from-field".into())
+    );
+    // With a binding, the binding wins.
+    let bindings = Arc::new(vec![("x".to_string(), Value::Utf8("from-binding".into()))]);
+    let groups = outer.expand_bodies(&outer, vec![bindings]);
+    let inner = groups[0].iter().find(|b| b.kind() == "inner").unwrap();
+    assert_eq!(
+        inner.field("picked").unwrap().value().unwrap(),
+        &Value::Utf8("from-binding".into())
+    );
+}
+
+#[test]
+fn expand_bodies_gives_each_set_independent_caches() {
+    use std::sync::Arc;
+    // Two binding sets over the same body must NOT collide in the
+    // field-value cache (the bug fresh per-expansion cells fix).
+    let doc = Document::open(
+        r#"
+        @schemaless outer {
+          inner { v = label }
+        }
+        "#,
+        "test",
+    )
+    .expect("open");
+    let outer = doc.block("outer").unwrap();
+    let sets = vec![
+        Arc::new(vec![("label".to_string(), Value::Utf8("one".into()))]),
+        Arc::new(vec![("label".to_string(), Value::Utf8("two".into()))]),
+    ];
+    let groups = outer.expand_bodies(&outer, sets);
+    let v0 = groups[0]
+        .iter()
+        .find(|b| b.kind() == "inner")
+        .unwrap()
+        .field("v")
+        .unwrap()
+        .value()
+        .unwrap()
+        .clone();
+    let v1 = groups[1]
+        .iter()
+        .find(|b| b.kind() == "inner")
+        .unwrap()
+        .field("v")
+        .unwrap()
+        .value()
+        .unwrap()
+        .clone();
+    assert_eq!(v0, Value::Utf8("one".into()));
+    assert_eq!(
+        v1,
+        Value::Utf8("two".into()),
+        "second set must not see the first's cached value"
+    );
+}
+
 #[test]
 fn schemaless_block_passes_validation() {
     // Strict mode: un-schema'd kinds normally error

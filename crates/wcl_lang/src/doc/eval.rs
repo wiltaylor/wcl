@@ -203,6 +203,23 @@ impl Document {
         self.eval_in_scope(expr, &Scope::root())
     }
 
+    /// Like [`eval_literal`] but evaluates non-identifier expressions in a
+    /// given scope rather than root. Block labels use this so an
+    /// interpolated `$"…${slot}…"` label resolves component/repeater
+    /// bindings (and any enclosing names) while a bare identifier still
+    /// stays an opaque literal name. Behaviour-identical to `eval_literal`
+    /// for plain literal labels (their value is scope-independent).
+    pub(crate) fn eval_literal_in_scope(
+        &self,
+        expr: &ast::Expr,
+        scope: &Scope<'_>,
+    ) -> Result<Value, EvalError> {
+        if let ast::Expr::Identifier(s, _) = expr {
+            return Ok(Value::Identifier(s.clone()));
+        }
+        self.eval_in_scope(expr, scope)
+    }
+
     /// Back-compat shim — same as `eval_literal`. Used by call sites
     /// that pre-date the scope distinction (decorator args). Bare
     /// identifiers fall through; everything else evaluates at the
@@ -992,6 +1009,14 @@ impl Document {
         name: &str,
     ) -> Option<Result<crate::data::DataRef<'a>, EvalError>> {
         for i in (0..scope.frames().len()).rev() {
+            // Renderer-injected bindings (a `wdoc_component` slot or a
+            // `wdoc_repeater` loop variable) resolve first at this frame,
+            // shadowing the frame's own fields/blocks like an inner `let`.
+            if let Some(bindings) = &scope.frames()[i].bindings
+                && let Some((_, v)) = bindings.iter().find(|(n, _)| n == name)
+            {
+                return Some(Ok(crate::data::DataRef::from_variant_value(v.clone())));
+            }
             let block = self.frame_as_block(scope, i);
             if let Some(letv) = block.find_let(name) {
                 return Some(letv.value().map(crate::data::DataRef::from_variant_value));

@@ -7,6 +7,7 @@
 use std::rc::Rc;
 
 use crate::ast;
+use crate::value::Value;
 
 use super::ItemCells;
 
@@ -15,11 +16,21 @@ pub(crate) struct Scope<'a> {
     frames: Rc<[ScopeFrame<'a>]>,
 }
 
-#[derive(Clone, Copy)]
+/// One enclosing block in the lexical chain. Carries the block's AST +
+/// cells (so name resolution can walk its fields/blocks/lets) and,
+/// optionally, a set of pre-evaluated `name → value` **bindings** that
+/// resolve like an inner `let` but come from the *renderer* rather than
+/// source — this is how a `wdoc_component`'s slots and a `wdoc_repeater`'s
+/// loop variable are injected into the scope a body subtree evaluates in.
+/// A frame always has `ast`/`cells`, so absolute frame-indexing
+/// (`frame_as_block` / `self_dataref` / `parent_dataref`) is unaffected by
+/// the presence of bindings.
+#[derive(Clone)]
 pub(crate) struct ScopeFrame<'a> {
     pub(crate) ast: &'a ast::Block,
     pub(crate) cells: &'a ItemCells,
     pub(crate) kind_override: Option<&'a str>,
+    pub(crate) bindings: Option<std::sync::Arc<Vec<(String, Value)>>>,
 }
 
 impl<'a> Scope<'a> {
@@ -30,7 +41,7 @@ impl<'a> Scope<'a> {
     }
 
     pub(crate) fn push(&self, frame: ScopeFrame<'a>) -> Self {
-        let mut v: Vec<ScopeFrame<'a>> = self.frames.iter().copied().collect();
+        let mut v: Vec<ScopeFrame<'a>> = self.frames.iter().cloned().collect();
         v.push(frame);
         Self { frames: v.into() }
     }

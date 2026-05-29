@@ -42,7 +42,7 @@ fn build_emits_fundamentals_for_example_site() {
     // output root; docs/blog go to subdirectories.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 19); // showcase 13 + docs 3 + blog 3
+    assert_eq!(n, 20); // showcase 14 + docs 3 + blog 3
 
     // The richer content (text + classes + diagram + flowchart) is on
     // the showcase overview page (at the root, since showcase is `root`).
@@ -520,6 +520,221 @@ page index {
     assert!(
         html.contains("counters(wdoc-li"),
         "wdoc-list counter stylesheet missing:\n{html}"
+    );
+}
+
+#[test]
+fn build_renders_computed_children_splice_value_and_render_paths() {
+    // A `@children` slot authored as a value expression (`field =
+    // map(data, …)`) generates child blocks from a data structure — the
+    // "view over data" pattern. Covers both consumption paths:
+    //   • value path: `text`'s lower maps over `spans` (schema-completed,
+    //     so the omitted `id`/`class` reach the lower as `none`);
+    //   • render path: `list` walks `blocks()` to render each `li`.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("splice.wcl");
+    write_fixture(
+        &src,
+        r#"
+let names = ["alice", "bob", "carol"]
+let hosts = [ { name: "web-1" }, { name: "db-1" } ]
+page index {
+  text { spans = map(names, fn(n: utf8) -> Span { { text: n } }) }
+  list { items = map(hosts, fn(h: Host) -> Li { { text: h.name } }) }
+  list { style = :numbered
+    items = map(names, fn(n: utf8) -> Li { { text: n } })
+  }
+}
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+
+    // Value path: text → <p> of generated <span>s.
+    assert!(
+        html.contains("<p><span>alice</span><span>bob</span><span>carol</span></p>"),
+        "computed text spans:\n{html}"
+    );
+    // Render path: list → <ul> of generated <li>s, computed from records.
+    assert!(
+        html.contains("<ul><li>web-1</li><li>db-1</li></ul>"),
+        "computed bullet list:\n{html}"
+    );
+    // Render path, numbered.
+    assert!(
+        html.contains(
+            "<ol class=\"wdoc-list-numbered\"><li>alice</li><li>bob</li><li>carol</li></ol>"
+        ),
+        "computed numbered list:\n{html}"
+    );
+}
+
+#[test]
+fn build_renders_data_driven_table() {
+    // `table { header = [...] rows = map(data, …) }` builds a <table> from
+    // a data structure: utf8 cells run through inline patterns, other
+    // scalars stringify. Also exercises a component wrapping a table whose
+    // `rows` come from a slot.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("dtable.wcl");
+    write_fixture(
+        &src,
+        r#"
+type Host { name: utf8  cpu: f64 }
+wdoc_component host_table {
+  wdoc_slot data                       // named apart from the table's `rows` field
+  wdoc_body { table { header = ["Host", "Note"]  rows = data } }
+}
+page index {
+  let inv = [ { name: "web-1", cpu: 42.0 }, { name: "db-1", cpu: 88.0 } ]
+  table {
+    header = ["Host", "CPU %"]
+    rows = map(inv, fn(h: Host) -> list<utf8> { [h.name, h.cpu] })
+  }
+  host_table {
+    data = map(inv, fn(h: Host) -> list<utf8> { [$"**${h.name}**", "ok"] })
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+
+    // Computed table: header + a stringified numeric cell.
+    assert!(
+        html.contains(
+            "<table class=\"wdoc-table\"><thead><tr><th>Host</th><th>CPU %</th></tr></thead><tbody><tr><td>web-1</td><td>42.0</td></tr><tr><td>db-1</td><td>88.0</td></tr></tbody></table>"
+        ),
+        "computed table with numeric cell:\n{html}"
+    );
+    // Component-wrapped table fed by a `rows` slot; utf8 cell is
+    // inline-formatted (**bold** → <span class="bold">).
+    assert!(
+        html.contains("<td><span class=\"bold\">web-1</span></td><td>ok</td>"),
+        "component-wrapped data table with inline-formatted cell:\n{html}"
+    );
+}
+
+#[test]
+fn build_renders_component_slots_defaults_and_content() {
+    // A `wdoc_component` is instantiated by its own name; slots fill from
+    // the instance's fields (or a `default`), resolve in `${…}` labels and
+    // bare-identifier field exprs, and a `wdoc_content` block splices the
+    // instance's own children (a layout wrapper).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("components.wcl");
+    write_fixture(
+        &src,
+        r#"
+wdoc_component badge {
+  wdoc_slot label
+  wdoc_slot kind { default = "note" }
+  wdoc_body {
+    callout $"${label}" { class = [kind]  body = "x" }
+  }
+}
+wdoc_component panel {
+  wdoc_slot title
+  wdoc_body {
+    h3 $"${title}"
+    wdoc_content
+  }
+}
+page index {
+  badge { label = "Alpha" kind = "warning" }
+  badge { label = "Beta" }
+  panel { title = "Logs"
+    p "line one"
+    p "line two"
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+
+    // Slot interpolation into a callout title + the per-instance class.
+    assert!(
+        html.contains("<div class=\"callout warning\">") && html.contains("<span>Alpha</span>"),
+        "first badge: slot label + class:\n{html}"
+    );
+    // Default applies when the slot is omitted (`kind` → "note").
+    assert!(
+        html.contains("<div class=\"callout note\">") && html.contains("<span>Beta</span>"),
+        "second badge: default slot:\n{html}"
+    );
+    // Content slot splices the instance's own children, in order, after
+    // the wrapper heading.
+    assert!(
+        html.contains("<p class=\"heading-3\"><span>Logs</span></p><p>line one</p><p>line two</p>"),
+        "panel content slot:\n{html}"
+    );
+}
+
+#[test]
+fn build_renders_repeater_and_composes_with_components() {
+    // `wdoc_repeater` iterates a list, binding each element to `as`. It
+    // composes both ways: a repeater inside a component body iterating a
+    // list-typed slot, and a component instantiated inside a repeater.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("repeat.wcl");
+    write_fixture(
+        &src,
+        r#"
+wdoc_component row {
+  wdoc_slot name
+  wdoc_slot cpu
+  wdoc_body { p $"${name}: ${cpu}%" }
+}
+wdoc_component host_table {
+  wdoc_slot heading
+  wdoc_slot rows
+  wdoc_body {
+    h2 $"${heading}"
+    wdoc_repeater { each = rows  as = :r
+      row { name = r.name  cpu = r.cpu }
+    }
+  }
+}
+page index {
+  let inventory = [
+    { name: "web-1", cpu: 42 },
+    { name: "db-1",  cpu: 88 },
+  ]
+  // Component instantiated inside a repeater (loop var → slot args).
+  wdoc_repeater { each = inventory  as = :h
+    row { name = h.name  cpu = h.cpu }
+  }
+  // Repeater inside a component body, iterating a list-typed slot.
+  host_table { heading = "Fleet"  rows = inventory }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+
+    // Component-in-repeater: one <p> per element, with that element's data.
+    assert!(
+        html.contains("<p>web-1: 42%</p>") && html.contains("<p>db-1: 88%</p>"),
+        "component instantiated inside a repeater:\n{html}"
+    );
+    // Repeater-in-component over a list-typed slot: heading + a row per
+    // element (the loop body sees both the loop var `r` and the slot).
+    assert!(
+        html.contains("<p class=\"heading-2\"><span>Fleet</span></p>"),
+        "component heading slot:\n{html}"
+    );
+    // Two distinct values prove each iteration has an independent cache
+    // (no stale first-element value).
+    assert_eq!(
+        html.matches("<p>web-1: 42%</p>").count(),
+        2,
+        "web-1 row appears once from the bare repeater and once via host_table:\n{html}"
     );
 }
 
@@ -2218,11 +2433,11 @@ page index {
 fn build_processes_full_code_example_page() {
     // Smoke test against the code page in the example, which exercises
     // Rust, Python, JSON, WCL, and an unknown language in one page. The
-    // example declares three sites (19 pages total); `showcase` is the
+    // example declares three sites (20 pages total); `showcase` is the
     // `root` site, so the code page renders flat at the output root.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 19);
+    assert_eq!(n, 20);
     let html = std::fs::read_to_string(out.path().join("code.html")).expect("read code.html");
     assert!(
         html.matches("<pre class=\"code-block\"").count() >= 5,
@@ -5143,7 +5358,7 @@ fn multisite_example_root_site_and_subdirs() {
     let out = TempDir::new().expect("mkdir tempdir");
     let dir = out.path();
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), dir);
-    assert_eq!(n, 19);
+    assert_eq!(n, 20);
 
     // Showcase is at the root: its pages are flat, and there's no
     // `showcase/` subdirectory.

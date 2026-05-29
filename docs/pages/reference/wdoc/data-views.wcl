@@ -1,0 +1,244 @@
+// wdoc section: Data Views — generating content from WCL data structures.
+//
+// The components declared below register their names globally, so they're
+// prefixed `dv_`/`Dv` to avoid colliding with other reference pages in
+// this document.
+
+// A metric card: a reusable fragment of ordinary wdoc markup with named
+// slots. Instantiated by its own name; `${slot}` and bare-identifier
+// references in the body resolve to the instance's slot values.
+wdoc_component dv_metric {
+  wdoc_slot label
+  wdoc_slot value
+  wdoc_slot status { default = "note" }
+  wdoc_body {
+    callout $"${label}" { class = [status]  body = $"Currently at **${value}%**" }
+  }
+}
+
+// A layout wrapper: `wdoc_content` marks where the instance's own nested
+// blocks render.
+wdoc_component dv_panel {
+  wdoc_slot title
+  wdoc_body {
+    h3 $"${title}"
+    wdoc_content
+  }
+}
+
+// A component whose body repeats over a list-typed slot.
+wdoc_component dv_hosts {
+  wdoc_slot heading
+  wdoc_slot rows
+  wdoc_body {
+    h3 $"${heading}"
+    wdoc_repeater { each = rows  as = :h
+      dv_metric { label = h.name  value = h.cpu  status = h.status }
+    }
+  }
+}
+
+// The shape of one gathered data row — used as the lambda parameter type
+// when mapping the inventory into chart fields below.
+type DvHost { name: utf8  role: utf8  cpu: f64  mem: f64  up: bool }
+
+page wdoc_data_views { sites = [:reference]
+  h1 "Data Views"
+
+  p "A *data view* renders document content — cards, tables, charts, diagrams — from a WCL **data structure** rather than hand-authored blocks. It's how you present data gathered about systems: declare the data once, then derive every view from it. The primary tool is a **component**: a reusable fragment of ordinary wdoc markup with named **slots**."
+
+  p "Every example draws from one inventory:"
+
+  code wcl {
+    source = <<'WCL'
+let inventory = [
+  { name: "web-1", role: "frontend", cpu: 42.0, mem: 60.0, up: true,  status: "note"    },
+  { name: "db-1",  role: "database", cpu: 88.0, mem: 75.0, up: true,  status: "warning" },
+  { name: "cache", role: "cache",    cpu: 25.0, mem: 40.0, up: false, status: "error"   },
+]
+WCL
+  }
+
+  let inventory = [
+    { name: "web-1", role: "frontend", cpu: 42.0, mem: 60.0, up: true,  status: "note"    },
+    { name: "db-1",  role: "database", cpu: 88.0, mem: 75.0, up: true,  status: "warning" },
+    { name: "cache", role: "cache",    cpu: 25.0, mem: 40.0, up: false, status: "error"   },
+  ]
+
+  h2 "Components"
+
+  p "Declare a `wdoc_component` with `wdoc_slot`s and a `wdoc_body` of ordinary markup. Reference slots in any `$\"…${slot}…\"` interpolated string or as a bare identifier in a field (`class = [status]`). A slot with a `default` is optional. Instantiate the component by its own name:"
+
+  dv_metric { label = "CPU" value = 42 status = "warning" }
+  dv_metric { label = "Memory" value = 88 }
+
+  code wcl {
+    source = <<'WCL'
+wdoc_component dv_metric {
+  wdoc_slot label
+  wdoc_slot value
+  wdoc_slot status { default = "note" }
+  wdoc_body {
+    callout $"${label}" { class = [status]  body = $"Currently at **${value}%**" }
+  }
+}
+
+// ... then, anywhere a block is allowed:
+dv_metric { label = "CPU" value = 42 status = "warning" }
+dv_metric { label = "Memory" value = 88 }    // status defaults to "note"
+WCL
+  }
+
+  callout "Interpolating slots into text" {
+    class = ["tip"]
+    body  = "Slot values land in text via WCL's `$\"…\"` interpolated strings — note the `$` prefix. A plain `\"…\"` string is literal. Bare references in a field (like `class = [status]`) need no prefix."
+  }
+
+  h2 "Repeating over data"
+
+  p "`wdoc_repeater` renders its body once per element of `each`, binding the element to the symbol named by `as`. Combined with a component, it stamps one card per data row:"
+
+  wdoc_repeater { each = inventory  as = :h
+    dv_metric { label = h.name  value = h.cpu  status = h.status }
+  }
+
+  code wcl {
+    source = <<'WCL'
+wdoc_repeater { each = inventory  as = :h
+  dv_metric { label = h.name  value = h.cpu  status = h.status }
+}
+WCL
+  }
+
+  p "A repeater needs no component — its body is just markup with the loop variable in scope:"
+
+  code wcl {
+    source = <<'WCL'
+wdoc_repeater { each = inventory  as = :h
+  h3 $"${h.name}"
+  p  $"CPU ${h.cpu}% · Mem ${h.mem}%"
+}
+WCL
+  }
+
+  h2 "Repeaters inside components"
+
+  p "A slot can hold a whole list, and a `wdoc_repeater` inside the body can iterate it. Bindings stack, so the loop body sees both the loop variable and the component's other slots:"
+
+  dv_hosts { heading = "Fleet"  rows = inventory }
+
+  code wcl {
+    source = <<'WCL'
+wdoc_component dv_hosts {
+  wdoc_slot heading
+  wdoc_slot rows                       // a list-typed slot
+  wdoc_body {
+    h3 $"${heading}"
+    wdoc_repeater { each = rows  as = :h
+      dv_metric { label = h.name  value = h.cpu  status = h.status }
+    }
+  }
+}
+
+dv_hosts { heading = "Fleet"  rows = inventory }
+WCL
+  }
+
+  h2 "Content slots (layout wrappers)"
+
+  p "A `wdoc_content` block in a component body marks where the instance's *own* nested blocks render — so a component can frame arbitrary content:"
+
+  dv_panel { title = "Notes"
+    p "Anything nested in the instance renders at `wdoc_content`."
+    list { li "including lists" li "and more" }
+  }
+
+  code wcl {
+    source = <<'WCL'
+wdoc_component dv_panel {
+  wdoc_slot title
+  wdoc_body {
+    h3 $"${title}"
+    wdoc_content          // the caller's nested blocks render here
+  }
+}
+
+dv_panel { title = "Notes"
+  p "Anything nested in the instance renders at wdoc_content."
+  list { li "including lists" li "and more" }
+}
+WCL
+  }
+
+  h2 "Tables from data"
+
+  p "Set a `table`'s `rows` to a list of cell-lists — `map`ped from your data — with an optional `header` row. utf8 cells run through the inline-pattern engine (so `**bold**`, `:icons:`, links work); other scalars stringify:"
+
+  table {
+    header = ["Host", "Role", "CPU %"]
+    rows = map(inventory, fn(h: DvHost) -> list<utf8> { [h.name, h.role, $"${h.cpu}%"] })
+  }
+
+  code wcl {
+    source = <<'WCL'
+table {
+  header = ["Host", "Role", "CPU %"]
+  rows = map(inventory, fn(h: DvHost) -> list<utf8> { [h.name, h.role, $"${h.cpu}%"] })
+}
+WCL
+  }
+
+  p "Wrap a table in a component to reuse the layout, feeding the rows through a slot. Name the slot apart from the table's own `rows` field (a field that references its own name is a cycle, and renders nothing):"
+
+  code wcl {
+    source = <<'WCL'
+wdoc_component host_table {
+  wdoc_slot data
+  wdoc_body { table { header = ["Host", "Role", "CPU %"]  rows = data } }
+}
+
+host_table { data = map(inventory, fn(h: DvHost) -> list<utf8> { [h.name, h.role, $"${h.cpu}%"] }) }
+WCL
+  }
+
+  h2 "Charts from data"
+
+  p "Charts read their data from value fields, so you `map` the inventory straight into them — no wrapper needed:"
+
+  diagram { width = 460  height = 220
+    bar_chart { width = 460.0  height = 220.0
+      title = "Utilisation"  y_label = "%"
+      categories = map(inventory, fn(h: DvHost) -> utf8 { h.name })
+      series = [
+        { name: "cpu", values: map(inventory, fn(h: DvHost) -> f64 { h.cpu }) },
+        { name: "mem", values: map(inventory, fn(h: DvHost) -> f64 { h.mem }) },
+      ]
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+bar_chart {
+  categories = map(inventory, fn(h: DvHost) -> utf8 { h.name })
+  series = [
+    { name: "cpu", values: map(inventory, fn(h: DvHost) -> f64 { h.cpu }) },
+    { name: "mem", values: map(inventory, fn(h: DvHost) -> f64 { h.mem }) },
+  ]
+}
+WCL
+  }
+
+  h2 "The pattern"
+
+  table {
+    rows:
+      | "Tool" | "Use it for" |
+      | "**`wdoc_component`**"  | "A reusable fragment of wdoc markup with slots — cards, panels, sections. The everyday tool." |
+      | "**`wdoc_repeater`**"   | "Rendering a body (or a component) once per element of a data list." |
+      | "**`wdoc_content`**"    | "A component that wraps arbitrary caller-provided content." |
+      | "**`table` computed `rows`**" | "A data-driven `<table>` — `table { header = […] rows = map(data, …) }`." |
+      | "**Chart value fields**" | "Feeding `map`ped data straight into `bar_chart` / `line_chart` / `pie_chart`." |
+  }
+
+  p "See [Charts](wdoc_charts), [Tables](wdoc_tables), and [Diagrams](wdoc_diagrams) for the individual blocks."
+}

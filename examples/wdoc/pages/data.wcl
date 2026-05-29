@@ -1,0 +1,127 @@
+// Showcase page: a system dashboard built entirely from one data
+// structure — the "view over gathered data" pattern. A `let` inventory
+// of servers drives a status strip, a table, two charts, and a
+// filtered list, with no value hand-authored twice.
+//
+// The custom `srv_grid` SvgBlock and the record type (`Server`) are
+// declared at file scope; they're prefixed `srv`/`Server` so they don't
+// clash with the other showcase pages in this document. (The inventory
+// table is a built-in `table` with computed `rows` — no custom block.)
+
+type Server { name: utf8  role: utf8  cpu: f64  mem: f64  up: bool }
+
+// Data → diagram: a status strip, one cell per server, coloured by a
+// class so the theme controls the palette.
+@block("srv_grid")
+type SrvGrid extends SvgBlock {
+  x = 0.0  y = 0.0  width = 520.0  height = 56.0
+  id:    identifier?
+  class: list<utf8>?
+  servers: list<Server>
+  lower = fn(g: SrvGrid) -> list<SvgFundamental> {
+    flatten(map(range(0, len(g.servers)), fn(i: i64) -> list<SvgFundamental> {
+      let s  = at(g.servers, i);
+      let cw = g.width / len(g.servers);
+      let cx = g.x + i * cw;
+      [
+        SvgFundamental::Rect {
+          x: cx + 4.0, y: g.y, width: cw - 8.0, height: 44.0,
+          fill: none, stroke: none, id: none,
+          class: [if s.up { "srv-up" } else { "srv-down" }],
+        },
+        SvgFundamental::Label {
+          content: s.name, x: cx + 14.0, y: g.y + 27.0,
+          font_size: 13.0, fit_width: none, fit_height: none,
+          fill: none, id: none, class: none,
+        },
+      ]
+    }))
+  }
+}
+
+class "srv-up"   { fill = "#9ece6a" }
+class "srv-down" { fill = "#f7768e" }
+
+// A reusable card component — ordinary wdoc markup with named slots,
+// stamped once per host below. This is the author-grade way to turn data
+// into content: no `lower` function, just markup with `${slot}` holes.
+wdoc_component srv_card {
+  wdoc_slot name
+  wdoc_slot role
+  wdoc_slot cpu
+  wdoc_body {
+    callout $"${name}" { class = ["info"]  body = $"**${role}** · CPU at ${cpu}%" }
+  }
+}
+
+page data { sites = [:showcase]
+  h1 "System Dashboard"
+
+  p "Every view on this page is derived from a single `let` binding — the same data structure you might gather from an inventory scan. Change the data in one place and the cards, table, charts, status strip, and alert list all follow."
+
+  let inventory = [
+    { name: "web-1",  role: "frontend", cpu: 42.0, mem: 60.0, up: true  },
+    { name: "web-2",  role: "frontend", cpu: 51.0, mem: 58.0, up: true  },
+    { name: "db-1",   role: "database", cpu: 88.0, mem: 75.0, up: true  },
+    { name: "cache",  role: "cache",    cpu: 25.0, mem: 40.0, up: false },
+    { name: "worker", role: "batch",    cpu: 67.0, mem: 82.0, up: false },
+  ]
+
+  h2 "Per-host cards"
+
+  p "A `wdoc_component` — a reusable card of markup with slots — stamped once per host by a `wdoc_repeater`. The component's body is ordinary wdoc; the repeater binds each inventory row to `s`:"
+
+  wdoc_repeater { each = inventory  as = :s
+    srv_card { name = s.name  role = s.role  cpu = s.cpu }
+  }
+
+  h2 "At a glance"
+
+  p "A status strip — one cell per host, green when up — from a custom `SvgBlock` that maps the inventory to coloured rectangles:"
+
+  diagram { width = 520  height = 56
+    srv_grid { width = 520.0  height = 56.0  servers = inventory }
+  }
+
+  h2 "Inventory"
+
+  p "The same data as a built-in `table` with computed `rows` — `map` each record to a row of cells. The status cell uses an inline `:lucide:` icon (utf8 cells run through the inline-pattern engine):"
+
+  table {
+    header = ["Server", "Role", "CPU %", "Mem %", "Status"]
+    rows = map(inventory, fn(s: Server) -> list<utf8> {
+      [
+        s.name, s.role, $"${s.cpu}%", $"${s.mem}%",
+        if s.up { ":lucide.circle-check: up" } else { ":lucide.circle-x: down" },
+      ]
+    })
+  }
+
+  h2 "Utilisation"
+
+  p "CPU and memory per host, mapped straight into a grouped `bar_chart` — no custom block needed, since charts read their data from value fields:"
+
+  diagram { width = 560  height = 240
+    bar_chart { width = 560.0  height = 240.0
+      title = "CPU vs memory"  y_label = "%"  y_max = 100.0
+      categories = map(inventory, fn(s: Server) -> utf8 { s.name })
+      series = [
+        { name: "cpu", values: map(inventory, fn(s: Server) -> f64 { s.cpu }) },
+        { name: "mem", values: map(inventory, fn(s: Server) -> f64 { s.mem }) },
+      ]
+    }
+  }
+
+  h2 "Alerts"
+
+  p "`filter` the inventory for hosts that are down, then **splice** the result into a `list` — `items = map(filter(…), …)`. The list builds itself from data; nothing is authored by hand:"
+
+  list {
+    items = map(
+      filter(inventory, fn(s: Server) -> bool { s.up == false }),
+      fn(s: Server) -> Li { { text: concat(":lucide.triangle-alert: **", concat(s.name, concat("** — ", s.role))) } },
+    )
+  }
+
+  p "Three techniques, one data structure: charts read value fields, custom blocks `map` data into tables and diagrams, and the children splice fills built-in containers like `list` straight from a computed list."
+}

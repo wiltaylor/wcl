@@ -79,6 +79,7 @@ site showcase {
       item "Tilemaps"    { page = tilemap }
       item "Dopesheets"  { page = dopesheet }
     }
+    item "Data" { page = data }
     item "Content" {
       item "Code"      { page = code }
       item "Math"      { page = math }
@@ -131,6 +132,7 @@ site blog {
 // each have their own `index`).
 import "./pages/overview.wcl"
 import "./pages/about.wcl"
+import "./pages/data.wcl"
 import "./pages/connections.wcl"
 import "./pages/code.wcl"
 import "./pages/math.wcl"

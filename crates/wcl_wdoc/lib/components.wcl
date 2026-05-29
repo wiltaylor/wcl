@@ -1,0 +1,78 @@
+// ── Components & repetition ───────────────────────────────────────
+//
+// Declarative, reusable fragments of wdoc markup with named slots, plus
+// a list-driven repeater. These five block kinds are registered here so
+// the parser / validator / formatter recognise them, but their
+// *semantics* (slot binding, body expansion, iteration) are special-cased
+// in Rust — like `list` / `table` / `map`, their WCL `lower` is a stub.
+//
+//   wdoc_component metric_card {
+//     wdoc_slot label
+//     wdoc_slot value
+//     wdoc_slot status { default = "ok" }   // optional slot
+//     wdoc_body {
+//       callout "${label}" { class = [status]  body = "Value: ${value}%" }
+//     }
+//   }
+//
+//   page p {
+//     metric_card { label = "CPU" value = 42 status = "warning" }   // instance
+//     wdoc_repeater { each = inventory  as = :h
+//       metric_card { label = h.name value = h.cpu status = h.status }
+//     }
+//   }
+//
+// A component is instantiated by its own name as a bare block; the
+// instance's fields fill the slots, and the body's `${slot}` /
+// bare-identifier references resolve to them. A `wdoc_repeater` renders
+// its body once per element of `each`, binding the element to the symbol
+// `as`. Both compose: a repeater may live inside a component body and
+// iterate a (list-typed) slot, and a component may be instantiated inside
+// a repeater body.
+
+// A reusable template. `name` is the kind authors instantiate.
+@block("wdoc_component")
+type WdocComponent {
+  @inline(0) name: identifier
+  @children("wdoc_slot") slots: list<WdocSlot>
+  @child("wdoc_body")    body:  WdocBody
+}
+
+// One slot (parameter). A `default` makes the slot optional; without one
+// the instance must supply a value. Defaults are evaluated in the
+// component definition's scope.
+@block("wdoc_slot")
+type WdocSlot {
+  @inline(0) name: identifier
+  default: utf8?
+}
+
+// The component's renderable body — ordinary wdoc blocks, rendered with
+// the instance's slots bound into scope.
+@block("wdoc_body")
+type WdocBody {
+  @children(WdocBlock) children: list<WdocBlock>
+}
+
+// Marks where a component instance's own nested blocks render — a layout
+// "content slot". Legal wherever a `WdocBlock` is. Special-cased in Rust;
+// its `lower` is a never-called stub (declared to satisfy the interface).
+@block("wdoc_content")
+type WdocContent extends WdocBlock {
+  lower = fn(c: WdocContent) -> list<HtmlFundamental> []
+}
+
+// Repeats its body once per element of `each`, binding the element to the
+// symbol `as`. Special-cased in Rust (its `lower` is a stub); `each` is
+// read dynamically, so the validator does not type-check its elements.
+@block("wdoc_repeater")
+type WdocRepeater extends WdocBlock {
+  each: list<WdocItem>
+  as:   symbol
+  @children(WdocBlock) children: list<WdocBlock>
+  lower = fn(r: WdocRepeater) -> list<HtmlFundamental> []
+}
+
+// Opaque element type for a repeater's `each` list. The renderer reads
+// each element's fields dynamically; this only names the list shape.
+type WdocItem {}

@@ -277,12 +277,113 @@ pub(crate) fn render_block(
         // `base_dir` lets a `source` recording path resolve relative to
         // the source file.
         "terminal" => Some(crate::terminal::render_terminal(doc, block, base_dir)),
+        // A `wdoc_repeater` renders its body once per element of `each`.
+        "wdoc_repeater" => Some(render_repeat(doc, block, patterns, base_dir)),
+        // A `wdoc_content` marks where a component instance's own children
+        // render — emit the sentinel; `render_component` substitutes it.
+        // (Outside a component it has no effect; the sentinel is invisible.)
+        "wdoc_content" => Some(WF_CONTENT_SLOT.to_string()),
         // Everything else lowers via WCL — `text` / `code` (which emit the
         // new `Inline` / `Highlighted` leaf fundamentals), the headings,
-        // `callout`, and any custom block. Lowering declarations are
-        // top-level fields, not blocks, so they never reach here.
-        kind => Some(lower_html_block(doc, block, kind, patterns, base_dir)),
+        // `callout`, and any custom block — UNLESS the kind names a
+        // user-defined `wdoc_component`, in which case we expand its
+        // declarative body with the instance's slots bound. Lowering
+        // declarations are top-level fields, not blocks, so they never
+        // reach here.
+        kind => {
+            if let Some(def) = doc.component_def(kind) {
+                Some(render_component(doc, block, &def, patterns, base_dir))
+            } else {
+                Some(lower_html_block(doc, block, kind, patterns, base_dir))
+            }
+        }
     }
+}
+
+/// Expand a `wdoc_component` instance: bind each declared slot to the
+/// instance's matching field (or the slot's `default`), then render the
+/// definition's `wdoc_body` children under those bindings. A `wdoc_content`
+/// block inside the body is replaced with the instance's own nested
+/// children (a layout content slot).
+pub(crate) fn render_component(
+    doc: &Document,
+    instance: &Block<'_>,
+    def: &Block<'_>,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
+) -> String {
+    use std::sync::Arc;
+    // Stop runaway self-referential components.
+    if instance.binding_scope_depth() > MAX_LOWER_DEPTH {
+        return depth_marker();
+    }
+    let mut bindings: Vec<(String, Value)> = Vec::new();
+    for slot in def.blocks().filter(|b| b.kind() == "wdoc_slot") {
+        let Some(name) = label_string(&slot) else {
+            continue;
+        };
+        let val = instance
+            .field(&name)
+            .and_then(|f| f.value().ok().cloned())
+            .or_else(|| slot.field("default").and_then(|f| f.value().ok().cloned()))
+            .unwrap_or(Value::None);
+        bindings.push((name, val));
+    }
+    let Some(body) = def.block("wdoc_body") else {
+        return String::new();
+    };
+    let groups = instance.expand_bodies(&body, vec![Arc::new(bindings)]);
+    let Some(children) = groups.first() else {
+        return String::new();
+    };
+    let mut out: String = children
+        .iter()
+        .filter_map(|b| render_block(doc, b, patterns, base_dir))
+        .collect();
+    if out.contains(WF_CONTENT_SLOT) {
+        let content: String = instance
+            .blocks()
+            .filter_map(|b| render_block(doc, &b, patterns, base_dir))
+            .collect();
+        out = out.replace(WF_CONTENT_SLOT, &content);
+    }
+    out
+}
+
+/// Render a `wdoc_repeater`: evaluate `each` to a list and render the
+/// repeater's body blocks once per element, binding the element to the
+/// symbol named by `as`. A non-list `each` renders nothing.
+pub(crate) fn render_repeat(
+    doc: &Document,
+    block: &Block<'_>,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
+) -> String {
+    use std::sync::Arc;
+    if block.binding_scope_depth() > MAX_LOWER_DEPTH {
+        return depth_marker();
+    }
+    let Some(Value::List(items)) = block.field("each").and_then(|f| f.value().ok().cloned()) else {
+        return String::new();
+    };
+    let as_name = block
+        .field("as")
+        .and_then(|f| f.value().ok().cloned())
+        .and_then(|v| match v {
+            Value::Symbol(s) | Value::Identifier(s) | Value::Utf8(s) => Some(s),
+            _ => None,
+        })
+        .unwrap_or_else(|| "it".to_string());
+    let binding_sets: Vec<Arc<Vec<(String, Value)>>> = items
+        .into_iter()
+        .map(|el| Arc::new(vec![(as_name.clone(), el)]))
+        .collect();
+    block
+        .expand_bodies(block, binding_sets)
+        .iter()
+        .flat_map(|g| g.iter())
+        .filter_map(|b| render_block(doc, b, patterns, base_dir))
+        .collect()
 }
 
 pub(crate) fn render_column(
@@ -386,14 +487,58 @@ pub(crate) fn render_li(
     out
 }
 
-/// Render a `@block("table")` instance. Rows are authored with WCL's
-/// pipe-table syntax (`rows: | a | b |`) and read here via
-/// `Block::tables()` — a `table` declares no typed `rows` field, so
-/// the rows are arbitrary-width and never schema-validated. The first
-/// row is the header (`<th>` inside `<thead>`); the rest are body
-/// rows (`<td>` inside `<tbody>`). Each cell is rendered by
-/// `cell_to_html`, so utf8 cells pick up inline patterns.
+/// Render a `@block("table")` instance. Two authoring forms:
+///
+/// - **Computed** — a `rows` value field (a list of cell-lists, e.g.
+///   `map`ped from data) plus an optional `header` row. Taken when a
+///   `rows` field is present, so a component/repeater can feed a table.
+/// - **Pipe rows** — WCL's pipe-table syntax (`rows: | a | b |`), read
+///   via `Block::tables()`; the first row is the header.
+///
+/// Either way each cell is rendered by `cell_to_html`, so utf8 cells pick
+/// up inline patterns and other scalars stringify.
 pub(crate) fn render_table(doc: &Document, block: &Block<'_>, patterns: &InlinePatterns) -> String {
+    let classes_for = |block: &Block<'_>| -> Vec<String> {
+        let mut classes: Vec<String> = vec!["wdoc-table".to_string()];
+        classes.extend(field_utf8_list(block, "class"));
+        classes
+    };
+
+    // Computed-rows form: `rows = <list of cell-lists>` (+ optional
+    // `header`). Reads the field on the passed-in Block view, so a value
+    // fed from a component slot / repeater binding resolves here.
+    if let Some(Value::List(body_rows)) = block.field("rows").and_then(|f| f.value().ok().cloned())
+    {
+        let to_cells = |row: &Value| -> Vec<String> {
+            match row {
+                Value::List(cells) => cells
+                    .iter()
+                    .map(|c| cell_to_html(doc, patterns, c))
+                    .collect(),
+                // A non-list row degrades to a single cell rather than vanishing.
+                other => vec![cell_to_html(doc, patterns, other)],
+            }
+        };
+        let header: Vec<String> = match block.field("header").and_then(|f| f.value().ok().cloned())
+        {
+            Some(Value::List(cells)) => cells
+                .iter()
+                .map(|c| cell_to_html(doc, patterns, c))
+                .collect(),
+            _ => Vec::new(),
+        };
+        let body: Vec<Vec<String>> = body_rows.iter().map(to_cells).collect();
+        if header.is_empty() && body.is_empty() {
+            return String::new();
+        }
+        return table_html(
+            field_id(block, "id").as_deref(),
+            &classes_for(block),
+            &header,
+            &body,
+        );
+    }
+
     // Collect every pipe-row in source order. A `table` normally holds
     // a single `rows:` table; if several are present we concatenate.
     let mut rows: Vec<Vec<String>> = Vec::new();
@@ -415,11 +560,14 @@ pub(crate) fn render_table(doc: &Document, block: &Block<'_>, patterns: &InlineP
     if rows.is_empty() {
         return String::new();
     }
-    let mut classes: Vec<String> = vec!["wdoc-table".to_string()];
-    classes.extend(field_utf8_list(block, "class"));
     let header = &rows[0];
     let body = &rows[1..];
-    table_html(field_id(block, "id").as_deref(), &classes, header, body)
+    table_html(
+        field_id(block, "id").as_deref(),
+        &classes_for(block),
+        header,
+        body,
+    )
 }
 
 /// Render a single table cell to inner HTML. utf8 cells flow through

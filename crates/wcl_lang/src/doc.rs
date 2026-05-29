@@ -1080,6 +1080,24 @@ impl Document {
         self.block_schema(kind).is_some() || self.table_schema(kind).is_some()
     }
 
+    /// The `wdoc_component` definition whose name (`@inline(0)` label)
+    /// equals `name`, if any. A component is instantiated by its own
+    /// name as a bare block; this resolves that instance kind back to its
+    /// declarative definition (slots + body). Scans top-level blocks.
+    pub fn component_def(&self, name: &str) -> Option<Block<'_>> {
+        if name.is_empty() {
+            return None;
+        }
+        self.blocks()
+            .find(|b| b.kind() == "wdoc_component" && block_first_label(b).as_deref() == Some(name))
+    }
+
+    /// `true` if `name` is the name of a declared `wdoc_component` — i.e.
+    /// a legal bare-block instance kind.
+    pub fn is_component_kind(&self, name: &str) -> bool {
+        self.component_def(name).is_some()
+    }
+
     /// Strict-mode validation: returns every schema violation across
     /// the document.
     ///
@@ -1477,6 +1495,16 @@ fn describe_datakind(k: &crate::data::DataKind<'_>) -> &'static str {
 /// runtime type tags on every Value, which the language deliberately
 /// avoids; structural shape checks plus declaration-time validation
 /// are intended to cover the rest.
+/// First label of a block, as a string (identifier / utf8 / ascii).
+/// `None` if the block has no labels or the first isn't string-like.
+/// Used to resolve a `wdoc_component`'s `@inline(0)` name.
+fn block_first_label(b: &Block<'_>) -> Option<String> {
+    match b.labels().ok()?.into_iter().next()? {
+        Value::Identifier(s) | Value::Utf8(s) | Value::Ascii(s) => Some(s),
+        _ => None,
+    }
+}
+
 pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
     use crate::value::BuiltinType as B;
     match (value, ty) {

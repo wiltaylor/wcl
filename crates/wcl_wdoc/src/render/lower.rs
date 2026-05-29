@@ -21,6 +21,13 @@ pub(crate) const MAX_LOWER_DEPTH: usize = 32;
 /// document content, so it can't collide with real output.
 const WF_CHILDREN_SLOT: &str = "\u{FFF9}wdoc:children\u{FFF9}";
 
+/// Placeholder emitted by a `wdoc_content` block (a component's content
+/// slot). `render_component` substitutes it with the *instance's* own
+/// rendered child blocks. Distinct from `WF_CHILDREN_SLOT` so a container
+/// widget nested in a component body doesn't capture the component's
+/// content (and vice-versa).
+pub(crate) const WF_CONTENT_SLOT: &str = "\u{FFF9}wdoc:content\u{FFF9}";
+
 /// Look up the `lower` function for a block kind. Tries the block's
 /// own `lower` field first (per-instance override), then the kind's
 /// `@block` type's `@default(...)` for `lower`. Returns `None` when
@@ -282,17 +289,39 @@ pub(crate) fn block_to_record_raw(doc: &Document, block: &Block<'_>, kind: &str)
     let mut map = BTreeMap::new();
     for f in schema.fields() {
         let name = f.name();
+        let is_children_slot =
+            f.children_kind_or_union().is_some() || f.child_kind_or_union().is_some();
         let val = if let Some(slot) = f.inline_slot() {
             labels.get(slot as usize).cloned().unwrap_or(Value::None)
+        } else if is_children_slot {
+            // A `@children(...)` / `@child(...)` slot. Always materialise
+            // through the projection — never the raw `block.field(name)`
+            // value — so that a *computed* splice (`spans = map(data, …)`)
+            // is schema-completed exactly like statically-nested blocks:
+            // each child record carries every declared field (optionals →
+            // `none`), which the `lower` (e.g. `s.id` / `s.class`) relies
+            // on. The projection yields a coerced variant list for a union
+            // slot (a `Value`) or a block list for a concrete-kind slot.
+            match block.typed_field(name) {
+                Some(dr) => match dr.value() {
+                    Ok(v) => v,
+                    Err(_) => match dr.as_block_list() {
+                        Some(blocks) => Value::List(
+                            blocks
+                                .iter()
+                                .filter_map(|b| block_to_record(doc, b, b.kind()))
+                                .collect(),
+                        ),
+                        None => f.default_value().unwrap_or(Value::None),
+                    },
+                },
+                None => f.default_value().unwrap_or(Value::None),
+            }
         } else if let Some(field) = block.field(name) {
             field.value().cloned().unwrap_or(Value::None)
         } else if let Some(dr) = block.typed_field(name) {
-            // A schema-projected field with no raw AST entry: either a
-            // leaf typed projection (e.g. a `@connections` list, which
-            // has a `Value`) or a `@children(...)` block list, which has
-            // none. Materialise children by recursively converting each
-            // child block to a record (using its own kind), so a `lower`
-            // can map over them — e.g. `text`'s `@children("span") spans`.
+            // A schema-projected field with no raw AST entry: a leaf typed
+            // projection (e.g. a `@connections` list, which has a `Value`).
             match dr.value() {
                 Ok(v) => v,
                 Err(_) => match dr.as_block_list() {

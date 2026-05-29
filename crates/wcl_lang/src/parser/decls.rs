@@ -984,6 +984,10 @@ impl<'a> Parser<'a> {
                 | TokenKind::Str(StringLit::Ascii(_))
                 | TokenKind::Str(StringLit::Utf16(_))
                 | TokenKind::Str(StringLit::Utf32(_))
+                // An interpolated `$"…${x}…"` string is a valid label too —
+                // e.g. a `wdoc_component` body's `h3 $"${title}"`. It
+                // evaluates in the block's scope (see `Block::labels`).
+                | TokenKind::Str(StringLit::Interpolated { .. })
                 | TokenKind::Number(_)
                 | TokenKind::Bool(_)
                 | TokenKind::Symbol(_)

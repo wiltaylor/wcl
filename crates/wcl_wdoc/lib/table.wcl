@@ -1,5 +1,7 @@
-// Tabular grid. Rows are authored with WCL's native pipe-table
-// syntax under a `rows:` header; the first row is the table header.
+// Tabular grid, authored one of two ways.
+//
+// 1. **Pipe-table syntax** under a `rows:` header — the first row is the
+//    table header:
 //
 //   table {
 //     rows:
@@ -7,21 +9,34 @@
 //       | "Alice" | "Dev"  | 30     |   // -> <tbody>/<td>
 //   }
 //
-// Cells may hold any literal: utf8 cells are run through the inline
-// pattern engine (so **bold**, _italic_, `code`, [links](page) work),
-// other types (numbers, bools, symbols) are stringified. The block
-// deliberately declares no `rows` field — the pipe rows arrive as a
-// syntactic `Item::Table` the renderer reads via `Block::tables()`,
-// so tables can be any width with no per-table type. `table` is a
-// fundamental HTML block (rendered directly), so its `lower` is never
-// invoked — declared only to satisfy the WdocBlock interface.
-// Named `TableBlock` (not `Table`) because `Table` is the reserved
-// type name for the `@table` decorator. The block kind is still
-// "table".
+// 2. **Computed rows** — for a data-driven table, set the `rows` field to
+//    a list of cell-lists (e.g. `map`ped from a data structure) and an
+//    optional `header` row. This composes with components: a `wdoc_slot`
+//    can feed `rows`.
+//
+//   table {
+//     header = ["Name", "Role"]
+//     rows = map(people, fn(p: Person) -> list<utf8> { [p.name, p.role] })
+//   }
+//
+// The two forms don't mix — when a `rows` field is present the computed
+// path wins and any pipe rows are ignored. Cells may hold any scalar:
+// utf8 cells run through the inline pattern engine (so **bold**,
+// _italic_, `code`, [links](page), `:icons:` work), other types
+// (numbers, bools, symbols) are stringified. `table` is a fundamental
+// HTML block (rendered directly), so its `lower` is never invoked —
+// declared only to satisfy the WdocBlock interface. Named `TableBlock`
+// (not `Table`) because `Table` is the reserved type name for the
+// `@table` decorator. The block kind is still "table".
 @block("table")
 type TableBlock extends WdocBlock {
-  id:    identifier?
-  class: list<utf8>?
+  id:     identifier?
+  class:  list<utf8>?
+  // Computed-table form (alternative to pipe rows). `header` is the
+  // heading row (omit for a header-less table); `rows` are the body
+  // rows, each a list of cells.
+  header: list<utf8>?
+  rows:   list<list<utf8>>?
   lower = fn(t: TableBlock) -> list<HtmlFundamental> []
 }
 

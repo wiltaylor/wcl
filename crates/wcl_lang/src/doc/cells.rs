@@ -71,6 +71,24 @@ pub(crate) enum ItemCellKind {
         /// blank in the stored AST and overridden at view time using
         /// the parent type's `@children(kind)` declaration.
         synth_rows: Vec<SynthRow>,
+        /// Synthesised `Block`s from a *computed* `@children(kind)` /
+        /// `@child(kind)` field — i.e. `field = <list expr>` in place of
+        /// nested block literals (a "splice"). Unlike `synth_rows`, these
+        /// can't be built at cells-build time: the RHS expression
+        /// (`map(...)`) needs the scope chain + lazy evaluation, only
+        /// available at view time. Populated on first projection /
+        /// `blocks()` walk via `Block::computed_children`. Each child is
+        /// value-backed: its label/field cells are pre-seeded with the
+        /// record's values, so reads never touch the placeholder AST.
+        computed_children: OnceLock<Vec<SynthChild>>,
+        /// Body expansions for `wdoc_component` / `wdoc_repeater` — one
+        /// per binding set (one for a component instance; one per element
+        /// for a repeater). Each holds a **fresh** copy of the body's
+        /// evaluation cells so the same body AST evaluated under different
+        /// bindings (repeated instances, loop iterations) doesn't collide
+        /// in the shared field-value cache. Built once, lazily, by
+        /// `Block::expand_bodies` (renderer-driven).
+        expansions: OnceLock<Vec<Expansion>>,
     },
     TypeDecl {
         /// One inner Vec per `ast::TypeDecl.fields[i]`, holding cells for
@@ -132,6 +150,30 @@ pub(crate) struct BlockCells {
 pub(crate) struct SynthRow {
     pub(crate) field_name: String,
     pub(crate) block: ast::Block,
+    pub(crate) cells: ItemCells,
+}
+
+/// One synthesised child-Block produced from a computed `@children` /
+/// `@child` field (a "splice" — `field = <list expr>`). Built lazily at
+/// view time (the RHS needs evaluation). `field_name` is the slot it
+/// fills; `kind` is its concrete block kind (set via `kind_override` on
+/// the handed-out view). The block's label/field cells are pre-seeded
+/// with the source record's values, so `Block::labels` / `Block::field`
+/// short-circuit to them — the placeholder AST exprs are never evaluated.
+#[derive(Debug)]
+pub(crate) struct SynthChild {
+    pub(crate) field_name: String,
+    pub(crate) kind: String,
+    pub(crate) block: ast::Block,
+    pub(crate) cells: ItemCells,
+}
+
+/// One body expansion of a `wdoc_component` / `wdoc_repeater`: a binding
+/// set (slot values, or a loop variable) plus a fresh copy of the body
+/// block's evaluation cells, so each expansion evaluates independently.
+#[derive(Debug)]
+pub(crate) struct Expansion {
+    pub(crate) bindings: std::sync::Arc<Vec<(String, Value)>>,
     pub(crate) cells: ItemCells,
 }
 
@@ -214,6 +256,8 @@ impl ItemCells {
                             .collect(),
                         schema_validation: OnceLock::new(),
                         synth_rows,
+                        computed_children: OnceLock::new(),
+                        expansions: OnceLock::new(),
                     },
                 }
             }
