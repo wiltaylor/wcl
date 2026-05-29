@@ -509,15 +509,18 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         if matches_interface {
             continue;
         }
-        // A user-defined `wdoc_component` instance satisfies a
-        // `@children(WdocBlock)` interface slot (components render to the
-        // HTML/WdocBlock domain). Validate the instance's slot fields
-        // here, since the validator is otherwise shallow.
-        let in_wdoc_slot = interface_slots
-            .iter()
-            .any(|iface| iface.full_name().ends_with("WdocBlock"));
-        if in_wdoc_slot && block.doc.is_component_kind(nested.kind()) {
-            errs.extend(validate_component_instance(block.doc, &nested));
+        // Generators — `wdoc_repeater` / `wdoc_content` and user-defined
+        // `wdoc_component` instances — are context-polymorphic: they emit
+        // whatever their body contains (WdocBlocks in a page, SvgBlocks in
+        // a diagram), so accept them in any interface `@children` slot
+        // (`WdocBlock` or `SvgBlock`). A component instance also has its
+        // slot fields validated here, since the validator is shallow.
+        let is_generator = matches!(nested.kind(), "wdoc_repeater" | "wdoc_content")
+            || block.doc.is_component_kind(nested.kind());
+        if !interface_slots.is_empty() && is_generator {
+            if block.doc.is_component_kind(nested.kind()) {
+                errs.extend(validate_component_instance(block.doc, &nested));
+            }
             continue;
         }
         errs.push(EvalError::schema_violation_named(

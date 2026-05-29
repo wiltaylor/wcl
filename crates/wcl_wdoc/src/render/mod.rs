@@ -6,6 +6,8 @@
 //!
 //! - [`accessors`] — field / map / value readers + HTML escaping
 //! - [`css`] — injected style constants + `class`-block lowering
+//! - [`expand`] — `wdoc_repeater` / `wdoc_component` body expansion, shared
+//!   by the HTML and SVG (diagram) paths
 //! - [`html`] — page shell, templates, page-level blocks + HTML fundamentals
 //! - [`lower`] — `lower`-function dispatch + recursive variant rendering
 //! - [`svg`] — diagram layout, edge routing, and shape geometry
@@ -13,6 +15,7 @@
 
 mod accessors;
 mod css;
+mod expand;
 mod html;
 mod lower;
 mod svg;
@@ -20,6 +23,7 @@ mod theme;
 
 pub(crate) use accessors::*;
 pub(crate) use css::*;
+pub(crate) use expand::*;
 pub(crate) use html::*;
 pub(crate) use lower::*;
 pub(crate) use svg::*;

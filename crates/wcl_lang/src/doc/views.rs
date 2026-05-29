@@ -1361,7 +1361,12 @@ impl<'a> Field<'a> {
             self.declared_type_ref(),
             Some(TypeRef::Builtin(BuiltinType::Identifier))
         ) {
-            self.doc.eval_literal(&self.ast.expr)
+            // Identifier-typed field: a *bare* identifier stays an opaque
+            // name (`id = web` → `"web"`, not a variable lookup), but any
+            // other expression evaluates in the field's scope — so a
+            // data-derived `id = s.key` (a repeater/component binding)
+            // resolves instead of being looked up at root.
+            self.doc.eval_literal_in_scope(&self.ast.expr, &self.scope)
         } else {
             self.doc
                 .eval_in_scope(&self.ast.expr, &self.scope)
@@ -1600,6 +1605,12 @@ impl<'a> Block<'a> {
 
     pub fn kind(&self) -> &'a str {
         self.kind_override.unwrap_or(&self.ast.kind)
+    }
+
+    /// The document this block belongs to. Lets host renderers reach
+    /// document-level lookups (e.g. `component_def`) from a block view.
+    pub fn doc(&self) -> &'a Document {
+        self.doc
     }
 
     /// Scope that child expressions inside this block see — the

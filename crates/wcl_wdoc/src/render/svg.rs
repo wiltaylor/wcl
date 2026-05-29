@@ -245,7 +245,7 @@ pub(crate) fn collect_layout_children(
         "grid" => collect_grid_children(block, tx, ty, cctx, out),
         "layered" | "force" => collect_planned_children(block, tx, ty, cctx, out),
         _ => {
-            for child in block.blocks() {
+            for child in diagram_children(block) {
                 collect_shape_positions(&child, tx, ty, parent_w, parent_h, cctx, out);
             }
         }
@@ -265,9 +265,9 @@ pub(crate) fn render_layout_children(
     match layout.as_str() {
         "grid" => render_grid_children(block, ctx),
         "layered" | "force" => render_planned_children(block, ctx),
-        _ => block
-            .blocks()
-            .filter_map(|b| render_shape(&b, pw, ph, ctx))
+        _ => diagram_children(block)
+            .iter()
+            .filter_map(|b| render_shape(b, pw, ph, ctx))
             .collect(),
     }
 }
@@ -283,9 +283,9 @@ pub(crate) fn collect_grid_children(
     let cw = field_f64(block, "cell_width").unwrap_or(0.0);
     let ch = field_f64(block, "cell_height").unwrap_or(0.0);
     let gap = field_f64(block, "gap").unwrap_or(0.0);
-    for (i, child) in block.blocks().enumerate() {
+    for (i, child) in diagram_children(block).iter().enumerate() {
         let (cx_off, cy_off) = grid_cell_offset(i, cols, cw, ch, gap);
-        collect_shape_positions(&child, tx + cx_off, ty + cy_off, cw, ch, cctx, out);
+        collect_shape_positions(child, tx + cx_off, ty + cy_off, cw, ch, cctx, out);
     }
 }
 
@@ -299,7 +299,7 @@ pub(crate) fn collect_planned_children(
     cctx: CollectCtx<'_>,
     out: &mut Collector,
 ) {
-    let children: Vec<Block<'_>> = block.blocks().collect();
+    let children: Vec<Block<'_>> = diagram_children(block);
     let (offsets, widths, heights) = compute_planned_plan(block, &children);
     // Size each child's parent box from the plan (effective_dims), not
     // the raw width/height, so collect and render agree on circles
@@ -390,17 +390,31 @@ pub(crate) fn compute_planned_plan(
     }
 }
 
+/// Every edge record of a diagram/container: the `@connections`-projected
+/// `a -> b` statements PLUS a computed `edges = <list>` field (data-driven
+/// connections, e.g. `map`ped from the data's relationships). Both yield
+/// `{ source, destination, kind? }` records. The two forms may coexist
+/// (concatenated); a computed endpoint matches a shape whose `id` equals
+/// the endpoint string.
+pub(crate) fn all_edges(block: &Block<'_>) -> Vec<Value> {
+    let mut out = Vec::new();
+    // `@connections`-projected `a -> b` statements.
+    if let Some(dr) = block.typed_field("edges")
+        && let Ok(Value::List(items)) = dr.value()
+    {
+        out.extend(items);
+    }
+    // Computed edges: a literal `edges = <expr>` field (a list of records).
+    if let Some(f) = block.field("edges")
+        && let Ok(Value::List(items)) = f.value()
+    {
+        out.extend(items.iter().cloned());
+    }
+    out
+}
+
 pub(crate) fn edge_id_pairs(block: &Block<'_>) -> Vec<(String, String)> {
-    let Some(dr) = block.typed_field("edges") else {
-        return Vec::new();
-    };
-    let Ok(value) = dr.value() else {
-        return Vec::new();
-    };
-    let Value::List(items) = value else {
-        return Vec::new();
-    };
-    items
+    all_edges(block)
         .iter()
         .filter_map(|v| {
             let Value::Record { fields, .. } = v else {
@@ -414,7 +428,7 @@ pub(crate) fn edge_id_pairs(block: &Block<'_>) -> Vec<(String, String)> {
 }
 
 pub(crate) fn render_planned_children(block: &Block<'_>, ctx: RenderCtx<'_>) -> String {
-    let children: Vec<Block<'_>> = block.blocks().collect();
+    let children: Vec<Block<'_>> = diagram_children(block);
     let (offsets, widths, heights) = compute_planned_plan(block, &children);
     let mut out = String::new();
     for ((child, (tx, ty)), (cw, ch)) in children
@@ -844,12 +858,8 @@ pub(crate) fn polyline_bbox(points: &[(f64, f64)]) -> Option<(f64, f64, f64, f64
 /// matter how deeply nested, render into the same outer SVG
 /// coordinate space — `positions` already holds absolute bboxes.
 pub(crate) fn gather_edges_recursive(block: &Block<'_>, out: &mut Vec<Value>) {
-    if let Some(dr) = block.typed_field("edges")
-        && let Ok(Value::List(items)) = dr.value()
-    {
-        out.extend(items);
-    }
-    for child in block.blocks() {
+    out.extend(all_edges(block));
+    for child in diagram_children(block) {
         if child.kind() == "container" {
             gather_edges_recursive(&child, out);
         }
@@ -1282,11 +1292,11 @@ pub(crate) fn render_grid_children(block: &Block<'_>, ctx: RenderCtx<'_>) -> Str
     let cw = field_f64(block, "cell_width").unwrap_or(0.0);
     let ch = field_f64(block, "cell_height").unwrap_or(0.0);
     let gap = field_f64(block, "gap").unwrap_or(0.0);
-    block
-        .blocks()
+    diagram_children(block)
+        .iter()
         .enumerate()
         .filter_map(|(i, b)| {
-            let rendered = render_shape(&b, cw, ch, ctx)?;
+            let rendered = render_shape(b, cw, ch, ctx)?;
             let (tx, ty) = grid_cell_offset(i, cols, cw, ch, gap);
             Some(format!(
                 "<g transform=\"translate({tx} {ty})\">{rendered}</g>"
@@ -1695,7 +1705,7 @@ pub(crate) fn content_size(block: &Block<'_>) -> (f64, f64) {
     let layout = field_symbol(block, "layout").unwrap_or_default();
     match layout.as_str() {
         "layered" | "force" => {
-            let children: Vec<Block<'_>> = block.blocks().collect();
+            let children: Vec<Block<'_>> = diagram_children(block);
             if children.is_empty() {
                 return (0.0, 0.0);
             }
@@ -1713,7 +1723,7 @@ pub(crate) fn content_size(block: &Block<'_>) -> (f64, f64) {
             let cw = field_f64(block, "cell_width").unwrap_or(0.0);
             let ch = field_f64(block, "cell_height").unwrap_or(0.0);
             let gap = field_f64(block, "gap").unwrap_or(0.0);
-            let n = block.blocks().count();
+            let n = diagram_children(block).len();
             if n == 0 {
                 return (0.0, 0.0);
             }

@@ -8,7 +8,7 @@
 // clash with the other showcase pages in this document. (The inventory
 // table is a built-in `table` with computed `rows` — no custom block.)
 
-type Server { name: utf8  role: utf8  cpu: f64  mem: f64  up: bool }
+type Server { name: utf8  role: utf8  cpu: f64  mem: f64  up: bool  deps: list<utf8> }
 
 // Data → diagram: a status strip, one cell per server, coloured by a
 // class so the theme controls the palette.
@@ -60,12 +60,16 @@ page data { sites = [:showcase]
   p "Every view on this page is derived from a single `let` binding — the same data structure you might gather from an inventory scan. Change the data in one place and the cards, table, charts, status strip, and alert list all follow."
 
   let inventory = [
-    { name: "web-1",  role: "frontend", cpu: 42.0, mem: 60.0, up: true  },
-    { name: "web-2",  role: "frontend", cpu: 51.0, mem: 58.0, up: true  },
-    { name: "db-1",   role: "database", cpu: 88.0, mem: 75.0, up: true  },
-    { name: "cache",  role: "cache",    cpu: 25.0, mem: 40.0, up: false },
-    { name: "worker", role: "batch",    cpu: 67.0, mem: 82.0, up: false },
+    { name: "web-1",  role: "frontend", cpu: 42.0, mem: 60.0, up: true,  deps: ["db-1", "cache"] },
+    { name: "web-2",  role: "frontend", cpu: 51.0, mem: 58.0, up: true,  deps: ["db-1", "cache"] },
+    { name: "db-1",   role: "database", cpu: 88.0, mem: 75.0, up: true,  deps: [] },
+    { name: "cache",  role: "cache",    cpu: 25.0, mem: 40.0, up: false, deps: [] },
+    { name: "worker", role: "batch",    cpu: 67.0, mem: 82.0, up: false, deps: ["db-1"] },
   ]
+  // Edges derived from each host's `deps` — drives the topology graph.
+  let topology = flatten(map(inventory, fn(s: Server) -> list<Edge> {
+    map(s.deps, fn(d: utf8) -> Edge { { source: s.name, destination: d } })
+  }))
 
   h2 "Per-host cards"
 
@@ -110,6 +114,17 @@ page data { sites = [:showcase]
         { name: "mem", values: map(inventory, fn(s: Server) -> f64 { s.mem }) },
       ]
     }
+  }
+
+  h2 "Topology"
+
+  p "A dependency graph straight from the data: a `wdoc_repeater` makes a node per host (id from the name), and a computed `edges` list — `map`ped from each host's `deps` — wires them. `layout = :layered` ranks the graph automatically:"
+
+  diagram { width = 560  height = 280  layout = :layered  direction = :left_to_right
+    wdoc_repeater { each = inventory  as = :s
+      process $"${s.name}" { id = s.name }
+    }
+    edges = topology
   }
 
   h2 "Alerts"

@@ -619,6 +619,71 @@ page index {
 }
 
 #[test]
+fn build_renders_data_driven_diagram() {
+    // A `wdoc_repeater` generates one node per data element (with a
+    // data-derived `id`), and a computed `edges` list connects them from
+    // the data's own relationships. Layered layout then ranks them.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("graph.wcl");
+    write_fixture(
+        &src,
+        r#"
+type Svc { key: utf8  name: utf8  deps: list<utf8> }
+page index {
+  let svc = [
+    { key: "web", name: "Web", deps: ["api"] },
+    { key: "api", name: "API", deps: ["db", "cache"] },
+    { key: "db",  name: "DB",  deps: [] },
+    { key: "cache", name: "Cache", deps: [] },
+  ]
+  let links = flatten(map(svc, fn(s: Svc) -> list<Edge> {
+    map(s.deps, fn(d: utf8) -> Edge { { source: s.key, destination: d } })
+  }))
+  diagram { width = 500  height = 320  layout = :layered
+    wdoc_repeater { each = svc  as = :s
+      rect { id = s.key  width = 90.0  height = 40.0 }
+    }
+    edges = links
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    let svg_start = html.find("<svg").expect("an <svg>");
+    let svg = &html[svg_start
+        ..html[svg_start..]
+            .find("</svg>")
+            .map(|i| svg_start + i)
+            .unwrap()];
+
+    // One generated node per data element.
+    assert_eq!(
+        svg.matches("<rect").count(),
+        4,
+        "four generated nodes:\n{svg}"
+    );
+    // Three computed edges drawn (web→api, api→db, api→cache).
+    let edge_count = svg.matches("marker-end=\"url(#wdoc-arrow)\"").count();
+    assert_eq!(edge_count, 3, "three data-driven edges:\n{svg}");
+    // Layered layout ranked the graph from the generated edges, so the
+    // nodes are not all at the same offset (a flat row would mean the
+    // edges never reached the layout solver).
+    let offsets: std::collections::HashSet<&str> = svg
+        .match_indices("<g transform=\"translate(")
+        .map(|(i, _)| {
+            let rest = &svg[i + "<g transform=\"translate(".len()..];
+            &rest[..rest.find(')').unwrap()]
+        })
+        .collect();
+    assert!(
+        offsets.len() >= 3,
+        "nodes should be spread across ranks, got offsets {offsets:?}"
+    );
+}
+
+#[test]
 fn build_renders_component_slots_defaults_and_content() {
     // A `wdoc_component` is instantiated by its own name; slots fill from
     // the instance's fields (or a `default`), resolve in `${…}` labels and

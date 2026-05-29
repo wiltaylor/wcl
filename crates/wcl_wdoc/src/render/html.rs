@@ -312,30 +312,11 @@ pub(crate) fn render_component(
     patterns: &InlinePatterns,
     base_dir: Option<&Path>,
 ) -> String {
-    use std::sync::Arc;
     // Stop runaway self-referential components.
     if instance.binding_scope_depth() > MAX_LOWER_DEPTH {
         return depth_marker();
     }
-    let mut bindings: Vec<(String, Value)> = Vec::new();
-    for slot in def.blocks().filter(|b| b.kind() == "wdoc_slot") {
-        let Some(name) = label_string(&slot) else {
-            continue;
-        };
-        let val = instance
-            .field(&name)
-            .and_then(|f| f.value().ok().cloned())
-            .or_else(|| slot.field("default").and_then(|f| f.value().ok().cloned()))
-            .unwrap_or(Value::None);
-        bindings.push((name, val));
-    }
-    let Some(body) = def.block("wdoc_body") else {
-        return String::new();
-    };
-    let groups = instance.expand_bodies(&body, vec![Arc::new(bindings)]);
-    let Some(children) = groups.first() else {
-        return String::new();
-    };
+    let children = expand_component_children(instance, def);
     let mut out: String = children
         .iter()
         .filter_map(|b| render_block(doc, b, patterns, base_dir))
@@ -359,29 +340,11 @@ pub(crate) fn render_repeat(
     patterns: &InlinePatterns,
     base_dir: Option<&Path>,
 ) -> String {
-    use std::sync::Arc;
     if block.binding_scope_depth() > MAX_LOWER_DEPTH {
         return depth_marker();
     }
-    let Some(Value::List(items)) = block.field("each").and_then(|f| f.value().ok().cloned()) else {
-        return String::new();
-    };
-    let as_name = block
-        .field("as")
-        .and_then(|f| f.value().ok().cloned())
-        .and_then(|v| match v {
-            Value::Symbol(s) | Value::Identifier(s) | Value::Utf8(s) => Some(s),
-            _ => None,
-        })
-        .unwrap_or_else(|| "it".to_string());
-    let binding_sets: Vec<Arc<Vec<(String, Value)>>> = items
-        .into_iter()
-        .map(|el| Arc::new(vec![(as_name.clone(), el)]))
-        .collect();
-    block
-        .expand_bodies(block, binding_sets)
+    expand_repeater_children(block)
         .iter()
-        .flat_map(|g| g.iter())
         .filter_map(|b| render_block(doc, b, patterns, base_dir))
         .collect()
 }

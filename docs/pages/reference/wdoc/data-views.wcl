@@ -42,6 +42,10 @@ wdoc_component dv_hosts {
 // when mapping the inventory into chart fields below.
 type DvHost { name: utf8  role: utf8  cpu: f64  mem: f64  up: bool }
 
+// A service with its dependencies — used by the "Connections from data"
+// example to generate a dependency graph.
+type DvSvc { key: utf8  name: utf8  deps: list<utf8> }
+
 page wdoc_data_views { sites = [:reference]
   h1 "Data Views"
 
@@ -64,6 +68,17 @@ WCL
     { name: "db-1",  role: "database", cpu: 88.0, mem: 75.0, up: true,  status: "warning" },
     { name: "cache", role: "cache",    cpu: 25.0, mem: 40.0, up: false, status: "error"   },
   ]
+
+  // Service dependency data for the "Connections from data" example.
+  let services = [
+    { key: "web",   name: "Web",   deps: ["api"] },
+    { key: "api",   name: "API",   deps: ["db", "cache"] },
+    { key: "db",    name: "DB",    deps: [] },
+    { key: "cache", name: "Cache", deps: [] },
+  ]
+  let service_links = flatten(map(services, fn(s: DvSvc) -> list<Edge> {
+    map(s.deps, fn(d: utf8) -> Edge { { source: s.key, destination: d } })
+  }))
 
   h2 "Components"
 
@@ -228,6 +243,47 @@ bar_chart {
 WCL
   }
 
+  h2 "Connections from data"
+
+  p "A `wdoc_repeater` inside a `diagram` generates one shape per data element; give each a data-derived `id`. Then set the diagram's `edges` to a computed list — `map`ped from the data's own relationships — and `layout = :layered` (or `:force`) positions the graph automatically. Connect by id: each edge's `source`/`destination` names a node's `id`."
+
+  diagram { width = 460  height = 300  layout = :layered
+    wdoc_repeater { each = services  as = :s
+      process $"${s.name}" { id = s.key }
+    }
+    edges = service_links
+  }
+
+  code wcl {
+    source = <<'WCL'
+type DvSvc { key: utf8  name: utf8  deps: list<utf8> }
+
+let services = [
+  { key: "web",   name: "Web",   deps: ["api"] },
+  { key: "api",   name: "API",   deps: ["db", "cache"] },
+  { key: "db",    name: "DB",    deps: [] },
+  { key: "cache", name: "Cache", deps: [] },
+]
+
+// One edge per (service → dependency) pair, derived from the data.
+let service_links = flatten(map(services, fn(s: DvSvc) -> list<Edge> {
+  map(s.deps, fn(d: utf8) -> Edge { { source: s.key, destination: d } })
+}))
+
+diagram { width = 460  height = 300  layout = :layered
+  wdoc_repeater { each = services  as = :s
+    process $"${s.name}" { id = s.key }   // node label from data, id = key
+  }
+  edges = service_links
+}
+WCL
+  }
+
+  callout "Name the binding apart from `edges`" {
+    class = ["warning"]
+    body  = "Assign the computed edges from a differently-named binding (`edges = service_links`), not `edges = edges` — a field that references its own name is a cycle and renders nothing."
+  }
+
   h2 "The pattern"
 
   table {
@@ -237,6 +293,7 @@ WCL
       | "**`wdoc_repeater`**"   | "Rendering a body (or a component) once per element of a data list." |
       | "**`wdoc_content`**"    | "A component that wraps arbitrary caller-provided content." |
       | "**`table` computed `rows`**" | "A data-driven `<table>` — `table { header = […] rows = map(data, …) }`." |
+      | "**`wdoc_repeater` + computed `edges`**" | "A data-driven diagram — repeater-generated nodes (id from data) wired by a computed `edges` list, auto-positioned by `:layered`/`:force`." |
       | "**Chart value fields**" | "Feeding `map`ped data straight into `bar_chart` / `line_chart` / `pie_chart`." |
   }
 
