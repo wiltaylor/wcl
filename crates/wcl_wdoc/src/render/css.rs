@@ -108,6 +108,15 @@ pub(crate) fn class_props(block: &Block<'_>) -> String {
         "opacity",
         field_utf8(block, "opacity").as_deref(),
     );
+    // Callout accent — emits the `--callout-accent` custom property, so a
+    // class on a `callout` themes its heading / border / icon. A user
+    // class rule is emitted last in the cascade, so it overrides the
+    // `.callout { --callout-accent: … }` default for a custom callout type.
+    push_css(
+        &mut props,
+        "--callout-accent",
+        field_utf8(block, "accent").as_deref(),
+    );
     props
 }
 

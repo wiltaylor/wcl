@@ -153,6 +153,11 @@ type Class {
   underline:   bool?
   font_weight: utf8?
 
+  // Callout accent colour — emits the `--callout-accent` custom property,
+  // so a `callout` carrying this class is themed (heading / border / icon)
+  // without authoring CSS. The six built-in callout types set it too.
+  accent:      utf8?
+
   // Sizing / alignment
   font_size:      utf8?
   line_height:    utf8?
@@ -192,6 +197,7 @@ type ClassMode {
   italic:         bool?
   underline:      bool?
   font_weight:    utf8?
+  accent:         utf8?
   font_size:      utf8?
   line_height:    utf8?
   font_family:    utf8?
@@ -218,6 +224,7 @@ type ClassModeLight {
   italic:         bool?
   underline:      bool?
   font_weight:    utf8?
+  accent:         utf8?
   font_size:      utf8?
   line_height:    utf8?
   font_family:    utf8?

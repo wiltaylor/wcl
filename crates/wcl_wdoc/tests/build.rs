@@ -229,6 +229,41 @@ page index {
 }
 
 #[test]
+fn class_accent_field_themes_a_custom_callout() {
+    // A `class`'s `accent` field emits the `--callout-accent` custom
+    // property, so a custom callout type is themed from WCL — no
+    // hand-written CSS / `stylesheet`. The user class rule is emitted
+    // after the library default, so it wins for a custom type.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("accent.wcl");
+    write_fixture(
+        &src,
+        r##"
+class "deploy" { accent = "#b48ead" }
+
+page index {
+  callout "Deploying" {
+    class = ["deploy"]
+    icon  = "lucide.rocket"
+    body  = "A custom type."
+  }
+}
+"##,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // The class rule carries the custom property.
+    assert!(
+        html.contains(".deploy { --callout-accent:#b48ead; }"),
+        "{html}"
+    );
+    // The callout's outer div carries the class, so the accent applies.
+    assert!(html.contains("class=\"callout deploy\""), "{html}");
+}
+
+#[test]
 fn lowering_depth_limit_emits_marker() {
     // A pathological lowering that emits its own kind — must bail at
     // the depth limit rather than recursing forever.
