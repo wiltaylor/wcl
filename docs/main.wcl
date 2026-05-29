@@ -101,7 +101,7 @@ site reference {
         chapter "Tilemaps"             { page = wdoc_tilemaps }
         chapter "Dopesheets"           { page = wdoc_dopesheets }
         chapter "Terminal"             { page = wdoc_terminals }
-        chapter "Wireframe UI Widgets" { page = wdoc_wireframe }
+        chapter "Wireframe"            { page = wdoc_wireframe }
       }
       chapter "Icons"                  { page = wdoc_icons }
       chapter "Images"                 { page = wdoc_images }

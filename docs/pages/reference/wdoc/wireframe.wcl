@@ -1,24 +1,32 @@
-// wdoc section: Wireframe UI Widgets.
+// wdoc section: Wireframe.
 page wdoc_wireframe { sites = [:reference]
-  h1 "Wireframe UI Widgets"
+  h1 "Wireframe"
 
-  p "Wireframe widgets render UI mockups — windows, buttons, inputs, controls — as styled HTML. Unlike diagram shapes (which lower to flat SVG leaves), widgets render through the HTML path and **container widgets nest other widgets**, so you can compose a window of panels of rows of controls."
+  p "Wireframe widgets render UI mockups — windows, panels, inputs, controls — as styled HTML. Unlike diagram shapes (which lower to flat SVG leaves), widgets render through the HTML path and **container widgets nest other widgets**, so you can compose a window of panels of rows of controls. They're visual mockups: they render as styled `<div>`s and don't respond to clicks."
 
-  h2 "Window"
+  p "Here's a full window composed of a panel and a button row:"
 
-  p "`wf_window` is the top-level widget: a titlebar with optional traffic-light controls plus a body that hosts other widgets."
+  wf_window "Account settings" {
+    wf_panel { title = "Profile"
+      wf_input "Display name" { value = "Wil Taylor" }
+      wf_input "Email"        { value = "ai@wiltaylor.dev" }
+    }
+    wf_row {
+      wf_button "Cancel"
+      wf_button "Save" { icon = "lucide.check" }
+    }
+  }
 
   code wcl {
     source = <<'WCL'
 wf_window "Account settings" {
-  wf_panel {
-    title = "Profile"
+  wf_panel { title = "Profile"
     wf_input "Display name" { value = "Wil Taylor" }
     wf_input "Email"        { value = "ai@wiltaylor.dev" }
   }
   wf_row {
     wf_button "Cancel"
-    wf_button "Save" { class = ["primary"] }
+    wf_button "Save" { icon = "lucide.check" }
   }
 }
 WCL
@@ -26,70 +34,306 @@ WCL
 
   h2 "Containers"
 
-  table {
-    rows:
-      | "Widget"      | "Purpose" |
-      | "`wf_window`" | "Outer chrome — titlebar + body. `controls = false` hides the traffic lights." |
-      | "`wf_panel`"  | "Bordered group with an optional `title` caption." |
-      | "`wf_column`" | "Stack children vertically (default flow inside a panel)." |
-      | "`wf_row`"    | "Stack children horizontally." |
-      | "`wf_grid`"   | "Two-dimensional grid; takes `columns` (and optionally `rows`)." |
+  p "Every container takes `@children(Widget)` — drop any other widget inside, nested arbitrarily."
+
+  h3 "wf_window"
+
+  p "The outer chrome: a titlebar (with traffic-light controls, hidden by `controls = false`) over a body that hosts other widgets."
+
+  wf_window "Settings" {
+    wf_label "The window body stacks its children vertically."
   }
 
-  p "Every container accepts `@children(Widget)` — drop any other widget inside, nested arbitrarily."
-
-  h2 "Leaf controls"
+  code wcl {
+    source = <<'WCL'
+wf_window "Settings" {
+  wf_label "The window body stacks its children vertically."
+}
+WCL
+  }
 
   table {
     rows:
-      | "Widget"        | "Inline label" | "Other fields" |
-      | "`wf_label`"    | "the text"     | "—" |
-      | "`wf_button`"   | "the caption"  | "`icon` (e.g. `\"lucide.check\"`)" |
-      | "`wf_input`"    | "the placeholder" | "`value` (fills with solid text)" |
-      | "`wf_dropdown`" | "the placeholder" | "`value`" |
-      | "`wf_checkbox`" | "the label"    | "`checked` (bool)" |
-      | "`wf_radio`"    | "the label"    | "`selected` (bool)" |
-      | "`wf_toggle`"   | "the label"    | "`on` (bool)" |
+      | "Field" | "Meaning" |
+      | "`title`"    | "Titlebar caption (`@inline`)." |
+      | "`controls`" | "Show the titlebar dots + close glyph (default `true`)." |
+      | "children"   | "Any `Widget`s, stacked vertically." |
+  }
+
+  h3 "wf_panel"
+
+  p "A bordered group with an optional `title` caption — use it to box a set of related controls."
+
+  wf_panel { title = "Network"
+    wf_toggle "Wi-Fi" { on = true }
+    wf_toggle "Bluetooth"
+  }
+
+  code wcl {
+    source = <<'WCL'
+wf_panel { title = "Network"
+  wf_toggle "Wi-Fi" { on = true }
+  wf_toggle "Bluetooth"
+}
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`title`"  | "Optional group caption." |
+      | "children" | "Any `Widget`s, stacked vertically." |
+  }
+
+  h3 "wf_row"
+
+  p "Lay children out **horizontally** (a panel / window body stacks vertically by default)."
+
+  wf_row {
+    wf_button "Back"
+    wf_button "Next"
+    wf_button "Finish" { icon = "lucide.check" }
+  }
+
+  code wcl {
+    source = <<'WCL'
+wf_row {
+  wf_button "Back"
+  wf_button "Next"
+  wf_button "Finish" { icon = "lucide.check" }
+}
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "children" | "Any `Widget`s, laid out left-to-right." |
+  }
+
+  h3 "wf_column"
+
+  p "Stack children **vertically** — the default flow, useful for an explicit column inside a `wf_row` or `wf_grid`."
+
+  wf_column {
+    wf_label "Name"
+    wf_input "Full name"
+  }
+
+  code wcl {
+    source = <<'WCL'
+wf_column {
+  wf_label "Name"
+  wf_input "Full name"
+}
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "children" | "Any `Widget`s, stacked top-to-bottom." |
+  }
+
+  h3 "wf_grid"
+
+  p "A grid of equal-width columns; `columns` sets the count and children flow across the rows."
+
+  wf_grid { columns = 3
+    wf_button "1"
+    wf_button "2"
+    wf_button "3"
+    wf_button "4"
+    wf_button "5"
+    wf_button "6"
+  }
+
+  code wcl {
+    source = <<'WCL'
+wf_grid { columns = 3
+  wf_button "1"
+  wf_button "2"
+  wf_button "3"
+  wf_button "4"
+  wf_button "5"
+  wf_button "6"
+}
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`columns`" | "Number of equal-width columns." |
+      | "children"  | "Any `Widget`s, flowed across the grid." |
+  }
+
+  h2 "Controls"
+
+  h3 "wf_label"
+
+  p "A plain text label (an inline `<span>`)."
+
+  wf_label "Just some label text."
+
+  code wcl {
+    source = <<'WCL'
+wf_label "Just some label text."
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`text`" | "The label text (`@inline`)." |
+  }
+
+  h3 "wf_button"
+
+  p "A button caption, with an optional leading `icon` (any `pack.name`, e.g. `\"lucide.check\"`)."
+
+  wf_row {
+    wf_button "Save" { icon = "lucide.check" }
+    wf_button "Cancel"
+    wf_button "Delete" { disabled = true }
+  }
+
+  code wcl {
+    source = <<'WCL'
+wf_button "Save" { icon = "lucide.check" }
+wf_button "Cancel"
+wf_button "Delete" { disabled = true }
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`text`" | "Button caption (`@inline`)." |
+      | "`icon`" | "Optional leading glyph — `pack.name`." |
+  }
+
+  h3 "wf_input"
+
+  p "A text field. With no `value` the `@inline` placeholder shows greyed; a `value` fills it with solid text."
+
+  wf_column {
+    wf_input "Search projects…"
+    wf_input "Name" { value = "Ada Lovelace" }
+  }
+
+  code wcl {
+    source = <<'WCL'
+wf_input "Search projects…"
+wf_input "Name" { value = "Ada Lovelace" }
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`placeholder`" | "Greyed prompt shown when empty (`@inline`)." |
+      | "`value`"       | "Filled value (renders solid, replaces the placeholder)." |
+  }
+
+  h3 "wf_dropdown"
+
+  p "A select field showing the currently-chosen option label with a chevron."
+
+  wf_dropdown "Release build"
+
+  code wcl {
+    source = <<'WCL'
+wf_dropdown "Release build"
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`text`" | "The selected option label (`@inline`)." |
+  }
+
+  h3 "wf_checkbox"
+
+  p "An on/off checkbox; `checked = true` fills the box with a tick."
+
+  wf_column {
+    wf_checkbox "Enable telemetry" { checked = true }
+    wf_checkbox "Join the beta"
+  }
+
+  code wcl {
+    source = <<'WCL'
+wf_checkbox "Enable telemetry" { checked = true }
+wf_checkbox "Join the beta"
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`label`"   | "Checkbox caption (`@inline`)." |
+      | "`checked`" | "On/off state." |
+  }
+
+  h3 "wf_radio"
+
+  p "A radio button — like a checkbox but round; mark the active one with `selected = true` in a group you lay out yourself."
+
+  wf_column {
+    wf_radio "Dark" { selected = true }
+    wf_radio "Light"
+  }
+
+  code wcl {
+    source = <<'WCL'
+wf_radio "Dark" { selected = true }
+wf_radio "Light"
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`label`"    | "Radio caption (`@inline`)." |
+      | "`selected`" | "Whether this option is chosen." |
+  }
+
+  h3 "wf_toggle"
+
+  p "A sliding on/off switch with an optional trailing label; `on = true` slides the knob across."
+
+  wf_column {
+    wf_toggle "Notifications" { on = true }
+    wf_toggle "Do not disturb"
+  }
+
+  code wcl {
+    source = <<'WCL'
+wf_toggle "Notifications" { on = true }
+wf_toggle "Do not disturb"
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`label`" | "Optional trailing caption (`@inline`)." |
+      | "`on`"    | "Switch state." |
   }
 
   h2 "Common fields"
 
-  p "Every widget extends a shared `Widget` interface and accepts:"
+  p "Every widget extends a shared `Widget` interface and also accepts:"
 
   table {
     rows:
       | "Field"      | "Meaning" |
       | "`id`"       | "Optional HTML id." |
-      | "`class`"    | "Extra CSS classes — see Styling below." |
+      | "`class`"    | "Extra CSS classes threaded onto the rendered element." |
       | "`width`"    | "Explicit CSS width (e.g. `\"12rem\"` / `\"100%\"`)." |
-      | "`disabled`" | "When `true`, adds a `wf-disabled` class so styles can dim the control." |
-  }
-
-  h2 "Styling"
-
-  p "Every widget threads its `class` field onto the rendered element and paints from a bare class — `.wf-button`, `.wf-window`, `.wf-input`, etc. The bundled `wdoc-wireframe` stylesheet seeds a clean grey-box palette via `--wf-*` custom properties (dark default + light override + theme-toggle override). Two override paths:"
-
-  code wcl {
-    source = <<'WCL'
-// Recolour every wireframe button:
-class "wf-button" {
-  background = "var(--wdoc-accent)"
-  color      = "#fff"
-}
-
-// Or a one-off variant on a single instance:
-class primary {
-  background = "var(--wdoc-accent)"
-  bold       = true
-}
-
-wf_button "Save" { class = ["primary"] }
-WCL
-  }
-
-  callout "Mockups, not interactivity" {
-    class = ["info"]
-    body  = "Wireframe widgets are visual mockups — they render as styled <div>s and don't respond to clicks. For runnable terminal-style UI, see TUI Widgets."
+      | "`disabled`" | "When `true`, adds a `wf-disabled` class so styles dim the control." |
   }
 
   p "Next: [Icons](wdoc_icons)."

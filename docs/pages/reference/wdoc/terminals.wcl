@@ -371,5 +371,5 @@ WCL
       | "children" | "`TermPrimitive` children, positioned relative to the group." |
   }
 
-  p "Next: [Wireframe UI Widgets](wdoc_wireframe)."
+  p "Next: [Wireframe](wdoc_wireframe)."
 }
