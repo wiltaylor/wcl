@@ -2,43 +2,71 @@
 page wdoc_images { sites = [:reference]
   h1 "Images"
 
-  p "`image` embeds a static image at a fixed position. The source path is relative to the doc; the file is copied verbatim into `_wdoc/` at build time."
+  p "`image` embeds a static image. The source path resolves relative to the build entry file (`docs/`); the file is copied verbatim into `_wdoc/` at build time, so the output site is self-contained."
 
-  h2 "Inside a diagram"
-
-  p "Use `image { source x y width height }` as a placeable shape, alongside `rect`/`circle`/etc."
-
-  code wcl {
-    source = <<'WCL'
-diagram {
-  width = 400  height = 300
-  image {
-    source = "assets/logo.png"
-    x = 10.0  y = 10.0  width = 200.0  height = 80.0
-  }
-}
-WCL
+  callout "Served, not file://" {
+    class = ["note"]
+    body  = "Images are referenced by a relative _wdoc/ URL, so they only resolve when the site is served or hosted — not via a raw file:// open (same as icons and tilemaps)."
   }
 
   h2 "On a page"
 
-  p "An `image` block can also live directly under a `page`, where it renders as a standalone `<img>`. Apply a `class` for styling."
+  p "An `image` block directly under a `page` renders as a standalone `<img>`. The source is the inline label; set `width` / `height` to size it, `alt` for accessibility, and a `class` for styling. Live (a Kenney CC0 spritesheet, scaled down):"
+
+  image "assets/kenney-platformer.png" {
+    alt   = "Kenney platformer tile sheet"
+    width = 200.0
+  }
 
   code wcl {
     source = <<'WCL'
 page about { sites = [:demo]
-  image {
-    source = "assets/hero.jpg"
-    class  = ["hero"]
+  image "assets/hero.jpg" {
+    alt   = "Our team"
+    width = 480.0
+    class = ["hero"]
   }
 }
 WCL
   }
 
-  callout "Asset copying" {
-    class = ["info"]
-    body  = "Image files are copied byte-for-byte into <out>/_wdoc/ once per build, so the output site is self-contained. Update the source path; the build picks up the new bytes on rebuild."
+  h2 "Inside a diagram"
+
+  p "`image` is also a placeable `SvgBlock`, so it can sit in a `diagram` / `container` alongside `rect` / `circle` / etc., positioned by `x` / `y` (or anchors). Live:"
+
+  diagram { width = 280  height = 140
+    image "assets/kenney-platformer.png" {
+      x = 20.0  y = 20.0  width = 100.0  height = 100.0
+    }
+    rect { x = 150.0  y = 45.0  width = 100.0  height = 50.0  fill = "#a3be8c" }
   }
 
-  p "Back to the [reference introduction](index)."
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 280  height = 140
+  image "assets/logo.png" {
+    x = 20.0  y = 20.0  width = 100.0  height = 100.0
+  }
+  rect { x = 150.0  y = 45.0  width = 100.0  height = 50.0  fill = "#a3be8c" }
+}
+WCL
+  }
+
+  h2 "Fields"
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`<source>`" | "Image path (the label slot) — doc-relative, a URL, or a `data:` URI." |
+      | "`alt`"      | "Alt text for the `<img>` (page form)." |
+      | "`width` / `height`" | "Display size; natural size if omitted." |
+      | "`class`"    | "Optional class list." |
+      | "`id`"       | "Optional explicit HTML id." |
+      | "`x` / `y`"  | "Placement when used inside a diagram (ignored on a page)." |
+      | "`scale`"    | "Extra size multiplier (diagram form)." |
+      | "anchors / `connect_points`" | "Diagram anchoring + edge attach sides, like any shape." |
+  }
+
+  p "Next: [Diagrams](wdoc_diagrams)."
 }

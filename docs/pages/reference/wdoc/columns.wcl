@@ -2,21 +2,50 @@
 page wdoc_columns { sites = [:reference]
   h1 "Columns"
 
-  p "`column are a way to layout wdoc content in columns on a page instead of just sequentually."
+  p "`column` lays wdoc content out in side-by-side columns on a page, instead of stacking it sequentially. The `widths` list gives a CSS percentage for each child slot — one entry per child, summing to about `100`."
+
+  p "A two-column split, previewed inside a card:"
+
+  diagram { width = 460  height = 130
+    card { x = 16.0  y = 12.0  width = 428.0  height = 106.0
+      column {
+        widths = [50.0, 50.0]
+        p "**Left.** The first child fills the first 50% slot."
+        p "**Right.** The second child fills the other half."
+      }
+    }
+  }
 
   code wcl {
     source = <<'WCL'
 column {
   widths = [50.0, 50.0]
-  p "Left."
-  p "Right."
+  p "**Left.** The first child fills the first 50% slot."
+  p "**Right.** The second child fills the other half."
 }
+WCL
+  }
 
+  p "Any number of columns — here three equal thirds, each holding its own content:"
+
+  diagram { width = 460  height = 130
+    card { x = 16.0  y = 12.0  width = 428.0  height = 106.0
+      column {
+        widths = [33.3, 33.3, 33.3]
+        h4 "One"
+        h4 "Two"
+        h4 "Three"
+      }
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
 column {
   widths = [33.3, 33.3, 33.3]
-  h3 "One"
-  h3 "Two"
-  h3 "Three"
+  h4 "One"
+  h4 "Two"
+  h4 "Three"
 }
 WCL
   }
@@ -24,6 +53,17 @@ WCL
   h2 "Children"
 
   p "Columns can hold any wdoc content — paragraphs, headings, callouts, code blocks, diagrams, charts, even other columns. Apply a shared `class` to the column itself to style the group."
+
+  h2 "Fields"
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`widths`" | "`list<f64>` — one CSS percentage per child slot (e.g. `[50.0, 50.0]`)." |
+      | "`class`"  | "Optional class list applied to the whole column group." |
+      | "`id`"     | "Optional explicit HTML id." |
+      | "children" | "Any wdoc blocks — each consecutive block fills the next column slot." |
+  }
 
   p "Next: [Styling](wdoc_styling)."
 }

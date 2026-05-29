@@ -6,7 +6,16 @@ page wdoc_math { sites = [:reference]
 
   h2 "Block equations"
 
-  p "`math \"…\" {}` (or `math <<TEX … TEX`) renders a centred display equation. Use a raw heredoc for backslash-heavy LaTeX."
+  p "`math \"…\" {}` (or `math <<TEX … TEX`) renders a centred display equation. Use a raw heredoc for backslash-heavy LaTeX. Previewed in a card:"
+
+  diagram { width = 460  height = 140
+    card { x = 16.0  y = 12.0  width = 428.0  height = 116.0
+      math "E = mc^2"
+      math <<'TEX'
+\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+TEX
+    }
+  }
 
   code wcl {
     source = <<'WCL'
@@ -18,15 +27,32 @@ TEX
 WCL
   }
 
+  p "Its fields:"
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`<source>`" | "The LaTeX source — the inline label slot. `math \"E=mc^2\"` or a raw heredoc `math <<'TEX' … TEX`." |
+      | "`class`"    | "Optional class list (e.g. to recolour or resize the equation)." |
+      | "`id`"       | "Optional explicit HTML id." |
+  }
+
   h2 "Inline math"
 
-  p "Inside any `p` body or `span`, two inline patterns produce math:"
+  p "Inside any `p` body or `span`, two inline patterns produce math. Live: the mass-energy relation $E = mc^2$ flows with this sentence, and the display form $$\\int_0^1 x^2 \\, dx$$ sits a touch larger on the same line."
 
   code wcl {
     source = <<'PATTERNS'
 $x^2$           // → inline LaTeX (text style — flows with the prose)
 $$\int x dx$$   // → display style (slightly bigger, same line)
 PATTERNS
+  }
+
+  table {
+    rows:
+      | "Pattern" | "Style" |
+      | "`$…$`"   | "Text-style inline math — flows with the surrounding prose." |
+      | "`$$…$$`" | "Display-style inline math — slightly larger, still inline." |
   }
 
   p "The `$…$` pattern requires a non-space at each delimiter, so currency like `$10 or $20` is left alone."

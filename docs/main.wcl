@@ -92,6 +92,8 @@ site reference {
       chapter "Tables"                 { page = wdoc_tables }
       chapter "Columns"                { page = wdoc_columns }
       chapter "Styling"                { page = wdoc_styling }
+      chapter "Icons"                  { page = wdoc_icons }
+      chapter "Images"                 { page = wdoc_images }
       chapter "Diagrams"               { page = wdoc_diagrams
         chapter "Primitive Shapes"     { page = wdoc_primitives }
         chapter "Connections"          { page = wdoc_connections }
@@ -103,8 +105,6 @@ site reference {
         chapter "Terminal"             { page = wdoc_terminals }
         chapter "Wireframe"            { page = wdoc_wireframe }
       }
-      chapter "Icons"                  { page = wdoc_icons }
-      chapter "Images"                 { page = wdoc_images }
     }
   }
 }

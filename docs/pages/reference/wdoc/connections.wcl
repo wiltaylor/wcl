@@ -2,7 +2,7 @@
 page wdoc_connections { sites = [:reference]
   h1 "Connections"
 
-  p "Inside a `diagram`, `source -> destination :kind` draws an edge between two shapes (matched by `id`). The optional `:kind` tag is a symbol; the renderer routes the edge based on the diagram's layout."
+  p "Inside a `diagram`, `source -> destination :kind` draws an edge between two shapes (matched by `id`). The optional `:kind` tag is a symbol; the renderer routes the edge based on the diagram's layout and styles it by kind."
 
   diagram {
     width = 320  height = 120
@@ -25,6 +25,55 @@ diagram {
 }
 WCL
   }
+
+  h2 "Syntax"
+
+  table {
+    rows:
+      | "Form" | "Meaning" |
+      | "`a -> b`"        | "Edge from the shape with `id = a` to the shape with `id = b` (kind `:default`)." |
+      | "`a -> b :flow`"  | "Same edge, tagged with a `:kind` symbol that styles it." |
+      | "ids"             | "Endpoints are matched by each shape's `id`. An unknown id is a build error." |
+  }
+
+  h2 "Edge kinds"
+
+  p "The built-in `:kind` tags come from the `EdgeKind` symbol set. Each draws the edge with its own styling:"
+
+  diagram {
+    width = 360  height = 170
+    rect { id = k1a  x = 10.0  y = 10.0   width = 70.0  height = 36.0  fill = "#88c0d0" }
+    rect { id = k1b  x = 250.0 y = 10.0   width = 70.0  height = 36.0  fill = "#a3be8c" }
+    rect { id = k2a  x = 10.0  y = 65.0   width = 70.0  height = 36.0  fill = "#88c0d0" }
+    rect { id = k2b  x = 250.0 y = 65.0   width = 70.0  height = 36.0  fill = "#a3be8c" }
+    rect { id = k3a  x = 10.0  y = 120.0  width = 70.0  height = 36.0  fill = "#88c0d0" }
+    rect { id = k3b  x = 250.0 y = 120.0  width = 70.0  height = 36.0  fill = "#a3be8c" }
+    k1a -> k1b :default
+    k2a -> k2b :flow
+    k3a -> k3b :data
+  }
+
+  code wcl {
+    source = <<'WCL'
+a -> b :default   // plain arrow
+a -> b :flow      // process-flow styling
+a -> b :data      // data-flow styling
+WCL
+  }
+
+  table {
+    rows:
+      | "Kind" | "Use" |
+      | "`:default`" | "A plain directed edge (the kind when no tag is given)." |
+      | "`:flow`"    | "A process / control-flow edge." |
+      | "`:data`"    | "A data-flow edge." |
+  }
+
+  h2 "Routing"
+
+  p "How an edge gets from source to destination is set on the *diagram*, not the edge: `routing = :elbow` (default) draws an orthogonal multi-bend polyline that routes around other shapes; `routing = :straight` draws a single direct line. Use `connect_points` on a shape to restrict which sides (`:north`/`:east`/`:south`/`:west`) an edge may attach to."
+
+  p "See [Flowcharts](wdoc_flowcharts) for auto-layout (`layout = :layered`), where edges drive the rank assignment."
 
   p "Next: [Flowcharts](wdoc_flowcharts)."
 }

@@ -1,4 +1,35 @@
 // wdoc section: Wireframe.
+
+// A custom widget used in the "Custom widgets" section below: a coloured
+// status badge. It extends Widget (so it's a legal child of any container)
+// and its `lower` returns a styled <span>.
+@block("wf_badge")
+type WfBadge extends Widget {
+  @inline(0) text: utf8
+  icon: utf8?
+  id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  lower = fn(b: WfBadge) -> list<HtmlFundamental> {
+    let extra = if b.class == none { [] } else { b.class };
+    let label = HtmlFundamental::Inline { text: b.text };
+    // An optional leading icon — an `Icon` fundamental, resolved from any
+    // pack (`lucide.*` works with no iconset declared).
+    let kids  = if b.icon == none { [label] }
+      else { [ HtmlFundamental::Icon { name: b.icon, class: ["wf-icon"] }, label ] };
+    [ HtmlFundamental::Element {
+        tag: "span", id: b.id, attrs: none,
+        class: flatten([["wf-badge"], extra]),
+        children: kids,
+    } ]
+  }
+}
+
+class "wf-badge" {
+  background = "var(--wdoc-green)"
+  color      = "#fff"
+  padding    = "0.05rem 0.5rem"
+}
+class "wf-badge-danger" { background = "var(--wdoc-red)" }
+
 page wdoc_wireframe { sites = [:reference]
   h1 "Wireframe"
 
@@ -336,5 +367,54 @@ WCL
       | "`disabled`" | "When `true`, adds a `wf-disabled` class so styles dim the control." |
   }
 
-  p "Next: [Icons](wdoc_icons)."
+  h2 "Custom widgets"
+
+  p "Wireframe widgets are user-extensible. Declare a `@block(\"name\") type … extends Widget` with a `lower` that returns `list<HtmlFundamental>`, and it plugs into the same render path as the built-ins — usable anywhere a `Widget` is accepted (inside any container). The `lower` composes HTML fundamentals (`Element` / `Inline` / `Icon` / …), and the widget's own `class` field threads onto the element, so you style it with the class system like everything else."
+
+  p "Here's a coloured status `wf_badge` with an optional leading `icon`. The `lower` puts an `HtmlFundamental::Icon` before the label (any `pack.name` — `lucide.*` resolves with no iconset declared), and its `class` list lets callers recolour an individual instance:"
+
+  wf_row {
+    wf_label "Build:"
+    wf_badge "passing" { icon = "lucide.check" }
+    wf_badge "failing" { icon = "lucide.x"  class = ["wf-badge-danger"] }
+  }
+
+  code wcl {
+    source = <<'WCL'
+// Extends Widget → a legal child of any container. The lower returns a
+// styled <span>; the widget's own `class` is merged in so callers can
+// recolour a single instance.
+@block("wf_badge")
+type WfBadge extends Widget {
+  @inline(0) text: utf8
+  icon: utf8?
+  id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  lower = fn(b: WfBadge) -> list<HtmlFundamental> {
+    let extra = if b.class == none { [] } else { b.class };
+    let label = HtmlFundamental::Inline { text: b.text };
+    // An optional leading icon — an `Icon` fundamental, resolved from any
+    // pack (`lucide.*` works with no iconset declared).
+    let kids  = if b.icon == none { [label] }
+      else { [ HtmlFundamental::Icon { name: b.icon, class: ["wf-icon"] }, label ] };
+    [ HtmlFundamental::Element {
+        tag: "span", id: b.id, attrs: none,
+        class: flatten([["wf-badge"], extra]),
+        children: kids,
+    } ]
+  }
+}
+
+// Style it with the class system, like any element:
+class "wf-badge"        { background = "var(--wdoc-green)"  color = "#fff"  padding = "0.05rem 0.5rem" }
+class "wf-badge-danger" { background = "var(--wdoc-red)" }
+
+wf_row {
+  wf_label "Build:"
+  wf_badge "passing" { icon = "lucide.check" }
+  wf_badge "failing" { icon = "lucide.x"  class = ["wf-badge-danger"] }
+}
+WCL
+  }
+
+  p "Back to the [reference introduction](index)."
 }

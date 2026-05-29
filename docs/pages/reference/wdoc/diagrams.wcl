@@ -1,4 +1,20 @@
 // wdoc section: Diagrams.
+
+// Classes used by the "Styling shapes" example below — declared at the top
+// level so they apply across the site; shapes opt in via their `class` list.
+// Hyphenated names must be quoted (a bare identifier can't contain `-`).
+class "dgm-box" {
+  fill         = "#5e81ac"
+  stroke       = "#2e3440"
+  stroke_width = "2"
+  dark  { fill = "#88c0d0"  stroke = "#eceff4" }
+  light { fill = "#5e81ac"  stroke = "#2e3440" }
+}
+class "dgm-ghost" {
+  fill    = "#a3be8c"
+  opacity = "0.5"
+}
+
 page wdoc_diagrams { sites = [:reference]
   h1 "Diagrams"
 
@@ -42,6 +58,64 @@ diagram {
 }
 WCL
   }
+
+  h2 "Styling shapes with classes"
+
+  p "Every shape takes a `class` list, just like text. A `class` emits SVG paint properties — `fill`, `stroke`, `stroke_width`, `stroke_linecap`, `stroke_linejoin`, `opacity` — with `dark { }` / `light { }` overrides, so you style shapes the same way you style prose. Prefer a class over an inline `fill = …` so a shape follows the site theme and the reader's light/dark mode."
+
+  diagram { width = 320  height = 120
+    rect { x = 20.0   y = 25.0  width = 110.0  height = 70.0  class = ["dgm-box"] }
+    rect { x = 160.0  y = 25.0  width = 110.0  height = 70.0  class = ["dgm-ghost"] }
+  }
+
+  code wcl {
+    source = <<'WCL'
+// Declared at the top level (apply site-wide). Quote hyphenated names.
+class "dgm-box" {
+  fill         = "#5e81ac"
+  stroke       = "#2e3440"
+  stroke_width = "2"
+  dark  { fill = "#88c0d0"  stroke = "#eceff4" }
+  light { fill = "#5e81ac"  stroke = "#2e3440" }
+}
+class "dgm-ghost" {
+  fill    = "#a3be8c"
+  opacity = "0.5"
+}
+
+diagram { width = 320  height = 120
+  rect { x = 20.0   y = 25.0  width = 110.0  height = 70.0  class = ["dgm-box"] }
+  rect { x = 160.0  y = 25.0  width = 110.0  height = 70.0  class = ["dgm-ghost"] }
+}
+WCL
+  }
+
+  p "The SVG paint fields a `class` understands on a shape:"
+
+  table {
+    rows:
+      | "Field" | "Effect" |
+      | "`fill`"                  | "Interior colour." |
+      | "`stroke`"                | "Outline colour." |
+      | "`stroke_width`"          | "Outline thickness." |
+      | "`stroke_linecap` / `stroke_linejoin`" | "Line end / corner style." |
+      | "`opacity`"               | "Overall transparency (`0`–`1`)." |
+      | "`dark { }` / `light { }`" | "Per-colour-scheme overrides." |
+  }
+
+  p "Built-in shape classes work the same way — redeclare a quoted name to recolour it everywhere. For example, the chart palette (`wdoc-series-1`..`wdoc-series-8`) or the timeline parts:"
+
+  code wcl {
+    source = <<'WCL'
+class "wdoc-series-1" {
+  fill   = "#bf616a"
+  stroke = "#bf616a"
+  dark  { fill = "#d08770" }
+}
+WCL
+  }
+
+  p "See [Styling](wdoc_styling) for the full class + theme reference."
 
   p "Next: [Primitive Shapes](wdoc_primitives)."
 }

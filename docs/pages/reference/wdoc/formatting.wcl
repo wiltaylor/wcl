@@ -1,4 +1,10 @@
 // wdoc section: Formatting (text & inline patterns, headings, code).
+
+// Accent for the custom `deploy` callout in the "Callouts" example below.
+// A class's `accent` field sets a callout's accent colour (heading, border,
+// icon) — no CSS needed.
+class "deploy" { accent = "#b48ead" }
+
 page wdoc_formatting { sites = [:reference]
   h1 "Formatting"
 
@@ -6,7 +12,14 @@ page wdoc_formatting { sites = [:reference]
 
   h2 "Paragraphs with p"
 
-  p "`p \"...\"` is the canonical paragraph shorthand. The label text is the paragraph's content, and inline patterns light up automatically."
+  p "`p \"...\"` is the canonical paragraph shorthand. The label text is the paragraph's content, and inline patterns light up automatically. Previewed in a card:"
+
+  diagram { width = 460  height = 110
+    card { x = 16.0  y = 12.0  width = 428.0  height = 86.0
+      p "Quick prose with **bold** and `inline code`."
+      p "A whole paragraph in one line."
+    }
+  }
 
   code wcl {
     source = <<'WCL'
@@ -14,6 +27,18 @@ p "Quick prose with **bold** and `inline code`."
 p "A whole paragraph in one line."
 WCL
   }
+
+  p "Its fields:"
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`<text>`" | "The paragraph text — the inline label slot. Inline patterns are applied." |
+      | "`class`"  | "Optional class list." |
+      | "`id`"     | "Optional explicit HTML id." |
+  }
+
+  p "For a paragraph mixing several styled segments, use a `text` block holding `span`s — each `span` takes its own `class`."
 
   h2 "Inline patterns"
 
@@ -31,10 +56,29 @@ $x^2$                // → inline LaTeX (text style)
 $$\int x \, dx$$     // → display-style LaTeX
 WCL
   }
-  
+
+  p "Live, all in one paragraph:"
+
+  diagram { width = 460  height = 90
+    card { x = 16.0  y = 12.0  width = 428.0  height = 66.0
+      p "Here is **bold**, _italic_, `code`, a [link](wdoc_overview), an icon :lucide.check:, and math $x^2$."
+    }
+  }
+
   h2 "Headings"
 
-  p "Six heading levels are available — `h1` through `h6` — each taking the heading text as a single inline label and an optional `id`."
+  p "Six heading levels are available — `h1` through `h6` — each taking the heading text as a single inline label and an optional `id`. Previewed in a card (kept out of this page's own outline):"
+
+  diagram { width = 460  height = 280
+    card { x = 16.0  y = 12.0  width = 428.0  height = 270.0
+      h1 "Heading 1"
+      h2 "Heading 2"
+      h3 "Heading 3"
+      h4 "Heading 4"
+      h5 "Heading 5"
+      h6 "Heading 6"
+    }
+  }
 
   code wcl {
     source = <<'WCL'
@@ -46,10 +90,28 @@ h5 "Fine points"
 h6 "Minutiae"
 WCL
   }
-  
+
+  p "Each `h1`–`h6` takes the heading text as its inline label plus an optional `id` (the link target for cross-page anchors). No other fields."
+
   h2 "Code blocks"
 
-  p "`code <lang> { source = ... }` renders a syntax-highlighted listing. The language tag picks the grammar; an unknown tag falls back to plain text."
+  p "`code <lang> { source = ... }` renders a syntax-highlighted listing. The language tag picks the grammar; an unknown tag falls back to plain text. A live, highlighted listing:"
+
+  diagram { width = 460  height = 214
+    card { x = 16.0  y = 12.0  width = 428.0  height = 190.0
+      code rust {
+        source = <<'RUST'
+fn fib(n: u32) -> u64 {
+    match n {
+        0 => 0,
+        1 => 1,
+        _ => fib(n - 1) + fib(n - 2),
+    }
+}
+RUST
+      }
+    }
+  }
 
   code wcl {
     source = <<'WCL'
@@ -65,6 +127,17 @@ fn fib(n: u32) -> u64 {
 RUST
 }
 WCL
+  }
+
+  p "Its fields:"
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`<lang>`" | "Language tag — the inline label slot. Picks the highlight grammar; unknown ⇒ plain text." |
+      | "`source`" | "The code text — usually a raw heredoc (`<<'TAG'`)." |
+      | "`class`"  | "Optional class list (in addition to `code-block`)." |
+      | "`id`"     | "Optional explicit HTML id." |
   }
 
   p "wdoc highlights a wide range of languages (via syntect + two-face). The tag is the language name or a common file extension; WCL ships its own grammar, so `code wcl { … }` highlights too. Supported tags include:"
@@ -110,7 +183,23 @@ WCL
 
   h2 "Lists"
 
-  p "A `list` holds `li` items. It's a bullet list by default; set `style = :numbered` for a numbered one. Each `li`'s text runs through the inline-pattern engine, so **bold**, `code`, links, and icons all work inside items."
+  p "A `list` holds `li` items. It's a bullet list by default; set `style = :numbered` for a numbered one. Each `li`'s text runs through the inline-pattern engine, so **bold**, `code`, links, and icons all work inside items. A live bullet and numbered list:"
+
+  diagram { width = 460  height = 150
+    card { x = 16.0  y = 12.0  width = 428.0  height = 126.0
+      column {
+        widths = [50.0, 50.0]
+        list {
+          li "Plain item"
+          li "With **bold** and a [link](wdoc_overview)"
+        }
+        list { style = :numbered
+          li "First step"
+          li "Second step"
+        }
+      }
+    }
+  }
 
   code wcl {
     source = <<'WCL'
@@ -126,7 +215,25 @@ list { style = :numbered
 WCL
   }
 
-  p "Nest an `li` inside an `li` for a sublist — it inherits the parent list's style, so a numbered list numbers sublists hierarchically (`2.1`, `2.2`). For a sublist with a *different* style, drop a whole `list` block inside the `li` instead."
+  p "Nest an `li` inside an `li` for a sublist — it inherits the parent list's style, so a numbered list numbers sublists hierarchically (`2.1`, `2.2`). For a sublist with a *different* style, drop a whole `list` block inside the `li` instead. Live:"
+
+  diagram { width = 460  height = 200
+    card { x = 16.0  y = 12.0  width = 428.0  height = 176.0
+      list { style = :numbered
+        li "Setup"
+        li "Build" {
+          li "Compile"
+          li "Link"
+        }
+        li "Run" {
+          list {
+            li "Foreground"
+            li "Background"
+          }
+        }
+      }
+    }
+  }
 
   code wcl {
     source = <<'WCL'
@@ -146,42 +253,58 @@ list { style = :numbered
 WCL
   }
 
+  p "The `list` and `li` fields:"
+
+  table {
+    rows:
+      | "Block" | "Field" | "Meaning" |
+      | "`list`" | "`style`" | "`:bullet` (default → `<ul>`) or `:numbered` (→ `<ol>`)." |
+      | "`list`" | "`class` / `id`" | "Optional class list / explicit HTML id." |
+      | "`li`"   | "`<text>`" | "Item text — the inline label slot (inline patterns apply)." |
+      | "`li`"   | "children" | "Nested `li`s (a sublist), or a whole `list` block for a different style." |
+      | "`li`"   | "`class` / `id`" | "Optional class list / explicit HTML id." |
+  }
+
   h2 "Callouts"
 
-  p "A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are selected by `class`, each shipping a default colour and icon."
+  p "A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are selected by `class`, each shipping a default colour and icon. Live — all six, plus a custom `deploy` type at the end:"
+
+  diagram { width = 460  height = 560
+    card { x = 16.0  y = 12.0  width = 428.0  height = 536.0
+      callout "Note"     { class = ["note"]     body = "Background context the reader should remember." }
+      callout "Info"     { class = ["info"]     body = "Neutral information worth surfacing." }
+      callout "Tip"      { class = ["tip"]      body = "A helpful shortcut or best practice." }
+      callout "Warning"  { class = ["warning"]  body = "Something to be careful about." }
+      callout "Error"    { class = ["error"]    body = "A failure or hard constraint." }
+      callout "Success"  { class = ["success"]  body = "Confirm an action completed." }
+      callout "Deploying" {
+        class = ["deploy"]
+        icon  = "lucide.rocket"
+        body  = "A **custom** type — a class sets its accent and `icon` picks the glyph."
+      }
+    }
+  }
 
   code wcl {
     source = <<'WCL'
-callout "Note" {
-  class = ["note"]
-  body  = "Background context the reader should remember."
-}
+callout "Note"    { class = ["note"]    body = "Background context the reader should remember." }
+callout "Info"    { class = ["info"]    body = "Neutral information worth surfacing." }
+callout "Tip"     { class = ["tip"]     body = "A helpful shortcut or best practice." }
+callout "Warning" { class = ["warning"] body = "Something to be careful about." }
+callout "Error"   { class = ["error"]   body = "A failure or hard constraint." }
+callout "Success" { class = ["success"] body = "Confirm an action completed." }
 
-callout "Heads up" {
-  class = ["warning"]
-  body  = "Something to be careful about."
-}
-
-callout "All done" {
-  class = ["success"]
-  icon  = "lucide.party-popper"        // override the default icon
-  body  = "Confirm an action completed."
+// A custom type: a class's `accent` field supplies the colour, `icon` the glyph.
+class "deploy" { accent = "#b48ead" }
+callout "Deploying" {
+  class = ["deploy"]
+  icon  = "lucide.rocket"
+  body  = "A **custom** type — the class above sets its accent colour."
 }
 WCL
   }
 
-  p "The built-in types and their default colour + icon:"
-
-  table {
-    rows:
-      | "Type"      | "Default colour" | "Default icon" |
-      | "`note`"    | "Blue"           | "lucide.info" |
-      | "`info`"    | "Blue"           | "lucide.info" |
-      | "`tip`"     | "Cyan"           | "lucide.lightbulb" |
-      | "`warning`" | "Orange"         | "lucide.triangle-alert" |
-      | "`error`"   | "Red"            | "lucide.circle-x" |
-      | "`success`" | "Green"          | "lucide.circle-check" |
-  }
+  p "The six built-in types ship their own accent. For a custom type, give a `class` an `accent` colour and list it in the callout's `class` — that sets the accent (heading, border, icon) with no CSS. The `icon` field picks any glyph. See [Styling](wdoc_styling) for the full class reference."
 
   p "Its fields:"
 

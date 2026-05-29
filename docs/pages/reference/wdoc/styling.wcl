@@ -1,4 +1,14 @@
 // wdoc section: Styling (classes + themes).
+
+// Preview-only class used in the "Authoring" live example below. Declared at
+// the top level so it applies site-wide; hyphenated names must be quoted.
+class "sty-accent" {
+  color = "#bf616a"
+  bold  = true
+  dark  { color = "#88c0d0" }
+  light { color = "#5e81ac" }
+}
+
 page wdoc_styling { sites = [:reference]
   h1 "Styling"
 
@@ -26,6 +36,18 @@ text {
 WCL
   }
 
+  p "Live — the `sty-accent` class declared at the top of this page, applied to a span (and following the light/dark mode):"
+
+  diagram { width = 460  height = 90
+    card { x = 16.0  y = 12.0  width = 428.0  height = 66.0
+      text {
+        span "Plain text, then a "
+        span "highlighted segment" { class = ["sty-accent"] }
+        span " styled by a class."
+      }
+    }
+  }
+
   h3 "Field groups"
 
   table {
@@ -34,6 +56,7 @@ WCL
       | "Text"  | "`color`, `background`, `bold`, `italic`, `underline`, `font_size`, `font_family`, `text_align`, `text_transform`, `letter_spacing`, `line_height`" |
       | "Box"   | "`padding`, `margin`, `border`" |
       | "SVG"   | "`fill`, `stroke`, `stroke_width`, `stroke_linejoin`, `stroke_linecap`, `opacity`" |
+      | "Callout" | "`accent` — sets a callout's accent colour (heading, border, icon) when the class is on a `callout`" |
       | "Modes" | "`dark { … }`, `light { … }` for prefers-color-scheme overrides" |
   }
 
@@ -104,5 +127,5 @@ site mysite { theme = :sunset  accent = :blue }
 WCL
   }
 
-  p "Next: [Diagrams](wdoc_diagrams)."
+  p "Next: [Icons](wdoc_icons)."
 }

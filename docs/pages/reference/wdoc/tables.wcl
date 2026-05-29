@@ -6,6 +6,19 @@ page wdoc_tables { sites = [:reference]
 
   h2 "Authoring"
 
+  p "A table previewed inside a card — note the inline-formatted cells:"
+
+  diagram { width = 460  height = 150
+    card { x = 16.0  y = 12.0  width = 428.0  height = 126.0
+      table {
+        rows:
+          | "Name"  | "Role"     | "Years" |
+          | "Alice" | "**Dev**"  | 3       |
+          | "Bob"   | "_Ops_"    | 5       |
+      }
+    }
+  }
+
   code wcl {
     source = <<'WCL'
 table {
@@ -24,6 +37,16 @@ WCL
   callout "Pipes in cells" {
     class = ["warning"]
     body  = "A literal pipe (|) outside a quoted cell will split the row. Wrap any cell that contains pipes — e.g. an inline `code` example showing ||  — in a string literal."
+  }
+
+  h2 "Fields"
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`rows`" | "The pipe-row data — first row is the header, the rest are body rows." |
+      | "`class`" | "Optional class list applied to the `<table>` (e.g. to override `wdoc-table`)." |
+      | "`id`"    | "Optional explicit HTML id." |
   }
 
   p "Next: [Columns](wdoc_columns)."
