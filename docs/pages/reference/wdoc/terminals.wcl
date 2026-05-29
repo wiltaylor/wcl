@@ -1,29 +1,86 @@
-// wdoc section: Terminals.
+// wdoc section: Terminal.
 page wdoc_terminals { sites = [:reference]
-  h1 "Terminals"
+  h1 "Terminal"
 
   p "`terminal` renders a monospace character grid as inline SVG, drawn with a bundled JetBrains Mono Nerd Font. The grid is populated three ways: authored text primitives, an inline ANSI-bearing `text` field, or replay of an `asciinema` recording."
 
   h2 "Authored text"
 
-  p "`term_text` is the one base primitive — styled text placed at a 1-based `(row, col)` carrying fg/bg/bold/italic/underline. Higher-level helpers (`term_box`, `term_glyph`, `term_fill`, `term_border`) lower to runs of `term_text`, so the renderer only ever paints styled glyphs."
+  p "`term_text` is the one base primitive — styled text placed at a 1-based `(row, col)` carrying fg/bg and bold/italic/underline. Higher-level helpers (`term_box`, `term_glyph`, `term_fill`) lower to runs of `term_text`, so the renderer only ever paints styled glyphs. Colours are strings: an ANSI name (`\"red\"`, `\"bright_blue\"`), a 256-palette index (`\"208\"`), or a hex (`\"#ff5fd2\"`)."
+
+  terminal {
+    cols = 46  rows = 7  title = "demo"
+    term_text "Colours" { row = 1  col = 2  bold = true  underline = true }
+    term_text "red"     { row = 2  col = 2  fg = "red" }
+    term_text "green"   { row = 2  col = 8  fg = "green" }
+    term_text "blue"    { row = 2  col = 16  fg = "blue" }
+    term_text "#ff5fd2" { row = 2  col = 23  fg = "#ff5fd2" }
+    term_box { row = 4  col = 2  width = 32  height = 3  border = :rounded  fg = "cyan"  title = "box" }
+    term_text "rounded border" { row = 5  col = 4 }
+  }
 
   code wcl {
     source = <<'WCL'
 terminal {
-  cols = 60  rows = 12  chrome = true
-  term_box {
-    row = 1  col = 1  width = 60  height = 12
-    style = :rounded
-  }
-  term_text { row = 3  col = 4  fg = :cyan  bold = true  content = "Hello, terminal." }
+  cols = 46  rows = 7  title = "demo"
+  term_text "Colours" { row = 1  col = 2  bold = true  underline = true }
+  term_text "red"     { row = 2  col = 2  fg = "red" }
+  term_text "green"   { row = 2  col = 8  fg = "green" }
+  term_text "blue"    { row = 2  col = 16  fg = "blue" }
+  term_text "#ff5fd2" { row = 2  col = 23  fg = "#ff5fd2" }
+  term_box { row = 4  col = 2  width = 32  height = 3  border = :rounded  fg = "cyan"  title = "box" }
+  term_text "rounded border" { row = 5  col = 4 }
 }
 WCL
   }
 
+  h2 "Properties"
+
+  p "`terminal` fields:"
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`cols` / `rows`"      | "Grid size in cells (a `.cast` header overrides them)." |
+      | "`chrome`"             | "Draw a window title bar (default `true`)." |
+      | "`title`"              | "Title shown in the chrome bar." |
+      | "`text`"               | "Inline content fed to the virtual terminal (ANSI included)." |
+      | "`source`"             | "Path to an asciinema `.cast` recording to replay." |
+      | "`autoplay` / `loop` / `speed`" | "Replay controls." |
+      | "`palette`"            | "`:default` (dark) or `:light` seed colours." |
+      | "`fg` / `bg`"          | "Explicit default fg / bg overrides." |
+      | "`font_size` / `line_height`" | "Cell metrics." |
+      | "`id` / `class`"       | "Id + style classes (the `class` themes the window `<div>`)." |
+  }
+
+  p "`term_text` fields:"
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`content`"     | "The text (`@inline(0)`, so `term_text \"hi\" { … }`)." |
+      | "`row` / `col`" | "1-based grid position." |
+      | "`fg` / `bg`"   | "Colour strings — ANSI name, 256 index, or `#hex`." |
+      | "styles"        | "`bold` / `dim` / `italic` / `underline` / `strike` / `blink` / `inverse` / `conceal`." |
+  }
+
   h2 "Inline text"
 
-  p "Set `text = \"...\"` and the bundled `avt` virtual terminal evaluates it (ANSI sequences included). Use this for quick demos of escape codes, cursor movement, and styling."
+  p "Set `text = \"…\"` and the bundled `avt` virtual terminal evaluates it — ANSI sequences, cursor movement, and styling all apply. A bare `\\n` becomes a newline. Use this for quick demos of escape codes."
+
+  terminal {
+    cols = 30  rows = 3  title = "inline"
+    text = "first line\nsecond line"
+  }
+
+  code wcl {
+    source = <<'WCL'
+terminal {
+  cols = 30  rows = 3  title = "inline"
+  text = "first line\nsecond line"
+}
+WCL
+  }
 
   h2 "asciinema replay"
 
@@ -33,20 +90,286 @@ WCL
     source = <<'WCL'
 terminal {
   cols = 80  rows = 24  chrome = true
-  source = "examples/casts/demo.cast"
+  source = "casts/demo.cast"
   loop   = true
 }
 WCL
   }
 
-  h2 "Chrome & theming"
+  h2 "TUI widgets"
 
-  p "`chrome = true` draws a title bar with a close `✕` on the right and (during replay) a play/pause/replay glyph on the left. A terminal's `class` list reaches the wrapping `<div>`, so a `class \"x\" { background = … color = … dark{…} light{…} }` themes the window. Default-coloured cells emit `currentColor`, so user themes flow through."
+  p "Inside a `terminal`, stdlib TUI controls compose a small interface. Each widget lowers to runs of `term_text` — the renderer never paints box-drawing characters as vector shapes, only as glyphs on the same character grid as everything else."
 
-  callout "Bundled assets" {
-    class = ["info"]
-    body  = "The bundled JetBrains Mono woff2 files and the terminal-player.js are written into <out>/_wdoc/ only when a doc uses a terminal."
+  terminal {
+    cols = 44  rows = 8  title = "controls"
+    term_text "Progress" { row = 1  col = 2  bold = true  underline = true }
+    tui_progress "Upload" { row = 2  col = 2  value = 78 }
+    tui_progress "Sync"   { row = 3  col = 2  value = 40  accent = "cyan" }
+    term_text "Buttons" { row = 5  col = 2  bold = true  underline = true }
+    tui_button "Save"    { row = 6  col = 2  accent = "green" }
+    tui_button "Discard" { row = 6  col = 11  accent = "red" }
   }
 
-  p "Next: [TUI Widgets](wdoc_tui)."
+  code wcl {
+    source = <<'WCL'
+terminal {
+  cols = 44  rows = 8  title = "controls"
+  term_text "Progress" { row = 1  col = 2  bold = true  underline = true }
+  tui_progress "Upload" { row = 2  col = 2  value = 78 }
+  tui_progress "Sync"   { row = 3  col = 2  value = 40  accent = "cyan" }
+  term_text "Buttons" { row = 5  col = 2  bold = true  underline = true }
+  tui_button "Save"    { row = 6  col = 2  accent = "green" }
+  tui_button "Discard" { row = 6  col = 11  accent = "red" }
+}
+WCL
+  }
+
+  h3 "tui_progress"
+
+  p "A two-tone solid-block progress bar. `value` runs from `0` to `max` (default `100`); the optional `@inline` label sits to its left and `show_value` appends a percentage."
+
+  terminal { cols = 38  rows = 1  chrome = false
+    tui_progress "Upload" { row = 1  col = 1  value = 65 }
+  }
+
+  code wcl {
+    source = <<'WCL'
+tui_progress "Upload" { row = 1  col = 1  value = 65 }
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`label`"      | "Optional `@inline` caption to the left of the bar." |
+      | "`value`"      | "Filled amount (clamped to `0`..`max`)." |
+      | "`max`"        | "Scale maximum (default `100`)." |
+      | "`width`"      | "Bar width in cells (default `24`)." |
+      | "`show_value`" | "Append a `NN%` readout (default `true`)." |
+      | "`accent` / `muted`" | "Fill and track colours." |
+      | "`row` / `col`" | "1-based position." |
+  }
+
+  h3 "tui_button"
+
+  p "A solid accent-fill button. The `@inline` label is centred; `width` pads it, `accent` colours the fill."
+
+  terminal { cols = 24  rows = 1  chrome = false
+    tui_button "Save" { row = 1  col = 1  accent = "green" }
+    tui_button "Quit" { row = 1  col = 9  accent = "red" }
+  }
+
+  code wcl {
+    source = <<'WCL'
+tui_button "Save" { row = 1  col = 1  accent = "green" }
+tui_button "Quit" { row = 1  col = 9  accent = "red" }
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`label`"  | "Button text (`@inline`)." |
+      | "`width`"  | "Total width (default = label + padding)." |
+      | "`accent`" | "Fill colour (default `blue`)." |
+      | "`fg`"     | "Label colour (default `bright_white`)." |
+      | "`row` / `col`" | "1-based position." |
+  }
+
+  h3 "tui_spinner"
+
+  p "A single static spinner frame — pick the `kind` (`:braille` default, `:circle`, `:line`) and which `frame` to show. An optional `@inline` label follows it."
+
+  terminal { cols = 24  rows = 1  chrome = false
+    tui_spinner "Building…" { row = 1  col = 1  frame = 2 }
+  }
+
+  code wcl {
+    source = <<'WCL'
+tui_spinner "Building…" { row = 1  col = 1  frame = 2 }
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`label`"  | "Optional `@inline` caption after the frame." |
+      | "`kind`"   | "`:braille` (default) / `:circle` / `:line`." |
+      | "`frame`"  | "Which frame index to show (default `0`)." |
+      | "`accent`" | "Frame colour." |
+      | "`row` / `col`" | "1-based position." |
+  }
+
+  h3 "tui_input"
+
+  p "A single-line text field with a left accent bar. With no `value` the `@inline` placeholder shows muted; `focused = true` draws a cursor."
+
+  terminal { cols = 30  rows = 2  chrome = false
+    tui_input "Search projects" { row = 1  col = 1  focused = true }
+    tui_input "Name" { row = 2  col = 1  value = "Ada Lovelace" }
+  }
+
+  code wcl {
+    source = <<'WCL'
+tui_input "Search projects" { row = 1  col = 1  focused = true }
+tui_input "Name" { row = 2  col = 1  value = "Ada Lovelace" }
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`placeholder`" | "Muted prompt shown when empty (`@inline`)." |
+      | "`value`"       | "Current text (overrides the placeholder)." |
+      | "`focused`"     | "Draw a trailing cursor." |
+      | "`accent`"      | "Bar / cursor colour." |
+      | "`row` / `col`" | "1-based position." |
+  }
+
+  h3 "tui_dropdown"
+
+  p "A labelled drop-down field with a disclosure caret (`▾` closed, `▴` open). Closed, it shows just the selected `text`:"
+
+  terminal { cols = 20  rows = 1  chrome = false
+    tui_dropdown "Release build" { row = 1  col = 1 }
+  }
+
+  p "With `open = true` and an `items` list, the options drop down below the field — the one matching `text` (or an explicit `selected` index) is highlighted in the accent colour:"
+
+  terminal { cols = 28  rows = 4  chrome = false
+    tui_dropdown "Release build" { row = 1  col = 1  open = true
+      items = ["Debug build", "Release build", "Profile build"]
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+tui_dropdown "Release build" { row = 1  col = 1  open = true
+  items = ["Debug build", "Release build", "Profile build"]
+}
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`text`"     | "Selected / shown label (`@inline`)." |
+      | "`items`"    | "Option list shown below the field when `open`." |
+      | "`selected`" | "Highlighted item index (default: the item equal to `text`)." |
+      | "`open`"     | "Drop the list down (and flip the caret)." |
+      | "`width`"    | "Field width (default: fits the label and longest item)." |
+      | "`accent`"   | "Caret + selected-row colour." |
+      | "`row` / `col`" | "1-based position." |
+  }
+
+  h3 "tui_checkbox"
+
+  p "An on/off checkbox. `checked = true` fills the marker in the accent colour."
+
+  terminal { cols = 24  rows = 2  chrome = false
+    tui_checkbox "Telemetry" { row = 1  col = 1  checked = true }
+    tui_checkbox "Beta" { row = 2  col = 1 }
+  }
+
+  code wcl {
+    source = <<'WCL'
+tui_checkbox "Telemetry" { row = 1  col = 1  checked = true }
+tui_checkbox "Beta" { row = 2  col = 1 }
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`label`"   | "Checkbox caption (`@inline`)." |
+      | "`checked`" | "On/off state." |
+      | "`accent` / `muted`" | "Checked and unchecked colours." |
+      | "`row` / `col`" | "1-based position." |
+  }
+
+  h3 "tui_radio"
+
+  p "A radio button — like a checkbox but round; `selected = true` marks the active choice in a group you lay out yourself."
+
+  terminal { cols = 24  rows = 2  chrome = false
+    tui_radio "Dark"  { row = 1  col = 1  selected = true }
+    tui_radio "Light" { row = 2  col = 1 }
+  }
+
+  code wcl {
+    source = <<'WCL'
+tui_radio "Dark"  { row = 1  col = 1  selected = true }
+tui_radio "Light" { row = 2  col = 1 }
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`label`"    | "Radio caption (`@inline`)." |
+      | "`selected`" | "Whether this option is chosen." |
+      | "`accent` / `muted`" | "Selected and unselected colours." |
+      | "`row` / `col`" | "1-based position." |
+  }
+
+  h3 "tui_panel"
+
+  p "A bordered container: it draws a box (with an optional `title`) and renders its child controls inset by one cell. Child positions are **relative to the panel**."
+
+  terminal { cols = 30  rows = 6  chrome = false
+    tui_panel { row = 1  col = 1  width = 30  height = 6  title = "Status"
+      tui_progress "Load" { row = 1  col = 1  value = 50  width = 16 }
+      tui_button "Go" { row = 3  col = 1  accent = "green" }
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+tui_panel { row = 1  col = 1  width = 30  height = 6  title = "Status"
+  tui_progress "Load" { row = 1  col = 1  value = 50  width = 16 }
+  tui_button "Go" { row = 3  col = 1  accent = "green" }
+}
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`title`"  | "Optional heading drawn into the top border." |
+      | "`width` / `height`" | "Box size in cells." |
+      | "`border`" | "`:rounded` (default) / `:single` / `:double` / `:heavy` / `:ascii`." |
+      | "`accent`" | "Border colour." |
+      | "`row` / `col`" | "1-based position of the box." |
+      | "children" | "`TermPrimitive` children, positioned relative to the panel." |
+  }
+
+  h3 "tui_group"
+
+  p "A borderless container — an optional `title` then its children. Use it to offset a cluster of controls without drawing a box."
+
+  terminal { cols = 26  rows = 3  chrome = false
+    tui_group { row = 1  col = 1  title = "Options"
+      tui_checkbox "Telemetry" { row = 1  col = 1  checked = true }
+      tui_radio "Dark" { row = 2  col = 1  selected = true }
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+tui_group { row = 1  col = 1  title = "Options"
+  tui_checkbox "Telemetry" { row = 1  col = 1  checked = true }
+  tui_radio "Dark" { row = 2  col = 1  selected = true }
+}
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`title`" | "Optional heading above the children." |
+      | "`row` / `col`" | "1-based origin." |
+      | "children" | "`TermPrimitive` children, positioned relative to the group." |
+  }
+
+  p "Next: [Wireframe UI Widgets](wdoc_wireframe)."
 }

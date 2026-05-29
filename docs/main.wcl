@@ -100,11 +100,10 @@ site reference {
         chapter "Timelines"            { page = wdoc_timelines }
         chapter "Tilemaps"             { page = wdoc_tilemaps }
         chapter "Dopesheets"           { page = wdoc_dopesheets }
-        chapter "Terminals"            { page = wdoc_terminals }
-        chapter "TUI Widgets"          { page = wdoc_tui }
+        chapter "Terminal"             { page = wdoc_terminals }
         chapter "Wireframe UI Widgets" { page = wdoc_wireframe }
-        chapter "Icons"                { page = wdoc_icons }
       }
+      chapter "Icons"                  { page = wdoc_icons }
       chapter "Images"                 { page = wdoc_images }
     }
   }
@@ -159,7 +158,6 @@ import "./pages/reference/wdoc/connections.wcl"
 import "./pages/reference/wdoc/flowcharts.wcl"
 import "./pages/reference/wdoc/charts.wcl"
 import "./pages/reference/wdoc/terminals.wcl"
-import "./pages/reference/wdoc/tui.wcl"
 import "./pages/reference/wdoc/wireframe.wcl"
 import "./pages/reference/wdoc/timelines.wcl"
 import "./pages/reference/wdoc/icons.wcl"

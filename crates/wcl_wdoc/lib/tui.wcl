@@ -239,22 +239,48 @@ type TuiInput extends TuiWidget {
 }
 
 // A dropdown: the selected `text` with a coloured chevron to its right
-// (`▴` when `open`, else `▾`).
+// (`▴` when `open`, else `▾`). When `open` and `items` are supplied, the
+// option list drops down below the field — one colour-filled row per
+// item, the `selected` one in the accent colour (defaulting to the item
+// equal to `text`).
 @block("tui_dropdown")
 type TuiDropdown extends TuiWidget {
   @inline(0) text: utf8
-  width:  i64?
-  open:   bool?
-  accent: utf8?
+  items:    list<utf8>?
+  selected: i64?
+  width:    i64?
+  open:     bool?
+  accent:   utf8?
   row: i64  col: i64
   lower = fn(d: TuiDropdown) -> list<TermFundamental> {
-    let acc = if d.accent == none { "blue" } else { d.accent };
-    let w   = if d.width == none { len(d.text) + 3 } else { d.width };
+    let acc   = if d.accent == none { "blue" } else { d.accent };
+    let items = if d.items == none { [] } else { d.items };
+    // Width fits the label and the longest item (+3 for padding + caret),
+    // unless an explicit `width` is given. (`max` returns f64, so fold a
+    // plain i64 comparison instead.)
+    let longest = fold(items, len(d.text),
+      fn(a: i64, it: utf8) -> i64 if len(it) > a { len(it) } else { a });
+    let w    = if d.width == none { longest + 3 } else { d.width };
     let chev = if d.open == true { "▴" } else { "▾" };
-    [
+    let field = [
       term_run(d.text, 1, 1, none, none, none),
       term_run(chev, 1, w, acc, none, true),
-    ]
+    ];
+    // `selected` defaults to the item equal to the field's `text`
+    // (`index_of` → -1 when absent, i.e. nothing highlighted).
+    let sel = if d.selected == none { index_of(items, d.text) } else { d.selected };
+    let list_part = if d.open == true {
+      flatten(map(range(0, len(items)), fn(i: i64) -> list<TermFundamental> {
+        let is_sel = i == sel;
+        let bg = if is_sel { acc } else { "bright_black" };
+        let fg = if is_sel { "bright_white" } else { none };
+        flatten([
+          term_fill_runs(" ", 2 + i, 1, w, 1, none, bg, none),
+          [ term_run(at(items, i), 2 + i, 2, fg, bg, is_sel) ],
+        ])
+      }))
+    } else { [] };
+    flatten([ field, list_part ])
   }
 }
 
