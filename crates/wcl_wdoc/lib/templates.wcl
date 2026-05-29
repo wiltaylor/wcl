@@ -48,6 +48,7 @@ type TemplateCtx {
   pages:        list<PageRef>   // every page in the current site, in source order
   toc:          list<TocEntry>  // the book TOC tree; flat (one per page) if no `toc`
   menu:         list<MenuEntry> // the site's curated navbar menu (empty if no `menu`)
+  deck:         list<DeckSection> // the resolved presentation deck (empty unless the `presentation` template renders the whole site at once)
   theme_toggle: bool            // whether to render a light/dark toggle (site flag)
   home_href:    utf8            // relative href back to the root site (empty when this IS the root site, or single-site)
   home_title:   utf8            // the root site's title, for the back-link text
@@ -122,6 +123,10 @@ type SiteConfig {
   // link to a page or external URL and nest into dropdowns. With no
   // `menu`, `webpage` falls back to a flat list of every page.
   @child("menu") menu: Menu?
+  // Presentation deck: groups this site's pages into the slide grid the
+  // `presentation` template renders (sections = columns, slides = rows).
+  // See `presentation.wcl`.
+  @child("deck") deck: Deck?
 }
 
 // A named template. `render` lays out a page body from the context.

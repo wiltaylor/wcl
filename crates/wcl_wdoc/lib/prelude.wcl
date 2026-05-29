@@ -21,6 +21,7 @@ import <table.wcl>            // pipe-table block
 import <list.wcl>             // bullet / numbered lists (list + li)
 import <components.wcl>       // wdoc_component / wdoc_slot / wdoc_body / wdoc_repeater
 import <templates.wcl>        // page templates (webpage / book) + parts
+import <presentation.wcl>     // presentation deck (slides + sections + template)
 import <inline.wcl>           // inline-span union + pattern type
 import <inline-patterns.wcl>  // built-in inline patterns (bold/italic/…)
 import <icons.wcl>            // iconset / icon_def / icon

@@ -95,6 +95,11 @@ pub(crate) const WDOC_MAP_JS: &str = include_str!("../../assets/wdoc-map.js");
 /// diagram contains a `dopesheet`. Mirrors the terminal player pattern.
 pub(crate) const DOPESHEET_PLAYER_JS: &str = include_str!("../../assets/dopesheet-player.js");
 
+/// The bundled presentation (deck) navigation player, written to
+/// `_wdoc/` and loaded on a `presentation`-template site's single deck
+/// page. Drives the arrow-key slide grid. Mirrors the player pattern.
+pub(crate) const PRESENTATION_PLAYER_JS: &str = include_str!("../../assets/presentation.js");
+
 /// `true` when `block` is an interactive (`pan_zoom`) diagram or
 /// contains one anywhere in its subtree. Drives the conditional asset
 /// write + per-page script injection (mirrors `terminal::uses_terminal`).

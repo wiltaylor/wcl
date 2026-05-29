@@ -165,6 +165,35 @@ pub(crate) fn menu_to_value(nodes: &[MenuNode], current: &str) -> Value {
     )
 }
 
+/// One section of a presentation deck, read from the `site` block's
+/// `deck`. `title` is the section heading; `slides` are the page names
+/// it shows, in order.
+pub(crate) struct DeckSectionNode {
+    pub title: String,
+    pub slides: Vec<String>,
+}
+
+/// Read the presentation deck from a `site` block's `deck` child: each
+/// `section` becomes a [`DeckSectionNode`] holding its `slide` page
+/// names (a slide's page is its inline label). Empty when there is no
+/// `deck`.
+pub(crate) fn read_deck(site: &Block<'_>) -> Vec<DeckSectionNode> {
+    let Some(deck) = site.block("deck") else {
+        return Vec::new();
+    };
+    deck.blocks()
+        .filter(|b| b.kind() == "section")
+        .map(|sec| DeckSectionNode {
+            title: label_string(&sec).unwrap_or_default(),
+            slides: sec
+                .blocks()
+                .filter(|b| b.kind() == "slide")
+                .filter_map(|s| label_string(&s))
+                .collect(),
+        })
+        .collect()
+}
+
 /// Render a page through `template`'s `render` function. Builds a
 /// `TemplateCtx` record (content + title + page_name + pages + toc) and
 /// invokes the WCL function, then renders the returned fundamentals.
@@ -181,6 +210,7 @@ pub(crate) fn render_template(
     pages: &[(String, String)],
     toc_nodes: &[TocNode],
     menu_nodes: &[MenuNode],
+    deck: Value,
     theme_toggle: bool,
     home_href: &str,
     home_title: &str,
@@ -232,6 +262,9 @@ pub(crate) fn render_template(
     ctx.insert("pages".to_string(), pages_val);
     ctx.insert("toc".to_string(), toc_val);
     ctx.insert("menu".to_string(), menu_to_value(menu_nodes, page_name));
+    // The resolved presentation deck — populated only on the
+    // presentation build path, empty (an empty list) for normal pages.
+    ctx.insert("deck".to_string(), deck);
     ctx.insert("theme_toggle".to_string(), Value::Bool(theme_toggle));
     ctx.insert("home_href".to_string(), Value::Utf8(home_href.to_string()));
     ctx.insert(
@@ -259,6 +292,15 @@ pub(crate) fn render_block(
 ) -> Option<String> {
     match block.kind() {
         "column" => Some(render_column(doc, block, patterns, base_dir)),
+        // A presentation `fragment` wraps its children in a step-reveal
+        // box (`<div class="wdoc-fragment">`); the deck player reveals
+        // them one keypress at a time. Like `column`, the `@children`
+        // wrapping can't live in a WCL `lower`, so it's rendered here.
+        "fragment" => Some(render_fragment(doc, block, patterns, base_dir)),
+        // Speaker `notes` are invisible in the normal flow — on the
+        // presentation build path they're pulled out and rendered into
+        // the slide's notes overlay instead (see build.rs).
+        "notes" => Some(String::new()),
         "table" => Some(render_table(doc, block, patterns)),
         // Lists are fundamental HTML blocks rendered directly (like
         // `table`): a pure-WCL lower can't see `@children`, so it can't
@@ -347,6 +389,29 @@ pub(crate) fn render_repeat(
         .iter()
         .filter_map(|b| render_block(doc, b, patterns, base_dir))
         .collect()
+}
+
+/// Render a presentation `fragment` → `<div class="wdoc-fragment">`
+/// wrapping its rendered children. The deck player (`presentation.js`)
+/// reveals each `.wdoc-fragment` in turn before advancing the slide.
+/// Any author `class`es are appended after the `wdoc-fragment` marker.
+pub(crate) fn render_fragment(
+    doc: &Document,
+    block: &Block<'_>,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
+) -> String {
+    let mut classes = vec!["wdoc-fragment".to_string()];
+    classes.extend(field_utf8_list(block, "class"));
+    let children: String = block
+        .blocks()
+        .filter_map(|b| render_block(doc, &b, patterns, base_dir))
+        .collect();
+    let cls = classes_attr_from_names(&classes);
+    let mut out = format!("<div{cls}");
+    append_attr(&mut out, "id", field_id(block, "id").as_deref());
+    write!(out, ">{children}</div>").expect("write to String");
+    out
 }
 
 pub(crate) fn render_column(

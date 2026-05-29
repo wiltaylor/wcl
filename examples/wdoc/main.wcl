@@ -1,11 +1,13 @@
-// Entry point for the wdoc example. It declares THREE sites in one
-// document — a feature `showcase`, a `docs` book, and a `blog`:
+// Entry point for the wdoc example. It declares FOUR sites in one
+// document — a feature `showcase`, a `docs` book, a `blog`, and a `talk`
+// presentation deck:
 //
 //   wcl wdoc serve examples/wdoc/main.wcl          # / = chooser, all sites
 //   wcl wdoc serve examples/wdoc/main.wcl --site showcase   # just one
+//   wcl wdoc serve examples/wdoc/main.wcl --site talk       # the deck
 //   wcl wdoc build --out _site examples/wdoc/main.wcl
-//     → _site/index.html  chooser linking to each site
-//       _site/showcase/…  _site/docs/…  _site/blog/…
+//     → _site/index.html  showcase landing (the `root` site)
+//       _site/docs/…  _site/blog/…  _site/talk/index.html  (the deck)
 //
 // A page joins a site via its `sites` array (e.g. `sites = [:showcase]`);
 // a page with no `sites` is shared by every site. Shared styles and
@@ -127,6 +129,32 @@ site blog {
   theme            = :gruvbox
 }
 
+// A presentation deck: the `presentation` template renders this whole
+// site as ONE reveal.js-style `talk/index.html`. The `deck` arranges the
+// `sites = [:talk]` pages into the slide grid — `section`s are columns
+// (← →), their `slide`s are rows (↑ ↓). Step `fragment`s with Space,
+// toggle speaker `notes` with `s`. Serve it on its own with
+// `wcl wdoc serve examples/wdoc/main.wcl --site talk`.
+site talk {
+  default_template = :presentation
+  title            = "wdoc — Decks"
+  theme            = :catppuccin
+  accent           = :purple
+  deck {
+    section "Intro" {
+      slide title
+      slide agenda
+    }
+    section "Features" {
+      slide fragments
+      slide visuals
+    }
+    section "Wrap-up" {
+      slide thanks
+    }
+  }
+}
+
 // Per-page sources. Each imported file declares one `page <name> { ... }`
 // block; page names are unique per site (the showcase, docs, and blog
 // each have their own `index`).
@@ -146,6 +174,7 @@ import "./pages/map.wcl"
 import "./pages/wireframe.wcl"
 import "./pages/docs.wcl"
 import "./pages/blog.wcl"
+import "./pages/presentation.wcl"
 
 // The showcase has no dedicated landing page: the `overview` page sets
 // `start = true`, so it's served at `/` (see pages/overview.wcl).

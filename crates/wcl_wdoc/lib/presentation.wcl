@@ -1,0 +1,176 @@
+// ── Presentation decks ─────────────────────────────────────────────
+//
+// A third site shape (beside `webpage` / `book`): a reveal.js-style
+// slide deck rendered as ONE HTML file. Slides are the site's `page`s,
+// arranged into a 2-D grid by a `deck` block on the `site`:
+//
+//   site talk {
+//     default_template = :presentation
+//     deck {
+//       section "Intro" { slide title  slide agenda }   // a column
+//       section "Main"  { slide topic_a  slide topic_b }
+//     }
+//   }
+//
+// The bundled `presentation.js` player navigates the grid: ← → move
+// between sections (columns), ↑ ↓ between the slides within the current
+// section. Space / PageDown steps forward (through any `fragment`s on the
+// slide, then on to the next slide); `s` toggles the speaker `notes`.
+//
+// Unlike `webpage` / `book`, the whole deck is rendered once into a single
+// `index.html` — the build feeds every slide's rendered body to the
+// `presentation` template via `TemplateCtx.deck` (each slide already
+// rendered to HTML, embedded with `Raw`). See `crates/wcl_wdoc/src/build.rs`.
+
+// ── Deck grid blocks (declared inside the `site` block) ─────────────
+//
+// Mirror the book's `toc { chapter … }` shape: a `deck` holds ordered
+// `section`s, each holding ordered `slide`s that name a page. A `slide`
+// pointing at an unknown page is a build error (like a `chapter` page).
+
+// One slide: names the page whose content it shows.
+@block("slide")
+type DeckSlideRef {
+  @inline(0) page: identifier
+}
+
+// One major section — a column in the grid. ← → move between sections.
+@block("section")
+type DeckSectionBlock {
+  @inline(0) title: utf8
+  @children("slide") slides: list<DeckSlideRef>
+}
+
+// The deck: an ordered list of sections. Declared inside `site`.
+@block("deck")
+type Deck {
+  @children("section") sections: list<DeckSectionBlock>
+}
+
+// ── Context handed to the `presentation` template ───────────────────
+//
+// Built by the renderer (the deck's slides already lowered to HTML), and
+// reachable as `TemplateCtx.deck`. Empty for non-deck pages.
+
+// One slide in the resolved deck: its rendered body HTML (embed via
+// `Raw`), its rendered speaker-notes HTML, and its page name.
+type DeckSlide {
+  content: utf8
+  notes:   utf8
+  title:   utf8
+}
+
+// One section in the resolved deck: a display title and its slides.
+type DeckSection {
+  title:  utf8
+  slides: list<DeckSlide>
+}
+
+// ── In-slide content blocks ─────────────────────────────────────────
+
+// A step-reveal group: its children stay hidden until the presenter
+// steps forward (Space / PageDown). A legal child of any page, so it
+// reveals a bullet, paragraph, image, diagram — anything. Rendered
+// directly in Rust (the `@children`-wrapping pattern of `column` /
+// `list`), so its `lower` is never invoked.
+@block("fragment")
+type Fragment extends WdocBlock {
+  id:    identifier?
+  class: list<utf8>?
+  @children(WdocBlock) body: list<WdocBlock>
+  lower = fn(f: Fragment) -> list<HtmlFundamental> []
+}
+
+// Speaker notes for a slide: hidden in the deck, shown in the notes
+// overlay (toggle with `s`). On the presentation build path the notes
+// are pulled out of the slide's visible content and rendered separately;
+// elsewhere they render to nothing. Rendered directly in Rust, so its
+// `lower` is never invoked.
+@block("notes")
+type Notes extends WdocBlock {
+  id:    identifier?
+  @children(WdocBlock) body: list<WdocBlock>
+  lower = fn(n: Notes) -> list<HtmlFundamental> []
+}
+
+// ── The `presentation` template ─────────────────────────────────────
+
+// The deck's own CSS, embedded as a body `<style>` (like webpage / book).
+// Full-viewport slides, only the `.active` one shown, with a fade/scale
+// transition; fragments fade in as they're revealed; a thin progress bar,
+// a slide counter, on-screen nav hints, and a notes overlay. Consumes the
+// theme `--wdoc-*` vars so it themes for free.
+//
+// IMPORTANT: emitted verbatim into the page <style>, so it must be pure
+// CSS — never a `//` line (CSS has no `//` comment; a stray one swallows
+// every rule after it). Keep prose in WCL `//` comments out here.
+let presentation_css = <<CSS
+  .wdoc-body { overflow: hidden; }
+  .deck { position: fixed; inset: 0; }
+  .deck-section { position: absolute; inset: 0; }
+  .deck-slide { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box; padding: 4vh 6vw; overflow: auto; opacity: 0; visibility: hidden; transform: scale(0.98); transition: opacity 0.35s ease, transform 0.35s ease; }
+  .deck-slide.active { opacity: 1; visibility: visible; transform: none; z-index: 1; }
+  .deck-slide-inner { width: 100%; max-width: 60rem; margin-inline: auto; }
+  .wdoc-fragment { opacity: 0; transition: opacity 0.3s ease; }
+  .wdoc-fragment.revealed { opacity: 1; }
+  .deck-progress { position: fixed; top: 0; left: 0; right: 0; height: 3px; background: var(--wdoc-border, rgba(127,127,127,0.3)); z-index: 6; }
+  .deck-progress-bar { height: 100%; width: 0; background: var(--wdoc-accent, #4c9aff); transition: width 0.3s ease; }
+  .deck-counter { position: fixed; bottom: 0.9rem; right: 1.25rem; font-size: 0.85rem; opacity: 0.65; z-index: 6; }
+  .deck-nav-hint { position: fixed; bottom: 0.8rem; left: 1.25rem; display: grid; grid-template-columns: repeat(3, 1.1rem); grid-template-rows: repeat(2, 1.1rem); gap: 1px; z-index: 6; line-height: 1.1rem; text-align: center; font-size: 0.9rem; }
+  .deck-nav-hint span { opacity: 0.2; }
+  .deck-nav-hint span.on { opacity: 0.8; }
+  .deck-hint-up { grid-area: 1 / 2; }
+  .deck-hint-left { grid-area: 2 / 1; }
+  .deck-hint-down { grid-area: 2 / 2; }
+  .deck-hint-right { grid-area: 2 / 3; }
+  .deck-notes { display: none; }
+  .deck.show-notes .deck-slide.active .deck-notes { display: block; position: fixed; left: 50%; bottom: 3rem; transform: translateX(-50%); width: 80vw; max-width: 50rem; max-height: 32vh; overflow: auto; padding: 0.75rem 1rem; box-sizing: border-box; background: var(--wdoc-bg-inset, var(--wdoc-bg-alt, rgba(127,127,127,0.12))); border: 1px solid var(--wdoc-border, rgba(127,127,127,0.4)); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); z-index: 7; }
+  CSS
+
+// Static deck chrome: the progress bar, slide counter, and nav-hint
+// arrows. The player updates the bar width, counter text, and which
+// arrows are lit; here we just emit the scaffolding.
+let deck_chrome = HtmlFundamental::Raw {
+  html: "<div class=\"deck-progress\"><div class=\"deck-progress-bar\"></div></div><div class=\"deck-counter\"></div><div class=\"deck-nav-hint\"><span class=\"deck-hint-up\">↑</span><span class=\"deck-hint-left\">←</span><span class=\"deck-hint-down\">↓</span><span class=\"deck-hint-right\">→</span></div>",
+}
+
+// One slide → `<div class="deck-slide">` holding the rendered body and a
+// hidden speaker-notes aside.
+let deck_slide_el = fn(s: DeckSlide) -> HtmlFundamental
+  HtmlFundamental::Element {
+    tag: "div", id: none, class: ["deck-slide"], attrs: none,
+    children: [
+      HtmlFundamental::Element {
+        tag: "div", id: none, class: ["deck-slide-inner"], attrs: none,
+        children: [ HtmlFundamental::Raw { html: s.content } ],
+      },
+      HtmlFundamental::Element {
+        tag: "aside", id: none, class: ["deck-notes"], attrs: none,
+        children: [ HtmlFundamental::Raw { html: s.notes } ],
+      },
+    ],
+  }
+
+// One section → `<section class="deck-section">` holding its slides.
+let deck_section_el = fn(sec: DeckSection) -> HtmlFundamental
+  HtmlFundamental::Element {
+    tag: "section", id: none, class: ["deck-section"], attrs: none,
+    children: map(sec.slides, deck_slide_el),
+  }
+
+// Stdlib `presentation` template: a single-file slide deck. The whole
+// site renders to one `index.html`; ← → navigate sections, ↑ ↓ the
+// slides within a section (driven by the bundled `presentation.js`).
+template presentation {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+    HtmlFundamental::Element {
+      tag: "style", id: none, class: none, attrs: none,
+      children: [ HtmlFundamental::Raw { html: presentation_css } ],
+    },
+    HtmlFundamental::Element {
+      tag: "div", id: none, class: ["deck"], attrs: none,
+      children: map(c.deck, deck_section_el),
+    },
+    deck_chrome,
+  ]
+}

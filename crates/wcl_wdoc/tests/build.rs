@@ -37,12 +37,12 @@ fn build_ok(file: &Path, out: &Path) -> usize {
 
 #[test]
 fn build_emits_fundamentals_for_example_site() {
-    // examples/wdoc/main.wcl declares three sites (showcase / docs /
-    // blog). `showcase` is the `root` site, so it renders flat at the
-    // output root; docs/blog go to subdirectories.
+    // examples/wdoc/main.wcl declares four sites (showcase / docs / blog /
+    // talk). `showcase` is the `root` site, so it renders flat at the
+    // output root; docs/blog/talk go to subdirectories.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 20); // showcase 14 + docs 3 + blog 3
+    assert_eq!(n, 21); // showcase 14 + docs 3 + blog 3 + talk deck 1
 
     // The richer content (text + classes + diagram + flowchart) is on
     // the showcase overview page (at the root, since showcase is `root`).
@@ -2498,11 +2498,11 @@ page index {
 fn build_processes_full_code_example_page() {
     // Smoke test against the code page in the example, which exercises
     // Rust, Python, JSON, WCL, and an unknown language in one page. The
-    // example declares three sites (20 pages total); `showcase` is the
+    // example declares four sites (21 pages total); `showcase` is the
     // `root` site, so the code page renders flat at the output root.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 20);
+    assert_eq!(n, 21);
     let html = std::fs::read_to_string(out.path().join("code.html")).expect("read code.html");
     assert!(
         html.matches("<pre class=\"code-block\"").count() >= 5,
@@ -5417,13 +5417,13 @@ page index { h1 "H" {} }
 
 #[test]
 fn multisite_example_root_site_and_subdirs() {
-    // The bundled example declares three sites; `showcase` is the `root`
+    // The bundled example declares four sites; `showcase` is the `root`
     // site (flat at the output root, its `start` page is the landing), and
-    // docs/blog render into subdirectories — no chooser is generated.
+    // docs/blog/talk render into subdirectories — no chooser is generated.
     let out = TempDir::new().expect("mkdir tempdir");
     let dir = out.path();
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), dir);
-    assert_eq!(n, 20);
+    assert_eq!(n, 21);
 
     // Showcase is at the root: its pages are flat, and there's no
     // `showcase/` subdirectory.
@@ -5485,6 +5485,27 @@ fn multisite_example_root_site_and_subdirs() {
     assert!(
         !root.contains("<a class=\"site-home\"") && !root.contains("<a class=\"book-home\""),
         "the root site's own pages must not carry a back-link:\n{root}"
+    );
+
+    // The `talk` presentation site renders as a single deck `index.html`
+    // (not per-slide files), and the overview links to it via `./talk/`.
+    assert!(
+        dir.join("talk/index.html").exists(),
+        "talk deck index missing"
+    );
+    assert!(
+        !dir.join("talk/title.html").exists(),
+        "deck slides are inlined"
+    );
+    let deck = std::fs::read_to_string(dir.join("talk/index.html")).expect("talk index");
+    assert_eq!(
+        deck.matches("class=\"deck-slide\"").count(),
+        5,
+        "deck should inline all five slides:\n{deck}"
+    );
+    assert!(
+        root.contains("href=\"./talk/\""),
+        "overview should link to the deck:\n{root}"
     );
 }
 
@@ -5997,4 +6018,141 @@ page index {
     // Every referenced tile + the low image is copied into `_wdoc/`
     // (5 distinct images).
     assert!(wdoc_files_with_prefix(&out, "image-") >= 5);
+}
+
+// ── Presentation decks ─────────────────────────────────────────────
+
+#[test]
+fn presentation_site_renders_single_deck_file() {
+    // A `presentation` site renders all its slides into one index.html,
+    // grouped into the `deck` grid (sections = columns, slides = rows).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("talk.wcl");
+    write_fixture(
+        &src,
+        r#"
+site {
+  default_template = :presentation
+  deck {
+    section "Intro" {
+      slide title
+      slide agenda
+    }
+    section "Main" {
+      slide topic
+    }
+  }
+}
+page title  { h1 "Hello" {} }
+page agenda { h2 "Agenda" {} }
+page topic  { h2 "Topic" {} }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    let n = build_ok(&src, out.path());
+    // The whole deck is one file, so the build reports a single page.
+    assert_eq!(n, 1);
+
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+    // Two sections, three slides.
+    assert_eq!(
+        index.matches("<section class=\"deck-section\">").count(),
+        2,
+        "{index}"
+    );
+    assert_eq!(
+        index.matches("<div class=\"deck-slide\">").count(),
+        3,
+        "{index}"
+    );
+    // Every slide's content is embedded.
+    assert!(index.contains("Hello"), "{index}");
+    assert!(index.contains("Agenda"), "{index}");
+    assert!(index.contains("Topic"), "{index}");
+    // The keyboard-nav player is written and linked exactly once.
+    assert!(out.path().join("_wdoc").join("presentation.js").exists());
+    assert_eq!(index.matches("_wdoc/presentation.js").count(), 1, "{index}");
+    // No standalone per-slide files are written.
+    assert!(!out.path().join("title.html").exists());
+}
+
+#[test]
+fn presentation_fragments_and_notes() {
+    // A `fragment` wraps content in `.wdoc-fragment` (step-revealed by the
+    // player); a `notes` block is pulled out of the visible content into a
+    // `.deck-notes` aside.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("talk.wcl");
+    write_fixture(
+        &src,
+        r#"
+site {
+  default_template = :presentation
+  deck { section "S" { slide one } }
+}
+page one {
+  p "Visible body"
+  fragment { p "Step revealed" }
+  notes { p "Only for the presenter" }
+}
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+
+    // The fragment is wrapped for step reveal.
+    assert!(
+        index.contains("<div class=\"wdoc-fragment\"><p>Step revealed</p></div>"),
+        "{index}"
+    );
+    // The notes text lives in the aside, not the visible slide body.
+    let notes_at = index.find("Only for the presenter").expect("notes present");
+    let aside_at = index
+        .find("<aside class=\"deck-notes\">")
+        .expect("notes aside");
+    assert!(aside_at < notes_at, "notes not inside the aside:\n{index}");
+}
+
+#[test]
+fn presentation_unknown_slide_is_build_error() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("talk.wcl");
+    write_fixture(
+        &src,
+        r#"
+site {
+  default_template = :presentation
+  deck { section "S" { slide nonexistent } }
+}
+page real { h1 "Real" {} }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::BadTemplate(msg)) => assert!(msg.contains("nonexistent"), "got: {msg}"),
+        Err(_) => panic!("expected BadTemplate"),
+        Ok(_) => panic!("expected BadTemplate, got Ok"),
+    }
+}
+
+#[test]
+fn presentation_without_deck_is_build_error() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("talk.wcl");
+    write_fixture(
+        &src,
+        r#"
+site { default_template = :presentation }
+page only { h1 "Only" {} }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::BadTemplate(msg)) => assert!(msg.contains("deck"), "got: {msg}"),
+        Err(_) => panic!("expected BadTemplate"),
+        Ok(_) => panic!("expected BadTemplate, got Ok"),
+    }
 }

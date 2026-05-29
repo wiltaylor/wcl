@@ -8,9 +8,9 @@ use wcl_lang::{Block, Document, Environment, Registry, Value, disk_loader};
 use crate::highlight;
 use crate::inline::InlinePatterns;
 use crate::render::{
-    MenuNode, TocNode, escape_html, field_bool, field_id, field_symbol, field_symbol_list_opt,
-    field_utf8, find_template, read_menu, read_toc, render_block, render_class, render_page,
-    render_template, site_theme_css,
+    DeckSectionNode, MenuNode, TocNode, escape_html, field_bool, field_id, field_symbol,
+    field_symbol_list_opt, field_utf8, find_template, read_deck, read_menu, read_toc, render_block,
+    render_class, render_page, render_template, site_theme_css,
 };
 
 /// The wdoc standard library, embedded in the binary and registered
@@ -41,6 +41,10 @@ pub fn schema_registry() -> Registry {
         include_str!("../lib/diagram-core.wcl"),
     );
     r.register("wdoc/templates.wcl", include_str!("../lib/templates.wcl"));
+    r.register(
+        "wdoc/presentation.wcl",
+        include_str!("../lib/presentation.wcl"),
+    );
     r.register("wdoc/inline.wcl", include_str!("../lib/inline.wcl"));
     r.register(
         "wdoc/inline-patterns.wcl",
@@ -488,6 +492,11 @@ fn build_site(
         .unwrap_or(false);
     let toc_nodes: Vec<TocNode> = spec.block.as_ref().map(read_toc).unwrap_or_default();
     let menu_nodes: Vec<MenuNode> = spec.block.as_ref().map(read_menu).unwrap_or_default();
+    let deck_nodes: Vec<DeckSectionNode> = spec.block.as_ref().map(read_deck).unwrap_or_default();
+    // A `presentation` site renders all its slides into one `index.html`
+    // (a deck), rather than one file per page. The `deck` block supplies
+    // the slide grid; `default_template = :presentation` selects it.
+    let is_presentation = default_template.as_deref() == Some("presentation");
 
     // Ordered (name, href) list of this site's pages for template nav,
     // and the name set the inline link pattern resolves `[text](page)`
@@ -510,6 +519,18 @@ fn build_site(
             "menu item links to unknown page \"{missing}\""
         )));
     }
+    if is_presentation {
+        if deck_nodes.is_empty() {
+            return Err(BuildError::BadTemplate(
+                "a `presentation` site needs a `deck { section { slide … } }` block".into(),
+            ));
+        }
+        if let Some(missing) = deck_missing_slide(&deck_nodes, &page_names) {
+            return Err(BuildError::BadTemplate(format!(
+                "deck slide links to unknown page \"{missing}\""
+            )));
+        }
+    }
 
     // Asset registries — fresh per site so the icon sprite + copied
     // images cover exactly this site's usage. They read the document's
@@ -530,7 +551,121 @@ fn build_site(
     );
 
     let mut count = 0;
+
+    // Presentation site: render every slide once into a single deck page
+    // (`index.html`), driven by the `presentation` template + player. The
+    // per-page loop below is skipped (slides aren't standalone files).
+    if is_presentation {
+        // Resolve each `slide` page to its rendered body + speaker notes,
+        // building the `list<DeckSection>` the template lays out. Ids are
+        // unique across the whole deck (it's one HTML document).
+        let page_by_name: BTreeMap<String, &Block> = spec
+            .pages
+            .iter()
+            .filter_map(|p| page_name(p).map(|n| (n, p)))
+            .collect();
+        let mut dup_seen = HashSet::new();
+        let mut sections_val = Vec::new();
+        for sec in &deck_nodes {
+            let mut slides_val = Vec::new();
+            for slide_page in &sec.slides {
+                let Some(&page) = page_by_name.get(slide_page) else {
+                    continue; // unreachable: validated by deck_missing_slide
+                };
+                if let Some(dup) = collect_duplicate_id(page, &mut dup_seen) {
+                    return Err(BuildError::DuplicateId {
+                        page: slide_page.clone(),
+                        id: dup,
+                    });
+                }
+                // Visible content: the page's blocks minus its `notes`.
+                let mut content = String::new();
+                for b in page
+                    .blocks()
+                    .filter(|b| b.kind() != "notes")
+                    .filter_map(|b| render_block(doc, &b, &inline_patterns, base_dir))
+                {
+                    content.push_str(&b);
+                    content.push('\n');
+                }
+                // Speaker notes: the children of any `notes` block.
+                let mut notes = String::new();
+                for nb in page.blocks().filter(|b| b.kind() == "notes") {
+                    for cb in nb
+                        .blocks()
+                        .filter_map(|b| render_block(doc, &b, &inline_patterns, base_dir))
+                    {
+                        notes.push_str(&cb);
+                        notes.push('\n');
+                    }
+                }
+                let mut m = BTreeMap::new();
+                m.insert("content".to_string(), Value::Utf8(content));
+                m.insert("notes".to_string(), Value::Utf8(notes));
+                m.insert("title".to_string(), Value::Utf8(slide_page.clone()));
+                slides_val.push(Value::Record {
+                    ty: vec!["DeckSlide".to_string()],
+                    fields: m,
+                });
+            }
+            let mut sm = BTreeMap::new();
+            sm.insert("title".to_string(), Value::Utf8(sec.title.clone()));
+            sm.insert("slides".to_string(), Value::List(slides_val));
+            sections_val.push(Value::Record {
+                ty: vec!["DeckSection".to_string()],
+                fields: sm,
+            });
+        }
+
+        let Some(tmpl) = find_template(doc, "presentation") else {
+            return Err(BuildError::BadTemplate("presentation".into()));
+        };
+        let title = site_title
+            .clone()
+            .or_else(|| spec.name.clone())
+            .unwrap_or_else(|| "Presentation".to_string());
+        let mut body = render_template(
+            doc,
+            &tmpl,
+            "",
+            &title,
+            "",
+            &pages,
+            &toc_nodes,
+            &menu_nodes,
+            Value::List(sections_val),
+            theme_toggle,
+            home_href,
+            home_title,
+            &inline_patterns,
+        );
+        // The slides may use the same interactive assets a normal page can.
+        if uses_terminals {
+            body.push_str("\n<script src=\"_wdoc/terminal-player.js\" defer></script>\n");
+        }
+        if uses_pan_zoom || uses_map {
+            body.push_str("\n<script src=\"_wdoc/diagram-pan-zoom.js\" defer></script>\n");
+        }
+        if uses_map {
+            body.push_str("\n<script src=\"_wdoc/wdoc-map.js\" defer></script>\n");
+        }
+        if uses_dopesheet {
+            body.push_str("\n<script src=\"_wdoc/dopesheet-player.js\" defer></script>\n");
+        }
+        // The deck keyboard-navigation player.
+        write_presentation_assets(out_dir)?;
+        body.push_str("\n<script src=\"_wdoc/presentation.js\" defer></script>\n");
+        let html = render_page(&title, &css, &body);
+        let out_path = out_dir.join("index.html");
+        fs::write(&out_path, html)
+            .map_err(|e| BuildError::Io(e, format!("write {}", out_path.display())))?;
+        count = 1;
+    }
+
     for page in &spec.pages {
+        if is_presentation {
+            break;
+        }
         let labels = page
             .labels()
             .map_err(|e| BuildError::BadPage(format!("page label eval: {e}")))?;
@@ -581,6 +716,7 @@ fn build_site(
                     &pages,
                     &toc_nodes,
                     &menu_nodes,
+                    Value::List(Vec::new()),
                     theme_toggle,
                     home_href,
                     home_title,
@@ -745,6 +881,19 @@ fn write_dopesheet_assets(out_dir: &Path) -> Result<(), BuildError> {
     Ok(())
 }
 
+/// Write the bundled presentation (deck) navigation player into
+/// `<out>/_wdoc/`. A `presentation` site's single deck page references
+/// it by relative URL.
+fn write_presentation_assets(out_dir: &Path) -> Result<(), BuildError> {
+    let dir = out_dir.join(crate::terminal::ASSET_DIR);
+    fs::create_dir_all(&dir)
+        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
+    let player = dir.join("presentation.js");
+    fs::write(&player, crate::render::PRESENTATION_PLAYER_JS)
+        .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
+    Ok(())
+}
+
 /// Write the shared icon sprite into `<out>/_wdoc/icons.svg`. Pages
 /// reference its `<symbol>`s by relative URL (`_wdoc/icons.svg#id`), so
 /// the dev server and any static host resolve them the same way.
@@ -817,6 +966,22 @@ fn menu_missing_page<'a>(nodes: &'a [MenuNode], known: &HashSet<String>) -> Opti
         }
         if let Some(missing) = menu_missing_page(&n.children, known) {
             return Some(missing);
+        }
+    }
+    None
+}
+
+/// Return the first deck `slide` page reference that isn't a known page
+/// name, in source order. `None` if every slide resolves.
+fn deck_missing_slide<'a>(
+    nodes: &'a [DeckSectionNode],
+    known: &HashSet<String>,
+) -> Option<&'a str> {
+    for n in nodes {
+        for s in &n.slides {
+            if !known.contains(s) {
+                return Some(s);
+            }
         }
     }
     None

@@ -1,0 +1,50 @@
+// Slides for the `talk` presentation deck (the `presentation` template).
+// Each page is one slide; the `deck` block in main.wcl arranges them into
+// the 2-D grid. Tagged `sites = [:talk]` so they belong only to the deck.
+//
+// Navigate the built deck with the keyboard: ← → between sections, ↑ ↓
+// within a section, Space to step through `fragment`s, `s` for notes.
+
+page title { sites = [:talk]
+  h1 "Building decks with wdoc"
+  p "A single-file slide deck, authored in WCL."
+  notes {
+    p "Welcome the audience. Mention this whole deck is one site in the example doc."
+  }
+}
+
+page agenda { sites = [:talk]
+  h2 "Agenda"
+  list {
+    li "What a deck is"
+    li "Step-by-step fragments"
+    li "Code, lists — anything renders on a slide"
+  }
+}
+
+page fragments { sites = [:talk]
+  h2 "Fragments reveal step by step"
+  p "Press Space to advance:"
+  fragment { p "First this point appears…" }
+  fragment { p "…then this one…" }
+  fragment { p "…and finally this one." }
+  notes {
+    p "Each Space press reveals one fragment, then moves on to the next slide."
+  }
+}
+
+page visuals { sites = [:talk]
+  h2 "Anything renders on a slide"
+  p "Code, lists, diagrams, charts — every wdoc block works:"
+  code rust {
+    source = "fn main() {\n    println!(\"slides are just pages\");\n}"
+  }
+}
+
+page thanks { sites = [:talk]
+  h1 "Thanks!"
+  p "Questions? Press **s** to peek at the speaker notes."
+  notes {
+    p "Hand out links. Take questions."
+  }
+}

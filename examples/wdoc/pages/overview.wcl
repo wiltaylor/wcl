@@ -25,7 +25,7 @@ page overview { sites = [:showcase]  start = true
   // another site declared in this document; the hrefs resolve into the
   // `docs/` and `blog/` output directories.
   text {
-    span "This document builds three sites. Browse [the documentation](docs:index) (a `book`) — e.g. [getting started](docs:getting_started) or [configuration](docs:config) — and [the project blog](blog:index), e.g. [our launch](blog:post_launch)."
+    span "This document builds four sites. Browse [the documentation](docs:index) (a `book`) — e.g. [getting started](docs:getting_started) or [configuration](docs:config) — [the project blog](blog:index), e.g. [our launch](blog:post_launch), and [the presentation deck](./talk/) (a reveal.js-style slide show — use the arrow keys)."
   }
 
   // Inline patterns: `**bold**`, `_italic_`, backtick-code and
