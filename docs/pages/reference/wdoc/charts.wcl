@@ -60,5 +60,5 @@ WCL
     body  = "wdoc injects a default chart stylesheet before user class rules, and themes set the eight series colours through --wdoc-* custom properties. So selecting a theme automatically recolours every chart."
   }
 
-  p "Next: [Terminals](wdoc_terminals)."
+  p "Next: [Timelines](wdoc_timelines)."
 }

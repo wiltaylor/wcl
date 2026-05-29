@@ -92,5 +92,5 @@ WCL
     body  = "Wireframe widgets are visual mockups — they render as styled <div>s and don't respond to clicks. For runnable terminal-style UI, see TUI Widgets."
   }
 
-  p "Back to the [reference introduction](index)."
+  p "Next: [Icons](wdoc_icons)."
 }

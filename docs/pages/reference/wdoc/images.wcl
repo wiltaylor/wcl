@@ -40,5 +40,5 @@ WCL
     body  = "Image files are copied byte-for-byte into <out>/_wdoc/ once per build, so the output site is self-contained. Update the source path; the build picks up the new bytes on rebuild."
   }
 
-  p "Next: [Tilemaps](wdoc_tilemaps)."
+  p "Back to the [reference introduction](index)."
 }

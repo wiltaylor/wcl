@@ -44,5 +44,5 @@ WCL
     body  = "image-rendering: pixelated is the default, so retro pixel art stays crisp. Set smooth = true on the dopesheet to opt into the browser's smoothing for non-pixel sources."
   }
 
-  p "Back to the [reference introduction](index)."
+  p "Next: [Terminals](wdoc_terminals)."
 }

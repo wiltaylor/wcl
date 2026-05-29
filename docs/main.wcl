@@ -92,18 +92,19 @@ site reference {
       chapter "Tables"                 { page = wdoc_tables }
       chapter "Columns"                { page = wdoc_columns }
       chapter "Styling"                { page = wdoc_styling }
-      chapter "Diagrams"               { page = wdoc_diagrams }
-      chapter "Flowcharts"             { page = wdoc_flowcharts }
-      chapter "Charts"                 { page = wdoc_charts }
+      chapter "Diagrams"               { page = wdoc_diagrams
+        chapter "Flowcharts"           { page = wdoc_flowcharts }
+        chapter "Charts"               { page = wdoc_charts }
+        chapter "Timelines"            { page = wdoc_timelines }
+        chapter "Cards"                { page = wdoc_cards }
+        chapter "Tilemaps"             { page = wdoc_tilemaps }
+        chapter "Dopesheets"           { page = wdoc_dopesheets }
+      }
       chapter "Terminals"              { page = wdoc_terminals }
       chapter "TUI Widgets"            { page = wdoc_tui }
       chapter "Wireframe UI Widgets"   { page = wdoc_wireframe }
-      chapter "Timelines"              { page = wdoc_timelines }
-      chapter "Cards"                  { page = wdoc_cards }
       chapter "Icons"                  { page = wdoc_icons }
       chapter "Images"                 { page = wdoc_images }
-      chapter "Tilemaps"               { page = wdoc_tilemaps }
-      chapter "Dopesheets"             { page = wdoc_dopesheets }
     }
   }
 }

@@ -52,5 +52,5 @@ WCL
 
   p "The bundled `wdoc-card` stylesheet is structural and neutral. A themed site recolours `.wdoc-card` via the theme's APPLY rule (alongside `.wdoc-map-card`); user `class \"wdoc-card\" { … }` overrides individual properties."
 
-  p "Next: [Charts](wdoc_charts)."
+  p "Next: [Tilemaps](wdoc_tilemaps)."
 }
