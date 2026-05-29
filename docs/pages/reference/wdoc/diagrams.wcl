@@ -205,38 +205,6 @@ diagram { width = 240  height = 130
 WCL
   }
 
-  h3 "Putting them together"
-
-  diagram {
-    width  = 280
-    height = 130
-
-    rect    { x = 10.0  y = 10.0  width = 60.0  height = 60.0  fill = "#cce" }
-    circle  { cx = 120.0  cy = 40.0  r = 24.0  stroke = "black" }
-    line    { x1 = 0.0  y1 = 40.0  x2 = 280.0  y2 = 40.0  stroke = "#888" }
-    polygon { points = "180,10 230,40 180,70"  fill = "#fc8" }
-    label "halfway" { x = 110.0  y = 76.0 }
-  }
-
-  code wcl {
-    source = <<'WCL'
-diagram {
-  width  = 280
-  height = 130
-
-  rect    { x = 10.0  y = 10.0  width = 60.0  height = 60.0  fill = "#cce" }
-  circle  { cx = 120.0  cy = 40.0  r = 24.0  stroke = "black" }
-  line    { x1 = 0.0  y1 = 40.0  x2 = 280.0  y2 = 40.0  stroke = "#888" }
-  polygon { points = "180,10 230,40 180,70"  fill = "#fc8" }
-  label "halfway" { x = 110.0  y = 76.0 }
-}
-WCL
-  }
-
-  h2 "Other placeable shapes"
-
-  p "Two higher-level blocks also `extend SvgBlock`, so they drop into any `diagram`, `container`, or `timeline` like a primitive. Each has its own page for full detail."
-
   h3 "image"
 
   diagram { width = 200  height = 90
@@ -348,6 +316,6 @@ diagram {
 }
 WCL
   }
-  
+
   p "Next: [Flowcharts](wdoc_flowcharts)."
 }
