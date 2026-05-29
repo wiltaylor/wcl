@@ -1256,7 +1256,16 @@ impl<'a> Field<'a> {
         ) {
             self.doc.eval_literal(&self.ast.expr)
         } else {
-            self.doc.eval_in_scope(&self.ast.expr, &self.scope)
+            self.doc
+                .eval_in_scope(&self.ast.expr, &self.scope)
+                .and_then(|v| match self.declared_type_ref() {
+                    // Coerce a bare-record value to the field's declared
+                    // union variant by shape (recursing through lists).
+                    Some(ty) => {
+                        variant_dispatch::coerce_value_to_type(self.doc, v, ty, self.ast.span)
+                    }
+                    None => Ok(v),
+                })
         };
         cell.evaluating.store(false, Ordering::Release);
         cell.value.get_or_init(|| result).as_ref()

@@ -1,9 +1,11 @@
 // Data-chart demo: bar / line / pie charts as custom SVG shapes.
 //
 // Charts are placed inside a `diagram { }` like any other shape and
-// take `x` / `y` / `width` / `height`. Data is a list of
-// `ChartSeries::Of { name, values }` (bar / line) or
-// `ChartSlice::Of { label, value }` (pie). Bars, lines, and slices are
+// take `x` / `y` / `width` / `height`. Data is a list of records:
+// `{ name, values }` for bar / line series, `{ label, value }` for pie
+// slices. The variant is inferred from the record's shape, so a bare
+// `{ … }` is enough (write the explicit `ChartSeries::Of { … }` only
+// when you want to disambiguate). Bars, lines, and slices are
 // auto-assigned palette classes (`wdoc-series-1`..`wdoc-series-8`), so
 // they theme through the class system exactly like everything else —
 // see the `wdoc-series-1` override at the bottom of this file.
@@ -36,8 +38,8 @@ page charts { sites = [:showcase]
       y_min = 0.0
       y_max = 100.0
       series = [
-        ChartSeries::Of { name: "North", values: [42.0, 55.0, 61.0, 78.0] },
-        ChartSeries::Of { name: "South", values: [30.0, 48.0, 52.0, 66.0] },
+        { name: "North", values: [42.0, 55.0, 61.0, 78.0] },
+        { name: "South", values: [30.0, 48.0, 52.0, 66.0] },
       ]
     }
   }
@@ -57,9 +59,9 @@ page charts { sites = [:showcase]
       x_label = "Day"
       categories = ["Mon", "Tue", "Wed", "Thu", "Fri"]
       series = [
-        ChartSeries::Of { name: "p50", values: [12.0, 14.0, 11.0, 18.0, 13.0] },
-        ChartSeries::Of { name: "p90", values: [26.0, 31.0, 28.0, 40.0, 33.0] },
-        ChartSeries::Of { name: "p99", values: [44.0, 58.0, 51.0, 72.0, 60.0] },
+        { name: "p50", values: [12.0, 14.0, 11.0, 18.0, 13.0] },
+        { name: "p90", values: [26.0, 31.0, 28.0, 40.0, 33.0] },
+        { name: "p99", values: [44.0, 58.0, 51.0, 72.0, 60.0] },
       ]
     }
   }
@@ -72,8 +74,8 @@ page charts { sites = [:showcase]
     span " to print every point's value, and pass "
     span "points" { class = ["accent"] }
     span " — a list of "
-    span "ChartPoint::At { label, category, value }" { class = ["accent"] }
-    span " — to pin a labelled marker to a specific point (category is a 0-based index along the x axis). Annotations pick up the site accent."
+    span "{ label, category, value }" { class = ["accent"] }
+    span " records — to pin a labelled marker to a specific point (category is a 0-based index along the x axis). Annotations pick up the site accent."
   }
 
   // A single series with auto value labels plus two pinned annotations.
@@ -89,11 +91,11 @@ page charts { sites = [:showcase]
       categories = ["Mon", "Tue", "Wed", "Thu", "Fri"]
       point_labels = true
       series = [
-        ChartSeries::Of { name: "signups", values: [12.0, 18.0, 11.0, 30.0, 22.0] },
+        { name: "signups", values: [12.0, 18.0, 11.0, 30.0, 22.0] },
       ]
       points = [
-        ChartPoint::At { label: "launch",  category: 1, value: 18.0 },
-        ChartPoint::At { label: "outage",  category: 2, value: 11.0 },
+        { label: "launch",  category: 1, value: 18.0 },
+        { label: "outage",  category: 2, value: 11.0 },
       ]
     }
   }
@@ -109,10 +111,10 @@ page charts { sites = [:showcase]
       height = 260
       title  = "Language mix"
       slices = [
-        ChartSlice::Of { label: "Rust",   value: 55.0 },
-        ChartSlice::Of { label: "TS",     value: 25.0 },
-        ChartSlice::Of { label: "Python", value: 12.0 },
-        ChartSlice::Of { label: "Other",  value: 8.0 },
+        { label: "Rust",   value: 55.0 },
+        { label: "TS",     value: 25.0 },
+        { label: "Python", value: 12.0 },
+        { label: "Other",  value: 8.0 },
       ]
     }
   }

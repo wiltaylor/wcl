@@ -231,7 +231,7 @@ impl<'a> Parser<'a> {
             TokenKind::If => self.parse_if_expr(),
             TokenKind::Match => self.parse_match_expr(),
             TokenKind::LParen => self.parse_paren_expr(),
-            TokenKind::LBrace => self.parse_block_expr(),
+            TokenKind::LBrace => self.parse_brace_atom(),
             TokenKind::LBracket => self.parse_list_literal(),
             _ => self.parse_value_expr(),
         }
@@ -445,8 +445,31 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    /// `{ … }` in atom position. Disambiguates a bare record literal
+    /// (`{ name: value, … }`) from a block expression. The lookahead is
+    /// unambiguous: a block expression never begins `Ident :` (a `:`
+    /// only appears in field-name / type-annotation position).
+    fn parse_brace_atom(&mut self) -> Result<(Expr, Span), ParseError> {
+        let lbrace = self.bump()?; // '{'
+        if matches!(self.peek()?.kind, TokenKind::Ident(_))
+            && matches!(self.peek2()?.kind, TokenKind::Colon)
+        {
+            let (fields, end) = self.parse_record_fields()?;
+            let span = Span::new(lbrace.span.start, end);
+            return Ok((Expr::Record { fields, span }, span));
+        }
+        self.parse_block_body(lbrace.span.start)
+    }
+
     pub(super) fn parse_block_expr(&mut self) -> Result<(Expr, Span), ParseError> {
         let lbrace = self.bump()?; // '{'
+        self.parse_block_body(lbrace.span.start)
+    }
+
+    /// Parse a block expression's body (zero-or-more `let` bindings then
+    /// a mandatory tail expression) up to and including the closing `}`.
+    /// Assumes the opening `{` at `start` has already been consumed.
+    fn parse_block_body(&mut self, start: usize) -> Result<(Expr, Span), ParseError> {
         let mut lets = Vec::new();
         while matches!(&self.peek()?.kind, TokenKind::Ident(s) if s == "let") {
             lets.push(self.parse_let_binding()?);
@@ -462,7 +485,7 @@ impl<'a> Parser<'a> {
         }
         let (tail, _) = self.parse_expr()?;
         let rbrace = self.expect(TokenKind::RBrace, "expected '}' to close block")?;
-        let span = Span::new(lbrace.span.start, rbrace.span.end);
+        let span = Span::new(start, rbrace.span.end);
         Ok((
             Expr::Block {
                 lets,
@@ -509,56 +532,58 @@ impl<'a> Parser<'a> {
             }
             TokenKind::LBrace => {
                 self.bump()?;
-                let mut fields: Vec<NamedArg> = Vec::new();
-                while !matches!(self.peek()?.kind, TokenKind::RBrace) {
-                    let name_tok = self.bump()?;
-                    let TokenKind::Ident(fname) = name_tok.kind else {
-                        return Err(self.err(
-                            format!(
-                                "expected field name in variant constructor, found {}",
-                                describe(&name_tok.kind)
-                            ),
-                            name_tok.span,
-                            "expected field name",
-                        ));
-                    };
-                    self.expect(
-                        TokenKind::Colon,
-                        "expected ':' after field name in variant constructor",
-                    )?;
-                    let (value, value_span) = self.parse_expr()?;
-                    fields.push(NamedArg {
-                        name: fname,
-                        value,
-                        span: Span::new(name_tok.span.start, value_span.end),
-                    });
-                    match self.peek()?.kind {
-                        TokenKind::Comma => {
-                            self.bump()?;
-                        }
-                        TokenKind::RBrace => break,
-                        _ => {
-                            let p = self.peek()?;
-                            let span = p.span;
-                            let kind = describe(&p.kind);
-                            return Err(self.err(
-                                format!(
-                                    "expected ',' or '}}' in variant constructor, found {kind}"
-                                ),
-                                span,
-                                "expected ',' or '}'",
-                            ));
-                        }
-                    }
-                }
-                let rb = self.expect(
-                    TokenKind::RBrace,
-                    "expected '}' to close variant constructor",
-                )?;
-                Ok((VariantArgs::Record(fields), rb.span.end))
+                let (fields, end) = self.parse_record_fields()?;
+                Ok((VariantArgs::Record(fields), end))
             }
             _ => Ok((VariantArgs::Unit, default_end)),
         }
+    }
+
+    /// Parse a comma-separated `name: value` field list up to and
+    /// including the closing `}`. Assumes the opening `{` has already
+    /// been consumed. Shared by variant constructors (`T::V { … }`) and
+    /// bare record literals (`{ … }`); returns the fields plus the end
+    /// offset of the closing brace.
+    fn parse_record_fields(&mut self) -> Result<(Vec<NamedArg>, usize), ParseError> {
+        let mut fields: Vec<NamedArg> = Vec::new();
+        while !matches!(self.peek()?.kind, TokenKind::RBrace) {
+            let name_tok = self.bump()?;
+            let TokenKind::Ident(fname) = name_tok.kind else {
+                return Err(self.err(
+                    format!(
+                        "expected field name in record, found {}",
+                        describe(&name_tok.kind)
+                    ),
+                    name_tok.span,
+                    "expected field name",
+                ));
+            };
+            self.expect(TokenKind::Colon, "expected ':' after field name in record")?;
+            let (value, value_span) = self.parse_expr()?;
+            fields.push(NamedArg {
+                name: fname,
+                value,
+                span: Span::new(name_tok.span.start, value_span.end),
+            });
+            match self.peek()?.kind {
+                TokenKind::Comma => {
+                    self.bump()?;
+                }
+                TokenKind::RBrace => break,
+                _ => {
+                    let p = self.peek()?;
+                    let span = p.span;
+                    let kind = describe(&p.kind);
+                    return Err(self.err(
+                        format!("expected ',' or '}}' in record, found {kind}"),
+                        span,
+                        "expected ',' or '}'",
+                    ));
+                }
+            }
+        }
+        let rb = self.expect(TokenKind::RBrace, "expected '}' to close record")?;
+        Ok((fields, rb.span.end))
     }
 
     fn parse_call_tail(

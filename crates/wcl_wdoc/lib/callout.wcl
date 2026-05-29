@@ -4,7 +4,10 @@
 // colour (CALLOUT_CSS) and a default icon (from the bundled Lucide pack,
 // so it works with no `iconset` declared). `icon` overrides the default.
 // It is NOT a fundamental: it lowers (below) to plain `<div>`s plus an
-// `Icon` fundamental, composing the existing HTML fundamentals.
+// `Icon` fundamental, composing the existing HTML fundamentals. The
+// `body` runs through the inline-pattern engine (like `p "…"`), so
+// `**bold**` / `` `code` `` / `[links](url)` / `:icons:` / `$math$`
+// work; the `heading` stays a plain span.
 @block("callout")
 type Callout extends WdocBlock {
   @inline(0) heading: utf8
@@ -47,7 +50,14 @@ type Callout extends WdocBlock {
           HtmlFundamental::Element {
             tag: "div", id: none, class: ["callout-body"], attrs: none,
             children: [
-              HtmlFundamental::Paragraph { id: none, class: none, spans: [c.body] },
+              // A `<p>` wrapping an `Inline` fundamental, so the body
+              // runs through the inline-pattern engine like `p "…"` —
+              // `**bold**`, `` `code` ``, `[links](url)`, `:icons:`, and
+              // `$math$` all work. The heading stays a plain span.
+              HtmlFundamental::Element {
+                tag: "p", id: none, class: none, attrs: none,
+                children: [HtmlFundamental::Inline { text: c.body }],
+              },
             ],
           },
         ],

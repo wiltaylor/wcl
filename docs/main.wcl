@@ -98,7 +98,6 @@ site reference {
         chapter "Flowcharts"           { page = wdoc_flowcharts }
         chapter "Charts"               { page = wdoc_charts }
         chapter "Timelines"            { page = wdoc_timelines }
-        chapter "Cards"                { page = wdoc_cards }
         chapter "Tilemaps"             { page = wdoc_tilemaps }
         chapter "Dopesheets"           { page = wdoc_dopesheets }
         chapter "Terminals"            { page = wdoc_terminals }
@@ -163,7 +162,6 @@ import "./pages/reference/wdoc/terminals.wcl"
 import "./pages/reference/wdoc/tui.wcl"
 import "./pages/reference/wdoc/wireframe.wcl"
 import "./pages/reference/wdoc/timelines.wcl"
-import "./pages/reference/wdoc/cards.wcl"
 import "./pages/reference/wdoc/icons.wcl"
 import "./pages/reference/wdoc/images.wcl"
 import "./pages/reference/wdoc/tilemaps.wcl"

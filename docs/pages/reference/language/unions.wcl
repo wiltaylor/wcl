@@ -28,6 +28,20 @@ c = Shape::Empty
 WCL
   }
 
+  h2 "Inferring the variant from shape"
+
+  p "When the expected type is a union — a union-typed field, an element of a `list<Union>`, or a function parameter — you can drop the `Union::Variant` tag and write a bare record. The variant is inferred from the record's field shape, so the explicit tag becomes optional."
+  code wcl {
+    source = <<'WCL'
+// `series: list<ChartSeries>` — the variant is inferred per element.
+series = [
+  { name: "North", values: [42.0, 55.0] },   // inferred ChartSeries::Of
+  { name: "South", values: [30.0, 48.0] },
+]
+WCL
+  }
+  p "The match is by field-name set (and field types when two variants share a name set), so it only works when the shape is unambiguous; a bare record matching no variant is a build error. Reach for the explicit `Union::Variant { … }` form to disambiguate or to be explicit. A bare record with no expected union type stays an anonymous record value."
+
   h2 "extends"
 
   p "A union can `extends` another, inheriting its variants and adding more — useful when a host wants to extend an open vocabulary without modifying the base declaration."

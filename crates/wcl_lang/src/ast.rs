@@ -141,6 +141,14 @@ pub enum Expr {
         args: VariantArgs,
         span: Span,
     },
+    /// A bare record literal `{ name: value, … }`. When the surrounding
+    /// context declares a union (or `list<union>`) type, the evaluator
+    /// shape-infers the matching variant; otherwise it evaluates to an
+    /// anonymous `Value::Record`.
+    Record {
+        fields: Vec<NamedArg>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -372,6 +372,21 @@ impl Document {
                 }
                 Value::List(out)
             }
+            E::Record { fields, .. } => {
+                // A bare record literal evaluates to an anonymous
+                // `Value::Record`. When the surrounding context declares
+                // a union type, the consumer (field materialisation,
+                // variant args, fn-call args) coerces it to the matching
+                // `Value::Variant` by shape via `coerce_value_to_type`.
+                let mut map = std::collections::BTreeMap::new();
+                for f in fields {
+                    map.insert(f.name.clone(), self.eval_in(&f.value, ctx)?);
+                }
+                Value::Record {
+                    ty: Vec::new(),
+                    fields: map,
+                }
+            }
             E::If {
                 cond,
                 then_block,
@@ -649,7 +664,15 @@ impl Document {
             frame.locals.push((name.clone(), value.clone()));
         }
         for (param, value) in f.params().iter().zip(args.iter()) {
-            frame.locals.push((param.name().to_string(), value.clone()));
+            // Coerce a bare-record argument to the parameter's declared
+            // union variant by shape; all other args pass through.
+            let value = super::variant_dispatch::coerce_value_to_type(
+                self,
+                value.clone(),
+                param.ty(),
+                span,
+            )?;
+            frame.locals.push((param.name().to_string(), value));
         }
         frame.call_depth += 1;
         let result = self.eval_in(&f.body, &mut frame);
@@ -722,6 +745,14 @@ impl Document {
                         ));
                     };
                     let v = self.eval_in(&arg.value, ctx)?;
+                    // Coerce a bare record nested in a union-typed
+                    // variant field to its matching variant by shape.
+                    let v = super::variant_dispatch::coerce_value_to_type(
+                        self,
+                        v,
+                        &decl_field.ty,
+                        span,
+                    )?;
                     map.insert(decl_field.name.clone(), v);
                 }
                 // Reject extras — keeps the runtime value strictly

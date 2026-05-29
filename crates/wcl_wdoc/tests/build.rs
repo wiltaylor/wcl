@@ -2999,6 +2999,61 @@ page index {
 }
 
 #[test]
+fn build_bare_record_series_matches_explicit_variant_form() {
+    // The bare-record series form (`{ name, values }`) must produce
+    // byte-identical output to the explicit `ChartSeries::Of { … }`
+    // form — the variant is shape-inferred from the `list<ChartSeries>`
+    // field type.
+    fn render(series: &str) -> String {
+        let tmp = TempDir::new().expect("mkdir tempdir");
+        let src = tmp.path().join("bar.wcl");
+        write_fixture(
+            &src,
+            format!(
+                r##"
+page index {{
+  diagram {{
+    width  = 380
+    height = 240
+    bar_chart {{
+      width   = 380
+      height  = 240
+      title   = "Revenue"
+      x_label = "Quarter"
+      categories = ["Q1", "Q2"]
+      y_min = 0.0
+      y_max = 100.0
+      series = [
+{series}
+      ]
+    }}
+  }}
+}}
+"##
+            ),
+        );
+        let out = TempDir::new().expect("mkdir out");
+        build_ok(&src, out.path());
+        std::fs::read_to_string(out.path().join("index.html")).expect("read")
+    }
+
+    let explicit = render(
+        "        ChartSeries::Of { name: \"North\", values: [40.0, 80.0] },\n\
+         \x20       ChartSeries::Of { name: \"South\", values: [20.0, 60.0] },",
+    );
+    let bare = render(
+        "        { name: \"North\", values: [40.0, 80.0] },\n\
+         \x20       { name: \"South\", values: [20.0, 60.0] },",
+    );
+    assert_eq!(
+        explicit, bare,
+        "bare-record output diverged from explicit form"
+    );
+    // Sanity: the shared output really is the rendered bar chart.
+    assert!(bare.contains("<rect class=\"wdoc-series-1\""), "{bare}");
+}
+
+#[test]
 fn build_renders_horizontal_timeline_with_phases_items_ticks() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("timeline.wcl");
@@ -4018,8 +4073,10 @@ fn build_renders_callout_with_builtin_icon() {
         ),
         "{index}"
     );
+    // The body runs through the inline engine (like `p "…"`), so plain
+    // text renders directly inside the `<p>` (no per-span wrapper).
     assert!(
-        index.contains("<div class=\"callout-body\"><p><span>Be careful.</span></p></div>"),
+        index.contains("<div class=\"callout-body\"><p>Be careful.</p></div>"),
         "{index}"
     );
     assert!(index.contains(".callout.warning"), "{index}");

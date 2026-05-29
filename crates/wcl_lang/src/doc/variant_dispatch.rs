@@ -169,6 +169,58 @@ pub(super) fn table_row_to_variant<'a>(
     })
 }
 
+/// Type-directed coercion of a freshly-evaluated value against its
+/// declared type. Rewrites a bare `Value::Record` into a
+/// `Value::Variant` when the declared type names a union, recursing
+/// through `list<…>` element types and through the matched variant's
+/// own union-typed fields. Any other value/type pair is returned
+/// unchanged (permissive, mirroring `value_matches_type_ref`).
+pub(crate) fn coerce_value_to_type(
+    doc: &Document,
+    value: Value,
+    ty: &crate::value::TypeRef,
+    span: ast::Span,
+) -> Result<Value, EvalError> {
+    use crate::value::TypeRef;
+    match (value, ty) {
+        (Value::List(items), TypeRef::List(inner)) => {
+            let mut out = Vec::with_capacity(items.len());
+            for it in items {
+                out.push(coerce_value_to_type(doc, it, inner, span)?);
+            }
+            Ok(Value::List(out))
+        }
+        (Value::Record { ty: rty, fields }, TypeRef::Named(path)) => {
+            let Some(union_decl) = doc.union_decl(&path.join(".")) else {
+                // Named type that isn't a union — leave the anonymous
+                // record untouched.
+                return Ok(Value::Record { ty: rty, fields });
+            };
+            let variant = match_record_variant_by_shape(doc, &fields, &union_decl, span)?;
+            // Recurse into the matched variant's declared field types so
+            // a bare record nested in a union-typed field also infers.
+            let mut coerced: BTreeMap<String, Value> = BTreeMap::new();
+            if let ast::VariantBody::Record(decl_fields) = &variant.body {
+                for (k, v) in fields {
+                    let nv = match decl_fields.iter().find(|f| f.name == k) {
+                        Some(f) => coerce_value_to_type(doc, v, &f.ty, span)?,
+                        None => v,
+                    };
+                    coerced.insert(k, nv);
+                }
+            } else {
+                coerced = fields;
+            }
+            Ok(Value::Variant {
+                union: union_decl.ast.name.clone(),
+                variant: variant.name.clone(),
+                payload: VariantPayload::Record(coerced),
+            })
+        }
+        (other, _) => Ok(other),
+    }
+}
+
 /// Walk `union_decl.effective_variants` and return the unique variant
 /// whose record body matches the field map by both *name set* and
 /// *field-value types*.
@@ -176,7 +228,7 @@ pub(super) fn table_row_to_variant<'a>(
 /// Returns `VariantNoMatch` (with a near-miss diagnostic when exactly
 /// one variant matches by name but not by type), `VariantAmbiguous`
 /// (defensive — declaration-time shape collisions catch this).
-fn match_record_variant_by_shape<'a>(
+pub(crate) fn match_record_variant_by_shape<'a>(
     doc: &'a Document,
     fields: &BTreeMap<String, Value>,
     union_decl: &UnionDecl<'a>,

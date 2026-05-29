@@ -5,8 +5,9 @@
 // boundaries; `items` (a marker + lead line + text) and event `card`s are
 // pinned to explicit dates via `on`, and `phases` mark named date spans.
 // `start`/`end` bound the axis (auto-fit from the events when omitted),
-// and `every` overrides the auto tick interval. Items zig-zag sides by
-// default; force one with `TimelineItem::OnSided { … side = :near|:far }`.
+// and `every` overrides the auto tick interval. An item is just a
+// `{ label, on }` record (the variant is inferred from its shape);
+// items zig-zag sides by default — force one by adding `side: :near|:far`.
 
 page timeline { sites = [:showcase]
   h1 "Timelines"
@@ -41,16 +42,17 @@ page timeline { sites = [:showcase]
       start  = "2026-01-01"
       end    = "2026-12-31"
       phases = [
-        TimelinePhase::Of { label: "Discovery", from: "2026-01-01", to: "2026-04-01" },
-        TimelinePhase::Of { label: "Build",     from: "2026-04-01", to: "2026-10-01" },
-        TimelinePhase::Of { label: "Launch",    from: "2026-10-01", to: "2026-12-31" },
+        { label: "Discovery", from: "2026-01-01", to: "2026-04-01" },
+        { label: "Build",     from: "2026-04-01", to: "2026-10-01" },
+        { label: "Launch",    from: "2026-10-01", to: "2026-12-31" },
       ]
       items = [
-        TimelineItem::On      { label: "Kickoff",       on: "2026-01-12" },
-        TimelineItem::On      { label: "Design freeze",  on: "2026-04-01" },
-        TimelineItem::On      { label: "Beta",          on: "2026-07-15" },
-        TimelineItem::OnSided { label: "Code freeze",    on: "2026-10-01", side: :far },
-        TimelineItem::On      { label: "GA",            on: "2026-12-15" },
+        { label: "Kickoff",      on: "2026-01-12" },
+        { label: "Design freeze", on: "2026-04-01" },
+        { label: "Beta",         on: "2026-07-15" },
+        // A `side` field makes this the `OnSided` variant by shape.
+        { label: "Code freeze",   on: "2026-10-01", side: :far },
+        { label: "GA",           on: "2026-12-15" },
       ]
     }
   }
@@ -70,14 +72,14 @@ page timeline { sites = [:showcase]
       title     = "Release history"
       unit      = :months
       phases = [
-        TimelinePhase::Of { label: "1.x", from: "2025-09-01", to: "2026-02-01" },
-        TimelinePhase::Of { label: "2.x", from: "2026-02-01", to: "2026-08-01" },
+        { label: "1.x", from: "2025-09-01", to: "2026-02-01" },
+        { label: "2.x", from: "2026-02-01", to: "2026-08-01" },
       ]
       items = [
-        TimelineItem::On { label: "1.0 alpha", on: "2025-09-15" },
-        TimelineItem::On { label: "1.0",       on: "2026-02-01" },
-        TimelineItem::On { label: "2.0 beta",  on: "2026-05-01" },
-        TimelineItem::On { label: "2.0",       on: "2026-08-01" },
+        { label: "1.0 alpha", on: "2025-09-15" },
+        { label: "1.0",       on: "2026-02-01" },
+        { label: "2.0 beta",  on: "2026-05-01" },
+        { label: "2.0",       on: "2026-08-01" },
       ]
     }
   }

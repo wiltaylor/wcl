@@ -194,6 +194,14 @@ fn walk_expr<'a>(expr: &'a Expr, offset: usize, out: &mut EnclosingScopes<'a>) {
                 }
             }
         }
+        Expr::Record { fields, span } => {
+            if !contains(*span, offset) {
+                return;
+            }
+            for f in fields {
+                walk_expr(&f.value, offset, out);
+            }
+        }
         Expr::InterpolatedString { parts, span, .. } => {
             if !contains(*span, offset) {
                 return;
@@ -263,7 +271,8 @@ fn expr_span(expr: &Expr) -> wcl_lang::ast::Span {
         | Expr::If { span, .. }
         | Expr::IfLet { span, .. }
         | Expr::Match { span, .. }
-        | Expr::Variant { span, .. } => *span,
+        | Expr::Variant { span, .. }
+        | Expr::Record { span, .. } => *span,
         Expr::SelfKw(s) | Expr::ParentKw(s) => *s,
         Expr::Function(f) => f.span,
         Expr::Identifier(_, s) => *s,

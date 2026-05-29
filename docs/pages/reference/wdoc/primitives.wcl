@@ -247,7 +247,7 @@ diagram { width = 260  height = 110
 WCL
   }
 
-  p "See [Cards](wdoc_cards) for timeline cards and richer bodies."
+  p "See [Timelines](wdoc_timelines) for cards pinned to dates on a timeline."
 
   p "Next: [Connections](wdoc_connections)."
 }

@@ -1224,6 +1224,18 @@ impl Document {
                     ),
                     f.span(),
                 );
+            } else if let Value::Record { .. } = v {
+                EvalError::push_schema_violation(
+                    out,
+                    Kind::VariantNoMatch,
+                    format!(
+                        "field '{}' declared as union '{}' but value is an \
+                         un-inferred record (no variant matches its shape)",
+                        f.name(),
+                        union_decl.ast.name.join("."),
+                    ),
+                    f.span(),
+                );
             }
         } else if !value_matches_type_ref(v, declared.type_ref()) {
             EvalError::push_schema_violation(
@@ -1687,6 +1699,7 @@ fn span_of(expr: &ast::Expr) -> Span {
         | E::IfLet { span, .. }
         | E::Match { span, .. }
         | E::Variant { span, .. }
+        | E::Record { span, .. }
         | E::InterpolatedString { span, .. } => *span,
         E::SelfKw(s) | E::ParentKw(s) => *s,
     }

@@ -2,20 +2,79 @@
 page wdoc_dopesheets { sites = [:reference]
   h1 "Dopesheets"
 
-  p "`dopesheet` plays a range of frames from a sprite sheet at a set `fps`. Like `tilemap` it's a placeable SVG block — a legal child of any `diagram` or `container` — and like other animated blocks it's special-cased in Rust because the geometry comes from cropping an external image."
+  p "`dopesheet` plays a range of frames from a sprite sheet at a set `fps`. Like `tilemap` it's a placeable SVG block — a legal child of any `diagram` or `container` — and like other animated blocks it's special-cased in Rust because the geometry comes from cropping an external image. The sheet is referenced by URL, so frames resolve when the site is **served**, not from a `file://` open."
 
-  h2 "Authoring"
+  h2 "A looping animation"
+
+  p "Name the sheet (an `@inline(0)` source, like `image`), describe its frame grid, and pick an `fps`. Here the whole sheet — six 12×12 frames — plays at 12 fps, looped (both defaults). `scale` enlarges the tiny pixel art, and `columns` defaults to as many frames as fit across the sheet (`72 / 12 = 6`)."
+
+  diagram { width = 96  height = 96
+    dopesheet "assets/pixel-coin.png" {
+      frame_width  = 12
+      frame_height = 12
+      scale        = 6.0
+      fps          = 12.0
+      x            = 12.0
+      y            = 12.0
+    }
+  }
 
   code wcl {
     source = <<'WCL'
-diagram {
-  width = 64  height = 64
-  dopesheet {
-    source       = "assets/pixel-coin.png"
-    frame_width  = 16
-    frame_height = 16
-    fps          = 12
-    scale        = 2.0
+diagram { width = 96  height = 96
+  dopesheet "assets/pixel-coin.png" {
+    frame_width  = 12
+    frame_height = 12
+    scale        = 6.0
+    fps          = 12.0
+    x            = 12.0
+    y            = 12.0
+  }
+}
+WCL
+  }
+
+  p "Autoplay and loop are on by default — click the coin to pause or resume. The centred play glyph appears whenever it's stopped."
+
+  h2 "Frame range + speed"
+
+  p "`from` / `to` pick an inclusive sub-range, and `autoplay = false` leaves the animation stopped until clicked. `offset_x` / `offset_y` and `stride_x` / `stride_y` are spelled out below to show how a sheet with padding or gaps is sliced — for this flush-packed strip they're just the defaults."
+
+  diagram { width = 96  height = 96
+    dopesheet "assets/pixel-coin.png" {
+      frame_width  = 12
+      frame_height = 12
+      offset_x     = 0
+      offset_y     = 0
+      stride_x     = 12
+      stride_y     = 12
+      columns      = 6
+      from         = 0
+      to           = 2
+      fps          = 6.0
+      autoplay     = false
+      scale        = 6.0
+      x            = 12.0
+      y            = 12.0
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 96  height = 96
+  dopesheet "assets/pixel-coin.png" {
+    frame_width  = 12
+    frame_height = 12
+    stride_x     = 12
+    stride_y     = 12
+    columns      = 6
+    from         = 0
+    to           = 2
+    fps          = 6.0
+    autoplay     = false
+    scale        = 6.0
+    x            = 12.0
+    y            = 12.0
   }
 }
 WCL
@@ -26,13 +85,15 @@ WCL
   table {
     rows:
       | "Field" | "Meaning" |
-      | "`source`" | "Path to the spritesheet (relative to the doc)" |
-      | "`frame_width` / `frame_height`" | "Size of one frame in the sheet" |
-      | "`offset_x` / `offset_y`" | "Pixel offset to the first frame (default `0`)" |
-      | "`stride_x` / `stride_y`" | "Origin-to-origin step between frames (default = frame size)" |
-      | "`columns`" | "How many frames per sheet row (default: fit from sheet width)" |
-      | "`from` / `to`" | "Frame range to play (default: every frame)" |
-      | "`fps`" | "Playback rate (default `12`)" |
+      | "`source`"                       | "Path to the spritesheet (`@inline(0)`, relative to the build entry file)." |
+      | "`frame_width` / `frame_height`" | "Size of one frame in the sheet." |
+      | "`offset_x` / `offset_y`"        | "Pixel offset to the first frame (default `0`)." |
+      | "`stride_x` / `stride_y`"        | "Origin-to-origin step between frames (default = frame size)." |
+      | "`columns`"                      | "Frames per sheet row (default: fit from the sheet width)." |
+      | "`from` / `to`"                  | "Inclusive frame range to play (default: every frame)." |
+      | "`fps`"                          | "Playback rate (default `12`)." |
+      | "`scale`"                        | "Display scale (default `1.0`)." |
+      | "`x` / `y`"                      | "Position within the enclosing `diagram` / `container`." |
   }
 
   h2 "Playback"
@@ -41,7 +102,12 @@ WCL
 
   callout "Smooth or pixelated" {
     class = ["tip"]
-    body  = "image-rendering: pixelated is the default, so retro pixel art stays crisp. Set smooth = true on the dopesheet to opt into the browser's smoothing for non-pixel sources."
+    body  = "`image-rendering: pixelated` is the default, so retro pixel art stays crisp. Set `smooth = true` on the dopesheet to opt into the browser's smoothing for non-pixel sources."
+  }
+
+  callout "Asset credit" {
+    class = ["note"]
+    body  = "The sample sheet is truezipp's \"Pixel Coins Asset\", released under CC0 (public domain). Get it at [opengameart.org](https://opengameart.org/content/pixel-coins-asset)."
   }
 
   p "Next: [Terminals](wdoc_terminals)."

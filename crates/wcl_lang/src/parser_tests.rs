@@ -1602,6 +1602,63 @@ fn parse_let_rejects_decorators() {
 }
 
 #[test]
+fn parse_bare_record_literal() {
+    let s = parse(r#"x = { name: "hi", count: 3 }"#);
+    let Expr::Record { fields, .. } = &field(&s.items, "x").expr else {
+        panic!(
+            "expected record literal, got {:?}",
+            field(&s.items, "x").expr
+        );
+    };
+    assert_eq!(fields.len(), 2);
+    assert_eq!(fields[0].name, "name");
+    assert_eq!(fields[1].name, "count");
+}
+
+#[test]
+fn parse_block_expr_not_confused_with_record() {
+    // A `let`-led block must still parse as a block, not a record.
+    let s = parse("x = { let a = 1; a }");
+    assert!(matches!(field(&s.items, "x").expr, Expr::Block { .. }));
+}
+
+#[test]
+fn parse_block_tail_identifier_is_not_record() {
+    // `{ ident }` (no colon) is a block whose tail is an identifier.
+    let s = parse("x = { foo }");
+    assert!(matches!(field(&s.items, "x").expr, Expr::Block { .. }));
+}
+
+#[test]
+fn parse_empty_braces_still_error() {
+    let err = parse_err("x = {}");
+    assert_syntax_err(err, "final expression");
+}
+
+#[test]
+fn parse_explicit_variant_record_still_works() {
+    // The `Type::Variant { … }` form is unchanged by the bare-record path.
+    let s = parse(r#"x = S::Of { name: "hi" }"#);
+    assert!(matches!(field(&s.items, "x").expr, Expr::Variant { .. }));
+}
+
+#[test]
+fn bare_record_round_trips_through_formatter() {
+    let src = "x = { name: \"hi\", values: [1.0, 2.0] }\n";
+    let ast = parse(src);
+    let printed = crate::format::to_source(&ast);
+    assert!(
+        printed.contains("{ name: \"hi\", values: [1.0, 2.0] }"),
+        "printed:\n{printed}"
+    );
+    let reparsed = parse(&printed);
+    assert_eq!(
+        ast.items, reparsed.items,
+        "format round-trip changed the AST"
+    );
+}
+
+#[test]
 fn let_round_trips_through_formatter() {
     let src = "let base = 10\nlet scale = fn(n: i64) -> i64 n * base\ncfg c {\n  let title = \"hi\"\n  out = title\n}\n";
     let ast = parse(src);

@@ -269,6 +269,20 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
                     ),
                     literal_field.span(),
                 ));
+            } else if let crate::value::Value::Record { .. } = value {
+                // A bare record that `Field::value` couldn't coerce to a
+                // variant (e.g. via a `@schemaless` bypass) — flag it
+                // rather than silently accepting an un-inferred record.
+                errs.push(EvalError::schema_violation(
+                    Kind::VariantNoMatch,
+                    format!(
+                        "field '{}' declared as union '{}' but value is an \
+                         un-inferred record (no variant matches its shape)",
+                        literal_field.name(),
+                        expected_fqn.join("."),
+                    ),
+                    literal_field.span(),
+                ));
             }
             continue;
         }

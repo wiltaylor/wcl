@@ -3012,3 +3012,116 @@ fn non_record_value_passes_through_permissively() {
     )
     .expect("a scalar passes through (no runtime type tag to check)");
 }
+
+// --- Bare-record literals shape-inferred to union variants --------------
+
+const SHAPE_DOC: &str = r#"
+@document
+type Cfg { @child("chart") c: Chart }
+
+@block("chart")
+type Chart { series: list<S> }
+
+union S { Of { name: utf8  values: list<f64> } }
+"#;
+
+#[test]
+fn bare_record_field_infers_variant() {
+    let src =
+        format!("{SHAPE_DOC}\nchart {{ series = [ {{ name: \"x\", values: [1.0, 2.0] }} ] }}\n");
+    let doc = Document::open(&src, "test").expect("open");
+    let chart = doc.block("chart").expect("chart block");
+    let series = chart.field("series").expect("series field");
+    let value = series.value().expect("series value");
+    let Value::List(items) = value else {
+        panic!("expected a list, got {value:?}");
+    };
+    assert_eq!(items.len(), 1);
+    match &items[0] {
+        Value::Variant {
+            union,
+            variant,
+            payload: crate::value::VariantPayload::Record(map),
+        } => {
+            assert_eq!(union, &vec!["S".to_string()]);
+            assert_eq!(variant, "Of");
+            assert_eq!(map.get("name"), Some(&Value::Utf8("x".to_string())));
+        }
+        other => panic!("bare record was not inferred to a variant: {other:?}"),
+    }
+}
+
+#[test]
+fn explicit_variant_form_still_works() {
+    let src =
+        format!("{SHAPE_DOC}\nchart {{ series = [ S::Of {{ name: \"x\", values: [1.0] }} ] }}\n");
+    let doc = Document::open(&src, "test").expect("open");
+    let value = doc
+        .block("chart")
+        .unwrap()
+        .field("series")
+        .unwrap()
+        .value()
+        .expect("series value");
+    let Value::List(items) = value else {
+        panic!("expected a list, got {value:?}");
+    };
+    assert!(matches!(&items[0], Value::Variant { variant, .. } if variant == "Of"));
+}
+
+#[test]
+fn bare_record_no_matching_variant_is_rejected() {
+    // Field set that matches no variant shape surfaces VariantNoMatch.
+    let src = format!("{SHAPE_DOC}\nchart {{ series = [ {{ bogus: 1 }} ] }}\n");
+    let doc = Document::open(&src, "test").expect("open");
+    let err = doc
+        .block("chart")
+        .unwrap()
+        .field("series")
+        .unwrap()
+        .value()
+        .expect_err("a record matching no variant should fail");
+    assert!(
+        matches!(
+            err,
+            EvalError::SchemaViolation {
+                kind: crate::error::SchemaViolationKind::VariantNoMatch,
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+}
+
+#[test]
+fn fn_call_arg_bare_record_is_coerced() {
+    // A bare record passed to a `list<S>` parameter is coerced before
+    // the body pattern-matches it as a variant.
+    let src = format!(
+        "{SHAPE_DOC}\n\
+         let pick = fn(xs: list<S>) -> utf8 match at(xs, 0) {{ \
+           S::Of {{ name, .. }} => name, _ => \"none\" }}\n\
+         @schemaless picked = pick([ {{ name: \"yo\", values: [2.0] }} ])\n"
+    );
+    let doc = Document::open(&src, "test").expect("open");
+    let picked = doc
+        .field("picked")
+        .expect("picked field")
+        .value()
+        .expect("picked value");
+    assert_eq!(picked, &Value::Utf8("yo".to_string()));
+}
+
+#[test]
+fn untyped_bare_record_stays_a_record() {
+    // No declared union type → the value is an anonymous record.
+    let doc = open("x = { a: 1, b: \"hi\" }\n");
+    let x = doc.field("x").expect("x field").value().expect("x value");
+    match x {
+        Value::Record { fields, .. } => {
+            assert_eq!(fields.get("a"), Some(&Value::I64(1)));
+            assert_eq!(fields.get("b"), Some(&Value::Utf8("hi".to_string())));
+        }
+        other => panic!("expected an anonymous record, got {other:?}"),
+    }
+}

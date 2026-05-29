@@ -683,6 +683,26 @@ impl Printer {
                 args,
                 ..
             } => self.print_variant_expr(type_path, variant, args),
+            Expr::Record { fields, .. } => {
+                // Bare record literal — `field: value` pairs, mirroring
+                // the variant-constructor record body so reparse is
+                // stable. An empty field list prints `{}` (it can't be
+                // produced by the parser, but stays round-trippable).
+                if fields.is_empty() {
+                    self.push("{}");
+                } else {
+                    self.push("{ ");
+                    for (i, f) in fields.iter().enumerate() {
+                        if i > 0 {
+                            self.push(", ");
+                        }
+                        self.push(&f.name);
+                        self.push(": ");
+                        self.print_expr(&f.value, 0);
+                    }
+                    self.push(" }");
+                }
+            }
 
             Expr::Function(f) => self.print_function_literal(f),
         }

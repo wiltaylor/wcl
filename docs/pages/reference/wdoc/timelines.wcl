@@ -4,23 +4,88 @@ page wdoc_timelines { sites = [:reference]
 
   p "`timeline` is a **real-time axis** — dates are ISO strings (`\"2026-03-15\"` / `\"…14:30\"`) and tick boundaries land on real calendar dates (month 1sts, Mondays, …). A `unit` (`:minutes`..`:years`) sets granularity; omit it for auto-fit from the event span."
 
-  h2 "Authoring"
+  h2 "Horizontal"
+
+  diagram { width = 560  height = 220
+    timeline { width = 560.0  height = 220.0
+      title = "2026 roadmap"
+      start = "2026-01-01"
+      end   = "2026-12-31"
+      unit  = :months
+      items = [
+        { label: "Kickoff",  on: "2026-02-20" },
+        { label: "Beta",     on: "2026-05-10" },
+        { label: "Release",  on: "2026-09-20", side: :far },
+      ]
+      phases = [
+        { label: "Build",  from: "2026-02-01", to: "2026-06-15" },
+        { label: "Polish", from: "2026-06-15", to: "2026-11-01" },
+      ]
+    }
+  }
 
   code wcl {
     source = <<'WCL'
-timeline {
-  start = "2026-01-01"
-  end   = "2026-12-31"
-  unit  = :months
-  items: list<TimelineItem> = [
-    TimelineItem::On { label: "Kickoff",  on: "2026-02-01" },
-    TimelineItem::On { label: "Beta",     on: "2026-06-15" },
-    TimelineItem::On { label: "Release",  on: "2026-11-01" },
-  ]
-  phases: list<TimelinePhase> = [
-    TimelinePhase::Of { label: "Build",  from: "2026-02-01", to: "2026-06-15" },
-    TimelinePhase::Of { label: "Polish", from: "2026-06-15", to: "2026-11-01" },
-  ]
+diagram { width = 560  height = 220
+  timeline { width = 560.0  height = 220.0
+    title = "2026 roadmap"
+    start = "2026-01-01"
+    end   = "2026-12-31"
+    unit  = :months
+    items = [
+      { label: "Kickoff",  on: "2026-02-20" },
+      { label: "Beta",     on: "2026-05-10" },
+      { label: "Release",  on: "2026-09-20", side: :far },
+    ]
+    phases = [
+      { label: "Build",  from: "2026-02-01", to: "2026-06-15" },
+      { label: "Polish", from: "2026-06-15", to: "2026-11-01" },
+    ]
+  }
+}
+WCL
+  }
+
+  h2 "Vertical"
+
+  p "Set `direction = :vertical` to read top-to-bottom, with items alternating left and right of the axis. Omitting `start` / `end` auto-fits the scale to the event dates."
+
+  diagram { width = 300  height = 320
+    timeline { width = 300.0  height = 320.0
+      direction = :vertical
+      title     = "Release history"
+      unit      = :months
+      items = [
+        { label: "1.0 alpha", on: "2025-10-15" },
+        { label: "1.0",       on: "2026-01-10" },
+        { label: "2.0 beta",  on: "2026-05-01" },
+        { label: "2.0",       on: "2026-07-10" },
+      ]
+      phases = [
+        { label: "1.x", from: "2025-09-01", to: "2026-02-01" },
+        { label: "2.x", from: "2026-02-01", to: "2026-08-01" },
+      ]
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 300  height = 320
+  timeline { width = 300.0  height = 320.0
+    direction = :vertical
+    title     = "Release history"
+    unit      = :months
+    items = [
+      { label: "1.0 alpha", on: "2025-10-15" },
+      { label: "1.0",       on: "2026-01-10" },
+      { label: "2.0 beta",  on: "2026-05-01" },
+      { label: "2.0",       on: "2026-07-10" },
+    ]
+    phases = [
+      { label: "1.x", from: "2025-09-01", to: "2026-02-01" },
+      { label: "2.x", from: "2026-02-01", to: "2026-08-01" },
+    ]
+  }
 }
 WCL
   }
@@ -34,20 +99,99 @@ WCL
       | "`unit`"       | "`:minutes` / `:hours` / `:days` / `:weeks` / `:months` / `:years`" |
       | "`every`"      | "Override tick interval (default ~6–12 ticks)" |
       | "`direction`"  | "`:horizontal` (default) or `:vertical`" |
-      | "`items`"      | "List of `TimelineItem::On` (auto-alternates side) or `TimelineItem::OnSided` (forces `:near`/`:far`)" |
-      | "`phases`"     | "List of `TimelinePhase::Of { label from to }` for dated bands" |
+      | "`items`"      | "List of `{ label, on }` records (auto-alternates side); add `side: :near|:far` to pin one" |
+      | "`phases`"     | "List of `{ label, from, to }` records for dated bands" |
   }
 
-  h2 "Items vs phases"
+  h2 "Phases"
 
-  p "An **item** is a point event — a marker, a lead line, and a label, pinned to a single date. A **phase** is a span — a labelled band between `from` and `to`, drawn as a divider plus a heading. Phases cycle the `wdoc-series-N` palette so adjacent bands stand out."
+  p "A **phase** is a labelled span between a `from` and a `to` date — drawn as a perpendicular divider at each boundary with a heading naming the band. Phases group the point items into stages (discovery, build, launch, …); each one cycles the `wdoc-series-N` palette so adjacent bands stand out, and follows the site theme or a `class` override like everything else."
 
-  callout "Bad dates skip" {
-    class = ["info"]
-    body  = "A malformed or unparseable date skips that single element rather than failing the build. The rest of the timeline still renders."
+  diagram { width = 560  height = 200
+    timeline { width = 560.0  height = 200.0
+      title = "Project phases"
+      start = "2026-01-01"
+      end   = "2026-12-31"
+      unit  = :months
+      phases = [
+        { label: "Discovery", from: "2026-01-01", to: "2026-03-01" },
+        { label: "Design",    from: "2026-03-01", to: "2026-05-15" },
+        { label: "Build",     from: "2026-05-15", to: "2026-10-01" },
+        { label: "Launch",    from: "2026-10-01", to: "2026-12-31" },
+      ]
+      items = [
+        { label: "Sign-off", on: "2026-04-20" },
+        { label: "GA",       on: "2026-11-10" },
+      ]
+    }
   }
 
-  p "A timeline can also accept rich-text **cards** as event items, pinned to dates. See the next chapter."
+  code wcl {
+    source = <<'WCL'
+diagram { width = 560  height = 200
+  timeline { width = 560.0  height = 200.0
+    title = "Project phases"
+    start = "2026-01-01"
+    end   = "2026-12-31"
+    unit  = :months
+    phases = [
+      { label: "Discovery", from: "2026-01-01", to: "2026-03-01" },
+      { label: "Design",    from: "2026-03-01", to: "2026-05-15" },
+      { label: "Build",     from: "2026-05-15", to: "2026-10-01" },
+      { label: "Launch",    from: "2026-10-01", to: "2026-12-31" },
+    ]
+    items = [
+      { label: "Sign-off", on: "2026-04-20" },
+      { label: "GA",       on: "2026-11-10" },
+    ]
+  }
+}
+WCL
+  }
 
-  p "Next: [Cards](wdoc_cards)."
+  h2 "Event cards"
+
+  p "A timeline also accepts rich-text `card` children — each pinned to a date with `on` and filled with formatted wdoc content (text, lists, callouts, …). A card renders in place on the axis; `width` / `height` size the box and `side: :near|:far` forces which side of the axis it sits on."
+
+  diagram { width = 720  height = 320
+    timeline { width = 720.0  height = 320.0
+      title = "Release timeline"
+      unit  = :months
+      start = "2026-01-01"
+      end   = "2026-12-31"
+      card { on = "2026-02-01"  title = "1.0"  width = 210.0  height = 104.0
+        text { span "First " {} span "stable" { class = ["accent"] } span " release. APIs frozen." {} }
+      }
+      card { on = "2026-05-15"  side = :far  title = "1.4"  width = 210.0  height = 104.0
+        text { span "Plugin system + the " {} span "wdoc" { class = ["accent"] } span " generator." {} }
+      }
+      card { on = "2026-10-01"  title = "2.0"  width = 210.0  height = 104.0
+        text { span "Rewrite: lazy eval, schema check, LSP." {} }
+      }
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 720  height = 320
+  timeline { width = 720.0  height = 320.0
+    title = "Release timeline"
+    unit  = :months
+    start = "2026-01-01"
+    end   = "2026-12-31"
+    card { on = "2026-02-01"  title = "1.0"  width = 210.0  height = 104.0
+      text { span "First " {} span "stable" { class = ["accent"] } span " release. APIs frozen." {} }
+    }
+    card { on = "2026-05-15"  side = :far  title = "1.4"  width = 210.0  height = 104.0
+      text { span "Plugin system + the " {} span "wdoc" { class = ["accent"] } span " generator." {} }
+    }
+    card { on = "2026-10-01"  title = "2.0"  width = 210.0  height = 104.0
+      text { span "Rewrite: lazy eval, schema check, LSP." {} }
+    }
+  }
+}
+WCL
+  }
+
+  p "Next: [Tilemaps](wdoc_tilemaps)."
 }

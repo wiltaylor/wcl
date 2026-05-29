@@ -2,19 +2,19 @@
 page wdoc_charts { sites = [:reference]
   h1 "Charts"
 
-  p "wdoc ships three chart kinds — `bar_chart`, `line_chart`, and `pie_chart` — that lower to SVG via pure-WCL geometry. Each is an `SvgBlock`, so place it inside a `diagram` sharing its size. Data is supplied as variant-tagged series."
+  p "wdoc ships three chart kinds — `bar_chart`, `line_chart`, and `pie_chart` — that lower to SVG via pure-WCL geometry. Each is an `SvgBlock`, so place it inside a `diagram` sharing its size. Data is supplied as a list of records; the variant is inferred from each record's shape, so a bare `{ … }` is all you need."
 
   h2 "Bar chart"
 
-  p "Both take a `series: list<ChartSeries>` of `ChartSeries::Of { name, values }`. Multiple series produce grouped bars or multi-line plots; `categories` labels the x-axis."
+  p "Both take a `series: list<ChartSeries>` — each series is a `{ name, values }` record. Multiple series produce grouped bars or multi-line plots; `categories` labels the x-axis. (You can still write the explicit `ChartSeries::Of { … }` form to disambiguate.)"
 
   diagram { width = 360  height = 200
     bar_chart { width = 360.0  height = 200.0
       title = "Revenue"  x_label = "Quarter"  y_label = "$k"
       categories = ["Q1", "Q2", "Q3", "Q4"]
       series = [
-        ChartSeries::Of { name: "2025", values: [42.0, 55.0, 61.0, 78.0] },
-        ChartSeries::Of { name: "2026", values: [30.0, 48.0, 52.0, 66.0] },
+        { name: "2025", values: [42.0, 55.0, 61.0, 78.0] },
+        { name: "2026", values: [30.0, 48.0, 52.0, 66.0] },
       ]
     }
   }
@@ -26,8 +26,8 @@ diagram { width = 360  height = 200
     title = "Revenue"  x_label = "Quarter"  y_label = "$k"
     categories = ["Q1", "Q2", "Q3", "Q4"]
     series = [
-      ChartSeries::Of { name: "2025", values: [42.0, 55.0, 61.0, 78.0] },
-      ChartSeries::Of { name: "2026", values: [30.0, 48.0, 52.0, 66.0] },
+      { name: "2025", values: [42.0, 55.0, 61.0, 78.0] },
+      { name: "2026", values: [30.0, 48.0, 52.0, 66.0] },
     ]
   }
 }
@@ -39,7 +39,7 @@ WCL
   table {
     rows:
       | "Field" | "Meaning" |
-      | "`series`"            | "`list<ChartSeries>` — each `ChartSeries::Of { name: utf8, values: list<f64> }`." |
+      | "`series`"            | "`list<ChartSeries>` — each a `{ name: utf8, values: list<f64> }` record." |
       | "`categories`"        | "x-axis labels (`list<utf8>`); one per value." |
       | "`title`"             | "Chart title." |
       | "`x_label` / `y_label`" | "Axis labels." |
@@ -52,15 +52,15 @@ WCL
 
   h2 "Line chart annotations"
 
-  p "On a `line_chart`, set `point_labels = true` to print every data point's value above its marker. For author-named callouts, pass `points: list<ChartPoint>` of `ChartPoint::At { label, category, value }` — `category` is the 0-based x slot and `value` is the y in data units."
+  p "On a `line_chart`, set `point_labels = true` to print every data point's value above its marker. For author-named callouts, pass `points: list<ChartPoint>` — each a `{ label, category, value }` record where `category` is the 0-based x slot and `value` is the y in data units."
 
   diagram { width = 360  height = 200
     line_chart { width = 360.0  height = 200.0
       title = "Latency (ms)"  x_label = "Day"
       categories = ["Mon", "Tue", "Wed", "Thu", "Fri"]
       point_labels = true
-      series = [ ChartSeries::Of { name: "p50", values: [12.0, 14.0, 11.0, 18.0, 13.0] } ]
-      points = [ ChartPoint::At { label: "spike", category: 3, value: 18.0 } ]
+      series = [ { name: "p50", values: [12.0, 14.0, 11.0, 18.0, 13.0] } ]
+      points = [ { label: "spike", category: 3, value: 18.0 } ]
     }
   }
 
@@ -71,8 +71,8 @@ diagram { width = 360  height = 200
     title = "Latency (ms)"  x_label = "Day"
     categories = ["Mon", "Tue", "Wed", "Thu", "Fri"]
     point_labels = true
-    series = [ ChartSeries::Of { name: "p50", values: [12.0, 14.0, 11.0, 18.0, 13.0] } ]
-    points = [ ChartPoint::At { label: "spike", category: 3, value: 18.0 } ]
+    series = [ { name: "p50", values: [12.0, 14.0, 11.0, 18.0, 13.0] } ]
+    points = [ { label: "spike", category: 3, value: 18.0 } ]
   }
 }
 WCL
@@ -80,15 +80,15 @@ WCL
 
   h2 "Pie chart"
 
-  p "A `pie_chart` takes `slices: list<ChartSlice>` of `ChartSlice::Of { label, value }`. Slices are drawn as polygon-approximated arcs."
+  p "A `pie_chart` takes `slices: list<ChartSlice>` — each a `{ label, value }` record. Slices are drawn as polygon-approximated arcs."
 
   diagram { width = 240  height = 240
     pie_chart { width = 240.0  height = 240.0
       title = "Market share"
       slices = [
-        ChartSlice::Of { label: "Alpha", value: 42.0 },
-        ChartSlice::Of { label: "Beta",  value: 31.0 },
-        ChartSlice::Of { label: "Other", value: 27.0 },
+        { label: "Alpha", value: 42.0 },
+        { label: "Beta",  value: 31.0 },
+        { label: "Other", value: 27.0 },
       ]
     }
   }
@@ -99,9 +99,9 @@ diagram { width = 240  height = 240
   pie_chart { width = 240.0  height = 240.0
     title = "Market share"
     slices = [
-      ChartSlice::Of { label: "Alpha", value: 42.0 },
-      ChartSlice::Of { label: "Beta",  value: 31.0 },
-      ChartSlice::Of { label: "Other", value: 27.0 },
+      { label: "Alpha", value: 42.0 },
+      { label: "Beta",  value: 31.0 },
+      { label: "Other", value: 27.0 },
     ]
   }
 }
@@ -111,7 +111,7 @@ WCL
   table {
     rows:
       | "Field" | "Meaning" |
-      | "`slices`"           | "`list<ChartSlice>` — each `ChartSlice::Of { label: utf8, value: f64 }`." |
+      | "`slices`"           | "`list<ChartSlice>` — each a `{ label: utf8, value: f64 }` record." |
       | "`title`"            | "Chart title." |
       | "`width` / `height`" | "Chart size — match the enclosing `diagram`." |
       | "`id` / `class`"     | "Id + style classes." |
