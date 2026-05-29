@@ -6,7 +6,21 @@ page wdoc_flowcharts { sites = [:reference]
 
   h2 "Flowchart shapes"
 
-  p "These stdlib shapes lower to SVG primitives. Each takes its label inline plus the usual position / size + paint fields (`x` / `y` / `width` / `height`, `fill` / `stroke`, `id` / `class`). Inside a `:layered` diagram, omit `x`/`y` — the layout decides them."
+  p "These stdlib shapes lower to SVG primitives. They differ only in the shape drawn — all three take the same fields:"
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`<inline>`"          | "The shape's label (centred plain text)." |
+      | "`x` / `y`"           | "Top-left placement. Omit under `layout = :layered` — the layout decides." |
+      | "`width` / `height`"  | "Box size." |
+      | "`fill`"              | "Fill colour (defaults to black if unset)." |
+      | "`stroke`"            | "Outline colour." |
+      | "`id`"                | "Name used to connect the shape (`a -> b`)." |
+      | "`class`"             | "Style classes — SVG paint via the `class` system." |
+      | "`connect_points`"    | "Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to." |
+      | "`icon` / `icon_size` / `icon_pos` / `icon_class`" | "Optional icon badge." |
+  }
 
   h3 "process"
 
@@ -84,11 +98,6 @@ diagram {
   valid -> render :flow
 }
 WCL
-  }
-
-  callout "Other layouts" {
-    class = ["info"]
-    body  = "`layout = :force` runs a force-directed simulation for cyclic graphs; tune with `repulsion`, `link_distance`, `gravity`, `seed`. See the examples site for a live demo."
   }
 
   p "Next: [Charts](wdoc_charts)."
