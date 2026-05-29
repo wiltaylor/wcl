@@ -233,7 +233,71 @@ diagram {
 WCL
   }
 
-  p "An `image` is also a placeable diagram shape — see [Images](wdoc_images)."
+  h2 "Other placeable shapes"
+
+  p "Two higher-level blocks also `extend SvgBlock`, so they drop into any `diagram`, `container`, or `timeline` like a primitive. Each has its own page for full detail."
+
+  h3 "image"
+
+  diagram { width = 200  height = 90
+    image "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiM1ZTgxYWMiLz48Y2lyY2xlIGN4PSI1MCIgY3k9IjMwIiByPSIxOCIgZmlsbD0iI2ViY2I4YiIvPjwvc3ZnPg==" { x = 50.0  y = 15.0  width = 100.0  height = 60.0 }
+  }
+
+  p "A raster image placed as an SVG `<image>`. The source (the inline label) is a doc-relative path — copied into `_wdoc/` — or a URL / `data:` URI passed through unchanged. (The preview above uses an inline `data:` URI so it renders here.)"
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`<inline>`"          | "The `source`: a doc-relative path, a URL, or a `data:` URI." |
+      | "`x` / `y`"           | "Top-left placement in the diagram." |
+      | "`width` / `height`"  | "Display size; natural size if omitted." |
+      | "`scale`"             | "Uniform scale factor applied to the size." |
+      | "`alt`"               | "Alt text (used when the image is a page `<img>`)." |
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 200  height = 90
+  image "logo.png" { x = 50.0  y = 15.0  width = 100.0  height = 60.0 }
+}
+WCL
+  }
+
+  p "See [Images](wdoc_images) for the page-level `<img>` form and asset handling."
+
+  h3 "card"
+
+  diagram { width = 260  height = 110
+    card { x = 20.0  y = 15.0  width = 220.0  height = 80.0
+      title = "Note"
+      p "Rich **text** inside a diagram."
+    }
+  }
+
+  p "A box whose `body` is arbitrary wdoc content (paragraphs, callouts, lists, even nested diagrams), wrapped in an SVG `<foreignObject>` so it scales with the diagram. Timelines accept cards too, pinned to a date with `on`."
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`x` / `y`"          | "Top-left placement (or use anchors)." |
+      | "`width` / `height`" | "Card box size (defaults 160×90)." |
+      | "`title`"            | "Optional plain-text heading." |
+      | "`body`"             | "`@children(WdocBlock)` — the rich content." |
+      | "`on` / `side`"      | "Date + side, used only when the card is a `timeline` child." |
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 260  height = 110
+  card { x = 20.0  y = 15.0  width = 220.0  height = 80.0
+    title = "Note"
+    p "Rich **text** inside a diagram."
+  }
+}
+WCL
+  }
+
+  p "See [Cards](wdoc_cards) for timeline cards and richer bodies."
 
   h2 "Connections"
 
@@ -284,11 +348,6 @@ diagram {
 }
 WCL
   }
-
-  callout "Player asset" {
-    class = ["info"]
-    body  = "The bundled diagram-pan-zoom.js is auto-included only on pages that use pan_zoom = true, mirroring the terminal-player and dopesheet-player asset pattern."
-  }
-
+  
   p "Next: [Flowcharts](wdoc_flowcharts)."
 }
