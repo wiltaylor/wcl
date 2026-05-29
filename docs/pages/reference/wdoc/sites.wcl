@@ -9,7 +9,7 @@ page wdoc_sites { sites = [:reference]
   table {
     rows:
       | "Field"             | "Meaning" |
-      | "`default_template`" | "`:webpage` (header + top nav) or `:book` (sidebar + TOC)" |
+      | "`default_template`" | "`:webpage` (header + top nav), `:book` (sidebar + TOC), or `:presentation` (slide deck)" |
       | "`title`"           | "Site title shown in the header / sidebar" |
       | "`root`"            | "When `true`, this site renders at `/` (others go under `/<site>/`)" |
       | "`theme`"           | "Symbol naming a colour `theme` block (`:nord` …) — see [Styling](wdoc_styling)" |
@@ -17,6 +17,7 @@ page wdoc_sites { sites = [:reference]
       | "`theme_toggle`"    | "When `true`, adds a light/dark toggle button" |
       | "`menu { … }`"      | "Top navbar entries for the `webpage` template" |
       | "`toc { … }`"       | "Chapter tree for the `book` template" |
+      | "`deck { … }`"      | "Slide grid for the `presentation` template" |
   }
 
   h2 "webpage template"
@@ -64,6 +65,53 @@ site docs {
 WCL
   }
   p "Chapters nest to any depth. A `chapter` with no `page =` is a grouping heading. A `chapter` pointing at an unknown page is a build error."
+
+  h2 "presentation template"
+
+  p "A reveal.js-style slide deck: the whole site renders into a single `index.html`, navigated with the keyboard. The `deck` block lays out the 2-D grid — each `section` is a column, its `slide`s are rows — and each `slide` names a page that belongs to this site."
+  code wcl {
+    source = <<'WCL'
+site talk {
+  default_template = :presentation
+  title            = "My talk"
+  theme            = :catppuccin
+  deck {
+    section "Intro" {
+      slide title
+      slide agenda
+    }
+    section "Main" {
+      slide topic
+    }
+  }
+}
+WCL
+  }
+
+  callout "Keyboard navigation" {
+    class = ["info"]
+    body  = "**← →** move between sections, **↑ ↓** between the slides within a section, **Space / PageDown** step forward (revealing fragments, then advancing), **s** toggles speaker notes, **f** fullscreen. A progress bar, slide counter, and nav-hint arrows update as you go."
+  }
+
+  p "Each `slide` must sit on its own line (like `li` / `chapter`). A `slide` pointing at an unknown page is a build error. Two in-slide blocks are deck-specific:"
+
+  table {
+    rows:
+      | "Block"           | "Renders" |
+      | "`fragment { … }`" | "A step-reveal group — its content stays hidden until the presenter advances with Space" |
+      | "`notes { … }`"    | "Speaker notes — hidden in the deck, shown in the overlay toggled with `s`" |
+  }
+
+  code wcl {
+    source = <<'WCL'
+page topic {
+  h2 "Key points"
+  fragment { p "Revealed on the first Space" }
+  fragment { p "…then this one" }
+  notes { p "Reminder: mention the benchmark numbers." }
+}
+WCL
+  }
 
   p "Next: [Pages](wdoc_pages)."
 }
