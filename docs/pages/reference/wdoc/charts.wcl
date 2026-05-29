@@ -4,7 +4,7 @@ page wdoc_charts { sites = [:reference]
 
   p "wdoc ships three chart kinds — `bar_chart`, `line_chart`, and `pie_chart` — that lower to SVG via pure-WCL geometry. Each is an `SvgBlock`, so place it inside a `diagram` sharing its size. Data is supplied as variant-tagged series."
 
-  h2 "Bar & line charts"
+  h2 "Bar chart"
 
   p "Both take a `series: list<ChartSeries>` of `ChartSeries::Of { name, values }`. Multiple series produce grouped bars or multi-line plots; `categories` labels the x-axis."
 
