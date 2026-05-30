@@ -184,7 +184,14 @@ pub fn pdf(
     let geom = Geometry::new(page_size);
     let mut book = text::FontBook::new();
     let palette = palette::Palette::default();
-    let embedder = svg_embed::SvgEmbedder::new(&palette);
+    // The document's own `class` rules, so custom-coloured diagram shapes pick
+    // up their fills inside embedded SVG (usvg applies them via `style_sheet`).
+    let class_css: String = doc
+        .blocks()
+        .filter(|b| b.kind() == "class")
+        .filter_map(|b| crate::render::render_class(&b))
+        .collect();
+    let embedder = svg_embed::SvgEmbedder::new(&palette, &class_css);
     let laid = layout::layout(&sections, &mut book, &embedder, &geom);
 
     let title = site_filter

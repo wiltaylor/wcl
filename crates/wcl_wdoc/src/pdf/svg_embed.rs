@@ -23,7 +23,10 @@ pub(crate) struct SvgEmbedder {
 }
 
 impl SvgEmbedder {
-    pub(crate) fn new(palette: &Palette) -> Self {
+    /// `user_css` is the document's own `class` rules (concatenated), so
+    /// custom-coloured diagram shapes pick up their fills. `currentColor` in
+    /// both the palette defaults and the user CSS resolves to the foreground.
+    pub(crate) fn new(palette: &Palette, user_css: &str) -> Self {
         let mut db = fontdb::Database::new();
         for bytes in FONT_FACES {
             db.load_font_data(bytes.to_vec());
@@ -31,10 +34,14 @@ impl SvgEmbedder {
         db.set_serif_family(SERIF_NAME);
         db.set_sans_serif_family(SANS_NAME);
         db.set_monospace_family(MONO_NAME);
+        let fg = palette.fg_hex();
+        let mut sheet = palette.svg_style_sheet();
+        sheet.push_str(user_css);
+        let sheet = sheet.replace("currentColor", &fg);
         Self {
             fontdb: Arc::new(db),
-            fg: palette.fg_hex(),
-            style_sheet: Some(palette.svg_style_sheet()),
+            fg,
+            style_sheet: Some(sheet),
         }
     }
 
