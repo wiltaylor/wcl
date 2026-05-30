@@ -12,11 +12,12 @@
 //! rejoin with the SVG/table work.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use wcl_lang::{Block, Document, Value, VariantPayload};
 
 use crate::inline::InlinePatterns;
-use crate::render::{kind_for_variant, lower_to_values, map_utf8, map_utf8_list};
+use crate::render::{kind_for_variant, lower_to_values, map_utf8, map_utf8_list, render_diagram};
 
 use super::ir::{BlockNode, InlineRun, TextStyle};
 
@@ -25,10 +26,11 @@ pub(crate) fn collect_page(
     doc: &Document,
     page: &Block<'_>,
     patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
 ) -> Vec<BlockNode> {
     let mut out = Vec::new();
     for child in page.blocks() {
-        collect_block(doc, &child, patterns, &mut out);
+        collect_block(doc, &child, patterns, base_dir, &mut out);
     }
     out
 }
@@ -37,9 +39,18 @@ fn collect_block(
     doc: &Document,
     block: &Block<'_>,
     patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
     out: &mut Vec<BlockNode>,
 ) {
     let kind = block.kind();
+    // Diagrams (and charts/tilemaps within them) already render to a complete
+    // SVG in Rust — embed that string directly.
+    if kind == "diagram" {
+        out.push(BlockNode::Svg {
+            svg: render_diagram(doc, block, patterns, base_dir),
+        });
+        return;
+    }
     let Some(values) = lower_to_values(doc, block, kind) else {
         return;
     };
@@ -114,6 +125,11 @@ fn walk_block_variant(
                 out.push(BlockNode::Paragraph { runs });
             }
         }
+        // A block equation lowers to an `HtmlFundamental::Math` carrying a
+        // self-contained `<svg>` (RaTeX) — embed it.
+        "math" => out.push(BlockNode::Svg {
+            svg: crate::math::render_math_fundamental(map),
+        }),
         _ => {}
     }
 }

@@ -110,6 +110,28 @@ fn external_links_become_annotations() {
 }
 
 #[test]
+fn embeds_diagrams_and_block_math_as_vectors() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("vis.wcl");
+    write_fixture(
+        &src,
+        "page v {\n  diagram d {\n    rect a { x = 0 y = 0 width = 80 height = 40 }\n    circle b { cx = 160 cy = 20 r = 20 }\n  }\n  math \"E = mc^2\" {}\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    pdf_ok(&src, out.path(), PageSize::A4);
+
+    let bytes = std::fs::read(out.path().join("vis.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    // krilla-svg writes vector paths into a form XObject; the diagram + the
+    // RaTeX equation both produce drawing content well beyond a text-only page.
+    assert!(
+        bytes.len() > 4000,
+        "expected substantial vector content, got {} bytes",
+        bytes.len()
+    );
+}
+
+#[test]
 fn errors_when_no_pages() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("empty.wcl");

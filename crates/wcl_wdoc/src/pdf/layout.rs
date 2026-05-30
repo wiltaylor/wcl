@@ -7,8 +7,11 @@
 //! absolute page coordinates plus the rectangles of any external hyperlinks,
 //! ready for the paint pass.
 
+use usvg::Tree;
+
 use super::Geometry;
 use super::ir::BlockNode;
+use super::svg_embed::SvgEmbedder;
 use super::text::{FontBook, ShapedGlyph};
 
 const BODY_SIZE: f32 = 11.0;
@@ -44,12 +47,24 @@ pub(crate) struct LinkBox {
     pub href: String,
 }
 
+/// An embedded SVG placed in absolute page coordinates, sized to `(w, h)`.
+pub(crate) struct PlacedSvg {
+    pub tree: Tree,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
 /// One physical page's painted content.
 #[derive(Default)]
 pub(crate) struct LaidOutPage {
     pub glyphs: Vec<PlacedGlyph>,
     pub links: Vec<LinkBox>,
+    pub svgs: Vec<PlacedSvg>,
 }
+
+const SPACE_AROUND_SVG: f32 = 8.0;
 
 fn heading_size(level: u8) -> f32 {
     match level {
@@ -66,6 +81,7 @@ fn heading_size(level: u8) -> f32 {
 pub(crate) fn layout(
     sections: &[Vec<BlockNode>],
     book: &mut FontBook,
+    embedder: &SvgEmbedder,
     geom: &Geometry,
 ) -> Vec<LaidOutPage> {
     let content_w = geom.content_width();
@@ -85,6 +101,21 @@ pub(crate) fn layout(
         }
 
         for block in section {
+            if let BlockNode::Svg { svg } = block {
+                place_svg(
+                    svg,
+                    embedder,
+                    &mut pages,
+                    &mut cy,
+                    &mut at_page_top,
+                    left,
+                    top,
+                    content_w,
+                    content_h,
+                );
+                continue;
+            }
+
             let (runs, size, line_height, space_before, space_after) = match block {
                 BlockNode::Heading { level, runs } => (
                     runs,
@@ -100,6 +131,7 @@ pub(crate) fn layout(
                     0.0,
                     SPACE_AFTER_PARAGRAPH,
                 ),
+                BlockNode::Svg { .. } => unreachable!("handled above"),
             };
 
             if !at_page_top {
@@ -126,6 +158,52 @@ pub(crate) fn layout(
     }
 
     pages
+}
+
+/// Embed, scale-to-fit, paginate, and centre one SVG block.
+#[allow(clippy::too_many_arguments)]
+fn place_svg(
+    svg: &str,
+    embedder: &SvgEmbedder,
+    pages: &mut Vec<LaidOutPage>,
+    cy: &mut f32,
+    at_page_top: &mut bool,
+    left: f32,
+    top: f32,
+    content_w: f32,
+    content_h: f32,
+) {
+    let Some((tree, (tw, th))) = embedder.embed(svg) else {
+        return;
+    };
+    if tw <= 0.0 || th <= 0.0 {
+        return;
+    }
+    // Fit the content width (never upscale), then a full page if still too tall.
+    let mut scale = (content_w / tw).min(1.0);
+    if th * scale > content_h {
+        scale = content_h / th;
+    }
+    let dw = tw * scale;
+    let dh = th * scale;
+
+    if !*at_page_top {
+        *cy += SPACE_AROUND_SVG;
+    }
+    if *cy + dh > content_h && !*at_page_top {
+        pages.push(LaidOutPage::default());
+        *cy = 0.0;
+    }
+    let page = pages.last_mut().expect("at least one page");
+    page.svgs.push(PlacedSvg {
+        tree,
+        x: left + (content_w - dw) / 2.0,
+        y: top + *cy,
+        w: dw,
+        h: dh,
+    });
+    *cy += dh + SPACE_AROUND_SVG;
+    *at_page_top = false;
 }
 
 /// Place one line's glyphs, colour links, and accumulate link rectangles by

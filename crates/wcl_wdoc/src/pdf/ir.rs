@@ -64,4 +64,7 @@ pub(crate) enum BlockNode {
     Heading { level: u8, runs: Vec<InlineRun> },
     /// A body paragraph.
     Paragraph { runs: Vec<InlineRun> },
+    /// Embedded SVG content (a diagram, chart, timeline, or block equation),
+    /// carried as the renderer's SVG string for the embed pass to parse.
+    Svg { svg: String },
 }

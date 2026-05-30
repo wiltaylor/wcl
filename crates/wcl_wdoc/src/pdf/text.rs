@@ -36,9 +36,23 @@ const SANS_ITALIC: &[u8] = include_bytes!("../../assets/fonts/NotoSans-Italic.tt
 const SANS_BOLD_ITALIC: &[u8] = include_bytes!("../../assets/fonts/NotoSans-BoldItalic.ttf");
 const MONO_REGULAR: &[u8] = include_bytes!("../../assets/fonts/NotoSansMono-Regular.ttf");
 
-const SERIF_NAME: &str = "Noto Serif";
-const SANS_NAME: &str = "Noto Sans";
-const MONO_NAME: &str = "Noto Sans Mono";
+pub(crate) const SERIF_NAME: &str = "Noto Serif";
+pub(crate) const SANS_NAME: &str = "Noto Sans";
+pub(crate) const MONO_NAME: &str = "Noto Sans Mono";
+
+/// All bundled faces, shared with [`super::svg_embed`] so embedded SVG `<text>`
+/// (diagram/timeline labels) shapes with the same fonts as native prose.
+pub(crate) const FONT_FACES: [&[u8]; 9] = [
+    SERIF_REGULAR,
+    SERIF_BOLD,
+    SERIF_ITALIC,
+    SERIF_BOLD_ITALIC,
+    SANS_REGULAR,
+    SANS_BOLD,
+    SANS_ITALIC,
+    SANS_BOLD_ITALIC,
+    MONO_REGULAR,
+];
 
 /// A single positioned glyph, resolved to a krilla font.
 pub(crate) struct ShapedGlyph {

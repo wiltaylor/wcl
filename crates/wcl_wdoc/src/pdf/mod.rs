@@ -15,6 +15,8 @@ pub(crate) mod ir;
 mod layout;
 mod page;
 mod paint;
+mod palette;
+mod svg_embed;
 mod text;
 
 use std::collections::{BTreeMap, HashSet};
@@ -176,12 +178,14 @@ pub fn pdf(
     // Each page block starts on a fresh physical page; content paginates within.
     let sections: Vec<Vec<ir::BlockNode>> = pages
         .iter()
-        .map(|p| collect::collect_page(&doc, p, &patterns))
+        .map(|p| collect::collect_page(&doc, p, &patterns, base_dir.as_deref()))
         .collect();
 
     let geom = Geometry::new(page_size);
     let mut book = text::FontBook::new();
-    let laid = layout::layout(&sections, &mut book, &geom);
+    let palette = palette::Palette::default();
+    let embedder = svg_embed::SvgEmbedder::new(&palette);
+    let laid = layout::layout(&sections, &mut book, &embedder, &geom);
 
     let title = site_filter
         .map(str::to_string)

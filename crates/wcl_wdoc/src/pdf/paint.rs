@@ -10,11 +10,12 @@ use krilla::action::{Action, LinkAction};
 use krilla::annotation::{Annotation, LinkAnnotation, Target};
 use krilla::color::rgb;
 use krilla::error::KrillaResult;
-use krilla::geom::{Point, Rect};
+use krilla::geom::{Point, Rect, Size, Transform};
 use krilla::page::PageSettings;
 use krilla::paint::Fill;
 use krilla::surface::Surface;
 use krilla::text::{Font, GlyphId, KrillaGlyph};
+use krilla_svg::{SurfaceExt, SvgSettings};
 
 use super::Geometry;
 use super::ir::{FontFamily, TextStyle};
@@ -53,6 +54,15 @@ pub(crate) fn paint(
         let mut surface = kpage.surface();
 
         page::draw_chrome(&mut surface, geom, &header, &footer_line);
+
+        // Embedded SVG (diagrams / charts / equations) underneath the text.
+        for placed in &page_content.svgs {
+            if let Some(size) = Size::from_wh(placed.w, placed.h) {
+                surface.push_transform(&Transform::from_translate(placed.x, placed.y));
+                surface.draw_svg(&placed.tree, size, SvgSettings::default());
+                surface.pop();
+            }
+        }
 
         for g in &page_content.glyphs {
             draw_glyph(
