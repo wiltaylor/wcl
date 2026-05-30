@@ -2,13 +2,15 @@
 //!
 //! Reuses the existing fundamentals lowering to build a small, paint-agnostic
 //! [`ir`] block model, lays it out and paginates it ([`layout`]), and paints it
-//! to a PDF with [`krilla`] ([`paint`]) — no browser, no external tools. SVG
-//! content (diagrams, charts, math) is embedded vector-preserving via
-//! krilla-svg in a later phase.
+//! to a PDF with [`krilla`](::krilla) ([`paint`]) — no browser, no external
+//! tools. Diagrams, charts, equations and icons are embedded vector-preserving
+//! via krilla-svg ([`svg_embed`]).
 //!
-//! At this phase the backend renders prose (headings + paragraphs) across A4 /
-//! US-Letter pages with a running header and footer page numbers, writing one
-//! PDF per document.
+//! Renders prose, headings, styled inline text, links, lists, tables, code
+//! blocks, callouts and SVG content across A4 / US-Letter pages with a running
+//! header and footer page numbers. Output is one PDF per `site` (a `book`
+//! site's pages flow in TOC order); a document with no `site` renders to a
+//! single PDF named from the source file.
 
 mod collect;
 pub(crate) mod ir;
@@ -110,10 +112,8 @@ impl PdfError {
     }
 }
 
-/// Render `file` to a PDF in `out_dir`. Returns the number of PDFs written.
-///
-/// `site_filter`, when set, names the output file (full per-site assembly lands
-/// in a later phase); otherwise the source file stem is used.
+/// Render `file` to one PDF per `site` in `out_dir`. Returns the number of
+/// PDFs written. `site_filter` restricts rendering to a single named site.
 pub fn pdf(
     file: &Path,
     out_dir: &Path,
@@ -146,16 +146,32 @@ pub fn pdf(
         return Err(PdfError::Schema(n));
     }
 
-    let pages: Vec<Block> = doc.blocks().filter(|b| b.kind() == "page").collect();
-    if pages.is_empty() {
+    let site_blocks: Vec<Block> = doc.blocks().filter(|b| b.kind() == "site").collect();
+    let all_pages: Vec<Block> = doc.blocks().filter(|b| b.kind() == "page").collect();
+    if all_pages.is_empty() {
         return Err(PdfError::BadDoc("no `page` blocks to render".into()));
     }
+    let specs = crate::build::collect_site_specs(&site_blocks, &all_pages)
+        .map_err(|_| PdfError::BadDoc("could not group pages into sites".into()))?;
 
-    // Build the inline-pattern engine so bold/italic/code/links resolve as on
-    // the HTML path. A single combined document (no per-site split yet) means
-    // empty cross-site maps; bare `[text](page)` links resolve against the
-    // document's own page names.
-    let page_names: HashSet<String> = pages.iter().filter_map(page_label).collect();
+    // Which sites to render: a `--site` filter, else every declared site.
+    let build_set: Vec<&crate::build::SiteSpec> = match site_filter {
+        Some(want) => {
+            let chosen: Vec<_> = specs
+                .iter()
+                .filter(|s| s.name.as_deref() == Some(want))
+                .collect();
+            if chosen.is_empty() {
+                return Err(PdfError::BadDoc(format!("unknown site \"{want}\"")));
+            }
+            chosen
+        }
+        None => specs.iter().collect(),
+    };
+
+    // The inline-pattern engine (shared across sites — internal page links
+    // aren't annotated yet, so per-site cross-link context isn't needed).
+    let page_names: HashSet<String> = all_pages.iter().filter_map(page_label).collect();
     let icons = IconRegistry::load(&doc);
     let tilesets = match TilesetRegistry::load(&doc, base_dir.as_deref()) {
         Ok(t) => t,
@@ -175,12 +191,6 @@ pub fn pdf(
         images,
     );
 
-    // Each page block starts on a fresh physical page; content paginates within.
-    let sections: Vec<Vec<ir::BlockNode>> = pages
-        .iter()
-        .map(|p| collect::collect_page(&doc, p, &patterns, base_dir.as_deref()))
-        .collect();
-
     let geom = Geometry::new(page_size);
     let mut book = text::FontBook::new();
     let palette = palette::Palette::default();
@@ -192,25 +202,95 @@ pub fn pdf(
         .filter_map(|b| crate::render::render_class(&b))
         .collect();
     let embedder = svg_embed::SvgEmbedder::new(&palette, &class_css);
-    let laid = layout::layout(&sections, &mut book, &embedder, &geom);
-
-    let title = site_filter
-        .map(str::to_string)
-        .or_else(|| file.file_stem().map(|s| s.to_string_lossy().into_owned()))
-        .unwrap_or_else(|| "document".to_string());
-
-    let bytes = paint::paint(&laid, &mut book, &geom, &title)
-        .map_err(|e| PdfError::Render(format!("{e:?}")))?;
 
     fs::create_dir_all(out_dir)
         .map_err(|e| PdfError::Io(e, format!("create_dir_all {}", out_dir.display())))?;
-    let stem = site_filter
-        .map(str::to_string)
-        .or_else(|| file.file_stem().map(|s| s.to_string_lossy().into_owned()))
-        .unwrap_or_else(|| "document".to_string());
-    let out = out_dir.join(format!("{stem}.pdf"));
-    fs::write(&out, bytes).map_err(|e| PdfError::Io(e, format!("write {}", out.display())))?;
-    Ok(1)
+    let stem = file.file_stem().map_or_else(
+        || "document".to_string(),
+        |s| s.to_string_lossy().into_owned(),
+    );
+
+    let mut written = 0;
+    for spec in build_set {
+        // One physical page per page block, ordered by the site TOC (start page
+        // first, then TOC chapters, then any remaining pages in source order).
+        let ordered = order_site_pages(spec);
+        let sections: Vec<Vec<ir::BlockNode>> = ordered
+            .iter()
+            .map(|p| collect::collect_page(&doc, p, &patterns, base_dir.as_deref()))
+            .collect();
+
+        let title = spec
+            .block
+            .as_ref()
+            .and_then(|b| crate::render::field_utf8(b, "title"))
+            .or_else(|| spec.name.clone())
+            .unwrap_or_else(|| stem.clone());
+
+        let laid = layout::layout(&sections, &mut book, &embedder, &geom);
+        let bytes = paint::paint(&laid, &mut book, &geom, &title)
+            .map_err(|e| PdfError::Render(format!("{e:?}")))?;
+
+        // `<site>.pdf` per named site; `<stem>.pdf` for an unnamed/default site.
+        let file_stem = spec.name.clone().unwrap_or_else(|| stem.clone());
+        let out = out_dir.join(format!("{file_stem}.pdf"));
+        fs::write(&out, bytes).map_err(|e| PdfError::Io(e, format!("write {}", out.display())))?;
+        written += 1;
+    }
+    Ok(written)
+}
+
+/// Order a site's pages for a continuous PDF: the `start` page first, then
+/// pages named by the site's `toc` (depth-first), then any remaining pages in
+/// source order.
+fn order_site_pages<'a>(spec: &'a crate::build::SiteSpec<'a>) -> Vec<&'a Block<'a>> {
+    let mut ordered: Vec<&Block> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    let push = |p: &'a Block<'a>, seen: &mut HashSet<String>, ordered: &mut Vec<&'a Block<'a>>| {
+        if let Some(n) = page_label(p) {
+            if seen.insert(n) {
+                ordered.push(p);
+            }
+        } else {
+            ordered.push(p);
+        }
+    };
+
+    if let Some(start) = spec
+        .pages
+        .iter()
+        .find(|p| crate::render::field_bool(p, "start") == Some(true))
+    {
+        push(start, &mut seen, &mut ordered);
+    }
+    if let Some(site) = &spec.block {
+        let mut toc_names = Vec::new();
+        flatten_toc(&crate::render::read_toc(site), &mut toc_names);
+        for name in toc_names {
+            if !seen.contains(&name)
+                && let Some(p) = spec
+                    .pages
+                    .iter()
+                    .find(|p| page_label(p).as_deref() == Some(&name))
+            {
+                push(p, &mut seen, &mut ordered);
+            }
+        }
+    }
+    for p in &spec.pages {
+        push(p, &mut seen, &mut ordered);
+    }
+    ordered
+}
+
+/// Flatten a TOC tree into page names, depth-first in source order.
+fn flatten_toc(nodes: &[crate::render::TocNode], out: &mut Vec<String>) {
+    for node in nodes {
+        if let Some(page) = &node.page {
+            out.push(page.clone());
+        }
+        flatten_toc(&node.children, out);
+    }
 }
 
 /// A page block's label (its name), if any.

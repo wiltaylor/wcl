@@ -185,6 +185,36 @@ fn inline_math_embeds_as_svg() {
 }
 
 #[test]
+fn one_pdf_per_site_in_toc_order() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("multi.wcl");
+    write_fixture(
+        &src,
+        "site docs {\n  title = \"The Manual\"\n  toc {\n    chapter \"Start\" { page = intro }\n    chapter \"Next\" { page = usage }\n  }\n}\nsite blog {}\npage intro { sites = [:docs]\n  h1 \"Intro\"\n}\npage usage { sites = [:docs]\n  h1 \"Usage\"\n}\npage post { sites = [:blog]\n  h1 \"Post\"\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 2);
+    assert!(out.path().join("docs.pdf").exists(), "docs site pdf");
+    assert!(out.path().join("blog.pdf").exists(), "blog site pdf");
+
+    // The docs book carries its title as the running header.
+    let bytes = std::fs::read(out.path().join("docs.pdf")).expect("read pdf");
+    assert!(
+        String::from_utf8_lossy(&bytes).contains("/Count 2"),
+        "two pages"
+    );
+
+    // `--site` renders just one.
+    let one = TempDir::new().expect("mkdir out");
+    match pdf(&src, one.path(), Some("blog"), PageSize::A4) {
+        Ok(n) => assert_eq!(n, 1),
+        Err(_) => panic!("pdf --site blog failed"),
+    }
+    assert!(one.path().join("blog.pdf").exists());
+    assert!(!one.path().join("docs.pdf").exists());
+}
+
+#[test]
 fn errors_when_no_pages() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("empty.wcl");

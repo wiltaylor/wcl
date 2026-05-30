@@ -279,16 +279,16 @@ fn root_site_name(specs: &[SiteSpec<'_>]) -> Result<Option<String>, BuildError> 
 /// for an unnamed single site or the synthetic default), the config
 /// block (`None` for the synthetic default), and its member pages in
 /// source order.
-struct SiteSpec<'a> {
-    name: Option<String>,
-    block: Option<Block<'a>>,
-    pages: Vec<Block<'a>>,
+pub(crate) struct SiteSpec<'a> {
+    pub(crate) name: Option<String>,
+    pub(crate) block: Option<Block<'a>>,
+    pub(crate) pages: Vec<Block<'a>>,
 }
 
 /// Group the document's pages under the declared `site` blocks. With no
 /// `site` block, returns a single synthetic default site owning every
 /// page (reproducing the pre-multi-site bare flat build).
-fn collect_site_specs<'a>(
+pub(crate) fn collect_site_specs<'a>(
     site_blocks: &[Block<'a>],
     all_pages: &[Block<'a>],
 ) -> Result<Vec<SiteSpec<'a>>, BuildError> {
