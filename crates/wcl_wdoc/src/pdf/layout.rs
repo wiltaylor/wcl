@@ -102,19 +102,21 @@ fn heading_size(level: u8) -> f32 {
     }
 }
 
-/// Lay out every section into paginated pages.
+/// Lay out every section into paginated pages. Returns the pages and, for each
+/// section, the index of the physical page it starts on (for internal links).
 pub(crate) fn layout(
     sections: &[Vec<BlockNode>],
     book: &mut FontBook,
     embedder: &SvgEmbedder,
     geom: &Geometry,
-) -> Vec<LaidOutPage> {
+) -> (Vec<LaidOutPage>, Vec<usize>) {
     let content_w = geom.content_width();
     let content_h = geom.content_height();
     let left = geom.content_left();
     let top = geom.content_top();
 
     let mut pages: Vec<LaidOutPage> = vec![LaidOutPage::default()];
+    let mut section_starts: Vec<usize> = Vec::with_capacity(sections.len());
     let mut cy = 0.0_f32;
     let mut at_page_top = true;
 
@@ -124,6 +126,7 @@ pub(crate) fn layout(
             cy = 0.0;
             at_page_top = true;
         }
+        section_starts.push(pages.len() - 1);
 
         for block in section {
             if let BlockNode::Svg { svg } = block {
@@ -286,7 +289,7 @@ pub(crate) fn layout(
         }
     }
 
-    pages
+    (pages, section_starts)
 }
 
 /// Embed, scale-to-fit, paginate, and centre one SVG block.
@@ -890,11 +893,8 @@ fn flush_link(
     let Some(href) = hrefs.get(idx) else {
         return;
     };
-    // Only external links get an annotation now; internal page links need PDF
-    // destinations, which arrive with book assembly.
-    if !is_clickable(href) {
-        return;
-    }
+    // Keep every link box; the paint pass turns external hrefs into URI actions
+    // and internal `<page>.html` hrefs into destinations (dropping the rest).
     out.push(LinkBox {
         x: min_x,
         y: baseline - size * 0.82,
@@ -902,8 +902,4 @@ fn flush_link(
         h: size * 1.05,
         href: href.clone(),
     });
-}
-
-fn is_clickable(href: &str) -> bool {
-    href.contains("://") || href.starts_with("mailto:") || href.starts_with("tel:")
 }

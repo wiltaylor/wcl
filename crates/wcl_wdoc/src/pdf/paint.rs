@@ -5,10 +5,13 @@
 //! drawn one cluster at a time — simple and correct (selectable, extractable
 //! text); run-coalescing for smaller output is a later optimisation.
 
+use std::collections::HashMap;
+
 use krilla::Document;
 use krilla::action::{Action, LinkAction};
 use krilla::annotation::{Annotation, LinkAnnotation, Target};
 use krilla::color::rgb;
+use krilla::destination::XyzDestination;
 use krilla::error::KrillaResult;
 use krilla::geom::{PathBuilder, Point, Rect, Size, Transform};
 use krilla::page::PageSettings;
@@ -39,6 +42,7 @@ pub(crate) fn paint(
     geom: &Geometry,
     title: &str,
     title_page: bool,
+    dests: &HashMap<String, usize>,
 ) -> KrillaResult<Vec<u8>> {
     let total = pages.len();
     let mut doc = Document::new();
@@ -109,8 +113,10 @@ pub(crate) fn paint(
 
         // Link annotations live on the page, added once the surface is done.
         for link in &page_content.links {
-            if let Some(rect) = Rect::from_xywh(link.x, link.y, link.w, link.h) {
-                let target = Target::Action(Action::Link(LinkAction::new(link.href.clone())));
+            let Some(rect) = Rect::from_xywh(link.x, link.y, link.w, link.h) else {
+                continue;
+            };
+            if let Some(target) = link_target(&link.href, dests) {
                 kpage.add_annotation(Annotation::from(LinkAnnotation::new(rect, target)));
             }
         }
@@ -119,6 +125,23 @@ pub(crate) fn paint(
     }
 
     doc.finish()
+}
+
+/// Resolve a link href to a krilla [`Target`]: external URLs become URI
+/// actions; internal `<page>.html` hrefs become destinations to that page (when
+/// it is in this document); anything else is left unlinked.
+fn link_target(href: &str, dests: &HashMap<String, usize>) -> Option<Target> {
+    if href.contains("://") || href.starts_with("mailto:") || href.starts_with("tel:") {
+        return Some(Target::Action(Action::Link(LinkAction::new(
+            href.to_string(),
+        ))));
+    }
+    let path = href.split('#').next().unwrap_or(href);
+    let name = path.strip_suffix(".html")?;
+    let &page_index = dests.get(name)?;
+    Some(Target::Destination(
+        XyzDestination::new(page_index, Point::from_xy(0.0, 0.0)).into(),
+    ))
 }
 
 /// Draw a single glyph at an absolute baseline position.

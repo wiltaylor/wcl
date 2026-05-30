@@ -21,7 +21,7 @@ mod palette;
 mod svg_embed;
 mod text;
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
@@ -236,9 +236,27 @@ pub fn pdf(
             .or_else(|| spec.name.clone())
             .unwrap_or_else(|| stem.clone());
 
-        let laid = layout::layout(&sections, &mut book, &embedder, &geom);
-        let bytes = paint::paint(&laid, &mut book, &geom, &title, explicit_title.is_some())
-            .map_err(|e| PdfError::Render(format!("{e:?}")))?;
+        let (laid, section_starts) = layout::layout(&sections, &mut book, &embedder, &geom);
+
+        // Map each page name to its physical page index (shifted past the cover
+        // page when present) so internal `[text](page)` links become PDF jumps.
+        let offset = usize::from(explicit_title.is_some());
+        let mut dests: HashMap<String, usize> = HashMap::new();
+        for (i, page) in ordered.iter().enumerate() {
+            if let (Some(name), Some(&start)) = (page_label(page), section_starts.get(i)) {
+                dests.insert(name, start + offset);
+            }
+        }
+
+        let bytes = paint::paint(
+            &laid,
+            &mut book,
+            &geom,
+            &title,
+            explicit_title.is_some(),
+            &dests,
+        )
+        .map_err(|e| PdfError::Render(format!("{e:?}")))?;
 
         // `<site>.pdf` per named site; `<stem>.pdf` for an unnamed/default site.
         let file_stem = spec.name.clone().unwrap_or_else(|| stem.clone());

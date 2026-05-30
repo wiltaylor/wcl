@@ -237,6 +237,24 @@ fn embeds_a_raster_image() {
 }
 
 #[test]
+fn internal_links_become_destinations() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("xref.wcl");
+    write_fixture(
+        &src,
+        "page intro {\n  p \"Jump to [the next page](usage).\"\n}\npage usage {\n  h1 \"Usage\"\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    pdf_ok(&src, out.path(), PageSize::A4);
+    let bytes = std::fs::read(out.path().join("xref.pdf")).expect("read pdf");
+    // The internal `[text](usage)` link becomes a GoTo destination annotation.
+    assert!(
+        String::from_utf8_lossy(&bytes).contains("/Dest"),
+        "internal link destination present"
+    );
+}
+
+#[test]
 fn errors_when_no_pages() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("empty.wcl");
