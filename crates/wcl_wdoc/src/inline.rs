@@ -325,20 +325,19 @@ impl InlinePatterns {
                 self.runs_inner(doc, &text, depth + 1, st, &mut runs);
                 out.push(InlineRun::Link { runs, href });
             }
-            // Icons / inline math need SVG — emit a readable text fallback for
-            // now; the SVG phase replaces these with real glyphs.
+            // Icons / inline math become inline SVG objects (overlaid in the
+            // text flow by the PDF layout pass). An unresolved icon falls back
+            // to its literal `:name:` text.
             "Icon" => {
                 let name = map_utf8(map, "name").unwrap_or_default();
-                push_run(out, &format!(":{name}:"), style);
+                match self.icons.standalone(&name) {
+                    Some(svg) => out.push(InlineRun::Object { svg }),
+                    None => push_run(out, &format!(":{name}:"), style),
+                }
             }
-            "Math" => {
-                let latex = map_utf8(map, "latex").unwrap_or_default();
-                let mono = TextStyle {
-                    family: FontFamily::Mono,
-                    ..style
-                };
-                push_run(out, &latex, mono);
-            }
+            "Math" => out.push(InlineRun::Object {
+                svg: crate::math::render_inline_math(map),
+            }),
             _ => {}
         }
     }

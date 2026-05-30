@@ -291,6 +291,8 @@ fn bold_run(run: InlineRun) -> InlineRun {
             runs: runs.into_iter().map(bold_run).collect(),
             href,
         },
+        // An inline object (icon/equation) has no text style to bold.
+        InlineRun::Object { svg } => InlineRun::Object { svg },
     }
 }
 

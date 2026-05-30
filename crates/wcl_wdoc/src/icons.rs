@@ -145,6 +145,17 @@ impl IconRegistry {
         Some(inline_markup(&pack, icon, &style))
     }
 
+    /// A complete standalone `<svg>` for an inline icon — the raw pack glyph
+    /// (which paints with `currentColor`) rather than a `<use>` into the shared
+    /// sprite. The PDF backend needs this because the sprite isn't available
+    /// when embedding SVG. Returns `None` when no declared iconset provides the
+    /// name.
+    pub(crate) fn standalone(&self, raw: &str) -> Option<String> {
+        let (set_hint, icon) = split_set(raw);
+        let (_set, pack) = self.find(set_hint, icon)?;
+        pack_lookup(&pack, icon).map(str::to_string)
+    }
+
     /// Resolve an `HtmlFundamental::Icon` (e.g. a `callout`'s built-in
     /// default or an explicit override). Unlike `resolve_inline`, this
     /// also falls back to a `pack.name` token against a compiled-in pack

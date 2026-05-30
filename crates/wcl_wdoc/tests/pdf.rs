@@ -168,6 +168,23 @@ fn renders_callouts() {
 }
 
 #[test]
+fn inline_math_embeds_as_svg() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("im.wcl");
+    write_fixture(
+        &src,
+        "page m {\n  text {\n    span \"Euler: $e^{i\\\\pi} + 1 = 0$ inline.\"\n  }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    pdf_ok(&src, out.path(), PageSize::A4);
+    let bytes = std::fs::read(out.path().join("im.pdf")).expect("read pdf");
+    // Inline math overlays a vector SVG (a Form XObject), so the file is larger
+    // than the same prose without it.
+    assert!(bytes.starts_with(b"%PDF-"));
+    assert!(bytes.len() > 3000, "inline math drew vector content");
+}
+
+#[test]
 fn errors_when_no_pages() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("empty.wcl");

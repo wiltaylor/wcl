@@ -64,6 +64,9 @@ pub(crate) enum InlineRun {
     Text { text: String, style: TextStyle },
     /// A hyperlink wrapping styled child runs.
     Link { runs: Vec<InlineRun>, href: String },
+    /// An inline SVG object (icon or equation) carried as a standalone SVG
+    /// string, embedded and overlaid in the text flow by the layout pass.
+    Object { svg: String },
 }
 
 /// A syntax-highlighted token within a code line.

@@ -20,8 +20,14 @@ use cosmic_text::{
     Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Style, Weight, Wrap, fontdb,
 };
 use krilla::text::Font;
+use usvg::Tree;
 
 use super::ir::{FontFamily, InlineRun, TextStyle};
+use super::svg_embed::SvgEmbedder;
+
+/// Metadata offset distinguishing an inline-object index from a link index in
+/// cosmic-text's per-glyph `metadata` slot (links use `1..OBJECT_META_BASE`).
+const OBJECT_META_BASE: usize = 1 << 24;
 
 // The bundled body/heading/mono faces (OFL, see assets/fonts/OFL-Noto.txt).
 // Both cosmic-text (via `fontdb::Source::Binary`) and krilla (via `Font::new`)
@@ -64,8 +70,19 @@ pub(crate) struct ShapedGlyph {
     pub dy: f32,
     /// Index into [`ShapedParagraph::hrefs`] when this glyph is part of a link.
     pub link: Option<usize>,
+    /// Index into [`ShapedParagraph::objects`] when this glyph is an inline-SVG
+    /// placeholder.
+    pub obj: Option<usize>,
     /// The text covered by this glyph's cluster, for the PDF `ToUnicode` map.
     pub cluster: String,
+}
+
+/// An inline SVG object (icon / equation) to overlay at a placeholder glyph.
+#[derive(Clone)]
+pub(crate) struct InlineObject {
+    pub tree: Tree,
+    pub w: f32,
+    pub h: f32,
 }
 
 /// One visual (line-broken) line of shaped glyphs.
@@ -84,6 +101,8 @@ pub(crate) struct ShapedParagraph {
     pub lines: Vec<ShapedLine>,
     /// Resolved hrefs, indexed by [`ShapedGlyph::link`].
     pub hrefs: Vec<String>,
+    /// Inline SVG objects, indexed by [`ShapedGlyph::obj`].
+    pub objects: Vec<InlineObject>,
 }
 
 /// Owns the shaper and the krilla font cache.
@@ -116,24 +135,27 @@ impl FontBook {
     }
 
     /// Shape `runs` into a paragraph wrapped to `width`, at `size` points with
-    /// the given line-height multiple.
+    /// the given line-height multiple. Inline-SVG objects are embedded via
+    /// `embedder` and reserved as placeholder space in the flow.
     pub(crate) fn shape_paragraph(
         &mut self,
         runs: &[InlineRun],
         width: f32,
         size: f32,
         line_height: f32,
+        embedder: &SvgEmbedder,
     ) -> ShapedParagraph {
-        self.shape(runs, Some(width), true, size, line_height)
+        self.shape(runs, Some(width), true, size, line_height, Some(embedder))
     }
 
-    /// Shape a single short string with no wrapping (header / footer chrome).
+    /// Shape a single short string with no wrapping (header / footer chrome,
+    /// list markers, code spans) — no inline objects.
     pub(crate) fn shape_label(&mut self, text: &str, style: TextStyle, size: f32) -> ShapedLine {
         let runs = [InlineRun::Text {
             text: text.to_string(),
             style,
         }];
-        let mut p = self.shape(&runs, None, false, size, 1.2);
+        let mut p = self.shape(&runs, None, false, size, 1.2, None);
         p.lines.pop().unwrap_or(ShapedLine {
             ascent: size,
             height: size * 1.2,
@@ -149,8 +171,9 @@ impl FontBook {
         wrap: bool,
         size: f32,
         line_height: f32,
+        embedder: Option<&SvgEmbedder>,
     ) -> ShapedParagraph {
-        let (leaves, hrefs) = flatten(runs);
+        let (leaves, hrefs, objects) = flatten(runs, embedder, size);
 
         let metrics = Metrics::relative(size, line_height);
         let mut buffer = Buffer::new(&mut self.fs, metrics);
@@ -162,8 +185,13 @@ impl FontBook {
             .iter()
             .map(|leaf| {
                 let mut attrs = attrs_for(leaf.style);
-                // metadata 0 means "no link"; link indices are stored +1.
-                attrs.metadata = leaf.link.map_or(0, |i| i + 1);
+                // metadata 0 = none; objects use OBJECT_META_BASE+idx; links
+                // use idx+1 (below OBJECT_META_BASE).
+                attrs.metadata = match (leaf.obj, leaf.link) {
+                    (Some(o), _) => OBJECT_META_BASE + o,
+                    (None, Some(l)) => l + 1,
+                    (None, None) => 0,
+                };
                 (leaf.text.as_str(), attrs)
             })
             .collect();
@@ -176,13 +204,17 @@ impl FontBook {
             let glyphs = run
                 .glyphs
                 .iter()
-                .map(|g| RawGlyph {
-                    font_id: g.font_id,
-                    glyph_id: g.glyph_id,
-                    x: g.x + g.x_offset,
-                    dy: g.y_offset,
-                    link: g.metadata.checked_sub(1),
-                    cluster: run.text.get(g.start..g.end).unwrap_or("").to_string(),
+                .map(|g| {
+                    let (link, obj) = decode_meta(g.metadata);
+                    RawGlyph {
+                        font_id: g.font_id,
+                        glyph_id: g.glyph_id,
+                        x: g.x + g.x_offset,
+                        dy: g.y_offset,
+                        link,
+                        obj,
+                        cluster: run.text.get(g.start..g.end).unwrap_or("").to_string(),
+                    }
                 })
                 .collect();
             raw_lines.push(RawLine {
@@ -210,13 +242,18 @@ impl FontBook {
                             x: rg.x,
                             dy: rg.dy,
                             link: rg.link,
+                            obj: rg.obj,
                             cluster: rg.cluster,
                         })
                     })
                     .collect(),
             })
             .collect();
-        ShapedParagraph { lines, hrefs }
+        ShapedParagraph {
+            lines,
+            hrefs,
+            objects,
+        }
     }
 
     /// Build (and cache) the krilla `Font` for a fontdb face from its bytes.
@@ -255,41 +292,98 @@ fn attrs_for(style: TextStyle) -> Attrs<'static> {
 }
 
 /// A flattened inline leaf: contiguous text in one style, optionally inside a
-/// link.
+/// link, or a placeholder reserving space for an inline object.
 struct Leaf {
     text: String,
     style: TextStyle,
     link: Option<usize>,
+    obj: Option<usize>,
 }
 
-/// Flatten the [`InlineRun`] tree into a list of styled leaves plus the link
-/// href table they reference.
-fn flatten(runs: &[InlineRun]) -> (Vec<Leaf>, Vec<String>) {
-    let mut leaves = Vec::new();
-    let mut hrefs = Vec::new();
-    flatten_into(runs, None, &mut leaves, &mut hrefs);
-    (leaves, hrefs)
+/// Decode a cosmic-text glyph `metadata` slot into (link, object) indices.
+fn decode_meta(meta: usize) -> (Option<usize>, Option<usize>) {
+    if meta >= OBJECT_META_BASE {
+        (None, Some(meta - OBJECT_META_BASE))
+    } else if meta > 0 {
+        (Some(meta - 1), None)
+    } else {
+        (None, None)
+    }
 }
 
-fn flatten_into(
+/// Flatten the [`InlineRun`] tree into styled leaves, the link href table, and
+/// the embedded inline objects. Each object becomes a run of placeholder
+/// spaces sized to its embedded width (rounded to the space advance), tagged so
+/// the layout pass can overlay the SVG.
+fn flatten(
     runs: &[InlineRun],
-    cur_link: Option<usize>,
-    leaves: &mut Vec<Leaf>,
-    hrefs: &mut Vec<String>,
-) {
-    for run in runs {
-        match run {
-            InlineRun::Text { text, style } => leaves.push(Leaf {
-                text: text.clone(),
-                style: *style,
-                link: cur_link,
-            }),
-            InlineRun::Link { runs: inner, href } => {
-                let idx = hrefs.len();
-                hrefs.push(href.clone());
-                flatten_into(inner, Some(idx), leaves, hrefs);
+    embedder: Option<&SvgEmbedder>,
+    size: f32,
+) -> (Vec<Leaf>, Vec<String>, Vec<InlineObject>) {
+    let mut ctx = FlattenCtx {
+        leaves: Vec::new(),
+        hrefs: Vec::new(),
+        objects: Vec::new(),
+        embedder,
+        size,
+    };
+    ctx.run(runs, None);
+    (ctx.leaves, ctx.hrefs, ctx.objects)
+}
+
+struct FlattenCtx<'a> {
+    leaves: Vec<Leaf>,
+    hrefs: Vec<String>,
+    objects: Vec<InlineObject>,
+    embedder: Option<&'a SvgEmbedder>,
+    size: f32,
+}
+
+impl FlattenCtx<'_> {
+    fn run(&mut self, runs: &[InlineRun], cur_link: Option<usize>) {
+        for run in runs {
+            match run {
+                InlineRun::Text { text, style } => self.leaves.push(Leaf {
+                    text: text.clone(),
+                    style: *style,
+                    link: cur_link,
+                    obj: None,
+                }),
+                InlineRun::Link { runs: inner, href } => {
+                    let idx = self.hrefs.len();
+                    self.hrefs.push(href.clone());
+                    self.run(inner, Some(idx));
+                }
+                InlineRun::Object { svg } => self.object(svg, cur_link),
             }
         }
+    }
+
+    fn object(&mut self, svg: &str, cur_link: Option<usize>) {
+        let Some(embedder) = self.embedder else {
+            return;
+        };
+        let Some((tree, (tw, th))) = embedder.embed(svg) else {
+            return;
+        };
+        if tw <= 0.0 || th <= 0.0 {
+            return;
+        }
+        // Size the object to one em tall, preserving aspect ratio.
+        let h = self.size;
+        let w = tw * (h / th);
+        let idx = self.objects.len();
+        self.objects.push(InlineObject { tree, w, h });
+        // Reserve roughly `w` of horizontal space with placeholder spaces (a
+        // space advance is ~0.25em); a leading hair-space pads the icon.
+        let space_w = (self.size * 0.25).max(1.0);
+        let n = ((w / space_w).round() as usize).max(1) + 1;
+        self.leaves.push(Leaf {
+            text: " ".repeat(n),
+            style: TextStyle::body(),
+            link: cur_link,
+            obj: Some(idx),
+        });
     }
 }
 
@@ -299,6 +393,7 @@ struct RawGlyph {
     x: f32,
     dy: f32,
     link: Option<usize>,
+    obj: Option<usize>,
     cluster: String,
 }
 

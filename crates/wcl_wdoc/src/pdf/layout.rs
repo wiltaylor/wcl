@@ -12,7 +12,7 @@ use usvg::Tree;
 use super::Geometry;
 use super::ir::{BlockNode, Cell, CodeSpan, ListLine, Row, TextStyle};
 use super::svg_embed::SvgEmbedder;
-use super::text::{FontBook, ShapedGlyph};
+use super::text::{FontBook, InlineObject, ShapedGlyph};
 
 const BODY_SIZE: f32 = 11.0;
 const BODY_LINE_HEIGHT: f32 = 1.45;
@@ -148,6 +148,7 @@ pub(crate) fn layout(
                 place_list(
                     lines,
                     book,
+                    embedder,
                     &mut pages,
                     &mut cy,
                     &mut at_page_top,
@@ -163,6 +164,7 @@ pub(crate) fn layout(
                     header,
                     rows,
                     book,
+                    embedder,
                     &mut pages,
                     &mut cy,
                     &mut at_page_top,
@@ -184,6 +186,7 @@ pub(crate) fn layout(
                     heading,
                     body,
                     book,
+                    embedder,
                     &mut pages,
                     &mut cy,
                     &mut at_page_top,
@@ -223,7 +226,8 @@ pub(crate) fn layout(
                 cy += space_before;
             }
 
-            let shaped = book.shape_paragraph(runs, content_w, size, line_height);
+            let shaped = book.shape_paragraph(runs, content_w, size, line_height, embedder);
+            let mut placed = vec![false; shaped.objects.len()];
             for line in &shaped.lines {
                 // Break before a line that would overflow — unless the page is
                 // empty (a single oversized line overflows rather than loops).
@@ -233,7 +237,16 @@ pub(crate) fn layout(
                 }
                 let baseline = top + cy + line.ascent;
                 let page = pages.last_mut().expect("at least one page");
-                place_line(page, &line.glyphs, &shaped.hrefs, left, baseline, size);
+                place_line(
+                    page,
+                    &line.glyphs,
+                    &shaped.hrefs,
+                    &shaped.objects,
+                    &mut placed,
+                    left,
+                    baseline,
+                    size,
+                );
                 cy += line.height;
                 at_page_top = false;
             }
@@ -385,6 +398,7 @@ fn draw_code_line(
 fn place_list(
     lines: &[ListLine],
     book: &mut FontBook,
+    embedder: &SvgEmbedder,
     pages: &mut Vec<LaidOutPage>,
     cy: &mut f32,
     at_page_top: &mut bool,
@@ -409,7 +423,9 @@ fn place_list(
         let gap = (marker.width + 5.0).max(MARKER_GAP);
         let text_x = left + indent + gap;
         let text_w = (content_w - indent - gap).max(40.0);
-        let shaped = book.shape_paragraph(&line.runs, text_w, BODY_SIZE, BODY_LINE_HEIGHT);
+        let shaped =
+            book.shape_paragraph(&line.runs, text_w, BODY_SIZE, BODY_LINE_HEIGHT, embedder);
+        let mut placed = vec![false; shaped.objects.len()];
 
         for (li, wl) in shaped.lines.iter().enumerate() {
             if *cy + wl.height > content_h && !*at_page_top {
@@ -431,7 +447,16 @@ fn place_list(
                     });
                 }
             }
-            place_line(page, &wl.glyphs, &shaped.hrefs, text_x, baseline, BODY_SIZE);
+            place_line(
+                page,
+                &wl.glyphs,
+                &shaped.hrefs,
+                &shaped.objects,
+                &mut placed,
+                text_x,
+                baseline,
+                BODY_SIZE,
+            );
             *cy += wl.height;
             *at_page_top = false;
         }
@@ -449,6 +474,7 @@ fn place_callout(
     heading: &[crate::pdf::ir::InlineRun],
     body: &[crate::pdf::ir::InlineRun],
     book: &mut FontBook,
+    embedder: &SvgEmbedder,
     pages: &mut Vec<LaidOutPage>,
     cy: &mut f32,
     at_page_top: &mut bool,
@@ -467,8 +493,9 @@ fn place_callout(
     }
     let inner_x = left + BORDER_W + PAD;
     let inner_w = (content_w - BORDER_W - 2.0 * PAD).max(40.0);
-    let head = book.shape_paragraph(heading, inner_w, BODY_SIZE, BODY_LINE_HEIGHT);
-    let bod = book.shape_paragraph(body, inner_w, BODY_SIZE, BODY_LINE_HEIGHT);
+    let head = book.shape_paragraph(heading, inner_w, BODY_SIZE, BODY_LINE_HEIGHT, embedder);
+    let bod = book.shape_paragraph(body, inner_w, BODY_SIZE, BODY_LINE_HEIGHT, embedder);
+    let mut placed = vec![false; bod.objects.len()];
     let head_h: f32 = head.lines.iter().map(|l| l.height).sum();
     let bod_h: f32 = bod.lines.iter().map(|l| l.height).sum();
     let gap = if head_h > 0.0 && bod_h > 0.0 {
@@ -518,7 +545,16 @@ fn place_callout(
     yy += gap;
     for wl in &bod.lines {
         let baseline = box_top + yy + wl.ascent;
-        place_line(page, &wl.glyphs, &bod.hrefs, inner_x, baseline, BODY_SIZE);
+        place_line(
+            page,
+            &wl.glyphs,
+            &bod.hrefs,
+            &bod.objects,
+            &mut placed,
+            inner_x,
+            baseline,
+            BODY_SIZE,
+        );
         yy += wl.height;
     }
 
@@ -540,6 +576,7 @@ fn place_table(
     header: &[Cell],
     rows: &[Row],
     book: &mut FontBook,
+    embedder: &SvgEmbedder,
     pages: &mut Vec<LaidOutPage>,
     cy: &mut f32,
     at_page_top: &mut bool,
@@ -564,6 +601,7 @@ fn place_table(
             cols,
             col_w,
             book,
+            embedder,
             pages,
             cy,
             at_page_top,
@@ -580,6 +618,7 @@ fn place_table(
             cols,
             col_w,
             book,
+            embedder,
             pages,
             cy,
             at_page_top,
@@ -599,6 +638,7 @@ fn draw_table_row(
     cols: usize,
     col_w: f32,
     book: &mut FontBook,
+    embedder: &SvgEmbedder,
     pages: &mut Vec<LaidOutPage>,
     cy: &mut f32,
     at_page_top: &mut bool,
@@ -612,8 +652,13 @@ fn draw_table_row(
     let mut tallest = 0.0_f32;
     for c in 0..cols {
         let runs = cells.get(c).unwrap_or(&empty);
-        let para =
-            book.shape_paragraph(runs, col_w - 2.0 * TABLE_PAD, TABLE_SIZE, TABLE_LINE_HEIGHT);
+        let para = book.shape_paragraph(
+            runs,
+            col_w - 2.0 * TABLE_PAD,
+            TABLE_SIZE,
+            TABLE_LINE_HEIGHT,
+            embedder,
+        );
         let h: f32 = para.lines.iter().map(|l| l.height).sum();
         tallest = tallest.max(h);
         paras.push(para);
@@ -638,9 +683,19 @@ fn draw_table_row(
     for (c, para) in paras.iter().enumerate() {
         let cx = left + c as f32 * col_w + TABLE_PAD;
         let mut yy = TABLE_PAD;
+        let mut placed = vec![false; para.objects.len()];
         for wl in &para.lines {
             let baseline = row_top + yy + wl.ascent;
-            place_line(page, &wl.glyphs, &para.hrefs, cx, baseline, TABLE_SIZE);
+            place_line(
+                page,
+                &wl.glyphs,
+                &para.hrefs,
+                &para.objects,
+                &mut placed,
+                cx,
+                baseline,
+                TABLE_SIZE,
+            );
             yy += wl.height;
         }
     }
@@ -655,12 +710,16 @@ fn draw_table_row(
     *at_page_top = false;
 }
 
-/// Place one line's glyphs, colour links, and accumulate link rectangles by
-/// grouping runs of glyphs that share a link index.
+/// Place one line's glyphs, colour links, overlay inline objects, and
+/// accumulate link rectangles by grouping runs of glyphs that share a link
+/// index. `placed` (one bool per object) dedupes objects across wrapped lines.
+#[allow(clippy::too_many_arguments)]
 fn place_line(
     page: &mut LaidOutPage,
     glyphs: &[ShapedGlyph],
     hrefs: &[String],
+    objects: &[InlineObject],
+    placed: &mut [bool],
     left: f32,
     baseline: f32,
     size: f32,
@@ -671,6 +730,23 @@ fn place_line(
 
     for g in glyphs {
         let gx = left + g.x;
+        // An inline object: overlay its SVG once (at the first placeholder
+        // glyph), and skip drawing the placeholder space.
+        if let Some(oi) = g.obj {
+            if let (Some(slot), Some(obj)) = (placed.get_mut(oi), objects.get(oi))
+                && !*slot
+            {
+                *slot = true;
+                page.svgs.push(PlacedSvg {
+                    tree: obj.tree.clone(),
+                    x: gx,
+                    y: baseline - obj.h + size * 0.12,
+                    w: obj.w,
+                    h: obj.h,
+                });
+            }
+            continue;
+        }
         let color = if g.link.is_some() {
             LINK_COLOR
         } else {
