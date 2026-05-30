@@ -226,15 +226,18 @@ pub fn pdf(
             .map(|p| collect::collect_page(&doc, p, &patterns, base_dir.as_deref()))
             .collect();
 
-        let title = spec
+        // A site with an explicit `title` gets a cover page.
+        let explicit_title = spec
             .block
             .as_ref()
-            .and_then(|b| crate::render::field_utf8(b, "title"))
+            .and_then(|b| crate::render::field_utf8(b, "title"));
+        let title = explicit_title
+            .clone()
             .or_else(|| spec.name.clone())
             .unwrap_or_else(|| stem.clone());
 
         let laid = layout::layout(&sections, &mut book, &embedder, &geom);
-        let bytes = paint::paint(&laid, &mut book, &geom, &title)
+        let bytes = paint::paint(&laid, &mut book, &geom, &title, explicit_title.is_some())
             .map_err(|e| PdfError::Render(format!("{e:?}")))?;
 
         // `<site>.pdf` per named site; `<stem>.pdf` for an unnamed/default site.

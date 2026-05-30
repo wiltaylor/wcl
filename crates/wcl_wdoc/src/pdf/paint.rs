@@ -31,15 +31,30 @@ pub(crate) const CHROME_STYLE: TextStyle = TextStyle {
     italic: false,
 };
 
-/// Render all pages to PDF bytes.
+/// Render all pages to PDF bytes. With `title_page`, an unnumbered cover page
+/// (the title, centred) precedes the numbered content pages.
 pub(crate) fn paint(
     pages: &[LaidOutPage],
     book: &mut FontBook,
     geom: &Geometry,
     title: &str,
+    title_page: bool,
 ) -> KrillaResult<Vec<u8>> {
     let total = pages.len();
     let mut doc = Document::new();
+
+    if title_page {
+        let line = book.shape_label(title, TextStyle::heading(), 30.0);
+        let mut kpage = doc.start_page_with(
+            PageSettings::from_wh(geom.width, geom.height).expect("valid page dimensions"),
+        );
+        let mut surface = kpage.surface();
+        let x = geom.content_left() + (geom.content_width() - line_width(&line, 30.0)) / 2.0;
+        let y = geom.height * 0.42;
+        draw_line(&mut surface, &line, x, y, 30.0, (24, 24, 27));
+        surface.finish();
+        kpage.finish();
+    }
 
     for (i, page_content) in pages.iter().enumerate() {
         // Shape the chrome labels first — this borrows `book`, which must be

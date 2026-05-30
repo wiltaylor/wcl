@@ -197,11 +197,12 @@ fn one_pdf_per_site_in_toc_order() {
     assert!(out.path().join("docs.pdf").exists(), "docs site pdf");
     assert!(out.path().join("blog.pdf").exists(), "blog site pdf");
 
-    // The docs book carries its title as the running header.
+    // The docs site has an explicit title, so it gets a cover page before its
+    // two content pages → three pages total.
     let bytes = std::fs::read(out.path().join("docs.pdf")).expect("read pdf");
     assert!(
-        String::from_utf8_lossy(&bytes).contains("/Count 2"),
-        "two pages"
+        String::from_utf8_lossy(&bytes).contains("/Count 3"),
+        "cover + two content pages"
     );
 
     // `--site` renders just one.
