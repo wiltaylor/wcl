@@ -45,18 +45,32 @@ pub(crate) struct TocNode {
     pub children: Vec<TocNode>,
 }
 
+/// Recursively read same-kind child blocks nested inside `block` into
+/// nodes, preserving source order. `mk` builds each node from the block
+/// and its already-read children. Shared by the `toc`/`menu` readers.
+pub(crate) fn read_tree<T>(
+    block: &Block<'_>,
+    kind: &str,
+    mk: &impl Fn(&Block<'_>, Vec<T>) -> T,
+) -> Vec<T> {
+    block
+        .blocks()
+        .filter(|b| b.kind() == kind)
+        .map(|b| {
+            let children = read_tree(&b, kind, mk);
+            mk(&b, children)
+        })
+        .collect()
+}
+
 /// Recursively read `chapter` blocks nested inside `block` into
 /// [`TocNode`]s, preserving source order.
 pub(crate) fn read_chapters(block: &Block<'_>) -> Vec<TocNode> {
-    block
-        .blocks()
-        .filter(|b| b.kind() == "chapter")
-        .map(|ch| TocNode {
-            title: label_string(&ch).unwrap_or_default(),
-            page: field_id(&ch, "page"),
-            children: read_chapters(&ch),
-        })
-        .collect()
+    read_tree(block, "chapter", &|ch, children| TocNode {
+        title: label_string(ch).unwrap_or_default(),
+        page: field_id(ch, "page"),
+        children,
+    })
 }
 
 /// Read the book's table of contents from a `site` block's `toc`
@@ -69,32 +83,68 @@ pub(crate) fn read_toc(site: &Block<'_>) -> Vec<TocNode> {
     }
 }
 
-/// Build a `list<TocEntry>` `Value` from `nodes`, marking the entry
-/// (if any) that links to `current`.
-pub(crate) fn toc_to_value(nodes: &[TocNode], current: &str) -> Value {
+/// Build a `list<Record>` `Value` from `nodes`, marking the entry whose
+/// `page` matches `current`. Shared by `toc_to_value`/`menu_to_value`;
+/// `ty`/`label_field` name the record and its label key, and the
+/// closures read each node's label, resolved href, page, and children.
+#[allow(clippy::too_many_arguments)] // cohesive node-projection closures
+fn nodes_to_value<T>(
+    nodes: &[T],
+    current: &str,
+    ty: &str,
+    label_field: &str,
+    label: &impl Fn(&T) -> String,
+    href: &impl Fn(&T) -> String,
+    page: &impl Fn(&T) -> Option<&str>,
+    children: &impl Fn(&T) -> &[T],
+) -> Value {
     Value::List(
         nodes
             .iter()
             .map(|n| {
-                let href = n
-                    .page
-                    .as_ref()
-                    .map(|p| format!("{p}.html"))
-                    .unwrap_or_default();
                 let mut m = BTreeMap::new();
-                m.insert("title".to_string(), Value::Utf8(n.title.clone()));
-                m.insert("href".to_string(), Value::Utf8(href));
+                m.insert(label_field.to_string(), Value::Utf8(label(n)));
+                m.insert("href".to_string(), Value::Utf8(href(n)));
+                m.insert("current".to_string(), Value::Bool(page(n) == Some(current)));
                 m.insert(
-                    "current".to_string(),
-                    Value::Bool(n.page.as_deref() == Some(current)),
+                    "children".to_string(),
+                    nodes_to_value(
+                        children(n),
+                        current,
+                        ty,
+                        label_field,
+                        label,
+                        href,
+                        page,
+                        children,
+                    ),
                 );
-                m.insert("children".to_string(), toc_to_value(&n.children, current));
                 Value::Record {
-                    ty: vec!["TocEntry".to_string()],
+                    ty: vec![ty.to_string()],
                     fields: m,
                 }
             })
             .collect(),
+    )
+}
+
+/// Build a `list<TocEntry>` `Value` from `nodes`, marking the entry
+/// (if any) that links to `current`.
+pub(crate) fn toc_to_value(nodes: &[TocNode], current: &str) -> Value {
+    nodes_to_value(
+        nodes,
+        current,
+        "TocEntry",
+        "title",
+        &|n: &TocNode| n.title.clone(),
+        &|n: &TocNode| {
+            n.page
+                .as_ref()
+                .map(|p| format!("{p}.html"))
+                .unwrap_or_default()
+        },
+        &|n: &TocNode| n.page.as_deref(),
+        &|n: &TocNode| n.children.as_slice(),
     )
 }
 
@@ -112,16 +162,12 @@ pub(crate) struct MenuNode {
 /// Recursively read `item` blocks nested inside `block` into
 /// [`MenuNode`]s, preserving source order.
 pub(crate) fn read_menu_items(block: &Block<'_>) -> Vec<MenuNode> {
-    block
-        .blocks()
-        .filter(|b| b.kind() == "item")
-        .map(|it| MenuNode {
-            label: label_string(&it).unwrap_or_default(),
-            page: field_id(&it, "page"),
-            href: field_utf8(&it, "href"),
-            children: read_menu_items(&it),
-        })
-        .collect()
+    read_tree(block, "item", &|it, children| MenuNode {
+        label: label_string(it).unwrap_or_default(),
+        page: field_id(it, "page"),
+        href: field_utf8(it, "href"),
+        children,
+    })
 }
 
 /// Read the site's navbar menu from a `site` block's `menu` child.
@@ -139,29 +185,19 @@ pub(crate) fn read_menu(site: &Block<'_>) -> Vec<MenuNode> {
 /// else empty for a parent/grouping item) and marking the entry that
 /// links to `current`.
 pub(crate) fn menu_to_value(nodes: &[MenuNode], current: &str) -> Value {
-    Value::List(
-        nodes
-            .iter()
-            .map(|n| {
-                let href = match (&n.page, &n.href) {
-                    (Some(p), _) => format!("{p}.html"),
-                    (None, Some(h)) => h.clone(),
-                    (None, None) => String::new(),
-                };
-                let mut m = BTreeMap::new();
-                m.insert("label".to_string(), Value::Utf8(n.label.clone()));
-                m.insert("href".to_string(), Value::Utf8(href));
-                m.insert(
-                    "current".to_string(),
-                    Value::Bool(n.page.as_deref() == Some(current)),
-                );
-                m.insert("children".to_string(), menu_to_value(&n.children, current));
-                Value::Record {
-                    ty: vec!["MenuEntry".to_string()],
-                    fields: m,
-                }
-            })
-            .collect(),
+    nodes_to_value(
+        nodes,
+        current,
+        "MenuEntry",
+        "label",
+        &|n: &MenuNode| n.label.clone(),
+        &|n: &MenuNode| match (&n.page, &n.href) {
+            (Some(p), _) => format!("{p}.html"),
+            (None, Some(h)) => h.clone(),
+            (None, None) => String::new(),
+        },
+        &|n: &MenuNode| n.page.as_deref(),
+        &|n: &MenuNode| n.children.as_slice(),
     )
 }
 
