@@ -155,6 +155,13 @@ impl TilesetRegistry {
         self.used.borrow_mut().insert(name.to_string());
     }
 
+    /// Resolve an emitted tilemap `<image href>` (a `_wdoc/tileset-…` URL)
+    /// back to the sheet's raw bytes, for inlining into PDF-embedded SVG.
+    pub(crate) fn bytes_for_url(&self, href: &str) -> Option<Vec<u8>> {
+        let cfg = self.sets.values().find(|c| href.ends_with(&c.out_file))?;
+        fs::read(&cfg.src_path).ok()
+    }
+
     /// Copy every spritesheet referenced by a rendered tilemap into
     /// `<out>/_wdoc/`. No-op when no tilemap was rendered.
     pub(crate) fn copy_used_images(&self, out_dir: &Path) -> Result<(), BuildError> {

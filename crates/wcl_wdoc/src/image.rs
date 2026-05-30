@@ -71,6 +71,14 @@ impl ImageRegistry {
         self.register(source).dims
     }
 
+    /// Resolve an emitted `<image href>` (a `_wdoc/…` URL) back to its source
+    /// file's raw bytes, for inlining into PDF-embedded SVG as a data URI.
+    pub(crate) fn bytes_for_url(&self, href: &str) -> Option<Vec<u8>> {
+        let entries = self.entries.borrow();
+        let entry = entries.values().find(|e| e.url == href)?;
+        std::fs::read(entry.src_path.as_ref()?).ok()
+    }
+
     fn build_entry(&self, source: &str) -> ImageEntry {
         if is_external(source) {
             return ImageEntry {
