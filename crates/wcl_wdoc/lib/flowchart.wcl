@@ -38,16 +38,25 @@ type Process extends SvgBlock {
   connect_points: list<AnchorSide>?
   icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
 
-  lower = fn(p: Process) -> list<SvgFundamental> [
-    SvgFundamental::Rect {
-      x: p.x, y: p.y, width: p.width, height: p.height,
-      fill: p.fill, stroke: p.stroke, id: p.id, class: p.class,
-    },
-    centered_label(
-      p.text, p.x + p.width / 2.0, p.y + p.height / 2.0,
-      p.width, p.height, p.class,
-    ),
-  ]
+  // An unstyled shape (no fill / stroke / class) gets a default theme class
+  // so it isn't bare-SVG black; the box and its label carry separate classes
+  // so the label stays legible against the themed fill. Any author styling
+  // wins (and a CSS class would otherwise override a `fill="…"` attribute).
+  lower = fn(p: Process) -> list<SvgFundamental> {
+    let auto = p.fill == none && p.stroke == none && p.class == none;
+    let box_class = if auto { ["wdoc-process"] } else { p.class };
+    let text_class = if auto { ["wdoc-shape-text"] } else { p.class };
+    [
+      SvgFundamental::Rect {
+        x: p.x, y: p.y, width: p.width, height: p.height,
+        fill: p.fill, stroke: p.stroke, id: p.id, class: box_class,
+      },
+      centered_label(
+        p.text, p.x + p.width / 2.0, p.y + p.height / 2.0,
+        p.width, p.height, text_class,
+      ),
+    ]
+  }
 }
 
 @block("decision")
@@ -58,26 +67,31 @@ type Decision extends SvgBlock {
   connect_points: list<AnchorSide>?
   icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
 
-  lower = fn(d: Decision) -> list<SvgFundamental> [
-    SvgFundamental::Polygon {
-      points: format(
-        "{},{} {},{} {},{} {},{}",
-        d.x + d.width / 2.0, d.y,
-        d.x + d.width,       d.y + d.height / 2.0,
-        d.x + d.width / 2.0, d.y + d.height,
-        d.x,                 d.y + d.height / 2.0,
+  lower = fn(d: Decision) -> list<SvgFundamental> {
+    let auto = d.fill == none && d.stroke == none && d.class == none;
+    let box_class = if auto { ["wdoc-decision"] } else { d.class };
+    let text_class = if auto { ["wdoc-shape-text"] } else { d.class };
+    [
+      SvgFundamental::Polygon {
+        points: format(
+          "{},{} {},{} {},{} {},{}",
+          d.x + d.width / 2.0, d.y,
+          d.x + d.width,       d.y + d.height / 2.0,
+          d.x + d.width / 2.0, d.y + d.height,
+          d.x,                 d.y + d.height / 2.0,
+        ),
+        fill: d.fill, stroke: d.stroke, id: d.id, class: box_class,
+      },
+      // Diamond's text region is smaller than its bbox — the inscribed
+      // rect at the middle is roughly half the width and full height;
+      // halve fit_width so long labels shrink before they hit the
+      // diamond's sloped edges.
+      centered_label(
+        d.text, d.x + d.width / 2.0, d.y + d.height / 2.0,
+        d.width / 2.0, d.height, text_class,
       ),
-      fill: d.fill, stroke: d.stroke, id: d.id, class: d.class,
-    },
-    // Diamond's text region is smaller than its bbox — the inscribed
-    // rect at the middle is roughly half the width and full height;
-    // halve fit_width so long labels shrink before they hit the
-    // diamond's sloped edges.
-    centered_label(
-      d.text, d.x + d.width / 2.0, d.y + d.height / 2.0,
-      d.width / 2.0, d.height, d.class,
-    ),
-  ]
+    ]
+  }
 }
 
 // Circular graph node: a labelled circle for network / relationship /
@@ -93,20 +107,25 @@ type GraphNode extends SvgBlock {
   connect_points: list<AnchorSide>?
   icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
 
-  lower = fn(n: GraphNode) -> list<SvgFundamental> [
-    SvgFundamental::Circle {
-      cx: n.x + n.width / 2.0,
-      cy: n.y + n.height / 2.0,
-      r:  min(n.width, n.height) / 2.0,
-      fill: n.fill, stroke: n.stroke, id: n.id, class: n.class,
-    },
-    // Inset the fit region so the label stays within the circle's
-    // curve instead of touching its left/right edges.
-    centered_label(
-      n.text, n.x + n.width / 2.0, n.y + n.height / 2.0,
-      n.width * 0.82, n.height * 0.82, n.class,
-    ),
-  ]
+  lower = fn(n: GraphNode) -> list<SvgFundamental> {
+    let auto = n.fill == none && n.stroke == none && n.class == none;
+    let box_class = if auto { ["wdoc-node"] } else { n.class };
+    let text_class = if auto { ["wdoc-shape-text"] } else { n.class };
+    [
+      SvgFundamental::Circle {
+        cx: n.x + n.width / 2.0,
+        cy: n.y + n.height / 2.0,
+        r:  min(n.width, n.height) / 2.0,
+        fill: n.fill, stroke: n.stroke, id: n.id, class: box_class,
+      },
+      // Inset the fit region so the label stays within the circle's
+      // curve instead of touching its left/right edges.
+      centered_label(
+        n.text, n.x + n.width / 2.0, n.y + n.height / 2.0,
+        n.width * 0.82, n.height * 0.82, text_class,
+      ),
+    ]
+  }
 }
 
 // Terminator: an oval (the start/end node), drawn as an ellipse
@@ -119,19 +138,24 @@ type Terminator extends SvgBlock {
   connect_points: list<AnchorSide>?
   icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
 
-  lower = fn(t: Terminator) -> list<SvgFundamental> [
-    SvgFundamental::Polygon {
-      points: oval_points(
-        t.x + t.width / 2.0, t.y + t.height / 2.0,
-        t.width / 2.0, t.height / 2.0,
+  lower = fn(t: Terminator) -> list<SvgFundamental> {
+    let auto = t.fill == none && t.stroke == none && t.class == none;
+    let box_class = if auto { ["wdoc-terminator"] } else { t.class };
+    let text_class = if auto { ["wdoc-shape-text"] } else { t.class };
+    [
+      SvgFundamental::Polygon {
+        points: oval_points(
+          t.x + t.width / 2.0, t.y + t.height / 2.0,
+          t.width / 2.0, t.height / 2.0,
+        ),
+        fill: t.fill, stroke: t.stroke, id: t.id, class: box_class,
+      },
+      // Inset the text region so the label stays inside the oval's curve.
+      centered_label(
+        t.text, t.x + t.width / 2.0, t.y + t.height / 2.0,
+        t.width * 0.8, t.height * 0.72, text_class,
       ),
-      fill: t.fill, stroke: t.stroke, id: t.id, class: t.class,
-    },
-    // Inset the text region so the label stays inside the oval's curve.
-    centered_label(
-      t.text, t.x + t.width / 2.0, t.y + t.height / 2.0,
-      t.width * 0.8, t.height * 0.72, t.class,
-    ),
-  ]
+    ]
+  }
 }
 

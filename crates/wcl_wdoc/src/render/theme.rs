@@ -87,6 +87,11 @@ pre.code-block{background:var(--wdoc-bg-inset);color:var(--wdoc-fg);border-color
 .wdoc-series-8{fill:var(--wdoc-pink);stroke:var(--wdoc-pink);}
 .wdoc-annotation{fill:var(--wdoc-accent);}
 .wdoc-point-label{fill:var(--wdoc-fg-muted);}
+.wdoc-process{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-blue);}
+.wdoc-decision{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-orange);}
+.wdoc-terminator{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-green);}
+.wdoc-node{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-border);}
+.wdoc-shape-text{fill:var(--wdoc-fg);}
 .callout.note{--callout-accent:var(--wdoc-blue);}
 .callout.info{--callout-accent:var(--wdoc-cyan);}
 .callout.tip{--callout-accent:var(--wdoc-green);}

@@ -4336,8 +4336,10 @@ page index {
 
     // The process still renders its box + label, plus a top-left badge
     // inset by pad = min(120,44)*0.1 = 4.4 at size min(120,44)*0.4 = 17.6.
+    // With no fill/stroke/class set, the box carries the default
+    // `wdoc-process` theme class (so it isn't bare-SVG black).
     assert!(
-        index.contains("<rect x=\"10\" y=\"10\" width=\"120\" height=\"44\"")
+        index.contains("class=\"wdoc-process\" x=\"10\" y=\"10\" width=\"120\" height=\"44\"")
             && index.contains(">Validate</tspan>"),
         "{index}"
     );

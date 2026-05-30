@@ -33,6 +33,19 @@ class "wdoc-series-8"    { fill = "#8fbcbb"  stroke = "#8fbcbb" }
 class "wdoc-point-label" { fill = "currentColor"  opacity = "0.7" }
 class "wdoc-annotation"  { fill = "currentColor"  bold = true }
 
+// Default styling for flowchart shapes (`process` / `decision` / `terminator`
+// / `node`) authored with no `fill` / `stroke` / `class` — otherwise they'd be
+// bare-SVG black. A subtle surface fill + a per-type hue border, with `fg`-ish
+// label text via `wdoc-shape-text`. These are the *light* palette values
+// (readable on white): they are what the always-light PDF uses, and what an
+// unthemed doc renders. A themed web site recolours them per dark/light mode
+// via render/theme.rs's APPLY (which references `var(--wdoc-*)`).
+class "wdoc-process"    { fill = "#eceff4"  stroke = "#5e81ac" }
+class "wdoc-decision"   { fill = "#eceff4"  stroke = "#d08770" }
+class "wdoc-terminator" { fill = "#eceff4"  stroke = "#a3be8c" }
+class "wdoc-node"       { fill = "#eceff4"  stroke = "#4c566a" }
+class "wdoc-shape-text" { fill = "#2e3440" }
+
 // Timeline shape defaults. Markers / connectors / labels paint with
 // `currentColor` so they follow the page theme; phase dividers + their
 // headings also carry a cycled `wdoc-series-N` class, which sets their
