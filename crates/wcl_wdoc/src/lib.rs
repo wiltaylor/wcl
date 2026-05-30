@@ -25,6 +25,7 @@ mod terminal;
 mod text;
 mod tileset;
 mod timeline;
+mod wireframe;
 
 pub use build::{BuildError, build, schema_registry};
 pub use pdf::{PageSize, PdfError, pdf};

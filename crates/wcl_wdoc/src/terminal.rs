@@ -71,6 +71,13 @@ pub(crate) fn uses_terminal(block: &Block<'_>) -> bool {
 /// 600/1000 em per glyph; the Nerd Font *Mono* variant forces every
 /// glyph (icons included) to that single-cell width.
 const CELL_W_RATIO: f64 = 0.6;
+/// The bundled JetBrains Mono Nerd Font's family name. The self-contained
+/// (PDF) terminal SVG names it explicitly on every cell `<text>` so usvg
+/// shapes the grid against this *embedded* face — not a system font, and not
+/// the other bundled monospace (NotoSansMono), whose block glyphs leave gaps
+/// in the cell grid. The PDF embed fontdb registers the same name as its
+/// monospace family (see `pdf::svg_embed`).
+pub(crate) const NERD_FONT_FAMILY: &str = "JetBrainsMono Nerd Font Mono";
 /// Default line height as a multiple of font size.
 const DEFAULT_LINE_HEIGHT: f64 = 1.2;
 /// Default font size in px when `font_size` is omitted.
@@ -474,9 +481,26 @@ fn run_attrs(flags: u8) -> String {
 /// integer cell metrics this makes block/box-drawing glyphs tile
 /// seamlessly — no vector-shape special-casing. Coordinates are
 /// relative to the cell-area group origin.
-fn runs_to_svg(rows: &[Vec<Run>], g: &Geom) -> String {
+///
+/// `default_fg` controls how a *default*-coloured run (`run.fg == None`)
+/// is painted: `None` ⇒ `currentColor` (the HTML path, themed by the
+/// wrapping `<div>`'s class `color`); `Some(c)` ⇒ that concrete colour
+/// (the self-contained PDF path, where there is no `<div>` / CSS to
+/// resolve `currentColor` against the terminal theme).
+fn runs_to_svg(rows: &[Vec<Run>], g: &Geom, default_fg: Option<(u8, u8, u8)>) -> String {
     let mut bgs = String::new();
     let mut fgs = String::new();
+    // The HTML path gets the monospace font stack from the `.wdoc-terminal-svg
+    // text` CSS rule; the self-contained PDF path has no injected CSS, so name
+    // the embedded Nerd Font family explicitly (not the generic `monospace`,
+    // which can resolve to the other bundled mono whose block glyphs don't
+    // fill the cell, leaving gaps in the █/░ bars). `monospace` trails as a
+    // fallback only.
+    let font_attr = if default_fg.is_some() {
+        format!(" font-family=\"'{NERD_FONT_FAMILY}', monospace\"")
+    } else {
+        String::new()
+    };
     for (r, runs) in rows.iter().enumerate() {
         let y_rect = r as f64 * g.ch;
         // Glyphs are centred vertically and horizontally in their cell.
@@ -496,7 +520,13 @@ fn runs_to_svg(rows: &[Vec<Run>], g: &Geom) -> String {
             }
             let has_deco = run.flags & (F_UNDERLINE | F_STRIKE) != 0;
             let attrs = run_attrs(run.flags);
-            let fill = ink(run.fg);
+            let fill = match default_fg {
+                Some(d) => match run.fg {
+                    Some(c) => hex(c),
+                    None => hex(d),
+                },
+                None => ink(run.fg),
+            };
             // Emit one centred glyph per cell. Spaces paint nothing, so
             // skip them unless the run is underlined/struck (then the
             // decoration must still span the blank cells).
@@ -504,9 +534,23 @@ fn runs_to_svg(rows: &[Vec<Run>], g: &Geom) -> String {
                 if ch == ' ' && !has_deco {
                     continue;
                 }
-                let cx = (run.col + i) as f64 * g.cw + g.cw / 2.0;
+                let x0 = (run.col + i) as f64 * g.cw;
+                // FULL BLOCK (█) means "fill the whole cell" — solid bars
+                // (e.g. `tui_progress`) are runs of it. In the self-contained
+                // SVG render it as a cell-spanning `<rect>` so adjacent blocks
+                // tile seamlessly: a centred glyph per cell leaves hairline
+                // gaps once embedded via usvg, however the font is named. (The
+                // HTML path keeps the glyph — the browser tiles it fine.)
+                if default_fg.is_some() && ch == '\u{2588}' {
+                    fgs.push_str(&format!(
+                        "<rect x=\"{x0:.2}\" y=\"{y_rect:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{fill}\" shape-rendering=\"crispEdges\"/>",
+                        g.cw, g.ch,
+                    ));
+                    continue;
+                }
+                let cx = x0 + g.cw / 2.0;
                 fgs.push_str(&format!(
-                    "<text x=\"{cx:.2}\" y=\"{y_text:.2}\" text-anchor=\"middle\" xml:space=\"preserve\" fill=\"{fill}\"{attrs}>{}</text>",
+                    "<text x=\"{cx:.2}\" y=\"{y_text:.2}\" text-anchor=\"middle\" xml:space=\"preserve\" fill=\"{fill}\"{font_attr}{attrs}>{}</text>",
                     escape_html(&ch.to_string())
                 ));
             }
@@ -515,10 +559,17 @@ fn runs_to_svg(rows: &[Vec<Run>], g: &Geom) -> String {
     format!("{bgs}{fgs}")
 }
 
-fn cursor_svg(grid: &Grid, g: &Geom) -> String {
+fn cursor_svg(grid: &Grid, g: &Geom, sc_fg: Option<(u8, u8, u8)>) -> String {
+    // The HTML path styles `.term-cursor` via CSS (`fill: currentColor;
+    // opacity: 0.65`); the self-contained PDF path has no CSS, so bake the
+    // same fill + opacity inline (else usvg paints the default solid black).
+    let fill = match sc_fg {
+        Some(c) => format!(" fill=\"{}\" fill-opacity=\"0.65\"", hex(c)),
+        None => String::new(),
+    };
     match grid.cursor {
         Some((col, row)) => format!(
-            "<rect class=\"term-cursor\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\"/>",
+            "<rect class=\"term-cursor\"{fill} x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\"/>",
             col as f64 * g.cw,
             row as f64 * g.ch,
             g.cw,
@@ -531,6 +582,12 @@ fn cursor_svg(grid: &Grid, g: &Geom) -> String {
 /// The static SVG for a single grid (window chrome + one painted frame).
 /// When `cell_group_id` is set the cell-area `<g>` carries that id (so
 /// the JS player can replace its children); otherwise it's anonymous.
+///
+/// When `self_contained` is set the SVG carries its own opaque window
+/// background `<rect>` and bakes the terminal palette's default fg into
+/// the cells + chrome (instead of `currentColor`), so it renders
+/// correctly with no wrapping `<div>` / injected CSS — used by the PDF
+/// backend, which embeds the bare `<svg>`.
 fn grid_svg(
     grid: &Grid,
     pal: &Palette,
@@ -538,26 +595,39 @@ fn grid_svg(
     title: Option<&str>,
     cell_group_id: Option<&str>,
     replay: bool,
+    self_contained: bool,
 ) -> String {
+    let default_fg = self_contained.then_some(pal.fg);
     let rows = grid_to_runs(grid, pal);
-    let cells = runs_to_svg(&rows, g);
-    let cursor = cursor_svg(grid, g);
+    let cells = runs_to_svg(&rows, g, default_fg);
+    let cursor = cursor_svg(grid, g, default_fg);
     let id_attr = cell_group_id
         .map(|id| format!(" id=\"{}\"", escape_html(id)))
         .unwrap_or_default();
-    // No opaque window rect: the terminal background is the wrapping
-    // `<div class="wdoc-terminal …">`'s CSS background, so a WCL `class`
-    // (and its dark/light modes) themes it. The SVG paints only chrome,
-    // coloured cells, and glyphs over that background.
+    // The HTML path paints no opaque window rect: the terminal background
+    // is the wrapping `<div class="wdoc-terminal …">`'s CSS background, so
+    // a WCL `class` (and its dark/light modes) themes it. The PDF
+    // (`self_contained`) path has no such `<div>`, so it bakes a full-bounds
+    // background rect from the palette before chrome + cells + glyphs.
+    let window_bg = if self_contained {
+        format!(
+            "<rect x=\"0\" y=\"0\" width=\"{w:.0}\" height=\"{h:.0}\" fill=\"{bg}\"/>",
+            w = g.width,
+            h = g.height,
+            bg = hex(pal.bg),
+        )
+    } else {
+        String::new()
+    };
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"wdoc-terminal-svg\" \
          width=\"{w:.0}\" height=\"{h:.0}\" viewBox=\"0 0 {w:.0} {h:.0}\">\
-         {chrome}\
+         {window_bg}{chrome}\
          <g class=\"term-cells\" transform=\"translate({left:.2} {top:.2})\"{id_attr}>{cells}{cursor}</g>\
          </svg>",
         w = g.width,
         h = g.height,
-        chrome = chrome_svg(g, title, replay),
+        chrome = chrome_svg(g, title, replay, default_fg),
         left = g.left,
         top = g.top,
     )
@@ -568,17 +638,54 @@ fn grid_svg(
 /// `✕` (the JS player swaps its glyph and wires the click). Drawn only
 /// when `chrome_h > 0`. Strokes/fills inherit the terminal text colour
 /// (`currentColor`) via `TERMINAL_CSS`, so they follow the `class` theme.
-fn chrome_svg(g: &Geom, title: Option<&str>, replay: bool) -> String {
+///
+/// `sc_fg` bakes explicit colours into the chrome instead of relying on
+/// the `.term-*` CSS: `None` ⇒ the CSS-styled HTML path; `Some(fg)` ⇒
+/// the self-contained PDF path, where the bar fill / title fill / close
+/// stroke are emitted inline (same hues + opacities the CSS uses), since
+/// usvg never sees the `wdoc-terminal` stylesheet.
+fn chrome_svg(g: &Geom, title: Option<&str>, replay: bool, sc_fg: Option<(u8, u8, u8)>) -> String {
     if g.chrome_h <= 0.0 {
         return String::new();
     }
+    // Inline attrs for each chrome part when self-contained, else empty
+    // (the CSS class supplies fill/stroke/opacity on the HTML path).
+    let bar_attr = match sc_fg {
+        Some(c) => format!(" fill=\"{}\" fill-opacity=\"0.08\"", hex(c)),
+        None => String::new(),
+    };
+    let close_attr = match sc_fg {
+        Some(c) => format!(
+            " stroke=\"{}\" stroke-opacity=\"0.55\" stroke-width=\"1.5\" stroke-linecap=\"round\"",
+            hex(c)
+        ),
+        None => String::new(),
+    };
+    // The title is sans-serif at ~0.75em via the `.term-title` CSS on the HTML
+    // path; bake the family + size inline when self-contained (no injected CSS).
+    let title_attr = match sc_fg {
+        Some(c) => format!(
+            " fill=\"{}\" fill-opacity=\"0.6\" font-family=\"sans-serif\" font-size=\"{:.1}\"",
+            hex(c),
+            g.font_px * 0.75
+        ),
+        None => String::new(),
+    };
+    let btn_attr = match sc_fg {
+        Some(c) => format!(
+            " fill=\"{}\" fill-opacity=\"0.55\" font-size=\"{:.1}\"",
+            hex(c),
+            g.font_px * 0.8
+        ),
+        None => String::new(),
+    };
     let cy = g.chrome_h / 2.0;
     // Close glyph: two crossing strokes near the right edge, inset from
     // the right by roughly the cell-area padding.
     let s = (g.font_px * 0.24).max(3.0);
     let cx = g.width - g.left - s;
     let close = format!(
-        "<g class=\"term-close\"><line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\"/>\
+        "<g class=\"term-close\"{close_attr}><line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\"/>\
          <line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\"/></g>",
         cx - s,
         cy - s,
@@ -594,7 +701,7 @@ fn chrome_svg(g: &Geom, title: Option<&str>, replay: bool) -> String {
     // follows `currentColor` instead of rendering as a colour emoji.
     let play = if replay {
         format!(
-            "<text class=\"term-chrome-btn\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" aria-label=\"Play\">\u{25B6}\u{FE0E}</text>",
+            "<text class=\"term-chrome-btn\"{btn_attr} x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" aria-label=\"Play\">\u{25B6}\u{FE0E}</text>",
             cx - s - g.font_px,
             cy + g.font_px * 0.34,
         )
@@ -603,7 +710,7 @@ fn chrome_svg(g: &Geom, title: Option<&str>, replay: bool) -> String {
     };
     let title_svg = match title {
         Some(t) if !t.is_empty() => format!(
-            "<text class=\"term-title\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\">{}</text>",
+            "<text class=\"term-title\"{title_attr} x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\">{}</text>",
             g.width / 2.0,
             cy + g.font_px * 0.32,
             escape_html(t)
@@ -611,7 +718,7 @@ fn chrome_svg(g: &Geom, title: Option<&str>, replay: bool) -> String {
         _ => String::new(),
     };
     format!(
-        "<g class=\"term-chrome\"><rect x=\"0\" y=\"0\" width=\"{:.0}\" height=\"{:.2}\" class=\"term-chrome-bar\"/>{title_svg}{play}{close}</g>",
+        "<g class=\"term-chrome\"><rect x=\"0\" y=\"0\" width=\"{:.0}\" height=\"{:.2}\" class=\"term-chrome-bar\"{bar_attr}/>{title_svg}{play}{close}</g>",
         g.width, g.chrome_h,
     )
 }
@@ -1076,8 +1183,71 @@ pub(crate) fn render_terminal(
         }
     };
     let g = Geom::new(def_cols, def_rows, font_px, line_height, chrome);
-    let svg = grid_svg(&grid, &pal, &g, title.as_deref(), None, false);
+    let svg = grid_svg(&grid, &pal, &g, title.as_deref(), None, false, false);
     format!("<div class=\"{class_attr}\"{style_attr}{id_attr}>{svg}</div>")
+}
+
+/// Render a `@block("terminal")` to a bare, self-contained `<svg>` for
+/// the PDF backend: no wrapping `<div>` and no reliance on injected CSS.
+/// The window background, default text colour, and chrome are baked from
+/// the resolved palette (see [`grid_svg`]'s `self_contained` path). A
+/// replay (`source`) terminal is captured as a single static snapshot of
+/// its last frame — a print has no player.
+pub(crate) fn render_terminal_pdf(
+    doc: &Document,
+    block: &Block<'_>,
+    base_dir: Option<&Path>,
+) -> String {
+    let font_px = field_f64(block, "font_size").unwrap_or(DEFAULT_FONT_PX);
+    let line_height = field_f64(block, "line_height").unwrap_or(DEFAULT_LINE_HEIGHT);
+    let chrome = field_bool(block, "chrome").unwrap_or(true);
+    let title = field_utf8(block, "title");
+    let preset = field_symbol(block, "palette");
+    let fg_field = field_utf8(block, "fg");
+    let bg_field = field_utf8(block, "bg");
+    let def_cols = field_i64(block, "cols").unwrap_or(80).max(1) as usize;
+    let def_rows = field_i64(block, "rows").unwrap_or(24).max(1) as usize;
+
+    // Same palette resolution as the HTML path: explicit fg/bg/preset, else
+    // the terminal's referenced `class` colours, else the dark default.
+    let user_classes = field_utf8_list(block, "class");
+    let pal_fg = fg_field
+        .clone()
+        .or_else(|| class_color(doc, &user_classes, "color"));
+    let pal_bg = bg_field
+        .clone()
+        .or_else(|| class_color(doc, &user_classes, "background"));
+    let pal = Palette::new(preset.as_deref(), pal_fg.as_deref(), pal_bg.as_deref());
+
+    // Replay: snapshot the last coalesced frame as a static grid.
+    if let Some(src_rel) = field_utf8(block, "source") {
+        let path = match base_dir {
+            Some(dir) => dir.join(&src_rel),
+            None => Path::new(&src_rel).to_path_buf(),
+        };
+        if let Ok(src) = std::fs::read_to_string(&path) {
+            let cast = parse_cast(&src, def_cols, def_rows);
+            let g = Geom::new(cast.cols, cast.rows, font_px, line_height, chrome);
+            let last = cast
+                .frames
+                .last()
+                .map(|f| &f.grid)
+                .expect("parse_cast always yields at least one frame");
+            return grid_svg(last, &pal, &g, title.as_deref(), None, false, true);
+        }
+        // Unreadable cast: fall through to an empty static grid below.
+    }
+
+    let grid = match field_utf8(block, "text") {
+        Some(text) if !text.is_empty() => populate_inline(def_cols, def_rows, &text),
+        _ => {
+            let mut grid = Grid::new(def_cols, def_rows);
+            populate_primitives(&mut grid, doc, block);
+            grid
+        }
+    };
+    let g = Geom::new(def_cols, def_rows, font_px, line_height, chrome);
+    grid_svg(&grid, &pal, &g, title.as_deref(), None, false, true)
 }
 
 /// First referenced `class` that sets `field` (`color` / `background`),
@@ -1166,7 +1336,7 @@ fn render_replay(
         .first()
         .map(|f| &f.grid)
         .expect("parse_cast always yields at least one frame");
-    let svg = grid_svg(first, pal, &g, title, Some(&cell_id), true);
+    let svg = grid_svg(first, pal, &g, title, Some(&cell_id), true, false);
     let json = frames_json(&cast, pal, &g, &opts);
 
     // Controls: a big centred play button overlaid on the terminal, plus

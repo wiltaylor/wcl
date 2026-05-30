@@ -287,3 +287,57 @@ fn errors_when_no_pages() {
         Err(PdfError::BadDoc(_))
     ));
 }
+
+#[test]
+fn renders_wireframe_window_as_svg() {
+    // A window with a mix of controls + nested layout containers renders to
+    // one embedded SVG; the dropdown's chevron records an icon, which gets
+    // spliced into the PDF (so the build must succeed and produce vector
+    // content well past a text-only page).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("wf.wcl");
+    write_fixture(
+        &src,
+        "page w {\n  wf_window \"Sign in\" {\n    wf_input \"you@example.com\"\n    wf_dropdown \"Personal\"\n    wf_row {\n      wf_checkbox \"Remember\" { checked = true }\n      wf_radio \"Annual\"\n    }\n    wf_toggle \"Notifications\" { on = true }\n    wf_grid {\n      columns = 2\n      wf_button \"Cancel\"\n      wf_button \"OK\" { icon = \"lucide.check\" }\n    }\n  }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("wf.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    assert!(
+        bytes.len() > 4000,
+        "expected substantial wireframe vector content, got {} bytes",
+        bytes.len()
+    );
+}
+
+#[test]
+fn renders_bare_wireframe_widget() {
+    // A top-level bare widget (no container) is a valid page child and
+    // renders on its own.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("bare.wcl");
+    write_fixture(&src, "page b {\n  wf_button \"Click me\"\n}\n");
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("bare.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+}
+
+#[test]
+fn terminal_pdf_is_self_contained() {
+    // Regression guard for the baked terminal snapshot: a terminal embeds
+    // its own window background + colours, so it builds to a valid PDF with
+    // no reliance on a `<div>` / injected CSS.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("term.wcl");
+    write_fixture(
+        &src,
+        "page t {\n  terminal {\n    title = \"shell\"\n    text = \"$ echo hello\\nhello\"\n  }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("term.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    assert!(bytes.len() > 2000, "terminal produced vector content");
+}

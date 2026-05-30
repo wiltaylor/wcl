@@ -32,10 +32,11 @@ const NERD_REGULAR: &[u8] =
 const NERD_BOLD: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf");
 const NERD_ITALIC: &[u8] =
     include_bytes!("../../assets/fonts/JetBrainsMonoNerdFontMono-Italic.ttf");
-/// The Nerd Font's internal family name. The terminal SVG's font stack ends in
-/// the generic `monospace`, so making it the fontdb monospace default resolves
-/// the terminal glyphs to the real Nerd Font.
-const NERD_FAMILY: &str = "JetBrainsMono Nerd Font Mono";
+/// The Nerd Font's internal family name (shared with the terminal renderer,
+/// which names it on every cell `<text>`). Registered as the fontdb monospace
+/// family too, so even a bare `monospace` request resolves to the real Nerd
+/// Font.
+const NERD_FAMILY: &str = crate::terminal::NERD_FONT_FAMILY;
 
 /// Parses wdoc SVG strings into positioned-ready usvg trees. Borrows the
 /// icon / image / tileset registries so embedded diagram icons (sprite `<use>`)

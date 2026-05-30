@@ -82,9 +82,19 @@ fn collect_block(
         return;
     }
     // Terminals already render to a complete (static-snapshot) SVG in Rust.
+    // The PDF entry bakes the window background + default colours into the
+    // bare `<svg>` (no `<div>` / injected CSS to lean on when embedded).
     if kind == "terminal" {
         out.push(BlockNode::Svg {
-            svg: crate::terminal::render_terminal(doc, block, base_dir),
+            svg: crate::terminal::render_terminal_pdf(doc, block, base_dir),
+        });
+        return;
+    }
+    // Wireframe widgets render to one self-contained SVG in Rust (the same
+    // renderer the HTML path uses), embedded as an atomic block like a terminal.
+    if crate::wireframe::is_wireframe_kind(kind) {
+        out.push(BlockNode::Svg {
+            svg: crate::wireframe::render_wireframe_svg(doc, block, patterns.icons()),
         });
         return;
     }

@@ -319,6 +319,15 @@ pub(crate) fn render_block(
         // `base_dir` lets a `source` recording path resolve relative to
         // the source file.
         "terminal" => Some(crate::terminal::render_terminal(doc, block, base_dir)),
+        // Wireframe widgets are special-cased in Rust: the whole family
+        // (windows, panels, the controls, and the row/column/grid layout
+        // containers) lays out and renders to one self-contained `<svg>`,
+        // so HTML and PDF share one renderer. This single arm covers every
+        // context — a widget recurses into its children itself, never
+        // re-entering `render_block`.
+        kind if crate::wireframe::is_wireframe_kind(kind) => Some(
+            crate::wireframe::render_wireframe(doc, block, patterns.icons()),
+        ),
         // A `wdoc_repeater` renders its body once per element of `each`.
         "wdoc_repeater" => Some(render_repeat(doc, block, patterns, base_dir)),
         // A `wdoc_content` marks where a component instance's own children

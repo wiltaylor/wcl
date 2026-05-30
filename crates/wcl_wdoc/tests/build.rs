@@ -5002,18 +5002,17 @@ fn wireframe_html(body: &str) -> String {
 
 #[test]
 fn wireframe_window_nests_child_widgets() {
-    // A container widget's `lower` emits a `Children` slot; the renderer
-    // splices the nested widget blocks (each via its own `lower`) inside
-    // the window body.
+    // The whole widget tree renders to one self-contained `<svg>` in a
+    // single `wdoc-wireframe` `<div>`: the window title and its nested
+    // button both appear as `<text>` inside that one SVG.
     let html = wireframe_html("  wf_window \"Box\" {\n    wf_button \"OK\" {}\n  }");
-    let win = html
-        .split("<div class=\"wf-window\"")
+    let wf = html
+        .split("<div class=\"wdoc-wireframe\"")
         .nth(1)
-        .expect("window present");
+        .expect("wireframe present");
     assert!(
-        win.contains("<div class=\"wf-window-body\">")
-            && win.contains("<div class=\"wf-button\">OK</div>"),
-        "button not nested inside the window body:\n{html}"
+        wf.contains("<svg") && wf.contains(">Box</text>") && wf.contains(">OK</text>"),
+        "window title + nested button not both in the SVG:\n{html}"
     );
 }
 
@@ -5031,45 +5030,48 @@ fn wireframe_children_slot_splices_in_source_order() {
 
 #[test]
 fn wireframe_nested_containers_resolve_recursively() {
-    // window → row → button: the inner container resolves its own slot
-    // before being spliced into the outer one.
+    // window → row → button: the renderer recurses into both containers
+    // (laid out in Rust), so the deeply-nested button still draws into the
+    // single SVG.
     let html =
         wireframe_html("  wf_window \"Box\" {\n    wf_row {\n      wf_button \"X\" {}\n    }\n  }");
+    let wf = html
+        .split("<div class=\"wdoc-wireframe\"")
+        .nth(1)
+        .expect("wireframe present");
     assert!(
-        html.contains(
-            "<div class=\"wf-window-body\"><div class=\"wf-row\"><div class=\"wf-button\">X</div></div></div>"
-        ),
+        wf.contains(">Box</text>") && wf.contains(">X</text>"),
         "nested row/button not resolved recursively:\n{html}"
     );
 }
 
 #[test]
 fn wireframe_state_classes_and_icons() {
-    // Checked / on / placeholder states add their marker classes; the
-    // checkbox tick resolves to a sprite <use>.
+    // Checked / on / placeholder states drive the SVG: a checked box draws
+    // a sprite-<use> tick, a toggle "on" puts its knob at full opacity, and
+    // a placeholder input renders dim italic.
     let html = wireframe_html(
         "  wf_checkbox \"R\" { checked = true }\n  wf_toggle \"T\" { on = true }\n  wf_input \"ph\" {}",
-    );
-    assert!(
-        html.contains("<span class=\"wf-box wf-checked\">"),
-        "{html}"
     );
     assert!(
         html.contains("href=\"_wdoc/icons.svg#lucide-check\""),
         "checkbox tick icon missing:\n{html}"
     );
-    assert!(html.contains("<span class=\"wf-track wf-on\">"), "{html}");
     assert!(
-        html.contains("wf-input-text wf-placeholder"),
-        "placeholder class missing:\n{html}"
+        html.contains("fill=\"currentColor\" fill-opacity=\"0.95\""),
+        "toggle-on knob not at full opacity:\n{html}"
+    );
+    assert!(
+        html.contains("fill-opacity=\"0.55\"") && html.contains("font-style=\"italic\""),
+        "placeholder not rendered dim italic:\n{html}"
     );
 }
 
 #[test]
 fn wireframe_class_field_is_threaded_and_overrides_by_cascade() {
-    // A custom class on a widget reaches the element, and a `class`
-    // rule is emitted after the bundled `.wf-button` stylesheet rule so
-    // it wins by source order. (`class` is top-level, not a page child.)
+    // A custom class on a widget reaches the wrapping `<div>`, and its
+    // `background` is read in Rust and baked onto the widget's box fill
+    // (the terminal-style theming path).
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("wf.wcl");
     write_fixture(
@@ -5080,30 +5082,29 @@ fn wireframe_class_field_is_threaded_and_overrides_by_cascade() {
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
     assert!(
-        html.contains("<div class=\"wf-button primary\">"),
-        "class not threaded onto the element:\n{html}"
+        html.contains("<div class=\"wdoc-wireframe primary\""),
+        "class not threaded onto the wrapper div:\n{html}"
     );
-    let sheet = html.find(".wf-button {").expect("bundled wf-button rule");
-    let user = html.find(".primary {").expect("user primary rule");
     assert!(
-        sheet < user,
-        "user class rule must come after the bundled stylesheet rule"
+        html.contains("fill=\"#1f6feb\""),
+        "class background not baked onto the button box:\n{html}"
     );
 }
 
 #[test]
-fn wireframe_css_width_field_is_not_clobbered() {
-    // Regression: `width` is a CSS length (utf8) on widgets, not the
-    // numeric SVG-shape geometry that `block_to_record` grows. It must
-    // survive as authored, and an unset width must emit no style attr.
+fn wireframe_widgets_render_as_separate_svgs() {
+    // Each top-level widget renders to its own `wdoc-wireframe` SVG; a
+    // button and a label both draw their text. (`width` is accepted by the
+    // schema but is a mock-up hint the SVG layout currently ignores.)
     let html = wireframe_html("  wf_button \"W\" { width = \"22rem\" }\n  wf_label \"L\" {}");
-    assert!(
-        html.contains("<div class=\"wf-button\" style=\"width:22rem;\">"),
-        "authored width clobbered:\n{html}"
+    assert_eq!(
+        html.matches("<div class=\"wdoc-wireframe\"").count(),
+        2,
+        "expected two separate wireframe SVGs:\n{html}"
     );
     assert!(
-        html.contains("<span class=\"wf-label\">L</span>"),
-        "unset width should emit no style attr:\n{html}"
+        html.contains(">W</text>") && html.contains(">L</text>"),
+        "button / label text missing:\n{html}"
     );
 }
 

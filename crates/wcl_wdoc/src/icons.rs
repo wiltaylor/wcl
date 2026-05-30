@@ -214,6 +214,32 @@ impl IconRegistry {
         Some(shape_markup(&pack, icon, geom, &style))
     }
 
+    /// A positioned `<use href="_wdoc/icons.svg#pack-name" x y w h/>` into the
+    /// shared sprite, recording usage. Like [`resolve_html_icon`](Self::resolve_html_icon)
+    /// it falls back to a compiled-in `pack.name` when no matching iconset is
+    /// declared, so built-in glyphs (e.g. the wireframe controls' chevron /
+    /// check) resolve with zero configuration. The `<use>` carries no fill, so
+    /// it inherits `currentColor` (themed in HTML, baked to the fg in PDF).
+    /// Returns `None` on a miss.
+    pub(crate) fn use_markup(&self, raw: &str, geom: (f64, f64, f64, f64)) -> Option<String> {
+        let (hint, icon) = split_set(raw);
+        let pack = match self.find(hint, icon) {
+            Some((_set, pack)) => pack,
+            None => {
+                let pack = hint?;
+                if !ICON_PACKS.iter().any(|p| p.name == pack) || pack_lookup(pack, icon).is_none() {
+                    return None;
+                }
+                pack.to_string()
+            }
+        };
+        self.record(&pack, icon);
+        let (x, y, w, h) = geom;
+        Some(format!(
+            "<use href=\"{SPRITE_HREF}#{pack}-{icon}\" x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\"/>",
+        ))
+    }
+
     /// The `<symbol>` definitions for every recorded icon (no wrapping `<svg>`),
     /// or `None` when none were used. Shared by [`build_sprite`](Self::build_sprite)
     /// (the web sprite) and the PDF path (spliced into an embedded SVG's

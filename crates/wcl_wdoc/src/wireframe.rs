@@ -1,0 +1,828 @@
+//! Wireframe UI mock-ups rendered to a self-contained SVG.
+//!
+//! Wireframe widgets (`wf_window`, `wf_button`, `wf_panel`, the controls, and
+//! the `wf_row`/`wf_column`/`wf_grid` layout containers) mock up an interface
+//! from composable blocks. They render to **one self-contained `<svg>`** in
+//! Rust — used by both output paths: the HTML path wraps it in a themed
+//! `<div class="wdoc-wireframe">` (like `terminal.rs`), and the PDF path embeds
+//! the bare `<svg>` through the usual `SvgEmbedder`. Doing the layout in Rust
+//! (rather than the old HTML/CSS flexbox) gives one consistent look across HTML
+//! and PDF, and lets the PDF backend render wireframes at all.
+//!
+//! The renderer walks the **raw block tree** — reading fields directly and
+//! recursing into container children via `block.blocks()` — so it never
+//! depends on the WCL `lower` (now a stub) or the HTML `Children {}` splice.
+//!
+//! Theming follows the terminal pattern: default text/icons paint with
+//! `currentColor` (so they follow the page theme — the wrapping `<div>`'s
+//! `color` in HTML, the baked foreground in PDF), and a widget's `class` list
+//! is read for `background`/`color`/`border` overrides baked onto its box. The
+//! neutral grey-box palette is the CSS `rgba(127,127,127,α)` flattened against
+//! white to concrete hex. Custom-class dark/light adaptation is out of scope
+//! (the top-level class value is used), matching the terminal's styled cells.
+
+use wcl_lang::{Block, Document};
+
+use crate::icons::IconRegistry;
+use crate::render::{
+    escape_html, field_bool, field_i64, field_id, field_utf8, field_utf8_list, label_string,
+};
+
+// ── Geometry (px, ported from the wdoc-wireframe CSS rem values) ─────
+
+const FONT: f64 = 14.0; // 0.9rem control text
+const TITLE_FONT: f64 = 15.0; // titlebar / panel heading
+const LINE_H: f64 = 19.0; // a text line's box height
+const PAD: f64 = 13.0; // window body padding (0.8rem)
+const PANEL_PAD: f64 = 10.0; // panel body padding (0.6rem)
+const GAP: f64 = 10.0; // vertical gap between stacked widgets (0.6rem)
+const ROW_GAP: f64 = 13.0; // horizontal gap in a row (0.8rem)
+const CTRL_H: f64 = 30.0; // button / input / dropdown height
+const CTRL_PAD_X: f64 = 11.0; // control horizontal padding
+const RADIUS: f64 = 4.0;
+const TITLEBAR_H: f64 = 30.0;
+const BOX: f64 = 16.0; // checkbox square (1rem)
+const DOT: f64 = 16.0; // radio circle (1rem)
+const TRACK_W: f64 = 35.0; // toggle track (2.2rem)
+const TRACK_H: f64 = 19.0; // toggle track (1.2rem)
+const WIN_MIN_W: f64 = 256.0; // window min-width (16rem)
+const ICON: f64 = 14.0;
+const MARGIN: f64 = 1.0; // SVG margin so 1px strokes aren't clipped
+
+const SANS: &str = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+
+// ── Public entry points ─────────────────────────────────────────────
+
+/// Render a wireframe widget tree to an HTML fragment: the self-contained
+/// `<svg>` wrapped in a `wdoc-wireframe` `<div>` carrying the block's `class`
+/// list (for CSS theming) and `id`.
+pub(crate) fn render_wireframe(doc: &Document, block: &Block<'_>, icons: &IconRegistry) -> String {
+    let mut classes = vec!["wdoc-wireframe".to_string()];
+    classes.extend(field_utf8_list(block, "class"));
+    let class_attr = classes.join(" ");
+    let id_attr = field_id(block, "id")
+        .map(|id| format!(" id=\"{}\"", escape_html(&id)))
+        .unwrap_or_default();
+    let svg = render_wireframe_svg(doc, block, icons);
+    format!("<div class=\"{class_attr}\"{id_attr}>{svg}</div>")
+}
+
+/// Render a wireframe widget tree to a bare, self-contained `<svg>` (the PDF
+/// path embeds this directly; the HTML path wraps it).
+pub(crate) fn render_wireframe_svg(
+    doc: &Document,
+    block: &Block<'_>,
+    icons: &IconRegistry,
+) -> String {
+    let w = build(doc, block);
+    let body_w = w.w.max(1.0);
+    let body_h = w.h.max(1.0);
+    let mut body = String::new();
+    emit(&w, MARGIN, MARGIN, icons, &mut body);
+    let sw = (body_w + 2.0 * MARGIN).ceil();
+    let sh = (body_h + 2.0 * MARGIN).ceil();
+    format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"wdoc-wireframe-svg\" \
+         width=\"{sw:.0}\" height=\"{sh:.0}\" viewBox=\"0 0 {sw:.0} {sh:.0}\">{body}</svg>",
+    )
+}
+
+/// Is `kind` a wireframe widget block (and thus rendered by this module)?
+pub(crate) fn is_wireframe_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "wf_window"
+            | "wf_panel"
+            | "wf_button"
+            | "wf_input"
+            | "wf_dropdown"
+            | "wf_checkbox"
+            | "wf_radio"
+            | "wf_toggle"
+            | "wf_label"
+            | "wf_row"
+            | "wf_column"
+            | "wf_grid"
+    )
+}
+
+// ── Model ───────────────────────────────────────────────────────────
+
+#[derive(Default, Clone)]
+struct Theme {
+    bg: Option<String>,
+    fg: Option<String>,
+    border: Option<String>,
+}
+
+/// A measured widget: its kind-specific content, its laid-out `(w, h)`, and
+/// whether it's disabled (dimmed). Children are measured before their parent,
+/// so a container's size is known by the time it's built.
+struct Widget {
+    kind: Kind,
+    w: f64,
+    h: f64,
+    disabled: bool,
+}
+
+enum Kind {
+    Label {
+        text: String,
+        theme: Theme,
+    },
+    Button {
+        text: String,
+        icon: Option<String>,
+        theme: Theme,
+    },
+    Input {
+        text: String,
+        placeholder: bool,
+        theme: Theme,
+    },
+    Dropdown {
+        text: String,
+        theme: Theme,
+    },
+    Checkbox {
+        label: String,
+        on: bool,
+        theme: Theme,
+    },
+    Radio {
+        label: String,
+        on: bool,
+        theme: Theme,
+    },
+    Toggle {
+        label: Option<String>,
+        on: bool,
+        theme: Theme,
+    },
+    Window {
+        title: String,
+        controls: bool,
+        body: Vec<Widget>,
+        theme: Theme,
+    },
+    Panel {
+        title: Option<String>,
+        body: Vec<Widget>,
+        theme: Theme,
+    },
+    Row(Vec<Widget>),
+    Column(Vec<Widget>),
+    Grid {
+        cols: usize,
+        items: Vec<Widget>,
+    },
+    /// An unknown / unsupported child — rendered as nothing (zero size).
+    Empty,
+}
+
+// ── Build (read fields + measure, bottom-up) ─────────────────────────
+
+fn build(doc: &Document, block: &Block<'_>) -> Widget {
+    let disabled = field_bool(block, "disabled").unwrap_or(false);
+    let theme = theme_of(doc, block);
+    let kind = block.kind();
+    match kind {
+        "wf_label" => {
+            let text = label_string(block).unwrap_or_default();
+            sized(
+                Kind::Label {
+                    text: text.clone(),
+                    theme,
+                },
+                text_w(&text, FONT) + 2.0,
+                LINE_H,
+                disabled,
+            )
+        }
+        "wf_button" => {
+            let text = label_string(block).unwrap_or_default();
+            let icon = field_utf8(block, "icon");
+            let iconw = if icon.is_some() { ICON + 6.0 } else { 0.0 };
+            let w = text_w(&text, FONT) + 2.0 * CTRL_PAD_X + iconw;
+            sized(Kind::Button { text, icon, theme }, w, CTRL_H, disabled)
+        }
+        "wf_input" => {
+            let value = field_utf8(block, "value");
+            let placeholder = value.is_none();
+            let text = value.or_else(|| label_string(block)).unwrap_or_default();
+            let w = (text_w(&text, FONT) + 2.0 * CTRL_PAD_X).max(130.0);
+            sized(
+                Kind::Input {
+                    text,
+                    placeholder,
+                    theme,
+                },
+                w,
+                CTRL_H,
+                disabled,
+            )
+        }
+        "wf_dropdown" => {
+            let text = label_string(block).unwrap_or_default();
+            let w = (text_w(&text, FONT) + 2.0 * CTRL_PAD_X + ICON + 8.0).max(130.0);
+            sized(Kind::Dropdown { text, theme }, w, CTRL_H, disabled)
+        }
+        "wf_checkbox" => {
+            let label = label_string(block).unwrap_or_default();
+            let on = field_bool(block, "checked").unwrap_or(false);
+            let w = BOX + 7.0 + text_w(&label, FONT);
+            sized(
+                Kind::Checkbox { label, on, theme },
+                w,
+                LINE_H.max(BOX),
+                disabled,
+            )
+        }
+        "wf_radio" => {
+            let label = label_string(block).unwrap_or_default();
+            let on = field_bool(block, "selected").unwrap_or(false);
+            let w = DOT + 7.0 + text_w(&label, FONT);
+            sized(
+                Kind::Radio { label, on, theme },
+                w,
+                LINE_H.max(DOT),
+                disabled,
+            )
+        }
+        "wf_toggle" => {
+            let label = label_string(block);
+            let on = field_bool(block, "on").unwrap_or(false);
+            let lw = label.as_deref().map_or(0.0, |l| 7.0 + text_w(l, FONT));
+            sized(
+                Kind::Toggle { label, on, theme },
+                TRACK_W + lw,
+                LINE_H.max(TRACK_H),
+                disabled,
+            )
+        }
+        "wf_window" => {
+            let title = label_string(block).unwrap_or_default();
+            let controls = field_bool(block, "controls").unwrap_or(true);
+            let body = child_widgets(doc, block);
+            let (bw, bh) = column_size(&body);
+            let ctrl_w = if controls { 56.0 } else { 0.0 };
+            let head_w = text_w(&title, TITLE_FONT) + 16.0 + ctrl_w;
+            let w = (bw + 2.0 * PAD).max(head_w + 2.0 * PAD).max(WIN_MIN_W);
+            let h = TITLEBAR_H + 2.0 * PAD + bh;
+            sized(
+                Kind::Window {
+                    title,
+                    controls,
+                    body,
+                    theme,
+                },
+                w,
+                h,
+                disabled,
+            )
+        }
+        "wf_panel" => {
+            let title = field_utf8(block, "title");
+            let body = child_widgets(doc, block);
+            let (bw, bh) = column_size(&body);
+            let head_h = if title.is_some() { LINE_H + 4.0 } else { 0.0 };
+            let head_w = title.as_deref().map_or(0.0, |t| text_w(t, FONT) + 12.0);
+            let w = bw.max(head_w) + 2.0 * PANEL_PAD;
+            let h = head_h + bh + 2.0 * PANEL_PAD;
+            sized(Kind::Panel { title, body, theme }, w, h, disabled)
+        }
+        "wf_row" => {
+            let items = child_widgets(doc, block);
+            let (w, h) = row_size(&items);
+            sized(Kind::Row(items), w, h, disabled)
+        }
+        "wf_column" => {
+            let items = child_widgets(doc, block);
+            let (w, h) = column_size(&items);
+            sized(Kind::Column(items), w, h, disabled)
+        }
+        "wf_grid" => {
+            let cols = field_i64(block, "columns").unwrap_or(1).max(1) as usize;
+            let items = child_widgets(doc, block);
+            let (w, h) = grid_size(&items, cols);
+            sized(Kind::Grid { cols, items }, w, h, disabled)
+        }
+        _ => sized(Kind::Empty, 0.0, 0.0, false),
+    }
+}
+
+fn sized(kind: Kind, w: f64, h: f64, disabled: bool) -> Widget {
+    Widget {
+        kind,
+        w,
+        h,
+        disabled,
+    }
+}
+
+/// Build every wireframe child of a container, in source order.
+fn child_widgets(doc: &Document, block: &Block<'_>) -> Vec<Widget> {
+    block
+        .blocks()
+        .filter(|b| is_wireframe_kind(b.kind()))
+        .map(|b| build(doc, &b))
+        .collect()
+}
+
+// ── Container sizing ─────────────────────────────────────────────────
+
+fn column_size(items: &[Widget]) -> (f64, f64) {
+    if items.is_empty() {
+        return (0.0, 0.0);
+    }
+    let w = items.iter().map(|c| c.w).fold(0.0, f64::max);
+    let h = items.iter().map(|c| c.h).sum::<f64>() + GAP * (items.len() - 1) as f64;
+    (w, h)
+}
+
+fn row_size(items: &[Widget]) -> (f64, f64) {
+    if items.is_empty() {
+        return (0.0, 0.0);
+    }
+    let w = items.iter().map(|c| c.w).sum::<f64>() + ROW_GAP * (items.len() - 1) as f64;
+    let h = items.iter().map(|c| c.h).fold(0.0, f64::max);
+    (w, h)
+}
+
+fn grid_size(items: &[Widget], cols: usize) -> (f64, f64) {
+    if items.is_empty() {
+        return (0.0, 0.0);
+    }
+    let col_w = items.iter().map(|c| c.w).fold(0.0, f64::max);
+    let rows = items.len().div_ceil(cols);
+    let row_h: f64 = (0..rows)
+        .map(|r| {
+            items[r * cols..((r + 1) * cols).min(items.len())]
+                .iter()
+                .map(|c| c.h)
+                .fold(0.0, f64::max)
+        })
+        .sum::<f64>()
+        + GAP * (rows.saturating_sub(1)) as f64;
+    let w = col_w * cols as f64 + GAP * (cols - 1) as f64;
+    (w, row_h)
+}
+
+// ── Emission ─────────────────────────────────────────────────────────
+
+/// Emit a widget's SVG at absolute top-left `(x, y)`.
+fn emit(w: &Widget, x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
+    if w.disabled {
+        out.push_str("<g opacity=\"0.45\">");
+    }
+    match &w.kind {
+        Kind::Empty => {}
+        Kind::Label { text, theme } => {
+            emit_text(
+                out,
+                x + 1.0,
+                baseline(y, LINE_H),
+                "start",
+                FONT,
+                false,
+                theme_fg(theme),
+                None,
+                text,
+            );
+        }
+        Kind::Button { text, icon, theme } => {
+            let fill = theme.bg.clone().unwrap_or_else(|| grey(0.16));
+            rect(out, x, y, w.w, CTRL_H, RADIUS, &fill, &border(theme));
+            let fg = theme_fg(theme);
+            if let Some(name) = icon {
+                let iy = y + (CTRL_H - ICON) / 2.0;
+                if let Some(u) = icons.use_markup(name, (x + CTRL_PAD_X, iy, ICON, ICON)) {
+                    out.push_str(&u);
+                }
+                emit_text(
+                    out,
+                    x + CTRL_PAD_X + ICON + 6.0,
+                    baseline(y, CTRL_H),
+                    "start",
+                    FONT,
+                    false,
+                    fg,
+                    None,
+                    text,
+                );
+            } else {
+                emit_text(
+                    out,
+                    x + w.w / 2.0,
+                    baseline(y, CTRL_H),
+                    "middle",
+                    FONT,
+                    false,
+                    fg,
+                    None,
+                    text,
+                );
+            }
+        }
+        Kind::Input {
+            text,
+            placeholder,
+            theme,
+        } => {
+            let fill = theme.bg.clone().unwrap_or_else(|| grey(0.04));
+            rect(out, x, y, w.w, CTRL_H, RADIUS, &fill, &border(theme));
+            let opacity = placeholder.then_some(0.55);
+            emit_text(
+                out,
+                x + CTRL_PAD_X,
+                baseline(y, CTRL_H),
+                "start",
+                FONT,
+                *placeholder,
+                theme_fg(theme),
+                opacity,
+                text,
+            );
+        }
+        Kind::Dropdown { text, theme } => {
+            let fill = theme.bg.clone().unwrap_or_else(|| grey(0.04));
+            rect(out, x, y, w.w, CTRL_H, RADIUS, &fill, &border(theme));
+            emit_text(
+                out,
+                x + CTRL_PAD_X,
+                baseline(y, CTRL_H),
+                "start",
+                FONT,
+                false,
+                theme_fg(theme),
+                None,
+                text,
+            );
+            let iy = y + (CTRL_H - ICON) / 2.0;
+            if let Some(u) = icons.use_markup(
+                "lucide.chevron-down",
+                (x + w.w - CTRL_PAD_X - ICON, iy, ICON, ICON),
+            ) {
+                out.push_str(&u);
+            }
+        }
+        Kind::Checkbox { label, on, theme } => {
+            let by = y + (w.h - BOX) / 2.0;
+            let fill = if *on { grey(0.55) } else { grey(0.04) };
+            rect(out, x, by, BOX, BOX, 3.0, &fill, &grey(0.6));
+            if *on
+                && let Some(u) =
+                    icons.use_markup("lucide.check", (x + 2.0, by + 2.0, BOX - 4.0, BOX - 4.0))
+            {
+                out.push_str(&u);
+            }
+            emit_text(
+                out,
+                x + BOX + 7.0,
+                baseline(y, w.h),
+                "start",
+                FONT,
+                false,
+                theme_fg(theme),
+                None,
+                label,
+            );
+        }
+        Kind::Radio { label, on, theme } => {
+            let cx = x + DOT / 2.0;
+            let cy = y + w.h / 2.0;
+            circle(out, cx, cy, DOT / 2.0, "none", &grey(0.6));
+            if *on {
+                circle(out, cx, cy, DOT / 2.0 - 3.0, "currentColor", "none");
+            }
+            emit_text(
+                out,
+                x + DOT + 7.0,
+                baseline(y, w.h),
+                "start",
+                FONT,
+                false,
+                theme_fg(theme),
+                None,
+                label,
+            );
+        }
+        Kind::Toggle { label, on, theme } => {
+            let ty = y + (w.h - TRACK_H) / 2.0;
+            let fill = if *on { grey(0.55) } else { grey(0.18) };
+            rect(
+                out,
+                x,
+                ty,
+                TRACK_W,
+                TRACK_H,
+                TRACK_H / 2.0,
+                &fill,
+                &border(theme),
+            );
+            let r = (TRACK_H - 2.0) / 2.0;
+            let kx = if *on {
+                x + TRACK_W - 1.0 - r
+            } else {
+                x + 1.0 + r
+            };
+            let kop = if *on { 0.95 } else { 0.55 };
+            out.push_str(&format!(
+                "<circle cx=\"{kx:.2}\" cy=\"{:.2}\" r=\"{r:.2}\" fill=\"currentColor\" fill-opacity=\"{kop}\"/>",
+                ty + TRACK_H / 2.0,
+            ));
+            if let Some(l) = label {
+                emit_text(
+                    out,
+                    x + TRACK_W + 7.0,
+                    baseline(y, w.h),
+                    "start",
+                    FONT,
+                    false,
+                    theme_fg(theme),
+                    None,
+                    l,
+                );
+            }
+        }
+        Kind::Window {
+            title,
+            controls,
+            body,
+            theme,
+        } => {
+            let bg = theme.bg.clone().unwrap_or_else(|| grey(0.05));
+            rect(out, x, y, w.w, w.h, 6.0, &bg, &border(theme));
+            // Titlebar.
+            out.push_str(&format!(
+                "<path d=\"M{x:.2} {ty:.2} v{rad} a6 6 0 0 1 6 -6 h{hw:.2} a6 6 0 0 1 6 6 v{rest:.2} h-{tw:.2} z\" fill=\"{tbar}\"/>",
+                ty = y + TITLEBAR_H,
+                rad = -(TITLEBAR_H - 6.0),
+                hw = w.w - 12.0,
+                rest = TITLEBAR_H - 6.0,
+                tw = w.w,
+                tbar = grey(0.14),
+            ));
+            emit_text(
+                out,
+                x + PAD,
+                baseline(y, TITLEBAR_H),
+                "start",
+                TITLE_FONT,
+                false,
+                theme_fg(theme),
+                Some(0.85),
+                title,
+            );
+            if *controls {
+                emit_window_controls(out, x + w.w, y, theme);
+            }
+            // Body column.
+            emit_column(body, x + PAD, y + TITLEBAR_H + PAD, icons, out);
+        }
+        Kind::Panel { title, body, theme } => {
+            rect(out, x, y, w.w, w.h, RADIUS + 1.0, "none", &border(theme));
+            let mut cy = y + PANEL_PAD;
+            if let Some(t) = title {
+                emit_text(
+                    out,
+                    x + PANEL_PAD,
+                    baseline(cy, LINE_H),
+                    "start",
+                    FONT,
+                    false,
+                    theme_fg(theme),
+                    Some(0.7),
+                    t,
+                );
+                cy += LINE_H + 4.0;
+            }
+            emit_column(body, x + PANEL_PAD, cy, icons, out);
+        }
+        Kind::Row(items) => {
+            let mut cx = x;
+            for c in items {
+                emit(c, cx, y + (w.h - c.h) / 2.0, icons, out);
+                cx += c.w + ROW_GAP;
+            }
+        }
+        Kind::Column(items) => emit_column(items, x, y, icons, out),
+        Kind::Grid { cols, items } => {
+            let col_w = items.iter().map(|c| c.w).fold(0.0, f64::max);
+            let mut cy = y;
+            for chunk in items.chunks(*cols) {
+                let row_h = chunk.iter().map(|c| c.h).fold(0.0, f64::max);
+                for (i, c) in chunk.iter().enumerate() {
+                    emit(c, x + i as f64 * (col_w + GAP), cy, icons, out);
+                }
+                cy += row_h + GAP;
+            }
+        }
+    }
+    if w.disabled {
+        out.push_str("</g>");
+    }
+}
+
+/// Emit a vertical stack of widgets (window/panel body, `wf_column`).
+fn emit_column(items: &[Widget], x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
+    let mut cy = y;
+    for c in items {
+        emit(c, x, cy, icons, out);
+        cy += c.h + GAP;
+    }
+}
+
+/// Titlebar dots + close `✕`, right-aligned at `right_x`.
+fn emit_window_controls(out: &mut String, right_x: f64, y: f64, theme: &Theme) {
+    let cy = y + TITLEBAR_H / 2.0;
+    let s = 4.0;
+    let cx = right_x - PAD - s;
+    let fg = theme.fg.as_deref().unwrap_or("currentColor");
+    out.push_str(&format!(
+        "<g stroke=\"{fg}\" stroke-opacity=\"0.55\" stroke-width=\"1.5\" stroke-linecap=\"round\">\
+         <line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\"/>\
+         <line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\"/></g>",
+        cx - s,
+        cy - s,
+        cx + s,
+        cy + s,
+        cx - s,
+        cy + s,
+        cx + s,
+        cy - s,
+    ));
+    // Two outline dots left of the close glyph.
+    for i in 0..2 {
+        let dx = cx - 4.0 * s - (1 - i) as f64 * 13.0;
+        out.push_str(&format!(
+            "<circle cx=\"{dx:.2}\" cy=\"{cy:.2}\" r=\"4\" fill=\"none\" stroke=\"{}\" stroke-opacity=\"0.6\"/>",
+            grey(0.6),
+        ));
+    }
+}
+
+// ── Primitive emitters ───────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+fn rect(out: &mut String, x: f64, y: f64, w: f64, h: f64, rx: f64, fill: &str, stroke: &str) {
+    let stroke_attr = if stroke == "none" {
+        String::new()
+    } else {
+        format!(" stroke=\"{stroke}\" stroke-width=\"1\"")
+    };
+    out.push_str(&format!(
+        "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"{rx}\" fill=\"{fill}\"{stroke_attr}/>",
+    ));
+}
+
+fn circle(out: &mut String, cx: f64, cy: f64, r: f64, fill: &str, stroke: &str) {
+    let stroke_attr = if stroke == "none" {
+        String::new()
+    } else {
+        format!(" stroke=\"{stroke}\" stroke-width=\"1\"")
+    };
+    out.push_str(&format!(
+        "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r:.2}\" fill=\"{fill}\"{stroke_attr}/>",
+    ));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_text(
+    out: &mut String,
+    x: f64,
+    y: f64,
+    anchor: &str,
+    font: f64,
+    italic: bool,
+    fill: &str,
+    opacity: Option<f64>,
+    text: &str,
+) {
+    if text.is_empty() {
+        return;
+    }
+    let style = if italic { " font-style=\"italic\"" } else { "" };
+    let op = opacity
+        .map(|o| format!(" fill-opacity=\"{o}\""))
+        .unwrap_or_default();
+    out.push_str(&format!(
+        "<text x=\"{x:.2}\" y=\"{y:.2}\" text-anchor=\"{anchor}\" font-family=\"{SANS}\" \
+         font-size=\"{font}\" fill=\"{fill}\"{op}{style}>{}</text>",
+        escape_html(text),
+    ));
+}
+
+/// The text baseline for a glyph vertically centred in a box of height `h`
+/// whose top is at `top`.
+fn baseline(top: f64, h: f64) -> f64 {
+    top + h / 2.0 + FONT * 0.34
+}
+
+// ── Theme + colour helpers ───────────────────────────────────────────
+
+/// A widget's baked theme from its `class` list (first class that sets each
+/// field wins). Empty when no class supplies an override.
+fn theme_of(doc: &Document, block: &Block<'_>) -> Theme {
+    let classes = field_utf8_list(block, "class");
+    Theme {
+        bg: class_field(doc, &classes, "background"),
+        fg: class_field(doc, &classes, "color"),
+        border: class_field(doc, &classes, "border").and_then(|s| border_color(&s)),
+    }
+}
+
+/// The first referenced `class` block that sets `field`, returned verbatim.
+fn class_field(doc: &Document, classes: &[String], field: &str) -> Option<String> {
+    for name in classes {
+        if let Some(b) = doc
+            .blocks()
+            .find(|b| b.kind() == "class" && label_string(b).as_deref() == Some(name))
+            && let Some(v) = field_utf8(&b, field)
+        {
+            return Some(v);
+        }
+    }
+    None
+}
+
+/// The text/icon fill for a themed widget — its class `color`, else
+/// `currentColor` (themed by the page).
+fn theme_fg(theme: &Theme) -> &str {
+    theme.fg.as_deref().unwrap_or("currentColor")
+}
+
+/// A box border colour: the class `border`'s colour if set, else the neutral
+/// grey.
+fn border(theme: &Theme) -> String {
+    theme.border.clone().unwrap_or_else(|| grey(0.45))
+}
+
+/// The colour token from a CSS `border` shorthand (`"1px solid #1f6feb"` →
+/// `"#1f6feb"`): the last whitespace-separated token.
+fn border_color(s: &str) -> Option<String> {
+    s.split_whitespace().last().map(str::to_string)
+}
+
+/// The neutral grey-box palette: `rgba(127,127,127,α)` composited over white,
+/// `255 − 128·α` per channel, as `#rrggbb`.
+fn grey(alpha: f64) -> String {
+    let v = (255.0 - 128.0 * alpha).round().clamp(0.0, 255.0) as u8;
+    format!("#{v:02x}{v:02x}{v:02x}")
+}
+
+/// A rough average glyph advance (in em) so box sizing fits mock-up text
+/// without a font system. Overestimates slightly so boxes never clip.
+fn char_em(c: char) -> f64 {
+    match c {
+        'i' | 'l' | 'j' | 'I' | '.' | ',' | ':' | ';' | '\'' | '|' | '!' | '`' => 0.30,
+        'f' | 't' | 'r' | '(' | ')' | '[' | ']' | ' ' => 0.36,
+        'm' | 'w' | 'M' | 'W' | '@' => 0.85,
+        'A'..='Z' | '0'..='9' => 0.62,
+        _ => 0.52,
+    }
+}
+
+fn text_w(s: &str, font_px: f64) -> f64 {
+    s.chars().map(char_em).sum::<f64>() * font_px
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grey_flattens_against_white() {
+        // 255 - 128·α, rounded.
+        assert_eq!(grey(0.45), "#c5c5c5");
+        assert_eq!(grey(0.05), "#f9f9f9");
+        assert_eq!(grey(0.0), "#ffffff");
+    }
+
+    #[test]
+    fn text_w_positive_and_monotonic() {
+        assert!(text_w("a", FONT) > 0.0);
+        assert!(text_w("aa", FONT) > text_w("a", FONT));
+        assert!(text_w("", FONT) == 0.0);
+    }
+
+    #[test]
+    fn border_color_takes_last_token() {
+        assert_eq!(
+            border_color("1px solid #1f6feb").as_deref(),
+            Some("#1f6feb")
+        );
+        assert_eq!(border_color("red").as_deref(), Some("red"));
+    }
+
+    #[test]
+    fn grid_dimensions_round_up_rows() {
+        let items: Vec<Widget> = (0..5)
+            .map(|_| sized(Kind::Empty, 40.0, 20.0, false))
+            .collect();
+        // 5 items / 2 cols → 3 rows.
+        let (w, h) = grid_size(&items, 2);
+        assert_eq!(w, 40.0 * 2.0 + GAP);
+        assert_eq!(h, 20.0 * 3.0 + GAP * 2.0);
+    }
+}
