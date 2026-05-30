@@ -45,6 +45,15 @@ impl TextStyle {
             italic: false,
         }
     }
+
+    /// The monospace style for code.
+    pub(crate) fn code() -> Self {
+        Self {
+            family: FontFamily::Mono,
+            bold: false,
+            italic: false,
+        }
+    }
 }
 
 /// A run of inline content within a block. Inline code is just `Text` carrying
@@ -57,6 +66,27 @@ pub(crate) enum InlineRun {
     Link { runs: Vec<InlineRun>, href: String },
 }
 
+/// A syntax-highlighted token within a code line.
+#[derive(Clone, Debug)]
+pub(crate) struct CodeSpan {
+    pub text: String,
+    pub color: (u8, u8, u8),
+}
+
+/// One flattened list item: a nesting `depth`, its marker (`•` / `1.` / `1.2.`),
+/// and its inline content.
+#[derive(Clone, Debug)]
+pub(crate) struct ListLine {
+    pub depth: u8,
+    pub marker: String,
+    pub runs: Vec<InlineRun>,
+}
+
+/// A table cell: a list of inline runs.
+pub(crate) type Cell = Vec<InlineRun>;
+/// A table row: a list of cells.
+pub(crate) type Row = Vec<Cell>;
+
 /// A block-level flow node.
 #[derive(Clone, Debug)]
 pub(crate) enum BlockNode {
@@ -67,4 +97,10 @@ pub(crate) enum BlockNode {
     /// Embedded SVG content (a diagram, chart, timeline, or block equation),
     /// carried as the renderer's SVG string for the embed pass to parse.
     Svg { svg: String },
+    /// A syntax-highlighted code block: one inner `Vec` per source line.
+    Code { lines: Vec<Vec<CodeSpan>> },
+    /// A bullet or numbered list, flattened to indented marked lines.
+    List { lines: Vec<ListLine> },
+    /// A table: an optional header row plus body rows, each cell a run list.
+    Table { header: Row, rows: Vec<Row> },
 }

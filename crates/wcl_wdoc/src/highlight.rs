@@ -11,6 +11,8 @@
 
 use std::sync::OnceLock;
 
+use syntect::easy::HighlightLines;
+use syntect::highlighting::{Theme, ThemeSet};
 use syntect::html::{ClassStyle, ClassedHTMLGenerator};
 use syntect::parsing::{SyntaxDefinition, SyntaxSet};
 use syntect::util::LinesWithEndings;
@@ -63,4 +65,48 @@ pub(crate) fn highlight_html(source: &str, language: &str) -> String {
 /// alongside the per-document class rules.
 pub(crate) fn theme_css() -> &'static str {
     THEME_CSS
+}
+
+/// A light syntect theme for the PDF backend (which has no CSS to colour
+/// `.tok-*` classes). `InspiredGitHub` reads well on the white page.
+fn pdf_theme() -> &'static Theme {
+    static THEME: OnceLock<Theme> = OnceLock::new();
+    THEME.get_or_init(|| {
+        let mut ts = ThemeSet::load_defaults();
+        ts.themes
+            .remove("InspiredGitHub")
+            .or_else(|| ts.themes.values().next().cloned())
+            .expect("syntect ships default themes")
+    })
+}
+
+/// One highlighted source line: a sequence of `(text, rgb)` token runs.
+pub(crate) type CodeLine = Vec<(String, (u8, u8, u8))>;
+
+/// Highlight `source` into per-line runs of `(text, rgb)` for the PDF backend.
+/// Each inner `Vec` is one source line; trailing newlines are stripped.
+pub(crate) fn highlight_spans(source: &str, language: &str) -> Vec<CodeLine> {
+    let ss = syntax_set();
+    let syn = ss
+        .find_syntax_by_token(language)
+        .or_else(|| ss.find_syntax_by_name(language))
+        .unwrap_or_else(|| ss.find_syntax_plain_text());
+    let mut hl = HighlightLines::new(syn, pdf_theme());
+    let mut lines = Vec::new();
+    for line in LinesWithEndings::from(source) {
+        let runs = hl.highlight_line(line, ss).unwrap_or_default();
+        let spans: Vec<(String, (u8, u8, u8))> = runs
+            .iter()
+            .map(|(style, text)| {
+                let c = style.foreground;
+                (
+                    text.trim_end_matches(['\n', '\r']).to_string(),
+                    (c.r, c.g, c.b),
+                )
+            })
+            .filter(|(t, _)| !t.is_empty())
+            .collect();
+        lines.push(spans);
+    }
+    lines
 }

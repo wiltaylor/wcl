@@ -2,13 +2,10 @@
 //! the footer page number. Drawn into the page margins, outside the content
 //! box the layout pass fills.
 
-use krilla::color::rgb;
-use krilla::geom::{PathBuilder, Rect};
-use krilla::paint::Fill;
 use krilla::surface::Surface;
 
 use super::Geometry;
-use super::paint::{CHROME_SIZE, draw_line, line_width};
+use super::paint::{CHROME_SIZE, draw_line, fill_rect, line_width};
 use super::text::ShapedLine;
 
 /// Muted colour for header/footer chrome and the hairline rule.
@@ -57,17 +54,5 @@ pub(crate) fn draw_chrome(
 }
 
 fn draw_rule(surface: &mut Surface, x: f32, y: f32, w: f32, thickness: f32, color: (u8, u8, u8)) {
-    let Some(rect) = Rect::from_xywh(x, y, w, thickness) else {
-        return;
-    };
-    let mut pb = PathBuilder::new();
-    pb.push_rect(rect);
-    let Some(path) = pb.finish() else {
-        return;
-    };
-    surface.set_fill(Some(Fill {
-        paint: rgb::Color::new(color.0, color.1, color.2).into(),
-        ..Fill::default()
-    }));
-    surface.draw_path(&path);
+    fill_rect(surface, x, y, w, thickness, color);
 }

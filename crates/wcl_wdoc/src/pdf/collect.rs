@@ -17,9 +17,11 @@ use std::path::Path;
 use wcl_lang::{Block, Document, Value, VariantPayload};
 
 use crate::inline::InlinePatterns;
-use crate::render::{kind_for_variant, lower_to_values, map_utf8, map_utf8_list, render_diagram};
+use crate::render::{
+    field_symbol, kind_for_variant, lower_to_values, map_utf8, map_utf8_list, render_diagram,
+};
 
-use super::ir::{BlockNode, InlineRun, TextStyle};
+use super::ir::{BlockNode, CodeSpan, InlineRun, ListLine, TextStyle};
 
 /// Collect every child block of `page` into a flat list of flow nodes.
 pub(crate) fn collect_page(
@@ -49,6 +51,19 @@ fn collect_block(
         out.push(BlockNode::Svg {
             svg: render_diagram(doc, block, patterns, base_dir),
         });
+        return;
+    }
+    // Lists are fundamental HTML blocks (no usable `lower`); read their nested
+    // `li` structure directly into flattened, marked lines.
+    if kind == "list" {
+        let mut lines = Vec::new();
+        let ordered = field_symbol(block, "style").as_deref() == Some("numbered");
+        collect_li_group(doc, block, ordered, 0, "", patterns, &mut lines);
+        out.push(BlockNode::List { lines });
+        return;
+    }
+    if kind == "table" {
+        out.push(collect_table(doc, block, patterns));
         return;
     }
     let Some(values) = lower_to_values(doc, block, kind) else {
@@ -130,6 +145,22 @@ fn walk_block_variant(
         "math" => out.push(BlockNode::Svg {
             svg: crate::math::render_math_fundamental(map),
         }),
+        // A code block lowers to an `HtmlFundamental::Highlighted` — re-run
+        // syntect to get coloured token runs for native drawing.
+        "highlighted" => {
+            let source = map_utf8(map, "source").unwrap_or_default();
+            let language = map_utf8(map, "language").unwrap_or_default();
+            let lines = crate::highlight::highlight_spans(&source, &language)
+                .into_iter()
+                .map(|spans| {
+                    spans
+                        .into_iter()
+                        .map(|(text, color)| CodeSpan { text, color })
+                        .collect()
+                })
+                .collect();
+            out.push(BlockNode::Code { lines });
+        }
         _ => {}
     }
 }
@@ -157,6 +188,154 @@ fn collect_runs(doc: &Document, children: &[Value], patterns: &InlinePatterns) -
         }
     }
     runs
+}
+
+/// Collect a `table` block (either the computed-`rows` form or the native
+/// pipe-row form) into header + body run-cells.
+fn collect_table(doc: &Document, block: &Block<'_>, patterns: &InlinePatterns) -> BlockNode {
+    let cell = |v: &Value| -> Vec<InlineRun> { patterns.render_runs(doc, &cell_text(v)) };
+
+    // Computed-rows form.
+    if let Some(Value::List(body)) = block.field("rows").and_then(|f| f.value().ok().cloned()) {
+        let header: Vec<Vec<InlineRun>> =
+            match block.field("header").and_then(|f| f.value().ok().cloned()) {
+                Some(Value::List(cells)) => cells.iter().map(&cell).map(bold_cell).collect(),
+                _ => Vec::new(),
+            };
+        let rows = body
+            .iter()
+            .map(|r| match r {
+                Value::List(cells) => cells.iter().map(&cell).collect(),
+                other => vec![cell(other)],
+            })
+            .collect();
+        return BlockNode::Table { header, rows };
+    }
+
+    // Native pipe-row form: the first row is the header.
+    let mut all: Vec<Vec<Vec<InlineRun>>> = Vec::new();
+    for table in block.tables() {
+        for row in table.rows() {
+            if let Ok(values) = row.values() {
+                all.push(values.iter().map(&cell).collect());
+            }
+        }
+    }
+    let header = if all.is_empty() {
+        Vec::new()
+    } else {
+        all.remove(0).into_iter().map(bold_cell).collect()
+    };
+    BlockNode::Table { header, rows: all }
+}
+
+/// Plain text of a table cell value.
+fn cell_text(v: &Value) -> String {
+    match v {
+        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s) => s.clone(),
+        Value::Bool(b) => b.to_string(),
+        other => other.as_f64().map_or(String::new(), |f| {
+            if f.fract() == 0.0 {
+                format!("{}", f as i64)
+            } else {
+                format!("{f}")
+            }
+        }),
+    }
+}
+
+/// Force every run in a (header) cell bold.
+fn bold_cell(runs: Vec<InlineRun>) -> Vec<InlineRun> {
+    runs.into_iter().map(bold_run).collect()
+}
+
+fn bold_run(run: InlineRun) -> InlineRun {
+    match run {
+        InlineRun::Text { text, mut style } => {
+            style.bold = true;
+            InlineRun::Text { text, style }
+        }
+        InlineRun::Link { runs, href } => InlineRun::Link {
+            runs: runs.into_iter().map(bold_run).collect(),
+            href,
+        },
+    }
+}
+
+/// Flatten the `li` children of `parent` (a `list` or an `li`) into marked
+/// lines. `ordered` selects numbered vs bullet markers; `prefix` is the parent
+/// item's number path (`"1.2"`); `depth` drives indentation. A bare `li` nested
+/// under an `li` forms an implicit sublist in the parent's style; a nested
+/// `list` block carries its own style.
+fn collect_li_group(
+    doc: &Document,
+    parent: &Block<'_>,
+    ordered: bool,
+    depth: u8,
+    prefix: &str,
+    patterns: &InlinePatterns,
+    lines: &mut Vec<ListLine>,
+) {
+    let mut i = 0u32;
+    for li in parent.blocks().filter(|b| b.kind() == "li") {
+        i += 1;
+        let num = if prefix.is_empty() {
+            i.to_string()
+        } else {
+            format!("{prefix}.{i}")
+        };
+        let marker = if ordered {
+            format!("{num}.")
+        } else {
+            bullet(depth).to_string()
+        };
+        let text = li_text(&li);
+        lines.push(ListLine {
+            depth,
+            marker,
+            runs: patterns.render_runs(doc, &text),
+        });
+
+        // Implicit sublist: bare `li`s directly under this `li`.
+        if li.blocks().any(|b| b.kind() == "li") {
+            let sub_prefix = if ordered { num.as_str() } else { "" };
+            collect_li_group(doc, &li, ordered, depth + 1, sub_prefix, patterns, lines);
+        }
+        // Explicit nested `list` blocks with their own style.
+        for sub in li.blocks().filter(|b| b.kind() == "list") {
+            let sub_ordered = field_symbol(&sub, "style").as_deref() == Some("numbered");
+            let sub_prefix = if sub_ordered && ordered {
+                num.as_str()
+            } else {
+                ""
+            };
+            collect_li_group(
+                doc,
+                &sub,
+                sub_ordered,
+                depth + 1,
+                sub_prefix,
+                patterns,
+                lines,
+            );
+        }
+    }
+}
+
+fn bullet(depth: u8) -> &'static str {
+    match depth % 3 {
+        0 => "•",
+        1 => "◦",
+        _ => "▪",
+    }
+}
+
+/// The inline text of an `li` (its `@inline(0)` label slot).
+fn li_text(li: &Block<'_>) -> String {
+    match li.labels().ok().and_then(|l| l.into_iter().next()) {
+        Some(Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s)) => s,
+        _ => String::new(),
+    }
 }
 
 /// The concatenated raw text of an element's inline children (for headings,

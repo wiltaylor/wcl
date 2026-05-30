@@ -132,6 +132,26 @@ fn embeds_diagrams_and_block_math_as_vectors() {
 }
 
 #[test]
+fn renders_code_lists_and_tables() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("rich.wcl");
+    write_fixture(
+        &src,
+        "page r {\n  code rust {\n    source = \"fn main() { let x = 1; }\"\n  }\n  list {\n    li \"alpha\"\n    li \"beta\" {\n      li \"nested\"\n    }\n  }\n  table {\n    rows:\n      | \"Name\" | \"Score\" |\n      | \"Ann\"  | 9       |\n      | \"Bob\"  | 7       |\n  }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    pdf_ok(&src, out.path(), PageSize::A4);
+
+    let bytes = std::fs::read(out.path().join("rich.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    // Code uses the mono face; the bold table header + list markers use sans /
+    // serif. All three block kinds drawing means several faces are embedded.
+    let blob = String::from_utf8_lossy(&bytes);
+    assert!(blob.contains("NotoSansMono"), "code block embedded mono");
+    assert!(bytes.len() > 5000, "rich content produced");
+}
+
+#[test]
 fn errors_when_no_pages() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("empty.wcl");

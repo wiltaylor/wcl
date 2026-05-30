@@ -74,6 +74,8 @@ pub(crate) struct ShapedLine {
     pub ascent: f32,
     /// Full line advance (top of this line to top of the next).
     pub height: f32,
+    /// Painted width of the line (advance of its glyphs).
+    pub width: f32,
     pub glyphs: Vec<ShapedGlyph>,
 }
 
@@ -135,6 +137,7 @@ impl FontBook {
         p.lines.pop().unwrap_or(ShapedLine {
             ascent: size,
             height: size * 1.2,
+            width: 0.0,
             glyphs: Vec::new(),
         })
     }
@@ -185,6 +188,7 @@ impl FontBook {
             raw_lines.push(RawLine {
                 ascent: run.line_y - run.line_top,
                 height: run.line_height,
+                width: run.line_w,
                 glyphs,
             });
         }
@@ -195,6 +199,7 @@ impl FontBook {
             .map(|rl| ShapedLine {
                 ascent: rl.ascent,
                 height: rl.height,
+                width: rl.width,
                 glyphs: rl
                     .glyphs
                     .into_iter()
@@ -300,5 +305,6 @@ struct RawGlyph {
 struct RawLine {
     ascent: f32,
     height: f32,
+    width: f32,
     glyphs: Vec<RawGlyph>,
 }

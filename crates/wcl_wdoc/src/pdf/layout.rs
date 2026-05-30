@@ -10,7 +10,7 @@
 use usvg::Tree;
 
 use super::Geometry;
-use super::ir::BlockNode;
+use super::ir::{BlockNode, Cell, CodeSpan, ListLine, Row, TextStyle};
 use super::svg_embed::SvgEmbedder;
 use super::text::{FontBook, ShapedGlyph};
 
@@ -56,15 +56,30 @@ pub(crate) struct PlacedSvg {
     pub h: f32,
 }
 
-/// One physical page's painted content.
+/// A filled rectangle (a code-block background) in absolute page coordinates.
+pub(crate) struct RectFill {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub color: (u8, u8, u8),
+}
+
+/// One physical page's painted content. Rects paint first (backgrounds), then
+/// SVGs, then glyphs on top.
 #[derive(Default)]
 pub(crate) struct LaidOutPage {
     pub glyphs: Vec<PlacedGlyph>,
     pub links: Vec<LinkBox>,
     pub svgs: Vec<PlacedSvg>,
+    pub rects: Vec<RectFill>,
 }
 
 const SPACE_AROUND_SVG: f32 = 8.0;
+const CODE_SIZE: f32 = 9.5;
+const CODE_LINE_HEIGHT: f32 = 1.5;
+const CODE_PAD: f32 = 9.0;
+const CODE_BG: (u8, u8, u8) = (244, 244, 245);
 
 fn heading_size(level: u8) -> f32 {
     match level {
@@ -115,6 +130,49 @@ pub(crate) fn layout(
                 );
                 continue;
             }
+            if let BlockNode::Code { lines } = block {
+                place_code(
+                    lines,
+                    book,
+                    &mut pages,
+                    &mut cy,
+                    &mut at_page_top,
+                    left,
+                    top,
+                    content_w,
+                    content_h,
+                );
+                continue;
+            }
+            if let BlockNode::List { lines } = block {
+                place_list(
+                    lines,
+                    book,
+                    &mut pages,
+                    &mut cy,
+                    &mut at_page_top,
+                    left,
+                    top,
+                    content_w,
+                    content_h,
+                );
+                continue;
+            }
+            if let BlockNode::Table { header, rows } = block {
+                place_table(
+                    header,
+                    rows,
+                    book,
+                    &mut pages,
+                    &mut cy,
+                    &mut at_page_top,
+                    left,
+                    top,
+                    content_w,
+                    content_h,
+                );
+                continue;
+            }
 
             let (runs, size, line_height, space_before, space_after) = match block {
                 BlockNode::Heading { level, runs } => (
@@ -131,7 +189,12 @@ pub(crate) fn layout(
                     0.0,
                     SPACE_AFTER_PARAGRAPH,
                 ),
-                BlockNode::Svg { .. } => unreachable!("handled above"),
+                BlockNode::Svg { .. }
+                | BlockNode::Code { .. }
+                | BlockNode::List { .. }
+                | BlockNode::Table { .. } => {
+                    unreachable!("handled above")
+                }
             };
 
             if !at_page_top {
@@ -203,6 +266,284 @@ fn place_svg(
         h: dh,
     });
     *cy += dh + SPACE_AROUND_SVG;
+    *at_page_top = false;
+}
+
+/// Place a code block: an inset background box with syntax-coloured monospace
+/// text, splitting across pages at line boundaries (a fresh box per page).
+#[allow(clippy::too_many_arguments)]
+fn place_code(
+    lines: &[Vec<CodeSpan>],
+    book: &mut FontBook,
+    pages: &mut Vec<LaidOutPage>,
+    cy: &mut f32,
+    at_page_top: &mut bool,
+    left: f32,
+    top: f32,
+    content_w: f32,
+    content_h: f32,
+) {
+    let size = CODE_SIZE;
+    let lh = size * CODE_LINE_HEIGHT;
+    let pad = CODE_PAD;
+
+    if !*at_page_top {
+        *cy += SPACE_AROUND_SVG;
+    }
+
+    let mut i = 0;
+    while i < lines.len() {
+        if *cy + pad + lh > content_h && !*at_page_top {
+            pages.push(LaidOutPage::default());
+            *cy = 0.0;
+            *at_page_top = true;
+        }
+        let seg_page = pages.len() - 1;
+        let seg_top = top + *cy;
+        *cy += pad;
+        while i < lines.len() && *cy + lh + pad <= content_h {
+            let page = pages.last_mut().expect("at least one page");
+            draw_code_line(page, book, &lines[i], left + pad, top + *cy, size);
+            *cy += lh;
+            *at_page_top = false;
+            i += 1;
+        }
+        *cy += pad;
+        let seg_h = (top + *cy) - seg_top;
+        pages[seg_page].rects.push(RectFill {
+            x: left,
+            y: seg_top,
+            w: content_w,
+            h: seg_h,
+            color: CODE_BG,
+        });
+        if i < lines.len() {
+            pages.push(LaidOutPage::default());
+            *cy = 0.0;
+            *at_page_top = true;
+        }
+    }
+    *cy += SPACE_AROUND_SVG;
+}
+
+/// Draw one code line's coloured spans left-to-right in monospace.
+fn draw_code_line(
+    page: &mut LaidOutPage,
+    book: &mut FontBook,
+    spans: &[CodeSpan],
+    x0: f32,
+    line_top: f32,
+    size: f32,
+) {
+    let baseline = line_top + size * 0.82;
+    let mut pen = x0;
+    for span in spans {
+        if span.text.is_empty() {
+            continue;
+        }
+        let shaped = book.shape_label(&span.text, TextStyle::code(), size);
+        for g in &shaped.glyphs {
+            page.glyphs.push(PlacedGlyph {
+                font: g.font.clone(),
+                glyph_id: g.glyph_id,
+                x: pen + g.x,
+                y: baseline + g.dy,
+                size,
+                color: span.color,
+                cluster: g.cluster.clone(),
+            });
+        }
+        pen += shaped.width;
+    }
+}
+
+/// Place a flattened list: each line indented by its depth, with a marker on
+/// the first wrapped line and inline content (links included) following.
+#[allow(clippy::too_many_arguments)]
+fn place_list(
+    lines: &[ListLine],
+    book: &mut FontBook,
+    pages: &mut Vec<LaidOutPage>,
+    cy: &mut f32,
+    at_page_top: &mut bool,
+    left: f32,
+    top: f32,
+    content_w: f32,
+    content_h: f32,
+) {
+    const INDENT: f32 = 16.0;
+    const MARKER_GAP: f32 = 18.0;
+    const ITEM_SPACE: f32 = 2.0;
+
+    if !*at_page_top {
+        *cy += SPACE_AROUND_SVG;
+    }
+
+    for line in lines {
+        let indent = f32::from(line.depth) * INDENT;
+        let marker = book.shape_label(&line.marker, TextStyle::body(), BODY_SIZE);
+        // Reserve at least MARKER_GAP, but more when the marker (e.g. "2.1.")
+        // is wider, so the text never collides with it.
+        let gap = (marker.width + 5.0).max(MARKER_GAP);
+        let text_x = left + indent + gap;
+        let text_w = (content_w - indent - gap).max(40.0);
+        let shaped = book.shape_paragraph(&line.runs, text_w, BODY_SIZE, BODY_LINE_HEIGHT);
+
+        for (li, wl) in shaped.lines.iter().enumerate() {
+            if *cy + wl.height > content_h && !*at_page_top {
+                pages.push(LaidOutPage::default());
+                *cy = 0.0;
+            }
+            let baseline = top + *cy + wl.ascent;
+            let page = pages.last_mut().expect("at least one page");
+            if li == 0 {
+                for g in &marker.glyphs {
+                    page.glyphs.push(PlacedGlyph {
+                        font: g.font.clone(),
+                        glyph_id: g.glyph_id,
+                        x: left + indent + g.x,
+                        y: baseline + g.dy,
+                        size: BODY_SIZE,
+                        color: TEXT_COLOR,
+                        cluster: g.cluster.clone(),
+                    });
+                }
+            }
+            place_line(page, &wl.glyphs, &shaped.hrefs, text_x, baseline, BODY_SIZE);
+            *cy += wl.height;
+            *at_page_top = false;
+        }
+        *cy += ITEM_SPACE;
+    }
+    *cy += SPACE_AROUND_SVG;
+}
+
+const TABLE_SIZE: f32 = 10.0;
+const TABLE_LINE_HEIGHT: f32 = 1.3;
+const TABLE_PAD: f32 = 5.0;
+const TABLE_BORDER: (u8, u8, u8) = (205, 205, 210);
+const TABLE_HEADER_BG: (u8, u8, u8) = (238, 238, 241);
+
+/// Place a table: equal-width columns, an optional shaded header row, and a
+/// hairline rule under each row. Rows paginate (a row that won't fit starts a
+/// new page; the header is not repeated).
+#[allow(clippy::too_many_arguments)]
+fn place_table(
+    header: &[Cell],
+    rows: &[Row],
+    book: &mut FontBook,
+    pages: &mut Vec<LaidOutPage>,
+    cy: &mut f32,
+    at_page_top: &mut bool,
+    left: f32,
+    top: f32,
+    content_w: f32,
+    content_h: f32,
+) {
+    let cols = header
+        .len()
+        .max(rows.iter().map(Vec::len).max().unwrap_or(0))
+        .max(1);
+    let col_w = content_w / cols as f32;
+
+    if !*at_page_top {
+        *cy += SPACE_AROUND_SVG;
+    }
+    if !header.is_empty() {
+        draw_table_row(
+            header,
+            true,
+            cols,
+            col_w,
+            book,
+            pages,
+            cy,
+            at_page_top,
+            left,
+            top,
+            content_w,
+            content_h,
+        );
+    }
+    for row in rows {
+        draw_table_row(
+            row,
+            false,
+            cols,
+            col_w,
+            book,
+            pages,
+            cy,
+            at_page_top,
+            left,
+            top,
+            content_w,
+            content_h,
+        );
+    }
+    *cy += SPACE_AROUND_SVG;
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_table_row(
+    cells: &[Cell],
+    is_header: bool,
+    cols: usize,
+    col_w: f32,
+    book: &mut FontBook,
+    pages: &mut Vec<LaidOutPage>,
+    cy: &mut f32,
+    at_page_top: &mut bool,
+    left: f32,
+    top: f32,
+    content_w: f32,
+    content_h: f32,
+) {
+    let empty: Cell = Vec::new();
+    let mut paras = Vec::with_capacity(cols);
+    let mut tallest = 0.0_f32;
+    for c in 0..cols {
+        let runs = cells.get(c).unwrap_or(&empty);
+        let para =
+            book.shape_paragraph(runs, col_w - 2.0 * TABLE_PAD, TABLE_SIZE, TABLE_LINE_HEIGHT);
+        let h: f32 = para.lines.iter().map(|l| l.height).sum();
+        tallest = tallest.max(h);
+        paras.push(para);
+    }
+    let row_h = tallest + 2.0 * TABLE_PAD;
+
+    if *cy + row_h > content_h && !*at_page_top {
+        pages.push(LaidOutPage::default());
+        *cy = 0.0;
+    }
+    let row_top = top + *cy;
+    let page = pages.last_mut().expect("at least one page");
+    if is_header {
+        page.rects.push(RectFill {
+            x: left,
+            y: row_top,
+            w: content_w,
+            h: row_h,
+            color: TABLE_HEADER_BG,
+        });
+    }
+    for (c, para) in paras.iter().enumerate() {
+        let cx = left + c as f32 * col_w + TABLE_PAD;
+        let mut yy = TABLE_PAD;
+        for wl in &para.lines {
+            let baseline = row_top + yy + wl.ascent;
+            place_line(page, &wl.glyphs, &para.hrefs, cx, baseline, TABLE_SIZE);
+            yy += wl.height;
+        }
+    }
+    page.rects.push(RectFill {
+        x: left,
+        y: row_top + row_h - 0.6,
+        w: content_w,
+        h: 0.6,
+        color: TABLE_BORDER,
+    });
+    *cy += row_h;
     *at_page_top = false;
 }
 

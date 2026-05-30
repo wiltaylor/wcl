@@ -10,7 +10,7 @@ use krilla::action::{Action, LinkAction};
 use krilla::annotation::{Annotation, LinkAnnotation, Target};
 use krilla::color::rgb;
 use krilla::error::KrillaResult;
-use krilla::geom::{Point, Rect, Size, Transform};
+use krilla::geom::{PathBuilder, Point, Rect, Size, Transform};
 use krilla::page::PageSettings;
 use krilla::paint::Fill;
 use krilla::surface::Surface;
@@ -54,6 +54,11 @@ pub(crate) fn paint(
         let mut surface = kpage.surface();
 
         page::draw_chrome(&mut surface, geom, &header, &footer_line);
+
+        // Backgrounds (code-block insets) paint first.
+        for r in &page_content.rects {
+            fill_rect(&mut surface, r.x, r.y, r.w, r.h, r.color);
+        }
 
         // Embedded SVG (diagrams / charts / equations) underneath the text.
         for placed in &page_content.svgs {
@@ -127,6 +132,30 @@ pub(crate) fn draw_glyph(
         size,
         false,
     );
+}
+
+/// Fill an axis-aligned rectangle with a solid colour.
+pub(crate) fn fill_rect(
+    surface: &mut Surface,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    color: (u8, u8, u8),
+) {
+    let Some(rect) = Rect::from_xywh(x, y, w, h) else {
+        return;
+    };
+    let mut pb = PathBuilder::new();
+    pb.push_rect(rect);
+    let Some(path) = pb.finish() else {
+        return;
+    };
+    surface.set_fill(Some(Fill {
+        paint: rgb::Color::new(color.0, color.1, color.2).into(),
+        ..Fill::default()
+    }));
+    surface.draw_path(&path);
 }
 
 /// Draw a pre-shaped single line at `(x0, baseline)`.
