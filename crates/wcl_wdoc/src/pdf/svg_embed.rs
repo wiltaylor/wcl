@@ -8,7 +8,6 @@
 //! a `style_sheet` carrying the class fills (chart palette). `<text>` labels
 //! shape against the same bundled Noto fonts as native prose.
 
-use std::fmt::Write as _;
 use std::sync::Arc;
 
 use usvg::{Options, Tree, fontdb};
@@ -203,9 +202,9 @@ fn image_mime(bytes: &[u8]) -> Option<&'static str> {
 }
 
 /// Replace every `<foreignObject x y width height>…XHTML…</foreignObject>`
-/// (which usvg ignores) with a native rounded card box plus the inner text,
-/// word-wrapped. Rich formatting (lists, nested blocks) is flattened to text —
-/// a readable snapshot rather than a blank box.
+/// (which usvg ignores) with just a native rounded card **box**. The card body
+/// is painted natively on top by the PDF layout/paint pass (see `collect.rs`'s
+/// diagram card extraction), so the box here carries no text.
 fn replace_foreign_objects(svg: &str) -> String {
     const OPEN: &str = "<foreignObject";
     const CLOSE: &str = "</foreignObject>";
@@ -224,16 +223,23 @@ fn replace_foreign_objects(svg: &str) -> String {
             out.push_str(&rest[start..]);
             return out;
         };
-        let body = &rest[body_start..body_start + close_rel];
         let x = attr_f32(open_tag, "x").unwrap_or(0.0);
         let y = attr_f32(open_tag, "y").unwrap_or(0.0);
         let w = attr_f32(open_tag, "width").unwrap_or(0.0);
         let h = attr_f32(open_tag, "height").unwrap_or(0.0);
-        out.push_str(&card_svg(x, y, w, h, &strip_tags(body)));
+        out.push_str(&card_box(x, y, w, h));
         rest = &rest[body_start + close_rel + CLOSE.len()..];
     }
     out.push_str(rest);
     out
+}
+
+/// A rounded card box (no content — the body is painted natively over it).
+fn card_box(x: f32, y: f32, w: f32, h: f32) -> String {
+    format!(
+        "<rect x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\" rx=\"4\" \
+         fill=\"#ffffff\" stroke=\"#cccccc\" stroke-width=\"1\"/>"
+    )
 }
 
 /// Read a numeric SVG attribute (`name="12.5"`) from an opening tag.
@@ -244,90 +250,40 @@ fn attr_f32(tag: &str, name: &str) -> Option<f32> {
     tag[start..end].trim().parse().ok()
 }
 
-/// Strip HTML tags to plain text, mapping block-ish tags to spaces and decoding
-/// the common entities the inline engine emits.
-fn strip_tags(html: &str) -> String {
-    let mut s = String::with_capacity(html.len());
-    let mut in_tag = false;
-    for ch in html.chars() {
-        match ch {
-            '<' => in_tag = true,
-            '>' => {
-                in_tag = false;
-                s.push(' ');
-            }
-            _ if in_tag => {}
-            _ => s.push(ch),
-        }
-    }
-    let s = s
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'");
-    s.split_whitespace().collect::<Vec<_>>().join(" ")
+/// Parse an SVG `viewBox="minX minY width height"` into floats. Diagram cards'
+/// positions are in this coordinate space.
+pub(crate) fn parse_viewbox(svg: &str) -> Option<(f32, f32, f32, f32)> {
+    let key = "viewBox=\"";
+    let start = svg.find(key)? + key.len();
+    let end = svg[start..].find('"')? + start;
+    let mut it = svg[start..end].split_whitespace();
+    let min_x = it.next()?.parse().ok()?;
+    let min_y = it.next()?.parse().ok()?;
+    let w = it.next()?.parse().ok()?;
+    let h = it.next()?.parse().ok()?;
+    Some((min_x, min_y, w, h))
 }
 
-/// Emit a native card box + word-wrapped text for one former `<foreignObject>`.
-fn card_svg(x: f32, y: f32, w: f32, h: f32, text: &str) -> String {
-    const PAD: f32 = 6.0;
-    const FS: f32 = 11.0;
-    const LH: f32 = 14.0;
-    let mut out = format!(
-        "<rect x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\" rx=\"4\" \
-         fill=\"#ffffff\" stroke=\"#cccccc\" stroke-width=\"1\"/>"
-    );
-    if text.is_empty() || w <= 2.0 * PAD {
-        return out;
-    }
-    let max_chars = ((w - 2.0 * PAD) / (FS * 0.5)).floor().max(1.0) as usize;
-    let tx = x + PAD;
-    let mut ty = y + PAD + FS;
-    let _ = write!(
-        out,
-        "<text x=\"{tx}\" font-family=\"sans-serif\" font-size=\"{FS}\" fill=\"#1a1a1a\">"
-    );
-    for line in wrap_text(text, max_chars) {
-        if ty > y + h - 2.0 {
+/// Each `<foreignObject>`'s `(x, y, width, height)` in document order — the card
+/// boxes, in the same render order as the diagram's card blocks.
+pub(crate) fn card_rects(svg: &str) -> Vec<(f32, f32, f32, f32)> {
+    let mut rects = Vec::new();
+    let mut rest = svg;
+    while let Some(start) = rest.find("<foreignObject") {
+        let after = &rest[start..];
+        let Some(tag_end) = after.find('>') else {
             break;
-        }
-        let _ = write!(
-            out,
-            "<tspan x=\"{tx}\" y=\"{ty}\">{}</tspan>",
-            xml_escape(&line)
-        );
-        ty += LH;
+        };
+        let open_tag = &after[..tag_end];
+        rects.push((
+            attr_f32(open_tag, "x").unwrap_or(0.0),
+            attr_f32(open_tag, "y").unwrap_or(0.0),
+            attr_f32(open_tag, "width").unwrap_or(0.0),
+            attr_f32(open_tag, "height").unwrap_or(0.0),
+        ));
+        rest = &after[tag_end + 1..];
     }
-    out.push_str("</text>");
-    out
-}
-
-/// Greedy word-wrap to at most `max_chars` per line.
-fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut cur = String::new();
-    for word in text.split(' ') {
-        if cur.is_empty() {
-            cur = word.to_string();
-        } else if cur.len() + 1 + word.len() <= max_chars {
-            cur.push(' ');
-            cur.push_str(word);
-        } else {
-            lines.push(std::mem::take(&mut cur));
-            cur = word.to_string();
-        }
-    }
-    if !cur.is_empty() {
-        lines.push(cur);
-    }
-    lines
-}
-
-fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
+    rects
 }
 
 /// Insert `<defs>{defs}</defs>` immediately after the opening `<svg …>` tag.

@@ -22,7 +22,8 @@ use crate::render::{
     map_utf8, map_utf8_list, render_diagram,
 };
 
-use super::ir::{BlockNode, CodeSpan, InlineRun, ListLine, TextStyle};
+use super::ir::{BlockNode, CardSpec, CodeSpan, FontFamily, InlineRun, ListLine, TextStyle};
+use super::svg_embed;
 
 /// Collect every child block of `page` into a flat list of flow nodes.
 pub(crate) fn collect_page(
@@ -59,11 +60,12 @@ fn collect_block(
         return;
     }
     // Diagrams (and charts/tilemaps within them) already render to a complete
-    // SVG in Rust — embed that string directly.
+    // SVG in Rust. If the diagram has `card` shapes (foreignObject boxes), the
+    // SVG draws everything but the card content, and each card body is collected
+    // for native overlay painting; otherwise embed the SVG as-is.
     if kind == "diagram" {
-        out.push(BlockNode::Svg {
-            svg: render_diagram(doc, block, patterns, base_dir),
-        });
+        let svg = render_diagram(doc, block, patterns, base_dir);
+        out.push(collect_diagram(doc, block, svg, patterns, base_dir));
         return;
     }
     // Lists are fundamental HTML blocks (no usable `lower`); read their nested
@@ -230,6 +232,71 @@ fn collect_runs(doc: &Document, children: &[Value], patterns: &InlinePatterns) -
         }
     }
     runs
+}
+
+/// Build a diagram node. When the rendered SVG holds `card` foreignObjects, pair
+/// each (in render order) with its source `card` block, collect the card's
+/// title + body into PDF blocks, and carry them as overlays; otherwise a plain
+/// `Svg` node. Falls back to `Svg` if the card↔box counts disagree.
+fn collect_diagram(
+    doc: &Document,
+    block: &Block<'_>,
+    svg: String,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
+) -> BlockNode {
+    if !svg.contains("<foreignObject") {
+        return BlockNode::Svg { svg };
+    }
+    let rects = svg_embed::card_rects(&svg);
+    let mut card_blocks: Vec<Block<'_>> = Vec::new();
+    collect_card_blocks(block, &mut card_blocks);
+    let viewbox = svg_embed::parse_viewbox(&svg);
+    if rects.is_empty() || rects.len() != card_blocks.len() || viewbox.is_none() {
+        return BlockNode::Svg { svg };
+    }
+    let cards = card_blocks
+        .iter()
+        .zip(rects)
+        .map(|(card, rect)| {
+            let mut body = Vec::new();
+            if let Some(title) = field_utf8(card, "title") {
+                body.push(BlockNode::Paragraph {
+                    runs: vec![InlineRun::Text {
+                        text: title,
+                        style: TextStyle {
+                            family: FontFamily::Serif,
+                            bold: true,
+                            italic: false,
+                        },
+                    }],
+                });
+            }
+            for child in card.blocks() {
+                collect_block(doc, &child, patterns, base_dir, &mut body);
+            }
+            CardSpec { rect, body }
+        })
+        .collect();
+    BlockNode::Diagram {
+        svg,
+        viewbox: viewbox.expect("checked above"),
+        cards,
+    }
+}
+
+/// Collect every `card` shape within a diagram, depth-first in source order
+/// (matching the foreignObject render order). Containers and the `timeline`
+/// shape are descended into; a card's own body is not (its children are content,
+/// not further diagram cards).
+fn collect_card_blocks<'a>(block: &Block<'a>, out: &mut Vec<Block<'a>>) {
+    for child in block.blocks() {
+        if child.kind() == "card" {
+            out.push(child);
+        } else {
+            collect_card_blocks(&child, out);
+        }
+    }
 }
 
 /// Collect a `table` block (either the computed-`rows` form or the native

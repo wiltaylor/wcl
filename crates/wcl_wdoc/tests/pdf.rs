@@ -110,6 +110,28 @@ fn external_links_become_annotations() {
 }
 
 #[test]
+fn diagram_card_body_renders_natively() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("card.wcl");
+    write_fixture(
+        &src,
+        "page p {\n  diagram d {\n    width = 300\n    height = 160\n    card {\n      x = 10.0  y = 10.0  width = 280.0  height = 140.0\n      title = \"Notes\"\n      p \"Body with **bold** words.\"\n    }\n  }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    pdf_ok(&src, out.path(), PageSize::A4);
+
+    let bytes = std::fs::read(out.path().join("card.pdf")).expect("read pdf");
+    let blob = String::from_utf8_lossy(&bytes);
+    // The card's bold title + `**bold**` body are laid out as real wdoc blocks,
+    // so the serif bold face is embedded — the old flat-text card path (SVG
+    // <text>) never produced native serif glyphs.
+    assert!(
+        blob.contains("NotoSerif-Bold"),
+        "card body rendered natively (serif bold embedded)"
+    );
+}
+
+#[test]
 fn embeds_diagrams_and_block_math_as_vectors() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("vis.wcl");

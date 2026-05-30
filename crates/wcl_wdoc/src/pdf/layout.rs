@@ -10,7 +10,7 @@
 use usvg::Tree;
 
 use super::Geometry;
-use super::ir::{BlockNode, Cell, CodeSpan, ListLine, Row, TextStyle};
+use super::ir::{BlockNode, CardSpec, Cell, CodeSpan, ListLine, Row, TextStyle};
 use super::svg_embed::SvgEmbedder;
 use super::text::{FontBook, InlineObject, ShapedGlyph};
 
@@ -74,8 +74,22 @@ pub(crate) struct PlacedImage {
     pub h: f32,
 }
 
+/// A card body laid out in card-local coordinates, to be painted (scaled +
+/// translated, clipped) over its box inside a diagram.
+pub(crate) struct CardOverlay {
+    pub content: LaidOutPage,
+    /// Card box top-left in absolute page coordinates.
+    pub x: f32,
+    pub y: f32,
+    /// Diagram scale (viewBox units → page points).
+    pub scale: f32,
+    /// Card box size in viewBox units (the clip box, pre-scale).
+    pub w: f32,
+    pub h: f32,
+}
+
 /// One physical page's painted content. Rects paint first (backgrounds), then
-/// images and SVGs, then glyphs on top.
+/// images and SVGs, then glyphs, then card overlays on top.
 #[derive(Default)]
 pub(crate) struct LaidOutPage {
     pub glyphs: Vec<PlacedGlyph>,
@@ -83,6 +97,7 @@ pub(crate) struct LaidOutPage {
     pub svgs: Vec<PlacedSvg>,
     pub rects: Vec<RectFill>,
     pub images: Vec<PlacedImage>,
+    pub card_overlays: Vec<CardOverlay>,
 }
 
 const SPACE_AROUND_SVG: f32 = 8.0;
@@ -128,171 +143,294 @@ pub(crate) fn layout(
         }
         section_starts.push(pages.len() - 1);
 
-        for block in section {
-            if let BlockNode::Svg { svg } = block {
-                place_svg(
-                    svg,
-                    embedder,
-                    &mut pages,
-                    &mut cy,
-                    &mut at_page_top,
-                    left,
-                    top,
-                    content_w,
-                    content_h,
-                );
-                continue;
-            }
-            if let BlockNode::Code { lines } = block {
-                place_code(
-                    lines,
-                    book,
-                    &mut pages,
-                    &mut cy,
-                    &mut at_page_top,
-                    left,
-                    top,
-                    content_w,
-                    content_h,
-                );
-                continue;
-            }
-            if let BlockNode::Image {
-                bytes,
-                disp_w,
-                disp_h,
-            } = block
-            {
-                place_image(
-                    bytes,
-                    *disp_w,
-                    *disp_h,
-                    &mut pages,
-                    &mut cy,
-                    &mut at_page_top,
-                    left,
-                    top,
-                    content_w,
-                    content_h,
-                );
-                continue;
-            }
-            if let BlockNode::List { lines } = block {
-                place_list(
-                    lines,
-                    book,
-                    embedder,
-                    &mut pages,
-                    &mut cy,
-                    &mut at_page_top,
-                    left,
-                    top,
-                    content_w,
-                    content_h,
-                );
-                continue;
-            }
-            if let BlockNode::Table { header, rows } = block {
-                place_table(
-                    header,
-                    rows,
-                    book,
-                    embedder,
-                    &mut pages,
-                    &mut cy,
-                    &mut at_page_top,
-                    left,
-                    top,
-                    content_w,
-                    content_h,
-                );
-                continue;
-            }
-            if let BlockNode::Callout {
-                accent,
-                heading,
-                body,
-            } = block
-            {
-                place_callout(
-                    *accent,
-                    heading,
-                    body,
-                    book,
-                    embedder,
-                    &mut pages,
-                    &mut cy,
-                    &mut at_page_top,
-                    left,
-                    top,
-                    content_w,
-                    content_h,
-                );
-                continue;
-            }
-
-            let (runs, size, line_height, space_before, space_after) = match block {
-                BlockNode::Heading { level, runs } => (
-                    runs,
-                    heading_size(*level),
-                    HEADING_LINE_HEIGHT,
-                    SPACE_BEFORE_HEADING,
-                    SPACE_AFTER_HEADING,
-                ),
-                BlockNode::Paragraph { runs } => (
-                    runs,
-                    BODY_SIZE,
-                    BODY_LINE_HEIGHT,
-                    0.0,
-                    SPACE_AFTER_PARAGRAPH,
-                ),
-                BlockNode::Svg { .. }
-                | BlockNode::Code { .. }
-                | BlockNode::List { .. }
-                | BlockNode::Table { .. }
-                | BlockNode::Callout { .. }
-                | BlockNode::Image { .. } => {
-                    unreachable!("handled above")
-                }
-            };
-
-            if !at_page_top {
-                cy += space_before;
-            }
-
-            let shaped = book.shape_paragraph(runs, content_w, size, line_height, embedder);
-            let mut placed = vec![false; shaped.objects.len()];
-            for line in &shaped.lines {
-                // Break before a line that would overflow — unless the page is
-                // empty (a single oversized line overflows rather than loops).
-                if cy + line.height > content_h && !at_page_top {
-                    pages.push(LaidOutPage::default());
-                    cy = 0.0;
-                }
-                let baseline = top + cy + line.ascent;
-                let page = pages.last_mut().expect("at least one page");
-                place_line(
-                    page,
-                    &line.glyphs,
-                    &shaped.hrefs,
-                    &shaped.objects,
-                    &mut placed,
-                    left,
-                    baseline,
-                    size,
-                );
-                cy += line.height;
-                at_page_top = false;
-            }
-
-            cy += space_after;
-        }
+        place_blocks(
+            section,
+            book,
+            embedder,
+            &mut pages,
+            &mut cy,
+            &mut at_page_top,
+            left,
+            top,
+            content_w,
+            content_h,
+        );
     }
 
     (pages, section_starts)
 }
 
-/// Embed, scale-to-fit, paginate, and centre one SVG block.
+/// Place a run of blocks into `pages`, flowing + paginating from `cy`. Shared by
+/// the top-level section loop and the card sub-layout (which calls it with a
+/// card-local geometry and an unbounded height so it never paginates).
+#[allow(clippy::too_many_arguments)]
+fn place_blocks(
+    blocks: &[BlockNode],
+    book: &mut FontBook,
+    embedder: &SvgEmbedder,
+    pages: &mut Vec<LaidOutPage>,
+    cy: &mut f32,
+    at_page_top: &mut bool,
+    left: f32,
+    top: f32,
+    content_w: f32,
+    content_h: f32,
+) {
+    for block in blocks {
+        if let BlockNode::Svg { svg } = block {
+            place_svg(
+                svg,
+                embedder,
+                pages,
+                cy,
+                at_page_top,
+                left,
+                top,
+                content_w,
+                content_h,
+            );
+            continue;
+        }
+        if let BlockNode::Diagram {
+            svg,
+            viewbox,
+            cards,
+        } = block
+        {
+            place_diagram(
+                svg,
+                *viewbox,
+                cards,
+                book,
+                embedder,
+                pages,
+                cy,
+                at_page_top,
+                left,
+                top,
+                content_w,
+                content_h,
+            );
+            continue;
+        }
+        if let BlockNode::Code { lines } = block {
+            place_code(
+                lines,
+                book,
+                pages,
+                cy,
+                at_page_top,
+                left,
+                top,
+                content_w,
+                content_h,
+            );
+            continue;
+        }
+        if let BlockNode::Image {
+            bytes,
+            disp_w,
+            disp_h,
+        } = block
+        {
+            place_image(
+                bytes,
+                *disp_w,
+                *disp_h,
+                pages,
+                cy,
+                at_page_top,
+                left,
+                top,
+                content_w,
+                content_h,
+            );
+            continue;
+        }
+        if let BlockNode::List { lines } = block {
+            place_list(
+                lines,
+                book,
+                embedder,
+                pages,
+                cy,
+                at_page_top,
+                left,
+                top,
+                content_w,
+                content_h,
+            );
+            continue;
+        }
+        if let BlockNode::Table { header, rows } = block {
+            place_table(
+                header,
+                rows,
+                book,
+                embedder,
+                pages,
+                cy,
+                at_page_top,
+                left,
+                top,
+                content_w,
+                content_h,
+            );
+            continue;
+        }
+        if let BlockNode::Callout {
+            accent,
+            heading,
+            body,
+        } = block
+        {
+            place_callout(
+                *accent,
+                heading,
+                body,
+                book,
+                embedder,
+                pages,
+                cy,
+                at_page_top,
+                left,
+                top,
+                content_w,
+                content_h,
+            );
+            continue;
+        }
+
+        let (runs, size, line_height, space_before, space_after) = match block {
+            BlockNode::Heading { level, runs } => (
+                runs,
+                heading_size(*level),
+                HEADING_LINE_HEIGHT,
+                SPACE_BEFORE_HEADING,
+                SPACE_AFTER_HEADING,
+            ),
+            BlockNode::Paragraph { runs } => (
+                runs,
+                BODY_SIZE,
+                BODY_LINE_HEIGHT,
+                0.0,
+                SPACE_AFTER_PARAGRAPH,
+            ),
+            BlockNode::Svg { .. }
+            | BlockNode::Diagram { .. }
+            | BlockNode::Code { .. }
+            | BlockNode::List { .. }
+            | BlockNode::Table { .. }
+            | BlockNode::Callout { .. }
+            | BlockNode::Image { .. } => unreachable!("handled above"),
+        };
+
+        if !*at_page_top {
+            *cy += space_before;
+        }
+
+        let shaped = book.shape_paragraph(runs, content_w, size, line_height, embedder);
+        let mut placed = vec![false; shaped.objects.len()];
+        for line in &shaped.lines {
+            // Break before a line that would overflow — unless the page is empty
+            // (a single oversized line overflows rather than loops).
+            if *cy + line.height > content_h && !*at_page_top {
+                pages.push(LaidOutPage::default());
+                *cy = 0.0;
+            }
+            let baseline = top + *cy + line.ascent;
+            let page = pages.last_mut().expect("at least one page");
+            place_line(
+                page,
+                &line.glyphs,
+                &shaped.hrefs,
+                &shaped.objects,
+                &mut placed,
+                left,
+                baseline,
+                size,
+            );
+            *cy += line.height;
+            *at_page_top = false;
+        }
+
+        *cy += space_after;
+    }
+}
+
+/// Place a diagram and overlay its cards: embed the SVG (which draws the card
+/// boxes), map each card's viewBox rect to the SVG's PDF placement, and lay the
+/// card body out natively in card-local coordinates for the paint pass to scale
+/// + clip into the box.
+#[allow(clippy::too_many_arguments)]
+fn place_diagram(
+    svg: &str,
+    viewbox: (f32, f32, f32, f32),
+    cards: &[CardSpec],
+    book: &mut FontBook,
+    embedder: &SvgEmbedder,
+    pages: &mut Vec<LaidOutPage>,
+    cy: &mut f32,
+    at_page_top: &mut bool,
+    left: f32,
+    top: f32,
+    content_w: f32,
+    content_h: f32,
+) {
+    let Some((px, py, scale)) = place_svg(
+        svg,
+        embedder,
+        pages,
+        cy,
+        at_page_top,
+        left,
+        top,
+        content_w,
+        content_h,
+    ) else {
+        return;
+    };
+    const CARD_PAD: f32 = 6.0;
+    let (min_x, min_y, _, _) = viewbox;
+    for card in cards {
+        let (cx, cyv, cw, ch) = card.rect;
+        let card_x = px + (cx - min_x) * scale;
+        let card_y = py + (cyv - min_y) * scale;
+        // Lay the body out at full size into a card-local box; paint scales it.
+        let mut sub = vec![LaidOutPage::default()];
+        let mut scy = 0.0_f32;
+        let mut stop = true;
+        place_blocks(
+            &card.body,
+            book,
+            embedder,
+            &mut sub,
+            &mut scy,
+            &mut stop,
+            CARD_PAD,
+            CARD_PAD,
+            (cw - 2.0 * CARD_PAD).max(1.0),
+            f32::MAX,
+        );
+        let content = sub.into_iter().next().unwrap_or_default();
+        pages
+            .last_mut()
+            .expect("at least one page")
+            .card_overlays
+            .push(CardOverlay {
+                content,
+                x: card_x,
+                y: card_y,
+                scale,
+                w: cw,
+                h: ch,
+            });
+    }
+}
+
+/// Embed, scale-to-fit, paginate, and centre one SVG block. Returns the
+/// placement `(page_x, page_y, scale)` (top-left + viewBox→points scale) so a
+/// caller can map the SVG's internal coordinates onto the page (card overlays).
 #[allow(clippy::too_many_arguments)]
 fn place_svg(
     svg: &str,
@@ -304,12 +442,10 @@ fn place_svg(
     top: f32,
     content_w: f32,
     content_h: f32,
-) {
-    let Some((tree, (tw, th))) = embedder.embed(svg) else {
-        return;
-    };
+) -> Option<(f32, f32, f32)> {
+    let (tree, (tw, th)) = embedder.embed(svg)?;
     if tw <= 0.0 || th <= 0.0 {
-        return;
+        return None;
     }
     // Fit the content width (never upscale), then a full page if still too tall.
     let mut scale = (content_w / tw).min(1.0);
@@ -326,16 +462,19 @@ fn place_svg(
         pages.push(LaidOutPage::default());
         *cy = 0.0;
     }
+    let svg_x = left + (content_w - dw) / 2.0;
+    let svg_y = top + *cy;
     let page = pages.last_mut().expect("at least one page");
     page.svgs.push(PlacedSvg {
         tree,
-        x: left + (content_w - dw) / 2.0,
-        y: top + *cy,
+        x: svg_x,
+        y: svg_y,
         w: dw,
         h: dh,
     });
     *cy += dh + SPACE_AROUND_SVG;
     *at_page_top = false;
+    Some((svg_x, svg_y, scale))
 }
 
 /// Decode raster bytes into a krilla image by sniffing the magic bytes.

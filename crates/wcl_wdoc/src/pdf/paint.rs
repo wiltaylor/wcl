@@ -15,7 +15,7 @@ use krilla::destination::XyzDestination;
 use krilla::error::KrillaResult;
 use krilla::geom::{PathBuilder, Point, Rect, Size, Transform};
 use krilla::page::PageSettings;
-use krilla::paint::Fill;
+use krilla::paint::{Fill, FillRule};
 use krilla::surface::Surface;
 use krilla::text::{Font, GlyphId, KrillaGlyph};
 use krilla_svg::{SurfaceExt, SvgSettings};
@@ -73,42 +73,7 @@ pub(crate) fn paint(
         let mut surface = kpage.surface();
 
         page::draw_chrome(&mut surface, geom, &header, &footer_line);
-
-        // Backgrounds (code-block insets) paint first.
-        for r in &page_content.rects {
-            fill_rect(&mut surface, r.x, r.y, r.w, r.h, r.color);
-        }
-
-        // Raster images and embedded SVG (diagrams / charts / equations)
-        // underneath the text.
-        for img in &page_content.images {
-            if let Some(size) = Size::from_wh(img.w, img.h) {
-                surface.push_transform(&Transform::from_translate(img.x, img.y));
-                surface.draw_image(img.image.clone(), size);
-                surface.pop();
-            }
-        }
-        for placed in &page_content.svgs {
-            if let Some(size) = Size::from_wh(placed.w, placed.h) {
-                surface.push_transform(&Transform::from_translate(placed.x, placed.y));
-                surface.draw_svg(&placed.tree, size, SvgSettings::default());
-                surface.pop();
-            }
-        }
-
-        for g in &page_content.glyphs {
-            draw_glyph(
-                &mut surface,
-                &g.font,
-                g.glyph_id,
-                g.x,
-                g.y,
-                g.size,
-                g.color,
-                &g.cluster,
-            );
-        }
-
+        paint_content(&mut surface, page_content);
         surface.finish();
 
         // Link annotations live on the page, added once the surface is done.
@@ -125,6 +90,54 @@ pub(crate) fn paint(
     }
 
     doc.finish()
+}
+
+/// Paint one laid-out page's drawable content (everything but the chrome and
+/// link annotations): rect fills, raster images, embedded SVG, glyphs, then card
+/// overlays. Card overlays recurse under a `translate · scale` transform clipped
+/// to the card box, so a card body's content lands scaled inside its box.
+fn paint_content(surface: &mut Surface, page: &LaidOutPage) {
+    for r in &page.rects {
+        fill_rect(surface, r.x, r.y, r.w, r.h, r.color);
+    }
+    for img in &page.images {
+        if let Some(size) = Size::from_wh(img.w, img.h) {
+            surface.push_transform(&Transform::from_translate(img.x, img.y));
+            surface.draw_image(img.image.clone(), size);
+            surface.pop();
+        }
+    }
+    for placed in &page.svgs {
+        if let Some(size) = Size::from_wh(placed.w, placed.h) {
+            surface.push_transform(&Transform::from_translate(placed.x, placed.y));
+            surface.draw_svg(&placed.tree, size, SvgSettings::default());
+            surface.pop();
+        }
+    }
+    for g in &page.glyphs {
+        draw_glyph(
+            surface, &g.font, g.glyph_id, g.x, g.y, g.size, g.color, &g.cluster,
+        );
+    }
+    for ov in &page.card_overlays {
+        surface.push_transform(&Transform::from_translate(ov.x, ov.y));
+        surface.push_transform(&Transform::from_scale(ov.scale, ov.scale));
+        // Clip to the card box (card-local coords) so the body can't spill out.
+        let clip = Rect::from_xywh(0.0, 0.0, ov.w, ov.h).and_then(|r| {
+            let mut pb = PathBuilder::new();
+            pb.push_rect(r);
+            pb.finish()
+        });
+        if let Some(path) = &clip {
+            surface.push_clip_path(path, &FillRule::NonZero);
+        }
+        paint_content(surface, &ov.content);
+        if clip.is_some() {
+            surface.pop();
+        }
+        surface.pop();
+        surface.pop();
+    }
 }
 
 /// Resolve a link href to a krilla [`Target`]: external URLs become URI

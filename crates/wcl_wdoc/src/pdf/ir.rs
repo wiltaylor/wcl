@@ -118,4 +118,22 @@ pub(crate) enum BlockNode {
         disp_w: Option<f32>,
         disp_h: Option<f32>,
     },
+    /// A diagram whose `card` shapes carry native wdoc bodies. The SVG draws
+    /// everything except the card content (cards are empty boxes); each
+    /// [`CardSpec`] body is laid out and painted natively over its box.
+    Diagram {
+        svg: String,
+        /// The diagram SVG's `viewBox` `(min_x, min_y, width, height)`.
+        viewbox: (f32, f32, f32, f32),
+        cards: Vec<CardSpec>,
+    },
+}
+
+/// A card inside a diagram: its box (in the diagram's viewBox coordinates) and
+/// its body as collected PDF blocks.
+#[derive(Clone, Debug)]
+pub(crate) struct CardSpec {
+    /// `(x, y, width, height)` in viewBox coordinates.
+    pub rect: (f32, f32, f32, f32),
+    pub body: Vec<BlockNode>,
 }
