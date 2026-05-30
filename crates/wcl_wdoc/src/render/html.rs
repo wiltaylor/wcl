@@ -325,9 +325,9 @@ pub(crate) fn render_block(
         // so HTML and PDF share one renderer. This single arm covers every
         // context — a widget recurses into its children itself, never
         // re-entering `render_block`.
-        kind if crate::wireframe::is_wireframe_kind(kind) => Some(
-            crate::wireframe::render_wireframe(doc, block, patterns.icons()),
-        ),
+        kind if crate::wireframe::is_wireframe_kind(kind) => {
+            Some(crate::wireframe::render_wireframe(doc, block))
+        }
         // A `wdoc_repeater` renders its body once per element of `each`.
         "wdoc_repeater" => Some(render_repeat(doc, block, patterns, base_dir)),
         // A `wdoc_content` marks where a component instance's own children

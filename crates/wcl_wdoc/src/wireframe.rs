@@ -13,19 +13,23 @@
 //! recursing into container children via `block.blocks()` — so it never
 //! depends on the WCL `lower` (now a stub) or the HTML `Children {}` splice.
 //!
-//! Theming follows the terminal pattern: default text/icons paint with
-//! `currentColor` (so they follow the page theme — the wrapping `<div>`'s
-//! `color` in HTML, the baked foreground in PDF), and a widget's `class` list
-//! is read for `background`/`color`/`border` overrides baked onto its box. The
-//! neutral grey-box palette is the CSS `rgba(127,127,127,α)` flattened against
-//! white to concrete hex. Custom-class dark/light adaptation is out of scope
-//! (the top-level class value is used), matching the terminal's styled cells.
+//! Theming follows the terminal pattern: neutral colours are the document's
+//! resolved theme palette **roles** (`bg_alt` surface, `overlay` titlebar,
+//! `bg_inset` controls, `border`, `fg`/`fg_muted` text, the site `accent` for
+//! active states), baked into the SVG as concrete hex — so a wireframe is a
+//! self-contained themed panel on any page, and the PDF embed reflects the
+//! theme too (no `currentColor`, which the embedder would rewrite to the
+//! document fg). A widget's own `class` `background`/`color`/`border` overrides
+//! its box fill / text / border. The few glyphs (chevron, check, close ✕, dots)
+//! are native SVG shapes in baked colours, so there's no icon-sprite dependency
+//! (which wouldn't survive the PDF embed). The baked dark palette means
+//! custom-class dark/light adaptation is out of scope, matching the terminal.
 
 use wcl_lang::{Block, Document};
 
-use crate::icons::IconRegistry;
 use crate::render::{
-    escape_html, field_bool, field_i64, field_id, field_utf8, field_utf8_list, label_string,
+    ThemeRoles, escape_html, field_bool, field_i64, field_id, field_utf8, field_utf8_list,
+    label_string, resolve_theme_roles,
 };
 
 // ── Geometry (px, ported from the wdoc-wireframe CSS rem values) ─────
@@ -55,30 +59,29 @@ const SANS: &str = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
 /// Render a wireframe widget tree to an HTML fragment: the self-contained
 /// `<svg>` wrapped in a `wdoc-wireframe` `<div>` carrying the block's `class`
-/// list (for CSS theming) and `id`.
-pub(crate) fn render_wireframe(doc: &Document, block: &Block<'_>, icons: &IconRegistry) -> String {
+/// list and `id`.
+pub(crate) fn render_wireframe(doc: &Document, block: &Block<'_>) -> String {
     let mut classes = vec!["wdoc-wireframe".to_string()];
     classes.extend(field_utf8_list(block, "class"));
     let class_attr = classes.join(" ");
     let id_attr = field_id(block, "id")
         .map(|id| format!(" id=\"{}\"", escape_html(&id)))
         .unwrap_or_default();
-    let svg = render_wireframe_svg(doc, block, icons);
+    let svg = render_wireframe_svg(doc, block);
     format!("<div class=\"{class_attr}\"{id_attr}>{svg}</div>")
 }
 
 /// Render a wireframe widget tree to a bare, self-contained `<svg>` (the PDF
-/// path embeds this directly; the HTML path wraps it).
-pub(crate) fn render_wireframe_svg(
-    doc: &Document,
-    block: &Block<'_>,
-    icons: &IconRegistry,
-) -> String {
+/// path embeds this directly; the HTML path wraps it). Neutral colours are
+/// baked from the document's resolved theme roles, so the widget is a
+/// self-contained themed panel on either output.
+pub(crate) fn render_wireframe_svg(doc: &Document, block: &Block<'_>) -> String {
+    let roles = resolve_theme_roles(doc);
     let w = build(doc, block);
     let body_w = w.w.max(1.0);
     let body_h = w.h.max(1.0);
     let mut body = String::new();
-    emit(&w, MARGIN, MARGIN, icons, &mut body);
+    emit(&w, MARGIN, MARGIN, &roles, &mut body);
     let sw = (body_w + 2.0 * MARGIN).ceil();
     let sh = (body_h + 2.0 * MARGIN).ceil();
     format!(
@@ -132,7 +135,6 @@ enum Kind {
     },
     Button {
         text: String,
-        icon: Option<String>,
         theme: Theme,
     },
     Input {
@@ -201,10 +203,8 @@ fn build(doc: &Document, block: &Block<'_>) -> Widget {
         }
         "wf_button" => {
             let text = label_string(block).unwrap_or_default();
-            let icon = field_utf8(block, "icon");
-            let iconw = if icon.is_some() { ICON + 6.0 } else { 0.0 };
-            let w = text_w(&text, FONT) + 2.0 * CTRL_PAD_X + iconw;
-            sized(Kind::Button { text, icon, theme }, w, CTRL_H, disabled)
+            let w = text_w(&text, FONT) + 2.0 * CTRL_PAD_X;
+            sized(Kind::Button { text, theme }, w, CTRL_H, disabled)
         }
         "wf_input" => {
             let value = field_utf8(block, "value");
@@ -370,8 +370,10 @@ fn grid_size(items: &[Widget], cols: usize) -> (f64, f64) {
 
 // ── Emission ─────────────────────────────────────────────────────────
 
-/// Emit a widget's SVG at absolute top-left `(x, y)`.
-fn emit(w: &Widget, x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
+/// Emit a widget's SVG at absolute top-left `(x, y)`. Neutral colours come
+/// from the resolved theme `roles`; a widget's own `class` (`theme`) overrides
+/// box fill / text colour / border.
+fn emit(w: &Widget, x: f64, y: f64, roles: &ThemeRoles, out: &mut String) {
     if w.disabled {
         out.push_str("<g opacity=\"0.45\">");
     }
@@ -385,53 +387,42 @@ fn emit(w: &Widget, x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
                 "start",
                 FONT,
                 false,
-                theme_fg(theme),
+                fg_of(theme, roles),
                 None,
                 text,
             );
         }
-        Kind::Button { text, icon, theme } => {
-            let fill = theme.bg.clone().unwrap_or_else(|| grey(0.16));
-            rect(out, x, y, w.w, CTRL_H, RADIUS, &fill, &border(theme));
-            let fg = theme_fg(theme);
-            if let Some(name) = icon {
-                let iy = y + (CTRL_H - ICON) / 2.0;
-                if let Some(u) = icons.use_markup(name, (x + CTRL_PAD_X, iy, ICON, ICON)) {
-                    out.push_str(&u);
-                }
-                emit_text(
-                    out,
-                    x + CTRL_PAD_X + ICON + 6.0,
-                    baseline(y, CTRL_H),
-                    "start",
-                    FONT,
-                    false,
-                    fg,
-                    None,
-                    text,
-                );
-            } else {
-                emit_text(
-                    out,
-                    x + w.w / 2.0,
-                    baseline(y, CTRL_H),
-                    "middle",
-                    FONT,
-                    false,
-                    fg,
-                    None,
-                    text,
-                );
-            }
+        Kind::Button { text, theme } => {
+            let fill = theme.bg.as_deref().unwrap_or(&roles.overlay);
+            rect(out, x, y, w.w, CTRL_H, RADIUS, fill, border(theme, roles));
+            // A leading glyph would need the icon sprite (which doesn't survive
+            // the PDF embed / `currentColor` baking), so the label is centred —
+            // the mock-up reads fine without it.
+            emit_text(
+                out,
+                x + w.w / 2.0,
+                baseline(y, CTRL_H),
+                "middle",
+                FONT,
+                false,
+                fg_of(theme, roles),
+                None,
+                text,
+            );
         }
         Kind::Input {
             text,
             placeholder,
             theme,
         } => {
-            let fill = theme.bg.clone().unwrap_or_else(|| grey(0.04));
-            rect(out, x, y, w.w, CTRL_H, RADIUS, &fill, &border(theme));
-            let opacity = placeholder.then_some(0.55);
+            let fill = theme.bg.as_deref().unwrap_or(&roles.bg_inset);
+            rect(out, x, y, w.w, CTRL_H, RADIUS, fill, border(theme, roles));
+            // Placeholder text is muted + italic; a filled value uses the fg.
+            let color = if *placeholder {
+                &roles.fg_muted
+            } else {
+                fg_of(theme, roles)
+            };
             emit_text(
                 out,
                 x + CTRL_PAD_X,
@@ -439,14 +430,14 @@ fn emit(w: &Widget, x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
                 "start",
                 FONT,
                 *placeholder,
-                theme_fg(theme),
-                opacity,
+                color,
+                None,
                 text,
             );
         }
         Kind::Dropdown { text, theme } => {
-            let fill = theme.bg.clone().unwrap_or_else(|| grey(0.04));
-            rect(out, x, y, w.w, CTRL_H, RADIUS, &fill, &border(theme));
+            let fill = theme.bg.as_deref().unwrap_or(&roles.bg_inset);
+            rect(out, x, y, w.w, CTRL_H, RADIUS, fill, border(theme, roles));
             emit_text(
                 out,
                 x + CTRL_PAD_X,
@@ -454,27 +445,41 @@ fn emit(w: &Widget, x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
                 "start",
                 FONT,
                 false,
-                theme_fg(theme),
+                fg_of(theme, roles),
                 None,
                 text,
             );
+            // Down chevron, drawn natively (no icon sprite).
+            let cx0 = x + w.w - CTRL_PAD_X - ICON;
             let iy = y + (CTRL_H - ICON) / 2.0;
-            if let Some(u) = icons.use_markup(
-                "lucide.chevron-down",
-                (x + w.w - CTRL_PAD_X - ICON, iy, ICON, ICON),
-            ) {
-                out.push_str(&u);
-            }
+            polyline(
+                out,
+                &[
+                    (cx0 + 0.2 * ICON, iy + 0.40 * ICON),
+                    (cx0 + 0.5 * ICON, iy + 0.64 * ICON),
+                    (cx0 + 0.8 * ICON, iy + 0.40 * ICON),
+                ],
+                &roles.fg_muted,
+                1.5,
+            );
         }
         Kind::Checkbox { label, on, theme } => {
             let by = y + (w.h - BOX) / 2.0;
-            let fill = if *on { grey(0.55) } else { grey(0.04) };
-            rect(out, x, by, BOX, BOX, 3.0, &fill, &grey(0.6));
-            if *on
-                && let Some(u) =
-                    icons.use_markup("lucide.check", (x + 2.0, by + 2.0, BOX - 4.0, BOX - 4.0))
-            {
-                out.push_str(&u);
+            let fill = if *on { &roles.accent } else { &roles.bg_inset };
+            rect(out, x, by, BOX, BOX, 3.0, fill, &roles.border);
+            if *on {
+                // A check mark, drawn natively in the page bg so it reads on
+                // the accent fill.
+                polyline(
+                    out,
+                    &[
+                        (x + 0.26 * BOX, by + 0.52 * BOX),
+                        (x + 0.44 * BOX, by + 0.70 * BOX),
+                        (x + 0.74 * BOX, by + 0.32 * BOX),
+                    ],
+                    &roles.bg,
+                    1.8,
+                );
             }
             emit_text(
                 out,
@@ -483,7 +488,7 @@ fn emit(w: &Widget, x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
                 "start",
                 FONT,
                 false,
-                theme_fg(theme),
+                fg_of(theme, roles),
                 None,
                 label,
             );
@@ -491,9 +496,9 @@ fn emit(w: &Widget, x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
         Kind::Radio { label, on, theme } => {
             let cx = x + DOT / 2.0;
             let cy = y + w.h / 2.0;
-            circle(out, cx, cy, DOT / 2.0, "none", &grey(0.6));
+            circle(out, cx, cy, DOT / 2.0, &roles.bg_inset, &roles.border);
             if *on {
-                circle(out, cx, cy, DOT / 2.0 - 3.0, "currentColor", "none");
+                circle(out, cx, cy, DOT / 2.0 - 3.0, &roles.accent, "none");
             }
             emit_text(
                 out,
@@ -502,14 +507,14 @@ fn emit(w: &Widget, x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
                 "start",
                 FONT,
                 false,
-                theme_fg(theme),
+                fg_of(theme, roles),
                 None,
                 label,
             );
         }
         Kind::Toggle { label, on, theme } => {
             let ty = y + (w.h - TRACK_H) / 2.0;
-            let fill = if *on { grey(0.55) } else { grey(0.18) };
+            let fill = if *on { &roles.accent } else { &roles.bg_inset };
             rect(
                 out,
                 x,
@@ -517,8 +522,8 @@ fn emit(w: &Widget, x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
                 TRACK_W,
                 TRACK_H,
                 TRACK_H / 2.0,
-                &fill,
-                &border(theme),
+                fill,
+                border(theme, roles),
             );
             let r = (TRACK_H - 2.0) / 2.0;
             let kx = if *on {
@@ -526,11 +531,7 @@ fn emit(w: &Widget, x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
             } else {
                 x + 1.0 + r
             };
-            let kop = if *on { 0.95 } else { 0.55 };
-            out.push_str(&format!(
-                "<circle cx=\"{kx:.2}\" cy=\"{:.2}\" r=\"{r:.2}\" fill=\"currentColor\" fill-opacity=\"{kop}\"/>",
-                ty + TRACK_H / 2.0,
-            ));
+            circle(out, kx, ty + TRACK_H / 2.0, r, &roles.fg, "none");
             if let Some(l) = label {
                 emit_text(
                     out,
@@ -539,7 +540,7 @@ fn emit(w: &Widget, x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
                     "start",
                     FONT,
                     false,
-                    theme_fg(theme),
+                    fg_of(theme, roles),
                     None,
                     l,
                 );
@@ -551,8 +552,8 @@ fn emit(w: &Widget, x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
             body,
             theme,
         } => {
-            let bg = theme.bg.clone().unwrap_or_else(|| grey(0.05));
-            rect(out, x, y, w.w, w.h, 6.0, &bg, &border(theme));
+            let bg = theme.bg.as_deref().unwrap_or(&roles.bg_alt);
+            rect(out, x, y, w.w, w.h, 6.0, bg, border(theme, roles));
             // Titlebar.
             out.push_str(&format!(
                 "<path d=\"M{x:.2} {ty:.2} v{rad} a6 6 0 0 1 6 -6 h{hw:.2} a6 6 0 0 1 6 6 v{rest:.2} h-{tw:.2} z\" fill=\"{tbar}\"/>",
@@ -561,7 +562,7 @@ fn emit(w: &Widget, x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
                 hw = w.w - 12.0,
                 rest = TITLEBAR_H - 6.0,
                 tw = w.w,
-                tbar = grey(0.14),
+                tbar = roles.overlay,
             ));
             emit_text(
                 out,
@@ -570,18 +571,27 @@ fn emit(w: &Widget, x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
                 "start",
                 TITLE_FONT,
                 false,
-                theme_fg(theme),
-                Some(0.85),
+                fg_of(theme, roles),
+                None,
                 title,
             );
             if *controls {
-                emit_window_controls(out, x + w.w, y, theme);
+                emit_window_controls(out, x + w.w, y, roles);
             }
             // Body column.
-            emit_column(body, x + PAD, y + TITLEBAR_H + PAD, icons, out);
+            emit_column(body, x + PAD, y + TITLEBAR_H + PAD, roles, out);
         }
         Kind::Panel { title, body, theme } => {
-            rect(out, x, y, w.w, w.h, RADIUS + 1.0, "none", &border(theme));
+            rect(
+                out,
+                x,
+                y,
+                w.w,
+                w.h,
+                RADIUS + 1.0,
+                "none",
+                border(theme, roles),
+            );
             let mut cy = y + PANEL_PAD;
             if let Some(t) = title {
                 emit_text(
@@ -591,29 +601,29 @@ fn emit(w: &Widget, x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
                     "start",
                     FONT,
                     false,
-                    theme_fg(theme),
-                    Some(0.7),
+                    &roles.fg_muted,
+                    None,
                     t,
                 );
                 cy += LINE_H + 4.0;
             }
-            emit_column(body, x + PANEL_PAD, cy, icons, out);
+            emit_column(body, x + PANEL_PAD, cy, roles, out);
         }
         Kind::Row(items) => {
             let mut cx = x;
             for c in items {
-                emit(c, cx, y + (w.h - c.h) / 2.0, icons, out);
+                emit(c, cx, y + (w.h - c.h) / 2.0, roles, out);
                 cx += c.w + ROW_GAP;
             }
         }
-        Kind::Column(items) => emit_column(items, x, y, icons, out),
+        Kind::Column(items) => emit_column(items, x, y, roles, out),
         Kind::Grid { cols, items } => {
             let col_w = items.iter().map(|c| c.w).fold(0.0, f64::max);
             let mut cy = y;
             for chunk in items.chunks(*cols) {
                 let row_h = chunk.iter().map(|c| c.h).fold(0.0, f64::max);
                 for (i, c) in chunk.iter().enumerate() {
-                    emit(c, x + i as f64 * (col_w + GAP), cy, icons, out);
+                    emit(c, x + i as f64 * (col_w + GAP), cy, roles, out);
                 }
                 cy += row_h + GAP;
             }
@@ -625,22 +635,22 @@ fn emit(w: &Widget, x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
 }
 
 /// Emit a vertical stack of widgets (window/panel body, `wf_column`).
-fn emit_column(items: &[Widget], x: f64, y: f64, icons: &IconRegistry, out: &mut String) {
+fn emit_column(items: &[Widget], x: f64, y: f64, roles: &ThemeRoles, out: &mut String) {
     let mut cy = y;
     for c in items {
-        emit(c, x, cy, icons, out);
+        emit(c, x, cy, roles, out);
         cy += c.h + GAP;
     }
 }
 
 /// Titlebar dots + close `✕`, right-aligned at `right_x`.
-fn emit_window_controls(out: &mut String, right_x: f64, y: f64, theme: &Theme) {
+fn emit_window_controls(out: &mut String, right_x: f64, y: f64, roles: &ThemeRoles) {
     let cy = y + TITLEBAR_H / 2.0;
     let s = 4.0;
     let cx = right_x - PAD - s;
-    let fg = theme.fg.as_deref().unwrap_or("currentColor");
+    let muted = &roles.fg_muted;
     out.push_str(&format!(
-        "<g stroke=\"{fg}\" stroke-opacity=\"0.55\" stroke-width=\"1.5\" stroke-linecap=\"round\">\
+        "<g stroke=\"{muted}\" stroke-width=\"1.5\" stroke-linecap=\"round\">\
          <line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\"/>\
          <line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\"/></g>",
         cx - s,
@@ -656,8 +666,7 @@ fn emit_window_controls(out: &mut String, right_x: f64, y: f64, theme: &Theme) {
     for i in 0..2 {
         let dx = cx - 4.0 * s - (1 - i) as f64 * 13.0;
         out.push_str(&format!(
-            "<circle cx=\"{dx:.2}\" cy=\"{cy:.2}\" r=\"4\" fill=\"none\" stroke=\"{}\" stroke-opacity=\"0.6\"/>",
-            grey(0.6),
+            "<circle cx=\"{dx:.2}\" cy=\"{cy:.2}\" r=\"4\" fill=\"none\" stroke=\"{muted}\"/>",
         ));
     }
 }
@@ -684,6 +693,19 @@ fn circle(out: &mut String, cx: f64, cy: f64, r: f64, fill: &str, stroke: &str) 
     };
     out.push_str(&format!(
         "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r:.2}\" fill=\"{fill}\"{stroke_attr}/>",
+    ));
+}
+
+/// A stroked, unfilled open polyline (the chevron / check glyphs).
+fn polyline(out: &mut String, points: &[(f64, f64)], stroke: &str, width: f64) {
+    let pts = points
+        .iter()
+        .map(|(x, y)| format!("{x:.2},{y:.2}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    out.push_str(&format!(
+        "<polyline points=\"{pts}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{width}\" \
+         stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
     ));
 }
 
@@ -746,29 +768,22 @@ fn class_field(doc: &Document, classes: &[String], field: &str) -> Option<String
     None
 }
 
-/// The text/icon fill for a themed widget — its class `color`, else
-/// `currentColor` (themed by the page).
-fn theme_fg(theme: &Theme) -> &str {
-    theme.fg.as_deref().unwrap_or("currentColor")
+/// The text fill for a widget — its class `color` override, else the theme's
+/// `fg` role.
+fn fg_of<'a>(theme: &'a Theme, roles: &'a ThemeRoles) -> &'a str {
+    theme.fg.as_deref().unwrap_or(&roles.fg)
 }
 
-/// A box border colour: the class `border`'s colour if set, else the neutral
-/// grey.
-fn border(theme: &Theme) -> String {
-    theme.border.clone().unwrap_or_else(|| grey(0.45))
+/// A box border colour: the class `border`'s colour if set, else the theme's
+/// `border` role.
+fn border<'a>(theme: &'a Theme, roles: &'a ThemeRoles) -> &'a str {
+    theme.border.as_deref().unwrap_or(&roles.border)
 }
 
 /// The colour token from a CSS `border` shorthand (`"1px solid #1f6feb"` →
 /// `"#1f6feb"`): the last whitespace-separated token.
 fn border_color(s: &str) -> Option<String> {
     s.split_whitespace().last().map(str::to_string)
-}
-
-/// The neutral grey-box palette: `rgba(127,127,127,α)` composited over white,
-/// `255 − 128·α` per channel, as `#rrggbb`.
-fn grey(alpha: f64) -> String {
-    let v = (255.0 - 128.0 * alpha).round().clamp(0.0, 255.0) as u8;
-    format!("#{v:02x}{v:02x}{v:02x}")
 }
 
 /// A rough average glyph advance (in em) so box sizing fits mock-up text
@@ -790,14 +805,6 @@ fn text_w(s: &str, font_px: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn grey_flattens_against_white() {
-        // 255 - 128·α, rounded.
-        assert_eq!(grey(0.45), "#c5c5c5");
-        assert_eq!(grey(0.05), "#f9f9f9");
-        assert_eq!(grey(0.0), "#ffffff");
-    }
 
     #[test]
     fn text_w_positive_and_monotonic() {

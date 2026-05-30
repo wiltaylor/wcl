@@ -5047,23 +5047,25 @@ fn wireframe_nested_containers_resolve_recursively() {
 
 #[test]
 fn wireframe_state_classes_and_icons() {
-    // Checked / on / placeholder states drive the SVG: a checked box draws
-    // a sprite-<use> tick, a toggle "on" puts its knob at full opacity, and
-    // a placeholder input renders dim italic.
+    // Checked / on states drive the SVG with the theme's accent colour, and a
+    // placeholder input renders italic. Default theme is Nord → accent blue
+    // (#81a1c1): the checked box and the radio dot fill with it.
     let html = wireframe_html(
-        "  wf_checkbox \"R\" { checked = true }\n  wf_toggle \"T\" { on = true }\n  wf_input \"ph\" {}",
+        "  wf_checkbox \"R\" { checked = true }\n  wf_radio \"S\" { selected = true }\n  wf_input \"ph\" {}",
+    );
+    // The checked box + selected radio dot fill with the resolved accent.
+    assert!(
+        html.matches("fill=\"#81a1c1\"").count() >= 2,
+        "checked/selected states not filled with the theme accent:\n{html}"
+    );
+    // The check mark is drawn natively (a polyline), not a sprite <use>.
+    assert!(
+        html.contains("<polyline") && !html.contains("icons.svg#lucide-check"),
+        "checkbox tick should be a native polyline, not a sprite icon:\n{html}"
     );
     assert!(
-        html.contains("href=\"_wdoc/icons.svg#lucide-check\""),
-        "checkbox tick icon missing:\n{html}"
-    );
-    assert!(
-        html.contains("fill=\"currentColor\" fill-opacity=\"0.95\""),
-        "toggle-on knob not at full opacity:\n{html}"
-    );
-    assert!(
-        html.contains("fill-opacity=\"0.55\"") && html.contains("font-style=\"italic\""),
-        "placeholder not rendered dim italic:\n{html}"
+        html.contains("font-style=\"italic\""),
+        "placeholder not rendered italic:\n{html}"
     );
 }
 

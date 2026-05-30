@@ -114,6 +114,87 @@ fn palette_vars(pal: &Block<'_>, out: &mut String) {
     }
 }
 
+/// Find a `theme` block by its inline name (built-in or user-declared),
+/// falling back to the built-in `nord` when the name doesn't resolve.
+fn find_theme<'a>(doc: &'a Document, name: &str) -> Option<Block<'a>> {
+    let is_theme =
+        |b: &Block<'_>, n: &str| b.kind() == "theme" && label_string(b).as_deref() == Some(n);
+    doc.blocks()
+        .find(|b| is_theme(b, name))
+        .or_else(|| doc.blocks().find(|b| is_theme(b, "nord")))
+}
+
+/// Concrete colours for the theme roles the wireframe renderer bakes into
+/// its SVG (it has no CSS / `currentColor` to lean on — the PDF embed would
+/// rewrite `currentColor` to the document fg). Resolved from the active
+/// theme's *dark* palette so a wireframe is a self-contained themed panel on
+/// any page, mirroring the terminal window.
+pub(crate) struct ThemeRoles {
+    pub bg: String,
+    pub bg_alt: String,
+    pub bg_inset: String,
+    pub overlay: String,
+    pub border: String,
+    pub fg: String,
+    pub fg_muted: String,
+    pub accent: String,
+}
+
+/// The built-in Nord dark palette (lib/theme.wcl) — the fallback for any role
+/// a custom palette omits, and for documents with no `site`/`theme`.
+fn nord_dark() -> ThemeRoles {
+    ThemeRoles {
+        bg: "#2e3440".into(),
+        bg_alt: "#3b4252".into(),
+        bg_inset: "#272c36".into(),
+        overlay: "#434c5e".into(),
+        border: "#4c566a".into(),
+        fg: "#d8dee9".into(),
+        fg_muted: "#9aa5b8".into(),
+        accent: "#81a1c1".into(), // nord dark `blue`
+    }
+}
+
+/// Resolve the document's active theme to concrete dark-palette role colours.
+/// Reads the first `site` block's `theme`/`accent` symbols (defaults
+/// `nord`/`blue`), finds the matching `theme` block, and reads its `dark`
+/// `palette` child — filling any missing role (or a site-less document) from
+/// the Nord dark defaults.
+pub(crate) fn resolve_theme_roles(doc: &Document) -> ThemeRoles {
+    let def = nord_dark();
+    let Some(site) = doc.blocks().find(|b| b.kind() == "site") else {
+        return def;
+    };
+    let name = field_symbol(&site, "theme").unwrap_or_else(|| "nord".to_string());
+    let accent_raw = field_symbol(&site, "accent").unwrap_or_default();
+    let accent_hue = if HUES.contains(&accent_raw.as_str()) {
+        accent_raw.as_str()
+    } else {
+        "blue"
+    };
+    let Some(theme) = find_theme(doc, &name) else {
+        return def;
+    };
+    let Some(dark) = theme
+        .blocks()
+        .find(|b| b.kind() == "palette" && label_string(b).as_deref() == Some("dark"))
+    else {
+        return def;
+    };
+    let role =
+        |f: &str, fallback: &str| field_utf8(&dark, f).unwrap_or_else(|| fallback.to_string());
+    ThemeRoles {
+        bg: role("bg", &def.bg),
+        bg_alt: role("bg_alt", &def.bg_alt),
+        bg_inset: role("bg_inset", &def.bg_inset),
+        overlay: role("overlay", &def.overlay),
+        border: role("border", &def.border),
+        fg: role("fg", &def.fg),
+        fg_muted: role("fg_muted", &def.fg_muted),
+        accent: role(accent_hue, &def.accent),
+    }
+}
+
 /// The themed `<style>` content for one site, or `None` when there is no
 /// `site` block (bare documents stay unthemed) or no `theme` block can be
 /// resolved. A `site` without an explicit `theme` defaults to `nord`; an
@@ -133,12 +214,7 @@ pub(crate) fn site_theme_css(doc: &Document, site_block: Option<&Block<'_>>) -> 
 
     // Find the named `theme` block (built-in or user-declared), falling
     // back to the built-in `nord` when the name doesn't resolve.
-    let is_theme =
-        |b: &Block<'_>, n: &str| b.kind() == "theme" && label_string(b).as_deref() == Some(n);
-    let theme = doc
-        .blocks()
-        .find(|b| is_theme(b, &name))
-        .or_else(|| doc.blocks().find(|b| is_theme(b, "nord")))?;
+    let theme = find_theme(doc, &name)?;
 
     // Pull the `--wdoc-*` vars from its `dark` / `light` palette children.
     let mut dv = String::new();
