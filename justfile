@@ -88,6 +88,14 @@ docs-serve *ARGS:
 docs-build *ARGS:
     cargo run -p wcl -- wdoc build docs/main.wcl --out docs/_site {{ARGS}}
 
+# Render the example and the docs to PDF under target/pdf/ — smoke-tests `wcl wdoc pdf`
+[group('dev')]
+wdoc-pdf: (wdoc-pdf-render "examples/wdoc/main.wcl" "target/pdf/examples") (wdoc-pdf-render "docs/main.wcl" "target/pdf/docs")
+
+[private]
+wdoc-pdf-render file out:
+    cargo run -p wcl -- wdoc pdf {{file}} --out {{out}}
+
 # Run criterion benchmarks
 [group('dev')]
 workspace-bench:
