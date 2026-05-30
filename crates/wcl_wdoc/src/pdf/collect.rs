@@ -46,6 +46,18 @@ fn collect_block(
     out: &mut Vec<BlockNode>,
 ) {
     let kind = block.kind();
+    // Speaker notes never appear in the rendered document.
+    if kind == "notes" {
+        return;
+    }
+    // A presentation fragment is a step-reveal wrapper — in a static PDF its
+    // children simply render in place.
+    if kind == "fragment" {
+        for child in block.blocks() {
+            collect_block(doc, &child, patterns, base_dir, out);
+        }
+        return;
+    }
     // Diagrams (and charts/tilemaps within them) already render to a complete
     // SVG in Rust — embed that string directly.
     if kind == "diagram" {
