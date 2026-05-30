@@ -38,10 +38,27 @@ page wireframe { sites = [:showcase]
     }
   }
 
-  h2 "Theming with class blocks"
+  h2 "A separate UI theme"
 
   text {
-    span "Every widget threads its `class` field onto the rendered element and paints from a bare class (`.wf-button`, `.wf-window`, …). Add a custom class to one instance (the primary button below carries `class = [\"primary\"]`) or redeclare a base class like `class \"wf-button\"` to restyle every button — both override the bundled look by cascade, dark/light modes included."
+    span "Wireframes mock up an application, so they follow a UI theme that's separate from the document's. Set it per site (`site { ui_theme = :gruvbox  ui_mode = :light }`), or override it on any widget with its own `theme` / `accent` / `mode` — this window is forced to Gruvbox light regardless of the page theme."
+  }
+
+  wf_window "Gruvbox light" {
+    theme = :gruvbox
+    mode  = :light
+    wf_label "A self-contained app theme"
+    wf_row {
+      wf_checkbox "Enabled" { checked = true }
+      wf_toggle "Sync" { on = true }
+    }
+    wf_button "Save"
+  }
+
+  h2 "Per-widget class overrides"
+
+  text {
+    span "A widget's `class` background / color / border are read and baked onto its box and label — add one to a single instance (the primary button carries `class = [\"primary\"]`)."
   }
 
   wf_row {

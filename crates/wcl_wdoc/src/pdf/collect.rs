@@ -94,7 +94,7 @@ fn collect_block(
     // renderer the HTML path uses), embedded as an atomic block like a terminal.
     if crate::wireframe::is_wireframe_kind(kind) {
         out.push(BlockNode::Svg {
-            svg: crate::wireframe::render_wireframe_svg(doc, block),
+            svg: crate::wireframe::render_wireframe_svg(doc, block, patterns),
         });
         return;
     }

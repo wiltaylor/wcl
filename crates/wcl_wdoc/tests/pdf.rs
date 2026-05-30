@@ -312,6 +312,26 @@ fn renders_wireframe_window_as_svg() {
 }
 
 #[test]
+fn renders_wireframe_with_ui_theme_override() {
+    // A per-element `theme`/`mode` override resolves + bakes in the PDF path
+    // too (the wireframe SVG embeds with concrete theme colours).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("uiwf.wcl");
+    write_fixture(
+        &src,
+        "page w {\n  wf_window \"App\" { theme = :gruvbox  mode = :light\n    wf_button \"OK\"\n    wf_toggle \"On\" { on = true }\n  }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("uiwf.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    assert!(
+        bytes.len() > 2000,
+        "themed wireframe produced vector content"
+    );
+}
+
+#[test]
 fn renders_bare_wireframe_widget() {
     // A top-level bare widget (no container) is a valid page child and
     // renders on its own.

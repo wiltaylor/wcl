@@ -126,9 +126,9 @@ fn find_theme<'a>(doc: &'a Document, name: &str) -> Option<Block<'a>> {
 
 /// Concrete colours for the theme roles the wireframe renderer bakes into
 /// its SVG (it has no CSS / `currentColor` to lean on — the PDF embed would
-/// rewrite `currentColor` to the document fg). Resolved from the active
-/// theme's *dark* palette so a wireframe is a self-contained themed panel on
-/// any page, mirroring the terminal window.
+/// rewrite `currentColor` to the document fg). Resolved from a chosen
+/// `theme` + `mode` (`dark`/`light`) so a wireframe is a self-contained
+/// themed panel on any page, mirroring the terminal window.
 pub(crate) struct ThemeRoles {
     pub bg: String,
     pub bg_alt: String,
@@ -140,49 +140,107 @@ pub(crate) struct ThemeRoles {
     pub accent: String,
 }
 
-/// The built-in Nord dark palette (lib/theme.wcl) — the fallback for any role
-/// a custom palette omits, and for documents with no `site`/`theme`.
-fn nord_dark() -> ThemeRoles {
-    ThemeRoles {
-        bg: "#2e3440".into(),
-        bg_alt: "#3b4252".into(),
-        bg_inset: "#272c36".into(),
-        overlay: "#434c5e".into(),
-        border: "#4c566a".into(),
-        fg: "#d8dee9".into(),
-        fg_muted: "#9aa5b8".into(),
-        accent: "#81a1c1".into(), // nord dark `blue`
+/// The selected UI theme for an application mock-up: a theme name, an accent
+/// hue, and a mode (`dark`/`light`). Resolved per site from its `ui_*` fields
+/// (falling back to the document `theme`/`accent`, dark) and overridable per
+/// wireframe element.
+#[derive(Clone)]
+pub(crate) struct UiTheme {
+    pub theme: String,
+    pub accent: String,
+    pub mode: String,
+}
+
+impl Default for UiTheme {
+    fn default() -> Self {
+        UiTheme {
+            theme: "nord".to_string(),
+            accent: "blue".to_string(),
+            mode: "dark".to_string(),
+        }
     }
 }
 
-/// Resolve the document's active theme to concrete dark-palette role colours.
-/// Reads the first `site` block's `theme`/`accent` symbols (defaults
-/// `nord`/`blue`), finds the matching `theme` block, and reads its `dark`
-/// `palette` child — filling any missing role (or a site-less document) from
-/// the Nord dark defaults.
-pub(crate) fn resolve_theme_roles(doc: &Document) -> ThemeRoles {
-    let def = nord_dark();
-    let Some(site) = doc.blocks().find(|b| b.kind() == "site") else {
-        return def;
+/// The built-in Nord palette for a mode (lib/theme.wcl) — the fallback for any
+/// role a custom palette omits, and for documents with no `theme`.
+fn nord_roles(mode: &str) -> ThemeRoles {
+    if mode == "light" {
+        ThemeRoles {
+            bg: "#eceff4".into(),
+            bg_alt: "#e5e9f0".into(),
+            bg_inset: "#d8dee9".into(),
+            overlay: "#d8dee9".into(),
+            border: "#d8dee9".into(),
+            fg: "#2e3440".into(),
+            fg_muted: "#4c566a".into(),
+            accent: "#5e81ac".into(), // nord light `blue`
+        }
+    } else {
+        ThemeRoles {
+            bg: "#2e3440".into(),
+            bg_alt: "#3b4252".into(),
+            bg_inset: "#272c36".into(),
+            overlay: "#434c5e".into(),
+            border: "#4c566a".into(),
+            fg: "#d8dee9".into(),
+            fg_muted: "#9aa5b8".into(),
+            accent: "#81a1c1".into(), // nord dark `blue`
+        }
+    }
+}
+
+/// Read the UI theme a `site` selects: its `ui_theme`/`ui_accent`/`ui_mode`
+/// fields, falling back to the document `theme`/`accent` (mode `dark`). A
+/// site-less document gets the Nord-dark default.
+pub(crate) fn resolve_ui_theme(site: Option<&Block<'_>>) -> UiTheme {
+    let Some(site) = site else {
+        return UiTheme::default();
     };
-    let name = field_symbol(&site, "theme").unwrap_or_else(|| "nord".to_string());
-    let accent_raw = field_symbol(&site, "accent").unwrap_or_default();
-    let accent_hue = if HUES.contains(&accent_raw.as_str()) {
-        accent_raw.as_str()
+    let theme = field_symbol(site, "ui_theme")
+        .or_else(|| field_symbol(site, "theme"))
+        .unwrap_or_else(|| "nord".to_string());
+    let accent_raw = field_symbol(site, "ui_accent")
+        .or_else(|| field_symbol(site, "accent"))
+        .unwrap_or_default();
+    let accent = if HUES.contains(&accent_raw.as_str()) {
+        accent_raw
+    } else {
+        "blue".to_string()
+    };
+    let mode = match field_symbol(site, "ui_mode").as_deref() {
+        Some("light") => "light".to_string(),
+        _ => "dark".to_string(),
+    };
+    UiTheme {
+        theme,
+        accent,
+        mode,
+    }
+}
+
+/// Resolve a `theme` name + `accent` hue + `mode` (`dark`/`light`) to concrete
+/// role colours: find the named `theme` block (fallback nord), read the
+/// matching-mode `palette` child, and fill any missing role from the Nord
+/// palette of that mode. Unknown accent ⇒ blue; unknown mode ⇒ dark.
+pub(crate) fn resolve_roles(doc: &Document, theme: &str, accent: &str, mode: &str) -> ThemeRoles {
+    let mode = if mode == "light" { "light" } else { "dark" };
+    let accent_hue = if HUES.contains(&accent) {
+        accent
     } else {
         "blue"
     };
-    let Some(theme) = find_theme(doc, &name) else {
+    let def = nord_roles(mode);
+    let Some(theme) = find_theme(doc, theme) else {
         return def;
     };
-    let Some(dark) = theme
+    let Some(pal) = theme
         .blocks()
-        .find(|b| b.kind() == "palette" && label_string(b).as_deref() == Some("dark"))
+        .find(|b| b.kind() == "palette" && label_string(b).as_deref() == Some(mode))
     else {
         return def;
     };
     let role =
-        |f: &str, fallback: &str| field_utf8(&dark, f).unwrap_or_else(|| fallback.to_string());
+        |f: &str, fallback: &str| field_utf8(&pal, f).unwrap_or_else(|| fallback.to_string());
     ThemeRoles {
         bg: role("bg", &def.bg),
         bg_alt: role("bg_alt", &def.bg_alt),

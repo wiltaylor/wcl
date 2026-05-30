@@ -63,6 +63,15 @@ pub(crate) struct InlinePatterns {
     /// (`<img>`) and diagram (`<image>`) render paths reach it via
     /// `images()`; populated lazily as `image` blocks are rendered.
     images: ImageRegistry,
+    /// The current site's resolved UI/application theme — what `wf_*`
+    /// wireframe elements bake their colours from (separate from the
+    /// document theme). Set per site by the build (`set_ui_theme`), it
+    /// rides here so the wireframe renderer reaches the right site's theme
+    /// without threading a new param through `render_block`, like `icons`.
+    /// `RefCell` because the PDF path shares one `InlinePatterns` across
+    /// sites (the embedder borrows it immutably for the whole run) and
+    /// updates the theme per site.
+    ui_theme: RefCell<crate::render::UiTheme>,
 }
 
 struct CompiledPattern {
@@ -125,7 +134,21 @@ impl InlinePatterns {
             icons,
             tilesets,
             images,
+            ui_theme: RefCell::new(crate::render::UiTheme::default()),
         }
+    }
+
+    /// Set the current site's resolved UI/application theme (the build calls
+    /// this per site before rendering its pages). Interior mutability so it
+    /// works on the shared, immutably-borrowed PDF `InlinePatterns`.
+    pub(crate) fn set_ui_theme(&self, ui_theme: crate::render::UiTheme) {
+        *self.ui_theme.borrow_mut() = ui_theme;
+    }
+
+    /// The current site's UI/application theme — the base a wireframe element
+    /// bakes from (before any per-element `theme`/`accent`/`mode` override).
+    pub(crate) fn ui_theme(&self) -> crate::render::UiTheme {
+        self.ui_theme.borrow().clone()
     }
 
     /// The document's icon registry, threaded into the SVG render path

@@ -218,6 +218,10 @@ pub fn pdf(
 
     let mut written = 0;
     for spec in build_set {
+        // Wireframe (`wf_*`) elements in this site's pages bake from its UI
+        // theme. The shared `patterns` is updated per site (interior mutability;
+        // the embedder borrows it immutably for the whole run).
+        patterns.set_ui_theme(crate::render::resolve_ui_theme(spec.block.as_ref()));
         // One physical page per page block, ordered by the site TOC (start page
         // first, then TOC chapters, then any remaining pages in source order).
         let ordered = order_site_pages(spec);

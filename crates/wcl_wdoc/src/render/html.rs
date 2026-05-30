@@ -326,7 +326,7 @@ pub(crate) fn render_block(
         // context — a widget recurses into its children itself, never
         // re-entering `render_block`.
         kind if crate::wireframe::is_wireframe_kind(kind) => {
-            Some(crate::wireframe::render_wireframe(doc, block))
+            Some(crate::wireframe::render_wireframe(doc, block, patterns))
         }
         // A `wdoc_repeater` renders its body once per element of `each`.
         "wdoc_repeater" => Some(render_repeat(doc, block, patterns, base_dir)),

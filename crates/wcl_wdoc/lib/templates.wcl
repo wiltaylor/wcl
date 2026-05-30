@@ -118,6 +118,16 @@ type SiteConfig {
   // Which hue drives links / highlights (`--wdoc-accent`): one of
   // red orange yellow green cyan blue purple pink. Unset ⇒ blue.
   accent: symbol?
+  // UI/application theme for `wf_*` wireframe elements — the theme the
+  // mocked-up application follows, separate from the document's `theme`.
+  // `ui_theme` names a `theme` block (same vocabulary as `theme`),
+  // `ui_accent` a hue, and `ui_mode` is `:dark` (default) or `:light` so a
+  // light app can be mocked on a dark docs page. Each unset field falls
+  // back to the document `theme` / `accent` / dark. A wireframe element may
+  // override these per-instance with its own `theme` / `accent` / `mode`.
+  ui_theme:  symbol?
+  ui_accent: symbol?
+  ui_mode:   symbol?
   @child("toc") toc: Toc?
   // Curated navbar menu (the `webpage` template renders it). Items may
   // link to a page or external URL and nest into dropdowns. With no

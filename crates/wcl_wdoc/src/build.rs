@@ -549,6 +549,8 @@ fn build_site(
         tilesets,
         images,
     );
+    // Wireframe (`wf_*`) elements bake from this site's UI theme.
+    inline_patterns.set_ui_theme(crate::render::resolve_ui_theme(spec.block.as_ref()));
 
     let mut count = 0;
 

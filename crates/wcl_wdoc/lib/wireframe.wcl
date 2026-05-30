@@ -21,6 +21,12 @@ interface Widget extends WdocBlock {
   class:    list<utf8>?
   width:    utf8?           // explicit CSS width, e.g. "12rem" / "100%"
   disabled: bool?
+  // Per-element UI-theme override (read on the root widget): `theme` names a
+  // `theme` block, `accent` a hue, `mode` is `:dark` / `:light`. Each unset
+  // field falls back to the site's `ui_*` theme (then the document theme).
+  theme:    symbol?
+  accent:   symbol?
+  mode:     symbol?
   lower:    fn(&Widget) -> list<HtmlFundamental>
 }
 
@@ -30,6 +36,7 @@ interface Widget extends WdocBlock {
 type WfLabel extends Widget {
   @inline(0) text: utf8
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  theme: symbol?  accent: symbol?  mode: symbol?
   lower = fn(l: WfLabel) -> list<HtmlFundamental> []
 }
 
@@ -38,6 +45,7 @@ type WfButton extends Widget {
   @inline(0) text: utf8
   icon: utf8?                  // optional leading glyph, e.g. "lucide.check"
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  theme: symbol?  accent: symbol?  mode: symbol?
   lower = fn(b: WfButton) -> list<HtmlFundamental> []
 }
 
@@ -46,6 +54,7 @@ type WfInput extends Widget {
   @inline(0) placeholder: utf8   // greyed placeholder text
   value: utf8?                   // filled value (renders solid, no placeholder)
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  theme: symbol?  accent: symbol?  mode: symbol?
   lower = fn(i: WfInput) -> list<HtmlFundamental> []
 }
 
@@ -53,6 +62,7 @@ type WfInput extends Widget {
 type WfDropdown extends Widget {
   @inline(0) text: utf8          // currently-selected option label
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  theme: symbol?  accent: symbol?  mode: symbol?
   lower = fn(d: WfDropdown) -> list<HtmlFundamental> []
 }
 
@@ -61,6 +71,7 @@ type WfCheckbox extends Widget {
   @inline(0) label: utf8
   checked: bool?
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  theme: symbol?  accent: symbol?  mode: symbol?
   lower = fn(c: WfCheckbox) -> list<HtmlFundamental> []
 }
 
@@ -69,6 +80,7 @@ type WfRadio extends Widget {
   @inline(0) label: utf8
   selected: bool?
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  theme: symbol?  accent: symbol?  mode: symbol?
   lower = fn(r: WfRadio) -> list<HtmlFundamental> []
 }
 
@@ -77,6 +89,7 @@ type WfToggle extends Widget {
   @inline(0) label: utf8?        // optional trailing caption
   on: bool?
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  theme: symbol?  accent: symbol?  mode: symbol?
   lower = fn(t: WfToggle) -> list<HtmlFundamental> []
 }
 
@@ -89,6 +102,7 @@ type WfWindow extends Widget {
   @inline(0) title: utf8
   controls: bool?                // titlebar dots + close glyph (default true)
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  theme: symbol?  accent: symbol?  mode: symbol?
   @children(Widget) children: list<Widget>
   lower = fn(w: WfWindow) -> list<HtmlFundamental> []
 }
@@ -97,6 +111,7 @@ type WfWindow extends Widget {
 type WfPanel extends Widget {
   title: utf8?                   // optional group caption
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  theme: symbol?  accent: symbol?  mode: symbol?
   @children(Widget) children: list<Widget>
   lower = fn(p: WfPanel) -> list<HtmlFundamental> []
 }
@@ -107,6 +122,7 @@ type WfPanel extends Widget {
 @block("wf_column")
 type WfColumn extends Widget {
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  theme: symbol?  accent: symbol?  mode: symbol?
   @children(Widget) children: list<Widget>
   lower = fn(c: WfColumn) -> list<HtmlFundamental> []
 }
@@ -114,6 +130,7 @@ type WfColumn extends Widget {
 @block("wf_row")
 type WfRow extends Widget {
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  theme: symbol?  accent: symbol?  mode: symbol?
   @children(Widget) children: list<Widget>
   lower = fn(r: WfRow) -> list<HtmlFundamental> []
 }
@@ -122,6 +139,7 @@ type WfRow extends Widget {
 type WfGrid extends Widget {
   columns: i64                   // number of equal-width columns
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  theme: symbol?  accent: symbol?  mode: symbol?
   @children(Widget) children: list<Widget>
   lower = fn(g: WfGrid) -> list<HtmlFundamental> []
 }

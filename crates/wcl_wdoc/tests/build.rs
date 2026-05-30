@@ -5110,6 +5110,50 @@ fn wireframe_widgets_render_as_separate_svgs() {
     );
 }
 
+#[test]
+fn wireframe_element_overrides_ui_theme() {
+    // A widget's own `theme` overrides the default: gruvbox dark `bg_alt`
+    // (#3c3836) is baked, not nord's (#3b4252).
+    let html = wireframe_html("  wf_window \"App\" { theme = :gruvbox\n    wf_label \"x\"\n  }");
+    assert!(
+        html.contains("fill=\"#3c3836\"") && !html.contains("fill=\"#3b4252\""),
+        "gruvbox surface not baked:\n{html}"
+    );
+}
+
+#[test]
+fn wireframe_element_mode_picks_light_palette() {
+    // `mode = :light` bakes the theme's light palette: nord light `bg_alt`
+    // (#e5e9f0), not the dark one (#3b4252).
+    let html = wireframe_html(
+        "  wf_window \"App\" { theme = :nord  mode = :light\n    wf_label \"x\"\n  }",
+    );
+    assert!(
+        html.contains("fill=\"#e5e9f0\"") && !html.contains("fill=\"#3b4252\""),
+        "nord light palette not baked:\n{html}"
+    );
+}
+
+#[test]
+fn wireframe_site_ui_theme_decouples_from_doc_theme() {
+    // The site's `ui_theme` themes wireframes independently of the document
+    // `theme`: doc is nord, UI is gruvbox → the wireframe bakes gruvbox dark
+    // `bg_alt` (#3c3836), while the body uses the nord background var.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("ui.wcl");
+    write_fixture(
+        &src,
+        "site s { theme = :nord  ui_theme = :gruvbox  default_template = :webpage\n  menu { item \"P\" { page = p } }\n}\npage p { sites = [:s]  start = true\n  wf_window \"App\" { wf_label \"x\" }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("p.html")).expect("read");
+    assert!(
+        html.contains("fill=\"#3c3836\""),
+        "wireframe should bake the site's gruvbox ui_theme:\n{html}"
+    );
+}
+
 // ── Multiple sites ────────────────────────────────────────────────────
 
 /// Build a multi-site fixture into a TempDir and hand the dir to `check`.

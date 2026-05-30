@@ -27,9 +27,10 @@
 
 use wcl_lang::{Block, Document};
 
+use crate::inline::InlinePatterns;
 use crate::render::{
-    ThemeRoles, escape_html, field_bool, field_i64, field_id, field_utf8, field_utf8_list,
-    label_string, resolve_theme_roles,
+    ThemeRoles, escape_html, field_bool, field_i64, field_id, field_symbol, field_utf8,
+    field_utf8_list, label_string, resolve_roles,
 };
 
 // ── Geometry (px, ported from the wdoc-wireframe CSS rem values) ─────
@@ -60,23 +61,37 @@ const SANS: &str = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 /// Render a wireframe widget tree to an HTML fragment: the self-contained
 /// `<svg>` wrapped in a `wdoc-wireframe` `<div>` carrying the block's `class`
 /// list and `id`.
-pub(crate) fn render_wireframe(doc: &Document, block: &Block<'_>) -> String {
+pub(crate) fn render_wireframe(
+    doc: &Document,
+    block: &Block<'_>,
+    patterns: &InlinePatterns,
+) -> String {
     let mut classes = vec!["wdoc-wireframe".to_string()];
     classes.extend(field_utf8_list(block, "class"));
     let class_attr = classes.join(" ");
     let id_attr = field_id(block, "id")
         .map(|id| format!(" id=\"{}\"", escape_html(&id)))
         .unwrap_or_default();
-    let svg = render_wireframe_svg(doc, block);
+    let svg = render_wireframe_svg(doc, block, patterns);
     format!("<div class=\"{class_attr}\"{id_attr}>{svg}</div>")
 }
 
 /// Render a wireframe widget tree to a bare, self-contained `<svg>` (the PDF
 /// path embeds this directly; the HTML path wraps it). Neutral colours are
-/// baked from the document's resolved theme roles, so the widget is a
-/// self-contained themed panel on either output.
-pub(crate) fn render_wireframe_svg(doc: &Document, block: &Block<'_>) -> String {
-    let roles = resolve_theme_roles(doc);
+/// baked from the resolved UI/application theme — the current site's `ui_*`
+/// theme, overridden per-element by the root widget's own `theme`/`accent`/
+/// `mode` — so the widget is a self-contained themed panel on either output.
+pub(crate) fn render_wireframe_svg(
+    doc: &Document,
+    block: &Block<'_>,
+    patterns: &InlinePatterns,
+) -> String {
+    // Per-element override (root widget) layered over the site UI theme.
+    let base = patterns.ui_theme();
+    let theme = field_symbol(block, "theme").unwrap_or(base.theme);
+    let accent = field_symbol(block, "accent").unwrap_or(base.accent);
+    let mode = field_symbol(block, "mode").unwrap_or(base.mode);
+    let roles = resolve_roles(doc, &theme, &accent, &mode);
     let w = build(doc, block);
     let body_w = w.w.max(1.0);
     let body_h = w.h.max(1.0);
