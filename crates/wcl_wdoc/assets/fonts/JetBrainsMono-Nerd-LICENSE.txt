@@ -1,0 +1,21 @@
+JetBrains Mono Nerd Font (Mono variant)
+========================================
+
+The `JetBrainsMonoNerdFontMono-*.{woff2,ttf}` faces bundled here are the
+JetBrains Mono typeface patched by the Nerd Fonts project.
+
+- JetBrains Mono is licensed under the SIL Open Font License, Version 1.1.
+  Copyright 2020 The JetBrains Mono Project Authors
+  (https://github.com/JetBrains/JetBrainsMono)
+
+- The Nerd Fonts glyph patches are licensed under the MIT License.
+  Copyright (c) 2014, Ryan L McIntyre (https://github.com/ryanoasis/nerd-fonts)
+
+The full text of the SIL Open Font License 1.1 accompanying these fonts is the
+same standard license reproduced in OFL-Noto.txt in this directory (only the
+copyright notice differs, as above). See:
+  https://openfontlicense.org/
+  https://github.com/ryanoasis/nerd-fonts/blob/master/LICENSE
+
+The woff2 faces are written to `_wdoc/` for served terminals; the ttf faces are
+embedded (subset) into PDF output so terminal Nerd Font glyphs render there too.

@@ -18,10 +18,25 @@ use crate::image::ImageRegistry;
 use crate::tileset::TilesetRegistry;
 
 use super::palette::Palette;
-use super::text::{FONT_FACES, MONO_NAME, SANS_NAME, SERIF_NAME};
+use super::text::{FONT_FACES, SANS_NAME, SERIF_NAME};
 
 /// The external icon-sprite href the web build emits in `<use>` elements.
 const SPRITE_HREF: &str = "_wdoc/icons.svg#";
+
+// JetBrains Mono Nerd Font (Mono variant) TTFs, for embedded-SVG monospace —
+// chiefly terminals, whose grid uses Nerd Font box-drawing / powerline / icon
+// glyphs that the plain Noto mono lacks. The web terminal ships the woff2 form;
+// usvg/fontdb need raw sfnt. Loaded only into the SVG embed fontdb (native code
+// keeps Noto mono).
+const NERD_REGULAR: &[u8] =
+    include_bytes!("../../assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf");
+const NERD_BOLD: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf");
+const NERD_ITALIC: &[u8] =
+    include_bytes!("../../assets/fonts/JetBrainsMonoNerdFontMono-Italic.ttf");
+/// The Nerd Font's internal family name. The terminal SVG's font stack ends in
+/// the generic `monospace`, so making it the fontdb monospace default resolves
+/// the terminal glyphs to the real Nerd Font.
+const NERD_FAMILY: &str = "JetBrainsMono Nerd Font Mono";
 
 /// Parses wdoc SVG strings into positioned-ready usvg trees. Borrows the
 /// icon / image / tileset registries so embedded diagram icons (sprite `<use>`)
@@ -51,9 +66,13 @@ impl<'a> SvgEmbedder<'a> {
         for bytes in FONT_FACES {
             db.load_font_data(bytes.to_vec());
         }
+        for bytes in [NERD_REGULAR, NERD_BOLD, NERD_ITALIC] {
+            db.load_font_data(bytes.to_vec());
+        }
         db.set_serif_family(SERIF_NAME);
         db.set_sans_serif_family(SANS_NAME);
-        db.set_monospace_family(MONO_NAME);
+        // Terminal text resolves through the generic `monospace` fallback.
+        db.set_monospace_family(NERD_FAMILY);
         let fg = palette.fg_hex();
         let mut sheet = palette.svg_style_sheet();
         sheet.push_str(user_css);
