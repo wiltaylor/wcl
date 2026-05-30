@@ -18,7 +18,8 @@ use wcl_lang::{Block, Document, Value, VariantPayload};
 
 use crate::inline::InlinePatterns;
 use crate::render::{
-    field_symbol, kind_for_variant, lower_to_values, map_utf8, map_utf8_list, render_diagram,
+    field_symbol, field_utf8, field_utf8_list, kind_for_variant, lower_to_values, map_utf8,
+    map_utf8_list, render_diagram,
 };
 
 use super::ir::{BlockNode, CodeSpan, InlineRun, ListLine, TextStyle};
@@ -64,6 +65,21 @@ fn collect_block(
     }
     if kind == "table" {
         out.push(collect_table(doc, block, patterns));
+        return;
+    }
+    if kind == "callout" {
+        let classes = field_utf8_list(block, "class");
+        let heading = patterns
+            .render_runs(doc, &li_text(block))
+            .into_iter()
+            .map(bold_run)
+            .collect();
+        let body = patterns.render_runs(doc, &field_utf8(block, "body").unwrap_or_default());
+        out.push(BlockNode::Callout {
+            accent: callout_accent(&classes),
+            heading,
+            body,
+        });
         return;
     }
     let Some(values) = lower_to_values(doc, block, kind) else {
@@ -227,6 +243,22 @@ fn collect_table(doc: &Document, block: &Block<'_>, patterns: &InlinePatterns) -
         all.remove(0).into_iter().map(bold_cell).collect()
     };
     BlockNode::Table { header, rows: all }
+}
+
+/// The accent colour for a callout, keyed on its type class (mirrors the
+/// `--callout-accent` values in lib/callout.wcl).
+fn callout_accent(classes: &[String]) -> (u8, u8, u8) {
+    for c in classes {
+        match c.as_str() {
+            "note" | "info" => return (94, 129, 172),
+            "tip" => return (136, 192, 208),
+            "warning" => return (208, 135, 112),
+            "error" => return (191, 97, 106),
+            "success" => return (163, 190, 140),
+            _ => {}
+        }
+    }
+    (136, 136, 136)
 }
 
 /// Plain text of a table cell value.

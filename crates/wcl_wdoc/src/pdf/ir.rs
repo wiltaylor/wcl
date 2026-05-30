@@ -103,4 +103,10 @@ pub(crate) enum BlockNode {
     List { lines: Vec<ListLine> },
     /// A table: an optional header row plus body rows, each cell a run list.
     Table { header: Row, rows: Vec<Row> },
+    /// A callout (admonition): an accent colour, a bold heading, and body text.
+    Callout {
+        accent: (u8, u8, u8),
+        heading: Vec<InlineRun>,
+        body: Vec<InlineRun>,
+    },
 }

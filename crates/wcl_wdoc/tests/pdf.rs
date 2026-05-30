@@ -152,6 +152,22 @@ fn renders_code_lists_and_tables() {
 }
 
 #[test]
+fn renders_callouts() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("call.wcl");
+    write_fixture(
+        &src,
+        "page c {\n  callout \"Heads up\" { class = [\"warning\"] body = \"Mind the **gap**.\" }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    pdf_ok(&src, out.path(), PageSize::A4);
+    let bytes = std::fs::read(out.path().join("call.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    // The bold heading + bold body emphasis embed the serif bold face.
+    assert!(String::from_utf8_lossy(&bytes).contains("NotoSerif-Bold"));
+}
+
+#[test]
 fn errors_when_no_pages() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("empty.wcl");

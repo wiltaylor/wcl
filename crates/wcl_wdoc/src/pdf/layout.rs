@@ -173,6 +173,27 @@ pub(crate) fn layout(
                 );
                 continue;
             }
+            if let BlockNode::Callout {
+                accent,
+                heading,
+                body,
+            } = block
+            {
+                place_callout(
+                    *accent,
+                    heading,
+                    body,
+                    book,
+                    &mut pages,
+                    &mut cy,
+                    &mut at_page_top,
+                    left,
+                    top,
+                    content_w,
+                    content_h,
+                );
+                continue;
+            }
 
             let (runs, size, line_height, space_before, space_after) = match block {
                 BlockNode::Heading { level, runs } => (
@@ -192,7 +213,8 @@ pub(crate) fn layout(
                 BlockNode::Svg { .. }
                 | BlockNode::Code { .. }
                 | BlockNode::List { .. }
-                | BlockNode::Table { .. } => {
+                | BlockNode::Table { .. }
+                | BlockNode::Callout { .. } => {
                     unreachable!("handled above")
                 }
             };
@@ -416,6 +438,92 @@ fn place_list(
         *cy += ITEM_SPACE;
     }
     *cy += SPACE_AROUND_SVG;
+}
+
+/// Place a callout: a tinted box with a coloured left border, a bold
+/// accent-coloured heading, and body text. Rendered as a single unit (taller
+/// than a page overflows rather than splitting).
+#[allow(clippy::too_many_arguments)]
+fn place_callout(
+    accent: (u8, u8, u8),
+    heading: &[crate::pdf::ir::InlineRun],
+    body: &[crate::pdf::ir::InlineRun],
+    book: &mut FontBook,
+    pages: &mut Vec<LaidOutPage>,
+    cy: &mut f32,
+    at_page_top: &mut bool,
+    left: f32,
+    top: f32,
+    content_w: f32,
+    content_h: f32,
+) {
+    const BORDER_W: f32 = 4.0;
+    const PAD: f32 = 8.0;
+    const GAP: f32 = 3.0;
+    const BG: (u8, u8, u8) = (247, 247, 248);
+
+    if !*at_page_top {
+        *cy += SPACE_AROUND_SVG;
+    }
+    let inner_x = left + BORDER_W + PAD;
+    let inner_w = (content_w - BORDER_W - 2.0 * PAD).max(40.0);
+    let head = book.shape_paragraph(heading, inner_w, BODY_SIZE, BODY_LINE_HEIGHT);
+    let bod = book.shape_paragraph(body, inner_w, BODY_SIZE, BODY_LINE_HEIGHT);
+    let head_h: f32 = head.lines.iter().map(|l| l.height).sum();
+    let bod_h: f32 = bod.lines.iter().map(|l| l.height).sum();
+    let gap = if head_h > 0.0 && bod_h > 0.0 {
+        GAP
+    } else {
+        0.0
+    };
+    let box_h = PAD + head_h + gap + bod_h + PAD;
+
+    if *cy + box_h > content_h && !*at_page_top {
+        pages.push(LaidOutPage::default());
+        *cy = 0.0;
+    }
+    let box_top = top + *cy;
+    let page = pages.last_mut().expect("at least one page");
+    page.rects.push(RectFill {
+        x: left,
+        y: box_top,
+        w: content_w,
+        h: box_h,
+        color: BG,
+    });
+    page.rects.push(RectFill {
+        x: left,
+        y: box_top,
+        w: BORDER_W,
+        h: box_h,
+        color: accent,
+    });
+
+    let mut yy = PAD;
+    for wl in &head.lines {
+        let baseline = box_top + yy + wl.ascent;
+        for g in &wl.glyphs {
+            page.glyphs.push(PlacedGlyph {
+                font: g.font.clone(),
+                glyph_id: g.glyph_id,
+                x: inner_x + g.x,
+                y: baseline + g.dy,
+                size: BODY_SIZE,
+                color: accent,
+                cluster: g.cluster.clone(),
+            });
+        }
+        yy += wl.height;
+    }
+    yy += gap;
+    for wl in &bod.lines {
+        let baseline = box_top + yy + wl.ascent;
+        place_line(page, &wl.glyphs, &bod.hrefs, inner_x, baseline, BODY_SIZE);
+        yy += wl.height;
+    }
+
+    *cy += box_h + SPACE_AROUND_SVG;
+    *at_page_top = false;
 }
 
 const TABLE_SIZE: f32 = 10.0;
