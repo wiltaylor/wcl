@@ -12,21 +12,30 @@ use std::sync::Arc;
 
 use usvg::{Options, Tree, fontdb};
 
+use crate::icons::IconRegistry;
+
 use super::palette::Palette;
 use super::text::{FONT_FACES, MONO_NAME, SANS_NAME, SERIF_NAME};
 
-/// Parses wdoc SVG strings into positioned-ready usvg trees.
-pub(crate) struct SvgEmbedder {
+/// The external icon-sprite href the web build emits in `<use>` elements.
+const SPRITE_HREF: &str = "_wdoc/icons.svg#";
+
+/// Parses wdoc SVG strings into positioned-ready usvg trees. Borrows the
+/// [`IconRegistry`] so embedded diagram icons (which reference the shared
+/// sprite) can be inlined at embed time, after their diagram has recorded its
+/// icon usage.
+pub(crate) struct SvgEmbedder<'a> {
     fontdb: Arc<fontdb::Database>,
     fg: String,
     style_sheet: Option<String>,
+    icons: &'a IconRegistry,
 }
 
-impl SvgEmbedder {
+impl<'a> SvgEmbedder<'a> {
     /// `user_css` is the document's own `class` rules (concatenated), so
     /// custom-coloured diagram shapes pick up their fills. `currentColor` in
     /// both the palette defaults and the user CSS resolves to the foreground.
-    pub(crate) fn new(palette: &Palette, user_css: &str) -> Self {
+    pub(crate) fn new(palette: &Palette, user_css: &str, icons: &'a IconRegistry) -> Self {
         let mut db = fontdb::Database::new();
         for bytes in FONT_FACES {
             db.load_font_data(bytes.to_vec());
@@ -42,6 +51,7 @@ impl SvgEmbedder {
             fontdb: Arc::new(db),
             fg,
             style_sheet: Some(sheet),
+            icons,
         }
     }
 
@@ -49,7 +59,16 @@ impl SvgEmbedder {
     /// Returns `None` if the string holds no `<svg>` or fails to parse (e.g. a
     /// math-error marker).
     pub(crate) fn embed(&self, svg: &str) -> Option<(Tree, (f32, f32))> {
-        let inner = extract_svg(svg)?;
+        let mut inner = extract_svg(svg)?;
+        // Inline the icon sprite: splice the recorded `<symbol>`s into the SVG's
+        // own defs and rewrite `<use href="_wdoc/icons.svg#id">` to `#id` so
+        // usvg resolves them locally (there is no sprite file for PDF).
+        if inner.contains(SPRITE_HREF)
+            && let Some(defs) = self.icons.symbol_defs()
+        {
+            inner = splice_defs(&inner, &defs);
+            inner = inner.replace(SPRITE_HREF, "#");
+        }
         let prepared = inner.replace("currentColor", &self.fg);
         let opt = Options {
             fontdb: self.fontdb.clone(),
@@ -60,6 +79,17 @@ impl SvgEmbedder {
         let size = tree.size();
         Some((tree, (size.width(), size.height())))
     }
+}
+
+/// Insert `<defs>{defs}</defs>` immediately after the opening `<svg …>` tag.
+fn splice_defs(svg: &str, defs: &str) -> String {
+    if let Some(start) = svg.find("<svg")
+        && let Some(gt) = svg[start..].find('>')
+    {
+        let pos = start + gt + 1;
+        return format!("{}<defs>{defs}</defs>{}", &svg[..pos], &svg[pos..]);
+    }
+    svg.to_string()
 }
 
 /// Extract the outermost balanced `<svg>…</svg>` from a render string, which may

@@ -201,7 +201,7 @@ pub fn pdf(
         .filter(|b| b.kind() == "class")
         .filter_map(|b| crate::render::render_class(&b))
         .collect();
-    let embedder = svg_embed::SvgEmbedder::new(&palette, &class_css);
+    let embedder = svg_embed::SvgEmbedder::new(&palette, &class_css, patterns.icons());
 
     fs::create_dir_all(out_dir)
         .map_err(|e| PdfError::Io(e, format!("create_dir_all {}", out_dir.display())))?;

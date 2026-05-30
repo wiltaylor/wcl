@@ -214,9 +214,11 @@ impl IconRegistry {
         Some(shape_markup(&pack, icon, geom, &style))
     }
 
-    /// Build the shared sprite from every recorded icon, or `None` when
-    /// none were used. Called once after all pages render.
-    pub(crate) fn build_sprite(&self) -> Option<String> {
+    /// The `<symbol>` definitions for every recorded icon (no wrapping `<svg>`),
+    /// or `None` when none were used. Shared by [`build_sprite`](Self::build_sprite)
+    /// (the web sprite) and the PDF path (spliced into an embedded SVG's
+    /// `<defs>` so its `<use href="…#id">` resolves locally).
+    pub(crate) fn symbol_defs(&self) -> Option<String> {
         let used = self.used.borrow();
         if used.is_empty() {
             return None;
@@ -231,8 +233,16 @@ impl IconRegistry {
             }
         }
         if symbols.is_empty() {
-            return None;
+            None
+        } else {
+            Some(symbols)
         }
+    }
+
+    /// Build the shared sprite from every recorded icon, or `None` when
+    /// none were used. Called once after all pages render.
+    pub(crate) fn build_sprite(&self) -> Option<String> {
+        let symbols = self.symbol_defs()?;
         Some(format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" style=\"display:none\">{symbols}</svg>"
         ))

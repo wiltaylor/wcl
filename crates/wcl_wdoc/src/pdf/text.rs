@@ -335,7 +335,7 @@ struct FlattenCtx<'a> {
     leaves: Vec<Leaf>,
     hrefs: Vec<String>,
     objects: Vec<InlineObject>,
-    embedder: Option<&'a SvgEmbedder>,
+    embedder: Option<&'a SvgEmbedder<'a>>,
     size: f32,
 }
 
