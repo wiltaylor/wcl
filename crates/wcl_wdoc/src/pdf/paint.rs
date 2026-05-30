@@ -60,7 +60,15 @@ pub(crate) fn paint(
             fill_rect(&mut surface, r.x, r.y, r.w, r.h, r.color);
         }
 
-        // Embedded SVG (diagrams / charts / equations) underneath the text.
+        // Raster images and embedded SVG (diagrams / charts / equations)
+        // underneath the text.
+        for img in &page_content.images {
+            if let Some(size) = Size::from_wh(img.w, img.h) {
+                surface.push_transform(&Transform::from_translate(img.x, img.y));
+                surface.draw_image(img.image.clone(), size);
+                surface.pop();
+            }
+        }
         for placed in &page_content.svgs {
             if let Some(size) = Size::from_wh(placed.w, placed.h) {
                 surface.push_transform(&Transform::from_translate(placed.x, placed.y));

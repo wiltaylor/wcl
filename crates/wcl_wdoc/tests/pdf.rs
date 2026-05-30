@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 use wcl_wdoc::{PageSize, PdfError, pdf};
@@ -212,6 +212,27 @@ fn one_pdf_per_site_in_toc_order() {
     }
     assert!(one.path().join("blog.pdf").exists());
     assert!(!one.path().join("docs.pdf").exists());
+}
+
+#[test]
+fn embeds_a_raster_image() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let asset =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/wdoc/assets/pixel-coin.png");
+    std::fs::copy(&asset, tmp.path().join("coin.png")).expect("copy asset png");
+    let src = tmp.path().join("img.wcl");
+    write_fixture(
+        &src,
+        "page i {\n  image \"coin.png\" { width = 120.0 }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    pdf_ok(&src, out.path(), PageSize::A4);
+    let bytes = std::fs::read(out.path().join("img.pdf")).expect("read pdf");
+    assert!(
+        String::from_utf8_lossy(&bytes).contains("/Subtype /Image")
+            || String::from_utf8_lossy(&bytes).contains("/Subtype/Image"),
+        "an image XObject was embedded"
+    );
 }
 
 #[test]

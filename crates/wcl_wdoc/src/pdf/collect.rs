@@ -18,8 +18,8 @@ use wcl_lang::{Block, Document, Value, VariantPayload};
 
 use crate::inline::InlinePatterns;
 use crate::render::{
-    field_symbol, field_utf8, field_utf8_list, kind_for_variant, lower_to_values, map_utf8,
-    map_utf8_list, render_diagram,
+    field_f64, field_symbol, field_utf8, field_utf8_list, kind_for_variant, lower_to_values,
+    map_utf8, map_utf8_list, render_diagram,
 };
 
 use super::ir::{BlockNode, CodeSpan, InlineRun, ListLine, TextStyle};
@@ -65,6 +65,20 @@ fn collect_block(
     }
     if kind == "table" {
         out.push(collect_table(doc, block, patterns));
+        return;
+    }
+    // Terminals already render to a complete (static-snapshot) SVG in Rust.
+    if kind == "terminal" {
+        out.push(BlockNode::Svg {
+            svg: crate::terminal::render_terminal(doc, block, base_dir),
+        });
+        return;
+    }
+    // A page-level raster image: load the source bytes for embedding.
+    if kind == "image" {
+        if let Some(node) = collect_image(block, base_dir) {
+            out.push(node);
+        }
         return;
     }
     if kind == "callout" {
@@ -243,6 +257,31 @@ fn collect_table(doc: &Document, block: &Block<'_>, patterns: &InlinePatterns) -
         all.remove(0).into_iter().map(bold_cell).collect()
     };
     BlockNode::Table { header, rows: all }
+}
+
+/// Load a page-level `image` block's source file for raster embedding. Skips
+/// remote (`http(s):`) and `data:` sources and unreadable paths.
+fn collect_image(block: &Block<'_>, base_dir: Option<&Path>) -> Option<BlockNode> {
+    let source = match block.labels().ok()?.into_iter().next()? {
+        Value::Utf8(s) | Value::Ascii(s) => s,
+        _ => return None,
+    };
+    if source.starts_with("http://")
+        || source.starts_with("https://")
+        || source.starts_with("data:")
+    {
+        return None;
+    }
+    let path = match base_dir {
+        Some(dir) => dir.join(&source),
+        None => Path::new(&source).to_path_buf(),
+    };
+    let bytes = std::fs::read(path).ok()?;
+    Some(BlockNode::Image {
+        bytes,
+        disp_w: field_f64(block, "width").map(|v| v as f32),
+        disp_h: field_f64(block, "height").map(|v| v as f32),
+    })
 }
 
 /// The accent colour for a callout, keyed on its type class (mirrors the

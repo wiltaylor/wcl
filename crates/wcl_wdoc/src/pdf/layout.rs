@@ -65,14 +65,24 @@ pub(crate) struct RectFill {
     pub color: (u8, u8, u8),
 }
 
+/// A raster image placed in absolute page coordinates, sized to `(w, h)`.
+pub(crate) struct PlacedImage {
+    pub image: krilla::image::Image,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
 /// One physical page's painted content. Rects paint first (backgrounds), then
-/// SVGs, then glyphs on top.
+/// images and SVGs, then glyphs on top.
 #[derive(Default)]
 pub(crate) struct LaidOutPage {
     pub glyphs: Vec<PlacedGlyph>,
     pub links: Vec<LinkBox>,
     pub svgs: Vec<PlacedSvg>,
     pub rects: Vec<RectFill>,
+    pub images: Vec<PlacedImage>,
 }
 
 const SPACE_AROUND_SVG: f32 = 8.0;
@@ -134,6 +144,26 @@ pub(crate) fn layout(
                 place_code(
                     lines,
                     book,
+                    &mut pages,
+                    &mut cy,
+                    &mut at_page_top,
+                    left,
+                    top,
+                    content_w,
+                    content_h,
+                );
+                continue;
+            }
+            if let BlockNode::Image {
+                bytes,
+                disp_w,
+                disp_h,
+            } = block
+            {
+                place_image(
+                    bytes,
+                    *disp_w,
+                    *disp_h,
                     &mut pages,
                     &mut cy,
                     &mut at_page_top,
@@ -217,7 +247,8 @@ pub(crate) fn layout(
                 | BlockNode::Code { .. }
                 | BlockNode::List { .. }
                 | BlockNode::Table { .. }
-                | BlockNode::Callout { .. } => {
+                | BlockNode::Callout { .. }
+                | BlockNode::Image { .. } => {
                     unreachable!("handled above")
                 }
             };
@@ -301,6 +332,75 @@ fn place_svg(
         h: dh,
     });
     *cy += dh + SPACE_AROUND_SVG;
+    *at_page_top = false;
+}
+
+/// Decode raster bytes into a krilla image by sniffing the magic bytes.
+fn build_image(bytes: &[u8]) -> Option<krilla::image::Image> {
+    use krilla::image::Image;
+    let data = bytes.to_vec().into();
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        Image::from_png(data, false).ok()
+    } else if bytes.starts_with(&[0xFF, 0xD8]) {
+        Image::from_jpeg(data, false).ok()
+    } else if bytes.starts_with(b"GIF8") {
+        Image::from_gif(data, false).ok()
+    } else if bytes.len() > 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Image::from_webp(data, false).ok()
+    } else {
+        None
+    }
+}
+
+/// Embed, size, paginate, and centre a raster image. Natural size is the pixel
+/// size at 96 dpi unless an explicit display width/height is given.
+#[allow(clippy::too_many_arguments)]
+fn place_image(
+    bytes: &[u8],
+    disp_w: Option<f32>,
+    disp_h: Option<f32>,
+    pages: &mut Vec<LaidOutPage>,
+    cy: &mut f32,
+    at_page_top: &mut bool,
+    left: f32,
+    top: f32,
+    content_w: f32,
+    content_h: f32,
+) {
+    let Some(image) = build_image(bytes) else {
+        return;
+    };
+    let (pw, ph) = image.size();
+    if pw == 0 || ph == 0 {
+        return;
+    }
+    let aspect = ph as f32 / pw as f32;
+    // px → pt at 96 dpi.
+    let natural_w = pw as f32 * 0.75;
+    let mut w = disp_w.unwrap_or(natural_w).min(content_w);
+    let mut h = disp_h.unwrap_or(w * aspect);
+    if h > content_h {
+        let s = content_h / h;
+        w *= s;
+        h *= s;
+    }
+
+    if !*at_page_top {
+        *cy += SPACE_AROUND_SVG;
+    }
+    if *cy + h > content_h && !*at_page_top {
+        pages.push(LaidOutPage::default());
+        *cy = 0.0;
+    }
+    let page = pages.last_mut().expect("at least one page");
+    page.images.push(PlacedImage {
+        image,
+        x: left + (content_w - w) / 2.0,
+        y: top + *cy,
+        w,
+        h,
+    });
+    *cy += h + SPACE_AROUND_SVG;
     *at_page_top = false;
 }
 

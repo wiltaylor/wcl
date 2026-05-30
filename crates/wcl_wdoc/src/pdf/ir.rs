@@ -112,4 +112,10 @@ pub(crate) enum BlockNode {
         heading: Vec<InlineRun>,
         body: Vec<InlineRun>,
     },
+    /// A raster image: the encoded file bytes plus an optional display size.
+    Image {
+        bytes: Vec<u8>,
+        disp_w: Option<f32>,
+        disp_h: Option<f32>,
+    },
 }
