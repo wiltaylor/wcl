@@ -21,6 +21,7 @@ use wcl_lang::{Document, FnValue, Value, VariantPayload};
 
 use crate::icons::IconRegistry;
 use crate::image::ImageRegistry;
+use crate::pdf::ir::{FontFamily, InlineRun, TextStyle};
 use crate::render::escape_html;
 use crate::tileset::TilesetRegistry;
 
@@ -237,6 +238,111 @@ impl InlinePatterns {
         best
     }
 
+    /// Structured twin of [`render`](Self::render) for the PDF backend:
+    /// tokenize `text` and return a tree of [`InlineRun`]s instead of HTML.
+    /// Bold / italic / code patterns lower to a `Plain` span carrying a
+    /// `bold` / `italic` / `code` class, which maps to a [`TextStyle`]; links
+    /// become [`InlineRun::Link`]. Icons and inline math fall back to literal
+    /// text here — they become SVG runs in the SVG phase.
+    pub(crate) fn render_runs(&self, doc: &Document, text: &str) -> Vec<InlineRun> {
+        let mut out = Vec::new();
+        self.runs_inner(doc, text, 0, TextStyle::body(), &mut out);
+        out
+    }
+
+    fn runs_inner(
+        &self,
+        doc: &Document,
+        text: &str,
+        depth: usize,
+        style: TextStyle,
+        out: &mut Vec<InlineRun>,
+    ) {
+        if depth >= MAX_DEPTH || self.compiled.is_empty() {
+            push_run(out, text, style);
+            return;
+        }
+        let mut pos = 0usize;
+        while pos < text.len() {
+            let Some((start, end, pat_idx, caps)) = self.find_next(text, pos) else {
+                push_run(out, &text[pos..], style);
+                break;
+            };
+            if start > pos {
+                push_run(out, &text[pos..start], style);
+            }
+            let pattern = &self.compiled[pat_idx];
+            let args: Vec<Value> = caps.into_iter().map(Value::Utf8).collect();
+            match doc.call_value(&pattern.to_span, &[Value::List(args)]) {
+                Ok(Value::List(spans)) => {
+                    for span in spans {
+                        self.runs_variant(doc, &span, depth, style, out);
+                    }
+                }
+                _ => push_run(out, &text[start..end], style),
+            }
+            pos = end;
+            if end == start {
+                if let Some(next_ch) = text[pos..].chars().next() {
+                    let next_pos = pos + next_ch.len_utf8();
+                    push_run(out, &text[pos..next_pos], style);
+                    pos = next_pos;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    fn runs_variant(
+        &self,
+        doc: &Document,
+        value: &Value,
+        depth: usize,
+        style: TextStyle,
+        out: &mut Vec<InlineRun>,
+    ) {
+        let Value::Variant {
+            variant, payload, ..
+        } = value
+        else {
+            return;
+        };
+        let VariantPayload::Record(map) = payload else {
+            return;
+        };
+        match variant.as_str() {
+            "Plain" => {
+                let text = map_utf8(map, "text").unwrap_or_default();
+                let st = apply_classes(style, &class_list(map));
+                self.runs_inner(doc, &text, depth + 1, st, out);
+            }
+            "Link" => {
+                let text = map_utf8(map, "text").unwrap_or_default();
+                let href = self.resolve_href(&map_utf8(map, "href").unwrap_or_default());
+                let st = apply_classes(style, &class_list(map));
+                let mut runs = Vec::new();
+                self.runs_inner(doc, &text, depth + 1, st, &mut runs);
+                out.push(InlineRun::Link { runs, href });
+            }
+            // Icons / inline math need SVG — emit a readable text fallback for
+            // now; the SVG phase replaces these with real glyphs.
+            "Icon" => {
+                let name = map_utf8(map, "name").unwrap_or_default();
+                push_run(out, &format!(":{name}:"), style);
+            }
+            "Math" => {
+                let latex = map_utf8(map, "latex").unwrap_or_default();
+                let mono = TextStyle {
+                    family: FontFamily::Mono,
+                    ..style
+                };
+                push_run(out, &latex, mono);
+            }
+            _ => {}
+        }
+    }
+
     fn render_variant(&self, doc: &Document, value: &Value, depth: usize) -> String {
         let Value::Variant {
             variant, payload, ..
@@ -341,6 +447,30 @@ impl InlinePatterns {
             .push(format!("link to unknown page '{target}'"));
         href.to_string()
     }
+}
+
+/// Push a non-empty styled text run.
+fn push_run(out: &mut Vec<InlineRun>, text: &str, style: TextStyle) {
+    if !text.is_empty() {
+        out.push(InlineRun::Text {
+            text: text.to_string(),
+            style,
+        });
+    }
+}
+
+/// Fold the built-in inline-emphasis classes (`bold` / `italic` / `code`) into
+/// a [`TextStyle`]. Other classes carry no PDF styling at this phase.
+fn apply_classes(mut style: TextStyle, classes: &[String]) -> TextStyle {
+    for c in classes {
+        match c.as_str() {
+            "bold" => style.bold = true,
+            "italic" => style.italic = true,
+            "code" => style.family = FontFamily::Mono,
+            _ => {}
+        }
+    }
+    style
 }
 
 fn is_external_href(href: &str) -> bool {

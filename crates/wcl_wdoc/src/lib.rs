@@ -17,6 +17,7 @@ mod inline;
 mod layered;
 mod map;
 mod math;
+pub mod pdf;
 mod render;
 mod routing;
 pub mod serve;
@@ -26,4 +27,5 @@ mod tileset;
 mod timeline;
 
 pub use build::{BuildError, build, schema_registry};
+pub use pdf::{PageSize, PdfError, pdf};
 pub use serve::serve;

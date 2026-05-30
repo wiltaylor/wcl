@@ -150,6 +150,21 @@ enum Command {
     },
 }
 
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum PdfPageSize {
+    A4,
+    Letter,
+}
+
+impl From<PdfPageSize> for wcl_wdoc::PageSize {
+    fn from(p: PdfPageSize) -> Self {
+        match p {
+            PdfPageSize::A4 => wcl_wdoc::PageSize::A4,
+            PdfPageSize::Letter => wcl_wdoc::PageSize::Letter,
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum WdocCommand {
     /// Render every `page` block in `<file>` to `<out>/<name>.html`.
@@ -164,6 +179,23 @@ enum WdocCommand {
         /// with a chooser index (a single-site document is unaffected).
         #[arg(long)]
         site: Option<String>,
+    },
+    /// Render each `site` in `<file>` to `<out>/<name>.pdf` (a pure-Rust
+    /// PDF, no browser or external tools). Prose, headings and more
+    /// paginate onto A4 (default) or US-Letter pages.
+    Pdf {
+        /// Path to a WCL source file declaring one or more `page` blocks.
+        file: PathBuf,
+        /// Output directory. Created if missing.
+        #[arg(long)]
+        out: PathBuf,
+        /// Render only this named `site`. When omitted, the source file
+        /// stem names the output PDF.
+        #[arg(long)]
+        site: Option<String>,
+        /// Page size.
+        #[arg(long, value_enum, default_value_t = PdfPageSize::A4)]
+        page_size: PdfPageSize,
     },
     /// Run a local dev server. Watches the source for `.wcl` changes
     /// and re-renders on each modification — refresh the browser to
@@ -342,6 +374,28 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
                 }
             }
         }
+        WdocCommand::Pdf {
+            file,
+            out,
+            site,
+            page_size,
+        } => match wcl_wdoc::pdf(&file, &out, site.as_deref(), page_size.into()) {
+            Ok(n) => {
+                println!("wrote {n} pdf{}", if n == 1 { "" } else { "s" });
+                EXIT_OK
+            }
+            Err(err) => {
+                let code = match &err {
+                    wcl_wdoc::PdfError::Io(..) => EXIT_IO,
+                    wcl_wdoc::PdfError::Parse(_) => EXIT_PARSE,
+                    wcl_wdoc::PdfError::Schema(_) => EXIT_SCHEMA,
+                    wcl_wdoc::PdfError::BadDoc(_) => EXIT_EVAL,
+                    wcl_wdoc::PdfError::Render(_) => EXIT_IO,
+                };
+                err.report();
+                code
+            }
+        },
         WdocCommand::Serve {
             file,
             addr,

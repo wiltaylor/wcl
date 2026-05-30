@@ -26,6 +26,17 @@ ratex-parser = "0.1"
 ratex-layout = "0.1"
 ratex-svg = { version = "0.1", features = ["embed-fonts"] }
 ratex-types = "0.1"
+# PDF backend (`wcl wdoc pdf`). krilla is the pure-Rust PDF writer (Typst's
+# backend); krilla-svg embeds our existing SVG output vector-preserving via
+# usvg; cosmic-text shapes + line-breaks prose for the layout engine. usvg /
+# fontdb arrive transitively — reach usvg through `krilla_svg::usvg` so the
+# version always matches the embedder.
+krilla = "0.8"
+krilla-svg = "0.8"
+cosmic-text = "0.19"
+# Same usvg krilla-svg embeds (0.47) — we parse our SVG output into a Tree and
+# hand it to `Surface::draw_svg`, so the version must unify with krilla-svg's.
+usvg = "0.47"
 
 [lints]
 workspace = true
