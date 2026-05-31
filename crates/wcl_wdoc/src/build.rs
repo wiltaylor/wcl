@@ -256,7 +256,7 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
 
 /// The name of the site marked `root = true`, if any. More than one root
 /// site is a build error.
-fn root_site_name(specs: &[SiteSpec<'_>]) -> Result<Option<String>, BuildError> {
+pub(crate) fn root_site_name(specs: &[SiteSpec<'_>]) -> Result<Option<String>, BuildError> {
     let mut root: Option<String> = None;
     for s in specs {
         let is_root = s
@@ -942,7 +942,7 @@ fn write_icon_sprite(out_dir: &Path, sprite: &str) -> Result<(), BuildError> {
 /// Extract a page block's first label as a string identifier. The
 /// page-name match for `[text](page)` cross-page links runs against
 /// this set.
-fn page_name(page: &Block<'_>) -> Option<String> {
+pub(crate) fn page_name(page: &Block<'_>) -> Option<String> {
     let labels = page.labels().ok()?;
     match labels.into_iter().next()? {
         Value::Identifier(s) | Value::Utf8(s) | Value::Symbol(s) => Some(s),
@@ -953,7 +953,7 @@ fn page_name(page: &Block<'_>) -> Option<String> {
 /// The name of the page marked `start = true` in this site, if any —
 /// the page served when no page is specified (`/` or `/<site>/`).
 /// Errors if more than one page in the site claims it.
-fn site_start_page(spec: &SiteSpec<'_>) -> Result<Option<String>, BuildError> {
+pub(crate) fn site_start_page(spec: &SiteSpec<'_>) -> Result<Option<String>, BuildError> {
     let mut start: Option<String> = None;
     for p in &spec.pages {
         if field_bool(p, "start") == Some(true) {

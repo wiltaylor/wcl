@@ -1,0 +1,563 @@
+//! Walk a page's blocks into Markdown, the Markdown twin of
+//! [`pdf::collect`](crate::pdf). It reuses the shared lowering seam
+//! ([`lower_to_values`](crate::render::lower_to_values), which runs a
+//! block's WCL `lower` and returns raw `HtmlFundamental` values) and the
+//! shared inline engine
+//! ([`InlinePatterns::render_markdown`](crate::inline::InlinePatterns::render_markdown)),
+//! so prose, emphasis and links resolve exactly as on the HTML / PDF paths.
+//!
+//! Block-level dispatch mirrors `pdf::collect::collect_block`: diagrams,
+//! terminals and wireframes render to a self-contained **static** SVG written
+//! to `_wdoc/` and referenced with `![](…)`; lists, tables, code, callouts,
+//! images and math map to native Markdown; videos are skipped (an online
+//! video leaves a link); everything else lowers to fundamentals.
+
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::Path;
+
+use wcl_lang::{Block, Document, Value, VariantPayload};
+
+use crate::build::BuildError;
+use crate::inline::InlinePatterns;
+use crate::render::{
+    MAX_LOWER_DEPTH, expand_component_children, expand_repeater_children, field_symbol, field_utf8,
+    field_utf8_list, kind_for_variant, lower_to_values, map_utf8, map_utf8_list,
+    render_diagram_static,
+};
+use crate::terminal::ASSET_DIR;
+
+/// Render one page to a Markdown string, writing any diagram / terminal /
+/// wireframe SVGs into `<out_dir>/_wdoc/` as a side effect.
+pub(crate) fn emit_page(
+    doc: &Document,
+    page: &Block<'_>,
+    page_name: &str,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
+    out_dir: &Path,
+) -> Result<String, BuildError> {
+    let mut em = Emitter {
+        doc,
+        patterns,
+        base_dir,
+        out_dir,
+        page: page_name,
+        svg_seq: 0,
+    };
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(fm) = super::yaml::front_matter(page)? {
+        // Joined below with a blank line before the first content block.
+        parts.push(fm.trim_end().to_string());
+    }
+    for child in page.blocks() {
+        em.block(&child, &mut parts)?;
+    }
+    let mut md = parts.join("\n\n");
+    md.push('\n');
+    Ok(md)
+}
+
+struct Emitter<'a> {
+    doc: &'a Document,
+    patterns: &'a InlinePatterns,
+    base_dir: Option<&'a Path>,
+    /// The site output directory; SVG assets go in `<out_dir>/_wdoc/`.
+    out_dir: &'a Path,
+    /// The page name, used to prefix generated SVG filenames.
+    page: &'a str,
+    svg_seq: usize,
+}
+
+impl Emitter<'_> {
+    /// Dispatch one block, pushing zero or more complete Markdown blocks onto
+    /// `out` (joined with blank lines by the caller).
+    fn block(&mut self, block: &Block<'_>, out: &mut Vec<String>) -> Result<(), BuildError> {
+        let kind = block.kind();
+        match kind {
+            // Front matter is emitted separately; speaker notes never render.
+            "frontmatter" | "notes" => {}
+            // A presentation fragment is a step-reveal wrapper — its children
+            // render in place in static output.
+            "fragment" => {
+                for c in block.blocks() {
+                    self.block(&c, out)?;
+                }
+            }
+            // Diagrams (and the charts / timelines / maps / tilemaps nested in
+            // them) render to one self-contained static SVG.
+            "diagram" => {
+                let svg = render_diagram_static(self.doc, block, self.patterns, self.base_dir);
+                let rel = self.write_svg("diagram", &svg)?;
+                out.push(image_ref(&self.svg_alt(block, "diagram"), &rel));
+            }
+            "terminal" => {
+                let svg = crate::terminal::render_terminal_pdf(self.doc, block, self.base_dir);
+                let rel = self.write_svg("terminal", &svg)?;
+                out.push(image_ref(&self.svg_alt(block, "terminal"), &rel));
+            }
+            k if crate::wireframe::is_wireframe_kind(k) => {
+                let svg = crate::wireframe::render_wireframe_svg(self.doc, block, self.patterns);
+                let rel = self.write_svg(k, &svg)?;
+                out.push(image_ref(&self.svg_alt(block, k), &rel));
+            }
+            "list" => out.push(self.list(block)),
+            "table" => out.push(self.table(block)),
+            "code" => out.push(self.code(block)),
+            "image" => {
+                if let Some(s) = self.image(block) {
+                    out.push(s);
+                }
+            }
+            "video" => {
+                if let Some(s) = self.video(block) {
+                    out.push(s);
+                }
+            }
+            "callout" => out.push(self.callout(block)),
+            // A repeater stamps its body once per element of `each`; expand to
+            // the bound child blocks and walk them.
+            "wdoc_repeater" => {
+                if block.binding_scope_depth() <= MAX_LOWER_DEPTH {
+                    for c in expand_repeater_children(block) {
+                        self.block(&c, out)?;
+                    }
+                }
+            }
+            // A bare `wdoc_content` outside a component has no effect (the
+            // substitution happens in `component`).
+            "wdoc_content" => {}
+            kind => {
+                // A user-defined `wdoc_component` instance: expand its
+                // declarative body with the instance's slots bound.
+                if let Some(def) = self.doc.component_def(kind) {
+                    self.component(block, &def, out)?;
+                } else if let Some(values) = lower_to_values(self.doc, block, kind) {
+                    for v in &values {
+                        self.fundamental(v, out);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Expand a `wdoc_component` instance: walk the definition's body with the
+    /// instance's slots bound, substituting the instance's own children for a
+    /// top-level `wdoc_content` placeholder (the common layout-slot case).
+    fn component(
+        &mut self,
+        instance: &Block<'_>,
+        def: &Block<'_>,
+        out: &mut Vec<String>,
+    ) -> Result<(), BuildError> {
+        if instance.binding_scope_depth() > MAX_LOWER_DEPTH {
+            return Ok(());
+        }
+        for child in expand_component_children(instance, def) {
+            if child.kind() == "wdoc_content" {
+                for ic in instance.blocks() {
+                    self.block(&ic, out)?;
+                }
+            } else {
+                self.block(&child, out)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Turn one lowered `HtmlFundamental` into Markdown blocks.
+    fn fundamental(&self, value: &Value, out: &mut Vec<String>) {
+        let Some((kind, map)) = as_record_variant(value) else {
+            return;
+        };
+        match kind.as_str() {
+            "paragraph" => {
+                let text = map_utf8_list(map, "spans").join("");
+                let classes = map_utf8_list(map, "class");
+                if let Some(level) = heading_level(&classes) {
+                    out.push(format!(
+                        "{} {}",
+                        "#".repeat(level as usize),
+                        self.inline(&text)
+                    ));
+                } else {
+                    self.push_para(&text, out);
+                }
+            }
+            "element" => {
+                let tag = map_utf8(map, "tag").unwrap_or_default();
+                let children = map_list(map, "children");
+                match tag.as_str() {
+                    "p" | "span" | "div" => self.push_para(&gather_inline_text(children), out),
+                    t if is_heading_tag(t) => {
+                        let level = t.as_bytes()[1] - b'0';
+                        out.push(format!(
+                            "{} {}",
+                            "#".repeat(level as usize),
+                            self.inline(&gather_inline_text(children))
+                        ));
+                    }
+                    // Unknown wrapper: descend, treating children as blocks.
+                    _ => {
+                        for c in children {
+                            self.fundamental(c, out);
+                        }
+                    }
+                }
+            }
+            "inline" => self.push_para(&map_utf8(map, "text").unwrap_or_default(), out),
+            // A block equation: emit the raw LaTeX in a `$$` fence (the
+            // Markdown target keeps math textual rather than rasterizing it).
+            "math" => {
+                let latex = map_utf8(map, "latex").unwrap_or_default();
+                out.push(format!("$$\n{}\n$$", latex.trim()));
+            }
+            // A code block reached via `lower` (rather than the `code`-kind
+            // shortcut): emit the raw source in a fenced block.
+            "highlighted" => {
+                let source = map_utf8(map, "source").unwrap_or_default();
+                let language = map_utf8(map, "language").unwrap_or_default();
+                out.push(fence(&language, &source));
+            }
+            // Raw HTML from a custom block — GFM allows it through verbatim.
+            "raw" => {
+                if let Some(html) = map_utf8(map, "html") {
+                    out.push(html);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Run inline text through the shared pattern engine, in Markdown mode.
+    fn inline(&self, text: &str) -> String {
+        self.patterns.render_markdown(self.doc, text)
+    }
+
+    /// Push a paragraph unless it renders empty.
+    fn push_para(&self, text: &str, out: &mut Vec<String>) {
+        let s = self.inline(text);
+        if !s.trim().is_empty() {
+            out.push(s);
+        }
+    }
+
+    /// Write an SVG to `<out_dir>/_wdoc/<page>-<kind>-<n>.svg` and return the
+    /// page-relative reference (`_wdoc/…`).
+    fn write_svg(&mut self, kind: &str, svg: &str) -> Result<String, BuildError> {
+        self.svg_seq += 1;
+        let file = format!("{}-{kind}-{}.svg", sanitize(self.page), self.svg_seq);
+        let dir = self.out_dir.join(ASSET_DIR);
+        fs::create_dir_all(&dir)
+            .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
+        let path = dir.join(&file);
+        fs::write(&path, ensure_svg_namespace(svg))
+            .map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
+        Ok(format!("{ASSET_DIR}/{file}"))
+    }
+
+    /// Alt text for a generated SVG: the block's `title`, else its `id`, else
+    /// the kind.
+    fn svg_alt(&self, block: &Block<'_>, kind: &str) -> String {
+        field_utf8(block, "title")
+            .or_else(|| field_utf8(block, "id"))
+            .unwrap_or_else(|| kind.to_string())
+    }
+
+    /// A bullet / numbered list, flattened to indented Markdown lines.
+    fn list(&self, block: &Block<'_>) -> String {
+        let mut lines = Vec::new();
+        let ordered = field_symbol(block, "style").as_deref() == Some("numbered");
+        self.li_group(block, ordered, 0, &mut lines);
+        lines.join("\n")
+    }
+
+    fn li_group(&self, parent: &Block<'_>, ordered: bool, depth: usize, lines: &mut Vec<String>) {
+        let mut i = 0u32;
+        for li in parent.blocks().filter(|b| b.kind() == "li") {
+            i += 1;
+            let indent = "  ".repeat(depth);
+            let marker = if ordered {
+                format!("{i}.")
+            } else {
+                "-".to_string()
+            };
+            let text = self.inline(&label_string(&li).unwrap_or_default());
+            lines.push(format!("{indent}{marker} {text}"));
+
+            // Implicit sublist: bare `li`s directly under this `li`.
+            if li.blocks().any(|b| b.kind() == "li") {
+                self.li_group(&li, ordered, depth + 1, lines);
+            }
+            // Explicit nested `list` blocks with their own style.
+            for sub in li.blocks().filter(|b| b.kind() == "list") {
+                let sub_ordered = field_symbol(&sub, "style").as_deref() == Some("numbered");
+                self.li_group(&sub, sub_ordered, depth + 1, lines);
+            }
+        }
+    }
+
+    /// A table: header row + separator + body rows, each cell run through the
+    /// inline engine. Reads the computed-`rows` form first, then the native
+    /// pipe-row form (whose first row is the header).
+    fn table(&self, block: &Block<'_>) -> String {
+        let mut header: Vec<String> = Vec::new();
+        let mut rows: Vec<Vec<String>> = Vec::new();
+
+        if let Some(Value::List(body)) = block.field("rows").and_then(|f| f.value().ok().cloned()) {
+            if let Some(Value::List(cells)) =
+                block.field("header").and_then(|f| f.value().ok().cloned())
+            {
+                header = cells.iter().map(|v| self.cell(v)).collect();
+            }
+            for r in &body {
+                match r {
+                    Value::List(cells) => rows.push(cells.iter().map(|v| self.cell(v)).collect()),
+                    other => rows.push(vec![self.cell(other)]),
+                }
+            }
+        } else {
+            let mut all: Vec<Vec<String>> = Vec::new();
+            for table in block.tables() {
+                for row in table.rows() {
+                    if let Ok(values) = row.values() {
+                        all.push(values.iter().map(|v| self.cell(v)).collect());
+                    }
+                }
+            }
+            if !all.is_empty() {
+                header = all.remove(0);
+            }
+            rows = all;
+        }
+        render_pipe_table(&header, &rows)
+    }
+
+    fn cell(&self, v: &Value) -> String {
+        escape_cell(&self.inline(&cell_text(v)))
+    }
+
+    /// A syntax-tagged code block: language from the inline label, source from
+    /// the `source` field, in a fenced block (no highlighting — Markdown
+    /// renderers re-tokenize from the language tag).
+    fn code(&self, block: &Block<'_>) -> String {
+        let lang = label_string(block).unwrap_or_default();
+        let source = field_utf8(block, "source").unwrap_or_default();
+        fence(&lang, &source)
+    }
+
+    /// A page image: register the source (local files are copied to `_wdoc/`
+    /// after the page loop) and reference its resolved URL.
+    fn image(&self, block: &Block<'_>) -> Option<String> {
+        let source = label_string(block)?;
+        let entry = self.patterns.images().register(&source);
+        let alt = field_utf8(block, "alt").unwrap_or_default();
+        Some(image_ref(&alt, &entry.url))
+    }
+
+    /// A page video: an online video becomes a plain link; a local video is
+    /// dropped (a static Markdown file can't play it).
+    fn video(&self, block: &Block<'_>) -> Option<String> {
+        let source = label_string(block)?;
+        let url = crate::video::online_url(&source)?;
+        let title = field_utf8(block, "title").unwrap_or_else(|| url.clone());
+        Some(format!("[{}]({url})", escape_link_text(&title)))
+    }
+
+    /// A callout → a GitHub-style alert blockquote.
+    fn callout(&self, block: &Block<'_>) -> String {
+        let classes = field_utf8_list(block, "class");
+        let heading = self.inline(&label_string(block).unwrap_or_default());
+        let body = self.inline(&field_utf8(block, "body").unwrap_or_default());
+        let mut lines = vec![format!("> [!{}]", callout_alert(&classes))];
+        if !heading.trim().is_empty() {
+            lines.push(format!("> **{heading}**"));
+        }
+        for line in body.split('\n') {
+            lines.push(format!("> {line}"));
+        }
+        lines.join("\n")
+    }
+}
+
+/// A Markdown image reference, alt text lightly escaped.
+fn image_ref(alt: &str, url: &str) -> String {
+    format!("![{}]({url})", escape_link_text(alt))
+}
+
+/// Map a callout's type class to a GitHub alert keyword.
+fn callout_alert(classes: &[String]) -> &'static str {
+    for c in classes {
+        match c.as_str() {
+            "note" | "info" => return "NOTE",
+            "tip" | "success" => return "TIP",
+            "warning" => return "WARNING",
+            "error" => return "CAUTION",
+            _ => {}
+        }
+    }
+    "NOTE"
+}
+
+/// Build a GitHub-flavoured pipe table from header + body cells. Width is the
+/// widest row; short rows pad with empty cells.
+fn render_pipe_table(header: &[String], rows: &[Vec<String>]) -> String {
+    let cols = header
+        .len()
+        .max(rows.iter().map(Vec::len).max().unwrap_or(0));
+    if cols == 0 {
+        return String::new();
+    }
+    let row_line = |cells: &[String]| -> String {
+        let padded: Vec<String> = (0..cols)
+            .map(|i| cells.get(i).cloned().unwrap_or_default())
+            .collect();
+        format!("| {} |", padded.join(" | "))
+    };
+    let mut out = String::new();
+    out.push_str(&row_line(header));
+    out.push('\n');
+    out.push_str(&format!("|{}", " --- |".repeat(cols)));
+    for r in rows {
+        out.push('\n');
+        out.push_str(&row_line(r));
+    }
+    out
+}
+
+/// A fenced code block, widening the fence past any backtick run in the
+/// source so embedded triple-backticks survive.
+fn fence(lang: &str, source: &str) -> String {
+    let ticks = "`".repeat(longest_backtick_run(source).max(2) + 1);
+    let src = source.strip_suffix('\n').unwrap_or(source);
+    format!("{ticks}{lang}\n{src}\n{ticks}")
+}
+
+fn longest_backtick_run(s: &str) -> usize {
+    let mut longest = 0usize;
+    let mut run = 0usize;
+    for ch in s.chars() {
+        if ch == '`' {
+            run += 1;
+            longest = longest.max(run);
+        } else {
+            run = 0;
+        }
+    }
+    longest
+}
+
+/// Ensure a standalone SVG carries the SVG namespace so it renders when
+/// referenced as an image file. Diagram SVGs already do; terminal /
+/// wireframe SVGs get it injected defensively if missing.
+fn ensure_svg_namespace(svg: &str) -> String {
+    if svg.contains("xmlns=") || !svg.trim_start().starts_with("<svg") {
+        return svg.to_string();
+    }
+    svg.replacen("<svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"", 1)
+}
+
+/// Escape characters that would break Markdown link / image text.
+fn escape_link_text(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('[', "\\[")
+        .replace(']', "\\]")
+        .replace('\n', " ")
+}
+
+/// Escape a table cell: pipes are literal, newlines collapse to a space.
+fn escape_cell(s: &str) -> String {
+    s.replace('|', "\\|").replace('\n', " ")
+}
+
+fn is_heading_tag(tag: &str) -> bool {
+    matches!(tag, "h1" | "h2" | "h3" | "h4" | "h5" | "h6")
+}
+
+fn heading_level(classes: &[String]) -> Option<u8> {
+    for c in classes {
+        if let Some(n) = c.strip_prefix("heading-")
+            && let Ok(level) = n.parse::<u8>()
+            && (1..=6).contains(&level)
+        {
+            return Some(level);
+        }
+    }
+    None
+}
+
+/// Sanitize a page name into a filename-safe stem.
+fn sanitize(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+/// The inline label of a block as a plain string.
+fn label_string(block: &Block<'_>) -> Option<String> {
+    match block.labels().ok()?.into_iter().next()? {
+        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s) => Some(s),
+        _ => None,
+    }
+}
+
+/// Plain text of a table-cell value.
+fn cell_text(v: &Value) -> String {
+    match v {
+        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s) => s.clone(),
+        Value::Bool(b) => b.to_string(),
+        other => other.as_f64().map_or(String::new(), |f| {
+            if f.fract() == 0.0 {
+                format!("{}", f as i64)
+            } else {
+                format!("{f}")
+            }
+        }),
+    }
+}
+
+/// The concatenated raw text of an element's inline children (so the inline
+/// engine runs once over the whole paragraph).
+fn gather_inline_text(children: &[Value]) -> String {
+    let mut s = String::new();
+    for c in children {
+        if let Some((kind, map)) = as_record_variant(c) {
+            match kind.as_str() {
+                "inline" => s.push_str(&map_utf8(map, "text").unwrap_or_default()),
+                "paragraph" => s.push_str(&map_utf8_list(map, "spans").join("")),
+                "element" => s.push_str(&gather_inline_text(map_list(map, "children"))),
+                _ => {}
+            }
+        }
+    }
+    s
+}
+
+/// Destructure a `Value::Variant` with a record payload into `(kind, map)`.
+fn as_record_variant(value: &Value) -> Option<(String, &BTreeMap<String, Value>)> {
+    let Value::Variant {
+        variant, payload, ..
+    } = value
+    else {
+        return None;
+    };
+    let VariantPayload::Record(map) = payload else {
+        return None;
+    };
+    Some((kind_for_variant(variant), map))
+}
+
+/// Read a list-typed field from a payload map (empty slice when absent).
+fn map_list<'a>(map: &'a BTreeMap<String, Value>, name: &str) -> &'a [Value] {
+    match map.get(name) {
+        Some(Value::List(items)) => items,
+        _ => &[],
+    }
+}

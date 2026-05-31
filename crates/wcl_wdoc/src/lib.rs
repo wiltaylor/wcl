@@ -16,6 +16,7 @@ mod image;
 mod inline;
 mod layered;
 mod map;
+mod markdown;
 mod math;
 pub mod pdf;
 mod render;
@@ -29,5 +30,6 @@ mod video;
 mod wireframe;
 
 pub use build::{BuildError, build, schema_registry};
+pub use markdown::markdown;
 pub use pdf::{PageSize, PdfError, pdf};
 pub use serve::serve;

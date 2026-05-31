@@ -88,6 +88,12 @@ docs-serve *ARGS:
 docs-build *ARGS:
     cargo run -p wcl -- wdoc build docs/main.wcl --out docs/_site {{ARGS}}
 
+# Render the project's docs/ site to Markdown under docs/_md/ (gitignored) —
+# smoke-tests `wcl wdoc markdown` (folder of .md + standalone .svg diagrams)
+[group('dev')]
+md-build *ARGS:
+    cargo run -p wcl -- wdoc markdown docs/main.wcl --out docs/_md {{ARGS}}
+
 # Render the example and the docs to PDF under target/pdf/ — smoke-tests `wcl wdoc pdf`
 [group('dev')]
 wdoc-pdf: (wdoc-pdf-render "examples/wdoc/main.wcl" "target/pdf/examples") (wdoc-pdf-render "docs/main.wcl" "target/pdf/docs")

@@ -1,5 +1,6 @@
 /target/
 docs/_site/
+docs/_md/
 .env
 .idea/
 .vscode/

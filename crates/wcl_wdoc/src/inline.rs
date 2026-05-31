@@ -483,6 +483,118 @@ impl InlinePatterns {
             .push(format!("link to unknown page '{target}'"));
         href.to_string()
     }
+
+    /// Markdown twin of [`render`](Self::render) for the Markdown backend:
+    /// tokenize `text` and emit GitHub-flavoured Markdown rather than HTML.
+    /// Bold / italic / code patterns become `**…**` / `_…_` / `` `…` ``;
+    /// links become `[text](href)` with internal page hrefs pointed at the
+    /// `.md` sibling; icons fall back to their literal `:name:`; inline
+    /// equations stay as raw LaTeX in `$…$` (or `$$…$$` for display style),
+    /// matching the block-equation policy of the Markdown target.
+    pub(crate) fn render_markdown(&self, doc: &Document, text: &str) -> String {
+        self.markdown_inner(doc, text, 0)
+    }
+
+    fn markdown_inner(&self, doc: &Document, text: &str, depth: usize) -> String {
+        if depth >= MAX_DEPTH || self.compiled.is_empty() {
+            return escape_md(text);
+        }
+        let mut out = String::new();
+        let mut pos = 0usize;
+        while pos < text.len() {
+            let Some((start, end, pat_idx, caps)) = self.find_next(text, pos) else {
+                out.push_str(&escape_md(&text[pos..]));
+                break;
+            };
+            if start > pos {
+                out.push_str(&escape_md(&text[pos..start]));
+            }
+            let pattern = &self.compiled[pat_idx];
+            let args: Vec<Value> = caps.into_iter().map(Value::Utf8).collect();
+            match doc.call_value(&pattern.to_span, &[Value::List(args)]) {
+                Ok(Value::List(spans)) => {
+                    for span in spans {
+                        out.push_str(&self.markdown_variant(doc, &span, depth));
+                    }
+                }
+                _ => out.push_str(&escape_md(&text[start..end])),
+            }
+            pos = end;
+            // Same zero-length-match guard as the HTML / PDF paths.
+            if end == start {
+                if let Some(next_ch) = text[pos..].chars().next() {
+                    let next_pos = pos + next_ch.len_utf8();
+                    out.push_str(&escape_md(&text[pos..next_pos]));
+                    pos = next_pos;
+                } else {
+                    break;
+                }
+            }
+        }
+        out
+    }
+
+    fn markdown_variant(&self, doc: &Document, value: &Value, depth: usize) -> String {
+        let Value::Variant {
+            variant, payload, ..
+        } = value
+        else {
+            return String::new();
+        };
+        let VariantPayload::Record(map) = payload else {
+            return String::new();
+        };
+        match variant.as_str() {
+            "Plain" => {
+                let text = map_utf8(map, "text").unwrap_or_default();
+                let classes = class_list(map);
+                // A code span is literal: emit it verbatim (no re-tokenizing,
+                // no emphasis nesting — Markdown can't style inside code).
+                if classes.iter().any(|c| c == "code") {
+                    return md_code_span(&text);
+                }
+                let inner = self.markdown_inner(doc, &text, depth + 1);
+                wrap_emphasis(&inner, &classes)
+            }
+            "Link" => {
+                let text = map_utf8(map, "text").unwrap_or_default();
+                let raw = map_utf8(map, "href").unwrap_or_default();
+                let href = self.markdown_href(&raw);
+                let inner = self.markdown_inner(doc, &text, depth + 1);
+                format!("[{inner}]({href})")
+            }
+            "Icon" => format!(":{}:", map_utf8(map, "name").unwrap_or_default()),
+            "Math" => {
+                let latex = map_utf8(map, "latex").unwrap_or_default();
+                let display = matches!(map.get("display"), Some(Value::Bool(true)));
+                if display {
+                    format!("$${latex}$$")
+                } else {
+                    format!("${latex}$")
+                }
+            }
+            _ => String::new(),
+        }
+    }
+
+    /// Resolve a link `href` for Markdown output. Reuses [`resolve_href`]
+    /// (so a bad internal page link still records a build error), but points
+    /// an internal page link at its `.md` sibling instead of `.html`;
+    /// external / anchor / path-relative hrefs pass through unchanged.
+    fn markdown_href(&self, href: &str) -> String {
+        let resolved = self.resolve_href(href);
+        if is_external_href(href) {
+            return resolved;
+        }
+        let (path, frag) = match resolved.find('#') {
+            Some(i) => (&resolved[..i], &resolved[i..]),
+            None => (resolved.as_str(), ""),
+        };
+        match path.strip_suffix(".html") {
+            Some(stem) => format!("{stem}.md{frag}"),
+            None => resolved,
+        }
+    }
 }
 
 /// Push a non-empty styled text run.
@@ -507,6 +619,60 @@ fn apply_classes(mut style: TextStyle, classes: &[String]) -> TextStyle {
         }
     }
     style
+}
+
+/// Escape the Markdown-significant punctuation in a literal text run so
+/// prose doesn't accidentally format. Intentionally conservative: `_` is
+/// left alone (CommonMark treats intraword `_` as literal, and snake_case
+/// identifiers are everywhere in this domain), so only the characters that
+/// open emphasis / code / links from word boundaries are escaped.
+fn escape_md(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        if matches!(ch, '\\' | '`' | '*' | '[' | ']') {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
+}
+
+/// Wrap `inner` in the Markdown emphasis markers implied by `classes`
+/// (`bold` → `**`, `italic` → `_`, both → `***`). No emphasis class ⇒
+/// `inner` returned unchanged.
+fn wrap_emphasis(inner: &str, classes: &[String]) -> String {
+    let bold = classes.iter().any(|c| c == "bold");
+    let italic = classes.iter().any(|c| c == "italic");
+    let marker = match (bold, italic) {
+        (true, true) => "***",
+        (true, false) => "**",
+        (false, true) => "_",
+        (false, false) => return inner.to_string(),
+    };
+    format!("{marker}{inner}{marker}")
+}
+
+/// Emit `code` as a Markdown inline code span, widening the backtick fence
+/// past the longest backtick run in the content and padding with a space
+/// when it begins or ends with a backtick (CommonMark code-span rules).
+fn md_code_span(code: &str) -> String {
+    let mut longest = 0usize;
+    let mut run = 0usize;
+    for ch in code.chars() {
+        if ch == '`' {
+            run += 1;
+            longest = longest.max(run);
+        } else {
+            run = 0;
+        }
+    }
+    let fence = "`".repeat(longest + 1);
+    let pad = if code.starts_with('`') || code.ends_with('`') {
+        " "
+    } else {
+        ""
+    };
+    format!("{fence}{pad}{code}{pad}{fence}")
 }
 
 fn is_external_href(href: &str) -> bool {

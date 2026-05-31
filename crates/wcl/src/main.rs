@@ -180,6 +180,24 @@ enum WdocCommand {
         #[arg(long)]
         site: Option<String>,
     },
+    /// Render every `page` block in `<file>` to a folder of Markdown files
+    /// under `<out>` (one `.md` per page), with diagrams / terminals /
+    /// wireframes written as standalone `.svg` files the Markdown
+    /// references. Aimed at AI / text consumers: zoomable diagrams render
+    /// as plain SVG, equations stay as LaTeX, and videos are skipped.
+    #[command(alias = "md")]
+    Markdown {
+        /// Path to a WCL source file declaring one or more `page` blocks.
+        file: PathBuf,
+        /// Output directory. Created if missing.
+        #[arg(long)]
+        out: PathBuf,
+        /// Build only this named `site` (flat at `<out>`). When omitted,
+        /// every site renders into its own `<out>/<name>/` subdirectory
+        /// (a single-site document is unaffected).
+        #[arg(long)]
+        site: Option<String>,
+    },
     /// Render each `site` in `<file>` to `<out>/<name>.pdf` (a pure-Rust
     /// PDF, no browser or external tools). Prose, headings and more
     /// paginate onto A4 (default) or US-Letter pages.
@@ -350,6 +368,21 @@ fn main() -> ExitCode {
     ExitCode::from(code)
 }
 
+/// Map a wdoc `BuildError` to a CLI exit code. Shared by the `build` and
+/// `markdown` subcommands (both render through the same pipeline).
+fn build_error_code(err: &wcl_wdoc::BuildError) -> u8 {
+    match err {
+        wcl_wdoc::BuildError::Io(..) => EXIT_IO,
+        wcl_wdoc::BuildError::Parse(_) => EXIT_PARSE,
+        wcl_wdoc::BuildError::Schema(_) => EXIT_SCHEMA,
+        wcl_wdoc::BuildError::BadPage(_) => EXIT_EVAL,
+        wcl_wdoc::BuildError::DuplicateId { .. } => EXIT_SCHEMA,
+        wcl_wdoc::BuildError::BadLink(_) => EXIT_SCHEMA,
+        wcl_wdoc::BuildError::BadTemplate(_) => EXIT_SCHEMA,
+        wcl_wdoc::BuildError::Tileset(_) => EXIT_SCHEMA,
+    }
+}
+
 fn run_wdoc(cmd: WdocCommand) -> u8 {
     match cmd {
         WdocCommand::Build { file, out, site } => {
@@ -359,16 +392,20 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
                     EXIT_OK
                 }
                 Err(err) => {
-                    let code = match &err {
-                        wcl_wdoc::BuildError::Io(..) => EXIT_IO,
-                        wcl_wdoc::BuildError::Parse(_) => EXIT_PARSE,
-                        wcl_wdoc::BuildError::Schema(_) => EXIT_SCHEMA,
-                        wcl_wdoc::BuildError::BadPage(_) => EXIT_EVAL,
-                        wcl_wdoc::BuildError::DuplicateId { .. } => EXIT_SCHEMA,
-                        wcl_wdoc::BuildError::BadLink(_) => EXIT_SCHEMA,
-                        wcl_wdoc::BuildError::BadTemplate(_) => EXIT_SCHEMA,
-                        wcl_wdoc::BuildError::Tileset(_) => EXIT_SCHEMA,
-                    };
+                    let code = build_error_code(&err);
+                    err.report();
+                    code
+                }
+            }
+        }
+        WdocCommand::Markdown { file, out, site } => {
+            match wcl_wdoc::markdown(&file, &out, site.as_deref()) {
+                Ok(n) => {
+                    println!("wrote {n} page{}", if n == 1 { "" } else { "s" });
+                    EXIT_OK
+                }
+                Err(err) => {
+                    let code = build_error_code(&err);
                     err.report();
                     code
                 }

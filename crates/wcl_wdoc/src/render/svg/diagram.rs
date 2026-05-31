@@ -20,6 +20,30 @@ pub(crate) fn render_diagram(
     patterns: &InlinePatterns,
     base_dir: Option<&Path>,
 ) -> String {
+    render_diagram_inner(doc, block, patterns, base_dir, false)
+}
+
+/// Render a diagram as a self-contained, **static** `<svg>` — no pan/zoom
+/// data attributes, no `.wdoc-diagram-viewport` wrapper, no overlay
+/// controls. Used by the Markdown target, which writes each diagram to a
+/// standalone `.svg` file: interactivity has no meaning there, so a
+/// `pan_zoom`/`map` diagram degrades to its base (fully-fitted) view.
+pub(crate) fn render_diagram_static(
+    doc: &Document,
+    block: &Block<'_>,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
+) -> String {
+    render_diagram_inner(doc, block, patterns, base_dir, true)
+}
+
+fn render_diagram_inner(
+    doc: &Document,
+    block: &Block<'_>,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
+    static_mode: bool,
+) -> String {
     // Pin cards render to HTML that must sit outside the `<svg>`; collect
     // them here and splice them into the viewport wrapper below.
     let overlays = RefCell::new(Vec::new());
@@ -53,7 +77,8 @@ pub(crate) fn render_diagram(
     // it in a viewport that hosts the overlaid controls. A diagram with a
     // `map` is interactive even without an explicit `pan_zoom` (a map is
     // inherently zoomable). Plain diagrams keep the bare-`<svg>` output.
-    let interactive = field_bool(block, "pan_zoom") == Some(true) || uses_map(block);
+    let interactive =
+        !static_mode && (field_bool(block, "pan_zoom") == Some(true) || uses_map(block));
     if interactive {
         let zoom_min = field_f64(block, "zoom_min").unwrap_or(1.0);
         let zoom_max = field_f64(block, "zoom_max").unwrap_or(4.0);
