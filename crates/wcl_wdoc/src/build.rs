@@ -563,6 +563,18 @@ fn build_site(
     // Wireframe (`wf_*`) elements bake from this site's UI theme.
     inline_patterns.set_ui_theme(crate::render::resolve_ui_theme(spec.block.as_ref()));
 
+    // Resolve the site favicon once. A user `icon` path is resolved + copied
+    // via the image registry (already copied after the page loop); an
+    // external URL passes through. Absent ⇒ ship the embedded default.
+    let site_icon = spec.block.as_ref().and_then(|b| field_utf8(b, "icon"));
+    let favicon = match &site_icon {
+        Some(src) => inline_patterns.images().register(src).url,
+        None => {
+            write_default_favicon(out_dir)?;
+            format!("{}/favicon.svg", crate::terminal::ASSET_DIR)
+        }
+    };
+
     let mut count = 0;
 
     // Presentation site: render every slide once into a single deck page
@@ -671,7 +683,7 @@ fn build_site(
         // The deck keyboard-navigation player.
         write_presentation_assets(out_dir)?;
         body.push_str("\n<script src=\"_wdoc/presentation.js\" defer></script>\n");
-        let html = render_page(&title, &css, &body);
+        let html = render_page(&title, &css, &body, Some(&favicon));
         let out_path = out_dir.join("index.html");
         fs::write(&out_path, html)
             .map_err(|e| BuildError::Io(e, format!("write {}", out_path.display())))?;
@@ -765,7 +777,14 @@ fn build_site(
         if uses_video {
             body.push_str("\n<script src=\"_wdoc/wdoc-video.js\" defer></script>\n");
         }
-        let html = render_page(&page_name, &css, &body);
+        // Browser tab title: the page's own `title` (else its name), suffixed
+        // with the site title as `<page> — <site>` when the site sets one.
+        let page_title = field_utf8(page, "title").unwrap_or_else(|| page_name.clone());
+        let doc_title = match &site_title {
+            Some(st) if *st != page_title => format!("{page_title} — {st}"),
+            _ => page_title,
+        };
+        let html = render_page(&doc_title, &css, &body, Some(&favicon));
 
         let out_path = out_dir.join(format!("{page_name}.html"));
         fs::write(&out_path, html)
@@ -845,7 +864,11 @@ fn write_chooser_index(
         ));
     }
     let body = format!("<h1>Sites</h1>\n<ul class=\"wdoc-site-index\">{items}</ul>");
-    let html = render_page("index", css, &body);
+    // The multi-site landing page gets the default favicon (no single site
+    // owns it), written into the root `_wdoc/`.
+    write_default_favicon(out_dir)?;
+    let favicon = format!("{}/favicon.svg", crate::terminal::ASSET_DIR);
+    let html = render_page("index", css, &body, Some(&favicon));
     let path = out_dir.join("index.html");
     fs::write(&path, html).map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
     Ok(())
@@ -928,6 +951,22 @@ fn write_presentation_assets(out_dir: &Path) -> Result<(), BuildError> {
     let player = dir.join("presentation.js");
     fs::write(&player, crate::render::PRESENTATION_PLAYER_JS)
         .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
+    Ok(())
+}
+
+/// The default favicon, shipped when a `site` sets no `icon`.
+const DEFAULT_FAVICON: &str = include_str!("../assets/favicon.svg");
+
+/// Write the default favicon into `<out>/_wdoc/favicon.svg`. Pages
+/// reference it by relative URL, so the dev server and any static host
+/// resolve it the same way. Idempotent (rewrites the same bytes).
+fn write_default_favicon(out_dir: &Path) -> Result<(), BuildError> {
+    let dir = out_dir.join(crate::terminal::ASSET_DIR);
+    fs::create_dir_all(&dir)
+        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
+    let path = dir.join("favicon.svg");
+    fs::write(&path, DEFAULT_FAVICON)
+        .map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
     Ok(())
 }
 

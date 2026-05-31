@@ -48,7 +48,12 @@ fn build_emits_fundamentals_for_example_site() {
     // the showcase overview page (at the root, since showcase is `root`).
     let overview =
         std::fs::read_to_string(out.path().join("overview.html")).expect("read overview.html");
-    assert!(overview.contains("<title>overview</title>"), "{overview}");
+    // Browser title: the page name (no page `title` set) suffixed with the
+    // showcase site's title.
+    assert!(
+        overview.contains("<title>overview — wdoc showcase</title>"),
+        "{overview}"
+    );
     // text + span
     assert!(
         overview.contains("<p><span>Welcome to wdoc </span>"),
@@ -4188,9 +4193,18 @@ fn no_terminal_writes_no_assets() {
     write_fixture(&src, "page index {\n  text { span \"hi\" {} }\n}\n");
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
+    // The `_wdoc/` dir exists (it holds the always-shipped favicon), but the
+    // heavy terminal font/player assets must not be written.
+    let wdoc = out.path().join("_wdoc");
     assert!(
-        !out.path().join("_wdoc").exists(),
-        "assets written without a terminal"
+        !wdoc.join("terminal-player.js").exists(),
+        "terminal player written without a terminal"
+    );
+    assert!(
+        !wdoc
+            .join("JetBrainsMonoNerdFontMono-Regular.woff2")
+            .exists(),
+        "terminal font written without a terminal"
     );
 }
 
@@ -6332,4 +6346,126 @@ page only { h1 "Only" {} }
         Err(_) => panic!("expected BadTemplate"),
         Ok(_) => panic!("expected BadTemplate, got Ok"),
     }
+}
+
+#[test]
+fn build_browser_title_combines_page_title_and_site_title() {
+    // A page `title` drives the browser `<title>`, suffixed with the site
+    // title as `<page> — <site>`.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("titled.wcl");
+    write_fixture(
+        &src,
+        r##"
+site main {
+  default_template = :webpage
+  title = "WCL Docs"
+}
+page intro {
+  title = "Getting Started"
+  h1 "Intro" {}
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("intro.html")).expect("read intro");
+    assert!(
+        html.contains("<title>Getting Started — WCL Docs</title>"),
+        "browser title not composed:\n{html}"
+    );
+}
+
+#[test]
+fn build_browser_title_falls_back_to_page_name() {
+    // No page `title`: the browser title uses the page name, still suffixed
+    // with the site title.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("untitled.wcl");
+    write_fixture(
+        &src,
+        r##"
+site main {
+  default_template = :webpage
+  title = "Site"
+}
+page intro {
+  h1 "Intro" {}
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("intro.html")).expect("read intro");
+    assert!(
+        html.contains("<title>intro — Site</title>"),
+        "browser title fallback wrong:\n{html}"
+    );
+}
+
+#[test]
+fn build_ships_default_favicon_when_no_icon_set() {
+    // A site with no `icon`: the embedded default favicon is written and the
+    // page links to it.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("nofav.wcl");
+    write_fixture(
+        &src,
+        r##"
+site main { default_template = :webpage }
+page intro { h1 "Intro" {} }
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    assert!(
+        out.path().join("_wdoc").join("favicon.svg").exists(),
+        "default favicon not written"
+    );
+    let html = std::fs::read_to_string(out.path().join("intro.html")).expect("read intro");
+    assert!(
+        html.contains("<link rel=\"icon\" type=\"image/svg+xml\" href=\"_wdoc/favicon.svg\">"),
+        "default favicon link missing:\n{html}"
+    );
+}
+
+#[test]
+fn build_uses_and_copies_site_icon_when_set() {
+    // A site `icon` pointing at a local file is resolved to a `_wdoc/` URL
+    // and the file is copied into the output.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    // A tiny 1x1 PNG so the image registry has a real file to copy.
+    let png: &[u8] = &[
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f,
+        0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ];
+    std::fs::write(tmp.path().join("logo.png"), png).expect("write logo");
+    let src = tmp.path().join("fav.wcl");
+    write_fixture(
+        &src,
+        r##"
+site main {
+  default_template = :webpage
+  icon = "logo.png"
+}
+page intro { h1 "Intro" {} }
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("intro.html")).expect("read intro");
+    assert!(
+        html.contains("<link rel=\"icon\" href=\"_wdoc/image-logo-"),
+        "site icon link missing:\n{html}"
+    );
+    // The favicon file was copied into `_wdoc/`.
+    let wdoc = out.path().join("_wdoc");
+    let copied = std::fs::read_dir(&wdoc)
+        .expect("read _wdoc")
+        .filter_map(Result::ok)
+        .any(|e| e.file_name().to_string_lossy().starts_with("image-logo-"));
+    assert!(copied, "site icon file not copied into _wdoc/");
 }

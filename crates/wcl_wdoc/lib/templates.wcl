@@ -111,6 +111,11 @@ type SiteConfig {
   default_template: symbol?
   @doc("Site title shown in the header / sidebar.")
   title:            utf8?
+  // Path to a favicon image, resolved relative to the document and copied
+  // into `_wdoc/` (external `http(s)://` / `data:` URLs pass through).
+  // Absent ⇒ a default WCL icon ships instead.
+  @doc("Path to a favicon image (svg/png/ico), resolved relative to the document and copied into `_wdoc/`. Absent ⇒ a default WCL icon is used.")
+  icon:             utf8?
   // Render a light/dark toggle (the `book` template shows it). Pair
   // with `class` blocks that declare `dark {}` / `light {}` modes.
   @doc("When `true`, adds a light/dark toggle button.")

@@ -14,18 +14,33 @@ use crate::inline::InlinePatterns;
 use super::*;
 
 /// Wrap a page's `body` HTML in the document shell. The `<head>`
-/// (title + global stylesheet) is owned here regardless of template;
-/// templates control the `<body>` contents via `render_template`.
-pub(crate) fn render_page(name: &str, css: &str, body: &str) -> String {
+/// (title + favicon + global stylesheet) is owned here regardless of
+/// template; templates control the `<body>` contents via `render_template`.
+/// `favicon` is the resolved `<link rel="icon">` href (a `_wdoc/…` URL or an
+/// external one); `None` emits no favicon link.
+pub(crate) fn render_page(title: &str, css: &str, body: &str, favicon: Option<&str>) -> String {
+    let favicon_link = favicon
+        .map(|href| {
+            // An SVG favicon needs an explicit type; other formats are
+            // inferred from the file by the browser.
+            let ty = if href.ends_with(".svg") {
+                " type=\"image/svg+xml\""
+            } else {
+                ""
+            };
+            format!("<link rel=\"icon\"{ty} href=\"{}\">", escape_html(href))
+        })
+        .unwrap_or_default();
     format!(
         "<!DOCTYPE html>\n\
          <html>\n\
-         <head><meta charset=\"utf-8\"><title>{title}</title>\n\
+         <head><meta charset=\"utf-8\"><title>{title}</title>{favicon_link}\n\
          <style>{css}</style></head>\n\
          <body class=\"wdoc-body\">\n\
          {body}</body>\n\
          </html>\n",
-        title = escape_html(name),
+        title = escape_html(title),
+        favicon_link = favicon_link,
         body = body,
     )
 }

@@ -121,6 +121,11 @@ type Page {
   @inline(0) name: identifier
   @doc("Optional explicit HTML id.")
   id: identifier?
+  // Human-readable page title. Drives the browser tab title (`<title>`),
+  // shown as `<page title> — <site title>` when the site sets a title.
+  // Falls back to the page name when unset.
+  @doc("Human-readable page title; sets the browser tab title (`<title>`). Falls back to the page name.")
+  title: utf8?
   // Template to wrap this page's content in. Overrides the document's
   // `default_template` (set on the `site` block). When neither is set
   // the page renders bare (its blocks straight into <body>).
