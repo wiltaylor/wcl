@@ -28,15 +28,9 @@ p "A whole paragraph in one line."
 WCL
   }
 
-  p "Its fields:"
+  p "Its fields (generated from the schema with `type_table`):"
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`<text>`" | "The paragraph text — the inline label slot. Inline patterns are applied." |
-      | "`class`"  | "Optional class list." |
-      | "`id`"     | "Optional explicit HTML id." |
-  }
+  type_table { type = P }
 
   p "For a paragraph mixing several styled segments, use a `text` block holding `span`s — each `span` takes its own `class`."
 

@@ -66,6 +66,7 @@ pub fn schema_registry() -> Registry {
     r.register("wdoc/terminal.wcl", include_str!("../lib/terminal.wcl"));
     r.register("wdoc/tui.wcl", include_str!("../lib/tui.wcl"));
     r.register("wdoc/math.wcl", include_str!("../lib/math.wcl"));
+    r.register("wdoc/typedoc.wcl", include_str!("../lib/typedoc.wcl"));
     r
 }
 

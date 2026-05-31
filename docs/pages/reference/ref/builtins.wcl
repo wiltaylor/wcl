@@ -81,5 +81,17 @@ WCL
       | "`assert(cond, msg)`" | "Error if `cond` is false" |
   }
 
+  h2 "Reflection"
+
+  p "Query the schema itself. Each takes a reference to a type / field / block / variant (a bare identifier or member path, e.g. `Image` or `Image.alt`)."
+
+  table {
+    rows:
+      | "Function" | "Purpose" |
+      | "`decorator_names(&T)`" | "List the decorator names attached to the target." |
+      | "`decorator_arg(&T, dec, slot)`" | "Read a named argument of decorator `dec` (`none` if absent)." |
+      | "`type_fields(&T)`" | "List a type's fields as records — `name`, `type`, `is_function`, `optional`, `has_default`, `is_block`, `repeated`, `accepts`, `decorators` — own fields first, then those inherited via `extends`. Drives the wdoc `type_table` component." |
+  }
+
   p "Next: [Imports & Modules](imports)."
 }

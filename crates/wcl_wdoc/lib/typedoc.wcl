@@ -1,0 +1,104 @@
+// ── type_table: schema-reflected property tables ──────────────────
+//
+// `type_table { type = Image }` renders a documentation table of a type's
+// fields — property, type, whether it's required, and a description —
+// reflected straight from the schema with the `type_fields` builtin, so the
+// docs can't drift from the declaration. Fields inherited via `extends` are
+// included (own fields first, then inherited). Conventions read off each
+// field's decorators:
+//
+//   @doc("…")  — the description shown in the table.
+//   @hidden    — drop the field from the generated table entirely.
+//
+// A type's nested-block slots (`@child` / `@children`) are listed in a
+// second "Child blocks" table: the slot name, the kind / interface / union
+// it accepts, and whether it holds one block or a list.
+//
+//   @block("image")
+//   type Image extends WdocBlock {
+//     @doc("Image path, a URL, or a data: URI")
+//     @inline(0) source: utf8
+//     @doc("Alt text for the <img>") alt: utf8?
+//   }
+//   …
+//   page p { type_table { type = Image } }
+
+// Documentation-only shapes for the `type_fields` records. WCL erases fn
+// param types at runtime (member access is dynamic), so these just make the
+// helper/component signatures readable; they mirror the builtin's output.
+type FieldDecorator { name: utf8  arg: utf8 }
+type FieldInfo {
+  name:        utf8
+  type:        utf8
+  is_function: bool
+  optional:    bool
+  has_default: bool
+  is_block:    bool
+  repeated:    bool
+  accepts:     utf8
+  decorators:  list<FieldDecorator>
+}
+
+// The description text from a field's `@doc("…")` decorator ("" when absent).
+let wdoc_field_doc = fn(f: FieldInfo) -> utf8 {
+  let hits = filter(f.decorators, fn(d: FieldDecorator) -> bool d.name == "doc");
+  // Bind before member access — `at(hits, 0).arg` (member on a call) isn't
+  // allowed; a let binding is a reference the `.arg` access can walk.
+  if len(hits) == 0 { "" } else { let first = at(hits, 0); first.arg }
+}
+
+// Whether a field carries a `@hidden` decorator (dropped from the table).
+let wdoc_field_hidden = fn(f: FieldInfo) -> bool
+  len(filter(f.decorators, fn(d: FieldDecorator) -> bool d.name == "hidden")) > 0
+
+// "yes" unless the field is optional or carries a default.
+let wdoc_field_required = fn(f: FieldInfo) -> utf8
+  if f.optional { "no" } else { if f.has_default { "no" } else { "yes" } }
+
+// Documentable fields of a type: everything except `@hidden` fields and
+// function-typed fields (the `lower` lowering hook every block carries).
+// `t` is a type reference (the `type` slot's value); the `FieldInfo`
+// annotation is nominal — WCL erases fn param types at runtime.
+let wdoc_doc_fields = fn(t: FieldInfo) -> list<FieldInfo>
+  filter(
+    filter(type_fields(t), fn(f: FieldInfo) -> bool wdoc_field_hidden(f) == false),
+    fn(f: FieldInfo) -> bool f.is_function == false,
+  )
+
+// Scalar properties, then nested-block slots — the two table sections.
+let wdoc_props = fn(t: FieldInfo) -> list<FieldInfo>
+  filter(wdoc_doc_fields(t), fn(f: FieldInfo) -> bool f.is_block == false)
+let wdoc_children = fn(t: FieldInfo) -> list<FieldInfo>
+  filter(wdoc_doc_fields(t), fn(f: FieldInfo) -> bool f.is_block)
+
+// Component bodies can't carry their own `let` bindings through expansion,
+// so the `type` slot is threaded directly into the helpers above.
+wdoc_component type_table {
+  wdoc_slot type
+  wdoc_body {
+    table {
+      header = ["Property", "Type", "Required", "Description"]
+      rows = map(wdoc_props(type), fn(f: FieldInfo) -> list<utf8> [
+        format("`{}`", f.name),
+        format("`{}`", f.type),
+        wdoc_field_required(f),
+        wdoc_field_doc(f),
+      ])
+    }
+
+    // The "Child blocks" section renders only when the type has block
+    // slots: a repeater over a one-or-zero-element list gates it.
+    wdoc_repeater { each = if len(wdoc_children(type)) > 0 { [0] } else { [] }  as = :_section
+      h4 "Child blocks"
+      table {
+        header = ["Slot", "Accepts", "Multiple", "Description"]
+        rows = map(wdoc_children(type), fn(f: FieldInfo) -> list<utf8> [
+          format("`{}`", f.name),
+          format("`{}`", f.accepts),
+          if f.repeated { "yes" } else { "no" },
+          wdoc_field_doc(f),
+        ])
+      }
+    }
+  }
+}

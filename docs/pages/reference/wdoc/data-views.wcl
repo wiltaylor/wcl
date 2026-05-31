@@ -284,6 +284,21 @@ WCL
     body  = "Assign the computed edges from a differently-named binding (`edges = service_links`), not `edges = edges` — a field that references its own name is a cycle and renders nothing."
   }
 
+  h2 "Documenting types"
+
+  p "The built-in `type_table` component documents a schema type by reflecting it — no hand-maintained field lists. `type_table { type = Image }` renders a table of the type's properties (name, type, whether it's required, and a description), including fields inherited via `extends`; a second \"Child blocks\" table lists its `@child` / `@children` slots. It's built on the `type_fields` reflection builtin."
+
+  p "Descriptions and visibility are authored on the schema itself:"
+
+  table {
+    rows:
+      | "Decorator" | "Effect" |
+      | "`@doc(\"…\")`" | "Sets the description shown for the field." |
+      | "`@hidden`" | "Drops the field from the generated table." |
+  }
+
+  p "Function-typed fields (every block's `lower` hook) are skipped automatically. This very page's [Pages](wdoc_pages) and [Images](wdoc_images) field tables are generated this way."
+
   h2 "The pattern"
 
   table {
@@ -295,6 +310,7 @@ WCL
       | "**`table` computed `rows`**" | "A data-driven `<table>` — `table { header = […] rows = map(data, …) }`." |
       | "**`wdoc_repeater` + computed `edges`**" | "A data-driven diagram — repeater-generated nodes (id from data) wired by a computed `edges` list, auto-positioned by `:layered`/`:force`." |
       | "**Chart value fields**" | "Feeding `map`ped data straight into `bar_chart` / `line_chart` / `pie_chart`." |
+      | "**`type_table`**" | "Auto-documenting a schema type's fields — reflected via `type_fields`, described with `@doc` / `@hidden`." |
   }
 
   p "See [Charts](wdoc_charts), [Tables](wdoc_tables), and [Diagrams](wdoc_diagrams) for the individual blocks."

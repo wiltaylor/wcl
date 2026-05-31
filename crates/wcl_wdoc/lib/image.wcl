@@ -12,17 +12,32 @@
 // the `lower` is a never-called stub.
 @block("image")
 type Image extends WdocBlock, SvgBlock {
-  @inline(0) source: utf8             // doc-relative path, or a URL / data: URI
-  alt:    utf8?                       // page alt text
-  width:  f64?                        // display size; natural size if omitted
+  @doc("Image source (the inline label): a doc-relative path, a URL, or a `data:` URI.")
+  @inline(0) source: utf8
+  @doc("Alt text for the `<img>` (page form).")
+  alt:    utf8?
+  @doc("Display width; the natural size is used when omitted.")
+  width:  f64?
+  @doc("Display height; the natural size is used when omitted.")
   height: f64?
+  @doc("Optional explicit HTML id.")
   id:     identifier?
+  @doc("Optional style classes.")
   class:  list<utf8>?
 
   // Diagram placement (ignored on a page), mirroring `icon` / `tilemap`.
-  x = 0.0  y = 0.0
+  @doc("Placement x when used inside a diagram (ignored on a page).")
+  x = 0.0
+  @doc("Placement y when used inside a diagram (ignored on a page).")
+  y = 0.0
+  @doc("Extra size multiplier (diagram form).")
   scale: f64?
-  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  @doc("Diagram anchor insets (left/right/top/bottom), like any shape.")
+  anchor_left: f64?
+  @hidden anchor_right: f64?
+  @hidden anchor_top: f64?
+  @hidden anchor_bottom: f64?
+  @doc("Diagram edge-attach sides, like any shape.")
   connect_points: list<AnchorSide>?
 
   lower = fn(i: Image) -> list<HtmlFundamental> []

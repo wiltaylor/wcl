@@ -117,27 +117,34 @@ symbol_set IconPos { center top_left top_right bottom_left bottom_right left rig
 
 @block("page")
 type Page {
+  @doc("The page name (the inline label); becomes the output filename (`<name>.html` / `.md`).")
   @inline(0) name: identifier
+  @doc("Optional explicit HTML id.")
   id: identifier?
   // Template to wrap this page's content in. Overrides the document's
   // `default_template` (set on the `site` block). When neither is set
   // the page renders bare (its blocks straight into <body>).
+  @doc("Template to wrap the page in; overrides the site's `default_template`.")
   template: symbol?
   // Which named `site`s this page belongs to (`sites = [:docs, :blog]`).
   // Absent or empty ⇒ every site (a shared page). A name with no
   // matching `site` block is a build error.
+  @doc("Named sites this page belongs to; absent ⇒ every site.")
   sites: list<symbol>?
   // Mark this page as the site's start page: it's served when no page is
   // specified (`/`, or `/<site>/` for a sub-site), instead of requiring a
   // page literally named `index`. At most one `start` page per site. With
   // none, a page named `index` is used, else the first page.
+  @doc("Mark this page as the site's start page (served at `/`).")
   start: bool?
   // Optional YAML front matter for the Markdown target (`wcl wdoc
   // markdown`). The `frontmatter` block takes arbitrary `key = value`
   // entries, serialized to a `---`-fenced YAML header on the page's
   // `.md`. Mark the block `@schemaless` so it accepts undeclared keys.
   // Ignored by the HTML and PDF targets. See `Frontmatter`.
+  @doc("Optional YAML front matter for the Markdown target (Markdown only).")
   @child("frontmatter") frontmatter: Frontmatter?
+  @doc("The page's content blocks.")
   @children(WdocBlock) children: list<WdocBlock>
 }
 

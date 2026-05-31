@@ -6,15 +6,7 @@ page wdoc_pages { sites = [:reference]
 
   h2 "Fields"
 
-  table {
-    rows:
-      | "Field"        | "Meaning" |
-      | "`<name>`"     | "Page identifier (the block label position). Must be a valid identifier." |
-      | "`sites`"      | "List of site symbols this page belongs to. Omit to share across all sites." |
-      | "`start`"      | "When `true`, this page is the site's landing (served at `/` or `/<site>/`)." |
-      | "`template`"   | "Override the site's `default_template` for this single page." |
-      | "`id`"         | "Optional explicit HTML id." |
-  }
+  type_table { type = Page }
 
   h2 "A page"
 

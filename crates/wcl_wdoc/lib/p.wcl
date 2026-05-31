@@ -9,8 +9,11 @@
 
 @block("p")
 type P extends WdocBlock {
+  @doc("The paragraph text (the inline label slot); inline patterns are applied.")
   @inline(0) text: utf8
+  @doc("Optional explicit HTML id.")
   id:    identifier?
+  @doc("Optional style classes.")
   class: list<utf8>?
   lower = fn(p: P) -> list<HtmlFundamental> [
     HtmlFundamental::Element {

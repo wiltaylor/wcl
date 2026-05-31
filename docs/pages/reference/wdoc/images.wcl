@@ -55,18 +55,7 @@ WCL
 
   h2 "Fields"
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`<source>`" | "Image path (the label slot) — doc-relative, a URL, or a `data:` URI." |
-      | "`alt`"      | "Alt text for the `<img>` (page form)." |
-      | "`width` / `height`" | "Display size; natural size if omitted." |
-      | "`class`"    | "Optional class list." |
-      | "`id`"       | "Optional explicit HTML id." |
-      | "`x` / `y`"  | "Placement when used inside a diagram (ignored on a page)." |
-      | "`scale`"    | "Extra size multiplier (diagram form)." |
-      | "anchors / `connect_points`" | "Diagram anchoring + edge attach sides, like any shape." |
-  }
+  type_table { type = Image }
 
   p "Next: [Videos](wdoc_videos)."
 }
