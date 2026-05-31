@@ -39,3 +39,133 @@ jobs:
       - uses: taiki-e/install-action@cargo-fuzz
       - uses: Swatinem/rust-cache@v2
       - run: cargo +nightly fuzz run ${{ matrix.target }} --fuzz-dir crates/wcl_lang/fuzz -- -runs=2000 -max_total_time=30
+
+  # ── Version ───────────────────────────────────────────────────────────────
+  # Trailer-gated. Only `pre-release: true` publishes (an -alpha version). A
+  # stable `release: true` is intentionally blocked — WCL isn't ready for it yet.
+  version:
+    name: Calculate version
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    outputs:
+      version: ${{ steps.calc.outputs.version }}
+      do_release: ${{ steps.calc.outputs.do_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: calc
+        run: |
+          IS_RELEASE=$(git log -1 --format='%(trailers:key=release,valueonly)')
+          IS_PRERELEASE=$(git log -1 --format='%(trailers:key=pre-release,valueonly)')
+
+          # Stable releases are disabled for now — fail loudly so a `release:`
+          # trailer can't accidentally ship a stable version.
+          if [[ "$IS_RELEASE" == "true" ]]; then
+            echo "::error::Stable releases are disabled — WCL is pre-release only. Use a 'pre-release: true' trailer instead."
+            exit 1
+          fi
+
+          if [[ "$IS_PRERELEASE" != "true" ]]; then
+            echo "do_release=false" >> "$GITHUB_OUTPUT"
+            echo "No publish trailer on HEAD — tests only." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Next version = bump from the last v* tag, scanning conventional
+          # commits since that tag for the bump level (0.x: major -> minor).
+          LAST_TAG=$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || echo "")
+          if [[ -z "$LAST_TAG" ]]; then
+            PREV_MAJOR=0; PREV_MINOR=0; PREV_PATCH=0; RANGE="HEAD"
+          else
+            VER="${LAST_TAG#v}"; VER="${VER%%-*}"
+            IFS='.' read -r PREV_MAJOR PREV_MINOR PREV_PATCH <<< "$VER"
+            RANGE="${LAST_TAG}..HEAD"
+          fi
+
+          BUMP="none"
+          while IFS= read -r HASH; do
+            SUBJECT=$(git log -1 --format='%s' "$HASH")
+            BODY=$(git log -1 --format='%b' "$HASH")
+            if echo "$SUBJECT" | grep -qE '^[a-z]+(\(.+\))?!:' || echo "$BODY" | grep -qiE '^BREAKING[ -]CHANGE:'; then
+              BUMP="major"
+            elif echo "$SUBJECT" | grep -qE '^feat(\(.+\))?:' && [[ "$BUMP" != "major" ]]; then
+              BUMP="minor"
+            elif echo "$SUBJECT" | grep -qE '^(fix|perf|refactor|build|ci|docs|style|test|chore|revert)(\(.+\))?:' && [[ "$BUMP" == "none" ]]; then
+              BUMP="patch"
+            fi
+          done < <(git log --format='%H' $RANGE)
+          [[ "$BUMP" == "none" ]] && BUMP="patch"
+
+          case "$BUMP" in
+            major)
+              if [[ "$PREV_MAJOR" -eq 0 ]]; then MAJOR=0; MINOR=$((PREV_MINOR + 1)); PATCH=0
+              else MAJOR=$((PREV_MAJOR + 1)); MINOR=0; PATCH=0; fi ;;
+            minor) MAJOR=$PREV_MAJOR; MINOR=$((PREV_MINOR + 1)); PATCH=0 ;;
+            patch) MAJOR=$PREV_MAJOR; MINOR=$PREV_MINOR; PATCH=$((PREV_PATCH + 1)) ;;
+          esac
+
+          VERSION="${MAJOR}.${MINOR}.${PATCH}-alpha"
+          echo "Calculated version: $VERSION (bump=$BUMP, from ${LAST_TAG:-none})"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "do_release=true" >> "$GITHUB_OUTPUT"
+
+          cat >> "$GITHUB_STEP_SUMMARY" <<SUMMARY
+          ## Pre-release
+
+          | | |
+          |---|---|
+          | **Version** | \`$VERSION\` |
+          | **Bump** | $BUMP |
+          | **Previous tag** | \`${LAST_TAG:-none}\` |
+          SUMMARY
+
+  # ── Publish ─────────────────────────────────────────────────────────────
+  # Publishes the Rust crates to crates.io in dependency order, then tags the
+  # commit and cuts a GitHub pre-release. Only runs when `version` opted in.
+  publish-rust:
+    name: Publish Rust → crates.io
+    runs-on: ubuntu-latest
+    needs: [version, check]
+    if: needs.version.outputs.do_release == 'true'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Stamp version
+        run: |
+          V="${{ needs.version.outputs.version }}"
+          # Replaces the [workspace.package] version and the three internal
+          # [workspace.dependencies] version reqs (the only "0.0.0" strings).
+          sed -i 's/"0\.0\.0"/"'"$V"'"/g' Cargo.toml
+          grep -n '"'"$V"'"' Cargo.toml
+
+      - name: Publish crates
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: |
+          cargo publish -p wcl_lang --no-verify --allow-dirty
+          cargo publish -p wcl_wdoc --no-verify --allow-dirty
+          cargo publish -p wcl_lsp  --no-verify --allow-dirty
+          cargo publish -p wcl      --no-verify --allow-dirty
+
+      - name: Tag and create GitHub pre-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V="${{ needs.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v$V"
+          git push origin "v$V"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.version.outputs.version }}
+          name: v${{ needs.version.outputs.version }}
+          prerelease: true
+          generate_release_notes: true
