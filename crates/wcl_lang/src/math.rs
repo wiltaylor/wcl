@@ -30,7 +30,7 @@ fn add_unary(env: &mut Environment, name: &'static str, doc: &'static str, f: fn
                 "number",
                 "The input value (any number, widened to f64).",
             )
-            .returns("f64"),
+            .returns("f64", "The result, as an f64."),
     );
 }
 
@@ -49,7 +49,7 @@ fn add_binary(
         .doc(doc)
         .param("a", "number", "The first operand.")
         .param("b", "number", "The second operand.")
-        .returns("f64"),
+        .returns("f64", "The result, as an f64."),
     );
 }
 
@@ -152,7 +152,7 @@ pub(crate) fn register(env: &mut Environment) {
         .param("x", "number", "The value to clamp.")
         .param("lo", "number", "The lower bound.")
         .param("hi", "number", "The upper bound.")
-        .returns("f64"),
+        .returns("f64", "`x` limited to `[lo, hi]`, as an f64."),
     );
 
     // Constants (nullary).
@@ -160,18 +160,18 @@ pub(crate) fn register(env: &mut Environment) {
         "pi",
         from_fn(|| std::f64::consts::PI)
             .doc("The constant π (≈ 3.14159).")
-            .returns("f64"),
+            .returns("f64", "The value of π."),
     );
     env.add_builtin(
         "tau",
         from_fn(|| std::f64::consts::TAU)
             .doc("The constant τ = 2π (≈ 6.28319).")
-            .returns("f64"),
+            .returns("f64", "The value of τ (2π)."),
     );
     env.add_builtin(
         "e",
         from_fn(|| std::f64::consts::E)
             .doc("Euler's number e (≈ 2.71828).")
-            .returns("f64"),
+            .returns("f64", "The value of e."),
     );
 }

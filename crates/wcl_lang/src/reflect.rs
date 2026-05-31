@@ -22,7 +22,7 @@ pub(crate) fn register(env: &mut Environment) {
                 "&T",
                 "A reference to a type, field, block, or variant.",
             )
-            .returns("[utf8]"),
+            .returns("[utf8]", "The decorator names, in source order."),
     );
     env.add_builtin(
         "decorator_arg",
@@ -31,34 +31,40 @@ pub(crate) fn register(env: &mut Environment) {
             .param("target", "&T", "A reference to a type, field, block, or variant.")
             .param("decorator", "utf8", "The decorator name, e.g. `\"doc\"`.")
             .param("slot", "utf8", "The argument (slot) name to read.")
-            .returns("any"),
+            .returns("any", "The argument's value, or `none` if absent."),
     );
     env.add_builtin(
         "type_fields",
         BuiltinFn::hof(1, type_fields_hof)
             .doc("Reflect a type or interface into a list of field-description records (own fields first, then inherited via `extends`).")
             .param("target", "&T", "A reference to a type or interface declaration.")
-            .returns("[record]"),
+            .returns(
+                "[record]",
+                "One record per field: `{ name, type, is_function, optional, has_default, is_block, repeated, accepts, decorators }`.",
+            ),
     );
     env.add_builtin(
         "ast_string",
         BuiltinFn::hof(1, ast_string_hof)
             .doc("Pretty-print the canonical source behind a reference (type/interface/union/symbol_set/block/field) or a function value.")
             .param("target", "&T", "A dataref to a declaration, or a function value.")
-            .returns("utf8"),
+            .returns("utf8", "The canonical (pretty-printed) source text."),
     );
     env.add_builtin(
         "fn_signature",
         BuiltinFn::hof(1, fn_signature_hof)
             .doc("Describe a function's parameters and return type. Pass a function value, or a built-in's name as a string.")
             .param("f", "any", "A function value, or the name of a built-in as a utf8 string.")
-            .returns("record"),
+            .returns(
+                "record",
+                "A record `{ doc, params: [{name, type, doc}], return_type, return_doc, signature, is_builtin }`.",
+            ),
     );
     env.add_builtin(
         "builtin_names",
         BuiltinFn::hof(0, builtin_names_hof)
             .doc("The names of every registered built-in function, sorted. Pair with `fn_signature` to introspect each one.")
-            .returns("[utf8]"),
+            .returns("[utf8]", "Every built-in's name, sorted alphabetically."),
     );
     // `eval` needs the live evaluator scope, so it's intercepted in
     // `eval_call_builtin` (like `error`/`panic`/`assert`); this registration
@@ -74,7 +80,7 @@ pub(crate) fn register(env: &mut Environment) {
             "utf8",
             "WCL expression source to parse and evaluate.",
         )
-        .returns("any"),
+        .returns("any", "The value the expression evaluates to."),
     );
 }
 
@@ -127,6 +133,7 @@ fn fn_signature_record(
     doc: &str,
     params: Vec<Value>,
     return_type: &str,
+    return_doc: &str,
     signature: &str,
     is_builtin: bool,
 ) -> Value {
@@ -136,6 +143,10 @@ fn fn_signature_record(
     m.insert(
         "return_type".to_string(),
         Value::Utf8(return_type.to_string()),
+    );
+    m.insert(
+        "return_doc".to_string(),
+        Value::Utf8(return_doc.to_string()),
     );
     m.insert("signature".to_string(), Value::Utf8(signature.to_string()));
     m.insert("is_builtin".to_string(), Value::Bool(is_builtin));
@@ -161,7 +172,7 @@ fn user_fn_record(fv: &FnValue) -> Value {
         .collect::<Vec<_>>()
         .join(", ");
     let signature = format!("fn({param_sig}) -> {return_type}");
-    fn_signature_record("", params, &return_type, &signature, false)
+    fn_signature_record("", params, &return_type, "", &signature, false)
 }
 
 /// `fn_signature` record for a built-in, from its registered doc metadata.
@@ -171,7 +182,14 @@ fn builtin_record(info: &BuiltinSignature) -> Value {
         .iter()
         .map(|p| fn_param_record(&p.name, &p.ty, &p.doc))
         .collect();
-    fn_signature_record(&info.doc, params, &info.return_type, &info.signature, true)
+    fn_signature_record(
+        &info.doc,
+        params,
+        &info.return_type,
+        &info.return_doc,
+        &info.signature,
+        true,
+    )
 }
 
 /// `ast_string(x)` — pretty-print the source code behind `x`. Accepts a

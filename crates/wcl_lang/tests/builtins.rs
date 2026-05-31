@@ -348,6 +348,8 @@ fn fn_signature_describes_a_user_function() {
     assert_eq!(rfield(&v, "is_builtin"), &Value::Bool(false));
     assert_eq!(rfield(&v, "doc"), &Value::Utf8("".into()));
     assert_eq!(rfield(&v, "return_type"), &Value::Utf8("bool".into()));
+    // A bare function value carries no return description.
+    assert_eq!(rfield(&v, "return_doc"), &Value::Utf8("".into()));
     assert_eq!(
         rfield(&v, "signature"),
         &Value::Utf8("fn(x: i64, y: utf8) -> bool".into())
@@ -378,6 +380,11 @@ fn fn_signature_describes_a_builtin_by_name() {
         panic!("doc not a string");
     };
     assert!(doc.contains("Concatenate"), "{doc}");
+    // The return value carries a description.
+    let Value::Utf8(rdoc) = rfield(&v, "return_doc") else {
+        panic!("return_doc not a string");
+    };
+    assert!(!rdoc.is_empty(), "return_doc should not be empty");
     // Each parameter carries name / type / help text.
     let Value::List(params) = rfield(&v, "params") else {
         panic!("params not a list");

@@ -17,7 +17,7 @@ pub(crate) fn register(env: &mut Environment) {
             .doc("Apply a function to every element of a list or tensor, returning the transformed collection.")
             .param("xs", "[T]", "The list or tensor to transform.")
             .param("f", "fn (T) -> U", "Function applied to each element.")
-            .returns("[U]"),
+            .returns("[U]", "A new collection of the transformed elements."),
     );
     env.add_builtin(
         "filter",
@@ -29,7 +29,10 @@ pub(crate) fn register(env: &mut Environment) {
                 "fn (T) -> bool",
                 "Predicate deciding whether to keep an element.",
             )
-            .returns("[T]"),
+            .returns(
+                "[T]",
+                "The elements for which the predicate returned `true`.",
+            ),
     );
     env.add_builtin(
         "fold",
@@ -38,7 +41,7 @@ pub(crate) fn register(env: &mut Environment) {
             .param("xs", "[T]", "The list or tensor to reduce.")
             .param("init", "U", "The initial accumulator value.")
             .param("f", "fn (U, T) -> U", "Combines the accumulator with the next element.")
-            .returns("U"),
+            .returns("U", "The final accumulator value."),
     );
 
     env.add_builtin(
@@ -46,7 +49,7 @@ pub(crate) fn register(env: &mut Environment) {
         from_fn(len_pure)
             .doc("The number of elements in a list or tensor, or characters in a string.")
             .param("xs", "[T]", "A list, tensor, or string.")
-            .returns("usize"),
+            .returns("usize", "The number of elements (or characters)."),
     );
     env.add_builtin(
         "sum",
@@ -57,7 +60,7 @@ pub(crate) fn register(env: &mut Environment) {
                 "[number]",
                 "A non-empty list or tensor of one numeric type.",
             )
-            .returns("number"),
+            .returns("number", "The total, in the element's numeric type."),
     );
     env.add_builtin(
         "range",
@@ -65,21 +68,24 @@ pub(crate) fn register(env: &mut Environment) {
             .doc("The half-open integer range `[start, end)` as a list.")
             .param("start", "i64", "Inclusive lower bound.")
             .param("end", "i64", "Exclusive upper bound; must be >= `start`.")
-            .returns("[i64]"),
+            .returns(
+                "[i64]",
+                "The integers from `start` up to (but excluding) `end`.",
+            ),
     );
     env.add_builtin(
         "head",
         from_fn(head_pure)
             .doc("The first element of a list or tensor (`none` when empty).")
             .param("xs", "[T]", "A list or tensor.")
-            .returns("T"),
+            .returns("T", "The first element, or `none` if empty."),
     );
     env.add_builtin(
         "tail",
         from_fn(tail_pure)
             .doc("Every element of a list or tensor except the first.")
             .param("xs", "[T]", "A list or tensor.")
-            .returns("[T]"),
+            .returns("[T]", "The elements after the first."),
     );
 
     env.add_builtin(
@@ -88,21 +94,21 @@ pub(crate) fn register(env: &mut Environment) {
             .doc("Build a tensor from flat row-major data and a shape; the data length must equal the product of the dimensions.")
             .param("data", "[number]", "Flat, row-major element data.")
             .param("shape", "[usize]", "The dimension sizes.")
-            .returns("tensor<T>"),
+            .returns("tensor<T>", "The constructed tensor."),
     );
     env.add_builtin(
         "tensor_data",
         from_fn(tensor_data_pure)
             .doc("The flat row-major element data of a tensor as a list.")
             .param("t", "tensor<T>", "The tensor to read.")
-            .returns("[T]"),
+            .returns("[T]", "The tensor's flat, row-major element data."),
     );
     env.add_builtin(
         "tensor_shape",
         from_fn(tensor_shape_pure)
             .doc("The dimension sizes of a tensor as a list.")
             .param("t", "tensor<T>", "The tensor to read.")
-            .returns("[usize]"),
+            .returns("[usize]", "The tensor's dimension sizes."),
     );
 
     env.add_builtin(
@@ -110,7 +116,7 @@ pub(crate) fn register(env: &mut Environment) {
         from_fn(|msg: String| -> Result<Value, String> { Err(msg) })
             .doc("Abort evaluation with an error message.")
             .param("msg", "utf8", "The error message to report.")
-            .returns("never"),
+            .returns("never", "Never returns — aborts evaluation."),
     );
 
     env.add_builtin(
@@ -118,7 +124,7 @@ pub(crate) fn register(env: &mut Environment) {
         from_fn(|msg: String| -> Result<Value, String> { Err(msg) })
             .doc("Abort evaluation with an unrecoverable failure message.")
             .param("msg", "utf8", "The failure message to report.")
-            .returns("never"),
+            .returns("never", "Never returns — aborts evaluation."),
     );
     env.add_builtin(
         "assert",
@@ -132,7 +138,10 @@ pub(crate) fn register(env: &mut Environment) {
             "utf8",
             "The error message reported when `cond` is false.",
         )
-        .returns("none"),
+        .returns(
+            "none",
+            "`none` when the assertion holds (otherwise aborts).",
+        ),
     );
 
     env.add_builtin(
@@ -141,7 +150,7 @@ pub(crate) fn register(env: &mut Environment) {
             .doc("Concatenate two strings into one.")
             .param("a", "utf8", "The left-hand string.")
             .param("b", "utf8", "The string appended after `a`.")
-            .returns("utf8"),
+            .returns("utf8", "The two strings joined together."),
     );
     env.add_builtin(
         "format",
@@ -151,7 +160,7 @@ pub(crate) fn register(env: &mut Environment) {
             .with_signature("fn (utf8, ...args) -> utf8")
             .doc("Substitute trailing arguments into a template's `{}` placeholders (`{{`/`}}` are literal braces).")
             .param("template", "utf8", "Template string with `{}` placeholders.")
-            .returns("utf8"),
+            .returns("utf8", "The template with placeholders substituted."),
     );
 
     env.add_builtin(
@@ -163,7 +172,7 @@ pub(crate) fn register(env: &mut Environment) {
                 "[[T]]",
                 "A list whose elements are themselves lists.",
             )
-            .returns("[T]"),
+            .returns("[T]", "The inner lists concatenated, one level deep."),
     );
     env.add_builtin(
         "zip",
@@ -171,7 +180,10 @@ pub(crate) fn register(env: &mut Environment) {
             .doc("Pair up elements of two lists by index, stopping at the shorter length.")
             .param("a", "[A]", "The first list.")
             .param("b", "[B]", "The second list.")
-            .returns("[(A, B)]"),
+            .returns(
+                "[(A, B)]",
+                "Index-paired `[a, b]` lists, up to the shorter length.",
+            ),
     );
 
     env.add_builtin(
@@ -180,7 +192,7 @@ pub(crate) fn register(env: &mut Environment) {
             .doc("Reinterpret a tensor's data under a new shape; the element count must be unchanged.")
             .param("t", "tensor<T>", "The tensor to reshape.")
             .param("shape", "[usize]", "The new dimension sizes.")
-            .returns("tensor<T>"),
+            .returns("tensor<T>", "The same data under the new shape."),
     );
 
     // ── String builtins ─────────────────────────────────────────────
@@ -192,7 +204,7 @@ pub(crate) fn register(env: &mut Environment) {
         .doc("Split a string on every occurrence of a separator into a list of pieces.")
         .param("s", "utf8", "The string to split.")
         .param("sep", "utf8", "The separator to split on.")
-        .returns("[utf8]"),
+        .returns("[utf8]", "The pieces between separators."),
     );
     env.add_builtin(
         "join",
@@ -200,7 +212,7 @@ pub(crate) fn register(env: &mut Environment) {
             .doc("Join a list of strings into one, inserting a separator between each.")
             .param("parts", "[utf8]", "The strings to join.")
             .param("sep", "utf8", "The separator inserted between parts.")
-            .returns("utf8"),
+            .returns("utf8", "The joined string."),
     );
     env.add_builtin(
         "replace",
@@ -209,7 +221,7 @@ pub(crate) fn register(env: &mut Environment) {
             .param("s", "utf8", "The string to search.")
             .param("old", "utf8", "The substring to find.")
             .param("new", "utf8", "The replacement substring.")
-            .returns("utf8"),
+            .returns("utf8", "The string with every match replaced."),
     );
     env.add_builtin(
         "contains",
@@ -217,7 +229,7 @@ pub(crate) fn register(env: &mut Environment) {
             .doc("Whether a string contains a substring.")
             .param("s", "utf8", "The string to search.")
             .param("needle", "utf8", "The substring to look for.")
-            .returns("bool"),
+            .returns("bool", "`true` if the substring is present."),
     );
     env.add_builtin(
         "starts_with",
@@ -225,7 +237,7 @@ pub(crate) fn register(env: &mut Environment) {
             .doc("Whether a string begins with a prefix.")
             .param("s", "utf8", "The string to test.")
             .param("prefix", "utf8", "The prefix to look for.")
-            .returns("bool"),
+            .returns("bool", "`true` if the string starts with the prefix."),
     );
     env.add_builtin(
         "ends_with",
@@ -233,28 +245,28 @@ pub(crate) fn register(env: &mut Environment) {
             .doc("Whether a string ends with a suffix.")
             .param("s", "utf8", "The string to test.")
             .param("suffix", "utf8", "The suffix to look for.")
-            .returns("bool"),
+            .returns("bool", "`true` if the string ends with the suffix."),
     );
     env.add_builtin(
         "to_upper",
         from_fn(|s: String| -> String { s.to_uppercase() })
             .doc("Uppercase every character of a string.")
             .param("s", "utf8", "The string to uppercase.")
-            .returns("utf8"),
+            .returns("utf8", "The uppercased string."),
     );
     env.add_builtin(
         "to_lower",
         from_fn(|s: String| -> String { s.to_lowercase() })
             .doc("Lowercase every character of a string.")
             .param("s", "utf8", "The string to lowercase.")
-            .returns("utf8"),
+            .returns("utf8", "The lowercased string."),
     );
     env.add_builtin(
         "trim",
         from_fn(|s: String| -> String { s.trim().to_string() })
             .doc("Remove leading and trailing whitespace from a string.")
             .param("s", "utf8", "The string to trim.")
-            .returns("utf8"),
+            .returns("utf8", "The string without leading/trailing whitespace."),
     );
 
     // ── List builtins ───────────────────────────────────────────────
@@ -264,7 +276,7 @@ pub(crate) fn register(env: &mut Environment) {
             .doc("Whether a list contains a value equal to `needle`.")
             .param("xs", "[T]", "The list to search.")
             .param("needle", "T", "The value to look for.")
-            .returns("bool"),
+            .returns("bool", "`true` if an equal element is present."),
     );
     env.add_builtin(
         "reverse",
@@ -275,14 +287,14 @@ pub(crate) fn register(env: &mut Environment) {
         })
         .doc("Reverse the order of a list's elements.")
         .param("xs", "[T]", "The list to reverse.")
-        .returns("[T]"),
+        .returns("[T]", "The list in reverse order."),
     );
     env.add_builtin(
         "sort",
         from_fn(sort_pure)
             .doc("Sort a list — numerically for all-numeric lists, lexicographically for all-string lists.")
             .param("xs", "[T]", "An all-numeric or all-string list.")
-            .returns("[T]"),
+            .returns("[T]", "The sorted list."),
     );
     env.add_builtin(
         "sort_connected",
@@ -290,7 +302,7 @@ pub(crate) fn register(env: &mut Environment) {
             .doc("Reorder a list so that items joined by edges cluster together (recursing into `children`).")
             .param("items", "[T]", "Items identified by an `id` field (possibly nested via `children`).")
             .param("edges", "[{source, destination, ...}]", "Edge records linking item ids.")
-            .returns("[T]"),
+            .returns("[T]", "The reordered list, connected items adjacent."),
     );
     env.add_builtin(
         "unique",
@@ -305,7 +317,7 @@ pub(crate) fn register(env: &mut Environment) {
         })
         .doc("Remove duplicate elements from a list, keeping first-seen order.")
         .param("xs", "[T]", "The list to deduplicate.")
-        .returns("[T]"),
+        .returns("[T]", "The list with duplicates removed."),
     );
     env.add_builtin(
         "index_of",
@@ -318,7 +330,7 @@ pub(crate) fn register(env: &mut Environment) {
         .doc("The index of the first element equal to `needle`, or `-1` if absent.")
         .param("xs", "[T]", "The list to search.")
         .param("needle", "T", "The value to look for.")
-        .returns("i64"),
+        .returns("i64", "The zero-based index, or `-1` if not found."),
     );
     env.add_builtin(
         "at",
@@ -333,7 +345,7 @@ pub(crate) fn register(env: &mut Environment) {
         .doc("The element at a zero-based index; errors if out of bounds or negative.")
         .param("xs", "[T]", "The list to index.")
         .param("i", "i64", "The zero-based index.")
-        .returns("T"),
+        .returns("T", "The element at `i`."),
     );
     env.add_builtin(
         "take",
@@ -344,7 +356,7 @@ pub(crate) fn register(env: &mut Environment) {
         .doc("The first `n` elements of a list (fewer if the list is shorter).")
         .param("xs", "[T]", "The list to take from.")
         .param("n", "i64", "How many leading elements to keep.")
-        .returns("[T]"),
+        .returns("[T]", "The first `n` elements."),
     );
     env.add_builtin(
         "drop",
@@ -355,7 +367,7 @@ pub(crate) fn register(env: &mut Environment) {
         .doc("Every element of a list after the first `n`.")
         .param("xs", "[T]", "The list to drop from.")
         .param("n", "i64", "How many leading elements to skip.")
-        .returns("[T]"),
+        .returns("[T]", "The elements after the first `n`."),
     );
 }
 

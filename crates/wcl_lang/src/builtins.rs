@@ -120,6 +120,7 @@ pub struct BuiltinSignature {
     pub doc: String,
     pub params: Vec<BuiltinParam>,
     pub return_type: String,
+    pub return_doc: String,
     pub signature: String,
 }
 
@@ -152,6 +153,8 @@ pub struct BuiltinFn {
     pub(crate) params: Vec<BuiltinParam>,
     /// Printable return type.
     pub(crate) returns: Option<String>,
+    /// Help text describing the return value.
+    pub(crate) return_doc: Option<String>,
 }
 
 impl BuiltinFn {
@@ -186,6 +189,7 @@ impl BuiltinFn {
             doc: self.doc.clone().unwrap_or_default(),
             params: self.params.clone(),
             return_type: self.returns.clone().unwrap_or_default(),
+            return_doc: self.return_doc.clone().unwrap_or_default(),
             signature: self.signature().unwrap_or_default(),
         }
     }
@@ -220,9 +224,10 @@ impl BuiltinFn {
         self
     }
 
-    /// Set the printable return type.
-    pub fn returns(mut self, ty: impl Into<String>) -> Self {
+    /// Set the printable return type and a description of the return value.
+    pub fn returns(mut self, ty: impl Into<String>, doc: impl Into<String>) -> Self {
         self.returns = Some(ty.into());
+        self.return_doc = Some(doc.into());
         self
     }
 
@@ -240,6 +245,7 @@ impl BuiltinFn {
             doc: None,
             params: Vec::new(),
             returns: None,
+            return_doc: None,
         }
     }
 }
@@ -456,6 +462,7 @@ macro_rules! impl_into_builtin {
                     doc: None,
                     params: Vec::new(),
                     returns: None,
+                    return_doc: None,
                 }
             }
         }
@@ -490,11 +497,12 @@ mod tests {
         let b = from_fn(|_a: i64| 0i64)
             .doc("Doubles a number.")
             .param("a", "i64", "the input")
-            .returns("i64");
+            .returns("i64", "the doubled value");
         assert_eq!(b.signature().as_deref(), Some("fn(a: i64) -> i64"));
         let info = b.signature_info();
         assert_eq!(info.doc, "Doubles a number.");
         assert_eq!(info.return_type, "i64");
+        assert_eq!(info.return_doc, "the doubled value");
         assert_eq!(info.params.len(), 1);
         assert_eq!(info.params[0].name, "a");
         assert_eq!(info.params[0].doc, "the input");

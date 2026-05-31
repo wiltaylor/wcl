@@ -1,4 +1,49 @@
 // Reference book: Builtin Functions.
+//
+// `builtin_doc { name = "map"  example = <<'WCL' … WCL }` renders one built-in's
+// full definition — signature, description, a parameter + return-value table,
+// and a usage example — reflected from the registry via `fn_signature`, so the
+// generated parts can't drift from the implementation. Built-ins are referenced
+// by their string name (the `fn_signature` built-in path); only the example is
+// hand-written.
+
+// Doc-only shape for fn_signature's param records (WCL erases fn param types at
+// runtime; this just makes the helper signatures readable).
+type BdParam { name: utf8  type: utf8  doc: utf8 }
+
+// Bind-before-access helpers: member access on a call result isn't allowed, so
+// each helper binds `fn_signature(n)` to a `let` first, then reads one field.
+let bd_signature = fn(n: utf8) -> utf8 { let i = fn_signature(n); i.signature }
+let bd_doc       = fn(n: utf8) -> utf8 { let i = fn_signature(n); i.doc }
+let bd_params    = fn(n: utf8) -> list<BdParam> { let i = fn_signature(n); i.params }
+let bd_rettype   = fn(n: utf8) -> utf8 { let i = fn_signature(n); i.return_type }
+let bd_retdoc    = fn(n: utf8) -> utf8 { let i = fn_signature(n); i.return_doc }
+
+// Parameter rows, then a trailing "(returns)" row, as table cell-lists.
+let bd_rows = fn(n: utf8) -> list<list<utf8>> flatten([
+  map(bd_params(n), fn(p: BdParam) -> list<utf8>
+    [ format("`{}`", p.name), format("`{}`", p.type), p.doc ]),
+  [[ "**Returns**", format("`{}`", bd_rettype(n)), bd_retdoc(n) ]],
+])
+
+// Full definition of one built-in. `name` is the built-in's name (a string);
+// `example` is a hand-written usage snippet.
+wdoc_component builtin_doc {
+  wdoc_slot name
+  wdoc_slot example
+  wdoc_body {
+    h4 $"${name}"
+    code wcl { source = bd_signature(name) }
+    p $"${bd_doc(name)}"
+    table {
+      header = ["Parameter", "Type", "Description"]
+      rows = bd_rows(name)
+    }
+    p "**Example**"
+    code wcl { source = example }
+  }
+}
+
 page builtins { sites = [:reference]
   h1 "Builtin Functions"
 
@@ -92,7 +137,7 @@ WCL
       | "`decorator_arg(&T, dec, slot)`" | "Read a named argument of decorator `dec` (`none` if absent)." |
       | "`type_fields(&T)`" | "List a type's fields as records — `name`, `type`, `is_function`, `optional`, `has_default`, `is_block`, `repeated`, `accepts`, `decorators` — own fields first, then those inherited via `extends`. Drives the wdoc `type_table` component." |
       | "`ast_string(&T)`" | "Pretty-print the source behind a reference — a `type` / `interface` / `union` / `symbol_set` / `block` / field declaration — or a function value (`fn(…) -> … …`). Output is canonical (run through the formatter), so it normalises the original spacing." |
-      | "`fn_signature(f)`" | "Describe a function's parameters and return type. Pass a function **value** (full structured `params` with `name`/`type`), or a built-in's **name string** (e.g. `\"map\"`) to get its parameters + help text. Returns `{ doc, params: [{name, type, doc}], return_type, signature, is_builtin }`." |
+      | "`fn_signature(f)`" | "Describe a function's parameters and return type. Pass a function **value** (full structured `params` with `name`/`type`), or a built-in's **name string** (e.g. `\"map\"`) to get its parameters + help text. Returns `{ doc, params: [{name, type, doc}], return_type, return_doc, signature, is_builtin }`." |
       | "`builtin_names()`" | "The names of every registered built-in function, sorted. Pair with `fn_signature` to introspect each one." |
   }
 
@@ -102,5 +147,474 @@ WCL
     rows:
       | "Function" | "Purpose" |
       | "`eval(src)`" | "Parse the utf8 string `src` as a WCL expression and evaluate it in the current scope (it sees surrounding `let` bindings and document names). Returns the resulting value." |
+  }
+
+  h2 "Function definitions"
+
+  p "Every built-in in full: its signature, description, a table of parameters and the return value, and a usage example. The signature, description, and table are reflected from the registry with `fn_signature`, so they always match the implementation."
+
+  h3 "Collections & lists"
+
+  builtin_doc {
+    name = "map"
+    example = <<'WCL'
+map([1, 2, 3], fn(x: i64) -> i64 x * 2)   // [2, 4, 6]
+WCL
+  }
+  builtin_doc {
+    name = "filter"
+    example = <<'WCL'
+filter(range(0, 6), fn(x: i64) -> bool x % 2 == 0)   // [0, 2, 4]
+WCL
+  }
+  builtin_doc {
+    name = "fold"
+    example = <<'WCL'
+fold([1, 2, 3, 4], 0, fn(acc: i64, x: i64) -> i64 acc + x)   // 10
+WCL
+  }
+  builtin_doc {
+    name = "len"
+    example = <<'WCL'
+len([10, 20, 30])   // 3
+len("hello")        // 5
+WCL
+  }
+  builtin_doc {
+    name = "sum"
+    example = <<'WCL'
+sum([1.5, 2.5, 3.0])   // 7.0
+WCL
+  }
+  builtin_doc {
+    name = "range"
+    example = <<'WCL'
+range(1, 4)   // [1, 2, 3]
+WCL
+  }
+  builtin_doc {
+    name = "head"
+    example = <<'WCL'
+head([10, 20, 30])   // 10
+WCL
+  }
+  builtin_doc {
+    name = "tail"
+    example = <<'WCL'
+tail([10, 20, 30])   // [20, 30]
+WCL
+  }
+  builtin_doc {
+    name = "flatten"
+    example = <<'WCL'
+flatten([[1, 2], [3], [4, 5]])   // [1, 2, 3, 4, 5]
+WCL
+  }
+  builtin_doc {
+    name = "zip"
+    example = <<'WCL'
+zip([1, 2, 3], ["a", "b", "c"])   // [[1, "a"], [2, "b"], [3, "c"]]
+WCL
+  }
+  builtin_doc {
+    name = "reverse"
+    example = <<'WCL'
+reverse([1, 2, 3])   // [3, 2, 1]
+WCL
+  }
+  builtin_doc {
+    name = "sort"
+    example = <<'WCL'
+sort([3, 1, 2])           // [1, 2, 3]
+sort(["b", "a", "c"])     // ["a", "b", "c"]
+WCL
+  }
+  builtin_doc {
+    name = "sort_connected"
+    example = <<'WCL'
+// Reorder items so nodes joined by edges sit next to each other.
+sort_connected(nodes, edges)
+WCL
+  }
+  builtin_doc {
+    name = "unique"
+    example = <<'WCL'
+unique([1, 2, 2, 3, 1])   // [1, 2, 3]
+WCL
+  }
+  builtin_doc {
+    name = "list_contains"
+    example = <<'WCL'
+list_contains([1, 2, 3], 2)   // true
+WCL
+  }
+  builtin_doc {
+    name = "index_of"
+    example = <<'WCL'
+index_of(["a", "b", "c"], "b")   // 1
+index_of(["a", "b"], "z")        // -1
+WCL
+  }
+  builtin_doc {
+    name = "at"
+    example = <<'WCL'
+at([10, 20, 30], 1)   // 20
+WCL
+  }
+  builtin_doc {
+    name = "take"
+    example = <<'WCL'
+take([1, 2, 3, 4], 2)   // [1, 2]
+WCL
+  }
+  builtin_doc {
+    name = "drop"
+    example = <<'WCL'
+drop([1, 2, 3, 4], 2)   // [3, 4]
+WCL
+  }
+
+  h3 "Strings"
+
+  builtin_doc {
+    name = "concat"
+    example = <<'WCL'
+concat("foo", "bar")   // "foobar"
+WCL
+  }
+  builtin_doc {
+    name = "format"
+    example = <<'WCL'
+format("{} = {}", "x", 42)   // "x = 42"
+WCL
+  }
+  builtin_doc {
+    name = "split"
+    example = <<'WCL'
+split("a,b,c", ",")   // ["a", "b", "c"]
+WCL
+  }
+  builtin_doc {
+    name = "join"
+    example = <<'WCL'
+join(["a", "b", "c"], "-")   // "a-b-c"
+WCL
+  }
+  builtin_doc {
+    name = "replace"
+    example = <<'WCL'
+replace("hello world", "world", "there")   // "hello there"
+WCL
+  }
+  builtin_doc {
+    name = "contains"
+    example = <<'WCL'
+contains("hello", "ell")   // true
+WCL
+  }
+  builtin_doc {
+    name = "starts_with"
+    example = <<'WCL'
+starts_with("hello", "he")   // true
+WCL
+  }
+  builtin_doc {
+    name = "ends_with"
+    example = <<'WCL'
+ends_with("hello", "lo")   // true
+WCL
+  }
+  builtin_doc {
+    name = "to_upper"
+    example = <<'WCL'
+to_upper("abc")   // "ABC"
+WCL
+  }
+  builtin_doc {
+    name = "to_lower"
+    example = <<'WCL'
+to_lower("AbC")   // "abc"
+WCL
+  }
+  builtin_doc {
+    name = "trim"
+    example = <<'WCL'
+trim("  hi  ")   // "hi"
+WCL
+  }
+
+  h3 "Math"
+
+  builtin_doc {
+    name = "sin"
+    example = <<'WCL'
+sin(pi() / 2)   // 1.0
+WCL
+  }
+  builtin_doc {
+    name = "cos"
+    example = <<'WCL'
+cos(0)   // 1.0
+WCL
+  }
+  builtin_doc {
+    name = "tan"
+    example = <<'WCL'
+tan(0)   // 0.0
+WCL
+  }
+  builtin_doc {
+    name = "asin"
+    example = <<'WCL'
+asin(1)   // 1.5707963…  (π/2)
+WCL
+  }
+  builtin_doc {
+    name = "acos"
+    example = <<'WCL'
+acos(1)   // 0.0
+WCL
+  }
+  builtin_doc {
+    name = "atan"
+    example = <<'WCL'
+atan(1)   // 0.7853981…  (π/4)
+WCL
+  }
+  builtin_doc {
+    name = "atan2"
+    example = <<'WCL'
+atan2(1, 1)   // 0.7853981…  (π/4)
+WCL
+  }
+  builtin_doc {
+    name = "radians"
+    example = <<'WCL'
+radians(180)   // 3.14159…
+WCL
+  }
+  builtin_doc {
+    name = "degrees"
+    example = <<'WCL'
+degrees(pi())   // 180.0
+WCL
+  }
+  builtin_doc {
+    name = "sqrt"
+    example = <<'WCL'
+sqrt(16)   // 4.0
+WCL
+  }
+  builtin_doc {
+    name = "cbrt"
+    example = <<'WCL'
+cbrt(27)   // 3.0
+WCL
+  }
+  builtin_doc {
+    name = "pow"
+    example = <<'WCL'
+pow(2, 10)   // 1024.0
+WCL
+  }
+  builtin_doc {
+    name = "hypot"
+    example = <<'WCL'
+hypot(3, 4)   // 5.0
+WCL
+  }
+  builtin_doc {
+    name = "exp"
+    example = <<'WCL'
+exp(1)   // 2.71828…
+WCL
+  }
+  builtin_doc {
+    name = "ln"
+    example = <<'WCL'
+ln(e())   // 1.0
+WCL
+  }
+  builtin_doc {
+    name = "log10"
+    example = <<'WCL'
+log10(1000)   // 3.0
+WCL
+  }
+  builtin_doc {
+    name = "log2"
+    example = <<'WCL'
+log2(8)   // 3.0
+WCL
+  }
+  builtin_doc {
+    name = "floor"
+    example = <<'WCL'
+floor(2.7)   // 2.0
+WCL
+  }
+  builtin_doc {
+    name = "ceil"
+    example = <<'WCL'
+ceil(2.1)   // 3.0
+WCL
+  }
+  builtin_doc {
+    name = "round"
+    example = <<'WCL'
+round(2.5)   // 3.0
+WCL
+  }
+  builtin_doc {
+    name = "trunc"
+    example = <<'WCL'
+trunc(2.9)   // 2.0
+WCL
+  }
+  builtin_doc {
+    name = "abs"
+    example = <<'WCL'
+abs(-5)   // 5.0
+WCL
+  }
+  builtin_doc {
+    name = "sign"
+    example = <<'WCL'
+sign(-3)   // -1.0
+WCL
+  }
+  builtin_doc {
+    name = "min"
+    example = <<'WCL'
+min(3, 7)   // 3.0
+WCL
+  }
+  builtin_doc {
+    name = "max"
+    example = <<'WCL'
+max(3, 7)   // 7.0
+WCL
+  }
+  builtin_doc {
+    name = "clamp"
+    example = <<'WCL'
+clamp(12, 0, 10)   // 10.0
+WCL
+  }
+  builtin_doc {
+    name = "pi"
+    example = <<'WCL'
+pi()   // 3.14159…
+WCL
+  }
+  builtin_doc {
+    name = "tau"
+    example = <<'WCL'
+tau()   // 6.28318…
+WCL
+  }
+  builtin_doc {
+    name = "e"
+    example = <<'WCL'
+e()   // 2.71828…
+WCL
+  }
+
+  h3 "Tensors"
+
+  builtin_doc {
+    name = "tensor"
+    example = <<'WCL'
+tensor([1, 2, 3, 4, 5, 6], [2, 3])   // a 2×3 tensor
+WCL
+  }
+  builtin_doc {
+    name = "tensor_data"
+    example = <<'WCL'
+tensor_data(tensor([1, 2, 3, 4], [2, 2]))   // [1, 2, 3, 4]
+WCL
+  }
+  builtin_doc {
+    name = "tensor_shape"
+    example = <<'WCL'
+tensor_shape(tensor([1, 2, 3, 4], [2, 2]))   // [2, 2]
+WCL
+  }
+  builtin_doc {
+    name = "tensor_reshape"
+    example = <<'WCL'
+tensor_reshape(tensor([1, 2, 3, 4], [2, 2]), [4])   // shape [4]
+WCL
+  }
+
+  h3 "Control flow"
+
+  builtin_doc {
+    name = "error"
+    example = <<'WCL'
+if found { value } else { error("config not found") }
+WCL
+  }
+  builtin_doc {
+    name = "panic"
+    example = <<'WCL'
+panic("unreachable state reached")
+WCL
+  }
+  builtin_doc {
+    name = "assert"
+    example = <<'WCL'
+assert(len(xs) > 0, "list must not be empty")
+WCL
+  }
+
+  h3 "Reflection"
+
+  p "Reflection built-ins take a reference: schema reflectors (`decorator_names`, `decorator_arg`, `type_fields`, `ast_string`) take a bare identifier / member path, while `fn_signature` takes a function value or a built-in's **name string**."
+
+  builtin_doc {
+    name = "decorator_names"
+    example = <<'WCL'
+decorator_names(Image)   // ["block", "schemaless", …]
+WCL
+  }
+  builtin_doc {
+    name = "decorator_arg"
+    example = <<'WCL'
+decorator_arg(Image, "block", "name")   // "image"
+WCL
+  }
+  builtin_doc {
+    name = "type_fields"
+    example = <<'WCL'
+type_fields(Image)   // [{ name: "source", type: "utf8", … }, …]
+WCL
+  }
+  builtin_doc {
+    name = "ast_string"
+    example = <<'WCL'
+ast_string(Image)   // the Image type's source, pretty-printed
+WCL
+  }
+  builtin_doc {
+    name = "fn_signature"
+    example = <<'WCL'
+fn_signature("map")   // { signature: "fn(xs: [T], …) -> [U]", params: […], … }
+WCL
+  }
+  builtin_doc {
+    name = "builtin_names"
+    example = <<'WCL'
+builtin_names()   // ["abs", "acos", …, "zip"]
+WCL
+  }
+
+  h3 "Meta"
+
+  builtin_doc {
+    name = "eval"
+    example = <<'WCL'
+eval("1 + 2 * 3")   // 7
+WCL
   }
 }
