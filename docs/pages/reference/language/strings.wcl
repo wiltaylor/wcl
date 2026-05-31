@@ -89,6 +89,4 @@ WCL
   }
 
   p "All four encodings accept the `$` prefix (`$\"…\"` / `$ascii\"…\"` / `$utf16\"…\"` / `$utf32\"…\"`)."
-
-  p "Next: [Booleans](booleans)."
 }

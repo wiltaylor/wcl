@@ -335,6 +335,4 @@ terminal { cols = 30  rows = 1  chrome = false
 }
 WCL
   }
-
-  p "Next: [Wireframe](wdoc_wireframe)."
 }

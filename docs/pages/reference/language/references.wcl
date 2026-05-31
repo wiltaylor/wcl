@@ -37,6 +37,4 @@ WCL
     class = ["info"]
     body  = "A type does not need to explicitly extend or implement the interface. If it happens to have all the required fields with compatible types, it satisfies — and a &T field will accept it."
   }
-
-  p "Next: [Unions](unions)."
 }

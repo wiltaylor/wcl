@@ -33,6 +33,4 @@ WCL
   p "Top-level imports are eager; an `import` inside a block is lazy. Imported declarations participate fully in the importer: they take part in structural validation and in name resolution, so a type or `let` declared in an imported file is usable as if it were local."
 
   p "Hosts that drive WCL can also tag each block with its source file, which lets tooling order imported-versus-local output (wdoc uses this for CSS cascade, for instance)."
-
-  p "Move on to the [Reference section's Builtin Functions](builtins)."
 }

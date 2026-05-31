@@ -92,6 +92,4 @@ WCL
       | "`decorator_arg(&T, dec, slot)`" | "Read a named argument of decorator `dec` (`none` if absent)." |
       | "`type_fields(&T)`" | "List a type's fields as records — `name`, `type`, `is_function`, `optional`, `has_default`, `is_block`, `repeated`, `accepts`, `decorators` — own fields first, then those inherited via `extends`. Drives the wdoc `type_table` component." |
   }
-
-  p "Next: [Imports & Modules](imports)."
 }

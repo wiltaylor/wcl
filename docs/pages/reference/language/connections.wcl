@@ -31,6 +31,4 @@ WCL
   }
 
   p "Each statement produces a record with `source`, `destination`, and `kind` slots, ready for a host to interpret."
-
-  p "Next: [Expressions](expressions)."
 }

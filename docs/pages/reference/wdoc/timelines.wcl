@@ -183,6 +183,4 @@ diagram { width = 720  height = 320
 }
 WCL
   }
-
-  p "Next: [Tilemaps](wdoc_tilemaps)."
 }

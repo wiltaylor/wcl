@@ -42,6 +42,4 @@ WCL
   h2 "Fields"
 
   type_table { type = TableBlock }
-
-  p "Next: [Columns](wdoc_columns)."
 }

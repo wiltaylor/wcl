@@ -97,6 +97,4 @@ WCL
     class = ["note"]
     body  = "The sample sheet is truezipp's \"Pixel Coins Asset\", released under CC0 (public domain). Get it at [opengameart.org](https://opengameart.org/content/pixel-coins-asset)."
   }
-
-  p "Next: [Terminals](wdoc_terminals)."
 }

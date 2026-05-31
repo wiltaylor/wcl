@@ -57,6 +57,4 @@ union Shape extends BaseShape {
 }
 WCL
   }
-
-  p "See [Control Flow](control_flow) for destructuring variants with `match`. Next: [Connections](connections)."
 }

@@ -31,6 +31,4 @@ page index { sites = [:mysite]  start = true
 }
 WCL
   }
-
-  p "Next: [Sites & Templates](wdoc_sites)."
 }

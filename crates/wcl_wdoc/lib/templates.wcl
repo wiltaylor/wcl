@@ -352,6 +352,54 @@ let book_toc = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
       } ]
   }
 
+// Flatten the TOC tree into book reading order, keeping only entries
+// that link to a page — a grouping `chapter` with no `page` has an empty
+// `href` and is skipped (its children are still kept). Recursive, mirroring
+// `book_toc`. Drives the bottom-of-page previous/next links.
+let book_pageflow = fn(entries: list<TocEntry>) -> list<TocEntry>
+  flatten(map(entries, fn(e: TocEntry) -> list<TocEntry>
+    flatten([
+      if e.href == "" { [] } else { [e] },
+      book_pageflow(e.children),
+    ])))
+
+// Bottom-of-page previous/next pagination, derived from the book reading
+// order (the flattened TOC). The current page is the entry flagged
+// `current`; its neighbours become the links. Empty when the page isn't
+// in the TOC; at the ends only the one existing neighbour is shown.
+let book_pagenav = fn(toc: list<TocEntry>) -> list<HtmlFundamental> {
+  let flow = book_pageflow(toc);
+  let n = len(flow);
+  let idx = fold(range(0, n), 0 - 1, fn(acc: i64, i: i64) -> i64 {
+    let e = at(flow, i);
+    if e.current { i } else { acc }
+  });
+  if idx < 0 { [] } else {
+    let prev = if idx > 0 {
+      let p = at(flow, idx - 1);
+      [ HtmlFundamental::Element {
+          tag: "a", id: none, class: ["book-nav", "book-nav-prev"],
+          attrs: [["href", p.href]],
+          children: [ HtmlFundamental::Raw { html: format("← {}", p.title) } ],
+      } ]
+    } else { [] };
+    let next = if idx < n - 1 {
+      let nx = at(flow, idx + 1);
+      [ HtmlFundamental::Element {
+          tag: "a", id: none, class: ["book-nav", "book-nav-next"],
+          attrs: [["href", nx.href]],
+          children: [ HtmlFundamental::Raw { html: format("{} →", nx.title) } ],
+      } ]
+    } else { [] };
+    if len(prev) == 0 && len(next) == 0 { [] } else {
+      [ HtmlFundamental::Element {
+          tag: "nav", id: none, class: ["book-pagenav"], attrs: none,
+          children: flatten([prev, next]),
+      } ]
+    }
+  }
+}
+
 // The `book` template's own CSS — the fixed left sidebar, the nested TOC
 // list, the reading column, and the theme toggle. Embedded as a `<style>`
 // in the body so it loads only on book-templated pages. Uses position /
@@ -372,6 +420,10 @@ let book_css = <<CSS
   .book-sidebar .book-section { display: block; padding: 0.35rem 0 0.1rem; font-weight: 600; opacity: 0.7; }
   .book-content { margin-left: 16rem; padding: 1rem 2.5rem; max-width: 46rem; }
   .theme-toggle { display: block; margin: 0 0 0.75rem; padding: 0.2rem 0.6rem; cursor: pointer; background: transparent; border: 1px solid var(--wdoc-border, currentColor); border-radius: 4px; color: inherit; font: inherit; }
+  .book-pagenav { display: flex; gap: 1rem; margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); }
+  .book-pagenav .book-nav { text-decoration: none; opacity: 0.85; }
+  .book-pagenav .book-nav:hover { opacity: 1; text-decoration: underline; }
+  .book-pagenav .book-nav-next { margin-left: auto; text-align: right; }
   CSS
 
 // Stdlib `book` template: an mdbook-style layout — a fixed left
@@ -403,7 +455,10 @@ template book {
     },
     HtmlFundamental::Element {
       tag: "main", id: none, class: ["book-content"], attrs: none,
-      children: [ HtmlFundamental::Raw { html: c.content } ],
+      children: flatten([
+        [ HtmlFundamental::Raw { html: c.content } ],
+        book_pagenav(c.toc),
+      ]),
     },
   ]
 }

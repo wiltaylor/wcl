@@ -85,6 +85,4 @@ wcl wdoc pdf docs/main.wcl --out target/pdf
 wcl wdoc markdown docs/main.wcl --out docs/_md
 BASH
   }
-
-  p "Back to the [introduction](index)."
 }

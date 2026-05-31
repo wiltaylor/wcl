@@ -312,6 +312,4 @@ WCL
       | "**Chart value fields**" | "Feeding `map`ped data straight into `bar_chart` / `line_chart` / `pie_chart`." |
       | "**`type_table`**" | "Auto-documenting a schema type's fields — reflected via `type_fields`, described with `@doc` / `@hidden`." |
   }
-
-  p "See [Charts](wdoc_charts), [Tables](wdoc_tables), and [Diagrams](wdoc_diagrams) for the individual blocks."
 }

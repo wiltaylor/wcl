@@ -292,6 +292,4 @@ WCL
   p "Its fields:"
 
   type_table { type = Callout }
-
-  p "Next: [Math Equations](wdoc_math)."
 }

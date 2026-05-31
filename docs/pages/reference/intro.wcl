@@ -38,6 +38,4 @@ WCL
   }
 
   p "Values carry types (`count` is an `i64`, `enabled` a `bool`). Blocks are validated against a schema declared with decorators. Beyond plain data, WCL has `let` bindings, functions, `if`/`match`, and modules via `import`."
-
-  p "Start with [Fields & Blocks](fields_blocks) in the Language section."
 }

@@ -24,6 +24,4 @@ WCL
     class = ["info"]
     body  = "An if expression takes a bool condition. See Control Flow for the if / else syntax."
   }
-
-  p "Next: [Symbols](symbols)."
 }

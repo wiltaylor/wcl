@@ -72,8 +72,4 @@ WCL
   h2 "Routing"
 
   p "How an edge gets from source to destination is set on the *diagram*, not the edge: `routing = :elbow` (default) draws an orthogonal multi-bend polyline that routes around other shapes; `routing = :straight` draws a single direct line. Use `connect_points` on a shape to restrict which sides (`:north`/`:east`/`:south`/`:west`) an edge may attach to."
-
-  p "See [Flowcharts](wdoc_flowcharts) for auto-layout (`layout = :layered`), where edges drive the rank assignment."
-
-  p "Next: [Flowcharts](wdoc_flowcharts)."
 }

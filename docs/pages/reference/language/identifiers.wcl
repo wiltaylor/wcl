@@ -57,6 +57,4 @@ WCL
       | "`PascalCase`"  | "Types, interfaces, unions, variants, symbol sets" |
       | "`SCREAMING`"   | "Rarely; reserve for visibly-constant globals" |
   }
-
-  p "Next: explore the [Types](numbers) group, starting with Numbers."
 }

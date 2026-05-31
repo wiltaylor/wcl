@@ -105,8 +105,4 @@ class "wdoc-series-1" {
 }
 WCL
   }
-
-  p "See [Styling](wdoc_styling) for the full class + theme reference."
-
-  p "Next: [Primitive Shapes](wdoc_primitives)."
 }

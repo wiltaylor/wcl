@@ -73,6 +73,4 @@ WCL
   h2 "Fields"
 
   type_table { type = Video }
-
-  p "Next: [Diagrams](wdoc_diagrams)."
 }

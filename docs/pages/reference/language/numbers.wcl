@@ -39,8 +39,4 @@ b = 1u32 == 1i64   // true
 c = 3.0 * 2u8      // 6.0
 WCL
   }
-
-  p "See also [Expressions](expressions) for the full set of arithmetic and comparison operators."
-
-  p "Next: [Strings](strings)."
 }

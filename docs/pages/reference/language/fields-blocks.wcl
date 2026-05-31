@@ -54,6 +54,4 @@ service "web" {
 }
 WCL
   }
-
-  p "Next: [Tables](tables), the alternate authoring syntax for row-shaped block data."
 }

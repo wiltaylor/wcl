@@ -97,6 +97,4 @@ WCL
   }
 
   type_table { type = PieChart }
-
-  p "Next: [Timelines](wdoc_timelines)."
 }

@@ -43,6 +43,4 @@ WCL
     class = ["info"]
     body  = "A field declared list<RowType> can be populated either by a list literal or by WCL's pipe-row table syntax — see Tables."
   }
-
-  p "Next: [Tensors](tensors)."
 }

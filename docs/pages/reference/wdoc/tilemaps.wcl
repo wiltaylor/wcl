@@ -125,6 +125,4 @@ WCL
     class = ["note"]
     body  = "The sample spritesheet is Kenney's \"Platformer Pack\" (64×64 tiles), released under CC0 (public domain). Browse the packs at [kenney.nl/assets](https://kenney.nl/assets)."
   }
-
-  p "Next: [Maps](wdoc_maps)."
 }

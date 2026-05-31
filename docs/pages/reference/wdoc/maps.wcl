@@ -184,6 +184,4 @@ WCL
   h2 "Theming"
 
   p "Maps ride the `class` system. A pin's `class` themes its marker (`fill` / `stroke` / `color`, with `dark` / `light`) and `card_class` themes its popup; the one-off `color` recolours a single marker without a class. The built-in look ships as bare-class defaults that read the `--wdoc-*` theme variables, so a `site` `theme` styles maps for free — no per-map CSS needed."
-
-  p "Next: [Dopesheets](wdoc_dopesheets)."
 }

@@ -76,6 +76,4 @@ names = ["alice", "bob"]
 empty = []
 WCL
   }
-
-  p "Next: [Functions](functions)."
 }

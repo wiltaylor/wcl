@@ -56,6 +56,4 @@ WCL
   h2 "Fields"
 
   type_table { type = Image }
-
-  p "Next: [Videos](wdoc_videos)."
 }

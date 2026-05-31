@@ -26,6 +26,4 @@ WCL
   }
 
   p "Interfaces have one common consumer: **reference fields** (`&T`), which accept any value that structurally satisfies the interface. That's what the next chapter covers."
-
-  p "Next: [References](references)."
 }

@@ -64,6 +64,4 @@ TEXT
     class = ["warning"]
     body  = "Without the `@schemaless` marker, WCL's strict schema check rejects the undeclared keys, so the build fails with a message pointing at the fix rather than silently dropping the front matter."
   }
-
-  p "Back to the [wdoc overview](wdoc_overview)."
 }

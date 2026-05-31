@@ -57,6 +57,4 @@ WCL
       | "Open string-typed tag"                   | "plain `utf8`" |
       | "Free-form symbol (any `:name`)"          | "`symbol`" |
   }
-
-  p "Next: [Optionals](optionals)."
 }

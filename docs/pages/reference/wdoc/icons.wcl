@@ -1066,6 +1066,4 @@ WCL
       | ":bootstrap.xbox: `xbox`" | ":bootstrap.yelp: `yelp`" | ":bootstrap.yin-yang: `yin-yang`" | ":bootstrap.youtube: `youtube`" |
       | ":bootstrap.zoom-in: `zoom-in`" | ":bootstrap.zoom-out: `zoom-out`" | "" | "" |
   }
-
-  p "Next: [Images](wdoc_images)."
 }

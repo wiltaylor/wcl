@@ -44,6 +44,4 @@ WCL
     class = ["note"]
     body  = "Use a tensor when the data is genuinely rectangular and the rank matters (matrices, images, batches of features). For ragged or one-dimensional data, a list<T> is simpler."
   }
-
-  p "Next: [Records](records)."
 }

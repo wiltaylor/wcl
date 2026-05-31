@@ -126,6 +126,4 @@ theme sunset {
 site mysite { theme = :sunset  accent = :blue }
 WCL
   }
-
-  p "Next: [Icons](wdoc_icons)."
 }

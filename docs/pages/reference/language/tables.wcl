@@ -36,6 +36,4 @@ WCL
     class = ["info"]
     body  = "Each cell is an expression in the row type's field position. Strings, numbers, booleans, symbols — even computed values via let bindings — all work."
   }
-
-  p "Next: [Identifiers](identifiers)."
 }

@@ -115,6 +115,4 @@ result = {
 }
 WCL
   }
-
-  p "Next: [Schema & Decorators](schema)."
 }

@@ -50,6 +50,4 @@ PATTERNS
   }
 
   p "The `$…$` pattern requires a non-space at each delimiter, so currency like `$10 or $20` is left alone."
-
-  p "Next: [Tables](wdoc_tables)."
 }

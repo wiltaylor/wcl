@@ -34,6 +34,4 @@ WCL
 p "See [the about page](about) or jump to [the docs](docs:index)."
 WCL
   }
-
-  p "Next: [Formatting](wdoc_formatting)."
 }

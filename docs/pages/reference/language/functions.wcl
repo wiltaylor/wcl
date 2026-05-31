@@ -42,6 +42,4 @@ WCL
     class = ["note"]
     body  = "Function values participate in WCL's lazy field evaluation. Each call evaluates its body in a fresh context, and circular references between fields are detected and reported."
   }
-
-  p "Next: [Control Flow](control_flow)."
 }

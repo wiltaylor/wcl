@@ -57,6 +57,4 @@ WCL
   h2 "Fields"
 
   type_table { type = Column }
-
-  p "Next: [Styling](wdoc_styling)."
 }
