@@ -9,9 +9,9 @@ This file is a **navigation map**, not a spec. For depth, follow the pointers in
 ## Layout
 
 - `crates/wcl_lang` — language library: lexer, parser, AST, document view, lazy evaluator, schema validator, host-binding API
-- `crates/wcl` — `wcl` CLI binary (`parse`, `check`, `eval` / `get`, `set`, `fmt`, `repl`, `lsp`, `wdoc build` / `serve` / `pdf` / `markdown`)
+- `crates/wcl` — `wcl` CLI binary (`parse`, `check`, `eval` / `get`, `set`, `fmt`, `repl`, `lsp`, `wdoc build` / `serve` / `pdf` / `markdown`). The `wdoc serve` watch+axum dev server lives here (`src/serve.rs`), since it's CLI-only.
 - `crates/wcl_lsp` — `tower-lsp` language server driving `wcl lsp`
-- `crates/wcl_wdoc` — library crate driving the `wcl wdoc` subcommands; renders pages to HTML/PDF/Markdown and runs the watch+axum dev server. Embeds its WCL stdlib (`lib/*.wcl`) into a `wcl_lang::Registry` via `build.rs` (`schema_registry()`); a document opts in with `import <wdoc.wcl>`. See the [wdoc feature map](#wcl_wdoc-feature-map).
+- `crates/wcl_wdoc` — library crate driving the `wcl wdoc` subcommands; renders pages to HTML/PDF/Markdown. Embeds its WCL stdlib (`lib/*.wcl`) into a `wcl_lang::Registry` via `build.rs` (`schema_registry()`); a document opts in with `import <wdoc.wcl>`. See the [wdoc feature map](#wcl_wdoc-feature-map).
 - `crates/wcl_lang/fuzz` — `cargo-fuzz` targets (`parse` / `eval` / `format_round_trip` / …); run via `just fuzz-run <target>` on nightly. See `crates/wcl_lang/fuzz/README.md`.
 - `editors/vscode` — VS Code extension stub that spawns `wcl lsp` (`editors/vscode/README.md`)
 - `editors/tree-sitter-wcl` — tree-sitter grammar stub (`editors/tree-sitter-wcl/README.md`)

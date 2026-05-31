@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 use wcl_lang::{Document, ParseError, ast, format as wcl_format, parse_expr, parse_for_edit};
 
 mod dump;
+mod serve;
 
 const EXIT_OK: u8 = 0;
 const EXIT_PARSE: u8 = 1;
@@ -449,7 +450,12 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
                     return EXIT_IO;
                 }
             };
-            match rt.block_on(wcl_wdoc::serve(file, out, addr, site)) {
+            let result = rt.block_on(serve::serve(file, out, addr, site));
+            // Tear the runtime down with a bound so a stray in-flight
+            // `spawn_blocking` (e.g. a `tokio::fs::read` in the static
+            // handler) can never hang process exit on Ctrl-C.
+            rt.shutdown_timeout(std::time::Duration::from_millis(200));
+            match result {
                 Ok(()) => EXIT_OK,
                 Err(e) => {
                     eprintln!("serve failed: {e}");

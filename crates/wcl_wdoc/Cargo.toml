@@ -10,10 +10,6 @@ description = "WCL-driven static site / document generator (library)"
 wcl_lang = { workspace = true }
 miette = { workspace = true }
 regex = "1"
-tokio = { workspace = true, features = ["fs", "signal"] }
-axum = { workspace = true }
-notify = { workspace = true }
-tempfile = { workspace = true }
 syntect = { version = "5", default-features = false, features = ["default-fancy", "html"] }
 two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }
 avt = "0.18"
@@ -37,6 +33,9 @@ cosmic-text = "0.19"
 # Same usvg krilla-svg embeds (0.47) — we parse our SVG output into a Tree and
 # hand it to `Surface::draw_svg`, so the version must unify with krilla-svg's.
 usvg = "0.47"
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

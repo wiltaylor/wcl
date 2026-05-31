@@ -13,10 +13,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use tempfile::TempDir;
+use wcl_wdoc::build;
 
-use crate::build::build;
-
-pub async fn serve(
+pub(crate) async fn serve(
     file: PathBuf,
     out: Option<PathBuf>,
     addr: SocketAddr,
@@ -63,10 +62,12 @@ pub async fn serve(
     let bg_file = file.clone();
     let bg_out = out_dir.clone();
     let bg_site = site.clone();
-    tokio::spawn(async move {
-        // Keep the watcher alive for the lifetime of this task; dropping
-        // it would silently stop notifications.
-        let _watcher = watcher;
+    // The rebuild loop is a *local* future (not a detached `tokio::spawn`)
+    // owned by the `select!` below, so when the server shuts down it is
+    // dropped here — which drops the `notify` watcher and stops its inotify
+    // thread. A detached task would outlive `serve` and hang process exit.
+    let watch_loop = async move {
+        let _watcher = watcher; // keep the watcher alive for this future's lifetime
         while let Some(event) = rx.recv().await {
             if !is_relevant(&event) {
                 continue;
@@ -79,7 +80,7 @@ pub async fn serve(
                 }
             }
         }
-    });
+    };
 
     // One generic static handler resolves any request path against the
     // output tree, so it serves both the flat single-site layout and the
@@ -99,14 +100,19 @@ pub async fn serve(
         out_dir.display()
     );
 
-    // Race the server against Ctrl-C so the TempDir guard at function
-    // scope gets dropped on SIGINT. SIGTERM still kills the process
-    // before drops can run.
+    // Ctrl-C drives axum's graceful shutdown: it stops accepting and lets
+    // its connection tasks finish, then the serve future resolves and the
+    // `select!` returns — dropping `watch_loop` (and the watcher with it).
+    // Nothing detached survives, so the process can exit promptly.
+    let shutdown = async {
+        let _ = tokio::signal::ctrl_c().await;
+        eprintln!("\nshutting down");
+    };
     tokio::select! {
-        res = axum::serve(listener, app).into_future() => res?,
-        _ = tokio::signal::ctrl_c() => {
-            eprintln!("\nshutting down");
-        }
+        res = axum::serve(listener, app).with_graceful_shutdown(shutdown).into_future() => res?,
+        // Only ends if the watch channel closes; otherwise it runs until the
+        // server branch wins and this future is dropped.
+        _ = watch_loop => {}
     }
     Ok(())
 }
