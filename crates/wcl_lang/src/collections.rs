@@ -13,83 +13,174 @@ use crate::value::{Value, VariantPayload};
 pub(crate) fn register(env: &mut Environment) {
     env.add_builtin(
         "map",
-        BuiltinFn::hof(2, map_hof).with_signature("fn ([T], fn (T) -> U) -> [U]"),
+        BuiltinFn::hof(2, map_hof)
+            .doc("Apply a function to every element of a list or tensor, returning the transformed collection.")
+            .param("xs", "[T]", "The list or tensor to transform.")
+            .param("f", "fn (T) -> U", "Function applied to each element.")
+            .returns("[U]"),
     );
     env.add_builtin(
         "filter",
-        BuiltinFn::hof(2, filter_hof).with_signature("fn ([T], fn (T) -> bool) -> [T]"),
+        BuiltinFn::hof(2, filter_hof)
+            .doc("Keep only the list elements for which the predicate returns `true`.")
+            .param("xs", "[T]", "The list to filter.")
+            .param(
+                "pred",
+                "fn (T) -> bool",
+                "Predicate deciding whether to keep an element.",
+            )
+            .returns("[T]"),
     );
     env.add_builtin(
         "fold",
-        BuiltinFn::hof(3, fold_hof).with_signature("fn ([T], U, fn (U, T) -> U) -> U"),
+        BuiltinFn::hof(3, fold_hof)
+            .doc("Reduce a list or tensor to a single value by repeatedly combining the accumulator with each element.")
+            .param("xs", "[T]", "The list or tensor to reduce.")
+            .param("init", "U", "The initial accumulator value.")
+            .param("f", "fn (U, T) -> U", "Combines the accumulator with the next element.")
+            .returns("U"),
     );
 
-    env.add_builtin("len", from_fn(len_pure).with_signature("fn ([T]) -> usize"));
+    env.add_builtin(
+        "len",
+        from_fn(len_pure)
+            .doc("The number of elements in a list or tensor, or characters in a string.")
+            .param("xs", "[T]", "A list, tensor, or string.")
+            .returns("usize"),
+    );
     env.add_builtin(
         "sum",
-        from_fn(sum_pure).with_signature("fn ([number]) -> number"),
+        from_fn(sum_pure)
+            .doc("Add together every element of a non-empty homogeneous numeric list or tensor.")
+            .param(
+                "xs",
+                "[number]",
+                "A non-empty list or tensor of one numeric type.",
+            )
+            .returns("number"),
     );
     env.add_builtin(
         "range",
-        from_fn(range_pure).with_signature("fn (i64, i64) -> [i64]"),
+        from_fn(range_pure)
+            .doc("The half-open integer range `[start, end)` as a list.")
+            .param("start", "i64", "Inclusive lower bound.")
+            .param("end", "i64", "Exclusive upper bound; must be >= `start`.")
+            .returns("[i64]"),
     );
-    env.add_builtin("head", from_fn(head_pure).with_signature("fn ([T]) -> T"));
-    env.add_builtin("tail", from_fn(tail_pure).with_signature("fn ([T]) -> [T]"));
+    env.add_builtin(
+        "head",
+        from_fn(head_pure)
+            .doc("The first element of a list or tensor (`none` when empty).")
+            .param("xs", "[T]", "A list or tensor.")
+            .returns("T"),
+    );
+    env.add_builtin(
+        "tail",
+        from_fn(tail_pure)
+            .doc("Every element of a list or tensor except the first.")
+            .param("xs", "[T]", "A list or tensor.")
+            .returns("[T]"),
+    );
 
     env.add_builtin(
         "tensor",
-        from_fn(tensor_pure).with_signature("fn ([number], [usize]) -> tensor<T>"),
+        from_fn(tensor_pure)
+            .doc("Build a tensor from flat row-major data and a shape; the data length must equal the product of the dimensions.")
+            .param("data", "[number]", "Flat, row-major element data.")
+            .param("shape", "[usize]", "The dimension sizes.")
+            .returns("tensor<T>"),
     );
     env.add_builtin(
         "tensor_data",
-        from_fn(tensor_data_pure).with_signature("fn (tensor<T>) -> [T]"),
+        from_fn(tensor_data_pure)
+            .doc("The flat row-major element data of a tensor as a list.")
+            .param("t", "tensor<T>", "The tensor to read.")
+            .returns("[T]"),
     );
     env.add_builtin(
         "tensor_shape",
-        from_fn(tensor_shape_pure).with_signature("fn (tensor<T>) -> [usize]"),
+        from_fn(tensor_shape_pure)
+            .doc("The dimension sizes of a tensor as a list.")
+            .param("t", "tensor<T>", "The tensor to read.")
+            .returns("[usize]"),
     );
 
     env.add_builtin(
         "error",
         from_fn(|msg: String| -> Result<Value, String> { Err(msg) })
-            .with_signature("fn (utf8) -> never"),
+            .doc("Abort evaluation with an error message.")
+            .param("msg", "utf8", "The error message to report.")
+            .returns("never"),
     );
 
     env.add_builtin(
         "panic",
         from_fn(|msg: String| -> Result<Value, String> { Err(msg) })
-            .with_signature("fn (utf8) -> never"),
+            .doc("Abort evaluation with an unrecoverable failure message.")
+            .param("msg", "utf8", "The failure message to report.")
+            .returns("never"),
     );
     env.add_builtin(
         "assert",
         from_fn(|cond: bool, msg: String| -> Result<Value, String> {
             if cond { Ok(Value::None) } else { Err(msg) }
         })
-        .with_signature("fn (bool, utf8) -> none"),
+        .doc("Return `none` when `cond` is true, otherwise abort with `msg`.")
+        .param("cond", "bool", "The condition that must hold.")
+        .param(
+            "msg",
+            "utf8",
+            "The error message reported when `cond` is false.",
+        )
+        .returns("none"),
     );
 
     env.add_builtin(
         "concat",
         from_fn(|a: String, b: String| -> String { format!("{a}{b}") })
-            .with_signature("fn (utf8, utf8) -> utf8"),
+            .doc("Concatenate two strings into one.")
+            .param("a", "utf8", "The left-hand string.")
+            .param("b", "utf8", "The string appended after `a`.")
+            .returns("utf8"),
     );
     env.add_builtin(
         "format",
-        BuiltinFn::hof(0, format_hof).with_signature("fn (utf8, ...args) -> utf8"),
+        BuiltinFn::hof(0, format_hof)
+            // Variadic: keep an explicit signature since `...args` isn't a
+            // structurally-expressible parameter.
+            .with_signature("fn (utf8, ...args) -> utf8")
+            .doc("Substitute trailing arguments into a template's `{}` placeholders (`{{`/`}}` are literal braces).")
+            .param("template", "utf8", "Template string with `{}` placeholders.")
+            .returns("utf8"),
     );
 
     env.add_builtin(
         "flatten",
-        from_fn(flatten_pure).with_signature("fn ([[T]]) -> [T]"),
+        from_fn(flatten_pure)
+            .doc("Concatenate a list of lists into a single list, one level deep.")
+            .param(
+                "xss",
+                "[[T]]",
+                "A list whose elements are themselves lists.",
+            )
+            .returns("[T]"),
     );
     env.add_builtin(
         "zip",
-        from_fn(zip_pure).with_signature("fn ([A], [B]) -> [(A, B)]"),
+        from_fn(zip_pure)
+            .doc("Pair up elements of two lists by index, stopping at the shorter length.")
+            .param("a", "[A]", "The first list.")
+            .param("b", "[B]", "The second list.")
+            .returns("[(A, B)]"),
     );
 
     env.add_builtin(
         "tensor_reshape",
-        from_fn(tensor_reshape_pure).with_signature("fn (tensor<T>, [usize]) -> tensor<T>"),
+        from_fn(tensor_reshape_pure)
+            .doc("Reinterpret a tensor's data under a new shape; the element count must be unchanged.")
+            .param("t", "tensor<T>", "The tensor to reshape.")
+            .param("shape", "[usize]", "The new dimension sizes.")
+            .returns("tensor<T>"),
     );
 
     // ── String builtins ─────────────────────────────────────────────
@@ -98,50 +189,82 @@ pub(crate) fn register(env: &mut Environment) {
         from_fn(|s: String, sep: String| -> Value {
             Value::List(s.split(&sep).map(|p| Value::Utf8(p.to_string())).collect())
         })
-        .with_signature("fn (utf8, utf8) -> [utf8]"),
+        .doc("Split a string on every occurrence of a separator into a list of pieces.")
+        .param("s", "utf8", "The string to split.")
+        .param("sep", "utf8", "The separator to split on.")
+        .returns("[utf8]"),
     );
     env.add_builtin(
         "join",
         from_fn(|parts: Vec<String>, sep: String| -> String { parts.join(&sep) })
-            .with_signature("fn ([utf8], utf8) -> utf8"),
+            .doc("Join a list of strings into one, inserting a separator between each.")
+            .param("parts", "[utf8]", "The strings to join.")
+            .param("sep", "utf8", "The separator inserted between parts.")
+            .returns("utf8"),
     );
     env.add_builtin(
         "replace",
         from_fn(|s: String, old: String, new: String| -> String { s.replace(&old, &new) })
-            .with_signature("fn (utf8, utf8, utf8) -> utf8"),
+            .doc("Replace every occurrence of a substring with another.")
+            .param("s", "utf8", "The string to search.")
+            .param("old", "utf8", "The substring to find.")
+            .param("new", "utf8", "The replacement substring.")
+            .returns("utf8"),
     );
     env.add_builtin(
         "contains",
         from_fn(|s: String, needle: String| -> bool { s.contains(&needle) })
-            .with_signature("fn (utf8, utf8) -> bool"),
+            .doc("Whether a string contains a substring.")
+            .param("s", "utf8", "The string to search.")
+            .param("needle", "utf8", "The substring to look for.")
+            .returns("bool"),
     );
     env.add_builtin(
         "starts_with",
         from_fn(|s: String, prefix: String| -> bool { s.starts_with(&prefix) })
-            .with_signature("fn (utf8, utf8) -> bool"),
+            .doc("Whether a string begins with a prefix.")
+            .param("s", "utf8", "The string to test.")
+            .param("prefix", "utf8", "The prefix to look for.")
+            .returns("bool"),
     );
     env.add_builtin(
         "ends_with",
         from_fn(|s: String, suffix: String| -> bool { s.ends_with(&suffix) })
-            .with_signature("fn (utf8, utf8) -> bool"),
+            .doc("Whether a string ends with a suffix.")
+            .param("s", "utf8", "The string to test.")
+            .param("suffix", "utf8", "The suffix to look for.")
+            .returns("bool"),
     );
     env.add_builtin(
         "to_upper",
-        from_fn(|s: String| -> String { s.to_uppercase() }).with_signature("fn (utf8) -> utf8"),
+        from_fn(|s: String| -> String { s.to_uppercase() })
+            .doc("Uppercase every character of a string.")
+            .param("s", "utf8", "The string to uppercase.")
+            .returns("utf8"),
     );
     env.add_builtin(
         "to_lower",
-        from_fn(|s: String| -> String { s.to_lowercase() }).with_signature("fn (utf8) -> utf8"),
+        from_fn(|s: String| -> String { s.to_lowercase() })
+            .doc("Lowercase every character of a string.")
+            .param("s", "utf8", "The string to lowercase.")
+            .returns("utf8"),
     );
     env.add_builtin(
         "trim",
-        from_fn(|s: String| -> String { s.trim().to_string() }).with_signature("fn (utf8) -> utf8"),
+        from_fn(|s: String| -> String { s.trim().to_string() })
+            .doc("Remove leading and trailing whitespace from a string.")
+            .param("s", "utf8", "The string to trim.")
+            .returns("utf8"),
     );
 
     // ── List builtins ───────────────────────────────────────────────
     env.add_builtin(
         "list_contains",
-        from_fn(list_contains_pure).with_signature("fn ([T], T) -> bool"),
+        from_fn(list_contains_pure)
+            .doc("Whether a list contains a value equal to `needle`.")
+            .param("xs", "[T]", "The list to search.")
+            .param("needle", "T", "The value to look for.")
+            .returns("bool"),
     );
     env.add_builtin(
         "reverse",
@@ -150,13 +273,24 @@ pub(crate) fn register(env: &mut Environment) {
             xs.reverse();
             Value::List(xs)
         })
-        .with_signature("fn ([T]) -> [T]"),
+        .doc("Reverse the order of a list's elements.")
+        .param("xs", "[T]", "The list to reverse.")
+        .returns("[T]"),
     );
-    env.add_builtin("sort", from_fn(sort_pure).with_signature("fn ([T]) -> [T]"));
+    env.add_builtin(
+        "sort",
+        from_fn(sort_pure)
+            .doc("Sort a list — numerically for all-numeric lists, lexicographically for all-string lists.")
+            .param("xs", "[T]", "An all-numeric or all-string list.")
+            .returns("[T]"),
+    );
     env.add_builtin(
         "sort_connected",
         from_fn(sort_connected_pure)
-            .with_signature("fn ([T], [{source, destination, ...}]) -> [T]"),
+            .doc("Reorder a list so that items joined by edges cluster together (recursing into `children`).")
+            .param("items", "[T]", "Items identified by an `id` field (possibly nested via `children`).")
+            .param("edges", "[{source, destination, ...}]", "Edge records linking item ids.")
+            .returns("[T]"),
     );
     env.add_builtin(
         "unique",
@@ -169,7 +303,9 @@ pub(crate) fn register(env: &mut Environment) {
             }
             Value::List(seen)
         })
-        .with_signature("fn ([T]) -> [T]"),
+        .doc("Remove duplicate elements from a list, keeping first-seen order.")
+        .param("xs", "[T]", "The list to deduplicate.")
+        .returns("[T]"),
     );
     env.add_builtin(
         "index_of",
@@ -179,7 +315,10 @@ pub(crate) fn register(env: &mut Environment) {
                 .map(|i| i as i64)
                 .unwrap_or(-1)
         })
-        .with_signature("fn ([T], T) -> i64"),
+        .doc("The index of the first element equal to `needle`, or `-1` if absent.")
+        .param("xs", "[T]", "The list to search.")
+        .param("needle", "T", "The value to look for.")
+        .returns("i64"),
     );
     env.add_builtin(
         "at",
@@ -191,7 +330,10 @@ pub(crate) fn register(env: &mut Environment) {
                 .nth(i as usize)
                 .ok_or_else(|| format!("at: index {i} out of bounds"))
         })
-        .with_signature("fn ([T], i64) -> T"),
+        .doc("The element at a zero-based index; errors if out of bounds or negative.")
+        .param("xs", "[T]", "The list to index.")
+        .param("i", "i64", "The zero-based index.")
+        .returns("T"),
     );
     env.add_builtin(
         "take",
@@ -199,7 +341,10 @@ pub(crate) fn register(env: &mut Environment) {
             let n = n.max(0) as usize;
             Value::List(xs.into_iter().take(n).collect())
         })
-        .with_signature("fn ([T], i64) -> [T]"),
+        .doc("The first `n` elements of a list (fewer if the list is shorter).")
+        .param("xs", "[T]", "The list to take from.")
+        .param("n", "i64", "How many leading elements to keep.")
+        .returns("[T]"),
     );
     env.add_builtin(
         "drop",
@@ -207,7 +352,10 @@ pub(crate) fn register(env: &mut Environment) {
             let n = n.max(0) as usize;
             Value::List(xs.into_iter().skip(n).collect())
         })
-        .with_signature("fn ([T], i64) -> [T]"),
+        .doc("Every element of a list after the first `n`.")
+        .param("xs", "[T]", "The list to drop from.")
+        .param("n", "i64", "How many leading elements to skip.")
+        .returns("[T]"),
     );
 }
 

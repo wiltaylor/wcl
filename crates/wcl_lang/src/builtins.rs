@@ -86,6 +86,34 @@ pub trait Caller {
     /// Lets reflective builtins (`decorator_names`, `decorator_arg`,
     /// …) rediscover the target carried in a `Value::DataPath`.
     fn resolve<'r>(&'r self, path: &[String]) -> Option<DataRef<'r>>;
+
+    /// Structured documentation + signature of a built-in by `name`, for
+    /// the `fn_signature` reflection builtin. `None` when no built-in of
+    /// that name is registered. Defaults to `None` so hosts that don't
+    /// wire it up aren't forced to.
+    fn builtin_info(&self, _name: &str) -> Option<BuiltinSignature> {
+        None
+    }
+}
+
+/// One documented parameter of a built-in function: its name, a printable
+/// type (informal notation like `[T]` / `fn (T) -> U` is allowed), and a
+/// help string.
+#[derive(Debug, Clone)]
+pub struct BuiltinParam {
+    pub name: String,
+    pub ty: String,
+    pub doc: String,
+}
+
+/// Owned snapshot of a built-in's documentation, returned to reflection
+/// (`fn_signature`). `signature` is the resolved printable form.
+#[derive(Debug, Clone)]
+pub struct BuiltinSignature {
+    pub doc: String,
+    pub params: Vec<BuiltinParam>,
+    pub return_type: String,
+    pub signature: String,
 }
 
 /// Body kind for a registered builtin: either a pure function over
@@ -106,7 +134,17 @@ pub(crate) enum BuiltinKind {
 pub struct BuiltinFn {
     pub(crate) arity: usize,
     pub(crate) kind: BuiltinKind,
+    /// Explicit printable signature override. When `None`, [`signature`] is
+    /// derived from the structured `params` + `returns`. Kept for the rare
+    /// builtin whose shape isn't structurally expressible (e.g. the
+    /// variadic `format`).
     pub(crate) signature: Option<String>,
+    /// Function-level help text.
+    pub(crate) doc: Option<String>,
+    /// Documented parameters (name / type / help), in order.
+    pub(crate) params: Vec<BuiltinParam>,
+    /// Printable return type.
+    pub(crate) returns: Option<String>,
 }
 
 impl BuiltinFn {
@@ -114,18 +152,70 @@ impl BuiltinFn {
         self.arity
     }
 
-    /// Human-readable signature registered alongside this builtin
-    /// (e.g. `"fn (utf8, utf8) -> utf8"`). `None` when the registrar
-    /// didn't supply one.
-    pub fn signature(&self) -> Option<&str> {
-        self.signature.as_deref()
+    /// Human-readable signature (e.g. `"fn(a: utf8, b: utf8) -> utf8"`).
+    /// Uses the explicit override when one was set, otherwise derives it
+    /// from the structured `params` + `returns`. `None` when neither is
+    /// available.
+    pub fn signature(&self) -> Option<String> {
+        if let Some(sig) = &self.signature {
+            return Some(sig.clone());
+        }
+        if self.params.is_empty() && self.returns.is_none() {
+            return None;
+        }
+        let params = self
+            .params
+            .iter()
+            .map(|p| format!("{}: {}", p.name, p.ty))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let ret = self.returns.as_deref().unwrap_or("none");
+        Some(format!("fn({params}) -> {ret}"))
     }
 
-    /// Attach a printable signature to a `BuiltinFn`. Designed for
-    /// builder-style chaining at registration sites:
-    /// `from_fn(...).with_signature("fn (utf8) -> utf8")`.
+    /// Owned snapshot of this builtin's documentation, for reflection.
+    pub fn signature_info(&self) -> BuiltinSignature {
+        BuiltinSignature {
+            doc: self.doc.clone().unwrap_or_default(),
+            params: self.params.clone(),
+            return_type: self.returns.clone().unwrap_or_default(),
+            signature: self.signature().unwrap_or_default(),
+        }
+    }
+
+    /// Attach an explicit printable signature, overriding the derived one.
+    /// Use only when the structured form can't express the shape (e.g. a
+    /// variadic builtin); prefer `.param(...)` / `.returns(...)`.
     pub fn with_signature(mut self, sig: impl Into<String>) -> Self {
         self.signature = Some(sig.into());
+        self
+    }
+
+    /// Attach function-level help text. Builder-style:
+    /// `from_fn(...).doc("…").param(...).returns(...)`.
+    pub fn doc(mut self, doc: impl Into<String>) -> Self {
+        self.doc = Some(doc.into());
+        self
+    }
+
+    /// Append a documented parameter (name, printable type, help text).
+    pub fn param(
+        mut self,
+        name: impl Into<String>,
+        ty: impl Into<String>,
+        doc: impl Into<String>,
+    ) -> Self {
+        self.params.push(BuiltinParam {
+            name: name.into(),
+            ty: ty.into(),
+            doc: doc.into(),
+        });
+        self
+    }
+
+    /// Set the printable return type.
+    pub fn returns(mut self, ty: impl Into<String>) -> Self {
+        self.returns = Some(ty.into());
         self
     }
 
@@ -140,6 +230,9 @@ impl BuiltinFn {
             arity,
             kind: BuiltinKind::Hof(Arc::new(f)),
             signature: None,
+            doc: None,
+            params: Vec::new(),
+            returns: None,
         }
     }
 }
@@ -349,7 +442,14 @@ macro_rules! impl_into_builtin {
                         )*
                         (self)($($name),*).into_value_result()
                     });
-                BuiltinFn { arity, kind: BuiltinKind::Pure(body), signature: None }
+                BuiltinFn {
+                    arity,
+                    kind: BuiltinKind::Pure(body),
+                    signature: None,
+                    doc: None,
+                    params: Vec::new(),
+                    returns: None,
+                }
             }
         }
     };
@@ -376,6 +476,35 @@ mod tests {
             BuiltinKind::Pure(body) => body,
             BuiltinKind::Hof(_) => panic!("expected pure builtin"),
         }
+    }
+
+    #[test]
+    fn signature_derives_from_structured_params() {
+        let b = from_fn(|_a: i64| 0i64)
+            .doc("Doubles a number.")
+            .param("a", "i64", "the input")
+            .returns("i64");
+        assert_eq!(b.signature().as_deref(), Some("fn(a: i64) -> i64"));
+        let info = b.signature_info();
+        assert_eq!(info.doc, "Doubles a number.");
+        assert_eq!(info.return_type, "i64");
+        assert_eq!(info.params.len(), 1);
+        assert_eq!(info.params[0].name, "a");
+        assert_eq!(info.params[0].doc, "the input");
+    }
+
+    #[test]
+    fn explicit_signature_overrides_derivation() {
+        let b = from_fn(|_a: i64| 0i64)
+            .with_signature("fn (utf8, ...args) -> utf8")
+            .param("a", "i64", "ignored for display");
+        assert_eq!(b.signature().as_deref(), Some("fn (utf8, ...args) -> utf8"));
+    }
+
+    #[test]
+    fn no_signature_when_undocumented() {
+        let b = from_fn(|_a: i64| 0i64);
+        assert_eq!(b.signature(), None);
     }
 
     #[test]

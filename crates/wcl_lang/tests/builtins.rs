@@ -329,3 +329,72 @@ fn ast_string_rejects_a_non_reference_scalar() {
     let msg = eval_err("@schemaless result = ast_string(42)\n");
     assert!(msg.contains("data path"), "{msg}");
 }
+
+// ── fn_signature ──────────────────────────────────────────────────
+
+/// Read a named field out of a `Value::Record`.
+fn rfield<'v>(rec: &'v Value, key: &str) -> &'v Value {
+    match rec {
+        Value::Record { fields, .. } => fields.get(key).expect("record has key"),
+        other => panic!("expected record, got {other:?}"),
+    }
+}
+
+#[test]
+fn fn_signature_describes_a_user_function() {
+    let v = eval(
+        "@schemaless f = fn(x: i64, y: utf8) -> bool true\n@schemaless result = fn_signature(f)\n",
+    );
+    assert_eq!(rfield(&v, "is_builtin"), &Value::Bool(false));
+    assert_eq!(rfield(&v, "doc"), &Value::Utf8("".into()));
+    assert_eq!(rfield(&v, "return_type"), &Value::Utf8("bool".into()));
+    assert_eq!(
+        rfield(&v, "signature"),
+        &Value::Utf8("fn(x: i64, y: utf8) -> bool".into())
+    );
+    let Value::List(params) = rfield(&v, "params") else {
+        panic!("params not a list");
+    };
+    assert_eq!(params.len(), 2);
+    assert_eq!(rfield(&params[0], "name"), &Value::Utf8("x".into()));
+    assert_eq!(rfield(&params[0], "type"), &Value::Utf8("i64".into()));
+    assert_eq!(rfield(&params[0], "doc"), &Value::Utf8("".into()));
+    assert_eq!(rfield(&params[1], "name"), &Value::Utf8("y".into()));
+    assert_eq!(rfield(&params[1], "type"), &Value::Utf8("utf8".into()));
+}
+
+#[test]
+fn fn_signature_describes_a_builtin_by_name() {
+    let v = eval("@schemaless result = fn_signature(\"concat\")\n");
+    assert_eq!(rfield(&v, "is_builtin"), &Value::Bool(true));
+    assert_eq!(rfield(&v, "return_type"), &Value::Utf8("utf8".into()));
+    // Signature is derived from the structured params (carries names).
+    assert_eq!(
+        rfield(&v, "signature"),
+        &Value::Utf8("fn(a: utf8, b: utf8) -> utf8".into())
+    );
+    // Function-level help text is present.
+    let Value::Utf8(doc) = rfield(&v, "doc") else {
+        panic!("doc not a string");
+    };
+    assert!(doc.contains("Concatenate"), "{doc}");
+    // Each parameter carries name / type / help text.
+    let Value::List(params) = rfield(&v, "params") else {
+        panic!("params not a list");
+    };
+    assert_eq!(params.len(), 2);
+    assert_eq!(rfield(&params[0], "name"), &Value::Utf8("a".into()));
+    assert_eq!(rfield(&params[0], "type"), &Value::Utf8("utf8".into()));
+    let Value::Utf8(pdoc) = rfield(&params[0], "doc") else {
+        panic!("param doc not a string");
+    };
+    assert!(!pdoc.is_empty(), "param doc should not be empty");
+}
+
+#[test]
+fn fn_signature_rejects_unknown_builtin_and_non_function() {
+    let msg = eval_err("@schemaless result = fn_signature(\"not_a_builtin\")\n");
+    assert!(msg.contains("not a built-in"), "{msg}");
+    let msg2 = eval_err("@schemaless result = fn_signature(42)\n");
+    assert!(msg2.contains("function value or a built-in name"), "{msg2}");
+}

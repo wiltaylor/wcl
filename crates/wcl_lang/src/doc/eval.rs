@@ -177,6 +177,13 @@ impl<'a> crate::builtins::Caller for EvalCaller<'a, '_> {
         }
         Some(cur)
     }
+
+    fn builtin_info(&self, name: &str) -> Option<crate::builtins::BuiltinSignature> {
+        self.doc
+            .environment()
+            .builtin(name)
+            .map(|b| b.signature_info())
+    }
 }
 
 impl Document {

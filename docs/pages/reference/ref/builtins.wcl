@@ -92,6 +92,7 @@ WCL
       | "`decorator_arg(&T, dec, slot)`" | "Read a named argument of decorator `dec` (`none` if absent)." |
       | "`type_fields(&T)`" | "List a type's fields as records — `name`, `type`, `is_function`, `optional`, `has_default`, `is_block`, `repeated`, `accepts`, `decorators` — own fields first, then those inherited via `extends`. Drives the wdoc `type_table` component." |
       | "`ast_string(&T)`" | "Pretty-print the source behind a reference — a `type` / `interface` / `union` / `symbol_set` / `block` / field declaration — or a function value (`fn(…) -> … …`). Output is canonical (run through the formatter), so it normalises the original spacing." |
+      | "`fn_signature(f)`" | "Describe a function's parameters and return type. Pass a function **value** (full structured `params` with `name`/`type`), or a built-in's **name string** (e.g. `\"map\"`) to get its parameters + help text. Returns `{ doc, params: [{name, type, doc}], return_type, signature, is_builtin }`." |
   }
 
   h2 "Meta"

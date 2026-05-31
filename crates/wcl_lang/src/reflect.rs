@@ -6,28 +6,53 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::builtins::{BuiltinFn, Caller, DataPath, FromValue, from_fn};
+use crate::builtins::{BuiltinFn, BuiltinSignature, Caller, DataPath, FromValue, from_fn};
 use crate::data::{DataKind, DataRef};
 use crate::doc::{ChildKind, DeclName, Decorator, TypeField};
 use crate::environment::Environment;
-use crate::value::Value;
+use crate::value::{FnValue, Value};
 
 pub(crate) fn register(env: &mut Environment) {
     env.add_builtin(
         "decorator_names",
-        BuiltinFn::hof(1, decorator_names_hof).with_signature("fn (&T) -> [utf8]"),
+        BuiltinFn::hof(1, decorator_names_hof)
+            .doc("List the names of the decorators attached to a referenced declaration.")
+            .param(
+                "target",
+                "&T",
+                "A reference to a type, field, block, or variant.",
+            )
+            .returns("[utf8]"),
     );
     env.add_builtin(
         "decorator_arg",
-        BuiltinFn::hof(3, decorator_arg_hof).with_signature("fn (&T, utf8, utf8) -> any"),
+        BuiltinFn::hof(3, decorator_arg_hof)
+            .doc("Read one named argument of a decorator on a referenced declaration (`none` if absent).")
+            .param("target", "&T", "A reference to a type, field, block, or variant.")
+            .param("decorator", "utf8", "The decorator name, e.g. `\"doc\"`.")
+            .param("slot", "utf8", "The argument (slot) name to read.")
+            .returns("any"),
     );
     env.add_builtin(
         "type_fields",
-        BuiltinFn::hof(1, type_fields_hof).with_signature("fn (&T) -> [record]"),
+        BuiltinFn::hof(1, type_fields_hof)
+            .doc("Reflect a type or interface into a list of field-description records (own fields first, then inherited via `extends`).")
+            .param("target", "&T", "A reference to a type or interface declaration.")
+            .returns("[record]"),
     );
     env.add_builtin(
         "ast_string",
-        BuiltinFn::hof(1, ast_string_hof).with_signature("fn (&T) -> utf8"),
+        BuiltinFn::hof(1, ast_string_hof)
+            .doc("Pretty-print the canonical source behind a reference (type/interface/union/symbol_set/block/field) or a function value.")
+            .param("target", "&T", "A dataref to a declaration, or a function value.")
+            .returns("utf8"),
+    );
+    env.add_builtin(
+        "fn_signature",
+        BuiltinFn::hof(1, fn_signature_hof)
+            .doc("Describe a function's parameters and return type. Pass a function value, or a built-in's name as a string.")
+            .param("f", "any", "A function value, or the name of a built-in as a utf8 string.")
+            .returns("record"),
     );
     // `eval` needs the live evaluator scope, so it's intercepted in
     // `eval_call_builtin` (like `error`/`panic`/`assert`); this registration
@@ -37,8 +62,99 @@ pub(crate) fn register(env: &mut Environment) {
         from_fn(|_: String| -> Result<Value, String> {
             Err("eval is evaluated in the caller's scope".to_string())
         })
-        .with_signature("fn (utf8) -> any"),
+        .doc("Parse a string as a WCL expression and evaluate it in the current scope.")
+        .param(
+            "src",
+            "utf8",
+            "WCL expression source to parse and evaluate.",
+        )
+        .returns("any"),
     );
+}
+
+/// `fn_signature(f)` — describe a function's parameters + return type.
+/// Accepts a user function value (full structured params from the
+/// `FnValue`) or a built-in's name string (structured doc metadata from
+/// the registry). Returns a record
+/// `{ doc, params: [{name, type, doc}], return_type, signature, is_builtin }`.
+fn fn_signature_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
+    match &args[0] {
+        Value::Function(fv) => Ok(user_fn_record(fv)),
+        Value::Utf8(name) | Value::Ascii(name) => {
+            let info = caller
+                .builtin_info(name)
+                .ok_or_else(|| format!("fn_signature: '{name}' is not a built-in function"))?;
+            Ok(builtin_record(&info))
+        }
+        other => Err(format!(
+            "fn_signature: expected a function value or a built-in name, found {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// Build a `FnParam` record from name / type / doc strings.
+fn fn_param_record(name: &str, ty: &str, doc: &str) -> Value {
+    let mut m = BTreeMap::new();
+    m.insert("name".to_string(), Value::Utf8(name.to_string()));
+    m.insert("type".to_string(), Value::Utf8(ty.to_string()));
+    m.insert("doc".to_string(), Value::Utf8(doc.to_string()));
+    Value::Record {
+        ty: vec!["FnParam".to_string()],
+        fields: m,
+    }
+}
+
+/// Assemble the `FnSignature` result record.
+fn fn_signature_record(
+    doc: &str,
+    params: Vec<Value>,
+    return_type: &str,
+    signature: &str,
+    is_builtin: bool,
+) -> Value {
+    let mut m = BTreeMap::new();
+    m.insert("doc".to_string(), Value::Utf8(doc.to_string()));
+    m.insert("params".to_string(), Value::List(params));
+    m.insert(
+        "return_type".to_string(),
+        Value::Utf8(return_type.to_string()),
+    );
+    m.insert("signature".to_string(), Value::Utf8(signature.to_string()));
+    m.insert("is_builtin".to_string(), Value::Bool(is_builtin));
+    Value::Record {
+        ty: vec!["FnSignature".to_string()],
+        fields: m,
+    }
+}
+
+/// `fn_signature` record for a user function value. Param docs are empty
+/// (a bare function value carries no help text).
+fn user_fn_record(fv: &FnValue) -> Value {
+    let params: Vec<Value> = fv
+        .params()
+        .iter()
+        .map(|p| fn_param_record(p.name(), &p.ty().to_string(), ""))
+        .collect();
+    let return_type = fv.return_ty().to_string();
+    let param_sig = fv
+        .params()
+        .iter()
+        .map(|p| format!("{}: {}", p.name(), p.ty()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let signature = format!("fn({param_sig}) -> {return_type}");
+    fn_signature_record("", params, &return_type, &signature, false)
+}
+
+/// `fn_signature` record for a built-in, from its registered doc metadata.
+fn builtin_record(info: &BuiltinSignature) -> Value {
+    let params: Vec<Value> = info
+        .params
+        .iter()
+        .map(|p| fn_param_record(&p.name, &p.ty, &p.doc))
+        .collect();
+    fn_signature_record(&info.doc, params, &info.return_type, &info.signature, true)
 }
 
 /// `ast_string(x)` — pretty-print the source code behind `x`. Accepts a
