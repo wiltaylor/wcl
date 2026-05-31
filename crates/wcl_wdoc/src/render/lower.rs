@@ -263,9 +263,8 @@ pub(crate) fn block_to_record(doc: &Document, block: &Block<'_>, kind: &str) -> 
     // layered solver did. Without this, the rendered rect would
     // stay at the declared size while the layout reserved a
     // larger cell — the text would spill out of the rect.
-    // Only the SVG shapes carry numeric `width`/`height` geometry that the
-    // layout solver may have grown; leave non-numeric fields alone (e.g. a
-    // wireframe widget's `width: utf8?` CSS length like "22rem").
+    // Only fields carrying numeric `width`/`height` geometry that the layout
+    // solver may have grown are coerced; leave non-numeric fields alone.
     let (eff_w, eff_h) = effective_dims(block);
     if fields.get("width").is_some_and(Value::is_numeric) {
         fields.insert("width".to_string(), Value::F64(eff_w));

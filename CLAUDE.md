@@ -47,10 +47,12 @@ Capability summary per crate; the reference pages above carry the detail.
 `<kind>_lower` fn returning `list<SvgFundamental | HtmlFundamental | TermFundamental>`,
 which the renderer recurses (depth-limited) until only fundamentals remain — this is how
 user-declarable `@block(...) extends SvgBlock` (etc.) shapes plug in. A handful of blocks
-(terminal, card, timeline, tilemap, dopesheet, map, icons, math, code, table, list) are
-instead **special-cased in Rust** with stub WCL `lower`s, because their output (calendar
-math, ANSI grids, external-image crops, LaTeX, syntax highlighting, valid nested list
-HTML) isn't expressible in WCL. Everything deeper → the doc page or the source.
+(terminal, card, timeline, tilemap, dopesheet, map, wireframe widgets, icons, math, code,
+table, list) are instead **special-cased in Rust** with stub WCL `lower`s, because their
+output (calendar math, ANSI grids, external-image crops, LaTeX, syntax highlighting,
+measured widget layout, valid nested list HTML) isn't expressible in WCL. The wireframe
+`wf_*` family `extends SvgBlock`, so a widget is a diagram shape (placed by `x`/`y`,
+connectable by edges), not a page block. Everything deeper → the doc page or the source.
 
 | Feature | Rust | WCL stdlib | Doc page |
 |---|---|---|---|

@@ -104,6 +104,28 @@ fn diagram_becomes_a_referenced_svg_file() {
 }
 
 #[test]
+fn wireframe_in_diagram_becomes_a_referenced_svg() {
+    // A wireframe widget is a diagram shape, so it rides the diagram's
+    // static-SVG path: the page references the generated SVG and the widget
+    // text is in it.
+    let (_t, out) = build(
+        "page p {\n  diagram {\n    width = 280 height = 110\n    wf_window \"Settings\" {\n      wf_label \"Body text\"\n    }\n  }\n}\n",
+    );
+    let md = read(&out, "p.md");
+    assert!(
+        md.contains("![") && md.contains("](_wdoc/"),
+        "image ref present: {md}"
+    );
+    let svg = out.join("_wdoc/p-diagram-1.svg");
+    assert!(svg.is_file(), "diagram SVG written");
+    let svg_text = std::fs::read_to_string(&svg).expect("read svg");
+    assert!(
+        svg_text.contains(">Settings</text>") && svg_text.contains(">Body text</text>"),
+        "wireframe widget text not in the diagram SVG: {svg_text}"
+    );
+}
+
+#[test]
 fn frontmatter_block_becomes_yaml_header() {
     let (_t, out) = build(
         "page p {\n  @schemaless frontmatter {\n    title = \"Intro\"\n    tags = [\"overview\", \"api\"]\n    weight = 3\n  }\n  h1 \"Intro\"\n}\n",

@@ -115,6 +115,13 @@ pub(crate) fn collect_shape_positions(
             let (x, y, w, h) = map::map_bbox(block, parent_w, parent_h);
             record(block, (tx + x, ty + y, w, h), out);
         }
+        // A wireframe widget: `x`/`y` from anchors, size from the measured
+        // widget tree — mirror render_wireframe_shape so edges can target it
+        // and the viewBox fits it. (doc-free; size is theme-independent.)
+        kind if crate::wireframe::is_wireframe_kind(kind) => {
+            let (x, y, w, h) = crate::wireframe::wireframe_bbox(block, parent_w, parent_h);
+            record(block, (tx + x, ty + y, w, h), out);
+        }
         "container" => {
             let (x, y, w, h) = resolve_shape_bbox(block, "container", parent_w, parent_h)
                 .expect("container always resolves a bbox");
@@ -175,6 +182,12 @@ pub(crate) fn collect_shape_positions(
 /// text field, or returns `max(declared, needed)` so a multi-line
 /// label grows the shape rather than overflowing it.
 pub(crate) fn effective_dims(block: &Block<'_>) -> (f64, f64) {
+    // A wireframe widget is sized by its measured content, so a layout
+    // solver (`:layered` / `:force`) allocates a correct cell instead of
+    // the default 80×40. Measurement is doc-free (size is theme-independent).
+    if crate::wireframe::is_wireframe_kind(block.kind()) {
+        return crate::wireframe::measured_size(block);
+    }
     // A circle is sized by its diameter (it carries `r`, not
     // width/height), so a layout solver allocates a correct square
     // cell for it instead of the default 80×40.
@@ -307,6 +320,15 @@ pub(crate) fn render_shape(
         // special-cased to thread the `RenderCtx` through.
         "timeline" => {
             return Some(crate::timeline::render_timeline(
+                block, ctx, parent_w, parent_h,
+            ));
+        }
+        // The wireframe widgets (`wf_window`, `wf_button`, …) are special-
+        // cased like `card`: the whole family measures + lays out and emits
+        // one positioned `<g>`, so it returns directly (no `with_shape_icon`,
+        // which would clash with `wf_button`'s own `icon`).
+        kind if crate::wireframe::is_wireframe_kind(kind) => {
+            return Some(crate::wireframe::render_wireframe_shape(
                 block, ctx, parent_w, parent_h,
             ));
         }

@@ -6,11 +6,12 @@
 //! ([`InlinePatterns::render_markdown`](crate::inline::InlinePatterns::render_markdown)),
 //! so prose, emphasis and links resolve exactly as on the HTML / PDF paths.
 //!
-//! Block-level dispatch mirrors `pdf::collect::collect_block`: diagrams,
-//! terminals and wireframes render to a self-contained **static** SVG written
-//! to `_wdoc/` and referenced with `![](…)`; lists, tables, code, callouts,
-//! images and math map to native Markdown; videos are skipped (an online
-//! video leaves a link); everything else lowers to fundamentals.
+//! Block-level dispatch mirrors `pdf::collect::collect_block`: diagrams (and
+//! the wireframes / charts / timelines / maps nested in them) and terminals
+//! render to a self-contained **static** SVG written to `_wdoc/` and referenced
+//! with `![](…)`; lists, tables, code, callouts, images and math map to native
+//! Markdown; videos are skipped (an online video leaves a link); everything
+//! else lowers to fundamentals.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -27,8 +28,8 @@ use crate::render::{
 };
 use crate::terminal::ASSET_DIR;
 
-/// Render one page to a Markdown string, writing any diagram / terminal /
-/// wireframe SVGs into `<out_dir>/_wdoc/` as a side effect.
+/// Render one page to a Markdown string, writing any diagram / terminal SVGs
+/// into `<out_dir>/_wdoc/` as a side effect.
 pub(crate) fn emit_page(
     doc: &Document,
     page: &Block<'_>,
@@ -100,11 +101,6 @@ impl Emitter<'_> {
                 let svg = crate::terminal::render_terminal_pdf(self.doc, block, self.base_dir);
                 let rel = self.write_svg("terminal", &svg)?;
                 out.push(image_ref(&self.svg_alt(block, "terminal"), &rel));
-            }
-            k if crate::wireframe::is_wireframe_kind(k) => {
-                let svg = crate::wireframe::render_wireframe_svg(self.doc, block, self.patterns);
-                let rel = self.write_svg(k, &svg)?;
-                out.push(image_ref(&self.svg_alt(block, k), &rel));
             }
             "list" => out.push(self.list(block)),
             "table" => out.push(self.table(block)),
@@ -454,8 +450,8 @@ fn longest_backtick_run(s: &str) -> usize {
 }
 
 /// Ensure a standalone SVG carries the SVG namespace so it renders when
-/// referenced as an image file. Diagram SVGs already do; terminal /
-/// wireframe SVGs get it injected defensively if missing.
+/// referenced as an image file. Diagram SVGs already do; terminal SVGs get
+/// it injected defensively if missing.
 fn ensure_svg_namespace(svg: &str) -> String {
     if svg.contains("xmlns=") || !svg.trim_start().starts_with("<svg") {
         return svg.to_string();

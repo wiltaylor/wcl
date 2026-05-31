@@ -95,14 +95,6 @@ fn collect_block(
         });
         return;
     }
-    // Wireframe widgets render to one self-contained SVG in Rust (the same
-    // renderer the HTML path uses), embedded as an atomic block like a terminal.
-    if crate::wireframe::is_wireframe_kind(kind) {
-        out.push(BlockNode::Svg {
-            svg: crate::wireframe::render_wireframe_svg(doc, block, patterns),
-        });
-        return;
-    }
     // A page-level raster image: load the source bytes for embedding.
     if kind == "image" {
         if let Some(node) = collect_image(block, base_dir) {

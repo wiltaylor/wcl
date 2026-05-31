@@ -1,30 +1,56 @@
 // Wireframe UI widgets — windows, buttons, inputs, and controls for
-// mocking up interfaces. The whole family is special-cased in Rust
-// (`src/wireframe.rs`, like `terminal` / `map`): one renderer lays the
-// widget tree out and emits a single self-contained `<svg>`, shared by
-// the HTML path (wrapped in a `wdoc-wireframe` `<div>`) and the PDF
-// backend (the bare `<svg>` embedded). The Rust renderer walks the raw
-// blocks directly, so the `lower` functions below are inert stubs (they
-// satisfy the `Widget` interface but are never called) and the container
-// `@children(Widget)` declarations exist purely for schema validation.
+// mocking up interfaces. Each widget is a **diagram shape**: `Widget
+// extends SvgBlock`, so a `wf_*` block is a legal child of any `diagram`
+// / `container`, positioned with `x`/`y` (or anchors) and connectable by
+// edges via `connect_points` — exactly like `rect` / `circle` / `card`.
+//
+// The whole family is special-cased in Rust (`src/wireframe.rs`, like
+// `card` / `map`): one renderer measures the widget tree bottom-up and
+// emits a single positioned SVG `<g>`, dispatched from `render_shape`.
+// The Rust renderer walks the raw blocks directly, so the `lower`
+// functions below are inert stubs (they satisfy the `SvgBlock` interface
+// but are never called) and the container `@children(Widget)`
+// declarations exist purely for schema validation. A widget's size comes
+// from its measured content; `x`/`y`/anchors only position it.
 //
 // Theming follows the terminal pattern (read in Rust): default text and
-// icons paint with `currentColor`, and a widget's `class` list is read
-// for `background` / `color` / `border` overrides baked onto its box —
-// so a custom class (e.g. the example's `primary`) still recolours.
+// icons paint with the resolved UI-theme palette baked to concrete hex,
+// and a widget's `class` list is read for `background` / `color` /
+// `border` overrides baked onto its box — so a custom class (e.g. the
+// example's `primary`) still recolours.
 
-// A wireframe widget. Extends WdocBlock so a widget is a legal `page`
-// child AND a legal child of any container widget. The extra fields are
-// layout hints shared by every widget.
-interface Widget extends WdocBlock {
-  @doc("Optional HTML id.")
+// A wireframe widget. Extends SvgBlock so a widget is a legal diagram /
+// container child AND a legal child of any container widget. The extra
+// fields are the diagram placement geometry shared by every widget plus
+// the per-element theming hints.
+interface Widget extends SvgBlock {
+  @doc("Optional HTML id (also the edge-connection / anchor name).")
   id:       identifier?
   @doc("Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides).")
   class:    list<utf8>?
-  @doc("Explicit CSS width, e.g. `\"12rem\"` or `\"100%\"`.")
-  width:    utf8?           // explicit CSS width, e.g. "12rem" / "100%"
-  @doc("When `true`, dims the control (adds a `wf-disabled` class).")
+  @doc("When `true`, dims the control (renders at reduced opacity).")
   disabled: bool?
+  // Diagram placement — the widget is sized by its measured content, so
+  // `x`/`y` (or anchors) only position the box; `width`/`height` are
+  // advisory.
+  @doc("Top-left x placement in the diagram (or use anchors).")
+  x = 0.0
+  @doc("Top-left y placement in the diagram (or use anchors).")
+  y = 0.0
+  @doc("Advisory box width (the widget is normally content-measured).")
+  width:  f64?
+  @doc("Advisory box height (the widget is normally content-measured).")
+  height: f64?
+  @doc("Fractional anchor (0–1) pinning the left edge to the parent box.")
+  anchor_left:   f64?
+  @doc("Fractional anchor (0–1) pinning the right edge to the parent box.")
+  anchor_right:  f64?
+  @doc("Fractional anchor (0–1) pinning the top edge to the parent box.")
+  anchor_top:    f64?
+  @doc("Fractional anchor (0–1) pinning the bottom edge to the parent box.")
+  anchor_bottom: f64?
+  @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
+  connect_points: list<AnchorSide>?
   // Per-element UI-theme override (read on the root widget): `theme` names a
   // `theme` block, `accent` a hue, `mode` is `:dark` / `:light`. Each unset
   // field falls back to the site's `ui_*` theme (then the document theme).
@@ -34,8 +60,16 @@ interface Widget extends WdocBlock {
   accent:   symbol?
   @doc("Per-element mode override: `:dark` or `:light` (falls back to the site / document theme).")
   mode:     symbol?
-  lower:    fn(&Widget) -> list<HtmlFundamental>
+  lower:    fn(&Widget) -> list<SvgFundamental>
 }
+
+// Shared geometry + theming fields, repeated per type (the schema lists a
+// type's own fields). Every `wf_*` type carries this block verbatim:
+//   id: identifier?  class: list<utf8>?  disabled: bool?
+//   x = 0.0  y = 0.0  width: f64?  height: f64?
+//   anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+//   connect_points: list<AnchorSide>?
+//   theme: symbol?  accent: symbol?  mode: symbol?
 
 // ── Leaf widgets ──────────────────────────────────────────────────────
 
@@ -43,9 +77,12 @@ interface Widget extends WdocBlock {
 type WfLabel extends Widget {
   @doc("The label text (the inline label).")
   @inline(0) text: utf8
-  id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  id: identifier?  class: list<utf8>?  disabled: bool?
+  x = 0.0  y = 0.0  width: f64?  height: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
-  lower = fn(l: WfLabel) -> list<HtmlFundamental> []
+  lower = fn(l: WfLabel) -> list<SvgFundamental> []
 }
 
 @block("wf_button")
@@ -54,9 +91,12 @@ type WfButton extends Widget {
   @inline(0) text: utf8
   @doc("Optional leading glyph as `pack.name`, e.g. `\"lucide.check\"`.")
   icon: utf8?                  // optional leading glyph, e.g. "lucide.check"
-  id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  id: identifier?  class: list<utf8>?  disabled: bool?
+  x = 0.0  y = 0.0  width: f64?  height: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
-  lower = fn(b: WfButton) -> list<HtmlFundamental> []
+  lower = fn(b: WfButton) -> list<SvgFundamental> []
 }
 
 @block("wf_input")
@@ -65,18 +105,24 @@ type WfInput extends Widget {
   @inline(0) placeholder: utf8   // greyed placeholder text
   @doc("Filled value (renders solid, replacing the placeholder).")
   value: utf8?                   // filled value (renders solid, no placeholder)
-  id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  id: identifier?  class: list<utf8>?  disabled: bool?
+  x = 0.0  y = 0.0  width: f64?  height: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
-  lower = fn(i: WfInput) -> list<HtmlFundamental> []
+  lower = fn(i: WfInput) -> list<SvgFundamental> []
 }
 
 @block("wf_dropdown")
 type WfDropdown extends Widget {
   @doc("The selected option label (the inline label).")
   @inline(0) text: utf8          // currently-selected option label
-  id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  id: identifier?  class: list<utf8>?  disabled: bool?
+  x = 0.0  y = 0.0  width: f64?  height: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
-  lower = fn(d: WfDropdown) -> list<HtmlFundamental> []
+  lower = fn(d: WfDropdown) -> list<SvgFundamental> []
 }
 
 @block("wf_checkbox")
@@ -85,9 +131,12 @@ type WfCheckbox extends Widget {
   @inline(0) label: utf8
   @doc("On/off state; `true` fills the box with a tick.")
   checked: bool?
-  id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  id: identifier?  class: list<utf8>?  disabled: bool?
+  x = 0.0  y = 0.0  width: f64?  height: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
-  lower = fn(c: WfCheckbox) -> list<HtmlFundamental> []
+  lower = fn(c: WfCheckbox) -> list<SvgFundamental> []
 }
 
 @block("wf_radio")
@@ -96,9 +145,12 @@ type WfRadio extends Widget {
   @inline(0) label: utf8
   @doc("Whether this option is chosen.")
   selected: bool?
-  id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  id: identifier?  class: list<utf8>?  disabled: bool?
+  x = 0.0  y = 0.0  width: f64?  height: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
-  lower = fn(r: WfRadio) -> list<HtmlFundamental> []
+  lower = fn(r: WfRadio) -> list<SvgFundamental> []
 }
 
 @block("wf_toggle")
@@ -107,14 +159,18 @@ type WfToggle extends Widget {
   @inline(0) label: utf8?        // optional trailing caption
   @doc("Switch state; `true` slides the knob across.")
   on: bool?
-  id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  id: identifier?  class: list<utf8>?  disabled: bool?
+  x = 0.0  y = 0.0  width: f64?  height: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
-  lower = fn(t: WfToggle) -> list<HtmlFundamental> []
+  lower = fn(t: WfToggle) -> list<SvgFundamental> []
 }
 
 // ── Container widgets ─────────────────────────────────────────────────
-// Each declares `@children(Widget)` and marks the child position with an
-// `HtmlFundamental::Children {}` slot the renderer fills.
+// Each declares `@children(Widget)`; the Rust renderer measures and lays
+// the children out internally (their `x`/`y` are ignored — only the root
+// widget's placement geometry positions the whole group in the diagram).
 
 @block("wf_window")
 type WfWindow extends Widget {
@@ -122,22 +178,28 @@ type WfWindow extends Widget {
   @inline(0) title: utf8
   @doc("Show the titlebar dots + close glyph (default `true`).")
   controls: bool?                // titlebar dots + close glyph (default true)
-  id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  id: identifier?  class: list<utf8>?  disabled: bool?
+  x = 0.0  y = 0.0  width: f64?  height: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
   @doc("Any `Widget`s, stacked vertically.")
   @children(Widget) children: list<Widget>
-  lower = fn(w: WfWindow) -> list<HtmlFundamental> []
+  lower = fn(w: WfWindow) -> list<SvgFundamental> []
 }
 
 @block("wf_panel")
 type WfPanel extends Widget {
   @doc("Optional group caption.")
   title: utf8?                   // optional group caption
-  id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  id: identifier?  class: list<utf8>?  disabled: bool?
+  x = 0.0  y = 0.0  width: f64?  height: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
   @doc("Any `Widget`s, stacked vertically.")
   @children(Widget) children: list<Widget>
-  lower = fn(p: WfPanel) -> list<HtmlFundamental> []
+  lower = fn(p: WfPanel) -> list<SvgFundamental> []
 }
 
 // Layout containers: thin wrappers that arrange their children. Drop one
@@ -145,41 +207,38 @@ type WfPanel extends Widget {
 
 @block("wf_column")
 type WfColumn extends Widget {
-  id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  id: identifier?  class: list<utf8>?  disabled: bool?
+  x = 0.0  y = 0.0  width: f64?  height: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
   @doc("Any `Widget`s, stacked top-to-bottom.")
   @children(Widget) children: list<Widget>
-  lower = fn(c: WfColumn) -> list<HtmlFundamental> []
+  lower = fn(c: WfColumn) -> list<SvgFundamental> []
 }
 
 @block("wf_row")
 type WfRow extends Widget {
-  id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  id: identifier?  class: list<utf8>?  disabled: bool?
+  x = 0.0  y = 0.0  width: f64?  height: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
   @doc("Any `Widget`s, laid out left-to-right.")
   @children(Widget) children: list<Widget>
-  lower = fn(r: WfRow) -> list<HtmlFundamental> []
+  lower = fn(r: WfRow) -> list<SvgFundamental> []
 }
 
 @block("wf_grid")
 type WfGrid extends Widget {
   @doc("Number of equal-width columns; children flow across the rows.")
   columns: i64                   // number of equal-width columns
-  id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
+  id: identifier?  class: list<utf8>?  disabled: bool?
+  x = 0.0  y = 0.0  width: f64?  height: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
   @doc("Any `Widget`s, flowed across the grid.")
   @children(Widget) children: list<Widget>
-  lower = fn(g: WfGrid) -> list<HtmlFundamental> []
-}
-
-// The widgets now render to one self-contained `<svg>` in Rust, so this
-// stylesheet is just the wrapper: it makes the `<div>` shrink-wrap the
-// SVG and keeps the SVG responsive. Default text paints with
-// `currentColor` (set inline on the SVG `<text>`), so it follows the
-// page's `color` and the book template's theme toggle for free.
-stylesheet "wdoc-wireframe" {
-  css = <<CSS
-    .wdoc-wireframe { display: inline-block; max-width: 100%; margin: 1rem 0; }
-    .wdoc-wireframe-svg { display: block; max-width: 100%; height: auto; }
-    CSS
+  lower = fn(g: WfGrid) -> list<SvgFundamental> []
 }

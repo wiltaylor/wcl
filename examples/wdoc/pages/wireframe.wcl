@@ -2,40 +2,59 @@ page wireframe { sites = [:showcase]
   h1 "Wireframe widgets"
 
   text {
-    span "Wireframe widgets mock up a UI from composable blocks. Windows and panels hold other widgets, and layout blocks (`wf_row` / `wf_column` / `wf_grid`) arrange them. Back to [the overview](overview)."
+    span "Wireframe widgets mock up a UI from composable blocks. Each `wf_*` is a **diagram shape**, so it lives inside a `diagram` — windows and panels hold other widgets, layout blocks (`wf_row` / `wf_column` / `wf_grid`) arrange them, and you place the whole thing with `x` / `y` (or anchors) and connect widgets with edges. Back to [the overview](overview)."
   }
 
   h2 "A sign-in window"
 
-  // A `wf_window` is a container: its child widgets render in its body
-  // (stacked vertically by default). Drop a `wf_row` / `wf_grid` to
-  // arrange controls differently, and a `wf_panel` to group them.
-  wf_window "Sign in" {
-    width = "24rem"
+  // A `wf_window` is a container shape: its child widgets render in its
+  // body (stacked vertically by default). Drop a `wf_row` / `wf_grid` to
+  // arrange controls differently, and a `wf_panel` to group them. The
+  // window is sized by its content; the diagram just frames it.
+  diagram {
+    width = 300  height = 430
+    wf_window "Sign in" {
+      wf_label "Email"
+      wf_input "you@example.com"
 
-    wf_label "Email"
-    wf_input "you@example.com"
+      wf_label "Account type"
+      wf_dropdown "Personal"
 
-    wf_label "Account type"
-    wf_dropdown "Personal"
+      wf_panel {
+        title = "Billing plan"
+        wf_row {
+          wf_radio "Monthly" { selected = true }
+          wf_radio "Annual"
+        }
+      }
 
-    wf_panel {
-      title = "Billing plan"
-      wf_row {
-        wf_radio "Monthly" { selected = true }
-        wf_radio "Annual"
+      wf_checkbox "Remember me" { checked = true }
+      wf_toggle "Email notifications" { on = true }
+
+      // A two-column grid of footer buttons.
+      wf_grid {
+        columns = 2
+        wf_button "Cancel"
+        wf_button "Sign in" { icon = "lucide.check" }
       }
     }
+  }
 
-    wf_checkbox "Remember me" { checked = true }
-    wf_toggle "Email notifications" { on = true }
+  h2 "Placing widgets and connecting them"
 
-    // A two-column grid of footer buttons.
-    wf_grid {
-      columns = 2
-      wf_button "Cancel"
-      wf_button "Sign in" { icon = "lucide.check" }
+  text {
+    span "Because widgets are diagram shapes, you place them with `x` / `y` and draw edges between them by `id` — the same way you connect any two shapes. Here a launcher button flows to the window it opens."
+  }
+
+  diagram {
+    width = 360  height = 200
+    wf_button "Open settings" { id = launch  x = 20.0  y = 80.0 }
+    wf_window "Settings" {
+      id = win  x = 180.0  y = 20.0
+      wf_checkbox "Dark mode" { checked = true }
+      wf_button "Close"
     }
+    launch -> win
   }
 
   h2 "A separate UI theme"
@@ -44,15 +63,18 @@ page wireframe { sites = [:showcase]
     span "Wireframes mock up an application, so they follow a UI theme that's separate from the document's. Set it per site (`site { ui_theme = :gruvbox  ui_mode = :light }`), or override it on any widget with its own `theme` / `accent` / `mode` — this window is forced to Gruvbox light regardless of the page theme."
   }
 
-  wf_window "Gruvbox light" {
-    theme = :gruvbox
-    mode  = :light
-    wf_label "A self-contained app theme"
-    wf_row {
-      wf_checkbox "Enabled" { checked = true }
-      wf_toggle "Sync" { on = true }
+  diagram {
+    width = 300  height = 130
+    wf_window "Gruvbox light" {
+      theme = :gruvbox
+      mode  = :light
+      wf_label "A self-contained app theme"
+      wf_row {
+        wf_checkbox "Enabled" { checked = true }
+        wf_toggle "Sync" { on = true }
+      }
+      wf_button "Save"
     }
-    wf_button "Save"
   }
 
   h2 "Per-widget class overrides"
@@ -61,16 +83,19 @@ page wireframe { sites = [:showcase]
     span "A widget's `class` background / color / border are read and baked onto its box and label — add one to a single instance (the primary button carries `class = [\"primary\"]`)."
   }
 
-  wf_row {
-    wf_button "Default"
-    wf_button "Primary" { class = ["primary"] }
-    wf_button "Disabled" { disabled = true }
+  diagram {
+    width = 300  height = 44
+    wf_row {
+      wf_button "Default"
+      wf_button "Primary" { class = ["primary"] }
+      wf_button "Disabled" { disabled = true }
+    }
   }
 }
 
-// Recolour the primary button through the class system. Because this
-// rule is emitted after the bundled wireframe stylesheet, it wins by
-// cascade; the `dark` / `light` blocks adapt it to the reader's theme.
+// Recolour the primary button through the class system. The widget reads
+// its class `background` / `color` / `border` and bakes them onto the box;
+// the `dark` / `light` blocks adapt it to the reader's theme.
 class primary {
   background = "#1f6feb"
   color      = "#ffffff"

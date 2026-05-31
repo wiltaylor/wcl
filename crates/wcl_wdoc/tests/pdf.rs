@@ -303,7 +303,7 @@ fn renders_wireframe_window_as_svg() {
     let src = tmp.path().join("wf.wcl");
     write_fixture(
         &src,
-        "page w {\n  wf_window \"Sign in\" {\n    wf_input \"you@example.com\"\n    wf_dropdown \"Personal\"\n    wf_row {\n      wf_checkbox \"Remember\" { checked = true }\n      wf_radio \"Annual\"\n    }\n    wf_toggle \"Notifications\" { on = true }\n    wf_grid {\n      columns = 2\n      wf_button \"Cancel\"\n      wf_button \"OK\" { icon = \"lucide.check\" }\n    }\n  }\n}\n",
+        "page w {\n  diagram { width = 320  height = 440\n  wf_window \"Sign in\" {\n    wf_input \"you@example.com\"\n    wf_dropdown \"Personal\"\n    wf_row {\n      wf_checkbox \"Remember\" { checked = true }\n      wf_radio \"Annual\"\n    }\n    wf_toggle \"Notifications\" { on = true }\n    wf_grid {\n      columns = 2\n      wf_button \"Cancel\"\n      wf_button \"OK\" { icon = \"lucide.check\" }\n    }\n  }\n  }\n}\n",
     );
     let out = TempDir::new().expect("mkdir out");
     assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
@@ -324,7 +324,7 @@ fn renders_wireframe_with_ui_theme_override() {
     let src = tmp.path().join("uiwf.wcl");
     write_fixture(
         &src,
-        "page w {\n  wf_window \"App\" { theme = :gruvbox  mode = :light\n    wf_button \"OK\"\n    wf_toggle \"On\" { on = true }\n  }\n}\n",
+        "page w {\n  diagram { width = 200  height = 120\n  wf_window \"App\" { theme = :gruvbox  mode = :light\n    wf_button \"OK\"\n    wf_toggle \"On\" { on = true }\n  }\n  }\n}\n",
     );
     let out = TempDir::new().expect("mkdir out");
     assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
@@ -338,11 +338,14 @@ fn renders_wireframe_with_ui_theme_override() {
 
 #[test]
 fn renders_bare_wireframe_widget() {
-    // A top-level bare widget (no container) is a valid page child and
-    // renders on its own.
+    // A bare widget (no container) is a valid diagram shape and renders on
+    // its own, embedded via the diagram's SVG.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("bare.wcl");
-    write_fixture(&src, "page b {\n  wf_button \"Click me\"\n}\n");
+    write_fixture(
+        &src,
+        "page b {\n  diagram { width = 120  height = 40\n  wf_button \"Click me\"\n  }\n}\n",
+    );
     let out = TempDir::new().expect("mkdir out");
     assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
     let bytes = std::fs::read(out.path().join("bare.pdf")).expect("read pdf");

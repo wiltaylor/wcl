@@ -1,36 +1,36 @@
-//! Wireframe UI mock-ups rendered to a self-contained SVG.
+//! Wireframe UI mock-ups rendered as positioned diagram shapes.
 //!
 //! Wireframe widgets (`wf_window`, `wf_button`, `wf_panel`, the controls, and
 //! the `wf_row`/`wf_column`/`wf_grid` layout containers) mock up an interface
-//! from composable blocks. They render to **one self-contained `<svg>`** in
-//! Rust — used by both output paths: the HTML path wraps it in a themed
-//! `<div class="wdoc-wireframe">` (like `terminal.rs`), and the PDF path embeds
-//! the bare `<svg>` through the usual `SvgEmbedder`. Doing the layout in Rust
-//! (rather than the old HTML/CSS flexbox) gives one consistent look across HTML
-//! and PDF, and lets the PDF backend render wireframes at all.
+//! from composable blocks. Each widget `extends SvgBlock`, so it is a **diagram
+//! shape**: a legal child of any `diagram` / `container`, placed with `x`/`y`
+//! (or anchors) and connectable by edges. Like `card` / `map`, the family is
+//! special-cased in the renderer — [`render_wireframe_shape`] measures the
+//! widget tree bottom-up and emits a single positioned SVG `<g>`, dispatched
+//! from `render_shape` (and the same module sizes the widget for the diagram's
+//! layout solvers via [`measured_size`] / [`wireframe_bbox`]).
 //!
 //! The renderer walks the **raw block tree** — reading fields directly and
 //! recursing into container children via `block.blocks()` — so it never
-//! depends on the WCL `lower` (now a stub) or the HTML `Children {}` splice.
+//! depends on the WCL `lower` (now a stub). A widget's size is its measured
+//! content; `x`/`y`/anchors only position the group inside the diagram.
 //!
 //! Theming follows the terminal pattern: neutral colours are the document's
 //! resolved theme palette **roles** (`bg_alt` surface, `overlay` titlebar,
 //! `bg_inset` controls, `border`, `fg`/`fg_muted` text, the site `accent` for
-//! active states), baked into the SVG as concrete hex — so a wireframe is a
-//! self-contained themed panel on any page, and the PDF embed reflects the
-//! theme too (no `currentColor`, which the embedder would rewrite to the
-//! document fg). A widget's own `class` `background`/`color`/`border` overrides
-//! its box fill / text / border. The few glyphs (chevron, check, close ✕, dots)
-//! are native SVG shapes in baked colours, so there's no icon-sprite dependency
-//! (which wouldn't survive the PDF embed). The baked dark palette means
-//! custom-class dark/light adaptation is out of scope, matching the terminal.
+//! active states), baked into the SVG as concrete hex — so a wireframe reflects
+//! the theme on any output (HTML or PDF) without `currentColor`. A widget's own
+//! `class` `background`/`color`/`border` overrides its box fill / text / border.
+//! The few glyphs (chevron, check, close ✕, dots) are native SVG shapes in
+//! baked colours, so there's no icon-sprite dependency. Measurement is
+//! theme-independent (the only `doc` use is `theme_of`, which feeds emission,
+//! not size), so the layout/collect paths measure with no `doc` at all.
 
 use wcl_lang::{Block, Document};
 
-use crate::inline::InlinePatterns;
 use crate::render::{
-    ThemeRoles, escape_html, field_bool, field_i64, field_id, field_symbol, field_utf8,
-    field_utf8_list, label_string, resolve_roles,
+    RenderCtx, ThemeRoles, escape_html, field_bool, field_i64, field_symbol, field_utf8,
+    field_utf8_list, label_string, resolve_rect_box, resolve_roles,
 };
 
 // ── Geometry (px, ported from the wdoc-wireframe CSS rem values) ─────
@@ -52,57 +52,57 @@ const TRACK_W: f64 = 35.0; // toggle track (2.2rem)
 const TRACK_H: f64 = 19.0; // toggle track (1.2rem)
 const WIN_MIN_W: f64 = 256.0; // window min-width (16rem)
 const ICON: f64 = 14.0;
-const MARGIN: f64 = 1.0; // SVG margin so 1px strokes aren't clipped
 
 const SANS: &str = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
 // ── Public entry points ─────────────────────────────────────────────
 
-/// Render a wireframe widget tree to an HTML fragment: the self-contained
-/// `<svg>` wrapped in a `wdoc-wireframe` `<div>` carrying the block's `class`
-/// list and `id`.
-pub(crate) fn render_wireframe(
-    doc: &Document,
+/// Render a wireframe widget as a positioned SVG `<g>` inside a diagram —
+/// the diagram-shape entry point, dispatched from `render_shape` (analogous
+/// to `render_card`). The box is positioned via `resolve_rect_box` (so `x`/`y`
+/// and anchors work like any shape), but the **size is the measured content**
+/// — a declared `width`/`height` is advisory only. Neutral colours are baked
+/// from the resolved UI/application theme — the current site's `ui_*` theme,
+/// overridden per-element by the root widget's own `theme`/`accent`/`mode`.
+pub(crate) fn render_wireframe_shape(
     block: &Block<'_>,
-    patterns: &InlinePatterns,
-) -> String {
-    let mut classes = vec!["wdoc-wireframe".to_string()];
-    classes.extend(field_utf8_list(block, "class"));
-    let class_attr = classes.join(" ");
-    let id_attr = field_id(block, "id")
-        .map(|id| format!(" id=\"{}\"", escape_html(&id)))
-        .unwrap_or_default();
-    let svg = render_wireframe_svg(doc, block, patterns);
-    format!("<div class=\"{class_attr}\"{id_attr}>{svg}</div>")
-}
-
-/// Render a wireframe widget tree to a bare, self-contained `<svg>` (the PDF
-/// path embeds this directly; the HTML path wraps it). Neutral colours are
-/// baked from the resolved UI/application theme — the current site's `ui_*`
-/// theme, overridden per-element by the root widget's own `theme`/`accent`/
-/// `mode` — so the widget is a self-contained themed panel on either output.
-pub(crate) fn render_wireframe_svg(
-    doc: &Document,
-    block: &Block<'_>,
-    patterns: &InlinePatterns,
+    ctx: RenderCtx<'_>,
+    parent_w: f64,
+    parent_h: f64,
 ) -> String {
     // Per-element override (root widget) layered over the site UI theme.
-    let base = patterns.ui_theme();
+    let base = ctx.patterns.ui_theme();
     let theme = field_symbol(block, "theme").unwrap_or(base.theme);
     let accent = field_symbol(block, "accent").unwrap_or(base.accent);
     let mode = field_symbol(block, "mode").unwrap_or(base.mode);
-    let roles = resolve_roles(doc, &theme, &accent, &mode);
-    let w = build(doc, block);
-    let body_w = w.w.max(1.0);
-    let body_h = w.h.max(1.0);
+    let roles = resolve_roles(ctx.doc, &theme, &accent, &mode);
+    let (x, y, _, _) = resolve_rect_box(block, parent_w, parent_h);
+    let w = build(Some(ctx.doc), block);
     let mut body = String::new();
-    emit(&w, MARGIN, MARGIN, &roles, &mut body);
-    let sw = (body_w + 2.0 * MARGIN).ceil();
-    let sh = (body_h + 2.0 * MARGIN).ceil();
-    format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"wdoc-wireframe-svg\" \
-         width=\"{sw:.0}\" height=\"{sh:.0}\" viewBox=\"0 0 {sw:.0} {sh:.0}\">{body}</svg>",
-    )
+    emit(&w, 0.0, 0.0, &roles, &mut body);
+    format!("<g transform=\"translate({x:.2} {y:.2})\">{body}</g>")
+}
+
+/// The measured `(width, height)` of a wireframe widget — `doc`-free, because
+/// a widget's size depends only on its text content + structure, not its theme.
+/// Used by the diagram layout solvers (`effective_dims`) and the collect pass.
+pub(crate) fn measured_size(block: &Block<'_>) -> (f64, f64) {
+    let w = build(None, block);
+    (w.w.max(1.0), w.h.max(1.0))
+}
+
+/// A wireframe widget's absolute bounding box for the diagram collect pass:
+/// `x`/`y` from `resolve_rect_box`, size from the measured content. Mirrors
+/// `render_wireframe_shape`'s geometry so edges + the viewBox fit agree with
+/// what's drawn.
+pub(crate) fn wireframe_bbox(
+    block: &Block<'_>,
+    parent_w: f64,
+    parent_h: f64,
+) -> (f64, f64, f64, f64) {
+    let (x, y, _, _) = resolve_rect_box(block, parent_w, parent_h);
+    let (w, h) = measured_size(block);
+    (x, y, w, h)
 }
 
 /// Is `kind` a wireframe widget block (and thus rendered by this module)?
@@ -199,9 +199,10 @@ enum Kind {
 
 // ── Build (read fields + measure, bottom-up) ─────────────────────────
 
-fn build(doc: &Document, block: &Block<'_>) -> Widget {
+fn build(doc: Option<&Document>, block: &Block<'_>) -> Widget {
     let disabled = field_bool(block, "disabled").unwrap_or(false);
-    let theme = theme_of(doc, block);
+    // Theme feeds emission, not size — the measure-only path passes `None`.
+    let theme = doc.map(|d| theme_of(d, block)).unwrap_or_default();
     let kind = block.kind();
     match kind {
         "wf_label" => {
@@ -335,8 +336,9 @@ fn sized(kind: Kind, w: f64, h: f64, disabled: bool) -> Widget {
     }
 }
 
-/// Build every wireframe child of a container, in source order.
-fn child_widgets(doc: &Document, block: &Block<'_>) -> Vec<Widget> {
+/// Build every wireframe child of a container, in source order. `doc` is
+/// `None` on the measure-only path (size is theme-independent).
+fn child_widgets(doc: Option<&Document>, block: &Block<'_>) -> Vec<Widget> {
     block
         .blocks()
         .filter(|b| is_wireframe_kind(b.kind()))

@@ -5132,11 +5132,15 @@ page index {
     );
 }
 
-/// Render a single-page wireframe fixture and return its HTML.
+/// Render a single-page wireframe fixture — the widgets wrapped in a
+/// `diagram`, since `wf_*` blocks are diagram shapes — and return its HTML.
 fn wireframe_html(body: &str) -> String {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("wf.wcl");
-    write_fixture(&src, format!("page index {{\n{body}\n}}\n"));
+    write_fixture(
+        &src,
+        format!("page index {{\n  diagram {{ width = 800  height = 600\n{body}\n  }}\n}}\n"),
+    );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     std::fs::read_to_string(out.path().join("index.html")).expect("read")
@@ -5144,17 +5148,12 @@ fn wireframe_html(body: &str) -> String {
 
 #[test]
 fn wireframe_window_nests_child_widgets() {
-    // The whole widget tree renders to one self-contained `<svg>` in a
-    // single `wdoc-wireframe` `<div>`: the window title and its nested
-    // button both appear as `<text>` inside that one SVG.
+    // The widget tree renders inside the diagram's `<svg>`: the window title
+    // and its nested button both appear as `<text>`.
     let html = wireframe_html("  wf_window \"Box\" {\n    wf_button \"OK\" {}\n  }");
-    let wf = html
-        .split("<div class=\"wdoc-wireframe\"")
-        .nth(1)
-        .expect("wireframe present");
     assert!(
-        wf.contains("<svg") && wf.contains(">Box</text>") && wf.contains(">OK</text>"),
-        "window title + nested button not both in the SVG:\n{html}"
+        html.contains("<svg") && html.contains(">Box</text>") && html.contains(">OK</text>"),
+        "window title + nested button not both in the diagram SVG:\n{html}"
     );
 }
 
@@ -5173,16 +5172,11 @@ fn wireframe_children_slot_splices_in_source_order() {
 #[test]
 fn wireframe_nested_containers_resolve_recursively() {
     // window → row → button: the renderer recurses into both containers
-    // (laid out in Rust), so the deeply-nested button still draws into the
-    // single SVG.
+    // (laid out in Rust), so the deeply-nested button still draws.
     let html =
         wireframe_html("  wf_window \"Box\" {\n    wf_row {\n      wf_button \"X\" {}\n    }\n  }");
-    let wf = html
-        .split("<div class=\"wdoc-wireframe\"")
-        .nth(1)
-        .expect("wireframe present");
     assert!(
-        wf.contains(">Box</text>") && wf.contains(">X</text>"),
+        html.contains(">Box</text>") && html.contains(">X</text>"),
         "nested row/button not resolved recursively:\n{html}"
     );
 }
@@ -5193,7 +5187,7 @@ fn wireframe_state_classes_and_icons() {
     // placeholder input renders italic. Default theme is Nord → accent blue
     // (#81a1c1): the checked box and the radio dot fill with it.
     let html = wireframe_html(
-        "  wf_checkbox \"R\" { checked = true }\n  wf_radio \"S\" { selected = true }\n  wf_input \"ph\" {}",
+        "  wf_checkbox \"R\" { checked = true }\n  wf_radio \"S\" { selected = true  y = 40.0 }\n  wf_input \"ph\" { y = 80.0 }",
     );
     // The checked box + selected radio dot fill with the resolved accent.
     assert!(
@@ -5212,23 +5206,18 @@ fn wireframe_state_classes_and_icons() {
 }
 
 #[test]
-fn wireframe_class_field_is_threaded_and_overrides_by_cascade() {
-    // A custom class on a widget reaches the wrapping `<div>`, and its
-    // `background` is read in Rust and baked onto the widget's box fill
-    // (the terminal-style theming path).
+fn wireframe_class_field_bakes_background_onto_box() {
+    // A custom class on a widget has its `background` read in Rust and baked
+    // onto the widget's box fill (the terminal-style theming path).
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("wf.wcl");
     write_fixture(
         &src,
-        "page index { wf_button \"P\" { class = [\"primary\"] } }\nclass primary { background = \"#1f6feb\" }\n",
+        "page index {\n  diagram { width = 200  height = 60\n    wf_button \"P\" { class = [\"primary\"] }\n  }\n}\nclass primary { background = \"#1f6feb\" }\n",
     );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
-    assert!(
-        html.contains("<div class=\"wdoc-wireframe primary\""),
-        "class not threaded onto the wrapper div:\n{html}"
-    );
     assert!(
         html.contains("fill=\"#1f6feb\""),
         "class background not baked onto the button box:\n{html}"
@@ -5236,19 +5225,87 @@ fn wireframe_class_field_is_threaded_and_overrides_by_cascade() {
 }
 
 #[test]
-fn wireframe_widgets_render_as_separate_svgs() {
-    // Each top-level widget renders to its own `wdoc-wireframe` SVG; a
-    // button and a label both draw their text. (`width` is accepted by the
-    // schema but is a mock-up hint the SVG layout currently ignores.)
-    let html = wireframe_html("  wf_button \"W\" { width = \"22rem\" }\n  wf_label \"L\" {}");
-    assert_eq!(
-        html.matches("<div class=\"wdoc-wireframe\"").count(),
-        2,
-        "expected two separate wireframe SVGs:\n{html}"
+fn wireframe_widgets_share_the_diagram_svg() {
+    // Two widgets in one diagram render into the diagram's SVG — there's no
+    // per-widget `wdoc-wireframe` wrapper any more; both draw their text.
+    let html = wireframe_html(
+        "  wf_button \"W\" { x = 10.0  y = 10.0 }\n  wf_label \"L\" { x = 10.0  y = 60.0 }",
+    );
+    assert!(
+        !html.contains("wdoc-wireframe"),
+        "widgets should not emit the old page-level wrapper:\n{html}"
     );
     assert!(
         html.contains(">W</text>") && html.contains(">L</text>"),
         "button / label text missing:\n{html}"
+    );
+}
+
+#[test]
+fn wireframe_positioned_by_xy() {
+    // `x` / `y` place the widget's group via a translate, like any shape.
+    let html = wireframe_html("  wf_window \"A\" { x = 50.0  y = 20.0\n    wf_label \"hi\"\n  }");
+    assert!(
+        html.contains("translate(50.00 20.00)"),
+        "wireframe not positioned by an x/y translate:\n{html}"
+    );
+}
+
+#[test]
+fn wireframe_is_edge_target() {
+    // A wireframe contributes a bbox to the collect pass, so an edge to it by
+    // `id` resolves and draws with the arrow marker.
+    let html = wireframe_html(
+        "  rect { id = a  x = 10.0  y = 10.0  width = 40.0  height = 30.0 }\n  wf_window \"W\" { id = win  x = 200.0  y = 10.0\n    wf_label \"hi\"\n  }\n  a -> win",
+    );
+    assert!(
+        html.contains("wdoc-arrow"),
+        "edge to a wireframe target not drawn:\n{html}"
+    );
+}
+
+#[test]
+fn wireframe_grows_diagram_viewbox() {
+    // A widget placed far out is collected, so the fitted viewBox shifts to
+    // include it (a missing bbox would fall back to a `0 0 …` origin).
+    let html = wireframe_html("  wf_label \"far\" { x = 500.0  y = 5.0 }");
+    let vb = html
+        .split("viewBox=\"")
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .expect("viewBox present");
+    let min_x: f64 = vb
+        .split_whitespace()
+        .next()
+        .and_then(|s| s.parse().ok())
+        .expect("viewBox min-x");
+    assert!(
+        min_x >= 400.0,
+        "viewBox min-x {min_x} suggests the far widget wasn't collected:\n{html}"
+    );
+}
+
+#[test]
+fn wireframe_in_layered_layout_sized_by_content() {
+    // Under `:layered`, widgets are sized by their measured content (via
+    // `effective_dims`) and flowed by the solver; both render and the edge
+    // between them draws.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("wf.wcl");
+    write_fixture(
+        &src,
+        "page index {\n  diagram { width = 400  height = 300  layout = :layered\n    wf_button \"First step here\" { id = a }\n    wf_button \"Second\" { id = b }\n    a -> b\n  }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains(">First step here</text>") && html.contains(">Second</text>"),
+        "layered wireframes not both rendered:\n{html}"
+    );
+    assert!(
+        html.contains("wdoc-arrow"),
+        "layered edge between wireframes not drawn:\n{html}"
     );
 }
 
@@ -5285,7 +5342,7 @@ fn wireframe_site_ui_theme_decouples_from_doc_theme() {
     let src = tmp.path().join("ui.wcl");
     write_fixture(
         &src,
-        "site s { theme = :nord  ui_theme = :gruvbox  default_template = :webpage\n  menu { item \"P\" { page = p } }\n}\npage p { sites = [:s]  start = true\n  wf_window \"App\" { wf_label \"x\" }\n}\n",
+        "site s { theme = :nord  ui_theme = :gruvbox  default_template = :webpage\n  menu { item \"P\" { page = p } }\n}\npage p { sites = [:s]  start = true\n  diagram { width = 200  height = 80\n    wf_window \"App\" { wf_label \"x\" }\n  }\n}\n",
     );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
