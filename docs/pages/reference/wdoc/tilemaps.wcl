@@ -32,16 +32,7 @@ tileset platformer {
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`source`"                    | "Image path, relative to the build entry file." |
-      | "`tile_width` / `tile_height`" | "Source tile size in pixels." |
-      | "`columns`"                   | "Tiles per sheet row — maps an index to a coordinate (auto-fit from the sheet width otherwise)." |
-      | "`margin`"                    | "Pixel border around the whole sheet (default `0`)." |
-      | "`spacing`"                   | "Pixel gap between tiles (default `0`)." |
-      | "`image_width` / `image_height`" | "Override the auto-detected sheet dimensions." |
-  }
+  type_table { type = Tileset }
 
   h2 "Symbolic maps"
 
@@ -126,20 +117,7 @@ WCL
 
   h2 "Fields"
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`set`"            | "Name of the `tileset` to slice from." |
-      | "`tiles`"          | "Numeric grid — `list<list<i64>>`, one inner list per row." |
-      | "`map`"            | "Symbolic grid — `list<utf8>` rows resolved through the `tile` legend." |
-      | "`tile` children"  | "Legend entries — `tile \"#\" { index = N }` map a glyph to a tile index." |
-      | "`empty`"          | "Index meaning \"no tile\" (default `-1`)." |
-      | "`scale`"          | "Display scale (default `1.0`)." |
-      | "`smooth`"         | "Anti-alias instead of the default `image-rendering: pixelated`." |
-      | "`x` / `y`"        | "Position within the enclosing `diagram` / `container`." |
-      | "`id` / `class`"   | "Id + style classes." |
-      | "anchors"          | "`anchor_left/right/top/bottom` + `connect_points` — placed and connectable like any `SvgBlock`." |
-  }
+  type_table { type = Tilemap }
 
   p "`scale` sizes the display; `image-rendering: pixelated` is the default (via the always-injected `TILEMAP_CSS`), and `smooth = true` opts into the browser's default smoothing. The sheet is copied to `_wdoc/`, so tiles resolve when served."
 

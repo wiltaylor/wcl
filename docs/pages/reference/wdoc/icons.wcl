@@ -50,27 +50,11 @@ WCL
 
   p "An `iconset`'s fields:"
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`<name>`"     | "Reference name (the label slot), e.g. `ui` — used by `set = ui` and `:ui.name:`." |
-      | "`pack`"       | "Bundled pack to read from (`lucide` / `bootstrap`); defaults to the set name." |
-      | "`size`"       | "Default inline size for icons in this set (e.g. `\"1em\"`, `\"20px\"`)." |
-      | "`color`"      | "Default foreground — drives `currentColor`." |
-      | "`fill`"       | "Optional explicit fill override." |
-      | "`background`" | "Optional background override." |
-      | "`class`"      | "Classes added to every icon from this set." |
-      | "`icon_def`"   | "Per-icon override children (see below)." |
-  }
+  type_table { type = IconSet }
 
   p "Each `icon_def` child overrides one named icon within the set:"
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`<name>`"     | "Icon name (the file stem in the pack) — the label slot." |
-      | "`size` / `color` / `fill` / `background` / `class`" | "Per-icon overrides of the set defaults." |
-  }
+  type_table { type = IconDef }
 
   h2 "The placeable icon block"
 
@@ -90,17 +74,7 @@ WCL
 
   p "Its fields:"
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`<name>`"     | "Icon name (the label slot), optionally `set.name` (e.g. `lucide.compass`)." |
-      | "`set`"        | "Which declared iconset to read from (when more than one)." |
-      | "`x` / `y`"    | "Top-left placement (or use anchors)." |
-      | "`width` / `height`" | "Size in diagram units (default 24×24)." |
-      | "`scale`"      | "Extra multiplier on the size." |
-      | "`size` / `color` / `fill` / `background` / `class`" | "Styling, as on an iconset." |
-      | "anchors / `connect_points`" | "Diagram anchoring + edge attach sides, like any shape." |
-  }
+  type_table { type = Icon }
 
   h2 "Icons as a shape badge"
 

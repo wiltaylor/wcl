@@ -100,23 +100,30 @@ type SiteConfig {
   // Optional site name. Required when a document declares more than one
   // site (it names the output subdirectory and is what `Page.sites`
   // references); omittable for a single-site document.
+  @doc("Optional site name (the label slot). Required with more than one site; names the output subdirectory referenced by `Page.sites`.")
   @inline(0) name: identifier?
   // Render this site at the output root (its `index` becomes `/`) instead
   // of in a `<name>/` subdirectory, and skip the generated chooser. At
   // most one site may set it; more than one is a build error.
+  @doc("When `true`, this site renders at `/` (others go under `/<site>/`).")
   root:             bool?
+  @doc("`:webpage` (header + top nav), `:book` (sidebar + TOC), or `:presentation` (slide deck).")
   default_template: symbol?
+  @doc("Site title shown in the header / sidebar.")
   title:            utf8?
   // Render a light/dark toggle (the `book` template shows it). Pair
   // with `class` blocks that declare `dark {}` / `light {}` modes.
+  @doc("When `true`, adds a light/dark toggle button.")
   theme_toggle:     bool?
   // Colour theme for this site — a symbol naming a `theme` block: a
   // built-in (`:nord` / `:gruvbox` / `:solarized` / `:catppuccin` /
   // `:tokyonight` / `:kanagawa` / `:everforest`) or one you declare
   // yourself. Unset ⇒ the renderer applies `:nord`. See `theme.wcl`.
+  @doc("Symbol naming a colour `theme` block (`:nord` …) — see Styling.")
   theme:  symbol?
   // Which hue drives links / highlights (`--wdoc-accent`): one of
   // red orange yellow green cyan blue purple pink. Unset ⇒ blue.
+  @doc("Symbol naming the accent hue (`:red`..`:pink`); default `:blue`.")
   accent: symbol?
   // UI/application theme for `wf_*` wireframe elements — the theme the
   // mocked-up application follows, separate from the document's `theme`.
@@ -125,17 +132,23 @@ type SiteConfig {
   // light app can be mocked on a dark docs page. Each unset field falls
   // back to the document `theme` / `accent` / dark. A wireframe element may
   // override these per-instance with its own `theme` / `accent` / `mode`.
+  @doc("UI theme for `wf_*` wireframe elements (the mocked app's theme), separate from the document `theme`. Falls back to `theme`.")
   ui_theme:  symbol?
+  @doc("Accent hue for `wf_*` wireframe elements; falls back to `accent`.")
   ui_accent: symbol?
+  @doc("Mode for `wf_*` wireframe elements — `:dark` (default) or `:light`.")
   ui_mode:   symbol?
+  @doc("Chapter tree for the `book` template.")
   @child("toc") toc: Toc?
   // Curated navbar menu (the `webpage` template renders it). Items may
   // link to a page or external URL and nest into dropdowns. With no
   // `menu`, `webpage` falls back to a flat list of every page.
+  @doc("Top navbar entries for the `webpage` template.")
   @child("menu") menu: Menu?
   // Presentation deck: groups this site's pages into the slide grid the
   // `presentation` template renders (sections = columns, slides = rows).
   // See `presentation.wcl`.
+  @doc("Slide grid for the `presentation` template.")
   @child("deck") deck: Deck?
 }
 

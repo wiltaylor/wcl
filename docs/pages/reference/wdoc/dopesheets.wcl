@@ -82,19 +82,7 @@ WCL
 
   h2 "Frame geometry"
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`source`"                       | "Path to the spritesheet (`@inline(0)`, relative to the build entry file)." |
-      | "`frame_width` / `frame_height`" | "Size of one frame in the sheet." |
-      | "`offset_x` / `offset_y`"        | "Pixel offset to the first frame (default `0`)." |
-      | "`stride_x` / `stride_y`"        | "Origin-to-origin step between frames (default = frame size)." |
-      | "`columns`"                      | "Frames per sheet row (default: fit from the sheet width)." |
-      | "`from` / `to`"                  | "Inclusive frame range to play (default: every frame)." |
-      | "`fps`"                          | "Playback rate (default `12`)." |
-      | "`scale`"                        | "Display scale (default `1.0`)." |
-      | "`x` / `y`"                      | "Position within the enclosing `diagram` / `container`." |
-  }
+  type_table { type = Dopesheet }
 
   h2 "Playback"
 

@@ -41,13 +41,7 @@ WCL
 
   h2 "Fields"
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`rows`" | "The pipe-row data — first row is the header, the rest are body rows." |
-      | "`class`" | "Optional class list applied to the `<table>` (e.g. to override `wdoc-table`)." |
-      | "`id`"    | "Optional explicit HTML id." |
-  }
+  type_table { type = TableBlock }
 
   p "Next: [Columns](wdoc_columns)."
 }

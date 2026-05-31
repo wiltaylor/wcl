@@ -10,10 +10,15 @@
 // work; the `heading` stays a plain span.
 @block("callout")
 type Callout extends WdocBlock {
+  @doc("Inline label — the coloured heading at the top of the callout.")
   @inline(0) heading: utf8
+  @doc("The prose under the heading. Runs through the inline-pattern engine.")
   body:  utf8
+  @doc("Optional explicit HTML id.")
   id:    identifier?
+  @doc("Selects the type: `[\"note\"]` / `[\"tip\"]` / etc. May also carry user classes.")
   class: list<utf8>?
+  @doc("Override the default icon (any `pack.name` from a built-in or declared iconset).")
   icon:  utf8?
 
   lower = fn(c: Callout) -> list<HtmlFundamental> {

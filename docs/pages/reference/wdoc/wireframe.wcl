@@ -83,13 +83,7 @@ wf_window "Settings" {
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`title`"    | "Titlebar caption (`@inline`)." |
-      | "`controls`" | "Show the titlebar dots + close glyph (default `true`)." |
-      | "children"   | "Any `Widget`s, stacked vertically." |
-  }
+  type_table { type = WfWindow }
 
   h3 "wf_panel"
 
@@ -109,12 +103,7 @@ wf_panel { title = "Network"
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`title`"  | "Optional group caption." |
-      | "children" | "Any `Widget`s, stacked vertically." |
-  }
+  type_table { type = WfPanel }
 
   h3 "wf_row"
 
@@ -136,11 +125,7 @@ wf_row {
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "children" | "Any `Widget`s, laid out left-to-right." |
-  }
+  type_table { type = WfRow }
 
   h3 "wf_column"
 
@@ -160,11 +145,7 @@ wf_column {
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "children" | "Any `Widget`s, stacked top-to-bottom." |
-  }
+  type_table { type = WfColumn }
 
   h3 "wf_grid"
 
@@ -192,12 +173,7 @@ wf_grid { columns = 3
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`columns`" | "Number of equal-width columns." |
-      | "children"  | "Any `Widget`s, flowed across the grid." |
-  }
+  type_table { type = WfGrid }
 
   h2 "Controls"
 
@@ -213,11 +189,7 @@ wf_label "Just some label text."
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`text`" | "The label text (`@inline`)." |
-  }
+  type_table { type = WfLabel }
 
   h3 "wf_button"
 
@@ -237,12 +209,7 @@ wf_button "Delete" { disabled = true }
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`text`" | "Button caption (`@inline`)." |
-      | "`icon`" | "Optional leading glyph — `pack.name`." |
-  }
+  type_table { type = WfButton }
 
   h3 "wf_input"
 
@@ -260,12 +227,7 @@ wf_input "Name" { value = "Ada Lovelace" }
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`placeholder`" | "Greyed prompt shown when empty (`@inline`)." |
-      | "`value`"       | "Filled value (renders solid, replaces the placeholder)." |
-  }
+  type_table { type = WfInput }
 
   h3 "wf_dropdown"
 
@@ -279,11 +241,7 @@ wf_dropdown "Release build"
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`text`" | "The selected option label (`@inline`)." |
-  }
+  type_table { type = WfDropdown }
 
   h3 "wf_checkbox"
 
@@ -301,12 +259,7 @@ wf_checkbox "Join the beta"
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`label`"   | "Checkbox caption (`@inline`)." |
-      | "`checked`" | "On/off state." |
-  }
+  type_table { type = WfCheckbox }
 
   h3 "wf_radio"
 
@@ -324,12 +277,7 @@ wf_radio "Light"
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`label`"    | "Radio caption (`@inline`)." |
-      | "`selected`" | "Whether this option is chosen." |
-  }
+  type_table { type = WfRadio }
 
   h3 "wf_toggle"
 
@@ -347,25 +295,13 @@ wf_toggle "Do not disturb"
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`label`" | "Optional trailing caption (`@inline`)." |
-      | "`on`"    | "Switch state." |
-  }
+  type_table { type = WfToggle }
 
   h2 "Common fields"
 
   p "Every widget extends a shared `Widget` interface and also accepts:"
 
-  table {
-    rows:
-      | "Field"      | "Meaning" |
-      | "`id`"       | "Optional HTML id." |
-      | "`class`"    | "Extra CSS classes threaded onto the rendered element." |
-      | "`width`"    | "Explicit CSS width (e.g. `\"12rem\"` / `\"100%\"`)." |
-      | "`disabled`" | "When `true`, adds a `wf-disabled` class so styles dim the control." |
-  }
+  type_table { type = Widget }
 
   h2 "Custom widgets"
 

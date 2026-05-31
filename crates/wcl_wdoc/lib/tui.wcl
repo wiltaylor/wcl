@@ -47,7 +47,9 @@ union TermFundamental {
 // legal child of any container widget). Supply a `lower` that returns
 // the `TermFundamental`s (styled-text runs) the control draws.
 interface TuiWidget extends TermPrimitive {
+  @doc("1-based grid row.")
   row:   i64
+  @doc("1-based grid column.")
   col:   i64
   lower: fn(&TuiWidget) -> list<TermFundamental>
 }
@@ -109,9 +111,21 @@ let term_box_runs = fn(row: i64, col: i64, w: i64, h: i64, border: symbol, title
 // A bordered box: :single (default) :double :rounded :heavy :ascii.
 @block("term_box")
 type TermBox extends TuiWidget {
-  row: i64  col: i64  width: i64  height: i64
-  border: symbol?  title: utf8?
-  fg: utf8?  bg: utf8?  bold: bool?
+  row: i64  col: i64
+  @doc("Box width in cells.")
+  width: i64
+  @doc("Box height in cells.")
+  height: i64
+  @doc("Border style: `:single` (default) / `:double` / `:rounded` / `:heavy` / `:ascii`.")
+  border: symbol?
+  @doc("Optional title drawn into the top border.")
+  title: utf8?
+  @doc("Foreground colour.")
+  fg: utf8?
+  @doc("Background colour.")
+  bg: utf8?
+  @doc("Bold style.")
+  bold: bool?
   lower = fn(b: TermBox) -> list<TermFundamental>
     term_box_runs(1, 1, b.width, b.height, b.border, b.title, b.fg, b.bg, b.bold)
 }
@@ -120,9 +134,15 @@ type TermBox extends TuiWidget {
 // a single styled-text fundamental.
 @block("term_glyph")
 type TermGlyph extends TuiWidget {
+  @doc("The text run (may contain `\\n`), `@inline(0)`.")
   @inline(0) glyph: utf8
   row: i64  col: i64
-  fg: utf8?  bg: utf8?  bold: bool?
+  @doc("Foreground colour.")
+  fg: utf8?
+  @doc("Background colour.")
+  bg: utf8?
+  @doc("Bold style.")
+  bold: bool?
   lower = fn(g: TermGlyph) -> list<TermFundamental>
     [ term_run(g.glyph, 1, 1, g.fg, g.bg, g.bold) ]
 }
@@ -130,9 +150,19 @@ type TermGlyph extends TuiWidget {
 // Fill a rectangular region with a repeated char (label's first run).
 @block("term_fill")
 type TermFill extends TuiWidget {
+  @doc("The fill character (`@inline(0)`).")
   @inline(0) ch: utf8
-  row: i64  col: i64  width: i64  height: i64
-  fg: utf8?  bg: utf8?  bold: bool?
+  row: i64  col: i64
+  @doc("Region width in cells.")
+  width: i64
+  @doc("Region height in cells.")
+  height: i64
+  @doc("Foreground colour.")
+  fg: utf8?
+  @doc("Background colour.")
+  bg: utf8?
+  @doc("Bold style.")
+  bold: bool?
   lower = fn(f: TermFill) -> list<TermFundamental>
     term_fill_runs(f.ch, 1, 1, f.width, f.height, f.fg, f.bg, f.bold)
 }
@@ -144,12 +174,19 @@ type TermFill extends TuiWidget {
 // percentage of `max` (default 100); `width` is the bar length in cells.
 @block("tui_progress")
 type TuiProgress extends TuiWidget {
+  @doc("Optional `@inline` caption to the left of the bar.")
   @inline(0) label: utf8?
+  @doc("Filled amount (clamped to `0`..`max`).")
   value:      i64
+  @doc("Scale maximum (default `100`).")
   max:        i64?
+  @doc("Bar width in cells (default `24`).")
   width:      i64?
+  @doc("Append a `NN%` readout (default `true`).")
   show_value: bool?
+  @doc("Fill colour.")
   accent:     utf8?
+  @doc("Track colour.")
   muted:      utf8?
   row: i64  col: i64
   lower = fn(p: TuiProgress) -> list<TermFundamental> {
@@ -175,9 +212,13 @@ type TuiProgress extends TuiWidget {
 // the contrasting `fg`. Colour defines the button — no border glyphs.
 @block("tui_button")
 type TuiButton extends TuiWidget {
+  @doc("Button text (`@inline`).")
   @inline(0) label: utf8
+  @doc("Total width (default = label + padding).")
   width:  i64?
+  @doc("Fill colour (default `blue`).")
   accent: utf8?
+  @doc("Label colour (default `bright_white`).")
   fg:     utf8?
   row: i64  col: i64
   lower = fn(b: TuiButton) -> list<TermFundamental> {
@@ -199,9 +240,13 @@ type TuiButton extends TuiWidget {
 // `:circle`, or `:line`.
 @block("tui_spinner")
 type TuiSpinner extends TuiWidget {
+  @doc("Optional `@inline` caption after the frame.")
   @inline(0) label: utf8?
+  @doc("Which frame index to show (default `0`).")
   frame:  i64?
+  @doc("Glyph set: `:dots`/`:braille` (default) / `:circle` / `:line`.")
   kind:   symbol?
+  @doc("Frame colour.")
   accent: utf8?
   row: i64  col: i64
   lower = fn(s: TuiSpinner) -> list<TermFundamental> {
@@ -222,9 +267,13 @@ type TuiSpinner extends TuiWidget {
 // the `placeholder` (muted) — plus a cursor when `focused`.
 @block("tui_input")
 type TuiInput extends TuiWidget {
+  @doc("Muted prompt shown when empty (`@inline`).")
   @inline(0) placeholder: utf8
+  @doc("Current text (overrides the placeholder).")
   value:   utf8?
+  @doc("Draw a trailing cursor.")
   focused: bool?
+  @doc("Bar / cursor colour.")
   accent:  utf8?
   row: i64  col: i64
   lower = fn(i: TuiInput) -> list<TermFundamental> {
@@ -245,11 +294,17 @@ type TuiInput extends TuiWidget {
 // equal to `text`).
 @block("tui_dropdown")
 type TuiDropdown extends TuiWidget {
+  @doc("Selected / shown label (`@inline`).")
   @inline(0) text: utf8
+  @doc("Option list shown below the field when `open`.")
   items:    list<utf8>?
+  @doc("Highlighted item index (default: the item equal to `text`).")
   selected: i64?
+  @doc("Field width (default: fits the label and longest item).")
   width:    i64?
+  @doc("Drop the list down (and flip the caret).")
   open:     bool?
+  @doc("Caret + selected-row colour.")
   accent:   utf8?
   row: i64  col: i64
   lower = fn(d: TuiDropdown) -> list<TermFundamental> {
@@ -288,9 +343,13 @@ type TuiDropdown extends TuiWidget {
 // (muted), followed by the label.
 @block("tui_checkbox")
 type TuiCheckbox extends TuiWidget {
+  @doc("Checkbox caption (`@inline`).")
   @inline(0) label: utf8
+  @doc("On/off state.")
   checked: bool?
+  @doc("Checked colour.")
   accent:  utf8?
+  @doc("Unchecked colour.")
   muted:   utf8?
   row: i64  col: i64
   lower = fn(c: TuiCheckbox) -> list<TermFundamental> {
@@ -310,9 +369,13 @@ type TuiCheckbox extends TuiWidget {
 // `○` (muted), followed by the label.
 @block("tui_radio")
 type TuiRadio extends TuiWidget {
+  @doc("Radio caption (`@inline`).")
   @inline(0) label: utf8
+  @doc("Whether this option is chosen.")
   selected: bool?
+  @doc("Selected colour.")
   accent:   utf8?
+  @doc("Unselected colour.")
   muted:    utf8?
   row: i64  col: i64
   lower = fn(r: TuiRadio) -> list<TermFundamental> {
@@ -337,12 +400,18 @@ type TuiRadio extends TuiWidget {
 // border (content origin at local row 2, col 2).
 @block("tui_panel")
 type TuiPanel extends TuiWidget {
+  @doc("Optional heading drawn into the top border.")
   title:  utf8?
+  @doc("Box width in cells.")
   width:  i64
+  @doc("Box height in cells.")
   height: i64
+  @doc("Border style: `:rounded` (default) / `:single` / `:double` / `:heavy` / `:ascii`.")
   border: symbol?
+  @doc("Border colour.")
   accent: utf8?
   row: i64  col: i64
+  @doc("`TermPrimitive` children, positioned relative to the panel.")
   @children(TermPrimitive) children: list<TermPrimitive>
   lower = fn(p: TuiPanel) -> list<TermFundamental> {
     let bdr = if p.border == none { :rounded } else { p.border };
@@ -358,8 +427,10 @@ type TuiPanel extends TuiWidget {
 // heading (or at the origin when there is none).
 @block("tui_group")
 type TuiGroup extends TuiWidget {
+  @doc("Optional heading above the children.")
   title: utf8?
   row: i64  col: i64
+  @doc("`TermPrimitive` children, positioned relative to the group.")
   @children(TermPrimitive) children: list<TermPrimitive>
   lower = fn(g: TuiGroup) -> list<TermFundamental> {
     let title_part = if g.title == none { [] }

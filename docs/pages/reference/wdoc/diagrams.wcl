@@ -24,16 +24,7 @@ page wdoc_diagrams { sites = [:reference]
   
   p "Diagrams have the following properties that can be set."
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`width` / `height`"  | "Diagram canvas size in pixels" |
-      | "`layout`"            | "`:free` (default) or `:layered` — see Flowcharts" |
-      | "`layer_gap`"         | "Spacing between layers when `layout = :layered`" |
-      | "`pan_zoom`"          | "When `true`, wrap in an interactive viewport with `+`/`−`/`⟲` controls" |
-      | "`zoom_min` / `zoom_max`" | "Scale clamps for pan/zoom" |
-      | "`pan_margin`"        | "Overscroll px beyond the content bounds (pan/zoom)" |
-  }
+  type_table { type = Diagram }
 
   h2 "Pan & zoom"
 

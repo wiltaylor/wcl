@@ -19,12 +19,19 @@
 // an `SvgBlock`, so it can't be placed inside a diagram.
 @block("video")
 type Video extends WdocBlock {
+  @doc("Video source (the label slot) — a doc-relative path, or a YouTube / Vimeo / other URL.")
   @inline(0) source: utf8             // local video path, or a YouTube / Vimeo / other URL
+  @doc("Thumbnail shown before play — a doc-relative path or URL. Auto-derived for YouTube; otherwise a placeholder.")
   poster: utf8?                       // thumbnail (doc-relative path or URL); optional
+  @doc("Accessible label (and the iframe / link title).")
   title:  utf8?                       // accessible label (aria-label / video title)
+  @doc("Display size; responsive default if omitted.")
   width:  f64?                        // display size; responsive default if omitted
+  @doc("Display size; responsive default if omitted.")
   height: f64?
+  @doc("Optional explicit HTML id.")
   id:     identifier?
+  @doc("Optional class list.")
   class:  list<utf8>?
 
   lower = fn(v: Video) -> list<HtmlFundamental> []

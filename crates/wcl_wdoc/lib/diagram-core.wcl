@@ -2,9 +2,13 @@
 // and the parent box for diagram-level anchored shapes.
 @block("diagram")
 type Diagram extends WdocBlock {
+  @doc("Diagram canvas width in pixels.")
   width:  i64
+  @doc("Diagram canvas height in pixels.")
   height: i64
+  @doc("Optional explicit HTML id.")
   id:     identifier?
+  @doc("Optional style classes.")
   class:  list<utf8>?
 
   // Layout: :none (default) honors per-shape x/y; :grid uses the
@@ -14,37 +18,58 @@ type Diagram extends WdocBlock {
   // runs a force-directed simulation (shapes repel each other,
   // @connections(Edge) edges attract) and assigns x/y — best for
   // cyclic / undirected graphs that have no natural rank order.
+  @doc("Layout mode: `:free` (default, manual x/y) / `:grid` / `:layered` / `:force`.")
   layout:      symbol?
+  @doc("Flow direction for `:layered`: `:top_to_bottom` (default) / `:left_to_right`.")
   direction:   symbol?      // :top_to_bottom (default) | :left_to_right
+  @doc("Spacing between ranks (layers) in `:layered` layout.")
   layer_gap:   f64?         // gap between ranks
+  @doc("Spacing between nodes within a rank in `:layered` layout.")
   node_gap:    f64?         // gap between nodes within a rank
+  @doc("Grid cell width for `:grid` layout.")
   cell_width:  f64?
+  @doc("Grid cell height for `:grid` layout.")
   cell_height: f64?
+  @doc("Number of columns for `:grid` layout.")
   columns:     i64?
+  @doc("Gap between cells in `:grid` layout.")
   gap:         f64?
 
   // Force-directed (:force) knobs. All optional with sensible
   // defaults; the layout is deterministic for a given `seed`.
+  @doc("`:force` relaxation steps (default 300).")
   iterations:    i64?       // relaxation steps (default 300)
+  @doc("`:force` node repulsion strength (default 9000).")
   repulsion:     f64?       // node repulsion strength (default 9000)
+  @doc("`:force` ideal edge-to-edge length (default 60).")
   link_distance: f64?       // ideal edge-to-edge length (default 60)
+  @doc("`:force` centering pull (default 0.05).")
   gravity:       f64?       // centering pull (default 0.05)
+  @doc("`:force` random seed for reproducible layouts (default 1).")
   seed:          i64?       // re-arrange reproducibly (default 1)
 
   // Edge rendering.
+  @doc("Edge routing: `:elbow` (default) / `:straight`.")
   routing:         symbol?  // :elbow (default) | :straight
+  @doc("Nudge step that separates parallel edges (default 4).")
   edge_separation: f64?     // nudge step for parallel edges (default 4)
 
   // Interactive pan + zoom (client-side). pan_zoom wraps the diagram in
   // a viewport with wheel-zoom, drag-pan, and +/-/reset buttons. When
   // zoomed in you can overscroll half a viewport past each content edge;
   // pan_margin adds extra slack on top.
+  @doc("When `true`, wrap in an interactive viewport with wheel-zoom, drag-pan, and `+`/`−`/`⟲` controls.")
   pan_zoom:   bool?         // enable interactive pan + zoom
+  @doc("Minimum zoom scale; `1.0` = fitted view (default 1.0).")
   zoom_min:   f64?          // min zoom scale, 1.0 = fitted view (default 1.0)
+  @doc("Maximum zoom scale (default 4.0).")
   zoom_max:   f64?          // max zoom scale (default 4.0)
+  @doc("Extra overscroll past the content bounds, in px (default 0).")
   pan_margin: f64?          // extra overscroll past the content, px (default 0)
 
+  @doc("The shapes drawn in the diagram.")
   @children(SvgBlock) children: list<SvgBlock>
+  @doc("Edges connecting shapes (`a -> b`).")
   @connections(Edge) edges: list<Edge>
   lower = fn(d: Diagram) -> list<HtmlFundamental> []
 }
@@ -75,7 +100,9 @@ type Diagram extends WdocBlock {
 // can resize the container; that new size flows to its own children.
 @block("container")
 type Container extends SvgBlock {
+  @doc("Name used to connect the shape (`a -> b`) and to anchor others to it.")
   id:    identifier?
+  @doc("Style classes — text and SVG paint via the `class` system.")
   class: list<utf8>?
 
   // Optional chrome. When either is set the renderer emits a
@@ -83,47 +110,79 @@ type Container extends SvgBlock {
   // making the grouping visible. The chrome is purely visual —
   // it does NOT participate in obstacle routing, so cross-
   // container edges still pass through cleanly.
+  @doc("Optional chrome — outline colour of the background rect that makes the group visible.")
   stroke: utf8?
+  @doc("Optional chrome — fill colour of the background rect that makes the group visible.")
   fill:   utf8?
 
   // Inset applied to children. Grows the container's outer box
   // by 2*padding on each axis and shifts the children inward
   // by `padding`, so chrome doesn't touch the shapes inside.
+  @doc("Inset between the chrome and the child shapes.")
   padding: f64?
 
   // Declared interior size (used when no layout/anchor is sizing
   // this container — e.g. a top-level container in a diagram).
+  @doc("Declared interior width (when no layout/anchor sizes it).")
   width:  f64?
+  @doc("Declared interior height (when no layout/anchor sizes it).")
   height: f64?
 
   // Layout
+  @doc("Layout mode: `:free` (default, manual) / `:grid` / `:layered` / `:force`.")
   layout:      symbol?
+  @doc("Number of columns for `:grid` layout.")
   columns:     i64?
+  @doc("Grid cell width for `:grid` layout.")
   cell_width:  f64?
+  @doc("Grid cell height for `:grid` layout.")
   cell_height: f64?
+  @doc("Gap between cells in `:grid` layout.")
   gap:         f64?
+  @doc("Flow direction for `:layered`: `:top_to_bottom` (default) / `:left_to_right`.")
   direction:   symbol?    // :top_to_bottom (default) | :left_to_right
+  @doc("Spacing between ranks (layers) in `:layered` layout.")
   layer_gap:   f64?
+  @doc("Spacing between nodes within a rank in `:layered` layout.")
   node_gap:    f64?
 
   // Force-directed (:force) knobs. Optional; deterministic per `seed`.
+  @doc("`:force` relaxation steps (default 300).")
   iterations:    i64?     // relaxation steps (default 300)
+  @doc("`:force` node repulsion strength (default 9000).")
   repulsion:     f64?     // node repulsion strength (default 9000)
+  @doc("`:force` ideal edge-to-edge length (default 60).")
   link_distance: f64?     // ideal edge-to-edge length (default 60)
+  @doc("`:force` centering pull (default 0.05).")
   gravity:       f64?     // centering pull (default 0.05)
+  @doc("`:force` random seed for reproducible layouts (default 1).")
   seed:          i64?     // re-arrange reproducibly (default 1)
 
   // Anchors (resolve against the parent's box).
+  @doc("Fractional anchor (0–1) pinning the left edge to the parent box.")
   anchor_left:   f64?
+  @doc("Fractional anchor (0–1) pinning the right edge to the parent box.")
   anchor_right:  f64?
+  @doc("Fractional anchor (0–1) pinning the top edge to the parent box.")
   anchor_top:    f64?
+  @doc("Fractional anchor (0–1) pinning the bottom edge to the parent box.")
   anchor_bottom: f64?
 
+  @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
   connect_points: list<AnchorSide>?
 
-  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
+  @doc("Icon-badge icon (a `pack.name`).")
+  icon: utf8?
+  @doc("Icon-badge size.")
+  icon_size: f64?
+  @doc("Icon-badge position (`:center` / `:top_left` / …).")
+  icon_pos: IconPos?
+  @doc("Icon-badge style classes.")
+  icon_class: list<utf8>?
 
+  @doc("The child shapes laid out by the container.")
   @children(SvgBlock) children: list<SvgBlock>
+  @doc("Edges connecting child shapes (`a -> b`).")
   @connections(Edge) edges: list<Edge>
   // `container` is itself rendered directly as <g>; the renderer
   // never invokes its `lower`. Declared only to satisfy the interface.
@@ -132,64 +191,115 @@ type Container extends SvgBlock {
 
 @block("rect")
 type Rect extends SvgBlock {
+  @doc("Top-left x corner, in canvas pixels.")
   x:      f64?
+  @doc("Top-left y corner, in canvas pixels.")
   y:      f64?
+  @doc("Box width.")
   width:  f64?
+  @doc("Box height.")
   height: f64?
+  @doc("Fill colour.")
   fill:   utf8?
+  @doc("Outline colour.")
   stroke: utf8?
+  @doc("Name used to connect the shape (`a -> b`) and to anchor others to it.")
   id:     identifier?
+  @doc("Style classes — text and SVG paint via the `class` system.")
   class:  list<utf8>?
 
+  @doc("Fractional anchor (0–1) pinning the left edge to the parent box.")
   anchor_left:   f64?
+  @doc("Fractional anchor (0–1) pinning the right edge to the parent box.")
   anchor_right:  f64?
+  @doc("Fractional anchor (0–1) pinning the top edge to the parent box.")
   anchor_top:    f64?
+  @doc("Fractional anchor (0–1) pinning the bottom edge to the parent box.")
   anchor_bottom: f64?
 
+  @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
   connect_points: list<AnchorSide>?
 
-  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
+  @doc("Icon-badge icon (a `pack.name`).")
+  icon: utf8?
+  @doc("Icon-badge size.")
+  icon_size: f64?
+  @doc("Icon-badge position (`:center` / `:top_left` / …).")
+  icon_pos: IconPos?
+  @doc("Icon-badge style classes.")
+  icon_class: list<utf8>?
 
   lower = fn(r: Rect) -> list<SvgFundamental> []
 }
 
 @block("circle")
 type Circle extends SvgBlock {
+  @doc("Centre x point.")
   cx:     f64?
+  @doc("Centre y point.")
   cy:     f64?
+  @doc("Radius.")
   r:      f64?
+  @doc("Fill colour.")
   fill:   utf8?
+  @doc("Outline colour.")
   stroke: utf8?
+  @doc("Name used to connect the shape (`a -> b`) and to anchor others to it.")
   id:     identifier?
+  @doc("Style classes — text and SVG paint via the `class` system.")
   class:  list<utf8>?
 
+  @doc("Fractional anchor (0–1) pinning the left edge to the parent box.")
   anchor_left:   f64?
+  @doc("Fractional anchor (0–1) pinning the right edge to the parent box.")
   anchor_right:  f64?
+  @doc("Fractional anchor (0–1) pinning the top edge to the parent box.")
   anchor_top:    f64?
+  @doc("Fractional anchor (0–1) pinning the bottom edge to the parent box.")
   anchor_bottom: f64?
 
+  @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
   connect_points: list<AnchorSide>?
 
-  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
+  @doc("Icon-badge icon (a `pack.name`).")
+  icon: utf8?
+  @doc("Icon-badge size.")
+  icon_size: f64?
+  @doc("Icon-badge position (`:center` / `:top_left` / …).")
+  icon_pos: IconPos?
+  @doc("Icon-badge style classes.")
+  icon_class: list<utf8>?
 
   lower = fn(c: Circle) -> list<SvgFundamental> []
 }
 
 @block("line")
 type Line extends SvgBlock {
+  @doc("Start-point x.")
   x1:     f64?
+  @doc("Start-point y.")
   y1:     f64?
+  @doc("End-point x.")
   x2:     f64?
+  @doc("End-point y.")
   y2:     f64?
+  @doc("Line colour.")
   stroke: utf8?
+  @doc("Name used to connect the shape (`a -> b`) and to anchor others to it.")
   id:     identifier?
+  @doc("Style classes — text and SVG paint via the `class` system.")
   class:  list<utf8>?
 
+  @doc("Fractional anchor (0–1) pinning the left edge to the parent box.")
   anchor_left:   f64?
+  @doc("Fractional anchor (0–1) pinning the right edge to the parent box.")
   anchor_right:  f64?
+  @doc("Fractional anchor (0–1) pinning the top edge to the parent box.")
   anchor_top:    f64?
+  @doc("Fractional anchor (0–1) pinning the bottom edge to the parent box.")
   anchor_bottom: f64?
 
+  @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
   connect_points: list<AnchorSide>?
 
   lower = fn(l: Line) -> list<SvgFundamental> []
@@ -199,25 +309,39 @@ type Line extends SvgBlock {
 // paragraph block kind.
 @block("label")
 type Label extends SvgBlock {
+  @doc("The text, given as the inline label: `label \"halfway\" { … }`.")
   @inline(0) content: utf8
+  @doc("Anchor x position.")
   x:     f64?
+  @doc("Anchor y position.")
   y:     f64?
   // Optional font-size override. When unset, the renderer picks a
   // size that fits `content` inside `fit_width` × `fit_height`
   // (capped at the renderer's default), or its default for a
   // stand-alone label with no fit region.
+  @doc("Explicit font size; when omitted the text auto-fits its region.")
   font_size:  f64?
+  @doc("Width of the region the text is auto-sized to fit (when `font_size` is unset).")
   fit_width:  f64?
+  @doc("Height of the region the text is auto-sized to fit (when `font_size` is unset).")
   fit_height: f64?
+  @doc("Text colour.")
   fill:  utf8?
+  @doc("Name used to connect the shape (`a -> b`) and to anchor others to it.")
   id:    identifier?
+  @doc("Style classes — text and SVG paint via the `class` system.")
   class: list<utf8>?
 
+  @doc("Fractional anchor (0–1) pinning the left edge to the parent box.")
   anchor_left:   f64?
+  @doc("Fractional anchor (0–1) pinning the right edge to the parent box.")
   anchor_right:  f64?
+  @doc("Fractional anchor (0–1) pinning the top edge to the parent box.")
   anchor_top:    f64?
+  @doc("Fractional anchor (0–1) pinning the bottom edge to the parent box.")
   anchor_bottom: f64?
 
+  @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
   connect_points: list<AnchorSide>?
 
   lower = fn(l: Label) -> list<SvgFundamental> []
@@ -225,17 +349,27 @@ type Label extends SvgBlock {
 
 @block("polygon")
 type Polygon extends SvgBlock {
+  @doc("Space-separated `x,y` pairs, e.g. `\"180,10 230,40 180,70\"`.")
   points: utf8
+  @doc("Fill colour.")
   fill:   utf8?
+  @doc("Outline colour.")
   stroke: utf8?
+  @doc("Name used to connect the shape (`a -> b`) and to anchor others to it.")
   id:     identifier?
+  @doc("Style classes — text and SVG paint via the `class` system.")
   class:  list<utf8>?
 
+  @doc("Fractional anchor (0–1) pinning the left edge to the parent box.")
   anchor_left:   f64?
+  @doc("Fractional anchor (0–1) pinning the right edge to the parent box.")
   anchor_right:  f64?
+  @doc("Fractional anchor (0–1) pinning the top edge to the parent box.")
   anchor_top:    f64?
+  @doc("Fractional anchor (0–1) pinning the bottom edge to the parent box.")
   anchor_bottom: f64?
 
+  @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
   connect_points: list<AnchorSide>?
 
   lower = fn(p: Polygon) -> list<SvgFundamental> []

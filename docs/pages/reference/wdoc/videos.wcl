@@ -72,16 +72,7 @@ WCL
 
   h2 "Fields"
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`<source>`" | "Video source (the label slot) — a doc-relative path, or a YouTube / Vimeo / other URL." |
-      | "`poster`"   | "Thumbnail shown before play — a doc-relative path or URL. Auto-derived for YouTube; otherwise a placeholder." |
-      | "`title`"    | "Accessible label (and the iframe / link title)." |
-      | "`width` / `height`" | "Display size; responsive default if omitted." |
-      | "`class`"    | "Optional class list." |
-      | "`id`"       | "Optional explicit HTML id." |
-  }
+  type_table { type = Video }
 
   p "Next: [Diagrams](wdoc_diagrams)."
 }

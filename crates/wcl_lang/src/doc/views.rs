@@ -15,7 +15,7 @@ use crate::value::{BuiltinType, TensorDim, TypeRef, Value};
 
 use super::cells::{DecoratorCell, FieldCell, ItemCellKind, ItemCells};
 use super::effective_fields::{
-    build_effective_fields, is_descendant_of_walk, lookup_effective_field,
+    build_effective_fields, build_merged_decorators, is_descendant_of_walk, lookup_effective_field,
 };
 use super::eval::EvalCtx;
 use super::imports::{BlockSlice, load_import_lazily, push_loaded_imports};
@@ -955,6 +955,13 @@ impl<'a> TypeDecl<'a> {
         build_effective_fields(self.doc, &self.ast.extends, self.fields())
     }
 
+    /// Each field's decorators merged with those of any same-named field
+    /// inherited via `extends` (own wins per-decorator). Lets a redeclared
+    /// interface field inherit the interface's `@doc` / `@hidden`.
+    pub fn merged_field_decorators(&self) -> std::collections::HashMap<String, Vec<Decorator<'a>>> {
+        build_merged_decorators(self.doc, &self.ast.extends, self.fields())
+    }
+
     /// Like `effective_fields()` but optimised for a one-shot
     /// lookup. Returns the resolved `TypeField` for the named field
     /// considering the full extends chain.
@@ -1043,6 +1050,11 @@ impl<'a> InterfaceDecl<'a> {
 
     pub fn effective_fields(&self) -> Vec<TypeField<'a>> {
         build_effective_fields(self.doc, &self.ast.extends, self.fields())
+    }
+
+    /// See [`TypeDecl::merged_field_decorators`].
+    pub fn merged_field_decorators(&self) -> std::collections::HashMap<String, Vec<Decorator<'a>>> {
+        build_merged_decorators(self.doc, &self.ast.extends, self.fields())
     }
 
     pub fn effective_field(&self, name: &str) -> Option<TypeField<'a>> {

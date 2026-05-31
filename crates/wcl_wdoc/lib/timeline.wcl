@@ -37,17 +37,37 @@ union TimelinePhase { Of { label: utf8  from: utf8  to: utf8 } }
 type Timeline extends SvgBlock {
   // Defaults match the chart convention so `:layered` / `:grid` layout
   // can position the timeline via a wrapper transform.
-  x = 0.0  y = 0.0  width = 480.0  height = 200.0
-  id: identifier?  class: list<utf8>?
+  @doc("Timeline x position within the enclosing `diagram`.")
+  x = 0.0
+  @doc("Timeline y position within the enclosing `diagram`.")
+  y = 0.0
+  @doc("Timeline width — match the enclosing `diagram`.")
+  width = 480.0
+  @doc("Timeline height — match the enclosing `diagram`.")
+  height = 200.0
+  @doc("Optional explicit HTML id.")
+  id: identifier?
+  @doc("Optional style classes.")
+  class: list<utf8>?
+  @doc("Timeline title.")
   title:     utf8?
+  @doc("Axis direction: `:horizontal` (default) or `:vertical`.")
   direction: symbol?              // :horizontal (default) | :vertical
+  @doc("Tick granularity: `:minutes` / `:hours` / `:days` / `:weeks` / `:months` / `:years` (auto from the span when omitted).")
   unit:      symbol?              // :minutes|:hours|:days|:weeks|:months|:years (auto from span)
+  @doc("ISO date scale start (auto-fits from the items when omitted).")
   start:     utf8?                // ISO scale start (auto-fit from events if omitted)
+  @doc("ISO date scale end (auto-fits from the items when omitted).")
   end:       utf8?                // ISO scale end
+  @doc("Override the tick interval in `unit`s (auto ~6–12 ticks when omitted).")
   every:     i64?                 // tick interval in `unit`s (auto if omitted)
+  @doc("Dated bands — `list<TimelinePhase>`, each `{ label, from, to }`.")
   phases:    list<TimelinePhase>?
+  @doc("Dated point events — `list<TimelineItem>`, each `{ label, on }` (auto-alternates side; add `side: :near|:far` to pin one).")
   items:     list<TimelineItem>?
+  @doc("Rich-text event cards, each pinned to a date via `on`.")
   @children("card") cards: list<Card>?    // rich-text event cards (pinned via `on`)
+  @doc("Diagram edge-attach sides, like any shape.")
   connect_points: list<AnchorSide>?
 
   // Rendered entirely in Rust (src/timeline.rs); the WCL lower is a stub.

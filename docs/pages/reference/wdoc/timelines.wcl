@@ -92,16 +92,7 @@ WCL
 
   h2 "Fields"
 
-  table {
-    rows:
-      | "Field"        | "Meaning" |
-      | "`start` / `end`" | "ISO date bounds (auto-fit from items otherwise)" |
-      | "`unit`"       | "`:minutes` / `:hours` / `:days` / `:weeks` / `:months` / `:years`" |
-      | "`every`"      | "Override tick interval (default ~6–12 ticks)" |
-      | "`direction`"  | "`:horizontal` (default) or `:vertical`" |
-      | "`items`"      | "List of `{ label, on }` records (auto-alternates side); add `side: :near|:far` to pin one" |
-      | "`phases`"     | "List of `{ label, from, to }` records for dated bands" |
-  }
+  type_table { type = Timeline }
 
   h2 "Phases"
 

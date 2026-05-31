@@ -29,13 +29,7 @@ WCL
 
   p "Its fields:"
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`<source>`" | "The LaTeX source — the inline label slot. `math \"E=mc^2\"` or a raw heredoc `math <<'TEX' … TEX`." |
-      | "`class`"    | "Optional class list (e.g. to recolour or resize the equation)." |
-      | "`id`"       | "Optional explicit HTML id." |
-  }
+  type_table { type = Math }
 
   h2 "Inline math"
 

@@ -9,9 +9,13 @@
 
 @block("code")
 type Code extends WdocBlock {
+  @doc("Language tag (the inline label slot). Picks the highlight grammar; an unknown tag falls back to plain text.")
   @inline(0) language: identifier
+  @doc("The code text — usually a raw heredoc (`<<'TAG'`).")
   source: utf8
+  @doc("Optional explicit HTML id.")
   id:     identifier?
+  @doc("Optional class list (in addition to `code-block`).")
   class:  list<utf8>?
   lower = fn(c: Code) -> list<HtmlFundamental> [
     HtmlFundamental::Element {

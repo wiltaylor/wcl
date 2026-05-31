@@ -125,14 +125,7 @@ WCL
 
   p "Its fields:"
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`<lang>`" | "Language tag — the inline label slot. Picks the highlight grammar; unknown ⇒ plain text." |
-      | "`source`" | "The code text — usually a raw heredoc (`<<'TAG'`)." |
-      | "`class`"  | "Optional class list (in addition to `code-block`)." |
-      | "`id`"     | "Optional explicit HTML id." |
-  }
+  type_table { type = Code }
 
   p "wdoc highlights a wide range of languages (via syntect + two-face). The tag is the language name or a common file extension; WCL ships its own grammar, so `code wcl { … }` highlights too. Supported tags include:"
 
@@ -247,17 +240,13 @@ list { style = :numbered
 WCL
   }
 
-  p "The `list` and `li` fields:"
+  p "The `list` block's fields:"
 
-  table {
-    rows:
-      | "Block" | "Field" | "Meaning" |
-      | "`list`" | "`style`" | "`:bullet` (default → `<ul>`) or `:numbered` (→ `<ol>`)." |
-      | "`list`" | "`class` / `id`" | "Optional class list / explicit HTML id." |
-      | "`li`"   | "`<text>`" | "Item text — the inline label slot (inline patterns apply)." |
-      | "`li`"   | "children" | "Nested `li`s (a sublist), or a whole `list` block for a different style." |
-      | "`li`"   | "`class` / `id`" | "Optional class list / explicit HTML id." |
-  }
+  type_table { type = ListBlock }
+
+  p "And each `li`:"
+
+  type_table { type = Li }
 
   h2 "Callouts"
 
@@ -302,15 +291,7 @@ WCL
 
   p "Its fields:"
 
-  table {
-    rows:
-      | "Field"   | "Meaning" |
-      | "`<heading>`" | "Inline label — the coloured heading at the top of the callout." |
-      | "`body`"  | "The prose under the heading. Plain text — see the warning below." |
-      | "`class`" | "Selects the type: `[\"note\"]` / `[\"tip\"]` / etc. May also carry user classes." |
-      | "`icon`"  | "Override the default icon (any `pack.name` from a built-in or declared iconset)." |
-      | "`id`"    | "Optional explicit HTML id." |
-  }
+  type_table { type = Callout }
 
   p "Next: [Math Equations](wdoc_math)."
 }

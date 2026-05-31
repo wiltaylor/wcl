@@ -15,25 +15,52 @@
 // directly from disk.
 @block("dopesheet")
 type Dopesheet extends SvgBlock {
+  @doc("Spritesheet image path (the inline label), relative to the build entry file.")
   @inline(0) source: utf8            // sheet image path, relative to the doc
+  @doc("Size of one frame in the sheet (pixel width).")
   frame_width:  i64                  // source frame pixel width
+  @doc("Size of one frame in the sheet (pixel height).")
   frame_height: i64                  // source frame pixel height
+  @doc("Pixel offset to the first frame's left edge (default `0`).")
   offset_x: i64?                     // px to the first frame's left edge (default 0)
+  @doc("Pixel offset to the first frame's top edge (default `0`).")
   offset_y: i64?                     // px to the first frame's top edge  (default 0)
+  @doc("Origin-to-origin x step between frames (default = `frame_width`).")
   stride_x: i64?                     // origin-to-origin x step (default = frame_width)
+  @doc("Origin-to-origin y step between frames (default = `frame_height`).")
   stride_y: i64?                     // origin-to-origin y step (default = frame_height)
+  @doc("Frames per sheet row (default: fit from the sheet width).")
   columns:  i64?                     // frames per sheet row (default: fit from image width)
+  @doc("First frame index to play (default `0`).")
   from: i64?                         // first frame index to play (default 0)
+  @doc("Last frame index to play, inclusive (default: the last frame).")
   to:   i64?                         // last frame index, inclusive (default: last frame)
+  @doc("Playback rate in frames/second (default `12`).")
   fps:  f64?                         // playback speed in frames/second (default 12)
+  @doc("Restart at the end (default `true`).")
   loop:     bool?                    // restart at the end (default true)
+  @doc("Start playing on load (default `true`).")
   autoplay: bool?                    // start playing on load (default true)
+  @doc("Click play/pause toggle (default `true`).")
   controls: bool?                    // click play/pause toggle (default true)
+  @doc("Anti-alias instead of the default `image-rendering: pixelated`.")
   smooth:   bool?                    // anti-alias instead of pixelated
+  @doc("Display scale (default `1.0`).")
   scale: f64?                        // display scale (default 1.0)
-  x = 0.0  y = 0.0
-  id: identifier?  class: list<utf8>?
-  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  @doc("Position x within the enclosing `diagram` / `container`.")
+  x = 0.0
+  @doc("Position y within the enclosing `diagram` / `container`.")
+  y = 0.0
+  @doc("Optional explicit HTML id.")
+  id: identifier?
+  @doc("Optional style classes.")
+  class: list<utf8>?
+  @doc("Diagram anchor insets (left/right/top/bottom), like any `SvgBlock`.")
+  anchor_left: f64?
+  @hidden anchor_right: f64?
+  @hidden anchor_top: f64?
+  @hidden anchor_bottom: f64?
+  @doc("Diagram edge-attach sides, like any `SvgBlock`.")
   connect_points: list<AnchorSide>?
 
   lower = fn(d: Dopesheet) -> list<SvgFundamental> []

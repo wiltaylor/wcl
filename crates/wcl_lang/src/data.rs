@@ -14,8 +14,8 @@
 //! reads of the same leaf are O(1).
 
 use crate::doc::{
-    Block, Document, Field, SymbolEntry, SymbolSetDecl, TypeDecl, TypeField, UnionDecl,
-    UnionVariant,
+    Block, Document, Field, InterfaceDecl, SymbolEntry, SymbolSetDecl, TypeDecl, TypeField,
+    UnionDecl, UnionVariant,
 };
 use crate::error::EvalError;
 use crate::value::Value;
@@ -61,6 +61,9 @@ pub enum DataKind<'a> {
     /// Materialised as a flat `Value::List` of variants on `.value()`.
     VariantValueList(Vec<Value>),
     Type(TypeDecl<'a>),
+    /// An `interface` declaration. Like `Type` for reflection (fields,
+    /// decorators), but distinct so callers can tell them apart.
+    Interface(InterfaceDecl<'a>),
     TypeField(TypeField<'a>),
     Union(UnionDecl<'a>),
     Variant(UnionVariant<'a>),
@@ -81,6 +84,7 @@ impl<'a> DataKind<'a> {
             DataKind::VariantValue(_) => "variant_value",
             DataKind::VariantValueList(_) => "variant_value_list",
             DataKind::Type(_) => "type",
+            DataKind::Interface(_) => "interface",
             DataKind::TypeField(_) => "type_field",
             DataKind::Union(_) => "union",
             DataKind::Variant(_) => "variant",
@@ -104,6 +108,7 @@ impl<'a> DataKind<'a> {
                 crate::ast::Span::new(0, 0)
             }
             DataKind::Type(t) => t.span(),
+            DataKind::Interface(i) => i.span(),
             DataKind::TypeField(f) => f.span(),
             DataKind::Union(u) => u.span(),
             DataKind::Variant(v) => v.span(),
@@ -126,6 +131,9 @@ impl<'a> DataRef<'a> {
     }
     pub fn from_type(t: TypeDecl<'a>) -> Self {
         Self::new(DataKind::Type(t))
+    }
+    pub fn from_interface(i: InterfaceDecl<'a>) -> Self {
+        Self::new(DataKind::Interface(i))
     }
     pub fn from_union(u: UnionDecl<'a>) -> Self {
         Self::new(DataKind::Union(u))
@@ -286,6 +294,7 @@ impl<'a> DataRef<'a> {
                 b.block(name).map(DataRef::from_block)
             }
             DataKind::Type(t) => t.field(name).map(|f| DataRef::new(DataKind::TypeField(f))),
+            DataKind::Interface(i) => i.field(name).map(|f| DataRef::new(DataKind::TypeField(f))),
             DataKind::Union(u) => u.variant(name).map(|v| DataRef::new(DataKind::Variant(v))),
             DataKind::Variant(v) => v.field(name).map(|f| DataRef::new(DataKind::TypeField(f))),
             DataKind::Symbols(s) => s
@@ -368,6 +377,12 @@ impl<'a> DataRef<'a> {
             _ => None,
         }
     }
+    pub fn as_interface(&self) -> Option<InterfaceDecl<'a>> {
+        match &self.inner {
+            DataKind::Interface(i) => Some(*i),
+            _ => None,
+        }
+    }
     pub fn as_union(&self) -> Option<UnionDecl<'a>> {
         match &self.inner {
             DataKind::Union(u) => Some(*u),
@@ -429,6 +444,10 @@ impl<'a> DataRef<'a> {
             DataKind::Type(t) => {
                 let t = *t;
                 Box::new(t.fields().map(|f| DataRef::new(DataKind::TypeField(f))))
+            }
+            DataKind::Interface(i) => {
+                let i = *i;
+                Box::new(i.fields().map(|f| DataRef::new(DataKind::TypeField(f))))
             }
             DataKind::Union(u) => {
                 let u = *u;

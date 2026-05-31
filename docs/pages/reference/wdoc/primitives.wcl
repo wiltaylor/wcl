@@ -5,7 +5,7 @@ page wdoc_primitives { sites = [:reference]
 
   p "Primitive shapes are what everything is broken down into for rendering. Higher-level blocks (flowchart nodes, charts, cards, …) all lower to these, so targeting a new backend only means re-implementing the primitives."
 
-  p "Every shape shares a few fields, so the per-shape tables below only list what's distinctive:"
+  p "Every shape shares a few common fields, summarised here; the per-shape tables below reflect the full field set of each shape:"
 
   table {
     rows:
@@ -26,14 +26,7 @@ page wdoc_primitives { sites = [:reference]
 
   p "An axis-aligned rectangle — the workhorse box."
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`x` / `y`"          | "Top-left corner, in canvas pixels." |
-      | "`width` / `height`" | "Box size." |
-      | "`fill`"             | "Fill colour." |
-      | "`stroke`"           | "Outline colour." |
-  }
+  type_table { type = Rect }
 
   code wcl {
     source = <<'WCL'
@@ -51,14 +44,7 @@ WCL
 
   p "A circle, positioned by its centre."
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`cx` / `cy`" | "Centre point." |
-      | "`r`"         | "Radius." |
-      | "`fill`"      | "Fill colour." |
-      | "`stroke`"    | "Outline colour." |
-  }
+  type_table { type = Circle }
 
   code wcl {
     source = <<'WCL'
@@ -76,13 +62,7 @@ WCL
 
   p "A straight line segment between two points."
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`x1` / `y1`" | "Start point." |
-      | "`x2` / `y2`" | "End point." |
-      | "`stroke`"    | "Line colour." |
-  }
+  type_table { type = Line }
 
   code wcl {
     source = <<'WCL'
@@ -100,15 +80,7 @@ WCL
 
   p "An SVG text label. Named `label` (not `text`) to avoid clashing with the paragraph block."
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`<inline>`"             | "The text, given as the inline label: `label \"halfway\" { … }`." |
-      | "`x` / `y`"              | "Anchor position." |
-      | "`font_size`"           | "Explicit size; when omitted the text auto-fits its region." |
-      | "`fit_width` / `fit_height`" | "Region the text is auto-sized to fit (when `font_size` is unset)." |
-      | "`fill`"                 | "Text colour." |
-  }
+  type_table { type = Label }
 
   code wcl {
     source = <<'WCL'
@@ -126,13 +98,7 @@ WCL
 
   p "An arbitrary closed shape from a list of points."
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`points`" | "Space-separated `x,y` pairs, e.g. `\"180,10 230,40 180,70\"`." |
-      | "`fill`"   | "Fill colour." |
-      | "`stroke`" | "Outline colour." |
-  }
+  type_table { type = Polygon }
 
   code wcl {
     source = <<'WCL'
@@ -158,18 +124,7 @@ WCL
 
   p "A grouping box that holds and lays out child shapes (`@children`). Optional chrome makes the group visible; a `layout` arranges the children automatically."
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`width` / `height`"   | "Declared interior size (when no layout/anchor sizes it)." |
-      | "`fill` / `stroke`"    | "Optional chrome — a background rect the size of the box." |
-      | "`padding`"            | "Inset between the chrome and the child shapes." |
-      | "`layout`"             | "`:free` (default, manual) / `:grid` / `:layered` / `:force`." |
-      | "`columns` / `cell_width` / `cell_height` / `gap`" | "Grid layout controls." |
-      | "`direction`"          | "`:top_to_bottom` (default) / `:left_to_right` for layered flow." |
-      | "`layer_gap` / `node_gap`" | "Spacing for `:layered` layout." |
-      | "`iterations` / `repulsion` / `link_distance` / `gravity` / `seed`" | "`:force`-directed tuning (deterministic per `seed`)." |
-  }
+  type_table { type = Container }
 
   code wcl {
     source = <<'WCL'
@@ -195,15 +150,7 @@ WCL
 
   p "A raster image placed as an SVG `<image>`. The source (the inline label) is a doc-relative path — copied into `_wdoc/` — or a URL / `data:` URI passed through unchanged. (The preview above uses an inline `data:` URI so it renders here.)"
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`<inline>`"          | "The `source`: a doc-relative path, a URL, or a `data:` URI." |
-      | "`x` / `y`"           | "Top-left placement in the diagram." |
-      | "`width` / `height`"  | "Display size; natural size if omitted." |
-      | "`scale`"             | "Uniform scale factor applied to the size." |
-      | "`alt`"               | "Alt text (used when the image is a page `<img>`)." |
-  }
+  type_table { type = Image }
 
   code wcl {
     source = <<'WCL'
@@ -226,15 +173,7 @@ WCL
 
   p "A box whose `body` is arbitrary wdoc content (paragraphs, callouts, lists, even nested diagrams), wrapped in an SVG `<foreignObject>` so it scales with the diagram. Timelines accept cards too, pinned to a date with `on`."
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`x` / `y`"          | "Top-left placement (or use anchors)." |
-      | "`width` / `height`" | "Card box size (defaults 160×90)." |
-      | "`title`"            | "Optional plain-text heading." |
-      | "`body`"             | "`@children(WdocBlock)` — the rich content." |
-      | "`on` / `side`"      | "Date + side, used only when the card is a `timeline` child." |
-  }
+  type_table { type = Card }
 
   code wcl {
     source = <<'WCL'

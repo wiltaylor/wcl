@@ -6,21 +6,9 @@ page wdoc_flowcharts { sites = [:reference]
 
   h2 "Flowchart shapes"
 
-  p "These stdlib shapes lower to SVG primitives. They differ only in the shape drawn — all three take the same fields:"
+  p "These stdlib shapes lower to SVG primitives. They differ only in the shape drawn — `process`, `decision`, and `terminator` all take the same fields (shown here for `process`):"
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`<inline>`"          | "The shape's label (centred plain text)." |
-      | "`x` / `y`"           | "Top-left placement. Omit under `layout = :layered` — the layout decides." |
-      | "`width` / `height`"  | "Box size." |
-      | "`fill`"              | "Fill colour (defaults to black if unset)." |
-      | "`stroke`"            | "Outline colour." |
-      | "`id`"                | "Name used to connect the shape (`a -> b`)." |
-      | "`class`"             | "Style classes — SVG paint via the `class` system." |
-      | "`connect_points`"    | "Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to." |
-      | "`icon` / `icon_size` / `icon_pos` / `icon_class`" | "Optional icon badge." |
-  }
+  type_table { type = Process }
 
   h3 "process"
 

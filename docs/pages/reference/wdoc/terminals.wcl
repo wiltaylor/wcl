@@ -59,31 +59,11 @@ WCL
 
   p "`terminal` fields:"
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`cols` / `rows`"      | "Grid size in cells (a `.cast` header overrides them)." |
-      | "`chrome`"             | "Draw a window title bar (default `true`)." |
-      | "`title`"              | "Title shown in the chrome bar." |
-      | "`text`"               | "Inline content fed to the virtual terminal (ANSI included)." |
-      | "`source`"             | "Path to an asciinema `.cast` recording to replay." |
-      | "`autoplay` / `loop` / `speed`" | "Replay controls." |
-      | "`palette`"            | "`:default` (dark) or `:light` seed colours." |
-      | "`fg` / `bg`"          | "Explicit default fg / bg overrides." |
-      | "`font_size` / `line_height`" | "Cell metrics." |
-      | "`id` / `class`"       | "Id + style classes (the `class` themes the window `<div>`)." |
-  }
+  type_table { type = Terminal }
 
   p "`term_text` fields:"
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`content`"     | "The text (`@inline(0)`, so `term_text \"hi\" { … }`)." |
-      | "`row` / `col`" | "1-based grid position." |
-      | "`fg` / `bg`"   | "Colour strings — ANSI name, 256 index, or `#hex`." |
-      | "styles"        | "`bold` / `dim` / `italic` / `underline` / `strike` / `blink` / `inverse` / `conceal`." |
-  }
+  type_table { type = TermText }
 
   h2 "Inline text"
 
@@ -159,17 +139,7 @@ tui_progress "Upload" { row = 1  col = 1  value = 65 }
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`label`"      | "Optional `@inline` caption to the left of the bar." |
-      | "`value`"      | "Filled amount (clamped to `0`..`max`)." |
-      | "`max`"        | "Scale maximum (default `100`)." |
-      | "`width`"      | "Bar width in cells (default `24`)." |
-      | "`show_value`" | "Append a `NN%` readout (default `true`)." |
-      | "`accent` / `muted`" | "Fill and track colours." |
-      | "`row` / `col`" | "1-based position." |
-  }
+  type_table { type = TuiProgress }
 
   h3 "tui_button"
 
@@ -187,15 +157,7 @@ tui_button "Quit" { row = 1  col = 9  accent = "red" }
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`label`"  | "Button text (`@inline`)." |
-      | "`width`"  | "Total width (default = label + padding)." |
-      | "`accent`" | "Fill colour (default `blue`)." |
-      | "`fg`"     | "Label colour (default `bright_white`)." |
-      | "`row` / `col`" | "1-based position." |
-  }
+  type_table { type = TuiButton }
 
   h3 "tui_spinner"
 
@@ -211,15 +173,7 @@ tui_spinner "Building…" { row = 1  col = 1  frame = 2 }
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`label`"  | "Optional `@inline` caption after the frame." |
-      | "`kind`"   | "`:braille` (default) / `:circle` / `:line`." |
-      | "`frame`"  | "Which frame index to show (default `0`)." |
-      | "`accent`" | "Frame colour." |
-      | "`row` / `col`" | "1-based position." |
-  }
+  type_table { type = TuiSpinner }
 
   h3 "tui_input"
 
@@ -237,15 +191,7 @@ tui_input "Name" { row = 2  col = 1  value = "Ada Lovelace" }
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`placeholder`" | "Muted prompt shown when empty (`@inline`)." |
-      | "`value`"       | "Current text (overrides the placeholder)." |
-      | "`focused`"     | "Draw a trailing cursor." |
-      | "`accent`"      | "Bar / cursor colour." |
-      | "`row` / `col`" | "1-based position." |
-  }
+  type_table { type = TuiInput }
 
   h3 "tui_dropdown"
 
@@ -271,17 +217,7 @@ tui_dropdown "Release build" { row = 1  col = 1  open = true
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`text`"     | "Selected / shown label (`@inline`)." |
-      | "`items`"    | "Option list shown below the field when `open`." |
-      | "`selected`" | "Highlighted item index (default: the item equal to `text`)." |
-      | "`open`"     | "Drop the list down (and flip the caret)." |
-      | "`width`"    | "Field width (default: fits the label and longest item)." |
-      | "`accent`"   | "Caret + selected-row colour." |
-      | "`row` / `col`" | "1-based position." |
-  }
+  type_table { type = TuiDropdown }
 
   h3 "tui_checkbox"
 
@@ -299,14 +235,7 @@ tui_checkbox "Beta" { row = 2  col = 1 }
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`label`"   | "Checkbox caption (`@inline`)." |
-      | "`checked`" | "On/off state." |
-      | "`accent` / `muted`" | "Checked and unchecked colours." |
-      | "`row` / `col`" | "1-based position." |
-  }
+  type_table { type = TuiCheckbox }
 
   h3 "tui_radio"
 
@@ -324,14 +253,7 @@ tui_radio "Light" { row = 2  col = 1 }
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`label`"    | "Radio caption (`@inline`)." |
-      | "`selected`" | "Whether this option is chosen." |
-      | "`accent` / `muted`" | "Selected and unselected colours." |
-      | "`row` / `col`" | "1-based position." |
-  }
+  type_table { type = TuiRadio }
 
   h3 "tui_panel"
 
@@ -353,16 +275,7 @@ tui_panel { row = 1  col = 1  width = 30  height = 6  title = "Status"
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`title`"  | "Optional heading drawn into the top border." |
-      | "`width` / `height`" | "Box size in cells." |
-      | "`border`" | "`:rounded` (default) / `:single` / `:double` / `:heavy` / `:ascii`." |
-      | "`accent`" | "Border colour." |
-      | "`row` / `col`" | "1-based position of the box." |
-      | "children" | "`TermPrimitive` children, positioned relative to the panel." |
-  }
+  type_table { type = TuiPanel }
 
   h3 "tui_group"
 
@@ -384,13 +297,7 @@ tui_group { row = 1  col = 1  title = "Options"
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`title`" | "Optional heading above the children." |
-      | "`row` / `col`" | "1-based origin." |
-      | "children" | "`TermPrimitive` children, positioned relative to the group." |
-  }
+  type_table { type = TuiGroup }
 
   h3 "Custom widgets"
 

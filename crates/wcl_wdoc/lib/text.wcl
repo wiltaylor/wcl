@@ -4,8 +4,11 @@
 // Rust, but the `<p>` / `<span>` structure is authored here).
 @block("text")
 type Text extends WdocBlock {
+  @doc("Optional explicit HTML id.")
   id:    identifier?
+  @doc("Optional class list applied to the `<p>`.")
   class: list<utf8>?
+  @doc("The styled segments, rendered as `<span>`s in source order.")
   @children("span") spans: list<Span>
   lower = fn(t: Text) -> list<HtmlFundamental> [
     HtmlFundamental::Element {
@@ -23,8 +26,11 @@ type Text extends WdocBlock {
 // intentionally absent — style flows through @block("class") rules.
 @block("span")
 type Span {
+  @doc("The span text (the inline label slot); inline patterns are applied.")
   @inline(0) text: utf8
+  @doc("Optional explicit HTML id.")
   id:    identifier?
+  @doc("Optional style classes for this span.")
   class: list<utf8>?
 }
 
@@ -32,9 +38,13 @@ type Span {
 // children flow in source order across the slots.
 @block("column")
 type Column extends WdocBlock {
+  @doc("One CSS percentage per child slot (e.g. `[50.0, 50.0]`).")
   widths: list<f64>
+  @doc("Optional explicit HTML id.")
   id:     identifier?
+  @doc("Optional class list applied to the whole column group.")
   class:  list<utf8>?
+  @doc("Any wdoc blocks — each consecutive block fills the next column slot.")
   @children(WdocBlock) children: list<WdocBlock>
   lower = fn(c: Column) -> list<HtmlFundamental> []
 }

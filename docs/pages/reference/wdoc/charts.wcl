@@ -34,21 +34,9 @@ diagram { width = 360  height = 200
 WCL
   }
 
-  p "`bar_chart` and `line_chart` share these fields:"
+  p "`bar_chart` and `line_chart` share most fields; `line_chart` adds `point_labels` and `points`. The `line_chart` fields (the superset) are listed below — `bar_chart` is identical minus those two."
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`series`"            | "`list<ChartSeries>` — each a `{ name: utf8, values: list<f64> }` record." |
-      | "`categories`"        | "x-axis labels (`list<utf8>`); one per value." |
-      | "`title`"             | "Chart title." |
-      | "`x_label` / `y_label`" | "Axis labels." |
-      | "`y_min` / `y_max`"   | "Scale bounds; auto-fit to the data when omitted." |
-      | "`width` / `height`"  | "Chart size — match the enclosing `diagram`." |
-      | "`point_labels`"      | "*(line only)* print each point's value above its marker." |
-      | "`points`"            | "*(line only)* annotation markers — `list<ChartPoint>`." |
-      | "`id` / `class`"      | "Id + style classes." |
-  }
+  type_table { type = LineChart }
 
   h2 "Line chart annotations"
 
@@ -108,14 +96,7 @@ diagram { width = 240  height = 240
 WCL
   }
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`slices`"           | "`list<ChartSlice>` — each a `{ label: utf8, value: f64 }` record." |
-      | "`title`"            | "Chart title." |
-      | "`width` / `height`" | "Chart size — match the enclosing `diagram`." |
-      | "`id` / `class`"     | "Id + style classes." |
-  }
+  type_table { type = PieChart }
 
   p "Next: [Timelines](wdoc_timelines)."
 }

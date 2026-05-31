@@ -23,21 +23,39 @@
 // read `var(--wdoc-*)`, so a themed site styles maps for free.
 @block("map")
 type Map extends SvgBlock {
+  @doc("Optional reference name (the inline label).")
   @inline(0) name: identifier?       // optional reference name
+  @doc("Single whole-map image (the common, layer-less case).")
   source:    utf8?                   // single whole-map image (common case)
+  @doc("Map coordinate-space width — also the pin coordinate space.")
   width:     f64                     // map coordinate space (also the pin coords)
+  @doc("Map coordinate-space height — also the pin coordinate space.")
   height:    f64                     // "
+  @doc("Tile pixel size for tiled layers (default `256`).")
   tile_size: i64?                    // tile pixel size for tiled layers (default 256)
+  @doc("`image-rendering: smooth` (default) vs `pixelated` when `false`.")
   smooth:    bool?                   // image-rendering: smooth (default) vs pixelated
+  @doc("Themes the map group.")
   class:     list<utf8>?             // themes the map group
+  @doc("Optional explicit HTML id.")
   id: identifier?
 
   // Placement in the parent diagram (fixed-size, like image / tilemap).
-  x = 0.0  y = 0.0
-  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  @doc("Placement x within the enclosing `diagram` / `container`.")
+  x = 0.0
+  @doc("Placement y within the enclosing `diagram` / `container`.")
+  y = 0.0
+  @doc("Diagram anchor insets (left/right/top/bottom), like any `SvgBlock`.")
+  anchor_left: f64?
+  @hidden anchor_right: f64?
+  @hidden anchor_top: f64?
+  @hidden anchor_bottom: f64?
+  @doc("Diagram edge-attach sides, like any `SvgBlock`.")
   connect_points: list<AnchorSide>?
 
+  @doc("Level-of-detail image layers (omit for a single `source`).")
   @children("layer") layers: list<MapLayer>?
+  @doc("Clickable markers with cards.")
   @children("pin")   pins:   list<MapPin>?
 
   lower = fn(m: Map) -> list<SvgFundamental> []
@@ -51,10 +69,15 @@ type Map extends SvgBlock {
 // renderer auto-selects the sharpest layer for the current zoom.
 @block("layer")
 type MapLayer {
+  @doc("Image file, or the tile folder when tiled.")
   source:    utf8                    // image file, or tile folder when tiled
+  @doc("Tiles across (default `1` = a single image).")
   cols:      i64?                    // tiles across (default 1 = single image)
+  @doc("Tiles down (default `1`).")
   rows:      i64?                    // tiles down  (default 1)
+  @doc("Tile filename pattern (default `{x}_{y}.png`, 0-based).")
   pattern:   utf8?                   // tile filename pattern (default "{x}_{y}.png")
+  @doc("Override the map's `tile_size` for this layer.")
   tile_size: i64?                    // override the map's tile_size
 }
 
@@ -65,15 +88,27 @@ type MapLayer {
 // or the one-off `color` sugar. The card body is the pin's child blocks.
 @block("pin")
 type MapPin {
+  @doc("Pin id (the inline label) — links the pin to its card; page-unique.")
   @inline(0) id: identifier          // pin id (links pin <-> card; page-unique)
-  x: f64  y: f64                     // position in map coordinates
+  @doc("Marker x position, in the map's coordinate space.")
+  x: f64
+  @doc("Marker y position, in the map's coordinate space.")
+  y: f64                             // position in map coordinates
+  @doc("Icon name (default `lucide.map-pin`); `set.name` or pair with `set`.")
   icon:  utf8?                       // icon name (default "lucide.map-pin")
+  @doc("Iconset name for a bare `icon`.")
   set:   identifier?                 // which iconset (for a bare name)
+  @doc("Marker size in map units (default `24`).")
   size:  f64?                        // marker size in map units (default 24)
+  @doc("Themes the marker (`fill` / `stroke` / `color`, with `dark` / `light`).")
   class:      list<utf8>?            // themes the marker (fill/stroke/color)
+  @doc("Themes the card popup (`background` / `color` / `border`).")
   card_class: list<utf8>?            // themes the card popup (background/color/border)
+  @doc("One-off inline marker colour (sugar for a class).")
   color:      utf8?                  // one-off inline marker colour
+  @doc("Optional card heading.")
   title: utf8?                       // optional card heading
+  @doc("The card body — any wdoc blocks.")
   @children(WdocBlock) card: list<WdocBlock>
 }
 

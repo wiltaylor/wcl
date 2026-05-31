@@ -296,15 +296,33 @@ let chart_xy = fn(
 type BarChart extends SvgBlock {
   // Defaults match the `process` convention so `:layered` / `:grid`
   // layout can position the chart via a wrapper transform.
-  x = 0.0  y = 0.0  width = 360.0  height = 220.0
-  id: identifier?  class: list<utf8>?
+  @doc("Chart x position within the enclosing `diagram`.")
+  x = 0.0
+  @doc("Chart y position within the enclosing `diagram`.")
+  y = 0.0
+  @doc("Chart width — match the enclosing `diagram`.")
+  width = 360.0
+  @doc("Chart height — match the enclosing `diagram`.")
+  height = 220.0
+  @doc("Optional explicit HTML id.")
+  id: identifier?
+  @doc("Optional style classes.")
+  class: list<utf8>?
+  @doc("Chart title.")
   title:      utf8?
+  @doc("x-axis label.")
   x_label:    utf8?
+  @doc("y-axis label.")
   y_label:    utf8?
+  @doc("x-axis labels (one per value).")
   categories: list<utf8>?
+  @doc("Lower scale bound; auto-fits to the data (0) when omitted.")
   y_min:      f64?
+  @doc("Upper scale bound; auto-fits to the data when omitted.")
   y_max:      f64?
+  @doc("Series data — each a `{ name: utf8, values: list<f64> }` record.")
   series:     list<ChartSeries>
+  @doc("Diagram edge-attach sides, like any shape.")
   connect_points: list<AnchorSide>?
 
   lower = fn(c: BarChart) -> list<SvgFundamental> {
@@ -321,19 +339,39 @@ type BarChart extends SvgBlock {
 
 @block("line_chart")
 type LineChart extends SvgBlock {
-  x = 0.0  y = 0.0  width = 360.0  height = 220.0
-  id: identifier?  class: list<utf8>?
+  @doc("Chart x position within the enclosing `diagram`.")
+  x = 0.0
+  @doc("Chart y position within the enclosing `diagram`.")
+  y = 0.0
+  @doc("Chart width — match the enclosing `diagram`.")
+  width = 360.0
+  @doc("Chart height — match the enclosing `diagram`.")
+  height = 220.0
+  @doc("Optional explicit HTML id.")
+  id: identifier?
+  @doc("Optional style classes.")
+  class: list<utf8>?
+  @doc("Chart title.")
   title:      utf8?
+  @doc("x-axis label.")
   x_label:    utf8?
+  @doc("y-axis label.")
   y_label:    utf8?
+  @doc("x-axis labels (one per value).")
   categories: list<utf8>?
+  @doc("Lower scale bound; auto-fits to the data (0) when omitted.")
   y_min:      f64?
+  @doc("Upper scale bound; auto-fits to the data when omitted.")
   y_max:      f64?
+  @doc("Series data — each a `{ name: utf8, values: list<f64> }` record.")
   series:     list<ChartSeries>
   // Draw every data point's value as a label above its marker.
+  @doc("Print each point's value above its marker.")
   point_labels: bool?
   // Author-pinned annotation markers + labels (see `ChartPoint`).
+  @doc("Annotation markers — `list<ChartPoint>`, each `{ label, category, value }`.")
   points: list<ChartPoint>?
+  @doc("Diagram edge-attach sides, like any shape.")
   connect_points: list<AnchorSide>?
 
   lower = fn(c: LineChart) -> list<SvgFundamental> {
@@ -365,10 +403,23 @@ let chart_arc = fn(cx: f64, cy: f64, r: f64, a0: f64, sweep: f64, steps: i64) ->
 
 @block("pie_chart")
 type PieChart extends SvgBlock {
-  x = 0.0  y = 0.0  width = 240.0  height = 240.0
-  id: identifier?  class: list<utf8>?
+  @doc("Chart x position within the enclosing `diagram`.")
+  x = 0.0
+  @doc("Chart y position within the enclosing `diagram`.")
+  y = 0.0
+  @doc("Chart width — match the enclosing `diagram`.")
+  width = 240.0
+  @doc("Chart height — match the enclosing `diagram`.")
+  height = 240.0
+  @doc("Optional explicit HTML id.")
+  id: identifier?
+  @doc("Optional style classes.")
+  class: list<utf8>?
+  @doc("Chart title.")
   title:  utf8?
+  @doc("Slice data — each a `{ label: utf8, value: f64 }` record.")
   slices: list<ChartSlice>
+  @doc("Diagram edge-attach sides, like any shape.")
   connect_points: list<AnchorSide>?
 
   lower = fn(c: PieChart) -> list<SvgFundamental> {

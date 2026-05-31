@@ -25,28 +25,47 @@
 // in `tui.wcl` (which extends `TuiWidget extends TermPrimitive` and
 // lowers to text). Each sits at a 1-based (row, col).
 interface TermPrimitive {
+  @doc("1-based grid row.")
   row: i64
+  @doc("1-based grid column.")
   col: i64
 }
 
 @block("terminal")
 type Terminal extends WdocBlock {
+  @doc("Grid width in cells (default `80`; a `.cast` header overrides it).")
   cols:        i64?
+  @doc("Grid height in cells (default `24`; a `.cast` header overrides it).")
   rows:        i64?
+  @doc("Cell metric: font size.")
   font_size:   f64?
+  @doc("Cell metric: line height.")
   line_height: f64?
+  @doc("Seed colours: `:default` (dark) or `:light`.")
   palette:     symbol?       // :default (dark) | :light
+  @doc("Explicit default foreground override.")
   fg:          utf8?
+  @doc("Explicit default background override.")
   bg:          utf8?
+  @doc("Draw a window title bar (default `true`).")
   chrome:      bool?         // window title bar (default true)
+  @doc("Title shown in the chrome bar.")
   title:       utf8?
+  @doc("Inline content fed to the virtual terminal (ANSI included).")
   text:        utf8?         // inline content fed to a virtual terminal
+  @doc("Path to an asciinema `.cast` recording to replay.")
   source:      utf8?         // path to an asciinema .cast recording
+  @doc("Replay control: start playing automatically.")
   autoplay:    bool?
+  @doc("Replay control: loop playback.")
   loop:        bool?
+  @doc("Replay control: playback speed multiplier.")
   speed:       f64?
+  @doc("Optional explicit HTML id.")
   id:          identifier?
+  @doc("Style classes (the `class` themes the window `<div>`).")
   class:       list<utf8>?
+  @doc("Placeable terminal primitives and widgets.")
   @children(TermPrimitive) children: list<TermPrimitive>
   // Declared only to satisfy the WdocBlock interface — the renderer
   // never calls this; the grid is built and painted in Rust.
@@ -60,12 +79,30 @@ type Terminal extends WdocBlock {
 // `TermFundamental::Text` runs.
 @block("term_text")
 type TermText extends TermPrimitive {
+  @doc("The text (`@inline(0)`, so `term_text \"hi\" { … }`).")
   @inline(0) content: utf8
   row: i64
   col: i64
-  fg: utf8?  bg: utf8?
-  bold: bool?  dim: bool?  italic: bool?  underline: bool?
-  strike: bool?  blink: bool?  inverse: bool?  conceal: bool?
+  @doc("Foreground colour — ANSI name, 256 index, or `#hex`.")
+  fg: utf8?
+  @doc("Background colour — ANSI name, 256 index, or `#hex`.")
+  bg: utf8?
+  @doc("Bold style.")
+  bold: bool?
+  @doc("Dim style.")
+  dim: bool?
+  @doc("Italic style.")
+  italic: bool?
+  @doc("Underline style.")
+  underline: bool?
+  @doc("Strikethrough style.")
+  strike: bool?
+  @doc("Blink style.")
+  blink: bool?
+  @doc("Inverse (swap fg/bg) style.")
+  inverse: bool?
+  @doc("Conceal (hide) style.")
+  conceal: bool?
 }
 
 // Default terminal styling: the embedded JetBrains Mono Nerd Font faces

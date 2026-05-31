@@ -463,6 +463,9 @@ impl Document {
         {
             return Some(DataRef::from_symbol_set(s));
         }
+        if let Some(i) = self.interface(&qualified).or_else(|| self.interface(name)) {
+            return Some(DataRef::from_interface(i));
+        }
         None
     }
 
@@ -1478,6 +1481,7 @@ fn describe_datakind(k: &crate::data::DataKind<'_>) -> &'static str {
         DataKind::BlockList(_) => "block list",
         DataKind::Table(_) => "table",
         DataKind::Type(_) => "type",
+        DataKind::Interface(_) => "interface",
         DataKind::TypeField(_) => "type field",
         DataKind::Union(_) => "union",
         DataKind::Variant(_) => "variant",

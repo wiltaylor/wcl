@@ -100,20 +100,7 @@ WCL
 
   p "Each `pin` is an icon dropped at `x` / `y` in the map's coordinate space (its `id` is the inline label and must be unique on the page). Style the marker with a `class` (recommended — themable, supports `dark` / `light`) or the one-off `color`. A pin's child blocks become a floating **card** anchored to the marker: click to open, click the `✕` or outside to close. The card body is arbitrary wdoc content — text, lists, callouts, code, images."
 
-  table {
-    rows:
-      | "Field"        | "Meaning" |
-      | "`<id>`"       | "Pin id (the inline label) — links the pin to its card; page-unique." |
-      | "`x` / `y`"    | "Marker position, in the map's coordinate space." |
-      | "`icon`"       | "Icon name (default `lucide.map-pin`); `set.name` or pair with `set`." |
-      | "`set`"        | "Iconset name for a bare `icon`." |
-      | "`size`"       | "Marker size in map units (default `24`)." |
-      | "`class`"      | "Themes the marker (`fill` / `stroke` / `color`, with `dark` / `light`)." |
-      | "`card_class`" | "Themes the card popup (`background` / `color` / `border`)." |
-      | "`color`"      | "One-off inline marker colour (sugar for a class)." |
-      | "`title`"      | "Optional card heading." |
-      | "card children" | "Any wdoc blocks — the card body." |
-  }
+  type_table { type = MapPin }
 
   h2 "Level-of-detail layers"
 
@@ -188,32 +175,11 @@ WCL
 
   p "Each `layer` takes:"
 
-  table {
-    rows:
-      | "Field"       | "Meaning" |
-      | "`source`"    | "Image file, or the tile folder when tiled." |
-      | "`cols`"      | "Tiles across (default `1` = a single image)." |
-      | "`rows`"      | "Tiles down (default `1`)." |
-      | "`pattern`"   | "Tile filename pattern (default `{x}_{y}.png`, 0-based)." |
-      | "`tile_size`" | "Override the map's `tile_size` for this layer." |
-  }
+  type_table { type = MapLayer }
 
   h2 "Fields"
 
-  table {
-    rows:
-      | "Field"        | "Meaning" |
-      | "`<name>`"     | "Optional reference name (the inline label)." |
-      | "`source`"     | "Single whole-map image (the common, layer-less case)." |
-      | "`width` / `height`" | "The map's coordinate space — also the pin coordinate space." |
-      | "`tile_size`"  | "Tile pixel size for tiled layers (default `256`)." |
-      | "`smooth`"     | "`image-rendering: smooth` (default) vs `pixelated` when `false`." |
-      | "`class`"      | "Themes the map group." |
-      | "`x` / `y`"    | "Placement within the enclosing `diagram` / `container`." |
-      | "anchors"      | "`anchor_left/right/top/bottom` + `connect_points` — placed and connectable like any `SvgBlock`." |
-      | "`layer` children" | "Level-of-detail image layers (omit for a single `source`)." |
-      | "`pin` children"   | "Clickable markers with cards." |
-  }
+  type_table { type = Map }
 
   h2 "Theming"
 

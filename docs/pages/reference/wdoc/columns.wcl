@@ -56,14 +56,7 @@ WCL
 
   h2 "Fields"
 
-  table {
-    rows:
-      | "Field" | "Meaning" |
-      | "`widths`" | "`list<f64>` — one CSS percentage per child slot (e.g. `[50.0, 50.0]`)." |
-      | "`class`"  | "Optional class list applied to the whole column group." |
-      | "`id`"     | "Optional explicit HTML id." |
-      | "children" | "Any wdoc blocks — each consecutive block fills the next column slot." |
-  }
+  type_table { type = Column }
 
   p "Next: [Styling](wdoc_styling)."
 }

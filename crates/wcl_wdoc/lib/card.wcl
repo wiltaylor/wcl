@@ -18,17 +18,36 @@
 @block("card")
 type Card extends SvgBlock {
   // Free placement in a diagram / container (anchors like `rect`).
-  x = 0.0  y = 0.0  width = 160.0  height = 90.0
-  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  @doc("Top-left x placement in the diagram (or use anchors).")
+  x = 0.0
+  @doc("Top-left y placement in the diagram (or use anchors).")
+  y = 0.0
+  @doc("Card box width (default 160).")
+  width = 160.0
+  @doc("Card box height (default 90).")
+  height = 90.0
+  @doc("Diagram anchor insets (left/right/top/bottom), like any shape.")
+  anchor_left: f64?
+  @hidden anchor_right: f64?
+  @hidden anchor_top: f64?
+  @hidden anchor_bottom: f64?
 
   // Timeline placement — used only when the card is a `timeline` child.
-  on:   utf8?                    // ISO date the card is pinned to on the timeline
-  side: symbol?                  // :near | :far | :auto (alternates)
+  @doc("ISO date the card is pinned to (used only when it's a `timeline` child).")
+  on:   utf8?
+  @doc("Timeline side: `:near` / `:far` / `:auto` (used only as a `timeline` child).")
+  side: symbol?
 
   // Content.
-  title: utf8?                   // optional heading (plain text)
-  id: identifier?  class: list<utf8>?
+  @doc("Optional plain-text heading.")
+  title: utf8?
+  @doc("Optional explicit HTML id.")
+  id: identifier?
+  @doc("Optional style classes.")
+  class: list<utf8>?
+  @doc("Diagram edge-attach sides, like any shape.")
   connect_points: list<AnchorSide>?
+  @doc("The card's rich content (paragraphs, lists, callouts, nested diagrams…).")
   @children(WdocBlock) body: list<WdocBlock>
 
   // Stub: the rich HTML body is rendered in Rust (see src/card.rs).

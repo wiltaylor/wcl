@@ -27,7 +27,9 @@
 // Marker for the two things an `li` can contain: another `li`, or a
 // nested `list`. Carries the fields both already declare.
 interface ListNode {
+  @doc("Optional explicit HTML id.")
   id:    identifier?
+  @doc("Optional style classes.")
   class: list<utf8>?
 }
 
@@ -38,7 +40,9 @@ symbol_set ListStyle { bullet numbered }
 type ListBlock extends WdocBlock, ListNode {
   id:    identifier?
   class: list<utf8>?
-  style: ListStyle?               // :bullet (default → <ul>) | :numbered (→ <ol>)
+  @doc("`:bullet` (default → `<ul>`) or `:numbered` (→ `<ol>`).")
+  style: ListStyle?
+  @doc("The list items.")
   @children("li") items: list<Li>
   // Fundamental: rendered directly in Rust, so `lower` is never invoked —
   // declared only to satisfy the WdocBlock interface (mirrors TableBlock).
@@ -47,10 +51,12 @@ type ListBlock extends WdocBlock, ListNode {
 
 @block("li")
 type Li extends ListNode {
+  @doc("Item text (the inline label); inline patterns apply.")
   @inline(0) text: utf8
   id:    identifier?
   class: list<utf8>?
-  @children(ListNode) children: list<ListNode>   // nested `li`s and/or a `list`
+  @doc("Nested `li`s (a sublist), or a whole `list` block for a different style.")
+  @children(ListNode) children: list<ListNode>
 }
 
 // Default list styling, injected into every page's <head>. Numbered lists

@@ -17,15 +17,22 @@
 // child AND a legal child of any container widget. The extra fields are
 // layout hints shared by every widget.
 interface Widget extends WdocBlock {
+  @doc("Optional HTML id.")
   id:       identifier?
+  @doc("Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides).")
   class:    list<utf8>?
+  @doc("Explicit CSS width, e.g. `\"12rem\"` or `\"100%\"`.")
   width:    utf8?           // explicit CSS width, e.g. "12rem" / "100%"
+  @doc("When `true`, dims the control (adds a `wf-disabled` class).")
   disabled: bool?
   // Per-element UI-theme override (read on the root widget): `theme` names a
   // `theme` block, `accent` a hue, `mode` is `:dark` / `:light`. Each unset
   // field falls back to the site's `ui_*` theme (then the document theme).
+  @doc("Per-element UI-theme override naming a `theme` block (falls back to the site's `ui_*` theme, then the document theme).")
   theme:    symbol?
+  @doc("Per-element accent hue override (falls back to the site / document theme).")
   accent:   symbol?
+  @doc("Per-element mode override: `:dark` or `:light` (falls back to the site / document theme).")
   mode:     symbol?
   lower:    fn(&Widget) -> list<HtmlFundamental>
 }
@@ -34,6 +41,7 @@ interface Widget extends WdocBlock {
 
 @block("wf_label")
 type WfLabel extends Widget {
+  @doc("The label text (the inline label).")
   @inline(0) text: utf8
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
   theme: symbol?  accent: symbol?  mode: symbol?
@@ -42,7 +50,9 @@ type WfLabel extends Widget {
 
 @block("wf_button")
 type WfButton extends Widget {
+  @doc("Button caption (the inline label).")
   @inline(0) text: utf8
+  @doc("Optional leading glyph as `pack.name`, e.g. `\"lucide.check\"`.")
   icon: utf8?                  // optional leading glyph, e.g. "lucide.check"
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
   theme: symbol?  accent: symbol?  mode: symbol?
@@ -51,7 +61,9 @@ type WfButton extends Widget {
 
 @block("wf_input")
 type WfInput extends Widget {
+  @doc("Greyed prompt shown when empty (the inline label).")
   @inline(0) placeholder: utf8   // greyed placeholder text
+  @doc("Filled value (renders solid, replacing the placeholder).")
   value: utf8?                   // filled value (renders solid, no placeholder)
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
   theme: symbol?  accent: symbol?  mode: symbol?
@@ -60,6 +72,7 @@ type WfInput extends Widget {
 
 @block("wf_dropdown")
 type WfDropdown extends Widget {
+  @doc("The selected option label (the inline label).")
   @inline(0) text: utf8          // currently-selected option label
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
   theme: symbol?  accent: symbol?  mode: symbol?
@@ -68,7 +81,9 @@ type WfDropdown extends Widget {
 
 @block("wf_checkbox")
 type WfCheckbox extends Widget {
+  @doc("Checkbox caption (the inline label).")
   @inline(0) label: utf8
+  @doc("On/off state; `true` fills the box with a tick.")
   checked: bool?
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
   theme: symbol?  accent: symbol?  mode: symbol?
@@ -77,7 +92,9 @@ type WfCheckbox extends Widget {
 
 @block("wf_radio")
 type WfRadio extends Widget {
+  @doc("Radio caption (the inline label).")
   @inline(0) label: utf8
+  @doc("Whether this option is chosen.")
   selected: bool?
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
   theme: symbol?  accent: symbol?  mode: symbol?
@@ -86,7 +103,9 @@ type WfRadio extends Widget {
 
 @block("wf_toggle")
 type WfToggle extends Widget {
+  @doc("Optional trailing caption (the inline label).")
   @inline(0) label: utf8?        // optional trailing caption
+  @doc("Switch state; `true` slides the knob across.")
   on: bool?
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
   theme: symbol?  accent: symbol?  mode: symbol?
@@ -99,19 +118,24 @@ type WfToggle extends Widget {
 
 @block("wf_window")
 type WfWindow extends Widget {
+  @doc("Titlebar caption (the inline label).")
   @inline(0) title: utf8
+  @doc("Show the titlebar dots + close glyph (default `true`).")
   controls: bool?                // titlebar dots + close glyph (default true)
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
   theme: symbol?  accent: symbol?  mode: symbol?
+  @doc("Any `Widget`s, stacked vertically.")
   @children(Widget) children: list<Widget>
   lower = fn(w: WfWindow) -> list<HtmlFundamental> []
 }
 
 @block("wf_panel")
 type WfPanel extends Widget {
+  @doc("Optional group caption.")
   title: utf8?                   // optional group caption
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
   theme: symbol?  accent: symbol?  mode: symbol?
+  @doc("Any `Widget`s, stacked vertically.")
   @children(Widget) children: list<Widget>
   lower = fn(p: WfPanel) -> list<HtmlFundamental> []
 }
@@ -123,6 +147,7 @@ type WfPanel extends Widget {
 type WfColumn extends Widget {
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
   theme: symbol?  accent: symbol?  mode: symbol?
+  @doc("Any `Widget`s, stacked top-to-bottom.")
   @children(Widget) children: list<Widget>
   lower = fn(c: WfColumn) -> list<HtmlFundamental> []
 }
@@ -131,15 +156,18 @@ type WfColumn extends Widget {
 type WfRow extends Widget {
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
   theme: symbol?  accent: symbol?  mode: symbol?
+  @doc("Any `Widget`s, laid out left-to-right.")
   @children(Widget) children: list<Widget>
   lower = fn(r: WfRow) -> list<HtmlFundamental> []
 }
 
 @block("wf_grid")
 type WfGrid extends Widget {
+  @doc("Number of equal-width columns; children flow across the rows.")
   columns: i64                   // number of equal-width columns
   id: identifier?  class: list<utf8>?  width: utf8?  disabled: bool?
   theme: symbol?  accent: symbol?  mode: symbol?
+  @doc("Any `Widget`s, flowed across the grid.")
   @children(Widget) children: list<Widget>
   lower = fn(g: WfGrid) -> list<HtmlFundamental> []
 }

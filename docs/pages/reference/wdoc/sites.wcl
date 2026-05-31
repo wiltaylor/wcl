@@ -6,19 +6,7 @@ page wdoc_sites { sites = [:reference]
 
   h2 "Fields"
 
-  table {
-    rows:
-      | "Field"             | "Meaning" |
-      | "`default_template`" | "`:webpage` (header + top nav), `:book` (sidebar + TOC), or `:presentation` (slide deck)" |
-      | "`title`"           | "Site title shown in the header / sidebar" |
-      | "`root`"            | "When `true`, this site renders at `/` (others go under `/<site>/`)" |
-      | "`theme`"           | "Symbol naming a colour `theme` block (`:nord` …) — see [Styling](wdoc_styling)" |
-      | "`accent`"          | "Symbol naming the accent hue (`:red`..`:pink`); default `:blue`" |
-      | "`theme_toggle`"    | "When `true`, adds a light/dark toggle button" |
-      | "`menu { … }`"      | "Top navbar entries for the `webpage` template" |
-      | "`toc { … }`"       | "Chapter tree for the `book` template" |
-      | "`deck { … }`"      | "Slide grid for the `presentation` template" |
-  }
+  type_table { type = SiteConfig }
 
   h2 "webpage template"
 

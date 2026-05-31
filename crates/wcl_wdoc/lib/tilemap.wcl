@@ -7,14 +7,23 @@
 // are given, copies the image into `_wdoc/`, and references it by URL.
 @block("tileset")
 type Tileset {
+  @doc("Reference name (the inline label), e.g. `dungeon`.")
   @inline(0) name: identifier        // reference name, e.g. `dungeon`
+  @doc("Image path, relative to the build entry file.")
   source:       utf8                 // image path, relative to the doc
+  @doc("Source tile pixel width.")
   tile_width:   i64                  // source tile pixel width
+  @doc("Source tile pixel height.")
   tile_height:  i64                  // source tile pixel height
+  @doc("Tiles per sheet row — maps an index to a coordinate (auto-fit from the sheet width otherwise).")
   columns:      i64?                 // tiles per sheet row (index -> coord)
+  @doc("Pixel border around the whole sheet (default `0`).")
   margin:       i64?                 // px border around the sheet (default 0)
+  @doc("Pixel gap between tiles (default `0`).")
   spacing:      i64?                 // px gap between tiles (default 0)
+  @doc("Override the auto-detected sheet pixel width.")
   image_width:  i64?                 // override; else read from the file
+  @doc("Override the auto-detected sheet pixel height.")
   image_height: i64?                 // override; else read from the file
 }
 
@@ -22,7 +31,9 @@ type Tileset {
 // map be authored with symbols (`#`, `.`, `@`) instead of raw indices.
 @block("tile")
 type TileKey {
+  @doc("Single character used in `map` (the inline label).")
   @inline(0) glyph: utf8             // single character used in `map`
+  @doc("Tile index the glyph stands for.")
   index: i64                         // tile index it stands for
 }
 
@@ -35,16 +46,34 @@ type TileKey {
 // in the same diagram overlay on top.
 @block("tilemap")
 type Tilemap extends SvgBlock {
+  @doc("Name of the `tileset` to slice from.")
   set: identifier                    // which tileset
+  @doc("Numeric grid — `list<list<i64>>`, one inner list per row.")
   tiles: list<list<i64>>?            // numeric index grid (one list per row)
+  @doc("Symbolic grid — `list<utf8>` rows resolved through the `tile` legend (wins over `tiles`).")
   map:   list<utf8>?                 // symbolic grid: each char -> index
+  @doc("Glyph legend — `tile \"#\" { index = N }` entries mapping a glyph to a tile index.")
   @children("tile") legend: list<TileKey>?
+  @doc("Index meaning \"no tile\" (default `-1`).")
   empty: i64?                        // index meaning "no tile" (default -1)
+  @doc("Display scale (default `1.0`).")
   scale: f64?                        // display scale (default 1.0)
+  @doc("Anti-alias instead of the default `image-rendering: pixelated`.")
   smooth: bool?                      // anti-alias instead of pixelated
-  x = 0.0  y = 0.0
-  id: identifier?  class: list<utf8>?
-  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  @doc("Position x within the enclosing `diagram` / `container`.")
+  x = 0.0
+  @doc("Position y within the enclosing `diagram` / `container`.")
+  y = 0.0
+  @doc("Optional explicit HTML id.")
+  id: identifier?
+  @doc("Optional style classes.")
+  class: list<utf8>?
+  @doc("Diagram anchor insets (left/right/top/bottom), like any `SvgBlock`.")
+  anchor_left: f64?
+  @hidden anchor_right: f64?
+  @hidden anchor_top: f64?
+  @hidden anchor_bottom: f64?
+  @doc("Diagram edge-attach sides, like any `SvgBlock`.")
   connect_points: list<AnchorSide>?
 
   lower = fn(t: Tilemap) -> list<SvgFundamental> []

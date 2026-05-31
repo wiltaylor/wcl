@@ -4,11 +4,11 @@
 //! (produced whenever a non-leaf identifier or member chain is
 //! evaluated) and walk the underlying view's `decorators()` iterator.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::builtins::{BuiltinFn, Caller, DataPath, FromValue};
 use crate::data::{DataKind, DataRef};
-use crate::doc::{ChildKind, DeclName, Decorator, TypeDecl, TypeField};
+use crate::doc::{ChildKind, DeclName, Decorator, TypeField};
 use crate::environment::Environment;
 use crate::value::Value;
 
@@ -33,6 +33,7 @@ pub(crate) fn register(env: &mut Environment) {
 fn collect_decorators<'a>(dr: &DataRef<'a>) -> Option<Vec<Decorator<'a>>> {
     match dr.inner() {
         DataKind::Type(t) => Some(t.decorators().collect()),
+        DataKind::Interface(i) => Some(i.decorators().collect()),
         DataKind::TypeField(f) => Some(f.decorators().collect()),
         DataKind::Union(u) => Some(u.decorators().collect()),
         DataKind::Variant(v) => Some(v.decorators().collect()),
@@ -103,10 +104,10 @@ fn decorator_arg_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, S
     }
 }
 
-/// `type_fields(&T)` — reflect a type declaration into a list of records
-/// describing each of its fields, for documentation generators. Own fields
-/// come first (declaration order), then fields inherited transitively via
-/// `extends` (those not already declared on the type itself). Each record:
+/// `type_fields(&T)` — reflect a type **or interface** declaration into a
+/// list of records describing each of its fields, for documentation
+/// generators. Own fields come first (declaration order), then fields
+/// inherited transitively via `extends` (those not redeclared). Each record:
 ///
 ///   { name: utf8, type: utf8, is_function: bool, optional: bool,
 ///     has_default: bool, is_block: bool, repeated: bool, accepts: utf8,
@@ -114,32 +115,44 @@ fn decorator_arg_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, S
 ///
 /// `is_block`/`repeated`/`accepts` describe `@child` / `@children` nested-
 /// block slots (structural facts); `decorators` is the escape hatch for any
-/// metadata decorator (e.g. a `@doc("…")` description) the caller defines.
+/// metadata decorator (e.g. a `@doc("…")` description). A redeclared field's
+/// decorators are merged with those of the same-named inherited field
+/// (own wins per-decorator), so shared field docs can live on an interface.
 fn type_fields_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     let path = DataPath::from_value(&args[0])?;
     let dr = resolve_path(caller, "type_fields", &path)?;
-    let DataKind::Type(decl) = dr.inner() else {
-        return Err(format!(
-            "type_fields: '{}' is not a type declaration",
-            path.segments.join(".")
-        ));
+    let (own, effective, decs) = match dr.inner() {
+        DataKind::Type(t) => (
+            t.fields().collect::<Vec<_>>(),
+            t.effective_fields(),
+            t.merged_field_decorators(),
+        ),
+        DataKind::Interface(i) => (
+            i.fields().collect::<Vec<_>>(),
+            i.effective_fields(),
+            i.merged_field_decorators(),
+        ),
+        _ => {
+            return Err(format!(
+                "type_fields: '{}' is not a type or interface declaration",
+                path.segments.join(".")
+            ));
+        }
     };
-    let records = ordered_fields(decl)
-        .into_iter()
-        .map(|f| field_record(&f))
+    let records = order_fields(own, effective)
+        .iter()
+        .map(|f| field_record(f, &decs))
         .collect();
     Ok(Value::List(records))
 }
 
-/// A type's own fields (declaration order) followed by its inherited fields
-/// (from `effective_fields`, which walks `extends`) that it doesn't itself
-/// redeclare. Own-first reads better in a docs table than the ancestors-
+/// Own fields (declaration order) followed by inherited fields not
+/// redeclared. Own-first reads better in a docs table than the ancestors-
 /// first order `effective_fields` returns on its own.
-fn ordered_fields<'a>(decl: &TypeDecl<'a>) -> Vec<TypeField<'a>> {
-    let own: Vec<TypeField<'a>> = decl.fields().collect();
+fn order_fields<'a>(own: Vec<TypeField<'a>>, effective: Vec<TypeField<'a>>) -> Vec<TypeField<'a>> {
     let own_names: HashSet<&str> = own.iter().map(TypeField::name).collect();
     let mut out = own;
-    for f in decl.effective_fields() {
+    for f in effective {
         if !own_names.contains(f.name()) {
             out.push(f);
         }
@@ -147,8 +160,9 @@ fn ordered_fields<'a>(decl: &TypeDecl<'a>) -> Vec<TypeField<'a>> {
     out
 }
 
-/// Build the per-field documentation record.
-fn field_record(f: &TypeField<'_>) -> Value {
+/// Build the per-field documentation record, taking decorators from the
+/// merged map (so an inherited `@doc` surfaces on a redeclared field).
+fn field_record<'a>(f: &TypeField<'a>, decs: &HashMap<String, Vec<Decorator<'a>>>) -> Value {
     let child = f.child_kind_or_union();
     let children = f.children_kind_or_union();
     let accepts = child
@@ -157,12 +171,15 @@ fn field_record(f: &TypeField<'_>) -> Value {
         .map(child_accepts)
         .unwrap_or_default();
 
-    let decorators: Vec<Value> = f
-        .decorators()
+    let empty: Vec<Decorator<'a>> = Vec::new();
+    let decorators: Vec<Value> = decs
+        .get(f.name())
+        .unwrap_or(&empty)
+        .iter()
         .map(|d| {
             let mut m = BTreeMap::new();
             m.insert("name".to_string(), Value::Utf8(d.name().to_string()));
-            m.insert("arg".to_string(), Value::Utf8(decorator_first_arg(&d)));
+            m.insert("arg".to_string(), Value::Utf8(decorator_first_arg(d)));
             Value::Record {
                 ty: vec!["Decorator".to_string()],
                 fields: m,
@@ -401,6 +418,65 @@ mod tests {
 
         // Inherited `id`: optional, last.
         assert_eq!(record_field(&fields[4], "optional"), &Value::Bool(true));
+    }
+
+    #[test]
+    fn type_fields_reflects_an_interface() {
+        let v = eval_field(
+            r#"
+            @schemaless
+            interface Widget { @doc("css width") width: utf8? }
+            @schemaless out = type_fields(Widget)
+            "#,
+            "out",
+        );
+        let Value::List(fields) = v else {
+            panic!("expected a list, got {v:?}");
+        };
+        assert_eq!(fields.len(), 1);
+        assert_eq!(
+            record_field(&fields[0], "name"),
+            &Value::Utf8("width".into())
+        );
+        let Value::List(decs) = record_field(&fields[0], "decorators") else {
+            panic!("decorators not a list");
+        };
+        assert_eq!(record_field(&decs[0], "name"), &Value::Utf8("doc".into()));
+        assert_eq!(
+            record_field(&decs[0], "arg"),
+            &Value::Utf8("css width".into())
+        );
+    }
+
+    #[test]
+    fn redeclared_field_inherits_ancestor_doc() {
+        // A concrete type must redeclare an interface field to accept it on
+        // instances; reflection still surfaces the interface's `@doc`.
+        let v = eval_field(
+            r#"
+            @schemaless
+            interface Base { @doc("shared width") width: utf8? }
+            @block("w") @schemaless
+            type W extends Base { @doc("the name") @inline(0) name: utf8  width: utf8? }
+            @schemaless out = type_fields(W)
+            "#,
+            "out",
+        );
+        let Value::List(fields) = v else {
+            panic!("expected a list, got {v:?}");
+        };
+        let width = fields
+            .iter()
+            .find(|f| record_field(f, "name") == &Value::Utf8("width".into()))
+            .expect("width field present");
+        let Value::List(decs) = record_field(width, "decorators") else {
+            panic!("decorators not a list");
+        };
+        assert_eq!(
+            record_field(&decs[0], "arg"),
+            &Value::Utf8("shared width".into()),
+            "redeclared field inherited the interface @doc"
+        );
     }
 
     #[test]

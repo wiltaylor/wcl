@@ -29,14 +29,37 @@ let oval_points = fn(cx: f64, cy: f64, rx: f64, ry: f64) -> utf8
 
 @block("process")
 type Process extends SvgBlock {
+  @doc("The shape's label (centred plain text).")
   @inline(0) text: utf8
   // Defaults let `:layered` layout position these shapes via a
   // wrapper transform: the child renders at (0,0) of its assigned
   // cell rather than failing the lowering when x/y are omitted.
-  x = 0.0  y = 0.0  width = 80.0  height = 40.0
-  fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
+  @doc("Top-left x placement. Omit under `layout = :layered` — the layout decides.")
+  x = 0.0
+  @doc("Top-left y placement. Omit under `layout = :layered` — the layout decides.")
+  y = 0.0
+  @doc("Box width.")
+  width = 80.0
+  @doc("Box height.")
+  height = 40.0
+  @doc("Fill colour (defaults to a theme class if unset).")
+  fill: utf8?
+  @doc("Outline colour.")
+  stroke: utf8?
+  @doc("Name used to connect the shape (`a -> b`).")
+  id: identifier?
+  @doc("Style classes — SVG paint via the `class` system.")
+  class: list<utf8>?
+  @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
   connect_points: list<AnchorSide>?
-  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
+  @doc("Icon-badge icon (a `pack.name`).")
+  icon: utf8?
+  @doc("Icon-badge size.")
+  icon_size: f64?
+  @doc("Icon-badge position (`:center` / `:top_left` / …).")
+  icon_pos: IconPos?
+  @doc("Icon-badge style classes.")
+  icon_class: list<utf8>?
 
   // An unstyled shape (no fill / stroke / class) gets a default theme class
   // so it isn't bare-SVG black; the box and its label carry separate classes
@@ -61,11 +84,34 @@ type Process extends SvgBlock {
 
 @block("decision")
 type Decision extends SvgBlock {
+  @doc("The shape's label (centred plain text).")
   @inline(0) text: utf8
-  x = 0.0  y = 0.0  width = 80.0  height = 40.0
-  fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
+  @doc("Top-left x placement. Omit under `layout = :layered` — the layout decides.")
+  x = 0.0
+  @doc("Top-left y placement. Omit under `layout = :layered` — the layout decides.")
+  y = 0.0
+  @doc("Box width.")
+  width = 80.0
+  @doc("Box height.")
+  height = 40.0
+  @doc("Fill colour (defaults to a theme class if unset).")
+  fill: utf8?
+  @doc("Outline colour.")
+  stroke: utf8?
+  @doc("Name used to connect the shape (`a -> b`).")
+  id: identifier?
+  @doc("Style classes — SVG paint via the `class` system.")
+  class: list<utf8>?
+  @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
   connect_points: list<AnchorSide>?
-  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
+  @doc("Icon-badge icon (a `pack.name`).")
+  icon: utf8?
+  @doc("Icon-badge size.")
+  icon_size: f64?
+  @doc("Icon-badge position (`:center` / `:top_left` / …).")
+  icon_pos: IconPos?
+  @doc("Icon-badge style classes.")
+  icon_class: list<utf8>?
 
   lower = fn(d: Decision) -> list<SvgFundamental> {
     let auto = d.fill == none && d.stroke == none && d.class == none;
@@ -101,11 +147,34 @@ type Decision extends SvgBlock {
 // a Circle instead of a Rect.
 @block("node")
 type GraphNode extends SvgBlock {
+  @doc("The node's label (centred plain text).")
   @inline(0) text: utf8
-  x = 0.0  y = 0.0  width = 56.0  height = 56.0
-  fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
+  @doc("Top-left x placement. Omit under an auto-layout — the layout decides.")
+  x = 0.0
+  @doc("Top-left y placement. Omit under an auto-layout — the layout decides.")
+  y = 0.0
+  @doc("Box width (the circle is inscribed in this box).")
+  width = 56.0
+  @doc("Box height (the circle is inscribed in this box).")
+  height = 56.0
+  @doc("Fill colour (defaults to a theme class if unset).")
+  fill: utf8?
+  @doc("Outline colour.")
+  stroke: utf8?
+  @doc("Name used to connect the node (`a -> b`).")
+  id: identifier?
+  @doc("Style classes — SVG paint via the `class` system.")
+  class: list<utf8>?
+  @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
   connect_points: list<AnchorSide>?
-  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
+  @doc("Icon-badge icon (a `pack.name`).")
+  icon: utf8?
+  @doc("Icon-badge size.")
+  icon_size: f64?
+  @doc("Icon-badge position (`:center` / `:top_left` / …).")
+  icon_pos: IconPos?
+  @doc("Icon-badge style classes.")
+  icon_class: list<utf8>?
 
   lower = fn(n: GraphNode) -> list<SvgFundamental> {
     let auto = n.fill == none && n.stroke == none && n.class == none;
@@ -132,11 +201,34 @@ type GraphNode extends SvgBlock {
 // inscribed in the shape's box via `oval_points`.
 @block("terminator")
 type Terminator extends SvgBlock {
+  @doc("The shape's label (centred plain text).")
   @inline(0) text: utf8
-  x = 0.0  y = 0.0  width = 80.0  height = 40.0
-  fill: utf8?  stroke: utf8?  id: identifier?  class: list<utf8>?
+  @doc("Top-left x placement. Omit under `layout = :layered` — the layout decides.")
+  x = 0.0
+  @doc("Top-left y placement. Omit under `layout = :layered` — the layout decides.")
+  y = 0.0
+  @doc("Box width.")
+  width = 80.0
+  @doc("Box height.")
+  height = 40.0
+  @doc("Fill colour (defaults to a theme class if unset).")
+  fill: utf8?
+  @doc("Outline colour.")
+  stroke: utf8?
+  @doc("Name used to connect the shape (`a -> b`).")
+  id: identifier?
+  @doc("Style classes — SVG paint via the `class` system.")
+  class: list<utf8>?
+  @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
   connect_points: list<AnchorSide>?
-  icon: utf8?  icon_size: f64?  icon_pos: IconPos?  icon_class: list<utf8>?
+  @doc("Icon-badge icon (a `pack.name`).")
+  icon: utf8?
+  @doc("Icon-badge size.")
+  icon_size: f64?
+  @doc("Icon-badge position (`:center` / `:top_left` / …).")
+  icon_pos: IconPos?
+  @doc("Icon-badge style classes.")
+  icon_class: list<utf8>?
 
   lower = fn(t: Terminator) -> list<SvgFundamental> {
     let auto = t.fill == none && t.stroke == none && t.class == none;

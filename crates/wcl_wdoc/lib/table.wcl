@@ -30,12 +30,16 @@
 // `@table` decorator. The block kind is still "table".
 @block("table")
 type TableBlock extends WdocBlock {
+  @doc("Optional explicit HTML id.")
   id:     identifier?
+  @doc("Optional class list applied to the `<table>` (e.g. to override `wdoc-table`).")
   class:  list<utf8>?
   // Computed-table form (alternative to pipe rows). `header` is the
   // heading row (omit for a header-less table); `rows` are the body
   // rows, each a list of cells.
+  @doc("Optional header row for the computed-table form (omit for a header-less table).")
   header: list<utf8>?
+  @doc("The pipe-row data (or computed rows) — with pipe syntax the first row is the header, the rest are body rows.")
   rows:   list<list<utf8>>?
   lower = fn(t: TableBlock) -> list<HtmlFundamental> []
 }

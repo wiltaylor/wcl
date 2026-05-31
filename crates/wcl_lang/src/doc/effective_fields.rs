@@ -5,9 +5,9 @@
 //! that walk the ancestor chain and de-duplicate by name. This module owns
 //! the small recursive helpers behind those methods plus `is_descendant_of`.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use super::{Document, InterfaceDecl, TypeDecl, TypeField};
+use super::{Decorator, Document, InterfaceDecl, TypeDecl, TypeField};
 
 /// A resolved `extends` target. `type` and `interface` declarations
 /// share the same inheritance entry-points (`effective_fields`,
@@ -67,6 +67,40 @@ where
         insert_or_override(&mut out, &mut seen, f);
     }
     out
+}
+
+/// Build a `field name → merged decorators` map across the inheritance
+/// chain. A field's decorators are its own first, then any from a same-named
+/// ancestor field whose decorator name isn't already present (own wins
+/// per-decorator). This lets a concrete type redeclare an interface field
+/// (required for instance validation) while still inheriting the
+/// interface's `@doc` / `@hidden` — so shared field documentation lives in
+/// one place. Field names contributed only by ancestors are included too.
+pub(super) fn build_merged_decorators<'a, I>(
+    doc: &'a Document,
+    extends: &[Vec<String>],
+    own_fields: I,
+) -> HashMap<String, Vec<Decorator<'a>>>
+where
+    I: IntoIterator<Item = TypeField<'a>>,
+{
+    let mut map: HashMap<String, Vec<Decorator<'a>>> = HashMap::new();
+    for f in own_fields {
+        map.insert(f.name().to_string(), f.decorators().collect());
+    }
+    for parent_path in extends {
+        if let Some(decl) = lookup_parent(doc, parent_path) {
+            for f in decl.effective_fields() {
+                let entry = map.entry(f.name().to_string()).or_default();
+                for d in f.decorators() {
+                    if !entry.iter().any(|e| e.full_name() == d.full_name()) {
+                        entry.push(d);
+                    }
+                }
+            }
+        }
+    }
+    map
 }
 
 /// Single-field lookup against the effective-field set. `own_lookup` checks

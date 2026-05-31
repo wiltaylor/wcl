@@ -15,13 +15,21 @@
 // and `background` are optional overrides.
 @block("iconset")
 type IconSet {
+  @doc("Reference name (the label slot), e.g. `ui` — used by `set = ui` and `:ui.name:`.")
   @inline(0) name: identifier        // reference name, e.g. `ui`
+  @doc("Bundled pack to read from (`lucide` / `bootstrap`); defaults to the set name.")
   pack: utf8?                         // bundled pack; defaults to `name`
+  @doc("Default inline size for icons in this set (e.g. `\"1em\"`, `\"20px\"`).")
   size:        utf8?                  // default inline size, e.g. "1em", "20px"
+  @doc("Default foreground — drives `currentColor`.")
   color:       utf8?                  // default foreground (drives currentColor)
+  @doc("Optional explicit fill override.")
   fill:        utf8?                  // optional explicit fill
+  @doc("Optional background override.")
   background:  utf8?                  // optional background
+  @doc("Classes added to every icon from this set.")
   class:       list<utf8>?            // classes added to every icon from this set
+  @doc("Per-icon override children (see below).")
   @children("icon_def") icons: list<IconDef>
 }
 
@@ -29,11 +37,17 @@ type IconSet {
 // over the set default for that one icon.
 @block("icon_def")
 type IconDef {
+  @doc("Icon name (the file stem in the pack) — the label slot.")
   @inline(0) name: identifier         // icon name (file stem in the pack)
+  @doc("Per-icon override of the set's default size.")
   size:        utf8?
+  @doc("Per-icon override of the set's default foreground colour.")
   color:       utf8?
+  @doc("Per-icon override of the set's default fill.")
   fill:        utf8?
+  @doc("Per-icon override of the set's default background.")
   background:  utf8?
+  @doc("Per-icon classes added on top of the set defaults.")
   class:       list<utf8>?
 }
 
@@ -44,19 +58,40 @@ type IconDef {
 // emits a `<use>` of the shared sprite, which WCL can't express).
 @block("icon")
 type Icon extends SvgBlock {
+  @doc("Icon name (the label slot), optionally `set.name` (e.g. `lucide.compass`).")
   @inline(0) name: identifier         // icon name (optionally `set.name`)
+  @doc("Which declared iconset to read from (when more than one).")
   set: identifier?                    // which iconset (when more than one)
+  @doc("Icon size, as on an iconset.")
   size:        utf8?
+  @doc("Foreground colour, as on an iconset.")
   color:       utf8?
+  @doc("Fill override, as on an iconset.")
   fill:        utf8?
+  @doc("Background override, as on an iconset.")
   background:  utf8?
+  @doc("Style classes, as on an iconset.")
   class: list<utf8>?
+  @doc("Optional explicit HTML id.")
   id: identifier?
   // Defaults mirror the stdlib shapes so a bare icon lays out in
   // `:grid` / `:layered` diagrams and gets a bounding box for edges.
-  x = 0.0  y = 0.0  width = 24.0  height = 24.0
+  @doc("Top-left placement (or use anchors).")
+  x = 0.0
+  @doc("Top-left placement (or use anchors).")
+  y = 0.0
+  @doc("Size in diagram units (default 24×24).")
+  width = 24.0
+  @doc("Size in diagram units (default 24×24).")
+  height = 24.0
+  @doc("Extra multiplier on the size.")
   scale: f64?
-  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  @doc("Diagram anchor insets, like any shape.")
+  anchor_left: f64?
+  @hidden anchor_right: f64?
+  @hidden anchor_top: f64?
+  @hidden anchor_bottom: f64?
+  @doc("Diagram edge-attach sides, like any shape.")
   connect_points: list<AnchorSide>?
 
   lower = fn(i: Icon) -> list<SvgFundamental> []
