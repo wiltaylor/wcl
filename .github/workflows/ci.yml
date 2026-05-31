@@ -25,8 +25,9 @@ jobs:
       - run: just workspace-test
 
   # ── Version ───────────────────────────────────────────────────────────────
-  # Trailer-gated. Only `pre-release: true` publishes (an -alpha version). A
-  # stable `release: true` is intentionally blocked — WCL isn't ready for it yet.
+  # Trailer-gated. Only `pre-release: true` cuts a GitHub pre-release (an -alpha
+  # version with artifacts). A stable `release: true` is intentionally blocked —
+  # WCL isn't ready for it yet.
   version:
     name: Calculate version
     runs-on: ubuntu-latest
@@ -104,58 +105,6 @@ jobs:
           | **Previous tag** | \`${LAST_TAG:-none}\` |
           SUMMARY
 
-  # ── Publish ─────────────────────────────────────────────────────────────
-  # Publishes the Rust crates to crates.io in dependency order. Tagging + the
-  # GitHub release happen in the `release` job once the artifacts are built.
-  publish-rust:
-    name: Publish Rust → crates.io
-    runs-on: ubuntu-latest
-    needs: [version, check]
-    if: needs.version.outputs.do_release == 'true'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Stamp version
-        run: |
-          V="${{ needs.version.outputs.version }}"
-          # Replaces the [workspace.package] version and the three internal
-          # [workspace.dependencies] version reqs (the only "0.0.0" strings).
-          sed -i 's/"0\.0\.0"/"'"$V"'"/g' Cargo.toml
-          grep -n '"'"$V"'"' Cargo.toml
-
-      - name: Publish crates
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-        run: |
-          set -uo pipefail
-          # Publish each crate, tolerating an already-published version (so a
-          # re-run after a partial failure is safe) and retrying transient
-          # registry errors (e.g. crates.io 5xx).
-          publish() {
-            local crate="$1" attempt
-            for attempt in 1 2 3 4 5; do
-              if cargo publish -p "$crate" --no-verify --allow-dirty 2>&1 | tee /tmp/pub.log; then
-                return 0
-              fi
-              if grep -qiE 'already (uploaded|exists)' /tmp/pub.log; then
-                echo "::notice::$crate is already on crates.io at this version — skipping"
-                return 0
-              fi
-              echo "::warning::publish $crate failed (attempt $attempt/5); retrying in 30s"
-              sleep 30
-            done
-            echo "::error::failed to publish $crate after 5 attempts"
-            return 1
-          }
-          publish wcl_lang
-          publish wcl_wdoc
-          publish wcl_lsp
-          publish wcl
-
   # ── CLI binaries ────────────────────────────────────────────────────────
   # Build the `wcl` CLI for Linux + Windows (x86_64) so the release can ship
   # downloadable binaries. Version-stamped so `wcl --version` is correct.
@@ -231,10 +180,10 @@ jobs:
 
   # ── Release ─────────────────────────────────────────────────────────────
   # Gather the CLI binaries + .vsix, tag the commit, and cut a GitHub
-  # pre-release with all artifacts attached. Runs only after crates publish.
+  # pre-release with all artifacts attached.
   release:
     name: Create GitHub pre-release
-    needs: [version, publish-rust, build-cli, package-vscode]
+    needs: [version, build-cli, package-vscode]
     if: needs.version.outputs.do_release == 'true'
     runs-on: ubuntu-latest
     permissions:
