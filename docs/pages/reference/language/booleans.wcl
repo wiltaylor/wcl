@@ -1,5 +1,5 @@
 // Language section: Booleans.
-page booleans { sites = [:reference]
+page booleans { sites = [:reference]  title = "Booleans"
   h1 "Booleans"
 
   p "The `bool` type has exactly two values: `true` and `false`."

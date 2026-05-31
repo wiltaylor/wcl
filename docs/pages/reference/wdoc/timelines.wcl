@@ -1,5 +1,5 @@
 // wdoc section: Timelines.
-page wdoc_timelines { sites = [:reference]
+page wdoc_timelines { sites = [:reference]  title = "Timelines"
   h1 "Timelines"
 
   p "`timeline` is a **real-time axis** — dates are ISO strings (`\"2026-03-15\"` / `\"…14:30\"`) and tick boundaries land on real calendar dates (month 1sts, Mondays, …). A `unit` (`:minutes`..`:years`) sets granularity; omit it for auto-fit from the event span."

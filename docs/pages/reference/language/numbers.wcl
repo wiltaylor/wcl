@@ -1,5 +1,5 @@
 // Language section: Numbers.
-page numbers { sites = [:reference]
+page numbers { sites = [:reference]  title = "Numbers"
   h1 "Numbers"
 
   p "WCL has fixed-width signed and unsigned integers, plus two float widths. A bare integer literal defaults to `i64`; a suffix pins the exact type. Underscores may group digits for readability."

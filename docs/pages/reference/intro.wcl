@@ -1,5 +1,5 @@
 // Reference book: Introduction chapter (the book's index page).
-page index { sites = [:reference]
+page index { sites = [:reference]  title = "WCL Language Reference"
   h1 "WCL Language Reference"
 
   p "WCL is a typed configuration language built around two ideas: **fields** (`name = value`) and **blocks** (`kind \"label\" { … }`). On top of that base sit a real type system, first-class functions, pattern matching, and a schema layer that validates a document's structure."

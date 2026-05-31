@@ -1,5 +1,5 @@
 // WCL feature tour. Subject is the language; wdoc is one feature among many.
-page features { sites = [:wcl]
+page features { sites = [:wcl]  title = "Features"
   h1 "Features"
 
   p "A quick tour through WCL's major features. The [language reference](reference:index) covers each in detail."

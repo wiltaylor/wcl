@@ -1,5 +1,5 @@
 // Language section: Lists.
-page lists { sites = [:reference]
+page lists { sites = [:reference]  title = "Lists"
   h1 "Lists"
 
   p "A `list<T>` is an ordered, homogeneous sequence of values of type `T`. Lists are how you write any \"many of the same thing\" — including the data flowing through `@children`, `@connections`, and table rows."

@@ -1,5 +1,5 @@
 // Language section: Symbols (incl. symbol_set declarations).
-page symbols { sites = [:reference]
+page symbols { sites = [:reference]  title = "Symbols"
   h1 "Symbols"
 
   p "A **symbol** is an identifier-like value written `:name` — no space between the colon and the name. Symbols are used for tags, enum-like choices, and any time you want a typed name rather than a string."

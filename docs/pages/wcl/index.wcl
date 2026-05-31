@@ -1,7 +1,7 @@
 // WCL landing page. `start = true` makes it the page served at `/`.
 // The site header already shows "WCL", so the page leads with the
 // motivation (Why WCL?) rather than a redundant H1.
-page index { sites = [:wcl]  start = true
+page index { sites = [:wcl]  title = "Why WCL?"  start = true
   callout "Heavy development — not production ready" {
     class = ["warning"]
     body  = "WCL is under **heavy active development** and is **not ready for production use**. The language, APIs, and `wdoc` output can change at any time without notice."

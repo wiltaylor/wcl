@@ -1,5 +1,5 @@
 // Getting started with WCL the language. Install + write + check + edit; wdoc is a tail section.
-page getting_started { sites = [:wcl]
+page getting_started { sites = [:wcl]  title = "Getting started"
   h1 "Getting started"
 
   p "Install the CLI, write a config, validate it, then explore — formatting, the REPL, and the language server, and finally rendering a documentation site with wdoc."

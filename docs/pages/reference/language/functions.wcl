@@ -1,5 +1,5 @@
 // Language section: Functions.
-page functions { sites = [:reference]
+page functions { sites = [:reference]  title = "Functions"
   h1 "Functions"
 
   p "Functions are first-class values. They can be bound by `let`, stored in fields, passed as arguments, and returned from other functions."

@@ -1,5 +1,5 @@
 // wdoc section: Icons.
-page wdoc_icons { sites = [:reference]
+page wdoc_icons { sites = [:reference]  title = "Icons"
   h1 "Icons"
 
   p "Full **Lucide** and **Bootstrap Icons** packs ship compiled into the binary. No runtime disk read; only used icons are emitted into the output sprite (`_wdoc/icons.svg`). Icons paint with `currentColor`, so colour follows the surrounding text or class."

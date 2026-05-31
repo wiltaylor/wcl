@@ -1,5 +1,5 @@
 // Language section: Tensors.
-page tensors { sites = [:reference]
+page tensors { sites = [:reference]  title = "Tensors"
   h1 "Tensors"
 
   p "A `tensor<T, [dims...]>` is an N-dimensional array. Unlike a `list<list<…>>`, it carries an explicit shape, so its rank and per-axis sizes are visible to the type system and to any host consuming the value."

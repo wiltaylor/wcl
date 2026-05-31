@@ -1,5 +1,5 @@
 // wdoc section: Columns.
-page wdoc_columns { sites = [:reference]
+page wdoc_columns { sites = [:reference]  title = "Columns"
   h1 "Columns"
 
   p "`column` lays wdoc content out in side-by-side columns on a page, instead of stacking it sequentially. The `widths` list gives a CSS percentage for each child slot — one entry per child, summing to about `100`."

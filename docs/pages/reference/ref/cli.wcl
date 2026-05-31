@@ -1,5 +1,5 @@
 // Reference book: CLI Reference.
-page cli { sites = [:reference]
+page cli { sites = [:reference]  title = "CLI Reference"
   h1 "CLI Reference"
 
   p "The `wcl` binary drives parsing, checking, evaluation, editing, formatting, the language server, and wdoc."

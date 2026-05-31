@@ -1,5 +1,5 @@
 // Language section: Schema & Decorators.
-page schema { sites = [:reference]
+page schema { sites = [:reference]  title = "Schema & Decorators"
   h1 "Schema & Decorators"
 
   p "Decorators (written `@name` or `@name(args)`) attach schema metadata to declarations and fields. Together they describe a document's legal structure, which `wcl check` validates."

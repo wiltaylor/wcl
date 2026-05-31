@@ -1,5 +1,5 @@
 // Language section: Imports & Modules.
-page imports { sites = [:reference]
+page imports { sites = [:reference]  title = "Imports & Modules"
   h1 "Imports & Modules"
 
   p "An `import` pulls another file's declarations into the current document. There are two forms, distinguished by how the path is written."

@@ -1,5 +1,5 @@
 // wdoc section: Videos.
-page wdoc_videos { sites = [:reference]
+page wdoc_videos { sites = [:reference]  title = "Videos"
   h1 "Videos"
 
   p "`video` embeds a video on a page. The source is either a local file (typically `.mp4`, copied into `_wdoc/` at build time like an `image`) or a web URL — YouTube, Vimeo, or any other embeddable address. To keep a page light, a video first renders as a click-to-play *facade* (a poster thumbnail plus a play button); the real player loads only when the reader clicks."

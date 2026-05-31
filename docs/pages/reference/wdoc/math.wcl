@@ -1,5 +1,5 @@
 // wdoc section: Math Equations.
-page wdoc_math { sites = [:reference]
+page wdoc_math { sites = [:reference]  title = "Math Equations"
   h1 "Math Equations"
 
   p "`math` typesets a LaTeX equation to inline SVG via the pure-Rust RaTeX toolchain. Glyph outlines embed in the SVG, so equations render the same whether the page is opened locally or served over HTTP — no webfont dependency."

@@ -7,7 +7,7 @@ class "pin-city" {
   dark  { color = "#fcd34d" }
 }
 
-page wdoc_maps { sites = [:reference]
+page wdoc_maps { sites = [:reference]  title = "Maps"
   h1 "Maps"
 
   p "A `map` is a zoomable, pinned image placed inside a `diagram` — built for game-guide and reference maps. Drop `pin`s at coordinates and give each one a card of wdoc content. A diagram holding a map is **automatically interactive** (wheel to zoom, drag to pan, plus `+` / `−` / `⟲` controls) and loads the bundled map player; you don't need `pan_zoom = true`."

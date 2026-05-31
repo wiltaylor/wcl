@@ -1,5 +1,5 @@
 // wdoc section: Primitive Shapes.
-page wdoc_primitives { sites = [:reference]
+page wdoc_primitives { sites = [:reference]  title = "Primitive Shapes"
   h1 "Primitive Shapes"
 
 

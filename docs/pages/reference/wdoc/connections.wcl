@@ -1,5 +1,5 @@
 // wdoc section: Connections.
-page wdoc_connections { sites = [:reference]
+page wdoc_connections { sites = [:reference]  title = "Connections"
   h1 "Connections"
 
   p "Inside a `diagram`, `source -> destination :kind` draws an edge between two shapes (matched by `id`). The optional `:kind` tag is a symbol; the renderer routes the edge based on the diagram's layout and styles it by kind."

@@ -1,5 +1,5 @@
 // Language section: Unions.
-page unions { sites = [:reference]
+page unions { sites = [:reference]  title = "Unions"
   h1 "Unions"
 
   p "A `union` is a tagged set of variants — a value that is exactly one of several alternatives. Each variant carries its own payload (or none), and pattern matching dispatches on the tag."

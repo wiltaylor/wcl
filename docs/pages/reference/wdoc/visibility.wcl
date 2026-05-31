@@ -1,5 +1,5 @@
 // wdoc section: Block Visibility.
-page wdoc_visibility { sites = [:reference]
+page wdoc_visibility { sites = [:reference]  title = "Block Visibility"
   h1 "Block Visibility"
 
   p "Any block can carry an `@only(...)` or `@except(...)` decorator to scope it to a subset of the build — by site name, template kind, or output backend. Use `@only` to render a block *only* where the conditions match, and `@except` to render it *everywhere except* where they match."

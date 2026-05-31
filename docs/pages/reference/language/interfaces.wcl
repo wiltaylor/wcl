@@ -1,5 +1,5 @@
 // Language section: Interfaces.
-page interfaces { sites = [:reference]
+page interfaces { sites = [:reference]  title = "Interfaces"
   h1 "Interfaces"
 
   p "An `interface` declares a structural contract — a set of fields a type must have to satisfy it. Any type with the right fields satisfies it automatically, no explicit `implements`."
