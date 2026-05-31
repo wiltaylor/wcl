@@ -191,6 +191,7 @@ pub fn pdf(
         tilesets,
         images,
         videos,
+        crate::inline::Backend::Pdf,
     );
 
     let geom = Geometry::new(page_size);
@@ -240,6 +241,12 @@ pub fn pdf(
         // theme. The shared `patterns` is updated per site (interior mutability;
         // the embedder borrows it immutably for the whole run).
         patterns.set_ui_theme(crate::render::resolve_ui_theme(spec.block.as_ref()));
+        // Site name + template kind for `@only`/`@except` block visibility.
+        let default_template = spec
+            .block
+            .as_ref()
+            .and_then(|b| crate::render::field_symbol(b, "default_template"));
+        patterns.set_site_context(spec.name.clone(), default_template);
         // One physical page per page block, ordered by the site TOC (start page
         // first, then TOC chapters, then any remaining pages in source order).
         let ordered = order_site_pages(spec);

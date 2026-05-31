@@ -67,6 +67,7 @@ pub fn schema_registry() -> Registry {
     r.register("wdoc/tui.wcl", include_str!("../lib/tui.wcl"));
     r.register("wdoc/math.wcl", include_str!("../lib/math.wcl"));
     r.register("wdoc/typedoc.wcl", include_str!("../lib/typedoc.wcl"));
+    r.register("wdoc/visibility.wcl", include_str!("../lib/visibility.wcl"));
     r
 }
 
@@ -556,7 +557,9 @@ fn build_site(
         tilesets,
         images,
         videos,
+        crate::inline::Backend::Html,
     );
+    inline_patterns.set_site_context(spec.name.clone(), default_template.clone());
     // Wireframe (`wf_*`) elements bake from this site's UI theme.
     inline_patterns.set_ui_theme(crate::render::resolve_ui_theme(spec.block.as_ref()));
 

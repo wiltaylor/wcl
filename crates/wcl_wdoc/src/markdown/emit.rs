@@ -73,6 +73,11 @@ impl Emitter<'_> {
     /// Dispatch one block, pushing zero or more complete Markdown blocks onto
     /// `out` (joined with blank lines by the caller).
     fn block(&mut self, block: &Block<'_>, out: &mut Vec<String>) -> Result<(), BuildError> {
+        // `@only` / `@except` can scope a block out of this site / template /
+        // backend (here, `:markdown`).
+        if !crate::visibility::block_visible(block, self.patterns) {
+            return Ok(());
+        }
         let kind = block.kind();
         match kind {
             // Front matter is emitted separately; speaker notes never render.

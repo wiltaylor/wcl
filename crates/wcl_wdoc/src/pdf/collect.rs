@@ -46,6 +46,11 @@ fn collect_block(
     base_dir: Option<&Path>,
     out: &mut Vec<BlockNode>,
 ) {
+    // `@only` / `@except` can scope a block out of this site / template /
+    // backend (here, `:pdf`).
+    if !crate::visibility::block_visible(block, patterns) {
+        return;
+    }
     let kind = block.kind();
     // Speaker notes never appear in the rendered document.
     if kind == "notes" {

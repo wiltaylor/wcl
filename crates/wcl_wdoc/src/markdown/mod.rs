@@ -178,9 +178,16 @@ fn markdown_site(
         tilesets,
         images,
         videos,
+        crate::inline::Backend::Markdown,
     );
     // Wireframe (`wf_*`) elements bake from this site's UI theme.
     patterns.set_ui_theme(crate::render::resolve_ui_theme(spec.block.as_ref()));
+    // Site name + template kind for `@only`/`@except` block visibility.
+    let default_template = spec
+        .block
+        .as_ref()
+        .and_then(|b| crate::render::field_symbol(b, "default_template"));
+    patterns.set_site_context(spec.name.clone(), default_template);
 
     let mut count = 0;
     for page in &spec.pages {

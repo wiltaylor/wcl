@@ -326,6 +326,12 @@ pub(crate) fn render_block(
     patterns: &InlinePatterns,
     base_dir: Option<&Path>,
 ) -> Option<String> {
+    // `@only` / `@except` can scope a block to a subset of sites / templates /
+    // backends. A filtered-out block contributes nothing (empty string is safe
+    // in both the page loop's `filter_map` and the nested concatenators).
+    if !crate::visibility::block_visible(block, patterns) {
+        return Some(String::new());
+    }
     match block.kind() {
         "column" => Some(render_column(doc, block, patterns, base_dir)),
         // A presentation `fragment` wraps its children in a step-reveal

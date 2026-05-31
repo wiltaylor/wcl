@@ -31,6 +31,29 @@ use crate::video::VideoRegistry;
 /// stack.
 const MAX_DEPTH: usize = 8;
 
+/// Which output backend a render pass targets. Carried on
+/// [`InlinePatterns`] so the block-visibility predicate
+/// ([`crate::visibility::block_visible`]) can honour the `backends=[…]`
+/// axis of `@only` / `@except`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Backend {
+    Html,
+    Pdf,
+    Markdown,
+}
+
+impl Backend {
+    /// The symbol an author writes in a `backends=[…]` axis
+    /// (`:html` / `:pdf` / `:markdown`).
+    pub(crate) fn symbol(self) -> &'static str {
+        match self {
+            Backend::Html => "html",
+            Backend::Pdf => "pdf",
+            Backend::Markdown => "markdown",
+        }
+    }
+}
+
 pub(crate) struct InlinePatterns {
     compiled: Vec<CompiledPattern>,
     /// Names of every `page` in the current site, used by `render_link`
@@ -77,6 +100,16 @@ pub(crate) struct InlinePatterns {
     /// sites (the embedder borrows it immutably for the whole run) and
     /// updates the theme per site.
     ui_theme: RefCell<crate::render::UiTheme>,
+    /// The backend this pass targets (fixed at construction) plus the current
+    /// site's name and template kind (`:webpage` / `:book` / `:presentation`),
+    /// read by the block-visibility predicate to honour `@only` / `@except`.
+    /// The site/template fields are `RefCell` and updated per site via
+    /// `set_site_context` — mirroring `ui_theme`, so the single PDF
+    /// `InlinePatterns` (shared, immutably borrowed across sites) still tracks
+    /// which site it is currently emitting.
+    backend: Backend,
+    vis_site: RefCell<Option<String>>,
+    vis_template: RefCell<Option<String>>,
 }
 
 struct CompiledPattern {
@@ -102,6 +135,7 @@ impl InlinePatterns {
         tilesets: TilesetRegistry,
         images: ImageRegistry,
         videos: VideoRegistry,
+        backend: Backend,
     ) -> Self {
         let mut compiled = Vec::new();
         for block in doc.blocks() {
@@ -142,7 +176,37 @@ impl InlinePatterns {
             images,
             videos,
             ui_theme: RefCell::new(crate::render::UiTheme::default()),
+            backend,
+            vis_site: RefCell::new(None),
+            vis_template: RefCell::new(None),
         }
+    }
+
+    /// Set the current site's name and template kind for block-visibility
+    /// filtering (the build calls this per site before rendering its pages).
+    /// Interior mutability so it works on the shared, immutably-borrowed PDF
+    /// `InlinePatterns`, like `set_ui_theme`.
+    pub(crate) fn set_site_context(&self, site: Option<String>, template: Option<String>) {
+        *self.vis_site.borrow_mut() = site;
+        *self.vis_template.borrow_mut() = template;
+    }
+
+    /// The backend this render pass targets — the current value of the
+    /// `@only`/`@except` `backends=` axis.
+    pub(crate) fn backend(&self) -> Backend {
+        self.backend
+    }
+
+    /// The current site's name, for the `@only`/`@except` `sites=` axis
+    /// (`None` for the synthetic / unnamed site).
+    pub(crate) fn vis_site(&self) -> Option<String> {
+        self.vis_site.borrow().clone()
+    }
+
+    /// The current site's template kind, for the `templates=` axis
+    /// (`None` when the site declares no `default_template`).
+    pub(crate) fn vis_template(&self) -> Option<String> {
+        self.vis_template.borrow().clone()
     }
 
     /// Set the current site's resolved UI/application theme (the build calls

@@ -74,6 +74,7 @@ HTML) isn't expressible in WCL. Everything deeper → the doc page or the source
 | math (LaTeX) | `src/math.rs` | `math.wcl` | `math.wcl` |
 | themes / styling | `src/render/` | `theme.wcl`, `css-classes.wcl` | `styling.wcl` |
 | templates / presentation | `src/render/` | `templates.wcl`, `presentation.wcl` | `sites.wcl`, `pages.wcl` |
+| block visibility (`@only`/`@except`) | `src/visibility.rs` | `visibility.wcl` | `visibility.wcl` |
 | PDF backend | `src/pdf/` | — | (memory: wdoc-pdf-backend) |
 | Markdown backend | `src/markdown/` | — | `markdown.wcl` |
 

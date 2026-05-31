@@ -27,6 +27,7 @@ mod text;
 mod tileset;
 mod timeline;
 mod video;
+mod visibility;
 mod wireframe;
 
 pub use build::{BuildError, build, schema_registry};

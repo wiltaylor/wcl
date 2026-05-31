@@ -1,0 +1,31 @@
+// wdoc standard library — block visibility filters.
+//
+// `@only` / `@except` scope any block instance to a subset of the build.
+// Both take up to three optional `list<symbol>` axes:
+//
+//   sites      — site name (the `@inline(0) name` on a `site` block)
+//   templates  — template kind (:webpage / :book / :presentation)
+//   backends   — output backend (:html / :pdf / :markdown)
+//
+// Within an axis the values are OR'd; the specified axes are AND'd. A block
+// renders iff `@only` (if present) matches AND `@except` (if present) does not
+// fully match. The decorators are read by the renderer
+// (`crates/wcl_wdoc/src/visibility.rs`); declaring them here documents the
+// argument slots and lets reflection see them.
+//
+//   @only(sites=[:marketing], templates=[:presentation])  callout { … }
+//   @except(backends=[:pdf])                              video   { … }
+
+@decorator("only")
+type OnlyWhen {
+  sites: list<symbol>?
+  templates: list<symbol>?
+  backends: list<symbol>?
+}
+
+@decorator("except")
+type ExceptWhen {
+  sites: list<symbol>?
+  templates: list<symbol>?
+  backends: list<symbol>?
+}
