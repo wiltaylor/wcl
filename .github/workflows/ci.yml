@@ -131,10 +131,30 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
         run: |
-          cargo publish -p wcl_lang --no-verify --allow-dirty
-          cargo publish -p wcl_wdoc --no-verify --allow-dirty
-          cargo publish -p wcl_lsp  --no-verify --allow-dirty
-          cargo publish -p wcl      --no-verify --allow-dirty
+          set -uo pipefail
+          # Publish each crate, tolerating an already-published version (so a
+          # re-run after a partial failure is safe) and retrying transient
+          # registry errors (e.g. crates.io 5xx).
+          publish() {
+            local crate="$1" attempt
+            for attempt in 1 2 3 4 5; do
+              if cargo publish -p "$crate" --no-verify --allow-dirty 2>&1 | tee /tmp/pub.log; then
+                return 0
+              fi
+              if grep -qiE 'already (uploaded|exists)' /tmp/pub.log; then
+                echo "::notice::$crate is already on crates.io at this version — skipping"
+                return 0
+              fi
+              echo "::warning::publish $crate failed (attempt $attempt/5); retrying in 30s"
+              sleep 30
+            done
+            echo "::error::failed to publish $crate after 5 attempts"
+            return 1
+          }
+          publish wcl_lang
+          publish wcl_wdoc
+          publish wcl_lsp
+          publish wcl
 
   # ── CLI binaries ────────────────────────────────────────────────────────
   # Build the `wcl` CLI for Linux + Windows (x86_64) so the release can ship

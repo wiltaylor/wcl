@@ -2,18 +2,14 @@ name: Deploy Site
 
 # Builds the WCL documentation site (docs/main.wcl -> docs/_site) with the
 # `wcl` CLI and deploys it to Cloudflare Pages (project "wcl-dev", configured
-# in wrangler.toml). Like the pre-rewrite Hugo pipeline, deploys are gated by a
-# commit trailer so an ordinary push doesn't trigger a (slow) Rust build +
-# deploy. Add one of these trailers to the tip commit to publish:
-#
-#   push-docs: true
-#   push-site: true
-#   release: true
-#   pre-release: true
+# in wrangler.toml). Runs only when files under docs/ change on main, so an
+# ordinary code push doesn't trigger a (slow) Rust build + deploy.
 
 on:
   push:
     branches: [main]
+    paths:
+      - 'docs/**'
 
 env:
   CARGO_TERM_COLOR: always
@@ -26,40 +22,19 @@ jobs:
       deployments: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Check if deploy needed
-        id: check
-        run: |
-          PUSH_DOCS=$(git log -1 --format='%(trailers:key=push-docs,valueonly)')
-          PUSH_SITE=$(git log -1 --format='%(trailers:key=push-site,valueonly)')
-          IS_RELEASE=$(git log -1 --format='%(trailers:key=release,valueonly)')
-          IS_PRERELEASE=$(git log -1 --format='%(trailers:key=pre-release,valueonly)')
-
-          if [[ "$PUSH_DOCS" == "true" || "$PUSH_SITE" == "true" || "$IS_RELEASE" == "true" || "$IS_PRERELEASE" == "true" ]]; then
-            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Install Rust toolchain
-        if: steps.check.outputs.should_deploy == 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
-        if: steps.check.outputs.should_deploy == 'true'
 
       - name: Build wcl
-        if: steps.check.outputs.should_deploy == 'true'
         run: cargo build --release -p wcl
 
       - name: Build docs site
-        if: steps.check.outputs.should_deploy == 'true'
         run: ./target/release/wcl wdoc build docs/main.wcl --out docs/_site
 
       - name: Deploy to Cloudflare Pages
-        if: steps.check.outputs.should_deploy == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
