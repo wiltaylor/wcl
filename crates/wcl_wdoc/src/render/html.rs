@@ -349,6 +349,10 @@ pub(crate) fn render_block(
         // Rust (the same `image` block is also a diagram shape; see
         // render_shape). Records usage in the image registry.
         "image" => Some(crate::image::render_html(block, patterns.images())),
+        // A page video — like `image`, the asset copy, URL classification,
+        // and click-to-play facade are special-cased in Rust. Records usage
+        // in the video registry (driving the local-file/poster copy).
+        "video" => Some(crate::video::render_html(block, patterns.videos())),
         "diagram" => Some(render_diagram(doc, block, patterns, base_dir)),
         // The terminal is special-cased in Rust: its grid model, ANSI
         // handling, and asciinema replay aren't expressible in WCL.

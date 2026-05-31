@@ -4,8 +4,9 @@
 //   - on a page (`extends WdocBlock`)   → an `<img>`
 //   - inside a `diagram` / `container`  → a placeable SVG `<image>`
 // `source` is a path relative to the doc (copied into `_wdoc/` and
-// referenced by URL, so it resolves when *served*, not via `file://`) or
-// an external URL / `data:` URI (passed through unchanged). Like
+// referenced by URL, so it resolves when *served*, not when opened
+// directly from disk) or an external URL / `data:` URI (passed through
+// unchanged). Like
 // `icon` / `tilemap` it's special-cased in the renderer — the asset copy,
 // path rewrite, and natural-size reading aren't expressible in WCL — so
 // the `lower` is a never-called stub.

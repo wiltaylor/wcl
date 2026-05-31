@@ -42,7 +42,7 @@ fn build_emits_fundamentals_for_example_site() {
     // output root; docs/blog/talk go to subdirectories.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 21); // showcase 14 + docs 3 + blog 3 + talk deck 1
+    assert_eq!(n, 22); // showcase 15 + docs 3 + blog 3 + talk deck 1
 
     // The richer content (text + classes + diagram + flowchart) is on
     // the showcase overview page (at the root, since showcase is `root`).
@@ -2498,11 +2498,11 @@ page index {
 fn build_processes_full_code_example_page() {
     // Smoke test against the code page in the example, which exercises
     // Rust, Python, JSON, WCL, and an unknown language in one page. The
-    // example declares four sites (21 pages total); `showcase` is the
+    // example declares four sites (22 pages total); `showcase` is the
     // `root` site, so the code page renders flat at the output root.
     let out = TempDir::new().expect("mkdir tempdir");
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), out.path());
-    assert_eq!(n, 21);
+    assert_eq!(n, 22);
     let html = std::fs::read_to_string(out.path().join("code.html")).expect("read code.html");
     assert!(
         html.matches("<pre class=\"code-block\"").count() >= 5,
@@ -4900,6 +4900,134 @@ page index {
     }
 }
 
+// ── Video ──────────────────────────────────────────────────────────
+
+/// Build `src` as a standalone `main.wcl` with a local `clip.mp4` +
+/// `thumb.png` available, returning the rendered `index.html` and the
+/// live output dir (to probe `_wdoc/`).
+fn build_video(src: &str) -> (String, TempDir) {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    // The build only copies the file's bytes (it never decodes a video),
+    // so any non-empty content stands in for a real `.mp4`.
+    std::fs::write(tmp.path().join("clip.mp4"), b"\x00\x00\x00\x18ftypmp42fake")
+        .expect("write mp4");
+    std::fs::write(tmp.path().join("thumb.png"), fake_png(64, 48)).expect("write png");
+    let file = tmp.path().join("main.wcl");
+    write_fixture(&file, src);
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&file, out.path());
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+    (index, out)
+}
+
+#[test]
+fn build_local_video_emits_facade_and_copies_file_and_poster() {
+    let src = r#"
+page index {
+  video "clip.mp4" {
+    poster = "thumb.png"
+    title  = "A clip"
+    width  = 480.0
+  }
+}
+"#;
+    let (index, out) = build_video(src);
+    // The facade is a click-to-play <div> tagged `local`, with the copied
+    // video URL in data-src and the title surfaced as an aria-label.
+    assert!(
+        index
+            .contains("<div class=\"wdoc-video\" data-kind=\"local\" data-src=\"_wdoc/video-clip-"),
+        "{index}"
+    );
+    assert!(index.contains("aria-label=\"A clip\""), "{index}");
+    assert!(index.contains("style=\"width:480px;\""), "{index}");
+    // The poster is the copied local thumbnail; a play button overlays it.
+    assert!(index.contains("<img src=\"_wdoc/poster-thumb-"), "{index}");
+    assert!(
+        index.contains("<span class=\"wdoc-video-play\" aria-hidden=\"true\"></span>"),
+        "{index}"
+    );
+    // The bundled player is injected once for the page.
+    assert!(index.contains("_wdoc/wdoc-video.js"), "{index}");
+    // Both assets land in `_wdoc/` with deterministic names.
+    let names: Vec<String> = std::fs::read_dir(out.path().join("_wdoc"))
+        .expect("read _wdoc")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        names
+            .iter()
+            .any(|n| n.starts_with("video-clip-") && n.ends_with(".mp4")),
+        "{names:?}"
+    );
+    assert!(
+        names
+            .iter()
+            .any(|n| n.starts_with("poster-thumb-") && n.ends_with(".png")),
+        "{names:?}"
+    );
+    assert!(names.iter().any(|n| n == "wdoc-video.js"), "{names:?}");
+}
+
+#[test]
+fn build_youtube_video_embeds_and_auto_thumbnails() {
+    let src = r#"
+page index {
+  video "https://www.youtube.com/watch?v=dQw4w9WgXcQ" { title = "Yt" }
+}
+"#;
+    let (index, out) = build_video(src);
+    assert!(index.contains("data-kind=\"youtube\""), "{index}");
+    assert!(
+        index.contains("data-src=\"https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1\""),
+        "{index}"
+    );
+    // The poster is auto-derived from the video id (no `poster` given).
+    assert!(
+        index.contains("<img src=\"https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg\""),
+        "{index}"
+    );
+    // Nothing local ⇒ no copied video/poster asset.
+    let wdoc = out.path().join("_wdoc");
+    if wdoc.exists() {
+        let copied = std::fs::read_dir(&wdoc)
+            .expect("read _wdoc")
+            .filter_map(|e| e.ok())
+            .any(|e| {
+                let n = e.file_name().to_string_lossy().into_owned();
+                n.starts_with("video-") || n.starts_with("poster-")
+            });
+        assert!(!copied, "a remote video must not copy assets");
+    }
+}
+
+#[test]
+fn build_vimeo_and_generic_video_embeds() {
+    let src = r#"
+page index {
+  video "https://vimeo.com/76979871" { title = "Vi" }
+  video "https://example.com/player/embed/abc" { title = "Gen" }
+}
+"#;
+    let (index, _out) = build_video(src);
+    assert!(
+        index.contains(
+            "data-kind=\"vimeo\" data-src=\"https://player.vimeo.com/video/76979871?autoplay=1\""
+        ),
+        "{index}"
+    );
+    // No poster supplied for either ⇒ a placeholder stands in.
+    assert!(
+        index.contains("<span class=\"wdoc-video-placeholder\"></span>"),
+        "{index}"
+    );
+    assert!(
+        index.contains("data-kind=\"generic\" data-src=\"https://example.com/player/embed/abc\""),
+        "{index}"
+    );
+}
+
 // ── Diagram pan + zoom ─────────────────────────────────────────────
 
 /// Build `src` as a standalone `main.wcl`, returning the rendered
@@ -5472,7 +5600,7 @@ fn multisite_example_root_site_and_subdirs() {
     let out = TempDir::new().expect("mkdir tempdir");
     let dir = out.path();
     let n = build_ok(&examples_dir().join("wdoc").join("main.wcl"), dir);
-    assert_eq!(n, 21);
+    assert_eq!(n, 22);
 
     // Showcase is at the root: its pages are flat, and there's no
     // `showcase/` subdirectory.

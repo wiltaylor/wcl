@@ -1,0 +1,68 @@
+// ── Video ───────────────────────────────────────────────────────────
+//
+// An embedded video, shown on a page (`extends WdocBlock`). The `source`
+// is either a local video file (a doc-relative path — typically `.mp4` —
+// copied into `_wdoc/` and referenced by URL, so it resolves when
+// *served*, not when opened directly from disk) or a web URL: YouTube,
+// Vimeo, or any other embeddable address ("generic").
+//
+// To avoid auto-loading every embed on a page, a video first renders as a
+// lightweight click-to-play *facade* — a poster thumbnail plus a play
+// button. The bundled `_wdoc/wdoc-video.js` player swaps the facade for
+// the real `<video>` / `<iframe>` only when the reader clicks. The poster
+// is the explicit `poster` (a local path or URL), or — for YouTube — an
+// auto-derived thumbnail; otherwise a plain play-button placeholder shows.
+//
+// Like `image` it's special-cased in the renderer — the asset copy, URL
+// parsing, facade HTML, and PDF handling aren't expressible in WCL — so
+// the `lower` is a never-called stub. Page-only: unlike `image` it isn't
+// an `SvgBlock`, so it can't be placed inside a diagram.
+@block("video")
+type Video extends WdocBlock {
+  @inline(0) source: utf8             // local video path, or a YouTube / Vimeo / other URL
+  poster: utf8?                       // thumbnail (doc-relative path or URL); optional
+  title:  utf8?                       // accessible label (aria-label / video title)
+  width:  f64?                        // display size; responsive default if omitted
+  height: f64?
+  id:     identifier?
+  class:  list<utf8>?
+
+  lower = fn(v: Video) -> list<HtmlFundamental> []
+}
+
+// Click-to-play facade styling. Element+class selectors and a pseudo-
+// element (the play triangle) need a `stylesheet` rather than a `class`;
+// a user `class` on the video still cascades over it. No `--wdoc-*`
+// custom properties — this is always injected, so it must stand alone.
+stylesheet "wdoc-video" {
+  css = <<CSS
+    .wdoc-video {
+      position: relative; display: block; cursor: pointer;
+      max-width: 100%; margin: 0; overflow: hidden;
+      background: #000; border-radius: 4px; line-height: 0;
+    }
+    .wdoc-video img { display: block; width: 100%; height: auto; }
+    .wdoc-video .wdoc-video-placeholder {
+      display: block; width: 100%; min-height: 220px;
+      background: linear-gradient(135deg, #2a2a32, #14141a);
+    }
+    .wdoc-video .wdoc-video-play {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 72px; height: 72px; border-radius: 50%;
+      background: rgba(0, 0, 0, 0.6); border: 2px solid #fff;
+      transition: background 0.15s ease;
+    }
+    .wdoc-video:hover .wdoc-video-play { background: rgba(0, 0, 0, 0.8); }
+    .wdoc-video .wdoc-video-play::after {
+      content: ""; position: absolute; top: 50%; left: 54%;
+      transform: translate(-50%, -50%);
+      border-style: solid; border-width: 14px 0 14px 24px;
+      border-color: transparent transparent transparent #fff;
+    }
+    .wdoc-video iframe, .wdoc-video video {
+      display: block; width: 100%; height: 100%;
+      aspect-ratio: 16 / 9; border: 0;
+    }
+    CSS
+}

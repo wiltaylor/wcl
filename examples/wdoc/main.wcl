@@ -87,6 +87,7 @@ site showcase {
       item "Math"      { page = math }
       item "Terminal"  { page = terminal }
       item "Icons"     { page = icons }
+      item "Video"     { page = video }
       item "Wireframe" { page = wireframe }
     }
     item "About"  { page = about }
@@ -168,6 +169,7 @@ import "./pages/charts.wcl"
 import "./pages/timeline.wcl"
 import "./pages/terminal.wcl"
 import "./pages/icons.wcl"
+import "./pages/video.wcl"
 import "./pages/tilemap.wcl"
 import "./pages/dopesheet.wcl"
 import "./pages/map.wcl"

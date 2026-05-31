@@ -105,6 +105,12 @@ fn collect_block(
         }
         return;
     }
+    // A page-level video: in static PDF it can't play, so show the poster
+    // thumbnail and — for an online video only — a link to it.
+    if kind == "video" {
+        collect_video(block, base_dir, out);
+        return;
+    }
     if kind == "callout" {
         let classes = field_utf8_list(block, "class");
         let heading = patterns
@@ -371,6 +377,52 @@ fn collect_image(block: &Block<'_>, base_dir: Option<&Path>) -> Option<BlockNode
         disp_w: field_f64(block, "width").map(|v| v as f32),
         disp_h: field_f64(block, "height").map(|v| v as f32),
     })
+}
+
+/// Collect a page `video` into static PDF nodes: the poster thumbnail (when
+/// it's an embeddable local image) plus, for an online video, a link to it.
+/// A local video gets only its poster — a `file:`-style path is useless in a
+/// distributed PDF — so it gets no link.
+fn collect_video(block: &Block<'_>, base_dir: Option<&Path>, out: &mut Vec<BlockNode>) {
+    // Poster: only a local file can be embedded (there's no network at build
+    // time), so a remote poster / YouTube auto-thumbnail is skipped here.
+    if let Some(poster) = field_utf8(block, "poster")
+        && !poster.starts_with("http://")
+        && !poster.starts_with("https://")
+        && !poster.starts_with("data:")
+    {
+        let path = match base_dir {
+            Some(dir) => dir.join(&poster),
+            None => Path::new(&poster).to_path_buf(),
+        };
+        if let Ok(bytes) = std::fs::read(path) {
+            out.push(BlockNode::Image {
+                bytes,
+                disp_w: field_f64(block, "width").map(|v| v as f32),
+                disp_h: field_f64(block, "height").map(|v| v as f32),
+            });
+        }
+    }
+
+    let Some(source) = block.labels().ok().and_then(|l| l.into_iter().next()) else {
+        return;
+    };
+    let source = match source {
+        Value::Utf8(s) | Value::Ascii(s) => s,
+        _ => return,
+    };
+    if let Some(url) = crate::video::online_url(&source) {
+        let label = field_utf8(block, "title").unwrap_or_else(|| url.clone());
+        out.push(BlockNode::Paragraph {
+            runs: vec![InlineRun::Link {
+                runs: vec![InlineRun::Text {
+                    text: label,
+                    style: TextStyle::body(),
+                }],
+                href: url,
+            }],
+        });
+    }
 }
 
 /// The accent colour for a callout, keyed on its type class (mirrors the

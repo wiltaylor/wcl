@@ -13,7 +13,7 @@
 // containing a map is automatically interactive (pan + zoom) and loads
 // the bundled `wdoc-map.js`. Tile / image assets are copied into
 // `_wdoc/` and referenced by URL, so a map resolves when *served*, not
-// via a `file://` open (same limitation as `image` / `tilemap`).
+// when opened directly from disk (same limitation as `image` / `tilemap`).
 //
 // Theming rides the `class` system: a pin's `class` themes its marker
 // (`fill` / `stroke` / `color`, with `dark` / `light`), its `card_class`

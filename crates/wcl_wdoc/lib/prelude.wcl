@@ -26,6 +26,7 @@ import <inline.wcl>           // inline-span union + pattern type
 import <inline-patterns.wcl>  // built-in inline patterns (bold/italic/…)
 import <icons.wcl>            // iconset / icon_def / icon
 import <image.wcl>            // image (page <img> + diagram <image>)
+import <video.wcl>            // video (page <video> / embed, click-to-play)
 import <tilemap.wcl>          // tileset / tile / tilemap
 import <dopesheet.wcl>        // animated sprite-sheet playback
 import <map.wcl>              // zoomable map + pins + cards

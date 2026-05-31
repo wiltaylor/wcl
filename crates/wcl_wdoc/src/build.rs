@@ -52,6 +52,7 @@ pub fn schema_registry() -> Registry {
     );
     r.register("wdoc/icons.wcl", include_str!("../lib/icons.wcl"));
     r.register("wdoc/image.wcl", include_str!("../lib/image.wcl"));
+    r.register("wdoc/video.wcl", include_str!("../lib/video.wcl"));
     r.register("wdoc/tilemap.wcl", include_str!("../lib/tilemap.wcl"));
     r.register("wdoc/dopesheet.wcl", include_str!("../lib/dopesheet.wcl"));
     r.register("wdoc/map.wcl", include_str!("../lib/map.wcl"));
@@ -476,6 +477,10 @@ fn build_site(
     if uses_dopesheet {
         write_dopesheet_assets(out_dir)?;
     }
+    let uses_video = spec.pages.iter().any(crate::video::uses_video);
+    if uses_video {
+        write_video_assets(out_dir)?;
+    }
 
     // Site descriptor: the default template + title a template can show.
     // `None` block ⇒ the synthetic default site, so pages render bare
@@ -538,6 +543,7 @@ fn build_site(
     let icons = crate::icons::IconRegistry::load(doc);
     let tilesets = crate::tileset::TilesetRegistry::load(doc, base_dir)?;
     let images = crate::image::ImageRegistry::new(base_dir.map(Path::to_path_buf));
+    let videos = crate::video::VideoRegistry::new(base_dir.map(Path::to_path_buf));
     let inline_patterns = InlinePatterns::load(
         doc,
         page_names,
@@ -548,6 +554,7 @@ fn build_site(
         icons,
         tilesets,
         images,
+        videos,
     );
     // Wireframe (`wf_*`) elements bake from this site's UI theme.
     inline_patterns.set_ui_theme(crate::render::resolve_ui_theme(spec.block.as_ref()));
@@ -654,6 +661,9 @@ fn build_site(
         if uses_dopesheet {
             body.push_str("\n<script src=\"_wdoc/dopesheet-player.js\" defer></script>\n");
         }
+        if uses_video {
+            body.push_str("\n<script src=\"_wdoc/wdoc-video.js\" defer></script>\n");
+        }
         // The deck keyboard-navigation player.
         write_presentation_assets(out_dir)?;
         body.push_str("\n<script src=\"_wdoc/presentation.js\" defer></script>\n");
@@ -746,6 +756,11 @@ fn build_site(
         if uses_dopesheet {
             body.push_str("\n<script src=\"_wdoc/dopesheet-player.js\" defer></script>\n");
         }
+        // Videos render as a click-to-play facade; the bundled player swaps
+        // in the real <video>/<iframe> on click. Loaded once per page.
+        if uses_video {
+            body.push_str("\n<script src=\"_wdoc/wdoc-video.js\" defer></script>\n");
+        }
         let html = render_page(&page_name, &css, &body);
 
         let out_path = out_dir.join(format!("{page_name}.html"));
@@ -768,6 +783,10 @@ fn build_site(
     // Copy each local image referenced by a rendered `image` block (page
     // or diagram) into `_wdoc/`. No-op when none were used.
     inline_patterns.images().copy_used_images(out_dir)?;
+
+    // Copy each local video file / poster referenced by a rendered `video`
+    // block into `_wdoc/`. No-op when none were used.
+    inline_patterns.videos().copy_used_assets(out_dir)?;
 
     // Inline `[text](page)` references that didn't resolve to a known
     // page in this site surface as a build error here.
@@ -879,6 +898,18 @@ fn write_dopesheet_assets(out_dir: &Path) -> Result<(), BuildError> {
         .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
     let player = dir.join("dopesheet-player.js");
     fs::write(&player, crate::render::DOPESHEET_PLAYER_JS)
+        .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
+    Ok(())
+}
+
+/// Write the bundled video player into `<out>/_wdoc/`. Pages with a
+/// `video` reference it by relative URL.
+fn write_video_assets(out_dir: &Path) -> Result<(), BuildError> {
+    let dir = out_dir.join(crate::terminal::ASSET_DIR);
+    fs::create_dir_all(&dir)
+        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
+    let player = dir.join("wdoc-video.js");
+    fs::write(&player, crate::render::WDOC_VIDEO_JS)
         .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
     Ok(())
 }

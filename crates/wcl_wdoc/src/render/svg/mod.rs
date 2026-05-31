@@ -106,6 +106,11 @@ pub(crate) const WDOC_MAP_JS: &str = include_str!("../../../assets/wdoc-map.js")
 /// diagram contains a `dopesheet`. Mirrors the terminal player pattern.
 pub(crate) const DOPESHEET_PLAYER_JS: &str = include_str!("../../../assets/dopesheet-player.js");
 
+/// The bundled video player (click-to-play facade → real `<video>` /
+/// `<iframe>`), written to `_wdoc/` and loaded once per page when any
+/// `video` block is present. Mirrors the dopesheet/terminal player pattern.
+pub(crate) const WDOC_VIDEO_JS: &str = include_str!("../../../assets/wdoc-video.js");
+
 /// The bundled presentation (deck) navigation player, written to
 /// `_wdoc/` and loaded on a `presentation`-template site's single deck
 /// page. Drives the arrow-key slide grid. Mirrors the player pattern.

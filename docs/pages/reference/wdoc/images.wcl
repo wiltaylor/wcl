@@ -4,9 +4,9 @@ page wdoc_images { sites = [:reference]
 
   p "`image` embeds a static image. The source path resolves relative to the build entry file (`docs/`); the file is copied verbatim into `_wdoc/` at build time, so the output site is self-contained."
 
-  callout "Served, not file://" {
+  callout "Served, not opened directly" {
     class = ["note"]
-    body  = "Images are referenced by a relative _wdoc/ URL, so they only resolve when the site is served or hosted — not via a raw file:// open (same as icons and tilemaps)."
+    body  = "Images are referenced by a relative _wdoc/ URL, so they only resolve when the site is served or hosted — not when the page is opened directly from disk (same as icons and tilemaps)."
   }
 
   h2 "On a page"
@@ -68,5 +68,5 @@ WCL
       | "anchors / `connect_points`" | "Diagram anchoring + edge attach sides, like any shape." |
   }
 
-  p "Next: [Diagrams](wdoc_diagrams)."
+  p "Next: [Videos](wdoc_videos)."
 }

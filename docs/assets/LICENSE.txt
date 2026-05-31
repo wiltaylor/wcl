@@ -29,3 +29,16 @@ spritesheet for the wdoc `dopesheet` example.
 
 Layout: 72×12 px, a single row of 6 frames of 12×12 px (no offset/spacing),
 so frame N sits at sheet column N, row 0 — a seamless coin-spin loop.
+
+
+big-buck-bunny.mp4 / big-buck-bunny-poster.jpg
+==============================================
+
+A short, downscaled excerpt of "Big Buck Bunny" (© 2008 Blender Foundation),
+from https://peach.blender.org. The poster is a single frame from the clip.
+
+Licensed under the Creative Commons Attribution 3.0 license (CC-BY 3.0):
+https://creativecommons.org/licenses/by/3.0/
+
+Used here only as a sample clip for the wdoc `video` example. Attribution:
+"Big Buck Bunny" by the Blender Foundation, www.bigbuckbunny.org.

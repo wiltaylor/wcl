@@ -433,3 +433,50 @@ fn no_toc_means_no_outline() {
     assert!(!blob.contains("/Outlines"), "no toc ⇒ no outline");
     assert!(blob.contains("/Count 1"), "just the single content sheet");
 }
+
+#[test]
+fn online_video_renders_a_link_in_pdf() {
+    // An online video can't play in a static PDF, so it collects as a link
+    // to the video (here YouTube → its watch URL).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("vid.wcl");
+    write_fixture(
+        &src,
+        "page watch {\n  video \"https://youtu.be/dQw4w9WgXcQ\" { title = \"Talk recording\" }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    pdf_ok(&src, out.path(), PageSize::A4);
+
+    let bytes = std::fs::read(out.path().join("vid.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"), "output is a PDF");
+    let blob = String::from_utf8_lossy(&bytes);
+    // A link annotation with a URI action pointing at the canonical watch URL.
+    assert!(blob.contains("/Link"), "a link annotation is emitted:\n");
+    assert!(
+        blob.contains("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+        "the watch URL is the link target"
+    );
+}
+
+#[test]
+fn local_video_has_no_link_in_pdf() {
+    // A local video gets only its poster — never a link (a path to a local
+    // file is useless in a distributed PDF). With no poster it adds nothing,
+    // so the surrounding prose is all that remains.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("local.wcl");
+    write_fixture(
+        &src,
+        "page show {\n  p \"Before.\"\n  video \"media/clip.mp4\" { title = \"Local\" }\n  p \"After.\"\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    pdf_ok(&src, out.path(), PageSize::A4);
+
+    let bytes = std::fs::read(out.path().join("local.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"), "output is a PDF");
+    let blob = String::from_utf8_lossy(&bytes);
+    assert!(
+        !blob.contains("clip.mp4"),
+        "a local video path is never linked"
+    );
+}

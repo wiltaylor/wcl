@@ -24,6 +24,7 @@ use crate::image::ImageRegistry;
 use crate::pdf::ir::{FontFamily, InlineRun, TextStyle};
 use crate::render::escape_html;
 use crate::tileset::TilesetRegistry;
+use crate::video::VideoRegistry;
 
 /// Maximum recursion depth when re-tokenizing a match's text
 /// fields. Keeps a self-referential pattern from blowing the
@@ -63,6 +64,10 @@ pub(crate) struct InlinePatterns {
     /// (`<img>`) and diagram (`<image>`) render paths reach it via
     /// `images()`; populated lazily as `image` blocks are rendered.
     images: ImageRegistry,
+    /// Video registry. Carried alongside `images` so the page `video`
+    /// render path reaches it via `videos()`; populated lazily as `video`
+    /// blocks are rendered, copying any local file / poster into `_wdoc/`.
+    videos: VideoRegistry,
     /// The current site's resolved UI/application theme — what `wf_*`
     /// wireframe elements bake their colours from (separate from the
     /// document theme). Set per site by the build (`set_ui_theme`), it
@@ -96,6 +101,7 @@ impl InlinePatterns {
         icons: IconRegistry,
         tilesets: TilesetRegistry,
         images: ImageRegistry,
+        videos: VideoRegistry,
     ) -> Self {
         let mut compiled = Vec::new();
         for block in doc.blocks() {
@@ -134,6 +140,7 @@ impl InlinePatterns {
             icons,
             tilesets,
             images,
+            videos,
             ui_theme: RefCell::new(crate::render::UiTheme::default()),
         }
     }
@@ -167,6 +174,13 @@ impl InlinePatterns {
     /// (`<img>`) and diagram (`<image>`) render paths.
     pub(crate) fn images(&self) -> &ImageRegistry {
         &self.images
+    }
+
+    /// The document's video registry, threaded into the page `video`
+    /// render path. Holds every referenced local video file / poster so
+    /// the build can copy them into `_wdoc/`.
+    pub(crate) fn videos(&self) -> &VideoRegistry {
+        &self.videos
     }
 
     /// Drain accumulated unknown-page link errors. Build calls

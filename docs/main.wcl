@@ -95,6 +95,7 @@ site reference {
       chapter "Styling"                { page = wdoc_styling }
       chapter "Icons"                  { page = wdoc_icons }
       chapter "Images"                 { page = wdoc_images }
+      chapter "Videos"                 { page = wdoc_videos }
       chapter "Diagrams"               { page = wdoc_diagrams
         chapter "Primitive Shapes"     { page = wdoc_primitives }
         chapter "Connections"          { page = wdoc_connections }
@@ -165,6 +166,7 @@ import "./pages/reference/wdoc/wireframe.wcl"
 import "./pages/reference/wdoc/timelines.wcl"
 import "./pages/reference/wdoc/icons.wcl"
 import "./pages/reference/wdoc/images.wcl"
+import "./pages/reference/wdoc/videos.wcl"
 import "./pages/reference/wdoc/tilemaps.wcl"
 import "./pages/reference/wdoc/maps.wcl"
 import "./pages/reference/wdoc/dopesheets.wcl"

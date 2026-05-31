@@ -1,0 +1,31 @@
+// Video demo: the `video` block in its three forms — a local file, a
+// recognised YouTube / Vimeo URL, and a generic embed. Each renders as a
+// click-to-play facade (poster + play button); the bundled wdoc-video.js
+// player swaps in the real <video>/<iframe> on click. The local clip is a
+// Big Buck Bunny excerpt (© Blender Foundation, CC-BY — see assets/LICENSE.txt).
+
+page video { sites = [:showcase]
+  h1 "Video"
+
+  p "A **local** file, copied into `_wdoc/` at build time. Click the poster to play:"
+
+  video "assets/big-buck-bunny.mp4" {
+    poster = "assets/big-buck-bunny-poster.jpg"
+    title  = "Big Buck Bunny (excerpt)"
+    width  = 480.0
+  }
+
+  p "A **YouTube** URL — recognised automatically, with an auto-derived thumbnail:"
+
+  video "https://www.youtube.com/watch?v=aqz-KE-bpKQ" {
+    title = "Big Buck Bunny on YouTube"
+    width = 480.0
+  }
+
+  p "A **Vimeo** URL — embedded as a click-to-play iframe (supply your own `poster`, as Vimeo has no auto-thumbnail):"
+
+  video "https://vimeo.com/76979871" {
+    title = "A Vimeo clip"
+    width = 480.0
+  }
+}

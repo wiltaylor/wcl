@@ -11,7 +11,8 @@
 // dopesheet is special-cased in the renderer (it windows into an
 // external image and is driven by a bundled JS player, which WCL can't
 // express). The sheet image is copied into `_wdoc/` and referenced by
-// URL, so frames resolve when the output is *served*, not via `file://`.
+// URL, so frames resolve when the output is *served*, not when opened
+// directly from disk.
 @block("dopesheet")
 type Dopesheet extends SvgBlock {
   @inline(0) source: utf8            // sheet image path, relative to the doc

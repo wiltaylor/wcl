@@ -179,6 +179,7 @@ pub fn pdf(
         Err(_) => return Err(PdfError::BadDoc("tileset load failed".into())),
     };
     let images = ImageRegistry::new(base_dir.clone());
+    let videos = crate::video::VideoRegistry::new(base_dir.clone());
     let patterns = InlinePatterns::load(
         &doc,
         page_names,
@@ -189,6 +190,7 @@ pub fn pdf(
         icons,
         tilesets,
         images,
+        videos,
     );
 
     let geom = Geometry::new(page_size);

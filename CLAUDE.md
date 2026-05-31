@@ -104,3 +104,7 @@ Run benches with `just workspace-bench` when changing the parser hot path.
 - Hand-written lexer + recursive-descent parser. No nom, no parser generators.
 - Diagnostics use `miette` + `thiserror`. Every parse error carries a `Span` and a `NamedSource` so the CLI can render snippets.
 - Keep the dependency list minimal. Add a new crate only when it earns its place.
+- **Don't mention `file://` in docs or code comments.** When explaining that an
+  asset resolves only over a server (not a direct local-file open), say "when
+  served / hosted" and "not opened directly from disk" — never write the
+  `file://` scheme.

@@ -141,7 +141,7 @@ impl ImageRegistry {
 
 /// `true` for a source that should pass through unchanged (an absolute
 /// URL or path, or an inline data URI) rather than being copied.
-fn is_external(source: &str) -> bool {
+pub(crate) fn is_external(source: &str) -> bool {
     source.starts_with("http://")
         || source.starts_with("https://")
         || source.starts_with("data:")
@@ -150,7 +150,7 @@ fn is_external(source: &str) -> bool {
 
 /// Sanitise a file stem into the `_wdoc/` filename: alphanumerics kept,
 /// everything else collapsed to `-`, capped so the name stays short.
-fn sanitize(stem: &str) -> String {
+pub(crate) fn sanitize(stem: &str) -> String {
     let s: String = stem
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
@@ -161,7 +161,7 @@ fn sanitize(stem: &str) -> String {
 
 /// 32-bit FNV-1a hash — a tiny, dependency-free, deterministic hash for
 /// the output filename's collision-avoidance suffix.
-fn fnv1a(s: &str) -> u32 {
+pub(crate) fn fnv1a(s: &str) -> u32 {
     let mut h: u32 = 0x811c_9dc5;
     for b in s.bytes() {
         h ^= b as u32;
