@@ -1,0 +1,34 @@
+// ── File ────────────────────────────────────────────────────────────
+//
+// A generic "ship this file into the output" block. `source` is a path
+// relative to the document; the file is copied verbatim into the build
+// output under `dir` (keeping its basename, so the emitted path is stable
+// and hand-linkable — `scripts/build.sh`, not a hashed name). An external
+// `source` (`http(s)://`, `data:`, or a leading `/`) passes through
+// unchanged and is never copied.
+//
+// Two roles from one block:
+//   - silent ship (no `as`)  → the file is copied; reference it yourself
+//                              by its `<dir>/<basename>` path.
+//   - inline reference (`as`) → renders a link to the copied file.
+//
+// The copy, path rewrite, and `dir` routing aren't expressible in WCL, so
+// like `image` it's special-cased in the renderer and the `lower` is a
+// never-called stub. Used by every backend: the skill target routes files
+// to the skill's `scripts/` / `assets/` folders (by `dir`); the HTML and
+// Markdown targets default `dir` to the `_wdoc/` asset folder.
+@block("file")
+type FileObj extends WdocBlock {
+  @doc("File source (the inline label): a doc-relative path, a URL, or a `data:` URI.")
+  @inline(0) source: utf8
+  @doc("Output subdirectory. Skill target: e.g. \"scripts\" / \"assets\". HTML/Markdown: defaults to the `_wdoc/` asset folder.")
+  dir: utf8?
+  @doc("Link text. When set, the block renders a link to the copied file; absent ⇒ the file is shipped silently.")
+  as: utf8?
+  @doc("Optional explicit HTML id.")
+  id: identifier?
+  @doc("Optional style classes (HTML target, when `as` renders a link).")
+  class: list<utf8>?
+
+  lower = fn(f: FileObj) -> list<HtmlFundamental> []
+}

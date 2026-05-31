@@ -52,6 +52,7 @@ pub fn schema_registry() -> Registry {
     );
     r.register("wdoc/icons.wcl", include_str!("../lib/icons.wcl"));
     r.register("wdoc/image.wcl", include_str!("../lib/image.wcl"));
+    r.register("wdoc/file.wcl", include_str!("../lib/file.wcl"));
     r.register("wdoc/video.wcl", include_str!("../lib/video.wcl"));
     r.register("wdoc/tilemap.wcl", include_str!("../lib/tilemap.wcl"));
     r.register("wdoc/dopesheet.wcl", include_str!("../lib/dopesheet.wcl"));
@@ -160,9 +161,16 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
             if chosen.is_empty() {
                 return Err(BuildError::BadPage(format!("unknown site \"{want}\"")));
             }
+            if chosen.iter().any(|s| is_skill_site(s)) {
+                return Err(BuildError::BadPage(format!(
+                    "site \"{want}\" is a skill (`default_template = :ai_skill`) — \
+                     build it with `wcl wdoc skill`"
+                )));
+            }
             chosen
         }
-        None => specs.iter().collect(),
+        // Skill sites are a separate target — skip them in the HTML build.
+        None => specs.iter().filter(|s| !is_skill_site(s)).collect(),
     };
 
     // Cross-site link context, built from every declared site (so a
@@ -276,6 +284,18 @@ pub(crate) fn root_site_name(specs: &[SiteSpec<'_>]) -> Result<Option<String>, B
         }
     }
     Ok(root)
+}
+
+/// Whether `spec` is a skill site (`default_template = :ai_skill`). Such a
+/// site is built only by the skill target (`wcl wdoc skill`); the HTML /
+/// PDF / Markdown targets skip it, so a single document can carry a web book
+/// and a skill that share pages.
+pub(crate) fn is_skill_site(spec: &SiteSpec<'_>) -> bool {
+    spec.block
+        .as_ref()
+        .and_then(|b| field_symbol(b, "default_template"))
+        .as_deref()
+        == Some("ai_skill")
 }
 
 /// One site to render: its name (the `site` block's inline label, `None`
@@ -546,6 +566,7 @@ fn build_site(
     let tilesets = crate::tileset::TilesetRegistry::load(doc, base_dir)?;
     let images = crate::image::ImageRegistry::new(base_dir.map(Path::to_path_buf));
     let videos = crate::video::VideoRegistry::new(base_dir.map(Path::to_path_buf));
+    let files = crate::file::FileRegistry::new(base_dir.map(Path::to_path_buf));
     let inline_patterns = InlinePatterns::load(
         doc,
         page_names,
@@ -557,6 +578,7 @@ fn build_site(
         tilesets,
         images,
         videos,
+        files,
         crate::inline::Backend::Html,
     );
     inline_patterns.set_site_context(spec.name.clone(), default_template.clone());
@@ -730,6 +752,14 @@ fn build_site(
         // site `default_template`. None ⇒ render content bare.
         let template_name = field_symbol(page, "template").or_else(|| default_template.clone());
         let mut body = match template_name {
+            // `:ai_skill` is a Markdown-only target, not an HTML template.
+            Some(name) if name == "ai_skill" => {
+                return Err(BuildError::BadPage(
+                    "`default_template = :ai_skill` is a skill target, not an HTML template — \
+                     build it with `wcl wdoc skill`"
+                        .into(),
+                ));
+            }
             Some(name) => {
                 let Some(tmpl) = find_template(doc, &name) else {
                     return Err(BuildError::BadTemplate(name));
@@ -810,6 +840,10 @@ fn build_site(
     // Copy each local video file / poster referenced by a rendered `video`
     // block into `_wdoc/`. No-op when none were used.
     inline_patterns.videos().copy_used_assets(out_dir)?;
+
+    // Copy each local file referenced by a rendered `file` block into its
+    // `dir` (default `_wdoc/`). No-op when none were used.
+    inline_patterns.files().copy_used(out_dir)?;
 
     // Inline `[text](page)` references that didn't resolve to a known
     // page in this site surface as a build error here.

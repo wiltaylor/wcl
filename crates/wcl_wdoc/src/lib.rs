@@ -10,6 +10,7 @@
 pub mod build;
 mod card;
 mod dopesheet;
+mod file;
 mod force;
 mod highlight;
 mod icons;
@@ -31,5 +32,5 @@ mod visibility;
 mod wireframe;
 
 pub use build::{BuildError, build, schema_registry};
-pub use markdown::markdown;
+pub use markdown::{markdown, skill};
 pub use pdf::{PageSize, PdfError, pdf};

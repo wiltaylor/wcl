@@ -1,22 +1,16 @@
-//! Markdown backend for wdoc (`wcl wdoc markdown`).
+//! Skill-folder target (`wcl wdoc skill`).
 //!
-//! A third consumer of the shared lowering pipeline (alongside HTML and
-//! PDF): renders each `page` to a `.md` file and each diagram / terminal /
-//! wireframe to a standalone `.svg`, in a folder structure that mirrors the
-//! HTML build (single site flat at `out_dir`, multiple sites under
-//! `<out_dir>/<name>/`, assets in `_wdoc/`). Front matter, prose, lists,
-//! tables, code, callouts, images and equations map to native Markdown;
-//! interactivity (zoomable diagrams) is dropped and videos are skipped.
-//! Aimed at AI / text consumers.
+//! A Markdown-backed variant that lays a site out as a Claude / Agent
+//! **Skill folder**: the site's `start` page becomes `SKILL.md` at the
+//! folder root (its YAML front matter built from the site's `skill { }`
+//! block — the required `name` / `description`), every other page is written
+//! under `references/<name>.md`, and `file` blocks ship arbitrary files into
+//! their `dir` (`scripts/`, `assets/`, …). It reuses the Markdown emitter,
+//! the shared registries, and `build`'s site grouping; failures surface as
+//! the shared [`BuildError`].
 //!
-//! Reuses [`crate::build`]'s site grouping and registry setup, so failures
-//! surface as the shared [`BuildError`] and map to the same CLI exit codes.
-
-mod emit;
-mod skill;
-mod yaml;
-
-pub use skill::skill;
+//! A site opts in with `default_template = :ai_skill`; the backend refuses a
+//! site that hasn't (so a plain Markdown site isn't silently re-laid-out).
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
@@ -25,6 +19,7 @@ use std::path::Path;
 use miette::{NamedSource, Report};
 use wcl_lang::{Block, Document, Environment, disk_loader};
 
+use super::{emit, yaml};
 use crate::build::{
     BuildError, SiteSpec, collect_site_specs, is_skill_site, page_name, root_site_name,
     schema_registry, site_start_page,
@@ -32,16 +27,13 @@ use crate::build::{
 use crate::icons::IconRegistry;
 use crate::image::ImageRegistry;
 use crate::inline::InlinePatterns;
+use crate::render::field_symbol;
 use crate::tileset::TilesetRegistry;
 
-/// Render `file` to a folder of Markdown pages (plus SVG assets) under
-/// `out_dir`. Returns the number of pages written. `site_filter` restricts
+/// Render `file` to a skill folder under `out_dir`. Returns the number of
+/// pages written (SKILL.md + every reference page). `site_filter` restricts
 /// rendering to a single named site.
-pub fn markdown(
-    file: &Path,
-    out_dir: &Path,
-    site_filter: Option<&str>,
-) -> Result<usize, BuildError> {
+pub fn skill(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<usize, BuildError> {
     let user_src = fs::read_to_string(file)
         .map_err(|e| BuildError::Io(e, format!("read {}", file.display())))?;
     let name = file.display().to_string();
@@ -88,20 +80,25 @@ pub fn markdown(
             if chosen.is_empty() {
                 return Err(BuildError::BadPage(format!("unknown site \"{want}\"")));
             }
-            if chosen.iter().any(|s| is_skill_site(s)) {
-                return Err(BuildError::BadPage(format!(
-                    "site \"{want}\" is a skill (`default_template = :ai_skill`) — \
-                     build it with `wcl wdoc skill`"
-                )));
+            chosen
+        }
+        // Build every skill site; non-skill sites belong to the other targets.
+        None => {
+            let chosen: Vec<&SiteSpec> = specs.iter().filter(|s| is_skill_site(s)).collect();
+            if chosen.is_empty() {
+                return Err(BuildError::BadPage(
+                    "no `:ai_skill` site to build — set `default_template = :ai_skill` \
+                     on a `site` (with a `skill { … }` block)"
+                        .into(),
+                ));
             }
             chosen
         }
-        // Skill sites are a separate target — skip them in the Markdown build.
-        None => specs.iter().filter(|s| !is_skill_site(s)).collect(),
     };
 
     // Cross-site link context (every declared site → its page-name set and
-    // URL prefix), so `[text](site:page)` resolves even under `--site`.
+    // URL prefix). Skill links are intra-site, but `[text](site:page)` still
+    // resolves through these.
     let mut site_pages: BTreeMap<String, HashSet<String>> = BTreeMap::new();
     let mut site_prefix: BTreeMap<String, String> = BTreeMap::new();
     for s in &specs {
@@ -128,7 +125,7 @@ pub fn markdown(
         };
         fs::create_dir_all(&site_out)
             .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", site_out.display())))?;
-        count += markdown_site(
+        count += skill_site(
             &doc,
             base_dir.as_deref(),
             spec,
@@ -137,30 +134,15 @@ pub fn markdown(
             &site_pages,
             &site_prefix,
         )?;
-
-        // Landing-page parity with the HTML build: copy the `start` page (or
-        // none) to `index.md` so `<site>/` has an entry point.
-        if let Some(start) = site_start_page(spec)?
-            && start != "index"
-        {
-            let src = site_out.join(format!("{start}.md"));
-            let dst = site_out.join("index.md");
-            fs::copy(&src, &dst)
-                .map_err(|e| BuildError::Io(e, format!("copy {} to index.md", src.display())))?;
-        }
-    }
-    if multi && root_site.is_none() {
-        write_chooser_index(out_dir, &build_set)?;
     }
 
     Ok(count)
 }
 
-/// Render one site's pages into `out_dir`. Mirrors `build::build_site`'s
-/// per-site registry setup, but emits Markdown + SVG instead of HTML and
-/// skips all CSS / template / nav / JS concerns.
+/// Render one site as a skill folder into `out_dir`. The start page →
+/// `SKILL.md`; every other page → `references/<name>.md`.
 #[allow(clippy::too_many_arguments)]
-fn markdown_site(
+fn skill_site(
     doc: &Document,
     base_dir: Option<&Path>,
     spec: &SiteSpec<'_>,
@@ -169,10 +151,37 @@ fn markdown_site(
     site_pages: &BTreeMap<String, HashSet<String>>,
     site_prefix: &BTreeMap<String, String>,
 ) -> Result<usize, BuildError> {
+    let label = spec.name.as_deref().unwrap_or("(unnamed)");
+    let block = spec.block.as_ref().ok_or_else(|| {
+        BuildError::BadPage(
+            "`wcl wdoc skill` needs a `site` block with `default_template = :ai_skill` \
+             and a `skill { name = … description = … }` block"
+                .into(),
+        )
+    })?;
+    if field_symbol(block, "default_template").as_deref() != Some("ai_skill") {
+        return Err(BuildError::BadPage(format!(
+            "site \"{label}\" is not a skill — set `default_template = :ai_skill` to build it \
+             with `wcl wdoc skill`"
+        )));
+    }
+    let skill_cfg = block
+        .blocks()
+        .find(|b| b.kind() == "skill")
+        .ok_or_else(|| {
+            BuildError::BadPage(format!(
+                "skill site \"{label}\" is missing its `skill {{ name = … description = … }}` block"
+            ))
+        })?;
+    let start = site_start_page(spec)?.ok_or_else(|| {
+        BuildError::BadPage(format!(
+            "skill site \"{label}\" needs a start page (`start = true`) to become SKILL.md"
+        ))
+    })?;
+
     let page_names: HashSet<String> = spec.pages.iter().filter_map(page_name).collect();
 
-    // Asset registries, fresh per site (read the document's global
-    // iconset/tileset declarations; record usage during render).
+    // Asset registries, fresh per site (as in `markdown_site`).
     let icons = IconRegistry::load(doc);
     let tilesets = TilesetRegistry::load(doc, base_dir)?;
     let images = ImageRegistry::new(base_dir.map(Path::to_path_buf));
@@ -192,29 +201,49 @@ fn markdown_site(
         files,
         crate::inline::Backend::Markdown,
     );
-    // Wireframe (`wf_*`) elements bake from this site's UI theme.
     patterns.set_ui_theme(crate::render::resolve_ui_theme(spec.block.as_ref()));
-    // Site name + template kind for `@only`/`@except` block visibility.
-    let default_template = spec
-        .block
-        .as_ref()
-        .and_then(|b| crate::render::field_symbol(b, "default_template"));
-    patterns.set_site_context(spec.name.clone(), default_template);
+    patterns.set_site_context(spec.name.clone(), Some("ai_skill".to_string()));
+    // Internal page links resolve into the skill folder layout.
+    patterns.set_skill_layout(start.clone());
 
+    let refs_dir = out_dir.join("references");
     let mut count = 0;
     for page in &spec.pages {
         let Some(pn) = page_name(page) else {
             return Err(BuildError::BadPage("page has no name label".into()));
         };
-        let md = emit::emit_page(doc, page, &pn, &patterns, base_dir, out_dir)?;
-        let path = out_dir.join(format!("{pn}.md"));
-        fs::write(&path, md).map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
+        let is_start = pn == start;
+        // Reference pages live one level deep, so their asset / page links get
+        // a `../` prefix.
+        patterns.set_skill_current_reference(!is_start);
+        if is_start {
+            let fm = yaml::skill_front_matter(&skill_cfg, page)?;
+            let md = emit::emit_page_with_front_matter(
+                doc,
+                page,
+                &pn,
+                &patterns,
+                base_dir,
+                out_dir,
+                Some(fm),
+            )?;
+            let path = out_dir.join("SKILL.md");
+            fs::write(&path, md)
+                .map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
+        } else {
+            fs::create_dir_all(&refs_dir)
+                .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", refs_dir.display())))?;
+            let md = emit::emit_page(doc, page, &pn, &patterns, base_dir, out_dir)?;
+            let path = refs_dir.join(format!("{pn}.md"));
+            fs::write(&path, md)
+                .map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
+        }
         count += 1;
     }
 
-    // Assets referenced while rendering. The icon sprite lets a diagram's
-    // `<use href="_wdoc/icons.svg#…">` resolve when the output is served;
-    // images and tileset spritesheets are copied into `_wdoc/`.
+    // Assets referenced while rendering. Diagrams/terminals are written under
+    // `_wdoc/` (referenced with the per-page `../` prefix); the icon sprite,
+    // images, and `file` blocks copy in the same way.
     if let Some(sprite) = patterns.icons().build_sprite() {
         let dir = out_dir.join(crate::terminal::ASSET_DIR);
         fs::create_dir_all(&dir)
@@ -234,22 +263,4 @@ fn markdown_site(
     }
 
     Ok(count)
-}
-
-/// Write a top-level `index.md` chooser for a multi-site build with no root
-/// site: a list linking to each site's `index.md`.
-fn write_chooser_index(out_dir: &Path, sites: &[&SiteSpec<'_>]) -> Result<(), BuildError> {
-    let mut body = String::from("# Sites\n\n");
-    for s in sites {
-        let name = s.name.as_deref().unwrap_or("site");
-        let title = s
-            .block
-            .as_ref()
-            .and_then(|b| crate::render::field_utf8(b, "title"))
-            .unwrap_or_else(|| name.to_string());
-        body.push_str(&format!("- [{title}]({name}/index.md)\n"));
-    }
-    let path = out_dir.join("index.md");
-    fs::write(&path, body).map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
-    Ok(())
 }

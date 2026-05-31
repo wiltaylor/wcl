@@ -47,6 +47,59 @@ pub(crate) fn front_matter(page: &Block<'_>) -> Result<Option<String>, BuildErro
     }
 }
 
+/// Build SKILL.md's `---`-fenced YAML front matter for the `:ai_skill`
+/// target from the site's `skill` config block, merging in any extra keys
+/// authored on the start page's own `@schemaless frontmatter` block (those
+/// are appended after the canonical `name` / `description` / `license`).
+/// Errors if a declared skill field can't be read.
+pub(crate) fn skill_front_matter(
+    skill: &Block<'_>,
+    start_page: &Block<'_>,
+) -> Result<String, BuildError> {
+    const CANONICAL: [&str; 3] = ["name", "description", "license"];
+    let mut body = String::new();
+    for key in CANONICAL {
+        let Some(field) = skill.field(key) else {
+            continue;
+        };
+        match field.value() {
+            Ok(value) => {
+                body.push_str(&yaml_key(key));
+                emit_value(&mut body, value, 0);
+            }
+            Err(_) => {
+                return Err(BuildError::BadPage(format!(
+                    "skill field '{key}' could not be read"
+                )));
+            }
+        }
+    }
+    // Merge the start page's own front matter (extra keys like
+    // `allowed-tools`). Canonical keys declared there are skipped — the
+    // `skill` block is authoritative for those.
+    if let Some(fm) = start_page.blocks().find(|b| b.kind() == "frontmatter") {
+        for field in fm.fields() {
+            if CANONICAL.contains(&field.name()) {
+                continue;
+            }
+            match field.value() {
+                Ok(value) => {
+                    body.push_str(&yaml_key(field.name()));
+                    emit_value(&mut body, value, 0);
+                }
+                Err(_) => {
+                    return Err(BuildError::BadPage(format!(
+                        "frontmatter field '{}' could not be read — mark the block `@schemaless` \
+                         so it accepts arbitrary keys (`@schemaless frontmatter {{ … }}`)",
+                        field.name()
+                    )));
+                }
+            }
+        }
+    }
+    Ok(format!("---\n{body}---\n"))
+}
+
 /// Append the value half of a `key:` entry (the key text is already in
 /// `out`), formatted `indent` spaces deep. Scalars stay on the key's line;
 /// lists and records open onto following, more-indented lines.

@@ -19,6 +19,7 @@ use std::fmt::Write as _;
 use regex::Regex;
 use wcl_lang::{Document, FnValue, Value, VariantPayload};
 
+use crate::file::FileRegistry;
 use crate::icons::IconRegistry;
 use crate::image::ImageRegistry;
 use crate::pdf::ir::{FontFamily, InlineRun, TextStyle};
@@ -91,6 +92,17 @@ pub(crate) struct InlinePatterns {
     /// render path reaches it via `videos()`; populated lazily as `video`
     /// blocks are rendered, copying any local file / poster into `_wdoc/`.
     videos: VideoRegistry,
+    /// File registry. Carried alongside `images` so the `file` block render
+    /// path reaches it via `files()`; populated lazily as `file` blocks are
+    /// rendered, copying any local file into its `dir`.
+    files: FileRegistry,
+    /// Skill-target link layout. `Some(start_page)` puts internal page links
+    /// into the skill folder shape (`SKILL.md` for the start page,
+    /// `references/<name>.md` otherwise). `skill_current_ref` is `true` while
+    /// rendering a reference page (one level deep), so its links get a `../`
+    /// prefix. Both are interior-mutable, set per page by the skill backend.
+    skill_start: RefCell<Option<String>>,
+    skill_current_ref: RefCell<bool>,
     /// The current site's resolved UI/application theme — what `wf_*`
     /// wireframe elements bake their colours from (separate from the
     /// document theme). Set per site by the build (`set_ui_theme`), it
@@ -135,6 +147,7 @@ impl InlinePatterns {
         tilesets: TilesetRegistry,
         images: ImageRegistry,
         videos: VideoRegistry,
+        files: FileRegistry,
         backend: Backend,
     ) -> Self {
         let mut compiled = Vec::new();
@@ -175,6 +188,9 @@ impl InlinePatterns {
             tilesets,
             images,
             videos,
+            files,
+            skill_start: RefCell::new(None),
+            skill_current_ref: RefCell::new(false),
             ui_theme: RefCell::new(crate::render::UiTheme::default()),
             backend,
             vis_site: RefCell::new(None),
@@ -245,6 +261,39 @@ impl InlinePatterns {
     /// the build can copy them into `_wdoc/`.
     pub(crate) fn videos(&self) -> &VideoRegistry {
         &self.videos
+    }
+
+    /// The document's file registry, threaded into the `file` block render
+    /// path (HTML + Markdown). Holds every referenced local file so the
+    /// build can copy it into its `dir`.
+    pub(crate) fn files(&self) -> &FileRegistry {
+        &self.files
+    }
+
+    /// Enable the skill-folder link layout: internal page links resolve to
+    /// `SKILL.md` (for `start_page`) or `references/<name>.md`. Called once
+    /// per skill site by the skill backend.
+    pub(crate) fn set_skill_layout(&self, start_page: String) {
+        *self.skill_start.borrow_mut() = Some(start_page);
+    }
+
+    /// Mark whether the page now rendering is a reference page (one level
+    /// deep under `references/`), so its internal links get a `../` prefix.
+    /// Called per page by the skill backend.
+    pub(crate) fn set_skill_current_reference(&self, is_reference: bool) {
+        *self.skill_current_ref.borrow_mut() = is_reference;
+    }
+
+    /// Relative prefix from the current page's output location back to the
+    /// build root, for root-relative asset URLs (images, diagram SVGs,
+    /// shipped files). `"../"` while a skill reference page (one level deep
+    /// under `references/`) renders, else `""`.
+    pub(crate) fn asset_prefix(&self) -> &'static str {
+        if *self.skill_current_ref.borrow() {
+            "../"
+        } else {
+            ""
+        }
     }
 
     /// Drain accumulated unknown-page link errors. Build calls
@@ -646,6 +695,38 @@ impl InlinePatterns {
     /// an internal page link at its `.md` sibling instead of `.html`;
     /// external / anchor / path-relative hrefs pass through unchanged.
     fn markdown_href(&self, href: &str) -> String {
+        // Skill target: a bare internal page link resolves into the skill
+        // folder layout — `SKILL.md` for the start page, `references/<name>.md`
+        // otherwise — prefixed with `../` when the current page is itself a
+        // reference. External / anchor / path-relative hrefs and `site:page`
+        // cross-site links fall through to the normal resolver below.
+        if let Some(start) = self.skill_start.borrow().clone()
+            && !is_external_href(href)
+        {
+            let (target, frag) = match href.find('#') {
+                Some(i) => (&href[..i], &href[i..]),
+                None => (href, ""),
+            };
+            if !target.contains(':') {
+                if self.page_names.contains(target) {
+                    let rel = if target == start {
+                        "SKILL.md".to_string()
+                    } else {
+                        format!("references/{target}.md")
+                    };
+                    let up = if *self.skill_current_ref.borrow() {
+                        "../"
+                    } else {
+                        ""
+                    };
+                    return format!("{up}{rel}{frag}");
+                }
+                self.link_errors
+                    .borrow_mut()
+                    .push(format!("link to unknown page '{target}'"));
+                return href.to_string();
+            }
+        }
         let resolved = self.resolve_href(href);
         if is_external_href(href) {
             return resolved;

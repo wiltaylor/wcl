@@ -370,6 +370,11 @@ pub(crate) fn render_block(
         // Rust (the same `image` block is also a diagram shape; see
         // render_shape). Records usage in the image registry.
         "image" => Some(crate::image::render_html(block, patterns.images())),
+        // A `file` block ships an arbitrary file into the output (copied
+        // into its `dir`, default `_wdoc/`) and renders a download link when
+        // `as` is set. Special-cased in Rust like `image` — the copy + path
+        // rewrite aren't expressible in WCL.
+        "file" => Some(crate::file::render_html(block, patterns.files())),
         // A page video — like `image`, the asset copy, URL classification,
         // and click-to-play facade are special-cased in Rust. Records usage
         // in the video registry (driving the local-file/poster copy).

@@ -199,6 +199,22 @@ enum WdocCommand {
         #[arg(long)]
         site: Option<String>,
     },
+    /// Render `<file>` to an agent / Claude **skill folder** under `<out>`:
+    /// the start page becomes `SKILL.md` (its front matter from the site's
+    /// `skill { }` block), every other page goes under `references/`, and
+    /// `file` blocks ship into their `dir` (`scripts/`, `assets/`, …). A site
+    /// opts in with `default_template = :ai_skill`.
+    Skill {
+        /// Path to a WCL source file declaring a `:ai_skill` site.
+        file: PathBuf,
+        /// Output directory (the skill folder). Created if missing.
+        #[arg(long)]
+        out: PathBuf,
+        /// Build only this named `site`. When omitted, every skill site is
+        /// built (multiple sites render into `<out>/<name>/` subfolders).
+        #[arg(long)]
+        site: Option<String>,
+    },
     /// Render each `site` in `<file>` to `<out>/<name>.pdf` (a pure-Rust
     /// PDF, no browser or external tools). Prose, headings and more
     /// paginate onto A4 (default) or US-Letter pages.
@@ -401,6 +417,19 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
         }
         WdocCommand::Markdown { file, out, site } => {
             match wcl_wdoc::markdown(&file, &out, site.as_deref()) {
+                Ok(n) => {
+                    println!("wrote {n} page{}", if n == 1 { "" } else { "s" });
+                    EXIT_OK
+                }
+                Err(err) => {
+                    let code = build_error_code(&err);
+                    err.report();
+                    code
+                }
+            }
+        }
+        WdocCommand::Skill { file, out, site } => {
+            match wcl_wdoc::skill(&file, &out, site.as_deref()) {
                 Ok(n) => {
                     println!("wrote {n} page{}", if n == 1 { "" } else { "s" });
                     EXIT_OK

@@ -38,6 +38,22 @@ pub(crate) fn emit_page(
     base_dir: Option<&Path>,
     out_dir: &Path,
 ) -> Result<String, BuildError> {
+    emit_page_with_front_matter(doc, page, page_name, patterns, base_dir, out_dir, None)
+}
+
+/// Like [`emit_page`], but with `front_matter` overriding the page's own
+/// `@schemaless frontmatter` block when `Some` (already `---`-fenced). The
+/// skill target uses this to write SKILL.md's generated front matter; `None`
+/// falls back to the page's own front matter.
+pub(crate) fn emit_page_with_front_matter(
+    doc: &Document,
+    page: &Block<'_>,
+    page_name: &str,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
+    out_dir: &Path,
+    front_matter: Option<String>,
+) -> Result<String, BuildError> {
     let mut em = Emitter {
         doc,
         patterns,
@@ -47,7 +63,11 @@ pub(crate) fn emit_page(
         svg_seq: 0,
     };
     let mut parts: Vec<String> = Vec::new();
-    if let Some(fm) = super::yaml::front_matter(page)? {
+    let fm = match front_matter {
+        Some(fm) => Some(fm),
+        None => super::yaml::front_matter(page)?,
+    };
+    if let Some(fm) = fm {
         // Joined below with a blank line before the first content block.
         parts.push(fm.trim_end().to_string());
     }
@@ -107,6 +127,11 @@ impl Emitter<'_> {
             "code" => out.push(self.code(block)),
             "image" => {
                 if let Some(s) = self.image(block) {
+                    out.push(s);
+                }
+            }
+            "file" => {
+                if let Some(s) = self.file(block) {
                     out.push(s);
                 }
             }
@@ -255,7 +280,12 @@ impl Emitter<'_> {
         let path = dir.join(&file);
         fs::write(&path, ensure_svg_namespace(svg))
             .map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
-        Ok(format!("{ASSET_DIR}/{file}"))
+        // The SVG lands in `<root>/_wdoc/`; a skill reference page (one level
+        // deep) references it through `../`.
+        Ok(format!(
+            "{}{ASSET_DIR}/{file}",
+            self.patterns.asset_prefix()
+        ))
     }
 
     /// Alt text for a generated SVG: the block's `title`, else its `id`, else
@@ -354,7 +384,33 @@ impl Emitter<'_> {
         let source = label_string(block)?;
         let entry = self.patterns.images().register(&source);
         let alt = field_utf8(block, "alt").unwrap_or_default();
-        Some(image_ref(&alt, &entry.url))
+        Some(image_ref(&alt, &self.asset_href(&entry.url)))
+    }
+
+    /// Prefix a root-relative asset URL with the current page's `../` depth
+    /// (skill reference pages). External URLs pass through unchanged.
+    fn asset_href(&self, url: &str) -> String {
+        let prefix = self.patterns.asset_prefix();
+        if prefix.is_empty() || crate::image::is_external(url) {
+            url.to_string()
+        } else {
+            format!("{prefix}{url}")
+        }
+    }
+
+    /// A `file` block: register the source (copied into its `dir` after the
+    /// page loop) and, when `as` (link text) is set, emit a Markdown link to
+    /// its path. Absent `as` ⇒ the file is shipped silently (no output).
+    fn file(&self, block: &Block<'_>) -> Option<String> {
+        let source = label_string(block)?;
+        let dir = field_utf8(block, "dir").unwrap_or_default();
+        let entry = self.patterns.files().register(&source, &dir);
+        let text = field_utf8(block, "as")?;
+        Some(format!(
+            "[{}]({})",
+            escape_link_text(&text),
+            self.asset_href(&entry.url)
+        ))
     }
 
     /// A page video: an online video becomes a plain link; a local video is

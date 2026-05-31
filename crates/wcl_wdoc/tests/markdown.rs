@@ -47,6 +47,37 @@ fn writes_one_md_per_page() {
 }
 
 #[test]
+fn skill_site_is_skipped_and_rejected_when_named() {
+    // A `:ai_skill` site alongside a plain markdown site: the markdown target
+    // skips the skill site, and naming it with `--site` is an error.
+    let body = "site web { default_template = :webpage }\n\
+         site sk { default_template = :ai_skill\n  \
+         skill { name = \"sk\"  description = \"D.\" }\n}\n\
+         page home { sites = [:sk]  start = true\n  h1 \"Skill\"\n}\n\
+         page doc { sites = [:web]\n  h1 \"Doc\"\n}\n";
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(&src, body);
+
+    // Build all → only the non-skill page `doc` (no `sites`) is written; the
+    // skill site's `home` page is not.
+    let out = tmp.path().join("out");
+    md_ok(&src, &out, None);
+    assert!(out.join("doc.md").is_file(), "non-skill page written");
+    assert!(!out.join("home.md").exists(), "skill page skipped");
+
+    // Naming the skill site explicitly is rejected with guidance.
+    let out2 = tmp.path().join("out2");
+    match markdown(&src, &out2, Some("sk")) {
+        Err(BuildError::BadPage(m)) => {
+            assert!(m.contains("wcl wdoc skill"), "points at skill: {m}")
+        }
+        Err(_) => panic!("expected BadPage"),
+        Ok(_) => panic!("naming a skill site must error"),
+    }
+}
+
+#[test]
 fn headings_and_prose_render_as_markdown() {
     let (_t, out) = build(
         "page p {\n  h1 \"Title\"\n  h2 \"Sub\"\n  p \"Body with **bold**, _it_ and `code`.\"\n}\n",
