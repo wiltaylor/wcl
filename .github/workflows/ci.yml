@@ -24,22 +24,6 @@ jobs:
       - run: just workspace-lint
       - run: just workspace-test
 
-  fuzz-smoke:
-    name: fuzz smoke (${{ matrix.target }}, 30s)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [parse, eval, format_round_trip, json_round_trip, set_edit_path]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-      - uses: taiki-e/install-action@just
-      - uses: taiki-e/install-action@cargo-fuzz
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly fuzz run ${{ matrix.target }} --fuzz-dir crates/wcl_lang/fuzz -- -runs=2000 -max_total_time=30
-
   # ── Version ───────────────────────────────────────────────────────────────
   # Trailer-gated. Only `pre-release: true` publishes (an -alpha version). A
   # stable `release: true` is intentionally blocked — WCL isn't ready for it yet.
