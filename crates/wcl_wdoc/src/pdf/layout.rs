@@ -10,9 +10,9 @@
 use usvg::Tree;
 
 use super::Geometry;
-use super::ir::{BlockNode, CardSpec, Cell, CodeSpan, ListLine, Row, TextStyle};
+use super::ir::{BlockNode, CardSpec, Cell, CodeSpan, ListLine, Row, TextStyle, TocLine};
 use super::svg_embed::SvgEmbedder;
-use super::text::{FontBook, InlineObject, ShapedGlyph};
+use super::text::{FontBook, InlineObject, ShapedGlyph, ShapedLine};
 
 const BODY_SIZE: f32 = 11.0;
 const BODY_LINE_HEIGHT: f32 = 1.45;
@@ -278,6 +278,20 @@ fn place_blocks(
             );
             continue;
         }
+        if let BlockNode::Toc { entries } = block {
+            place_toc(
+                entries,
+                book,
+                pages,
+                cy,
+                at_page_top,
+                left,
+                top,
+                content_w,
+                content_h,
+            );
+            continue;
+        }
         if let BlockNode::Callout {
             accent,
             heading,
@@ -321,6 +335,7 @@ fn place_blocks(
             | BlockNode::Code { .. }
             | BlockNode::List { .. }
             | BlockNode::Table { .. }
+            | BlockNode::Toc { .. }
             | BlockNode::Callout { .. }
             | BlockNode::Image { .. } => unreachable!("handled above"),
         };
@@ -950,6 +965,114 @@ fn draw_table_row(
     });
     *cy += row_h;
     *at_page_top = false;
+}
+
+/// Muted leader-dot colour for the contents page.
+const TOC_DOT_COLOR: (u8, u8, u8) = (140, 140, 150);
+
+/// Place a printed table-of-contents: one line per entry — an indented title,
+/// right-aligned page number, and leader dots filling the gap — with the whole
+/// row a clickable jump to the named page. Entries are single-line; the list
+/// paginates per row.
+#[allow(clippy::too_many_arguments)]
+fn place_toc(
+    entries: &[TocLine],
+    book: &mut FontBook,
+    pages: &mut Vec<LaidOutPage>,
+    cy: &mut f32,
+    at_page_top: &mut bool,
+    left: f32,
+    top: f32,
+    content_w: f32,
+    content_h: f32,
+) {
+    const INDENT: f32 = 16.0;
+    const GAP: f32 = 4.0;
+    const ENTRY_SPACE: f32 = 4.0;
+    let lh = BODY_SIZE * BODY_LINE_HEIGHT;
+    let dot_w = book
+        .shape_label(".", TextStyle::body(), BODY_SIZE)
+        .width
+        .max(1.0);
+
+    if !*at_page_top {
+        *cy += SPACE_AROUND_SVG;
+    }
+
+    for entry in entries {
+        if *cy + lh > content_h && !*at_page_top {
+            pages.push(LaidOutPage::default());
+            *cy = 0.0;
+        }
+        let indent = f32::from(entry.depth) * INDENT;
+        // Chapters (depth 0) are bold; nested entries regular — echoes the
+        // weight the HTML book sidebar gives top-level chapters.
+        let title_style = TextStyle {
+            bold: entry.depth == 0,
+            ..TextStyle::body()
+        };
+        let title = book.shape_label(&entry.title, title_style, BODY_SIZE);
+        let number = book.shape_label(&entry.number, TextStyle::body(), BODY_SIZE);
+
+        let baseline = top + *cy + title.ascent;
+        let title_x = left + indent;
+        let number_x = left + content_w - number.width;
+
+        // Shape the leader dots (right-aligned against the number) before
+        // borrowing the page, so the page borrow doesn't overlap `book`.
+        let dots = if entry.number.is_empty() {
+            None
+        } else {
+            let dots_start = title_x + title.width + GAP;
+            let dots_end = number_x - GAP;
+            let count = if dots_end > dots_start {
+                ((dots_end - dots_start) / dot_w).floor() as i32
+            } else {
+                0
+            };
+            (count > 0).then(|| {
+                let shaped =
+                    book.shape_label(&".".repeat(count as usize), TextStyle::body(), BODY_SIZE);
+                let x = dots_end - shaped.width;
+                (shaped, x)
+            })
+        };
+
+        let page = pages.last_mut().expect("at least one page");
+        let push_run = |page: &mut LaidOutPage, line: &ShapedLine, x0: f32, color: (u8, u8, u8)| {
+            for g in &line.glyphs {
+                page.glyphs.push(PlacedGlyph {
+                    font: g.font.clone(),
+                    glyph_id: g.glyph_id,
+                    x: x0 + g.x,
+                    y: baseline + g.dy,
+                    size: BODY_SIZE,
+                    color,
+                    cluster: g.cluster.clone(),
+                });
+            }
+        };
+        push_run(page, &title, title_x, TEXT_COLOR);
+        if !entry.number.is_empty() {
+            push_run(page, &number, number_x, TEXT_COLOR);
+            if let Some((shaped, x)) = &dots {
+                push_run(page, shaped, *x, TOC_DOT_COLOR);
+            }
+        }
+        // The whole row jumps to the page (internal `<page>.html` → destination).
+        if let Some(name) = &entry.page {
+            page.links.push(LinkBox {
+                x: title_x,
+                y: baseline - title.ascent,
+                w: content_w - indent,
+                h: lh,
+                href: format!("{name}.html"),
+            });
+        }
+        *cy += lh + ENTRY_SPACE;
+        *at_page_top = false;
+    }
+    *cy += SPACE_AROUND_SVG;
 }
 
 /// Place one line's glyphs, colour links, overlay inline objects, and

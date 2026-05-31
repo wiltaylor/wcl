@@ -35,7 +35,8 @@ pub(crate) const CHROME_STYLE: TextStyle = TextStyle {
 };
 
 /// Render all pages to PDF bytes. With `title_page`, an unnumbered cover page
-/// (the title, centred) precedes the numbered content pages.
+/// (the title, centred) precedes the numbered content pages. An `outline`
+/// (built from the site's `toc`) becomes the PDF's reader-sidebar bookmarks.
 pub(crate) fn paint(
     pages: &[LaidOutPage],
     book: &mut FontBook,
@@ -43,9 +44,13 @@ pub(crate) fn paint(
     title: &str,
     title_page: bool,
     dests: &HashMap<String, usize>,
+    outline: Option<krilla::outline::Outline>,
 ) -> KrillaResult<Vec<u8>> {
     let total = pages.len();
     let mut doc = Document::new();
+    if let Some(outline) = outline {
+        doc.set_outline(outline);
+    }
 
     if title_page {
         let line = book.shape_label(title, TextStyle::heading(), 30.0);

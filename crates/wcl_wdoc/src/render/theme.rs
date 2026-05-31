@@ -98,6 +98,7 @@ pre.code-block{background:var(--wdoc-bg-inset);color:var(--wdoc-fg);border-color
 .callout.warning{--callout-accent:var(--wdoc-yellow);}
 .callout.error{--callout-accent:var(--wdoc-red);}
 .callout.success{--callout-accent:var(--wdoc-green);}
+.wdoc-terminal-error,.wdoc-math-error{color:var(--wdoc-red);}
 .wdoc-table th{background:var(--wdoc-bg-alt);}
 .wdoc-table th,.wdoc-table td{border-color:var(--wdoc-border);}
 .wdoc-map-card{background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);}

@@ -85,6 +85,17 @@ pub(crate) struct ListLine {
     pub runs: Vec<InlineRun>,
 }
 
+/// One entry on the printed "Contents" page: a nesting `depth`, the chapter
+/// `title`, the `page` it links to (`None` for a grouping heading), and the
+/// resolved `number` text (empty for a grouping heading).
+#[derive(Clone, Debug)]
+pub(crate) struct TocLine {
+    pub depth: u8,
+    pub title: String,
+    pub page: Option<String>,
+    pub number: String,
+}
+
 /// A table cell: a list of inline runs.
 pub(crate) type Cell = Vec<InlineRun>;
 /// A table row: a list of cells.
@@ -106,6 +117,10 @@ pub(crate) enum BlockNode {
     List { lines: Vec<ListLine> },
     /// A table: an optional header row plus body rows, each cell a run list.
     Table { header: Row, rows: Vec<Row> },
+    /// A printed table-of-contents page: indented chapter titles with leader
+    /// dots and right-aligned page numbers. Each entry that names a page is a
+    /// clickable jump to it.
+    Toc { entries: Vec<TocLine> },
     /// A callout (admonition): an accent colour, a bold heading, and body text.
     Callout {
         accent: (u8, u8, u8),

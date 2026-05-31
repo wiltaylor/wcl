@@ -201,12 +201,28 @@ pub fn pdf(
         .filter(|b| b.kind() == "class")
         .filter_map(|b| crate::render::render_class(&b))
         .collect();
+    // Diagram card boxes match the themed web `.wdoc-card` (bg-alt fill,
+    // border stroke). PDF is always-light, so resolve the site theme's light
+    // palette; an unthemed doc keeps the neutral white/grey default.
+    let (card_fill, card_stroke) = match site_blocks.first() {
+        Some(site) => {
+            let theme =
+                crate::render::field_symbol(site, "theme").unwrap_or_else(|| "nord".to_string());
+            let accent =
+                crate::render::field_symbol(site, "accent").unwrap_or_else(|| "blue".to_string());
+            let roles = crate::render::resolve_roles(&doc, &theme, &accent, "light");
+            (roles.bg_alt, roles.border)
+        }
+        None => ("#ffffff".to_string(), "#cccccc".to_string()),
+    };
     let embedder = svg_embed::SvgEmbedder::new(
         &palette,
         &class_css,
         patterns.icons(),
         patterns.images(),
         patterns.tilesets(),
+        card_fill,
+        card_stroke,
     );
 
     fs::create_dir_all(out_dir)
@@ -239,18 +255,74 @@ pub fn pdf(
             .clone()
             .or_else(|| spec.name.clone())
             .unwrap_or_else(|| stem.clone());
-
-        let (laid, section_starts) = layout::layout(&sections, &mut book, &embedder, &geom);
-
-        // Map each page name to its physical page index (shifted past the cover
-        // page when present) so internal `[text](page)` links become PDF jumps.
+        // Internal links / outline destinations are shifted past the optional
+        // cover page (the cover is a physical page but not in the laid pages).
         let offset = usize::from(explicit_title.is_some());
-        let mut dests: HashMap<String, usize> = HashMap::new();
-        for (i, page) in ordered.iter().enumerate() {
-            if let (Some(name), Some(&start)) = (page_label(page), section_starts.get(i)) {
-                dests.insert(name, start + offset);
+
+        // The site's table of contents (the book sidebar's data). When present,
+        // the PDF gets a printed "Contents" page at the front and a reader
+        // outline; absent, the output is unchanged.
+        let toc_nodes = spec
+            .block
+            .as_ref()
+            .map(crate::render::read_toc)
+            .unwrap_or_default();
+
+        let (laid, dests, outline) = if toc_nodes.is_empty() {
+            let (laid, section_starts) = layout::layout(&sections, &mut book, &embedder, &geom);
+            let mut dests: HashMap<String, usize> = HashMap::new();
+            for (i, page) in ordered.iter().enumerate() {
+                if let (Some(name), Some(&start)) = (page_label(page), section_starts.get(i)) {
+                    dests.insert(name, start + offset);
+                }
             }
-        }
+            (laid, dests, None)
+        } else {
+            // Pass 1: lay out the content alone to learn each page's position
+            // among the content pages (0-based, cover excluded).
+            let (content_pages, content_starts) =
+                layout::layout(&sections, &mut book, &embedder, &geom);
+            let mut content_index: HashMap<String, usize> = HashMap::new();
+            for (i, page) in ordered.iter().enumerate() {
+                if let (Some(name), Some(&start)) = (page_label(page), content_starts.get(i)) {
+                    content_index.insert(name, start);
+                }
+            }
+
+            // Flatten the toc into (depth, title, page) in source order.
+            let mut flat: Vec<(u8, String, Option<String>)> = Vec::new();
+            flatten_toc_entries(&toc_nodes, 0, &mut flat);
+
+            // The printed numbers depend on the contents page count `T`, which
+            // depends only on the entry count (each entry is one fixed-slot
+            // line), not the number values — so build to learn `T`, then rebuild
+            // with the real numbers. Iterate to a fixpoint (cap as a guard).
+            let mut t = 1usize;
+            let mut toc_pages: Vec<layout::LaidOutPage> = Vec::new();
+            for _ in 0..4 {
+                let toc_section = build_toc_section(&flat, &content_index, t);
+                let (laid, _) = layout::layout(&[toc_section], &mut book, &embedder, &geom);
+                let nt = laid.len().max(1);
+                let done = nt == t;
+                toc_pages = laid;
+                t = nt;
+                if done {
+                    break;
+                }
+            }
+            let t = toc_pages.len();
+
+            // Final page index = `T` contents pages ahead, then the cover.
+            let mut dests: HashMap<String, usize> = HashMap::new();
+            for (name, &start) in &content_index {
+                dests.insert(name.clone(), start + t + offset);
+            }
+            let outline = build_outline_tree(&toc_nodes, &dests);
+
+            let mut laid = toc_pages;
+            laid.extend(content_pages);
+            (laid, dests, Some(outline))
+        };
 
         let bytes = paint::paint(
             &laid,
@@ -259,6 +331,7 @@ pub fn pdf(
             &title,
             explicit_title.is_some(),
             &dests,
+            outline,
         )
         .map_err(|e| PdfError::Render(format!("{e:?}")))?;
 
@@ -322,6 +395,112 @@ fn flatten_toc(nodes: &[crate::render::TocNode], out: &mut Vec<String>) {
         }
         flatten_toc(&node.children, out);
     }
+}
+
+/// Flatten the toc into `(depth, title, page)` rows, depth-first in source
+/// order, for the printed contents page.
+fn flatten_toc_entries(
+    nodes: &[crate::render::TocNode],
+    depth: u8,
+    out: &mut Vec<(u8, String, Option<String>)>,
+) {
+    for node in nodes {
+        out.push((depth, node.title.clone(), node.page.clone()));
+        flatten_toc_entries(&node.children, depth + 1, out);
+    }
+}
+
+/// Build the contents section: a "Contents" heading plus a [`ir::BlockNode::Toc`]
+/// whose entries carry their resolved page number. `t` is the contents page
+/// count, so a chapter's printed (footer-matching) number is `start + t + 1`.
+fn build_toc_section(
+    flat: &[(u8, String, Option<String>)],
+    content_index: &HashMap<String, usize>,
+    t: usize,
+) -> Vec<ir::BlockNode> {
+    let entries = flat
+        .iter()
+        .map(|(depth, title, page)| {
+            let number = page
+                .as_ref()
+                .and_then(|p| content_index.get(p))
+                .map(|&start| (start + t + 1).to_string())
+                .unwrap_or_default();
+            // Keep the link only when the page exists in this site.
+            let page = page
+                .as_ref()
+                .filter(|p| content_index.contains_key(p.as_str()))
+                .cloned();
+            ir::TocLine {
+                depth: *depth,
+                title: title.clone(),
+                page,
+                number,
+            }
+        })
+        .collect();
+    vec![
+        ir::BlockNode::Heading {
+            level: 1,
+            runs: vec![ir::InlineRun::Text {
+                text: "Contents".to_string(),
+                style: ir::TextStyle::heading(),
+            }],
+        },
+        ir::BlockNode::Toc { entries },
+    ]
+}
+
+/// Build the PDF outline (reader bookmarks) from the toc, resolving each node's
+/// destination through `dests`. Top-level (and any parent) nodes open expanded.
+fn build_outline_tree(
+    nodes: &[crate::render::TocNode],
+    dests: &HashMap<String, usize>,
+) -> krilla::outline::Outline {
+    let mut outline = krilla::outline::Outline::new();
+    for node in nodes {
+        if let Some(child) = build_outline_node(node, dests) {
+            outline.push_child(child);
+        }
+    }
+    outline
+}
+
+/// One outline node and its children. A node points at its own page, or — for a
+/// grouping heading with no page — its first descendant page; a node whose whole
+/// subtree resolves to no page is dropped (krilla requires a destination).
+fn build_outline_node(
+    node: &crate::render::TocNode,
+    dests: &HashMap<String, usize>,
+) -> Option<krilla::outline::OutlineNode> {
+    use krilla::destination::XyzDestination;
+    use krilla::geom::Point;
+    use krilla::outline::OutlineNode;
+
+    let page_idx = first_dest(node, dests)?;
+    let mut on = OutlineNode::new(
+        node.title.clone(),
+        XyzDestination::new(page_idx, Point::from_xy(0.0, 0.0)),
+    );
+    let mut any_child = false;
+    for child in &node.children {
+        if let Some(c) = build_outline_node(child, dests) {
+            on.push_child(c);
+            any_child = true;
+        }
+    }
+    Some(if any_child { on.with_open(true) } else { on })
+}
+
+/// The first resolvable destination at or below `node` (self first, then
+/// children depth-first).
+fn first_dest(node: &crate::render::TocNode, dests: &HashMap<String, usize>) -> Option<usize> {
+    if let Some(p) = &node.page
+        && let Some(&i) = dests.get(p)
+    {
+        return Some(i);
+    }
+    node.children.iter().find_map(|c| first_dest(c, dests))
 }
 
 /// A page block's label (its name), if any.

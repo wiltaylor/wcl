@@ -219,12 +219,17 @@ fn one_pdf_per_site_in_toc_order() {
     assert!(out.path().join("docs.pdf").exists(), "docs site pdf");
     assert!(out.path().join("blog.pdf").exists(), "blog site pdf");
 
-    // The docs site has an explicit title, so it gets a cover page before its
-    // two content pages → three pages total.
+    // The docs site has an explicit title (a cover page) and a `toc` (a printed
+    // Contents page + reader outline), so: cover + contents + two content pages.
     let bytes = std::fs::read(out.path().join("docs.pdf")).expect("read pdf");
+    let blob = String::from_utf8_lossy(&bytes);
     assert!(
-        String::from_utf8_lossy(&bytes).contains("/Count 3"),
-        "cover + two content pages"
+        blob.contains("/Count 4"),
+        "cover + contents + two content pages"
+    );
+    assert!(
+        blob.contains("/Outlines"),
+        "the toc became a reader outline"
     );
 
     // `--site` renders just one.
@@ -360,4 +365,71 @@ fn terminal_pdf_is_self_contained() {
     let bytes = std::fs::read(out.path().join("term.pdf")).expect("read pdf");
     assert!(bytes.starts_with(b"%PDF-"));
     assert!(bytes.len() > 2000, "terminal produced vector content");
+}
+
+#[test]
+fn book_toc_adds_outline_and_contents_page() {
+    // A `book` site with a `toc` gets a reader-sidebar outline (krilla
+    // `/Outlines`) and a printed "Contents" page, both built from the toc.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("book.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "site handbook {\n",
+            "  title = \"Handbook\"\n",
+            "  default_template = :book\n",
+            "  toc {\n",
+            "    chapter \"Introduction\" { page = intro }\n",
+            "    chapter \"Guide\" {\n",
+            "      chapter \"Getting Started\" { page = start }\n",
+            "    }\n",
+            "  }\n",
+            "}\n",
+            "page intro {\n  sites = [:handbook]\n  h1 \"Introduction\"\n  p \"Welcome.\"\n}\n",
+            "page start {\n  sites = [:handbook]\n  h1 \"Getting Started\"\n  p \"Begin.\"\n}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    pdf_ok(&src, out.path(), PageSize::A4);
+
+    let bytes = std::fs::read(out.path().join("handbook.pdf")).expect("read pdf");
+    let blob = String::from_utf8_lossy(&bytes);
+    // The reader outline is present and names the chapters (titles are written
+    // uncompressed in the outline item dictionaries).
+    assert!(blob.contains("/Outlines"), "pdf carries an outline");
+    assert!(
+        blob.contains("Introduction"),
+        "outline names the first chapter"
+    );
+    assert!(
+        blob.contains("Getting Started"),
+        "outline names the nested chapter"
+    );
+    // Cover + Contents + two content pages.
+    assert!(
+        blob.contains("/Count 4"),
+        "cover + contents + two content sheets"
+    );
+}
+
+#[test]
+fn no_toc_means_no_outline() {
+    // A site without a `toc` is unchanged: no outline, no Contents page.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("plain.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "site plain {\n  default_template = :book\n}\n",
+            "page only {\n  sites = [:plain]\n  h1 \"Only\"\n  p \"Body.\"\n}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    pdf_ok(&src, out.path(), PageSize::A4);
+
+    let bytes = std::fs::read(out.path().join("plain.pdf")).expect("read pdf");
+    let blob = String::from_utf8_lossy(&bytes);
+    assert!(!blob.contains("/Outlines"), "no toc ⇒ no outline");
+    assert!(blob.contains("/Count 1"), "just the single content sheet");
 }

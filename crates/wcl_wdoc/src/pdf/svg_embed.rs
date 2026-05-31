@@ -49,6 +49,10 @@ pub(crate) struct SvgEmbedder<'a> {
     icons: &'a IconRegistry,
     images: &'a ImageRegistry,
     tilesets: &'a TilesetRegistry,
+    /// Fill / stroke for diagram card boxes (the native replacement for each
+    /// dropped `<foreignObject>`), themed from the site's light palette.
+    card_fill: String,
+    card_stroke: String,
 }
 
 impl<'a> SvgEmbedder<'a> {
@@ -61,6 +65,8 @@ impl<'a> SvgEmbedder<'a> {
         icons: &'a IconRegistry,
         images: &'a ImageRegistry,
         tilesets: &'a TilesetRegistry,
+        card_fill: String,
+        card_stroke: String,
     ) -> Self {
         let mut db = fontdb::Database::new();
         for bytes in FONT_FACES {
@@ -84,6 +90,8 @@ impl<'a> SvgEmbedder<'a> {
             icons,
             images,
             tilesets,
+            card_fill,
+            card_stroke,
         }
     }
 
@@ -104,7 +112,7 @@ impl<'a> SvgEmbedder<'a> {
         // usvg drops `<foreignObject>` (used by cards / timeline event cards /
         // map pins), so convert each to a native SVG box + wrapped text.
         if inner.contains("<foreignObject") {
-            inner = replace_foreign_objects(&inner);
+            inner = replace_foreign_objects(&inner, &self.card_fill, &self.card_stroke);
         }
         // Inline `<image href="_wdoc/…">` as data URIs (the copied asset files
         // don't exist for PDF; usvg's default resolver decodes `data:`).
@@ -206,7 +214,7 @@ fn image_mime(bytes: &[u8]) -> Option<&'static str> {
 /// (which usvg ignores) with just a native rounded card **box**. The card body
 /// is painted natively on top by the PDF layout/paint pass (see `collect.rs`'s
 /// diagram card extraction), so the box here carries no text.
-fn replace_foreign_objects(svg: &str) -> String {
+fn replace_foreign_objects(svg: &str, fill: &str, stroke: &str) -> String {
     const OPEN: &str = "<foreignObject";
     const CLOSE: &str = "</foreignObject>";
     let mut out = String::with_capacity(svg.len());
@@ -228,7 +236,7 @@ fn replace_foreign_objects(svg: &str) -> String {
         let y = attr_f32(open_tag, "y").unwrap_or(0.0);
         let w = attr_f32(open_tag, "width").unwrap_or(0.0);
         let h = attr_f32(open_tag, "height").unwrap_or(0.0);
-        out.push_str(&card_box(x, y, w, h));
+        out.push_str(&card_box(x, y, w, h, fill, stroke));
         rest = &rest[body_start + close_rel + CLOSE.len()..];
     }
     out.push_str(rest);
@@ -236,10 +244,12 @@ fn replace_foreign_objects(svg: &str) -> String {
 }
 
 /// A rounded card box (no content — the body is painted natively over it).
-fn card_box(x: f32, y: f32, w: f32, h: f32) -> String {
+/// `fill`/`stroke` come from the site theme's light palette (bg-alt / border),
+/// matching the web `.wdoc-card`.
+fn card_box(x: f32, y: f32, w: f32, h: f32, fill: &str, stroke: &str) -> String {
     format!(
         "<rect x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\" rx=\"4\" \
-         fill=\"#ffffff\" stroke=\"#cccccc\" stroke-width=\"1\"/>"
+         fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1\"/>"
     )
 }
 
