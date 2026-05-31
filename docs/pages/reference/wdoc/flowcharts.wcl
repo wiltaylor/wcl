@@ -1,5 +1,5 @@
 // wdoc section: Flowcharts.
-page wdoc_flowcharts { sites = [:reference]  title = "Flowcharts"
+page wdoc_flowcharts { sites = [:reference, :wcl_skill]  title = "Flowcharts"
   h1 "Flowcharts"
 
   p "Flowchart shapes plus the layered auto-layout mode turn a `diagram` into a flowchart: declare the shapes and the edges, and the renderer ranks them topologically and elbow-routes the connections."

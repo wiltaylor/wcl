@@ -1,5 +1,5 @@
 // Language section: Fields & Blocks.
-page fields_blocks { sites = [:reference]  title = "Fields & Blocks"
+page fields_blocks { sites = [:reference, :wcl_skill]  title = "Fields & Blocks"
   h1 "Fields & Blocks"
 
   p "Fields and blocks are the structural backbone of a document. Everything else — types, functions, schema — describes and constrains them."

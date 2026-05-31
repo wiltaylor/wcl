@@ -5,7 +5,7 @@
 // icon) — no CSS needed.
 class "deploy" { accent = "#b48ead" }
 
-page wdoc_formatting { sites = [:reference]  title = "Formatting"
+page wdoc_formatting { sites = [:reference, :wcl_skill]  title = "Formatting"
   h1 "Formatting"
 
   p "The everyday building blocks of a page: prose paragraphs with inline formatting, the six heading levels, and syntax-highlighted code listings."

@@ -1,5 +1,5 @@
 // Language section: Strings.
-page strings { sites = [:reference]  title = "Strings"
+page strings { sites = [:reference, :wcl_skill]  title = "Strings"
   h1 "Strings"
 
   p "String literals are UTF-8 by default. A prefix selects another encoding; heredocs offer multi-line and verbatim variants; a `$` prefix opts the string into expression interpolation."

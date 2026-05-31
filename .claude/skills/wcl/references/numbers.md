@@ -1,0 +1,34 @@
+# Numbers
+
+WCL has fixed-width signed and unsigned integers, plus two float widths. A bare integer literal defaults to `i64`; a suffix pins the exact type. Underscores may group digits for readability.
+
+## Literals
+
+```wcl
+a = 42          // i64 (default)
+b = 200u8       // unsigned 8-bit
+c = 9_000i64    // underscores are ignored
+d = 3.14f64     // float
+e = -120i8      // signed
+f = 0xFFu32     // hex
+g = 0b1010_1100u8   // binary
+h = 0o755u16    // octal
+```
+
+## Types
+
+| Kind | Types |
+| --- | --- |
+| Signed | `i8` `i16` `i32` `i64` `i128` `isize` |
+| Unsigned | `u8` `u16` `u32` `u64` `u128` `usize` |
+| Float | `f32` `f64` |
+
+## Numeric promotion
+
+Arithmetic and comparison widen mixed numeric operands to a common type, so cross-width and integer/float mixing work without explicit casts.
+
+```wcl
+a = 1 + 2.0        // i64 widened to f64 → 3.0
+b = 1u32 == 1i64   // true
+c = 3.0 * 2u8      // 6.0
+```

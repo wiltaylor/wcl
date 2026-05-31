@@ -12,7 +12,7 @@ tileset platformer {
   columns     = 5
 }
 
-page wdoc_tilemaps { sites = [:reference]  title = "Tilemaps"
+page wdoc_tilemaps { sites = [:reference, :wcl_skill]  title = "Tilemaps"
   h1 "Tilemaps"
 
   p "A `tilemap` draws a 2D grid of indexed tiles cropped from a shared spritesheet. Author it numerically (a list of int rows) or symbolically via a glyph legend."

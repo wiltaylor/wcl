@@ -55,7 +55,7 @@ wdoc_component builtin_doc {
   }
 }
 
-page builtins { sites = [:reference]  title = "Builtin Functions"
+page builtins { sites = [:reference, :wcl_skill]  title = "Builtin Functions"
   h1 "Builtin Functions"
 
   p "Every built-in function in WCL — its signature, parameters, return value, and a usage example. Reflection and meta built-ins are introspected with `fn_signature`."

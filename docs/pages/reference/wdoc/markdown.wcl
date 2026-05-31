@@ -1,5 +1,5 @@
 // wdoc section: Markdown output.
-page wdoc_markdown { sites = [:reference]  title = "Markdown output"
+page wdoc_markdown { sites = [:reference, :wcl_skill]  title = "Markdown output"
   h1 "Markdown output"
 
   p "`wcl wdoc markdown <file> --out <dir>` (alias `md`) renders a document to a folder of Markdown files instead of HTML. The layout mirrors `wdoc build`: one `.md` per page, multi-site documents land under `<out>/<site>/`, and generated assets go in `_wdoc/`. The target is built for AI / text consumers, so it favours textual fidelity over visual polish."

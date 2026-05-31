@@ -1,5 +1,5 @@
 // Language section: Control Flow (if/match + if-let + let + blocks).
-page control_flow { sites = [:reference]  title = "Control Flow"
+page control_flow { sites = [:reference, :wcl_skill]  title = "Control Flow"
   h1 "Control Flow"
 
   p "WCL's expression-level constructs — `if`/`else`, `match` with patterns, `if let`, `let` bindings, and block expressions — combine to compute values from values. Every construct here is an **expression**: it returns a value, never a statement."

@@ -1,5 +1,5 @@
 // Language section: Expressions.
-page expressions { sites = [:reference]  title = "Expressions"
+page expressions { sites = [:reference, :wcl_skill]  title = "Expressions"
   h1 "Expressions"
 
   p "Every field value, function argument, and `let` right-hand side is an **expression** — something that produces a value. WCL's expression grammar is small: literals, identifiers, member access, calls, operators, and a handful of constructor forms."

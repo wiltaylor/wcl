@@ -1,5 +1,5 @@
 // Language section: References.
-page references { sites = [:reference]  title = "References"
+page references { sites = [:reference, :wcl_skill]  title = "References"
   h1 "References"
 
   p "A `&T` field accepts any value that structurally satisfies interface `T`. It's how a record or function declares \"give me anything that looks like this\" without committing to a specific concrete type."

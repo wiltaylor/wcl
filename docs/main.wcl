@@ -89,6 +89,7 @@ site reference {
       chapter "Pages"                  { page = wdoc_pages }
       chapter "Block Visibility"       { page = wdoc_visibility }
       chapter "Markdown Output"        { page = wdoc_markdown }
+      chapter "Skill Folders"          { page = wdoc_skills }
       chapter "Formatting"             { page = wdoc_formatting }
       chapter "Data Views"             { page = wdoc_data_views }
       chapter "Math Equations"         { page = wdoc_math }
@@ -114,10 +115,27 @@ site reference {
   }
 }
 
+// The WCL authoring skill: an agent / Claude skill folder, built with
+// `wcl wdoc skill docs/main.wcl --out .claude/skills/wcl --site wcl_skill`
+// (see the `skill-build` just recipe). It shares the reference pages — each
+// reference page joins this site too (`sites = [:reference, :wcl_skill]`) —
+// so the web book and the skill stay a single source. The `:ai_skill` target
+// is Markdown-only: `wcl wdoc build` / `pdf` / `markdown` skip this site.
+site wcl_skill {
+  default_template = :ai_skill
+  skill {
+    name        = "wcl"
+    description = "Author, validate and format WCL — the typed configuration language — and wdoc documents. Use when writing or editing .wcl files, WCL schemas or builtins, or wdoc documentation sites."
+  }
+}
+
 // WCL landing pages (sites = [:wcl]).
 import "./pages/wcl/index.wcl"
 import "./pages/wcl/features.wcl"
 import "./pages/wcl/getting-started.wcl"
+
+// Skill landing page (sites = [:wcl_skill]) — becomes SKILL.md.
+import "./pages/skill/overview.wcl"
 
 // Reference book — Introduction.
 import "./pages/reference/intro.wcl"
@@ -154,6 +172,7 @@ import "./pages/reference/wdoc/sites.wcl"
 import "./pages/reference/wdoc/pages.wcl"
 import "./pages/reference/wdoc/visibility.wcl"
 import "./pages/reference/wdoc/markdown.wcl"
+import "./pages/reference/wdoc/skills.wcl"
 import "./pages/reference/wdoc/formatting.wcl"
 import "./pages/reference/wdoc/data-views.wcl"
 import "./pages/reference/wdoc/math.wcl"

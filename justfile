@@ -94,6 +94,12 @@ docs-build *ARGS:
 md-build *ARGS:
     cargo run -p wcl -- wdoc markdown docs/main.wcl --out docs/_md {{ARGS}}
 
+# Build the WCL authoring skill into .claude/skills/wcl/ (committed) from the
+# docs' shared reference pages — smoke-tests `wcl wdoc skill`
+[group('dev')]
+skill-build *ARGS:
+    cargo run -p wcl -- wdoc skill docs/main.wcl --out .claude/skills/wcl --site wcl_skill {{ARGS}}
+
 # Render the example and the docs to PDF under target/pdf/ — smoke-tests `wcl wdoc pdf`
 [group('dev')]
 wdoc-pdf: (wdoc-pdf-render "examples/wdoc/main.wcl" "target/pdf/examples") (wdoc-pdf-render "docs/main.wcl" "target/pdf/docs")

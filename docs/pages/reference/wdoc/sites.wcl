@@ -1,5 +1,5 @@
 // wdoc section: Sites & Templates.
-page wdoc_sites { sites = [:reference]  title = "Sites & Templates"
+page wdoc_sites { sites = [:reference, :wcl_skill]  title = "Sites & Templates"
   h1 "Sites & Templates"
 
   p "A `site` block configures one output site — its template, title, theme, and navigation. A document can declare several sites; each page joins one or more via its `sites` field."

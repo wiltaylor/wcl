@@ -1,5 +1,5 @@
 // Reference book: CLI Reference.
-page cli { sites = [:reference]  title = "CLI Reference"
+page cli { sites = [:reference, :wcl_skill]  title = "CLI Reference"
   h1 "CLI Reference"
 
   p "The `wcl` binary drives parsing, checking, evaluation, editing, formatting, the language server, and wdoc."
@@ -76,13 +76,14 @@ BASH
 
   h2 "wcl wdoc"
 
-  p "Build or serve a wdoc documentation site. `build` renders HTML to `--out`; `serve` runs a live-reloading dev server; `pdf` renders one PDF per site; `markdown` (alias `md`) renders a folder of `.md` files with diagrams as standalone `.svg` files, aimed at AI / text consumers. `--site NAME` filters to one named site."
+  p "Build or serve a wdoc documentation site. `build` renders HTML to `--out`; `serve` runs a live-reloading dev server; `pdf` renders one PDF per site; `markdown` (alias `md`) renders a folder of `.md` files with diagrams as standalone `.svg` files, aimed at AI / text consumers; `skill` renders an agent / Claude skill folder (`SKILL.md` + `references/` + `scripts/` + `assets/`) from a `:ai_skill` site. `--site NAME` filters to one named site."
   code bash {
     source = <<'BASH'
 wcl wdoc build docs/main.wcl --out docs/_site
 wcl wdoc serve docs/main.wcl --addr 127.0.0.1:8080
 wcl wdoc pdf docs/main.wcl --out target/pdf
 wcl wdoc markdown docs/main.wcl --out docs/_md
+wcl wdoc skill docs/my-skill.wcl --out ./my-skill
 BASH
   }
 }

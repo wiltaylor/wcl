@@ -1,5 +1,5 @@
 // Language section: Optionals.
-page optionals { sites = [:reference]  title = "Optionals"
+page optionals { sites = [:reference, :wcl_skill]  title = "Optionals"
   h1 "Optionals"
 
   p "An **optional** is a value that may be present or absent. The literal `none` represents absence; a `?` suffix on a type makes its values optional. Together they let a field be omitted, a function return \"no answer\", or a slot be cleared explicitly."

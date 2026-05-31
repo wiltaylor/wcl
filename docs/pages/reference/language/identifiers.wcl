@@ -1,5 +1,5 @@
 // Language section: Identifiers.
-page identifiers { sites = [:reference]  title = "Identifiers"
+page identifiers { sites = [:reference, :wcl_skill]  title = "Identifiers"
   h1 "Identifiers"
 
   p "Identifiers are the names you use throughout WCL — for fields, types, block kinds, block labels, variants, symbols, `let` bindings, and imported items. The lexical rule is the same everywhere."

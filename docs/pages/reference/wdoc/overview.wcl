@@ -1,5 +1,5 @@
 // wdoc section: Overview.
-page wdoc_overview { sites = [:reference]  title = "wdoc Overview"
+page wdoc_overview { sites = [:reference, :wcl_skill]  title = "wdoc Overview"
   h1 "wdoc Overview"
 
   p "wdoc is WCL's documentation generator. It supports different types of pages and is designed to allow you to present information in wcl files in a human readable format."

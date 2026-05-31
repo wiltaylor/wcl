@@ -1,5 +1,5 @@
 // Language section: Tables.
-page tables { sites = [:reference]  title = "Tables"
+page tables { sites = [:reference, :wcl_skill]  title = "Tables"
   h1 "Tables"
 
   p "Repeated rows of the same shape can be written with pipe-table syntax under a field name. Each `| … |` row becomes one record."

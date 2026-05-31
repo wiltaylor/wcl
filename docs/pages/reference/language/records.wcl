@@ -1,5 +1,5 @@
 // Language section: Records (the `type` keyword).
-page records { sites = [:reference]  title = "Records"
+page records { sites = [:reference, :wcl_skill]  title = "Records"
   h1 "Records"
 
   p "A `type` declares a named record — a fixed set of named, typed fields. Records describe the shape of values, function parameters, and the backing type of every block."

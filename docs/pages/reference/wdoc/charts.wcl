@@ -1,5 +1,5 @@
 // wdoc section: Charts.
-page wdoc_charts { sites = [:reference]  title = "Charts"
+page wdoc_charts { sites = [:reference, :wcl_skill]  title = "Charts"
   h1 "Charts"
 
   p "wdoc ships three chart kinds — `bar_chart`, `line_chart`, and `pie_chart` — that lower to SVG via pure-WCL geometry. Each is an `SvgBlock`, so place it inside a `diagram` sharing its size. Data is supplied as a list of records; the variant is inferred from each record's shape, so a bare `{ … }` is all you need."

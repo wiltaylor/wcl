@@ -1,5 +1,5 @@
 // Language section: Connections.
-page connections { sites = [:reference]  title = "Connections"
+page connections { sites = [:reference, :wcl_skill]  title = "Connections"
   h1 "Connections"
 
   p "A `connection` declaration defines a typed relationship between block instances; arrow statements then populate it. The result is a list of records that hosts can consume — render edges, build dependency graphs, validate references."
