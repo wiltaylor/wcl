@@ -54,6 +54,12 @@ pub(crate) fn register(env: &mut Environment) {
             .param("f", "any", "A function value, or the name of a built-in as a utf8 string.")
             .returns("record"),
     );
+    env.add_builtin(
+        "builtin_names",
+        BuiltinFn::hof(0, builtin_names_hof)
+            .doc("The names of every registered built-in function, sorted. Pair with `fn_signature` to introspect each one.")
+            .returns("[utf8]"),
+    );
     // `eval` needs the live evaluator scope, so it's intercepted in
     // `eval_call_builtin` (like `error`/`panic`/`assert`); this registration
     // only makes the name resolvable and arity-checked. The body never runs.
@@ -91,6 +97,17 @@ fn fn_signature_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, St
             other.type_name()
         )),
     }
+}
+
+/// `builtin_names()` — the sorted names of every registered built-in.
+fn builtin_names_hof(caller: &mut dyn Caller, _args: &[Value]) -> Result<Value, String> {
+    Ok(Value::List(
+        caller
+            .builtin_names()
+            .into_iter()
+            .map(Value::Utf8)
+            .collect(),
+    ))
 }
 
 /// Build a `FnParam` record from name / type / doc strings.

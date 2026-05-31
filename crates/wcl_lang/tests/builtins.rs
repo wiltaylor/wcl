@@ -398,3 +398,31 @@ fn fn_signature_rejects_unknown_builtin_and_non_function() {
     let msg2 = eval_err("@schemaless result = fn_signature(42)\n");
     assert!(msg2.contains("function value or a built-in name"), "{msg2}");
 }
+
+// ── builtin_names ─────────────────────────────────────────────────
+
+#[test]
+fn builtin_names_lists_registered_builtins_sorted() {
+    let v = eval("@schemaless result = builtin_names()\n");
+    let Value::List(items) = v else {
+        panic!("expected a list, got {v:?}");
+    };
+    let names: Vec<String> = items
+        .iter()
+        .map(|x| match x {
+            Value::Utf8(s) => s.clone(),
+            other => panic!("expected utf8 name, got {other:?}"),
+        })
+        .collect();
+    // A representative sample across the builtin families is present.
+    for expected in ["map", "concat", "sin", "fn_signature", "builtin_names"] {
+        assert!(
+            names.iter().any(|n| n == expected),
+            "missing {expected}: {names:?}"
+        );
+    }
+    // Sorted and de-duplicated by the registry's map keys.
+    let mut sorted = names.clone();
+    sorted.sort();
+    assert_eq!(names, sorted, "names should be sorted");
+}

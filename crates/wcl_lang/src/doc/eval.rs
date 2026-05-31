@@ -184,6 +184,17 @@ impl<'a> crate::builtins::Caller for EvalCaller<'a, '_> {
             .builtin(name)
             .map(|b| b.signature_info())
     }
+
+    fn builtin_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .doc
+            .environment()
+            .builtins()
+            .map(|(name, _)| name.to_string())
+            .collect();
+        names.sort();
+        names
+    }
 }
 
 impl Document {

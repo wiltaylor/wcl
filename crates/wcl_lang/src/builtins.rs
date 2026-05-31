@@ -94,6 +94,13 @@ pub trait Caller {
     fn builtin_info(&self, _name: &str) -> Option<BuiltinSignature> {
         None
     }
+
+    /// Names of every registered built-in, for the `builtin_names`
+    /// reflection builtin. Defaults to empty so hosts that don't wire it
+    /// up aren't forced to.
+    fn builtin_names(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// One documented parameter of a built-in function: its name, a printable
