@@ -347,6 +347,31 @@ impl<'a> DataRef<'a> {
         self.inner.span()
     }
 
+    /// Pretty-printed (canonical) source for the declaration this
+    /// navigator points at — a `type` / `interface` / `union` / variant /
+    /// `symbol_set` / symbol entry / type-field / `block` / field. Returns
+    /// `None` for kinds that have no single source declaration (`Document`,
+    /// `BlockList` / `Table`, and pre-materialised variant values). Used by
+    /// the `ast_string` builtin.
+    pub fn to_source(&self) -> Option<String> {
+        match &self.inner {
+            DataKind::Type(t) => Some(t.to_source()),
+            DataKind::Interface(i) => Some(i.to_source()),
+            DataKind::Union(u) => Some(u.to_source()),
+            DataKind::Variant(v) => Some(v.to_source()),
+            DataKind::Symbols(s) => Some(s.to_source()),
+            DataKind::Symbol(s) => Some(s.to_source()),
+            DataKind::TypeField(f) => Some(f.to_source()),
+            DataKind::Block(b) => Some(b.to_source()),
+            DataKind::Field(f) => Some(f.to_source()),
+            DataKind::Document(_)
+            | DataKind::BlockList(_)
+            | DataKind::Table(_)
+            | DataKind::VariantValue(_)
+            | DataKind::VariantValueList(_) => None,
+        }
+    }
+
     pub fn inner(&self) -> &DataKind<'a> {
         &self.inner
     }

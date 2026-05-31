@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::builtins::{BuiltinFn, Caller, DataPath, FromValue};
+use crate::builtins::{BuiltinFn, Caller, DataPath, FromValue, from_fn};
 use crate::data::{DataKind, DataRef};
 use crate::doc::{ChildKind, DeclName, Decorator, TypeField};
 use crate::environment::Environment;
@@ -25,6 +25,36 @@ pub(crate) fn register(env: &mut Environment) {
         "type_fields",
         BuiltinFn::hof(1, type_fields_hof).with_signature("fn (&T) -> [record]"),
     );
+    env.add_builtin(
+        "ast_string",
+        BuiltinFn::hof(1, ast_string_hof).with_signature("fn (&T) -> utf8"),
+    );
+    // `eval` needs the live evaluator scope, so it's intercepted in
+    // `eval_call_builtin` (like `error`/`panic`/`assert`); this registration
+    // only makes the name resolvable and arity-checked. The body never runs.
+    env.add_builtin(
+        "eval",
+        from_fn(|_: String| -> Result<Value, String> {
+            Err("eval is evaluated in the caller's scope".to_string())
+        })
+        .with_signature("fn (utf8) -> any"),
+    );
+}
+
+/// `ast_string(x)` — pretty-print the source code behind `x`. Accepts a
+/// dataref (a `Value::DataPath` referencing a declaration) and renders that
+/// declaration's canonical source, or a function value and renders its
+/// `fn(params) -> ret body` source. Other values are an error.
+fn ast_string_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
+    if let Value::Function(fv) = &args[0] {
+        return Ok(Value::Utf8(fv.to_source()));
+    }
+    let path = DataPath::from_value(&args[0])?;
+    let dr = resolve_path(caller, "ast_string", &path)?;
+    let src = dr
+        .to_source()
+        .ok_or_else(|| format!("ast_string: {} has no source form", dr.kind()))?;
+    Ok(Value::Utf8(src))
 }
 
 /// Collect the decorators attached to this navigator. `None` for

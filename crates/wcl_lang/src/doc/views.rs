@@ -203,6 +203,11 @@ impl<'a> UnionDecl<'a> {
         self.ast.span
     }
 
+    /// Pretty-printed source for this union declaration.
+    pub fn to_source(&self) -> String {
+        crate::format::to_source_item(&ast::Item::UnionDecl(self.ast.clone()))
+    }
+
     pub fn variants(&self) -> impl Iterator<Item = UnionVariant<'a>> + 'a {
         let doc = self.doc;
         let variant_cells = self.variant_decorator_cells();
@@ -260,6 +265,11 @@ impl<'a> UnionVariant<'a> {
 
     pub fn span(&self) -> Span {
         self.ast.span
+    }
+
+    /// Pretty-printed source for this union variant.
+    pub fn to_source(&self) -> String {
+        crate::format::to_source_union_variant(self.ast)
     }
 
     pub fn body(&self) -> VariantBodyView<'a> {
@@ -774,6 +784,11 @@ impl<'a> SymbolSetDecl<'a> {
         self.ast.span
     }
 
+    /// Pretty-printed source for this symbol-set declaration.
+    pub fn to_source(&self) -> String {
+        crate::format::to_source_item(&ast::Item::SymbolSetDecl(self.ast.clone()))
+    }
+
     pub fn symbols(&self) -> impl Iterator<Item = SymbolEntry<'a>> + 'a {
         let doc = self.doc;
         let cells = self.symbol_decorator_cells();
@@ -817,6 +832,11 @@ impl<'a> SymbolEntry<'a> {
     pub fn span(&self) -> Span {
         self.ast.span
     }
+
+    /// Pretty-printed source for this symbol-set entry.
+    pub fn to_source(&self) -> String {
+        crate::format::to_source_symbol_entry(self.ast)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -855,6 +875,11 @@ impl<'a> TypeDecl<'a> {
 
     pub fn span(&self) -> Span {
         self.ast.span
+    }
+
+    /// Pretty-printed source for this type declaration.
+    pub fn to_source(&self) -> String {
+        crate::format::to_source_item(&ast::Item::TypeDecl(self.ast.clone()))
     }
 
     /// `max_children = N` named arg on the type's `@block(...)`. Caps
@@ -1013,6 +1038,11 @@ impl<'a> InterfaceDecl<'a> {
 
     pub fn span(&self) -> Span {
         self.ast.span
+    }
+
+    /// Pretty-printed source for this interface declaration.
+    pub fn to_source(&self) -> String {
+        crate::format::to_source_item(&ast::Item::InterfaceDecl(self.ast.clone()))
     }
 
     pub fn fields(&self) -> impl Iterator<Item = TypeField<'a>> + 'a {
@@ -1266,6 +1296,11 @@ impl<'a> TypeField<'a> {
         self.ast.span
     }
 
+    /// Pretty-printed source for this type/interface field declaration.
+    pub fn to_source(&self) -> String {
+        crate::format::to_source_type_field(self.ast)
+    }
+
     pub fn optional(&self) -> bool {
         self.ast.optional
     }
@@ -1306,6 +1341,11 @@ impl<'a> Field<'a> {
 
     pub fn span(&self) -> Span {
         self.ast.span
+    }
+
+    /// Pretty-printed source for this field (`name = expr`).
+    pub fn to_source(&self) -> String {
+        crate::format::to_source_item(&ast::Item::Field(self.ast.clone()))
     }
 
     /// File that declares this field. `None` means "the document's
@@ -1729,6 +1769,11 @@ impl<'a> Block<'a> {
 
     pub fn span(&self) -> Span {
         self.ast.span
+    }
+
+    /// Pretty-printed source for this block.
+    pub fn to_source(&self) -> String {
+        crate::format::to_source_item(&ast::Item::Block(self.ast.clone()))
     }
 
     /// Realise any pending block-level imports, then return one

@@ -553,6 +553,17 @@ impl Document {
             let msg = string_arg_or_err(name, &evald[1], span, "message must be utf8")?;
             return Err(EvalError::user_error(msg, span));
         }
+        // `eval(src)` — parse `src` as a WCL expression and evaluate it in
+        // the *current* scope (it sees surrounding let-bindings + document
+        // names). Needs `self` + `ctx`, so it's special-cased here rather
+        // than going through the registered (stub) builtin body.
+        if name == "eval" && evald.len() == 1 {
+            let code = string_arg_or_err(name, &evald[0], span, "expected utf8 string")?;
+            let expr = crate::parse_expr(&code, "<eval>").map_err(|e| {
+                EvalError::builtin_type(name.to_string(), format!("eval: {e}"), span)
+            })?;
+            return self.eval_in(&expr, ctx);
+        }
         match &builtin.kind {
             crate::builtins::BuiltinKind::Pure(body) => {
                 (body)(&evald).map_err(|msg| EvalError::builtin_type(name.to_string(), msg, span))

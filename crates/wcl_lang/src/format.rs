@@ -69,6 +69,45 @@ pub fn to_source_with(ast: &Source, cfg: &FormatConfig) -> String {
     p.buf
 }
 
+/// Canonical source for a single top-level [`Item`] (type / interface /
+/// union / symbol_set / block / field). Used by `ast_string` to render the
+/// declaration behind a dataref. Trailing newline trimmed.
+pub fn to_source_item(item: &Item) -> String {
+    let mut p = Printer::new(FormatConfig::default());
+    p.print_item(item);
+    p.buf.trim_end().to_string()
+}
+
+/// Canonical source for a single expression — notably a function literal
+/// (`fn(params) -> ret body`), used to render a `Value::Function`.
+pub fn to_source_expr(expr: &Expr) -> String {
+    let mut p = Printer::new(FormatConfig::default());
+    p.print_expr(expr, 0);
+    p.buf.trim_end().to_string()
+}
+
+/// Canonical source for a single type/interface field declaration (a
+/// sub-node that isn't a valid standalone [`Item`]).
+pub fn to_source_type_field(field: &TypeField) -> String {
+    let mut p = Printer::new(FormatConfig::default());
+    p.print_type_field(field);
+    p.buf.trim_end().to_string()
+}
+
+/// Canonical source for a single union variant.
+pub fn to_source_union_variant(variant: &UnionVariant) -> String {
+    let mut p = Printer::new(FormatConfig::default());
+    p.print_union_variant(variant);
+    p.buf.trim_end().to_string()
+}
+
+/// Canonical source for a single symbol-set entry.
+pub fn to_source_symbol_entry(entry: &SymbolEntry) -> String {
+    let mut p = Printer::new(FormatConfig::default());
+    p.print_symbol_entry(entry);
+    p.buf.trim_end().to_string()
+}
+
 struct Printer {
     buf: String,
     depth: u16,

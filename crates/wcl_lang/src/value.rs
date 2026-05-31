@@ -209,6 +209,33 @@ impl FnValue {
     pub fn return_ty(&self) -> &TypeRef {
         &self.return_ty
     }
+
+    /// Pretty-print this function value back to its `fn(params) -> ret body`
+    /// source form. Reconstructs an [`ast::FunctionLit`] from the stored
+    /// params / return type / body (spans are irrelevant to the printer) and
+    /// renders it via the formatter. Used by the `ast_string` builtin.
+    pub fn to_source(&self) -> String {
+        use crate::ast;
+        let zero = ast::Span::new(0, 0);
+        let params = self
+            .params
+            .iter()
+            .map(|p| ast::Parameter {
+                name: p.name().to_string(),
+                ty: p.ty().clone(),
+                ty_span: zero,
+                span: zero,
+            })
+            .collect();
+        let lit = ast::FunctionLit {
+            params,
+            return_ty: self.return_ty.clone(),
+            return_ty_span: zero,
+            body: self.body.clone(),
+            span: zero,
+        };
+        crate::format::to_source_expr(&ast::Expr::Function(lit))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

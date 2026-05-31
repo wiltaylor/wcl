@@ -240,3 +240,92 @@ fn sort_connected_recurses_into_children() {
     // c1 and c3 group together; c2 trails as an isolated node.
     assert_eq!(ids, ["c1", "c3", "c2"]);
 }
+
+// ── eval ──────────────────────────────────────────────────────────
+
+/// Error rendering for a `result` field that fails to evaluate.
+fn eval_err(src: &str) -> String {
+    let doc = Document::open(src, "test").unwrap();
+    let e = doc
+        .get("result")
+        .expect("result field")
+        .value()
+        .expect_err("expected an evaluation error");
+    format!("{e:?}")
+}
+
+#[test]
+fn eval_parses_and_evaluates_an_expression() {
+    assert_eq!(
+        eval("@schemaless result = eval(\"1 + 2\")\n"),
+        Value::I64(3)
+    );
+}
+
+#[test]
+fn eval_sees_current_scope_locals() {
+    // The eval'd expression resolves a surrounding let-binding.
+    assert_eq!(
+        eval("@schemaless result = { let a = 5; eval(\"a + 1\") }\n"),
+        Value::I64(6)
+    );
+}
+
+#[test]
+fn eval_can_return_a_function_value_that_is_then_called() {
+    assert_eq!(
+        eval("@schemaless result = { let f = eval(\"fn(x: i64) -> i64 x * 2\"); f(21) }\n"),
+        Value::I64(42)
+    );
+}
+
+#[test]
+fn eval_surfaces_a_parse_error() {
+    let msg = eval_err("@schemaless result = eval(\"1 +\")\n");
+    assert!(msg.contains("eval"), "{msg}");
+}
+
+// ── ast_string ────────────────────────────────────────────────────
+
+#[test]
+fn ast_string_renders_a_type_declaration() {
+    let v = eval("@block(\"svc\") type Svc { id: utf8 }\n@schemaless result = ast_string(Svc)\n");
+    assert_eq!(
+        v,
+        Value::Utf8("@block(\"svc\")\ntype Svc {\n  id: utf8\n}".into())
+    );
+}
+
+#[test]
+fn ast_string_normalizes_messy_source() {
+    // Input is intentionally mis-formatted (odd spacing/indentation); the
+    // output is canonical.
+    let v = eval(
+        "type    Messy {\n      a:   utf8\n   b:  i64?\n}\n@schemaless result = ast_string(Messy)\n",
+    );
+    assert_eq!(
+        v,
+        Value::Utf8("type Messy {\n  a: utf8\n  b: i64?\n}".into())
+    );
+}
+
+#[test]
+fn ast_string_renders_a_union_declaration() {
+    let v = eval("union Color { Red none  Blue none }\n@schemaless result = ast_string(Color)\n");
+    assert_eq!(
+        v,
+        Value::Utf8("union Color {\n  Red none\n  Blue none\n}".into())
+    );
+}
+
+#[test]
+fn ast_string_renders_a_function_value() {
+    let v = eval("@schemaless result = ast_string(fn(x: i64) -> i64 x * 2)\n");
+    assert_eq!(v, Value::Utf8("fn(x: i64) -> i64 x * 2".into()));
+}
+
+#[test]
+fn ast_string_rejects_a_non_reference_scalar() {
+    let msg = eval_err("@schemaless result = ast_string(42)\n");
+    assert!(msg.contains("data path"), "{msg}");
+}

@@ -91,5 +91,14 @@ WCL
       | "`decorator_names(&T)`" | "List the decorator names attached to the target." |
       | "`decorator_arg(&T, dec, slot)`" | "Read a named argument of decorator `dec` (`none` if absent)." |
       | "`type_fields(&T)`" | "List a type's fields as records — `name`, `type`, `is_function`, `optional`, `has_default`, `is_block`, `repeated`, `accepts`, `decorators` — own fields first, then those inherited via `extends`. Drives the wdoc `type_table` component." |
+      | "`ast_string(&T)`" | "Pretty-print the source behind a reference — a `type` / `interface` / `union` / `symbol_set` / `block` / field declaration — or a function value (`fn(…) -> … …`). Output is canonical (run through the formatter), so it normalises the original spacing." |
+  }
+
+  h2 "Meta"
+
+  table {
+    rows:
+      | "Function" | "Purpose" |
+      | "`eval(src)`" | "Parse the utf8 string `src` as a WCL expression and evaluate it in the current scope (it sees surrounding `let` bindings and document names). Returns the resulting value." |
   }
 }
