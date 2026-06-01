@@ -991,9 +991,17 @@ impl<'a> Parser<'a> {
                 | TokenKind::Number(_)
                 | TokenKind::Bool(_)
                 | TokenKind::Symbol(_)
-                | TokenKind::Ident(_)
                 | TokenKind::None => {
                     let (expr, span) = self.parse_value_expr()?;
+                    end_offset = span.end;
+                    labels.push(expr);
+                }
+                // A bare identifier label may extend across `-`/`/`
+                // connectors into one compound identifier (kebab-case
+                // class names, path-like page names) — see
+                // `parse_label_ident`.
+                TokenKind::Ident(_) => {
+                    let (expr, span) = self.parse_label_ident()?;
                     end_offset = span.end;
                     labels.push(expr);
                 }

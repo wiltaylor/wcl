@@ -1049,6 +1049,43 @@ mod tests {
     }
 
     #[test]
+    fn lex_kebab_and_path_label_token_streams() {
+        // The label-stitching parser relies on `-`/`/` staying standalone
+        // Dash/Slash tokens, with a trailing digit staying a Number.
+        assert_eq!(
+            tokens("dgm-box"),
+            vec![
+                TokenKind::Ident("dgm".into()),
+                TokenKind::Dash,
+                TokenKind::Ident("box".into()),
+                TokenKind::Eof,
+            ]
+        );
+        assert_eq!(
+            tokens("wdoc-series-1"),
+            vec![
+                TokenKind::Ident("wdoc".into()),
+                TokenKind::Dash,
+                TokenKind::Ident("series".into()),
+                TokenKind::Dash,
+                TokenKind::Number(NumberLit::I64(1)),
+                TokenKind::Eof,
+            ]
+        );
+        assert_eq!(
+            tokens("api/v1/users"),
+            vec![
+                TokenKind::Ident("api".into()),
+                TokenKind::Slash,
+                TokenKind::Ident("v1".into()),
+                TokenKind::Slash,
+                TokenKind::Ident("users".into()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
     fn lex_signed_number_at_start_or_after_separator() {
         // After whitespace at start-of-file: signed literal.
         assert_eq!(

@@ -52,6 +52,27 @@ fn blank_line_cap_zero_collapses_blank_lines() {
 }
 
 #[test]
+fn kebab_and_path_labels_round_trip_bare() {
+    // A bare kebab/path label formats unquoted and is idempotent.
+    let src = "class dgm-box {}\npage reference/intro {}\n";
+    let out = render(src, &FormatConfig::default());
+    assert!(out.contains("class dgm-box"), "{out}");
+    assert!(out.contains("page reference/intro"), "{out}");
+    assert!(!out.contains('"'), "labels should stay unquoted: {out}");
+    // Idempotent.
+    let again = render(&out, &FormatConfig::default());
+    assert_eq!(out, again);
+}
+
+#[test]
+fn quoted_label_is_not_auto_converted_to_bare() {
+    // fmt is minimal-diff: an author's quoted label stays quoted.
+    let src = "class \"dgm-box\" {}\n";
+    let out = render(src, &FormatConfig::default());
+    assert!(out.contains("class \"dgm-box\""), "{out}");
+}
+
+#[test]
 fn default_config_matches_to_source() {
     let src = "a = 1\n\nb = 2\n";
     let ast = parse_for_edit(src, "test").expect("parse ok");

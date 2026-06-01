@@ -39,6 +39,48 @@ impl<'a> Parser<'a> {
         Ok((expr, span))
     }
 
+    /// Parse a block **label** that starts with a bare identifier,
+    /// stitching it across byte-adjacent `-`/`/` connectors into one
+    /// compound identifier (`class dgm-box {}`, `page reference/intro {}`).
+    ///
+    /// This exists only because the lexer (correctly) emits `-`/`/` as
+    /// standalone `Dash`/`Slash` tokens so `a-b`/`a/b` stay arithmetic.
+    /// Labels are not an expression context, so here we re-join the
+    /// pieces from the source span. A connector is consumed only when it
+    /// is immediately adjacent (no whitespace/newline) to the previous
+    /// run *and* immediately followed by an `Ident`/`Number` — so a
+    /// spaced `a - b`, a dangling `foo-`, or a trailing `foo-{` never
+    /// stitch.
+    pub(super) fn parse_label_ident(&mut self) -> Result<(Expr, Span), ParseError> {
+        let first = self.bump()?; // the leading `Ident`
+        let start = first.span.start;
+        let mut end = first.span.end;
+        loop {
+            let conn = self.peek()?;
+            if !matches!(conn.kind, TokenKind::Dash | TokenKind::Slash)
+                || conn.preceded_by_newline
+                || conn.span.start != end
+            {
+                break;
+            }
+            let conn_end = conn.span.end;
+            let after = self.peek2()?;
+            if after.span.start != conn_end
+                || !matches!(after.kind, TokenKind::Ident(_) | TokenKind::Number(_))
+            {
+                break;
+            }
+            self.bump()?; // connector
+            let cont = self.bump()?; // ident / number
+            end = cont.span.end;
+        }
+        let span = Span::new(start, end);
+        Ok((
+            Expr::Identifier(self.src[start..end].to_string(), span),
+            span,
+        ))
+    }
+
     /// Pratt expression parser. Used in any context where a full expression
     /// is allowed (field RHS, function-literal bodies, `let` initialisers,
     /// parenthesised sub-expressions, call arguments).

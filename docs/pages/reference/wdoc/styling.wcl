@@ -1,7 +1,7 @@
 // wdoc section: Styling (classes + themes).
 
 // Preview-only class used in the "Authoring" live example below. Declared at
-// the top level so it applies site-wide; hyphenated names must be quoted.
+// the top level so it applies site-wide; hyphenated names may be bare or quoted.
 class "sty-accent" {
   color = "#bf616a"
   bold  = true
@@ -62,7 +62,7 @@ WCL
 
   h3 "Hyphenated names"
 
-  p "Class names that contain hyphens (or any non-identifier character) must be quoted: `class \"wdoc-series-1\" { fill = \"#88c0d0\" }`. This is how you override built-in classes like the chart palette or callout styles."
+  p "Hyphenated class names may be written bare — `class wdoc-series-1 { fill = \"#88c0d0\" }` — or quoted; both are equivalent. (Names with other non-identifier characters, like spaces, still need quoting.) This is how you override built-in classes like the chart palette or callout styles."
 
   callout "Site scope" {
     class = ["info"]

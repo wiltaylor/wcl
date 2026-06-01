@@ -95,6 +95,103 @@ fn fixture_brush_block_has_mixed_labels() {
 }
 
 #[test]
+fn bare_kebab_and_path_labels_resolve_to_identifier() {
+    // Issue #11: a bare label may contain `-`/`/` connectors, so kebab
+    // class names and path-like page names need no quoting. Each stitches
+    // into a single `Value::Identifier` and validates against the
+    // `identifier`-typed @inline(0) field.
+    let doc = open(
+        r#"
+        @document type Cfg { @children("svc") svcs: list<Svc> }
+        @block("svc") type Svc { @inline(0) name: identifier }
+        svc dgm-box {}
+        svc wdoc-series-1 {}
+        svc reference/intro {}
+        svc api/v1/users {}
+        "#,
+    );
+    let labels: Vec<Value> = doc
+        .blocks()
+        .filter(|b| b.kind() == "svc")
+        .map(|b| b.labels().unwrap().into_iter().next().unwrap())
+        .collect();
+    assert_eq!(
+        labels,
+        vec![
+            Value::Identifier("dgm-box".into()),
+            Value::Identifier("wdoc-series-1".into()),
+            Value::Identifier("reference/intro".into()),
+            Value::Identifier("api/v1/users".into()),
+        ]
+    );
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+}
+
+#[test]
+fn quoted_kebab_label_stays_utf8_and_still_valid() {
+    // Quoting remains valid and is NOT auto-converted; the value stays a
+    // string, which an `identifier` field also accepts.
+    let doc = open(
+        r#"
+        @document type Cfg { @children("svc") svcs: list<Svc> }
+        @block("svc") type Svc { @inline(0) name: identifier }
+        svc "dgm-box" {}
+        "#,
+    );
+    let b = doc.block("svc").unwrap();
+    assert_eq!(b.labels().unwrap()[0], Value::Utf8("dgm-box".into()));
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+}
+
+#[test]
+fn spaced_dash_label_does_not_stitch_and_subtraction_survives() {
+    // A connector only joins when byte-adjacent — `a-b` stitches, but
+    // arithmetic `7 - 3` / `12 / 4` in a field RHS is untouched.
+    let doc = open(
+        r#"
+        @schemaless diff = 7 - 3
+        @schemaless quot = 12 / 4
+        "#,
+    );
+    assert_eq!(doc.field("diff").unwrap().value().unwrap(), &Value::I64(4));
+    assert_eq!(doc.field("quot").unwrap().value().unwrap(), &Value::I64(3));
+}
+
+#[test]
+fn dangling_connector_label_does_not_mis_parse() {
+    // `svc foo- {}` must not silently produce a `foo-`/`foo` body with a
+    // swallowed connector — it fails cleanly (no panic, no wrong AST).
+    assert!(
+        Document::open(
+            r#"
+            @document type Cfg { @children("svc") svcs: list<Svc> }
+            @block("svc") type Svc { @inline(0) name: identifier }
+            svc foo- {}
+            "#,
+            "test",
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn dotted_label_still_errors() {
+    // `.` is intentionally not a connector (member access in a label is an
+    // error by convention — use an interpolated string instead).
+    assert!(
+        Document::open(
+            r#"
+            @document type Cfg { @children("svc") svcs: list<Svc> }
+            @block("svc") type Svc { @inline(0) name: identifier }
+            svc foo.bar {}
+            "#,
+            "test",
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn named_type_refs_resolve_in_fixture() {
     let doc = Document::from_file(&examples_dir().join("types.wcl")).expect("types fixture parses");
     let user = doc.type_decl("company.User").expect("User type");

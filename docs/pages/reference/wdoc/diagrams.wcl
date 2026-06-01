@@ -2,7 +2,7 @@
 
 // Classes used by the "Styling shapes" example below — declared at the top
 // level so they apply across the site; shapes opt in via their `class` list.
-// Hyphenated names must be quoted (a bare identifier can't contain `-`).
+// Hyphenated labels may be written bare (`class dgm-box`) or quoted — both work.
 class "dgm-box" {
   fill         = "#5e81ac"
   stroke       = "#2e3440"
@@ -61,7 +61,8 @@ WCL
 
   code wcl {
     source = <<'WCL'
-// Declared at the top level (apply site-wide). Quote hyphenated names.
+// Declared at the top level (apply site-wide). Hyphenated names may be
+// written bare (`class dgm-box`) or quoted.
 class "dgm-box" {
   fill         = "#5e81ac"
   stroke       = "#2e3440"
