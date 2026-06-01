@@ -2431,6 +2431,144 @@ fn top_level_block_kind_disallowed_by_doc_schema_errors() {
     );
 }
 
+// ─── Document-schema composition (issue #10) ──────────────────────
+
+/// Open `user_src` as the root document with each `(key, src)` pair
+/// registered as a system-importable library file (`import <key>`).
+/// Mirrors how `wcl wdoc` serves its embedded stdlib.
+fn open_with_libs(user_src: &str, libs: &[(&str, &str)]) -> Document {
+    let mut reg = Registry::new();
+    for (key, src) in libs {
+        reg.register(key.to_string(), src.to_string());
+    }
+    let loader = reg.loader(disk_loader());
+    Document::open_at_with_loader(user_src, "t", None, &Environment::new(), loader).expect("opens")
+}
+
+const LIB_PAGE: &str = r#"
+@document type LibRoot { @children("page") pages: list<Page> }
+@block("page") type Page { @inline(0) id: utf8 }
+"#;
+
+#[test]
+fn imported_document_alone_governs_root() {
+    // Backward compatibility: with only the imported (library)
+    // @document and no root-authored one, the root is validated
+    // against the library schema exactly as before.
+    let doc = open_with_libs(
+        "import <lib.wcl>\npage \"home\" {}\n",
+        &[("lib.wcl", LIB_PAGE)],
+    );
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+}
+
+#[test]
+fn imported_document_still_rejects_unknown_kind() {
+    let doc = open_with_libs(
+        "import <lib.wcl>\nwidget \"x\" {}\n",
+        &[("lib.wcl", LIB_PAGE)],
+    );
+    let errs = doc.schema_errors();
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: crate::error::SchemaViolationKind::UnregisteredKind
+                    | crate::error::SchemaViolationKind::DisallowedChild,
+                ..
+            }
+        )),
+        "{errs:?}"
+    );
+}
+
+#[test]
+fn root_document_composes_with_imported_library_schema() {
+    // The user declares their *own* @document at the root; it merges
+    // with the imported library @document. Both the library's `page`
+    // block and the user's own `widget` block are allowed, with no
+    // MultipleDocumentSchemas error.
+    let user = r#"
+        import <lib.wcl>
+        @document type UserRoot { @children("widget") widgets: list<Widget> }
+        @block("widget") type Widget { @inline(0) id: utf8 }
+        page "home" {}
+        widget "side" {}
+    "#;
+    let doc = open_with_libs(user, &[("lib.wcl", LIB_PAGE)]);
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+}
+
+#[test]
+fn two_imported_documents_merge_without_conflict() {
+    let lib1 = r#"
+        @document type R1 { @children("page") pages: list<Page> }
+        @block("page") type Page { @inline(0) id: utf8 }
+    "#;
+    let lib2 = r#"
+        @document type R2 { @children("note") notes: list<Note> }
+        @block("note") type Note { @inline(0) id: utf8 }
+    "#;
+    let user = "import <lib1.wcl>\nimport <lib2.wcl>\npage \"h\" {}\nnote \"n\" {}\n";
+    let doc = open_with_libs(user, &[("lib1.wcl", lib1), ("lib2.wcl", lib2)]);
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+}
+
+#[test]
+fn root_field_declared_only_by_user_document_resolves() {
+    // The lazy field path must also consult the merged schema: a
+    // top-level field declared by the user's own @document (not the
+    // imported one) resolves without UnknownField.
+    let user = r#"
+        import <lib.wcl>
+        @document type UserRoot { title: utf8 }
+        title = "hello"
+    "#;
+    let doc = open_with_libs(user, &[("lib.wcl", LIB_PAGE)]);
+    assert_eq!(
+        doc.field("title").unwrap().value().unwrap(),
+        &Value::Utf8("hello".into())
+    );
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+}
+
+#[test]
+fn root_field_declared_only_by_imported_document_resolves() {
+    let lib = r#"
+        @document type LibRoot { title: utf8 }
+    "#;
+    let doc = open_with_libs("import <lib.wcl>\ntitle = \"x\"\n", &[("lib.wcl", lib)]);
+    assert_eq!(
+        doc.field("title").unwrap().value().unwrap(),
+        &Value::Utf8("x".into())
+    );
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+}
+
+#[test]
+fn second_root_document_still_errors_alongside_import() {
+    // A *root-authored* second @document is still an error even when a
+    // library one is imported — only one root-authored @document per
+    // namespace is allowed.
+    let user = r#"
+        import <lib.wcl>
+        @document type A { x: utf8 }
+        @document type B { y: utf8 }
+    "#;
+    let doc = open_with_libs(user, &[("lib.wcl", LIB_PAGE)]);
+    let errs = doc.schema_errors();
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: crate::error::SchemaViolationKind::MultipleDocumentSchemas,
+                ..
+            }
+        )),
+        "{errs:?}"
+    );
+}
+
 #[test]
 fn nested_block_kind_unregistered_errors_on_schema_errors() {
     // Parent schema explicitly allows `unregistered` as a child

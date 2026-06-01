@@ -845,6 +845,12 @@ pub struct TypeDecl<'a> {
     pub(super) file_ns: &'a [String],
     pub(super) cells: &'a ItemCells,
     pub(super) doc: &'a Document,
+    /// `true` when this declaration comes from an imported source
+    /// (a disk or system/registry import) rather than the root
+    /// document. Drives document-schema composition: a root-authored
+    /// `@document` is authoritative, imported ones are library
+    /// defaults that merge in. See `Document::schema_errors`.
+    pub(super) is_imported: bool,
 }
 
 impl<'a> DeclName<'a> for TypeDecl<'a> {
@@ -875,6 +881,12 @@ impl<'a> TypeDecl<'a> {
 
     pub fn span(&self) -> Span {
         self.ast.span
+    }
+
+    /// `true` when this type declaration was loaded from an import
+    /// rather than authored in the root document.
+    pub(crate) fn is_imported(&self) -> bool {
+        self.is_imported
     }
 
     /// Pretty-printed source for this type declaration.
@@ -1440,7 +1452,7 @@ impl<'a> Field<'a> {
     /// `None` means the membership check passes.
     fn schema_membership_error(&self) -> Option<EvalError> {
         use crate::error::SchemaViolationKind as Kind;
-        let parent_schema = match self.scope.frames().last().cloned() {
+        match self.scope.frames().last().cloned() {
             Some(frame) => {
                 // Whole-block opt-out shadows individual fields too.
                 if has_schemaless(&frame.ast.decorators) {
@@ -1453,21 +1465,9 @@ impl<'a> Field<'a> {
                     kind_override: frame.kind_override,
                     scope: Scope::root(),
                 };
-                block.schema()
-            }
-            None => {
-                // `@document` is per-namespace: look up the schema
-                // that governs this field's source.
-                let field_ns = self.doc.find_field_source_ns(self.ast);
-                self.doc.doc_schema_for_ns(field_ns)
-            }
-        };
-        match parent_schema {
-            Some(schema) => {
-                if schema.field(self.name()).is_some() {
-                    None
-                } else {
-                    Some(EvalError::schema_violation(
+                match block.schema() {
+                    Some(schema) if schema.field(self.name()).is_some() => None,
+                    Some(schema) => Some(EvalError::schema_violation(
                         Kind::UnknownField,
                         format!(
                             "field '{}' is not declared by schema '{}'",
@@ -1475,23 +1475,38 @@ impl<'a> Field<'a> {
                             schema.name()
                         ),
                         self.ast.span,
-                    ))
+                    )),
+                    // Inside an un-schema'd block — the enclosing
+                    // block's UnregisteredKind covers it.
+                    None => None,
                 }
             }
             None => {
-                // Top-level field with no @document schema is fine
-                // when inside a schema'd block — we already short-
-                // circuited above. Otherwise it's NoDocumentSchema.
-                if self.scope.frames().is_empty() {
+                // Top-level field: validate against the *merged*
+                // `@document` schema(s) governing this field's source
+                // namespace. The field is fine if any of them declares
+                // it (so a user's own root `@document` composes with
+                // library schemas pulled in by imports).
+                let field_ns = self.doc.find_field_source_ns(self.ast);
+                let schemas = self.doc.doc_schemas_for_ns(field_ns);
+                if schemas.is_empty() {
                     Some(EvalError::schema_violation(
                         Kind::NoDocumentSchema,
                         format!("top-level field '{}' has no @document schema", self.name()),
                         self.ast.span,
                     ))
-                } else {
-                    // Inside an un-schema'd block — the enclosing
-                    // block's UnregisteredKind covers it.
+                } else if schemas.declares_field(self.name()) {
                     None
+                } else {
+                    Some(EvalError::schema_violation(
+                        Kind::UnknownField,
+                        format!(
+                            "field '{}' is not declared by @document schema '{}'",
+                            self.name(),
+                            schemas.names()
+                        ),
+                        self.ast.span,
+                    ))
                 }
             }
         }
@@ -1514,11 +1529,11 @@ impl<'a> Field<'a> {
             let schema_field = schema.field(self.name())?;
             return Some(schema_field.type_ref());
         }
-        // Top-level field: consult the @document schema in this
-        // field's source namespace, if any.
+        // Top-level field: consult the merged @document schema(s) in
+        // this field's source namespace, preferring a root-authored
+        // declaration over an imported one.
         let field_ns = self.doc.find_field_source_ns(self.ast);
-        let doc_schema = self.doc.doc_schema_for_ns(field_ns)?;
-        let schema_field = doc_schema.field(self.name())?;
+        let schema_field = self.doc.doc_schemas_for_ns(field_ns).field(self.name())?;
         Some(schema_field.type_ref())
     }
 

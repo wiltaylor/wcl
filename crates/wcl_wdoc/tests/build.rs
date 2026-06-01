@@ -6526,3 +6526,44 @@ page intro { h1 "Intro" {} }
         .any(|e| e.file_name().to_string_lossy().starts_with("image-logo-"));
     assert!(copied, "site icon file not copied into _wdoc/");
 }
+
+#[test]
+fn user_document_schema_composes_with_wdoc_root() {
+    // Issue #10: a wdoc document may declare its *own* `@document`
+    // schema at the root to carry custom top-level tags (here a
+    // `project_meta` data block) alongside the wdoc `page`/`site`
+    // blocks. wdoc's imported `Site` schema must compose with the
+    // user's root schema rather than "take over" the root and reject
+    // everything it doesn't itself declare.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("custom_root.wcl");
+    write_fixture(
+        &src,
+        r##"
+@document
+type ProjectDoc {
+  @children("project_meta") metas: list<ProjectMeta>
+}
+
+@block("project_meta")
+type ProjectMeta {
+  @inline(0) id: identifier
+  owner: utf8
+}
+
+project_meta info { owner = "Wil" }
+
+page index {
+  text { span "Hello" {} }
+}
+"##,
+    );
+
+    // Builds with no schema violations — the custom top-level
+    // `project_meta` block and the wdoc `page` coexist.
+    let out = TempDir::new().expect("mkdir out");
+    let n = build_ok(&src, out.path());
+    assert_eq!(n, 1, "expected the single page to render");
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
+    assert!(html.contains("<span>Hello</span>"), "{html}");
+}

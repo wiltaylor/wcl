@@ -97,6 +97,73 @@ struct SourceView<'a> {
     path: Option<&'a Path>,
 }
 
+/// The set of `@document` schemas governing one namespace, root-authored
+/// first. Their *merge* forms the effective document schema: a top-level
+/// field/block is legal if any member declares/allows it. Built by
+/// [`Document::doc_schemas_for_ns`].
+pub(crate) struct DocSchemas<'a> {
+    schemas: Vec<TypeDecl<'a>>,
+}
+
+impl<'a> DocSchemas<'a> {
+    /// No `@document` governs this namespace.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.schemas.is_empty()
+    }
+
+    /// The field declared by name, preferring the root-authored schema
+    /// (members are ordered root-first).
+    pub(crate) fn field(&self, name: &str) -> Option<TypeField<'a>> {
+        self.schemas.iter().find_map(|s| s.field(name))
+    }
+
+    /// `true` if any member schema declares a field of this name.
+    pub(crate) fn declares_field(&self, name: &str) -> bool {
+        self.schemas.iter().any(|s| s.field(name).is_some())
+    }
+
+    /// The union of every member's allowed child block kinds.
+    pub(crate) fn allowed_child_kinds(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for s in &self.schemas {
+            for k in s.allowed_child_kinds() {
+                if !out.contains(&k) {
+                    out.push(k);
+                }
+            }
+        }
+        out
+    }
+
+    /// The union of every member's union-typed `@children`/`@child`
+    /// slots — a structurally-matched top-level block bypasses the
+    /// kind check against any of these.
+    pub(crate) fn union_slots(&self) -> Vec<UnionDecl<'a>> {
+        let mut out: Vec<UnionDecl<'a>> = Vec::new();
+        for s in &self.schemas {
+            for f in s.fields() {
+                if let Some(u) = f
+                    .children_kind_or_union()
+                    .and_then(|k| k.as_union().copied())
+                    .or_else(|| f.child_kind_or_union().and_then(|k| k.as_union().copied()))
+                {
+                    out.push(u);
+                }
+            }
+        }
+        out
+    }
+
+    /// Names of the member schemas, joined for diagnostics.
+    pub(crate) fn names(&self) -> String {
+        self.schemas
+            .iter()
+            .map(|s| s.name())
+            .collect::<Vec<_>>()
+            .join("', '")
+    }
+}
+
 /// A symbol lookup result that knows which source it came from.
 /// Exposed so the LSP can build cross-file `Location`s for
 /// go-to-definition without reaching into `SymbolIndex` directly.
@@ -738,6 +805,7 @@ impl Document {
                     file_ns: src.file_ns,
                     cells: &src.cells[rec.path.item_index],
                     doc: self,
+                    is_imported: src.path.is_some(),
                 });
             }
         }
@@ -753,6 +821,7 @@ impl Document {
                 file_ns: &[],
                 cells: &self.synthetic_type_cells[i],
                 doc: self,
+                is_imported: false,
             })
     }
 
@@ -768,6 +837,7 @@ impl Document {
                         file_ns: src.file_ns,
                         cells,
                         doc,
+                        is_imported: src.path.is_some(),
                     }),
                     _ => None,
                 })
@@ -781,6 +851,7 @@ impl Document {
                 file_ns: &[],
                 cells,
                 doc,
+                is_imported: false,
             });
         mine_and_imports.chain(syn)
     }
@@ -1055,15 +1126,24 @@ impl Document {
             .next()
     }
 
-    /// Look up the `@document` type that governs `file_ns`.
-    /// `@document` is scoped per-namespace: each namespace may declare
-    /// at most one, and that schema only validates items declared in
-    /// the same namespace. Imported files in a different namespace
-    /// are validated by their own `@document` (or none if absent).
-    pub(crate) fn doc_schema_for_ns(&self, file_ns: &[String]) -> Option<TypeDecl<'_>> {
-        self.find_all_decorated(BuiltinDecorator::Document)
+    /// Every `@document` schema that governs `file_ns`, root-authored
+    /// first. The effective document schema for a namespace is the
+    /// *merge* of these: a top-level field/block is legal if any of
+    /// them declares it. This lets a user declare their own
+    /// `@document` at the root that composes with library `@document`
+    /// schemas pulled in by imports (from any number of modules),
+    /// instead of an imported schema "taking over" the root.
+    pub(crate) fn doc_schemas_for_ns(&self, file_ns: &[String]) -> DocSchemas<'_> {
+        // `type_decls()` walks the root source before imports, so
+        // root-authored declarations already sort ahead of imported
+        // ones — preserve that order so `field()`/`primary()` prefer
+        // the root-authored schema.
+        let schemas = self
+            .find_all_decorated(BuiltinDecorator::Document)
             .into_iter()
-            .find(|t| t.file_ns() == file_ns)
+            .filter(|t| t.file_ns() == file_ns)
+            .collect();
+        DocSchemas { schemas }
     }
 
     /// Every type declaration carrying the named decorator. Used by
@@ -1115,52 +1195,51 @@ impl Document {
         let mut out = Vec::new();
 
         // Group every `@document` type by its file_ns. Each namespace
-        // is independent: a `@document` only governs items in its own
-        // namespace, and at most one `@document` is allowed per ns.
+        // is independent. Several `@document` schemas may govern one
+        // namespace and they *compose* (a root-authored one plus any
+        // library-provided ones from imports) — see
+        // `doc_schemas_for_ns`. Only a second *root-authored*
+        // `@document` in a namespace is an error: imported library
+        // schemas merge silently, so importing several modules that
+        // each ship a base document is fine.
         let doc_schemas = self.find_all_decorated(BuiltinDecorator::Document);
         let mut by_ns: BTreeMap<Vec<String>, Vec<TypeDecl<'_>>> = BTreeMap::new();
         for d in &doc_schemas {
             by_ns.entry(d.file_ns().to_vec()).or_default().push(*d);
         }
         for decls in by_ns.values() {
-            for extra in decls.iter().skip(1) {
+            for extra in decls.iter().filter(|d| !d.is_imported()).skip(1) {
                 EvalError::push_schema_violation(
                     &mut out,
                     Kind::MultipleDocumentSchemas,
-                    format!("type '{}' declares an extra @document schema", extra.name()),
+                    format!(
+                        "type '{}' declares a second root @document schema \
+                         (only one root-authored @document is allowed per namespace; \
+                         imported library schemas merge automatically)",
+                        extra.name()
+                    ),
                     extra.span(),
                 );
             }
         }
 
         // Walk every source (the main file + every eagerly-imported
-        // file). Each source's items are validated against the
-        // `@document` declared in that source's namespace, if any.
+        // file). Each source's items are validated against the merged
+        // `@document` schema for that source's namespace, if any.
         for src in self.all_sources() {
-            let root = by_ns.get(src.file_ns).and_then(|v| v.first()).copied();
+            let schemas = self.doc_schemas_for_ns(src.file_ns);
 
-            // Pre-compute the schema's union-typed children slots so
-            // structurally-matched blocks bypass the kind check.
-            let root_union_slots: Vec<UnionDecl<'_>> = root
-                .map(|s| {
-                    s.fields()
-                        .filter_map(|f| {
-                            f.children_kind_or_union()
-                                .and_then(|k| k.as_union().copied())
-                                .or_else(|| {
-                                    f.child_kind_or_union().and_then(|k| k.as_union().copied())
-                                })
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
+            // Pre-compute the merged schema's union-typed children
+            // slots so structurally-matched blocks bypass the kind
+            // check.
+            let root_union_slots = schemas.union_slots();
 
             // Walk the top-level fields in this source.
             for f in iter_fields(src.items, src.cells, self, Scope::root()) {
                 if has_schemaless(&f.ast.decorators) {
                     continue;
                 }
-                self.validate_root_field(&f, root, &mut out);
+                self.validate_root_field(&f, &schemas, &mut out);
             }
 
             // Walk the top-level blocks in this source.
@@ -1168,7 +1247,7 @@ impl Document {
                 if has_schemaless(&b.ast.decorators) {
                     continue;
                 }
-                self.validate_root_block(&b, root, &root_union_slots, &mut out);
+                self.validate_root_block(&b, &schemas, &root_union_slots, &mut out);
             }
         }
 
@@ -1191,18 +1270,19 @@ impl Document {
         out
     }
 
-    /// Validate one top-level field against the `@document` schema for its
-    /// namespace (`root`), pushing any violation into `out`. Split out of
-    /// [`schema_errors`] for readability; behaviour is unchanged (an
-    /// unknown field reports and stops, mirroring the old loop `continue`).
+    /// Validate one top-level field against the merged `@document`
+    /// schema(s) for its namespace, pushing any violation into `out`.
+    /// The field is legal if any member schema declares it; the
+    /// declaring schema (root-authored preferred) drives the type
+    /// check. Split out of [`schema_errors`] for readability.
     fn validate_root_field(
         &self,
         f: &Field<'_>,
-        root: Option<TypeDecl<'_>>,
+        schemas: &DocSchemas<'_>,
         out: &mut Vec<EvalError>,
     ) {
         use crate::error::SchemaViolationKind as Kind;
-        let Some(schema) = root else {
+        if schemas.is_empty() {
             EvalError::push_schema_violation(
                 out,
                 Kind::NoDocumentSchema,
@@ -1210,15 +1290,15 @@ impl Document {
                 f.span(),
             );
             return;
-        };
-        let Some(declared) = schema.field(f.name()) else {
+        }
+        let Some(declared) = schemas.field(f.name()) else {
             EvalError::push_schema_violation(
                 out,
                 Kind::UnknownField,
                 format!(
                     "top-level field '{}' is not declared by @document schema '{}'",
                     f.name(),
-                    schema.name()
+                    schemas.names()
                 ),
                 f.span(),
             );
@@ -1274,14 +1354,15 @@ impl Document {
     }
 
     /// Validate one top-level block: union dispatch, kind registration, and
-    /// allowed-child placement under the namespace's `@document` schema.
-    /// `root_union_slots` are that schema's union-typed `@children` slots
-    /// (a structurally-matched block bypasses the kind check). Split out of
-    /// [`schema_errors`]; behaviour is unchanged.
+    /// allowed-child placement under the merged `@document` schema(s) for the
+    /// namespace. `root_union_slots` are those schemas' union-typed
+    /// `@children` slots (a structurally-matched block bypasses the kind
+    /// check). The block is legal if any member schema allows its kind.
+    /// Split out of [`schema_errors`].
     fn validate_root_block(
         &self,
         b: &Block<'_>,
-        root: Option<TypeDecl<'_>>,
+        schemas: &DocSchemas<'_>,
         root_union_slots: &[UnionDecl<'_>],
         out: &mut Vec<EvalError>,
     ) {
@@ -1306,8 +1387,8 @@ impl Document {
             EvalError::push_schema_violation(out, Kind::UnregisteredKind, msg, b.span());
             return;
         }
-        if let Some(schema) = root {
-            let allowed = schema.allowed_child_kinds();
+        if !schemas.is_empty() {
+            let allowed = schemas.allowed_child_kinds();
             if !allowed.iter().any(|k| k == b.kind()) {
                 EvalError::push_schema_violation(
                     out,
@@ -1315,7 +1396,7 @@ impl Document {
                     format!(
                         "block kind '{}' is not allowed at the document root by @document schema '{}'",
                         b.kind(),
-                        schema.name()
+                        schemas.names()
                     ),
                     b.span(),
                 );
