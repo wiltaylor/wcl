@@ -12,7 +12,7 @@ use super::eval_ops::{apply_binary, apply_unary, as_bool, describe_expr, format_
 use super::match_pat;
 use super::scope::Scope;
 use super::{
-    Block, Document, expr_to_path_segments, materialise_dataref, materialise_dataref_or_path,
+    Block, Document, expr_to_path_segments, materialise_dataref, materialise_dataref_value,
     span_of, value_matches_type_ref,
 };
 
@@ -350,7 +350,7 @@ impl Document {
                 let dr = self
                     .scope_lookup(&ctx.scope, name)
                     .ok_or_else(|| EvalError::unresolved_reference(name, span_of(expr)))??;
-                return materialise_dataref_or_path(dr, vec![name.clone()], span_of(expr));
+                return materialise_dataref_value(dr, vec![name.clone()], span_of(expr));
             }
             E::SelfKw(span) => {
                 let dr = self.self_dataref(&ctx.scope);
@@ -369,7 +369,7 @@ impl Document {
             } => {
                 let dr = self.eval_to_dataref(expr, ctx)?;
                 let segments = expr_to_path_segments(expr).unwrap_or_default();
-                return materialise_dataref_or_path(dr, segments, *span);
+                return materialise_dataref_value(dr, segments, *span);
             }
             E::Paren { inner, .. } => return self.eval_in(inner, ctx),
             E::Unary { op, operand, span } => {

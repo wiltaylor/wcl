@@ -492,6 +492,86 @@ impl Document {
         }
     }
 
+    /// Project a top-level `@children`/`@child` field declared on the
+    /// *merged* `@document` schema for the root namespace into a
+    /// [`DataRef`], collecting the matching top-level blocks across every
+    /// source. Mirrors the precedence of [`Block::typed_field`] but at the
+    /// document root. Returns `None` when `name` is not a children/child
+    /// field on the merged schema.
+    ///
+    /// Deferred (mirroring the block-level limits / rarity): top-level
+    /// `Item::Table` rows feeding a root `@children` (no synth rows are
+    /// built for top-level tables — see `cells.rs`), computed-children
+    /// splices for the *string* `@children`/`@child` forms (only the union
+    /// form folds in a literal-field splice), and interface-typed children.
+    fn resolve_root_children(&self, name: &str) -> Option<crate::data::DataRef<'_>> {
+        use crate::data::DataRef;
+        let schemas = self.doc_schemas_for_ns(&self.file_ns);
+        if schemas.is_empty() {
+            return None;
+        }
+        let field = schemas.field(name)?;
+
+        if let Some(ck) = field.children_kind_or_union() {
+            match ck {
+                ChildKind::Union(union) => {
+                    let mut out: Vec<Value> = Vec::new();
+                    for b in self.blocks() {
+                        if let Ok(v) = variant_dispatch::block_to_variant(self, &b, union) {
+                            out.push(v);
+                        }
+                    }
+                    // Computed-children splice (`name = <list expr>` at root):
+                    // the declared `list<Union>` type already coerced each
+                    // bare record to a variant by shape, so splice them in.
+                    if let Some(f) = self.field(name)
+                        && let Ok(Value::List(items)) = f.value()
+                    {
+                        for it in items {
+                            if matches!(it, Value::Variant { .. }) {
+                                out.push(it.clone());
+                            }
+                        }
+                    }
+                    return Some(DataRef::from_variant_value_list(out));
+                }
+                ChildKind::Kind(kind) => {
+                    let blocks: Vec<Block<'_>> =
+                        self.blocks().filter(|b| b.kind() == kind).collect();
+                    let is_table = self.table_schema(&kind).is_some();
+                    return Some(if is_table {
+                        DataRef::from_table(blocks)
+                    } else {
+                        DataRef::from_block_list(blocks)
+                    });
+                }
+                ChildKind::Interface(_) => return None,
+            }
+        }
+
+        if let Some(ck) = field.child_kind_or_union() {
+            match ck {
+                ChildKind::Union(union) => {
+                    for b in self.blocks() {
+                        if let Ok(v) = variant_dispatch::block_to_variant(self, &b, union) {
+                            return Some(DataRef::from_variant_value(v));
+                        }
+                    }
+                    return Some(DataRef::from_variant_value(Value::None));
+                }
+                ChildKind::Kind(kind) => {
+                    return self
+                        .blocks()
+                        .find(|b| b.kind() == kind)
+                        .map(DataRef::from_block);
+                }
+                ChildKind::Interface(_) => return None,
+            }
+        }
+
+        None
+    }
+
     pub(crate) fn resolve_root(&self, name: &str) -> Option<crate::data::DataRef<'_>> {
         use crate::data::DataRef;
         // Document-schema-driven projections at the root: a field on
@@ -507,6 +587,15 @@ impl Document {
                 all.extend(self.project_connections(src.items, conn_schema, &Scope::root()));
             }
             return Some(DataRef::from_variant_value(Value::List(all)));
+        }
+        // Document-root `@children`/`@child` projection: a field declared
+        // on the merged `@document` schema collects top-level blocks by
+        // kind / structural shape, exactly as `Block::typed_field` does
+        // for nested blocks. Runs before the literal field/block lookups
+        // so a `@children("concept") concepts` slot isn't shadowed by a
+        // top-level block of kind `concepts`.
+        if let Some(dr) = self.resolve_root_children(name) {
+            return Some(dr);
         }
         if let Some(f) = self.field(name) {
             return Some(DataRef::from_field(f));
@@ -1532,6 +1621,25 @@ fn materialise_dataref_or_path(
             segments,
         }),
     }
+}
+
+/// Like [`materialise_dataref_or_path`] but additionally reifies a
+/// `@children`/`@child`/`@table` projection (block / block list / table)
+/// into ordinary record / list values, so a bare reference to such a slot
+/// is consumable by builtins (`len`, `map`, …), arithmetic, and
+/// `wdoc_repeater`'s `each`. Used by the bare-identifier / member-access
+/// evaluation path. The `&T`-reference deref path keeps the plain
+/// `materialise_dataref_or_path` behaviour (a `Value::DataPath` handle) so
+/// reflective builtins can keep walking the source.
+fn materialise_dataref_value(
+    dr: crate::data::DataRef<'_>,
+    segments: Vec<String>,
+    span: Span,
+) -> Result<Value, EvalError> {
+    if let Some(v) = views::dataref_to_value(&dr) {
+        return v;
+    }
+    materialise_dataref_or_path(dr, segments, span)
 }
 
 /// Best-effort projection of an expression into the dotted name it

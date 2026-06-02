@@ -392,6 +392,7 @@ fn build_error_code(err: &wcl_wdoc::BuildError) -> u8 {
         wcl_wdoc::BuildError::Io(..) => EXIT_IO,
         wcl_wdoc::BuildError::Parse(_) => EXIT_PARSE,
         wcl_wdoc::BuildError::Schema(_) => EXIT_SCHEMA,
+        wcl_wdoc::BuildError::Eval(_) => EXIT_EVAL,
         wcl_wdoc::BuildError::BadPage(_) => EXIT_EVAL,
         wcl_wdoc::BuildError::DuplicateId { .. } => EXIT_SCHEMA,
         wcl_wdoc::BuildError::BadLink(_) => EXIT_SCHEMA,
@@ -456,6 +457,7 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
                     wcl_wdoc::PdfError::Io(..) => EXIT_IO,
                     wcl_wdoc::PdfError::Parse(_) => EXIT_PARSE,
                     wcl_wdoc::PdfError::Schema(_) => EXIT_SCHEMA,
+                    wcl_wdoc::PdfError::Eval(_) => EXIT_EVAL,
                     wcl_wdoc::PdfError::BadDoc(_) => EXIT_EVAL,
                     wcl_wdoc::PdfError::Render(_) => EXIT_IO,
                 };

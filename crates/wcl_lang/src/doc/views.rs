@@ -1992,6 +1992,63 @@ impl<'a> Block<'a> {
         self.field(name).map(crate::data::DataRef::from_field)
     }
 
+    /// Reify this block as a `Value::Record`, so a `@children`/`@child`
+    /// reference can be consumed as ordinary list/record data by builtins
+    /// (`len`, `map`, …), arithmetic, and `wdoc_repeater`'s `each`.
+    ///
+    /// Schema-aware, mirroring the wdoc lowering reifier: each declared
+    /// field is populated from its `@inline(N)` label slot, its
+    /// `@children`/`@child` projection (recursively reified), a literal
+    /// block field, a leaf typed projection, or the schema default — with
+    /// missing optionals becoming `Value::None`. An un-schema'd block
+    /// reifies its literal fields verbatim, keyed by its block kind.
+    pub fn to_record_value(&self) -> Result<Value, EvalError> {
+        use std::collections::BTreeMap;
+        let Some(schema) = self.schema() else {
+            // Un-schema'd block: literal fields only.
+            let mut map = BTreeMap::new();
+            for field in self.fields() {
+                map.insert(
+                    field.name().to_string(),
+                    field.value().cloned().map_err(|e| e.clone())?,
+                );
+            }
+            return Ok(Value::Record {
+                ty: vec![self.kind().to_string()],
+                fields: map,
+            });
+        };
+        let labels = self.labels().unwrap_or_default();
+        let mut map = BTreeMap::new();
+        for f in schema.fields() {
+            let name = f.name();
+            let is_child_slot =
+                f.children_kind_or_union().is_some() || f.child_kind_or_union().is_some();
+            let val = if let Some(slot) = f.inline_slot() {
+                labels.get(slot as usize).cloned().unwrap_or(Value::None)
+            } else if is_child_slot {
+                // Project the slot and recursively reify; a computed splice
+                // is schema-completed exactly like statically-nested blocks.
+                match self.typed_field(name).and_then(|dr| dataref_to_value(&dr)) {
+                    Some(v) => v?,
+                    None => f.default_value().unwrap_or(Value::None),
+                }
+            } else if let Some(field) = self.field(name) {
+                field.value().cloned().map_err(|e| e.clone())?
+            } else if let Some(dr) = self.typed_field(name) {
+                dr.value()
+                    .unwrap_or_else(|_| f.default_value().unwrap_or(Value::None))
+            } else {
+                f.default_value().unwrap_or(Value::None)
+            };
+            map.insert(name.to_string(), val);
+        }
+        Ok(Value::Record {
+            ty: vec![schema.name().to_string()],
+            fields: map,
+        })
+    }
+
     /// Dispatch all of a `@children(SomeUnion)` field's nested blocks
     /// and table rows through structural-shape matching to produce a
     /// list of `Value::Variant`. Failures from individual blocks or
@@ -2317,5 +2374,32 @@ impl<'a> RowView<'a> {
 
     pub fn span(&self) -> Span {
         self.ast.span
+    }
+}
+
+/// Materialise a [`DataRef`](crate::data::DataRef) into an owned [`Value`]
+/// for expression consumption: leaf fields / pre-evaluated variant values
+/// pass through, a single block reifies to a record, and a block list /
+/// table / variant list reifies to a `Value::List`. Returns `None` for
+/// kinds that have no list/record value (types, unions, symbols, …) so the
+/// caller can fall back to a `Value::DataPath` handle for reflective
+/// builtins.
+pub(crate) fn dataref_to_value<'a>(
+    dr: &crate::data::DataRef<'a>,
+) -> Option<Result<Value, EvalError>> {
+    use crate::data::DataKind;
+    match dr.inner() {
+        DataKind::Field(f) => Some(f.value().cloned().map_err(|e| e.clone())),
+        DataKind::VariantValue(v) => Some(Ok(v.clone())),
+        DataKind::VariantValueList(vs) => Some(Ok(Value::List(vs.clone()))),
+        DataKind::Block(b) => Some(b.to_record_value()),
+        DataKind::BlockList(v) | DataKind::Table(v) => Some((|| {
+            let mut out = Vec::with_capacity(v.len());
+            for b in v {
+                out.push(b.to_record_value()?);
+            }
+            Ok(Value::List(out))
+        })()),
+        _ => None,
     }
 }

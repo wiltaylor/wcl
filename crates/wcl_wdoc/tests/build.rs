@@ -25,6 +25,7 @@ fn build_ok(file: &Path, out: &Path) -> usize {
         Err(BuildError::Io(e, ctx)) => panic!("build io error: {ctx}: {e}"),
         Err(BuildError::Parse(r)) => panic!("build parse error: {r:?}"),
         Err(BuildError::Schema(n)) => panic!("build schema error: {n} violations"),
+        Err(BuildError::Eval(r)) => panic!("build eval error: {r:?}"),
         Err(BuildError::BadPage(m)) => panic!("build bad-page error: {m}"),
         Err(BuildError::DuplicateId { page, id }) => {
             panic!("build duplicate-id error: page {page}: {id}")
@@ -826,6 +827,7 @@ page index {
         Err(BuildError::Schema(n)) => assert!(n >= 1, "expected at least one violation, got {n}"),
         Err(BuildError::Io(e, ctx)) => panic!("expected Schema, got Io({ctx}: {e})"),
         Err(BuildError::Parse(_)) => panic!("expected Schema, got Parse"),
+        Err(BuildError::Eval(r)) => panic!("expected Schema, got Eval({r:?})"),
         Err(BuildError::BadPage(m)) => panic!("expected Schema, got BadPage({m})"),
         Err(BuildError::DuplicateId { page, id }) => {
             panic!("expected Schema, got DuplicateId({page}: {id})")
@@ -937,6 +939,7 @@ page index {
         Err(BuildError::Schema(n)) => panic!("expected DuplicateId, got Schema({n})"),
         Err(BuildError::Io(e, ctx)) => panic!("expected DuplicateId, got Io({ctx}: {e})"),
         Err(BuildError::Parse(_)) => panic!("expected DuplicateId, got Parse"),
+        Err(BuildError::Eval(r)) => panic!("expected DuplicateId, got Eval({r:?})"),
         Err(BuildError::BadPage(m)) => panic!("expected DuplicateId, got BadPage({m})"),
         Err(BuildError::BadLink(msgs)) => panic!("expected DuplicateId, got BadLink({msgs:?})"),
         Err(BuildError::BadTemplate(name)) => {
@@ -2046,6 +2049,7 @@ page index {
         Err(BuildError::Io(e, ctx)) => panic!("expected BadLink, got Io({ctx}: {e})"),
         Err(BuildError::Parse(_)) => panic!("expected BadLink, got Parse"),
         Err(BuildError::Schema(n)) => panic!("expected BadLink, got Schema({n})"),
+        Err(BuildError::Eval(r)) => panic!("expected BadLink, got Eval({r:?})"),
         Err(BuildError::BadPage(m)) => panic!("expected BadLink, got BadPage({m})"),
         Err(BuildError::DuplicateId { page, id }) => {
             panic!("expected BadLink, got DuplicateId({page}: {id})")
@@ -6566,4 +6570,25 @@ page index {
     assert_eq!(n, 1, "expected the single page to render");
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
     assert!(html.contains("<span>Hello</span>"), "{html}");
+}
+
+#[test]
+fn unresolved_name_in_page_block_errors() {
+    // Issue 13: an unresolved binding in a page block surfaces as a loud
+    // diagnostic on the HTML path, not a silently dropped block.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "page home {\n  start = true\n  p $\"count = ${len(nonexistent)}\"\n}\n",
+    );
+    let out = tmp.path().join("out");
+    match build(&src, &out, None) {
+        Err(BuildError::Eval(_)) => {}
+        Ok(n) => panic!("expected an eval error, but wrote {n} page(s)"),
+        Err(other) => {
+            other.report();
+            panic!("expected BuildError::Eval, got a different error (see above)");
+        }
+    }
 }

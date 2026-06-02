@@ -96,6 +96,9 @@ pub enum PdfError {
     Io(std::io::Error, String),
     Parse(Report),
     Schema(usize),
+    /// A block expression failed to evaluate during rendering. Carries a
+    /// pre-built miette report with the source snippet attached.
+    Eval(Report),
     BadDoc(String),
     Render(String),
 }
@@ -106,9 +109,18 @@ impl PdfError {
             Self::Io(e, ctx) => eprintln!("{ctx}: {e}"),
             Self::Parse(r) => eprintln!("{r:?}"),
             Self::Schema(n) => eprintln!("{n} schema violation{}", if *n == 1 { "" } else { "s" }),
+            Self::Eval(r) => eprintln!("{r:?}"),
             Self::BadDoc(msg) => eprintln!("{msg}"),
             Self::Render(msg) => eprintln!("pdf render failed: {msg}"),
         }
+    }
+
+    /// Wrap a render-time evaluation failure into a `PdfError::Eval`,
+    /// attaching the document source so the miette report renders a snippet.
+    pub(crate) fn eval(err: wcl_lang::EvalError, name: &str, user_src: &str) -> Self {
+        let report =
+            Report::new(err).with_source_code(NamedSource::new(name, user_src.to_string()));
+        Self::Eval(report)
     }
 }
 
@@ -247,122 +259,129 @@ pub fn pdf(
         |s| s.to_string_lossy().into_owned(),
     );
 
-    let mut written = 0;
-    for spec in build_set {
-        // Wireframe (`wf_*`) elements in this site's pages bake from its UI
-        // theme. The shared `patterns` is updated per site (interior mutability;
-        // the embedder borrows it immutably for the whole run).
-        patterns.set_ui_theme(crate::render::resolve_ui_theme(spec.block.as_ref()));
-        // Site name + template kind for `@only`/`@except` block visibility.
-        let default_template = spec
-            .block
-            .as_ref()
-            .and_then(|b| crate::render::field_symbol(b, "default_template"));
-        patterns.set_site_context(spec.name.clone(), default_template);
-        // One physical page per page block, ordered by the site TOC (start page
-        // first, then TOC chapters, then any remaining pages in source order).
-        let ordered = order_site_pages(spec);
-        let sections: Vec<Vec<ir::BlockNode>> = ordered
-            .iter()
-            .map(|p| collect::collect_page(&doc, p, &patterns, base_dir.as_deref()))
-            .collect();
+    let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, PdfError> {
+        let mut written = 0;
+        for spec in build_set {
+            // Wireframe (`wf_*`) elements in this site's pages bake from its UI
+            // theme. The shared `patterns` is updated per site (interior mutability;
+            // the embedder borrows it immutably for the whole run).
+            patterns.set_ui_theme(crate::render::resolve_ui_theme(spec.block.as_ref()));
+            // Site name + template kind for `@only`/`@except` block visibility.
+            let default_template = spec
+                .block
+                .as_ref()
+                .and_then(|b| crate::render::field_symbol(b, "default_template"));
+            patterns.set_site_context(spec.name.clone(), default_template);
+            // One physical page per page block, ordered by the site TOC (start page
+            // first, then TOC chapters, then any remaining pages in source order).
+            let ordered = order_site_pages(spec);
+            let sections: Vec<Vec<ir::BlockNode>> = ordered
+                .iter()
+                .map(|p| collect::collect_page(&doc, p, &patterns, base_dir.as_deref()))
+                .collect();
 
-        // A site with an explicit `title` gets a cover page.
-        let explicit_title = spec
-            .block
-            .as_ref()
-            .and_then(|b| crate::render::field_utf8(b, "title"));
-        let title = explicit_title
-            .clone()
-            .or_else(|| spec.name.clone())
-            .unwrap_or_else(|| stem.clone());
-        // Internal links / outline destinations are shifted past the optional
-        // cover page (the cover is a physical page but not in the laid pages).
-        let offset = usize::from(explicit_title.is_some());
+            // A site with an explicit `title` gets a cover page.
+            let explicit_title = spec
+                .block
+                .as_ref()
+                .and_then(|b| crate::render::field_utf8(b, "title"));
+            let title = explicit_title
+                .clone()
+                .or_else(|| spec.name.clone())
+                .unwrap_or_else(|| stem.clone());
+            // Internal links / outline destinations are shifted past the optional
+            // cover page (the cover is a physical page but not in the laid pages).
+            let offset = usize::from(explicit_title.is_some());
 
-        // The site's table of contents (the book sidebar's data). When present,
-        // the PDF gets a printed "Contents" page at the front and a reader
-        // outline; absent, the output is unchanged.
-        let toc_nodes = spec
-            .block
-            .as_ref()
-            .map(crate::render::read_toc)
-            .unwrap_or_default();
+            // The site's table of contents (the book sidebar's data). When present,
+            // the PDF gets a printed "Contents" page at the front and a reader
+            // outline; absent, the output is unchanged.
+            let toc_nodes = spec
+                .block
+                .as_ref()
+                .map(crate::render::read_toc)
+                .unwrap_or_default();
 
-        let (laid, dests, outline) = if toc_nodes.is_empty() {
-            let (laid, section_starts) = layout::layout(&sections, &mut book, &embedder, &geom);
-            let mut dests: HashMap<String, usize> = HashMap::new();
-            for (i, page) in ordered.iter().enumerate() {
-                if let (Some(name), Some(&start)) = (page_label(page), section_starts.get(i)) {
-                    dests.insert(name, start + offset);
+            let (laid, dests, outline) = if toc_nodes.is_empty() {
+                let (laid, section_starts) = layout::layout(&sections, &mut book, &embedder, &geom);
+                let mut dests: HashMap<String, usize> = HashMap::new();
+                for (i, page) in ordered.iter().enumerate() {
+                    if let (Some(name), Some(&start)) = (page_label(page), section_starts.get(i)) {
+                        dests.insert(name, start + offset);
+                    }
                 }
-            }
-            (laid, dests, None)
-        } else {
-            // Pass 1: lay out the content alone to learn each page's position
-            // among the content pages (0-based, cover excluded).
-            let (content_pages, content_starts) =
-                layout::layout(&sections, &mut book, &embedder, &geom);
-            let mut content_index: HashMap<String, usize> = HashMap::new();
-            for (i, page) in ordered.iter().enumerate() {
-                if let (Some(name), Some(&start)) = (page_label(page), content_starts.get(i)) {
-                    content_index.insert(name, start);
+                (laid, dests, None)
+            } else {
+                // Pass 1: lay out the content alone to learn each page's position
+                // among the content pages (0-based, cover excluded).
+                let (content_pages, content_starts) =
+                    layout::layout(&sections, &mut book, &embedder, &geom);
+                let mut content_index: HashMap<String, usize> = HashMap::new();
+                for (i, page) in ordered.iter().enumerate() {
+                    if let (Some(name), Some(&start)) = (page_label(page), content_starts.get(i)) {
+                        content_index.insert(name, start);
+                    }
                 }
-            }
 
-            // Flatten the toc into (depth, title, page) in source order.
-            let mut flat: Vec<(u8, String, Option<String>)> = Vec::new();
-            flatten_toc_entries(&toc_nodes, 0, &mut flat);
+                // Flatten the toc into (depth, title, page) in source order.
+                let mut flat: Vec<(u8, String, Option<String>)> = Vec::new();
+                flatten_toc_entries(&toc_nodes, 0, &mut flat);
 
-            // The printed numbers depend on the contents page count `T`, which
-            // depends only on the entry count (each entry is one fixed-slot
-            // line), not the number values — so build to learn `T`, then rebuild
-            // with the real numbers. Iterate to a fixpoint (cap as a guard).
-            let mut t = 1usize;
-            let mut toc_pages: Vec<layout::LaidOutPage> = Vec::new();
-            for _ in 0..4 {
-                let toc_section = build_toc_section(&flat, &content_index, t);
-                let (laid, _) = layout::layout(&[toc_section], &mut book, &embedder, &geom);
-                let nt = laid.len().max(1);
-                let done = nt == t;
-                toc_pages = laid;
-                t = nt;
-                if done {
-                    break;
+                // The printed numbers depend on the contents page count `T`, which
+                // depends only on the entry count (each entry is one fixed-slot
+                // line), not the number values — so build to learn `T`, then rebuild
+                // with the real numbers. Iterate to a fixpoint (cap as a guard).
+                let mut t = 1usize;
+                let mut toc_pages: Vec<layout::LaidOutPage> = Vec::new();
+                for _ in 0..4 {
+                    let toc_section = build_toc_section(&flat, &content_index, t);
+                    let (laid, _) = layout::layout(&[toc_section], &mut book, &embedder, &geom);
+                    let nt = laid.len().max(1);
+                    let done = nt == t;
+                    toc_pages = laid;
+                    t = nt;
+                    if done {
+                        break;
+                    }
                 }
-            }
-            let t = toc_pages.len();
+                let t = toc_pages.len();
 
-            // Final page index = `T` contents pages ahead, then the cover.
-            let mut dests: HashMap<String, usize> = HashMap::new();
-            for (name, &start) in &content_index {
-                dests.insert(name.clone(), start + t + offset);
-            }
-            let outline = build_outline_tree(&toc_nodes, &dests);
+                // Final page index = `T` contents pages ahead, then the cover.
+                let mut dests: HashMap<String, usize> = HashMap::new();
+                for (name, &start) in &content_index {
+                    dests.insert(name.clone(), start + t + offset);
+                }
+                let outline = build_outline_tree(&toc_nodes, &dests);
 
-            let mut laid = toc_pages;
-            laid.extend(content_pages);
-            (laid, dests, Some(outline))
-        };
+                let mut laid = toc_pages;
+                laid.extend(content_pages);
+                (laid, dests, Some(outline))
+            };
 
-        let bytes = paint::paint(
-            &laid,
-            &mut book,
-            &geom,
-            &title,
-            explicit_title.is_some(),
-            &dests,
-            outline,
-        )
-        .map_err(|e| PdfError::Render(format!("{e:?}")))?;
+            let bytes = paint::paint(
+                &laid,
+                &mut book,
+                &geom,
+                &title,
+                explicit_title.is_some(),
+                &dests,
+                outline,
+            )
+            .map_err(|e| PdfError::Render(format!("{e:?}")))?;
 
-        // `<site>.pdf` per named site; `<stem>.pdf` for an unnamed/default site.
-        let file_stem = spec.name.clone().unwrap_or_else(|| stem.clone());
-        let out = out_dir.join(format!("{file_stem}.pdf"));
-        fs::write(&out, bytes).map_err(|e| PdfError::Io(e, format!("write {}", out.display())))?;
-        written += 1;
+            // `<site>.pdf` per named site; `<stem>.pdf` for an unnamed/default site.
+            let file_stem = spec.name.clone().unwrap_or_else(|| stem.clone());
+            let out = out_dir.join(format!("{file_stem}.pdf"));
+            fs::write(&out, bytes)
+                .map_err(|e| PdfError::Io(e, format!("write {}", out.display())))?;
+            written += 1;
+        }
+        Ok(written)
+    });
+    if let Some(e) = eval_err {
+        return Err(PdfError::eval(e, &name, &user_src));
     }
-    Ok(written)
+    result
 }
 
 /// Order a site's pages for a continuous PDF: the `start` page first, then

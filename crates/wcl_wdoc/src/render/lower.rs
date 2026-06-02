@@ -1,14 +1,49 @@
 //! Lowering dispatch: invoke a block's `lower` function and recursively
 //! render the returned fundamental variants (HTML + SVG).
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use wcl_lang::{Block, Document, FnValue, Value, VariantPayload};
+use wcl_lang::{Block, Document, EvalError, FnValue, Value, VariantPayload};
 
 use crate::inline::InlinePatterns;
 
 use super::*;
+
+thread_local! {
+    /// First eval error swallowed while lowering a block during the
+    /// current render pass. The lowering primitives recover (a failed
+    /// field becomes `none`, a failed block renders nothing) so a single
+    /// bad expression can't abort the whole document mid-tree — but the
+    /// error is captured here so the backend entry point can surface it as
+    /// a diagnostic and a non-zero exit, instead of silently dropping the
+    /// block. First error wins; rendering is single-threaded per pass, so
+    /// a thread-local is a safe document-scoped sink. Use
+    /// [`scoped_eval_errors`] to bound a pass and collect what it caught.
+    static LOWER_EVAL_ERR: RefCell<Option<EvalError>> = const { RefCell::new(None) };
+}
+
+/// Record an eval error swallowed during lowering (first one wins).
+pub(crate) fn record_lower_error(err: EvalError) {
+    LOWER_EVAL_ERR.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(err);
+        }
+    });
+}
+
+/// Run `f` as a self-contained render pass, returning its result alongside
+/// the first eval error any lowering swallowed during it (if any). Saves
+/// and restores any outer sink so nested passes compose.
+pub(crate) fn scoped_eval_errors<T>(f: impl FnOnce() -> T) -> (T, Option<EvalError>) {
+    let outer = LOWER_EVAL_ERR.with(|slot| slot.borrow_mut().take());
+    let result = f();
+    let caught = LOWER_EVAL_ERR.with(|slot| slot.borrow_mut().take());
+    LOWER_EVAL_ERR.with(|slot| *slot.borrow_mut() = outer);
+    (result, caught)
+}
 
 /// Lowering recursion guard. A lowering may emit other custom kinds
 /// that themselves lower further; this caps how deep we'll follow
@@ -65,7 +100,14 @@ pub(crate) fn lower_to_values(doc: &Document, block: &Block<'_>, kind: &str) -> 
     let fv = lookup_block_lower(doc, block, kind)?;
     match doc.call_value(&fv, &[arg]) {
         Ok(Value::List(items)) => Some(items),
-        _ => None,
+        // A non-list result is a benign "nothing to render"; an error is a
+        // genuine evaluation failure inside the `lower` — record it so the
+        // backend surfaces a diagnostic rather than silently dropping.
+        Ok(_) => None,
+        Err(e) => {
+            record_lower_error(e);
+            None
+        }
     }
 }
 
@@ -284,7 +326,17 @@ pub(crate) fn block_to_record(doc: &Document, block: &Block<'_>, kind: &str) -> 
 /// (`i64`), not SVG geometry, so it must not be coerced/grown.
 pub(crate) fn block_to_record_raw(doc: &Document, block: &Block<'_>, kind: &str) -> Option<Value> {
     let schema = doc.block_schema(kind)?;
-    let labels = block.labels().ok().unwrap_or_default();
+    // A label that fails to evaluate (e.g. an interpolation `$"…${name}…"`
+    // referencing an unresolved binding) is a genuine error — record it so
+    // the backend surfaces a diagnostic, then fall back to no labels so the
+    // rest of the record still builds.
+    let labels = match block.labels() {
+        Ok(labels) => labels,
+        Err(e) => {
+            record_lower_error(e);
+            Vec::new()
+        }
+    };
     let mut map = BTreeMap::new();
     for f in schema.fields() {
         let name = f.name();
@@ -317,7 +369,16 @@ pub(crate) fn block_to_record_raw(doc: &Document, block: &Block<'_>, kind: &str)
                 None => f.default_value().unwrap_or(Value::None),
             }
         } else if let Some(field) = block.field(name) {
-            field.value().cloned().unwrap_or(Value::None)
+            // A present field whose expression fails to evaluate is a
+            // genuine error — record it (then fall back to `none` so the
+            // record still builds for the rest of the fields).
+            match field.value() {
+                Ok(v) => v.clone(),
+                Err(e) => {
+                    record_lower_error(e.clone());
+                    Value::None
+                }
+            }
         } else if let Some(dr) = block.typed_field(name) {
             // A schema-projected field with no raw AST entry: a leaf typed
             // projection (e.g. a `@connections` list, which has a `Value`).

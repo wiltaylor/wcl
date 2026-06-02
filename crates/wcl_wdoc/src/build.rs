@@ -76,8 +76,15 @@ pub enum BuildError {
     Io(std::io::Error, String),
     Parse(Report),
     Schema(usize),
+    /// A block expression failed to evaluate during rendering (e.g. an
+    /// unresolved name in a page block). Carries a pre-built miette report
+    /// with the source snippet attached.
+    Eval(Report),
     BadPage(String),
-    DuplicateId { page: String, id: String },
+    DuplicateId {
+        page: String,
+        id: String,
+    },
     BadLink(Vec<String>),
     BadTemplate(String),
     Tileset(String),
@@ -89,6 +96,7 @@ impl BuildError {
             Self::Io(e, ctx) => eprintln!("{ctx}: {e}"),
             Self::Parse(r) => eprintln!("{r:?}"),
             Self::Schema(n) => eprintln!("{n} schema violation{}", if *n == 1 { "" } else { "s" }),
+            Self::Eval(r) => eprintln!("{r:?}"),
             Self::BadPage(msg) => eprintln!("{msg}"),
             Self::DuplicateId { page, id } => {
                 eprintln!("page \"{page}\": duplicate id \"{id}\"");
@@ -101,6 +109,14 @@ impl BuildError {
             Self::BadTemplate(name) => eprintln!("unknown template \"{name}\""),
             Self::Tileset(msg) => eprintln!("{msg}"),
         }
+    }
+
+    /// Wrap a render-time evaluation failure into a `BuildError::Eval`,
+    /// attaching the document source so the miette report renders a snippet.
+    pub(crate) fn eval(err: wcl_lang::EvalError, name: &str, user_src: &str) -> Self {
+        let report =
+            Report::new(err).with_source_code(NamedSource::new(name, user_src.to_string()));
+        Self::Eval(report)
     }
 }
 
@@ -208,60 +224,67 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
     // go to `<out>/<name>/`. A chooser index is generated only when there
     // are several sites and none claims the root.
     let multi = build_set.len() > 1;
-    let mut count = 0;
-    for spec in &build_set {
-        let at_root = !multi || (root_site.is_some() && spec.name == root_site);
-        let (site_out, current_prefix) = if at_root {
-            (out_dir.to_path_buf(), String::new())
-        } else {
-            let name = spec.name.as_deref().unwrap_or("site");
-            (out_dir.join(name), format!("{name}/"))
-        };
-        // Sub-sites (anything not at the root, in a multi-site build) get
-        // a back-link to the root index; the root site itself gets none.
-        let (home_href, home_title) = if at_root || !multi {
-            (String::new(), String::new())
-        } else {
-            ("../index.html".to_string(), root_title.clone())
-        };
-        fs::create_dir_all(&site_out)
-            .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", site_out.display())))?;
-        count += build_site(
-            &doc,
-            base_dir.as_deref(),
-            spec,
-            &site_out,
-            current_prefix,
-            &site_pages,
-            &site_prefix,
-            &home_href,
-            &home_title,
-        )?;
-        // Landing page: a page marked `start` is copied to this site's
-        // `index.html`, so `/` (or `/<site>/`) serves it without needing
-        // a page literally named `index`. The page also stays reachable
-        // at its own `<name>.html`.
-        if let Some(start) = site_start_page(spec)?
-            && start != "index"
-        {
-            let src = site_out.join(format!("{start}.html"));
-            let dst = site_out.join("index.html");
-            fs::copy(&src, &dst)
-                .map_err(|e| BuildError::Io(e, format!("copy {} to index.html", src.display())))?;
+    let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, BuildError> {
+        let mut count = 0;
+        for spec in &build_set {
+            let at_root = !multi || (root_site.is_some() && spec.name == root_site);
+            let (site_out, current_prefix) = if at_root {
+                (out_dir.to_path_buf(), String::new())
+            } else {
+                let name = spec.name.as_deref().unwrap_or("site");
+                (out_dir.join(name), format!("{name}/"))
+            };
+            // Sub-sites (anything not at the root, in a multi-site build) get
+            // a back-link to the root index; the root site itself gets none.
+            let (home_href, home_title) = if at_root || !multi {
+                (String::new(), String::new())
+            } else {
+                ("../index.html".to_string(), root_title.clone())
+            };
+            fs::create_dir_all(&site_out)
+                .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", site_out.display())))?;
+            count += build_site(
+                &doc,
+                base_dir.as_deref(),
+                spec,
+                &site_out,
+                current_prefix,
+                &site_pages,
+                &site_prefix,
+                &home_href,
+                &home_title,
+            )?;
+            // Landing page: a page marked `start` is copied to this site's
+            // `index.html`, so `/` (or `/<site>/`) serves it without needing
+            // a page literally named `index`. The page also stays reachable
+            // at its own `<name>.html`.
+            if let Some(start) = site_start_page(spec)?
+                && start != "index"
+            {
+                let src = site_out.join(format!("{start}.html"));
+                let dst = site_out.join("index.html");
+                fs::copy(&src, &dst).map_err(|e| {
+                    BuildError::Io(e, format!("copy {} to index.html", src.display()))
+                })?;
+            }
+            // Fall back to a redirect index for a multi-site sub-site that has
+            // neither a `start` nor an `index` page (no-op if one now exists).
+            if multi {
+                ensure_site_index(&site_out, spec)?;
+            }
         }
-        // Fall back to a redirect index for a multi-site sub-site that has
-        // neither a `start` nor an `index` page (no-op if one now exists).
-        if multi {
-            ensure_site_index(&site_out, spec)?;
+        if multi && root_site.is_none() {
+            // No root site ⇒ the root is a generated chooser (site-agnostic,
+            // so only the global/unscoped CSS).
+            write_chooser_index(out_dir, &site_css(&doc, None, None), &build_set)?;
         }
-    }
-    if multi && root_site.is_none() {
-        // No root site ⇒ the root is a generated chooser (site-agnostic,
-        // so only the global/unscoped CSS).
-        write_chooser_index(out_dir, &site_css(&doc, None, None), &build_set)?;
-    }
 
-    Ok(count)
+        Ok(count)
+    });
+    if let Some(e) = eval_err {
+        return Err(BuildError::eval(e, &name, &user_src));
+    }
+    result
 }
 
 /// The name of the site marked `root = true`, if any. More than one root

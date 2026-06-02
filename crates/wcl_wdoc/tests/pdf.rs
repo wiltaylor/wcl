@@ -16,6 +16,7 @@ fn pdf_ok(file: &Path, out: &Path, size: PageSize) -> usize {
         Err(PdfError::Io(e, ctx)) => panic!("pdf io error: {ctx}: {e}"),
         Err(PdfError::Parse(r)) => panic!("pdf parse error: {r:?}"),
         Err(PdfError::Schema(n)) => panic!("pdf schema error: {n} violations"),
+        Err(PdfError::Eval(r)) => panic!("pdf eval error: {r:?}"),
         Err(PdfError::BadDoc(m)) => panic!("pdf bad-doc error: {m}"),
         Err(PdfError::Render(m)) => panic!("pdf render error: {m}"),
     }
@@ -482,4 +483,25 @@ fn local_video_has_no_link_in_pdf() {
         !blob.contains("clip.mp4"),
         "a local video path is never linked"
     );
+}
+
+#[test]
+fn unresolved_name_in_page_block_errors() {
+    // Issue 13: an unresolved binding in a page block surfaces as a loud
+    // diagnostic on the PDF path, not a silently dropped block.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "page home {\n  start = true\n  p $\"count = ${len(nonexistent)}\"\n}\n",
+    );
+    let out = tmp.path().join("out");
+    match pdf(&src, &out, None, PageSize::A4) {
+        Err(PdfError::Eval(_)) => {}
+        Ok(n) => panic!("expected an eval error, but wrote {n} pdf(s)"),
+        Err(other) => {
+            other.report();
+            panic!("expected PdfError::Eval, got a different error (see above)");
+        }
+    }
 }

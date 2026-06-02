@@ -3554,3 +3554,114 @@ fn untyped_bare_record_stays_a_record() {
         other => panic!("expected an anonymous record, got {other:?}"),
     }
 }
+
+// ─── Document-root `@children` projection (issue 13) ──────────────
+// A `@children`/`@child` field declared on a `@document` schema collects
+// matching top-level blocks, resolvable by name from any expression and
+// consumable as ordinary list/record values by builtins (`len`, `map`, …).
+
+const ROOT_CHILDREN_DOC: &str = r#"
+@block("concept")
+type Concept { @inline(0) id: identifier  name: utf8 }
+
+@document
+type Wiki {
+  @children("concept") concepts: list<Concept>
+  count: i64
+  names: list<utf8>
+}
+
+count = len(concepts)
+names = map(concepts, fn(c: Concept) -> utf8 c.name)
+
+concept "intro"  { name = "Intro" }
+concept "second" { name = "Second" }
+"#;
+
+#[test]
+fn root_children_resolve_to_block_list() {
+    let doc = Document::open(ROOT_CHILDREN_DOC, "test").expect("open");
+    let concepts = doc.get("concepts").expect("concepts resolves at root");
+    assert_eq!(concepts.kind(), "block_list");
+    assert_eq!(concepts.len(), Some(2));
+}
+
+#[test]
+fn root_children_consumable_by_len_in_expression() {
+    // A bare reference to the children slot reifies to a list value, so
+    // `len(concepts)` works exactly as it would over a literal list.
+    let doc = Document::open(ROOT_CHILDREN_DOC, "test").expect("open");
+    let count = doc
+        .get("count")
+        .expect("count")
+        .value()
+        .expect("count value");
+    assert_eq!(count, Value::I64(2));
+}
+
+#[test]
+fn root_children_consumable_by_map_to_records() {
+    // Each collected block reifies to a record, so `c.name` member access
+    // works inside `map`.
+    let doc = Document::open(ROOT_CHILDREN_DOC, "test").expect("open");
+    let names = doc
+        .get("names")
+        .expect("names")
+        .value()
+        .expect("names value");
+    assert_eq!(
+        names,
+        Value::List(vec![
+            Value::Utf8("Intro".into()),
+            Value::Utf8("Second".into()),
+        ])
+    );
+}
+
+#[test]
+fn root_children_top_level_let_closes_over_them() {
+    // A top-level `let` body resolves children through the same root path.
+    let src = r#"
+@block("concept")
+type Concept { @inline(0) id: identifier }
+
+@document
+type Wiki {
+  @children("concept") concepts: list<Concept>
+  n: i64
+}
+
+let total = len(concepts)
+n = total
+
+concept "a"
+concept "b"
+concept "c"
+"#;
+    let doc = Document::open(src, "test").expect("open");
+    let n = doc.get("n").expect("n").value().expect("n value");
+    assert_eq!(n, Value::I64(3));
+}
+
+#[test]
+fn root_children_empty_is_zero_not_unresolved() {
+    let src = r#"
+@block("concept")
+type Concept { @inline(0) id: identifier }
+
+@document
+type Wiki {
+  @children("concept") concepts: list<Concept>
+  count: i64
+}
+
+count = len(concepts)
+"#;
+    let doc = Document::open(src, "test").expect("open");
+    let count = doc
+        .get("count")
+        .expect("count")
+        .value()
+        .expect("count value");
+    assert_eq!(count, Value::I64(0));
+}

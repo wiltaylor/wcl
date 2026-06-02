@@ -269,3 +269,45 @@ fn multi_site_lands_pages_in_subdirectories() {
     assert!(out.join("docs/guide.md").is_file(), "docs page under docs/");
     assert!(out.join("blog/post.md").is_file(), "blog page under blog/");
 }
+
+#[test]
+fn cross_root_children_render_in_a_page() {
+    // Issue 13: a `@children` collection under a non-Site `@document` root is
+    // readable from a wdoc page expression (`len(concepts)`), rendering the
+    // count instead of silently dropping the block.
+    let body = "interface Node { id: identifier }\n\
+        @block(\"concept\") type Concept extends Node {\n  @inline(0) id: identifier\n  name: utf8\n}\n\
+        @document type Wskill { @children(\"concept\") concepts: list<Concept> }\n\
+        site s { default_template = :book  title = \"R\"  root = true\n  toc { chapter \"C\" { page = home } }\n}\n\
+        page home { sites = [:s]  start = true\n  h1 \"Heading\"\n  p $\"count = ${len(concepts)}\"\n}\n\
+        concept \"intro\" { name = \"Intro\" }\n\
+        concept \"second\" { name = \"Second\" }\n";
+    let (_t, out) = build(body);
+    let md = read(&out, "home.md");
+    assert!(
+        md.contains("count = 2"),
+        "expected the rendered count, got:\n{md}"
+    );
+}
+
+#[test]
+fn unresolved_name_in_page_block_errors() {
+    // Issue 13: a present expression that fails to evaluate (here an
+    // unresolved binding) must surface as a loud diagnostic, not silently
+    // drop the block with a success exit.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "page home {\n  start = true\n  p $\"count = ${len(nonexistent)}\"\n}\n",
+    );
+    let out = tmp.path().join("out");
+    match markdown(&src, &out, None) {
+        Err(BuildError::Eval(_)) => {}
+        Ok(n) => panic!("expected an eval error, but wrote {n} page(s)"),
+        Err(other) => {
+            other.report();
+            panic!("expected BuildError::Eval, got a different error (see above)");
+        }
+    }
+}

@@ -117,43 +117,52 @@ pub fn markdown(
     }
 
     let multi = build_set.len() > 1;
-    let mut count = 0;
-    for spec in &build_set {
-        let at_root = !multi || (root_site.is_some() && spec.name == root_site);
-        let (site_out, current_prefix) = if at_root {
-            (out_dir.to_path_buf(), String::new())
-        } else {
-            let name = spec.name.as_deref().unwrap_or("site");
-            (out_dir.join(name), format!("{name}/"))
-        };
-        fs::create_dir_all(&site_out)
-            .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", site_out.display())))?;
-        count += markdown_site(
-            &doc,
-            base_dir.as_deref(),
-            spec,
-            &site_out,
-            current_prefix,
-            &site_pages,
-            &site_prefix,
-        )?;
+    let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, BuildError> {
+        let mut count = 0;
+        for spec in &build_set {
+            let at_root = !multi || (root_site.is_some() && spec.name == root_site);
+            let (site_out, current_prefix) = if at_root {
+                (out_dir.to_path_buf(), String::new())
+            } else {
+                let name = spec.name.as_deref().unwrap_or("site");
+                (out_dir.join(name), format!("{name}/"))
+            };
+            fs::create_dir_all(&site_out)
+                .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", site_out.display())))?;
+            count += markdown_site(
+                &doc,
+                base_dir.as_deref(),
+                spec,
+                &site_out,
+                current_prefix,
+                &site_pages,
+                &site_prefix,
+            )?;
 
-        // Landing-page parity with the HTML build: copy the `start` page (or
-        // none) to `index.md` so `<site>/` has an entry point.
-        if let Some(start) = site_start_page(spec)?
-            && start != "index"
-        {
-            let src = site_out.join(format!("{start}.md"));
-            let dst = site_out.join("index.md");
-            fs::copy(&src, &dst)
-                .map_err(|e| BuildError::Io(e, format!("copy {} to index.md", src.display())))?;
+            // Landing-page parity with the HTML build: copy the `start` page (or
+            // none) to `index.md` so `<site>/` has an entry point.
+            if let Some(start) = site_start_page(spec)?
+                && start != "index"
+            {
+                let src = site_out.join(format!("{start}.md"));
+                let dst = site_out.join("index.md");
+                fs::copy(&src, &dst).map_err(|e| {
+                    BuildError::Io(e, format!("copy {} to index.md", src.display()))
+                })?;
+            }
         }
-    }
-    if multi && root_site.is_none() {
-        write_chooser_index(out_dir, &build_set)?;
-    }
+        if multi && root_site.is_none() {
+            write_chooser_index(out_dir, &build_set)?;
+        }
 
-    Ok(count)
+        Ok(count)
+    });
+    // A swallowed block-eval error takes priority: it means a page block
+    // would have been silently dropped, so fail loudly with a snippet.
+    if let Some(e) = eval_err {
+        return Err(BuildError::eval(e, &name, &user_src));
+    }
+    result
 }
 
 /// Render one site's pages into `out_dir`. Mirrors `build::build_site`'s
