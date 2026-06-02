@@ -68,6 +68,40 @@ impl<'a> Parser<'a> {
         std::mem::take(&mut self.current_item_trivia)
     }
 
+    /// Clone the leading trivia (comments + blank lines) sitting on the
+    /// next token, without consuming it. Used to seed a member/element's
+    /// `leading_trivia` before parsing it. The lexer already collected
+    /// these from the source between the previous token and this one.
+    pub(super) fn peek_leading_trivia(&mut self) -> Result<Vec<crate::ast::Trivia>, ParseError> {
+        Ok(self.peek()?.leading_trivia.clone())
+    }
+
+    /// Take the same-line trailing comment that the lexer diverted onto
+    /// the next token (a `#` comment that followed the previous token on
+    /// the same line). Consumes it from the peeked token so it cannot
+    /// also surface as leading trivia. Returns `None` when there isn't one.
+    pub(super) fn take_same_line_comment(&mut self) -> Result<Option<String>, ParseError> {
+        self.peek()?;
+        Ok(self
+            .peeked
+            .as_mut()
+            .and_then(|t| t.same_line_comment.take()))
+    }
+
+    /// Attach the next token's same-line comment (if any) to the most
+    /// recently parsed top-level item, so an inline comment stays with
+    /// the node that ended its line. Call after pushing each item and at
+    /// the loop terminator (the `Eof`/`RBrace` token still carries the
+    /// last line's trailing comment).
+    pub(super) fn attach_trailing_to_last(&mut self, items: &mut [Item]) -> Result<(), ParseError> {
+        if let Some(c) = self.take_same_line_comment()?
+            && let Some(last) = items.last_mut()
+        {
+            last.set_trailing_comment(c);
+        }
+        Ok(())
+    }
+
     pub fn parse_source(&mut self) -> Result<(Source, SymbolIndex), ParseError> {
         let mut items = Vec::new();
         while !matches!(self.peek()?.kind, TokenKind::Eof) {
@@ -75,8 +109,19 @@ impl<'a> Parser<'a> {
             let item = self.parse_item()?;
             self.register_item(&item, item_idx)?;
             items.push(item);
+            // The next token's same-line comment (incl. the Eof token's,
+            // on the final pass) trails the item we just pushed.
+            self.attach_trailing_to_last(&mut items)?;
         }
-        Ok((Source { items }, std::mem::take(&mut self.index)))
+        // Comments + blank lines after the last item, before EOF.
+        let trailing_trivia = self.peek()?.leading_trivia.clone();
+        Ok((
+            Source {
+                items,
+                trailing_trivia,
+            },
+            std::mem::take(&mut self.index),
+        ))
     }
 
     /// Register a freshly-parsed top-level item (and its immediate
@@ -427,6 +472,8 @@ impl<'a> Parser<'a> {
                     decorators,
                     span: Span::new(span_start, tok.span.end),
                     leading_trivia: self.take_item_trivia(),
+                    trailing_comment: None,
+                    trailing_trivia: Vec::new(),
                 }))
             }
             other => {

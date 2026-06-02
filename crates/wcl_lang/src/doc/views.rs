@@ -274,7 +274,7 @@ impl<'a> UnionVariant<'a> {
 
     pub fn body(&self) -> VariantBodyView<'a> {
         match &self.ast.body {
-            ast::VariantBody::Record(_) => VariantBodyView::Record,
+            ast::VariantBody::Record { .. } => VariantBodyView::Record,
             ast::VariantBody::TypeRef { ty, .. } => VariantBodyView::TypeRef(ty),
             ast::VariantBody::InterfaceRef { iface, .. } => VariantBodyView::InterfaceRef(iface),
             ast::VariantBody::Unit => VariantBodyView::Unit,
@@ -285,7 +285,7 @@ impl<'a> UnionVariant<'a> {
         let doc = self.doc;
         let field_cells = self.field_decorator_cells;
         match &self.ast.body {
-            ast::VariantBody::Record(fields) => {
+            ast::VariantBody::Record { fields, .. } => {
                 Box::new(fields.iter().enumerate().map(move |(i, f)| TypeField {
                     ast: f,
                     decorator_cells: &field_cells[i],
@@ -298,7 +298,7 @@ impl<'a> UnionVariant<'a> {
 
     pub fn field(&self, name: &str) -> Option<TypeField<'a>> {
         match &self.ast.body {
-            ast::VariantBody::Record(fields) => fields
+            ast::VariantBody::Record { fields, .. } => fields
                 .iter()
                 .enumerate()
                 .find(|(_, f)| f.name == name)
@@ -456,6 +456,7 @@ fn synth_child_from_value(
                 decorators: Vec::new(),
                 span: synth_span,
                 leading_trivia: Vec::new(),
+                trailing_comment: None,
             })
         })
         .collect();
@@ -466,6 +467,8 @@ fn synth_child_from_value(
         decorators: Vec::new(),
         span: synth_span,
         leading_trivia: Vec::new(),
+        trailing_comment: None,
+        trailing_trivia: Vec::new(),
     };
     let synth_cells = ItemCells::build(&ast::Item::Block(synth_block.clone()), None);
 

@@ -351,7 +351,7 @@ pub(crate) fn validate_document(
                         ));
                     }
                     match &v.body {
-                        ast::VariantBody::Record(fields) => {
+                        ast::VariantBody::Record { fields, .. } => {
                             for f in fields {
                                 check_type_ref(&f.ty, f.ty_span, false, &cx)?;
                             }

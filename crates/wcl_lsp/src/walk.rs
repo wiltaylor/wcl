@@ -62,7 +62,9 @@ fn walk_field<'a>(f: &'a Field, offset: usize, out: &mut EnclosingScopes<'a>) {
 
 fn walk_expr<'a>(expr: &'a Expr, offset: usize, out: &mut EnclosingScopes<'a>) {
     match expr {
-        Expr::Block { lets, tail, span } => {
+        Expr::Block {
+            lets, tail, span, ..
+        } => {
             if !contains(*span, offset) {
                 return;
             }
@@ -89,7 +91,9 @@ fn walk_expr<'a>(expr: &'a Expr, offset: usize, out: &mut EnclosingScopes<'a>) {
             }
             walk_expr(body, offset, out);
         }
-        Expr::Call { callee, args, span } => {
+        Expr::Call {
+            callee, args, span, ..
+        } => {
             if !contains(*span, offset) {
                 return;
             }
@@ -123,7 +127,7 @@ fn walk_expr<'a>(expr: &'a Expr, offset: usize, out: &mut EnclosingScopes<'a>) {
             }
             walk_expr(inner, offset, out);
         }
-        Expr::ListLit { elements, span } => {
+        Expr::ListLit { elements, span, .. } => {
             if !contains(*span, offset) {
                 return;
             }
@@ -162,7 +166,9 @@ fn walk_expr<'a>(expr: &'a Expr, offset: usize, out: &mut EnclosingScopes<'a>) {
             walk_expr(then_block, offset, out);
             walk_expr(else_block, offset, out);
         }
-        Expr::Match { scrut, arms, span } => {
+        Expr::Match {
+            scrut, arms, span, ..
+        } => {
             if !contains(*span, offset) {
                 return;
             }
@@ -187,14 +193,14 @@ fn walk_expr<'a>(expr: &'a Expr, offset: usize, out: &mut EnclosingScopes<'a>) {
             match args {
                 VariantArgs::Unit => {}
                 VariantArgs::Positional(e) => walk_expr(e, offset, out),
-                VariantArgs::Record(named) => {
+                VariantArgs::Record { fields: named, .. } => {
                     for n in named {
                         walk_expr(&n.value, offset, out);
                     }
                 }
             }
         }
-        Expr::Record { fields, span } => {
+        Expr::Record { fields, span, .. } => {
             if !contains(*span, offset) {
                 return;
             }

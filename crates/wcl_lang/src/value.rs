@@ -225,6 +225,8 @@ impl FnValue {
                 ty: p.ty().clone(),
                 ty_span: zero,
                 span: zero,
+                leading_trivia: Vec::new(),
+                trailing_comment: None,
             })
             .collect();
         let lit = ast::FunctionLit {
@@ -233,6 +235,7 @@ impl FnValue {
             return_ty_span: zero,
             body: self.body.clone(),
             span: zero,
+            trailing_trivia: Vec::new(),
         };
         crate::format::to_source_expr(&ast::Expr::Function(lit))
     }

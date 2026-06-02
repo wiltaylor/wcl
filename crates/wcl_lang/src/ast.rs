@@ -37,6 +37,32 @@ pub enum Trivia {
     BlankLine,
 }
 
+/// Comment trivia for one element of a comma-separated expression
+/// collection whose elements are bare [`Expr`]s (list literals, call
+/// arguments) and so have no struct of their own to hang trivia on. The
+/// parser builds one entry per element, index-aligned with the element
+/// vec; the evaluator ignores these entirely. `leading` holds comments
+/// (and blank lines) printed above the element; `trailing` is a same-line
+/// comment printed after it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ElemTrivia {
+    pub leading: Vec<Trivia>,
+    pub trailing: Option<String>,
+}
+
+impl ElemTrivia {
+    /// True when this element carries a line comment in either position
+    /// (blank lines alone don't count — they don't force a multi-line
+    /// layout).
+    pub fn has_comment(&self) -> bool {
+        self.trailing.is_some()
+            || self
+                .leading
+                .iter()
+                .any(|t| matches!(t, Trivia::LineComment(_)))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Bool(bool),
@@ -81,6 +107,11 @@ pub enum Expr {
     Call {
         callee: Box<Expr>,
         args: Vec<Expr>,
+        /// Per-argument comment trivia, index-aligned with `args`. Empty
+        /// (or all-default) when the call carries no comments.
+        arg_trivia: Vec<ElemTrivia>,
+        /// Comments/blank lines after the last argument, before `)`.
+        trailing_trivia: Vec<Trivia>,
         span: Span,
     },
     Binary {
@@ -97,6 +128,9 @@ pub enum Expr {
     Block {
         lets: Vec<LetBinding>,
         tail: Box<Expr>,
+        /// Comments/blank lines between the last `let` (or the tail) and
+        /// the closing `}` of the block expression.
+        trailing_trivia: Vec<Trivia>,
         span: Span,
     },
     Paren {
@@ -106,6 +140,10 @@ pub enum Expr {
 
     ListLit {
         elements: Vec<Expr>,
+        /// Per-element comment trivia, index-aligned with `elements`.
+        elem_trivia: Vec<ElemTrivia>,
+        /// Comments/blank lines after the last element, before `]`.
+        trailing_trivia: Vec<Trivia>,
         span: Span,
     },
 
@@ -133,6 +171,8 @@ pub enum Expr {
     Match {
         scrut: Box<Expr>,
         arms: Vec<MatchArm>,
+        /// Comments/blank lines after the last arm, before `}`.
+        trailing_trivia: Vec<Trivia>,
         span: Span,
     },
     Variant {
@@ -147,6 +187,8 @@ pub enum Expr {
     /// anonymous `Value::Record`.
     Record {
         fields: Vec<NamedArg>,
+        /// Comments/blank lines after the last field, before `}`.
+        trailing_trivia: Vec<Trivia>,
         span: Span,
     },
 }
@@ -165,13 +207,21 @@ pub struct MatchArm {
     pub guard: Option<Expr>,
     pub body: Expr,
     pub span: Span,
+    /// Comments/blank lines printed above this arm.
+    pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after this arm.
+    pub trailing_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum VariantArgs {
     Unit,
     Positional(Box<Expr>),
-    Record(Vec<NamedArg>),
+    Record {
+        fields: Vec<NamedArg>,
+        /// Comments/blank lines after the last field, before `}`.
+        trailing_trivia: Vec<Trivia>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -222,6 +272,8 @@ pub struct FunctionLit {
     pub return_ty_span: Span,
     pub body: Box<Expr>,
     pub span: Span,
+    /// Comments/blank lines after the last parameter, before `)`.
+    pub trailing_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -230,6 +282,10 @@ pub struct Parameter {
     pub ty: crate::value::TypeRef,
     pub ty_span: Span,
     pub span: Span,
+    /// Comments/blank lines printed above this parameter.
+    pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after this parameter.
+    pub trailing_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -237,6 +293,10 @@ pub struct LetBinding {
     pub name: String,
     pub value: Expr,
     pub span: Span,
+    /// Comments/blank lines printed above this `let` binding.
+    pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after this `let` binding.
+    pub trailing_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -275,6 +335,10 @@ pub struct NamedArg {
     pub name: String,
     pub value: Expr,
     pub span: Span,
+    /// Comments/blank lines printed above this field (record literals).
+    pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after this field.
+    pub trailing_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -284,6 +348,8 @@ pub struct Field {
     pub decorators: Vec<Decorator>,
     pub span: Span,
     pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after this field.
+    pub trailing_comment: Option<String>,
 }
 
 /// A `let name = expr` item declared at the file (global) scope or
@@ -298,6 +364,8 @@ pub struct LetItem {
     pub value: Expr,
     pub span: Span,
     pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after this `let` item.
+    pub trailing_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -308,6 +376,11 @@ pub struct Block {
     pub decorators: Vec<Decorator>,
     pub span: Span,
     pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after the block's `}` (or after the
+    /// kind/labels line for the empty-body shorthand).
+    pub trailing_comment: Option<String>,
+    /// Comments/blank lines after the last item, before `}`.
+    pub trailing_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -315,6 +388,8 @@ pub struct NamespaceDecl {
     pub path: Vec<String>,
     pub span: Span,
     pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after this declaration.
+    pub trailing_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -323,6 +398,8 @@ pub struct UseDecl {
     pub form: UseForm,
     pub span: Span,
     pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after this declaration.
+    pub trailing_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -349,6 +426,10 @@ pub struct TypeDecl {
     pub decorators: Vec<Decorator>,
     pub span: Span,
     pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after the closing `}`.
+    pub trailing_comment: Option<String>,
+    /// Comments/blank lines after the last field, before `}`.
+    pub trailing_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -360,6 +441,10 @@ pub struct InterfaceDecl {
     pub decorators: Vec<Decorator>,
     pub span: Span,
     pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after the closing `}`.
+    pub trailing_comment: Option<String>,
+    /// Comments/blank lines after the last field, before `}`.
+    pub trailing_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -370,6 +455,10 @@ pub struct TypeField {
     pub optional: bool,
     pub decorators: Vec<Decorator>,
     pub span: Span,
+    /// Comments/blank lines printed above this field.
+    pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after this field.
+    pub trailing_comment: Option<String>,
     /// Inline default expression, set when the field is declared as
     /// `name = expr` (no explicit type). The type in `ty` is then
     /// inferred from the expression. `None` for the classical
@@ -389,6 +478,10 @@ pub struct UnionDecl {
     pub decorators: Vec<Decorator>,
     pub span: Span,
     pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after the closing `}`.
+    pub trailing_comment: Option<String>,
+    /// Comments/blank lines after the last variant, before `}`.
+    pub trailing_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -397,11 +490,19 @@ pub struct UnionVariant {
     pub body: VariantBody,
     pub decorators: Vec<Decorator>,
     pub span: Span,
+    /// Comments/blank lines printed above this variant.
+    pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after this variant.
+    pub trailing_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum VariantBody {
-    Record(Vec<TypeField>),
+    Record {
+        fields: Vec<TypeField>,
+        /// Comments/blank lines after the last field, before `}`.
+        trailing_trivia: Vec<Trivia>,
+    },
     TypeRef {
         ty: crate::value::TypeRef,
         ty_span: Span,
@@ -422,6 +523,10 @@ pub struct SymbolSetDecl {
     pub decorators: Vec<Decorator>,
     pub span: Span,
     pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after the closing `}`.
+    pub trailing_comment: Option<String>,
+    /// Comments/blank lines after the last symbol, before `}`.
+    pub trailing_trivia: Vec<Trivia>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -429,6 +534,10 @@ pub struct SymbolEntry {
     pub name: String,
     pub decorators: Vec<Decorator>,
     pub span: Span,
+    /// Comments/blank lines printed above this symbol.
+    pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after this symbol.
+    pub trailing_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -441,6 +550,8 @@ pub struct ImportDecl {
     pub system: bool,
     pub span: Span,
     pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after this import.
+    pub trailing_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -455,6 +566,8 @@ pub struct TableItem {
     pub rows: Vec<Row>,
     pub span: Span,
     pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after the table.
+    pub trailing_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -468,6 +581,8 @@ pub struct ConnectionDecl {
     pub kind_set_span: Span,
     pub span: Span,
     pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after this declaration.
+    pub trailing_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -480,6 +595,8 @@ pub struct ConnectionStmt {
     pub kind_span: Option<Span>,
     pub span: Span,
     pub leading_trivia: Vec<Trivia>,
+    /// A same-line comment printed after this statement.
+    pub trailing_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -499,7 +616,33 @@ pub enum Item {
     Connection(ConnectionStmt),
 }
 
+impl Item {
+    /// Attach a same-line trailing comment to this item, whatever its
+    /// variant. Used by the parser to re-attach a comment that the lexer
+    /// diverted as the next token's `same_line_comment` onto the item
+    /// that ended the line.
+    pub(crate) fn set_trailing_comment(&mut self, comment: String) {
+        match self {
+            Item::Field(x) => x.trailing_comment = Some(comment),
+            Item::Let(x) => x.trailing_comment = Some(comment),
+            Item::Block(x) => x.trailing_comment = Some(comment),
+            Item::TypeDecl(x) => x.trailing_comment = Some(comment),
+            Item::InterfaceDecl(x) => x.trailing_comment = Some(comment),
+            Item::UnionDecl(x) => x.trailing_comment = Some(comment),
+            Item::NamespaceDecl(x) => x.trailing_comment = Some(comment),
+            Item::UseDecl(x) => x.trailing_comment = Some(comment),
+            Item::SymbolSetDecl(x) => x.trailing_comment = Some(comment),
+            Item::Import(x) => x.trailing_comment = Some(comment),
+            Item::Table(x) => x.trailing_comment = Some(comment),
+            Item::ConnectionDecl(x) => x.trailing_comment = Some(comment),
+            Item::Connection(x) => x.trailing_comment = Some(comment),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Source {
     pub items: Vec<Item>,
+    /// Comments/blank lines after the last top-level item, before EOF.
+    pub trailing_trivia: Vec<Trivia>,
 }

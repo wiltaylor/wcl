@@ -381,7 +381,7 @@ fn parse_union_with_all_three_body_forms() {
     assert_eq!(u.name, vec!["Shape".to_string()]);
     assert_eq!(u.variants.len(), 3);
     assert_eq!(u.variants[0].name, "Circle");
-    assert!(matches!(u.variants[0].body, VariantBody::Record(_)));
+    assert!(matches!(u.variants[0].body, VariantBody::Record { .. }));
     assert_eq!(u.variants[1].name, "Polygon");
     match &u.variants[1].body {
         VariantBody::TypeRef { ty, .. } => {

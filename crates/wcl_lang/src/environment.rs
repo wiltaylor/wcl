@@ -178,6 +178,8 @@ fn synth_decorator_schema(
             decorators: Vec::new(),
             span: synthetic_span(),
             default_expr: None,
+            leading_trivia: Vec::new(),
+            trailing_comment: None,
         }],
         decorators: vec![ast::Decorator {
             name: vec!["decorator".to_string()],
@@ -187,6 +189,8 @@ fn synth_decorator_schema(
         }],
         span: synthetic_span(),
         leading_trivia: Vec::new(),
+        trailing_comment: None,
+        trailing_trivia: Vec::new(),
     }
 }
 
@@ -235,6 +239,8 @@ impl TypeBuilder {
                 decorators: self.decorators,
                 span: synthetic_span(),
                 leading_trivia: Vec::new(),
+                trailing_comment: None,
+                trailing_trivia: Vec::new(),
             },
         }
     }
@@ -277,6 +283,8 @@ impl TypeFieldBuilder {
             decorators: self.decorators,
             span: synthetic_span(),
             default_expr: None,
+            leading_trivia: Vec::new(),
+            trailing_comment: None,
         }
     }
 }
@@ -311,6 +319,8 @@ impl DecoratorBuilder {
             name: name.into(),
             value: value_to_expr(value),
             span: synthetic_span(),
+            leading_trivia: Vec::new(),
+            trailing_comment: None,
         });
         self
     }
@@ -354,6 +364,8 @@ fn value_to_expr(v: Value) -> ast::Expr {
         }
         Value::List(items) => ast::Expr::ListLit {
             elements: items.into_iter().map(value_to_expr).collect(),
+            elem_trivia: Vec::new(),
+            trailing_trivia: Vec::new(),
             span: synthetic_span(),
         },
         Value::Tensor { .. } => {

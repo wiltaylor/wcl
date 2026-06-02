@@ -234,6 +234,8 @@ impl ItemCells {
                                 decorators: Vec::new(),
                                 span: r.span,
                                 leading_trivia: Vec::new(),
+                                trailing_comment: None,
+                                trailing_trivia: Vec::new(),
                             };
                             let synth_cells =
                                 ItemCells::build(&ast::Item::Block(synth_block.clone()), None);
@@ -293,7 +295,7 @@ impl ItemCells {
                         .variants
                         .iter()
                         .map(|v| match &v.body {
-                            ast::VariantBody::Record(fields) => fields
+                            ast::VariantBody::Record { fields, .. } => fields
                                 .iter()
                                 .map(|f| make_decorator_cells(&f.decorators))
                                 .collect(),

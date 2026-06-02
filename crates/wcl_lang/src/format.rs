@@ -17,11 +17,11 @@
 use std::fmt::Write as _;
 
 use crate::ast::{
-    BinOp, Block, ConnectionDecl, ConnectionStmt, Decorator, Expr, Field, FunctionLit, ImportDecl,
-    InterfaceDecl, Item, LetBinding, MatchArm, NamedArg, NamespaceDecl, Parameter, Pattern, Row,
-    Source, SymbolEntry, SymbolSetDecl, TableItem, TemplatePart, Trivia, TypeDecl, TypeField,
-    UnaryOp, UnionDecl, UnionVariant, UseDecl, UseForm, UseItem, VariantArgs, VariantBody,
-    VariantPatArgs,
+    BinOp, Block, ConnectionDecl, ConnectionStmt, Decorator, ElemTrivia, Expr, Field, FunctionLit,
+    ImportDecl, InterfaceDecl, Item, LetBinding, MatchArm, NamedArg, NamespaceDecl, Parameter,
+    Pattern, Row, Source, SymbolEntry, SymbolSetDecl, TableItem, TemplatePart, Trivia, TypeDecl,
+    TypeField, UnaryOp, UnionDecl, UnionVariant, UseDecl, UseForm, UseItem, VariantArgs,
+    VariantBody, VariantPatArgs,
 };
 use crate::lexer::StringEncoding;
 use crate::value::{BuiltinType, TensorDim, TypeRef};
@@ -168,12 +168,23 @@ impl Printer {
         }
     }
 
+    /// Emit a same-line trailing comment after a node's content, before
+    /// its terminating newline: two spaces, `# `, then the body. No-op
+    /// when there is no trailing comment.
+    fn print_trailing_comment(&mut self, comment: &Option<String>) {
+        if let Some(body) = comment {
+            self.push("  # ");
+            self.push(body);
+        }
+    }
+
     // ---------- source / items ----------
 
     fn print_source(&mut self, s: &Source) {
         for item in &s.items {
             self.print_item(item);
         }
+        self.print_leading_trivia(&s.trailing_trivia);
     }
 
     fn print_item(&mut self, item: &Item) {
@@ -201,6 +212,7 @@ impl Printer {
         self.push(&f.name);
         self.push(" = ");
         self.print_expr(&f.expr, 0);
+        self.print_trailing_comment(&f.trailing_comment);
         self.newline();
     }
 
@@ -211,6 +223,7 @@ impl Printer {
         self.push(&l.name);
         self.push(" = ");
         self.print_expr(&l.value, 0);
+        self.print_trailing_comment(&l.trailing_comment);
         self.newline();
     }
 
@@ -228,6 +241,7 @@ impl Printer {
         // `kind labels {}` (explicit empty braces); the canonical form is
         // the shorter one.
         if b.items.is_empty() {
+            self.print_trailing_comment(&b.trailing_comment);
             self.newline();
             return;
         }
@@ -237,9 +251,11 @@ impl Printer {
         for item in &b.items {
             self.print_item(item);
         }
+        self.print_leading_trivia(&b.trailing_trivia);
         self.depth -= 1;
         self.write_indent();
         self.push("}");
+        self.print_trailing_comment(&b.trailing_comment);
         self.newline();
     }
 
@@ -256,9 +272,11 @@ impl Printer {
         for f in &t.fields {
             self.print_type_field(f);
         }
+        self.print_leading_trivia(&t.trailing_trivia);
         self.depth -= 1;
         self.write_indent();
         self.push("}");
+        self.print_trailing_comment(&t.trailing_comment);
         self.newline();
     }
 
@@ -275,9 +293,11 @@ impl Printer {
         for f in &t.fields {
             self.print_type_field(f);
         }
+        self.print_leading_trivia(&t.trailing_trivia);
         self.depth -= 1;
         self.write_indent();
         self.push("}");
+        self.print_trailing_comment(&t.trailing_comment);
         self.newline();
     }
 
@@ -294,13 +314,16 @@ impl Printer {
         for v in &u.variants {
             self.print_union_variant(v);
         }
+        self.print_leading_trivia(&u.trailing_trivia);
         self.depth -= 1;
         self.write_indent();
         self.push("}");
+        self.print_trailing_comment(&u.trailing_comment);
         self.newline();
     }
 
     fn print_union_variant(&mut self, v: &UnionVariant) {
+        self.print_leading_trivia(&v.leading_trivia);
         self.print_decorators_block(&v.decorators);
         self.write_indent();
         self.push(&v.name);
@@ -316,18 +339,23 @@ impl Printer {
                 self.push(" &");
                 self.push(&join_path(iface));
             }
-            VariantBody::Record(fields) => {
+            VariantBody::Record {
+                fields,
+                trailing_trivia,
+            } => {
                 self.push(" {");
                 self.newline();
                 self.depth += 1;
                 for f in fields {
                     self.print_type_field(f);
                 }
+                self.print_leading_trivia(trailing_trivia);
                 self.depth -= 1;
                 self.write_indent();
                 self.push("}");
             }
         }
+        self.print_trailing_comment(&v.trailing_comment);
         self.newline();
     }
 
@@ -343,16 +371,20 @@ impl Printer {
         for sym in &s.symbols {
             self.print_symbol_entry(sym);
         }
+        self.print_leading_trivia(&s.trailing_trivia);
         self.depth -= 1;
         self.write_indent();
         self.push("}");
+        self.print_trailing_comment(&s.trailing_comment);
         self.newline();
     }
 
     fn print_symbol_entry(&mut self, s: &SymbolEntry) {
+        self.print_leading_trivia(&s.leading_trivia);
         self.print_decorators_block(&s.decorators);
         self.write_indent();
         self.push(&s.name);
+        self.print_trailing_comment(&s.trailing_comment);
         self.newline();
     }
 
@@ -361,6 +393,7 @@ impl Printer {
         self.write_indent();
         self.push("namespace ");
         self.push(&join_path(&n.path));
+        self.print_trailing_comment(&n.trailing_comment);
         self.newline();
     }
 
@@ -386,6 +419,7 @@ impl Printer {
                 self.push("}");
             }
         }
+        self.print_trailing_comment(&u.trailing_comment);
         self.newline();
     }
 
@@ -410,6 +444,7 @@ impl Printer {
         } else {
             self.print_string_lit(&i.path, StringEncoding::Utf8);
         }
+        self.print_trailing_comment(&i.trailing_comment);
         self.newline();
     }
 
@@ -418,10 +453,22 @@ impl Printer {
         self.write_indent();
         self.push(&t.field_name);
         self.push(":");
+        // A trailing comment belongs after the *last row* (where it
+        // round-trips back to the table), not on the header line — a
+        // comment after `:` would re-attach to the first row's tokens.
+        // With no rows there's nowhere stable below, so it stays inline.
+        if t.rows.is_empty() {
+            self.print_trailing_comment(&t.trailing_comment);
+        }
         self.newline();
         self.depth += 1;
-        for r in &t.rows {
+        let last = t.rows.len().saturating_sub(1);
+        for (i, r) in t.rows.iter().enumerate() {
             self.print_row(r);
+            if i == last {
+                self.print_trailing_comment(&t.trailing_comment);
+            }
+            self.newline();
         }
         self.depth -= 1;
     }
@@ -434,7 +481,6 @@ impl Printer {
             self.push(" ");
         }
         self.push("|");
-        self.newline();
     }
 
     fn print_connection_decl(&mut self, c: &ConnectionDecl) {
@@ -448,6 +494,7 @@ impl Printer {
         self.print_type_ref(&c.destination);
         self.push(" : ");
         self.push(&join_path(&c.kind_set));
+        self.print_trailing_comment(&c.trailing_comment);
         self.newline();
     }
 
@@ -461,6 +508,7 @@ impl Printer {
             self.push(" :");
             self.push(kind);
         }
+        self.print_trailing_comment(&c.trailing_comment);
         self.newline();
     }
 
@@ -478,6 +526,7 @@ impl Printer {
     }
 
     fn print_type_field(&mut self, f: &TypeField) {
+        self.print_leading_trivia(&f.leading_trivia);
         self.write_indent();
         self.print_decorators_inline(&f.decorators);
         self.push(&f.name);
@@ -491,6 +540,7 @@ impl Printer {
                 self.push("?");
             }
         }
+        self.print_trailing_comment(&f.trailing_comment);
         self.newline();
     }
 
@@ -636,13 +686,27 @@ impl Printer {
                 self.print_expr(inner, 0);
                 self.push(")");
             }
-            Expr::ListLit { elements, .. } => {
+            Expr::ListLit {
+                elements,
+                elem_trivia,
+                trailing_trivia,
+                ..
+            } => {
                 self.push("[");
-                for (i, el) in elements.iter().enumerate() {
-                    if i > 0 {
-                        self.push(", ");
+                if Self::elem_seq_multiline(elem_trivia, trailing_trivia) {
+                    self.print_elem_seq_multiline(
+                        elements.len(),
+                        elem_trivia,
+                        trailing_trivia,
+                        |p, i| p.print_expr(&elements[i], 0),
+                    );
+                } else {
+                    for (i, el) in elements.iter().enumerate() {
+                        if i > 0 {
+                            self.push(", ");
+                        }
+                        self.print_expr(el, 0);
                     }
-                    self.print_expr(el, 0);
                 }
                 self.push("]");
             }
@@ -651,14 +715,29 @@ impl Printer {
                 self.push(".");
                 self.push(name);
             }
-            Expr::Call { callee, args, .. } => {
+            Expr::Call {
+                callee,
+                args,
+                arg_trivia,
+                trailing_trivia,
+                ..
+            } => {
                 self.print_expr(callee, CALL_BP);
                 self.push("(");
-                for (i, a) in args.iter().enumerate() {
-                    if i > 0 {
-                        self.push(", ");
+                if Self::elem_seq_multiline(arg_trivia, trailing_trivia) {
+                    self.print_elem_seq_multiline(
+                        args.len(),
+                        arg_trivia,
+                        trailing_trivia,
+                        |p, i| p.print_expr(&args[i], 0),
+                    );
+                } else {
+                    for (i, a) in args.iter().enumerate() {
+                        if i > 0 {
+                            self.push(", ");
+                        }
+                        self.print_expr(a, 0);
                     }
-                    self.print_expr(a, 0);
                 }
                 self.push(")");
             }
@@ -685,7 +764,12 @@ impl Printer {
                 }
             }
 
-            Expr::Block { lets, tail, .. } => self.print_block_expr(lets, tail),
+            Expr::Block {
+                lets,
+                tail,
+                trailing_trivia,
+                ..
+            } => self.print_block_expr(lets, tail, trailing_trivia),
             Expr::If {
                 cond,
                 then_block,
@@ -715,32 +799,26 @@ impl Printer {
                 self.push(" else ");
                 self.print_expr(else_block, 0);
             }
-            Expr::Match { scrut, arms, .. } => self.print_match_expr(scrut, arms),
+            Expr::Match {
+                scrut,
+                arms,
+                trailing_trivia,
+                ..
+            } => self.print_match_expr(scrut, arms, trailing_trivia),
             Expr::Variant {
                 type_path,
                 variant,
                 args,
                 ..
             } => self.print_variant_expr(type_path, variant, args),
-            Expr::Record { fields, .. } => {
+            Expr::Record {
+                fields,
+                trailing_trivia,
+                ..
+            } => {
                 // Bare record literal — `field: value` pairs, mirroring
-                // the variant-constructor record body so reparse is
-                // stable. An empty field list prints `{}` (it can't be
-                // produced by the parser, but stays round-trippable).
-                if fields.is_empty() {
-                    self.push("{}");
-                } else {
-                    self.push("{ ");
-                    for (i, f) in fields.iter().enumerate() {
-                        if i > 0 {
-                            self.push(", ");
-                        }
-                        self.push(&f.name);
-                        self.push(": ");
-                        self.print_expr(&f.value, 0);
-                    }
-                    self.push(" }");
-                }
+                // the variant-constructor record body so reparse is stable.
+                self.print_record_fields(fields, trailing_trivia);
             }
 
             Expr::Function(f) => self.print_function_literal(f),
@@ -868,8 +946,97 @@ impl Printer {
         self.push(&tag);
     }
 
-    fn print_block_expr(&mut self, lets: &[LetBinding], tail: &Expr) {
-        if lets.is_empty() {
+    /// True when a comma-separated collection of bare-`Expr` elements
+    /// must break onto multiple lines to carry its comments.
+    fn elem_seq_multiline(elem_trivia: &[ElemTrivia], trailing_trivia: &[Trivia]) -> bool {
+        elem_trivia.iter().any(ElemTrivia::has_comment) || trivia_has_comment(trailing_trivia)
+    }
+
+    /// Emit the multi-line body of a bracket/paren collection: a newline
+    /// after the (already-pushed) opening delimiter, one element per line
+    /// at the next indent level with its leading trivia and trailing
+    /// comment, then the trailing trivia and the closing-delimiter indent.
+    /// The caller pushes the opening and closing delimiters.
+    fn print_elem_seq_multiline(
+        &mut self,
+        len: usize,
+        elem_trivia: &[ElemTrivia],
+        trailing_trivia: &[Trivia],
+        mut print_elem: impl FnMut(&mut Self, usize),
+    ) {
+        self.newline();
+        self.depth += 1;
+        for i in 0..len {
+            if let Some(t) = elem_trivia.get(i) {
+                self.print_leading_trivia(&t.leading);
+            }
+            self.write_indent();
+            print_elem(self, i);
+            self.push(",");
+            if let Some(c) = elem_trivia.get(i).and_then(|t| t.trailing.as_ref()) {
+                self.push("  # ");
+                self.push(c);
+            }
+            self.newline();
+        }
+        self.print_leading_trivia(trailing_trivia);
+        self.depth -= 1;
+        self.write_indent();
+    }
+
+    /// Print a `{ field: value, … }` record body, shared by bare record
+    /// literals and variant record constructors. Breaks onto multiple
+    /// lines (one field per line, with a trailing comma) when any field
+    /// or the pre-`}` position carries a line comment; otherwise stays on
+    /// one line in the canonical `{ a: 1, b: 2 }` form. The caller has
+    /// already emitted any leading space before the `{`.
+    fn print_record_fields(&mut self, fields: &[NamedArg], trailing_trivia: &[Trivia]) {
+        if fields.is_empty() {
+            self.push("{}");
+            return;
+        }
+        let multiline = fields
+            .iter()
+            .any(|f| f.trailing_comment.is_some() || trivia_has_comment(&f.leading_trivia))
+            || trivia_has_comment(trailing_trivia);
+        if multiline {
+            self.push("{");
+            self.newline();
+            self.depth += 1;
+            for f in fields {
+                self.print_leading_trivia(&f.leading_trivia);
+                self.write_indent();
+                self.push(&f.name);
+                self.push(": ");
+                self.print_expr(&f.value, 0);
+                self.push(",");
+                self.print_trailing_comment(&f.trailing_comment);
+                self.newline();
+            }
+            self.print_leading_trivia(trailing_trivia);
+            self.depth -= 1;
+            self.write_indent();
+            self.push("}");
+        } else {
+            self.push("{ ");
+            for (i, f) in fields.iter().enumerate() {
+                if i > 0 {
+                    self.push(", ");
+                }
+                self.push(&f.name);
+                self.push(": ");
+                self.print_expr(&f.value, 0);
+            }
+            self.push(" }");
+        }
+    }
+
+    fn print_block_expr(&mut self, lets: &[LetBinding], tail: &Expr, trailing_trivia: &[Trivia]) {
+        let has_comment = trivia_has_comment(trailing_trivia)
+            || lets
+                .iter()
+                .any(|b| b.trailing_comment.is_some() || trivia_has_comment(&b.leading_trivia));
+        if lets.is_empty() && !has_comment {
             // A bare `{ expr }` block — print on one line.
             self.push("{ ");
             self.print_expr(tail, 0);
@@ -880,14 +1047,19 @@ impl Printer {
         self.newline();
         self.depth += 1;
         for b in lets {
+            self.print_leading_trivia(&b.leading_trivia);
             self.write_indent();
             self.push("let ");
             self.push(&b.name);
             self.push(" = ");
             self.print_expr(&b.value, 0);
             self.push(";");
+            self.print_trailing_comment(&b.trailing_comment);
             self.newline();
         }
+        // Comments that sat between the last binding and the tail (or
+        // before the closing `}`) print above the tail expression.
+        self.print_leading_trivia(trailing_trivia);
         self.write_indent();
         self.print_expr(tail, 0);
         self.newline();
@@ -896,13 +1068,14 @@ impl Printer {
         self.push("}");
     }
 
-    fn print_match_expr(&mut self, scrut: &Expr, arms: &[MatchArm]) {
+    fn print_match_expr(&mut self, scrut: &Expr, arms: &[MatchArm], trailing_trivia: &[Trivia]) {
         self.push("match ");
         self.print_expr(scrut, 0);
         self.push(" {");
         self.newline();
         self.depth += 1;
         for arm in arms {
+            self.print_leading_trivia(&arm.leading_trivia);
             self.write_indent();
             for (i, pat) in arm.patterns.iter().enumerate() {
                 if i > 0 {
@@ -923,8 +1096,10 @@ impl Printer {
             if self.cfg.trailing_comma_in_match {
                 self.push(",");
             }
+            self.print_trailing_comment(&arm.trailing_comment);
             self.newline();
         }
+        self.print_leading_trivia(trailing_trivia);
         self.depth -= 1;
         self.write_indent();
         self.push("}");
@@ -943,31 +1118,47 @@ impl Printer {
                 self.print_expr(inner, 0);
                 self.push(")");
             }
-            VariantArgs::Record(fields) => {
+            VariantArgs::Record {
+                fields,
+                trailing_trivia,
+            } => {
                 // Variant *constructors* use `field: value` separated
                 // by commas (not `=`). The record-pattern printer above
                 // uses the same shape.
-                self.push(" { ");
-                for (i, f) in fields.iter().enumerate() {
-                    if i > 0 {
-                        self.push(", ");
-                    }
-                    self.push(&f.name);
-                    self.push(": ");
-                    self.print_expr(&f.value, 0);
-                }
-                self.push(" }");
+                self.push_ch(' ');
+                self.print_record_fields(fields, trailing_trivia);
             }
         }
     }
 
     fn print_function_literal(&mut self, f: &FunctionLit) {
+        let multiline = f
+            .params
+            .iter()
+            .any(|p| p.trailing_comment.is_some() || trivia_has_comment(&p.leading_trivia))
+            || trivia_has_comment(&f.trailing_trivia);
         self.push("fn(");
-        for (i, p) in f.params.iter().enumerate() {
-            if i > 0 {
-                self.push(", ");
+        if multiline {
+            self.newline();
+            self.depth += 1;
+            for p in &f.params {
+                self.print_leading_trivia(&p.leading_trivia);
+                self.write_indent();
+                self.print_parameter(p);
+                self.push(",");
+                self.print_trailing_comment(&p.trailing_comment);
+                self.newline();
             }
-            self.print_parameter(p);
+            self.print_leading_trivia(&f.trailing_trivia);
+            self.depth -= 1;
+            self.write_indent();
+        } else {
+            for (i, p) in f.params.iter().enumerate() {
+                if i > 0 {
+                    self.push(", ");
+                }
+                self.print_parameter(p);
+            }
         }
         self.push(") -> ");
         self.print_type_ref(&f.return_ty);
@@ -1097,6 +1288,12 @@ impl Printer {
 
 fn builtin_name(b: BuiltinType) -> &'static str {
     b.name()
+}
+
+/// True when a trivia run contains at least one line comment (blank
+/// lines alone don't force a single-line collection to break).
+fn trivia_has_comment(trivia: &[Trivia]) -> bool {
+    trivia.iter().any(|t| matches!(t, Trivia::LineComment(_)))
 }
 
 fn join_path(parts: &[String]) -> String {

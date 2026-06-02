@@ -394,7 +394,9 @@ impl Document {
                 let r = self.eval_in(rhs, ctx)?;
                 return apply_binary(*op, l, r, *span);
             }
-            E::Call { callee, args, span } => {
+            E::Call {
+                callee, args, span, ..
+            } => {
                 return self.eval_call(callee, args, *span, ctx);
             }
             E::Block { lets, tail, .. } => {
@@ -441,7 +443,9 @@ impl Document {
             } => {
                 return self.eval_if_let(pattern, scrut, then_block, else_block, ctx);
             }
-            E::Match { scrut, arms, span } => {
+            E::Match {
+                scrut, arms, span, ..
+            } => {
                 return self.eval_match(scrut, arms, *span, ctx);
             }
             E::Variant {
@@ -779,7 +783,15 @@ impl Document {
                 self.check_value_implements_iface(&v, iface, span)?;
                 crate::value::VariantPayload::Positional(Box::new(v))
             }
-            (ast::VariantBody::Record(decl_fields), ast::VariantArgs::Record(named_args)) => {
+            (
+                ast::VariantBody::Record {
+                    fields: decl_fields,
+                    ..
+                },
+                ast::VariantArgs::Record {
+                    fields: named_args, ..
+                },
+            ) => {
                 let mut map = std::collections::BTreeMap::new();
                 // Each declared field must be supplied exactly once.
                 for decl_field in decl_fields {
@@ -819,12 +831,12 @@ impl Document {
                     ast::VariantBody::Unit => "no arguments",
                     ast::VariantBody::TypeRef { .. } => "positional argument",
                     ast::VariantBody::InterfaceRef { .. } => "positional argument (interface ref)",
-                    ast::VariantBody::Record(_) => "record arguments",
+                    ast::VariantBody::Record { .. } => "record arguments",
                 };
                 let got = match given {
                     ast::VariantArgs::Unit => "no arguments",
                     ast::VariantArgs::Positional(_) => "positional argument",
-                    ast::VariantArgs::Record(_) => "record arguments",
+                    ast::VariantArgs::Record { .. } => "record arguments",
                 };
                 return Err(EvalError::variant_shape_mismatch(expected, got, span));
             }

@@ -3,8 +3,8 @@
 //! top-level source / item driver and shared token helpers.
 
 use crate::ast::{
-    BinOp, Expr, FunctionLit, LetBinding, MatchArm, NamedArg, Parameter, Pattern, Span, UnaryOp,
-    VariantArgs,
+    BinOp, ElemTrivia, Expr, FunctionLit, LetBinding, MatchArm, NamedArg, Parameter, Pattern, Span,
+    Trivia, UnaryOp, VariantArgs,
 };
 use crate::error::ParseError;
 use crate::lexer::{NumberLit, TokenKind};
@@ -343,7 +343,7 @@ impl<'a> Parser<'a> {
                 TokenKind::Comma => {
                     self.bump()?;
                 }
-                TokenKind::RBrace => break,
+                TokenKind::RBrace => {}
                 _ => {
                     let p = self.peek()?;
                     let span = p.span;
@@ -355,8 +355,17 @@ impl<'a> Parser<'a> {
                     ));
                 }
             }
+            // After the optional comma, an inline comment on the next
+            // token (the next arm, or `}`) trails this arm.
+            if let Some(c) = self.take_same_line_comment()?
+                && let Some(last) = arms.last_mut()
+            {
+                last.trailing_comment = Some(c);
+            }
         }
         let rbrace = self.expect(TokenKind::RBrace, "expected '}' to close match")?;
+        // Comments on their own lines after the last arm, before `}`.
+        let trailing_trivia = rbrace.leading_trivia.clone();
         let span = Span::new(start, rbrace.span.end);
         // Structural exhaustiveness: the last arm must be a single
         // irrefutable pattern (Wildcard or Binding) and have no guard.
@@ -392,6 +401,7 @@ impl<'a> Parser<'a> {
             Expr::Match {
                 scrut: Box::new(scrut),
                 arms,
+                trailing_trivia,
                 span,
             },
             span,
@@ -399,6 +409,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_match_arm(&mut self) -> Result<MatchArm, ParseError> {
+        // Comments above this arm, before its first pattern.
+        let leading_trivia = self.peek_leading_trivia()?;
         let first = self.parse_pattern()?;
         let arm_start = pattern_span(&first).start;
         let mut patterns = vec![first];
@@ -437,24 +449,36 @@ impl<'a> Parser<'a> {
             guard,
             body,
             span,
+            leading_trivia,
+            trailing_comment: None,
         })
     }
 
     fn parse_list_literal(&mut self) -> Result<(Expr, Span), ParseError> {
         let lb = self.bump()?; // '['
         let mut elements = Vec::new();
+        let mut elem_trivia: Vec<ElemTrivia> = Vec::new();
         if !matches!(self.peek()?.kind, TokenKind::RBracket) {
             loop {
+                let leading = self.peek_leading_trivia()?;
                 let (e, _) = self.parse_expr()?;
                 elements.push(e);
+                elem_trivia.push(ElemTrivia {
+                    leading,
+                    trailing: None,
+                });
                 match self.peek()?.kind {
                     TokenKind::Comma => {
                         self.bump()?;
+                        self.attach_elem_trailing(&mut elem_trivia)?;
                         if matches!(self.peek()?.kind, TokenKind::RBracket) {
                             break;
                         }
                     }
-                    TokenKind::RBracket => break,
+                    TokenKind::RBracket => {
+                        self.attach_elem_trailing(&mut elem_trivia)?;
+                        break;
+                    }
                     _ => {
                         let p = self.peek()?;
                         let span = p.span;
@@ -469,8 +493,29 @@ impl<'a> Parser<'a> {
             }
         }
         let rb = self.expect(TokenKind::RBracket, "expected ']' to close list literal")?;
+        let trailing_trivia = rb.leading_trivia.clone();
         let span = Span::new(lb.span.start, rb.span.end);
-        Ok((Expr::ListLit { elements, span }, span))
+        Ok((
+            Expr::ListLit {
+                elements,
+                elem_trivia,
+                trailing_trivia,
+                span,
+            },
+            span,
+        ))
+    }
+
+    /// Attach the next token's same-line comment (if any) to the most
+    /// recent element-trivia entry — the inline trailing comment of a
+    /// list element or call argument.
+    fn attach_elem_trailing(&mut self, elem_trivia: &mut [ElemTrivia]) -> Result<(), ParseError> {
+        if let Some(c) = self.take_same_line_comment()?
+            && let Some(t) = elem_trivia.last_mut()
+        {
+            t.trailing = Some(c);
+        }
+        Ok(())
     }
 
     fn parse_paren_expr(&mut self) -> Result<(Expr, Span), ParseError> {
@@ -496,9 +541,16 @@ impl<'a> Parser<'a> {
         if matches!(self.peek()?.kind, TokenKind::Ident(_))
             && matches!(self.peek2()?.kind, TokenKind::Colon)
         {
-            let (fields, end) = self.parse_record_fields()?;
+            let (fields, end, trailing_trivia) = self.parse_record_fields()?;
             let span = Span::new(lbrace.span.start, end);
-            return Ok((Expr::Record { fields, span }, span));
+            return Ok((
+                Expr::Record {
+                    fields,
+                    trailing_trivia,
+                    span,
+                },
+                span,
+            ));
         }
         self.parse_block_body(lbrace.span.start)
     }
@@ -525,13 +577,21 @@ impl<'a> Parser<'a> {
                 "expected expression",
             ));
         }
+        // Comments between the last binding and the tail print above the
+        // tail; any after the tail (before `}`) join them there too.
+        let mut trailing_trivia = self.peek_leading_trivia()?;
         let (tail, _) = self.parse_expr()?;
+        if let Some(c) = self.take_same_line_comment()? {
+            trailing_trivia.push(Trivia::LineComment(c));
+        }
         let rbrace = self.expect(TokenKind::RBrace, "expected '}' to close block")?;
+        trailing_trivia.extend(rbrace.leading_trivia.iter().cloned());
         let span = Span::new(start, rbrace.span.end);
         Ok((
             Expr::Block {
                 lets,
                 tail: Box::new(tail),
+                trailing_trivia,
                 span,
             },
             span,
@@ -539,6 +599,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_let_binding(&mut self) -> Result<LetBinding, ParseError> {
+        // Comments above this binding, before `let`.
+        let leading_trivia = self.peek_leading_trivia()?;
         let let_tok = self.bump()?; // 'let'
         let name_tok = self.bump()?;
         let TokenKind::Ident(name) = name_tok.kind else {
@@ -554,8 +616,16 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::Eq, "expected '=' after let name")?;
         let (value, value_span) = self.parse_expr()?;
         self.expect(TokenKind::Semi, "expected ';' after let binding")?;
+        // An inline comment after the `;` trails this binding.
+        let trailing_comment = self.take_same_line_comment()?;
         let span = Span::new(let_tok.span.start, value_span.end);
-        Ok(LetBinding { name, value, span })
+        Ok(LetBinding {
+            name,
+            value,
+            span,
+            leading_trivia,
+            trailing_comment,
+        })
     }
 
     /// Parse `(expr)` / `{ name: expr, … }` / nothing as variant args.
@@ -574,8 +644,14 @@ impl<'a> Parser<'a> {
             }
             TokenKind::LBrace => {
                 self.bump()?;
-                let (fields, end) = self.parse_record_fields()?;
-                Ok((VariantArgs::Record(fields), end))
+                let (fields, end, trailing_trivia) = self.parse_record_fields()?;
+                Ok((
+                    VariantArgs::Record {
+                        fields,
+                        trailing_trivia,
+                    },
+                    end,
+                ))
             }
             _ => Ok((VariantArgs::Unit, default_end)),
         }
@@ -586,9 +662,10 @@ impl<'a> Parser<'a> {
     /// been consumed. Shared by variant constructors (`T::V { … }`) and
     /// bare record literals (`{ … }`); returns the fields plus the end
     /// offset of the closing brace.
-    fn parse_record_fields(&mut self) -> Result<(Vec<NamedArg>, usize), ParseError> {
+    fn parse_record_fields(&mut self) -> Result<(Vec<NamedArg>, usize, Vec<Trivia>), ParseError> {
         let mut fields: Vec<NamedArg> = Vec::new();
         while !matches!(self.peek()?.kind, TokenKind::RBrace) {
+            let leading_trivia = self.peek_leading_trivia()?;
             let name_tok = self.bump()?;
             let TokenKind::Ident(fname) = name_tok.kind else {
                 return Err(self.err(
@@ -606,12 +683,18 @@ impl<'a> Parser<'a> {
                 name: fname,
                 value,
                 span: Span::new(name_tok.span.start, value_span.end),
+                leading_trivia,
+                trailing_comment: None,
             });
             match self.peek()?.kind {
                 TokenKind::Comma => {
                     self.bump()?;
+                    self.attach_field_trailing(&mut fields)?;
                 }
-                TokenKind::RBrace => break,
+                TokenKind::RBrace => {
+                    self.attach_field_trailing(&mut fields)?;
+                    break;
+                }
                 _ => {
                     let p = self.peek()?;
                     let span = p.span;
@@ -625,7 +708,19 @@ impl<'a> Parser<'a> {
             }
         }
         let rb = self.expect(TokenKind::RBrace, "expected '}' to close record")?;
-        Ok((fields, rb.span.end))
+        let trailing_trivia = rb.leading_trivia.clone();
+        Ok((fields, rb.span.end, trailing_trivia))
+    }
+
+    /// Attach the next token's same-line comment (if any) to the most
+    /// recent record/variant field as its inline trailing comment.
+    fn attach_field_trailing(&mut self, fields: &mut [NamedArg]) -> Result<(), ParseError> {
+        if let Some(c) = self.take_same_line_comment()?
+            && let Some(f) = fields.last_mut()
+        {
+            f.trailing_comment = Some(c);
+        }
+        Ok(())
     }
 
     fn parse_call_tail(
@@ -634,18 +729,51 @@ impl<'a> Parser<'a> {
         callee_span: Span,
     ) -> Result<(Expr, Span), ParseError> {
         self.bump()?; // '('
-        let args = self.parse_comma_separated(
-            |k| matches!(k, TokenKind::RParen),
-            "')'",
-            "call arguments",
-            |p| p.parse_expr().map(|(e, _)| e),
-        )?;
+        let mut args = Vec::new();
+        let mut arg_trivia: Vec<ElemTrivia> = Vec::new();
+        if !matches!(self.peek()?.kind, TokenKind::RParen) {
+            loop {
+                let leading = self.peek_leading_trivia()?;
+                let (e, _) = self.parse_expr()?;
+                args.push(e);
+                arg_trivia.push(ElemTrivia {
+                    leading,
+                    trailing: None,
+                });
+                match self.peek()?.kind {
+                    TokenKind::Comma => {
+                        self.bump()?;
+                        self.attach_elem_trailing(&mut arg_trivia)?;
+                        if matches!(self.peek()?.kind, TokenKind::RParen) {
+                            break;
+                        }
+                    }
+                    TokenKind::RParen => {
+                        self.attach_elem_trailing(&mut arg_trivia)?;
+                        break;
+                    }
+                    _ => {
+                        let p = self.peek()?;
+                        let span = p.span;
+                        let kind = describe(&p.kind);
+                        return Err(self.err(
+                            format!("expected ',' or ')' in call arguments, found {kind}"),
+                            span,
+                            "expected ',' or ')'",
+                        ));
+                    }
+                }
+            }
+        }
         let rparen = self.expect(TokenKind::RParen, "expected ')' to close call")?;
+        let trailing_trivia = rparen.leading_trivia.clone();
         let span = Span::new(callee_span.start, rparen.span.end);
         Ok((
             Expr::Call {
                 callee: Box::new(callee),
                 args,
+                arg_trivia,
+                trailing_trivia,
                 span,
             },
             span,
@@ -653,6 +781,9 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_fn_parameter(&mut self) -> Result<Parameter, ParseError> {
+        // Comments above this parameter print on their own line in the
+        // multi-line form. Trailing comment is filled in by the caller.
+        let leading_trivia = self.peek_leading_trivia()?;
         let name_tok = self.bump()?;
         let param_start = name_tok.span.start;
         let TokenKind::Ident(pname) = name_tok.kind else {
@@ -672,19 +803,55 @@ impl<'a> Parser<'a> {
             ty,
             ty_span,
             span: Span::new(param_start, ty_span.end),
+            leading_trivia,
+            trailing_comment: None,
         })
     }
 
     fn parse_function_literal(&mut self) -> Result<(Expr, Span), ParseError> {
         let fn_tok = self.bump()?; // 'fn'
         self.expect(TokenKind::LParen, "expected '(' after 'fn'")?;
-        let params = self.parse_comma_separated(
-            |k| matches!(k, TokenKind::RParen),
-            "')'",
-            "parameter list",
-            Self::parse_fn_parameter,
-        )?;
-        self.expect(TokenKind::RParen, "expected ')' to close parameter list")?;
+        let mut params: Vec<Parameter> = Vec::new();
+        let mut trailing_trivia = Vec::new();
+        if !matches!(self.peek()?.kind, TokenKind::RParen) {
+            loop {
+                params.push(self.parse_fn_parameter()?);
+                let attach =
+                    |this: &mut Self, params: &mut Vec<Parameter>| -> Result<(), ParseError> {
+                        if let Some(c) = this.take_same_line_comment()?
+                            && let Some(last) = params.last_mut()
+                        {
+                            last.trailing_comment = Some(c);
+                        }
+                        Ok(())
+                    };
+                match self.peek()?.kind {
+                    TokenKind::Comma => {
+                        self.bump()?;
+                        attach(self, &mut params)?;
+                        if matches!(self.peek()?.kind, TokenKind::RParen) {
+                            break;
+                        }
+                    }
+                    TokenKind::RParen => {
+                        attach(self, &mut params)?;
+                        break;
+                    }
+                    _ => {
+                        let p = self.peek()?;
+                        let span = p.span;
+                        let kind = describe(&p.kind);
+                        return Err(self.err(
+                            format!("expected ',' or ')' in parameter list, found {kind}"),
+                            span,
+                            "expected ',' or ')'",
+                        ));
+                    }
+                }
+            }
+        }
+        let rparen = self.expect(TokenKind::RParen, "expected ')' to close parameter list")?;
+        trailing_trivia.extend(rparen.leading_trivia.iter().cloned());
         self.expect(TokenKind::Arrow, "expected '->' before return type")?;
         let (return_ty, return_ty_span) = self.parse_type_ref()?;
         let (body, body_span) = if matches!(self.peek()?.kind, TokenKind::LBrace) {
@@ -700,6 +867,7 @@ impl<'a> Parser<'a> {
                 return_ty_span,
                 body: Box::new(body),
                 span,
+                trailing_trivia,
             }),
             span,
         ))

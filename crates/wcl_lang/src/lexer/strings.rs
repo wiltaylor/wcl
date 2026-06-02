@@ -301,7 +301,9 @@ impl<'a> Lexer<'a> {
     /// contents are exactly the tag. Each entry tracks both the
     /// line's byte slice and its source-byte offset so interpolation
     /// slot spans line up with the outer source. Consumes the closer
-    /// line and its trailing newline.
+    /// line but leaves its trailing newline for the next `collect_trivia`,
+    /// so a comment on the line *after* the closer is classified as
+    /// leading (own line) rather than as a same-line trailing comment.
     fn scan_heredoc_body(
         &mut self,
         start: usize,
@@ -320,9 +322,7 @@ impl<'a> Lexer<'a> {
             let line = &self.src[line_start..line_end];
 
             if line_is_closer(line, tag) {
-                if self.peek() == Some(b'\n') {
-                    self.pos += 1;
-                }
+                // Leave `self.pos` at the closer's trailing `\n` (if any).
                 return Ok(raw_lines);
             }
 

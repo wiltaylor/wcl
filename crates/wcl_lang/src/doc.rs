@@ -1859,7 +1859,7 @@ fn variant_bodies_collide(a: &ast::VariantBody, b: &ast::VariantBody) -> bool {
         (VB::Unit, VB::Unit) => true,
         (VB::TypeRef { ty: a, .. }, VB::TypeRef { ty: b, .. }) => a == b,
         (VB::InterfaceRef { iface: a, .. }, VB::InterfaceRef { iface: b, .. }) => a == b,
-        (VB::Record(af), VB::Record(bf)) => {
+        (VB::Record { fields: af, .. }, VB::Record { fields: bf, .. }) => {
             if af.len() != bf.len() {
                 return false;
             }

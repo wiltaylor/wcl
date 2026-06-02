@@ -102,6 +102,8 @@ impl<'a> Parser<'a> {
                             name: arg_name,
                             value,
                             span: Span::new(arg_start, value_span.end),
+                            leading_trivia: Vec::new(),
+                            trailing_comment: None,
                         });
                     } else {
                         if saw_named {
@@ -156,6 +158,7 @@ impl<'a> Parser<'a> {
             path,
             span: Span::new(start, path_span.end),
             leading_trivia: self.take_item_trivia(),
+            trailing_comment: None,
         }))
     }
 
@@ -178,6 +181,7 @@ impl<'a> Parser<'a> {
             rows,
             span: Span::new(start, end),
             leading_trivia: self.take_item_trivia(),
+            trailing_comment: None,
         }))
     }
 
@@ -257,6 +261,7 @@ impl<'a> Parser<'a> {
                 system: true,
                 span: Span::new(start, gt.span.end),
                 leading_trivia: self.take_item_trivia(),
+                trailing_comment: None,
             }));
         }
 
@@ -282,6 +287,7 @@ impl<'a> Parser<'a> {
             system: false,
             span: Span::new(start, path_span.end),
             leading_trivia: self.take_item_trivia(),
+            trailing_comment: None,
         }))
     }
 
@@ -326,6 +332,7 @@ impl<'a> Parser<'a> {
                 form: UseForm::List(items),
                 span: Span::new(start, rbrace.span.end),
                 leading_trivia: self.take_item_trivia(),
+                trailing_comment: None,
             }));
         }
 
@@ -357,6 +364,7 @@ impl<'a> Parser<'a> {
             form: UseForm::Bare(alias),
             span: Span::new(start, end),
             leading_trivia: self.take_item_trivia(),
+            trailing_comment: None,
         }))
     }
 
@@ -412,9 +420,10 @@ impl<'a> Parser<'a> {
         let (name, _name_span) = self.parse_path()?;
         let extends = self.parse_extends_clause()?;
         self.expect_brace_after("type name", &name)?;
-        let (fields, rbrace_span) = self.parse_brace_members(
+        let (fields, rbrace_span, trailing_trivia) = self.parse_brace_members(
             "unexpected end of file inside type declaration",
             Self::parse_type_field,
+            |f: &mut TypeField, c| f.trailing_comment = Some(c),
         )?;
         Ok(Item::TypeDecl(TypeDecl {
             name,
@@ -423,6 +432,8 @@ impl<'a> Parser<'a> {
             decorators,
             span: Span::new(start, rbrace_span.end),
             leading_trivia: self.take_item_trivia(),
+            trailing_comment: None,
+            trailing_trivia,
         }))
     }
 
@@ -435,9 +446,10 @@ impl<'a> Parser<'a> {
         let (name, _name_span) = self.parse_path()?;
         let extends = self.parse_extends_clause()?;
         self.expect_brace_after("interface name", &name)?;
-        let (fields, rbrace_span) = self.parse_brace_members(
+        let (fields, rbrace_span, trailing_trivia) = self.parse_brace_members(
             "unexpected end of file inside interface declaration",
             Self::parse_type_field,
+            |f: &mut TypeField, c| f.trailing_comment = Some(c),
         )?;
         Ok(Item::InterfaceDecl(crate::ast::InterfaceDecl {
             name,
@@ -446,6 +458,8 @@ impl<'a> Parser<'a> {
             decorators,
             span: Span::new(start, rbrace_span.end),
             leading_trivia: self.take_item_trivia(),
+            trailing_comment: None,
+            trailing_trivia,
         }))
     }
 
@@ -519,7 +533,8 @@ impl<'a> Parser<'a> {
         &mut self,
         eof_message: &str,
         mut parse_member: impl FnMut(&mut Self) -> Result<T, ParseError>,
-    ) -> Result<(Vec<T>, Span), ParseError> {
+        set_trailing: impl Fn(&mut T, String),
+    ) -> Result<(Vec<T>, Span, Vec<crate::ast::Trivia>), ParseError> {
         let mut items = Vec::new();
         loop {
             let p = self.peek()?;
@@ -529,11 +544,22 @@ impl<'a> Parser<'a> {
                     let span = p.span;
                     return Err(self.err(eof_message, span, "expected '}'"));
                 }
-                _ => items.push(parse_member(self)?),
+                _ => {
+                    items.push(parse_member(self)?);
+                    // An inline comment after this member (carried on the
+                    // next token, including the `}`) trails it.
+                    if let Some(c) = self.take_same_line_comment()?
+                        && let Some(last) = items.last_mut()
+                    {
+                        set_trailing(last, c);
+                    }
+                }
             }
         }
         let rbrace = self.bump()?;
-        Ok((items, rbrace.span))
+        // Comments on their own lines after the last member, before `}`.
+        let trailing_trivia = rbrace.leading_trivia;
+        Ok((items, rbrace.span, trailing_trivia))
     }
 
     /// Optional `extends Path (, Path)*` clause used by `type` and
@@ -582,6 +608,9 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_type_field(&mut self) -> Result<TypeField, ParseError> {
+        // Capture comments above this field before decorators consume
+        // the first token. Trailing comment is filled in by the caller.
+        let leading_trivia = self.peek_leading_trivia()?;
         let decorators = self.parse_decorators()?;
         let name_tok = self.bump()?;
         let field_start = name_tok.span.start;
@@ -611,6 +640,8 @@ impl<'a> Parser<'a> {
                     decorators,
                     span: Span::new(field_start, end),
                     default_expr: None,
+                    leading_trivia,
+                    trailing_comment: None,
                 })
             }
             TokenKind::Eq => {
@@ -645,6 +676,8 @@ impl<'a> Parser<'a> {
                     decorators,
                     span: Span::new(field_start, expr_span.end),
                     default_expr: Some(expr),
+                    leading_trivia,
+                    trailing_comment: None,
                 })
             }
             _ => Err(self.err(
@@ -667,9 +700,10 @@ impl<'a> Parser<'a> {
         let (name, _name_span) = self.parse_path()?;
         let extends = self.parse_extends_clause()?;
         self.expect_brace_after("union name", &name)?;
-        let (variants, rbrace_span) = self.parse_brace_members(
+        let (variants, rbrace_span, trailing_trivia) = self.parse_brace_members(
             "unexpected end of file inside union declaration",
             Self::parse_variant_decl,
+            |v: &mut UnionVariant, c| v.trailing_comment = Some(c),
         )?;
         Ok(Item::UnionDecl(UnionDecl {
             name,
@@ -678,10 +712,15 @@ impl<'a> Parser<'a> {
             decorators,
             span: Span::new(start, rbrace_span.end),
             leading_trivia: self.take_item_trivia(),
+            trailing_comment: None,
+            trailing_trivia,
         }))
     }
 
     fn parse_variant_decl(&mut self) -> Result<UnionVariant, ParseError> {
+        // Capture comments above this variant before decorators consume
+        // the first token. Trailing comment is filled in by the caller.
+        let leading_trivia = self.peek_leading_trivia()?;
         let decorators = self.parse_decorators()?;
         let name_tok = self.bump()?;
         let variant_start = name_tok.span.start;
@@ -698,6 +737,8 @@ impl<'a> Parser<'a> {
             body,
             decorators,
             span: Span::new(variant_start, body_end),
+            leading_trivia,
+            trailing_comment: None,
         })
     }
 
@@ -706,11 +747,18 @@ impl<'a> Parser<'a> {
         match head.kind {
             TokenKind::LBrace => {
                 self.bump()?;
-                let (fields, rbrace_span) = self.parse_brace_members(
+                let (fields, rbrace_span, trailing_trivia) = self.parse_brace_members(
                     "unexpected end of file inside variant body",
                     Self::parse_type_field,
+                    |f: &mut TypeField, c| f.trailing_comment = Some(c),
                 )?;
-                Ok((VariantBody::Record(fields), rbrace_span.end))
+                Ok((
+                    VariantBody::Record {
+                        fields,
+                        trailing_trivia,
+                    },
+                    rbrace_span.end,
+                ))
             }
             TokenKind::None => {
                 let tok = self.bump()?;
@@ -773,6 +821,8 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LBrace, "expected '{' after symbol_set name")?;
         let mut symbols: Vec<SymbolEntry> = Vec::new();
         loop {
+            // Comments above this entry, before its (optional) decorators.
+            let leading_trivia = self.peek_leading_trivia()?;
             // Each entry may have its own decorators.
             let entry_decorators = self.parse_decorators()?;
             let p = self.peek()?;
@@ -803,7 +853,15 @@ impl<'a> Parser<'a> {
                             name: entry_name,
                             decorators: entry_decorators,
                             span: tok.span,
+                            leading_trivia,
+                            trailing_comment: None,
                         });
+                        // An inline comment after this entry trails it.
+                        if let Some(c) = self.take_same_line_comment()?
+                            && let Some(last) = symbols.last_mut()
+                        {
+                            last.trailing_comment = Some(c);
+                        }
                     }
                 }
                 other => {
@@ -818,12 +876,16 @@ impl<'a> Parser<'a> {
             }
         }
         let rbrace = self.bump()?;
+        // Comments on their own lines after the last entry, before `}`.
+        let trailing_trivia = rbrace.leading_trivia;
         Ok(Item::SymbolSetDecl(SymbolSetDecl {
             name,
             symbols,
             decorators,
             span: Span::new(start, rbrace.span.end),
             leading_trivia: self.take_item_trivia(),
+            trailing_comment: None,
+            trailing_trivia,
         }))
     }
 
@@ -856,6 +918,7 @@ impl<'a> Parser<'a> {
             kind_set_span,
             span: Span::new(start, end),
             leading_trivia: self.take_item_trivia(),
+            trailing_comment: None,
         }))
     }
 
@@ -911,6 +974,7 @@ impl<'a> Parser<'a> {
             kind_span,
             span: Span::new(lhs_span.start, end),
             leading_trivia: self.take_item_trivia(),
+            trailing_comment: None,
         }))
     }
 
@@ -929,6 +993,7 @@ impl<'a> Parser<'a> {
             decorators,
             span,
             leading_trivia: self.take_item_trivia(),
+            trailing_comment: None,
         }))
     }
 
@@ -948,6 +1013,7 @@ impl<'a> Parser<'a> {
             value,
             span,
             leading_trivia: self.take_item_trivia(),
+            trailing_comment: None,
         }))
     }
 
@@ -1022,6 +1088,8 @@ impl<'a> Parser<'a> {
                 decorators,
                 span: Span::new(start, end_offset),
                 leading_trivia: self.take_item_trivia(),
+                trailing_comment: None,
+                trailing_trivia: Vec::new(),
             }));
         }
         self.bump()?; // consume '{'
@@ -1040,7 +1108,12 @@ impl<'a> Parser<'a> {
                             "expected '}'",
                         ));
                     }
-                    _ => items.push(self.parse_item()?),
+                    _ => {
+                        items.push(self.parse_item()?);
+                        // An inline comment after this item (carried on
+                        // the next token, including the `}`) trails it.
+                        self.attach_trailing_to_last(&mut items)?;
+                    }
                 }
             }
             Ok(items)
@@ -1048,6 +1121,8 @@ impl<'a> Parser<'a> {
         self.block_depth -= 1;
         let items = body_result?;
         let rbrace = self.bump()?;
+        // Comments on their own lines after the last item, before `}`.
+        let trailing_trivia = rbrace.leading_trivia;
         Ok(Item::Block(Block {
             kind,
             labels,
@@ -1055,6 +1130,8 @@ impl<'a> Parser<'a> {
             decorators,
             span: Span::new(start, rbrace.span.end),
             leading_trivia: self.take_item_trivia(),
+            trailing_comment: None,
+            trailing_trivia,
         }))
     }
 }

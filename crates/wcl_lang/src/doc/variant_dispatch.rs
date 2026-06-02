@@ -64,7 +64,11 @@ pub(super) fn decorator_to_variant<'a>(
     let mut name_matches: Vec<(&ast::UnionVariant, BTreeMap<String, Value>)> = Vec::new();
     let mut full_matches: Vec<(&ast::UnionVariant, BTreeMap<String, Value>)> = Vec::new();
     'variants: for v in &effective {
-        let ast::VariantBody::Record(decl_fields) = &v.body else {
+        let ast::VariantBody::Record {
+            fields: decl_fields,
+            ..
+        } = &v.body
+        else {
             continue;
         };
         // Positional args populate declared fields in source order;
@@ -132,7 +136,11 @@ pub(super) fn table_row_to_variant<'a>(
             span,
         ));
     };
-    let ast::VariantBody::Record(decl_fields) = &variant.body else {
+    let ast::VariantBody::Record {
+        fields: decl_fields,
+        ..
+    } = &variant.body
+    else {
         return Err(EvalError::variant_shape_mismatch(
             "record variant body",
             "non-record variant",
@@ -200,7 +208,11 @@ pub(crate) fn coerce_value_to_type(
             // Recurse into the matched variant's declared field types so
             // a bare record nested in a union-typed field also infers.
             let mut coerced: BTreeMap<String, Value> = BTreeMap::new();
-            if let ast::VariantBody::Record(decl_fields) = &variant.body {
+            if let ast::VariantBody::Record {
+                fields: decl_fields,
+                ..
+            } = &variant.body
+            {
                 for (k, v) in fields {
                     let nv = match decl_fields.iter().find(|f| f.name == k) {
                         Some(f) => coerce_value_to_type(doc, v, &f.ty, span)?,
@@ -238,7 +250,11 @@ pub(crate) fn match_record_variant_by_shape<'a>(
     let mut name_matches: Vec<(&ast::UnionVariant, BTreeMap<String, Value>)> = Vec::new();
     let mut full_matches: Vec<(&ast::UnionVariant, BTreeMap<String, Value>)> = Vec::new();
     for v in &effective {
-        let ast::VariantBody::Record(decl_fields) = &v.body else {
+        let ast::VariantBody::Record {
+            fields: decl_fields,
+            ..
+        } = &v.body
+        else {
             continue;
         };
         if !names_equal(decl_fields, fields) {
@@ -291,7 +307,11 @@ fn pick_unique_match<'a>(
     // No full match — try to give a useful near-miss diagnostic.
     if name_matches.len() == 1 {
         let (v, map) = &name_matches[0];
-        let ast::VariantBody::Record(decl_fields) = &v.body else {
+        let ast::VariantBody::Record {
+            fields: decl_fields,
+            ..
+        } = &v.body
+        else {
             unreachable!("name_matches only contains record variants");
         };
         if let Some((field_name, got, expected)) = first_type_mismatch(decl_fields, map) {

@@ -138,6 +138,14 @@ pub struct Token {
     /// after a token end up here as the *next* token's leading trivia
     /// — a known simplification, see [`ast::Trivia`].
     pub leading_trivia: Vec<Trivia>,
+    /// A line comment that appeared AFTER the previous token, on the
+    /// same line as it (before any intervening newline). Diverted here
+    /// — rather than into `leading_trivia` — so the parser can re-attach
+    /// it as the *trailing* comment of the node that ended that line,
+    /// keeping inline comments inline through a round-trip. Populated
+    /// only when a previous token exists, so a comment at the very start
+    /// of the file stays leading.
+    pub same_line_comment: Option<String>,
     /// Whether at least one newline (or line comment, which terminates a
     /// line) was skipped between the previous token and this one. The
     /// parser uses this so that a block's label loop can end at a line
@@ -155,6 +163,7 @@ impl Token {
             kind,
             span,
             leading_trivia: Vec::new(),
+            same_line_comment: None,
             preceded_by_newline: false,
         }
     }
@@ -169,6 +178,16 @@ pub struct LexError {
 pub struct Lexer<'a> {
     src: &'a [u8],
     pos: usize,
+    /// Set once the lexer has emitted any non-Eof token. Used by
+    /// `collect_trivia` to decide whether a comment can be a *trailing*
+    /// (same-line) comment of a previous token, or — at the start of the
+    /// file, with no previous token — must stay a leading comment.
+    had_prev_token: bool,
+    /// True when the previous emitted token was an opening delimiter
+    /// (`{` / `[` / `(`). A comment on the same line as an opener (e.g.
+    /// `union U {  # note`) belongs to the first member that follows, not
+    /// to the opener — so it stays a *leading* comment, not a trailing one.
+    prev_open_delim: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -176,23 +195,35 @@ impl<'a> Lexer<'a> {
         Self {
             src: src.as_bytes(),
             pos: 0,
+            had_prev_token: false,
+            prev_open_delim: false,
         }
     }
 
     pub fn next_token(&mut self) -> Result<Token, LexError> {
-        let (leading_trivia, preceded_by_newline) = self.collect_trivia();
+        let (leading_trivia, preceded_by_newline, same_line_comment) = self.collect_trivia();
         let start = self.pos;
         let Some(c) = self.peek() else {
             return Ok(Token {
                 kind: TokenKind::Eof,
                 span: Span::new(start, start),
                 leading_trivia,
+                same_line_comment,
                 preceded_by_newline,
             });
         };
         let mut tok = self.lex_after_trivia(start, c)?;
         tok.leading_trivia = leading_trivia;
+        tok.same_line_comment = same_line_comment;
         tok.preceded_by_newline = preceded_by_newline;
+        // A real token has now been produced: any comment that follows
+        // it on the same line is a trailing comment of *this* token's
+        // node, not a leading comment of the next.
+        self.had_prev_token = true;
+        self.prev_open_delim = matches!(
+            tok.kind,
+            TokenKind::LBrace | TokenKind::LBracket | TokenKind::LParen
+        );
         Ok(tok)
     }
 
@@ -343,10 +374,11 @@ impl<'a> Lexer<'a> {
     /// without the trailing newline. Multiple consecutive blank-line
     /// breaks collapse to a single [`Trivia::BlankLine`] — canonical
     /// output emits at most one blank between Items.
-    fn collect_trivia(&mut self) -> (Vec<Trivia>, bool) {
+    fn collect_trivia(&mut self) -> (Vec<Trivia>, bool, Option<String>) {
         let mut out = Vec::new();
         let mut newlines_in_run = 0usize;
         let mut saw_newline = false;
+        let mut same_line: Option<String> = None;
         loop {
             match self.peek() {
                 Some(b' ' | b'\t' | b'\r') => {
@@ -366,24 +398,42 @@ impl<'a> Lexer<'a> {
                 }
                 Some(b'#') => {
                     let text = self.consume_line_comment(1);
-                    out.push(Trivia::LineComment(text));
-                    // The skipped line ended on a newline — that
-                    // newline is "consumed" by the comment, so the
-                    // run counter resets for any *additional* blank
-                    // lines that follow.
+                    // A comment on the same line as the previous token (no
+                    // newline yet in this run, and a previous token exists)
+                    // is a trailing comment: divert it instead of pushing
+                    // leading trivia. Either way the comment consumed its
+                    // line's `\n`, so the run counter advances to 1 — a
+                    // genuine blank line *after* the comment still registers.
+                    if self.had_prev_token
+                        && !self.prev_open_delim
+                        && !saw_newline
+                        && same_line.is_none()
+                    {
+                        same_line = Some(text);
+                    } else {
+                        out.push(Trivia::LineComment(text));
+                    }
                     newlines_in_run = 1;
                     saw_newline = true;
                 }
                 Some(b'/') if self.peek_at(1) == Some(b'/') => {
                     let text = self.consume_line_comment(2);
-                    out.push(Trivia::LineComment(text));
+                    if self.had_prev_token
+                        && !self.prev_open_delim
+                        && !saw_newline
+                        && same_line.is_none()
+                    {
+                        same_line = Some(text);
+                    } else {
+                        out.push(Trivia::LineComment(text));
+                    }
                     newlines_in_run = 1;
                     saw_newline = true;
                 }
                 _ => break,
             }
         }
-        (out, saw_newline)
+        (out, saw_newline, same_line)
     }
 
     /// Consume `marker_len` prefix bytes (1 for `#`, 2 for `//`), then
