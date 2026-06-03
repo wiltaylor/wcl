@@ -137,3 +137,33 @@ diagram { width = 260  height = 110
   }
 }
 ```
+
+## node_table
+
+![diagram](../_wdoc/wdoc_primitives-diagram-9.svg)
+
+A titled box built from a stack of **rows**, each holding arbitrary wdoc content (like a `card`) and exposing its own **connection point** — so an edge attaches to a single row (a foreign-key column, a class field) rather than the whole box. Ideal for database / ER tables and UML class diagrams.
+
+An edge targets a row by that row's `id` (`orders_user_id -> users_id`); the marker beside each row shows where edges land. Rows are a fixed `row_height` (the renderer can't measure HTML), so the table's height is derived from its rows. A row attaches on `[:west, :east]` by default — set a row's `connect_points` to change which sides expose a port.
+
+
+
+
+
+```wcl
+diagram { width = 420  height = 170  routing = :straight
+  node_table { id = users
+    x = 20.0  y = 20.0  width = 150.0
+    title = "users"
+    node_row { id = users_id    p "id: int" }
+    node_row { id = users_email p "email: text" }
+  }
+  node_table { id = orders
+    x = 250.0  y = 20.0  width = 150.0
+    title = "orders"
+    node_row { id = orders_id      p "id: int" }
+    node_row { id = orders_user_id p "user_id: int" }
+  }
+  orders_user_id -> users_id :data
+}
+```
