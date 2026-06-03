@@ -370,6 +370,31 @@ impl Document {
             .unwrap_or(&self.file_ns)
     }
 
+    /// miette source (name + text) for the root document.
+    fn root_named_source(&self) -> NamedSource<String> {
+        NamedSource::new(self.src.name(), self.src.inner().clone())
+    }
+
+    /// The miette source (name + text) of the file that declares the
+    /// block `target` points into — the root document, or the imported
+    /// file that carries it. Hosts (e.g. the wdoc renderer) use this to
+    /// render an eval diagnostic against the correct file's snippet rather
+    /// than always against the root source (whose offsets won't match a
+    /// cross-file span — the cause of the `OutOfBounds` misrender). Falls
+    /// back to the root source when the block can't be located (e.g. a
+    /// synthesised block that isn't backed by on-disk AST).
+    pub fn named_source_for_block(&self, target: *const ast::Block) -> NamedSource<String> {
+        if block_in_items(&self.ast.items, target) {
+            return self.root_named_source();
+        }
+        for imp in &self.eager_imports {
+            if let Some(src) = named_source_in_import(imp, target) {
+                return src;
+            }
+        }
+        self.root_named_source()
+    }
+
     fn all_sources(&self) -> Vec<SourceView<'_>> {
         let mut out = vec![SourceView {
             symbols: &self.symbols,
@@ -587,16 +612,28 @@ impl Document {
         // Document-schema-driven projections at the root: a field on
         // the `@document` type marked with `@connections(...)` is
         // synthesised from sibling Connection statements rather than
-        // looked up as a literal Field item.
-        if let Some(schema) = self.doc_schema()
-            && let Some(field) = schema.field(name)
-            && let Some(conn_schema) = field.connection_schema()
-        {
-            let mut all: Vec<Value> = Vec::new();
-            for src in self.all_sources() {
-                all.extend(self.project_connections(src.items, conn_schema, &Scope::root()));
+        // looked up as a literal Field item. Resolve the field against
+        // the *merged* `@document` schema for the namespace (root-authored
+        // + imported), exactly as `resolve_root_children` does — using the
+        // first `@document` globally (`doc_schema()`) would miss a
+        // connections field declared in an imported schema when another
+        // `@document` (e.g. the stdlib `Site`) sorts ahead of it.
+        //
+        // Skip projection while we're resolving a connection operand's
+        // identifying label (see `RESOLVING_CONN_OPERAND`): a block label
+        // can't depend on the connection set, and re-entering projection
+        // here would recurse infinitely.
+        if !RESOLVING_CONN_OPERAND.with(std::cell::Cell::get) {
+            let schemas = self.doc_schemas_for_ns(&self.file_ns);
+            if let Some(field) = schemas.field(name)
+                && let Some(conn_schema) = field.connection_schema()
+            {
+                let mut all: Vec<Value> = Vec::new();
+                for src in self.all_sources() {
+                    all.extend(self.project_connections(src.items, conn_schema, &Scope::root()));
+                }
+                return Some(DataRef::from_variant_value(Value::List(all)));
             }
-            return Some(DataRef::from_variant_value(Value::List(all)));
         }
         // Document-root `@children`/`@child` projection: a field declared
         // on the merged `@document` schema collects top-level blocks by
@@ -644,6 +681,13 @@ impl Document {
         scope: &Scope<'_>,
         name: &str,
     ) -> Option<(Value, String)> {
+        // Identifying a block here means evaluating its first label / `id`
+        // field. That evaluation must not re-enter `@connections`
+        // projection (a block's identity can't depend on the connection
+        // set) — see `RESOLVING_CONN_OPERAND` in `resolve_root`. Without
+        // this guard, projection → operand resolution → label eval →
+        // projection recurses until the stack overflows.
+        let _guard = ConnOperandGuard::enter();
         // Innermost scope frames first.
         for frame in scope.frames().iter().rev() {
             if let Some(found) = match_block_label_in_items(self, &frame.ast.items, name) {
@@ -1743,6 +1787,33 @@ pub(crate) fn connection_type_matches(decl: &TypeDecl<'_>, target_fqn: Option<&s
     decl.is_descendant_of(target)
 }
 
+thread_local! {
+    /// Set while a connection operand's identifying block label is being
+    /// evaluated. `Document::resolve_root` consults it to suppress
+    /// `@connections` projection during that window, breaking what would
+    /// otherwise be unbounded recursion (operand → label eval → projection
+    /// → operand → …).
+    static RESOLVING_CONN_OPERAND: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// RAII guard that sets [`RESOLVING_CONN_OPERAND`] for its lifetime and
+/// restores the previous value on drop (so nested operand resolution
+/// stays correct).
+struct ConnOperandGuard(bool);
+
+impl ConnOperandGuard {
+    fn enter() -> Self {
+        let prev = RESOLVING_CONN_OPERAND.with(|f| f.replace(true));
+        Self(prev)
+    }
+}
+
+impl Drop for ConnOperandGuard {
+    fn drop(&mut self) {
+        RESOLVING_CONN_OPERAND.with(|f| f.set(self.0));
+    }
+}
+
 fn match_block_first_label(doc: &Document, b: &ast::Block, name: &str) -> Option<Value> {
     let first = b.labels.first()?;
     let v = doc.eval_in_scope(first, &Scope::root()).ok()?;
@@ -2109,6 +2180,44 @@ pub(crate) fn span_to_miette(span: Span) -> SourceSpan {
 /// `items`, or inside an `Item::Block`'s nested items. Lazy in-block
 /// imports are searched separately by [`find_lazy_in_blocks`] so the
 /// path-bearing variant can return the import's `PathBuf`.
+/// `true` when `target` points at a [`ast::Block`] reachable from `items`
+/// (recursing through nested blocks). Block identity is by pointer, so
+/// this only matches blocks backed by on-disk AST — synthesised blocks
+/// (table rows, computed children, component expansions) aren't found.
+fn block_in_items(items: &[ast::Item], target: *const ast::Block) -> bool {
+    for item in items {
+        if let ast::Item::Block(b) = item {
+            if std::ptr::eq(b, target) {
+                return true;
+            }
+            if block_in_items(&b.items, target) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// The miette source (name + text) of `imp` (or a transitive eager
+/// import) when it declares the block `target` points into.
+fn named_source_in_import(
+    imp: &cells::LoadedImport,
+    target: *const ast::Block,
+) -> Option<NamedSource<String>> {
+    if block_in_items(&imp.items, target) {
+        return Some(NamedSource::new(
+            imp.path.display().to_string(),
+            imp.source.clone(),
+        ));
+    }
+    for child in &imp.eager_imports {
+        if let Some(src) = named_source_in_import(child, target) {
+            return Some(src);
+        }
+    }
+    None
+}
+
 fn field_in_items(items: &[ast::Item], target: *const ast::Field, cells: &[ItemCells]) -> bool {
     for (i, item) in items.iter().enumerate() {
         match item {

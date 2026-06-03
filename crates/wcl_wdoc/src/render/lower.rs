@@ -5,6 +5,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use miette::NamedSource;
 use wcl_lang::{Block, Document, EvalError, FnValue, Value, VariantPayload};
 
 use crate::inline::InlinePatterns;
@@ -21,23 +22,30 @@ thread_local! {
     /// block. First error wins; rendering is single-threaded per pass, so
     /// a thread-local is a safe document-scoped sink. Use
     /// [`scoped_eval_errors`] to bound a pass and collect what it caught.
-    static LOWER_EVAL_ERR: RefCell<Option<EvalError>> = const { RefCell::new(None) };
+    static LOWER_EVAL_ERR: RefCell<Option<(EvalError, NamedSource<String>)>> =
+        const { RefCell::new(None) };
 }
 
-/// Record an eval error swallowed during lowering (first one wins).
-pub(crate) fn record_lower_error(err: EvalError) {
+/// Record an eval error swallowed while lowering `block`, together with the
+/// source file that block lives in so the backend can render the diagnostic
+/// against the correct snippet — a cross-file span won't line up with the
+/// root document's text. First one wins.
+pub(crate) fn record_lower_error(block: &Block<'_>, err: EvalError) {
     LOWER_EVAL_ERR.with(|slot| {
         let mut slot = slot.borrow_mut();
         if slot.is_none() {
-            *slot = Some(err);
+            *slot = Some((err, block.named_source()));
         }
     });
 }
 
 /// Run `f` as a self-contained render pass, returning its result alongside
-/// the first eval error any lowering swallowed during it (if any). Saves
-/// and restores any outer sink so nested passes compose.
-pub(crate) fn scoped_eval_errors<T>(f: impl FnOnce() -> T) -> (T, Option<EvalError>) {
+/// the first eval error any lowering swallowed during it (and the source it
+/// belongs to), if any. Saves and restores any outer sink so nested passes
+/// compose.
+pub(crate) fn scoped_eval_errors<T>(
+    f: impl FnOnce() -> T,
+) -> (T, Option<(EvalError, NamedSource<String>)>) {
     let outer = LOWER_EVAL_ERR.with(|slot| slot.borrow_mut().take());
     let result = f();
     let caught = LOWER_EVAL_ERR.with(|slot| slot.borrow_mut().take());
@@ -105,7 +113,7 @@ pub(crate) fn lower_to_values(doc: &Document, block: &Block<'_>, kind: &str) -> 
         // backend surfaces a diagnostic rather than silently dropping.
         Ok(_) => None,
         Err(e) => {
-            record_lower_error(e);
+            record_lower_error(block, e);
             None
         }
     }
@@ -333,7 +341,7 @@ pub(crate) fn block_to_record_raw(doc: &Document, block: &Block<'_>, kind: &str)
     let labels = match block.labels() {
         Ok(labels) => labels,
         Err(e) => {
-            record_lower_error(e);
+            record_lower_error(block, e);
             Vec::new()
         }
     };
@@ -375,7 +383,7 @@ pub(crate) fn block_to_record_raw(doc: &Document, block: &Block<'_>, kind: &str)
             match field.value() {
                 Ok(v) => v.clone(),
                 Err(e) => {
-                    record_lower_error(e.clone());
+                    record_lower_error(block, e.clone());
                     Value::None
                 }
             }

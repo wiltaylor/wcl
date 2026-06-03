@@ -159,8 +159,8 @@ pub fn markdown(
     });
     // A swallowed block-eval error takes priority: it means a page block
     // would have been silently dropped, so fail loudly with a snippet.
-    if let Some(e) = eval_err {
-        return Err(BuildError::eval(e, &name, &user_src));
+    if let Some((e, src)) = eval_err {
+        return Err(BuildError::eval(e, src));
     }
     result
 }

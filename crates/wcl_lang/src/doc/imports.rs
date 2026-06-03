@@ -143,6 +143,7 @@ pub(super) fn load_import_lazily(
         .collect();
     Ok(LoadedImport {
         path,
+        source: src,
         file_ns,
         items: parsed_ast.items,
         cells,
@@ -325,6 +326,7 @@ pub(super) fn expand_top_level_imports(
 
         out.push(LoadedImport {
             path: path.clone(),
+            source: src,
             file_ns,
             items: parsed_ast.items,
             cells,

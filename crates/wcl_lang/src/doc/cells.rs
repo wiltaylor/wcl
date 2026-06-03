@@ -182,8 +182,12 @@ pub(crate) struct Expansion {
 /// (in-block) imports stay lazy inside `items`/`cells`.
 #[derive(Debug)]
 pub(crate) struct LoadedImport {
-    #[allow(dead_code)] // retained on the struct for debug formatting
     pub(crate) path: PathBuf,
+    /// Raw source text of the imported file, retained so diagnostics
+    /// raised against this file's spans can render their snippet against
+    /// the correct source (a cross-file eval error otherwise renders
+    /// against the root document's text — wrong offsets / `OutOfBounds`).
+    pub(crate) source: String,
     pub(crate) file_ns: Vec<String>,
     pub(crate) items: Vec<ast::Item>,
     pub(crate) cells: Vec<ItemCells>,

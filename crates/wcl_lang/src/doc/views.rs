@@ -1719,6 +1719,16 @@ impl<'a> Block<'a> {
         self.doc
     }
 
+    /// The miette source (name + text) of the file that declares this
+    /// block — the root document or the imported file it lives in. Hosts
+    /// use this to render an eval diagnostic raised while processing this
+    /// block against the correct file's snippet (a cross-file span won't
+    /// line up with the root source's text). Falls back to the root
+    /// source for synthesised blocks not backed by on-disk AST.
+    pub fn named_source(&self) -> miette::NamedSource<String> {
+        self.doc.named_source_for_block(self.ast)
+    }
+
     /// Scope that child expressions inside this block see — the
     /// block's own `scope` extended with one frame for itself.
     pub(crate) fn child_scope(&self) -> Scope<'a> {

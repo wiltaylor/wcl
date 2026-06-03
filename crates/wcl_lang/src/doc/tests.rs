@@ -2546,6 +2546,80 @@ fn root_field_declared_only_by_imported_document_resolves() {
 }
 
 #[test]
+fn connections_field_resolves_across_imported_files() {
+    // A `@connections` field declared on an imported `@document` must be
+    // name-resolvable from a *different* file, exactly like a `@children`
+    // field. The page lib imports first so its `@document` sorts ahead of
+    // the connection-bearing one — the buggy `doc_schema()` lookup would
+    // pick that wrong schema and fail with `unresolved reference`.
+    let page_lib = r#"
+        @document type LibRoot { @children("page") pages: list<Page> }
+        @block("page") type Page { @inline(0) id: utf8 }
+    "#;
+    let model = r#"
+        @block("system") type System { @inline(0) id: utf8  name: utf8 }
+        @block("user")   type User   { @inline(0) id: utf8  name: utf8 }
+        symbol_set RelKind { uses }
+        connection PersonToSystem: User -> System : RelKind
+        @document type Model {
+            @children("system")          systems: list<System>
+            @children("user")            users:   list<User>
+            @connections(PersonToSystem) person_to_system: list<PersonToSystem>
+        }
+        system "web"      { name = "Web" }
+        user   "customer" { name = "Customer" }
+        customer -> web :uses
+    "#;
+    // `edges` / `users_count` are authored in the user-root file — a
+    // different file than the @document + arrows (model.wcl). The
+    // root-authored @document declares them so they're legal top-level
+    // fields; it composes with the imported library schemas.
+    let user = "import <page.wcl>\nimport <model.wcl>\n\
+         @document type UserRoot { edges: i64  users_count: i64 }\n\
+         edges = len(person_to_system)\nusers_count = len(users)\n";
+    let doc = open_with_libs(user, &[("page.wcl", page_lib), ("model.wcl", model)]);
+    // The @connections read (the bug) and the @children control must both
+    // resolve to 1.
+    assert_eq!(doc.field("edges").unwrap().value().unwrap(), &Value::I64(1));
+    assert_eq!(
+        doc.field("users_count").unwrap().value().unwrap(),
+        &Value::I64(1)
+    );
+}
+
+#[test]
+fn connection_operand_label_referencing_connections_field_terminates() {
+    // A block whose identifying label is computed from the `@connections`
+    // field must not send connection-operand resolution into unbounded
+    // recursion (projection → operand resolution → label eval → projection
+    // → … stack overflow). The reentrancy guard suppresses projection while
+    // a label is being evaluated for operand identification, so evaluation
+    // terminates instead.
+    let src = r#"
+        @block("system") type System { @inline(0) id: utf8 }
+        @block("user")   type User   { @inline(0) id: utf8 }
+        symbol_set RelKind { uses }
+        connection PersonToSystem: User -> System : RelKind
+        @document type Model {
+            @children("system")          systems: list<System>
+            @children("user")            users:   list<User>
+            @connections(PersonToSystem) person_to_system: list<PersonToSystem>
+            count: i64
+        }
+        system "web"                                {}
+        system $"sys-${len(person_to_system)}"      {}
+        user   "customer"                           {}
+        customer -> web :uses
+        count = len(person_to_system)
+    "#;
+    let doc = open_with_libs(src, &[]);
+    // Must return (not overflow). The block with the self-referential label
+    // simply fails to match during operand resolution and is skipped; the
+    // single `customer -> web` arrow projects to one edge.
+    assert_eq!(doc.field("count").unwrap().value().unwrap(), &Value::I64(1));
+}
+
+#[test]
 fn second_root_document_still_errors_alongside_import() {
     // A *root-authored* second @document is still an error even when a
     // library one is imported — only one root-authored @document per

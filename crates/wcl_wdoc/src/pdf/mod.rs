@@ -116,10 +116,11 @@ impl PdfError {
     }
 
     /// Wrap a render-time evaluation failure into a `PdfError::Eval`,
-    /// attaching the document source so the miette report renders a snippet.
-    pub(crate) fn eval(err: wcl_lang::EvalError, name: &str, user_src: &str) -> Self {
-        let report =
-            Report::new(err).with_source_code(NamedSource::new(name, user_src.to_string()));
+    /// attaching the source file the error was raised against so the miette
+    /// report renders the snippet against the correct text (a cross-file
+    /// span won't line up with the root document's source).
+    pub(crate) fn eval(err: wcl_lang::EvalError, src: NamedSource<String>) -> Self {
+        let report = Report::new(err).with_source_code(src);
         Self::Eval(report)
     }
 }
@@ -378,8 +379,8 @@ pub fn pdf(
         }
         Ok(written)
     });
-    if let Some(e) = eval_err {
-        return Err(PdfError::eval(e, &name, &user_src));
+    if let Some((e, src)) = eval_err {
+        return Err(PdfError::eval(e, src));
     }
     result
 }

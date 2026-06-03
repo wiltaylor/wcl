@@ -6592,3 +6592,93 @@ fn unresolved_name_in_page_block_errors() {
         }
     }
 }
+
+#[test]
+fn cross_file_connections_field_renders() {
+    // A `@connections` field declared on a `@document` in one imported file
+    // must be readable from a *different* file (the page), exactly like a
+    // `@children` field. Regression for the cross-file connection-resolution
+    // bug (was: `unresolved reference 'person_to_system'`).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    std::fs::write(
+        tmp.path().join("model.wcl"),
+        r#"import <wdoc.wcl>
+@block("system") type System { @inline(0) id: utf8  name: utf8 }
+@block("user")   type User   { @inline(0) id: utf8  name: utf8 }
+symbol_set RelKind { uses }
+connection PersonToSystem: User -> System : RelKind
+@document type Model {
+  @children("system")          systems: list<System>
+  @children("user")            users:   list<User>
+  @connections(PersonToSystem) person_to_system: list<PersonToSystem>
+}
+system "web"      { name = "Web" }
+user   "customer" { name = "Customer" }
+customer -> web :uses
+"#,
+    )
+    .expect("write model");
+    std::fs::write(
+        tmp.path().join("page.wcl"),
+        r#"page index { sites = [:s]  start = true
+  p $"users = ${len(users)}"
+  p $"edges = ${len(person_to_system)}"
+}
+site s { default_template = :book  toc { chapter "H" { page = index } } }
+"#,
+    )
+    .expect("write page");
+    let main = tmp.path().join("main.wcl");
+    std::fs::write(
+        &main,
+        "import <wdoc.wcl>\nimport \"./model.wcl\"\nimport \"./page.wcl\"\n",
+    )
+    .expect("write main");
+
+    let out = tmp.path().join("out");
+    build_ok(&main, &out);
+    let html = std::fs::read_to_string(out.join("index.html")).expect("read index");
+    assert!(html.contains("users = 1"), "{html}");
+    assert!(html.contains("edges = 1"), "{html}");
+}
+
+#[test]
+fn cross_file_eval_error_reports_imported_file() {
+    // An unresolved reference in an *imported* page file must render its
+    // diagnostic against that file's source — the correct snippet, not the
+    // root document's text (which would mis-offset / emit `OutOfBounds`).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    std::fs::write(
+        tmp.path().join("page.wcl"),
+        "page index { start = true\n  p $\"broken = ${len(nonexistent_thing)}\"\n}\n",
+    )
+    .expect("write page");
+    let main = tmp.path().join("main.wcl");
+    std::fs::write(&main, "import <wdoc.wcl>\nimport \"./page.wcl\"\n").expect("write main");
+
+    let out = tmp.path().join("out");
+    match build(&main, &out, None) {
+        Err(BuildError::Eval(r)) => {
+            let rendered = format!("{r:?}");
+            assert!(
+                rendered.contains("page.wcl"),
+                "diagnostic should point at the imported file:\n{rendered}"
+            );
+            assert!(
+                rendered.contains("nonexistent_thing"),
+                "diagnostic should underline the offending span:\n{rendered}"
+            );
+            // The pre-fix symptom: a span into page.wcl rendered against the
+            // root source overflowed its bounds.
+            assert!(
+                !rendered.contains("OutOfBounds") && !rendered.contains("Failed to read contents"),
+                "diagnostic must not mis-target the source span:\n{rendered}"
+            );
+        }
+        Ok(n) => panic!("expected an eval error, but wrote {n} page(s)"),
+        Err(other) => {
+            other.report();
+            panic!("expected BuildError::Eval, got a different error (see above)");
+        }
+    }
+}
