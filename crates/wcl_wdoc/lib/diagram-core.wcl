@@ -1,5 +1,7 @@
 // SVG canvas. Width/height define the viewBox and rendered size,
 // and the parent box for diagram-level anchored shapes.
+namespace wdoc
+
 @block("diagram")
 type Diagram extends WdocBlock {
   @doc("Diagram canvas width in pixels.")

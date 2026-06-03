@@ -98,6 +98,7 @@ pub(crate) fn validate_document(
     symbols: &SymbolIndex,
     synthetic: &[ast::TypeDecl],
     imported_symbols: &[&SymbolIndex],
+    import_namespaces: &[Vec<String>],
     source: &str,
     file: &str,
 ) -> Result<Resolved, ParseError> {
@@ -308,6 +309,17 @@ pub(crate) fn validate_document(
                     item_aliases.insert(local, full);
                 }
             }
+        }
+    }
+
+    // A namespaced library brought in by `import <…>` contributes its
+    // namespace as a resolution search path, so this file's bare
+    // references to imported declarations (e.g. a user `lower` returning
+    // `list<SvgFundamental>`) resolve to `wdoc.SvgFundamental` without an
+    // explicit `use wdoc`.
+    for ns in import_namespaces {
+        if !ns.is_empty() && !wildcards.contains(ns) {
+            wildcards.push(ns.clone());
         }
     }
 

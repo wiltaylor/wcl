@@ -262,6 +262,11 @@ pub enum SchemaViolationKind {
     /// More than one `@document`-decorated type declared in the
     /// document.
     MultipleDocumentSchemas,
+    /// Two `@block`/`@table`/`@decorator` declarations carry the same
+    /// kind string within the same namespace, so a reference to that
+    /// kind is ambiguous. Declarations in *different* namespaces are
+    /// fine — they're disambiguated by a `::` qualifier.
+    DuplicateBlockKind,
     /// A `&Interface` reference field's target doesn't implement
     /// the interface (missing or differently-typed field), or a
     /// `&T` reference field's target isn't `T` and isn't a

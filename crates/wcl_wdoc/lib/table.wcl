@@ -28,6 +28,8 @@
 // declared only to satisfy the WdocBlock interface. Named `TableBlock`
 // (not `Table`) because `Table` is the reserved type name for the
 // `@table` decorator. The block kind is still "table".
+namespace wdoc
+
 @block("table")
 type TableBlock extends WdocBlock {
   @doc("Optional explicit HTML id.")

@@ -11,6 +11,8 @@
 // Chart series palette + axes / gridlines / labels / title / legend /
 // line. Axes etc. paint with `currentColor` so they follow the page
 // theme; the eight-hue palette carries explicit `fill` + `stroke`.
+namespace wdoc
+
 class "wdoc-axis"        { stroke = "currentColor"  opacity = "0.45" }
 class "wdoc-grid"        { stroke = "currentColor"  opacity = "0.12" }
 class "wdoc-axis-label"  { fill = "currentColor"  opacity = "0.75" }

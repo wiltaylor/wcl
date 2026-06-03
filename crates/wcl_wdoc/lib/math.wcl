@@ -17,6 +17,8 @@
 // `inline-patterns.wcl`. Equations paint with `currentColor`, so they
 // follow the surrounding text colour (theme / class / light-dark toggle).
 
+namespace wdoc
+
 @block("math")
 type Math extends WdocBlock {
   @doc("The LaTeX source — the inline label slot. `math \"E=mc^2\"` or a raw heredoc `math <<'TEX' … TEX`.")

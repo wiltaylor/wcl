@@ -31,6 +31,8 @@
 // a repeater body.
 
 // A reusable template. `name` is the kind authors instantiate.
+namespace wdoc
+
 @block("wdoc_component")
 type WdocComponent {
   @inline(0) name: identifier

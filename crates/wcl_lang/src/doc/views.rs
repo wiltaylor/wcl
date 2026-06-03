@@ -212,6 +212,7 @@ impl<'a> UnionDecl<'a> {
         let doc = self.doc;
         let variant_cells = self.variant_decorator_cells();
         let field_cells = self.variant_field_cells();
+        let file_ns = self.file_ns;
         self.ast
             .variants
             .iter()
@@ -221,6 +222,7 @@ impl<'a> UnionDecl<'a> {
                 decorator_cells: &variant_cells[i],
                 field_decorator_cells: &field_cells[i],
                 doc,
+                file_ns,
             })
     }
 
@@ -237,6 +239,7 @@ impl<'a> UnionDecl<'a> {
                 decorator_cells: &variant_cells[i],
                 field_decorator_cells: &field_cells[i],
                 doc: self.doc,
+                file_ns: self.file_ns,
             })
     }
 }
@@ -247,6 +250,9 @@ pub struct UnionVariant<'a> {
     decorator_cells: &'a [DecoratorCell],
     field_decorator_cells: &'a [Vec<DecoratorCell>],
     doc: &'a Document,
+    /// Namespace of the union that declares this variant — propagated to
+    /// the variant's record fields for namespace-relative resolution.
+    file_ns: &'a [String],
 }
 
 impl<'a> UnionVariant<'a> {
@@ -286,10 +292,12 @@ impl<'a> UnionVariant<'a> {
         let field_cells = self.field_decorator_cells;
         match &self.ast.body {
             ast::VariantBody::Record { fields, .. } => {
+                let file_ns = self.file_ns;
                 Box::new(fields.iter().enumerate().map(move |(i, f)| TypeField {
                     ast: f,
                     decorator_cells: &field_cells[i],
                     doc,
+                    file_ns,
                 }))
             }
             _ => Box::new(std::iter::empty()),
@@ -306,6 +314,7 @@ impl<'a> UnionVariant<'a> {
                     ast: f,
                     decorator_cells: &self.field_decorator_cells[i],
                     doc: self.doc,
+                    file_ns: self.file_ns,
                 }),
             _ => None,
         }
@@ -360,25 +369,28 @@ impl<'a> ChildKind<'a> {
     }
 }
 
-fn resolve_child_kind_arg<'a>(doc: &'a Document, positional: &[Value]) -> Option<ChildKind<'a>> {
+fn resolve_child_kind_arg<'a>(
+    doc: &'a Document,
+    file_ns: &[String],
+    positional: &[Value],
+) -> Option<ChildKind<'a>> {
     let first = positional.first()?;
     match first {
         Value::Utf8(s) | Value::Ascii(s) => Some(ChildKind::Kind(s.clone())),
         Value::Identifier(name) => {
-            let candidates: Vec<String> = if doc.file_ns.is_empty() {
-                vec![name.clone()]
-            } else {
-                vec![format!("{}.{}", doc.file_ns.join("."), name), name.clone()]
-            };
-            for fqn in &candidates {
-                if let Some(u) = doc.union_decl(fqn) {
-                    return Some(ChildKind::Union(u));
-                }
+            // Resolve the referenced union/interface relative to the
+            // declaring field's namespace (then aliases/absolute), so a
+            // stdlib `@children(WdocBlock)` under `namespace wdoc` finds
+            // `wdoc.WdocBlock`.
+            let resolved = doc.resolve_path_in(std::slice::from_ref(name), file_ns);
+            let key = resolved
+                .map(|p| p.join("."))
+                .unwrap_or_else(|| name.clone());
+            if let Some(u) = doc.union_decl(&key) {
+                return Some(ChildKind::Union(u));
             }
-            for fqn in &candidates {
-                if let Some(i) = doc.interface(fqn) {
-                    return Some(ChildKind::Interface(i));
-                }
+            if let Some(i) = doc.interface(&key) {
+                return Some(ChildKind::Interface(i));
             }
             None
         }
@@ -462,6 +474,7 @@ fn synth_child_from_value(
         .collect();
     let synth_block = ast::Block {
         kind: String::new(),
+        kind_ns: Vec::new(),
         labels: vec![ast::Expr::None; label_len],
         items,
         decorators: Vec::new(),
@@ -955,6 +968,7 @@ impl<'a> TypeDecl<'a> {
     pub fn fields(&self) -> impl Iterator<Item = TypeField<'a>> + 'a {
         let doc = self.doc;
         let cells = self.field_decorator_cells();
+        let file_ns = self.file_ns;
         self.ast
             .fields
             .iter()
@@ -963,6 +977,7 @@ impl<'a> TypeDecl<'a> {
                 ast: f,
                 decorator_cells: &cells[i],
                 doc,
+                file_ns,
             })
     }
 
@@ -977,6 +992,7 @@ impl<'a> TypeDecl<'a> {
                 ast: f,
                 decorator_cells: &cells[i],
                 doc: self.doc,
+                file_ns: self.file_ns,
             })
     }
 
@@ -992,28 +1008,40 @@ impl<'a> TypeDecl<'a> {
     /// names (identical-type child redeclarations) are emitted
     /// once: the *latest* (child-most) definition wins.
     pub fn effective_fields(&self) -> Vec<TypeField<'a>> {
-        build_effective_fields(self.doc, &self.ast.extends, self.fields())
+        build_effective_fields(self.doc, &self.ast.extends, self.file_ns, self.fields())
     }
 
     /// Each field's decorators merged with those of any same-named field
     /// inherited via `extends` (own wins per-decorator). Lets a redeclared
     /// interface field inherit the interface's `@doc` / `@hidden`.
     pub fn merged_field_decorators(&self) -> std::collections::HashMap<String, Vec<Decorator<'a>>> {
-        build_merged_decorators(self.doc, &self.ast.extends, self.fields())
+        build_merged_decorators(self.doc, &self.ast.extends, self.file_ns, self.fields())
     }
 
     /// Like `effective_fields()` but optimised for a one-shot
     /// lookup. Returns the resolved `TypeField` for the named field
     /// considering the full extends chain.
     pub fn effective_field(&self, name: &str) -> Option<TypeField<'a>> {
-        lookup_effective_field(self.doc, &self.ast.extends, |n| self.field(n), name)
+        lookup_effective_field(
+            self.doc,
+            &self.ast.extends,
+            self.file_ns,
+            |n| self.field(n),
+            name,
+        )
     }
 
     /// `true` if `other` appears anywhere in `self`'s transitive
     /// `extends` chain. Used by the reference-acceptance check.
     pub fn is_descendant_of(&self, other_fqn: &str) -> bool {
         let mut seen: HashSet<String> = HashSet::new();
-        is_descendant_of_walk(self.doc, &self.ast.extends, other_fqn, &mut seen)
+        is_descendant_of_walk(
+            self.doc,
+            &self.ast.extends,
+            self.file_ns,
+            other_fqn,
+            &mut seen,
+        )
     }
 }
 
@@ -1063,6 +1091,7 @@ impl<'a> InterfaceDecl<'a> {
     pub fn fields(&self) -> impl Iterator<Item = TypeField<'a>> + 'a {
         let doc = self.doc;
         let cells = self.field_decorator_cells();
+        let file_ns = self.file_ns;
         self.ast
             .fields
             .iter()
@@ -1071,6 +1100,7 @@ impl<'a> InterfaceDecl<'a> {
                 ast: f,
                 decorator_cells: &cells[i],
                 doc,
+                file_ns,
             })
     }
 
@@ -1085,6 +1115,7 @@ impl<'a> InterfaceDecl<'a> {
                 ast: f,
                 decorator_cells: &cells[i],
                 doc: self.doc,
+                file_ns: self.file_ns,
             })
     }
 
@@ -1094,16 +1125,22 @@ impl<'a> InterfaceDecl<'a> {
     }
 
     pub fn effective_fields(&self) -> Vec<TypeField<'a>> {
-        build_effective_fields(self.doc, &self.ast.extends, self.fields())
+        build_effective_fields(self.doc, &self.ast.extends, self.file_ns, self.fields())
     }
 
     /// See [`TypeDecl::merged_field_decorators`].
     pub fn merged_field_decorators(&self) -> std::collections::HashMap<String, Vec<Decorator<'a>>> {
-        build_merged_decorators(self.doc, &self.ast.extends, self.fields())
+        build_merged_decorators(self.doc, &self.ast.extends, self.file_ns, self.fields())
     }
 
     pub fn effective_field(&self, name: &str) -> Option<TypeField<'a>> {
-        lookup_effective_field(self.doc, &self.ast.extends, |n| self.field(n), name)
+        lookup_effective_field(
+            self.doc,
+            &self.ast.extends,
+            self.file_ns,
+            |n| self.field(n),
+            name,
+        )
     }
 }
 
@@ -1164,6 +1201,11 @@ pub struct TypeField<'a> {
     pub(super) ast: &'a ast::TypeField,
     pub(super) decorator_cells: &'a [DecoratorCell],
     pub(super) doc: &'a Document,
+    /// Namespace of the declaration (type / interface / union variant)
+    /// that owns this field. Type references in the field's decorators
+    /// (`@child`/`@children`/`@connections`) and its declared type
+    /// resolve relative to this namespace first.
+    pub(super) file_ns: &'a [String],
 }
 
 impl<'a> TypeField<'a> {
@@ -1226,7 +1268,7 @@ impl<'a> TypeField<'a> {
     /// is absent or the arg is neither.
     pub fn child_kind_or_union(&self) -> Option<ChildKind<'a>> {
         let dec = self.decorators().find(|d| d.is(BuiltinDecorator::Child))?;
-        resolve_child_kind_arg(self.doc, &dec.positional().ok()?)
+        resolve_child_kind_arg(self.doc, self.file_ns, &dec.positional().ok()?)
     }
 
     /// Resolves the positional arg of `@children(...)` into either a
@@ -1236,7 +1278,7 @@ impl<'a> TypeField<'a> {
         let dec = self
             .decorators()
             .find(|d| d.is(BuiltinDecorator::Children))?;
-        resolve_child_kind_arg(self.doc, &dec.positional().ok()?)
+        resolve_child_kind_arg(self.doc, self.file_ns, &dec.positional().ok()?)
     }
 
     /// Resolves the positional arg of `@connections(...)` into a
@@ -1252,20 +1294,14 @@ impl<'a> TypeField<'a> {
             Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s,
             _ => return None,
         };
-        let candidates: Vec<String> = if self.doc.file_ns.is_empty() {
-            vec![name.clone()]
-        } else {
-            vec![
-                format!("{}.{}", self.doc.file_ns.join("."), name),
-                name.clone(),
-            ]
-        };
-        for fqn in &candidates {
-            if let Some(c) = self.doc.connection_decl(fqn) {
-                return Some(c);
-            }
-        }
-        None
+        // Resolve relative to the declaring field's namespace first.
+        let resolved = self
+            .doc
+            .resolve_path_in(std::slice::from_ref(name), self.file_ns);
+        let key = resolved
+            .map(|p| p.join("."))
+            .unwrap_or_else(|| name.clone());
+        self.doc.connection_decl(&key)
     }
 
     /// Like [`children_block_kind`] but borrows directly from the AST
@@ -1919,12 +1955,23 @@ impl<'a> Block<'a> {
         out
     }
 
-    /// The schema (`TypeDecl`) for this block's `kind`, if any.
+    /// The namespace qualifier written before this block's kind with
+    /// `::` (`wdoc::process` → `["wdoc"]`). Empty for a bare kind and for
+    /// synthesised blocks.
+    pub fn kind_ns(&self) -> &'a [String] {
+        &self.ast.kind_ns
+    }
+
+    /// The schema (`TypeDecl`) for this block's `kind`, if any. Resolved
+    /// namespace-aware: a `::` qualifier selects an explicit namespace,
+    /// and a bare kind prefers a declaration in the document's namespace.
     pub fn schema(&self) -> Option<TypeDecl<'a>> {
         let k = self.kind();
+        let q = self.kind_ns();
+        let ctx = self.doc.file_ns();
         self.doc
-            .block_schema(k)
-            .or_else(|| self.doc.table_schema(k))
+            .block_schema_in(q, k, ctx)
+            .or_else(|| self.doc.table_schema_in(q, k, ctx))
     }
 
     /// Schema-aware field lookup. Projects the block through its

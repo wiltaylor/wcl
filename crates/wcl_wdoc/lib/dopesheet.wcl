@@ -13,6 +13,8 @@
 // express). The sheet image is copied into `_wdoc/` and referenced by
 // URL, so frames resolve when the output is *served*, not when opened
 // directly from disk.
+namespace wdoc
+
 @block("dopesheet")
 type Dopesheet extends SvgBlock {
   @doc("Spritesheet image path (the inline label), relative to the build entry file.")

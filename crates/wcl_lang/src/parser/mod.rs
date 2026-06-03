@@ -444,6 +444,13 @@ impl<'a> Parser<'a> {
         let next = self.peek()?;
         match &next.kind {
             TokenKind::Eq => self.parse_field(name, span_start, decorators),
+            // A namespace-qualified block kind: `wdoc::process` or
+            // `foo.bar::process`. The namespace path sits on the left of
+            // `::`; a leading dotted/`::` form is otherwise not a valid
+            // item, so claiming it here is unambiguous.
+            TokenKind::Dot | TokenKind::ColonColon => {
+                self.parse_qualified_block(name, span_start, decorators)
+            }
             TokenKind::Arrow => {
                 if !decorators.is_empty() {
                     let span = decorators[0].span;
@@ -461,12 +468,15 @@ impl<'a> Parser<'a> {
             | TokenKind::Number(_)
             | TokenKind::Bool(_)
             | TokenKind::Symbol(_)
-            | TokenKind::None => self.parse_block(name, span_start, tok.span.end, decorators),
+            | TokenKind::None => {
+                self.parse_block(name, Vec::new(), span_start, tok.span.end, decorators)
+            }
             _ if next.preceded_by_newline => {
                 // Empty-body, label-less block: the kind sits alone on
                 // its line. The next token belongs to the next item.
                 Ok(Item::Block(Block {
                     kind: name,
+                    kind_ns: Vec::new(),
                     labels: Vec::new(),
                     items: Vec::new(),
                     decorators,
@@ -486,6 +496,43 @@ impl<'a> Parser<'a> {
                 Err(self.err(msg, span, "unexpected token"))
             }
         }
+    }
+
+    /// Parse a namespace-qualified block kind whose first namespace
+    /// segment (`first_seg`) has already been consumed. Accepts
+    /// `ns::kind` and `ns.sub::kind` — the segments before `::` form the
+    /// namespace path; the ident after `::` is the kind. Delegates to
+    /// `parse_block` for labels/body.
+    fn parse_qualified_block(
+        &mut self,
+        first_seg: String,
+        start: usize,
+        decorators: Vec<crate::ast::Decorator>,
+    ) -> Result<Item, ParseError> {
+        let mut ns = vec![first_seg];
+        loop {
+            let p = self.peek()?;
+            match &p.kind {
+                TokenKind::Dot => {
+                    self.bump()?; // '.'
+                    let (seg, _) =
+                        self.bump_ident("expected identifier after '.' in qualified kind")?;
+                    ns.push(seg);
+                }
+                TokenKind::ColonColon => break,
+                other => {
+                    let msg = format!(
+                        "expected '.' or '::' in qualified block kind, found {}",
+                        describe(other)
+                    );
+                    let span = p.span;
+                    return Err(self.err(msg, span, "expected '::'"));
+                }
+            }
+        }
+        self.bump()?; // '::'
+        let (kind, kind_span) = self.bump_ident("expected kind name after '::'")?;
+        self.parse_block(kind, ns, start, kind_span.end, decorators)
     }
 
     /// Greedy path parser: `IDENT (. IDENT)*`.

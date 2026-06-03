@@ -119,6 +119,45 @@ fn parse_block_with_multiple_labels() {
 }
 
 #[test]
+fn parse_namespace_qualified_block_kind() {
+    // `wdoc::process` — single-segment namespace qualifier before the kind.
+    let s = parse(r#"wdoc::process "p" { x = 1.0 }"#);
+    let block = blocks(&s.items)[0];
+    assert_eq!(block.kind, "process");
+    assert_eq!(block.kind_ns, vec!["wdoc".to_string()]);
+    assert_eq!(block.labels, vec![Expr::Utf8("p".into())]);
+}
+
+#[test]
+fn parse_multi_segment_qualified_block_kind() {
+    // `foo.bar::process` — dotted namespace path before the kind.
+    let s = parse(r#"foo.bar::process { x = 1.0 }"#);
+    let block = blocks(&s.items)[0];
+    assert_eq!(block.kind, "process");
+    assert_eq!(block.kind_ns, vec!["foo".to_string(), "bar".to_string()]);
+}
+
+#[test]
+fn bare_block_kind_has_empty_qualifier() {
+    let s = parse("metadata { region = \"x\" }");
+    let block = blocks(&s.items)[0];
+    assert_eq!(block.kind, "metadata");
+    assert!(block.kind_ns.is_empty());
+}
+
+#[test]
+fn qualified_block_kind_round_trips() {
+    // `wcl fmt` preserves the `ns::kind` qualifier.
+    let src = "wdoc::process {\n  x = 1.0\n}\n";
+    let s = parse(src);
+    let printed = crate::format::to_source(&s);
+    assert!(
+        printed.contains("wdoc::process"),
+        "expected qualifier in output, got:\n{printed}"
+    );
+}
+
+#[test]
 fn parse_empty_block_no_labels() {
     // `hr` alone — newline / EOF terminates the empty-body block.
     let s = parse("hr\n");

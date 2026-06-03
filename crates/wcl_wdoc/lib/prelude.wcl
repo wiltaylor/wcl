@@ -10,6 +10,8 @@
 // Ordering does not matter — names resolve across every imported file —
 // so the parts are listed bottom-up by dependency for readability.
 
+namespace wdoc
+
 import <core.wcl>             // @document Site, block interfaces, Page, Class
 import <theme.wcl>            // ColourTheme / Palette + built-in colour themes
 import <css-classes.wcl>      // bundled default `class` instances

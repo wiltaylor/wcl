@@ -16,6 +16,8 @@
 //   @only(sites=[:marketing], templates=[:presentation])  callout { … }
 //   @except(backends=[:pdf])                              video   { … }
 
+namespace wdoc
+
 @decorator("only")
 type OnlyWhen {
   sites: list<symbol>?

@@ -10,6 +10,8 @@
 // `icon` / `tilemap` it's special-cased in the renderer — the asset copy,
 // path rewrite, and natural-size reading aren't expressible in WCL — so
 // the `lower` is a never-called stub.
+namespace wdoc
+
 @block("image")
 type Image extends WdocBlock, SvgBlock {
   @doc("Image source (the inline label): a doc-relative path, a URL, or a `data:` URI.")

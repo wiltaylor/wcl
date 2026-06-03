@@ -13,6 +13,8 @@
 // stroke-based (Lucide) and fill-based (Bootstrap) packs. `size` scales
 // inline icons (defaults to the surrounding font size, `1em`); `fill`
 // and `background` are optional overrides.
+namespace wdoc
+
 @block("iconset")
 type IconSet {
   @doc("Reference name (the label slot), e.g. `ui` — used by `set = ui` and `:ui.name:`.")

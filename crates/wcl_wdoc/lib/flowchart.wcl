@@ -12,6 +12,8 @@
 // inset). Share the construction so the shapes differ only in geometry.
 // `cls` is the shape's optional `class` list (declared non-optional per
 // the WCL param-annotation rule; a `none` value flows through unchanged).
+namespace wdoc
+
 let centered_label = fn(text: utf8, cx: f64, cy: f64, fit_w: f64, fit_h: f64, cls: list<utf8>) -> SvgFundamental
   SvgFundamental::Label {
     content: text, x: cx, y: cy, font_size: none,

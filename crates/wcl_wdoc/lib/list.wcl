@@ -26,6 +26,8 @@
 
 // Marker for the two things an `li` can contain: another `li`, or a
 // nested `list`. Carries the fields both already declare.
+namespace wdoc
+
 interface ListNode {
   @doc("Optional explicit HTML id.")
   id:    identifier?

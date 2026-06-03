@@ -17,6 +17,8 @@
 // never-called stub. Used by every backend: the skill target routes files
 // to the skill's `scripts/` / `assets/` folders (by `dir`); the HTML and
 // Markdown targets default `dir` to the `_wdoc/` asset folder.
+namespace wdoc
+
 @block("file")
 type FileObj extends WdocBlock {
   @doc("File source (the inline label): a doc-relative path, a URL, or a `data:` URI.")

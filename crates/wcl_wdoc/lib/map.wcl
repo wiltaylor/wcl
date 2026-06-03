@@ -21,6 +21,8 @@
 // `class` themes the group. The built-in look ships as bare-class
 // defaults in `stylesheet "wdoc-map"` (so user `class`es override) that
 // read `var(--wdoc-*)`, so a themed site styles maps for free.
+namespace wdoc
+
 @block("map")
 type Map extends SvgBlock {
   @doc("Optional reference name (the inline label).")

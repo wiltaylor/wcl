@@ -7,4 +7,6 @@
 // angle-bracket path is importer-relative within the `<wcl-system>`
 // namespace, so `import <wdoc/prelude.wcl>` here resolves to that key.
 
+namespace wdoc
+
 import <wdoc/prelude.wcl>

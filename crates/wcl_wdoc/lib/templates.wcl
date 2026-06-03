@@ -13,6 +13,8 @@
 
 // Reference to a page, for building navigation. `href` is the page's
 // output file (`<name>.html`).
+namespace wdoc
+
 type PageRef { name: utf8  href: utf8 }
 
 // A node in the resolved table of contents handed to templates. Built

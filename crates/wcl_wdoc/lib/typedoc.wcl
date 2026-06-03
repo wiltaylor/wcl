@@ -26,6 +26,8 @@
 // Documentation-only shapes for the `type_fields` records. WCL erases fn
 // param types at runtime (member access is dynamic), so these just make the
 // helper/component signatures readable; they mirror the builtin's output.
+namespace wdoc
+
 type FieldDecorator { name: utf8  arg: utf8 }
 type FieldInfo {
   name:        utf8

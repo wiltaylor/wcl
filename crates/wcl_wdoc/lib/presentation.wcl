@@ -29,6 +29,8 @@
 // pointing at an unknown page is a build error (like a `chapter` page).
 
 // One slide: names the page whose content it shows.
+namespace wdoc
+
 @block("slide")
 type DeckSlideRef {
   @inline(0) page: identifier

@@ -1020,6 +1020,7 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_block(
         &mut self,
         kind: String,
+        kind_ns: Vec<String>,
         start: usize,
         kind_end: usize,
         decorators: Vec<Decorator>,
@@ -1083,6 +1084,7 @@ impl<'a> Parser<'a> {
         if !matches!(self.peek()?.kind, TokenKind::LBrace) {
             return Ok(Item::Block(Block {
                 kind,
+                kind_ns,
                 labels,
                 items: Vec::new(),
                 decorators,
@@ -1125,6 +1127,7 @@ impl<'a> Parser<'a> {
         let trailing_trivia = rbrace.leading_trivia;
         Ok(Item::Block(Block {
             kind,
+            kind_ns,
             labels,
             items,
             decorators,

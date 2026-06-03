@@ -1,5 +1,7 @@
 // ── Stdlib headings ────────────────────────────────────────────────
 
+namespace wdoc
+
 @block("h1")
 type H1 extends WdocBlock {
   @doc("The heading text (the inline label slot); inline patterns are applied.")

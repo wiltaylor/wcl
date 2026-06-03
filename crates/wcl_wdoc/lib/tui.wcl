@@ -33,6 +33,8 @@
 // and LOCAL to the emitting widget. Every field must be supplied at
 // construction (set `none` to opt out) — that's how WCL variant literals
 // work; the `term_run` helper below is the ergonomic constructor.
+namespace wdoc
+
 union TermFundamental {
   // A run of text (may contain `\n`) at (row, col), in fg/bg + bold.
   Text { content: utf8  row: i64  col: i64  fg: utf8?  bg: utf8?  bold: bool? }

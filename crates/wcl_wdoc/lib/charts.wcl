@@ -13,6 +13,8 @@
 // recolour a series the same way you theme anything else. Axes, grid,
 // labels, title, and legend paint with `currentColor` (see CHART_CSS).
 
+namespace wdoc
+
 union ChartSeries { Of { name: utf8  values: list<f64> } }
 union ChartSlice  { Of { label: utf8  value: f64 } }
 

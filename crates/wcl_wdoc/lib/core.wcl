@@ -8,6 +8,8 @@
 // available by prepending a single `import <wdoc/prelude.wcl>` line to
 // the user's source before parsing.
 
+namespace wdoc
+
 @document
 type Site {
   @children("class")          classes:     list<Class>

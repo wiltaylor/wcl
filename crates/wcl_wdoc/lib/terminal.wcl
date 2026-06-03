@@ -24,6 +24,8 @@
 // `term_text` primitive (drawn directly) and every higher-level element
 // in `tui.wcl` (which extends `TuiWidget extends TermPrimitive` and
 // lowers to text). Each sits at a 1-based (row, col).
+namespace wdoc
+
 interface TermPrimitive {
   @doc("1-based grid row.")
   row: i64

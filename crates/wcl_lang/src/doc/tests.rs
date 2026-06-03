@@ -2569,6 +2569,109 @@ fn second_root_document_still_errors_alongside_import() {
     );
 }
 
+// A library that lives in its own `namespace wdoc`, declaring a couple
+// of block kinds — models the wdoc stdlib for the namespace-collision
+// tests below (issue #14).
+const LIB_NS: &str = r#"
+namespace wdoc
+@document type Site {
+    @children("page") pages: list<Page>
+    @children("process") procs: list<Process>
+}
+@block("page") type Page { @inline(0) id: utf8 }
+@block("process") type Process { @inline(0) text: utf8  x: f64? }
+"#;
+
+#[test]
+fn user_block_kind_shadows_imported_same_kind() {
+    // Issue #14: a user `@block("process")` deterministically wins over
+    // the imported (stdlib) one for a bare `process` reference — no
+    // silent collision. `cost` is a MyProcess-only field.
+    let user = r#"
+        import <wdoc.wcl>
+        @block("process") type MyProcess { @inline(0) text: utf8  cost: i64 }
+        process "mine" { cost = 5 }
+    "#;
+    let doc = open_with_libs(user, &[("wdoc.wcl", LIB_NS)]);
+    let s = doc.block_schema("process").expect("process schema");
+    assert_eq!(s.name(), "MyProcess");
+    assert!(!s.is_imported(), "local declaration should win");
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+}
+
+#[test]
+fn qualified_kind_selects_imported_namespace() {
+    // `wdoc::process` explicitly selects the imported stdlib `Process`,
+    // even though a local `@block("process")` shadows the bare kind.
+    let user = r#"
+        import <wdoc.wcl>
+        @block("process") type MyProcess { @inline(0) text: utf8  cost: i64 }
+    "#;
+    let doc = open_with_libs(user, &[("wdoc.wcl", LIB_NS)]);
+    let s = doc
+        .block_schema_in(&["wdoc".to_string()], "process", &[])
+        .expect("qualified process schema");
+    assert_eq!(s.name(), "Process");
+    assert!(s.is_imported(), "qualifier should select the imported one");
+}
+
+#[test]
+fn bare_kind_falls_back_to_imported_when_not_shadowed() {
+    // No local `page` declaration ⇒ a bare `page` resolves to the
+    // imported stdlib `Page` (the no-collision case is unchanged).
+    let doc = open_with_libs("import <wdoc.wcl>\n", &[("wdoc.wcl", LIB_NS)]);
+    let s = doc.block_schema("page").expect("page schema");
+    assert_eq!(s.name(), "Page");
+    assert!(s.is_imported());
+}
+
+#[test]
+fn user_plus_imported_same_kind_is_not_a_duplicate_error() {
+    // A user `@block("process")` alongside the imported one lives in a
+    // *different* namespace, so it is NOT a DuplicateBlockKind error.
+    let user = r#"
+        import <wdoc.wcl>
+        @block("process") type MyProcess { @inline(0) text: utf8  cost: i64 }
+    "#;
+    let doc = open_with_libs(user, &[("wdoc.wcl", LIB_NS)]);
+    assert!(
+        !doc.schema_errors().iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: crate::error::SchemaViolationKind::DuplicateBlockKind,
+                ..
+            }
+        )),
+        "{:?}",
+        doc.schema_errors()
+    );
+}
+
+#[test]
+fn duplicate_root_block_kind_same_namespace_errors() {
+    // Two root-authored `@block("foo")` in the same namespace are
+    // genuinely ambiguous ⇒ DuplicateBlockKind.
+    let doc = Document::open(
+        r#"
+        @block("foo") type A { @inline(0) id: utf8 }
+        @block("foo") type B { @inline(0) id: utf8 }
+        "#,
+        "t",
+    )
+    .expect("opens");
+    let errs = doc.schema_errors();
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: crate::error::SchemaViolationKind::DuplicateBlockKind,
+                ..
+            }
+        )),
+        "{errs:?}"
+    );
+}
+
 #[test]
 fn nested_block_kind_unregistered_errors_on_schema_errors() {
     // Parent schema explicitly allows `unregistered` as a child
@@ -3426,6 +3529,37 @@ fn bare_record_wrong_field_type_is_rejected() {
         .expect_err("record whose `label` isn't utf8 should fail");
     assert!(
         matches!(err, EvalError::VariantShapeMismatch { .. }),
+        "{err:?}"
+    );
+}
+
+#[test]
+fn variant_construction_omits_optional_field() {
+    // Explicit `Union::Variant { … }` may leave out an optional (`?`)
+    // field; it defaults to `none`.
+    let doc = open("union U { V { a: i64  b: utf8? } }\nx = U::V { a: 1 }\n");
+    let v = doc.field("x").unwrap().value().unwrap().clone();
+    match v {
+        Value::Variant {
+            variant,
+            payload: crate::value::VariantPayload::Record(m),
+            ..
+        } => {
+            assert_eq!(variant, "V");
+            assert_eq!(m.get("a"), Some(&Value::I64(1)));
+            assert_eq!(m.get("b"), Some(&Value::None));
+        }
+        other => panic!("expected variant, got {other:?}"),
+    }
+}
+
+#[test]
+fn variant_construction_missing_required_field_errors() {
+    // A missing *required* field is still a shape mismatch.
+    let doc = open("union U { V { a: i64  b: utf8? } }\nx = U::V { b: \"hi\" }\n");
+    let err = doc.field("x").unwrap().value();
+    assert!(
+        matches!(err, Err(EvalError::VariantShapeMismatch { .. })),
         "{err:?}"
     );
 }

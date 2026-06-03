@@ -2,6 +2,8 @@
 // `<p>` whose children are `<span>`s; each span's text runs through the
 // inline-pattern engine via the `Inline` fundamental (the regex engine is
 // Rust, but the `<p>` / `<span>` structure is authored here).
+namespace wdoc
+
 @block("text")
 type Text extends WdocBlock {
   @doc("Optional explicit HTML id.")

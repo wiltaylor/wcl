@@ -52,6 +52,8 @@
 //   selection   text-selection background
 //   red orange yellow green cyan blue purple pink
 //               the hue ring — chart series 1-8 and the accent options
+namespace wdoc
+
 @block("palette")
 type PaletteBlock {
   @inline(0) mode: identifier        // `dark` or `light`

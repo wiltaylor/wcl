@@ -3,6 +3,8 @@
 // Link to `<a href="…" class="…">…</a>`. The `text` field of each
 // variant is re-tokenized through the pattern engine (with a depth
 // cap) so a Bold match can contain an Italic span inside.
+namespace wdoc
+
 union InlineSpan {
   Plain { text: utf8 class: list<utf8>? }
   Link  { text: utf8 href: utf8 class: list<utf8>? }

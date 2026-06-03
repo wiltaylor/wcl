@@ -8,6 +8,8 @@
 // `body` runs through the inline-pattern engine (like `p "…"`), so
 // `**bold**` / `` `code` `` / `[links](url)` / `:icons:` / `$math$`
 // work; the `heading` stays a plain span.
+namespace wdoc
+
 @block("callout")
 type Callout extends WdocBlock {
   @doc("Inline label — the coloured heading at the top of the callout.")

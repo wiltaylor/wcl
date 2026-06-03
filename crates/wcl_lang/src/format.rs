@@ -231,6 +231,10 @@ impl Printer {
         self.print_leading_trivia(&b.leading_trivia);
         self.write_indent();
         self.print_decorators_inline(&b.decorators);
+        if !b.kind_ns.is_empty() {
+            self.push(&b.kind_ns.join("."));
+            self.push("::");
+        }
         self.push(&b.kind);
         for label in &b.labels {
             self.push_ch(' ');

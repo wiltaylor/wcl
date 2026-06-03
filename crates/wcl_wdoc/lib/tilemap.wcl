@@ -5,6 +5,8 @@
 // `iconset`); the renderer reads the sheet's pixel dimensions from the
 // file header (PNG / JPEG / GIF) unless `image_width` / `image_height`
 // are given, copies the image into `_wdoc/`, and references it by URL.
+namespace wdoc
+
 @block("tileset")
 type Tileset {
   @doc("Reference name (the inline label), e.g. `dungeon`.")

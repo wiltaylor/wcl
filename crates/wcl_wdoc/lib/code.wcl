@@ -7,6 +7,8 @@
 // are authored here. The `language` tag picks the grammar (`rust`,
 // `python`, `wcl`, …); an unknown tag falls back to plain-text rendering.
 
+namespace wdoc
+
 @block("code")
 type Code extends WdocBlock {
   @doc("Language tag (the inline label slot). Picks the highlight grammar; an unknown tag falls back to plain text.")

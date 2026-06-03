@@ -744,22 +744,17 @@ impl Document {
         span: Span,
         ctx: &mut EvalCtx<'a>,
     ) -> Result<Value, EvalError> {
-        // Resolve the union — try the path as-is, then with the
-        // document's namespace prefixed (same dance as `field`/`union_decl`).
-        let candidates: Vec<String> = if self.file_ns.is_empty() {
-            vec![type_path.join(".")]
-        } else {
-            let bare = type_path.join(".");
-            let qualified = format!("{}.{}", self.file_ns.join("."), bare);
-            vec![qualified, bare]
-        };
-        let mut found_union: Option<&ast::UnionDecl> = None;
-        for fqn in &candidates {
-            if let Some(u) = self.union_decl(fqn) {
-                found_union = Some(u.ast);
-                break;
-            }
-        }
+        // Resolve the union through full namespace-aware resolution
+        // (own namespace, aliases/wildcards, imported-library namespaces,
+        // absolute), falling back to the bare path.
+        let resolved = self
+            .resolve_path_in(type_path, &self.file_ns)
+            .map(|p| p.join("."))
+            .unwrap_or_else(|| type_path.join("."));
+        let found_union: Option<&ast::UnionDecl> = self
+            .union_decl(&resolved)
+            .map(|u| u.ast)
+            .or_else(|| self.union_decl(&type_path.join(".")).map(|u| u.ast));
         let Some(union_ast) = found_union else {
             return Err(EvalError::unknown_union(type_path.join("."), span));
         };
@@ -793,9 +788,18 @@ impl Document {
                 },
             ) => {
                 let mut map = std::collections::BTreeMap::new();
-                // Each declared field must be supplied exactly once.
+                // Each declared field must be supplied — except an
+                // optional (`field?`) one, which defaults to `none` when
+                // omitted. The explicit `Union::Variant { … }` form names
+                // the variant, so omitting an optional field is
+                // unambiguous (unlike bare-record shape inference, which
+                // still needs the full field set to pick a variant).
                 for decl_field in decl_fields {
                     let Some(arg) = named_args.iter().find(|na| na.name == decl_field.name) else {
+                        if decl_field.optional {
+                            map.insert(decl_field.name.clone(), Value::None);
+                            continue;
+                        }
                         return Err(EvalError::variant_shape_mismatch(
                             format!("field '{}'", decl_field.name),
                             "missing",
@@ -870,11 +874,10 @@ impl Document {
     /// neither form is a registered union.
     fn resolve_parent_union(&self, parent_path: &[String]) -> Option<&ast::UnionDecl> {
         let bare = parent_path.join(".");
-        if !self.file_ns.is_empty() {
-            let qualified = format!("{}.{bare}", self.file_ns.join("."));
-            if let Some(p) = self.union_decl(&qualified) {
-                return Some(p.ast);
-            }
+        if let Some(resolved) = self.resolve_path_in(parent_path, &self.file_ns)
+            && let Some(p) = self.union_decl(&resolved.join("."))
+        {
+            return Some(p.ast);
         }
         self.union_decl(&bare).map(|p| p.ast)
     }
@@ -924,23 +927,17 @@ impl Document {
         iface_path: &[String],
         span: Span,
     ) -> Result<(), EvalError> {
-        // Resolve the interface declaration. Try with namespace prefix
-        // first (matching `union_decl`/`field` lookup conventions).
-        let candidates: Vec<String> = if self.file_ns.is_empty() {
-            vec![iface_path.join(".")]
-        } else {
-            vec![
-                format!("{}.{}", self.file_ns.join("."), iface_path.join(".")),
-                iface_path.join("."),
-            ]
-        };
-        let mut iface_decl: Option<&ast::InterfaceDecl> = None;
-        for fqn in &candidates {
-            if let Some(i) = self.interface(fqn) {
-                iface_decl = Some(i.ast);
-                break;
-            }
-        }
+        // Resolve the interface declaration through namespace-aware
+        // resolution (own ns, aliases/wildcards, imported namespaces),
+        // falling back to the bare path.
+        let resolved = self
+            .resolve_path_in(iface_path, &self.file_ns)
+            .map(|p| p.join("."))
+            .unwrap_or_else(|| iface_path.join("."));
+        let iface_decl: Option<&ast::InterfaceDecl> = self
+            .interface(&resolved)
+            .map(|i| i.ast)
+            .or_else(|| self.interface(&iface_path.join(".")).map(|i| i.ast));
         let Some(iface) = iface_decl else {
             return Err(EvalError::unknown_union(iface_path.join("."), span));
         };

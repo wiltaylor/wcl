@@ -23,6 +23,8 @@
 // container child AND a legal child of any container widget. The extra
 // fields are the diagram placement geometry shared by every widget plus
 // the per-element theming hints.
+namespace wdoc
+
 interface Widget extends SvgBlock {
   @doc("Optional HTML id (also the edge-connection / anchor name).")
   id:       identifier?

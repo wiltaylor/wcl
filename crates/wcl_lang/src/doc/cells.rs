@@ -229,6 +229,7 @@ impl ItemCells {
                         for r in &t.rows {
                             let synth_block = ast::Block {
                                 kind: String::new(),
+                                kind_ns: Vec::new(),
                                 labels: r.values.clone(),
                                 items: Vec::new(),
                                 decorators: Vec::new(),

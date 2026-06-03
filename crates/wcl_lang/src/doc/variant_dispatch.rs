@@ -199,7 +199,17 @@ pub(crate) fn coerce_value_to_type(
             Ok(Value::List(out))
         }
         (Value::Record { ty: rty, fields }, TypeRef::Named(path)) => {
-            let Some(union_decl) = doc.union_decl(&path.join(".")) else {
+            // Resolve the named type namespace-aware (own namespace, then
+            // imported library namespaces) so a stdlib field typed
+            // `: SomeUnion` under `namespace wdoc` finds `wdoc.SomeUnion`.
+            let resolved = doc
+                .resolve_path_in(path, doc.file_ns())
+                .map(|p| p.join("."))
+                .unwrap_or_else(|| path.join("."));
+            let Some(union_decl) = doc
+                .union_decl(&resolved)
+                .or_else(|| doc.union_decl(&path.join(".")))
+            else {
                 // Named type that isn't a union — leave the anonymous
                 // record untouched.
                 return Ok(Value::Record { ty: rty, fields });

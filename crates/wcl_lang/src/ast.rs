@@ -371,6 +371,11 @@ pub struct LetItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block {
     pub kind: String,
+    /// Namespace qualifier written before the kind with `::`, e.g.
+    /// `wdoc::process` parses to `kind_ns = ["wdoc"]`, `kind = "process"`.
+    /// Empty for a bare, unqualified kind. Multi-segment namespaces are
+    /// dot-separated on the left of `::` (`foo.bar::process`).
+    pub kind_ns: Vec<String>,
     pub labels: Vec<Expr>,
     pub items: Vec<Item>,
     pub decorators: Vec<Decorator>,

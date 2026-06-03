@@ -7,6 +7,8 @@
 // `p "..." {}`. Use the long form `text { span … {} … }` when you need
 // multiple spans with their own classes.
 
+namespace wdoc
+
 @block("p")
 type P extends WdocBlock {
   @doc("The paragraph text (the inline label slot); inline patterns are applied.")

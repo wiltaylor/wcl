@@ -26,6 +26,8 @@
 // the side; `OnSided` forces it with `side = :near | :far`. (Variant
 // construction requires every field, so the optional side lives in its
 // own variant.)
+namespace wdoc
+
 union TimelineItem {
   On      { label: utf8  on: utf8 }
   OnSided { label: utf8  on: utf8  side: symbol }

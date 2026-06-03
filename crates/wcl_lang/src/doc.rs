@@ -228,7 +228,17 @@ impl Document {
 
         let mut import_syms: Vec<&SymbolIndex> = Vec::new();
         imports::collect_import_symbols(&eager_imports, &mut import_syms);
-        let resolved = validate_document(&ast, &symbols, &synthetic, &import_syms, source, name)?;
+        let mut import_nss: Vec<Vec<String>> = Vec::new();
+        imports::collect_import_namespaces(&eager_imports, &mut import_nss);
+        let resolved = validate_document(
+            &ast,
+            &symbols,
+            &synthetic,
+            &import_syms,
+            &import_nss,
+            source,
+            name,
+        )?;
         let cells = BlockCells::build(&ast.items, base_dir.as_deref());
         let synthetic_type_cells = synthetic
             .iter()
@@ -1140,9 +1150,10 @@ impl Document {
         v
     }
 
-    /// Run the name-resolution algorithm on `path` against this document's
-    /// file ns / aliases / wildcards / registry.
-    fn resolve_path(&self, path: &[String]) -> Option<Vec<String>> {
+    /// The set of fully-qualified names declared anywhere in the
+    /// document (root + every eagerly-imported file), used as the
+    /// resolution registry for type references.
+    fn ref_registry(&self) -> HashSet<Vec<String>> {
         let mut registry: HashSet<Vec<String>> = self
             .ast
             .items
@@ -1178,9 +1189,34 @@ impl Document {
                 }
             }
         }
+        registry
+    }
+
+    /// Run the name-resolution algorithm on `path` against this document's
+    /// root file ns / aliases / wildcards / registry.
+    fn resolve_path(&self, path: &[String]) -> Option<Vec<String>> {
+        self.resolve_path_in(path, &self.file_ns)
+    }
+
+    /// Resolve `path` as if it were written in a source whose namespace
+    /// is `file_ns`. This makes a bare reference resolve **within its
+    /// declaring file's namespace first** — e.g. a stdlib type's
+    /// `extends WdocBlock` (written in `namespace wdoc`) resolves to
+    /// `wdoc.WdocBlock`, not the root namespace. The document's
+    /// `use`-aliases/wildcards still apply (they only come from the root
+    /// today).
+    pub(crate) fn resolve_path_in(
+        &self,
+        path: &[String],
+        file_ns: &[String],
+    ) -> Option<Vec<String>> {
+        let registry = self.ref_registry();
+        // `self.wildcards` already includes every imported library's
+        // namespace (added in `validate_document`), so a bare reference
+        // to a stdlib type resolves through it.
         resolve_path(
             path,
-            &self.file_ns,
+            file_ns,
             &self.item_aliases,
             &self.ns_aliases,
             &self.wildcards,
@@ -1188,10 +1224,23 @@ impl Document {
         )
     }
 
-    /// Look up the type that schemas a block of the given kind, i.e. the
-    /// first type carrying a `@block("kind")` decorator.
+    /// Look up the type that schemas a block of the given kind. Bare
+    /// kinds resolve from the document's own namespace (local
+    /// declarations preferred), so a user `@block("process")` shadows an
+    /// imported one of the same kind.
     pub fn block_schema(&self, kind: &str) -> Option<TypeDecl<'_>> {
         self.find_schema(BuiltinDecorator::Block, kind)
+    }
+
+    /// Namespace-aware block lookup: `qualifier` is the `::` namespace
+    /// (empty for bare), `context_ns` the referencing site's namespace.
+    pub(crate) fn block_schema_in(
+        &self,
+        qualifier: &[String],
+        kind: &str,
+        context_ns: &[String],
+    ) -> Option<TypeDecl<'_>> {
+        self.find_schema_ns(BuiltinDecorator::Block, qualifier, kind, context_ns)
     }
 
     /// Look up the type that schemas a decorator of the given name.
@@ -1203,6 +1252,16 @@ impl Document {
     /// the first type carrying an `@table("name")` decorator.
     pub fn table_schema(&self, name: &str) -> Option<TypeDecl<'_>> {
         self.find_schema(BuiltinDecorator::Table, name)
+    }
+
+    /// Namespace-aware table lookup (see [`Document::block_schema_in`]).
+    pub(crate) fn table_schema_in(
+        &self,
+        qualifier: &[String],
+        name: &str,
+        context_ns: &[String],
+    ) -> Option<TypeDecl<'_>> {
+        self.find_schema_ns(BuiltinDecorator::Table, qualifier, name, context_ns)
     }
 
     /// Look up the type carrying the `@document` decorator, if any.
@@ -1227,10 +1286,17 @@ impl Document {
         // root-authored declarations already sort ahead of imported
         // ones — preserve that order so `field()`/`primary()` prefer
         // the root-authored schema.
+        // A source is governed by the `@document` schemas declared in
+        // its own namespace, plus any pulled in from an imported library
+        // (`is_imported`) — importing a schema library is opting its
+        // `@document` into your document. This is what lets an
+        // un-namespaced (or differently-namespaced) user document compose
+        // against the stdlib `Site` schema, which lives in `namespace
+        // wdoc`. Root-authored declarations stay namespace-scoped.
         let schemas = self
             .find_all_decorated(BuiltinDecorator::Document)
             .into_iter()
-            .filter(|t| t.file_ns() == file_ns)
+            .filter(|t| t.file_ns() == file_ns || t.is_imported())
             .collect();
         DocSchemas { schemas }
     }
@@ -1309,6 +1375,53 @@ impl Document {
                     ),
                     extra.span(),
                 );
+            }
+        }
+
+        // Duplicate kind detection for `@block`/`@table`/`@decorator`.
+        // Two declarations sharing a kind string *within one namespace*
+        // are ambiguous; across namespaces a `::` qualifier disambiguates,
+        // so those are fine. Mirroring the `@document` rule, only a second
+        // *root-authored* declaration in a (namespace, kind) group is an
+        // error — imported library duplicates resolve first-wins silently.
+        for dec in [
+            BuiltinDecorator::Block,
+            BuiltinDecorator::Table,
+            BuiltinDecorator::Decorator,
+        ] {
+            let dec_name = dec.as_str();
+            let mut by_kind: BTreeMap<(Vec<String>, String), Vec<TypeDecl<'_>>> = BTreeMap::new();
+            for t in self.find_all_decorated(dec) {
+                let Some(kind) = t.decorators().find_map(|d| {
+                    if d.full_name() != dec_name {
+                        return None;
+                    }
+                    match d.positional().ok()?.into_iter().next() {
+                        Some(Value::Utf8(s)) => Some(s),
+                        _ => None,
+                    }
+                }) else {
+                    continue;
+                };
+                by_kind
+                    .entry((t.file_ns().to_vec(), kind))
+                    .or_default()
+                    .push(t);
+            }
+            for ((_, kind), decls) in &by_kind {
+                for extra in decls.iter().filter(|d| !d.is_imported()).skip(1) {
+                    EvalError::push_schema_violation(
+                        &mut out,
+                        Kind::DuplicateBlockKind,
+                        format!(
+                            "type '{}' redeclares @{dec_name}(\"{kind}\") already declared \
+                             in this namespace (kinds must be unique per namespace; \
+                             qualify across namespaces with `::`)",
+                            extra.name()
+                        ),
+                        extra.span(),
+                    );
+                }
             }
         }
 
@@ -1503,19 +1616,84 @@ impl Document {
         }
     }
 
-    fn find_schema(&self, dec: BuiltinDecorator, value: &str) -> Option<TypeDecl<'_>> {
+    /// Every type declaration carrying `@dec(value)`, in `type_decls()`
+    /// order (root source before imports).
+    fn schema_candidates(&self, dec: BuiltinDecorator, value: &str) -> Vec<TypeDecl<'_>> {
         let dec_name = dec.as_str();
         let want = Value::Utf8(value.to_string());
-        self.type_decls().find(|t| {
-            t.decorators().any(|d| {
-                d.full_name() == dec_name
-                    && d.positional()
-                        .ok()
-                        .and_then(|v| v.into_iter().next())
-                        .as_ref()
-                        == Some(&want)
+        self.type_decls()
+            .filter(|t| {
+                t.decorators().any(|d| {
+                    d.full_name() == dec_name
+                        && d.positional()
+                            .ok()
+                            .and_then(|v| v.into_iter().next())
+                            .as_ref()
+                            == Some(&want)
+                })
             })
-        })
+            .collect()
+    }
+
+    /// Resolve a `::` namespace qualifier to the set of concrete
+    /// namespaces it may name: the qualifier itself, plus any
+    /// single-segment `use … as` namespace-alias expansion.
+    fn resolve_ns_qualifier(&self, qualifier: &[String]) -> Vec<Vec<String>> {
+        let mut out = vec![qualifier.to_vec()];
+        if qualifier.len() == 1
+            && let Some(expanded) = self.ns_aliases.get(&qualifier[0])
+            && !out.contains(expanded)
+        {
+            out.push(expanded.clone());
+        }
+        out
+    }
+
+    /// Resolve the type that schemas a decorated kind, honouring
+    /// namespaces. `qualifier` is the namespace written before the kind
+    /// with `::` (empty for a bare kind); `context_ns` is the namespace
+    /// of the referencing site.
+    ///
+    /// - **Qualified `N::kind`** selects the candidate whose owning
+    ///   namespace is `N` (after alias expansion).
+    /// - **Bare `kind`** prefers a declaration in `context_ns`, then a
+    ///   root-authored one, then the first match — preserving the
+    ///   historical behaviour when there is no collision.
+    fn find_schema_ns(
+        &self,
+        dec: BuiltinDecorator,
+        qualifier: &[String],
+        value: &str,
+        context_ns: &[String],
+    ) -> Option<TypeDecl<'_>> {
+        let candidates = self.schema_candidates(dec, value);
+        if candidates.is_empty() {
+            return None;
+        }
+        if !qualifier.is_empty() {
+            let targets = self.resolve_ns_qualifier(qualifier);
+            return candidates
+                .into_iter()
+                .find(|t| targets.iter().any(|ns| ns.as_slice() == t.file_ns()));
+        }
+        let idx = candidates
+            .iter()
+            .position(|t| t.file_ns() == context_ns)
+            .or_else(|| candidates.iter().position(|t| !t.is_imported()))
+            .unwrap_or(0);
+        candidates.into_iter().nth(idx)
+    }
+
+    /// Bare-kind, root-namespace-context lookup. Retained for the many
+    /// callers that resolve a kind from the document's own perspective.
+    fn find_schema(&self, dec: BuiltinDecorator, value: &str) -> Option<TypeDecl<'_>> {
+        self.find_schema_ns(dec, &[], value, &self.file_ns)
+    }
+
+    /// The namespace this document's root source declares (empty for the
+    /// global namespace).
+    pub(crate) fn file_ns(&self) -> &[String] {
+        &self.file_ns
     }
 }
 
@@ -1788,19 +1966,15 @@ fn validate_union(doc: &Document, u: &ast::UnionDecl) -> Vec<EvalError> {
         }
         visiting.insert(key);
         for parent_path in &u.extends {
-            let candidates: Vec<String> = if doc.file_ns.is_empty() {
-                vec![parent_path.join(".")]
-            } else {
-                vec![
-                    format!("{}.{}", doc.file_ns.join("."), parent_path.join(".")),
-                    parent_path.join("."),
-                ]
-            };
-            for fqn in &candidates {
-                if let Some(p) = doc.union_decl(fqn) {
-                    walk(doc, p.ast, seen, out, visiting);
-                    break;
-                }
+            let resolved = doc
+                .resolve_path_in(parent_path, &doc.file_ns)
+                .map(|p| p.join("."))
+                .unwrap_or_else(|| parent_path.join("."));
+            if let Some(p) = doc
+                .union_decl(&resolved)
+                .or_else(|| doc.union_decl(&parent_path.join(".")))
+            {
+                walk(doc, p.ast, seen, out, visiting);
             }
         }
         for v in &u.variants {

@@ -7,6 +7,8 @@
 // block's text and re-tokenizes the result with a depth cap so
 // patterns can nest.
 
+namespace wdoc
+
 inline_pattern bold {
   pattern = "\\*\\*([^*\n]+)\\*\\*"
   to_span = fn(g: list<utf8>) -> list<InlineSpan>

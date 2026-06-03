@@ -7,7 +7,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::{Decorator, Document, InterfaceDecl, TypeDecl, TypeField};
+use super::{DeclName, Decorator, Document, InterfaceDecl, TypeDecl, TypeField};
 
 /// A resolved `extends` target. `type` and `interface` declarations
 /// share the same inheritance entry-points (`effective_fields`,
@@ -39,10 +39,38 @@ impl<'a> ParentDecl<'a> {
             ParentDecl::Interface(d) => &d.ast.extends,
         }
     }
+
+    /// The namespace this parent declaration lives in — used to resolve
+    /// *its own* `extends` references when the walk recurses.
+    fn file_ns(&self) -> &'a [String] {
+        match self {
+            ParentDecl::Type(d) => d.file_ns(),
+            ParentDecl::Interface(d) => d.file_ns(),
+        }
+    }
+
+    fn full_name(&self) -> String {
+        match self {
+            ParentDecl::Type(d) => d.full_name(),
+            ParentDecl::Interface(d) => d.full_name(),
+        }
+    }
 }
 
-fn lookup_parent<'a>(doc: &'a Document, path: &[String]) -> Option<ParentDecl<'a>> {
-    let key = path.join(".");
+/// Resolve an `extends` path written in a source whose namespace is
+/// `file_ns` to its declaration. The path resolves **within `file_ns`
+/// first** (then the document's aliases/wildcards, then absolute), so a
+/// stdlib type's bare `extends WdocBlock` under `namespace wdoc` finds
+/// `wdoc.WdocBlock`.
+fn lookup_parent<'a>(
+    doc: &'a Document,
+    path: &[String],
+    file_ns: &[String],
+) -> Option<ParentDecl<'a>> {
+    let fqn = doc
+        .resolve_path_in(path, file_ns)
+        .unwrap_or_else(|| path.to_vec());
+    let key = fqn.join(".");
     if let Some(d) = doc.type_decl(&key) {
         return Some(ParentDecl::Type(d));
     }
@@ -55,6 +83,7 @@ fn lookup_parent<'a>(doc: &'a Document, path: &[String]) -> Option<ParentDecl<'a
 pub(super) fn build_effective_fields<'a, I>(
     doc: &'a Document,
     extends: &[Vec<String>],
+    file_ns: &[String],
     own_fields: I,
 ) -> Vec<TypeField<'a>>
 where
@@ -62,7 +91,7 @@ where
 {
     let mut out: Vec<TypeField<'a>> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
-    collect_effective_fields(doc, extends, &mut out, &mut seen);
+    collect_effective_fields(doc, extends, file_ns, &mut out, &mut seen);
     for f in own_fields {
         insert_or_override(&mut out, &mut seen, f);
     }
@@ -79,6 +108,7 @@ where
 pub(super) fn build_merged_decorators<'a, I>(
     doc: &'a Document,
     extends: &[Vec<String>],
+    file_ns: &[String],
     own_fields: I,
 ) -> HashMap<String, Vec<Decorator<'a>>>
 where
@@ -89,7 +119,7 @@ where
         map.insert(f.name().to_string(), f.decorators().collect());
     }
     for parent_path in extends {
-        if let Some(decl) = lookup_parent(doc, parent_path) {
+        if let Some(decl) = lookup_parent(doc, parent_path, file_ns) {
             for f in decl.effective_fields() {
                 let entry = map.entry(f.name().to_string()).or_default();
                 for d in f.decorators() {
@@ -108,6 +138,7 @@ where
 pub(super) fn lookup_effective_field<'a, F>(
     doc: &'a Document,
     extends: &[Vec<String>],
+    file_ns: &[String],
     own_lookup: F,
     name: &str,
 ) -> Option<TypeField<'a>>
@@ -118,7 +149,7 @@ where
         return Some(f);
     }
     for parent_path in extends {
-        if let Some(f) = effective_field_via(doc, parent_path, name) {
+        if let Some(f) = effective_field_via(doc, parent_path, file_ns, name) {
             return Some(f);
         }
     }
@@ -131,11 +162,12 @@ where
 fn collect_effective_fields<'a>(
     doc: &'a Document,
     extends_paths: &[Vec<String>],
+    file_ns: &[String],
     out: &mut Vec<TypeField<'a>>,
     seen: &mut HashSet<String>,
 ) {
     for parent_path in extends_paths {
-        if let Some(decl) = lookup_parent(doc, parent_path) {
+        if let Some(decl) = lookup_parent(doc, parent_path, file_ns) {
             for f in decl.effective_fields() {
                 insert_or_override(out, seen, f);
             }
@@ -161,28 +193,41 @@ fn insert_or_override<'a>(
 fn effective_field_via<'a>(
     doc: &'a Document,
     parent_path: &[String],
+    file_ns: &[String],
     name: &str,
 ) -> Option<TypeField<'a>> {
-    lookup_parent(doc, parent_path).and_then(|d| d.effective_field(name))
+    lookup_parent(doc, parent_path, file_ns).and_then(|d| d.effective_field(name))
 }
 
 pub(super) fn is_descendant_of_walk(
     doc: &Document,
     extends_paths: &[Vec<String>],
+    file_ns: &[String],
     target_fqn: &str,
     seen: &mut HashSet<String>,
 ) -> bool {
     for parent_path in extends_paths {
-        let key = parent_path.join(".");
+        let Some(decl) = lookup_parent(doc, parent_path, file_ns) else {
+            // Unresolvable parent — fall back to a literal path compare so
+            // a dangling `extends Foo` still matches `target_fqn == "Foo"`.
+            if parent_path.join(".") == target_fqn {
+                return true;
+            }
+            continue;
+        };
+        // Compare the *resolved* fully-qualified name, so a bare
+        // `extends WdocBlock` under `namespace wdoc` matches a
+        // `target_fqn` of `wdoc.WdocBlock`.
+        let key = decl.full_name();
         if !seen.insert(key.clone()) {
             continue;
         }
         if key == target_fqn {
             return true;
         }
-        if let Some(decl) = lookup_parent(doc, parent_path)
-            && is_descendant_of_walk(doc, decl.extends(), target_fqn, seen)
-        {
+        // Recurse using the parent's own namespace to resolve its
+        // `extends` references.
+        if is_descendant_of_walk(doc, decl.extends(), decl.file_ns(), target_fqn, seen) {
             return true;
         }
     }

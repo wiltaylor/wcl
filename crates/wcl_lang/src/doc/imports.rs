@@ -91,6 +91,20 @@ pub(super) fn collect_import_symbols<'a>(imps: &'a [LoadedImport], out: &mut Vec
     }
 }
 
+/// Collect the distinct, non-empty namespaces declared by every
+/// eagerly-imported file (transitively). Used as additional resolution
+/// search paths so a document's bare references to imported library
+/// declarations resolve (importing a namespaced library brings its
+/// names into scope).
+pub(super) fn collect_import_namespaces(imps: &[LoadedImport], out: &mut Vec<Vec<String>>) {
+    for imp in imps {
+        if !imp.file_ns.is_empty() && !out.contains(&imp.file_ns) {
+            out.push(imp.file_ns.clone());
+        }
+        collect_import_namespaces(&imp.eager_imports, out);
+    }
+}
+
 pub(super) fn load_import_lazily(
     path_str: &str,
     base_dir: Option<&Path>,

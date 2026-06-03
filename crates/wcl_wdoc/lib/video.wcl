@@ -17,6 +17,8 @@
 // parsing, facade HTML, and PDF handling aren't expressible in WCL — so
 // the `lower` is a never-called stub. Page-only: unlike `image` it isn't
 // an `SvgBlock`, so it can't be placed inside a diagram.
+namespace wdoc
+
 @block("video")
 type Video extends WdocBlock {
   @doc("Video source (the label slot) — a doc-relative path, or a YouTube / Vimeo / other URL.")
