@@ -228,6 +228,24 @@ pub(crate) fn effective_dims(block: &Block<'_>) -> (f64, f64) {
     {
         return (2.0 * r, 2.0 * r);
     }
+    // A container is sized by its laid-out children — the same box the
+    // renderer draws (`resolve_container_box`): the content bbox plus
+    // `padding` on every side. Reporting that footprint to the layout
+    // solver makes it reserve the container's true extent instead of
+    // the default 80×40, so a sibling on the next rank / breadth slot
+    // no longer overlaps the border. Falls through to declared /
+    // default dims for a `:none` or empty container (content_size → 0).
+    if block.kind() == "container" {
+        let (content_w, content_h) = content_size(block);
+        if content_w > 0.0 || content_h > 0.0 {
+            let pad = 2.0 * container_padding(block);
+            // Honor a declared width/height as a minimum, matching
+            // `resolve_container_box` (never a ceiling).
+            let decl_w = field_f64(block, "width").unwrap_or(0.0);
+            let decl_h = field_f64(block, "height").unwrap_or(0.0);
+            return ((content_w + pad).max(decl_w), (content_h + pad).max(decl_h));
+        }
+    }
     let declared_w = field_f64(block, "width").unwrap_or(80.0);
     let declared_h = field_f64(block, "height").unwrap_or(40.0);
     let Some(text) = text_content(block) else {

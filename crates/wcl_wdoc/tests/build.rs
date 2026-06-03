@@ -1502,6 +1502,63 @@ page index {
 }
 
 #[test]
+fn build_layout_reserves_container_footprint() {
+    // Regression: a `container` must reserve its real rendered
+    // footprint (content bbox + padding) in an auto-layout, not the
+    // default 80×40. Here three top-level siblings share rank 0 (their
+    // edges point at ids *inside* the container, so none connects two
+    // siblings) and spread along x by node_gap (40). The container's
+    // :grid content is 140×168, +2*16 padding = 172×200. So:
+    //   customer at x=0 (w 80) -> +80+40 -> internal at x=120
+    //   internal  (w 172)      -> +172+40 -> stripe at x=332
+    // Before the fix the container reserved only 80, putting stripe at
+    // x=240, *inside* the container's box (x 120–292). Assert stripe is
+    // clear: stripe.x (332) >= internal.x (120) + width (172) = 292.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("container_footprint.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 900
+    height = 500
+    layout = :layered
+    rect { id = customer  width = 80.0  height = 40.0 }
+    container {
+      id = internal  padding = 16.0
+      layout = :grid  columns = 1  cell_width = 140.0  cell_height = 48.0  gap = 12.0
+      rect { id = web  width = 140.0  height = 48.0 }
+      rect { id = api  width = 140.0  height = 48.0 }
+      rect { id = db   width = 140.0  height = 48.0 }
+    }
+    rect { id = stripe  width = 80.0  height = 40.0 }
+    customer -> web
+    web -> api
+    api -> db
+    api -> stripe
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<g transform=\"translate(120 0)\""),
+        "container should sit at x=120:\n{html}"
+    );
+    assert!(
+        html.contains("<g transform=\"translate(332 0)\""),
+        "stripe should clear the container's 172-wide box (x=332), not overlap at x=240:\n{html}"
+    );
+    assert!(
+        !html.contains("<g transform=\"translate(240 0)\""),
+        "stripe must not be placed inside the container border box (x=240):\n{html}"
+    );
+}
+
+#[test]
 fn build_force_layout_spreads_and_is_deterministic() {
     // A cyclic 4-node graph (circles) with no rank order. :force should
     // place each shape (no cx/cy declared) via the simulation, wrap each
