@@ -23,24 +23,7 @@ diagram { width = 360  height = 200
 
 `bar_chart` and `line_chart` share most fields; `line_chart` adds `point_labels` and `points`. The `line_chart` fields (the superset) are listed below — `bar_chart` is identical minus those two.
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `x` | `f64` | no | Chart x position within the enclosing `diagram`. |
-| `y` | `f64` | no | Chart y position within the enclosing `diagram`. |
-| `width` | `f64` | no | Chart width — match the enclosing `diagram`. |
-| `height` | `f64` | no | Chart height — match the enclosing `diagram`. |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional style classes. |
-| `title` | `utf8` | no | Chart title. |
-| `x_label` | `utf8` | no | x-axis label. |
-| `y_label` | `utf8` | no | y-axis label. |
-| `categories` | `list<utf8>` | no | x-axis labels (one per value). |
-| `y_min` | `f64` | no | Lower scale bound; auto-fits to the data (0) when omitted. |
-| `y_max` | `f64` | no | Upper scale bound; auto-fits to the data when omitted. |
-| `series` | `list<ChartSeries>` | yes | Series data — each a `{ name: utf8, values: list<f64> }` record. |
-| `point_labels` | `bool` | no | Print each point's value above its marker. |
-| `points` | `list<ChartPoint>` | no | Annotation markers — `list<ChartPoint>`, each `{ label, category, value }`. |
-| `connect_points` | `list<AnchorSide>` | no | Diagram edge-attach sides, like any shape. |
+
 
 ## Line chart annotations
 
@@ -79,14 +62,4 @@ diagram { width = 240  height = 240
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `x` | `f64` | no | Chart x position within the enclosing `diagram`. |
-| `y` | `f64` | no | Chart y position within the enclosing `diagram`. |
-| `width` | `f64` | no | Chart width — match the enclosing `diagram`. |
-| `height` | `f64` | no | Chart height — match the enclosing `diagram`. |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional style classes. |
-| `title` | `utf8` | no | Chart title. |
-| `slices` | `list<ChartSlice>` | yes | Slice data — each a `{ label: utf8, value: f64 }` record. |
-| `connect_points` | `list<AnchorSide>` | no | Diagram edge-attach sides, like any shape. |
+

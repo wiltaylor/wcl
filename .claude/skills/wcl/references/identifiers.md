@@ -1,6 +1,6 @@
 # Identifiers
 
-Identifiers are the names you use throughout WCL — for fields, types, block kinds, block labels, variants, symbols, `let` bindings, and imported items. The lexical rule is the same everywhere.
+Identifiers are the names you use throughout WCL — for fields, types, block kinds, block labels, variants, symbols, `let` bindings, and imported items. The lexical rule is the same everywhere, with one convenience exception for block labels (see below).
 
 ## Lexical rule
 
@@ -14,7 +14,20 @@ v2             // ok
 HTTPStatus     // ok
 
 2nd_attempt    // NOT ok — must not start with a digit
-kebab-case     // NOT ok — dashes are not part of an identifier
+kebab-case     // NOT ok as a field/type name — dashes aren't identifier chars
+```
+
+## Block labels: kebab-case and paths
+
+Block **labels** (the name after a block kind) are the one place a bare identifier may contain `-` and `/` connectors — so kebab-case class names and path-like page names need no quoting. The connector must sit directly between name parts (no surrounding spaces).
+
+```wcl
+class dgm-box {}              // kebab-case, bare
+class wdoc-series-1 {}        // trailing number is fine
+page reference/intro {}       // path-like
+page api/v1/users {}
+
+class "dgm-box" {}            // quoting still works (and is left as-is by `wcl fmt`)
 ```
 
 ## Reserved words

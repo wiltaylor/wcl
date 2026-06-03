@@ -6,38 +6,7 @@ Diagram blocks are wdoc's way of drawing diagrams and charts on pages. A diagram
 
 Diagrams have the following properties that can be set.
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `width` | `i64` | yes | Diagram canvas width in pixels. |
-| `height` | `i64` | yes | Diagram canvas height in pixels. |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional style classes. |
-| `layout` | `symbol` | no | Layout mode: `:free` (default, manual x/y) / `:grid` / `:layered` / `:force`. |
-| `direction` | `symbol` | no | Flow direction for `:layered`: `:top_to_bottom` (default) / `:left_to_right`. |
-| `layer_gap` | `f64` | no | Spacing between ranks (layers) in `:layered` layout. |
-| `node_gap` | `f64` | no | Spacing between nodes within a rank in `:layered` layout. |
-| `cell_width` | `f64` | no | Grid cell width for `:grid` layout. |
-| `cell_height` | `f64` | no | Grid cell height for `:grid` layout. |
-| `columns` | `i64` | no | Number of columns for `:grid` layout. |
-| `gap` | `f64` | no | Gap between cells in `:grid` layout. |
-| `iterations` | `i64` | no | `:force` relaxation steps (default 300). |
-| `repulsion` | `f64` | no | `:force` node repulsion strength (default 9000). |
-| `link_distance` | `f64` | no | `:force` ideal edge-to-edge length (default 60). |
-| `gravity` | `f64` | no | `:force` centering pull (default 0.05). |
-| `seed` | `i64` | no | `:force` random seed for reproducible layouts (default 1). |
-| `routing` | `symbol` | no | Edge routing: `:elbow` (default) / `:straight`. |
-| `edge_separation` | `f64` | no | Nudge step that separates parallel edges (default 4). |
-| `pan_zoom` | `bool` | no | When `true`, wrap in an interactive viewport with wheel-zoom, drag-pan, and `+`/`−`/`⟲` controls. |
-| `zoom_min` | `f64` | no | Minimum zoom scale; `1.0` = fitted view (default 1.0). |
-| `zoom_max` | `f64` | no | Maximum zoom scale (default 4.0). |
-| `pan_margin` | `f64` | no | Extra overscroll past the content bounds, in px (default 0). |
-| `edges` | `list<Edge>` | yes | Edges connecting shapes (`a -> b`). |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `children` | `SvgBlock` | yes | The shapes drawn in the diagram. |
 
 ## Pan & zoom
 
@@ -62,7 +31,8 @@ Every shape takes a `class` list, just like text. A `class` emits SVG paint prop
 ![diagram](../_wdoc/wdoc_diagrams-diagram-2.svg)
 
 ```wcl
-// Declared at the top level (apply site-wide). Quote hyphenated names.
+// Declared at the top level (apply site-wide). Hyphenated names may be
+// written bare (`class dgm-box`) or quoted.
 class "dgm-box" {
   fill         = "#5e81ac"
   stroke       = "#2e3440"

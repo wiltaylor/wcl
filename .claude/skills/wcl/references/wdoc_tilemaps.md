@@ -15,17 +15,7 @@ tileset platformer {
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `name` | `identifier` | yes | Reference name (the inline label), e.g. `dungeon`. |
-| `source` | `utf8` | yes | Image path, relative to the build entry file. |
-| `tile_width` | `i64` | yes | Source tile pixel width. |
-| `tile_height` | `i64` | yes | Source tile pixel height. |
-| `columns` | `i64` | no | Tiles per sheet row — maps an index to a coordinate (auto-fit from the sheet width otherwise). |
-| `margin` | `i64` | no | Pixel border around the whole sheet (default `0`). |
-| `spacing` | `i64` | no | Pixel gap between tiles (default `0`). |
-| `image_width` | `i64` | no | Override the auto-detected sheet pixel width. |
-| `image_height` | `i64` | no | Override the auto-detected sheet pixel height. |
+
 
 ## Symbolic maps
 
@@ -78,26 +68,7 @@ diagram { width = 320  height = 44
 
 ## Fields
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `set` | `identifier` | yes | Name of the `tileset` to slice from. |
-| `tiles` | `list<list<i64>>` | no | Numeric grid — `list<list<i64>>`, one inner list per row. |
-| `map` | `list<utf8>` | no | Symbolic grid — `list<utf8>` rows resolved through the `tile` legend (wins over `tiles`). |
-| `empty` | `i64` | no | Index meaning "no tile" (default `-1`). |
-| `scale` | `f64` | no | Display scale (default `1.0`). |
-| `smooth` | `bool` | no | Anti-alias instead of the default `image-rendering: pixelated`. |
-| `x` | `f64` | no | Position x within the enclosing `diagram` / `container`. |
-| `y` | `f64` | no | Position y within the enclosing `diagram` / `container`. |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional style classes. |
-| `anchor_left` | `f64` | no | Diagram anchor insets (left/right/top/bottom), like any `SvgBlock`. |
-| `connect_points` | `list<AnchorSide>` | no | Diagram edge-attach sides, like any `SvgBlock`. |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `legend` | `tile` | yes | Glyph legend — `tile "#" { index = N }` entries mapping a glyph to a tile index. |
 
 `scale` sizes the display; `image-rendering: pixelated` is the default (via the always-injected `TILEMAP_CSS`), and `smooth = true` opts into the browser's default smoothing. The sheet is copied to `_wdoc/`, so tiles resolve when served.
 

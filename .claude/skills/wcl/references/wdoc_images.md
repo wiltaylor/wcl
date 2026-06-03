@@ -40,16 +40,4 @@ diagram {
 
 ## Fields
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `source` | `utf8` | yes | Image source (the inline label): a doc-relative path, a URL, or a `data:` URI. |
-| `alt` | `utf8` | no | Alt text for the `<img>` (page form). |
-| `width` | `f64` | no | Display width; the natural size is used when omitted. |
-| `height` | `f64` | no | Display height; the natural size is used when omitted. |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional style classes. |
-| `x` | `f64` | no | Placement x when used inside a diagram (ignored on a page). |
-| `y` | `f64` | no | Placement y when used inside a diagram (ignored on a page). |
-| `scale` | `f64` | no | Extra size multiplier (diagram form). |
-| `anchor_left` | `f64` | no | Diagram anchor insets (left/right/top/bottom), like any shape. |
-| `connect_points` | `list<AnchorSide>` | no | Diagram edge-attach sides, like any shape. |
+

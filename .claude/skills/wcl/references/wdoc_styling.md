@@ -38,7 +38,7 @@ Live — the `sty-accent` class declared at the top of this page, applied to a s
 
 ### Hyphenated names
 
-Class names that contain hyphens (or any non-identifier character) must be quoted: `class "wdoc-series-1" { fill = "#88c0d0" }`. This is how you override built-in classes like the chart palette or callout styles.
+Hyphenated class names may be written bare — `class wdoc-series-1 { fill = "#88c0d0" }` — or quoted; both are equivalent. (Names with other non-identifier characters, like spaces, still need quoting.) This is how you override built-in classes like the chart palette or callout styles.
 
 > [!NOTE]
 > **Site scope**

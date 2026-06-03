@@ -4,21 +4,7 @@ A `page` block declares one rendered HTML page. Each page joins one or more site
 
 ## Fields
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `name` | `identifier` | yes | The page name (the inline label); becomes the output filename (`<name>.html` / `.md`). |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `title` | `utf8` | no | Human-readable page title; sets the browser tab title (`<title>`). Falls back to the page name. |
-| `template` | `symbol` | no | Template to wrap the page in; overrides the site's `default_template`. |
-| `sites` | `list<symbol>` | no | Named sites this page belongs to; absent ⇒ every site. |
-| `start` | `bool` | no | Mark this page as the site's start page (served at `/`). |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `frontmatter` | `frontmatter` | no | Optional YAML front matter for the Markdown target (Markdown only). |
-| `children` | `WdocBlock` | yes | The page's content blocks. |
 
 ## A page
 

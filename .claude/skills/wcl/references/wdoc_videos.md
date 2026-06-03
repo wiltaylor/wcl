@@ -53,12 +53,4 @@ A PDF can't play video, so `wcl wdoc pdf` renders the poster thumbnail and — f
 
 ## Fields
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `source` | `utf8` | yes | Video source (the label slot) — a doc-relative path, or a YouTube / Vimeo / other URL. |
-| `poster` | `utf8` | no | Thumbnail shown before play — a doc-relative path or URL. Auto-derived for YouTube; otherwise a placeholder. |
-| `title` | `utf8` | no | Accessible label (and the iframe / link title). |
-| `width` | `f64` | no | Display size; responsive default if omitted. |
-| `height` | `f64` | no | Display size; responsive default if omitted. |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional class list. |
+

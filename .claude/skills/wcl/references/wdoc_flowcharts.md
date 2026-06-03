@@ -6,22 +6,7 @@ Flowchart shapes plus the layered auto-layout mode turn a `diagram` into a flowc
 
 These stdlib shapes lower to SVG primitives. They differ only in the shape drawn — `process`, `decision`, and `terminator` all take the same fields (shown here for `process`):
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `text` | `utf8` | yes | The shape's label (centred plain text). |
-| `x` | `f64` | no | Top-left x placement. Omit under `layout = :layered` — the layout decides. |
-| `y` | `f64` | no | Top-left y placement. Omit under `layout = :layered` — the layout decides. |
-| `width` | `f64` | no | Box width. |
-| `height` | `f64` | no | Box height. |
-| `fill` | `utf8` | no | Fill colour (defaults to a theme class if unset). |
-| `stroke` | `utf8` | no | Outline colour. |
-| `id` | `identifier` | no | Name used to connect the shape (`a -> b`). |
-| `class` | `list<utf8>` | no | Style classes — SVG paint via the `class` system. |
-| `connect_points` | `list<AnchorSide>` | no | Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to. |
-| `icon` | `utf8` | no | Icon-badge icon (a `pack.name`). |
-| `icon_size` | `f64` | no | Icon-badge size. |
-| `icon_pos` | `IconPos` | no | Icon-badge position (`:center` / `:top_left` / …). |
-| `icon_class` | `list<utf8>` | no | Icon-badge style classes. |
+
 
 ### process
 

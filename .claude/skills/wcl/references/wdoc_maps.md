@@ -50,24 +50,7 @@ diagram {
 
 Each `pin` is an icon dropped at `x` / `y` in the map's coordinate space (its `id` is the inline label and must be unique on the page). Style the marker with a `class` (recommended — themable, supports `dark` / `light`) or the one-off `color`. A pin's child blocks become a floating **card** anchored to the marker: click to open, click the `✕` or outside to close. The card body is arbitrary wdoc content — text, lists, callouts, code, images.
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `id` | `identifier` | yes | Pin id (the inline label) — links the pin to its card; page-unique. |
-| `x` | `f64` | yes | Marker x position, in the map's coordinate space. |
-| `y` | `f64` | yes | Marker y position, in the map's coordinate space. |
-| `icon` | `utf8` | no | Icon name (default `lucide.map-pin`); `set.name` or pair with `set`. |
-| `set` | `identifier` | no | Iconset name for a bare `icon`. |
-| `size` | `f64` | no | Marker size in map units (default `24`). |
-| `class` | `list<utf8>` | no | Themes the marker (`fill` / `stroke` / `color`, with `dark` / `light`). |
-| `card_class` | `list<utf8>` | no | Themes the card popup (`background` / `color` / `border`). |
-| `color` | `utf8` | no | One-off inline marker colour (sugar for a class). |
-| `title` | `utf8` | no | Optional card heading. |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `card` | `WdocBlock` | yes | The card body — any wdoc blocks. |
 
 ## Level-of-detail layers
 
@@ -111,37 +94,11 @@ diagram {
 
 Each `layer` takes:
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `source` | `utf8` | yes | Image file, or the tile folder when tiled. |
-| `cols` | `i64` | no | Tiles across (default `1` = a single image). |
-| `rows` | `i64` | no | Tiles down (default `1`). |
-| `pattern` | `utf8` | no | Tile filename pattern (default `{x}_{y}.png`, 0-based). |
-| `tile_size` | `i64` | no | Override the map's `tile_size` for this layer. |
+
 
 ## Fields
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `name` | `identifier` | no | Optional reference name (the inline label). |
-| `source` | `utf8` | no | Single whole-map image (the common, layer-less case). |
-| `width` | `f64` | yes | Map coordinate-space width — also the pin coordinate space. |
-| `height` | `f64` | yes | Map coordinate-space height — also the pin coordinate space. |
-| `tile_size` | `i64` | no | Tile pixel size for tiled layers (default `256`). |
-| `smooth` | `bool` | no | `image-rendering: smooth` (default) vs `pixelated` when `false`. |
-| `class` | `list<utf8>` | no | Themes the map group. |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `x` | `f64` | no | Placement x within the enclosing `diagram` / `container`. |
-| `y` | `f64` | no | Placement y within the enclosing `diagram` / `container`. |
-| `anchor_left` | `f64` | no | Diagram anchor insets (left/right/top/bottom), like any `SvgBlock`. |
-| `connect_points` | `list<AnchorSide>` | no | Diagram edge-attach sides, like any `SvgBlock`. |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `layers` | `layer` | yes | Level-of-detail image layers (omit for a single `source`). |
-| `pins` | `pin` | yes | Clickable markers with cards. |
 
 ## Theming
 

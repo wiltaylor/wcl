@@ -4,28 +4,7 @@ A `site` block configures one output site — its template, title, theme, and na
 
 ## Fields
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `name` | `identifier` | no | Optional site name (the label slot). Required with more than one site; names the output subdirectory referenced by `Page.sites`. |
-| `root` | `bool` | no | When `true`, this site renders at `/` (others go under `/<site>/`). |
-| `default_template` | `symbol` | no | `:webpage` (header + top nav), `:book` (sidebar + TOC), `:presentation` (slide deck), or `:ai_skill` (skill folder, Markdown-only — build with `wcl wdoc skill`). |
-| `title` | `utf8` | no | Site title shown in the header / sidebar. |
-| `icon` | `utf8` | no | Path to a favicon image (svg/png/ico), resolved relative to the document and copied into `_wdoc/`. Absent ⇒ a default WCL icon is used. |
-| `theme_toggle` | `bool` | no | When `true`, adds a light/dark toggle button. |
-| `theme` | `symbol` | no | Symbol naming a colour `theme` block (`:nord` …) — see Styling. |
-| `accent` | `symbol` | no | Symbol naming the accent hue (`:red`..`:pink`); default `:blue`. |
-| `ui_theme` | `symbol` | no | UI theme for `wf_*` wireframe elements (the mocked app's theme), separate from the document `theme`. Falls back to `theme`. |
-| `ui_accent` | `symbol` | no | Accent hue for `wf_*` wireframe elements; falls back to `accent`. |
-| `ui_mode` | `symbol` | no | Mode for `wf_*` wireframe elements — `:dark` (default) or `:light`. |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `toc` | `toc` | no | Chapter tree for the `book` template. |
-| `menu` | `menu` | no | Top navbar entries for the `webpage` template. |
-| `deck` | `deck` | no | Slide grid for the `presentation` template. |
-| `skill` | `skill` | no | Skill metadata for the `:ai_skill` target — populates SKILL.md's front matter. |
 
 ## webpage template
 

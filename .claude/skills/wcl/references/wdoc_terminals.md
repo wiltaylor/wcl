@@ -25,48 +25,11 @@ terminal {
 
 `terminal` fields:
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `cols` | `i64` | no | Grid width in cells (default `80`; a `.cast` header overrides it). |
-| `rows` | `i64` | no | Grid height in cells (default `24`; a `.cast` header overrides it). |
-| `font_size` | `f64` | no | Cell metric: font size. |
-| `line_height` | `f64` | no | Cell metric: line height. |
-| `palette` | `symbol` | no | Seed colours: `:default` (dark) or `:light`. |
-| `fg` | `utf8` | no | Explicit default foreground override. |
-| `bg` | `utf8` | no | Explicit default background override. |
-| `chrome` | `bool` | no | Draw a window title bar (default `true`). |
-| `title` | `utf8` | no | Title shown in the chrome bar. |
-| `text` | `utf8` | no | Inline content fed to the virtual terminal (ANSI included). |
-| `source` | `utf8` | no | Path to an asciinema `.cast` recording to replay. |
-| `autoplay` | `bool` | no | Replay control: start playing automatically. |
-| `loop` | `bool` | no | Replay control: loop playback. |
-| `speed` | `f64` | no | Replay control: playback speed multiplier. |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Style classes (the `class` themes the window `<div>`). |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `children` | `TermPrimitive` | yes | Placeable terminal primitives and widgets. |
 
 `term_text` fields:
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `content` | `utf8` | yes | The text (`@inline(0)`, so `term_text "hi" { … }`). |
-| `row` | `i64` | yes | 1-based grid row. |
-| `col` | `i64` | yes | 1-based grid column. |
-| `fg` | `utf8` | no | Foreground colour — ANSI name, 256 index, or `#hex`. |
-| `bg` | `utf8` | no | Background colour — ANSI name, 256 index, or `#hex`. |
-| `bold` | `bool` | no | Bold style. |
-| `dim` | `bool` | no | Dim style. |
-| `italic` | `bool` | no | Italic style. |
-| `underline` | `bool` | no | Underline style. |
-| `strike` | `bool` | no | Strikethrough style. |
-| `blink` | `bool` | no | Blink style. |
-| `inverse` | `bool` | no | Inverse (swap fg/bg) style. |
-| `conceal` | `bool` | no | Conceal (hide) style. |
+
 
 ## Inline text
 
@@ -121,17 +84,7 @@ A two-tone solid-block progress bar. `value` runs from `0` to `max` (default `10
 tui_progress "Upload" { row = 1  col = 1  value = 65 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `label` | `utf8` | no | Optional `@inline` caption to the left of the bar. |
-| `value` | `i64` | yes | Filled amount (clamped to `0`..`max`). |
-| `max` | `i64` | no | Scale maximum (default `100`). |
-| `width` | `i64` | no | Bar width in cells (default `24`). |
-| `show_value` | `bool` | no | Append a `NN%` readout (default `true`). |
-| `accent` | `utf8` | no | Fill colour. |
-| `muted` | `utf8` | no | Track colour. |
-| `row` | `i64` | yes | 1-based grid row. |
-| `col` | `i64` | yes | 1-based grid column. |
+
 
 ### tui_button
 
@@ -144,14 +97,7 @@ tui_button "Save" { row = 1  col = 1  accent = "green" }
 tui_button "Quit" { row = 1  col = 9  accent = "red" }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `label` | `utf8` | yes | Button text (`@inline`). |
-| `width` | `i64` | no | Total width (default = label + padding). |
-| `accent` | `utf8` | no | Fill colour (default `blue`). |
-| `fg` | `utf8` | no | Label colour (default `bright_white`). |
-| `row` | `i64` | yes | 1-based grid row. |
-| `col` | `i64` | yes | 1-based grid column. |
+
 
 ### tui_spinner
 
@@ -163,14 +109,7 @@ A single static spinner frame — pick the `kind` (`:braille` default, `:circle`
 tui_spinner "Building…" { row = 1  col = 1  frame = 2 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `label` | `utf8` | no | Optional `@inline` caption after the frame. |
-| `frame` | `i64` | no | Which frame index to show (default `0`). |
-| `kind` | `symbol` | no | Glyph set: `:dots`/`:braille` (default) / `:circle` / `:line`. |
-| `accent` | `utf8` | no | Frame colour. |
-| `row` | `i64` | yes | 1-based grid row. |
-| `col` | `i64` | yes | 1-based grid column. |
+
 
 ### tui_input
 
@@ -183,14 +122,7 @@ tui_input "Search projects" { row = 1  col = 1  focused = true }
 tui_input "Name" { row = 2  col = 1  value = "Ada Lovelace" }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `placeholder` | `utf8` | yes | Muted prompt shown when empty (`@inline`). |
-| `value` | `utf8` | no | Current text (overrides the placeholder). |
-| `focused` | `bool` | no | Draw a trailing cursor. |
-| `accent` | `utf8` | no | Bar / cursor colour. |
-| `row` | `i64` | yes | 1-based grid row. |
-| `col` | `i64` | yes | 1-based grid column. |
+
 
 ### tui_dropdown
 
@@ -208,16 +140,7 @@ tui_dropdown "Release build" { row = 1  col = 1  open = true
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `text` | `utf8` | yes | Selected / shown label (`@inline`). |
-| `items` | `list<utf8>` | no | Option list shown below the field when `open`. |
-| `selected` | `i64` | no | Highlighted item index (default: the item equal to `text`). |
-| `width` | `i64` | no | Field width (default: fits the label and longest item). |
-| `open` | `bool` | no | Drop the list down (and flip the caret). |
-| `accent` | `utf8` | no | Caret + selected-row colour. |
-| `row` | `i64` | yes | 1-based grid row. |
-| `col` | `i64` | yes | 1-based grid column. |
+
 
 ### tui_checkbox
 
@@ -230,14 +153,7 @@ tui_checkbox "Telemetry" { row = 1  col = 1  checked = true }
 tui_checkbox "Beta" { row = 2  col = 1 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `label` | `utf8` | yes | Checkbox caption (`@inline`). |
-| `checked` | `bool` | no | On/off state. |
-| `accent` | `utf8` | no | Checked colour. |
-| `muted` | `utf8` | no | Unchecked colour. |
-| `row` | `i64` | yes | 1-based grid row. |
-| `col` | `i64` | yes | 1-based grid column. |
+
 
 ### tui_radio
 
@@ -250,14 +166,7 @@ tui_radio "Dark"  { row = 1  col = 1  selected = true }
 tui_radio "Light" { row = 2  col = 1 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `label` | `utf8` | yes | Radio caption (`@inline`). |
-| `selected` | `bool` | no | Whether this option is chosen. |
-| `accent` | `utf8` | no | Selected colour. |
-| `muted` | `utf8` | no | Unselected colour. |
-| `row` | `i64` | yes | 1-based grid row. |
-| `col` | `i64` | yes | 1-based grid column. |
+
 
 ### tui_panel
 
@@ -272,21 +181,7 @@ tui_panel { row = 1  col = 1  width = 30  height = 6  title = "Status"
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `title` | `utf8` | no | Optional heading drawn into the top border. |
-| `width` | `i64` | yes | Box width in cells. |
-| `height` | `i64` | yes | Box height in cells. |
-| `border` | `symbol` | no | Border style: `:rounded` (default) / `:single` / `:double` / `:heavy` / `:ascii`. |
-| `accent` | `utf8` | no | Border colour. |
-| `row` | `i64` | yes | 1-based grid row. |
-| `col` | `i64` | yes | 1-based grid column. |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `children` | `TermPrimitive` | yes | `TermPrimitive` children, positioned relative to the panel. |
 
 ### tui_group
 
@@ -301,17 +196,7 @@ tui_group { row = 1  col = 1  title = "Options"
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `title` | `utf8` | no | Optional heading above the children. |
-| `row` | `i64` | yes | 1-based grid row. |
-| `col` | `i64` | yes | 1-based grid column. |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `children` | `TermPrimitive` | yes | `TermPrimitive` children, positioned relative to the group. |
 
 ### Custom widgets
 

@@ -15,11 +15,7 @@ p "A whole paragraph in one line."
 
 Its fields (generated from the schema with `type_table`):
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `text` | `utf8` | yes | The paragraph text (the inline label slot); inline patterns are applied. |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional style classes. |
+
 
 For a paragraph mixing several styled segments, use a `text` block holding `span`s — each `span` takes its own `class`.
 
@@ -82,12 +78,7 @@ RUST
 
 Its fields:
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `language` | `identifier` | yes | Language tag (the inline label slot). Picks the highlight grammar; an unknown tag falls back to plain text. |
-| `source` | `utf8` | yes | The code text — usually a raw heredoc (`<<'TAG'`). |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional class list (in addition to `code-block`). |
+
 
 wdoc highlights a wide range of languages (via syntect + two-face). The tag is the language name or a common file extension; WCL ships its own grammar, so `code wcl { … }` highlights too. Supported tags include:
 
@@ -133,31 +124,11 @@ list { style = :numbered
 
 The `list` block's fields:
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional style classes. |
-| `style` | `ListStyle` | no | `:bullet` (default → `<ul>`) or `:numbered` (→ `<ol>`). |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `items` | `li` | yes | The list items. |
 
 And each `li`:
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `text` | `utf8` | yes | Item text (the inline label); inline patterns apply. |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional style classes. |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `children` | `ListNode` | yes | Nested `li`s (a sublist), or a whole `list` block for a different style. |
 
 ## Callouts
 
@@ -186,10 +157,4 @@ The six built-in types ship their own accent. For a custom type, give a `class` 
 
 Its fields:
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `heading` | `utf8` | yes | Inline label — the coloured heading at the top of the callout. |
-| `body` | `utf8` | yes | The prose under the heading. Runs through the inline-pattern engine. |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Selects the type: `["note"]` / `["tip"]` / etc. May also carry user classes. |
-| `icon` | `utf8` | no | Override the default icon (any `pack.name` from a built-in or declared iconset). |
+

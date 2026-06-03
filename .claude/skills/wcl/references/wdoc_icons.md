@@ -44,32 +44,11 @@ p "We :heart: WCL."
 
 An `iconset`'s fields:
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `name` | `identifier` | yes | Reference name (the label slot), e.g. `ui` — used by `set = ui` and `:ui.name:`. |
-| `pack` | `utf8` | no | Bundled pack to read from (`lucide` / `bootstrap`); defaults to the set name. |
-| `size` | `utf8` | no | Default inline size for icons in this set (e.g. `"1em"`, `"20px"`). |
-| `color` | `utf8` | no | Default foreground — drives `currentColor`. |
-| `fill` | `utf8` | no | Optional explicit fill override. |
-| `background` | `utf8` | no | Optional background override. |
-| `class` | `list<utf8>` | no | Classes added to every icon from this set. |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `icons` | `icon_def` | yes | Per-icon override children (see below). |
 
 Each `icon_def` child overrides one named icon within the set:
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `name` | `identifier` | yes | Icon name (the file stem in the pack) — the label slot. |
-| `size` | `utf8` | no | Per-icon override of the set's default size. |
-| `color` | `utf8` | no | Per-icon override of the set's default foreground colour. |
-| `fill` | `utf8` | no | Per-icon override of the set's default fill. |
-| `background` | `utf8` | no | Per-icon override of the set's default background. |
-| `class` | `list<utf8>` | no | Per-icon classes added on top of the set defaults. |
+
 
 ## The placeable icon block
 
@@ -85,23 +64,7 @@ diagram { width = 120  height = 120
 
 Its fields:
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `name` | `identifier` | yes | Icon name (the label slot), optionally `set.name` (e.g. `lucide.compass`). |
-| `set` | `identifier` | no | Which declared iconset to read from (when more than one). |
-| `size` | `utf8` | no | Icon size, as on an iconset. |
-| `color` | `utf8` | no | Foreground colour, as on an iconset. |
-| `fill` | `utf8` | no | Fill override, as on an iconset. |
-| `background` | `utf8` | no | Background override, as on an iconset. |
-| `class` | `list<utf8>` | no | Style classes, as on an iconset. |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `x` | `f64` | no | Top-left placement (or use anchors). |
-| `y` | `f64` | no | Top-left placement (or use anchors). |
-| `width` | `f64` | no | Size in diagram units (default 24×24). |
-| `height` | `f64` | no | Size in diagram units (default 24×24). |
-| `scale` | `f64` | no | Extra multiplier on the size. |
-| `anchor_left` | `f64` | no | Diagram anchor insets, like any shape. |
-| `connect_points` | `list<AnchorSide>` | no | Diagram edge-attach sides, like any shape. |
+
 
 ## Icons as a shape badge
 

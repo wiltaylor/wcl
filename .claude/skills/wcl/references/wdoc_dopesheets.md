@@ -50,30 +50,7 @@ diagram { width = 96  height = 96
 
 ## Frame geometry
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `source` | `utf8` | yes | Spritesheet image path (the inline label), relative to the build entry file. |
-| `frame_width` | `i64` | yes | Size of one frame in the sheet (pixel width). |
-| `frame_height` | `i64` | yes | Size of one frame in the sheet (pixel height). |
-| `offset_x` | `i64` | no | Pixel offset to the first frame's left edge (default `0`). |
-| `offset_y` | `i64` | no | Pixel offset to the first frame's top edge (default `0`). |
-| `stride_x` | `i64` | no | Origin-to-origin x step between frames (default = `frame_width`). |
-| `stride_y` | `i64` | no | Origin-to-origin y step between frames (default = `frame_height`). |
-| `columns` | `i64` | no | Frames per sheet row (default: fit from the sheet width). |
-| `from` | `i64` | no | First frame index to play (default `0`). |
-| `to` | `i64` | no | Last frame index to play, inclusive (default: the last frame). |
-| `fps` | `f64` | no | Playback rate in frames/second (default `12`). |
-| `loop` | `bool` | no | Restart at the end (default `true`). |
-| `autoplay` | `bool` | no | Start playing on load (default `true`). |
-| `controls` | `bool` | no | Click play/pause toggle (default `true`). |
-| `smooth` | `bool` | no | Anti-alias instead of the default `image-rendering: pixelated`. |
-| `scale` | `f64` | no | Display scale (default `1.0`). |
-| `x` | `f64` | no | Position x within the enclosing `diagram` / `container`. |
-| `y` | `f64` | no | Position y within the enclosing `diagram` / `container`. |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional style classes. |
-| `anchor_left` | `f64` | no | Diagram anchor insets (left/right/top/bottom), like any `SvgBlock`. |
-| `connect_points` | `list<AnchorSide>` | no | Diagram edge-attach sides, like any `SvgBlock`. |
+
 
 ## Playback
 

@@ -18,11 +18,7 @@ TEX
 
 Its fields:
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `source` | `utf8` | yes | The LaTeX source — the inline label slot. `math "E=mc^2"` or a raw heredoc `math <<'TEX' … TEX`. |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional class list (e.g. to recolour or resize the equation). |
+
 
 ## Inline math
 

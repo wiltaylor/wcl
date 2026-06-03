@@ -62,31 +62,7 @@ diagram {
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `title` | `utf8` | yes | Titlebar caption (the inline label). |
-| `controls` | `bool` | no | Show the titlebar dots + close glyph (default `true`). |
-| `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
-| `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
-| `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
-| `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
-| `width` | `f64` | no | Advisory box width (the widget is normally content-measured). |
-| `height` | `f64` | no | Advisory box height (the widget is normally content-measured). |
-| `anchor_left` | `f64` | no | Fractional anchor (0–1) pinning the left edge to the parent box. |
-| `anchor_right` | `f64` | no | Fractional anchor (0–1) pinning the right edge to the parent box. |
-| `anchor_top` | `f64` | no | Fractional anchor (0–1) pinning the top edge to the parent box. |
-| `anchor_bottom` | `f64` | no | Fractional anchor (0–1) pinning the bottom edge to the parent box. |
-| `connect_points` | `list<AnchorSide>` | no | Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to. |
-| `theme` | `symbol` | no | Per-element UI-theme override naming a `theme` block (falls back to the site's `ui_*` theme, then the document theme). |
-| `accent` | `symbol` | no | Per-element accent hue override (falls back to the site / document theme). |
-| `mode` | `symbol` | no | Per-element mode override: `:dark` or `:light` (falls back to the site / document theme). |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `children` | `Widget` | yes | Any `Widget`s, stacked vertically. |
 
 ### wf_panel
 
@@ -103,30 +79,7 @@ diagram { width = 220  height = 120
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `title` | `utf8` | no | Optional group caption. |
-| `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
-| `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
-| `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
-| `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
-| `width` | `f64` | no | Advisory box width (the widget is normally content-measured). |
-| `height` | `f64` | no | Advisory box height (the widget is normally content-measured). |
-| `anchor_left` | `f64` | no | Fractional anchor (0–1) pinning the left edge to the parent box. |
-| `anchor_right` | `f64` | no | Fractional anchor (0–1) pinning the right edge to the parent box. |
-| `anchor_top` | `f64` | no | Fractional anchor (0–1) pinning the top edge to the parent box. |
-| `anchor_bottom` | `f64` | no | Fractional anchor (0–1) pinning the bottom edge to the parent box. |
-| `connect_points` | `list<AnchorSide>` | no | Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to. |
-| `theme` | `symbol` | no | Per-element UI-theme override naming a `theme` block (falls back to the site's `ui_*` theme, then the document theme). |
-| `accent` | `symbol` | no | Per-element accent hue override (falls back to the site / document theme). |
-| `mode` | `symbol` | no | Per-element mode override: `:dark` or `:light` (falls back to the site / document theme). |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `children` | `Widget` | yes | Any `Widget`s, stacked vertically. |
 
 ### wf_row
 
@@ -144,29 +97,7 @@ diagram { width = 320  height = 50
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
-| `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
-| `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
-| `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
-| `width` | `f64` | no | Advisory box width (the widget is normally content-measured). |
-| `height` | `f64` | no | Advisory box height (the widget is normally content-measured). |
-| `anchor_left` | `f64` | no | Fractional anchor (0–1) pinning the left edge to the parent box. |
-| `anchor_right` | `f64` | no | Fractional anchor (0–1) pinning the right edge to the parent box. |
-| `anchor_top` | `f64` | no | Fractional anchor (0–1) pinning the top edge to the parent box. |
-| `anchor_bottom` | `f64` | no | Fractional anchor (0–1) pinning the bottom edge to the parent box. |
-| `connect_points` | `list<AnchorSide>` | no | Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to. |
-| `theme` | `symbol` | no | Per-element UI-theme override naming a `theme` block (falls back to the site's `ui_*` theme, then the document theme). |
-| `accent` | `symbol` | no | Per-element accent hue override (falls back to the site / document theme). |
-| `mode` | `symbol` | no | Per-element mode override: `:dark` or `:light` (falls back to the site / document theme). |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `children` | `Widget` | yes | Any `Widget`s, laid out left-to-right. |
 
 ### wf_column
 
@@ -183,29 +114,7 @@ diagram { width = 220  height = 80
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
-| `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
-| `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
-| `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
-| `width` | `f64` | no | Advisory box width (the widget is normally content-measured). |
-| `height` | `f64` | no | Advisory box height (the widget is normally content-measured). |
-| `anchor_left` | `f64` | no | Fractional anchor (0–1) pinning the left edge to the parent box. |
-| `anchor_right` | `f64` | no | Fractional anchor (0–1) pinning the right edge to the parent box. |
-| `anchor_top` | `f64` | no | Fractional anchor (0–1) pinning the top edge to the parent box. |
-| `anchor_bottom` | `f64` | no | Fractional anchor (0–1) pinning the bottom edge to the parent box. |
-| `connect_points` | `list<AnchorSide>` | no | Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to. |
-| `theme` | `symbol` | no | Per-element UI-theme override naming a `theme` block (falls back to the site's `ui_*` theme, then the document theme). |
-| `accent` | `symbol` | no | Per-element accent hue override (falls back to the site / document theme). |
-| `mode` | `symbol` | no | Per-element mode override: `:dark` or `:light` (falls back to the site / document theme). |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `children` | `Widget` | yes | Any `Widget`s, stacked top-to-bottom. |
 
 ### wf_grid
 
@@ -226,30 +135,7 @@ diagram { width = 280  height = 120
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `columns` | `i64` | yes | Number of equal-width columns; children flow across the rows. |
-| `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
-| `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
-| `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
-| `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
-| `width` | `f64` | no | Advisory box width (the widget is normally content-measured). |
-| `height` | `f64` | no | Advisory box height (the widget is normally content-measured). |
-| `anchor_left` | `f64` | no | Fractional anchor (0–1) pinning the left edge to the parent box. |
-| `anchor_right` | `f64` | no | Fractional anchor (0–1) pinning the right edge to the parent box. |
-| `anchor_top` | `f64` | no | Fractional anchor (0–1) pinning the top edge to the parent box. |
-| `anchor_bottom` | `f64` | no | Fractional anchor (0–1) pinning the bottom edge to the parent box. |
-| `connect_points` | `list<AnchorSide>` | no | Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to. |
-| `theme` | `symbol` | no | Per-element UI-theme override naming a `theme` block (falls back to the site's `ui_*` theme, then the document theme). |
-| `accent` | `symbol` | no | Per-element accent hue override (falls back to the site / document theme). |
-| `mode` | `symbol` | no | Per-element mode override: `:dark` or `:light` (falls back to the site / document theme). |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `children` | `Widget` | yes | Any `Widget`s, flowed across the grid. |
 
 ## Controls
 
@@ -265,24 +151,7 @@ diagram { width = 220  height = 30
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `text` | `utf8` | yes | The label text (the inline label). |
-| `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
-| `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
-| `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
-| `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
-| `width` | `f64` | no | Advisory box width (the widget is normally content-measured). |
-| `height` | `f64` | no | Advisory box height (the widget is normally content-measured). |
-| `anchor_left` | `f64` | no | Fractional anchor (0–1) pinning the left edge to the parent box. |
-| `anchor_right` | `f64` | no | Fractional anchor (0–1) pinning the right edge to the parent box. |
-| `anchor_top` | `f64` | no | Fractional anchor (0–1) pinning the top edge to the parent box. |
-| `anchor_bottom` | `f64` | no | Fractional anchor (0–1) pinning the bottom edge to the parent box. |
-| `connect_points` | `list<AnchorSide>` | no | Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to. |
-| `theme` | `symbol` | no | Per-element UI-theme override naming a `theme` block (falls back to the site's `ui_*` theme, then the document theme). |
-| `accent` | `symbol` | no | Per-element accent hue override (falls back to the site / document theme). |
-| `mode` | `symbol` | no | Per-element mode override: `:dark` or `:light` (falls back to the site / document theme). |
+
 
 ### wf_button
 
@@ -300,25 +169,7 @@ diagram { width = 320  height = 50
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `text` | `utf8` | yes | Button caption (the inline label). |
-| `icon` | `utf8` | no | Optional leading glyph as `pack.name`, e.g. `"lucide.check"`. |
-| `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
-| `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
-| `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
-| `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
-| `width` | `f64` | no | Advisory box width (the widget is normally content-measured). |
-| `height` | `f64` | no | Advisory box height (the widget is normally content-measured). |
-| `anchor_left` | `f64` | no | Fractional anchor (0–1) pinning the left edge to the parent box. |
-| `anchor_right` | `f64` | no | Fractional anchor (0–1) pinning the right edge to the parent box. |
-| `anchor_top` | `f64` | no | Fractional anchor (0–1) pinning the top edge to the parent box. |
-| `anchor_bottom` | `f64` | no | Fractional anchor (0–1) pinning the bottom edge to the parent box. |
-| `connect_points` | `list<AnchorSide>` | no | Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to. |
-| `theme` | `symbol` | no | Per-element UI-theme override naming a `theme` block (falls back to the site's `ui_*` theme, then the document theme). |
-| `accent` | `symbol` | no | Per-element accent hue override (falls back to the site / document theme). |
-| `mode` | `symbol` | no | Per-element mode override: `:dark` or `:light` (falls back to the site / document theme). |
+
 
 ### wf_input
 
@@ -335,25 +186,7 @@ diagram { width = 240  height = 90
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `placeholder` | `utf8` | yes | Greyed prompt shown when empty (the inline label). |
-| `value` | `utf8` | no | Filled value (renders solid, replacing the placeholder). |
-| `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
-| `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
-| `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
-| `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
-| `width` | `f64` | no | Advisory box width (the widget is normally content-measured). |
-| `height` | `f64` | no | Advisory box height (the widget is normally content-measured). |
-| `anchor_left` | `f64` | no | Fractional anchor (0–1) pinning the left edge to the parent box. |
-| `anchor_right` | `f64` | no | Fractional anchor (0–1) pinning the right edge to the parent box. |
-| `anchor_top` | `f64` | no | Fractional anchor (0–1) pinning the top edge to the parent box. |
-| `anchor_bottom` | `f64` | no | Fractional anchor (0–1) pinning the bottom edge to the parent box. |
-| `connect_points` | `list<AnchorSide>` | no | Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to. |
-| `theme` | `symbol` | no | Per-element UI-theme override naming a `theme` block (falls back to the site's `ui_*` theme, then the document theme). |
-| `accent` | `symbol` | no | Per-element accent hue override (falls back to the site / document theme). |
-| `mode` | `symbol` | no | Per-element mode override: `:dark` or `:light` (falls back to the site / document theme). |
+
 
 ### wf_dropdown
 
@@ -367,24 +200,7 @@ diagram { width = 200  height = 44
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `text` | `utf8` | yes | The selected option label (the inline label). |
-| `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
-| `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
-| `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
-| `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
-| `width` | `f64` | no | Advisory box width (the widget is normally content-measured). |
-| `height` | `f64` | no | Advisory box height (the widget is normally content-measured). |
-| `anchor_left` | `f64` | no | Fractional anchor (0–1) pinning the left edge to the parent box. |
-| `anchor_right` | `f64` | no | Fractional anchor (0–1) pinning the right edge to the parent box. |
-| `anchor_top` | `f64` | no | Fractional anchor (0–1) pinning the top edge to the parent box. |
-| `anchor_bottom` | `f64` | no | Fractional anchor (0–1) pinning the bottom edge to the parent box. |
-| `connect_points` | `list<AnchorSide>` | no | Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to. |
-| `theme` | `symbol` | no | Per-element UI-theme override naming a `theme` block (falls back to the site's `ui_*` theme, then the document theme). |
-| `accent` | `symbol` | no | Per-element accent hue override (falls back to the site / document theme). |
-| `mode` | `symbol` | no | Per-element mode override: `:dark` or `:light` (falls back to the site / document theme). |
+
 
 ### wf_checkbox
 
@@ -401,25 +217,7 @@ diagram { width = 240  height = 70
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `label` | `utf8` | yes | Checkbox caption (the inline label). |
-| `checked` | `bool` | no | On/off state; `true` fills the box with a tick. |
-| `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
-| `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
-| `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
-| `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
-| `width` | `f64` | no | Advisory box width (the widget is normally content-measured). |
-| `height` | `f64` | no | Advisory box height (the widget is normally content-measured). |
-| `anchor_left` | `f64` | no | Fractional anchor (0–1) pinning the left edge to the parent box. |
-| `anchor_right` | `f64` | no | Fractional anchor (0–1) pinning the right edge to the parent box. |
-| `anchor_top` | `f64` | no | Fractional anchor (0–1) pinning the top edge to the parent box. |
-| `anchor_bottom` | `f64` | no | Fractional anchor (0–1) pinning the bottom edge to the parent box. |
-| `connect_points` | `list<AnchorSide>` | no | Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to. |
-| `theme` | `symbol` | no | Per-element UI-theme override naming a `theme` block (falls back to the site's `ui_*` theme, then the document theme). |
-| `accent` | `symbol` | no | Per-element accent hue override (falls back to the site / document theme). |
-| `mode` | `symbol` | no | Per-element mode override: `:dark` or `:light` (falls back to the site / document theme). |
+
 
 ### wf_radio
 
@@ -436,25 +234,7 @@ diagram { width = 160  height = 70
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `label` | `utf8` | yes | Radio caption (the inline label). |
-| `selected` | `bool` | no | Whether this option is chosen. |
-| `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
-| `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
-| `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
-| `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
-| `width` | `f64` | no | Advisory box width (the widget is normally content-measured). |
-| `height` | `f64` | no | Advisory box height (the widget is normally content-measured). |
-| `anchor_left` | `f64` | no | Fractional anchor (0–1) pinning the left edge to the parent box. |
-| `anchor_right` | `f64` | no | Fractional anchor (0–1) pinning the right edge to the parent box. |
-| `anchor_top` | `f64` | no | Fractional anchor (0–1) pinning the top edge to the parent box. |
-| `anchor_bottom` | `f64` | no | Fractional anchor (0–1) pinning the bottom edge to the parent box. |
-| `connect_points` | `list<AnchorSide>` | no | Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to. |
-| `theme` | `symbol` | no | Per-element UI-theme override naming a `theme` block (falls back to the site's `ui_*` theme, then the document theme). |
-| `accent` | `symbol` | no | Per-element accent hue override (falls back to the site / document theme). |
-| `mode` | `symbol` | no | Per-element mode override: `:dark` or `:light` (falls back to the site / document theme). |
+
 
 ### wf_toggle
 
@@ -471,47 +251,13 @@ diagram { width = 220  height = 70
 }
 ```
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `label` | `utf8` | no | Optional trailing caption (the inline label). |
-| `on` | `bool` | no | Switch state; `true` slides the knob across. |
-| `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
-| `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
-| `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
-| `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
-| `width` | `f64` | no | Advisory box width (the widget is normally content-measured). |
-| `height` | `f64` | no | Advisory box height (the widget is normally content-measured). |
-| `anchor_left` | `f64` | no | Fractional anchor (0–1) pinning the left edge to the parent box. |
-| `anchor_right` | `f64` | no | Fractional anchor (0–1) pinning the right edge to the parent box. |
-| `anchor_top` | `f64` | no | Fractional anchor (0–1) pinning the top edge to the parent box. |
-| `anchor_bottom` | `f64` | no | Fractional anchor (0–1) pinning the bottom edge to the parent box. |
-| `connect_points` | `list<AnchorSide>` | no | Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to. |
-| `theme` | `symbol` | no | Per-element UI-theme override naming a `theme` block (falls back to the site's `ui_*` theme, then the document theme). |
-| `accent` | `symbol` | no | Per-element accent hue override (falls back to the site / document theme). |
-| `mode` | `symbol` | no | Per-element mode override: `:dark` or `:light` (falls back to the site / document theme). |
+
 
 ## Common fields
 
 Every widget extends a shared `Widget` interface — its diagram placement geometry (`x` / `y` / anchors / `connect_points`) plus the per-element theming hints:
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
-| `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
-| `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
-| `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
-| `width` | `f64` | no | Advisory box width (the widget is normally content-measured). |
-| `height` | `f64` | no | Advisory box height (the widget is normally content-measured). |
-| `anchor_left` | `f64` | no | Fractional anchor (0–1) pinning the left edge to the parent box. |
-| `anchor_right` | `f64` | no | Fractional anchor (0–1) pinning the right edge to the parent box. |
-| `anchor_top` | `f64` | no | Fractional anchor (0–1) pinning the top edge to the parent box. |
-| `anchor_bottom` | `f64` | no | Fractional anchor (0–1) pinning the bottom edge to the parent box. |
-| `connect_points` | `list<AnchorSide>` | no | Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to. |
-| `theme` | `symbol` | no | Per-element UI-theme override naming a `theme` block (falls back to the site's `ui_*` theme, then the document theme). |
-| `accent` | `symbol` | no | Per-element accent hue override (falls back to the site / document theme). |
-| `mode` | `symbol` | no | Per-element mode override: `:dark` or `:light` (falls back to the site / document theme). |
+
 
 ## Custom widgets
 

@@ -33,14 +33,4 @@ Columns can hold any wdoc content — paragraphs, headings, callouts, code block
 
 ## Fields
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `widths` | `list<f64>` | yes | One CSS percentage per child slot (e.g. `[50.0, 50.0]`). |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional class list applied to the whole column group. |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `children` | `WdocBlock` | yes | Any wdoc blocks — each consecutive block fills the next column slot. |

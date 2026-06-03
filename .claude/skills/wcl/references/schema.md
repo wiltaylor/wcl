@@ -6,7 +6,7 @@ Decorators (written `@name` or `@name(args)`) attach schema metadata to declarat
 
 | Decorator | On | Meaning |
 | --- | --- | --- |
-| `@document` | type | Marks the document root schema (one per namespace) |
+| `@document` | type | Marks the document root schema (composes per namespace — see below) |
 | `@block("kind")` | type | Makes the type a nestable block of that kind |
 | `@table("kind")` | type | Row schema for pipe-table syntax |
 | `@schemaless` | type | Opts a type out of root validation, allowing multiple decorators / reflection |
@@ -45,6 +45,27 @@ Given that schema, this document validates: each `service` block contributes a `
 service "web" { region = "us-east-1" }
 service "api" { port = 9090u32  region = "eu-west-1" }
 ```
+
+## Composing document schemas
+
+Several `@document` schemas can govern the same namespace, and they **merge**: a top-level field or block is legal if **any** of them declares it. This lets you import a library that ships its own `@document` (for instance wdoc's `Site`) and still add your own top-level tags — just declare your own `@document` at the root.
+
+```wcl
+import <wdoc.wcl>            // brings in wdoc's library @document
+
+@document
+type ProjectDoc {           // your own root schema — merges with wdoc's
+  @children("project_meta") metas: list<ProjectMeta>
+}
+
+@block("project_meta")
+type ProjectMeta { @inline(0) id: identifier  owner: utf8 }
+
+project_meta info { owner = "Wil" }   // your tag, alongside wdoc pages
+page index { text { span "Hello" {} } }
+```
+
+Imported (library) `@document` schemas merge silently, so importing several modules that each ship one is fine. Only a **second root-authored** `@document` in the same namespace is an error — you get one root schema, which composes with whatever the imports provide.
 
 > [!NOTE]
 > **Reflection**

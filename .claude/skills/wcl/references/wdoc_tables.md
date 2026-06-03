@@ -27,9 +27,4 @@ Cells are expressions in the row schema's field positions. utf8 cells run throug
 
 ## Fields
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional class list applied to the `<table>` (e.g. to override `wdoc-table`). |
-| `header` | `list<utf8>` | no | Optional header row for the computed-table form (omit for a header-less table). |
-| `rows` | `list<list<utf8>>` | no | The pipe-row data (or computed rows) — with pipe syntax the first row is the header, the rest are body rows. |
+

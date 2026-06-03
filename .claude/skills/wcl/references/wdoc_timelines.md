@@ -54,29 +54,7 @@ diagram { width = 300  height = 320
 
 ## Fields
 
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| `x` | `f64` | no | Timeline x position within the enclosing `diagram`. |
-| `y` | `f64` | no | Timeline y position within the enclosing `diagram`. |
-| `width` | `f64` | no | Timeline width — match the enclosing `diagram`. |
-| `height` | `f64` | no | Timeline height — match the enclosing `diagram`. |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional style classes. |
-| `title` | `utf8` | no | Timeline title. |
-| `direction` | `symbol` | no | Axis direction: `:horizontal` (default) or `:vertical`. |
-| `unit` | `symbol` | no | Tick granularity: `:minutes` / `:hours` / `:days` / `:weeks` / `:months` / `:years` (auto from the span when omitted). |
-| `start` | `utf8` | no | ISO date scale start (auto-fits from the items when omitted). |
-| `end` | `utf8` | no | ISO date scale end (auto-fits from the items when omitted). |
-| `every` | `i64` | no | Override the tick interval in `unit`s (auto ~6–12 ticks when omitted). |
-| `phases` | `list<TimelinePhase>` | no | Dated bands — `list<TimelinePhase>`, each `{ label, from, to }`. |
-| `items` | `list<TimelineItem>` | no | Dated point events — `list<TimelineItem>`, each `{ label, on }` (auto-alternates side; add `side: :near\|:far` to pin one). |
-| `connect_points` | `list<AnchorSide>` | no | Diagram edge-attach sides, like any shape. |
 
-#### Child blocks
-
-| Slot | Accepts | Multiple | Description |
-| --- | --- | --- | --- |
-| `cards` | `card` | yes | Rich-text event cards, each pinned to a date via `on`. |
 
 ## Phases
 
