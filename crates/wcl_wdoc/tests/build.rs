@@ -1168,6 +1168,70 @@ page index {
 }
 
 #[test]
+fn build_node_table_renders_rows_and_attaches_edge_to_a_row() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("node_table.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram {
+    width   = 400
+    height  = 200
+    routing = :straight
+    node_table {
+      id = users
+      x = 20.0  y = 20.0  width = 140.0
+      title = "users"
+      node_row { id = users_id    p "id: int" }
+      node_row { id = users_name  p "name: text" }
+    }
+    rect {
+      id = box
+      x = 300.0  y = 60.0  width = 60.0  height = 40.0
+      fill = "#abc"
+    }
+    // Targets the SECOND row by id — its east anchor (160,93) is
+    // distinct from the whole-table east midpoint (160,64), proving
+    // the edge attaches to the row, not the box.
+    box -> users_name
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Frame: 140 wide, derived height = header(28) + 2*row(30) = 88.
+    assert!(
+        html.contains("<rect x=\"20\" y=\"20\" width=\"140\" height=\"88\"")
+            && html.contains("class=\"wdoc-node-table-frame\""),
+        "missing node_table frame:\n{html}"
+    );
+    // Title header + row bodies render as foreignObject HTML.
+    assert!(
+        html.contains("class=\"wdoc-node-table-title\"") && html.contains("users"),
+        "missing title header:\n{html}"
+    );
+    assert!(
+        html.contains("class=\"wdoc-node-row\"") && html.contains("name: text"),
+        "missing row body content:\n{html}"
+    );
+    // Per-row connection markers (left + right by default).
+    assert!(
+        html.contains("class=\"wdoc-node-table-port\""),
+        "missing per-row port markers:\n{html}"
+    );
+    // The edge attaches at the SECOND row's east edge (160,93), not the
+    // table's outer midpoint (160,64) — the core per-row-port feature.
+    assert!(
+        html.contains("x2=\"160\" y2=\"93\""),
+        "expected edge to attach at row users_name east (160,93):\n{html}"
+    );
+}
+
+#[test]
 fn build_routes_around_obstacle() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("obstacle.wcl");

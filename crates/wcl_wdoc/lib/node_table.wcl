@@ -1,0 +1,93 @@
+// ── Row-table shape (database / class diagrams) ────────────────────
+//
+// A `node_table` is a diagram shape made of a titled header plus a stack
+// of rows. Each row holds arbitrary wdoc content (like a `card` body) and
+// exposes its own connection point(s), so an edge can attach to a single
+// row — a foreign-key column, a class field — rather than the whole box.
+// This makes it the natural shape for database / ER tables and UML class
+// diagrams.
+//
+// Like `card` / `map`, it is special-cased in the renderer (its `lower` is
+// a stub): each row's body is HTML produced by the block renderer + inline
+// engine, wrapped in an SVG `<foreignObject>`; the frame, row separators
+// and per-row port markers are SVG primitives (see src/node_table.rs).
+//
+// Per-row connectivity reuses the existing edge machinery: a row with an
+// `id` is registered as its own sub-shape, so `tbl_row -> other` resolves
+// and the standard west/east anchor logic lands the edge on the row's edge.
+
+namespace wdoc
+
+@block("node_table")
+type NodeTable extends SvgBlock {
+  // Free placement in a diagram / container (anchors like `rect`).
+  @doc("Top-left x placement in the diagram (or use anchors).")
+  x = 0.0
+  @doc("Top-left y placement in the diagram (or use anchors).")
+  y = 0.0
+  @doc("Table width (default 200). Height is derived from the rows.")
+  width = 200.0
+  @doc("Diagram anchor insets (left/right/top/bottom), like any shape.")
+  anchor_left: f64?
+  @hidden anchor_right: f64?
+  @hidden anchor_top: f64?
+  @hidden anchor_bottom: f64?
+
+  @doc("Optional header title (table / class name). Omit for a header-less table.")
+  title: utf8?
+  @doc("Header row height when a `title` is set (default 28).")
+  header_height = 28.0
+  @doc("Fixed height of every row (default 30). The renderer can't measure HTML, so rows don't auto-size.")
+  row_height = 30.0
+
+  @doc("Optional explicit HTML id (edge target for the whole table).")
+  id: identifier?
+  @doc("Optional style classes (applied to the frame).")
+  class: list<utf8>?
+  @doc("Whole-table edge-attach sides (default all four). Per-row sides come from each `node_row`.")
+  connect_points: list<AnchorSide>?
+
+  @doc("The table rows, top to bottom.")
+  @children("node_row") rows: list<NodeRow>
+
+  // Stub: the rows + frame are rendered in Rust (see src/node_table.rs).
+  lower = fn(t: NodeTable) -> list<SvgFundamental> []
+}
+
+@block("node_row")
+type NodeRow extends SvgBlock {
+  @doc("Row id — the edge target for connecting to this row (`fk -> users_id`).")
+  id: identifier?
+  @doc("Optional style classes (applied to the row content).")
+  class: list<utf8>?
+  @doc("Sides this row exposes a connection point + marker on (default `[:west, :east]`).")
+  connect_points: list<AnchorSide>?
+  @doc("The row's rich content (paragraphs, code, lists…).")
+  @children(WdocBlock) body: list<WdocBlock>
+
+  // Stub: a row's HTML body is rendered by its parent `node_table` in Rust.
+  lower = fn(r: NodeRow) -> list<SvgFundamental> []
+}
+
+// Default node_table styling. Bare-class selectors so user `class`es win,
+// neutral defaults and no `var(--wdoc-*)` (so a `site`-less doc stays
+// unthemed); a themed site recolours these via render/theme.rs.
+stylesheet "wdoc-node-table" {
+  css = <<CSS
+    .wdoc-node-table-frame { fill: #262b33; stroke: #444; }
+    .wdoc-node-table-sep   { stroke: #444; }
+    .wdoc-node-table-port  { fill: #7aa2c0; stroke: #444; }
+    .wdoc-node-table-title {
+      box-sizing: border-box; height: 100%; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0 0.4rem; font-size: 0.85rem; font-weight: 600; color: #e6e6e6;
+    }
+    .wdoc-node-row {
+      box-sizing: border-box; height: 100%; overflow: hidden;
+      display: flex; align-items: center;
+      padding: 0 0.5rem; font-size: 0.8rem; line-height: 1.3; color: #e6e6e6;
+    }
+    .wdoc-node-row > :first-child { margin-top: 0; }
+    .wdoc-node-row > :last-child  { margin-bottom: 0; }
+    CSS
+}

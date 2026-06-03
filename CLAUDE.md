@@ -48,8 +48,8 @@ Capability summary per crate; the reference pages above carry the detail.
 `<kind>_lower` fn returning `list<SvgFundamental | HtmlFundamental | TermFundamental>`,
 which the renderer recurses (depth-limited) until only fundamentals remain — this is how
 user-declarable `@block(...) extends SvgBlock` (etc.) shapes plug in. A handful of blocks
-(terminal, card, timeline, tilemap, dopesheet, map, wireframe widgets, icons, math, code,
-table, list) are instead **special-cased in Rust** with stub WCL `lower`s, because their
+(terminal, card, node_table, timeline, tilemap, dopesheet, map, wireframe widgets, icons,
+math, code, table, list) are instead **special-cased in Rust** with stub WCL `lower`s, because their
 output (calendar math, ANSI grids, external-image crops, LaTeX, syntax highlighting,
 measured widget layout, valid nested list HTML) isn't expressible in WCL. The wireframe
 `wf_*` family `extends SvgBlock`, so a widget is a diagram shape (placed by `x`/`y`,
@@ -68,6 +68,7 @@ connectable by edges), not a page block. Everything deeper → the doc page or t
 | diagrams + layout/routing | `src/{layered,force,routing}.rs`, `src/render/` | `diagram-core.wcl`, `flowchart.wcl` | `diagrams.wcl`, `flowcharts.wcl`, `connections.wcl` |
 | charts | (pure-WCL) | `charts.wcl` | `charts.wcl` |
 | cards | `src/card.rs` | `card.wcl` | `diagrams.wcl` |
+| node tables (DB / class, per-row ports) | `src/node_table.rs` | `node_table.wcl` | `primitives.wcl` |
 | timelines | `src/timeline.rs` | `timeline.wcl` | `timelines.wcl` |
 | terminals / TUI | `src/terminal/` | `terminal.wcl`, `tui.wcl` | `terminals.wcl` |
 | tilemaps | `src/tileset.rs` | `tilemap.wcl` | `tilemaps.wcl` |

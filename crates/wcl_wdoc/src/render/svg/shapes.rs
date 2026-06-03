@@ -70,6 +70,38 @@ pub(crate) fn collect_shape_positions(
             let (x, y, w, h) = resolve_rect_box(block, parent_w, parent_h);
             record(block, (tx + x, ty + y, w, h), out);
         }
+        // A `node_table` registers its whole-box anchors *and* each id'd
+        // row as its own sub-shape — so an edge can target a single row
+        // (`fk -> users_id`) and the standard anchor logic lands it on the
+        // row's west/east edge. The row's exposed sides come from
+        // `node_table::row_sides` (the same source the markers use), so the
+        // anchor and its visible marker always coincide.
+        "node_table" => {
+            let (x, y, w, h) = crate::node_table::node_table_bbox(block, parent_w, parent_h);
+            record(block, (tx + x, ty + y, w, h), out);
+            for (row, (rx, ry, rw, rh)) in crate::node_table::row_boxes(block, x, y, w) {
+                let abs = (tx + rx, ty + ry, rw, rh);
+                out.bboxes.push(abs);
+                if let Some(id) = field_id(&row, "id") {
+                    let anchors = crate::node_table::row_sides(&row)
+                        .iter()
+                        .filter_map(|s| {
+                            let side = Side::from_symbol(s)?;
+                            let (ax, ay) = anchor_point_for_side(side, abs);
+                            Some((side, ax, ay))
+                        })
+                        .collect();
+                    out.positions.insert(
+                        id,
+                        ShapeMetrics {
+                            bbox: abs,
+                            anchors,
+                            round: false,
+                        },
+                    );
+                }
+            }
+        }
         "label" => {
             let own_x = field_f64(block, "x").unwrap_or(0.0);
             let own_y = field_f64(block, "y").unwrap_or(0.0);
@@ -302,6 +334,14 @@ pub(crate) fn render_shape(
         "dopesheet" => {
             return Some(dopesheet::render_dopesheet(
                 block, ctx.images, parent_w, parent_h,
+            ));
+        }
+        // A `node_table` is a titled box of rows whose bodies are HTML
+        // (foreignObject) and whose rows expose per-row connection points
+        // — special-cased like `card`.
+        "node_table" => {
+            return Some(crate::node_table::render_node_table(
+                block, ctx, parent_w, parent_h,
             ));
         }
         // An `image` embeds an external raster as an SVG `<image>`; the

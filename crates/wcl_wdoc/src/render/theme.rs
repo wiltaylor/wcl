@@ -103,6 +103,10 @@ pre.code-block{background:var(--wdoc-bg-inset);color:var(--wdoc-fg);border-color
 .wdoc-table th,.wdoc-table td{border-color:var(--wdoc-border);}
 .wdoc-map-card{background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);}
 .wdoc-card{background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);}
+.wdoc-node-table-frame{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-border);}
+.wdoc-node-table-sep{stroke:var(--wdoc-border);}
+.wdoc-node-table-port{fill:var(--wdoc-blue);stroke:var(--wdoc-border);}
+.wdoc-node-table-title,.wdoc-node-row{color:var(--wdoc-fg);}
 .bold{color:var(--wdoc-orange);}
 .code{background:var(--wdoc-bg-inset);border-radius:4px;padding:0.05em 0.3em;}";
 

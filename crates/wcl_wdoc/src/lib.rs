@@ -20,6 +20,7 @@ mod layered;
 mod map;
 mod markdown;
 mod math;
+mod node_table;
 pub mod pdf;
 mod render;
 mod routing;
