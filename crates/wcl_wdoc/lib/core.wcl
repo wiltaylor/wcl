@@ -104,7 +104,8 @@ symbol_set EdgeRouting { elbow straight }
 symbol_set LayoutDirection { top_to_bottom left_to_right }
 
 // Placement of an `icon` badge inside a shape's box (see the shared
-// icon fields below). Default `:top_left`.
+// icon fields below). Default `:left` (a leading badge beside the
+// centred label).
 symbol_set IconPos { center top_left top_right bottom_left bottom_right left right }
 
 // Shared "icon badge" fields. Any box-like shape (rect / circle /
@@ -114,7 +115,7 @@ symbol_set IconPos { center top_left top_right bottom_left bottom_right left rig
 // draws a `<use>` of the shared sprite over the shape's bounding box.
 //   icon       — icon name, optionally `set.name`
 //   icon_size  — badge size in diagram units (default min(w,h) * 0.4)
-//   icon_pos   — placement (default :top_left)
+//   icon_pos   — placement (default :left)
 //   icon_class — classes on the icon (theming via the class system)
 
 @block("page")

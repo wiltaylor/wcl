@@ -418,7 +418,13 @@ pub(crate) fn with_shape_icon(
         return base;
     };
     let size = field_f64(block, "icon_size").unwrap_or_else(|| bw.min(bh) * 0.4);
-    let pos = field_symbol(block, "icon_pos").unwrap_or_else(|| "top_left".to_string());
+    // Default to a leading badge (`:left`, vertically centred): the
+    // label-bearing flowchart shapes reserve a matching left strip so
+    // the icon and the centred text sit side by side instead of
+    // overlapping (see `icon_lead` in lib/flowchart.wcl). `:left` also
+    // keeps the badge inside a rounded / oval outline, where a corner
+    // would poke past the curve.
+    let pos = field_symbol(block, "icon_pos").unwrap_or_else(|| "left".to_string());
     let (ix, iy) = place_icon(&pos, bx, by, bw, bh, size);
     let over = ShapeOverride {
         classes: field_utf8_list(block, "icon_class"),

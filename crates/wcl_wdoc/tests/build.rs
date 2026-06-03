@@ -4418,6 +4418,44 @@ page index {
 }
 
 #[test]
+fn build_shape_icon_leads_label_without_overlap() {
+    // A shape with an icon defaults to a leading (`:left`) badge,
+    // vertically centred and inset on the left, while the centred
+    // label shifts right to clear it (no overlap). A 200x80 process:
+    //   badge: min(200,80)*0.4 = 32, inset by min*0.1 = 8
+    //          -> <use x="8" y="24" width="32"> (vertically centred)
+    //   label: cx = 100 + lead/2, lead = 32 + 2*8 = 48 -> x="124"
+    //          (a no-icon process would centre the label at x="100").
+    let src = r##"
+page index {
+  diagram {
+    width  = 300
+    height = 100
+    process "Web Application" {
+      id = web  width = 200.0  height = 80.0  icon = "lucide.box"
+    }
+  }
+}
+"##;
+    let (index, _sprite) = build_icons(src);
+    // Badge is a left-inset, vertically-centred <use>.
+    assert!(
+        index.contains("<use href=\"_wdoc/icons.svg#lucide-box\" x=\"8\" y=\"24\" width=\"32\""),
+        "icon badge should lead at the left, vertically centred:\n{index}"
+    );
+    // Label centre shifted right past the badge (was 100 without an icon).
+    assert!(
+        index.contains("class=\"wdoc-shape-text\" x=\"124\" y=\"40\""),
+        "label should shift right to clear the leading icon (x=124):\n{index}"
+    );
+    // The badge's right edge (x=40) sits left of the shifted label centre.
+    assert!(
+        !index.contains("class=\"wdoc-shape-text\" x=\"100\""),
+        "label must not stay centred over the icon (x=100):\n{index}"
+    );
+}
+
+#[test]
 fn build_resolves_builtin_packs_without_iconset() {
     // The `lucide` / `bootstrap` packs are declared in the embedded lib,
     // so they resolve with no user `iconset`: a bare `:house:` via the
@@ -4473,9 +4511,10 @@ page index {
 "##;
     let (index, sprite) = build_icons(src);
 
-    // The process still renders its box + label, plus a top-left badge
-    // inset by pad = min(120,44)*0.1 = 4.4 at size min(120,44)*0.4 = 17.6.
-    // With no fill/stroke/class set, the box carries the default
+    // The process still renders its box + label, plus a leading
+    // (`:left`) badge inset by pad = min(120,44)*0.1 = 4.4 at size
+    // min(120,44)*0.4 = 17.6, vertically centred at y = 10 + (44-17.6)/2
+    // = 23.2. With no fill/stroke/class set, the box carries the default
     // `wdoc-process` theme class (so it isn't bare-SVG black).
     assert!(
         index.contains("class=\"wdoc-process\" x=\"10\" y=\"10\" width=\"120\" height=\"44\"")
@@ -4484,10 +4523,16 @@ page index {
     );
     assert!(
         index.contains(
-            "<use href=\"_wdoc/icons.svg#lucide-check\" x=\"14.4\" y=\"14.4\" \
+            "<use href=\"_wdoc/icons.svg#lucide-check\" x=\"14.4\" y=\"23.2\" \
              width=\"17.6\" height=\"17.6\" class=\"wdoc-icon accent\""
         ),
         "{index}"
+    );
+    // The label shifts right by half the reserved strip (lead = 17.6 +
+    // 2*4.4 = 26.4) so it clears the leading icon: cx = 10 + 60 + 13.2.
+    assert!(
+        index.contains("class=\"wdoc-shape-text\" x=\"83.2\""),
+        "label should shift right past the leading icon:\n{index}"
     );
     // icon_pos = :center on a 44×44 box at (10,70) with size 24 →
     // (10 + (44-24)/2, 70 + (44-24)/2) = (20, 80).

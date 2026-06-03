@@ -20,6 +20,21 @@ let centered_label = fn(text: utf8, cx: f64, cy: f64, fit_w: f64, fit_h: f64, cl
     fit_width: fit_w, fit_height: fit_h, fill: none, id: none, class: cls,
   }
 
+// Width of the strip a leading (`:left`, the default) icon badge needs
+// so the centred label clears it instead of overlapping. Mirrors
+// `place_icon` / `with_shape_icon` in src/render/svg/shapes.rs: the
+// badge defaults to `min(w,h)*0.4`, inset by `min(w,h)*0.1`; reserve
+// the inset + badge + a trailing gap of the same inset. Returns 0 when
+// there's no icon or the author placed it elsewhere, so the label
+// stays centred in those cases. (Params are non-optional per the WCL
+// param-annotation rule; a `none` value flows through and is guarded.)
+let icon_lead = fn(icon: utf8, icon_pos: IconPos, icon_size: f64, w: f64, h: f64) -> f64
+  if icon != none && (icon_pos == none || icon_pos == :left) {
+    let m = min(w, h);
+    let size = if icon_size == none { m * 0.4 } else { icon_size };
+    size + m * 0.2
+  } else { 0.0 }
+
 // An oval (ellipse) outline as polygon points — there is no Ellipse
 // fundamental, so a `terminator` is approximated with a 40-point fan
 // around its bounding box (the same trick the pie chart uses for arcs).
@@ -71,14 +86,17 @@ type Process extends SvgBlock {
     let auto = p.fill == none && p.stroke == none && p.class == none;
     let box_class = if auto { ["wdoc-process"] } else { p.class };
     let text_class = if auto { ["wdoc-shape-text"] } else { p.class };
+    // Shift the centred label right by half the leading-icon strip and
+    // shrink its fit so a `:left` icon badge sits beside the text.
+    let lead = icon_lead(p.icon, p.icon_pos, p.icon_size, p.width, p.height);
     [
       SvgFundamental::Rect {
         x: p.x, y: p.y, width: p.width, height: p.height,
         fill: p.fill, stroke: p.stroke, id: p.id, class: box_class,
       },
       centered_label(
-        p.text, p.x + p.width / 2.0, p.y + p.height / 2.0,
-        p.width, p.height, text_class,
+        p.text, p.x + p.width / 2.0 + lead / 2.0, p.y + p.height / 2.0,
+        max(p.width - lead, 8.0), p.height, text_class,
       ),
     ]
   }
@@ -119,6 +137,7 @@ type Decision extends SvgBlock {
     let auto = d.fill == none && d.stroke == none && d.class == none;
     let box_class = if auto { ["wdoc-decision"] } else { d.class };
     let text_class = if auto { ["wdoc-shape-text"] } else { d.class };
+    let lead = icon_lead(d.icon, d.icon_pos, d.icon_size, d.width, d.height);
     [
       SvgFundamental::Polygon {
         points: format(
@@ -135,8 +154,8 @@ type Decision extends SvgBlock {
       // halve fit_width so long labels shrink before they hit the
       // diamond's sloped edges.
       centered_label(
-        d.text, d.x + d.width / 2.0, d.y + d.height / 2.0,
-        d.width / 2.0, d.height, text_class,
+        d.text, d.x + d.width / 2.0 + lead / 2.0, d.y + d.height / 2.0,
+        max(d.width / 2.0 - lead, 8.0), d.height, text_class,
       ),
     ]
   }
@@ -182,6 +201,7 @@ type GraphNode extends SvgBlock {
     let auto = n.fill == none && n.stroke == none && n.class == none;
     let box_class = if auto { ["wdoc-node"] } else { n.class };
     let text_class = if auto { ["wdoc-shape-text"] } else { n.class };
+    let lead = icon_lead(n.icon, n.icon_pos, n.icon_size, n.width, n.height);
     [
       SvgFundamental::Circle {
         cx: n.x + n.width / 2.0,
@@ -190,10 +210,11 @@ type GraphNode extends SvgBlock {
         fill: n.fill, stroke: n.stroke, id: n.id, class: box_class,
       },
       // Inset the fit region so the label stays within the circle's
-      // curve instead of touching its left/right edges.
+      // curve instead of touching its left/right edges; shift it right
+      // to clear a `:left` icon badge.
       centered_label(
-        n.text, n.x + n.width / 2.0, n.y + n.height / 2.0,
-        n.width * 0.82, n.height * 0.82, text_class,
+        n.text, n.x + n.width / 2.0 + lead / 2.0, n.y + n.height / 2.0,
+        max(n.width * 0.82 - lead, 8.0), n.height * 0.82, text_class,
       ),
     ]
   }
@@ -236,6 +257,7 @@ type Terminator extends SvgBlock {
     let auto = t.fill == none && t.stroke == none && t.class == none;
     let box_class = if auto { ["wdoc-terminator"] } else { t.class };
     let text_class = if auto { ["wdoc-shape-text"] } else { t.class };
+    let lead = icon_lead(t.icon, t.icon_pos, t.icon_size, t.width, t.height);
     [
       SvgFundamental::Polygon {
         points: oval_points(
@@ -244,10 +266,11 @@ type Terminator extends SvgBlock {
         ),
         fill: t.fill, stroke: t.stroke, id: t.id, class: box_class,
       },
-      // Inset the text region so the label stays inside the oval's curve.
+      // Inset the text region so the label stays inside the oval's curve;
+      // shift it right to clear a `:left` icon badge.
       centered_label(
-        t.text, t.x + t.width / 2.0, t.y + t.height / 2.0,
-        t.width * 0.8, t.height * 0.72, text_class,
+        t.text, t.x + t.width / 2.0 + lead / 2.0, t.y + t.height / 2.0,
+        max(t.width * 0.8 - lead, 8.0), t.height * 0.72, text_class,
       ),
     ]
   }
