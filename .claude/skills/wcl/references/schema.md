@@ -67,6 +67,8 @@ page index { text { span "Hello" {} } }
 
 Imported (library) `@document` schemas merge silently, so importing several modules that each ship one is fine. Only a **second root-authored** `@document` in the same namespace is an error — you get one root schema, which composes with whatever the imports provide.
 
+When you import `<wdoc.wcl>`, wdoc can auto-generate a reference page for the blocks your `@document` declares: `block_reference { type = ProjectDoc }` emits a heading and property table per block. See [Documenting your own schema](../references/wdoc_data_views.md).
+
 > [!NOTE]
 > **Reflection**
 > decorator_names(T) and decorator_arg(T, name, slot) read decorators back at evaluation time — used by libraries (like wdoc) that dispatch on a block's declared kind.

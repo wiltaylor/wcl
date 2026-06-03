@@ -44,6 +44,16 @@ pub(crate) fn register(env: &mut Environment) {
             ),
     );
     env.add_builtin(
+        "child_types",
+        BuiltinFn::hof(1, child_types_hof)
+            .doc("Reflect a type into references to the element types of its `@child` / `@children` block slots (own slots first, then inherited via `extends`). Pair with `type_table` / `type_fields` to auto-document the blocks a `@document` declares.")
+            .param("target", "&T", "A reference to a type or interface declaration.")
+            .returns(
+                "[&T]",
+                "One type reference per block slot. Slots that accept a union or interface resolve to that type's name; scalar (non-block) fields are skipped.",
+            ),
+    );
+    env.add_builtin(
         "ast_string",
         BuiltinFn::hof(1, ast_string_hof)
             .doc("Pretty-print the canonical source behind a reference (type/interface/union/symbol_set/block/field) or a function value.")
@@ -325,6 +335,60 @@ fn type_fields_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, Str
         .map(|f| field_record(f, &decs))
         .collect();
     Ok(Value::List(records))
+}
+
+/// `child_types(&T)` — reflect a type (or interface) into references to the
+/// element types of its `@child` / `@children` block slots, in the same
+/// own-then-inherited order as `type_fields`. Each result is a type
+/// reference (`Value::DataPath`) suitable for handing straight to
+/// `type_table` / `type_fields` / `ast_string`, so a `wdoc_repeater` can
+/// auto-document every top-level block a `@document` declares:
+///
+///   wdoc_repeater { each = child_types(MyDoc)  as = :b
+///     type_table { type = b }
+///   }
+///
+/// The element type is taken from the slot's declared field type, peeling
+/// `list<…>` and `&…` wrappers (`@children("k") xs: list<X>` → `X`). Slots
+/// that accept a union or interface resolve to that type's name (a
+/// downstream `type_fields` only handles `type` / `interface`, so union
+/// slots won't expand to per-variant tables — a known limitation). Scalar
+/// (non-block) fields are skipped.
+fn child_types_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
+    let path = DataPath::from_value(&args[0])?;
+    let dr = resolve_path(caller, "child_types", &path)?;
+    let (own, effective) = match dr.inner() {
+        DataKind::Type(t) => (t.fields().collect::<Vec<_>>(), t.effective_fields()),
+        DataKind::Interface(i) => (i.fields().collect::<Vec<_>>(), i.effective_fields()),
+        _ => {
+            return Err(format!(
+                "child_types: '{}' is not a type or interface declaration",
+                path.segments.join(".")
+            ));
+        }
+    };
+    let refs = order_fields(own, effective)
+        .iter()
+        .filter(|f| f.child_kind_or_union().is_some() || f.children_kind_or_union().is_some())
+        .filter_map(|f| named_type_segments(f.type_ref()))
+        .map(|segments| Value::DataPath {
+            kind: "type".to_string(),
+            segments,
+        })
+        .collect();
+    Ok(Value::List(refs))
+}
+
+/// The declared name path of a field's element type, peeling `list<…>` and
+/// `&…` (reference) wrappers. `None` for builtin / function / tensor types
+/// (no nameable declaration to reference).
+fn named_type_segments(ty: &crate::value::TypeRef) -> Option<Vec<String>> {
+    use crate::value::TypeRef;
+    match ty {
+        TypeRef::Named(segs) => Some(segs.clone()),
+        TypeRef::List(inner) | TypeRef::Reference(inner) => named_type_segments(inner),
+        _ => None,
+    }
 }
 
 /// Own fields (declaration order) followed by inherited fields not
@@ -658,6 +722,80 @@ mod tests {
             &Value::Utf8("shared width".into()),
             "redeclared field inherited the interface @doc"
         );
+    }
+
+    fn datapath_segments(v: &Value) -> Vec<String> {
+        match v {
+            Value::DataPath { segments, .. } => segments.clone(),
+            other => panic!("expected a data path, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn child_types_returns_block_element_type_refs() {
+        // A @document's @child / @children slots resolve to references to
+        // their element types, own-first then inherited, peeling `list<…>`.
+        let v = eval_field(
+            r#"
+            @document
+            type MyDoc {
+              @children("project_meta") metas: list<ProjectMeta>
+              @child("settings") settings: Settings
+              note: utf8?
+            }
+            @block("project_meta") type ProjectMeta { @inline(0) id: identifier }
+            @block("settings") type Settings { theme: utf8 }
+            @schemaless out = child_types(MyDoc)
+            "#,
+            "out",
+        );
+        let Value::List(refs) = v else {
+            panic!("expected a list, got {v:?}");
+        };
+        let names: Vec<Vec<String>> = refs.iter().map(datapath_segments).collect();
+        assert_eq!(
+            names,
+            vec![
+                vec!["ProjectMeta".to_string()],
+                vec!["Settings".to_string()],
+            ],
+            "block slots only, scalar `note` skipped, list<…> peeled"
+        );
+    }
+
+    #[test]
+    fn child_types_each_ref_reflects_via_type_fields() {
+        // A returned reference is usable straight in `type_fields` — the
+        // chain a `wdoc_repeater` / `type_table` relies on.
+        let v = eval_field(
+            r#"
+            @document
+            type MyDoc { @child("settings") settings: Settings }
+            @block("settings") type Settings { @doc("UI theme") theme: utf8 }
+            @schemaless out = type_fields(at(child_types(MyDoc), 0))
+            "#,
+            "out",
+        );
+        let Value::List(fields) = v else {
+            panic!("expected a list, got {v:?}");
+        };
+        assert_eq!(
+            record_field(&fields[0], "name"),
+            &Value::Utf8("theme".into())
+        );
+    }
+
+    #[test]
+    fn child_types_empty_for_scalar_only_type() {
+        let v = eval_field(
+            r#"
+            @block("svc") @schemaless
+            type Svc { id: utf8  port: u32? }
+            @schemaless out = child_types(Svc)
+            "#,
+            "out",
+        );
+        assert_eq!(v, Value::List(vec![]));
     }
 
     #[test]

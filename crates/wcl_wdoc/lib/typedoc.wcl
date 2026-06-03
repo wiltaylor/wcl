@@ -104,3 +104,35 @@ wdoc_component type_table {
     }
   }
 }
+
+// ── block_reference: auto-document a @document's top-level blocks ──
+//
+// `block_reference { type = MyDoc }` emits one `### <kind>` heading and a
+// `type_table` for every block a type declares through its `@child` /
+// `@children` slots — so a custom `@document` declared alongside
+// `import <wdoc.wcl>` documents its own top-level tags without a
+// hand-maintained list. Built on the `child_types` reflection builtin
+// (the element type references of a type's block slots) and `decorator_arg`
+// (each block's `@block("<kind>")` name for the heading).
+//
+//   @document
+//   type MyDoc {
+//     @children("project_meta") metas: list<ProjectMeta>
+//     @child("settings") settings: Settings
+//   }
+//   @block("project_meta") type ProjectMeta { @inline(0) id: identifier }
+//   @block("settings") type Settings { theme: utf8 }
+//   …
+//   page reference { block_reference { type = MyDoc } }
+//
+// Component bodies can't carry their own `let` bindings through expansion,
+// so the per-block lookups stay inline on the loop variable.
+wdoc_component block_reference {
+  wdoc_slot type
+  wdoc_body {
+    wdoc_repeater { each = child_types(type)  as = :_bref
+      h3 $"${decorator_arg(_bref, "block", "name")}"
+      type_table { type = _bref }
+    }
+  }
+}

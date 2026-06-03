@@ -222,6 +222,39 @@ Descriptions and visibility are authored on the schema itself:
 
 Function-typed fields (every block's `lower` hook) are skipped automatically. This very page's [Pages](../references/wdoc_pages.md) and [Images](../references/wdoc_images.md) field tables are generated this way.
 
+## Documenting your own schema
+
+`type_table` reflects \*any\* type, so it documents the blocks **you** declare just as well as wdoc's built-ins. Declare your own root `@document` alongside `import <wdoc.wcl>` (the two schemas [merge](../references/schema.md)), give each block type a `@block("…")` kind and `@doc` descriptions, then reflect them:
+
+```wcl
+import <wdoc.wcl>
+
+@document
+type MyDoc {
+  @children("project_meta") metas: list<ProjectMeta>
+  @child("settings") settings: Settings
+}
+@block("project_meta") type ProjectMeta { @inline(0) id: identifier  @doc("the owner") owner: utf8 }
+@block("settings")     type Settings     { @doc("UI theme") theme: utf8 }
+
+page reference {
+  h2 "Top-level blocks"
+  block_reference { type = MyDoc }    // one heading + property table per block
+}
+```
+
+`block_reference { type = MyDoc }` walks the document's `@child` / `@children` slots and emits an `h3` (the block's `@block` kind) plus a `type_table` for each — no hand-maintained list, and the reference can't drift from the schema. It's a thin wrapper over the `child_types` reflection builtin, which returns the element type references of a type's block slots. Drop to the repeater directly when you want a different layout:
+
+```wcl
+wdoc_repeater { each = child_types(MyDoc)  as = :b
+  type_table { type = b }
+}
+```
+
+> [!NOTE]
+> **Union and interface slots**
+> `child_types` resolves a `@child` / `@children` slot to its declared element type. A slot that accepts a **union** or **interface** resolves to that type's name; since `type_table` documents a single concrete `type` / `interface`, such slots aren't expanded into a table per variant — document those members individually.
+
 ## The pattern
 
 | Tool | Use it for |
@@ -233,3 +266,4 @@ Function-typed fields (every block's `lower` hook) are skipped automatically. Th
 | **`wdoc_repeater` + computed `edges`** | A data-driven diagram — repeater-generated nodes (id from data) wired by a computed `edges` list, auto-positioned by `:layered`/`:force`. |
 | **Chart value fields** | Feeding `map`ped data straight into `bar_chart` / `line_chart` / `pie_chart`. |
 | **`type_table`** | Auto-documenting a schema type's fields — reflected via `type_fields`, described with `@doc` / `@hidden`. |
+| **`block_reference`** | Auto-documenting every top-level block your `@document` declares — a heading + `type_table` per block, via `child_types`. |

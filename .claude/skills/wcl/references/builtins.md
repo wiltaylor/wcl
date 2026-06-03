@@ -15,6 +15,7 @@ Every built-in function in WCL — its signature, parameters, return value, and 
 - [builtin_names](#builtin_names)
 - [cbrt](#cbrt)
 - [ceil](#ceil)
+- [child_types](#child_types)
 - [clamp](#clamp)
 - [concat](#concat)
 - [contains](#contains)
@@ -289,6 +290,25 @@ Round up to the nearest integer.
 
 ```wcl
 ceil(2.1)   // 3.0
+```
+
+### child_types
+
+```wcl
+child_types(target: &T) -> [&T]
+```
+
+Reflect a type into references to the element types of its `@child` / `@children` block slots (own slots first, then inherited via `extends`). Pair with `type_table` / `type_fields` to auto-document the blocks a `@document` declares.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `target` | `&T` | A reference to a type or interface declaration. |
+| **Returns** | `[&T]` | One type reference per block slot. Slots that accept a union or interface resolve to that type's name; scalar (non-block) fields are skipped. |
+
+**Example**
+
+```wcl
+child_types(MyDoc)   // [&ProjectMeta, &Settings] — the element types of MyDoc's block slots
 ```
 
 ### clamp
