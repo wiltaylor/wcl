@@ -584,6 +584,7 @@ pub struct ConnectionDecl {
     pub destination_span: Span,
     pub kind_set: Vec<String>,
     pub kind_set_span: Span,
+    pub decorators: Vec<Decorator>,
     pub span: Span,
     pub leading_trivia: Vec<Trivia>,
     /// A same-line comment printed after this declaration.

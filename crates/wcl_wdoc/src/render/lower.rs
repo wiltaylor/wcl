@@ -32,6 +32,25 @@ thread_local! {
     /// stashes a human-readable message here and the backend surfaces it as a
     /// hard `BuildError`. First message wins; see [`record_route_error`].
     static ROUTE_ERR: RefCell<Option<String>> = const { RefCell::new(None) };
+
+    /// Non-fatal edge warnings collected during the current render pass: an
+    /// edge whose `source` / `destination` matches no rendered shape id is
+    /// dropped (it may legitimately reference a conditionally-absent shape,
+    /// or be a typo). Unlike [`ROUTE_ERR`] these don't fail the build — the
+    /// backend drains them to stderr after rendering. All messages collected
+    /// (not first-wins); see [`record_edge_warning`].
+    static EDGE_WARN: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Record a non-fatal warning that an edge endpoint matched no shape id.
+/// Collected (not first-wins) and drained by [`take_edge_warnings`].
+pub(crate) fn record_edge_warning(msg: String) {
+    EDGE_WARN.with(|slot| slot.borrow_mut().push(msg));
+}
+
+/// Take and clear the edge warnings recorded during the current pass.
+pub(crate) fn take_edge_warnings() -> Vec<String> {
+    EDGE_WARN.with(|slot| std::mem::take(&mut *slot.borrow_mut()))
 }
 
 /// Record an edge-routing failure (a `route_elbow` that found no obstacle-free

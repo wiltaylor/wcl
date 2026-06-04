@@ -20,8 +20,9 @@ use std::fmt::Write as _;
 use wcl_lang::Block;
 
 use crate::render::{
-    RenderCtx, escape_html, field_f64, field_id, field_symbol_list_opt, field_utf8,
-    field_utf8_list, render_block, resolve_rect_box,
+    MAX_LOWER_DEPTH, RenderCtx, escape_html, expand_component_children, expand_repeater_children,
+    field_f64, field_id, field_symbol_list_opt, field_utf8, field_utf8_list, render_block,
+    resolve_rect_box,
 };
 
 /// Default per-row height when `row_height` is unset.
@@ -45,9 +46,42 @@ fn header_offset(block: &Block<'_>) -> f64 {
     }
 }
 
-/// The `node_row` children of a `node_table`, in source order.
+/// The `node_row` children of a `node_table`, in source order, with
+/// `wdoc_repeater` / `wdoc_component` children expanded the same way the
+/// diagram/container path expands shapes (see `render::expand`), so a
+/// table's rows can be data-driven (the headline ER / class-diagram case)
+/// rather than only literal.
 fn rows<'a>(block: &Block<'a>) -> Vec<Block<'a>> {
-    block.blocks().filter(|b| b.kind() == "node_row").collect()
+    let mut out = Vec::new();
+    for child in block.blocks() {
+        collect_rows(child, &mut out);
+    }
+    out
+}
+
+/// Recursively collect `node_row`s, expanding repeaters and component
+/// instances in place — mirrors `render::expand::flatten_diagram_child`.
+fn collect_rows<'a>(child: Block<'a>, out: &mut Vec<Block<'a>>) {
+    // Stop runaway self-referential expansion (mirrors the diagram guard).
+    if child.binding_scope_depth() > MAX_LOWER_DEPTH {
+        return;
+    }
+    match child.kind() {
+        "node_row" => out.push(child),
+        "wdoc_repeater" => {
+            for c in expand_repeater_children(&child) {
+                collect_rows(c, out);
+            }
+        }
+        kind => {
+            if let Some(def) = child.doc().component_def(kind) {
+                for c in expand_component_children(&child, &def) {
+                    collect_rows(c, out);
+                }
+            }
+            // Other non-row kinds are ignored, as before.
+        }
+    }
 }
 
 /// The connection sides a row exposes (edge-attach points + visible

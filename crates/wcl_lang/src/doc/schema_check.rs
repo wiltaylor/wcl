@@ -39,28 +39,39 @@ pub(super) fn validate_connection_stmts(
         };
         let lhs = doc.resolve_connection_operand(scope, &stmt.lhs);
         let rhs = doc.resolve_connection_operand(scope, &stmt.rhs);
-        let Some((_, lhs_kind)) = lhs else {
-            errs.push(EvalError::schema_violation(
-                Kind::UnknownConnectionOperand,
-                format!(
-                    "connection source '{}' does not name a block in scope",
-                    stmt.lhs
-                ),
-                stmt.lhs_span,
-            ));
+        if lhs.is_none() || rhs.is_none() {
+            // An operand that doesn't name a literal block is a typo for a
+            // static connection — but under a `@dynamic` connection it may
+            // be an id generated at render time (`wdoc_repeater` /
+            // `wdoc_component`), which we can't resolve statically. Suppress
+            // the error only when such a connection plausibly accepts this
+            // statement; otherwise flag it as before. (Mirrors the original
+            // single-operand reporting: source is reported first.)
+            if !dynamic_connection_admits(doc, &lhs, &rhs) {
+                if lhs.is_none() {
+                    errs.push(EvalError::schema_violation(
+                        Kind::UnknownConnectionOperand,
+                        format!(
+                            "connection source '{}' does not name a block in scope",
+                            stmt.lhs
+                        ),
+                        stmt.lhs_span,
+                    ));
+                } else {
+                    errs.push(EvalError::schema_violation(
+                        Kind::UnknownConnectionOperand,
+                        format!(
+                            "connection destination '{}' does not name a block in scope",
+                            stmt.rhs
+                        ),
+                        stmt.rhs_span,
+                    ));
+                }
+            }
             continue;
-        };
-        let Some((_, rhs_kind)) = rhs else {
-            errs.push(EvalError::schema_violation(
-                Kind::UnknownConnectionOperand,
-                format!(
-                    "connection destination '{}' does not name a block in scope",
-                    stmt.rhs
-                ),
-                stmt.rhs_span,
-            ));
-            continue;
-        };
+        }
+        let (_, lhs_kind) = lhs.unwrap();
+        let (_, rhs_kind) = rhs.unwrap();
         let Some(lhs_decl) = doc.block_schema(&lhs_kind) else {
             continue; // block kind without a schema; UnregisteredKind already fires.
         };
@@ -127,6 +138,35 @@ pub(super) fn validate_connection_stmts(
 
 fn decl_type_fqn(doc: &crate::doc::Document, t: &crate::value::TypeRef) -> Option<String> {
     doc.resolve_type_fqn(t)
+}
+
+/// `true` when some `@dynamic` connection schema plausibly accepts a
+/// statement with an unresolved operand: each *resolved* operand's block
+/// type must satisfy the schema's corresponding role, while an unresolved
+/// operand is treated as a wildcard (it may name a render-time-generated
+/// id). Gates suppression of `UnknownConnectionOperand` in
+/// [`validate_connection_stmts`].
+type ResolvedOperand = Option<(crate::value::Value, String)>;
+
+fn dynamic_connection_admits(
+    doc: &crate::doc::Document,
+    lhs: &ResolvedOperand,
+    rhs: &ResolvedOperand,
+) -> bool {
+    let role_ok = |operand: &ResolvedOperand, fqn: Option<&str>| match operand {
+        // Wildcard: an unresolved operand can't be type-checked.
+        None => true,
+        Some((_, kind)) => doc
+            .block_schema(kind)
+            .is_some_and(|d| crate::doc::connection_type_matches(&d, fqn)),
+    };
+    doc.connection_decls()
+        .filter(|d| d.is_dynamic())
+        .any(|decl| {
+            let src_fqn = decl_type_fqn(doc, decl.source_type());
+            let dst_fqn = decl_type_fqn(doc, decl.destination_type());
+            role_ok(lhs, src_fqn.as_deref()) && role_ok(rhs, dst_fqn.as_deref())
+        })
 }
 
 /// Validate a `wdoc_component` instance against its definition's slots:

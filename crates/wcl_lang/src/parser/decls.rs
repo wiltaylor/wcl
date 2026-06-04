@@ -889,11 +889,15 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    /// Parse `connection NAME : TypeRef -> TypeRef : Path`.
-    /// The leading `connection` keyword has not yet been consumed.
-    pub(super) fn parse_connection_decl(&mut self) -> Result<Item, ParseError> {
+    /// Parse `[@decorators] connection NAME : TypeRef -> TypeRef : Path`.
+    /// The leading `connection` keyword has not yet been consumed; any
+    /// `@decorators` (e.g. `@dynamic`) were parsed by the caller.
+    pub(super) fn parse_connection_decl(
+        &mut self,
+        decorators: Vec<crate::ast::Decorator>,
+    ) -> Result<Item, ParseError> {
         let kw = self.bump()?; // `connection`
-        let start = kw.span.start;
+        let start = decorators.first().map_or(kw.span.start, |d| d.span.start);
         let (name, _) = self.parse_path()?;
         self.expect(TokenKind::Colon, "expected ':' after connection name")?;
         let (source, source_span) = self.parse_type_ref()?;
@@ -916,6 +920,7 @@ impl<'a> Parser<'a> {
             destination_span,
             kind_set,
             kind_set_span,
+            decorators,
             span: Span::new(start, end),
             leading_trivia: self.take_item_trivia(),
             trailing_comment: None,

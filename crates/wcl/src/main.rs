@@ -407,6 +407,9 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
         WdocCommand::Build { file, out, site } => {
             match wcl_wdoc::build(&file, &out, site.as_deref()) {
                 Ok(n) => {
+                    for w in wcl_wdoc::take_edge_warnings() {
+                        eprintln!("warning: {w}");
+                    }
                     println!("wrote {n} page{}", if n == 1 { "" } else { "s" });
                     EXIT_OK
                 }

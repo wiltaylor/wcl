@@ -418,15 +418,7 @@ impl<'a> Parser<'a> {
             && first == "connection"
             && matches!(self.peek2()?.kind, TokenKind::Ident(_))
         {
-            if !decorators.is_empty() {
-                let span = decorators[0].span;
-                return Err(self.err(
-                    "decorators are not allowed on connection declarations",
-                    span,
-                    "remove decorator",
-                ));
-            }
-            return self.parse_connection_decl();
+            return self.parse_connection_decl(decorators);
         }
 
         let tok = self.bump()?;

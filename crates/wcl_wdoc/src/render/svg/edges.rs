@@ -276,8 +276,21 @@ pub(crate) fn plan_edge(
     };
     let source_id = edge_endpoint_id(fields.get("source")?)?;
     let dest_id = edge_endpoint_id(fields.get("destination")?)?;
-    let src = positions.get(&source_id)?;
-    let dst = positions.get(&dest_id)?;
+    // An endpoint that names no rendered shape can't be drawn. Rather than
+    // drop it silently, record a non-fatal warning naming the missing id —
+    // the common cause after dynamic-id resolution is a typo. Drop the edge
+    // either way (matching prior behaviour).
+    let (Some(src), Some(dst)) = (positions.get(&source_id), positions.get(&dest_id)) else {
+        let missing = if positions.contains_key(&source_id) {
+            &dest_id
+        } else {
+            &source_id
+        };
+        crate::render::record_edge_warning(format!(
+            "diagram edge {source_id} → {dest_id}: endpoint '{missing}' matches no shape id"
+        ));
+        return None;
+    };
     let is_self_loop = source_id == dest_id;
     // Shared-anchor overrides win over per-edge closest-pair, so
     // edges converging at the same shape end at the same point.

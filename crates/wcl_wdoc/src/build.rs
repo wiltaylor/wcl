@@ -231,9 +231,12 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
     // go to `<out>/<name>/`. A chooser index is generated only when there
     // are several sites and none claims the root.
     let multi = build_set.len() > 1;
-    // Clear any routing error stranded by an earlier build (e.g. a previous
-    // `wcl wdoc serve` pass) so a stale message can't leak into this one.
+    // Clear any routing error / edge warnings stranded by an earlier build
+    // (e.g. a previous `wcl wdoc serve` pass) so stale messages can't leak
+    // into this one. Edge warnings are left in the sink after a successful
+    // build for the caller to drain via [`take_edge_warnings`].
     let _ = crate::render::take_route_error();
+    let _ = crate::render::take_edge_warnings();
     let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, BuildError> {
         let mut count = 0;
         for spec in &build_set {
@@ -301,6 +304,16 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
         return Err(BuildError::EdgeRouting(msg));
     }
     result
+}
+
+/// Drain the non-fatal edge warnings collected during the most recent
+/// [`build`] on this thread: each is an edge whose `source` / `destination`
+/// named no rendered shape id (commonly a typo, or a conditionally-absent
+/// shape). `build` leaves them here rather than failing; the CLI / dev
+/// server drain and print them to stderr after a successful build. A fresh
+/// `build` clears any leftovers first, so a stale warning can't leak.
+pub fn take_edge_warnings() -> Vec<String> {
+    crate::render::take_edge_warnings()
 }
 
 /// The name of the site marked `root = true`, if any. More than one root

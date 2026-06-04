@@ -489,6 +489,7 @@ impl Printer {
 
     fn print_connection_decl(&mut self, c: &ConnectionDecl) {
         self.print_leading_trivia(&c.leading_trivia);
+        self.print_decorators_block(&c.decorators);
         self.write_indent();
         self.push("connection ");
         self.push(&join_path(&c.name));

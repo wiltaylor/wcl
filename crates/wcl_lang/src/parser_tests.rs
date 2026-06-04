@@ -801,6 +801,33 @@ fn parse_connection_decl_basic() {
     assert_eq!(conn.source.to_string(), "Service");
     assert_eq!(conn.destination.to_string(), "Service");
     assert_eq!(conn.kind_set, vec!["EdgeKind".to_string()]);
+    assert!(conn.decorators.is_empty());
+}
+
+#[test]
+fn parse_dynamic_connection_decl_round_trips() {
+    let src = "symbol_set EdgeKind { uses depends_on }\n\
+               @dynamic\n\
+               connection DependsOn : Service -> Service : EdgeKind";
+    let s = parse(src);
+    let conn = s
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            Item::ConnectionDecl(c) => Some(c),
+            _ => None,
+        })
+        .next()
+        .expect("connection decl present");
+    // The `@dynamic` decorator is attached to the connection decl.
+    assert_eq!(conn.decorators.len(), 1);
+    assert_eq!(conn.decorators[0].name, vec!["dynamic".to_string()]);
+    // And it survives a format round-trip.
+    let printed = crate::format::to_source(&s);
+    assert!(
+        printed.contains("@dynamic\nconnection DependsOn"),
+        "decorator did not round-trip:\n{printed}"
+    );
 }
 
 #[test]

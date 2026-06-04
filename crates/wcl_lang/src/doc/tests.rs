@@ -2619,6 +2619,127 @@ fn connection_operand_label_referencing_connections_field_terminates() {
     assert_eq!(doc.field("count").unwrap().value().unwrap(), &Value::I64(1));
 }
 
+/// Schema shared by the `@dynamic` projection tests: a `@dynamic`
+/// connection plus a document that projects it, one literal `node "a"`,
+/// and a literal `probe` field that surfaces the projected `edges` list
+/// (a projected field isn't a literal `Field`, so `doc.field("edges")`
+/// can't read it directly — `probe = edges` materialises it).
+const DYNAMIC_CONN_SRC: &str = r#"
+    @block("node") type Node { @inline(0) id: utf8 }
+    symbol_set EdgeKind { default flow }
+    @dynamic
+    connection Edge: Node -> Node : EdgeKind
+    @document type Model {
+        @children("node") nodes: list<Node>
+        @connections(Edge) edges: list<Edge>
+        probe: list<Edge>
+    }
+    node "a" {}
+    probe = edges
+"#;
+
+fn edge_records(doc: &Document) -> Vec<(String, String, String)> {
+    let Value::List(items) = doc.field("probe").unwrap().value().unwrap().clone() else {
+        panic!("probe field is not a list");
+    };
+    items
+        .into_iter()
+        .map(|v| {
+            let Value::Record { fields, .. } = v else {
+                panic!("edge is not a record");
+            };
+            let endpoint = |f: &Value| match f {
+                Value::Identifier(s) | Value::Utf8(s) | Value::Ascii(s) => s.clone(),
+                other => panic!("unexpected endpoint value: {other:?}"),
+            };
+            let Value::Symbol(kind) = fields.get("kind").unwrap().clone() else {
+                panic!("kind is not a symbol");
+            };
+            (
+                endpoint(fields.get("source").unwrap()),
+                endpoint(fields.get("destination").unwrap()),
+                kind,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn dynamic_connection_projects_raw_endpoint_for_unresolved_operand() {
+    // `a` is a literal node; `gen_b` is not — it stands in for an id a
+    // `wdoc_repeater` would generate. Under a `@dynamic` connection the
+    // edge is still projected, carrying the raw `gen_b` string so a
+    // downstream consumer can match it against a generated shape id.
+    let src = format!("{DYNAMIC_CONN_SRC}\n        a -> gen_b\n");
+    let doc = open(&src);
+    assert_eq!(
+        edge_records(&doc),
+        vec![("a".to_string(), "gen_b".to_string(), "default".to_string())]
+    );
+}
+
+#[test]
+fn dynamic_connection_projects_when_both_operands_unresolved() {
+    // Both endpoints are generated ids (FK between two repeater columns).
+    let src = format!("{DYNAMIC_CONN_SRC}\n        gen_a -> gen_b :flow\n");
+    let doc = open(&src);
+    assert_eq!(
+        edge_records(&doc),
+        vec![("gen_a".to_string(), "gen_b".to_string(), "flow".to_string())]
+    );
+}
+
+#[test]
+fn non_dynamic_connection_drops_unresolved_operand() {
+    // Same shape WITHOUT `@dynamic`: the unresolved `gen_b` makes the edge
+    // record drop entirely (strict, pre-feature behaviour preserved).
+    let src = DYNAMIC_CONN_SRC.replace("@dynamic\n    ", "");
+    let src = format!("{src}\n        a -> gen_b\n");
+    let doc = open(&src);
+    assert!(
+        edge_records(&doc).is_empty(),
+        "non-@dynamic connection should drop an unresolved-operand edge"
+    );
+}
+
+fn has_unknown_operand_error(doc: &Document) -> bool {
+    doc.schema_errors().iter().any(|e| {
+        matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: crate::error::SchemaViolationKind::UnknownConnectionOperand,
+                ..
+            }
+        )
+    })
+}
+
+#[test]
+fn validate_suppresses_unknown_operand_for_dynamic_connection() {
+    // `wcl check` must NOT flag `a -> gen_b` when Edge is `@dynamic`:
+    // `gen_b` may be a render-time-generated id.
+    let src = format!("{DYNAMIC_CONN_SRC}\n        a -> gen_b\n");
+    let doc = open(&src);
+    assert!(
+        !has_unknown_operand_error(&doc),
+        "a @dynamic connection should not flag a generated-id operand:\n{:?}",
+        doc.schema_errors()
+    );
+}
+
+#[test]
+fn validate_keeps_unknown_operand_error_without_dynamic() {
+    // Drop `@dynamic` and the same statement must still be flagged — static
+    // diagrams keep full typo-catching.
+    let src = DYNAMIC_CONN_SRC.replace("@dynamic\n    ", "");
+    let src = format!("{src}\n        a -> gen_b\n");
+    let doc = open(&src);
+    assert!(
+        has_unknown_operand_error(&doc),
+        "a non-@dynamic connection must still flag an unresolved operand"
+    );
+}
+
 #[test]
 fn second_root_document_still_errors_alongside_import() {
     // A *root-authored* second @document is still an error even when a

@@ -15,6 +15,14 @@ use notify::{Event, EventKind, RecursiveMode, Watcher};
 use tempfile::TempDir;
 use wcl_wdoc::build;
 
+/// Print any non-fatal edge warnings left by the most recent build (edges
+/// whose endpoint matched no shape id) to stderr.
+fn print_edge_warnings() {
+    for w in wcl_wdoc::take_edge_warnings() {
+        eprintln!("warning: {w}");
+    }
+}
+
 pub(crate) async fn serve(
     file: PathBuf,
     out: Option<PathBuf>,
@@ -38,7 +46,10 @@ pub(crate) async fn serve(
     // Initial build. Failure is non-fatal — the watcher will retry,
     // and requests will 404 in the meantime.
     match build(&file, &out_dir, site.as_deref()) {
-        Ok(n) => eprintln!("rendered {n} page{}", if n == 1 { "" } else { "s" }),
+        Ok(n) => {
+            print_edge_warnings();
+            eprintln!("rendered {n} page{}", if n == 1 { "" } else { "s" });
+        }
         Err(err) => {
             eprintln!("initial build failed:");
             err.report();
@@ -73,7 +84,10 @@ pub(crate) async fn serve(
                 continue;
             }
             match build(&bg_file, &bg_out, bg_site.as_deref()) {
-                Ok(n) => eprintln!("rebuilt: {n} page{}", if n == 1 { "" } else { "s" }),
+                Ok(n) => {
+                    print_edge_warnings();
+                    eprintln!("rebuilt: {n} page{}", if n == 1 { "" } else { "s" });
+                }
                 Err(err) => {
                     eprintln!("rebuild failed:");
                     err.report();
