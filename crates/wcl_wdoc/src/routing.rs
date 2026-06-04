@@ -58,14 +58,25 @@ pub(crate) struct Obstacle {
 const CELL: f64 = 10.0;
 const PAD: f64 = 4.0;
 const TURN_PENALTY: i32 = 5; // multiplied by 10 with straight-step cost to favor straight runs
+/// Extra per-cell cost for routing a cell that sits on a *visible*
+/// container border line. A run *along* a border pays this every cell
+/// (so it's strongly avoided), while a perpendicular *crossing* pays it
+/// once (so it's still allowed). Never blocks — only costs.
+const BORDER_PENALTY: i32 = 8;
+/// How close (SVG units) a cell must be to a border line to be penalised.
+/// One `CELL`: penalises exactly the lane coincident with the border and
+/// leaves the `±CELL` lanes on either side clean.
+const BORDER_CLEARANCE: f64 = CELL;
 
 /// Route an orthogonal polyline from `src` to `dst`.
 ///
 /// `src_side` / `dst_side` constrain the first / last leg direction
 /// so the path leaves perpendicular to each shape. `obstacles` are
 /// other shapes to route around (the source and destination's own
-/// bboxes should be excluded by the caller). `viewport` is the
-/// diagram size, used to bound the search grid.
+/// bboxes should be excluded by the caller). `borders` are visible
+/// container boxes the route is *penalised* (not forbidden) from
+/// running flush along, so an edge doesn't merge into a boundary line.
+/// `viewport` is the diagram size, used to bound the search grid.
 ///
 /// Returns a polyline including both endpoints, or `None` when no
 /// obstacle-free orthogonal path exists. The first attempt keeps the
@@ -81,10 +92,15 @@ pub(crate) fn route_elbow(
     dst: (f64, f64),
     dst_side: Side,
     obstacles: &[Obstacle],
+    borders: &[(f64, f64, f64, f64)],
     viewport: (f64, f64),
 ) -> Option<Vec<(f64, f64)>> {
     for pad in [PAD, 1.0, 0.0] {
-        if let Some(path) = astar_route(src, src_side, dst, dst_side, obstacles, viewport, pad) {
+        // `borders` is the same at every pad: the penalty is a soft cost,
+        // independent of the obstacle-padding relaxation.
+        if let Some(path) = astar_route(
+            src, src_side, dst, dst_side, obstacles, borders, viewport, pad,
+        ) {
             return Some(snap_endpoints(path, src, src_side, dst, dst_side));
         }
     }
@@ -124,12 +140,14 @@ impl PartialOrd for OpenEntry {
     }
 }
 
+#[allow(clippy::too_many_arguments)] // internal pathfinder; bundling these obscures more than it helps
 fn astar_route(
     src: (f64, f64),
     src_side: Side,
     dst: (f64, f64),
     dst_side: Side,
     obstacles: &[Obstacle],
+    borders: &[(f64, f64, f64, f64)],
     viewport: (f64, f64),
     pad: f64,
 ) -> Option<Vec<(f64, f64)>> {
@@ -186,6 +204,23 @@ fn astar_route(
         false,
     );
 
+    // Cells exempt from the border penalty: the endpoint cells and their
+    // egress / ingress neighbours (the same four cells force-unblocked
+    // above). An edge whose anchor sits on a bordered container must be
+    // able to cross that border to leave / enter without being taxed.
+    let exempt = [
+        start_cell,
+        goal_cell,
+        Cell {
+            x: start_cell.x + start_dir.0,
+            y: start_cell.y + start_dir.1,
+        },
+        Cell {
+            x: goal_cell.x + goal_dir.0,
+            y: goal_cell.y + goal_dir.1,
+        },
+    ];
+
     let start = Node {
         cell: start_cell,
         dir: start_dir,
@@ -233,7 +268,15 @@ fn astar_route(
                 continue;
             }
             let straight = node.dir == (0, 0) || node.dir == mv;
-            let step_cost = 10 + if straight { 0 } else { TURN_PENALTY };
+            // Soft border avoidance: pay extra to enter a cell sitting on a
+            // visible container border line, unless it's an exempt endpoint
+            // cell (which must be free to cross the border).
+            let pen = if exempt.contains(&next) {
+                0
+            } else {
+                border_penalty(next, borders)
+            };
+            let step_cost = 10 + if straight { 0 } else { TURN_PENALTY } + pen;
             let tentative_g = g + step_cost;
             let next_node = Node {
                 cell: next,
@@ -287,6 +330,31 @@ fn set_blocked(grid: &mut [bool], gw: i32, c: Cell, v: bool) {
 
 fn is_blocked(grid: &[bool], gw: i32, c: Cell) -> bool {
     grid.get((c.y * gw + c.x) as usize).copied().unwrap_or(true)
+}
+
+/// `BORDER_PENALTY` if `cell` sits within `BORDER_CLEARANCE` of any
+/// container border *line*, else `0`. A flat constant (not summed across
+/// borders) so overlapping / nested chrome can't pile up an outsized cost.
+fn border_penalty(cell: Cell, borders: &[(f64, f64, f64, f64)]) -> i32 {
+    let (px, py) = (cell.x as f64 * CELL, cell.y as f64 * CELL);
+    if borders.iter().any(|&r| on_border(px, py, r)) {
+        BORDER_PENALTY
+    } else {
+        0
+    }
+}
+
+/// Whether `(px, py)` lies on the outer rectangle outline of `(x, y, w, h)`
+/// within `BORDER_CLEARANCE`: near a left/right edge while inside the
+/// vertical extent, or near a top/bottom edge while inside the horizontal
+/// extent (each extent grown by the clearance so frame corners are caught).
+fn on_border(px: f64, py: f64, (x, y, w, h): (f64, f64, f64, f64)) -> bool {
+    let c = BORDER_CLEARANCE;
+    let on_vert =
+        ((px - x).abs() <= c || (px - (x + w)).abs() <= c) && py >= y - c && py <= y + h + c;
+    let on_horiz =
+        ((py - y).abs() <= c || (py - (y + h)).abs() <= c) && px >= x - c && px <= x + w + c;
+    on_vert || on_horiz
 }
 
 fn snap(p: (f64, f64)) -> Cell {
@@ -646,6 +714,7 @@ mod tests {
             (250.0, 100.0),
             Side::West,
             &[],
+            &[],
             (320.0, 200.0),
         )
         .expect("unobstructed route");
@@ -668,6 +737,7 @@ mod tests {
                 w: 40.0,
                 h: 40.0,
             }],
+            &[],
             (320.0, 200.0),
         )
         .expect("route around a single obstacle");
@@ -728,6 +798,7 @@ mod tests {
             dst,
             Side::West,
             &[box_a, box_b, box_c],
+            &[],
             (320.0, 240.0),
         )
         .expect("a detour around the packed row exists");
@@ -782,6 +853,7 @@ mod tests {
             dst,
             Side::West,
             &[box_b, dst_box],
+            &[],
             (240.0, 240.0),
         );
         assert!(
@@ -831,6 +903,7 @@ mod tests {
             Side::East,
             (252.0, 37.0),
             Side::West,
+            &[],
             &[],
             (520.0, 320.0),
         )
@@ -909,5 +982,87 @@ mod tests {
         // not nudged on either path.
         assert!((paths[0].points[1].1 - 50.0).abs() < 1e-6);
         assert!((paths[1].points[1].1 - 50.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn on_border_marks_outline_cells_within_clearance() {
+        // A 200x200 box at the origin: its outline is x∈{0,200}, y∈{0,200}.
+        let b = (0.0, 0.0, 200.0, 200.0);
+        assert!(on_border(0.0, 100.0, b), "left edge");
+        assert!(on_border(200.0, 100.0, b), "right edge");
+        assert!(on_border(100.0, 0.0, b), "top edge");
+        assert!(on_border(100.0, 200.0, b), "bottom edge");
+        assert!(on_border(0.0, 0.0, b), "corner");
+        // Within one clearance (CELL) of an edge still counts.
+        assert!(
+            on_border(BORDER_CLEARANCE, 100.0, b),
+            "just inside left edge"
+        );
+        // Interior, far from every edge: not on the outline.
+        assert!(!on_border(100.0, 100.0, b), "interior");
+        // Outside and far: not on the outline.
+        assert!(!on_border(400.0, 100.0, b), "far outside");
+        // The penalty is flat (one constant) regardless of how many borders.
+        let c = Cell { x: 0, y: 10 };
+        assert_eq!(border_penalty(c, &[b]), BORDER_PENALTY);
+        assert_eq!(border_penalty(c, &[b, b]), BORDER_PENALTY); // not summed
+        assert_eq!(border_penalty(Cell { x: 10, y: 10 }, &[b]), 0); // interior cell
+    }
+
+    #[test]
+    fn route_avoids_running_along_a_border() {
+        // Both anchors sit on a box's top border line (y=0); the natural
+        // route is a straight run along y=0. Passing the box as a border
+        // must push the run off the line into the clear interior.
+        let border = (0.0, 0.0, 200.0, 200.0);
+        let src = (10.0, 0.0);
+        let dst = (190.0, 0.0);
+        let on_top = |pts: &[(f64, f64)]| {
+            pts.windows(2).any(|w| {
+                let (a, b) = (w[0], w[1]);
+                (a.1 - b.1).abs() < 1e-6 // horizontal
+                    && a.1.abs() <= BORDER_CLEARANCE // within clearance of y=0
+                    && (a.0 - b.0).abs() > 2.0 * CELL // a real run, not a stub
+            })
+        };
+        // Control: with no border, the route runs straight along y=0.
+        let bare = route_elbow(src, Side::East, dst, Side::West, &[], &[], (220.0, 220.0))
+            .expect("bare route");
+        assert!(on_top(&bare), "control should run along y=0: {bare:?}");
+        // With the border, the long run must leave the border line.
+        let routed = route_elbow(
+            src,
+            Side::East,
+            dst,
+            Side::West,
+            &[],
+            &[border],
+            (220.0, 220.0),
+        )
+        .expect("bordered route");
+        assert!(
+            !on_top(&routed),
+            "route still runs along the y=0 border: {routed:?}"
+        );
+    }
+
+    #[test]
+    fn border_penalty_never_blocks_a_route() {
+        // A border the path has no choice but to cross must not make the
+        // edge unroutable — the penalty only costs, never blocks.
+        let border = (0.0, 0.0, 200.0, 200.0);
+        let routed = route_elbow(
+            (100.0, 0.0),
+            Side::South,
+            (100.0, 200.0),
+            Side::North,
+            &[],
+            &[border],
+            (220.0, 220.0),
+        );
+        assert!(
+            routed.is_some(),
+            "a route that must cross a border should still exist"
+        );
     }
 }

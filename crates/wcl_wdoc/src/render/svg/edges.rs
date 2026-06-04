@@ -59,6 +59,7 @@ pub(crate) fn edge_id_pairs(block: &Block<'_>) -> Vec<(String, String)> {
 pub(crate) fn render_edges(
     block: &Block<'_>,
     positions: &ShapePositions,
+    borders: &[(f64, f64, f64, f64)],
     viewport: (f64, f64),
 ) -> (String, Vec<(f64, f64, f64, f64)>) {
     let mut items: Vec<Value> = Vec::new();
@@ -82,6 +83,7 @@ pub(crate) fn render_edges(
         if let Some(plan) = plan_edge(
             item,
             positions,
+            borders,
             viewport,
             straight,
             &source_overrides,
@@ -266,6 +268,7 @@ pub(crate) fn pick_closest_pair(
 pub(crate) fn plan_edge(
     value: &Value,
     positions: &ShapePositions,
+    borders: &[(f64, f64, f64, f64)],
     viewport: (f64, f64),
     straight: bool,
     source_overrides: &AnchorMap,
@@ -351,9 +354,15 @@ pub(crate) fn plan_edge(
                 h: m.bbox.3,
             })
             .collect();
-        let Some(points) =
-            routing::route_elbow((sx, sy), src_side, (dx, dy), dst_side, &obstacles, viewport)
-        else {
+        let Some(points) = routing::route_elbow(
+            (sx, sy),
+            src_side,
+            (dx, dy),
+            dst_side,
+            &obstacles,
+            borders,
+            viewport,
+        ) else {
             // No obstacle-free orthogonal path exists even at zero padding —
             // the layout is too tightly packed. Record a diagnostic (surfaced
             // as a hard `BuildError`) and drop this edge rather than draw a

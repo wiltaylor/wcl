@@ -158,6 +158,12 @@ pub(crate) fn collect_shape_positions(
             let (x, y, w, h) = resolve_shape_bbox(block, "container", parent_w, parent_h)
                 .expect("container always resolves a bbox");
             record(block, (tx + x, ty + y, w, h), out);
+            // Record the box for the router's border-avoidance only when the
+            // container actually draws a border (mirrors `container_chrome`'s
+            // gate) — an invisible grouping box has no line to merge into.
+            if field_utf8(block, "stroke").is_some() || field_utf8(block, "fill").is_some() {
+                out.containers.push((tx + x, ty + y, w, h));
+            }
             // Children render inside the container's padded inner
             // region — mirror that translate here so the router's
             // obstacle bboxes and the rendered SVG agree.

@@ -67,7 +67,8 @@ fn render_diagram_inner(
     let mut collector = Collector::default();
     collect_layout_children(block, 0.0, 0.0, vw, vh, cctx, &mut collector);
     let shapes: String = render_layout_children(block, vw, vh, ctx);
-    let (edges, edge_bboxes) = render_edges(block, &collector.positions, (vw, vh));
+    let (edges, edge_bboxes) =
+        render_edges(block, &collector.positions, &collector.containers, (vw, vh));
     let viewbox = fit_viewbox(&collector.bboxes, &edge_bboxes, vw, vh);
     let defs = if edges.is_empty() { "" } else { ARROW_MARKER };
     let mut out = format!("<svg{cls}");

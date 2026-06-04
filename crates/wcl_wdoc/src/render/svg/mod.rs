@@ -61,6 +61,10 @@ pub(crate) type ShapePositions = HashMap<String, ShapeMetrics>;
 pub(crate) struct Collector {
     pub(crate) positions: ShapePositions,
     pub(crate) bboxes: Vec<(f64, f64, f64, f64)>,
+    /// Absolute boxes of *visibly bordered* containers (those with a
+    /// `stroke` / `fill` chrome rect). The elbow router penalises routing
+    /// flush along these so an edge doesn't merge into a boundary line.
+    pub(crate) containers: Vec<(f64, f64, f64, f64)>,
 }
 
 /// Read-only context threaded through the diagram render pass. Bundles

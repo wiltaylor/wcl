@@ -1505,6 +1505,81 @@ page index {
 }
 
 #[test]
+fn build_cross_container_edge_avoids_top_border() {
+    // Two stroke-bordered containers (their top borders sit at y=0) hold
+    // node_tables, with a cross-container FK between rows. The elbow router
+    // must not run the edge flush along a container's top border line — the
+    // wad ER-diagram symptom. (The routing.rs unit test proves the
+    // mechanism with a before/after control; this guards the end-to-end
+    // threading of container borders into the router.)
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("cross_container.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram {
+    width   = 820
+    height  = 320
+    routing = :elbow
+    layout  = :grid
+    columns = 2
+    cell_width  = 380.0
+    cell_height = 300.0
+    gap = 40.0
+    container {
+      stroke = "#888"  padding = 12.0
+      layout = :grid  columns = 2  cell_width = 170.0  cell_height = 130.0  gap = 16.0
+      node_table { id = users  title = "users"  width = 160.0
+        node_row { id = u_id    p "id" }
+        node_row { id = u_email p "email" }
+      }
+      node_table { id = sessions  title = "sessions"  width = 160.0
+        node_row { id = s_id  p "id" }
+      }
+    }
+    container {
+      stroke = "#888"  padding = 12.0
+      layout = :grid  columns = 1  cell_width = 170.0  cell_height = 130.0  gap = 16.0
+      node_table { id = orders  title = "orders"  width = 160.0
+        node_row { id = o_uid  p "user_id" }
+      }
+    }
+    o_uid -> u_id
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // Parse the routed edge polyline.
+    let poly = html
+        .split("<polyline points=\"")
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .expect("a routed edge polyline");
+    let points: Vec<(f64, f64)> = poly
+        .split_whitespace()
+        .filter_map(|p| {
+            let mut it = p.split(',');
+            Some((it.next()?.parse().ok()?, it.next()?.parse().ok()?))
+        })
+        .collect();
+    assert!(points.len() >= 2, "edge did not render: {poly:?}");
+    // The container top borders are at y=0 (grid row 0). No long horizontal
+    // segment may run within ~one routing cell (10px) of that border line.
+    let on_top_border = points.windows(2).any(|w| {
+        let (a, b) = (w[0], w[1]);
+        (a.1 - b.1).abs() < 1e-6 && a.1.abs() <= 10.0 && (a.0 - b.0).abs() > 20.0
+    });
+    assert!(
+        !on_top_border,
+        "cross-container edge runs flush along the container top border: {points:?}"
+    );
+}
+
+#[test]
 fn build_separates_parallel_edges() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("sep.wcl");
