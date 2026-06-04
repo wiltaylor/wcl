@@ -10,6 +10,7 @@ Decorators (written `@name` or `@name(args)`) attach schema metadata to declarat
 | `@block("kind")` | type | Makes the type a nestable block of that kind |
 | `@table("kind")` | type | Row schema for pipe-table syntax |
 | `@schemaless` | type | Opts a type out of root validation, allowing multiple decorators / reflection |
+| `@dynamic` | connection | Lets `->` operands name ids resolved at consume time, not just literal blocks (see Connections) |
 
 ## Field decorators
 
