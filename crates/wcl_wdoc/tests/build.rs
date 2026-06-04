@@ -1358,6 +1358,51 @@ page index {
 }
 
 #[test]
+fn build_layered_container_label_does_not_displace_shapes() {
+    // A `label` inside an auto-layout (`:layered`) container is a
+    // zero-footprint annotation, not a flow node: it must NOT be allocated
+    // a layout cell that shoves the real shapes aside. The boundary rect
+    // must therefore stay at the container origin (x=0), and the heading
+    // sits at its own anchored position.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("titled_box.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 300
+    height = 160
+    container {
+      layout = :layered
+      label "title" { x = 90.0  y = -8.0 }
+      container {
+        stroke = "#888"
+        rect { id = a  width = 180.0  height = 60.0  fill = "#abc" }
+      }
+    }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // The flow shape stays at the container origin — before the fix the
+    // label's phantom 80x40 cell pushed the inner container (and its rect)
+    // right by ~120px.
+    assert!(
+        html.contains("<rect x=\"0\" y=\"0\" width=\"180\" height=\"60\" fill=\"#abc\" id=\"a\""),
+        "boundary shape was displaced by the label's phantom layout cell:\n{html}"
+    );
+    // The heading renders at its own anchored x (90), not at the solver origin.
+    assert!(
+        html.contains("<text x=\"90\" y=\"-8\""),
+        "heading label not at its anchored position:\n{html}"
+    );
+}
+
+#[test]
 fn build_warns_on_unmatched_edge_endpoint() {
     // An edge endpoint that names no rendered shape (a typo, or a
     // conditionally-absent shape) must NOT fail the build — it is dropped

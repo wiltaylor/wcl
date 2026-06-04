@@ -199,6 +199,74 @@ pub(crate) fn collect_planned_children(
 /// and return (per-child offsets, per-child width, per-child height).
 /// The width/height returned reflect the size the renderer should
 /// pass downward as `parent_w` / `parent_h`.
+/// A `label` / `line` is a zero-footprint annotation, not a flow node:
+/// excluding it from the auto-layout solvers keeps it from being
+/// allocated a phantom cell that shoves real shapes aside (and, for a
+/// `label`, rendered half-off its own origin). Instead it's positioned
+/// at the container origin against the flow content's full extent, so its
+/// own `x`/`y` + fractional anchors place it over the whole container.
+fn is_layout_annotation(kind: &str) -> bool {
+    matches!(kind, "label" | "line")
+}
+
+/// Reassemble a per-child plan from a solve over the *flow* children only.
+/// `flow_idx[k]` is the index in `children` of the k-th solved node, whose
+/// offset is `flow_offsets[k]` and size is `flow_nodes[k].size`. Annotation
+/// children get offset `(0, 0)` and the flow content's extent as their
+/// parent box (so anchors resolve against the whole container) while
+/// contributing nothing to that extent.
+fn assemble_plan(
+    children: &[Block<'_>],
+    flow_idx: &[usize],
+    flow_nodes: &[layered::Node],
+    flow_offsets: &[(f64, f64)],
+) -> (Vec<(f64, f64)>, Vec<f64>, Vec<f64>) {
+    let mut content_w = 0.0_f64;
+    let mut content_h = 0.0_f64;
+    for (off, node) in flow_offsets.iter().zip(flow_nodes) {
+        content_w = content_w.max(off.0 + node.size.0);
+        content_h = content_h.max(off.1 + node.size.1);
+    }
+    let mut offsets = vec![(0.0, 0.0); children.len()];
+    let mut widths = vec![0.0; children.len()];
+    let mut heights = vec![0.0; children.len()];
+    for (k, &ci) in flow_idx.iter().enumerate() {
+        offsets[ci] = flow_offsets[k];
+        widths[ci] = flow_nodes[k].size.0;
+        heights[ci] = flow_nodes[k].size.1;
+    }
+    for (ci, child) in children.iter().enumerate() {
+        if is_layout_annotation(child.kind()) {
+            offsets[ci] = (0.0, 0.0);
+            widths[ci] = content_w;
+            heights[ci] = content_h;
+        }
+    }
+    (offsets, widths, heights)
+}
+
+/// The flow children of a layout container (everything that isn't a
+/// zero-footprint annotation), paired with their original indices and
+/// solver `Node`s.
+fn flow_nodes_of(children: &[Block<'_>]) -> (Vec<usize>, Vec<layered::Node>) {
+    let flow_idx: Vec<usize> = children
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| !is_layout_annotation(c.kind()))
+        .map(|(i, _)| i)
+        .collect();
+    let flow_nodes: Vec<layered::Node> = flow_idx
+        .iter()
+        .map(|&i| layered::Node {
+            id: field_id(&children[i], "id"),
+            // Use effective_dims so multi-line text grows the cell
+            // the layered solver allocates for the shape.
+            size: effective_dims(&children[i]),
+        })
+        .collect();
+    (flow_idx, flow_nodes)
+}
+
 pub(crate) fn compute_layered_plan(
     block: &Block<'_>,
     children: &[Block<'_>],
@@ -209,20 +277,11 @@ pub(crate) fn compute_layered_plan(
     let layer_gap = field_f64(block, "layer_gap").unwrap_or(40.0);
     let node_gap = field_f64(block, "node_gap").unwrap_or(40.0);
 
-    let nodes: Vec<layered::Node> = children
-        .iter()
-        .map(|c| layered::Node {
-            id: field_id(c, "id"),
-            // Use effective_dims so multi-line text grows the cell
-            // the layered solver allocates for the shape.
-            size: effective_dims(c),
-        })
-        .collect();
+    let (flow_idx, flow_nodes) = flow_nodes_of(children);
     let edges: Vec<(String, String)> = edge_id_pairs(block);
-    let offsets = layered::assign_layered_offsets(&nodes, &edges, direction, layer_gap, node_gap);
-    let widths: Vec<f64> = nodes.iter().map(|n| n.size.0).collect();
-    let heights: Vec<f64> = nodes.iter().map(|n| n.size.1).collect();
-    (offsets, widths, heights)
+    let flow_offsets =
+        layered::assign_layered_offsets(&flow_nodes, &edges, direction, layer_gap, node_gap);
+    assemble_plan(children, &flow_idx, &flow_nodes, &flow_offsets)
 }
 
 /// Compute the force-directed layout for a container/diagram's children.
@@ -245,18 +304,10 @@ pub(crate) fn compute_force_plan(
         seed: field_i64(block, "seed").unwrap_or(defaults.seed),
     };
 
-    let nodes: Vec<layered::Node> = children
-        .iter()
-        .map(|c| layered::Node {
-            id: field_id(c, "id"),
-            size: effective_dims(c),
-        })
-        .collect();
+    let (flow_idx, flow_nodes) = flow_nodes_of(children);
     let edges: Vec<(String, String)> = edge_id_pairs(block);
-    let offsets = force::assign_force_offsets(&nodes, &edges, params);
-    let widths: Vec<f64> = nodes.iter().map(|n| n.size.0).collect();
-    let heights: Vec<f64> = nodes.iter().map(|n| n.size.1).collect();
-    (offsets, widths, heights)
+    let flow_offsets = force::assign_force_offsets(&flow_nodes, &edges, params);
+    assemble_plan(children, &flow_idx, &flow_nodes, &flow_offsets)
 }
 
 /// Dispatch to the layout solver named by the block's `layout` field.
