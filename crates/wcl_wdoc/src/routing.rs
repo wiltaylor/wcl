@@ -67,9 +67,14 @@ const TURN_PENALTY: i32 = 5; // multiplied by 10 with straight-step cost to favo
 /// bboxes should be excluded by the caller). `viewport` is the
 /// diagram size, used to bound the search grid.
 ///
-/// Returns a polyline including both endpoints. On A* failure the
-/// fallback is a direct two-segment elbow ignoring obstacles, so a
-/// path is always returned.
+/// Returns a polyline including both endpoints, or `None` when no
+/// obstacle-free orthogonal path exists. The first attempt keeps the
+/// normal `PAD` breathing room; on failure the obstacle padding is
+/// relaxed (`PAD → 1 → 0`) so a corridor that's genuinely routable but
+/// merely quantized away by the coarse grid can still be threaded. We
+/// deliberately do *not* fall back to an obstacle-ignoring elbow — a
+/// caller that gets `None` should surface a diagnostic rather than draw
+/// a line straight through a shape.
 pub(crate) fn route_elbow(
     src: (f64, f64),
     src_side: Side,
@@ -77,11 +82,13 @@ pub(crate) fn route_elbow(
     dst_side: Side,
     obstacles: &[Obstacle],
     viewport: (f64, f64),
-) -> Vec<(f64, f64)> {
-    if let Some(path) = astar_route(src, src_side, dst, dst_side, obstacles, viewport) {
-        return snap_endpoints(path, src, src_side, dst, dst_side);
+) -> Option<Vec<(f64, f64)>> {
+    for pad in [PAD, 1.0, 0.0] {
+        if let Some(path) = astar_route(src, src_side, dst, dst_side, obstacles, viewport, pad) {
+            return Some(snap_endpoints(path, src, src_side, dst, dst_side));
+        }
     }
-    fallback_elbow(src, src_side, dst)
+    None
 }
 
 // ── A* search ──────────────────────────────────────────────────────
@@ -124,12 +131,25 @@ fn astar_route(
     dst_side: Side,
     obstacles: &[Obstacle],
     viewport: (f64, f64),
+    pad: f64,
 ) -> Option<Vec<(f64, f64)>> {
+    // Size the grid to cover the declared viewport *and* all content
+    // (obstacles + both endpoints), then add a routing margin so an edge
+    // has room to detour below / right of a tightly-packed row instead of
+    // being boxed in by the grid edge. Sizing from content also keeps
+    // routing working when a diagram omits `width`/`height` (viewport 0).
+    const MARGIN_CELLS: i32 = 4;
+    let mut max_x = viewport.0.max(src.0).max(dst.0);
+    let mut max_y = viewport.1.max(src.1).max(dst.1);
+    for o in obstacles {
+        max_x = max_x.max(o.x + o.w + pad);
+        max_y = max_y.max(o.y + o.h + pad);
+    }
     let (gw, gh) = (
-        (viewport.0 / CELL).ceil() as i32 + 2,
-        (viewport.1 / CELL).ceil() as i32 + 2,
+        (max_x / CELL).ceil() as i32 + 2 + MARGIN_CELLS,
+        (max_y / CELL).ceil() as i32 + 2 + MARGIN_CELLS,
     );
-    let blocked = build_blocked_grid(obstacles, gw, gh);
+    let blocked = build_blocked_grid(obstacles, gw, gh, pad);
     let start_cell = snap(src);
     let goal_cell = snap(dst);
     if start_cell == goal_cell {
@@ -234,14 +254,14 @@ fn astar_route(
     None
 }
 
-fn build_blocked_grid(obstacles: &[Obstacle], gw: i32, gh: i32) -> Vec<bool> {
+fn build_blocked_grid(obstacles: &[Obstacle], gw: i32, gh: i32, pad: f64) -> Vec<bool> {
     let mut grid = vec![false; (gw * gh) as usize];
     for o in obstacles {
         let (x0, y0, x1, y1) = (
-            ((o.x - PAD) / CELL).floor() as i32,
-            ((o.y - PAD) / CELL).floor() as i32,
-            ((o.x + o.w + PAD) / CELL).ceil() as i32,
-            ((o.y + o.h + PAD) / CELL).ceil() as i32,
+            ((o.x - pad) / CELL).floor() as i32,
+            ((o.y - pad) / CELL).floor() as i32,
+            ((o.x + o.w + pad) / CELL).ceil() as i32,
+            ((o.y + o.h + pad) / CELL).ceil() as i32,
         );
         for cy in y0..y1 {
             for cx in x0..x1 {
@@ -429,22 +449,6 @@ fn corner_before(prev: (f64, f64), dst: (f64, f64), dst_side: Side) -> (f64, f64
         Side::East | Side::West => (prev.0, dst.1),
         // Vertical ingress: final leg lies on x = dst.x.
         Side::North | Side::South => (dst.0, prev.1),
-    }
-}
-
-fn fallback_elbow(src: (f64, f64), src_side: Side, dst: (f64, f64)) -> Vec<(f64, f64)> {
-    // Step out the egress side by one cell, then over to dst.
-    let step = CELL;
-    let (dx, dy) = src_side.outward();
-    let mid = (src.0 + dx as f64 * step, src.1 + dy as f64 * step);
-    // Depending on egress axis, route the corner via mid then go
-    // straight to dst's matching coordinate.
-    if dx != 0 {
-        // Horizontal egress: corner at (mid.x, dst.y).
-        vec![src, mid, (mid.0, dst.1), dst]
-    } else {
-        // Vertical egress: corner at (dst.x, mid.y).
-        vec![src, mid, (dst.0, mid.1), dst]
     }
 }
 
@@ -643,7 +647,8 @@ mod tests {
             Side::West,
             &[],
             (320.0, 200.0),
-        );
+        )
+        .expect("unobstructed route");
         // Start, end and no intermediate bends (or only redundant ones at the same y).
         assert!(pts.len() >= 2);
         assert!(pts.iter().all(|(_, y)| (y - 100.0).abs() < 1e-6));
@@ -664,7 +669,8 @@ mod tests {
                 h: 40.0,
             }],
             (320.0, 200.0),
-        );
+        )
+        .expect("route around a single obstacle");
         // At least 3 points (one bend), and at least one y differs
         // from the straight-line y.
         assert!(pts.len() >= 3, "expected bends, got {:?}", pts);
@@ -675,21 +681,114 @@ mod tests {
         );
     }
 
+    /// `true` if the axis-aligned segment `a`→`b` passes through the
+    /// strict interior of obstacle `o` (a leg merely grazing a boundary
+    /// edge doesn't count).
+    fn seg_hits_box(a: (f64, f64), b: (f64, f64), o: &Obstacle) -> bool {
+        let (x0, y0, x1, y1) = (o.x, o.y, o.x + o.w, o.y + o.h);
+        let (sx0, sx1) = (a.0.min(b.0), a.0.max(b.0));
+        let (sy0, sy1) = (a.1.min(b.1), a.1.max(b.1));
+        let eps = 1e-6;
+        sx1 > x0 + eps && sx0 < x1 - eps && sy1 > y0 + eps && sy0 < y1 - eps
+    }
+
     #[test]
-    fn fallback_elbow_produces_valid_polyline_when_grid_unreachable() {
-        // viewport so small that A* will fail; the fallback should
-        // still produce a path with both endpoints.
+    fn route_around_tightly_packed_row() {
+        // Three 60x40 boxes in a horizontal row, 24px gaps. The edge
+        // runs from box A's east anchor to box C's WEST anchor, which is
+        // wedged in the 24px B->C gap. At PAD=4/CELL=10 that gap quantizes
+        // to zero free columns on the vertical travel axis, so A* fails at
+        // the normal padding; the relaxation retry (PAD->0) opens the gap
+        // and routes *around* box B instead of the old blind elbow that
+        // cut straight through it.
+        let box_a = Obstacle {
+            x: 0.0,
+            y: 100.0,
+            w: 60.0,
+            h: 40.0,
+        };
+        let box_b = Obstacle {
+            x: 84.0,
+            y: 100.0,
+            w: 60.0,
+            h: 40.0,
+        };
+        let box_c = Obstacle {
+            x: 168.0,
+            y: 100.0,
+            w: 60.0,
+            h: 40.0,
+        };
+        let src = (60.0, 120.0); // east anchor of A
+        let dst = (168.0, 120.0); // west anchor of C (in the B->C gap)
+
         let pts = route_elbow(
-            (50.0, 50.0),
+            src,
             Side::East,
-            (60.0, 60.0),
+            dst,
             Side::West,
-            &[],
-            (5.0, 5.0),
+            &[box_a, box_b, box_c],
+            (320.0, 240.0),
+        )
+        .expect("a detour around the packed row exists");
+
+        assert_eq!(*pts.first().unwrap(), src);
+        assert_eq!(*pts.last().unwrap(), dst);
+
+        // No segment may pass through the interior of box B.
+        for w in pts.windows(2) {
+            assert!(
+                !seg_hits_box(w[0], w[1], &box_b),
+                "edge segment {:?} -> {:?} cuts through box B in {:?}",
+                w[0],
+                w[1],
+                pts
+            );
+        }
+        // A real detour leaves the row band (y in [100, 140]) — proving it
+        // routed around rather than taking the degenerate straight line.
+        let band = (100.0 - 1e-6)..=(140.0 + 1e-6);
+        assert!(
+            pts.iter().any(|&(_, y)| !band.contains(&y)),
+            "expected a vertical detour out of the row band, got {:?}",
+            pts
         );
-        assert!(pts.len() >= 2);
-        assert_eq!(*pts.first().unwrap(), (50.0, 50.0));
-        assert_eq!(*pts.last().unwrap(), (60.0, 60.0));
+    }
+
+    #[test]
+    fn route_elbow_returns_none_when_truly_boxed_in() {
+        // The destination's west anchor is flush against box B (zero gap)
+        // and box B fully spans above and below the anchor, so there is no
+        // obstacle-free approach at any padding. The router must give up
+        // (`None`) rather than draw a line through box B.
+        let box_b = Obstacle {
+            x: 60.0,
+            y: 0.0,
+            w: 80.0,
+            h: 240.0,
+        };
+        let dst_box = Obstacle {
+            x: 140.0,
+            y: 100.0,
+            w: 60.0,
+            h: 40.0,
+        };
+        let src = (40.0, 120.0); // east anchor of a source left of box B
+        let dst = (140.0, 120.0); // west anchor of dst_box, flush on box B
+
+        let routed = route_elbow(
+            src,
+            Side::East,
+            dst,
+            Side::West,
+            &[box_b, dst_box],
+            (240.0, 240.0),
+        );
+        assert!(
+            routed.is_none(),
+            "expected no route through a flush wall, got {:?}",
+            routed
+        );
     }
 
     #[test]
@@ -734,7 +833,8 @@ mod tests {
             Side::West,
             &[],
             (520.0, 320.0),
-        );
+        )
+        .expect("unobstructed route");
         assert!(pts.len() >= 2, "route should not be empty");
         // Every consecutive pair must share either x or y.
         for w in pts.windows(2) {

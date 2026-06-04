@@ -338,7 +338,22 @@ pub(crate) fn plan_edge(
                 h: m.bbox.3,
             })
             .collect();
-        routing::route_elbow((sx, sy), src_side, (dx, dy), dst_side, &obstacles, viewport)
+        let Some(points) =
+            routing::route_elbow((sx, sy), src_side, (dx, dy), dst_side, &obstacles, viewport)
+        else {
+            // No obstacle-free orthogonal path exists even at zero padding —
+            // the layout is too tightly packed. Record a diagnostic (surfaced
+            // as a hard `BuildError`) and drop this edge rather than draw a
+            // line straight through the shapes in between.
+            crate::render::record_route_error(format!(
+                "diagram edge {source_id} → {dest_id} could not be routed around \
+                 intervening shapes — the layout is too tightly packed. Increase \
+                 the diagram's spacing (node_gap / layer_gap) or size, or set \
+                 routing: \"straight\"."
+            ));
+            return None;
+        };
+        points
     };
     Some((EdgePath { points }, kind))
 }

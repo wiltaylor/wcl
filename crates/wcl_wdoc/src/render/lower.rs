@@ -24,6 +24,31 @@ thread_local! {
     /// [`scoped_eval_errors`] to bound a pass and collect what it caught.
     static LOWER_EVAL_ERR: RefCell<Option<(EvalError, NamedSource<String>)>> =
         const { RefCell::new(None) };
+
+    /// First edge-routing failure recorded during the current render pass.
+    /// The orthogonal router (`routing::route_elbow`) returns `None` when it
+    /// genuinely cannot route an edge around the intervening shapes; rather
+    /// than draw a misleading line straight through them, the diagram pass
+    /// stashes a human-readable message here and the backend surfaces it as a
+    /// hard `BuildError`. First message wins; see [`record_route_error`].
+    static ROUTE_ERR: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// Record an edge-routing failure (a `route_elbow` that found no obstacle-free
+/// path). `msg` should name the offending edge and hint at a fix. First one
+/// wins; cleared by [`take_route_error`].
+pub(crate) fn record_route_error(msg: String) {
+    ROUTE_ERR.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(msg);
+        }
+    });
+}
+
+/// Take and clear the first routing error recorded during the current pass.
+pub(crate) fn take_route_error() -> Option<String> {
+    ROUTE_ERR.with(|slot| slot.borrow_mut().take())
 }
 
 /// Record an eval error swallowed while lowering `block`, together with the

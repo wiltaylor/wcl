@@ -89,6 +89,10 @@ pub enum BuildError {
     BadLink(Vec<String>),
     BadTemplate(String),
     Tileset(String),
+    /// A diagram edge could not be routed around the intervening shapes
+    /// (the layout is too tightly packed). Carries a message naming the
+    /// offending edge and a hint at how to fix it.
+    EdgeRouting(String),
 }
 
 impl BuildError {
@@ -109,6 +113,7 @@ impl BuildError {
             }
             Self::BadTemplate(name) => eprintln!("unknown template \"{name}\""),
             Self::Tileset(msg) => eprintln!("{msg}"),
+            Self::EdgeRouting(msg) => eprintln!("{msg}"),
         }
     }
 
@@ -226,6 +231,9 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
     // go to `<out>/<name>/`. A chooser index is generated only when there
     // are several sites and none claims the root.
     let multi = build_set.len() > 1;
+    // Clear any routing error stranded by an earlier build (e.g. a previous
+    // `wcl wdoc serve` pass) so a stale message can't leak into this one.
+    let _ = crate::render::take_route_error();
     let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, BuildError> {
         let mut count = 0;
         for spec in &build_set {
@@ -285,6 +293,12 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
     });
     if let Some((e, src)) = eval_err {
         return Err(BuildError::eval(e, src));
+    }
+    // An unroutable diagram edge surfaces after the eval check (an eval
+    // failure is the more fundamental problem); the router only runs once a
+    // block has otherwise evaluated and laid out.
+    if let Some(msg) = crate::render::take_route_error() {
+        return Err(BuildError::EdgeRouting(msg));
     }
     result
 }

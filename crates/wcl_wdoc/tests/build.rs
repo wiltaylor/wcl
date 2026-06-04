@@ -33,6 +33,7 @@ fn build_ok(file: &Path, out: &Path) -> usize {
         Err(BuildError::BadLink(msgs)) => panic!("build bad-link error: {msgs:?}"),
         Err(BuildError::BadTemplate(name)) => panic!("build bad-template error: {name}"),
         Err(BuildError::Tileset(m)) => panic!("build tileset error: {m}"),
+        Err(BuildError::EdgeRouting(m)) => panic!("build edge-routing error: {m}"),
     }
 }
 
@@ -835,6 +836,7 @@ page index {
         Err(BuildError::BadLink(msgs)) => panic!("expected Schema, got BadLink({msgs:?})"),
         Err(BuildError::BadTemplate(name)) => panic!("expected Schema, got BadTemplate({name})"),
         Err(BuildError::Tileset(m)) => panic!("expected Schema, got Tileset({m})"),
+        Err(BuildError::EdgeRouting(m)) => panic!("expected Schema, got EdgeRouting({m})"),
         Ok(n) => panic!("expected Schema error, got Ok({n})"),
     }
 }
@@ -946,6 +948,7 @@ page index {
             panic!("expected DuplicateId, got BadTemplate({name})")
         }
         Err(BuildError::Tileset(m)) => panic!("expected DuplicateId, got Tileset({m})"),
+        Err(BuildError::EdgeRouting(m)) => panic!("expected DuplicateId, got EdgeRouting({m})"),
         Ok(n) => panic!("expected DuplicateId, got Ok({n})"),
     }
 }
@@ -2177,6 +2180,7 @@ page index {
         }
         Err(BuildError::BadTemplate(name)) => panic!("expected BadLink, got BadTemplate({name})"),
         Err(BuildError::Tileset(m)) => panic!("expected BadLink, got Tileset({m})"),
+        Err(BuildError::EdgeRouting(m)) => panic!("expected BadLink, got EdgeRouting({m})"),
         Ok(n) => panic!("expected BadLink, got Ok({n})"),
     }
 }
