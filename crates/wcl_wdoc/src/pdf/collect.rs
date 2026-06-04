@@ -18,8 +18,9 @@ use wcl_lang::{Block, Document, Value, VariantPayload};
 
 use crate::inline::InlinePatterns;
 use crate::render::{
-    field_f64, field_symbol, field_utf8, field_utf8_list, kind_for_variant, lower_to_values,
-    map_utf8, map_utf8_list, render_diagram,
+    collect_partials, enter_collect, field_bool, field_f64, field_symbol, field_utf8,
+    field_utf8_list, kind_for_variant, label_string, lower_to_values, map_utf8, map_utf8_list,
+    render_diagram,
 };
 
 use super::ir::{BlockNode, CardSpec, CodeSpan, FontFamily, InlineRun, ListLine, TextStyle};
@@ -61,6 +62,27 @@ fn collect_block(
     if kind == "fragment" {
         for child in block.blocks() {
             collect_block(doc, &child, patterns, base_dir, out);
+        }
+        return;
+    }
+    // A `partial` deposits tagged content for a matching `collect`; in a static
+    // PDF it renders at its source only when `show_here = true`.
+    if kind == "partial" {
+        if field_bool(block, "show_here") == Some(true) {
+            for child in block.blocks() {
+                collect_block(doc, &child, patterns, base_dir, out);
+            }
+        }
+        return;
+    }
+    // A `collect` gathers every matching `partial`'s body across the document,
+    // in document order; the guard breaks collect → partial → collect cycles.
+    if kind == "collect" {
+        let tag = label_string(block).unwrap_or_default();
+        if let Some(_guard) = enter_collect(&tag) {
+            for child in collect_partials(doc, &tag) {
+                collect_block(doc, &child, patterns, base_dir, out);
+            }
         }
         return;
     }

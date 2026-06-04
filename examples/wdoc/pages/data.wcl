@@ -79,6 +79,10 @@ page data { sites = [:showcase]
     srv_card { name = s.name  role = s.role  cpu = s.cpu }
   }
 
+  // A `partial` deposits tagged content for the "Highlights" collect at the
+  // foot of the page — invisible here (show_here unset), gathered there.
+  partial srv_highlight { callout "Capacity" { class = ["info"]  body = "**db-1** is the busiest host at 88% CPU." } }
+
   h2 "At a glance"
 
   p "A status strip — one cell per host, green when up — from a custom `SvgBlock` that maps the inventory to coloured rectangles:"
@@ -116,6 +120,8 @@ page data { sites = [:showcase]
     }
   }
 
+  partial srv_highlight { callout "Risk" { class = ["warning"]  body = "**cache** and **worker** are currently down." } }
+
   h2 "Topology"
 
   p "A dependency graph straight from the data: a `wdoc_repeater` makes a node per host (id from the name), and a computed `edges` list — `map`ped from each host's `deps` — wires them. `layout = :layered` ranks the graph automatically:"
@@ -139,4 +145,10 @@ page data { sites = [:showcase]
   }
 
   p "Three techniques, one data structure: charts read value fields, custom blocks `map` data into tables and diagrams, and the children splice fills built-in containers like `list` straight from a computed list."
+
+  h2 "Highlights"
+
+  p "The two callouts below weren't authored here — they were **scattered** as `partial srv_highlight` deposits up by the dashboard and topology sections, and this `collect srv_highlight` gathers them in document order. Scatter notable findings beside the views that produce them, then assemble a summary in one place:"
+
+  collect srv_highlight
 }

@@ -78,3 +78,35 @@ type WdocRepeater extends WdocBlock {
 // Opaque element type for a repeater's `each` list. The renderer reads
 // each element's fields dynamically; this only names the list shape.
 type WdocItem {}
+
+// ── Partials (scatter & collect) ──────────────────────────────────
+//
+// A `partial` tags a body of wdoc blocks with a key; a `collect` with the
+// same tag gathers every matching partial across the document — this file
+// and its eagerly-imported files — and renders their bodies in document
+// order at the collect site. This is the appendix / glossary / "collected
+// sidebars" pattern: authors scatter tagged content, one place assembles it.
+//
+//   partial sidebar {                 // a deposit, invisible at its source
+//     callout "Tip" { body = "..." }
+//   }
+//   page summary {
+//     collect sidebar                  // gathers every `partial sidebar`
+//   }
+//
+// Special-cased in Rust like the repeater / component; the `lower`s are
+// never-called stubs. A partial is invisible where it is defined unless
+// `show_here = true`, which also renders the body at its source.
+@block("partial")
+type WdocPartial extends WdocBlock {
+  @inline(0) tag: symbol
+  show_here: bool?
+  @children(WdocBlock) children: list<WdocBlock>
+  lower = fn(p: WdocPartial) -> list<HtmlFundamental> []
+}
+
+@block("collect")
+type WdocCollect extends WdocBlock {
+  @inline(0) tag: symbol
+  lower = fn(c: WdocCollect) -> list<HtmlFundamental> []
+}

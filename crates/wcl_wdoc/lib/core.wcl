@@ -23,6 +23,10 @@ type Site {
   // User-defined reusable templates (declarative markup + slots),
   // instantiated by their own name as bare blocks inside pages.
   @children("wdoc_component") components:  list<WdocComponent>
+  // Tagged content deposits gathered by a matching `collect`. Legal at the
+  // document root so partials can be scattered across imported files; also
+  // legal inside any page (via `WdocBlock`).
+  @children("partial")        partials:    list<WdocPartial>
   // A document may declare several named `site` blocks; each renders to
   // its own subdirectory (a single site renders flat at the output
   // root). Absent ⇒ pages render bare. See `Page.sites` for membership.

@@ -62,7 +62,7 @@ connectable by edges), not a page block. Everything deeper → the doc page or t
 | tables / lists | `src/render/` | `table.wcl`, `list.wcl` | `tables.wcl` |
 | code highlight | `src/highlight.rs` | `code.wcl` | `formatting.wcl` |
 | callouts | (WCL `lower`) | `callout.wcl` | `formatting.wcl` |
-| components / repeaters | `src/render/` | `components.wcl` | `data-views.wcl` |
+| components / repeaters / partials | `src/render/` | `components.wcl` | `data-views.wcl` |
 | images | `src/image.rs` | `image.wcl` | `images.wcl` |
 | icons | `src/icons.rs` (+`build.rs`) | `icons.wcl` | `icons.wcl` |
 | diagrams + layout/routing | `src/{layered,force,routing}.rs`, `src/render/` | `diagram-core.wcl`, `flowchart.wcl` | `diagrams.wcl`, `flowcharts.wcl`, `connections.wcl` |

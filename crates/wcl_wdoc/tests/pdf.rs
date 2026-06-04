@@ -505,3 +505,36 @@ fn unresolved_name_in_page_block_errors() {
         }
     }
 }
+
+#[test]
+fn collect_gathers_partials_into_valid_pdf() {
+    // Scattered `partial`s gathered by a `collect` render into a valid PDF
+    // (text is glyph-encoded, so we assert structural validity, not content).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "page p {\n  partial note { p \"First scattered note.\" }\n  p \"Body prose.\"\n  partial note { p \"Second scattered note.\" }\n  collect note\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("doc.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"), "output is a PDF");
+    assert!(bytes.len() > 1000, "non-trivial pdf produced");
+}
+
+#[test]
+fn collect_cycle_terminates_in_pdf() {
+    // A collected partial body containing a `collect` of the same tag must not
+    // recurse forever — the guard breaks the cycle and the PDF builds.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "page p {\n  partial loop { p \"Cycle body.\"  collect loop }\n  collect loop\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("doc.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"), "output is a PDF");
+}

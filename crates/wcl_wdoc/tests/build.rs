@@ -7134,3 +7134,126 @@ fn cross_file_eval_error_reports_imported_file() {
         }
     }
 }
+
+#[test]
+fn partials_are_gathered_by_collect_in_document_order() {
+    // Two `partial`s with the same tag, scattered in different spots, are
+    // gathered by a `collect` in document order — and, by default
+    // (show_here unset), do NOT render at their source.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  partial note { p "First note." }
+  p "Body prose."
+  partial note { p "Second note." }
+  collect note
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
+
+    // The collected bodies appear, in document order, after the body prose
+    // (where the `collect` sits).
+    let body = html.find("Body prose.").expect("body prose present");
+    let first = html.find("First note.").expect("first note present");
+    let second = html.find("Second note.").expect("second note present");
+    assert!(
+        body < first && first < second,
+        "collected partials must appear after the collect site, in order:\n{html}"
+    );
+    // Default show_here = false: each note text appears exactly once (only at
+    // the collect site, not at its source).
+    assert_eq!(html.matches("First note.").count(), 1, "{html}");
+    assert_eq!(html.matches("Second note.").count(), 1, "{html}");
+}
+
+#[test]
+fn partial_show_here_renders_at_source_and_collect() {
+    // `show_here = true` renders the body where it is defined AND where it is
+    // collected — so it appears twice.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  partial tip { show_here = true  p "Pinned tip." }
+  collect tip
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
+    assert_eq!(
+        html.matches("Pinned tip.").count(),
+        2,
+        "show_here partial should render at source and at collect:\n{html}"
+    );
+}
+
+#[test]
+fn collect_gathers_partials_from_imported_files() {
+    // A `partial` declared at top level in an eagerly-imported file is
+    // reachable by a `collect` in the main document (cross-file scatter).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    std::fs::write(
+        tmp.path().join("extra.wcl"),
+        "import <wdoc.wcl>\npartial gloss { p \"Imported term.\" }\n",
+    )
+    .expect("write extra");
+    let main = tmp.path().join("main.wcl");
+    std::fs::write(
+        &main,
+        "import <wdoc.wcl>\nimport \"./extra.wcl\"\npage index { collect gloss }\n",
+    )
+    .expect("write main");
+    let out = tmp.path().join("out");
+    build_ok(&main, &out);
+    let html = std::fs::read_to_string(out.join("index.html")).expect("read index");
+    assert!(
+        html.contains("Imported term."),
+        "collect must gather partials from imported files:\n{html}"
+    );
+}
+
+#[test]
+fn collect_with_no_matching_partials_renders_nothing() {
+    // A `collect` whose tag matches no partial emits nothing and does not
+    // error.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(&src, "page index { p \"Only prose.\"  collect missing }\n");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
+    assert!(html.contains("Only prose."), "{html}");
+}
+
+#[test]
+fn collect_cycle_terminates() {
+    // A collected partial body that contains a `collect` of the same tag must
+    // not recurse forever — the guard breaks the cycle and the build finishes.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  partial loop { p "Cycle body." collect loop }
+  collect loop
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
+    // The body renders once at the outer collect; the inner collect is a
+    // re-entrant no-op.
+    assert_eq!(html.matches("Cycle body.").count(), 1, "{html}");
+}

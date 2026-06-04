@@ -4,9 +4,11 @@
 //! (wcl_lang), which is `OnceLock`-cached per block, so the collect and
 //! render passes see byte-identical expansions.
 
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::sync::Arc;
 
-use wcl_lang::{Block, Value};
+use wcl_lang::{Block, Document, Value};
 
 use super::{MAX_LOWER_DEPTH, label_string};
 
@@ -74,6 +76,73 @@ pub(crate) fn expand_repeater_children<'a>(block: &Block<'a>) -> Vec<Block<'a>> 
         .into_iter()
         .flatten()
         .collect()
+}
+
+/// The bodies of every `partial` whose `tag` matches `want`, gathered
+/// across the whole document — the root source and its eagerly-imported
+/// files (`Document::blocks` walks `all_sources`) — recursing into nested
+/// blocks, in deterministic document order. Returns the flattened child
+/// blocks of the matching partials, ready to render via each backend's
+/// per-block entrypoint, exactly like `expand_repeater_children`.
+///
+/// Does not descend into a partial's own body looking for further
+/// partials — a body is content, not a nesting site — so a partial nested
+/// inside another partial's body is part of that body, not collected
+/// twice. Lazily-imported (block-scoped `import`) files are not reachable,
+/// matching how `page` / `wdoc_component` already resolve.
+pub(crate) fn collect_partials<'a>(doc: &'a Document, want: &str) -> Vec<Block<'a>> {
+    let mut out = Vec::new();
+    for top in doc.blocks() {
+        gather_partials(&top, want, &mut out);
+    }
+    out
+}
+
+fn gather_partials<'a>(block: &Block<'a>, want: &str, out: &mut Vec<Block<'a>>) {
+    if block.kind() == "partial" {
+        if label_string(block).as_deref() == Some(want) {
+            out.extend(block.blocks());
+        }
+        return;
+    }
+    for child in block.blocks() {
+        gather_partials(&child, want, out);
+    }
+}
+
+thread_local! {
+    /// Tags whose `collect` is currently being rendered on this thread.
+    /// Guards against a collected partial body that itself contains a
+    /// `collect` of an ancestor tag (collect → partial → collect cycle),
+    /// which plain block recursion — unlike repeater/component expansion —
+    /// would not bound via `binding_scope_depth`.
+    static ACTIVE_COLLECTS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+}
+
+/// RAII guard returned by [`enter_collect`]; removes the tag from the
+/// active set when dropped.
+pub(crate) struct CollectGuard(String);
+
+impl Drop for CollectGuard {
+    fn drop(&mut self) {
+        ACTIVE_COLLECTS.with(|set| {
+            set.borrow_mut().remove(&self.0);
+        });
+    }
+}
+
+/// Begin collecting `tag`. Returns a guard while the tag was not already
+/// being collected on this thread; returns `None` if it is (a re-entrant
+/// cycle), in which case the caller renders nothing.
+pub(crate) fn enter_collect(tag: &str) -> Option<CollectGuard> {
+    ACTIVE_COLLECTS.with(|set| {
+        if set.borrow().contains(tag) {
+            None
+        } else {
+            set.borrow_mut().insert(tag.to_string());
+            Some(CollectGuard(tag.to_string()))
+        }
+    })
 }
 
 /// Expand a `wdoc_component` instance's `wdoc_body` once, binding each

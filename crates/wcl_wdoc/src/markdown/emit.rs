@@ -22,9 +22,9 @@ use wcl_lang::{Block, Document, Value, VariantPayload};
 use crate::build::BuildError;
 use crate::inline::InlinePatterns;
 use crate::render::{
-    MAX_LOWER_DEPTH, expand_component_children, expand_repeater_children, field_symbol, field_utf8,
-    field_utf8_list, kind_for_variant, lower_to_values, map_utf8, map_utf8_list,
-    render_diagram_static,
+    MAX_LOWER_DEPTH, collect_partials, enter_collect, expand_component_children,
+    expand_repeater_children, field_bool, field_symbol, field_utf8, field_utf8_list,
+    kind_for_variant, lower_to_values, map_utf8, map_utf8_list, render_diagram_static,
 };
 use crate::terminal::ASSET_DIR;
 
@@ -153,6 +153,25 @@ impl Emitter<'_> {
             // A bare `wdoc_content` outside a component has no effect (the
             // substitution happens in `component`).
             "wdoc_content" => {}
+            // A `partial` deposits tagged content for a matching `collect`; it
+            // renders here only when `show_here = true`.
+            "partial" => {
+                if field_bool(block, "show_here") == Some(true) {
+                    for c in block.blocks() {
+                        self.block(&c, out)?;
+                    }
+                }
+            }
+            // A `collect` gathers every matching `partial`'s body, in document
+            // order; the guard breaks collect → partial → collect cycles.
+            "collect" => {
+                let tag = label_string(block).unwrap_or_default();
+                if let Some(_guard) = enter_collect(&tag) {
+                    for c in collect_partials(self.doc, &tag) {
+                        self.block(&c, out)?;
+                    }
+                }
+            }
             kind => {
                 // A user-defined `wdoc_component` instance: expand its
                 // declarative body with the instance's slots bound.

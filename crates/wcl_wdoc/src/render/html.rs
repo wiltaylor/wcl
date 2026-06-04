@@ -393,6 +393,36 @@ pub(crate) fn render_block(
         // render — emit the sentinel; `render_component` substitutes it.
         // (Outside a component it has no effect; the sentinel is invisible.)
         "wdoc_content" => Some(WF_CONTENT_SLOT.to_string()),
+        // A `partial` is a tagged content deposit gathered by a matching
+        // `collect`. It is invisible at its source unless `show_here = true`,
+        // which also renders its body here.
+        "partial" => {
+            if field_bool(block, "show_here") == Some(true) {
+                Some(
+                    block
+                        .blocks()
+                        .filter_map(|b| render_block(doc, &b, patterns, base_dir))
+                        .collect(),
+                )
+            } else {
+                Some(String::new())
+            }
+        }
+        // A `collect` gathers every `partial` with the matching `tag`, across
+        // the document and its eager imports, and renders their bodies in
+        // document order. The guard breaks collect → partial → collect cycles.
+        "collect" => {
+            let tag = label_string(block).unwrap_or_default();
+            let Some(_guard) = enter_collect(&tag) else {
+                return Some(String::new());
+            };
+            Some(
+                collect_partials(doc, &tag)
+                    .iter()
+                    .filter_map(|b| render_block(doc, b, patterns, base_dir))
+                    .collect(),
+            )
+        }
         // Everything else lowers via WCL — `text` / `code` (which emit the
         // new `Inline` / `Highlighted` leaf fundamentals), the headings,
         // `callout`, and any custom block — UNLESS the kind names a

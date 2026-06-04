@@ -311,3 +311,43 @@ fn unresolved_name_in_page_block_errors() {
         }
     }
 }
+
+#[test]
+fn partials_are_gathered_by_collect() {
+    // Scattered `partial`s are gathered at the `collect` site, in document
+    // order, and (default show_here unset) do not render at their source.
+    let (_t, out) = build(
+        "page p {\n  partial note { p \"First note.\" }\n  p \"Body prose.\"\n  partial note { p \"Second note.\" }\n  collect note\n}\n",
+    );
+    let md = read(&out, "p.md");
+    let body = md.find("Body prose.").expect("body prose present");
+    let first = md.find("First note.").expect("first note present");
+    let second = md.find("Second note.").expect("second note present");
+    assert!(
+        body < first && first < second,
+        "collected partials must follow the collect site, in order:\n{md}"
+    );
+    assert_eq!(md.matches("First note.").count(), 1, "{md}");
+}
+
+#[test]
+fn collect_gathers_partials_from_imported_files() {
+    // Cross-file scatter: a top-level `partial` in an eagerly-imported file is
+    // gathered by a `collect` in the main document.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    std::fs::write(
+        tmp.path().join("extra.wcl"),
+        "import <wdoc.wcl>\npartial gloss { p \"Imported term.\" }\n",
+    )
+    .expect("write extra");
+    let main = tmp.path().join("main.wcl");
+    std::fs::write(
+        &main,
+        "import <wdoc.wcl>\nimport \"./extra.wcl\"\npage p { collect gloss }\n",
+    )
+    .expect("write main");
+    let out = tmp.path().join("out");
+    md_ok(&main, &out, None);
+    let md = read(&out, "p.md");
+    assert!(md.contains("Imported term."), "{md}");
+}
