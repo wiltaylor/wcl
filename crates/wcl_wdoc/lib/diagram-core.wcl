@@ -20,7 +20,7 @@ type Diagram extends WdocBlock {
   // runs a force-directed simulation (shapes repel each other,
   // @connections(Edge) edges attract) and assigns x/y — best for
   // cyclic / undirected graphs that have no natural rank order.
-  @doc("Layout mode: `:free` (default, manual x/y) / `:grid` / `:layered` / `:force`.")
+  @doc("Layout mode: `:free` (default, manual x/y) / `:grid` / `:layered` / `:force` / `:radial`.")
   layout:      symbol?
   @doc("Flow direction for `:layered`: `:top_to_bottom` (default) / `:left_to_right`.")
   direction:   symbol?      // :top_to_bottom (default) | :left_to_right
@@ -49,6 +49,19 @@ type Diagram extends WdocBlock {
   gravity:       f64?       // centering pull (default 0.05)
   @doc("`:force` random seed for reproducible layouts (default 1).")
   seed:          i64?       // re-arrange reproducibly (default 1)
+
+  // Radial (:radial) hub-and-spoke knobs. The hub sits at the centre and
+  // every other shape is placed on a ring around it, ranked by graph
+  // distance. All optional; `node_gap` (above) doubles as the minimum
+  // edge-to-edge gap between shapes on a ring.
+  @doc("`:radial` hub shape id (defaults to the highest-degree shape).")
+  hub:           identifier?
+  @doc("`:radial` radius of the first ring (default: auto-fit to shape sizes).")
+  radius:        f64?
+  @doc("`:radial` added radius per successive ring (default 120).")
+  ring_gap:      f64?
+  @doc("`:radial` angle (radians) of the first shape on each ring (default -PI/2, i.e. top).")
+  start_angle:   f64?
 
   // Edge rendering.
   @doc("Edge routing: `:elbow` (default) / `:straight`.")
@@ -98,6 +111,13 @@ type Diagram extends WdocBlock {
 //                        `repulsion` / `link_distance` / `gravity`
 //                        and deterministic per `seed`. Suits
 //                        cyclic / undirected graphs.
+//   :radial            — hub-and-spoke: the `hub` shape (or the
+//                        highest-degree one) sits at the centre and
+//                        every other shape is placed on a ring around
+//                        it, ranked by graph distance from the hub.
+//                        Tunable via `radius` / `ring_gap` /
+//                        `start_angle` / `node_gap`. Suits a focus
+//                        entity wired to many neighbours.
 // Anchors on the container itself resolve against the parent box and
 // can resize the container; that new size flows to its own children.
 @block("container")
@@ -131,7 +151,7 @@ type Container extends SvgBlock {
   height: f64?
 
   // Layout
-  @doc("Layout mode: `:free` (default, manual) / `:grid` / `:layered` / `:force`.")
+  @doc("Layout mode: `:free` (default, manual) / `:grid` / `:layered` / `:force` / `:radial`.")
   layout:      symbol?
   @doc("Number of columns for `:grid` layout.")
   columns:     i64?
@@ -159,6 +179,18 @@ type Container extends SvgBlock {
   gravity:       f64?     // centering pull (default 0.05)
   @doc("`:force` random seed for reproducible layouts (default 1).")
   seed:          i64?     // re-arrange reproducibly (default 1)
+
+  // Radial (:radial) hub-and-spoke knobs. Hub at the centre, every other
+  // shape on a ring around it ranked by graph distance. `node_gap` (above)
+  // is the minimum edge-to-edge gap between shapes on a ring.
+  @doc("`:radial` hub shape id (defaults to the highest-degree shape).")
+  hub:           identifier?
+  @doc("`:radial` radius of the first ring (default: auto-fit to shape sizes).")
+  radius:        f64?
+  @doc("`:radial` added radius per successive ring (default 120).")
+  ring_gap:      f64?
+  @doc("`:radial` angle (radians) of the first shape on each ring (default -PI/2, i.e. top).")
+  start_angle:   f64?
 
   // Anchors (resolve against the parent's box).
   @doc("Fractional anchor (0–1) pinning the left edge to the parent box.")

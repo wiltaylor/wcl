@@ -22,6 +22,7 @@ mod markdown;
 mod math;
 mod node_table;
 pub mod pdf;
+mod radial;
 mod render;
 mod routing;
 mod terminal;

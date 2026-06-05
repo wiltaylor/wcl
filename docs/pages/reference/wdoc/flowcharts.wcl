@@ -87,4 +87,44 @@ diagram {
 }
 WCL
   }
+
+  h2 "Radial (hub-and-spoke) auto-layout"
+
+  p "Set `layout = :radial` for an \"X and everything it talks to\" shape: one shape — the *hub* — sits at the centre and every other shape is placed on a ring around it. Name the centre with `hub`; if you omit it, the highest-degree shape wins. A shape's ring is its graph distance from the hub, so direct neighbours form the first circle and second-hop shapes a wider one. Pairs naturally with `routing = :straight` for clean spokes."
+
+  p "This is the layout to reach for when a `:layered` diagram would strand a fan-out of edge-less neighbours in a single line. `ring_gap` sets the spacing added per outer ring; `node_gap` the minimum gap between shapes on a ring; `start_angle` (radians) rotates the ring."
+
+  diagram {
+    width = 360  height = 300  layout = :radial  hub = api  routing = :straight
+
+    process "API"      { id = api    width = 96.0  height = 44.0  fill = "#88c0d0" }
+    process "Web"      { id = web    width = 96.0  height = 44.0  fill = "#a3be8c" }
+    process "Database" { id = db     width = 96.0  height = 44.0  fill = "#a3be8c" }
+    process "Stripe"   { id = stripe width = 96.0  height = 44.0  fill = "#b48ead" }
+    process "Tax"      { id = tax    width = 96.0  height = 44.0  fill = "#b48ead" }
+
+    web    -> api :flow
+    api    -> db  :flow
+    api -> stripe :flow
+    api -> tax    :flow
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 360  height = 300  layout = :radial  hub = api  routing = :straight
+
+  process "API"      { id = api    width = 96.0  height = 44.0  fill = "#88c0d0" }
+  process "Web"      { id = web    width = 96.0  height = 44.0  fill = "#a3be8c" }
+  process "Database" { id = db     width = 96.0  height = 44.0  fill = "#a3be8c" }
+  process "Stripe"   { id = stripe width = 96.0  height = 44.0  fill = "#b48ead" }
+  process "Tax"      { id = tax    width = 96.0  height = 44.0  fill = "#b48ead" }
+
+  web    -> api :flow
+  api    -> db  :flow
+  api -> stripe :flow
+  api -> tax    :flow
+}
+WCL
+  }
 }

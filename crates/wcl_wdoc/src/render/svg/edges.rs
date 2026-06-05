@@ -75,8 +75,16 @@ pub(crate) fn render_edges(
     // Pre-pass: when a shape participates in multiple edges (as
     // source or destination), pick a single shared anchor for that
     // role so every edge converges at the same point rather than
-    // each picking its own closest anchor independently.
-    let (source_overrides, dest_overrides) = build_shared_anchors(&items, positions);
+    // each picking its own closest anchor independently. This forms a
+    // clean branching trunk for `:elbow` routing — but for `:straight`
+    // routing convergence to one point IS the defect (every spoke
+    // would leave the same side and cross the shape body), so straight
+    // edges skip it and each picks its own facing anchor below.
+    let (source_overrides, dest_overrides) = if straight {
+        (AnchorMap::new(), AnchorMap::new())
+    } else {
+        build_shared_anchors(&items, positions)
+    };
 
     let mut planned: Vec<(EdgePath, Option<String>)> = Vec::new();
     for item in &items {

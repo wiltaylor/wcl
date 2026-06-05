@@ -11,6 +11,7 @@ use wcl_lang::{Block, Document};
 use crate::force::{self, ForceParams};
 use crate::inline::InlinePatterns;
 use crate::layered::{self, Direction};
+use crate::radial::{self, RadialParams};
 
 use super::*;
 
@@ -126,7 +127,7 @@ pub(crate) fn collect_layout_children(
     let layout = field_symbol(block, "layout").unwrap_or_default();
     match layout.as_str() {
         "grid" => collect_grid_children(block, tx, ty, cctx, out),
-        "layered" | "force" => collect_planned_children(block, tx, ty, cctx, out),
+        "layered" | "force" | "radial" => collect_planned_children(block, tx, ty, cctx, out),
         _ => {
             for child in diagram_children(block) {
                 collect_shape_positions(&child, tx, ty, parent_w, parent_h, cctx, out);
@@ -147,7 +148,7 @@ pub(crate) fn render_layout_children(
     let layout = field_symbol(block, "layout").unwrap_or_default();
     match layout.as_str() {
         "grid" => render_grid_children(block, ctx),
-        "layered" | "force" => render_planned_children(block, ctx),
+        "layered" | "force" | "radial" => render_planned_children(block, ctx),
         _ => diagram_children(block)
             .iter()
             .filter_map(|b| render_shape(b, pw, ph, ctx))
@@ -311,15 +312,40 @@ pub(crate) fn compute_force_plan(
     assemble_plan(children, &flow_idx, &flow_nodes, &flow_offsets)
 }
 
+/// Compute the radial (hub-and-spoke) layout for a container/diagram's
+/// children. Same return shape as `compute_layered_plan`: per-child
+/// offsets + widths + heights. The optional knob fields (`hub`, `radius`,
+/// `ring_gap`, `start_angle`, `node_gap`) fall back to
+/// `RadialParams::default()`.
+pub(crate) fn compute_radial_plan(
+    block: &Block<'_>,
+    children: &[Block<'_>],
+) -> (Vec<(f64, f64)>, Vec<f64>, Vec<f64>) {
+    let defaults = RadialParams::default();
+    let params = RadialParams {
+        hub: field_id(block, "hub"),
+        radius: field_f64(block, "radius"),
+        ring_gap: field_f64(block, "ring_gap").unwrap_or(defaults.ring_gap),
+        start_angle: field_f64(block, "start_angle").unwrap_or(defaults.start_angle),
+        node_gap: field_f64(block, "node_gap").unwrap_or(defaults.node_gap),
+    };
+
+    let (flow_idx, flow_nodes) = flow_nodes_of(children);
+    let edges: Vec<(String, String)> = edge_id_pairs(block);
+    let flow_offsets = radial::assign_radial_offsets(&flow_nodes, &edges, params);
+    assemble_plan(children, &flow_idx, &flow_nodes, &flow_offsets)
+}
+
 /// Dispatch to the layout solver named by the block's `layout` field.
-/// Both `:layered` and `:force` produce offsets + sizes in the same
-/// shape, so the collect / render / size paths share one entry point.
+/// `:layered`, `:force` and `:radial` all produce offsets + sizes in the
+/// same shape, so the collect / render / size paths share one entry point.
 pub(crate) fn compute_planned_plan(
     block: &Block<'_>,
     children: &[Block<'_>],
 ) -> (Vec<(f64, f64)>, Vec<f64>, Vec<f64>) {
     match field_symbol(block, "layout").unwrap_or_default().as_str() {
         "force" => compute_force_plan(block, children),
+        "radial" => compute_radial_plan(block, children),
         _ => compute_layered_plan(block, children),
     }
 }
@@ -423,7 +449,7 @@ pub(crate) fn render_grid_children(block: &Block<'_>, ctx: RenderCtx<'_>) -> Str
 pub(crate) fn content_size(block: &Block<'_>) -> (f64, f64) {
     let layout = field_symbol(block, "layout").unwrap_or_default();
     match layout.as_str() {
-        "layered" | "force" => {
+        "layered" | "force" | "radial" => {
             let children: Vec<Block<'_>> = diagram_children(block);
             if children.is_empty() {
                 return (0.0, 0.0);

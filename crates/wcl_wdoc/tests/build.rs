@@ -1913,6 +1913,151 @@ page index {
 }
 
 #[test]
+fn build_radial_layout_places_hub_in_center_ring() {
+    // A hub wired to four neighbours and no neighbour-to-neighbour edges.
+    // The layered solver would strand the edge-less neighbours in one row;
+    // :radial must put the hub (highest degree) at the centre and spread
+    // the four neighbours on a ring around it — spanning both axes.
+    let fixture = r##"
+page index {
+  diagram {
+    width   = 400
+    height  = 400
+    layout  = :radial
+    routing = :straight
+    process { id = hub  width = 80.0  height = 40.0  fill = "#cce" }
+    process { id = n1   width = 80.0  height = 40.0  fill = "#ecc" }
+    process { id = n2   width = 80.0  height = 40.0  fill = "#cec" }
+    process { id = n3   width = 80.0  height = 40.0  fill = "#fec" }
+    process { id = n4   width = 80.0  height = 40.0  fill = "#cff" }
+    hub -> n1
+    hub -> n2
+    hub -> n3
+    hub -> n4
+  }
+}
+"##;
+
+    let render = || {
+        let tmp = TempDir::new().expect("mkdir tempdir");
+        let src = tmp.path().join("radial.wcl");
+        write_fixture(&src, fixture);
+        let out = TempDir::new().expect("mkdir out");
+        build_ok(&src, out.path());
+        std::fs::read_to_string(out.path().join("index.html")).expect("read")
+    };
+
+    let html = render();
+
+    // One translate wrapper per node; one arrow per edge.
+    assert_eq!(
+        html.matches("<g transform=\"translate(").count(),
+        5,
+        "expected one wrapper per node:\n{html}"
+    );
+    assert_eq!(
+        html.matches("url(#wdoc-arrow)").count(),
+        4,
+        "expected one arrow per edge:\n{html}"
+    );
+
+    // Collect the (x, y) of every node wrapper and confirm the layout is
+    // genuinely 2D — neighbours span more than one row AND more than one
+    // column, which a single-line layered fallback could never produce.
+    let mut xs = Vec::new();
+    let mut ys = Vec::new();
+    for frag in html.split("<g transform=\"translate(").skip(1) {
+        let coords = frag.split(')').next().unwrap_or("");
+        let mut parts = coords.split_whitespace();
+        let (Some(x), Some(y)) = (parts.next(), parts.next()) else {
+            continue;
+        };
+        if let (Ok(x), Ok(y)) = (x.parse::<f64>(), y.parse::<f64>()) {
+            xs.push(x);
+            ys.push(y);
+        }
+    }
+    assert_eq!(xs.len(), 5, "expected 5 parsed node offsets:\n{html}");
+    let spread = |v: &[f64]| {
+        v.iter().cloned().fold(f64::MIN, f64::max) - v.iter().cloned().fold(f64::MAX, f64::min)
+    };
+    assert!(
+        spread(&xs) > 1.0 && spread(&ys) > 1.0,
+        "radial layout did not spread in 2D (x {:.1}, y {:.1}):\n{html}",
+        spread(&xs),
+        spread(&ys)
+    );
+
+    // Pure, deterministic placement: a second build is byte-identical.
+    assert_eq!(html, render(), "radial layout was not deterministic");
+}
+
+#[test]
+fn build_radial_straight_spokes_leave_distinct_anchors() {
+    // A hub that is the SOURCE of three straight edges must not bundle
+    // them onto one shared egress anchor (which would make every spoke
+    // leave the same side and cross the hub body — "lines from the
+    // middle"). Each straight spoke should leave the hub's own facing
+    // border anchor, so the three hub-sourced edges have three DISTINCT
+    // start points.
+    let fixture = r##"
+page index {
+  diagram {
+    width   = 400
+    height  = 400
+    layout  = :radial
+    hub     = hub
+    routing = :straight
+    process { id = hub width = 100.0 height = 40.0 fill = "#cce" }
+    process { id = e   width = 100.0 height = 40.0 fill = "#ecc" }
+    process { id = s   width = 100.0 height = 40.0 fill = "#cec" }
+    process { id = w   width = 100.0 height = 40.0 fill = "#fec" }
+    nbr -> hub
+    hub -> e
+    hub -> s
+    hub -> w
+    process { id = nbr width = 100.0 height = 40.0 fill = "#cff" }
+  }
+}
+"##;
+
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("radial_straight.wcl");
+    write_fixture(&src, fixture);
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Parse the <line> elements in emission (= edge declaration) order.
+    let starts: Vec<(String, String)> = html
+        .split("<line ")
+        .skip(1)
+        .filter_map(|frag| {
+            let grab = |key: &str| {
+                frag.split(&format!("{key}=\""))
+                    .nth(1)?
+                    .split('"')
+                    .next()
+                    .map(str::to_string)
+            };
+            Some((grab("x1")?, grab("y1")?))
+        })
+        .collect();
+    assert_eq!(starts.len(), 4, "expected one <line> per edge:\n{html}");
+
+    // Edges are declared nbr->hub, hub->e, hub->s, hub->w, so the three
+    // hub-sourced spokes are lines 1..4; their start points are the hub's
+    // egress anchors and must all differ (the bundling bug made them equal).
+    let hub_starts = &starts[1..4];
+    let distinct: std::collections::HashSet<_> = hub_starts.iter().collect();
+    assert_eq!(
+        distinct.len(),
+        3,
+        "hub-sourced straight spokes share an egress anchor (bundled): {hub_starts:?}\n{html}"
+    );
+}
+
+#[test]
 fn build_straight_edges_attach_to_circle_boundary() {
     // Two circles on a shared horizontal axis. A straight edge should
     // leave circle A on its boundary toward B's center and arrive on
