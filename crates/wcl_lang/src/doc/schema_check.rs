@@ -246,11 +246,12 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     // `@connections(...)` field, so an unwired statement still
     // surfaces.
     let scope = block.child_scope();
-    errs.extend(validate_connection_stmts(
-        block.doc,
-        &block.ast.items,
-        &scope,
-    ));
+    // Validate the block's own connection statements and any spliced in
+    // by an in-block `import`, so imported connections are checked just
+    // like inline ones.
+    for src in block.realize_and_sources() {
+        errs.extend(validate_connection_stmts(block.doc, src.items, &scope));
+    }
 
     let Some(schema) = block.schema() else {
         // A `wdoc_component` instance has no `@block` schema of its own —

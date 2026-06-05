@@ -1259,6 +1259,170 @@ service "web" {
 }
 
 #[test]
+fn lazy_block_import_nests_child_instances() {
+    // An `import` inside a block splices the imported file's top-level
+    // block instances into the enclosing block as children, subject to
+    // the same `@children` projection as if written inline.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let kids = dir.path().join("kids.wcl");
+    std::fs::write(
+        &kids,
+        r#"
+kid "a" {}
+kid "b" {}
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        &main,
+        r#"
+@block("kid")    type Kid    { @inline(0) id: utf8 }
+@block("parent") type Parent { @inline(0) id: utf8  @children("kid") kids: list<Kid> }
+@document type Doc { @children("parent") parents: list<Parent> }
+
+parent "p" {
+  import "./kids.wcl"
+}
+"#,
+    )
+    .unwrap();
+
+    let doc = Document::from_file(&main).expect("opens");
+    assert!(
+        doc.schema_errors().is_empty(),
+        "expected no schema errors, got: {:#?}",
+        doc.schema_errors(),
+    );
+    let parent = doc.block("parent").expect("parent block");
+    // The fixed `@children` projection (children_projection) must surface
+    // the imported `child` instances, not just `blocks()`.
+    let kids = parent.typed_field("kids").expect("kids slot");
+    assert_eq!(
+        kids.len(),
+        Some(2),
+        "imported child instances should nest as the parent's kids",
+    );
+}
+
+#[test]
+fn lazy_block_import_connection_projects_into_block() {
+    // A connection statement in an in-block import is block-scoped: it
+    // projects into the enclosing block's `@connections` slot, and its
+    // operands resolve against both the imported fragment (sibling) and
+    // the enclosing block's own children (ancestor).
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let wires = dir.path().join("wires.wcl");
+    std::fs::write(
+        &wires,
+        r#"
+shape { id = a }
+a -> root_shape
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        &main,
+        r#"
+symbol_set Kind { default }
+connection Edge: Shape -> Shape : Kind
+@block("shape") type Shape { id: identifier }
+@block("group") type Group {
+  @children("shape") shapes: list<Shape>
+  @connections(Edge) edges: list<Edge>
+}
+@document type Site { @children("group") groups: list<Group> }
+
+group {
+  shape { id = root_shape }
+  import "./wires.wcl"
+}
+"#,
+    )
+    .unwrap();
+
+    let doc = Document::from_file(&main).expect("opens");
+    assert!(
+        doc.schema_errors().is_empty(),
+        "expected no schema errors, got: {:#?}",
+        doc.schema_errors(),
+    );
+    let group = doc.block("group").expect("group block");
+    let edges = group
+        .typed_field("edges")
+        .expect("edges slot")
+        .value()
+        .expect("eval edges");
+    let Value::List(items) = edges else {
+        panic!("edges should be a list, got {edges:?}");
+    };
+    assert_eq!(items.len(), 1, "imported connection should project");
+    let Value::Record { fields, .. } = &items[0] else {
+        panic!("expected record");
+    };
+    assert_eq!(fields.get("source"), Some(&Value::Identifier("a".into())));
+    assert_eq!(
+        fields.get("destination"),
+        Some(&Value::Identifier("root_shape".into())),
+    );
+}
+
+#[test]
+fn document_root_connection_resolves_in_block_imported_endpoint() {
+    // A connection at the document root can name a block that was nested
+    // into the tree via an in-block import: operand resolution descends
+    // into the lazy import.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let shapes = dir.path().join("shapes.wcl");
+    std::fs::write(
+        &shapes,
+        r#"
+shape { id = a }
+shape { id = b }
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        &main,
+        r#"
+symbol_set Kind { default }
+connection Edge: Shape -> Shape : Kind
+@block("shape") type Shape { id: identifier }
+@block("group") type Group { @children("shape") shapes: list<Shape> }
+@document type Site {
+  @children("group") groups: list<Group>
+  @connections(Edge) edges: list<Edge>
+}
+
+group {
+  import "./shapes.wcl"
+}
+
+a -> b
+"#,
+    )
+    .unwrap();
+
+    let doc = Document::from_file(&main).expect("opens");
+    assert!(
+        doc.schema_errors().is_empty(),
+        "expected no schema errors, got: {:#?}",
+        doc.schema_errors(),
+    );
+    let edges = doc.get("edges").expect("edges").value().expect("eval");
+    let Value::List(items) = edges else {
+        panic!("edges should be a list, got {edges:?}");
+    };
+    assert_eq!(
+        items.len(),
+        1,
+        "root connection should resolve imported endpoints",
+    );
+}
+
+#[test]
 fn nested_blocks_example_resolves_via_schema() {
     let path = examples_dir().join("nested_blocks.wcl");
     let doc = Document::from_file(&path).expect("nested_blocks fixture parses");

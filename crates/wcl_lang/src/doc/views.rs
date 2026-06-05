@@ -1858,8 +1858,9 @@ impl<'a> Block<'a> {
 
     /// Realise any pending block-level imports, then return one
     /// `BlockSlice` for the block's own items plus one for each
-    /// successfully-loaded import (transitively).
-    fn realize_and_sources(&self) -> Vec<BlockSlice<'a>> {
+    /// successfully-loaded import (transitively). The block's own
+    /// slice is always element 0.
+    pub(super) fn realize_and_sources(&self) -> Vec<BlockSlice<'a>> {
         let (_, items_cells) = self.block_inner();
         // Force any unloaded Import cells.
         for cell in items_cells {
@@ -1888,6 +1889,20 @@ impl<'a> Block<'a> {
         }];
         push_loaded_imports(items_cells, &mut out);
         out
+    }
+
+    /// Slices spliced in by this block's in-block `import`s, excluding the
+    /// block's own items (which `realize_and_sources` returns as element
+    /// 0). Used by the `@child(ren)` projections to nest imported block
+    /// instances after the block's own children — the own slice is handled
+    /// separately because table-row interleaving and computed children are
+    /// keyed to the block's own cell.
+    fn imported_slices(&self) -> Vec<BlockSlice<'a>> {
+        let mut all = self.realize_and_sources();
+        if !all.is_empty() {
+            all.remove(0);
+        }
+        all
     }
 
     pub fn field(&self, name: &str) -> Option<Field<'a>> {
@@ -2021,9 +2036,12 @@ impl<'a> Block<'a> {
         // statements through the named connection schema.
         if let Some(conn_schema) = f.connection_schema() {
             let scope = self.child_scope();
-            let values = self
-                .doc
-                .project_connections(&self.ast.items, conn_schema, &scope);
+            // Connection statements live in the block's own items and in
+            // any in-block import it splices in; project across both.
+            let mut values = Vec::new();
+            for src in self.realize_and_sources() {
+                values.extend(self.doc.project_connections(src.items, conn_schema, &scope));
+            }
             return Some(crate::data::DataRef::from_variant_value(Value::List(
                 values,
             )));
@@ -2211,6 +2229,25 @@ impl<'a> Block<'a> {
                 _ => {}
             }
         }
+        // In-block imports splice their top-level block instances in as
+        // nested children too; dispatch decides which (if any) variant
+        // each matches by shape.
+        for src in self.imported_slices() {
+            for (item, cells) in src.items.iter().zip(src.cells.iter()) {
+                if let ast::Item::Block(b) = item {
+                    out.push((
+                        UnionChildKind::Nested,
+                        Block {
+                            ast: b,
+                            cells,
+                            doc: self.doc,
+                            kind_override: None,
+                            scope: child_scope.clone(),
+                        },
+                    ));
+                }
+            }
+        }
         out
     }
 
@@ -2235,6 +2272,24 @@ impl<'a> Block<'a> {
                 };
                 if let Ok(v) = variant_dispatch::block_to_variant(self.doc, &blk, union) {
                     return crate::data::DataRef::from_variant_value(v);
+                }
+            }
+        }
+        // Fall back to in-block imports: the first imported block instance
+        // that matches a variant wins.
+        for src in self.imported_slices() {
+            for (item, cells) in src.items.iter().zip(src.cells.iter()) {
+                if let ast::Item::Block(b) = item {
+                    let blk = Block {
+                        ast: b,
+                        cells,
+                        doc: self.doc,
+                        kind_override: None,
+                        scope: child_scope.clone(),
+                    };
+                    if let Ok(v) = variant_dispatch::block_to_variant(self.doc, &blk, union) {
+                        return crate::data::DataRef::from_variant_value(v);
+                    }
                 }
             }
         }
@@ -2287,6 +2342,24 @@ impl<'a> Block<'a> {
                     }
                 }
                 _ => {}
+            }
+        }
+        // In-block imports splice their top-level block instances of the
+        // matching kind in as children, after the block's own nested
+        // blocks / table rows (mirroring `blocks()` ordering).
+        for src in self.imported_slices() {
+            for (item, cells) in src.items.iter().zip(src.cells.iter()) {
+                if let ast::Item::Block(b) = item
+                    && b.kind == kind
+                {
+                    out.push(Block {
+                        ast: b,
+                        cells,
+                        doc: self.doc,
+                        kind_override: None,
+                        scope: child_scope.clone(),
+                    });
+                }
             }
         }
         // Computed children: a `field = <list expr>` splice for this

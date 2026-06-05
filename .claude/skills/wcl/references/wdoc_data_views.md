@@ -132,6 +132,44 @@ dv_panel { title = "Notes"
 }
 ```
 
+## Partials (scatter & collect)
+
+Components and repeaters compose content **at one spot**. A **partial** does the opposite: it lets you \*scatter\* tagged content throughout a document — even across imported files — and have one place **gather** it. It's the appendix / glossary / collected-sidebars pattern.
+
+A `partial` tags a body of blocks; a `collect` with the same tag gathers every matching partial — across the whole document and its imported files — and renders their bodies, in document order, at the collect site. A partial is **invisible where it's defined** unless you set `show_here = true`.
+
+Some prose lives between the deposits…
+
+…and the `collect` below gathers both of the `dv_aside` deposits above, in order:
+
+> [!NOTE]
+> **From section one**
+> A point worth collecting later.
+
+> [!TIP]
+> **From section two**
+> Another collected point.
+
+```wcl
+// Scatter tagged deposits anywhere — different blocks, even imported files:
+partial aside { callout "From section one" { body = "A point to collect later." } }
+// ... prose, other blocks ...
+partial aside { callout "From section two" { body = "Another point." } }
+
+// Gather every `aside` partial here, in document order:
+collect aside
+```
+
+Set `show_here = true` to render a partial both where it's defined \*and\* where it's collected:
+
+```wcl
+partial aside { show_here = true  p "Pinned in place and also collected." }
+```
+
+> [!NOTE]
+> **Scope & limits**
+> Collection is **document-global**: a `collect` gathers matching partials from the root document and every file pulled in by a top-level `import` — so tag deposits distinctly to avoid cross-page bleed. Partials in **block-scoped** (lazily imported) files aren't reached, nested partials inside a partial body aren't separately collected, and a collected body should avoid `id`s (per-page id checks run before collection). A `collect` whose collected content contains another `collect` of the same tag is a no-op (the cycle is broken).
+
 ## Tables from data
 
 Set a `table`'s `rows` to a list of cell-lists — `map`ped from your data — with an optional `header` row. utf8 cells run through the inline-pattern engine (so `**bold**`, `:icons:`, links work); other scalars stringify:
@@ -262,6 +300,7 @@ wdoc_repeater { each = child_types(MyDoc)  as = :b
 | **`wdoc_component`** | A reusable fragment of wdoc markup with slots — cards, panels, sections. The everyday tool. |
 | **`wdoc_repeater`** | Rendering a body (or a component) once per element of a data list. |
 | **`wdoc_content`** | A component that wraps arbitrary caller-provided content. |
+| **`partial` + `collect`** | Scattering tagged content across a document (or imported files) and gathering it by tag at one site — appendices, glossaries, collected sidebars. |
 | **`table` computed `rows`** | A data-driven `<table>` — `table { header = […] rows = map(data, …) }`. |
 | **`wdoc_repeater` + computed `edges`** | A data-driven diagram — repeater-generated nodes (id from data) wired by a computed `edges` list, auto-positioned by `:layered`/`:force`. |
 | **Chart value fields** | Feeding `map`ped data straight into `bar_chart` / `line_chart` / `pie_chart`. |

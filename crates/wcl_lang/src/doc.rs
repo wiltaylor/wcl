@@ -36,7 +36,7 @@ use crate::symbols::{SymbolIndex, SymbolKind, SymbolRecord};
 use crate::value::{BuiltinType, TensorDim};
 use crate::value::{TypeRef, Value};
 use cells::{BlockCells, ItemCellKind, ItemCells, LoadedImport};
-use imports::expand_top_level_imports;
+use imports::{expand_top_level_imports, load_import_lazily};
 use lookup::{find_block, find_field, find_let, iter_blocks, iter_fields};
 use schema_check::has_schemaless;
 use scope::Scope;
@@ -690,13 +690,16 @@ impl Document {
         let _guard = ConnOperandGuard::enter();
         // Innermost scope frames first.
         for frame in scope.frames().iter().rev() {
-            if let Some(found) = match_block_label_in_items(self, &frame.ast.items, name) {
+            if let ItemCellKind::Block { items: fcells, .. } = &frame.cells.kind
+                && let Some(found) =
+                    match_block_label_in_items(self, &frame.ast.items, fcells, name)
+            {
                 return Some(found);
             }
         }
         // Fall back to document root: walk every source's top-level items.
         for src in self.all_sources() {
-            if let Some(found) = match_block_label_in_items(self, src.items, name) {
+            if let Some(found) = match_block_label_in_items(self, src.items, src.cells, name) {
                 return Some(found);
             }
         }
@@ -1781,20 +1784,45 @@ impl Document {
 fn match_block_label_in_items(
     doc: &Document,
     items: &[ast::Item],
+    cells: &[ItemCells],
     name: &str,
 ) -> Option<(Value, String)> {
-    for item in items {
-        let ast::Item::Block(b) = item else {
-            continue;
-        };
-        if let Some(v) = match_block_first_label(doc, b, name) {
-            return Some((v, b.kind.clone()));
-        }
-        if let Some(v) = match_block_id_field(doc, b, name) {
-            return Some((v, b.kind.clone()));
-        }
-        if let Some(found) = match_block_label_in_items(doc, &b.items, name) {
-            return Some(found);
+    for (item, cell) in items.iter().zip(cells) {
+        match (item, &cell.kind) {
+            (ast::Item::Block(b), ItemCellKind::Block { items: bcells, .. }) => {
+                if let Some(v) = match_block_first_label(doc, b, name) {
+                    return Some((v, b.kind.clone()));
+                }
+                if let Some(v) = match_block_id_field(doc, b, name) {
+                    return Some((v, b.kind.clone()));
+                }
+                if let Some(found) = match_block_label_in_items(doc, &b.items, bcells, name) {
+                    return Some(found);
+                }
+            }
+            // An in-block `import` splices its top-level blocks into this
+            // scope, so a connection endpoint can name a block that lives
+            // in the imported fragment. Force the lazy load and recurse.
+            (
+                ast::Item::Import(_),
+                ItemCellKind::Import {
+                    path,
+                    system,
+                    base_dir,
+                    path_span,
+                    loaded,
+                },
+            ) => {
+                let li = loaded.get_or_init(|| {
+                    load_import_lazily(path, base_dir.as_deref(), *system, *path_span, doc.loader())
+                });
+                if let Ok(li) = li
+                    && let Some(found) = match_block_label_in_items(doc, &li.items, &li.cells, name)
+                {
+                    return Some(found);
+                }
+            }
+            _ => {}
         }
     }
     None
