@@ -149,19 +149,40 @@ pub(crate) fn gather_edges_recursive(block: &Block<'_>, out: &mut Vec<Value>) {
 }
 
 /// Build the source / destination anchor overrides. When a shape
-/// appears as the source of multiple edges, we pick one shared
-/// egress anchor (the one closest to the centroid of the
-/// destinations' bbox centers). Same for destinations. Self-loops
-/// are excluded. Shapes participating in only one edge get no
-/// override and fall back to per-edge `pick_closest_pair`.
-pub(crate) type AnchorMap = HashMap<String, SidedAnchor>;
+/// appears as the source of multiple edges that face the *same* side,
+/// we pick one shared egress anchor (the one closest to the centroid
+/// of those destinations' bbox centers) so they converge into a clean
+/// branching trunk. Same for destinations. Crucially the grouping is
+/// **per facing side**, not per shape: edges radiating in opposing
+/// directions (a radial hub's spokes) land in different side-groups
+/// and so are *not* bundled — each falls back to its own natural
+/// facing anchor via `pick_closest_pair`. Self-loops are excluded.
+/// A `(shape, side)` group with only one edge gets no override.
+pub(crate) type AnchorMap = HashMap<(String, Side), SidedAnchor>;
+
+/// Dominant cardinal direction from `from` toward `to` (SVG y grows
+/// downward). Used both to group a shape's edges into facing-side
+/// buckets here and to look the resulting override back up per edge in
+/// `plan_edge` — computing it the same way in both places keeps the
+/// grouping key and the lookup key in lockstep.
+pub(crate) fn facing_side(from: (f64, f64), to: (f64, f64)) -> Side {
+    let dx = to.0 - from.0;
+    let dy = to.1 - from.1;
+    if dx.abs() >= dy.abs() {
+        if dx >= 0.0 { Side::East } else { Side::West }
+    } else if dy >= 0.0 {
+        Side::South
+    } else {
+        Side::North
+    }
+}
 
 pub(crate) fn build_shared_anchors(
     items: &[Value],
     positions: &ShapePositions,
 ) -> (AnchorMap, AnchorMap) {
-    let mut src_targets: HashMap<String, Vec<(f64, f64)>> = HashMap::new();
-    let mut dst_sources: HashMap<String, Vec<(f64, f64)>> = HashMap::new();
+    let mut src_targets: HashMap<(String, Side), Vec<(f64, f64)>> = HashMap::new();
+    let mut dst_sources: HashMap<(String, Side), Vec<(f64, f64)>> = HashMap::new();
     for v in items {
         let Value::Record { fields, .. } = v else {
             continue;
@@ -175,22 +196,25 @@ pub(crate) fn build_shared_anchors(
         if s == d {
             continue;
         }
-        if let Some(d_metrics) = positions.get(&d) {
-            src_targets
-                .entry(s.clone())
-                .or_default()
-                .push(bbox_center(&d_metrics.bbox));
-        }
-        if let Some(s_metrics) = positions.get(&s) {
-            dst_sources
-                .entry(d)
-                .or_default()
-                .push(bbox_center(&s_metrics.bbox));
-        }
+        let (Some(s_metrics), Some(d_metrics)) = (positions.get(&s), positions.get(&d)) else {
+            continue;
+        };
+        let s_center = bbox_center(&s_metrics.bbox);
+        let d_center = bbox_center(&d_metrics.bbox);
+        // Group each edge under the side of its own shape that faces
+        // the other endpoint, so only co-directional edges converge.
+        src_targets
+            .entry((s.clone(), facing_side(s_center, d_center)))
+            .or_default()
+            .push(d_center);
+        dst_sources
+            .entry((d, facing_side(d_center, s_center)))
+            .or_default()
+            .push(s_center);
     }
     let mut sources = AnchorMap::new();
     let mut dests = AnchorMap::new();
-    for (id, targets) in src_targets {
+    for ((id, side), targets) in src_targets {
         if targets.len() < 2 {
             continue;
         }
@@ -199,10 +223,10 @@ pub(crate) fn build_shared_anchors(
         };
         let centroid = centroid_of(&targets);
         if let Some(anchor) = pick_anchor_toward(&metrics.anchors, centroid) {
-            sources.insert(id, anchor);
+            sources.insert((id, side), anchor);
         }
     }
-    for (id, sources_centers) in dst_sources {
+    for ((id, side), sources_centers) in dst_sources {
         if sources_centers.len() < 2 {
             continue;
         }
@@ -211,7 +235,7 @@ pub(crate) fn build_shared_anchors(
         };
         let centroid = centroid_of(&sources_centers);
         if let Some(anchor) = pick_anchor_toward(&metrics.anchors, centroid) {
-            dests.insert(id, anchor);
+            dests.insert((id, side), anchor);
         }
     }
     (sources, dests)
@@ -304,9 +328,18 @@ pub(crate) fn plan_edge(
     };
     let is_self_loop = source_id == dest_id;
     // Shared-anchor overrides win over per-edge closest-pair, so
-    // edges converging at the same shape end at the same point.
-    let src_override = source_overrides.get(&source_id).copied();
-    let dst_override = dest_overrides.get(&dest_id).copied();
+    // edges converging at the same shape end at the same point. The
+    // override is keyed by the facing side toward the other endpoint —
+    // computed exactly as in `build_shared_anchors` so this lookup and
+    // that grouping agree by construction.
+    let src_center = bbox_center(&src.bbox);
+    let dst_center = bbox_center(&dst.bbox);
+    let src_override = source_overrides
+        .get(&(source_id.clone(), facing_side(src_center, dst_center)))
+        .copied();
+    let dst_override = dest_overrides
+        .get(&(dest_id.clone(), facing_side(dst_center, src_center)))
+        .copied();
     let pair = match (src_override, dst_override) {
         (Some(s), Some(d)) => Some((s, d)),
         (Some(s), None) => pick_closest_to(&dst.anchors, (s.1, s.2)).map(|d| (s, d)),

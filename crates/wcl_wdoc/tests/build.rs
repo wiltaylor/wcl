@@ -2167,6 +2167,63 @@ page index {
 }
 
 #[test]
+fn build_radial_elbow_spokes_leave_distinct_facing_anchors() {
+    // The :straight twin of this test (build_radial_straight_spokes_…)
+    // is covered because straight routing skips shared anchors. The
+    // DEFAULT :elbow path used to bundle a hub's outgoing edges onto the
+    // single side closest to the centroid of all destinations — for a
+    // radial hub that centroid sits ~straight below, so every spoke left
+    // via South and the East/West spokes had to elbow down-and-around.
+    // After grouping shared anchors per facing side, each spoke leaves
+    // via the hub border it actually faces, so the three hub-sourced
+    // edges have three DISTINCT start points (no `routing` => elbow).
+    let fixture = r##"
+page index {
+  diagram {
+    width  = 400
+    height = 400
+    layout = :radial
+    hub    = hub
+    process { id = hub width = 100.0 height = 40.0 fill = "#cce" }
+    process { id = e   width = 100.0 height = 40.0 fill = "#ecc" }
+    process { id = s   width = 100.0 height = 40.0 fill = "#cec" }
+    process { id = w   width = 100.0 height = 40.0 fill = "#fec" }
+    nbr -> hub
+    hub -> e
+    hub -> s
+    hub -> w
+    process { id = nbr width = 100.0 height = 40.0 fill = "#cff" }
+  }
+}
+"##;
+
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("radial_elbow.wcl");
+    write_fixture(&src, fixture);
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Elbow edges render as <polyline>; the first coordinate is the
+    // egress anchor. Edges declare nbr->hub, hub->e, hub->s, hub->w, so
+    // the three hub-sourced spokes are polylines 1..4 and their starts
+    // must all differ (the bundling bug made them equal).
+    let starts: Vec<&str> = html
+        .split("<polyline points=\"")
+        .skip(1)
+        .filter_map(|s| s.split_whitespace().next())
+        .collect();
+    assert_eq!(starts.len(), 4, "expected one polyline per edge:\n{html}");
+    let hub_starts = &starts[1..4];
+    let distinct: std::collections::HashSet<_> = hub_starts.iter().collect();
+    assert_eq!(
+        distinct.len(),
+        3,
+        "hub-sourced elbow spokes share an egress anchor (bundled): {hub_starts:?}\n{html}"
+    );
+}
+
+#[test]
 fn build_straight_edges_attach_to_circle_boundary() {
     // Two circles on a shared horizontal axis. A straight edge should
     // leave circle A on its boundary toward B's center and arrive on
