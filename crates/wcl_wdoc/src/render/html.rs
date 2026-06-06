@@ -410,6 +410,9 @@ pub(crate) fn render_block(
         // inside a `diagram` (via `render_shape`), never as a page block.
         // A `wdoc_repeater` renders its body once per element of `each`.
         "wdoc_repeater" => Some(render_repeat(doc, block, patterns, base_dir)),
+        // A `wdoc_instance` renders the component named by its `component`
+        // value (render-by-reference) — a different component per data element.
+        "wdoc_instance" => Some(render_instance(doc, block, patterns, base_dir)),
         // A `wdoc_content` marks where a component instance's own children
         // render — emit the sentinel; `render_component` substitutes it.
         // (Outside a component it has no effect; the sentinel is invisible.)
@@ -490,6 +493,25 @@ pub(crate) fn render_component(
         out = out.replace(WF_CONTENT_SLOT, &content);
     }
     out
+}
+
+/// Render a `wdoc_instance`: resolve the `wdoc_component` named by the
+/// instance's `component` value and render it with the instance's fields
+/// bound to the component's slots (render-by-reference). A `component` that
+/// names no declared component renders nothing.
+pub(crate) fn render_instance(
+    doc: &Document,
+    block: &Block<'_>,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
+) -> String {
+    if block.binding_scope_depth() > MAX_LOWER_DEPTH {
+        return depth_marker();
+    }
+    match instance_target_def(block) {
+        Some(def) => render_component(doc, block, &def, patterns, base_dir),
+        None => String::new(),
+    }
 }
 
 /// Render a `wdoc_repeater`: evaluate `each` to a list and render the

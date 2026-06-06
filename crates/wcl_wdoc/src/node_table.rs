@@ -20,9 +20,9 @@ use std::fmt::Write as _;
 use wcl_lang::Block;
 
 use crate::render::{
-    MAX_LOWER_DEPTH, RenderCtx, escape_html, expand_component_children, expand_repeater_children,
-    field_f64, field_id, field_symbol_list_opt, field_utf8, field_utf8_list, render_block,
-    resolve_rect_box,
+    MAX_LOWER_DEPTH, RenderCtx, escape_html, expand_component_children, expand_instance_children,
+    expand_repeater_children, field_f64, field_id, field_symbol_list_opt, field_utf8,
+    field_utf8_list, render_block, resolve_rect_box,
 };
 
 /// Default per-row height when `row_height` is unset.
@@ -59,8 +59,8 @@ fn rows<'a>(block: &Block<'a>) -> Vec<Block<'a>> {
     out
 }
 
-/// Recursively collect `node_row`s, expanding repeaters and component
-/// instances in place — mirrors `render::expand::flatten_diagram_child`.
+/// Recursively collect `node_row`s, expanding repeaters, `wdoc_instance`s,
+/// and component instances in place — mirrors `expand_container_children`.
 fn collect_rows<'a>(child: Block<'a>, out: &mut Vec<Block<'a>>) {
     // Stop runaway self-referential expansion (mirrors the diagram guard).
     if child.binding_scope_depth() > MAX_LOWER_DEPTH {
@@ -70,6 +70,11 @@ fn collect_rows<'a>(child: Block<'a>, out: &mut Vec<Block<'a>>) {
         "node_row" => out.push(child),
         "wdoc_repeater" => {
             for c in expand_repeater_children(&child) {
+                collect_rows(c, out);
+            }
+        }
+        "wdoc_instance" => {
+            for c in expand_instance_children(&child) {
                 collect_rows(c, out);
             }
         }

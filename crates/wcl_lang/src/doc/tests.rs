@@ -2977,6 +2977,36 @@ fn field_marked_schemaless_resolves_even_when_unknown() {
     assert_eq!(v, &Value::I64(1));
 }
 
+#[test]
+fn schemaless_type_declaration_opens_all_instances() {
+    // `@schemaless` on the *type* propagates to every instance: an
+    // undeclared field resolves (no membership error) and the strict
+    // validator passes — exactly as if each instance were marked
+    // `@schemaless`. (Powers open, dynamic kinds like `wdoc_instance`,
+    // whose forwarded fields can't be declared up front.)
+    let doc = Document::open(
+        r#"
+        @document type Cfg { @child("svc") svc: Svc }
+        @block("svc") @schemaless type Svc { name: utf8 }
+        svc "x" { name = "ok"  surprise = 1 }
+        "#,
+        "t",
+    )
+    .unwrap();
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    let svc = doc.block("svc").unwrap();
+    // The declared field still reads, and the undeclared one resolves
+    // instead of erroring with UnknownField.
+    assert_eq!(
+        svc.field("name").unwrap().value().unwrap(),
+        &Value::Utf8("ok".into())
+    );
+    assert_eq!(
+        svc.field("surprise").unwrap().value().unwrap(),
+        &Value::I64(1)
+    );
+}
+
 // ─── Interfaces and `extends` ─────────────────────────────────────
 
 #[test]

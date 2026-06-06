@@ -911,6 +911,16 @@ impl<'a> TypeDecl<'a> {
             .map(move |(ast, cell)| Decorator { ast, cell, doc })
     }
 
+    /// `true` when this type declaration carries `@schemaless` — its
+    /// instances accept undeclared fields (and children) without a
+    /// membership error, exactly as if every instance were itself marked
+    /// `@schemaless`. Lets a dynamic, open block kind (e.g. `wdoc_instance`,
+    /// whose forwarded slot fields can't be declared up front) be authored
+    /// without per-instance annotation.
+    pub(crate) fn is_schemaless(&self) -> bool {
+        has_schemaless(&self.ast.decorators)
+    }
+
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -1531,6 +1541,10 @@ impl<'a> Field<'a> {
                     scope: Scope::root(),
                 };
                 match block.schema() {
+                    // A `@schemaless` type declaration opens all its
+                    // instances — undeclared fields pass like a component
+                    // instance's (which has no schema at all).
+                    Some(schema) if schema.is_schemaless() => None,
                     Some(schema) if schema.field(self.name()).is_some() => None,
                     Some(schema) => Some(EvalError::schema_violation(
                         Kind::UnknownField,

@@ -30,8 +30,9 @@
 use wcl_lang::{Block, Document};
 
 use crate::render::{
-    RenderCtx, ThemeRoles, escape_html, field_bool, field_f64, field_i64, field_symbol, field_utf8,
-    field_utf8_list, label_string, resolve_rect_box, resolve_roles,
+    RenderCtx, ThemeRoles, escape_html, expand_container_children, field_bool, field_f64,
+    field_i64, field_symbol, field_utf8, field_utf8_list, label_string, resolve_rect_box,
+    resolve_roles,
 };
 
 // ── Geometry (px, ported from the wdoc-wireframe CSS rem values) ─────
@@ -405,10 +406,14 @@ fn sized(kind: Kind, w: f64, h: f64, disabled: bool) -> Widget {
 }
 
 /// Build every wireframe child of a container, in source order. `doc` is
-/// `None` on the measure-only path (size is theme-independent).
+/// `None` on the measure-only path (size is theme-independent). Data-driven
+/// children expand first: a `wdoc_repeater` / `wdoc_instance` / component
+/// instance nested in a container is flattened to its generated blocks
+/// (carrying their binding scope), so a screen can compose widgets from data
+/// inside a `wf_*` frame. Non-wireframe results are dropped, as before.
 fn child_widgets(doc: Option<&Document>, block: &Block<'_>) -> Vec<Widget> {
-    block
-        .blocks()
+    expand_container_children(block)
+        .into_iter()
         .filter(|b| is_wireframe_kind(b.kind()))
         .map(|b| build(doc, &b))
         .collect()

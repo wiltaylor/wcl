@@ -273,6 +273,13 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         return errs;
     };
 
+    // A `@schemaless` *type* declaration opens every instance — undeclared
+    // fields and children pass, like a whole-block `@schemaless` on the
+    // instance. (Used by dynamic, open kinds such as `wdoc_instance`.)
+    if schema.is_schemaless() {
+        return errs;
+    }
+
     // Field-membership: every literal `Item::Field` inside this
     // block must be named by the schema. `@schemaless` on a field
     // exempts that specific field.
@@ -566,8 +573,10 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         // a diagram), so accept them in any interface `@children` slot
         // (`WdocBlock` or `SvgBlock`). A component instance also has its
         // slot fields validated here, since the validator is shallow.
-        let is_generator = matches!(nested.kind(), "wdoc_repeater" | "wdoc_content")
-            || block.doc.is_component_kind(nested.kind());
+        let is_generator = matches!(
+            nested.kind(),
+            "wdoc_repeater" | "wdoc_instance" | "wdoc_content"
+        ) || block.doc.is_component_kind(nested.kind());
         if !interface_slots.is_empty() && is_generator {
             if block.doc.is_component_kind(nested.kind()) {
                 errs.extend(validate_component_instance(block.doc, &nested));

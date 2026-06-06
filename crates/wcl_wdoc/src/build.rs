@@ -8,10 +8,10 @@ use wcl_lang::{Block, Document, Environment, Registry, Value, disk_loader};
 use crate::highlight;
 use crate::inline::InlinePatterns;
 use crate::render::{
-    DeckSectionNode, MAX_LOWER_DEPTH, MenuNode, TocNode, escape_html, expand_repeater_children,
-    field_bool, field_id, field_symbol, field_symbol_list_opt, field_utf8, find_template,
-    read_deck, read_menu, read_toc, render_block, render_class, render_page, render_template,
-    site_theme_css,
+    DeckSectionNode, MAX_LOWER_DEPTH, MenuNode, TocNode, escape_html, expand_component_children,
+    expand_instance_children, expand_repeater_children, field_bool, field_id, field_symbol,
+    field_symbol_list_opt, field_utf8, find_template, read_deck, read_menu, read_toc, render_block,
+    render_class, render_page, render_template, site_theme_css,
 };
 
 /// The wdoc standard library, embedded in the binary and registered
@@ -471,39 +471,85 @@ fn block_in_site(block: &Block<'_>, site_name: Option<&str>) -> bool {
 /// rules, so it overrides the built-in defaults (chart palette, syntax
 /// tokens) while user `class` blocks still win. `site_block` is the
 /// `@block("site")` carrying the selection (`None` ⇒ bare/unthemed).
+/// The four CSS buckets `site_css` assembles — `stylesheet` text and
+/// rendered `class` rules, split by library (embedded-stdlib) vs user
+/// origin so the colour theme can be spliced between them.
+#[derive(Default)]
+struct CssBuckets {
+    lib_sheets: Vec<String>,
+    user_sheets: Vec<String>,
+    lib_classes: Vec<String>,
+    user_classes: Vec<String>,
+}
+
+/// Collect a top-level block's CSS contribution into `css`. A `stylesheet`
+/// or `class` block deposits directly; a generator (`wdoc_repeater`,
+/// `wdoc_instance`, or a `wdoc_component` instance) is expanded and its
+/// generated blocks collected recursively — so a repeater driven by data
+/// can emit `class` blocks (the "repeater anywhere" hook for design-system
+/// classes). `is_lib` is the origin, carried through expansion. Non-CSS,
+/// non-generator blocks (pages, etc.) contribute nothing, exactly as before.
+fn collect_css_block(b: &Block<'_>, is_lib: bool, css: &mut CssBuckets) {
+    match b.kind() {
+        "stylesheet" => {
+            if let Some(text) = field_utf8(b, "css") {
+                if is_lib {
+                    &mut css.lib_sheets
+                } else {
+                    &mut css.user_sheets
+                }
+                .push(text);
+            }
+        }
+        "class" => {
+            if let Some(rule) = render_class(b) {
+                if is_lib {
+                    &mut css.lib_classes
+                } else {
+                    &mut css.user_classes
+                }
+                .push(rule);
+            }
+        }
+        _ if b.binding_scope_depth() > MAX_LOWER_DEPTH => {}
+        "wdoc_repeater" => {
+            for c in expand_repeater_children(b) {
+                collect_css_block(&c, is_lib, css);
+            }
+        }
+        "wdoc_instance" => {
+            for c in expand_instance_children(b) {
+                collect_css_block(&c, is_lib, css);
+            }
+        }
+        kind => {
+            if let Some(def) = b.doc().component_def(kind) {
+                for c in expand_component_children(b, &def) {
+                    collect_css_block(&c, is_lib, css);
+                }
+            }
+        }
+    }
+}
+
 fn site_css(doc: &Document, site_name: Option<&str>, site_block: Option<&Block<'_>>) -> String {
-    let mut lib_sheets = Vec::new();
-    let mut user_sheets = Vec::new();
-    let mut lib_classes = Vec::new();
-    let mut user_classes = Vec::new();
+    let mut css = CssBuckets::default();
     for (origin, b) in doc.blocks_with_source() {
         if !block_in_site(&b, site_name) {
             continue;
         }
-        match b.kind() {
-            "stylesheet" => {
-                if let Some(css) = field_utf8(&b, "css") {
-                    if origin.is_some() {
-                        &mut lib_sheets
-                    } else {
-                        &mut user_sheets
-                    }
-                    .push(css);
-                }
-            }
-            "class" => {
-                if let Some(css) = render_class(&b) {
-                    if origin.is_some() {
-                        &mut lib_classes
-                    } else {
-                        &mut user_classes
-                    }
-                    .push(css);
-                }
-            }
-            _ => {}
-        }
+        // `origin.is_some()` marks a library (embedded-stdlib) block; user
+        // source has no origin. Carried through generator expansion so a
+        // user `wdoc_repeater` that emits `class` blocks still lands in the
+        // user bucket (and thus wins over library defaults).
+        collect_css_block(&b, origin.is_some(), &mut css);
     }
+    let CssBuckets {
+        lib_sheets,
+        user_sheets,
+        lib_classes,
+        user_classes,
+    } = css;
     let stylesheet_css = lib_sheets
         .into_iter()
         .chain(user_sheets)

@@ -12,7 +12,7 @@ page schema { sites = [:reference, :wcl_skill]  title = "Schema & Decorators"
       | "`@document`"        | "type" | "Marks the document root schema (composes per namespace — see below)" |
       | "`@block(\"kind\")`" | "type" | "Makes the type a nestable block of that kind" |
       | "`@table(\"kind\")`" | "type" | "Row schema for pipe-table syntax" |
-      | "`@schemaless`"      | "type" | "Opts a type out of root validation, allowing multiple decorators / reflection" |
+      | "`@schemaless`"      | "type" | "Opens the type: every instance accepts undeclared fields / children (no membership check), as if each were marked `@schemaless`. Also used on the document/reflection path." |
       | "`@dynamic`"         | "connection" | "Lets `->` operands name ids resolved at consume time, not just literal blocks (see Connections)" |
   }
 

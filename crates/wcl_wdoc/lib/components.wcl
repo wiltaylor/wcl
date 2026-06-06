@@ -75,23 +75,47 @@ type WdocContent extends WdocBlock {
 //     element (the page's interpolated label becomes the route);
 //   • inside a `toc` / `chapter` its body is `chapter` blocks — one TOC entry
 //     per element.
-// The `page` / `chapter` slots below register those placements so the
-// validator accepts them. They take effect only where the renderer looks for
-// them (document root for pages, the TOC reader for chapters); a `page` /
-// `chapter` nested in an in-page repeater is structurally legal but ignored.
+// The `page` / `chapter` / `class` / `stylesheet` slots below register those
+// placements so the validator accepts them. They take effect only where the
+// renderer looks for them (document root for pages, the TOC reader for
+// chapters, the CSS-collection pass for classes / stylesheets); a slot block
+// placed where its consumer doesn't look is structurally legal but ignored.
 @block("wdoc_repeater")
 type WdocRepeater extends WdocBlock {
   each: list<WdocItem>
   as:   symbol
-  @children(WdocBlock) children: list<WdocBlock>
-  @children("page")    pages:    list<Page>
-  @children("chapter") chapters: list<Chapter>
+  @children(WdocBlock)    children: list<WdocBlock>
+  @children("page")       pages:    list<Page>
+  @children("chapter")    chapters: list<Chapter>
+  @children("class")      classes:  list<Class>
+  @children("stylesheet") sheets:   list<Stylesheet>
   lower = fn(r: WdocRepeater) -> list<HtmlFundamental> []
 }
 
 // Opaque element type for a repeater's `each` list. The renderer reads
 // each element's fields dynamically; this only names the list shape.
 type WdocItem {}
+
+// Renders the `wdoc_component` whose name is the *value* of `component` —
+// the render-by-reference counterpart to instantiating a component by
+// writing its name as a block. Because the target is a data value, a
+// repeater can emit a *different* component per element:
+//
+//   wdoc_repeater { each = screen.body  as = :node
+//     wdoc_instance { component = node.ref  title = node.title }
+//   }
+//
+// The instance's like-named fields fill the target's slots (falling back to
+// each slot's `default`). `@schemaless`, so the forwarded slot fields need
+// no static schema; special-cased in Rust (its `lower` is a never-called
+// stub). Context-polymorphic like `wdoc_repeater` — legal wherever a
+// `WdocBlock` / `SvgBlock` is, expanding to whatever its component body
+// contains.
+@block("wdoc_instance") @schemaless
+type WdocInstance extends WdocBlock {
+  component: utf8
+  lower = fn(i: WdocInstance) -> list<HtmlFundamental> []
+}
 
 // ── Partials (scatter & collect) ──────────────────────────────────
 //

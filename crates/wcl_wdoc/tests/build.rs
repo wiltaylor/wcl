@@ -7718,3 +7718,160 @@ page index {
     // re-entrant no-op.
     assert_eq!(html.matches("Cycle body.").count(), 1, "{html}");
 }
+
+#[test]
+fn build_renders_component_by_reference() {
+    // `wdoc_instance` renders the component named by its `component` *value*,
+    // so a single repeater can emit a DIFFERENT component per data element —
+    // the render-by-reference primitive. The instance's like-named fields
+    // fill the target's slots.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("byref.wcl");
+    write_fixture(
+        &src,
+        r#"
+wdoc_component badge {
+  wdoc_slot text
+  wdoc_body { p $"BADGE:${text}" }
+}
+wdoc_component note {
+  wdoc_slot text
+  wdoc_body { p $"NOTE:${text}" }
+}
+page index {
+  let nodes = [
+    { ref: "badge", text: "A" },
+    { ref: "note",  text: "B" },
+    { ref: "badge", text: "C" },
+  ]
+  wdoc_repeater { each = nodes  as = :n
+    wdoc_instance { component = n.ref  text = n.text }
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    // Each element resolved to the component named by its data `ref`.
+    assert!(
+        html.contains("<p>BADGE:A</p>")
+            && html.contains("<p>NOTE:B</p>")
+            && html.contains("<p>BADGE:C</p>"),
+        "render-by-reference did not dispatch per-element components:\n{html}"
+    );
+}
+
+#[test]
+fn build_collects_classes_emitted_by_a_repeater() {
+    // A `wdoc_repeater` at the document root may emit `class` blocks from
+    // data; the CSS-collection pass expands it so generated rules land in the
+    // page <style> (the generic hook a design system builds class generation
+    // on). User-origin, so they win over library defaults.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("genclass.wcl");
+    write_fixture(
+        &src,
+        r##"
+let tokens = [
+  { name: "brand-primary", hex: "#5e81ac" },
+  { name: "brand-accent",  hex: "#bf616a" },
+]
+wdoc_repeater { each = tokens  as = :t
+  class $"${t.name}" { color = t.hex }
+}
+page index { p "Body." }
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    assert!(
+        html.contains(".brand-primary")
+            && html.contains("#5e81ac")
+            && html.contains(".brand-accent")
+            && html.contains("#bf616a"),
+        "repeater-generated class rules not collected into the page <style>:\n{html}"
+    );
+}
+
+#[test]
+fn build_composes_widgets_inside_a_frame_from_data() {
+    // A `wdoc_repeater` / `wdoc_instance` nested inside a `wf_*` container is
+    // expanded before the wireframe walks its children, so a device frame can
+    // compose its widgets from data (the screens-from-data path).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("frame.wcl");
+    write_fixture(
+        &src,
+        r#"
+wdoc_component cell {
+  wdoc_slot text
+  wdoc_body { wf_button $"${text}" {} }
+}
+page index {
+  let items = [{ text: "One" }, { text: "Two" }, { text: "Three" }]
+  diagram { width = 800  height = 600
+    wf_browser "shop.example.com" {
+      wdoc_repeater { each = items  as = :i
+        wdoc_instance { component = "cell"  text = i.text }
+      }
+    }
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    // All three data-driven buttons drew their text inside the frame's SVG.
+    assert!(
+        html.contains("<svg")
+            && html.contains(">One</text>")
+            && html.contains(">Two</text>")
+            && html.contains(">Three</text>"),
+        "data-driven widgets did not compose inside the wf_browser frame:\n{html}"
+    );
+}
+
+#[test]
+fn build_generates_one_page_per_screen_with_component_instances() {
+    // End-to-end screens-from-data: a document-root `wdoc_repeater` emits one
+    // page per screen record, each page composing components by reference.
+    // Proves data-only screen addition (append to the list → a new page).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("screens.wcl");
+    write_fixture(
+        &src,
+        r#"
+wdoc_component card {
+  wdoc_slot title
+  wdoc_body { p $"CARD:${title}" }
+}
+let screens = [
+  { id: "listing", title: "Headphones" },
+  { id: "detail",  title: "Speaker" },
+]
+wdoc_repeater { each = screens  as = :s
+  page $"screen-${s.id}" {
+    wdoc_instance { component = "card"  title = s.title }
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let pages = build_ok(&src, out.path());
+    assert_eq!(pages, 2, "one page per screen record");
+    let listing =
+        std::fs::read_to_string(out.path().join("screen-listing.html")).expect("read listing");
+    let detail =
+        std::fs::read_to_string(out.path().join("screen-detail.html")).expect("read detail");
+    assert!(
+        listing.contains("<p>CARD:Headphones</p>"),
+        "listing screen did not render its component:\n{listing}"
+    );
+    assert!(
+        detail.contains("<p>CARD:Speaker</p>"),
+        "detail screen did not render its component:\n{detail}"
+    );
+}

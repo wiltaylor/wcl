@@ -12,23 +12,31 @@ use wcl_lang::{Block, Document, Value};
 
 use super::{MAX_LOWER_DEPTH, label_string};
 
-/// Flatten a `diagram` / `container`'s children for the SVG path: each
-/// `wdoc_repeater` / `wdoc_component`-instance child is replaced (in
-/// place, recursively) by its expanded shape blocks, so generated nodes
-/// participate in layout, position collection, and edge rendering. Every
-/// other kind passes through unchanged — including `container`, whose own
-/// children flatten when *it* is collected. The expanded shapes carry
-/// their per-element / per-slot binding scope, so a node's `id`, `label`,
-/// `x`/`y`, etc. resolve against the data.
-pub(crate) fn diagram_children<'a>(block: &Block<'a>) -> Vec<Block<'a>> {
+/// Flatten a container's children, replacing every `wdoc_repeater`,
+/// `wdoc_component` instance, and `wdoc_instance` (recursively, in place)
+/// with its expanded blocks; every other kind passes through unchanged —
+/// including `container`, whose own children flatten when *it* is collected.
+/// The single "repeater / component anywhere" entry point: every site that
+/// iterates a container's child blocks (the diagram / SVG path, the
+/// wireframe widget tree, the CSS `class` collection, …) runs this first so
+/// data-generated blocks participate exactly like authored ones. The
+/// expanded blocks carry their per-element / per-slot binding scope, so a
+/// node's `id`, `label`, `x`/`y`, slot fields, etc. resolve against the data.
+pub(crate) fn expand_container_children<'a>(block: &Block<'a>) -> Vec<Block<'a>> {
     let mut out = Vec::new();
     for child in block.blocks() {
-        flatten_diagram_child(child, &mut out);
+        flatten_container_child(child, &mut out);
     }
     out
 }
 
-fn flatten_diagram_child<'a>(child: Block<'a>, out: &mut Vec<Block<'a>>) {
+/// The SVG/diagram alias for [`expand_container_children`], kept for
+/// call-site readability where children become diagram shapes.
+pub(crate) fn diagram_children<'a>(block: &Block<'a>) -> Vec<Block<'a>> {
+    expand_container_children(block)
+}
+
+fn flatten_container_child<'a>(child: Block<'a>, out: &mut Vec<Block<'a>>) {
     // Stop runaway self-referential expansion (mirrors the HTML guard).
     if child.binding_scope_depth() > MAX_LOWER_DEPTH {
         return;
@@ -36,13 +44,18 @@ fn flatten_diagram_child<'a>(child: Block<'a>, out: &mut Vec<Block<'a>>) {
     match child.kind() {
         "wdoc_repeater" => {
             for c in expand_repeater_children(&child) {
-                flatten_diagram_child(c, out);
+                flatten_container_child(c, out);
+            }
+        }
+        "wdoc_instance" => {
+            for c in expand_instance_children(&child) {
+                flatten_container_child(c, out);
             }
         }
         kind => {
             if let Some(def) = child.doc().component_def(kind) {
                 for c in expand_component_children(&child, &def) {
-                    flatten_diagram_child(c, out);
+                    flatten_container_child(c, out);
                 }
             } else {
                 out.push(child);
@@ -173,4 +186,39 @@ pub(crate) fn expand_component_children<'a>(
         .into_iter()
         .next()
         .unwrap_or_default()
+}
+
+/// The component name a `wdoc_instance` selects — its `component` field
+/// evaluated to a string (a `utf8` / `symbol` / `identifier` value). `None`
+/// when the field is absent or not a name-like scalar.
+fn instance_component_name(instance: &Block<'_>) -> Option<String> {
+    instance
+        .field("component")
+        .and_then(|f| f.value().ok().cloned())
+        .and_then(|v| match v {
+            Value::Utf8(s) | Value::Symbol(s) | Value::Identifier(s) => Some(s),
+            _ => None,
+        })
+}
+
+/// The `wdoc_component` definition a `wdoc_instance` targets — the component
+/// whose name is the instance's `component` field value. `None` when the
+/// field names no declared component.
+pub(crate) fn instance_target_def<'a>(instance: &Block<'a>) -> Option<Block<'a>> {
+    instance
+        .doc()
+        .component_def(&instance_component_name(instance)?)
+}
+
+/// Expand a `wdoc_instance` — the render-by-reference counterpart to writing
+/// a component's name as a block. Resolves the target `wdoc_component` from
+/// the instance's `component` value, then binds each declared `wdoc_slot`
+/// from the instance's like-named field (or the slot `default`) via the
+/// shared [`expand_component_children`]. Empty when `component` names no
+/// declared component.
+pub(crate) fn expand_instance_children<'a>(instance: &Block<'a>) -> Vec<Block<'a>> {
+    let Some(def) = instance_target_def(instance) else {
+        return Vec::new();
+    };
+    expand_component_children(instance, &def)
 }

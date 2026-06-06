@@ -24,7 +24,8 @@ use crate::inline::InlinePatterns;
 use crate::render::{
     MAX_LOWER_DEPTH, collect_partials, enter_collect, expand_component_children,
     expand_repeater_children, field_bool, field_symbol, field_utf8, field_utf8_list,
-    kind_for_variant, lower_to_values, map_utf8, map_utf8_list, render_diagram_static,
+    instance_target_def, kind_for_variant, lower_to_values, map_utf8, map_utf8_list,
+    render_diagram_static,
 };
 use crate::terminal::ASSET_DIR;
 
@@ -148,6 +149,15 @@ impl Emitter<'_> {
                     for c in expand_repeater_children(block) {
                         self.block(&c, out)?;
                     }
+                }
+            }
+            // A `wdoc_instance` renders the component named by its `component`
+            // value (render-by-reference); resolve the target and expand it.
+            "wdoc_instance" => {
+                if block.binding_scope_depth() <= MAX_LOWER_DEPTH
+                    && let Some(def) = instance_target_def(block)
+                {
+                    self.component(block, &def, out)?;
                 }
             }
             // A bare `wdoc_content` outside a component has no effect (the
