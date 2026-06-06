@@ -59,18 +59,23 @@ type TemplateCtx {
 // One table-of-contents entry. The inline label is the display title;
 // `page` (optional) links it to a page; nested `chapter`s are
 // sub-entries (3+ levels). A `chapter` with no `page` is a heading.
+// A nested `wdoc_repeater` (body = `chapter` blocks) emits one sub-entry
+// per element — data-driven navigation that tracks a collection.
 @block("chapter")
 type Chapter {
   @inline(0) title: utf8
   page: identifier?
   @children("chapter") children: list<Chapter>
+  @children("wdoc_repeater") generators: list<WdocRepeater>
 }
 
 // The book's table of contents — an ordered, nestable tree of
-// `chapter` entries. Declared inside the `site` block.
+// `chapter` entries. Declared inside the `site` block. A `wdoc_repeater`
+// here (body = `chapter` blocks) emits one entry per element of `each`.
 @block("toc")
 type Toc {
   @children("chapter") chapters: list<Chapter>
+  @children("wdoc_repeater") generators: list<WdocRepeater>
 }
 
 // One navbar menu item. The inline label is the display text; `page`

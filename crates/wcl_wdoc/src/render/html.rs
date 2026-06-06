@@ -79,13 +79,34 @@ pub(crate) fn read_tree<T>(
 }
 
 /// Recursively read `chapter` blocks nested inside `block` into
-/// [`TocNode`]s, preserving source order.
+/// [`TocNode`]s, preserving source order. A `wdoc_repeater` child (body =
+/// `chapter` blocks) is expanded in place into one entry per element of
+/// its `each` list — data-driven navigation that tracks a collection.
 pub(crate) fn read_chapters(block: &Block<'_>) -> Vec<TocNode> {
-    read_tree(block, "chapter", &|ch, children| TocNode {
-        title: label_string(ch).unwrap_or_default(),
-        page: field_id(ch, "page"),
-        children,
-    })
+    let mut out = Vec::new();
+    for ch in block.blocks() {
+        push_toc_child(&ch, &mut out);
+    }
+    out
+}
+
+/// Append one TOC child to `out`: a `chapter` becomes a node (recursing for
+/// nested chapters / repeaters); a `wdoc_repeater` expands to one node per
+/// element, each carrying its binding scope. Other kinds are ignored.
+fn push_toc_child(ch: &Block<'_>, out: &mut Vec<TocNode>) {
+    match ch.kind() {
+        "chapter" => out.push(TocNode {
+            title: label_string(ch).unwrap_or_default(),
+            page: field_id(ch, "page"),
+            children: read_chapters(ch),
+        }),
+        "wdoc_repeater" if ch.binding_scope_depth() <= MAX_LOWER_DEPTH => {
+            for c in expand_repeater_children(ch) {
+                push_toc_child(&c, out);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Read the book's table of contents from a `site` block's `toc`

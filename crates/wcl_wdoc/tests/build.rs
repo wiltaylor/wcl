@@ -30,6 +30,9 @@ fn build_ok(file: &Path, out: &Path) -> usize {
         Err(BuildError::DuplicateId { page, id }) => {
             panic!("build duplicate-id error: page {page}: {id}")
         }
+        Err(BuildError::DuplicatePage { site, name }) => {
+            panic!("build duplicate-page error: site {site}: {name}")
+        }
         Err(BuildError::BadLink(msgs)) => panic!("build bad-link error: {msgs:?}"),
         Err(BuildError::BadTemplate(name)) => panic!("build bad-template error: {name}"),
         Err(BuildError::Tileset(m)) => panic!("build tileset error: {m}"),
@@ -800,6 +803,144 @@ page index {
 }
 
 #[test]
+fn build_generates_pages_and_toc_from_a_repeater() {
+    // A document-level `wdoc_repeater` whose body is a `page` block emits
+    // one rendered page per element of `each` (the page's interpolated
+    // label is the route). A `wdoc_repeater` inside a `toc` chapter emits
+    // one TOC entry per element. A computed link resolves against the
+    // post-expansion page set.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("catalog.wcl");
+    write_fixture(
+        &src,
+        r#"
+let containers = [
+  { id: "web", name: "Web App" },
+  { id: "api", name: "API" },
+  { id: "db",  name: "Database" },
+]
+
+site docbook {
+  default_template = :book
+  title = "Catalog"
+  toc {
+    chapter "Containers" {
+      wdoc_repeater { each = containers  as = :c
+        chapter $"${c.name}" { page = $"cont_${c.id}" }
+      }
+    }
+  }
+}
+
+wdoc_repeater { each = containers  as = :c
+  page $"cont_${c.id}" {
+    sites = [:docbook]
+    title = c.name
+    h1 $"${c.name}"
+    p $"Container id: ${c.id}"
+  }
+}
+
+page index {
+  sites = [:docbook]
+  start = true
+  h1 "Home"
+  p "See the [Web App](cont_web) container."
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    // index + cont_web + cont_api + cont_db. build_ok panics on BadLink, so
+    // a passing call already proves the computed `[..](cont_web)` resolved.
+    let n = build_ok(&src, out.path());
+    assert_eq!(n, 4, "one page per element plus the index");
+
+    // One file per generated element, each with its own element-derived body.
+    for (route, title, id) in [
+        ("cont_web", "Web App", "web"),
+        ("cont_api", "API", "api"),
+        ("cont_db", "Database", "db"),
+    ] {
+        let page = std::fs::read_to_string(out.path().join(format!("{route}.html")))
+            .unwrap_or_else(|e| panic!("read {route}.html: {e}"));
+        assert!(
+            page.contains(&format!("<span>{title}</span>")),
+            "{route}.html should carry its element title heading:\n{page}"
+        );
+        assert!(
+            page.contains(&format!("Container id: {id}")),
+            "{route}.html should carry its element id:\n{page}"
+        );
+    }
+
+    // The book sidebar lists the data-driven chapters, each linking to its
+    // generated page.
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+    assert!(
+        index.contains("cont_web.html") && index.contains("Web App"),
+        "book TOC should link the generated chapter to its page:\n{index}"
+    );
+    assert!(
+        index.contains("cont_db.html") && index.contains("Database"),
+        "book TOC should include every generated chapter:\n{index}"
+    );
+}
+
+#[test]
+fn build_rejects_a_non_slug_generated_page_route() {
+    // A generated page route is its interpolated label; a value with a
+    // space can't form a clean filename, so it's a build error.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("bad_slug.wcl");
+    write_fixture(
+        &src,
+        r#"
+let items = [ { name: "Web App" } ]
+wdoc_repeater { each = items  as = :c
+  page $"${c.name}" { h1 $"${c.name}" }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::BadPage(m)) => assert!(
+            m.contains("slug-safe"),
+            "expected a slug-safe diagnostic, got: {m}"
+        ),
+        Err(_) => panic!("expected BadPage for a non-slug route, got a different BuildError"),
+        Ok(_) => panic!("expected BadPage for a non-slug route, build unexpectedly succeeded"),
+    }
+}
+
+#[test]
+fn build_rejects_duplicate_generated_page_routes() {
+    // Two elements whose interpolated labels collide would overwrite one
+    // page with another — a build error rather than silent data loss.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("dup.wcl");
+    write_fixture(
+        &src,
+        r#"
+let items = [ { id: "x" }, { id: "x" } ]
+site docs { title = "Docs" }
+wdoc_repeater { each = items  as = :c
+  page $"cont_${c.id}" { sites = [:docs]  h1 $"${c.id}" }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::DuplicatePage { name, .. }) => {
+            assert_eq!(name, "cont_x", "the colliding route should be named")
+        }
+        Err(_) => panic!("expected DuplicatePage for colliding routes, got a different BuildError"),
+        Ok(_) => {
+            panic!("expected DuplicatePage for colliding routes, build unexpectedly succeeded")
+        }
+    }
+}
+
+#[test]
 fn build_renders_component_slots_defaults_and_content() {
     // A `wdoc_component` is instantiated by its own name; slots fill from
     // the instance's fields (or a `default`), resolve in `${…}` labels and
@@ -946,6 +1087,9 @@ page index {
         Err(BuildError::BadTemplate(name)) => panic!("expected Schema, got BadTemplate({name})"),
         Err(BuildError::Tileset(m)) => panic!("expected Schema, got Tileset({m})"),
         Err(BuildError::EdgeRouting(m)) => panic!("expected Schema, got EdgeRouting({m})"),
+        Err(BuildError::DuplicatePage { site, name }) => {
+            panic!("expected Schema, got DuplicatePage({site}: {name})")
+        }
         Ok(n) => panic!("expected Schema error, got Ok({n})"),
     }
 }
@@ -1058,6 +1202,9 @@ page index {
         }
         Err(BuildError::Tileset(m)) => panic!("expected DuplicateId, got Tileset({m})"),
         Err(BuildError::EdgeRouting(m)) => panic!("expected DuplicateId, got EdgeRouting({m})"),
+        Err(BuildError::DuplicatePage { site, name }) => {
+            panic!("expected DuplicateId, got DuplicatePage({site}: {name})")
+        }
         Ok(n) => panic!("expected DuplicateId, got Ok({n})"),
     }
 }
@@ -2770,6 +2917,9 @@ page index {
         Err(BuildError::BadPage(m)) => panic!("expected BadLink, got BadPage({m})"),
         Err(BuildError::DuplicateId { page, id }) => {
             panic!("expected BadLink, got DuplicateId({page}: {id})")
+        }
+        Err(BuildError::DuplicatePage { site, name }) => {
+            panic!("expected BadLink, got DuplicatePage({site}: {name})")
         }
         Err(BuildError::BadTemplate(name)) => panic!("expected BadLink, got BadTemplate({name})"),
         Err(BuildError::Tileset(m)) => panic!("expected BadLink, got Tileset({m})"),

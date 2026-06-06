@@ -21,8 +21,8 @@ use wcl_lang::{Block, Document, Environment, disk_loader};
 
 use super::{emit, yaml};
 use crate::build::{
-    BuildError, SiteSpec, collect_site_specs, is_skill_site, page_name, root_site_name,
-    schema_registry, site_start_page,
+    BuildError, SiteSpec, collect_pages, collect_site_specs, is_skill_site, page_name,
+    root_site_name, schema_registry, site_start_page,
 };
 use crate::icons::IconRegistry;
 use crate::image::ImageRegistry;
@@ -64,7 +64,7 @@ pub fn skill(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
         .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", out_dir.display())))?;
 
     let site_blocks: Vec<Block> = doc.blocks().filter(|b| b.kind() == "site").collect();
-    let all_pages: Vec<Block> = doc.blocks().filter(|b| b.kind() == "page").collect();
+    let all_pages = collect_pages(&doc)?;
     if all_pages.is_empty() {
         return Err(BuildError::BadPage("no `page` blocks to render".into()));
     }
@@ -179,7 +179,17 @@ fn skill_site(
         ))
     })?;
 
-    let page_names: HashSet<String> = spec.pages.iter().filter_map(page_name).collect();
+    let mut page_names: HashSet<String> = HashSet::new();
+    for n in spec.pages.iter().filter_map(page_name) {
+        // Routes must be unique within a site — colliding `wdoc_repeater`
+        // page labels would otherwise overwrite one reference file.
+        if !page_names.insert(n.clone()) {
+            return Err(BuildError::DuplicatePage {
+                site: spec.name.clone().unwrap_or_else(|| "default".into()),
+                name: n,
+            });
+        }
+    }
 
     // Asset registries, fresh per site (as in `markdown_site`).
     let icons = IconRegistry::load(doc);

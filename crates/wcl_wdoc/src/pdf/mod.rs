@@ -160,7 +160,10 @@ pub fn pdf(
     }
 
     let site_blocks: Vec<Block> = doc.blocks().filter(|b| b.kind() == "site").collect();
-    let all_pages: Vec<Block> = doc.blocks().filter(|b| b.kind() == "page").collect();
+    let all_pages = crate::build::collect_pages(&doc).map_err(|e| match e {
+        crate::build::BuildError::BadPage(m) => PdfError::BadDoc(m),
+        _ => PdfError::BadDoc("could not collect pages".into()),
+    })?;
     if all_pages.is_empty() {
         return Err(PdfError::BadDoc("no `page` blocks to render".into()));
     }

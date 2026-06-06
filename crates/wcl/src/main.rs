@@ -395,6 +395,7 @@ fn build_error_code(err: &wcl_wdoc::BuildError) -> u8 {
         wcl_wdoc::BuildError::Eval(_) => EXIT_EVAL,
         wcl_wdoc::BuildError::BadPage(_) => EXIT_EVAL,
         wcl_wdoc::BuildError::DuplicateId { .. } => EXIT_SCHEMA,
+        wcl_wdoc::BuildError::DuplicatePage { .. } => EXIT_SCHEMA,
         wcl_wdoc::BuildError::BadLink(_) => EXIT_SCHEMA,
         wcl_wdoc::BuildError::BadTemplate(_) => EXIT_SCHEMA,
         wcl_wdoc::BuildError::Tileset(_) => EXIT_SCHEMA,

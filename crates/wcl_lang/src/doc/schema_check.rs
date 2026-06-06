@@ -355,6 +355,16 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         if has_schemaless(&literal_field.ast.decorators) {
             continue;
         }
+        // A `wdoc_repeater`'s `each` is its dynamic input list: the schema
+        // types it `list<WdocItem>` only to name the list shape, and its
+        // elements are read at render time and intentionally untyped (the
+        // components stdlib documents this). The in-page generator bypass
+        // below already skips validating a repeater's own fields; this
+        // keeps a document-level / TOC repeater (a recognised schema child,
+        // so `schema_errors` runs on it directly) consistent.
+        if declared.name() == "each" && block.kind() == "wdoc_repeater" {
+            continue;
+        }
         let Ok(value) = literal_field.value() else {
             continue;
         };

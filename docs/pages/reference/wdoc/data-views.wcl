@@ -159,6 +159,47 @@ dv_hosts { heading = "Fleet"  rows = inventory }
 WCL
   }
 
+  h2 "Generating pages and navigation"
+
+  p "A `wdoc_repeater` is the single iteration concept at every level. At the **document root**, give it a `page` block as its body and it emits one rendered page per element — the page's interpolated label becomes the route (`<name>.html`). Inside a `toc` (or a `chapter`), give it a `chapter` block and it emits one navigation entry per element. So a whole catalogue site — one page per service, table, or endpoint — comes from data, with no hand-authored `page` or `chapter` boilerplate:"
+
+  code wcl {
+    source = <<'WCL'
+let containers = [
+  { id: "web", name: "Web App" },
+  { id: "api", name: "API" },
+  { id: "db",  name: "Database" },
+]
+
+// One rendered page per element. The interpolated label is the route.
+wdoc_repeater { each = containers  as = :c
+  page $"cont_${c.id}" {
+    sites = [:docbook]
+    title = c.name
+    h1 $"${c.name}"
+    p  $"See the [Web App](cont_web) container."   // links resolve against
+  }                                                // the generated page set
+}
+
+site docbook {
+  default_template = :book
+  toc {
+    chapter "Containers" {
+      // One TOC entry per element, linking to the generated page.
+      wdoc_repeater { each = containers  as = :c
+        chapter $"${c.name}" { page = $"cont_${c.id}" }
+      }
+    }
+  }
+}
+WCL
+  }
+
+  callout "Routes must be slug-safe and unique" {
+    class = ["note"]
+    body = "A generated route is its interpolated label, so it must be non-empty, contain only the characters `A-Za-z0-9_-`, and be unique within its site — colliding or space-bearing routes are a build error. Build a slug from prose with `to_lower(replace(s, \" \", \"-\"))`. A cross-page link whose target is computed from the same data resolves automatically, because the generated pages exist before links are checked."
+  }
+
   h2 "Content slots (layout wrappers)"
 
   p "A `wdoc_content` block in a component body marks where the instance's *own* nested blocks render — so a component can frame arbitrary content:"

@@ -67,11 +67,25 @@ type WdocContent extends WdocBlock {
 // Repeats its body once per element of `each`, binding the element to the
 // symbol `as`. Special-cased in Rust (its `lower` is a stub); `each` is
 // read dynamically, so the validator does not type-check its elements.
+//
+// A repeater is the single iteration concept at every level of a document:
+//   • inside a page (or a `diagram` / `container`) its body is `WdocBlock`s
+//     (resp. `SvgBlock`s) — repeated content / shapes;
+//   • at the document root its body is `page` blocks — one rendered page per
+//     element (the page's interpolated label becomes the route);
+//   • inside a `toc` / `chapter` its body is `chapter` blocks — one TOC entry
+//     per element.
+// The `page` / `chapter` slots below register those placements so the
+// validator accepts them. They take effect only where the renderer looks for
+// them (document root for pages, the TOC reader for chapters); a `page` /
+// `chapter` nested in an in-page repeater is structurally legal but ignored.
 @block("wdoc_repeater")
 type WdocRepeater extends WdocBlock {
   each: list<WdocItem>
   as:   symbol
   @children(WdocBlock) children: list<WdocBlock>
+  @children("page")    pages:    list<Page>
+  @children("chapter") chapters: list<Chapter>
   lower = fn(r: WdocRepeater) -> list<HtmlFundamental> []
 }
 

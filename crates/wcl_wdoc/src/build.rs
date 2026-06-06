@@ -8,9 +8,10 @@ use wcl_lang::{Block, Document, Environment, Registry, Value, disk_loader};
 use crate::highlight;
 use crate::inline::InlinePatterns;
 use crate::render::{
-    DeckSectionNode, MenuNode, TocNode, escape_html, field_bool, field_id, field_symbol,
-    field_symbol_list_opt, field_utf8, find_template, read_deck, read_menu, read_toc, render_block,
-    render_class, render_page, render_template, site_theme_css,
+    DeckSectionNode, MAX_LOWER_DEPTH, MenuNode, TocNode, escape_html, expand_repeater_children,
+    field_bool, field_id, field_symbol, field_symbol_list_opt, field_utf8, find_template,
+    read_deck, read_menu, read_toc, render_block, render_class, render_page, render_template,
+    site_theme_css,
 };
 
 /// The wdoc standard library, embedded in the binary and registered
@@ -86,6 +87,13 @@ pub enum BuildError {
         page: String,
         id: String,
     },
+    /// Two pages in the same site resolve to the same route/name (e.g. a
+    /// `wdoc_repeater` whose interpolated page labels collide). Carries the
+    /// site name (or "default" for an unnamed single site) and the route.
+    DuplicatePage {
+        site: String,
+        name: String,
+    },
     BadLink(Vec<String>),
     BadTemplate(String),
     Tileset(String),
@@ -105,6 +113,9 @@ impl BuildError {
             Self::BadPage(msg) => eprintln!("{msg}"),
             Self::DuplicateId { page, id } => {
                 eprintln!("page \"{page}\": duplicate id \"{id}\"");
+            }
+            Self::DuplicatePage { site, name } => {
+                eprintln!("site \"{site}\": duplicate page \"{name}\"");
             }
             Self::BadLink(msgs) => {
                 for m in msgs {
@@ -168,7 +179,7 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
     // site (or `--site`) the chosen site renders flat at `out_dir`, and
     // with none a synthetic default site reproduces the bare flat output.
     let site_blocks: Vec<Block> = doc.blocks().filter(|b| b.kind() == "site").collect();
-    let all_pages: Vec<Block> = doc.blocks().filter(|b| b.kind() == "page").collect();
+    let all_pages = collect_pages(&doc)?;
     let specs = collect_site_specs(&site_blocks, &all_pages)?;
 
     // At most one site may be the `root` site (rendered flat at the
@@ -586,7 +597,18 @@ fn build_site(
         .iter()
         .filter_map(|p| page_name(p).map(|n| (n.clone(), format!("{n}.html"))))
         .collect();
-    let page_names: HashSet<String> = pages.iter().map(|(n, _)| n.clone()).collect();
+    let mut page_names: HashSet<String> = HashSet::new();
+    for (n, _) in &pages {
+        // Routes must be unique within a site — two `wdoc_repeater`
+        // elements whose interpolated labels collide would otherwise
+        // silently overwrite one `<name>.html` with another.
+        if !page_names.insert(n.clone()) {
+            return Err(BuildError::DuplicatePage {
+                site: spec.name.clone().unwrap_or_else(|| "default".into()),
+                name: n.clone(),
+            });
+        }
+    }
 
     if let Some(missing) = toc_missing_page(&toc_nodes, &page_names) {
         return Err(BuildError::BadTemplate(format!(
@@ -1077,6 +1099,57 @@ pub(crate) fn page_name(page: &Block<'_>) -> Option<String> {
         Value::Identifier(s) | Value::Utf8(s) | Value::Symbol(s) => Some(s),
         _ => None,
     }
+}
+
+/// Discover the document's pages, expanding any document-level
+/// `wdoc_repeater` (whose body is `page` blocks) into one concrete page
+/// per element of its `each` list — the data-driven page generator.
+/// Pages keep source order (each repeater expands in place); nested
+/// repeaters recurse. The result is an ordinary page list every backend
+/// (HTML / PDF / Markdown / skill) consumes unchanged, so the rest of the
+/// pipeline (site grouping, link validation, rendering) needs no further
+/// awareness of generation.
+pub(crate) fn collect_pages(doc: &Document) -> Result<Vec<Block<'_>>, BuildError> {
+    let mut out = Vec::new();
+    collect_pages_into(doc.blocks(), &mut out);
+    // A generated page's route is its interpolated label, which can be any
+    // string — reject anything that wouldn't form a clean `<name>.html` /
+    // link target. Static `identifier` labels always pass.
+    for p in &out {
+        if let Some(name) = page_name(p)
+            && !is_slug_safe(&name)
+        {
+            return Err(BuildError::BadPage(format!(
+                "page route \"{name}\" is not slug-safe — a generated page name \
+                 must be non-empty and contain only [A-Za-z0-9_-]; build one with \
+                 e.g. `to_lower(replace(s, \" \", \"-\"))`"
+            )));
+        }
+    }
+    Ok(out)
+}
+
+fn collect_pages_into<'a>(blocks: impl Iterator<Item = Block<'a>>, out: &mut Vec<Block<'a>>) {
+    for b in blocks {
+        match b.kind() {
+            "page" => out.push(b),
+            // Stop runaway expansion (mirrors the HTML / diagram guards);
+            // then expand this repeater's `page` (and nested repeater)
+            // children once per element of `each`.
+            "wdoc_repeater" if b.binding_scope_depth() <= MAX_LOWER_DEPTH => {
+                collect_pages_into(expand_repeater_children(&b).into_iter(), out);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Whether a page route forms a clean filename / link target.
+fn is_slug_safe(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
 /// The name of the page marked `start = true` in this site, if any —

@@ -23,6 +23,10 @@ type Site {
   // User-defined reusable templates (declarative markup + slots),
   // instantiated by their own name as bare blocks inside pages.
   @children("wdoc_component") components:  list<WdocComponent>
+  // Document-level `wdoc_repeater`s whose body is `page` blocks: each emits
+  // one rendered page per element of `each` (the page's interpolated label
+  // becomes the route). See `components.wcl`.
+  @children("wdoc_repeater")  generators:  list<WdocRepeater>
   // Tagged content deposits gathered by a matching `collect`. Legal at the
   // document root so partials can be scattered across imported files; also
   // legal inside any page (via `WdocBlock`).
