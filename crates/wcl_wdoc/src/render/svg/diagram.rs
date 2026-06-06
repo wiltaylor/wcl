@@ -3,6 +3,7 @@
 //! layout plan + collect + render passes, and the `container` shape.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -343,18 +344,51 @@ pub(crate) fn compute_radial_plan(
     children: &[Block<'_>],
 ) -> (Vec<(f64, f64)>, Vec<f64>, Vec<f64>) {
     let defaults = RadialParams::default();
+    let (flow_idx, flow_nodes) = flow_nodes_of(children);
+    // A `boundary` wrapping a node inflates that node's *drawn* footprint by
+    // its `padding` per side (see `render_one_boundary`), but the boundary is
+    // a post-layout overlay invisible to the solver. Feed that inflation in as
+    // clearance-only signal so ring neighbours seat outside the boundary.
+    let pad_by_id = boundary_padding_by_member(block);
+    let inflation: Vec<f64> = flow_nodes
+        .iter()
+        .map(|node| {
+            node.id
+                .as_deref()
+                .and_then(|id| pad_by_id.get(id).copied())
+                .unwrap_or(0.0)
+        })
+        .collect();
     let params = RadialParams {
         hub: field_id(block, "hub"),
         radius: field_f64(block, "radius"),
         ring_gap: field_f64(block, "ring_gap").unwrap_or(defaults.ring_gap),
         start_angle: field_f64(block, "start_angle").unwrap_or(defaults.start_angle),
         node_gap: field_f64(block, "node_gap").unwrap_or(defaults.node_gap),
+        inflation,
     };
 
-    let (flow_idx, flow_nodes) = flow_nodes_of(children);
     let edges: Vec<(String, String)> = edge_id_pairs(block);
     let flow_offsets = radial::assign_radial_offsets(&flow_nodes, &edges, params);
     assemble_plan(children, &flow_idx, &flow_nodes, &flow_offsets)
+}
+
+/// Map each shape id enclosed by a `boundary` to the largest enclosing
+/// `padding` (a node in nested/overlapping boundaries clears the widest).
+/// `padding` is read exactly as `render_one_boundary` does so the radial
+/// clearance and the drawn boundary rect agree on the inflation.
+fn boundary_padding_by_member(block: &Block<'_>) -> HashMap<String, f64> {
+    let mut boundaries: Vec<Block<'_>> = Vec::new();
+    gather_boundaries_recursive(block, &mut boundaries);
+    let mut out: HashMap<String, f64> = HashMap::new();
+    for b in &boundaries {
+        let pad = field_f64(b, "padding").unwrap_or(12.0).max(0.0);
+        for id in boundary_member_ids(b) {
+            let slot = out.entry(id).or_insert(0.0);
+            *slot = slot.max(pad);
+        }
+    }
+    out
 }
 
 /// Dispatch to the layout solver named by the block's `layout` field.

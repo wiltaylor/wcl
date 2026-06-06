@@ -43,6 +43,12 @@ pub(crate) struct RadialParams {
     pub start_angle: f64,
     /// Minimum gap, edge-to-edge, between neighbouring nodes on a ring.
     pub node_gap: f64,
+    /// Per-node extra half-extent (SVG units) added to a node's box radius
+    /// purely for *clearance* math — never its drawn size. Lets a node wrapped
+    /// by a post-layout `boundary` (which inflates its visible footprint by the
+    /// boundary `padding` per side) seat ring neighbours outside the boundary
+    /// rather than flush against it. Indexed parallel to `nodes`; short/empty ⇒ 0.
+    pub inflation: Vec<f64>,
 }
 
 impl Default for RadialParams {
@@ -53,6 +59,7 @@ impl Default for RadialParams {
             ring_gap: 120.0,
             start_angle: -PI / 2.0,
             node_gap: 24.0,
+            inflation: Vec::new(),
         }
     }
 }
@@ -79,6 +86,13 @@ pub(crate) fn assign_radial_offsets(
         .iter()
         .map(|node| node.size.0.hypot(node.size.1) / 2.0)
         .collect();
+    // Clearance-only inflation (e.g. a `boundary` padding the hub's drawn
+    // footprint). Added to a node's `radius_of` for ring-radius math, never
+    // to its drawn size. Inflating by the raw per-side padding is
+    // deliberately conservative: `radius_of` is already the half-*diagonal*,
+    // so it over-clears axis-aligned boxes, and radial spokes run along the
+    // cardinal directions where keeping the boundary edge clear matters most.
+    let infl = |i: usize| params.inflation.get(i).copied().unwrap_or(0.0);
 
     // ── Undirected adjacency + degree from in-scope edges ────────────
     let id_to_idx: HashMap<&str, usize> = nodes
@@ -159,7 +173,7 @@ pub(crate) fn assign_radial_offsets(
         let k = members.len();
         let max_extent = members
             .iter()
-            .map(|&i| radius_of[i])
+            .map(|&i| radius_of[i] + infl(i))
             .fold(0.0_f64, f64::max);
         // Two independent lower bounds on this ring's radius:
         //  • `chord_fit` keeps adjacent nodes on the ring clear of each
@@ -175,7 +189,7 @@ pub(crate) fn assign_radial_offsets(
         } else {
             (2.0 * max_extent + params.node_gap) / (2.0 * (PI / k as f64).sin())
         };
-        let hub_clear = radius_of[hub] + params.node_gap + max_extent;
+        let hub_clear = radius_of[hub] + infl(hub) + params.node_gap + max_extent;
         let fit_radius = chord_fit.max(hub_clear);
         let base = params.radius.unwrap_or(fit_radius);
         let ring_radius = base + (r as f64 - 1.0) * params.ring_gap;
@@ -401,5 +415,140 @@ mod tests {
         let first = assign_radial_offsets(&nodes, &edges, RadialParams::default());
         let second = assign_radial_offsets(&nodes, &edges, RadialParams::default());
         assert_eq!(first, second);
+    }
+
+    // Wide N/E/S/W star where `hub_clear` is the binding radius bound, so
+    // hub inflation moves the ring outward by exactly that amount.
+    fn wide_star() -> (Vec<Node>, Vec<(String, String)>) {
+        let wide = |id: &str| Node {
+            id: Some(id.into()),
+            size: (190.0, 56.0),
+        };
+        let nodes = vec![wide("h"), wide("n1"), wide("n2"), wide("n3"), wide("n4")];
+        let edges = vec![
+            ("h".into(), "n1".into()),
+            ("h".into(), "n2".into()),
+            ("h".into(), "n3".into()),
+            ("h".into(), "n4".into()),
+        ];
+        (nodes, edges)
+    }
+
+    #[test]
+    fn hub_inflation_pushes_ring_outward() {
+        let (nodes, edges) = wide_star();
+        let sizes: Vec<_> = nodes.iter().map(|n| n.size).collect();
+        let bare = assign_radial_offsets(&nodes, &edges, RadialParams::default());
+        let inflated = assign_radial_offsets(
+            &nodes,
+            &edges,
+            RadialParams {
+                inflation: vec![34.0, 0.0, 0.0, 0.0, 0.0],
+                ..RadialParams::default()
+            },
+        );
+        let hub_dist = |offs: &[(f64, f64)], i: usize| {
+            let h = center(offs[0], sizes[0]);
+            let c = center(offs[i], sizes[i]);
+            (c.0 - h.0).hypot(c.1 - h.1)
+        };
+        for i in 1..5 {
+            assert!(
+                hub_dist(&inflated, i) > hub_dist(&bare, i) + 1.0,
+                "node {i} did not move outward ({} vs {})",
+                hub_dist(&inflated, i),
+                hub_dist(&bare, i)
+            );
+        }
+    }
+
+    #[test]
+    fn inflation_clears_the_boundary_band() {
+        // With the hub inflated by `pad`, every ring node's nearest edge must
+        // sit beyond the hub's bare box *plus* pad on its facing axis — i.e.
+        // outside the boundary rect drawn at hub_box ± pad.
+        let pad = 34.0;
+        let (nodes, edges) = wide_star();
+        let sizes: Vec<_> = nodes.iter().map(|n| n.size).collect();
+        let offs = assign_radial_offsets(
+            &nodes,
+            &edges,
+            RadialParams {
+                inflation: vec![pad, 0.0, 0.0, 0.0, 0.0],
+                ..RadialParams::default()
+            },
+        );
+        let hub_c = center(offs[0], sizes[0]);
+        for i in 1..5 {
+            let c = center(offs[i], sizes[i]);
+            let dx = (c.0 - hub_c.0).abs();
+            let dy = (c.1 - hub_c.1).abs();
+            // Boundary half-extents = bare hub half-box + pad.
+            let bx = sizes[0].0 / 2.0 + pad;
+            let by = sizes[0].1 / 2.0 + pad;
+            // Disjoint from the boundary rect on at least one axis.
+            let clears = dx >= bx + sizes[i].0 / 2.0 || dy >= by + sizes[i].1 / 2.0;
+            assert!(
+                clears,
+                "neighbour {i} (dx {dx:.1}, dy {dy:.1}) intrudes the boundary band"
+            );
+        }
+    }
+
+    #[test]
+    fn empty_inflation_is_noop() {
+        let (nodes, edges) = wide_star();
+        let omitted = assign_radial_offsets(&nodes, &edges, RadialParams::default());
+        let explicit_empty = assign_radial_offsets(
+            &nodes,
+            &edges,
+            RadialParams {
+                inflation: Vec::new(),
+                ..RadialParams::default()
+            },
+        );
+        assert_eq!(omitted, explicit_empty);
+    }
+
+    #[test]
+    fn ring_member_inflation_widens_chord() {
+        // A dense single ring: inflating one ring member widens the ring it
+        // sits on (its neighbours sit farther from the hub than without).
+        let nodes = vec![
+            node("h"),
+            node("a"),
+            node("b"),
+            node("c"),
+            node("d"),
+            node("e"),
+        ];
+        let edges = vec![
+            ("h".into(), "a".into()),
+            ("h".into(), "b".into()),
+            ("h".into(), "c".into()),
+            ("h".into(), "d".into()),
+            ("h".into(), "e".into()),
+        ];
+        let sizes: Vec<_> = nodes.iter().map(|n| n.size).collect();
+        let ring_radius = |offs: &[(f64, f64)]| {
+            let h = center(offs[0], sizes[0]);
+            let c = center(offs[1], sizes[1]);
+            (c.0 - h.0).hypot(c.1 - h.1)
+        };
+        let bare = assign_radial_offsets(&nodes, &edges, RadialParams::default());
+        let inflated = assign_radial_offsets(
+            &nodes,
+            &edges,
+            RadialParams {
+                inflation: vec![0.0, 60.0, 0.0, 0.0, 0.0, 0.0],
+                ..RadialParams::default()
+            },
+        );
+        assert!(
+            ring_radius(&inflated) > ring_radius(&bare) + 1.0,
+            "ring did not widen ({} vs {})",
+            ring_radius(&inflated),
+            ring_radius(&bare)
+        );
     }
 }
