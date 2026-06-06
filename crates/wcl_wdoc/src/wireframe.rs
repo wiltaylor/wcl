@@ -723,9 +723,10 @@ fn emit(w: &Widget, x: f64, y: f64, roles: &ThemeRoles, out: &mut String) {
                 tw = w.w,
                 tbar = roles.overlay,
             ));
-            // Three traffic-light dots, top-left of the toolbar.
+            // Three traffic-light dots, top-right of the toolbar (rightmost
+            // dot pinned to the right inset, the rest stepping left).
             for i in 0..3 {
-                let dx = x + PAD + 5.0 + i as f64 * 13.0;
+                let dx = x + w.w - PAD - 5.0 - (2 - i) as f64 * 13.0;
                 circle(out, dx, y + 16.0, 4.0, "none", &roles.fg_muted);
             }
             // Address-bar pill below the dots, showing the URL.
