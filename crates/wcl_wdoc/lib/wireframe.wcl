@@ -1,5 +1,6 @@
-// Wireframe UI widgets — windows, buttons, inputs, and controls for
-// mocking up interfaces. Each widget is a **diagram shape**: `Widget
+// Wireframe UI widgets — windows, device frames (browser / phone /
+// tablet), buttons, inputs, and controls for mocking up interfaces. Each
+// widget is a **diagram shape**: `Widget
 // extends SvgBlock`, so a `wf_*` block is a legal child of any `diagram`
 // / `container`, positioned with `x`/`y` (or anchors) and connectable by
 // edges via `connect_points` — exactly like `rect` / `circle` / `card`.
@@ -188,6 +189,61 @@ type WfWindow extends Widget {
   @doc("Any `Widget`s, stacked vertically.")
   @children(Widget) children: list<Widget>
   lower = fn(w: WfWindow) -> list<SvgFundamental> []
+}
+
+// Device frames: a web browser and phone / tablet shells. Unlike every
+// other widget, these have a realistic *fixed* default frame size so their
+// content sizes inside them properly — and uniquely, an explicit
+// `width` / `height` pins that axis (the unset axis keeps the device
+// default, and height still grows if the content would overflow).
+
+@block("wf_browser")
+type WfBrowser extends Widget {
+  @doc("Address-bar URL (the inline label).")
+  @inline(0) url: utf8
+  id: identifier?  class: list<utf8>?  disabled: bool?
+  // `width` / `height` pin the browser frame size (default 640 × 440).
+  x = 0.0  y = 0.0  width: f64?  height: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
+  theme: symbol?  accent: symbol?  mode: symbol?
+  @doc("Any `Widget`s, stacked vertically in the content area.")
+  @children(Widget) children: list<Widget>
+  lower = fn(b: WfBrowser) -> list<SvgFundamental> []
+}
+
+@block("wf_phone")
+type WfPhone extends Widget {
+  @doc("Optional status-bar caption (the inline label).")
+  @inline(0) title: utf8?
+  @doc("Frame orientation: `:portrait` (default) or `:landscape`.")
+  orientation: symbol?
+  id: identifier?  class: list<utf8>?  disabled: bool?
+  // `width` / `height` pin the phone frame size (default 280 × 580 portrait).
+  x = 0.0  y = 0.0  width: f64?  height: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
+  theme: symbol?  accent: symbol?  mode: symbol?
+  @doc("Any `Widget`s, stacked vertically on the screen.")
+  @children(Widget) children: list<Widget>
+  lower = fn(p: WfPhone) -> list<SvgFundamental> []
+}
+
+@block("wf_tablet")
+type WfTablet extends Widget {
+  @doc("Optional status-bar caption (the inline label).")
+  @inline(0) title: utf8?
+  @doc("Frame orientation: `:portrait` (default) or `:landscape`.")
+  orientation: symbol?
+  id: identifier?  class: list<utf8>?  disabled: bool?
+  // `width` / `height` pin the tablet frame size (default 480 × 640 portrait).
+  x = 0.0  y = 0.0  width: f64?  height: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
+  theme: symbol?  accent: symbol?  mode: symbol?
+  @doc("Any `Widget`s, stacked vertically on the screen.")
+  @children(Widget) children: list<Widget>
+  lower = fn(t: WfTablet) -> list<SvgFundamental> []
 }
 
 @block("wf_panel")

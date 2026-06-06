@@ -31,7 +31,7 @@ type WfBadge extends Widget {
 page wdoc_wireframe { sites = [:reference, :wcl_skill]  title = "Wireframe"
   h1 "Wireframe"
 
-  p "Wireframe widgets mock up a UI — windows, panels, inputs, controls — as **diagram shapes**. Each `wf_*` block `extends SvgBlock`, so it lives inside a `diagram`: you place it with `x` / `y` (or anchors), connect widgets with edges, and mix them with any other shape. Container widgets nest other widgets, so you compose a window of panels of rows of controls; the whole group is sized by its content and the diagram just frames it. They're visual mockups — static SVG, not interactive."
+  p "Wireframe widgets mock up a UI — windows, device frames (browser / phone / tablet), panels, inputs, controls — as **diagram shapes**. Each `wf_*` block `extends SvgBlock`, so it lives inside a `diagram`: you place it with `x` / `y` (or anchors), connect widgets with edges, and mix them with any other shape. Container widgets nest other widgets, so you compose a window of panels of rows of controls; the whole group is sized by its content and the diagram just frames it. They're visual mockups — static SVG, not interactive."
 
   p "Here's a full window composed of a panel and a button row, framed by a diagram:"
 
@@ -126,6 +126,113 @@ WCL
   }
 
   type_table { type = WfWindow }
+
+  h3 "wf_browser"
+
+  p "A web-browser frame: a toolbar with traffic-light dots and an address bar (the inline label is the URL) over a content area that hosts other widgets. Drop a `wf_window` or any controls inside to mock up a web app."
+
+  diagram {
+    width = 480  height = 260
+    wf_browser "app.example.com/dashboard" {
+      wf_panel { title = "Welcome back"
+        wf_input "Search…"
+        wf_row {
+          wf_button "Open"
+          wf_button "New" { icon = "lucide.check" }
+        }
+      }
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 480  height = 260
+  wf_browser "app.example.com/dashboard" {
+    wf_panel { title = "Welcome back"
+      wf_input "Search…"
+      wf_row {
+        wf_button "Open"
+        wf_button "New" { icon = "lucide.check" }
+      }
+    }
+  }
+}
+WCL
+  }
+
+  p "Unlike the other widgets — sized to their content — the device frames have a realistic **fixed** default size (`wf_browser` is 640 × 440) so the content sizes inside them properly. An explicit `width` / `height` pins that axis (the other keeps the device default), and the height still grows if the content would overflow."
+
+  type_table { type = WfBrowser }
+
+  h3 "wf_phone"
+
+  p "A phone shell — a bezel around a screen with a status bar (the inline label is an optional caption) and a home-indicator pill. Set `orientation = :landscape` to rotate it; the default is `:portrait` (280 × 580, swapped in landscape)."
+
+  diagram {
+    width = 320  height = 480
+    wf_phone "9:41" {
+      wf_panel { title = "Account"
+        wf_input "Email" { value = "ada@example.com" }
+        wf_toggle "Notifications" { on = true }
+      }
+      wf_button "Sign in" { icon = "lucide.check" }
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 320  height = 480
+  wf_phone "9:41" {
+    wf_panel { title = "Account"
+      wf_input "Email" { value = "ada@example.com" }
+      wf_toggle "Notifications" { on = true }
+    }
+    wf_button "Sign in" { icon = "lucide.check" }
+  }
+}
+WCL
+  }
+
+  type_table { type = WfPhone }
+
+  h3 "wf_tablet"
+
+  p "A tablet shell — the same chrome as `wf_phone` on a larger, squarer frame (480 × 640 portrait). Shown here in landscape:"
+
+  diagram {
+    width = 460  height = 320
+    wf_tablet { orientation = :landscape
+      wf_row {
+        wf_panel { title = "Library"
+          wf_label "Recent"
+          wf_label "Favourites"
+        }
+        wf_panel { title = "Reader"
+          wf_label "Select an item to read."
+        }
+      }
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 460  height = 320
+  wf_tablet { orientation = :landscape
+    wf_row {
+      wf_panel { title = "Library"
+        wf_label "Recent"
+        wf_label "Favourites"
+      }
+      wf_panel { title = "Reader"
+        wf_label "Select an item to read."
+      }
+    }
+  }
+}
+WCL
+  }
+
+  type_table { type = WfTablet }
 
   h3 "wf_panel"
 

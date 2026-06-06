@@ -40,6 +40,53 @@ page wireframe { sites = [:showcase]
     }
   }
 
+  h2 "Device frames"
+
+  text {
+    span "Beyond the bare window, the family ships device shells — `wf_browser`, `wf_phone`, `wf_tablet` — that hold the same widgets. They have a realistic fixed default size (so content sizes inside them properly); set `orientation = :landscape` on a phone / tablet to rotate it, or pin either axis with `width` / `height`."
+  }
+
+  // A browser frame: a toolbar (traffic-light dots + address bar URL) over a
+  // content area. Nest a window or any controls inside.
+  diagram {
+    width = 480  height = 240
+    wf_browser "app.example.com" {
+      wf_panel { title = "Dashboard"
+        wf_input "Search projects…"
+        wf_row {
+          wf_button "Open"
+          wf_button "New" { icon = "lucide.check" }
+        }
+      }
+    }
+  }
+
+  // A phone (portrait) and a tablet (landscape) side by side.
+  diagram {
+    width = 640  height = 480
+    wf_phone "9:41" {
+      x = 0.0  y = 0.0
+      wf_panel { title = "Account"
+        wf_input "Email" { value = "ada@example.com" }
+        wf_toggle "Notifications" { on = true }
+      }
+      wf_button "Sign in" { icon = "lucide.check" }
+    }
+    wf_tablet {
+      x = 300.0  y = 0.0
+      orientation = :landscape
+      wf_row {
+        wf_panel { title = "Library"
+          wf_label "Recent"
+          wf_label "Favourites"
+        }
+        wf_panel { title = "Reader"
+          wf_label "Select an item to read."
+        }
+      }
+    }
+  }
+
   h2 "Placing widgets and connecting them"
 
   text {

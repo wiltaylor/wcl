@@ -1,7 +1,8 @@
 //! Wireframe UI mock-ups rendered as positioned diagram shapes.
 //!
-//! Wireframe widgets (`wf_window`, `wf_button`, `wf_panel`, the controls, and
-//! the `wf_row`/`wf_column`/`wf_grid` layout containers) mock up an interface
+//! Wireframe widgets (`wf_window`, the `wf_browser`/`wf_phone`/`wf_tablet`
+//! device frames, `wf_button`, `wf_panel`, the controls, and the
+//! `wf_row`/`wf_column`/`wf_grid` layout containers) mock up an interface
 //! from composable blocks. Each widget `extends SvgBlock`, so it is a **diagram
 //! shape**: a legal child of any `diagram` / `container`, placed with `x`/`y`
 //! (or anchors) and connectable by edges. Like `card` / `map`, the family is
@@ -29,7 +30,7 @@
 use wcl_lang::{Block, Document};
 
 use crate::render::{
-    RenderCtx, ThemeRoles, escape_html, field_bool, field_i64, field_symbol, field_utf8,
+    RenderCtx, ThemeRoles, escape_html, field_bool, field_f64, field_i64, field_symbol, field_utf8,
     field_utf8_list, label_string, resolve_rect_box, resolve_roles,
 };
 
@@ -52,6 +53,21 @@ const TRACK_W: f64 = 35.0; // toggle track (2.2rem)
 const TRACK_H: f64 = 19.0; // toggle track (1.2rem)
 const WIN_MIN_W: f64 = 256.0; // window min-width (16rem)
 const ICON: f64 = 14.0;
+
+// Device frames (browser / phone / tablet). Unlike the other widgets, these
+// have a realistic *fixed* default size so content sizes inside them properly;
+// an explicit `width`/`height` pins that axis, and height grows past the
+// default if the content would otherwise overflow.
+const PHONE_W: f64 = 280.0; // phone portrait width
+const PHONE_H: f64 = 580.0; // phone portrait height (landscape swaps the two)
+const TABLET_W: f64 = 480.0; // tablet portrait width
+const TABLET_H: f64 = 640.0; // tablet portrait height (landscape swaps)
+const BROWSER_W: f64 = 640.0; // browser frame width
+const BROWSER_H: f64 = 440.0; // browser frame height
+const DEVICE_BEZEL: f64 = 12.0; // frame thickness around the screen
+const STATUS_H: f64 = 26.0; // phone/tablet status bar height
+const HOME_IND_H: f64 = 22.0; // bottom reserve for the home-indicator pill
+const BROWSER_TOOLBAR_H: f64 = 62.0; // browser dots row + address bar
 
 const SANS: &str = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
@@ -110,6 +126,9 @@ pub(crate) fn is_wireframe_kind(kind: &str) -> bool {
     matches!(
         kind,
         "wf_window"
+            | "wf_browser"
+            | "wf_phone"
+            | "wf_tablet"
             | "wf_panel"
             | "wf_button"
             | "wf_input"
@@ -179,6 +198,23 @@ enum Kind {
     Window {
         title: String,
         controls: bool,
+        body: Vec<Widget>,
+        theme: Theme,
+    },
+    /// A web-browser frame: a toolbar (traffic-light dots + address bar) over a
+    /// content area. The inline label is the address-bar URL.
+    Browser {
+        url: String,
+        body: Vec<Widget>,
+        theme: Theme,
+    },
+    /// A phone / tablet frame: a bezel around a screen with a status bar and a
+    /// home-indicator pill. `tablet` picks the larger frame + squarer corners
+    /// (orientation only affects the measured size, not the emitted chrome).
+    /// The inline label is an optional status-bar caption.
+    Device {
+        tablet: bool,
+        title: Option<String>,
         body: Vec<Widget>,
         theme: Theme,
     },
@@ -297,6 +333,38 @@ fn build(doc: Option<&Document>, block: &Block<'_>) -> Widget {
                 disabled,
             )
         }
+        "wf_browser" => {
+            let url = label_string(block).unwrap_or_default();
+            let body = child_widgets(doc, block);
+            let (_, bh) = column_size(&body);
+            let (w, h) = browser_size(bh, field_f64(block, "width"), field_f64(block, "height"));
+            sized(Kind::Browser { url, body, theme }, w, h, disabled)
+        }
+        "wf_phone" | "wf_tablet" => {
+            let tablet = kind == "wf_tablet";
+            let landscape = field_symbol(block, "orientation").as_deref() == Some("landscape");
+            let title = label_string(block);
+            let body = child_widgets(doc, block);
+            let (_, bh) = column_size(&body);
+            let (w, h) = device_size(
+                tablet,
+                landscape,
+                bh,
+                field_f64(block, "width"),
+                field_f64(block, "height"),
+            );
+            sized(
+                Kind::Device {
+                    tablet,
+                    title,
+                    body,
+                    theme,
+                },
+                w,
+                h,
+                disabled,
+            )
+        }
         "wf_panel" => {
             let title = field_utf8(block, "title");
             let body = child_widgets(doc, block);
@@ -347,6 +415,44 @@ fn child_widgets(doc: Option<&Document>, block: &Block<'_>) -> Vec<Widget> {
 }
 
 // ── Container sizing ─────────────────────────────────────────────────
+
+/// A browser frame's `(w, h)`: an explicit `width`/`height` pins that axis,
+/// otherwise the default, with the height growing past it to fit `content_h`
+/// so the content never clips.
+fn browser_size(content_h: f64, width: Option<f64>, height: Option<f64>) -> (f64, f64) {
+    let needed = BROWSER_TOOLBAR_H + PAD + content_h + PAD;
+    (
+        width.unwrap_or(BROWSER_W),
+        height.unwrap_or(BROWSER_H.max(needed)),
+    )
+}
+
+/// A phone/tablet frame's `(w, h)`. Portrait is the default; `landscape` swaps
+/// the two axes. As with [`browser_size`], an explicit `width`/`height` pins
+/// that axis and the height grows to fit `content_h`.
+fn device_size(
+    tablet: bool,
+    landscape: bool,
+    content_h: f64,
+    width: Option<f64>,
+    height: Option<f64>,
+) -> (f64, f64) {
+    let (base_w, base_h) = if tablet {
+        (TABLET_W, TABLET_H)
+    } else {
+        (PHONE_W, PHONE_H)
+    };
+    let (default_w, default_h) = if landscape {
+        (base_h, base_w)
+    } else {
+        (base_w, base_h)
+    };
+    let needed = DEVICE_BEZEL + STATUS_H + PAD + content_h + PAD + HOME_IND_H + DEVICE_BEZEL;
+    (
+        width.unwrap_or(default_w),
+        height.unwrap_or(default_h.max(needed)),
+    )
+}
 
 fn column_size(items: &[Widget]) -> (f64, f64) {
     if items.is_empty() {
@@ -598,6 +704,154 @@ fn emit(w: &Widget, x: f64, y: f64, roles: &ThemeRoles, out: &mut String) {
             // Body column.
             emit_column(body, x + PAD, y + TITLEBAR_H + PAD, roles, out);
         }
+        Kind::Browser { url, body, theme } => {
+            let bg = theme.bg.as_deref().unwrap_or(&roles.bg_alt);
+            rect(out, x, y, w.w, w.h, 8.0, bg, border(theme, roles));
+            // Toolbar strip with rounded top corners (same path trick as the
+            // window titlebar, radius 8).
+            out.push_str(&format!(
+                "<path d=\"M{x:.2} {ty:.2} v{rad:.2} a8 8 0 0 1 8 -8 h{hw:.2} a8 8 0 0 1 8 8 v{rest:.2} h-{tw:.2} z\" fill=\"{tbar}\"/>",
+                ty = y + BROWSER_TOOLBAR_H,
+                rad = -(BROWSER_TOOLBAR_H - 8.0),
+                hw = w.w - 16.0,
+                rest = BROWSER_TOOLBAR_H - 8.0,
+                tw = w.w,
+                tbar = roles.overlay,
+            ));
+            // Three traffic-light dots, top-left of the toolbar.
+            for i in 0..3 {
+                let dx = x + PAD + 5.0 + i as f64 * 13.0;
+                circle(out, dx, y + 16.0, 4.0, "none", &roles.fg_muted);
+            }
+            // Address-bar pill below the dots, showing the URL.
+            let bar_y = y + 30.0;
+            let bar_h = 22.0;
+            let fill = theme.bg.as_deref().unwrap_or(&roles.bg_inset);
+            rect(
+                out,
+                x + PAD,
+                bar_y,
+                w.w - 2.0 * PAD,
+                bar_h,
+                bar_h / 2.0,
+                fill,
+                &roles.border,
+            );
+            emit_text(
+                out,
+                x + PAD + 12.0,
+                baseline(bar_y, bar_h),
+                "start",
+                FONT,
+                false,
+                &roles.fg_muted,
+                None,
+                url,
+            );
+            // Content area.
+            emit_column(body, x + PAD, y + BROWSER_TOOLBAR_H + PAD, roles, out);
+        }
+        Kind::Device {
+            tablet,
+            title,
+            body,
+            theme,
+        } => {
+            let radius = if *tablet { 22.0 } else { 30.0 };
+            let frame = theme.bg.as_deref().unwrap_or(&roles.bg_alt);
+            // Outer bezel frame.
+            rect(out, x, y, w.w, w.h, radius, frame, border(theme, roles));
+            // Inner screen.
+            let sx = x + DEVICE_BEZEL;
+            let sy = y + DEVICE_BEZEL;
+            let sw = w.w - 2.0 * DEVICE_BEZEL;
+            let sh = w.h - 2.0 * DEVICE_BEZEL;
+            rect(
+                out,
+                sx,
+                sy,
+                sw,
+                sh,
+                (radius - 8.0).max(4.0),
+                &roles.bg,
+                "none",
+            );
+            // Status bar: a centred notch (phone) / camera dot (tablet), an
+            // optional title on the left, and a battery glyph on the right.
+            if *tablet {
+                circle(
+                    out,
+                    x + w.w / 2.0,
+                    sy + STATUS_H / 2.0,
+                    3.0,
+                    "none",
+                    &roles.fg_muted,
+                );
+            } else {
+                let notch_w = 90.0_f64.min(sw - 24.0);
+                rect(
+                    out,
+                    x + w.w / 2.0 - notch_w / 2.0,
+                    sy + 6.0,
+                    notch_w,
+                    7.0,
+                    3.5,
+                    &roles.overlay,
+                    "none",
+                );
+            }
+            if let Some(t) = title {
+                emit_text(
+                    out,
+                    sx + PAD,
+                    baseline(sy, STATUS_H),
+                    "start",
+                    FONT,
+                    false,
+                    &roles.fg_muted,
+                    None,
+                    t,
+                );
+            }
+            // Battery glyph, right-aligned in the status bar.
+            let by = sy + (STATUS_H - 11.0) / 2.0;
+            let bx = x + w.w - DEVICE_BEZEL - PAD - 22.0;
+            rect(out, bx, by, 20.0, 11.0, 2.5, "none", &roles.fg_muted);
+            rect(
+                out,
+                bx + 2.0,
+                by + 2.0,
+                12.0,
+                7.0,
+                1.0,
+                &roles.fg_muted,
+                "none",
+            );
+            rect(
+                out,
+                bx + 20.0,
+                by + 3.5,
+                2.0,
+                4.0,
+                1.0,
+                &roles.fg_muted,
+                "none",
+            );
+            // Home-indicator pill near the bottom of the screen.
+            let pill_w = (sw * 0.34).min(150.0);
+            rect(
+                out,
+                x + w.w / 2.0 - pill_w / 2.0,
+                y + w.h - DEVICE_BEZEL - 12.0,
+                pill_w,
+                5.0,
+                2.5,
+                &roles.fg_muted,
+                "none",
+            );
+            // Screen content.
+            emit_column(body, sx + PAD, sy + STATUS_H + PAD, roles, out);
+        }
         Kind::Panel { title, body, theme } => {
             rect(
                 out,
@@ -837,6 +1091,63 @@ mod tests {
             Some("#1f6feb")
         );
         assert_eq!(border_color("red").as_deref(), Some("red"));
+    }
+
+    #[test]
+    fn device_defaults_and_orientation() {
+        // Small content → the default fixed phone frame, portrait.
+        assert_eq!(
+            device_size(false, false, 40.0, None, None),
+            (PHONE_W, PHONE_H)
+        );
+        // Landscape swaps the two axes.
+        assert_eq!(
+            device_size(false, true, 40.0, None, None),
+            (PHONE_H, PHONE_W)
+        );
+        // Tablet uses the larger default frame.
+        assert_eq!(
+            device_size(true, false, 40.0, None, None),
+            (TABLET_W, TABLET_H)
+        );
+    }
+
+    #[test]
+    fn device_height_grows_past_default_to_fit_content() {
+        // Content taller than the screen makes the frame grow (never clips),
+        // while the width stays at the fixed device default.
+        let (w, h) = device_size(false, false, 2000.0, None, None);
+        assert_eq!(w, PHONE_W);
+        assert!(
+            h > PHONE_H,
+            "phone height should grow past {PHONE_H}, got {h}"
+        );
+    }
+
+    #[test]
+    fn device_explicit_dims_pin_each_axis() {
+        // An explicit width/height pins that axis independently.
+        assert_eq!(
+            device_size(false, false, 40.0, Some(360.0), None),
+            (360.0, PHONE_H)
+        );
+        assert_eq!(
+            device_size(false, false, 40.0, None, Some(900.0)),
+            (PHONE_W, 900.0)
+        );
+    }
+
+    #[test]
+    fn browser_defaults_and_growth() {
+        assert_eq!(browser_size(40.0, None, None), (BROWSER_W, BROWSER_H));
+        let (w, h) = browser_size(2000.0, None, None);
+        assert_eq!(w, BROWSER_W);
+        assert!(
+            h > BROWSER_H,
+            "browser height should grow past {BROWSER_H}, got {h}"
+        );
+        // Explicit height pins the axis.
+        assert_eq!(browser_size(40.0, None, Some(300.0)), (BROWSER_W, 300.0));
     }
 
     #[test]

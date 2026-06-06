@@ -1,6 +1,6 @@
 # Wireframe
 
-Wireframe widgets mock up a UI — windows, panels, inputs, controls — as **diagram shapes**. Each `wf_*` block `extends SvgBlock`, so it lives inside a `diagram`: you place it with `x` / `y` (or anchors), connect widgets with edges, and mix them with any other shape. Container widgets nest other widgets, so you compose a window of panels of rows of controls; the whole group is sized by its content and the diagram just frames it. They're visual mockups — static SVG, not interactive.
+Wireframe widgets mock up a UI — windows, device frames (browser / phone / tablet), panels, inputs, controls — as **diagram shapes**. Each `wf_*` block `extends SvgBlock`, so it lives inside a `diagram`: you place it with `x` / `y` (or anchors), connect widgets with edges, and mix them with any other shape. Container widgets nest other widgets, so you compose a window of panels of rows of controls; the whole group is sized by its content and the diagram just frames it. They're visual mockups — static SVG, not interactive.
 
 Here's a full window composed of a panel and a button row, framed by a diagram:
 
@@ -64,11 +64,79 @@ diagram {
 
 
 
+### wf_browser
+
+A web-browser frame: a toolbar with traffic-light dots and an address bar (the inline label is the URL) over a content area that hosts other widgets. Drop a `wf_window` or any controls inside to mock up a web app.
+
+![diagram](../_wdoc/wdoc_wireframe-diagram-4.svg)
+
+```wcl
+diagram { width = 480  height = 260
+  wf_browser "app.example.com/dashboard" {
+    wf_panel { title = "Welcome back"
+      wf_input "Search…"
+      wf_row {
+        wf_button "Open"
+        wf_button "New" { icon = "lucide.check" }
+      }
+    }
+  }
+}
+```
+
+Unlike the other widgets — sized to their content — the device frames have a realistic **fixed** default size (`wf_browser` is 640 × 440) so the content sizes inside them properly. An explicit `width` / `height` pins that axis (the other keeps the device default), and the height still grows if the content would overflow.
+
+
+
+### wf_phone
+
+A phone shell — a bezel around a screen with a status bar (the inline label is an optional caption) and a home-indicator pill. Set `orientation = :landscape` to rotate it; the default is `:portrait` (280 × 580, swapped in landscape).
+
+![diagram](../_wdoc/wdoc_wireframe-diagram-5.svg)
+
+```wcl
+diagram { width = 320  height = 480
+  wf_phone "9:41" {
+    wf_panel { title = "Account"
+      wf_input "Email" { value = "ada@example.com" }
+      wf_toggle "Notifications" { on = true }
+    }
+    wf_button "Sign in" { icon = "lucide.check" }
+  }
+}
+```
+
+
+
+### wf_tablet
+
+A tablet shell — the same chrome as `wf_phone` on a larger, squarer frame (480 × 640 portrait). Shown here in landscape:
+
+![diagram](../_wdoc/wdoc_wireframe-diagram-6.svg)
+
+```wcl
+diagram { width = 460  height = 320
+  wf_tablet { orientation = :landscape
+    wf_row {
+      wf_panel { title = "Library"
+        wf_label "Recent"
+        wf_label "Favourites"
+      }
+      wf_panel { title = "Reader"
+        wf_label "Select an item to read."
+      }
+    }
+  }
+}
+```
+
+
+
 ### wf_panel
 
 A bordered group with an optional `title` caption — use it to box a set of related controls.
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-4.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-7.svg)
 
 ```wcl
 diagram { width = 220  height = 120
@@ -85,7 +153,7 @@ diagram { width = 220  height = 120
 
 Lay children out **horizontally** (a panel / window body stacks vertically by default).
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-5.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-8.svg)
 
 ```wcl
 diagram { width = 320  height = 50
@@ -103,7 +171,7 @@ diagram { width = 320  height = 50
 
 Stack children **vertically** — the default flow, useful for an explicit column inside a `wf_row` or `wf_grid`.
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-6.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-9.svg)
 
 ```wcl
 diagram { width = 220  height = 80
@@ -120,7 +188,7 @@ diagram { width = 220  height = 80
 
 A grid of equal-width columns; `columns` sets the count and children flow across the rows.
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-7.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-10.svg)
 
 ```wcl
 diagram { width = 280  height = 120
@@ -143,7 +211,7 @@ diagram { width = 280  height = 120
 
 A plain text label.
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-8.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-11.svg)
 
 ```wcl
 diagram { width = 220  height = 30
@@ -157,7 +225,7 @@ diagram { width = 220  height = 30
 
 A button caption, with an optional leading `icon` (any `pack.name`, e.g. `"lucide.check"`).
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-9.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-12.svg)
 
 ```wcl
 diagram { width = 320  height = 50
@@ -175,7 +243,7 @@ diagram { width = 320  height = 50
 
 A text field. With no `value` the `@inline` placeholder shows greyed; a `value` fills it with solid text.
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-10.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-13.svg)
 
 ```wcl
 diagram { width = 240  height = 90
@@ -192,7 +260,7 @@ diagram { width = 240  height = 90
 
 A select field showing the currently-chosen option label with a chevron.
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-11.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-14.svg)
 
 ```wcl
 diagram { width = 200  height = 44
@@ -206,7 +274,7 @@ diagram { width = 200  height = 44
 
 An on/off checkbox; `checked = true` fills the box with a tick.
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-12.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-15.svg)
 
 ```wcl
 diagram { width = 240  height = 70
@@ -223,7 +291,7 @@ diagram { width = 240  height = 70
 
 A radio button — like a checkbox but round; mark the active one with `selected = true` in a group you lay out yourself.
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-13.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-16.svg)
 
 ```wcl
 diagram { width = 160  height = 70
@@ -240,7 +308,7 @@ diagram { width = 160  height = 70
 
 A sliding on/off switch with an optional trailing label; `on = true` slides the knob across.
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-14.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-17.svg)
 
 ```wcl
 diagram { width = 220  height = 70
@@ -265,7 +333,7 @@ Wireframe widgets are user-extensible diagram shapes. Declare a `@block("name") 
 
 Here's a coloured status `wf_badge`. The `lower` reads its `x` / `y` and emits a filled box with a centred label — exactly how the built-in `process` shape lowers — and a `fill` field recolours an individual instance:
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-15.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-18.svg)
 
 ```wcl
 // Extends Widget → a diagram shape. The lower returns SVG fundamentals
