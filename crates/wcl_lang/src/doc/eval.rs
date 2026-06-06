@@ -238,6 +238,27 @@ impl Document {
         self.eval_in_scope(expr, scope)
     }
 
+    /// Evaluate a `list<identifier>`-typed field. A *bare-identifier list
+    /// literal* (`[shop, stripe]`) keeps each element opaque — the
+    /// element-wise lift of [`Self::eval_literal_in_scope`], so a list of
+    /// shape ids reads just like the scalar `id = web` form rather than
+    /// looking each name up as a binding. Any other expression (a
+    /// data-derived `members = some.list`) evaluates normally.
+    pub(crate) fn eval_identifier_list_in_scope(
+        &self,
+        expr: &ast::Expr,
+        scope: &Scope<'_>,
+    ) -> Result<Value, EvalError> {
+        if let ast::Expr::ListLit { elements, .. } = expr {
+            let mut out = Vec::with_capacity(elements.len());
+            for e in elements {
+                out.push(self.eval_literal_in_scope(e, scope)?);
+            }
+            return Ok(Value::List(out));
+        }
+        self.eval_in_scope(expr, scope)
+    }
+
     /// Back-compat shim — same as `eval_literal`. Used by call sites
     /// that pre-date the scope distinction (decorator args). Bare
     /// identifiers fall through; everything else evaluates at the

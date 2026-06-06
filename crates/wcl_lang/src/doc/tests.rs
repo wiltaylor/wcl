@@ -1890,6 +1890,28 @@ fn eval_list_literal_resolves_identifiers() {
 }
 
 #[test]
+fn eval_identifier_list_field_keeps_bare_names_opaque() {
+    // A `list<identifier>`-typed field is the element-wise lift of a
+    // scalar `identifier` field: bare-id elements stay opaque names
+    // (so they can reference shapes/blocks by id) instead of resolving
+    // as bindings. Without the declared type they'd error as unresolved
+    // references — see `eval_list_literal_resolves_identifiers`.
+    let src = r#"
+@document
+type Root { members: list<identifier> }
+members = [shop, stripe]
+"#;
+    let doc = Document::open(src, "test").expect("open");
+    assert_eq!(
+        doc.field("members").unwrap().value().unwrap(),
+        &Value::List(vec![
+            Value::Identifier("shop".into()),
+            Value::Identifier("stripe".into()),
+        ])
+    );
+}
+
+#[test]
 fn eval_decorator_arg_with_list_literal() {
     let doc = open(r#"@v(items = [1, 2, 3]) type T {}"#);
     let t = doc.type_decl("T").unwrap();

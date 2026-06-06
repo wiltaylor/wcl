@@ -1486,6 +1486,16 @@ impl<'a> Field<'a> {
             // data-derived `id = s.key` (a repeater/component binding)
             // resolves instead of being looked up at root.
             self.doc.eval_literal_in_scope(&self.ast.expr, &self.scope)
+        } else if matches!(
+            self.declared_type_ref(),
+            Some(TypeRef::List(inner)) if matches!(inner.as_ref(), TypeRef::Builtin(BuiltinType::Identifier))
+        ) {
+            // `list<identifier>` field: the element-wise lift of the rule
+            // above. A bare-id list (`members = [shop, stripe]`) keeps each
+            // name opaque so it can reference shapes by id, while a
+            // data-derived expression still evaluates normally.
+            self.doc
+                .eval_identifier_list_in_scope(&self.ast.expr, &self.scope)
         } else {
             self.doc
                 .eval_in_scope(&self.ast.expr, &self.scope)

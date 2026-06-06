@@ -223,6 +223,40 @@ type Container extends SvgBlock {
   lower = fn(c: Container) -> list<SvgFundamental> []
 }
 
+// A labelled box drawn *behind* a set of member shapes, sized to their
+// post-layout bounding box (plus `padding`). Unlike `container`, a
+// boundary owns no layout: it never moves its members and never
+// participates in the diagram's solver — it's a pure visual overlay
+// keyed by member id, so it works with every layout (`:radial` /
+// `:force` / `:layered` / `:grid` / `:none`). This is the C4
+// "boundary" (enterprise / system / team): on a `:radial` System
+// Context you can box the systems you own wherever the solver placed
+// them. Like `container` chrome the rect is synthesised by the
+// renderer and is NOT an obstacle, so edges cross it cleanly.
+@block("boundary")
+type Boundary extends SvgBlock {
+  @doc("Title drawn on/above the box (inline label).")
+  @inline(0) label: utf8?
+  @doc("Ids of the shapes to enclose — resolved anywhere in the diagram, like edge endpoints.")
+  members: list<identifier>
+  @doc("Outline colour (default: themed border via the `wdoc-boundary` class).")
+  stroke:  utf8?
+  @doc("Optional translucent fill (default: themed via the `wdoc-boundary` class).")
+  fill:    utf8?
+  @doc("Inset between the box and the member bounding box (default 12).")
+  padding: f64?
+  @doc("Label placement: `:top_left` (default) / `:top` / `:top_right` / `:bottom_left` / `:bottom` / `:bottom_right`.")
+  label_pos: symbol?
+  @doc("Style classes — text and SVG paint via the `class` system.")
+  class:   list<utf8>?
+  @doc("Optional id (a boundary is not itself a connection endpoint).")
+  id:      identifier?
+  // A boundary is special-cased in Rust (its geometry comes from
+  // post-layout member bboxes, not expressible in WCL); the renderer
+  // never invokes its `lower`. Declared only to satisfy the interface.
+  lower = fn(b: Boundary) -> list<SvgFundamental> []
+}
+
 @block("rect")
 type Rect extends SvgBlock {
   @doc("Top-left x corner, in canvas pixels.")

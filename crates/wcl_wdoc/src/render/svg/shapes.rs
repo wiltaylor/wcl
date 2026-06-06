@@ -108,6 +108,12 @@ pub(crate) fn collect_shape_positions(
             let (x, y) = resolve_point_anchored(block, parent_w, parent_h, own_x, own_y);
             record(block, (tx + x, ty + y, 0.0, 0.0), out);
         }
+        // A `boundary` is a post-layout overlay sized to its members'
+        // bboxes — it has no box of its own here. Record nothing (no
+        // bbox, no position): it's not a member of itself, and it must
+        // not appear in `positions` for the edge pass. The actual rect
+        // is computed by `render_boundaries` once `positions` is filled.
+        "boundary" => {}
         "icon" => {
             // Mirror render_icon's geometry exactly (resolved box × scale)
             // so the icon contributes a correct bbox for edges + viewBox
@@ -340,6 +346,10 @@ pub(crate) fn render_shape(
         "label" => render_label(block, parent_w, parent_h),
         "polygon" => render_polygon(block, parent_w, parent_h),
         "container" => render_container(block, parent_w, parent_h, ctx),
+        // A `boundary` is drawn behind the shapes by `render_boundaries`
+        // (it needs the post-layout `positions` map), never in the normal
+        // shape flow — emit nothing here.
+        "boundary" => return None,
         // The `icon` block is itself an icon — never give it an icon badge.
         "icon" => return Some(render_icon(block, parent_w, parent_h, ctx.icons)),
         // The tilemap crops tiles out of an external spritesheet — like

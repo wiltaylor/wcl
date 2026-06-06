@@ -127,4 +127,46 @@ diagram {
 }
 WCL
   }
+
+  h2 "Boundaries"
+
+  p "A `boundary` draws a labelled box *behind* a set of shapes named by id, sized to wherever the layout placed them. Unlike a `container`, it owns no layout — it never moves its members and never joins the solver, so it works on `:radial` and `:force` (where a container can't, because a container runs its own grid/layered layout on its children). This is the C4 \"boundary\": on a System Context diagram, box the systems you own and leave people and external systems outside it."
+
+  p "List the enclosed shapes in `members` (ids, resolved anywhere in the diagram like edge endpoints). `padding` insets the box from the member bounding box (default 12); `label_pos` places the title (`:top_left` default). Set `stroke` / `fill` to override the themed border, or add a `class`. An id matching no shape is skipped with a build warning. The box is not an obstacle, so edges cross it cleanly."
+
+  diagram {
+    width = 360  height = 300  layout = :radial  hub = platform  routing = :straight
+
+    process    "Platform"  { id = platform  width = 96.0  height = 44.0  fill = "#88c0d0" }
+    process    "Warehouse" { id = warehouse width = 96.0  height = 44.0  fill = "#a3be8c" }
+    process    "Billing"   { id = billing   width = 96.0  height = 44.0  fill = "#a3be8c" }
+    process    "Stripe"    { id = pay        width = 96.0  height = 44.0  fill = "#b48ead" }
+    terminator "Customer"  { id = cust       width = 96.0  height = 44.0  fill = "#d08770" }
+
+    cust     -> platform :flow
+    platform -> warehouse :flow
+    platform -> billing   :flow
+    billing  -> pay       :flow
+
+    boundary "Achmisoft" { members = [platform, warehouse, billing] }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 360  height = 300  layout = :radial  hub = platform  routing = :straight
+
+  process    "Platform"  { id = platform  … }
+  process    "Warehouse" { id = warehouse … }
+  process    "Billing"   { id = billing   … }
+  process    "Stripe"    { id = pay        … }
+  terminator "Customer"  { id = cust       … }
+
+  cust -> platform :flow     platform -> warehouse :flow
+  platform -> billing :flow  billing -> pay :flow
+
+  boundary "Achmisoft" { members = [platform, warehouse, billing] }
+}
+WCL
+  }
 }

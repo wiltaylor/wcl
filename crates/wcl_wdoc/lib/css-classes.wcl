@@ -48,6 +48,12 @@ class "wdoc-terminator" { fill = "#eceff4"  stroke = "#a3be8c" }
 class "wdoc-node"       { fill = "#eceff4"  stroke = "#4c566a" }
 class "wdoc-shape-text" { fill = "#2e3440" }
 
+// Diagram `boundary` overlay: a muted, fill-free box behind its members
+// with a bold muted label. The web theme (render/theme.rs APPLY) recolours
+// these per mode and adds a dashed border; this is the static / PDF default.
+class "wdoc-boundary"       { fill = "none"  stroke = "#4c566a" }
+class "wdoc-boundary-label" { fill = "#4c566a"  bold = true }
+
 // Timeline shape defaults. Markers / connectors / labels paint with
 // `currentColor` so they follow the page theme; phase dividers + their
 // headings also carry a cycled `wdoc-series-N` class, which sets their

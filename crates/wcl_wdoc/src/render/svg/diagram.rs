@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::fmt::Write as _;
 use std::path::Path;
 
-use wcl_lang::{Block, Document};
+use wcl_lang::{Block, Document, Value};
 
 use crate::force::{self, ForceParams};
 use crate::inline::InlinePatterns;
@@ -68,9 +68,16 @@ fn render_diagram_inner(
     let mut collector = Collector::default();
     collect_layout_children(block, 0.0, 0.0, vw, vh, cctx, &mut collector);
     let shapes: String = render_layout_children(block, vw, vh, ctx);
+    // Boundaries are a post-layout overlay: sized from `positions`
+    // (now populated), drawn *behind* the shapes, and excluded from the
+    // obstacle graph (they never become a `Block`). Their expanded boxes
+    // join the viewBox fit so a padded boundary never clips.
+    let (boundaries, boundary_bboxes) = render_boundaries(block, &collector.positions);
     let (edges, edge_bboxes) =
         render_edges(block, &collector.positions, &collector.containers, (vw, vh));
-    let viewbox = fit_viewbox(&collector.bboxes, &edge_bboxes, vw, vh);
+    let mut content_bboxes = collector.bboxes.clone();
+    content_bboxes.extend(boundary_bboxes);
+    let viewbox = fit_viewbox(&content_bboxes, &edge_bboxes, vw, vh);
     let defs = if edges.is_empty() { "" } else { ARROW_MARKER };
     let mut out = format!("<svg{cls}");
     append_attr(&mut out, "id", field_id(block, "id").as_deref());
@@ -96,7 +103,7 @@ fn render_diagram_inner(
     write!(
         out,
         " xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" \
-         viewBox=\"{viewbox}\">{defs}{shapes}{edges}</svg>"
+         viewBox=\"{viewbox}\">{defs}{boundaries}{shapes}{edges}</svg>"
     )
     .expect("write to String");
     if interactive {
@@ -167,10 +174,20 @@ pub(crate) fn collect_grid_children(
     let cw = field_f64(block, "cell_width").unwrap_or(0.0);
     let ch = field_f64(block, "cell_height").unwrap_or(0.0);
     let gap = field_f64(block, "gap").unwrap_or(0.0);
-    for (i, child) in diagram_children(block).iter().enumerate() {
+    for (i, child) in grid_cells(block).iter().enumerate() {
         let (cx_off, cy_off) = grid_cell_offset(i, cols, cw, ch, gap);
         collect_shape_positions(child, tx + cx_off, ty + cy_off, cw, ch, cctx, out);
     }
+}
+
+/// The grid-laid children of a diagram/container: every child *except*
+/// a `boundary`, which is a post-layout overlay and must not consume a
+/// grid cell (that would shift the real shapes after it).
+fn grid_cells<'a>(block: &Block<'a>) -> Vec<Block<'a>> {
+    diagram_children(block)
+        .into_iter()
+        .filter(|c| c.kind() != "boundary")
+        .collect()
 }
 
 /// Collect positions for a `:layered` or `:force` container/diagram.
@@ -207,8 +224,12 @@ pub(crate) fn collect_planned_children(
 /// `label`, rendered half-off its own origin). Instead it's positioned
 /// at the container origin against the flow content's full extent, so its
 /// own `x`/`y` + fractional anchors place it over the whole container.
+/// A `boundary` is likewise excluded: it's a post-layout overlay,
+/// not a flow node, so the solver must neither place it nor let it
+/// shove real shapes aside. (It also produces no SVG in the normal
+/// shape pass — see `render_shape` — and is drawn by `render_boundaries`.)
 fn is_layout_annotation(kind: &str) -> bool {
-    matches!(kind, "label" | "line")
+    matches!(kind, "label" | "line" | "boundary")
 }
 
 /// Reassemble a per-child plan from a solve over the *flow* children only.
@@ -424,12 +445,165 @@ pub(crate) fn container_chrome(block: &Block<'_>, w: f64, h: f64) -> String {
     out
 }
 
+/// Read a `boundary`'s `members` list into shape-id strings, resolving
+/// each element the same way an edge endpoint does (identifier / utf8 /
+/// ascii). Non-id elements are skipped.
+fn boundary_member_ids(block: &Block<'_>) -> Vec<String> {
+    let Some(field) = block.field("members") else {
+        return Vec::new();
+    };
+    let Ok(Value::List(items)) = field.value() else {
+        return Vec::new();
+    };
+    items.iter().filter_map(edge_endpoint_id).collect()
+}
+
+/// Collect every `boundary` block in the diagram tree (top level and
+/// inside containers). Mirrors `gather_edges_recursive`: a boundary's
+/// members resolve against the *global* `positions` map, so a boundary
+/// nested in a container still hugs members anywhere in the diagram.
+fn gather_boundaries_recursive<'a>(block: &Block<'a>, out: &mut Vec<Block<'a>>) {
+    for child in diagram_children(block) {
+        match child.kind() {
+            "boundary" => out.push(child),
+            "container" => gather_boundaries_recursive(&child, out),
+            _ => {}
+        }
+    }
+}
+
+/// Draw every diagram `boundary` as a labelled `<rect>` sized to the
+/// post-layout union bbox of its members (plus `padding`). Returns the
+/// SVG (to splice *behind* the shapes) plus each box's bbox, so the
+/// fit-to-viewport pass keeps a padded boundary from clipping. Like
+/// `container_chrome`, the rect is raw SVG — never a `Block` — so it's
+/// not an obstacle and edges cross it cleanly. A member id that resolves
+/// to no shape is skipped with a non-fatal warning; a boundary whose
+/// members all fail to resolve draws nothing.
+pub(crate) fn render_boundaries(
+    block: &Block<'_>,
+    positions: &ShapePositions,
+) -> (String, Vec<(f64, f64, f64, f64)>) {
+    let mut boundaries: Vec<Block<'_>> = Vec::new();
+    gather_boundaries_recursive(block, &mut boundaries);
+    let mut out = String::new();
+    let mut bboxes: Vec<(f64, f64, f64, f64)> = Vec::new();
+    for b in &boundaries {
+        if let Some((svg, bbox)) = render_one_boundary(b, positions) {
+            out.push_str(&svg);
+            bboxes.push(bbox);
+        }
+    }
+    (out, bboxes)
+}
+
+fn render_one_boundary(
+    block: &Block<'_>,
+    positions: &ShapePositions,
+) -> Option<(String, (f64, f64, f64, f64))> {
+    let label = label_string(block).filter(|s| !s.is_empty());
+    let name = label.clone().unwrap_or_else(|| "<unnamed>".to_string());
+    let ids = boundary_member_ids(block);
+
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    let mut found = 0usize;
+    for id in &ids {
+        let Some(m) = positions.get(id) else {
+            crate::render::record_edge_warning(format!(
+                "diagram boundary '{name}': member '{id}' matches no shape id"
+            ));
+            continue;
+        };
+        let (x, y, w, h) = m.bbox;
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x + w);
+        max_y = max_y.max(y + h);
+        found += 1;
+    }
+    if found == 0 {
+        crate::render::record_edge_warning(format!(
+            "diagram boundary '{name}': no members resolved to a shape — nothing drawn"
+        ));
+        return None;
+    }
+
+    let pad = field_f64(block, "padding").unwrap_or(12.0).max(0.0);
+    let x = min_x - pad;
+    let y = min_y - pad;
+    let w = (max_x - min_x).max(0.0) + 2.0 * pad;
+    let h = (max_y - min_y).max(0.0) + 2.0 * pad;
+    let bbox = (x, y, w, h);
+
+    let mut svg = boundary_rect(block, bbox);
+    if let Some(text) = label.as_deref() {
+        svg.push_str(&boundary_label(block, text, bbox));
+    }
+    Some((svg, bbox))
+}
+
+/// The boundary's background `<rect>`. When the author sets no
+/// `stroke` / `fill` / `class`, it carries the themed `wdoc-boundary`
+/// class (the stylesheet supplies a translucent border). Explicit
+/// `stroke` / `fill` paint inline (fill defaults to `none` so the box
+/// doesn't cover its members), mirroring `container_chrome`; an explicit
+/// `class` overrides the themed default.
+fn boundary_rect(block: &Block<'_>, bbox: (f64, f64, f64, f64)) -> String {
+    let (x, y, w, h) = bbox;
+    let stroke = field_utf8(block, "stroke");
+    let fill = field_utf8(block, "fill");
+    let user_class = class_attr(block);
+    let explicit = stroke.is_some() || fill.is_some() || !user_class.is_empty();
+    let class = if explicit {
+        user_class
+    } else {
+        classes_attr_from_names(&["wdoc-boundary".to_string()])
+    };
+    let mut out = format!("<rect{class} x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\"");
+    append_attr(&mut out, "id", field_id(block, "id").as_deref());
+    if stroke.is_some() || fill.is_some() {
+        append_attr(&mut out, "stroke", stroke.as_deref());
+        append_attr(&mut out, "fill", Some(fill.as_deref().unwrap_or("none")));
+    }
+    out.push_str(" />");
+    out
+}
+
+/// The boundary's title `<text>`, placed per `label_pos` (default
+/// `:top_left`), inset from the box corner. Carries the themed
+/// `wdoc-boundary-label` class.
+fn boundary_label(block: &Block<'_>, text: &str, bbox: (f64, f64, f64, f64)) -> String {
+    const INSET: f64 = 8.0;
+    let (x, y, w, h) = bbox;
+    let pos = field_symbol(block, "label_pos").unwrap_or_default();
+    let (lx, anchor) = match pos.as_str() {
+        "top" | "bottom" => (x + w / 2.0, "middle"),
+        "top_right" | "bottom_right" => (x + w - INSET, "end"),
+        // "top_left" (default) | "bottom_left" | unknown
+        _ => (x + INSET, "start"),
+    };
+    let (ly, baseline) = match pos.as_str() {
+        "bottom_left" | "bottom" | "bottom_right" => (y + h - INSET, "auto"),
+        _ => (y + INSET, "hanging"),
+    };
+    let class = classes_attr_from_names(&["wdoc-boundary-label".to_string()]);
+    format!(
+        "<text{class} x=\"{lx}\" y=\"{ly}\" font-size=\"{fs}\" \
+         text-anchor=\"{anchor}\" dominant-baseline=\"{baseline}\">{t}</text>",
+        fs = crate::text::DEFAULT_FONT_SIZE,
+        t = escape_html(text),
+    )
+}
+
 pub(crate) fn render_grid_children(block: &Block<'_>, ctx: RenderCtx<'_>) -> String {
     let cols = field_i64(block, "columns").unwrap_or(1).max(1) as usize;
     let cw = field_f64(block, "cell_width").unwrap_or(0.0);
     let ch = field_f64(block, "cell_height").unwrap_or(0.0);
     let gap = field_f64(block, "gap").unwrap_or(0.0);
-    diagram_children(block)
+    grid_cells(block)
         .iter()
         .enumerate()
         .filter_map(|(i, b)| {
@@ -468,7 +642,7 @@ pub(crate) fn content_size(block: &Block<'_>) -> (f64, f64) {
             let cw = field_f64(block, "cell_width").unwrap_or(0.0);
             let ch = field_f64(block, "cell_height").unwrap_or(0.0);
             let gap = field_f64(block, "gap").unwrap_or(0.0);
-            let n = diagram_children(block).len();
+            let n = grid_cells(block).len();
             if n == 0 {
                 return (0.0, 0.0);
             }

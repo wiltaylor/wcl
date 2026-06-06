@@ -92,6 +92,8 @@ pre.code-block{background:var(--wdoc-bg-inset);color:var(--wdoc-fg);border-color
 .wdoc-terminator{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-green);}
 .wdoc-node{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-border);}
 .wdoc-shape-text{fill:var(--wdoc-fg);}
+.wdoc-boundary{fill:none;stroke:var(--wdoc-fg-muted);stroke-dasharray:6 4;}
+.wdoc-boundary-label{fill:var(--wdoc-fg-muted);font-weight:600;}
 .callout.note{--callout-accent:var(--wdoc-blue);}
 .callout.info{--callout-accent:var(--wdoc-cyan);}
 .callout.tip{--callout-accent:var(--wdoc-green);}

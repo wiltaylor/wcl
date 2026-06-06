@@ -414,6 +414,115 @@ page index {
 }
 
 #[test]
+fn build_draws_boundary_overlay_behind_radial_members() {
+    // A `:radial` System-Context diagram with an "Achmisoft" boundary
+    // around the hub `shop`. The boundary is a post-layout overlay: it
+    // must draw a `wdoc-boundary` rect (sized to shop's placed bbox)
+    // *behind* the shapes, keep the radial spokes (edges), and not move
+    // its members. `stripe` stays outside the box.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("radial.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 600
+    height = 400
+    layout = :radial
+    hub    = shop
+    process    "E-Commerce Platform" { id = shop }
+    process    "Stripe"              { id = stripe }
+    terminator "Customer"            { id = customer }
+    shop     -> stripe
+    customer -> shop
+    boundary "Achmisoft" { members = [shop] }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // The themed boundary rect is emitted (default class, no inline paint).
+    assert!(
+        html.contains("<rect class=\"wdoc-boundary\""),
+        "missing themed boundary rect:\n{html}"
+    );
+    // …with its title in a boundary-label text element.
+    assert!(
+        html.contains("class=\"wdoc-boundary-label\"") && html.contains(">Achmisoft</text>"),
+        "missing boundary label:\n{html}"
+    );
+    // Drawn behind the shapes: the boundary rect precedes the first
+    // process shape in document order. Match the `<rect class="…"` forms
+    // so the `.wdoc-*` rules in the <style> block don't confuse the order.
+    let b = html
+        .find("<rect class=\"wdoc-boundary\"")
+        .expect("boundary rect present");
+    let s = html
+        .find("<rect class=\"wdoc-process\"")
+        .expect("process rect present");
+    assert!(
+        b < s,
+        "boundary must render behind (before) the shapes:\n{html}"
+    );
+    // The radial spokes still render (the boundary is not an obstacle and
+    // does not suppress edges).
+    assert!(
+        html.contains("marker-end=\"url(#wdoc-arrow)\""),
+        "radial spokes missing:\n{html}"
+    );
+}
+
+#[test]
+fn build_draws_boundary_layout_agnostic_and_skips_missing_members() {
+    // The same boundary behaviour on a `:free` layout (manual x/y) proves
+    // it's layout-agnostic — and a member id matching no shape is skipped
+    // (boundary draws nothing) rather than failing the build.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("free.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 400
+    height = 200
+    process "Shop" { id = shop  x = 20.0  y = 20.0  width = 120.0  height = 50.0 }
+    process "Ext"  { id = ext   x = 250.0 y = 20.0 }
+    boundary "Achmisoft" { members = [shop] }
+    boundary "Ghost"     { members = [nope] }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // shop bbox (20,20,120,50) + default padding 12 ⇒ box (8,8,144,74).
+    assert!(
+        html.contains(
+            "<rect class=\"wdoc-boundary\" x=\"8\" y=\"8\" width=\"144\" height=\"74\" />"
+        ),
+        "boundary should hug shop's manual bbox:\n{html}"
+    );
+    // Exactly one boundary is drawn — the `Ghost` boundary (members all
+    // unresolved) draws nothing.
+    assert_eq!(
+        html.matches("class=\"wdoc-boundary\"").count(),
+        1,
+        "the unresolved-member boundary must draw nothing:\n{html}"
+    );
+    assert!(
+        !html.contains(">Ghost</text>"),
+        "unresolved boundary must not emit a label:\n{html}"
+    );
+}
+
+#[test]
 fn build_resolves_anchor_stretch_without_layout() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("anchors.wcl");
