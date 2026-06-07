@@ -2928,6 +2928,120 @@ page index {
     }
 }
 
+// ── Diagram shape link tests ────────────────────────────────────────
+
+#[test]
+fn build_wraps_linked_diagram_shapes_in_anchors() {
+    // A `link` on any diagram shape wraps that shape's SVG in an <a>,
+    // resolved through the same page resolver as prose links. One anchor
+    // per linked shape — covers process / rect / circle / label /
+    // container (the standard shapes on the common render path).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("linked.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram { width = 400  height = 300
+    process "API" { x = 10.0  y = 10.0  width = 80.0  height = 40.0  link = "target" }
+    rect      { x = 10.0  y = 60.0  width = 80.0  height = 40.0  link = "target" }
+    circle    { cx = 160.0  cy = 30.0  r = 20.0  link = "target" }
+    label "Tag" { x = 160.0  y = 90.0  link = "target" }
+    container { width = 60.0  height = 40.0  link = "target" }
+  }
+}
+page target {
+  text {
+    span "Target page" {}
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
+    assert!(
+        index.contains("<a href=\"target.html\">"),
+        "linked shape anchor missing:\n{index}"
+    );
+    // Exactly one anchor per linked shape.
+    assert_eq!(
+        index.matches("<a href=\"target.html\">").count(),
+        5,
+        "expected one anchor per linked shape:\n{index}"
+    );
+    assert!(out.path().join("target.html").exists());
+}
+
+#[test]
+fn build_unlinked_diagram_shape_has_no_anchor() {
+    // A shape with no `link` renders with no <a> wrapper (unchanged).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("plain.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram { width = 200  height = 90
+    rect { x = 20.0  y = 15.0  width = 120.0  height = 60.0  fill = "#cce" }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // Scope the assertion to the inlined diagram SVG so unrelated page
+    // chrome can't influence it.
+    let start = html.find("<svg").expect("diagram svg present");
+    let end = html[start..].find("</svg>").expect("svg close") + start;
+    let svg = &html[start..end];
+    assert!(
+        !svg.contains("<a "),
+        "unlinked shape must not be wrapped in <a>:\n{svg}"
+    );
+}
+
+#[test]
+fn build_errors_on_unknown_diagram_shape_link() {
+    // A diagram link to a missing page fails the build the same way a
+    // bad prose link does (BuildError::BadLink naming the page).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("broken_link.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram { width = 200  height = 90
+    rect { x = 20.0  y = 15.0  width = 120.0  height = 60.0  link = "nonexistent" }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::BadLink(msgs)) => assert!(
+            msgs.iter().any(|m| m.contains("nonexistent")),
+            "missing the unknown page name in errors: {msgs:?}"
+        ),
+        Err(BuildError::Io(e, ctx)) => panic!("expected BadLink, got Io({ctx}: {e})"),
+        Err(BuildError::Parse(_)) => panic!("expected BadLink, got Parse"),
+        Err(BuildError::Schema(n)) => panic!("expected BadLink, got Schema({n})"),
+        Err(BuildError::Eval(r)) => panic!("expected BadLink, got Eval({r:?})"),
+        Err(BuildError::BadPage(m)) => panic!("expected BadLink, got BadPage({m})"),
+        Err(BuildError::DuplicateId { page, id }) => {
+            panic!("expected BadLink, got DuplicateId({page}: {id})")
+        }
+        Err(BuildError::DuplicatePage { site, name }) => {
+            panic!("expected BadLink, got DuplicatePage({site}: {name})")
+        }
+        Err(BuildError::BadTemplate(name)) => panic!("expected BadLink, got BadTemplate({name})"),
+        Err(BuildError::Tileset(m)) => panic!("expected BadLink, got Tileset({m})"),
+        Err(BuildError::EdgeRouting(m)) => panic!("expected BadLink, got EdgeRouting({m})"),
+        Ok(n) => panic!("expected BadLink, got Ok({n})"),
+    }
+}
+
 // ── Fit-to-viewport test ───────────────────────────────────────────
 
 #[test]

@@ -554,7 +554,7 @@ impl InlinePatterns {
     /// that matches a known page is rewritten to `<page>.html` with
     /// the fragment preserved. A bare token that doesn't match any
     /// page is recorded as a link error so build can fail.
-    fn resolve_href(&self, href: &str) -> String {
+    pub(crate) fn resolve_href(&self, href: &str) -> String {
         if is_external_href(href) {
             return href.to_string();
         }

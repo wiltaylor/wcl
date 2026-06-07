@@ -87,16 +87,24 @@
       { passive: false }
     );
 
-    var dragging = false, lastX = 0, lastY = 0;
+    // `dragged` tracks whether a pointer gesture moved past a small
+    // threshold, so a drag-to-pan that ends on a linked shape (an `<a>`
+    // wrapping the shape SVG) doesn't fire native link navigation. A
+    // plain click leaves `dragged` false and navigates as usual.
+    var dragging = false, dragged = false, lastX = 0, lastY = 0, startX = 0, startY = 0;
     svg.addEventListener("pointerdown", function (e) {
       dragging = true;
-      lastX = e.clientX;
-      lastY = e.clientY;
+      dragged = false;
+      lastX = startX = e.clientX;
+      lastY = startY = e.clientY;
       viewport.classList.add("panning");
       if (svg.setPointerCapture) svg.setPointerCapture(e.pointerId);
     });
     svg.addEventListener("pointermove", function (e) {
       if (!dragging) return;
+      if (Math.abs(e.clientX - startX) > 4 || Math.abs(e.clientY - startY) > 4) {
+        dragged = true;
+      }
       var rect = svg.getBoundingClientRect();
       if (!rect.width || !rect.height) return;
       var w = bw / z, h = bh / z;
@@ -106,6 +114,14 @@
       lastY = e.clientY;
       apply();
     });
+    // Capture phase, so we suppress the link before it acts on the click.
+    svg.addEventListener("click", function (e) {
+      if (dragged) {
+        e.preventDefault();
+        e.stopPropagation();
+        dragged = false;
+      }
+    }, true);
     function endDrag(e) {
       if (!dragging) return;
       dragging = false;

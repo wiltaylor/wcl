@@ -77,6 +77,8 @@ type Process extends SvgBlock {
   icon_pos: IconPos?
   @doc("Icon-badge style classes.")
   icon_class: list<utf8>?
+  @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
+  link: utf8?
 
   // An unstyled shape (no fill / stroke / class) gets a default theme class
   // so it isn't bare-SVG black; the box and its label carry separate classes
@@ -132,6 +134,8 @@ type Decision extends SvgBlock {
   icon_pos: IconPos?
   @doc("Icon-badge style classes.")
   icon_class: list<utf8>?
+  @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
+  link: utf8?
 
   lower = fn(d: Decision) -> list<SvgFundamental> {
     let auto = d.fill == none && d.stroke == none && d.class == none;
@@ -196,6 +200,8 @@ type GraphNode extends SvgBlock {
   icon_pos: IconPos?
   @doc("Icon-badge style classes.")
   icon_class: list<utf8>?
+  @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
+  link: utf8?
 
   lower = fn(n: GraphNode) -> list<SvgFundamental> {
     let auto = n.fill == none && n.stroke == none && n.class == none;
@@ -252,6 +258,8 @@ type Terminator extends SvgBlock {
   icon_pos: IconPos?
   @doc("Icon-badge style classes.")
   icon_class: list<utf8>?
+  @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
+  link: utf8?
 
   lower = fn(t: Terminator) -> list<SvgFundamental> {
     let auto = t.fill == none && t.stroke == none && t.class == none;

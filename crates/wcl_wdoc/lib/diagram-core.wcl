@@ -126,6 +126,8 @@ type Container extends SvgBlock {
   id:    identifier?
   @doc("Style classes — text and SVG paint via the `class` system.")
   class: list<utf8>?
+  @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
+  link: utf8?
 
   // Optional chrome. When either is set the renderer emits a
   // background <rect> the full size of the container's box,
@@ -296,6 +298,8 @@ type Rect extends SvgBlock {
   icon_pos: IconPos?
   @doc("Icon-badge style classes.")
   icon_class: list<utf8>?
+  @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
+  link: utf8?
 
   lower = fn(r: Rect) -> list<SvgFundamental> []
 }
@@ -337,6 +341,8 @@ type Circle extends SvgBlock {
   icon_pos: IconPos?
   @doc("Icon-badge style classes.")
   icon_class: list<utf8>?
+  @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
+  link: utf8?
 
   lower = fn(c: Circle) -> list<SvgFundamental> []
 }
@@ -369,6 +375,8 @@ type Line extends SvgBlock {
 
   @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
   connect_points: list<AnchorSide>?
+  @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
+  link: utf8?
 
   lower = fn(l: Line) -> list<SvgFundamental> []
 }
@@ -411,6 +419,8 @@ type Label extends SvgBlock {
 
   @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
   connect_points: list<AnchorSide>?
+  @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
+  link: utf8?
 
   lower = fn(l: Label) -> list<SvgFundamental> []
 }
@@ -439,6 +449,8 @@ type Polygon extends SvgBlock {
 
   @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
   connect_points: list<AnchorSide>?
+  @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
+  link: utf8?
 
   lower = fn(p: Polygon) -> list<SvgFundamental> []
 }

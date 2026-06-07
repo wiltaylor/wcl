@@ -408,9 +408,27 @@ pub(crate) fn render_shape(
         }
         kind => lower_svg_block(ctx.doc, block, kind, parent_w, parent_h),
     };
-    Some(with_shape_icon(
-        block, kind, parent_w, parent_h, ctx.icons, base,
-    ))
+    let svg = with_shape_icon(block, kind, parent_w, parent_h, ctx.icons, base);
+    Some(wrap_shape_link(block, ctx, svg))
+}
+
+/// Wrap a shape's SVG in an `<a href>` when it carries a `link` (a page
+/// name / href resolved by the inline link resolver, so an unknown page
+/// raises the same build error as a prose link). With no `link` the SVG
+/// passes through unchanged, so unlinked shapes render exactly as before.
+///
+/// Note: SVG/HTML can't nest `<a>` inside `<a>`. A `container` carrying a
+/// `link` wraps its children's SVG, so authors should link a container's
+/// title `label` rather than both the container and its linked children.
+fn wrap_shape_link(block: &Block<'_>, ctx: RenderCtx<'_>, svg: String) -> String {
+    match field_utf8(block, "link") {
+        Some(link) => format!(
+            "<a href=\"{}\">{}</a>",
+            escape_html(&ctx.patterns.resolve_href(&link)),
+            svg
+        ),
+        None => svg,
+    }
 }
 
 /// If `block` carries an `icon` field, draw it as a badge over the

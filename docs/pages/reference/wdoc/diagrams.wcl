@@ -50,6 +50,24 @@ diagram {
 WCL
   }
 
+  h2 "Linking shapes to pages"
+
+  p "Give any shape a `link` to turn it into a hyperlink: clicking the box/pill navigates to that page — handy when each shape stands for a node that has its own page. The target resolves exactly like a prose link: a bare page name → `page.html`, a cross-site `site:page`, and an unknown page fails the build the same way a bad markdown link does. Try clicking the shape below:"
+
+  diagram { width = 320  height = 100
+    process "Primitive shapes" { x = 40.0  y = 25.0  width = 240.0  height = 50.0  link = "wdoc_primitives" }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 320  height = 100
+  process "Primitive shapes" { link = "wdoc_primitives" }
+}
+WCL
+  }
+
+  p "Because SVG/HTML anchors can't nest, don't put `link` on a `container` whose children are also linked — link the container's title `label` instead. On a `pan_zoom` diagram a plain click still navigates, while a drag-to-pan that happens to end on a linked shape does not."
+
   h2 "Styling shapes with classes"
 
   p "Every shape takes a `class` list, just like text. A `class` emits SVG paint properties — `fill`, `stroke`, `stroke_width`, `stroke_linecap`, `stroke_linejoin`, `opacity` — with `dark { }` / `light { }` overrides, so you style shapes the same way you style prose. Prefer a class over an inline `fill = …` so a shape follows the site theme and the reader's light/dark mode."
