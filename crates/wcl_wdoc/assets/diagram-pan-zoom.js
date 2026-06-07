@@ -91,19 +91,30 @@
     // threshold, so a drag-to-pan that ends on a linked shape (an `<a>`
     // wrapping the shape SVG) doesn't fire native link navigation. A
     // plain click leaves `dragged` false and navigates as usual.
-    var dragging = false, dragged = false, lastX = 0, lastY = 0, startX = 0, startY = 0;
+    var dragging = false, dragged = false, captured = false,
+        lastX = 0, lastY = 0, startX = 0, startY = 0;
     svg.addEventListener("pointerdown", function (e) {
       dragging = true;
       dragged = false;
+      captured = false;
       lastX = startX = e.clientX;
       lastY = startY = e.clientY;
-      viewport.classList.add("panning");
-      if (svg.setPointerCapture) svg.setPointerCapture(e.pointerId);
+      // Do NOT setPointerCapture here: capturing on pointerdown redirects the
+      // following compatibility `click` to the <svg>, so a linked shape's <a>
+      // never fires. Capture is deferred to the first real drag move below.
     });
     svg.addEventListener("pointermove", function (e) {
       if (!dragging) return;
-      if (Math.abs(e.clientX - startX) > 4 || Math.abs(e.clientY - startY) > 4) {
+      if (!dragged &&
+          (Math.abs(e.clientX - startX) > 4 || Math.abs(e.clientY - startY) > 4)) {
         dragged = true;
+        viewport.classList.add("panning");
+        // Capture only once a drag actually begins, so a plain click never
+        // captures and its `click` reaches the shape's <a>.
+        if (!captured && svg.setPointerCapture) {
+          svg.setPointerCapture(e.pointerId);
+          captured = true;
+        }
       }
       var rect = svg.getBoundingClientRect();
       if (!rect.width || !rect.height) return;
@@ -126,9 +137,10 @@
       if (!dragging) return;
       dragging = false;
       viewport.classList.remove("panning");
-      if (svg.releasePointerCapture && e.pointerId != null) {
+      if (captured && svg.releasePointerCapture && e.pointerId != null) {
         try { svg.releasePointerCapture(e.pointerId); } catch (_) {}
       }
+      captured = false;
     }
     svg.addEventListener("pointerup", endDrag);
     svg.addEventListener("pointercancel", endDrag);
