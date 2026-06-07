@@ -300,3 +300,57 @@ type WfGrid extends Widget {
   @children(Widget) children: list<Widget>
   lower = fn(g: WfGrid) -> list<SvgFundamental> []
 }
+
+// ── Node graph ────────────────────────────────────────────────────────
+// A `wf_node_graph` mocks up a node editor (shader / blueprint / dataflow
+// graph): boxes with labeled input/output ports, wired together by links.
+// It is one wireframe widget (a diagram shape), rendered self-contained in
+// Rust (src/wireframe.rs). Nodes auto-lay-out left-to-right from the link
+// graph (reusing the layered solver); a node with an explicit `x`/`y` pins
+// itself. Links route between ports with the shared orthogonal edge router.
+// `wf_node` / `wf_link` are internal children (not standalone shapes), so —
+// like `node_row` — they're plain blocks the graph renderer reads directly.
+
+@block("wf_node")
+type WfNode {
+  @doc("Node caption (the inline label).")
+  @inline(0) title: utf8
+  @doc("Node id — the link-endpoint name (`from = \"tex.RGB\"`).")
+  id: identifier?
+  @doc("Input port labels, listed down the left edge.")
+  inputs: list<utf8>?
+  @doc("Output port labels, listed down the right edge.")
+  outputs: list<utf8>?
+  @doc("Optional explicit x placement (pins the node; otherwise auto-laid-out).")
+  x: f64?
+  @doc("Optional explicit y placement (pins the node; otherwise auto-laid-out).")
+  y: f64?
+  @doc("Extra CSS classes (read for `background` / `color` / `border` overrides).")
+  class: list<utf8>?
+}
+
+@block("wf_link")
+type WfLink {
+  @doc("Source endpoint: `\"node\"` or `\"node.port\"` (an output port).")
+  @inline(0) from: utf8
+  @doc("Destination endpoint: `\"node\"` or `\"node.port\"` (an input port).")
+  to: utf8
+  @doc("Optional caption drawn at the link's midpoint.")
+  label: utf8?
+}
+
+@block("wf_node_graph")
+type WfNodeGraph extends Widget {
+  @doc("Layout flow: `:left_to_right` (default) or `:top_to_bottom`.")
+  direction: symbol?
+  id: identifier?  class: list<utf8>?  disabled: bool?
+  x = 0.0  y = 0.0  width: f64?  height: f64?
+  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  connect_points: list<AnchorSide>?
+  theme: symbol?  accent: symbol?  mode: symbol?
+  @doc("The graph nodes (boxes with ports).")
+  @children("wf_node") nodes: list<WfNode>
+  @doc("The links wiring node ports together.")
+  @children("wf_link") links: list<WfLink>
+  lower = fn(g: WfNodeGraph) -> list<SvgFundamental> []
+}

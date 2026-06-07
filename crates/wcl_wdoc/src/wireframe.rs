@@ -27,11 +27,13 @@
 //! theme-independent (the only `doc` use is `theme_of`, which feeds emission,
 //! not size), so the layout/collect paths measure with no `doc` at all.
 
+use std::collections::HashMap;
+
 use wcl_lang::{Block, Document};
 
 use crate::render::{
     RenderCtx, ThemeRoles, escape_html, expand_container_children, field_bool, field_f64,
-    field_i64, field_symbol, field_utf8, field_utf8_list, label_string, resolve_rect_box,
+    field_i64, field_id, field_symbol, field_utf8, field_utf8_list, label_string, resolve_rect_box,
     resolve_roles,
 };
 
@@ -69,6 +71,19 @@ const DEVICE_BEZEL: f64 = 12.0; // frame thickness around the screen
 const STATUS_H: f64 = 26.0; // phone/tablet status bar height
 const HOME_IND_H: f64 = 22.0; // bottom reserve for the home-indicator pill
 const BROWSER_TOOLBAR_H: f64 = 62.0; // browser dots row + address bar
+
+// Node-graph widget (boxes with ports, wired by links).
+const NODE_HEADER_H: f64 = 26.0; // node title band
+const NODE_PORT_ROW_H: f64 = 22.0; // height of one input/output port row
+const NODE_BODY_PAD_Y: f64 = 8.0; // top/bottom padding of the port body
+const NODE_PAD_X: f64 = 12.0; // node horizontal padding (title + port labels)
+const NODE_MIN_W: f64 = 92.0; // node minimum width
+const NODE_PORT_R: f64 = 4.0; // port marker radius
+const PORT_FONT: f64 = 12.0; // port label text
+const PORT_COL_GAP: f64 = 24.0; // gap between the input and output label columns
+const GRAPH_LAYER_GAP: f64 = 64.0; // space between auto-layout layers (room for links)
+const GRAPH_NODE_GAP: f64 = 28.0; // space between nodes within a layer
+const GRAPH_PAD: f64 = 8.0; // padding around the whole graph
 
 const SANS: &str = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
@@ -141,6 +156,7 @@ pub(crate) fn is_wireframe_kind(kind: &str) -> bool {
             | "wf_row"
             | "wf_column"
             | "wf_grid"
+            | "wf_node_graph"
     )
 }
 
@@ -230,8 +246,39 @@ enum Kind {
         cols: usize,
         items: Vec<Widget>,
     },
+    /// A node-graph editor: boxes with labeled input/output ports, wired by
+    /// links. Nodes carry their final laid-out `(x, y)` (auto-layout offset, or
+    /// an explicit pin) so emission just draws; links are routed at emit time.
+    NodeGraph {
+        nodes: Vec<GNode>,
+        links: Vec<GLink>,
+    },
     /// An unknown / unsupported child — rendered as nothing (zero size).
     Empty,
+}
+
+/// One node in a [`Kind::NodeGraph`]: a titled box with input ports down the
+/// left edge and output ports down the right edge, placed at its laid-out
+/// `(x, y)` in the graph's local space.
+struct GNode {
+    title: String,
+    inputs: Vec<String>,
+    outputs: Vec<String>,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    theme: Theme,
+}
+
+/// One link in a [`Kind::NodeGraph`], from a source node's output port to a
+/// destination node's input port (both stored as resolved indices).
+struct GLink {
+    src: usize,
+    src_port: usize,
+    dst: usize,
+    dst_port: usize,
+    label: Option<String>,
 }
 
 // ── Build (read fields + measure, bottom-up) ─────────────────────────
@@ -392,8 +439,185 @@ fn build(doc: Option<&Document>, block: &Block<'_>) -> Widget {
             let (w, h) = grid_size(&items, cols);
             sized(Kind::Grid { cols, items }, w, h, disabled)
         }
+        "wf_node_graph" => build_node_graph(doc, block, disabled),
         _ => sized(Kind::Empty, 0.0, 0.0, false),
     }
+}
+
+// ── Node graph ───────────────────────────────────────────────────────
+
+/// Build a `wf_node_graph`: read its `wf_node` / `wf_link` children directly
+/// (like `node_table` reads `node_row`s), measure each node, place them with
+/// the shared layered solver — a node's explicit `x`/`y` overrides its
+/// auto-layout offset — and size the widget to the node bounding box.
+fn build_node_graph(doc: Option<&Document>, block: &Block<'_>, disabled: bool) -> Widget {
+    let dir = field_symbol(block, "direction")
+        .and_then(|s| crate::layered::Direction::from_symbol(&s))
+        .unwrap_or(crate::layered::Direction::LeftToRight);
+
+    // Collect nodes (measured) and the link references, in source order.
+    let mut nodes: Vec<GNode> = Vec::new();
+    let mut id_to_idx: HashMap<String, usize> = HashMap::new();
+    let mut pins: Vec<(Option<f64>, Option<f64>)> = Vec::new();
+    let mut raw_links: Vec<(String, String, Option<String>)> = Vec::new();
+    for child in block.blocks() {
+        match child.kind() {
+            "wf_node" => {
+                let title = label_string(&child).unwrap_or_default();
+                let inputs = field_utf8_list(&child, "inputs");
+                let outputs = field_utf8_list(&child, "outputs");
+                let theme = doc.map(|d| theme_of(d, &child)).unwrap_or_default();
+                let (w, h) = node_size(&title, &inputs, &outputs);
+                if let Some(id) = field_id(&child, "id") {
+                    id_to_idx.insert(id, nodes.len());
+                }
+                pins.push((field_f64(&child, "x"), field_f64(&child, "y")));
+                nodes.push(GNode {
+                    title,
+                    inputs,
+                    outputs,
+                    x: 0.0,
+                    y: 0.0,
+                    w,
+                    h,
+                    theme,
+                });
+            }
+            "wf_link" => {
+                let from = field_utf8(&child, "from")
+                    .or_else(|| label_string(&child))
+                    .unwrap_or_default();
+                let to = field_utf8(&child, "to").unwrap_or_default();
+                let label = field_utf8(&child, "label");
+                raw_links.push((from, to, label));
+            }
+            _ => {}
+        }
+    }
+
+    // Resolve link endpoints to (node, port) indices; drop unresolvable ones.
+    let mut links: Vec<GLink> = Vec::new();
+    for (from, to, label) in raw_links {
+        let (Some((src, src_port)), Some((dst, dst_port))) = (
+            resolve_port(&from, &nodes, &id_to_idx, true),
+            resolve_port(&to, &nodes, &id_to_idx, false),
+        ) else {
+            continue;
+        };
+        links.push(GLink {
+            src,
+            src_port,
+            dst,
+            dst_port,
+            label,
+        });
+    }
+
+    if nodes.is_empty() {
+        return sized(Kind::NodeGraph { nodes, links }, 1.0, 1.0, disabled);
+    }
+
+    // Auto-layout from the link graph (node index doubles as the layout id, so
+    // a node needs no user `id` to be positioned), then pin explicit x/y.
+    let lnodes: Vec<crate::layered::Node> = nodes
+        .iter()
+        .enumerate()
+        .map(|(i, n)| crate::layered::Node {
+            id: Some(i.to_string()),
+            size: (n.w, n.h),
+        })
+        .collect();
+    let ledges: Vec<(String, String)> = links
+        .iter()
+        .map(|l| (l.src.to_string(), l.dst.to_string()))
+        .collect();
+    let offsets = crate::layered::assign_layered_offsets(
+        &lnodes,
+        &ledges,
+        dir,
+        GRAPH_LAYER_GAP,
+        GRAPH_NODE_GAP,
+    );
+    for (i, n) in nodes.iter_mut().enumerate() {
+        n.x = pins[i].0.unwrap_or(offsets[i].0);
+        n.y = pins[i].1.unwrap_or(offsets[i].1);
+    }
+
+    // Normalise so the content starts at GRAPH_PAD, and size to the bbox.
+    let min_x = nodes.iter().map(|n| n.x).fold(f64::MAX, f64::min);
+    let min_y = nodes.iter().map(|n| n.y).fold(f64::MAX, f64::min);
+    for n in nodes.iter_mut() {
+        n.x += GRAPH_PAD - min_x;
+        n.y += GRAPH_PAD - min_y;
+    }
+    let w = nodes.iter().map(|n| n.x + n.w).fold(0.0, f64::max) + GRAPH_PAD;
+    let h = nodes.iter().map(|n| n.y + n.h).fold(0.0, f64::max) + GRAPH_PAD;
+    sized(Kind::NodeGraph { nodes, links }, w, h, disabled)
+}
+
+/// The measured `(width, height)` of a node box: a title band over a body of
+/// `max(inputs, outputs)` port rows, wide enough for the title and both label
+/// columns.
+fn node_size(title: &str, inputs: &[String], outputs: &[String]) -> (f64, f64) {
+    let rows = inputs.len().max(outputs.len());
+    let h = NODE_HEADER_H + rows as f64 * NODE_PORT_ROW_H + 2.0 * NODE_BODY_PAD_Y;
+    let title_w = text_w(title, FONT) + 2.0 * NODE_PAD_X;
+    let max_in = inputs
+        .iter()
+        .map(|s| text_w(s, PORT_FONT))
+        .fold(0.0, f64::max);
+    let max_out = outputs
+        .iter()
+        .map(|s| text_w(s, PORT_FONT))
+        .fold(0.0, f64::max);
+    let ports_w = NODE_PAD_X + max_in + PORT_COL_GAP + max_out + NODE_PAD_X;
+    (title_w.max(ports_w).max(NODE_MIN_W), h)
+}
+
+/// Resolve a link endpoint `"node"` / `"node.port"` to `(node_idx, port_idx)`.
+/// `is_output` picks the source's output ports vs the destination's inputs. A
+/// bare node name (or empty port) targets the first port; a named port matches
+/// by label (case-insensitive), falling back to the sole port if there's one.
+/// Returns `None` when the node name is unknown or the port can't be resolved.
+fn resolve_port(
+    reference: &str,
+    nodes: &[GNode],
+    id_to_idx: &HashMap<String, usize>,
+    is_output: bool,
+) -> Option<(usize, usize)> {
+    let (node_name, port_name) = match reference.split_once('.') {
+        Some((n, p)) => (n.trim(), Some(p.trim())),
+        None => (reference.trim(), None),
+    };
+    let idx = *id_to_idx.get(node_name)?;
+    let ports = if is_output {
+        &nodes[idx].outputs
+    } else {
+        &nodes[idx].inputs
+    };
+    let port = match port_name {
+        Some(p) if !p.is_empty() => ports
+            .iter()
+            .position(|x| x.eq_ignore_ascii_case(p))
+            .or(if ports.len() == 1 { Some(0) } else { None })?,
+        _ => 0,
+    };
+    Some((idx, port))
+}
+
+/// The `(x, y)` of a node's port marker in the graph's local space — on the
+/// right edge for an output, the left edge for an input, centred on the port's
+/// row. A node with no declared ports on that side anchors at the edge midpoint.
+fn port_point(n: &GNode, idx: usize, is_output: bool) -> (f64, f64) {
+    let ports = if is_output { &n.outputs } else { &n.inputs };
+    let px = if is_output { n.x + n.w } else { n.x };
+    let py = if ports.is_empty() {
+        n.y + n.h / 2.0
+    } else {
+        let i = idx.min(ports.len() - 1) as f64;
+        n.y + NODE_HEADER_H + NODE_BODY_PAD_Y + (i + 0.5) * NODE_PORT_ROW_H
+    };
+    (px, py)
 }
 
 fn sized(kind: Kind, w: f64, h: f64, disabled: bool) -> Widget {
@@ -905,9 +1129,143 @@ fn emit(w: &Widget, x: f64, y: f64, roles: &ThemeRoles, out: &mut String) {
                 cy += row_h + GAP;
             }
         }
+        Kind::NodeGraph { nodes, links } => emit_node_graph(nodes, links, x, y, w, roles, out),
     }
     if w.disabled {
         out.push_str("</g>");
+    }
+}
+
+/// Emit a node graph: route every link under the nodes (so the wires sit
+/// behind the boxes), then draw the node boxes with their ports on top.
+fn emit_node_graph(
+    nodes: &[GNode],
+    links: &[GLink],
+    ox: f64,
+    oy: f64,
+    w: &Widget,
+    roles: &ThemeRoles,
+    out: &mut String,
+) {
+    // Node boxes as routing obstacles in absolute (emitted) coordinates.
+    let obstacles: Vec<crate::routing::Obstacle> = nodes
+        .iter()
+        .map(|n| crate::routing::Obstacle {
+            x: ox + n.x,
+            y: oy + n.y,
+            w: n.w,
+            h: n.h,
+        })
+        .collect();
+    let viewport = (ox + w.w, oy + w.h);
+    for l in links {
+        let (sx, sy) = port_point(&nodes[l.src], l.src_port, true);
+        let (dx, dy) = port_point(&nodes[l.dst], l.dst_port, false);
+        let src = (ox + sx, oy + sy);
+        let dst = (ox + dx, oy + dy);
+        // Route around every node except the two this link connects.
+        let obs: Vec<crate::routing::Obstacle> = obstacles
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != l.src && *i != l.dst)
+            .map(|(_, o)| *o)
+            .collect();
+        let pts = crate::routing::route_elbow(
+            src,
+            crate::routing::Side::East,
+            dst,
+            crate::routing::Side::West,
+            &obs,
+            &[],
+            viewport,
+        )
+        .unwrap_or_else(|| vec![src, dst]);
+        polyline(out, &pts, &roles.fg_muted, 1.5);
+        if let Some(label) = &l.label {
+            let mid = pts.len() / 2;
+            let (lx, ly) = pts[mid];
+            emit_text(
+                out,
+                lx,
+                ly - 4.0,
+                "middle",
+                PORT_FONT,
+                false,
+                &roles.fg_muted,
+                None,
+                label,
+            );
+        }
+    }
+    for n in nodes {
+        emit_node(out, ox, oy, n, roles);
+    }
+}
+
+/// Draw one node box: a body rect, a title band + separator, and the input /
+/// output port markers with their labels.
+fn emit_node(out: &mut String, ox: f64, oy: f64, n: &GNode, roles: &ThemeRoles) {
+    let x = ox + n.x;
+    let y = oy + n.y;
+    let brd = border(&n.theme, roles);
+    let body_fill = n.theme.bg.as_deref().unwrap_or(&roles.bg_alt);
+    rect(out, x, y, n.w, n.h, RADIUS, body_fill, brd);
+    // Title band + separator under it.
+    rect(
+        out,
+        x,
+        y,
+        n.w,
+        NODE_HEADER_H,
+        RADIUS,
+        &roles.overlay,
+        "none",
+    );
+    let sy = y + NODE_HEADER_H;
+    polyline(out, &[(x, sy), (x + n.w, sy)], brd, 1.0);
+    emit_text(
+        out,
+        x + NODE_PAD_X,
+        baseline(y, NODE_HEADER_H),
+        "start",
+        FONT,
+        false,
+        fg_of(&n.theme, roles),
+        None,
+        &n.title,
+    );
+    // Ports: inputs down the left edge, outputs down the right edge.
+    let fg = fg_of(&n.theme, roles);
+    let row_y = |i: usize| y + NODE_HEADER_H + NODE_BODY_PAD_Y + (i as f64 + 0.5) * NODE_PORT_ROW_H;
+    for (i, label) in n.inputs.iter().enumerate() {
+        let py = row_y(i);
+        circle(out, x, py, NODE_PORT_R, &roles.accent, brd);
+        emit_text(
+            out,
+            x + NODE_PAD_X,
+            py + PORT_FONT * 0.34,
+            "start",
+            PORT_FONT,
+            false,
+            fg,
+            None,
+            label,
+        );
+    }
+    for (j, label) in n.outputs.iter().enumerate() {
+        let py = row_y(j);
+        circle(out, x + n.w, py, NODE_PORT_R, &roles.accent, brd);
+        emit_text(
+            out,
+            x + n.w - NODE_PAD_X,
+            py + PORT_FONT * 0.34,
+            "end",
+            PORT_FONT,
+            false,
+            fg,
+            None,
+            label,
+        );
     }
 }
 
@@ -1154,6 +1512,70 @@ mod tests {
         );
         // Explicit height pins the axis.
         assert_eq!(browser_size(40.0, None, Some(300.0)), (BROWSER_W, 300.0));
+    }
+
+    fn gnode(inputs: &[&str], outputs: &[&str]) -> GNode {
+        GNode {
+            title: "n".into(),
+            inputs: inputs.iter().map(|s| s.to_string()).collect(),
+            outputs: outputs.iter().map(|s| s.to_string()).collect(),
+            x: 0.0,
+            y: 0.0,
+            w: 100.0,
+            h: 80.0,
+            theme: Theme::default(),
+        }
+    }
+
+    #[test]
+    fn node_size_positive_and_grows_with_content() {
+        let (w0, h0) = node_size("A", &[], &[]);
+        assert!(w0 >= NODE_MIN_W && h0 > NODE_HEADER_H);
+        // A longer title widens the box.
+        let (w1, _) = node_size("A considerably longer node title", &[], &[]);
+        assert!(w1 > w0);
+        // Ports add body height; more rows make it taller still.
+        let (_, h1) = node_size("A", &["in".into()], &["out".into()]);
+        let (_, h2) = node_size("A", &["a".into(), "b".into()], &["c".into()]);
+        assert!(h1 > h0 && h2 > h1);
+    }
+
+    #[test]
+    fn resolve_port_named_bare_and_unknown() {
+        let nodes = vec![
+            gnode(&["A", "B"], &["RGB", "Alpha"]),
+            gnode(&["Color"], &[]),
+        ];
+        let map = HashMap::from([("tex".to_string(), 0), ("out".to_string(), 1)]);
+        // Named output port, matched case-insensitively.
+        assert_eq!(resolve_port("tex.alpha", &nodes, &map, true), Some((0, 1)));
+        // Named input port.
+        assert_eq!(resolve_port("tex.B", &nodes, &map, false), Some((0, 1)));
+        // A bare node name targets its first port.
+        assert_eq!(resolve_port("tex", &nodes, &map, true), Some((0, 0)));
+        // Single-port node: an unmatched port name falls back to the sole port.
+        assert_eq!(
+            resolve_port("out.whatever", &nodes, &map, false),
+            Some((1, 0))
+        );
+        // Unknown node, and an unknown port on a multi-port node, both drop.
+        assert_eq!(resolve_port("nope.x", &nodes, &map, true), None);
+        assert_eq!(resolve_port("tex.zzz", &nodes, &map, true), None);
+    }
+
+    #[test]
+    fn port_point_sits_on_correct_edge() {
+        let mut n = gnode(&["A", "B"], &["Out"]);
+        n.x = 10.0;
+        n.y = 20.0;
+        // Inputs hug the left edge, outputs the right edge, below the header.
+        assert_eq!(port_point(&n, 0, false).0, 10.0);
+        assert_eq!(port_point(&n, 0, true).0, 110.0);
+        assert!(port_point(&n, 0, false).1 > n.y + NODE_HEADER_H);
+        // A side with no declared ports anchors at the edge's vertical middle.
+        let mut m = gnode(&[], &[]);
+        m.h = 80.0;
+        assert_eq!(port_point(&m, 0, false).1, 40.0);
     }
 
     #[test]

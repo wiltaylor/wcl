@@ -344,6 +344,51 @@ WCL
 
   type_table { type = WfGrid }
 
+  h2 "Node graphs"
+
+  p "A `wf_node_graph` mocks up a node editor — a shader graph, a blueprint, a dataflow pipeline. Each `wf_node` is a titled box with labeled `inputs` down its left edge and `outputs` down its right edge; a `wf_link` wires one node's output to another's input, addressing ports as `\"node.port\"` (a bare `\"node\"` targets its first port). It's one diagram shape — placed and connectable as a whole — that renders its nodes and links itself."
+
+  p "Nodes auto-lay-out left-to-right from the link graph (the same layered solver an auto-layout `diagram` uses), and links route with the orthogonal edge router. Set `direction = :top_to_bottom` to flow downward, or give a node an explicit `x` / `y` to pin it while the rest auto-flow."
+
+  diagram {
+    width = 560  height = 240
+    wf_node_graph {
+      wf_node "Texture"  { id = tex   outputs = ["RGB", "Alpha"] }
+      wf_node "Fresnel"  { id = fres  outputs = ["Factor"] }
+      wf_node "Multiply" { id = mul   inputs = ["A", "B"]  outputs = ["Result"] }
+      wf_node "Output"   { id = out   inputs = ["Color"] }
+      wf_link "tex.RGB"     { to = "mul.A" }
+      wf_link "fres.Factor" { to = "mul.B" }
+      wf_link "mul.Result"  { to = "out.Color" }
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 560  height = 240
+  wf_node_graph {
+    wf_node "Texture"  { id = tex   outputs = ["RGB", "Alpha"] }
+    wf_node "Fresnel"  { id = fres  outputs = ["Factor"] }
+    wf_node "Multiply" { id = mul   inputs = ["A", "B"]  outputs = ["Result"] }
+    wf_node "Output"   { id = out   inputs = ["Color"] }
+    wf_link "tex.RGB"     { to = "mul.A" }
+    wf_link "fres.Factor" { to = "mul.B" }
+    wf_link "mul.Result"  { to = "out.Color" }
+  }
+}
+WCL
+  }
+
+  type_table { type = WfNodeGraph }
+
+  p "Each node:"
+
+  type_table { type = WfNode }
+
+  p "Each link:"
+
+  type_table { type = WfLink }
+
   h2 "Controls"
 
   h3 "wf_label"
