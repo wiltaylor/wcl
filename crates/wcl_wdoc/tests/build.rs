@@ -7989,3 +7989,155 @@ wdoc_repeater { each = screens  as = :s
         "detail screen did not render its component:\n{detail}"
     );
 }
+
+#[test]
+fn build_renders_tree_with_nested_nodes() {
+    // An indented file-tree: one row per node, the frame height derived
+    // from the node count, labels present, and connector guides whose
+    // count matches the tree's ├/└/│ topology.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("tree.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 360
+    height = 240
+    tree {
+      x = 0.0  y = 0.0  width = 280.0
+      tree_node "src/" {
+        tree_node "render/" {
+          tree_node "svg.rs" {}
+          tree_node "html.rs" {}
+        }
+        tree_node "lib.rs" {}
+        tree_node "tree.rs" {}
+      }
+      tree_node "Cargo.toml" {}
+    }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // One label per node (7 nodes), each a left-anchored <text>.
+    for label in [
+        "src/",
+        "render/",
+        "svg.rs",
+        "html.rs",
+        "lib.rs",
+        "tree.rs",
+        "Cargo.toml",
+    ] {
+        assert!(
+            html.contains(&format!(">{label}</text>")),
+            "missing node label {label}:\n{html}"
+        );
+    }
+    assert_eq!(
+        html.matches("class=\"wdoc-tree-label\"").count(),
+        7,
+        "expected 7 node labels:\n{html}"
+    );
+    // Connector guides: render/ ├ (2) + svg.rs │+├ (3) + html.rs │+└ (3)
+    // + lib.rs ├ (2) + tree.rs └ (2) = 12; the two depth-0 roots draw none.
+    assert_eq!(
+        html.matches("class=\"wdoc-tree-guide\"").count(),
+        12,
+        "expected 12 connector guide lines:\n{html}"
+    );
+}
+
+#[test]
+fn build_tree_applies_node_icon_and_colour() {
+    // A node's `icon` resolves to a sprite `<use>` and its `color` lands
+    // as the label fill (and on the icon style).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("tree_icon.wcl");
+    write_fixture(
+        &src,
+        r##"
+iconset lucide {}
+
+page index {
+  diagram {
+    width  = 300
+    height = 120
+    tree {
+      tree_node "src/" {
+        icon  = "folder"
+        color = "#88c0d0"
+        tree_node "main.rs" { icon = "file" }
+      }
+    }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        html.contains("_wdoc/icons.svg#lucide-folder")
+            && html.contains("_wdoc/icons.svg#lucide-file"),
+        "missing resolved node icons:\n{html}"
+    );
+    // The folder node's colour is its label fill.
+    assert!(
+        html.contains("fill=\"#88c0d0\""),
+        "expected node colour as label fill:\n{html}"
+    );
+}
+
+#[test]
+fn build_tree_node_is_edge_target() {
+    // A node with an `id` is registered as its own sub-shape, so an edge
+    // can target it and the standard west/east anchor logic lands on the
+    // node's row (not the whole tree).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("tree_edge.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram {
+    width   = 420
+    height  = 160
+    routing = :straight
+    tree {
+      x = 0.0  y = 0.0  width = 160.0  row_height = 24.0
+      tree_node "a" {}
+      tree_node "b" { id = nodeb }
+      tree_node "c" {}
+    }
+    rect {
+      id = box
+      x = 320.0  y = 30.0  width = 60.0  height = 40.0
+      fill = "#abc"
+    }
+    box -> nodeb
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // The second node's east anchor sits at its row midpoint: row index 1,
+    // y = 24 + 24/2 = 36, x = tree width 160.
+    assert!(
+        html.contains("data-tree-node-id=\"nodeb\""),
+        "missing node id marker:\n{html}"
+    );
+    assert!(
+        html.contains("x2=\"160\" y2=\"36\""),
+        "expected edge to attach at node b east (160,36):\n{html}"
+    );
+}

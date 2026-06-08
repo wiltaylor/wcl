@@ -101,6 +101,7 @@ site reference {
       chapter "Videos"                 { page = wdoc_videos }
       chapter "Diagrams"               { page = wdoc_diagrams
         chapter "Primitive Shapes"     { page = wdoc_primitives }
+        chapter "Trees"                { page = wdoc_tree }
         chapter "Connections"          { page = wdoc_connections }
         chapter "Flowcharts"           { page = wdoc_flowcharts }
         chapter "Charts"               { page = wdoc_charts }
@@ -181,6 +182,7 @@ import "./pages/reference/wdoc/columns.wcl"
 import "./pages/reference/wdoc/styling.wcl"
 import "./pages/reference/wdoc/diagrams.wcl"
 import "./pages/reference/wdoc/primitives.wcl"
+import "./pages/reference/wdoc/tree.wcl"
 import "./pages/reference/wdoc/connections.wcl"
 import "./pages/reference/wdoc/flowcharts.wcl"
 import "./pages/reference/wdoc/charts.wcl"

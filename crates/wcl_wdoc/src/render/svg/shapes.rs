@@ -102,6 +102,35 @@ pub(crate) fn collect_shape_positions(
                 }
             }
         }
+        // A `tree` registers its whole-box anchors *and* each id'd node as
+        // its own sub-shape — so an edge can target a single node and the
+        // standard west/east anchor logic lands it on the node's row.
+        "tree" => {
+            let (x, y, w, h) = crate::tree::tree_bbox(block, parent_w, parent_h);
+            record(block, (tx + x, ty + y, w, h), out);
+            for (node, (rx, ry, rw, rh)) in crate::tree::node_rows(block, x, y, w) {
+                let abs = (tx + rx, ty + ry, rw, rh);
+                out.bboxes.push(abs);
+                if let Some(id) = field_id(&node, "id") {
+                    let anchors = ["west", "east"]
+                        .iter()
+                        .filter_map(|s| {
+                            let side = Side::from_symbol(s)?;
+                            let (ax, ay) = anchor_point_for_side(side, abs);
+                            Some((side, ax, ay))
+                        })
+                        .collect();
+                    out.positions.insert(
+                        id,
+                        ShapeMetrics {
+                            bbox: abs,
+                            anchors,
+                            round: false,
+                        },
+                    );
+                }
+            }
+        }
         "label" => {
             let own_x = field_f64(block, "x").unwrap_or(0.0);
             let own_y = field_f64(block, "y").unwrap_or(0.0);
@@ -377,6 +406,13 @@ pub(crate) fn render_shape(
             return Some(crate::node_table::render_node_table(
                 block, ctx, parent_w, parent_h,
             ));
+        }
+        // A `tree` is an indented file-tree: one row per node, with
+        // connector guides + icons + labels drawn as SVG primitives —
+        // special-cased like `node_table` (the indent / connector math
+        // isn't expressible in WCL).
+        "tree" => {
+            return Some(crate::tree::render_tree(block, ctx, parent_w, parent_h));
         }
         // An `image` embeds an external raster as an SVG `<image>`; the
         // asset copy + path rewrite is special-cased like `tilemap`.

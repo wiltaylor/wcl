@@ -29,6 +29,7 @@ mod terminal;
 mod text;
 mod tileset;
 mod timeline;
+mod tree;
 mod video;
 mod visibility;
 mod wireframe;

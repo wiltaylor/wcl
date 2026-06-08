@@ -1,0 +1,88 @@
+// ── Tree shape (indented file-tree) ────────────────────────────────
+//
+// A `tree` is a diagram shape that renders an arbitrarily-nested set of
+// `node`s as a classic file-explorer view: one row per node, indented by
+// depth, with ├─ └─ │ connector guides drawn between a parent and its
+// children. Each node carries a `title` (its positional label), and an
+// optional `icon` and `color` — the natural shape for a directory layout,
+// a config tree, or any hierarchy where the structure is the point.
+//
+// Like `card` / `node_table`, it is special-cased in the renderer (its
+// `lower` is a stub): the guides, icons and labels are SVG primitives
+// drawn in Rust (see src/tree.rs), because the indent math + connector
+// routing isn't expressible in WCL. The whole tree is placed by `x`/`y`
+// (or anchors) like any shape; its height is derived from the node count.
+//
+// Per-node connectivity reuses the edge machinery: a node with an `id` is
+// registered as its own sub-shape, so `edge { from = … to = some_node }`
+// lands on that node's row (west/east anchors).
+
+namespace wdoc
+
+@block("tree")
+type Tree extends SvgBlock {
+  // Free placement in a diagram / container (anchors like `rect`).
+  @doc("Top-left x placement in the diagram (or use anchors).")
+  x = 0.0
+  @doc("Top-left y placement in the diagram (or use anchors).")
+  y = 0.0
+  @doc("Tree width (default 280). Height is derived from the node count.")
+  width = 280.0
+  @doc("Diagram anchor insets (left/right/top/bottom), like any shape.")
+  anchor_left: f64?
+  @hidden anchor_right: f64?
+  @hidden anchor_top: f64?
+  @hidden anchor_bottom: f64?
+
+  @doc("Height of every node row (default 24). The renderer can't measure content, so rows are fixed.")
+  row_height = 24.0
+  @doc("Horizontal indent added per depth level (default 18).")
+  indent = 18.0
+
+  @doc("Optional explicit HTML id (edge target for the whole tree).")
+  id: identifier?
+  @doc("Optional style classes (applied to every label).")
+  class: list<utf8>?
+  @doc("Whole-tree edge-attach sides (default all four). Per-node sides default to west + east.")
+  connect_points: list<AnchorSide>?
+
+  @doc("The tree's top-level nodes, top to bottom; each may nest further `node`s.")
+  @children("tree_node") nodes: list<TreeNode>
+
+  // Stub: the rows + guides + icons are rendered in Rust (see src/tree.rs).
+  lower = fn(t: Tree) -> list<SvgFundamental> []
+}
+
+@block("tree_node")
+type TreeNode extends SvgBlock {
+  @doc("The node's label (its positional slot), e.g. `node \"render/\"`.")
+  @inline(0) title: utf8
+  @doc("Optional icon name (a bundled-pack glyph, like `:name:` / the `icon` block).")
+  icon: utf8?
+  @doc("Iconset to draw `icon` from (else the first set that has it).")
+  icon_set: utf8?
+  @doc("Optional colour for the label + icon (any CSS colour). Themes the row.")
+  color: utf8?
+  @doc("Node id — the edge target for connecting to this node.")
+  id: identifier?
+  @doc("Optional style classes (applied to this node's label).")
+  class: list<utf8>?
+  @doc("Child nodes nested under this one.")
+  @children("tree_node") children: list<TreeNode>?
+
+  // Stub: a node's row is rendered by its parent `tree` in Rust.
+  lower = fn(n: TreeNode) -> list<SvgFundamental> []
+}
+
+// Default tree styling. Bare-class selectors so user `class`es win,
+// neutral defaults and no `var(--wdoc-*)` (so a `site`-less doc stays
+// unthemed); a themed site recolours these via render/theme.rs.
+stylesheet "wdoc-tree" {
+  css = <<CSS
+    .wdoc-tree-guide { stroke: #5a606b; stroke-width: 1; fill: none; }
+    .wdoc-tree-label {
+      font-size: 0.82rem; fill: #e6e6e6;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    CSS
+}

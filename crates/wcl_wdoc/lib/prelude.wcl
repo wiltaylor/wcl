@@ -38,6 +38,7 @@ import <charts.wcl>           // bar / line / pie charts + geometry
 import <timeline.wcl>         // horizontal / vertical timeline
 import <card.wcl>             // rich-text card shape (foreignObject)
 import <node_table.wcl>       // row-table shape (DB / class diagrams) + per-row ports
+import <tree.wcl>             // indented file-tree shape (nested nodes + guides)
 import <headings.wcl>         // h1..h6
 import <p.wcl>                // single-span paragraph shorthand
 import <code.wcl>             // syntax-highlighted code block

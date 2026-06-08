@@ -63,6 +63,7 @@ pub fn schema_registry() -> Registry {
     r.register("wdoc/timeline.wcl", include_str!("../lib/timeline.wcl"));
     r.register("wdoc/card.wcl", include_str!("../lib/card.wcl"));
     r.register("wdoc/node_table.wcl", include_str!("../lib/node_table.wcl"));
+    r.register("wdoc/tree.wcl", include_str!("../lib/tree.wcl"));
     r.register("wdoc/headings.wcl", include_str!("../lib/headings.wcl"));
     r.register("wdoc/p.wcl", include_str!("../lib/p.wcl"));
     r.register("wdoc/code.wcl", include_str!("../lib/code.wcl"));
