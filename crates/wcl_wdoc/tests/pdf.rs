@@ -22,6 +22,24 @@ fn pdf_ok(file: &Path, out: &Path, size: PageSize) -> usize {
     }
 }
 
+/// Read the physical page count out of the (uncompressed) page-tree node.
+/// krilla writes `/Count N` in the page tree; an outline node also carries a
+/// `/Count`, but it never exceeds the page count, so the max is the page tree.
+fn page_count(bytes: &[u8]) -> usize {
+    let blob = String::from_utf8_lossy(bytes);
+    let mut max = 0usize;
+    for (i, _) in blob.match_indices("/Count ") {
+        let digits: String = blob[i + "/Count ".len()..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        if let Ok(n) = digits.parse::<usize>() {
+            max = max.max(n);
+        }
+    }
+    max
+}
+
 #[test]
 fn renders_prose_to_a_valid_pdf() {
     let tmp = TempDir::new().expect("mkdir tempdir");
@@ -521,6 +539,478 @@ fn collect_gathers_partials_into_valid_pdf() {
     let bytes = std::fs::read(out.path().join("doc.pdf")).expect("read pdf");
     assert!(bytes.starts_with(b"%PDF-"), "output is a PDF");
     assert!(bytes.len() > 1000, "non-trivial pdf produced");
+}
+
+#[test]
+fn diagram_shapes_and_edges_render_to_pdf() {
+    // A flat diagram with manually-placed flowchart shapes connected by an
+    // edge embeds as one vector SVG (shapes + the routed edge line).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("flow.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "page f {\n",
+            "  diagram {\n",
+            "    width = 340  height = 120\n",
+            "    process \"Start\" { id = a  x = 10.0   y = 40.0  width = 100.0  height = 40.0 }\n",
+            "    process \"End\"   { id = b  x = 220.0  y = 40.0  width = 100.0  height = 40.0 }\n",
+            "    a -> b :flow\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("flow.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    assert_eq!(page_count(&bytes), 1);
+    assert!(
+        bytes.len() > 3000,
+        "expected vector diagram content, got {} bytes",
+        bytes.len()
+    );
+}
+
+#[test]
+fn layered_flowchart_renders_to_pdf() {
+    // Auto-layout (`:layered`) + elbow routing run on the PDF path exactly as
+    // on HTML: shapes are ranked from the edge graph, then the whole diagram
+    // embeds as a vector SVG.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("layered.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "page l {\n",
+            "  diagram {\n",
+            "    width = 320  height = 220  layout = :layered  layer_gap = 20.0\n",
+            "    process    \"Parse\"  { id = parse   width = 100.0  height = 40.0 }\n",
+            "    decision   \"Valid?\" { id = valid   width = 100.0  height = 60.0 }\n",
+            "    terminator \"Render\" { id = render  width = 100.0  height = 40.0 }\n",
+            "    parse -> valid  :flow\n",
+            "    valid -> render :flow\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("layered.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    assert_eq!(page_count(&bytes), 1);
+}
+
+#[test]
+fn diagram_with_multiple_cards_overlays_each() {
+    // Two `card` foreignObjects in one diagram: collect_diagram pairs each
+    // rendered rect with its source block (in order) and lays both bodies out
+    // natively — bold serif titles prove the native overlay path ran.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("cards.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "page p {\n",
+            "  diagram d {\n",
+            "    width = 480  height = 180\n",
+            "    card {\n",
+            "      x = 10.0  y = 10.0  width = 220.0  height = 160.0\n",
+            "      title = \"First\"\n",
+            "      p \"Alpha body text.\"\n",
+            "    }\n",
+            "    card {\n",
+            "      x = 250.0  y = 10.0  width = 220.0  height = 160.0\n",
+            "      title = \"Second\"\n",
+            "      p \"Beta body with _emphasis_.\"\n",
+            "    }\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("cards.pdf")).expect("read pdf");
+    let blob = String::from_utf8_lossy(&bytes);
+    assert!(
+        blob.contains("NotoSerif-Bold"),
+        "card titles rendered natively (serif bold embedded)"
+    );
+    assert!(
+        blob.contains("NotoSerif-Italic"),
+        "second card's _emphasis_ ran through the inline engine"
+    );
+}
+
+#[test]
+fn card_inside_container_is_collected() {
+    // collect_card_blocks descends containers depth-first, so a card nested
+    // inside a `container` still pairs with its foreignObject and paints
+    // natively.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("nested.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "page p {\n",
+            "  diagram d {\n",
+            "    width = 360  height = 220\n",
+            "    container {\n",
+            "      stroke = \"#888\"  padding = 12.0\n",
+            "      card {\n",
+            "        x = 10.0  y = 10.0  width = 280.0  height = 150.0\n",
+            "        title = \"Inside\"\n",
+            "        p \"Body within a **container**.\"\n",
+            "      }\n",
+            "    }\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("nested.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    assert!(
+        String::from_utf8_lossy(&bytes).contains("NotoSerif-Bold"),
+        "nested card body rendered natively"
+    );
+}
+
+#[test]
+fn terminal_with_box_and_styled_text_renders() {
+    // The structured terminal form (term_box / term_text with colours, bold,
+    // inverse) bakes into a static SVG snapshot and embeds as vector content.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("tui.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "page t {\n",
+            "  terminal {\n",
+            "    cols = 20  rows = 5  chrome = false\n",
+            "    term_box { row = 1 col = 1 width = 20 height = 5 border = :double }\n",
+            "    term_text \"OK\" { row = 2 col = 2 fg = \"green\" bold = true }\n",
+            "    term_text \"no\" { row = 3 col = 2 fg = \"red\" inverse = true }\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("tui.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    assert!(
+        bytes.len() > 2000,
+        "structured terminal produced vector content, got {} bytes",
+        bytes.len()
+    );
+}
+
+#[test]
+fn wireframe_widgets_connect_with_edges() {
+    // wf_* widgets extend SvgBlock, so they are edge-addressable diagram
+    // shapes: two placed buttons joined by an edge build into one SVG.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("wfedge.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "page w {\n",
+            "  diagram { width = 340  height = 120  routing = :straight\n",
+            "    wf_button \"OK\"     { id = ok      x = 10.0   y = 40.0 }\n",
+            "    wf_button \"Cancel\" { id = cancel  x = 240.0  y = 40.0 }\n",
+            "    ok -> cancel :flow\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("wfedge.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    assert_eq!(page_count(&bytes), 1);
+}
+
+#[test]
+fn long_prose_paginates_to_multiple_pages() {
+    // One source `page` with far more prose than a sheet holds: the greedy
+    // line-flow paginator breaks it across several physical pages.
+    let mut body = String::from("page long {\n");
+    for i in 0..12 {
+        body.push_str(&format!("  h2 \"Section {i}\"\n"));
+        for _ in 0..4 {
+            body.push_str(
+                "  p \"A paragraph of body text long enough to wrap onto a couple of lines \
+                 when shaped at the default A4 content width, giving the paginator real \
+                 line-by-line work to do across the section.\"\n",
+            );
+        }
+    }
+    body.push_str("}\n");
+
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("long.wcl");
+    write_fixture(&src, &body);
+    let out = TempDir::new().expect("mkdir out");
+    // Still ONE pdf — pagination is physical pages within it.
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("long.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    let n = page_count(&bytes);
+    assert!(n >= 2, "expected the prose to paginate, got {n} page(s)");
+}
+
+#[test]
+fn code_block_splits_across_a_page_break() {
+    // A code block taller than the remaining page splits at line boundaries,
+    // drawing a fresh background box per page segment.
+    let mut code_lines = String::new();
+    for i in 0..90 {
+        code_lines.push_str(&format!("let value_{i} = {i}; // line {i}\n"));
+    }
+    let body = format!(
+        "page c {{\n  p \"A lead-in paragraph so the code does not start at the page top.\"\n  code rust {{\n    source = <<'CODE'\n{code_lines}CODE\n  }}\n}}\n"
+    );
+
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("bigcode.wcl");
+    write_fixture(&src, &body);
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("bigcode.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    let n = page_count(&bytes);
+    assert!(n >= 2, "expected the code block to split, got {n} page(s)");
+    // The mono code face is embedded on the split path too.
+    assert!(String::from_utf8_lossy(&bytes).contains("NotoSansMono"));
+}
+
+#[test]
+fn table_rows_split_across_a_page_break() {
+    // A table with more rows than a sheet holds paginates row-by-row (a row
+    // that won't fit starts a new page).
+    let mut body = String::from("page t {\n  table {\n    rows:\n      | \"Name\" | \"Score\" |\n");
+    for i in 0..55 {
+        body.push_str(&format!("      | \"row{i}\" | {i} |\n"));
+    }
+    body.push_str("  }\n}\n");
+
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("bigtable.wcl");
+    write_fixture(&src, &body);
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("bigtable.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    let n = page_count(&bytes);
+    assert!(n >= 2, "expected the table to paginate, got {n} page(s)");
+}
+
+#[test]
+fn timeline_renders_to_pdf() {
+    // The Rust-rendered timeline (calendar math, phases, items) embeds as a
+    // vector SVG inside its diagram.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("tl.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "page t {\n",
+            "  diagram {\n",
+            "    width = 500  height = 220\n",
+            "    timeline {\n",
+            "      width = 500  height = 220\n",
+            "      title = \"Roadmap\"\n",
+            "      unit  = :months\n",
+            "      start = \"2026-01-01\"\n",
+            "      end   = \"2026-12-31\"\n",
+            "      phases = [\n",
+            "        TimelinePhase::Of { label: \"Design\", from: \"2026-01-01\", to: \"2026-06-01\" },\n",
+            "        TimelinePhase::Of { label: \"Build\",  from: \"2026-06-01\", to: \"2026-12-31\" },\n",
+            "      ]\n",
+            "      items = [\n",
+            "        TimelineItem::On { label: \"Kickoff\", on: \"2026-01-10\" },\n",
+            "        TimelineItem::On { label: \"Launch\",  on: \"2026-12-20\" },\n",
+            "      ]\n",
+            "    }\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("tl.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    assert!(
+        bytes.len() > 3000,
+        "timeline produced vector content, got {} bytes",
+        bytes.len()
+    );
+}
+
+#[test]
+fn bar_chart_renders_to_pdf() {
+    // A pure-WCL-lowered chart (bars, axes, legend) embeds as a vector SVG.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("bar.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "page b {\n",
+            "  diagram {\n",
+            "    width = 380  height = 240\n",
+            "    bar_chart {\n",
+            "      width = 380  height = 240\n",
+            "      title = \"Revenue\"\n",
+            "      x_label = \"Quarter\"\n",
+            "      categories = [\"Q1\", \"Q2\"]\n",
+            "      y_min = 0.0\n",
+            "      y_max = 100.0\n",
+            "      series = [\n",
+            "        ChartSeries::Of { name: \"North\", values: [40.0, 80.0] },\n",
+            "        ChartSeries::Of { name: \"South\", values: [20.0, 60.0] },\n",
+            "      ]\n",
+            "    }\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("bar.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    assert!(
+        bytes.len() > 3000,
+        "bar chart produced vector content, got {} bytes",
+        bytes.len()
+    );
+}
+
+#[test]
+fn pie_chart_renders_to_pdf() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("pie.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "page p {\n",
+            "  diagram {\n",
+            "    width = 240  height = 240\n",
+            "    pie_chart {\n",
+            "      width = 240  height = 240\n",
+            "      title = \"Mix\"\n",
+            "      slices = [\n",
+            "        ChartSlice::Of { label: \"A\", value: 50.0 },\n",
+            "        ChartSlice::Of { label: \"B\", value: 30.0 },\n",
+            "        ChartSlice::Of { label: \"C\", value: 20.0 },\n",
+            "      ]\n",
+            "    }\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("pie.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+}
+
+#[test]
+fn tree_renders_to_pdf() {
+    // The Rust-rendered indented file-tree (rows + connector guides) embeds
+    // as a vector SVG inside its diagram.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("tree.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "page t {\n",
+            "  diagram { width = 360  height = 220\n",
+            "    tree {\n",
+            "      tree_node \"src/\" {\n",
+            "        tree_node \"render/\" {\n",
+            "          tree_node \"svg.rs\" {}\n",
+            "          tree_node \"html.rs\" {}\n",
+            "        }\n",
+            "        tree_node \"lib.rs\" {}\n",
+            "      }\n",
+            "      tree_node \"Cargo.toml\" {}\n",
+            "    }\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("tree.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    assert!(
+        bytes.len() > 2000,
+        "tree produced vector content, got {} bytes",
+        bytes.len()
+    );
+}
+
+#[test]
+fn only_html_block_is_excluded_from_pdf() {
+    // `@only(backends=[:html])` content never reaches the PDF. Text streams
+    // are compressed, so assert structurally: enough hidden filler to force a
+    // second page when visible collapses back to one page when scoped out.
+    let filler_visible: String = (0..60)
+        .map(|i| format!("  p \"Filler paragraph {i} consuming vertical space.\"\n"))
+        .collect();
+    let filler_hidden: String = (0..60)
+        .map(|i| {
+            format!(
+                "  @only(backends=[:html]) p \"Filler paragraph {i} consuming vertical space.\"\n"
+            )
+        })
+        .collect();
+    let render = |body: &str| -> Vec<u8> {
+        let tmp = TempDir::new().expect("mkdir tempdir");
+        let src = tmp.path().join("doc.wcl");
+        write_fixture(&src, body);
+        let out = TempDir::new().expect("mkdir out");
+        pdf_ok(&src, out.path(), PageSize::A4);
+        std::fs::read(out.path().join("doc.pdf")).expect("read pdf")
+    };
+
+    let shown = render(&format!("page p {{\n  p \"Intro.\"\n{filler_visible}}}\n"));
+    let hidden = render(&format!("page p {{\n  p \"Intro.\"\n{filler_hidden}}}\n"));
+    assert!(
+        page_count(&shown) >= 2,
+        "control: the visible filler paginates"
+    );
+    assert_eq!(
+        page_count(&hidden),
+        1,
+        "html-only filler is dropped from the PDF, leaving one page"
+    );
+}
+
+#[test]
+fn except_pdf_block_is_excluded_from_pdf() {
+    // The complementary scoping: `@except(backends=[:pdf])` drops the block
+    // from the PDF backend (it would still render on HTML).
+    let filler: String = (0..60)
+        .map(|i| {
+            format!(
+                "  @except(backends=[:pdf]) p \"Filler paragraph {i} consuming vertical space.\"\n"
+            )
+        })
+        .collect();
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(&src, &format!("page p {{\n  p \"Intro.\"\n{filler}}}\n"));
+    let out = TempDir::new().expect("mkdir out");
+    pdf_ok(&src, out.path(), PageSize::A4);
+    let bytes = std::fs::read(out.path().join("doc.pdf")).expect("read pdf");
+    assert_eq!(
+        page_count(&bytes),
+        1,
+        "pdf-excepted filler is dropped, leaving one page"
+    );
 }
 
 #[test]
