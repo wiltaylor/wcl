@@ -129,6 +129,25 @@ struct CompiledPattern {
     to_span: FnValue,
 }
 
+/// The earliest pattern match at or after a scan position, as returned by
+/// [`InlinePatterns::find_next`]: the match byte range, the index of the
+/// winning compiled pattern, and its capture-group strings.
+struct Match {
+    start: usize,
+    end: usize,
+    pat_idx: usize,
+    caps: Vec<String>,
+}
+
+/// One token produced by [`InlinePatterns::tokenize`]: either a run of
+/// literal text, or a matched inline-pattern span (a `Value::Variant`) with
+/// the depth at which it was found, so each backend can recurse into the
+/// span's text fields at the right level.
+enum InlineToken<'a> {
+    Literal(&'a str),
+    Span(&'a Value, usize),
+}
+
 impl InlinePatterns {
     /// Enumerate every `@block("inline_pattern")` at the document
     /// root, compile its regex, and capture its `to_span` function.
@@ -315,56 +334,69 @@ impl InlinePatterns {
     }
 
     fn render_inner(&self, doc: &Document, text: &str, depth: usize) -> String {
-        if depth >= MAX_DEPTH || self.compiled.is_empty() {
-            return escape_html(text);
-        }
         let mut out = String::new();
+        self.tokenize(doc, text, depth, |tok| match tok {
+            InlineToken::Literal(s) => out.push_str(&escape_html(s)),
+            // A user fn that returned something unexpected leaves the
+            // matched text as a Literal token, so it's still shown.
+            InlineToken::Span(span, d) => out.push_str(&self.render_variant(doc, span, d)),
+        });
+        out
+    }
+
+    /// Shared left-to-right inline scan driving all three backends
+    /// ([`render_inner`](Self::render_inner) / [`runs_inner`](Self::runs_inner)
+    /// / [`markdown_inner`](Self::markdown_inner)). Walks `text`, handing each
+    /// run of literal text and each matched pattern span to `emit`; the
+    /// backend decides how to materialise them. Beyond `MAX_DEPTH` levels (or
+    /// with no patterns) the whole input is emitted as a single literal,
+    /// guarding against pathological self-referential patterns. A pattern
+    /// whose `to_span` fn doesn't return a `list` (or matches empty) falls
+    /// back to emitting the matched text literally — the zero-length guard
+    /// also stops a pattern like `()` looping forever.
+    fn tokenize(&self, doc: &Document, text: &str, depth: usize, mut emit: impl FnMut(InlineToken)) {
+        if depth >= MAX_DEPTH || self.compiled.is_empty() {
+            emit(InlineToken::Literal(text));
+            return;
+        }
         let mut pos = 0usize;
         while pos < text.len() {
-            let Some((start, end, pat_idx, caps)) = self.find_next(text, pos) else {
-                out.push_str(&escape_html(&text[pos..]));
+            let Some(m) = self.find_next(text, pos) else {
+                emit(InlineToken::Literal(&text[pos..]));
                 break;
             };
-            if start > pos {
-                out.push_str(&escape_html(&text[pos..start]));
+            if m.start > pos {
+                emit(InlineToken::Literal(&text[pos..m.start]));
             }
-            let pattern = &self.compiled[pat_idx];
-            let args: Vec<Value> = caps.into_iter().map(Value::Utf8).collect();
+            let pattern = &self.compiled[m.pat_idx];
+            let args: Vec<Value> = m.caps.into_iter().map(Value::Utf8).collect();
             match doc.call_value(&pattern.to_span, &[Value::List(args)]) {
                 Ok(Value::List(spans)) => {
                     for span in spans {
-                        out.push_str(&self.render_variant(doc, &span, depth));
+                        emit(InlineToken::Span(&span, depth));
                     }
                 }
-                _ => {
-                    // If the user fn returned something unexpected,
-                    // emit the matched text literally so the user can
-                    // still see what was there.
-                    out.push_str(&escape_html(&text[start..end]));
-                }
+                _ => emit(InlineToken::Literal(&text[m.start..m.end])),
             }
-            pos = end;
-            // Guard against zero-length matches — without this, a
-            // pattern like `()` would loop forever.
-            if end == start {
+            pos = m.end;
+            if m.end == m.start {
                 if let Some(next_ch) = text[pos..].chars().next() {
                     let next_pos = pos + next_ch.len_utf8();
-                    out.push_str(&escape_html(&text[pos..next_pos]));
+                    emit(InlineToken::Literal(&text[pos..next_pos]));
                     pos = next_pos;
                 } else {
                     break;
                 }
             }
         }
-        out
     }
 
     /// Scan every pattern starting at `pos`, return the earliest-
     /// starting match. Ties broken by pattern declaration order so
     /// the built-ins (declared first in `wdoc.wcl`) win over a
     /// user override with the same syntax at the same position.
-    fn find_next(&self, text: &str, pos: usize) -> Option<(usize, usize, usize, Vec<String>)> {
-        let mut best: Option<(usize, usize, usize, Vec<String>)> = None;
+    fn find_next(&self, text: &str, pos: usize) -> Option<Match> {
+        let mut best: Option<Match> = None;
         for (i, pat) in self.compiled.iter().enumerate() {
             let Some(caps) = pat.regex.captures_at(text, pos) else {
                 continue;
@@ -374,7 +406,7 @@ impl InlinePatterns {
             // `captures_at`'s contract.
             let start = m.start();
             let end = m.end();
-            if best.as_ref().map(|b| start < b.0).unwrap_or(true) {
+            if best.as_ref().map(|b| start < b.start).unwrap_or(true) {
                 let groups: Vec<String> = (0..caps.len())
                     .map(|g| {
                         caps.get(g)
@@ -382,7 +414,12 @@ impl InlinePatterns {
                             .unwrap_or_default()
                     })
                     .collect();
-                best = Some((start, end, i, groups));
+                best = Some(Match {
+                    start,
+                    end,
+                    pat_idx: i,
+                    caps: groups,
+                });
             }
         }
         best
@@ -408,40 +445,10 @@ impl InlinePatterns {
         style: TextStyle,
         out: &mut Vec<InlineRun>,
     ) {
-        if depth >= MAX_DEPTH || self.compiled.is_empty() {
-            push_run(out, text, style);
-            return;
-        }
-        let mut pos = 0usize;
-        while pos < text.len() {
-            let Some((start, end, pat_idx, caps)) = self.find_next(text, pos) else {
-                push_run(out, &text[pos..], style);
-                break;
-            };
-            if start > pos {
-                push_run(out, &text[pos..start], style);
-            }
-            let pattern = &self.compiled[pat_idx];
-            let args: Vec<Value> = caps.into_iter().map(Value::Utf8).collect();
-            match doc.call_value(&pattern.to_span, &[Value::List(args)]) {
-                Ok(Value::List(spans)) => {
-                    for span in spans {
-                        self.runs_variant(doc, &span, depth, style, out);
-                    }
-                }
-                _ => push_run(out, &text[start..end], style),
-            }
-            pos = end;
-            if end == start {
-                if let Some(next_ch) = text[pos..].chars().next() {
-                    let next_pos = pos + next_ch.len_utf8();
-                    push_run(out, &text[pos..next_pos], style);
-                    pos = next_pos;
-                } else {
-                    break;
-                }
-            }
-        }
+        self.tokenize(doc, text, depth, |tok| match tok {
+            InlineToken::Literal(s) => push_run(out, s, style),
+            InlineToken::Span(span, d) => self.runs_variant(doc, span, d, style, out),
+        });
     }
 
     fn runs_variant(
@@ -609,41 +616,11 @@ impl InlinePatterns {
     }
 
     fn markdown_inner(&self, doc: &Document, text: &str, depth: usize) -> String {
-        if depth >= MAX_DEPTH || self.compiled.is_empty() {
-            return escape_md(text);
-        }
         let mut out = String::new();
-        let mut pos = 0usize;
-        while pos < text.len() {
-            let Some((start, end, pat_idx, caps)) = self.find_next(text, pos) else {
-                out.push_str(&escape_md(&text[pos..]));
-                break;
-            };
-            if start > pos {
-                out.push_str(&escape_md(&text[pos..start]));
-            }
-            let pattern = &self.compiled[pat_idx];
-            let args: Vec<Value> = caps.into_iter().map(Value::Utf8).collect();
-            match doc.call_value(&pattern.to_span, &[Value::List(args)]) {
-                Ok(Value::List(spans)) => {
-                    for span in spans {
-                        out.push_str(&self.markdown_variant(doc, &span, depth));
-                    }
-                }
-                _ => out.push_str(&escape_md(&text[start..end])),
-            }
-            pos = end;
-            // Same zero-length-match guard as the HTML / PDF paths.
-            if end == start {
-                if let Some(next_ch) = text[pos..].chars().next() {
-                    let next_pos = pos + next_ch.len_utf8();
-                    out.push_str(&escape_md(&text[pos..next_pos]));
-                    pos = next_pos;
-                } else {
-                    break;
-                }
-            }
-        }
+        self.tokenize(doc, text, depth, |tok| match tok {
+            InlineToken::Literal(s) => out.push_str(&escape_md(s)),
+            InlineToken::Span(span, d) => out.push_str(&self.markdown_variant(doc, span, d)),
+        });
         out
     }
 
