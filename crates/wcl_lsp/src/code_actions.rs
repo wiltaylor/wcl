@@ -105,21 +105,14 @@ fn expand_to_full_lines(source: &str, range: Range) -> Range {
     }
     Range {
         start: Position {
-            line: line_for_offset(source, start_offset),
+            line: crate::scan::line_for_offset(source, start_offset),
             character: 0,
         },
         end: Position {
-            line: line_for_offset(source, end_offset),
+            line: crate::scan::line_for_offset(source, end_offset),
             character: 0,
         },
     }
-}
-
-fn line_for_offset(source: &str, offset: usize) -> u32 {
-    source.as_bytes()[..offset.min(source.len())]
-        .iter()
-        .filter(|&&b| b == b'\n')
-        .count() as u32
 }
 
 fn make_action(

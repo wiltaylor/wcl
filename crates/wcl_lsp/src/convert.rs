@@ -21,15 +21,7 @@ pub(crate) fn span_to_range(source: &str, span: Span) -> Range {
 /// `character` counts bytes within the line (UTF-8 position encoding).
 pub(crate) fn offset_to_position(source: &str, offset: usize) -> Position {
     let clamped = offset.min(source.len());
-    let bytes = source.as_bytes();
-    let mut line: u32 = 0;
-    let mut line_start: usize = 0;
-    for (i, &b) in bytes.iter().enumerate().take(clamped) {
-        if b == b'\n' {
-            line += 1;
-            line_start = i + 1;
-        }
-    }
+    let (line, line_start) = crate::scan::line_and_start(source, offset);
     Position {
         line,
         character: (clamped - line_start) as u32,

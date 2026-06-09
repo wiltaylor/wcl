@@ -15,6 +15,7 @@
 
 use wcl_lang::{DeclName, Document, Span, SymbolKind, SymbolRecord, ast, parse_for_edit};
 
+use crate::scan::is_ident_byte;
 use crate::walk;
 
 /// What was identified at the cursor. Variants carry the FQN of the
@@ -242,10 +243,6 @@ pub(crate) fn word_at(source: &str, offset: usize) -> Option<(String, Span)> {
         return None;
     }
     Some((s, Span::new(start, end)))
-}
-
-fn is_ident_byte(b: u8) -> bool {
-    b == b'_' || b.is_ascii_alphanumeric()
 }
 
 /// If the bare identifier at `span` is the tail of a dotted path

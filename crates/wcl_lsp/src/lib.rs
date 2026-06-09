@@ -13,6 +13,7 @@ mod diagnostics;
 mod hover;
 mod navigation;
 mod resolve;
+mod scan;
 mod semtokens;
 mod server;
 mod symbols;

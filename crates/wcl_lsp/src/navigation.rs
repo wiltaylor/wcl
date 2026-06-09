@@ -213,8 +213,9 @@ fn whole_word_matches(source: &str, needle: &str) -> Vec<(usize, usize)> {
     let mut i = 0;
     while i + nbytes.len() <= bytes.len() {
         if &bytes[i..i + nbytes.len()] == nbytes {
-            let before_ok = i == 0 || !is_ident(bytes[i - 1]);
-            let after_ok = i + nbytes.len() == bytes.len() || !is_ident(bytes[i + nbytes.len()]);
+            let before_ok = i == 0 || !crate::scan::is_ident_byte(bytes[i - 1]);
+            let after_ok =
+                i + nbytes.len() == bytes.len() || !crate::scan::is_ident_byte(bytes[i + nbytes.len()]);
             if before_ok && after_ok {
                 out.push((i, i + nbytes.len()));
                 i += nbytes.len();
@@ -224,10 +225,6 @@ fn whole_word_matches(source: &str, needle: &str) -> Vec<(usize, usize)> {
         i += 1;
     }
     out
-}
-
-fn is_ident(b: u8) -> bool {
-    b == b'_' || b.is_ascii_alphanumeric()
 }
 
 #[cfg(test)]
