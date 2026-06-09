@@ -3,8 +3,8 @@
 //! top-level source / item driver and shared token helpers.
 
 use crate::ast::{
-    BinOp, ElemTrivia, Expr, FunctionLit, LetBinding, MatchArm, NamedArg, Parameter, Pattern, Span,
-    Trivia, UnaryOp, VariantArgs,
+    BinOp, CALL_BP, ElemTrivia, Expr, FunctionLit, LetBinding, MEMBER_BP, MatchArm, NamedArg,
+    Parameter, Pattern, Span, Trivia, UNARY_BP, UnaryOp, VariantArgs,
 };
 use crate::error::ParseError;
 use crate::lexer::{NumberLit, TokenKind};
@@ -114,7 +114,6 @@ impl<'a> Parser<'a> {
             let kind = self.peek()?.kind.clone();
             // Postfix call: `expr(args)`.
             if matches!(kind, TokenKind::LParen) {
-                const CALL_BP: u8 = 14;
                 if CALL_BP < min_bp {
                     break;
                 }
@@ -125,7 +124,6 @@ impl<'a> Parser<'a> {
             }
             // Postfix member access: `expr.IDENT`.
             if matches!(kind, TokenKind::Dot) {
-                const MEMBER_BP: u8 = 15;
                 if MEMBER_BP < min_bp {
                     break;
                 }
@@ -153,7 +151,8 @@ impl<'a> Parser<'a> {
             // Variant construction: `Path::Variant args?`. The LHS must
             // be a pure dotted path (Identifier / Member chain).
             if matches!(kind, TokenKind::ColonColon) {
-                const VARIANT_BP: u8 = 15;
+                // Variant construction binds like member access.
+                const VARIANT_BP: u8 = MEMBER_BP;
                 if VARIANT_BP < min_bp {
                     break;
                 }
@@ -214,7 +213,7 @@ impl<'a> Parser<'a> {
         match kind {
             TokenKind::Dash => {
                 let tok = self.bump()?;
-                let (operand, operand_span) = self.parse_expr_bp(13)?;
+                let (operand, operand_span) = self.parse_expr_bp(UNARY_BP)?;
                 let span = Span::new(tok.span.start, operand_span.end);
                 Ok((
                     Expr::Unary {
@@ -227,7 +226,7 @@ impl<'a> Parser<'a> {
             }
             TokenKind::Bang => {
                 let tok = self.bump()?;
-                let (operand, operand_span) = self.parse_expr_bp(13)?;
+                let (operand, operand_span) = self.parse_expr_bp(UNARY_BP)?;
                 let span = Span::new(tok.span.start, operand_span.end);
                 Ok((
                     Expr::Unary {
@@ -947,24 +946,27 @@ fn number_to_expr(n: NumberLit) -> Expr {
     }
 }
 
-/// Binding powers and operator mapping for the Pratt parser. Returns
+/// Token → binary-operator mapping for the Pratt parser. Returns
 /// `(left_bp, right_bp, op)` for binary operators; `None` for anything
-/// that doesn't bind as an infix operator.
+/// that doesn't bind as an infix operator. Binding powers come from
+/// [`BinOp::binding_power`], the shared parser/formatter table.
 fn bin_op_info(k: &TokenKind) -> Option<(u8, u8, BinOp)> {
-    Some(match k {
-        TokenKind::PipePipe => (1, 2, BinOp::Or),
-        TokenKind::AmpAmp => (3, 4, BinOp::And),
-        TokenKind::EqEq => (5, 6, BinOp::Eq),
-        TokenKind::BangEq => (5, 6, BinOp::Ne),
-        TokenKind::Lt => (7, 8, BinOp::Lt),
-        TokenKind::LtEq => (7, 8, BinOp::Le),
-        TokenKind::Gt => (7, 8, BinOp::Gt),
-        TokenKind::GtEq => (7, 8, BinOp::Ge),
-        TokenKind::Plus => (9, 10, BinOp::Add),
-        TokenKind::Dash => (9, 10, BinOp::Sub),
-        TokenKind::Star => (11, 12, BinOp::Mul),
-        TokenKind::Slash => (11, 12, BinOp::Div),
-        TokenKind::Percent => (11, 12, BinOp::Mod),
+    let op = match k {
+        TokenKind::PipePipe => BinOp::Or,
+        TokenKind::AmpAmp => BinOp::And,
+        TokenKind::EqEq => BinOp::Eq,
+        TokenKind::BangEq => BinOp::Ne,
+        TokenKind::Lt => BinOp::Lt,
+        TokenKind::LtEq => BinOp::Le,
+        TokenKind::Gt => BinOp::Gt,
+        TokenKind::GtEq => BinOp::Ge,
+        TokenKind::Plus => BinOp::Add,
+        TokenKind::Dash => BinOp::Sub,
+        TokenKind::Star => BinOp::Mul,
+        TokenKind::Slash => BinOp::Div,
+        TokenKind::Percent => BinOp::Mod,
         _ => return None,
-    })
+    };
+    let (lbp, rbp) = op.binding_power();
+    Some((lbp, rbp, op))
 }

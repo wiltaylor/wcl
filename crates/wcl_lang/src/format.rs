@@ -17,11 +17,11 @@
 use std::fmt::Write as _;
 
 use crate::ast::{
-    BinOp, Block, ConnectionDecl, ConnectionStmt, Decorator, ElemTrivia, Expr, Field, FunctionLit,
-    ImportDecl, InterfaceDecl, Item, LetBinding, MatchArm, NamedArg, NamespaceDecl, Parameter,
-    Pattern, Row, Source, SymbolEntry, SymbolSetDecl, TableItem, TemplatePart, Trivia, TypeDecl,
-    TypeField, UnaryOp, UnionDecl, UnionVariant, UseDecl, UseForm, UseItem, VariantArgs,
-    VariantBody, VariantPatArgs,
+    Block, CALL_BP, ConnectionDecl, ConnectionStmt, Decorator, ElemTrivia, Expr, Field,
+    FunctionLit, ImportDecl, InterfaceDecl, Item, LetBinding, MEMBER_BP, MatchArm, NamedArg,
+    NamespaceDecl, Parameter, Pattern, Row, Source, SymbolEntry, SymbolSetDecl, TableItem,
+    TemplatePart, Trivia, TypeDecl, TypeField, UNARY_BP, UnaryOp, UnionDecl, UnionVariant, UseDecl,
+    UseForm, UseItem, VariantArgs, VariantBody, VariantPatArgs,
 };
 use crate::lexer::StringEncoding;
 use crate::value::{BuiltinType, EscapeString, TensorDim, TypeRef};
@@ -754,14 +754,14 @@ impl Printer {
                 self.print_expr(operand, UNARY_BP);
             }
             Expr::Binary { op, lhs, rhs, .. } => {
-                let (lbp, rbp) = bin_op_bp(*op);
+                let (lbp, rbp) = op.binding_power();
                 let need_parens = lbp < min_bp;
                 if need_parens {
                     self.push("(");
                 }
                 self.print_expr(lhs, lbp);
                 self.push_ch(' ');
-                self.push(bin_op_str(*op));
+                self.push(op.as_str());
                 self.push_ch(' ');
                 self.print_expr(rhs, rbp);
                 if need_parens {
@@ -1304,45 +1304,6 @@ fn trivia_has_comment(trivia: &[Trivia]) -> bool {
 fn join_path(parts: &[String]) -> String {
     parts.join(".")
 }
-
-fn bin_op_str(op: BinOp) -> &'static str {
-    match op {
-        BinOp::Add => "+",
-        BinOp::Sub => "-",
-        BinOp::Mul => "*",
-        BinOp::Div => "/",
-        BinOp::Mod => "%",
-        BinOp::Eq => "==",
-        BinOp::Ne => "!=",
-        BinOp::Lt => "<",
-        BinOp::Le => "<=",
-        BinOp::Gt => ">",
-        BinOp::Ge => ">=",
-        BinOp::And => "&&",
-        BinOp::Or => "||",
-    }
-}
-
-/// `(left_bp, right_bp)` for binary operators. Mirrors `bin_op_info`
-/// in `parser/mod.rs` so a parse → print round-trip preserves
-/// associativity / precedence.
-fn bin_op_bp(op: BinOp) -> (u8, u8) {
-    match op {
-        BinOp::Or => (1, 2),
-        BinOp::And => (3, 4),
-        BinOp::Eq | BinOp::Ne => (5, 6),
-        BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => (7, 8),
-        BinOp::Add | BinOp::Sub => (9, 10),
-        BinOp::Mul | BinOp::Div | BinOp::Mod => (11, 12),
-    }
-}
-
-/// Binding power that has to bind tighter than any binary op for a
-/// receiver expression to not need parens. Matches the parser's
-/// `MEMBER_BP` / `CALL_BP` / `UNARY_BP` constants.
-const UNARY_BP: u8 = 13;
-const CALL_BP: u8 = 14;
-const MEMBER_BP: u8 = 15;
 
 /// Choose a heredoc tag that no (trimmed) body line equals, so the
 /// closer line can't fire early. Falls back to a numbered tag in the

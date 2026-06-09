@@ -316,6 +316,48 @@ pub enum BinOp {
     Or,
 }
 
+impl BinOp {
+    /// Pratt binding powers `(left, right)` — the single source of truth
+    /// shared by the parser and the formatter, so a parse → print round
+    /// trip preserves precedence and associativity by construction.
+    pub fn binding_power(self) -> (u8, u8) {
+        match self {
+            BinOp::Or => (1, 2),
+            BinOp::And => (3, 4),
+            BinOp::Eq | BinOp::Ne => (5, 6),
+            BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => (7, 8),
+            BinOp::Add | BinOp::Sub => (9, 10),
+            BinOp::Mul | BinOp::Div | BinOp::Mod => (11, 12),
+        }
+    }
+
+    /// The operator's source spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            BinOp::Add => "+",
+            BinOp::Sub => "-",
+            BinOp::Mul => "*",
+            BinOp::Div => "/",
+            BinOp::Mod => "%",
+            BinOp::Eq => "==",
+            BinOp::Ne => "!=",
+            BinOp::Lt => "<",
+            BinOp::Le => "<=",
+            BinOp::Gt => ">",
+            BinOp::Ge => ">=",
+            BinOp::And => "&&",
+            BinOp::Or => "||",
+        }
+    }
+}
+
+/// Binding powers of the prefix / postfix forms, all tighter than any
+/// binary operator in [`BinOp::binding_power`]. Shared by the parser
+/// (parse-time) and the formatter (parenthesisation) so they can't drift.
+pub const UNARY_BP: u8 = 13;
+pub const CALL_BP: u8 = 14;
+pub const MEMBER_BP: u8 = 15;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
     Neg,
