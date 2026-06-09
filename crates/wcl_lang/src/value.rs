@@ -266,21 +266,7 @@ impl Value {
     /// slot index. Returns `None` for non-numeric values, negative signed
     /// values, or magnitudes that don't fit in `u64`.
     pub fn as_u64(&self) -> Option<u64> {
-        match self {
-            Value::I8(n) if *n >= 0 => Some(*n as u64),
-            Value::I16(n) if *n >= 0 => Some(*n as u64),
-            Value::I32(n) if *n >= 0 => Some(*n as u64),
-            Value::I64(n) if *n >= 0 => Some(*n as u64),
-            Value::I128(n) if *n >= 0 => u64::try_from(*n).ok(),
-            Value::Isize(n) if *n >= 0 => Some(*n as u64),
-            Value::U8(n) => Some(*n as u64),
-            Value::U16(n) => Some(*n as u64),
-            Value::U32(n) => Some(*n as u64),
-            Value::U64(n) => Some(*n),
-            Value::U128(n) => u64::try_from(*n).ok(),
-            Value::Usize(n) => u64::try_from(*n).ok(),
-            _ => None,
-        }
+        crate::numeric::numeric_as_u64!(self, Value)
     }
 
     /// Lossily widen any numeric `Value` to `f64`. Returns `None` for
@@ -649,7 +635,10 @@ fn format_float_lit(n: f64) -> String {
     }
 }
 
-struct EscapeString<'a>(&'a str);
+/// Wraps a string so `Display` writes it with WCL inline-string escapes
+/// (`\`, `"`, `\n`, `\t`, `\r`). Shared by this module's `Value` `Display`
+/// and the formatter's string-literal printing.
+pub(crate) struct EscapeString<'a>(pub(crate) &'a str);
 
 impl std::fmt::Display for EscapeString<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

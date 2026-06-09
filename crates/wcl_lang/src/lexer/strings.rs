@@ -66,27 +66,17 @@ impl<'a> Lexer<'a> {
                     });
                 }
                 other if other < 0x80 => body.push(other as char),
-                other => {
+                _ => {
                     // Non-ASCII byte: walk back and decode one UTF-8 char from
                     // the source so the body preserves multi-byte content.
                     let char_start = self.pos - 1;
-                    let mut len = 1;
-                    while self
-                        .peek()
-                        .map(|b| (b & 0b1100_0000) == 0b1000_0000)
-                        .unwrap_or(false)
-                    {
-                        self.pos += 1;
-                        len += 1;
-                    }
-                    let s = std::str::from_utf8(&self.src[char_start..char_start + len]).map_err(
-                        |_| LexError {
-                            message: "invalid UTF-8 in string literal".into(),
-                            span: Span::new(char_start, char_start + len),
-                        },
+                    self.pos = push_decoded_byte_run(
+                        self.src,
+                        char_start,
+                        0,
+                        "invalid UTF-8 in string literal",
+                        &mut body,
                     )?;
-                    body.push_str(s);
-                    let _ = other;
                 }
             }
         }
@@ -475,20 +465,14 @@ impl<'a> Lexer<'a> {
                             span: Span::new(opener, opener + 1),
                         });
                     };
-                    match esc {
-                        b'"' => buf.push('"'),
-                        b'\\' => buf.push('\\'),
-                        b'n' => buf.push('\n'),
-                        b't' => buf.push('\t'),
-                        b'r' => buf.push('\r'),
-                        b'$' => buf.push('$'),
-                        other => {
-                            return Err(LexError {
-                                message: format!("invalid escape '\\{}'", other as char),
-                                span: Span::new(opener + esc_pos, opener + esc_pos + 2),
-                            });
-                        }
-                    }
+                    // Interpolated heredoc: `\$` escapes a literal `$`.
+                    let Some(decoded) = decode_escape_char(esc, true) else {
+                        return Err(LexError {
+                            message: format!("invalid escape '\\{}'", esc as char),
+                            span: Span::new(opener + esc_pos, opener + esc_pos + 2),
+                        });
+                    };
+                    buf.push(decoded);
                     i += 2;
                 }
                 b if b < 0x80 => {
@@ -496,22 +480,7 @@ impl<'a> Lexer<'a> {
                     i += 1;
                 }
                 _ => {
-                    let char_start = i;
-                    let mut len = 1;
-                    while line
-                        .get(i + len)
-                        .map(|b| (b & 0b1100_0000) == 0b1000_0000)
-                        .unwrap_or(false)
-                    {
-                        len += 1;
-                    }
-                    let slice = &line[char_start..char_start + len];
-                    let s = std::str::from_utf8(slice).map_err(|_| LexError {
-                        message: "invalid UTF-8 in heredoc body".into(),
-                        span: Span::new(opener + char_start, opener + char_start + len),
-                    })?;
-                    buf.push_str(s);
-                    i += len;
+                    i = push_decoded_byte_run(line, i, opener, "invalid UTF-8 in heredoc body", buf)?;
                 }
             }
         }
@@ -601,6 +570,38 @@ fn decode_escape_char(esc: u8, allow_dollar: bool) -> Option<char> {
     }
 }
 
+/// Decode the (possibly multi-byte) UTF-8 character whose lead byte is
+/// `line[i]` (already known to be non-ASCII), appending it to `out` and
+/// returning the index just past it. Walks the `0b10xxxxxx` continuation
+/// bytes and copies the original slice through std's validator so a bad
+/// sequence becomes a structured error rather than a panic. `span_base`
+/// anchors that error span into the outer source (0 when `line` *is* the
+/// source); `msg` names the lexing context. Shared by `lex_string`,
+/// `interpret_line_with_interp` and `interpret_escapes_into`.
+fn push_decoded_byte_run(
+    line: &[u8],
+    i: usize,
+    span_base: usize,
+    msg: &'static str,
+    out: &mut String,
+) -> Result<usize, LexError> {
+    let mut len = 1;
+    while line
+        .get(i + len)
+        .map(|b| (b & 0b1100_0000) == 0b1000_0000)
+        .unwrap_or(false)
+    {
+        len += 1;
+    }
+    let slice = &line[i..i + len];
+    let s = std::str::from_utf8(slice).map_err(|_| LexError {
+        message: msg.into(),
+        span: Span::new(span_base + i, span_base + i + len),
+    })?;
+    out.push_str(s);
+    Ok(i + len)
+}
+
 /// Apply the same escape table as `lex_string` to `line`, appending
 /// the decoded chars to `out`. Validates UTF-8 for non-ASCII bytes.
 fn interpret_escapes_into(line: &[u8], opener: usize, out: &mut String) -> Result<(), LexError> {
@@ -630,26 +631,7 @@ fn interpret_escapes_into(line: &[u8], opener: usize, out: &mut String) -> Resul
                 i += 1;
             }
             _ => {
-                // Multi-byte UTF-8: walk continuation bytes and copy
-                // the original slice through std's validator so a bad
-                // sequence becomes a structured error rather than a
-                // panic.
-                let char_start = i;
-                let mut len = 1;
-                while line
-                    .get(i + len)
-                    .map(|b| (b & 0b1100_0000) == 0b1000_0000)
-                    .unwrap_or(false)
-                {
-                    len += 1;
-                }
-                let slice = &line[char_start..char_start + len];
-                let s = std::str::from_utf8(slice).map_err(|_| LexError {
-                    message: "invalid UTF-8 in heredoc body".into(),
-                    span: Span::new(opener + char_start, opener + char_start + len),
-                })?;
-                out.push_str(s);
-                i += len;
+                i = push_decoded_byte_run(line, i, opener, "invalid UTF-8 in heredoc body", out)?;
             }
         }
     }

@@ -74,21 +74,7 @@ impl NumberLit {
     /// Convert an integer literal to `u64`. Returns `None` for floats,
     /// for negative signed values, and for magnitudes that don't fit.
     pub fn as_u64(&self) -> Option<u64> {
-        match *self {
-            NumberLit::I8(v) if v >= 0 => Some(v as u64),
-            NumberLit::I16(v) if v >= 0 => Some(v as u64),
-            NumberLit::I32(v) if v >= 0 => Some(v as u64),
-            NumberLit::I64(v) if v >= 0 => Some(v as u64),
-            NumberLit::I128(v) if v >= 0 => u64::try_from(v).ok(),
-            NumberLit::Isize(v) if v >= 0 => Some(v as u64),
-            NumberLit::U8(v) => Some(v as u64),
-            NumberLit::U16(v) => Some(v as u64),
-            NumberLit::U32(v) => Some(v as u64),
-            NumberLit::U64(v) => Some(v),
-            NumberLit::U128(v) => u64::try_from(v).ok(),
-            NumberLit::Usize(v) => u64::try_from(v).ok(),
-            _ => None,
-        }
+        crate::numeric::numeric_as_u64!(self, NumberLit)
     }
 }
 

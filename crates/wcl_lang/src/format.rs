@@ -24,7 +24,7 @@ use crate::ast::{
     VariantBody, VariantPatArgs,
 };
 use crate::lexer::StringEncoding;
-use crate::value::{BuiltinType, TensorDim, TypeRef};
+use crate::value::{BuiltinType, EscapeString, TensorDim, TypeRef};
 
 /// Knobs that customize [`to_source_with`]. [`Default`] matches the
 /// historical behaviour of [`to_source`] (two-space indent, trailing
@@ -853,7 +853,7 @@ impl Printer {
         } else {
             self.push(prefix);
             self.push("\"");
-            self.push(&escape_inline_string(body));
+            self.push(&EscapeString(body).to_string());
             self.push("\"");
         }
     }
@@ -895,7 +895,7 @@ impl Printer {
             self.push("\"");
             for part in parts {
                 match part {
-                    TemplatePart::Literal(s) => self.push(&escape_inline_string(s)),
+                    TemplatePart::Literal(s) => self.push(&EscapeString(s).to_string()),
                     TemplatePart::Expr(e) => {
                         self.push("${");
                         self.print_expr(e, 0);
@@ -1362,21 +1362,6 @@ fn pick_heredoc_tag(body: &str) -> String {
         }
         i += 1;
     }
-}
-
-fn escape_inline_string(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\t' => out.push_str("\\t"),
-            '\r' => out.push_str("\\r"),
-            other => out.push(other),
-        }
-    }
-    out
 }
 
 /// Build a synthetic `Expr` from a `NumberLit` so a numeric *pattern*

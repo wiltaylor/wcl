@@ -48,8 +48,33 @@ macro_rules! for_each_signed_numeric_variant {
     };
 }
 
+/// Convert a numeric enum value (`&NumberLit` or `&Value`) to `u64`,
+/// returning `None` for floats, negative signed values, and magnitudes that
+/// don't fit. The two numeric enums share the same variant names, so this
+/// single body serves both `NumberLit::as_u64` and `Value::as_u64`.
+macro_rules! numeric_as_u64 {
+    ($val:expr, $ty:ident) => {
+        match $val {
+            $ty::I8(v) if *v >= 0 => Some(*v as u64),
+            $ty::I16(v) if *v >= 0 => Some(*v as u64),
+            $ty::I32(v) if *v >= 0 => Some(*v as u64),
+            $ty::I64(v) if *v >= 0 => Some(*v as u64),
+            $ty::I128(v) if *v >= 0 => u64::try_from(*v).ok(),
+            $ty::Isize(v) if *v >= 0 => Some(*v as u64),
+            $ty::U8(v) => Some(*v as u64),
+            $ty::U16(v) => Some(*v as u64),
+            $ty::U32(v) => Some(*v as u64),
+            $ty::U64(v) => Some(*v),
+            $ty::U128(v) => u64::try_from(*v).ok(),
+            $ty::Usize(v) => u64::try_from(*v).ok(),
+            _ => None,
+        }
+    };
+}
+
 pub(crate) use for_each_numeric_variant;
 pub(crate) use for_each_signed_numeric_variant;
+pub(crate) use numeric_as_u64;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NumericParseError {
