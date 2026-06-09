@@ -331,6 +331,144 @@ fn partials_are_gathered_by_collect() {
 }
 
 #[test]
+fn flowchart_diagram_with_edges_becomes_a_referenced_svg() {
+    // Two boxes joined by an edge ride the same static-SVG path as a bare
+    // rect diagram: one .svg on disk, referenced from the page as an image.
+    let (_t, out) = build(
+        "page p {\n  diagram {\n    width = 320 height = 160 layout = :layered\n    process \"Parse\"  { id = parse  width = 100.0 height = 40.0 }\n    process \"Render\" { id = render width = 100.0 height = 40.0 }\n    parse -> render :flow\n  }\n}\n",
+    );
+    let md = read(&out, "p.md");
+    assert!(
+        md.contains("](_wdoc/p-diagram-1.svg)"),
+        "md references the generated SVG: {md}"
+    );
+    let svg = read(&out, "_wdoc/p-diagram-1.svg");
+    assert!(!svg.trim().is_empty(), "SVG non-empty");
+    assert!(svg.trim_start().starts_with("<svg"), "starts with <svg");
+    // Box labels render as tspans; the edge is a marker-tipped polyline.
+    assert!(
+        svg.contains(">Parse</tspan>") && svg.contains(">Render</tspan>"),
+        "both box labels drawn: {svg}"
+    );
+    assert!(
+        svg.contains("marker-end=\"url(#wdoc-arrow)\""),
+        "edge arrow drawn: {svg}"
+    );
+}
+
+#[test]
+fn terminal_becomes_a_referenced_svg_file() {
+    let (_t, out) = build(
+        "page p {\n  terminal {\n    cols = 30 rows = 3 title = \"demo\"\n    text = \"hello term\"\n  }\n}\n",
+    );
+    let md = read(&out, "p.md");
+    // Alt text comes from the block's `title`.
+    assert!(
+        md.contains("![demo](_wdoc/p-terminal-1.svg)"),
+        "image ref with title alt: {md}"
+    );
+    let svg = read(&out, "_wdoc/p-terminal-1.svg");
+    assert!(!svg.trim().is_empty(), "SVG non-empty");
+    assert!(svg.trim_start().starts_with("<svg"), "starts with <svg");
+    assert!(svg.contains("xmlns="), "carries the SVG namespace");
+    // Grid text is drawn one glyph per <text> cell; assert on the chrome
+    // title (a single run) and the cell group instead.
+    assert!(svg.contains(">demo</text>"), "chrome title drawn: {svg}");
+    assert!(
+        svg.contains("class=\"term-cells\""),
+        "cell grid present: {svg}"
+    );
+}
+
+#[test]
+fn diagram_and_terminal_share_one_svg_sequence() {
+    // Generated SVG filenames are <page>-<kind>-<n>.svg with a single
+    // per-page counter, so a diagram then a terminal land at 1 and 2.
+    let (_t, out) = build(
+        "page p {\n  diagram {\n    width = 120 height = 60\n    rect a { x = 5 y = 5 width = 40 height = 20 }\n  }\n  terminal {\n    cols = 20 rows = 2\n    text = \"ok\"\n  }\n}\n",
+    );
+    let md = read(&out, "p.md");
+    for rel in ["_wdoc/p-diagram-1.svg", "_wdoc/p-terminal-2.svg"] {
+        assert!(md.contains(&format!("]({rel})")), "{rel} referenced: {md}");
+        let svg = read(&out, rel);
+        assert!(
+            svg.trim_start().starts_with("<svg"),
+            "{rel} starts with <svg"
+        );
+    }
+}
+
+#[test]
+fn inline_math_stays_latex_in_prose() {
+    // Inline equations are kept textual (`$…$` / `$$…$$`), matching the
+    // block-equation policy — never rasterized to SVG on the Markdown path.
+    let (_t, out) =
+        build("page p {\n  p \"Energy: $E = mc^2$ and display $$\\\\int_0^1 x dx$$ inline.\"\n}\n");
+    let md = read(&out, "p.md");
+    assert!(md.contains("$E = mc^2$"), "text-style math kept: {md}");
+    assert!(
+        md.contains("$$\\int_0^1 x dx$$"),
+        "display-style math kept: {md}"
+    );
+    assert!(!out.join("_wdoc").exists(), "no SVG asset written for math");
+}
+
+#[test]
+fn callout_error_class_maps_to_caution_alert() {
+    let (_t, out) = build(
+        "page p {\n  callout \"Stop\" {\n    class = [\"error\"]\n    body = \"It broke.\"\n  }\n}\n",
+    );
+    let md = read(&out, "p.md");
+    assert!(md.contains("> [!CAUTION]"), "error → CAUTION: {md}");
+    assert!(md.contains("> **Stop**"), "heading line");
+    assert!(md.contains("> It broke."), "body line");
+}
+
+#[test]
+fn only_html_block_is_excluded_from_markdown() {
+    // `@only(backends=[:html])` scopes a block out of the :markdown backend,
+    // while `@only(backends=[:markdown])` keeps it in.
+    let (_t, out) = build(
+        "page p {\n  p \"always\"\n  @only(backends=[:html]) p \"website only\"\n  @only(backends=[:markdown]) p \"markdown only\"\n}\n",
+    );
+    let md = read(&out, "p.md");
+    assert!(md.contains("always"), "undecorated block kept: {md}");
+    assert!(
+        !md.contains("website only"),
+        "@only(:html) block excluded: {md}"
+    );
+    assert!(
+        md.contains("markdown only"),
+        "@only(:markdown) block kept: {md}"
+    );
+}
+
+#[test]
+fn except_markdown_block_is_excluded() {
+    let (_t, out) = build(
+        "page p {\n  @except(backends=[:markdown]) p \"not here\"\n  @except(backends=[:pdf]) p \"still here\"\n}\n",
+    );
+    let md = read(&out, "p.md");
+    assert!(
+        !md.contains("not here"),
+        "@except(:markdown) block excluded: {md}"
+    );
+    assert!(md.contains("still here"), "@except(:pdf) block kept: {md}");
+}
+
+#[test]
+fn only_html_diagram_writes_no_svg() {
+    // Visibility is checked before dispatch, so a scoped-out diagram leaves
+    // no asset behind either.
+    let (_t, out) = build(
+        "page p {\n  p \"prose\"\n  @only(backends=[:html]) diagram {\n    width = 120 height = 60\n    rect a { x = 5 y = 5 width = 40 height = 20 }\n  }\n}\n",
+    );
+    let md = read(&out, "p.md");
+    assert!(!md.contains("!["), "no image ref: {md}");
+    assert!(!out.join("_wdoc").exists(), "no SVG asset dir created");
+}
+
+#[test]
 fn collect_gathers_partials_from_imported_files() {
     // Cross-file scatter: a top-level `partial` in an eagerly-imported file is
     // gathered by a `collect` in the main document.
