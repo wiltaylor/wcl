@@ -433,3 +433,53 @@ fn builtin_names_lists_registered_builtins_sorted() {
     sorted.sort();
     assert_eq!(names, sorted, "names should be sorted");
 }
+
+// ── record builtins: keys / values / merge / map_values ──────────
+
+#[test]
+fn record_keys_and_values_in_sorted_key_order() {
+    assert_eq!(
+        eval("@schemaless result = keys({ b: 2, a: 1 })\n"),
+        Value::List(vec![Value::Utf8("a".into()), Value::Utf8("b".into())])
+    );
+    assert_eq!(
+        eval("@schemaless result = values({ b: 2, a: 1 })\n"),
+        Value::List(vec![Value::I64(1), Value::I64(2)])
+    );
+}
+
+#[test]
+fn record_keys_works_on_variant_record_payloads() {
+    let src = "union Shape { Circle { r: f64 } }\n\
+               @schemaless result = keys(Shape::Circle { r: 2.0 })\n";
+    assert_eq!(eval(src), Value::List(vec![Value::Utf8("r".into())]));
+}
+
+#[test]
+fn record_merge_second_record_wins_on_clash() {
+    assert_eq!(
+        eval("@schemaless result = values(merge({ a: 1, b: 2 }, { b: 9, c: 3 }))\n"),
+        Value::List(vec![Value::I64(1), Value::I64(9), Value::I64(3)])
+    );
+}
+
+#[test]
+fn record_map_values_keeps_keys_and_transforms_values() {
+    let src = "@schemaless result = map_values({ a: 1, b: 2 }, fn (x: i64) -> i64 { x * 10 })\n";
+    let v = eval(src);
+    let Value::Record { fields, .. } = v else {
+        panic!("expected a record, got {v:?}");
+    };
+    assert_eq!(fields.get("a"), Some(&Value::I64(10)));
+    assert_eq!(fields.get("b"), Some(&Value::I64(20)));
+}
+
+#[test]
+fn record_builtins_reject_non_records() {
+    let msg = eval_err("@schemaless result = keys([1, 2])\n");
+    assert!(msg.contains("expected a record"), "{msg}");
+    let msg = eval_err("@schemaless result = merge({ a: 1 }, 5)\n");
+    assert!(msg.contains("second argument must be a record"), "{msg}");
+    let msg = eval_err("@schemaless result = map_values(7, fn (x: i64) -> i64 { x })\n");
+    assert!(msg.contains("must be a record"), "{msg}");
+}
