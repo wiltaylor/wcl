@@ -63,9 +63,9 @@ workspace-fmt:
 workspace-lint:
     cargo clippy --workspace --all-targets -- -D warnings
 
-# Full CI gate: fmt-check + workspace-lint + workspace-test
+# Full CI gate: fmt-check + workspace-lint + workspace-test + docs-build
 [group('quality')]
-ci: fmt-check workspace-lint workspace-test
+ci: fmt-check workspace-lint workspace-test docs-build
 
 # Run the CLI: just cli-run -- parse examples/basic.wcl
 [group('dev')]
