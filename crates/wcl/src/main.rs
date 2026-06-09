@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use wcl_lang::{Document, ParseError, ast, format as wcl_format, parse_expr, parse_for_edit};
+use wcl_lang::{
+    Document, Environment, ParseError, ast, format as wcl_format, parse_expr, parse_for_edit,
+};
 
 mod dump;
 mod serve;
@@ -50,8 +52,15 @@ enum Command {
     },
     /// Parse a WCL file and report whether it is syntactically valid.
     Check {
-        /// Path to a WCL source file.
+        /// Path to a WCL source file, or `-` to read from stdin
+        /// (relative imports then resolve against the current
+        /// directory).
         file: PathBuf,
+        /// Emit the result as a JSON object on stdout (`ok`, `file`,
+        /// `errors[]` with code / message / offset / length) instead
+        /// of human-readable diagnostics. Exit codes are unchanged.
+        #[arg(long)]
+        json: bool,
     },
     /// Resolve a dotted path inside a WCL file and print the resulting value.
     /// Aliased as `wcl get`.
@@ -99,7 +108,8 @@ enum Command {
     /// blank-line groupings survive; indentation, brace style, number
     /// radix and string-delimiter choice are normalized.
     Fmt {
-        /// Path to a WCL source file.
+        /// Path to a WCL source file, or `-` to read from stdin and
+        /// write the formatted source to stdout.
         file: PathBuf,
         /// Overwrite the file in place (atomically). Without this flag,
         /// the formatted source is written to stdout and the file on
@@ -266,31 +276,7 @@ fn main() -> ExitCode {
                 EXIT_PARSE
             }
         },
-        Command::Check { file } => match open_document(&file, false) {
-            Ok(doc) => {
-                let errs = doc.schema_errors();
-                if errs.is_empty() {
-                    println!("OK");
-                    EXIT_OK
-                } else {
-                    let count = errs.len();
-                    for e in &errs {
-                        eprintln!("{:?}", miette::Report::new(e.clone()));
-                    }
-                    eprintln!(
-                        "{}: {} schema violation{}",
-                        file.display(),
-                        count,
-                        if count == 1 { "" } else { "s" }
-                    );
-                    EXIT_SCHEMA
-                }
-            }
-            Err(err) => {
-                eprintln!("{:?}", miette::Report::new(err));
-                EXIT_PARSE
-            }
-        },
+        Command::Check { file, json } => run_check(&file, json),
         Command::Fmt {
             file,
             in_place,
@@ -622,15 +608,118 @@ fn atty_stdin() -> bool {
     std::io::stdin().is_terminal()
 }
 
+/// True when the path argument selects stdin input (`wcl check -`).
+fn is_stdin(file: &Path) -> bool {
+    file == Path::new("-")
+}
+
+fn read_stdin() -> Result<String, String> {
+    use std::io::Read as _;
+    let mut src = String::new();
+    std::io::stdin()
+        .read_to_string(&mut src)
+        .map_err(|e| format!("failed to read stdin: {e}"))?;
+    Ok(src)
+}
+
+/// One diagnostic as a JSON object: `code` / `message`, plus the primary
+/// label's `offset` / `length` when the error carries a span.
+fn diagnostic_json(diag: &dyn miette::Diagnostic) -> serde_json::Value {
+    let mut obj = serde_json::Map::new();
+    if let Some(code) = diag.code() {
+        obj.insert("code".into(), code.to_string().into());
+    }
+    obj.insert("message".into(), diag.to_string().into());
+    if let Some(label) = diag.labels().and_then(|mut ls| ls.next()) {
+        obj.insert("offset".into(), label.offset().into());
+        obj.insert("length".into(), label.len().into());
+    }
+    serde_json::Value::Object(obj)
+}
+
+fn check_report_json(name: &str, errors: Vec<serde_json::Value>) -> String {
+    serde_json::to_string_pretty(&serde_json::json!({
+        "ok": errors.is_empty(),
+        "file": name,
+        "errors": errors,
+    }))
+    .expect("string-keyed JSON object always serializes")
+}
+
+fn run_check(file: &Path, json: bool) -> u8 {
+    let name = if is_stdin(file) {
+        "<stdin>".to_string()
+    } else {
+        file.display().to_string()
+    };
+    let doc = if is_stdin(file) {
+        let src = match read_stdin() {
+            Ok(src) => src,
+            Err(msg) => {
+                eprintln!("{msg}");
+                return EXIT_IO;
+            }
+        };
+        let base_dir = std::env::current_dir().ok();
+        Document::open_at(&src, &name, base_dir, &Environment::new())
+    } else {
+        open_document(file, false)
+    };
+    match doc {
+        Ok(doc) => {
+            let errs = doc.schema_errors();
+            if json {
+                let errors = errs.iter().map(|e| diagnostic_json(e)).collect();
+                println!("{}", check_report_json(&name, errors));
+                return if errs.is_empty() {
+                    EXIT_OK
+                } else {
+                    EXIT_SCHEMA
+                };
+            }
+            if errs.is_empty() {
+                println!("OK");
+                EXIT_OK
+            } else {
+                let count = errs.len();
+                for e in &errs {
+                    eprintln!("{:?}", miette::Report::new(e.clone()));
+                }
+                eprintln!(
+                    "{name}: {count} schema violation{}",
+                    if count == 1 { "" } else { "s" }
+                );
+                EXIT_SCHEMA
+            }
+        }
+        Err(err) => {
+            if json {
+                println!("{}", check_report_json(&name, vec![diagnostic_json(&err)]));
+            } else {
+                eprintln!("{:?}", miette::Report::new(err));
+            }
+            EXIT_PARSE
+        }
+    }
+}
+
 fn run_fmt(
     file: &Path,
     in_place: bool,
     indent: usize,
     no_trailing_comma: bool,
 ) -> Result<u8, String> {
-    let src = std::fs::read_to_string(file)
-        .map_err(|e| format!("failed to read {}: {e}", file.display()))?;
-    let ast = match parse_for_edit(&src, file.display().to_string()) {
+    if is_stdin(file) && in_place {
+        return Err("--in-place cannot be combined with stdin input ('-')".to_string());
+    }
+    let (src, name) = if is_stdin(file) {
+        (read_stdin()?, "<stdin>".to_string())
+    } else {
+        let src = std::fs::read_to_string(file)
+            .map_err(|e| format!("failed to read {}: {e}", file.display()))?;
+        (src, file.display().to_string())
+    };
+    let ast = match parse_for_edit(&src, name) {
         Ok(a) => a,
         Err(e) => {
             eprintln!("{:?}", miette::Report::new(e));

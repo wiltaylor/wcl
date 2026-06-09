@@ -586,3 +586,93 @@ fn check_ok_on_lets_example() {
         .success()
         .stdout(predicate::str::contains("OK"));
 }
+
+// ── stdin input and `check --json` ────────────────────────────────
+
+#[test]
+fn check_reads_stdin_with_dash() {
+    wcl()
+        .arg("check")
+        .arg("-")
+        .write_stdin("@schemaless name = \"x\"\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("OK"));
+}
+
+#[test]
+fn check_json_reports_ok_document() {
+    let out = wcl()
+        .arg("check")
+        .arg("--json")
+        .arg("-")
+        .write_stdin("@schemaless name = \"x\"\n")
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout).to_string();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(v["ok"], serde_json::json!(true));
+    assert_eq!(v["file"], serde_json::json!("<stdin>"));
+    assert_eq!(v["errors"], serde_json::json!([]));
+}
+
+#[test]
+fn check_json_reports_parse_error_with_span() {
+    let out = wcl()
+        .arg("check")
+        .arg("--json")
+        .arg("-")
+        .write_stdin("name = \u{1}\n")
+        .assert()
+        .failure()
+        .code(1);
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout).to_string();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(v["ok"], serde_json::json!(false));
+    let err = &v["errors"][0];
+    assert_eq!(err["code"], serde_json::json!("wcl::parse"));
+    assert!(err["offset"].is_u64(), "span offset present: {err}");
+    assert!(err["length"].is_u64(), "span length present: {err}");
+}
+
+#[test]
+fn check_json_reports_schema_violations_with_exit_2() {
+    let out = wcl()
+        .arg("check")
+        .arg("--json")
+        .arg("-")
+        .write_stdin("name = \"x\"\n")
+        .assert()
+        .failure()
+        .code(2);
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout).to_string();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(v["ok"], serde_json::json!(false));
+    assert_eq!(
+        v["errors"][0]["code"],
+        serde_json::json!("wcl::eval::schema_violation")
+    );
+}
+
+#[test]
+fn fmt_reads_stdin_and_writes_stdout() {
+    wcl()
+        .arg("fmt")
+        .arg("-")
+        .write_stdin("@schemaless x = (1+2)*3\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("x = (1 + 2) * 3"));
+}
+
+#[test]
+fn fmt_rejects_in_place_with_stdin() {
+    wcl()
+        .arg("fmt")
+        .arg("--in-place")
+        .arg("-")
+        .write_stdin("x = 1\n")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--in-place"));
+}
