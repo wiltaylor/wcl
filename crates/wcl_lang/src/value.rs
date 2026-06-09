@@ -451,6 +451,28 @@ impl BuiltinType {
             Self::Identifier => "identifier",
         }
     }
+
+    /// `true` for the integer and floating-point types — the set the
+    /// evaluator promotes between in arithmetic and field coercion.
+    pub fn is_numeric(self) -> bool {
+        matches!(
+            self,
+            Self::I8
+                | Self::I16
+                | Self::I32
+                | Self::I64
+                | Self::I128
+                | Self::Isize
+                | Self::U8
+                | Self::U16
+                | Self::U32
+                | Self::U64
+                | Self::U128
+                | Self::Usize
+                | Self::F32
+                | Self::F64
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

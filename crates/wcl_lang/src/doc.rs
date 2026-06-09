@@ -1989,9 +1989,31 @@ pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
         (Value::Utf32(_), TypeRef::Builtin(B::Utf32)) => true,
         (Value::Symbol(_), TypeRef::Builtin(B::Symbol)) => true,
         (Value::Identifier(_), TypeRef::Builtin(B::Identifier)) => true,
+        // A string for an `identifier` field is a tolerated authoring
+        // form (`set = "platformer"`): consumers read Identifier and
+        // Utf8/Ascii interchangeably for id-typed fields.
+        (Value::Utf8(_) | Value::Ascii(_), TypeRef::Builtin(B::Identifier)) => true,
+        // A symbol against a named type is (typically) a `symbol_set`
+        // member — checking membership would need the declaration, which
+        // `Value` doesn't carry, so stay permissive.
+        (Value::Symbol(_), TypeRef::Named(_)) => true,
         (Value::None, _) => false, // None doesn't satisfy any concrete type
+        // Numeric values satisfy any numeric builtin type: the evaluator
+        // promotes numerics (an `f64` field authored as `520` holds an
+        // i64 literal), so an exact-variant check here would flag values
+        // the eval path accepts.
+        (v, TypeRef::Builtin(b)) if v.is_numeric() && b.is_numeric() => true,
         // Variant value against a named union type: compare FQN.
         (Value::Variant { union, .. }, TypeRef::Named(path)) => path_matches_suffix(path, union),
+        // Record value against a named (non-union) type. Builtin-produced
+        // records (e.g. `@connections` projections) carry the producing
+        // declaration's FQN in `ty` — compare it. Bare record literals
+        // (`ty` empty) stay permissive: matching them by shape would need
+        // the declaration, which `Value` doesn't carry (mirrors the
+        // tensor / function pass-through below).
+        (Value::Record { ty, .. }, TypeRef::Named(path)) => {
+            ty.is_empty() || path_matches_suffix(path, ty)
+        }
         // Lists check element type recursively.
         (Value::List(items), TypeRef::List(inner)) => {
             items.iter().all(|el| value_matches_type_ref(el, inner))

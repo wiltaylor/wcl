@@ -362,14 +362,12 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         if has_schemaless(&literal_field.ast.decorators) {
             continue;
         }
-        // A `wdoc_repeater`'s `each` is its dynamic input list: the schema
-        // types it `list<WdocItem>` only to name the list shape, and its
-        // elements are read at render time and intentionally untyped (the
-        // components stdlib documents this). The in-page generator bypass
-        // below already skips validating a repeater's own fields; this
-        // keeps a document-level / TOC repeater (a recognised schema child,
-        // so `schema_errors` runs on it directly) consistent.
-        if declared.name() == "each" && block.kind() == "wdoc_repeater" {
+        // `@schemaless` on the schema's own field declaration opts every
+        // instance out of the value-vs-type check: the declared type
+        // names the intended shape, but the values are dynamic and
+        // interpreted by the consumer (e.g. a repeater's `each` input,
+        // or a computed table's stringified cells).
+        if has_schemaless(&declared.ast.decorators) {
             continue;
         }
         let Ok(value) = literal_field.value() else {
@@ -548,8 +546,26 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
 
     // 3. Per-kind: any nested block whose kind isn't in `allowed`
     // AND which doesn't match any union variant is a DisallowedChild.
+    // Legal children recurse into their own `schema_errors()` so a
+    // violation any number of levels deep reaches the strict report —
+    // matching the lazy per-field path, which has no depth limit.
+    // Exceptions to the recursion:
+    //   - union-dispatched blocks: their fields are a variant payload
+    //     shape, not a `@block` schema, and are validated by dispatch;
+    //   - generator kinds (repeater / instance / content / component
+    //     instances): context-polymorphic bodies that only have
+    //     meaning once expanded at render time with bindings.
+    let is_generator_kind = |nested: &Block<'_>| {
+        matches!(
+            nested.kind(),
+            "wdoc_repeater" | "wdoc_instance" | "wdoc_content"
+        ) || block.doc.is_component_kind(nested.kind())
+    };
     for nested in block.blocks() {
         if allowed.iter().any(|k| k == nested.kind()) {
+            if !is_generator_kind(&nested) {
+                errs.extend(nested.schema_errors().iter().cloned());
+            }
             continue;
         }
         let matches_union = union_slots.iter().any(|u| {
@@ -565,19 +581,19 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
                     .any(|iface| t.is_descendant_of(&iface.full_name()))
             });
         if matches_interface {
+            if !is_generator_kind(&nested) {
+                errs.extend(nested.schema_errors().iter().cloned());
+            }
             continue;
         }
         // Generators — `wdoc_repeater` / `wdoc_content` and user-defined
         // `wdoc_component` instances — are context-polymorphic: they emit
         // whatever their body contains (WdocBlocks in a page, SvgBlocks in
-        // a diagram), so accept them in any interface `@children` slot
-        // (`WdocBlock` or `SvgBlock`). A component instance also has its
-        // slot fields validated here, since the validator is shallow.
-        let is_generator = matches!(
-            nested.kind(),
-            "wdoc_repeater" | "wdoc_instance" | "wdoc_content"
-        ) || block.doc.is_component_kind(nested.kind());
-        if !interface_slots.is_empty() && is_generator {
+        // a diagram, rows in a node table), so accept them wherever
+        // children are allowed at all. A component instance also has its
+        // slot fields validated here, since the child walk above skips
+        // generator bodies.
+        if is_generator_kind(&nested) {
             if block.doc.is_component_kind(nested.kind()) {
                 errs.extend(validate_component_instance(block.doc, &nested));
             }

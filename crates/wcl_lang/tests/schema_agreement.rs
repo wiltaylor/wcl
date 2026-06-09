@@ -337,25 +337,13 @@ fn nested_blocks_two_levels_deep_agree_when_valid() {
     assert!(flagged.is_empty(), "valid nested doc must not flag");
 }
 
-/// KNOWN DISAGREEMENT — strict validation does not recurse below the
-/// first block level.
-///
-/// `Document::schema_errors()` calls `Block::schema_errors()` only on
-/// *top-level* blocks, and `compute_schema_errors` (in
-/// `doc/schema_check.rs`) validates a block's own fields and its direct
-/// children's kinds/cardinality but never invokes `schema_errors()` on
-/// nested blocks. An unknown field two levels deep (`sneaky` inside
-/// `inner x` inside `outer a`) is therefore invisible to the strict
-/// path — `wcl check` prints OK — while the lazy path
-/// (`Field::schema_membership_error`, surfaced through `wcl get
-/// outers.a.inners.x.sneaky`) correctly reports "field 'sneaky' is not
-/// declared by schema 'Inner'". The doc comment on
-/// `Document::schema_errors` ("collected recursively") describes the
-/// intended behaviour, not the implemented one.
-///
-/// Un-ignore once the strict walk recurses into nested blocks.
+/// Regression test: strict validation must recurse below the first
+/// block level. `compute_schema_errors` used to validate a block's own
+/// fields and its direct children's kinds/cardinality but never invoked
+/// `schema_errors()` on nested blocks, so an unknown field two levels
+/// deep (`sneaky` inside `inner x` inside `outer a`) passed `wcl check`
+/// while the lazy path correctly rejected it.
 #[test]
-#[ignore = "strict path misses violations below depth 1; lazy path flags them (see comment)"]
 fn nested_blocks_two_levels_deep_agree_on_unknown_field() {
     let flagged = assert_agreement(
         r#"

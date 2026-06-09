@@ -42,7 +42,9 @@ type TableBlock extends WdocBlock {
   @doc("Optional header row for the computed-table form (omit for a header-less table).")
   header: list<utf8>?
   @doc("The pipe-row data (or computed rows) — with pipe syntax the first row is the header, the rest are body rows.")
-  rows:   list<list<utf8>>?
+  // `@schemaless`: computed cells may hold any scalar (stringified at
+  // render time), so the value-vs-type check stays out of the way.
+  @schemaless rows: list<list<utf8>>?
   lower = fn(t: TableBlock) -> list<HtmlFundamental> []
 }
 

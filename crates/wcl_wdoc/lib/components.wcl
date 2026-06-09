@@ -50,8 +50,11 @@ type WdocSlot {
 }
 
 // The component's renderable body — ordinary wdoc blocks, rendered with
-// the instance's slots bound into scope.
-@block("wdoc_body")
+// the instance's slots bound into scope. `@schemaless` because a body is
+// a template: its blocks only have meaning once expanded at an instance
+// site (a component used inside a diagram legitimately holds SvgBlocks),
+// so context-free validation would reject valid bodies.
+@block("wdoc_body") @schemaless
 type WdocBody {
   @children(WdocBlock) children: list<WdocBlock>
 }
@@ -82,8 +85,10 @@ type WdocContent extends WdocBlock {
 // placed where its consumer doesn't look is structurally legal but ignored.
 @block("wdoc_repeater")
 type WdocRepeater extends WdocBlock {
-  each: list<WdocItem>
-  as:   symbol
+  // `@schemaless`: the `each` elements are read dynamically at render
+  // time — `list<WdocItem>` only names the list shape.
+  @schemaless each: list<WdocItem>
+  as: symbol
   @children(WdocBlock)    children: list<WdocBlock>
   @children("page")       pages:    list<Page>
   @children("chapter")    chapters: list<Chapter>
