@@ -600,18 +600,26 @@ fn build_site(
     // A map drives the same viewBox camera as a pan/zoom diagram, so it
     // needs the pan/zoom player too — plus its own layer/card player.
     if uses_pan_zoom || uses_map {
-        write_diagram_assets(out_dir)?;
+        write_asset(
+            out_dir,
+            "diagram-pan-zoom.js",
+            crate::render::DIAGRAM_PAN_ZOOM_JS,
+        )?;
     }
     if uses_map {
-        write_map_assets(out_dir)?;
+        write_asset(out_dir, "wdoc-map.js", crate::render::WDOC_MAP_JS)?;
     }
     let uses_dopesheet = spec.pages.iter().any(crate::dopesheet::uses_dopesheet);
     if uses_dopesheet {
-        write_dopesheet_assets(out_dir)?;
+        write_asset(
+            out_dir,
+            "dopesheet-player.js",
+            crate::render::DOPESHEET_PLAYER_JS,
+        )?;
     }
     let uses_video = spec.pages.iter().any(crate::video::uses_video);
     if uses_video {
-        write_video_assets(out_dir)?;
+        write_asset(out_dir, "wdoc-video.js", crate::render::WDOC_VIDEO_JS)?;
     }
 
     // Site descriptor: the default template + title a template can show.
@@ -718,230 +726,46 @@ fn build_site(
         }
     };
 
-    let mut count = 0;
+    // Everything the page-rendering paths read but never mutate, resolved
+    // once and shared by the presentation and per-page paths below.
+    let ctx = PageRenderCtx {
+        doc,
+        base_dir,
+        spec,
+        out_dir,
+        css: &css,
+        favicon: &favicon,
+        inline_patterns: &inline_patterns,
+        default_template: default_template.as_deref(),
+        site_title: site_title.as_deref(),
+        theme_toggle,
+        toc_nodes: &toc_nodes,
+        menu_nodes: &menu_nodes,
+        deck_nodes: &deck_nodes,
+        pages: &pages,
+        home_href,
+        home_title,
+        players: PlayerScripts {
+            terminals: uses_terminals,
+            pan_zoom: uses_pan_zoom,
+            map: uses_map,
+            dopesheet: uses_dopesheet,
+            video: uses_video,
+        },
+    };
 
-    // Presentation site: render every slide once into a single deck page
-    // (`index.html`), driven by the `presentation` template + player. The
-    // per-page loop below is skipped (slides aren't standalone files).
-    if is_presentation {
-        // Resolve each `slide` page to its rendered body + speaker notes,
-        // building the `list<DeckSection>` the template lays out. Ids are
-        // unique across the whole deck (it's one HTML document).
-        let page_by_name: BTreeMap<String, &Block> = spec
-            .pages
-            .iter()
-            .filter_map(|p| page_name(p).map(|n| (n, p)))
-            .collect();
-        let mut dup_seen = HashSet::new();
-        let mut sections_val = Vec::new();
-        for sec in &deck_nodes {
-            let mut slides_val = Vec::new();
-            for slide_page in &sec.slides {
-                let Some(&page) = page_by_name.get(slide_page) else {
-                    continue; // unreachable: validated by deck_missing_slide
-                };
-                if let Some(dup) = collect_duplicate_id(page, &mut dup_seen) {
-                    return Err(BuildError::DuplicateId {
-                        page: slide_page.clone(),
-                        id: dup,
-                    });
-                }
-                // Visible content: the page's blocks minus its `notes`.
-                let mut content = String::new();
-                for b in page
-                    .blocks()
-                    .filter(|b| b.kind() != "notes")
-                    .filter_map(|b| render_block(doc, &b, &inline_patterns, base_dir))
-                {
-                    content.push_str(&b);
-                    content.push('\n');
-                }
-                // Speaker notes: the children of any `notes` block.
-                let mut notes = String::new();
-                for nb in page.blocks().filter(|b| b.kind() == "notes") {
-                    for cb in nb
-                        .blocks()
-                        .filter_map(|b| render_block(doc, &b, &inline_patterns, base_dir))
-                    {
-                        notes.push_str(&cb);
-                        notes.push('\n');
-                    }
-                }
-                let mut m = BTreeMap::new();
-                m.insert("content".to_string(), Value::Utf8(content));
-                m.insert("notes".to_string(), Value::Utf8(notes));
-                m.insert("title".to_string(), Value::Utf8(slide_page.clone()));
-                slides_val.push(Value::Record {
-                    ty: vec!["DeckSlide".to_string()],
-                    fields: m,
-                });
-            }
-            let mut sm = BTreeMap::new();
-            sm.insert("title".to_string(), Value::Utf8(sec.title.clone()));
-            sm.insert("slides".to_string(), Value::List(slides_val));
-            sections_val.push(Value::Record {
-                ty: vec!["DeckSection".to_string()],
-                fields: sm,
-            });
+    // A `presentation` site renders all its slides into a single deck
+    // `index.html`; every other site renders one file per page.
+    let count = if is_presentation {
+        build_presentation_page(&ctx)?
+    } else {
+        let mut count = 0;
+        for page in &spec.pages {
+            build_normal_page(&ctx, page)?;
+            count += 1;
         }
-
-        let Some(tmpl) = find_template(doc, "presentation") else {
-            return Err(BuildError::BadTemplate("presentation".into()));
-        };
-        let title = site_title
-            .clone()
-            .or_else(|| spec.name.clone())
-            .unwrap_or_else(|| "Presentation".to_string());
-        let mut body = render_template(
-            doc,
-            &tmpl,
-            "",
-            &title,
-            "",
-            &pages,
-            &toc_nodes,
-            &menu_nodes,
-            Value::List(sections_val),
-            theme_toggle,
-            home_href,
-            home_title,
-            &inline_patterns,
-        );
-        // The slides may use the same interactive assets a normal page can.
-        if uses_terminals {
-            body.push_str("\n<script src=\"_wdoc/terminal-player.js\" defer></script>\n");
-        }
-        if uses_pan_zoom || uses_map {
-            body.push_str("\n<script src=\"_wdoc/diagram-pan-zoom.js\" defer></script>\n");
-        }
-        if uses_map {
-            body.push_str("\n<script src=\"_wdoc/wdoc-map.js\" defer></script>\n");
-        }
-        if uses_dopesheet {
-            body.push_str("\n<script src=\"_wdoc/dopesheet-player.js\" defer></script>\n");
-        }
-        if uses_video {
-            body.push_str("\n<script src=\"_wdoc/wdoc-video.js\" defer></script>\n");
-        }
-        // The deck keyboard-navigation player.
-        write_presentation_assets(out_dir)?;
-        body.push_str("\n<script src=\"_wdoc/presentation.js\" defer></script>\n");
-        let html = render_page(&title, &css, &body, Some(&favicon));
-        let out_path = out_dir.join("index.html");
-        fs::write(&out_path, html)
-            .map_err(|e| BuildError::Io(e, format!("write {}", out_path.display())))?;
-        count = 1;
-    }
-
-    for page in &spec.pages {
-        if is_presentation {
-            break;
-        }
-        let labels = page
-            .labels()
-            .map_err(|e| BuildError::BadPage(format!("page label eval: {e}")))?;
-        let page_name = match labels.into_iter().next() {
-            Some(Value::Identifier(s)) | Some(Value::Utf8(s)) | Some(Value::Symbol(s)) => s,
-            Some(other) => {
-                return Err(BuildError::BadPage(format!(
-                    "expected identifier page name, got {other}"
-                )));
-            }
-            None => return Err(BuildError::BadPage("page has no name label".into())),
-        };
-
-        let mut seen = HashSet::new();
-        if let Some(dup) = collect_duplicate_id(page, &mut seen) {
-            return Err(BuildError::DuplicateId {
-                page: page_name,
-                id: dup,
-            });
-        }
-
-        // The `content` part: this page's own blocks, rendered exactly
-        // as before (trailing newline per block).
-        let mut content = String::new();
-        for b in page
-            .blocks()
-            .filter_map(|b| render_block(doc, &b, &inline_patterns, base_dir))
-        {
-            content.push_str(&b);
-            content.push('\n');
-        }
-
-        // Resolve the template: the page's own `template` overrides the
-        // site `default_template`. None ⇒ render content bare.
-        let template_name = field_symbol(page, "template").or_else(|| default_template.clone());
-        let mut body = match template_name {
-            // `:ai_skill` is a Markdown-only target, not an HTML template.
-            Some(name) if name == "ai_skill" => {
-                return Err(BuildError::BadPage(
-                    "`default_template = :ai_skill` is a skill target, not an HTML template — \
-                     build it with `wcl wdoc skill`"
-                        .into(),
-                ));
-            }
-            Some(name) => {
-                let Some(tmpl) = find_template(doc, &name) else {
-                    return Err(BuildError::BadTemplate(name));
-                };
-                let title = site_title.clone().unwrap_or_else(|| page_name.clone());
-                render_template(
-                    doc,
-                    &tmpl,
-                    &content,
-                    &title,
-                    &page_name,
-                    &pages,
-                    &toc_nodes,
-                    &menu_nodes,
-                    Value::List(Vec::new()),
-                    theme_toggle,
-                    home_href,
-                    home_title,
-                    &inline_patterns,
-                )
-            }
-            None => content,
-        };
-        // Replay terminals are driven by the bundled player; load it once
-        // per page (it no-ops on pages without a replay terminal).
-        if uses_terminals {
-            body.push_str("\n<script src=\"_wdoc/terminal-player.js\" defer></script>\n");
-        }
-        // Interactive diagrams are driven by the bundled pan/zoom player,
-        // loaded once per page (it no-ops on pages without one). A map
-        // needs that camera plus its own layer/card player.
-        if uses_pan_zoom || uses_map {
-            body.push_str("\n<script src=\"_wdoc/diagram-pan-zoom.js\" defer></script>\n");
-        }
-        if uses_map {
-            body.push_str("\n<script src=\"_wdoc/wdoc-map.js\" defer></script>\n");
-        }
-        // Animated dopesheets are driven by the bundled player, loaded
-        // once per page (it no-ops on pages without one).
-        if uses_dopesheet {
-            body.push_str("\n<script src=\"_wdoc/dopesheet-player.js\" defer></script>\n");
-        }
-        // Videos render as a click-to-play facade; the bundled player swaps
-        // in the real <video>/<iframe> on click. Loaded once per page.
-        if uses_video {
-            body.push_str("\n<script src=\"_wdoc/wdoc-video.js\" defer></script>\n");
-        }
-        // Browser tab title: the page's own `title` (else its name), suffixed
-        // with the site title as `<page> — <site>` when the site sets one.
-        let page_title = field_utf8(page, "title").unwrap_or_else(|| page_name.clone());
-        let doc_title = match &site_title {
-            Some(st) if *st != page_title => format!("{page_title} — {st}"),
-            _ => page_title,
-        };
-        let html = render_page(&doc_title, &css, &body, Some(&favicon));
-
-        let out_path = out_dir.join(format!("{page_name}.html"));
-        fs::write(&out_path, html)
-            .map_err(|e| BuildError::Io(e, format!("write {}", out_path.display())))?;
-        count += 1;
-    }
+        count
+    };
 
     // Every icon resolved while rendering goes into one shared sprite
     // (`_wdoc/icons.svg`) that the pages reference via `<use>`. Written
@@ -974,6 +798,259 @@ fn build_site(
     }
 
     Ok(count)
+}
+
+/// Which interactive players a site uses, so each page loads only the
+/// `<script>` tags it needs. Computed once per site in [`build_site`].
+#[derive(Clone, Copy)]
+struct PlayerScripts {
+    terminals: bool,
+    pan_zoom: bool,
+    map: bool,
+    dopesheet: bool,
+    video: bool,
+}
+
+impl PlayerScripts {
+    /// Append the `<script>` tags for the players this site uses. Loaded
+    /// once per page; each no-ops on a page that doesn't use it. Shared
+    /// verbatim by the per-page loop and the presentation deck.
+    fn inject(self, body: &mut String) {
+        if self.terminals {
+            body.push_str("\n<script src=\"_wdoc/terminal-player.js\" defer></script>\n");
+        }
+        // A map drives the same viewBox camera as a pan/zoom diagram, so it
+        // needs the pan/zoom player too — plus its own layer/card player.
+        if self.pan_zoom || self.map {
+            body.push_str("\n<script src=\"_wdoc/diagram-pan-zoom.js\" defer></script>\n");
+        }
+        if self.map {
+            body.push_str("\n<script src=\"_wdoc/wdoc-map.js\" defer></script>\n");
+        }
+        if self.dopesheet {
+            body.push_str("\n<script src=\"_wdoc/dopesheet-player.js\" defer></script>\n");
+        }
+        if self.video {
+            body.push_str("\n<script src=\"_wdoc/wdoc-video.js\" defer></script>\n");
+        }
+    }
+}
+
+/// Per-site rendering context shared by [`build_presentation_page`] and
+/// [`build_normal_page`] — everything [`build_site`] resolves once that the
+/// page-rendering paths read but never mutate.
+struct PageRenderCtx<'a> {
+    doc: &'a Document,
+    base_dir: Option<&'a Path>,
+    spec: &'a SiteSpec<'a>,
+    out_dir: &'a Path,
+    css: &'a str,
+    favicon: &'a str,
+    inline_patterns: &'a InlinePatterns,
+    default_template: Option<&'a str>,
+    site_title: Option<&'a str>,
+    theme_toggle: bool,
+    toc_nodes: &'a [TocNode],
+    menu_nodes: &'a [MenuNode],
+    deck_nodes: &'a [DeckSectionNode],
+    pages: &'a [(String, String)],
+    home_href: &'a str,
+    home_title: &'a str,
+    players: PlayerScripts,
+}
+
+/// Render a `presentation` site: every `slide` page becomes one section of
+/// a single deck `index.html`, driven by the `presentation` template +
+/// keyboard player. Returns the page count (always 1).
+fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError> {
+    // Resolve each `slide` page to its rendered body + speaker notes,
+    // building the `list<DeckSection>` the template lays out. Ids are
+    // unique across the whole deck (it's one HTML document).
+    let page_by_name: BTreeMap<String, &Block> = ctx
+        .spec
+        .pages
+        .iter()
+        .filter_map(|p| page_name(p).map(|n| (n, p)))
+        .collect();
+    let mut dup_seen = HashSet::new();
+    let mut sections_val = Vec::new();
+    for sec in ctx.deck_nodes {
+        let mut slides_val = Vec::new();
+        for slide_page in &sec.slides {
+            let Some(&page) = page_by_name.get(slide_page) else {
+                continue; // unreachable: validated by deck_missing_slide
+            };
+            if let Some(dup) = collect_duplicate_id(page, &mut dup_seen) {
+                return Err(BuildError::DuplicateId {
+                    page: slide_page.clone(),
+                    id: dup,
+                });
+            }
+            // Visible content: the page's blocks minus its `notes`.
+            let mut content = String::new();
+            for b in page
+                .blocks()
+                .filter(|b| b.kind() != "notes")
+                .filter_map(|b| render_block(ctx.doc, &b, ctx.inline_patterns, ctx.base_dir))
+            {
+                content.push_str(&b);
+                content.push('\n');
+            }
+            // Speaker notes: the children of any `notes` block.
+            let mut notes = String::new();
+            for nb in page.blocks().filter(|b| b.kind() == "notes") {
+                for cb in nb
+                    .blocks()
+                    .filter_map(|b| render_block(ctx.doc, &b, ctx.inline_patterns, ctx.base_dir))
+                {
+                    notes.push_str(&cb);
+                    notes.push('\n');
+                }
+            }
+            let mut m = BTreeMap::new();
+            m.insert("content".to_string(), Value::Utf8(content));
+            m.insert("notes".to_string(), Value::Utf8(notes));
+            m.insert("title".to_string(), Value::Utf8(slide_page.clone()));
+            slides_val.push(Value::Record {
+                ty: vec!["DeckSlide".to_string()],
+                fields: m,
+            });
+        }
+        let mut sm = BTreeMap::new();
+        sm.insert("title".to_string(), Value::Utf8(sec.title.clone()));
+        sm.insert("slides".to_string(), Value::List(slides_val));
+        sections_val.push(Value::Record {
+            ty: vec!["DeckSection".to_string()],
+            fields: sm,
+        });
+    }
+
+    let Some(tmpl) = find_template(ctx.doc, "presentation") else {
+        return Err(BuildError::BadTemplate("presentation".into()));
+    };
+    let title = ctx
+        .site_title
+        .map(str::to_string)
+        .or_else(|| ctx.spec.name.clone())
+        .unwrap_or_else(|| "Presentation".to_string());
+    let mut body = render_template(
+        ctx.doc,
+        &tmpl,
+        "",
+        &title,
+        "",
+        ctx.pages,
+        ctx.toc_nodes,
+        ctx.menu_nodes,
+        Value::List(sections_val),
+        ctx.theme_toggle,
+        ctx.home_href,
+        ctx.home_title,
+        ctx.inline_patterns,
+    );
+    // The slides may use the same interactive assets a normal page can.
+    ctx.players.inject(&mut body);
+    // The deck keyboard-navigation player.
+    write_asset(
+        ctx.out_dir,
+        "presentation.js",
+        crate::render::PRESENTATION_PLAYER_JS,
+    )?;
+    body.push_str("\n<script src=\"_wdoc/presentation.js\" defer></script>\n");
+    let html = render_page(&title, ctx.css, &body, Some(ctx.favicon));
+    let out_path = ctx.out_dir.join("index.html");
+    fs::write(&out_path, html)
+        .map_err(|e| BuildError::Io(e, format!("write {}", out_path.display())))?;
+    Ok(1)
+}
+
+/// Render one ordinary page to `<name>.html`.
+fn build_normal_page(ctx: &PageRenderCtx<'_>, page: &Block<'_>) -> Result<(), BuildError> {
+    let labels = page
+        .labels()
+        .map_err(|e| BuildError::BadPage(format!("page label eval: {e}")))?;
+    let page_name = match labels.into_iter().next() {
+        Some(Value::Identifier(s)) | Some(Value::Utf8(s)) | Some(Value::Symbol(s)) => s,
+        Some(other) => {
+            return Err(BuildError::BadPage(format!(
+                "expected identifier page name, got {other}"
+            )));
+        }
+        None => return Err(BuildError::BadPage("page has no name label".into())),
+    };
+
+    let mut seen = HashSet::new();
+    if let Some(dup) = collect_duplicate_id(page, &mut seen) {
+        return Err(BuildError::DuplicateId {
+            page: page_name,
+            id: dup,
+        });
+    }
+
+    // The `content` part: this page's own blocks, rendered exactly
+    // as before (trailing newline per block).
+    let mut content = String::new();
+    for b in page
+        .blocks()
+        .filter_map(|b| render_block(ctx.doc, &b, ctx.inline_patterns, ctx.base_dir))
+    {
+        content.push_str(&b);
+        content.push('\n');
+    }
+
+    // Resolve the template: the page's own `template` overrides the
+    // site `default_template`. None ⇒ render content bare.
+    let template_name =
+        field_symbol(page, "template").or_else(|| ctx.default_template.map(str::to_string));
+    let mut body = match template_name {
+        // `:ai_skill` is a Markdown-only target, not an HTML template.
+        Some(name) if name == "ai_skill" => {
+            return Err(BuildError::BadPage(
+                "`default_template = :ai_skill` is a skill target, not an HTML template — \
+                 build it with `wcl wdoc skill`"
+                    .into(),
+            ));
+        }
+        Some(name) => {
+            let Some(tmpl) = find_template(ctx.doc, &name) else {
+                return Err(BuildError::BadTemplate(name));
+            };
+            let title = ctx
+                .site_title
+                .map(str::to_string)
+                .unwrap_or_else(|| page_name.clone());
+            render_template(
+                ctx.doc,
+                &tmpl,
+                &content,
+                &title,
+                &page_name,
+                ctx.pages,
+                ctx.toc_nodes,
+                ctx.menu_nodes,
+                Value::List(Vec::new()),
+                ctx.theme_toggle,
+                ctx.home_href,
+                ctx.home_title,
+                ctx.inline_patterns,
+            )
+        }
+        None => content,
+    };
+    ctx.players.inject(&mut body);
+    // Browser tab title: the page's own `title` (else its name), suffixed
+    // with the site title as `<page> — <site>` when the site sets one.
+    let page_title = field_utf8(page, "title").unwrap_or_else(|| page_name.clone());
+    let doc_title = match ctx.site_title {
+        Some(st) if st != page_title.as_str() => format!("{page_title} — {st}"),
+        _ => page_title,
+    };
+    let html = render_page(&doc_title, ctx.css, &body, Some(ctx.favicon));
+
+    let out_path = ctx.out_dir.join(format!("{page_name}.html"));
+    fs::write(&out_path, html)
+        .map_err(|e| BuildError::Io(e, format!("write {}", out_path.display())))?;
+    Ok(())
 }
 
 /// Ensure a site subdirectory has an `index.html` so `/<site>/` lands
@@ -1029,84 +1106,27 @@ fn write_chooser_index(
     Ok(())
 }
 
+/// Write one bundled asset `bytes` to `<out>/_wdoc/<name>`, creating the
+/// `_wdoc/` directory if needed. The single create-dir + write + error-map
+/// path every bundled-asset writer shares (players, fonts, favicon, sprite).
+fn write_asset(out_dir: &Path, name: &str, bytes: impl AsRef<[u8]>) -> Result<(), BuildError> {
+    let dir = out_dir.join(crate::terminal::ASSET_DIR);
+    fs::create_dir_all(&dir)
+        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
+    let path = dir.join(name);
+    fs::write(&path, bytes).map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
+    Ok(())
+}
+
 /// Write the bundled terminal assets (the JetBrains Mono Nerd Font
 /// faces + the replay player JS) into `<out>/_wdoc/`. Pages reference
 /// them by relative URL, so the dev server and any static host resolve
 /// them the same way.
 fn write_terminal_assets(out_dir: &Path) -> Result<(), BuildError> {
-    let dir = out_dir.join(crate::terminal::ASSET_DIR);
-    fs::create_dir_all(&dir)
-        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
     for (name, bytes) in crate::terminal::FONT_FILES {
-        let path = dir.join(name);
-        fs::write(&path, bytes)
-            .map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
+        write_asset(out_dir, name, bytes)?;
     }
-    let player = dir.join("terminal-player.js");
-    fs::write(&player, crate::terminal::PLAYER_JS)
-        .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
-    Ok(())
-}
-
-/// Write the bundled diagram pan/zoom player into `<out>/_wdoc/`. Pages
-/// with an interactive diagram reference it by relative URL.
-fn write_diagram_assets(out_dir: &Path) -> Result<(), BuildError> {
-    let dir = out_dir.join(crate::terminal::ASSET_DIR);
-    fs::create_dir_all(&dir)
-        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
-    let player = dir.join("diagram-pan-zoom.js");
-    fs::write(&player, crate::render::DIAGRAM_PAN_ZOOM_JS)
-        .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
-    Ok(())
-}
-
-/// Write the bundled map player (layer level-of-detail + popup cards) into
-/// `<out>/_wdoc/`. Pages with a `map` reference it by relative URL.
-fn write_map_assets(out_dir: &Path) -> Result<(), BuildError> {
-    let dir = out_dir.join(crate::terminal::ASSET_DIR);
-    fs::create_dir_all(&dir)
-        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
-    let player = dir.join("wdoc-map.js");
-    fs::write(&player, crate::render::WDOC_MAP_JS)
-        .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
-    Ok(())
-}
-
-/// Write the bundled dopesheet player into `<out>/_wdoc/`. Pages with a
-/// `dopesheet` reference it by relative URL.
-fn write_dopesheet_assets(out_dir: &Path) -> Result<(), BuildError> {
-    let dir = out_dir.join(crate::terminal::ASSET_DIR);
-    fs::create_dir_all(&dir)
-        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
-    let player = dir.join("dopesheet-player.js");
-    fs::write(&player, crate::render::DOPESHEET_PLAYER_JS)
-        .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
-    Ok(())
-}
-
-/// Write the bundled video player into `<out>/_wdoc/`. Pages with a
-/// `video` reference it by relative URL.
-fn write_video_assets(out_dir: &Path) -> Result<(), BuildError> {
-    let dir = out_dir.join(crate::terminal::ASSET_DIR);
-    fs::create_dir_all(&dir)
-        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
-    let player = dir.join("wdoc-video.js");
-    fs::write(&player, crate::render::WDOC_VIDEO_JS)
-        .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
-    Ok(())
-}
-
-/// Write the bundled presentation (deck) navigation player into
-/// `<out>/_wdoc/`. A `presentation` site's single deck page references
-/// it by relative URL.
-fn write_presentation_assets(out_dir: &Path) -> Result<(), BuildError> {
-    let dir = out_dir.join(crate::terminal::ASSET_DIR);
-    fs::create_dir_all(&dir)
-        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
-    let player = dir.join("presentation.js");
-    fs::write(&player, crate::render::PRESENTATION_PLAYER_JS)
-        .map_err(|e| BuildError::Io(e, format!("write {}", player.display())))?;
-    Ok(())
+    write_asset(out_dir, "terminal-player.js", crate::terminal::PLAYER_JS)
 }
 
 /// The default favicon, shipped when a `site` sets no `icon`.
@@ -1116,25 +1136,14 @@ const DEFAULT_FAVICON: &str = include_str!("../assets/favicon.svg");
 /// reference it by relative URL, so the dev server and any static host
 /// resolve it the same way. Idempotent (rewrites the same bytes).
 fn write_default_favicon(out_dir: &Path) -> Result<(), BuildError> {
-    let dir = out_dir.join(crate::terminal::ASSET_DIR);
-    fs::create_dir_all(&dir)
-        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
-    let path = dir.join("favicon.svg");
-    fs::write(&path, DEFAULT_FAVICON)
-        .map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
-    Ok(())
+    write_asset(out_dir, "favicon.svg", DEFAULT_FAVICON)
 }
 
 /// Write the shared icon sprite into `<out>/_wdoc/icons.svg`. Pages
 /// reference its `<symbol>`s by relative URL (`_wdoc/icons.svg#id`), so
 /// the dev server and any static host resolve them the same way.
 fn write_icon_sprite(out_dir: &Path, sprite: &str) -> Result<(), BuildError> {
-    let dir = out_dir.join(crate::terminal::ASSET_DIR);
-    fs::create_dir_all(&dir)
-        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
-    let path = dir.join(crate::icons::SPRITE_FILE);
-    fs::write(&path, sprite).map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
-    Ok(())
+    write_asset(out_dir, crate::icons::SPRITE_FILE, sprite)
 }
 
 /// Extract a page block's first label as a string identifier. The
