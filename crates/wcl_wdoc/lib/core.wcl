@@ -163,30 +163,29 @@ type Page {
   // Optional YAML front matter for the Markdown target (`wcl wdoc
   // markdown`). The `frontmatter` block takes arbitrary `key = value`
   // entries, serialized to a `---`-fenced YAML header on the page's
-  // `.md`. Mark the block `@schemaless` so it accepts undeclared keys.
-  // Ignored by the HTML and PDF targets. See `Frontmatter`.
+  // `.md`. Ignored by the HTML and PDF targets. See `Frontmatter`.
   @doc("Optional YAML front matter for the Markdown target (Markdown only).")
   @child("frontmatter") frontmatter: Frontmatter?
   @doc("The page's content blocks.")
   @children(WdocBlock) children: list<WdocBlock>
 }
 
-// Page front matter for the Markdown target. Declared with no fields: the
-// author marks the *instance* `@schemaless` and writes any `key = value`
-// pairs they like, which the Markdown backend reads back (`Block::fields`)
-// and emits as a YAML header. This slot exists to register `frontmatter` as
-// a legal page child — it is not a `WdocBlock`, so it never renders as page
-// content and the HTML / PDF targets pass over it.
+// Page front matter for the Markdown target. The type is `@schemaless`
+// (an open, dynamic kind, like `wdoc_instance`): authors write any
+// `key = value` pairs they like and the Markdown backend reads them back
+// (`Block::fields`) and emits a YAML header. This slot exists to register
+// `frontmatter` as a legal page child — it is not a `WdocBlock`, so it
+// never renders as page content and the HTML / PDF targets pass over it.
 //
 //   page intro {
-//     @schemaless frontmatter {
+//     frontmatter {
 //       title    = "Intro"
 //       tags     = ["overview", "api"]
 //       audience = "llm"
 //     }
 //     h1 "Intro"
 //   }
-@block("frontmatter")
+@block("frontmatter") @schemaless
 type Frontmatter { }
 
 // Style bundle. Referenced from any IR block's `class: list<utf8>?`

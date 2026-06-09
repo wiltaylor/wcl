@@ -174,8 +174,8 @@ type SiteConfig {
 // backend builds SKILL.md's `---`-fenced YAML front matter from these
 // fields. The site's `start` page becomes SKILL.md; every other page is
 // written under `references/`. Arbitrary extra front-matter keys (e.g.
-// `allowed-tools`) can still be authored via a `@schemaless frontmatter`
-// block on the start page — they are merged with these.
+// `allowed-tools`) can still be authored via a `frontmatter` block on
+// the start page — they are merged with these.
 @block("skill")
 type SkillConfig {
   @doc("Skill name (SKILL.md front-matter `name`). A short lowercase slug.")

@@ -24,12 +24,12 @@ BASH
 
   h2 "Front matter"
 
-  p "A page can carry YAML front matter via a `frontmatter` block — handy for tagging pages with model-facing metadata. The block is schemaless: mark the instance `@schemaless` and write any `key = value` entries you like. They're serialized (in source order) to a `---`-fenced header at the top of the page's `.md`. The HTML and PDF targets ignore the block entirely."
+  p "A page can carry YAML front matter via a `frontmatter` block — handy for tagging pages with model-facing metadata. The block is an open, schemaless kind: write any `key = value` entries you like. They're serialized (in source order) to a `---`-fenced header at the top of the page's `.md`. The HTML and PDF targets ignore the block entirely."
 
   code wcl {
     source = <<'WCL'
 page intro { sites = [:demo]
-  @schemaless frontmatter {
+  frontmatter {
     title    = "Intro"
     tags     = ["overview", "api"]
     audience = "llm"
@@ -60,8 +60,8 @@ Body text.
 TEXT
   }
 
-  callout "Omitting @schemaless" {
-    class = ["warning"]
-    body  = "Without the `@schemaless` marker, WCL's strict schema check rejects the undeclared keys, so the build fails with a message pointing at the fix rather than silently dropping the front matter."
+  callout "Arbitrary keys are fine" {
+    class = ["note"]
+    body  = "The `frontmatter` type is declared `@schemaless` in the stdlib, so undeclared keys pass WCL's strict schema check — no per-instance marker is needed (writing `@schemaless frontmatter { … }` still works and means the same thing)."
   }
 }

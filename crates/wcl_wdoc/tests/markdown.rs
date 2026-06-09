@@ -175,24 +175,17 @@ fn frontmatter_block_becomes_yaml_header() {
 }
 
 #[test]
-fn frontmatter_without_schemaless_is_an_actionable_error() {
-    let tmp = TempDir::new().expect("mkdir tempdir");
-    let src = tmp.path().join("doc.wcl");
-    write_fixture(
-        &src,
-        "page p {\n  frontmatter {\n    title = \"Intro\"\n  }\n  h1 \"Intro\"\n}\n",
+fn frontmatter_needs_no_schemaless_marker() {
+    // The `Frontmatter` type is itself `@schemaless` (an open, dynamic
+    // kind), so a plain `frontmatter { … }` accepts arbitrary keys with
+    // no per-instance marker.
+    let (_t, out) = build(
+        "page p {\n  frontmatter {\n    title = \"Intro\"\n    audience = \"llm\"\n  }\n  h1 \"Intro\"\n}\n",
     );
-    let out = tmp.path().join("out");
-    match markdown(&src, &out, None) {
-        Err(BuildError::BadPage(msg)) => {
-            assert!(
-                msg.contains("@schemaless"),
-                "guidance mentions the fix: {msg}"
-            );
-        }
-        Ok(n) => panic!("expected a BadPage error, but it succeeded with {n} pages"),
-        Err(_) => panic!("expected a BadPage error, got a different BuildError"),
-    }
+    let md = read(&out, "p.md");
+    assert!(md.starts_with("---\n"), "leading YAML fence: {md}");
+    assert!(md.contains("title: Intro"));
+    assert!(md.contains("audience: llm"));
 }
 
 #[test]
