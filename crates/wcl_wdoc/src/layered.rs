@@ -176,6 +176,50 @@ mod tests {
         }
     }
 
+    /// Assert no two node AABBs overlap, treating each offset as the
+    /// node's top-left corner and allowing exact edge-touching.
+    fn assert_no_overlap(nodes: &[Node], offsets: &[(f64, f64)]) {
+        for i in 0..nodes.len() {
+            for j in (i + 1)..nodes.len() {
+                let (x1, y1) = offsets[i];
+                let (w1, h1) = nodes[i].size;
+                let (x2, y2) = offsets[j];
+                let (w2, h2) = nodes[j].size;
+                let overlaps = x1 + w1 > x2 + 1e-6
+                    && x2 + w2 > x1 + 1e-6
+                    && y1 + h1 > y2 + 1e-6
+                    && y2 + h2 > y1 + 1e-6;
+                assert!(
+                    !overlaps,
+                    "nodes {i} ({x1},{y1} {w1}x{h1}) and {j} ({x2},{y2} {w2}x{h2}) overlap"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn empty_input_empty_output() {
+        let offsets = assign_layered_offsets(&[], &[], Direction::TopToBottom, 30.0, 20.0);
+        assert!(offsets.is_empty());
+    }
+
+    #[test]
+    fn single_node_at_origin() {
+        let offsets = assign_layered_offsets(&[node("a")], &[], Direction::TopToBottom, 30.0, 20.0);
+        assert_eq!(offsets, vec![(0.0, 0.0)]);
+    }
+
+    #[test]
+    fn two_connected_nodes_stack_along_primary_axis() {
+        let nodes = vec![node("a"), node("b")];
+        let edges = vec![("a".into(), "b".into())];
+        let offsets = assign_layered_offsets(&nodes, &edges, Direction::TopToBottom, 30.0, 20.0);
+        // Same x (each layer has one node), b strictly below a.
+        assert!((offsets[0].0 - offsets[1].0).abs() < 1e-6);
+        assert!(offsets[1].1 > offsets[0].1);
+        assert!(offsets.iter().all(|(x, y)| x.is_finite() && y.is_finite()));
+    }
+
     #[test]
     fn linear_chain_top_to_bottom() {
         // a -> b -> c.
@@ -212,5 +256,79 @@ mod tests {
         assert!((offsets[0].1 - offsets[1].1).abs() < 1e-6);
         assert!((offsets[1].1 - offsets[2].1).abs() < 1e-6);
         assert!(offsets[0].0 < offsets[1].0 && offsets[1].0 < offsets[2].0);
+    }
+
+    #[test]
+    fn no_two_nodes_overlap_in_a_branching_dag() {
+        // Mixed sizes: a fans out to b/c/d, which converge on e; f and g
+        // are isolated and share rank 0 with a.
+        let sized = |id: &str, w: f64, h: f64| Node {
+            id: Some(id.into()),
+            size: (w, h),
+        };
+        let nodes = vec![
+            sized("a", 80.0, 40.0),
+            sized("b", 140.0, 60.0),
+            sized("c", 60.0, 30.0),
+            sized("d", 100.0, 50.0),
+            sized("e", 80.0, 40.0),
+            sized("f", 120.0, 20.0),
+            sized("g", 40.0, 40.0),
+        ];
+        let edges: Vec<(String, String)> = vec![
+            ("a".into(), "b".into()),
+            ("a".into(), "c".into()),
+            ("a".into(), "d".into()),
+            ("b".into(), "e".into()),
+            ("c".into(), "e".into()),
+            ("d".into(), "e".into()),
+        ];
+        for direction in [Direction::TopToBottom, Direction::LeftToRight] {
+            let offsets = assign_layered_offsets(&nodes, &edges, direction, 30.0, 20.0);
+            assert_no_overlap(&nodes, &offsets);
+        }
+    }
+
+    #[test]
+    fn cycle_self_loop_and_disconnected_terminate() {
+        // a→b→c→a is a cycle, d→d a self-loop, e is disconnected.
+        let nodes = vec![node("a"), node("b"), node("c"), node("d"), node("e")];
+        let edges: Vec<(String, String)> = vec![
+            ("a".into(), "b".into()),
+            ("b".into(), "c".into()),
+            ("c".into(), "a".into()),
+            ("d".into(), "d".into()),
+        ];
+        let offsets = assign_layered_offsets(&nodes, &edges, Direction::TopToBottom, 30.0, 20.0);
+        assert_eq!(offsets.len(), nodes.len());
+        assert!(offsets.iter().all(|(x, y)| x.is_finite() && y.is_finite()));
+        assert_no_overlap(&nodes, &offsets);
+    }
+
+    #[test]
+    fn deterministic_across_calls() {
+        let nodes = vec![node("a"), node("b"), node("c"), node("d")];
+        let edges: Vec<(String, String)> = vec![
+            ("a".into(), "b".into()),
+            ("a".into(), "c".into()),
+            ("c".into(), "d".into()),
+        ];
+        let first = assign_layered_offsets(&nodes, &edges, Direction::TopToBottom, 30.0, 20.0);
+        let second = assign_layered_offsets(&nodes, &edges, Direction::TopToBottom, 30.0, 20.0);
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn dag_ranks_are_monotone_along_the_primary_axis() {
+        // a→b→c: each successive layer sits strictly deeper on the
+        // primary axis (y for top-to-bottom, x for left-to-right).
+        let nodes = vec![node("a"), node("b"), node("c")];
+        let edges: Vec<(String, String)> = vec![("a".into(), "b".into()), ("b".into(), "c".into())];
+
+        let ttb = assign_layered_offsets(&nodes, &edges, Direction::TopToBottom, 30.0, 20.0);
+        assert!(ttb[0].1 < ttb[1].1 && ttb[1].1 < ttb[2].1);
+
+        let ltr = assign_layered_offsets(&nodes, &edges, Direction::LeftToRight, 30.0, 20.0);
+        assert!(ltr[0].0 < ltr[1].0 && ltr[1].0 < ltr[2].0);
     }
 }

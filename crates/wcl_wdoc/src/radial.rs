@@ -233,6 +233,27 @@ mod tests {
         (off.0 + size.0 / 2.0, off.1 + size.1 / 2.0)
     }
 
+    /// Assert no two node AABBs overlap, treating each offset as the
+    /// node's top-left corner and allowing exact edge-touching.
+    fn assert_no_overlap(nodes: &[Node], offsets: &[(f64, f64)]) {
+        for i in 0..nodes.len() {
+            for j in (i + 1)..nodes.len() {
+                let (x1, y1) = offsets[i];
+                let (w1, h1) = nodes[i].size;
+                let (x2, y2) = offsets[j];
+                let (w2, h2) = nodes[j].size;
+                let overlaps = x1 + w1 > x2 + 1e-6
+                    && x2 + w2 > x1 + 1e-6
+                    && y1 + h1 > y2 + 1e-6
+                    && y2 + h2 > y1 + 1e-6;
+                assert!(
+                    !overlaps,
+                    "nodes {i} ({x1},{y1} {w1}x{h1}) and {j} ({x2},{y2} {w2}x{h2}) overlap"
+                );
+            }
+        }
+    }
+
     #[test]
     fn empty_input_empty_output() {
         let offsets = assign_radial_offsets(&[], &[], RadialParams::default());
@@ -245,6 +266,64 @@ mod tests {
         assert_eq!(offsets.len(), 1);
         assert!(offsets[0].0.abs() < 1e-9);
         assert!(offsets[0].1.abs() < 1e-9);
+    }
+
+    #[test]
+    fn two_connected_nodes_hub_and_one_ring() {
+        let nodes = vec![node("a"), node("b")];
+        let edges = vec![("a".into(), "b".into())];
+        let offsets = assign_radial_offsets(&nodes, &edges, RadialParams::default());
+        assert_eq!(offsets.len(), 2);
+        assert!(offsets.iter().all(|(x, y)| x.is_finite() && y.is_finite()));
+        // b sits on a ring around the hub a, clear of its box.
+        let a_c = center(offsets[0], nodes[0].size);
+        let b_c = center(offsets[1], nodes[1].size);
+        assert!((b_c.0 - a_c.0).hypot(b_c.1 - a_c.1) > 1.0);
+        assert_no_overlap(&nodes, &offsets);
+    }
+
+    #[test]
+    fn no_two_nodes_overlap_in_a_two_ring_graph() {
+        // Hub h with three ring-1 neighbours, two ring-2 descendants and
+        // an isolated node (outermost ring), mixed sizes.
+        let sized = |id: &str, w: f64, h: f64| Node {
+            id: Some(id.into()),
+            size: (w, h),
+        };
+        let nodes = vec![
+            sized("h", 80.0, 40.0),
+            sized("a", 120.0, 60.0),
+            sized("b", 60.0, 30.0),
+            sized("c", 100.0, 50.0),
+            sized("d", 80.0, 40.0),
+            sized("e", 90.0, 45.0),
+            sized("f", 70.0, 35.0),
+        ];
+        let edges: Vec<(String, String)> = vec![
+            ("h".into(), "a".into()),
+            ("h".into(), "b".into()),
+            ("h".into(), "c".into()),
+            ("a".into(), "d".into()),
+            ("b".into(), "e".into()),
+        ];
+        let offsets = assign_radial_offsets(&nodes, &edges, RadialParams::default());
+        assert_no_overlap(&nodes, &offsets);
+    }
+
+    #[test]
+    fn cycle_self_loop_and_disconnected_terminate() {
+        // a→b→c→a is a cycle, d→d a self-loop (dropped), e disconnected.
+        let nodes = vec![node("a"), node("b"), node("c"), node("d"), node("e")];
+        let edges: Vec<(String, String)> = vec![
+            ("a".into(), "b".into()),
+            ("b".into(), "c".into()),
+            ("c".into(), "a".into()),
+            ("d".into(), "d".into()),
+        ];
+        let offsets = assign_radial_offsets(&nodes, &edges, RadialParams::default());
+        assert_eq!(offsets.len(), nodes.len());
+        assert!(offsets.iter().all(|(x, y)| x.is_finite() && y.is_finite()));
+        assert_no_overlap(&nodes, &offsets);
     }
 
     #[test]

@@ -216,6 +216,27 @@ mod tests {
         (a.0 - b.0).hypot(a.1 - b.1)
     }
 
+    /// Assert no two node AABBs overlap, treating each offset as the
+    /// node's top-left corner and allowing exact edge-touching.
+    fn assert_no_overlap(nodes: &[Node], offsets: &[(f64, f64)]) {
+        for i in 0..nodes.len() {
+            for j in (i + 1)..nodes.len() {
+                let (x1, y1) = offsets[i];
+                let (w1, h1) = nodes[i].size;
+                let (x2, y2) = offsets[j];
+                let (w2, h2) = nodes[j].size;
+                let overlaps = x1 + w1 > x2 + 1e-6
+                    && x2 + w2 > x1 + 1e-6
+                    && y1 + h1 > y2 + 1e-6
+                    && y2 + h2 > y1 + 1e-6;
+                assert!(
+                    !overlaps,
+                    "nodes {i} ({x1},{y1} {w1}x{h1}) and {j} ({x2},{y2} {w2}x{h2}) overlap"
+                );
+            }
+        }
+    }
+
     #[test]
     fn empty_input_empty_output() {
         let offsets = assign_force_offsets(&[], &[], ForceParams::default());
@@ -290,6 +311,51 @@ mod tests {
         // Spring holds the connected pair in a sane band around the
         // ideal length (link_distance + both radii ≈ 60 + 2*44.7).
         assert!((80.0..220.0).contains(&d_linked), "d_linked = {d_linked}");
+    }
+
+    #[test]
+    fn no_two_nodes_overlap_in_a_small_graph() {
+        // A ring of five plus a tail and an isolated node, mixed sizes:
+        // repulsion (with box-radius-aware gaps) should leave every pair
+        // of boxes disjoint once the system has relaxed.
+        let sized = |id: &str, w: f64, h: f64| Node {
+            id: Some(id.into()),
+            size: (w, h),
+        };
+        let nodes = vec![
+            sized("a", 80.0, 40.0),
+            sized("b", 120.0, 60.0),
+            sized("c", 60.0, 30.0),
+            sized("d", 100.0, 50.0),
+            sized("e", 80.0, 40.0),
+            sized("f", 90.0, 45.0),
+            sized("g", 70.0, 35.0),
+        ];
+        let edges: Vec<(String, String)> = vec![
+            ("a".into(), "b".into()),
+            ("b".into(), "c".into()),
+            ("c".into(), "d".into()),
+            ("d".into(), "e".into()),
+            ("e".into(), "a".into()),
+            ("e".into(), "f".into()),
+        ];
+        let offsets = assign_force_offsets(&nodes, &edges, ForceParams::default());
+        assert_no_overlap(&nodes, &offsets);
+    }
+
+    #[test]
+    fn cycle_self_loop_and_disconnected_terminate() {
+        // a→b→c→a is a cycle, d→d a self-loop (dropped), e disconnected.
+        let nodes = vec![node("a"), node("b"), node("c"), node("d"), node("e")];
+        let edges: Vec<(String, String)> = vec![
+            ("a".into(), "b".into()),
+            ("b".into(), "c".into()),
+            ("c".into(), "a".into()),
+            ("d".into(), "d".into()),
+        ];
+        let offsets = assign_force_offsets(&nodes, &edges, ForceParams::default());
+        assert_eq!(offsets.len(), nodes.len());
+        assert!(offsets.iter().all(|(x, y)| x.is_finite() && y.is_finite()));
     }
 
     #[test]
