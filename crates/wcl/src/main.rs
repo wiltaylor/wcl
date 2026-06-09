@@ -308,15 +308,9 @@ fn main() -> ExitCode {
                 eprintln!("failed to open log file {}: {e}", log_path.display());
                 return ExitCode::from(EXIT_IO);
             }
-            let rt = match tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-            {
+            let rt = match build_runtime() {
                 Ok(rt) => rt,
-                Err(e) => {
-                    eprintln!("failed to start tokio runtime: {e}");
-                    return ExitCode::from(EXIT_IO);
-                }
+                Err(code) => return ExitCode::from(code),
             };
             match tcp {
                 Some(addr) => match rt.block_on(wcl_lsp::start_tcp(addr)) {
@@ -403,49 +397,65 @@ fn build_error_code(err: &wcl_wdoc::BuildError) -> u8 {
     }
 }
 
+/// Map a wdoc `PdfError` to a CLI exit code. Companion to
+/// [`build_error_code`] for the `pdf` subcommand's distinct error type.
+fn pdf_error_code(err: &wcl_wdoc::PdfError) -> u8 {
+    match err {
+        wcl_wdoc::PdfError::Io(..) => EXIT_IO,
+        wcl_wdoc::PdfError::Parse(_) => EXIT_PARSE,
+        wcl_wdoc::PdfError::Schema(_) => EXIT_SCHEMA,
+        wcl_wdoc::PdfError::Eval(_) => EXIT_EVAL,
+        wcl_wdoc::PdfError::BadDoc(_) => EXIT_EVAL,
+        wcl_wdoc::PdfError::Render(_) => EXIT_IO,
+    }
+}
+
+/// Report the outcome of a wdoc page-render pipeline (`build` / `markdown`
+/// / `skill`): print the page count on success, or render the error and map
+/// it to an exit code on failure.
+fn report_pages(result: Result<usize, wcl_wdoc::BuildError>) -> u8 {
+    match result {
+        Ok(n) => {
+            println!("wrote {n} page{}", if n == 1 { "" } else { "s" });
+            EXIT_OK
+        }
+        Err(err) => {
+            let code = build_error_code(&err);
+            err.report();
+            code
+        }
+    }
+}
+
+/// Build the multi-thread tokio runtime shared by the `lsp` and `serve`
+/// subcommands. On failure prints the error and yields `EXIT_IO` so the
+/// caller can return it in its own exit-code shape.
+fn build_runtime() -> Result<tokio::runtime::Runtime, u8> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| {
+            eprintln!("failed to start tokio runtime: {e}");
+            EXIT_IO
+        })
+}
+
 fn run_wdoc(cmd: WdocCommand) -> u8 {
     match cmd {
         WdocCommand::Build { file, out, site } => {
-            match wcl_wdoc::build(&file, &out, site.as_deref()) {
-                Ok(n) => {
-                    for w in wcl_wdoc::take_edge_warnings() {
-                        eprintln!("warning: {w}");
-                    }
-                    println!("wrote {n} page{}", if n == 1 { "" } else { "s" });
-                    EXIT_OK
-                }
-                Err(err) => {
-                    let code = build_error_code(&err);
-                    err.report();
-                    code
+            let result = wcl_wdoc::build(&file, &out, site.as_deref());
+            if result.is_ok() {
+                for w in wcl_wdoc::take_edge_warnings() {
+                    eprintln!("warning: {w}");
                 }
             }
+            report_pages(result)
         }
         WdocCommand::Markdown { file, out, site } => {
-            match wcl_wdoc::markdown(&file, &out, site.as_deref()) {
-                Ok(n) => {
-                    println!("wrote {n} page{}", if n == 1 { "" } else { "s" });
-                    EXIT_OK
-                }
-                Err(err) => {
-                    let code = build_error_code(&err);
-                    err.report();
-                    code
-                }
-            }
+            report_pages(wcl_wdoc::markdown(&file, &out, site.as_deref()))
         }
         WdocCommand::Skill { file, out, site } => {
-            match wcl_wdoc::skill(&file, &out, site.as_deref()) {
-                Ok(n) => {
-                    println!("wrote {n} page{}", if n == 1 { "" } else { "s" });
-                    EXIT_OK
-                }
-                Err(err) => {
-                    let code = build_error_code(&err);
-                    err.report();
-                    code
-                }
-            }
+            report_pages(wcl_wdoc::skill(&file, &out, site.as_deref()))
         }
         WdocCommand::Pdf {
             file,
@@ -458,14 +468,7 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
                 EXIT_OK
             }
             Err(err) => {
-                let code = match &err {
-                    wcl_wdoc::PdfError::Io(..) => EXIT_IO,
-                    wcl_wdoc::PdfError::Parse(_) => EXIT_PARSE,
-                    wcl_wdoc::PdfError::Schema(_) => EXIT_SCHEMA,
-                    wcl_wdoc::PdfError::Eval(_) => EXIT_EVAL,
-                    wcl_wdoc::PdfError::BadDoc(_) => EXIT_EVAL,
-                    wcl_wdoc::PdfError::Render(_) => EXIT_IO,
-                };
+                let code = pdf_error_code(&err);
                 err.report();
                 code
             }
@@ -476,15 +479,9 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
             out,
             site,
         } => {
-            let rt = match tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-            {
+            let rt = match build_runtime() {
                 Ok(rt) => rt,
-                Err(e) => {
-                    eprintln!("failed to start tokio runtime: {e}");
-                    return EXIT_IO;
-                }
+                Err(code) => return code,
             };
             let result = rt.block_on(serve::serve(file, out, addr, site));
             // Tear the runtime down with a bound so a stray in-flight
