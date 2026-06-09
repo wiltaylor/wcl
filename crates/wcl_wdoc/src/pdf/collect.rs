@@ -11,16 +11,15 @@
 //! as on the HTML path. Non-prose fundamentals are skipped at this phase and
 //! rejoin with the SVG/table work.
 
-use std::collections::BTreeMap;
 use std::path::Path;
 
-use wcl_lang::{Block, Document, Value, VariantPayload};
+use wcl_lang::{Block, Document, Value};
 
 use crate::inline::InlinePatterns;
 use crate::render::{
-    collect_partials, enter_collect, field_bool, field_f64, field_symbol, field_utf8,
-    field_utf8_list, kind_for_variant, label_string, lower_to_values, map_utf8, map_utf8_list,
-    render_diagram,
+    as_record_variant, cell_text, collect_partials, enter_collect, field_bool, field_f64,
+    field_symbol, field_utf8, field_utf8_list, gather_inline_text, heading_level, label_string,
+    lower_to_values, map_list, map_utf8, map_utf8_list, render_diagram,
 };
 
 use super::ir::{BlockNode, CardSpec, CodeSpan, FontFamily, InlineRun, ListLine, TextStyle};
@@ -198,7 +197,7 @@ fn walk_block_variant(
                     out.push(BlockNode::Heading {
                         level,
                         runs: vec![InlineRun::Text {
-                            text: inline_text(children),
+                            text: gather_inline_text(children),
                             style: TextStyle::heading(),
                         }],
                     });
@@ -460,21 +459,6 @@ fn callout_accent(classes: &[String]) -> (u8, u8, u8) {
     (136, 136, 136)
 }
 
-/// Plain text of a table cell value.
-fn cell_text(v: &Value) -> String {
-    match v {
-        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s) => s.clone(),
-        Value::Bool(b) => b.to_string(),
-        other => other.as_f64().map_or(String::new(), |f| {
-            if f.fract() == 0.0 {
-                format!("{}", f as i64)
-            } else {
-                format!("{f}")
-            }
-        }),
-    }
-}
-
 /// Force every run in a (header) cell bold.
 fn bold_cell(runs: Vec<InlineRun>) -> Vec<InlineRun> {
     runs.into_iter().map(bold_run).collect()
@@ -568,56 +552,5 @@ fn li_text(li: &Block<'_>) -> String {
     match li.labels().ok().and_then(|l| l.into_iter().next()) {
         Some(Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s)) => s,
         _ => String::new(),
-    }
-}
-
-/// The concatenated raw text of an element's inline children (for headings,
-/// where we don't run the emphasis engine).
-fn inline_text(children: &[Value]) -> String {
-    let mut s = String::new();
-    for c in children {
-        if let Some((kind, map)) = as_record_variant(c) {
-            match kind.as_str() {
-                "inline" => s.push_str(&map_utf8(map, "text").unwrap_or_default()),
-                "paragraph" => s.push_str(&map_utf8_list(map, "spans").join("")),
-                "element" => s.push_str(&inline_text(map_list(map, "children"))),
-                _ => {}
-            }
-        }
-    }
-    s
-}
-
-fn heading_level(classes: &[String]) -> Option<u8> {
-    for c in classes {
-        if let Some(n) = c.strip_prefix("heading-")
-            && let Ok(level) = n.parse::<u8>()
-            && (1..=6).contains(&level)
-        {
-            return Some(level);
-        }
-    }
-    None
-}
-
-/// Destructure a `Value::Variant` with a record payload into `(kind, map)`.
-fn as_record_variant(value: &Value) -> Option<(String, &BTreeMap<String, Value>)> {
-    let Value::Variant {
-        variant, payload, ..
-    } = value
-    else {
-        return None;
-    };
-    let VariantPayload::Record(map) = payload else {
-        return None;
-    };
-    Some((kind_for_variant(variant), map))
-}
-
-/// Read a list-typed field from a payload map (empty slice when absent).
-fn map_list<'a>(map: &'a BTreeMap<String, Value>, name: &str) -> &'a [Value] {
-    match map.get(name) {
-        Some(Value::List(items)) => items,
-        _ => &[],
     }
 }

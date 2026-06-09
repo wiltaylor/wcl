@@ -13,19 +13,18 @@
 //! Markdown; videos are skipped (an online video leaves a link); everything
 //! else lowers to fundamentals.
 
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use wcl_lang::{Block, Document, Value, VariantPayload};
+use wcl_lang::{Block, Document, Value};
 
 use crate::build::BuildError;
 use crate::inline::InlinePatterns;
 use crate::render::{
-    MAX_LOWER_DEPTH, collect_partials, enter_collect, expand_component_children,
-    expand_repeater_children, field_bool, field_symbol, field_utf8, field_utf8_list,
-    instance_target_def, kind_for_variant, lower_to_values, map_utf8, map_utf8_list,
-    render_diagram_static,
+    MAX_LOWER_DEPTH, as_record_variant, cell_text, collect_partials, enter_collect,
+    expand_component_children, expand_repeater_children, field_bool, field_symbol, field_utf8,
+    field_utf8_list, gather_inline_text, heading_level, instance_target_def, label_string,
+    lower_to_values, map_list, map_utf8, map_utf8_list, render_diagram_static,
 };
 use crate::terminal::ASSET_DIR;
 
@@ -561,18 +560,6 @@ fn is_heading_tag(tag: &str) -> bool {
     matches!(tag, "h1" | "h2" | "h3" | "h4" | "h5" | "h6")
 }
 
-fn heading_level(classes: &[String]) -> Option<u8> {
-    for c in classes {
-        if let Some(n) = c.strip_prefix("heading-")
-            && let Ok(level) = n.parse::<u8>()
-            && (1..=6).contains(&level)
-        {
-            return Some(level);
-        }
-    }
-    None
-}
-
 /// Sanitize a page name into a filename-safe stem.
 fn sanitize(name: &str) -> String {
     name.chars()
@@ -586,64 +573,3 @@ fn sanitize(name: &str) -> String {
         .collect()
 }
 
-/// The inline label of a block as a plain string.
-fn label_string(block: &Block<'_>) -> Option<String> {
-    match block.labels().ok()?.into_iter().next()? {
-        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s) => Some(s),
-        _ => None,
-    }
-}
-
-/// Plain text of a table-cell value.
-fn cell_text(v: &Value) -> String {
-    match v {
-        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s) => s.clone(),
-        Value::Bool(b) => b.to_string(),
-        other => other.as_f64().map_or(String::new(), |f| {
-            if f.fract() == 0.0 {
-                format!("{}", f as i64)
-            } else {
-                format!("{f}")
-            }
-        }),
-    }
-}
-
-/// The concatenated raw text of an element's inline children (so the inline
-/// engine runs once over the whole paragraph).
-fn gather_inline_text(children: &[Value]) -> String {
-    let mut s = String::new();
-    for c in children {
-        if let Some((kind, map)) = as_record_variant(c) {
-            match kind.as_str() {
-                "inline" => s.push_str(&map_utf8(map, "text").unwrap_or_default()),
-                "paragraph" => s.push_str(&map_utf8_list(map, "spans").join("")),
-                "element" => s.push_str(&gather_inline_text(map_list(map, "children"))),
-                _ => {}
-            }
-        }
-    }
-    s
-}
-
-/// Destructure a `Value::Variant` with a record payload into `(kind, map)`.
-fn as_record_variant(value: &Value) -> Option<(String, &BTreeMap<String, Value>)> {
-    let Value::Variant {
-        variant, payload, ..
-    } = value
-    else {
-        return None;
-    };
-    let VariantPayload::Record(map) = payload else {
-        return None;
-    };
-    Some((kind_for_variant(variant), map))
-}
-
-/// Read a list-typed field from a payload map (empty slice when absent).
-fn map_list<'a>(map: &'a BTreeMap<String, Value>, name: &str) -> &'a [Value] {
-    match map.get(name) {
-        Some(Value::List(items)) => items,
-        _ => &[],
-    }
-}
