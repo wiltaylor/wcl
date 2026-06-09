@@ -175,6 +175,70 @@ pub struct SymbolHit<'a> {
     pub source_path: Option<&'a Path>,
 }
 
+/// Scan every source for the first declaration matching `$fqn` whose symbol
+/// kind, AST item, and view struct all share `$variant`'s name, returning the
+/// constructed view from the enclosing fn on a hit. The macro emits only the
+/// search loop — the caller supplies the miss tail (`None`, or a synthetic
+/// fallback). `cells`/`nocells` selects whether the view carries a `cells`
+/// borrow; an optional trailing field name (`is_imported`) is set from the
+/// source's import origin. Collapses the five `type_decl`/`interface`/
+/// `union_decl`/`symbol_set`/`connection_decl` lookups (M4).
+macro_rules! find_decl {
+    ($self:ident, $fqn:ident, $variant:ident, cells $(, $imp:ident)?) => {
+        for src in $self.all_sources() {
+            if let Some(rec) = src.symbols.lookup($fqn)
+                && matches!(rec.kind, SymbolKind::$variant)
+                && let ast::Item::$variant(node) = &src.items[rec.path.item_index]
+            {
+                return Some($variant {
+                    ast: node,
+                    file_ns: src.file_ns,
+                    cells: &src.cells[rec.path.item_index],
+                    doc: $self,
+                    $( $imp: src.path.is_some(), )?
+                });
+            }
+        }
+    };
+    ($self:ident, $fqn:ident, $variant:ident, nocells) => {
+        for src in $self.all_sources() {
+            if let Some(rec) = src.symbols.lookup($fqn)
+                && matches!(rec.kind, SymbolKind::$variant)
+                && let ast::Item::$variant(node) = &src.items[rec.path.item_index]
+            {
+                return Some($variant {
+                    ast: node,
+                    file_ns: src.file_ns,
+                    doc: $self,
+                });
+            }
+        }
+    };
+}
+
+/// Iterate every `$variant` declaration across the document and its eager
+/// imports, in source order, yielding the matching `cells`-carrying view.
+/// Collapses the `interfaces`/`union_decls`/`symbol_sets` iterators (M4).
+macro_rules! decl_iter_cells {
+    ($self:ident, $variant:ident) => {{
+        let doc = $self;
+        doc.all_sources().into_iter().flat_map(move |src| {
+            src.items
+                .iter()
+                .zip(src.cells.iter())
+                .filter_map(move |(item, cells)| match item {
+                    ast::Item::$variant(node) => Some($variant {
+                        ast: node,
+                        file_ns: src.file_ns,
+                        cells,
+                        doc,
+                    }),
+                    _ => None,
+                })
+        })
+    }};
+}
+
 impl Document {
     pub fn open(source: &str, name: &str) -> Result<Self, ParseError> {
         Self::open_with(source, name, &Environment::new())
@@ -969,20 +1033,7 @@ impl Document {
     /// importer, every eagerly-imported file, and registry-injected
     /// types in that order.
     pub fn type_decl(&self, fqn: &str) -> Option<TypeDecl<'_>> {
-        for src in self.all_sources() {
-            if let Some(rec) = src.symbols.lookup(fqn)
-                && matches!(rec.kind, SymbolKind::TypeDecl)
-                && let ast::Item::TypeDecl(t) = &src.items[rec.path.item_index]
-            {
-                return Some(TypeDecl {
-                    ast: t,
-                    file_ns: src.file_ns,
-                    cells: &src.cells[rec.path.item_index],
-                    doc: self,
-                    is_imported: src.path.is_some(),
-                });
-            }
-        }
+        find_decl!(self, fqn, TypeDecl, cells, is_imported);
         // Synthetic types live in the root namespace (no file ns prefix)
         // and are not registered in the parser-built index.
         let target: Vec<&str> = fqn.split('.').collect();
@@ -1033,90 +1084,27 @@ impl Document {
     /// Look up an interface declaration by fully-qualified name.
     /// Mirrors `type_decl` / `union_decl`.
     pub fn interface(&self, fqn: &str) -> Option<InterfaceDecl<'_>> {
-        for src in self.all_sources() {
-            if let Some(rec) = src.symbols.lookup(fqn)
-                && matches!(rec.kind, SymbolKind::InterfaceDecl)
-                && let ast::Item::InterfaceDecl(i) = &src.items[rec.path.item_index]
-            {
-                return Some(InterfaceDecl {
-                    ast: i,
-                    file_ns: src.file_ns,
-                    cells: &src.cells[rec.path.item_index],
-                    doc: self,
-                });
-            }
-        }
+        find_decl!(self, fqn, InterfaceDecl, cells);
         None
     }
 
     pub fn interfaces(&self) -> impl Iterator<Item = InterfaceDecl<'_>> + '_ {
-        let doc = self;
-        self.all_sources().into_iter().flat_map(move |src| {
-            src.items
-                .iter()
-                .zip(src.cells.iter())
-                .filter_map(move |(item, cells)| match item {
-                    ast::Item::InterfaceDecl(i) => Some(InterfaceDecl {
-                        ast: i,
-                        file_ns: src.file_ns,
-                        cells,
-                        doc,
-                    }),
-                    _ => None,
-                })
-        })
+        decl_iter_cells!(self, InterfaceDecl)
     }
 
     /// Look up a union by fully-qualified name (dotted).
     pub fn union_decl(&self, fqn: &str) -> Option<UnionDecl<'_>> {
-        for src in self.all_sources() {
-            if let Some(rec) = src.symbols.lookup(fqn)
-                && matches!(rec.kind, SymbolKind::UnionDecl)
-                && let ast::Item::UnionDecl(u) = &src.items[rec.path.item_index]
-            {
-                return Some(UnionDecl {
-                    ast: u,
-                    file_ns: src.file_ns,
-                    cells: &src.cells[rec.path.item_index],
-                    doc: self,
-                });
-            }
-        }
+        find_decl!(self, fqn, UnionDecl, cells);
         None
     }
 
     pub fn union_decls(&self) -> impl Iterator<Item = UnionDecl<'_>> + '_ {
-        let doc = self;
-        self.all_sources().into_iter().flat_map(move |src| {
-            src.items
-                .iter()
-                .zip(src.cells.iter())
-                .filter_map(move |(item, cells)| match item {
-                    ast::Item::UnionDecl(u) => Some(UnionDecl {
-                        ast: u,
-                        file_ns: src.file_ns,
-                        cells,
-                        doc,
-                    }),
-                    _ => None,
-                })
-        })
+        decl_iter_cells!(self, UnionDecl)
     }
 
     /// Look up a connection schema by fully-qualified name (dotted).
     pub fn connection_decl(&self, fqn: &str) -> Option<ConnectionDecl<'_>> {
-        for src in self.all_sources() {
-            if let Some(rec) = src.symbols.lookup(fqn)
-                && matches!(rec.kind, SymbolKind::ConnectionDecl)
-                && let ast::Item::ConnectionDecl(c) = &src.items[rec.path.item_index]
-            {
-                return Some(ConnectionDecl {
-                    ast: c,
-                    file_ns: src.file_ns,
-                    doc: self,
-                });
-            }
-        }
+        find_decl!(self, fqn, ConnectionDecl, nocells);
         None
     }
 
@@ -1146,38 +1134,12 @@ impl Document {
     }
 
     pub fn symbol_set(&self, fqn: &str) -> Option<SymbolSetDecl<'_>> {
-        for src in self.all_sources() {
-            if let Some(rec) = src.symbols.lookup(fqn)
-                && matches!(rec.kind, SymbolKind::SymbolSetDecl)
-                && let ast::Item::SymbolSetDecl(s) = &src.items[rec.path.item_index]
-            {
-                return Some(SymbolSetDecl {
-                    ast: s,
-                    file_ns: src.file_ns,
-                    cells: &src.cells[rec.path.item_index],
-                    doc: self,
-                });
-            }
-        }
+        find_decl!(self, fqn, SymbolSetDecl, cells);
         None
     }
 
     pub fn symbol_sets(&self) -> impl Iterator<Item = SymbolSetDecl<'_>> + '_ {
-        let doc = self;
-        self.all_sources().into_iter().flat_map(move |src| {
-            src.items
-                .iter()
-                .zip(src.cells.iter())
-                .filter_map(move |(item, cells)| match item {
-                    ast::Item::SymbolSetDecl(s) => Some(SymbolSetDecl {
-                        ast: s,
-                        file_ns: src.file_ns,
-                        cells,
-                        doc,
-                    }),
-                    _ => None,
-                })
-        })
+        decl_iter_cells!(self, SymbolSetDecl)
     }
 
     /// Resolve a [`TypeRef`] to either its built-in tag or the user-declared
