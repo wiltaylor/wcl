@@ -214,8 +214,8 @@ fn whole_word_matches(source: &str, needle: &str) -> Vec<(usize, usize)> {
     while i + nbytes.len() <= bytes.len() {
         if &bytes[i..i + nbytes.len()] == nbytes {
             let before_ok = i == 0 || !crate::scan::is_ident_byte(bytes[i - 1]);
-            let after_ok =
-                i + nbytes.len() == bytes.len() || !crate::scan::is_ident_byte(bytes[i + nbytes.len()]);
+            let after_ok = i + nbytes.len() == bytes.len()
+                || !crate::scan::is_ident_byte(bytes[i + nbytes.len()]);
             if before_ok && after_ok {
                 out.push((i, i + nbytes.len()));
                 i += nbytes.len();

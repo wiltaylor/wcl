@@ -354,7 +354,13 @@ impl InlinePatterns {
     /// whose `to_span` fn doesn't return a `list` (or matches empty) falls
     /// back to emitting the matched text literally — the zero-length guard
     /// also stops a pattern like `()` looping forever.
-    fn tokenize(&self, doc: &Document, text: &str, depth: usize, mut emit: impl FnMut(InlineToken)) {
+    fn tokenize(
+        &self,
+        doc: &Document,
+        text: &str,
+        depth: usize,
+        mut emit: impl FnMut(InlineToken),
+    ) {
         if depth >= MAX_DEPTH || self.compiled.is_empty() {
             emit(InlineToken::Literal(text));
             return;

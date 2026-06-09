@@ -480,7 +480,13 @@ impl<'a> Lexer<'a> {
                     i += 1;
                 }
                 _ => {
-                    i = push_decoded_byte_run(line, i, opener, "invalid UTF-8 in heredoc body", buf)?;
+                    i = push_decoded_byte_run(
+                        line,
+                        i,
+                        opener,
+                        "invalid UTF-8 in heredoc body",
+                        buf,
+                    )?;
                 }
             }
         }

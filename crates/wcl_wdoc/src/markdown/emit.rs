@@ -572,4 +572,3 @@ fn sanitize(name: &str) -> String {
         })
         .collect()
 }
-
