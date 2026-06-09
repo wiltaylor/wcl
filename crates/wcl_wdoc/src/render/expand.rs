@@ -10,7 +10,9 @@ use std::sync::Arc;
 
 use wcl_lang::{Block, Document, Value};
 
-use super::{MAX_LOWER_DEPTH, label_string};
+use crate::inline::InlinePatterns;
+
+use super::{MAX_LOWER_DEPTH, field_bool, label_string};
 
 /// Flatten a container's children, replacing every `wdoc_repeater`,
 /// `wdoc_component` instance, and `wdoc_instance` (recursively, in place)
@@ -156,6 +158,60 @@ pub(crate) fn enter_collect(tag: &str) -> Option<CollectGuard> {
             Some(CollectGuard(tag.to_string()))
         }
     })
+}
+
+/// Handle the structural block kinds every backend treats identically,
+/// so HTML / PDF / Markdown dispatch them once instead of three times:
+///
+/// - an `@only` / `@except`-filtered block contributes nothing;
+/// - speaker `notes` and Markdown `frontmatter` never render as page
+///   content (front matter is read separately by the Markdown target);
+/// - a `partial` deposit renders at its source only with
+///   `show_here = true`;
+/// - a `collect` gathers every matching `partial`'s body across the
+///   document, cycle-guarded (the guard is held across the recursion).
+///
+/// Children are fed back through `recurse` (the backend's own per-block
+/// entry point). Returns `Some(outcome)` when the block was one of these
+/// kinds and is fully handled; `None` means "not structural — run your
+/// own dispatch". `fragment` is deliberately NOT handled here: HTML
+/// wraps fragment children in a step-reveal `<div>`, so only the static
+/// backends treat it as transparent.
+pub(crate) fn walk_structural<E>(
+    doc: &Document,
+    block: &Block<'_>,
+    patterns: &InlinePatterns,
+    recurse: &mut dyn for<'b> FnMut(&Block<'b>) -> Result<(), E>,
+) -> Option<Result<(), E>> {
+    if !crate::visibility::block_visible(block, patterns) {
+        return Some(Ok(()));
+    }
+    match block.kind() {
+        "notes" | "frontmatter" => Some(Ok(())),
+        "partial" => {
+            if field_bool(block, "show_here") == Some(true) {
+                for child in block.blocks() {
+                    if let Err(e) = recurse(&child) {
+                        return Some(Err(e));
+                    }
+                }
+            }
+            Some(Ok(()))
+        }
+        "collect" => {
+            let tag = label_string(block).unwrap_or_default();
+            let Some(_guard) = enter_collect(&tag) else {
+                return Some(Ok(()));
+            };
+            for child in collect_partials(doc, &tag) {
+                if let Err(e) = recurse(&child) {
+                    return Some(Err(e));
+                }
+            }
+            Some(Ok(()))
+        }
+        _ => None,
+    }
 }
 
 /// Expand a `wdoc_component` instance's `wdoc_body` once, binding each

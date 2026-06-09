@@ -362,11 +362,19 @@ pub(crate) fn render_block(
     patterns: &InlinePatterns,
     base_dir: Option<&Path>,
 ) -> Option<String> {
-    // `@only` / `@except` can scope a block to a subset of sites / templates /
-    // backends. A filtered-out block contributes nothing (empty string is safe
-    // in both the page loop's `filter_map` and the nested concatenators).
-    if !crate::visibility::block_visible(block, patterns) {
-        return Some(String::new());
+    // The structural kinds every backend shares — visibility filtering,
+    // `notes` / `frontmatter`, `partial` deposits, and cycle-guarded
+    // `collect` gathering — dispatch through the common walker; their
+    // children (if any) feed back through this function.
+    let mut buf = String::new();
+    let structural = crate::render::walk_structural(doc, block, patterns, &mut |b| {
+        if let Some(s) = render_block(doc, b, patterns, base_dir) {
+            buf.push_str(&s);
+        }
+        Ok::<(), std::convert::Infallible>(())
+    });
+    if structural.is_some() {
+        return Some(buf);
     }
     match block.kind() {
         "column" => Some(render_column(doc, block, patterns, base_dir)),
@@ -375,10 +383,6 @@ pub(crate) fn render_block(
         // them one keypress at a time. Like `column`, the `@children`
         // wrapping can't live in a WCL `lower`, so it's rendered here.
         "fragment" => Some(render_fragment(doc, block, patterns, base_dir)),
-        // Speaker `notes` are invisible in the normal flow — on the
-        // presentation build path they're pulled out and rendered into
-        // the slide's notes overlay instead (see build.rs).
-        "notes" => Some(String::new()),
         "table" => Some(render_table(doc, block, patterns)),
         // Lists are fundamental HTML blocks rendered directly (like
         // `table`): a pure-WCL lower can't see `@children`, so it can't
@@ -417,36 +421,6 @@ pub(crate) fn render_block(
         // render — emit the sentinel; `render_component` substitutes it.
         // (Outside a component it has no effect; the sentinel is invisible.)
         "wdoc_content" => Some(WF_CONTENT_SLOT.to_string()),
-        // A `partial` is a tagged content deposit gathered by a matching
-        // `collect`. It is invisible at its source unless `show_here = true`,
-        // which also renders its body here.
-        "partial" => {
-            if field_bool(block, "show_here") == Some(true) {
-                Some(
-                    block
-                        .blocks()
-                        .filter_map(|b| render_block(doc, &b, patterns, base_dir))
-                        .collect(),
-                )
-            } else {
-                Some(String::new())
-            }
-        }
-        // A `collect` gathers every `partial` with the matching `tag`, across
-        // the document and its eager imports, and renders their bodies in
-        // document order. The guard breaks collect → partial → collect cycles.
-        "collect" => {
-            let tag = label_string(block).unwrap_or_default();
-            let Some(_guard) = enter_collect(&tag) else {
-                return Some(String::new());
-            };
-            Some(
-                collect_partials(doc, &tag)
-                    .iter()
-                    .filter_map(|b| render_block(doc, b, patterns, base_dir))
-                    .collect(),
-            )
-        }
         // Everything else lowers via WCL — `text` / `code` (which emit the
         // new `Inline` / `Highlighted` leaf fundamentals), the headings,
         // `callout`, and any custom block — UNLESS the kind names a

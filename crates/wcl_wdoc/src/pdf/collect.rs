@@ -17,9 +17,10 @@ use wcl_lang::{Block, Document, Value};
 
 use crate::inline::InlinePatterns;
 use crate::render::{
-    as_record_variant, cell_text, collect_partials, enter_collect, field_bool, field_f64,
-    field_symbol, field_utf8, field_utf8_list, gather_inline_text, heading_level, label_string,
-    lower_to_values, map_list, map_utf8, map_utf8_list, render_diagram,
+    MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_component_children,
+    expand_repeater_children, field_f64, field_symbol, field_utf8, field_utf8_list,
+    gather_inline_text, heading_level, instance_target_def, lower_to_values, map_list, map_utf8,
+    map_utf8_list, render_diagram,
 };
 
 use super::ir::{BlockNode, CardSpec, CodeSpan, FontFamily, InlineRun, ListLine, TextStyle};
@@ -46,42 +47,22 @@ fn collect_block(
     base_dir: Option<&Path>,
     out: &mut Vec<BlockNode>,
 ) {
-    // `@only` / `@except` can scope a block out of this site / template /
-    // backend (here, `:pdf`).
-    if !crate::visibility::block_visible(block, patterns) {
+    // The structural kinds every backend shares — visibility filtering,
+    // `notes` / `frontmatter`, `partial` deposits, and cycle-guarded
+    // `collect` gathering — dispatch through the common walker.
+    let structural = crate::render::walk_structural(doc, block, patterns, &mut |b| {
+        collect_block(doc, b, patterns, base_dir, out);
+        Ok::<(), std::convert::Infallible>(())
+    });
+    if structural.is_some() {
         return;
     }
     let kind = block.kind();
-    // Speaker notes never appear in the rendered document.
-    if kind == "notes" {
-        return;
-    }
     // A presentation fragment is a step-reveal wrapper — in a static PDF its
     // children simply render in place.
     if kind == "fragment" {
         for child in block.blocks() {
             collect_block(doc, &child, patterns, base_dir, out);
-        }
-        return;
-    }
-    // A `partial` deposits tagged content for a matching `collect`; in a static
-    // PDF it renders at its source only when `show_here = true`.
-    if kind == "partial" {
-        if field_bool(block, "show_here") == Some(true) {
-            for child in block.blocks() {
-                collect_block(doc, &child, patterns, base_dir, out);
-            }
-        }
-        return;
-    }
-    // A `collect` gathers every matching `partial`'s body across the document,
-    // in document order; the guard breaks collect → partial → collect cycles.
-    if kind == "collect" {
-        let tag = label_string(block).unwrap_or_default();
-        if let Some(_guard) = enter_collect(&tag) {
-            for child in collect_partials(doc, &tag) {
-                collect_block(doc, &child, patterns, base_dir, out);
-            }
         }
         return;
     }
@@ -144,11 +125,69 @@ fn collect_block(
         });
         return;
     }
+    // Generators expand exactly as on the HTML / Markdown paths (the
+    // shared helpers in `render/expand.rs`), so data-generated content
+    // reaches the PDF too. A repeater stamps its body once per element
+    // of `each`; a `wdoc_instance` renders the component named by its
+    // `component` value.
+    if kind == "wdoc_repeater" {
+        if block.binding_scope_depth() <= MAX_LOWER_DEPTH {
+            for child in expand_repeater_children(block) {
+                collect_block(doc, &child, patterns, base_dir, out);
+            }
+        }
+        return;
+    }
+    if kind == "wdoc_instance" {
+        if block.binding_scope_depth() <= MAX_LOWER_DEPTH
+            && let Some(def) = instance_target_def(block)
+        {
+            collect_component(doc, block, &def, patterns, base_dir, out);
+        }
+        return;
+    }
+    // A bare `wdoc_content` outside a component has no effect (the
+    // substitution happens in `collect_component`).
+    if kind == "wdoc_content" {
+        return;
+    }
+    // A user-defined `wdoc_component` instance: expand its declarative
+    // body with the instance's slots bound.
+    if let Some(def) = doc.component_def(kind) {
+        collect_component(doc, block, &def, patterns, base_dir, out);
+        return;
+    }
     let Some(values) = lower_to_values(doc, block, kind) else {
         return;
     };
     for v in &values {
         walk_block_variant(doc, v, patterns, out);
+    }
+}
+
+/// Expand a `wdoc_component` instance into the PDF IR: walk the
+/// definition's body with the instance's slots bound, substituting the
+/// instance's own children for a top-level `wdoc_content` placeholder
+/// (the common layout-slot case). Mirrors the Markdown emitter.
+fn collect_component(
+    doc: &Document,
+    instance: &Block<'_>,
+    def: &Block<'_>,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
+    out: &mut Vec<BlockNode>,
+) {
+    if instance.binding_scope_depth() > MAX_LOWER_DEPTH {
+        return;
+    }
+    for child in expand_component_children(instance, def) {
+        if child.kind() == "wdoc_content" {
+            for ic in instance.blocks() {
+                collect_block(doc, &ic, patterns, base_dir, out);
+            }
+        } else {
+            collect_block(doc, &child, patterns, base_dir, out);
+        }
     }
 }
 

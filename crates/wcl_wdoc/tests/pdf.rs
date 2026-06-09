@@ -1028,3 +1028,96 @@ fn collect_cycle_terminates_in_pdf() {
     let bytes = std::fs::read(out.path().join("doc.pdf")).expect("read pdf");
     assert!(bytes.starts_with(b"%PDF-"), "output is a PDF");
 }
+
+// ── generator expansion (repeaters / components) ──────────────────
+
+#[test]
+fn repeater_stamps_body_into_the_pdf() {
+    // A page-level `wdoc_repeater` expands via the shared helpers (as on
+    // the HTML / Markdown paths). The bold inline in the stamped body only
+    // embeds the bold subset if the repeater actually rendered.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("rep.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "page p {\n",
+            "  let items = [\"alpha\", \"beta\", \"gamma\"]\n",
+            "  h1 \"Inventory\"\n",
+            "  wdoc_repeater { each = items  as = :it\n",
+            "    p $\"Entry **${it}** present.\"\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("rep.pdf")).expect("read pdf");
+    let blob = String::from_utf8_lossy(&bytes);
+    assert!(
+        blob.contains("NotoSerif-Bold"),
+        "repeater body rendered (bold subset embedded)"
+    );
+}
+
+#[test]
+fn component_instance_expands_into_the_pdf() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("comp.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "wdoc_component note_box {\n",
+            "  wdoc_slot title\n",
+            "  wdoc_body {\n",
+            "    h2 $\"${title}\"\n",
+            "    p \"Component **body** text.\"\n",
+            "  }\n",
+            "}\n",
+            "page p {\n",
+            "  h1 \"Top\"\n",
+            "  note_box { title = \"From slot\" }\n",
+            "}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("comp.pdf")).expect("read pdf");
+    let blob = String::from_utf8_lossy(&bytes);
+    assert!(
+        blob.contains("NotoSerif-Bold"),
+        "component body rendered (bold subset embedded)"
+    );
+}
+
+#[test]
+fn component_content_slot_renders_instance_children() {
+    // `wdoc_content` inside the body splices the instance's own children.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("slot.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "wdoc_component wrap {\n",
+            "  wdoc_body {\n",
+            "    p \"Before.\"\n",
+            "    wdoc_content\n",
+            "    p \"After.\"\n",
+            "  }\n",
+            "}\n",
+            "page p {\n",
+            "  wrap {\n",
+            "    p \"Inner **payload** here.\"\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("slot.pdf")).expect("read pdf");
+    let blob = String::from_utf8_lossy(&bytes);
+    assert!(
+        blob.contains("NotoSerif-Bold"),
+        "wdoc_content spliced the instance children (bold subset embedded)"
+    );
+}

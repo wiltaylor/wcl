@@ -21,10 +21,10 @@ use wcl_lang::{Block, Document, Value};
 use crate::build::BuildError;
 use crate::inline::InlinePatterns;
 use crate::render::{
-    MAX_LOWER_DEPTH, as_record_variant, cell_text, collect_partials, enter_collect,
-    expand_component_children, expand_repeater_children, field_bool, field_symbol, field_utf8,
-    field_utf8_list, gather_inline_text, heading_level, instance_target_def, label_string,
-    lower_to_values, map_list, map_utf8, map_utf8_list, render_diagram_static,
+    MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_component_children,
+    expand_repeater_children, field_symbol, field_utf8, field_utf8_list, gather_inline_text,
+    heading_level, instance_target_def, label_string, lower_to_values, map_list, map_utf8,
+    map_utf8_list, render_diagram_static,
 };
 use crate::terminal::ASSET_DIR;
 
@@ -94,15 +94,18 @@ impl Emitter<'_> {
     /// Dispatch one block, pushing zero or more complete Markdown blocks onto
     /// `out` (joined with blank lines by the caller).
     fn block(&mut self, block: &Block<'_>, out: &mut Vec<String>) -> Result<(), BuildError> {
-        // `@only` / `@except` can scope a block out of this site / template /
-        // backend (here, `:markdown`).
-        if !crate::visibility::block_visible(block, self.patterns) {
-            return Ok(());
+        // The structural kinds every backend shares — visibility filtering,
+        // `notes` / `frontmatter`, `partial` deposits, and cycle-guarded
+        // `collect` gathering — dispatch through the common walker.
+        let doc = self.doc;
+        let patterns = self.patterns;
+        let structural =
+            crate::render::walk_structural(doc, block, patterns, &mut |b| self.block(b, out));
+        if let Some(res) = structural {
+            return res;
         }
         let kind = block.kind();
         match kind {
-            // Front matter is emitted separately; speaker notes never render.
-            "frontmatter" | "notes" => {}
             // A presentation fragment is a step-reveal wrapper — its children
             // render in place in static output.
             "fragment" => {
@@ -162,25 +165,6 @@ impl Emitter<'_> {
             // A bare `wdoc_content` outside a component has no effect (the
             // substitution happens in `component`).
             "wdoc_content" => {}
-            // A `partial` deposits tagged content for a matching `collect`; it
-            // renders here only when `show_here = true`.
-            "partial" => {
-                if field_bool(block, "show_here") == Some(true) {
-                    for c in block.blocks() {
-                        self.block(&c, out)?;
-                    }
-                }
-            }
-            // A `collect` gathers every matching `partial`'s body, in document
-            // order; the guard breaks collect → partial → collect cycles.
-            "collect" => {
-                let tag = label_string(block).unwrap_or_default();
-                if let Some(_guard) = enter_collect(&tag) {
-                    for c in collect_partials(self.doc, &tag) {
-                        self.block(&c, out)?;
-                    }
-                }
-            }
             kind => {
                 // A user-defined `wdoc_component` instance: expand its
                 // declarative body with the instance's slots bound.
