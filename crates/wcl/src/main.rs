@@ -762,6 +762,17 @@ fn run_fmt(
         ..Default::default()
     };
     let formatted = wcl_format::to_source_with(&ast, &cfg);
+    // Formatting must never break a parsing file: verify our own output
+    // re-parses before writing it anywhere. A failure here is a
+    // formatter bug — refuse to write (or print) the broken text so it
+    // can't land in the tree.
+    if let Err(e) = verify_reparses(&formatted) {
+        eprintln!(
+            "internal error: `wcl fmt` produced output that fails to re-parse — \
+             refusing to write. Please report this.\n{e}"
+        );
+        return Ok(EXIT_PARSE);
+    }
     if in_place {
         write_atomic(file, &formatted)
             .map_err(|e| format!("failed to write {}: {e}", file.display()))?;
@@ -769,6 +780,15 @@ fn run_fmt(
         print!("{formatted}");
     }
     Ok(EXIT_OK)
+}
+
+/// Guard shared by `wcl fmt` / `wcl set`: parse the formatter's output
+/// and surface the diagnostic if it doesn't round-trip.
+fn verify_reparses(src: &str) -> Result<(), String> {
+    match parse_for_edit(src, "<formatted output>".to_string()) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("{:?}", miette::Report::new(e))),
+    }
 }
 
 /// Drive the round-trip API to update one field. Reads `file` as a
@@ -850,7 +870,15 @@ fn run_set(file: &Path, path: &str, value: &str) -> Result<u8, String> {
         )
     })?;
     slot.expr = new_expr;
-    write_atomic(&home_path, &wcl_format::to_source(&ast))
+    let formatted = wcl_format::to_source(&ast);
+    if let Err(e) = verify_reparses(&formatted) {
+        eprintln!(
+            "internal error: `wcl set` produced output that fails to re-parse — \
+             refusing to write. Please report this.\n{e}"
+        );
+        return Ok(EXIT_PARSE);
+    }
+    write_atomic(&home_path, &formatted)
         .map_err(|e| format!("failed to write {}: {e}", home_path.display()))?;
     Ok(EXIT_OK)
 }

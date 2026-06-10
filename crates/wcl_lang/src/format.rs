@@ -113,6 +113,15 @@ struct Printer {
     depth: u16,
     cfg: FormatConfig,
     indent_str: String,
+    /// `true` only while printing a value position a heredoc may
+    /// legally occupy: the direct value of a field/let with no trailing
+    /// comment, where a bare newline follows the closing tag. Heredoc
+    /// closers must sit alone on their line, so emitting one inside a
+    /// call argument / list (the next token would glue onto the tag) or
+    /// before a trailing comment produces output that fails to
+    /// re-parse. Consumed (reset to `false`) at the top of every
+    /// `print_expr`, so only the outermost expression sees it.
+    allow_heredoc: bool,
 }
 
 impl Printer {
@@ -123,6 +132,7 @@ impl Printer {
             depth: 0,
             cfg,
             indent_str,
+            allow_heredoc: false,
         }
     }
 
@@ -152,6 +162,14 @@ impl Printer {
         for t in trivia {
             match t {
                 Trivia::BlankLine => {
+                    // Canonical output never *starts* with blank lines —
+                    // they'd be re-lexed as one fewer blank on the next
+                    // pass (the file's final newline is a terminator,
+                    // not a blank), breaking idempotence for
+                    // whitespace-only files.
+                    if self.buf.is_empty() {
+                        continue;
+                    }
                     consecutive_blanks += 1;
                     if consecutive_blanks <= self.cfg.blank_line_cap {
                         self.newline();
@@ -211,6 +229,9 @@ impl Printer {
         self.print_decorators_inline(&f.decorators);
         self.push(&f.name);
         self.push(" = ");
+        // A heredoc closer must be followed by a bare newline — legal
+        // here only when no trailing comment will share its line.
+        self.allow_heredoc = f.trailing_comment.is_none();
         self.print_expr(&f.expr, 0);
         self.print_trailing_comment(&f.trailing_comment);
         self.newline();
@@ -237,6 +258,7 @@ impl Printer {
         self.push("let ");
         self.push(&l.name);
         self.push(" = ");
+        self.allow_heredoc = l.trailing_comment.is_none();
         self.print_expr(&l.value, 0);
         self.print_trailing_comment(&l.trailing_comment);
         self.newline();
@@ -634,6 +656,12 @@ impl Printer {
     /// itself in parens when its left-bp falls below `min_bp`, so
     /// `(a + b) * c` survives round-trip.
     fn print_expr(&mut self, e: &Expr, min_bp: u8) {
+        // Consume the heredoc allowance: only the outermost expression
+        // of a field/let value may be printed as a heredoc — anything
+        // nested (call args, list elements, operators) follows the
+        // string with another token on the same line, which would glue
+        // onto the closing tag.
+        let allow_heredoc = std::mem::take(&mut self.allow_heredoc);
         match e {
             // ----- atoms -----
             Expr::Bool(b) => self.push(if *b { "true" } else { "false" }),
@@ -691,22 +719,22 @@ impl Printer {
             Expr::F64(v) => self.print_float(*v),
 
             // ----- strings -----
-            Expr::Utf8(s) => self.print_string_lit(s, StringEncoding::Utf8),
+            Expr::Utf8(s) => self.print_string_lit_in(s, StringEncoding::Utf8, allow_heredoc),
             Expr::Ascii(s) => {
                 let utf8 = s.clone();
-                self.print_string_lit(&utf8, StringEncoding::Ascii);
+                self.print_string_lit_in(&utf8, StringEncoding::Ascii, allow_heredoc);
             }
             Expr::Utf16(units) => {
                 let s = String::from_utf16_lossy(units);
-                self.print_string_lit(&s, StringEncoding::Utf16);
+                self.print_string_lit_in(&s, StringEncoding::Utf16, allow_heredoc);
             }
             Expr::Utf32(chars) => {
                 let s: String = chars.iter().collect();
-                self.print_string_lit(&s, StringEncoding::Utf32);
+                self.print_string_lit_in(&s, StringEncoding::Utf32, allow_heredoc);
             }
             Expr::InterpolatedString {
                 encoding, parts, ..
-            } => self.print_interpolated(*encoding, parts),
+            } => self.print_interpolated(*encoding, parts, allow_heredoc),
 
             // ----- composites -----
             Expr::Paren { inner, .. } => {
@@ -879,22 +907,41 @@ impl Printer {
     fn print_float(&mut self, v: f64) {
         // Use Debug so finite floats round-trip; ensure a `.` is
         // always present so `2.0` doesn't get printed as `2` (which
-        // would re-parse as an integer).
+        // would re-parse as an integer). Debug prints small/large
+        // magnitudes in exponent form *without* a dot (`2e-6`), which
+        // the lexer rejects — splice a `.0` back in before the
+        // exponent so the literal re-parses (`2.0e-6`).
         let s = format!("{v:?}");
-        self.push(&s);
+        if let Some(epos) = s.find(['e', 'E'])
+            && !s[..epos].contains('.')
+        {
+            self.push(&s[..epos]);
+            self.push(".0");
+            self.push(&s[epos..]);
+        } else {
+            self.push(&s);
+        }
     }
 
     fn print_string_lit(&mut self, body: &str, encoding: StringEncoding) {
-        // If the value contains a newline, emit a heredoc; otherwise a
-        // quoted form. Either way, prefix with the encoding tag for
-        // anything other than the default utf8.
+        self.print_string_lit_in(body, encoding, false);
+    }
+
+    fn print_string_lit_in(&mut self, body: &str, encoding: StringEncoding, allow_heredoc: bool) {
+        // Heredoc form only where it is *legal* (`allow_heredoc`: a
+        // statement-level value followed by a bare newline), *value-
+        // preserving* (`heredoc_round_trips`: re-parsing the emitted
+        // heredoc reproduces the body exactly), and *worth it* (two or
+        // more lines — `"\n"`-ish separator strings stay escaped
+        // literals). Everything else prints as a quoted literal with
+        // escapes, which always round-trips.
         let prefix = match encoding {
             StringEncoding::Utf8 => "",
             StringEncoding::Ascii => "ascii",
             StringEncoding::Utf16 => "utf16",
             StringEncoding::Utf32 => "utf32",
         };
-        if body.contains('\n') {
+        if allow_heredoc && heredoc_round_trips(body) && body.lines().count() >= 2 {
             self.print_heredoc(body, prefix, false);
         } else {
             self.push(prefix);
@@ -904,27 +951,59 @@ impl Printer {
         }
     }
 
-    fn print_interpolated(&mut self, encoding: StringEncoding, parts: &[TemplatePart]) {
+    fn print_interpolated(
+        &mut self,
+        encoding: StringEncoding,
+        parts: &[TemplatePart],
+        allow_heredoc: bool,
+    ) {
         let prefix = match encoding {
             StringEncoding::Utf8 => "",
             StringEncoding::Ascii => "ascii",
             StringEncoding::Utf16 => "utf16",
             StringEncoding::Utf32 => "utf32",
         };
-        // Compose the literal-only body once so we know whether to
-        // pick quoted or heredoc style. Slot text comes from a fresh
-        // `to_source` over the slot expr.
-        let has_newline = parts.iter().any(|p| match p {
-            TemplatePart::Literal(s) => s.contains('\n'),
-            TemplatePart::Expr(_) => false,
-        });
+        // A "skeleton" of the body — literal text with each `${…}` slot
+        // standing in as a single placeholder character — drives the
+        // style choice: the heredoc form is used only where it is legal
+        // (`allow_heredoc`), the body round-trips through heredoc
+        // line/indent handling, the *last* part ends with a newline (the
+        // closing tag must start its own line — a body that was
+        // authored with `\n` escapes and doesn't end on one cannot be a
+        // heredoc), and the text is genuinely multi-line.
+        let mut skeleton = String::new();
+        for part in parts {
+            match part {
+                TemplatePart::Literal(s) => skeleton.push_str(s),
+                TemplatePart::Expr(_) => skeleton.push('x'),
+            }
+        }
+        let ends_on_newline = matches!(
+            parts.last(),
+            Some(TemplatePart::Literal(s)) if s.ends_with('\n')
+        );
         self.push("$");
         self.push(prefix);
-        if has_newline {
-            self.push("<<INTERP\n");
+        if allow_heredoc
+            && ends_on_newline
+            && heredoc_round_trips(&skeleton)
+            && skeleton.lines().count() >= 2
+        {
+            // Pick a tag no body line could close early on ("INTERP"
+            // first to keep existing formatted files stable).
+            let tag = pick_heredoc_tag_preferring(&skeleton, "INTERP");
+            self.push("<<");
+            self.push(&tag);
+            self.push("\n");
             for part in parts {
                 match part {
-                    TemplatePart::Literal(s) => self.push(s),
+                    // The interpolated heredoc body is escape-
+                    // interpreted: a literal backslash must double and a
+                    // literal `${` must re-escape to `\${`, or the text
+                    // re-parses as an escape / a slot.
+                    TemplatePart::Literal(s) => {
+                        self.push(&s.replace('\\', "\\\\").replace("${", "\\${"));
+                    }
                     TemplatePart::Expr(e) => {
                         self.push("${");
                         self.print_expr(e, 0);
@@ -932,16 +1011,23 @@ impl Printer {
                     }
                 }
             }
-            // The heredoc parser always emits a trailing `\n` on the
-            // final body line, so the literal we just printed ends on
-            // a newline. Don't add another — that would creep one
-            // extra blank line in on every reformat.
-            self.push("INTERP");
+            // The final literal ends with `\n` (checked above), so the
+            // closing tag starts its own line. Don't add another — that
+            // would creep one extra blank line in on every reformat.
+            self.push(&tag);
         } else {
             self.push("\"");
             for part in parts {
                 match part {
-                    TemplatePart::Literal(s) => self.push(&EscapeString(s).to_string()),
+                    // `EscapeString` covers quotes / backslashes /
+                    // control characters but not `${` — in an
+                    // *interpolated* literal that sequence must
+                    // re-escape to `\${` or it re-parses as a slot.
+                    // (Safe after EscapeString: it never produces `${`
+                    // from other characters.)
+                    TemplatePart::Literal(s) => {
+                        self.push(&EscapeString(s).to_string().replace("${", "\\${"));
+                    }
                     TemplatePart::Expr(e) => {
                         self.push("${");
                         self.print_expr(e, 0);
@@ -1357,6 +1443,49 @@ fn trivia_has_comment(trivia: &[Trivia]) -> bool {
 
 fn join_path(parts: &[String]) -> String {
     parts.join(".")
+}
+
+/// `true` when `body` would survive a heredoc round-trip exactly.
+/// Heredoc parsing imposes three constraints a quoted literal doesn't:
+///
+/// - every body line contributes `content + '\n'`, so a value that
+///   doesn't end with a newline is unrepresentable (the closing tag
+///   would glue onto the last line and never close);
+/// - the minimum leading whitespace across non-blank lines is stripped
+///   from every line, so a body whose lines *all* start with whitespace
+///   loses it on re-parse;
+/// - whitespace-only lines are blanked entirely, so a line of spaces
+///   loses them.
+fn heredoc_round_trips(body: &str) -> bool {
+    if !body.ends_with('\n') {
+        return false;
+    }
+    let mut any_nonblank = false;
+    let mut any_zero_indent = false;
+    for line in body.lines() {
+        if line.trim().is_empty() {
+            if !line.is_empty() {
+                // Whitespace-only line: blanked on re-parse.
+                return false;
+            }
+        } else {
+            any_nonblank = true;
+            if !line.starts_with([' ', '\t']) {
+                any_zero_indent = true;
+            }
+        }
+    }
+    !any_nonblank || any_zero_indent
+}
+
+/// [`pick_heredoc_tag`] with a preferred first candidate (the
+/// interpolated form keeps its historical `INTERP` tag when possible).
+fn pick_heredoc_tag_preferring(body: &str, preferred: &str) -> String {
+    let lines: Vec<&str> = body.lines().map(str::trim).collect();
+    if !lines.contains(&preferred) {
+        return preferred.to_string();
+    }
+    pick_heredoc_tag(body)
 }
 
 /// Choose a heredoc tag that no (trimmed) body line equals, so the
