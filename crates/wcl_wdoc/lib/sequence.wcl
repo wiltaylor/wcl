@@ -29,8 +29,9 @@ symbol_set MessageKind { sync async reply }
 // extend half a row past the last message.
 
 // The head + lifeline column centre of participant `id` (declaration
-// order via `ids`). Unknown ids land at column -1 — the message that
-// referenced them renders off-canvas rather than failing the build.
+// order via `ids`). Callers validate the id first (`seq_message` /
+// `seq_note` raise a build error for typos), so the -1 an unknown id
+// would produce never reaches geometry.
 let seq_cx = fn(ids: list<utf8>, id: utf8, cw: f64) -> f64
   cw / 2.0 + index_of(ids, id) * cw
 
@@ -136,8 +137,18 @@ let seq_message = fn(
   hh: f64,
 ) -> list<SvgFundamental> {
   let y = hh + index_of(msg_ids, m.id) * rh;
-  let xf = seq_cx(ids, m.from, cw);
-  let xt = seq_cx(ids, m.to, cw);
+  // A typo'd participant id is a build error, not a stray off-grid
+  // arrow (the viewBox fit would happily show the garbage).
+  let xf = if index_of(ids, m.from) < 0 {
+    error(format("sequence message '{}' references unknown participant '{}'", m.id, m.from))
+  } else {
+    seq_cx(ids, m.from, cw)
+  };
+  let xt = if index_of(ids, m.to) < 0 {
+    error(format("sequence message '{}' references unknown participant '{}'", m.id, m.to))
+  } else {
+    seq_cx(ids, m.to, cw)
+  };
   let cls = ["wdoc-seq-message"];
   let text_cls = ["wdoc-seq-text"];
   let dash = if m.kind == :reply { "5 4" } else { none };
@@ -183,7 +194,11 @@ let seq_note = fn(
   rh: f64,
   hh: f64,
 ) -> list<SvgFundamental> {
-  let y = hh + index_of(msg_ids, nb.at) * rh;
+  let y = if index_of(msg_ids, nb.at) < 0 {
+    error(format("note '{}' is anchored to unknown message '{}'", nb.id, nb.at))
+  } else {
+    hh + index_of(msg_ids, nb.at) * rh
+  };
   let x = cols * cw + 8.0;
   [
     SvgFundamental::Rect {

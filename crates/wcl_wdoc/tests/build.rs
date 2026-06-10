@@ -8917,3 +8917,101 @@ page seq {
         );
     }
 }
+
+#[test]
+fn state_diagram_cycle_keeps_ranks_and_routes_back_edge_around() {
+    // Regression: any transition cycle used to escalate every member to
+    // the rank cap, collapsing the layout onto one row with the closing
+    // edge drawn straight through the middle box. BFS layering keeps
+    // the ranks; the closing transition routes around the diagram via a
+    // side lane.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("cycle.wcl");
+    write_fixture(
+        &src,
+        r##"
+page sc {
+  state_diagram {
+    direction = :left_to_right
+    state "pending"  { name = "Pending"  initial = true }
+    state "paid"     { name = "Paid" }
+    state "shipped"  { name = "Shipped" }
+    transition "t1" { from = "pending" to = "paid"     trigger = "pay" }
+    transition "t2" { from = "paid"    to = "shipped"  trigger = "ship" }
+    transition "t3" { from = "shipped" to = "pending"  trigger = "return" }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("sc.html")).expect("read");
+    // Three distinct ranks along x despite the cycle.
+    for x in ["0", "174", "348"] {
+        assert!(
+            html.contains(&format!("<rect class=\"wdoc-state\" x=\"{x}\"")),
+            "rank x={x} kept under a cycle:\n{html}"
+        );
+    }
+    // The closing transition is a routed polyline (not a straight Line
+    // through the boxes), and its label renders.
+    assert!(
+        html.contains("class=\"wdoc-seq-message\" points="),
+        "back-edge routed as a polyline:\n{html}"
+    );
+    assert!(html.contains(">return</tspan>"), "back-edge label:\n{html}");
+}
+
+#[test]
+fn unknown_ids_in_sequence_and_state_diagrams_fail_the_build() {
+    // Regression: a typo'd participant id drew a stray arrow into empty
+    // space (the viewBox fit happily included it); a typo'd state id
+    // silently dropped the transition. Both are build errors now.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+
+    let seq = tmp.path().join("seq.wcl");
+    write_fixture(
+        &seq,
+        r##"
+page seq {
+  sequence_diagram {
+    participant "a" { }
+    message "m1" { from = "a"  to = "wbe"  text = "typo" }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&seq, out.path(), None) {
+        Err(BuildError::Eval(r)) => {
+            let msg = format!("{r:?}");
+            assert!(msg.contains("unknown participant 'wbe'"), "{msg}");
+            assert!(msg.contains("'m1'"), "{msg}");
+        }
+        Ok(n) => panic!("expected eval error, built {n} pages"),
+        Err(_) => panic!("expected Eval error, got a different build error"),
+    }
+
+    let sc = tmp.path().join("sc.wcl");
+    write_fixture(
+        &sc,
+        r##"
+page sc {
+  state_diagram {
+    state "a" { }
+    state "b" { }
+    transition "t1" { from = "nope"  to = "b"  trigger = "go" }
+  }
+}
+"##,
+    );
+    let out2 = TempDir::new().expect("mkdir out");
+    match build(&sc, out2.path(), None) {
+        Err(BuildError::Eval(r)) => {
+            let msg = format!("{r:?}");
+            assert!(msg.contains("unknown state 'nope'"), "{msg}");
+        }
+        Ok(n) => panic!("expected eval error, built {n} pages"),
+        Err(_) => panic!("expected Eval error, got a different build error"),
+    }
+}

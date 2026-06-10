@@ -19,34 +19,51 @@
 
 namespace wdoc
 
-// Longest-path layering: start every state at rank 0 and relax each
-// non-self transition (`rank[to] >= rank[from] + 1`) for as many
-// passes as there are states, capping ranks at the state count so a
-// cycle converges instead of running away. After convergence an edge
-// with `rank[to] <= rank[from]` is a back-edge and simply draws
-// against the flow.
-let sc_relax = fn(ranks: list<i64>, ids: list<utf8>, ts: list<Transition>, cap: i64) -> list<i64>
+// Breadth-first layering from the graph's roots: rank = distance from
+// the nearest seed (initial states; with none, in-degree-0 states;
+// with none of those either, the first state). A relaxation pass only
+// assigns *unset* ranks, so the result is monotone and a cycle simply
+// closes back onto already-ranked states — its closing transition
+// becomes a back-edge (`rank[to] <= rank[from]`), drawn around the
+// diagram by `sc_edge` rather than through it. (A capped longest-path
+// relaxation was tried first; any cycle escalated every member to the
+// cap and collapsed the layout onto one rank.)
+let sc_bfs_relax = fn(ranks: list<i64>, ids: list<utf8>, ts: list<Transition>) -> list<i64>
   fold(ts, ranks, fn(acc: list<i64>, t: Transition) -> list<i64> {
     let fi = index_of(ids, t.from);
     let ti = index_of(ids, t.to);
     if fi < 0 || ti < 0 || fi == ti {
       acc
+    } else if at(acc, fi) >= 0 && at(acc, ti) < 0 {
+      map(enumerate(acc), fn(p: list<i64>) -> i64
+        if at(p, 0) == ti { at(acc, fi) + 1 } else { at(p, 1) })
     } else {
-      let nr = min(at(acc, fi) + 1, cap);
-      if nr > at(acc, ti) {
-        map(enumerate(acc), fn(p: list<i64>) -> i64
-          if at(p, 0) == ti { nr } else { at(p, 1) })
-      } else {
-        acc
-      }
+      acc
     }
   })
 
-let sc_ranks = fn(ids: list<utf8>, ts: list<Transition>) -> list<i64> {
-  let n = len(ids);
-  let start = map(ids, fn(id: utf8) -> i64 0);
-  fold(range(0, n), start, fn(acc: list<i64>, pass: i64) -> list<i64>
-    sc_relax(acc, ids, ts, n))
+let sc_ranks = fn(states: list<State>, ids: list<utf8>, ts: list<Transition>) -> list<i64> {
+  let has_initial = len(filter(states, fn(s: State) -> bool s.initial == true)) > 0;
+  let seeded = map(states, fn(s: State) -> i64
+    if has_initial {
+      if s.initial == true { 0 } else { -1 }
+    } else {
+      let incoming = filter(ts, fn(t: Transition) -> bool t.to == s.id && t.from != s.id);
+      if len(incoming) == 0 { 0 } else { -1 }
+    });
+  // A pure cycle has neither initial nor in-degree-0 states: seed the
+  // first state so the walk has somewhere to start.
+  let any_seed = len(filter(seeded, fn(r: i64) -> bool r >= 0)) > 0;
+  let start = if any_seed {
+    seeded
+  } else {
+    map(enumerate(seeded), fn(p: list<i64>) -> i64 if at(p, 0) == 0 { 0 } else { -1 })
+  };
+  let done = fold(range(0, len(ids)), start, fn(acc: list<i64>, pass: i64) -> list<i64>
+    sc_bfs_relax(acc, ids, ts));
+  // States unreachable from any seed (disconnected islands) sit at
+  // rank 0 alongside the roots.
+  map(done, fn(r: i64) -> i64 if r < 0 { 0 } else { r })
 }
 
 // Position within a rank: declaration order among the states sharing
@@ -99,6 +116,12 @@ let sc_label = fn(t: Transition) -> utf8 {
   let trig = t.trigger ?? "";
   if t.guard != none { format("{} [{}]", trig, t.guard) } else { trig }
 }
+
+// Half the rendered width of an 11px edge label (the renderer's
+// CHAR_RATIO is 0.55). Labels are anchor-middle, so clearing a
+// vertical stroke means shifting by half the text width — a fixed
+// nudge left longer labels straddling the line.
+let sc_label_halfw = fn(text: utf8) -> f64 len(text) * 11.0 * 0.55 / 2.0
 
 // One state's shapes: rounded box + centred name, a nested inner box
 // for `final` (the double border), and the filled entry dot + arrow
@@ -159,21 +182,31 @@ let sc_state = fn(s: State, x: f64, y: f64, dir: symbol) -> list<SvgFundamental>
 }
 
 // One transition: a straight arrow between the facing box-edge
-// midpoints with the `trigger [guard]` label at its midpoint, or a
-// small loop when `from == to` — on the box's east side under
+// midpoints with the `trigger [guard]` label at its midpoint; a small
+// loop when `from == to` — on the box's east side under
 // `:top_to_bottom` flow, on its north side under `:left_to_right`
-// (where east is where outgoing edges leave).
+// (where east is where outgoing edges leave); or, for a back-edge
+// (`rank[to] < rank[from]`, the closing transition of a cycle), a
+// three-segment route around the diagram via a side lane —
+// `back_ids` / `lane_base` pick each back-edge its own lane so they
+// never cut through the ranked boxes.
 let sc_edge = fn(
   t: Transition,
   states: list<State>,
   ids: list<utf8>,
   pos: list<list<f64>>,
   dir: symbol,
+  ranks: list<i64>,
+  back_ids: list<utf8>,
+  lane_base: f64,
 ) -> list<SvgFundamental> {
   let fi = index_of(ids, t.from);
   let ti = index_of(ids, t.to);
-  if fi < 0 || ti < 0 {
-    []
+  // A typo'd state id is a build error, not a silently missing edge.
+  if fi < 0 {
+    error(format("transition '{}' references unknown state '{}'", t.id, t.from))
+  } else if ti < 0 {
+    error(format("transition '{}' references unknown state '{}'", t.id, t.to))
   } else {
     let sf = at(states, fi);
     let st = at(states, ti);
@@ -219,7 +252,59 @@ let sc_edge = fn(
           },
           sc_arrow(ex + 4.0, c1y + 7.0, -1.0, 0.0),
           SvgFundamental::Label {
-            content: sc_label(t), x: ex + 32.0, y: c1y - 16.0, font_size: 11.0, class: text_cls,
+            content: sc_label(t), x: ex + 30.0 + sc_label_halfw(sc_label(t)),
+            y: c1y - 16.0, font_size: 11.0, class: text_cls,
+          },
+        ]
+      }
+    } else if at(ranks, ti) < at(ranks, fi) {
+      // Back-edge (a cycle's closing transition): route around the
+      // ranked boxes via a side lane — east of the diagram under
+      // `:top_to_bottom`, south of it under `:left_to_right`. Each
+      // back-edge gets its own lane so several don't overlap.
+      let lane = lane_base + 22.0 + index_of(back_ids, t.id) * 16.0;
+      if dir == :left_to_right {
+        let sx = c1x;
+        let sy = at(pf, 1) + sf.height;
+        let tx = at(pt, 0) + st.width / 2.0;
+        let tb = at(pt, 1) + st.height;
+        [
+          SvgFundamental::Polyline {
+            points: format(
+              "{},{} {},{} {},{} {},{}",
+              sx, sy,
+              sx, lane,
+              tx, lane,
+              tx, tb + 4.0,
+            ),
+            class: cls,
+          },
+          sc_arrow(tx, tb + 4.0, 0.0, -1.0),
+          SvgFundamental::Label {
+            content: sc_label(t), x: (sx + tx) / 2.0, y: lane - 9.0,
+            font_size: 11.0, class: text_cls,
+          },
+        ]
+      } else {
+        let sx = at(pf, 0) + sf.width;
+        let sy = c1y;
+        let te = at(pt, 0) + st.width;
+        let ty = at(pt, 1) + st.height / 2.0;
+        [
+          SvgFundamental::Polyline {
+            points: format(
+              "{},{} {},{} {},{} {},{}",
+              sx, sy,
+              lane, sy,
+              lane, ty,
+              te + 4.0, ty,
+            ),
+            class: cls,
+          },
+          sc_arrow(te + 4.0, ty, -1.0, 0.0),
+          SvgFundamental::Label {
+            content: sc_label(t), x: lane + 6.0 + sc_label_halfw(sc_label(t)),
+            y: (sy + ty) / 2.0, font_size: 11.0, class: text_cls,
           },
         ]
       }
@@ -236,7 +321,11 @@ let sc_edge = fn(
       let length = max(hypot(x2 - x1, y2 - y1), 1.0);
       let ux = (x2 - x1) / length;
       let uy = (y2 - y1) / length;
-      let lx = if horizontal { (x1 + x2) / 2.0 } else { (x1 + x2) / 2.0 + 10.0 };
+      let lx = if horizontal {
+        (x1 + x2) / 2.0
+      } else {
+        (x1 + x2) / 2.0 + 8.0 + sc_label_halfw(sc_label(t))
+      };
       let ly = if horizontal { (y1 + y2) / 2.0 - 10.0 } else { (y1 + y2) / 2.0 };
       [
         SvgFundamental::Line { x1: x1, y1: y1, x2: x2, y2: y2, class: cls },
@@ -317,17 +406,37 @@ type StateDiagram extends WdocBlock {
     let layer_gap = d.layer_gap ?? 64.0;
     let node_gap = d.node_gap ?? 48.0;
     let ids = map(d.states, fn(s: State) -> utf8 s.id);
-    let ranks = sc_ranks(ids, d.transitions);
+    let ranks = sc_ranks(d.states, ids, d.transitions);
     let cell_w = fold(d.states, 110.0, fn(a: f64, s: State) -> f64 max(a, s.width));
     let cell_h = fold(d.states, 44.0, fn(a: f64, s: State) -> f64 max(a, s.height));
     let pos = map(d.states, fn(s: State) -> list<f64>
       sc_pos(s, ranks, ids, dir, cell_w, cell_h, layer_gap, node_gap));
+    // Back-edges (cycle closers) route around the diagram via lanes
+    // past its far side: east-most box edge under `:top_to_bottom`,
+    // south-most under `:left_to_right`.
+    let back_ids = map(
+      filter(d.transitions, fn(t: Transition) -> bool {
+        let fi = index_of(ids, t.from);
+        let ti = index_of(ids, t.to);
+        fi >= 0 && ti >= 0 && fi != ti && at(ranks, ti) < at(ranks, fi)
+      }),
+      fn(t: Transition) -> utf8 t.id,
+    );
+    let lane_base = fold(enumerate(d.states), 0.0, fn(a: f64, p: list<State>) -> f64 {
+      let s = at(p, 1);
+      let xy = at(pos, at(p, 0));
+      if dir == :left_to_right {
+        max(a, at(xy, 1) + s.height)
+      } else {
+        max(a, at(xy, 0) + s.width)
+      }
+    });
     let boxes = flatten(map(d.states, fn(s: State) -> list<SvgFundamental> {
       let p = at(pos, index_of(ids, s.id));
       sc_state(s, at(p, 0), at(p, 1), dir)
     }));
     let edges = flatten(map(d.transitions, fn(t: Transition) -> list<SvgFundamental>
-      sc_edge(t, d.states, ids, pos, dir)));
+      sc_edge(t, d.states, ids, pos, dir, ranks, back_ids, lane_base)));
     flatten([boxes, edges])
   }
 }

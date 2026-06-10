@@ -113,9 +113,27 @@ pub(crate) fn render_edges(
         if let Some(bbox) = polyline_bbox(&path.points) {
             bboxes.push(bbox);
         }
+        // The label contributes to the fit too — a label wider than the
+        // shapes around it would otherwise clip at the viewBox edge.
+        if let Some(label) = style.label.as_deref()
+            && let Some((x, y)) = edge_label_point(&path.points, label)
+        {
+            let (w, h) = edge_label_extent(label);
+            bboxes.push((x - w / 2.0, y - h / 2.0, w, h));
+        }
         out.push_str(&serialize_edge(&path, &style, straight));
     }
     (out, bboxes)
+}
+
+/// Estimated rendered extent of an edge label (the midpoint `<text>` at
+/// font-size 11, anchor middle).
+pub(crate) fn edge_label_extent(label: &str) -> (f64, f64) {
+    const FONT: f64 = 11.0;
+    (
+        label.chars().count() as f64 * FONT * crate::text::CHAR_RATIO,
+        FONT * crate::text::LINE_HEIGHT,
+    )
 }
 
 /// Per-edge presentation read off the edge record. `kind` comes from
@@ -466,7 +484,7 @@ pub(crate) fn serialize_edge(path: &EdgePath, style: &EdgeStyle, straight: bool)
         )
     };
     if let Some(label) = style.label.as_deref()
-        && let Some((x, y)) = edge_label_point(&path.points)
+        && let Some((x, y)) = edge_label_point(&path.points, label)
     {
         out.push_str(&format!(
             "<text class=\"wdoc-edge-label\" x=\"{x}\" y=\"{y}\" \
@@ -478,11 +496,13 @@ pub(crate) fn serialize_edge(path: &EdgePath, style: &EdgeStyle, straight: bool)
     out
 }
 
-/// Label anchor for an edge: the polyline's arc-length midpoint,
-/// nudged ~8px along the local normal (flipped to sit above a mostly-
-/// horizontal run and left of a mostly-vertical one) so the text
-/// clears the stroke.
-pub(crate) fn edge_label_point(points: &[(f64, f64)]) -> Option<(f64, f64)> {
+/// Label anchor for an edge: the polyline's arc-length midpoint, nudged
+/// along the local normal (flipped to sit above a mostly-horizontal run
+/// and left of a mostly-vertical one) far enough for the *whole*
+/// anchor-middle text to clear the stroke — half the label's extent
+/// along the normal direction, plus a fixed gap. A fixed 8px nudge left
+/// vertical-edge labels straddling the line.
+pub(crate) fn edge_label_point(points: &[(f64, f64)], label: &str) -> Option<(f64, f64)> {
     if points.len() < 2 {
         return None;
     }
@@ -510,7 +530,12 @@ pub(crate) fn edge_label_point(points: &[(f64, f64)]) -> Option<(f64, f64)> {
             nx = -nx;
             ny = -ny;
         }
-        return Some((mx + nx * 8.0, my + ny * 8.0));
+        // Clearance: half of the label's extent projected onto the
+        // normal (width for a horizontal normal, height for a vertical
+        // one), plus a 4px gap off the stroke.
+        let (w_ext, h_ext) = edge_label_extent(label);
+        let clear = (nx.abs() * w_ext / 2.0) + (ny.abs() * h_ext / 2.0) + 4.0;
+        return Some((mx + nx * clear, my + ny * clear));
     }
     Some(points[points.len() - 1])
 }
