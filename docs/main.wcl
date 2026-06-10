@@ -106,6 +106,8 @@ site reference {
         chapter "Trees"                { page = wdoc_tree }
         chapter "Connections"          { page = wdoc_connections }
         chapter "Flowcharts"           { page = wdoc_flowcharts }
+        chapter "Sequence Diagrams"    { page = wdoc_sequence_diagrams }
+        chapter "State Diagrams"       { page = wdoc_state_diagrams }
         chapter "Charts"               { page = wdoc_charts }
         chapter "Timelines"            { page = wdoc_timelines }
         chapter "Tilemaps"             { page = wdoc_tilemaps }
@@ -188,6 +190,8 @@ import "./pages/reference/wdoc/primitives.wcl"
 import "./pages/reference/wdoc/tree.wcl"
 import "./pages/reference/wdoc/connections.wcl"
 import "./pages/reference/wdoc/flowcharts.wcl"
+import "./pages/reference/wdoc/sequence-diagrams.wcl"
+import "./pages/reference/wdoc/state-diagrams.wcl"
 import "./pages/reference/wdoc/charts.wcl"
 import "./pages/reference/wdoc/terminals.wcl"
 import "./pages/reference/wdoc/wireframe.wcl"

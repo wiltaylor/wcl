@@ -47,7 +47,11 @@ Capability summary per crate; the reference pages above carry the detail.
 **Mechanism:** an unrecognised block kind in a diagram/page dispatches to a WCL
 `<kind>_lower` fn returning `list<SvgFundamental | HtmlFundamental | TermFundamental>`,
 which the renderer recurses (depth-limited) until only fundamentals remain — this is how
-user-declarable `@block(...) extends SvgBlock` (etc.) shapes plug in. A handful of blocks
+user-declarable `@block(...) extends SvgBlock` (etc.) shapes plug in. A page-level block
+that draws SVG (`sequence_diagram` / `state_diagram`) must still satisfy `WdocBlock`
+(whose `lower` returns HTML fundamentals), so its geometry lives in a second `lower_svg`
+fn; `render_lowered_svg_block` (`src/render/svg/standalone.rs`) fits a viewBox over the
+result and all three backends dispatch to it. A handful of blocks
 (terminal, card, node_table, tree, timeline, tilemap, dopesheet, map, wireframe widgets, icons,
 math, code, table, list) are instead **special-cased in Rust** with stub WCL `lower`s, because their
 output (calendar math, ANSI grids, external-image crops, LaTeX, syntax highlighting,
@@ -66,6 +70,8 @@ connectable by edges), not a page block. Everything deeper → the doc page or t
 | images | `src/image.rs` | `image.wcl` | `images.wcl` |
 | icons | `src/icons.rs` (+`build.rs`) | `icons.wcl` | `icons.wcl` |
 | diagrams + layout/routing | `src/{layered,force,routing}.rs`, `src/render/` | `diagram-core.wcl`, `flowchart.wcl` | `diagrams.wcl`, `flowcharts.wcl`, `connections.wcl` |
+| sequence diagrams | `src/render/svg/standalone.rs` | `sequence.wcl` | `sequence-diagrams.wcl` |
+| state diagrams | `src/render/svg/standalone.rs` | `statechart.wcl` | `state-diagrams.wcl` |
 | charts | (pure-WCL) | `charts.wcl` | `charts.wcl` |
 | cards | `src/card.rs` | `card.wcl` | `diagrams.wcl` |
 | node tables (DB / class, per-row ports) | `src/node_table.rs` | `node_table.wcl` | `primitives.wcl` |

@@ -110,6 +110,27 @@ WCL
       | "`:data`"    | "A data-flow edge." |
   }
 
+  h2 "Computed edges, labels & dashes"
+
+  p "Besides `->` statements, a diagram (or container) accepts a computed `edges = [...]` field — a list of records with `source` / `destination` (shape ids) and an optional `kind`. The two forms may coexist. Only the record form carries presentation payload: `label` renders as text at the edge's midpoint (themable via the `wdoc-edge-label` class), and `dash` becomes an inline `stroke-dasharray` on the stroke."
+
+  diagram {
+    width = 380  height = 100  routing = :straight
+    rect { id = la  x = 10.0  y = 30.0  width = 70.0  height = 36.0  fill = "#88c0d0" }
+    rect { id = lb  x = 290.0 y = 30.0  width = 70.0  height = 36.0  fill = "#a3be8c" }
+    edges = [ { source: "la", destination: "lb", label: "ships to", dash: "5 4" } ]
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  rect { id = la ... }
+  rect { id = lb ... }
+  edges = [ { source: "la", destination: "lb", label: "ships to", dash: "5 4" } ]
+}
+WCL
+  }
+
   h2 "Routing"
 
   p "How an edge gets from source to destination is set on the *diagram*, not the edge: `routing = :elbow` (default) draws an orthogonal multi-bend polyline that routes around other shapes; `routing = :straight` draws a single direct line. Use `connect_points` on a shape to restrict which sides (`:north`/`:east`/`:south`/`:west`) an edge may attach to."
