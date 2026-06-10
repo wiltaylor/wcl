@@ -10,6 +10,7 @@ mod code_actions;
 mod completion;
 mod convert;
 mod diagnostics;
+mod folding;
 mod hover;
 mod navigation;
 mod resolve;

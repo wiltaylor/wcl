@@ -227,6 +227,65 @@ fn whole_word_matches(source: &str, needle: &str) -> Vec<(usize, usize)> {
     out
 }
 
+/// `textDocument/rename`: every reference to the symbol under the
+/// cursor (declaration included) becomes a text edit replacing it
+/// with `new_name`. Exactly as precise as find-references — whole-word
+/// matches across the request document and every imported source.
+/// `Err` carries a user-facing message for an invalid new name.
+pub(crate) fn rename(
+    uri: Url,
+    source: &str,
+    offset: usize,
+    new_name: &str,
+    root_doc: Option<&Document>,
+    root_path: Option<&std::path::Path>,
+) -> Result<Option<tower_lsp::lsp_types::WorkspaceEdit>, String> {
+    if !is_valid_identifier(new_name) {
+        return Err(format!("'{new_name}' is not a valid WCL identifier"));
+    }
+    let Some(locations) = references(uri, source, offset, true, root_doc, root_path) else {
+        return Ok(None);
+    };
+    let mut changes: std::collections::HashMap<Url, Vec<tower_lsp::lsp_types::TextEdit>> =
+        std::collections::HashMap::new();
+    let mut seen: std::collections::HashSet<(Url, u32, u32, u32, u32)> =
+        std::collections::HashSet::new();
+    for loc in locations {
+        let key = (
+            loc.uri.clone(),
+            loc.range.start.line,
+            loc.range.start.character,
+            loc.range.end.line,
+            loc.range.end.character,
+        );
+        if seen.insert(key) {
+            changes
+                .entry(loc.uri)
+                .or_default()
+                .push(tower_lsp::lsp_types::TextEdit {
+                    range: loc.range,
+                    new_text: new_name.to_string(),
+                });
+        }
+    }
+    Ok(Some(tower_lsp::lsp_types::WorkspaceEdit {
+        changes: Some(changes),
+        ..Default::default()
+    }))
+}
+
+/// A legal WCL identifier: ASCII letter / underscore head, ASCII
+/// alphanumeric / underscore tail, and not a reserved word.
+fn is_valid_identifier(s: &str) -> bool {
+    let mut chars = s.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first.is_ascii_alphabetic() || first == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && !matches!(s, "true" | "false" | "none" | "if" | "else" | "match")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

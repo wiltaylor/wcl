@@ -445,3 +445,146 @@ async fn did_change_full_replace_resets_doc() {
     assert!(new.contains("bar = 2"), "got: {new:?}");
     assert!(!new.contains("foo"), "stale content: {new:?}");
 }
+
+#[tokio::test]
+async fn folding_ranges_cover_blocks_and_type_decls() {
+    use tower_lsp::lsp_types::FoldingRangeParams;
+    let svc = service();
+    let backend = svc.inner();
+    let uri = Url::parse("file:///fold.wcl").unwrap();
+    let src = "type Server {\n  name: utf8\n  port: u16\n}\n\
+               @schemaless web service {\n  name = \"web\"\n  nested box {\n    size = 1\n  }\n}\n\
+               one_liner = 1\n";
+    open(backend, &uri, src).await;
+    let ranges = backend
+        .folding_range(FoldingRangeParams {
+            text_document: TextDocumentIdentifier { uri },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .expect("folding ok")
+        .expect("some ranges");
+    // The type decl, the outer block, and the nested block fold; the
+    // single-line field does not.
+    assert_eq!(ranges.len(), 3, "{ranges:?}");
+    let type_fold = &ranges[0];
+    assert_eq!((type_fold.start_line, type_fold.end_line), (0, 3));
+    let outer = ranges
+        .iter()
+        .find(|r| r.start_line == 4)
+        .expect("outer block fold");
+    assert_eq!(outer.end_line, 9);
+    let nested = ranges
+        .iter()
+        .find(|r| r.start_line == 6)
+        .expect("nested block fold");
+    assert_eq!(nested.end_line, 8);
+}
+
+#[tokio::test]
+async fn rename_rewrites_every_reference_in_one_file() {
+    use tower_lsp::lsp_types::RenameParams;
+    let svc = service();
+    let backend = svc.inner();
+    let uri = Url::parse("file:///rn.wcl").unwrap();
+    let src =
+        "@schemaless base = 2\n@schemaless doubled = base * 2\n@schemaless tripled = base * 3\n";
+    open(backend, &uri, src).await;
+    // Cursor on the `base` declaration.
+    let edit = backend
+        .rename(RenameParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                position: Position {
+                    line: 0,
+                    character: 13,
+                },
+            },
+            new_name: "seed".into(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        })
+        .await
+        .expect("rename ok")
+        .expect("workspace edit");
+    let changes = edit.changes.expect("changes map");
+    let edits = changes.get(&uri).expect("edits for the file");
+    // Declaration + two references.
+    assert_eq!(edits.len(), 3, "{edits:?}");
+    assert!(edits.iter().all(|e| e.new_text == "seed"));
+}
+
+#[tokio::test]
+async fn rename_rejects_an_invalid_identifier() {
+    use tower_lsp::lsp_types::RenameParams;
+    let svc = service();
+    let backend = svc.inner();
+    let uri = Url::parse("file:///rn2.wcl").unwrap();
+    open(backend, &uri, "@schemaless base = 2\n").await;
+    let res = backend
+        .rename(RenameParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position: Position {
+                    line: 0,
+                    character: 13,
+                },
+            },
+            new_name: "not valid".into(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        })
+        .await;
+    assert!(res.is_err(), "invalid identifier must be rejected: {res:?}");
+}
+
+#[tokio::test]
+async fn rename_crosses_into_imported_file() {
+    use tower_lsp::lsp_types::RenameParams;
+    // main.wcl uses `Color` declared in shared.wcl; renaming at the
+    // use site must edit both files.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let shared = dir.path().join("shared.wcl");
+    std::fs::write(&main, "import \"./shared.wcl\"\ntype Wrap { c: Color }\n").unwrap();
+    std::fs::write(&shared, "type Color { name: utf8 }\n").unwrap();
+
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+
+    let main_uri = Url::from_file_path(&main).unwrap();
+    let text = std::fs::read_to_string(&main).unwrap();
+    open(backend, &main_uri, &text).await;
+
+    // Cursor on `Color` in `c: Color`.
+    let edit = backend
+        .rename(RenameParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier {
+                    uri: main_uri.clone(),
+                },
+                position: Position {
+                    line: 1,
+                    character: 15,
+                },
+            },
+            new_name: "Hue".into(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        })
+        .await
+        .expect("rename ok")
+        .expect("workspace edit");
+    let changes = edit.changes.expect("changes map");
+    assert!(
+        changes.contains_key(&main_uri),
+        "request file edited: {changes:?}"
+    );
+    let shared_uri = Url::from_file_path(&shared).unwrap();
+    let shared_edits = changes
+        .get(&shared_uri)
+        .unwrap_or_else(|| panic!("declaration file edited: {changes:?}"));
+    assert!(shared_edits.iter().all(|e| e.new_text == "Hue"));
+}

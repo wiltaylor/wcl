@@ -30,13 +30,14 @@ use tower_lsp::lsp_types::{
     CodeActionParams, CodeActionProviderCapability, CodeActionResponse, CompletionOptions,
     CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DocumentFormattingParams, DocumentSymbolParams,
-    DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams,
-    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, Location,
-    MessageType, OneOf, Position, PositionEncodingKind, ReferenceParams, SaveOptions,
-    SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
-    SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
-    ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextDocumentSyncOptions, TextDocumentSyncSaveOptions, TextEdit, Url,
+    DocumentSymbolResponse, FoldingRange, FoldingRangeParams, FoldingRangeProviderCapability,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability,
+    InitializeParams, InitializeResult, InitializedParams, Location, MessageType, OneOf, Position,
+    PositionEncodingKind, ReferenceParams, RenameParams, SaveOptions, SemanticTokens,
+    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams,
+    SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    TextDocumentSyncSaveOptions, TextEdit, Url, WorkspaceEdit,
 };
 use tower_lsp::{Client, LanguageServer};
 use wcl_lang::{
@@ -47,6 +48,7 @@ use crate::code_actions;
 use crate::completion;
 use crate::convert::{full_document_range, position_to_offset};
 use crate::diagnostics;
+use crate::folding;
 use crate::hover as hover_impl;
 use crate::navigation;
 use crate::semtokens;
@@ -213,6 +215,8 @@ impl LanguageServer for Backend {
                     ..Default::default()
                 }),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+                folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
+                rename_provider: Some(OneOf::Left(true)),
                 semantic_tokens_provider: Some(
                     SemanticTokensServerCapabilities::SemanticTokensOptions(
                         SemanticTokensOptions {
@@ -322,6 +326,17 @@ impl LanguageServer for Backend {
         Ok(Some(DocumentSymbolResponse::Nested(syms)))
     }
 
+    async fn folding_range(
+        &self,
+        params: FoldingRangeParams,
+    ) -> RpcResult<Option<Vec<FoldingRange>>> {
+        let uri = params.text_document.uri;
+        let Some(source) = self.document_text(&uri) else {
+            return Ok(None);
+        };
+        Ok(Some(folding::compute(&source, uri.as_str())))
+    }
+
     async fn goto_definition(
         &self,
         params: GotoDefinitionParams,
@@ -360,6 +375,26 @@ impl LanguageServer for Backend {
             root_doc.as_ref(),
             root_path.as_deref(),
         ))
+    }
+
+    async fn rename(&self, params: RenameParams) -> RpcResult<Option<WorkspaceEdit>> {
+        let uri = params.text_document_position.text_document.uri;
+        let Some((source, offset)) =
+            self.source_and_offset(&uri, params.text_document_position.position)
+        else {
+            return Ok(None);
+        };
+        let root_doc = self.root_document();
+        let root_path = self.root_path();
+        navigation::rename(
+            uri,
+            &source,
+            offset,
+            &params.new_name,
+            root_doc.as_ref(),
+            root_path.as_deref(),
+        )
+        .map_err(tower_lsp::jsonrpc::Error::invalid_params)
     }
 
     async fn hover(&self, params: HoverParams) -> RpcResult<Option<Hover>> {
