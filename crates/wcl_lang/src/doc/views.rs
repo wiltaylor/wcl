@@ -2458,6 +2458,25 @@ impl<'a> Block<'a> {
                         }
                     }
                 }
+                // A generator child (`wdoc_repeater` / `wdoc_instance` /
+                // component instance) expands here so its generated
+                // blocks of the matching kind participate in the slot
+                // exactly like literal ones — without this, data-driven
+                // children inside a custom shape silently vanished from
+                // `@children` projections (the lowering record).
+                ast::Item::Block(b) => {
+                    let view = Block {
+                        ast: b,
+                        cells,
+                        doc: self.doc,
+                        file_ns: self.file_ns,
+                        kind_override: None,
+                        scope: child_scope.clone(),
+                    };
+                    if view.is_generator() {
+                        push_generated_matching(&view, kind, &mut out);
+                    }
+                }
                 _ => {}
             }
         }
@@ -2497,6 +2516,101 @@ impl<'a> Block<'a> {
             }
         }
         out
+    }
+
+    /// `true` when this block *generates* children at expansion time —
+    /// a `wdoc_repeater`, a `wdoc_instance`, or a `wdoc_component`
+    /// instance.
+    pub(crate) fn is_generator(&self) -> bool {
+        matches!(self.kind(), "wdoc_repeater" | "wdoc_instance")
+            || self.doc.component_def(self.kind()).is_some()
+    }
+
+    /// The blocks this generator expands to, flattened across a
+    /// repeater's iterations / the component body. Mirrors the
+    /// renderer-side expansion (wcl_wdoc `render/expand.rs`), kept
+    /// minimal for the projection path: an erroring `each` or slot
+    /// value contributes nothing here (the renderer path records those
+    /// errors when it expands the same block). Empty for
+    /// non-generators and beyond the expansion-depth cap.
+    pub(crate) fn generator_children(&self) -> Vec<Block<'a>> {
+        // Mirrors the renderer's MAX_LOWER_DEPTH recursion guard.
+        if self.binding_scope_depth() > 32 {
+            return Vec::new();
+        }
+        let name_of = |v: Value| match v {
+            Value::Symbol(s) | Value::Identifier(s) | Value::Utf8(s) | Value::Ascii(s) => Some(s),
+            _ => None,
+        };
+        match self.kind() {
+            "wdoc_repeater" => {
+                let Some(Value::List(items)) =
+                    self.field("each").and_then(|f| f.value().ok().cloned())
+                else {
+                    return Vec::new();
+                };
+                let as_name = self
+                    .field("as")
+                    .and_then(|f| f.value().ok().cloned())
+                    .and_then(name_of)
+                    .unwrap_or_else(|| "it".to_string());
+                let sets = items
+                    .into_iter()
+                    .map(|el| std::sync::Arc::new(vec![(as_name.clone(), el)]))
+                    .collect();
+                self.expand_bodies(self, sets)
+                    .into_iter()
+                    .flatten()
+                    .collect()
+            }
+            "wdoc_instance" => {
+                let def = self
+                    .field("component")
+                    .and_then(|f| f.value().ok().cloned())
+                    .and_then(name_of)
+                    .and_then(|n| self.doc.component_def(&n));
+                match def {
+                    Some(def) => self.expand_component_body(&def),
+                    None => Vec::new(),
+                }
+            }
+            k => match self.doc.component_def(k) {
+                Some(def) => self.expand_component_body(&def),
+                None => Vec::new(),
+            },
+        }
+    }
+
+    /// Expand a component definition's `wdoc_body` once, with this
+    /// instance's fields (or slot defaults) bound to the declared
+    /// slots — the projection-path twin of the renderer's
+    /// `expand_component_children`.
+    fn expand_component_body(&self, def: &Block<'a>) -> Vec<Block<'a>> {
+        let slot_name = |s: &Block<'a>| -> Option<String> {
+            match s.labels().ok()?.into_iter().next()? {
+                Value::Identifier(n) | Value::Utf8(n) | Value::Ascii(n) => Some(n),
+                _ => None,
+            }
+        };
+        let mut bindings: Vec<(String, Value)> = Vec::new();
+        for slot in def.blocks().filter(|b| b.kind() == "wdoc_slot") {
+            let Some(name) = slot_name(&slot) else {
+                continue;
+            };
+            let val = self
+                .field(&name)
+                .and_then(|f| f.value().ok().cloned())
+                .or_else(|| slot.field("default").and_then(|f| f.value().ok().cloned()))
+                .unwrap_or(Value::None);
+            bindings.push((name, val));
+        }
+        let Some(body) = def.block("wdoc_body") else {
+            return Vec::new();
+        };
+        self.expand_bodies(&body, vec![std::sync::Arc::new(bindings)])
+            .into_iter()
+            .next()
+            .unwrap_or_default()
     }
 
     /// Lazily materialise the *computed children* of this block — the
@@ -2652,6 +2766,20 @@ impl<'a> RowView<'a> {
 /// kinds that have no list/record value (types, unions, symbols, …) so the
 /// caller can fall back to a `Value::DataPath` handle for reflective
 /// builtins.
+/// Collect every block of `kind` from a generator's expansion,
+/// recursing through nested generators (a repeater body may contain
+/// another repeater or a component instance). The expansion-depth cap
+/// inside [`Block::generator_children`] bounds the recursion.
+fn push_generated_matching<'a>(generator: &Block<'a>, kind: &str, out: &mut Vec<Block<'a>>) {
+    for child in generator.generator_children() {
+        if child.kind() == kind {
+            out.push(child);
+        } else if child.is_generator() {
+            push_generated_matching(&child, kind, out);
+        }
+    }
+}
+
 pub(crate) fn dataref_to_value<'a>(
     dr: &crate::data::DataRef<'a>,
 ) -> Option<Result<Value, EvalError>> {

@@ -8867,3 +8867,53 @@ page t {
         "slot bound from same-named outer binding:\n{html}"
     );
 }
+
+#[test]
+fn repeater_generated_children_reach_children_projections() {
+    // Regression: a `wdoc_repeater` (or component instance) inside a
+    // custom shape's body generated blocks that silently vanished from
+    // `@children` projections — the lowering record only saw literal
+    // AST children. Generated blocks now participate exactly like
+    // literal ones, in both the sequence_diagram path and any custom
+    // shape's `@children` slot.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("genseq.wcl");
+    write_fixture(
+        &src,
+        r##"
+wdoc_component msg_pair {
+  wdoc_slot key
+  wdoc_body {
+    message $"${key}_go"   { from = "a"  to = "b"  text = $"${key} go" }
+    message $"${key}_back" { from = "b"  to = "a"  text = $"${key} back"  kind = :reply }
+  }
+}
+page seq {
+  sequence_diagram {
+    participant "a" { }
+    participant "b" { }
+    message "m0" { from = "a"  to = "b"  text = "literal" }
+    wdoc_repeater { each = [["m1", "repeated one"], ["m2", "repeated two"]]  as = :m
+      message $"${at(m, 0)}" { from = "a"  to = "b"  text = at(m, 1) }
+    }
+    msg_pair { key = "c1" }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("seq.html")).expect("read");
+    for text in [
+        "literal",
+        "repeated one",
+        "repeated two",
+        "c1 go",
+        "c1 back",
+    ] {
+        assert!(
+            html.contains(text),
+            "generated message '{text}' missing:\n{html}"
+        );
+    }
+}
