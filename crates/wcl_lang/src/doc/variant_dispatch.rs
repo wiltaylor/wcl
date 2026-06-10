@@ -39,7 +39,7 @@ pub(super) fn block_to_variant<'a>(
     Ok(Value::Variant {
         union: union_decl.ast.name.clone(),
         variant: variant.name.clone(),
-        payload: VariantPayload::Record(field_map),
+        payload: VariantPayload::Record(std::sync::Arc::new(field_map)),
     })
 }
 
@@ -173,7 +173,7 @@ pub(super) fn table_row_to_variant<'a>(
     Ok(Value::Variant {
         union: union_decl.ast.name.clone(),
         variant: variant_name,
-        payload: VariantPayload::Record(map),
+        payload: VariantPayload::Record(std::sync::Arc::new(map)),
     })
 }
 
@@ -183,6 +183,19 @@ pub(super) fn table_row_to_variant<'a>(
 /// through `list<…>` element types and through the matched variant's
 /// own union-typed fields. Any other value/type pair is returned
 /// unchanged (permissive, mirroring `value_matches_type_ref`).
+/// `true` when `ty` could require bare-record coercion somewhere inside
+/// it — a named union (memoised lookup) or a list that could. Everything
+/// else is a guaranteed pass-through, letting `coerce_value_to_type`
+/// skip per-call resolution and list rebuilds.
+fn type_may_coerce(doc: &Document, ty: &crate::value::TypeRef) -> bool {
+    use crate::value::TypeRef;
+    match ty {
+        TypeRef::Named(path) => doc.union_fqn_for_path(path).is_some(),
+        TypeRef::List(inner) => type_may_coerce(doc, inner),
+        _ => false,
+    }
+}
+
 pub(crate) fn coerce_value_to_type(
     doc: &Document,
     value: Value,
@@ -190,25 +203,30 @@ pub(crate) fn coerce_value_to_type(
     span: ast::Span,
 ) -> Result<Value, EvalError> {
     use crate::value::TypeRef;
+    // Fast path: when the declared type can't involve a union anywhere
+    // (memoised lookup), the value passes through untouched. This runs
+    // per function invocation per argument, so without it every closure
+    // call re-ran name resolution — and rebuilt entire list arguments —
+    // only to find there was nothing to coerce.
+    if !type_may_coerce(doc, ty) {
+        return Ok(value);
+    }
     match (value, ty) {
         (Value::List(items), TypeRef::List(inner)) => {
             let mut out = Vec::with_capacity(items.len());
-            for it in items {
+            for it in std::sync::Arc::unwrap_or_clone(items) {
                 out.push(coerce_value_to_type(doc, it, inner, span)?);
             }
-            Ok(Value::List(out))
+            Ok(Value::List(std::sync::Arc::new(out)))
         }
         (Value::Record { ty: rty, fields }, TypeRef::Named(path)) => {
-            // Resolve the named type namespace-aware (own namespace, then
-            // imported library namespaces) so a stdlib field typed
-            // `: SomeUnion` under `namespace wdoc` finds `wdoc.SomeUnion`.
-            let resolved = doc
-                .resolve_path_in(path, doc.file_ns())
-                .map(|p| p.join("."))
-                .unwrap_or_else(|| path.join("."));
+            // Resolve via the memoised union lookup (namespace-aware:
+            // own namespace, then imported library namespaces) so a
+            // stdlib field typed `: SomeUnion` under `namespace wdoc`
+            // finds `wdoc.SomeUnion`.
             let Some(union_decl) = doc
-                .union_decl(&resolved)
-                .or_else(|| doc.union_decl(&path.join(".")))
+                .union_fqn_for_path(path)
+                .and_then(|fqn| doc.union_decl(&fqn))
             else {
                 // Named type that isn't a union — leave the anonymous
                 // record untouched.
@@ -223,7 +241,7 @@ pub(crate) fn coerce_value_to_type(
                 ..
             } = &variant.body
             {
-                for (k, v) in fields {
+                for (k, v) in std::sync::Arc::unwrap_or_clone(fields) {
                     let nv = match decl_fields.iter().find(|f| f.name == k) {
                         Some(f) => coerce_value_to_type(doc, v, &f.ty, span)?,
                         None => v,
@@ -231,12 +249,12 @@ pub(crate) fn coerce_value_to_type(
                     coerced.insert(k, nv);
                 }
             } else {
-                coerced = fields;
+                coerced = std::sync::Arc::unwrap_or_clone(fields);
             }
             Ok(Value::Variant {
                 union: union_decl.ast.name.clone(),
                 variant: variant.name.clone(),
-                payload: VariantPayload::Record(coerced),
+                payload: VariantPayload::Record(std::sync::Arc::new(coerced)),
             })
         }
         (other, _) => Ok(other),
@@ -299,7 +317,7 @@ fn pick_unique_match<'a>(
         return Ok(Value::Variant {
             union: union_decl.ast.name.clone(),
             variant: v.name.clone(),
-            payload: VariantPayload::Record(map),
+            payload: VariantPayload::Record(std::sync::Arc::new(map)),
         });
     }
     if full_matches.len() > 1 {

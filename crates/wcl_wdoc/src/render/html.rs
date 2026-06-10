@@ -157,10 +157,11 @@ fn nodes_to_value<T>(
                 );
                 Value::Record {
                     ty: vec![ty.to_string()],
-                    fields: m,
+                    fields: std::sync::Arc::new(m),
                 }
             })
-            .collect(),
+            .collect::<Vec<_>>()
+            .into(),
     )
 }
 
@@ -302,10 +303,10 @@ pub(crate) fn render_template(
         m.insert("href".to_string(), Value::Utf8(h.to_string()));
         Value::Record {
             ty: vec!["PageRef".to_string()],
-            fields: m,
+            fields: std::sync::Arc::new(m),
         }
     };
-    let pages_val = Value::List(pages.iter().map(|(n, h, _)| page_ref(n, h)).collect());
+    let pages_val = Value::list(pages.iter().map(|(n, h, _)| page_ref(n, h)).collect());
     // `toc`: the declared book TOC, or a flat entry per page as a
     // fallback so a templated page without a `toc` still gets a nav.
     let toc_val = if toc_nodes.is_empty() {
@@ -317,13 +318,17 @@ pub(crate) fn render_template(
                     m.insert("title".to_string(), Value::Utf8(t.clone()));
                     m.insert("href".to_string(), Value::Utf8(h.clone()));
                     m.insert("current".to_string(), Value::Bool(n == page_name));
-                    m.insert("children".to_string(), Value::List(Vec::new()));
+                    m.insert(
+                        "children".to_string(),
+                        Value::List(std::sync::Arc::new(Vec::new())),
+                    );
                     Value::Record {
                         ty: vec!["TocEntry".to_string()],
-                        fields: m,
+                        fields: std::sync::Arc::new(m),
                     }
                 })
-                .collect(),
+                .collect::<Vec<_>>()
+                .into(),
         )
     } else {
         toc_to_value(toc_nodes, page_name)
@@ -347,7 +352,7 @@ pub(crate) fn render_template(
     );
     let arg = Value::Record {
         ty: vec!["TemplateCtx".to_string()],
-        fields: ctx,
+        fields: std::sync::Arc::new(ctx),
     };
     let Ok(Value::List(items)) = doc.call_value(&fv, &[arg]) else {
         return String::new();
@@ -866,7 +871,7 @@ pub(crate) fn render_element_payload(
     append_attr(&mut out, "id", map_id(map, "id").as_deref());
     // `attrs` is a list of `[name, value]` pairs.
     if let Some(Value::List(attrs)) = map.get("attrs") {
-        for a in attrs {
+        for a in attrs.iter() {
             if let Value::List(pair) = a
                 && let (Some(name), Some(value)) = (
                     pair.first().and_then(value_as_str),
@@ -879,7 +884,7 @@ pub(crate) fn render_element_payload(
     }
     out.push('>');
     if let Some(Value::List(children)) = map.get("children") {
-        for child in children {
+        for child in children.iter() {
             out.push_str(&render_html_variant(doc, child, depth + 1, patterns));
         }
     }

@@ -325,7 +325,7 @@ impl<'a> DataRef<'a> {
                 Err(e) => Err(e.clone()),
             },
             DataKind::VariantValue(v) => Ok(v.clone()),
-            DataKind::VariantValueList(vs) => Ok(Value::List(vs.clone())),
+            DataKind::VariantValueList(vs) => Ok(Value::List(std::sync::Arc::new(vs.clone()))),
             _ => Err(EvalError::not_a_leaf(self.kind(), self.span())),
         }
     }

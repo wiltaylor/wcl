@@ -43,7 +43,7 @@ fn json_curated_value_covers_all_variant_kinds() {
     record_fields.insert("port".into(), Value::U16(80));
     let mut variant_record = BTreeMap::new();
     variant_record.insert("x".into(), Value::F64(1.5));
-    let value = Value::List(vec![
+    let value = Value::List(std::sync::Arc::new(vec![
         Value::Bool(true),
         Value::I32(-7),
         Value::U64(42),
@@ -53,7 +53,7 @@ fn json_curated_value_covers_all_variant_kinds() {
         Value::None,
         Value::Tensor {
             shape: vec![2],
-            data: vec![Value::F32(1.0), Value::F32(2.0)],
+            data: std::sync::Arc::new(vec![Value::F32(1.0), Value::F32(2.0)]),
         },
         Value::Variant {
             union: vec!["Shape".into()],
@@ -68,17 +68,17 @@ fn json_curated_value_covers_all_variant_kinds() {
         Value::Variant {
             union: vec!["Shape".into()],
             variant: "Circle".into(),
-            payload: VariantPayload::Record(variant_record),
+            payload: VariantPayload::Record(std::sync::Arc::new(variant_record)),
         },
         Value::Record {
             ty: vec!["Conn".into()],
-            fields: record_fields,
+            fields: std::sync::Arc::new(record_fields),
         },
         Value::DataPath {
             kind: "Type".into(),
             segments: vec!["pkg".into(), "Color".into()],
         },
-    ]);
+    ]));
     let json = serde_json::to_string_pretty(&value).expect("serialize");
     insta::assert_snapshot!("value_json_all_kinds", json);
 }

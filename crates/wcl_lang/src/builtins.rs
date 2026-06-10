@@ -423,7 +423,7 @@ where
     T: IntoValue,
 {
     fn into_value(self) -> Value {
-        Value::List(self.into_iter().map(T::into_value).collect())
+        Value::list(self.into_iter().map(T::into_value).collect())
     }
 }
 
@@ -592,11 +592,11 @@ mod tests {
     #[test]
     fn vec_from_value_round_trip() {
         let b = from_fn(|v: Vec<i64>| v.iter().sum::<i64>());
-        let args = vec![Value::List(vec![
+        let args = vec![Value::List(std::sync::Arc::new(vec![
             Value::I64(1),
             Value::I64(2),
             Value::I64(3),
-        ])];
+        ]))];
         assert_eq!((pure(&b))(&args).unwrap(), Value::I64(6));
     }
 
@@ -614,17 +614,21 @@ mod tests {
         let out = (pure(&b))(&[Value::I64(0)]).unwrap();
         assert_eq!(
             out,
-            Value::List(vec![Value::I64(1), Value::I64(2), Value::I64(3)])
+            Value::List(std::sync::Arc::new(vec![
+                Value::I64(1),
+                Value::I64(2),
+                Value::I64(3)
+            ]))
         );
     }
 
     #[test]
     fn vec_of_string_round_trip() {
         let b = from_fn(|parts: Vec<String>| parts.join(","));
-        let out = (pure(&b))(&[Value::List(vec![
+        let out = (pure(&b))(&[Value::List(std::sync::Arc::new(vec![
             Value::Utf8("a".into()),
             Value::Utf8("b".into()),
-        ])])
+        ]))])
         .unwrap();
         assert_eq!(out, Value::Utf8("a,b".into()));
     }

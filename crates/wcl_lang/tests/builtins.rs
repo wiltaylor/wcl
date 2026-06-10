@@ -58,11 +58,19 @@ fn string_contains_and_prefix_suffix() {
 fn list_reverse_and_unique() {
     assert_eq!(
         eval("@schemaless result = reverse([1, 2, 3])\n"),
-        Value::List(vec![Value::I64(3), Value::I64(2), Value::I64(1)])
+        Value::List(std::sync::Arc::new(vec![
+            Value::I64(3),
+            Value::I64(2),
+            Value::I64(1)
+        ]))
     );
     assert_eq!(
         eval("@schemaless result = unique([1, 2, 2, 3, 1])\n"),
-        Value::List(vec![Value::I64(1), Value::I64(2), Value::I64(3)])
+        Value::List(std::sync::Arc::new(vec![
+            Value::I64(1),
+            Value::I64(2),
+            Value::I64(3)
+        ]))
     );
 }
 
@@ -70,15 +78,19 @@ fn list_reverse_and_unique() {
 fn list_sort_numeric_and_string() {
     assert_eq!(
         eval("@schemaless result = sort([3, 1, 2])\n"),
-        Value::List(vec![Value::I64(1), Value::I64(2), Value::I64(3)])
+        Value::List(std::sync::Arc::new(vec![
+            Value::I64(1),
+            Value::I64(2),
+            Value::I64(3)
+        ]))
     );
     assert_eq!(
         eval("@schemaless result = sort([\"b\", \"a\", \"c\"])\n"),
-        Value::List(vec![
+        Value::List(std::sync::Arc::new(vec![
             Value::Utf8("a".into()),
             Value::Utf8("b".into()),
             Value::Utf8("c".into()),
-        ])
+        ]))
     );
 }
 
@@ -94,11 +106,11 @@ fn list_index_of_take_drop_contains() {
     );
     assert_eq!(
         eval("@schemaless result = take([1, 2, 3, 4], 2)\n"),
-        Value::List(vec![Value::I64(1), Value::I64(2)])
+        Value::List(std::sync::Arc::new(vec![Value::I64(1), Value::I64(2)]))
     );
     assert_eq!(
         eval("@schemaless result = drop([1, 2, 3, 4], 2)\n"),
-        Value::List(vec![Value::I64(3), Value::I64(4)])
+        Value::List(std::sync::Arc::new(vec![Value::I64(3), Value::I64(4)]))
     );
     assert_eq!(
         eval("@schemaless result = list_contains([1, 2, 3], 2)\n"),
@@ -117,11 +129,14 @@ fn list_index_of_take_drop_contains() {
 fn node(id: &str, children: Vec<Value>) -> Value {
     let mut map = std::collections::BTreeMap::new();
     map.insert("id".to_string(), Value::Identifier(id.to_string()));
-    map.insert("children".to_string(), Value::List(children));
+    map.insert(
+        "children".to_string(),
+        Value::List(std::sync::Arc::new(children)),
+    );
     Value::Variant {
         union: vec!["Node".into()],
         variant: "N".into(),
-        payload: wcl_lang::VariantPayload::Record(map),
+        payload: wcl_lang::VariantPayload::Record(std::sync::Arc::new(map)),
     }
 }
 
@@ -134,7 +149,7 @@ fn edge(src: &str, dst: &str) -> Value {
     );
     Value::Record {
         ty: vec!["Edge".into()],
-        fields: map,
+        fields: std::sync::Arc::new(map),
     }
 }
 
@@ -152,10 +167,16 @@ const SORT_DOC: &str = r#"
 fn sort_via_doc(items: Vec<Value>, edges: Vec<Value>) -> Vec<Value> {
     let doc = wcl_lang::Document::open(SORT_DOC, "test").expect("parse");
     let result = doc
-        .call_function("sort_them", &[Value::List(items), Value::List(edges)])
+        .call_function(
+            "sort_them",
+            &[
+                Value::List(std::sync::Arc::new(items)),
+                Value::List(std::sync::Arc::new(edges)),
+            ],
+        )
         .expect("call sort_them");
     match result {
-        Value::List(xs) => xs,
+        Value::List(xs) => std::sync::Arc::unwrap_or_clone(xs),
         other => panic!("expected list, got {other:?}"),
     }
 }
@@ -440,11 +461,14 @@ fn builtin_names_lists_registered_builtins_sorted() {
 fn record_keys_and_values_in_sorted_key_order() {
     assert_eq!(
         eval("@schemaless result = keys({ b: 2, a: 1 })\n"),
-        Value::List(vec![Value::Utf8("a".into()), Value::Utf8("b".into())])
+        Value::List(std::sync::Arc::new(vec![
+            Value::Utf8("a".into()),
+            Value::Utf8("b".into())
+        ]))
     );
     assert_eq!(
         eval("@schemaless result = values({ b: 2, a: 1 })\n"),
-        Value::List(vec![Value::I64(1), Value::I64(2)])
+        Value::List(std::sync::Arc::new(vec![Value::I64(1), Value::I64(2)]))
     );
 }
 
@@ -452,14 +476,21 @@ fn record_keys_and_values_in_sorted_key_order() {
 fn record_keys_works_on_variant_record_payloads() {
     let src = "union Shape { Circle { r: f64 } }\n\
                @schemaless result = keys(Shape::Circle { r: 2.0 })\n";
-    assert_eq!(eval(src), Value::List(vec![Value::Utf8("r".into())]));
+    assert_eq!(
+        eval(src),
+        Value::List(std::sync::Arc::new(vec![Value::Utf8("r".into())]))
+    );
 }
 
 #[test]
 fn record_merge_second_record_wins_on_clash() {
     assert_eq!(
         eval("@schemaless result = values(merge({ a: 1, b: 2 }, { b: 9, c: 3 }))\n"),
-        Value::List(vec![Value::I64(1), Value::I64(9), Value::I64(3)])
+        Value::List(std::sync::Arc::new(vec![
+            Value::I64(1),
+            Value::I64(9),
+            Value::I64(3)
+        ]))
     );
 }
 
@@ -524,11 +555,11 @@ fn sort_by_orders_by_key_function() {
         eval(
             "@schemaless result = sort_by([\"bb\", \"a\", \"ccc\"], fn (s: utf8) -> i64 { len(s) })\n"
         ),
-        Value::List(vec![
+        Value::List(std::sync::Arc::new(vec![
             Value::Utf8("a".into()),
             Value::Utf8("bb".into()),
             Value::Utf8("ccc".into()),
-        ])
+        ]))
     );
 }
 
@@ -563,7 +594,10 @@ fn group_by_groups_in_first_seen_key_order() {
     assert_eq!(fields.get("key"), Some(&Value::Utf8("odd".into())));
     assert_eq!(
         fields.get("items"),
-        Some(&Value::List(vec![Value::I64(1), Value::I64(3)]))
+        Some(&Value::List(std::sync::Arc::new(vec![
+            Value::I64(1),
+            Value::I64(3)
+        ])))
     );
 }
 
@@ -579,10 +613,16 @@ fn predicate_must_return_bool() {
 fn enumerate_pairs_index_and_element() {
     assert_eq!(
         eval("@schemaless result = enumerate([\"a\", \"b\"])\n"),
-        Value::List(vec![
-            Value::List(vec![Value::I64(0), Value::Utf8("a".into())]),
-            Value::List(vec![Value::I64(1), Value::Utf8("b".into())]),
-        ])
+        Value::List(std::sync::Arc::new(vec![
+            Value::List(std::sync::Arc::new(vec![
+                Value::I64(0),
+                Value::Utf8("a".into())
+            ])),
+            Value::List(std::sync::Arc::new(vec![
+                Value::I64(1),
+                Value::Utf8("b".into()),
+            ])),
+        ]))
     );
 }
 
@@ -594,7 +634,7 @@ fn slice_clamps_and_works_on_strings_and_lists() {
     );
     assert_eq!(
         eval("@schemaless result = slice([1, 2, 3, 4], 1, 3)\n"),
-        Value::List(vec![Value::I64(2), Value::I64(3)])
+        Value::List(std::sync::Arc::new(vec![Value::I64(2), Value::I64(3)]))
     );
     // Out-of-range bounds clamp instead of erroring.
     assert_eq!(
@@ -611,7 +651,10 @@ fn slice_clamps_and_works_on_strings_and_lists() {
 fn chars_repeat_and_padding() {
     assert_eq!(
         eval("@schemaless result = chars(\"hi\")\n"),
-        Value::List(vec![Value::Utf8("h".into()), Value::Utf8("i".into())])
+        Value::List(std::sync::Arc::new(vec![
+            Value::Utf8("h".into()),
+            Value::Utf8("i".into())
+        ]))
     );
     assert_eq!(
         eval("@schemaless result = repeat(\"ab\", 3)\n"),

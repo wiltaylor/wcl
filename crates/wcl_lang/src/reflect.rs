@@ -117,7 +117,7 @@ fn fn_signature_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, St
 
 /// `builtin_names()` — the sorted names of every registered built-in.
 fn builtin_names_hof(caller: &mut dyn Caller, _args: &[Value]) -> Result<Value, String> {
-    Ok(Value::List(
+    Ok(Value::list(
         caller
             .builtin_names()
             .into_iter()
@@ -134,7 +134,7 @@ fn fn_param_record(name: &str, ty: &str, doc: &str) -> Value {
     m.insert("doc".to_string(), Value::Utf8(doc.to_string()));
     Value::Record {
         ty: vec!["FnParam".to_string()],
-        fields: m,
+        fields: std::sync::Arc::new(m),
     }
 }
 
@@ -149,7 +149,10 @@ fn fn_signature_record(
 ) -> Value {
     let mut m = BTreeMap::new();
     m.insert("doc".to_string(), Value::Utf8(doc.to_string()));
-    m.insert("params".to_string(), Value::List(params));
+    m.insert(
+        "params".to_string(),
+        Value::List(std::sync::Arc::new(params)),
+    );
     m.insert(
         "return_type".to_string(),
         Value::Utf8(return_type.to_string()),
@@ -162,7 +165,7 @@ fn fn_signature_record(
     m.insert("is_builtin".to_string(), Value::Bool(is_builtin));
     Value::Record {
         ty: vec!["FnSignature".to_string()],
-        fields: m,
+        fields: std::sync::Arc::new(m),
     }
 }
 
@@ -263,7 +266,7 @@ fn decorator_names_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value,
         )
     })?;
     let names: Vec<Value> = decs.iter().map(|d| Value::Utf8(d.full_name())).collect();
-    Ok(Value::List(names))
+    Ok(Value::List(std::sync::Arc::new(names)))
 }
 
 fn decorator_arg_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
@@ -334,7 +337,7 @@ fn type_fields_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, Str
         .iter()
         .map(|f| field_record(f, &decs))
         .collect();
-    Ok(Value::List(records))
+    Ok(Value::list(records))
 }
 
 /// `child_types(&T)` — reflect a type (or interface) into references to the
@@ -380,7 +383,7 @@ fn child_types_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, Str
             segments,
         })
         .collect();
-    Ok(Value::List(refs))
+    Ok(Value::list(refs))
 }
 
 /// Own fields (declaration order) followed by inherited fields not
@@ -419,7 +422,7 @@ fn field_record<'a>(f: &TypeField<'a>, decs: &HashMap<String, Vec<Decorator<'a>>
             m.insert("arg".to_string(), Value::Utf8(decorator_first_arg(d)));
             Value::Record {
                 ty: vec!["Decorator".to_string()],
-                fields: m,
+                fields: std::sync::Arc::new(m),
             }
         })
         .collect();
@@ -445,10 +448,13 @@ fn field_record<'a>(f: &TypeField<'a>, decs: &HashMap<String, Vec<Decorator<'a>>
     );
     m.insert("repeated".to_string(), Value::Bool(children.is_some()));
     m.insert("accepts".to_string(), Value::Utf8(accepts));
-    m.insert("decorators".to_string(), Value::List(decorators));
+    m.insert(
+        "decorators".to_string(),
+        Value::List(std::sync::Arc::new(decorators)),
+    );
     Value::Record {
         ty: vec!["TypeField".to_string()],
-        fields: m,
+        fields: std::sync::Arc::new(m),
     }
 }
 
@@ -504,10 +510,10 @@ mod tests {
         );
         assert_eq!(
             v,
-            Value::List(vec![
+            Value::List(std::sync::Arc::new(vec![
                 Value::Utf8("block".into()),
                 Value::Utf8("schemaless".into()),
-            ])
+            ]))
         );
     }
 
@@ -577,7 +583,10 @@ mod tests {
             "#,
             "out",
         );
-        assert_eq!(v, Value::List(vec![Value::Utf8("schemaless".into())]));
+        assert_eq!(
+            v,
+            Value::List(std::sync::Arc::new(vec![Value::Utf8("schemaless".into())]))
+        );
     }
 
     fn record_field<'v>(rec: &'v Value, key: &str) -> &'v Value {
@@ -787,7 +796,7 @@ mod tests {
             "#,
             "out",
         );
-        assert_eq!(v, Value::List(vec![]));
+        assert_eq!(v, Value::List(std::sync::Arc::new(vec![])));
     }
 
     #[test]
@@ -862,10 +871,10 @@ mod tests {
         );
         assert_eq!(
             v,
-            Value::List(vec![Value::DataPath {
+            Value::List(std::sync::Arc::new(vec![Value::DataPath {
                 kind: "type".into(),
                 segments: vec!["lib".into(), "Gizmo".into()],
-            }])
+            }]))
         );
     }
 

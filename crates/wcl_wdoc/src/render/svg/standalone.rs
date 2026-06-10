@@ -155,7 +155,7 @@ fn collect_fundamental_bbox(value: &Value, out: &mut Vec<(f64, f64, f64, f64)>) 
         }
         "link" => {
             if let Some(Value::List(children)) = map.get("children") {
-                for c in children {
+                for c in children.iter() {
                     collect_fundamental_bbox(c, out);
                 }
             }

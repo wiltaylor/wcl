@@ -1856,7 +1856,11 @@ fn eval_list_literal_to_value_list() {
     let doc = open("x = [1, 2, 3]");
     assert_eq!(
         doc.field("x").unwrap().value().unwrap(),
-        &Value::List(vec![Value::I64(1), Value::I64(2), Value::I64(3)])
+        &Value::List(std::sync::Arc::new(vec![
+            Value::I64(1),
+            Value::I64(2),
+            Value::I64(3)
+        ]))
     );
 }
 
@@ -1865,7 +1869,7 @@ fn eval_empty_list_literal() {
     let doc = open("x = []");
     assert_eq!(
         doc.field("x").unwrap().value().unwrap(),
-        &Value::List(vec![])
+        &Value::List(std::sync::Arc::new(vec![]))
     );
 }
 
@@ -1877,7 +1881,10 @@ fn eval_nested_list_literal() {
         panic!("expected outer list")
     };
     assert_eq!(outer.len(), 2);
-    assert_eq!(outer[0], Value::List(vec![Value::I64(1), Value::I64(2)]));
+    assert_eq!(
+        outer[0],
+        Value::List(std::sync::Arc::new(vec![Value::I64(1), Value::I64(2)]))
+    );
 }
 
 #[test]
@@ -1885,7 +1892,11 @@ fn eval_list_literal_resolves_identifiers() {
     let doc = open("a = 1\nb = 2\nx = [a, b, 3]");
     assert_eq!(
         doc.field("x").unwrap().value().unwrap(),
-        &Value::List(vec![Value::I64(1), Value::I64(2), Value::I64(3)])
+        &Value::List(std::sync::Arc::new(vec![
+            Value::I64(1),
+            Value::I64(2),
+            Value::I64(3)
+        ]))
     );
 }
 
@@ -1904,10 +1915,10 @@ members = [shop, stripe]
     let doc = Document::open(src, "test").expect("open");
     assert_eq!(
         doc.field("members").unwrap().value().unwrap(),
-        &Value::List(vec![
+        &Value::List(std::sync::Arc::new(vec![
             Value::Identifier("shop".into()),
             Value::Identifier("stripe".into()),
-        ])
+        ]))
     );
 }
 
@@ -1919,7 +1930,11 @@ fn eval_decorator_arg_with_list_literal() {
     let arg = d.named_arg("items").unwrap().unwrap();
     assert_eq!(
         arg,
-        Value::List(vec![Value::I64(1), Value::I64(2), Value::I64(3)])
+        Value::List(std::sync::Arc::new(vec![
+            Value::I64(1),
+            Value::I64(2),
+            Value::I64(3)
+        ]))
     );
 }
 
@@ -2664,7 +2679,7 @@ fn edge_records(doc: &Document) -> Vec<(String, String, String)> {
     let Value::List(items) = doc.field("probe").unwrap().value().unwrap().clone() else {
         panic!("probe field is not a list");
     };
-    items
+    std::sync::Arc::unwrap_or_clone(items)
         .into_iter()
         .map(|v| {
             let Value::Record { fields, .. } = v else {
@@ -3899,7 +3914,8 @@ fn record_value(pairs: &[(&str, Value)]) -> Value {
     let fields = pairs
         .iter()
         .map(|(k, v)| ((*k).to_string(), v.clone()))
-        .collect();
+        .collect::<std::collections::BTreeMap<_, _>>()
+        .into();
     Value::Record {
         ty: Vec::new(),
         fields,
@@ -4152,10 +4168,10 @@ fn root_children_consumable_by_map_to_records() {
         .expect("names value");
     assert_eq!(
         names,
-        Value::List(vec![
+        Value::List(std::sync::Arc::new(vec![
             Value::Utf8("Intro".into()),
             Value::Utf8("Second".into()),
-        ])
+        ]))
     );
 }
 

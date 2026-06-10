@@ -181,7 +181,7 @@ pub(crate) fn lower_to_values_named(
     let arg = block_to_record(doc, block, kind)?;
     let fv = lookup_block_lower_named(doc, block, kind, field)?;
     match doc.call_value(&fv, &[arg]) {
-        Ok(Value::List(items)) => Some(items),
+        Ok(Value::List(items)) => Some(std::sync::Arc::unwrap_or_clone(items)),
         // The declared return type is a `list<…Fundamental>`; anything
         // else means the lowering is broken (the language doesn't
         // enforce fn return types at runtime) — surface a diagnostic
@@ -419,7 +419,7 @@ pub(crate) fn depth_marker() -> String {
 /// HTML lowering paths, where a shape's `width`/`height` is geometry.
 pub(crate) fn block_to_record(doc: &Document, block: &Block<'_>, kind: &str) -> Option<Value> {
     let raw = block_to_record_raw(doc, block, kind)?;
-    let Value::Record { ty, mut fields } = raw else {
+    let Value::Record { ty, fields } = raw else {
         return Some(raw);
     };
     // Grow width / height in the record so a Process / Decision /
@@ -431,11 +431,17 @@ pub(crate) fn block_to_record(doc: &Document, block: &Block<'_>, kind: &str) -> 
     // Only fields carrying numeric `width`/`height` geometry that the layout
     // solver may have grown are coerced; leave non-numeric fields alone.
     let (eff_w, eff_h) = effective_dims(block);
-    if fields.get("width").is_some_and(Value::is_numeric) {
-        fields.insert("width".to_string(), Value::F64(eff_w));
-    }
-    if fields.get("height").is_some_and(Value::is_numeric) {
-        fields.insert("height".to_string(), Value::F64(eff_h));
+    if fields.get("width").is_some_and(Value::is_numeric)
+        || fields.get("height").is_some_and(Value::is_numeric)
+    {
+        let mut grown = std::sync::Arc::unwrap_or_clone(fields);
+        if grown.get("width").is_some_and(Value::is_numeric) {
+            grown.insert("width".to_string(), Value::F64(eff_w));
+        }
+        if grown.get("height").is_some_and(Value::is_numeric) {
+            grown.insert("height".to_string(), Value::F64(eff_h));
+        }
+        return Some(Value::record(ty, grown));
     }
     Some(Value::Record { ty, fields })
 }
@@ -480,7 +486,7 @@ pub(crate) fn block_to_record_raw(doc: &Document, block: &Block<'_>, kind: &str)
                 Some(dr) => match dr.value() {
                     Ok(v) => v,
                     Err(_) => match dr.as_block_list() {
-                        Some(blocks) => Value::List(
+                        Some(blocks) => Value::list(
                             blocks
                                 .iter()
                                 .filter_map(|b| block_to_record(doc, b, b.kind()))
@@ -508,7 +514,7 @@ pub(crate) fn block_to_record_raw(doc: &Document, block: &Block<'_>, kind: &str)
             match dr.value() {
                 Ok(v) => v,
                 Err(_) => match dr.as_block_list() {
-                    Some(blocks) => Value::List(
+                    Some(blocks) => Value::list(
                         blocks
                             .iter()
                             .filter_map(|b| block_to_record(doc, b, b.kind()))
@@ -529,14 +535,14 @@ pub(crate) fn block_to_record_raw(doc: &Document, block: &Block<'_>, kind: &str)
     }
     Some(Value::Record {
         ty: vec![kind_to_typename(kind)],
-        fields: map,
+        fields: std::sync::Arc::new(map),
     })
 }
 
 pub(crate) fn payload_to_record(map: &BTreeMap<String, Value>, kind: &str) -> Value {
     Value::Record {
         ty: vec![kind_to_typename(kind)],
-        fields: map.clone(),
+        fields: std::sync::Arc::new(map.clone()),
     }
 }
 

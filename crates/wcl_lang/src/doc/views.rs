@@ -426,11 +426,11 @@ fn synth_child_from_value(
 
     // Normalise the element to a field map.
     let fields: BTreeMap<String, Value> = match value {
-        Value::Record { fields, .. } => fields.clone(),
+        Value::Record { fields, .. } => fields.as_ref().clone(),
         Value::Variant {
             payload: VariantPayload::Record(m),
             ..
-        } => m.clone(),
+        } => m.as_ref().clone(),
         scalar => {
             // A bare scalar fills the kind's single `@inline(0)` field
             // (e.g. `list { items = map(names, fn(n) -> n) }` → `li` text).
@@ -963,7 +963,7 @@ impl<'a> TypeDecl<'a> {
             _ => return Vec::new(),
         };
         match arg {
-            Value::List(items) => items
+            Value::List(items) => std::sync::Arc::unwrap_or_clone(items)
                 .into_iter()
                 .filter_map(|v| match v {
                     Value::Utf8(s) | Value::Ascii(s) => Some(s),
@@ -2153,7 +2153,7 @@ impl<'a> Block<'a> {
                 values.extend(self.doc.project_connections(src.items, conn_schema, &scope));
             }
             return Some(crate::data::DataRef::from_variant_value(Value::List(
-                values,
+                std::sync::Arc::new(values),
             )));
         }
 
@@ -2219,7 +2219,7 @@ impl<'a> Block<'a> {
             }
             return Ok(Value::Record {
                 ty: vec![self.kind().to_string()],
-                fields: map,
+                fields: std::sync::Arc::new(map),
             });
         };
         let labels = self.labels().unwrap_or_default();
@@ -2249,7 +2249,7 @@ impl<'a> Block<'a> {
         }
         Ok(Value::Record {
             ty: vec![schema.name().to_string()],
-            fields: map,
+            fields: std::sync::Arc::new(map),
         })
     }
 
@@ -2281,7 +2281,7 @@ impl<'a> Block<'a> {
         if let Some(field) = self.field(field_name)
             && let Ok(Value::List(items)) = field.value()
         {
-            for it in items {
+            for it in items.iter() {
                 if matches!(it, Value::Variant { .. }) {
                     out.push(it.clone());
                 }
@@ -2554,7 +2554,7 @@ impl<'a> Block<'a> {
                     .and_then(|f| f.value().ok().cloned())
                     .and_then(name_of)
                     .unwrap_or_else(|| "it".to_string());
-                let sets = items
+                let sets = std::sync::Arc::unwrap_or_clone(items)
                     .into_iter()
                     .map(|el| std::sync::Arc::new(vec![(as_name.clone(), el)]))
                     .collect();
@@ -2663,7 +2663,7 @@ impl<'a> Block<'a> {
             };
             match value {
                 Value::List(items) if is_list => {
-                    for el in items {
+                    for el in items.iter() {
                         if let Some(sc) = synth_child_from_value(self.doc, f.name(), &kind, el) {
                             out.push(sc);
                         }
@@ -2787,14 +2787,14 @@ pub(crate) fn dataref_to_value<'a>(
     match dr.inner() {
         DataKind::Field(f) => Some(f.value().cloned().map_err(|e| e.clone())),
         DataKind::VariantValue(v) => Some(Ok(v.clone())),
-        DataKind::VariantValueList(vs) => Some(Ok(Value::List(vs.clone()))),
+        DataKind::VariantValueList(vs) => Some(Ok(Value::List(std::sync::Arc::new(vs.clone())))),
         DataKind::Block(b) => Some(b.to_record_value()),
         DataKind::BlockList(v) | DataKind::Table(v) => Some((|| {
             let mut out = Vec::with_capacity(v.len());
             for b in v {
                 out.push(b.to_record_value()?);
             }
-            Ok(Value::List(out))
+            Ok(Value::List(std::sync::Arc::new(out)))
         })()),
         _ => None,
     }

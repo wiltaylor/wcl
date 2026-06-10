@@ -96,7 +96,7 @@ pub(crate) fn expand_repeater_children<'a>(block: &Block<'a>) -> Vec<Block<'a>> 
             _ => None,
         })
         .unwrap_or_else(|| "it".to_string());
-    let binding_sets: Vec<Arc<Vec<(String, Value)>>> = items
+    let binding_sets: Vec<Arc<Vec<(String, Value)>>> = std::sync::Arc::unwrap_or_clone(items)
         .into_iter()
         .map(|el| Arc::new(vec![(as_name.clone(), el)]))
         .collect();

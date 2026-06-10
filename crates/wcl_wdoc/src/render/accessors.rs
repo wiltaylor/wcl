@@ -381,7 +381,10 @@ mod tests {
                 map.insert("ratio".into(), Value::F64(1.5));
                 map.insert(
                     "names".into(),
-                    Value::List(vec![Value::Utf8("a".into()), Value::Utf8("b".into())]),
+                    Value::List(std::sync::Arc::new(vec![
+                        Value::Utf8("a".into()),
+                        Value::Utf8("b".into()),
+                    ])),
                 );
 
                 // String / float / list readers exist on both sources and

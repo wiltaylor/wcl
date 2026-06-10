@@ -365,7 +365,10 @@ fn value_to_expr(v: Value) -> ast::Expr {
             unreachable!("function values are not constructible via the schema builder API")
         }
         Value::List(items) => ast::Expr::ListLit {
-            elements: items.into_iter().map(value_to_expr).collect(),
+            elements: std::sync::Arc::unwrap_or_clone(items)
+                .into_iter()
+                .map(value_to_expr)
+                .collect(),
             elem_trivia: Vec::new(),
             trailing_trivia: Vec::new(),
             span: synthetic_span(),

@@ -376,9 +376,9 @@ impl InlinePatterns {
             }
             let pattern = &self.compiled[m.pat_idx];
             let args: Vec<Value> = m.caps.into_iter().map(Value::Utf8).collect();
-            match doc.call_value(&pattern.to_span, &[Value::List(args)]) {
+            match doc.call_value(&pattern.to_span, &[Value::List(std::sync::Arc::new(args))]) {
                 Ok(Value::List(spans)) => {
-                    for span in spans {
+                    for span in std::sync::Arc::unwrap_or_clone(spans) {
                         emit(InlineToken::Span(&span, depth));
                     }
                 }

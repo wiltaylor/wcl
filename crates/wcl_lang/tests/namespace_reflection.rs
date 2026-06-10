@@ -91,19 +91,19 @@ fn namespaced_child_types_match_root_twin_and_chain() {
     );
     assert_eq!(
         eval(&doc, "ns_kids"),
-        Value::List(vec![Value::DataPath {
+        Value::List(std::sync::Arc::new(vec![Value::DataPath {
             kind: "type".into(),
             segments: vec!["lib".into(), "Gizmo".into()],
-        }]),
+        }])),
         "child slot refs carry the FQN"
     );
     assert_eq!(eval(&doc, "ns_kids"), eval(&doc, "qualified_kids"));
     assert_eq!(
         eval(&doc, "root_kids"),
-        Value::List(vec![Value::DataPath {
+        Value::List(std::sync::Arc::new(vec![Value::DataPath {
             kind: "type".into(),
             segments: vec!["RootGizmo".into()],
-        }])
+        }]))
     );
     let chained = eval(&doc, "chained");
     let Value::List(fields) = &chained else {

@@ -92,7 +92,7 @@ fn symbol_list_arg(d: &Decorator<'_>, name: &str) -> Option<Vec<String>> {
         return None;
     };
     Some(
-        items
+        std::sync::Arc::unwrap_or_clone(items)
             .into_iter()
             .filter_map(|v| match v {
                 Value::Symbol(s) => Some(s),

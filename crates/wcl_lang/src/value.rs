@@ -42,10 +42,17 @@ pub enum Value {
     /// JSON `null` so containing structures survive — the function
     /// itself doesn't round-trip.
     Function(FnValue),
-    List(Vec<Value>),
+    /// Lists share their storage (`Arc`): WCL values are immutable, so
+    /// a reference to a cached list (a memoised document-level `let`,
+    /// a field value, a builtin argument) is a pointer copy, not a
+    /// deep clone. Before this, every reference deep-cloned — wad-sized
+    /// documents spent ~all of their build inside those clones
+    /// (PERF-wdoc-let-memoisation.md). Use [`Value::list`] to build
+    /// one and [`std::sync::Arc::unwrap_or_clone`] to mutate.
+    List(std::sync::Arc<Vec<Value>>),
     Tensor {
         shape: Vec<u64>,
-        data: Vec<Value>,
+        data: std::sync::Arc<Vec<Value>>,
     },
     Variant {
         /// FQN of the declaring union, e.g. `["company", "Shape"]`.
@@ -60,7 +67,7 @@ pub enum Value {
     /// named slots in deterministic order.
     Record {
         ty: Vec<String>,
-        fields: std::collections::BTreeMap<String, Value>,
+        fields: std::sync::Arc<std::collections::BTreeMap<String, Value>>,
     },
     /// First-class handle into the document tree that survived
     /// evaluation without auto-dereffing to a leaf value. Produced
@@ -101,7 +108,7 @@ impl serde::Serialize for Value {
             Value::None | Value::Function(_) => s.serialize_unit(),
             Value::List(items) => {
                 let mut seq = s.serialize_seq(Some(items.len()))?;
-                for v in items {
+                for v in items.iter() {
                     seq.serialize_element(v)?;
                 }
                 seq.end()
@@ -129,7 +136,7 @@ impl serde::Serialize for Value {
             },
             Value::Record { fields, .. } => {
                 let mut map = s.serialize_map(Some(fields.len()))?;
-                for (k, v) in fields {
+                for (k, v) in fields.iter() {
                     map.serialize_entry(k, v)?;
                 }
                 map.end()
@@ -140,6 +147,22 @@ impl serde::Serialize for Value {
                 map.serialize_entry("path", segments)?;
                 map.end()
             }
+        }
+    }
+}
+
+impl Value {
+    /// Build a list value (Arc-wrapping the storage — see the variant
+    /// doc on [`Value::List`]).
+    pub fn list(items: Vec<Value>) -> Value {
+        Value::List(std::sync::Arc::new(items))
+    }
+
+    /// Build an anonymous-shape record value.
+    pub fn record(ty: Vec<String>, fields: std::collections::BTreeMap<String, Value>) -> Value {
+        Value::Record {
+            ty,
+            fields: std::sync::Arc::new(fields),
         }
     }
 }
@@ -156,8 +179,9 @@ pub enum VariantPayload {
     /// declared TypeRef.
     Positional(Box<Value>),
     /// `Circle { center: P, radius: f64 }` — named fields. Stored in a
-    /// `BTreeMap` so `PartialEq` and `Debug` order deterministically.
-    Record(std::collections::BTreeMap<String, Value>),
+    /// `BTreeMap` so `PartialEq` and `Debug` order deterministically;
+    /// `Arc`-shared like [`Value::Record`] so payload clones are cheap.
+    Record(std::sync::Arc<std::collections::BTreeMap<String, Value>>),
 }
 
 /// A function value: a parameter list, a return type, and an opaque body.
@@ -170,7 +194,7 @@ pub enum VariantPayload {
 pub struct FnValue {
     params: Vec<FnParam>,
     return_ty: TypeRef,
-    pub(crate) body: Box<crate::ast::Expr>,
+    pub(crate) body: std::sync::Arc<crate::ast::Expr>,
     /// Snapshot of the evaluator's local bindings at the moment this
     /// function literal was constructed. On invocation, captured pairs
     /// are pushed onto the call's locals stack *before* the parameter
@@ -187,7 +211,7 @@ impl FnValue {
     pub(crate) fn new(
         params: Vec<FnParam>,
         return_ty: TypeRef,
-        body: Box<crate::ast::Expr>,
+        body: std::sync::Arc<crate::ast::Expr>,
     ) -> Self {
         Self {
             params,

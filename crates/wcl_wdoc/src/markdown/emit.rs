@@ -362,7 +362,7 @@ impl Emitter<'_> {
             {
                 header = cells.iter().map(|v| self.cell(v)).collect();
             }
-            for r in &body {
+            for r in body.iter() {
                 match r {
                     Value::List(cells) => rows.push(cells.iter().map(|v| self.cell(v)).collect()),
                     other => rows.push(vec![self.cell(other)]),

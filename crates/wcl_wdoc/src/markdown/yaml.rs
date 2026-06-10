@@ -113,7 +113,7 @@ fn emit_value(out: &mut String, value: &Value, indent: usize) {
         Value::List(items) => {
             out.push_str(":\n");
             let pad = " ".repeat(indent + 2);
-            for item in items {
+            for item in items.iter() {
                 if let Some(s) = scalar(item) {
                     out.push_str(&format!("{pad}- {s}\n"));
                 } else {
@@ -128,7 +128,7 @@ fn emit_value(out: &mut String, value: &Value, indent: usize) {
         Value::Record { fields, .. } => {
             out.push_str(":\n");
             let pad = " ".repeat(indent + 2);
-            for (k, v) in fields {
+            for (k, v) in fields.iter() {
                 out.push_str(&format!("{pad}{}", yaml_key(k)));
                 emit_value(out, v, indent + 2);
             }

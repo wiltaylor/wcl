@@ -441,7 +441,15 @@ fn collection_builtins_evaluate_end_to_end() {
     let doc = Document::open_with(&source, &path.display().to_string(), &env)
         .expect("collection fixture parses");
 
-    let i64s = |xs: &[i64]| Value::List(xs.iter().copied().map(Value::I64).collect());
+    let i64s = |xs: &[i64]| {
+        Value::List(
+            xs.iter()
+                .copied()
+                .map(Value::I64)
+                .collect::<Vec<_>>()
+                .into(),
+        )
+    };
 
     assert_eq!(
         doc.field("doubled").unwrap().value().unwrap(),
@@ -474,7 +482,7 @@ fn collection_builtins_evaluate_end_to_end() {
     };
     assert_eq!(shape, &vec![2u64, 3]);
     assert_eq!(
-        data,
+        data.as_ref(),
         &vec![
             Value::I64(11),
             Value::I64(12),
@@ -611,7 +619,11 @@ fn new_builtins_smoke() {
     );
     assert_eq!(
         doc.field("flat").unwrap().value().unwrap(),
-        &Value::List(vec![Value::I64(1), Value::I64(2), Value::I64(3)])
+        &Value::List(std::sync::Arc::new(vec![
+            Value::I64(1),
+            Value::I64(2),
+            Value::I64(3)
+        ]))
     );
     // zip with shorter `[:a, :b]` truncates to length 2.
     let pairs = doc.field("pairs").unwrap().value().unwrap();
@@ -622,7 +634,7 @@ fn new_builtins_smoke() {
     // reshape: [4, 1].
     assert_eq!(
         doc.field("reshaped").unwrap().value().unwrap(),
-        &Value::List(vec![Value::I64(4), Value::I64(1)])
+        &Value::List(std::sync::Arc::new(vec![Value::I64(4), Value::I64(1)]))
     );
     assert_eq!(doc.field("ok").unwrap().value().unwrap(), &Value::None);
 }
@@ -1466,7 +1478,11 @@ fn nested_blocks_fixture_top_level_list_field() {
     let ports = doc.get("ports").expect("ports").value().unwrap();
     assert_eq!(
         ports,
-        Value::List(vec![Value::I64(80), Value::I64(443), Value::I64(8080)])
+        Value::List(std::sync::Arc::new(vec![
+            Value::I64(80),
+            Value::I64(443),
+            Value::I64(8080)
+        ]))
     );
 }
 
@@ -1810,7 +1826,7 @@ fn connections_field_decomposes_into_records() {
         panic!("deps should be a list, got {deps:?}");
     };
     assert_eq!(items.len(), 2);
-    for item in &items {
+    for item in items.iter() {
         let Value::Record { ty, fields } = item else {
             panic!("expected Value::Record, got {item:?}");
         };

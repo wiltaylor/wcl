@@ -1087,15 +1087,18 @@ fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError>
             m.insert("title".to_string(), Value::Utf8(slide_page.clone()));
             slides_val.push(Value::Record {
                 ty: vec!["DeckSlide".to_string()],
-                fields: m,
+                fields: std::sync::Arc::new(m),
             });
         }
         let mut sm = BTreeMap::new();
         sm.insert("title".to_string(), Value::Utf8(sec.title.clone()));
-        sm.insert("slides".to_string(), Value::List(slides_val));
+        sm.insert(
+            "slides".to_string(),
+            Value::List(std::sync::Arc::new(slides_val)),
+        );
         sections_val.push(Value::Record {
             ty: vec!["DeckSection".to_string()],
-            fields: sm,
+            fields: std::sync::Arc::new(sm),
         });
     }
 
@@ -1116,7 +1119,7 @@ fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError>
         ctx.pages,
         ctx.toc_nodes,
         ctx.menu_nodes,
-        Value::List(sections_val),
+        Value::List(std::sync::Arc::new(sections_val)),
         ctx.theme_toggle,
         ctx.home_href,
         ctx.home_title,
@@ -1217,7 +1220,7 @@ fn build_normal_page(
                 ctx.pages,
                 ctx.toc_nodes,
                 ctx.menu_nodes,
-                Value::List(Vec::new()),
+                Value::List(std::sync::Arc::new(Vec::new())),
                 ctx.theme_toggle,
                 ctx.home_href,
                 ctx.home_title,

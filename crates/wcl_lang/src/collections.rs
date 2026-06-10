@@ -202,7 +202,7 @@ pub(crate) fn register(env: &mut Environment) {
     env.add_builtin(
         "split",
         from_fn(|s: String, sep: String| -> Value {
-            Value::List(s.split(&sep).map(|p| Value::Utf8(p.to_string())).collect())
+            Value::list(s.split(&sep).map(|p| Value::Utf8(p.to_string())).collect())
         })
         .doc("Split a string on every occurrence of a separator into a list of pieces.")
         .param("s", "utf8", "The string to split.")
@@ -286,7 +286,7 @@ pub(crate) fn register(env: &mut Environment) {
         from_fn(|xs: Vec<Value>| -> Value {
             let mut xs = xs;
             xs.reverse();
-            Value::List(xs)
+            Value::List(std::sync::Arc::new(xs))
         })
         .doc("Reverse the order of a list's elements.")
         .param("xs", "[T]", "The list to reverse.")
@@ -316,7 +316,7 @@ pub(crate) fn register(env: &mut Environment) {
                     seen.push(x);
                 }
             }
-            Value::List(seen)
+            Value::List(std::sync::Arc::new(seen))
         })
         .doc("Remove duplicate elements from a list, keeping first-seen order.")
         .param("xs", "[T]", "The list to deduplicate.")
@@ -324,8 +324,15 @@ pub(crate) fn register(env: &mut Environment) {
     );
     env.add_builtin(
         "index_of",
-        from_fn(|xs: Vec<Value>, x: Value| -> i64 {
-            xs.iter()
+        from_fn(|xs: Value, x: Value| -> i64 {
+            let empty: &[Value] = &[];
+            let items: &[Value] = match &xs {
+                Value::List(items) => items,
+                Value::Tensor { data, .. } => data,
+                _ => empty,
+            };
+            items
+                .iter()
                 .position(|v| v == &x)
                 .map(|i| i as i64)
                 .unwrap_or(-1)
@@ -337,12 +344,18 @@ pub(crate) fn register(env: &mut Environment) {
     );
     env.add_builtin(
         "at",
-        from_fn(|xs: Vec<Value>, i: i64| -> Result<Value, String> {
+        from_fn(|xs: Value, i: i64| -> Result<Value, String> {
             if i < 0 {
                 return Err(format!("at: index {i} is negative"));
             }
-            xs.into_iter()
-                .nth(i as usize)
+            let items = match &xs {
+                Value::List(items) => items,
+                Value::Tensor { data, .. } => data,
+                other => return Err(format!("at: expected list, got {}", other.type_name())),
+            };
+            items
+                .get(i as usize)
+                .cloned()
                 .ok_or_else(|| format!("at: index {i} out of bounds"))
         })
         .doc("The element at a zero-based index; errors if out of bounds or negative.")
@@ -354,7 +367,7 @@ pub(crate) fn register(env: &mut Environment) {
         "take",
         from_fn(|xs: Vec<Value>, n: i64| -> Value {
             let n = n.max(0) as usize;
-            Value::List(xs.into_iter().take(n).collect())
+            Value::list(xs.into_iter().take(n).collect())
         })
         .doc("The first `n` elements of a list (fewer if the list is shorter).")
         .param("xs", "[T]", "The list to take from.")
@@ -365,7 +378,7 @@ pub(crate) fn register(env: &mut Environment) {
         "drop",
         from_fn(|xs: Vec<Value>, n: i64| -> Value {
             let n = n.max(0) as usize;
-            Value::List(xs.into_iter().skip(n).collect())
+            Value::list(xs.into_iter().skip(n).collect())
         })
         .doc("Every element of a list after the first `n`.")
         .param("xs", "[T]", "The list to drop from.")
@@ -377,7 +390,7 @@ pub(crate) fn register(env: &mut Environment) {
         "keys",
         from_fn(|r: Value| -> Result<Value, String> {
             let fields = record_fields("keys", &r)?;
-            Ok(Value::List(
+            Ok(Value::list(
                 fields.keys().map(|k| Value::Utf8(k.clone())).collect(),
             ))
         })
@@ -393,7 +406,7 @@ pub(crate) fn register(env: &mut Environment) {
         "values",
         from_fn(|r: Value| -> Result<Value, String> {
             let fields = record_fields("values", &r)?;
-            Ok(Value::List(fields.values().cloned().collect()))
+            Ok(Value::list(fields.values().cloned().collect()))
         })
         .doc("The field values of a record, in the same order as `keys`.")
         .param(
@@ -424,9 +437,9 @@ pub(crate) fn register(env: &mut Environment) {
                     ));
                 }
             };
-            let mut fields = a_fields;
-            fields.extend(b_fields);
-            Ok(Value::Record { ty: a_ty, fields })
+            let mut fields = std::sync::Arc::unwrap_or_clone(a_fields);
+            fields.extend(std::sync::Arc::unwrap_or_clone(b_fields));
+            Ok(Value::record(a_ty, fields))
         })
         .doc("Combine two records into one; fields of `b` win on a name clash.")
         .param("a", "record", "The base record.")
@@ -523,8 +536,9 @@ pub(crate) fn register(env: &mut Environment) {
             Value::List(
                 xs.into_iter()
                     .enumerate()
-                    .map(|(i, v)| Value::List(vec![Value::I64(i as i64), v]))
-                    .collect(),
+                    .map(|(i, v)| Value::list(vec![Value::I64(i as i64), v]))
+                    .collect::<Vec<_>>()
+                    .into(),
             )
         })
         .doc("Pair every element with its zero-based index, as `[index, element]` pairs.")
@@ -544,7 +558,7 @@ pub(crate) fn register(env: &mut Environment) {
     env.add_builtin(
         "chars",
         from_fn(|s: String| -> Value {
-            Value::List(s.chars().map(|c| Value::Utf8(c.to_string())).collect())
+            Value::list(s.chars().map(|c| Value::Utf8(c.to_string())).collect())
         })
         .doc("The characters of a string as a list of one-character strings.")
         .param("s", "utf8", "The string to split into characters.")
@@ -712,7 +726,7 @@ fn sort_by_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String>
     });
     match err {
         Some(e) => Err(format!("sort_by: {e}")),
-        None => Ok(Value::List(keyed.into_iter().map(|(_, v)| v).collect())),
+        None => Ok(Value::list(keyed.into_iter().map(|(_, v)| v).collect())),
     }
 }
 
@@ -765,13 +779,14 @@ fn group_by_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String
             .map(|(key, items)| {
                 let mut fields = BTreeMap::new();
                 fields.insert("key".to_string(), key);
-                fields.insert("items".to_string(), Value::List(items));
+                fields.insert("items".to_string(), Value::List(std::sync::Arc::new(items)));
                 Value::Record {
                     ty: Vec::new(),
-                    fields,
+                    fields: std::sync::Arc::new(fields),
                 }
             })
-            .collect(),
+            .collect::<Vec<_>>()
+            .into(),
     ))
 }
 
@@ -789,7 +804,7 @@ fn slice_pure(xs: Value, start: i64, end: i64) -> Result<Value, String> {
         }
         Value::List(items) => {
             let (lo, hi) = clamp(items.len());
-            Ok(Value::List(items[lo..hi].to_vec()))
+            Ok(Value::List(std::sync::Arc::new(items[lo..hi].to_vec())))
         }
         other => Err(format!(
             "slice: expected a string or list, got {}",
@@ -847,14 +862,21 @@ fn map_values_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, Stri
         }
     };
     let mut out = BTreeMap::new();
-    for (k, v) in fields {
+    for (k, v) in fields.iter() {
         out.insert(k.clone(), caller.call_fn(&f, std::slice::from_ref(v))?);
     }
-    Ok(Value::Record { ty, fields: out })
+    Ok(Value::Record {
+        ty,
+        fields: std::sync::Arc::new(out),
+    })
 }
 
-fn list_contains_pure(xs: Vec<Value>, needle: Value) -> bool {
-    xs.iter().any(|v| v == &needle)
+fn list_contains_pure(xs: Value, needle: Value) -> bool {
+    match &xs {
+        Value::List(items) => items.iter().any(|v| v == &needle),
+        Value::Tensor { data, .. } => data.iter().any(|v| v == &needle),
+        _ => false,
+    }
 }
 
 fn sort_pure(xs: Vec<Value>) -> Result<Value, String> {
@@ -862,7 +884,7 @@ fn sort_pure(xs: Vec<Value>) -> Result<Value, String> {
     // Mixed-type lists and unsupported types fail loudly rather than
     // silently producing a partial ordering.
     if xs.is_empty() {
-        return Ok(Value::List(xs));
+        return Ok(Value::List(std::sync::Arc::new(xs)));
     }
     let first = &xs[0];
     if first.is_numeric() && xs.iter().all(|v| v.is_numeric()) {
@@ -871,7 +893,7 @@ fn sort_pure(xs: Vec<Value>) -> Result<Value, String> {
             .map(|v| (v.as_f64().unwrap_or(f64::NAN), v.clone()))
             .collect();
         keyed.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-        return Ok(Value::List(keyed.into_iter().map(|(_, v)| v).collect()));
+        return Ok(Value::list(keyed.into_iter().map(|(_, v)| v).collect()));
     }
     let all_strings = xs
         .iter()
@@ -888,7 +910,7 @@ fn sort_pure(xs: Vec<Value>) -> Result<Value, String> {
             })
             .collect();
         keyed.sort_by(|a, b| a.0.cmp(&b.0));
-        return Ok(Value::List(keyed.into_iter().map(|(_, v)| v).collect()));
+        return Ok(Value::list(keyed.into_iter().map(|(_, v)| v).collect()));
     }
     Err(format!(
         "sort: list must be all numeric or all strings, found mixed (first element type: {})",
@@ -928,7 +950,10 @@ fn sort_connected_pure(items_v: Value, edges_v: Value) -> Result<Value, String> 
             ));
         }
     };
-    Ok(Value::List(sort_connected_level(items, &edges)))
+    Ok(Value::list(sort_connected_level(
+        std::sync::Arc::unwrap_or_clone(items),
+        &edges,
+    )))
 }
 
 fn sort_connected_level(items: Vec<Value>, edges: &[Value]) -> Vec<Value> {
@@ -1020,26 +1045,28 @@ fn greedy_bfs_order(n: usize, adj: &HashMap<usize, HashSet<usize>>) -> Vec<usize
 
 fn recurse_sort_children(item: Value, edges: &[Value]) -> Value {
     match item {
-        Value::Record { ty, mut fields } => {
+        Value::Record { ty, fields } => {
+            let mut fields = std::sync::Arc::unwrap_or_clone(fields);
             if let Some(Value::List(children)) = fields.get("children").cloned() {
-                let sorted = sort_connected_level(children, edges);
-                fields.insert("children".to_string(), Value::List(sorted));
+                let sorted = sort_connected_level(std::sync::Arc::unwrap_or_clone(children), edges);
+                fields.insert("children".to_string(), Value::list(sorted));
             }
-            Value::Record { ty, fields }
+            Value::record(ty, fields)
         }
         Value::Variant {
             union,
             variant,
-            payload: VariantPayload::Record(mut map),
+            payload: VariantPayload::Record(map),
         } => {
+            let mut map = std::sync::Arc::unwrap_or_clone(map);
             if let Some(Value::List(children)) = map.get("children").cloned() {
-                let sorted = sort_connected_level(children, edges);
-                map.insert("children".to_string(), Value::List(sorted));
+                let sorted = sort_connected_level(std::sync::Arc::unwrap_or_clone(children), edges);
+                map.insert("children".to_string(), Value::list(sorted));
             }
             Value::Variant {
                 union,
                 variant,
-                payload: VariantPayload::Record(map),
+                payload: VariantPayload::Record(std::sync::Arc::new(map)),
             }
         }
         other => other,
@@ -1127,18 +1154,21 @@ fn map_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     match &args[0] {
         Value::List(items) => {
             let mut out = Vec::with_capacity(items.len());
-            for elem in items {
+            for elem in items.iter() {
                 out.push(caller.call_fn(&f, std::slice::from_ref(elem))?);
             }
-            Ok(Value::List(out))
+            Ok(Value::list(out))
         }
         Value::Tensor { shape, data } => {
             let shape = shape.clone();
             let mut out = Vec::with_capacity(data.len());
-            for elem in data {
+            for elem in data.iter() {
                 out.push(caller.call_fn(&f, std::slice::from_ref(elem))?);
             }
-            Ok(Value::Tensor { shape, data: out })
+            Ok(Value::Tensor {
+                shape,
+                data: std::sync::Arc::new(out),
+            })
         }
         other => Err(format!(
             "map: first argument must be a list or tensor, got {}",
@@ -1165,7 +1195,7 @@ fn filter_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> 
     };
     let f = expect_function("filter", "second argument", &args[1])?.clone();
     let mut out = Vec::new();
-    for elem in items {
+    for elem in items.iter() {
         match caller.call_fn(&f, std::slice::from_ref(elem))? {
             Value::Bool(true) => out.push(elem.clone()),
             Value::Bool(false) => {}
@@ -1177,7 +1207,7 @@ fn filter_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> 
             }
         }
     }
-    Ok(Value::List(out))
+    Ok(Value::List(std::sync::Arc::new(out)))
 }
 
 fn fold_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
@@ -1193,7 +1223,7 @@ fn fold_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     };
     let f = expect_function("fold", "third argument", &args[2])?.clone();
     let mut acc = args[1].clone();
-    for elem in items {
+    for elem in std::sync::Arc::unwrap_or_clone(items) {
         acc = caller.call_fn(&f, &[acc, elem])?;
     }
     Ok(acc)
@@ -1224,8 +1254,8 @@ fn range_pure(start: i64, end: i64) -> Result<Vec<i64>, String> {
 
 fn head_pure(v: Value) -> Result<Value, String> {
     match v {
-        Value::List(items) => Ok(items.into_iter().next().unwrap_or(Value::None)),
-        Value::Tensor { data, .. } => Ok(data.into_iter().next().unwrap_or(Value::None)),
+        Value::List(items) => Ok(items.first().cloned().unwrap_or(Value::None)),
+        Value::Tensor { data, .. } => Ok(data.first().cloned().unwrap_or(Value::None)),
         other => Err(format!(
             "head: expected list or tensor, got {}",
             other.type_name()
@@ -1235,14 +1265,8 @@ fn head_pure(v: Value) -> Result<Value, String> {
 
 fn tail_pure(v: Value) -> Result<Vec<Value>, String> {
     match v {
-        Value::List(items) => {
-            if items.is_empty() {
-                Ok(Vec::new())
-            } else {
-                Ok(items.into_iter().skip(1).collect())
-            }
-        }
-        Value::Tensor { data, .. } => Ok(data.into_iter().skip(1).collect()),
+        Value::List(items) => Ok(items.get(1..).map(<[Value]>::to_vec).unwrap_or_default()),
+        Value::Tensor { data, .. } => Ok(data.get(1..).map(<[Value]>::to_vec).unwrap_or_default()),
         other => Err(format!(
             "tail: expected list or tensor, got {}",
             other.type_name()
@@ -1359,7 +1383,7 @@ fn tensor_pure(data: Value, shape: Value) -> Result<Value, String> {
 
 fn tensor_data_pure(v: Value) -> Result<Vec<Value>, String> {
     match v {
-        Value::Tensor { data, .. } => Ok(data),
+        Value::Tensor { data, .. } => Ok(std::sync::Arc::unwrap_or_clone(data)),
         other => Err(format!(
             "tensor_data: expected tensor, got {}",
             other.type_name()
@@ -1417,9 +1441,9 @@ fn flatten_pure(v: Value) -> Result<Vec<Value>, String> {
         }
     };
     let mut out: Vec<Value> = Vec::new();
-    for inner in items {
+    for inner in std::sync::Arc::unwrap_or_clone(items) {
         match inner {
-            Value::List(xs) => out.extend(xs),
+            Value::List(xs) => out.extend(std::sync::Arc::unwrap_or_clone(xs)),
             other => {
                 return Err(format!(
                     "flatten: outer list element must be a list, got {}",
@@ -1453,7 +1477,10 @@ fn zip_pure(a: Value, b: Value) -> Result<Vec<Value>, String> {
     let n = av.len().min(bv.len());
     let mut out: Vec<Value> = Vec::with_capacity(n);
     for i in 0..n {
-        out.push(Value::List(vec![av[i].clone(), bv[i].clone()]));
+        out.push(Value::List(std::sync::Arc::new(vec![
+            av[i].clone(),
+            bv[i].clone(),
+        ])));
     }
     Ok(out)
 }

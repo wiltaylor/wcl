@@ -23,7 +23,7 @@ pub(crate) fn all_edges(block: &Block<'_>) -> Vec<Value> {
     if let Some(dr) = block.typed_field("edges")
         && let Ok(Value::List(items)) = dr.value()
     {
-        out.extend(items);
+        out.extend(std::sync::Arc::unwrap_or_clone(items));
     }
     // Computed edges: a literal `edges = <expr>` field (a list of records).
     if let Some(f) = block.field("edges")

@@ -71,7 +71,7 @@ fn call_function_accepting_record_arg() {
     fields.insert("y".to_string(), Value::F64(4.0));
     let arg = Value::Record {
         ty: vec!["Point".into()],
-        fields,
+        fields: std::sync::Arc::new(fields),
     };
 
     let out = doc.call_function("distance_sq", &[arg]).expect("call");

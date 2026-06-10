@@ -88,6 +88,12 @@ pub struct Document {
     /// [`component_def`] (which wdoc expansion runs for every nested
     /// block). Same construction-time-only inputs as `ref_registry`.
     component_index: std::sync::OnceLock<HashMap<String, usize>>,
+    /// Memo for `union_fqn_for_path`: source-written type path → the
+    /// FQN of the union it resolves to (`None` = not a union). Argument
+    /// coercion consults this **per function invocation per argument**;
+    /// without the memo every closure call re-ran name resolution (and
+    /// rebuilt list arguments) just to discover a type isn't a union.
+    union_path_memo: std::sync::RwLock<HashMap<Vec<String>, Option<String>>>,
 }
 
 impl std::fmt::Debug for Document {
@@ -345,6 +351,7 @@ impl Document {
             ref_registry: std::sync::OnceLock::new(),
             schema_index: std::sync::OnceLock::new(),
             component_index: std::sync::OnceLock::new(),
+            union_path_memo: std::sync::RwLock::new(HashMap::new()),
         })
     }
 
@@ -668,7 +675,7 @@ impl Document {
                     if let Some(f) = self.field(name)
                         && let Ok(Value::List(items)) = f.value()
                     {
-                        for it in items {
+                        for it in items.iter() {
                             if matches!(it, Value::Variant { .. }) {
                                 out.push(it.clone());
                             }
@@ -753,7 +760,9 @@ impl Document {
                 for src in self.all_sources() {
                     all.extend(self.project_connections(src.items, conn_schema, &Scope::root()));
                 }
-                return Some(DataRef::from_variant_value(Value::List(all)));
+                return Some(DataRef::from_variant_value(Value::List(
+                    std::sync::Arc::new(all),
+                )));
             }
         }
         // Document-root `@children`/`@child` projection: a field declared
@@ -929,7 +938,7 @@ impl Document {
         fields.insert("kind".to_string(), Value::Symbol(kind_name));
         Some(Value::Record {
             ty: schema.ast.name.clone(),
-            fields,
+            fields: std::sync::Arc::new(fields),
         })
     }
 
@@ -1210,6 +1219,33 @@ impl Document {
     }
 
     /// Look up a union by fully-qualified name (dotted).
+    /// The union a source-written type path resolves to (root-namespace
+    /// context), memoised per path — see the `union_path_memo` field.
+    /// Returns the resolved FQN; look the decl up with [`union_decl`].
+    pub(crate) fn union_fqn_for_path(&self, path: &[String]) -> Option<String> {
+        if let Some(hit) = self.union_path_memo.read().ok()?.get(path) {
+            return hit.clone();
+        }
+        let resolved = self
+            .resolve_path_in(path, &self.file_ns)
+            .map(|p| p.join("."))
+            .unwrap_or_else(|| path.join("."));
+        let fqn = if self.union_decl(&resolved).is_some() {
+            Some(resolved)
+        } else {
+            let raw = path.join(".");
+            if raw != resolved && self.union_decl(&raw).is_some() {
+                Some(raw)
+            } else {
+                None
+            }
+        };
+        if let Ok(mut memo) = self.union_path_memo.write() {
+            memo.insert(path.to_vec(), fqn.clone());
+        }
+        fqn
+    }
+
     pub fn union_decl(&self, fqn: &str) -> Option<UnionDecl<'_>> {
         find_decl!(self, fqn, UnionDecl, cells);
         None
@@ -1929,12 +1965,6 @@ impl Document {
     fn find_schema(&self, dec: BuiltinDecorator, value: &str) -> Option<TypeDecl<'_>> {
         self.find_schema_ns(dec, &[], value, &self.file_ns)
     }
-
-    /// The namespace this document's root source declares (empty for the
-    /// global namespace).
-    pub(crate) fn file_ns(&self) -> &[String] {
-        &self.file_ns
-    }
 }
 
 /// A connection-statement operand resolved to a literal block: its
@@ -2114,7 +2144,7 @@ fn materialise_dataref_or_path(
     match dr.inner() {
         DataKind::Field(f) => f.value().cloned().map_err(|e| e.clone()),
         DataKind::VariantValue(v) => Ok(v.clone()),
-        DataKind::VariantValueList(vs) => Ok(Value::List(vs.clone())),
+        DataKind::VariantValueList(vs) => Ok(Value::List(std::sync::Arc::new(vs.clone()))),
         other => {
             // A handle to a *declaration* carries the declaration's FQN
             // segments, not the source-written ones, so the path stays

@@ -327,7 +327,7 @@ pub(crate) fn render_timeline(
 /// Read a block field that holds a `list<…>` of union variants.
 fn list_field<'a>(block: &Block<'a>, name: &str) -> Vec<Value> {
     match block.field(name).and_then(|f| f.value().ok()) {
-        Some(Value::List(xs)) => xs.clone(),
+        Some(Value::List(xs)) => xs.as_ref().clone(),
         _ => Vec::new(),
     }
 }

@@ -41,7 +41,7 @@ proptest! {
     /// non-deterministic key ordering or float formatting drift.
     #[test]
     fn json_serialization_is_canonical_for_lists_of_ints(xs in proptest::collection::vec(any::<i32>(), 0..16)) {
-        let v = Value::List(xs.into_iter().map(Value::I32).collect());
+        let v = Value::list(xs.into_iter().map(Value::I32).collect());
         let s1 = serde_json::to_string(&v).expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&s1).expect("parse JSON");
         let s2 = serde_json::to_string(&parsed).expect("reserialize");

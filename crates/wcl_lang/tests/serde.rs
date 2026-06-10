@@ -27,7 +27,11 @@ fn scalar_values_serialize_as_primitives() {
 #[test]
 fn list_serializes_as_json_array() {
     assert_json_eq(
-        &Value::List(vec![Value::I64(1), Value::I64(2), Value::I64(3)]),
+        &Value::List(std::sync::Arc::new(vec![
+            Value::I64(1),
+            Value::I64(2),
+            Value::I64(3),
+        ])),
         json!([1, 2, 3]),
     );
 }
@@ -37,12 +41,12 @@ fn tensor_carries_shape_and_data() {
     assert_json_eq(
         &Value::Tensor {
             shape: vec![2, 2],
-            data: vec![
+            data: std::sync::Arc::new(vec![
                 Value::F32(1.0),
                 Value::F32(2.0),
                 Value::F32(3.0),
                 Value::F32(4.0),
-            ],
+            ]),
         },
         json!({"shape": [2, 2], "data": [1.0, 2.0, 3.0, 4.0]}),
     );
@@ -56,7 +60,7 @@ fn record_serializes_as_flat_object() {
     assert_json_eq(
         &Value::Record {
             ty: vec!["Conn".into()],
-            fields,
+            fields: std::sync::Arc::new(fields),
         },
         json!({"host": "a", "port": 80}),
     );
@@ -89,7 +93,7 @@ fn variant_payload_shapes() {
         &Value::Variant {
             union: vec!["U".into()],
             variant: "Named".into(),
-            payload: VariantPayload::Record(record),
+            payload: VariantPayload::Record(std::sync::Arc::new(record)),
         },
         json!({"Named": {"name": "a"}}),
     );

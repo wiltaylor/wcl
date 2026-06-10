@@ -282,7 +282,11 @@ pub struct FunctionLit {
     pub params: Vec<Parameter>,
     pub return_ty: crate::value::TypeRef,
     pub return_ty_span: Span,
-    pub body: Box<Expr>,
+    /// `Arc`, not `Box`: every evaluation of the literal builds an
+    /// `FnValue` sharing this body, and resolving a named function
+    /// clones that `FnValue` per call — a deep AST clone on either
+    /// path dominated closure-heavy documents.
+    pub body: std::sync::Arc<Expr>,
     pub span: Span,
     /// Comments/blank lines after the last parameter, before `)`.
     pub trailing_trivia: Vec<Trivia>,

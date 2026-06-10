@@ -263,7 +263,7 @@ impl Document {
             for e in elements {
                 out.push(self.eval_literal_in_scope(e, scope)?);
             }
-            return Ok(Value::List(out));
+            return Ok(Value::List(std::sync::Arc::new(out)));
         }
         self.eval_in_scope(expr, scope)
     }
@@ -446,7 +446,7 @@ impl Document {
                 for e in elements {
                     out.push(self.eval_in(e, ctx)?);
                 }
-                Value::List(out)
+                Value::List(std::sync::Arc::new(out))
             }
             E::Record { fields, .. } => {
                 // A bare record literal evaluates to an anonymous
@@ -460,7 +460,7 @@ impl Document {
                 }
                 Value::Record {
                     ty: Vec::new(),
-                    fields: map,
+                    fields: std::sync::Arc::new(map),
                 }
             }
             E::If {
@@ -886,7 +886,7 @@ impl Document {
                         ));
                     }
                 }
-                crate::value::VariantPayload::Record(map)
+                crate::value::VariantPayload::Record(std::sync::Arc::new(map))
             }
             (expected_body, given) => {
                 let expected = match expected_body {

@@ -67,7 +67,7 @@ fn populate_lowered(
         return;
     };
     let wbase = offset(base, src_pos(block));
-    for item in &items {
+    for item in items.iter() {
         draw_variant(grid, doc, block, item, depth, wbase);
     }
 }
@@ -97,7 +97,7 @@ fn draw_variant(
     match kind_for_variant(variant).as_str() {
         "text" => draw_text_variant(grid, map, wbase),
         "children" => {
-            let cbase = offset(wbase, src_pos(map));
+            let cbase = offset(wbase, src_pos(map.as_ref()));
             for child in block.blocks() {
                 place_child(grid, doc, &child, child.kind(), depth + 1, cbase);
             }
