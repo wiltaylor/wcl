@@ -744,7 +744,7 @@ impl Document {
         &self,
         scope: &Scope<'_>,
         name: &str,
-    ) -> Option<(Value, String)> {
+    ) -> Option<ConnOperand> {
         // Identifying a block here means evaluating its first label / `id`
         // field. That evaluation must not re-enter `@connections`
         // projection (a block's identity can't depend on the connection
@@ -756,18 +756,29 @@ impl Document {
         for frame in scope.frames().iter().rev() {
             if let ItemCellKind::Block { items: fcells, .. } = &frame.cells.kind
                 && let Some(found) =
-                    match_block_label_in_items(self, &frame.ast.items, fcells, name)
+                    match_block_label_in_items(self, &frame.ast.items, fcells, frame.file_ns, name)
             {
                 return Some(found);
             }
         }
         // Fall back to document root: walk every source's top-level items.
         for src in self.all_sources() {
-            if let Some(found) = match_block_label_in_items(self, src.items, src.cells, name) {
+            if let Some(found) =
+                match_block_label_in_items(self, src.items, src.cells, src.file_ns, name)
+            {
                 return Some(found);
             }
         }
         None
+    }
+
+    /// The schema of the block a connection operand resolved to,
+    /// looked up with the operand's own namespace context (the `::`
+    /// qualifier at the instance site, and the namespace of the file
+    /// the block lives in) — mirroring [`Block::schema`].
+    pub(crate) fn operand_schema(&self, op: &ConnOperand) -> Option<TypeDecl<'_>> {
+        self.block_schema_in(&op.kind_ns, &op.kind, &op.file_ns)
+            .or_else(|| self.table_schema_in(&op.kind_ns, &op.kind, &op.file_ns))
     }
 
     /// Project sibling `Item::Connection` statements through a
@@ -781,8 +792,11 @@ impl Document {
         scope: &Scope<'_>,
     ) -> Vec<Value> {
         let mut out: Vec<Value> = Vec::new();
-        let source_fqn = self.resolve_type_fqn(schema.source_type());
-        let dest_fqn = self.resolve_type_fqn(schema.destination_type());
+        // Endpoint types resolve relative to the file that declared the
+        // connection, so a namespaced library's bare `Adr` means its own
+        // `lib.Adr`.
+        let source_fqn = self.resolve_type_fqn_in(schema.source_type(), schema.file_ns());
+        let dest_fqn = self.resolve_type_fqn_in(schema.destination_type(), schema.file_ns());
         for item in items {
             let ast::Item::Connection(stmt) = item else {
                 continue;
@@ -815,10 +829,10 @@ impl Document {
         // Does each *resolved* operand's block type satisfy this schema's
         // source / destination role? (An unresolved operand has no AST
         // block, so it can't be type-checked — see the dynamic path below.)
-        let lhs_type_ok = matches!(&lhs, Some((_, kind))
-            if self.block_schema(kind).is_some_and(|d| connection_type_matches(&d, source_fqn)));
-        let rhs_type_ok = matches!(&rhs, Some((_, kind))
-            if self.block_schema(kind).is_some_and(|d| connection_type_matches(&d, dest_fqn)));
+        let lhs_type_ok = matches!(&lhs, Some(op)
+            if self.operand_schema(op).is_some_and(|d| connection_type_matches(&d, source_fqn)));
+        let rhs_type_ok = matches!(&rhs, Some(op)
+            if self.operand_schema(op).is_some_and(|d| connection_type_matches(&d, dest_fqn)));
 
         if lhs.is_some() && rhs.is_some() {
             // Both operands name a literal block — strict path, unchanged:
@@ -846,10 +860,10 @@ impl Document {
             None => schema.default_kind()?,
         };
         let lhs_val = lhs
-            .map(|(v, _)| v)
+            .map(|op| op.value)
             .unwrap_or_else(|| Value::Identifier(stmt.lhs.clone()));
         let rhs_val = rhs
-            .map(|(v, _)| v)
+            .map(|op| op.value)
             .unwrap_or_else(|| Value::Identifier(stmt.rhs.clone()));
         let mut fields: std::collections::BTreeMap<String, Value> =
             std::collections::BTreeMap::new();
@@ -866,10 +880,14 @@ impl Document {
     /// which is how interface-typed connection endpoints must be
     /// written) to its dotted FQN. Returns `None` for builtins,
     /// lists, tensors, etc.
-    pub(crate) fn resolve_type_fqn(&self, t: &TypeRef) -> Option<String> {
+    ///
+    /// The reference resolves as if written in a source whose namespace
+    /// is `file_ns` — e.g. a `connection X : Adr -> Adr` declared under
+    /// `namespace lib` resolves its endpoints to `lib.Adr`.
+    pub(crate) fn resolve_type_fqn_in(&self, t: &TypeRef, file_ns: &[String]) -> Option<String> {
         match t {
-            TypeRef::Named(path) => self.resolve_path(path).map(|p| p.join(".")),
-            TypeRef::Reference(inner) => self.resolve_type_fqn(inner),
+            TypeRef::Named(path) => self.resolve_path_in(path, file_ns).map(|p| p.join(".")),
+            TypeRef::Reference(inner) => self.resolve_type_fqn_in(inner, file_ns),
             _ => None,
         }
     }
@@ -966,6 +984,7 @@ impl Document {
                         ast: b,
                         cells: &src.cells[idx],
                         doc: self,
+                        file_ns: src.file_ns,
                         kind_override: None,
                         scope: Scope::root(),
                     });
@@ -1000,7 +1019,7 @@ impl Document {
         let doc = self;
         self.all_sources()
             .into_iter()
-            .flat_map(move |src| iter_blocks(src.items, src.cells, doc, Scope::root()))
+            .flat_map(move |src| iter_blocks(src.items, src.cells, doc, src.file_ns, Scope::root()))
     }
 
     /// Like [`blocks`](Self::blocks) but pairs each top-level block with
@@ -1013,7 +1032,8 @@ impl Document {
         let doc = self;
         self.all_sources().into_iter().flat_map(move |src| {
             let path = src.path;
-            iter_blocks(src.items, src.cells, doc, Scope::root()).map(move |b| (path, b))
+            iter_blocks(src.items, src.cells, doc, src.file_ns, Scope::root())
+                .map(move |b| (path, b))
         })
     }
 
@@ -1532,7 +1552,7 @@ impl Document {
             }
 
             // Walk the top-level blocks in this source.
-            for b in iter_blocks(src.items, src.cells, self, Scope::root()) {
+            for b in iter_blocks(src.items, src.cells, self, src.file_ns, Scope::root()) {
                 if has_schemaless(&b.ast.decorators) {
                     continue;
                 }
@@ -1796,37 +1816,64 @@ impl Document {
     }
 }
 
+/// A connection-statement operand resolved to a literal block: its
+/// identifying value plus enough namespace context to look up the
+/// block's schema the way [`Block::schema`] would.
+pub(crate) struct ConnOperand {
+    /// The identifying label / `id` value.
+    pub(crate) value: Value,
+    /// The block's kind as written (`ast::Block.kind`).
+    pub(crate) kind: String,
+    /// The `::` namespace qualifier at the instance site (empty for a
+    /// bare kind).
+    pub(crate) kind_ns: Vec<String>,
+    /// Namespace of the file the matched block lives in.
+    pub(crate) file_ns: Vec<String>,
+}
+
 /// Recursively search a slice of items for an `Item::Block` that
-/// identifies as `name`. Identity sources, in priority order:
+/// identifies as `name`. `file_ns` is the namespace of the file the
+/// items live in. Identity sources, in priority order:
 ///
 ///   1. the block's first label (evaluated as a literal)
 ///   2. a field named `id` whose value evaluates to the name
 ///   3. nested blocks reachable through the block's own `items`
 ///
-/// Returns the identifying value plus the block kind so callers can
-/// dispatch on the block's declared type.
+/// Returns the identifying value plus the block's kind and namespace
+/// context so callers can dispatch on the block's declared type.
 fn match_block_label_in_items(
     doc: &Document,
     items: &[ast::Item],
     cells: &[ItemCells],
+    file_ns: &[String],
     name: &str,
-) -> Option<(Value, String)> {
+) -> Option<ConnOperand> {
+    let operand = |value: Value, b: &ast::Block| ConnOperand {
+        value,
+        kind: b.kind.clone(),
+        kind_ns: b.kind_ns.clone(),
+        file_ns: file_ns.to_vec(),
+    };
     for (item, cell) in items.iter().zip(cells) {
         match (item, &cell.kind) {
             (ast::Item::Block(b), ItemCellKind::Block { items: bcells, .. }) => {
                 if let Some(v) = match_block_first_label(doc, b, name) {
-                    return Some((v, b.kind.clone()));
+                    return Some(operand(v, b));
                 }
                 if let Some(v) = match_block_id_field(doc, b, name) {
-                    return Some((v, b.kind.clone()));
+                    return Some(operand(v, b));
                 }
-                if let Some(found) = match_block_label_in_items(doc, &b.items, bcells, name) {
+                // Nested blocks live in the same file as their parent.
+                if let Some(found) =
+                    match_block_label_in_items(doc, &b.items, bcells, file_ns, name)
+                {
                     return Some(found);
                 }
             }
             // An in-block `import` splices its top-level blocks into this
             // scope, so a connection endpoint can name a block that lives
-            // in the imported fragment. Force the lazy load and recurse.
+            // in the imported fragment. Force the lazy load and recurse
+            // with the imported file's own namespace.
             (
                 ast::Item::Import(_),
                 ItemCellKind::Import {
@@ -1841,7 +1888,8 @@ fn match_block_label_in_items(
                     load_import_lazily(path, base_dir.as_deref(), *system, *path_span, doc.loader())
                 });
                 if let Ok(li) = li
-                    && let Some(found) = match_block_label_in_items(doc, &li.items, &li.cells, name)
+                    && let Some(found) =
+                        match_block_label_in_items(doc, &li.items, &li.cells, &li.file_ns, name)
                 {
                     return Some(found);
                 }
@@ -1861,7 +1909,7 @@ pub(crate) fn connection_type_matches(decl: &TypeDecl<'_>, target_fqn: Option<&s
     let Some(target) = target_fqn else {
         return false;
     };
-    if decl.name_segments().join(".") == target {
+    if decl.full_name() == target {
         return true;
     }
     decl.is_descendant_of(target)

@@ -29,6 +29,10 @@ pub(crate) struct Scope<'a> {
 pub(crate) struct ScopeFrame<'a> {
     pub(crate) ast: &'a ast::Block,
     pub(crate) cells: &'a ItemCells,
+    /// Namespace of the file the frame's block lives in, so a `Block`
+    /// view rebuilt from this frame resolves bare kinds in the right
+    /// namespace (mirrors `Block::file_ns`).
+    pub(crate) file_ns: &'a [String],
     pub(crate) kind_override: Option<&'a str>,
     pub(crate) bindings: Option<std::sync::Arc<Vec<(String, Value)>>>,
 }

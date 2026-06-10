@@ -2889,6 +2889,124 @@ fn duplicate_root_block_kind_same_namespace_errors() {
     );
 }
 
+// ─── Namespace-scoped resolution across files ─────────────────────
+//
+// Regression tests for the namespaced-schema bugs found by the `wad`
+// migration: a bare kind must prefer its own namespace's declaration
+// even when the declaration and the instance live in *different files*
+// (independent of root import order), and `connection` dispatch must
+// resolve endpoint types relative to the declaring file's namespace.
+
+/// A library whose `decision` kind collides with `lib2`'s below.
+const COLLIDING_NS: &str = r#"
+namespace other
+@document type OtherRoot { @children("card") cards: list<Card> }
+@block("card") type Card { @inline(0) id: utf8 }
+@block("decision") type OtherDecision { @inline(0) id: utf8  shape: utf8 }
+"#;
+
+const LIB2_SCHEMA: &str = r#"
+namespace lib2
+@block("decision") type Decision { @inline(0) id: utf8  name: utf8 }
+@document type Model2 { @children("decision") decisions: list<Decision> }
+"#;
+
+const LIB2_DATA: &str = "namespace lib2\ndecision \"d1\" { name = \"First\" }\n";
+
+#[test]
+fn same_namespace_kind_wins_across_files_regardless_of_import_order() {
+    // The `@block("decision")` declaration and the instance live in
+    // *different files* of the same namespace (`lib2`), while another
+    // imported library (`other`) declares a colliding kind. The
+    // instance must resolve to lib2's schema whichever library the
+    // root imports first — `name` is a lib2.Decision-only field, so
+    // the wrong winner surfaces as UnknownField.
+    for user in [
+        "import <colliding.wcl>\nimport <lib2_schema.wcl>\nimport <lib2_data.wcl>\n",
+        "import <lib2_schema.wcl>\nimport <lib2_data.wcl>\nimport <colliding.wcl>\n",
+    ] {
+        let doc = open_with_libs(
+            user,
+            &[
+                ("colliding.wcl", COLLIDING_NS),
+                ("lib2_schema.wcl", LIB2_SCHEMA),
+                ("lib2_data.wcl", LIB2_DATA),
+            ],
+        );
+        let block = doc
+            .blocks()
+            .find(|b| b.kind() == "decision")
+            .expect("decision block");
+        let schema = block.schema().expect("decision schema");
+        assert_eq!(schema.full_name(), "lib2.Decision", "for root:\n{user}");
+        assert!(
+            doc.schema_errors().is_empty(),
+            "for root:\n{user}\n{:?}",
+            doc.schema_errors()
+        );
+    }
+}
+
+/// `namespace lib` schema library owning blocks, a connection and the
+/// `@document` slots that project it.
+const CONN_LIB: &str = r#"
+namespace lib
+@block("adr") type Adr { @inline(0) id: utf8  name: utf8 }
+symbol_set LibRelKind { affects }
+connection AdrAffectsAdr : Adr -> Adr : LibRelKind
+@document type Model {
+    @children("adr") adrs: list<Adr>
+    @connections(AdrAffectsAdr) adr_affects: list<AdrAffectsAdr>
+}
+"#;
+
+#[test]
+fn namespaced_connection_dispatches_for_root_namespace_arrows() {
+    // connection + endpoint types + @connections slot all live in
+    // `namespace lib`; the data (blocks + arrow) is authored in the
+    // root namespace. The arrow must dispatch to lib's connection
+    // schema (`no connection schema accepts` was the bug) and the
+    // projected slot must populate.
+    let user = r#"
+        import <conn_lib.wcl>
+        @document type UserRoot { edges: i64 }
+        adr "a1" { name = "First" }
+        adr "a2" { name = "Second" }
+        a1 -> a2 :affects
+        edges = len(adr_affects)
+    "#;
+    let doc = open_with_libs(user, &[("conn_lib.wcl", CONN_LIB)]);
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    assert_eq!(doc.field("edges").unwrap().value().unwrap(), &Value::I64(1));
+}
+
+#[test]
+fn namespaced_arrows_and_qualified_instances_dispatch() {
+    // Arrows authored inside a `namespace lib` data file, plus a
+    // root-file `lib::adr`-qualified instance wired by a root-file
+    // arrow. Both must dispatch through lib's connection schema.
+    let lib_data = r#"
+namespace lib
+adr "a1" { name = "First" }
+adr "a2" { name = "Second" }
+a1 -> a2 :affects
+"#;
+    let user = r#"
+        import <conn_lib.wcl>
+        import <lib_data.wcl>
+        @document type UserRoot { edges: i64 }
+        lib::adr "a3" { name = "Third" }
+        a1 -> a3 :affects
+        edges = len(adr_affects)
+    "#;
+    let doc = open_with_libs(
+        user,
+        &[("conn_lib.wcl", CONN_LIB), ("lib_data.wcl", lib_data)],
+    );
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    assert_eq!(doc.field("edges").unwrap().value().unwrap(), &Value::I64(2));
+}
+
 #[test]
 fn nested_block_kind_unregistered_errors_on_schema_errors() {
     // Parent schema explicitly allows `unregistered` as a child

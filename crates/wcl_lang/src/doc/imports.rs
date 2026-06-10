@@ -30,6 +30,10 @@ use super::validate::open_error;
 pub(super) struct BlockSlice<'a> {
     pub(super) items: &'a [ast::Item],
     pub(super) cells: &'a [ItemCells],
+    /// Namespace of the file the slice's items come from, so block
+    /// instances spliced in by an import keep resolving bare kinds in
+    /// their declaring file's namespace.
+    pub(super) file_ns: &'a [String],
 }
 
 /// Cross-file import bookkeeping threaded down the eager-expansion
@@ -63,6 +67,7 @@ pub(super) fn push_loaded_imports<'a>(cells: &'a [ItemCells], out: &mut Vec<Bloc
             out.push(BlockSlice {
                 items: &li.items,
                 cells: &li.cells,
+                file_ns: &li.file_ns,
             });
             push_eager_imports(&li.eager_imports, out);
         }
@@ -74,6 +79,7 @@ pub(super) fn push_eager_imports<'a>(imps: &'a [LoadedImport], out: &mut Vec<Blo
         out.push(BlockSlice {
             items: &imp.items,
             cells: &imp.cells,
+            file_ns: &imp.file_ns,
         });
         push_eager_imports(&imp.eager_imports, out);
     }

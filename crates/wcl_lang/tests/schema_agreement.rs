@@ -319,6 +319,47 @@ fn imported_library_schema_alone_governs_root_fields() {
 }
 
 #[test]
+fn same_namespace_kind_across_files_agrees_regardless_of_import_order() {
+    // A `@block("decision")` declared in one `namespace lib2` file
+    // schemas an instance in *another* lib2 file, while a second
+    // imported library declares a colliding `decision` kind. Bare-kind
+    // resolution must prefer the instance file's own namespace on both
+    // paths (the lazy path rebuilds the block from a scope frame), for
+    // either import order — `name` is only legal on lib2's schema, so
+    // a wrong winner flags it.
+    let colliding = r#"
+        namespace other
+        @document type OtherRoot { @children("card") cards: list<Card> }
+        @block("card") type Card { @inline(0) id: utf8 }
+        @block("decision") type OtherDecision { @inline(0) id: utf8  shape: utf8 }
+    "#;
+    let lib2_schema = r#"
+        namespace lib2
+        @block("decision") type Decision { @inline(0) id: utf8  name: utf8 }
+        @document type Model2 { @children("decision") decisions: list<Decision> }
+    "#;
+    let lib2_data = "namespace lib2\ndecision \"d1\" { name = \"First\" }\n";
+    for user in [
+        "import <colliding.wcl>\nimport <lib2_schema.wcl>\nimport <lib2_data.wcl>\n",
+        "import <lib2_schema.wcl>\nimport <lib2_data.wcl>\nimport <colliding.wcl>\n",
+    ] {
+        let mut reg = Registry::new();
+        reg.register("colliding.wcl", colliding);
+        reg.register("lib2_schema.wcl", lib2_schema);
+        reg.register("lib2_data.wcl", lib2_data);
+        let loader = reg.loader(disk_loader());
+        let doc =
+            Document::open_at_with_loader(user, "ns-kind.wcl", None, &Environment::new(), loader)
+                .expect("document opens");
+        let flagged = assert_agreement_doc(&doc, &format!("ns-scoped kind, root:\n{user}"));
+        assert!(
+            flagged.is_empty(),
+            "no field is flagged for root:\n{user}\n{flagged:?}"
+        );
+    }
+}
+
+#[test]
 fn nested_blocks_two_levels_deep_agree_when_valid() {
     let flagged = assert_agreement(
         r#"

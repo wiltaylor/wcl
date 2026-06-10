@@ -126,18 +126,18 @@ pub(super) fn validate_connection_stmts(
             }
             continue;
         }
-        let (_, lhs_kind) = lhs.unwrap();
-        let (_, rhs_kind) = rhs.unwrap();
-        let Some(lhs_decl) = doc.block_schema(&lhs_kind) else {
+        let lhs = lhs.unwrap();
+        let rhs = rhs.unwrap();
+        let Some(lhs_decl) = doc.operand_schema(&lhs) else {
             continue; // block kind without a schema; UnregisteredKind already fires.
         };
-        let Some(rhs_decl) = doc.block_schema(&rhs_kind) else {
+        let Some(rhs_decl) = doc.operand_schema(&rhs) else {
             continue;
         };
         let mut matches: Vec<crate::doc::ConnectionDecl<'_>> = Vec::new();
         for decl in doc.connection_decls() {
-            let src_fqn = decl_type_fqn(doc, decl.source_type());
-            let dst_fqn = decl_type_fqn(doc, decl.destination_type());
+            let src_fqn = decl_type_fqn(doc, &decl, decl.source_type());
+            let dst_fqn = decl_type_fqn(doc, &decl, decl.destination_type());
             if crate::doc::connection_type_matches(&lhs_decl, src_fqn.as_deref())
                 && crate::doc::connection_type_matches(&rhs_decl, dst_fqn.as_deref())
             {
@@ -146,8 +146,8 @@ pub(super) fn validate_connection_stmts(
         }
         let chosen = match matches.len() {
             0 => {
-                let lhs_ty = lhs_decl.name_segments().join(".");
-                let rhs_ty = rhs_decl.name_segments().join(".");
+                let lhs_ty = lhs_decl.full_name();
+                let rhs_ty = rhs_decl.full_name();
                 errs.push(EvalError::schema_violation(
                     Kind::UnknownConnection,
                     format!("no connection schema accepts '{lhs_ty} -> {rhs_ty}'",),
@@ -157,12 +157,9 @@ pub(super) fn validate_connection_stmts(
             }
             1 => matches.into_iter().next().unwrap(),
             _ => {
-                let lhs_ty = lhs_decl.name_segments().join(".");
-                let rhs_ty = rhs_decl.name_segments().join(".");
-                let names: Vec<String> = matches
-                    .iter()
-                    .map(|m| m.name_segments().join("."))
-                    .collect();
+                let lhs_ty = lhs_decl.full_name();
+                let rhs_ty = rhs_decl.full_name();
+                let names: Vec<String> = matches.iter().map(|m| m.full_name()).collect();
                 errs.push(EvalError::schema_violation(
                     Kind::AmbiguousConnection,
                     format!(
@@ -192,8 +189,15 @@ pub(super) fn validate_connection_stmts(
     errs
 }
 
-fn decl_type_fqn(doc: &crate::doc::Document, t: &crate::value::TypeRef) -> Option<String> {
-    doc.resolve_type_fqn(t)
+/// Resolve a connection declaration's endpoint type to its FQN, relative
+/// to the file that declared the connection (so a namespaced library's
+/// bare `Adr` means its own `lib.Adr`).
+fn decl_type_fqn(
+    doc: &crate::doc::Document,
+    decl: &crate::doc::ConnectionDecl<'_>,
+    t: &crate::value::TypeRef,
+) -> Option<String> {
+    doc.resolve_type_fqn_in(t, decl.file_ns())
 }
 
 /// `true` when some `@dynamic` connection schema plausibly accepts a
@@ -202,7 +206,7 @@ fn decl_type_fqn(doc: &crate::doc::Document, t: &crate::value::TypeRef) -> Optio
 /// operand is treated as a wildcard (it may name a render-time-generated
 /// id). Gates suppression of `UnknownConnectionOperand` in
 /// [`validate_connection_stmts`].
-type ResolvedOperand = Option<(crate::value::Value, String)>;
+type ResolvedOperand = Option<crate::doc::ConnOperand>;
 
 fn dynamic_connection_admits(
     doc: &crate::doc::Document,
@@ -212,15 +216,15 @@ fn dynamic_connection_admits(
     let role_ok = |operand: &ResolvedOperand, fqn: Option<&str>| match operand {
         // Wildcard: an unresolved operand can't be type-checked.
         None => true,
-        Some((_, kind)) => doc
-            .block_schema(kind)
+        Some(op) => doc
+            .operand_schema(op)
             .is_some_and(|d| crate::doc::connection_type_matches(&d, fqn)),
     };
     doc.connection_decls()
         .filter(|d| d.is_dynamic())
         .any(|decl| {
-            let src_fqn = decl_type_fqn(doc, decl.source_type());
-            let dst_fqn = decl_type_fqn(doc, decl.destination_type());
+            let src_fqn = decl_type_fqn(doc, &decl, decl.source_type());
+            let dst_fqn = decl_type_fqn(doc, &decl, decl.destination_type());
             role_ok(lhs, src_fqn.as_deref()) && role_ok(rhs, dst_fqn.as_deref())
         })
 }
@@ -532,7 +536,11 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     // 0. Table row-form validation: if this block's schema is a
     // `@table`, its labels are the row's column values and must
     // match the schema field count.
-    if block.doc.table_schema(block.kind()).is_some() {
+    if block
+        .doc
+        .table_schema_in(block.kind_ns(), block.kind(), block.file_ns())
+        .is_some()
+    {
         let label_count = block.labels().map(|v| v.len()).unwrap_or(0);
         let field_count = schema.fields().count();
         if label_count < field_count {
@@ -647,7 +655,7 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
             continue;
         }
         let matches_interface = !interface_slots.is_empty()
-            && block.doc.block_schema(nested.kind()).is_some_and(|t| {
+            && nested.schema().is_some_and(|t| {
                 interface_slots
                     .iter()
                     .any(|iface| t.is_descendant_of(&iface.full_name()))

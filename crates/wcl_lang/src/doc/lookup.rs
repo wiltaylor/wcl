@@ -38,6 +38,7 @@ pub(super) fn find_block<'a>(
     cells: &'a [ItemCells],
     kind: &str,
     doc: &'a Document,
+    file_ns: &'a [String],
     scope: &Scope<'a>,
 ) -> Option<Block<'a>> {
     items
@@ -48,6 +49,7 @@ pub(super) fn find_block<'a>(
                 ast: b,
                 cells,
                 doc,
+                file_ns,
                 kind_override: None,
                 scope: scope.clone(),
             }),
@@ -103,6 +105,7 @@ pub(super) fn iter_blocks<'a>(
     items: &'a [ast::Item],
     cells: &'a [ItemCells],
     doc: &'a Document,
+    file_ns: &'a [String],
     scope: Scope<'a>,
 ) -> impl Iterator<Item = Block<'a>> + 'a {
     items
@@ -113,6 +116,7 @@ pub(super) fn iter_blocks<'a>(
                 ast: b,
                 cells,
                 doc,
+                file_ns,
                 kind_override: None,
                 scope: scope.clone(),
             }),

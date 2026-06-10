@@ -1076,6 +1076,7 @@ impl Document {
             ast: frames[i].ast,
             cells: frames[i].cells,
             doc: self,
+            file_ns: frames[i].file_ns,
             kind_override: frames[i].kind_override,
             scope: Scope::from_frames(&frames[..i]),
         }

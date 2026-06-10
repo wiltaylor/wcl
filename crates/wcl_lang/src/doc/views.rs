@@ -1537,6 +1537,7 @@ impl<'a> Field<'a> {
                     ast: frame.ast,
                     cells: frame.cells,
                     doc: self.doc,
+                    file_ns: frame.file_ns,
                     kind_override: frame.kind_override,
                     scope: Scope::root(),
                 };
@@ -1601,6 +1602,7 @@ impl<'a> Field<'a> {
                 ast: frame.ast,
                 cells: frame.cells,
                 doc: self.doc,
+                file_ns: frame.file_ns,
                 kind_override: frame.kind_override,
                 scope: Scope::root(),
             };
@@ -1722,6 +1724,12 @@ pub struct Block<'a> {
     pub(super) ast: &'a ast::Block,
     pub(super) cells: &'a ItemCells,
     pub(super) doc: &'a Document,
+    /// Namespace declared by the file this block instance lexically
+    /// lives in — the root document or the import that carries it.
+    /// Synthesised blocks (table rows, computed-children splices,
+    /// component bodies) inherit their owning declaration's. Bare-kind
+    /// schema resolution prefers this namespace (see [`Block::schema`]).
+    pub(super) file_ns: &'a [String],
     /// When `Some`, overrides `ast.kind` for views derived from a
     /// synthesised row-Block (its stored `kind` is blank). Real
     /// blocks always have `None`.
@@ -1775,6 +1783,7 @@ impl<'a> Block<'a> {
         self.scope.push(ScopeFrame {
             ast: self.ast,
             cells: self.cells,
+            file_ns: self.file_ns,
             kind_override: self.kind_override,
             bindings: None,
         })
@@ -1840,10 +1849,15 @@ impl<'a> Block<'a> {
                 let scope = body.scope.push(ScopeFrame {
                     ast: body.ast,
                     cells: &g.cells,
+                    // The body's children live in the component
+                    // *definition's* file: a library component using its
+                    // own namespaced kinds bare must resolve them there,
+                    // not at the instantiation site.
+                    file_ns: body.file_ns,
                     kind_override: body.kind_override,
                     bindings: Some(g.bindings.clone()),
                 });
-                iter_blocks(&body.ast.items, fresh_items, doc, scope).collect()
+                iter_blocks(&body.ast.items, fresh_items, doc, body.file_ns, scope).collect()
             })
             .collect()
     }
@@ -1910,6 +1924,7 @@ impl<'a> Block<'a> {
         let mut out = vec![BlockSlice {
             items: &self.ast.items,
             cells: items_cells,
+            file_ns: self.file_ns,
         }];
         push_loaded_imports(items_cells, &mut out);
         out
@@ -1942,7 +1957,14 @@ impl<'a> Block<'a> {
     pub fn block(&self, kind: &str) -> Option<Block<'a>> {
         let child_scope = self.child_scope();
         for src in self.realize_and_sources() {
-            if let Some(b) = find_block(src.items, src.cells, kind, self.doc, &child_scope) {
+            if let Some(b) = find_block(
+                src.items,
+                src.cells,
+                kind,
+                self.doc,
+                src.file_ns,
+                &child_scope,
+            ) {
                 return Some(b);
             }
         }
@@ -1975,6 +1997,7 @@ impl<'a> Block<'a> {
         let doc = self.doc;
         let scope = self.child_scope();
         let synth_scope = scope.clone();
+        let synth_ns = self.file_ns;
         // Computed-children splices (`field = <list expr>` for a
         // `@children`/`@child` slot) appear here too, after the literal
         // nested blocks, so renderers that walk `blocks()` (e.g.
@@ -1982,11 +2005,12 @@ impl<'a> Block<'a> {
         let synth = self.computed_children();
         self.realize_and_sources()
             .into_iter()
-            .flat_map(move |src| iter_blocks(src.items, src.cells, doc, scope.clone()))
+            .flat_map(move |src| iter_blocks(src.items, src.cells, doc, src.file_ns, scope.clone()))
             .chain(synth.iter().map(move |sc| Block {
                 ast: &sc.block,
                 cells: &sc.cells,
                 doc,
+                file_ns: synth_ns,
                 kind_override: Some(sc.kind.as_str()),
                 scope: synth_scope.clone(),
             }))
@@ -2027,13 +2051,20 @@ impl<'a> Block<'a> {
         &self.ast.kind_ns
     }
 
+    /// Namespace declared by the file this block instance lives in.
+    pub(crate) fn file_ns(&self) -> &'a [String] {
+        self.file_ns
+    }
+
     /// The schema (`TypeDecl`) for this block's `kind`, if any. Resolved
     /// namespace-aware: a `::` qualifier selects an explicit namespace,
-    /// and a bare kind prefers a declaration in the document's namespace.
+    /// and a bare kind prefers a declaration in the namespace of the
+    /// file this instance lives in (so a `namespace lib` data file's
+    /// blocks resolve to `lib`'s schemas regardless of import order).
     pub fn schema(&self) -> Option<TypeDecl<'a>> {
         let k = self.kind();
         let q = self.kind_ns();
-        let ctx = self.doc.file_ns();
+        let ctx = self.file_ns;
         self.doc
             .block_schema_in(q, k, ctx)
             .or_else(|| self.doc.table_schema_in(q, k, ctx))
@@ -2086,7 +2117,7 @@ impl<'a> Block<'a> {
             // this kind with synthesised blocks from `Item::Table`
             // rows under the matching field name.
             let blocks = self.children_projection(name, kind);
-            let is_table = self.doc.table_schema(kind).is_some();
+            let is_table = self.doc.table_schema_in(&[], kind, self.file_ns).is_some();
             return Some(if is_table {
                 crate::data::DataRef::from_table(blocks)
             } else {
@@ -2228,6 +2259,7 @@ impl<'a> Block<'a> {
                             ast: b,
                             cells,
                             doc: self.doc,
+                            file_ns: self.file_ns,
                             kind_override: None,
                             scope: child_scope.clone(),
                         },
@@ -2243,6 +2275,7 @@ impl<'a> Block<'a> {
                                     ast: &sr.block,
                                     cells: &sr.cells,
                                     doc: self.doc,
+                                    file_ns: self.file_ns,
                                     kind_override: None,
                                     scope: child_scope.clone(),
                                 },
@@ -2265,6 +2298,7 @@ impl<'a> Block<'a> {
                             ast: b,
                             cells,
                             doc: self.doc,
+                            file_ns: src.file_ns,
                             kind_override: None,
                             scope: child_scope.clone(),
                         },
@@ -2291,6 +2325,7 @@ impl<'a> Block<'a> {
                     ast: b,
                     cells,
                     doc: self.doc,
+                    file_ns: self.file_ns,
                     kind_override: None,
                     scope: child_scope.clone(),
                 };
@@ -2308,6 +2343,7 @@ impl<'a> Block<'a> {
                         ast: b,
                         cells,
                         doc: self.doc,
+                        file_ns: src.file_ns,
                         kind_override: None,
                         scope: child_scope.clone(),
                     };
@@ -2347,6 +2383,7 @@ impl<'a> Block<'a> {
                         ast: b,
                         cells,
                         doc: self.doc,
+                        file_ns: self.file_ns,
                         kind_override: None,
                         scope: child_scope.clone(),
                     });
@@ -2359,6 +2396,7 @@ impl<'a> Block<'a> {
                                 ast: &sr.block,
                                 cells: &sr.cells,
                                 doc: self.doc,
+                                file_ns: self.file_ns,
                                 kind_override: Some(kind),
                                 scope: child_scope.clone(),
                             });
@@ -2380,6 +2418,7 @@ impl<'a> Block<'a> {
                         ast: b,
                         cells,
                         doc: self.doc,
+                        file_ns: src.file_ns,
                         kind_override: None,
                         scope: child_scope.clone(),
                     });
@@ -2396,6 +2435,7 @@ impl<'a> Block<'a> {
                     ast: &sc.block,
                     cells: &sc.cells,
                     doc: self.doc,
+                    file_ns: self.file_ns,
                     kind_override: Some(sc.kind.as_str()),
                     scope: child_scope.clone(),
                 });
