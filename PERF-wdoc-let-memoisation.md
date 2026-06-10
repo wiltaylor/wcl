@@ -1,5 +1,27 @@
 # Performance report: document-level `let` bindings need memoisation — wad build now ~45 min
 
+> **Upstream status (2026-06-11, after `b331ee0b`):** investigated; partially
+> fixed; **still open** for the asymptotic case. The surface hypothesis was
+> wrong — document-level lets (including in imported files) were already
+> memoised via `OnceLock` — but three real per-reference/per-call costs were
+> found and fixed: every reference to a cached value deep-cloned it (lists /
+> records / variant payloads are now `Arc`-shared; a 1000-reference synthetic
+> went 25.7 s → 0.06 s), function bodies were AST-deep-cloned per literal
+> evaluation and per named resolution (now `Arc<Expr>`), and argument coercion
+> re-ran name resolution and rebuilt list arguments on every closure
+> invocation (now a memoised union lookup + pass-through fast path). A
+> wad-shaped nested-closure synthetic improved ~1.6× on top of the clone wins.
+> **wad itself is still >30 min**: the profile's "10.9 s per `sec_dests`
+> call" was *inclusive* time — the dominant cost is the document's own
+> combinatorial chains (`alerts_for` → per-element `ops_dests` → full
+> `ops_recs` scan, multiplied by pages × embeds × lookups), now executed with
+> cheap clones but still O(refs × |list|) per level in a tree-walking
+> interpreter. The remaining fix directions, in order of likely payoff:
+> call-result memoisation for pure named functions; hoisting loop-invariant
+> calls; or compiling the hot filter/map chains. Tracked here until one of
+> those lands.
+
+
 Follow-up to the earlier build-scaling report (taken upstream 2026-06-10; measurements
 restated below so this stands alone). Measured against the binary built from `053919e2`
 — i.e. **after** `b07ab2b0` (name-resolution caching), which did not move the needle for
