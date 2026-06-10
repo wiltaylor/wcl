@@ -305,7 +305,8 @@ fn classify(rec: &SymbolRecord) -> Option<LocatedSymbol> {
         | SymbolKind::InterfaceDecl
         | SymbolKind::UnionDecl
         | SymbolKind::ConnectionDecl
-        | SymbolKind::SymbolSetDecl => Some(LocatedSymbol::Type(rec.fqn.clone())),
+        | SymbolKind::SymbolSetDecl
+        | SymbolKind::FnDecl => Some(LocatedSymbol::Type(rec.fqn.clone())),
         SymbolKind::UnionVariant { parent_fqn } => Some(LocatedSymbol::UnionVariant {
             union: parent_fqn.clone(),
             variant: short_name(&rec.fqn).to_string(),

@@ -408,6 +408,15 @@ pub struct Field {
 pub struct LetItem {
     pub name: String,
     pub value: Expr,
+    /// Decorators on the `fn` item form (e.g. `@doc`). Always empty for
+    /// `let` syntax, which rejects decorators.
+    pub decorators: Vec<Decorator>,
+    /// `true` when this binding was written as a `fn name(…) -> T body`
+    /// item. Sugar for `let name = fn(…) -> T body`, with two visible
+    /// differences: the binding is registered in the symbol index
+    /// (outline / hover / go-to-def) and the formatter re-prints the
+    /// `fn` form.
+    pub fn_syntax: bool,
     pub span: Span,
     pub leading_trivia: Vec<Trivia>,
     /// A same-line comment printed after this `let` item.

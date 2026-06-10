@@ -42,6 +42,7 @@ fn record_to_symbol(source: &str, rec: &SymbolRecord) -> DocumentSymbol {
 
 fn classify(kind: &SymbolKind) -> (LspSymbolKind, Option<String>) {
     match kind {
+        SymbolKind::FnDecl => (LspSymbolKind::FUNCTION, None),
         SymbolKind::TypeDecl => (LspSymbolKind::CLASS, None),
         SymbolKind::InterfaceDecl => (LspSymbolKind::INTERFACE, None),
         SymbolKind::UnionDecl => (LspSymbolKind::ENUM, None),

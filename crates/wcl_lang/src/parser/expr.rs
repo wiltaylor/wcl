@@ -809,6 +809,14 @@ impl<'a> Parser<'a> {
 
     fn parse_function_literal(&mut self) -> Result<(Expr, Span), ParseError> {
         let fn_tok = self.bump()?; // 'fn'
+        self.parse_function_tail(fn_tok.span.start)
+    }
+
+    /// Parse a function literal's parameter list, return type and body,
+    /// with the `fn` token already consumed. `start` is the `fn` token's
+    /// start offset, anchoring the literal's span. Shared by expression
+    /// literals (`fn(…) -> T body`) and `fn name(…)` items.
+    pub(super) fn parse_function_tail(&mut self, start: usize) -> Result<(Expr, Span), ParseError> {
         self.expect(TokenKind::LParen, "expected '(' after 'fn'")?;
         let mut params: Vec<Parameter> = Vec::new();
         let mut trailing_trivia = Vec::new();
@@ -858,7 +866,7 @@ impl<'a> Parser<'a> {
         } else {
             self.parse_expr()?
         };
-        let span = Span::new(fn_tok.span.start, body_span.end);
+        let span = Span::new(start, body_span.end);
         Ok((
             Expr::Function(FunctionLit {
                 params,

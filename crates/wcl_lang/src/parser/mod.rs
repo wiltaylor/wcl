@@ -135,11 +135,27 @@ impl<'a> Parser<'a> {
             Item::UseDecl(_) => {}
             Item::Import(_) => {}
             Item::Table(_) => {}
-            // Let bindings are intentionally NOT registered in the symbol
-            // index: they must stay out of `Document::field`/`block`/`get`
-            // and any query that walks named symbols. Resolution happens by
-            // scanning items directly (see `find_let` / `root_let`).
-            Item::Let(_) => {}
+            // Plain let bindings are intentionally NOT registered in the
+            // symbol index: they must stay out of `Document::field`/`block`/
+            // `get` and any query that walks named symbols. Resolution
+            // happens by scanning items directly (see `find_let` /
+            // `root_let`). The `fn name(…)` item form opts in to the index
+            // so the LSP can offer outline / hover / go-to-definition — its
+            // value resolution is still the let path.
+            Item::Let(l) => {
+                if l.fn_syntax {
+                    let fqn = self.join_fqn(std::slice::from_ref(&l.name));
+                    self.try_insert(SymbolRecord {
+                        fqn,
+                        kind: SymbolKind::FnDecl,
+                        span: l.span,
+                        path: SymbolPath {
+                            item_index,
+                            member_index: None,
+                        },
+                    })?;
+                }
+            }
             Item::TypeDecl(t) => {
                 let members = t.fields.iter().map(|f| (f.name.as_str(), f.span));
                 self.register_decl_with_members(
@@ -406,6 +422,11 @@ impl<'a> Parser<'a> {
                         ));
                     }
                     return self.parse_let_item();
+                }
+                // `fn name(…)` — a fn item. The identifier lookahead keeps
+                // `fn = expr` (a field named `fn`) parsing as before.
+                "fn" if matches!(self.peek2()?.kind, TokenKind::Ident(_)) => {
+                    return self.parse_fn_item(decorators);
                 }
                 _ => {}
             }

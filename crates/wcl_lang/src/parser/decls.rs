@@ -1016,6 +1016,44 @@ impl<'a> Parser<'a> {
         Ok(Item::Let(crate::ast::LetItem {
             name,
             value,
+            decorators: Vec::new(),
+            fn_syntax: false,
+            span,
+            leading_trivia: self.take_item_trivia(),
+            trailing_comment: None,
+        }))
+    }
+
+    /// Parse a `fn name(params) -> T body` item (top-level or inside a
+    /// block). Sugar for `let name = fn(params) -> T body`: resolution,
+    /// caching and data-invisibility are exactly the let item's, but the
+    /// binding is registered in the symbol index and re-printed in `fn`
+    /// form. Decorators (`@doc`) are allowed.
+    pub(super) fn parse_fn_item(
+        &mut self,
+        decorators: Vec<crate::ast::Decorator>,
+    ) -> Result<Item, ParseError> {
+        let fn_tok = self.bump()?; // consume 'fn'
+        let start = decorators
+            .first()
+            .map(|d| d.span.start)
+            .unwrap_or(fn_tok.span.start);
+        let (name, _name_span) = self.bump_ident("expected name after 'fn'")?;
+        if !matches!(self.peek()?.kind, TokenKind::LParen) {
+            let span = self.peek()?.span;
+            return Err(self.err(
+                "expected '(' after fn name",
+                span,
+                "a fn item is `fn name(params) -> T body`",
+            ));
+        }
+        let (value, value_span) = self.parse_function_tail(fn_tok.span.start)?;
+        let span = Span::new(start, value_span.end);
+        Ok(Item::Let(crate::ast::LetItem {
+            name,
+            value,
+            decorators,
+            fn_syntax: true,
             span,
             leading_trivia: self.take_item_trivia(),
             trailing_comment: None,

@@ -218,6 +218,21 @@ impl Printer {
 
     fn print_let_item(&mut self, l: &crate::ast::LetItem) {
         self.print_leading_trivia(&l.leading_trivia);
+        // The `fn name(…)` item form round-trips as written: decorators
+        // (own line, like a type decl's), then `fn name` spliced before
+        // the literal's parameter list.
+        if l.fn_syntax
+            && let Expr::Function(f) = &l.value
+        {
+            self.print_decorators_block(&l.decorators);
+            self.write_indent();
+            self.push("fn ");
+            self.push(&l.name);
+            self.print_function_signature_and_body(f);
+            self.print_trailing_comment(&l.trailing_comment);
+            self.newline();
+            return;
+        }
         self.write_indent();
         self.push("let ");
         self.push(&l.name);
@@ -1137,12 +1152,20 @@ impl Printer {
     }
 
     fn print_function_literal(&mut self, f: &FunctionLit) {
+        self.push("fn");
+        self.print_function_signature_and_body(f);
+    }
+
+    /// Print a function literal's `(params) -> T body` — everything after
+    /// the `fn` keyword. Shared by expression literals and `fn name(…)`
+    /// items (which splice the name between `fn` and the parameters).
+    fn print_function_signature_and_body(&mut self, f: &FunctionLit) {
         let multiline = f
             .params
             .iter()
             .any(|p| p.trailing_comment.is_some() || trivia_has_comment(&p.leading_trivia))
             || trivia_has_comment(&f.trailing_trivia);
-        self.push("fn(");
+        self.push("(");
         if multiline {
             self.newline();
             self.depth += 1;

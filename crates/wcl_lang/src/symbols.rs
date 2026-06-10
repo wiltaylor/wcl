@@ -30,16 +30,26 @@ pub struct SymbolRecord {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolKind {
+    /// A `fn name(…) -> T body` item (an indexed let binding).
+    FnDecl,
     TypeDecl,
     InterfaceDecl,
     UnionDecl,
     SymbolSetDecl,
     ConnectionDecl,
     Field,
-    TypeField { parent_fqn: String },
-    InterfaceField { parent_fqn: String },
-    UnionVariant { parent_fqn: String },
-    SymbolEntry { parent_fqn: String },
+    TypeField {
+        parent_fqn: String,
+    },
+    InterfaceField {
+        parent_fqn: String,
+    },
+    UnionVariant {
+        parent_fqn: String,
+    },
+    SymbolEntry {
+        parent_fqn: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
