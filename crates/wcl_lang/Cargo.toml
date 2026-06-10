@@ -22,5 +22,9 @@ proptest = { workspace = true }
 name = "parse"
 harness = false
 
+[[bench]]
+name = "resolve"
+harness = false
+
 [lints]
 workspace = true

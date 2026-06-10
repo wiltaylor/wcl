@@ -34,6 +34,8 @@ mod video;
 mod visibility;
 mod wireframe;
 
-pub use build::{BuildError, build, schema_registry, take_edge_warnings};
+pub use build::{
+    BuildError, BuildOptions, build, build_with_options, schema_registry, take_edge_warnings,
+};
 pub use markdown::{markdown, skill};
 pub use pdf::{PageSize, PdfError, pdf};

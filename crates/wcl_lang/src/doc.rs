@@ -69,6 +69,25 @@ pub struct Document {
     /// opened through one of the `*_profiled` constructors; otherwise
     /// every profile hook is a no-op `Option::is_some` check.
     profile: Option<std::sync::Mutex<crate::profile::ProfileState>>,
+    /// Lazily-built cache of every declared FQN (see [`ref_registry`]).
+    /// Sound to compute once: its inputs — the root AST,
+    /// `synthetic_types`, and the eager imports' symbol indexes — are
+    /// all fixed at construction time (lazy in-block imports never
+    /// contribute; `all_sources` walks eager imports only). Name
+    /// resolution consults this on every lookup, so rebuilding it per
+    /// call made resolution O(total declarations) each time.
+    ref_registry: std::sync::OnceLock<HashSet<Vec<String>>>,
+    /// Lazily-built index of `(decorator name, first positional string
+    /// arg)` → positions in [`type_decls`] order, replacing the
+    /// full-scan-with-decorator-eval that [`schema_candidates`] ran on
+    /// every block-kind lookup. Same construction-time-only inputs as
+    /// `ref_registry`.
+    schema_index: std::sync::OnceLock<HashMap<(String, String), Vec<usize>>>,
+    /// Lazily-built index of `wdoc_component` name → position in
+    /// [`blocks`] order, replacing the per-call label-evaluating scan in
+    /// [`component_def`] (which wdoc expansion runs for every nested
+    /// block). Same construction-time-only inputs as `ref_registry`.
+    component_index: std::sync::OnceLock<HashMap<String, usize>>,
 }
 
 impl std::fmt::Debug for Document {
@@ -323,6 +342,9 @@ impl Document {
             eager_imports,
             loader,
             profile: None,
+            ref_registry: std::sync::OnceLock::new(),
+            schema_index: std::sync::OnceLock::new(),
+            component_index: std::sync::OnceLock::new(),
         })
     }
 
@@ -342,6 +364,14 @@ impl Document {
         let mut doc = Self::open_at(source, name, None, env)?;
         doc.profile = Some(crate::profile::ProfileState::new_root());
         Ok(doc)
+    }
+
+    /// Switch on profiling for an already-opened document; subsequent
+    /// evaluation records timings visible via [`profile`](Self::profile).
+    /// For hosts (e.g. `wcl wdoc build --profile`) whose constructor has
+    /// no `*_profiled` twin.
+    pub fn enable_profiling(&mut self) {
+        self.profile = Some(crate::profile::ProfileState::new_root());
     }
 
     /// [`from_file`](Self::from_file) with profiling enabled.
@@ -1276,8 +1306,13 @@ impl Document {
 
     /// The set of fully-qualified names declared anywhere in the
     /// document (root + every eagerly-imported file), used as the
-    /// resolution registry for type references.
-    fn ref_registry(&self) -> HashSet<Vec<String>> {
+    /// resolution registry for type references. Built once per document
+    /// (see the `ref_registry` field for why that's sound).
+    fn ref_registry(&self) -> &HashSet<Vec<String>> {
+        self.ref_registry.get_or_init(|| self.build_ref_registry())
+    }
+
+    fn build_ref_registry(&self) -> HashSet<Vec<String>> {
         let mut registry: HashSet<Vec<String>> = self
             .ast
             .items
@@ -1344,7 +1379,7 @@ impl Document {
             &self.item_aliases,
             &self.ns_aliases,
             &self.wildcards,
-            &registry,
+            registry,
         )
     }
 
@@ -1445,13 +1480,28 @@ impl Document {
     /// The `wdoc_component` definition whose name (`@inline(0)` label)
     /// equals `name`, if any. A component is instantiated by its own
     /// name as a bare block; this resolves that instance kind back to its
-    /// declarative definition (slots + body). Scans top-level blocks.
+    /// declarative definition (slots + body). Served from a once-built
+    /// name → position index — expansion consults this for every nested
+    /// block, so the previous per-call label-evaluating scan over all
+    /// top-level blocks was O(blocks²) across a build.
     pub fn component_def(&self, name: &str) -> Option<Block<'_>> {
         if name.is_empty() {
             return None;
         }
-        self.blocks()
-            .find(|b| b.kind() == "wdoc_component" && block_first_label(b).as_deref() == Some(name))
+        let index = self.component_index.get_or_init(|| {
+            let mut map: HashMap<String, usize> = HashMap::new();
+            for (i, b) in self.blocks().enumerate() {
+                if b.kind() == "wdoc_component"
+                    && let Some(label) = block_first_label(&b)
+                {
+                    // First declaration wins, matching `find` semantics.
+                    map.entry(label).or_insert(i);
+                }
+            }
+            map
+        });
+        let pos = *index.get(name)?;
+        self.blocks().nth(pos)
     }
 
     /// `true` if `name` is the name of a declared `wdoc_component` — i.e.
@@ -1753,22 +1803,49 @@ impl Document {
     }
 
     /// Every type declaration carrying `@dec(value)`, in `type_decls()`
-    /// order (root source before imports).
+    /// order (root source before imports). Served from a once-built
+    /// positional index — block-kind lookups run this for every schema
+    /// resolution, so the previous full scan (evaluating each decl's
+    /// decorator args per call) dominated large builds.
     fn schema_candidates(&self, dec: BuiltinDecorator, value: &str) -> Vec<TypeDecl<'_>> {
-        let dec_name = dec.as_str();
-        let want = Value::Utf8(value.to_string());
-        self.type_decls()
-            .filter(|t| {
-                t.decorators().any(|d| {
-                    d.full_name() == dec_name
-                        && d.positional()
-                            .ok()
-                            .and_then(|v| v.into_iter().next())
-                            .as_ref()
-                            == Some(&want)
-                })
-            })
-            .collect()
+        let index = self.schema_index.get_or_init(|| self.build_schema_index());
+        let key = (dec.as_str().to_string(), value.to_string());
+        let Some(positions) = index.get(&key) else {
+            return Vec::new();
+        };
+        // `positions` is sorted (built in iteration order): walk the
+        // decl iterator once, picking off matches until the last one.
+        let mut want = positions.iter().copied().peekable();
+        let mut out = Vec::with_capacity(positions.len());
+        for (i, t) in self.type_decls().enumerate() {
+            match want.peek() {
+                Some(&p) if p == i => {
+                    out.push(t);
+                    want.next();
+                }
+                Some(_) => {}
+                None => break,
+            }
+        }
+        out
+    }
+
+    /// `(decorator name, first positional string arg)` → positions in
+    /// `type_decls()` order, for every decorator whose first positional
+    /// evaluates to a string — exactly the pairs `schema_candidates`
+    /// matches on.
+    fn build_schema_index(&self) -> HashMap<(String, String), Vec<usize>> {
+        let mut map: HashMap<(String, String), Vec<usize>> = HashMap::new();
+        for (i, t) in self.type_decls().enumerate() {
+            for d in t.decorators() {
+                let Ok(args) = d.positional() else { continue };
+                let Some(Value::Utf8(v)) = args.into_iter().next() else {
+                    continue;
+                };
+                map.entry((d.full_name(), v)).or_default().push(i);
+            }
+        }
+        map
     }
 
     /// Resolve a `::` namespace qualifier to the set of concrete

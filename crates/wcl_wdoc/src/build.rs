@@ -139,7 +139,37 @@ impl BuildError {
     }
 }
 
+/// Emit a build-progress line to stderr, only when stderr is a
+/// terminal — an interactive `wcl wdoc build` (and `wdoc serve`) can
+/// tell a slow build from a stuck one, while tests, CI, and piped
+/// output stay clean.
+fn progress(line: std::fmt::Arguments<'_>) {
+    use std::io::IsTerminal;
+    if std::io::stderr().is_terminal() {
+        eprintln!("{line}");
+    }
+}
+
 pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<usize, BuildError> {
+    build_with_options(file, out_dir, site_filter, &BuildOptions::default()).map(|(n, _)| n)
+}
+
+/// Options for [`build_with_options`]. `Default` matches plain [`build`].
+#[derive(Default)]
+pub struct BuildOptions {
+    /// Record a call-tree profile of the document evaluation driving the
+    /// build; the snapshot is returned alongside the page count.
+    pub profile: bool,
+}
+
+/// [`build`] with [`BuildOptions`]. Returns the page count plus, when
+/// profiling was requested, the evaluation profile snapshot.
+pub fn build_with_options(
+    file: &Path,
+    out_dir: &Path,
+    site_filter: Option<&str>,
+    opts: &BuildOptions,
+) -> Result<(usize, Option<wcl_lang::Profile>), BuildError> {
     let user_src = fs::read_to_string(file)
         .map_err(|e| BuildError::Io(e, format!("read {}", file.display())))?;
 
@@ -152,7 +182,7 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
     // imports fall through to the disk loader with that base.
     let base_dir = file.parent().map(std::path::Path::to_path_buf);
     let loader = schema_registry().loader(disk_loader());
-    let doc = Document::open_at_with_loader(
+    let mut doc = Document::open_at_with_loader(
         &user_src,
         &name,
         base_dir.clone(),
@@ -160,6 +190,10 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
         loader,
     )
     .map_err(|e| BuildError::Parse(Report::new(e)))?;
+    if opts.profile {
+        doc.enable_profiling();
+    }
+    let doc = doc;
 
     let errs = doc.schema_errors();
     if !errs.is_empty() {
@@ -252,6 +286,11 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
     let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, BuildError> {
         let mut count = 0;
         for spec in &build_set {
+            progress(format_args!(
+                "site {} ({} pages)",
+                spec.name.as_deref().unwrap_or("site"),
+                spec.pages.len()
+            ));
             let at_root = !multi || (root_site.is_some() && spec.name == root_site);
             let (site_out, current_prefix) = if at_root {
                 (out_dir.to_path_buf(), String::new())
@@ -315,7 +354,8 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
     if let Some(msg) = crate::render::take_route_error() {
         return Err(BuildError::EdgeRouting(msg));
     }
-    result
+    // `profile()` is `None` unless `opts.profile` enabled collection.
+    result.map(|n| (n, doc.profile()))
 }
 
 /// Drain the non-fatal edge warnings collected during the most recent
@@ -773,7 +813,14 @@ fn build_site(
         build_presentation_page(&ctx)?
     } else {
         let mut count = 0;
-        for page in &spec.pages {
+        let total = spec.pages.len();
+        for (i, page) in spec.pages.iter().enumerate() {
+            progress(format_args!(
+                "  page {}/{} {}",
+                i + 1,
+                total,
+                page_name(page).unwrap_or_default()
+            ));
             if let Some(entry) = build_normal_page(&ctx, page)? {
                 search_entries.push(entry);
             }

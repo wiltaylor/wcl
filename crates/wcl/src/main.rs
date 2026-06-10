@@ -190,6 +190,11 @@ enum WdocCommand {
         /// with a chooser index (a single-site document is unaffected).
         #[arg(long)]
         site: Option<String>,
+        /// Record a call-tree profile of the document evaluation driving
+        /// the build and print it as JSON to stderr (like `wcl parse
+        /// --profile`).
+        #[arg(long)]
+        profile: bool,
     },
     /// Render every `page` block in `<file>` to a folder of Markdown files
     /// under `<out>` (one `.md` per page), with diagrams / terminals /
@@ -428,13 +433,28 @@ fn build_runtime() -> Result<tokio::runtime::Runtime, u8> {
 
 fn run_wdoc(cmd: WdocCommand) -> u8 {
     match cmd {
-        WdocCommand::Build { file, out, site } => {
-            let result = wcl_wdoc::build(&file, &out, site.as_deref());
+        WdocCommand::Build {
+            file,
+            out,
+            site,
+            profile,
+        } => {
+            let opts = wcl_wdoc::BuildOptions { profile };
+            let result = wcl_wdoc::build_with_options(&file, &out, site.as_deref(), &opts);
             if result.is_ok() {
                 for w in wcl_wdoc::take_edge_warnings() {
                     eprintln!("warning: {w}");
                 }
             }
+            let result = result.map(|(n, p)| {
+                if let Some(p) = p {
+                    let json = dump::profile_to_json(&p);
+                    let rendered = serde_json::to_string_pretty(&json)
+                        .expect("serde_json::Value always serializes (string-keyed objects)");
+                    eprintln!("{rendered}");
+                }
+                n
+            });
             report_pages(result)
         }
         WdocCommand::Markdown { file, out, site } => {
