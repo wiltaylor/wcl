@@ -82,6 +82,16 @@ fn render_diagram_inner(
     let defs = if edges.is_empty() { "" } else { ARROW_MARKER };
     let mut out = format!("<svg{cls}");
     append_attr(&mut out, "id", field_id(block, "id").as_deref());
+    // Accessibility: a `desc` field becomes the SVG's accessible name —
+    // `role="img"` + `aria-label` on the element plus a `<title>` first
+    // child (the SVG-native fallback screen readers announce).
+    let desc = field_utf8(block, "desc");
+    if let Some(d) = &desc {
+        write!(out, " role=\"img\" aria-label=\"{}\"", escape_html(d)).expect("write to String");
+    }
+    let title = desc
+        .map(|d| format!("<title>{}</title>", escape_html(&d)))
+        .unwrap_or_default();
     // Interactive pan + zoom: carry the fitted view + limits on the
     // `<svg>` so the bundled player can drive its `viewBox`, and wrap
     // it in a viewport that hosts the overlaid controls. A diagram with a
@@ -104,7 +114,7 @@ fn render_diagram_inner(
     write!(
         out,
         " xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" \
-         viewBox=\"{viewbox}\">{defs}{boundaries}{shapes}{edges}</svg>"
+         viewBox=\"{viewbox}\">{title}{defs}{boundaries}{shapes}{edges}</svg>"
     )
     .expect("write to String");
     if interactive {

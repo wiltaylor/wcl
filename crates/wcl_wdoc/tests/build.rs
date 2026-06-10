@@ -8141,3 +8141,41 @@ page index {
         "expected edge to attach at node b east (160,36):\n{html}"
     );
 }
+
+#[test]
+fn diagram_desc_becomes_svg_title_and_aria_label() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("a11y.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "page p {\n",
+            "  diagram d {\n",
+            "    width = 200  height = 100\n",
+            "    desc = \"Request flow from client to server\"\n",
+            "    process \"client\"\n",
+            "  }\n",
+            "  diagram plain {\n",
+            "    width = 200  height = 100\n",
+            "    process \"other\"\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("p.html")).expect("read html");
+    assert!(
+        html.contains("role=\"img\" aria-label=\"Request flow from client to server\""),
+        "aria attributes on the svg: {html}"
+    );
+    assert!(
+        html.contains("<title>Request flow from client to server</title>"),
+        "svg <title> child present"
+    );
+    // A diagram without `desc` stays untouched (no empty aria noise).
+    assert!(
+        !html.contains("aria-label=\"\""),
+        "no empty aria-label emitted"
+    );
+}

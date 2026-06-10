@@ -26,6 +26,8 @@ page wdoc_diagrams { sites = [:reference, :wcl_skill]  title = "Diagrams"
 
   type_table { type = Diagram }
 
+  p "For accessibility, give a diagram a `desc` — it becomes the SVG's `<title>` and `aria-label`, so screen readers announce the diagram instead of skipping it."
+
   h2 "Pan & zoom"
 
   p "Set `pan_zoom = true` to wrap the diagram in an interactive viewport. Wheel zooms toward the cursor, drag pans, the corner buttons zoom about centre / reset. Zoom is clamped to `[zoom_min, zoom_max]`; pan allows half-a-viewport of overscroll past each content edge plus the author's `pan_margin`. Try it on the diagram below:"

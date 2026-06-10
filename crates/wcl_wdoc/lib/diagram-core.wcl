@@ -82,6 +82,9 @@ type Diagram extends WdocBlock {
   @doc("Extra overscroll past the content bounds, in px (default 0).")
   pan_margin: f64?          // extra overscroll past the content, px (default 0)
 
+  @doc("Accessible description: becomes the SVG's `<title>` and `aria-label`, so screen readers can announce the diagram.")
+  desc: utf8?               // accessible name (SVG <title> + aria-label)
+
   @doc("The shapes drawn in the diagram.")
   @children(SvgBlock) children: list<SvgBlock>
   @doc("Edges connecting shapes (`a -> b`).")
