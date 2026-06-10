@@ -3857,12 +3857,13 @@ page usage {
         "{intro}"
     );
     // On intro.html, `intro` is the current chapter; `usage` is not.
+    // Entries are titled by each page's first h1, not its route name.
     assert!(
-        intro.contains("<a class=\"book-chapter current\" href=\"intro.html\">intro</a>"),
+        intro.contains("<a class=\"book-chapter current\" href=\"intro.html\">Intro</a>"),
         "current chapter not highlighted:\n{intro}"
     );
     assert!(
-        intro.contains("<a class=\"book-chapter\" href=\"usage.html\">usage</a>"),
+        intro.contains("<a class=\"book-chapter\" href=\"usage.html\">Usage</a>"),
         "{intro}"
     );
     // Content lands in the reading column.
@@ -3875,7 +3876,7 @@ page usage {
     // On usage.html the highlight moves to the `usage` chapter.
     let usage = std::fs::read_to_string(out.path().join("usage.html")).expect("read");
     assert!(
-        usage.contains("<a class=\"book-chapter current\" href=\"usage.html\">usage</a>"),
+        usage.contains("<a class=\"book-chapter current\" href=\"usage.html\">Usage</a>"),
         "{usage}"
     );
 }
@@ -8243,4 +8244,32 @@ fn search_is_off_by_default() {
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
     assert!(!html.contains("wdoc-search-input"), "no widget markup");
     assert!(!html.contains("wdoc-search.js"), "no widget script");
+}
+
+#[test]
+fn toc_fallback_titles_entries_by_first_h1() {
+    // A book site with no `toc` block gets the flat per-page fallback —
+    // titled by each page's first h1, not its route name.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("s.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "site demo {\n  title = \"Demo\"\n  default_template = :book\n}\n",
+            "page index {\n  h1 \"Getting Started\"\n  p \"Hello.\"\n}\n",
+            "page untitled_page {\n  p \"No heading here.\"\n}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    assert!(
+        html.contains(">Getting Started</a>") || html.contains("Getting Started</a>"),
+        "sidebar entry uses the h1 title: {html}"
+    );
+    // A page with no h1 falls back to its name.
+    assert!(
+        html.contains("untitled_page"),
+        "h1-less page keeps its name"
+    );
 }

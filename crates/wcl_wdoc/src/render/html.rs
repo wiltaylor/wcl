@@ -279,7 +279,7 @@ pub(crate) fn render_template(
     content: &str,
     title: &str,
     page_name: &str,
-    pages: &[(String, String)],
+    pages: &[(String, String, String)],
     toc_nodes: &[TocNode],
     menu_nodes: &[MenuNode],
     deck: Value,
@@ -305,16 +305,16 @@ pub(crate) fn render_template(
             fields: m,
         }
     };
-    let pages_val = Value::List(pages.iter().map(|(n, h)| page_ref(n, h)).collect());
+    let pages_val = Value::List(pages.iter().map(|(n, h, _)| page_ref(n, h)).collect());
     // `toc`: the declared book TOC, or a flat entry per page as a
     // fallback so a templated page without a `toc` still gets a nav.
     let toc_val = if toc_nodes.is_empty() {
         Value::List(
             pages
                 .iter()
-                .map(|(n, h)| {
+                .map(|(n, h, t)| {
                     let mut m = BTreeMap::new();
-                    m.insert("title".to_string(), Value::Utf8(n.clone()));
+                    m.insert("title".to_string(), Value::Utf8(t.clone()));
                     m.insert("href".to_string(), Value::Utf8(h.clone()));
                     m.insert("current".to_string(), Value::Bool(n == page_name));
                     m.insert("children".to_string(), Value::List(Vec::new()));

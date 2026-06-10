@@ -10,8 +10,8 @@ use crate::inline::InlinePatterns;
 use crate::render::{
     DeckSectionNode, MAX_LOWER_DEPTH, MenuNode, TocNode, escape_html, expand_component_children,
     expand_instance_children, expand_repeater_children, field_bool, field_id, field_symbol,
-    field_symbol_list_opt, field_utf8, find_template, read_deck, read_menu, read_toc, render_block,
-    render_class, render_page, render_template, site_theme_css,
+    field_symbol_list_opt, field_utf8, find_template, label_string, read_deck, read_menu, read_toc,
+    render_block, render_class, render_page, render_template, site_theme_css,
 };
 
 /// The wdoc standard library, embedded in the binary and registered
@@ -652,13 +652,18 @@ fn build_site(
     // and the name set the inline link pattern resolves `[text](page)`
     // against — both scoped to the site, so nav lists only this site's
     // pages and links resolve within it.
-    let pages: Vec<(String, String)> = spec
+    let pages: Vec<(String, String, String)> = spec
         .pages
         .iter()
-        .filter_map(|p| page_name(p).map(|n| (n.clone(), format!("{n}.html"))))
+        .filter_map(|p| {
+            page_name(p).map(|n| {
+                let title = page_h1_title(p).unwrap_or_else(|| n.clone());
+                (n.clone(), format!("{n}.html"), title)
+            })
+        })
         .collect();
     let mut page_names: HashSet<String> = HashSet::new();
-    for (n, _) in &pages {
+    for (n, _, _) in &pages {
         // Routes must be unique within a site — two `wdoc_repeater`
         // elements whose interpolated labels collide would otherwise
         // silently overwrite one `<name>.html` with another.
@@ -877,7 +882,7 @@ struct PageRenderCtx<'a> {
     toc_nodes: &'a [TocNode],
     menu_nodes: &'a [MenuNode],
     deck_nodes: &'a [DeckSectionNode],
-    pages: &'a [(String, String)],
+    pages: &'a [(String, String, String)],
     home_href: &'a str,
     home_title: &'a str,
     players: PlayerScripts,
@@ -988,6 +993,16 @@ fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError>
     fs::write(&out_path, html)
         .map_err(|e| BuildError::Io(e, format!("write {}", out_path.display())))?;
     Ok(1)
+}
+
+/// A page's first `h1` label, used as its display title in the
+/// no-`toc` navigation fallback (and anywhere else a human-facing page
+/// title is wanted without rendering the page).
+fn page_h1_title(page: &Block<'_>) -> Option<String> {
+    page.blocks()
+        .find(|b| b.kind() == "h1")
+        .and_then(|b| label_string(&b))
+        .filter(|t| !t.is_empty())
 }
 
 /// Render one ordinary page to `<name>.html`. Returns the page's
