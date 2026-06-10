@@ -141,6 +141,88 @@ impl BuildError {
     }
 }
 
+/// Block kinds the renderers dispatch **in Rust**, ignoring any
+/// schema-declared `lower`. A root-authored `@block`/`@table`
+/// re-declaring one of these would win schema validation (root-authored
+/// declarations shadow imported ones) while the renderer keeps using
+/// the built-in path — the user's schema and `lower` would be silently
+/// dead. The build flags the re-declaration instead. Pure-WCL stdlib
+/// kinds (`process`, `h1`, `callout`, …) are *not* listed: shadowing
+/// them swaps in the user's `lower`, which is the designed extension
+/// mechanism. Wireframe widgets are covered by their `wf_` prefix.
+const RUST_DISPATCHED_KINDS: &[&str] = &[
+    // Page-level blocks (render/html.rs + pdf/collect.rs + markdown/emit.rs).
+    "column",
+    "fragment",
+    "li",
+    "list",
+    "table",
+    "image",
+    "file",
+    "video",
+    "diagram",
+    "sequence_diagram",
+    "state_diagram",
+    "terminal",
+    // Structural / infra kinds every backend treats specially.
+    "page",
+    "site",
+    "partial",
+    "collect",
+    "notes",
+    "frontmatter",
+    "wdoc_component",
+    "wdoc_repeater",
+    "wdoc_instance",
+    "wdoc_content",
+    "wdoc_slot",
+    "wdoc_body",
+    // Diagram shapes special-cased in render/svg/shapes.rs.
+    "rect",
+    "circle",
+    "line",
+    "label",
+    "polygon",
+    "container",
+    "boundary",
+    "card",
+    "node_table",
+    "tree",
+    "timeline",
+    "map",
+    "tilemap",
+    "dopesheet",
+];
+
+/// Errors for every root-authored `@block`/`@table` declaration whose
+/// kind the renderer dispatches in Rust. Shared by the HTML / PDF /
+/// Markdown entry points, which run it right after `schema_errors`.
+pub(crate) fn reserved_kind_errors(doc: &Document) -> Vec<Report> {
+    use wcl_lang::DeclName;
+    let mut out = Vec::new();
+    for kind in RUST_DISPATCHED_KINDS {
+        let Some(t) = doc.block_schema(kind).or_else(|| doc.table_schema(kind)) else {
+            continue;
+        };
+        if t.is_imported() {
+            continue;
+        }
+        let span = t.span();
+        out.push(miette::miette!(
+            labels = vec![miette::LabeledSpan::at(
+                span.start..span.end,
+                "declared here"
+            )],
+            code = "wdoc::reserved_kind",
+            "type '{}' re-declares the built-in kind \"{kind}\" — the renderer \
+             dispatches this kind in Rust, so the schema and its `lower` would be \
+             silently ignored; pick a different kind name",
+            t.name(),
+        ));
+    }
+    out
+}
+
 /// Emit a build-progress line to stderr, only when stderr is a
 /// terminal — an interactive `wcl wdoc build` (and `wdoc serve`) can
 /// tell a slow build from a stuck one, while tests, CI, and piped
@@ -204,6 +286,19 @@ pub fn build_with_options(
         for e in &errs {
             let report = Report::new(e.clone()).with_source_code(src.clone());
             eprintln!("{report:?}");
+        }
+        return Err(BuildError::Schema(n));
+    }
+
+    // Root-authored re-declarations of renderer-built-in kinds would be
+    // silently dead (see `reserved_kind_errors`) — fail like a schema
+    // violation instead.
+    let reserved = reserved_kind_errors(&doc);
+    if !reserved.is_empty() {
+        let n = reserved.len();
+        let src = NamedSource::new(name.clone(), user_src.clone());
+        for r in reserved {
+            eprintln!("{:?}", r.with_source_code(src.clone()));
         }
         return Err(BuildError::Schema(n));
     }

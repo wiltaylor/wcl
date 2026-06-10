@@ -159,6 +159,19 @@ pub fn pdf(
         return Err(PdfError::Schema(n));
     }
 
+    // Root-authored re-declarations of renderer-built-in kinds would be
+    // silently dead (see `reserved_kind_errors`) — fail like a schema
+    // violation instead.
+    let reserved = crate::build::reserved_kind_errors(&doc);
+    if !reserved.is_empty() {
+        let n = reserved.len();
+        let src = NamedSource::new(name.clone(), user_src.clone());
+        for r in reserved {
+            eprintln!("{:?}", r.with_source_code(src.clone()));
+        }
+        return Err(PdfError::Schema(n));
+    }
+
     let site_blocks: Vec<Block> = doc.blocks().filter(|b| b.kind() == "site").collect();
     let all_pages = crate::build::collect_pages(&doc).map_err(|e| match e {
         crate::build::BuildError::BadPage(m) => PdfError::BadDoc(m),

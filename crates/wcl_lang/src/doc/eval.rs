@@ -1125,11 +1125,27 @@ impl Document {
     /// is unresolved; `Some(Err(..))` when a matched `let`'s value
     /// fails to evaluate (e.g. a cycle), so callers surface the real
     /// error instead of "unresolved reference".
+    ///
+    /// A let/field match that is **mid-evaluation** is the very binding
+    /// whose RHS is being resolved (evaluation is single-threaded), so
+    /// it is skipped and the walk continues outward — `port = port`
+    /// under a repeater binding `port` means the repeater's value, not
+    /// a self-reference. The first skipped match is remembered: when
+    /// nothing outward resolves, returning it reproduces the
+    /// genuine-cycle diagnostic (`a = a` with no outer `a`). The
+    /// skipped candidate is **not** evaluated eagerly — forcing a
+    /// mid-evaluation cell would poison it with a cycle error even when
+    /// an outer binding goes on to resolve the name.
     pub(crate) fn scope_lookup<'a>(
         &'a self,
         scope: &Scope<'a>,
         name: &str,
     ) -> Option<Result<crate::data::DataRef<'a>, EvalError>> {
+        enum Skipped<'a> {
+            Let(crate::doc::views::LetView<'a>),
+            Field(crate::data::DataRef<'a>),
+        }
+        let mut skipped: Option<Skipped<'a>> = None;
         for i in (0..scope.frames().len()).rev() {
             // Renderer-injected bindings (a `wdoc_component` slot or a
             // `wdoc_repeater` loop variable) resolve first at this frame,
@@ -1141,14 +1157,30 @@ impl Document {
             }
             let block = self.frame_as_block(scope, i);
             if let Some(letv) = block.find_let(name) {
-                return Some(letv.value().map(crate::data::DataRef::from_variant_value));
+                if letv.mid_evaluation() {
+                    skipped.get_or_insert(Skipped::Let(letv));
+                } else {
+                    return Some(letv.value().map(crate::data::DataRef::from_variant_value));
+                }
             }
             if let Some(child) = crate::data::DataRef::from_block(block).child(name) {
-                return Some(Ok(child));
+                let mid = matches!(
+                    child.inner(),
+                    crate::data::DataKind::Field(f) if f.mid_evaluation()
+                );
+                if mid {
+                    skipped.get_or_insert(Skipped::Field(child));
+                } else {
+                    return Some(Ok(child));
+                }
             }
         }
         if let Some(letv) = self.root_let(name) {
-            return Some(letv.value().map(crate::data::DataRef::from_variant_value));
+            if letv.mid_evaluation() {
+                skipped.get_or_insert(Skipped::Let(letv));
+            } else {
+                return Some(letv.value().map(crate::data::DataRef::from_variant_value));
+            }
         }
         // Root fallthrough resolves declarations relative to the
         // evaluation site's namespace (the innermost frame's file), so a
@@ -1159,7 +1191,16 @@ impl Document {
             .last()
             .map(|f| f.file_ns)
             .unwrap_or(&self.file_ns);
-        self.resolve_root_in(name, ctx_ns).map(Ok)
+        if let Some(dr) = self.resolve_root_in(name, ctx_ns) {
+            return Some(Ok(dr));
+        }
+        match skipped {
+            Some(Skipped::Let(letv)) => {
+                Some(letv.value().map(crate::data::DataRef::from_variant_value))
+            }
+            Some(Skipped::Field(dr)) => Some(Ok(dr)),
+            None => None,
+        }
     }
 
     fn self_dataref<'a>(&'a self, scope: &Scope<'a>) -> crate::data::DataRef<'a> {

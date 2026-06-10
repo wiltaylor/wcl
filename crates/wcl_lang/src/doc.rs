@@ -1599,6 +1599,33 @@ impl Document {
             }
         }
 
+        // A `wdoc_component` whose name matches a registered
+        // `@block`/`@table` kind is incoherent: expansion dispatches the
+        // kind to the component while schema lookup validates instances
+        // against the block type (and several renderer kinds are
+        // special-cased in Rust, ignoring the component entirely). The
+        // collision itself is the error, at the component declaration.
+        for comp in self.blocks().filter(|b| b.kind() == "wdoc_component") {
+            let Some(name) = block_first_label(&comp) else {
+                continue;
+            };
+            let colliding = self
+                .block_schema(&name)
+                .or_else(|| self.table_schema(&name));
+            if let Some(t) = colliding {
+                EvalError::push_schema_violation(
+                    &mut out,
+                    Kind::ComponentKindCollision,
+                    format!(
+                        "component '{name}' collides with the @block/@table kind \
+                         \"{name}\" declared by type '{}' — rename the component",
+                        t.full_name()
+                    ),
+                    comp.span(),
+                );
+            }
+        }
+
         // Walk every source (the main file + every eagerly-imported
         // file). Each source's items are validated against the merged
         // `@document` schema for that source's namespace, if any.

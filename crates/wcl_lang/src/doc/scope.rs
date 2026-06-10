@@ -35,6 +35,15 @@ pub(crate) struct ScopeFrame<'a> {
     pub(crate) file_ns: &'a [String],
     pub(crate) kind_override: Option<&'a str>,
     pub(crate) bindings: Option<std::sync::Arc<Vec<(String, Value)>>>,
+    /// **Dynamic** expansion depth at the point this frame was created:
+    /// 0 for plain lexical frames, `instance depth + 1` for a
+    /// component/repeater binding frame. Carried explicitly because a
+    /// component body's expansion scope is rebuilt from the
+    /// *definition's* lexical scope (always shallow), so counting
+    /// binding frames in the chain would never grow across nested
+    /// instantiations — the recursion guard
+    /// (`Block::binding_scope_depth`) takes the max of these instead.
+    pub(crate) expansion_depth: usize,
 }
 
 impl<'a> Scope<'a> {

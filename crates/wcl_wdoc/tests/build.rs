@@ -7849,14 +7849,14 @@ wdoc_component badge {
   wdoc_slot text
   wdoc_body { p $"BADGE:${text}" }
 }
-wdoc_component note {
+wdoc_component memo {
   wdoc_slot text
   wdoc_body { p $"NOTE:${text}" }
 }
 page index {
   let nodes = [
     { ref: "badge", text: "A" },
-    { ref: "note",  text: "B" },
+    { ref: "memo",  text: "B" },
     { ref: "badge", text: "C" },
   ]
   wdoc_repeater { each = nodes  as = :n
@@ -7959,7 +7959,7 @@ fn build_generates_one_page_per_screen_with_component_instances() {
     write_fixture(
         &src,
         r#"
-wdoc_component card {
+wdoc_component screen_card {
   wdoc_slot title
   wdoc_body { p $"CARD:${title}" }
 }
@@ -7969,7 +7969,7 @@ let screens = [
 ]
 wdoc_repeater { each = screens  as = :s
   page $"screen-${s.id}" {
-    wdoc_instance { component = "card"  title = s.title }
+    wdoc_instance { component = "screen_card"  title = s.title }
   }
 }
 "#,
@@ -8737,5 +8737,133 @@ page sc {
     assert!(
         html.contains("<rect class=\"wdoc-state\" x=\"0\" y=\"108\""),
         "rank 1 below rank 0:\n{html}"
+    );
+}
+
+#[test]
+fn self_referential_component_is_depth_capped_not_a_stack_overflow() {
+    // Regression: a component whose body instantiates itself used to
+    // recurse until the process aborted with a stack overflow — the
+    // expansion scope was rebuilt from the *definition's* (shallow)
+    // lexical chain, so `binding_scope_depth()` never grew and the
+    // MAX_LOWER_DEPTH guards were inert. The dynamic depth now rides on
+    // the binding frame: the expansion caps with the depth marker and
+    // the build succeeds.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("loopy.wcl");
+    write_fixture(
+        &src,
+        r##"
+wdoc_component loopy {
+  wdoc_body {
+    p "level"
+    loopy { }
+  }
+}
+page t {
+  loopy { }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("t.html")).expect("read");
+    let levels = html.matches("level").count();
+    assert!(
+        (30..=40).contains(&levels),
+        "expansion capped near MAX_LOWER_DEPTH, got {levels} levels:\n{html}"
+    );
+    assert!(
+        html.contains("depth limit reached"),
+        "depth marker emitted:\n{html}"
+    );
+}
+
+#[test]
+fn component_colliding_with_block_kind_is_a_schema_error() {
+    // Regression: a `wdoc_component` named like a registered @block kind
+    // (here the stdlib `card`) used to validate instances against the
+    // *block's* schema while expansion dispatched to the component —
+    // confusing "field not declared by schema 'Card'" errors at every
+    // use site. The collision itself is now the diagnostic.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("coll.wcl");
+    write_fixture(
+        &src,
+        r##"
+wdoc_component card {
+  wdoc_slot thing
+  wdoc_body { p $"${thing}" }
+}
+page t {
+  card { thing = "x" }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::Schema(n)) => assert!(n >= 1),
+        Ok(n) => panic!("expected schema error, built {n} pages"),
+        Err(_) => panic!("expected Schema error, got a different build error"),
+    }
+}
+
+#[test]
+fn root_redeclaration_of_rust_dispatched_kind_is_a_schema_error() {
+    // Regression: a root-authored `@block("diagram")` used to win schema
+    // validation while the renderer kept the Rust diagram path — the
+    // user's schema and `lower` were silently dead.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("redecl.wcl");
+    write_fixture(
+        &src,
+        r##"
+@block("diagram")
+type MyDiagram extends WdocBlock {
+  msg: utf8
+  lower = fn(d: MyDiagram) -> list<HtmlFundamental> []
+}
+page t {
+  diagram { msg = "hi" }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::Schema(n)) => assert!(n >= 1),
+        Ok(n) => panic!("expected schema error, built {n} pages"),
+        Err(_) => panic!("expected Schema error, got a different build error"),
+    }
+}
+
+#[test]
+fn slot_bound_from_same_named_repeater_variable_resolves_outward() {
+    // Regression (PERF report side observation): `probe_card { a = a }`
+    // where the enclosing repeater's `as` is also `a` used to fail with
+    // a false "cycle while evaluating 'a'" — the RHS resolved to the
+    // instance's own field instead of the repeater binding.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("slot.wcl");
+    write_fixture(
+        &src,
+        r##"
+wdoc_component probe_card {
+  wdoc_slot a
+  wdoc_body { p $"got:${a.name}" }
+}
+let things = [ { name: "Xavier" } ]
+page t {
+  wdoc_repeater { each = things  as = :a
+    probe_card { a = a }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("t.html")).expect("read");
+    assert!(
+        html.contains("<p>got:Xavier</p>"),
+        "slot bound from same-named outer binding:\n{html}"
     );
 }

@@ -267,6 +267,12 @@ pub enum SchemaViolationKind {
     /// kind is ambiguous. Declarations in *different* namespaces are
     /// fine — they're disambiguated by a `::` qualifier.
     DuplicateBlockKind,
+    /// A `wdoc_component`'s name collides with a registered
+    /// `@block`/`@table` kind. The dispatch paths disagree on the
+    /// winner (expansion prefers the component, schema lookup the
+    /// block type), so instances behave incoherently — the collision
+    /// itself is the error.
+    ComponentKindCollision,
     /// A `&Interface` reference field's target doesn't implement
     /// the interface (missing or differently-typed field), or a
     /// `&T` reference field's target isn't `T` and isn't a

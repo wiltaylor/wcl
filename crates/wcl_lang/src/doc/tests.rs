@@ -3831,6 +3831,48 @@ fn let_cycle_surfaces_as_cycle_error() {
 }
 
 #[test]
+fn same_named_field_resolves_outward_not_self() {
+    // `a = a` inside a nested block means the *outer* `a`, not the
+    // field being defined: a mid-evaluation match is skipped by
+    // `scope_lookup` so the walk continues outward (the wdoc
+    // counterpart is a component slot bound from a same-named repeater
+    // variable, `op = op`). Regression: this used to be a false
+    // "cycle while evaluating 'a'".
+    let doc = open(
+        r#"
+        @schemaless
+        outer {
+          a = 7
+          inner {
+            a = a
+          }
+        }
+        "#,
+    );
+    let v = doc.get("outer.inner.a").unwrap().value().unwrap();
+    assert_eq!(v, Value::I64(7));
+}
+
+#[test]
+fn self_reference_with_no_outer_binding_is_still_a_cycle() {
+    // With nothing outward to resolve to, `a = a` falls back to the
+    // skipped mid-evaluation match and reports the genuine cycle.
+    let doc = open(
+        r#"
+        @schemaless
+        blk {
+          a = a
+        }
+        "#,
+    );
+    let err = doc.get("blk.a").unwrap().value().unwrap_err();
+    assert!(
+        matches!(err, EvalError::Cycle { .. }),
+        "expected Cycle, got {err:?}"
+    );
+}
+
+#[test]
 fn inner_let_shadows_outer() {
     let doc = open(
         r#"

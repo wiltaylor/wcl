@@ -931,7 +931,7 @@ impl<'a> TypeDecl<'a> {
 
     /// `true` when this type declaration was loaded from an import
     /// rather than authored in the root document.
-    pub(crate) fn is_imported(&self) -> bool {
+    pub fn is_imported(&self) -> bool {
         self.is_imported
     }
 
@@ -1429,6 +1429,14 @@ impl<'a> Field<'a> {
         c
     }
 
+    /// `true` while this field's RHS is being evaluated higher up the
+    /// (single-threaded) evaluation stack — see
+    /// [`LetView::mid_evaluation`].
+    pub(in crate::doc) fn mid_evaluation(&self) -> bool {
+        let cell = self.field_cell();
+        cell.value.get().is_none() && cell.evaluating.load(Ordering::Acquire)
+    }
+
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
         let doc = self.doc;
         self.ast
@@ -1716,6 +1724,15 @@ pub(crate) struct LetView<'a> {
 }
 
 impl<'a> LetView<'a> {
+    /// `true` while this let's RHS is being evaluated higher up the
+    /// (single-threaded) evaluation stack. Used by `scope_lookup` to
+    /// give `a = a` outward-shadowing semantics: a mid-evaluation match
+    /// is skipped so the name resolves to an outer binding instead of
+    /// the binding being defined.
+    pub(crate) fn mid_evaluation(&self) -> bool {
+        self.cell.value.get().is_none() && self.cell.evaluating.load(Ordering::Acquire)
+    }
+
     /// Evaluate (once) and return the bound value. Mirrors
     /// [`Field::value`]'s cycle-detection: a re-entrant evaluation
     /// caches and returns an `EvalError::Cycle`.
@@ -1812,20 +1829,27 @@ impl<'a> Block<'a> {
             file_ns: self.file_ns,
             kind_override: self.kind_override,
             bindings: None,
+            expansion_depth: 0,
         })
     }
 
-    /// How many value-binding frames are in this block's scope — i.e. how
-    /// deep `wdoc_component` / `wdoc_repeater` expansion currently is. The
-    /// renderer caps on this to stop a self-referential component from
-    /// expanding forever (iteration count doesn't inflate it: all elements
-    /// of one repeater share a depth).
+    /// How deep `wdoc_component` / `wdoc_repeater` expansion currently is
+    /// at this block. The renderer caps on this to stop a self-referential
+    /// component from expanding forever (iteration count doesn't inflate
+    /// it: all elements of one repeater share a depth).
+    ///
+    /// This is the max of the frames' **dynamic** `expansion_depth`, not a
+    /// count of binding frames: a component body's expansion scope is
+    /// rebuilt from the *definition's* (shallow) lexical scope, so a
+    /// frame count would stay constant across nested instantiations and
+    /// the guard would never fire.
     pub fn binding_scope_depth(&self) -> usize {
         self.scope
             .frames()
             .iter()
-            .filter(|f| f.bindings.is_some())
-            .count()
+            .map(|f| f.expansion_depth)
+            .max()
+            .unwrap_or(0)
     }
 
     /// Expand `body`'s child blocks once per binding set, each under a
@@ -1882,6 +1906,11 @@ impl<'a> Block<'a> {
                     file_ns: body.file_ns,
                     kind_override: body.kind_override,
                     bindings: Some(g.bindings.clone()),
+                    // One deeper than the *instance* (`self`), whose own
+                    // scope carries the dynamic depth at the
+                    // instantiation site — `body.scope` is the
+                    // definition's lexical chain and carries none.
+                    expansion_depth: self.binding_scope_depth() + 1,
                 });
                 iter_blocks(&body.ast.items, fresh_items, doc, body.file_ns, scope).collect()
             })
