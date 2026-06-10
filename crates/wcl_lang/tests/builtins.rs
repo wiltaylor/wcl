@@ -483,3 +483,151 @@ fn record_builtins_reject_non_records() {
     let msg = eval_err("@schemaless result = map_values(7, fn (x: i64) -> i64 { x })\n");
     assert!(msg.contains("must be a record"), "{msg}");
 }
+
+// ── predicate forms: any / all / find / sort_by / min_by / max_by ─
+
+#[test]
+fn any_all_short_circuit_semantics() {
+    assert_eq!(
+        eval("@schemaless result = any([1, 2, 3], fn (x: i64) -> bool { x > 2 })\n"),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        eval("@schemaless result = any([], fn (x: i64) -> bool { x > 2 })\n"),
+        Value::Bool(false)
+    );
+    assert_eq!(
+        eval("@schemaless result = all([1, 2], fn (x: i64) -> bool { x > 0 })\n"),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        eval("@schemaless result = all([], fn (x: i64) -> bool { x > 0 })\n"),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn find_returns_first_match_or_none() {
+    assert_eq!(
+        eval("@schemaless result = find([1, 2, 3], fn (x: i64) -> bool { x > 1 })\n"),
+        Value::I64(2)
+    );
+    assert_eq!(
+        eval("@schemaless result = find([1, 2], fn (x: i64) -> bool { x > 9 })\n"),
+        Value::None
+    );
+}
+
+#[test]
+fn sort_by_orders_by_key_function() {
+    assert_eq!(
+        eval(
+            "@schemaless result = sort_by([\"bb\", \"a\", \"ccc\"], fn (s: utf8) -> i64 { len(s) })\n"
+        ),
+        Value::List(vec![
+            Value::Utf8("a".into()),
+            Value::Utf8("bb".into()),
+            Value::Utf8("ccc".into()),
+        ])
+    );
+}
+
+#[test]
+fn min_by_max_by_pick_extremes_or_none_when_empty() {
+    assert_eq!(
+        eval("@schemaless result = min_by([3, 1, 2], fn (x: i64) -> i64 { x })\n"),
+        Value::I64(1)
+    );
+    assert_eq!(
+        eval("@schemaless result = max_by([3, 1, 2], fn (x: i64) -> i64 { x })\n"),
+        Value::I64(3)
+    );
+    assert_eq!(
+        eval("@schemaless result = max_by([], fn (x: i64) -> i64 { x })\n"),
+        Value::None
+    );
+}
+
+#[test]
+fn group_by_groups_in_first_seen_key_order() {
+    let v = eval(
+        "@schemaless result = group_by([1, 2, 3, 4], fn (x: i64) -> utf8 { if x % 2 == 0 { \"even\" } else { \"odd\" } })\n",
+    );
+    let Value::List(groups) = v else {
+        panic!("expected a list, got {v:?}");
+    };
+    assert_eq!(groups.len(), 2);
+    let Value::Record { fields, .. } = &groups[0] else {
+        panic!("expected a record group");
+    };
+    assert_eq!(fields.get("key"), Some(&Value::Utf8("odd".into())));
+    assert_eq!(
+        fields.get("items"),
+        Some(&Value::List(vec![Value::I64(1), Value::I64(3)]))
+    );
+}
+
+#[test]
+fn predicate_must_return_bool() {
+    let msg = eval_err("@schemaless result = any([1], fn (x: i64) -> i64 { x })\n");
+    assert!(msg.contains("predicate must return bool"), "{msg}");
+}
+
+// ── enumerate / slice / string shapers ────────────────────────────
+
+#[test]
+fn enumerate_pairs_index_and_element() {
+    assert_eq!(
+        eval("@schemaless result = enumerate([\"a\", \"b\"])\n"),
+        Value::List(vec![
+            Value::List(vec![Value::I64(0), Value::Utf8("a".into())]),
+            Value::List(vec![Value::I64(1), Value::Utf8("b".into())]),
+        ])
+    );
+}
+
+#[test]
+fn slice_clamps_and_works_on_strings_and_lists() {
+    assert_eq!(
+        eval("@schemaless result = slice(\"hello\", 1, 4)\n"),
+        Value::Utf8("ell".into())
+    );
+    assert_eq!(
+        eval("@schemaless result = slice([1, 2, 3, 4], 1, 3)\n"),
+        Value::List(vec![Value::I64(2), Value::I64(3)])
+    );
+    // Out-of-range bounds clamp instead of erroring.
+    assert_eq!(
+        eval("@schemaless result = slice(\"hi\", 0, 99)\n"),
+        Value::Utf8("hi".into())
+    );
+    assert_eq!(
+        eval("@schemaless result = slice(\"hi\", 5, 2)\n"),
+        Value::Utf8("".into())
+    );
+}
+
+#[test]
+fn chars_repeat_and_padding() {
+    assert_eq!(
+        eval("@schemaless result = chars(\"hi\")\n"),
+        Value::List(vec![Value::Utf8("h".into()), Value::Utf8("i".into())])
+    );
+    assert_eq!(
+        eval("@schemaless result = repeat(\"ab\", 3)\n"),
+        Value::Utf8("ababab".into())
+    );
+    assert_eq!(
+        eval("@schemaless result = pad_start(\"7\", 3, \"0\")\n"),
+        Value::Utf8("007".into())
+    );
+    assert_eq!(
+        eval("@schemaless result = pad_end(\"x\", 4, \"-\")\n"),
+        Value::Utf8("x---".into())
+    );
+    // Already wide enough: unchanged.
+    assert_eq!(
+        eval("@schemaless result = pad_start(\"abcd\", 2, \"0\")\n"),
+        Value::Utf8("abcd".into())
+    );
+}

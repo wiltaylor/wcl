@@ -1,6 +1,8 @@
 //! Collection builtins: map, filter, fold, len, sum, range, head, tail,
-//! the record accessors (keys, values, merge, map_values), plus the
-//! tensor constructor/accessors. Registered in
+//! the predicate forms (any, all, find, sort_by, min_by, max_by,
+//! group_by), enumerate/slice and the string shapers (chars, repeat,
+//! pad_start, pad_end), the record accessors (keys, values, merge,
+//! map_values), plus the tensor constructor/accessors. Registered in
 //! [`Environment::new`](crate::Environment::new).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -442,6 +444,375 @@ pub(crate) fn register(env: &mut Environment) {
                 "A record with the same keys and transformed values.",
             ),
     );
+
+    env.add_builtin(
+        "any",
+        BuiltinFn::hof(2, any_hof)
+            .doc("`true` when the predicate holds for at least one element (short-circuits).")
+            .param("xs", "[T]", "The list to test.")
+            .param(
+                "pred",
+                "fn (T) -> bool",
+                "Predicate applied to each element.",
+            )
+            .returns("bool", "`true` if any element satisfies the predicate."),
+    );
+    env.add_builtin(
+        "all",
+        BuiltinFn::hof(2, all_hof)
+            .doc("`true` when the predicate holds for every element (short-circuits; `true` for an empty list).")
+            .param("xs", "[T]", "The list to test.")
+            .param("pred", "fn (T) -> bool", "Predicate applied to each element.")
+            .returns("bool", "`true` if every element satisfies the predicate."),
+    );
+    env.add_builtin(
+        "find",
+        BuiltinFn::hof(2, find_hof)
+            .doc("The first element for which the predicate returns `true`, or `none`.")
+            .param("xs", "[T]", "The list to search.")
+            .param(
+                "pred",
+                "fn (T) -> bool",
+                "Predicate applied to each element.",
+            )
+            .returns("T", "The first matching element, or `none`."),
+    );
+    env.add_builtin(
+        "sort_by",
+        BuiltinFn::hof(2, sort_by_hof)
+            .doc("Sort a list by a key function (stable). Keys must be all numeric or all strings.")
+            .param("xs", "[T]", "The list to sort.")
+            .param("key", "fn (T) -> K", "Maps each element to its sort key.")
+            .returns("[T]", "The elements ordered by ascending key."),
+    );
+    env.add_builtin(
+        "min_by",
+        BuiltinFn::hof(2, min_by_hof)
+            .doc("The element with the smallest key, or `none` for an empty list.")
+            .param("xs", "[T]", "The list to search.")
+            .param(
+                "key",
+                "fn (T) -> K",
+                "Maps each element to its comparison key.",
+            )
+            .returns("T", "The element with the smallest key, or `none`."),
+    );
+    env.add_builtin(
+        "max_by",
+        BuiltinFn::hof(2, max_by_hof)
+            .doc("The element with the largest key, or `none` for an empty list.")
+            .param("xs", "[T]", "The list to search.")
+            .param(
+                "key",
+                "fn (T) -> K",
+                "Maps each element to its comparison key.",
+            )
+            .returns("T", "The element with the largest key, or `none`."),
+    );
+    env.add_builtin(
+        "group_by",
+        BuiltinFn::hof(2, group_by_hof)
+            .doc("Group elements by a key function into `{ key, items }` records, in first-seen key order.")
+            .param("xs", "[T]", "The list to group.")
+            .param("key", "fn (T) -> K", "Maps each element to its group key.")
+            .returns("[record]", "One `{ key, items }` record per distinct key."),
+    );
+    env.add_builtin(
+        "enumerate",
+        from_fn(|xs: Vec<Value>| -> Value {
+            Value::List(
+                xs.into_iter()
+                    .enumerate()
+                    .map(|(i, v)| Value::List(vec![Value::I64(i as i64), v]))
+                    .collect(),
+            )
+        })
+        .doc("Pair every element with its zero-based index, as `[index, element]` pairs.")
+        .param("xs", "[T]", "The list to enumerate.")
+        .returns("[[i64, T]]", "`[index, element]` pairs."),
+    );
+
+    env.add_builtin(
+        "slice",
+        from_fn(slice_pure)
+            .doc("The half-open range `[start, end)` of a string's characters or a list's elements (bounds are clamped).")
+            .param("xs", "utf8 | [T]", "The string or list to slice.")
+            .param("start", "i64", "Inclusive start index (clamped to the length).")
+            .param("end", "i64", "Exclusive end index (clamped to the length).")
+            .returns("utf8 | [T]", "The sub-string / sub-list."),
+    );
+    env.add_builtin(
+        "chars",
+        from_fn(|s: String| -> Value {
+            Value::List(s.chars().map(|c| Value::Utf8(c.to_string())).collect())
+        })
+        .doc("The characters of a string as a list of one-character strings.")
+        .param("s", "utf8", "The string to split into characters.")
+        .returns("[utf8]", "One string per character."),
+    );
+    env.add_builtin(
+        "repeat",
+        from_fn(|s: String, n: i64| -> String { s.repeat(n.max(0) as usize) })
+            .doc("A string repeated `n` times (empty for `n <= 0`).")
+            .param("s", "utf8", "The string to repeat.")
+            .param("n", "i64", "How many copies to concatenate.")
+            .returns("utf8", "`n` copies of `s`."),
+    );
+    env.add_builtin(
+        "pad_start",
+        from_fn(
+            |s: String, width: i64, pad: String| -> Result<Value, String> {
+                Ok(Value::Utf8(pad_string(s, width, &pad, true)?))
+            },
+        )
+        .doc("Left-pad a string with a fill pattern until it is `width` characters long.")
+        .param("s", "utf8", "The string to pad.")
+        .param("width", "i64", "The target character count.")
+        .param(
+            "pad",
+            "utf8",
+            "The fill pattern (repeated / truncated as needed).",
+        )
+        .returns(
+            "utf8",
+            "The padded string (unchanged if already wide enough).",
+        ),
+    );
+    env.add_builtin(
+        "pad_end",
+        from_fn(
+            |s: String, width: i64, pad: String| -> Result<Value, String> {
+                Ok(Value::Utf8(pad_string(s, width, &pad, false)?))
+            },
+        )
+        .doc("Right-pad a string with a fill pattern until it is `width` characters long.")
+        .param("s", "utf8", "The string to pad.")
+        .param("width", "i64", "The target character count.")
+        .param(
+            "pad",
+            "utf8",
+            "The fill pattern (repeated / truncated as needed).",
+        )
+        .returns(
+            "utf8",
+            "The padded string (unchanged if already wide enough).",
+        ),
+    );
+}
+
+/// Run a `fn (T) -> bool` predicate over one element, requiring a boolean.
+fn call_pred(
+    who: &str,
+    caller: &mut dyn Caller,
+    f: &crate::value::FnValue,
+    elem: &Value,
+) -> Result<bool, String> {
+    match caller.call_fn(f, std::slice::from_ref(elem))? {
+        Value::Bool(b) => Ok(b),
+        other => Err(format!(
+            "{who}: predicate must return bool, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn expect_list<'a>(who: &str, v: &'a Value) -> Result<&'a [Value], String> {
+    match v {
+        Value::List(items) => Ok(items),
+        other => Err(format!(
+            "{who}: first argument must be a list, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn any_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
+    let f = expect_function("any", "second argument", &args[1])?.clone();
+    for elem in expect_list("any", &args[0])? {
+        if call_pred("any", caller, &f, elem)? {
+            return Ok(Value::Bool(true));
+        }
+    }
+    Ok(Value::Bool(false))
+}
+
+fn all_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
+    let f = expect_function("all", "second argument", &args[1])?.clone();
+    for elem in expect_list("all", &args[0])? {
+        if !call_pred("all", caller, &f, elem)? {
+            return Ok(Value::Bool(false));
+        }
+    }
+    Ok(Value::Bool(true))
+}
+
+fn find_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
+    let f = expect_function("find", "second argument", &args[1])?.clone();
+    for elem in expect_list("find", &args[0])? {
+        if call_pred("find", caller, &f, elem)? {
+            return Ok(elem.clone());
+        }
+    }
+    Ok(Value::None)
+}
+
+/// A sort/compare key produced by a `key` function: all-numeric or
+/// all-string, mirroring `sort`'s rules.
+enum SortKey {
+    Num(f64),
+    Str(String),
+}
+
+fn sort_key(who: &str, v: Value) -> Result<SortKey, String> {
+    if v.is_numeric() {
+        return Ok(SortKey::Num(v.as_f64().unwrap_or(f64::NAN)));
+    }
+    match v {
+        Value::Utf8(s) | Value::Ascii(s) => Ok(SortKey::Str(s)),
+        other => Err(format!(
+            "{who}: key function must return a number or string, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn compare_keys(a: &SortKey, b: &SortKey) -> Result<std::cmp::Ordering, String> {
+    match (a, b) {
+        (SortKey::Num(x), SortKey::Num(y)) => {
+            Ok(x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal))
+        }
+        (SortKey::Str(x), SortKey::Str(y)) => Ok(x.cmp(y)),
+        _ => Err("keys must be all numeric or all strings, found mixed".to_string()),
+    }
+}
+
+fn keyed_elements(
+    who: &str,
+    caller: &mut dyn Caller,
+    args: &[Value],
+) -> Result<Vec<(SortKey, Value)>, String> {
+    let f = expect_function(who, "second argument", &args[1])?.clone();
+    let mut keyed = Vec::new();
+    for elem in expect_list(who, &args[0])? {
+        let key = sort_key(who, caller.call_fn(&f, std::slice::from_ref(elem))?)?;
+        keyed.push((key, elem.clone()));
+    }
+    Ok(keyed)
+}
+
+fn sort_by_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
+    let mut keyed = keyed_elements("sort_by", caller, args)?;
+    let mut err = None;
+    keyed.sort_by(|a, b| match compare_keys(&a.0, &b.0) {
+        Ok(ord) => ord,
+        Err(e) => {
+            err.get_or_insert(e);
+            std::cmp::Ordering::Equal
+        }
+    });
+    match err {
+        Some(e) => Err(format!("sort_by: {e}")),
+        None => Ok(Value::List(keyed.into_iter().map(|(_, v)| v).collect())),
+    }
+}
+
+fn extreme_by(
+    who: &str,
+    caller: &mut dyn Caller,
+    args: &[Value],
+    want: std::cmp::Ordering,
+) -> Result<Value, String> {
+    let keyed = keyed_elements(who, caller, args)?;
+    let mut best: Option<(SortKey, Value)> = None;
+    for (key, v) in keyed {
+        best = match best {
+            None => Some((key, v)),
+            Some((bk, bv)) => {
+                if compare_keys(&key, &bk).map_err(|e| format!("{who}: {e}"))? == want {
+                    Some((key, v))
+                } else {
+                    Some((bk, bv))
+                }
+            }
+        };
+    }
+    Ok(best.map(|(_, v)| v).unwrap_or(Value::None))
+}
+
+fn min_by_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
+    extreme_by("min_by", caller, args, std::cmp::Ordering::Less)
+}
+
+fn max_by_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
+    extreme_by("max_by", caller, args, std::cmp::Ordering::Greater)
+}
+
+fn group_by_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
+    let f = expect_function("group_by", "second argument", &args[1])?.clone();
+    // First-seen key order, with whole-Value key equality (so symbol /
+    // bool / record keys group correctly even though they can't sort).
+    let mut groups: Vec<(Value, Vec<Value>)> = Vec::new();
+    for elem in expect_list("group_by", &args[0])? {
+        let key = caller.call_fn(&f, std::slice::from_ref(elem))?;
+        match groups.iter_mut().find(|(k, _)| k == &key) {
+            Some((_, items)) => items.push(elem.clone()),
+            None => groups.push((key, vec![elem.clone()])),
+        }
+    }
+    Ok(Value::List(
+        groups
+            .into_iter()
+            .map(|(key, items)| {
+                let mut fields = BTreeMap::new();
+                fields.insert("key".to_string(), key);
+                fields.insert("items".to_string(), Value::List(items));
+                Value::Record {
+                    ty: Vec::new(),
+                    fields,
+                }
+            })
+            .collect(),
+    ))
+}
+
+fn slice_pure(xs: Value, start: i64, end: i64) -> Result<Value, String> {
+    let clamp = |len: usize| {
+        let s = start.clamp(0, len as i64) as usize;
+        let e = end.clamp(0, len as i64) as usize;
+        (s, s.max(e))
+    };
+    match xs {
+        Value::Utf8(s) | Value::Ascii(s) => {
+            let chars: Vec<char> = s.chars().collect();
+            let (lo, hi) = clamp(chars.len());
+            Ok(Value::Utf8(chars[lo..hi].iter().collect()))
+        }
+        Value::List(items) => {
+            let (lo, hi) = clamp(items.len());
+            Ok(Value::List(items[lo..hi].to_vec()))
+        }
+        other => Err(format!(
+            "slice: expected a string or list, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn pad_string(s: String, width: i64, pad: &str, at_start: bool) -> Result<String, String> {
+    if pad.is_empty() {
+        return Err("pad_start/pad_end: pad pattern must not be empty".to_string());
+    }
+    let want = width.max(0) as usize;
+    let have = s.chars().count();
+    if have >= want {
+        return Ok(s);
+    }
+    let fill: String = pad.chars().cycle().take(want - have).collect();
+    Ok(if at_start {
+        format!("{fill}{s}")
+    } else {
+        format!("{s}{fill}")
+    })
 }
 
 /// Borrow the field map out of a record-shaped value: a record literal /
