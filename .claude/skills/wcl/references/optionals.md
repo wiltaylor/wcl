@@ -42,6 +42,16 @@ shout = if let n = maybe_name {
 }
 ```
 
+## Defaults with ??
+
+The `??` operator picks the left value unless it is `none`, in which case it evaluates and returns the right side — the concise way to give an optional a default. It chains left-to-right and binds looser than every other operator, so arithmetic and logic on the left need no parentheses. The right side only evaluates when needed.
+
+```wcl
+width  = box.width ?? 480.0
+theme  = page.theme ?? site.theme ?? :nord
+label  = trim(raw_label) ?? "untitled"   // (trim(raw_label)) ?? "untitled"
+```
+
 > [!NOTE]
 > **Optionals vs unions**
 > Use T? when the only states are present and absent. When absence carries information (a reason, a fallback, multiple shapes), reach for a union instead.

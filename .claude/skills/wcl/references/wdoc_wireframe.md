@@ -205,13 +205,45 @@ diagram { width = 280  height = 120
 
 
 
+## Node graphs
+
+A `wf_node_graph` mocks up a node editor — a shader graph, a blueprint, a dataflow pipeline. Each `wf_node` is a titled box with labeled `inputs` down its left edge and `outputs` down its right edge; a `wf_link` wires one node's output to another's input, addressing ports as `"node.port"` (a bare `"node"` targets its first port). It's one diagram shape — placed and connectable as a whole — that renders its nodes and links itself.
+
+Nodes auto-lay-out left-to-right from the link graph (the same layered solver an auto-layout `diagram` uses), and links route with the orthogonal edge router. Set `direction = :top_to_bottom` to flow downward, or give a node an explicit `x` / `y` to pin it while the rest auto-flow.
+
+![diagram](../_wdoc/wdoc_wireframe-diagram-11.svg)
+
+```wcl
+diagram { width = 560  height = 240
+  wf_node_graph {
+    wf_node "Texture"  { id = tex   outputs = ["RGB", "Alpha"] }
+    wf_node "Fresnel"  { id = fres  outputs = ["Factor"] }
+    wf_node "Multiply" { id = mul   inputs = ["A", "B"]  outputs = ["Result"] }
+    wf_node "Output"   { id = out   inputs = ["Color"] }
+    wf_link "tex.RGB"     { to = "mul.A" }
+    wf_link "fres.Factor" { to = "mul.B" }
+    wf_link "mul.Result"  { to = "out.Color" }
+  }
+}
+```
+
+
+
+Each node:
+
+
+
+Each link:
+
+
+
 ## Controls
 
 ### wf_label
 
 A plain text label.
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-11.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-12.svg)
 
 ```wcl
 diagram { width = 220  height = 30
@@ -225,7 +257,7 @@ diagram { width = 220  height = 30
 
 A button caption, with an optional leading `icon` (any `pack.name`, e.g. `"lucide.check"`).
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-12.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-13.svg)
 
 ```wcl
 diagram { width = 320  height = 50
@@ -243,7 +275,7 @@ diagram { width = 320  height = 50
 
 A text field. With no `value` the `@inline` placeholder shows greyed; a `value` fills it with solid text.
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-13.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-14.svg)
 
 ```wcl
 diagram { width = 240  height = 90
@@ -260,7 +292,7 @@ diagram { width = 240  height = 90
 
 A select field showing the currently-chosen option label with a chevron.
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-14.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-15.svg)
 
 ```wcl
 diagram { width = 200  height = 44
@@ -274,7 +306,7 @@ diagram { width = 200  height = 44
 
 An on/off checkbox; `checked = true` fills the box with a tick.
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-15.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-16.svg)
 
 ```wcl
 diagram { width = 240  height = 70
@@ -291,7 +323,7 @@ diagram { width = 240  height = 70
 
 A radio button — like a checkbox but round; mark the active one with `selected = true` in a group you lay out yourself.
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-16.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-17.svg)
 
 ```wcl
 diagram { width = 160  height = 70
@@ -308,7 +340,7 @@ diagram { width = 160  height = 70
 
 A sliding on/off switch with an optional trailing label; `on = true` slides the knob across.
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-17.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-18.svg)
 
 ```wcl
 diagram { width = 220  height = 70
@@ -333,7 +365,7 @@ Wireframe widgets are user-extensible diagram shapes. Declare a `@block("name") 
 
 Here's a coloured status `wf_badge`. The `lower` reads its `x` / `y` and emits a filled box with a centred label — exactly how the built-in `process` shape lowers — and a `fill` field recolours an individual instance:
 
-![diagram](../_wdoc/wdoc_wireframe-diagram-18.svg)
+![diagram](../_wdoc/wdoc_wireframe-diagram-19.svg)
 
 ```wcl
 // Extends Widget → a diagram shape. The lower returns SVG fundamentals

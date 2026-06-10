@@ -9,7 +9,8 @@ Decorators (written `@name` or `@name(args)`) attach schema metadata to declarat
 | `@document` | type | Marks the document root schema (composes per namespace — see below) |
 | `@block("kind")` | type | Makes the type a nestable block of that kind |
 | `@table("kind")` | type | Row schema for pipe-table syntax |
-| `@schemaless` | type | Opts a type out of root validation, allowing multiple decorators / reflection |
+| `@decorator("name")` | type | Makes the type the schema for a user-defined `@name` decorator — its fields type the decorator's arguments |
+| `@schemaless` | type | Opens the type: every instance accepts undeclared fields / children (no membership check), as if each were marked `@schemaless`. Also used on the document/reflection path. |
 | `@dynamic` | connection | Lets `->` operands name ids resolved at consume time, not just literal blocks (see Connections) |
 
 ## Field decorators
@@ -21,6 +22,22 @@ Decorators (written `@name` or `@name(args)`) attach schema metadata to declarat
 | `@inline(slot)` | Bind the block label to a field at that position |
 | `@default(expr)` | Default value when the field is omitted |
 | `@connections(S)` | Accumulate `->` connection statements as records |
+| `@min(n)` / `@max(n)` | Numeric range constraint, checked by `wcl check` |
+| `@non_empty` | The string / list value must not be empty |
+
+The constraint decorators also attach to a [type alias](../references/records.md) (`@min(1) type Port = u16`), applying to every field declared with the alias.
+
+## Child-count constraints on @block
+
+`@block` accepts two named arguments that constrain a block's nested children: `max_children = N` caps the total nested-block count, and `required_children = ["kind", …]` demands at least one child of each listed kind. Both are enforced by `wcl check`.
+
+```wcl
+@block("stage", max_children = 4, required_children = ["step"])
+type Stage {
+  @inline(0) name: utf8
+  @children("step") steps: list<Step>
+}
+```
 
 ## A worked example
 

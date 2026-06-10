@@ -8,6 +8,8 @@ Diagrams have the following properties that can be set.
 
 
 
+For accessibility, give a diagram a `desc` — it becomes the SVG's `<title>` and `aria-label`, so screen readers announce the diagram instead of skipping it.
+
 ## Pan & zoom
 
 Set `pan_zoom = true` to wrap the diagram in an interactive viewport. Wheel zooms toward the cursor, drag pans, the corner buttons zoom about centre / reset. Zoom is clamped to `[zoom_min, zoom_max]`; pan allows half-a-viewport of overscroll past each content edge plus the author's `pan_margin`. Try it on the diagram below:
@@ -24,11 +26,25 @@ diagram {
 }
 ```
 
+## Linking shapes to pages
+
+Give any shape a `link` to turn it into a hyperlink: clicking the box/pill navigates to that page — handy when each shape stands for a node that has its own page. The target resolves exactly like a prose link: a bare page name → `page.html`, a cross-site `site:page`, and an unknown page fails the build the same way a bad markdown link does. Try clicking the shape below:
+
+![diagram](../_wdoc/wdoc_diagrams-diagram-2.svg)
+
+```wcl
+diagram { width = 320  height = 100
+  process "Primitive shapes" { link = "wdoc_primitives" }
+}
+```
+
+Because SVG/HTML anchors can't nest, don't put `link` on a `container` whose children are also linked — link the container's title `label` instead. On a `pan_zoom` diagram a plain click still navigates, while a drag-to-pan that happens to end on a linked shape does not.
+
 ## Styling shapes with classes
 
 Every shape takes a `class` list, just like text. A `class` emits SVG paint properties — `fill`, `stroke`, `stroke_width`, `stroke_linecap`, `stroke_linejoin`, `opacity` — with `dark { }` / `light { }` overrides, so you style shapes the same way you style prose. Prefer a class over an inline `fill = …` so a shape follows the site theme and the reader's light/dark mode.
 
-![diagram](../_wdoc/wdoc_diagrams-diagram-2.svg)
+![diagram](../_wdoc/wdoc_diagrams-diagram-3.svg)
 
 ```wcl
 // Declared at the top level (apply site-wide). Hyphenated names may be

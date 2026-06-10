@@ -11,6 +11,19 @@ double = fn(x: i32) -> i32 x * 2
 sum_sq = fn(x: i32, y: i32) -> i32 { let s = x + y; s * s }
 ```
 
+## fn items
+
+A reusable function is declared once with the `fn` item form — sugar for `let name = fn(…)` with two extras: the name shows up in editor tooling (outline, hover, go-to-definition, rename) and it can carry a `@doc` decorator. Like a `let`, a `fn` item is a composition helper, not data: it never appears in `get`, JSON output, or schema validation, and it can be declared at file scope or inside a block (scoped to that block).
+
+```wcl
+@doc("Clamp a value into [lo, hi].")
+fn clamp_to(x: f64, lo: f64, hi: f64) -> f64 {
+  min(max(x, lo), hi)
+}
+
+gain = clamp_to(raw_gain, 0.0, 1.0)
+```
+
 ## Higher-order functions
 
 Functions can take and return other functions. This is how the collection builtins like `map`, `filter`, and `fold` are parameterised.

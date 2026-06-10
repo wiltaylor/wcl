@@ -77,3 +77,14 @@ MSG
 ```
 
 All four encodings accept the `$` prefix (`$"…"` / `$ascii"…"` / `$utf16"…"` / `$utf32"…"`).
+
+## String helpers
+
+The string builtins cover searching (`contains`, `starts_with`, `ends_with`), splitting and joining (`split`, `join`), reshaping (`replace`, `to_upper`, `to_lower`, `trim`, `concat`, `repeat`, `pad_start`, `pad_end`), and slicing (`chars`, `slice`, `len` — all character-indexed, not byte-indexed). See [Builtin Functions](../references/builtins.md) for signatures.
+
+```wcl
+letters = chars("abc")            // ["a", "b", "c"]
+padded  = pad_start("7", 3, "0")  // "007"
+ruler   = repeat("-=", 4)         // "-=-=-=-="
+prefix  = slice("hello", 0, 2)    // "he"
+```

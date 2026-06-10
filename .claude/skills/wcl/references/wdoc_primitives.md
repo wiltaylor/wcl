@@ -10,8 +10,11 @@ Every shape shares a few common fields, summarised here; the per-shape tables be
 | `class` | Style classes — text and SVG paint (`fill`, `stroke`, …) via the `class` system. |
 | `anchor_left` / `anchor_right` / `anchor_top` / `anchor_bottom` | Fractional anchors (0–1) that pin an edge of the shape to the parent box. |
 | `connect_points` | Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to. |
+| `link` | Make the shape a hyperlink to an in-site page (bare page name, or `site:page`) — see below. |
 
 The box-like shapes — `rect`, `circle`, and `container` — additionally accept an icon badge: `icon` (a `pack.name`), `icon_size`, `icon_pos` (`:center` / `:top_left` / …), and `icon_class`.
+
+Any shape with a `link` is wrapped in a clickable `<a>` so a reader can click the box/pill to drill into that page. The target resolves exactly like a prose link — a bare page name → `page.html`, a cross-site `site:page`, and an unknown page fails the build the same way a bad markdown link does. Because diagrams are inlined SVG, the anchor navigates the page. Avoid putting `link` on a `container` whose children are also linked (`<a>` can't nest) — link the container's title `label` instead.
 
 ## rect
 

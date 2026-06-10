@@ -49,7 +49,7 @@ my-skill/
 
 ## Front matter
 
-`SKILL.md`'s YAML header is built from the `skill { }` block. To add extra keys (for example `allowed-tools`), author a `@schemaless frontmatter` block on the start page — its keys are merged after the canonical `name` / `description` / `license` (which the `skill` block owns).
+`SKILL.md`'s YAML header is built from the `skill { }` block. To add extra keys (for example `allowed-tools`), author a `frontmatter` block on the start page — its keys are merged after the canonical `name` / `description` / `license` (which the `skill` block owns).
 
 ```text
 ---

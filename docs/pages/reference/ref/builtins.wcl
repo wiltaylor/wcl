@@ -65,6 +65,8 @@ page builtins { sites = [:reference, :wcl_skill]  title = "Builtin Functions"
   list {
     li "[abs](#abs)"
     li "[acos](#acos)"
+    li "[all](#all)"
+    li "[any](#any)"
     li "[asin](#asin)"
     li "[assert](#assert)"
     li "[ast_string](#ast_string)"
@@ -74,6 +76,7 @@ page builtins { sites = [:reference, :wcl_skill]  title = "Builtin Functions"
     li "[builtin_names](#builtin_names)"
     li "[cbrt](#cbrt)"
     li "[ceil](#ceil)"
+    li "[chars](#chars)"
     li "[child_types](#child_types)"
     li "[clamp](#clamp)"
     li "[concat](#concat)"
@@ -85,38 +88,51 @@ page builtins { sites = [:reference, :wcl_skill]  title = "Builtin Functions"
     li "[drop](#drop)"
     li "[e](#e)"
     li "[ends_with](#ends_with)"
+    li "[enumerate](#enumerate)"
     li "[error](#error)"
     li "[eval](#eval)"
     li "[exp](#exp)"
     li "[filter](#filter)"
+    li "[find](#find)"
     li "[flatten](#flatten)"
     li "[floor](#floor)"
     li "[fn_signature](#fn_signature)"
     li "[fold](#fold)"
     li "[format](#format)"
+    li "[group_by](#group_by)"
     li "[head](#head)"
     li "[hypot](#hypot)"
     li "[index_of](#index_of)"
     li "[join](#join)"
+    li "[keys](#keys)"
     li "[len](#len)"
     li "[list_contains](#list_contains)"
     li "[ln](#ln)"
     li "[log10](#log10)"
     li "[log2](#log2)"
     li "[map](#map)"
+    li "[map_values](#map_values)"
     li "[max](#max)"
+    li "[max_by](#max_by)"
+    li "[merge](#merge)"
     li "[min](#min)"
+    li "[min_by](#min_by)"
+    li "[pad_end](#pad_end)"
+    li "[pad_start](#pad_start)"
     li "[panic](#panic)"
     li "[pi](#pi)"
     li "[pow](#pow)"
     li "[radians](#radians)"
     li "[range](#range)"
+    li "[repeat](#repeat)"
     li "[replace](#replace)"
     li "[reverse](#reverse)"
     li "[round](#round)"
     li "[sign](#sign)"
     li "[sin](#sin)"
+    li "[slice](#slice)"
     li "[sort](#sort)"
+    li "[sort_by](#sort_by)"
     li "[sort_connected](#sort_connected)"
     li "[split](#split)"
     li "[sqrt](#sqrt)"
@@ -136,6 +152,7 @@ page builtins { sites = [:reference, :wcl_skill]  title = "Builtin Functions"
     li "[trunc](#trunc)"
     li "[type_fields](#type_fields)"
     li "[unique](#unique)"
+    li "[values](#values)"
     li "[zip](#zip)"
   }
 
@@ -151,6 +168,19 @@ WCL
     name = "acos"
     example = <<'WCL'
 acos(1)   // 0.0
+WCL
+  }
+  builtin_doc {
+    name = "all"
+    example = <<'WCL'
+all([2, 4, 6], fn(x: i64) -> bool x % 2 == 0)   // true
+all([], fn(x: i64) -> bool x > 0)               // true (empty list)
+WCL
+  }
+  builtin_doc {
+    name = "any"
+    example = <<'WCL'
+any([1, 2, 3], fn(x: i64) -> bool x > 2)   // true
 WCL
   }
   builtin_doc {
@@ -205,6 +235,12 @@ WCL
     name = "ceil"
     example = <<'WCL'
 ceil(2.1)   // 3.0
+WCL
+  }
+  builtin_doc {
+    name = "chars"
+    example = <<'WCL'
+chars("abc")   // ["a", "b", "c"]
 WCL
   }
   builtin_doc {
@@ -274,6 +310,12 @@ ends_with("hello", "lo")   // true
 WCL
   }
   builtin_doc {
+    name = "enumerate"
+    example = <<'WCL'
+enumerate(["a", "b"])   // [[0, "a"], [1, "b"]]
+WCL
+  }
+  builtin_doc {
     name = "error"
     example = <<'WCL'
 if found { value } else { error("config not found") }
@@ -295,6 +337,13 @@ WCL
     name = "filter"
     example = <<'WCL'
 filter(range(0, 6), fn(x: i64) -> bool x % 2 == 0)   // [0, 2, 4]
+WCL
+  }
+  builtin_doc {
+    name = "find"
+    example = <<'WCL'
+find([1, 2, 3, 4], fn(x: i64) -> bool x > 2)   // 3
+find([1, 2], fn(x: i64) -> bool x > 9)         // none
 WCL
   }
   builtin_doc {
@@ -328,6 +377,13 @@ format("{} = {}", "x", 42)   // "x = 42"
 WCL
   }
   builtin_doc {
+    name = "group_by"
+    example = <<'WCL'
+group_by([1, 2, 3, 4], fn(x: i64) -> i64 x % 2)
+// [{ key: 1, items: [1, 3] }, { key: 0, items: [2, 4] }]
+WCL
+  }
+  builtin_doc {
     name = "head"
     example = <<'WCL'
 head([10, 20, 30])   // 10
@@ -350,6 +406,12 @@ WCL
     name = "join"
     example = <<'WCL'
 join(["a", "b", "c"], "-")   // "a-b-c"
+WCL
+  }
+  builtin_doc {
+    name = "keys"
+    example = <<'WCL'
+keys({ name: "Rex", age: 4 })   // ["age", "name"]  (sorted)
 WCL
   }
   builtin_doc {
@@ -390,15 +452,53 @@ map([1, 2, 3], fn(x: i64) -> i64 x * 2)   // [2, 4, 6]
 WCL
   }
   builtin_doc {
+    name = "map_values"
+    example = <<'WCL'
+map_values({ low: 1, high: 9 }, fn(x: i64) -> i64 x * 2)
+// { low: 2, high: 18 }
+WCL
+  }
+  builtin_doc {
     name = "max"
     example = <<'WCL'
 max(3, 7)   // 7.0
 WCL
   }
   builtin_doc {
+    name = "max_by"
+    example = <<'WCL'
+max_by(["bb", "a", "ccc"], fn(s: utf8) -> i64 len(s))   // "ccc"
+WCL
+  }
+  builtin_doc {
+    name = "merge"
+    example = <<'WCL'
+merge({ host: "localhost", port: 80 }, { port: 8080 })
+// { host: "localhost", port: 8080 }  (second record wins on a clash)
+WCL
+  }
+  builtin_doc {
     name = "min"
     example = <<'WCL'
 min(3, 7)   // 3.0
+WCL
+  }
+  builtin_doc {
+    name = "min_by"
+    example = <<'WCL'
+min_by(["bb", "a", "ccc"], fn(s: utf8) -> i64 len(s))   // "a"
+WCL
+  }
+  builtin_doc {
+    name = "pad_end"
+    example = <<'WCL'
+pad_end("7", 3, ".")   // "7.."
+WCL
+  }
+  builtin_doc {
+    name = "pad_start"
+    example = <<'WCL'
+pad_start("7", 3, "0")   // "007"
 WCL
   }
   builtin_doc {
@@ -432,6 +532,12 @@ range(1, 4)   // [1, 2, 3]
 WCL
   }
   builtin_doc {
+    name = "repeat"
+    example = <<'WCL'
+repeat("ab", 3)   // "ababab"
+WCL
+  }
+  builtin_doc {
     name = "replace"
     example = <<'WCL'
 replace("hello world", "world", "there")   // "hello there"
@@ -462,10 +568,23 @@ sin(pi() / 2)   // 1.0
 WCL
   }
   builtin_doc {
+    name = "slice"
+    example = <<'WCL'
+slice([1, 2, 3, 4], 1, 3)   // [2, 3]
+slice("hello", 0, 2)        // "he"
+WCL
+  }
+  builtin_doc {
     name = "sort"
     example = <<'WCL'
 sort([3, 1, 2])           // [1, 2, 3]
 sort(["b", "a", "c"])     // ["a", "b", "c"]
+WCL
+  }
+  builtin_doc {
+    name = "sort_by"
+    example = <<'WCL'
+sort_by(["ccc", "a", "bb"], fn(s: utf8) -> i64 len(s))   // ["a", "bb", "ccc"]
 WCL
   }
   builtin_doc {
@@ -581,6 +700,12 @@ WCL
     name = "unique"
     example = <<'WCL'
 unique([1, 2, 2, 3, 1])   // [1, 2, 3]
+WCL
+  }
+  builtin_doc {
+    name = "values"
+    example = <<'WCL'
+values({ name: "Rex", age: 4 })   // [4, "Rex"]  (same order as keys)
 WCL
   }
   builtin_doc {

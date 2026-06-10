@@ -6,6 +6,8 @@ Every built-in function in WCL — its signature, parameters, return value, and 
 
 - [abs](#abs)
 - [acos](#acos)
+- [all](#all)
+- [any](#any)
 - [asin](#asin)
 - [assert](#assert)
 - [ast_string](#ast_string)
@@ -15,6 +17,7 @@ Every built-in function in WCL — its signature, parameters, return value, and 
 - [builtin_names](#builtin_names)
 - [cbrt](#cbrt)
 - [ceil](#ceil)
+- [chars](#chars)
 - [child_types](#child_types)
 - [clamp](#clamp)
 - [concat](#concat)
@@ -26,38 +29,51 @@ Every built-in function in WCL — its signature, parameters, return value, and 
 - [drop](#drop)
 - [e](#e)
 - [ends_with](#ends_with)
+- [enumerate](#enumerate)
 - [error](#error)
 - [eval](#eval)
 - [exp](#exp)
 - [filter](#filter)
+- [find](#find)
 - [flatten](#flatten)
 - [floor](#floor)
 - [fn_signature](#fn_signature)
 - [fold](#fold)
 - [format](#format)
+- [group_by](#group_by)
 - [head](#head)
 - [hypot](#hypot)
 - [index_of](#index_of)
 - [join](#join)
+- [keys](#keys)
 - [len](#len)
 - [list_contains](#list_contains)
 - [ln](#ln)
 - [log10](#log10)
 - [log2](#log2)
 - [map](#map)
+- [map_values](#map_values)
 - [max](#max)
+- [max_by](#max_by)
+- [merge](#merge)
 - [min](#min)
+- [min_by](#min_by)
+- [pad_end](#pad_end)
+- [pad_start](#pad_start)
 - [panic](#panic)
 - [pi](#pi)
 - [pow](#pow)
 - [radians](#radians)
 - [range](#range)
+- [repeat](#repeat)
 - [replace](#replace)
 - [reverse](#reverse)
 - [round](#round)
 - [sign](#sign)
 - [sin](#sin)
+- [slice](#slice)
 - [sort](#sort)
+- [sort_by](#sort_by)
 - [sort_connected](#sort_connected)
 - [split](#split)
 - [sqrt](#sqrt)
@@ -77,6 +93,7 @@ Every built-in function in WCL — its signature, parameters, return value, and 
 - [trunc](#trunc)
 - [type_fields](#type_fields)
 - [unique](#unique)
+- [values](#values)
 - [zip](#zip)
 
 ## Functions
@@ -117,6 +134,47 @@ Arccosine, in radians, of a value in \[-1, 1\].
 
 ```wcl
 acos(1)   // 0.0
+```
+
+### all
+
+```wcl
+all(xs: [T], pred: fn (T) -> bool) -> bool
+```
+
+`true` when the predicate holds for every element (short-circuits; `true` for an empty list).
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `xs` | `[T]` | The list to test. |
+| `pred` | `fn (T) -> bool` | Predicate applied to each element. |
+| **Returns** | `bool` | `true` if every element satisfies the predicate. |
+
+**Example**
+
+```wcl
+all([2, 4, 6], fn(x: i64) -> bool x % 2 == 0)   // true
+all([], fn(x: i64) -> bool x > 0)               // true (empty list)
+```
+
+### any
+
+```wcl
+any(xs: [T], pred: fn (T) -> bool) -> bool
+```
+
+`true` when the predicate holds for at least one element (short-circuits).
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `xs` | `[T]` | The list to test. |
+| `pred` | `fn (T) -> bool` | Predicate applied to each element. |
+| **Returns** | `bool` | `true` if any element satisfies the predicate. |
+
+**Example**
+
+```wcl
+any([1, 2, 3], fn(x: i64) -> bool x > 2)   // true
 ```
 
 ### asin
@@ -290,6 +348,25 @@ Round up to the nearest integer.
 
 ```wcl
 ceil(2.1)   // 3.0
+```
+
+### chars
+
+```wcl
+chars(s: utf8) -> [utf8]
+```
+
+The characters of a string as a list of one-character strings.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `s` | `utf8` | The string to split into characters. |
+| **Returns** | `[utf8]` | One string per character. |
+
+**Example**
+
+```wcl
+chars("abc")   // ["a", "b", "c"]
 ```
 
 ### child_types
@@ -508,6 +585,25 @@ Whether a string ends with a suffix.
 ends_with("hello", "lo")   // true
 ```
 
+### enumerate
+
+```wcl
+enumerate(xs: [T]) -> [[i64, T]]
+```
+
+Pair every element with its zero-based index, as `[index, element]` pairs.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `xs` | `[T]` | The list to enumerate. |
+| **Returns** | `[[i64, T]]` | `[index, element]` pairs. |
+
+**Example**
+
+```wcl
+enumerate(["a", "b"])   // [[0, "a"], [1, "b"]]
+```
+
 ### error
 
 ```wcl
@@ -583,6 +679,27 @@ Keep only the list elements for which the predicate returns `true`.
 
 ```wcl
 filter(range(0, 6), fn(x: i64) -> bool x % 2 == 0)   // [0, 2, 4]
+```
+
+### find
+
+```wcl
+find(xs: [T], pred: fn (T) -> bool) -> T
+```
+
+The first element for which the predicate returns `true`, or `none`.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `xs` | `[T]` | The list to search. |
+| `pred` | `fn (T) -> bool` | Predicate applied to each element. |
+| **Returns** | `T` | The first matching element, or `none`. |
+
+**Example**
+
+```wcl
+find([1, 2, 3, 4], fn(x: i64) -> bool x > 2)   // 3
+find([1, 2], fn(x: i64) -> bool x > 9)         // none
 ```
 
 ### flatten
@@ -682,6 +799,27 @@ Substitute trailing arguments into a template's `{}` placeholders (`{{`/`}}` are
 format("{} = {}", "x", 42)   // "x = 42"
 ```
 
+### group_by
+
+```wcl
+group_by(xs: [T], key: fn (T) -> K) -> [record]
+```
+
+Group elements by a key function into `{ key, items }` records, in first-seen key order.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `xs` | `[T]` | The list to group. |
+| `key` | `fn (T) -> K` | Maps each element to its group key. |
+| **Returns** | `[record]` | One `{ key, items }` record per distinct key. |
+
+**Example**
+
+```wcl
+group_by([1, 2, 3, 4], fn(x: i64) -> i64 x % 2)
+// [{ key: 1, items: [1, 3] }, { key: 0, items: [2, 4] }]
+```
+
 ### head
 
 ```wcl
@@ -760,6 +898,25 @@ Join a list of strings into one, inserting a separator between each.
 
 ```wcl
 join(["a", "b", "c"], "-")   // "a-b-c"
+```
+
+### keys
+
+```wcl
+keys(r: record) -> [utf8]
+```
+
+The field names of a record, in deterministic (sorted) order.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `r` | `record` | A record value (or a union variant with a record body). |
+| **Returns** | `[utf8]` | The field names. |
+
+**Example**
+
+```wcl
+keys({ name: "Rex", age: 4 })   // ["age", "name"]  (sorted)
 ```
 
 ### len
@@ -879,6 +1036,27 @@ Apply a function to every element of a list or tensor, returning the transformed
 map([1, 2, 3], fn(x: i64) -> i64 x * 2)   // [2, 4, 6]
 ```
 
+### map_values
+
+```wcl
+map_values(r: record, f: fn (T) -> U) -> record
+```
+
+Apply a function to every field value of a record, keeping the keys.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `r` | `record` | The record to transform. |
+| `f` | `fn (T) -> U` | Function applied to each field value. |
+| **Returns** | `record` | A record with the same keys and transformed values. |
+
+**Example**
+
+```wcl
+map_values({ low: 1, high: 9 }, fn(x: i64) -> i64 x * 2)
+// { low: 2, high: 18 }
+```
+
 ### max
 
 ```wcl
@@ -899,6 +1077,47 @@ The larger of two numbers.
 max(3, 7)   // 7.0
 ```
 
+### max_by
+
+```wcl
+max_by(xs: [T], key: fn (T) -> K) -> T
+```
+
+The element with the largest key, or `none` for an empty list.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `xs` | `[T]` | The list to search. |
+| `key` | `fn (T) -> K` | Maps each element to its comparison key. |
+| **Returns** | `T` | The element with the largest key, or `none`. |
+
+**Example**
+
+```wcl
+max_by(["bb", "a", "ccc"], fn(s: utf8) -> i64 len(s))   // "ccc"
+```
+
+### merge
+
+```wcl
+merge(a: record, b: record) -> record
+```
+
+Combine two records into one; fields of `b` win on a name clash.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `a` | `record` | The base record. |
+| `b` | `record` | The overriding record. |
+| **Returns** | `record` | A record with the union of both field sets. |
+
+**Example**
+
+```wcl
+merge({ host: "localhost", port: 80 }, { port: 8080 })
+// { host: "localhost", port: 8080 }  (second record wins on a clash)
+```
+
 ### min
 
 ```wcl
@@ -917,6 +1136,68 @@ The smaller of two numbers.
 
 ```wcl
 min(3, 7)   // 3.0
+```
+
+### min_by
+
+```wcl
+min_by(xs: [T], key: fn (T) -> K) -> T
+```
+
+The element with the smallest key, or `none` for an empty list.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `xs` | `[T]` | The list to search. |
+| `key` | `fn (T) -> K` | Maps each element to its comparison key. |
+| **Returns** | `T` | The element with the smallest key, or `none`. |
+
+**Example**
+
+```wcl
+min_by(["bb", "a", "ccc"], fn(s: utf8) -> i64 len(s))   // "a"
+```
+
+### pad_end
+
+```wcl
+pad_end(s: utf8, width: i64, pad: utf8) -> utf8
+```
+
+Right-pad a string with a fill pattern until it is `width` characters long.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `s` | `utf8` | The string to pad. |
+| `width` | `i64` | The target character count. |
+| `pad` | `utf8` | The fill pattern (repeated / truncated as needed). |
+| **Returns** | `utf8` | The padded string (unchanged if already wide enough). |
+
+**Example**
+
+```wcl
+pad_end("7", 3, ".")   // "7.."
+```
+
+### pad_start
+
+```wcl
+pad_start(s: utf8, width: i64, pad: utf8) -> utf8
+```
+
+Left-pad a string with a fill pattern until it is `width` characters long.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `s` | `utf8` | The string to pad. |
+| `width` | `i64` | The target character count. |
+| `pad` | `utf8` | The fill pattern (repeated / truncated as needed). |
+| **Returns** | `utf8` | The padded string (unchanged if already wide enough). |
+
+**Example**
+
+```wcl
+pad_start("7", 3, "0")   // "007"
 ```
 
 ### panic
@@ -1013,6 +1294,26 @@ The half-open integer range `[start, end)` as a list.
 
 ```wcl
 range(1, 4)   // [1, 2, 3]
+```
+
+### repeat
+
+```wcl
+repeat(s: utf8, n: i64) -> utf8
+```
+
+A string repeated `n` times (empty for `n <= 0`).
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `s` | `utf8` | The string to repeat. |
+| `n` | `i64` | How many copies to concatenate. |
+| **Returns** | `utf8` | `n` copies of `s`. |
+
+**Example**
+
+```wcl
+repeat("ab", 3)   // "ababab"
 ```
 
 ### replace
@@ -1112,6 +1413,28 @@ Sine of an angle in radians.
 sin(pi() / 2)   // 1.0
 ```
 
+### slice
+
+```wcl
+slice(xs: utf8 | [T], start: i64, end: i64) -> utf8 | [T]
+```
+
+The half-open range `[start, end)` of a string's characters or a list's elements (bounds are clamped).
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `xs` | `utf8 \| [T]` | The string or list to slice. |
+| `start` | `i64` | Inclusive start index (clamped to the length). |
+| `end` | `i64` | Exclusive end index (clamped to the length). |
+| **Returns** | `utf8 \| [T]` | The sub-string / sub-list. |
+
+**Example**
+
+```wcl
+slice([1, 2, 3, 4], 1, 3)   // [2, 3]
+slice("hello", 0, 2)        // "he"
+```
+
 ### sort
 
 ```wcl
@@ -1130,6 +1453,26 @@ Sort a list — numerically for all-numeric lists, lexicographically for all-str
 ```wcl
 sort([3, 1, 2])           // [1, 2, 3]
 sort(["b", "a", "c"])     // ["a", "b", "c"]
+```
+
+### sort_by
+
+```wcl
+sort_by(xs: [T], key: fn (T) -> K) -> [T]
+```
+
+Sort a list by a key function (stable). Keys must be all numeric or all strings.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `xs` | `[T]` | The list to sort. |
+| `key` | `fn (T) -> K` | Maps each element to its sort key. |
+| **Returns** | `[T]` | The elements ordered by ascending key. |
+
+**Example**
+
+```wcl
+sort_by(["ccc", "a", "bb"], fn(s: utf8) -> i64 len(s))   // ["a", "bb", "ccc"]
 ```
 
 ### sort_connected
@@ -1497,6 +1840,25 @@ Remove duplicate elements from a list, keeping first-seen order.
 
 ```wcl
 unique([1, 2, 2, 3, 1])   // [1, 2, 3]
+```
+
+### values
+
+```wcl
+values(r: record) -> [T]
+```
+
+The field values of a record, in the same order as `keys`.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `r` | `record` | A record value (or a union variant with a record body). |
+| **Returns** | `[T]` | The field values. |
+
+**Example**
+
+```wcl
+values({ name: "Rex", age: 4 })   // [4, "Rex"]  (same order as keys)
 ```
 
 ### zip

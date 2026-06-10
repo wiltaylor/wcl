@@ -25,7 +25,7 @@ import <wdoc.wcl>
 
 ## How imports compose
 
-Top-level imports are eager; an `import` inside a block is lazy. Imported declarations participate fully in the importer: they take part in structural validation and in name resolution, so a type or `let` declared in an imported file is usable as if it were local.
+Top-level imports are eager; an `import` inside a block is lazy. Imported declarations participate fully in the importer: they take part in structural validation and in name resolution, so a type or `let` declared in an imported file is usable as if it were local. An imported file keeps its own declaring `namespace` — its names stay qualified under that path, and the namespace joins the bare-name search path automatically. See [Namespaces](../references/namespaces.md).
 
 An `import` inside a block also splices the imported file's top-level block instances into the enclosing block as children — exactly as if they had been written inline — so you can factor a nested subtree into its own file and nest it under a parent block. The spliced instances are validated against the parent's `@child` / `@children` slots like any literal child. Top-level connection statements in the imported file are block-scoped to the importer the same way, and a connection anywhere can name a block that an in-block import pulled into the tree.
 

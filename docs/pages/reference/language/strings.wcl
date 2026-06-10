@@ -89,4 +89,16 @@ WCL
   }
 
   p "All four encodings accept the `$` prefix (`$\"…\"` / `$ascii\"…\"` / `$utf16\"…\"` / `$utf32\"…\"`)."
+
+  h2 "String helpers"
+
+  p "The string builtins cover searching (`contains`, `starts_with`, `ends_with`), splitting and joining (`split`, `join`), reshaping (`replace`, `to_upper`, `to_lower`, `trim`, `concat`, `repeat`, `pad_start`, `pad_end`), and slicing (`chars`, `slice`, `len` — all character-indexed, not byte-indexed). See [Builtin Functions](builtins) for signatures."
+  code wcl {
+    source = <<'WCL'
+letters = chars("abc")            // ["a", "b", "c"]
+padded  = pad_start("7", 3, "0")  // "007"
+ruler   = repeat("-=", 4)         // "-=-=-=-="
+prefix  = slice("hello", 0, 2)    // "he"
+WCL
+  }
 }

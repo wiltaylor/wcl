@@ -19,11 +19,11 @@ Anything whose output is inherently visual — diagrams (and the charts, timelin
 
 ## Front matter
 
-A page can carry YAML front matter via a `frontmatter` block — handy for tagging pages with model-facing metadata. The block is schemaless: mark the instance `@schemaless` and write any `key = value` entries you like. They're serialized (in source order) to a `---`-fenced header at the top of the page's `.md`. The HTML and PDF targets ignore the block entirely.
+A page can carry YAML front matter via a `frontmatter` block — handy for tagging pages with model-facing metadata. The block is an open, schemaless kind: write any `key = value` entries you like. They're serialized (in source order) to a `---`-fenced header at the top of the page's `.md`. The HTML and PDF targets ignore the block entirely.
 
 ```wcl
 page intro { sites = [:demo]
-  @schemaless frontmatter {
+  frontmatter {
     title    = "Intro"
     tags     = ["overview", "api"]
     audience = "llm"
@@ -51,6 +51,6 @@ weight: 3
 Body text.
 ```
 
-> [!WARNING]
-> **Omitting @schemaless**
-> Without the `@schemaless` marker, WCL's strict schema check rejects the undeclared keys, so the build fails with a message pointing at the fix rather than silently dropping the front matter.
+> [!NOTE]
+> **Arbitrary keys are fine**
+> The `frontmatter` type is declared `@schemaless` in the stdlib, so undeclared keys pass WCL's strict schema check — no per-instance marker is needed (writing `@schemaless frontmatter { … }` still works and means the same thing).

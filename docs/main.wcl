@@ -77,6 +77,7 @@ site reference {
       chapter "Control Flow"        { page = control_flow }
       chapter "Schema & Decorators" { page = schema }
       chapter "Imports & Modules"   { page = imports }
+      chapter "Namespaces"          { page = namespaces }
     }
 
     chapter "Reference" {
@@ -163,6 +164,7 @@ import "./pages/reference/language/functions.wcl"
 import "./pages/reference/language/control-flow.wcl"
 import "./pages/reference/language/schema.wcl"
 import "./pages/reference/language/imports.wcl"
+import "./pages/reference/language/namespaces.wcl"
 
 // Reference book — Reference section.
 import "./pages/reference/ref/builtins.wcl"

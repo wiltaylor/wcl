@@ -51,6 +51,19 @@ type Pet extends Dog {
 WCL
   }
 
+  h2 "Working with records"
+
+  p "Four builtins operate on record values: `keys` and `values` list a record's field names and values (in deterministic, sorted-by-name order); `merge` combines two records, with the second record's fields winning on a clash; `map_values` transforms every field value while keeping the keys. See [Builtin Functions](builtins) for signatures."
+  code wcl {
+    source = <<'WCL'
+let rex      = Dog { name: "Rex", age: 4u32 }
+let names    = keys(rex)                       // ["age", "name"]
+let defaults = { host: "localhost", port: 80 }
+let cfg      = merge(defaults, { port: 8080 }) // { host: "localhost", port: 8080 }
+let doubled  = map_values({ low: 1, high: 9 }, fn(x: i64) -> i64 x * 2)
+WCL
+  }
+
   callout "Records and blocks" {
     class = ["note"]
     body  = "A record becomes a block kind when decorated with @block(\"kind\") — see Schema & Decorators. The block's labels then bind positionally to fields marked @inline(N)."

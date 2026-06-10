@@ -13,9 +13,10 @@ Every field value, function argument, and `let` right-hand side is an **expressi
 | Arithmetic | `+` `-` `*` `/` `%` |
 | Comparison | `==` `!=` `<` `<=` `>` `>=` |
 | Logical | `&&` `\|\|` `!` |
+| Coalescing | `??` (left value unless `none`) |
 | Unary | `-expr` (negate), `!expr` (not) |
 
-Precedence follows the usual conventions: unary tightest, then `*` `/` `%`, then `+` `-`, then comparison, then `&&`, then `||`. Use parentheses to group when in doubt.
+Precedence follows the usual conventions: unary tightest, then `*` `/` `%`, then `+` `-`, then comparison, then `&&`, then `||`, then `??` loosest. Use parentheses to group when in doubt.
 
 ## Numeric promotion
 

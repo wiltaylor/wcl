@@ -145,6 +145,33 @@ site docbook {
 > **Routes must be slug-safe and unique**
 > A generated route is its interpolated label, so it must be non-empty, contain only the characters `A-Za-z0-9_-`, and be unique within its site — colliding or space-bearing routes are a build error. Build a slug from prose with `to_lower(replace(s, " ", "-"))`. A cross-page link whose target is computed from the same data resolves automatically, because the generated pages exist before links are checked.
 
+## Render by reference
+
+Instantiating a component writes its name as a block, so the \*choice\* of component is fixed in the source. A `wdoc_instance` instead renders the component named by the **value** of its `component` field — so a repeater can emit a \*different\* component per element. The instance's like-named fields fill the target's slots (falling back to each slot's `default`):
+
+> [!NOTE]
+> **CPU**
+> Currently at **42%**
+
+> [!WARNING]
+> **Memory**
+> Currently at **91%**
+
+```wcl
+let widgets = [
+  { kind: "dv_metric", label: "CPU",    value: 42, status: "ok" },
+  { kind: "dv_metric", label: "Memory", value: 91, status: "warning" },
+]
+wdoc_repeater { each = widgets  as = :row
+  // `component` is data, so each element picks its own component.
+  wdoc_instance { component = row.kind  label = row.label  value = row.value  status = row.status }
+}
+```
+
+> [!NOTE]
+> **A repeater works in any container**
+> `wdoc_repeater` / `wdoc_instance` / component instances expand wherever a container iterates its children — a `page`, a `diagram`, a `wf_*` wireframe frame, a `node_table`, or the CSS-collection pass. A repeater inside a device frame composes its widgets from data; a repeater that emits `class` blocks generates stylesheet rules from data. Whatever a generator's body contains is what gets spliced in.
+
 ## Content slots (layout wrappers)
 
 A `wdoc_content` block in a component body marks where the instance's \*own\* nested blocks render — so a component can frame arbitrary content:

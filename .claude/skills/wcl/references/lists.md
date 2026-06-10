@@ -26,12 +26,26 @@ grid: list<list<i64>> = [
 
 ## Working with lists
 
-The collection builtins — `map`, `filter`, `fold`, `len`, `sum`, `head`, `tail`, `range`, `flatten`, `zip`, `reverse`, `sort`, `unique`, `list_contains`, `index_of`, `at`, `take`, `drop` — operate on `list<T>`. See [Builtin Functions](../references/builtins.md) for signatures.
+The collection builtins — `map`, `filter`, `fold`, `len`, `sum`, `head`, `tail`, `range`, `flatten`, `zip`, `reverse`, `sort`, `unique`, `list_contains`, `index_of`, `at`, `take`, `drop`, `slice`, `enumerate` — operate on `list<T>`. See [Builtin Functions](../references/builtins.md) for signatures.
 
 ```wcl
 doubled = map([1, 2, 3], fn(x: i64) -> i64 x * 2)        // [2, 4, 6]
 evens   = filter(range(0, 10), fn(x: i64) -> bool x % 2 == 0)
 total   = fold([1, 2, 3], 0, fn(a: i64, x: i64) -> i64 a + x)
+```
+
+## Higher-order helpers
+
+Beyond `map`/`filter`/`fold`, a family of predicate and key-function helpers covers the common shapes: `any`, `all`, and `find` test or search with a predicate; `sort_by`, `min_by`, and `max_by` order or pick by a key function; `group_by` buckets elements into `{ key, items }` records. See [Builtin Functions](../references/builtins.md) for the full signatures.
+
+```wcl
+has_admin = any(users, fn(u: User) -> bool u.role == :admin)
+first_big = find([3, 8, 12], fn(x: i64) -> bool x > 5)        // 8
+by_len    = sort_by(["ccc", "a", "bb"], fn(s: utf8) -> i64 len(s))
+buckets   = group_by([1, 2, 3, 4], fn(x: i64) -> i64 x % 2)
+// [{ key: 1, items: [1, 3] }, { key: 0, items: [2, 4] }]
+pairs     = enumerate(["a", "b"])                              // [[0, "a"], [1, "b"]]
+middle    = slice([1, 2, 3, 4], 1, 3)                          // [2, 3]
 ```
 
 > [!NOTE]

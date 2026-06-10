@@ -52,6 +52,14 @@ site docs {
 
 Chapters nest to any depth. A `chapter` with no `page =` is a grouping heading. A `chapter` pointing at an unknown page is a build error.
 
+## Search
+
+Set `search = true` on a site to add client-side full-text search. The build writes a per-page text index to `_wdoc/search-index.json` (page title from its first `h1`, plus the page body text) and the `book` and `webpage` templates render a search box — in the sidebar and the nav respectively — backed by a small bundled script. Typing ranks pages by title and body matches and shows the top hits with a context snippet; Enter opens the first hit, Escape clears.
+
+> [!NOTE]
+> **Served, not opened**
+> The widget fetches the index over HTTP, so search works when the site is hosted (or under `wcl wdoc serve`), not when a page is opened directly from disk.
+
 ## presentation template
 
 A reveal.js-style slide deck: the whole site renders into a single `index.html`, navigated with the keyboard. The `deck` block lays out the 2-D grid — each `section` is a column, its `slide`s are rows — and each `slide` names a page that belongs to this site.
