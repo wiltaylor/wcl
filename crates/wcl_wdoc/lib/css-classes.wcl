@@ -73,6 +73,12 @@ class "wdoc-seq-text"         { fill = "#2e3440" }
 class "wdoc-note"             { fill = "#fdf6e3"  stroke = "#b58900" }
 class "wdoc-note-text"        { fill = "#2e3440" }
 
+// State-diagram defaults: rounded state boxes + the filled entry dot.
+// Transitions reuse `wdoc-seq-message` / `wdoc-seq-arrow` strokes and
+// the shared `wdoc-edge-label` text.
+class "wdoc-state"         { fill = "#eceff4"  stroke = "#5e81ac" }
+class "wdoc-state-initial" { fill = "#2e3440" }
+
 // Timeline shape defaults. Markers / connectors / labels paint with
 // `currentColor` so they follow the page theme; phase dividers + their
 // headings also carry a cycled `wdoc-series-N` class, which sets their

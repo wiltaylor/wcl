@@ -103,6 +103,8 @@ pre.code-block{background:var(--wdoc-bg-inset);color:var(--wdoc-fg);border-color
 .wdoc-seq-text{fill:var(--wdoc-fg);}
 .wdoc-note{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-yellow);}
 .wdoc-note-text{fill:var(--wdoc-fg);}
+.wdoc-state{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-blue);}
+.wdoc-state-initial{fill:var(--wdoc-fg);}
 .callout.note{--callout-accent:var(--wdoc-blue);}
 .callout.info{--callout-accent:var(--wdoc-cyan);}
 .callout.tip{--callout-accent:var(--wdoc-green);}

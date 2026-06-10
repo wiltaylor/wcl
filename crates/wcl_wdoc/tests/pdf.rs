@@ -1136,3 +1136,16 @@ fn sequence_diagram_embeds_in_pdf() {
     let n = pdf_ok(&src, out.path(), PageSize::A4);
     assert_eq!(n, 1);
 }
+
+#[test]
+fn state_diagram_embeds_in_pdf() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("sc.wcl");
+    write_fixture(
+        &src,
+        "site s { title = \"S\" }\npage sc {\n  sites = [:s]\n  h1 \"Sc\"\n  state_diagram {\n    state \"a\" { initial = true }\n    state \"b\" { final = true }\n    transition \"t1\" { from = \"a\"  to = \"b\"  trigger = \"go\" }\n  }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let n = pdf_ok(&src, out.path(), PageSize::A4);
+    assert_eq!(n, 1);
+}

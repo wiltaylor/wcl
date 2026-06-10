@@ -8640,3 +8640,102 @@ page seq {
     // Message labels render.
     assert!(html.contains("POST /orders"), "message label:\n{html}");
 }
+
+#[test]
+fn state_diagram_renders_feature_surface() {
+    // The FEATURE-wdoc-state-diagram authoring surface end-to-end:
+    // longest-path auto-ranking, the initial dot, final double borders,
+    // `trigger [guard]` edge labels, and the self-loop.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("sc.wcl");
+    write_fixture(
+        &src,
+        r##"
+page sc {
+  state_diagram {
+    width = 640
+    direction = :left_to_right
+
+    state "pending"   { name = "Pending"   initial = true }
+    state "paid"      { name = "Paid" }
+    state "shipped"   { name = "Shipped"   final = true }
+    state "cancelled" { name = "Cancelled" final = true }
+
+    transition "t1" { from = "pending" to = "paid"      trigger = "payment captured" }
+    transition "t2" { from = "paid"    to = "shipped"   trigger = "dispatched"  guard = "stock reserved" }
+    transition "t3" { from = "pending" to = "cancelled" trigger = "customer cancels" }
+    transition "t4" { from = "paid"    to = "paid"      trigger = "partial refund" }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("sc.html")).expect("read");
+
+    // Longest-path ranks along x (`:left_to_right`, cell 110 + gap 64):
+    // pending 0, paid/cancelled 174, shipped 348 — rounded boxes (rx).
+    for x in ["0", "174", "348"] {
+        assert!(
+            html.contains(&format!("<rect class=\"wdoc-state\" x=\"{x}\"")),
+            "state box at rank x={x}:\n{html}"
+        );
+    }
+    assert!(html.contains("rx=\"10\""), "rounded state boxes:\n{html}");
+    // Initial pseudo-state: the filled entry dot.
+    assert!(
+        html.contains("class=\"wdoc-state-initial\""),
+        "initial dot:\n{html}"
+    );
+    // Final marker: nested inner box (inset 3, rx 7).
+    assert!(html.contains("rx=\"7\""), "final double border:\n{html}");
+    // Edge labels: trigger alone and trigger [guard].
+    assert!(
+        html.contains(">payment captured</tspan>"),
+        "trigger label:\n{html}"
+    );
+    assert!(
+        html.contains(">dispatched [stock reserved]</tspan>"),
+        "trigger [guard] label:\n{html}"
+    );
+    // Self-loop: the loop polyline + its label.
+    assert!(
+        html.contains(">partial refund</tspan>"),
+        "self-loop label:\n{html}"
+    );
+    assert!(
+        html.contains("class=\"wdoc-seq-message\" points="),
+        "self-loop polyline:\n{html}"
+    );
+}
+
+#[test]
+fn state_diagram_ranks_top_to_bottom_by_default() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("sc.wcl");
+    write_fixture(
+        &src,
+        r##"
+page sc {
+  state_diagram {
+    state "a" { }
+    state "b" { }
+    transition "t1" { from = "a"  to = "b"  trigger = "go" }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("sc.html")).expect("read");
+    // Default flow is :top_to_bottom: rank 1 sits below rank 0
+    // (cell 44 + layer gap 64 = 108).
+    assert!(
+        html.contains("<rect class=\"wdoc-state\" x=\"0\" y=\"0\""),
+        "rank 0 at origin:\n{html}"
+    );
+    assert!(
+        html.contains("<rect class=\"wdoc-state\" x=\"0\" y=\"108\""),
+        "rank 1 below rank 0:\n{html}"
+    );
+}

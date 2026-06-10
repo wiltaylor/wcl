@@ -497,3 +497,17 @@ fn sequence_diagram_writes_standalone_svg() {
     assert!(svg.starts_with("<svg"), "standalone svg:\n{svg}");
     assert!(svg.contains("wdoc-lifeline"), "content lowered:\n{svg}");
 }
+
+#[test]
+fn state_diagram_writes_standalone_svg() {
+    let (_t, out) = build(
+        "page sc {\n  state_diagram {\n    state \"a\" { initial = true }\n    state \"b\" { final = true }\n    transition \"t1\" { from = \"a\"  to = \"b\"  trigger = \"go\" }\n  }\n}\n",
+    );
+    let md = read(&out, "sc.md");
+    assert!(
+        md.contains("](_wdoc/sc-state-diagram-1.svg)"),
+        "image ref:\n{md}"
+    );
+    let svg = read(&out, "_wdoc/sc-state-diagram-1.svg");
+    assert!(svg.contains("wdoc-state"), "content lowered:\n{svg}");
+}

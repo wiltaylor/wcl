@@ -1,0 +1,333 @@
+// ── Stdlib state diagrams ──────────────────────────────────────────
+//
+// `state_diagram` is a page-level block (`extends WdocBlock`) whose
+// geometry lives in `lower_svg`. States auto-layout by longest-path
+// rank from the diagram's transition graph (back-edges and self-loops
+// route around), so an entity lifecycle is authored coordinate-free;
+// a state may still pin itself with explicit `x`/`y`. Transitions are
+// blocks (not `->` connections) because they carry payload: `trigger`
+// and an optional `guard`, rendered as the standard `trigger [guard]`
+// edge label.
+//
+//   state_diagram {
+//     state "pending"   { name = "Pending"  initial = true }
+//     state "paid"      { name = "Paid" }
+//     state "shipped"   { name = "Shipped"  final = true }
+//     transition "t1" { from = "pending"  to = "paid"  trigger = "payment captured" }
+//     transition "t2" { from = "paid"  to = "shipped"  trigger = "dispatched"  guard = "stock reserved" }
+//   }
+
+namespace wdoc
+
+// Longest-path layering: start every state at rank 0 and relax each
+// non-self transition (`rank[to] >= rank[from] + 1`) for as many
+// passes as there are states, capping ranks at the state count so a
+// cycle converges instead of running away. After convergence an edge
+// with `rank[to] <= rank[from]` is a back-edge and simply draws
+// against the flow.
+let sc_relax = fn(ranks: list<i64>, ids: list<utf8>, ts: list<Transition>, cap: i64) -> list<i64>
+  fold(ts, ranks, fn(acc: list<i64>, t: Transition) -> list<i64> {
+    let fi = index_of(ids, t.from);
+    let ti = index_of(ids, t.to);
+    if fi < 0 || ti < 0 || fi == ti {
+      acc
+    } else {
+      let nr = min(at(acc, fi) + 1, cap);
+      if nr > at(acc, ti) {
+        map(enumerate(acc), fn(p: list<i64>) -> i64
+          if at(p, 0) == ti { nr } else { at(p, 1) })
+      } else {
+        acc
+      }
+    }
+  })
+
+let sc_ranks = fn(ids: list<utf8>, ts: list<Transition>) -> list<i64> {
+  let n = len(ids);
+  let start = map(ids, fn(id: utf8) -> i64 0);
+  fold(range(0, n), start, fn(acc: list<i64>, pass: i64) -> list<i64>
+    sc_relax(acc, ids, ts, n))
+}
+
+// Position within a rank: declaration order among the states sharing
+// the rank.
+let sc_order_in_rank = fn(ranks: list<i64>, i: i64) -> i64
+  len(filter(range(0, i), fn(j: i64) -> bool at(ranks, j) == at(ranks, i)))
+
+// A state's top-left corner: rank along the main axis (`direction`),
+// order-within-rank along the cross axis — unless the author pinned it
+// with explicit x/y.
+let sc_pos = fn(
+  s: State,
+  ranks: list<i64>,
+  ids: list<utf8>,
+  dir: symbol,
+  cell_w: f64,
+  cell_h: f64,
+  layer_gap: f64,
+  node_gap: f64,
+) -> list<f64>
+  if s.x != none && s.y != none {
+    [s.x, s.y]
+  } else {
+    let i = index_of(ids, s.id);
+    let r = at(ranks, i);
+    let o = sc_order_in_rank(ranks, i);
+    if dir == :left_to_right {
+      [r * (cell_w + layer_gap), o * (cell_h + node_gap)]
+    } else {
+      [o * (cell_w + node_gap), r * (cell_h + layer_gap)]
+    }
+  }
+
+// Arrowhead at (x, y) pointing along the unit vector (ux, uy): a
+// filled triangle with its base offset back along the direction and
+// spread along the perpendicular.
+let sc_arrow = fn(x: f64, y: f64, ux: f64, uy: f64) -> SvgFundamental
+  SvgFundamental::Polygon {
+    points: format(
+      "{},{} {},{} {},{}",
+      x, y,
+      x - 9.0 * ux - 4.5 * uy, y - 9.0 * uy + 4.5 * ux,
+      x - 9.0 * ux + 4.5 * uy, y - 9.0 * uy - 4.5 * ux,
+    ),
+    class: ["wdoc-seq-arrow"],
+  }
+
+// The `trigger [guard]` edge label.
+let sc_label = fn(t: Transition) -> utf8 {
+  let trig = t.trigger ?? "";
+  if t.guard != none { format("{} [{}]", trig, t.guard) } else { trig }
+}
+
+// One state's shapes: rounded box + centred name, a nested inner box
+// for `final` (the double border), and the filled entry dot + arrow
+// for `initial` (placed against the flow direction). `link` wraps the
+// lot in a clickable in-site link.
+let sc_state = fn(s: State, x: f64, y: f64, dir: symbol) -> list<SvgFundamental> {
+  let auto = s.class == none;
+  let box_class = if auto { ["wdoc-state"] } else { s.class };
+  let text_class = if auto { ["wdoc-shape-text"] } else { s.class };
+  let dot_class = if auto { ["wdoc-state-initial"] } else { s.class };
+  let box = [
+    SvgFundamental::Rect {
+      x: x, y: y, width: s.width, height: s.height, rx: 10.0, class: box_class,
+    },
+  ];
+  let inner = if s.final == true {
+    [
+      SvgFundamental::Rect {
+        x: x + 3.0, y: y + 3.0, width: s.width - 6.0, height: s.height - 6.0,
+        rx: 7.0, class: box_class,
+      },
+    ]
+  } else { [] };
+  let label = [
+    SvgFundamental::Label {
+      content: s.name ?? s.id, x: x + s.width / 2.0, y: y + s.height / 2.0,
+      font_size: none, fit_width: s.width - 12.0, fit_height: s.height - 8.0,
+      class: text_class,
+    },
+  ];
+  let entry = if s.initial == true {
+    if dir == :left_to_right {
+      [
+        SvgFundamental::Circle { cx: x - 26.0, cy: y + s.height / 2.0, r: 5.0, class: dot_class },
+        SvgFundamental::Line {
+          x1: x - 21.0, y1: y + s.height / 2.0, x2: x - 4.0, y2: y + s.height / 2.0,
+          class: ["wdoc-seq-message"],
+        },
+        sc_arrow(x - 4.0, y + s.height / 2.0, 1.0, 0.0),
+      ]
+    } else {
+      [
+        SvgFundamental::Circle { cx: x + s.width / 2.0, cy: y - 26.0, r: 5.0, class: dot_class },
+        SvgFundamental::Line {
+          x1: x + s.width / 2.0, y1: y - 21.0, x2: x + s.width / 2.0, y2: y - 4.0,
+          class: ["wdoc-seq-message"],
+        },
+        sc_arrow(x + s.width / 2.0, y - 4.0, 0.0, 1.0),
+      ]
+    }
+  } else { [] };
+  let body = flatten([box, inner, label, entry]);
+  if s.link != none {
+    [SvgFundamental::Link { href: s.link, children: body }]
+  } else {
+    body
+  }
+}
+
+// One transition: a straight arrow between the facing box-edge
+// midpoints with the `trigger [guard]` label at its midpoint, or a
+// small loop when `from == to` — on the box's east side under
+// `:top_to_bottom` flow, on its north side under `:left_to_right`
+// (where east is where outgoing edges leave).
+let sc_edge = fn(
+  t: Transition,
+  states: list<State>,
+  ids: list<utf8>,
+  pos: list<list<f64>>,
+  dir: symbol,
+) -> list<SvgFundamental> {
+  let fi = index_of(ids, t.from);
+  let ti = index_of(ids, t.to);
+  if fi < 0 || ti < 0 {
+    []
+  } else {
+    let sf = at(states, fi);
+    let st = at(states, ti);
+    let pf = at(pos, fi);
+    let pt = at(pos, ti);
+    let c1x = at(pf, 0) + sf.width / 2.0;
+    let c1y = at(pf, 1) + sf.height / 2.0;
+    let cls = ["wdoc-seq-message"];
+    let text_cls = ["wdoc-edge-label"];
+    if fi == ti {
+      if dir == :left_to_right {
+        // North-side loop (east is the outgoing-edge side here).
+        let ty = at(pf, 1);
+        [
+          SvgFundamental::Polyline {
+            points: format(
+              "{},{} {},{} {},{} {},{}",
+              c1x + 8.0, ty,
+              c1x + 8.0, ty - 22.0,
+              c1x - 8.0, ty - 22.0,
+              c1x - 8.0, ty - 4.0,
+            ),
+            class: cls,
+          },
+          sc_arrow(c1x - 8.0, ty - 4.0, 0.0, 1.0),
+          SvgFundamental::Label {
+            content: sc_label(t), x: c1x, y: ty - 30.0, font_size: 11.0, class: text_cls,
+          },
+        ]
+      } else {
+        // East-side loop.
+        let ex = at(pf, 0) + sf.width;
+        [
+          SvgFundamental::Polyline {
+            points: format(
+              "{},{} {},{} {},{} {},{}",
+              ex, c1y - 7.0,
+              ex + 26.0, c1y - 7.0,
+              ex + 26.0, c1y + 7.0,
+              ex + 4.0, c1y + 7.0,
+            ),
+            class: cls,
+          },
+          sc_arrow(ex + 4.0, c1y + 7.0, -1.0, 0.0),
+          SvgFundamental::Label {
+            content: sc_label(t), x: ex + 32.0, y: c1y - 16.0, font_size: 11.0, class: text_cls,
+          },
+        ]
+      }
+    } else {
+      let c2x = at(pt, 0) + st.width / 2.0;
+      let c2y = at(pt, 1) + st.height / 2.0;
+      let dx = c2x - c1x;
+      let dy = c2y - c1y;
+      let horizontal = abs(dx) >= abs(dy);
+      let x1 = if horizontal { c1x + sign(dx) * sf.width / 2.0 } else { c1x };
+      let y1 = if horizontal { c1y } else { c1y + sign(dy) * sf.height / 2.0 };
+      let x2 = if horizontal { c2x - sign(dx) * st.width / 2.0 } else { c2x };
+      let y2 = if horizontal { c2y } else { c2y - sign(dy) * st.height / 2.0 };
+      let length = max(hypot(x2 - x1, y2 - y1), 1.0);
+      let ux = (x2 - x1) / length;
+      let uy = (y2 - y1) / length;
+      let lx = if horizontal { (x1 + x2) / 2.0 } else { (x1 + x2) / 2.0 + 10.0 };
+      let ly = if horizontal { (y1 + y2) / 2.0 - 10.0 } else { (y1 + y2) / 2.0 };
+      [
+        SvgFundamental::Line { x1: x1, y1: y1, x2: x2, y2: y2, class: cls },
+        sc_arrow(x2, y2, ux, uy),
+        SvgFundamental::Label {
+          content: sc_label(t), x: lx, y: ly, font_size: 11.0, class: text_cls,
+        },
+      ]
+    }
+  }
+}
+
+@block("state")
+type State {
+  @doc("Stable id transitions reference via `from` / `to`.")
+  @inline(0) id: utf8
+  @doc("Display name shown in the box (defaults to the id).")
+  name: utf8?
+  @doc("Entry state: draws the filled-dot pseudo-state with an arrow into the box.")
+  initial: bool?
+  @doc("Final state: draws the double-border marker.")
+  final: bool?
+  @doc("Link the box to an in-site page (bare page name, or `site:page`).")
+  link: utf8?
+  @doc("Manual x placement (with `y`, opts this state out of auto-layout).")
+  x: f64?
+  @doc("Manual y placement (with `x`, opts this state out of auto-layout).")
+  y: f64?
+  @doc("Box width.")
+  width = 110.0
+  @doc("Box height.")
+  height = 44.0
+  @doc("Style classes for the box (replaces the theme defaults).")
+  class: list<utf8>?
+}
+
+@block("transition")
+type Transition {
+  @doc("Stable id.")
+  @inline(0) id: utf8
+  @doc("Source state id.")
+  from: utf8
+  @doc("Destination state id (same as `from` for a self-loop).")
+  to: utf8
+  @doc("The event that fires the transition (the edge label).")
+  trigger: utf8?
+  @doc("Guard condition, rendered as `trigger [guard]`.")
+  guard: utf8?
+}
+
+@block("state_diagram")
+type StateDiagram extends WdocBlock {
+  @doc("Rendered width in pixels; the height follows the content.")
+  width = 640.0
+  @doc("Flow direction: `:top_to_bottom` (default) / `:left_to_right`.")
+  direction: symbol?
+  @doc("Spacing between ranks (layers).")
+  layer_gap: f64?
+  @doc("Spacing between states within a rank.")
+  node_gap: f64?
+  @doc("Optional explicit HTML id.")
+  id: identifier?
+  @doc("Optional style classes on the `<svg>`.")
+  class: list<utf8>?
+  @doc("Accessible description (`aria-label` + `<title>`).")
+  desc: utf8?
+  @doc("States; auto-ranked from the transition graph in declaration order.")
+  @children("state") states: list<State>
+  @doc("Transitions between states (`trigger [guard]` edge labels).")
+  @children("transition") transitions: list<Transition>
+
+  // Page-level placement contract (`WdocBlock`): the Rust renderer
+  // special-cases this kind, so the HTML lowering is a stub.
+  lower = fn(d: StateDiagram) -> list<HtmlFundamental> []
+
+  lower_svg = fn(d: StateDiagram) -> list<SvgFundamental> {
+    let dir = d.direction ?? :top_to_bottom;
+    let layer_gap = d.layer_gap ?? 64.0;
+    let node_gap = d.node_gap ?? 48.0;
+    let ids = map(d.states, fn(s: State) -> utf8 s.id);
+    let ranks = sc_ranks(ids, d.transitions);
+    let cell_w = fold(d.states, 110.0, fn(a: f64, s: State) -> f64 max(a, s.width));
+    let cell_h = fold(d.states, 44.0, fn(a: f64, s: State) -> f64 max(a, s.height));
+    let pos = map(d.states, fn(s: State) -> list<f64>
+      sc_pos(s, ranks, ids, dir, cell_w, cell_h, layer_gap, node_gap));
+    let boxes = flatten(map(d.states, fn(s: State) -> list<SvgFundamental> {
+      let p = at(pos, index_of(ids, s.id));
+      sc_state(s, at(p, 0), at(p, 1), dir)
+    }));
+    let edges = flatten(map(d.transitions, fn(t: Transition) -> list<SvgFundamental>
+      sc_edge(t, d.states, ids, pos, dir)));
+    flatten([boxes, edges])
+  }
+}
