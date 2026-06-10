@@ -482,6 +482,11 @@ pub struct TypeDecl {
     /// from, in source order. Empty when no `extends` clause was
     /// written.
     pub extends: Vec<Vec<String>>,
+    /// `Some` for the alias form `type Name = TypeRef` — a transparent
+    /// name for the target type. `fields` and `extends` are then empty;
+    /// constraint decorators (`@min` / `@max` / `@non_empty`) on the
+    /// alias apply to every field declared with it.
+    pub alias: Option<crate::value::TypeRef>,
     pub fields: Vec<TypeField>,
     pub decorators: Vec<Decorator>,
     pub span: Span,

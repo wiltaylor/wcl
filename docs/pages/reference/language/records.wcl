@@ -17,6 +17,24 @@ let rex = Dog { name: "Rex", age: 4u32 }
 WCL
   }
 
+  h2 "Type aliases"
+
+  p "`type Name = TypeRef` declares a transparent alias — a readable name for any type, resolved wherever the name is used (transitively, so an alias of an alias works). Constraint decorators on the alias travel with it: every field declared with the alias is validated against them by `wcl check`."
+  code wcl {
+    source = <<'WCL'
+@min(1) @max(65535)
+type Port = u16
+
+@non_empty
+type Name = utf8
+
+type Service {
+  name: Name        # rejects ""
+  port: Port        # rejects 0u16 and 70000-ish values
+}
+WCL
+  }
+
   h2 "extends"
 
   p "A record may `extends` another, inheriting all its fields. The child type is a structural superset; it satisfies any context that accepts the parent."

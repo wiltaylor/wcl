@@ -279,6 +279,10 @@ pub enum SchemaViolationKind {
     /// `TypeRef` under the conservative `value_matches_type_ref` check
     /// (scalar / string / list-element / variant FQN).
     FieldTypeMismatch,
+    /// A field's value violates a constraint decorator (`@min` /
+    /// `@max` / `@non_empty`) declared on the field or on a type alias
+    /// its declared type goes through.
+    ConstraintViolation,
     /// Two variants in a union's effective list share a name (across
     /// the `extends` chain).
     DuplicateVariant,

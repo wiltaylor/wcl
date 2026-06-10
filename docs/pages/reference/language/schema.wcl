@@ -26,7 +26,11 @@ page schema { sites = [:reference, :wcl_skill]  title = "Schema & Decorators"
       | "`@inline(slot)`"      | "Bind the block label to a field at that position" |
       | "`@default(expr)`"     | "Default value when the field is omitted" |
       | "`@connections(S)`"    | "Accumulate `->` connection statements as records" |
+      | "`@min(n)` / `@max(n)`" | "Numeric range constraint, checked by `wcl check`" |
+      | "`@non_empty`"          | "The string / list value must not be empty" |
   }
+
+  p "The constraint decorators also attach to a [type alias](records) (`@min(1) type Port = u16`), applying to every field declared with the alias."
 
   h2 "A worked example"
 

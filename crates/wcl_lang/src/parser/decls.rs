@@ -419,6 +419,32 @@ impl<'a> Parser<'a> {
         let start = type_kw.span.start;
         let (name, _name_span) = self.parse_path()?;
         let extends = self.parse_extends_clause()?;
+        // Alias form: `type Name = TypeRef`. A transparent name for the
+        // target; constraint decorators on the alias apply wherever the
+        // name is used. An alias can't also extend.
+        if matches!(self.peek()?.kind, TokenKind::Eq) {
+            if !extends.is_empty() {
+                let span = self.peek()?.span;
+                return Err(self.err(
+                    "a type alias cannot have an extends clause",
+                    span,
+                    "remove `extends` or give the type a body",
+                ));
+            }
+            self.bump()?; // consume '='
+            let (target, target_span) = self.parse_type_ref()?;
+            return Ok(Item::TypeDecl(TypeDecl {
+                name,
+                extends,
+                alias: Some(target),
+                fields: Vec::new(),
+                decorators,
+                span: Span::new(start, target_span.end),
+                leading_trivia: self.take_item_trivia(),
+                trailing_comment: None,
+                trailing_trivia: Vec::new(),
+            }));
+        }
         self.expect_brace_after("type name", &name)?;
         let (fields, rbrace_span, trailing_trivia) = self.parse_brace_members(
             "unexpected end of file inside type declaration",
@@ -428,6 +454,7 @@ impl<'a> Parser<'a> {
         Ok(Item::TypeDecl(TypeDecl {
             name,
             extends,
+            alias: None,
             fields,
             decorators,
             span: Span::new(start, rbrace_span.end),

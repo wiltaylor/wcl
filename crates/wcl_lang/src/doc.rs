@@ -1032,6 +1032,56 @@ impl Document {
     /// Look up a type by fully-qualified name (dotted). Searches the
     /// importer, every eagerly-imported file, and registry-injected
     /// types in that order.
+    /// Resolve type aliases (`type Port = u16`) inside `ty`, deeply:
+    /// a `Named` ref whose declaration is an alias is replaced by its
+    /// target (transitively, cycle-capped), and list / reference /
+    /// tensor element types resolve recursively. Non-alias refs come
+    /// back unchanged. Used by the schema value checks so a field
+    /// declared with an alias validates against the target type.
+    pub fn resolve_alias(&self, ty: &crate::value::TypeRef) -> crate::value::TypeRef {
+        use crate::value::TypeRef as T;
+        fn go(doc: &Document, ty: &T, depth: u8) -> T {
+            if depth == 0 {
+                return ty.clone(); // alias cycle — give up, stay permissive
+            }
+            match ty {
+                T::Named(path) => {
+                    let fqn = path.join(".");
+                    match doc.type_decl(&fqn).and_then(|t| t.ast.alias.clone()) {
+                        Some(target) => go(doc, &target, depth - 1),
+                        None => ty.clone(),
+                    }
+                }
+                T::List(inner) => T::List(Box::new(go(doc, inner, depth - 1))),
+                T::Reference(inner) => T::Reference(Box::new(go(doc, inner, depth - 1))),
+                other => other.clone(),
+            }
+        }
+        go(self, ty, 8)
+    }
+
+    /// The chain of alias declarations behind `ty`, outermost first —
+    /// empty for a non-alias type. Constraint decorators on each link
+    /// apply to values of the aliased type.
+    pub(crate) fn alias_chain(&self, ty: &crate::value::TypeRef) -> Vec<TypeDecl<'_>> {
+        let mut out = Vec::new();
+        let mut current = ty.clone();
+        for _ in 0..8 {
+            let crate::value::TypeRef::Named(path) = &current else {
+                break;
+            };
+            let Some(decl) = self.type_decl(&path.join(".")) else {
+                break;
+            };
+            let Some(target) = decl.ast.alias.clone() else {
+                break;
+            };
+            out.push(decl);
+            current = target;
+        }
+        out
+    }
+
     pub fn type_decl(&self, fqn: &str) -> Option<TypeDecl<'_>> {
         find_decl!(self, fqn, TypeDecl, cells, is_imported);
         // Synthetic types live in the root namespace (no file ns prefix)
@@ -1577,7 +1627,7 @@ impl Document {
                     f.span(),
                 );
             }
-        } else if !value_matches_type_ref(v, declared.type_ref()) {
+        } else if !value_matches_type_ref(v, &self.resolve_alias(declared.type_ref())) {
             EvalError::push_schema_violation(
                 out,
                 Kind::FieldTypeMismatch,
@@ -1587,6 +1637,18 @@ impl Document {
                     declared.type_ref(),
                     v.type_name(),
                 ),
+                f.span(),
+            );
+        } else if let Some(msg) = schema_check::constraint_violation(
+            self,
+            &declared.ast.decorators,
+            declared.type_ref(),
+            v,
+        ) {
+            EvalError::push_schema_violation(
+                out,
+                Kind::ConstraintViolation,
+                format!("field '{}': {msg}", f.name()),
                 f.span(),
             );
         }

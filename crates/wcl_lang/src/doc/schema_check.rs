@@ -13,8 +13,64 @@ use std::collections::{HashMap, HashSet};
 use crate::ast;
 use crate::error::EvalError;
 
+use crate::value::Value;
+
 use super::cells::ItemCellKind;
-use super::{Block, BuiltinDecorator, DeclName};
+use super::{Block, BuiltinDecorator, DeclName, Document};
+
+/// Check the constraint decorators that apply to a field's value: the
+/// field declaration's own `@min` / `@max` / `@non_empty`, plus those on
+/// every type-alias declaration its declared type goes through
+/// (`@min(1) type Port = u16`). Returns the first violation, rendered
+/// for embedding in a schema-violation message. Decorator arguments
+/// evaluate through the document, so `@min(8_000)` and `@min(8e3)` both
+/// work; a non-numeric bound is ignored rather than flagged (the
+/// decorator is data, not schema).
+pub(super) fn constraint_violation(
+    doc: &Document,
+    field_decorators: &[ast::Decorator],
+    declared_ty: &crate::value::TypeRef,
+    value: &Value,
+) -> Option<String> {
+    let chain = doc.alias_chain(declared_ty);
+    let alias_decorators = chain.iter().flat_map(|link| link.ast.decorators.iter());
+    for d in field_decorators.iter().chain(alias_decorators) {
+        let name = d.name.join(".");
+        match name.as_str() {
+            "min" | "max" => {
+                let Some(bound) = d
+                    .positional
+                    .first()
+                    .and_then(|e| doc.eval(e).ok())
+                    .and_then(|v| v.as_f64())
+                else {
+                    continue;
+                };
+                let Some(actual) = value.as_f64() else {
+                    continue;
+                };
+                if name == "min" && actual < bound {
+                    return Some(format!("value {actual} is below @min({bound})"));
+                }
+                if name == "max" && actual > bound {
+                    return Some(format!("value {actual} is above @max({bound})"));
+                }
+            }
+            "non_empty" => {
+                let empty = match value {
+                    Value::Utf8(s) | Value::Ascii(s) => s.is_empty(),
+                    Value::List(xs) => xs.is_empty(),
+                    _ => false,
+                };
+                if empty {
+                    return Some("value is empty but the type is @non_empty".to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
 
 pub(super) fn has_schemaless(decorators: &[ast::Decorator]) -> bool {
     let name = BuiltinDecorator::Schemaless.as_str();
@@ -405,8 +461,13 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
             continue;
         }
 
+        // Resolve type aliases once: a field declared with an alias
+        // (`port: Port` where `type Port = u16`) validates against the
+        // target type, and an alias of a union dispatches like the union.
+        let resolved_ty = block.doc.resolve_alias(declared.type_ref());
+
         // Union path — preserved verbatim.
-        if let crate::value::TypeRef::Named(path) = declared.type_ref()
+        if let crate::value::TypeRef::Named(path) = &resolved_ty
             && let Some(union_decl) = block.doc.union_decl(&path.join("."))
         {
             let expected_fqn = union_decl.ast.name.clone();
@@ -443,7 +504,7 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         }
 
         // Generic value-vs-type check for non-union typed fields.
-        if !crate::doc::value_matches_type_ref(value, declared.type_ref()) {
+        if !crate::doc::value_matches_type_ref(value, &resolved_ty) {
             errs.push(EvalError::schema_violation(
                 Kind::FieldTypeMismatch,
                 format!(
@@ -452,6 +513,17 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
                     declared.type_ref(),
                     value.type_name(),
                 ),
+                literal_field.span(),
+            ));
+        } else if let Some(msg) = constraint_violation(
+            block.doc,
+            &declared.ast.decorators,
+            declared.type_ref(),
+            value,
+        ) {
+            errs.push(EvalError::schema_violation(
+                Kind::ConstraintViolation,
+                format!("field '{}': {msg}", literal_field.name()),
                 literal_field.span(),
             ));
         }

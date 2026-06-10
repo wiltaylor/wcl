@@ -170,6 +170,7 @@ fn synth_decorator_schema(
     ast::TypeDecl {
         name: vec![type_name.to_string()],
         extends: Vec::new(),
+        alias: None,
         fields: vec![ast::TypeField {
             name: field_name.to_string(),
             ty: field_ty,
@@ -235,6 +236,7 @@ impl TypeBuilder {
             inner: ast::TypeDecl {
                 name: self.name,
                 extends: Vec::new(),
+                alias: None,
                 fields: self.fields,
                 decorators: self.decorators,
                 span: synthetic_span(),

@@ -284,6 +284,14 @@ impl Printer {
         self.write_indent();
         self.push("type ");
         self.push(&join_path(&t.name));
+        // Alias form: `type Name = TypeRef`, one line.
+        if let Some(target) = &t.alias {
+            self.push(" = ");
+            self.print_type_ref(target);
+            self.print_trailing_comment(&t.trailing_comment);
+            self.newline();
+            return;
+        }
         self.print_extends(&t.extends);
         self.push(" {");
         self.newline();

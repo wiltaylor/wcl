@@ -391,7 +391,14 @@ fn contextual_keyword_block_with_kind_type_still_works() {
 
 #[test]
 fn type_decl_without_brace_errors() {
-    assert_syntax_err(parse_err("type Foo = 1"), "'{'");
+    assert_syntax_err(parse_err("type Foo bar"), "'{'");
+}
+
+#[test]
+fn type_alias_target_must_be_a_type() {
+    // `type Name = …` is the alias form; the target must parse as a
+    // type reference, not a value.
+    assert_syntax_err(parse_err("type Foo = 1"), "expected type");
 }
 
 fn union_decls(items: &[Item]) -> Vec<&UnionDecl> {
