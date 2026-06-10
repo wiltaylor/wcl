@@ -181,6 +181,18 @@ pub enum Expr {
         args: VariantArgs,
         span: Span,
     },
+    /// `try body catch name => handler` — evaluate `body`; on an
+    /// evaluation error bind the error message (a `utf8`) to `name`
+    /// and evaluate `handler` instead. Catches every evaluation error
+    /// (builtin failures, cycles, propagated field errors).
+    Try {
+        body: Box<Expr>,
+        /// Name bound to the error message inside `handler`.
+        binder: String,
+        binder_span: Span,
+        handler: Box<Expr>,
+        span: Span,
+    },
     /// A bare record literal `{ name: value, … }`. When the surrounding
     /// context declares a union (or `list<union>`) type, the evaluator
     /// shape-infers the matching variant; otherwise it evaluates to an

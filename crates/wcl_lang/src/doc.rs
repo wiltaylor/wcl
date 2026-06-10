@@ -2266,6 +2266,7 @@ fn span_of(expr: &ast::Expr) -> Span {
         | E::If { span, .. }
         | E::IfLet { span, .. }
         | E::Match { span, .. }
+        | E::Try { span, .. }
         | E::Variant { span, .. }
         | E::Record { span, .. }
         | E::InterpolatedString { span, .. } => *span,

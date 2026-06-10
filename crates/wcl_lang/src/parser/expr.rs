@@ -249,6 +249,14 @@ impl<'a> Parser<'a> {
         {
             return self.parse_function_literal();
         }
+        // Contextual keyword `try` starts a try/catch expression. Like
+        // `parent` / `self` below, it is a keyword only in expression
+        // position — fields named `try` keep parsing.
+        if let TokenKind::Ident(s) = &self.peek()?.kind
+            && s == "try"
+        {
+            return self.parse_try_expr();
+        }
         // Contextual keywords `parent` and `self` only act as keywords
         // in expression position. Anywhere else they remain regular
         // identifiers, so existing source (e.g. `parent: &User?` field
@@ -805,6 +813,62 @@ impl<'a> Parser<'a> {
             leading_trivia,
             trailing_comment: None,
         })
+    }
+
+    /// `try body catch name => handler` (either side may be a `{ … }`
+    /// block expression; the handler also accepts the block form
+    /// without `=>`: `catch name { … }`). The `try` token has been
+    /// matched but not consumed.
+    fn parse_try_expr(&mut self) -> Result<(Expr, Span), ParseError> {
+        let try_tok = self.bump()?; // consume 'try'
+        let start = try_tok.span.start;
+        let (body, _) = if matches!(self.peek()?.kind, TokenKind::LBrace) {
+            self.parse_block_expr()?
+        } else {
+            self.parse_expr()?
+        };
+        let catch_tok = self.bump()?;
+        match &catch_tok.kind {
+            TokenKind::Ident(s) if s == "catch" => {}
+            other => {
+                return Err(self.err(
+                    format!("expected 'catch' after try body, found {}", describe(other)),
+                    catch_tok.span,
+                    "a try expression is `try body catch name => handler`",
+                ));
+            }
+        }
+        let (binder, binder_span) = self.bump_ident("expected binding name after 'catch'")?;
+        let (handler, handler_span) = match self.peek()?.kind {
+            TokenKind::FatArrow => {
+                self.bump()?; // consume '=>'
+                if matches!(self.peek()?.kind, TokenKind::LBrace) {
+                    self.parse_block_expr()?
+                } else {
+                    self.parse_expr()?
+                }
+            }
+            TokenKind::LBrace => self.parse_block_expr()?,
+            _ => {
+                let span = self.peek()?.span;
+                return Err(self.err(
+                    "expected '=>' or '{' after the catch binding",
+                    span,
+                    "write `catch name => expr` or `catch name { … }`",
+                ));
+            }
+        };
+        let span = Span::new(start, handler_span.end);
+        Ok((
+            Expr::Try {
+                body: Box::new(body),
+                binder,
+                binder_span,
+                handler: Box::new(handler),
+                span,
+            },
+            span,
+        ))
     }
 
     fn parse_function_literal(&mut self) -> Result<(Expr, Span), ParseError> {

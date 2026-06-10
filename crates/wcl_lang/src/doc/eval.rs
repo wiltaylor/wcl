@@ -473,6 +473,25 @@ impl Document {
             } => {
                 return self.eval_if_let(pattern, scrut, then_block, else_block, ctx);
             }
+            E::Try {
+                body,
+                binder,
+                handler,
+                ..
+            } => {
+                // Catches every evaluation error from the body —
+                // builtin failures, cycles, propagated field errors —
+                // binding its rendered message to the catch name.
+                return match self.eval_in(body, ctx) {
+                    Ok(v) => Ok(v),
+                    Err(e) => {
+                        let msg = Value::Utf8(e.to_string());
+                        let mut frame = ctx.push_frame();
+                        frame.locals.push((binder.clone(), msg));
+                        self.eval_in(handler, &mut frame)
+                    }
+                };
+            }
             E::Match {
                 scrut, arms, span, ..
             } => {

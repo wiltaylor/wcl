@@ -850,6 +850,29 @@ impl Printer {
             }
 
             Expr::Function(f) => self.print_function_literal(f),
+            Expr::Try {
+                body,
+                binder,
+                handler,
+                ..
+            } => {
+                // A try expression extends through its handler, so any
+                // surrounding operator context needs parens to re-parse
+                // with the same shape.
+                let need_parens = min_bp > 0;
+                if need_parens {
+                    self.push("(");
+                }
+                self.push("try ");
+                self.print_expr(body, 0);
+                self.push(" catch ");
+                self.push(binder);
+                self.push(" => ");
+                self.print_expr(handler, 0);
+                if need_parens {
+                    self.push(")");
+                }
+            }
         }
     }
 

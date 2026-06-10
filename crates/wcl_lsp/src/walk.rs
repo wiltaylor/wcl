@@ -186,6 +186,23 @@ fn walk_expr<'a>(expr: &'a Expr, offset: usize, out: &mut EnclosingScopes<'a>) {
                 walk_expr(&arm.body, offset, out);
             }
         }
+        Expr::Try {
+            body,
+            binder,
+            binder_span,
+            handler,
+            span,
+        } => {
+            if !contains(*span, offset) {
+                return;
+            }
+            walk_expr(body, offset, out);
+            // The catch binding is in scope inside the handler only.
+            if contains(expr_span(handler), offset) {
+                out.bindings.push((binder.as_str(), *binder_span));
+            }
+            walk_expr(handler, offset, out);
+        }
         Expr::Variant { args, span, .. } => {
             if !contains(*span, offset) {
                 return;
@@ -277,6 +294,7 @@ fn expr_span(expr: &Expr) -> wcl_lang::ast::Span {
         | Expr::If { span, .. }
         | Expr::IfLet { span, .. }
         | Expr::Match { span, .. }
+        | Expr::Try { span, .. }
         | Expr::Variant { span, .. }
         | Expr::Record { span, .. } => *span,
         Expr::SelfKw(s) | Expr::ParentKw(s) => *s,

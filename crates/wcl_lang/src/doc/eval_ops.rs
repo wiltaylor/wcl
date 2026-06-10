@@ -56,6 +56,7 @@ pub(super) fn describe_expr(expr: &ast::Expr) -> &'static str {
         E::If { .. } => "if expression",
         E::IfLet { .. } => "if-let expression",
         E::Match { .. } => "match expression",
+        E::Try { .. } => "try expression",
         E::Variant { .. } => "variant constructor",
         E::Record { .. } => "record literal",
     }
