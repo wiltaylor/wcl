@@ -12,6 +12,7 @@ use wcl_lang::{Block, Document, Value};
 
 use crate::inline::InlinePatterns;
 
+use super::lower::record_lower_error;
 use super::{MAX_LOWER_DEPTH, field_bool, label_string};
 
 /// Flatten a container's children, replacing every `wdoc_repeater`,
@@ -71,7 +72,20 @@ fn flatten_container_child<'a>(child: Block<'a>, out: &mut Vec<Block<'a>>) {
 /// Returns the flattened body child blocks, each carrying the per-element
 /// binding scope. Empty when `each` doesn't evaluate to a list.
 pub(crate) fn expand_repeater_children<'a>(block: &Block<'a>) -> Vec<Block<'a>> {
-    let Some(Value::List(items)) = block.field("each").and_then(|f| f.value().ok().cloned()) else {
+    // A present `each` whose expression fails to evaluate (e.g. an
+    // unresolved reference) is a genuine error — record it so the build
+    // surfaces a diagnostic instead of silently expanding to nothing. A
+    // present-but-non-list value stays silently empty (existing
+    // semantics).
+    let each = match block.field("each").map(|f| f.value().cloned()) {
+        Some(Ok(v)) => Some(v),
+        Some(Err(e)) => {
+            record_lower_error(block, e.clone());
+            None
+        }
+        None => None,
+    };
+    let Some(Value::List(items)) = each else {
         return Vec::new();
     };
     let as_name = block
@@ -227,11 +241,20 @@ pub(crate) fn expand_component_children<'a>(
         let Some(name) = label_string(&slot) else {
             continue;
         };
-        let val = instance
-            .field(&name)
-            .and_then(|f| f.value().ok().cloned())
-            .or_else(|| slot.field("default").and_then(|f| f.value().ok().cloned()))
-            .unwrap_or(Value::None);
+        // An *absent* instance field falls to the slot's `default`; a
+        // *present* field whose expression fails to evaluate is a genuine
+        // error — record it so the build surfaces a diagnostic instead of
+        // silently binding the slot to `none`.
+        let val = match instance.field(&name).map(|f| f.value().cloned()) {
+            Some(Ok(v)) => Some(v),
+            Some(Err(e)) => {
+                record_lower_error(instance, e.clone());
+                None
+            }
+            None => None,
+        }
+        .or_else(|| slot.field("default").and_then(|f| f.value().ok().cloned()))
+        .unwrap_or(Value::None);
         bindings.push((name, val));
     }
     let Some(body) = def.block("wdoc_body") else {

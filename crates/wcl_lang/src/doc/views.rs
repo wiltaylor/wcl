@@ -132,12 +132,16 @@ pub trait DeclName<'a> {
 
     /// Fully-qualified name as a dotted string: `file_ns + name_segments`.
     fn full_name(&self) -> String {
+        self.fqn_segments().join(".")
+    }
+
+    /// Fully-qualified name as segments: `file_ns + name_segments`.
+    fn fqn_segments(&self) -> Vec<String> {
         self.file_ns()
             .iter()
             .chain(self.name_segments().iter())
             .cloned()
-            .collect::<Vec<_>>()
-            .join(".")
+            .collect()
     }
 
     /// Namespace path containing this declaration: `file_ns +
@@ -1384,6 +1388,28 @@ impl<'a> TypeField<'a> {
 
     pub fn type_ref(&self) -> &'a TypeRef {
         &self.ast.ty
+    }
+
+    /// FQN segments of this field's element type, peeling `list<…>` and
+    /// `&…` wrappers and resolving the name in the declaring file's
+    /// namespace (so a `@children("gizmo") gizmos: list<Gizmo>` under
+    /// `namespace lib` yields `["lib", "Gizmo"]`). Falls back to the
+    /// source-written segments when the name doesn't resolve. `None`
+    /// for builtin / function / tensor element types.
+    pub(crate) fn element_type_fqn_segments(&self) -> Option<Vec<String>> {
+        fn peel(ty: &TypeRef) -> Option<&[String]> {
+            match ty {
+                TypeRef::Named(segs) => Some(segs),
+                TypeRef::List(inner) | TypeRef::Reference(inner) => peel(inner),
+                _ => None,
+            }
+        }
+        let segs = peel(self.type_ref())?;
+        Some(
+            self.doc
+                .resolve_path_in(segs, self.file_ns)
+                .unwrap_or_else(|| segs.to_vec()),
+        )
     }
 }
 

@@ -170,12 +170,21 @@ impl<'a> crate::builtins::Caller for EvalCaller<'a, '_> {
     }
 
     fn resolve<'r>(&'r self, path: &[String]) -> Option<crate::data::DataRef<'r>> {
-        let (first, rest) = path.split_first()?;
-        let mut cur = self.doc.resolve_root(first)?;
-        for seg in rest {
-            cur = cur.child(seg)?;
-        }
-        Some(cur)
+        // Resolve relative to the namespace of the evaluation site (the
+        // file the innermost enclosing block lexically lives in), so a
+        // reflective builtin called inside an imported/namespaced file
+        // sees that file's declarations — and use the longest-FQN-prefix
+        // walk so fully-qualified `DataPath` segments (`lib.Gizmo`)
+        // resolve as a unit, not segment-by-segment.
+        let segs: Vec<&str> = path.iter().map(String::as_str).collect();
+        let ctx_ns = self
+            .ctx
+            .scope
+            .frames()
+            .last()
+            .map(|f| f.file_ns)
+            .unwrap_or(&self.doc.file_ns);
+        self.doc.resolve_segments_in(&segs, ctx_ns)
     }
 
     fn builtin_info(&self, name: &str) -> Option<crate::builtins::BuiltinSignature> {
@@ -1051,11 +1060,36 @@ impl Document {
                 .parent_dataref(&ctx.scope)
                 .ok_or_else(|| EvalError::unresolved_reference("parent at document root", *span)),
             E::Member { recv, name, span } => {
-                let recv_dr = self.eval_to_dataref(recv, ctx)?;
-                recv_dr.child(name).ok_or_else(|| {
-                    let full_path = format_member_path(expr);
-                    EvalError::unresolved_reference(full_path, *span)
-                })
+                let recv_result = self.eval_to_dataref(recv, ctx);
+                if let Ok(recv_dr) = &recv_result
+                    && let Some(child) = recv_dr.child(name)
+                {
+                    return Ok(child);
+                }
+                // Fall back to resolving the whole dotted path as a
+                // (possibly namespaced) FQN: `lib.Gizmo` names a
+                // declaration whose `lib` prefix is a namespace, not a
+                // resolvable node, so segment-by-segment traversal
+                // can't reach it.
+                if let Some(segs) = super::expr_to_path_segments(expr) {
+                    let segs: Vec<&str> = segs.iter().map(String::as_str).collect();
+                    let ctx_ns = ctx
+                        .scope
+                        .frames()
+                        .last()
+                        .map(|f| f.file_ns)
+                        .unwrap_or(&self.file_ns);
+                    if let Some(dr) = self.resolve_segments_in(&segs, ctx_ns) {
+                        return Ok(dr);
+                    }
+                }
+                match recv_result {
+                    Err(e) => Err(e),
+                    Ok(_) => Err(EvalError::unresolved_reference(
+                        format_member_path(expr),
+                        *span,
+                    )),
+                }
             }
             E::Paren { inner, .. } => self.eval_to_dataref(inner, ctx),
             other => Err(EvalError::not_a_reference(
@@ -1116,7 +1150,16 @@ impl Document {
         if let Some(letv) = self.root_let(name) {
             return Some(letv.value().map(crate::data::DataRef::from_variant_value));
         }
-        self.resolve_root(name).map(Ok)
+        // Root fallthrough resolves declarations relative to the
+        // evaluation site's namespace (the innermost frame's file), so a
+        // bare type reference written inside a namespaced file finds its
+        // sibling declarations.
+        let ctx_ns = scope
+            .frames()
+            .last()
+            .map(|f| f.file_ns)
+            .unwrap_or(&self.file_ns);
+        self.resolve_root_in(name, ctx_ns).map(Ok)
     }
 
     fn self_dataref<'a>(&'a self, scope: &Scope<'a>) -> crate::data::DataRef<'a> {

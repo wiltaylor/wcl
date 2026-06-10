@@ -370,25 +370,17 @@ fn child_types_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, Str
     let refs = order_fields(own, effective)
         .iter()
         .filter(|f| f.child_kind_or_union().is_some() || f.children_kind_or_union().is_some())
-        .filter_map(|f| named_type_segments(f.type_ref()))
+        // Fully-qualified segments (resolved in the declaring file's
+        // namespace), so the returned refs resolve from any namespace —
+        // a chained `type_table { type = b }` must work wherever the
+        // repeater body evaluates.
+        .filter_map(|f| f.element_type_fqn_segments())
         .map(|segments| Value::DataPath {
             kind: "type".to_string(),
             segments,
         })
         .collect();
     Ok(Value::List(refs))
-}
-
-/// The declared name path of a field's element type, peeling `list<…>` and
-/// `&…` (reference) wrappers. `None` for builtin / function / tensor types
-/// (no nameable declaration to reference).
-fn named_type_segments(ty: &crate::value::TypeRef) -> Option<Vec<String>> {
-    use crate::value::TypeRef;
-    match ty {
-        TypeRef::Named(segs) => Some(segs.clone()),
-        TypeRef::List(inner) | TypeRef::Reference(inner) => named_type_segments(inner),
-        _ => None,
-    }
 }
 
 /// Own fields (declaration order) followed by inherited fields not
@@ -824,5 +816,79 @@ mod tests {
             .expect_err("non-path arg surfaces a builtin error");
         let msg = format!("{err:?}");
         assert!(msg.contains("data path"), "{msg}");
+    }
+
+    #[test]
+    fn type_fields_resolves_namespaced_types_same_as_root() {
+        // A type under `namespace lib` reflects exactly like its
+        // root-namespace twin (regression: namespaced lookups returned
+        // nothing because resolution only tried the root namespace).
+        let namespaced = eval_field(
+            r#"
+            namespace lib
+            @block("gizmo") @schemaless
+            type Gizmo { @inline(0) id: utf8  name: utf8 }
+            @schemaless out = type_fields(Gizmo)
+            "#,
+            "out",
+        );
+        let root = eval_field(
+            r#"
+            @block("gizmo") @schemaless
+            type Gizmo { @inline(0) id: utf8  name: utf8 }
+            @schemaless out = type_fields(Gizmo)
+            "#,
+            "out",
+        );
+        assert_eq!(namespaced, root);
+        let Value::List(items) = &namespaced else {
+            panic!("expected list, got {namespaced:?}");
+        };
+        assert_eq!(items.len(), 2, "{items:?}");
+    }
+
+    #[test]
+    fn child_types_returns_fully_qualified_refs_for_namespaced_types() {
+        let v = eval_field(
+            r#"
+            namespace lib
+            @block("gizmo") @schemaless
+            type Gizmo { @inline(0) id: utf8 }
+            @schemaless
+            type LibModel { @children("gizmo") gizmos: list<Gizmo> }
+            @schemaless out = child_types(LibModel)
+            "#,
+            "out",
+        );
+        assert_eq!(
+            v,
+            Value::List(vec![Value::DataPath {
+                kind: "type".into(),
+                segments: vec!["lib".into(), "Gizmo".into()],
+            }])
+        );
+    }
+
+    #[test]
+    fn child_types_chains_into_type_fields_for_namespaced_types() {
+        // The refs `child_types` returns must be consumable by
+        // `type_fields` regardless of the namespace they're used in.
+        let v = eval_field(
+            r#"
+            namespace lib
+            @block("gizmo") @schemaless
+            type Gizmo { @inline(0) id: utf8  name: utf8 }
+            @schemaless
+            type LibModel { @children("gizmo") gizmos: list<Gizmo> }
+            @schemaless out = type_fields(at(child_types(LibModel), 0))
+            "#,
+            "out",
+        );
+        let Value::List(items) = &v else {
+            panic!("expected list, got {v:?}");
+        };
+        assert_eq!(items.len(), 2, "{items:?}");
+        assert_eq!(record_field(&items[0], "name"), &Value::Utf8("id".into()));
+        assert_eq!(record_field(&items[1], "name"), &Value::Utf8("name".into()));
     }
 }

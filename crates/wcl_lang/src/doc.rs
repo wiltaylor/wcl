@@ -530,17 +530,29 @@ impl Document {
     /// [`DataRef::child`].
     pub fn get(&self, path: &str) -> Option<crate::data::DataRef<'_>> {
         let segs: Vec<&str> = path.split('.').filter(|s| !s.is_empty()).collect();
+        self.resolve_segments_in(&segs, &self.file_ns)
+    }
+
+    /// Dotted-path resolution shared by [`get`] and the reflection
+    /// builtins' `Caller::resolve`, with an explicit namespace context
+    /// for the root lookup (see [`resolve_root_in`]).
+    ///
+    /// Tries the longest matching FQN prefix as the root, so a dotted
+    /// path can resolve directly to an imported item (e.g.
+    /// `doc.get("shared.brand")` for an imported file with namespace
+    /// `shared`). Falls through to single-segment root (the existing
+    /// block-then-child traversal).
+    pub(crate) fn resolve_segments_in(
+        &self,
+        segs: &[&str],
+        context_ns: &[String],
+    ) -> Option<crate::data::DataRef<'_>> {
         if segs.is_empty() {
             return None;
         }
-        // Try the longest matching FQN prefix as the root, so a
-        // dotted path can resolve directly to an imported item
-        // (e.g. `doc.get("shared.brand")` for an imported file with
-        // namespace `shared`). Falls through to single-segment root
-        // (the existing block-then-child traversal).
         for k in (1..=segs.len()).rev() {
             let prefix = segs[..k].join(".");
-            if let Some(root) = self.resolve_root(&prefix) {
+            if let Some(root) = self.resolve_root_in(&prefix, context_ns) {
                 let mut cur = root;
                 for seg in &segs[k..] {
                     cur = cur.child(seg)?;
@@ -672,6 +684,21 @@ impl Document {
     }
 
     pub(crate) fn resolve_root(&self, name: &str) -> Option<crate::data::DataRef<'_>> {
+        self.resolve_root_in(name, &self.file_ns)
+    }
+
+    /// [`resolve_root`] with an explicit namespace context: declaration
+    /// lookups (type / union / symbol set / interface) resolve as if the
+    /// reference were written in a source whose namespace is
+    /// `context_ns`, via the full name-resolution algorithm (context
+    /// namespace first, then aliases / wildcards / absolute). Root-level
+    /// projections, fields and blocks are root-document concerns and
+    /// ignore `context_ns`.
+    pub(crate) fn resolve_root_in(
+        &self,
+        name: &str,
+        context_ns: &[String],
+    ) -> Option<crate::data::DataRef<'_>> {
         use crate::data::DataRef;
         // Document-schema-driven projections at the root: a field on
         // the `@document` type marked with `@connections(...)` is
@@ -714,23 +741,23 @@ impl Document {
         if let Some(b) = self.block(name) {
             return Some(DataRef::from_block(b));
         }
-        let qualified = self.qualified_name_public(name);
-        if let Some(t) = self.type_decl(&qualified).or_else(|| self.type_decl(name)) {
+        // Declarations resolve through the real name-resolution
+        // algorithm so a type declared in an imported file's namespace
+        // (registered as e.g. `lib.Gizmo`) is found from a bare `Gizmo`
+        // (wildcard), an aliased reference, or a dotted `lib.Gizmo`.
+        let segs: Vec<String> = name.split('.').map(str::to_string).collect();
+        let fqn = self.resolve_path_in(&segs, context_ns).map(|p| p.join("."));
+        let qualified: &str = fqn.as_deref().unwrap_or(name);
+        if let Some(t) = self.type_decl(qualified).or_else(|| self.type_decl(name)) {
             return Some(DataRef::from_type(t));
         }
-        if let Some(u) = self
-            .union_decl(&qualified)
-            .or_else(|| self.union_decl(name))
-        {
+        if let Some(u) = self.union_decl(qualified).or_else(|| self.union_decl(name)) {
             return Some(DataRef::from_union(u));
         }
-        if let Some(s) = self
-            .symbol_set(&qualified)
-            .or_else(|| self.symbol_set(name))
-        {
+        if let Some(s) = self.symbol_set(qualified).or_else(|| self.symbol_set(name)) {
             return Some(DataRef::from_symbol_set(s));
         }
-        if let Some(i) = self.interface(&qualified).or_else(|| self.interface(name)) {
+        if let Some(i) = self.interface(qualified).or_else(|| self.interface(name)) {
             return Some(DataRef::from_interface(i));
         }
         None
@@ -889,16 +916,6 @@ impl Document {
             TypeRef::Named(path) => self.resolve_path_in(path, file_ns).map(|p| p.join(".")),
             TypeRef::Reference(inner) => self.resolve_type_fqn_in(inner, file_ns),
             _ => None,
-        }
-    }
-
-    /// Same composition rule as the evaluator's `qualified_name`, exposed
-    /// here so `resolve_root` doesn't depend on a private helper.
-    fn qualified_name_public(&self, name: &str) -> String {
-        if self.file_ns.is_empty() {
-            name.to_string()
-        } else {
-            format!("{}.{}", self.file_ns.join("."), name)
         }
     }
 
@@ -1989,14 +2006,31 @@ fn materialise_dataref_or_path(
     _span: Span,
 ) -> Result<Value, EvalError> {
     use crate::data::DataKind;
+    use crate::doc::views::DeclName;
     match dr.inner() {
         DataKind::Field(f) => f.value().cloned().map_err(|e| e.clone()),
         DataKind::VariantValue(v) => Ok(v.clone()),
         DataKind::VariantValueList(vs) => Ok(Value::List(vs.clone())),
-        other => Ok(Value::DataPath {
-            kind: describe_datakind(other).to_string(),
-            segments,
-        }),
+        other => {
+            // A handle to a *declaration* carries the declaration's FQN
+            // segments, not the source-written ones, so the path stays
+            // resolvable when the value crosses into another namespace
+            // (e.g. a `type = LibModel` slot binding consumed inside the
+            // stdlib's `namespace wdoc` component bodies). Child kinds
+            // (type fields, variants, symbols) keep the source segments;
+            // they resolve through the namespace-aware lookup instead.
+            let segments = match other {
+                DataKind::Type(t) => t.fqn_segments(),
+                DataKind::Interface(i) => i.fqn_segments(),
+                DataKind::Union(u) => u.fqn_segments(),
+                DataKind::Symbols(s) => s.fqn_segments(),
+                _ => segments,
+            };
+            Ok(Value::DataPath {
+                kind: describe_datakind(other).to_string(),
+                segments,
+            })
+        }
     }
 }
 

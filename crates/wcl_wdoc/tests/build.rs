@@ -8273,3 +8273,119 @@ fn toc_fallback_titles_entries_by_first_h1() {
         "h1-less page keeps its name"
     );
 }
+
+#[test]
+fn block_reference_documents_namespaced_schema_bare_and_qualified() {
+    // Regression: reflection (`type_table` / `block_reference` /
+    // `child_types`) silently emitted nothing for types declared under a
+    // `namespace` in an imported schema file, while root-namespace types
+    // worked. Both the bare reference (resolved via the import) and the
+    // qualified `lib.…` path must render the heading + property table.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    std::fs::write(
+        tmp.path().join("schema.wcl"),
+        r#"
+namespace lib
+
+@block("gizmo")
+type Gizmo {
+  @inline(0) @doc("Stable id.") id: utf8
+  @doc("Display name.") name: utf8
+}
+
+@document
+type LibModel {
+  @children("gizmo") gizmos: list<Gizmo>
+}
+"#,
+    )
+    .expect("write schema fixture");
+    let src = tmp.path().join("main.wcl");
+    write_fixture(
+        &src,
+        r#"
+import "./schema.wcl"
+page ref {
+  h2 "bare"
+  block_reference { type = LibModel }
+  h2 "qualified"
+  block_reference { type = lib.LibModel }
+  h2 "table"
+  type_table { type = lib.Gizmo }
+}
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("ref.html")).expect("read html");
+
+    // block_reference: one h3 kind heading per child slot, per usage.
+    assert_eq!(
+        html.matches("<p class=\"heading-3\"><span>gizmo</span></p>")
+            .count(),
+        2,
+        "bare and qualified block_reference both emit the kind heading:\n{html}"
+    );
+    // type_table rows reflect the namespaced type's fields + docs.
+    assert_eq!(
+        html.matches("<span class=\"code\">name</span>").count(),
+        3,
+        "all three tables carry the `name` property row:\n{html}"
+    );
+    assert!(html.contains("Stable id."), "@doc text renders:\n{html}");
+    assert!(html.contains("Display name."), "@doc text renders:\n{html}");
+}
+
+#[test]
+fn unresolvable_type_slot_is_a_build_error_not_silence() {
+    // Regression: a `type =` reference that resolves to nothing used to
+    // render an empty page with exit 0. A present-but-erroring component
+    // slot binding must surface as a build diagnostic.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("main.wcl");
+    write_fixture(
+        &src,
+        r#"
+page ref {
+  type_table { type = NoSuchType }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::Eval(r)) => {
+            let msg = format!("{r:?}");
+            assert!(msg.contains("NoSuchType"), "{msg}");
+        }
+        Ok(n) => panic!("expected eval error, built {n} pages"),
+        Err(_) => panic!("expected Eval error, got a different build error"),
+    }
+}
+
+#[test]
+fn unresolvable_repeater_each_is_a_build_error_not_silence() {
+    // Same contract for `wdoc_repeater`: a present `each` whose
+    // expression fails to evaluate is an error, not an empty expansion.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("main.wcl");
+    write_fixture(
+        &src,
+        r#"
+page ref {
+  wdoc_repeater { each = no_such_list  as = :x
+    p $"${x}"
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::Eval(r)) => {
+            let msg = format!("{r:?}");
+            assert!(msg.contains("no_such_list"), "{msg}");
+        }
+        Ok(n) => panic!("expected eval error, built {n} pages"),
+        Err(_) => panic!("expected Eval error, got a different build error"),
+    }
+}
