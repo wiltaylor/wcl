@@ -635,6 +635,11 @@ fn build_site(
         .as_ref()
         .and_then(|b| field_bool(b, "theme_toggle"))
         .unwrap_or(false);
+    let search = spec
+        .block
+        .as_ref()
+        .and_then(|b| field_bool(b, "search"))
+        .unwrap_or(false);
     let toc_nodes: Vec<TocNode> = spec.block.as_ref().map(read_toc).unwrap_or_default();
     let menu_nodes: Vec<MenuNode> = spec.block.as_ref().map(read_menu).unwrap_or_default();
     let deck_nodes: Vec<DeckSectionNode> = spec.block.as_ref().map(read_deck).unwrap_or_default();
@@ -751,21 +756,36 @@ fn build_site(
             map: uses_map,
             dopesheet: uses_dopesheet,
             video: uses_video,
+            search,
         },
+        search,
     };
 
     // A `presentation` site renders all its slides into a single deck
     // `index.html`; every other site renders one file per page.
+    let mut search_entries: Vec<SearchEntry> = Vec::new();
     let count = if is_presentation {
         build_presentation_page(&ctx)?
     } else {
         let mut count = 0;
         for page in &spec.pages {
-            build_normal_page(&ctx, page)?;
+            if let Some(entry) = build_normal_page(&ctx, page)? {
+                search_entries.push(entry);
+            }
             count += 1;
         }
         count
     };
+
+    // The opt-in (`search = true`) site search: the client-side widget
+    // plus the per-page text index it queries, both under `_wdoc/`.
+    if search {
+        write_asset(out_dir, "wdoc-search.js", WDOC_SEARCH_JS)?;
+        let entries: Vec<serde_json::Value> =
+            search_entries.iter().map(SearchEntry::to_json).collect();
+        let json = serde_json::Value::Array(entries).to_string();
+        write_asset(out_dir, "search-index.json", json)?;
+    }
 
     // Every icon resolved while rendering goes into one shared sprite
     // (`_wdoc/icons.svg`) that the pages reference via `<use>`. Written
@@ -809,6 +829,7 @@ struct PlayerScripts {
     map: bool,
     dopesheet: bool,
     video: bool,
+    search: bool,
 }
 
 impl PlayerScripts {
@@ -832,6 +853,9 @@ impl PlayerScripts {
         }
         if self.video {
             body.push_str("\n<script src=\"_wdoc/wdoc-video.js\" defer></script>\n");
+        }
+        if self.search {
+            body.push_str("\n<script src=\"_wdoc/wdoc-search.js\" defer></script>\n");
         }
     }
 }
@@ -857,6 +881,7 @@ struct PageRenderCtx<'a> {
     home_href: &'a str,
     home_title: &'a str,
     players: PlayerScripts,
+    search: bool,
 }
 
 /// Render a `presentation` site: every `slide` page becomes one section of
@@ -946,6 +971,7 @@ fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError>
         ctx.theme_toggle,
         ctx.home_href,
         ctx.home_title,
+        ctx.search,
         ctx.inline_patterns,
     );
     // The slides may use the same interactive assets a normal page can.
@@ -964,8 +990,12 @@ fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError>
     Ok(1)
 }
 
-/// Render one ordinary page to `<name>.html`.
-fn build_normal_page(ctx: &PageRenderCtx<'_>, page: &Block<'_>) -> Result<(), BuildError> {
+/// Render one ordinary page to `<name>.html`. Returns the page's
+/// search-index entry when the site has `search = true`.
+fn build_normal_page(
+    ctx: &PageRenderCtx<'_>,
+    page: &Block<'_>,
+) -> Result<Option<SearchEntry>, BuildError> {
     let labels = page
         .labels()
         .map_err(|e| BuildError::BadPage(format!("page label eval: {e}")))?;
@@ -1032,10 +1062,11 @@ fn build_normal_page(ctx: &PageRenderCtx<'_>, page: &Block<'_>) -> Result<(), Bu
                 ctx.theme_toggle,
                 ctx.home_href,
                 ctx.home_title,
+                ctx.search,
                 ctx.inline_patterns,
             )
         }
-        None => content,
+        None => content.clone(),
     };
     ctx.players.inject(&mut body);
     // Browser tab title: the page's own `title` (else its name), suffixed
@@ -1050,8 +1081,123 @@ fn build_normal_page(ctx: &PageRenderCtx<'_>, page: &Block<'_>) -> Result<(), Bu
     let out_path = ctx.out_dir.join(format!("{page_name}.html"));
     fs::write(&out_path, html)
         .map_err(|e| BuildError::Io(e, format!("write {}", out_path.display())))?;
-    Ok(())
+    if !ctx.search {
+        return Ok(None);
+    }
+    // Index the page's own content (not the template shell, so nav
+    // chrome doesn't match every query). The title is the first `h1`
+    // when the page has one, else the page name.
+    let text = html_to_text(&content);
+    let title = first_h1_text(&content).unwrap_or_else(|| page_name.clone());
+    Ok(Some(SearchEntry {
+        href: format!("{page_name}.html"),
+        title,
+        text,
+    }))
 }
+
+/// One page in the `search-index.json` a `search = true` site ships.
+struct SearchEntry {
+    href: String,
+    title: String,
+    text: String,
+}
+
+impl SearchEntry {
+    fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "href": self.href,
+            "title": self.title,
+            "text": self.text,
+        })
+    }
+}
+
+/// Plain text of rendered HTML for the search index: tags dropped,
+/// `<script>` / `<style>` contents skipped (SVG text nodes — diagram
+/// labels — survive, which is wanted), whitespace collapsed.
+fn html_to_text(html: &str) -> String {
+    let mut out = String::with_capacity(html.len() / 4);
+    let mut rest = html;
+    let mut last_ws = true;
+    while let Some(lt) = rest.find('<') {
+        for ch in rest[..lt].chars() {
+            if ch.is_whitespace() {
+                if !last_ws {
+                    out.push(' ');
+                    last_ws = true;
+                }
+            } else {
+                out.push(ch);
+                last_ws = false;
+            }
+        }
+        rest = &rest[lt..];
+        let lower = rest.get(..8).unwrap_or("").to_ascii_lowercase();
+        let skip_to = if lower.starts_with("<script") {
+            Some("</script>")
+        } else if lower.starts_with("<style") {
+            Some("</style>")
+        } else {
+            None
+        };
+        if let Some(close) = skip_to {
+            match rest.to_ascii_lowercase().find(close) {
+                Some(end) => rest = &rest[end + close.len()..],
+                None => break,
+            }
+            continue;
+        }
+        match rest.find('>') {
+            Some(gt) => rest = &rest[gt + 1..],
+            None => break,
+        }
+    }
+    for ch in rest.chars() {
+        if ch.is_whitespace() {
+            if !last_ws {
+                out.push(' ');
+                last_ws = true;
+            }
+        } else {
+            out.push(ch);
+            last_ws = false;
+        }
+    }
+    // Decode the entities the HTML emitters produce, so the index (and
+    // the widget, which sets textContent) shows `&`, not `&amp;`.
+    let decoded = out
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&");
+    decoded.trim().to_string()
+}
+
+/// The text of the page's first top-level heading, if any. Headings
+/// lower to `<p class="heading-1">…</p>`; raw-HTML `<h1>` is the
+/// fallback.
+fn first_h1_text(html: &str) -> Option<String> {
+    if let Some(start) = html.find("heading-1")
+        && let Some(open_end) = html[start..].find('>').map(|i| start + i + 1)
+        && let Some(close) = html[open_end..].find("</p>").map(|i| open_end + i)
+    {
+        let text = html_to_text(&html[open_end..close]);
+        if !text.is_empty() {
+            return Some(text);
+        }
+    }
+    let lower = html.to_ascii_lowercase();
+    let start = lower.find("<h1")?;
+    let open_end = html[start..].find('>')? + start + 1;
+    let close = lower[open_end..].find("</h1>")? + open_end;
+    let text = html_to_text(&html[open_end..close]);
+    if text.is_empty() { None } else { Some(text) }
+}
+
+/// The bundled client-side search widget (see `assets/wdoc-search.js`).
+const WDOC_SEARCH_JS: &str = include_str!("../assets/wdoc-search.js");
 
 /// Ensure a site subdirectory has an `index.html` so `/<site>/` lands
 /// somewhere. A site that already has an `index` page wrote one; else

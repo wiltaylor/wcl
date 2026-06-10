@@ -52,6 +52,7 @@ type TemplateCtx {
   menu:         list<MenuEntry> // the site's curated navbar menu (empty if no `menu`)
   deck:         list<DeckSection> // the resolved presentation deck (empty unless the `presentation` template renders the whole site at once)
   theme_toggle: bool            // whether to render a light/dark toggle (site flag)
+  search:       bool            // whether to render the site search box (site flag)
   home_href:    utf8            // relative href back to the root site (empty when this IS the root site, or single-site)
   home_title:   utf8            // the root site's title, for the back-link text
 }
@@ -127,6 +128,13 @@ type SiteConfig {
   // with `class` blocks that declare `dark {}` / `light {}` modes.
   @doc("When `true`, adds a light/dark toggle button.")
   theme_toggle:     bool?
+  // Client-side full-text search. The build writes a per-page text
+  // index (`_wdoc/search-index.json`) and the stdlib templates render
+  // a search box (book sidebar / webpage nav) backed by the bundled
+  // widget script. Works when the site is served, not opened directly
+  // from disk (the widget fetches the index).
+  @doc("When `true`, adds a client-side full-text search box (book and webpage templates).")
+  search:           bool?
   // Colour theme for this site — a symbol naming a `theme` block: a
   // built-in (`:nord` / `:gruvbox` / `:solarized` / `:catppuccin` /
   // `:tokyonight` / `:kanagawa` / `:everforest`) or one you declare
@@ -315,6 +323,48 @@ let menu_script = HtmlFundamental::Raw {
 // falls back to a flat link per page. Users can declare their own
 // `template <name> { render = ... }` blocks and select them with
 // `default_template` / a page's `template` field.
+// The site search box: an input plus a results dropdown, wired up by
+// the bundled `wdoc-search.js` (injected by the build when the site
+// sets `search = true`). The `<style>` ships with the box so the CSS
+// loads only when search is enabled.
+let wdoc_search_css = <<CSS
+  .wdoc-search { position: relative; margin: 0 0 0.75rem; }
+  .wdoc-search-input { width: 100%; box-sizing: border-box; padding: 0.3rem 0.5rem; font: inherit; color: inherit; background: var(--wdoc-bg, transparent); border: 1px solid var(--wdoc-border, rgba(127,127,127,0.4)); border-radius: 4px; }
+  .wdoc-search-results { display: none; position: absolute; z-index: 10; left: 0; right: 0; max-height: 60vh; overflow-y: auto; background: var(--wdoc-bg-alt, #fff); border: 1px solid var(--wdoc-border, rgba(127,127,127,0.4)); border-radius: 4px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); }
+  .wdoc-search-results.open { display: block; }
+  .wdoc-search-hit { display: block; padding: 0.45rem 0.6rem; text-decoration: none; color: inherit; border-bottom: 1px solid var(--wdoc-border, rgba(127,127,127,0.2)); }
+  .wdoc-search-hit:last-child { border-bottom: none; }
+  .wdoc-search-hit:hover { background: rgba(127,127,127,0.12); }
+  .wdoc-search-hit-title { display: block; font-weight: 600; }
+  .wdoc-search-hit-snippet { display: block; font-size: 0.85em; opacity: 0.75; margin-top: 0.15rem; }
+  .wdoc-search-empty { padding: 0.45rem 0.6rem; opacity: 0.7; }
+  .site-nav .wdoc-search { display: inline-block; margin: 0 0 0 1rem; min-width: 14rem; vertical-align: middle; }
+  CSS
+
+let wdoc_search_box = fn(enabled: bool) -> list<HtmlFundamental>
+  if enabled {
+    [
+      HtmlFundamental::Element {
+        tag: "style", id: none, class: none, attrs: none,
+        children: [ HtmlFundamental::Raw { html: wdoc_search_css } ],
+      },
+      HtmlFundamental::Element {
+        tag: "div", id: none, class: ["wdoc-search"], attrs: none,
+        children: [
+          HtmlFundamental::Element {
+            tag: "input", id: none, class: ["wdoc-search-input"],
+            attrs: [["type", "search"], ["placeholder", "Search…"], ["aria-label", "Search this site"]],
+            children: [],
+          },
+          HtmlFundamental::Element {
+            tag: "div", id: none, class: ["wdoc-search-results"], attrs: none,
+            children: [],
+          },
+        ],
+      },
+    ]
+  } else { [] }
+
 template webpage {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental>
     flatten([
@@ -331,6 +381,7 @@ template webpage {
           tag: "nav", id: none, class: ["site-nav"], attrs: none,
           children: flatten([
             home_link(c, "site-home"),
+            wdoc_search_box(c.search),
             if len(c.menu) == 0 {
               map(c.pages, fn(p: PageRef) -> HtmlFundamental
                 HtmlFundamental::Element {
@@ -479,6 +530,7 @@ template book {
             children: [ HtmlFundamental::Raw { html: c.title } ],
           } ],
         home_link(c, "book-home"),
+        wdoc_search_box(c.search),
         if c.theme_toggle { book_theme_toggle } else { [] },
         book_toc(c.toc),
         // Runs after the TOC is in the DOM (inline script executes at parse

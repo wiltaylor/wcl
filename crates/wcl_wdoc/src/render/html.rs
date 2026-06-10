@@ -286,6 +286,7 @@ pub(crate) fn render_template(
     theme_toggle: bool,
     home_href: &str,
     home_title: &str,
+    search: bool,
     patterns: &InlinePatterns,
 ) -> String {
     let Some(field) = template.field("render") else {
@@ -338,6 +339,7 @@ pub(crate) fn render_template(
     // presentation build path, empty (an empty list) for normal pages.
     ctx.insert("deck".to_string(), deck);
     ctx.insert("theme_toggle".to_string(), Value::Bool(theme_toggle));
+    ctx.insert("search".to_string(), Value::Bool(search));
     ctx.insert("home_href".to_string(), Value::Utf8(home_href.to_string()));
     ctx.insert(
         "home_title".to_string(),

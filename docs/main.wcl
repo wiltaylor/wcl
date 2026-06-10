@@ -50,6 +50,7 @@ site reference {
   theme            = :nord
   accent           = :cyan
   theme_toggle     = true
+  search           = true
   toc {
     chapter "Introduction" { page = index }
 

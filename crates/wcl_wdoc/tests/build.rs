@@ -8179,3 +8179,68 @@ fn diagram_desc_becomes_svg_title_and_aria_label() {
         "no empty aria-label emitted"
     );
 }
+
+#[test]
+fn search_site_ships_index_and_widget() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("s.wcl");
+    write_fixture(
+        &src,
+        concat!(
+            "site demo {\n",
+            "  title = \"Demo\"\n",
+            "  default_template = :book\n",
+            "  search = true\n",
+            "}\n",
+            "page index {\n  h1 \"Welcome Home\"\n  p \"The quick brown fox configures servers.\"\n}\n",
+            "page other {\n  h1 \"Other Page\"\n  p \"Tilemap rendering details live here.\"\n}\n",
+        ),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+
+    // The per-page text index, with first-h1 titles and body text.
+    let index = std::fs::read_to_string(out.path().join("_wdoc/search-index.json"))
+        .expect("search index written");
+    assert!(index.contains("\"title\":\"Welcome Home\""), "{index}");
+    assert!(index.contains("\"href\":\"other.html\""), "{index}");
+    assert!(index.contains("quick brown fox"), "page text indexed");
+    // Nav chrome (sidebar TOC links) must not pollute a page's text.
+    assert!(
+        !index.contains("book-sidebar"),
+        "template shell stays out of the index"
+    );
+
+    // The widget: input + results container in the sidebar, the bundled
+    // script on the page, and the script asset on disk.
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    assert!(html.contains("wdoc-search-input"), "search box rendered");
+    assert!(
+        html.contains("_wdoc/wdoc-search.js"),
+        "widget script injected"
+    );
+    assert!(
+        out.path().join("_wdoc/wdoc-search.js").exists(),
+        "widget asset shipped"
+    );
+}
+
+#[test]
+fn search_is_off_by_default() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("s.wcl");
+    write_fixture(
+        &src,
+        "site demo {\n  title = \"Demo\"\n  default_template = :book\n}\n\
+         page index {\n  h1 \"Home\"\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    assert!(
+        !out.path().join("_wdoc/search-index.json").exists(),
+        "no index without search = true"
+    );
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    assert!(!html.contains("wdoc-search-input"), "no widget markup");
+    assert!(!html.contains("wdoc-search.js"), "no widget script");
+}
