@@ -18,6 +18,15 @@ type RecordPatBody = (Vec<(String, Pattern)>, bool, usize);
 
 impl<'a> Parser<'a> {
     pub(super) fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
+        self.enter_recursion()?;
+        let result = self.parse_pattern_inner();
+        if result.is_ok() {
+            self.leave_recursion();
+        }
+        result
+    }
+
+    fn parse_pattern_inner(&mut self) -> Result<Pattern, ParseError> {
         let tok = self.peek()?;
         match &tok.kind {
             TokenKind::Ident(s) if s == "_" => {

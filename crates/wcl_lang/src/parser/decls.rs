@@ -1165,6 +1165,7 @@ impl<'a> Parser<'a> {
             }));
         }
         self.bump()?; // consume '{'
+        self.enter_recursion()?;
         self.block_depth += 1;
         let body_result = (|| -> Result<Vec<Item>, ParseError> {
             let mut items = Vec::new();
@@ -1191,6 +1192,7 @@ impl<'a> Parser<'a> {
             Ok(items)
         })();
         self.block_depth -= 1;
+        self.leave_recursion();
         let items = body_result?;
         let rbrace = self.bump()?;
         // Comments on their own lines after the last item, before `}`.

@@ -35,6 +35,13 @@ pub struct Parser<'a> {
     file_ns: Vec<String>,
     index: SymbolIndex,
     block_depth: u32,
+    /// Recursive-descent depth across the four self-nesting parse
+    /// paths (expressions, type references, patterns, blocks). Capped
+    /// at [`MAX_PARSE_DEPTH`] so pathological input (kilobytes of
+    /// `(((((…`) raises a spanned diagnostic instead of overflowing
+    /// the stack — anything taking untrusted input (`wcl check`, the
+    /// LSP, `wdoc serve` mid-edit) can hit this.
+    recursion_depth: u32,
     /// Trivia (comments + blank lines) captured at the start of the
     /// current `parse_item` call. Each sub-parser drains this via
     /// `take_item_trivia()` when it builds the final Item struct, so
@@ -43,7 +50,35 @@ pub struct Parser<'a> {
     current_item_trivia: Vec<crate::ast::Trivia>,
 }
 
+/// Hard cap on recursive-descent nesting — generous for real
+/// documents, far below the stack limit. Sized for the smallest stack
+/// the parser runs on (2 MiB test / worker threads, with ASan frame
+/// inflation under fuzzing): each paren level costs a few KiB of
+/// frames across parse_expr_bp → parse_prefix → the paren arm.
+pub(crate) const MAX_PARSE_DEPTH: u32 = 128;
+
 impl<'a> Parser<'a> {
+    /// Enter one level of self-nesting parse recursion, erroring past
+    /// [`MAX_PARSE_DEPTH`]. Pair with `leave_recursion` on success
+    /// paths (an `Err` aborts the whole parse, so unwinding the
+    /// counter there is unnecessary).
+    pub(super) fn enter_recursion(&mut self) -> Result<(), ParseError> {
+        self.recursion_depth += 1;
+        if self.recursion_depth > MAX_PARSE_DEPTH {
+            let span = self.peek().map(|t| t.span).unwrap_or(Span::new(0, 0));
+            return Err(self.err(
+                format!("nesting too deep (more than {MAX_PARSE_DEPTH} levels)"),
+                span,
+                "nesting limit reached here",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn leave_recursion(&mut self) {
+        self.recursion_depth -= 1;
+    }
+
     pub fn new(src: &'a str, file: impl Into<String>) -> Self {
         let file = file.into();
         let named_src = std::sync::Arc::new(NamedSource::new(file.clone(), src.to_string()));
@@ -57,6 +92,7 @@ impl<'a> Parser<'a> {
             file_ns: Vec::new(),
             index: SymbolIndex::default(),
             block_depth: 0,
+            recursion_depth: 0,
             current_item_trivia: Vec::new(),
         }
     }

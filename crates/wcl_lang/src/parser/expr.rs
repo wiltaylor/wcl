@@ -109,6 +109,15 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expr_bp(&mut self, min_bp: u8) -> Result<(Expr, Span), ParseError> {
+        self.enter_recursion()?;
+        let result = self.parse_expr_bp_inner(min_bp);
+        if result.is_ok() {
+            self.leave_recursion();
+        }
+        result
+    }
+
+    fn parse_expr_bp_inner(&mut self, min_bp: u8) -> Result<(Expr, Span), ParseError> {
         let (mut lhs, mut span) = self.parse_prefix()?;
         loop {
             let kind = self.peek()?.kind.clone();
@@ -936,7 +945,7 @@ impl<'a> Parser<'a> {
                 params,
                 return_ty,
                 return_ty_span,
-                body: Box::new(body),
+                body: std::sync::Arc::new(body),
                 span,
                 trailing_trivia,
             }),

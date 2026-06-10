@@ -10,6 +10,15 @@ use super::{Parser, describe};
 
 impl<'a> Parser<'a> {
     pub(super) fn parse_type_ref(&mut self) -> Result<(TypeRef, Span), ParseError> {
+        self.enter_recursion()?;
+        let result = self.parse_type_ref_inner();
+        if result.is_ok() {
+            self.leave_recursion();
+        }
+        result
+    }
+
+    fn parse_type_ref_inner(&mut self) -> Result<(TypeRef, Span), ParseError> {
         let head = self.peek()?;
         if matches!(head.kind, TokenKind::Amp) {
             let amp = self.bump()?;

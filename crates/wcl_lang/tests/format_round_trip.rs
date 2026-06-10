@@ -103,3 +103,19 @@ fn blank_only_files_format_to_empty() {
     let out = round_trip("\n\n");
     assert_eq!(out, "", "no leading blank lines survive:\n{out:?}");
 }
+
+#[test]
+fn deeply_nested_input_errors_instead_of_overflowing_the_stack() {
+    // Regression (BUG-parser-recursion-overflow): kilobytes of `(((((`
+    // used to abort the process with a stack overflow. The recursive
+    // parse paths are depth-capped with a spanned diagnostic.
+    let src = format!("x = {}1{}\n", "(".repeat(4000), ")".repeat(4000));
+    let err = parse_for_edit(&src, "deep").expect_err("depth cap fires");
+    assert!(
+        format!("{err}").contains("nesting too deep"),
+        "expected nesting diagnostic, got: {err}"
+    );
+    // Deep but legal nesting still parses.
+    let ok = format!("x = {}1{}\n", "(".repeat(100), ")".repeat(100));
+    parse_for_edit(&ok, "ok").expect("100 levels parse fine");
+}
