@@ -398,6 +398,15 @@ impl Document {
                 return apply_unary(*op, v, *span);
             }
             E::Binary { op, lhs, rhs, span } => {
+                // `a ?? b`: the left value unless it is `none` — the
+                // right side only evaluates when needed.
+                if matches!(op, ast::BinOp::Coalesce) {
+                    let l = self.eval_in(lhs, ctx)?;
+                    if !matches!(l, Value::None) {
+                        return Ok(l);
+                    }
+                    return self.eval_in(rhs, ctx);
+                }
                 // Short-circuit logical ops.
                 if matches!(op, ast::BinOp::And | ast::BinOp::Or) {
                     let l = self.eval_in(lhs, ctx)?;

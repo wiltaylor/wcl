@@ -88,6 +88,7 @@ pub(super) fn op_name(op: ast::BinOp) -> &'static str {
         ast::BinOp::Ge => ">=",
         ast::BinOp::And => "&&",
         ast::BinOp::Or => "||",
+        ast::BinOp::Coalesce => "??",
     }
 }
 
@@ -187,7 +188,7 @@ pub(super) fn apply_binary(
         B::Le => compare(&l, &r, span, |c| c != std::cmp::Ordering::Greater),
         B::Gt => compare(&l, &r, span, |c| c == std::cmp::Ordering::Greater),
         B::Ge => compare(&l, &r, span, |c| c != std::cmp::Ordering::Less),
-        B::And | B::Or => unreachable!("handled with short-circuit eval"),
+        B::And | B::Or | B::Coalesce => unreachable!("handled with short-circuit eval"),
     }
 }
 

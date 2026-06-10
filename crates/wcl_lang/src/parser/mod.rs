@@ -763,6 +763,7 @@ pub(super) fn describe(t: &TokenKind) -> String {
         TokenKind::Bang => "'!'".to_string(),
         TokenKind::Colon => "':'".to_string(),
         TokenKind::Question => "'?'".to_string(),
+        TokenKind::QuestionQuestion => "'??'".to_string(),
         TokenKind::Amp => "'&'".to_string(),
         TokenKind::AmpAmp => "'&&'".to_string(),
         TokenKind::Pipe => "'|'".to_string(),

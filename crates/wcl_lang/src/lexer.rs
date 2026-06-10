@@ -22,6 +22,8 @@ pub enum TokenKind {
     Colon,
     ColonColon,
     Question,
+    /// `??` — the none-coalescing operator.
+    QuestionQuestion,
     Amp,
     AmpAmp,
     Pipe,
@@ -273,7 +275,17 @@ impl<'a> Lexer<'a> {
                     Ok(self.single(start, TokenKind::Colon))
                 }
             }
-            b'?' => Ok(self.single(start, TokenKind::Question)),
+            b'?' => {
+                if self.peek_at(1) == Some(b'?') {
+                    self.pos += 2;
+                    Ok(Token::new(
+                        TokenKind::QuestionQuestion,
+                        Span::new(start, self.pos),
+                    ))
+                } else {
+                    Ok(self.single(start, TokenKind::Question))
+                }
+            }
             b'.' => {
                 if self.peek_at(1) == Some(b'.') {
                     self.pos += 2;

@@ -952,6 +952,7 @@ fn number_to_expr(n: NumberLit) -> Expr {
 /// [`BinOp::binding_power`], the shared parser/formatter table.
 fn bin_op_info(k: &TokenKind) -> Option<(u8, u8, BinOp)> {
     let op = match k {
+        TokenKind::QuestionQuestion => BinOp::Coalesce,
         TokenKind::PipePipe => BinOp::Or,
         TokenKind::AmpAmp => BinOp::And,
         TokenKind::EqEq => BinOp::Eq,

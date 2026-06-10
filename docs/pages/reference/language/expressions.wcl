@@ -17,10 +17,11 @@ page expressions { sites = [:reference, :wcl_skill]  title = "Expressions"
       | "Arithmetic" | "`+` `-` `*` `/` `%`" |
       | "Comparison" | "`==` `!=` `<` `<=` `>` `>=`" |
       | "Logical"    | "`&&` `||` `!`" |
+      | "Coalescing" | "`??` (left value unless `none`)" |
       | "Unary"      | "`-expr` (negate), `!expr` (not)" |
   }
 
-  p "Precedence follows the usual conventions: unary tightest, then `*` `/` `%`, then `+` `-`, then comparison, then `&&`, then `||`. Use parentheses to group when in doubt."
+  p "Precedence follows the usual conventions: unary tightest, then `*` `/` `%`, then `+` `-`, then comparison, then `&&`, then `||`, then `??` loosest. Use parentheses to group when in doubt."
 
   h2 "Numeric promotion"
 

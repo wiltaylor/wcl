@@ -314,6 +314,8 @@ pub enum BinOp {
     Ge,
     And,
     Or,
+    /// `a ?? b` — the left value unless it is `none`.
+    Coalesce,
 }
 
 impl BinOp {
@@ -322,12 +324,13 @@ impl BinOp {
     /// trip preserves precedence and associativity by construction.
     pub fn binding_power(self) -> (u8, u8) {
         match self {
-            BinOp::Or => (1, 2),
-            BinOp::And => (3, 4),
-            BinOp::Eq | BinOp::Ne => (5, 6),
-            BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => (7, 8),
-            BinOp::Add | BinOp::Sub => (9, 10),
-            BinOp::Mul | BinOp::Div | BinOp::Mod => (11, 12),
+            BinOp::Coalesce => (1, 2),
+            BinOp::Or => (3, 4),
+            BinOp::And => (5, 6),
+            BinOp::Eq | BinOp::Ne => (7, 8),
+            BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => (9, 10),
+            BinOp::Add | BinOp::Sub => (11, 12),
+            BinOp::Mul | BinOp::Div | BinOp::Mod => (13, 14),
         }
     }
 
@@ -347,6 +350,7 @@ impl BinOp {
             BinOp::Ge => ">=",
             BinOp::And => "&&",
             BinOp::Or => "||",
+            BinOp::Coalesce => "??",
         }
     }
 }
@@ -354,9 +358,9 @@ impl BinOp {
 /// Binding powers of the prefix / postfix forms, all tighter than any
 /// binary operator in [`BinOp::binding_power`]. Shared by the parser
 /// (parse-time) and the formatter (parenthesisation) so they can't drift.
-pub const UNARY_BP: u8 = 13;
-pub const CALL_BP: u8 = 14;
-pub const MEMBER_BP: u8 = 15;
+pub const UNARY_BP: u8 = 15;
+pub const CALL_BP: u8 = 16;
+pub const MEMBER_BP: u8 = 17;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
