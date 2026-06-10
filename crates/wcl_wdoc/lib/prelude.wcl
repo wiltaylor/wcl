@@ -46,4 +46,5 @@ import <terminal.wcl>         // terminal grid + primitives
 import <tui.wcl>              // single-line TUI widgets (progress/button/…)
 import <math.wcl>             // LaTeX equations → SVG (RaTeX)
 import <typedoc.wcl>          // type_table: schema-reflected property tables
+import <sequence.wcl>         // sequence diagrams (participants / messages / notes)
 import <visibility.wcl>       // @only / @except block visibility filters

@@ -58,6 +58,21 @@ class "wdoc-boundary-label" { fill = "#4c566a"  bold = true }
 // transition triggers): muted text at the edge's midpoint.
 class "wdoc-edge-label" { fill = "#4c566a" }
 
+// Sequence-diagram defaults (heads / lifelines / message arrows /
+// margin notes). Static light values; render/theme.rs APPLY recolours
+// per mode. An author's `class` on a participant replaces the head's
+// theme classes like any flowchart shape. Stroke-only classes carry no
+// `fill` — a CSS fill would override the open shapes' inline
+// `fill="none"` and fill stick figures / chevrons / loops.
+class "wdoc-participant"      { fill = "#eceff4"  stroke = "#5e81ac" }
+class "wdoc-participant-line" { stroke = "#5e81ac" }
+class "wdoc-lifeline"         { stroke = "#4c566a"  opacity = "0.6" }
+class "wdoc-seq-message"      { stroke = "#2e3440" }
+class "wdoc-seq-arrow"        { fill = "#2e3440" }
+class "wdoc-seq-text"         { fill = "#2e3440" }
+class "wdoc-note"             { fill = "#fdf6e3"  stroke = "#b58900" }
+class "wdoc-note-text"        { fill = "#2e3440" }
+
 // Timeline shape defaults. Markers / connectors / labels paint with
 // `currentColor` so they follow the page theme; phase dividers + their
 // headings also carry a cycled `wdoc-series-N` class, which sets their

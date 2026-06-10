@@ -1121,3 +1121,18 @@ fn component_content_slot_renders_instance_children() {
         "wdoc_content spliced the instance children (bold subset embedded)"
     );
 }
+
+#[test]
+fn sequence_diagram_embeds_in_pdf() {
+    // Smoke: a sequence_diagram page renders to a PDF without panicking
+    // (the lowered SVG goes through the shared vector embedder).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("seq.wcl");
+    write_fixture(
+        &src,
+        "site s { title = \"S\" }\npage seq {\n  sites = [:s]\n  h1 \"Seq\"\n  sequence_diagram {\n    participant \"a\" { }\n    participant \"b\" { }\n    message \"m1\" { from = \"a\"  to = \"b\"  text = \"hi\" }\n  }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let n = pdf_ok(&src, out.path(), PageSize::A4);
+    assert_eq!(n, 1);
+}

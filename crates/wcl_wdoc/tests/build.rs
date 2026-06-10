@@ -8563,3 +8563,80 @@ page index {
         "edge label text at midpoint:\n{html}"
     );
 }
+
+#[test]
+fn sequence_diagram_renders_feature_surface() {
+    // The FEATURE-wdoc-sequence-diagram authoring surface end-to-end:
+    // declaration-order columns, dashed reply arrows, the self-message
+    // loop, actor / external heads, margin notes, and per-participant
+    // links.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("seq.wcl");
+    write_fixture(
+        &src,
+        r##"
+page seq {
+  sequence_diagram {
+    width = 760
+    desc = "checkout"
+
+    participant "customer" { name = "Customer"  kind = :actor }
+    participant "web"      { name = "Web App"   link = "seq" }
+    participant "api"      { name = "API" }
+    participant "stripe"   { name = "Stripe"    kind = :external }
+
+    message "m1" { from = "customer" to = "web"    text = "Submit" }
+    message "m2" { from = "web"      to = "api"    text = "POST /orders" }
+    message "m3" { from = "api"      to = "stripe" text = "Capture" }
+    message "m4" { from = "stripe"   to = "api"    text = "charge id"  kind = :reply }
+    message "m5" { from = "api"      to = "api"    text = "persist" }
+    note    "n1" { at = "m3"  text = "Idempotent." }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("seq.html")).expect("read");
+
+    // Columns rank in declaration order: lifelines at the column centres
+    // (col_width 140 → 70 / 210 / 350 / 490).
+    for x in ["70", "210", "350", "490"] {
+        assert!(
+            html.contains(&format!("class=\"wdoc-lifeline\" x1=\"{x}\"")),
+            "lifeline at x={x}:\n{html}"
+        );
+    }
+    // Actor head: the stick-figure circle.
+    assert!(
+        html.contains("<circle class=\"wdoc-participant-line\" cx=\"70\""),
+        "actor head circle:\n{html}"
+    );
+    // External head: dashed outline polyline.
+    assert!(
+        html.contains("class=\"wdoc-participant-line\" points=\"430,3 550,3 550,37 430,37 430,3\""),
+        "external dashed head:\n{html}"
+    );
+    // Reply arrow: a dashed message line.
+    assert!(
+        html.contains("stroke-dasharray=\"5 4\""),
+        "dashed reply:\n{html}"
+    );
+    // Self-message: the three-segment loop polyline at api's column
+    // (350 → 386).
+    assert!(
+        html.contains("points=\"350,"),
+        "self-message loop polyline:\n{html}"
+    );
+    assert!(html.contains("386,"), "self-message loop width:\n{html}");
+    // Note text renders in the margin box.
+    assert!(html.contains("Idempotent."), "note text:\n{html}");
+    // Participant link wraps the head in an <a> resolved like a prose
+    // link.
+    assert!(
+        html.contains("<a href=\"seq.html\">"),
+        "participant link:\n{html}"
+    );
+    // Message labels render.
+    assert!(html.contains("POST /orders"), "message label:\n{html}");
+}

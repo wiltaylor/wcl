@@ -95,6 +95,14 @@ pre.code-block{background:var(--wdoc-bg-inset);color:var(--wdoc-fg);border-color
 .wdoc-boundary{fill:none;stroke:var(--wdoc-fg-muted);stroke-dasharray:6 4;}
 .wdoc-boundary-label{fill:var(--wdoc-fg-muted);font-weight:600;}
 .wdoc-edge-label{fill:var(--wdoc-fg-muted);}
+.wdoc-participant{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-blue);}
+.wdoc-participant-line{stroke:var(--wdoc-blue);}
+.wdoc-lifeline{stroke:var(--wdoc-fg-muted);}
+.wdoc-seq-message{stroke:var(--wdoc-fg);}
+.wdoc-seq-arrow{fill:var(--wdoc-fg);}
+.wdoc-seq-text{fill:var(--wdoc-fg);}
+.wdoc-note{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-yellow);}
+.wdoc-note-text{fill:var(--wdoc-fg);}
 .callout.note{--callout-accent:var(--wdoc-blue);}
 .callout.info{--callout-accent:var(--wdoc-cyan);}
 .callout.tip{--callout-accent:var(--wdoc-green);}

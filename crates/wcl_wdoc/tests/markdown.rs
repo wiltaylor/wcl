@@ -482,3 +482,18 @@ fn collect_gathers_partials_from_imported_files() {
     let md = read(&out, "p.md");
     assert!(md.contains("Imported term."), "{md}");
 }
+
+#[test]
+fn sequence_diagram_writes_standalone_svg() {
+    let (_t, out) = build(
+        "page seq {\n  sequence_diagram {\n    participant \"a\" { }\n    participant \"b\" { }\n    message \"m1\" { from = \"a\"  to = \"b\"  text = \"hi\" }\n  }\n}\n",
+    );
+    let md = read(&out, "seq.md");
+    assert!(
+        md.contains("](_wdoc/seq-sequence-diagram-1.svg)"),
+        "image ref:\n{md}"
+    );
+    let svg = read(&out, "_wdoc/seq-sequence-diagram-1.svg");
+    assert!(svg.starts_with("<svg"), "standalone svg:\n{svg}");
+    assert!(svg.contains("wdoc-lifeline"), "content lowered:\n{svg}");
+}

@@ -1,0 +1,285 @@
+// ── Stdlib sequence diagrams ───────────────────────────────────────
+//
+// `sequence_diagram` is a page-level block (`extends WdocBlock`) whose
+// geometry lives in `lower_svg`: participants rank left-to-right in
+// declaration order, messages top-to-bottom in declaration order, so
+// the whole figure is authored coordinate-free. The renderer
+// (render/svg/standalone.rs) calls `lower_svg`, fits a viewBox over
+// the returned fundamentals, and derives the height from the content —
+// the block declares only `width` knobs.
+//
+//   sequence_diagram {
+//     participant "customer" { name = "Customer"  kind = :actor }
+//     participant "web"      { name = "Web App" }
+//     message "m1" { from = "customer"  to = "web"  text = "Submit form" }
+//     message "m2" { from = "web"  to = "customer"  text = "201" kind = :reply }
+//     note "n1" { at = "m1"  text = "Idempotent." }
+//   }
+
+namespace wdoc
+
+@doc("Participant head style: `:box` (default), `:actor` (stick figure), `:external` (dashed box).")
+symbol_set ParticipantKind { box actor external }
+
+@doc("Message arrow style: `:sync` (solid, filled head — default), `:async` (solid, open head), `:reply` (dashed, open head).")
+symbol_set MessageKind { sync async reply }
+
+// Vertical layout constants: heads occupy y 0..40, lifelines start at
+// 44, message j sits at `header_height + j * row_height`, lifelines
+// extend half a row past the last message.
+
+// The head + lifeline column centre of participant `id` (declaration
+// order via `ids`). Unknown ids land at column -1 — the message that
+// referenced them renders off-canvas rather than failing the build.
+let seq_cx = fn(ids: list<utf8>, id: utf8, cw: f64) -> f64
+  cw / 2.0 + index_of(ids, id) * cw
+
+// Arrowhead at (x, y) pointing along `dir` (+1 → rightward, -1 →
+// leftward): a filled triangle for `:sync`, an open chevron for
+// `:async` / `:reply`. The two carry different theme classes — a CSS
+// `fill` on the chevron's class would override its inline
+// `fill="none"`.
+let seq_arrow = fn(x: f64, y: f64, dir: f64, open_head: bool) -> SvgFundamental
+  if open_head {
+    SvgFundamental::Polyline {
+      points: format(
+        "{},{} {},{} {},{}",
+        x - 9.0 * dir, y - 4.5,
+        x, y,
+        x - 9.0 * dir, y + 4.5,
+      ),
+      class: ["wdoc-seq-message"],
+    }
+  } else {
+    SvgFundamental::Polygon {
+      points: format(
+        "{},{} {},{} {},{}",
+        x, y,
+        x - 9.0 * dir, y - 4.5,
+        x - 9.0 * dir, y + 4.5,
+      ),
+      class: ["wdoc-seq-arrow"],
+    }
+  }
+
+// A participant's head shapes (box / actor / external), wrapped in a
+// `Link` when the participant carries one.
+let seq_head = fn(p: Participant, cx: f64, cw: f64) -> list<SvgFundamental> {
+  let auto = p.class == none;
+  let box_class = if auto { ["wdoc-participant"] } else { p.class };
+  // Stroke-only class for open shapes (stick figure, dashed outline) —
+  // a CSS `fill` would override their inline `fill="none"`.
+  let line_class = if auto { ["wdoc-participant-line"] } else { p.class };
+  let text_class = if auto { ["wdoc-shape-text"] } else { p.class };
+  let label = p.name ?? p.id;
+  let bw = min(cw - 16.0, 120.0);
+  let body = if p.kind == :actor {
+    // Stick figure: head, trunk, arms, legs, with the name below.
+    [
+      SvgFundamental::Circle { cx: cx, cy: 8.0, r: 5.0, fill: "none", class: line_class },
+      SvgFundamental::Line { x1: cx, y1: 13.0, x2: cx, y2: 23.0, class: line_class },
+      SvgFundamental::Line { x1: cx - 8.0, y1: 17.0, x2: cx + 8.0, y2: 17.0, class: line_class },
+      SvgFundamental::Polyline {
+        points: format("{},{} {},{} {},{}", cx - 7.0, 31.0, cx, 23.0, cx + 7.0, 31.0),
+        class: line_class,
+      },
+      SvgFundamental::Label {
+        content: label, x: cx, y: 37.0, font_size: 11.0, class: text_class,
+      },
+    ]
+  } else if p.kind == :external {
+    // Dashed outline (a closed Polyline — Rect carries no dash).
+    [
+      SvgFundamental::Polyline {
+        points: format(
+          "{},{} {},{} {},{} {},{} {},{}",
+          cx - bw / 2.0, 3.0,
+          cx + bw / 2.0, 3.0,
+          cx + bw / 2.0, 37.0,
+          cx - bw / 2.0, 37.0,
+          cx - bw / 2.0, 3.0,
+        ),
+        dash: "5 4",
+        class: line_class,
+      },
+      SvgFundamental::Label {
+        content: label, x: cx, y: 20.0, font_size: none,
+        fit_width: bw - 8.0, fit_height: 30.0, class: text_class,
+      },
+    ]
+  } else {
+    [
+      SvgFundamental::Rect {
+        x: cx - bw / 2.0, y: 3.0, width: bw, height: 34.0, class: box_class,
+      },
+      SvgFundamental::Label {
+        content: label, x: cx, y: 20.0, font_size: none,
+        fit_width: bw - 8.0, fit_height: 30.0, class: text_class,
+      },
+    ]
+  };
+  if p.link != none {
+    [SvgFundamental::Link { href: p.link, children: body }]
+  } else {
+    body
+  }
+}
+
+// One message: a horizontal arrow between lifelines (label above the
+// midpoint), or the standard three-segment loop when `from == to`.
+let seq_message = fn(
+  m: Message,
+  ids: list<utf8>,
+  msg_ids: list<utf8>,
+  cw: f64,
+  rh: f64,
+  hh: f64,
+) -> list<SvgFundamental> {
+  let y = hh + index_of(msg_ids, m.id) * rh;
+  let xf = seq_cx(ids, m.from, cw);
+  let xt = seq_cx(ids, m.to, cw);
+  let cls = ["wdoc-seq-message"];
+  let text_cls = ["wdoc-seq-text"];
+  let dash = if m.kind == :reply { "5 4" } else { none };
+  let open_head = m.kind == :async || m.kind == :reply;
+  if m.from == m.to {
+    [
+      SvgFundamental::Polyline {
+        points: format(
+          "{},{} {},{} {},{} {},{}",
+          xf, y,
+          xf + 36.0, y,
+          xf + 36.0, y + rh * 0.45,
+          xf + 7.0, y + rh * 0.45,
+        ),
+        dash: dash,
+        class: cls,
+      },
+      seq_arrow(xf + 7.0, y + rh * 0.45, -1.0, open_head),
+      SvgFundamental::Label {
+        content: m.text ?? "", x: xf + 46.0, y: y - 11.0, font_size: 11.0, class: text_cls,
+      },
+    ]
+  } else {
+    let dir = if xt > xf { 1.0 } else { -1.0 };
+    let x2 = xt - dir * 4.0;
+    [
+      SvgFundamental::Line { x1: xf, y1: y, x2: x2, y2: y, dash: dash, class: cls },
+      seq_arrow(x2, y, dir, open_head),
+      SvgFundamental::Label {
+        content: m.text ?? "", x: (xf + xt) / 2.0, y: y - 11.0, font_size: 11.0, class: text_cls,
+      },
+    ]
+  }
+}
+
+// A margin note: a small box right of the last lifeline, vertically
+// anchored to the message it annotates (`at`).
+let seq_note = fn(
+  nb: SeqNote,
+  msg_ids: list<utf8>,
+  cols: i64,
+  cw: f64,
+  rh: f64,
+  hh: f64,
+) -> list<SvgFundamental> {
+  let y = hh + index_of(msg_ids, nb.at) * rh;
+  let x = cols * cw + 8.0;
+  [
+    SvgFundamental::Rect {
+      x: x, y: y - 14.0, width: 132.0, height: 28.0, class: ["wdoc-note"],
+    },
+    SvgFundamental::Label {
+      content: nb.text, x: x + 66.0, y: y, font_size: none,
+      fit_width: 124.0, fit_height: 24.0, class: ["wdoc-note-text"],
+    },
+  ]
+}
+
+@block("participant")
+type Participant {
+  @doc("Stable id messages reference via `from` / `to`. Column order is declaration order.")
+  @inline(0) id: utf8
+  @doc("Display name shown in the head (defaults to the id).")
+  name: utf8?
+  @doc("Head style: `:box` (default) / `:actor` / `:external`.")
+  kind: ParticipantKind?
+  @doc("Link the head to an in-site page (bare page name, or `site:page`).")
+  link: utf8?
+  @doc("Style classes for the head shapes (replaces the theme defaults).")
+  class: list<utf8>?
+}
+
+@block("message")
+type Message {
+  @doc("Stable id (notes reference it via `at`). Row order is declaration order.")
+  @inline(0) id: utf8
+  @doc("Sending participant id.")
+  from: utf8
+  @doc("Receiving participant id (same as `from` for a self-message loop).")
+  to: utf8
+  @doc("Arrow label.")
+  text: utf8?
+  @doc("Arrow style: `:sync` (default) / `:async` / `:reply`.")
+  kind: MessageKind?
+}
+
+@block("note")
+type SeqNote {
+  @doc("Stable id.")
+  @inline(0) id: utf8
+  @doc("Id of the message this note is anchored beside.")
+  at: utf8
+  @doc("The note text.")
+  text: utf8
+}
+
+@block("sequence_diagram")
+type SequenceDiagram extends WdocBlock {
+  @doc("Rendered width in pixels; the height follows the content.")
+  width = 760.0
+  @doc("Horizontal distance between participant lifelines.")
+  col_width: f64?
+  @doc("Vertical distance between message rows.")
+  row_height: f64?
+  @doc("Y of the first message row (below the participant heads).")
+  header_height: f64?
+  @doc("Optional explicit HTML id.")
+  id: identifier?
+  @doc("Optional style classes on the `<svg>`.")
+  class: list<utf8>?
+  @doc("Accessible description (`aria-label` + `<title>`).")
+  desc: utf8?
+  @doc("Participants, left-to-right in declaration order.")
+  @children("participant") participants: list<Participant>
+  @doc("Messages, top-to-bottom in declaration order.")
+  @children("message") messages: list<Message>
+  @doc("Margin notes anchored to messages.")
+  @children("note") notes: list<SeqNote>
+
+  // Page-level placement contract (`WdocBlock`): the Rust renderer
+  // special-cases this kind, so the HTML lowering is a stub.
+  lower = fn(s: SequenceDiagram) -> list<HtmlFundamental> []
+
+  lower_svg = fn(s: SequenceDiagram) -> list<SvgFundamental> {
+    let cw = s.col_width ?? 140.0;
+    let rh = s.row_height ?? 44.0;
+    let hh = s.header_height ?? 64.0;
+    let ids = map(s.participants, fn(p: Participant) -> utf8 p.id);
+    let msg_ids = map(s.messages, fn(m: Message) -> utf8 m.id);
+    let y_end = hh + len(s.messages) * rh + rh / 2.0;
+    let heads = flatten(map(s.participants, fn(p: Participant) -> list<SvgFundamental>
+      seq_head(p, seq_cx(ids, p.id, cw), cw)));
+    let lifelines = map(s.participants, fn(p: Participant) -> SvgFundamental
+      SvgFundamental::Line {
+        x1: seq_cx(ids, p.id, cw), y1: 44.0,
+        x2: seq_cx(ids, p.id, cw), y2: y_end,
+        dash: "4 4", class: ["wdoc-lifeline"],
+      });
+    let msgs = flatten(map(s.messages, fn(m: Message) -> list<SvgFundamental>
+      seq_message(m, ids, msg_ids, cw, rh, hh)));
+    let notes = flatten(map(s.notes, fn(nb: SeqNote) -> list<SvgFundamental>
+      seq_note(nb, msg_ids, len(s.participants), cw, rh, hh)));
+    flatten([heads, lifelines, msgs, notes])
+  }
+}
