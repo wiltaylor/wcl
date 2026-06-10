@@ -15,12 +15,22 @@ const EXIT_SCHEMA: u8 = 2;
 const EXIT_EVAL: u8 = 3;
 const EXIT_IO: u8 = 4;
 
+/// Loader for every CLI document open: disk imports plus the embedded
+/// wdoc registry, so `wcl check` / `parse` / `eval` / `get` resolve
+/// `import <wdoc.wcl>` exactly like `wcl wdoc build` (previously they
+/// failed with a misleading "failed to read '<wcl-system>/wdoc.wcl'",
+/// leaving `wdoc build` as the only schema checker for wdoc projects).
+fn cli_loader() -> wcl_lang::FileLoader {
+    wcl_wdoc::schema_registry().loader(wcl_lang::disk_loader())
+}
+
 fn open_document(file: &Path, profile: bool) -> Result<Document, ParseError> {
+    let mut doc =
+        Document::from_file_with_loader(file, &wcl_lang::Environment::new(), cli_loader())?;
     if profile {
-        Document::from_file_profiled(file)
-    } else {
-        Document::from_file(file)
+        doc.enable_profiling();
     }
+    Ok(doc)
 }
 
 fn emit_profile(doc: &Document, profile: bool) {
@@ -519,7 +529,7 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
 fn run_repl(file: Option<&Path>) -> u8 {
     use std::io::{BufRead, Write};
     let doc = match file {
-        Some(p) => match Document::from_file(p) {
+        Some(p) => match open_document(p, false) {
             Ok(d) => d,
             Err(e) => {
                 eprintln!("{:?}", miette::Report::new(e));
@@ -681,7 +691,7 @@ fn run_check(file: &Path, json: bool) -> u8 {
             }
         };
         let base_dir = std::env::current_dir().ok();
-        Document::open_at(&src, &name, base_dir, &Environment::new())
+        Document::open_at_with_loader(&src, &name, base_dir, &Environment::new(), cli_loader())
     } else {
         open_document(file, false)
     };
@@ -775,7 +785,7 @@ fn run_fmt(
 ///   slot.expr = parse_expr(value)
 ///   write_atomic(home, format::to_source(ast))
 fn run_set(file: &Path, path: &str, value: &str) -> Result<u8, String> {
-    let doc = match Document::from_file(file) {
+    let doc = match open_document(file, false) {
         Ok(d) => d,
         Err(e) => {
             eprintln!("{:?}", miette::Report::new(e));

@@ -39,9 +39,11 @@ pub(crate) fn render_lowered_svg_block(
     // derive the rendered height from its aspect ratio, so the block
     // never clips or letterboxes regardless of how tall the lowering's
     // content turned out.
+    // An empty diagram (no participants / states yet) renders a short
+    // strip rather than a full-width square of blank space.
     let (vb, vbw, vbh) = match content_viewbox(&bboxes) {
         Some(v) => v,
-        None => (format!("0 0 {width} {width}"), width, width),
+        None => (format!("0 0 {width} 40"), width, 40.0),
     };
     let height = if vbw > 0.0 { width * vbh / vbw } else { width };
     let cls = class_attr(block);

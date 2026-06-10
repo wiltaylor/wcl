@@ -11,7 +11,7 @@
 //     wdoc_slot value
 //     wdoc_slot status { default = "ok" }   // optional slot
 //     wdoc_body {
-//       callout "${label}" { class = [status]  body = "Value: ${value}%" }
+//       callout $"${label}" { class = [status]  body = $"Value: ${value}%" }
 //     }
 //   }
 //

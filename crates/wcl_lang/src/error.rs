@@ -476,7 +476,10 @@ impl EvalError {
         }
     }
 
-    pub(crate) fn user_error(message: impl Into<String>, span: crate::ast::Span) -> Self {
+    /// A host- or user-raised evaluation error (the `error()` builtin's
+    /// shape). Public so hosts (e.g. the wdoc renderer) can record
+    /// their own diagnostics through the same channel.
+    pub fn user_error(message: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::UserError {
             message: message.into(),
             span: span_to_miette(span),

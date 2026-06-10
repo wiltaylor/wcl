@@ -9015,3 +9015,39 @@ page sc {
         Err(_) => panic!("expected Eval error, got a different build error"),
     }
 }
+
+#[test]
+fn non_list_lower_result_is_a_diagnostic_not_silence() {
+    // Regression: a `lower` returning a non-list (the language doesn't
+    // enforce fn return types at runtime) made the shape vanish with no
+    // diagnostic. `none` stays a benign opt-out.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("nonlist.wcl");
+    write_fixture(
+        &src,
+        r##"
+@block("nonlist")
+type NonList extends SvgBlock {
+  x = 0.0
+  y = 0.0
+  width = 40.0
+  height = 20.0
+  lower = fn(s: NonList) -> list<SvgFundamental> 42
+}
+page t {
+  diagram { width = 100  height = 60
+    nonlist { }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::Eval(r)) => {
+            let msg = format!("{r:?}");
+            assert!(msg.contains("returned i64"), "{msg}");
+        }
+        Ok(n) => panic!("expected eval error, built {n} pages"),
+        Err(_) => panic!("expected Eval error, got a different build error"),
+    }
+}

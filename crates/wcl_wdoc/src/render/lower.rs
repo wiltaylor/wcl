@@ -182,10 +182,26 @@ pub(crate) fn lower_to_values_named(
     let fv = lookup_block_lower_named(doc, block, kind, field)?;
     match doc.call_value(&fv, &[arg]) {
         Ok(Value::List(items)) => Some(items),
-        // A non-list result is a benign "nothing to render"; an error is a
-        // genuine evaluation failure inside the `lower` — record it so the
-        // backend surfaces a diagnostic rather than silently dropping.
-        Ok(_) => None,
+        // The declared return type is a `list<…Fundamental>`; anything
+        // else means the lowering is broken (the language doesn't
+        // enforce fn return types at runtime) — surface a diagnostic
+        // instead of silently dropping the block. `none` stays a benign
+        // "nothing to render" so a conditional lowering can opt out.
+        Ok(Value::None) => None,
+        Ok(other) => {
+            record_lower_error(
+                block,
+                EvalError::user_error(
+                    format!(
+                        "the `{field}` lowering for block kind '{kind}' returned {} — \
+                         expected a list of fundamentals",
+                        other.type_name()
+                    ),
+                    block.span(),
+                ),
+            );
+            None
+        }
         Err(e) => {
             record_lower_error(block, e);
             None
