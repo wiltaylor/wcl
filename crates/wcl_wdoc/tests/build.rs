@@ -8389,3 +8389,177 @@ page ref {
         Err(_) => panic!("expected Eval error, got a different build error"),
     }
 }
+
+#[test]
+fn children_records_reach_custom_svg_lower() {
+    // Foundation for the pure-WCL sequence / state diagrams: a custom
+    // shape's `@children(...)` slot materialises into the record passed
+    // to its `lower` as a list of schema-completed child records —
+    // `@inline(0)` labels populated, omitted optionals present as
+    // `none`, declaration order preserved.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("children_lower.wcl");
+    write_fixture(
+        &src,
+        r##"
+@block("itm")
+type Itm extends SvgBlock {
+  @inline(0) id: utf8
+  note: utf8?
+  lower = fn(i: Itm) -> list<SvgFundamental> []
+}
+
+@block("seqtest")
+type SeqTest extends SvgBlock {
+  x = 0.0
+  y = 0.0
+  width = 100.0
+  height = 40.0
+  @children("itm") items: list<Itm>
+  lower = fn(s: SeqTest) -> list<SvgFundamental>
+    map(s.items, fn(i: Itm) -> SvgFundamental SvgFundamental::Label {
+      content: format("{}={}", i.id, i.note ?? "-"),
+      x: 0.0,
+      y: 0.0,
+      font_size: 10.0,
+    })
+}
+
+page index {
+  diagram { width = 300  height = 200
+    seqtest "s1" {
+      itm "a" { note = "first" }
+      itm "b" { }
+    }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Labels populated + optional defaulted to none (rendered "-").
+    assert!(html.contains("a=first"), "inline label + field:\n{html}");
+    assert!(
+        html.contains("b=-"),
+        "omitted optional reaches lower as none:\n{html}"
+    );
+    // Declaration order preserved.
+    let pa = html.find("a=first").expect("a present");
+    let pb = html.find("b=-").expect("b present");
+    assert!(pa < pb, "children keep declaration order:\n{html}");
+}
+
+#[test]
+fn computed_children_splice_matches_literal_for_custom_lower() {
+    // The data-driven authoring path the wad book uses: a `@children`
+    // slot fed by a computed splice (`items = map(data, …)`) reaches a
+    // custom shape's `lower` schema-completed exactly like literal
+    // child blocks (optionals → none).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("children_splice.wcl");
+    write_fixture(
+        &src,
+        r##"
+let names = ["a", "b"]
+
+@block("itm")
+type Itm extends SvgBlock {
+  @inline(0) id: utf8
+  note: utf8?
+  lower = fn(i: Itm) -> list<SvgFundamental> []
+}
+
+@block("seqtest")
+type SeqTest extends SvgBlock {
+  x = 0.0
+  y = 0.0
+  width = 100.0
+  height = 40.0
+  @children("itm") items: list<Itm>
+  lower = fn(s: SeqTest) -> list<SvgFundamental>
+    map(s.items, fn(i: Itm) -> SvgFundamental SvgFundamental::Label {
+      content: format("{}={}", i.id, i.note ?? "-"),
+      x: 0.0,
+      y: 0.0,
+      font_size: 10.0,
+    })
+}
+
+page lit {
+  diagram { width = 300  height = 200
+    seqtest "s1" {
+      itm "a" { }
+      itm "b" { }
+    }
+  }
+}
+
+page gen {
+  diagram { width = 300  height = 200
+    seqtest "s2" {
+      items = map(names, fn(n: utf8) -> Itm { { id: n } })
+    }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let lit = std::fs::read_to_string(out.path().join("lit.html")).expect("read lit");
+    let generated = std::fs::read_to_string(out.path().join("gen.html")).expect("read gen");
+
+    for html in [&lit, &generated] {
+        assert!(html.contains("a=-"), "first item renders:\n{html}");
+        assert!(html.contains("b=-"), "second item renders:\n{html}");
+    }
+    // Identical lowered output for both authoring forms: compare the
+    // generated <text> runs.
+    let texts = |html: &str| -> Vec<String> {
+        html.match_indices("a=-")
+            .chain(html.match_indices("b=-"))
+            .map(|(_, s)| s.to_string())
+            .collect()
+    };
+    assert_eq!(texts(&lit), texts(&generated));
+}
+
+#[test]
+fn edge_records_carry_label_and_dash() {
+    // Generic edge presentation: a computed `edges = [...]` record's
+    // `label` renders as a midpoint <text class="wdoc-edge-label">, and
+    // `dash` becomes an inline stroke-dasharray on the edge stroke.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("edge_label.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram {
+    width = 400  height = 200
+    routing = :straight
+    rect { id = a  x = 20.0  y = 20.0  width = 60.0  height = 30.0 }
+    rect { id = b  x = 300.0  y = 140.0  width = 60.0  height = 30.0 }
+    edges = [ { source: "a", destination: "b", label: "ok then", dash: "5 4" } ]
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        html.contains("stroke-dasharray=\"5 4\""),
+        "edge dash renders inline:\n{html}"
+    );
+    assert!(
+        html.contains("class=\"wdoc-edge-label\""),
+        "edge label class:\n{html}"
+    );
+    assert!(
+        html.contains(">ok then</text>"),
+        "edge label text at midpoint:\n{html}"
+    );
+}

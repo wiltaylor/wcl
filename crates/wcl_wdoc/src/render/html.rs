@@ -407,6 +407,11 @@ pub(crate) fn render_block(
         // in the video registry (driving the local-file/poster copy).
         "video" => Some(crate::video::render_html(block, patterns.videos())),
         "diagram" => Some(render_diagram(doc, block, patterns, base_dir)),
+        // Page-level SVG blocks whose geometry is a WCL `lower_svg` fn
+        // (fitted viewBox, auto height) — see render/svg/standalone.rs.
+        kind @ ("sequence_diagram" | "state_diagram") => {
+            Some(render_lowered_svg_block(doc, block, kind, patterns))
+        }
         // The terminal is special-cased in Rust: its grid model, ANSI
         // handling, and asciinema replay aren't expressible in WCL.
         // `base_dir` lets a `source` recording path resolve relative to

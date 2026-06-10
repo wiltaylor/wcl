@@ -120,12 +120,26 @@ pub(crate) const WF_CONTENT_SLOT: &str = "\u{FFF9}wdoc:content\u{FFF9}";
 /// `@block` type's `@default(...)` for `lower`. Returns `None` when
 /// neither path produces a callable.
 pub(crate) fn lookup_block_lower(doc: &Document, block: &Block<'_>, kind: &str) -> Option<FnValue> {
-    if let Some(field) = block.field("lower")
-        && let Ok(Value::Function(fv)) = field.value()
+    lookup_block_lower_named(doc, block, kind, "lower")
+}
+
+/// [`lookup_block_lower`] generalised over the hosting field name. A
+/// page-level block must satisfy `WdocBlock` (whose `lower` returns
+/// HTML fundamentals), so a block that *also* carries SVG geometry
+/// hosts it in a second function field (`lower_svg`) and the renderer
+/// dispatches by name.
+pub(crate) fn lookup_block_lower_named(
+    doc: &Document,
+    block: &Block<'_>,
+    kind: &str,
+    field: &str,
+) -> Option<FnValue> {
+    if let Some(f) = block.field(field)
+        && let Ok(Value::Function(fv)) = f.value()
     {
         return Some(fv.clone());
     }
-    lookup_type_lower(doc, kind)
+    lookup_type_lower_named(doc, kind, field)
 }
 
 /// Look up the `lower` function declared on a `@block` (or plain
@@ -133,10 +147,15 @@ pub(crate) fn lookup_block_lower(doc: &Document, block: &Block<'_>, kind: &str) 
 /// Used both for block-side dispatch (after the instance check) and
 /// for recursive variant dispatch (where no instance is available).
 pub(crate) fn lookup_type_lower(doc: &Document, kind: &str) -> Option<FnValue> {
+    lookup_type_lower_named(doc, kind, "lower")
+}
+
+/// [`lookup_type_lower`] generalised over the hosting field name.
+pub(crate) fn lookup_type_lower_named(doc: &Document, kind: &str, field: &str) -> Option<FnValue> {
     let schema = doc
         .block_schema(kind)
         .or_else(|| doc.type_decl(&kind_to_typename(kind)))?;
-    match schema.field("lower")?.default_value()? {
+    match schema.field(field)?.default_value()? {
         Value::Function(fv) => Some(fv),
         _ => None,
     }
@@ -148,8 +167,19 @@ pub(crate) fn lookup_type_lower(doc: &Document, kind: &str) -> Option<FnValue> {
 /// Shared by [`lower_svg_block`] and the `timeline` renderer (which
 /// intercepts `Card` variants before rendering the rest).
 pub(crate) fn lower_to_values(doc: &Document, block: &Block<'_>, kind: &str) -> Option<Vec<Value>> {
+    lower_to_values_named(doc, block, kind, "lower")
+}
+
+/// [`lower_to_values`] generalised over the hosting field name (see
+/// [`lookup_block_lower_named`]).
+pub(crate) fn lower_to_values_named(
+    doc: &Document,
+    block: &Block<'_>,
+    kind: &str,
+    field: &str,
+) -> Option<Vec<Value>> {
     let arg = block_to_record(doc, block, kind)?;
-    let fv = lookup_block_lower(doc, block, kind)?;
+    let fv = lookup_block_lower_named(doc, block, kind, field)?;
     match doc.call_value(&fv, &[arg]) {
         Ok(Value::List(items)) => Some(items),
         // A non-list result is a benign "nothing to render"; an error is a
@@ -165,20 +195,23 @@ pub(crate) fn lower_to_values(doc: &Document, block: &Block<'_>, kind: &str) -> 
 
 /// Custom diagram-shape lowering. Resolves the block's `lower`
 /// function, calls it with a record built from the block's fields,
-/// and renders each returned variant.
+/// and renders each returned variant. `links` is the inline-pattern
+/// resolver used by `Link` fundamentals; `None` renders their children
+/// unwrapped.
 pub(crate) fn lower_svg_block(
     doc: &Document,
     block: &Block<'_>,
     kind: &str,
     parent_w: f64,
     parent_h: f64,
+    links: Option<&InlinePatterns>,
 ) -> String {
     let Some(items) = lower_to_values(doc, block, kind) else {
         return String::new();
     };
     items
         .iter()
-        .map(|v| render_svg_variant(doc, v, parent_w, parent_h, 0))
+        .map(|v| render_svg_variant(doc, v, parent_w, parent_h, 0, links))
         .collect()
 }
 
@@ -259,6 +292,7 @@ pub(crate) fn render_svg_variant(
     _parent_w: f64,
     _parent_h: f64,
     depth: usize,
+    links: Option<&InlinePatterns>,
 ) -> String {
     if depth > MAX_LOWER_DEPTH {
         return depth_marker();
@@ -279,10 +313,31 @@ pub(crate) fn render_svg_variant(
         "line" => render_line_payload(map),
         "label" => render_label_payload(map),
         "polygon" => render_polygon_payload(map),
+        "polyline" => render_polyline_payload(map),
+        // A recursive wrapper giving lowered sub-shapes a clickable
+        // in-site link. Without a resolver the children pass through
+        // unwrapped (PDF embedding, contexts with no page registry).
+        "link" => {
+            let children = match map.get("children") {
+                Some(Value::List(items)) => items.as_slice(),
+                _ => &[],
+            };
+            let inner: String = children
+                .iter()
+                .map(|v| render_svg_variant(doc, v, _parent_w, _parent_h, depth + 1, links))
+                .collect();
+            match (map_utf8(map, "href"), links) {
+                (Some(href), Some(patterns)) => format!(
+                    "<a href=\"{}\">{inner}</a>",
+                    escape_html(&patterns.resolve_href(&href))
+                ),
+                _ => inner,
+            }
+        }
         // Custom variant — look up its type's `lower` and recurse with the
         // variant's record payload as the new arg.
         other => lower_recurse(doc, map, other, depth, |v, d| {
-            render_svg_variant(doc, v, _parent_w, _parent_h, d)
+            render_svg_variant(doc, v, _parent_w, _parent_h, d, links)
         }),
     }
 }

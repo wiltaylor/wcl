@@ -75,6 +75,13 @@ fn collect_block(
         out.push(collect_diagram(doc, block, svg, patterns, base_dir));
         return;
     }
+    // Page-level SVG blocks lowered from WCL (`lower_svg`): a complete
+    // `<svg>` like `diagram`, with no `card` shapes — plain vector embed.
+    if kind == "sequence_diagram" || kind == "state_diagram" {
+        let svg = crate::render::render_lowered_svg_block(doc, block, kind, patterns);
+        out.push(collect_diagram(doc, block, svg, patterns, base_dir));
+        return;
+    }
     // Lists are fundamental HTML blocks (no usable `lower`); read their nested
     // `li` structure directly into flattened, marked lines.
     if kind == "list" {

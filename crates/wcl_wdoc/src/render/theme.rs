@@ -94,6 +94,7 @@ pre.code-block{background:var(--wdoc-bg-inset);color:var(--wdoc-fg);border-color
 .wdoc-shape-text{fill:var(--wdoc-fg);}
 .wdoc-boundary{fill:none;stroke:var(--wdoc-fg-muted);stroke-dasharray:6 4;}
 .wdoc-boundary-label{fill:var(--wdoc-fg-muted);font-weight:600;}
+.wdoc-edge-label{fill:var(--wdoc-fg-muted);}
 .callout.note{--callout-accent:var(--wdoc-blue);}
 .callout.info{--callout-accent:var(--wdoc-cyan);}
 .callout.tip{--callout-accent:var(--wdoc-green);}

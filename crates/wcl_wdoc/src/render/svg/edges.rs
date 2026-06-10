@@ -86,7 +86,7 @@ pub(crate) fn render_edges(
         build_shared_anchors(&items, positions)
     };
 
-    let mut planned: Vec<(EdgePath, Option<String>)> = Vec::new();
+    let mut planned: Vec<(EdgePath, EdgeStyle)> = Vec::new();
     for item in &items {
         if let Some(plan) = plan_edge(
             item,
@@ -109,13 +109,24 @@ pub(crate) fn render_edges(
     }
     let mut out = String::new();
     let mut bboxes: Vec<(f64, f64, f64, f64)> = Vec::new();
-    for (path, kind) in planned {
+    for (path, style) in planned {
         if let Some(bbox) = polyline_bbox(&path.points) {
             bboxes.push(bbox);
         }
-        out.push_str(&serialize_edge(&path, kind.as_deref(), straight));
+        out.push_str(&serialize_edge(&path, &style, straight));
     }
     (out, bboxes)
+}
+
+/// Per-edge presentation read off the edge record. `kind` comes from
+/// the `a -> b : kind` connection syntax or a computed record's `kind`
+/// field; `label` / `dash` are reachable only through computed
+/// `edges = [...]` records today — the `->` statement grammar carries
+/// no payload beyond the kind symbol.
+pub(crate) struct EdgeStyle {
+    pub(crate) kind: Option<String>,
+    pub(crate) label: Option<String>,
+    pub(crate) dash: Option<String>,
 }
 
 pub(crate) fn polyline_bbox(points: &[(f64, f64)]) -> Option<(f64, f64, f64, f64)> {
@@ -305,7 +316,7 @@ pub(crate) fn plan_edge(
     straight: bool,
     source_overrides: &AnchorMap,
     dest_overrides: &AnchorMap,
-) -> Option<(EdgePath, Option<String>)> {
+) -> Option<(EdgePath, EdgeStyle)> {
     let Value::Record { fields, .. } = value else {
         return None;
     };
@@ -349,6 +360,11 @@ pub(crate) fn plan_edge(
     let kind = match fields.get("kind") {
         Some(Value::Symbol(k)) => Some(k.clone()),
         _ => None,
+    };
+    let style = EdgeStyle {
+        kind,
+        label: fields.get("label").and_then(edge_endpoint_id),
+        dash: fields.get("dash").and_then(edge_endpoint_id),
     };
     let points = if straight {
         let ca = bbox_center(&src.bbox);
@@ -418,32 +434,85 @@ pub(crate) fn plan_edge(
         };
         points
     };
-    Some((EdgePath { points }, kind))
+    Some((EdgePath { points }, style))
 }
 
-pub(crate) fn serialize_edge(path: &EdgePath, kind: Option<&str>, straight: bool) -> String {
-    let kind_attr = match kind {
+pub(crate) fn serialize_edge(path: &EdgePath, style: &EdgeStyle, straight: bool) -> String {
+    let kind_attr = match style.kind.as_deref() {
         Some(k) => format!(" data-kind=\"{}\"", escape_html(k)),
         None => String::new(),
     };
-    if straight && path.points.len() == 2 {
+    let dash_attr = match style.dash.as_deref() {
+        Some(d) => format!(" stroke-dasharray=\"{}\"", escape_html(d)),
+        None => String::new(),
+    };
+    let mut out = if straight && path.points.len() == 2 {
         let (x1, y1) = path.points[0];
         let (x2, y2) = path.points[1];
-        return format!(
+        format!(
             "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" \
-             stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\"{kind_attr} />"
-        );
+             stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\"{dash_attr}{kind_attr} />"
+        )
+    } else {
+        let points: Vec<String> = path
+            .points
+            .iter()
+            .map(|(x, y)| format!("{x},{y}"))
+            .collect();
+        format!(
+            "<polyline points=\"{}\" fill=\"none\" \
+             stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\"{dash_attr}{kind_attr} />",
+            points.join(" ")
+        )
+    };
+    if let Some(label) = style.label.as_deref()
+        && let Some((x, y)) = edge_label_point(&path.points)
+    {
+        out.push_str(&format!(
+            "<text class=\"wdoc-edge-label\" x=\"{x}\" y=\"{y}\" \
+             text-anchor=\"middle\" dominant-baseline=\"middle\" \
+             font-size=\"11\">{}</text>",
+            escape_html(label)
+        ));
     }
-    let points: Vec<String> = path
-        .points
-        .iter()
-        .map(|(x, y)| format!("{x},{y}"))
-        .collect();
-    format!(
-        "<polyline points=\"{}\" fill=\"none\" \
-         stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\"{kind_attr} />",
-        points.join(" ")
-    )
+    out
+}
+
+/// Label anchor for an edge: the polyline's arc-length midpoint,
+/// nudged ~8px along the local normal (flipped to sit above a mostly-
+/// horizontal run and left of a mostly-vertical one) so the text
+/// clears the stroke.
+pub(crate) fn edge_label_point(points: &[(f64, f64)]) -> Option<(f64, f64)> {
+    if points.len() < 2 {
+        return None;
+    }
+    let total: f64 = points
+        .windows(2)
+        .map(|w| (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1))
+        .sum();
+    if total <= f64::EPSILON {
+        return Some(points[0]);
+    }
+    let mut remaining = total / 2.0;
+    for w in points.windows(2) {
+        let (dx, dy) = (w[1].0 - w[0].0, w[1].1 - w[0].1);
+        let seg = dx.hypot(dy);
+        if seg < remaining || seg <= f64::EPSILON {
+            remaining -= seg;
+            continue;
+        }
+        let t = remaining / seg;
+        let (mx, my) = (w[0].0 + dx * t, w[0].1 + dy * t);
+        // Unit normal, flipped toward "up / left" so the label sits on
+        // the same side regardless of segment direction.
+        let (mut nx, mut ny) = (-dy / seg, dx / seg);
+        if ny > 0.0 || (ny == 0.0 && nx > 0.0) {
+            nx = -nx;
+            ny = -ny;
+        }
+        return Some((mx + nx * 8.0, my + ny * 8.0));
+    }
+    Some(points[points.len() - 1])
 }
 
 pub(crate) fn edge_endpoint_id(v: &Value) -> Option<String> {

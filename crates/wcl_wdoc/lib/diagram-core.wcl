@@ -467,12 +467,22 @@ type Polygon extends SvgBlock {
 // fundamentals remain. Users add their own shapes by declaring the
 // same pair in user source.
 
+// `Rect.rx` rounds the corners (statechart state boxes). `Line.dash` /
+// `Polyline.dash` is an inline `stroke-dasharray` value (e.g. `"4 4"`)
+// — inline rather than a theme class so dashes survive the PDF
+// backend's SVG embedding. `Polyline` is an *open* multi-segment path
+// (self-message loops, open arrowheads, stick figures); it never
+// fills. `Link` wraps child fundamentals in a clickable in-site link
+// (same `link` semantics as diagram shapes: bare page name or
+// `site:page`).
 union SvgFundamental {
-  Rect    { x: f64? y: f64? width: f64? height: f64? fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
+  Rect    { x: f64? y: f64? width: f64? height: f64? rx: f64? fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
   Circle  { cx: f64? cy: f64? r: f64? fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
-  Line    { x1: f64? y1: f64? x2: f64? y2: f64? stroke: utf8? id: identifier? class: list<utf8>? }
+  Line    { x1: f64? y1: f64? x2: f64? y2: f64? stroke: utf8? dash: utf8? id: identifier? class: list<utf8>? }
   Label   { content: utf8 x: f64? y: f64? font_size: f64? fit_width: f64? fit_height: f64? fill: utf8? id: identifier? class: list<utf8>? }
   Polygon { points: utf8 fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
+  Polyline { points: utf8 stroke: utf8? dash: utf8? id: identifier? class: list<utf8>? }
+  Link    { href: utf8 children: list<SvgFundamental> }
 }
 
 union HtmlFundamental {

@@ -107,12 +107,13 @@ pub(crate) fn render_polygon(block: &Block<'_>, parent_w: f64, parent_h: f64) ->
 
 pub(crate) fn render_rect_payload(map: &BTreeMap<String, Value>) -> String {
     let p = shape_paint(map);
-    emit_rect(
+    emit_rect_rounded(
         &p.class,
         map_f64(map, "x").unwrap_or(0.0),
         map_f64(map, "y").unwrap_or(0.0),
         map_f64(map, "width").unwrap_or(0.0),
         map_f64(map, "height").unwrap_or(0.0),
+        map_f64(map, "rx"),
         p.fill.as_deref(),
         p.stroke.as_deref(),
         p.id.as_deref(),
@@ -134,15 +135,39 @@ pub(crate) fn render_circle_payload(map: &BTreeMap<String, Value>) -> String {
 
 pub(crate) fn render_line_payload(map: &BTreeMap<String, Value>) -> String {
     let p = shape_paint(map);
-    emit_line(
+    emit_line_dashed(
         &p.class,
         map_f64(map, "x1").unwrap_or(0.0),
         map_f64(map, "y1").unwrap_or(0.0),
         map_f64(map, "x2").unwrap_or(0.0),
         map_f64(map, "y2").unwrap_or(0.0),
         p.stroke.as_deref(),
+        map_utf8(map, "dash").as_deref(),
         p.id.as_deref(),
     )
+}
+
+/// Open multi-segment path (`points` as in `<polyline>`). Always
+/// `fill="none"` — an open path is a stroke, not a region; closed
+/// regions are `Polygon`'s job. `dash` is an inline `stroke-dasharray`
+/// (inline, not a theme class, so it survives the PDF backend's SVG
+/// embedding).
+pub(crate) fn render_polyline_payload(map: &BTreeMap<String, Value>) -> String {
+    let p = shape_paint(map);
+    let mut out = format!(
+        "<polyline{} points=\"{}\" fill=\"none\"",
+        p.class,
+        escape_html(&map_utf8(map, "points").unwrap_or_default())
+    );
+    append_attr(&mut out, "stroke", p.stroke.as_deref());
+    append_attr(
+        &mut out,
+        "stroke-dasharray",
+        map_utf8(map, "dash").as_deref(),
+    );
+    append_attr(&mut out, "id", p.id.as_deref());
+    out.push_str(" />");
+    out
 }
 
 pub(crate) fn render_label_payload(map: &BTreeMap<String, Value>) -> String {
@@ -258,7 +283,27 @@ pub(crate) fn emit_rect(
     stroke: Option<&str>,
     id: Option<&str>,
 ) -> String {
+    emit_rect_rounded(cls, x, y, w, h, None, fill, stroke, id)
+}
+
+/// [`emit_rect`] with an optional corner radius (`rx`) — the rounded
+/// box used by statechart states.
+#[allow(clippy::too_many_arguments)] // cohesive <rect> attributes
+pub(crate) fn emit_rect_rounded(
+    cls: &str,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    rx: Option<f64>,
+    fill: Option<&str>,
+    stroke: Option<&str>,
+    id: Option<&str>,
+) -> String {
     let mut out = format!("<rect{cls} x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\"");
+    if let Some(rx) = rx {
+        write!(out, " rx=\"{rx}\"").expect("write to String");
+    }
     append_attr(&mut out, "fill", fill);
     append_attr(&mut out, "stroke", stroke);
     append_attr(&mut out, "id", id);
@@ -292,8 +337,25 @@ pub(crate) fn emit_line(
     stroke: Option<&str>,
     id: Option<&str>,
 ) -> String {
+    emit_line_dashed(cls, x1, y1, x2, y2, stroke, None, id)
+}
+
+/// [`emit_line`] with an optional inline `stroke-dasharray` (inline,
+/// not a theme class, so it survives the PDF backend's SVG embedding).
+#[allow(clippy::too_many_arguments)] // cohesive <line> attributes
+pub(crate) fn emit_line_dashed(
+    cls: &str,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    stroke: Option<&str>,
+    dash: Option<&str>,
+    id: Option<&str>,
+) -> String {
     let mut out = format!("<line{cls} x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"");
     append_attr(&mut out, "stroke", stroke);
+    append_attr(&mut out, "stroke-dasharray", dash);
     append_attr(&mut out, "id", id);
     out.push_str(" />");
     out

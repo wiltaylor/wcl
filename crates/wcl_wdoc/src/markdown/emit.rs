@@ -120,6 +120,14 @@ impl Emitter<'_> {
                 let rel = self.write_svg("diagram", &svg)?;
                 out.push(image_ref(&self.svg_alt(block, "diagram"), &rel));
             }
+            // Page-level SVG blocks lowered from WCL (`lower_svg`) write a
+            // standalone `.svg` exactly like `diagram`.
+            "sequence_diagram" | "state_diagram" => {
+                let svg =
+                    crate::render::render_lowered_svg_block(self.doc, block, kind, self.patterns);
+                let rel = self.write_svg(&kind.replace('_', "-"), &svg)?;
+                out.push(image_ref(&self.svg_alt(block, kind), &rel));
+            }
             "terminal" => {
                 let svg = crate::terminal::render_terminal_pdf(self.doc, block, self.base_dir);
                 let rel = self.write_svg("terminal", &svg)?;

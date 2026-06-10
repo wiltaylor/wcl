@@ -54,6 +54,10 @@ class "wdoc-shape-text" { fill = "#2e3440" }
 class "wdoc-boundary"       { fill = "none"  stroke = "#4c566a" }
 class "wdoc-boundary-label" { fill = "#4c566a"  bold = true }
 
+// Edge labels (a computed edge record's `label` field, and statechart
+// transition triggers): muted text at the edge's midpoint.
+class "wdoc-edge-label" { fill = "#4c566a" }
+
 // Timeline shape defaults. Markers / connectors / labels paint with
 // `currentColor` so they follow the page theme; phase dividers + their
 // headings also carry a cycled `wdoc-series-N` class, which sets their

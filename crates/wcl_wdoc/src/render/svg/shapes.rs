@@ -442,7 +442,7 @@ pub(crate) fn render_shape(
                 block, ctx, parent_w, parent_h,
             ));
         }
-        kind => lower_svg_block(ctx.doc, block, kind, parent_w, parent_h),
+        kind => lower_svg_block(ctx.doc, block, kind, parent_w, parent_h, Some(ctx.patterns)),
     };
     let svg = with_shape_icon(block, kind, parent_w, parent_h, ctx.icons, base);
     Some(wrap_shape_link(block, ctx, svg))
