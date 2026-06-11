@@ -94,6 +94,27 @@ pub struct Document {
     /// without the memo every closure call re-ran name resolution (and
     /// rebuilt list arguments) just to discover a type isn't a union.
     union_path_memo: std::sync::RwLock<HashMap<Vec<String>, Option<String>>>,
+    /// Lazily-built locations of every `@document`-decorated type
+    /// declaration, in `type_decls()` order (root-authored first).
+    /// `doc_schemas_for_ns` consults the merged document schema on
+    /// every unresolved-name fallthrough, so re-walking every
+    /// declaration per call made each miss O(total declarations).
+    /// Same construction-time-only inputs as `ref_registry`.
+    document_schema_locs: std::sync::OnceLock<Vec<DeclLoc>>,
+    /// Lazily-built index of top-level `let` name → (source, item)
+    /// position. `root_let` runs on every scope-walk fallthrough, so
+    /// scanning every source's items per lookup compounded with the
+    /// reference count. First occurrence wins, matching the scan order
+    /// it replaces.
+    root_let_index: std::sync::OnceLock<HashMap<String, (usize, usize)>>,
+}
+
+/// Position of a type declaration found by a cached decorator scan:
+/// either `all_sources()[source].items[item]` or an index into the
+/// document's `synthetic_types`.
+enum DeclLoc {
+    Source { source: usize, item: usize },
+    Synthetic(usize),
 }
 
 impl std::fmt::Debug for Document {
@@ -352,6 +373,8 @@ impl Document {
             schema_index: std::sync::OnceLock::new(),
             component_index: std::sync::OnceLock::new(),
             union_path_memo: std::sync::RwLock::new(HashMap::new()),
+            document_schema_locs: std::sync::OnceLock::new(),
+            root_let_index: std::sync::OnceLock::new(),
         })
     }
 
@@ -1056,12 +1079,32 @@ impl Document {
     /// at document-root scope, so it can reference other top-level
     /// lets / fields.
     pub(crate) fn root_let(&self, name: &str) -> Option<LetView<'_>> {
-        for src in self.all_sources() {
-            if let Some(l) = find_let(src.items, src.cells, name, self, &Scope::root()) {
-                return Some(l);
+        let sources = self.all_sources();
+        let index = self.root_let_index.get_or_init(|| {
+            let mut map = HashMap::new();
+            for (si, src) in sources.iter().enumerate() {
+                for (ii, (item, cells)) in src.items.iter().zip(src.cells.iter()).enumerate() {
+                    if let (ast::Item::Let(l), ItemCellKind::Let(_)) = (item, &cells.kind)
+                        && !map.contains_key(&l.name)
+                    {
+                        map.insert(l.name.clone(), (si, ii));
+                    }
+                }
             }
-        }
-        None
+            map
+        });
+        let &(si, ii) = index.get(name)?;
+        let src = &sources[si];
+        let (ast::Item::Let(l), ItemCellKind::Let(cell)) = (&src.items[ii], &src.cells[ii].kind)
+        else {
+            unreachable!("root_let_index points at a Let item")
+        };
+        Some(LetView {
+            ast: l,
+            cell,
+            doc: self,
+            scope: Scope::root(),
+        })
     }
 
     pub fn fields(&self) -> impl Iterator<Item = Field<'_>> + '_ {
@@ -1464,9 +1507,81 @@ impl Document {
     /// returns the first and `Document::schema_errors` surfaces a
     /// `MultipleDocumentSchemas` violation.
     pub fn doc_schema(&self) -> Option<TypeDecl<'_>> {
-        self.find_all_decorated(BuiltinDecorator::Document)
-            .into_iter()
-            .next()
+        self.document_schema_decls().into_iter().next()
+    }
+
+    /// Every `@document`-decorated type declaration, in `type_decls()`
+    /// order. The decorator scan runs once (locations cached in
+    /// `document_schema_locs`); each call rebuilds only the few
+    /// matching views by direct indexing.
+    fn document_schema_decls(&self) -> Vec<TypeDecl<'_>> {
+        let sources = self.all_sources();
+        let locs = self.document_schema_locs.get_or_init(|| {
+            let dec_name = BuiltinDecorator::Document.as_str();
+            let mut out = Vec::new();
+            for (si, src) in sources.iter().enumerate() {
+                for (ii, (item, cells)) in src.items.iter().zip(src.cells.iter()).enumerate() {
+                    let ast::Item::TypeDecl(t) = item else {
+                        continue;
+                    };
+                    let td = TypeDecl {
+                        ast: t,
+                        file_ns: src.file_ns,
+                        cells,
+                        doc: self,
+                        is_imported: src.path.is_some(),
+                    };
+                    if td.decorators().any(|d| d.full_name() == dec_name) {
+                        out.push(DeclLoc::Source {
+                            source: si,
+                            item: ii,
+                        });
+                    }
+                }
+            }
+            for (i, (t, cells)) in self
+                .synthetic_types
+                .iter()
+                .zip(self.synthetic_type_cells.iter())
+                .enumerate()
+            {
+                let td = TypeDecl {
+                    ast: t,
+                    file_ns: &[],
+                    cells,
+                    doc: self,
+                    is_imported: false,
+                };
+                if td.decorators().any(|d| d.full_name() == dec_name) {
+                    out.push(DeclLoc::Synthetic(i));
+                }
+            }
+            out
+        });
+        locs.iter()
+            .map(|loc| match *loc {
+                DeclLoc::Source { source, item } => {
+                    let src = &sources[source];
+                    let ast::Item::TypeDecl(t) = &src.items[item] else {
+                        unreachable!("document_schema_locs points at a TypeDecl")
+                    };
+                    TypeDecl {
+                        ast: t,
+                        file_ns: src.file_ns,
+                        cells: &src.cells[item],
+                        doc: self,
+                        is_imported: src.path.is_some(),
+                    }
+                }
+                DeclLoc::Synthetic(i) => TypeDecl {
+                    ast: &self.synthetic_types[i],
+                    file_ns: &[],
+                    cells: &self.synthetic_type_cells[i],
+                    doc: self,
+                    is_imported: false,
+                },
+            })
+            .collect()
     }
 
     /// Every `@document` schema that governs `file_ns`, root-authored
@@ -1489,7 +1604,7 @@ impl Document {
         // against the stdlib `Site` schema, which lives in `namespace
         // wdoc`. Root-authored declarations stay namespace-scoped.
         let schemas = self
-            .find_all_decorated(BuiltinDecorator::Document)
+            .document_schema_decls()
             .into_iter()
             .filter(|t| t.file_ns() == file_ns || t.is_imported())
             .collect();
@@ -1567,7 +1682,7 @@ impl Document {
         // `@document` in a namespace is an error: imported library
         // schemas merge silently, so importing several modules that
         // each ship a base document is fine.
-        let doc_schemas = self.find_all_decorated(BuiltinDecorator::Document);
+        let doc_schemas = self.document_schema_decls();
         let mut by_ns: BTreeMap<Vec<String>, Vec<TypeDecl<'_>>> = BTreeMap::new();
         for d in &doc_schemas {
             by_ns.entry(d.file_ns().to_vec()).or_default().push(*d);
