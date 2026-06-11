@@ -123,3 +123,46 @@ Reproduce the numbers: `python3` over `/tmp/wad-profile.json`, summing `total_ns
 
 wad `@ 1aee969` (`~/dev/wad`): `wcl wdoc build main.wcl --out _site` — a ready-made
 regression benchmark: seconds when memoised correctly, ~45 minutes today.
+
+---
+
+## Update 2026-06-11: post-`b331ee0b` profile — the cost is context-dependent CALL overhead, not list work
+
+Re-profiled on the binary from `053919e2` (clone/coercion fixes in): ~43 min, profile at
+`/tmp/wad-profile2.json` — **nearly identical to the pre-fix profile**. Drilling into
+per-call-site subtrees produced the decisive observation:
+
+**The same function costs ~0s or tens of seconds per call depending on where it is
+called from**, with all the cost as *self time* (its children — the actual filter/map
+work — sum to ~0):
+
+| function | from `each` / filter contexts | from a table `rows` mapping closure |
+|---|---|---|
+| `sec_dests` (map+filter over ~25 recs) | 0.0s × 37 calls | **556s × 15 calls (~37s/call)**, children 0.0s |
+| `ops_dests` | 0.0s × 14 | **346s × 8 (~43s/call)**, children 0.0s |
+| `err_sources` (~17 recs) | — | **274s × 3 (~91s/call)**, children 0.0s |
+| `prod_dests` | 0.0s × 21 | **211s × 12 (~18s/call)**, children 0.0s |
+| `covered_ids` | 0.0s × 110 | **108s × 5 (~22s/call)**, children 0.0s |
+
+`field:rows` nodes total **1,912s of the ~2,600s build (73%)** across 109 tables.
+One outlier outside `rows`: `sys_cross_rels` 105s × **1** call (self time) via a
+nested closure chain — so the toll is not exclusive to `rows`, it correlates with
+the invocation context (depth / environment of the calling closure?), and per-call
+toll appears to grow with document size — the same templates cost milliseconds in
+small repro documents and in wad's own 55-page era.
+
+**Author-side mitigation attempted and falsified** (wad `@ ecea5ec`): hoisted every
+loop-invariant lookup out of filter predicates, and precomputed all static chapter
+tables' `rows` as document-level lets (referenced by name — zero named-fn calls from
+the rows context on those tables). Result: **2,761s (~46 min) — no change.** The toll
+is spread across every remaining closure invocation in block-field contexts (component
+tables, label helpers per cell, repeater bodies, inline rendering); no template shape
+avoids closure calls.
+
+**Where to look:** whatever the evaluator does *per user-fn invocation* that scales
+with the calling context — re-running name resolution against the full document scope,
+walking/copying a deep environment chain, or re-validating/coercing against the merged
+document schema per call. A micro-benchmark that reproduces it: call a trivial named fn
+from inside a `table { rows = map(...) }` closure in a document with many merged
+@document roots / large scope, vs the same call from a top-level let — in wad the ratio
+is ~10⁶.
