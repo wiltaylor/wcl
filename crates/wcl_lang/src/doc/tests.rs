@@ -4222,3 +4222,57 @@ count = len(concepts)
         .expect("count value");
     assert_eq!(count, Value::I64(0));
 }
+
+#[test]
+fn root_projections_memoised_references_agree() {
+    // Two references to a root `@connections` slot and a union
+    // `@children` slot: the second is served from the projection memo
+    // and must observe the same value as the first.
+    let src = r#"
+@block("node") type Node { @inline(0) id: utf8 }
+symbol_set EdgeKind { default flow }
+connection Edge: Node -> Node : EdgeKind
+union Entry { N { w: i64 } }
+@block("box") type BoxT { w: i64 }
+
+@document
+type Model {
+  @children("node") nodes: list<Node>
+  @children("box") boxes: list<BoxT>
+  @children(Entry) entries: list<Entry>
+  @connections(Edge) edges: list<Edge>
+  e1: list<Edge>
+  e2: list<Edge>
+  c1: list<Entry>
+  c2: list<Entry>
+}
+
+node "a" {}
+node "b" {}
+box { w = 1 }
+a -> b
+e1 = edges
+e2 = edges
+c1 = entries
+c2 = entries
+"#;
+    let doc = Document::open(src, "test").expect("open");
+    let e1 = doc.field("e1").unwrap().value().unwrap().clone();
+    let e2 = doc.field("e2").unwrap().value().unwrap().clone();
+    assert_eq!(e1, e2, "memoised @connections reference must agree");
+    let Value::List(edges) = &e1 else {
+        panic!("edges should be a list, got {e1:?}");
+    };
+    assert_eq!(edges.len(), 1, "one projected edge");
+    let c1 = doc.field("c1").unwrap().value().unwrap().clone();
+    let c2 = doc.field("c2").unwrap().value().unwrap().clone();
+    assert_eq!(c1, c2, "memoised union @children reference must agree");
+    let Value::List(entries) = &c1 else {
+        panic!("entries should be a list, got {c1:?}");
+    };
+    assert_eq!(
+        entries.len(),
+        1,
+        "the box block dispatches to Entry::N, nodes have no matching shape"
+    );
+}

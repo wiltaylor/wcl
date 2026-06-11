@@ -107,6 +107,19 @@ pub struct Document {
     /// reference count. First occurrence wins, matching the scan order
     /// it replaces.
     root_let_index: std::sync::OnceLock<HashMap<String, (usize, usize)>>,
+    /// Memo for the root `@connections` projection in
+    /// [`resolve_root_in`]: field name → projected edge list. The
+    /// projection walks every source's connection statements and
+    /// resolves each operand's label against the top-level blocks;
+    /// it ran in full on every reference. Sound to cache: it always
+    /// runs at `Scope::root()` over construction-time-fixed sources.
+    root_conn_memo: std::sync::RwLock<HashMap<String, Value>>,
+    /// Memo for the root union `@children`/`@child` projections in
+    /// [`resolve_root_children`]: field name → dispatched value
+    /// (`Value::List` for `@children`). Union dispatch reified every
+    /// top-level block per reference. Kind-keyed (non-union) arms stay
+    /// uncached — they return borrowed `Block` views from a cheap scan.
+    root_children_memo: std::sync::RwLock<HashMap<String, Value>>,
 }
 
 /// Position of a type declaration found by a cached decorator scan:
@@ -375,6 +388,8 @@ impl Document {
             union_path_memo: std::sync::RwLock::new(HashMap::new()),
             document_schema_locs: std::sync::OnceLock::new(),
             root_let_index: std::sync::OnceLock::new(),
+            root_conn_memo: std::sync::RwLock::new(HashMap::new()),
+            root_children_memo: std::sync::RwLock::new(HashMap::new()),
         })
     }
 
@@ -686,6 +701,14 @@ impl Document {
         if let Some(ck) = field.children_kind_or_union() {
             match ck {
                 ChildKind::Union(union) => {
+                    if let Some(Value::List(items)) = self
+                        .root_children_memo
+                        .read()
+                        .ok()
+                        .and_then(|m| m.get(name).cloned())
+                    {
+                        return Some(DataRef::from_variant_value_list(items.to_vec()));
+                    }
                     let mut out: Vec<Value> = Vec::new();
                     for b in self.blocks() {
                         if let Ok(v) = variant_dispatch::block_to_variant(self, &b, union) {
@@ -703,6 +726,12 @@ impl Document {
                                 out.push(it.clone());
                             }
                         }
+                    }
+                    if let Ok(mut m) = self.root_children_memo.write() {
+                        m.insert(
+                            name.to_string(),
+                            Value::List(std::sync::Arc::new(out.clone())),
+                        );
                     }
                     return Some(DataRef::from_variant_value_list(out));
                 }
@@ -723,12 +752,22 @@ impl Document {
         if let Some(ck) = field.child_kind_or_union() {
             match ck {
                 ChildKind::Union(union) => {
-                    for b in self.blocks() {
-                        if let Ok(v) = variant_dispatch::block_to_variant(self, &b, union) {
-                            return Some(DataRef::from_variant_value(v));
-                        }
+                    if let Some(hit) = self
+                        .root_children_memo
+                        .read()
+                        .ok()
+                        .and_then(|m| m.get(name).cloned())
+                    {
+                        return Some(DataRef::from_variant_value(hit));
                     }
-                    return Some(DataRef::from_variant_value(Value::None));
+                    let projected = self
+                        .blocks()
+                        .find_map(|b| variant_dispatch::block_to_variant(self, &b, union).ok())
+                        .unwrap_or(Value::None);
+                    if let Ok(mut m) = self.root_children_memo.write() {
+                        m.insert(name.to_string(), projected.clone());
+                    }
+                    return Some(DataRef::from_variant_value(projected));
                 }
                 ChildKind::Kind(kind) => {
                     return self
@@ -775,6 +814,14 @@ impl Document {
         // can't depend on the connection set, and re-entering projection
         // here would recurse infinitely.
         if !RESOLVING_CONN_OPERAND.with(std::cell::Cell::get) {
+            if let Some(hit) = self
+                .root_conn_memo
+                .read()
+                .ok()
+                .and_then(|m| m.get(name).cloned())
+            {
+                return Some(DataRef::from_variant_value(hit));
+            }
             let schemas = self.doc_schemas_for_ns(&self.file_ns);
             if let Some(field) = schemas.field(name)
                 && let Some(conn_schema) = field.connection_schema()
@@ -783,9 +830,11 @@ impl Document {
                 for src in self.all_sources() {
                     all.extend(self.project_connections(src.items, conn_schema, &Scope::root()));
                 }
-                return Some(DataRef::from_variant_value(Value::List(
-                    std::sync::Arc::new(all),
-                )));
+                let projected = Value::List(std::sync::Arc::new(all));
+                if let Ok(mut m) = self.root_conn_memo.write() {
+                    m.insert(name.to_string(), projected.clone());
+                }
+                return Some(DataRef::from_variant_value(projected));
             }
         }
         // Document-root `@children`/`@child` projection: a field declared
