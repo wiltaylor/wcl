@@ -6,7 +6,8 @@
 //! HTML build (single site flat at `out_dir`, multiple sites under
 //! `<out_dir>/<name>/`, assets in `_wdoc/`). Front matter, prose, lists,
 //! tables, code, callouts, images and equations map to native Markdown;
-//! interactivity (zoomable diagrams) is dropped and videos are skipped.
+//! interactivity (zoomable diagrams) is dropped and videos become links
+//! (local files are copied into `_wdoc/` like other assets).
 //! Aimed at AI / text consumers.
 //!
 //! Reuses [`crate::build`]'s site grouping and registry setup, so failures
@@ -130,6 +131,10 @@ pub fn markdown(
     }
 
     let multi = build_set.len() > 1;
+    // Clear any routing error / render warnings stranded by an earlier
+    // pass so stale messages can't leak into this one (mirrors `build`).
+    let _ = crate::render::take_route_error();
+    let _ = crate::render::take_render_warnings();
     let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, BuildError> {
         let mut count = 0;
         for spec in &build_set {
@@ -174,6 +179,11 @@ pub fn markdown(
     // would have been silently dropped, so fail loudly with a snippet.
     if let Some((e, src)) = eval_err {
         return Err(BuildError::eval(e, src));
+    }
+    // An unroutable diagram edge surfaces after the eval check, like the
+    // HTML build — static diagrams render in Markdown output too.
+    if let Some(msg) = crate::render::take_route_error() {
+        return Err(BuildError::EdgeRouting(msg));
     }
     result
 }
@@ -258,6 +268,7 @@ fn markdown_site(
     patterns.tilesets().copy_used_images(out_dir)?;
     patterns.images().copy_used_images(out_dir)?;
     patterns.files().copy_used(out_dir)?;
+    patterns.videos().copy_used_assets(out_dir)?;
 
     // Internal `[text](page)` links that didn't resolve fail the build.
     let link_errors = patterns.take_link_errors();

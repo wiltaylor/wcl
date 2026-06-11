@@ -662,8 +662,7 @@ pub(crate) fn render_table(doc: &Document, block: &Block<'_>, patterns: &InlineP
     // Computed-rows form: `rows = <list of cell-lists>` (+ optional
     // `header`). Reads the field on the passed-in Block view, so a value
     // fed from a component slot / repeater binding resolves here.
-    if let Some(Value::List(body_rows)) = block.field("rows").and_then(|f| f.value().ok().cloned())
-    {
+    if let Some(Value::List(body_rows)) = computed_field(block, "rows") {
         let to_cells = |row: &Value| -> Vec<String> {
             match row {
                 Value::List(cells) => cells
@@ -674,8 +673,7 @@ pub(crate) fn render_table(doc: &Document, block: &Block<'_>, patterns: &InlineP
                 other => vec![cell_to_html(doc, patterns, other)],
             }
         };
-        let header: Vec<String> = match block.field("header").and_then(|f| f.value().ok().cloned())
-        {
+        let header: Vec<String> = match computed_field(block, "header") {
             Some(Value::List(cells)) => cells
                 .iter()
                 .map(|c| cell_to_html(doc, patterns, c))

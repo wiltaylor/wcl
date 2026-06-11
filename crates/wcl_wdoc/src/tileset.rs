@@ -100,7 +100,22 @@ impl TilesetRegistry {
                 field_i64(&block, "image_width"),
                 field_i64(&block, "image_height"),
             ) {
-                (Some(w), Some(h)) => (w, h),
+                (Some(w), Some(h)) => {
+                    // Explicit dims are the escape hatch for headers
+                    // `image_dims` can't parse (e.g. WebP) — but when the
+                    // header *is* readable and disagrees, the tiles are
+                    // guaranteed distorted, so warn.
+                    if let Some((aw, ah)) = fs::read(&src_path).ok().as_deref().and_then(image_dims)
+                        && (aw as i64, ah as i64) != (w, h)
+                    {
+                        crate::render::record_render_warning(format!(
+                            "tileset \"{name}\": declared image_width/image_height {w}x{h} \
+                             disagree with {} ({aw}x{ah}) — tiles will render distorted",
+                            src_path.display()
+                        ));
+                    }
+                    (w, h)
+                }
                 _ => {
                     let bytes = fs::read(&src_path).map_err(|e| {
                         BuildError::Tileset(format!(

@@ -33,24 +33,35 @@ thread_local! {
     /// hard `BuildError`. First message wins; see [`record_route_error`].
     static ROUTE_ERR: RefCell<Option<String>> = const { RefCell::new(None) };
 
-    /// Non-fatal edge warnings collected during the current render pass: an
-    /// edge whose `source` / `destination` matches no rendered shape id is
-    /// dropped (it may legitimately reference a conditionally-absent shape,
-    /// or be a typo). Unlike [`ROUTE_ERR`] these don't fail the build — the
-    /// backend drains them to stderr after rendering. All messages collected
-    /// (not first-wins); see [`record_edge_warning`].
-    static EDGE_WARN: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    /// Non-fatal warnings collected during the current render pass: a
+    /// dropped diagram edge, a block with no lowering, an image with no
+    /// usable intrinsic size, … Unlike [`ROUTE_ERR`] these don't fail the
+    /// build — the backend drains them to stderr after rendering. All
+    /// distinct messages are collected (identical ones dedup, since some
+    /// recording sites run once per pass per page or twice per diagram);
+    /// see [`record_render_warning`].
+    static RENDER_WARN: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Record a non-fatal render warning. Identical messages dedup; distinct
+/// ones accumulate until [`take_render_warnings`] drains them.
+pub(crate) fn record_render_warning(msg: String) {
+    RENDER_WARN.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if !slot.contains(&msg) {
+            slot.push(msg);
+        }
+    });
 }
 
 /// Record a non-fatal warning that an edge endpoint matched no shape id.
-/// Collected (not first-wins) and drained by [`take_edge_warnings`].
 pub(crate) fn record_edge_warning(msg: String) {
-    EDGE_WARN.with(|slot| slot.borrow_mut().push(msg));
+    record_render_warning(msg);
 }
 
-/// Take and clear the edge warnings recorded during the current pass.
-pub(crate) fn take_edge_warnings() -> Vec<String> {
-    EDGE_WARN.with(|slot| std::mem::take(&mut *slot.borrow_mut()))
+/// Take and clear the render warnings recorded during the current pass.
+pub(crate) fn take_render_warnings() -> Vec<String> {
+    RENDER_WARN.with(|slot| std::mem::take(&mut *slot.borrow_mut()))
 }
 
 /// Record an edge-routing failure (a `route_elbow` that found no obstacle-free
@@ -178,8 +189,22 @@ pub(crate) fn lower_to_values_named(
     kind: &str,
     field: &str,
 ) -> Option<Vec<Value>> {
-    let arg = block_to_record(doc, block, kind)?;
-    let fv = lookup_block_lower_named(doc, block, kind, field)?;
+    // A block that can't produce a record or has no lowering renders
+    // nothing on every backend — that may be a legitimately schema-only
+    // declaration, but more often it's a missing `lower`, so say so
+    // instead of vanishing silently.
+    let Some(arg) = block_to_record(doc, block, kind) else {
+        record_render_warning(format!(
+            "block '{kind}' has no schema record to lower — it renders nothing"
+        ));
+        return None;
+    };
+    let Some(fv) = lookup_block_lower_named(doc, block, kind, field) else {
+        record_render_warning(format!(
+            "block '{kind}' has no `{field}` lowering — it renders nothing"
+        ));
+        return None;
+    };
     match doc.call_value(&fv, &[arg]) {
         Ok(Value::List(items)) => Some(std::sync::Arc::unwrap_or_clone(items)),
         // The declared return type is a `list<…Fundamental>`; anything
@@ -242,17 +267,11 @@ pub(crate) fn lower_html_block(
     patterns: &InlinePatterns,
     base_dir: Option<&Path>,
 ) -> String {
-    let Some(arg) = block_to_record(doc, block, kind) else {
-        return String::new();
-    };
-    let Some(fv) = lookup_block_lower(doc, block, kind) else {
-        return String::new();
-    };
-    let result = match doc.call_value(&fv, &[arg]) {
-        Ok(v) => v,
-        Err(_) => return String::new(),
-    };
-    let Value::List(items) = result else {
+    // Route through `lower_to_values` so HTML shares the other backends'
+    // error handling: a `lower` body that errors records a fatal eval
+    // diagnostic (it used to be silently swallowed here), and a missing
+    // lowering records a warning.
+    let Some(items) = lower_to_values(doc, block, kind) else {
         return String::new();
     };
     let out: String = items

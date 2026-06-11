@@ -385,12 +385,11 @@ fn collect_table(doc: &Document, block: &Block<'_>, patterns: &InlinePatterns) -
     let cell = |v: &Value| -> Vec<InlineRun> { patterns.render_runs(doc, &cell_text(v)) };
 
     // Computed-rows form.
-    if let Some(Value::List(body)) = block.field("rows").and_then(|f| f.value().ok().cloned()) {
-        let header: Vec<Vec<InlineRun>> =
-            match block.field("header").and_then(|f| f.value().ok().cloned()) {
-                Some(Value::List(cells)) => cells.iter().map(&cell).map(bold_cell).collect(),
-                _ => Vec::new(),
-            };
+    if let Some(Value::List(body)) = crate::render::computed_field(block, "rows") {
+        let header: Vec<Vec<InlineRun>> = match crate::render::computed_field(block, "header") {
+            Some(Value::List(cells)) => cells.iter().map(&cell).map(bold_cell).collect(),
+            _ => Vec::new(),
+        };
         let rows = body
             .iter()
             .map(|r| match r {
@@ -435,7 +434,18 @@ fn collect_image(block: &Block<'_>, base_dir: Option<&Path>) -> Option<BlockNode
         Some(dir) => dir.join(&source),
         None => Path::new(&source).to_path_buf(),
     };
-    let bytes = std::fs::read(path).ok()?;
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(e) => {
+            // HTML/Markdown fail later when the asset copy errors, but the
+            // PDF never copies — without this the image just vanishes.
+            crate::render::record_render_warning(format!(
+                "image \"{source}\": cannot read {} ({e}) — it is missing from the PDF",
+                path.display()
+            ));
+            return None;
+        }
+    };
     Some(BlockNode::Image {
         bytes,
         disp_w: field_f64(block, "width").map(|v| v as f32),

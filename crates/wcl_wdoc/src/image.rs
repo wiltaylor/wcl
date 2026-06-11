@@ -269,6 +269,18 @@ fn box_for(
     let (nat_w, nat_h) = dims.map_or((0.0, 0.0), |(w, h)| (w as f64, h as f64));
     let w = field_f64(block, "width").unwrap_or(nat_w) * scale;
     let h = field_f64(block, "height").unwrap_or(nat_h) * scale;
+    // No declared size and no readable intrinsic size collapses the box
+    // to 0×0 — the image is invisible in the diagram. Warn (the sink
+    // dedups the bbox-pass + render-pass double call) instead of
+    // rendering nothing silently.
+    if w <= 0.0 || h <= 0.0 {
+        let source = label_string(block).unwrap_or_default();
+        crate::render::record_render_warning(format!(
+            "image \"{source}\": no intrinsic size available (unreadable or unsupported \
+             header, or an external URL) — set `width`/`height` or the diagram image \
+             renders invisible"
+        ));
+    }
     let (x, y) = crate::tileset::place(block, parent_w, parent_h, w, h);
     (x, y, w, h)
 }

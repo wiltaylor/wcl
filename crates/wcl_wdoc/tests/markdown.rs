@@ -221,10 +221,26 @@ fn nested_list_indents() {
 }
 
 #[test]
-fn local_video_is_skipped() {
-    let (_t, out) = build("page p {\n  p \"before\"\n  video \"clip.mp4\"\n  p \"after\"\n}\n");
+fn local_video_becomes_a_link_to_the_copied_file() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    std::fs::write(tmp.path().join("clip.mp4"), b"not really a video").expect("write clip");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "page p {\n  p \"before\"\n  video \"clip.mp4\" {\n    title = \"Demo\"\n  }\n  p \"after\"\n}\n",
+    );
+    let out = tmp.path().join("out");
+    md_ok(&src, &out, None);
     let md = read(&out, "p.md");
-    assert!(!md.contains("clip.mp4"), "local video dropped: {md}");
+    assert!(
+        md.contains("[Demo](_wdoc/video-clip-"),
+        "local video links to the copied asset: {md}"
+    );
+    let copied = std::fs::read_dir(out.join("_wdoc"))
+        .expect("read _wdoc")
+        .filter_map(Result::ok)
+        .any(|e| e.file_name().to_string_lossy().ends_with(".mp4"));
+    assert!(copied, "the video file is copied into _wdoc/");
     assert!(
         md.contains("before") && md.contains("after"),
         "surrounding prose kept"
@@ -281,6 +297,47 @@ fn cross_root_children_render_in_a_page() {
         md.contains("count = 2"),
         "expected the rendered count, got:\n{md}"
     );
+}
+
+#[test]
+fn lowerless_block_warns_instead_of_vanishing() {
+    // A declared block kind with no `lower` renders nothing on every
+    // backend — legal, but almost always a missing lowering, so the
+    // build records a warning instead of dropping the block silently.
+    let (_t, out) = build(
+        "@block(\"gadget\")\ntype Gadget extends WdocBlock {\n  id: identifier?\n}\n\
+         page p {\n  gadget {}\n  p \"kept\"\n}\n",
+    );
+    let md = read(&out, "p.md");
+    assert!(md.contains("kept"), "surrounding prose kept: {md}");
+    let warnings = wcl_wdoc::take_render_warnings();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("gadget") && w.contains("`lower`")),
+        "expected a lowerless-block warning, got: {warnings:?}"
+    );
+}
+
+#[test]
+fn computed_table_eval_error_fails_the_build() {
+    // A present `rows` expression that fails to evaluate is an authoring
+    // error — it must not silently fall back to pipe-table parsing.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "page p {\n  table {\n    rows = no_such_name\n  }\n}\n",
+    );
+    let out = tmp.path().join("out");
+    match markdown(&src, &out, None) {
+        Err(BuildError::Eval(r)) => {
+            let text = format!("{r:?}");
+            assert!(text.contains("no_such_name"), "names the binding: {text}");
+        }
+        Ok(n) => panic!("expected an eval error, but wrote {n} page(s)"),
+        Err(_) => panic!("expected BuildError::Eval, got a different error"),
+    }
 }
 
 #[test]

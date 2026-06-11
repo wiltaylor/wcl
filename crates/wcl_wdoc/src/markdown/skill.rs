@@ -114,29 +114,42 @@ pub fn skill(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
     }
 
     let multi = build_set.len() > 1;
-    let mut count = 0;
-    for spec in &build_set {
-        let at_root = !multi || (root_site.is_some() && spec.name == root_site);
-        let (site_out, current_prefix) = if at_root {
-            (out_dir.to_path_buf(), String::new())
-        } else {
-            let name = spec.name.as_deref().unwrap_or("site");
-            (out_dir.join(name), format!("{name}/"))
-        };
-        fs::create_dir_all(&site_out)
-            .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", site_out.display())))?;
-        count += skill_site(
-            &doc,
-            base_dir.as_deref(),
-            spec,
-            &site_out,
-            current_prefix,
-            &site_pages,
-            &site_prefix,
-        )?;
+    // Clear stale sinks, then bound the render in a scoped pass so a
+    // swallowed block-eval error fails the build with a snippet — the
+    // same contract as the Markdown and HTML targets.
+    let _ = crate::render::take_route_error();
+    let _ = crate::render::take_render_warnings();
+    let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, BuildError> {
+        let mut count = 0;
+        for spec in &build_set {
+            let at_root = !multi || (root_site.is_some() && spec.name == root_site);
+            let (site_out, current_prefix) = if at_root {
+                (out_dir.to_path_buf(), String::new())
+            } else {
+                let name = spec.name.as_deref().unwrap_or("site");
+                (out_dir.join(name), format!("{name}/"))
+            };
+            fs::create_dir_all(&site_out)
+                .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", site_out.display())))?;
+            count += skill_site(
+                &doc,
+                base_dir.as_deref(),
+                spec,
+                &site_out,
+                current_prefix,
+                &site_pages,
+                &site_prefix,
+            )?;
+        }
+        Ok(count)
+    });
+    if let Some((e, src)) = eval_err {
+        return Err(BuildError::eval(e, src));
     }
-
-    Ok(count)
+    if let Some(msg) = crate::render::take_route_error() {
+        return Err(BuildError::EdgeRouting(msg));
+    }
+    result
 }
 
 /// Render one site as a skill folder into `out_dir`. The start page →
@@ -265,6 +278,7 @@ fn skill_site(
     patterns.tilesets().copy_used_images(out_dir)?;
     patterns.images().copy_used_images(out_dir)?;
     patterns.files().copy_used(out_dir)?;
+    patterns.videos().copy_used_assets(out_dir)?;
 
     // Internal `[text](page)` links that didn't resolve fail the build.
     let link_errors = patterns.take_link_errors();

@@ -1688,7 +1688,7 @@ page index {
     );
     // The drop surfaced a warning naming the missing endpoint. (build leaves
     // warnings in the sink on this thread for the caller to drain.)
-    let warnings = wcl_wdoc::take_edge_warnings();
+    let warnings = wcl_wdoc::take_render_warnings();
     assert!(
         warnings
             .iter()
@@ -5672,6 +5672,15 @@ page index {
         index.contains("width=\"128\" height=\"64\" preserveAspectRatio=\"none\"/>"),
         "{index}"
     );
+    // The override still wins, but a readable header that disagrees is a
+    // guaranteed-distorted render — the build now says so.
+    let warnings = wcl_wdoc::take_render_warnings();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("world") && w.contains("128x64") && w.contains("256x256")),
+        "expected a dimension-mismatch warning, got: {warnings:?}"
+    );
 }
 
 #[test]
@@ -9050,4 +9059,61 @@ page t {
         Ok(n) => panic!("expected eval error, built {n} pages"),
         Err(_) => panic!("expected Eval error, got a different build error"),
     }
+}
+
+#[test]
+fn lower_body_eval_error_fails_the_html_build() {
+    // An error raised *inside* a `lower` body used to be swallowed on the
+    // HTML path (while Markdown/PDF failed loudly). All three backends now
+    // share the same seam, so HTML fails with the eval diagnostic too.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("boom.wcl");
+    write_fixture(
+        &src,
+        r##"
+@block("boom")
+type Boom extends WdocBlock {
+  id: identifier?
+  lower = fn(b: Boom) -> list<HtmlFundamental> [
+    HtmlFundamental::Raw { html: no_such_helper(b) }
+  ]
+}
+page t {
+  boom { }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::Eval(r)) => {
+            let msg = format!("{r:?}");
+            assert!(msg.contains("no_such_helper"), "{msg}");
+        }
+        Ok(n) => panic!("expected eval error, built {n} pages"),
+        Err(_) => panic!("expected Eval error, got a different build error"),
+    }
+}
+
+#[test]
+fn diagram_image_with_unreadable_header_warns() {
+    // A diagram image with no declared size whose header `image_dims`
+    // can't parse (e.g. WebP) collapses to a 0x0 box — invisible. The
+    // build still succeeds but now says so.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    std::fs::write(tmp.path().join("img.webp"), b"junk bytes, not an image")
+        .expect("write junk image");
+    let src = tmp.path().join("img.wcl");
+    write_fixture(
+        &src,
+        "page p {\n  diagram { width = 100  height = 60\n    image \"img.webp\" { }\n  }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let warnings = wcl_wdoc::take_render_warnings();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("img.webp") && w.contains("intrinsic size")),
+        "expected an unsized-image warning, got: {warnings:?}"
+    );
 }

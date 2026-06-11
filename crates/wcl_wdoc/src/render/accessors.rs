@@ -140,6 +140,21 @@ pub(crate) fn class_attr(block: &Block<'_>) -> String {
     src_class_attr(block)
 }
 
+/// Read a field that may be computed (e.g. a table's `rows = map(…)`).
+/// An *absent* field is `None` so the caller can fall back (the table
+/// renderers re-parse pipe rows); a *present* field whose expression
+/// fails to evaluate is a genuine authoring error — it records a fatal
+/// lower diagnostic instead of silently degrading to the fallback.
+pub(crate) fn computed_field(block: &Block<'_>, name: &str) -> Option<Value> {
+    match block.field(name)?.value() {
+        Ok(v) => Some(v.clone()),
+        Err(e) => {
+            super::record_lower_error(block, e.clone());
+            None
+        }
+    }
+}
+
 pub(crate) fn field_utf8(block: &Block<'_>, name: &str) -> Option<String> {
     src_utf8(block, name)
 }

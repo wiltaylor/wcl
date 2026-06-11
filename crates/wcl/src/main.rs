@@ -444,6 +444,14 @@ fn build_runtime() -> Result<tokio::runtime::Runtime, u8> {
         })
 }
 
+/// Drain and print the non-fatal warnings the most recent render pass
+/// collected (dropped diagram edges, lowerless blocks, unsized images, …).
+fn print_render_warnings() {
+    for w in wcl_wdoc::take_render_warnings() {
+        eprintln!("warning: {w}");
+    }
+}
+
 fn run_wdoc(cmd: WdocCommand) -> u8 {
     match cmd {
         WdocCommand::Build {
@@ -455,9 +463,7 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
             let opts = wcl_wdoc::BuildOptions { profile };
             let result = wcl_wdoc::build_with_options(&file, &out, site.as_deref(), &opts);
             if result.is_ok() {
-                for w in wcl_wdoc::take_edge_warnings() {
-                    eprintln!("warning: {w}");
-                }
+                print_render_warnings();
             }
             let result = result.map(|(n, p)| {
                 if let Some(p) = p {
@@ -471,10 +477,18 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
             report_pages(result)
         }
         WdocCommand::Markdown { file, out, site } => {
-            report_pages(wcl_wdoc::markdown(&file, &out, site.as_deref()))
+            let result = wcl_wdoc::markdown(&file, &out, site.as_deref());
+            if result.is_ok() {
+                print_render_warnings();
+            }
+            report_pages(result)
         }
         WdocCommand::Skill { file, out, site } => {
-            report_pages(wcl_wdoc::skill(&file, &out, site.as_deref()))
+            let result = wcl_wdoc::skill(&file, &out, site.as_deref());
+            if result.is_ok() {
+                print_render_warnings();
+            }
+            report_pages(result)
         }
         WdocCommand::Pdf {
             file,
@@ -483,6 +497,7 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
             page_size,
         } => match wcl_wdoc::pdf(&file, &out, site.as_deref(), page_size.into()) {
             Ok(n) => {
+                print_render_warnings();
                 println!("wrote {n} pdf{}", if n == 1 { "" } else { "s" });
                 EXIT_OK
             }

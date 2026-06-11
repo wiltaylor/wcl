@@ -403,12 +403,12 @@ pub fn build_with_options(
     // go to `<out>/<name>/`. A chooser index is generated only when there
     // are several sites and none claims the root.
     let multi = build_set.len() > 1;
-    // Clear any routing error / edge warnings stranded by an earlier build
+    // Clear any routing error / render warnings stranded by an earlier build
     // (e.g. a previous `wcl wdoc serve` pass) so stale messages can't leak
-    // into this one. Edge warnings are left in the sink after a successful
-    // build for the caller to drain via [`take_edge_warnings`].
+    // into this one. Render warnings are left in the sink after a successful
+    // build for the caller to drain via [`take_render_warnings`].
     let _ = crate::render::take_route_error();
-    let _ = crate::render::take_edge_warnings();
+    let _ = crate::render::take_render_warnings();
     let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, BuildError> {
         let mut count = 0;
         for spec in &build_set {
@@ -484,14 +484,15 @@ pub fn build_with_options(
     result.map(|n| (n, doc.profile()))
 }
 
-/// Drain the non-fatal edge warnings collected during the most recent
-/// [`build`] on this thread: each is an edge whose `source` / `destination`
-/// named no rendered shape id (commonly a typo, or a conditionally-absent
-/// shape). `build` leaves them here rather than failing; the CLI / dev
-/// server drain and print them to stderr after a successful build. A fresh
-/// `build` clears any leftovers first, so a stale warning can't leak.
-pub fn take_edge_warnings() -> Vec<String> {
-    crate::render::take_edge_warnings()
+/// Drain the non-fatal render warnings collected during the most recent
+/// build/render pass on this thread: a diagram edge whose `source` /
+/// `destination` named no rendered shape id, a block with no `lower`, an
+/// image with no usable intrinsic size, … The render passes leave them
+/// here rather than failing; the CLI / dev server drain and print them to
+/// stderr after a successful run. A fresh pass clears any leftovers first,
+/// so a stale warning can't leak.
+pub fn take_render_warnings() -> Vec<String> {
+    crate::render::take_render_warnings()
 }
 
 /// The name of the site marked `root = true`, if any. More than one root

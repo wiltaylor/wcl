@@ -276,6 +276,11 @@ pub fn pdf(
         |s| s.to_string_lossy().into_owned(),
     );
 
+    // Clear any routing error / render warnings / embed error stranded by
+    // an earlier pass so stale messages can't leak into this one.
+    let _ = crate::render::take_route_error();
+    let _ = crate::render::take_render_warnings();
+    let _ = svg_embed::take_embed_error();
     let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, PdfError> {
         let mut written = 0;
         for spec in build_set {
@@ -397,6 +402,16 @@ pub fn pdf(
     });
     if let Some((e, src)) = eval_err {
         return Err(PdfError::eval(e, src));
+    }
+    // An unroutable diagram edge surfaces after the eval check, mirroring
+    // the HTML build.
+    if let Some(msg) = crate::render::take_route_error() {
+        return Err(PdfError::Render(msg));
+    }
+    // An SVG that failed to embed means a diagram is missing from the PDF
+    // — data loss, not a degraded render — so it fails the build too.
+    if let Some(msg) = svg_embed::take_embed_error() {
+        return Err(PdfError::Render(msg));
     }
     result
 }

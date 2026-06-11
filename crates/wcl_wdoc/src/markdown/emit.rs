@@ -10,8 +10,8 @@
 //! the wireframes / charts / timelines / maps nested in them) and terminals
 //! render to a self-contained **static** SVG written to `_wdoc/` and referenced
 //! with `![](…)`; lists, tables, code, callouts, images and math map to native
-//! Markdown; videos are skipped (an online video leaves a link); everything
-//! else lowers to fundamentals.
+//! Markdown; videos become links (a local file is copied into `_wdoc/` and
+//! linked); everything else lowers to fundamentals.
 
 use std::fs;
 use std::path::Path;
@@ -356,10 +356,8 @@ impl Emitter<'_> {
         let mut header: Vec<String> = Vec::new();
         let mut rows: Vec<Vec<String>> = Vec::new();
 
-        if let Some(Value::List(body)) = block.field("rows").and_then(|f| f.value().ok().cloned()) {
-            if let Some(Value::List(cells)) =
-                block.field("header").and_then(|f| f.value().ok().cloned())
-            {
+        if let Some(Value::List(body)) = crate::render::computed_field(block, "rows") {
+            if let Some(Value::List(cells)) = crate::render::computed_field(block, "header") {
                 header = cells.iter().map(|v| self.cell(v)).collect();
             }
             for r in body.iter() {
@@ -434,10 +432,15 @@ impl Emitter<'_> {
     }
 
     /// A page video: an online video becomes a plain link; a local video is
-    /// dropped (a static Markdown file can't play it).
+    /// registered (copied into `_wdoc/` after the page loop, like `file`
+    /// blocks) and linked, so it survives the static render instead of
+    /// silently vanishing.
     fn video(&self, block: &Block<'_>) -> Option<String> {
         let source = label_string(block)?;
-        let url = crate::video::online_url(&source)?;
+        let url = match crate::video::online_url(&source) {
+            Some(url) => url,
+            None => self.asset_href(&self.patterns.videos().register(&source, "video")),
+        };
         let title = field_utf8(block, "title").unwrap_or_else(|| url.clone());
         Some(format!("[{}]({url})", escape_link_text(&title)))
     }

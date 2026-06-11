@@ -51,7 +51,7 @@ struct ServeState {
 /// Print any non-fatal edge warnings left by the most recent build (edges
 /// whose endpoint matched no shape id) to stderr.
 fn print_edge_warnings() {
-    for w in wcl_wdoc::take_edge_warnings() {
+    for w in wcl_wdoc::take_render_warnings() {
         eprintln!("warning: {w}");
     }
 }

@@ -8,6 +8,7 @@
 //! a `style_sheet` carrying the class fills (chart palette). `<text>` labels
 //! shape against the same bundled Noto fonts as native prose.
 
+use std::cell::RefCell;
 use std::sync::Arc;
 
 use usvg::{Options, Tree, fontdb};
@@ -21,6 +22,32 @@ use super::text::{FONT_FACES, SANS_NAME, SERIF_NAME};
 
 /// The external icon-sprite href the web build emits in `<use>` elements.
 const SPRITE_HREF: &str = "_wdoc/icons.svg#";
+
+thread_local! {
+    /// First usvg parse failure recorded during the current PDF pass.
+    /// Every internal SVG producer emits well-formed SVG, so a parse
+    /// failure means a renderer regression or a corrupt embedded asset
+    /// — a PDF silently missing a diagram is data loss, so the entry
+    /// point turns this into a hard error after the pass. First one
+    /// wins (mirrors the render sinks in `render::lower`).
+    static EMBED_ERR: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// Record an SVG-embed failure. First message wins; cleared by
+/// [`take_embed_error`].
+fn record_embed_error(msg: String) {
+    EMBED_ERR.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(msg);
+        }
+    });
+}
+
+/// Take and clear the first embed error recorded during the current pass.
+pub(crate) fn take_embed_error() -> Option<String> {
+    EMBED_ERR.with(|slot| slot.borrow_mut().take())
+}
 
 // JetBrains Mono Nerd Font (Mono variant) TTFs, for embedded-SVG monospace —
 // chiefly terminals, whose grid uses Nerd Font box-drawing / powerline / icon
@@ -96,8 +123,10 @@ impl<'a> SvgEmbedder<'a> {
     }
 
     /// Parse `svg` into a usvg tree and its intrinsic `(width, height)` in px.
-    /// Returns `None` if the string holds no `<svg>` or fails to parse (e.g. a
-    /// math-error marker).
+    /// Returns `None` if the string holds no `<svg>` at all (benign — e.g. a
+    /// math-error marker). A string that *does* carry an `<svg>` but fails to
+    /// parse records a fatal embed error (see [`take_embed_error`]) and
+    /// returns `None` so the layout can skip it before the build fails.
     pub(crate) fn embed(&self, svg: &str) -> Option<(Tree, (f32, f32))> {
         let mut inner = extract_svg(svg)?;
         // Inline the icon sprite: splice the recorded `<symbol>`s into the SVG's
@@ -119,13 +148,28 @@ impl<'a> SvgEmbedder<'a> {
         if inner.contains("<image") {
             inner = self.inline_images(&inner);
         }
+        // A diagram with no explicit `width`/`height` emits
+        // `width="0" height="0"` by convention (the browser sizes it from
+        // CSS + viewBox), which usvg rejects as an invalid size — and the
+        // diagram used to vanish from the PDF silently. Rewrite the root
+        // dimensions from the viewBox so the embed sees real geometry.
+        let inner = fix_zero_size(inner);
         let prepared = inner.replace("currentColor", &self.fg);
         let opt = Options {
             fontdb: self.fontdb.clone(),
             style_sheet: self.style_sheet.clone(),
             ..Options::default()
         };
-        let tree = Tree::from_str(&prepared, &opt).ok()?;
+        let tree = match Tree::from_str(&prepared, &opt) {
+            Ok(t) => t,
+            Err(e) => {
+                record_embed_error(format!(
+                    "embedding an SVG into the PDF failed: {e} (svg starts: {})",
+                    prepared.chars().take(80).collect::<String>()
+                ));
+                return None;
+            }
+        };
         let size = tree.size();
         Some((tree, (size.width(), size.height())))
     }
@@ -263,6 +307,31 @@ fn attr_f32(tag: &str, name: &str) -> Option<f32> {
 
 /// Parse an SVG `viewBox="minX minY width height"` into floats. Diagram cards'
 /// positions are in this coordinate space.
+/// Rewrite a root `width="0" height="0"` (wdoc's "size me from CSS"
+/// convention for diagrams without explicit dimensions) to the viewBox's
+/// width/height, which is what the browser effectively renders. Leaves
+/// any other markup untouched; without a parseable viewBox the SVG passes
+/// through unchanged (and usvg then reports the invalid size loudly).
+fn fix_zero_size(svg: String) -> String {
+    let Some(tag_end) = svg.find('>') else {
+        return svg;
+    };
+    let root = &svg[..tag_end];
+    if !root.contains("width=\"0\"") || !root.contains("height=\"0\"") {
+        return svg;
+    }
+    let Some((_, _, vbw, vbh)) = parse_viewbox(root) else {
+        return svg;
+    };
+    if vbw <= 0.0 || vbh <= 0.0 {
+        return svg;
+    }
+    let fixed_root = root
+        .replacen("width=\"0\"", &format!("width=\"{vbw}\""), 1)
+        .replacen("height=\"0\"", &format!("height=\"{vbh}\""), 1);
+    format!("{fixed_root}{}", &svg[tag_end..])
+}
+
 pub(crate) fn parse_viewbox(svg: &str) -> Option<(f32, f32, f32, f32)> {
     let key = "viewBox=\"";
     let start = svg.find(key)? + key.len();
@@ -340,4 +409,78 @@ fn find_from(hay: &[u8], needle: &[u8], from: usize) -> Option<usize> {
         .windows(needle.len())
         .position(|w| w == needle)
         .map(|p| p + from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wcl_lang::Document;
+
+    /// Build an embedder over empty registries (no icons / images /
+    /// tilesets declared) — enough to exercise the parse path.
+    fn with_embedder(f: impl FnOnce(&SvgEmbedder)) {
+        let doc = Document::open("", "test.wcl").expect("empty doc parses");
+        let icons = IconRegistry::load(&doc);
+        let images = ImageRegistry::new(None);
+        let Ok(tilesets) = TilesetRegistry::load(&doc, None) else {
+            panic!("empty doc declares no tilesets");
+        };
+        let palette = Palette::default();
+        let embedder = SvgEmbedder::new(
+            &palette,
+            "",
+            &icons,
+            &images,
+            &tilesets,
+            "#ffffff".to_string(),
+            "#cccccc".to_string(),
+        );
+        f(&embedder);
+    }
+
+    #[test]
+    fn malformed_svg_records_an_embed_error() {
+        with_embedder(|embedder| {
+            let _ = take_embed_error();
+            assert!(embedder.embed("<svg><unclosed</svg>").is_none());
+            let err = take_embed_error().expect("embed error recorded");
+            assert!(
+                err.contains("embedding an SVG into the PDF failed"),
+                "{err}"
+            );
+            // Well-formed input parses and leaves the slot empty.
+            assert!(
+                embedder
+                    .embed("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"></svg>")
+                    .is_some()
+            );
+            assert!(take_embed_error().is_none());
+        });
+    }
+
+    #[test]
+    fn no_svg_at_all_is_benign() {
+        with_embedder(|embedder| {
+            let _ = take_embed_error();
+            assert!(embedder.embed("math error: bad input").is_none());
+            assert!(
+                take_embed_error().is_none(),
+                "no error for a non-SVG marker"
+            );
+        });
+    }
+
+    #[test]
+    fn zero_size_root_resizes_from_the_viewbox() {
+        // wdoc's CSS-sized diagram convention: width/height 0 + viewBox.
+        let fixed = fix_zero_size(
+            "<svg xmlns=\"x\" width=\"0\" height=\"0\" viewBox=\"-10 -10 200 60\"></svg>"
+                .to_string(),
+        );
+        assert!(fixed.contains("width=\"200\""), "{fixed}");
+        assert!(fixed.contains("height=\"60\""), "{fixed}");
+        // Real dimensions pass through untouched.
+        let kept = "<svg width=\"32\" height=\"16\" viewBox=\"0 0 32 16\"></svg>".to_string();
+        assert_eq!(fix_zero_size(kept.clone()), kept);
+    }
 }

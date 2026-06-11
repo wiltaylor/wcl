@@ -301,6 +301,42 @@ fn internal_links_become_destinations() {
 }
 
 #[test]
+fn computed_table_eval_error_fails_the_build() {
+    // Same contract as Markdown/HTML: a `rows` expression that fails to
+    // evaluate is a hard error, not a silent pipe-table fallback.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("t.wcl");
+    write_fixture(
+        &src,
+        "page p {\n  table {\n    rows = no_such_name\n  }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match pdf(&src, out.path(), None, PageSize::A4) {
+        Err(PdfError::Eval(r)) => {
+            let text = format!("{r:?}");
+            assert!(text.contains("no_such_name"), "names the binding: {text}");
+        }
+        Ok(n) => panic!("expected an eval error, but wrote {n} pdf(s)"),
+        Err(_) => panic!("expected PdfError::Eval, got a different error"),
+    }
+}
+
+#[test]
+fn invalid_math_marker_stays_nonfatal() {
+    // RaTeX renders invalid LaTeX as an error marker with no `<svg>`;
+    // the embed treats "no svg at all" as benign (only a *malformed*
+    // `<svg>` is a hard error), so the build must still succeed.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("m.wcl");
+    write_fixture(
+        &src,
+        "page p {\n  math \"\\\\notacommand{\" {}\n  p \"kept\"\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+}
+
+#[test]
 fn errors_when_no_pages() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("empty.wcl");
