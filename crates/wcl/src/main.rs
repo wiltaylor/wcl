@@ -140,7 +140,10 @@ enum Command {
     /// fields; without one, you can still evaluate self-contained
     /// expressions (arithmetic, string ops, builtin calls).
     ///
-    /// EOF (Ctrl-D) or `:quit` exits.
+    /// EOF (Ctrl-D) or `:quit` exits. Interactive sessions always
+    /// exit 0; when stdin is not a TTY the exit code reflects any
+    /// errors that occurred during the session (1 for parse errors,
+    /// 3 for eval errors), so piped scripts can detect failures.
     Repl {
         /// Optional WCL file whose top-level fields the REPL should
         /// resolve identifiers against.
@@ -515,17 +518,15 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
     }
 }
 
-/// Drive `parse_for_edit → format::to_source` and either print the
-/// result to stdout or atomically overwrite the input file. Returns
-/// the exit code (`EXIT_OK` on success, `EXIT_PARSE` on parse failure)
-/// or an error message describing an I/O failure.
 /// Plain-stdin REPL with multiline continuation. Reads one line at a
 /// time and keeps buffering until the running input has balanced
 /// `{` / `(` / `[` brackets and is not inside an unterminated string,
 /// then evaluates the assembled expression. Parse errors and eval
 /// errors are tagged distinctly. EOF (Ctrl-D) or `:quit` / `:q`
 /// exits cleanly. No history, no readline — piping input from a
-/// script works as well as interactive use.
+/// script works as well as interactive use; piped sessions exit
+/// non-zero (`EXIT_EVAL`, else `EXIT_PARSE`) when any error occurred,
+/// while interactive sessions always exit `EXIT_OK`.
 fn run_repl(file: Option<&Path>) -> u8 {
     use std::io::{BufRead, Write};
     let doc = match file {
@@ -548,6 +549,8 @@ fn run_repl(file: Option<&Path>) -> u8 {
     let mut buf = String::new();
     let mut line = String::new();
     let interactive = atty_stdin();
+    let mut had_parse_err = false;
+    let mut had_eval_err = false;
     loop {
         let continuation = !buf.is_empty();
         if interactive {
@@ -580,12 +583,29 @@ fn run_repl(file: Option<&Path>) -> u8 {
         match parse_expr(to_eval.trim(), "<repl>") {
             Ok(expr) => match doc.eval_expr(&expr) {
                 Ok(value) => println!("{value}"),
-                Err(e) => eprintln!("eval error: {:?}", miette::Report::new(e)),
+                Err(e) => {
+                    had_eval_err = true;
+                    eprintln!("eval error: {:?}", miette::Report::new(e));
+                }
             },
-            Err(e) => eprintln!("parse error: {:?}", miette::Report::new(e)),
+            Err(e) => {
+                had_parse_err = true;
+                eprintln!("parse error: {:?}", miette::Report::new(e));
+            }
         }
     }
-    EXIT_OK
+    // Interactive sessions exit 0 — a human saw and recovered from any
+    // errors. Piped sessions report them so scripts can detect failure;
+    // eval outranks parse as the later pipeline stage.
+    if interactive {
+        EXIT_OK
+    } else if had_eval_err {
+        EXIT_EVAL
+    } else if had_parse_err {
+        EXIT_PARSE
+    } else {
+        EXIT_OK
+    }
 }
 
 /// `true` when `src` has balanced brackets and isn't sitting inside
@@ -733,6 +753,10 @@ fn run_check(file: &Path, json: bool) -> u8 {
     }
 }
 
+/// Drive `parse_for_edit → format::to_source` and either print the
+/// result to stdout or atomically overwrite the input file. Returns
+/// the exit code (`EXIT_OK` on success, `EXIT_PARSE` on parse failure)
+/// or an error message describing an I/O failure.
 fn run_fmt(
     file: &Path,
     in_place: bool,
@@ -774,8 +798,13 @@ fn run_fmt(
         return Ok(EXIT_PARSE);
     }
     if in_place {
-        write_atomic(file, &formatted)
-            .map_err(|e| format!("failed to write {}: {e}", file.display()))?;
+        if formatted == src {
+            eprintln!("{}: unchanged", file.display());
+        } else {
+            write_atomic(file, &formatted)
+                .map_err(|e| format!("failed to write {}: {e}", file.display()))?;
+            eprintln!("formatted {}", file.display());
+        }
     } else {
         print!("{formatted}");
     }
@@ -880,6 +909,10 @@ fn run_set(file: &Path, path: &str, value: &str) -> Result<u8, String> {
     }
     write_atomic(&home_path, &formatted)
         .map_err(|e| format!("failed to write {}: {e}", home_path.display()))?;
+    // Confirmation goes to stderr so stdout stays clean for piping.
+    // Naming the home file matters: `set` follows imports, so the
+    // edited file may not be the one named on the command line.
+    eprintln!("updated {path} in {}", home_path.display());
     Ok(EXIT_OK)
 }
 

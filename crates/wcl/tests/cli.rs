@@ -249,10 +249,21 @@ fn fmt_in_place_rewrites_file_atomically() {
         .arg(&file)
         .assert()
         .success()
-        .stdout(predicate::str::is_empty());
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("formatted "));
 
     let after = std::fs::read_to_string(&file).expect("read after fmt");
     assert_eq!(after, "@schemaless x = 1\n");
+
+    // A second run finds nothing to do and says so without rewriting.
+    wcl()
+        .arg("fmt")
+        .arg("--in-place")
+        .arg(&file)
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("unchanged"));
 }
 
 #[test]
@@ -301,7 +312,9 @@ fn set_updates_top_level_field_in_named_file() {
         .arg("brand")
         .arg("\"renamed\"")
         .assert()
-        .success();
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("updated brand in"));
 
     // Read back via `wcl get` — the round-trip should observe the new value.
     wcl()
@@ -361,7 +374,9 @@ fn set_follows_imports_to_the_right_file() {
         .arg("shared.brand")
         .arg("\"renamed\"")
         .assert()
-        .success();
+        .success()
+        // The confirmation names the *imported* file actually edited.
+        .stderr(predicate::str::contains("shared.wcl"));
 
     let main_after = std::fs::read_to_string(&main_file).expect("read main after");
     assert_eq!(
@@ -464,14 +479,35 @@ fn repl_accepts_multiline_expression() {
 fn repl_tags_parse_errors_and_keeps_running() {
     // Two lines: a malformed expression then a valid one. The REPL
     // should print a `parse error:` tag for the first and a result
-    // for the second, exiting cleanly.
+    // for the second — and, because stdin is piped, exit non-zero so
+    // scripts can detect the recovered error.
     wcl()
         .arg("repl")
         .write_stdin("@@@\n1 + 2\n")
         .assert()
-        .success()
+        .code(1)
         .stderr(predicate::str::contains("parse error:"))
         .stdout(predicate::str::contains("3"));
+}
+
+#[test]
+fn repl_piped_eval_error_sets_exit_code() {
+    wcl()
+        .arg("repl")
+        .write_stdin("no_such_name\n")
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains("eval error:"));
+}
+
+#[test]
+fn repl_quit_after_error_still_fails_piped_session() {
+    wcl()
+        .arg("repl")
+        .write_stdin("@@@\n:q\n")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("parse error:"));
 }
 
 #[test]
