@@ -89,6 +89,15 @@ pub(crate) enum ItemCellKind {
         /// in the shared field-value cache. Built once, lazily, by
         /// `Block::expand_bodies` (renderer-driven).
         expansions: OnceLock<Vec<Expansion>>,
+        /// Memo for the Value-producing `Block::typed_field` projections
+        /// (`@connections`, union `@children`/`@child`), keyed by
+        /// (block kind, field name). Without it every reference
+        /// re-projected the block's connection statements / re-reified
+        /// its children. The kind in the key keeps the cache sound for
+        /// cells viewed under a `kind_override` (synth table rows).
+        /// Expansion cells are fresh per binding set, so per-binding
+        /// projections never collide here.
+        typed_proj_memo: std::sync::RwLock<HashMap<(String, String), Value>>,
     },
     TypeDecl {
         /// One inner Vec per `ast::TypeDecl.fields[i]`, holding cells for
@@ -265,6 +274,7 @@ impl ItemCells {
                         synth_rows,
                         computed_children: OnceLock::new(),
                         expansions: OnceLock::new(),
+                        typed_proj_memo: std::sync::RwLock::new(HashMap::new()),
                     },
                 }
             }

@@ -1822,6 +1822,34 @@ impl<'a> Block<'a> {
 
     /// Scope that child expressions inside this block see — the
     /// block's own `scope` extended with one frame for itself.
+    /// Read a memoised `typed_field` projection for this block's cells.
+    /// Keyed by (kind, field name) so a synth-row cell viewed under a
+    /// `kind_override` can't collide with another view of the same cell.
+    fn typed_proj_memo_get(&self, name: &str) -> Option<Value> {
+        let ItemCellKind::Block {
+            typed_proj_memo, ..
+        } = &self.cells.kind
+        else {
+            return None;
+        };
+        let memo = typed_proj_memo.read().ok()?;
+        memo.get(&(self.kind().to_string(), name.to_string()))
+            .cloned()
+    }
+
+    /// Store a `typed_field` projection in this block's cells.
+    fn typed_proj_memo_insert(&self, name: &str, value: Value) {
+        let ItemCellKind::Block {
+            typed_proj_memo, ..
+        } = &self.cells.kind
+        else {
+            return;
+        };
+        if let Ok(mut memo) = typed_proj_memo.write() {
+            memo.insert((self.kind().to_string(), name.to_string()), value);
+        }
+    }
+
     pub(crate) fn child_scope(&self) -> Scope<'a> {
         self.scope.push(ScopeFrame {
             ast: self.ast,
@@ -2143,8 +2171,12 @@ impl<'a> Block<'a> {
         let f = schema.field(name)?;
 
         // `@connections(SchemaName)`: project sibling Item::Connection
-        // statements through the named connection schema.
+        // statements through the named connection schema. Memoised per
+        // (kind, name) — see `typed_proj_memo`.
         if let Some(conn_schema) = f.connection_schema() {
+            if let Some(hit) = self.typed_proj_memo_get(name) {
+                return Some(crate::data::DataRef::from_variant_value(hit));
+            }
             let scope = self.child_scope();
             // Connection statements live in the block's own items and in
             // any in-block import it splices in; project across both.
@@ -2152,19 +2184,35 @@ impl<'a> Block<'a> {
             for src in self.realize_and_sources() {
                 values.extend(self.doc.project_connections(src.items, conn_schema, &scope));
             }
-            return Some(crate::data::DataRef::from_variant_value(Value::List(
-                std::sync::Arc::new(values),
-            )));
+            let projected = Value::List(std::sync::Arc::new(values));
+            self.typed_proj_memo_insert(name, projected.clone());
+            return Some(crate::data::DataRef::from_variant_value(projected));
         }
 
         // Union-typed @children: dispatch every nested block / table
         // row to a Value::Variant via structural-shape matching.
         if let Some(crate::doc::ChildKind::Union(union)) = f.children_kind_or_union() {
-            return Some(self.dispatch_union_children(name, union));
+            if let Some(Value::List(items)) = self.typed_proj_memo_get(name) {
+                return Some(crate::data::DataRef::from_variant_value_list(
+                    items.to_vec(),
+                ));
+            }
+            let dr = self.dispatch_union_children(name, union);
+            if let crate::data::DataKind::VariantValueList(items) = dr.inner() {
+                self.typed_proj_memo_insert(name, Value::List(std::sync::Arc::new(items.clone())));
+            }
+            return Some(dr);
         }
         // Union-typed @child: dispatch the single matching nested block.
         if let Some(crate::doc::ChildKind::Union(union)) = f.child_kind_or_union() {
-            return Some(self.dispatch_union_child(union));
+            if let Some(hit) = self.typed_proj_memo_get(name) {
+                return Some(crate::data::DataRef::from_variant_value(hit));
+            }
+            let dr = self.dispatch_union_child(union);
+            if let crate::data::DataKind::VariantValue(v) = dr.inner() {
+                self.typed_proj_memo_insert(name, v.clone());
+            }
+            return Some(dr);
         }
 
         if let Some(kind) = f.children_block_kind_str() {
