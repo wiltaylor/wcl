@@ -131,6 +131,14 @@ pub struct Document {
     /// see). A stray extra entry only costs the slow path. Same
     /// construction-time-only inputs as `ref_registry`.
     shadow_names: std::sync::OnceLock<HashSet<String>>,
+    /// Lazily-built index for root-scope connection-operand resolution:
+    /// identifying label / `id` value → the matched block, in the exact
+    /// DFS order `match_block_label_in_items` searched (first match
+    /// wins). Without it every operand of every `@connections`
+    /// projection re-walked every block of every source, re-evaluating
+    /// each block's label expression through the evaluator — the
+    /// dominant cost of projection-heavy documents.
+    conn_operand_index: std::sync::OnceLock<HashMap<String, ConnOperand>>,
 }
 
 /// Position of a type declaration found by a cached decorator scan:
@@ -402,6 +410,7 @@ impl Document {
             root_conn_memo: std::sync::RwLock::new(HashMap::new()),
             root_children_memo: std::sync::RwLock::new(HashMap::new()),
             shadow_names: std::sync::OnceLock::new(),
+            conn_operand_index: std::sync::OnceLock::new(),
         })
     }
 
@@ -911,15 +920,100 @@ impl Document {
                 return Some(found);
             }
         }
-        // Fall back to document root: walk every source's top-level items.
-        for src in self.all_sources() {
-            if let Some(found) =
-                match_block_label_in_items(self, src.items, src.cells, src.file_ns, name)
-            {
-                return Some(found);
+        // Fall back to document root, served from a once-built index
+        // (label/id value → block) that preserves the DFS first-match
+        // order of the per-name walk it replaces.
+        self.conn_operand_index().get(name).cloned()
+    }
+
+    /// The root-scope operand index — see the `conn_operand_index`
+    /// field. Built under the caller's `ConnOperandGuard`, so the
+    /// label / `id` evaluations it runs can't re-enter `@connections`
+    /// projection, exactly like the per-name walk did.
+    fn conn_operand_index(&self) -> &HashMap<String, ConnOperand> {
+        self.conn_operand_index.get_or_init(|| {
+            fn insert_identity(
+                map: &mut HashMap<String, ConnOperand>,
+                v: Value,
+                b: &ast::Block,
+                file_ns: &[String],
+            ) {
+                let (Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s)) = &v else {
+                    return;
+                };
+                if !map.contains_key(s) {
+                    map.insert(
+                        s.clone(),
+                        ConnOperand {
+                            value: v.clone(),
+                            kind: b.kind.clone(),
+                            kind_ns: b.kind_ns.clone(),
+                            file_ns: file_ns.to_vec(),
+                        },
+                    );
+                }
             }
-        }
-        None
+            fn walk(
+                doc: &Document,
+                items: &[ast::Item],
+                cells: &[ItemCells],
+                file_ns: &[String],
+                map: &mut HashMap<String, ConnOperand>,
+            ) {
+                for (item, cell) in items.iter().zip(cells) {
+                    match (item, &cell.kind) {
+                        (ast::Item::Block(b), ItemCellKind::Block { items: bcells, .. }) => {
+                            // Identity precedence per block: first label,
+                            // then `id` field — mirroring
+                            // `match_block_first_label` / `match_block_id_field`.
+                            if let Some(first) = b.labels.first()
+                                && let Ok(v) = doc.eval_in_scope(first, &Scope::root())
+                            {
+                                insert_identity(map, v, b, file_ns);
+                            }
+                            for it in &b.items {
+                                if let ast::Item::Field(f) = it
+                                    && f.name == "id"
+                                    && let Ok(v) = doc.eval_literal(&f.expr)
+                                {
+                                    insert_identity(map, v, b, file_ns);
+                                }
+                            }
+                            walk(doc, &b.items, bcells, file_ns, map);
+                        }
+                        (
+                            ast::Item::Import(_),
+                            ItemCellKind::Import {
+                                path,
+                                system,
+                                base_dir,
+                                path_span,
+                                loaded,
+                            },
+                        ) => {
+                            let li = loaded.get_or_init(|| {
+                                load_import_lazily(
+                                    path,
+                                    base_dir.as_deref(),
+                                    *system,
+                                    *path_span,
+                                    doc.loader(),
+                                )
+                            });
+                            if let Ok(li) = li {
+                                walk(doc, &li.items, &li.cells, &li.file_ns, map);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            let mut map = HashMap::new();
+            for src in self.all_sources() {
+                walk(self, src.items, src.cells, src.file_ns, &mut map);
+            }
+            map
+        })
     }
 
     /// The schema of the block a connection operand resolved to,
@@ -2208,6 +2302,7 @@ impl Document {
 /// A connection-statement operand resolved to a literal block: its
 /// identifying value plus enough namespace context to look up the
 /// block's schema the way [`Block::schema`] would.
+#[derive(Clone)]
 pub(crate) struct ConnOperand {
     /// The identifying label / `id` value.
     pub(crate) value: Value,
