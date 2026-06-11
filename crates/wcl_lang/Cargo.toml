@@ -26,5 +26,9 @@ harness = false
 name = "resolve"
 harness = false
 
+[[bench]]
+name = "eval_scale"
+harness = false
+
 [lints]
 workspace = true
