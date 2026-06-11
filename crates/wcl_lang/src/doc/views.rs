@@ -1850,6 +1850,53 @@ impl<'a> Block<'a> {
         }
     }
 
+    /// `true` when this block's scope frame could bind `name`: a let /
+    /// field / nested block kind / table header in its realized sources
+    /// (own items + in-block imports), or a field on its schema
+    /// (including extends-inherited ones, which `typed_field` projects).
+    /// Over-approximate; built once per cell per viewed kind so
+    /// `scope_lookup` can skip a frame's per-item scans on a miss.
+    pub(crate) fn can_bind_name(&self, name: &str) -> bool {
+        let ItemCellKind::Block { bindable_names, .. } = &self.cells.kind else {
+            return true; // not a block cell — stay conservative
+        };
+        if let Ok(memo) = bindable_names.read()
+            && let Some(set) = memo.get(self.kind())
+        {
+            return set.contains(name);
+        }
+        let mut set = std::collections::HashSet::new();
+        for src in self.realize_and_sources() {
+            for item in src.items {
+                match item {
+                    ast::Item::Let(l) => {
+                        set.insert(l.name.clone());
+                    }
+                    ast::Item::Field(f) => {
+                        set.insert(f.name.clone());
+                    }
+                    ast::Item::Block(b) => {
+                        set.insert(b.kind.clone());
+                    }
+                    ast::Item::Table(t) => {
+                        set.insert(t.field_name.clone());
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if let Some(schema) = self.schema() {
+            for f in schema.effective_fields() {
+                set.insert(f.name().to_string());
+            }
+        }
+        let contains = set.contains(name);
+        if let Ok(mut memo) = bindable_names.write() {
+            memo.insert(self.kind().to_string(), std::sync::Arc::new(set));
+        }
+        contains
+    }
+
     pub(crate) fn child_scope(&self) -> Scope<'a> {
         self.scope.push(ScopeFrame {
             ast: self.ast,

@@ -1175,6 +1175,13 @@ impl Document {
                 return Some(Ok(crate::data::DataRef::from_variant_value(v.clone())));
             }
             let block = self.frame_as_block(scope, i);
+            // Skip the frame's per-item scans outright when its
+            // bindable-name set (built once per cell) can't match —
+            // the common case for a root let / named fn resolved from
+            // a deeply nested call site.
+            if !block.can_bind_name(name) {
+                continue;
+            }
             if let Some(letv) = block.find_let(name) {
                 if letv.mid_evaluation() {
                     skipped.get_or_insert(Skipped::Let(letv));

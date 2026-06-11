@@ -14,7 +14,7 @@
 //! Cells are constructed up-front in `BlockCells::build` / `ItemCells::build`;
 //! later evaluation only writes into the `OnceLock`s.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
@@ -103,6 +103,13 @@ pub(crate) enum ItemCellKind {
         /// open-time name scan, so `eval_call`'s builtin fast path
         /// stands down when such a block is on the scope chain.
         has_block_imports: bool,
+        /// Memo for `Block::can_bind_name`, keyed by the viewed kind
+        /// (`kind_override` variance): every name this block's scope
+        /// frame could bind — lets / fields / nested kinds / table
+        /// headers across its realized sources, plus its schema's
+        /// effective field names. `scope_lookup` skips the frame's
+        /// per-item scans when the resolving name is absent.
+        bindable_names: std::sync::RwLock<HashMap<String, std::sync::Arc<HashSet<String>>>>,
     },
     TypeDecl {
         /// One inner Vec per `ast::TypeDecl.fields[i]`, holding cells for
@@ -296,6 +303,7 @@ impl ItemCells {
                             .items
                             .iter()
                             .any(|item| matches!(item, ast::Item::Import(_))),
+                        bindable_names: std::sync::RwLock::new(HashMap::new()),
                     },
                 }
             }
