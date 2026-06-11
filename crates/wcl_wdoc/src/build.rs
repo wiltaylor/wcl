@@ -131,6 +131,35 @@ impl BuildError {
         }
     }
 
+    /// Render this error to a plain string (no ANSI escapes), suitable
+    /// for embedding outside a terminal — e.g. the dev server's
+    /// build-failure page. `report()` keeps its colored stderr output.
+    pub fn render_plain(&self) -> String {
+        match self {
+            Self::Parse(r) | Self::Eval(r) => {
+                let mut s = String::new();
+                let handler = miette::GraphicalReportHandler::new_themed(
+                    miette::GraphicalTheme::unicode_nocolor(),
+                );
+                if handler.render_report(&mut s, r.as_ref()).is_err() {
+                    s = format!("{r}");
+                }
+                s
+            }
+            Self::Io(e, ctx) => format!("{ctx}: {e}"),
+            Self::Schema(n) => format!("{n} schema violation{}", if *n == 1 { "" } else { "s" }),
+            Self::BadPage(msg) => msg.clone(),
+            Self::DuplicateId { page, id } => format!("page \"{page}\": duplicate id \"{id}\""),
+            Self::DuplicatePage { site, name } => {
+                format!("site \"{site}\": duplicate page \"{name}\"")
+            }
+            Self::BadLink(msgs) => msgs.join("\n"),
+            Self::BadTemplate(name) => format!("unknown template \"{name}\""),
+            Self::Tileset(msg) => msg.clone(),
+            Self::EdgeRouting(msg) => msg.clone(),
+        }
+    }
+
     /// Wrap a render-time evaluation failure into a `BuildError::Eval`,
     /// attaching the source file the error was raised against so the miette
     /// report renders the snippet against the correct text (a cross-file

@@ -19,8 +19,9 @@ miette = { workspace = true }
 serde_json = "1"
 tempfile = { workspace = true }
 # `wcl wdoc serve` dev server: axum + a notify file watcher, driven on a
-# tokio runtime (extra `fs` for the static handler, `signal` for Ctrl-C).
-tokio = { workspace = true, features = ["fs", "signal"] }
+# tokio runtime (extra `fs` for the static handler, `signal` for Ctrl-C,
+# `time` for rebuild debouncing and the live-reload long-poll timeout).
+tokio = { workspace = true, features = ["fs", "signal", "time"] }
 axum = { workspace = true }
 notify = { workspace = true }
 
