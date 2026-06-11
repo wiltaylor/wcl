@@ -120,6 +120,17 @@ pub struct Document {
     /// top-level block per reference. Kind-keyed (non-union) arms stay
     /// uncached — they return borrowed `Block` views from a cheap scan.
     root_children_memo: std::sync::RwLock<HashMap<String, Value>>,
+    /// Deliberately over-approximate set of every name `scope_lookup`
+    /// could resolve from static (eager) document content: let / field
+    /// names and block kinds at any depth, table header names, type and
+    /// interface field names (schema projections), alias keys, and the
+    /// last segment of every declared FQN. `eval_call` dispatches a
+    /// builtin callee without the O(document) scope walk when its name
+    /// is absent here (and no scope frame carries renderer bindings or
+    /// lazy in-block imports — the two dynamic binders this set cannot
+    /// see). A stray extra entry only costs the slow path. Same
+    /// construction-time-only inputs as `ref_registry`.
+    shadow_names: std::sync::OnceLock<HashSet<String>>,
 }
 
 /// Position of a type declaration found by a cached decorator scan:
@@ -390,6 +401,7 @@ impl Document {
             root_let_index: std::sync::OnceLock::new(),
             root_conn_memo: std::sync::RwLock::new(HashMap::new()),
             root_children_memo: std::sync::RwLock::new(HashMap::new()),
+            shadow_names: std::sync::OnceLock::new(),
         })
     }
 
@@ -1477,6 +1489,68 @@ impl Document {
             }
         }
         registry
+    }
+
+    /// The over-approximate shadowable-name set — see the
+    /// `shadow_names` field. Built once from construction-time-fixed
+    /// inputs (root AST, eager imports, synthetic types, aliases,
+    /// `ref_registry`).
+    pub(crate) fn shadow_names(&self) -> &HashSet<String> {
+        self.shadow_names.get_or_init(|| {
+            fn walk_items(items: &[ast::Item], out: &mut HashSet<String>) {
+                for item in items {
+                    match item {
+                        ast::Item::Let(l) => {
+                            out.insert(l.name.clone());
+                        }
+                        ast::Item::Field(f) => {
+                            out.insert(f.name.clone());
+                        }
+                        ast::Item::Block(b) => {
+                            out.insert(b.kind.clone());
+                            walk_items(&b.items, out);
+                        }
+                        ast::Item::Table(t) => {
+                            out.insert(t.field_name.clone());
+                        }
+                        ast::Item::TypeDecl(t) => {
+                            for f in &t.fields {
+                                out.insert(f.name.clone());
+                            }
+                        }
+                        ast::Item::InterfaceDecl(i) => {
+                            for f in &i.fields {
+                                out.insert(f.name.clone());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            let mut out = HashSet::new();
+            for src in self.all_sources() {
+                walk_items(src.items, &mut out);
+            }
+            for t in &self.synthetic_types {
+                for f in &t.fields {
+                    out.insert(f.name.clone());
+                }
+            }
+            for k in self.item_aliases.keys() {
+                out.insert(k.clone());
+            }
+            for k in self.ns_aliases.keys() {
+                out.insert(k.clone());
+            }
+            // Declared type / union / symbol-set / interface /
+            // connection names resolve bare via their last FQN segment.
+            for fqn in self.ref_registry() {
+                if let Some(last) = fqn.last() {
+                    out.insert(last.clone());
+                }
+            }
+            out
+        })
     }
 
     /// Run the name-resolution algorithm on `path` against this document's

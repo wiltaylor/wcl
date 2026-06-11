@@ -98,6 +98,11 @@ pub(crate) enum ItemCellKind {
         /// Expansion cells are fresh per binding set, so per-binding
         /// projections never collide here.
         typed_proj_memo: std::sync::RwLock<HashMap<(String, String), Value>>,
+        /// `true` if any direct child item is an `Item::Import`. A lazy
+        /// in-block import can splice lets/fields invisible to any
+        /// open-time name scan, so `eval_call`'s builtin fast path
+        /// stands down when such a block is on the scope chain.
+        has_block_imports: bool,
     },
     TypeDecl {
         /// One inner Vec per `ast::TypeDecl.fields[i]`, holding cells for
@@ -221,6 +226,18 @@ impl BlockCells {
 }
 
 impl ItemCells {
+    /// `true` when these are Block cells whose direct items include a
+    /// lazy `import` — see `ItemCellKind::Block::has_block_imports`.
+    pub(crate) fn has_block_imports(&self) -> bool {
+        matches!(
+            &self.kind,
+            ItemCellKind::Block {
+                has_block_imports: true,
+                ..
+            }
+        )
+    }
+
     pub(crate) fn build(item: &ast::Item, base_dir: Option<&Path>) -> Self {
         match item {
             ast::Item::Field(f) => Self {
@@ -275,6 +292,10 @@ impl ItemCells {
                         computed_children: OnceLock::new(),
                         expansions: OnceLock::new(),
                         typed_proj_memo: std::sync::RwLock::new(HashMap::new()),
+                        has_block_imports: b
+                            .items
+                            .iter()
+                            .any(|item| matches!(item, ast::Item::Import(_))),
                     },
                 }
             }

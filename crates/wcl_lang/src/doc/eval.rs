@@ -568,6 +568,25 @@ impl Document {
     ) -> Result<Value, EvalError> {
         use ast::Expr as E;
         if let E::Identifier(name, _) = callee {
+            // Fast path: a registered builtin whose name provably cannot
+            // be shadowed dispatches without the O(document) scope walk
+            // `lookup_function` would run per call. `shadow_names` is a
+            // superset of every name resolvable from static content; the
+            // two dynamic binders it cannot see — renderer-injected
+            // bindings and lazy in-block imports — stand the fast path
+            // down via the frame checks, as does any same-named local.
+            if self.env.builtin(name).is_some()
+                && ctx.lookup(name).is_none()
+                && !self.shadow_names().contains(name.as_str())
+                && ctx.scope.frames().iter().all(|f| {
+                    f.bindings
+                        .as_ref()
+                        .is_none_or(|b| b.iter().all(|(n, _)| n != name))
+                        && !f.cells.has_block_imports()
+                })
+            {
+                return self.eval_call_builtin(name, args, span, ctx);
+            }
             if let Some(fv) = lookup_function(self, ctx, name) {
                 let evald = self.eval_args(args, ctx)?;
                 let _profile_guard =

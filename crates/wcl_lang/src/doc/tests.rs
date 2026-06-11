@@ -4276,3 +4276,125 @@ c2 = entries
         "the box block dispatches to Entry::N, nodes have no matching shape"
     );
 }
+
+// ─── Builtin-callee shadowing semantics (lock the eval_call fast path) ──
+
+#[test]
+fn root_let_fn_shadows_builtin_in_call_position() {
+    // A root `let` binding a function under a builtin's name wins over
+    // the builtin — from a root field and from inside another user fn.
+    let doc = Document::open(
+        r#"
+        let map = fn(xs: list<i64>, f: i64) -> utf8 "user"
+        let call_it = fn(z: i64) -> utf8 map([3], z)
+        @schemaless direct = map([1, 2], 0)
+        @schemaless via_closure = call_it(0)
+        "#,
+        "test",
+    )
+    .expect("open");
+    assert_eq!(
+        doc.field("direct").unwrap().value().unwrap(),
+        &Value::Utf8("user".into())
+    );
+    assert_eq!(
+        doc.field("via_closure").unwrap().value().unwrap(),
+        &Value::Utf8("user".into())
+    );
+}
+
+#[test]
+fn block_let_fn_shadows_builtin_inside_block_only() {
+    // `Document::open` (not the lax `open` helper): the non-shadowed
+    // path must dispatch to the *real* builtin registry.
+    let doc = Document::open(
+        r#"
+        @schemaless outer {
+          let flatten = fn(xs: list<i64>) -> utf8 "user"
+          inside = flatten([1])
+        }
+        @schemaless outside = flatten([[1], [2]])
+        "#,
+        "test",
+    )
+    .expect("open");
+    let outer = doc.block("outer").unwrap();
+    assert_eq!(
+        outer.field("inside").unwrap().value().unwrap(),
+        &Value::Utf8("user".into()),
+        "a block-level let shadows the builtin inside its block"
+    );
+    assert_eq!(
+        doc.field("outside").unwrap().value().unwrap(),
+        &Value::List(std::sync::Arc::new(vec![Value::I64(1), Value::I64(2)])),
+        "outside the block the real builtin still dispatches"
+    );
+}
+
+#[test]
+fn non_function_binding_does_not_shadow_builtin_call() {
+    // A *non-function* binding under a builtin's name does not shadow
+    // it in call position (lookup_function falls through to the
+    // builtin registry).
+    let doc = Document::open(
+        r#"
+        let len = 5
+        @schemaless n = len("abc")
+        "#,
+        "test",
+    )
+    .expect("open");
+    assert_eq!(doc.field("n").unwrap().value().unwrap(), &Value::I64(3));
+}
+
+#[test]
+fn in_block_imported_let_fn_shadows_builtin() {
+    // A lazily in-block-imported `let` binding a function under a
+    // builtin's name shadows it inside that block — invisible to any
+    // open-time scan of the root + eager imports.
+    let doc = open_with_libs(
+        r#"
+        @schemaless outer {
+          import <shadow.wcl>
+          picked = map([1], 0)
+        }
+        "#,
+        &[(
+            "shadow.wcl",
+            r#"let map = fn(xs: list<i64>, f: i64) -> utf8 "user""#,
+        )],
+    );
+    let outer = doc.block("outer").unwrap();
+    assert_eq!(
+        outer.field("picked").unwrap().value().unwrap(),
+        &Value::Utf8("user".into()),
+        "an in-block-imported let fn shadows the builtin inside the block"
+    );
+}
+
+#[test]
+fn binding_scope_frame_fn_shadows_builtin() {
+    use std::sync::Arc;
+    // A renderer-injected binding (component slot / repeater loop var)
+    // holding a function under a builtin's name shadows the builtin.
+    let doc = Document::open(
+        r#"
+        @schemaless fnsrc = fn(xs: list<i64>, f: i64) -> utf8 "user"
+        @schemaless outer {
+          inner { picked = map([1], 0) }
+        }
+        "#,
+        "test",
+    )
+    .expect("open");
+    let fv = doc.field("fnsrc").unwrap().value().unwrap().clone();
+    let outer = doc.block("outer").unwrap();
+    let bindings = Arc::new(vec![("map".to_string(), fv)]);
+    let groups = outer.expand_bodies(&outer, vec![bindings]);
+    let inner = groups[0].iter().find(|b| b.kind() == "inner").unwrap();
+    assert_eq!(
+        inner.field("picked").unwrap().value().unwrap(),
+        &Value::Utf8("user".into()),
+        "an injected fn binding shadows the builtin in a child block"
+    );
+}
