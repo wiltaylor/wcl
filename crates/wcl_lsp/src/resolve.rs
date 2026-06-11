@@ -249,7 +249,7 @@ pub(crate) fn word_at(source: &str, offset: usize) -> Option<(String, Span)> {
 /// (`foo.bar.baz`), return the full dotted form. Otherwise `None`.
 /// Walks left from `span.start` collecting `.<ident>` prefixes; stops
 /// at any non-identifier / non-dot byte.
-fn dotted_form(source: &str, span: Span) -> Option<String> {
+pub(crate) fn dotted_form(source: &str, span: Span) -> Option<String> {
     let bytes = source.as_bytes();
     if span.start == 0 || bytes.get(span.start - 1) != Some(&b'.') {
         return None;

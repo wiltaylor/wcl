@@ -36,8 +36,9 @@ use tower_lsp::lsp_types::{
     PositionEncodingKind, ReferenceParams, RenameParams, SaveOptions, SemanticTokens,
     SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams,
     SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo,
+    SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SymbolInformation,
     TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    TextDocumentSyncSaveOptions, TextEdit, Url, WorkspaceEdit,
+    TextDocumentSyncSaveOptions, TextEdit, Url, WorkspaceEdit, WorkspaceSymbolParams,
 };
 use tower_lsp::{Client, LanguageServer};
 use wcl_lang::{
@@ -52,7 +53,9 @@ use crate::folding;
 use crate::hover as hover_impl;
 use crate::navigation;
 use crate::semtokens;
+use crate::signature;
 use crate::symbols;
+use crate::workspace;
 
 /// The LSP backend. Holds the open-document cache (a rope per URI,
 /// kept in sync via incremental change events) and an optional root
@@ -117,9 +120,18 @@ impl Backend {
         wcl_wdoc::schema_registry().loader(overlay_loader(self.overlay_snapshot()))
     }
 
-    /// Canonical path of the configured root document, if any.
+    /// Canonical path of the configured root document, if any. A
+    /// poisoned lock is recovered (the guarded `Option<PathBuf>` can't
+    /// be left torn) and logged — silently degrading to per-file mode
+    /// would break cross-file resolution with no indication why.
     pub fn root_path(&self) -> Option<PathBuf> {
-        self.root_path.read().ok().and_then(|g| g.clone())
+        match self.root_path.read() {
+            Ok(g) => g.clone(),
+            Err(e) => {
+                tracing::error!("root_path lock poisoned; recovering: {e}");
+                e.into_inner().clone()
+            }
+        }
     }
 
     /// Parse the root document (if configured) with the current
@@ -187,10 +199,14 @@ impl Backend {
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> RpcResult<InitializeResult> {
-        if let Some(p) = Backend::resolve_root(&params)
-            && let Ok(mut guard) = self.root_path.write()
-        {
-            *guard = Some(p);
+        if let Some(p) = Backend::resolve_root(&params) {
+            match self.root_path.write() {
+                Ok(mut guard) => *guard = Some(p),
+                Err(e) => {
+                    tracing::error!("root_path lock poisoned; recovering: {e}");
+                    *e.into_inner() = Some(p);
+                }
+            }
         }
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
@@ -217,6 +233,17 @@ impl LanguageServer for Backend {
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
                 rename_provider: Some(OneOf::Left(true)),
+                workspace_symbol_provider: Some(OneOf::Left(true)),
+                signature_help_provider: Some(SignatureHelpOptions {
+                    trigger_characters: Some(vec!["(".into(), ",".into()]),
+                    retrigger_characters: Some(vec![",".into()]),
+                    ..Default::default()
+                }),
+                // Inlay hints are deliberately not advertised: type hints
+                // would need expression-level inference wcl_lang doesn't
+                // expose, and parameter-name hints are covered by
+                // signature help + hover for a config language's short,
+                // mostly-literal expressions.
                 semantic_tokens_provider: Some(
                     SemanticTokensServerCapabilities::SemanticTokensOptions(
                         SemanticTokensOptions {
@@ -423,6 +450,51 @@ impl LanguageServer for Backend {
         let root_doc = self.root_document();
         let items = completion::completions(&source, uri.as_str(), offset, root_doc.as_ref());
         Ok(Some(CompletionResponse::Array(items)))
+    }
+
+    async fn signature_help(
+        &self,
+        params: SignatureHelpParams,
+    ) -> RpcResult<Option<SignatureHelp>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let Some((source, offset)) =
+            self.source_and_offset(&uri, params.text_document_position_params.position)
+        else {
+            return Ok(None);
+        };
+        // The buffer is usually mid-call (that's why help fired) and the
+        // overlay carries that unparseable text, which would fail the
+        // root parse and lose cross-file resolution. Retry the root with
+        // the buffer's *repaired* form (open brackets closed) overlaid.
+        let root_doc = self.root_document().or_else(|| {
+            let root = self.root_path()?;
+            let path = uri.to_file_path().ok()?;
+            let mut overlay = self.overlay_snapshot();
+            overlay.insert(path, signature::repair_source(&source, offset));
+            let loader = wcl_wdoc::schema_registry().loader(overlay_loader(overlay));
+            Document::from_file_with_loader(&root, &Environment::new(), loader).ok()
+        });
+        Ok(signature::signature_help(
+            &source,
+            uri.as_str(),
+            offset,
+            root_doc.as_ref(),
+            &self.overlay_snapshot(),
+        ))
+    }
+
+    async fn symbol(
+        &self,
+        params: WorkspaceSymbolParams,
+    ) -> RpcResult<Option<Vec<SymbolInformation>>> {
+        let root_doc = self.root_document();
+        let root_path = self.root_path();
+        Ok(Some(workspace::workspace_symbols(
+            &params.query,
+            root_doc.as_ref(),
+            root_path.as_deref(),
+            &self.overlay_snapshot(),
+        )))
     }
 
     async fn semantic_tokens_full(

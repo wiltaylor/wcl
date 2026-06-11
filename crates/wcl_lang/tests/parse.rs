@@ -2299,3 +2299,26 @@ fn round_trip_all_examples() {
         assert_roundtrip(&path);
     }
 }
+
+#[test]
+fn all_symbols_spans_the_import_graph_with_source_paths() {
+    let doc = Document::from_file(&examples_dir().join("imports").join("main.wcl"))
+        .expect("imports example parses");
+    let symbols: Vec<_> = doc.all_symbols().collect();
+    // A root-document symbol carries no path.
+    assert!(
+        symbols
+            .iter()
+            .any(|(path, rec)| path.is_none() && rec.fqn == "app.Service"),
+        "root symbol with no path"
+    );
+    // An imported symbol carries the declaring file's path.
+    let (path, _) = symbols
+        .iter()
+        .find(|(_, rec)| rec.fqn == "shared.Color")
+        .expect("imported shared.Color is visible");
+    assert!(
+        path.is_some_and(|p| p.ends_with("shared.wcl")),
+        "imported symbol names its file, got {path:?}"
+    );
+}

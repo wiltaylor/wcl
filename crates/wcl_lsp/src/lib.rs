@@ -17,8 +17,10 @@ mod resolve;
 mod scan;
 mod semtokens;
 mod server;
+mod signature;
 mod symbols;
 mod walk;
+mod workspace;
 
 pub use server::Backend;
 

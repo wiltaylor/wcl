@@ -598,6 +598,17 @@ impl Document {
         out
     }
 
+    /// Every symbol across this document and its eagerly-loaded import
+    /// graph, paired with the file path of the source that declares it
+    /// (`None` for the root document). The projection reuses the
+    /// already-built per-source symbol indexes — nothing is re-parsed.
+    /// Hosts use this for workspace-wide symbol search.
+    pub fn all_symbols(&self) -> impl Iterator<Item = (Option<&Path>, &SymbolRecord)> {
+        self.all_sources()
+            .into_iter()
+            .flat_map(|src| src.symbols.iter().map(move |rec| (src.path, rec)))
+    }
+
     /// Lookup a fully-qualified symbol across this document and every
     /// eagerly-loaded import. Returns the matching `SymbolRecord`
     /// together with the file path of the source it lives in (`None`

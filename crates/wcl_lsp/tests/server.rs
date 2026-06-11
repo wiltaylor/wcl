@@ -52,6 +52,12 @@ async fn initialize_advertises_expected_capabilities() {
     assert!(caps.document_symbol_provider.is_some());
     assert!(caps.document_formatting_provider.is_some());
     assert!(caps.semantic_tokens_provider.is_some());
+    assert!(caps.workspace_symbol_provider.is_some());
+    let sig = caps.signature_help_provider.expect("signature help");
+    assert_eq!(
+        sig.trigger_characters,
+        Some(vec!["(".to_string(), ",".to_string()])
+    );
 }
 
 #[tokio::test]
@@ -587,4 +593,206 @@ async fn rename_crosses_into_imported_file() {
         .get(&shared_uri)
         .unwrap_or_else(|| panic!("declaration file edited: {changes:?}"));
     assert!(shared_edits.iter().all(|e| e.new_text == "Hue"));
+}
+
+#[tokio::test]
+async fn signature_help_for_builtin_after_open_paren() {
+    let svc = service();
+    let backend = svc.inner();
+    let uri = Url::parse("file:///sig.wcl").unwrap();
+    let src = "@schemaless x = len(";
+    open(backend, &uri, src).await;
+    let help = backend
+        .signature_help(tower_lsp::lsp_types::SignatureHelpParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position: Position {
+                    line: 0,
+                    character: src.len() as u32,
+                },
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            context: None,
+        })
+        .await
+        .expect("signature_help rpc")
+        .expect("builtin signature found");
+    assert_eq!(help.signatures.len(), 1);
+    assert!(
+        help.signatures[0].label.starts_with("len("),
+        "{}",
+        help.signatures[0].label
+    );
+    assert_eq!(help.active_parameter, Some(0));
+}
+
+#[tokio::test]
+async fn signature_help_tracks_active_param_for_user_fn() {
+    let svc = service();
+    let backend = svc.inner();
+    let uri = Url::parse("file:///sig2.wcl").unwrap();
+    let src = "fn add(a: i64, b: i64) -> i64 { a + b }\n@schemaless x = add(1, ";
+    open(backend, &uri, src).await;
+    let last_line = src.lines().count() as u32 - 1;
+    let character = src.lines().last().unwrap().len() as u32;
+    let help = backend
+        .signature_help(tower_lsp::lsp_types::SignatureHelpParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position: Position {
+                    line: last_line,
+                    character,
+                },
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            context: None,
+        })
+        .await
+        .expect("signature_help rpc")
+        .expect("fn signature found");
+    assert_eq!(help.signatures[0].label, "add(a: i64, b: i64) -> i64");
+    assert_eq!(help.active_parameter, Some(1));
+}
+
+#[tokio::test]
+async fn signature_help_resolves_fn_from_imported_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let shared = dir.path().join("shared.wcl");
+    std::fs::write(
+        &main,
+        "import \"./shared.wcl\"\n@schemaless x = shared.scale(",
+    )
+    .unwrap();
+    std::fs::write(
+        &shared,
+        "namespace shared\nfn scale(v: f64, by: f64) -> f64 { v * by }\n",
+    )
+    .unwrap();
+
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+
+    let main_uri = Url::from_file_path(&main).unwrap();
+    let text = std::fs::read_to_string(&main).unwrap();
+    open(backend, &main_uri, &text).await;
+    let last_line = text.lines().count() as u32 - 1;
+    let character = text.lines().last().unwrap().len() as u32;
+    let help = backend
+        .signature_help(tower_lsp::lsp_types::SignatureHelpParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: main_uri },
+                position: Position {
+                    line: last_line,
+                    character,
+                },
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            context: None,
+        })
+        .await
+        .expect("signature_help rpc")
+        .expect("cross-file fn signature found");
+    assert_eq!(help.signatures[0].label, "scale(v: f64, by: f64) -> f64");
+}
+
+#[tokio::test]
+async fn workspace_symbols_span_the_import_graph() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let shared = dir.path().join("shared.wcl");
+    std::fs::write(&main, "import \"./shared.wcl\"\ntype Local {}\n").unwrap();
+    std::fs::write(&shared, "namespace shared\ntype Color { name: utf8 }\n").unwrap();
+
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+
+    let hits = backend
+        .symbol(tower_lsp::lsp_types::WorkspaceSymbolParams {
+            query: "Col".into(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .expect("workspace/symbol rpc")
+        .expect("some hits");
+    let shared_uri = Url::from_file_path(&shared).unwrap();
+    let color = hits
+        .iter()
+        .find(|s| s.name == "Color")
+        .expect("Color found across the graph");
+    assert_eq!(color.location.uri, shared_uri);
+    assert_eq!(color.kind, tower_lsp::lsp_types::SymbolKind::CLASS);
+
+    // The empty query lists symbols from both files.
+    let all = backend
+        .symbol(tower_lsp::lsp_types::WorkspaceSymbolParams {
+            query: String::new(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .expect("workspace/symbol rpc")
+        .expect("some hits");
+    assert!(all.iter().any(|s| s.name == "Local"));
+    assert!(all.iter().any(|s| s.name == "Color"));
+
+    // Subsequence matching: "clr" still finds Color.
+    let fuzzy = backend
+        .symbol(tower_lsp::lsp_types::WorkspaceSymbolParams {
+            query: "clr".into(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .expect("workspace/symbol rpc")
+        .expect("some hits");
+    assert!(fuzzy.iter().any(|s| s.name == "Color"), "{fuzzy:?}");
+}
+
+#[tokio::test]
+async fn workspace_symbols_see_unsaved_overlay_buffer() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let shared = dir.path().join("shared.wcl");
+    std::fs::write(&main, "import \"./shared.wcl\"\n").unwrap();
+    std::fs::write(&shared, "namespace shared\n").unwrap();
+
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+
+    // The unsaved buffer adds `Color`; disk doesn't have it.
+    let shared_uri = Url::from_file_path(&shared).unwrap();
+    open(
+        backend,
+        &shared_uri,
+        "namespace shared\ntype Color { name: utf8 }\n",
+    )
+    .await;
+
+    let hits = backend
+        .symbol(tower_lsp::lsp_types::WorkspaceSymbolParams {
+            query: "Color".into(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .expect("workspace/symbol rpc")
+        .expect("some hits");
+    assert!(
+        hits.iter().any(|s| s.name == "Color"),
+        "overlayed symbol searchable: {hits:?}"
+    );
 }

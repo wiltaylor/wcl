@@ -40,7 +40,10 @@ fn record_to_symbol(source: &str, rec: &SymbolRecord) -> DocumentSymbol {
     }
 }
 
-fn classify(kind: &SymbolKind) -> (LspSymbolKind, Option<String>) {
+/// Map a `wcl_lang` symbol kind onto the LSP kind plus the parent FQN
+/// (as `detail`/`containerName` context) for member symbols. Shared by
+/// the document outline and workspace symbol search.
+pub(crate) fn classify(kind: &SymbolKind) -> (LspSymbolKind, Option<String>) {
     match kind {
         SymbolKind::FnDecl => (LspSymbolKind::FUNCTION, None),
         SymbolKind::TypeDecl => (LspSymbolKind::CLASS, None),
