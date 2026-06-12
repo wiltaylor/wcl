@@ -104,9 +104,12 @@ impl Registry {
         let files = self.files;
         Arc::new(move |p: &Path| {
             if let Ok(rel) = p.strip_prefix(SYSTEM_IMPORT_ROOT) {
-                let key = rel.to_string_lossy();
+                // Registry names always use forward slashes, but the
+                // resolved import path arrives with platform separators
+                // (backslashes on Windows); normalise before lookup.
+                let key = rel.to_string_lossy().replace('\\', "/");
                 return files
-                    .get(key.as_ref())
+                    .get(key.as_str())
                     .map(|c| c.clone().into_owned())
                     .ok_or_else(|| {
                         std::io::Error::new(

@@ -1128,6 +1128,20 @@ fn registry_system_imports_are_importer_relative() {
 }
 
 #[test]
+fn registry_lookup_accepts_backslash_separators() {
+    // On Windows, system-import resolution rebuilds the registry key
+    // with platform separators (`wdoc\prelude.wcl`); the loader must
+    // still hit names registered with forward slashes. Exercised
+    // directly since this test may run on any host OS.
+    let mut reg = Registry::new();
+    reg.register("wdoc/prelude.wcl", "@schemaless\nanswer = 42\n");
+    let loader = reg.loader(disk_loader());
+    let content = loader(std::path::Path::new("<wcl-system>/wdoc\\prelude.wcl"))
+        .expect("backslash key must resolve");
+    assert!(content.contains("answer = 42"), "{content}");
+}
+
+#[test]
 fn registry_miss_is_reported() {
     let loader = Registry::new().loader(disk_loader());
     let err = Document::open_at_with_loader(
