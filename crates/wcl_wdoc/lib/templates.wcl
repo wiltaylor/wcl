@@ -181,9 +181,11 @@ type SiteConfig {
 // Skill metadata for the `:ai_skill` target (`wcl wdoc skill`). The
 // backend builds SKILL.md's `---`-fenced YAML front matter from these
 // fields. The site's `start` page becomes SKILL.md; every other page is
-// written under `references/`. Arbitrary extra front-matter keys (e.g.
-// `allowed-tools`) can still be authored via a `frontmatter` block on
-// the start page — they are merged with these.
+// written under `references/`. Arbitrary extra front-matter keys can
+// still be authored via a `@schemaless frontmatter` block on the start
+// page — they are merged with these. Hyphenated skill-spec keys (e.g.
+// `allowed-tools`, `disable-model-invocation`) are written as
+// string-literal keys: `@schemaless frontmatter { "allowed-tools" = [...] }`.
 @block("skill")
 type SkillConfig {
   @doc("Skill name (SKILL.md front-matter `name`). A short lowercase slug.")

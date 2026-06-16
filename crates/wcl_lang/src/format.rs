@@ -227,7 +227,7 @@ impl Printer {
         self.print_leading_trivia(&f.leading_trivia);
         self.write_indent();
         self.print_decorators_inline(&f.decorators);
-        self.push(&f.name);
+        self.push(&field_key(&f.name));
         self.push(" = ");
         // A heredoc closer must be followed by a bare newline — legal
         // here only when no trailing comment will share its line.
@@ -1443,6 +1443,32 @@ fn trivia_has_comment(trivia: &[Trivia]) -> bool {
 
 fn join_path(parts: &[String]) -> String {
     parts.join(".")
+}
+
+/// Render a field key: bare when it is a valid identifier, otherwise as a
+/// double-quoted string. String-literal keys (e.g. `"allowed-tools"` in a
+/// `@schemaless` block) round-trip through the quoted form; identifier keys
+/// are unchanged.
+fn field_key(name: &str) -> String {
+    if is_bare_ident(name) {
+        name.to_string()
+    } else {
+        format!("\"{}\"", EscapeString(name))
+    }
+}
+
+/// Whether `name` is a valid bare WCL identifier — mirrors the lexer's
+/// `is_ident_start` / `is_ident_cont` (ASCII letter/underscore start, then
+/// ASCII alphanumeric/underscore).
+fn is_bare_ident(name: &str) -> bool {
+    let mut bytes = name.bytes();
+    let Some(first) = bytes.next() else {
+        return false;
+    };
+    if !(first.is_ascii_alphabetic() || first == b'_') {
+        return false;
+    }
+    bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
 /// `true` when `body` would survive a heredoc round-trip exactly.

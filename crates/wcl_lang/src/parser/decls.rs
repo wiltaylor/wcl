@@ -25,6 +25,16 @@ fn has_default_decorator(decorators: &[Decorator]) -> bool {
         .any(|d| d.name.len() == 1 && d.name[0] == "default")
 }
 
+/// Whether a block carries a bare `@schemaless` decorator. Mirrors
+/// `doc::schema_check::has_schemaless`, kept local so the parser need not
+/// depend on the doc layer. Drives string-literal field-key acceptance in
+/// `parse_block`.
+fn decorator_is_schemaless(decorators: &[Decorator]) -> bool {
+    decorators
+        .iter()
+        .any(|d| d.name.len() == 1 && d.name[0] == "schemaless")
+}
+
 /// Infer a `TypeRef` from an expression used as an inline default in
 /// a type-body field declaration (`name = expr`). Covers the cases
 /// where the user could plausibly want type inference: function
@@ -1167,6 +1177,12 @@ impl<'a> Parser<'a> {
         self.bump()?; // consume '{'
         self.enter_recursion()?;
         self.block_depth += 1;
+        // String-literal field keys are accepted only inside the body of a
+        // `@schemaless` block. Reflect the *immediate* enclosing block —
+        // saved and restored so a normal block nested in a schemaless one
+        // resets the flag, and vice versa.
+        let prev_schemaless = self.in_schemaless_block;
+        self.in_schemaless_block = decorator_is_schemaless(&decorators);
         let body_result = (|| -> Result<Vec<Item>, ParseError> {
             let mut items = Vec::new();
             loop {
@@ -1191,6 +1207,7 @@ impl<'a> Parser<'a> {
             }
             Ok(items)
         })();
+        self.in_schemaless_block = prev_schemaless;
         self.block_depth -= 1;
         self.leave_recursion();
         let items = body_result?;

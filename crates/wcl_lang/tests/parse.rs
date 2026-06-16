@@ -1093,6 +1093,63 @@ fn system_import_round_trips() {
 }
 
 #[test]
+fn schemaless_block_accepts_string_literal_field_keys() {
+    // Inside a `@schemaless` block, a field key may be a plain string
+    // literal — letting frontmatter author keys that aren't valid
+    // identifiers (hyphens). The string is used verbatim as the name.
+    let doc = open(
+        r#"
+        @schemaless frontmatter {
+          "allowed-tools" = ["Bash", "Read"]
+          "disable-model-invocation" = false
+          normal_key = "still fine"
+        }
+        "#,
+    );
+    let fm = doc.block("frontmatter").expect("frontmatter block");
+    let names: Vec<&str> = fm.fields().map(|f| f.name()).collect();
+    assert_eq!(
+        names,
+        vec!["allowed-tools", "disable-model-invocation", "normal_key"]
+    );
+    assert!(
+        fm.field("allowed-tools")
+            .expect("hyphen field")
+            .value()
+            .is_ok()
+    );
+}
+
+#[test]
+fn schemaless_string_field_key_round_trips_quoted() {
+    // The printer re-emits a non-identifier field key as a quoted string,
+    // and an identifier key stays bare.
+    let src = "@schemaless frontmatter {\n  \"allowed-tools\" = [\"Bash\"]\n  normal = 1\n}\n";
+    let ast = parse_for_edit(src, "test".to_string()).expect("parse");
+    let printed = format::to_source(&ast);
+    assert!(printed.contains("\"allowed-tools\" = "), "{printed}");
+    assert!(printed.contains("\n  normal = 1"), "{printed}");
+    let ast2 = parse_for_edit(&printed, "test".to_string()).expect("re-parse");
+    assert_eq!(printed, format::to_source(&ast2), "printer not idempotent");
+}
+
+#[test]
+fn string_field_key_rejected_outside_schemaless_block() {
+    // String keys are scoped to `@schemaless` blocks; a strict block still
+    // requires an identifier key.
+    let err = Document::open(
+        "frontmatter {\n  \"allowed-tools\" = [\"Bash\"]\n}\n",
+        "test",
+    )
+    .expect_err("string key must be rejected in a strict block");
+    let rendered = format!("{:?}", miette::Report::new(err));
+    assert!(
+        rendered.contains("expected identifier"),
+        "rendered: {rendered}"
+    );
+}
+
+#[test]
 fn registry_resolves_system_import() {
     let mut reg = Registry::new();
     reg.register("wdoc/prelude.wcl", "@schemaless\nanswer = 42\n");

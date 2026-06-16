@@ -175,6 +175,22 @@ fn frontmatter_block_becomes_yaml_header() {
 }
 
 #[test]
+fn frontmatter_string_keys_emit_hyphenated_yaml() {
+    // A `@schemaless` frontmatter block may use string-literal keys, so a
+    // key that isn't a valid identifier (e.g. `argument-hint`) round-trips
+    // verbatim into the YAML header.
+    let (_t, out) = build(
+        "page p {\n  @schemaless frontmatter {\n    \"argument-hint\" = \"a path\"\n    \"disable-model-invocation\" = false\n  }\n  h1 \"Intro\"\n}\n",
+    );
+    let md = read(&out, "p.md");
+    assert!(md.contains("argument-hint: a path"), "hyphenated key: {md}");
+    assert!(
+        md.contains("disable-model-invocation: false"),
+        "second hyphenated key: {md}"
+    );
+}
+
+#[test]
 fn frontmatter_needs_no_schemaless_marker() {
     // The `Frontmatter` type is itself `@schemaless` (an open, dynamic
     // kind), so a plain `frontmatter { … }` accepts arbitrary keys with

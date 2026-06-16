@@ -35,6 +35,13 @@ pub struct Parser<'a> {
     file_ns: Vec<String>,
     index: SymbolIndex,
     block_depth: u32,
+    /// Whether the item loop is currently inside the body of a block
+    /// carrying a lexical `@schemaless` decorator. While set, a field
+    /// key may be written as a plain string literal (`"allowed-tools" =
+    /// …`), letting `@schemaless frontmatter { … }` author keys that
+    /// aren't valid identifiers. Saved/restored per block body, so it
+    /// reflects the *immediate* enclosing block only.
+    in_schemaless_block: bool,
     /// Recursive-descent depth across the four self-nesting parse
     /// paths (expressions, type references, patterns, blocks). Capped
     /// at [`MAX_PARSE_DEPTH`] so pathological input (kilobytes of
@@ -92,6 +99,7 @@ impl<'a> Parser<'a> {
             file_ns: Vec::new(),
             index: SymbolIndex::default(),
             block_depth: 0,
+            in_schemaless_block: false,
             recursion_depth: 0,
             current_item_trivia: Vec::new(),
         }
@@ -476,6 +484,30 @@ impl<'a> Parser<'a> {
             && matches!(self.peek2()?.kind, TokenKind::Ident(_))
         {
             return self.parse_connection_decl(decorators);
+        }
+
+        // String-literal field key, e.g. `"allowed-tools" = [...]`. Only
+        // legal inside a `@schemaless` block, where it lets a frontmatter
+        // field use a key that isn't a valid identifier (hyphens, …).
+        // Elsewhere a string at item-start stays an error (below), so this
+        // is purely additive with no grammar ambiguity.
+        if self.in_schemaless_block
+            && matches!(self.peek()?.kind, TokenKind::Str(_))
+            && matches!(self.peek2()?.kind, TokenKind::Eq)
+        {
+            let tok = self.bump()?;
+            let span_start = tok.span.start;
+            let name = match tok.kind {
+                TokenKind::Str(StringLit::Utf8(s) | StringLit::Ascii(s)) => s,
+                _ => {
+                    return Err(self.err(
+                        "a schemaless field key must be a plain string, e.g. \"allowed-tools\"",
+                        tok.span,
+                        "use a plain double-quoted string",
+                    ));
+                }
+            };
+            return self.parse_field(name, span_start, decorators);
         }
 
         let tok = self.bump()?;

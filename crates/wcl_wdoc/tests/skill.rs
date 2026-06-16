@@ -92,6 +92,23 @@ fn extra_front_matter_keys_merge() {
 }
 
 #[test]
+fn hyphenated_front_matter_keys_emit_for_skill_spec() {
+    // Skill-spec keys are hyphenated (`allowed-tools`, …). A string-literal
+    // key in the start page's `@schemaless frontmatter` block emits the
+    // hyphenated YAML key verbatim, merged after the canonical fields.
+    let (_t, out) = build(&format!(
+        "{SITE}page overview {{ start = true\n  \
+         @schemaless frontmatter {{\n    \"allowed-tools\" = [\"Bash\", \"Read\"]\n  }}\n  h1 \"Demo\"\n}}\n"
+    ));
+    let md = read(&out, "SKILL.md");
+    assert!(md.contains("name: demo-skill"), "canonical key kept");
+    assert!(
+        md.contains("allowed-tools:\n  - Bash\n  - Read"),
+        "hyphenated skill key merged in: {md}"
+    );
+}
+
+#[test]
 fn file_blocks_ship_into_their_dir() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     std::fs::write(tmp.path().join("setup.sh"), "#!/bin/sh\necho hi\n").unwrap();
