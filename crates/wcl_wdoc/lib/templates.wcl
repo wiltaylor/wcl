@@ -44,17 +44,28 @@ type MenuEntry {
 
 // Context handed to a template's (and any part function's) `render`.
 type TemplateCtx {
-  content:      utf8            // the page's rendered body HTML (embed via Raw)
-  title:        utf8            // site title, or the page name if unset
-  page_name:    utf8            // the current page's name
-  pages:        list<PageRef>   // every page in the current site, in source order
-  toc:          list<TocEntry>  // the book TOC tree; flat (one per page) if no `toc`
-  menu:         list<MenuEntry> // the site's curated navbar menu (empty if no `menu`)
-  deck:         list<DeckSection> // the resolved presentation deck (empty unless the `presentation` template renders the whole site at once)
-  theme_toggle: bool            // whether to render a light/dark toggle (site flag)
-  search:       bool            // whether to render the site search box (site flag)
-  home_href:    utf8            // relative href back to the root site (empty when this IS the root site, or single-site)
-  home_title:   utf8            // the root site's title, for the back-link text
+  @doc("The page's rendered body HTML — embed it with `Raw`.")
+  content:      utf8
+  @doc("Site title, or the page name when the site sets no `title`.")
+  title:        utf8
+  @doc("The current page's name.")
+  page_name:    utf8
+  @doc("Every page in the current site, in source order (for building navigation).")
+  pages:        list<PageRef>
+  @doc("The book TOC tree; flat (one entry per page) when the site declares no `toc`.")
+  toc:          list<TocEntry>
+  @doc("The site's curated navbar menu; empty when the site declares no `menu`.")
+  menu:         list<MenuEntry>
+  @doc("The resolved presentation deck; empty unless the `presentation` template renders the whole site at once.")
+  deck:         list<DeckSection>
+  @doc("Whether to render a light/dark toggle (the site's `theme_toggle` flag).")
+  theme_toggle: bool
+  @doc("Whether to render the site search box (the site's `search` flag).")
+  search:       bool
+  @doc("Relative href back to the root site; empty when this IS the root (or a single-site build).")
+  home_href:    utf8
+  @doc("The root site's title, for the back-link text.")
+  home_title:   utf8
 }
 
 // One table-of-contents entry. The inline label is the display title;
@@ -367,43 +378,107 @@ let wdoc_search_box = fn(enabled: bool) -> list<HtmlFundamental>
     ]
   } else { [] }
 
+// ── Public template parts ───────────────────────────────────────────
+//
+// Stable, composable building blocks for authoring your own `template`.
+// Each returns `list<HtmlFundamental>`; compose them with `flatten([…])`.
+// They resolve by BARE NAME across `import <wdoc.wcl>`, so don't shadow a
+// `wdoc_part_*` / `wdoc_*_layout` name with your own `let`. The built-in
+// templates below are themselves just compositions of these — call a
+// `wdoc_*_layout` wholesale, append to it, or copy its body and swap a part
+// to retheme a page (a blog, an app home page, …).
+
+// Shared parts ───────────────────────────────────────────────────────
+
+// The site search box (input + results dropdown) plus its `<style>` when
+// `enabled`; empty otherwise. Gate it on `c.search`.
+let wdoc_part_search_box = fn(enabled: bool) -> list<HtmlFundamental>
+  wdoc_search_box(enabled)
+
+// The light/dark theme toggle button + its one-time script when `enabled`;
+// empty otherwise. Gate it on `c.theme_toggle`.
+let wdoc_part_theme_toggle = fn(enabled: bool) -> list<HtmlFundamental>
+  if enabled { book_theme_toggle } else { [] }
+
+// The back-to-root link shown on sub-sites (empty on the root / single site).
+// `cls` is the CSS class to tag it with (e.g. "site-home" / "book-home").
+let wdoc_part_home_link = fn(c: TemplateCtx, cls: utf8) -> list<HtmlFundamental>
+  home_link(c, cls)
+
+// Webpage parts ──────────────────────────────────────────────────────
+
+// The `webpage` template's `<style>` block — include it to inherit the
+// stdlib header / nav / content-card styling, or omit it and supply your own.
+let wdoc_part_webpage_css = fn() -> list<HtmlFundamental> [
+  HtmlFundamental::Element {
+    tag: "style", id: none, class: none, attrs: none,
+    children: [ HtmlFundamental::Raw { html: webpage_css } ],
+  },
+]
+
+// The site title header (`<header class="site-header">`).
+let wdoc_part_header = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+  HtmlFundamental::Element {
+    tag: "header", id: none, class: ["site-header"], attrs: none,
+    children: [ HtmlFundamental::Raw { html: c.title } ],
+  },
+]
+
+// The top navigation bar (`<nav class="site-nav">`): the back-to-root link,
+// the search box (when enabled), and the menu — the curated `menu` tree, or
+// a flat link per page when no `menu` is declared.
+let wdoc_part_navbar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+  HtmlFundamental::Element {
+    tag: "nav", id: none, class: ["site-nav"], attrs: none,
+    children: flatten([
+      home_link(c, "site-home"),
+      wdoc_search_box(c.search),
+      if len(c.menu) == 0 {
+        map(c.pages, fn(p: PageRef) -> HtmlFundamental
+          HtmlFundamental::Element {
+            tag: "a", id: none, class: none,
+            attrs: [["href", p.href]],
+            children: [ HtmlFundamental::Raw { html: p.name } ],
+          })
+      } else {
+        site_menu(c.menu)
+      },
+    ]),
+  },
+]
+
+// The page content wrapped in the reading card (`<main class="site-main">`).
+let wdoc_part_content = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+  HtmlFundamental::Element {
+    tag: "main", id: none, class: ["site-main"], attrs: none,
+    children: [ HtmlFundamental::Raw { html: c.content } ],
+  },
+]
+
+// The one-time dropdown-toggle script — emit it once when the navbar uses a
+// curated `menu` (empty otherwise, matching the built-in webpage template).
+let wdoc_part_menu_script = fn(menu: list<MenuEntry>) -> list<HtmlFundamental>
+  if len(menu) > 0 { [menu_script] } else { [] }
+
+// The bare nested menu list (`<ul class="menu">`) — the navbar's menu without
+// the surrounding `<nav>`, for placing a dropdown menu anywhere you like.
+let wdoc_part_menu_tree = fn(entries: list<MenuEntry>) -> list<HtmlFundamental>
+  site_menu(entries)
+
+// The full default `webpage` layout: style, header, navbar, content, and the
+// menu script. The `webpage` template is exactly this.
+let wdoc_webpage_layout = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  flatten([
+    wdoc_part_webpage_css(),
+    wdoc_part_header(c),
+    wdoc_part_navbar(c),
+    wdoc_part_content(c),
+    wdoc_part_menu_script(c.menu),
+  ])
+
 template webpage {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental>
-    flatten([
-      [
-        HtmlFundamental::Element {
-          tag: "style", id: none, class: none, attrs: none,
-          children: [ HtmlFundamental::Raw { html: webpage_css } ],
-        },
-        HtmlFundamental::Element {
-          tag: "header", id: none, class: ["site-header"], attrs: none,
-          children: [ HtmlFundamental::Raw { html: c.title } ],
-        },
-        HtmlFundamental::Element {
-          tag: "nav", id: none, class: ["site-nav"], attrs: none,
-          children: flatten([
-            home_link(c, "site-home"),
-            wdoc_search_box(c.search),
-            if len(c.menu) == 0 {
-              map(c.pages, fn(p: PageRef) -> HtmlFundamental
-                HtmlFundamental::Element {
-                  tag: "a", id: none, class: none,
-                  attrs: [["href", p.href]],
-                  children: [ HtmlFundamental::Raw { html: p.name } ],
-                })
-            } else {
-              site_menu(c.menu)
-            },
-          ]),
-        },
-        HtmlFundamental::Element {
-          tag: "main", id: none, class: ["site-main"], attrs: none,
-          children: [ HtmlFundamental::Raw { html: c.content } ],
-        },
-      ],
-      // The dropdown toggle script, only when there's a menu to drive.
-      if len(c.menu) > 0 { [menu_script] } else { [] },
-    ])
+    wdoc_webpage_layout(c)
 }
 
 // One sidebar entry: a `<span>` heading when the entry has no page
@@ -518,37 +593,73 @@ let book_css = <<CSS
 // current chapter highlighted), and the page content in a reading
 // column. The TOC comes from the `site` block's `toc`; with no `toc`
 // declared the renderer falls back to a flat list of every page.
+// Book parts ─────────────────────────────────────────────────────────
+
+// The `book` template's `<style>` block — the fixed sidebar, nested TOC,
+// reading column, and theme toggle. Include it for stdlib book styling.
+let wdoc_part_book_css = fn() -> list<HtmlFundamental> [
+  HtmlFundamental::Element {
+    tag: "style", id: none, class: none, attrs: none,
+    children: [ HtmlFundamental::Raw { html: book_css } ],
+  },
+]
+
+// The fixed left sidebar (`<nav class="book-sidebar">`): the book title, the
+// back-to-root link, the search box, the theme toggle, the TOC tree, and the
+// scroll-to-current script — in the built-in book order. The scroll script
+// runs after the TOC is in the DOM (an inline script executes at parse time,
+// so it sees its sibling chapter `<a>`s) and centres the current chapter.
+let wdoc_part_sidebar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+  HtmlFundamental::Element {
+    tag: "nav", id: none, class: ["book-sidebar"], attrs: none,
+    children: flatten([
+      [ HtmlFundamental::Element {
+          tag: "div", id: none, class: ["book-title"], attrs: none,
+          children: [ HtmlFundamental::Raw { html: c.title } ],
+        } ],
+      home_link(c, "book-home"),
+      wdoc_search_box(c.search),
+      if c.theme_toggle { book_theme_toggle } else { [] },
+      book_toc(c.toc),
+      [book_sidebar_scroll],
+    ]),
+  },
+]
+
+// The page content in the book reading column (`<main class="book-content">`),
+// followed by the previous/next pagination derived from the TOC order.
+let wdoc_part_book_content = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+  HtmlFundamental::Element {
+    tag: "main", id: none, class: ["book-content"], attrs: none,
+    children: flatten([
+      [ HtmlFundamental::Raw { html: c.content } ],
+      book_pagenav(c.toc),
+    ]),
+  },
+]
+
+// The nested TOC list (`<ul class="book-toc">`) on its own — the sidebar's
+// chapter tree without the surrounding `<nav>`.
+let wdoc_part_toc_tree = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
+  book_toc(entries)
+
+// The bottom-of-page previous/next pagination, derived from the TOC reading
+// order (empty when the current page isn't in the TOC).
+let wdoc_part_pagenav = fn(toc: list<TocEntry>) -> list<HtmlFundamental>
+  book_pagenav(toc)
+
+// The full default `book` layout: style, sidebar, content-with-pagination.
+// The `book` template is exactly this.
+let wdoc_book_layout = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  flatten([
+    wdoc_part_book_css(),
+    wdoc_part_sidebar(c),
+    wdoc_part_book_content(c),
+  ])
+
 template book {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental> [
-    HtmlFundamental::Element {
-      tag: "style", id: none, class: none, attrs: none,
-      children: [ HtmlFundamental::Raw { html: book_css } ],
-    },
-    HtmlFundamental::Element {
-      tag: "nav", id: none, class: ["book-sidebar"], attrs: none,
-      children: flatten([
-        [ HtmlFundamental::Element {
-            tag: "div", id: none, class: ["book-title"], attrs: none,
-            children: [ HtmlFundamental::Raw { html: c.title } ],
-          } ],
-        home_link(c, "book-home"),
-        wdoc_search_box(c.search),
-        if c.theme_toggle { book_theme_toggle } else { [] },
-        book_toc(c.toc),
-        // Runs after the TOC is in the DOM (inline script executes at parse
-        // time, so it sees its sibling chapter `<a>`s). Centres the current
-        // chapter in the sidebar's scroll viewport on every book page load.
-        [book_sidebar_scroll],
-      ]),
-    },
-    HtmlFundamental::Element {
-      tag: "main", id: none, class: ["book-content"], attrs: none,
-      children: flatten([
-        [ HtmlFundamental::Raw { html: c.content } ],
-        book_pagenav(c.toc),
-      ]),
-    },
-  ]
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    wdoc_book_layout(c)
 }
 
 // Light/dark toggle: a button plus a one-time script. The script

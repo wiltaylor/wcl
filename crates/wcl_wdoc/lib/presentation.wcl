@@ -160,19 +160,45 @@ let deck_section_el = fn(sec: DeckSection) -> HtmlFundamental
     children: map(sec.slides, deck_slide_el),
   }
 
+// ── Public template parts (presentation) ────────────────────────────
+//
+// Composable building blocks for a deck `template`, matching the
+// `wdoc_part_*` parts in `templates.wcl`. Compose with `flatten([…])`.
+
+// The deck's `<style>` block — full-viewport slides, fragment fades, the
+// progress bar / counter / nav-hint / notes-overlay styling.
+let wdoc_part_presentation_css = fn() -> list<HtmlFundamental> [
+  HtmlFundamental::Element {
+    tag: "style", id: none, class: none, attrs: none,
+    children: [ HtmlFundamental::Raw { html: presentation_css } ],
+  },
+]
+
+// The slide grid (`<div class="deck">`): one `<section>` per deck section,
+// each holding its slides. Driven by the bundled `presentation.js` player.
+let wdoc_part_deck = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+  HtmlFundamental::Element {
+    tag: "div", id: none, class: ["deck"], attrs: none,
+    children: map(c.deck, deck_section_el),
+  },
+]
+
+// The static deck chrome: the progress bar, slide counter, and nav-hint
+// arrows (the player updates them as you navigate).
+let wdoc_part_deck_chrome = fn() -> list<HtmlFundamental> [deck_chrome]
+
+// The full default `presentation` layout: style, deck grid, deck chrome.
+let wdoc_presentation_layout = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  flatten([
+    wdoc_part_presentation_css(),
+    wdoc_part_deck(c),
+    wdoc_part_deck_chrome(),
+  ])
+
 // Stdlib `presentation` template: a single-file slide deck. The whole
 // site renders to one `index.html`; ← → navigate sections, ↑ ↓ the
 // slides within a section (driven by the bundled `presentation.js`).
 template presentation {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental> [
-    HtmlFundamental::Element {
-      tag: "style", id: none, class: none, attrs: none,
-      children: [ HtmlFundamental::Raw { html: presentation_css } ],
-    },
-    HtmlFundamental::Element {
-      tag: "div", id: none, class: ["deck"], attrs: none,
-      children: map(c.deck, deck_section_el),
-    },
-    deck_chrome,
-  ]
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    wdoc_presentation_layout(c)
 }

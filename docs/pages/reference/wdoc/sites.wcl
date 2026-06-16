@@ -109,4 +109,82 @@ page topic {
 }
 WCL
   }
+
+  h2 "Custom templates"
+
+  p "The three built-ins are not special: a template is just a function from a `TemplateCtx` to a list of HTML fundamentals, and the document schema accepts your own. Declare a `template <name> { render = fn(c: TemplateCtx) -> list<HtmlFundamental> … }` in your document and select it with a site's `default_template` (e.g. `:blog`) or a page's `template` field."
+
+  p "The renderer hands `render` this context:"
+
+  type_table { type = TemplateCtx }
+
+  p "You rarely build a template from raw fundamentals. The stdlib exposes its own chrome as composable **parts** — each a function returning `list<HtmlFundamental>` — plus one `wdoc_*_layout` function per built-in that is its whole default composition. Parts resolve by bare name once you `import <wdoc.wcl>`."
+
+  table {
+    rows:
+      | "Part"                                   | "Returns" |
+      | "`wdoc_webpage_layout(c)`"                | "The whole `webpage` body: css + header + navbar + content + menu script" |
+      | "`wdoc_part_webpage_css()`"               | "The webpage `<style>` (header / nav / content card)" |
+      | "`wdoc_part_header(c)`"                   | "The site-title `<header>`" |
+      | "`wdoc_part_navbar(c)`"                   | "The top `<nav>` — back-link, search, and the `menu` (or a flat page list)" |
+      | "`wdoc_part_content(c)`"                  | "The page content in the reading card `<main>`" |
+      | "`wdoc_part_menu_tree(c.menu)`"           | "Just the nested `<ul class=\"menu\">`, no surrounding nav" |
+      | "`wdoc_book_layout(c)`"                   | "The whole `book` body: css + sidebar + content-with-pagination" |
+      | "`wdoc_part_sidebar(c)`"                  | "The fixed `book-sidebar` — title, back-link, search, toggle, TOC, scroll" |
+      | "`wdoc_part_book_content(c)`"             | "The reading column `<main>` plus prev/next pagination" |
+      | "`wdoc_part_toc_tree(c.toc)`"             | "Just the nested `<ul class=\"book-toc\">`" |
+      | "`wdoc_part_pagenav(c.toc)`"              | "The bottom prev/next pagination links" |
+      | "`wdoc_presentation_layout(c)`"           | "The whole deck body: css + slide grid + chrome" |
+      | "`wdoc_part_deck(c)`"                     | "The `<div class=\"deck\">` slide grid" |
+      | "`wdoc_part_search_box(c.search)`"        | "The search box + its style (empty unless enabled)" |
+      | "`wdoc_part_theme_toggle(c.theme_toggle)`" | "The light/dark toggle button + script (empty unless enabled)" |
+      | "`wdoc_part_home_link(c, cls)`"           | "The back-to-root link for sub-sites" |
+  }
+
+  h3 "Extend a built-in"
+
+  p "To keep a whole built-in but add your own chrome, call its layout and append parts. This is the full `webpage` plus a footer:"
+
+  code wcl {
+    source = <<'WCL'
+template blog {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([
+      wdoc_webpage_layout(c),
+      [ HtmlFundamental::Element {
+          tag: "footer", id: none, class: ["site-footer"], attrs: none,
+          children: [ HtmlFundamental::Raw { html: "© 2026 — built with wdoc" } ],
+      } ],
+    ])
+}
+
+site myblog { default_template = :blog  title = "My blog" }
+WCL
+  }
+
+  h3 "Rebuild from parts"
+
+  p "To replace a region, copy the layout's body and swap one part — here a custom masthead in place of `wdoc_part_header`, keeping the stdlib navbar and content. Omit a part to drop that region entirely (no nav, say, for an app home page)."
+
+  code wcl {
+    source = <<'WCL'
+template app_home {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([
+      wdoc_part_webpage_css(),      // keep the stdlib styling…
+      [ HtmlFundamental::Element {  // …a hero masthead instead of wdoc_part_header
+          tag: "header", id: none, class: ["hero"], attrs: none,
+          children: [ HtmlFundamental::Raw { html: c.title } ],
+      } ],
+      wdoc_part_navbar(c),          // …reuse the stdlib nav
+      wdoc_part_content(c),         // …standard content <main>
+    ])
+}
+WCL
+  }
+
+  callout "Parts resolve by bare name" {
+    class = ["note"]
+    body  = "Template parts are plain functions reached by name through `import <wdoc.wcl>` — they are not `wdoc::`-qualified. Don't define a `let` of your own named `wdoc_part_*` or `wdoc_*_layout`, or it will shadow the stdlib one."
+  }
 }

@@ -2684,6 +2684,25 @@ fn build_renders_code_inline() {
 }
 
 #[test]
+fn build_code_span_contents_are_verbatim() {
+    // An underscore pair inside an inline code span must not be reinterpreted
+    // as `_italic_` — code-span contents are verbatim.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = write_inline_fixture(&tmp, "A `reading_long_format` B");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<span class=\"code\">reading_long_format</span>"),
+        "code span should be verbatim (no italic leak):\n{html}"
+    );
+    assert!(
+        !html.contains("<span class=\"italic\">long</span>"),
+        "italic leaked into code span:\n{html}"
+    );
+}
+
+#[test]
 fn build_renders_link_inline() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = write_inline_fixture(&tmp, "see [docs](https://example.com)");
@@ -3799,6 +3818,290 @@ page index {
     assert!(
         html.contains("<main><p><span>body text</span></p>"),
         "{html}"
+    );
+}
+
+#[test]
+fn custom_template_composes_public_parts() {
+    // A user template built entirely from the public `wdoc_part_*` parts
+    // (no copy of the stdlib markup) emits the stdlib navbar + content.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("site.wcl");
+    write_fixture(
+        &src,
+        r#"
+template parts_only {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([ wdoc_part_navbar(c), wdoc_part_content(c) ])
+}
+site { default_template = :parts_only  title = "Site" }
+page index { text { span "hello" {} } }
+page other { h1 "Other" {} }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<nav class=\"site-nav\">"),
+        "navbar part missing:\n{html}"
+    );
+    assert!(
+        html.contains("<main class=\"site-main\"><p><span>hello</span></p>"),
+        "content part missing:\n{html}"
+    );
+}
+
+#[test]
+fn template_extends_layout_with_custom_footer() {
+    // Pattern (a): keep a whole built-in by calling its layout fn, then
+    // append a custom region. The full webpage chrome must be present and
+    // the footer must follow it.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("site.wcl");
+    write_fixture(
+        &src,
+        r#"
+template blog {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([
+      wdoc_webpage_layout(c),
+      [ HtmlFundamental::Element {
+          tag: "footer", id: none, class: ["site-footer"], attrs: none,
+          children: [ HtmlFundamental::Raw { html: "the footer" } ],
+      } ],
+    ])
+}
+site { default_template = :blog  title = "Blog" }
+page index { h1 "Post" {} }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // The full stdlib webpage chrome is reused wholesale.
+    assert!(html.contains("<header class=\"site-header\">"), "{html}");
+    assert!(html.contains("<nav class=\"site-nav\">"), "{html}");
+    assert!(html.contains("<main class=\"site-main\">"), "{html}");
+    // The appended footer follows the layout.
+    let footer = html
+        .find("<footer class=\"site-footer\">the footer</footer>")
+        .expect("footer present");
+    let main = html
+        .find("<main class=\"site-main\">")
+        .expect("main present");
+    assert!(footer > main, "footer should follow the layout:\n{html}");
+}
+
+#[test]
+fn template_overrides_header_keeps_navbar() {
+    // Pattern (b): copy the webpage layout body and swap one region — a
+    // custom masthead replaces wdoc_part_header while the stdlib navbar and
+    // content parts are reused. The stdlib header markup must be gone.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("site.wcl");
+    write_fixture(
+        &src,
+        r#"
+template app_home {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([
+      wdoc_part_webpage_css(),
+      [ HtmlFundamental::Element {
+          tag: "header", id: none, class: ["hero"], attrs: none,
+          children: [ HtmlFundamental::Raw { html: c.title } ],
+      } ],
+      wdoc_part_navbar(c),
+      wdoc_part_content(c),
+    ])
+}
+site { default_template = :app_home  title = "App" }
+page index { h1 "Home" {} }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<header class=\"hero\">App</header>"),
+        "custom header missing:\n{html}"
+    );
+    assert!(
+        !html.contains("class=\"site-header\""),
+        "stdlib header should be gone:\n{html}"
+    );
+    assert!(
+        html.contains("<nav class=\"site-nav\">"),
+        "stdlib navbar should be reused:\n{html}"
+    );
+}
+
+#[test]
+fn custom_template_reuses_book_sidebar() {
+    // A custom template composed from the book parts emits the fixed
+    // sidebar with the nested TOC and the current-chapter highlight.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("site.wcl");
+    write_fixture(
+        &src,
+        r#"
+template mybook {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([ wdoc_part_book_css(), wdoc_part_sidebar(c), wdoc_part_book_content(c) ])
+}
+site {
+  default_template = :mybook
+  title = "Manual"
+  toc {
+    chapter "Intro" { page = index }
+    chapter "Usage" { page = usage }
+  }
+}
+page index { h1 "Intro" {} }
+page usage { h1 "Usage" {} }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<nav class=\"book-sidebar\">"),
+        "sidebar part missing:\n{html}"
+    );
+    assert!(
+        html.contains("class=\"book-chapter current\""),
+        "current-chapter highlight missing:\n{html}"
+    );
+}
+
+#[test]
+fn custom_template_reuses_deck() {
+    // Overriding `template presentation` (the deck build path is keyed to
+    // that name) to compose the deck parts plus extra chrome still renders
+    // the slide grid and the deck progress/counter scaffolding.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("site.wcl");
+    write_fixture(
+        &src,
+        r#"
+template presentation {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([
+      wdoc_presentation_layout(c),
+      [ HtmlFundamental::Element {
+          tag: "div", id: none, class: ["my-banner"], attrs: none,
+          children: [ HtmlFundamental::Raw { html: "BANNER" } ],
+      } ],
+    ])
+}
+site { default_template = :presentation  title = "Deck"
+  deck { section "S" { slide a  slide b } }
+}
+page a { h1 "A" {} }
+page b { h1 "B" {} }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<div class=\"deck\">"),
+        "deck grid part missing:\n{html}"
+    );
+    assert!(
+        html.contains("class=\"deck-progress\"") && html.contains("class=\"deck-counter\""),
+        "deck chrome part missing:\n{html}"
+    );
+    assert!(
+        html.contains("<div class=\"my-banner\">BANNER</div>"),
+        "custom deck chrome missing:\n{html}"
+    );
+}
+
+#[test]
+fn wdoc_part_menu_tree_renders_bare_ul() {
+    // The menu-tree part emits just the nested `<ul class="menu">` with no
+    // surrounding `<nav>` — usable to place a dropdown menu anywhere.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("site.wcl");
+    write_fixture(
+        &src,
+        r#"
+template menu_only {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([ wdoc_part_menu_tree(c.menu), wdoc_part_content(c) ])
+}
+site {
+  default_template = :menu_only
+  title = "M"
+  menu {
+    item "Home" { page = index }
+    item "More" { item "Other" { page = other } }
+  }
+}
+page index { h1 "Home" {} }
+page other { h1 "Other" {} }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<ul class=\"menu\">"),
+        "bare menu <ul> missing:\n{html}"
+    );
+    // Nested submenu present, but no site-nav wrapper from this part.
+    assert!(
+        html.contains("menu-toggle"),
+        "dropdown parent missing:\n{html}"
+    );
+    assert!(
+        !html.contains("<nav class=\"site-nav\">"),
+        "menu_tree must not wrap in a nav:\n{html}"
+    );
+}
+
+#[test]
+fn wdoc_part_search_box_gated() {
+    // The search-box part renders the box + its <style> when enabled and
+    // nothing when disabled — driven by the site `search` flag via c.search.
+    let body = r#"
+template searchable {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([ wdoc_part_search_box(c.search), wdoc_part_content(c) ])
+}
+site { default_template = :searchable  title = "S"  search = SEARCH }
+page index { h1 "Home" {} }
+"#;
+
+    // Enabled.
+    let tmp_on = TempDir::new().expect("mkdir tempdir");
+    let src_on = tmp_on.path().join("on.wcl");
+    write_fixture(&src_on, body.replace("SEARCH", "true"));
+    let out_on = TempDir::new().expect("mkdir out");
+    build_ok(&src_on, out_on.path());
+    let on = std::fs::read_to_string(out_on.path().join("index.html")).expect("read");
+    assert!(
+        on.contains("class=\"wdoc-search\"") && on.contains(".wdoc-search-input"),
+        "search box + style missing when enabled:\n{on}"
+    );
+
+    // Disabled.
+    let tmp_off = TempDir::new().expect("mkdir tempdir");
+    let src_off = tmp_off.path().join("off.wcl");
+    write_fixture(&src_off, body.replace("SEARCH", "false"));
+    let out_off = TempDir::new().expect("mkdir out");
+    build_ok(&src_off, out_off.path());
+    let off = std::fs::read_to_string(out_off.path().join("index.html")).expect("read");
+    assert!(
+        !off.contains("class=\"wdoc-search\""),
+        "search box should be absent when disabled:\n{off}"
     );
 }
 
@@ -5075,6 +5378,40 @@ fn terminal_inline_text_lays_out_via_vt() {
     assert!(
         !html.contains(">hello</text>") && !html.contains(">world</text>"),
         "cells were grouped into a run instead of per-cell glyphs:\n{html}"
+    );
+}
+
+#[test]
+fn pan_zoom_diagram_inside_component_ships_player_js() {
+    // A `pan_zoom` diagram authored only inside a `wdoc_component` body
+    // (so it never appears in the page's raw block tree) must still ship
+    // `diagram-pan-zoom.js` and inject the page <script> — the asset scan
+    // descends into component definitions.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("c.wcl");
+    write_fixture(
+        &src,
+        "wdoc_component graph {\n  wdoc_body {\n    \
+         diagram { pan_zoom = true  width = 200  height = 120\n      \
+         process \"A\" { id = a }  process \"B\" { id = b }\n      a -> b\n    }\n  }\n}\n\
+         site s { default_template = :book  title = \"x\"  \
+         toc { chapter \"C\" { page = p } } }\n\
+         page p { sites = [:s]  start = true\n  h1 { text = \"C\" }\n  graph {}\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    assert!(
+        out.path().join("_wdoc/diagram-pan-zoom.js").exists(),
+        "pan-zoom JS not shipped for a diagram inside a component"
+    );
+    let html = std::fs::read_to_string(out.path().join("p.html")).expect("read");
+    assert!(
+        html.contains("diagram-pan-zoom.js"),
+        "no pan-zoom <script> injected:\n{html}"
+    );
+    assert!(
+        html.contains("data-pan-zoom"),
+        "component diagram did not render its interactive markup:\n{html}"
     );
 }
 
