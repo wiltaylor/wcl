@@ -2777,6 +2777,99 @@ fn validate_keeps_unknown_operand_error_without_dynamic() {
     );
 }
 
+fn has_unknown_connection_error(doc: &Document) -> bool {
+    doc.schema_errors().iter().any(|e| {
+        matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: crate::error::SchemaViolationKind::UnknownConnection,
+                ..
+            }
+        )
+    })
+}
+
+#[test]
+fn interface_connection_endpoint_spans_every_conforming_pair() {
+    // `connection Rel: &Entity -> &Entity` admits any pair of blocks
+    // whose concrete types implement `Entity` — one schema for all pairs.
+    let src = r#"
+        @block("component") type Component { @inline(0) id: identifier  name: utf8 }
+        @block("procedure") type Procedure { @inline(0) id: identifier  name: utf8 }
+        interface Entity { name: utf8 }
+        symbol_set RelKind { implements }
+        connection Rel: &Entity -> &Entity : RelKind
+        @document type M {
+            @children("component") comps: list<Component>
+            @children("procedure") procs: list<Procedure>
+            @connections(Rel) rels: list<Rel>
+        }
+        component "auth" { name = "Auth" }
+        procedure "login" { name = "Login" }
+        auth -> login :implements
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    assert!(
+        !has_unknown_connection_error(&doc),
+        "&Iface endpoint should admit Component -> Procedure: {:?}",
+        doc.schema_errors()
+    );
+}
+
+#[test]
+fn interface_connection_endpoint_rejects_non_conforming_operand() {
+    // A block whose concrete type does NOT implement the endpoint
+    // interface is still rejected (no silent acceptance).
+    let src = r#"
+        @block("component") type Component { @inline(0) id: identifier  name: utf8 }
+        @block("gadget") type Gadget { @inline(0) id: identifier }
+        interface Entity { name: utf8 }
+        symbol_set RelKind { implements }
+        connection Rel: &Entity -> &Entity : RelKind
+        @document type M {
+            @children("component") comps: list<Component>
+            @children("gadget") gadgets: list<Gadget>
+            @connections(Rel) rels: list<Rel>
+        }
+        component "auth" { name = "Auth" }
+        gadget "g1" {}
+        auth -> g1 :implements
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    assert!(
+        has_unknown_connection_error(&doc),
+        "a non-conforming operand (Gadget) must be rejected: {:?}",
+        doc.schema_errors()
+    );
+}
+
+#[test]
+fn union_connection_endpoint_admits_variant_members() {
+    // `connection Rel: AnyEnt -> AnyEnt` admits any pair whose concrete
+    // types are variant members of the union.
+    let src = r#"
+        @block("component") type Component { @inline(0) id: identifier  name: utf8 }
+        @block("procedure") type Procedure { @inline(0) id: identifier  name: utf8 }
+        union AnyEnt { C Component  P Procedure }
+        symbol_set RelKind { implements }
+        connection Rel: AnyEnt -> AnyEnt : RelKind
+        @document type M {
+            @children("component") comps: list<Component>
+            @children("procedure") procs: list<Procedure>
+            @connections(Rel) rels: list<Rel>
+        }
+        component "auth" { name = "Auth" }
+        procedure "login" { name = "Login" }
+        auth -> login :implements
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    assert!(
+        !has_unknown_connection_error(&doc),
+        "union endpoint should admit Component -> Procedure: {:?}",
+        doc.schema_errors()
+    );
+}
+
 #[test]
 fn second_root_document_still_errors_alongside_import() {
     // A *root-authored* second @document is still an error even when a

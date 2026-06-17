@@ -561,6 +561,108 @@ fn strict_value_vs_type_list_element_mismatch() {
 }
 
 #[test]
+fn symbol_set_membership_validated_on_top_level_block() {
+    // A symbol_set-typed field on a top-level (@document-child) block
+    // validates membership identically to a nested block: a valid member
+    // passes, an out-of-set symbol is rejected.
+    let ok = r#"
+        symbol_set NodeStatus { existing tba broken }
+        @block("infra_node") type InfraNode { @inline(0) id: identifier  status: NodeStatus }
+        @document type M { @children("infra_node") nodes: list<InfraNode> }
+        infra_node "box" { status = :existing }
+    "#;
+    let doc = Document::open(ok, "test").unwrap();
+    assert!(
+        doc.schema_errors().is_empty(),
+        "valid member should pass: {:?}",
+        doc.schema_errors()
+    );
+
+    let bad = r#"
+        symbol_set NodeStatus { existing tba broken }
+        @block("infra_node") type InfraNode { @inline(0) id: identifier  status: NodeStatus }
+        @document type M { @children("infra_node") nodes: list<InfraNode> }
+        infra_node "box" { status = :bogus }
+    "#;
+    let doc = Document::open(bad, "test").unwrap();
+    assert!(
+        doc.schema_errors().iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: wcl_lang::SchemaViolationKind::SymbolNotInSet,
+                ..
+            }
+        )),
+        "out-of-set symbol should be rejected, got: {:?}",
+        doc.schema_errors()
+    );
+}
+
+#[test]
+fn ref_decorator_flags_dangling_reference() {
+    // A `@ref("kind")` field whose id names an existing block passes;
+    // one naming no such block is a DanglingReference schema violation.
+    let ok = r#"
+        @block("screen") type Screen { @inline(0) id: identifier  name: utf8 }
+        @block("flow") type Flow { @inline(0) id: identifier  @ref("screen") entry: identifier }
+        @document type M {
+            @children("screen") screens: list<Screen>
+            @children("flow") flows: list<Flow>
+        }
+        screen "home" { name = "Home" }
+        flow "f" { entry = home }
+    "#;
+    let doc = Document::open(ok, "test").unwrap();
+    assert!(
+        doc.schema_errors().is_empty(),
+        "valid @ref should pass: {:?}",
+        doc.schema_errors()
+    );
+
+    let bad = ok.replace("entry = home", "entry = ghost");
+    let doc = Document::open(&bad, "test").unwrap();
+    assert!(
+        doc.schema_errors().iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: wcl_lang::SchemaViolationKind::DanglingReference,
+                ..
+            }
+        )),
+        "dangling @ref should be flagged, got: {:?}",
+        doc.schema_errors()
+    );
+}
+
+#[test]
+fn ref_decorator_checks_each_id_in_a_list() {
+    // `@ref` on a `list<identifier>` validates every element.
+    let src = r#"
+        @block("screen") type Screen { @inline(0) id: identifier }
+        @block("flow") type Flow { @inline(0) id: identifier  @ref("screen") steps: list<identifier> }
+        @document type M {
+            @children("screen") screens: list<Screen>
+            @children("flow") flows: list<Flow>
+        }
+        screen "a" {}
+        screen "b" {}
+        flow "f" { steps = [a, ghost, b] }
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    assert!(
+        doc.schema_errors().iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: wcl_lang::SchemaViolationKind::DanglingReference,
+                ..
+            }
+        )),
+        "a dangling id in a ref list should be flagged, got: {:?}",
+        doc.schema_errors()
+    );
+}
+
+#[test]
 fn unqualified_variant_patterns_match() {
     let src = r#"
         union Shape { Circle { radius: f64 } Square { side: f64 } }

@@ -29,9 +29,25 @@ page schema { sites = [:reference, :wcl_skill]  title = "Schema & Decorators"
       | "`@connections(S)`"    | "Accumulate `->` connection statements as records" |
       | "`@min(n)` / `@max(n)`" | "Numeric range constraint, checked by `wcl check`" |
       | "`@non_empty`"          | "The string / list value must not be empty" |
+      | "`@ref(\"kind\")`"      | "The id value(s) must name an existing block of that kind — `wcl check` flags a dangling reference" |
   }
 
   p "The constraint decorators also attach to a [type alias](records) (`@min(1) type Port = u16`), applying to every field declared with the alias."
+
+  h2 "Referential integrity with @ref"
+
+  p "A field that holds an `identifier` (or `list<identifier>`) which is _semantically a reference_ to another block can declare that with `@ref(\"kind\")`. `wcl check` then verifies every id names an existing block of that kind — anywhere in the document, top-level or nested — and reports a dangling reference otherwise. An unset optional reference is skipped."
+
+  code wcl {
+    source = <<'WCL'
+@block("screen") type Screen { @inline(0) id: identifier  name: utf8 }
+@block("flow") type Flow {
+  @inline(0) id: identifier
+  @ref("screen") entry_screen: identifier   // must be a declared screen id
+  @ref("screen") steps: list<identifier>    // every element checked
+}
+WCL
+  }
 
   h2 "Child-count constraints on @block"
 

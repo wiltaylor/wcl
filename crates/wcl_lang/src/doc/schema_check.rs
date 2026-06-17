@@ -16,7 +16,7 @@ use crate::error::EvalError;
 use crate::value::Value;
 
 use super::cells::ItemCellKind;
-use super::{Block, BuiltinDecorator, DeclName, Document};
+use super::{Block, BuiltinDecorator, DeclName, Document, TypeField};
 
 /// Check the constraint decorators that apply to a field's value: the
 /// field declaration's own `@min` / `@max` / `@non_empty`, plus those on
@@ -70,6 +70,58 @@ pub(super) fn constraint_violation(
         }
     }
     None
+}
+
+/// When `declared` carries `@ref("kind")` and `value` holds an id (or a
+/// list of ids) that names no existing block of that kind anywhere in
+/// the document, return the dangling-reference message. A `none` value
+/// (an unset optional reference) and non-id values are skipped — the
+/// latter are caught by the ordinary value-vs-type check.
+pub(super) fn ref_violation(
+    doc: &Document,
+    declared: &TypeField<'_>,
+    value: &Value,
+) -> Option<String> {
+    let kind = declared.ref_block_kind()?;
+    let mut ids = Vec::new();
+    collect_ref_ids(value, &mut ids);
+    let missing: Vec<String> = ids
+        .into_iter()
+        .filter(|id| !doc.has_block_with_id(&kind, id))
+        .collect();
+    if missing.is_empty() {
+        return None;
+    }
+    Some(if missing.len() == 1 {
+        format!(
+            "@ref(\"{kind}\") target '{}' is not the id of any '{kind}' block",
+            missing[0]
+        )
+    } else {
+        format!(
+            "@ref(\"{kind}\") targets {} name no '{kind}' block",
+            missing
+                .iter()
+                .map(|s| format!("'{s}'"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    })
+}
+
+/// Gather the referenced id strings from an `@ref` field value: a scalar
+/// id, or every id in a (possibly nested) list. `none` and non-id values
+/// contribute nothing.
+fn collect_ref_ids(value: &Value, out: &mut Vec<String>) {
+    match value {
+        Value::Identifier(s) | Value::Utf8(s) | Value::Ascii(s) => out.push(s.clone()),
+        Value::List(items) => {
+            for it in items.iter() {
+                collect_ref_ids(it, out);
+            }
+        }
+        _ => {}
+    }
 }
 
 pub(super) fn has_schemaless(decorators: &[ast::Decorator]) -> bool {
@@ -138,8 +190,8 @@ pub(super) fn validate_connection_stmts(
         for decl in doc.connection_decls() {
             let src_fqn = decl_type_fqn(doc, &decl, decl.source_type());
             let dst_fqn = decl_type_fqn(doc, &decl, decl.destination_type());
-            if crate::doc::connection_type_matches(&lhs_decl, src_fqn.as_deref())
-                && crate::doc::connection_type_matches(&rhs_decl, dst_fqn.as_deref())
+            if crate::doc::connection_type_matches(doc, &lhs_decl, src_fqn.as_deref())
+                && crate::doc::connection_type_matches(doc, &rhs_decl, dst_fqn.as_deref())
             {
                 matches.push(decl);
             }
@@ -218,7 +270,7 @@ fn dynamic_connection_admits(
         None => true,
         Some(op) => doc
             .operand_schema(op)
-            .is_some_and(|d| crate::doc::connection_type_matches(&d, fqn)),
+            .is_some_and(|d| crate::doc::connection_type_matches(doc, &d, fqn)),
     };
     doc.connection_decls()
         .filter(|d| d.is_dynamic())
@@ -519,6 +571,14 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
                 ),
                 literal_field.span(),
             ));
+        } else if let Some(err) = crate::doc::symbol_set_membership_error(
+            block.doc,
+            &resolved_ty,
+            value,
+            literal_field.name(),
+            literal_field.span(),
+        ) {
+            errs.push(err);
         } else if let Some(msg) = constraint_violation(
             block.doc,
             &declared.ast.decorators,
@@ -527,6 +587,12 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         ) {
             errs.push(EvalError::schema_violation(
                 Kind::ConstraintViolation,
+                format!("field '{}': {msg}", literal_field.name()),
+                literal_field.span(),
+            ));
+        } else if let Some(msg) = ref_violation(block.doc, &declared, value) {
+            errs.push(EvalError::schema_violation(
+                Kind::DanglingReference,
                 format!("field '{}': {msg}", literal_field.name()),
                 literal_field.span(),
             ));

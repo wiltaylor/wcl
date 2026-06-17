@@ -314,6 +314,12 @@ pub enum SchemaViolationKind {
     /// A connection statement's `:kind` symbol isn't a member of the
     /// matched schema's `kind_set`.
     UnknownConnectionKind,
+    /// A field declared with a `symbol_set` type was assigned a symbol
+    /// that isn't one of the set's members.
+    SymbolNotInSet,
+    /// A field carrying `@ref("kind")` holds an id that doesn't name any
+    /// existing block of that kind — a dangling reference.
+    DanglingReference,
 }
 
 impl EvalError {

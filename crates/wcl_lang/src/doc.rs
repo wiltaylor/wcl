@@ -1085,9 +1085,9 @@ impl Document {
         // source / destination role? (An unresolved operand has no AST
         // block, so it can't be type-checked — see the dynamic path below.)
         let lhs_type_ok = matches!(&lhs, Some(op)
-            if self.operand_schema(op).is_some_and(|d| connection_type_matches(&d, source_fqn)));
+            if self.operand_schema(op).is_some_and(|d| connection_type_matches(self, &d, source_fqn)));
         let rhs_type_ok = matches!(&rhs, Some(op)
-            if self.operand_schema(op).is_some_and(|d| connection_type_matches(&d, dest_fqn)));
+            if self.operand_schema(op).is_some_and(|d| connection_type_matches(self, &d, dest_fqn)));
 
         if lhs.is_some() && rhs.is_some() {
             // Both operands name a literal block — strict path, unchanged:
@@ -2132,6 +2132,14 @@ impl Document {
                 ),
                 f.span(),
             );
+        } else if let Some(err) = symbol_set_membership_error(
+            self,
+            &self.resolve_alias(declared.type_ref()),
+            v,
+            f.name(),
+            f.span(),
+        ) {
+            out.push(err);
         } else if let Some(msg) = schema_check::constraint_violation(
             self,
             &declared.ast.decorators,
@@ -2141,6 +2149,13 @@ impl Document {
             EvalError::push_schema_violation(
                 out,
                 Kind::ConstraintViolation,
+                format!("field '{}': {msg}", f.name()),
+                f.span(),
+            );
+        } else if let Some(msg) = schema_check::ref_violation(self, &declared, v) {
+            EvalError::push_schema_violation(
+                out,
+                Kind::DanglingReference,
                 format!("field '{}': {msg}", f.name()),
                 f.span(),
             );
@@ -2396,18 +2411,81 @@ fn match_block_label_in_items(
 }
 
 /// `true` when a concrete block's [`TypeDecl`] satisfies a connection
-/// schema's declared source or destination FQN. Direct FQN equality
-/// wins; otherwise we walk the type's `extends` chain so connections
-/// declared against an interface or supertype admit any conforming
-/// concrete block.
-pub(crate) fn connection_type_matches(decl: &TypeDecl<'_>, target_fqn: Option<&str>) -> bool {
+/// schema's declared source or destination FQN. Resolution is
+/// polymorphic, in priority order:
+///
+/// 1. **Nominal** — direct FQN equality, or `decl` is an `extends`
+///    descendant of `target` (a connection declared against a supertype
+///    admits any conforming subtype).
+/// 2. **Interface endpoint** (`connection Rel: &Iface -> …`) — `target`
+///    names an interface that `decl`'s block type implements. One
+///    `&Entity -> &Entity` connection then spans every entity pair.
+/// 3. **Union endpoint** (`connection Rel: SomeUnion -> …`) — `target`
+///    names a union one of whose variants `decl` satisfies (a `: Type`
+///    body it is/extends, or an `: &Iface` body it implements).
+pub(crate) fn connection_type_matches(
+    doc: &Document,
+    decl: &TypeDecl<'_>,
+    target_fqn: Option<&str>,
+) -> bool {
     let Some(target) = target_fqn else {
         return false;
     };
-    if decl.full_name() == target {
+    if decl.full_name() == target || decl.is_descendant_of(target) {
         return true;
     }
-    decl.is_descendant_of(target)
+    // Interface endpoint: the operand's concrete block type implements it.
+    if let Some(iface) = doc.interface(target)
+        && interfaces::check_interface_conformance(doc, &iface, decl, crate::ast::Span::new(0, 0))
+            .is_ok()
+    {
+        return true;
+    }
+    // Union endpoint: the operand's concrete type satisfies a variant.
+    if let Some(union) = doc.union_decl(target)
+        && union_admits_type(doc, &union, decl)
+    {
+        return true;
+    }
+    false
+}
+
+/// `true` when concrete block type `decl` satisfies any variant of
+/// `union` — a `: Type` variant body that `decl` is or extends, or an
+/// `: &Iface` variant body that `decl` implements. Record / unit variant
+/// bodies carry no block type, so they never admit a connection operand.
+fn union_admits_type(doc: &Document, union: &UnionDecl<'_>, decl: &TypeDecl<'_>) -> bool {
+    let Ok(variants) = doc.effective_variants_of(union.ast) else {
+        return false;
+    };
+    let ns = union.file_ns();
+    for v in variants {
+        match &v.body {
+            crate::ast::VariantBody::TypeRef { ty, .. } => {
+                if let Some(fqn) = doc.resolve_type_fqn_in(ty, ns)
+                    && (decl.full_name() == fqn || decl.is_descendant_of(&fqn))
+                {
+                    return true;
+                }
+            }
+            crate::ast::VariantBody::InterfaceRef { iface, .. } => {
+                if let Some(fqn) = doc.resolve_path_in(iface, ns).map(|p| p.join("."))
+                    && let Some(iface_decl) = doc.interface(&fqn)
+                    && interfaces::check_interface_conformance(
+                        doc,
+                        &iface_decl,
+                        decl,
+                        crate::ast::Span::new(0, 0),
+                    )
+                    .is_ok()
+                {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 thread_local! {
@@ -2587,6 +2665,31 @@ fn block_first_label(b: &Block<'_>) -> Option<String> {
     }
 }
 
+/// `true` when a block of kind `kind`, identified by `id` (its first
+/// label, or an explicit `id = …` field), exists anywhere in the
+/// document tree — top-level or nested. Drives the `@ref("kind")`
+/// dangling-reference check.
+impl Document {
+    pub(crate) fn has_block_with_id(&self, kind: &str, id: &str) -> bool {
+        fn id_matches(b: &Block<'_>, id: &str) -> bool {
+            if block_first_label(b).as_deref() == Some(id) {
+                return true;
+            }
+            // Fall back to an explicit `id` field (blocks whose
+            // identifier is a field, not an inline label).
+            b.field("id")
+                .and_then(|f| f.value().ok().cloned())
+                .is_some_and(|v| {
+                    matches!(&v, Value::Identifier(s) | Value::Utf8(s) | Value::Ascii(s) if s == id)
+                })
+        }
+        fn walk(b: &Block<'_>, kind: &str, id: &str) -> bool {
+            (b.kind() == kind && id_matches(b, id)) || b.blocks().any(|c| walk(&c, kind, id))
+        }
+        self.blocks().any(|b| walk(&b, kind, id))
+    }
+}
+
 pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
     use crate::value::BuiltinType as B;
     match (value, ty) {
@@ -2649,6 +2752,40 @@ pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
         (Value::DataPath { .. }, TypeRef::Reference(_)) => true,
         _ => false,
     }
+}
+
+/// When `ty` (already alias-resolved) names a `symbol_set` and `value`
+/// is a symbol that isn't one of its members, return the membership
+/// violation; otherwise `None`. Mirrors the connection-kind membership
+/// check (`schema_check::connection_errors`) so a `status: SomeSet`
+/// field rejects an out-of-set symbol identically whether the block is a
+/// document child or nested — `value_matches_type_ref` stays permissive
+/// for `(Symbol, Named)` because it lacks the declaration to check.
+pub(crate) fn symbol_set_membership_error(
+    doc: &Document,
+    ty: &TypeRef,
+    value: &Value,
+    field_name: &str,
+    span: crate::ast::Span,
+) -> Option<EvalError> {
+    let TypeRef::Named(path) = ty else {
+        return None;
+    };
+    let ss = doc.symbol_set(&path.join("."))?;
+    let Value::Symbol(sym) = value else {
+        return None;
+    };
+    if ss.has(sym) {
+        return None;
+    }
+    Some(EvalError::schema_violation(
+        crate::error::SchemaViolationKind::SymbolNotInSet,
+        format!(
+            "field '{field_name}' declared as symbol_set '{}' but ':{sym}' is not one of its members",
+            path.join(".")
+        ),
+        span,
+    ))
 }
 
 /// Render a comma-separated list of all variant names across the

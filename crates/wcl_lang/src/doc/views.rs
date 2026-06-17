@@ -47,6 +47,7 @@ pub(crate) enum BuiltinDecorator {
     Children,
     Connections,
     Dynamic,
+    Ref,
 }
 
 impl BuiltinDecorator {
@@ -63,6 +64,7 @@ impl BuiltinDecorator {
             BuiltinDecorator::Children => "children",
             BuiltinDecorator::Connections => "connections",
             BuiltinDecorator::Dynamic => "dynamic",
+            BuiltinDecorator::Ref => "ref",
         }
     }
 }
@@ -1334,6 +1336,19 @@ impl<'a> TypeField<'a> {
         self.doc.connection_decl(&key)
     }
 
+    /// If this field carries a `@ref("kind")` decorator, returns the
+    /// block kind its value must reference (the id / first label of an
+    /// existing block of that kind). `None` when the decorator is absent
+    /// or its positional arg isn't a string kind. Drives the
+    /// dangling-reference check in `wcl check`.
+    pub fn ref_block_kind(&self) -> Option<String> {
+        let dec = self.decorators().find(|d| d.is(BuiltinDecorator::Ref))?;
+        match dec.positional().ok()?.first()? {
+            Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => Some(s.clone()),
+            _ => None,
+        }
+    }
+
     /// Like [`children_block_kind`] but borrows directly from the AST
     /// — useful when callers need a `&'a str` (e.g. to plug into a
     /// `Block::kind_override`). `None` if the decorator isn't present
@@ -2287,8 +2302,20 @@ impl<'a> Block<'a> {
                 f,
             )));
         }
-        // Plain schema field → look it up in literal block items.
-        self.field(name).map(crate::data::DataRef::from_field)
+        // Plain schema field → look it up in literal block items. An
+        // unset optional (or `@default`-carrying) field projects its
+        // default / `none` so member access reads it as `none` rather
+        // than failing with an unresolved-reference error — `??` and
+        // `match` over `block.optional_field` then behave as authored.
+        if let Some(field) = self.field(name) {
+            return Some(crate::data::DataRef::from_field(field));
+        }
+        if f.optional() || f.default_value().is_some() {
+            return Some(crate::data::DataRef::from_variant_value(
+                f.default_value().unwrap_or(Value::None),
+            ));
+        }
+        None
     }
 
     /// Reify this block as a `Value::Record`, so a `@children`/`@child`

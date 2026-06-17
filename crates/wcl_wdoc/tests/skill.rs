@@ -109,6 +109,31 @@ fn hyphenated_front_matter_keys_emit_for_skill_spec() {
 }
 
 #[test]
+fn front_matter_reads_none_valued_optional() {
+    // A frontmatter value that reads a none-valued optional document field
+    // (via `??` or `match`) must evaluate to the fallback, not fail the build.
+    let (_t, out) = build(&format!(
+        "@block(\"meta\") type Meta {{ created: utf8  updated: utf8? }}\n\
+         @document type Doc {{ @child(\"meta\") meta: Meta }}\n\
+         meta {{ created = \"2026-06-13\" }}\n\
+         {SITE}page overview {{ start = true\n  \
+         @schemaless frontmatter {{\n    \
+         coalesce = $\"${{meta.updated ?? meta.created}}\"\n    \
+         matched = $\"${{match meta.updated {{ none => meta.created, u => u }}}}\"\n  }}\n  \
+         h1 \"Demo\"\n}}\n"
+    ));
+    let md = read(&out, "SKILL.md");
+    assert!(
+        md.contains("coalesce: 2026-06-13"),
+        "?? fallback read: {md}"
+    );
+    assert!(
+        md.contains("matched: 2026-06-13"),
+        "match fallback read: {md}"
+    );
+}
+
+#[test]
 fn file_blocks_ship_into_their_dir() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     std::fs::write(tmp.path().join("setup.sh"), "#!/bin/sh\necho hi\n").unwrap();
