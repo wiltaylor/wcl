@@ -712,3 +712,86 @@ fn fmt_rejects_in_place_with_stdin() {
         .failure()
         .stderr(predicate::str::contains("--in-place"));
 }
+
+/// Shared schema + helper for the `wcl diff` integration tests.
+const DIFF_SCHEMA: &str = "\
+@block(\"domain_entity\") type Entity { @inline(0) id: identifier  name: utf8  status: utf8 }
+@block(\"spec\") type Spec { @inline(0) id: identifier  title: utf8 }
+@document type M {
+  @children(\"domain_entity\") entities: list<Entity>
+  @children(\"spec\") specs: list<Spec>
+}
+";
+
+#[test]
+fn diff_reports_added_removed_and_modified_entities() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let old = tmp.path().join("old.wcl");
+    let new = tmp.path().join("new.wcl");
+    std::fs::write(
+        &old,
+        format!(
+            "{DIFF_SCHEMA}\
+             domain_entity \"task\" {{ name = \"Task\"  status = \"draft\" }}\n\
+             domain_entity \"user\" {{ name = \"User\"  status = \"done\" }}\n\
+             spec \"auth\" {{ title = \"Auth\" }}\n"
+        ),
+    )
+    .unwrap();
+    std::fs::write(
+        &new,
+        format!(
+            "{DIFF_SCHEMA}\
+             domain_entity \"task\" {{ name = \"Task\"  status = \"active\" }}\n\
+             spec \"auth\" {{ title = \"Auth\" }}\n\
+             spec \"impl_due_dates\" {{ title = \"Due dates\" }}\n"
+        ),
+    )
+    .unwrap();
+
+    let out = wcl().arg("diff").arg(&old).arg(&new).assert().success();
+    let stdout = String::from_utf8(out.get_output().stdout.clone()).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON array");
+    let arr = json.as_array().expect("array");
+
+    // task: status draft -> active (modified); user removed; impl_due_dates added.
+    assert!(arr.iter().any(|c| c["op"] == "modified"
+        && c["entity"] == "domain_entity:task"
+        && c["field"] == "status"
+        && c["kind"] == "changed"));
+    assert!(
+        arr.iter()
+            .any(|c| c["op"] == "removed" && c["entity"] == "domain_entity:user")
+    );
+    assert!(
+        arr.iter()
+            .any(|c| c["op"] == "added" && c["entity"] == "spec:impl_due_dates")
+    );
+    // The unchanged spec:auth entity is not reported.
+    assert!(!arr.iter().any(|c| c["entity"] == "spec:auth"));
+}
+
+#[test]
+fn diff_ignores_formatting_only_changes() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let old = tmp.path().join("a.wcl");
+    let new = tmp.path().join("b.wcl");
+    let body =
+        format!("{DIFF_SCHEMA}domain_entity \"task\" {{ name = \"Task\"  status = \"draft\" }}\n");
+    std::fs::write(&old, &body).unwrap();
+    // Same values, different whitespace / line breaks.
+    std::fs::write(
+        &new,
+        body.replace("{ name", "{\n  name")
+            .replace("  status", "\n  status"),
+    )
+    .unwrap();
+
+    wcl()
+        .arg("diff")
+        .arg(&old)
+        .arg(&new)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[]"));
+}

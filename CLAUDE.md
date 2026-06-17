@@ -9,7 +9,7 @@ This file is a **navigation map**, not a spec. For depth, follow the pointers in
 ## Layout
 
 - `crates/wcl_lang` — language library: lexer, parser, AST, document view, lazy evaluator, schema validator, host-binding API
-- `crates/wcl` — `wcl` CLI binary (`parse`, `check`, `eval` / `get`, `set`, `fmt`, `repl`, `lsp`, `wdoc build` / `serve` / `pdf` / `markdown` / `skill`). The `wdoc serve` watch+axum dev server lives here (`src/serve.rs`), since it's CLI-only.
+- `crates/wcl` — `wcl` CLI binary (`parse`, `check`, `eval` / `get`, `set`, `fmt`, `diff`, `repl`, `lsp`, `wdoc build` / `serve` / `pdf` / `markdown` / `skill`). The `wdoc serve` watch+axum dev server lives here (`src/serve.rs`), since it's CLI-only.
 - `crates/wcl_lsp` — `tower-lsp` language server driving `wcl lsp`
 - `crates/wcl_wdoc` — library crate driving the `wcl wdoc` subcommands; renders pages to HTML/PDF/Markdown. Embeds its WCL stdlib (`lib/*.wcl`) into a `wcl_lang::Registry` via `build.rs` (`schema_registry()`); a document opts in with `import <wdoc.wcl>`. See the [wdoc feature map](#wcl_wdoc-feature-map).
 - `crates/wcl_lang/fuzz` — `cargo-fuzz` targets (`parse` / `eval` / `format_round_trip` / …); run via `just fuzz-run <target>` on nightly. See `crates/wcl_lang/fuzz/README.md`.
@@ -33,7 +33,7 @@ Prefer these over re-deriving behaviour from source:
 Capability summary per crate; the reference pages above carry the detail.
 
 - **`wcl_lang`** — hand-written lexer + recursive-descent parser → `Source` AST + `SymbolIndex`; strings/heredocs with escapes + interpolation (`<<'TAG'` raw form is verbatim). `Document` view with lazy, cached field eval + cycle detection. Expression evaluator (literals, member access, calls, fn literals, let-bindings, block exprs, arithmetic/comparison/logic with numeric promotion, `??` none-coalescing, `try`/`catch`). `fn name(…)` items (indexed lets). Schema constraints: `type Name = TypeRef` aliases + `@min`/`@max`/`@non_empty`. Schema system (`@document`/`@block`/`@child`/`@children`/`@inline`/`@default`/`@table`/`@decorator`), type system (`type`/`interface`/`union`/`symbol_set`/`list`/`tensor`/`fn`/`&T` refs), host bindings (`Environment`, `from_fn`, `FromValue`/`IntoValue`), and builtins (collections / tensors / strings / lists / math / control flow). Imports: quoted disk + angle-bracket system via `Registry`. Edit path: `parse_for_edit` + AST mutation + `format::to_source`. JSON value serialization. → see `docs/pages/reference/language/` and `…/ref/`, and `cargo doc`.
-- **`wcl` CLI** — `parse` / `check` / `eval`+`get` / `set` / `fmt` / `repl` / `lsp` / `wdoc {build,serve,pdf,markdown,skill}`. → see `docs/pages/reference/ref/cli.wcl` and `wcl --help`.
+- **`wcl` CLI** — `parse` / `check` / `eval`+`get` / `set` / `fmt` / `diff` (WCL-aware entity/field document diff → JSON) / `repl` / `lsp` / `wdoc {build,serve,pdf,markdown,skill}`. → see `docs/pages/reference/ref/cli.wcl` and `wcl --help`.
 - **`wcl_lsp`** — diagnostics, formatting, document symbols, workspace symbol search, go-to-def + find-references (cross-file), hover, completion, signature help, semantic tokens (incl. `${…}` slots), schema-violation code actions, incremental sync (`ropey`), TCP listener. Resolves cross-file lookups through a root document; open buffers shadow disk via an overlay `FileLoader`. → see `cargo doc` on `wcl_lsp`.
 
 **Implementation contracts** (non-obvious rules a contributor must respect, not in docs/):

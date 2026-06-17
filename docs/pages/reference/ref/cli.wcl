@@ -54,6 +54,19 @@ wcl fmt site.wcl --indent 4
 BASH
   }
 
+  h2 "wcl diff"
+
+  p "Compare two documents and print the changed entities and fields as a JSON array. The comparison is over the _evaluated_ document views, so a formatting-only edit yields an empty diff. Each top-level block is an entity keyed `kind:label`; a field edit inside an entity is reported by dotted path (`fields.due_date`). An entity present on only one side is a single `added` / `removed`; a field going from unset (`none`) to a value reads as `added`."
+  code bash {
+    source = <<'BASH'
+wcl diff old.wcl new.wcl
+# [
+#   {"op":"modified","entity":"domain_entity:task","field":"status","kind":"changed"},
+#   {"op":"added","entity":"spec:impl_due_dates"}
+# ]
+BASH
+  }
+
   h2 "wcl repl"
 
   p "An interactive read-eval-print loop. Pass a file to resolve identifiers against its top-level fields. `:quit` or EOF exits."

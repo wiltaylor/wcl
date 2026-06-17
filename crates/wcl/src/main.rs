@@ -6,6 +6,7 @@ use wcl_lang::{
     Document, Environment, ParseError, ast, format as wcl_format, parse_expr, parse_for_edit,
 };
 
+mod diff;
 mod dump;
 mod serve;
 
@@ -171,6 +172,19 @@ enum Command {
     Wdoc {
         #[command(subcommand)]
         cmd: WdocCommand,
+    },
+    /// Compare two WCL documents and print the changed entities / fields
+    /// as JSON. Operates on the *evaluated* document views, so a
+    /// formatting-only edit produces no diff. Each top-level block is an
+    /// entity keyed `kind:label`; nested field edits are reported by path.
+    ///
+    /// Example:
+    ///   wcl diff old.wcl new.wcl
+    Diff {
+        /// Path to the old (base) WCL document.
+        old: PathBuf,
+        /// Path to the new WCL document.
+        new: PathBuf,
     },
 }
 
@@ -379,8 +393,41 @@ fn main() -> ExitCode {
             }
         },
         Command::Wdoc { cmd } => run_wdoc(cmd),
+        Command::Diff { old, new } => run_diff(&old, &new),
     };
     ExitCode::from(code)
+}
+
+/// Open both documents, compute the WCL-aware entity/field diff, and print
+/// it as a JSON array on stdout. A parse/eval failure on either side
+/// renders the diagnostic and exits non-zero.
+fn run_diff(old_path: &Path, new_path: &Path) -> u8 {
+    let old = match open_document(old_path, false) {
+        Ok(d) => d,
+        Err(err) => {
+            eprintln!("{:?}", miette::Report::new(err));
+            return EXIT_PARSE;
+        }
+    };
+    let new = match open_document(new_path, false) {
+        Ok(d) => d,
+        Err(err) => {
+            eprintln!("{:?}", miette::Report::new(err));
+            return EXIT_PARSE;
+        }
+    };
+    let changes = diff::diff_documents(&old, &new);
+    let json = diff::changes_to_json(&changes);
+    match serde_json::to_string_pretty(&json) {
+        Ok(s) => {
+            println!("{s}");
+            EXIT_OK
+        }
+        Err(e) => {
+            eprintln!("json serialization failed: {e}");
+            EXIT_EVAL
+        }
+    }
 }
 
 /// Map a wdoc `BuildError` to a CLI exit code. Shared by the `build` and
