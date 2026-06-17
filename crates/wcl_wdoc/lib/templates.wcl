@@ -498,19 +498,47 @@ let book_toc_link = fn(e: TocEntry) -> HtmlFundamental
     }
   }
 
-// Render a list of TOC entries as a nested `<ul>` — recursive, so the
-// tree nests to any depth. An empty list renders nothing (no stray
-// `<ul>`), which also terminates the recursion at the leaves.
+// True when this entry is the current page, or an ancestor of it — i.e. the
+// current page lives somewhere in its subtree. Drives mdbook-style sidebar
+// expansion: the active path is rendered open, every other branch collapsed.
+let toc_active = fn(e: TocEntry) -> bool
+  e.current || fold(e.children, false, fn(acc: bool, c: TocEntry) -> bool
+    acc || toc_active(c))
+
+// The expand/collapse affordance at the head of a TOC row. Always emitted
+// (so leaf and branch rows stay aligned); the chevron is drawn by CSS only
+// for branch `<li>`s, and the click handler ignores leaf rows.
+let book_toc_toggle = HtmlFundamental::Element {
+  tag: "span", id: none, class: ["book-toc-toggle"], attrs: none, children: [],
+}
+
+// Render a list of TOC entries as a nested `<ul>` — recursive, so the tree
+// nests to any depth. An empty list renders nothing (no stray `<ul>`), which
+// also terminates the recursion at the leaves. A branch `<li>` carries
+// `book-branch` (plus `open` when it's on the active path), so its child
+// `<ul>` collapses by default and only the current page's ancestry expands.
 let book_toc = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
   if len(entries) == 0 { [] }
   else {
     [ HtmlFundamental::Element {
         tag: "ul", id: none, class: ["book-toc"], attrs: none,
-        children: map(entries, fn(e: TocEntry) -> HtmlFundamental
+        children: map(entries, fn(e: TocEntry) -> HtmlFundamental {
+          let has_children = len(e.children) > 0;
           HtmlFundamental::Element {
-            tag: "li", id: none, class: none, attrs: none,
-            children: flatten([ [book_toc_link(e)], book_toc(e.children) ]),
-          }),
+            tag: "li", id: none,
+            class: if has_children {
+                if toc_active(e) { ["book-branch", "open"] } else { ["book-branch"] }
+              } else { none },
+            attrs: none,
+            children: flatten([
+              [ HtmlFundamental::Element {
+                  tag: "div", id: none, class: ["book-toc-row"], attrs: none,
+                  children: [ book_toc_toggle, book_toc_link(e) ],
+              } ],
+              book_toc(e.children),
+            ]),
+          }
+        }),
       } ]
   }
 
@@ -580,6 +608,14 @@ let book_css = <<CSS
   .book-chapter:hover { opacity: 1; text-decoration: underline; }
   .book-sidebar a.book-chapter.current { opacity: 1; color: var(--wdoc-accent, inherit); }
   .book-sidebar .book-section { display: block; padding: 0.35rem 0 0.1rem; font-weight: 600; opacity: 0.7; }
+  .book-sidebar .book-toc-row { display: flex; align-items: baseline; }
+  .book-sidebar .book-toc-row > a.book-chapter, .book-sidebar .book-toc-row > .book-section { flex: 1 1 auto; }
+  .book-sidebar .book-toc-toggle { flex: 0 0 1rem; cursor: pointer; user-select: none; text-align: center; opacity: 0.55; }
+  .book-sidebar .book-toc-toggle:hover { opacity: 1; }
+  .book-sidebar li.book-branch > .book-toc-row > .book-toc-toggle::before { content: "▸"; display: inline-block; transition: transform 0.12s ease; }
+  .book-sidebar li.book-branch.open > .book-toc-row > .book-toc-toggle::before { transform: rotate(90deg); }
+  .book-sidebar li.book-branch > ul.book-toc { display: none; }
+  .book-sidebar li.book-branch.open > ul.book-toc { display: block; }
   .book-content { margin-left: 16rem; padding: 1rem 2.5rem; max-width: 46rem; }
   .theme-toggle { display: block; margin: 0 0 0.75rem; padding: 0.2rem 0.6rem; cursor: pointer; background: transparent; border: 1px solid var(--wdoc-border, currentColor); border-radius: 4px; color: inherit; font: inherit; }
   .book-pagenav { display: flex; gap: 1rem; margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); }
@@ -621,7 +657,7 @@ let wdoc_part_sidebar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
       wdoc_search_box(c.search),
       if c.theme_toggle { book_theme_toggle } else { [] },
       book_toc(c.toc),
-      [book_sidebar_scroll],
+      [book_sidebar_scroll, book_sidebar_toggle],
     ]),
   },
 ]
@@ -687,5 +723,14 @@ let book_theme_toggle = [
 // need no special-case.
 let book_sidebar_scroll = HtmlFundamental::Raw {
   html: "<script>(function(){var c=document.querySelector('.book-chapter.current');if(!c)return;var n=document.querySelector('.book-sidebar');if(n)n.scrollTop=c.offsetTop-n.clientHeight/2;})();</script>",
+}
+
+// Manual expand/collapse: a delegated click handler on the sidebar toggles a
+// branch's `open` class. Only fires when the clicked toggle's own `<li>` is a
+// branch (`<row> -> <li.book-branch>`), so a leaf row's alignment spacer and
+// the chapter links themselves are left alone. Server-side rendering already
+// opens the active path; this just lets the reader override it.
+let book_sidebar_toggle = HtmlFundamental::Raw {
+  html: "<script>(function(){var s=document.querySelector('.book-sidebar');if(!s)return;s.addEventListener('click',function(e){var t=e.target.closest&&e.target.closest('.book-toc-toggle');if(!t)return;var row=t.parentNode,li=row&&row.parentNode;if(li&&li.classList&&li.classList.contains('book-branch')){e.preventDefault();li.classList.toggle('open');}});})();</script>",
 }
 
