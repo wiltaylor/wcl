@@ -6,11 +6,26 @@ page getting_started { sites = [:wcl]  title = "Getting started"
 
   h2 "1. Install"
 
-  p "Install the `wcl` CLI from a source checkout:"
+  p "Install a prebuilt `wcl` binary. On Linux, pipe the install script to `sh`:"
   code bash {
     source = <<'BASH'
-      cargo install --git https://github.com/wiltaylor/wcl -p wcl --locked
-    BASH
+curl -fsSL https://wcl.dev/install.sh | sh -s -- --pre
+BASH
+  }
+
+  p "On Windows, run the PowerShell installer. The piped form installs the latest stable release; to grab a pre-release, download it and pass `-Pre`:"
+  code powershell {
+    source = <<'PS1'
+# Download, then run with -Pre (iex can't forward arguments):
+iwr https://wcl.dev/install.ps1 -OutFile install.ps1; ./install.ps1 -Pre
+PS1
+  }
+
+  p "Both scripts default to `~/.local/bin` (Linux) / `%LOCALAPPDATA%\\Programs\\wcl` (Windows); override with `--bin-dir` / `-InstallDir`. Pin an exact build with `--version 0.16.0-alpha` (`-Version` on Windows)."
+
+  callout "Pre-release only — and no macOS binary yet" {
+    class = ["note"]
+    body  = "WCL ships pre-release builds only for now, so the installers need `--pre`/`-Pre` (a plain run targets a stable release that doesn't exist yet). There's no prebuilt macOS or ARM binary — on those platforms build from source with `cargo install --git https://github.com/wiltaylor/wcl -p wcl --locked`."
   }
 
   h2 "2. Write a config"

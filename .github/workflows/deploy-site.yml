@@ -34,6 +34,12 @@ jobs:
       - name: Build docs site
         run: ./target/release/wcl wdoc build docs/main.wcl --out docs/_site
 
+      # Ship the install scripts at the site root so the curl/iwr one-liners
+      # resolve (https://wcl.dev/install.sh, .../install.ps1). docs/_site is
+      # regenerated each deploy, so the copy lives here, not in the repo.
+      - name: Stage install scripts
+        run: cp install.sh install.ps1 docs/_site/
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
