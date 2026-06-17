@@ -2684,6 +2684,25 @@ fn build_renders_code_inline() {
 }
 
 #[test]
+fn build_code_span_contents_are_verbatim() {
+    // An underscore pair inside an inline code span must not be reinterpreted
+    // as `_italic_` — code-span contents are verbatim.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = write_inline_fixture(&tmp, "A `reading_long_format` B");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<span class=\"code\">reading_long_format</span>"),
+        "code span should be verbatim (no italic leak):\n{html}"
+    );
+    assert!(
+        !html.contains("<span class=\"italic\">long</span>"),
+        "italic leaked into code span:\n{html}"
+    );
+}
+
+#[test]
 fn build_renders_link_inline() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = write_inline_fixture(&tmp, "see [docs](https://example.com)");

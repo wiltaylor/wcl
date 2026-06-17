@@ -477,8 +477,16 @@ impl InlinePatterns {
         match variant.as_str() {
             "Plain" => {
                 let text = map_utf8(map, "text").unwrap_or_default();
-                let st = apply_classes(style, &class_list(map));
-                self.runs_inner(doc, &text, depth + 1, st, out);
+                let classes = class_list(map);
+                let st = apply_classes(style, &classes);
+                // A code span is verbatim: emit one run without re-tokenizing,
+                // so an embedded `_`/`*` pair isn't reinterpreted as emphasis
+                // (mirrors the HTML / Markdown backends).
+                if classes.iter().any(|c| c == "code") {
+                    push_run(out, &text, st);
+                } else {
+                    self.runs_inner(doc, &text, depth + 1, st, out);
+                }
             }
             "Link" => {
                 let text = map_utf8(map, "text").unwrap_or_default();
@@ -537,7 +545,14 @@ impl InlinePatterns {
 
     fn render_plain(&self, doc: &Document, map: &BTreeMap<String, Value>, depth: usize) -> String {
         let text = map_utf8(map, "text").unwrap_or_default();
-        let inner = self.render_inner(doc, &text, depth + 1);
+        // A code span is verbatim: emit its contents html-escaped without
+        // re-tokenizing, so an embedded `_`/`*` pair (e.g. `reading_long_format`)
+        // isn't reinterpreted as emphasis (mirrors the Markdown backend).
+        let inner = if class_list(map).iter().any(|c| c == "code") {
+            escape_html(&text)
+        } else {
+            self.render_inner(doc, &text, depth + 1)
+        };
         let class_attr = class_attr(map);
         let mut out = format!("<span{class_attr}>");
         out.push_str(&inner);
