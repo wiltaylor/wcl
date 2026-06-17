@@ -102,6 +102,25 @@ pub(crate) async fn serve(
         }
     };
 
+    // Hard stop on Ctrl-C. A *dedicated* task owns the kill so the signal is
+    // observed even while the watch loop is mid-rebuild: `run_build` is a
+    // synchronous, non-cancellable call that blocks its worker thread, so a
+    // shutdown branch sharing the `select!` task below would never get polled
+    // until the build finished. `process::exit` tears down every thread at
+    // once (the inotify watcher, axum connections, parked reload long-polls,
+    // and any in-flight build) and, by ending the process, blocks all further
+    // rebuilds. It skips the TempDir guard's `Drop`, so clean the temp output
+    // dir by hand first.
+    let temp_cleanup = _tempdir_guard.as_ref().map(|td| td.path().to_path_buf());
+    tokio::spawn(async move {
+        let _ = tokio::signal::ctrl_c().await;
+        eprintln!("\nshutting down");
+        if let Some(p) = temp_cleanup {
+            let _ = std::fs::remove_dir_all(&p);
+        }
+        std::process::exit(0);
+    });
+
     let state = Arc::new(ServeState {
         out: out_dir.clone(),
         error: RwLock::new(None),
@@ -164,18 +183,12 @@ pub(crate) async fn serve(
         out_dir.display()
     );
 
-    // Ctrl-C drives axum's graceful shutdown: it stops accepting and lets
-    // its connection tasks finish, then the serve future resolves and the
-    // `select!` returns — dropping `watch_loop` (and the watcher with it).
-    // Nothing detached survives, so the process can exit promptly.
-    let shutdown = async {
-        let _ = tokio::signal::ctrl_c().await;
-        eprintln!("\nshutting down");
-    };
+    // Run the server and the watch loop concurrently. Neither branch
+    // completes in normal operation — the loop runs until the Ctrl-C task
+    // above hard-exits the process. No graceful shutdown: a parked reload
+    // long-poll (up to `POLL_TIMEOUT`) must not delay teardown.
     tokio::select! {
-        res = axum::serve(listener, app).with_graceful_shutdown(shutdown).into_future() => res?,
-        // Only ends if the watch channel closes; otherwise it runs until the
-        // server branch wins and this future is dropped.
+        res = axum::serve(listener, app).into_future() => res?,
         _ = watch_loop => {}
     }
     Ok(())
