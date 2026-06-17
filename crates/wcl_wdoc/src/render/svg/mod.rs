@@ -139,15 +139,16 @@ pub(crate) const ARROW_MARKER: &str = "<defs><marker id=\"wdoc-arrow\" viewBox=\
 /// contains one anywhere in its subtree. Drives the conditional asset
 /// write + per-page script injection (mirrors `terminal::uses_terminal`).
 pub(crate) fn uses_pan_zoom(block: &Block<'_>) -> bool {
-    (block.kind() == "diagram" && field_bool(block, "pan_zoom") == Some(true))
-        || block.blocks().any(|b| uses_pan_zoom(&b))
+    crate::render::block_tree_any(block, &|b| {
+        b.kind() == "diagram" && field_bool(b, "pan_zoom") == Some(true)
+    })
 }
 
 /// `true` when `block` is, or contains, a `map`. Drives the map asset
 /// write + script injection, and (in `render_diagram`) makes a diagram
 /// holding a map interactive even without an explicit `pan_zoom`.
 pub(crate) fn uses_map(block: &Block<'_>) -> bool {
-    block.kind() == "map" || block.blocks().any(|b| uses_map(&b))
+    crate::render::block_tree_any(block, &|b| b.kind() == "map")
 }
 
 /// Top-left offset of the `i`th child in a grid of `cols` columns with

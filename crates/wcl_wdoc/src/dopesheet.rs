@@ -209,7 +209,7 @@ pub(crate) fn dopesheet_bbox(
 /// Whether a block subtree contains a `dopesheet` (drives the per-site
 /// player-asset write + per-page script injection).
 pub(crate) fn uses_dopesheet(block: &Block<'_>) -> bool {
-    block.kind() == "dopesheet" || block.blocks().any(|b| uses_dopesheet(&b))
+    crate::render::block_tree_any(block, &|b| b.kind() == "dopesheet")
 }
 
 #[cfg(test)]

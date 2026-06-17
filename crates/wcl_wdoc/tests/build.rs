@@ -5363,6 +5363,40 @@ fn terminal_inline_text_lays_out_via_vt() {
 }
 
 #[test]
+fn pan_zoom_diagram_inside_component_ships_player_js() {
+    // A `pan_zoom` diagram authored only inside a `wdoc_component` body
+    // (so it never appears in the page's raw block tree) must still ship
+    // `diagram-pan-zoom.js` and inject the page <script> — the asset scan
+    // descends into component definitions.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("c.wcl");
+    write_fixture(
+        &src,
+        "wdoc_component graph {\n  wdoc_body {\n    \
+         diagram { pan_zoom = true  width = 200  height = 120\n      \
+         process \"A\" { id = a }  process \"B\" { id = b }\n      a -> b\n    }\n  }\n}\n\
+         site s { default_template = :book  title = \"x\"  \
+         toc { chapter \"C\" { page = p } } }\n\
+         page p { sites = [:s]  start = true\n  h1 { text = \"C\" }\n  graph {}\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    assert!(
+        out.path().join("_wdoc/diagram-pan-zoom.js").exists(),
+        "pan-zoom JS not shipped for a diagram inside a component"
+    );
+    let html = std::fs::read_to_string(out.path().join("p.html")).expect("read");
+    assert!(
+        html.contains("diagram-pan-zoom.js"),
+        "no pan-zoom <script> injected:\n{html}"
+    );
+    assert!(
+        html.contains("data-pan-zoom"),
+        "component diagram did not render its interactive markup:\n{html}"
+    );
+}
+
+#[test]
 fn terminal_replay_emits_player_and_assets() {
     // A `source` recording produces frames JSON, the player wiring, and
     // writes the bundled font + player assets into `_wdoc/`.

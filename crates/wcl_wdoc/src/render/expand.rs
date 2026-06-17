@@ -15,6 +15,34 @@ use crate::inline::InlinePatterns;
 use super::lower::record_lower_error;
 use super::{MAX_LOWER_DEPTH, field_bool, label_string};
 
+/// `true` as soon as `pred` matches `block`, any descendant in its raw
+/// block subtree, or — when a block is a `wdoc_component` instance — any
+/// block in the component definition's body. Drives the player-asset
+/// detection scans (`uses_pan_zoom` / `uses_terminal` / `uses_map` / …):
+/// a feature used *only* inside a component body (which never appears in
+/// the page's raw block tree, since the page holds the instance block)
+/// still ships its JS/CSS.
+///
+/// Crossing into a component body increments `depth`; once it passes
+/// `MAX_LOWER_DEPTH` the descent stops, bounding a self-referential
+/// component (the def's body isn't slot-expanded here, so the binding
+/// scope can't grow to trip the usual guard). Raw-subtree recursion is
+/// bounded by the finite block tree. Detection-only: it reads the static
+/// definition, so — unlike [`expand_container_children`] — it evaluates
+/// no `each` / slot expressions and records no lowering errors.
+pub(crate) fn block_tree_any<F: Fn(&Block<'_>) -> bool>(block: &Block<'_>, pred: &F) -> bool {
+    fn go<F: Fn(&Block<'_>) -> bool>(block: &Block<'_>, pred: &F, depth: usize) -> bool {
+        pred(block)
+            || block.blocks().any(|b| go(&b, pred, depth))
+            || (depth < MAX_LOWER_DEPTH
+                && block
+                    .doc()
+                    .component_def(block.kind())
+                    .is_some_and(|def| def.blocks().any(|b| go(&b, pred, depth + 1))))
+    }
+    go(block, pred, 0)
+}
+
 /// Flatten a container's children, replacing every `wdoc_repeater`,
 /// `wdoc_component` instance, and `wdoc_instance` (recursively, in place)
 /// with its expanded blocks; every other kind passes through unchanged —

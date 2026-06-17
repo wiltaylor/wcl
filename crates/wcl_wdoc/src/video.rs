@@ -72,7 +72,7 @@ pub(crate) fn online_url(source: &str) -> Option<String> {
 /// `true` if any block in this subtree is a `video` (drives the per-page
 /// inclusion of the bundled `wdoc-video.js` player).
 pub(crate) fn uses_video(block: &Block<'_>) -> bool {
-    block.kind() == "video" || block.blocks().any(|b| uses_video(&b))
+    crate::render::block_tree_any(block, &|b| b.kind() == "video")
 }
 
 /// One resolved local asset (a video file or a poster) to copy.

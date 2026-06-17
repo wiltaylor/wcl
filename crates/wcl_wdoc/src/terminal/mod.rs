@@ -92,7 +92,7 @@ const DEFAULT_FONT_PX: f64 = 14.0;
 /// True when `block`'s subtree contains a `terminal` (so the build knows
 /// to emit the font + player assets).
 pub(crate) fn uses_terminal(block: &Block<'_>) -> bool {
-    block.kind() == "terminal" || block.blocks().any(|b| uses_terminal(&b))
+    crate::render::block_tree_any(block, &|b| b.kind() == "terminal")
 }
 
 /// Render a `@block("terminal")` to an HTML fragment: a `wdoc-terminal`
