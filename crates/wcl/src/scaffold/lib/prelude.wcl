@@ -1,0 +1,11 @@
+// scaffold standard library — prelude.
+//
+// The public entry point is `scaffold.wcl`, which a template opts into
+// with `import <scaffold.wcl>`; that imports this file, which pulls in
+// every part of the schema. Right now the schema is a single part
+// (`core.wcl`); the prelude exists so the library can grow without
+// templates having to chase new imports.
+
+namespace scaffold
+
+import <core.wcl>             // @document Project + property/file/folder blocks

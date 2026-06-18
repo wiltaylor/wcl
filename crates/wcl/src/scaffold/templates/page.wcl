@@ -1,0 +1,111 @@
+// The `page` built-in template: a multi-folder wdoc website project that
+// projects custom data into generated pages.
+//
+//   wcl init page ./my-site
+//
+// Layout it generates:
+//   main.wcl            — imports the folder files + declares the site
+//   schema/main.wcl     — a custom `Entry` type + typed `entries` field
+//   data/main.wcl       — the `entries` data, validated by the schema
+//   wdoc/main.wcl       — pages: an index that lists entries, one page per
+//                         entry (generated from the data), and an about page
+//
+// `main.wcl` is the only generated file with `${answer("name")}` (the site
+// title), so it uses an interpolating heredoc; the others contain literal
+// `${…}` data slots, so they use raw (`<<'TAG'`) heredocs.
+import <scaffold.wcl>
+
+property "name" {
+  prompt = "Project name"
+  default = "my-site"
+}
+
+file "main.wcl" {
+  content = $<<MAIN
+// Project root: pull in the wdoc schema, the per-folder files, then
+// declare the site. The folder files contribute the schema, the data,
+// and the pages — name resolution is order-independent across imports.
+import <wdoc.wcl>
+import "./schema/main.wcl"
+import "./data/main.wcl"
+import "./wdoc/main.wcl"
+
+site web {
+  default_template = :webpage
+  title = "${answer("name")}"
+  root = true
+  menu {
+    item "Overview" { page = index }
+    item "About"    { page = about }
+  }
+}
+MAIN
+}
+
+file "schema/main.wcl" {
+  content = <<'SCHEMA'
+// Custom schema. `Entry` is the shape of one demo entry; the `@document`
+// `Project` type adds a typed top-level `entries` field (it merges with
+// the wdoc `Site` document schema pulled in by `import <wdoc.wcl>`).
+type Entry {
+  slug:    utf8
+  title:   utf8
+  summary: utf8
+  body:    utf8
+}
+
+@document
+type Project {
+  entries: list<Entry>
+}
+SCHEMA
+}
+
+file "data/main.wcl" {
+  content = <<'DATA'
+// Custom data: the `entries` field declared by schema/main.wcl. The wdoc
+// pages project these into one generated page each — edit them to make
+// the project your own.
+entries = [
+  { slug: "intro",   title: "Introduction", summary: "What this project is.",   body: "Welcome. This page was generated from the data in data/main.wcl." },
+  { slug: "install", title: "Installation",  summary: "How to get set up.",      body: "Install by following these steps. Edit data/main.wcl to change this text." },
+  { slug: "usage",   title: "Usage",         summary: "Day-to-day usage.",       body: "Use it like so. Each entry becomes its own page, wired up in wdoc/main.wcl." },
+]
+DATA
+}
+
+file "wdoc/main.wcl" {
+  content = <<'WDOC'
+// The pages. `entries` resolves to the data declared in data/main.wcl
+// (imported into the same document), so these pages project it.
+
+// Index: lists every entry and links to its generated page.
+page index { sites = [:web]  start = true
+  h1 "Overview"
+  p "These pages are generated from the data in data/main.wcl, typed by schema/main.wcl."
+  wdoc_repeater { each = entries  as = :e
+    h3 $"${e.title}"
+    p  $"${e.summary} — [Read more](entry_${e.slug})"
+  }
+  p "See also the [about page](about)."
+}
+
+// One page per entry, generated from the data. The interpolated page name
+// becomes the route, so the links above resolve automatically.
+wdoc_repeater { each = entries  as = :e
+  page $"entry_${e.slug}" { sites = [:web]
+    title = e.title
+    h1 $"${e.title}"
+    p  $"${e.body}"
+    p  "[Back to overview](index)"
+  }
+}
+
+// A hand-written page, linked from the index.
+page about { sites = [:web]
+  h1 "About"
+  p "This project was scaffolded with `wcl init`. Replace this page and the data to make it your own."
+  p "[Back to overview](index)"
+}
+WDOC
+}

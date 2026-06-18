@@ -9,6 +9,7 @@ use wcl_lang::{
 mod diff;
 mod dump;
 mod gitspec;
+mod scaffold;
 mod serve;
 
 const EXIT_OK: u8 = 0;
@@ -166,6 +167,48 @@ enum Command {
         /// so a file sink is the only supported destination.
         #[arg(long)]
         log: Option<PathBuf>,
+    },
+    /// Scaffold a new project folder from a WCL template. `<template>`
+    /// is a built-in name (`wcl init --list`), a user template under
+    /// `$XDG_DATA_HOME/wcl/templates/<name>/template.wcl`, or a path to a
+    /// template `.wcl` file (or a folder holding `template.wcl`); the
+    /// template declares `property` questions plus the `file` / `folder`
+    /// blocks to generate.
+    ///
+    /// Property answers come from `-D key=value`, an `--answers` file
+    /// (`.wcl` or `.json`), an interactive prompt, or the property's
+    /// default — in that order of precedence.
+    ///
+    /// Examples:
+    ///   wcl init minimal ./my-project
+    ///   wcl init minimal ./app -D name=app --defaults
+    ///   wcl init ./my-template.wcl ./out --answers answers.json
+    ///   wcl init --list
+    Init {
+        /// Built-in template name or path to a template `.wcl` file.
+        /// Optional only with `--list`.
+        template: Option<String>,
+        /// Destination directory. Defaults to the answered `name`
+        /// property, falling back to the template name.
+        dest: Option<PathBuf>,
+        /// Answer file (`.wcl` or `.json`) supplying property answers.
+        #[arg(long)]
+        answers: Option<PathBuf>,
+        /// Supply a property answer inline (repeatable). Highest
+        /// precedence. Example: `-D name=acme`.
+        #[arg(short = 'D', value_name = "KEY=VALUE")]
+        define: Vec<String>,
+        /// Non-interactive: never prompt; use defaults for unanswered
+        /// properties (error if one has no default).
+        #[arg(long)]
+        defaults: bool,
+        /// Write into the destination even if it already exists and is
+        /// not empty.
+        #[arg(long)]
+        force: bool,
+        /// List the built-in templates and exit.
+        #[arg(long)]
+        list: bool,
     },
     /// WCL-driven static site generator. Use `wcl wdoc build` for a
     /// one-shot render and `wcl wdoc serve` for a watch-rebuild dev
@@ -409,6 +452,15 @@ fn main() -> ExitCode {
                 EXIT_PARSE
             }
         },
+        Command::Init {
+            template,
+            dest,
+            answers,
+            define,
+            defaults,
+            force,
+            list,
+        } => scaffold::run_init(template, dest, answers, define, defaults, force, list),
         Command::Wdoc { cmd } => run_wdoc(cmd),
         Command::Diff { old, new, format } => run_diff(&old, &new, format),
     };

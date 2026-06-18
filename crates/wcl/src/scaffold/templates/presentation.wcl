@@ -1,0 +1,108 @@
+// The `presentation` built-in template: the same multi-folder
+// data-projecting project, rendered with the `presentation` template — a
+// reveal.js-style slide deck. The `deck` arranges pages into the slide
+// grid (`section`s are columns, their `slide`s are rows).
+//
+//   wcl init presentation ./my-deck
+//
+// Layout: main.wcl (imports + site + deck), schema/main.wcl,
+// data/main.wcl, wdoc/main.wcl (a title slide + one generated slide per
+// entry + a closing slide).
+import <scaffold.wcl>
+
+property "name" {
+  prompt = "Project name"
+  default = "my-deck"
+}
+
+file "main.wcl" {
+  content = $<<MAIN
+// Project root. The `deck` lays the `sites = [:deck]` pages out as slides;
+// the per-entry slides are generated in wdoc/main.wcl.
+import <wdoc.wcl>
+import "./schema/main.wcl"
+import "./data/main.wcl"
+import "./wdoc/main.wcl"
+
+site deck {
+  default_template = :presentation
+  title = "${answer("name")}"
+  root = true
+  theme = :catppuccin
+  accent = :purple
+  deck {
+    section "Intro" {
+      slide title
+    }
+    section "Entries" {
+      slide entry_intro
+      slide entry_install
+      slide entry_usage
+    }
+    section "Wrap-up" {
+      slide about
+    }
+  }
+}
+MAIN
+}
+
+file "schema/main.wcl" {
+  content = <<'SCHEMA'
+// Custom schema. `Entry` is the shape of one demo entry; the `@document`
+// `Project` type adds a typed top-level `entries` field (it merges with
+// the wdoc `Site` document schema pulled in by `import <wdoc.wcl>`).
+type Entry {
+  slug:    utf8
+  title:   utf8
+  summary: utf8
+  body:    utf8
+}
+
+@document
+type Project {
+  entries: list<Entry>
+}
+SCHEMA
+}
+
+file "data/main.wcl" {
+  content = <<'DATA'
+// Custom data: the `entries` field declared by schema/main.wcl. Each
+// entry becomes a slide. Note the `slug`s line up with the `deck` in
+// main.wcl (`entry_<slug>`) — change both together.
+entries = [
+  { slug: "intro",   title: "Introduction", summary: "What this deck is about.", body: "This slide was generated from the data in data/main.wcl." },
+  { slug: "install", title: "Installation",  summary: "How to get set up.",       body: "Install by following these steps. Edit data/main.wcl to change this." },
+  { slug: "usage",   title: "Usage",         summary: "Day-to-day usage.",        body: "Use it like so. Each entry becomes its own slide, wired up in wdoc/main.wcl." },
+]
+DATA
+}
+
+file "wdoc/main.wcl" {
+  content = <<'WDOC'
+// The slides. `entries` resolves to the data declared in data/main.wcl
+// (imported into the same document), so these slides project it.
+
+// Title slide.
+page title { sites = [:deck]
+  h1 "Welcome"
+  p "A presentation scaffolded with `wcl init`. The slides that follow are generated from data/main.wcl."
+}
+
+// One slide per entry, generated from the data.
+wdoc_repeater { each = entries  as = :e
+  page $"entry_${e.slug}" { sites = [:deck]
+    h2 $"${e.title}"
+    p  $"${e.summary}"
+    p  $"${e.body}"
+  }
+}
+
+// Closing slide.
+page about { sites = [:deck]
+  h2 "Thanks"
+  p "Edit data/main.wcl and wdoc/main.wcl to build your own deck."
+}
+WDOC
+}

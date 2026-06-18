@@ -1,0 +1,13 @@
+// scaffold standard library — public entry point.
+//
+// A project template opts into the schema with a single `import
+// <scaffold.wcl>` line at the top. This file pulls in the prelude, which
+// in turn imports every part of the library. The parts are embedded in
+// the `wcl` binary and resolved through a registry (see
+// `crates/wcl/src/scaffold/stdlib.rs`); the angle-bracket path is
+// importer-relative within the `<wcl-system>` namespace, so `import
+// <scaffold/prelude.wcl>` here resolves to that key.
+
+namespace scaffold
+
+import <scaffold/prelude.wcl>

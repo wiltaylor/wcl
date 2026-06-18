@@ -1,0 +1,53 @@
+// Core scaffold schema: the document root (`Project`) plus the three
+// block kinds a template is built from — `property` (a question whose
+// answer the user supplies), `file` (a generated file and its contents),
+// and `folder` (an otherwise-empty directory to create).
+//
+// `wcl init` reads these blocks directly: it collects every `property`,
+// resolves an answer for each (CLI / answer file / interactive prompt /
+// default), then evaluates the `file` / `folder` blocks with those
+// answers bound and writes the result to disk. A file's `content`
+// references answers through the `answer("name")` builtin, e.g. in a
+// heredoc: `// ${answer("name")}`.
+
+namespace scaffold
+
+@document
+type Project {
+  @children("property") properties:  list<Property>
+  @children("file")     files:       list<File>
+  @children("folder")   folders:     list<Folder>
+}
+
+// A question asked when scaffolding. The inline label is the answer key
+// referenced by `answer("<name>")`; answers may also be supplied on the
+// CLI (`-D <name>=<value>`) or in an answer file.
+@block("property")
+type Property {
+  @doc("Answer key (the inline label): referenced as `answer(\"<name>\")`.")
+  @inline(0) name: utf8
+  @doc("Question text shown when prompting interactively.")
+  prompt: utf8?
+  @doc("Value used when the user supplies nothing (also pre-filled at the prompt).")
+  default: utf8?
+}
+
+// A file to generate. `path` is relative to the destination directory and
+// may include subdirectories (their parents are created). `content` is
+// the file body; absent or empty produces an empty file.
+@block("file")
+type File {
+  @doc("Destination-relative path (the inline label). May include subdirectories.")
+  @inline(0) path: utf8
+  @doc("File body. Absent ⇒ an empty file.")
+  content: utf8?
+}
+
+// An (otherwise empty) directory to create in the destination. Folders
+// implied by `file` paths are created automatically — use this only for
+// directories that would otherwise stay empty.
+@block("folder")
+type Folder {
+  @doc("Destination-relative directory path (the inline label).")
+  @inline(0) path: utf8
+}

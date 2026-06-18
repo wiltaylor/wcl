@@ -80,6 +80,39 @@ wcl diff main:a.wcl feature:a.wcl        # across two branches
 BASH
   }
 
+  h2 "wcl init"
+
+  p "Scaffold a new project folder from a WCL template. `<template>` is a built-in name (see `wcl init --list`), a user template installed under `$XDG_DATA_HOME/wcl/templates/<name>/template.wcl` (falling back to `~/.local/share/...`), or a path to a template `.wcl` file (or a folder holding a `template.wcl`); `[dest]` is the destination directory (default: the answered `name` property, falling back to the template name). Resolution prefers built-ins, then user templates, then disk paths."
+  code bash {
+    source = <<'BASH'
+wcl init --list                                  # list built-in templates
+wcl init minimal ./my-project                    # prompt for each property
+wcl init minimal ./app -D name=app --defaults    # non-interactive, no prompts
+wcl init minimal ./app --answers answers.json    # answers from a file (.wcl or .json)
+wcl init ./my-template.wcl ./out                 # a template file of your own
+BASH
+  }
+  p "A template declares `property` questions plus the `file` / `folder` blocks to generate. Each property's answer is resolved from, in order of precedence: a `-D key=value` flag, the `--answers` file, an interactive prompt (skipped under `--defaults` or when stdin is not a terminal), then the property's `default`. A property with no answer and no default is an error. The destination must be empty unless `--force` is given."
+  p "Built-in templates: `minimal` (a single commented `main.wcl`), and three multi-folder wdoc projects — `page` (a website), `book` (a sidebar `toc`), and `presentation` (a slide `deck`). The multi-folder templates scaffold `main.wcl` plus `schema/`, `data/`, and `wdoc/` (each with its own `main.wcl`): the schema declares an `Entry` type and a typed top-level `entries` field, the data fills it, and the wdoc pages project that data into one generated page (or slide) per entry, cross-linked with a hand-written page."
+  p "Inside a template, a file's contents reference answers through the `answer(\"name\")` builtin, using the interpolating heredoc form `$<<TAG` (a plain `<<TAG` is literal). Instance fields use `=`:"
+  code wcl {
+    source = <<'WCL'
+import <scaffold.wcl>
+
+property "name" {
+  prompt  = "Project name"
+  default = "my-project"
+}
+
+file "main.wcl" {
+  content = $<<MAIN
+// ${answer("name")}
+// A new WCL document.
+MAIN
+}
+WCL
+  }
+
   h2 "wcl repl"
 
   p "An interactive read-eval-print loop. Pass a file to resolve identifiers against its top-level fields. `:quit` or EOF exits."

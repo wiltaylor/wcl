@@ -1,0 +1,20 @@
+// The minimal built-in template: a single commented `main.wcl`.
+//
+// Scaffold a copy with:
+//   wcl init minimal ./my-project
+//
+// `${answer("name")}` is substituted with the answer to the `name`
+// property (prompted for, or supplied via `-D name=…` / an answer file).
+import <scaffold.wcl>
+
+property "name" {
+  prompt = "Project name"
+  default = "my-project"
+}
+
+file "main.wcl" {
+  content = $<<WCL
+// ${answer("name")}
+// A new WCL document. Add fields and blocks below.
+WCL
+}

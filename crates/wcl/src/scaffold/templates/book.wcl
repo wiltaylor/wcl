@@ -1,0 +1,109 @@
+// The `book` built-in template: the same multi-folder data-projecting
+// project as `page`, rendered with the `book` template — a fixed sidebar
+// `toc` (table of contents) instead of a top navbar.
+//
+//   wcl init book ./my-book
+//
+// Layout: main.wcl (imports + site + toc), schema/main.wcl, data/main.wcl,
+// wdoc/main.wcl (index + one generated page per entry + about).
+import <scaffold.wcl>
+
+property "name" {
+  prompt = "Project name"
+  default = "my-book"
+}
+
+file "main.wcl" {
+  content = $<<MAIN
+// Project root. The `toc` builds the book's sidebar; its chapters point
+// at pages — including the per-entry pages generated in wdoc/main.wcl.
+import <wdoc.wcl>
+import "./schema/main.wcl"
+import "./data/main.wcl"
+import "./wdoc/main.wcl"
+
+site book {
+  default_template = :book
+  title = "${answer("name")}"
+  root = true
+  theme = :nord
+  theme_toggle = true
+  toc {
+    chapter "Overview" { page = index }
+    chapter "Entries" {
+      chapter "Introduction" { page = entry_intro }
+      chapter "Installation" { page = entry_install }
+      chapter "Usage"        { page = entry_usage }
+    }
+    chapter "About" { page = about }
+  }
+}
+MAIN
+}
+
+file "schema/main.wcl" {
+  content = <<'SCHEMA'
+// Custom schema. `Entry` is the shape of one demo entry; the `@document`
+// `Project` type adds a typed top-level `entries` field (it merges with
+// the wdoc `Site` document schema pulled in by `import <wdoc.wcl>`).
+type Entry {
+  slug:    utf8
+  title:   utf8
+  summary: utf8
+  body:    utf8
+}
+
+@document
+type Project {
+  entries: list<Entry>
+}
+SCHEMA
+}
+
+file "data/main.wcl" {
+  content = <<'DATA'
+// Custom data: the `entries` field declared by schema/main.wcl. Each
+// entry becomes a chapter page. Note the `slug`s line up with the `toc`
+// in main.wcl (`entry_<slug>`) — change both together.
+entries = [
+  { slug: "intro",   title: "Introduction", summary: "What this book covers.", body: "Welcome. This chapter was generated from the data in data/main.wcl." },
+  { slug: "install", title: "Installation",  summary: "How to get set up.",     body: "Install by following these steps. Edit data/main.wcl to change this text." },
+  { slug: "usage",   title: "Usage",         summary: "Day-to-day usage.",      body: "Use it like so. Each entry becomes its own chapter, wired up in wdoc/main.wcl." },
+]
+DATA
+}
+
+file "wdoc/main.wcl" {
+  content = <<'WDOC'
+// The pages. `entries` resolves to the data declared in data/main.wcl
+// (imported into the same document), so these pages project it.
+
+// Index / overview chapter: lists every entry and links to its page.
+page index { sites = [:book]  start = true
+  h1 "Overview"
+  p "These chapters are generated from the data in data/main.wcl, typed by schema/main.wcl."
+  wdoc_repeater { each = entries  as = :e
+    h3 $"${e.title}"
+    p  $"${e.summary} — [Read more](entry_${e.slug})"
+  }
+  p "See also the [about page](about)."
+}
+
+// One chapter page per entry, generated from the data.
+wdoc_repeater { each = entries  as = :e
+  page $"entry_${e.slug}" { sites = [:book]
+    title = e.title
+    h1 $"${e.title}"
+    p  $"${e.body}"
+    p  "[Back to overview](index)"
+  }
+}
+
+// A hand-written chapter, linked from the index and the toc.
+page about { sites = [:book]
+  h1 "About"
+  p "This book was scaffolded with `wcl init`. Replace this chapter and the data to make it your own."
+  p "[Back to overview](index)"
+}
+WDOC
+}
