@@ -749,16 +749,25 @@ fn diff_reports_added_removed_and_modified_entities() {
     )
     .unwrap();
 
-    let out = wcl().arg("diff").arg(&old).arg(&new).assert().success();
+    let out = wcl()
+        .arg("diff")
+        .arg(&old)
+        .arg(&new)
+        .args(["--format", "json"])
+        .assert()
+        .success();
     let stdout = String::from_utf8(out.get_output().stdout.clone()).unwrap();
     let json: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON array");
     let arr = json.as_array().expect("array");
 
-    // task: status draft -> active (modified); user removed; impl_due_dates added.
+    // task: status draft -> active (modified), carrying old/new values;
+    // user removed; impl_due_dates added.
     assert!(arr.iter().any(|c| c["op"] == "modified"
         && c["entity"] == "domain_entity:task"
         && c["field"] == "status"
-        && c["kind"] == "changed"));
+        && c["kind"] == "changed"
+        && c["old"] == "draft"
+        && c["new"] == "active"));
     assert!(
         arr.iter()
             .any(|c| c["op"] == "removed" && c["entity"] == "domain_entity:user")
@@ -769,6 +778,51 @@ fn diff_reports_added_removed_and_modified_entities() {
     );
     // The unchanged spec:auth entity is not reported.
     assert!(!arr.iter().any(|c| c["entity"] == "spec:auth"));
+}
+
+#[test]
+fn diff_emits_wcl_tree_by_default() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let old = tmp.path().join("old.wcl");
+    let new = tmp.path().join("new.wcl");
+    std::fs::write(
+        &old,
+        format!(
+            "{DIFF_SCHEMA}\
+             domain_entity \"task\" {{ name = \"Task\"  status = \"draft\" }}\n\
+             domain_entity \"user\" {{ name = \"User\"  status = \"done\" }}\n"
+        ),
+    )
+    .unwrap();
+    std::fs::write(
+        &new,
+        format!(
+            "{DIFF_SCHEMA}\
+             domain_entity \"task\" {{ name = \"Task\"  status = \"active\" }}\n\
+             spec \"impl\" {{ title = \"Due dates\" }}\n"
+        ),
+    )
+    .unwrap();
+
+    let out = wcl().arg("diff").arg(&old).arg(&new).assert().success();
+    let stdout = String::from_utf8(out.get_output().stdout.clone()).unwrap();
+
+    // The default WCL tree carries entity blocks, kind symbols, and values.
+    assert!(stdout.contains("modified \"domain_entity:task\""));
+    assert!(stdout.contains("kind = :changed"));
+    assert!(stdout.contains("old = \"draft\""));
+    assert!(stdout.contains("new = \"active\""));
+    assert!(stdout.contains("removed \"domain_entity:user\""));
+    assert!(stdout.contains("added \"spec:impl\""));
+
+    // The emitted diff must itself be well-formed WCL: feed it back through
+    // the formatter (parse-only, no schema) and require success.
+    wcl()
+        .arg("fmt")
+        .arg("-")
+        .write_stdin(stdout)
+        .assert()
+        .success();
 }
 
 #[test]
@@ -791,7 +845,159 @@ fn diff_ignores_formatting_only_changes() {
         .arg("diff")
         .arg(&old)
         .arg(&new)
+        .args(["--format", "json"])
         .assert()
         .success()
         .stdout(predicate::str::contains("[]"));
+    // The default WCL tree reports no changes too.
+    wcl()
+        .arg("diff")
+        .arg(&old)
+        .arg(&new)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("# no changes"));
+}
+
+// ---------------------------------------------------------------------------
+// `wcl diff` over git revisions (`<rev>:<path>`). Hermetic: each test builds
+// a throwaway repo in a TempDir, shelling out to the same `git` the feature
+// uses. Skipped (not failed) when `git` / `tar` aren't on PATH.
+// ---------------------------------------------------------------------------
+
+/// True when both `git` and `tar` are available — the git-diff feature needs
+/// both (`git archive | tar`).
+fn git_and_tar_available() -> bool {
+    fn on_path(bin: &str) -> bool {
+        std::process::Command::new(bin)
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+    on_path("git") && on_path("tar")
+}
+
+/// Run a git command in `dir`, with inline identity so the test never
+/// depends on the machine's global git config.
+fn git_in(dir: &std::path::Path, args: &[&str]) {
+    let ok = std::process::Command::new("git")
+        .current_dir(dir)
+        .args([
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "-c",
+            "commit.gpgsign=false",
+        ])
+        .args(args)
+        .status()
+        .expect("run git")
+        .success();
+    assert!(ok, "git {args:?} failed");
+}
+
+#[test]
+fn diff_git_rev_vs_working_tree() {
+    if !git_and_tar_available() {
+        eprintln!("skipping: git/tar not available");
+        return;
+    }
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let root = tmp.path();
+    git_in(root, &["init", "-q"]);
+    std::fs::write(
+        root.join("config.wcl"),
+        format!("{DIFF_SCHEMA}domain_entity \"task\" {{ name = \"Task\"  status = \"draft\" }}\n"),
+    )
+    .unwrap();
+    git_in(root, &["add", "-A"]);
+    git_in(root, &["commit", "-qm", "v1"]);
+    // Edit the working tree (uncommitted).
+    std::fs::write(
+        root.join("config.wcl"),
+        format!("{DIFF_SCHEMA}domain_entity \"task\" {{ name = \"Task\"  status = \"active\" }}\n"),
+    )
+    .unwrap();
+
+    wcl()
+        .current_dir(root)
+        .arg("diff")
+        .arg("HEAD:config.wcl")
+        .arg("config.wcl")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("modified \"domain_entity:task\""))
+        .stdout(predicate::str::contains("old = \"draft\""))
+        .stdout(predicate::str::contains("new = \"active\""));
+}
+
+#[test]
+fn diff_git_resolves_imports_from_revision() {
+    if !git_and_tar_available() {
+        eprintln!("skipping: git/tar not available");
+        return;
+    }
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let root = tmp.path();
+    git_in(root, &["init", "-q"]);
+    // config.wcl imports shared.wcl and reads a value from it; only
+    // shared.wcl changes between the two commits.
+    std::fs::write(root.join("schema.wcl"), DIFF_SCHEMA).unwrap();
+    std::fs::write(
+        root.join("shared.wcl"),
+        "@schemaless\nshared_status = \"draft\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("config.wcl"),
+        "import \"schema.wcl\"\n\
+         import \"shared.wcl\"\n\
+         domain_entity \"task\" { name = \"Task\"  status = shared_status }\n",
+    )
+    .unwrap();
+    git_in(root, &["add", "-A"]);
+    git_in(root, &["commit", "-qm", "v1"]);
+    std::fs::write(
+        root.join("shared.wcl"),
+        "@schemaless\nshared_status = \"active\"\n",
+    )
+    .unwrap();
+    git_in(root, &["commit", "-qam", "v2"]);
+
+    // config.wcl is byte-identical across commits; the only change is the
+    // imported value, so the diff must reflect the *revision's* import.
+    wcl()
+        .current_dir(root)
+        .arg("diff")
+        .arg("HEAD~1:config.wcl")
+        .arg("HEAD:config.wcl")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("modified \"domain_entity:task\""))
+        .stdout(predicate::str::contains("old = \"draft\""))
+        .stdout(predicate::str::contains("new = \"active\""));
+}
+
+#[test]
+fn diff_git_bad_revision_errors() {
+    if !git_and_tar_available() {
+        eprintln!("skipping: git/tar not available");
+        return;
+    }
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let root = tmp.path();
+    git_in(root, &["init", "-q"]);
+    std::fs::write(root.join("config.wcl"), format!("{DIFF_SCHEMA}\n")).unwrap();
+    git_in(root, &["add", "-A"]);
+    git_in(root, &["commit", "-qm", "v1"]);
+
+    wcl()
+        .current_dir(root)
+        .arg("diff")
+        .arg("no-such-rev:config.wcl")
+        .arg("config.wcl")
+        .assert()
+        .code(4); // EXIT_IO
 }

@@ -8,6 +8,7 @@ use wcl_lang::{
 
 mod diff;
 mod dump;
+mod gitspec;
 mod serve;
 
 const EXIT_OK: u8 = 0;
@@ -173,19 +174,35 @@ enum Command {
         #[command(subcommand)]
         cmd: WdocCommand,
     },
-    /// Compare two WCL documents and print the changed entities / fields
-    /// as JSON. Operates on the *evaluated* document views, so a
+    /// Compare two WCL documents and print the changed entities / fields.
+    /// Operates on the *evaluated* document views (imports resolved), so a
     /// formatting-only edit produces no diff. Each top-level block is an
-    /// entity keyed `kind:label`; nested field edits are reported by path.
+    /// entity keyed `kind:label`; nested field edits are reported by path,
+    /// recursing into lists by index. Output is a re-parseable WCL tree by
+    /// default (`--format json` for the flat change array).
     ///
-    /// Example:
+    /// Either side may be a `<rev>:<path>` git specifier, whose imports
+    /// resolve from that same revision.
+    ///
+    /// Examples:
     ///   wcl diff old.wcl new.wcl
+    ///   wcl diff HEAD~1:config.wcl config.wcl
+    ///   wcl diff main:a.wcl feature:a.wcl --format json
     Diff {
-        /// Path to the old (base) WCL document.
-        old: PathBuf,
-        /// Path to the new WCL document.
-        new: PathBuf,
+        /// Old (base) document — a path or `<rev>:<path>` git specifier.
+        old: String,
+        /// New document — a path or `<rev>:<path>` git specifier.
+        new: String,
+        /// Output format: `wcl` (default) or `json`.
+        #[arg(long, value_enum, default_value_t = DiffFormat::Wcl)]
+        format: DiffFormat,
     },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum DiffFormat {
+    Wcl,
+    Json,
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -393,40 +410,88 @@ fn main() -> ExitCode {
             }
         },
         Command::Wdoc { cmd } => run_wdoc(cmd),
-        Command::Diff { old, new } => run_diff(&old, &new),
+        Command::Diff { old, new, format } => run_diff(&old, &new, format),
     };
     ExitCode::from(code)
 }
 
-/// Open both documents, compute the WCL-aware entity/field diff, and print
-/// it as a JSON array on stdout. A parse/eval failure on either side
-/// renders the diagnostic and exits non-zero.
-fn run_diff(old_path: &Path, new_path: &Path) -> u8 {
-    let old = match open_document(old_path, false) {
-        Ok(d) => d,
-        Err(err) => {
-            eprintln!("{:?}", miette::Report::new(err));
-            return EXIT_PARSE;
+/// Failure opening a diff side: a parse/eval diagnostic, or an I/O / git
+/// error (bad revision, missing path, git/tar absent).
+enum OpenErr {
+    Parse(ParseError),
+    Io(String),
+}
+
+impl OpenErr {
+    /// Render the error and return the matching exit code.
+    fn report(self) -> u8 {
+        match self {
+            OpenErr::Parse(e) => {
+                eprintln!("{:?}", miette::Report::new(e));
+                EXIT_PARSE
+            }
+            OpenErr::Io(msg) => {
+                eprintln!("{msg}");
+                EXIT_IO
+            }
         }
-    };
-    let new = match open_document(new_path, false) {
-        Ok(d) => d,
-        Err(err) => {
-            eprintln!("{:?}", miette::Report::new(err));
-            return EXIT_PARSE;
+    }
+}
+
+/// Open one diff side. A plain path opens directly; a `<rev>:<path>` spec is
+/// materialized from git into a temp dir first. The returned `TempDir` (if
+/// any) must outlive use of the `Document`, so the caller holds it.
+fn open_spec(arg: &str) -> Result<(Document, Option<tempfile::TempDir>), OpenErr> {
+    match gitspec::parse_spec(arg) {
+        gitspec::Spec::Working(path) => {
+            let doc = open_document(&path, false).map_err(OpenErr::Parse)?;
+            Ok((doc, None))
         }
+        gitspec::Spec::Git { rev, path } => {
+            let (root, rel) = gitspec::repo_rel(&path).map_err(OpenErr::Io)?;
+            let tmp = gitspec::materialize_rev(&rev, &root).map_err(OpenErr::Io)?;
+            let entry = tmp.path().join(&rel);
+            if !entry.exists() {
+                return Err(OpenErr::Io(format!(
+                    "path '{rel}' not found in revision '{rev}'"
+                )));
+            }
+            let doc = open_document(&entry, false).map_err(OpenErr::Parse)?;
+            Ok((doc, Some(tmp)))
+        }
+    }
+}
+
+/// Open both sides (each a path or `<rev>:<path>` git spec), compute the
+/// WCL-aware entity/field diff, and print it as a WCL tree (default) or a
+/// JSON array. A parse/eval/git failure on either side renders the
+/// diagnostic and exits non-zero.
+fn run_diff(old: &str, new: &str, format: DiffFormat) -> u8 {
+    // `_old`/`_new` hold the temp dirs alive until the diff is computed.
+    let (old_doc, _old) = match open_spec(old) {
+        Ok(x) => x,
+        Err(e) => return e.report(),
     };
-    let changes = diff::diff_documents(&old, &new);
-    let json = diff::changes_to_json(&changes);
-    match serde_json::to_string_pretty(&json) {
-        Ok(s) => {
-            println!("{s}");
+    let (new_doc, _new) = match open_spec(new) {
+        Ok(x) => x,
+        Err(e) => return e.report(),
+    };
+    let changes = diff::diff_documents(&old_doc, &new_doc);
+    match format {
+        DiffFormat::Wcl => {
+            print!("{}", diff::render_wcl(&changes, old, new));
             EXIT_OK
         }
-        Err(e) => {
-            eprintln!("json serialization failed: {e}");
-            EXIT_EVAL
-        }
+        DiffFormat::Json => match serde_json::to_string_pretty(&diff::changes_to_json(&changes)) {
+            Ok(s) => {
+                println!("{s}");
+                EXIT_OK
+            }
+            Err(e) => {
+                eprintln!("json serialization failed: {e}");
+                EXIT_EVAL
+            }
+        },
     }
 }
 
