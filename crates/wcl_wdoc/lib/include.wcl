@@ -1,0 +1,55 @@
+// ── Include ─────────────────────────────────────────────────────────
+//
+// Build *other* wdoc documents found under a folder and ship each one's
+// rendered output into a subdirectory of this build — exactly as if
+// `wcl wdoc build` had been run on each one separately. The sub-sites are
+// NOT merged into this document (that is what `import` does); each keeps
+// its own pages and `_wdoc/` assets under its own output subdirectory.
+//
+// `folder` (the inline label) is a directory resolved relative to this
+// document. The build walks its SUBDIRECTORIES (files sitting directly in
+// `folder` are skipped) and treats every file whose name matches the
+// `pattern` glob as a sub-site entry point. Each match builds into
+// `<folder-basename>/<entry's parent folder, relative to folder>/`.
+//
+//   include "projects" { pattern = "main.wcl" }
+//     projects/foo/main.wcl  → <out>/projects/foo/
+//     projects/bar/main.wcl  → <out>/projects/bar/
+//     projects/shared.wcl    → ignored (not in a subdirectory)
+//
+// The folder name and the discovered sub-sites are also exposed to WCL via
+// the `included_sites(folder, pattern)` builtin, which returns a list of
+// `{ name, href }` records (one per match, `name` = the relative folder,
+// `href` = the sub-site's root-relative URL). Feed it to a `wdoc_repeater`
+// inside a `menu` / `toc` to wire navigation to the sub-sites. Pass the
+// SAME `folder` / `pattern` you gave the `include` block so the hrefs line
+// up with where the sub-sites were built.
+//
+// Note: a non-root site in a multi-site build renders under `<site>/`, so
+// its menu needs to prefix the returned href with `../` to reach a
+// sibling sub-site directory.
+//
+// Building/copying sub-sites and scanning the filesystem aren't
+// expressible in WCL, so this block is consumed by the build pipeline in
+// Rust (it has no `lower`). The recursive build runs for the HTML build
+// (`wcl wdoc build`) and the dev server; the Markdown / PDF targets define
+// `included_sites` (so documents still parse) but do not embed sub-sites.
+namespace wdoc
+
+@block("include")
+type IncludeSites {
+  @doc("Folder to scan (the inline label): a directory resolved relative to this document.")
+  @inline(0) folder: utf8
+  @doc("Filename glob (`*` / `?`) matched against files inside the folder's subdirectories — e.g. \"main.wcl\" or \"*.skill.wcl\".")
+  pattern: utf8
+}
+
+// Shape of the records returned by the `included_sites(folder, pattern)`
+// builtin — one per discovered sub-site. Documentation only; the builtin
+// returns matching anonymous records.
+type IncludeEntry {
+  @doc("The matched entry's parent folder, relative to the scanned folder (e.g. \"foo\").")
+  name: utf8
+  @doc("The sub-site's root-relative URL (e.g. \"projects/foo/\").")
+  href: utf8
+}

@@ -63,21 +63,6 @@ pub(crate) struct TocNode {
 /// Recursively read same-kind child blocks nested inside `block` into
 /// nodes, preserving source order. `mk` builds each node from the block
 /// and its already-read children. Shared by the `toc`/`menu` readers.
-pub(crate) fn read_tree<T>(
-    block: &Block<'_>,
-    kind: &str,
-    mk: &impl Fn(&Block<'_>, Vec<T>) -> T,
-) -> Vec<T> {
-    block
-        .blocks()
-        .filter(|b| b.kind() == kind)
-        .map(|b| {
-            let children = read_tree(&b, kind, mk);
-            mk(&b, children)
-        })
-        .collect()
-}
-
 /// Recursively read `chapter` blocks nested inside `block` into
 /// [`TocNode`]s, preserving source order. A `wdoc_repeater` child (body =
 /// `chapter` blocks) is expanded in place into one entry per element of
@@ -199,12 +184,32 @@ pub(crate) struct MenuNode {
 /// Recursively read `item` blocks nested inside `block` into
 /// [`MenuNode`]s, preserving source order.
 pub(crate) fn read_menu_items(block: &Block<'_>) -> Vec<MenuNode> {
-    read_tree(block, "item", &|it, children| MenuNode {
-        label: label_string(it).unwrap_or_default(),
-        page: field_id(it, "page"),
-        href: field_utf8(it, "href"),
-        children,
-    })
+    let mut out = Vec::new();
+    for it in block.blocks() {
+        push_menu_child(&it, &mut out);
+    }
+    out
+}
+
+/// Append one menu child to `out`: an `item` becomes a node (recursing for
+/// nested items / repeaters); a `wdoc_repeater` expands to one node per
+/// element of its `each` list — data-driven navigation (e.g. one entry per
+/// `included_sites(...)` record). Other kinds are ignored.
+fn push_menu_child(it: &Block<'_>, out: &mut Vec<MenuNode>) {
+    match it.kind() {
+        "item" => out.push(MenuNode {
+            label: label_string(it).unwrap_or_default(),
+            page: field_id(it, "page"),
+            href: field_utf8(it, "href"),
+            children: read_menu_items(it),
+        }),
+        "wdoc_repeater" if it.binding_scope_depth() <= MAX_LOWER_DEPTH => {
+            for c in expand_repeater_children(it) {
+                push_menu_child(&c, out);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Read the site's navbar menu from a `site` block's `menu` child.

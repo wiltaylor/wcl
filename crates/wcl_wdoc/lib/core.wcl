@@ -35,6 +35,10 @@ type Site {
   // its own subdirectory (a single site renders flat at the output
   // root). Absent ⇒ pages render bare. See `Page.sites` for membership.
   @children("site")           sites:       list<SiteConfig>
+  // Other wdoc documents found under a folder, each built independently
+  // and shipped into a subdirectory of this output (not merged into this
+  // document — see `include.wcl`). HTML build / dev server only.
+  @children("include")        includes:    list<IncludeSites>
 }
 
 // Raw stylesheet. Carries CSS that the bare-class `class` system can't

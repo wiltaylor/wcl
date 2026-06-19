@@ -89,6 +89,7 @@ site reference {
       chapter "Overview"               { page = wdoc_overview }
       chapter "Sites & Templates"      { page = wdoc_sites }
       chapter "Pages"                  { page = wdoc_pages }
+      chapter "Including sub-sites"    { page = wdoc_includes }
       chapter "Block Visibility"       { page = wdoc_visibility }
       chapter "Markdown Output"        { page = wdoc_markdown }
       chapter "Skill Folders"          { page = wdoc_skills }
@@ -176,6 +177,7 @@ import "./pages/reference/ref/cli.wcl"
 import "./pages/reference/wdoc/overview.wcl"
 import "./pages/reference/wdoc/sites.wcl"
 import "./pages/reference/wdoc/pages.wcl"
+import "./pages/reference/wdoc/includes.wcl"
 import "./pages/reference/wdoc/visibility.wcl"
 import "./pages/reference/wdoc/markdown.wcl"
 import "./pages/reference/wdoc/skills.wcl"

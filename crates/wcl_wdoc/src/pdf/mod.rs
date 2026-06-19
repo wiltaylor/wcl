@@ -26,7 +26,7 @@ use std::fs;
 use std::path::Path;
 
 use miette::{NamedSource, Report};
-use wcl_lang::{Block, Document, Environment, Value, disk_loader};
+use wcl_lang::{Block, Document, Value, disk_loader};
 
 use crate::build::schema_registry;
 use crate::icons::IconRegistry;
@@ -143,7 +143,7 @@ pub fn pdf(
         &user_src,
         &name,
         base_dir.clone(),
-        &Environment::new(),
+        &crate::build::wdoc_environment(base_dir.as_deref()),
         loader,
     )
     .map_err(|e| PdfError::Parse(Report::new(e)))?;

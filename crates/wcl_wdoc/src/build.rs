@@ -1,9 +1,9 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use miette::{NamedSource, Report};
-use wcl_lang::{Block, Document, Environment, Registry, Value, disk_loader};
+use wcl_lang::{Block, Document, Environment, Registry, Value, disk_loader, from_fn};
 
 use crate::highlight;
 use crate::inline::InlinePatterns;
@@ -54,6 +54,7 @@ pub fn schema_registry() -> Registry {
     r.register("wdoc/icons.wcl", include_str!("../lib/icons.wcl"));
     r.register("wdoc/image.wcl", include_str!("../lib/image.wcl"));
     r.register("wdoc/file.wcl", include_str!("../lib/file.wcl"));
+    r.register("wdoc/include.wcl", include_str!("../lib/include.wcl"));
     r.register("wdoc/video.wcl", include_str!("../lib/video.wcl"));
     r.register("wdoc/tilemap.wcl", include_str!("../lib/tilemap.wcl"));
     r.register("wdoc/dopesheet.wcl", include_str!("../lib/dopesheet.wcl"));
@@ -75,6 +76,55 @@ pub fn schema_registry() -> Registry {
     r.register("wdoc/statechart.wcl", include_str!("../lib/statechart.wcl"));
     r.register("wdoc/visibility.wcl", include_str!("../lib/visibility.wcl"));
     r
+}
+
+/// The [`Environment`] every wdoc backend uses to open a document: the base
+/// environment plus the `included_sites(folder, pattern)` builtin. The
+/// builtin scans a folder for sub-site entry points (see [`crate::include`])
+/// and returns the `{ name, href }` records a nav `wdoc_repeater` consumes;
+/// it closes over `base_dir` so the scanned folder resolves relative to the
+/// document, exactly like the `include` block it mirrors.
+pub(crate) fn wdoc_environment(base_dir: Option<&Path>) -> Environment {
+    let mut env = Environment::new();
+    let base = base_dir.map(Path::to_path_buf);
+    env.add_builtin(
+        "included_sites",
+        from_fn(move |folder: String, pattern: String| -> Value {
+            match crate::include::resolve_included(base.as_deref(), &folder, &pattern) {
+                Ok(sites) => Value::list(
+                    sites
+                        .iter()
+                        .map(|s| {
+                            let mut fields = BTreeMap::new();
+                            fields.insert("name".to_string(), Value::Utf8(s.name.clone()));
+                            fields.insert("href".to_string(), Value::Utf8(s.href.clone()));
+                            Value::record(Vec::new(), fields)
+                        })
+                        .collect(),
+                ),
+                // A missing folder / bad scan surfaces from the build step,
+                // which is the authority on the include set; nav degrades to
+                // an empty list rather than failing the render here.
+                Err(_) => Value::list(Vec::new()),
+            }
+        })
+        .doc("Discover wdoc sub-sites under a folder for navigation (see the `include` block).")
+        .param(
+            "folder",
+            "utf8",
+            "Folder to scan, relative to the document.",
+        )
+        .param(
+            "pattern",
+            "utf8",
+            "Filename glob matched inside the folder's subdirectories.",
+        )
+        .returns(
+            "list",
+            "One `{ name, href }` record per discovered sub-site.",
+        ),
+    );
+    env
 }
 
 pub enum BuildError {
@@ -104,6 +154,9 @@ pub enum BuildError {
     /// (the layout is too tightly packed). Carries a message naming the
     /// offending edge and a hint at how to fix it.
     EdgeRouting(String),
+    /// An `include` chain referenced one of its own ancestors, or nested
+    /// deeper than [`MAX_INCLUDE_DEPTH`]. Carries a describing message.
+    IncludeCycle(String),
 }
 
 impl BuildError {
@@ -128,6 +181,7 @@ impl BuildError {
             Self::BadTemplate(name) => eprintln!("unknown template \"{name}\""),
             Self::Tileset(msg) => eprintln!("{msg}"),
             Self::EdgeRouting(msg) => eprintln!("{msg}"),
+            Self::IncludeCycle(msg) => eprintln!("{msg}"),
         }
     }
 
@@ -157,6 +211,7 @@ impl BuildError {
             Self::BadTemplate(name) => format!("unknown template \"{name}\""),
             Self::Tileset(msg) => msg.clone(),
             Self::EdgeRouting(msg) => msg.clone(),
+            Self::IncludeCycle(msg) => msg.clone(),
         }
     }
 
@@ -196,6 +251,7 @@ const RUST_DISPATCHED_KINDS: &[&str] = &[
     // Structural / infra kinds every backend treats specially.
     "page",
     "site",
+    "include",
     "partial",
     "collect",
     "notes",
@@ -275,6 +331,10 @@ pub struct BuildOptions {
     pub profile: bool,
 }
 
+/// Maximum depth of nested `include` builds, a backstop against an
+/// `include` chain that never terminates (deeper than any real project).
+const MAX_INCLUDE_DEPTH: usize = 8;
+
 /// [`build`] with [`BuildOptions`]. Returns the page count plus, when
 /// profiling was requested, the evaluation profile snapshot.
 pub fn build_with_options(
@@ -282,6 +342,50 @@ pub fn build_with_options(
     out_dir: &Path,
     site_filter: Option<&str>,
     opts: &BuildOptions,
+) -> Result<(usize, Option<wcl_lang::Profile>), BuildError> {
+    let mut seen = HashSet::new();
+    build_guarded(file, out_dir, site_filter, opts, &mut seen, 0)
+}
+
+/// [`build_with_options`] wrapped in the `include` cycle / depth guard.
+/// `seen` is the chain of documents currently being built (an ancestor
+/// stack, pushed on entry and popped on exit) so a document that includes
+/// its own ancestor is rejected, while the same document built in two
+/// independent branches is still allowed.
+fn build_guarded(
+    file: &Path,
+    out_dir: &Path,
+    site_filter: Option<&str>,
+    opts: &BuildOptions,
+    seen: &mut HashSet<PathBuf>,
+    depth: usize,
+) -> Result<(usize, Option<wcl_lang::Profile>), BuildError> {
+    if depth > MAX_INCLUDE_DEPTH {
+        return Err(BuildError::IncludeCycle(format!(
+            "include nesting exceeded {MAX_INCLUDE_DEPTH} levels at '{}'",
+            file.display()
+        )));
+    }
+    let canon = fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
+    if seen.contains(&canon) {
+        return Err(BuildError::IncludeCycle(format!(
+            "include cycle: '{}' is already being built",
+            file.display()
+        )));
+    }
+    seen.insert(canon.clone());
+    let result = build_inner(file, out_dir, site_filter, opts, seen, depth);
+    seen.remove(&canon);
+    result
+}
+
+fn build_inner(
+    file: &Path,
+    out_dir: &Path,
+    site_filter: Option<&str>,
+    opts: &BuildOptions,
+    seen: &mut HashSet<PathBuf>,
+    depth: usize,
 ) -> Result<(usize, Option<wcl_lang::Profile>), BuildError> {
     let user_src = fs::read_to_string(file)
         .map_err(|e| BuildError::Io(e, format!("read {}", file.display())))?;
@@ -299,7 +403,7 @@ pub fn build_with_options(
         &user_src,
         &name,
         base_dir.clone(),
-        &Environment::new(),
+        &wdoc_environment(base_dir.as_deref()),
         loader,
     )
     .map_err(|e| BuildError::Parse(Report::new(e)))?;
@@ -480,8 +584,116 @@ pub fn build_with_options(
     if let Some(msg) = crate::render::take_route_error() {
         return Err(BuildError::EdgeRouting(msg));
     }
+    let mut count = result?;
+    // Included sub-sites: build each discovered document independently into
+    // its own subdirectory of the output (see `crate::include`). Run only
+    // after the parent renders cleanly, so a parent failure surfaces first.
+    // The directories occupied by non-root sites are reserved so an include
+    // can't clobber a sibling site's output.
+    let reserved_dirs: BTreeSet<String> = specs
+        .iter()
+        .filter_map(|s| s.name.clone())
+        .filter(|n| Some(n) != root_site.as_ref())
+        .collect();
+    count += build_includes(
+        &doc,
+        base_dir.as_deref(),
+        out_dir,
+        &reserved_dirs,
+        opts,
+        seen,
+        depth,
+    )?;
     // `profile()` is `None` unless `opts.profile` enabled collection.
-    result.map(|n| (n, doc.profile()))
+    Ok((count, doc.profile()))
+}
+
+/// Build the sub-sites declared by every `include` block into `out_dir`,
+/// returning the total pages written. Each match is built independently —
+/// as if `wcl wdoc build` had been run on it — into
+/// `<out_dir>/<folder-basename>/<entry's relative folder>/`. The whole set
+/// is resolved and its output layout validated before anything is built.
+fn build_includes(
+    doc: &Document,
+    base_dir: Option<&Path>,
+    out_dir: &Path,
+    reserved_dirs: &BTreeSet<String>,
+    opts: &BuildOptions,
+    seen: &mut HashSet<PathBuf>,
+    depth: usize,
+) -> Result<usize, BuildError> {
+    let blocks: Vec<Block> = doc.blocks().filter(|b| b.kind() == "include").collect();
+    if blocks.is_empty() {
+        return Ok(0);
+    }
+    let mut all: Vec<crate::include::IncludedSite> = Vec::new();
+    for b in &blocks {
+        let folder = label_string(b).ok_or_else(|| {
+            BuildError::BadPage("an `include` block is missing its folder label".to_string())
+        })?;
+        let pattern = field_utf8(b, "pattern").ok_or_else(|| {
+            BuildError::BadPage(format!(
+                "include \"{folder}\": missing required `pattern` (a filename glob)"
+            ))
+        })?;
+        all.extend(crate::include::resolve_included(
+            base_dir, &folder, &pattern,
+        )?);
+    }
+    // Validate the output layout across every include before building: the
+    // prefix must not collide with a site subdirectory or the shared asset
+    // folder, and two entries must not target the same subdirectory.
+    let mut targets: BTreeMap<PathBuf, PathBuf> = BTreeMap::new();
+    for s in &all {
+        let top = s
+            .out_subdir
+            .components()
+            .next()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if reserved_dirs.contains(&top) {
+            return Err(BuildError::BadPage(format!(
+                "include output '{}' collides with the site directory '{top}/' — \
+                 rename the include folder or the site",
+                s.out_subdir.display()
+            )));
+        }
+        if top == crate::terminal::ASSET_DIR {
+            return Err(BuildError::BadPage(format!(
+                "include output '{}' collides with the reserved asset folder '{}/'",
+                s.out_subdir.display(),
+                crate::terminal::ASSET_DIR
+            )));
+        }
+        if let Some(prev) = targets.insert(s.out_subdir.clone(), s.src_path.clone())
+            && prev != s.src_path
+        {
+            return Err(BuildError::BadPage(format!(
+                "two included documents target the same output '{}' ('{}' and '{}')",
+                s.out_subdir.display(),
+                prev.display(),
+                s.src_path.display()
+            )));
+        }
+    }
+    let mut count = 0;
+    for s in &all {
+        progress(format_args!(
+            "include {} -> {}",
+            s.name,
+            s.out_subdir.display()
+        ));
+        let (n, _) = build_guarded(
+            &s.src_path,
+            &out_dir.join(&s.out_subdir),
+            None,
+            opts,
+            seen,
+            depth + 1,
+        )?;
+        count += n;
+    }
+    Ok(count)
 }
 
 /// Drain the non-fatal render warnings collected during the most recent

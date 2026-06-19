@@ -562,6 +562,7 @@ fn build_error_code(err: &wcl_wdoc::BuildError) -> u8 {
         wcl_wdoc::BuildError::BadTemplate(_) => EXIT_SCHEMA,
         wcl_wdoc::BuildError::Tileset(_) => EXIT_SCHEMA,
         wcl_wdoc::BuildError::EdgeRouting(_) => EXIT_SCHEMA,
+        wcl_wdoc::BuildError::IncludeCycle(_) => EXIT_EVAL,
     }
 }
 

@@ -102,13 +102,20 @@ type MenuItem {
   page: identifier?
   href: utf8?
   @children("item") children: list<MenuItem>
+  // A nested `wdoc_repeater` (body = `item` blocks) emits one sub-entry
+  // per element — e.g. one dropdown entry per `included_sites(...)` record.
+  @children("wdoc_repeater") generators: list<WdocRepeater>
 }
 
 // The site's navbar menu — an ordered, nestable tree of `item`s.
 // Declared inside the `site` block; rendered by the `webpage` template.
+// A `wdoc_repeater` here (body = `item` blocks) emits one entry per
+// element, so a menu can be data-driven (e.g. one entry per sub-site
+// discovered by `included_sites(...)`).
 @block("menu")
 type Menu {
   @children("item") items: list<MenuItem>
+  @children("wdoc_repeater") generators: list<WdocRepeater>
 }
 
 // Document descriptor. One per document; sets the default template and

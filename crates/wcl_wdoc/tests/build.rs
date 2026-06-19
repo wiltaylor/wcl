@@ -37,6 +37,7 @@ fn build_ok(file: &Path, out: &Path) -> usize {
         Err(BuildError::BadTemplate(name)) => panic!("build bad-template error: {name}"),
         Err(BuildError::Tileset(m)) => panic!("build tileset error: {m}"),
         Err(BuildError::EdgeRouting(m)) => panic!("build edge-routing error: {m}"),
+        Err(BuildError::IncludeCycle(m)) => panic!("build include-cycle error: {m}"),
     }
 }
 
@@ -1087,6 +1088,7 @@ page index {
         Err(BuildError::BadTemplate(name)) => panic!("expected Schema, got BadTemplate({name})"),
         Err(BuildError::Tileset(m)) => panic!("expected Schema, got Tileset({m})"),
         Err(BuildError::EdgeRouting(m)) => panic!("expected Schema, got EdgeRouting({m})"),
+        Err(BuildError::IncludeCycle(m)) => panic!("expected Schema, got IncludeCycle({m})"),
         Err(BuildError::DuplicatePage { site, name }) => {
             panic!("expected Schema, got DuplicatePage({site}: {name})")
         }
@@ -1202,6 +1204,7 @@ page index {
         }
         Err(BuildError::Tileset(m)) => panic!("expected DuplicateId, got Tileset({m})"),
         Err(BuildError::EdgeRouting(m)) => panic!("expected DuplicateId, got EdgeRouting({m})"),
+        Err(BuildError::IncludeCycle(m)) => panic!("expected DuplicateId, got IncludeCycle({m})"),
         Err(BuildError::DuplicatePage { site, name }) => {
             panic!("expected DuplicateId, got DuplicatePage({site}: {name})")
         }
@@ -2943,6 +2946,7 @@ page index {
         Err(BuildError::BadTemplate(name)) => panic!("expected BadLink, got BadTemplate({name})"),
         Err(BuildError::Tileset(m)) => panic!("expected BadLink, got Tileset({m})"),
         Err(BuildError::EdgeRouting(m)) => panic!("expected BadLink, got EdgeRouting({m})"),
+        Err(BuildError::IncludeCycle(m)) => panic!("expected BadLink, got IncludeCycle({m})"),
         Ok(n) => panic!("expected BadLink, got Ok({n})"),
     }
 }
@@ -3057,6 +3061,7 @@ page index {
         Err(BuildError::BadTemplate(name)) => panic!("expected BadLink, got BadTemplate({name})"),
         Err(BuildError::Tileset(m)) => panic!("expected BadLink, got Tileset({m})"),
         Err(BuildError::EdgeRouting(m)) => panic!("expected BadLink, got EdgeRouting({m})"),
+        Err(BuildError::IncludeCycle(m)) => panic!("expected BadLink, got IncludeCycle({m})"),
         Ok(n) => panic!("expected BadLink, got Ok({n})"),
     }
 }
@@ -9452,5 +9457,179 @@ fn diagram_image_with_unreadable_header_warns() {
             .iter()
             .any(|w| w.contains("img.webp") && w.contains("intrinsic size")),
         "expected an unsized-image warning, got: {warnings:?}"
+    );
+}
+
+// ── include: build other wdoc documents under a folder into subdirs ──
+
+/// Create `dir` (and parents) then write a wdoc fixture at `dir/<name>`.
+fn write_in(dir: &Path, name: &str, body: &str) -> PathBuf {
+    std::fs::create_dir_all(dir).expect("mkdir include fixture dir");
+    let path = dir.join(name);
+    write_fixture(&path, body);
+    path
+}
+
+#[test]
+fn include_builds_subsites_and_wires_nav() {
+    let root = TempDir::new().expect("mkdir tempdir");
+    let projects = root.path().join("projects");
+    write_in(
+        &projects.join("foo"),
+        "main.wcl",
+        "page index { h1 \"Foo site\" }",
+    );
+    write_in(
+        &projects.join("bar"),
+        "main.wcl",
+        "page index { h1 \"Bar site\" }",
+    );
+    // A `.wcl` sitting directly in the scanned folder is ignored (depth 0).
+    write_in(&projects, "notes.wcl", "page ignored { h1 \"Nope\" }");
+
+    let parent = write_in(
+        root.path(),
+        "parent.wcl",
+        r#"include "projects" { pattern = "main.wcl" }
+site main { root = true  default_template = :webpage  title = "Parent"
+  menu {
+    item "Home" { page = index }
+    wdoc_repeater { each = included_sites("projects", "main.wcl")  as = :s
+      item $"${s.name}" { href = s.href }
+    }
+  }
+}
+page index { sites = [:main]  h1 "Parent home" }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir tempdir");
+    let n = build_ok(&parent, out.path());
+    // parent index + foo index + bar index (notes.wcl ignored).
+    assert_eq!(n, 3, "expected parent + 2 sub-sites");
+
+    // Each sub-site is a self-contained tree with its own assets.
+    let foo = std::fs::read_to_string(out.path().join("projects/foo/index.html"))
+        .expect("foo sub-site index");
+    assert!(foo.contains("Foo site"), "{foo}");
+    assert!(
+        out.path().join("projects/foo/_wdoc").is_dir(),
+        "foo sub-site has its own _wdoc"
+    );
+    assert!(
+        out.path().join("projects/bar/index.html").exists(),
+        "bar sub-site built"
+    );
+    // notes.wcl (directly in the folder) is not a sub-site.
+    assert!(!out.path().join("projects/notes").exists());
+
+    // The parent's nav links to the discovered sub-sites by folder name.
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("parent index");
+    assert!(index.contains("href=\"projects/foo/\""), "{index}");
+    assert!(index.contains("href=\"projects/bar/\""), "{index}");
+}
+
+#[test]
+fn include_glob_matches_across_subdirs() {
+    let root = TempDir::new().expect("mkdir tempdir");
+    let sites = root.path().join("sites");
+    write_in(
+        &sites.join("alpha"),
+        "main.wcl",
+        "page index { h1 \"Alpha\" }",
+    );
+    write_in(
+        &sites.join("beta"),
+        "entry.wcl",
+        "page index { h1 \"Beta\" }",
+    );
+
+    let parent = write_in(
+        root.path(),
+        "parent.wcl",
+        "include \"sites\" { pattern = \"*.wcl\" }\npage index { h1 \"P\" }",
+    );
+    let out = TempDir::new().expect("mkdir tempdir");
+    let n = build_ok(&parent, out.path());
+    assert_eq!(n, 3, "parent + alpha + beta (both match *.wcl)");
+    assert!(out.path().join("sites/alpha/index.html").exists());
+    assert!(out.path().join("sites/beta/index.html").exists());
+}
+
+#[test]
+fn include_exact_pattern_filters_subdir_files() {
+    let root = TempDir::new().expect("mkdir tempdir");
+    let sites = root.path().join("sites");
+    write_in(
+        &sites.join("alpha"),
+        "main.wcl",
+        "page index { h1 \"Alpha\" }",
+    );
+    write_in(
+        &sites.join("beta"),
+        "entry.wcl",
+        "page index { h1 \"Beta\" }",
+    );
+
+    let parent = write_in(
+        root.path(),
+        "parent.wcl",
+        "include \"sites\" { pattern = \"main.wcl\" }\npage index { h1 \"P\" }",
+    );
+    let out = TempDir::new().expect("mkdir tempdir");
+    let n = build_ok(&parent, out.path());
+    assert_eq!(n, 2, "parent + alpha only (beta/entry.wcl excluded)");
+    assert!(out.path().join("sites/alpha/index.html").exists());
+    assert!(!out.path().join("sites/beta").exists());
+}
+
+#[test]
+fn include_two_entries_in_one_folder_error() {
+    let root = TempDir::new().expect("mkdir tempdir");
+    let c = root.path().join("c");
+    write_in(&c.join("foo"), "main.wcl", "page index { h1 \"A\" }");
+    write_in(&c.join("foo"), "other.wcl", "page index { h1 \"B\" }");
+
+    let parent = write_in(
+        root.path(),
+        "parent.wcl",
+        "include \"c\" { pattern = \"*.wcl\" }\npage index { h1 \"P\" }",
+    );
+    let out = TempDir::new().expect("mkdir tempdir");
+    let err = build(&parent, out.path(), None).expect_err("two entries in one folder");
+    assert!(
+        matches!(err, BuildError::BadPage(_)),
+        "expected a collision BadPage"
+    );
+}
+
+#[test]
+fn include_missing_folder_error() {
+    let root = TempDir::new().expect("mkdir tempdir");
+    let parent = write_in(
+        root.path(),
+        "parent.wcl",
+        "include \"ghost\" { pattern = \"*.wcl\" }\npage index { h1 \"P\" }",
+    );
+    let out = TempDir::new().expect("mkdir tempdir");
+    let err = build(&parent, out.path(), None).expect_err("missing include folder");
+    assert!(matches!(err, BuildError::BadPage(_)));
+}
+
+#[test]
+fn include_cycle_is_bounded() {
+    let root = TempDir::new().expect("mkdir tempdir");
+    // self/main.wcl includes ".." (its parent folder), whose subdirectory
+    // `self/` holds main.wcl — building it would recurse onto itself.
+    let entry = write_in(
+        &root.path().join("p").join("self"),
+        "main.wcl",
+        "include \"..\" { pattern = \"main.wcl\" }\npage index { h1 \"Loop\" }",
+    );
+    let out = TempDir::new().expect("mkdir tempdir");
+    let err = build(&entry, out.path(), None).expect_err("self-including document");
+    assert!(
+        matches!(err, BuildError::IncludeCycle(_)),
+        "expected an include cycle"
     );
 }

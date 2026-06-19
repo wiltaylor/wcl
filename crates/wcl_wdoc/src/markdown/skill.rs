@@ -17,7 +17,7 @@ use std::fs;
 use std::path::Path;
 
 use miette::{NamedSource, Report};
-use wcl_lang::{Block, Document, Environment, disk_loader};
+use wcl_lang::{Block, Document, disk_loader};
 
 use super::{emit, yaml};
 use crate::build::{
@@ -44,7 +44,7 @@ pub fn skill(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
         &user_src,
         &name,
         base_dir.clone(),
-        &Environment::new(),
+        &crate::build::wdoc_environment(base_dir.as_deref()),
         loader,
     )
     .map_err(|e| BuildError::Parse(Report::new(e)))?;

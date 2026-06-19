@@ -1,0 +1,59 @@
+// wdoc section: including other wdoc documents (sub-sites).
+page wdoc_includes { sites = [:reference]  title = "Including sub-sites"
+  h1 "Including sub-sites"
+
+  p "The `include` block builds *other* wdoc documents found under a folder and ships each one's rendered output into a subdirectory of this build — exactly as if you had run `wcl wdoc build` on each one separately. Unlike [imports](imports), which merge another file's blocks into the current document, an included document stays a **separate artifact**: it keeps its own pages and `_wdoc/` assets under its own output subdirectory."
+
+  callout "Include vs import" { class = ["info"]
+    body = "`import` pulls another file's declarations into *this* document (one merged site). `include` builds another document on its own and copies the result in (many independent sites under one output tree)."
+  }
+
+  h2 "The include block"
+
+  p "Name a folder (the inline label) and a filename `pattern` glob. The build walks the folder's **subdirectories** — files sitting directly in the folder are skipped — and treats every file whose name matches the glob as a sub-site entry point. Each match builds into `<folder-basename>/<entry's parent folder, relative to the folder>/`."
+
+  code wcl {
+    source = <<'WCL'
+import <wdoc.wcl>
+
+// projects/foo/main.wcl  →  <out>/projects/foo/
+// projects/bar/main.wcl  →  <out>/projects/bar/
+// projects/shared.wcl    →  ignored (not inside a subdirectory)
+include "projects" { pattern = "main.wcl" }
+
+site main { root = true  default_template = :webpage }
+page index { sites = [:main]  h1 "Home" }
+WCL
+  }
+
+  p "`pattern` is a filename glob: `*` matches any run of characters, `?` matches one. Use an exact name like `\"main.wcl\"` for a fixed entry-point convention, or `\"*.skill.wcl\"` to match a family. Two matches in the same subdirectory are a build error (only one entry per sub-site)."
+
+  h2 "Wiring navigation"
+
+  p "The companion `included_sites(folder, pattern)` builtin runs the same scan and returns one `{ name, href }` record per discovered sub-site — `name` is the entry's folder (relative to the scanned folder), `href` its root-relative URL. Pass it the **same** `folder` and `pattern` you gave the `include` block so the links line up with where the sub-sites were built, then feed it to a `wdoc_repeater` inside a `menu` (or a `toc`) to build nav entries:"
+
+  code wcl {
+    source = <<'WCL'
+site main { root = true  default_template = :webpage
+  menu {
+    item "Home" { page = index }
+    wdoc_repeater { each = included_sites("projects", "main.wcl")  as = :s
+      item $"${s.name}" { href = s.href }   // e.g. label "foo", href "projects/foo/"
+    }
+  }
+}
+WCL
+  }
+
+  callout "Multi-site hrefs" { class = ["warning"]
+    body = "`included_sites` returns **root-relative** hrefs (`projects/foo/`). A non-root site renders under `/<site>/`, so its menu must reach a sibling sub-site with a `../` prefix (`../projects/foo/`)."
+  }
+
+  h2 "Notes"
+
+  list {
+    li "Sub-sites are built by the HTML build (`wcl wdoc build`) and the dev server. The Markdown and PDF targets define `included_sites` so documents still parse, but do not embed sub-sites."
+    li "Only files in the folder's subdirectories are scanned — keep shared fragments meant for `import` as top-level `.wcl` files (or in a non-matching name) so they aren't mistaken for entry points."
+    li "An `include` chain that references one of its own ancestors is rejected as a cycle rather than looping."
+  }
+}

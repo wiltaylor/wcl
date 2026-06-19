@@ -15,6 +15,7 @@ mod force;
 mod highlight;
 mod icons;
 mod image;
+mod include;
 mod inline;
 mod layered;
 mod map;
