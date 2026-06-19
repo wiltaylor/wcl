@@ -2,54 +2,88 @@
 //
 // Build *other* wdoc documents found under a folder and ship each one's
 // rendered output into a subdirectory of this build — exactly as if
-// `wcl wdoc build` had been run on each one separately. The sub-sites are
-// NOT merged into this document (that is what `import` does); each keeps
-// its own pages and `_wdoc/` assets under its own output subdirectory.
+// `wcl wdoc build` (or `wcl wdoc skill`) had been run on each one
+// separately. The sub-sites are NOT merged into this document (that is what
+// `import` does); each keeps its own pages and `_wdoc/` assets under its own
+// output subdirectory.
 //
 // `folder` (the inline label) is a directory resolved relative to this
-// document. The build walks its SUBDIRECTORIES (files sitting directly in
-// `folder` are skipped) and treats every file whose name matches the
-// `pattern` glob as a sub-site entry point. Each match builds into
-// `<folder-basename>/<entry's parent folder, relative to folder>/`.
+// document. Pick exactly one discovery mode:
 //
-//   include "projects" { pattern = "main.wcl" }
-//     projects/foo/main.wcl  → <out>/projects/foo/
-//     projects/bar/main.wcl  → <out>/projects/bar/
-//     projects/shared.wcl    → ignored (not in a subdirectory)
+//   • `pattern` — a filename glob (`*` / `?`) matched recursively against
+//     every file in the folder's subdirectories. The sub-site name is the
+//     matching file's parent folder, relative to `folder`.
 //
-// The folder name and the discovered sub-sites are also exposed to WCL via
-// the `included_sites(folder, pattern)` builtin, which returns a list of
-// `{ name, href }` records (one per match, `name` = the relative folder,
-// `href` = the sub-site's root-relative URL). Feed it to a `wdoc_repeater`
-// inside a `menu` / `toc` to wire navigation to the sub-sites. Pass the
-// SAME `folder` / `pattern` you gave the `include` block so the hrefs line
-// up with where the sub-sites were built.
+//       include "projects" { pattern = "main.wcl" }
+//         projects/foo/main.wcl  → <out>/projects/foo/
+//         projects/bar/main.wcl  → <out>/projects/bar/
+//         projects/shared.wcl    → ignored (not in a subdirectory)
 //
-// Note: a non-root site in a multi-site build renders under `<site>/`, so
-// its menu needs to prefix the returned href with `../` to reach a
-// sibling sub-site directory.
+//   • `entry` — a fixed relative path checked inside each *immediate*
+//     subdirectory of `folder` (no recursion). Each subdirectory that has
+//     the entry file is a sub-site named after that subdirectory; rendered
+//     `out/` trees, `_wdoc/`, and bundled subtrees are never scanned. Good
+//     for a folder of whole projects whose entry sits at a fixed deep path.
 //
-// Building/copying sub-sites and scanning the filesystem aren't
-// expressible in WCL, so this block is consumed by the build pipeline in
-// Rust (it has no `lower`). The recursive build runs for the HTML build
-// (`wcl wdoc build`) and the dev server; the Markdown / PDF targets define
-// `included_sites` (so documents still parse) but do not embed sub-sites.
+//       include "members" { entry = "wdoc/book/main.wcl" }
+//         members/ls/wdoc/book/main.wcl  → <out>/members/ls/
+//         members/cat/wdoc/book/main.wcl → <out>/members/cat/
+//
+// `site` (optional) names which site of a multi-site member to build — it is
+// passed as `--site` to the per-member build, so a member declaring both a
+// `:book` and an `:ai_skill` site can be rendered as just one of them.
+//
+//       include "members" { entry = "main.wcl"  site = "book" }
+//
+// The folder and the discovered sub-sites are also exposed to WCL via the
+// `included_sites(options)` builtin. `options` is a record mirroring this
+// block's fields — `{ folder, pattern | entry, site? }` — and the builtin
+// returns one `{ name, href, title, summary }` record per match (`name` =
+// the sub-site folder, `href` = its root-relative URL, `title`/`summary`
+// read from the member's selected site, `title` falling back to `name`).
+// Feed it to a `wdoc_repeater` inside a `menu` / `toc` to wire navigation.
+// Pass the SAME options you gave the `include` block so the hrefs line up.
+// (Note: record fields use `:`, e.g. `{ folder: "members", entry: "main.wcl" }`,
+// whereas block fields use `=`.)
+//
+//       wdoc_repeater { each = included_sites({ folder: "members", entry: "main.wcl", site: "book" })  as = :m
+//         item $"${m.title}" { href = m.href }
+//       }
+//
+// Note: a non-root site in a multi-site build renders under `<site>/`, so its
+// menu needs to prefix the returned href with `../` to reach a sibling
+// sub-site directory.
+//
+// Building/copying sub-sites and scanning the filesystem aren't expressible
+// in WCL, so this block is consumed by the build pipeline in Rust (it has no
+// `lower`). The recursive build runs for the HTML build (`wcl wdoc build`),
+// the dev server, and the skill target (`wcl wdoc skill`, honouring `site`);
+// the Markdown / PDF targets define `included_sites` (so documents still
+// parse) but do not embed sub-sites.
 namespace wdoc
 
 @block("include")
 type IncludeSites {
   @doc("Folder to scan (the inline label): a directory resolved relative to this document.")
   @inline(0) folder: utf8
-  @doc("Filename glob (`*` / `?`) matched against files inside the folder's subdirectories — e.g. \"main.wcl\" or \"*.skill.wcl\".")
-  pattern: utf8
+  @doc("Recursive filename glob (`*` / `?`) matched against files in the folder's subdirectories — e.g. \"main.wcl\". Set this OR `entry`, not both.")
+  pattern: utf8?
+  @doc("A path checked inside each immediate subdirectory of the folder (no recursion) — e.g. \"main.wcl\" or \"wdoc/book/main.wcl\". Set this OR `pattern`, not both.")
+  entry: utf8?
+  @doc("Which named site of each (multi-site) member to build, passed as `--site`. Absent ⇒ the member's own default site selection.")
+  site: utf8?
 }
 
-// Shape of the records returned by the `included_sites(folder, pattern)`
-// builtin — one per discovered sub-site. Documentation only; the builtin
-// returns matching anonymous records.
+// Shape of the records returned by the `included_sites(options)` builtin —
+// one per discovered sub-site. Documentation only; the builtin returns
+// matching anonymous records.
 type IncludeEntry {
-  @doc("The matched entry's parent folder, relative to the scanned folder (e.g. \"foo\").")
+  @doc("The sub-site folder name (relative to the scanned folder, e.g. \"foo\").")
   name: utf8
-  @doc("The sub-site's root-relative URL (e.g. \"projects/foo/\").")
+  @doc("The sub-site's root-relative URL (e.g. \"members/foo/\").")
   href: utf8
+  @doc("The member's selected site `title`, falling back to `name` when unset / unreadable.")
+  title: utf8
+  @doc("The member's selected site `summary`, when set.")
+  summary: utf8?
 }

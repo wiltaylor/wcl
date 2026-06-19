@@ -79,52 +79,104 @@ pub fn schema_registry() -> Registry {
 }
 
 /// The [`Environment`] every wdoc backend uses to open a document: the base
-/// environment plus the `included_sites(folder, pattern)` builtin. The
-/// builtin scans a folder for sub-site entry points (see [`crate::include`])
-/// and returns the `{ name, href }` records a nav `wdoc_repeater` consumes;
+/// environment plus the `included_sites(options)` builtin. The builtin scans
+/// a folder for sub-site entry points (see [`crate::include`]) and returns
+/// `{ name, href, title, summary }` records a nav `wdoc_repeater` consumes;
 /// it closes over `base_dir` so the scanned folder resolves relative to the
 /// document, exactly like the `include` block it mirrors.
+///
+/// The single argument is an options record mirroring the `include` block's
+/// fields, e.g. `included_sites({ folder: "…", entry: "main.wcl", site: "book" })`
+/// — WCL has no keyword arguments, and a record keeps the call self-describing
+/// and aligned with the block. (Record fields use `:`; block fields use `=`.)
 pub(crate) fn wdoc_environment(base_dir: Option<&Path>) -> Environment {
     let mut env = Environment::new();
     let base = base_dir.map(Path::to_path_buf);
     env.add_builtin(
         "included_sites",
-        from_fn(move |folder: String, pattern: String| -> Value {
-            match crate::include::resolve_included(base.as_deref(), &folder, &pattern) {
-                Ok(sites) => Value::list(
-                    sites
-                        .iter()
-                        .map(|s| {
-                            let mut fields = BTreeMap::new();
-                            fields.insert("name".to_string(), Value::Utf8(s.name.clone()));
-                            fields.insert("href".to_string(), Value::Utf8(s.href.clone()));
-                            Value::record(Vec::new(), fields)
-                        })
-                        .collect(),
-                ),
-                // A missing folder / bad scan surfaces from the build step,
-                // which is the authority on the include set; nav degrades to
-                // an empty list rather than failing the render here.
-                Err(_) => Value::list(Vec::new()),
-            }
+        from_fn(move |opts: Value| -> Result<Value, String> {
+            // A malformed options record is a caller bug → eval error. A
+            // valid-but-unscannable folder (e.g. not created yet) degrades to
+            // an empty list; the build step is the authority on the set.
+            let spec = include_spec_from_value(&opts)?;
+            let sites = match crate::include::resolve_included(base.as_deref(), &spec) {
+                Ok(sites) => sites,
+                Err(_) => return Ok(Value::list(Vec::new())),
+            };
+            Ok(Value::list(
+                sites
+                    .iter()
+                    .map(|s| {
+                        let (title, summary) =
+                            crate::include::read_entry_meta(&s.src_path, spec.site.as_deref());
+                        let mut fields = BTreeMap::new();
+                        fields.insert("name".to_string(), Value::Utf8(s.name.clone()));
+                        fields.insert("href".to_string(), Value::Utf8(s.href.clone()));
+                        fields.insert(
+                            "title".to_string(),
+                            Value::Utf8(title.unwrap_or_else(|| s.name.clone())),
+                        );
+                        fields.insert(
+                            "summary".to_string(),
+                            summary.map(Value::Utf8).unwrap_or(Value::None),
+                        );
+                        Value::record(Vec::new(), fields)
+                    })
+                    .collect(),
+            ))
         })
-        .doc("Discover wdoc sub-sites under a folder for navigation (see the `include` block).")
-        .param(
-            "folder",
-            "utf8",
-            "Folder to scan, relative to the document.",
+        .doc(
+            "Discover wdoc sub-sites under a folder for navigation (mirrors the `include` \
+             block). Argument is an options record: `{ folder, pattern|entry, site? }`.",
         )
         .param(
-            "pattern",
-            "utf8",
-            "Filename glob matched inside the folder's subdirectories.",
+            "options",
+            "record",
+            "`{ folder: utf8, pattern: utf8 | entry: utf8, site: utf8? }` — the same \
+             options as the matching `include` block.",
         )
         .returns(
             "list",
-            "One `{ name, href }` record per discovered sub-site.",
+            "One `{ name, href, title, summary }` record per discovered sub-site.",
         ),
     );
     env
+}
+
+/// Read an `included_sites(...)` options record into an [`IncludeSpec`].
+/// Errors (eval errors — caller bugs) when the argument is not a record, has
+/// no `folder`, or sets neither / both of `pattern` and `entry`.
+fn include_spec_from_value(v: &Value) -> Result<crate::include::IncludeSpec, String> {
+    let Value::Record { fields, .. } = v else {
+        return Err("included_sites expects a record argument, e.g. \
+             included_sites({ folder: \"projects\", pattern: \"main.wcl\" })"
+            .to_string());
+    };
+    let get = |k: &str| -> Option<String> {
+        match fields.get(k) {
+            Some(Value::Utf8(s) | Value::Ascii(s)) => Some(s.clone()),
+            _ => None,
+        }
+    };
+    let folder = get("folder")
+        .ok_or_else(|| "included_sites: the options record needs a `folder` field".to_string())?;
+    let spec = crate::include::IncludeSpec {
+        folder,
+        pattern: get("pattern"),
+        entry: get("entry"),
+        site: get("site"),
+    };
+    match (&spec.pattern, &spec.entry) {
+        (Some(_), Some(_)) => {
+            Err("included_sites: set exactly one of `pattern` or `entry`, not both".to_string())
+        }
+        (None, None) => Err(
+            "included_sites: set one of `pattern` (recursive filename glob) or `entry` \
+                 (a path inside each immediate subdirectory)"
+                .to_string(),
+        ),
+        _ => Ok(spec),
+    }
 }
 
 pub enum BuildError {
@@ -331,10 +383,6 @@ pub struct BuildOptions {
     pub profile: bool,
 }
 
-/// Maximum depth of nested `include` builds, a backstop against an
-/// `include` chain that never terminates (deeper than any real project).
-const MAX_INCLUDE_DEPTH: usize = 8;
-
 /// [`build`] with [`BuildOptions`]. Returns the page count plus, when
 /// profiling was requested, the evaluation profile snapshot.
 pub fn build_with_options(
@@ -360,20 +408,7 @@ fn build_guarded(
     seen: &mut HashSet<PathBuf>,
     depth: usize,
 ) -> Result<(usize, Option<wcl_lang::Profile>), BuildError> {
-    if depth > MAX_INCLUDE_DEPTH {
-        return Err(BuildError::IncludeCycle(format!(
-            "include nesting exceeded {MAX_INCLUDE_DEPTH} levels at '{}'",
-            file.display()
-        )));
-    }
-    let canon = fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
-    if seen.contains(&canon) {
-        return Err(BuildError::IncludeCycle(format!(
-            "include cycle: '{}' is already being built",
-            file.display()
-        )));
-    }
-    seen.insert(canon.clone());
+    let canon = crate::include::guard_enter(file, seen, depth)?;
     let result = build_inner(file, out_dir, site_filter, opts, seen, depth);
     seen.remove(&canon);
     result
@@ -611,8 +646,9 @@ fn build_inner(
 /// Build the sub-sites declared by every `include` block into `out_dir`,
 /// returning the total pages written. Each match is built independently —
 /// as if `wcl wdoc build` had been run on it — into
-/// `<out_dir>/<folder-basename>/<entry's relative folder>/`. The whole set
-/// is resolved and its output layout validated before anything is built.
+/// `<out_dir>/<folder-basename>/<name>/`, narrowed to the include's `site`
+/// selector when set. The whole set is resolved and its output layout
+/// validated (by [`crate::include::collect_includes`]) before anything builds.
 fn build_includes(
     doc: &Document,
     base_dir: Option<&Path>,
@@ -622,60 +658,7 @@ fn build_includes(
     seen: &mut HashSet<PathBuf>,
     depth: usize,
 ) -> Result<usize, BuildError> {
-    let blocks: Vec<Block> = doc.blocks().filter(|b| b.kind() == "include").collect();
-    if blocks.is_empty() {
-        return Ok(0);
-    }
-    let mut all: Vec<crate::include::IncludedSite> = Vec::new();
-    for b in &blocks {
-        let folder = label_string(b).ok_or_else(|| {
-            BuildError::BadPage("an `include` block is missing its folder label".to_string())
-        })?;
-        let pattern = field_utf8(b, "pattern").ok_or_else(|| {
-            BuildError::BadPage(format!(
-                "include \"{folder}\": missing required `pattern` (a filename glob)"
-            ))
-        })?;
-        all.extend(crate::include::resolve_included(
-            base_dir, &folder, &pattern,
-        )?);
-    }
-    // Validate the output layout across every include before building: the
-    // prefix must not collide with a site subdirectory or the shared asset
-    // folder, and two entries must not target the same subdirectory.
-    let mut targets: BTreeMap<PathBuf, PathBuf> = BTreeMap::new();
-    for s in &all {
-        let top = s
-            .out_subdir
-            .components()
-            .next()
-            .map(|c| c.as_os_str().to_string_lossy().into_owned())
-            .unwrap_or_default();
-        if reserved_dirs.contains(&top) {
-            return Err(BuildError::BadPage(format!(
-                "include output '{}' collides with the site directory '{top}/' — \
-                 rename the include folder or the site",
-                s.out_subdir.display()
-            )));
-        }
-        if top == crate::terminal::ASSET_DIR {
-            return Err(BuildError::BadPage(format!(
-                "include output '{}' collides with the reserved asset folder '{}/'",
-                s.out_subdir.display(),
-                crate::terminal::ASSET_DIR
-            )));
-        }
-        if let Some(prev) = targets.insert(s.out_subdir.clone(), s.src_path.clone())
-            && prev != s.src_path
-        {
-            return Err(BuildError::BadPage(format!(
-                "two included documents target the same output '{}' ('{}' and '{}')",
-                s.out_subdir.display(),
-                prev.display(),
-                s.src_path.display()
-            )));
-        }
-    }
+    let all = crate::include::collect_includes(doc, base_dir, reserved_dirs)?;
     let mut count = 0;
     for s in &all {
         progress(format_args!(
@@ -686,7 +669,7 @@ fn build_includes(
         let (n, _) = build_guarded(
             &s.src_path,
             &out_dir.join(&s.out_subdir),
-            None,
+            s.site.as_deref(),
             opts,
             seen,
             depth + 1,

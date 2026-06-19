@@ -12,9 +12,9 @@
 //! A site opts in with `default_template = :ai_skill`; the backend refuses a
 //! site that hasn't (so a plain Markdown site isn't silently re-laid-out).
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use miette::{NamedSource, Report};
 use wcl_lang::{Block, Document, disk_loader};
@@ -34,6 +34,34 @@ use crate::tileset::TilesetRegistry;
 /// pages written (SKILL.md + every reference page). `site_filter` restricts
 /// rendering to a single named site.
 pub fn skill(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<usize, BuildError> {
+    let mut seen = HashSet::new();
+    skill_guarded(file, out_dir, site_filter, &mut seen, 0)
+}
+
+/// [`skill`] wrapped in the shared `include` cycle / depth guard, so a
+/// collection that fans members out can't loop onto an ancestor. Mirrors
+/// `build_guarded`; `seen` is the ancestor stack (pushed on entry, popped on
+/// exit).
+fn skill_guarded(
+    file: &Path,
+    out_dir: &Path,
+    site_filter: Option<&str>,
+    seen: &mut HashSet<PathBuf>,
+    depth: usize,
+) -> Result<usize, BuildError> {
+    let canon = crate::include::guard_enter(file, seen, depth)?;
+    let result = skill_inner(file, out_dir, site_filter, seen, depth);
+    seen.remove(&canon);
+    result
+}
+
+fn skill_inner(
+    file: &Path,
+    out_dir: &Path,
+    site_filter: Option<&str>,
+    seen: &mut HashSet<PathBuf>,
+    depth: usize,
+) -> Result<usize, BuildError> {
     let user_src = fs::read_to_string(file)
         .map_err(|e| BuildError::Io(e, format!("read {}", file.display())))?;
     let name = file.display().to_string();
@@ -63,9 +91,14 @@ pub fn skill(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
     fs::create_dir_all(out_dir)
         .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", out_dir.display())))?;
 
+    // A collection doc may carry only `include` blocks (fan members out) with
+    // no own skill site / pages — that's allowed; the "needs a skill site"
+    // and "no pages" errors only fire when there's nothing to fan out either.
+    let has_includes = doc.blocks().any(|b| b.kind() == "include");
+
     let site_blocks: Vec<Block> = doc.blocks().filter(|b| b.kind() == "site").collect();
     let all_pages = collect_pages(&doc)?;
-    if all_pages.is_empty() {
+    if all_pages.is_empty() && !has_includes {
         return Err(BuildError::BadPage("no `page` blocks to render".into()));
     }
     let specs = collect_site_specs(&site_blocks, &all_pages)?;
@@ -85,7 +118,7 @@ pub fn skill(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
         // Build every skill site; non-skill sites belong to the other targets.
         None => {
             let chosen: Vec<&SiteSpec> = specs.iter().filter(|s| is_skill_site(s)).collect();
-            if chosen.is_empty() {
+            if chosen.is_empty() && !has_includes {
                 return Err(BuildError::BadPage(
                     "no `:ai_skill` site to build — set `default_template = :ai_skill` \
                      on a `site` (with a `skill { … }` block)"
@@ -149,7 +182,49 @@ pub fn skill(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
     if let Some(msg) = crate::render::take_route_error() {
         return Err(BuildError::EdgeRouting(msg));
     }
-    result
+    let mut count = result?;
+    // Fan out included members' skills: each member's selected `:ai_skill`
+    // site is built into `<out>/<prefix>/<name>/` (SKILL.md + references/),
+    // honouring the include's `site` selector — the same guarded recursion
+    // the HTML build uses, so a collection skill is one command.
+    let reserved_dirs: BTreeSet<String> = specs
+        .iter()
+        .filter_map(|s| s.name.clone())
+        .filter(|n| Some(n) != root_site.as_ref())
+        .collect();
+    count += skill_includes(
+        &doc,
+        base_dir.as_deref(),
+        out_dir,
+        &reserved_dirs,
+        seen,
+        depth,
+    )?;
+    Ok(count)
+}
+
+/// Fan out every `include` block's members as skills into `out_dir`,
+/// mirroring `build_includes` but recursing the skill target.
+fn skill_includes(
+    doc: &Document,
+    base_dir: Option<&Path>,
+    out_dir: &Path,
+    reserved_dirs: &BTreeSet<String>,
+    seen: &mut HashSet<PathBuf>,
+    depth: usize,
+) -> Result<usize, BuildError> {
+    let all = crate::include::collect_includes(doc, base_dir, reserved_dirs)?;
+    let mut count = 0;
+    for s in &all {
+        count += skill_guarded(
+            &s.src_path,
+            &out_dir.join(&s.out_subdir),
+            s.site.as_deref(),
+            seen,
+            depth + 1,
+        )?;
+    }
+    Ok(count)
 }
 
 /// Render one site as a skill folder into `out_dir`. The start page →

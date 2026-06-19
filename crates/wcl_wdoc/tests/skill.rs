@@ -216,3 +216,44 @@ fn missing_start_page_is_rejected() {
         Ok(_) => panic!("missing start page must error"),
     }
 }
+
+#[test]
+fn include_fans_out_member_skills() {
+    let root = TempDir::new().expect("mkdir tempdir");
+    // Two members, each a single `:ai_skill` site at members/<name>/main.wcl.
+    for (name, title) in [("alpha", "Alpha"), ("beta", "Beta")] {
+        let dir = root.path().join("members").join(name);
+        std::fs::create_dir_all(&dir).expect("mkdir member");
+        write_fixture(
+            dir.join("main.wcl"),
+            &format!(
+                "site skill {{ default_template = :ai_skill  title = \"{title}\"\n  \
+                   skill {{ name = \"{name}\"  description = \"{title} skill\" }}\n}}\n\
+                 page index {{ sites = [:skill]  start = true  h1 \"{title}\" }}"
+            ),
+        );
+    }
+    // Collection skill doc: no own skill site — just fans members out.
+    let collection = root.path().join("collection.wcl");
+    write_fixture(
+        &collection,
+        "include \"members\" { entry = \"main.wcl\"  site = \"skill\" }",
+    );
+    let out = root.path().join("dist");
+    let n = match skill(&collection, &out, None) {
+        Ok(n) => n,
+        Err(e) => panic!("skill fan-out failed: {}", e.render_plain()),
+    };
+    assert!(n >= 2, "two member skills written, got {n}");
+    assert!(
+        out.join("members/alpha/SKILL.md").is_file(),
+        "alpha SKILL.md"
+    );
+    assert!(out.join("members/beta/SKILL.md").is_file(), "beta SKILL.md");
+    let md = std::fs::read_to_string(out.join("members/alpha/SKILL.md")).expect("alpha SKILL.md");
+    assert!(
+        md.contains("name: alpha"),
+        "front matter from member skill block: {md}"
+    );
+    assert!(md.contains("# Alpha"), "member page body rendered");
+}

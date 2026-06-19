@@ -9494,7 +9494,7 @@ fn include_builds_subsites_and_wires_nav() {
 site main { root = true  default_template = :webpage  title = "Parent"
   menu {
     item "Home" { page = index }
-    wdoc_repeater { each = included_sites("projects", "main.wcl")  as = :s
+    wdoc_repeater { each = included_sites({ folder: "projects", pattern: "main.wcl" })  as = :s
       item $"${s.name}" { href = s.href }
     }
   }
@@ -9631,5 +9631,149 @@ fn include_cycle_is_bounded() {
     assert!(
         matches!(err, BuildError::IncludeCycle(_)),
         "expected an include cycle"
+    );
+}
+
+// ── include: entry mode, site selector, richer records (extension) ──
+
+#[test]
+fn include_entry_mode_scans_immediate_subdirs() {
+    let root = TempDir::new().expect("mkdir tempdir");
+    let members = root.path().join("members");
+    write_in(
+        &members.join("ls").join("wdoc").join("book"),
+        "main.wcl",
+        "site book { title = \"ls\" }\npage index { sites = [:book]  h1 \"ls tool\" }",
+    );
+    write_in(
+        &members.join("cat").join("wdoc").join("book"),
+        "main.wcl",
+        "site book { title = \"cat\" }\npage index { sites = [:book]  h1 \"cat tool\" }",
+    );
+    // A rendered tree inside a member must never be scanned — entry mode only
+    // checks `<sub>/wdoc/book/main.wcl`, never recurses into `ls/out/`.
+    write_in(
+        &members.join("ls").join("out"),
+        "main.wcl",
+        "page junk { h1 \"junk\" }",
+    );
+    // A subdirectory lacking the entry file is skipped.
+    std::fs::create_dir_all(members.join("nope")).expect("mkdir");
+
+    let parent = write_in(
+        root.path(),
+        "parent.wcl",
+        "include \"members\" { entry = \"wdoc/book/main.wcl\" }\npage index { h1 \"P\" }",
+    );
+    let out = TempDir::new().expect("mkdir tempdir");
+    let n = build_ok(&parent, out.path());
+    assert_eq!(n, 3, "parent + ls + cat (nope skipped, out/ not scanned)");
+    assert!(out.path().join("members/ls/index.html").exists());
+    assert!(out.path().join("members/cat/index.html").exists());
+    assert!(!out.path().join("members/nope").exists());
+    assert!(
+        !out.path().join("members/ls/out").exists(),
+        "member out/ not a sub-site"
+    );
+}
+
+#[test]
+fn include_requires_exactly_one_of_pattern_entry() {
+    let root = TempDir::new().expect("mkdir tempdir");
+    write_in(
+        &root.path().join("m").join("a"),
+        "main.wcl",
+        "page index { h1 \"A\" }",
+    );
+
+    let neither = write_in(
+        root.path(),
+        "neither.wcl",
+        "include \"m\" { }\npage index { h1 \"P\" }",
+    );
+    let o1 = TempDir::new().expect("mkdir tempdir");
+    assert!(matches!(
+        build(&neither, o1.path(), None).expect_err("neither mode"),
+        BuildError::BadPage(_)
+    ));
+
+    let both = write_in(
+        root.path(),
+        "both.wcl",
+        "include \"m\" { pattern = \"main.wcl\"  entry = \"main.wcl\" }\npage index { h1 \"P\" }",
+    );
+    let o2 = TempDir::new().expect("mkdir tempdir");
+    assert!(matches!(
+        build(&both, o2.path(), None).expect_err("both modes"),
+        BuildError::BadPage(_)
+    ));
+}
+
+#[test]
+fn include_site_selector_builds_one_site() {
+    let root = TempDir::new().expect("mkdir tempdir");
+    write_in(
+        &root.path().join("members").join("alpha"),
+        "main.wcl",
+        "site book { title = \"Book\" }\n\
+         site skill { default_template = :ai_skill\n  skill { name = \"a\"  description = \"d\" }\n}\n\
+         page home { sites = [:book]  h1 \"Book home\" }\n\
+         page sk { sites = [:skill]  start = true  h1 \"Skill\" }",
+    );
+    let parent = write_in(
+        root.path(),
+        "parent.wcl",
+        "include \"members\" { entry = \"main.wcl\"  site = \"book\" }\npage index { h1 \"P\" }",
+    );
+    let out = TempDir::new().expect("mkdir tempdir");
+    let n = build_ok(&parent, out.path());
+    assert_eq!(n, 2, "parent index + alpha's book page only");
+    assert!(
+        out.path().join("members/alpha/home.html").exists(),
+        "book page built"
+    );
+    assert!(
+        !out.path().join("members/alpha/sk.html").exists(),
+        "skill page not built"
+    );
+    assert!(
+        !out.path().join("members/alpha/SKILL.md").exists(),
+        "skill site not built by HTML"
+    );
+}
+
+#[test]
+fn included_sites_records_carry_title_and_summary() {
+    let root = TempDir::new().expect("mkdir tempdir");
+    write_in(
+        &root.path().join("members").join("foo"),
+        "main.wcl",
+        "site main { title = \"Foo Title\"  summary = \"Foo summary\" }\n\
+         page index { sites = [:main]  h1 \"F\" }",
+    );
+    // No title → the record's title falls back to the folder name.
+    write_in(
+        &root.path().join("members").join("bar"),
+        "main.wcl",
+        "site main { summary = \"Bar summary\" }\npage index { sites = [:main]  h1 \"B\" }",
+    );
+    let parent = write_in(
+        root.path(),
+        "parent.wcl",
+        "include \"members\" { entry = \"main.wcl\" }\n\
+         page index {\n  \
+           wdoc_repeater { each = included_sites({ folder: \"members\", entry: \"main.wcl\" })  as = :s\n    \
+             p $\"${s.title}::${s.summary}\"\n  }\n}",
+    );
+    let out = TempDir::new().expect("mkdir tempdir");
+    build_ok(&parent, out.path());
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("parent index");
+    assert!(
+        index.contains("Foo Title::Foo summary"),
+        "title+summary: {index}"
+    );
+    assert!(
+        index.contains("bar::Bar summary"),
+        "title falls back to name: {index}"
     );
 }

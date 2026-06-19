@@ -137,6 +137,11 @@ type SiteConfig {
   default_template: symbol?
   @doc("Site title shown in the header / sidebar.")
   title:            utf8?
+  // A one-line description of the site. Not rendered by the built-in
+  // templates; it's metadata a parent collection surfaces through the
+  // `included_sites(...)` builtin (see `include.wcl`) for landing-page links.
+  @doc("One-line site description. Surfaced by `included_sites(...)` (not rendered by the built-in templates).")
+  summary:          utf8?
   // Path to a favicon image, resolved relative to the document and copied
   // into `_wdoc/` (external `http(s)://` / `data:` URLs pass through).
   // Absent ⇒ a default WCL icon ships instead.
