@@ -46,7 +46,7 @@ fn emit_profile(doc: &Document, profile: bool) {
 }
 
 #[derive(Parser)]
-#[command(name = "wcl", version, about = "WCL command-line interface")]
+#[command(name = "wcl", version = env!("WCL_VERSION"), about = "WCL command-line interface")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
