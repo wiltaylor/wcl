@@ -140,6 +140,24 @@ impl<'a> Parser<'a> {
                 let name_tok = self.bump()?;
                 let name = match name_tok.kind {
                     TokenKind::Ident(s) => s,
+                    // An integer segment addresses a block by a numeric
+                    // `@inline(0)` label (`steps.1` → the step labelled 1 — a
+                    // label match, NOT positional indexing). Suffix-free, to
+                    // match `Value::as_path_segment`. A float has no label
+                    // meaning and stays an error.
+                    TokenKind::Number(ref n) => {
+                        match crate::numeric::numeric_as_path_segment!(n, NumberLit) {
+                            Some(seg) => seg,
+                            None => {
+                                return Err(self.err(
+                                    "expected identifier or integer after '.', found a float"
+                                        .to_string(),
+                                    name_tok.span,
+                                    "expected identifier",
+                                ));
+                            }
+                        }
+                    }
                     other => {
                         return Err(self.err(
                             format!("expected identifier after '.', found {}", describe(&other)),

@@ -1010,6 +1010,61 @@ page all {
 }
 
 #[test]
+fn build_projects_body_on_numeric_labelled_nested_record() {
+    // Regression for the reported bug: a `body` on a record (`tstep`) nested in
+    // another record's `@children`, where the nested record has a NUMERIC
+    // `@inline(0)` label. Projected from a nested `wdoc_repeater`, and via a
+    // static numeric path. Both forms must render the step's body — previously
+    // the numeric label collapsed the reference to `DataPath(["body"])`.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("steps.wcl");
+    write_fixture(
+        &src,
+        r#"
+@document
+type Doc { @children("tut") tuts: list<Tut> }
+@block("tut")
+type Tut { @inline(0) id: identifier  @children("tstep") steps: list<TStep> }
+@block("tstep")
+type TStep { @inline(0) n: u32  @child("body") body: WdocAddressableBody? }
+
+tut t1 {
+  tstep 1 { body { p "STEP ONE body" } }
+  tstep 2 { body { p "STEP TWO body" } }
+}
+
+page pg {
+  // Repeater-binding form, nested one level: each step's own body.
+  wdoc_repeater { each = tuts as = :t
+    wdoc_repeater { each = t.steps as = :st
+      h3 $"Step ${st.n}"
+      project { from = st.body }
+    }
+  }
+  // Static numeric-path form: address the step labelled 1 directly.
+  h2 "Direct"
+  project { from = tuts.t1.steps.1.body }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("pg.html")).expect("read html");
+
+    // Repeater-binding form rendered both steps' bodies under their headings.
+    assert!(
+        html.contains("<p>STEP ONE body</p>") && html.contains("<p>STEP TWO body</p>"),
+        "nested repeater projected both numeric-labelled step bodies:\n{html}"
+    );
+    // Static numeric path rendered step 1's body a second time.
+    assert_eq!(
+        html.matches("<p>STEP ONE body</p>").count(),
+        2,
+        "step 1 body via repeater AND via the static numeric path `tuts.t1.steps.1.body`:\n{html}"
+    );
+}
+
+#[test]
 fn build_projects_list_of_bodies_and_survives_self_cycle() {
     // `@children("body")` yields a list of references; `project` renders each
     // in order. A `body` that projects itself terminates (the cycle guard

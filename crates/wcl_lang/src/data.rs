@@ -21,10 +21,10 @@ use crate::error::EvalError;
 use crate::value::Value;
 
 fn label_matches(v: &Value, name: &str) -> bool {
-    match v {
-        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s == name,
-        _ => false,
-    }
+    // Address a block by the same segment its label reifies to — strings,
+    // symbols, and integers all (see `Value::as_path_segment`) — so a numeric
+    // `@inline(0)` label (`tstep 1` → segment "1") resolves like a named one.
+    v.as_path_segment().as_deref() == Some(name)
 }
 
 /// Lazy navigator into a [`Document`]. Acquire one with

@@ -4582,6 +4582,62 @@ fn by_ref_datapath_resolves_to_body_block_children() {
 }
 
 #[test]
+fn by_ref_numeric_labelled_body_nested_one_level_resolves() {
+    // Regression for the nested-record bug: a `@by_ref` body on a record with
+    // a NUMERIC `@inline(0)` label (a step number), itself nested in another
+    // record's `@children`, must reify to a full root-resolvable path and
+    // re-resolve. Previously the numeric label produced an empty base so the
+    // body collapsed to `DataPath(["body"])` and failed to resolve.
+    let doc = Document::open(
+        r#"
+        @document
+        type Doc { @children("tut") tuts: list<Tut> }
+        @block("tut")
+        type Tut { @inline(0) id: identifier  @children("tstep") steps: list<TStep> }
+        @block("tstep") @by_ref
+        type TStep { @inline(0) n: u32  @children("note") notes: list<Note> }
+        @block("note")
+        type Note { @inline(0) text: utf8 }
+
+        tut t1 {
+          tstep 1 { note "step one" }
+          tstep 2 { note "step two" }
+        }
+        "#,
+        "test",
+    )
+    .expect("open");
+
+    // Reify the tut (the per-element step a repeater runs over `each = tuts`);
+    // its `steps` list carries each step as a resolvable reference whose path
+    // includes the numeric label.
+    let tut = doc
+        .block("tut")
+        .unwrap()
+        .to_record_value_at(&["tuts".to_string(), "t1".to_string()])
+        .unwrap();
+    let Value::Record { fields, .. } = tut else {
+        panic!("tut is not a record");
+    };
+    let Some(Value::List(steps)) = fields.get("steps") else {
+        panic!("steps did not reify to a list");
+    };
+    match &steps[0] {
+        Value::DataPath { segments, .. } => {
+            assert_eq!(segments, &["tuts", "t1", "steps", "1"]);
+        }
+        other => panic!("step reified to {other:?}, expected a @by_ref DataPath"),
+    }
+
+    // And the emitted path re-resolves from document root via the numeric
+    // label segment "1" (matched against the `u32` label).
+    let step = doc.get("tuts.t1.steps.1").unwrap().as_block().unwrap();
+    assert_eq!(step.kind(), "tstep");
+    let note = step.blocks().find(|b| b.kind() == "note").unwrap();
+    assert_eq!(note.labels().unwrap()[0], Value::Utf8("step one".into()));
+}
+
+#[test]
 fn by_ref_direct_member_access_yields_datapath() {
     let doc = open_by_ref();
     // A direct member chain to a `@by_ref` block also evaluates to the

@@ -606,3 +606,25 @@ fn projects_body_fragment_in_markdown() {
         "both bodies projected in markdown:\n{md}"
     );
 }
+
+#[test]
+fn projects_numeric_labelled_nested_body_in_markdown() {
+    // The numeric-label addressing fix lives in wcl_lang resolution (shared by
+    // all backends), so a body on a numerically-labelled nested record renders
+    // in Markdown the same as HTML.
+    let (_t, out) = build(
+        "@document\n\
+         type Doc { @children(\"tut\") tuts: list<Tut> }\n\
+         @block(\"tut\")\n\
+         type Tut { @inline(0) id: identifier  @children(\"tstep\") steps: list<TStep> }\n\
+         @block(\"tstep\")\n\
+         type TStep { @inline(0) n: u32  @child(\"body\") body: WdocAddressableBody? }\n\
+         tut t1 {\n  tstep 1 { body { p \"STEP ONE body\" } }\n}\n\
+         page pg {\n  wdoc_repeater { each = tuts as = :t\n    wdoc_repeater { each = t.steps as = :st\n      project { from = st.body }\n    }\n  }\n}\n",
+    );
+    let md = read(&out, "pg.md");
+    assert!(
+        md.contains("STEP ONE body"),
+        "nested numeric-label body in markdown:\n{md}"
+    );
+}

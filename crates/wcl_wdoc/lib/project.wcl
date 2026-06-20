@@ -47,6 +47,12 @@ namespace wdoc
 // (`body intro { … }`). A direct page-scope `project` names the full path
 // from a root field (`from = loops.only.body`), since a block is reached
 // through its `@children` field and label, not its bare kind.
+//
+// Records carrying a body may be nested arbitrarily (a `step` inside a
+// `tutorial`, etc.) and may use a numeric `@inline(0)` label — a `tstep 1`'s
+// body resolves via `st.body` from the repeater binding, or statically via
+// `from = tuts.t1.steps.1.body`. Note `steps.1` matches the step *labelled*
+// `1`, not the first element — it is label matching, not positional indexing.
 @block("body") @by_ref
 type WdocAddressableBody {
   @inline(0) name: identifier?

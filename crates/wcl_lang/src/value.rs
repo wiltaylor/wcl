@@ -293,6 +293,22 @@ impl Value {
         crate::numeric::numeric_as_u64!(self, Value)
     }
 
+    /// The bare, addressable string a label of this value contributes to a
+    /// dotted document path — the basis for `@by_ref` reference threading and
+    /// `BlockList` label matching. A string-like value (`utf8` / `ascii` /
+    /// `identifier` / `symbol`) is its own text (no quotes, no leading `:`);
+    /// an **integer** is its suffix-free decimal (`U32(1)` → `"1"`); anything
+    /// else (float, bool, none, list, …) is `None` (unaddressable). Reify and
+    /// resolve both route through this, so a label they emit and match agree.
+    pub fn as_path_segment(&self) -> Option<String> {
+        match self {
+            Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s) => {
+                Some(s.clone())
+            }
+            other => crate::numeric::numeric_as_path_segment!(other, Value),
+        }
+    }
+
     /// Lossily widen any numeric `Value` to `f64`. Returns `None` for
     /// non-numeric values. Used by the implicit-coercion path in
     /// arithmetic and comparison.

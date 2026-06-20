@@ -332,7 +332,7 @@ WCL
 
   callout "Addressing" {
     class = ["note"]
-    body  = "A single `@child(\"body\")` slot is addressed by its slot, so the body needs no name. A body in a `@children(\"body\")` **list**, or one declared standalone at the document root, is addressed by its `@inline(0)` name — give each a label (`body intro { … }`). A direct page-scope `project` names the full path from a root field (`from = servers.web01.overview`). A `body` never renders where it's declared, only where projected; a body that projects itself terminates (the inner self-reference is dropped)."
+    body  = "A single `@child(\"body\")` slot is addressed by its slot, so the body needs no name. A body in a `@children(\"body\")` **list**, or one declared standalone at the document root, is addressed by its `@inline(0)` name — give each a label (`body intro { … }`). A direct page-scope `project` names the full path from a root field (`from = servers.web01.overview`). The record carrying a body may be **nested** (a step inside a tutorial) and may use a **numeric** label — a `tstep 1`'s body resolves via `st.body` from a nested repeater, or statically via `from = tuts.t1.steps.1.body`. Note `steps.1` matches the step *labelled* `1`, not the first element — it's label matching, not positional indexing. A `body` never renders where it's declared, only where projected; a body that projects itself terminates (the inner self-reference is dropped)."
   }
 
   h2 "Tables from data"

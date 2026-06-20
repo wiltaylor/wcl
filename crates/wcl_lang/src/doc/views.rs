@@ -2993,16 +2993,12 @@ fn push_generated_matching<'a>(generator: &Block<'a>, kind: &str, out: &mut Vec<
     }
 }
 
-/// Reify a string-like label value into one address segment, or `None` for
-/// an absent / non-string label (an unaddressable block — e.g. an anonymous
-/// nested block). Mirrors the label kinds `BlockList::child` matches.
+/// Reify a block's first label into one address segment, or `None` for an
+/// absent / unaddressable label (an anonymous nested block, or a non-scalar
+/// label). Strings, symbols, and integers all address (`Value::as_path_segment`),
+/// exactly the labels `BlockList::child` matches.
 fn block_label_segment(b: &Block<'_>) -> Option<String> {
-    match b.labels().ok()?.first()? {
-        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s) => {
-            Some(s.clone())
-        }
-        _ => None,
-    }
+    b.labels().ok()?.first()?.as_path_segment()
 }
 
 /// Reify a single block at document path `base`. A block whose kind is
