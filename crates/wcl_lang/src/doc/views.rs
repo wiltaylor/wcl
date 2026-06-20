@@ -69,6 +69,7 @@ pub(crate) enum BuiltinDecorator {
     Connections,
     Dynamic,
     Ref,
+    ByRef,
 }
 
 impl BuiltinDecorator {
@@ -86,6 +87,7 @@ impl BuiltinDecorator {
             BuiltinDecorator::Connections => "connections",
             BuiltinDecorator::Dynamic => "dynamic",
             BuiltinDecorator::Ref => "ref",
+            BuiltinDecorator::ByRef => "by_ref",
         }
     }
 }
@@ -970,6 +972,16 @@ impl<'a> TypeDecl<'a> {
     /// without per-instance annotation.
     pub(crate) fn is_schemaless(&self) -> bool {
         has_schemaless(&self.ast.decorators)
+    }
+
+    /// `true` when this type declaration carries `@by_ref`. When a block of
+    /// this kind sits in a `@child`/`@children` slot of a block being
+    /// reified to a record value, the slot reifies to a resolvable
+    /// `Value::DataPath` reference instead of inlining the block's content.
+    /// Lets renderable content (e.g. wdoc's `body`) ride on a data record as
+    /// a property and be projected elsewhere by reference.
+    pub(crate) fn is_by_ref(&self) -> bool {
+        crate::doc::schema_check::has_by_ref(&self.ast.decorators)
     }
 
     pub fn span(&self) -> Span {
@@ -2386,6 +2398,21 @@ impl<'a> Block<'a> {
     /// missing optionals becoming `Value::None`. An un-schema'd block
     /// reifies its literal fields verbatim, keyed by its block kind.
     pub fn to_record_value(&self) -> Result<Value, EvalError> {
+        self.to_record_value_at(&[])
+    }
+
+    /// [`to_record_value`](Self::to_record_value) with the document path
+    /// that re-resolves this block from root (`base`). The path is only
+    /// consulted to address `@by_ref` child slots: a `@child`/`@children`
+    /// slot whose kind is marked `@by_ref` reifies to a
+    /// `Value::DataPath { segments: base + [field, …] }` reference instead
+    /// of inlining its content (so the referenced content — e.g. a wdoc
+    /// `body` — can be projected elsewhere). Every other field reifies
+    /// identically regardless of `base`, so a document with no `@by_ref`
+    /// kinds produces byte-identical records. An empty `base` (the entry
+    /// reifier couldn't address this block) still reifies normally; the
+    /// reference it emits simply won't resolve, which the consumer handles.
+    pub(crate) fn to_record_value_at(&self, base: &[String]) -> Result<Value, EvalError> {
         use std::collections::BTreeMap;
         let Some(schema) = self.schema() else {
             // Un-schema'd block: literal fields only.
@@ -2412,7 +2439,14 @@ impl<'a> Block<'a> {
             } else if is_child_slot {
                 // Project the slot and recursively reify; a computed splice
                 // is schema-completed exactly like statically-nested blocks.
-                match self.typed_field(name).and_then(|dr| dataref_to_value(&dr)) {
+                // Extend the address by this field name so a nested `@by_ref`
+                // slot emits a root-resolvable reference.
+                let mut child_base = base.to_vec();
+                child_base.push(name.to_string());
+                match self
+                    .typed_field(name)
+                    .and_then(|dr| dataref_to_value_at(&dr, &child_base))
+                {
                     Some(v) => v?,
                     None => f.default_value().unwrap_or(Value::None),
                 }
@@ -2959,19 +2993,60 @@ fn push_generated_matching<'a>(generator: &Block<'a>, kind: &str, out: &mut Vec<
     }
 }
 
-pub(crate) fn dataref_to_value<'a>(
+/// Reify a string-like label value into one address segment, or `None` for
+/// an absent / non-string label (an unaddressable block — e.g. an anonymous
+/// nested block). Mirrors the label kinds `BlockList::child` matches.
+fn block_label_segment(b: &Block<'_>) -> Option<String> {
+    match b.labels().ok()?.first()? {
+        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s) => {
+            Some(s.clone())
+        }
+        _ => None,
+    }
+}
+
+/// Reify a single block at document path `base`. A block whose kind is
+/// `@by_ref` becomes a `Value::DataPath` reference (segments = `base`)
+/// rather than an inlined record, so its content is reached only by
+/// re-resolving the path. Everything else reifies via `to_record_value_at`.
+fn reify_block_at(b: &Block<'_>, base: &[String]) -> Result<Value, EvalError> {
+    if b.schema().is_some_and(|s| s.is_by_ref()) {
+        return Ok(Value::DataPath {
+            kind: "block".to_string(),
+            segments: base.to_vec(),
+        });
+    }
+    b.to_record_value_at(base)
+}
+
+/// [`dataref_to_value`] carrying the document path that re-resolves `dr`
+/// from root (`base`), threaded so `@by_ref` slots can emit resolvable
+/// references. For a block list, each element's address extends `base` with
+/// that element's label.
+pub(crate) fn dataref_to_value_at<'a>(
     dr: &crate::data::DataRef<'a>,
+    base: &[String],
 ) -> Option<Result<Value, EvalError>> {
     use crate::data::DataKind;
     match dr.inner() {
         DataKind::Field(f) => Some(f.value().cloned().map_err(|e| e.clone())),
         DataKind::VariantValue(v) => Some(Ok(v.clone())),
         DataKind::VariantValueList(vs) => Some(Ok(Value::List(std::sync::Arc::new(vs.clone())))),
-        DataKind::Block(b) => Some(b.to_record_value()),
+        DataKind::Block(b) => Some(reify_block_at(b, base)),
         DataKind::BlockList(v) | DataKind::Table(v) => Some((|| {
             let mut out = Vec::with_capacity(v.len());
             for b in v {
-                out.push(b.to_record_value()?);
+                let elem_base = match block_label_segment(b) {
+                    Some(seg) => {
+                        let mut p = base.to_vec();
+                        p.push(seg);
+                        p
+                    }
+                    // Unaddressable element: pass an empty base so any nested
+                    // `@by_ref` reference is emitted but simply won't resolve.
+                    None => Vec::new(),
+                };
+                out.push(reify_block_at(b, &elem_base)?);
             }
             Ok(Value::List(std::sync::Arc::new(out)))
         })()),

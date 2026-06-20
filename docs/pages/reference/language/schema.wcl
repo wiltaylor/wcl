@@ -14,6 +14,7 @@ page schema { sites = [:reference, :wcl_skill]  title = "Schema & Decorators"
       | "`@table(\"kind\")`" | "type" | "Row schema for pipe-table syntax" |
       | "`@decorator(\"name\")`" | "type" | "Makes the type the schema for a user-defined `@name` decorator — its fields type the decorator's arguments" |
       | "`@schemaless`"      | "type" | "Opens the type: every instance accepts undeclared fields / children (no membership check), as if each were marked `@schemaless`. Also used on the document/reflection path." |
+      | "`@by_ref`"          | "type" | "When a block of this kind sits in a `@child`/`@children` slot of a record read as data, the slot reifies to a resolvable reference (a path) instead of inlining the block — so the content can be carried on the record and rendered elsewhere (e.g. wdoc's `body` + `project`)" |
       | "`@dynamic`"         | "connection" | "Lets `->` operands name ids resolved at consume time, not just literal blocks (see Connections)" |
   }
 

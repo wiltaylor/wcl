@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use wcl_lang::{Block, Document, Value};
+use wcl_lang::{Block, Document, EvalError, Value};
 
 use crate::inline::InlinePatterns;
 
@@ -202,6 +202,61 @@ pub(crate) fn enter_collect(tag: &str) -> Option<CollectGuard> {
     })
 }
 
+thread_local! {
+    /// Body addresses whose `project` is currently rendering on this thread.
+    /// Guards a body that projects itself (`project a` inside `body a`),
+    /// which plain block recursion — unlike repeater / component expansion —
+    /// would not bound via `binding_scope_depth`. Mirrors `ACTIVE_COLLECTS`.
+    static ACTIVE_PROJECTS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+}
+
+/// RAII guard returned by [`enter_project`]; removes the address from the
+/// active set when dropped.
+pub(crate) struct ProjectGuard(String);
+
+impl Drop for ProjectGuard {
+    fn drop(&mut self) {
+        ACTIVE_PROJECTS.with(|set| {
+            set.borrow_mut().remove(&self.0);
+        });
+    }
+}
+
+/// Begin projecting the body at `path`. Returns a guard while that address
+/// was not already being projected on this thread; returns `None` on a
+/// re-entrant cycle, in which case the caller renders nothing.
+pub(crate) fn enter_project(path: &str) -> Option<ProjectGuard> {
+    ACTIVE_PROJECTS.with(|set| {
+        if set.borrow().contains(path) {
+            None
+        } else {
+            set.borrow_mut().insert(path.to_string());
+            Some(ProjectGuard(path.to_string()))
+        }
+    })
+}
+
+/// The document path(s) a `project` block addresses — its `from` field
+/// evaluated to one or more `Value::DataPath` references (a single `@child`
+/// body, or a list from a `@children` body slot). Empty when `from` is
+/// absent or doesn't evaluate to a reference, which the caller surfaces as a
+/// diagnostic.
+fn project_target_paths(block: &Block<'_>) -> Vec<String> {
+    fn path_of(v: &Value) -> Option<String> {
+        match v {
+            Value::DataPath { segments, .. } if !segments.is_empty() => Some(segments.join(".")),
+            _ => None,
+        }
+    }
+    let Some(Ok(value)) = block.field("from").map(|f| f.value().cloned()) else {
+        return Vec::new();
+    };
+    match value {
+        Value::List(items) => items.iter().filter_map(path_of).collect(),
+        v => path_of(&v).into_iter().collect(),
+    }
+}
+
 /// Handle the structural block kinds every backend treats identically,
 /// so HTML / PDF / Markdown dispatch them once instead of three times:
 ///
@@ -248,6 +303,51 @@ pub(crate) fn walk_structural<E>(
             for child in collect_partials(doc, &tag) {
                 if let Err(e) = recurse(&child) {
                     return Some(Err(e));
+                }
+            }
+            Some(Ok(()))
+        }
+        // A `body` is content attached to a data record, reached only via
+        // `project`; it never renders at its own definition site. (It isn't a
+        // `WdocBlock`, so it normally can't appear as page content at all —
+        // this arm keeps it inert if it ever does.)
+        "body" => Some(Ok(())),
+        "project" => {
+            let paths = project_target_paths(block);
+            if paths.is_empty() {
+                record_lower_error(
+                    block,
+                    EvalError::user_error(
+                        "`project`'s `from` did not resolve to a body reference; it must name an \
+                         addressable `body` (e.g. a `@by_ref` property of the data being \
+                         generated from)"
+                            .to_string(),
+                        block.span(),
+                    ),
+                );
+                return Some(Ok(()));
+            }
+            for path in paths {
+                // A body that projects itself renders nothing for the inner
+                // hit (the guard); the outer projection still completes.
+                let Some(_guard) = enter_project(&path) else {
+                    continue;
+                };
+                match doc.get(&path).and_then(|dr| dr.as_block()) {
+                    Some(body) if body.kind() == "body" => {
+                        for child in body.blocks() {
+                            if let Err(e) = recurse(&child) {
+                                return Some(Err(e));
+                            }
+                        }
+                    }
+                    _ => record_lower_error(
+                        block,
+                        EvalError::user_error(
+                            format!("`project` target `{path}` did not resolve to a `body`"),
+                            block.span(),
+                        ),
+                    ),
                 }
             }
             Some(Ok(()))

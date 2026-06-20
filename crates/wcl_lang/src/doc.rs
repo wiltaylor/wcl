@@ -2603,7 +2603,11 @@ fn materialise_dataref_value(
     segments: Vec<String>,
     span: Span,
 ) -> Result<Value, EvalError> {
-    if let Some(v) = views::dataref_to_value(&dr) {
+    // Thread the source-written path as the reification base, so a `@by_ref`
+    // child slot (e.g. a wdoc `body`) reachable through this value reifies to
+    // a root-resolvable `Value::DataPath` reference rather than inlined
+    // content.
+    if let Some(v) = views::dataref_to_value_at(&dr, &segments) {
         return v;
     }
     materialise_dataref_or_path(dr, segments, span)

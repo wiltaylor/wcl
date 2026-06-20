@@ -31,6 +31,10 @@ type Site {
   // document root so partials can be scattered across imported files; also
   // legal inside any page (via `WdocBlock`).
   @children("partial")        partials:    list<WdocPartial>
+  // Standalone addressable content fragments at the document root (and in
+  // eagerly-imported files). Rendered by reference via `project`; a body
+  // attached to a data record needs no root slot. See `project.wcl`.
+  @children("body")           bodies:      list<WdocAddressableBody>
   // A document may declare several named `site` blocks; each renders to
   // its own subdirectory (a single site renders flat at the output
   // root). Absent ⇒ pages render bare. See `Page.sites` for membership.

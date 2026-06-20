@@ -22,6 +22,7 @@ import <wireframe.wcl>        // wireframe UI widgets (window/button/…)
 import <table.wcl>            // pipe-table block
 import <list.wcl>             // bullet / numbered lists (list + li)
 import <components.wcl>       // wdoc_component / wdoc_slot / wdoc_body / wdoc_repeater
+import <project.wcl>          // body (addressable content) + project (render by reference)
 import <templates.wcl>        // page templates (webpage / book) + parts
 import <presentation.wcl>     // presentation deck (slides + sections + template)
 import <inline.wcl>           // inline-span union + pattern type

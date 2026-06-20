@@ -37,6 +37,7 @@ pub fn schema_registry() -> Registry {
     r.register("wdoc/table.wcl", include_str!("../lib/table.wcl"));
     r.register("wdoc/list.wcl", include_str!("../lib/list.wcl"));
     r.register("wdoc/components.wcl", include_str!("../lib/components.wcl"));
+    r.register("wdoc/project.wcl", include_str!("../lib/project.wcl"));
     r.register(
         "wdoc/diagram-core.wcl",
         include_str!("../lib/diagram-core.wcl"),

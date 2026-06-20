@@ -942,6 +942,148 @@ wdoc_repeater { each = items  as = :c
 }
 
 #[test]
+fn build_projects_body_fragment_attached_to_a_data_record() {
+    // A `body` rides on a plain data record (`server`) as a property — the
+    // record is NOT a WdocBlock. A `wdoc_repeater` over those records renders
+    // each one's body via `project s.overview`: the `@by_ref` body reifies to
+    // a reference, so each iteration projects that server's own fragment, and
+    // the body's `${region}` resolves against its host record.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("project.wcl");
+    write_fixture(
+        &src,
+        r#"
+@document
+type Infra { @children("server") servers: list<Server> }
+
+@block("server")
+type Server {
+  @inline(0) name: identifier
+  region: utf8?
+  @child("body") overview: WdocAddressableBody?
+}
+
+server web01 {
+  region = "us-east"
+  body { p $"Frontend in ${region}." }
+}
+server web02 {
+  region = "eu-west"
+  body { p $"Frontend in ${region}." }
+}
+
+page all {
+  h1 "Fleet"
+  wdoc_repeater { each = servers  as = :s
+    h2 $"${s.name}"
+    project { from = s.overview }
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("all.html")).expect("read html");
+
+    // Each server's heading appears once...
+    assert!(
+        html.contains("<span>web01</span>") && html.contains("<span>web02</span>"),
+        "per-server headings:\n{html}"
+    );
+    // ...followed by that server's own projected body, region resolved in the
+    // body's host-record scope (not the repeater binding).
+    assert!(
+        html.contains("<p>Frontend in us-east.</p>"),
+        "web01 body projected with its region:\n{html}"
+    );
+    assert!(
+        html.contains("<p>Frontend in eu-west.</p>"),
+        "web02 body projected with its region:\n{html}"
+    );
+    // The body never renders at its definition site, so each projection
+    // appears exactly once (only via the repeater).
+    assert_eq!(
+        html.matches("<p>Frontend in us-east.</p>").count(),
+        1,
+        "body renders only where projected, not at its source:\n{html}"
+    );
+}
+
+#[test]
+fn build_projects_list_of_bodies_and_survives_self_cycle() {
+    // `@children("body")` yields a list of references; `project` renders each
+    // in order. A `body` that projects itself terminates (the cycle guard
+    // renders nothing for the re-entrant hit) instead of looping forever.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("multi.wcl");
+    write_fixture(
+        &src,
+        r#"
+@document
+type Roots {
+  @children("host") hosts: list<Host>
+  @children("loop") loops: list<Loop>
+}
+
+@block("host")
+type Host {
+  @inline(0) name: identifier
+  @children("body") notes: list<WdocAddressableBody>
+}
+
+host h1 {
+  body n1 { p "first note" }
+  body n2 { p "second note" }
+}
+
+page all {
+  wdoc_repeater { each = hosts  as = :h
+    project { from = h.notes }
+  }
+}
+
+@block("loop")
+type Loop {
+  @inline(0) name: identifier
+  @child("body") b: WdocAddressableBody?
+}
+
+loop only {
+  body cyc {
+    p "before"
+    project { from = loops.only.b }
+    p "after"
+  }
+}
+
+page cycle {
+  project { from = loops.only.b }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+
+    // List projection: both bodies render, in order.
+    let all = std::fs::read_to_string(out.path().join("all.html")).expect("read all");
+    assert!(
+        all.contains("<p>first note</p>") && all.contains("<p>second note</p>"),
+        "both list-projected bodies render:\n{all}"
+    );
+
+    // Self-cycle: the outer projection renders the body once; the inner
+    // self-project is dropped by the guard, so `before`/`after` appear once
+    // and the build terminates.
+    let cycle = std::fs::read_to_string(out.path().join("cycle.html")).expect("read cycle");
+    assert_eq!(
+        cycle.matches("<p>before</p>").count(),
+        1,
+        "self-cycling body renders once, guard stops recursion:\n{cycle}"
+    );
+    assert!(cycle.contains("<p>after</p>"), "body completes:\n{cycle}");
+}
+
+#[test]
 fn build_renders_component_slots_defaults_and_content() {
     // A `wdoc_component` is instantiated by its own name; slots fill from
     // the instance's fields (or a `default`), resolve in `${…}` labels and

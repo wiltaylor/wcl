@@ -296,6 +296,45 @@ WCL
     body  = "Collection is **document-global**: a `collect` gathers matching partials from the root document and every file pulled in by a top-level `import` — so tag deposits distinctly to avoid cross-page bleed. Partials in **block-scoped** (lazily imported) files aren't reached, nested partials inside a partial body aren't separately collected, and a collected body should avoid `id`s (per-page id checks run before collection). A `collect` whose collected content contains another `collect` of the same tag is a no-op (the cycle is broken)."
   }
 
+  h2 "Content fragments on data (body & project)"
+
+  p "Partials gather content by **tag**. A `body` does something different: it attaches a chunk of renderable content to a **data record** as a *property* — without that record being a renderable block — and a `project` renders it elsewhere by **reference**. This is the pattern when you generate pages from structured data and want each record to carry its own prose."
+
+  p "Declare your own block type with a `@child(\"body\")` slot, author the content inside each record, then `project` it from a repeater. Because `body` is `@by_ref`, reading a record as data turns its body slot into a reference, so `from = s.overview` resolves to *that* record's fragment — and `${…}` inside the body resolves against the record:"
+
+  code wcl {
+    source = <<'WCL'
+@document
+type Infra { @children("server") servers: list<Server> }
+
+@block("server")
+type Server {
+  @inline(0) name: identifier
+  region: utf8?
+  @child("body") overview: WdocAddressableBody?   // content rides on the record
+}
+
+server web01 { region = "us-east"
+  body { p $"Frontend in ${region}." }            // NOT a renderable block here
+}
+server web02 { region = "eu-west"
+  body { p $"Frontend in ${region}." }
+}
+
+page fleet {
+  wdoc_repeater { each = servers  as = :s
+    h2 $"${s.name}"
+    project { from = s.overview }                 // render THIS record's body
+  }
+}
+WCL
+  }
+
+  callout "Addressing" {
+    class = ["note"]
+    body  = "A single `@child(\"body\")` slot is addressed by its slot, so the body needs no name. A body in a `@children(\"body\")` **list**, or one declared standalone at the document root, is addressed by its `@inline(0)` name — give each a label (`body intro { … }`). A direct page-scope `project` names the full path from a root field (`from = servers.web01.overview`). A `body` never renders where it's declared, only where projected; a body that projects itself terminates (the inner self-reference is dropped)."
+  }
+
   h2 "Tables from data"
 
   p "Set a `table`'s `rows` to a list of cell-lists — `map`ped from your data — with an optional `header` row. utf8 cells run through the inline-pattern engine (so `**bold**`, `:icons:`, links work); other scalars stringify:"

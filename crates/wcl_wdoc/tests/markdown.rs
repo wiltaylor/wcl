@@ -584,3 +584,25 @@ fn state_diagram_writes_standalone_svg() {
     let svg = read(&out, "_wdoc/sc-state-diagram-1.svg");
     assert!(svg.contains("wdoc-state"), "content lowered:\n{svg}");
 }
+
+#[test]
+fn projects_body_fragment_in_markdown() {
+    // The `project` block routes through the shared `walk_structural`
+    // dispatch, so the Markdown target renders a projected body the same way
+    // the HTML target does — content attached to a data record, rendered by
+    // reference inside a repeater.
+    let (_t, out) = build(
+        "@document\n\
+         type Infra { @children(\"server\") servers: list<Server> }\n\
+         @block(\"server\")\n\
+         type Server {\n  @inline(0) name: identifier\n  region: utf8?\n  @child(\"body\") overview: WdocAddressableBody?\n}\n\
+         server web01 { region = \"us-east\"\n  body { p $\"Frontend in ${region}.\" }\n}\n\
+         server web02 { region = \"eu-west\"\n  body { p $\"Frontend in ${region}.\" }\n}\n\
+         page all {\n  wdoc_repeater { each = servers  as = :s\n    project { from = s.overview }\n  }\n}\n",
+    );
+    let md = read(&out, "all.md");
+    assert!(
+        md.contains("Frontend in us-east.") && md.contains("Frontend in eu-west."),
+        "both bodies projected in markdown:\n{md}"
+    );
+}

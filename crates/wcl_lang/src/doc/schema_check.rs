@@ -131,6 +131,18 @@ pub(super) fn has_schemaless(decorators: &[ast::Decorator]) -> bool {
         .any(|d| d.name.len() == 1 && d.name[0] == name)
 }
 
+/// `true` when `decorators` carries `@by_ref`. A block kind so marked is
+/// reified to a resolvable [`Value::DataPath`](crate::value::Value::DataPath)
+/// reference when it appears as a `@child`/`@children` slot of a reified
+/// block, rather than having its content inlined — see
+/// [`Block::to_record_value`](crate::doc::views::Block::to_record_value).
+pub(super) fn has_by_ref(decorators: &[ast::Decorator]) -> bool {
+    let name = BuiltinDecorator::ByRef.as_str();
+    decorators
+        .iter()
+        .any(|d| d.name.len() == 1 && d.name[0] == name)
+}
+
 /// Validate every `Item::Connection` in a flat item list against the
 /// declared `connection` schemas in the document. Used at both the
 /// document root and inside `@block` bodies.
