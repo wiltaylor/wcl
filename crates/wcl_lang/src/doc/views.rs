@@ -28,6 +28,27 @@ use super::variant_dispatch;
 use super::{Document, find_block, find_field, find_let, has_schemaless};
 use super::{expr_to_path_segments, materialise_dataref_or_path, span_to_miette};
 
+/// Join the contiguous run of line comments immediately above a
+/// declaration (its `leading_trivia`) into a single doc-comment string.
+/// Walks from the end so only the block touching the declaration counts —
+/// a comment separated from the declaration by a blank line is unrelated
+/// and dropped. Each line is trimmed; returns `None` when no attached
+/// comment is present. Backs the `doc_comment` reflection builtin.
+pub(crate) fn doc_comment_from_trivia(trivia: &[ast::Trivia]) -> Option<String> {
+    let mut lines: Vec<&str> = Vec::new();
+    for t in trivia.iter().rev() {
+        match t {
+            ast::Trivia::LineComment(s) => lines.push(s.trim()),
+            ast::Trivia::BlankLine => break,
+        }
+    }
+    if lines.is_empty() {
+        return None;
+    }
+    lines.reverse();
+    Some(lines.join("\n"))
+}
+
 /// Closed set of decorator names the document layer special-cases:
 /// schema dispatch (`@block`, `@table`, `@document`, `@decorator`),
 /// field shape (`@inline`, `@default`, `@child`, `@children`),
@@ -207,6 +228,12 @@ impl<'a> UnionDecl<'a> {
             .map(move |(ast, cell)| Decorator { ast, cell, doc })
     }
 
+    /// The doc comment (contiguous `#` / `//` lines) directly above this
+    /// union declaration, or `None`.
+    pub fn doc_comment(&self) -> Option<String> {
+        doc_comment_from_trivia(&self.ast.leading_trivia)
+    }
+
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -271,6 +298,12 @@ impl<'a> UnionVariant<'a> {
             .iter()
             .zip(self.decorator_cells.iter())
             .map(move |(ast, cell)| Decorator { ast, cell, doc })
+    }
+
+    /// The doc comment (contiguous `#` / `//` lines) directly above this
+    /// variant, or `None`.
+    pub fn doc_comment(&self) -> Option<String> {
+        doc_comment_from_trivia(&self.ast.leading_trivia)
     }
 
     pub fn name(&self) -> &'a str {
@@ -818,6 +851,12 @@ impl<'a> SymbolSetDecl<'a> {
             .map(move |(ast, cell)| Decorator { ast, cell, doc })
     }
 
+    /// The doc comment (contiguous `#` / `//` lines) directly above this
+    /// symbol-set declaration, or `None`.
+    pub fn doc_comment(&self) -> Option<String> {
+        doc_comment_from_trivia(&self.ast.leading_trivia)
+    }
+
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -915,6 +954,12 @@ impl<'a> TypeDecl<'a> {
             .iter()
             .zip(self.cells.decorators.iter())
             .map(move |(ast, cell)| Decorator { ast, cell, doc })
+    }
+
+    /// The doc comment (contiguous `#` / `//` lines) directly above this
+    /// type declaration, or `None`.
+    pub fn doc_comment(&self) -> Option<String> {
+        doc_comment_from_trivia(&self.ast.leading_trivia)
     }
 
     /// `true` when this type declaration carries `@schemaless` — its
@@ -1111,6 +1156,12 @@ impl<'a> InterfaceDecl<'a> {
             .map(move |(ast, cell)| Decorator { ast, cell, doc })
     }
 
+    /// The doc comment (contiguous `#` / `//` lines) directly above this
+    /// interface declaration, or `None`.
+    pub fn doc_comment(&self) -> Option<String> {
+        doc_comment_from_trivia(&self.ast.leading_trivia)
+    }
+
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -1248,6 +1299,12 @@ impl<'a> TypeField<'a> {
             .iter()
             .zip(self.decorator_cells.iter())
             .map(move |(ast, cell)| Decorator { ast, cell, doc })
+    }
+
+    /// The doc comment (contiguous `#` / `//` lines) directly above this
+    /// field, or `None`.
+    pub fn doc_comment(&self) -> Option<String> {
+        doc_comment_from_trivia(&self.ast.leading_trivia)
     }
 
     /// If this field carries an `@inline(N)` decorator, returns N.

@@ -82,9 +82,11 @@ page builtins { sites = [:reference, :wcl_skill]  title = "Builtin Functions"
     li "[concat](#concat)"
     li "[contains](#contains)"
     li "[cos](#cos)"
+    li "[decl_info](#decl_info)"
     li "[decorator_arg](#decorator_arg)"
     li "[decorator_names](#decorator_names)"
     li "[degrees](#degrees)"
+    li "[doc_comment](#doc_comment)"
     li "[drop](#drop)"
     li "[e](#e)"
     li "[ends_with](#ends_with)"
@@ -117,6 +119,7 @@ page builtins { sites = [:reference, :wcl_skill]  title = "Builtin Functions"
     li "[merge](#merge)"
     li "[min](#min)"
     li "[min_by](#min_by)"
+    li "[namespace_decls](#namespace_decls)"
     li "[pad_end](#pad_end)"
     li "[pad_start](#pad_start)"
     li "[panic](#panic)"
@@ -274,6 +277,13 @@ cos(0)   // 1.0
 WCL
   }
   builtin_doc {
+    name = "decl_info"
+    example = <<'WCL'
+decl_info(Image).block_kind   // "image"
+decl_info(MyDoc).is_document  // true
+WCL
+  }
+  builtin_doc {
     name = "decorator_arg"
     example = <<'WCL'
 decorator_arg(Image, "block", "name")   // "image"
@@ -289,6 +299,13 @@ WCL
     name = "degrees"
     example = <<'WCL'
 degrees(pi())   // 180.0
+WCL
+  }
+  builtin_doc {
+    name = "doc_comment"
+    example = <<'WCL'
+doc_comment(Image)        // the `#` / `//` lines above the Image type
+doc_comment(Image.source) // the comment above the `source` field
 WCL
   }
   builtin_doc {
@@ -487,6 +504,17 @@ WCL
     name = "min_by"
     example = <<'WCL'
 min_by(["bb", "a", "ccc"], fn(s: utf8) -> i64 len(s))   // "a"
+WCL
+  }
+  builtin_doc {
+    name = "namespace_decls"
+    example = <<'WCL'
+// Document every block a namespace declares, straight from its schema:
+wdoc_repeater { each = namespace_decls("wdoc")  as = :d
+  h3 { decl_info(d).name }
+  p { doc_comment(d) }
+  type_table { type = d }
+}
 WCL
   }
   builtin_doc {

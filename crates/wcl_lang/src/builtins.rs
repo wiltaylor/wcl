@@ -87,6 +87,16 @@ pub trait Caller {
     /// …) rediscover the target carried in a `Value::DataPath`.
     fn resolve<'r>(&'r self, path: &[String]) -> Option<DataRef<'r>>;
 
+    /// Every top-level declaration (`type` / `interface` / `union` /
+    /// `symbol_set`) whose namespace exactly equals `ns`, as resolvable
+    /// navigators — backs the `namespace_decls` reflection builtin so a
+    /// documentation generator can enumerate a namespace's schema.
+    /// Imported declarations are included. Defaults to empty so hosts that
+    /// don't wire it up aren't forced to.
+    fn decls_in_namespace<'r>(&'r self, _ns: &[String]) -> Vec<DataRef<'r>> {
+        Vec::new()
+    }
+
     /// Structured documentation + signature of a built-in by `name`, for
     /// the `fn_signature` reflection builtin. `None` when no built-in of
     /// that name is registered. Defaults to `None` so hosts that don't

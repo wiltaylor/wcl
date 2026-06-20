@@ -54,6 +54,45 @@ pub(crate) fn register(env: &mut Environment) {
             ),
     );
     env.add_builtin(
+        "namespace_decls",
+        BuiltinFn::hof(1, namespace_decls_hof)
+            .doc("List references to every top-level declaration (`type` / `interface` / `union` / `symbol_set`) in a namespace, for schema-documentation generators. Pair with `decl_info`, `doc_comment`, `type_fields`, and `ast_string` to render each. Imported (library) declarations are included — filter on `decl_info(d).is_imported` to drop them.")
+            .param(
+                "ns",
+                "utf8",
+                "The namespace, dotted (e.g. `\"wdoc\"`); `\"\"` for the root namespace.",
+            )
+            .returns(
+                "[&T]",
+                "One reference per declaration: types first, then interfaces, unions, symbol sets, in source order.",
+            ),
+    );
+    env.add_builtin(
+        "decl_info",
+        BuiltinFn::hof(1, decl_info_hof)
+            .doc("Describe a top-level declaration: its name, kind, doc comment, and schema classification (block / table / decorator / document).")
+            .param(
+                "target",
+                "&T",
+                "A reference to a type, interface, union, or symbol_set declaration.",
+            )
+            .returns(
+                "record",
+                "`{ name, full_name, kind, doc, is_imported, is_document, block_kind, table_kind, decorator_name, extends }`. The classification fields are `none` when the decorator is absent.",
+            ),
+    );
+    env.add_builtin(
+        "doc_comment",
+        BuiltinFn::hof(1, doc_comment_hof)
+            .doc("The doc comment — the contiguous run of `#` / `//` lines immediately above a declaration — attached to a reference, or `\"\"` when there is none. Complements `decorator_arg(x, \"doc\", …)` for `@doc(\"…\")` metadata.")
+            .param(
+                "target",
+                "&T",
+                "A reference to a type, interface, union, variant, symbol_set, or field.",
+            )
+            .returns("utf8", "The joined comment text, or `\"\"` when absent."),
+    );
+    env.add_builtin(
         "ast_string",
         BuiltinFn::hof(1, ast_string_hof)
             .doc("Pretty-print the canonical source behind a reference (type/interface/union/symbol_set/block/field) or a function value.")
@@ -384,6 +423,144 @@ fn child_types_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, Str
         })
         .collect();
     Ok(Value::list(refs))
+}
+
+/// `namespace_decls(ns)` — references to every top-level declaration
+/// (type / interface / union / symbol_set) in the namespace `ns` (dotted;
+/// `""` is the root namespace). Each result is a `Value::DataPath` over the
+/// declaration's fully-qualified name, so it flows straight into
+/// `decl_info` / `doc_comment` / `type_fields` / `ast_string` — the chain a
+/// schema-documentation page relies on:
+///
+///   wdoc_repeater { each = namespace_decls("wdoc")  as = :d
+///     h3 { decl_info(d).name }
+///     p { doc_comment(d) }
+///     type_table { type = d }
+///   }
+fn namespace_decls_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
+    let ns = String::from_value(&args[0])?;
+    let segs: Vec<String> = if ns.is_empty() {
+        Vec::new()
+    } else {
+        ns.split('.').map(str::to_string).collect()
+    };
+    let refs: Vec<Value> = caller
+        .decls_in_namespace(&segs)
+        .iter()
+        .map(|dr| Value::DataPath {
+            kind: dr.kind().to_string(),
+            segments: decl_fqn_segments(dr),
+        })
+        .collect();
+    Ok(Value::list(refs))
+}
+
+/// FQN segments of the declaration a namespace-level navigator points at,
+/// so the returned `DataPath` re-resolves from any namespace.
+fn decl_fqn_segments(dr: &DataRef<'_>) -> Vec<String> {
+    match dr.inner() {
+        DataKind::Type(t) => t.fqn_segments(),
+        DataKind::Interface(i) => i.fqn_segments(),
+        DataKind::Union(u) => u.fqn_segments(),
+        DataKind::Symbols(s) => s.fqn_segments(),
+        _ => Vec::new(),
+    }
+}
+
+/// `decl_info(&T)` — a record describing a top-level declaration: its name,
+/// kind, doc comment, and schema classification (block / table / decorator /
+/// document). Lets a documentation repeater label and categorize each
+/// reference `namespace_decls` returns, and filter out imports.
+fn decl_info_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
+    let path = DataPath::from_value(&args[0])?;
+    let dr = resolve_path(caller, "decl_info", &path)?;
+    decl_info_record(&dr).ok_or_else(|| {
+        format!(
+            "decl_info: '{}' is not a top-level declaration",
+            path.segments.join(".")
+        )
+    })
+}
+
+/// Build the `decl_info` record. `None` for non-declaration navigators.
+fn decl_info_record(dr: &DataRef<'_>) -> Option<Value> {
+    let (name, full_name, is_imported, extends): (String, String, bool, Vec<String>) =
+        match dr.inner() {
+            DataKind::Type(t) => (
+                t.name().to_string(),
+                t.full_name(),
+                t.is_imported(),
+                extends_strings(t.extends()),
+            ),
+            DataKind::Interface(i) => (
+                i.name().to_string(),
+                i.full_name(),
+                false,
+                extends_strings(i.extends()),
+            ),
+            DataKind::Union(u) => (u.name().to_string(), u.full_name(), false, Vec::new()),
+            DataKind::Symbols(s) => (s.name().to_string(), s.full_name(), false, Vec::new()),
+            _ => return None,
+        };
+
+    let decs = collect_decorators(dr).unwrap_or_default();
+    let dec_arg = |n: &str| -> Value {
+        match decs.iter().find(|d| d.name() == n || d.full_name() == n) {
+            Some(d) => Value::Utf8(decorator_first_arg(d)),
+            None => Value::None,
+        }
+    };
+    let has_dec = |n: &str| decs.iter().any(|d| d.name() == n || d.full_name() == n);
+
+    let mut m = BTreeMap::new();
+    m.insert("name".to_string(), Value::Utf8(name));
+    m.insert("full_name".to_string(), Value::Utf8(full_name));
+    m.insert("kind".to_string(), Value::Utf8(dr.kind().to_string()));
+    m.insert(
+        "doc".to_string(),
+        Value::Utf8(collect_doc_comment(dr).unwrap_or_default()),
+    );
+    m.insert("is_imported".to_string(), Value::Bool(is_imported));
+    m.insert("is_document".to_string(), Value::Bool(has_dec("document")));
+    m.insert("block_kind".to_string(), dec_arg("block"));
+    m.insert("table_kind".to_string(), dec_arg("table"));
+    m.insert("decorator_name".to_string(), dec_arg("decorator"));
+    m.insert(
+        "extends".to_string(),
+        Value::list(extends.into_iter().map(Value::Utf8).collect()),
+    );
+    Some(Value::Record {
+        ty: vec!["DeclInfo".to_string()],
+        fields: std::sync::Arc::new(m),
+    })
+}
+
+/// Render each `extends` parent path as a dotted string.
+fn extends_strings(extends: &[Vec<String>]) -> Vec<String> {
+    extends.iter().map(|p| p.join(".")).collect()
+}
+
+/// `doc_comment(&T)` — the doc comment (`#` / `//` lines immediately above
+/// a declaration) attached to a reference, or `""` when absent. Works for
+/// type / interface / union / variant / symbol_set / field references.
+fn doc_comment_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
+    let path = DataPath::from_value(&args[0])?;
+    let dr = resolve_path(caller, "doc_comment", &path)?;
+    Ok(Value::Utf8(collect_doc_comment(&dr).unwrap_or_default()))
+}
+
+/// The doc comment attached to a navigator, mirroring `collect_decorators`.
+/// `None` for navigators with no comment-carrying AST node.
+fn collect_doc_comment(dr: &DataRef<'_>) -> Option<String> {
+    match dr.inner() {
+        DataKind::Type(t) => t.doc_comment(),
+        DataKind::Interface(i) => i.doc_comment(),
+        DataKind::Union(u) => u.doc_comment(),
+        DataKind::Variant(v) => v.doc_comment(),
+        DataKind::Symbols(s) => s.doc_comment(),
+        DataKind::TypeField(f) => f.doc_comment(),
+        _ => None,
+    }
 }
 
 /// Own fields (declaration order) followed by inherited fields not
@@ -899,5 +1076,209 @@ mod tests {
         assert_eq!(items.len(), 2, "{items:?}");
         assert_eq!(record_field(&items[0], "name"), &Value::Utf8("id".into()));
         assert_eq!(record_field(&items[1], "name"), &Value::Utf8("name".into()));
+    }
+
+    #[test]
+    fn namespace_decls_lists_decls_in_a_namespace_as_resolvable_refs() {
+        // Every top-level decl under `namespace lib` is returned as a
+        // DataPath whose segments are the FQN; root-namespace decls are
+        // excluded.
+        let v = eval_field(
+            r#"
+            namespace lib
+            @block("svc") @schemaless
+            type Svc { id: utf8 }
+            interface Widget { width: utf8? }
+            union Color { Red none  Blue none }
+            symbol_set Sizes { small  large }
+            @schemaless out = namespace_decls("lib")
+            "#,
+            "out",
+        );
+        let Value::List(refs) = v else {
+            panic!("expected a list, got {v:?}");
+        };
+        let segs: Vec<Vec<String>> = refs.iter().map(datapath_segments).collect();
+        assert_eq!(
+            segs,
+            vec![
+                vec!["lib".to_string(), "Svc".to_string()],
+                vec!["lib".to_string(), "Widget".to_string()],
+                vec!["lib".to_string(), "Color".to_string()],
+                vec!["lib".to_string(), "Sizes".to_string()],
+            ],
+            "types, then interfaces, unions, symbol sets"
+        );
+    }
+
+    #[test]
+    fn namespace_decls_refs_chain_into_type_fields() {
+        let v = eval_field(
+            r#"
+            namespace lib
+            @block("svc") @schemaless
+            type Svc { @inline(0) id: utf8  name: utf8 }
+            @schemaless out = type_fields(at(namespace_decls("lib"), 0))
+            "#,
+            "out",
+        );
+        let Value::List(fields) = &v else {
+            panic!("expected list, got {v:?}");
+        };
+        assert_eq!(record_field(&fields[0], "name"), &Value::Utf8("id".into()));
+        assert_eq!(
+            record_field(&fields[1], "name"),
+            &Value::Utf8("name".into())
+        );
+    }
+
+    #[test]
+    fn namespace_decls_empty_string_targets_root_namespace() {
+        // A root-namespace user type is found via `""`; the namespaced
+        // twin is not.
+        let v = eval_field(
+            r#"
+            @block("svc") @schemaless
+            type RootSvc { id: utf8 }
+            @schemaless out = namespace_decls("")
+            "#,
+            "out",
+        );
+        let Value::List(refs) = v else {
+            panic!("expected a list, got {v:?}");
+        };
+        let names: Vec<String> = refs
+            .iter()
+            .map(|r| match r {
+                Value::DataPath { segments, .. } => segments.join("."),
+                other => panic!("expected data path, got {other:?}"),
+            })
+            .collect();
+        assert!(names.contains(&"RootSvc".to_string()), "{names:?}");
+        // A non-matching namespace yields nothing — namespace filtering
+        // excludes decls outside the requested namespace.
+        assert!(!names.contains(&"lib.RootSvc".to_string()), "{names:?}");
+    }
+
+    #[test]
+    fn namespace_decls_empty_for_unknown_namespace() {
+        let v = eval_field(
+            r#"
+            @block("svc") @schemaless
+            type RootSvc { id: utf8 }
+            @schemaless out = namespace_decls("nope")
+            "#,
+            "out",
+        );
+        assert_eq!(v, Value::List(std::sync::Arc::new(vec![])));
+    }
+
+    #[test]
+    fn decl_info_classifies_block_decorator_and_document_types() {
+        let block = eval_field(
+            r#"
+            @block("svc") @schemaless
+            type Svc { id: utf8 }
+            @schemaless out = decl_info(Svc)
+            "#,
+            "out",
+        );
+        assert_eq!(record_field(&block, "name"), &Value::Utf8("Svc".into()));
+        assert_eq!(record_field(&block, "kind"), &Value::Utf8("type".into()));
+        assert_eq!(
+            record_field(&block, "block_kind"),
+            &Value::Utf8("svc".into())
+        );
+        assert_eq!(record_field(&block, "is_document"), &Value::Bool(false));
+        assert_eq!(record_field(&block, "is_imported"), &Value::Bool(false));
+
+        let doc = eval_field(
+            r#"
+            @document
+            type MyDoc { note: utf8? }
+            @schemaless out = decl_info(MyDoc)
+            "#,
+            "out",
+        );
+        assert_eq!(record_field(&doc, "is_document"), &Value::Bool(true));
+        assert_eq!(record_field(&doc, "block_kind"), &Value::None);
+
+        let deco = eval_field(
+            r#"
+            @decorator("doc")
+            type DocDec { text: utf8 }
+            @schemaless out = decl_info(DocDec)
+            "#,
+            "out",
+        );
+        assert_eq!(
+            record_field(&deco, "decorator_name"),
+            &Value::Utf8("doc".into())
+        );
+    }
+
+    #[test]
+    fn decl_info_reports_extends() {
+        let v = eval_field(
+            r#"
+            interface Base { id: identifier? }
+            @block("svc") @schemaless
+            type Svc extends Base { id: identifier?  name: utf8 }
+            @schemaless out = decl_info(Svc)
+            "#,
+            "out",
+        );
+        let Value::List(extends) = record_field(&v, "extends") else {
+            panic!("extends not a list");
+        };
+        assert_eq!(extends.as_ref(), &[Value::Utf8("Base".into())]);
+    }
+
+    #[test]
+    fn doc_comment_reads_leading_comments_on_type_and_field() {
+        let v = eval_field(
+            r#"
+            # A service definition.
+            # Second line.
+            @block("svc") @schemaless
+            type Svc {
+              # the service name
+              @inline(0) name: utf8
+            }
+            @schemaless out = doc_comment(Svc)
+            "#,
+            "out",
+        );
+        assert_eq!(v, Value::Utf8("A service definition.\nSecond line.".into()));
+
+        let field = eval_field(
+            r#"
+            @block("svc") @schemaless
+            type Svc {
+              # the service name
+              @inline(0) name: utf8
+            }
+            @schemaless out = doc_comment(Svc.name)
+            "#,
+            "out",
+        );
+        assert_eq!(field, Value::Utf8("the service name".into()));
+    }
+
+    #[test]
+    fn doc_comment_empty_when_absent_and_skips_detached_comment() {
+        // A comment separated from the declaration by a blank line is not
+        // a doc comment.
+        let v = eval_field(
+            r#"
+            # unrelated banner
+
+            @block("svc") @schemaless
+            type Svc { id: utf8 }
+            @schemaless out = doc_comment(Svc)
+            "#,
+            "out",
+        );
+        assert_eq!(v, Value::Utf8(String::new()));
     }
 }

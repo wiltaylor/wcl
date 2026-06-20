@@ -187,6 +187,37 @@ impl<'a> crate::builtins::Caller for EvalCaller<'a, '_> {
         self.doc.resolve_segments_in(&segs, ctx_ns)
     }
 
+    fn decls_in_namespace<'r>(&'r self, ns: &[String]) -> Vec<crate::data::DataRef<'r>> {
+        use crate::data::DataRef;
+        use crate::doc::DeclName;
+        let mut out: Vec<DataRef<'r>> = Vec::new();
+        out.extend(
+            self.doc
+                .type_decls()
+                .filter(|d| d.namespace().as_slice() == ns)
+                .map(DataRef::from_type),
+        );
+        out.extend(
+            self.doc
+                .interfaces()
+                .filter(|d| d.namespace().as_slice() == ns)
+                .map(DataRef::from_interface),
+        );
+        out.extend(
+            self.doc
+                .union_decls()
+                .filter(|d| d.namespace().as_slice() == ns)
+                .map(DataRef::from_union),
+        );
+        out.extend(
+            self.doc
+                .symbol_sets()
+                .filter(|d| d.namespace().as_slice() == ns)
+                .map(DataRef::from_symbol_set),
+        );
+        out
+    }
+
     fn builtin_info(&self, name: &str) -> Option<crate::builtins::BuiltinSignature> {
         self.doc
             .environment()
