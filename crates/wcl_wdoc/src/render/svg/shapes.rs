@@ -287,6 +287,16 @@ pub(crate) fn effective_dims(block: &Block<'_>) -> (f64, f64) {
             return ((content_w + pad).max(decl_w), (content_h + pad).max(decl_h));
         }
     }
+    // A node_table has no `height` field — its height is derived (header +
+    // one row_height per `node_row`). Report that true extent so a layout
+    // solver reserves the box's real footprint instead of the default 40px,
+    // preventing the next rank from overlapping it. (`width` is honored by
+    // node_table_bbox via resolve_rect_box; parent_w/parent_h = 0 is fine
+    // for the absolute-`width` case these diagrams use.)
+    if block.kind() == "node_table" {
+        let (_, _, w, h) = crate::node_table::node_table_bbox(block, 0.0, 0.0);
+        return (w, h);
+    }
     let declared_w = field_f64(block, "width").unwrap_or(80.0);
     let declared_h = field_f64(block, "height").unwrap_or(40.0);
     let Some(text) = text_content(block) else {

@@ -1691,6 +1691,77 @@ page index {
 }
 
 #[test]
+fn build_layered_node_tables_reserve_derived_height() {
+    // Regression: a `:layered` diagram of `node_table` shapes must reserve
+    // each table's *derived* height (header + rows) when ranking — not the
+    // flat 40px default. Two 3-row tables sit on rank 0 (edges point at a
+    // third table on rank 1). Each rank-0 table is header(28) + 3*row(30) =
+    // 118 tall, so the rank-1 table must be placed at least 118px below the
+    // rank-0 row. Before the fix `effective_dims` reported 40px for every
+    // node_table, so rank 1 landed ~40+layer_gap down and overlapped rank 0.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("layered_tables.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram {
+    width   = 700
+    height  = 500
+    layout  = :layered
+    routing = :elbow
+    node_table {
+      id = struct_a  title = "StructA"  width = 200.0
+      node_row { p "- one: i32" }
+      node_row { p "- two: i32" }
+      node_row { p "+ run(&self)" }
+    }
+    node_table {
+      id = struct_b  title = "StructB"  width = 200.0
+      node_row { p "- alpha: u8" }
+      node_row { p "- beta: u8" }
+      node_row { p "+ run(&self)" }
+    }
+    node_table {
+      id = iface  title = "Trait"  width = 200.0
+      node_row { p "+ run(&self)" }
+    }
+    struct_a -> iface
+    struct_b -> iface
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+
+    // Collect the y of every layout-positioned group `translate(tx ty)`.
+    let tys: Vec<f64> = html
+        .match_indices("transform=\"translate(")
+        .filter_map(|(i, _)| {
+            let rest = &html[i + "transform=\"translate(".len()..];
+            let inner = &rest[..rest.find(')')?];
+            let ty = inner.split_whitespace().nth(1)?;
+            ty.parse::<f64>().ok()
+        })
+        .collect();
+    let min_ty = tys.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max_ty = tys.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    assert!(
+        min_ty.is_finite() && max_ty.is_finite(),
+        "expected positioned translate groups, got {tys:?}"
+    );
+    // Rank 1 must clear a rank-0 table's full derived height (118), proving
+    // the solver reserved real height, not the 40px default.
+    assert!(
+        max_ty - min_ty >= 118.0,
+        "rank-1 table overlaps rank 0: vertical span {} < 118 derived height\n{html}",
+        max_ty - min_ty
+    );
+}
+
+#[test]
 fn build_node_table_expands_repeater_rows() {
     // A `node_table` whose rows come from a `wdoc_repeater` must expand
     // them like every other diagram shape: the rows render, the table's
