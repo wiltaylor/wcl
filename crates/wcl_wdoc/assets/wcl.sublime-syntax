@@ -24,6 +24,8 @@ contexts:
   comments:
     - match: '//.*$'
       scope: comment.line.double-slash.wcl
+    - match: '#.*$'
+      scope: comment.line.number-sign.wcl
 
   decorators:
     - match: '@{{ident}}'
