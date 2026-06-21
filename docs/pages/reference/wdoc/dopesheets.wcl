@@ -1,5 +1,5 @@
 // wdoc section: Dopesheets.
-page wdoc_dopesheets { sites = [:reference, :wcl_skill]  title = "Dopesheets"
+page wdoc_dopesheets { sites = [:reference]  title = "Dopesheets"
   h1 "Dopesheets"
 
   p "`dopesheet` plays a range of frames from a sprite sheet at a set `fps`. Like `tilemap` it's a placeable SVG block — a legal child of any `diagram` or `container` — and like other animated blocks it's special-cased in Rust because the geometry comes from cropping an external image. The sheet is referenced by URL, so frames resolve when the site is **served**, not when the page is opened directly from disk."

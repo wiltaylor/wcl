@@ -46,7 +46,7 @@ type DvHost { name: utf8  role: utf8  cpu: f64  mem: f64  up: bool }
 // example to generate a dependency graph.
 type DvSvc { key: utf8  name: utf8  deps: list<utf8> }
 
-page wdoc_data_views { sites = [:reference, :wcl_skill]  title = "Data Views"
+page wdoc_data_views { sites = [:reference]  title = "Data Views"
   h1 "Data Views"
 
   p "A *data view* renders document content — cards, tables, charts, diagrams — from a WCL **data structure** rather than hand-authored blocks. It's how you present data gathered about systems: declare the data once, then derive every view from it. The primary tool is a **component**: a reusable fragment of ordinary wdoc markup with named **slots**."
@@ -451,7 +451,7 @@ WCL
 
   h2 "Documenting your own schema"
 
-  p "`type_table` reflects *any* type, so it documents the blocks **you** declare just as well as wdoc's built-ins. Declare your own root `@document` alongside `import <wdoc.wcl>` (the two schemas [merge](schema)), give each block type a `@block(\"…\")` kind and `@doc` descriptions, then reflect them:"
+  p "`type_table` reflects *any* type, so it documents the blocks **you** declare just as well as wdoc's built-ins. Declare your own root `@document` alongside `import <wdoc.wcl>` (the two schemas merge), give each block type a `@block(\"…\")` kind and `@doc` descriptions, then reflect them:"
 
   code wcl {
     source = <<'WCL'

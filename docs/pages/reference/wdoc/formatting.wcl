@@ -5,7 +5,7 @@
 // icon) — no CSS needed.
 class "deploy" { accent = "#b48ead" }
 
-page wdoc_formatting { sites = [:reference, :wcl_skill]  title = "Formatting"
+page wdoc_formatting { sites = [:reference]  title = "Formatting"
   h1 "Formatting"
 
   p "The everyday building blocks of a page: prose paragraphs with inline formatting, the six heading levels, and syntax-highlighted code listings."
@@ -166,7 +166,7 @@ WCL
     }
   }
 
-  p "The `source` is usually a heredoc — use a raw heredoc (`<<'TAG'`) so the body is taken verbatim, with no escapes or interpolation to mangle backslash-heavy code. See [Strings & Heredocs](strings) for the full syntax."
+  p "The `source` is usually a heredoc — use a raw heredoc (`<<'TAG'`) so the body is taken verbatim, with no escapes or interpolation to mangle backslash-heavy code. See Strings & Heredocs for the full syntax."
 
   h2 "Lists"
 

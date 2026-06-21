@@ -14,6 +14,17 @@ page index { sites = [:wcl]  title = "Why WCL?"  start = true
 
   p "This then enables a lot of different use cases. Detailed configurations, WDoc which lets you model the data in a format that makes sense and then present multiple views on it."
 
+  h2 "Reference"
+
+  p "WCL's reference is published as **wskills** — self-contained WCL models, each projected into a book (linked below) and a Claude Code skill. The [wdoc Reference](reference:index) book documents the documentation generator's blocks."
+
+  // One linked entry per wskill under docs/wskills/, discovered and built by the
+  // `include` in main.wcl. Title / summary come from each member's book site; the
+  // `wskills/<name>/` href is root-relative (this landing is the root site).
+  wdoc_repeater { each = included_sites({ folder: "wskills", entry: "wdoc/book/main.wcl" })  as = :s
+    p $"**[${s.title}](./${s.href})**${match s.summary { none => "", su => $" — ${su}" }}"
+  }
+
   h2 "A taste"
 
   p "A document is fields and blocks; a schema declared with decorators validates the structure."

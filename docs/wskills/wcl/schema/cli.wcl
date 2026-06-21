@@ -1,0 +1,73 @@
+// wskill OPTIONAL standard module — map a command-line interface as data.
+//
+// Import this from a wskill's root (`import "./schema/cli.wcl"`) only when the
+// wskill documents a CLI. Parallel to the language module: a `cli` is the root
+// (like `language`), `subcommand` blocks nest under it (like `feature`), and each
+// command carries positional `cli_arg`s and `cli_switch`es (the leaf data). The
+// consuming wskill's templates render a "CLI" section over the gathered `clis`.
+//
+// All declarations share the base `wcl.wskill` namespace. The merging @document
+// below adds `clis` to the gathered document only in wskills that import this file.
+namespace wcl.wskill
+
+import <wdoc.wcl>
+import "./base.wcl"        // Audience
+import "./language.wcl"    // reuse CodeExample
+
+// A positional argument of a command. The label is a block id; `name` is the
+// displayed argument name (which may contain characters a bare label can't).
+@block("cli_arg")
+type CliArg {
+  @inline(0) id: identifier
+  name: utf8
+  description: utf8?
+  @default(true)  required: bool
+  @default(false) variadic: bool       // accepts multiple values
+  remarks: utf8?
+}
+
+// A flag / option. `value_name` unset = boolean flag; set = takes a value.
+@block("cli_switch")
+type CliSwitch {
+  @inline(0) id: identifier
+  long: utf8                           // e.g. "--in-place"
+  short: utf8?                         // e.g. "-D"
+  value_name: utf8?                    // e.g. "KEY=VALUE"; unset = boolean flag
+  description: utf8?
+  remarks: utf8?
+}
+
+// A subcommand — nestable; carries its own args, switches and examples.
+@block("subcommand")
+type Subcommand {
+  @inline(0) id: identifier
+  name: utf8
+  description: utf8?
+  remarks: utf8?
+  @default([]) aliases: list<utf8>
+  @default(:book) audience: Audience
+  @children("cli_arg")      args:        list<CliArg>
+  @children("cli_switch")   switches:    list<CliSwitch>
+  @children("subcommand")   subcommands: list<Subcommand>   // nested subcommands
+  @children("code_example") examples:    list<CodeExample>
+}
+
+// A CLI root — global switches + top-level subcommands.
+@block("cli")
+type Cli {
+  @inline(0) id: identifier
+  name: utf8
+  description: utf8?
+  version: utf8?
+  @default(:book) audience: Audience
+  @children("cli_switch")   switches:    list<CliSwitch>    // GLOBAL switches
+  @children("cli_arg")      args:        list<CliArg>
+  @children("subcommand")   subcommands: list<Subcommand>
+  @children("code_example") examples:    list<CodeExample>
+}
+
+// Merges with the base @document — `clis` gathered only when this module is imported.
+@document
+type CliDoc {
+  @children("cli") clis: list<Cli>
+}

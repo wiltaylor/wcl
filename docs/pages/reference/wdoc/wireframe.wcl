@@ -28,7 +28,7 @@ type WfBadge extends Widget {
   }
 }
 
-page wdoc_wireframe { sites = [:reference, :wcl_skill]  title = "Wireframe"
+page wdoc_wireframe { sites = [:reference]  title = "Wireframe"
   h1 "Wireframe"
 
   p "Wireframe widgets mock up a UI — windows, device frames (browser / phone / tablet), panels, inputs, controls — as **diagram shapes**. Each `wf_*` block `extends SvgBlock`, so it lives inside a `diagram`: you place it with `x` / `y` (or anchors), connect widgets with edges, and mix them with any other shape. Container widgets nest other widgets, so you compose a window of panels of rows of controls; the whole group is sized by its content and the diagram just frames it. They're visual mockups — static SVG, not interactive."

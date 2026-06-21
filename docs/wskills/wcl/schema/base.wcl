@@ -1,0 +1,371 @@
+// wskill base schema — ships with the WSKILL skill scaffold.
+//
+// DO NOT HAND-EDIT. Everything topic-specific belongs in `extensions.wcl`.
+// This file is versioned with the WSKILL skill; upgrade procedures live in the
+// skill's references/schema.md. It defines the base block types (the wskill
+// data model) and the root @document that gathers every block instance so the
+// wdoc template sets can project over them.
+//
+// The schema travels with the document: a wskill folder is fully interpretable
+// (lint + render) without the WSKILL skill present.
+//
+// Field decorators (@default, @inline, @child, @children) are PREFIX — they sit
+// before the field they describe.
+//
+// All wskill declarations live in the `wcl.wskill` namespace. Importers (the root
+// wskill.wcl, data files, wdoc templates) keep using bare names — a relative import
+// auto-joins this namespace to the bare-name search path — and a name can be
+// qualified (`wcl.wskill::concept`) when it would otherwise be ambiguous.
+namespace wcl.wskill
+
+import <wdoc.wcl>
+
+// ---------------------------------------------------------------------------
+// Shared row types
+// ---------------------------------------------------------------------------
+
+// Key/value attribute row — used by `entity.attributes` and `custom.attrs`.
+// Authorable with WCL pipe-table syntax:
+//   attributes:
+//     | "flag" | "-l" |
+//     | "name" | "long format" |
+@table("attr")
+type Attr {
+  key:   utf8
+  value: utf8
+}
+
+// ---------------------------------------------------------------------------
+// Topic (one per wskill)
+// ---------------------------------------------------------------------------
+
+// The overarching subject — wraps everything inside the wskill — together with
+// the wskill's own document-level metadata (creation/maintenance dates).
+// Exactly one per wskill.
+@block("topic")
+type Topic {
+  @inline(0) id: identifier      // topic ls { … }  → id = ls
+  name:        utf8              // human title
+  summary:     utf8              // one-line description
+  description: utf8?             // longer prose (heredoc)
+  version:     utf8?             // pinned upstream version, where the topic has one
+  @default([]) tags: list<utf8>
+
+  // Document-level metadata for the wskill itself (not topic content).
+  created:    utf8               // ISO date the wskill was created
+  updated:    utf8?             // ISO date of last full update sweep
+  maintainer: utf8?
+  maintainer_entity: identifier?  // entity id holding maintainer details; the book links to it
+  note:       utf8?
+}
+
+// ---------------------------------------------------------------------------
+// Skill (one per wskill — the skill-projection config + bundled artifacts)
+// ---------------------------------------------------------------------------
+//
+// Skill artifacts (script / asset) are real files bundled into the emitted Claude
+// Code skill (the `scripts/` and `assets/` folders a skill expects). They are
+// authored as CHILDREN of the `skill` block below (so they drop the `skill_`
+// prefix). The skill template ships each via wdoc's `file` block; the executable
+// bit is preserved, so scripts arrive runnable. The book projection lists them with
+// a download link (it cannot inline a file's bytes).
+//
+// Two fields carry the file's identity:
+//   `source` — WHERE IT COMES FROM: the file's path under the wskill root, e.g.
+//              "skill/scripts/build.sh". Templates resolve it relative to the root.
+//   `name`   — WHAT IT IS CALLED IN THE RENDERED SKILL: the filename it ships as
+//              under scripts/ or assets/, e.g. "build.sh".
+// wdoc's `file` block names the copied output by the source's basename, so `name`
+// must equal that basename. See references/schema.md.
+
+// A runnable script shipped into the skill's scripts/ folder.
+@block("script")
+type Script {
+  @inline(0) id: identifier
+  source:      utf8             // where it comes from: path under the wskill root (e.g. "skill/scripts/build.sh")
+  name:        utf8             // filename in the rendered skill (= basename of source, e.g. "build.sh")
+  description: utf8             // what it does AND when to run it
+  usage:       utf8             // invocation, e.g. "scripts/build.sh ARG"
+  @default([]) tags: list<utf8>
+}
+
+// Optional custom SKILL.md summary content — a sub-block of `skill` whose plain
+// fields are pulled onto the skill's start page (no wdoc body projection, which
+// the `skill`/wdoc block-kind collision prevents). Author one inside `skill`.
+@block("summary")
+type Summary {
+  @default([]) overview:   list<utf8>   // intro paragraph(s) under the topic summary
+}
+
+// An invocation parameter the skill accepts — rendered into the SKILL.md
+// "Parameters" section. `name` is the Claude Code placeholder or label (e.g.
+// "$ARGUMENTS", "$1", "$2"); `value` says how to determine what to pass. The kind
+// is `skill_param` (not `parameter`, which the language module already declares).
+@block("skill_param")
+type SkillParam {
+  @inline(0) name: utf8        // e.g. "$ARGUMENTS", "$1", "$2"
+  description: utf8?           // what the parameter represents
+  value:       utf8?          // how to determine / where to source the value
+}
+
+// Behavioural guardrails for the skill — rendered into SKILL.md inside
+// `<Boundary> … </Boundary>` tags so an agent treats them as hard rules. The kind
+// is `skill_boundary` (bare `boundary` collides with a wdoc diagram block).
+@block("skill_boundary")
+type SkillBoundary {
+  @default([]) always: list<utf8>   // things to always do
+  @default([]) ask:    list<utf8>   // things to ask before doing
+  @default([]) never:  list<utf8>   // things to never do
+}
+
+// A static data file (fixture, dataset, sample config) shipped into assets/.
+@block("asset")
+type Asset {
+  @inline(0) id: identifier
+  source:      utf8             // where it comes from: path under the wskill root (e.g. "skill/assets/data.json")
+  name:        utf8             // filename in the rendered skill (= basename of source, e.g. "data.json")
+  description: utf8
+  @default([]) tags: list<utf8>
+}
+
+// Controls written into the generated SKILL.md frontmatter, plus the bundled
+// artifacts (script / asset children). A `skill` block kind is only possible
+// because the schema is namespaced (`wcl.wskill::skill`) — bare it would collide
+// with wdoc's own `skill` block. Defaults are absent-equivalent (empty list = no
+// pre-approval / no restriction; false = model may invoke), so they are safe to
+// always emit. Exactly one per wskill; the templates bind `let skill = head(skills)`.
+@block("skill")
+type Skill {
+  @default([])    allowed_tools:            list<utf8>   // → SKILL.md `allowed-tools`
+  @default([])    disallowed_tools:         list<utf8>   // → `disallowed-tools`
+  @default(false) disable_model_invocation: bool         // → `disable-model-invocation`
+  // Bundled skill artifacts — authored nested inside the skill block.
+  @children("script") skill_scripts: list<Script>
+  @children("asset")  skill_assets:  list<Asset>
+  // Optional custom SKILL.md summary content (pulled, not projected — see Summary).
+  @children("summary") summary: list<Summary>
+  // Invocation parameters documented in the SKILL.md "Parameters" section.
+  @children("skill_param") parameters: list<SkillParam>
+  // Behavioural guardrails rendered into SKILL.md inside <Boundary> tags.
+  @children("skill_boundary") boundary: list<SkillBoundary>
+}
+
+// ---------------------------------------------------------------------------
+// Sources (update-workflow metadata — never rendered as topic content)
+// ---------------------------------------------------------------------------
+
+// Where current/authoritative information about the topic lives. Drives the
+// update workflow only; it carries no content. See references/workflow-update.md.
+@block("source")
+type Source {
+  @inline(0) id: identifier
+  kind:             utf8         // website | repo | book | docs (extensible)
+  locator:          utf8         // URL, git URL, ISBN, or path
+  covers:           utf8         // free text: what this source is good for
+  last_checked:     utf8?       // ISO date the agent last consulted it
+  reflects_version: utf8?       // upstream version this source described when checked
+}
+
+// ---------------------------------------------------------------------------
+// Cross-references to other wskills
+// ---------------------------------------------------------------------------
+
+// A relationship to another wskill. Resolved by `name` against repo peers /
+// the collection manifest first, by `url` otherwise. `status = "planned"` is
+// the stub form: it renders but the validator reports it as a warning so the
+// planned-skill backlog stays visible without blocking renders.
+@block("wskill_ref")
+type WskillRef {
+  @inline(0) id: identifier
+  name:     utf8                 // referenced wskill's topic name
+  url:      utf8?               // git URL when not a repo peer
+  relation: utf8?               // "builds on", "see also", "prerequisite"
+  @default("exists") status: utf8     // "exists" | "planned"
+}
+
+// ---------------------------------------------------------------------------
+// Reference blocks
+// ---------------------------------------------------------------------------
+//
+// Every content block below carries an `audience` field (the `Audience` symbol_set
+// declared just below) controlling which projections render it.
+//
+// concept / entity / fact are the three interlinking *units of information*. Each
+// is a thin record — an id, a headline, audience/tags — plus a rich **wdoc body**:
+// an addressable `body { … }` holding arbitrary wdoc blocks (paragraphs, tables,
+// code, callouts, links). Each unit renders to its own page (`<kind>_<id>`), and
+// the body rides on the record as a property, `project`ed onto its page from the
+// template (`project { from = c.body }`). `related` lists the ids of other units
+// (any of the three kinds — ids are unique across them); the templates resolve each
+// to a link to that unit's page. Bodies can also link inline with `[text](<kind>_<id>)`.
+
+// Which projections a content block renders into: `:book` (default — human docs
+// only), `:ai` (skill/agent-only notes), or `:both`. A symbol_set, so an unknown
+// value is a `wcl check` error. The per-field default is `:book`, so content stays
+// out of the skill until opted in with `:ai` / `:both` — curate the skill up. A
+// `step` inherits its procedure's choice.
+symbol_set Audience { book ai both }
+
+// An idea the reader must understand.
+@block("concept")
+type Concept {
+  @inline(0) id: identifier
+  name:    utf8                          // headline (also the link text)
+  summary: utf8                          // one-liner for the concept index
+  @default([]) related: list<identifier> // ids of related units (concept/entity/fact)
+  @default(:book) audience: Audience     // :book (default) | :ai | :both
+  @default([]) tags: list<utf8>
+  // The body — an addressable `body { …wdoc… }`, projected onto the page.
+  @child("body") body: WdocAddressableBody?
+}
+
+// A concrete thing in the topic's world (type, command, screen, card, …).
+@block("entity")
+type Entity {
+  @inline(0) id: identifier
+  name:    utf8
+  kind:    utf8                          // free text classifier ("file type", "command")
+  summary: utf8?                         // optional one-liner for the index
+  @default([]) related: list<identifier>
+  @default(:book) audience: Audience     // :book (default) | :ai | :both
+  @default([]) tags: list<utf8>
+  // The body — an addressable `body { …wdoc… }` (attributes go in a table here).
+  @child("body") body: WdocAddressableBody?
+}
+
+// A factual unit — a container for values, constants, value tables. The `title`
+// names it; the body holds the data (a `table`, `code`, prose).
+@block("fact")
+type Fact {
+  @inline(0) id: identifier
+  title:   utf8                          // headline (also the link text)
+  @default([]) related: list<identifier>
+  @default(:book) audience: Audience     // :book (default) | :ai | :both
+  @default([]) tags: list<utf8>
+  // The body — an addressable `body { …wdoc… }`, projected onto the page.
+  @child("body") body: WdocAddressableBody?
+}
+
+// An index — a curated landing page that gathers links to other parts of the
+// wskill in a topic-meaningful arrangement. Unlike concept/entity/fact/procedure
+// it is NOT filed under Reference: each index gets its own top-level entry in the
+// book menu (between Overview and Reference). The body (an addressable `body { … }`)
+// holds the curated links/prose; `related` auto-resolves to a link list.
+// An index may nest child indexes one level deep (`@children("index")`): write a
+// child `index { … }` block inside the parent and both projections render it
+// nested — under the parent chapter in the book TOC, indented under the parent
+// bullet in the skill. Document-level `@children("index")` gathers only direct
+// children, so a nested index is not also listed at the top level.
+@block("index")
+type Index {
+  @inline(0) id: identifier
+  name:    utf8
+  summary: utf8?
+  @default([]) related: list<identifier>
+  @default(:book) audience: Audience     // :book (default) | :ai | :both
+  @default([]) tags: list<utf8>
+  @child("body") body: WdocAddressableBody?
+  @children("index") children: list<Index>   // nested sub-indexes (one level rendered)
+}
+
+// A glossary entry.
+@block("term")
+type Term {
+  @inline(0) id: identifier
+  term:       utf8
+  definition: utf8
+  @default([]) aliases: list<utf8>
+  @default(:book) audience: Audience     // :book (default) | :ai | :both
+  @default([]) tags: list<utf8>
+}
+
+// A worked example or code sample. It is NOT a section of its own — it projects
+// onto a unit: `unit` names the id of the concept/entity/fact it illustrates, and
+// the templates render it on that unit's page (after the body).
+@block("example")
+type Example {
+  @inline(0) id: identifier
+  title:     utf8
+  unit:      identifier?       // owning concept / entity / fact id (renders on its page)
+  narrative: utf8?
+  code_lang: utf8?             // language tag for the code listing
+  code:      utf8?             // the sample (raw heredoc in data)
+  expected:  utf8?             // expected result / output
+  @default(:book) audience: Audience     // :book (default) | :ai | :both
+  @default([]) tags: list<utf8>
+}
+
+// ---------------------------------------------------------------------------
+// Processes (ordered step blocks)
+// ---------------------------------------------------------------------------
+
+// One ordered step in a process (procedure). The label is its number.
+@block("step")
+type Step {
+  @inline(0) n: u32
+  title: utf8?
+  // Two addressable body fragments per step: `body screen { … }` (what's on screen —
+  // a callout/code/image box) and `body steps { … }` (the steps to follow — a list).
+  // The book lays the number in a gutter beside the title; both fragments project
+  // full-width below, in order, via a single `project { from = s.bodies }`.
+  @children("body") bodies: list<WdocAddressableBody>
+}
+
+// A runbook for *doing* a specific task. Written for someone who already knows
+// the topic and needs the reliable sequence. A `procedure` is a fourth interlinking
+// unit (alongside concept/entity/fact) — it keeps its structured, step-based shape,
+// but carries `related` and renders to its own page, so units can link to and from
+// it. (`process` is the user-facing name; the block is `procedure`.)
+@block("procedure", required_children = ["step"])
+type Procedure {
+  @inline(0) id: identifier
+  title:         utf8
+  purpose:       utf8
+  @default([]) preconditions: list<utf8>
+  verification:  utf8?         // "how you know it worked"
+  @default([]) related: list<identifier>   // ids of related units (any kind)
+  @default(:book) audience: Audience     // :book (default) | :ai | :both
+  @default([]) tags: list<utf8>
+  @children("step") steps: list<Step>
+}
+
+// ---------------------------------------------------------------------------
+// Custom content: declare a typed @block in extensions.wcl
+// ---------------------------------------------------------------------------
+//
+// There is no generic catch-all block. Topic-specific content that doesn't fit a
+// base block is modeled with a first-class typed block: declare an @block plus a
+// merging @document in schema/extensions.wcl, and add a render to both template
+// sets. Cards, keybindings, a CLI vocabulary — all are typed extension blocks.
+// (A reference table is a `fact` whose body is a `table`, not a typed block.)
+// See references/schema.md.
+
+// ---------------------------------------------------------------------------
+// Root document — gathers every block instance for the projections
+// ---------------------------------------------------------------------------
+
+// Merges with wdoc's library @document (so `site` / `page` template blocks are
+// legal alongside content) and with any @document declared in extensions.wcl.
+@document
+type WSkillDoc {
+  schema_version: utf8
+
+  // Exactly one topic and one skill block are expected. They are gathered
+  // as lists — not @child singles — because list elements resolve omitted
+  // optional fields to `none`, which a single @child block does not. Templates
+  // bind `let topic = head(topics)` / `let skill = head(skills)`.
+  @children("topic") topics: list<Topic>
+  @children("skill") skills: list<Skill>
+
+  @children("source")     sources:    list<Source>
+  @children("wskill_ref") refs:       list<WskillRef>
+
+  @children("concept")   concepts:   list<Concept>
+  @children("entity")    entities:   list<Entity>
+  @children("fact")      facts:      list<Fact>
+  @children("term")      terms:      list<Term>
+  @children("example")   examples:   list<Example>
+  @children("index")     indexes:    list<Index>
+
+  @children("procedure") procedures: list<Procedure>
+}

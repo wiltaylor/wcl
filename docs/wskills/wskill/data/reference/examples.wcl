@@ -1,0 +1,77 @@
+// Worked examples. Each projects onto a unit via `unit = <concept/entity/fact id>`
+// and renders on that unit's page (there is no standalone Examples section). Code is
+// in raw heredocs so it renders verbatim.
+
+example scaffold_cmd {
+  title     = "Starting a new wskill"
+  unit      = three_commands
+  narrative = "Create a fresh wskill folder by copying the bundled template, then check and render."
+  code_lang = "console"
+  code = <<'SH'
+$ cp -r assets/scaffold docs/wskills/git
+$ $EDITOR docs/wskills/git/wskill.wcl     # set topic id, name, summary
+$ cd docs/wskills/git
+$ wcl check wskill.wcl                     # must pass
+$ wcl wdoc build wdoc/book/main.wcl  --out out/book
+$ wcl wdoc skill wdoc/skill/main.wcl --out out/skill
+SH
+  expected = "A docs/wskills/git/ folder with schema, templates, and data skeleton; wcl check passes; out/book and out/skill are written."
+}
+
+example typed_extension {
+  title     = "A typed custom block"
+  unit      = customblocks
+  narrative = "Declare an @block plus a @document that gathers it in extensions.wcl; imported documents merge with the base. Then add a render to both template sets."
+  code_lang = "wcl"
+  code = <<'WCL'
+@block("keybinding")
+type Keybinding {
+  @inline(0) id: identifier
+  keys:     utf8
+  action:   utf8
+  context:  utf8?
+}
+
+@document
+type Extensions {
+  @children("keybinding") keybindings: list<Keybinding>
+}
+WCL
+}
+
+example folder_layout {
+  title     = "A wskill folder, in one minute"
+  unit      = gather
+  narrative = "The entry point declares the topic and imports the data; the data files hold block instances; the templates are pure projections; out/ is generated."
+  code_lang = "text"
+  code = <<'TXT'
+<topic>/
+  wskill.wcl            # entry point: topic, version, sources, data imports
+  schema/
+    base.wcl            # base block types + root document (DO NOT hand-edit)
+    extensions.wcl      # per-wskill typed block types
+  data/
+    reference/  *.wcl   # concept / entity / fact / term / example / typed blocks
+    tutorials/  *.wcl   # tutorial { ... step ... }
+    processes/  *.wcl   # procedure { ... step ... }
+    skill/artifacts.wcl # skill artifact blocks (files bundled into the skill)
+  skill/
+    assets/             # template trees / files bundled into the emitted skill
+  wdoc/
+    book/main.wcl       # book projection template  (wcl wdoc build)
+    skill/main.wcl      # skill projection template (wcl wdoc skill)
+  out/
+    book/  skill/       # generated — never hand-edit
+TXT
+}
+
+example install_skill {
+  title     = "Installing the skill into a repo"
+  unit      = targets
+  narrative = "After rendering, copy (or symlink) the skill projection into a repo's .claude/skills/."
+  code_lang = "console"
+  code = <<'SH'
+$ cp -r docs/wskills/git/out/skill .claude/skills/git
+SH
+  expected = "out/skill/ is copied to .claude/skills/git/ (use the name from the rendered SKILL.md frontmatter)."
+}

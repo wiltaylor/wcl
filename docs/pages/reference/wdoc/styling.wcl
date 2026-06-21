@@ -9,7 +9,7 @@ class "sty-accent" {
   light { color = "#5e81ac" }
 }
 
-page wdoc_styling { sites = [:reference, :wcl_skill]  title = "Styling"
+page wdoc_styling { sites = [:reference]  title = "Styling"
   h1 "Styling"
 
   p "Two layers control how a site looks: `class` blocks style individual elements, and a site `theme` sets the palette every built-in element draws from. Classes always win over theme defaults via the cascade, so you theme broadly and override locally."

@@ -1,5 +1,5 @@
 // wdoc section: Tables.
-page wdoc_tables { sites = [:reference, :wcl_skill]  title = "Tables"
+page wdoc_tables { sites = [:reference]  title = "Tables"
   h1 "Tables"
 
   p "`table { rows: | … | }` renders a tabular data grid using WCL's native pipe-row syntax. The first row becomes the `<thead>`; the remaining rows go in `<tbody>`."

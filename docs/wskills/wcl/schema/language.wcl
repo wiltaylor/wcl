@@ -1,0 +1,123 @@
+// wskill OPTIONAL standard module — describe a language as data.
+//
+// Import this from a wskill's root (`import "./schema/language.wcl"`) only when the
+// wskill documents a language. It is NOT a content unit like concept/entity/fact —
+// it carries no auto-rendered pages. A `language` groups `feature` blocks; each
+// feature names the `concepts` and/or `facts` that compose it, and the consuming
+// wskill's templates PROJECT those into the book wherever they choose. See
+// references/schema.md.
+//
+// All declarations share the base schema's `wcl.wskill` namespace; importers keep
+// using bare names. The merging @document below adds `languages` to the gathered
+// document only in wskills that import this file.
+namespace wcl.wskill
+
+import <wdoc.wcl>
+import "./base.wcl"          // for Audience + WdocAddressableBody
+
+// ---------------------------------------------------------------------------
+// API objects — structs and functions (with fields / parameters)
+// ---------------------------------------------------------------------------
+//
+// Beyond prose units, a feature can document API-shaped objects as structured data:
+// `struct` types (typed `field`s + `function` methods) and `function`s (typed
+// `parameter`s + return). Each carries description / remarks / `code_example`s, and
+// every field and parameter carries its own description and remarks. Functions are
+// overloadable: the block `id` is unique, while `name` may repeat across overloads.
+
+// A typed field of a struct.
+@block("field")
+type Field {
+  @inline(0) name: utf8
+  type:        utf8                 // field type, free text (e.g. "f64", "list<utf8>")
+  description: utf8?
+  remarks:     utf8?
+}
+
+// A function parameter.
+@block("parameter")
+type Parameter {
+  @inline(0) name: utf8
+  type:        utf8?                // optional (some params untyped)
+  description: utf8?
+  remarks:     utf8?
+}
+
+// A worked example attached to a struct/function (nested; not gathered globally).
+@block("code_example")
+type CodeExample {
+  @inline(0) title: utf8?
+  lang:        utf8?               // code-fence language
+  code:        utf8                // the sample
+  description: utf8?
+  result:      utf8?               // expected result / output
+}
+
+// A function definition. `id` is unique; `name` may repeat across overloads.
+@block("function")
+type Function {
+  @inline(0) id: identifier
+  name:        utf8
+  description: utf8?
+  remarks:     utf8?
+  returns:             utf8?       // return type
+  returns_description: utf8?
+  @default(:book) audience: Audience
+  @children("parameter")    parameters: list<Parameter>
+  @children("code_example") examples:   list<CodeExample>
+}
+
+// A struct / record type with typed fields and functions (methods).
+@block("struct")
+type Struct {
+  @inline(0) id: identifier
+  name:        utf8
+  description: utf8?
+  remarks:     utf8?
+  @default(:book) audience: Audience
+  @children("field")        fields:    list<Field>
+  @children("function")     functions: list<Function>     // methods on the struct
+  @children("code_example") examples:  list<CodeExample>
+}
+
+// One area / capability of a language, grouping the concepts and/or facts that make
+// it up. A feature renders nothing on its own; the consuming template projects them.
+// Features may nest via `@children("feature")` — a parent feature groups child
+// features (e.g. a "Syntax" feature holding "Fields & Blocks" and "Comments"), which
+// the consuming template renders as nested menu entries. Document-level gathering is
+// direct-only, so a nested feature is not also listed at the top level. A feature may
+// also hold `struct` / `function` objects, projected inline on its page.
+@block("feature")
+type Feature {
+  @inline(0) id: identifier
+  name:    utf8
+  summary: utf8?
+  @default([]) @ref("concept") concepts: list<identifier>  // concepts this feature groups (each checked)
+  @default([]) @ref("fact")    facts:    list<identifier>  // facts this feature groups (each checked)
+  @default(:book) audience: Audience     // :book (default) | :ai | :both
+  @default([]) tags: list<utf8>
+  @child("body") body: WdocAddressableBody?                // optional feature intro
+  @children("feature")  children:  list<Feature>           // nested sub-features
+  @children("struct")   structs:   list<Struct>            // struct/record objects
+  @children("function") functions: list<Function>          // function objects
+}
+
+// A language the wskill describes; `feature` children describe its areas.
+@block("language")
+type Language {
+  @inline(0) id: identifier
+  name:    utf8
+  summary: utf8?
+  version: utf8?
+  @default(:book) audience: Audience     // :book (default) | :ai | :both
+  @default([]) tags: list<utf8>
+  @child("body") body: WdocAddressableBody?
+  @children("feature") features: list<Feature>
+}
+
+// Merges with the base @document, so `languages` joins the gathered document only
+// in wskills that import this module.
+@document
+type LanguageDoc {
+  @children("language") languages: list<Language>
+}

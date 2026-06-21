@@ -1,0 +1,62 @@
+// Glossary for the wskill wskill.
+
+term wskill {
+  term       = "wskill"
+  definition = "One self-contained folder capturing a topic as a WCL data model, with the schema and source metadata travelling with it, projected into a book and a skill."
+}
+
+term topic {
+  term       = "topic"
+  definition = "The overarching subject a wskill describes, declared once in the entry point."
+}
+
+
+term projection {
+  term       = "projection"
+  definition = "A deterministic render of the one data model into a specific output. A wskill has two: the book and the skill."
+}
+
+term book {
+  term       = "book"
+  definition = "The human-readable projection: a wdoc site that is the comprehensive reference for the topic."
+}
+
+term skill {
+  term       = "skill"
+  definition = "The Claude Code projection: a SKILL.md plus reference files an agent loads to work with the topic."
+}
+
+term gather {
+  term       = "gather"
+  definition = "The mechanism by which the root document collects every block instance of a kind into a single list field for the templates to repeat over."
+}
+
+term block {
+  term       = "block"
+  definition = "One unit of content — a concept, fact, tutorial, step, and so on — declared with a kind and gathered into the document."
+}
+
+term audience {
+  term       = "audience"
+  definition = "A symbol_set field on every content block selecting which projections render it: book (default), ai, or both — an unknown value is a wcl check error."
+}
+
+term artifact {
+  term       = "artifact"
+  definition = "A real file (script, template, or data) bundled into the emitted skill via a skill-artifact block, rather than projected from content."
+}
+
+term collection {
+  term       = "collection"
+  definition = "A repo of many wskills (under a wskills/ subdirectory) with one auto-discovered landing page linking down to every member's book."
+}
+
+term member {
+  term       = "member"
+  definition = "One wskill folder inside a collection, discovered by scanning subfolders for a wskill entry point."
+}
+
+term source {
+  term       = "source"
+  definition = "A metadata entry naming where current information about the topic lives. It drives the update workflow and is never rendered as content."
+}

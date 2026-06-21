@@ -1,0 +1,119 @@
+// Processes — runbooks for *doing* a task with wdoc. Each step stores two wdoc
+// fragments: `body screen` (what's on the terminal) and `body steps` (the action).
+
+procedure build_serve {
+  title = "Render a site and live-preview it"
+  purpose = "Get a finished HTML build of a wdoc document, and a watch-rebuild server while you iterate on it."
+  preconditions = ["A WCL file declaring at least one `page` block", "A `wcl` CLI on your PATH"]
+  related = [sites, pages]
+  audience = :both
+
+  step 1 {
+    title = "Render to a folder"
+    body screen { code "console" { source = <<'SH'
+$ wcl wdoc build site.wcl --out out
+SH
+    } }
+    body steps { p "Render every `page` block in `site.wcl` to `out/`. Each page lands at `out/<name>.html`; with several sites, each renders into its own `out/<name>/` subdirectory with a chooser index." }
+  }
+
+  step 2 {
+    title = "Open the output"
+    body screen { code "console" { source = <<'SH'
+$ ls out
+index.html  usage.html
+SH
+    } }
+    body steps { p "Open `out/index.html` in a browser to check the rendered result." }
+  }
+
+  step 3 {
+    title = "Switch to a live preview"
+    body screen { code "console" { source = <<'SH'
+$ wcl wdoc serve site.wcl
+Serving on http://127.0.0.1:8080
+SH
+    } }
+    body steps { p "Run `wcl wdoc serve` to start a dev server that watches the source for `.wcl` changes and re-renders on each save. Refresh the browser to see updates; pass `--addr` to change the bind address." }
+  }
+
+  verification = "`out/` holds one `.html` per page, and editing the source under `wcl wdoc serve` updates the served page after a refresh."
+}
+
+procedure render_skill {
+  title = "Render a document into a Claude skill folder"
+  purpose = "Project an `:ai_skill` site into a SKILL.md plus references/, scripts/, and assets/."
+  preconditions = ["A `site` with `default_template = :ai_skill` and a `skill { }` block", "A page marked `start = true`"]
+  related = [skills, sites]
+  audience = :both
+
+  step 1 {
+    title = "Run the skill target"
+    body screen { code "console" { source = <<'SH'
+$ wcl wdoc skill site.wcl --out out/skill
+SH
+    } }
+    body steps { p "Render the document to a skill folder under `out/skill`. The output directory is created if missing; with several skill sites, each renders into its own `out/skill/<name>/` subfolder." }
+  }
+
+  step 2 {
+    title = "Inspect the folder layout"
+    body screen { code "console" { source = <<'SH'
+$ ls -R out/skill
+SKILL.md  references  scripts  assets
+
+out/skill/references:
+usage.md
+SH
+    } }
+    body steps { p "The `start` page becomes `SKILL.md` at the root with its front matter from the `skill { }` block; every other page is written under `references/<name>.md`; and each `file` block ships into the subfolder named by its `dir` (`scripts/`, `assets/`)." }
+  }
+
+  step 3 {
+    title = "Check it builds as a skill, not HTML"
+    body screen { callout "Use the skill target" {
+      class = ["warning"]
+      body = "Running `wcl wdoc build` on an `:ai_skill` site fails with a message pointing you at `wcl wdoc skill` — `:ai_skill` is a Markdown-only target."
+    } }
+    body steps { p "If `wcl wdoc build` errors on this site, that is expected: skill sites only render through `wcl wdoc skill`." }
+  }
+
+  verification = "`out/skill/SKILL.md` exists with name/description front matter, and the non-start pages appear under `out/skill/references/`."
+}
+
+procedure render_pdf_markdown {
+  title = "Render a document to PDF or Markdown"
+  purpose = "Produce a paginated PDF or a folder of Markdown files (one per page) from the same wdoc source."
+  preconditions = ["A WCL file declaring one or more `page` blocks"]
+  related = [pages, sites]
+  audience = :both
+
+  step 1 {
+    title = "Render a PDF"
+    body screen { code "console" { source = <<'SH'
+$ wcl wdoc pdf site.wcl --out out
+SH
+    } }
+    body steps { p "Render each `site` to `out/<name>.pdf` — a pure-Rust PDF, no browser or external tools. Prose, headings and more paginate onto A4 by default; pass `--page-size letter` for US Letter." }
+  }
+
+  step 2 {
+    title = "Render Markdown"
+    body screen { code "console" { source = <<'SH'
+$ wcl wdoc markdown site.wcl --out out/md
+SH
+    } }
+    body steps { p "Render every page to one `.md` file per page under `out/md`. Diagrams, terminals and wireframes are written as standalone `.svg` files the Markdown references; equations stay as LaTeX and videos are skipped — aimed at AI / text consumers." }
+  }
+
+  step 3 {
+    title = "Pick a single site"
+    body screen { code "console" { source = <<'SH'
+$ wcl wdoc markdown site.wcl --out out/md --site book
+SH
+    } }
+    body steps { p "When a document declares several sites, pass `--site <name>` to render just one; otherwise each site renders into its own subdirectory." }
+  }
+
+  verification = "`out/<name>.pdf` opens as a paginated document, and `out/md/` holds one `.md` per page with referenced `.svg` assets alongside."
+}

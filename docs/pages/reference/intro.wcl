@@ -1,41 +1,29 @@
 // Reference book: Introduction chapter (the book's index page).
-page index { sites = [:reference, :wcl_skill]  title = "WCL Language Reference"
-  h1 "WCL Language Reference"
+page index { sites = [:reference]  title = "wdoc Reference"
+  h1 "wdoc Reference"
 
-  p "WCL is a typed configuration language built around two ideas: **fields** (`name = value`) and **blocks** (`kind \"label\" { … }`). On top of that base sit a real type system, first-class functions, pattern matching, and a schema layer that validates a document's structure."
+  p "**wdoc** is WCL's documentation generator: you model content as WCL data and project it into a static site, a PDF, or a Claude Code skill. This book documents wdoc's blocks — sites, pages, formatting, data views, diagrams, charts and more. The site you are reading is built with it."
 
-  callout "How this book is organised" {
+  callout "Looking for the WCL language, builtins or CLI?" {
     class = ["info"]
-    body  = "Three sections. Language walks every feature of the language, one feature per chapter. Reference is the builtin function index and CLI reference. wdoc covers the documentation generator's blocks — this site is built with it."
-  }
-
-  h2 "Sections"
-
-  table {
-    rows:
-      | "Section"   | "Covers" |
-      | "**Language**"  | "Every language feature — literals, fields, types, unions, functions, pattern matching, schema, imports" |
-      | "**Reference**" | "Builtin function index and full CLI reference" |
-      | "**wdoc**"      | "The documentation generator: sites, pages, callouts, code, diagrams, charts, terminals, timelines, icons" |
+    body  = "Those now live in the **wcl** wskill — a self-contained reference projected into a book and a skill. See the [WCL home page](../) for the wskill list."
   }
 
   h2 "The mental model"
 
-  p "A document is a tree of fields and blocks. A field binds a name to a value; a block is a named, labelled group of fields and nested blocks. Here is a small document:"
+  p "A document is a tree of fields and blocks. A field binds a name to a value; a block is a named, labelled group of fields and nested blocks. wdoc adds a library of content blocks on top — here a tiny site with one page:"
   code wcl {
     source = <<'WCL'
-name    = "alpha"
-count   = 3
-enabled = true
+import <wdoc.wcl>
 
-service "web" {
-  port = 8080
-  metadata {
-    region = "us-east-1"
-  }
+site docs { root = true  default_template = :webpage  title = "Docs" }
+
+page index { sites = [:docs]  start = true
+  h1 "Hello"
+  p  "A page is blocks: headings, paragraphs, code, callouts, tables, diagrams."
 }
 WCL
   }
 
-  p "Values carry types (`count` is an `i64`, `enabled` a `bool`). Blocks are validated against a schema declared with decorators. Beyond plain data, WCL has `let` bindings, functions, `if`/`match`, and modules via `import`."
+  p "The rest of this book walks the block set, one area per chapter."
 }

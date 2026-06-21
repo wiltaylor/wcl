@@ -1,5 +1,5 @@
 // wdoc section: Images.
-page wdoc_images { sites = [:reference, :wcl_skill]  title = "Images"
+page wdoc_images { sites = [:reference]  title = "Images"
   h1 "Images"
 
   p "`image` embeds a static image. The source path resolves relative to the build entry file (`docs/`); the file is copied verbatim into `_wdoc/` at build time, so the output site is self-contained."

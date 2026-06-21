@@ -1,0 +1,278 @@
+// Facts — titled containers of factual WCL reference data. Each body holds a
+// claim plus a value table (types, operators, decorators, builtins), ported from
+// the WCL reference pages (ref/builtins.wcl, language/numbers, expressions,
+// schema, records).
+
+fact primitive_types {
+  title    = "WCL primitive types"
+  related  = [numbers, strings, booleans, symbols, identifiers]
+  audience = :both
+  body {
+    p "WCL's primitive (scalar) types: variable-width and fixed-width integers, two float widths, the two text-like scalars, and the boolean. A bare integer literal defaults to `i64`; a suffix pins the exact width."
+    table {
+      header = ["Type", "Description", "Example literal"]
+      rows = [
+        ["`utf8`", "Variable-width Unicode text (the default string type)", "`\"hello\"`"],
+        ["`bool`", "Boolean truth value", "`true`"],
+        ["`i8` `i16` `i32` `i64`", "Signed integers of 8/16/32/64 bits (`i64` is the default for a bare literal)", "`-120i8`"],
+        ["`u8` `u16` `u32` `u64`", "Unsigned integers of 8/16/32/64 bits", "`200u8`"],
+        ["`f32` `f64`", "32-bit and 64-bit floating point", "`3.14f64`"],
+        ["`identifier`", "A bare name used as a block label or id", "`web`"],
+        ["`symbol`", "An identifier-like tag value written with a leading colon", "`:amber`"],
+      ]
+    }
+    callout "Wider integers exist too" {
+      class = ["note"]
+      body  = "WCL also has `i128`/`u128` and the pointer-width `isize`/`usize`, but `i8`-`i64` and `u8`-`u64` cover almost all schema work."
+    }
+  }
+}
+
+fact operators {
+  title    = "Operators"
+  related  = [expressions, optionals, references]
+  audience = :both
+  body {
+    p "WCL's operator set: arithmetic, comparison, logic, none-coalescing, and member access. Precedence runs unary tightest, then `*` `/` `%`, then `+` `-`, then comparison, then `&&`, then `||`, then `??` loosest."
+    table {
+      header = ["Operator", "Meaning", "Example"]
+      rows = [
+        ["`+` `-` `*` `/` `%`", "Add, subtract, multiply, divide, remainder", "`1 + 2 * 3`"],
+        ["`^`", "Exponentiation", "`2 ^ 10`"],
+        ["`==` `!=`", "Equality and inequality", "`1u32 == 1i64`"],
+        ["`<` `<=` `>` `>=`", "Ordering comparisons", "`age >= 18`"],
+        ["`&&` `||` `!`", "Logical and, or, not", "`a && !b`"],
+        ["`??`", "None-coalescing — left value unless it is `none`", "`box.width ?? 480.0`"],
+        ["`.`", "Member access — read a field by name", "`service.metadata.region`"],
+        ["`[]`", "Index access into a list or composite", "`config.services[0]`"],
+      ]
+    }
+  }
+}
+
+fact number_literals {
+  title    = "Number literals: radixes and width suffixes"
+  related  = [numbers, expressions]
+  audience = :both
+  body {
+    p "An integer literal may be written in decimal, hexadecimal (`0x`), octal (`0o`), or binary (`0b`); floats accept scientific notation (`1e6`). A width suffix pins the exact numeric type, and underscores may group digits for readability (they are ignored)."
+    code "wcl" {
+      source = <<'SRC'
+a = 42          // i64 (default)
+b = 200u8       // unsigned 8-bit
+c = 9_000i64    // underscores are ignored
+d = 3.14f64     // float
+f = 0xFFu32     // hex
+g = 0b1010_1100u8   // binary
+h = 0o755u16    // octal
+SRC
+    }
+    table {
+      header = ["Form", "Meaning", "Example"]
+      rows = [
+        ["`0x…`", "Hexadecimal integer", "`0xFFu32`"],
+        ["`0o…`", "Octal integer", "`0o755u16`"],
+        ["`0b…`", "Binary integer", "`0b1010_1100u8`"],
+        ["`…e…`", "Scientific notation (float)", "`1e6`"],
+        ["`…u32` `…i64`", "Unsigned/signed integer width suffix", "`200u8`, `10i64`"],
+        ["`…f32` `…f64`", "Float width suffix", "`3.14f64`"],
+      ]
+    }
+  }
+}
+
+fact field_decorators {
+  title    = "Schema decorators"
+  related  = [schema, fields_blocks, connections]
+  audience = :both
+  body {
+    p "Decorators (written `@name` or `@name(args)`) attach schema metadata to declarations and fields, describing the document's legal structure that `wcl check` validates."
+    table {
+      header = ["Decorator", "Purpose"]
+      rows = [
+        ["`@document`", "Marks the type as the document root schema (composes per namespace — many merge)"],
+        ["`@block(\"kind\")`", "Makes the type a nestable block of that kind"],
+        ["`@child(\"kind\")`", "A field holding a single nested block of the given kind"],
+        ["`@children(\"kind\")`", "A field holding a list of nested blocks (or union variants — dispatch)"],
+        ["`@inline(slot)`", "Binds the block's positional label to a field"],
+        ["`@default(expr)`", "Default value used when the field is omitted"],
+        ["`@table(\"kind\")`", "Marks the row schema for pipe-table syntax"],
+        ["`@decorator(\"name\")`", "Makes the type the schema for a user-defined `@name` decorator's arguments"],
+        ["`@doc`", "Carries documentation metadata attached to a declaration"],
+        ["`@by_ref`", "A block of this kind reifies to a resolvable reference instead of inlining (carried on a record, rendered elsewhere)"],
+        ["`@only` / `@except`", "Restrict which kinds or fields a slot accepts (include-list / exclude-list)"],
+        ["`@connections(S)`", "Accumulates `->` connection statements on the field as records of schema `S`"],
+      ]
+    }
+  }
+}
+
+fact type_constraints {
+  title    = "Type & field constraints"
+  related  = [records, schema, fields_blocks]
+  audience = :both
+  body {
+    p "Constraint decorators bound a field's value, and `wcl check` enforces them. They also attach to a **type alias** (`type Name = TypeRef`), in which case every field declared with that alias is validated against them — the constraint travels with the name."
+    table {
+      header = ["Decorator", "Constraint"]
+      rows = [
+        ["`@min(n)`", "Numeric value must be at least `n`"],
+        ["`@max(n)`", "Numeric value must be at most `n`"],
+        ["`@non_empty`", "The string or list value must not be empty"],
+      ]
+    }
+    code "wcl" {
+      source = <<'SRC'
+@min(1) @max(65535)
+type Port = u16
+
+@non_empty
+type Name = utf8
+
+type Service {
+  name: Name        // rejects ""
+  port: Port        // rejects 0u16 and 70000-ish values
+}
+SRC
+    }
+  }
+}
+
+fact builtins_collections {
+  title    = "Collection builtins"
+  related  = [lists, expressions, functions]
+  audience = :both
+  body {
+    p "The collection builtins transform, search, and reshape lists. Higher-order ones (`map`, `filter`, `find`, `any`, `all`, `group_by`) take a function literal `fn(x: T) -> U …`."
+    table {
+      header = ["Function", "Use"]
+      rows = [
+        ["`map(xs, f)`", "Apply `f` to each element → a new list"],
+        ["`filter(xs, p)`", "Keep elements for which predicate `p` is true"],
+        ["`flatten(xss)`", "Concatenate a list of lists into one list"],
+        ["`concat(a, b)`", "Join two strings (or two lists) end to end"],
+        ["`any(xs, p)`", "True if any element satisfies `p`"],
+        ["`all(xs, p)`", "True if every element satisfies `p` (true for empty)"],
+        ["`find(xs, p)`", "First element satisfying `p`, or `none`"],
+        ["`at(xs, i)`", "The element at index `i`"],
+        ["`head(xs)`", "The first element"],
+        ["`tail(xs)`", "All but the first element"],
+        ["`take(xs, n)`", "The first `n` elements"],
+        ["`drop(xs, n)`", "All but the first `n` elements"],
+        ["`reverse(xs)`", "The list in reverse order"],
+        ["`zip(a, b)`", "Pair up elements → a list of `[a, b]` pairs"],
+        ["`enumerate(xs)`", "Pair each element with its index → `[i, x]`"],
+        ["`sort(xs)`", "Sort ascending (`sort_by` for a key function)"],
+        ["`group_by(xs, key)`", "Group elements into `{ key, items }` records by key"],
+        ["`unique(xs)`", "Remove duplicate elements, keeping first occurrence"],
+        ["`len(xs)`", "The number of elements (also the length of a string)"],
+      ]
+    }
+  }
+}
+
+fact builtins_strings {
+  title    = "String builtins"
+  related  = [strings, expressions]
+  audience = :both
+  body {
+    p "The string builtins cover searching, splitting/joining, reshaping, slicing, and formatting. All indexing is character-based, not byte-based."
+    table {
+      header = ["Function", "Use"]
+      rows = [
+        ["`to_upper(s)`", "Uppercase the string"],
+        ["`to_lower(s)`", "Lowercase the string"],
+        ["`split(s, sep)`", "Split into a list on each `sep`"],
+        ["`join(xs, sep)`", "Join a list of strings with `sep` between"],
+        ["`contains(s, sub)`", "True if `s` contains the substring `sub`"],
+        ["`starts_with(s, p)`", "True if `s` begins with prefix `p`"],
+        ["`ends_with(s, q)`", "True if `s` ends with suffix `q`"],
+        ["`trim(s)`", "Strip leading and trailing whitespace"],
+        ["`chars(s)`", "Split into a list of single-character strings"],
+        ["`format(fmt, …)`", "Interpolate args into `{}` slots of `fmt`"],
+        ["`replace(s, from, to)`", "Replace occurrences of `from` with `to`"],
+        ["`slice(s, start, end)`", "The substring from `start` up to `end`"],
+        ["`len(s)`", "The number of characters in the string"],
+      ]
+    }
+    callout "to_upper / to_lower, not uppercase" {
+      class = ["note"]
+      body  = "WCL's case builtins are `to_upper` and `to_lower`; substring slicing is `slice` (there is no `substring` builtin), and string length uses the same `len` as lists."
+    }
+  }
+}
+
+fact builtins_numeric {
+  title    = "Math builtins"
+  related  = [numbers, expressions]
+  audience = :both
+  body {
+    p "Numeric builtins cover sign and rounding, roots and powers, logarithms, and trigonometry. Most return an `f64`."
+    table {
+      header = ["Function", "Use"]
+      rows = [
+        ["`abs(x)`", "Absolute value"],
+        ["`min(a, b)` / `max(a, b)`", "Smaller / larger of two numbers"],
+        ["`floor(x)` / `ceil(x)`", "Round down / round up to a whole number"],
+        ["`round(x)`", "Round to the nearest whole number"],
+        ["`trunc(x)`", "Drop the fractional part"],
+        ["`sqrt(x)` / `cbrt(x)`", "Square root / cube root"],
+        ["`pow(b, e)`", "`b` raised to the power `e`"],
+        ["`exp(x)`", "`e` raised to the power `x`"],
+        ["`ln(x)` / `log2(x)` / `log10(x)`", "Natural, base-2, and base-10 logarithm"],
+        ["`sin(x)` / `cos(x)` / `tan(x)`", "Trigonometric functions (radians)"],
+        ["`clamp(x, lo, hi)`", "Constrain `x` to the range `[lo, hi]`"],
+        ["`sign(x)`", "-1, 0, or 1 by sign of `x`"],
+        ["`hypot(a, b)`", "The hypotenuse — `sqrt(a*a + b*b)`"],
+      ]
+    }
+  }
+}
+
+fact builtins_records {
+  title    = "Record builtins"
+  related  = [records, expressions]
+  audience = :both
+  body {
+    p "Four builtins operate on record values. `keys` and `values` list field names and values in deterministic (sorted-by-name) order; `merge` combines two records, the second winning on a clash; `map_values` transforms every value while keeping the keys."
+    table {
+      header = ["Function", "Use"]
+      rows = [
+        ["`keys(r)`", "List the record's field names (sorted)"],
+        ["`values(r)`", "List the field values (same order as `keys`)"],
+        ["`merge(a, b)`", "Combine two records; `b`'s fields win on a clash"],
+        ["`map_values(r, f)`", "Apply `f` to every value, keeping the keys"],
+      ]
+    }
+    code "wcl" {
+      source = <<'SRC'
+let rex      = Dog { name: "Rex", age: 4u32 }
+let names    = keys(rex)                       // ["age", "name"]
+let defaults = { host: "localhost", port: 80 }
+let cfg      = merge(defaults, { port: 8080 }) // { host: "localhost", port: 8080 }
+let doubled  = map_values({ low: 1, high: 9 }, fn(x: i64) -> i64 x * 2)
+SRC
+    }
+  }
+}
+
+fact builtins_reflection {
+  title    = "Reflection builtins"
+  related  = [schema, namespaces]
+  audience = :both
+  body {
+    p "Reflection builtins read a type's schema back at evaluation time — used by libraries (like wdoc) that dispatch on a block's declared kind, and to auto-generate documentation that can't drift from the implementation."
+    table {
+      header = ["Function", "Use"]
+      rows = [
+        ["`type_fields(T)`", "The fields of type `T` (name, type, …) as records"],
+        ["`fn_signature(name)`", "A builtin's signature, params, and return-value docs"],
+        ["`decl_info(T)`", "Declaration metadata — block kind, `is_document`, name"],
+        ["`builtin_names()`", "The names of every builtin function"],
+        ["`child_types(T)`", "The element types of `T`'s `@child`/`@children` slots"],
+        ["`decorator_names(T)`", "The names of the decorators on declaration `T`"],
+        ["`doc_comment(T)`", "The doc comment above a type or one of its fields"],
+      ]
+    }
+  }
+}

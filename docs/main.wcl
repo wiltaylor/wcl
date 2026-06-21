@@ -13,6 +13,12 @@
 // / `h1`..`h6` / …) is in scope here and in every imported page.
 import <wdoc.wcl>
 
+// The reference content lives in wskills — self-contained WCL models under
+// docs/wskills/, each projected into a book (included here) and a Claude Code
+// skill. `include` builds every member's book under docs/_site/wskills/<name>/;
+// the landing page lists them via `included_sites(...)` (a registry, by hand).
+include "wskills" { entry = "wdoc/book/main.wcl" }
+
 // Reused in hero prose: paints with the active theme's accent hue so it
 // stays readable on dark and light.
 class accent {
@@ -41,49 +47,18 @@ site wcl {
   }
 }
 
-// The WCL language reference: the `book` template, organized into three
-// top-level sections — Language (one page per feature), Reference (builtins
-// + CLI), wdoc (the documentation generator's blocks).
+// The wdoc reference: the `book` template documenting the documentation
+// generator's blocks. (The WCL language, builtins and CLI reference now live
+// in the `wcl` wskill — see docs/wskills/ and the landing page.)
 site reference {
   default_template = :book
-  title            = "WCL Language Reference"
+  title            = "wdoc Reference"
   theme            = :nord
   accent           = :cyan
   theme_toggle     = true
   search           = true
   toc {
     chapter "Introduction" { page = index }
-
-    chapter "Language" {
-      chapter "Fields & Blocks"  { page = fields_blocks }
-      chapter "Tables"           { page = tables }
-      chapter "Identifiers"      { page = identifiers }
-      chapter "Types" {
-        chapter "Numbers"    { page = numbers }
-        chapter "Strings"    { page = strings }
-        chapter "Booleans"   { page = booleans }
-        chapter "Symbols"    { page = symbols }
-        chapter "Optionals"  { page = optionals }
-        chapter "Lists"      { page = lists }
-        chapter "Tensors"    { page = tensors }
-        chapter "Records"    { page = records }
-        chapter "Interfaces" { page = interfaces }
-        chapter "References" { page = references }
-        chapter "Unions"     { page = unions }
-      }
-      chapter "Connections"         { page = connections }
-      chapter "Expressions"         { page = expressions }
-      chapter "Functions"           { page = functions }
-      chapter "Control Flow"        { page = control_flow }
-      chapter "Schema & Decorators" { page = schema }
-      chapter "Imports & Modules"   { page = imports }
-      chapter "Namespaces"          { page = namespaces }
-    }
-
-    chapter "Reference" {
-      chapter "Builtin Functions" { page = builtins }
-      chapter "CLI Reference"     { page = cli }
-    }
 
     chapter "wdoc" {
       chapter "Overview"               { page = wdoc_overview }
@@ -121,57 +96,13 @@ site reference {
   }
 }
 
-// The WCL authoring skill: an agent / Claude skill folder, built with
-// `wcl wdoc skill docs/main.wcl --out .claude/skills/wcl --site wcl_skill`
-// (see the `skill-build` just recipe). It shares the reference pages — each
-// reference page joins this site too (`sites = [:reference, :wcl_skill]`) —
-// so the web book and the skill stay a single source. The `:ai_skill` target
-// is Markdown-only: `wcl wdoc build` / `pdf` / `markdown` skip this site.
-site wcl_skill {
-  default_template = :ai_skill
-  skill {
-    name        = "wcl"
-    description = "Author, validate and format WCL — the typed configuration language — and wdoc documents. Use when writing or editing .wcl files, WCL schemas or builtins, or wdoc documentation sites."
-  }
-}
-
 // WCL landing pages (sites = [:wcl]).
 import "./pages/wcl/index.wcl"
 import "./pages/wcl/features.wcl"
 import "./pages/wcl/getting-started.wcl"
 
-// Skill landing page (sites = [:wcl_skill]) — becomes SKILL.md.
-import "./pages/skill/overview.wcl"
-
 // Reference book — Introduction.
 import "./pages/reference/intro.wcl"
-
-// Reference book — Language section (one page per feature).
-import "./pages/reference/language/fields-blocks.wcl"
-import "./pages/reference/language/tables.wcl"
-import "./pages/reference/language/identifiers.wcl"
-import "./pages/reference/language/numbers.wcl"
-import "./pages/reference/language/strings.wcl"
-import "./pages/reference/language/booleans.wcl"
-import "./pages/reference/language/symbols.wcl"
-import "./pages/reference/language/optionals.wcl"
-import "./pages/reference/language/lists.wcl"
-import "./pages/reference/language/tensors.wcl"
-import "./pages/reference/language/records.wcl"
-import "./pages/reference/language/interfaces.wcl"
-import "./pages/reference/language/references.wcl"
-import "./pages/reference/language/unions.wcl"
-import "./pages/reference/language/connections.wcl"
-import "./pages/reference/language/expressions.wcl"
-import "./pages/reference/language/functions.wcl"
-import "./pages/reference/language/control-flow.wcl"
-import "./pages/reference/language/schema.wcl"
-import "./pages/reference/language/imports.wcl"
-import "./pages/reference/language/namespaces.wcl"
-
-// Reference book — Reference section.
-import "./pages/reference/ref/builtins.wcl"
-import "./pages/reference/ref/cli.wcl"
 
 // Reference book — wdoc section.
 import "./pages/reference/wdoc/overview.wcl"

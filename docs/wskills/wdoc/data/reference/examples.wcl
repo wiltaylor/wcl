@@ -1,0 +1,136 @@
+// Worked examples — faithful wdoc source attached to a concept or entity.
+
+example ex_page {
+  title = "A minimal page in a site"
+  unit = pages
+  narrative = "The smallest useful document: import the wdoc library, declare one start page, and give it a heading, prose, and a code block."
+  code_lang = "wcl"
+  code = <<'CODE'
+import <wdoc.wcl>
+
+page index { sites = [:mysite]  start = true
+  h1 "My project"
+  p "A short intro. See [the docs](docs)."
+  code wcl {
+    source = <<'WCL'
+let greeting = "hello"
+WCL
+  }
+}
+CODE
+  expected = "One page named index renders to index.html as the site's start page, with a heading, a paragraph, and a fenced code block."
+  audience = :both
+}
+
+example ex_site_skill {
+  title = "Opting a site into a skill"
+  unit = skills
+  narrative = "A site becomes a Claude skill by setting default_template = :ai_skill and declaring a skill { } block that supplies the SKILL.md front matter."
+  code_lang = "wcl"
+  code = <<'CODE'
+import <wdoc.wcl>
+
+site my_skill {
+  default_template = :ai_skill
+  skill {
+    name        = "demo-skill"
+    description = "What this skill does and when to use it."
+    license     = "MIT"
+  }
+}
+
+page overview { start = true
+  h1 "Demo Skill"
+  p "Instructions. See the [usage guide](usage)."
+}
+CODE
+  expected = "The start page becomes SKILL.md with name/description/license front matter; every other page lands under references/."
+  audience = :both
+}
+
+example ex_flowchart {
+  title = "A layered flowchart"
+  unit = flowcharts
+  narrative = "Declare the shapes and the edges, then set layout = :layered — the renderer ranks the shapes topologically and elbow-routes the connections."
+  code_lang = "wcl"
+  code = <<'CODE'
+diagram {
+  width = 320  height = 220  layout = :layered  layer_gap = 20.0
+
+  process    "Parse"  { id = parse   width = 100.0  height = 40.0  fill = "#88c0d0" }
+  decision   "Valid?" { id = valid   width = 100.0  height = 60.0  fill = "#ebcb8b" }
+  terminator "Render" { id = render  width = 100.0  height = 40.0  fill = "#b48ead" }
+
+  parse -> valid  :flow
+  valid -> render :flow
+}
+CODE
+  expected = "Three shapes stacked top-to-bottom in connection order, joined by right-angled arrows."
+  audience = :both
+}
+
+example ex_bar_chart {
+  title = "A grouped bar chart"
+  unit = charts
+  narrative = "A bar_chart is an SvgBlock, so it sits inside a diagram of the same size. Each series is a { name, values } record; multiple series produce grouped bars."
+  code_lang = "wcl"
+  code = <<'CODE'
+diagram { width = 360  height = 200
+  bar_chart { width = 360.0  height = 200.0
+    title = "Revenue"  x_label = "Quarter"  y_label = "$k"
+    categories = ["Q1", "Q2", "Q3", "Q4"]
+    series = [
+      { name: "2025", values: [42.0, 55.0, 61.0, 78.0] },
+      { name: "2026", values: [30.0, 48.0, 52.0, 66.0] },
+    ]
+  }
+}
+CODE
+  expected = "A grouped bar chart with two series across four quarters, axis labels, and a title."
+  audience = :both
+}
+
+example ex_repeater {
+  title = "One card per data row"
+  unit = data_views
+  narrative = "A wdoc_repeater renders its body once per element of `each`, binding the element to the symbol named by `as`. Combined with a component, it stamps one card per row of data."
+  code_lang = "wcl"
+  code = <<'CODE'
+wdoc_repeater { each = inventory  as = :h
+  dv_metric { label = h.name  value = h.cpu  status = h.status }
+}
+CODE
+  expected = "One metric card per inventory entry, each reading its label, value, and status from the data row."
+  audience = :both
+}
+
+example ex_include {
+  title = "Building member sub-sites"
+  unit = includes
+  narrative = "An include block builds other wdoc documents under a folder and ships each result into a subdirectory. The entry mode checks a fixed relative path inside each immediate subdirectory."
+  code_lang = "wcl"
+  code = <<'CODE'
+import <wdoc.wcl>
+
+// members/ls/wdoc/book/main.wcl   ->  <out>/members/ls/
+// members/cat/wdoc/book/main.wcl  ->  <out>/members/cat/
+include "members" { entry = "wdoc/book/main.wcl" }
+CODE
+  expected = "Each member with the entry file builds into <out>/members/<name>/ as a separate, self-contained artifact."
+  audience = :both
+}
+
+example ex_callout {
+  title = "The six callout types"
+  unit = callouts
+  narrative = "Each built-in admonition type is selected by its class, shipping a default colour and icon."
+  code_lang = "wcl"
+  code = <<'CODE'
+callout "Note"    { class = ["note"]    body = "Background context the reader should remember." }
+callout "Tip"     { class = ["tip"]     body = "A helpful shortcut or best practice." }
+callout "Warning" { class = ["warning"] body = "Something to be careful about." }
+callout "Error"   { class = ["error"]   body = "A failure or hard constraint." }
+CODE
+  expected = "Four admonitions, each with its type's icon and accent colour."
+  audience = :both
+}

@@ -20,7 +20,7 @@ type Kbd extends TuiWidget {
   }
 }
 
-page wdoc_terminals { sites = [:reference, :wcl_skill]  title = "Terminal"
+page wdoc_terminals { sites = [:reference]  title = "Terminal"
   h1 "Terminal"
 
   p "`terminal` renders a monospace character grid as inline SVG, drawn with a bundled JetBrains Mono Nerd Font. The grid is populated three ways: authored text primitives, an inline ANSI-bearing `text` field, or replay of an `asciinema` recording."

@@ -1,0 +1,524 @@
+// Language — describes WCL as data using the opt-in `language` module
+// (schema/language.wcl). Each feature is one element of the language — a single
+// concept or reference table — projected as its own sub-page under WCL. Together
+// the features cover the whole WCL reference (its Language and Reference sections).
+
+language wcl_lang {
+  name    = "WCL"
+  version = "0.24.1-alpha"
+  summary = "A typed configuration & schema language, one feature per element."
+  body {
+    p "WCL element by element. Each feature below is a single piece of the language — a concept or a reference table — projected in place as its own page."
+  }
+
+  // --- Basic Syntax (nested) -------------------------------------------------
+  feature lang_syntax {
+    name    = "Basic Syntax"
+    summary = "The surface syntax of WCL — how a document is written before any types apply."
+    feature lang_comments      { name = "Comments"  concepts = [comments] }
+    feature lang_fields_blocks { name = "Blocks"    concepts = [fields_blocks] }
+    feature lang_tables        { name = "Tables"    concepts = [tables] }
+    feature lang_modules       { name = "Namespaces"  concepts = [imports, namespaces] }
+    feature lang_expressions   { name = "Expressions" concepts = [expressions] }
+    feature lang_operators     { name = "Operators"   facts    = [operators] }
+  }
+
+  // --- Primitive Types (nested) ----------------------------------------------
+  feature lang_primitive_types {
+    name  = "Primitive Types"
+    facts = [primitive_types]
+    feature lang_numbers    { name = "Numbers"     concepts = [numbers]  facts = [number_literals] }
+    feature lang_strings    { name = "Strings"     concepts = [strings] }
+    feature lang_booleans   { name = "Booleans"    concepts = [booleans] }
+    feature lang_symbols    { name = "Symbols"     concepts = [symbols] }
+    feature lang_identifiers { name = "Identifiers"  concepts = [identifiers, references] }
+  }
+
+  // --- Complex Types (nested) ------------------------------------------------
+  feature lang_complex_types {
+    name    = "Complex Types"
+    summary = "WCL's composite value shapes — wrappers, collections and records."
+    feature lang_lists       { name = "Lists"        concepts = [lists] }
+    feature lang_tensors     { name = "Tensors"      concepts = [tensors] }
+    feature lang_records     { name = "Custom Types"  concepts = [records]
+      // A struct object — typed fields plus a method — projected on this page.
+      struct st_server {
+        name        = "Server"
+        description = "A configured network server, declared as a block in a schema."
+        remarks     = "Backed by an `@block(\"server\")` record type."
+        field host { type = "utf8"  description = "Hostname or IP to bind to." }
+        field port { type = "u16"   description = "TCP port to listen on."  remarks = "Ports below 1024 need elevated privileges." }
+        function fn_server_url {
+          name        = "url"
+          description = "The server's base URL, composed from host and port."
+          returns     = "utf8"
+          returns_description = "e.g. `http://localhost:8080`"
+        }
+        code_example {
+          lang = "wcl"
+          code = <<'SRC'
+server web {
+  host = "localhost"
+  port = 8080u16
+}
+SRC
+        }
+      }
+    }
+    feature lang_interfaces  { name = "Interfaces"   concepts = [interfaces] }
+    feature lang_unions      { name = "Unions"       concepts = [unions] }
+    feature lang_optionals   { name = "Optionals"    concepts = [optionals] }
+  }
+
+  // --- Connections -----------------------------------------------------------
+  feature lang_connections { name = "Connections"  concepts = [connections] }
+
+  // --- Schema (nested) -------------------------------------------------------
+  feature lang_schema_group {
+    name    = "Schema"
+    summary = "Declaring and constraining the document model."
+    feature lang_schema           { name = "Schema & Decorators"      concepts = [schema] }
+    feature lang_type_constraints { name = "Type & field constraints" facts    = [type_constraints] }
+    feature lang_field_decorators { name = "Schema decorators"        facts    = [field_decorators] }
+  }
+
+  // --- Functions -------------------------------------------------------------
+  feature lang_functions     { name = "Functions"        concepts = [functions] }
+
+  // --- Control Flow ----------------------------------------------------------
+  feature lang_control_flow  { name = "Control Flow"  concepts = [control_flow] }
+
+    feature lang_builtins {
+      name  = "Builtin Functions"
+      function fn_abs {
+        name        = "abs"
+        description = "Absolute value."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter x { type = "f64"  description = "The input value." }
+        code_example { lang = "wcl"  code = "abs(-7.5)   // magnitude, dropping the sign → 7.5" }
+      }
+      function fn_builtin_names {
+        name        = "builtin_names"
+        description = "The names of every registered built-in function, sorted. Pair with `fn_signature` to introspect each one."
+        returns     = "[utf8]"
+        returns_description = "Every built-in's name, sorted alphabetically."
+        code_example { lang = "wcl"  code = "builtin_names()   // names of every builtin → [\"abs\", \"acos\", ..., \"zip\"]" }
+      }
+      function fn_cbrt {
+        name        = "cbrt"
+        description = "Cube root."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter x { type = "f64"  description = "The input value." }
+        code_example { lang = "wcl"  code = "cbrt(27)   // cube root → 3.0" }
+      }
+      function fn_ceil {
+        name        = "ceil"
+        description = "Round up to the nearest integer."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter x { type = "f64"  description = "The input value." }
+        code_example { lang = "wcl"  code = "ceil(3.1)   // round up to a whole number → 4.0" }
+      }
+      function fn_chars {
+        name        = "chars"
+        description = "The characters of a string as a list of one-character strings."
+        returns     = "[utf8]"
+        returns_description = "One string per character."
+        parameter s { type = "utf8"  description = "The string to split into characters." }
+        code_example { lang = "wcl"  code = "chars(\"abc\")   // explode into single-character strings → [\"a\", \"b\", \"c\"]" }
+      }
+      function fn_child_types {
+        name        = "child_types"
+        description = "Reflect a type into references to the element types of its `@child` / `@children` block slots (own slots first, then inherited via `extends`). Pair with `type_table` / `type_fields` to auto-document the blocks a `@document` declares."
+        returns     = "[&T]"
+        returns_description = "One type reference per block slot. Slots that accept a union or interface resolve to that type's name; scalar (non-block) fields are skipped."
+        parameter target { type = "&T"  description = "A reference to a type or interface declaration." }
+        code_example { lang = "wcl"  code = "child_types(MyDoc)   // element types of the doc’s block slots → [&ProjectMeta, &Settings]" }
+      }
+      function fn_clamp {
+        name        = "clamp"
+        description = "Constrain `x` to the range `[lo, hi]`."
+        returns     = "f64"
+        returns_description = "`x` limited to `[lo, hi]`, as an f64."
+        parameter x { type = "number"  description = "The value to clamp." }
+        parameter lo { type = "number"  description = "The lower bound." }
+        parameter hi { type = "number"  description = "The upper bound." }
+        code_example { lang = "wcl"  code = "clamp(12.0, 0.0, 10.0)   // constrain the value into [0, 10] → 10.0" }
+      }
+      function fn_contains {
+        name        = "contains"
+        description = "Whether a string contains a substring."
+        returns     = "bool"
+        returns_description = "`true` if the substring is present."
+        parameter s { type = "utf8"  description = "The string to search." }
+        parameter needle { type = "utf8"  description = "The substring to look for." }
+        code_example { lang = "wcl"  code = "contains(\"hello\", \"ell\")   // does the string contain the substring? → true" }
+      }
+      function fn_cos {
+        name        = "cos"
+        description = "Cosine of an angle in radians."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter x { type = "f64"  description = "The input value." }
+        code_example { lang = "wcl"  code = "cos(0.0)   // cosine of 0 radians → 1.0" }
+      }
+      function fn_decl_info {
+        name        = "decl_info"
+        description = "Describe a top-level declaration: its name, kind, doc comment, and schema classification (block / table / decorator / document)."
+        returns     = "record"
+        returns_description = "`{ name, full_name, kind, doc, is_imported, is_document, block_kind, table_kind, decorator_name, extends }`. The classification fields are `none` when the decorator is absent."
+        parameter target { type = "&T"  description = "A reference to a type, interface, union, or symbol_set declaration." }
+        code_example { lang = "wcl"  code = "decl_info(MyDoc)   // declaration metadata for a type → { kind: \"document\", is_document: true, name: \"MyDoc\" }" }
+      }
+      function fn_decorator_names {
+        name        = "decorator_names"
+        description = "List the names of the decorators attached to a referenced declaration."
+        returns     = "[utf8]"
+        returns_description = "The decorator names, in source order."
+        parameter target { type = "&T"  description = "A reference to a type, field, block, or variant." }
+        code_example { lang = "wcl"  code = "decorator_names(Image)   // the decorators on the Image type → [\"block\", \"schemaless\", ...]" }
+      }
+      function fn_doc_comment {
+        name        = "doc_comment"
+        description = "The doc comment — the contiguous run of `#` / `//` lines immediately above a declaration — attached to a reference, or `\\\"\\\"` when there is none. Complements `decorator_arg(x, \\\"doc\\\", …)` for `@doc(\\\"…\\\")` metadata."
+        returns     = "utf8"
+        returns_description = "The joined comment text, or `\\\"\\\"` when absent."
+        parameter target { type = "&T"  description = "A reference to a type, interface, union, variant, symbol_set, or field." }
+        code_example { lang = "wcl"  code = "doc_comment(Image)   // the doc comment above a type → the comment lines above the Image type" }
+      }
+      function fn_ends_with {
+        name        = "ends_with"
+        description = "Whether a string ends with a suffix."
+        returns     = "bool"
+        returns_description = "`true` if the string ends with the suffix."
+        parameter s { type = "utf8"  description = "The string to test." }
+        parameter suffix { type = "utf8"  description = "The suffix to look for." }
+        code_example { lang = "wcl"  code = "ends_with(\"hello\", \"lo\")   // does it end with this suffix? → true" }
+      }
+      function fn_exp {
+        name        = "exp"
+        description = "`e` raised to the power `x`."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter x { type = "f64"  description = "The input value." }
+        code_example { lang = "wcl"  code = "exp(0.0)   // e raised to the power 0 → 1.0" }
+      }
+      function fn_filter {
+        name        = "filter"
+        description = "Keep only the list elements for which the predicate returns `true`."
+        returns     = "[T]"
+        returns_description = "The elements for which the predicate returned `true`."
+        parameter xs { type = "[T]"  description = "The list to filter." }
+        parameter pred { type = "fn (T) -> bool"  description = "Predicate deciding whether to keep an element." }
+        code_example { lang = "wcl"  code = "filter([1, 2, 3, 4], fn(x: i64) -> bool { x % 2 == 0 })   // keep the even numbers → [2, 4]" }
+      }
+      function fn_find {
+        name        = "find"
+        description = "The first element for which the predicate returns `true`, or `none`."
+        returns     = "T"
+        returns_description = "The first matching element, or `none`."
+        parameter xs { type = "[T]"  description = "The list to search." }
+        parameter pred { type = "fn (T) -> bool"  description = "Predicate applied to each element." }
+        code_example { lang = "wcl"  code = "find([1, 2, 3], fn(x: i64) -> bool { x > 1 })   // first element greater than 1 → 2" }
+      }
+      function fn_flatten {
+        name        = "flatten"
+        description = "Concatenate a list of lists into a single list, one level deep."
+        returns     = "[T]"
+        returns_description = "The inner lists concatenated, one level deep."
+        parameter xss { type = "[[T]]"  description = "A list whose elements are themselves lists." }
+        code_example { lang = "wcl"  code = "flatten([[1, 2], [3]])   // concatenate the inner lists, one level deep → [1, 2, 3]" }
+      }
+      function fn_floor {
+        name        = "floor"
+        description = "Round down to the nearest integer."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter x { type = "f64"  description = "The input value." }
+        code_example { lang = "wcl"  code = "floor(3.9)   // round down to a whole number → 3.0" }
+      }
+      function fn_fn_signature {
+        name        = "fn_signature"
+        description = "Describe a function's parameters and return type. Pass a function value, or a built-in's name as a string."
+        returns     = "record"
+        returns_description = "A record `{ doc, params: [{name, type, doc}], return_type, return_doc, signature, is_builtin }`."
+        parameter f { type = "any"  description = "A function value, or the name of a built-in as a utf8 string." }
+        code_example { lang = "wcl"  code = "fn_signature(\"map\")   // describe the map builtin → { signature: \"fn(xs: [T], ...) -> [U]\", ... }" }
+      }
+      function fn_fold {
+        name        = "fold"
+        description = "Reduce a list or tensor to a single value by repeatedly combining the accumulator with each element."
+        returns     = "U"
+        returns_description = "The final accumulator value."
+        parameter xs { type = "[T]"  description = "The list or tensor to reduce." }
+        parameter init { type = "U"  description = "The initial accumulator value." }
+        parameter f { type = "fn (U, T) -> U"  description = "Combines the accumulator with the next element." }
+        code_example { lang = "wcl"  code = "fold([1, 2, 3], 0, fn(acc: i64, x: i64) -> i64 { acc + x })   // sum the list, starting from 0 → 6" }
+      }
+      function fn_format {
+        name        = "format"
+        description = "Substitute trailing arguments into a template's `{}` placeholders (`{{`/`}}` are literal braces)."
+        returns     = "utf8"
+        returns_description = "The template with placeholders substituted."
+        parameter template { type = "utf8"  description = "Template string with `{}` placeholders." }
+        code_example { lang = "wcl"  code = "format(\"{} = {}\", \"x\", 42)   // substitute the args into the {} slots → \"x = 42\"" }
+      }
+      function fn_head {
+        name        = "head"
+        description = "The first element of a list or tensor (`none` when empty)."
+        remarks     = "Returns `none` when the collection is empty."
+        returns     = "T"
+        returns_description = "The first element, or `none` if empty."
+        parameter xs { type = "[T]"  description = "A list or tensor." }
+        code_example { lang = "wcl"  code = "head([1, 2, 3])   // take the first element → 1" }
+      }
+      function fn_hypot {
+        name        = "hypot"
+        description = "Length of the hypotenuse `sqrt(a² + b²)`."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter a { type = "f64"  description = "The first operand." }
+        parameter b { type = "f64"  description = "The second operand." }
+        code_example { lang = "wcl"  code = "hypot(3, 4)   // hypotenuse of a 3-4 right triangle → 5.0" }
+      }
+      function fn_join {
+        name        = "join"
+        description = "Join a list of strings into one, inserting a separator between each."
+        returns     = "utf8"
+        returns_description = "The joined string."
+        parameter parts { type = "[utf8]"  description = "The strings to join." }
+        parameter sep { type = "utf8"  description = "The separator inserted between parts." }
+        code_example { lang = "wcl"  code = "join([\"a\", \"b\", \"c\"], \"-\")   // join with a dash between pieces → \"a-b-c\"" }
+      }
+      function fn_keys {
+        name        = "keys"
+        description = "The field names of a record, in deterministic (sorted) order."
+        returns     = "[utf8]"
+        returns_description = "The field names."
+        parameter r { type = "record"  description = "A record value (or a union variant with a record body)." }
+        code_example { lang = "wcl"  code = "keys({ name: \"Rex\", age: 4 })   // field names, sorted → [\"age\", \"name\"]" }
+      }
+      function fn_len {
+        name        = "len"
+        description = "The number of elements in a list or tensor, or characters in a string."
+        returns     = "usize"
+        returns_description = "The number of elements (or characters)."
+        parameter xs { type = "[T]"  description = "A list, tensor, or string." }
+        code_example { lang = "wcl"  code = "len([10, 20, 30])   // count the elements → 3" }
+      }
+      function fn_ln {
+        name        = "ln"
+        description = "Natural (base-`e`) logarithm."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter x { type = "f64"  description = "The input value." }
+        code_example { lang = "wcl"  code = "ln(1.0)   // natural (base-e) logarithm of 1 → 0.0" }
+      }
+      function fn_log10 {
+        name        = "log10"
+        description = "Base-10 logarithm."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter x { type = "f64"  description = "The input value." }
+        code_example { lang = "wcl"  code = "log10(1000.0)   // base-10 logarithm of 1000 → 3.0" }
+      }
+      function fn_log2 {
+        name        = "log2"
+        description = "Base-2 logarithm."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter x { type = "f64"  description = "The input value." }
+        code_example { lang = "wcl"  code = "log2(8.0)   // base-2 logarithm of 8 → 3.0" }
+      }
+      function fn_map {
+        name        = "map"
+        description = "Apply a function to every element of a list or tensor, returning the transformed collection."
+        returns     = "[U]"
+        returns_description = "A new collection of the transformed elements."
+        parameter xs { type = "[T]"  description = "The list or tensor to transform." }
+        parameter f { type = "fn (T) -> U"  description = "Function applied to each element." }
+        code_example { lang = "wcl"  code = "map([1, 2, 3], fn(x: i64) -> i64 { x * 2 })   // double each element → [2, 4, 6]" }
+      }
+      function fn_map_values {
+        name        = "map_values"
+        description = "Apply a function to every field value of a record, keeping the keys."
+        returns     = "record"
+        returns_description = "A record with the same keys and transformed values."
+        parameter r { type = "record"  description = "The record to transform." }
+        parameter f { type = "fn (T) -> U"  description = "Function applied to each field value." }
+        code_example { lang = "wcl"  code = "map_values({ low: 1, high: 9 }, fn(x: i64) -> i64 { x * 2 })   // double every value, keep the keys → { high: 18, low: 2 }" }
+      }
+      function fn_max {
+        name        = "max"
+        description = "The larger of two numbers."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter a { type = "f64"  description = "The first operand." }
+        parameter b { type = "f64"  description = "The second operand." }
+        code_example { lang = "wcl"  code = "max(3, 7.5)   // the larger of the two → 7.5" }
+      }
+      function fn_merge {
+        name        = "merge"
+        description = "Combine two records into one; fields of `b` win on a name clash."
+        returns     = "record"
+        returns_description = "A record with the union of both field sets."
+        parameter a { type = "record"  description = "The base record." }
+        parameter b { type = "record"  description = "The overriding record." }
+        code_example { lang = "wcl"  code = "merge({ host: \"localhost\", port: 80 }, { port: 8080 })   // the second record wins on the port clash → { host: \"localhost\", port: 8080 }" }
+      }
+      function fn_min {
+        name        = "min"
+        description = "The smaller of two numbers."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter a { type = "f64"  description = "The first operand." }
+        parameter b { type = "f64"  description = "The second operand." }
+        code_example { lang = "wcl"  code = "min(3, 7.5)   // the smaller of the two → 3.0" }
+      }
+      function fn_pow {
+        name        = "pow"
+        description = "Raise `a` to the power `b`."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter a { type = "f64"  description = "The first operand." }
+        parameter b { type = "f64"  description = "The second operand." }
+        code_example { lang = "wcl"  code = "pow(2, 10)   // 2 raised to the 10th power → 1024.0" }
+      }
+      function fn_replace {
+        name        = "replace"
+        description = "Replace every occurrence of a substring with another."
+        returns     = "utf8"
+        returns_description = "The string with every match replaced."
+        parameter s { type = "utf8"  description = "The string to search." }
+        parameter old { type = "utf8"  description = "The substring to find." }
+        parameter new { type = "utf8"  description = "The replacement substring." }
+        code_example { lang = "wcl"  code = "replace(\"hello world\", \"world\", \"there\")   // replace the matched substring → \"hello there\"" }
+      }
+      function fn_round {
+        name        = "round"
+        description = "Round to the nearest integer (ties away from zero)."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter x { type = "f64"  description = "The input value." }
+        code_example { lang = "wcl"  code = "round(2.5)   // nearest integer (ties away from zero) → 3.0" }
+      }
+      function fn_sign {
+        name        = "sign"
+        description = "The sign of `x`: `1`, `-1`, or `0`."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter x { type = "f64"  description = "The input value." }
+        code_example { lang = "wcl"  code = "sign(-3.0)   // negative input -> -1.0 → -1.0" }
+      }
+      function fn_sin {
+        name        = "sin"
+        description = "Sine of an angle in radians."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter x { type = "f64"  description = "The input value." }
+        code_example { lang = "wcl"  code = "sin(0.0)   // sine of 0 radians → 0.0" }
+      }
+      function fn_slice {
+        name        = "slice"
+        description = "The half-open range `[start, end)` of a string's characters or a list's elements (bounds are clamped)."
+        returns     = "utf8 | [T]"
+        returns_description = "The sub-string / sub-list."
+        parameter xs { type = "utf8 | [T]"  description = "The string or list to slice." }
+        parameter start { type = "i64"  description = "Inclusive start index (clamped to the length)." }
+        parameter end { type = "i64"  description = "Exclusive end index (clamped to the length)." }
+        code_example { lang = "wcl"  code = "slice(\"hello\", 0, 2)   // characters from index 0 up to (not incl.) 2 → \"he\"" }
+      }
+      function fn_split {
+        name        = "split"
+        description = "Split a string on every occurrence of a separator into a list of pieces."
+        returns     = "[utf8]"
+        returns_description = "The pieces between separators."
+        parameter s { type = "utf8"  description = "The string to split." }
+        parameter sep { type = "utf8"  description = "The separator to split on." }
+        code_example { lang = "wcl"  code = "split(\"a,b,c\", \",\")   // split on each comma → [\"a\", \"b\", \"c\"]" }
+      }
+      function fn_sqrt {
+        name        = "sqrt"
+        description = "Square root."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter x { type = "f64"  description = "The input value." }
+        code_example { lang = "wcl"  code = "sqrt(144)   // square root → 12.0" }
+      }
+      function fn_starts_with {
+        name        = "starts_with"
+        description = "Whether a string begins with a prefix."
+        returns     = "bool"
+        returns_description = "`true` if the string starts with the prefix."
+        parameter s { type = "utf8"  description = "The string to test." }
+        parameter prefix { type = "utf8"  description = "The prefix to look for." }
+        code_example { lang = "wcl"  code = "starts_with(\"hello\", \"he\")   // does it begin with this prefix? → true" }
+      }
+      function fn_tail {
+        name        = "tail"
+        description = "Every element of a list or tensor except the first."
+        returns     = "[T]"
+        returns_description = "The elements after the first."
+        parameter xs { type = "[T]"  description = "A list or tensor." }
+        code_example { lang = "wcl"  code = "tail([1, 2, 3])   // everything after the first → [2, 3]" }
+      }
+      function fn_tan {
+        name        = "tan"
+        description = "Tangent of an angle in radians."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter x { type = "f64"  description = "The input value." }
+        code_example { lang = "wcl"  code = "tan(0.0)   // tangent of 0 radians → 0.0" }
+      }
+      function fn_to_lower {
+        name        = "to_lower"
+        description = "Lowercase every character of a string."
+        returns     = "utf8"
+        returns_description = "The lowercased string."
+        parameter s { type = "utf8"  description = "The string to lowercase." }
+        code_example { lang = "wcl"  code = "to_lower(\"AbC\")   // lowercase every character → \"abc\"" }
+      }
+      function fn_to_upper {
+        name        = "to_upper"
+        description = "Uppercase every character of a string."
+        returns     = "utf8"
+        returns_description = "The uppercased string."
+        parameter s { type = "utf8"  description = "The string to uppercase." }
+        code_example { lang = "wcl"  code = "to_upper(\"abc\")   // uppercase every character → \"ABC\"" }
+      }
+      function fn_trim {
+        name        = "trim"
+        description = "Remove leading and trailing whitespace from a string."
+        returns     = "utf8"
+        returns_description = "The string without leading/trailing whitespace."
+        parameter s { type = "utf8"  description = "The string to trim." }
+        code_example { lang = "wcl"  code = "trim(\"  hi  \")   // strip leading/trailing whitespace → \"hi\"" }
+      }
+      function fn_trunc {
+        name        = "trunc"
+        description = "Discard the fractional part, rounding toward zero."
+        returns     = "f64"
+        returns_description = "The result."
+        parameter x { type = "f64"  description = "The input value." }
+        code_example { lang = "wcl"  code = "trunc(3.9)   // drop the fractional part → 3.0" }
+      }
+      function fn_type_fields {
+        name        = "type_fields"
+        description = "Reflect a type or interface into a list of field-description records (own fields first, then inherited via `extends`)."
+        returns     = "[record]"
+        returns_description = "One record per field: `{ name, type, is_function, optional, has_default, is_block, repeated, accepts, decorators }`."
+        parameter target { type = "&T"  description = "A reference to a type or interface declaration." }
+        code_example { lang = "wcl"  code = "type_fields(Image)   // reflect the Image type into field records → [{ name: \"source\", type: \"utf8\", ... }, ...]" }
+      }
+      function fn_values {
+        name        = "values"
+        description = "The field values of a record, in the same order as `keys`."
+        returns     = "[T]"
+        returns_description = "The field values."
+        parameter r { type = "record"  description = "A record value (or a union variant with a record body)." }
+        code_example { lang = "wcl"  code = "values({ name: \"Rex\", age: 4 })   // field values, in key order → [4, \"Rex\"]" }
+      }
+    }
+}

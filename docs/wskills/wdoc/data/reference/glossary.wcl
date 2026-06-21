@@ -1,0 +1,71 @@
+// Glossary — wdoc vocabulary. Ids start with g_.
+
+term g_page {
+  term = "page"
+  definition = "A `page` block — one rendered output document (an HTML page, a Markdown file, or a slide). It joins one or more sites and holds the content blocks that make up its body."
+  aliases = ["page block"]
+  audience = :both
+}
+
+term g_site {
+  term = "site"
+  definition = "A `site` block — one output target configured by its template, title, theme, and navigation. A document can declare several sites, and each page joins one or more of them."
+  aliases = ["site block"]
+  audience = :both
+}
+
+term g_template {
+  term = "template"
+  definition = "The function that turns a page's content into a finished layout. Four built-ins ship (:webpage, :book, :presentation, :ai_skill); a custom `template` block is just a function from a TemplateCtx to a list of HTML fundamentals."
+  aliases = ["site template"]
+  audience = :both
+}
+
+term g_projection {
+  term = "projection"
+  definition = "Rendering one source document into a particular output shape. The same pages project into a website, a PDF, Markdown, or a Claude skill folder depending on the render command and the site's template."
+  aliases = ["render target", "target"]
+  audience = :both
+}
+
+term g_fundamental {
+  term = "HTML fundamental"
+  definition = "The low-level building block a template emits — an element, raw HTML, or text. Stdlib template parts return lists of fundamentals, which custom templates compose."
+  aliases = ["HtmlFundamental"]
+  audience = :both
+}
+
+term g_inline_pattern {
+  term = "inline pattern"
+  definition = "Markdown-style inline markup inside prose: **bold**, links, and inline code, written directly in a `p` or `span` string and lowered to styled spans."
+  aliases = ["inline markup"]
+  audience = :both
+}
+
+term g_admonition {
+  term = "admonition"
+  definition = "A `callout` block — an icon, a coloured heading, and a body, used to set a passage apart (note, info, tip, warning, success, error)."
+  aliases = ["callout"]
+  audience = :both
+}
+
+term g_partial {
+  term = "template part"
+  definition = "A stdlib function returning a list of HTML fundamentals for one region of a built-in layout (header, navbar, sidebar, content). Parts resolve by bare name once you import the wdoc library and let custom templates rebuild a layout region by region."
+  aliases = ["part", "layout part"]
+  audience = :both
+}
+
+term g_foreign_object {
+  term = "foreignObject"
+  definition = "The SVG element wdoc uses to embed HTML content — wrapped text, labels, rich shape contents — inside a diagram's SVG so prose and shapes share one coordinate space."
+  aliases = ["foreign object"]
+  audience = :both
+}
+
+term g_skill_folder {
+  term = "skill folder"
+  definition = "The output of `wcl wdoc skill`: a SKILL.md plus the conventional references/, scripts/, and assets/ subfolders that a Claude / agent skill expects."
+  aliases = ["skill directory", "Claude skill folder"]
+  audience = :both
+}

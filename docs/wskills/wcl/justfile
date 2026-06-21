@@ -1,0 +1,39 @@
+# {{TOPIC_NAME}} wskill — build recipes.
+#
+# Self-contained: uses the `wcl` CLI directly, so this wskill stands alone. Install
+# the rendered skill by copying out/skill into a repo's .claude/skills/<name>/.
+
+[default, private]
+main:
+	@just --list
+
+# Validate the wskill model and both templates against the schema
+[group('check')]
+wskill-check:
+	wcl check wskill.wcl
+	wcl check wdoc/book/main.wcl
+	wcl check wdoc/skill/main.wcl
+
+# Render the human-readable book projection to out/book
+[group('render')]
+book-build: wskill-check
+	wcl wdoc build wdoc/book/main.wcl --out out/book
+
+# Render the Claude Code skill projection to out/skill
+[group('render')]
+skill-build: wskill-check
+	wcl wdoc skill wdoc/skill/main.wcl --out out/skill
+
+# Render both projections
+[group('render')]
+render: book-build skill-build
+
+# Serve the book projection with live reload
+[group('render')]
+book-serve:
+	wcl wdoc serve wdoc/book/main.wcl
+
+# Remove generated output
+[group('clean')]
+out-clean:
+	rm -rf out

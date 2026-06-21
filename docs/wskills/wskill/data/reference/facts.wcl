@@ -1,0 +1,88 @@
+// The schema-reference fact and the reflection helpers it uses. (A `fact` is a
+// titled container whose body holds the claim and any value/table; `related`
+// interlinks to other units.)
+
+// ── Schema-reflection helpers for the `schema_reference` fact ─────────────────
+// A member access on a call (`decl_info(d).name`) reads back empty in wdoc, so each
+// helper binds the record to a `let` first. Param types are nominal — WCL erases fn
+// param types at runtime, so `FieldInfo` just stands in for a reflection reference.
+let decl_name = fn(d: FieldInfo) -> utf8 { let i = decl_info(d); i.name }
+let decl_fqn  = fn(d: FieldInfo) -> utf8 { let i = decl_info(d); i.full_name }
+let decl_kind = fn(d: FieldInfo) -> utf8 { let i = decl_info(d); i.kind }
+let is_doc    = fn(d: FieldInfo) -> bool { let i = decl_info(d); i.is_document }
+// type_fields (hence type_table) only works on type/interface declarations, so a
+// symbol_set is rendered as a plain list of its members instead.
+let has_fields = fn(d: FieldInfo) -> bool { match decl_kind(d) { "symbol_set" => false, _ => true } }
+// Reflection has no symbol_set member accessor, so parse them from the declaration's
+// source — slice between its LAST `{`/`}` (so braces in a doc comment don't interfere)
+// and split on whitespace.
+let last_of  = fn(xs: list<utf8>) -> utf8 { head(reverse(xs)) }
+let symbol_members = fn(d: FieldInfo) -> list<utf8> {
+  let inside = head(split(last_of(split(ast_string(d), "{")), "}"));
+  filter(split(replace(inside, "\n", " "), " "), fn(s: utf8) -> bool { len(s) > 0 })
+}
+// True for declarations in our namespace — drops wdoc's `body` content-fragment slots.
+let in_ns     = fn(d: FieldInfo) -> bool { starts_with(decl_fqn(d), "wcl.wskill.") }
+
+// The namespace's @document declarations (the root containers).
+let doc_decls = fn() -> list<FieldInfo> {
+  filter(namespace_decls("wcl.wskill"), fn(d: FieldInfo) -> bool { is_doc(d) })
+}
+// Top-level blocks: the in-namespace element types of every @document block slot,
+// in slot order (topic, source, … then the extension blocks).
+let top_blocks = fn() -> list<FieldInfo> {
+  filter(flatten(map(doc_decls(), fn(dc: FieldInfo) -> list<FieldInfo> { child_types(dc) })),
+         fn(c: FieldInfo) -> bool { in_ns(c) })
+}
+// The in-namespace blocks nested under a block (its @child / @children slots).
+let nested_blocks = fn(b: FieldInfo) -> list<FieldInfo> {
+  filter(child_types(b), fn(c: FieldInfo) -> bool { in_ns(c) })
+}
+// Everything the namespace declares that isn't a top-level or nested block — the
+// @document roots themselves and shared @table types — so nothing is dropped.
+let other_decls = fn() -> list<FieldInfo> {
+  let shown = map(
+    flatten([top_blocks(),
+             flatten(map(top_blocks(), fn(b: FieldInfo) -> list<FieldInfo> { nested_blocks(b) }))]),
+    fn(d: FieldInfo) -> utf8 { decl_fqn(d) });
+  filter(namespace_decls("wcl.wskill"),
+         fn(d: FieldInfo) -> bool { list_contains(shown, decl_fqn(d)) == false })
+}
+
+// The schema, reflected. Instead of hand-maintaining a block catalogue, this fact
+// reflects the live `wcl.wskill` schema with WCL's reflection builtins: it walks
+// every declaration in the namespace (`namespace_decls`), prints its name and doc
+// comment (`decl_info` / `doc_comment`), and renders its fields with the built-in
+// `type_table` component (built on `type_fields`). The page is generated from the
+// schema itself, so it can never drift from base.wcl / extensions.wcl.
+fact schema_reference {
+  title    = "The wskill schema"
+  related  = [datapresentation, selfcontained]
+  body {
+    p "A complete reference of the `wcl.wskill` namespace, reflected from the live schema (`namespace_decls` / `decl_info` / `type_fields`) so it never drifts from base.wcl / extensions.wcl. Top-level blocks — the ones the root document gathers — come first in declaration order; any blocks nested inside a block are listed directly under it. The document roots and shared types follow."
+    h2 "Blocks"
+    wdoc_repeater { each = top_blocks()  as = :b
+      h3 $"${decl_name(b)}"
+      p  $"${doc_comment(b)}"
+      type_table { type = b }
+      wdoc_repeater { each = nested_blocks(b)  as = :n
+        h4 $"${decl_name(n)}"
+        p  $"${doc_comment(n)}"
+        type_table { type = n }
+      }
+    }
+    h2 "Document roots & shared types"
+    wdoc_repeater { each = other_decls()  as = :x
+      h3 $"${decl_name(x)}"
+      // A record renders as a doc paragraph + field table; a symbol_set has no
+      // fields, so just list its allowed members.
+      wdoc_repeater { each = match has_fields(x) { true => [true], _ => [] }  as = :_t
+        p  $"${doc_comment(x)}"
+        type_table { type = x }
+      }
+      wdoc_repeater { each = match has_fields(x) { false => [true], _ => [] }  as = :_s
+        p $"A `symbol_set` — one of: ${join(map(symbol_members(x), fn(m: utf8) -> utf8 { $"`${m}`" }), ", ")}."
+      }
+    }
+  }
+}

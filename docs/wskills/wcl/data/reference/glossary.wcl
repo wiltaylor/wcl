@@ -1,0 +1,94 @@
+// Glossary — WCL vocabulary. Ids are prefixed `g_` to stay globally unique
+// across this wskill's units.
+
+term g_block {
+  term       = "block"
+  definition = "A labelled, brace-delimited record instance written in document data, e.g. `service \"web\" { … }`. Its schema is a `type` decorated with `@block(\"kind\")`."
+  aliases    = ["block instance"]
+  audience   = :both
+}
+
+term g_kind {
+  term       = "kind"
+  definition = "The string name that identifies a block's schema, declared in `@block(\"kind\")` and written bare at the instance site. Kinds are namespace-scoped and can be disambiguated with a `ns::kind` qualifier."
+  aliases    = ["block kind"]
+  audience   = :both
+}
+
+term g_document {
+  term       = "document"
+  definition = "The root schema of a WCL file, a `type` marked `@document` whose fields gather the top-level blocks. Several `@document` schemas in one namespace merge — a tag is legal if any of them declares it."
+  aliases    = ["document root", "root schema"]
+  audience   = :both
+}
+
+term g_decorator {
+  term       = "decorator"
+  definition = "Schema metadata written `@name` or `@name(args)` attached to a declaration or field, such as `@block`, `@child`, `@default`, or `@min`. WCL field decorators are prefix."
+  audience   = :both
+}
+
+term g_heredoc {
+  term       = "heredoc"
+  definition = "A multi-line string literal `<<TAG … TAG` whose body runs until a line matching the closing tag. A single-quoted tag (`<<'TAG'`) makes it raw — no escapes or interpolation."
+  aliases    = ["raw heredoc"]
+  audience   = :both
+}
+
+term g_symbol {
+  term       = "symbol"
+  definition = "An identifier-like value written `:name` (no space after the colon), used for tags and enum-like choices. A `symbol_set` declares a closed vocabulary of allowed symbols."
+  audience   = :both
+}
+
+term g_interface {
+  term       = "interface"
+  definition = "A structural contract — a set of fields a type must have to satisfy it. Satisfaction is automatic and structural: any type with the right fields qualifies, with no explicit `implements`."
+  audience   = :both
+}
+
+term g_union {
+  term       = "union"
+  definition = "A tagged set of variants — a value that is exactly one of several alternatives, each carrying its own payload (record, typeref, or none). Pattern matching dispatches on the tag."
+  aliases    = ["tagged union", "variant"]
+  audience   = :both
+}
+
+term g_reference {
+  term       = "reference"
+  definition = "A field typed `&T` that accepts any value structurally satisfying interface `T`, letting a schema stay open-ended without being untyped."
+  aliases    = ["ref field"]
+  audience   = :both
+}
+
+term g_namespace {
+  term       = "namespace"
+  definition = "A dotted scope for a file's declarations, set by a top-of-file `namespace path` statement, so independently-authored libraries can share a document without name collisions."
+  audience   = :both
+}
+
+term g_optional {
+  term       = "optional"
+  definition = "A value that may be present or absent. A `?` type suffix (`utf8?`) makes a type optional; the literal `none` represents absence and `??` supplies a default."
+  aliases    = ["optional type"]
+  audience   = :both
+}
+
+term g_projection {
+  term       = "projection"
+  definition = "Rendering one model into a target output. wdoc projects the same WCL data into multiple targets (a book and a skill) using template repeaters, so nothing is hand-duplicated."
+  aliases    = ["project"]
+  audience   = :both
+}
+
+term g_identifier {
+  term       = "identifier"
+  definition = "A bare name used as a block label or id, of type `identifier`. With `@ref(\"kind\")`, an identifier field is checked to name an existing block of that kind."
+  audience   = :both
+}
+
+term g_schema {
+  term       = "schema"
+  definition = "The set of `type`, `@block`, and `@document` declarations that define a document's legal structure, which `wcl check` validates the data against."
+  audience   = :both
+}

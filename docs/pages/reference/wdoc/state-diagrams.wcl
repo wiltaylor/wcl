@@ -1,5 +1,5 @@
 // wdoc section: State diagrams.
-page wdoc_state_diagrams { sites = [:reference, :wcl_skill]  title = "State diagrams"
+page wdoc_state_diagrams { sites = [:reference]  title = "State diagrams"
   h1 "State diagrams"
 
   p "A `state_diagram` draws an entity lifecycle coordinate-free: states auto-rank by longest path from the transition graph (back-edges and self-loops route around), `initial` draws the filled entry dot, `final` the double border, and each transition carries a `trigger [guard]` edge label. It is a page-level block — not a `diagram` shape."

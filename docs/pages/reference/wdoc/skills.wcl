@@ -1,5 +1,5 @@
 // wdoc section: AI skill folders.
-page wdoc_skills { sites = [:reference, :wcl_skill]  title = "Skill folders"
+page wdoc_skills { sites = [:reference]  title = "Skill folders"
   h1 "Skill folders"
 
   p "`wcl wdoc skill <file> --out <dir>` renders a document to an agent / Claude **skill folder** — a `SKILL.md` plus the conventional `references/`, `scripts/` and `assets/` subfolders. It's a Markdown-backed target (see [Markdown output](wdoc_markdown)): prose, links, tables, code, diagrams and the rest map exactly as they do there, but the *folder layout* and `SKILL.md` front matter follow the skill convention."

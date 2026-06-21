@@ -1,5 +1,5 @@
 // wdoc section: Sequence diagrams.
-page wdoc_sequence_diagrams { sites = [:reference, :wcl_skill]  title = "Sequence diagrams"
+page wdoc_sequence_diagrams { sites = [:reference]  title = "Sequence diagrams"
   h1 "Sequence diagrams"
 
   p "A `sequence_diagram` draws a runtime interaction coordinate-free: participants rank left-to-right and messages top-to-bottom **in declaration order**, lifelines extend past the last message, and the height follows the content (only `width` is declared). It is a page-level block — not a `diagram` shape."

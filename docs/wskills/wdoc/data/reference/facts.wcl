@@ -1,0 +1,79 @@
+// Facts — titled containers of factual data about wdoc (tables of built-ins).
+
+fact template_kinds {
+  title = "Built-in site templates"
+  related = [sites, skills]
+  audience = :both
+  body {
+    p "A `site`'s `default_template` (or a page's `template`) names one of four built-in projections. The first three render HTML/PDF/Markdown with `wcl wdoc build`; `:ai_skill` is a Markdown-only target rendered with `wcl wdoc skill`."
+    table {
+      header = ["Template", "What it produces", "Render command"]
+      rows = [
+        [":webpage", "A Hugo-style site: header, sticky top navbar from `menu`, reading column", "wcl wdoc build"],
+        [":book", "An mdBook-style book: fixed left sidebar with nested `toc` chapters, reading column", "wcl wdoc build"],
+        [":presentation", "A reveal.js-style slide deck laid out by a `deck` block, navigated by keyboard", "wcl wdoc build"],
+        [":ai_skill", "A Claude skill folder: SKILL.md plus references/, scripts/, assets/", "wcl wdoc skill"],
+      ]
+    }
+  }
+}
+
+fact themes {
+  title = "Built-in colour themes"
+  related = [styling]
+  audience = :both
+  body {
+    p "Set `theme = :<name>` on a `site` to recolour the whole site in one line. Seven palettes ship, each with co-ordinated dark and light variants; add `theme_toggle = true` for a light/dark toggle button. The accent hue is chosen independently with `accent = :<colour>`."
+    table {
+      header = ["Theme", "Notes"]
+      rows = [
+        ["nord", "Cool blue-grey, the default"],
+        ["gruvbox", "Warm retro"],
+        ["solarized", "Classic Solarized"],
+        ["catppuccin", "Soft pastel"],
+        ["tokyonight", "Vivid night palette"],
+        ["kanagawa", "Muted with hints of indigo"],
+        ["everforest", "Green forest tones"],
+      ]
+    }
+  }
+}
+
+fact callout_classes {
+  title = "Callout admonition classes"
+  related = [formatting]
+  audience = :both
+  body {
+    p "A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are selected by `class`, each shipping a default colour and icon. A custom type comes from a `class` whose `accent` field sets the colour."
+    table {
+      header = ["Class", "Use"]
+      rows = [
+        ["note", "Background context the reader should remember"],
+        ["info", "Neutral information worth surfacing"],
+        ["tip", "A helpful shortcut or best practice"],
+        ["warning", "Something to be careful about"],
+        ["success", "Confirm an action completed"],
+        ["error", "A failure or hard constraint"],
+      ]
+    }
+  }
+}
+
+fact layout_modes {
+  title = "Diagram and container layout modes"
+  related = [diagrams, flowcharts, connections]
+  audience = :both
+  body {
+    p "A `diagram` (or a `container`) places its shapes with one of several layout modes, set by `layout = :<mode>`. The default is free placement from explicit coordinates; the auto-layout modes derive positions from the connection graph instead."
+    table {
+      header = ["Mode", "Behaviour"]
+      rows = [
+        [":free", "Default — shapes sit at the explicit `x`/`y` coordinates you give them"],
+        [":grid", "Shapes flow into rows and columns of a regular grid"],
+        [":layered", "Shapes are topologically ranked from the edges and stacked top-to-bottom, elbow-routed (flowcharts)"],
+        [":force", "A force-directed solver spreads connected shapes apart and pulls neighbours together"],
+        [":radial", "One hub sits at the centre with every other shape on a ring around it (hub-and-spoke)"],
+      ]
+    }
+  }
+}

@@ -1,5 +1,5 @@
 // wdoc section: Pages.
-page wdoc_pages { sites = [:reference, :wcl_skill]  title = "Pages"
+page wdoc_pages { sites = [:reference]  title = "Pages"
   h1 "Pages"
 
   p "A `page` block declares one rendered HTML page. Each page joins one or more sites and holds the content blocks that make up its body."

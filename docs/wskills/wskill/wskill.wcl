@@ -1,0 +1,64 @@
+// wskill — wskill root document.
+//
+// Single entry point: declares the topic (subject + metadata) and sources, and
+// includes the data files. `wcl check wskill.wcl` validates the whole model.
+// The wdoc template sets in wdoc/ project this model into the book and skill.
+
+import <wdoc.wcl>
+import "./schema/base.wcl"
+
+// Data — split into more files by area as the wskill grows, adding
+// an import line per file. Keep templates (wdoc/) free of topic content.
+import "./data/reference/concepts.wcl"      // concepts
+import "./data/reference/entities.wcl"      // entities (the output artifacts)
+import "./data/reference/glossary.wcl"      // terms
+import "./data/reference/facts.wcl"         // checkable facts
+import "./data/reference/examples.wcl"      // worked examples
+
+schema_version = "1.1.0"
+
+topic wskill {
+  name    = "wskill"
+  summary = "A WCL document format that captures a topic completely and projects it into both a human-readable book and a Claude Code skill."
+  version = "1.1.0"             // the wskill format / base-schema version this describes
+  description = <<END
+wskill is a self-describing document format: this very wskill is built with the
+format it documents, and its skill projection regenerates the working wskill skill.
+It captures a topic as one WCL data model — reference, processes, curated indexes — and
+projects it two ways with no hand-duplication: a human book and a Claude Code skill.
+END
+  tags = ["wcl", "wdoc", "documentation", "skills"]
+  created    = "2026-06-17"
+  maintainer = "Wil Taylor"
+  maintainer_entity = wil_taylor
+  note       = "Self-hosting: rendered and installed over the live wskill skill."
+}
+
+// Skill-projection config (→ SKILL.md frontmatter).
+wcl.wskill::skill {
+  // Pre-approve the tools the workflows lean on (wcl/wdoc via Bash; files via Read).
+  allowed_tools = ["Bash", "Read"]
+  summary {
+    overview = ["wskill captures a topic completely — reference, processes and curated indexes — as one WCL data model, projected into a human book and this Claude Code skill with nothing hand-duplicated."]
+  }
+  skill_param "$ARGUMENTS" {
+    description = "The topic to capture, or the existing wskill to build / update / render."
+    value       = "Take it from the user's request (a topic name, or a path to a wskill folder). If empty, ask what to work on."
+  }
+  skill_boundary {
+    always = ["Edit content in the model (data/ + wskill.wcl), never hand-edit `out/` or generated SKILL.md.", "Run `wcl check` and re-render after changes."]
+    ask    = ["Before deleting data files or overwriting an existing wskill."]
+    never  = ["Hand-edit a wskill's `schema/base.wcl` — it is generated/propagated."]
+  }
+}
+
+// No external sources — this wskill is self-describing (it documents the format it
+// is built with), so there is nothing upstream to track for the update workflow.
+
+// Cross-reference to the WCL/wdoc skill the toolchain rests on. Planned: no wskill
+// exists for it yet, so this renders as a backlog stub (a validator warning).
+wskill_ref wcl {
+  name     = "wcl"
+  relation = "prerequisite — the language and wdoc renderer this format is built on"
+  status   = "planned"
+}

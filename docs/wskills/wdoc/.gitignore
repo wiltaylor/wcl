@@ -1,0 +1,3 @@
+# Generated projections — regenerate with `just render`.
+# Delete these lines if you want to commit the rendered outputs.
+/out/

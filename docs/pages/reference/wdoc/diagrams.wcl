@@ -15,7 +15,7 @@ class "dgm-ghost" {
   opacity = "0.5"
 }
 
-page wdoc_diagrams { sites = [:reference, :wcl_skill]  title = "Diagrams"
+page wdoc_diagrams { sites = [:reference]  title = "Diagrams"
   h1 "Diagrams"
 
   p "Diagram blocks are wdoc's way of drawing diagrams and charts on pages. A diagram is made of shapes that break down into primitive shapes and render as SVG, which lets the same source target different backends."

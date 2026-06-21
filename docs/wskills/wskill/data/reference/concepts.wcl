@@ -1,0 +1,129 @@
+// Concepts for the wskill wskill.
+//
+// Concept summaries feed the SKILL.md concept index, so they are kept sharp.
+
+// ---------------------------------------------------------------------------
+// Concepts — the model
+// ---------------------------------------------------------------------------
+concept datapresentation {
+  name     = "Separation of Data and Presentation"
+  summary  = "Keep data and presentation separate: declare the topic once as data in a natural shape, and let the templates own how it looks — so one model can feed several outputs with nothing hand-duplicated."
+  related  = [the_book, the_skill]
+  body {
+    p <<BODY
+      The wskill model separates data from presentation. You declare the topic once as
+      structured data in a natural shape; the wdoc templates carry no topic content, only
+      presentation. Working on the data and on how it looks in two separate places keeps a
+      document easy to update, and lets one data set feed several outputs in a uniform way.
+    BODY
+
+    p <<BODY 
+      Presentation runs in two steps over that data. Gather is the query — the root
+      document collects every block instance of a kind into a list, and the templates walk
+      those lists. Projection is the render — the gathered data is laid out into an output
+      format. Because the data is the single source, every presentation of it stays in sync.
+    BODY
+    p <<BODY    
+      That separation is what lets the one data set become multiple outputs: the wdoc book
+      (a human-readable site) and the Claude Code skill (a SKILL.md plus reference files).
+      Change a block once and it appears, hand-duplicated nowhere, in every output on the
+      next render.
+    BODY
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Concepts — authoring
+// ---------------------------------------------------------------------------
+
+concept selfcontained {
+  name     = "Content is self-contained"
+  summary  = "Capture the information itself; never defer to an external source for it. Attribution citations are fine; the only learning pointers are cross-references."
+  related  = [datapresentation]
+  body {
+    p <<BODY
+      A wskill must stand on its own. The forbidden move is the deferral — sending the
+      reader to an outside source for the substance instead of capturing it here, where it
+      can't be projected or kept current. The validator flags the common phrasings.
+      Attribution for credit ("per RFC 9110",
+      "as POSIX specifies") is welcome where it matters. Pointers to further learning are
+      expressed only as wskill cross-reference blocks to other wskills (possibly planned
+      stubs), never as bare URLs in prose. Content is declarative reference data written
+      to be projected: factual and lean, with the templates supplying presentation.
+    BODY
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Concepts — the units (what each kind of content block is)
+// ---------------------------------------------------------------------------
+
+concept concept {
+  name     = "Concept"
+  summary  = "A unit that captures an idea or mental model the reader must grasp — a sharp summary plus a wdoc body, rendered to its own page and cross-linked to related units."
+  related  = [entity, fact, process, datapresentation]
+  body {
+    p <<BODY
+A concept is one of the wskill model's interlinking units. Use it for an idea, a
+mechanism, or a way of thinking about the topic — something the reader needs to
+understand rather than look up. It is a thin record: a `name` (the headline and link
+text) and a `summary` (a one-liner that feeds the SKILL.md concept index), plus an
+addressable `body` of paragraphs, tables, code and links that rides on the record and
+is projected onto its own page. The `related` field lists other unit ids of any kind, which the
+templates resolve to links — so concepts, entities, facts and processes all
+cross-reference each other.
+BODY
+  }
+}
+
+concept entity {
+  name     = "Entity"
+  summary  = "A unit for a noun in the topic's world — a person, an organisation, a tool, a type — the concrete things it names, usually with an attributes table in its body."
+  related  = [concept, fact, process]
+  body {
+    p <<BODY
+An entity is the unit for a noun: one of the concrete things the topic names — a
+person, an organisation, a tool, a file type, a command, a screen. If you can point
+at it and give it a name, it is probably an entity. Where a concept explains an idea,
+an entity describes the thing itself and its attributes — commonly as a small
+key/value table in its body. Like every unit it is a thin record (`name`, `kind`,
+`summary`) plus an addressable `body` projected onto its own page, with
+`related` links out to the concepts, facts and processes that explain or use it.
+Don't force structured things like CLI flags into entities — model those with a typed
+extension block.
+BODY
+  }
+}
+
+concept fact {
+  name     = "Fact"
+  summary  = "A unit that holds factual data — a value, a constant, a value table — in its body, named by a title. It is the home for a reference table."
+  related  = [concept, entity, process]
+  body {
+    p <<BODY
+A fact is the unit for discrete, checkable data: a constant, a value, or a table of
+values. The `title` names it; the body — an addressable `body` — holds the data,
+typically a `table` (though prose or code work too). A reference table lives on a
+fact, not in a typed block. Facts render to their own pages and cross-link like every
+other unit. Reach for a fact when the content is something you could verify against
+the topic, rather than an idea (a concept) or a thing (an entity).
+BODY
+  }
+}
+
+concept process {
+  name     = "Process"
+  summary  = "A unit (authored as a procedure) that captures the reliable sequence for doing a task — ordered steps, for someone who already knows the topic."
+  related  = [concept, entity, fact]
+  body {
+    p <<BODY
+A process — authored as a `procedure` block — is the unit for doing a specific task
+reliably. It is written for someone who already knows the topic and needs the
+sequence, not a newcomer learning it (that is a tutorial). Unlike concept, entity and
+fact it keeps a structured shape rather than a free body: a `purpose`,
+`preconditions`, ordered `step` children, and a `verification`. Each process renders
+to its own `process_<id>` page and cross-links to the concepts, entities and facts it
+touches.
+BODY
+  }
+}

@@ -1,0 +1,81 @@
+// WDOC — wskill root document.
+//
+// A complete reference for wdoc, WCL's document/projection system: pages, sites,
+// templates, text & formatting, tables, the full diagram family, components and
+// projection, and the skill/markdown/pdf render targets. `wcl check wskill.wcl`
+// validates the whole model; the wdoc template sets in wdoc/ project it into the
+// book and the skill.
+
+import <wdoc.wcl>
+import "./schema/base.wcl"
+import "./schema/extensions.wcl"
+
+// Data — reference units (concepts + entities), facts, glossary, examples,
+// processes.
+import "./data/reference/concepts.wcl"
+import "./data/reference/entities.wcl"
+import "./data/reference/facts.wcl"
+import "./data/reference/glossary.wcl"
+import "./data/reference/examples.wcl"
+import "./data/reference/indexes.wcl"
+import "./data/processes/processes.wcl"
+
+schema_version = "1.1.0"
+
+topic wdoc {
+  name    = "wdoc"
+  summary = "WCL's static-site and skill generator: declare pages and sites in WCL and render them to HTML, Markdown, a Claude skill folder, or PDF."
+  version = "0.24.1-alpha"
+  description = <<END
+wdoc is a WCL-driven document system. You write **pages** (made of blocks —
+headings, paragraphs, code, callouts, tables, and a deep family of SVG diagrams)
+and group them into **sites** that pick a **template** (`:webpage`, `:book`,
+`:presentation`, `:ai_skill`). The `wcl wdoc` CLI renders a document to HTML
+(`build`), a folder of Markdown (`markdown`), a Claude Code **skill folder**
+(`skill`), or PDF (`pdf`), and serves it with live reload (`serve`). Because pages
+are WCL, content can be **projected** from a typed data model with components
+(`wdoc_repeater`, `wdoc_component`) and addressable bodies (`body` / `project`) —
+which is exactly how a wskill renders.
+END
+  tags = ["wdoc", "wcl", "static-site", "documentation", "skill"]
+  created    = "2026-06-20"
+  maintainer = "ai@wiltaylor.dev"
+}
+
+// Skill-projection config (→ SKILL.md frontmatter). No bundled artifacts.
+wcl.wskill::skill {
+}
+
+// ---- Sources (update-workflow metadata only) ----
+
+source wdoc_docs {
+  kind         = "docs"
+  locator      = "/home/wil/dev/WCL/docs/pages/reference/wdoc"
+  covers       = "The authoritative wdoc reference: a page per block family and render concept."
+  last_checked = "2026-06-20"
+  reflects_version = "0.24.1-alpha"
+}
+
+source wdoc_stdlib {
+  kind         = "repo"
+  locator      = "/home/wil/dev/WCL/crates/wcl_wdoc/lib"
+  covers       = "The wdoc standard library — the WCL definitions of every block type and template."
+  last_checked = "2026-06-20"
+  reflects_version = "0.24.1-alpha"
+}
+
+source wdoc_cli {
+  kind         = "cli"
+  locator      = "wcl wdoc --help"
+  covers       = "Render-target help text for build/markdown/skill/pdf/serve."
+  last_checked = "2026-06-20"
+  reflects_version = "0.24.1-alpha"
+}
+
+// ---- Cross-references to other wskills ----
+
+wskill_ref wcl {
+  name     = "WCL"
+  relation = "prerequisite — wdoc documents are written in WCL"
+  status   = "exists"
+}

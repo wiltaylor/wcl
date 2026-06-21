@@ -1,0 +1,511 @@
+// Book projection — human-readable wdoc site over the wskill data model.
+//
+// Build:  wcl wdoc build wdoc/book/main.wcl --out out/book
+//
+// This template contains NO topic content — only projections over the data
+// gathered by the root @document (concepts, entities, …). Chapter order follows
+// the WSKILL PRD §10. When you add a typed extension block in schema/extensions.wcl,
+// add a render section for it here (search "TYPED EXTENSION").
+
+import <wdoc.wcl>
+import "../../wskill.wcl"
+
+// The single topic block, bound from its gather list (see base.wcl
+// for why it is a list). A wskill always has exactly one.
+let topic = head(topics)
+
+// Audience filter — the book is the comprehensive human reference. Each `let`
+// shadows the gathered list of the same name with its "both"/"book" subset
+// (dropping ai-only notes), so the book renders everything meant for readers.
+let in_book    = fn(a: Audience) -> bool { match a { :ai => false, _ => true } }
+let concepts   = filter(concepts,   fn(c: Concept)   -> bool { in_book(c.audience) })
+let entities   = filter(entities,   fn(e: Entity)    -> bool { in_book(e.audience) })
+let facts      = filter(facts,      fn(f: Fact)      -> bool { in_book(f.audience) })
+let terms      = filter(terms,      fn(t: Term)      -> bool { in_book(t.audience) })
+let examples   = filter(examples,   fn(x: Example)   -> bool { in_book(x.audience) })
+let indexes    = filter(indexes,    fn(x: Index)      -> bool { in_book(x.audience) })
+// Top-level indexes are book-filtered above; child_indexes flattens each one's
+// nested sub-indexes (book-filtered too). all_indexes drives per-page rendering
+// (a child of a book-excluded parent is intentionally dropped with its parent).
+let child_indexes = filter(flatten(map(indexes, fn(x: Index) -> list<Index> { x.children })), fn(x: Index) -> bool { in_book(x.audience) })
+let all_indexes   = flatten([indexes, child_indexes])
+let procedures = filter(procedures, fn(p: Procedure) -> bool { in_book(p.audience) })
+// Opt-in `language` module (schema/language.wcl): book-filtered languages whose
+// features each project their grouped concepts into the language page below.
+let languages  = filter(languages,  fn(x: Language)  -> bool { in_book(x.audience) })
+// Flatten every language's features so each can generate its own sub-page.
+// Top-level features per language, plus nested children and grandchildren (three
+// levels), so every feature — at any depth — generates its own sub-page below.
+let top_features    = flatten(map(languages, fn(l: Language) -> list<Feature> { l.features }))
+let child_features  = flatten(map(top_features,   fn(f: Feature) -> list<Feature> { f.children }))
+let gchild_features = flatten(map(child_features, fn(f: Feature) -> list<Feature> { f.children }))
+let all_features    = flatten([top_features, flatten([child_features, gchild_features])])
+
+// Opt-in `cli` module (schema/cli.wcl): a CLI maps to a top-level "CLI" section;
+// each cli renders all its commands on one page with an in-page jump index.
+let clis = filter(clis, fn(x: Cli) -> bool { in_book(x.audience) })
+
+// --- site -------------------------------------------------------------------
+
+site book {
+  default_template = :book
+  title            = $"${topic.name}"
+  summary          = $"${topic.summary}"
+  root             = true
+  theme            = :nord
+  theme_toggle     = true
+  search           = true
+  toc {
+    chapter "Overview"       { page = index }
+    wdoc_repeater { each = indexes  as = :ix  chapter $"${ix.name}" { page = $"index_${ix.id}"
+      wdoc_repeater { each = filter(ix.children, fn(x: Index) -> bool { in_book(x.audience) })  as = :cix  chapter $"${cix.name}" { page = $"index_${cix.id}" } }
+    } }
+    // Opt-in language module — a top-level "Language" section, one chapter per language,
+    // its features nested beneath. Gated so it vanishes when no language is described.
+    wdoc_repeater { each = match len(languages) { 0 => [], _ => [true] }  as = :_lg
+      chapter "Language" { page = languages_page
+        wdoc_repeater { each = languages  as = :l
+          wdoc_repeater { each = l.features  as = :f  chapter $"${f.name}" { page = $"feature_${f.id}"
+            wdoc_repeater { each = f.children  as = :cf  chapter $"${cf.name}" { page = $"feature_${cf.id}"
+              wdoc_repeater { each = cf.children  as = :gf  chapter $"${gf.name}" { page = $"feature_${gf.id}" } }
+            } }
+          } }
+        }
+      }
+    }
+    // Opt-in cli module — the cli(s) projected directly onto one "CLI Reference"
+    // page (commands reached via its in-page index).
+    wdoc_repeater { each = match len(clis) { 0 => [], _ => [true] }  as = :_clg
+      chapter "CLI Reference" { page = clis_page }
+    }
+    // Reference groups the four units (concept / entity / fact / process) plus any
+    // typed-extension reference sections. Each unit sub-chapter is gated.
+    chapter "Reference"      { page = reference_page
+      wdoc_repeater { each = match len(concepts) { 0 => [], _ => [true] }  as = :_cg
+        chapter "Concepts" { page = concepts_page
+          wdoc_repeater { each = concepts  as = :c  chapter $"${c.name}" { page = $"concept_${c.id}" } }
+        }
+      }
+      wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_eg
+        chapter "Entities" { page = entities_page
+          wdoc_repeater { each = entities  as = :e  chapter $"${e.name}" { page = $"entity_${e.id}" } }
+        }
+      }
+      wdoc_repeater { each = match len(facts) { 0 => [], _ => [true] }  as = :_fg
+        chapter "Facts" { page = facts_page
+          wdoc_repeater { each = facts  as = :f  chapter $"${f.title}" { page = $"fact_${f.id}" } }
+        }
+      }
+      wdoc_repeater { each = match len(procedures) { 0 => [], _ => [true] }  as = :_pg
+        chapter "Processes" { page = processes_page
+          wdoc_repeater { each = procedures  as = :pr  chapter $"${pr.title}" { page = $"process_${pr.id}" } }
+        }
+      }
+    }
+    chapter "Glossary"       { page = glossary_page }
+  }
+}
+
+// --- 1. Overview ------------------------------------------------------------
+
+page index { start = true
+  h1 $"${topic.name}"
+  callout "Summary" { class = ["info"]  body = $"${topic.summary}" }
+  table {
+    header = ["", ""]
+    rows = [
+      ["Version", topic.version ?? "—"],
+      ["Created", topic.created],
+      ["Last updated", topic.updated ?? "—"],
+      ["Maintainer", match topic.maintainer_entity { none => topic.maintainer ?? "—", id => $"[${topic.maintainer ?? "maintainer"}](entity_${id})" }],
+    ]
+  }
+  wdoc_repeater { each = match topic.description { none => [], d => [d] }  as = :d
+    p $"${d}"
+  }
+
+
+  h2 "Related skills"
+  wdoc_repeater { each = match len(refs) { 0 => [true], _ => [] }  as = :_n
+    p "No related wskills declared yet."
+  }
+  wdoc_repeater { each = match len(refs) { 0 => [], _ => [true] }  as = :_r
+    table {
+      header = ["Name", "Relation", "Status", "Source"]
+      rows = map(refs, fn(r: WskillRef) -> list<utf8> {
+        [r.name, r.relation ?? "—", r.status, match r.url { none => "—", u => $"[source](${u})" }]
+      })
+    }
+  }
+
+  wdoc_repeater { each = match len(sources) { 0 => [], _ => [true] }  as = :_s
+    h2 "Sources"
+    p "Sources drive the update workflow only — they are not topic content."
+    table {
+      header = ["ID", "Kind", "Locator", "Covers", "Last checked", "Reflects version"]
+      rows   = map(sources, fn(s: Source) -> list<utf8> {
+        [$"${s.id}", s.kind, s.locator, s.covers, s.last_checked ?? "—", s.reflects_version ?? "—"]
+      })
+    }
+  }
+}
+
+// --- 2. Units: concept / entity / fact — index + per-unit page + body + related
+
+page concepts_page {
+  h1 "Concepts"
+  p  "Each concept has its own page — open one from the list or the sidebar."
+  wdoc_repeater { each = concepts  as = :c
+    p $"- [**${c.name}**](concept_${c.id}) — ${c.summary}"
+  }
+}
+wdoc_repeater { each = concepts  as = :c
+  page $"concept_${c.id}" { title = $"${c.name}"
+    h1 $"${c.name}"
+    p  $"_${c.summary}_"
+    project { from = c.body }
+    // Examples projected onto this unit (example.unit == this id).
+    wdoc_repeater { each = match len(filter(examples, fn(z: Example) -> bool { z.unit == c.id })) { 0 => [], _ => [true] }  as = :_xh  h2 "Examples" }
+    wdoc_repeater { each = filter(examples, fn(z: Example) -> bool { z.unit == c.id })  as = :z
+      h3 $"${z.title}"
+      wdoc_repeater { each = match z.narrative { none => [], n => [n] }  as = :n  p $"${n}" }
+      wdoc_repeater { each = match z.code { none => [], cc => [cc] }  as = :src  code $"${z.code_lang ?? "text"}" { source = src } }
+      wdoc_repeater { each = match z.expected { none => [], e => [e] }  as = :e  p $"**Expected:** ${e}" }
+    }
+    wdoc_repeater { each = match len(c.related) { 0 => [], _ => [true] }  as = :_r  h2 "Related" }
+    wdoc_repeater { each = c.related  as = :rid
+      wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
+      wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
+      wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
+      wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
+    }
+  }
+}
+
+wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_ei
+  page entities_page {
+    h1 "Entities"
+    p  "Each entity has its own page — open one from the list or the sidebar."
+    wdoc_repeater { each = entities  as = :e
+      p $"- [**${e.name}**](entity_${e.id}) — _${e.kind}_${match e.summary { none => "", s => $" — ${s}" }}"
+    }
+  }
+}
+wdoc_repeater { each = entities  as = :e
+  page $"entity_${e.id}" { title = $"${e.name}"
+    h1 $"${e.name}"
+    p  $"_${e.kind}_"
+    wdoc_repeater { each = match e.summary { none => [], s => [s] }  as = :s  p $"${s}" }
+    project { from = e.body }
+    // Examples projected onto this unit (example.unit == this id).
+    wdoc_repeater { each = match len(filter(examples, fn(z: Example) -> bool { z.unit == e.id })) { 0 => [], _ => [true] }  as = :_xh  h2 "Examples" }
+    wdoc_repeater { each = filter(examples, fn(z: Example) -> bool { z.unit == e.id })  as = :z
+      h3 $"${z.title}"
+      wdoc_repeater { each = match z.narrative { none => [], n => [n] }  as = :n  p $"${n}" }
+      wdoc_repeater { each = match z.code { none => [], cc => [cc] }  as = :src  code $"${z.code_lang ?? "text"}" { source = src } }
+      wdoc_repeater { each = match z.expected { none => [], e => [e] }  as = :e  p $"**Expected:** ${e}" }
+    }
+    wdoc_repeater { each = match len(e.related) { 0 => [], _ => [true] }  as = :_r  h2 "Related" }
+    wdoc_repeater { each = e.related  as = :rid
+      wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
+      wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
+      wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
+      wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
+    }
+  }
+}
+
+wdoc_repeater { each = match len(facts) { 0 => [], _ => [true] }  as = :_fi
+  page facts_page {
+    h1 "Facts"
+    p  "Each fact is a container of factual data on its own page."
+    wdoc_repeater { each = facts  as = :f
+      p $"- [**${f.title}**](fact_${f.id})"
+    }
+  }
+}
+wdoc_repeater { each = facts  as = :f
+  page $"fact_${f.id}" { title = $"${f.title}"
+    h1 $"${f.title}"
+    project { from = f.body }
+    // Examples projected onto this unit (example.unit == this id).
+    wdoc_repeater { each = match len(filter(examples, fn(z: Example) -> bool { z.unit == f.id })) { 0 => [], _ => [true] }  as = :_xh  h2 "Examples" }
+    wdoc_repeater { each = filter(examples, fn(z: Example) -> bool { z.unit == f.id })  as = :z
+      h3 $"${z.title}"
+      wdoc_repeater { each = match z.narrative { none => [], n => [n] }  as = :n  p $"${n}" }
+      wdoc_repeater { each = match z.code { none => [], cc => [cc] }  as = :src  code $"${z.code_lang ?? "text"}" { source = src } }
+      wdoc_repeater { each = match z.expected { none => [], e => [e] }  as = :e  p $"**Expected:** ${e}" }
+    }
+    wdoc_repeater { each = match len(f.related) { 0 => [], _ => [true] }  as = :_r  h2 "Related" }
+    wdoc_repeater { each = f.related  as = :rid
+      wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
+      wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
+      wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
+      wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
+    }
+  }
+}
+
+// --- 3. Reference (examples + typed extension content) ----------------------
+
+page reference_page {
+  h1 "Reference"
+  p  "The four units, plus examples and any typed-extension sections."
+  wdoc_repeater { each = match len(concepts) { 0 => [], _ => [true] }  as = :_uc
+    p $"- [**Concepts**](concepts_page) — ${len(concepts)} ideas to understand."
+  }
+  wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_ue
+    p $"- [**Entities**](entities_page) — ${len(entities)} concrete things in the topic's world."
+  }
+  wdoc_repeater { each = match len(facts) { 0 => [], _ => [true] }  as = :_uf
+    p $"- [**Facts**](facts_page) — ${len(facts)} values and value tables."
+  }
+  wdoc_repeater { each = match len(procedures) { 0 => [], _ => [true] }  as = :_up
+    p $"- [**Processes**](processes_page) — ${len(procedures)} runbooks for doing tasks."
+  }
+
+  // ---- TYPED EXTENSION BLOCKS render here ------------------------------------
+  // The base schema has no generic table/custom block. Model topic-specific content
+  // (lookup tables, cards, a CLI vocabulary) as typed @blocks in schema/extensions.wcl
+  // and add their render here (and in the skill template). Worked examples attach to a
+  // unit via `example.unit` and render on that unit's page. See references/schema.md.
+}
+
+// --- 5. Processes -----------------------------------------------------------
+
+page processes_page {
+  h1 "Processes"
+  p  "Each process is a runbook on its own page — open one from the list or the sidebar."
+  wdoc_repeater { each = procedures  as = :pr
+    p $"- [**${pr.title}**](process_${pr.id}) — ${pr.purpose}"
+  }
+}
+wdoc_repeater { each = procedures  as = :pr
+  page $"process_${pr.id}" { title = $"${pr.title}"
+    h1 $"${pr.title}"
+    p  $"**Purpose:** ${pr.purpose}"
+    wdoc_repeater { each = match len(pr.preconditions) { 0 => [], _ => [true] }  as = :_p
+      p $"_Preconditions:_ ${join(pr.preconditions, ", ")}"
+    }
+    wdoc_repeater { each = pr.steps  as = :s
+      column { widths = [6.0, 94.0]
+        h3 $"${s.n}"
+        h3 $"${s.title ?? ""}"
+      }
+      project { from = s.bodies }
+    }
+    wdoc_repeater { each = match pr.verification { none => [], v => [v] }  as = :v
+      callout "Verification" { class = ["success"]  body = $"${v}" }
+    }
+    wdoc_repeater { each = match len(pr.related) { 0 => [], _ => [true] }  as = :_r  h2 "Related" }
+    wdoc_repeater { each = pr.related  as = :rid
+      wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
+      wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
+      wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
+      wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
+    }
+  }
+}
+
+// --- Indexes — curated link-collection pages (top-level menu entries) --------
+wdoc_repeater { each = all_indexes  as = :ix
+  page $"index_${ix.id}" { title = $"${ix.name}"
+    h1 $"${ix.name}"
+    wdoc_repeater { each = match ix.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
+    project { from = ix.body }
+    wdoc_repeater { each = match len(ix.related) { 0 => [], _ => [true] }  as = :_r  h2 "Related" }
+    wdoc_repeater { each = ix.related  as = :rid
+      wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
+      wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
+      wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
+      wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
+    }
+  }
+}
+
+// --- Language (opt-in module) — a landing page per language + a sub-page per feature
+// `language`/`feature` are data, not units. The language page is a landing that links
+// to one sub-page per feature; each feature sub-page projects its grouped concepts'
+// bodies (the same addressable bodies that render on their own Reference pages).
+// The "Language" section page — the described language(s) projected directly onto
+// it (no separate per-language node); features are nested under "Language" in the menu.
+page languages_page {
+  h1 "Language"
+  wdoc_repeater { each = languages  as = :l
+    wdoc_repeater { each = match l.version { none => [], v => [v] }  as = :v  p $"**Version:** ${v}" }
+    project { from = l.body }
+    wdoc_repeater { each = match len(l.features) { 0 => [], _ => [true] }  as = :_fh  h2 "Features" }
+    wdoc_repeater { each = l.features  as = :f
+      p $"- [**${f.name}**](feature_${f.id})${match f.summary { none => "", s => $" — ${s}" }}"
+    }
+  }
+}
+
+// One sub-page per feature — an atomic language element. The feature's h1 names
+// it; its single concept or fact body is projected directly beneath (re-projected
+// from that unit's own addressable body).
+wdoc_repeater { each = all_features  as = :f
+  page $"feature_${f.id}" { title = $"${f.name}"
+    h1 $"${f.name}"
+    wdoc_repeater { each = match f.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
+    // A heading per unit only when the feature groups more than one (a merged feature);
+    // an atomic feature's h1 already names its single concept/fact.
+    wdoc_repeater { each = f.concepts  as = :cid
+      wdoc_repeater { each = filter(concepts, fn(c: Concept) -> bool { c.id == cid })  as = :c
+        wdoc_repeater { each = match len(f.concepts) + len(f.facts) { 1 => [], _ => [true] }  as = :_m
+          wdoc_repeater { each = filter([c.name], fn(n: utf8) -> bool { n != f.name })  as = :hn  h2 $"${hn}" }
+        }
+        project { from = c.body }
+      }
+    }
+    wdoc_repeater { each = f.facts  as = :fid
+      wdoc_repeater { each = filter(facts, fn(x: Fact) -> bool { x.id == fid })  as = :x
+        wdoc_repeater { each = match len(f.concepts) + len(f.facts) { 1 => [], _ => [true] }  as = :_m
+          wdoc_repeater { each = filter([x.title], fn(n: utf8) -> bool { n != f.name })  as = :hn  h2 $"${hn}" }
+        }
+        project { from = x.body }
+      }
+    }
+    // Struct objects projected on this feature page (fields + methods + examples).
+    wdoc_repeater { each = filter(f.structs, fn(s: Struct) -> bool { in_book(s.audience) })  as = :s
+      h2 $"${s.name}"
+      wdoc_repeater { each = match s.description { none => [], d => [d] }  as = :d  p $"${d}" }
+      wdoc_repeater { each = match len(s.fields) { 0 => [], _ => [true] }  as = :_ft
+        table {
+          header = ["Field", "Type", "Description", "Remarks"]
+          rows = map(s.fields, fn(fl: Field) -> list<utf8> { [fl.name, fl.type, fl.description ?? "—", fl.remarks ?? "—"] })
+        }
+      }
+      wdoc_repeater { each = s.functions  as = :fc
+        h3 $"${fc.name}(${join(map(fc.parameters, fn(p: Parameter) -> utf8 { $"${p.name}: ${p.type ?? "?"}" }), ", ")})${match fc.returns { none => "", r => $" → ${r}" }}"
+        wdoc_repeater { each = match fc.description { none => [], d => [d] }  as = :d  p $"${d}" }
+        wdoc_repeater { each = match len(fc.parameters) + (match fc.returns { none => 0, r => 1 }) { 0 => [], _ => [true] }  as = :_pt
+          table {
+            header = ["Parameter", "Type", "Description", "Remarks"]
+            rows = flatten([
+              map(fc.parameters, fn(p: Parameter) -> list<utf8> { [p.name, p.type ?? "—", p.description ?? "—", p.remarks ?? "—"] }),
+              match fc.returns { none => [], r => [["returns", r, fc.returns_description ?? "—", "—"]] }
+            ])
+          }
+        }
+        wdoc_repeater { each = match fc.remarks { none => [], r => [r] }  as = :r  p $"**Remarks:** ${r}" }
+        wdoc_repeater { each = fc.examples  as = :ex
+          wdoc_repeater { each = match ex.description { none => [], d => [d] }  as = :d  p $"${d}" }
+          code $"${ex.lang ?? "text"}" { source = ex.code }
+          wdoc_repeater { each = match ex.result { none => [], rr => [rr] }  as = :rr  p $"**Result:** `${rr}`" }
+        }
+      }
+      wdoc_repeater { each = match s.remarks { none => [], r => [r] }  as = :r  p $"**Remarks:** ${r}" }
+      wdoc_repeater { each = s.examples  as = :ex
+        wdoc_repeater { each = match ex.description { none => [], d => [d] }  as = :d  p $"${d}" }
+        code $"${ex.lang ?? "text"}" { source = ex.code }
+        wdoc_repeater { each = match ex.result { none => [], rr => [rr] }  as = :rr  p $"**Result:** `${rr}`" }
+      }
+    }
+    // Function objects projected on this feature page (data is authored alphabetically).
+    // An index of jump-links (each heading carries an explicit id anchor) sits on top.
+    wdoc_repeater { each = match len(filter(f.functions, fn(fc: Function) -> bool { in_book(fc.audience) })) { 0 => [], _ => [true] }  as = :_fi
+      h2 "Functions"
+      p $"${join(map(filter(f.functions, fn(fc: Function) -> bool { in_book(fc.audience) }), fn(fc: Function) -> utf8 { $"[${fc.name}](#${fc.id})" }), " · ")}"
+    }
+    wdoc_repeater { each = filter(f.functions, fn(fc: Function) -> bool { in_book(fc.audience) })  as = :fc
+      h3 $"${fc.name}(${join(map(fc.parameters, fn(p: Parameter) -> utf8 { $"${p.name}: ${p.type ?? "?"}" }), ", ")})${match fc.returns { none => "", r => $" → ${r}" }}" { id = fc.id }
+      wdoc_repeater { each = match fc.description { none => [], d => [d] }  as = :d  p $"${d}" }
+      wdoc_repeater { each = match len(fc.parameters) + (match fc.returns { none => 0, r => 1 }) { 0 => [], _ => [true] }  as = :_pt
+        table {
+          header = ["Parameter", "Type", "Description", "Remarks"]
+          rows = flatten([
+            map(fc.parameters, fn(p: Parameter) -> list<utf8> { [p.name, p.type ?? "—", p.description ?? "—", p.remarks ?? "—"] }),
+            match fc.returns { none => [], r => [["returns", r, fc.returns_description ?? "—", "—"]] }
+          ])
+        }
+      }
+      wdoc_repeater { each = match fc.remarks { none => [], r => [r] }  as = :r  p $"**Remarks:** ${r}" }
+      wdoc_repeater { each = fc.examples  as = :ex
+        wdoc_repeater { each = match ex.description { none => [], d => [d] }  as = :d  p $"${d}" }
+        code $"${ex.lang ?? "text"}" { source = ex.code }
+        wdoc_repeater { each = match ex.result { none => [], rr => [rr] }  as = :rr  p $"**Result:** `${rr}`" }
+      }
+    }
+    // A grouping feature (e.g. Syntax) links to its nested child features.
+    wdoc_repeater { each = f.children  as = :cf
+      p $"- [**${cf.name}**](feature_${cf.id})${match cf.summary { none => "", s => $" — ${s}" }}"
+    }
+  }
+}
+
+// --- CLI Reference (opt-in cli module) — the cli(s) projected directly onto the
+// "CLI Reference" page, with a jump-link index of every command at the top.
+page clis_page {
+  h1 "CLI Reference"
+  wdoc_repeater { each = clis  as = :c
+    wdoc_repeater { each = match c.version { none => [], v => [v] }  as = :v  p $"**Version:** ${v}" }
+    wdoc_repeater { each = match c.description { none => [], d => [d] }  as = :d  p $"${d}" }
+    wdoc_repeater { each = match len(c.switches) { 0 => [], _ => [true] }  as = :_gs
+      h2 "Global switches"
+      table {
+        header = ["Switch", "Value", "Description", "Remarks"]
+        rows = map(c.switches, fn(sw: CliSwitch) -> list<utf8> { [$"${match sw.short { none => "", s => $"${s}, " }}${sw.long}", sw.value_name ?? "—", sw.description ?? "—", sw.remarks ?? "—"] })
+      }
+    }
+    // Index — jump-links to every command on this page (nested under their parent).
+    h2 "Commands"
+    wdoc_repeater { each = c.subcommands  as = :sc
+      p $"- [`${c.name} ${sc.name}`](#${sc.id})"
+      wdoc_repeater { each = sc.subcommands  as = :ns
+        p $"  - [`${c.name} ${sc.name} ${ns.name}`](#${ns.id})"
+      }
+    }
+    // Each command rendered inline (h3 top-level, h4 nested), heading carries an id anchor.
+    wdoc_repeater { each = c.subcommands  as = :sc
+      h3 $"${c.name} ${sc.name}" { id = sc.id }
+      wdoc_repeater { each = match len(sc.aliases) { 0 => [], _ => [true] }  as = :_al  p $"_alias: ${join(sc.aliases, ", ")}_" }
+      wdoc_repeater { each = match sc.description { none => [], d => [d] }  as = :d  p $"${d}" }
+      wdoc_repeater { each = match len(sc.args) { 0 => [], _ => [true] }  as = :_ah
+        table {
+          header = ["Argument", "Required", "Description", "Remarks"]
+          rows = map(sc.args, fn(a: CliArg) -> list<utf8> { [$"${a.name}${match a.variadic { true => "…", _ => "" }}", match a.required { true => "required", _ => "optional" }, a.description ?? "—", a.remarks ?? "—"] })
+        }
+      }
+      wdoc_repeater { each = match len(sc.switches) { 0 => [], _ => [true] }  as = :_sh
+        table {
+          header = ["Switch", "Value", "Description", "Remarks"]
+          rows = map(sc.switches, fn(sw: CliSwitch) -> list<utf8> { [$"${match sw.short { none => "", s => $"${s}, " }}${sw.long}", sw.value_name ?? "—", sw.description ?? "—", sw.remarks ?? "—"] })
+        }
+      }
+      wdoc_repeater { each = sc.examples  as = :ex  code $"${ex.lang ?? "text"}" { source = ex.code } }
+      wdoc_repeater { each = match sc.remarks { none => [], r => [r] }  as = :r  p $"**Remarks:** ${r}" }
+      wdoc_repeater { each = sc.subcommands  as = :ns
+        h4 $"${c.name} ${sc.name} ${ns.name}" { id = ns.id }
+        wdoc_repeater { each = match len(ns.aliases) { 0 => [], _ => [true] }  as = :_al  p $"_alias: ${join(ns.aliases, ", ")}_" }
+        wdoc_repeater { each = match ns.description { none => [], d => [d] }  as = :d  p $"${d}" }
+        wdoc_repeater { each = match len(ns.args) { 0 => [], _ => [true] }  as = :_ah
+          table {
+            header = ["Argument", "Required", "Description", "Remarks"]
+            rows = map(ns.args, fn(a: CliArg) -> list<utf8> { [$"${a.name}${match a.variadic { true => "…", _ => "" }}", match a.required { true => "required", _ => "optional" }, a.description ?? "—", a.remarks ?? "—"] })
+          }
+        }
+        wdoc_repeater { each = match len(ns.switches) { 0 => [], _ => [true] }  as = :_sh
+          table {
+            header = ["Switch", "Value", "Description", "Remarks"]
+            rows = map(ns.switches, fn(sw: CliSwitch) -> list<utf8> { [$"${match sw.short { none => "", s => $"${s}, " }}${sw.long}", sw.value_name ?? "—", sw.description ?? "—", sw.remarks ?? "—"] })
+          }
+        }
+        wdoc_repeater { each = ns.examples  as = :ex  code $"${ex.lang ?? "text"}" { source = ex.code } }
+        wdoc_repeater { each = match ns.remarks { none => [], r => [r] }  as = :r  p $"**Remarks:** ${r}" }
+      }
+    }
+  }
+}
+
+// --- 6. Glossary ------------------------------------------------------------
+
+page glossary_page {
+  h1 "Glossary"
+  wdoc_repeater { each = match len(terms) { 0 => [], _ => [true] }  as = :_g
+    table {
+      header = ["Term", "Definition", "Aliases"]
+      rows = map(terms, fn(t: Term) -> list<utf8> { [t.term, t.definition, join(t.aliases, ", ")] })
+    }
+  }
+}

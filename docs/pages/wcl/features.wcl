@@ -92,7 +92,7 @@ wcl fmt   site.wcl --in-place
 wcl repl  site.wcl
 BASH
   }
-  p "Each subcommand is covered in the [CLI reference](reference:cli)."
+  p "Each subcommand is covered in the [wcl wskill](/wskills/wcl/)."
 
   h2 "Language server"
 

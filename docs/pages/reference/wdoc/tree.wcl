@@ -1,5 +1,5 @@
 // wdoc section: Trees.
-page wdoc_tree { sites = [:reference, :wcl_skill]  title = "Trees"
+page wdoc_tree { sites = [:reference]  title = "Trees"
   h1 "Trees"
 
   p "`tree` renders an **indented file-tree**: one row per `tree_node`, indented by depth with ├─ └─ │ connector guides drawn between a parent and its children — the classic file-explorer look. Each node carries a `title` (its positional label) plus an optional `icon` and `color`. Nodes nest arbitrarily, so it suits a directory layout, a config tree, or any hierarchy where the structure is the point."

@@ -1,0 +1,718 @@
+// Entities — the concrete wdoc block families you can write. Each entity names a
+// block (or block group), describes what it draws, and ports the source page's main
+// example as a code listing. Ported from /docs/pages/reference/wdoc/.
+
+entity diagrams {
+  name     = "diagram"
+  kind     = "block"
+  summary  = "The SVG canvas: a sized box holding shapes (rect/circle/line/polygon/label/container/card/node) that lower to SVG, with optional auto-layout."
+  related  = [flowcharts, sequence_diagrams, state_diagrams, charts, tree, images, icons]
+  audience = :both
+  body {
+    p "A `diagram` is wdoc's drawing surface. It declares a `width` / `height` and holds shapes that break down into primitives and render as SVG, so the same source can target different backends. Basic shapes include `rect`, `circle`, `line`, `polygon`, `label`, `container`, `card`, and `node`; higher-level families (flowcharts, charts, trees, maps, tilemaps, wireframes) are shapes that live inside a `diagram` too. See the [connections](concept_connections) concept and the SVG [primitives](concept_primitives)."
+    p "Connect two shapes by id with an `a -> b` edge. Set `pan_zoom = true` to wrap the canvas in an interactive viewport (wheel zooms, drag pans, corner buttons reset); zoom clamps to `[zoom_min, zoom_max]`. Give any shape a `link` to make it a hyperlink, resolved exactly like a prose link."
+    h2 "A diagram with an edge"
+    code "wcl" { source = <<'SRC'
+diagram {
+  width = 320  height = 160  pan_zoom = true
+  zoom_min = 0.5  zoom_max = 4.0
+  rect { id = a  x = 20.0   y = 30.0  width = 80.0  height = 50.0  fill = "#88c0d0" }
+  rect { id = b  x = 210.0  y = 90.0  width = 80.0  height = 50.0  fill = "#a3be8c" }
+  a -> b
+}
+SRC
+    }
+    h2 "Layout modes"
+    p "Without a `layout`, shapes are placed by their `x` / `y`. Set `layout = :layered` to topologically rank shapes from the edge graph and elbow-route the connections, `:radial` for a hub-and-spoke ring (`hub` names the centre), or `:force` for a physics layout. See [layout modes](fact_layout_modes)."
+    h2 "Styling shapes with classes"
+    p "Every shape takes a `class` list. A `class` emits SVG paint — `fill`, `stroke`, `stroke_width`, `stroke_linecap`, `stroke_linejoin`, `opacity` — with `dark { }` / `light { }` overrides, so a shape follows the site theme and the reader's light/dark mode. See [styling](concept_styling)."
+    code "wcl" { source = <<'SRC'
+class "dgm-box" {
+  fill         = "#5e81ac"
+  stroke       = "#2e3440"
+  stroke_width = "2"
+  dark  { fill = "#88c0d0"  stroke = "#eceff4" }
+  light { fill = "#5e81ac"  stroke = "#2e3440" }
+}
+
+diagram { width = 320  height = 120
+  rect { x = 20.0   y = 25.0  width = 110.0  height = 70.0  class = ["dgm-box"] }
+}
+SRC
+    }
+    table {
+      header = ["Field", "Effect"]
+      rows = [
+        ["fill", "Interior colour."],
+        ["stroke", "Outline colour."],
+        ["stroke_width", "Outline thickness."],
+        ["stroke_linecap / stroke_linejoin", "Line end / corner style."],
+        ["opacity", "Overall transparency (0 to 1)."],
+        ["dark { } / light { }", "Per-colour-scheme overrides."]
+      ]
+    }
+    callout "Accessibility" { class = ["tip"]  body = "Give a diagram a `desc` — it becomes the SVG's title and aria-label, so screen readers announce it instead of skipping it." }
+  }
+}
+
+entity flowcharts {
+  name     = "flowchart shapes"
+  kind     = "block"
+  summary  = "process / decision / terminator shapes plus the layered auto-layout that turns a diagram into a flowchart."
+  related  = [diagrams, sequence_diagrams, state_diagrams]
+  audience = :both
+  body {
+    p "Flowchart shapes plus the layered auto-layout mode turn a `diagram` into a flowchart: declare the shapes and the edges, and the renderer ranks them topologically and elbow-routes the connections. The three stdlib shapes lower to SVG primitives and take the same fields, differing only in the figure drawn: `process` is a rectangle (an action/step), `decision` a diamond (a yes/no branch), and `terminator` an oval (a start/end node). See [connections](concept_connections)."
+    h2 "Layered auto-layout"
+    p "Set `layout = :layered` on the diagram. Shapes are topologically ranked from the connection graph and stacked top-to-bottom; elbow routing then connects them with right-angled paths, and `layer_gap` controls the spacing between ranks."
+    code "wcl" { source = <<'SRC'
+diagram {
+  width = 320  height = 220  layout = :layered  layer_gap = 20.0
+
+  process    "Parse"  { id = parse   width = 100.0  height = 40.0  fill = "#88c0d0" }
+  decision   "Valid?" { id = valid   width = 100.0  height = 60.0  fill = "#ebcb8b" }
+  terminator "Render" { id = render  width = 100.0  height = 40.0  fill = "#b48ead" }
+
+  parse -> valid  :flow
+  valid -> render :flow
+}
+SRC
+    }
+    h2 "Radial layout and boundaries"
+    p "Set `layout = :radial` for an \"X and everything it talks to\" shape: one `hub` shape sits at the centre and the rest ring around it (pairs well with `routing = :straight`). A `boundary` draws a labelled box behind a set of shapes named in `members` — it owns no layout, so it works on `:radial` and `:force` where a `container` cannot."
+    code "wcl" { source = <<'SRC'
+diagram {
+  width = 360  height = 300  layout = :radial  hub = platform  routing = :straight
+
+  process    "Platform"  { id = platform  width = 96.0  height = 44.0 }
+  process    "Warehouse" { id = warehouse width = 96.0  height = 44.0 }
+  process    "Billing"   { id = billing   width = 96.0  height = 44.0 }
+
+  platform -> warehouse :flow
+  platform -> billing   :flow
+
+  boundary "Achmisoft" { members = [platform, warehouse, billing] }
+}
+SRC
+    }
+  }
+}
+
+entity sequence_diagrams {
+  name     = "sequence_diagram"
+  kind     = "block"
+  summary  = "A page-level block drawing a runtime interaction: participants rank left-to-right, messages flow top-to-bottom in declaration order."
+  related  = [diagrams, flowcharts, state_diagrams]
+  audience = :both
+  body {
+    p "A `sequence_diagram` draws a runtime interaction coordinate-free: `participant`s rank left-to-right and `message`s top-to-bottom **in declaration order**, lifelines extend past the last message, and the height follows the content (only `width` is declared). It is a page-level block, not a `diagram` shape."
+    h2 "Participants, messages, notes"
+    p "A `participant`'s `kind` picks the head: `:box` (default), `:actor` (stick figure), `:external` (dashed box); `link` makes it clickable. A `message`'s `kind` picks the arrow: `:sync` (solid line, filled head, default), `:async` (solid, open head), `:reply` (dashed, open head); the same `from` and `to` renders a self-message loop. A `note` is a margin annotation drawn at the row of the message named by `at`."
+    code "wcl" { source = <<'SRC'
+sequence_diagram {
+  width = 720
+
+  participant "customer" { name = "Customer"        kind = :actor }
+  participant "web"      { name = "Web App" }
+  participant "api"      { name = "API Application" }
+  participant "stripe"   { name = "Stripe"          kind = :external }
+
+  message "m1" { from = "customer" to = "web"    text = "Submit payment form" }
+  message "m2" { from = "web"      to = "api"    text = "POST /orders" }
+  message "m3" { from = "api"      to = "stripe" text = "Capture charge" }
+  message "m4" { from = "stripe"   to = "api"    text = "charge id"  kind = :reply }
+  message "m5" { from = "api"      to = "api"    text = "persist order" }
+  message "m6" { from = "api"      to = "web"    text = "201 Created" kind = :reply }
+  note    "n1" { at = "m3"  text = "Retries reuse the idempotency key." }
+}
+SRC
+    }
+    p "Like every `@children` slot, the `participants` / `messages` lists accept computed splices, so a repeated scenario model can generate its figure. See [data views](concept_data_views)."
+  }
+}
+
+entity state_diagrams {
+  name     = "state_diagram"
+  kind     = "block"
+  summary  = "A page-level block drawing an entity lifecycle: states auto-rank by longest path, transitions carry trigger [guard] labels."
+  related  = [diagrams, flowcharts, sequence_diagrams]
+  audience = :both
+  body {
+    p "A `state_diagram` draws an entity lifecycle coordinate-free: `state`s auto-rank by longest path from the transition graph (back-edges and self-loops route around), `initial = true` draws the filled entry dot, `final = true` the double border, and each `transition` carries a `trigger [guard]` edge label. It is a page-level block, not a `diagram` shape."
+    h2 "States and transitions"
+    p "A `transition` is a block (not an `a -> b` edge) because it carries payload: the `trigger` event and an optional `guard`. The same `from` and `to` renders a self-loop arc. States rank along `direction` (default `:top_to_bottom`); a state with explicit `x` **and** `y` opts out of auto-layout."
+    code "wcl" { source = <<'SRC'
+state_diagram {
+  width = 640
+  direction = :left_to_right
+
+  state "pending"   { name = "Pending"   initial = true }
+  state "paid"      { name = "Paid" }
+  state "shipped"   { name = "Shipped"   final = true }
+  state "cancelled" { name = "Cancelled" final = true }
+
+  transition "t1" { from = "pending" to = "paid"      trigger = "payment captured" }
+  transition "t2" { from = "paid"    to = "shipped"   trigger = "dispatched"  guard = "stock reserved" }
+  transition "t3" { from = "pending" to = "cancelled" trigger = "customer cancels" }
+  transition "t4" { from = "paid"    to = "paid"      trigger = "partial refund" }
+}
+SRC
+    }
+    p "Like every `@children` slot, `states` / `transitions` accept computed splices, so a state-machine model can generate its figure. See [data views](concept_data_views)."
+  }
+}
+
+entity charts {
+  name     = "bar_chart / line_chart / pie_chart"
+  kind     = "block"
+  summary  = "Three chart kinds that lower to SVG via pure-WCL geometry; place each inside a diagram sharing its size."
+  related  = [diagrams, timelines]
+  audience = :both
+  body {
+    p "wdoc ships three chart kinds — `bar_chart`, `line_chart`, and `pie_chart` — that lower to SVG via pure-WCL geometry. Each is an `SvgBlock`, so place it inside a `diagram` sharing its size. Data is a list of records and the variant is inferred from each record's shape, so a bare `{ … }` is all you need."
+    h2 "Bar and line charts"
+    p "Both take a `series: list<ChartSeries>` — each series a `{ name, values }` record; multiple series produce grouped bars or multi-line plots, and `categories` labels the x-axis. `line_chart` adds `point_labels = true` (print every point's value) and `points` (author-named callouts, each `{ label, category, value }`)."
+    code "wcl" { source = <<'SRC'
+diagram { width = 360  height = 200
+  bar_chart { width = 360.0  height = 200.0
+    title = "Revenue"  x_label = "Quarter"  y_label = "$k"
+    categories = ["Q1", "Q2", "Q3", "Q4"]
+    series = [
+      { name: "2025", values: [42.0, 55.0, 61.0, 78.0] },
+      { name: "2026", values: [30.0, 48.0, 52.0, 66.0] },
+    ]
+  }
+}
+SRC
+    }
+    h2 "Pie chart"
+    p "A `pie_chart` takes `slices: list<ChartSlice>` — each a `{ label, value }` record, drawn as polygon-approximated arcs."
+    code "wcl" { source = <<'SRC'
+diagram { width = 240  height = 240
+  pie_chart { width = 240.0  height = 240.0
+    title = "Market share"
+    slices = [
+      { label: "Alpha", value: 42.0 },
+      { label: "Beta",  value: 31.0 },
+      { label: "Other", value: 27.0 },
+    ]
+  }
+}
+SRC
+    }
+    p "Charts cycle the `wdoc-series-1`..`wdoc-series-8` palette classes, so a `class` override or a site `theme` recolours them. See [styling](concept_styling)."
+  }
+}
+
+entity timelines {
+  name     = "timeline"
+  kind     = "block"
+  summary  = "A real-time axis placed inside a diagram: point items, labelled phase bands, and rich event cards pinned to ISO dates."
+  related  = [charts, diagrams]
+  audience = :both
+  body {
+    p "`timeline` is a **real-time axis** — dates are ISO strings (`\"2026-03-15\"` / `\"…14:30\"`) and tick boundaries land on real calendar dates. A `unit` (`:minutes`..`:years`) sets granularity; omit it for auto-fit from the event span. It is a diagram shape, so it lives inside a `diagram` sharing its size."
+    h2 "Items and phases"
+    p "`items` are point events, each `{ label, on }` (with optional `side: :near|:far`). `phases` are labelled spans, each `{ label, from, to }`, drawn as a band that cycles the `wdoc-series-N` palette. Set `direction = :vertical` to read top-to-bottom with items alternating sides."
+    code "wcl" { source = <<'SRC'
+diagram { width = 560  height = 220
+  timeline { width = 560.0  height = 220.0
+    title = "2026 roadmap"
+    start = "2026-01-01"
+    end   = "2026-12-31"
+    unit  = :months
+    items = [
+      { label: "Kickoff",  on: "2026-02-20" },
+      { label: "Beta",     on: "2026-05-10" },
+      { label: "Release",  on: "2026-09-20", side: :far },
+    ]
+    phases = [
+      { label: "Build",  from: "2026-02-01", to: "2026-06-15" },
+      { label: "Polish", from: "2026-06-15", to: "2026-11-01" },
+    ]
+  }
+}
+SRC
+    }
+    h2 "Event cards"
+    p "A timeline also accepts rich-text `card` children — each pinned to a date with `on` and filled with formatted wdoc content (text, lists, callouts, images). `width` / `height` size the box and `side: :near|:far` forces which side of the axis it sits on."
+    code "wcl" { source = <<'SRC'
+diagram { width = 720  height = 320
+  timeline { width = 720.0  height = 320.0
+    title = "Release timeline"
+    unit  = :months
+    start = "2026-01-01"
+    end   = "2026-12-31"
+    card { on = "2026-02-01"  title = "1.0"  width = 210.0  height = 104.0
+      text { span "First " {} span "stable" { class = ["accent"] } span " release. APIs frozen." {} }
+    }
+  }
+}
+SRC
+    }
+  }
+}
+
+entity terminals {
+  name     = "terminal"
+  kind     = "block"
+  summary  = "A monospace character grid drawn as inline SVG: authored text primitives, inline ANSI, asciinema replay, plus stdlib TUI widgets."
+  related  = [wireframe, diagrams]
+  audience = :both
+  body {
+    p "`terminal` renders a monospace character grid as inline SVG, drawn with a bundled Nerd Font. The grid is populated three ways: authored text primitives, an inline ANSI-bearing `text` field, or replay of an `asciinema` recording. `cols` / `rows` size the grid; `chrome` toggles the window frame; `title` labels it."
+    h2 "Authored text"
+    p "`term_text` is the one base primitive — styled text at a 1-based `(row, col)` carrying `fg` / `bg` and `bold` / `italic` / `underline`. Higher-level helpers (`term_box`, `term_glyph`, `term_fill`) lower to runs of `term_text`. Colours are strings: an ANSI name (`\"red\"`), a 256-palette index (`\"208\"`), or a hex (`\"#ff5fd2\"`)."
+    code "wcl" { source = <<'SRC'
+terminal {
+  cols = 46  rows = 7  title = "demo"
+  term_text "Colours" { row = 1  col = 2  bold = true  underline = true }
+  term_text "red"     { row = 2  col = 2  fg = "red" }
+  term_text "blue"    { row = 2  col = 16  fg = "blue" }
+  term_box { row = 4  col = 2  width = 32  height = 3  border = :rounded  fg = "cyan"  title = "box" }
+  term_text "rounded border" { row = 5  col = 4 }
+}
+SRC
+    }
+    h2 "Inline ANSI and asciinema replay"
+    p "Set `text = \"…\"` and the bundled `avt` virtual terminal evaluates it — ANSI sequences, cursor movement, and styling all apply (a bare `\\n` is a newline). Set `source = \"rec.cast\"` for asciinema replay; frames replay at the recording's pace (override with `speed`) and stop at the end unless `loop = true`."
+    h2 "TUI widgets"
+    p "Inside a `terminal`, stdlib TUI controls compose a small interface — each lowers to runs of `term_text`. They include `tui_progress`, `tui_button`, `tui_spinner`, `tui_input`, `tui_dropdown`, `tui_checkbox`, `tui_radio`, `tui_panel` (a bordered container, child positions relative to it), and `tui_group` (borderless). Declare a `@block(\"name\") type … extends TuiWidget` with a `lower` returning `list<TermFundamental>` for a custom widget."
+    code "wcl" { source = <<'SRC'
+terminal {
+  cols = 44  rows = 8  title = "controls"
+  tui_progress "Upload" { row = 2  col = 2  value = 78 }
+  tui_progress "Sync"   { row = 3  col = 2  value = 40  accent = "cyan" }
+  tui_button "Save"    { row = 6  col = 2  accent = "green" }
+  tui_button "Discard" { row = 6  col = 11  accent = "red" }
+}
+SRC
+    }
+  }
+}
+
+entity maps {
+  name     = "map"
+  kind     = "block"
+  summary  = "A zoomable, pinned image inside a diagram: drop pins at coordinates, give each a card of wdoc content, optional level-of-detail layers."
+  related  = [diagrams, images]
+  audience = :both
+  body {
+    p "A `map` is a zoomable, pinned image placed inside a `diagram` — built for game-guide and reference maps. A diagram holding a map is **automatically interactive** (wheel to zoom, drag to pan, `+` / `−` / `⟲` controls) and loads the bundled map player; you don't need `pan_zoom = true`. `source` is the map image; `width` / `height` set its coordinate space."
+    h2 "Pins and cards"
+    p "Each `pin` is an icon dropped at `x` / `y` in the map's coordinate space (its `id` is the inline label, unique on the page). Style the marker with a `class` (themable, supports `dark` / `light`) or the one-off `color`. A pin's child blocks become a floating **card** anchored to the marker: text, lists, callouts, code, images all compose in."
+    code "wcl" { source = <<'SRC'
+diagram {
+  width    = 640
+  height   = 320
+  zoom_max = 8.0
+  map "earth" {
+    source = "assets/map/blue-marble.png"
+    width  = 1280
+    height = 640
+
+    pin "newyork" {
+      x = 377  y = 175
+      icon  = "lucide.building-2"
+      class = ["pin-city"]
+      title = "New York"
+      text { span "Financial capital on the US east coast." {} }
+      callout "Tip" { class = ["tip"]  body = "Cards accept any wdoc content." }
+    }
+  }
+}
+SRC
+    }
+    h2 "Level-of-detail layers"
+    p "Omit `layer`s and the map's `source` is the only image. For large maps, supply several `layer`s and the player shows the sharpest layer that suits the current zoom. A layer is one image when `cols` / `rows` are `1`, or a grid of tiles otherwise — `source` is then a folder and each tile's filename comes from `pattern` (default `{x}_{y}.png`, 0-based)."
+    p "Maps ride the `class` system: a pin's `class` themes its marker, `card_class` themes its popup, and the built-in look reads the theme variables, so a site `theme` styles maps for free. See [styling](concept_styling)."
+  }
+}
+
+entity tree {
+  name     = "tree"
+  kind     = "block"
+  summary  = "An indented file-tree diagram shape: one row per nested tree_node, with file-explorer connector guides."
+  related  = [diagrams, icons]
+  audience = :both
+  body {
+    p "`tree` renders an **indented file-tree**: one row per `tree_node`, indented by depth with the classic file-explorer connector guides drawn between a parent and its children. Each node carries a `title` (its positional label) plus an optional `icon` and `color`, and nodes nest arbitrarily, so it suits a directory layout, a config tree, or any hierarchy. A `tree` is a diagram shape, so it lives inside a `diagram` and is placed by `x` / `y` (or anchors)."
+    code "wcl" { source = <<'SRC'
+iconset lucide {}
+
+diagram { width = 360  height = 220
+  tree {
+    tree_node "src/" {
+      icon  = "folder"
+      color = "#88c0d0"
+      tree_node "render/" {
+        icon = "folder"
+        tree_node "svg.rs"  { icon = "file" }
+        tree_node "html.rs" { icon = "file" }
+      }
+      tree_node "lib.rs"  { icon = "file" }
+      tree_node "tree.rs" { icon = "file" }
+    }
+    tree_node "Cargo.toml" { icon = "file" }
+  }
+}
+SRC
+    }
+    p "Icons resolve from any declared [iconset](entity_icons); a node's `color` is any CSS colour and themes its label and icon. Give a node an `id` to make it an edge target — an `edge` then attaches to that node's row (west / east), exactly like connecting any other shape."
+  }
+}
+
+entity dopesheets {
+  name     = "dopesheet"
+  kind     = "block"
+  summary  = "Animated sprite-sheet playback: plays a range of frames cropped from a sheet at a set fps, a placeable diagram shape."
+  related  = [tilemaps, images, diagrams]
+  audience = :both
+  body {
+    p "`dopesheet` plays a range of frames from a sprite sheet at a set `fps`. Like `tilemap` it's a placeable SVG block — a legal child of any `diagram` or `container`. The sheet is referenced by URL (an `@inline(0)` source, like `image`), so frames resolve when the site is **served**, not when the page is opened directly from disk."
+    h2 "Frame geometry and playback"
+    p "Describe the frame grid with `frame_width` / `frame_height`, plus `offset_x` / `offset_y` and `stride_x` / `stride_y` for padding or gaps; `columns` defaults to as many frames as fit across the sheet. `from` / `to` pick an inclusive sub-range. `scale` enlarges pixel art; `image-rendering: pixelated` is the default, so set `smooth = true` for non-pixel sources. Autoplay, loop, and controls are on by default — click to pause or resume."
+    code "wcl" { source = <<'SRC'
+diagram { width = 96  height = 96
+  dopesheet "assets/pixel-coin.png" {
+    frame_width  = 12
+    frame_height = 12
+    stride_x     = 12
+    stride_y     = 12
+    columns      = 6
+    from         = 0
+    to           = 2
+    fps          = 6.0
+    autoplay     = false
+    scale        = 6.0
+    x            = 12.0
+    y            = 12.0
+  }
+}
+SRC
+    }
+  }
+}
+
+entity tilemaps {
+  name     = "tileset / tile / tilemap"
+  kind     = "block"
+  summary  = "A 2D grid of indexed tiles cropped from a shared spritesheet, authored numerically or via a glyph legend."
+  related  = [dopesheets, images, diagrams]
+  audience = :both
+  body {
+    p "A `tilemap` draws a 2D grid of indexed tiles cropped from a shared spritesheet. A `tileset` names that spritesheet plus its slice geometry and hangs off the document root (like `iconset`); tile index N maps to sheet column `N % columns`, row `N / columns`. The tilemap is a diagram shape, so anything drawn after it overlays on top."
+    code "wcl" { source = <<'SRC'
+tileset platformer {
+  source      = "assets/kenney-platformer.png"
+  tile_width  = 64
+  tile_height = 64
+  columns     = 5
+}
+SRC
+    }
+    h2 "Symbolic and numeric maps"
+    p "For map-like authoring, declare a glyph legend with `tile` children and supply `map` — a list of utf8 rows; each character resolves through the legend to a tile index (an unmapped glyph draws nothing). Or write raw index rows with `tiles` (one inner list per row); `-1`, the default `empty` index, leaves a cell blank."
+    code "wcl" { source = <<'SRC'
+diagram { width = 280  height = 230
+  tilemap {
+    set   = "platformer"
+    scale = 0.5
+    tile "#" { index = 25 }   // brown crate — ground
+    tile "~" { index = 1 }    // water surface
+    tile "T" { index = 16 }   // torch
+    map = [
+      "........",
+      ".T....",
+      "########",
+      "~~~~~~~~",
+    ]
+  }
+  label "Level 1" { x = 128.0  y = 146.0  font_size = 16.0  fill = "#003a8c" }
+}
+SRC
+    }
+    p "`scale` sizes the display; `image-rendering: pixelated` is the default, and `smooth = true` opts into the browser's smoothing. The sheet is copied to `_wdoc/`, so tiles resolve when served."
+  }
+}
+
+entity wireframe {
+  name     = "wf_* widgets"
+  kind     = "block"
+  summary  = "UI mockup widgets as diagram shapes: windows, device frames, panels, rows, inputs, controls, and node graphs."
+  related  = [terminals, diagrams]
+  audience = :both
+  body {
+    p "Wireframe widgets mock up a UI — windows, device frames (browser / phone / tablet), panels, inputs, controls — as **diagram shapes**. Each `wf_*` block extends `SvgBlock`, so it lives inside a `diagram`: place it with `x` / `y` (or anchors), connect widgets with edges, and mix them with any other shape. Container widgets nest other widgets, so you compose a window of panels of rows of controls. They're static SVG mockups, not interactive."
+    h2 "A composed window"
+    p "Container widgets — `wf_window`, `wf_browser`, `wf_phone`, `wf_tablet`, `wf_panel`, `wf_row`, `wf_column`, `wf_grid` — take `@children(Widget)`. The Rust renderer measures and lays out the children internally (their `x` / `y` are ignored); only the root widget's placement positions the group. Device frames have a realistic fixed default size; everything else is sized to its content."
+    code "wcl" { source = <<'SRC'
+diagram {
+  width = 300  height = 200
+  wf_window "Account settings" {
+    wf_panel { title = "Profile"
+      wf_input "Display name" { value = "Wil Taylor" }
+      wf_input "Email"        { value = "ai@wiltaylor.dev" }
+    }
+    wf_row {
+      wf_button "Cancel"
+      wf_button "Save" { icon = "lucide.check" }
+    }
+  }
+}
+SRC
+    }
+    h2 "Controls and node graphs"
+    p "The leaf controls are `wf_label`, `wf_button` (optional leading `icon`), `wf_input` (placeholder vs `value`), `wf_dropdown`, `wf_checkbox`, `wf_radio`, and `wf_toggle`. A `wf_node_graph` mocks up a node editor: each `wf_node` is a titled box with `inputs` and `outputs`, and a `wf_link` wires `\"node.port\"` to `\"node.port\"`, auto-laid-out left-to-right. Declare a `@block(\"name\") type … extends Widget` with a `lower` returning `list<SvgFundamental>` for a custom widget."
+    code "wcl" { source = <<'SRC'
+diagram { width = 560  height = 240
+  wf_node_graph {
+    wf_node "Texture"  { id = tex   outputs = ["RGB", "Alpha"] }
+    wf_node "Multiply" { id = mul   inputs = ["A", "B"]  outputs = ["Result"] }
+    wf_node "Output"   { id = out   inputs = ["Color"] }
+    wf_link "tex.RGB"     { to = "mul.A" }
+    wf_link "mul.Result"  { to = "out.Color" }
+  }
+}
+SRC
+    }
+  }
+}
+
+entity math {
+  name     = "math"
+  kind     = "block"
+  summary  = "Typesets a LaTeX equation to inline SVG via the pure-Rust RaTeX toolchain; glyph outlines embed so it renders without a webfont."
+  related  = [diagrams]
+  audience = :both
+  body {
+    p "`math` typesets a LaTeX equation to inline SVG via the pure-Rust RaTeX toolchain. Glyph outlines embed in the SVG, so equations render the same whether the page is opened locally or served — no webfont dependency."
+    h2 "Block equations"
+    p "`math \"…\" {}` (or `math <<TEX … TEX`) renders a centred display equation. Use a raw heredoc for backslash-heavy LaTeX."
+    code "wcl" { source = <<'SRC'
+math "E = mc^2"
+
+math <<'TEX'
+\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+TEX
+SRC
+    }
+    h2 "Inline math"
+    p "Inside any `p` body or `span`, two inline patterns produce math: `$…$` is text-style (flows with the prose) and `$$…$$` is display-style (slightly larger, still inline). The `$…$` pattern requires a non-space at each delimiter, so currency stays untouched. See [formatting](concept_formatting)."
+    table {
+      header = ["Pattern", "Style"]
+      rows = [
+        ["$…$", "Text-style inline math — flows with the surrounding prose."],
+        ["$$…$$", "Display-style inline math — slightly larger, still inline."]
+      ]
+    }
+  }
+}
+
+entity icons {
+  name     = "iconset / icon_def / icon"
+  kind     = "block"
+  summary  = "Bundled Lucide and Bootstrap icon packs: use inline, as a placeable block, or as a badge on a shape."
+  related  = [diagrams, tree]
+  audience = :both
+  body {
+    p "Full **Lucide** and **Bootstrap Icons** packs ship compiled into the binary — no runtime disk read, and only used icons land in the output sprite (`_wdoc/icons.svg`). Icons paint with `currentColor`, so colour follows the surrounding text or class."
+    h2 "Three ways to use an icon"
+    p "Inline as a `:lucide.check:` pattern in a `p` or `span`; as a placeable `icon` block (a legal `diagram` / `container` child, positioned by `x` / `y` like a `rect`); or as a badge on a box-like shape (`rect` / `circle` / `container` / `process` / `decision` / `terminator`) via `icon` / `icon_size` / `icon_pos` / `icon_class`."
+    code "wcl" { source = <<'SRC'
+// 1. Inline pattern in a p (or span):
+p "Status: :lucide.check: ready"
+
+// 2. Placeable icon block (a legal diagram child):
+diagram { width = 80  height = 80
+  icon { name = "lucide.compass"  x = 10.0  y = 10.0  width = 60.0  height = 60.0 }
+}
+
+// 3. Badge on a shape:
+process "Validate" {
+  id = v  width = 120.0  height = 50.0
+  icon = "lucide.shield-check"
+  icon_pos = :top_right
+}
+SRC
+    }
+    h2 "Iconsets"
+    p "Declare an `iconset` to rename a pack or set default styling; per-icon `icon_def` children override individual icons within the set. A bare `:name:` then reads from that set."
+    code "wcl" { source = <<'SRC'
+iconset ui {
+  pack  = "lucide"
+  size  = "1.15em"
+  color = "var(--wdoc-accent)"
+  icon_def "heart" { color = "#bf616a" }
+}
+
+p "We :heart: WCL."
+SRC
+    }
+    p "As a shape badge, `icon_pos` accepts `:center`, `:top_left` (default), `:top_right`, `:bottom_left`, `:bottom_right`, `:left`, `:right`."
+  }
+}
+
+entity images {
+  name     = "image"
+  kind     = "block"
+  summary  = "Embeds a static image; renders as an <img> on a page or as a placeable SvgBlock inside a diagram."
+  related  = [diagrams, videos, maps]
+  audience = :both
+  body {
+    p "`image` embeds a static image. The source path resolves relative to the build entry file and the file is copied verbatim into `_wdoc/` at build time, so the output site is self-contained. Because it's referenced by a relative `_wdoc/` URL, it only resolves when the site is served — not when the page is opened directly from disk (same as icons and tilemaps)."
+    h2 "On a page"
+    p "An `image` block directly under a `page` renders as a standalone `<img>`. The source is the inline label; set `width` / `height` to size it, `alt` for accessibility, and a `class` for styling."
+    code "wcl" { source = <<'SRC'
+page about { sites = [:demo]
+  image "assets/hero.jpg" {
+    alt   = "Our team"
+    width = 480.0
+    class = ["hero"]
+  }
+}
+SRC
+    }
+    h2 "Inside a diagram"
+    p "`image` is also a placeable `SvgBlock`, so it can sit in a `diagram` / `container` alongside `rect` / `circle`, positioned by `x` / `y` (or anchors)."
+    code "wcl" { source = <<'SRC'
+diagram {
+  width = 280  height = 140
+  image "assets/logo.png" {
+    x = 20.0  y = 20.0  width = 100.0  height = 100.0
+  }
+  rect { x = 150.0  y = 45.0  width = 100.0  height = 50.0  fill = "#a3be8c" }
+}
+SRC
+    }
+  }
+}
+
+entity videos {
+  name     = "video"
+  kind     = "block"
+  summary  = "Embeds a video — a local file or a YouTube/Vimeo/other URL — as a click-to-play facade that loads the real player on click."
+  related  = [images]
+  audience = :both
+  body {
+    p "`video` embeds a video on a page. The source is either a local file (typically `.mp4`, copied into `_wdoc/` like an `image`) or a web URL — YouTube, Vimeo, or any other embeddable address. To keep a page light, a video first renders as a click-to-play **facade** (a poster thumbnail plus a play button); the real player loads only on click."
+    h2 "A local file"
+    p "Give `video` a doc-relative path and an optional `poster` thumbnail. Set `width` to size it and `title` for an accessible label. wdoc never decodes a local video, so it can't auto-generate a thumbnail — supply a `poster`, or a plain play-button placeholder shows."
+    code "wcl" { source = <<'SRC'
+page about { sites = [:demo]
+  video "assets/intro.mp4" {
+    poster = "assets/intro-thumb.jpg"
+    title  = "Product intro"
+    width  = 640.0
+  }
+}
+SRC
+    }
+    h2 "YouTube, Vimeo, and other embeds"
+    p "A YouTube or Vimeo URL is recognised automatically and embedded as a privacy-respecting click-to-play iframe (YouTube derives its poster from the video id). Any other `http(s)` URL is embedded verbatim in an iframe; a URL ending in a video extension (`.mp4`, `.webm`) plays natively in a `<video>` element."
+    code "wcl" { source = <<'SRC'
+video "https://www.youtube.com/watch?v=aqz-KE-bpKQ" { title = "Trailer" }
+video "https://vimeo.com/76979871" {
+  poster = "assets/vimeo-thumb.jpg"   // Vimeo has no auto-thumbnail
+  title  = "Our talk"
+}
+SRC
+    }
+    callout "PDF output" { class = ["note"]  body = "A PDF can't play video, so `wcl wdoc pdf` renders the poster thumbnail and, for an online video only, a link to it." }
+  }
+}
+
+entity tables_block {
+  name     = "table"
+  kind     = "block"
+  summary  = "Renders a tabular data grid using WCL's native pipe-row syntax; the first row is the header, cells run through the inline-pattern engine."
+  related  = [lists_block, callouts]
+  audience = :both
+  body {
+    p "`table { rows: | … | }` renders a tabular data grid using WCL's native pipe-row syntax. The first row becomes the `<thead>`; the remaining rows go in `<tbody>`. (In a wskill data block the pipe-row form is the page-authoring shape; wskill's own reference tables use a `header` / `rows` field pair.)"
+    code "wcl" { source = <<'SRC'
+table {
+  rows:
+    | "Name"  | "Role"     | "Years" |
+    | "Alice" | "**Dev**"  | 3       |
+    | "Bob"   | "_Ops_"    | 5       |
+}
+SRC
+    }
+    h2 "Cells"
+    p "Cells are expressions in the row schema's field positions. utf8 cells run through the inline pattern engine, so **bold**, italic, `inline code`, links, icons, and math all work inside cells. Numeric, boolean, and symbol cells stringify. See [formatting](concept_formatting)."
+    callout "Pipes in cells" { class = ["warning"]  body = "A literal pipe outside a quoted cell splits the row, so wrap any cell that contains a pipe in a string literal." }
+  }
+}
+
+entity callouts {
+  name     = "callout"
+  kind     = "block"
+  summary  = "An admonition — an icon, a coloured heading, and a body — selected by class: note/info/tip/warning/success/error, or a custom type."
+  related  = [tables_block, lists_block]
+  audience = :both
+  body {
+    p "A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are selected by `class`, each shipping a default colour and icon — `note`, `info`, `tip`, `warning`, `error`, `success`. See [callout classes](fact_callout_classes)."
+    code "wcl" { source = <<'SRC'
+callout "Note"    { class = ["note"]    body = "Background context the reader should remember." }
+callout "Info"    { class = ["info"]    body = "Neutral information worth surfacing." }
+callout "Tip"     { class = ["tip"]     body = "A helpful shortcut or best practice." }
+callout "Warning" { class = ["warning"] body = "Something to be careful about." }
+callout "Error"   { class = ["error"]   body = "A failure or hard constraint." }
+callout "Success" { class = ["success"] body = "Confirm an action completed." }
+SRC
+    }
+    h2 "Custom types"
+    p "For a custom type, give a `class` an `accent` colour and list it in the callout's `class` — that sets the accent (heading, border, icon) with no CSS — and the `icon` field picks any glyph. See [styling](concept_styling)."
+    code "wcl" { source = <<'SRC'
+class "deploy" { accent = "#b48ead" }
+callout "Deploying" {
+  class = ["deploy"]
+  icon  = "lucide.rocket"
+  body  = "A custom type — the class sets its accent colour."
+}
+SRC
+    }
+  }
+}
+
+entity lists_block {
+  name     = "list / li"
+  kind     = "block"
+  summary  = "A list holds li items; bullet by default, set style = :numbered for ordered. Nest li's for hierarchical sublists."
+  related  = [tables_block, callouts]
+  audience = :both
+  body {
+    p "A `list` holds `li` items. It's a bullet list by default; set `style = :numbered` for a numbered one. Each `li`'s text runs through the inline-pattern engine, so **bold**, `code`, links, and icons all work inside items. See [formatting](concept_formatting)."
+    code "wcl" { source = <<'SRC'
+list {
+  li "Plain item"
+  li "With **bold** and a [link](wdoc_overview)"
+}
+
+list { style = :numbered
+  li "First step"
+  li "Second step"
+}
+SRC
+    }
+    h2 "Nesting"
+    p "Nest an `li` inside an `li` for a sublist — it inherits the parent list's style, so a numbered list numbers sublists hierarchically (`2.1`, `2.2`). For a sublist with a **different** style, drop a whole `list` block inside the `li` instead."
+    code "wcl" { source = <<'SRC'
+list { style = :numbered
+  li "Setup"
+  li "Build" {
+    li "Compile"          // renders 2.1
+    li "Link"             // renders 2.2
+  }
+  li "Run" {
+    list {                // a bulleted sublist inside a numbered list
+      li "Foreground"
+      li "Background"
+    }
+  }
+}
+SRC
+    }
+  }
+}

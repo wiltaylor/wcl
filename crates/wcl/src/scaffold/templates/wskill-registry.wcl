@@ -1,0 +1,278 @@
+// The `wskill-registry` built-in template: scaffold a collection root that
+// holds many wskills under wskills/ with an auto-discovering landing page.
+// Ported from the wskill project's collection-scaffold tree.
+//
+//   wcl init wskill-registry ./my-registry
+
+import <scaffold.wcl>
+
+property "collection_id" {
+  prompt  = "Collection id (an identifier)"
+  default = "registry"
+}
+
+property "collection_name" {
+  prompt  = "Collection name"
+  default = "Registry"
+}
+
+folder "wskills" {
+}
+
+file ".gitignore" {
+  content = <<'WSK__GITIGNORE'
+# Generated deploy tree — regenerate with `just build`.
+# Delete these lines if you want to commit the rendered site.
+/out/
+
+
+# Skill fan-out staging
+/dist/
+WSK__GITIGNORE
+}
+
+file "README.md" {
+  content = $<<WSK_README_MD
+# ${answer("collection_name")} — a wskill collection
+
+A **collection repo**: one folder whose member [wskills](https://) live under a
+`wskills/` subdirectory, with a top-level **landing page** that links down to each
+member's book. Use it to publish a whole shelf of wskills as one hostable site.
+
+## Layout
+
+```
+collection.wcl        # the collection block (name, summary, intro) + imports
+schema/collection.wcl # collection block type (DO NOT hand-edit)
+wdoc/page/main.wcl    # the landing-page template (auto-discovers members)
+wdoc/skill/main.wcl   # the skill fan-out template
+wskills/<topic>/      # a member wskill (a full self-contained wskill folder)
+out/site/             # generated deploy tree (gitignored)
+```
+
+## Adding a wskill
+
+Drop a wskill folder into the `wskills/` subdirectory (scaffold one with the WSKILL
+skill, or copy an existing wskill in). The build discovers it automatically — its
+`topic` name and summary become its entry on the landing page. Nothing to register
+by hand.
+
+## Build
+
+Building uses `wcl wdoc` directly — there is no build script and no member list to
+maintain. The landing page's `include` auto-discovers every wskill under `wskills/`
+and builds its book; one command builds the whole deploy tree:
+
+```bash
+wcl wdoc build wdoc/page/main.wcl --out out/site   # landing + every member book
+```
+
+`out/site/` is a single static site you can host anywhere: `index.html` is the
+landing page; each member's book sits under `out/site/wskills/<topic>/`.
+
+To render every member's *skill* (SKILL.md + references/) at once:
+
+```bash
+wcl wdoc skill wdoc/skill/main.wcl --out dist/skills   # → dist/skills/wskills/<topic>/
+```
+
+```bash
+just build               # landing + every member book
+just skills              # fan every member skill out into dist/skills/
+just serve               # build, then serve the landing + every member book
+just clean               # remove out/ and dist/
+```
+
+## Editing
+
+Edit the hero copy in `collection.wcl`. Members are auto-discovered — just drop a
+wskill folder under `wskills/` (or remove one) and re-run the build; the landing
+links and member books update from each member's book site. Never hand-edit `out/`.
+WSK_README_MD
+}
+
+file "collection.wcl" {
+  content = $<<WSK_COLLECTION_WCL
+// ${answer("collection_name")} — a wskill collection.
+//
+// This is the top of a *collection repo*: a folder holding many wskills as
+// sibling subfolders, with a landing page (wdoc/page/main.wcl) that links down to
+// each member's book. Author the collection block below; the member list is
+// generated — drop a wskill folder in and re-run the build.
+//
+//   wcl wdoc build wdoc/page/main.wcl --out out/site   # landing + every member book
+//   wcl wdoc serve wdoc/page/main.wcl   # preview the landing (after a build)
+
+import <wdoc.wcl>
+import "./schema/collection.wcl"
+
+schema_version = "1.0.0"
+
+collection ${answer("collection_id")} {
+  name    = "${answer("collection_name")}"
+  summary = "A collection of wskills."
+  description = <<END
+A longer introduction to this collection, shown under the hero on the landing
+page. Describe what these wskills have in common and who they are for.
+END
+}
+WSK_COLLECTION_WCL
+}
+
+file "justfile" {
+  content = $<<WSK_JUSTFILE
+# ${answer("collection_name")} collection — build recipes.
+#
+# Members live under wskills/. The landing page's `include` auto-discovers them and
+# builds each book in one command; `wdoc skill` fans every member skill out at once.
+# There is no build script and no member list to maintain.
+
+[default, private]
+main:
+	@just --list
+
+# Build the deploy tree: landing page + every member book under wskills/
+[group('render')]
+build:
+	wcl wdoc build wdoc/page/main.wcl --out out/site
+
+# Fan every member wskill's skill out into dist/skills/wskills/<name>/
+[group('render')]
+skills:
+	wcl wdoc skill wdoc/skill/main.wcl --out dist/skills
+
+# Serve the landing page and every member book under it (build first)
+[group('render')]
+serve: build
+	wcl wdoc serve wdoc/page/main.wcl --out out/site
+
+# Remove generated output
+[group('clean')]
+clean:
+	rm -rf out dist
+WSK_JUSTFILE
+}
+
+file "schema/collection.wcl" {
+  content = <<'WSK_SCHEMA_COLLECTION_WCL'
+// Collection schema — ships with the WSKILL skill's collection scaffold.
+//
+// DO NOT HAND-EDIT. This defines the data model for a *collection repo*: a folder
+// holding many wskills as siblings, with a top-level landing page that links down
+// to each member's book. Like a wskill's base.wcl, this schema travels with the
+// collection so the landing page renders without the WSKILL skill present.
+//
+// Field decorators (@default, @inline, @children) are PREFIX.
+//
+// All collection declarations live in the `wcl.wskill` namespace (shared with the
+// wskill base schema). Importers keep using bare names — a relative import auto-joins
+// this namespace to the bare-name search path.
+namespace wcl.wskill
+
+import <wdoc.wcl>
+
+// ---------------------------------------------------------------------------
+// Collection (one per collection repo)
+// ---------------------------------------------------------------------------
+
+// Repository-level metadata for the landing page (authored once in collection.wcl).
+@block("collection")
+type Collection {
+  @inline(0) id: identifier
+  name:        utf8              // human title, e.g. "My Tools"
+  summary:     utf8              // one-line description shown under the hero
+  description: utf8?             // longer intro (heredoc)
+  @default([]) tags: list<utf8>
+}
+
+// ---------------------------------------------------------------------------
+// Members (auto-generated — never hand-edited)
+// ---------------------------------------------------------------------------
+
+// (Legacy) member record. Members are now auto-discovered by the landing page's
+// `include` + `included_sites`; this block type is unused but kept for compatibility.
+// it scans the sibling wskill folders and copies each topic's name + summary here,
+// with `href` pointing at that member's book inside the rendered deploy tree.
+@block("member")
+type Member {
+  @inline(0) id: identifier
+  name:    utf8                  // member's topic.name
+  summary: utf8                  // member's topic.summary
+  href:    utf8                  // relative link to its book, e.g. "./ls/"
+}
+
+// ---------------------------------------------------------------------------
+// Root document — gathers the collection block + every member
+// ---------------------------------------------------------------------------
+
+// Merges with wdoc's library @document (so `site` / `page` template blocks are
+// legal alongside the data).
+@document
+type CollectionDoc {
+  schema_version: utf8
+  @children("collection") collections: list<Collection>
+  @children("member")     members:     list<Member>
+}
+WSK_SCHEMA_COLLECTION_WCL
+}
+
+file "wdoc/page/main.wcl" {
+  content = <<'WSK_WDOC_PAGE_MAIN_WCL'
+// Collection landing page — a wdoc `:webpage` site over the collection model.
+//
+// Build:  wcl wdoc build wdoc/page/main.wcl --out out/site
+//   The `include` below builds each member wskill's book into out/site/wskills/<name>/
+//   (entry mode: only each member's wdoc/book/main.wcl, no recursion into out/ or
+//   bundled trees), and `included_sites(...)` discovers the same set for the links —
+//   so there is no member list to maintain and one command builds everything.
+
+import <wdoc.wcl>
+import "../../collection.wcl"
+
+// Build every member book as a sub-site under out/site/wskills/<name>/.
+include "../../wskills" { entry = "wdoc/book/main.wcl" }
+
+// The single collection block, bound from its gather list (head(...) resolves
+// omitted optional fields — the same pattern wskill templates use for topic).
+let coll = head(collections)
+
+site landing {
+  default_template = :webpage
+  title            = $"${coll.name}"
+  root             = true
+  theme            = :nord
+  theme_toggle     = true
+}
+
+page index { sites = [:landing]  start = true
+  h1 $"${coll.name}"
+  p  $"${coll.summary}"
+  wdoc_repeater { each = match coll.description { none => [], d => [d] }  as = :d
+    p $"${d}"
+  }
+
+  h2 "Skills"
+  // Empty-state: shown until a member wskill is added under wskills/.
+  wdoc_repeater { each = match len(included_sites({ folder: "../../wskills", entry: "wdoc/book/main.wcl" })) { 0 => [true], _ => [] }  as = :_n
+    p "No wskills found in this collection yet."
+  }
+  // One linked entry per member, discovered + built by the `include` above. The
+  // title / summary come from each member's book site; the `wskills/<name>/` href is
+  // root-relative (the landing is the root site, so no `../` prefix is needed).
+  wdoc_repeater { each = included_sites({ folder: "../../wskills", entry: "wdoc/book/main.wcl" })  as = :s
+    p $"**[${s.title}](./${s.href})**${match s.summary { none => "", su => $" — ${su}" }}"
+  }
+}
+WSK_WDOC_PAGE_MAIN_WCL
+}
+
+file "wdoc/skill/main.wcl" {
+  content = <<'WSK_WDOC_SKILL_MAIN_WCL'
+// Collection skill fan-out — renders every member wskill's :skill site at once.
+// Pure include (no site of its own). Build:
+//   wcl wdoc skill wdoc/skill/main.wcl --out dist/skills
+//     → dist/skills/wskills/<name>/  (each a SKILL.md + references/ + assets/)
+import <wdoc.wcl>
+include "../../wskills" { entry = "wdoc/skill/main.wcl" }
+WSK_WDOC_SKILL_MAIN_WCL
+}
