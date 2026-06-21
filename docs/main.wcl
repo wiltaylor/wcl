@@ -40,9 +40,15 @@ site wcl {
     item "Home"            { page = index }
     item "Features"        { page = features }
     item "Getting started" { page = getting_started }
-    // Cross-site: the reference is another site, so link by output path
-    // (a `page =` here would only resolve within this site).
-    item "Reference"       { href = "reference/" }
+    // Cross-site dropdown: each reference is its own built site, so link
+    // by root-relative output path (a `page =` here would only resolve
+    // within this site). An `item` with nested `item`s renders as a
+    // click-to-open dropdown parent.
+    item "Reference" {
+      item "wcl"    { href = "wskills/wcl/" }
+      item "wdoc"   { href = "wskills/wdoc/" }
+      item "wskill" { href = "wskills/wskill/" }
+    }
     item "Source"          { href = "https://github.com/wiltaylor/wcl" }
   }
 }
