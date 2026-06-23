@@ -1,21 +1,18 @@
 procedure creating_a_wskill {
   title   = "Creating a new wskill"
-  purpose = "Start a new wskill for a topic from the bundled scaffold, then model the knowledge and render its two views."
-  preconditions = [
-    "The `wcl` CLI on your PATH (`wcl --version`)",
-    "The bundled scaffold template (ships in the skill under `assets/scaffold`)",
-  ]
-  related = [wskill, book_view, skill_view, datapresentation, selfcontained, capturing_notes]
+  purpose = "Start a new wskill for a topic from the wcl template, then capture and model the knowledge."
+  preconditions = ["The `wcl` CLI on your PATH (`wcl --version`)"]
+  related = [wskill, book_view, skill_view, datapresentation, selfcontained, capturing_notes, fleeting_note, breaking_down_a_topic]
   audience = :both
 
   step 1 {
-    title = "Copy the scaffold"
+    title = "Scaffold from the template"
     body screen { code "console" { source = <<'SH'
-$ cp -r assets/scaffold docs/wskills/<topic>
+$ wcl init wskill docs/wskills/<topic>
 $ cd docs/wskills/<topic>
 SH
     } }
-    body steps { p "Copy the bundled scaffold into a new folder named for the topic. It ships with `wskill.wcl`, the `schema/`, the `wdoc/` templates, an empty `data/` skeleton, and the `capture/` inbox — everything a wskill needs." }
+    body steps { p "Run `wcl init wskill` to scaffold a new wskill folder from the built-in template — don't hand-create it. It writes `wskill.wcl`, the `schema/`, the `wdoc/` templates, an empty `data/` skeleton, and the `capture/` inbox. (`wcl init --list` shows the available templates.)" }
   }
 
   step 2 {
@@ -33,29 +30,20 @@ WCL
   }
 
   step 3 {
-    title = "Model the content"
-    body steps { p "Add the knowledge as units under `data/`: a `concept` for an idea, an `entity` for a concrete thing, a `fact` for a value, a `procedure` for a task. Keep each atomic and self-contained, and cross-link related units with `related`. Jot rough ideas into `capture/` first if you need to — see *Capture and process a fleeting note*." }
-  }
-
-  step 4 {
-    title = "Validate"
-    body screen { code "console" { source = <<'SH'
-$ wcl check wskill.wcl
-OK
-SH
+    title = "Capture and model the content"
+    body screen { code "wcl" { source = <<'WCL'
+// capture/<slug>.wcl — a rough, disposable note
+fleeting <slug> {
+  captured = "<YYYY-MM-DD>"
+  tags     = ["idea"]
+  note = <<NOTE
+    The raw idea, in your own words — written fast, not polished.
+  NOTE
+}
+WCL
     } }
-    body steps { p "Run `wcl check wskill.wcl` to validate the model against the schema, and fix any reported errors before rendering." }
+    body steps { p "Capture as you go so nothing is lost: drop a `fleeting` block into a `capture/<slug>.wcl` file and import it from `capture/main.wcl` — quick and rough, written for your present self. Then process each fleeting note into real units under `data/` — a `concept`, `entity`, `fact` or `procedure`, each atomic, self-contained, and cross-linked with `related`. See *Capture and process a fleeting note* for the capture loop and *Breaking a topic down into the data model* for how to classify each note." }
   }
 
-  step 5 {
-    title = "Render the views"
-    body screen { code "console" { source = <<'SH'
-$ wcl wdoc build wdoc/book/main.wcl  --out out/book
-$ wcl wdoc skill wdoc/skill/main.wcl --out out/skill
-SH
-    } }
-    body steps { p "Project the one model into its two views: the book (a human-readable wdoc site) and the skill (a Claude Code skill folder), both from the same data with nothing hand-duplicated." }
-  }
-
-  verification = "`wcl check wskill.wcl` passes, and `out/book/` and `out/skill/` are written from the new model."
+  verification = "`wcl init wskill` produced a folder whose `topic` is filled in, and the topic's knowledge is captured as units under `data/`."
 }

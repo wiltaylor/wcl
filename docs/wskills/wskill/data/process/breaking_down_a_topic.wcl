@@ -1,0 +1,47 @@
+procedure breaking_down_a_topic {
+  title   = "Breaking a topic down into the data model"
+  purpose = "Turn what you know about a topic into the wskill's typed units — concepts, entities, facts and processes — extending the schema only when a shape recurs."
+  related = [concept, entity, fact, process, atomic_note, selfcontained, creating_a_wskill, capturing_notes]
+  audience = :both
+
+  step 1 {
+    title = "Brain-dump the topic"
+    body steps { p "Before classifying anything, get it all down — capture every idea, term, value and task as rough `fleeting` notes in `capture/`. Go for breadth; structure comes next." }
+  }
+
+  step 2 {
+    title = "Sort each note into a unit kind"
+    body screen { code "wcl" { source = <<'WCL'
+concept   fast_forward { ... }   // an idea or mental model
+entity    postgres     { ... }   // a concrete, named thing in the topic's world
+fact      default_port { ... }   // a value / constant that can't be disputed
+procedure deploy       { ... }   // a repeatable task, as ordered steps
+WCL
+    } }
+    body steps { p "Classify each captured note by what it *is*: an idea or mental model is a **concept**; a concrete, named thing is an **entity**; a value or constant is a **fact**; a repeatable task is a **process**. One fleeting note often splits into several units — keep each atomic, one idea per unit." }
+  }
+
+  step 3 {
+    title = "Cross-link related units"
+    body steps { p "Wire the units into a web with `related`: a concept links to the entities and facts it explains; a process links to the concepts it relies on. The links — not a folder hierarchy — make the model navigable, and they drive the graph and the \"Referenced by\" backlinks." }
+  }
+
+  step 4 {
+    title = "Extend the schema for recurring shapes"
+    body screen { code "wcl" { source = <<'WCL'
+// schema/extensions.wcl — a typed block beyond the four units
+@block("decision")
+type Decision {
+  @inline(0) id: identifier
+  choice:    utf8
+  rationale: utf8
+}
+@document
+type Ext { @children("decision") decisions: list<Decision> }
+WCL
+    } }
+    body steps { p "When a kind of note recurs with the same fields, give it a type: declare an `@block` plus a `@document` that gathers it in `schema/extensions.wcl`, then add a render section in both templates. The four built-in units cover most topics — reach for an extension only when a shape genuinely repeats." }
+  }
+
+  verification = "Every captured note is a `concept`, `entity`, `fact` or `procedure` under `data/` (or a typed extension), each atomic and cross-linked with `related`."
+}
