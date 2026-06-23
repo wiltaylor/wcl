@@ -1,7 +1,7 @@
 concept zettelkasten {
   name     = "Zettelkasten"
   summary  = "A method of building knowledge as a web of small, self-contained notes that link to each other rather than sit in a fixed hierarchy — the model a wskill follows."
-  related  = [atomic_note, permanent_note, fleeting_note, selfcontained, datapresentation]
+  related  = [atomic_note, permanent_note, fleeting_note]
   body {
     p <<BODY
       Zettelkasten ("slip-box") is a note-taking method: instead of long documents or a rigid
