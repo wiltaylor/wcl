@@ -1,6 +1,9 @@
 set unstable
 set shell := ["bash", "-cu"]
 
+# Where install.sh copies the binary (matches its default; override with WCL_INSTALL_DIR).
+bin_dir := env('WCL_INSTALL_DIR', env('HOME') / '.local/bin')
+
 [default, private]
 main:
     @just --list
@@ -25,10 +28,16 @@ vscode-package: vscode-build
 vscode-install: vscode-package
     cd editors/vscode && code --install-extension "$(ls -t wcl-vscode-*.vsix | head -1)" --force
 
-# Install the wcl CLI to ~/.cargo/bin (cargo install --locked)
+# Build the wcl CLI in release mode (target/release/wcl)
 [group('build')]
-cli-install:
-    cargo install --path crates/wcl --locked
+cli-build:
+    cargo build --release --locked -p wcl
+
+# Build and install the wcl CLI where install.sh puts it (WCL_INSTALL_DIR or ~/.local/bin)
+[group('build')]
+cli-install: cli-build
+    install -D -m 755 target/release/wcl {{ bin_dir }}/wcl
+    @echo "Installed wcl to {{ bin_dir }}/wcl"
 
 # Run all tests (unit + integration)
 [group('test')]

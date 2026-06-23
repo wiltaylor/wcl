@@ -9,6 +9,7 @@
 
 import <wdoc.wcl>
 import "../../wskill.wcl"
+import "./graph.wcl"   // adds the `graph_page` (force-graph of all units)
 
 // The single topic block, bound from its gather list (see base.wcl
 // for why it is a list). A wskill always has exactly one.
@@ -70,6 +71,7 @@ site book {
           wdoc_repeater { each = procedures  as = :pr  chapter $"${pr.title}" { page = $"process_${pr.id}" } }
         }
       }
+      chapter "Graph" { page = graph_page }
     }
     chapter "Glossary"       { page = glossary_page }
   }
@@ -77,7 +79,7 @@ site book {
 
 // --- 1. Overview ------------------------------------------------------------
 
-page index { start = true
+@comment(id = "ck5rh6m9", body = "These are not planned anymore they are peers to this wskill. Can you please update this.", loc = "5", target = "table — \"NameRelationStatusSourcewclprerequisite — the language the f\"") page index { start = true
   h1 $"${topic.name}"
   callout "Summary" { class = ["info"]  body = $"${topic.summary}" }
   table {
@@ -247,6 +249,7 @@ page reference_page {
   wdoc_repeater { each = match len(procedures) { 0 => [], _ => [true] }  as = :_up
     p $"- [**Processes**](processes_page) — ${len(procedures)} runbooks for doing tasks."
   }
+  p "- [**Graph**](graph_page) — every unit as a force-directed graph, linked by `related`."
 }
 
 // --- 5. Processes — index page + one generated page per procedure -----------
