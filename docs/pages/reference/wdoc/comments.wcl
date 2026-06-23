@@ -1,0 +1,79 @@
+// wdoc section: Review Comments.
+page wdoc_comments { sites = [:reference]  title = "Review Comments"
+  h1 "Review Comments"
+
+  p "Run the dev server with `--comment` to turn any preview into a review surface. A small JavaScript client lets you click a rendered block — or the page itself — and leave a note. Each note is saved straight back into your source as a `@comment` decorator, so comments live with the document and survive in version control."
+
+  code bash {
+    source = "wcl wdoc serve --comment docs/main.wcl"
+  }
+
+  p "Click **🎯 Comment on a block** in the bottom-right toolbar to enter select mode, then click any block — including whole tables and diagrams — to leave a note on it (press **Esc** to cancel). The **💬 Comment on page** button leaves a note about the page as a whole. Saving rewrites the source and the page live-reloads with the comment shown."
+
+  p "The toolbar's **💬 N comments** button shows how many comments live on the current page; click it for a modal listing them all — each with its target, body and quote, a **Jump to** link (for block comments), and a **Resolve** button. Individual comments also appear inline as ✓ pins you can click."
+
+  h2 "Where the comment is stored"
+
+  p "Comments always attach to a *real, editable* source block, in one of three shapes:"
+
+  table {
+    rows:
+      | "Shape" | "Stored as" | "When" |
+      | "Direct" | "`@comment` on the block itself" | "The block is hand-authored (has a source span)" |
+      | "Page-attached" | "`@comment` on the `page`, with `loc` + `target`" | "The block is generated (a repeater / component) and has no editable span" |
+      | "Generic page" | "`@comment` on the `page`, no `loc`" | "The note is about the whole page" |
+  }
+
+  p "Generated blocks have no source of their own to decorate, so their comments are recorded on the enclosing page with a positional locator (`loc`) and an auto-generated description (`target`, e.g. `3rd card — \"Fast builds\"`) so you can still tell which block was meant."
+
+  h2 "The @comment decorator"
+
+  code wcl {
+    source = <<'WCL'
+page home {
+  // Direct: on a hand-authored block.
+  @comment(id = "c1a2b3", body = "tighten this heading", quote = "Install")
+  h1 "Install"
+
+  // Page-attached: a generated block, described on the page.
+  // @comment(id="c4d5e6", body="2nd card is stale", loc="0/2/1", target="card — \"Fast builds\"")
+}
+WCL
+  }
+
+  table {
+    rows:
+      | "Field" | "Meaning" |
+      | "`id`" | "Stable handle — survives edits, so `resolve` can find the comment" |
+      | "`body`" | "The reviewer's note" |
+      | "`author`" | "Who left it (optional)" |
+      | "`status`" | "`:open` (default) or `:resolved`" |
+      | "`loc`" | "Positional locator of the targeted generated block (page-attached only)" |
+      | "`target`" | "Auto description of that block (page-attached only)" |
+      | "`quote`" | "Exact text highlighted when commenting (optional)" |
+  }
+
+  h2 "Reading & resolving comments"
+
+  p "An AI agent (or you) reads the stored comments, acts on them, and removes each once addressed. List them as JSON:"
+
+  code bash {
+    source = "wcl wdoc comments docs/main.wcl --format json"
+  }
+
+  p "Each entry carries the `id`, `scope`, source `file`, enclosing `page`, the `body` and `quote`, and — for page-attached comments — the `loc` and `target` describing which generated block the note is about. After acting on a comment, delete it by its id:"
+
+  code bash {
+    source = "wcl wdoc comments docs/main.wcl resolve c1a2b3"
+  }
+
+  callout "Resolve by id, not by position" {
+    class = ["info"]
+    body  = "Editing the document shifts every block's span and locator, so the `id` is the durable handle. `resolve <id>` finds the matching `@comment` across the document's source files and removes just that decorator."
+  }
+
+  callout "Comment mode is dev-server only" {
+    class = ["info"]
+    body  = "The `data-wcl-*` anchors that drive the comment client are emitted only under `wcl wdoc serve --comment`. A normal `build`, `pdf`, or `markdown` never includes them."
+  }
+}

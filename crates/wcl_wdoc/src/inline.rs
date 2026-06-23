@@ -12,7 +12,7 @@
 //! Built-in patterns ship in `wdoc.wcl` (bold / italic / code /
 //! link); user `.wcl` files can declare more.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Write as _;
 
@@ -122,6 +122,11 @@ pub(crate) struct InlinePatterns {
     backend: Backend,
     vis_site: RefCell<Option<String>>,
     vis_template: RefCell<Option<String>>,
+    /// Comment mode (the `--comment` dev server): when set, `render_block`
+    /// stamps each block's root tag with `data-wcl-*` anchors for the comment
+    /// client. Rides here so the renderer reaches it without a new param,
+    /// like `ui_theme`; set per build via `set_comment_mode`.
+    comment_mode: Cell<bool>,
 }
 
 struct CompiledPattern {
@@ -214,7 +219,18 @@ impl InlinePatterns {
             backend,
             vis_site: RefCell::new(None),
             vis_template: RefCell::new(None),
+            comment_mode: Cell::new(false),
         }
+    }
+
+    /// Enable comment-mode markup for this build (the `--comment` dev server).
+    pub(crate) fn set_comment_mode(&self, on: bool) {
+        self.comment_mode.set(on);
+    }
+
+    /// Whether `render_block` should stamp `data-wcl-*` comment anchors.
+    pub(crate) fn comment_mode(&self) -> bool {
+        self.comment_mode.get()
     }
 
     /// Set the current site's name and template kind for block-visibility

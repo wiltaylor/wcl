@@ -419,7 +419,7 @@ pub(crate) fn render_block(
     if structural.is_some() {
         return Some(buf);
     }
-    match block.kind() {
+    let rendered = match block.kind() {
         "column" => Some(render_column(doc, block, patterns, base_dir)),
         // A `region` is a named content slot pulled out and rendered
         // separately by `build_normal_page` (it becomes a `TemplateCtx`
@@ -488,7 +488,93 @@ pub(crate) fn render_block(
                 Some(lower_html_block(doc, block, kind, patterns, base_dir))
             }
         }
+    };
+    rendered.map(|html| anchor_comment(block, html, patterns))
+}
+
+/// In comment mode (the `--comment` dev server), stamp a rendered block's root
+/// tag with the `data-wcl-*` anchors the comment client reads. Every block gets
+/// `data-wcl-block` and `data-wcl-kind`. A directly anchorable block (one that
+/// is hand-authored, with a single source span) additionally gets
+/// `data-wcl-file` and `data-wcl-span`, so a comment can decorate it directly,
+/// and any existing `@comment` is surfaced so the client shows it. A no-op
+/// outside comment mode, so normal builds emit no extra markup.
+fn anchor_comment(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> String {
+    if !patterns.comment_mode() {
+        return html;
     }
+    let kind = block.kind();
+    // Synthetic wrappers / multi-root expansions have no single root tag to
+    // stamp; their content children are anchored individually when rendered.
+    if matches!(
+        kind,
+        "region" | "column" | "fragment" | "wdoc_repeater" | "wdoc_instance" | "wdoc_content"
+    ) {
+        return html;
+    }
+    let mut attrs = format!(" data-wcl-block data-wcl-kind=\"{}\"", escape_html(kind));
+    // Directly anchorable: a hand-authored block (not a repeater/component
+    // expansion) carries a real source span a decorator can attach to.
+    if block.binding_scope_depth() == 0 {
+        let span = block.span();
+        let file = block.named_source();
+        attrs.push_str(&format!(
+            " data-wcl-file=\"{}\" data-wcl-span=\"{}..{}\"",
+            escape_html(file.name()),
+            span.start,
+            span.end
+        ));
+    }
+    // Surface an existing comment so the client can show it in place.
+    if let Some(c) = block.decorators().find(|d| d.name() == "comment") {
+        if let Some(Ok(Value::Utf8(id) | Value::Ascii(id))) = c.named_arg("id") {
+            attrs.push_str(&format!(" data-wcl-comment-id=\"{}\"", escape_html(&id)));
+        }
+        if let Some(Ok(Value::Utf8(body) | Value::Ascii(body))) = c.named_arg("body") {
+            attrs.push_str(&format!(" data-wcl-comment=\"{}\"", escape_html(&body)));
+        }
+    }
+    splice_attrs(&html, &attrs)
+}
+
+/// Insert `attrs` into the first opening tag of `html`. Falls back to a
+/// `display:contents` wrapper when there's no leading element tag (rare —
+/// keeps the anchor present without disturbing layout).
+fn splice_attrs(html: &str, attrs: &str) -> String {
+    if let Some(lt) = html.find('<')
+        && html[lt + 1..].starts_with(|c: char| c.is_ascii_alphabetic())
+        && let Some(rel_gt) = find_tag_end(&html[lt..])
+    {
+        // Insert before a self-closing `/` if present, else before `>`.
+        let gt = lt + rel_gt;
+        let at = if html[..gt].ends_with('/') {
+            gt - 1
+        } else {
+            gt
+        };
+        let mut out = String::with_capacity(html.len() + attrs.len());
+        out.push_str(&html[..at]);
+        out.push_str(attrs);
+        out.push_str(&html[at..]);
+        return out;
+    }
+    format!("<span{attrs} style=\"display:contents\">{html}</span>")
+}
+
+/// Byte offset of the `>` that closes the opening tag starting at `s[0]`,
+/// honouring quoted attribute values so a `>` inside an attribute is skipped.
+fn find_tag_end(s: &str) -> Option<usize> {
+    let mut quote: Option<char> = None;
+    for (i, c) in s.char_indices() {
+        match (quote, c) {
+            (Some(q), _) if c == q => quote = None,
+            (Some(_), _) => {}
+            (None, '"') | (None, '\'') => quote = Some(c),
+            (None, '>') => return Some(i),
+            (None, _) => {}
+        }
+    }
+    None
 }
 
 /// Expand a `wdoc_component` instance: bind each declared slot to the

@@ -77,6 +77,7 @@ pub fn schema_registry() -> Registry {
     r.register("wdoc/sequence.wcl", include_str!("../lib/sequence.wcl"));
     r.register("wdoc/statechart.wcl", include_str!("../lib/statechart.wcl"));
     r.register("wdoc/visibility.wcl", include_str!("../lib/visibility.wcl"));
+    r.register("wdoc/comment.wcl", include_str!("../lib/comment.wcl"));
     r
 }
 
@@ -383,6 +384,10 @@ pub struct BuildOptions {
     /// Record a call-tree profile of the document evaluation driving the
     /// build; the snapshot is returned alongside the page count.
     pub profile: bool,
+    /// Comment mode (the `wcl wdoc serve --comment` dev server): stamp each
+    /// rendered block with `data-wcl-*` anchors so the injected JS client can
+    /// attach review comments. Off for normal builds — no markup leaks.
+    pub comment_mode: bool,
 }
 
 /// [`build`] with [`BuildOptions`]. Returns the page count plus, when
@@ -584,6 +589,7 @@ fn build_inner(
                 &site_prefix,
                 &home_href,
                 &home_title,
+                opts.comment_mode,
             )?;
             // Landing page: a page marked `start` is copied to this site's
             // `index.html`, so `/` (or `/<site>/`) serves it without needing
@@ -948,6 +954,7 @@ fn build_site(
     site_prefix: &BTreeMap<String, String>,
     home_href: &str,
     home_title: &str,
+    comment_mode: bool,
 ) -> Result<usize, BuildError> {
     // The page <style>: bundled theme + stylesheets + class rules, scoped
     // to this site (global blocks plus those whose `sites` list names it).
@@ -1087,6 +1094,7 @@ fn build_site(
     inline_patterns.set_site_context(spec.name.clone(), default_template.clone());
     // Wireframe (`wf_*`) elements bake from this site's UI theme.
     inline_patterns.set_ui_theme(crate::render::resolve_ui_theme(spec.block.as_ref()));
+    inline_patterns.set_comment_mode(comment_mode);
 
     // Resolve the site favicon once. A user `icon` path is resolved + copied
     // via the image registry (already copied after the page loop); an
@@ -1462,6 +1470,22 @@ fn build_normal_page(
             content.push_str(&s);
             content.push('\n');
         }
+    }
+    // Comment mode (`--comment` dev server): wrap the page content in a
+    // `display:contents` div carrying the page's source anchor, so the comment
+    // client can attach page-attached + generic comments to the page block.
+    // `display:contents` keeps it invisible to layout.
+    if ctx.inline_patterns.comment_mode() {
+        let span = page.span();
+        let src = page.named_source();
+        content = format!(
+            "<div data-wcl-page-file=\"{}\" data-wcl-page-span=\"{}..{}\" \
+             data-wcl-page-name=\"{}\" style=\"display:contents\">\n{content}</div>\n",
+            escape_html(src.name()),
+            span.start,
+            span.end,
+            escape_html(&page_name),
+        );
     }
     let regions_val = Value::list(
         regions

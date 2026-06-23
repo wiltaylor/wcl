@@ -351,7 +351,43 @@ enum WdocCommand {
         /// site is served under `/<name>/` with a chooser index at `/`.
         #[arg(long)]
         site: Option<String>,
+        /// Enable comment mode: inject a JS client that lets you click a
+        /// rendered block (or the page) and leave a review note, persisted
+        /// into the source as a `@comment` decorator. List them with
+        /// `wcl wdoc comments`.
+        #[arg(long)]
+        comment: bool,
     },
+    /// List the review `@comment`s stored in `<file>` (left by `wcl wdoc
+    /// serve --comment`), or `resolve <id>` to delete one. JSON output
+    /// (`--format json`) is aimed at an AI agent acting on the notes.
+    Comments {
+        /// Path to the WCL source file (the doc's entry point).
+        file: PathBuf,
+        /// Restrict to one named `site` (reserved; currently lists all).
+        #[arg(long)]
+        site: Option<String>,
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = CommentFormat::Text)]
+        format: CommentFormat,
+        /// `resolve <id>` deletes the comment with that id.
+        #[command(subcommand)]
+        cmd: Option<CommentsSub>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CommentsSub {
+    /// Delete the comment with the given id from the source.
+    Resolve { id: String },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum CommentFormat {
+    /// Human-readable table.
+    Text,
+    /// JSON array, one object per comment.
+    Json,
 }
 
 fn main() -> ExitCode {
@@ -625,7 +661,10 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
             site,
             profile,
         } => {
-            let opts = wcl_wdoc::BuildOptions { profile };
+            let opts = wcl_wdoc::BuildOptions {
+                profile,
+                ..Default::default()
+            };
             let result = wcl_wdoc::build_with_options(&file, &out, site.as_deref(), &opts);
             if result.is_ok() {
                 print_render_warnings();
@@ -677,12 +716,13 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
             addr,
             out,
             site,
+            comment,
         } => {
             let rt = match build_runtime() {
                 Ok(rt) => rt,
                 Err(code) => return code,
             };
-            let result = rt.block_on(serve::serve(file, out, addr, site));
+            let result = rt.block_on(serve::serve(file, out, addr, site, comment));
             // Tear the runtime down with a bound so a stray in-flight
             // `spawn_blocking` (e.g. a `tokio::fs::read` in the static
             // handler) can never hang process exit on Ctrl-C.
@@ -695,7 +735,98 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
                 }
             }
         }
+        WdocCommand::Comments {
+            file,
+            site,
+            format,
+            cmd,
+        } => run_comments(&file, site.as_deref(), format, cmd),
     }
+}
+
+/// `wcl wdoc comments` — list stored `@comment`s, or `resolve <id>` one.
+fn run_comments(
+    file: &Path,
+    site: Option<&str>,
+    format: CommentFormat,
+    cmd: Option<CommentsSub>,
+) -> u8 {
+    if let Some(CommentsSub::Resolve { id }) = cmd {
+        return match wcl_wdoc::comments::resolve(file, site, &id) {
+            Ok(true) => {
+                eprintln!("resolved comment {id}");
+                EXIT_OK
+            }
+            Ok(false) => {
+                eprintln!("no comment with id {id}");
+                EXIT_EVAL
+            }
+            Err(err) => {
+                err.report();
+                build_error_code(&err)
+            }
+        };
+    }
+    let recs = match wcl_wdoc::comments::list(file, site) {
+        Ok(r) => r,
+        Err(err) => {
+            err.report();
+            return build_error_code(&err);
+        }
+    };
+    match format {
+        CommentFormat::Json => {
+            let arr = serde_json::Value::Array(recs.iter().map(comment_record_json).collect());
+            let s = serde_json::to_string_pretty(&arr)
+                .expect("serde_json::Value always serializes (string-keyed objects)");
+            println!("{s}");
+        }
+        CommentFormat::Text => {
+            if recs.is_empty() {
+                eprintln!("no comments");
+            }
+            for r in &recs {
+                let where_ = match r.scope {
+                    wcl_wdoc::CommentScope::Block => {
+                        format!("{} {}", r.host_kind, r.host_label.as_deref().unwrap_or(""))
+                    }
+                    wcl_wdoc::CommentScope::PageBlock => format!(
+                        "page {} → {}",
+                        r.page.as_deref().unwrap_or("?"),
+                        r.target.as_deref().unwrap_or("(block)")
+                    ),
+                    wcl_wdoc::CommentScope::Page => {
+                        format!("page {}", r.page.as_deref().unwrap_or("?"))
+                    }
+                };
+                println!("[{}] {} — {}", r.id, where_.trim(), r.body);
+                if let Some(q) = &r.quote {
+                    println!("        quote: {q}");
+                }
+            }
+        }
+    }
+    EXIT_OK
+}
+
+/// Render a [`wcl_wdoc::CommentRecord`] to a JSON object for `--format json`.
+fn comment_record_json(r: &wcl_wdoc::CommentRecord) -> serde_json::Value {
+    serde_json::json!({
+        "id": r.id,
+        "scope": r.scope.as_str(),
+        "file": r.file.display().to_string(),
+        "page": r.page,
+        "host_kind": r.host_kind,
+        "host_label": r.host_label,
+        "loc": r.loc,
+        "target": r.target,
+        "quote": r.quote,
+        "body": r.body,
+        "author": r.author,
+        "status": r.status,
+        "span_start": r.span_start,
+        "span_end": r.span_end,
+    })
 }
 
 /// Plain-stdin REPL with multiline continuation. Reads one line at a

@@ -52,3 +52,4 @@ import <typedoc.wcl>          // type_table: schema-reflected property tables
 import <sequence.wcl>         // sequence diagrams (participants / messages / notes)
 import <statechart.wcl>       // state diagrams (states / transitions, auto-ranked)
 import <visibility.wcl>       // @only / @except block visibility filters
+import <comment.wcl>          // @comment review notes (wcl wdoc serve --comment)

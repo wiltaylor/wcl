@@ -72,21 +72,25 @@ ci: fmt-check workspace-lint workspace-test docs-build
 cli-run *ARGS:
     cargo run -p wcl -- {{ARGS}}
 
-# Serve examples/wdoc/main.wcl with `wcl wdoc serve`; pass extra flags after --
-# (the example declares three sites — / is the chooser; --site picks one)
+# Serve examples/wdoc/main.wcl in comment mode — click a block to leave a review note (--site picks one of its three sites; flags after --)
 [group('dev')]
 wdoc-serve *ARGS:
-    cargo run -p wcl -- wdoc serve examples/wdoc/main.wcl {{ARGS}}
+    cargo run -p wcl -- wdoc serve examples/wdoc/main.wcl --comment {{ARGS}}
 
-# Serve the project's own docs/ site (wdoc landing at /, WCL reference book at /reference/)
+# Serve docs/ in comment mode (landing at /, reference book at /reference/) — click a block to leave a review note, list them with `just docs-comments`
 [group('dev')]
 docs-serve *ARGS:
-    cargo run -p wcl -- wdoc serve docs/main.wcl --addr 127.0.0.1:8137 {{ARGS}}
+    cargo run -p wcl -- wdoc serve docs/main.wcl --addr 127.0.0.1:8137 --comment {{ARGS}}
 
 # Build the project's docs/ site into docs/_site/ (gitignored)
 [group('dev')]
 docs-build *ARGS:
     cargo run -p wcl -- wdoc build docs/main.wcl --out docs/_site {{ARGS}}
+
+# List review @comments left in docs/ via `just docs-serve` (--format json, or `resolve <id>` to delete one)
+[group('dev')]
+docs-comments *ARGS:
+    cargo run -p wcl -- wdoc comments docs/main.wcl {{ARGS}}
 
 # Render the project's docs/ site to Markdown under docs/_md/ (gitignored) —
 # smoke-tests `wcl wdoc markdown` (folder of .md + standalone .svg diagrams)

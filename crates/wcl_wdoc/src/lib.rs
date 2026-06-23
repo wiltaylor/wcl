@@ -9,6 +9,7 @@
 
 pub mod build;
 mod card;
+pub mod comments;
 mod dopesheet;
 mod file;
 mod force;
@@ -38,5 +39,6 @@ mod wireframe;
 pub use build::{
     BuildError, BuildOptions, build, build_with_options, schema_registry, take_render_warnings,
 };
+pub use comments::{CommentRecord, CommentScope};
 pub use markdown::{markdown, skill};
 pub use pdf::{PageSize, PdfError, pdf};

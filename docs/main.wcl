@@ -73,6 +73,7 @@ site reference {
       chapter "Pages"                  { page = wdoc_pages }
       chapter "Including sub-sites"    { page = wdoc_includes }
       chapter "Block Visibility"       { page = wdoc_visibility }
+      chapter "Review Comments"        { page = wdoc_comments }
       chapter "Markdown Output"        { page = wdoc_markdown }
       chapter "Skill Folders"          { page = wdoc_skills }
       chapter "Formatting"             { page = wdoc_formatting }
@@ -119,6 +120,7 @@ import "./pages/reference/wdoc/websites.wcl"
 import "./pages/reference/wdoc/pages.wcl"
 import "./pages/reference/wdoc/includes.wcl"
 import "./pages/reference/wdoc/visibility.wcl"
+import "./pages/reference/wdoc/comments.wcl"
 import "./pages/reference/wdoc/markdown.wcl"
 import "./pages/reference/wdoc/skills.wcl"
 import "./pages/reference/wdoc/formatting.wcl"
