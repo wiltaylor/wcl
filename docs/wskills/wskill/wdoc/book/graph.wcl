@@ -23,6 +23,20 @@ let note_edges = flatten([
   flatten(map(procedures, fn(p: Procedure) -> list<GraphEdge> { map(p.related, fn(r: identifier) -> GraphEdge { { source: $"${p.id}", destination: $"${r}" } }) })),
 ])
 
+// Node colours for the graph: paint each circle by note type, and give the
+// label white text so it stays legible on the fill in both light and dark mode
+// (the default label colour is dark, which vanishes in dark mode). Element-
+// qualified selectors split the shared per-node class across circle vs label.
+stylesheet "graph-node-colours" {
+  css = <<CSS
+circle.gnode-concept { fill: #2563eb }
+circle.gnode-entity  { fill: #b45309 }
+circle.gnode-fact    { fill: #15803d }
+circle.gnode-process { fill: #7c3aed }
+text.gnode-concept, text.gnode-entity, text.gnode-fact, text.gnode-process { fill: #ffffff }
+CSS
+}
+
 page graph_page { title = "Graph"
   h1 "Graph"
   p "Every concept, entity, fact and process in this wskill, drawn as a force-directed graph — each circle is a note (click it to open its page) and each line is a `related` link. Scroll to zoom and drag to pan."
@@ -39,11 +53,13 @@ page graph_page { title = "Graph"
     desc = "Force-directed graph of every wskill note and its related links."
 
     // The label is the node's inline (positional) value — an `@inline(0)` field
-    // set by name (`text = …`) is not picked up as the shape label.
-    wdoc_repeater { each = concepts   as = :c  node $"${c.name}"  { id = c.id  link = $"concept_${c.id}"  fill = "#4c8bf5"  width = 96.0  height = 96.0 } }
-    wdoc_repeater { each = entities   as = :e  node $"${e.name}"  { id = e.id  link = $"entity_${e.id}"   fill = "#e0a000"  width = 96.0  height = 96.0 } }
-    wdoc_repeater { each = facts      as = :f  node $"${f.title}" { id = f.id  link = $"fact_${f.id}"     fill = "#2f9e6f"  width = 96.0  height = 96.0 } }
-    wdoc_repeater { each = procedures as = :p  node $"${p.title}" { id = p.id  link = $"process_${p.id}"  fill = "#b46be0"  width = 96.0  height = 96.0 } }
+    // set by name (`text = …`) is not picked up as the shape label. Colour comes
+    // from a per-type `class`; the `graph-node-colours` stylesheet paints the
+    // circle and gives the label white text (legible in light and dark mode).
+    wdoc_repeater { each = concepts   as = :c  node $"${c.name}"  { id = c.id  link = $"concept_${c.id}"  class = ["gnode-concept"]  width = 120.0  height = 120.0 } }
+    wdoc_repeater { each = entities   as = :e  node $"${e.name}"  { id = e.id  link = $"entity_${e.id}"   class = ["gnode-entity"]   width = 120.0  height = 120.0 } }
+    wdoc_repeater { each = facts      as = :f  node $"${f.title}" { id = f.id  link = $"fact_${f.id}"     class = ["gnode-fact"]     width = 120.0  height = 120.0 } }
+    wdoc_repeater { each = procedures as = :p  node $"${p.title}" { id = p.id  link = $"process_${p.id}"  class = ["gnode-process"]  width = 120.0  height = 120.0 } }
 
     edges = note_edges
   }

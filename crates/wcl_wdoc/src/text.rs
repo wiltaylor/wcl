@@ -35,6 +35,51 @@ pub(crate) fn measure(text: &str) -> TextMetrics {
     TextMetrics { lines, max_chars }
 }
 
+/// Greedily word-wrap `text` so each line's estimated width at `font_size`
+/// fits `max_w` px. Existing newlines stay as hard breaks; a single word wider
+/// than `max_w` keeps its own line (no mid-word splitting). Used to keep an
+/// auto-fit label (e.g. a circle `node`'s centred text) inside its box instead
+/// of shrinking one long line to pixel soup or overflowing.
+pub(crate) fn wrap(text: &str, max_w: f64, font_size: f64) -> String {
+    if max_w <= 0.0 || font_size <= 0.0 {
+        return text.to_string();
+    }
+    let max_chars = (max_w / (font_size * CHAR_RATIO)).floor().max(1.0) as usize;
+    let mut lines = Vec::new();
+    for hard in text.split('\n') {
+        let mut line = String::new();
+        for word in hard.split_whitespace() {
+            if line.is_empty() {
+                line.push_str(word);
+            } else if line.chars().count() + 1 + word.chars().count() <= max_chars {
+                line.push(' ');
+                line.push_str(word);
+            } else {
+                lines.push(std::mem::take(&mut line));
+                line.push_str(word);
+            }
+        }
+        lines.push(line);
+    }
+    lines.join("\n")
+}
+
+/// Word-wrap `text` to an inner box (padding already subtracted) and pick the
+/// font size to render it at. Two passes: wrap at the default size, shrink to
+/// fit the box, then re-wrap at that smaller size so each line is as full as
+/// the final size allows (avoids a long label collapsing into a stack of
+/// one-word lines). Returns the wrapped text and its font size.
+pub(crate) fn wrap_to_box(text: &str, inner_w: f64, inner_h: f64) -> (String, f64) {
+    if inner_w <= 0.0 {
+        return (text.to_string(), fit_font_size(text, inner_w, inner_h));
+    }
+    let first = wrap(text, inner_w, DEFAULT_FONT_SIZE);
+    let fs = fit_font_size(&first, inner_w, inner_h);
+    let wrapped = wrap(text, inner_w, fs);
+    let font = fit_font_size(&wrapped, inner_w, inner_h);
+    (wrapped, font)
+}
+
 /// Smallest shape that comfortably holds `text` at
 /// `DEFAULT_FONT_SIZE`. Returned dims include `H_PAD` / `V_PAD`.
 pub(crate) fn min_shape_dims(text: &str) -> (f64, f64) {
@@ -92,5 +137,31 @@ mod tests {
     fn fit_font_size_caps_at_default() {
         let f = fit_font_size("ok", 1000.0, 1000.0);
         assert_eq!(f, DEFAULT_FONT_SIZE);
+    }
+
+    #[test]
+    fn wrap_breaks_on_word_boundaries_to_fit_width() {
+        // ~70px at default font ≈ 9 chars/line, so a long name wraps.
+        let w = wrap(
+            "Separation of Data and Presentation",
+            70.0,
+            DEFAULT_FONT_SIZE,
+        );
+        assert!(w.contains('\n'), "expected wrapping, got {w:?}");
+        // Every wrapped line that isn't a single long word fits the budget.
+        let max_chars = (70.0 / (DEFAULT_FONT_SIZE * CHAR_RATIO)).floor() as usize;
+        for line in w.split('\n') {
+            assert!(
+                line.split_whitespace().count() <= 1 || line.chars().count() <= max_chars,
+                "line {line:?} exceeds {max_chars} chars"
+            );
+        }
+        // No words are lost.
+        assert_eq!(w.split_whitespace().count(), 5);
+    }
+
+    #[test]
+    fn wrap_keeps_hard_newlines() {
+        assert_eq!(wrap("a\nb", 1000.0, DEFAULT_FONT_SIZE), "a\nb");
     }
 }

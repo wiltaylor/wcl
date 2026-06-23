@@ -62,12 +62,12 @@ pub(crate) fn render_line(block: &Block<'_>, parent_w: f64, parent_h: f64) -> St
 }
 
 pub(crate) fn render_label(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
-    let content = label_string(block).unwrap_or_default();
+    let raw = label_string(block).unwrap_or_default();
     let own_x = field_f64(block, "x").unwrap_or(0.0);
     let own_y = field_f64(block, "y").unwrap_or(0.0);
     let (x, y) = resolve_point_anchored(block, parent_w, parent_h, own_x, own_y);
-    let font_size = resolve_label_font_size(
-        &content,
+    let (content, font_size) = fit_label(
+        &raw,
         field_f64(block, "font_size"),
         field_f64(block, "fit_width"),
         field_f64(block, "fit_height"),
@@ -171,11 +171,11 @@ pub(crate) fn render_polyline_payload(map: &BTreeMap<String, Value>) -> String {
 }
 
 pub(crate) fn render_label_payload(map: &BTreeMap<String, Value>) -> String {
-    let content = map_utf8(map, "content").unwrap_or_default();
+    let raw = map_utf8(map, "content").unwrap_or_default();
     let x = map_f64(map, "x").unwrap_or(0.0);
     let y = map_f64(map, "y").unwrap_or(0.0);
-    let font_size = resolve_label_font_size(
-        &content,
+    let (content, font_size) = fit_label(
+        &raw,
         map_f64(map, "font_size"),
         map_f64(map, "fit_width"),
         map_f64(map, "fit_height"),
@@ -203,6 +203,33 @@ pub(crate) fn render_polygon_payload(map: &BTreeMap<String, Value>) -> String {
         p.stroke.as_deref(),
         p.id.as_deref(),
     )
+}
+
+/// Resolve a label's rendered text + font size. An explicit `font_size` wins
+/// (the text is still wrapped to a `fit_width` box if one is given); otherwise,
+/// when the label auto-fits a box, word-wrap it to that box and shrink to fit
+/// (so a long label stacks into lines inside the box rather than overflowing);
+/// otherwise the default size with the text unchanged.
+fn fit_label(
+    content: &str,
+    font_size: Option<f64>,
+    fit_w: Option<f64>,
+    fit_h: Option<f64>,
+) -> (String, f64) {
+    if let Some(fs) = font_size {
+        let text = match fit_w {
+            Some(w) => text::wrap(content, w - text::H_PAD, fs),
+            None => content.to_string(),
+        };
+        return (text, fs);
+    }
+    match fit_w {
+        Some(w) => {
+            let inner_h = fit_h.map(|h| h - text::V_PAD).unwrap_or(1.0e9);
+            text::wrap_to_box(content, w - text::H_PAD, inner_h)
+        }
+        None => (content.to_string(), text::DEFAULT_FONT_SIZE),
+    }
 }
 
 /// Pick the font size for a label: explicit `font_size` overrides

@@ -208,19 +208,23 @@ type GraphNode extends SvgBlock {
     let box_class = if auto { ["wdoc-node"] } else { n.class };
     let text_class = if auto { ["wdoc-shape-text"] } else { n.class };
     let lead = icon_lead(n.icon, n.icon_pos, n.icon_size, n.width, n.height);
+    // The drawn circle's diameter is `min(width, height)`, so fit the label to
+    // a square inscribed in that circle (≈0.72·d) — not to the box width. A
+    // layout solver may grow the box wider than tall to reserve space for the
+    // text; basing the fit on the diameter keeps the (wrapping) label inside
+    // the circle's curve instead of overflowing it.
+    let d = min(n.width, n.height);
     [
       SvgFundamental::Circle {
         cx: n.x + n.width / 2.0,
         cy: n.y + n.height / 2.0,
-        r:  min(n.width, n.height) / 2.0,
+        r:  d / 2.0,
         fill: n.fill, stroke: n.stroke, id: n.id, class: box_class,
       },
-      // Inset the fit region so the label stays within the circle's
-      // curve instead of touching its left/right edges; shift it right
-      // to clear a `:left` icon badge.
+      // Shift the fit box right to clear a `:left` icon badge.
       centered_label(
         n.text, n.x + n.width / 2.0 + lead / 2.0, n.y + n.height / 2.0,
-        max(n.width * 0.82 - lead, 8.0), n.height * 0.82, text_class,
+        max(d * 0.72 - lead, 8.0), d * 0.72, text_class,
       ),
     ]
   }
