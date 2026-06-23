@@ -1,5 +1,4 @@
 // entity — one import per entry.
-import "./wskill_registry.wcl"
 import "./wskill.wcl"
 import "./wil_taylor.wcl"
 import "./wcl.wcl"

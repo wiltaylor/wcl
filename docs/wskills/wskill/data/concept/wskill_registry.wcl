@@ -1,6 +1,5 @@
-entity wskill_registry {
+concept wskill_registry {
   name     = "wskill registry"
-  kind     = "collection"
   summary  = "A collection of many wskills under one landing page — built into a single hostable deploy tree."
   related  = [wskill, book_view]
   body {

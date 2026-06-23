@@ -1,0 +1,20 @@
+concept index {
+  name     = "Index"
+  summary  = "A curated collection of links that adds a top-level entry to the wskill's navigation — beyond the four units."
+  related  = [datapresentation, concept]
+  body {
+    p <<BODY
+      An index is how you add an item to the wskill's menu. The four unit kinds (concept,
+      entity, fact, process) are gathered automatically, but an `index` lets you author a
+      hand-curated page of links and have it appear as its own top-level entry — a chapter in
+      the book's sidebar and a menu item in the skill.
+    BODY
+
+    p <<BODY
+      Declare an `index` block with a `name` and a `body` of links; it renders to its own page
+      and is listed at the top of the navigation. An index may nest child `index` blocks one
+      level deep, which render indented under the parent — so a single index can group several
+      related sub-pages under one menu heading.
+    BODY
+  }
+}
