@@ -1,0 +1,8 @@
+// Capture inbox — fleeting notes awaiting processing.
+//
+// Validate the inbox with `wcl check capture/main.wcl`. To record a note, add a
+// `capture/<slug>.wcl` file with a `fleeting` block (see example-idea.wcl) and an
+// import line below. This document is intentionally NOT imported by ../wskill.wcl:
+// captures are scratch input, processed into the model and then deleted.
+import "./schema.wcl"
+import "./example-idea.wcl"

@@ -81,7 +81,7 @@ wdoc-serve *ARGS:
 # Serve the project's own docs/ site (wdoc landing at /, WCL reference book at /reference/)
 [group('dev')]
 docs-serve *ARGS:
-    cargo run -p wcl -- wdoc serve docs/main.wcl {{ARGS}}
+    cargo run -p wcl -- wdoc serve docs/main.wcl --addr 127.0.0.1:8137 {{ARGS}}
 
 # Build the project's docs/ site into docs/_site/ (gitignored)
 [group('dev')]

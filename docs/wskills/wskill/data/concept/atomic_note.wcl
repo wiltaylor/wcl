@@ -1,0 +1,11 @@
+concept atomic_note {
+  name     = "Atomic Note"
+  summary  = "Each unit captures exactly one idea — one concept, entity, fact or process ."
+  related  = [concept, entity, fact, process, selfcontained, datapresentation]
+  body {
+    p <<BODY
+      An atomic note is a note which contains only one idea and is self contained. The note
+      then cross references to other atomic notes which are constructed in a similar way.
+    BODY
+  }
+}

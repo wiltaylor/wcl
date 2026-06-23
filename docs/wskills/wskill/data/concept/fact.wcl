@@ -1,15 +1,14 @@
 concept fact {
   name     = "Fact"
-  summary  = "A unit that holds factual data — a value, a constant, a value table — in its body, named by a title. It is the home for a reference table."
+  summary  = "A unit that holds factual data — a value, a constant, a value table."
   related  = [concept, entity, process]
   body {
     p <<BODY
-A fact is the unit for discrete, checkable data: a constant, a value, or a table of
-values. The `title` names it; the body — an addressable `body` — holds the data,
-typically a `table` (though prose or code work too). A reference table lives on a
-fact, not in a typed block. Facts render to their own pages and cross-link like every
-other unit. Reach for a fact when the content is something you could verify against
-the topic, rather than an idea (a concept) or a thing (an entity).
-BODY
+      A fact is a unit of knowledge that has a specific value and can't really be disputed or interpreted.
+    BODY
+
+    p <<BODY
+      Some good examples of facts are like an API for a library. CPU Instructions. Details about historic events that happened.
+    BODY
   }
 }

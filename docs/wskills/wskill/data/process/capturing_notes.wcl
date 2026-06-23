@@ -1,0 +1,45 @@
+procedure capturing_notes {
+  title   = "Capture and process a fleeting note"
+  purpose = "Record an idea quickly while building a wskill without breaking flow, then refine it into the model and discard the capture."
+  preconditions = ["A `capture/` folder with `schema.wcl` and `main.wcl` (ships with the wskill scaffold)"]
+  related = [fleeting_note, permanent_note, atomic_note, zettelkasten, concept, entity, fact, process]
+  audience = :both
+
+  step 1 {
+    title = "Jot it down in capture/"
+    body screen { code "wcl" { source = <<'SRC'
+// capture/decision-unit.wcl
+fleeting decision_unit {
+  captured = "2026-06-23"
+  tags     = ["idea"]
+  note = <<NOTE
+    Maybe wskills need a `decision` unit — a record of a choice and why.
+  NOTE
+}
+SRC
+    } }
+    body steps { p "Add a `capture/<slug>.wcl` file holding one `fleeting` block and add its import to `capture/main.wcl`. Write fast and rough — a slug, the raw idea, optional `captured` date and `tags`. Do not polish it; the only job is to not lose the thought." }
+  }
+
+  step 2 {
+    title = "Validate the inbox"
+    body screen { code "console" { source = <<'SH'
+$ wcl check capture/main.wcl
+OK
+SH
+    } }
+    body steps { p "Run `wcl check capture/main.wcl` so a malformed capture is caught early. The capture document is separate from the wskill model, so this never affects `wcl check wskill.wcl`." }
+  }
+
+  step 3 {
+    title = "Process it into the model"
+    body steps { p "When you triage the inbox, turn each fleeting note into one or more real units — a `concept`, `entity`, `fact` or `procedure` under `data/` — each atomic and self-contained, cross-linked with `related`. One fleeting note often becomes several units." }
+  }
+
+  step 4 {
+    title = "Discard the capture"
+    body steps { p "Once the idea lives in the model, delete the `capture/<slug>.wcl` file and its import from `capture/main.wcl`. The capture folder holds only *unprocessed* notes — a processed note is redundant with the unit it became." }
+  }
+
+  verification = "`capture/` contains only notes you have not processed yet; every processed idea appears as a unit under `data/` and its fleeting file is gone."
+}

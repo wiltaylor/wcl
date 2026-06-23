@@ -1,1 +1,2 @@
-// process — no entries yet; add `import "./<name>.wcl"` per entry.
+// process — one import per entry.
+import "./capturing_notes.wcl"

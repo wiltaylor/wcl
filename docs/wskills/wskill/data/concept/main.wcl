@@ -1,6 +1,10 @@
 // concept — one import per entry.
 import "./datapresentation.wcl"
 import "./selfcontained.wcl"
+import "./zettelkasten.wcl"
+import "./atomic_note.wcl"
+import "./permanent_note.wcl"
+import "./fleeting_note.wcl"
 import "./concept.wcl"
 import "./entity.wcl"
 import "./fact.wcl"

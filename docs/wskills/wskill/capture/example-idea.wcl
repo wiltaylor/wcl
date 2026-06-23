@@ -1,0 +1,11 @@
+// Example fleeting note — shows the recording format. Delete once you have your
+// own captures (or once this one has been processed into the model).
+fleeting example_idea {
+  captured = "2026-06-23"
+  tags     = ["example", "triage"]
+  note = <<NOTE
+    A wskill could grow a `decision` unit type — a short record of a choice made and
+    why, so the reasoning survives. Not sure if it is its own unit or just a concept.
+    Look at how ADRs (architecture decision records) structure this before deciding.
+  NOTE
+}
