@@ -1,7 +1,7 @@
 concept fact {
   name     = "Fact"
   summary  = "A unit that holds factual data — a value, a constant, a value table."
-  related  = [concept, entity, process]
+  related  = [concept, entity, process, permanent_note]
   body {
     p <<BODY
       A fact is a unit of knowledge that has a specific value and can't really be disputed or interpreted.

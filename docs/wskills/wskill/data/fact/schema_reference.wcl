@@ -49,6 +49,121 @@ let other_decls = fn() -> list<FieldInfo> {
          fn(d: FieldInfo) -> bool { list_contains(shown, decl_fqn(d)) == false })
 }
 
+// A worked authoring example per block kind, keyed by the declaration name the
+// catalogue prints (`decl_name`). Rendered as a `code "wcl"` snippet beneath the
+// block's field table so each block shows how it is actually written. Code lives
+// in raw heredocs so it renders verbatim.
+type BlockExample { name: utf8  code: utf8 }
+let block_examples = [
+  { name: "Topic", code: <<'WCL'
+topic git {
+  name    = "Git"
+  summary = "Distributed version control — the model and the everyday commands."
+  version = "1.0.0"
+  created = "2026-06-23"
+  maintainer = "Wil Taylor"
+}
+WCL
+  },
+  { name: "Source", code: <<'WCL'
+source upstream_docs {
+  kind         = "url"
+  locator      = "https://git-scm.com/doc"
+  covers       = "command and config reference"
+  last_checked = "2026-06-23"
+}
+WCL
+  },
+  { name: "WskillRef", code: <<'WCL'
+wskill_ref wdoc {
+  name     = "wdoc"
+  relation = "peer — the renderer this format uses"
+  status   = "exists"
+  url      = "../wdoc/"
+}
+WCL
+  },
+  { name: "Concept", code: <<'WCL'
+concept fast_forward {
+  name    = "Fast-forward merge"
+  summary = "Advancing a branch pointer when history hasn't diverged."
+  related = [merge]
+  body { p "When the target already contains the source's history, Git just moves the pointer — no merge commit." }
+}
+WCL
+  },
+  { name: "Entity", code: <<'WCL'
+entity git_cli {
+  name    = "git"
+  kind    = "tool"
+  summary = "The Git command-line client."
+  body { p "Installed via your package manager; check with `git --version`." }
+}
+WCL
+  },
+  { name: "Fact", code: <<'WCL'
+fact default_branch {
+  title = "Default branch name"
+  body { p "Since Git 2.28 the initial branch is set by `init.defaultBranch` (commonly `main`)." }
+}
+WCL
+  },
+  { name: "Index", code: <<'WCL'
+index commands {
+  name = "Commands"
+  body { p "The everyday command set, grouped by workflow stage." }
+}
+WCL
+  },
+  { name: "Term", code: <<'WCL'
+term ref {
+  term       = "ref"
+  definition = "A name that points at a commit — a branch, tag or HEAD."
+}
+WCL
+  },
+  { name: "Example", code: <<'WCL'
+example clone_cmd {
+  title     = "Cloning a repository"
+  unit      = git_cli
+  narrative = "Copy a remote repository locally."
+  code_lang = "console"
+  code = <<'SH'
+$ git clone https://github.com/owner/repo
+SH
+  expected = "A repo/ directory with full history."
+}
+WCL
+  },
+  { name: "Procedure", code: <<'WCL'
+procedure first_commit {
+  title   = "Make your first commit"
+  purpose = "Record an initial snapshot in a new repository."
+  step 1 {
+    title = "Stage files"
+    body steps { p "Run `git add .` to stage everything." }
+  }
+  step 2 {
+    title = "Commit"
+    body steps { p "Run `git commit -m 'initial'`." }
+  }
+  verification = "`git log` shows one commit."
+}
+WCL
+  },
+  { name: "Step", code: <<'WCL'
+step 1 {
+  title = "Stage files"
+  body steps { p "Run `git add .` to stage the changes." }
+}
+WCL
+  },
+]
+let example_for = fn(n: utf8) -> list<utf8> {
+  map(filter(block_examples, fn(e: BlockExample) -> bool { e.name == n }),
+      fn(e: BlockExample) -> utf8 { e.code })
+}
+
 // The schema, reflected. Instead of hand-maintaining a block catalogue, this fact
 // reflects the live `wcl.wskill` schema with WCL's reflection builtins: it walks
 // every declaration in the namespace (`namespace_decls`), prints its name and doc
@@ -65,10 +180,12 @@ fact schema_reference {
       h3 $"${decl_name(b)}"
       p  $"${doc_comment(b)}"
       type_table { type = b }
+      wdoc_repeater { each = example_for(decl_name(b))  as = :ex  code "wcl" { source = ex } }
       wdoc_repeater { each = nested_blocks(b)  as = :n
         h4 $"${decl_name(n)}"
         p  $"${doc_comment(n)}"
         type_table { type = n }
+        wdoc_repeater { each = example_for(decl_name(n))  as = :ex  code "wcl" { source = ex } }
       }
     }
     h2 "Document roots & shared types"

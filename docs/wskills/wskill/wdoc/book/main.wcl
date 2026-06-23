@@ -102,9 +102,9 @@ page index { start = true
   }
   wdoc_repeater { each = match len(refs) { 0 => [], _ => [true] }  as = :_r
     table {
-      header = ["Name", "Relation", "Status", "Source"]
+      header = ["Name", "Relation", "Status"]
       rows = map(refs, fn(r: WskillRef) -> list<utf8> {
-        [r.name, r.relation ?? "—", r.status, match r.url { none => "—", u => $"[source](${u})" }]
+        [match r.url { none => r.name, u => $"[${r.name}](${u})" }, r.relation ?? "—", r.status]
       })
     }
   }

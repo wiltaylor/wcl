@@ -26,6 +26,7 @@ let note_edges = flatten([
 page graph_page { title = "Graph"
   h1 "Graph"
   p "Every concept, entity, fact and process in this wskill, drawn as a force-directed graph — each circle is a note (click it to open its page) and each line is a `related` link. Scroll to zoom and drag to pan."
+  p "Nodes are colour-coded by type — **concepts** blue, **entities** amber, **facts** green, **processes** purple."
   diagram {
     width    = 960
     height   = 640
@@ -34,12 +35,13 @@ page graph_page { title = "Graph"
     zoom_min = 1.0
     zoom_max = 4.0
     link_distance = 90.0
+    routing  = :straight
     desc = "Force-directed graph of every wskill note and its related links."
 
-    wdoc_repeater { each = concepts   as = :c  node { id = c.id  text = c.name   link = $"concept_${c.id}" } }
-    wdoc_repeater { each = entities   as = :e  node { id = e.id  text = e.name   link = $"entity_${e.id}" } }
-    wdoc_repeater { each = facts      as = :f  node { id = f.id  text = f.title  link = $"fact_${f.id}" } }
-    wdoc_repeater { each = procedures as = :p  node { id = p.id  text = p.title  link = $"process_${p.id}" } }
+    wdoc_repeater { each = concepts   as = :c  node { id = c.id  text = c.name   link = $"concept_${c.id}"  fill = "#4c8bf5" } }
+    wdoc_repeater { each = entities   as = :e  node { id = e.id  text = e.name   link = $"entity_${e.id}"   fill = "#e0a000" } }
+    wdoc_repeater { each = facts      as = :f  node { id = f.id  text = f.title  link = $"fact_${f.id}"     fill = "#2f9e6f" } }
+    wdoc_repeater { each = procedures as = :p  node { id = p.id  text = p.title  link = $"process_${p.id}"  fill = "#b46be0" } }
 
     edges = note_edges
   }

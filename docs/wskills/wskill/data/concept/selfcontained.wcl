@@ -1,17 +1,14 @@
 concept selfcontained {
   name     = "Content is self-contained"
   summary  = "Capture the information itself; never defer to an external source for it. Attribution citations are fine; the only learning pointers are cross-references."
-  related  = [datapresentation]
+  related  = [datapresentation, permanent_note]
   body {
     p <<BODY
-      A wskill must stand on its own. The forbidden move is the deferral — sending the
-      reader to an outside source for the substance instead of capturing it here, where it
-      can't be projected or kept current. The validator flags the common phrasings.
-      Attribution for credit ("per RFC 9110",
-      "as POSIX specifies") is welcome where it matters. Pointers to further learning are
-      expressed only as wskill cross-reference blocks to other wskills (possibly planned
-      stubs), never as bare URLs in prose. Content is declarative reference data written
-      to be projected: factual and lean, with the templates supplying presentation.
+      A wskill must stand on its own: capture the substance here rather than deferring the
+      reader to an outside source, which can't be projected or kept current (the validator
+      flags the common deferral phrasings). Attribution for credit ("per RFC 9110") is fine,
+      and pointers to further learning are cross-reference blocks to other wskills — never
+      bare URLs in prose.
     BODY
   }
 }

@@ -2,7 +2,7 @@ entity wskill {
   name    = "wskill"
   kind    = "document"
   summary = "One self-contained folder that captures a topic as a WCL data model and projects it into a human book and a Claude Code skill."
-  related = [the_book, the_skill, wskill_registry]
+  related = [book_view, skill_view, wskill_registry]
   body {
     p "A wskill is one self-contained folder: a WCL data model (concepts, entities, facts, terms, examples, tutorials, processes) plus the base schema and the wdoc templates that project it. It renders two ways — the book and the skill — from the one model with nothing hand-duplicated, and many wskills gather into a wskill registry."
   }

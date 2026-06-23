@@ -1,7 +1,7 @@
 concept process {
   name     = "Process"
   summary  = "A unit (authored as a procedure) that captures the reliable sequence for doing a task — ordered steps, for someone who already knows the topic."
-  related  = [concept, entity, fact]
+  related  = [concept, entity, fact, permanent_note]
   body {
     p <<BODY
 A process — authored as a `procedure` block — is the unit for doing a specific task

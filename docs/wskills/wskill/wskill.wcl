@@ -57,10 +57,12 @@ wskill_ref wcl {
   name     = "wcl"
   relation = "peer — the language the format is built on"
   status   = "exists"
+  url      = "../wcl/"
 }
 
 wskill_ref wcl {
   name     = "wdoc"
   relation = "peer — reference for the wdoc rendering language"
   status   = "exists"
+  url      = "../wdoc/"
 }

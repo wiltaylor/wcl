@@ -12,10 +12,12 @@ concept zettelkasten {
     BODY
 
     p <<BODY
-      A wskill is a Zettelkasten with a type system. Its units — concepts, entities, facts and
-      processes — are the slips; each is an atomic, self-contained note with a stable id, and
-      the `related` field is the link between them. The templates then read that web of notes
-      and project it into a book or a skill, so the same slip-box becomes several outputs.
+      A wskill is not a Zettelkasten, but it shares the same shape. Its units — concepts,
+      entities, facts and processes — play the role of the slips: each is an atomic,
+      self-contained note with a stable id, and the `related` field is the link between them.
+      Where it differs is the type system over those notes and the templates that read the web
+      of links and project it into a book or a skill, so the same slip-box becomes several
+      outputs.
     BODY
   }
 }
