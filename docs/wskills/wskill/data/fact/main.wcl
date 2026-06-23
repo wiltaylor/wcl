@@ -1,0 +1,2 @@
+// fact — one import per entry.
+import "./schema_reference.wcl"  // checkable facts (one file per entry under data/fact/)

@@ -1,0 +1,24 @@
+concept interfaces {
+  name     = "Interfaces"
+  summary  = "Structural contracts — a set of fields a type must have, satisfied automatically."
+  related  = [records, references, schema]
+  audience = :both
+  body {
+    p "An `interface` declares a structural contract — a set of fields a type must have to satisfy it. Any type with the right fields satisfies it automatically, with no explicit `implements`."
+    h2 "Declaring an interface"
+    code "wcl" { source = <<'SRC'
+interface Drawable {
+  x: f64
+  y: f64
+}
+
+interface Sized extends Drawable {
+  width:  f64
+  height: f64
+}
+SRC
+    }
+    callout "Structural, not nominal" { class = ["info"]  body = "A type need not be declared as a parent or implement anything explicitly. If it happens to have all the interface's fields with compatible types, it satisfies the interface." }
+    p "Interfaces have one common consumer: **reference fields** (`&T`), which accept any value that structurally satisfies the interface. See [References](concept_references)."
+  }
+}

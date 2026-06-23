@@ -1,0 +1,51 @@
+concept unions {
+  name     = "Unions"
+  summary  = "Tagged variant sets — a value that is exactly one of several alternatives."
+  related  = [records, symbols, control_flow]
+  audience = :both
+  body {
+    p "A `union` is a tagged set of variants — a value that is exactly one of several alternatives. Each variant carries its own payload (or none), and pattern matching dispatches on the tag."
+    h2 "Variant body forms"
+    p "Three shapes are accepted: a **record** body with named fields, a **typeref** body for a single positional payload, or a **unit** body with no payload."
+    code "wcl" { source = <<'SRC'
+union Shape {
+  Circle { radius: f64, stroke: f64 }   // record variant
+  Polygon i32                            // typeref variant
+  Empty                                  // unit variant
+}
+SRC
+    }
+    h2 "Constructing variants"
+    p "Use `Union::Variant` syntax — record payloads in braces, typeref payloads in parentheses, unit constructors bare."
+    code "wcl" { source = <<'SRC'
+a = Shape::Circle { radius: 5.0, stroke: 0.5 }
+b = Shape::Polygon(7)
+c = Shape::Empty
+SRC
+    }
+    h2 "Inferring the variant from shape"
+    p "When the expected type is a union — a union-typed field, an element of a `list<Union>`, or a function parameter — you can drop the `Union::Variant` tag and write a bare record. The variant is inferred from the record's field shape."
+    code "wcl" { source = <<'SRC'
+// `series: list<ChartSeries>` — the variant is inferred per element.
+series = [
+  { name: "North", values: [42.0, 55.0] },   // inferred ChartSeries::Of
+  { name: "South", values: [30.0, 48.0] },
+]
+SRC
+    }
+    p "The match is by field-name set (and field types when two variants share a name set), so it only works when the shape is unambiguous; a bare record matching no variant is a build error. Reach for the explicit `Union::Variant { ... }` form to disambiguate."
+    h2 "extends"
+    p "A union can `extends` another, inheriting its variants and adding more — useful when a host wants to extend an open vocabulary without modifying the base declaration."
+    code "wcl" { source = <<'SRC'
+union BaseShape {
+  Empty
+}
+
+union Shape extends BaseShape {
+  Circle { radius: f64 }
+  Square { side: f64 }
+}
+SRC
+    }
+  }
+}

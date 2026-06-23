@@ -1,0 +1,149 @@
+concept data_views {
+  name     = "Data Views"
+  summary  = "Render content from WCL data: wdoc_component / slot / repeater / instance, body & project, partial & collect."
+  related  = [includes, connections]
+  audience = :both
+  body {
+    p <<PROSE
+A *data view* renders document content — cards, tables, charts, diagrams — from a WCL **data structure** rather than hand-authored blocks. Declare the data once, then derive every view from it. The primary tool is a **component**: a reusable fragment of ordinary wdoc markup with named **slots**.
+PROSE
+
+    h2 "Components"
+    p <<PROSE
+Declare a `wdoc_component` with `wdoc_slot`s and a `wdoc_body` of ordinary markup. Reference slots in any `$"…${slot}…"` interpolated string or as a bare identifier in a field (`class = [status]`). A slot with a `default` is optional. Instantiate the component by its own name.
+PROSE
+    code "wcl" { source = <<'SRC'
+wdoc_component dv_metric {
+  wdoc_slot label
+  wdoc_slot value
+  wdoc_slot status { default = "note" }
+  wdoc_body {
+    callout $"${label}" { class = [status]  body = $"Currently at **${value}%**" }
+  }
+}
+
+// ... then, anywhere a block is allowed:
+dv_metric { label = "CPU" value = 42 status = "warning" }
+dv_metric { label = "Memory" value = 88 }    // status defaults to "note"
+SRC
+    }
+    callout "Interpolating slots" { class = ["tip"]  body = "Slot values land in text via WCL's `$\"…\"` interpolated strings — note the `$` prefix. A plain `\"…\"` string is literal. Bare references in a field (like `class = [status]`) need no prefix." }
+
+    h2 "Repeating over data"
+    p <<PROSE
+`wdoc_repeater` renders its body once per element of `each`, binding the element to the symbol named by `as`. Combined with a component it stamps one card per data row; with no component its body is just markup with the loop variable in scope. A slot can hold a whole list, and a repeater inside a component body can iterate it.
+PROSE
+    code "wcl" { source = <<'SRC'
+wdoc_repeater { each = inventory  as = :h
+  dv_metric { label = h.name  value = h.cpu  status = h.status }
+}
+SRC
+    }
+
+    h2 "Generating pages and navigation"
+    p <<PROSE
+A `wdoc_repeater` is the single iteration concept at every level. At the **document root**, give it a `page` block and it emits one rendered page per element — the page's interpolated label becomes the route. Inside a `toc` (or a `chapter`), give it a `chapter` block and it emits one navigation entry per element.
+PROSE
+    code "wcl" { source = <<'SRC'
+wdoc_repeater { each = containers  as = :c
+  page $"cont_${c.id}" {
+    sites = [:docbook]
+    title = c.name
+    h1 $"${c.name}"
+  }
+}
+
+site docbook {
+  default_template = :book
+  toc {
+    chapter "Containers" {
+      wdoc_repeater { each = containers  as = :c
+        chapter $"${c.name}" { page = $"cont_${c.id}" }
+      }
+    }
+  }
+}
+SRC
+    }
+    callout "Routes must be slug-safe and unique" { class = ["note"]  body = "A generated route is its interpolated label, so it must be non-empty, contain only `A-Za-z0-9_-`, and be unique within its site. Build a slug from prose with `to_lower(replace(s, \" \", \"-\"))`." }
+
+    h2 "Render by reference"
+    p <<PROSE
+A `wdoc_instance` renders the component named by the **value** of its `component` field — so a repeater can emit a *different* component per element. The instance's like-named fields fill the target's slots (falling back to each slot's `default`).
+PROSE
+    code "wcl" { source = <<'SRC'
+wdoc_repeater { each = widgets  as = :row
+  // `component` is data, so each element picks its own component.
+  wdoc_instance { component = row.kind  label = row.label  value = row.value  status = row.status }
+}
+SRC
+    }
+
+    h2 "Content slots (layout wrappers)"
+    p <<PROSE
+A `wdoc_content` block in a component body marks where the instance's *own* nested blocks render — so a component can frame arbitrary content.
+PROSE
+    code "wcl" { source = <<'SRC'
+wdoc_component dv_panel {
+  wdoc_slot title
+  wdoc_body {
+    h3 $"${title}"
+    wdoc_content          // the caller's nested blocks render here
+  }
+}
+
+dv_panel { title = "Notes"
+  p "Anything nested in the instance renders at wdoc_content."
+  list { li "including lists" li "and more" }
+}
+SRC
+    }
+
+    h2 "Partials (scatter and collect)"
+    p <<PROSE
+A `partial` tags a body of blocks; a `collect` with the same tag gathers every matching partial — across the whole document and its imported files — and renders their bodies, in document order, at the collect site. A partial is **invisible where it's defined** unless you set `show_here = true`. It's the appendix / glossary / collected-sidebars pattern.
+PROSE
+    code "wcl" { source = <<'SRC'
+// Scatter tagged deposits anywhere — different blocks, even imported files:
+partial aside { callout "From section one" { body = "A point to collect later." } }
+// ... prose, other blocks ...
+partial aside { callout "From section two" { body = "Another point." } }
+
+// Gather every `aside` partial here, in document order:
+collect aside
+SRC
+    }
+    callout "Scope and limits" { class = ["note"]  body = "Collection is **document-global**: a `collect` gathers matching partials from the root document and every file pulled in by a top-level `import`. Partials in block-scoped (lazily imported) files aren't reached, and a collected body should avoid `id`s." }
+
+    h2 "Content fragments on data (body and project)"
+    p <<PROSE
+A `body` attaches a chunk of renderable content to a **data record** as a *property* — without that record being a renderable block — and a `project` renders it elsewhere by **reference**. Declare your own block type with a `@child("body")` slot, author the content inside each record, then `project` it from a repeater. Because `body` is `@by_ref`, `from = s.overview` resolves to *that* record's fragment, and `${…}` inside the body resolves against the record.
+PROSE
+    code "wcl" { source = <<'SRC'
+@block("server")
+type Server {
+  @inline(0) name: identifier
+  region: utf8?
+  @child("body") overview: WdocAddressableBody?   // content rides on the record
+}
+
+server web01 { region = "us-east"
+  body { p $"Frontend in ${region}." }            // NOT a renderable block here
+}
+
+page fleet {
+  wdoc_repeater { each = servers  as = :s
+    h2 $"${s.name}"
+    project { from = s.overview }                 // render THIS record's body
+  }
+}
+SRC
+    }
+    callout "Addressing" { class = ["note"]  body = "A single `@child(\"body\")` slot is addressed by its slot, so the body needs no name. A body in a `@children(\"body\")` list, or one declared at the document root, is addressed by its `@inline(0)` name. The record carrying a body may be nested (a step inside a tutorial). A `body` never renders where it's declared, only where projected." }
+
+    h2 "Documenting schema types"
+    p <<PROSE
+The built-in `type_table` component documents a schema type by reflecting it — `type_table { type = Image }` renders a table of the type's properties (name, type, required, description), including inherited fields. Descriptions and visibility are authored on the schema with `@doc("…")` and `@hidden`. `block_reference { type = MyDoc }` walks a document's `@child` / `@children` slots and emits an `h3` plus a `type_table` for each.
+PROSE
+  }
+}

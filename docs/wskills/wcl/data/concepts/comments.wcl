@@ -1,0 +1,19 @@
+// Comments — broken out of Fields & Blocks as its own language element.
+concept comments {
+  name     = "Comments"
+  summary  = "Line comments with `//` or `#`, preserved across fmt and edits."
+  related  = [fields_blocks]
+  audience = :both
+  body {
+    p "Two line-comment forms, `//` and `#`, both run to the end of the line. There are no block comments. Comments and blank-line grouping survive `wcl fmt` and the `wcl set` edit path."
+    code "wcl" { source = <<'SRC'
+// A leading comment describes the next item.
+service "web" {
+  port   = 8080u32   // trailing same-line comment
+  # hash comments work too
+  region = "us-east-1"
+}
+SRC
+    }
+  }
+}

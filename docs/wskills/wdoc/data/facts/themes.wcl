@@ -1,0 +1,20 @@
+fact themes {
+  title = "Built-in colour themes"
+  related = [styling]
+  audience = :both
+  body {
+    p "Set `theme = :<name>` on a `site` to recolour the whole site in one line. Seven palettes ship, each with co-ordinated dark and light variants; add `theme_toggle = true` for a light/dark toggle button. The accent hue is chosen independently with `accent = :<colour>`."
+    table {
+      header = ["Theme", "Notes"]
+      rows = [
+        ["nord", "Cool blue-grey, the default"],
+        ["gruvbox", "Warm retro"],
+        ["solarized", "Classic Solarized"],
+        ["catppuccin", "Soft pastel"],
+        ["tokyonight", "Vivid night palette"],
+        ["kanagawa", "Muted with hints of indigo"],
+        ["everforest", "Green forest tones"],
+      ]
+    }
+  }
+}

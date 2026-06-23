@@ -1,0 +1,45 @@
+procedure validate_format {
+  title   = "Validate and format a WCL file"
+  purpose = "Confirm a file conforms to its schema, then normalise its layout before committing."
+  preconditions = ["The file and any files it imports are on disk."]
+  related = [cli, schema]
+  audience = :both
+
+  step 1 {
+    title = "Check it parses and validates"
+    body screen {
+      code "console" { source = <<'SH'
+$ wcl check config.wcl
+ok
+SH
+      }
+      callout "Exit codes" { class = ["info"]  body = "0 = valid, 1 = parse error, 2 = schema violation. Script against these for CI gates." }
+    }
+    body steps { p "Run `wcl check config.wcl`. A clean run prints `ok` and exits 0; fix any reported parse or schema errors before moving on." }
+  }
+
+  step 2 {
+    title = "Format in place"
+    body screen {
+      code "console" { source = <<'SH'
+$ wcl fmt config.wcl --in-place
+SH
+      }
+    }
+    body steps { p "Run `wcl fmt config.wcl --in-place` to rewrite the file in canonical form. Indentation, brace style, number radix and string delimiters are normalised; comments and blank-line groupings survive." }
+  }
+
+  step 3 {
+    title = "Re-check the formatted file"
+    body screen {
+      code "console" { source = <<'SH'
+$ wcl check config.wcl
+ok
+SH
+      }
+    }
+    body steps { p "Formatting never changes meaning, but re-run `wcl check` as a cheap confirmation that the rewrite is still valid." }
+  }
+
+  verification = "`wcl check` prints `ok` and exits 0, and a second `wcl fmt` run produces no further changes."
+}

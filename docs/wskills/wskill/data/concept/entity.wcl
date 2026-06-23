@@ -1,0 +1,18 @@
+concept entity {
+  name     = "Entity"
+  summary  = "A unit for a noun in the topic's world — a person, an organisation, a tool, a type — the concrete things it names, usually with an attributes table in its body."
+  related  = [concept, fact, process]
+  body {
+    p <<BODY
+An entity is the unit for a noun: one of the concrete things the topic names — a
+person, an organisation, a tool, a file type, a command, a screen. If you can point
+at it and give it a name, it is probably an entity. Where a concept explains an idea,
+an entity describes the thing itself and its attributes — commonly as a small
+key/value table in its body. Like every unit it is a thin record (`name`, `kind`,
+`summary`) plus an addressable `body` projected onto its own page, with
+`related` links out to the concepts, facts and processes that explain or use it.
+Don't force structured things like CLI flags into entities — model those with a typed
+extension block.
+BODY
+  }
+}

@@ -1,0 +1,48 @@
+concept visibility {
+  name     = "Block Visibility"
+  summary  = "The @only / @except decorators scope a block by site, template kind, or backend."
+  related  = [sites, templates, markdown]
+  audience = :both
+  body {
+    p <<PROSE
+Any block can carry an `@only(...)` or `@except(...)` decorator to scope it to a subset of the build — by site name, template kind, or output backend. Use `@only` to render a block *only* where the conditions match, and `@except` to render it *everywhere except* where they match.
+PROSE
+
+    h2 "Axes"
+    p <<PROSE
+Both decorators take the same three optional arguments, each a list of symbols.
+PROSE
+    table {
+      header = ["Argument", "Matches against"]
+      rows = [
+        ["`sites`", "The site name — the label on a `site` block (`site marketing { … }` ⇒ `:marketing`)"],
+        ["`templates`", "The site's template kind: `:webpage`, `:book`, or `:presentation`"],
+        ["`backends`", "The output backend: `:html`, `:pdf`, or `:markdown`"],
+      ]
+    }
+
+    h2 "Examples"
+    code "wcl" { source = <<'SRC'
+page home {
+  // Only on the `:marketing` site.
+  @only(sites=[:marketing]) callout "Promo" { body = "Sign up today!" }
+
+  // Everywhere except the printed PDF.
+  @except(backends=[:pdf]) p "Watch the screencast above."
+
+  // Only in slide decks.
+  @only(templates=[:presentation]) p "Press → to continue."
+
+  // Only on the web (HTML or Markdown), never the PDF.
+  @only(backends=[:html, :markdown]) video { src = "demo.mp4" }
+}
+SRC
+    }
+
+    h2 "Semantics"
+    p <<PROSE
+**Within an axis** the values are OR'd — `sites=[:a, :b]` matches site `a` or `b`. **Across axes** they are AND'd — `@only(sites=[:docs], templates=[:book])` renders only when the site is `docs` *and* its template is `book`. A block renders when `@only` (if present) matches **and** `@except` (if present) does *not* fully match.
+PROSE
+    callout "Template kind is per-site" { class = ["info"]  body = "Filtering on `templates` uses the site's `default_template`. A page-level `template` override does not change which template axis a block matches." }
+  }
+}

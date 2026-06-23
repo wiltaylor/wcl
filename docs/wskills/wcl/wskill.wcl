@@ -10,15 +10,9 @@ import "./schema/extensions.wcl"
 import "./schema/language.wcl"          // opt-in: describe WCL as data (projected into the book)
 import "./schema/cli.wcl"               // opt-in: map the wcl CLI as data
 
-// Data — reference units, glossary, examples and processes.
-import "./data/reference/concepts.wcl"
-import "./data/reference/facts.wcl"
-import "./data/reference/glossary.wcl"
-import "./data/reference/examples.wcl"
-import "./data/reference/quickstart.wcl"
-import "./data/reference/cli.wcl"
-import "./data/reference/language.wcl"
-import "./data/processes/processes.wcl"
+// Data — reference units, glossary, examples and processes. Concepts, facts and
+// processes are one file per entry under their per-type folder.
+import "./data/main.wcl"
 
 schema_version = "1.1.0"
 

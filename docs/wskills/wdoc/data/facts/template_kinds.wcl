@@ -1,0 +1,17 @@
+fact template_kinds {
+  title = "Built-in site templates"
+  related = [sites, templates, skills]
+  audience = :both
+  body {
+    p "A `site`'s `default_template` (or a page's `template`) names one of four built-in projections. The first three render HTML/PDF/Markdown with `wcl wdoc build`; `:ai_skill` is a Markdown-only target rendered with `wcl wdoc skill`."
+    table {
+      header = ["Template", "What it produces", "Render command"]
+      rows = [
+        [":webpage", "A Hugo-style site: header, sticky top navbar from `menu`, reading column", "wcl wdoc build"],
+        [":book", "An mdBook-style book: fixed left sidebar with nested `toc` chapters, reading column", "wcl wdoc build"],
+        [":presentation", "A reveal.js-style slide deck laid out by a `deck` block, navigated by keyboard", "wcl wdoc build"],
+        [":ai_skill", "A Claude skill folder: SKILL.md plus references/, scripts/, assets/", "wcl wdoc skill"],
+      ]
+    }
+  }
+}

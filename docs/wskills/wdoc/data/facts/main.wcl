@@ -1,0 +1,5 @@
+// facts — one import per entry.
+import "./template_kinds.wcl"
+import "./themes.wcl"
+import "./callout_classes.wcl"
+import "./layout_modes.wcl"

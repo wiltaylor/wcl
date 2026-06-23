@@ -1,0 +1,16 @@
+concept process {
+  name     = "Process"
+  summary  = "A unit (authored as a procedure) that captures the reliable sequence for doing a task — ordered steps, for someone who already knows the topic."
+  related  = [concept, entity, fact]
+  body {
+    p <<BODY
+A process — authored as a `procedure` block — is the unit for doing a specific task
+reliably. It is written for someone who already knows the topic and needs the
+sequence, not a newcomer learning it (that is a tutorial). Unlike concept, entity and
+fact it keeps a structured shape rather than a free body: a `purpose`,
+`preconditions`, ordered `step` children, and a `verification`. Each process renders
+to its own `process_<id>` page and cross-links to the concepts, entities and facts it
+touches.
+BODY
+  }
+}

@@ -1,0 +1,37 @@
+concept columns {
+  name     = "Columns"
+  summary  = "The `column` layout block and its content (any wdoc block, per-slot widths)."
+  related  = [formatting, primitives]
+  audience = :both
+  body {
+    p <<PROSE
+`column` lays wdoc content out in side-by-side columns on a page, instead of stacking it sequentially. The `widths` list gives a CSS percentage for each child slot — one entry per child, summing to about `100`.
+PROSE
+    code "wcl" { source = <<'SRC'
+column {
+  widths = [50.0, 50.0]
+  p "**Left.** The first child fills the first 50% slot."
+  p "**Right.** The second child fills the other half."
+}
+SRC
+    }
+    p <<PROSE
+Any number of columns is allowed — here three equal thirds, each holding its own content.
+PROSE
+    code "wcl" { source = <<'SRC'
+column {
+  widths = [33.3, 33.3, 33.3]
+  h4 "One"
+  h4 "Two"
+  h4 "Three"
+}
+SRC
+    }
+
+    h2 "Children"
+    p <<PROSE
+Columns can hold any wdoc content — paragraphs, headings, callouts, code blocks, diagrams, charts, even other columns. Apply a shared `class` to the column itself to style the group.
+PROSE
+    callout "Page columns vs diagram columns" { class = ["info"]  body = "On a page, a `column` holds any block. Inside a wdoc `column` cell used as a book-step gutter, only paragraph / heading content fits — code, lists, callouts and `project` can't sit in such a cell." }
+  }
+}

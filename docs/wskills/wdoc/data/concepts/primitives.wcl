@@ -1,0 +1,110 @@
+concept primitives {
+  name     = "Primitive Shapes"
+  summary  = "The page primitives everything lowers to: rect, circle, line, label, polygon, container, image, card, node_table."
+  related  = [formatting, columns]
+  audience = :both
+  body {
+    p <<PROSE
+Primitive shapes are what everything is broken down into for rendering. Higher-level blocks (flowchart nodes, charts, cards, …) all lower to these, so targeting a new backend only means re-implementing the primitives. They live inside a `diagram { … }`.
+PROSE
+
+    h2 "Shared fields"
+    table {
+      header = ["Field", "Meaning"]
+      rows = [
+        ["`id`", "Name used to connect the shape (`a -> b`) and to anchor others to it."],
+        ["`class`", "Style classes — text and SVG paint (`fill`, `stroke`, …) via the class system."],
+        ["`anchor_left` / `anchor_right` / `anchor_top` / `anchor_bottom`", "Fractional anchors (0–1) that pin an edge of the shape to the parent box."],
+        ["`connect_points`", "Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to."],
+        ["`link`", "Make the shape a hyperlink to an in-site page (bare page name, or `site:page`)."],
+      ]
+    }
+    p <<PROSE
+The box-like shapes — `rect`, `circle`, and `container` — additionally accept an icon badge: `icon` (a `pack.name`), `icon_size`, `icon_pos`, and `icon_class`. Any shape with a `link` is wrapped in a clickable `<a>`.
+PROSE
+
+    h2 "rect, circle, line"
+    code "wcl" { source = <<'SRC'
+diagram { width = 200  height = 90
+  rect { x = 20.0  y = 15.0  width = 120.0  height = 60.0  fill = "#cce"  stroke = "#333" }
+}
+diagram { width = 200  height = 100
+  circle { cx = 100.0  cy = 50.0  r = 36.0  fill = "#8fbcbb"  stroke = "#333" }
+}
+diagram { width = 200  height = 80
+  line { x1 = 20.0  y1 = 60.0  x2 = 180.0  y2 = 20.0  stroke = "#bf616a" }
+}
+SRC
+    }
+
+    h2 "label and polygon"
+    p <<PROSE
+`label` is an SVG text label — named `label` (not `text`) to avoid clashing with the paragraph block. `polygon` is an arbitrary closed shape from a list of points.
+PROSE
+    code "wcl" { source = <<'SRC'
+diagram { width = 200  height = 60
+  label "Hello" { x = 100.0  y = 36.0  font_size = 22.0  fill = "#5e81ac" }
+}
+diagram { width = 200  height = 100
+  polygon { points = "40,80 100,15 160,80"  fill = "#ebcb8b"  stroke = "#333" }
+}
+SRC
+    }
+
+    h2 "container"
+    p <<PROSE
+A grouping box that holds and lays out child shapes (`@children`). Optional chrome makes the group visible; a `layout` arranges the children automatically.
+PROSE
+    code "wcl" { source = <<'SRC'
+diagram { width = 240  height = 130
+  container {
+    anchor_left = 10.0  anchor_top = 10.0
+    fill = "#eef"  stroke = "#88a"  padding = 10.0
+    layout = :grid  columns = 2  cell_width = 90.0  cell_height = 44.0  gap = 10.0
+    rect { fill = "#88c0d0" }
+    rect { fill = "#a3be8c" }
+    rect { fill = "#ebcb8b" }
+    rect { fill = "#b48ead" }
+  }
+}
+SRC
+    }
+
+    h2 "image and card"
+    p <<PROSE
+`image` is a raster image placed as an SVG `<image>` — its source is a doc-relative path (copied into `_wdoc/`) or a URL / `data:` URI. `card`'s `body` is arbitrary wdoc content (paragraphs, callouts, lists, even nested diagrams), wrapped in an SVG `<foreignObject>` so it scales with the diagram.
+PROSE
+    code "wcl" { source = <<'SRC'
+diagram { width = 260  height = 110
+  card { x = 20.0  y = 15.0  width = 220.0  height = 80.0
+    title = "Note"
+    p "Rich **text** inside a diagram."
+  }
+}
+SRC
+    }
+
+    h2 "node_table"
+    p <<PROSE
+A titled box built from a stack of **rows**, each holding arbitrary wdoc content (like a `card`) and exposing its own **connection point** — so an edge attaches to a single row (a foreign-key column, a class field) rather than the whole box. Ideal for database / ER tables and UML class diagrams. An edge targets a row by that row's `id`.
+PROSE
+    code "wcl" { source = <<'SRC'
+diagram { width = 420  height = 170  routing = :straight
+  node_table { id = users
+    x = 20.0  y = 20.0  width = 150.0
+    title = "users"
+    node_row { id = users_id    p "id: int" }
+    node_row { id = users_email p "email: text" }
+  }
+  node_table { id = orders
+    x = 250.0  y = 20.0  width = 150.0
+    title = "orders"
+    node_row { id = orders_id      p "id: int" }
+    node_row { id = orders_user_id p "user_id: int" }
+  }
+  orders_user_id -> users_id :data
+}
+SRC
+    }
+  }
+}

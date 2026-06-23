@@ -1,0 +1,4 @@
+// processes — one import per entry.
+import "./validate_format.wcl"
+import "./scaffold_init.wcl"
+import "./inspect_values.wcl"

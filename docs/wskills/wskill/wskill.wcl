@@ -7,31 +7,25 @@
 import <wdoc.wcl>
 import "./schema/base.wcl"
 
-// Data — split into more files by area as the wskill grows, adding
-// an import line per file. Keep templates (wdoc/) free of topic content.
-import "./data/reference/concepts.wcl"      // concepts
-import "./data/reference/entities.wcl"      // entities (the output artifacts)
-import "./data/reference/glossary.wcl"      // terms
-import "./data/reference/facts.wcl"         // checkable facts
-import "./data/reference/examples.wcl"      // worked examples
+// Data — split into more files by area as the wskill grows. Each per-type
+// folder exposes a main.wcl; data/main.wcl aggregates them all.
+import "./data/main.wcl"
 
 schema_version = "1.1.0"
 
 topic wskill {
   name    = "wskill"
-  summary = "A WCL document format that captures a topic completely and projects it into both a human-readable book and a Claude Code skill."
+  summary = "A WCL document designed to hold complete set of knowledge on a topic and expose it in multiple views for multiple audiences."
   version = "1.1.0"             // the wskill format / base-schema version this describes
   description = <<END
-wskill is a self-describing document format: this very wskill is built with the
-format it documents, and its skill projection regenerates the working wskill skill.
-It captures a topic as one WCL data model — reference, processes, curated indexes — and
-projects it two ways with no hand-duplication: a human book and a Claude Code skill.
-END
+    A wskill is a self contained set of documentation on a specific topic. The idea is the document will generate multilpe views on the same
+    information so it can be used in different ways. Data in a wskill are stored in a natural way that makes sense to the knoweldge and then
+    projected into the different views. This makes updating and using the information easier.
+  END
   tags = ["wcl", "wdoc", "documentation", "skills"]
   created    = "2026-06-17"
   maintainer = "Wil Taylor"
   maintainer_entity = wil_taylor
-  note       = "Self-hosting: rendered and installed over the live wskill skill."
 }
 
 // Skill-projection config (→ SKILL.md frontmatter).
@@ -39,16 +33,17 @@ wcl.wskill::skill {
   // Pre-approve the tools the workflows lean on (wcl/wdoc via Bash; files via Read).
   allowed_tools = ["Bash", "Read"]
   summary {
-    overview = ["wskill captures a topic completely — reference, processes and curated indexes — as one WCL data model, projected into a human book and this Claude Code skill with nothing hand-duplicated."]
+    overview = ["wskill is a unified format that allows saving knowledge for use by Humans and AI."]
   }
   skill_param "$ARGUMENTS" {
     description = "The topic to capture, or the existing wskill to build / update / render."
     value       = "Take it from the user's request (a topic name, or a path to a wskill folder). If empty, ask what to work on."
   }
   skill_boundary {
-    always = ["Edit content in the model (data/ + wskill.wcl), never hand-edit `out/` or generated SKILL.md.", "Run `wcl check` and re-render after changes."]
+    always = ["Create content in data folder using the schema in schema/ folder"]
+    always = ["If we have new data that has a common structure you should create new schema enteries in the schema/"]
     ask    = ["Before deleting data files or overwriting an existing wskill."]
-    never  = ["Hand-edit a wskill's `schema/base.wcl` — it is generated/propagated."]
+    never  = ["Hand-edit a wskill's `schema/base.wcl` — it is generated/propagated. Create other files instead."]
   }
 }
 
@@ -59,6 +54,12 @@ wcl.wskill::skill {
 // exists for it yet, so this renders as a backlog stub (a validator warning).
 wskill_ref wcl {
   name     = "wcl"
-  relation = "prerequisite — the language and wdoc renderer this format is built on"
+  relation = "prerequisite — the language the format is built on"
+  status   = "planned"
+}
+
+wskill_ref wcl {
+  name     = "wdoc"
+  relation = "prerequisite — refence for wdoc rendering language"
   status   = "planned"
 }

@@ -1,0 +1,37 @@
+entity maps {
+  name     = "map"
+  kind     = "block"
+  summary  = "A zoomable, pinned image inside a diagram: drop pins at coordinates, give each a card of wdoc content, optional level-of-detail layers."
+  related  = [diagrams, images]
+  audience = :both
+  body {
+    p "A `map` is a zoomable, pinned image placed inside a `diagram` — built for game-guide and reference maps. A diagram holding a map is **automatically interactive** (wheel to zoom, drag to pan, `+` / `−` / `⟲` controls) and loads the bundled map player; you don't need `pan_zoom = true`. `source` is the map image; `width` / `height` set its coordinate space."
+    h2 "Pins and cards"
+    p "Each `pin` is an icon dropped at `x` / `y` in the map's coordinate space (its `id` is the inline label, unique on the page). Style the marker with a `class` (themable, supports `dark` / `light`) or the one-off `color`. A pin's child blocks become a floating **card** anchored to the marker: text, lists, callouts, code, images all compose in."
+    code "wcl" { source = <<'SRC'
+diagram {
+  width    = 640
+  height   = 320
+  zoom_max = 8.0
+  map "earth" {
+    source = "assets/map/blue-marble.png"
+    width  = 1280
+    height = 640
+
+    pin "newyork" {
+      x = 377  y = 175
+      icon  = "lucide.building-2"
+      class = ["pin-city"]
+      title = "New York"
+      text { span "Financial capital on the US east coast." {} }
+      callout "Tip" { class = ["tip"]  body = "Cards accept any wdoc content." }
+    }
+  }
+}
+SRC
+    }
+    h2 "Level-of-detail layers"
+    p "Omit `layer`s and the map's `source` is the only image. For large maps, supply several `layer`s and the player shows the sharpest layer that suits the current zoom. A layer is one image when `cols` / `rows` are `1`, or a grid of tiles otherwise — `source` is then a folder and each tile's filename comes from `pattern` (default `{x}_{y}.png`, 0-based)."
+    p "Maps ride the `class` system: a pin's `class` themes its marker, `card_class` themes its popup, and the built-in look reads the theme variables, so a site `theme` styles maps for free. See [styling](concept_styling)."
+  }
+}

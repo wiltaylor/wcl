@@ -1,0 +1,17 @@
+concept concept {
+  name     = "Concept"
+  summary  = "A unit that captures an idea or mental model the reader must grasp — a sharp summary plus a wdoc body, rendered to its own page and cross-linked to related units."
+  related  = [entity, fact, process, datapresentation]
+  body {
+    p <<BODY
+A concept is one of the wskill model's interlinking units. Use it for an idea, a
+mechanism, or a way of thinking about the topic — something the reader needs to
+understand rather than look up. It is a thin record: a `name` (the headline and link
+text) and a `summary` (a one-liner that feeds the SKILL.md concept index), plus an
+addressable `body` of paragraphs, tables, code and links that rides on the record and
+is projected onto its own page. The `related` field lists other unit ids of any kind, which the
+templates resolve to links — so concepts, entities, facts and processes all
+cross-reference each other.
+BODY
+  }
+}

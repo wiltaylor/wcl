@@ -1,0 +1,8 @@
+// Aggregates every data file. Per-type folders each expose a main.wcl;
+// reference units are imported directly. Imported by ../wskill.wcl.
+import "./concept/main.wcl"
+import "./entity/main.wcl"
+import "./reference/glossary.wcl"      // terms
+import "./fact/main.wcl"
+import "./reference/examples.wcl"      // worked examples
+import "./process/main.wcl"

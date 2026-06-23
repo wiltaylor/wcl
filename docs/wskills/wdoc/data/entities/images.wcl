@@ -1,0 +1,34 @@
+entity images {
+  name     = "image"
+  kind     = "block"
+  summary  = "Embeds a static image; renders as an <img> on a page or as a placeable SvgBlock inside a diagram."
+  related  = [diagrams, videos, maps]
+  audience = :both
+  body {
+    p "`image` embeds a static image. The source path resolves relative to the build entry file and the file is copied verbatim into `_wdoc/` at build time, so the output site is self-contained. Because it's referenced by a relative `_wdoc/` URL, it only resolves when the site is served — not when the page is opened directly from disk (same as icons and tilemaps)."
+    h2 "On a page"
+    p "An `image` block directly under a `page` renders as a standalone `<img>`. The source is the inline label; set `width` / `height` to size it, `alt` for accessibility, and a `class` for styling."
+    code "wcl" { source = <<'SRC'
+page about { sites = [:demo]
+  image "assets/hero.jpg" {
+    alt   = "Our team"
+    width = 480.0
+    class = ["hero"]
+  }
+}
+SRC
+    }
+    h2 "Inside a diagram"
+    p "`image` is also a placeable `SvgBlock`, so it can sit in a `diagram` / `container` alongside `rect` / `circle`, positioned by `x` / `y` (or anchors)."
+    code "wcl" { source = <<'SRC'
+diagram {
+  width = 280  height = 140
+  image "assets/logo.png" {
+    x = 20.0  y = 20.0  width = 100.0  height = 100.0
+  }
+  rect { x = 150.0  y = 45.0  width = 100.0  height = 50.0  fill = "#a3be8c" }
+}
+SRC
+    }
+  }
+}

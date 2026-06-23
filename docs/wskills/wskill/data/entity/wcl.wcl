@@ -1,0 +1,18 @@
+// The command-line tool the wskill toolchain rests on. Tutorials link here from
+// their prerequisites.
+entity wcl {
+  name    = "WCL"
+  kind    = "tool"
+  summary = "The WCL language CLI and its wdoc renderer — the engine every wskill is built on."
+  body {
+    p "WCL is the data/config language; `wdoc` is its document renderer. The wskill toolchain shells out to it: `wcl check` validates a model against the schema, `wcl wdoc build` produces the book, and `wcl wdoc skill` produces the skill. Install it so the `wcl` command is on your PATH."
+    table {
+      header = ["Field", "Value"]
+      rows = [
+        ["Provides",   "wcl check · wcl wdoc build · wcl wdoc skill"],
+        ["Needed for", "validating and rendering a wskill"],
+        ["Check",      "`wcl --version`"],
+      ]
+    }
+  }
+}

@@ -9,16 +9,12 @@
 import <wdoc.wcl>
 import "./schema/base.wcl"
 import "./schema/extensions.wcl"
+import "./schema/language.wcl"
 
 // Data — reference units (concepts + entities), facts, glossary, examples,
-// processes.
-import "./data/reference/concepts.wcl"
-import "./data/reference/entities.wcl"
-import "./data/reference/facts.wcl"
-import "./data/reference/glossary.wcl"
-import "./data/reference/examples.wcl"
-import "./data/reference/indexes.wcl"
-import "./data/processes/processes.wcl"
+// processes, and the schema-reflected language reference. Concepts, entities,
+// facts and processes are one file per entry under their per-type folder.
+import "./data/main.wcl"
 
 schema_version = "1.1.0"
 

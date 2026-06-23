@@ -1,0 +1,18 @@
+fact layout_modes {
+  title = "Diagram and container layout modes"
+  related = [diagrams, flowcharts, connections]
+  audience = :both
+  body {
+    p "A `diagram` (or a `container`) places its shapes with one of several layout modes, set by `layout = :<mode>`. The default is free placement from explicit coordinates; the auto-layout modes derive positions from the connection graph instead."
+    table {
+      header = ["Mode", "Behaviour"]
+      rows = [
+        [":free", "Default — shapes sit at the explicit `x`/`y` coordinates you give them"],
+        [":grid", "Shapes flow into rows and columns of a regular grid"],
+        [":layered", "Shapes are topologically ranked from the edges and stacked top-to-bottom, elbow-routed (flowcharts)"],
+        [":force", "A force-directed solver spreads connected shapes apart and pulls neighbours together"],
+        [":radial", "One hub sits at the centre with every other shape on a ring around it (hub-and-spoke)"],
+      ]
+    }
+  }
+}

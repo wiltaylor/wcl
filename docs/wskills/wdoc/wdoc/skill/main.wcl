@@ -32,6 +32,13 @@ let indexes    = filter(indexes,    fn(x: Index)      -> bool { in_skill(x.audie
 let child_indexes = filter(flatten(map(indexes, fn(x: Index) -> list<Index> { x.children })), fn(x: Index) -> bool { in_skill(x.audience) })
 let all_indexes   = flatten([indexes, child_indexes])
 let procedures = filter(procedures, fn(p: Procedure) -> bool { in_skill(p.audience) })
+// Opt-in `language` module (schema/language.wcl): the schema reference. Features
+// carry schema-reflected `type_table`s in their body; each feature (top-level or
+// nested one level) becomes its own references/ page below.
+let languages      = filter(languages,  fn(x: Language)  -> bool { in_skill(x.audience) })
+let top_features   = flatten(map(languages,     fn(l: Language) -> list<Feature> { l.features }))
+let child_features = flatten(map(top_features,  fn(f: Feature)  -> list<Feature> { f.children }))
+let all_features   = flatten([top_features, child_features])
 
 site skill {
   default_template = :ai_skill
@@ -104,6 +111,7 @@ page index { sites = [:skill]  start = true
   wdoc_repeater { each = match len(entities)   { 0 => [], _ => [true] }  as = :_ei  p "- [Entities](entities_ref) — concrete things in the topic." }
   wdoc_repeater { each = match len(facts)      { 0 => [], _ => [true] }  as = :_fi  p "- [Facts](facts_ref) — value tables and constants." }
   wdoc_repeater { each = match len(procedures) { 0 => [], _ => [true] }  as = :_pi  p "- [Processes](processes_ref) — task runbooks." }
+  wdoc_repeater { each = match len(languages)  { 0 => [], _ => [true] }  as = :_li  p "- [Language](language_ref) — the wdoc schema, every block type reflected from the stdlib." }
   p "- [Glossary](glossary_ref) — terms and definitions."
   p "- [Related skills](related_ref) — cross-references to other wskills."
   wdoc_repeater { each = match len(flatten([match len(skill_scripts) { 0 => [], _ => [true] }, match len(skill_assets) { 0 => [], _ => [true] }])) { 0 => [], _ => [true] }  as = :_bf
@@ -315,6 +323,34 @@ wdoc_repeater { each = procedures  as = :pr
       wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
     }
     p "[← All processes](processes_ref)"
+  }
+}
+
+// --- references/language_ref.md — the wdoc schema as a family index --------
+// One landing page linking each block family, plus a references/ page per family
+// whose body is the schema-reflected `type_table`s for the types in it.
+page language_ref { sites = [:skill]  title = $"${topic.name} — language reference"
+  h1 $"${topic.name} — language reference"
+  p  "The wdoc schema, family by family. Each entry links to its reference page; every table is reflected straight from the stdlib declaration."
+  wdoc_repeater { each = languages  as = :l
+    project { from = l.body }
+    wdoc_repeater { each = l.features  as = :f
+      p $"- [**${f.name}**](feature_${f.id})${match f.summary { none => "", s => $" — ${s}" }}"
+      wdoc_repeater { each = f.children  as = :cf
+        p $"  - [${cf.name}](feature_${cf.id})${match cf.summary { none => "", s => $" — ${s}" }}"
+      }
+    }
+  }
+}
+wdoc_repeater { each = all_features  as = :f
+  page $"feature_${f.id}" { sites = [:skill]  title = $"${f.name}"
+    h1 $"${f.name}"
+    wdoc_repeater { each = match f.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
+    project { from = f.body }
+    wdoc_repeater { each = f.children  as = :cf
+      p $"- [**${cf.name}**](feature_${cf.id})${match cf.summary { none => "", s => $" — ${s}" }}"
+    }
+    p "[← Language reference](language_ref)"
   }
 }
 

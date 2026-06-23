@@ -1,0 +1,17 @@
+entity the_skill {
+  name     = "skill"
+  kind     = "output artifact"
+  summary  = "The Claude Code skill — a SKILL.md plus reference files an agent loads."
+  related  = [datapresentation, artifacts]
+  body {
+    p "Built with `wcl wdoc skill wdoc/skill/main.wcl --out out/skill`, the skill is a folder under `out/skill/`: the start page becomes `SKILL.md` and every other page a file under `references/`. The bundled scaffold template trees ship alongside under `assets/`."
+    table {
+      header = ["Aspect", "Value"]
+      rows = [
+        ["Built by", "wcl wdoc skill"],
+        ["Output",   "out/skill/ — SKILL.md + references/ + assets/ (template trees)"],
+        ["Audience", "an agent working with the topic"],
+      ]
+    }
+  }
+}

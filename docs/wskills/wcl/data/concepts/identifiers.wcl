@@ -1,0 +1,54 @@
+concept identifiers {
+  name     = "Identifiers"
+  summary  = "The naming rule for fields, types, kinds, labels, and bindings, plus reserved words."
+  related  = [namespaces, symbols]
+  audience = :both
+  body {
+    p "Identifiers are the names used throughout WCL — for fields, types, block kinds, block labels, variants, symbols, `let` bindings, and imported items. The lexical rule is the same everywhere, with one convenience exception for block labels."
+    h2 "Lexical rule"
+    p "An identifier starts with an **ASCII letter** (`a`-`z`, `A`-`Z`) or an **underscore**, and continues with letters, digits, or underscores. No Unicode, no dashes, no spaces."
+    code "wcl" { source = <<'SRC'
+name           // ok
+my_field       // ok
+_internal      // ok
+v2             // ok
+HTTPStatus     // ok
+
+2nd_attempt    // NOT ok — must not start with a digit
+kebab-case     // NOT ok as a field/type name — dashes aren't identifier chars
+SRC
+    }
+    h2 "Block labels: kebab-case and paths"
+    p "Block **labels** (the name after a block kind) are the one place a bare identifier may contain `-` and `/` connectors — so kebab-case class names and path-like page names need no quoting. The connector sits directly between name parts (no surrounding spaces)."
+    code "wcl" { source = <<'SRC'
+class dgm-box {}              // kebab-case, bare
+class wdoc-series-1 {}        // trailing number is fine
+page reference/intro {}       // path-like
+page api/v1/users {}
+
+class "dgm-box" {}            // quoting still works
+SRC
+    }
+    h2 "Reserved words"
+    p "A handful of words are reserved by the lexer and cannot be used as identifiers in any position:"
+    table {
+      header = ["Reserved", "Used for"]
+      rows = [
+        ["`true`, `false`", "Boolean literals"],
+        ["`none`", "The none literal"],
+        ["`if`, `else`, `match`", "Control flow"],
+      ]
+    }
+    p "Other words that look special — `type`, `interface`, `union`, `symbol_set`, `let`, `import`, `connection`, `fn`, `extends`, `as` — are recognised only in declaration positions, so they may also appear as ordinary identifiers. It reads more clearly to keep them for their declaration use."
+    h2 "Naming conventions"
+    p "The standard library follows Rust-like conventions, but the language does not enforce them. Pick a style and stay consistent."
+    table {
+      header = ["Convention", "Used for"]
+      rows = [
+        ["`snake_case`", "Fields, `let` bindings, block kinds, symbols"],
+        ["`PascalCase`", "Types, interfaces, unions, variants, symbol sets"],
+        ["`SCREAMING`", "Rarely; reserve for visibly-constant globals"],
+      ]
+    }
+  }
+}

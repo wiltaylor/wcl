@@ -1,0 +1,42 @@
+entity wireframe {
+  name     = "wf_* widgets"
+  kind     = "block"
+  summary  = "UI mockup widgets as diagram shapes: windows, device frames, panels, rows, inputs, controls, and node graphs."
+  related  = [terminals, diagrams]
+  audience = :both
+  body {
+    p "Wireframe widgets mock up a UI — windows, device frames (browser / phone / tablet), panels, inputs, controls — as **diagram shapes**. Each `wf_*` block extends `SvgBlock`, so it lives inside a `diagram`: place it with `x` / `y` (or anchors), connect widgets with edges, and mix them with any other shape. Container widgets nest other widgets, so you compose a window of panels of rows of controls. They're static SVG mockups, not interactive."
+    h2 "A composed window"
+    p "Container widgets — `wf_window`, `wf_browser`, `wf_phone`, `wf_tablet`, `wf_panel`, `wf_row`, `wf_column`, `wf_grid` — take `@children(Widget)`. The Rust renderer measures and lays out the children internally (their `x` / `y` are ignored); only the root widget's placement positions the group. Device frames have a realistic fixed default size; everything else is sized to its content."
+    code "wcl" { source = <<'SRC'
+diagram {
+  width = 300  height = 200
+  wf_window "Account settings" {
+    wf_panel { title = "Profile"
+      wf_input "Display name" { value = "Wil Taylor" }
+      wf_input "Email"        { value = "ai@wiltaylor.dev" }
+    }
+    wf_row {
+      wf_button "Cancel"
+      wf_button "Save" { icon = "lucide.check" }
+    }
+  }
+}
+SRC
+    }
+    h2 "Controls and node graphs"
+    p "The leaf controls are `wf_label`, `wf_button` (optional leading `icon`), `wf_input` (placeholder vs `value`), `wf_dropdown`, `wf_checkbox`, `wf_radio`, and `wf_toggle`. A `wf_node_graph` mocks up a node editor: each `wf_node` is a titled box with `inputs` and `outputs`, and a `wf_link` wires `\"node.port\"` to `\"node.port\"`, auto-laid-out left-to-right. Declare a `@block(\"name\") type … extends Widget` with a `lower` returning `list<SvgFundamental>` for a custom widget."
+    code "wcl" { source = <<'SRC'
+diagram { width = 560  height = 240
+  wf_node_graph {
+    wf_node "Texture"  { id = tex   outputs = ["RGB", "Alpha"] }
+    wf_node "Multiply" { id = mul   inputs = ["A", "B"]  outputs = ["Result"] }
+    wf_node "Output"   { id = out   inputs = ["Color"] }
+    wf_link "tex.RGB"     { to = "mul.A" }
+    wf_link "mul.Result"  { to = "out.Color" }
+  }
+}
+SRC
+    }
+  }
+}

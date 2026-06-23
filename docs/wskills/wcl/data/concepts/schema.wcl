@@ -1,0 +1,99 @@
+concept schema {
+  name     = "Schema & Decorators"
+  summary  = "Decorators that describe a document's legal structure, validated by wcl check."
+  related  = [records, fields_blocks, connections, references]
+  audience = :both
+  body {
+    p "Decorators (written `@name` or `@name(args)`) attach schema metadata to declarations and fields. Together they describe a document's legal structure, which `wcl check` validates."
+    h2 "Declaration decorators"
+    table {
+      header = ["Decorator", "On", "Meaning"]
+      rows = [
+        ["`@document`", "type", "Marks the document root schema (composes per namespace)"],
+        ["`@block(\"kind\")`", "type", "Makes the type a nestable block of that kind"],
+        ["`@table(\"kind\")`", "type", "Row schema for pipe-table syntax"],
+        ["`@decorator(\"name\")`", "type", "Schema for a user-defined `@name` decorator"],
+        ["`@schemaless`", "type", "Opens the type: instances accept undeclared fields / children"],
+        ["`@by_ref`", "type", "A block in a slot reifies to a resolvable reference instead of inlining"],
+        ["`@dynamic`", "connection", "Lets `->` operands name ids resolved at consume time"],
+      ]
+    }
+    h2 "Field decorators"
+    table {
+      header = ["Decorator", "Meaning"]
+      rows = [
+        ["`@child(\"kind\")`", "A single nested block of the given kind"],
+        ["`@children(\"kind\")`", "A list of nested blocks (or union variants)"],
+        ["`@inline(slot)`", "Bind the block label to a field at that position"],
+        ["`@default(expr)`", "Default value when the field is omitted"],
+        ["`@connections(S)`", "Accumulate `->` connection statements as records"],
+        ["`@min(n)` / `@max(n)`", "Numeric range constraint, checked by `wcl check`"],
+        ["`@non_empty`", "The string / list value must not be empty"],
+        ["`@ref(\"kind\")`", "The id value(s) must name an existing block of that kind"],
+      ]
+    }
+    p "The constraint decorators also attach to a [type alias](concept_records) (`@min(1) type Port = u16`), applying to every field declared with the alias."
+    h2 "Referential integrity with @ref"
+    p "A field holding an `identifier` (or `list<identifier>`) that is semantically a reference to another block can declare that with `@ref(\"kind\")`. `wcl check` then verifies every id names an existing block of that kind — anywhere in the document — and reports a dangling reference otherwise."
+    code "wcl" { source = <<'SRC'
+@block("screen") type Screen { @inline(0) id: identifier  name: utf8 }
+@block("flow") type Flow {
+  @inline(0) id: identifier
+  @ref("screen") entry_screen: identifier   // must be a declared screen id
+  @ref("screen") steps: list<identifier>    // every element checked
+}
+SRC
+    }
+    h2 "Child-count constraints on @block"
+    p "`@block` accepts two named arguments that constrain nested children: `max_children = N` caps the total nested-block count, and `required_children = [\"kind\", ...]` demands at least one child of each listed kind. Both are enforced by `wcl check`."
+    code "wcl" { source = <<'SRC'
+@block("stage", max_children = 4, required_children = ["step"])
+type Stage {
+  @inline(0) name: utf8
+  @children("step") steps: list<Step>
+}
+SRC
+    }
+    h2 "A worked example"
+    p "A document root with one kind of child block, whose label becomes an inline field and whose port has a default:"
+    code "wcl" { source = <<'SRC'
+@block("service")
+type Service {
+  @inline(0)   name: utf8     // service "web" -> name = "web"
+  @default(80) port: u32
+  region: utf8
+}
+
+@document
+type Config {
+  @children("service") services: list<Service>
+}
+SRC
+    }
+    p "Given that schema, this document validates: each `service` block contributes a `Service`, with `name` from the label and `port` defaulting to `80`."
+    code "wcl" { source = <<'SRC'
+service "web" { region = "us-east-1" }
+service "api" { port = 9090u32  region = "eu-west-1" }
+SRC
+    }
+    h2 "Composing document schemas"
+    p "Several `@document` schemas can govern the same namespace, and they **merge**: a top-level field or block is legal if **any** of them declares it. This lets you import a library that ships its own `@document` and still add your own top-level tags."
+    code "wcl" { source = <<'SRC'
+import <wdoc.wcl>            // brings in wdoc's library @document
+
+@document
+type ProjectDoc {           // your own root schema — merges with wdoc's
+  @children("project_meta") metas: list<ProjectMeta>
+}
+
+@block("project_meta")
+type ProjectMeta { @inline(0) id: identifier  owner: utf8 }
+
+project_meta info { owner = "Wil" }   // your tag, alongside wdoc pages
+page index { text { span "Hello" {} } }
+SRC
+    }
+    p "Imported (library) `@document` schemas merge silently. Only a **second root-authored** `@document` in the same namespace is an error — you get one root schema, which composes with whatever the imports provide."
+    callout "Reflection" { class = ["info"]  body = "decorator_names(T) and decorator_arg(T, name, slot) read decorators back at evaluation time — used by libraries (like wdoc) that dispatch on a block's declared kind." }
+  }
+}

@@ -1,0 +1,30 @@
+entity state_diagrams {
+  name     = "state_diagram"
+  kind     = "block"
+  summary  = "A page-level block drawing an entity lifecycle: states auto-rank by longest path, transitions carry trigger [guard] labels."
+  related  = [diagrams, flowcharts, sequence_diagrams]
+  audience = :both
+  body {
+    p "A `state_diagram` draws an entity lifecycle coordinate-free: `state`s auto-rank by longest path from the transition graph (back-edges and self-loops route around), `initial = true` draws the filled entry dot, `final = true` the double border, and each `transition` carries a `trigger [guard]` edge label. It is a page-level block, not a `diagram` shape."
+    h2 "States and transitions"
+    p "A `transition` is a block (not an `a -> b` edge) because it carries payload: the `trigger` event and an optional `guard`. The same `from` and `to` renders a self-loop arc. States rank along `direction` (default `:top_to_bottom`); a state with explicit `x` **and** `y` opts out of auto-layout."
+    code "wcl" { source = <<'SRC'
+state_diagram {
+  width = 640
+  direction = :left_to_right
+
+  state "pending"   { name = "Pending"   initial = true }
+  state "paid"      { name = "Paid" }
+  state "shipped"   { name = "Shipped"   final = true }
+  state "cancelled" { name = "Cancelled" final = true }
+
+  transition "t1" { from = "pending" to = "paid"      trigger = "payment captured" }
+  transition "t2" { from = "paid"    to = "shipped"   trigger = "dispatched"  guard = "stock reserved" }
+  transition "t3" { from = "pending" to = "cancelled" trigger = "customer cancels" }
+  transition "t4" { from = "paid"    to = "paid"      trigger = "partial refund" }
+}
+SRC
+    }
+    p "Like every `@children` slot, `states` / `transitions` accept computed splices, so a state-machine model can generate its figure. See [data views](concept_data_views)."
+  }
+}

@@ -1,0 +1,7 @@
+// concept — one import per entry.
+import "./datapresentation.wcl"
+import "./selfcontained.wcl"
+import "./concept.wcl"
+import "./entity.wcl"
+import "./fact.wcl"
+import "./process.wcl"
