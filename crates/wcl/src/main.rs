@@ -380,6 +380,8 @@ enum WdocCommand {
 enum CommentsSub {
     /// Delete the comment with the given id from the source.
     Resolve { id: String },
+    /// Replace the body of the comment with the given id.
+    Edit { id: String, body: String },
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -751,21 +753,40 @@ fn run_comments(
     format: CommentFormat,
     cmd: Option<CommentsSub>,
 ) -> u8 {
-    if let Some(CommentsSub::Resolve { id }) = cmd {
-        return match wcl_wdoc::comments::resolve(file, site, &id) {
-            Ok(true) => {
-                eprintln!("resolved comment {id}");
-                EXIT_OK
-            }
-            Ok(false) => {
-                eprintln!("no comment with id {id}");
-                EXIT_EVAL
-            }
-            Err(err) => {
-                err.report();
-                build_error_code(&err)
-            }
-        };
+    match cmd {
+        Some(CommentsSub::Resolve { id }) => {
+            return match wcl_wdoc::comments::resolve(file, site, &id) {
+                Ok(true) => {
+                    eprintln!("resolved comment {id}");
+                    EXIT_OK
+                }
+                Ok(false) => {
+                    eprintln!("no comment with id {id}");
+                    EXIT_EVAL
+                }
+                Err(err) => {
+                    err.report();
+                    build_error_code(&err)
+                }
+            };
+        }
+        Some(CommentsSub::Edit { id, body }) => {
+            return match wcl_wdoc::comments::edit(file, site, &id, &body) {
+                Ok(true) => {
+                    eprintln!("edited comment {id}");
+                    EXIT_OK
+                }
+                Ok(false) => {
+                    eprintln!("no comment with id {id}");
+                    EXIT_EVAL
+                }
+                Err(err) => {
+                    err.report();
+                    build_error_code(&err)
+                }
+            };
+        }
+        None => {}
     }
     let recs = match wcl_wdoc::comments::list(file, site) {
         Ok(r) => r,

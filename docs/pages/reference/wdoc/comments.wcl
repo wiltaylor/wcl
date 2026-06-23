@@ -10,7 +10,7 @@ page wdoc_comments { sites = [:reference]  title = "Review Comments"
 
   p "Click **🎯 Comment on a block** in the bottom-right toolbar to enter select mode, then click any block — including whole tables and diagrams — to leave a note on it (press **Esc** to cancel). The **💬 Comment on page** button leaves a note about the page as a whole. Saving rewrites the source and the page live-reloads with the comment shown."
 
-  p "The toolbar's **💬 N comments** button shows how many comments live on the current page; click it for a modal listing them all — each with its target, body and quote, a **Jump to** link (for block comments), and a **Resolve** button. Individual comments also appear inline as ✓ pins you can click."
+  p "The toolbar's **💬 N comments** button shows how many comments live on the current page; click it for a modal listing them all — each with its target, body and quote, a **Jump to** link (for block comments), an **Edit** button (change the note in place), and a **Resolve** button. Individual comments also appear inline as ✓ pins you can click."
 
   h2 "Where the comment is stored"
 
@@ -65,6 +65,12 @@ WCL
 
   code bash {
     source = "wcl wdoc comments docs/main.wcl resolve c1a2b3"
+  }
+
+  p "Or change a note's body in place (its other fields are preserved):"
+
+  code bash {
+    source = "wcl wdoc comments docs/main.wcl edit c1a2b3 \"updated note\""
   }
 
   callout "Resolve by id, not by position" {

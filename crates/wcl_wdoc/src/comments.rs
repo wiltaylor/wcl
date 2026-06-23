@@ -271,6 +271,29 @@ pub fn resolve(file: &Path, site_filter: Option<&str>, id: &str) -> Result<bool,
     remove_decorator(&rec.file, span, id)
 }
 
+/// Replace the `body` of the comment with `id`, preserving its other fields
+/// (author / loc / target / quote). Returns `true` if one was edited.
+pub fn edit(
+    file: &Path,
+    site_filter: Option<&str>,
+    id: &str,
+    body: &str,
+) -> Result<bool, BuildError> {
+    let Some(rec) = list(file, site_filter)?.into_iter().find(|r| r.id == id) else {
+        return Ok(false);
+    };
+    let new_text = comment_decorator_text(
+        &rec.id,
+        body,
+        rec.author.as_deref(),
+        rec.loc.as_deref(),
+        rec.target.as_deref(),
+        rec.quote.as_deref(),
+    );
+    let span = Span::new(rec.span_start, rec.span_end);
+    replace_decorator(&rec.file, span, id, &new_text)
+}
+
 /// Read the `id` named arg off a raw decorator AST (string literal only).
 fn decorator_comment_id(d: &ast::Decorator) -> Option<String> {
     if d.name.last().map(String::as_str) != Some("comment") {
@@ -340,6 +363,37 @@ fn remove_decorator(file: &Path, span: Span, id: &str) -> Result<bool, BuildErro
     }
     let mut out = String::with_capacity(src.len());
     out.push_str(&src[..start]);
+    out.push_str(&src[end..]);
+    verify_and_write(file, &out)?;
+    Ok(true)
+}
+
+/// Replace the `@comment` carrying `id` on the block at `span` in `file` with
+/// `new_text`, surgically swapping just the decorator's source range.
+fn replace_decorator(
+    file: &Path,
+    span: Span,
+    id: &str,
+    new_text: &str,
+) -> Result<bool, BuildError> {
+    let src = fs::read_to_string(file)
+        .map_err(|e| BuildError::Io(e, format!("read {}", file.display())))?;
+    let mut source = parse_for_edit(&src, file.display().to_string())
+        .map_err(|e| BuildError::Parse(Report::new(e)))?;
+    let Some(block) = find_block_by_span(&mut source.items, span) else {
+        return Ok(false);
+    };
+    let Some(dec) = block
+        .decorators
+        .iter()
+        .find(|d| decorator_comment_id(d).as_deref() == Some(id))
+    else {
+        return Ok(false);
+    };
+    let (start, end) = (dec.span.start, dec.span.end);
+    let mut out = String::with_capacity(src.len() + new_text.len());
+    out.push_str(&src[..start]);
+    out.push_str(new_text);
     out.push_str(&src[end..]);
     verify_and_write(file, &out)?;
     Ok(true)
@@ -540,6 +594,39 @@ mod tests {
 
         assert!(ok(resolve(&file, None, &id)));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), DOC);
+    }
+
+    #[test]
+    fn edit_changes_body_and_preserves_other_fields() {
+        let dir = tempdir();
+        let file = write(&dir, "main.wcl", DOC);
+        let span = {
+            let doc = ok(open_doc(&file));
+            doc.blocks().find(|b| b.kind() == "page").unwrap().span()
+        };
+        let id = ok(add_to_page(
+            &file,
+            span,
+            "old body",
+            Some("wil"),
+            Some("0/1"),
+            Some("2nd p"),
+            Some("a quote"),
+        ));
+
+        assert!(ok(edit(&file, None, &id, "new body")));
+
+        let recs = ok(list(&file, None));
+        let rec = recs.iter().find(|r| r.id == id).unwrap();
+        assert_eq!(rec.body, "new body");
+        // Everything else is untouched.
+        assert_eq!(rec.author.as_deref(), Some("wil"));
+        assert_eq!(rec.loc.as_deref(), Some("0/1"));
+        assert_eq!(rec.target.as_deref(), Some("2nd p"));
+        assert_eq!(rec.quote.as_deref(), Some("a quote"));
+
+        // Editing an unknown id is a no-op.
+        assert!(!ok(edit(&file, None, "nope", "x")));
     }
 
     #[test]

@@ -85,6 +85,8 @@ body.wcl-picking [data-wcl-block].wcl-hot{outline:2px solid #4c8bf5;outline-offs
 .wcl-c .acts{margin-top:8px;display:flex;gap:8px}
 .wcl-c button{background:#4c8bf5;color:#fff;border:0;border-radius:6px;padding:4px 10px;cursor:pointer;font:12px system-ui}
 .wcl-c button.ghost{background:#333}
+.wcl-c textarea{width:100%;box-sizing:border-box;min-height:56px;margin-top:4px;background:#111;color:#eee;
+ border:1px solid #444;border-radius:6px;padding:6px;font:13px system-ui;resize:vertical}
 .wcl-empty{padding:24px;text-align:center;opacity:.7}
 `;
 const st=document.createElement('style');st.textContent=CSS;document.head.appendChild(st);
@@ -249,12 +251,26 @@ function openModal(){
    const where=c.scope==='page'?'Whole page':(c.target||c.host_kind||'block');
    const who=c.author?(' · '+c.author):'';
    const div=document.createElement('div');div.className='wcl-c';
-   div.innerHTML='<div class="meta">'+esc(where)+esc(who)+'</div>'+
-     (c.quote?'<div class="q">'+esc(c.quote)+'</div>':'')+
-     '<div>'+esc(c.body)+'</div>'+
-     '<div class="acts">'+(elForComment(c)?'<button class="ghost" data-j>Jump to</button>':'')+'<button data-r>Resolve</button></div>';
-   const j=div.querySelector('[data-j]');if(j)j.onclick=()=>{closeModal();jumpTo(c);};
-   div.querySelector('[data-r]').onclick=async()=>{if(await post({resolve_id:c.id},box)){await refresh();render();}};
+   const head='<div class="meta">'+esc(where)+esc(who)+'</div>'+(c.quote?'<div class="q">'+esc(c.quote)+'</div>':'');
+   const view=()=>{
+    div.innerHTML=head+'<div>'+esc(c.body)+'</div>'+
+      '<div class="acts">'+(elForComment(c)?'<button class="ghost" data-j>Jump to</button>':'')+
+      '<button class="ghost" data-e>Edit</button><button data-r>Resolve</button></div>';
+    const j=div.querySelector('[data-j]');if(j)j.onclick=()=>{closeModal();jumpTo(c);};
+    div.querySelector('[data-e]').onclick=edit;
+    div.querySelector('[data-r]').onclick=async()=>{if(await post({resolve_id:c.id},box)){await refresh();render();}};
+   };
+   const edit=()=>{
+    div.innerHTML=head+'<textarea></textarea>'+
+      '<div class="acts"><button class="ghost" data-x>Cancel</button><button data-s>Save</button></div>';
+    const ta=div.querySelector('textarea');ta.value=c.body;ta.focus();
+    div.querySelector('[data-x]').onclick=view;
+    div.querySelector('[data-s]').onclick=async()=>{
+     const nb=ta.value.trim();if(!nb)return;
+     if(await post({edit_id:c.id,body:nb},box)){await refresh();render();}
+    };
+   };
+   view();
    box.appendChild(div);
   }
   box.querySelector('[data-x]').onclick=closeModal;
@@ -532,8 +548,8 @@ async fn handle_comment_list(State(state): State<Arc<ServeState>>) -> Response {
     }
 }
 
-/// Add a comment (or, with `resolve_id`, delete one). The body is a JSON object
-/// — see the comment client in `COMMENT_CLIENT_JS` for the field shapes.
+/// Add a comment (or, with `resolve_id`, delete one; with `edit_id` + `body`,
+/// edit one). The body is a JSON object — see `COMMENT_CLIENT_JS` for the shapes.
 async fn handle_comment_post(State(state): State<Arc<ServeState>>, body: String) -> Response {
     let v: serde_json::Value = match serde_json::from_str(&body) {
         Ok(v) => v,
@@ -553,6 +569,15 @@ async fn handle_comment_post(State(state): State<Arc<ServeState>>, body: String)
     let Some(body_text) = str_of("body").filter(|s| !s.trim().is_empty()) else {
         return json_error(StatusCode::BAD_REQUEST, "missing comment body");
     };
+
+    // Edit an existing comment's body by id.
+    if let Some(id) = str_of("edit_id") {
+        return match comments::edit(&state.src_file, None, id, body_text) {
+            Ok(true) => json_response(StatusCode::OK, &serde_json::json!({ "edited": id })),
+            Ok(false) => json_error(StatusCode::NOT_FOUND, "no such comment"),
+            Err(e) => json_error(StatusCode::INTERNAL_SERVER_ERROR, &e.render_plain()),
+        };
+    }
     let Some(file) = str_of("file") else {
         return json_error(StatusCode::BAD_REQUEST, "missing file");
     };
