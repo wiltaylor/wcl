@@ -34,14 +34,16 @@ page graph_page { title = "Graph"
     pan_zoom = true
     zoom_min = 1.0
     zoom_max = 4.0
-    link_distance = 90.0
+    link_distance = 150.0
     routing  = :straight
     desc = "Force-directed graph of every wskill note and its related links."
 
-    wdoc_repeater { each = concepts   as = :c  node { id = c.id  text = c.name   link = $"concept_${c.id}"  fill = "#4c8bf5" } }
-    wdoc_repeater { each = entities   as = :e  node { id = e.id  text = e.name   link = $"entity_${e.id}"   fill = "#e0a000" } }
-    wdoc_repeater { each = facts      as = :f  node { id = f.id  text = f.title  link = $"fact_${f.id}"     fill = "#2f9e6f" } }
-    wdoc_repeater { each = procedures as = :p  node { id = p.id  text = p.title  link = $"process_${p.id}"  fill = "#b46be0" } }
+    // The label is the node's inline (positional) value — an `@inline(0)` field
+    // set by name (`text = …`) is not picked up as the shape label.
+    wdoc_repeater { each = concepts   as = :c  node $"${c.name}"  { id = c.id  link = $"concept_${c.id}"  fill = "#4c8bf5"  width = 96.0  height = 96.0 } }
+    wdoc_repeater { each = entities   as = :e  node $"${e.name}"  { id = e.id  link = $"entity_${e.id}"   fill = "#e0a000"  width = 96.0  height = 96.0 } }
+    wdoc_repeater { each = facts      as = :f  node $"${f.title}" { id = f.id  link = $"fact_${f.id}"     fill = "#2f9e6f"  width = 96.0  height = 96.0 } }
+    wdoc_repeater { each = procedures as = :p  node $"${p.title}" { id = p.id  link = $"process_${p.id}"  fill = "#b46be0"  width = 96.0  height = 96.0 } }
 
     edges = note_edges
   }
