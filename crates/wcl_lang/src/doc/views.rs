@@ -2362,11 +2362,20 @@ impl<'a> Block<'a> {
             let block = self.blocks().find(|b| b.kind() == kind)?;
             return Some(crate::data::DataRef::from_block(block));
         }
-        if f.inline_slot().is_some() {
-            // Inline labels become a synthetic field — we don't have
-            // a `Field` view for a label, so return the typed-field
-            // view. Hosts wanting the label value should access
-            // `block.labels()` directly.
+        if let Some(slot) = f.inline_slot() {
+            // Inline labels become a synthetic field — we don't have a `Field`
+            // view for a label, so return the typed-field view. But when the
+            // inline label was omitted and an explicit `name = value` field of
+            // the same name is present, read that instead, so `block { text =
+            // "x" }` works like the inline `block "x"`. Hosts wanting the label
+            // value should access `block.labels()` directly.
+            let has_label = self
+                .labels()
+                .map(|ls| (slot as usize) < ls.len())
+                .unwrap_or(false);
+            if !has_label && let Some(field) = self.field(name) {
+                return Some(crate::data::DataRef::from_field(field));
+            }
             return Some(crate::data::DataRef::new(crate::data::DataKind::TypeField(
                 f,
             )));
@@ -2435,7 +2444,17 @@ impl<'a> Block<'a> {
             let is_child_slot =
                 f.children_kind_or_union().is_some() || f.child_kind_or_union().is_some();
             let val = if let Some(slot) = f.inline_slot() {
-                labels.get(slot as usize).cloned().unwrap_or(Value::None)
+                // An `@inline(N)` field is normally the positional label slot,
+                // but also honour an explicit `name = value` field of the same
+                // name, so `node { text = "x" }` reads the same as `node "x"`.
+                // Prefer the label when it was actually given.
+                if let Some(v) = labels.get(slot as usize).cloned() {
+                    v
+                } else if let Some(field) = self.field(name) {
+                    field.value().cloned().map_err(|e| e.clone())?
+                } else {
+                    f.default_value().unwrap_or(Value::None)
+                }
             } else if is_child_slot {
                 // Project the slot and recursively reify; a computed splice
                 // is schema-completed exactly like statically-nested blocks.

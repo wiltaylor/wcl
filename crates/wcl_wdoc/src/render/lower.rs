@@ -525,7 +525,23 @@ pub(crate) fn block_to_record_raw(doc: &Document, block: &Block<'_>, kind: &str)
         let is_children_slot =
             f.children_kind_or_union().is_some() || f.child_kind_or_union().is_some();
         let val = if let Some(slot) = f.inline_slot() {
-            labels.get(slot as usize).cloned().unwrap_or(Value::None)
+            // An `@inline(N)` field is normally the positional label slot, but
+            // also honour an explicit `name = value` field of the same name, so
+            // `node { text = "x" }` lowers the same as `node "x"`. Prefer the
+            // label when it was actually given.
+            if let Some(v) = labels.get(slot as usize).cloned() {
+                v
+            } else if let Some(field) = block.field(name) {
+                match field.value() {
+                    Ok(v) => v.clone(),
+                    Err(e) => {
+                        record_lower_error(block, e.clone());
+                        Value::None
+                    }
+                }
+            } else {
+                f.default_value().unwrap_or(Value::None)
+            }
         } else if is_children_slot {
             // A `@children(...)` / `@child(...)` slot. Always materialise
             // through the projection — never the raw `block.field(name)`

@@ -1626,6 +1626,32 @@ fn computed_children_appear_in_blocks_after_static() {
 }
 
 #[test]
+fn inline_field_set_by_name_resolves_like_the_label() {
+    // An `@inline(N)` field may be written either as the positional label
+    // (`shape "x"`) or as an explicit `text = "x"` field; both must resolve to
+    // the same value (a diagram `node { text = … }` relied on this).
+    let doc = Document::open(
+        r#"
+        @document
+        type Doc { @children("shape") shapes: list<Shape> }
+        @block("shape")
+        type Shape { @inline(0) text: utf8  id: identifier? }
+        shape { id = a  text = "Named" }
+        shape "Inline" { id = b }
+        "#,
+        "test",
+    )
+    .expect("open");
+    let text_of = |b: &crate::doc::Block<'_>| match b.to_record_value().unwrap() {
+        Value::Record { fields, .. } => fields.get("text").cloned().unwrap(),
+        other => panic!("expected record, got {other:?}"),
+    };
+    let shapes: Vec<_> = doc.blocks().filter(|b| b.kind() == "shape").collect();
+    assert_eq!(text_of(&shapes[0]), Value::Utf8("Named".into()));
+    assert_eq!(text_of(&shapes[1]), Value::Utf8("Inline".into()));
+}
+
+#[test]
 fn computed_children_non_list_is_schema_error() {
     let doc = Document::open(
         r#"
