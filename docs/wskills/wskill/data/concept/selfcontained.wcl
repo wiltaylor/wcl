@@ -1,7 +1,7 @@
 concept selfcontained {
-  name     = "Content is self-contained"
+  name     = "Self-Contained Content"
   summary  = "Capture the information itself; never defer to an external source for it. Attribution citations are fine; the only learning pointers are cross-references."
-  related  = [datapresentation, permanent_note]
+  related  = [datapresentation]
   body {
     p <<BODY
       A wskill must stand on its own: capture the substance here rather than deferring the
