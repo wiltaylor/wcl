@@ -149,7 +149,10 @@ function openForm(el,onPage){
  pop.querySelector('[data-ok]').onclick=async()=>{
   const body=ta.value.trim();if(!body)return;
   const anchorable=el.hasAttribute('data-wcl-file');
-  let payload={body,quote:quote||null};
+  // Record the resolved page name so the comment scopes to this one page
+  // (a generated page's source label can't be resolved statically).
+  const pname=pageEl&&pageEl.getAttribute('data-wcl-page-name');
+  let payload={body,quote:quote||null,page:pname||null};
   if(onPage||!anchorable){
    if(!pageEl)return;
    const ps=pageEl.getAttribute('data-wcl-page-span').split('..');
@@ -220,16 +223,19 @@ let allComments=[];
 function pageComments(){
  if(!pageEl)return [];
  const pf=pageEl.getAttribute('data-wcl-page-file');
+ const pname=pageEl.getAttribute('data-wcl-page-name');
  const pspan=pageEl.getAttribute('data-wcl-page-span');
- // Match by the page block's own span (stable) rather than its name — a
- // generated page (`$"entity_${id}"`) has no statically-resolvable name, so
- // the comment record's `page` is null. Page-level comments live on the page
- // block, so their span equals the page wrapper's; direct block comments are
- // recognised by their inline pin being present in this page's DOM.
- return allComments.filter(c=>
-   document.querySelector('[data-wcl-comment-id="'+c.id+'"]') ||
-   (c.file===pf && (c.span_start+'..'+c.span_end)===pspan)
- );
+ return allComments.filter(c=>{
+  // A direct block comment is recognised by its inline pin being in this DOM.
+  if(document.querySelector('[data-wcl-comment-id="'+c.id+'"]')) return true;
+  if(c.file!==pf) return false;
+  // A comment that recorded its page scopes to exactly that page — so a note
+  // on one generated page (e.g. `entity_foo`) doesn't show on its siblings.
+  if(c.page) return c.page===pname;
+  // Older page-level comments without a recorded page: match the page block's
+  // span (they live on the page block, whose span equals the wrapper's).
+  return (c.span_start+'..'+c.span_end)===pspan;
+ });
 }
 async function refresh(){
  try{const r=await fetch('/__wdoc_comment');allComments=r.ok?await r.json():[];}catch(_){allComments=[];}
@@ -658,6 +664,9 @@ async fn handle_comment_post(State(state): State<Arc<ServeState>>, body: String)
         .get("on_page")
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false);
+    // The resolved page name the comment was made on, so it scopes to a single
+    // generated page (whose source label can't resolve statically).
+    let page = str_of("page");
     let res = if on_page {
         comments::add_to_page(
             &path,
@@ -667,9 +676,10 @@ async fn handle_comment_post(State(state): State<Arc<ServeState>>, body: String)
             str_of("loc"),
             str_of("target"),
             quote,
+            page,
         )
     } else {
-        comments::add_to_block(&path, span, body_text, author, quote)
+        comments::add_to_block(&path, span, body_text, author, quote, page)
     };
     match res {
         Ok(id) => json_response(StatusCode::OK, &serde_json::json!({ "id": id })),

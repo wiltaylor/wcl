@@ -27,4 +27,6 @@ type Comment {
   loc: utf8?          // positional locator within the page (page-attached only)
   target: utf8?       // auto description of the referenced generated block
   quote: utf8?        // exact text the reviewer had highlighted when commenting
+  page: utf8?         // resolved page name the comment was made on (scopes it to
+                      // a single generated page whose source label can't resolve)
 }

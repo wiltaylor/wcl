@@ -200,7 +200,11 @@ fn collect_block(
             id,
             scope,
             file: file.clone(),
-            page: this_page.clone(),
+            // The page the comment was authored on: the decorator's recorded
+            // `page` (the resolved render-time name — set for generated pages
+            // whose source label can't resolve statically) wins over the
+            // statically-walked enclosing page.
+            page: dec_str(&d, "page").or_else(|| this_page.clone()),
             host_kind: kind.to_string(),
             host_label: label.clone(),
             loc,
@@ -236,9 +240,10 @@ pub fn add_to_block(
     body: &str,
     author: Option<&str>,
     quote: Option<&str>,
+    page: Option<&str>,
 ) -> Result<String, BuildError> {
     let id = gen_id();
-    let text = comment_decorator_text(&id, body, author, None, None, quote);
+    let text = comment_decorator_text(&id, body, author, None, None, quote, page);
     insert_decorator(file, span, &text)?;
     Ok(id)
 }
@@ -255,9 +260,10 @@ pub fn add_to_page(
     loc: Option<&str>,
     target: Option<&str>,
     quote: Option<&str>,
+    page: Option<&str>,
 ) -> Result<String, BuildError> {
     let id = gen_id();
-    let text = comment_decorator_text(&id, body, author, loc, target, quote);
+    let text = comment_decorator_text(&id, body, author, loc, target, quote, page);
     insert_decorator(page_file, page_span, &text)?;
     Ok(id)
 }
@@ -289,6 +295,7 @@ pub fn edit(
         rec.loc.as_deref(),
         rec.target.as_deref(),
         rec.quote.as_deref(),
+        rec.page.as_deref(),
     );
     let span = Span::new(rec.span_start, rec.span_end);
     replace_decorator(&rec.file, span, id, &new_text)
@@ -425,6 +432,7 @@ fn find_block_by_span(items: &mut [ast::Item], span: Span) -> Option<&mut ast::B
 
 /// Build the `@comment(...)` decorator source text. String values are escaped
 /// as WCL string literals, so the result re-parses cleanly when spliced in.
+#[allow(clippy::too_many_arguments)]
 fn comment_decorator_text(
     id: &str,
     body: &str,
@@ -432,6 +440,7 @@ fn comment_decorator_text(
     loc: Option<&str>,
     target: Option<&str>,
     quote: Option<&str>,
+    page: Option<&str>,
 ) -> String {
     let mut parts = vec![
         format!("id = {}", wcl_string(id)),
@@ -442,6 +451,7 @@ fn comment_decorator_text(
         ("loc", loc),
         ("target", target),
         ("quote", quote),
+        ("page", page),
     ] {
         if let Some(v) = val {
             parts.push(format!("{name} = {}", wcl_string(v)));
@@ -552,6 +562,7 @@ mod tests {
             "tighten this",
             Some("wil"),
             Some("Hi"),
+            Some("home"),
         ));
 
         let recs = ok(list(&file, None));
@@ -561,6 +572,8 @@ mod tests {
         assert_eq!(rec.author.as_deref(), Some("wil"));
         assert_eq!(rec.quote.as_deref(), Some("Hi"));
         assert_eq!(rec.host_kind, "heading");
+        // The recorded page (the resolved render-time name) round-trips.
+        assert_eq!(rec.page.as_deref(), Some("home"));
 
         assert!(ok(resolve(&file, None, &id)));
         assert!(ok(list(&file, None)).iter().all(|r| r.id != id));
@@ -578,7 +591,9 @@ mod tests {
             let doc = ok(open_doc(&file));
             doc.blocks().find(|b| b.kind() == "page").unwrap().span()
         };
-        let id = ok(add_to_page(&file, span, "note", None, None, None, None));
+        let id = ok(add_to_page(
+            &file, span, "note", None, None, None, None, None,
+        ));
 
         let after = std::fs::read_to_string(&file).unwrap();
         // Exactly one decorator was spliced in; the rest is identical to DOC.
@@ -612,6 +627,7 @@ mod tests {
             Some("0/1"),
             Some("2nd p"),
             Some("a quote"),
+            Some("home"),
         ));
 
         assert!(ok(edit(&file, None, &id, "new body")));
@@ -624,6 +640,7 @@ mod tests {
         assert_eq!(rec.loc.as_deref(), Some("0/1"));
         assert_eq!(rec.target.as_deref(), Some("2nd p"));
         assert_eq!(rec.quote.as_deref(), Some("a quote"));
+        assert_eq!(rec.page.as_deref(), Some("home"));
 
         // Editing an unknown id is a no-op.
         assert!(!ok(edit(&file, None, "nope", "x")));
@@ -648,11 +665,13 @@ mod tests {
             Some("0/2/1"),
             Some("3rd card"),
             None,
+            None,
         ));
         let generic_id = ok(add_to_page(
             &file,
             page_span(&file),
             "page-wide note",
+            None,
             None,
             None,
             None,
@@ -678,7 +697,9 @@ mod tests {
             doc.blocks().find(|b| b.kind() == "page").unwrap().span()
         };
         let tricky = "say \"hi\"\nand more\\stuff";
-        let id = ok(add_to_page(&file, span, tricky, None, None, None, None));
+        let id = ok(add_to_page(
+            &file, span, tricky, None, None, None, None, None,
+        ));
         let recs = ok(list(&file, None));
         assert_eq!(recs.iter().find(|r| r.id == id).unwrap().body, tricky);
     }
