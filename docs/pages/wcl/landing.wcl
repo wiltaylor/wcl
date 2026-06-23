@@ -1,0 +1,380 @@
+// The wcl.dev landing template — a bespoke marketing design rendered through
+// the wdoc `website` machinery (a custom `template` + `wdoc_head_font` head
+// injection + a raw-HTML layout). Selected only by the `index` page
+// (`template = :landing`), so its CSS / JS / fonts never touch the other
+// pages of the `wcl` site.
+//
+// Ported from a Claude design component (the `x-dc` runtime stripped): the
+// shared `<style>` lives in `landing_css`, `style-hover` became real `:hover`
+// classes, the theme toggle is a small vanilla script that flips
+// `data-theme` on `.wcl-root` (persisted to `localStorage['wcl-theme']`,
+// independent of wdoc's own `wdoc-theme` book toggle), and the Google Fonts
+// are injected into `<head>` via `wdoc_head_font`.
+
+// IMPORTANT: this heredoc is emitted verbatim into a page <style>, so it must
+// be pure CSS — never a `//` line (CSS has no `//` comment).
+let landing_css = <<CSS
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+.wcl-root{
+  --bg-0:#0B0D10;--bg-1:#11141A;--bg-2:#171B22;--bg-3:#1E232C;--bg-4:#252B36;
+  --fg-0:#ECEEF2;--fg-1:#B7BDC8;--fg-2:#7C8593;--fg-3:#4E5664;
+  --border-subtle:#1A1F27;--border:#262C36;--border-strong:#3A4250;
+  --accent:oklch(0.62 0.16 250);--accent-hover:oklch(0.66 0.17 250);--accent-press:oklch(0.56 0.16 250);
+  --accent-bg:oklch(0.62 0.16 250 / 0.14);--accent-fg:oklch(0.82 0.13 250);--accent-contrast:#fff;
+  --success:oklch(0.68 0.14 150);--success-fg:oklch(0.82 0.16 150);--success-bg:oklch(0.68 0.14 150 / 0.14);
+  --warning:oklch(0.78 0.14 75);--warning-fg:oklch(0.86 0.13 80);--warning-bg:oklch(0.78 0.14 75 / 0.14);
+  --info-fg:oklch(0.82 0.12 230);--info-bg:oklch(0.68 0.13 230 / 0.14);
+  --font-sans:'IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: light){
+  .wcl-root:not([data-theme="dark"]){
+    --bg-0:#FAFAFA;--bg-1:#FFFFFF;--bg-2:#F4F5F7;--bg-3:#EAECEF;--bg-4:#FFFFFF;
+    --fg-0:#0C0F14;--fg-1:#3D4654;--fg-2:#6B7383;--fg-3:#A0A6B2;
+    --border-subtle:#EEF0F3;--border:#DCDFE4;--border-strong:#B6BBC4;
+    --accent:oklch(0.52 0.18 250);--accent-hover:oklch(0.46 0.19 250);--accent-press:oklch(0.40 0.19 250);
+    --accent-bg:oklch(0.55 0.17 250 / 0.14);--accent-fg:oklch(0.38 0.19 250);
+    --success-fg:oklch(0.36 0.14 150);--success-bg:oklch(0.55 0.15 150 / 0.16);
+    --warning-fg:oklch(0.40 0.14 60);--warning-bg:oklch(0.65 0.16 70 / 0.20);
+    --info-fg:oklch(0.36 0.13 230);--info-bg:oklch(0.55 0.14 230 / 0.16);
+  }
+}
+.wcl-root[data-theme="light"]{
+  --bg-0:#FAFAFA;--bg-1:#FFFFFF;--bg-2:#F4F5F7;--bg-3:#EAECEF;--bg-4:#FFFFFF;
+  --fg-0:#0C0F14;--fg-1:#3D4654;--fg-2:#6B7383;--fg-3:#A0A6B2;
+  --border-subtle:#EEF0F3;--border:#DCDFE4;--border-strong:#B6BBC4;
+  --accent:oklch(0.52 0.18 250);--accent-hover:oklch(0.46 0.19 250);--accent-press:oklch(0.40 0.19 250);
+  --accent-bg:oklch(0.55 0.17 250 / 0.14);--accent-fg:oklch(0.38 0.19 250);
+  --success-fg:oklch(0.36 0.14 150);--success-bg:oklch(0.55 0.15 150 / 0.16);
+  --warning-fg:oklch(0.40 0.14 60);--warning-bg:oklch(0.65 0.16 70 / 0.20);
+  --info-fg:oklch(0.36 0.13 230);--info-bg:oklch(0.55 0.14 230 / 0.16);
+}
+.wcl-root::selection,.wcl-root *::selection{background:var(--accent-bg);color:var(--fg-0);}
+.wcl-root a{text-decoration:none;}
+.wcl-navlink:hover{color:var(--fg-0)!important;background:var(--bg-2);}
+.wcl-iconbtn:hover{border-color:var(--border-strong)!important;color:var(--fg-0)!important;}
+.wcl-btn-primary:hover{background:var(--accent-hover)!important;}
+.wcl-btn-ghost:hover{border-color:var(--border-strong)!important;background:var(--bg-2)!important;}
+.wcl-card:hover{border-color:var(--border-strong)!important;background:var(--bg-2)!important;}
+.wcl-pilllink:hover{border-color:var(--border-strong)!important;background:var(--bg-2)!important;color:var(--fg-0)!important;}
+.wcl-footlink:hover{color:var(--fg-0)!important;}
+.wcl-root .ico-moon{display:none;}
+.wcl-root .ico-sun{display:inline-flex;}
+@media (prefers-color-scheme: light){
+  .wcl-root:not([data-theme="dark"]) .ico-sun{display:none;}
+  .wcl-root:not([data-theme="dark"]) .ico-moon{display:inline-flex;}
+}
+.wcl-root[data-theme="dark"] .ico-sun{display:inline-flex;}
+.wcl-root[data-theme="dark"] .ico-moon{display:none;}
+.wcl-root[data-theme="light"] .ico-sun{display:none;}
+.wcl-root[data-theme="light"] .ico-moon{display:inline-flex;}
+@media (prefers-reduced-motion: reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important;}}
+CSS
+
+let landing_html = <<HTML
+<div class="wcl-root" style="background:var(--bg-0); color:var(--fg-0); font-family:var(--font-sans); font-size:14px; line-height:1.5; min-height:100vh; -webkit-font-smoothing:antialiased; font-feature-settings:'cv02','cv03','cv04','cv11';">
+
+  <header style="position:sticky; top:0; z-index:50; height:56px; display:flex; align-items:center; gap:24px; padding:0 24px; border-bottom:1px solid var(--border); background:color-mix(in srgb, var(--bg-0) 82%, transparent); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);">
+    <a href="#top" style="display:flex; align-items:center; gap:10px; color:var(--fg-0);">
+      <span style="display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:6px; background:var(--accent-bg); color:var(--accent-fg);">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+      </span>
+      <span style="font-family:var(--font-mono); font-weight:600; font-size:15px; letter-spacing:-0.01em;">wcl<span style="color:var(--fg-3);">.dev</span></span>
+    </a>
+    <div style="margin-left:auto; display:flex; align-items:center; gap:6px;">
+      <a href="#features" class="wcl-navlink" style="color:var(--fg-1); font-size:13px; padding:7px 11px; border-radius:4px;">features</a>
+      <a href="#reference" class="wcl-navlink" style="color:var(--fg-1); font-size:13px; padding:7px 11px; border-radius:4px;">reference</a>
+      <a href="#start" class="wcl-navlink" style="color:var(--fg-1); font-size:13px; padding:7px 11px; border-radius:4px;">getting started</a>
+      <a href="https://github.com/wiltaylor/wcl" target="_blank" rel="noopener" class="wcl-navlink" style="display:inline-flex; align-items:center; gap:7px; color:var(--fg-1); font-size:13px; padding:7px 11px; border-radius:4px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.2.8-.5v-1.8c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.6.8.5 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5Z"></path></svg>
+      </a>
+      <button type="button" data-theme-toggle aria-label="Toggle theme" class="wcl-iconbtn" style="display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:4px; border:1px solid var(--border); background:transparent; color:var(--fg-1); cursor:pointer; margin-left:4px;">
+        <span class="ico-moon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path></svg></span>
+        <span class="ico-sun"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg></span>
+      </button>
+    </div>
+  </header>
+
+  <div role="status" style="display:flex; align-items:center; justify-content:center; gap:10px; padding:9px 24px; background:var(--warning-bg); border-bottom:1px solid var(--border); color:var(--warning-fg); font-size:12.5px;">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none;"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+    <span style="color:var(--fg-1);"><strong style="color:var(--warning-fg); font-weight:600;">Heavy development — not production ready.</strong> The language, APIs, and wdoc output can change at any time without notice.</span>
+  </div>
+
+  <main id="top" style="max-width:1120px; margin:0 auto; padding:0 24px;">
+
+    <section style="text-align:center; padding:96px 0 72px; position:relative;">
+      <div aria-hidden="true" style="position:absolute; inset:0; background-image:linear-gradient(var(--border-subtle) 1px, transparent 1px), linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px); background-size:44px 44px; -webkit-mask-image:radial-gradient(ellipse 70% 60% at 50% 30%, #000 0%, transparent 72%); mask-image:radial-gradient(ellipse 70% 60% at 50% 30%, #000 0%, transparent 72%); opacity:.6; pointer-events:none;"></div>
+      <div style="position:relative;">
+        <span style="display:inline-flex; align-items:center; gap:8px; padding:5px 12px; border:1px solid var(--border); border-radius:999px; background:var(--bg-1); font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fg-2); font-weight:600;">
+          <span style="width:6px; height:6px; border-radius:999px; background:var(--accent); display:inline-block;"></span>
+          Typed configuration &amp; schema language
+        </span>
+        <h1 style="margin:24px auto 0; max-width:14ch; font-size:clamp(40px, 6.4vw, 66px); font-weight:600; letter-spacing:-0.03em; line-height:1.04; color:var(--fg-0); text-wrap:balance;">One language for every shape of data.</h1>
+        <p style="margin:22px auto 0; max-width:60ch; font-size:18px; line-height:1.6; color:var(--fg-1);">WCL lets you express structured data the way it actually is — records, unions, interfaces, and decorators — gather it into a document model that validates itself, then project that single model into config, HTML, Markdown, books, and Claude skills.</p>
+        <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:32px;">
+          <a href="#start" class="wcl-btn-primary" style="display:inline-flex; align-items:center; gap:8px; height:42px; padding:0 20px; border-radius:4px; background:var(--accent); color:var(--accent-contrast); font-weight:600; font-size:14px; border:1px solid transparent;">
+            Get started
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </a>
+          <a href="https://github.com/wiltaylor/wcl" target="_blank" rel="noopener" class="wcl-btn-ghost" style="display:inline-flex; align-items:center; gap:8px; height:42px; padding:0 20px; border-radius:4px; background:transparent; color:var(--fg-0); font-weight:500; font-size:14px; border:1px solid var(--border);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.2.8-.5v-1.8c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.6.8.5 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5Z"></path></svg>
+            View source
+          </a>
+        </div>
+        <div style="margin-top:20px; font-size:12.5px; color:var(--fg-2);">Open source · built in the open by Wil Taylor</div>
+      </div>
+    </section>
+
+    <section id="taste" style="padding:8px 0 40px;">
+      <div style="display:grid; grid-template-columns:minmax(0,1fr); gap:28px; align-items:start;">
+        <div style="border:1px solid var(--border); border-radius:8px; background:var(--bg-1); overflow:hidden;">
+          <div style="display:flex; align-items:center; gap:10px; height:40px; padding:0 14px; border-bottom:1px solid var(--border-subtle); background:var(--bg-2);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg-2)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            <span style="font-family:var(--font-mono); font-size:12.5px; color:var(--fg-1);">service.wcl</span>
+            <span style="margin-left:auto; font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fg-2); border:1px solid var(--border); border-radius:4px; padding:2px 7px;">document</span>
+          </div>
+          <pre style="margin:0; padding:18px 20px; overflow-x:auto; background:var(--bg-1); border:0; line-height:1.7;"><code style="font-family:var(--font-mono); font-size:13.5px; color:var(--fg-1); background:none; border:0; padding:0;"><span style="color:var(--accent-fg);">@block</span>(<span style="color:var(--success-fg);">"service"</span>)
+<span style="color:var(--warning-fg);">type</span> <span style="color:var(--info-fg);">Service</span> {
+  <span style="color:var(--accent-fg);">@inline</span>(<span style="color:var(--warning-fg);">0</span>)   name: <span style="color:var(--info-fg);">utf8</span>     <span style="color:var(--fg-3);">// service "web" → name = "web"</span>
+  <span style="color:var(--accent-fg);">@default</span>(<span style="color:var(--warning-fg);">80</span>) port: <span style="color:var(--info-fg);">u32</span>
+  region: <span style="color:var(--info-fg);">utf8</span>
+}
+
+<span style="color:var(--accent-fg);">@document</span>
+<span style="color:var(--warning-fg);">type</span> <span style="color:var(--info-fg);">Config</span> {
+  <span style="color:var(--accent-fg);">@children</span>(<span style="color:var(--success-fg);">"service"</span>) services: <span style="color:var(--info-fg);">list</span>&lt;<span style="color:var(--info-fg);">Service</span>&gt;
+}
+
+<span style="color:var(--fg-0);">service</span> <span style="color:var(--success-fg);">"web"</span> {
+  region = <span style="color:var(--success-fg);">"us-east-1"</span>
+}
+<span style="color:var(--fg-0);">service</span> <span style="color:var(--success-fg);">"api"</span> {
+  port   = <span style="color:var(--warning-fg);">9090u32</span>
+  region = <span style="color:var(--success-fg);">"eu-west-1"</span>
+}</code></pre>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:14px; padding-top:4px;">
+          <span style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fg-2); font-weight:600;">A taste</span>
+          <h2 style="font-size:24px; font-weight:600; letter-spacing:-0.02em; line-height:1.2; color:var(--fg-0); margin:0;">A document is fields and blocks.<br>A schema is the rules they follow.</h2>
+          <p style="font-size:15px; line-height:1.65; color:var(--fg-1); margin:0; max-width:62ch;">Declare your types with decorators that describe how raw syntax maps onto them — <code style="font-family:var(--font-mono); font-size:0.88em; background:var(--bg-2); border:1px solid var(--border-subtle); border-radius:4px; padding:1px 5px; color:var(--fg-0);">@inline</code>, <code style="font-family:var(--font-mono); font-size:0.88em; background:var(--bg-2); border:1px solid var(--border-subtle); border-radius:4px; padding:1px 5px; color:var(--fg-0);">@default</code>, <code style="font-family:var(--font-mono); font-size:0.88em; background:var(--bg-2); border:1px solid var(--border-subtle); border-radius:4px; padding:1px 5px; color:var(--fg-0);">@children</code>. The data on the right reads like the thing it describes, and the document model validates the whole shape before anything downstream sees it.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" style="padding:56px 0 24px;">
+      <div style="text-align:center; max-width:60ch; margin:0 auto 36px;">
+        <span style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fg-2); font-weight:600;">Why WCL</span>
+        <h2 style="font-size:32px; font-weight:600; letter-spacing:-0.025em; line-height:1.1; color:var(--fg-0); margin:12px 0 0;">Built to express data naturally — and keep it honest.</h2>
+        <p style="font-size:16px; line-height:1.6; color:var(--fg-1); margin:14px 0 0;">A small, typed core that scales from a single config file to a complete documented model.</p>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px;">
+
+        <article style="border:1px solid var(--border); border-radius:6px; background:var(--bg-1); padding:22px;">
+          <span style="display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:8px; background:var(--accent-bg); color:var(--accent-fg); margin-bottom:14px;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg></span>
+          <h3 style="font-size:16px; font-weight:600; color:var(--fg-0); margin:0 0 6px;">Flexible structure</h3>
+          <p style="font-size:13.5px; line-height:1.6; color:var(--fg-1); margin:0;">Map almost any data structure with a statically typed core — records, vectors and tensors, union types, interfaces, and decorators that bind surface syntax to your model. Express the shapes you actually have, checked before runtime.</p>
+        </article>
+
+        <article style="border:1px solid var(--border); border-radius:6px; background:var(--bg-1); padding:22px;">
+          <span style="display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:8px; background:var(--accent-bg); color:var(--accent-fg); margin-bottom:14px;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"></path></svg></span>
+          <h3 style="font-size:16px; font-weight:600; color:var(--fg-0); margin:0 0 6px;">Schemas</h3>
+          <p style="font-size:13.5px; line-height:1.6; color:var(--fg-1); margin:0;">Declare a schema once and easily validate your data against it — types, required fields, and constraints all checked, so mistakes surface before anything downstream runs.</p>
+        </article>
+
+        <article style="border:1px solid var(--border); border-radius:6px; background:var(--bg-1); padding:22px;">
+          <span style="display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:8px; background:var(--accent-bg); color:var(--accent-fg); margin-bottom:14px;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V5a2 2 0 0 1 2-2h2M16 3h2a2 2 0 0 1 2 2v2M20 17v2a2 2 0 0 1-2 2h-2M8 21H6a2 2 0 0 1-2-2v-2"></path><path d="M9 9h6v6H9z"></path></svg></span>
+          <h3 style="font-size:16px; font-weight:600; color:var(--fg-0); margin:0 0 6px;">Natural, block-based syntax</h3>
+          <p style="font-size:13.5px; line-height:1.6; color:var(--fg-1); margin:0;">Blocks and fields read like the thing you're describing — <code style="font-family:var(--font-mono); font-size:0.86em; background:var(--bg-2); border:1px solid var(--border-subtle); border-radius:4px; padding:1px 5px; color:var(--fg-0);">service "web" { … }</code> — not a wall of nested brackets.</p>
+        </article>
+
+        <article style="border:1px solid var(--border); border-radius:6px; background:var(--bg-1); padding:22px;">
+          <span style="display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:8px; background:var(--accent-bg); color:var(--accent-fg); margin-bottom:14px;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"></line><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"></line></svg></span>
+          <h3 style="font-size:16px; font-weight:600; color:var(--fg-0); margin:0 0 6px;">One format, multiple uses</h3>
+          <p style="font-size:13.5px; line-height:1.6; color:var(--fg-1); margin:0;">The same WCL format is equally at home as typed application configuration and as the source for documentation — pages, sites, books, and Claude skills rendered with wdoc.</p>
+        </article>
+
+        <article style="border:1px solid var(--border); border-radius:6px; background:var(--bg-1); padding:22px;">
+          <span style="display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:8px; background:var(--accent-bg); color:var(--accent-fg); margin-bottom:14px;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M12 3v18"></path></svg></span>
+          <h3 style="font-size:16px; font-weight:600; color:var(--fg-0); margin:0 0 6px;">Data–presentation separation</h3>
+          <p style="font-size:13.5px; line-height:1.6; color:var(--fg-1); margin:0;">Keep your data model separate from how it's shown. Project the same typed data structures into documentation — many views and layouts over one validated source, with no copy-paste.</p>
+        </article>
+
+        <article style="border:1px solid var(--border); border-radius:6px; background:var(--bg-1); padding:22px;">
+          <span style="display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:8px; background:var(--accent-bg); color:var(--accent-fg); margin-bottom:14px;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"></rect><path d="M7 11v4a2 2 0 0 0 2 2h4"></path><rect x="13" y="13" width="8" height="8" rx="2"></rect></svg></span>
+          <h3 style="font-size:16px; font-weight:600; color:var(--fg-0); margin:0 0 6px;">Rich diagram support</h3>
+          <p style="font-size:13.5px; line-height:1.6; color:var(--fg-1); margin:0;">wdoc draws diagrams straight from WCL — flowcharts, sequence and state diagrams, charts, timelines, trees, and class/DB tables — with automatic layout and edge routing, themed to match the page.</p>
+        </article>
+
+      </div>
+    </section>
+
+    <section id="reference" style="padding:40px 0 24px;">
+      <div style="max-width:64ch; margin:0 auto 32px; text-align:center;">
+        <span style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fg-2); font-weight:600;">Reference</span>
+        <h2 style="font-size:32px; font-weight:600; letter-spacing:-0.025em; line-height:1.1; color:var(--fg-0); margin:12px 0 0;">The manuals</h2>
+        <p style="font-size:16px; line-height:1.6; color:var(--fg-1); margin:14px 0 0;">Each reference is published as a <em style="font-style:normal; color:var(--fg-0); font-weight:500;">wskill</em> — a self-contained WCL model projected into both a readable book and a Claude Code skill.</p>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px;">
+
+        <a href="wskills/wcl/" class="wcl-card" style="display:flex; flex-direction:column; border:1px solid var(--border); border-radius:8px; background:var(--bg-1); padding:24px; color:var(--fg-0);">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+            <span style="display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:8px; background:var(--accent-bg); color:var(--accent-fg);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg></span>
+            <span style="font-family:var(--font-mono); font-weight:600; font-size:16px; color:var(--fg-0);">wcl</span>
+          </div>
+          <p style="font-size:13.5px; line-height:1.6; color:var(--fg-1); margin:0 0 18px; flex:1;">The core language: records, unions, interfaces, decorators, and the document model that gathers and validates structured data.</p>
+          <span style="display:flex; align-items:center; gap:7px; font-size:13px; font-weight:500; color:var(--accent-fg);">Read the manual <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></span>
+        </a>
+
+        <a href="wskills/wdoc/" class="wcl-card" style="display:flex; flex-direction:column; border:1px solid var(--border); border-radius:8px; background:var(--bg-1); padding:24px; color:var(--fg-0);">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+            <span style="display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:8px; background:var(--accent-bg); color:var(--accent-fg);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg></span>
+            <span style="font-family:var(--font-mono); font-weight:600; font-size:16px; color:var(--fg-0);">wdoc</span>
+          </div>
+          <p style="font-size:13.5px; line-height:1.6; color:var(--fg-1); margin:0 0 18px; flex:1;">WCL's static-site and skill generator. Declare pages and sites in WCL, then render them to HTML, Markdown, a Claude skill folder, or PDF.</p>
+          <span style="display:flex; align-items:center; gap:7px; font-size:13px; font-weight:500; color:var(--accent-fg);">Read the manual <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></span>
+        </a>
+
+        <a href="wskills/wskill/" class="wcl-card" style="display:flex; flex-direction:column; border:1px solid var(--border); border-radius:8px; background:var(--bg-1); padding:24px; color:var(--fg-0);">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+            <span style="display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:8px; background:var(--accent-bg); color:var(--accent-fg);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg></span>
+            <span style="font-family:var(--font-mono); font-weight:600; font-size:16px; color:var(--fg-0);">wskill</span>
+          </div>
+          <p style="font-size:13.5px; line-height:1.6; color:var(--fg-1); margin:0 0 18px; flex:1;">A WCL document format that captures a topic completely and projects it into both a human-readable book and a Claude Code skill.</p>
+          <span style="display:flex; align-items:center; gap:7px; font-size:13px; font-weight:500; color:var(--accent-fg);">Read the manual <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></span>
+        </a>
+
+      </div>
+    </section>
+
+    <section id="start" style="padding:56px 0 24px;">
+      <div style="border:1px solid var(--border); border-radius:8px; background:var(--bg-1); overflow:hidden; display:grid; grid-template-columns:minmax(0,1fr);">
+        <div style="padding:32px; display:flex; flex-direction:column; gap:20px;">
+          <div>
+            <span style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fg-2); font-weight:600;">Getting started</span>
+            <h2 style="font-size:26px; font-weight:600; letter-spacing:-0.02em; line-height:1.15; color:var(--fg-0); margin:10px 0 0;">Install it and scaffold your first project.</h2>
+            <p style="font-size:14.5px; line-height:1.6; color:var(--fg-1); margin:12px 0 0; max-width:60ch;">Grab a prebuilt binary with the install script, then let <code style="font-family:var(--font-mono); font-size:0.9em; background:var(--bg-2); border:1px solid var(--border-subtle); border-radius:4px; padding:1px 5px; color:var(--fg-0);">wcl init</code> scaffold a ready-to-build project — a book, a presentation deck, and more.</p>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:14px;">
+            <div style="display:flex; gap:14px; align-items:flex-start;">
+              <span style="flex:none; width:24px; height:24px; border-radius:999px; border:1px solid var(--border); display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; color:var(--fg-1); font-family:var(--font-mono);">1</span>
+              <div style="flex:1;">
+                <div style="font-size:14px; font-weight:500; color:var(--fg-0); margin-bottom:8px;">Install the CLI</div>
+                <div style="display:flex; align-items:center; gap:10px; border:1px solid var(--border); border-radius:6px; background:var(--bg-0); padding:11px 14px; font-family:var(--font-mono); font-size:13px; overflow-x:auto;">
+                  <span style="color:var(--fg-3);">$</span>
+                  <span style="color:var(--fg-0); white-space:nowrap;">curl -fsSL https://wcl.dev/install.sh | sh -s -- --pre</span>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; gap:14px; align-items:flex-start;">
+              <span style="flex:none; width:24px; height:24px; border-radius:999px; border:1px solid var(--border); display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; color:var(--fg-1); font-family:var(--font-mono);">2</span>
+              <div style="flex:1;">
+                <div style="font-size:14px; font-weight:500; color:var(--fg-0); margin-bottom:8px;">Scaffold a new book</div>
+                <div style="display:flex; align-items:center; gap:10px; border:1px solid var(--border); border-radius:6px; background:var(--bg-0); padding:11px 14px; font-family:var(--font-mono); font-size:13px; overflow-x:auto;">
+                  <span style="color:var(--fg-3);">$</span>
+                  <span style="color:var(--fg-0); white-space:nowrap;">wcl init book ./my-book</span>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; gap:14px; align-items:flex-start;">
+              <span style="flex:none; width:24px; height:24px; border-radius:999px; border:1px solid var(--border); display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; color:var(--fg-1); font-family:var(--font-mono);">3</span>
+              <div style="flex:1;">
+                <div style="font-size:14px; font-weight:500; color:var(--fg-0); margin-bottom:8px;">…or a presentation deck</div>
+                <div style="display:flex; align-items:center; gap:10px; border:1px solid var(--border); border-radius:6px; background:var(--bg-0); padding:11px 14px; font-family:var(--font-mono); font-size:13px; overflow-x:auto;">
+                  <span style="color:var(--fg-3);">$</span>
+                  <span style="color:var(--fg-0); white-space:nowrap;">wcl init presentation ./my-deck</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:12px; flex-wrap:wrap; padding-top:4px;">
+            <a href="getting_started.html" class="wcl-btn-primary" style="display:inline-flex; align-items:center; gap:8px; height:40px; padding:0 18px; border-radius:4px; background:var(--accent); color:var(--accent-contrast); font-weight:600; font-size:14px;">
+              Read the getting-started guide
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer style="border-top:1px solid var(--border); margin-top:48px; background:var(--bg-0);">
+    <div style="max-width:1120px; margin:0 auto; padding:48px 24px; display:grid; grid-template-columns:1.4fr 1fr 1fr 1fr; gap:32px;">
+      <div>
+        <a href="#top" style="display:flex; align-items:center; gap:10px; color:var(--fg-0); margin-bottom:14px;">
+          <span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:6px; background:var(--accent-bg); color:var(--accent-fg);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg></span>
+          <span style="font-family:var(--font-mono); font-weight:600; font-size:14px;">wcl.dev</span>
+        </a>
+        <p style="font-size:13px; line-height:1.6; color:var(--fg-2); margin:0; max-width:34ch;">A typed configuration and schema language. Open source, built in the open.</p>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fg-3); font-weight:600; margin-bottom:2px;">WCL</div>
+        <a href="index.html" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1);">Home</a>
+        <a href="features.html" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1);">Features</a>
+        <a href="getting_started.html" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1);">Getting started</a>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fg-3); font-weight:600; margin-bottom:2px;">Reference</div>
+        <a href="wskills/wcl/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wcl</a>
+        <a href="wskills/wdoc/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wdoc</a>
+        <a href="wskills/wskill/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wskill</a>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fg-3); font-weight:600; margin-bottom:2px;">Project</div>
+        <a href="https://github.com/wiltaylor/wcl" target="_blank" rel="noopener" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1);">GitHub</a>
+        <a href="https://github.com/wiltaylor/wcl/issues" target="_blank" rel="noopener" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1);">Issues</a>
+      </div>
+    </div>
+    <div style="border-top:1px solid var(--border-subtle);">
+      <div style="max-width:1120px; margin:0 auto; padding:18px 24px; display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; align-items:center;">
+        <span style="font-size:12px; color:var(--fg-3);">© 2026 WCL · Wil Taylor</span>
+        <span style="font-size:12px; color:var(--fg-3); display:inline-flex; align-items:center; gap:7px;"><span style="width:6px; height:6px; border-radius:999px; background:var(--warning); display:inline-block;"></span> Heavy development — not production ready</span>
+      </div>
+    </div>
+  </footer>
+
+</div>
+HTML
+
+let landing_js = <<JS
+<script>
+(function(){
+  var root = document.querySelector('.wcl-root');
+  if (!root) return;
+  try {
+    var saved = localStorage.getItem('wcl-theme');
+    if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+  } catch (e) {}
+  var btn = root.querySelector('[data-theme-toggle]');
+  if (btn) btn.addEventListener('click', function () {
+    var cur = root.getAttribute('data-theme');
+    if (!cur) cur = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+    var next = cur === 'light' ? 'dark' : 'light';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('wcl-theme', next); } catch (e) {}
+  });
+})();
+</script>
+JS
+
+// The landing template: the design's fonts go into <head> (so they load
+// before paint), then the scoped <style>, the markup, and the toggle script
+// render into <body>. `c.content` is intentionally ignored — the HTML design
+// carries its own copy; the page body exists only for the Markdown/PDF output.
+template landing {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([
+      wdoc_head_font("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"),
+      [
+        HtmlFundamental::Element {
+          tag: "style", id: none, class: none, attrs: none,
+          children: [ HtmlFundamental::Raw { html: landing_css } ],
+        },
+        HtmlFundamental::Raw { html: landing_html },
+        HtmlFundamental::Raw { html: landing_js },
+      ],
+    ])
+}

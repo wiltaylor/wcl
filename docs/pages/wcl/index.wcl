@@ -1,7 +1,9 @@
 // WCL landing page. `start = true` makes it the page served at `/`.
-// The site header already shows "WCL", so the page leads with the
-// motivation (Why WCL?) rather than a redundant H1.
-page index { sites = [:wcl]  title = "Why WCL?"  start = true
+// `template = :landing` renders the bespoke marketing design (HTML/CSS,
+// see landing.wcl) for the HTML build; that template ignores `c.content`,
+// so the wdoc blocks below exist purely so the Markdown / PDF backends —
+// which don't run the template — still get a sensible page.
+page index { sites = [:wcl]  title = "Why WCL?"  start = true  template = :landing
   callout "Heavy development — not production ready" {
     class = ["warning"]
     body  = "WCL is under **heavy active development** and is **not ready for production use**. The language, APIs, and `wdoc` output can change at any time without notice."

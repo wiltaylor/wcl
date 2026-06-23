@@ -104,6 +104,7 @@ site reference {
 }
 
 // WCL landing pages (sites = [:wcl]).
+import "./pages/wcl/landing.wcl"   // the `landing` template (index page design)
 import "./pages/wcl/index.wcl"
 import "./pages/wcl/features.wcl"
 import "./pages/wcl/getting-started.wcl"
