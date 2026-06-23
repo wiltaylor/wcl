@@ -219,8 +219,17 @@ function showComment(el,id,body){
 let allComments=[];
 function pageComments(){
  if(!pageEl)return [];
- const pf=pageEl.getAttribute('data-wcl-page-file'),pn=pageEl.getAttribute('data-wcl-page-name');
- return allComments.filter(c=>c.file===pf&&c.page===pn);
+ const pf=pageEl.getAttribute('data-wcl-page-file');
+ const pspan=pageEl.getAttribute('data-wcl-page-span');
+ // Match by the page block's own span (stable) rather than its name — a
+ // generated page (`$"entity_${id}"`) has no statically-resolvable name, so
+ // the comment record's `page` is null. Page-level comments live on the page
+ // block, so their span equals the page wrapper's; direct block comments are
+ // recognised by their inline pin being present in this page's DOM.
+ return allComments.filter(c=>
+   document.querySelector('[data-wcl-comment-id="'+c.id+'"]') ||
+   (c.file===pf && (c.span_start+'..'+c.span_end)===pspan)
+ );
 }
 async function refresh(){
  try{const r=await fetch('/__wdoc_comment');allComments=r.ok?await r.json():[];}catch(_){allComments=[];}
