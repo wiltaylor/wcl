@@ -32,6 +32,20 @@ let child_indexes = filter(flatten(map(indexes, fn(x: Index) -> list<Index> { x.
 let all_indexes   = flatten([indexes, child_indexes])
 let procedures = filter(procedures, fn(p: Procedure) -> bool { in_book(p.audience) })
 
+// Backlinks: every unit flattened to { name, href, related } so a unit page can
+// list the notes that point *at* it (the inverse of its own `related`). Built
+// from the audience-filtered lists above, so backlinks track the book's view.
+type UnitRef { name: utf8  href: utf8  related: list<identifier> }
+let all_units = flatten([
+  map(concepts,   fn(c: Concept)   -> UnitRef { { name: c.name,  href: $"concept_${c.id}", related: c.related } }),
+  map(entities,   fn(e: Entity)    -> UnitRef { { name: e.name,  href: $"entity_${e.id}",  related: e.related } }),
+  map(facts,      fn(f: Fact)      -> UnitRef { { name: f.title, href: $"fact_${f.id}",    related: f.related } }),
+  map(procedures, fn(p: Procedure) -> UnitRef { { name: p.title, href: $"process_${p.id}", related: p.related } }),
+])
+let referenced_by = fn(uid: identifier) -> list<UnitRef> {
+  filter(all_units, fn(u: UnitRef) -> bool { list_contains(u.related, uid) })
+}
+
 // --- site -------------------------------------------------------------------
 
 site book {
@@ -156,6 +170,8 @@ wdoc_repeater { each = concepts  as = :c
       wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
       wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
     }
+    wdoc_repeater { each = match len(referenced_by(c.id)) { 0 => [], _ => [true] }  as = :_rb  h2 "Referenced by" }
+    wdoc_repeater { each = referenced_by(c.id)  as = :u  p $"- [${u.name}](${u.href})" }
   }
 }
 
@@ -192,6 +208,8 @@ wdoc_repeater { each = entities  as = :e
       wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
       wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
     }
+    wdoc_repeater { each = match len(referenced_by(e.id)) { 0 => [], _ => [true] }  as = :_rb  h2 "Referenced by" }
+    wdoc_repeater { each = referenced_by(e.id)  as = :u  p $"- [${u.name}](${u.href})" }
   }
 }
 
@@ -226,6 +244,8 @@ wdoc_repeater { each = facts  as = :f
       wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
       wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
     }
+    wdoc_repeater { each = match len(referenced_by(f.id)) { 0 => [], _ => [true] }  as = :_rb  h2 "Referenced by" }
+    wdoc_repeater { each = referenced_by(f.id)  as = :u  p $"- [${u.name}](${u.href})" }
   }
 }
 
@@ -287,6 +307,8 @@ wdoc_repeater { each = procedures  as = :pr
       wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
       wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
     }
+    wdoc_repeater { each = match len(referenced_by(pr.id)) { 0 => [], _ => [true] }  as = :_rb  h2 "Referenced by" }
+    wdoc_repeater { each = referenced_by(pr.id)  as = :u  p $"- [${u.name}](${u.href})" }
   }
 }
 
