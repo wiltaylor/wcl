@@ -12,6 +12,11 @@ page wdoc_comments { sites = [:reference]  title = "Review Comments"
 
   p "The toolbar's **💬 N comments** button shows how many comments live on the current page; click it for a modal listing them all — each with its target, body and quote, a **Jump to** link (for block comments), an **Edit** button (change the note in place), and a **Resolve** button. Individual comments also appear inline as ✓ pins you can click."
 
+  callout "Fleeting notes" {
+    class = ["info"]
+    body  = "The toolbar also carries a **📝 Notes** button for *fleeting notes* — free-form quick captures that aren't tied to any block or page. Add, edit and delete them from its modal. They're stored beside the source in `.wdoc-fleeting.json` (gitignored — disposable, per-machine), not in the document."
+  }
+
   h2 "Where the comment is stored"
 
   p "Comments always attach to a *real, editable* source block, in one of three shapes:"

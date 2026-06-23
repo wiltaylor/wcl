@@ -69,6 +69,7 @@ body.wcl-picking [data-wcl-block].wcl-hot{outline:2px solid #4c8bf5;outline-offs
  font:600 13px system-ui;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.4)}
 .wcl-bar button.on{background:#e0a000;color:#1c1c1c}
 .wcl-bar button.wcl-count{background:#2f6f4f}
+.wcl-bar button.wcl-fleet{background:#6a5acd}
 .wcl-hint{position:fixed;top:0;left:0;right:0;z-index:99999;background:#4c8bf5;color:#fff;
  text-align:center;padding:7px;font:600 13px system-ui}
 [data-wcl-block].wcl-flash{outline:3px solid #e0a000!important;outline-offset:2px!important}
@@ -123,9 +124,10 @@ function showErr(p,txt){
  e.textContent='⚠ '+m;
 }
 // POST JSON; on a non-2xx response surface the error in `p` and return false.
-async function post(payload,p){
+async function post(payload,p,url){
+ const u=url||'/__wdoc_comment';
  let res;
- try{res=await fetch('/__wdoc_comment',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});}
+ try{res=await fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});}
  catch(err){showErr(p,String(err));return false;}
  if(!res.ok){showErr(p,await res.text());return false;}
  return true;
@@ -280,6 +282,48 @@ function openModal(){
  modal.addEventListener('click',e=>{if(e.target===modal)closeModal();});
 }
 
+// Fleeting notes — free-form quick captures, not tied to a page. Stored
+// server-side in .wdoc-fleeting.json; add / edit / delete from this panel.
+let fleetNotes=[];
+async function refreshFleet(){
+ try{const r=await fetch('/__wdoc_fleeting');fleetNotes=r.ok?await r.json():[];}catch(_){fleetNotes=[];}
+ fleetBtn.textContent='📝 '+fleetNotes.length+(fleetNotes.length===1?' note':' notes');
+}
+function openFleeting(){
+ closeModal();
+ modal=document.createElement('div');modal.className='wcl-modal';
+ const box=document.createElement('div');box.className='wcl-modal-box';
+ modal.appendChild(box);
+ const render=()=>{
+  box.innerHTML='<div class="wcl-modal-h"><span>Fleeting notes ('+fleetNotes.length+')</span><button data-x>Close</button></div>';
+  const add=document.createElement('div');add.className='wcl-c';
+  add.innerHTML='<textarea placeholder="Capture a fleeting note…"></textarea><div class="acts"><button data-a>Add note</button></div>';
+  const ta=add.querySelector('textarea');
+  add.querySelector('[data-a]').onclick=async()=>{const b=ta.value.trim();if(!b)return;if(await post({body:b},box,'/__wdoc_fleeting')){await refreshFleet();render();}};
+  box.appendChild(add);
+  if(!fleetNotes.length){const e=document.createElement('div');e.className='wcl-empty';e.textContent='No fleeting notes yet.';box.appendChild(e);}
+  for(const nt of fleetNotes){
+   const div=document.createElement('div');div.className='wcl-c';
+   const view=()=>{
+    div.innerHTML='<div>'+esc(nt.body)+'</div><div class="acts"><button class="ghost" data-e>Edit</button><button data-r>Delete</button></div>';
+    div.querySelector('[data-e]').onclick=edit;
+    div.querySelector('[data-r]').onclick=async()=>{if(await post({resolve_id:nt.id},box,'/__wdoc_fleeting')){await refreshFleet();render();}};
+   };
+   const edit=()=>{
+    div.innerHTML='<textarea></textarea><div class="acts"><button class="ghost" data-x>Cancel</button><button data-s>Save</button></div>';
+    const t=div.querySelector('textarea');t.value=nt.body;t.focus();
+    div.querySelector('[data-x]').onclick=view;
+    div.querySelector('[data-s]').onclick=async()=>{const b=t.value.trim();if(!b)return;if(await post({edit_id:nt.id,body:b},box,'/__wdoc_fleeting')){await refreshFleet();render();}};
+   };
+   view();box.appendChild(div);
+  }
+  box.querySelector('[data-x]').onclick=closeModal;
+ };
+ render();
+ document.body.appendChild(modal);
+ modal.addEventListener('click',e=>{if(e.target===modal)closeModal();});
+}
+
 const bar=document.createElement('div');bar.className='wcl-bar';
 const countBtn=document.createElement('button');countBtn.className='wcl-count';countBtn.textContent='💬 …';
 countBtn.onclick=openModal;
@@ -287,10 +331,14 @@ const selBtn=document.createElement('button');selBtn.textContent='🎯 Comment o
 selBtn.onclick=()=>setPick(!picking);
 const pageBtn=document.createElement('button');pageBtn.textContent='💬 Comment on page';
 pageBtn.onclick=()=>{setPick(false);if(pageEl)openForm(pageEl,true);};
+const fleetBtn=document.createElement('button');fleetBtn.className='wcl-fleet';fleetBtn.textContent='📝 …';
+fleetBtn.onclick=openFleeting;
 if(pageEl)bar.appendChild(countBtn);
 bar.appendChild(selBtn);if(pageEl)bar.appendChild(pageBtn);
+bar.appendChild(fleetBtn);
 document.body.appendChild(bar);
 refresh();
+refreshFleet();
 })();"#;
 
 /// Shared between the rebuild loop and the request handlers.
@@ -450,6 +498,10 @@ pub(crate) async fn serve(
             .route(
                 "/__wdoc_comment",
                 get(handle_comment_list).post(handle_comment_post),
+            )
+            .route(
+                "/__wdoc_fleeting",
+                get(handle_fleeting_list).post(handle_fleeting_post),
             );
     }
     let app = app
@@ -655,6 +707,84 @@ fn json_response(status: StatusCode, value: &serde_json::Value) -> Response {
 
 fn json_error(status: StatusCode, msg: &str) -> Response {
     json_response(status, &serde_json::json!({ "error": msg }))
+}
+
+/// Fleeting notes live in a single JSON file beside the served source — they are
+/// free-form quick captures, not tied to any block, so they don't belong in the
+/// document. `.wcl`-only watching means writing it never triggers a rebuild.
+fn fleeting_path(state: &ServeState) -> PathBuf {
+    state.watch_root.join(".wdoc-fleeting.json")
+}
+
+fn read_fleeting(state: &ServeState) -> Vec<serde_json::Value> {
+    match std::fs::read_to_string(fleeting_path(state)) {
+        Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// A short, unique-enough fleeting-note id.
+fn fleeting_id() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(1);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    format!("f{:x}", t ^ n.wrapping_mul(0x9E37_79B1))
+}
+
+/// List the fleeting notes as a JSON array.
+async fn handle_fleeting_list(State(state): State<Arc<ServeState>>) -> Response {
+    json_response(
+        StatusCode::OK,
+        &serde_json::Value::Array(read_fleeting(&state)),
+    )
+}
+
+/// Add a fleeting note (or, with `edit_id` / `resolve_id`, edit / delete one).
+async fn handle_fleeting_post(State(state): State<Arc<ServeState>>, body: String) -> Response {
+    let v: serde_json::Value = match serde_json::from_str(&body) {
+        Ok(v) => v,
+        Err(e) => return json_error(StatusCode::BAD_REQUEST, &format!("bad json: {e}")),
+    };
+    let str_of = |k: &str| v.get(k).and_then(serde_json::Value::as_str);
+    let mut notes = read_fleeting(&state);
+
+    if let Some(id) = str_of("resolve_id") {
+        let before = notes.len();
+        notes.retain(|n| n.get("id").and_then(serde_json::Value::as_str) != Some(id));
+        if notes.len() == before {
+            return json_error(StatusCode::NOT_FOUND, "no such note");
+        }
+    } else if let Some(id) = str_of("edit_id") {
+        let Some(text) = str_of("body").filter(|s| !s.trim().is_empty()) else {
+            return json_error(StatusCode::BAD_REQUEST, "missing note body");
+        };
+        let mut found = false;
+        for n in &mut notes {
+            if n.get("id").and_then(serde_json::Value::as_str) == Some(id) {
+                n["body"] = serde_json::json!(text);
+                found = true;
+            }
+        }
+        if !found {
+            return json_error(StatusCode::NOT_FOUND, "no such note");
+        }
+    } else {
+        let Some(text) = str_of("body").filter(|s| !s.trim().is_empty()) else {
+            return json_error(StatusCode::BAD_REQUEST, "missing note body");
+        };
+        notes.push(serde_json::json!({ "id": fleeting_id(), "body": text }));
+    }
+
+    let json = serde_json::to_string_pretty(&serde_json::Value::Array(notes))
+        .expect("serde_json::Value always serializes");
+    match std::fs::write(fleeting_path(&state), json) {
+        Ok(()) => json_response(StatusCode::OK, &serde_json::json!({ "ok": true })),
+        Err(e) => json_error(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
+    }
 }
 
 /// Resolve any request path to a file under the output tree and serve

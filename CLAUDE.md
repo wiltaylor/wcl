@@ -88,7 +88,7 @@ connectable by edges), not a page block. Everything deeper → the doc page or t
 | templates / presentation | `src/render/` | `templates.wcl`, `presentation.wcl` | `sites.wcl`, `pages.wcl` |
 | website template (named `region`s + `<head>` assets) | `src/build.rs` (regions partition, `head_extra`, `assets` folder copy), `src/render/html.rs` (`Rendered{body,head}`, `render_page` head_extra), `src/render/lower.rs` (`Head` fundamental) | `website.wcl` | `websites.wcl` |
 | block visibility (`@only`/`@except`) | `src/visibility.rs` | `visibility.wcl` | `visibility.wcl` |
-| review comments (`@comment`, `wcl wdoc comments` + `serve --comment`) | `src/comments.rs`, dev server `crates/wcl/src/serve.rs` | `comment.wcl` | `comments.wcl` |
+| review comments + fleeting notes (`@comment`, `wcl wdoc comments` + `serve --comment`; fleeting notes in `.wdoc-fleeting.json`) | `src/comments.rs`, dev server `crates/wcl/src/serve.rs` | `comment.wcl` | `comments.wcl` |
 | PDF backend | `src/pdf/` | — | (memory: wdoc-pdf-backend) |
 | Markdown backend | `src/markdown/` | — | `markdown.wcl` |
 | skill folders (`:ai_skill`) | `src/markdown/skill.rs` | (`skill` block in `templates.wcl`) | `skills.wcl` |
