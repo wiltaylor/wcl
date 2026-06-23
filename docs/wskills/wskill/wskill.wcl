@@ -50,16 +50,17 @@ wcl.wskill::skill {
 // No external sources — this wskill is self-describing (it documents the format it
 // is built with), so there is nothing upstream to track for the update workflow.
 
-// Cross-reference to the WCL/wdoc skill the toolchain rests on. Planned: no wskill
-// exists for it yet, so this renders as a backlog stub (a validator warning).
+// Cross-references to the WCL/wdoc wskills the toolchain rests on. These now
+// exist as peer wskills in this collection, so they resolve rather than render
+// as backlog stubs.
 wskill_ref wcl {
   name     = "wcl"
-  relation = "prerequisite — the language the format is built on"
-  status   = "planned"
+  relation = "peer — the language the format is built on"
+  status   = "exists"
 }
 
 wskill_ref wcl {
   name     = "wdoc"
-  relation = "prerequisite — refence for wdoc rendering language"
-  status   = "planned"
+  relation = "peer — reference for the wdoc rendering language"
+  status   = "exists"
 }

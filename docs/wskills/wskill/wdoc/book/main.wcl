@@ -79,7 +79,7 @@ site book {
 
 // --- 1. Overview ------------------------------------------------------------
 
-@comment(id = "ck5rh6m9", body = "These are not planned anymore they are peers to this wskill. Can you please update this.", loc = "5", target = "table — \"NameRelationStatusSourcewclprerequisite — the language the f\"") page index { start = true
+page index { start = true
   h1 $"${topic.name}"
   callout "Summary" { class = ["info"]  body = $"${topic.summary}" }
   table {
