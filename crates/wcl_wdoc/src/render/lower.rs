@@ -377,6 +377,36 @@ pub(crate) fn render_svg_variant(
     }
 }
 
+/// If `value` is an `HtmlFundamental::Head`, render its `children` (the
+/// head fragment) and return it; otherwise `None`. Lets `render_template`
+/// hoist a template's top-level head fundamentals into the page `<head>`.
+pub(crate) fn head_fundamental_html(
+    doc: &Document,
+    value: &Value,
+    patterns: &InlinePatterns,
+) -> Option<String> {
+    let Value::Variant {
+        variant, payload, ..
+    } = value
+    else {
+        return None;
+    };
+    if kind_for_variant(variant) != "head" {
+        return None;
+    }
+    let VariantPayload::Record(map) = payload else {
+        return Some(String::new());
+    };
+    let head = match map.get("children") {
+        Some(Value::List(items)) => items
+            .iter()
+            .map(|v| render_html_variant(doc, v, 0, patterns))
+            .collect(),
+        _ => String::new(),
+    };
+    Some(head)
+}
+
 pub(crate) fn render_html_variant(
     doc: &Document,
     value: &Value,
@@ -408,6 +438,10 @@ pub(crate) fn render_html_variant(
         "table" => render_table_payload(map),
         "element" => render_element_payload(doc, map, depth, patterns),
         "raw" => render_raw_payload(map),
+        // A `Head` reached in body context renders to nothing — its
+        // children are hoisted into `<head>` only when the fundamental is
+        // returned at a template's top level (see `head_fundamental_html`).
+        "head" => String::new(),
         // An icon, resolved against the registry so it records sprite
         // usage. Emitted by the stdlib `callout` lowering (and available
         // to any user HTML lowering).

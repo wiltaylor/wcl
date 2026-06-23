@@ -4045,6 +4045,187 @@ page plain {
     );
 }
 
+// Split a rendered page into its `<head>` and `<body>` halves, so a test
+// can assert head-only / body-only placement.
+fn split_head_body(html: &str) -> (&str, &str) {
+    html.split_once("</head>").expect("page has a </head>")
+}
+
+#[test]
+fn website_template_renders_regions_and_content() {
+    // The `:website` template splits a page into named `region`s and the
+    // default content: a `region "hero"` lands in the hero section, a
+    // `region "sidebar"` makes a two-column layout, and everything else
+    // is the default content `<main>`.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("site.wcl");
+    write_fixture(
+        &src,
+        r#"
+site { default_template = :website  title = "Acme" }
+page index {
+  region "hero" {
+    h1 "Welcome" {}
+  }
+  region "sidebar" {
+    p "Side note." {}
+  }
+  h2 "Body heading" {}
+}
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // The hero region renders inside the hero section.
+    assert!(
+        html.contains("<section class=\"ws-hero\"><p class=\"heading-1\"><span>Welcome</span></p>"),
+        "hero region should fill the hero section:\n{html}"
+    );
+    // A sidebar region switches the layout to two columns and renders the
+    // region in an <aside>.
+    assert!(
+        html.contains("class=\"ws-layout has-aside\""),
+        "a sidebar region should switch to the two-column layout:\n{html}"
+    );
+    assert!(
+        html.contains("<aside class=\"ws-aside\"><p>Side note.</p>"),
+        "sidebar region should render in the aside:\n{html}"
+    );
+    // The non-region blocks form the default content <main>.
+    assert!(
+        html.contains("<main class=\"ws-main\"><p class=\"heading-2\"><span>Body heading</span>"),
+        "non-region blocks should be the default content:\n{html}"
+    );
+    // Region content must not be duplicated into the default content <main>.
+    let main = html
+        .split_once("<main class=\"ws-main\">")
+        .and_then(|(_, rest)| rest.split_once("</main>"))
+        .map(|(inner, _)| inner)
+        .unwrap_or("");
+    assert!(
+        !main.contains("Welcome") && !main.contains("Side note."),
+        "region content must not leak into the default content <main>:\n{main}"
+    );
+}
+
+#[test]
+fn site_head_fields_inject_link_and_script_tags() {
+    // A site's `stylesheets` / `fonts` become `<link rel="stylesheet">`
+    // and `scripts` become deferred `<script>`, all inside <head> — never
+    // in the <body>.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("site.wcl");
+    write_fixture(
+        &src,
+        r#"
+site {
+  default_template = :website
+  title       = "Acme"
+  stylesheets = ["assets/site.css"]
+  scripts     = ["assets/app.js"]
+  fonts       = ["https://fonts.example/Inter.css"]
+}
+page index { h1 "Hi" {} }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    let (head, body) = split_head_body(&html);
+    assert!(
+        head.contains("<link rel=\"stylesheet\" href=\"assets/site.css\">"),
+        "stylesheet link should be in <head>:\n{head}"
+    );
+    assert!(
+        head.contains("<link rel=\"stylesheet\" href=\"https://fonts.example/Inter.css\">"),
+        "font link should be in <head>:\n{head}"
+    );
+    assert!(
+        head.contains("<script src=\"assets/app.js\" defer></script>"),
+        "script tag should be in <head>:\n{head}"
+    );
+    // None of the head assets may leak into the body.
+    assert!(
+        !body.contains("assets/site.css") && !body.contains("assets/app.js"),
+        "head assets must not appear in <body>:\n{body}"
+    );
+}
+
+#[test]
+fn template_head_fundamental_hoisted_to_head() {
+    // A template that returns an `HtmlFundamental::Head` at the top level
+    // has its children hoisted into <head>; a `Head` nested inside the
+    // body renders to nothing (it must not leak into <head> or <body>).
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("site.wcl");
+    write_fixture(
+        &src,
+        r##"
+site { default_template = :custom  title = "Acme" }
+template custom {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([
+      wdoc_head_stylesheet("theme.css"),
+      [ HtmlFundamental::Element {
+          tag: "main", id: none, class: none, attrs: none,
+          children: [
+            HtmlFundamental::Raw { html: c.content },
+            HtmlFundamental::Head { children: [ HtmlFundamental::Raw { html: "<!--LEAK-->" } ] },
+          ],
+      } ],
+    ])
+}
+page index { h1 "Hi" {} }
+"##,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    let (head, body) = split_head_body(&html);
+    assert!(
+        head.contains("<link rel=\"stylesheet\" href=\"theme.css\">"),
+        "top-level Head should be hoisted into <head>:\n{head}"
+    );
+    assert!(
+        !body.contains("<!--LEAK-->") && !head.contains("<!--LEAK-->"),
+        "a Head nested in the body must render to nothing:\n{html}"
+    );
+}
+
+#[test]
+fn website_assets_folder_copied_verbatim() {
+    // A site's `assets` folders are copied verbatim (recursively) into the
+    // output, so an externally-built bundle ships unchanged.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let dist = tmp.path().join("dist");
+    std::fs::create_dir_all(dist.join("nested")).expect("mkdir dist");
+    std::fs::write(dist.join("app.js"), "console.log(1)").expect("write app.js");
+    std::fs::write(dist.join("nested").join("x.css"), "body{}").expect("write nested");
+    let src = tmp.path().join("site.wcl");
+    write_fixture(
+        &src,
+        r#"
+site { default_template = :website  title = "Acme"  assets = ["dist"] }
+page index { h1 "Hi" {} }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    assert_eq!(
+        std::fs::read_to_string(out.path().join("dist/app.js")).expect("app.js copied"),
+        "console.log(1)"
+    );
+    assert!(
+        out.path().join("dist/nested/x.css").exists(),
+        "nested asset files should be copied too"
+    );
+}
+
 #[test]
 fn template_uses_user_defined_part_function() {
     // A "part" is just a top-level function returning fundamentals; a

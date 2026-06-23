@@ -17,6 +17,12 @@ namespace wdoc
 
 type PageRef { name: utf8  href: utf8 }
 
+// A named content region of the page being rendered, handed to a
+// template. `content` is the region's already-rendered HTML (its wdoc
+// blocks lowered). Built by the renderer from the page's `region "name"
+// { … }` blocks; pull one out by name with `wdoc_region(c, "name")`.
+type Region { name: utf8  content: utf8 }
+
 // A node in the resolved table of contents handed to templates. Built
 // by the renderer from the `site`'s `toc` block. `href` is empty for a
 // grouping heading (a `chapter` with no `page`); `current` is true for
@@ -50,6 +56,8 @@ type TemplateCtx {
   title:        utf8
   @doc("The current page's name.")
   page_name:    utf8
+  @doc("The page's named content regions (its `region \"name\" { … }` blocks), each already rendered to HTML. Pull one out by name with `wdoc_region(c, \"name\")`. Empty on pages with no regions.")
+  regions:      list<Region>
   @doc("Every page in the current site, in source order (for building navigation).")
   pages:        list<PageRef>
   @doc("The book TOC tree; flat (one entry per page) when the site declares no `toc`.")
@@ -147,6 +155,22 @@ type SiteConfig {
   // Absent ⇒ a default WCL icon ships instead.
   @doc("Path to a favicon image (svg/png/ico), resolved relative to the document and copied into `_wdoc/`. Absent ⇒ a default WCL icon is used.")
   icon:             utf8?
+  // Extra `<head>` assets for a custom (e.g. `website`) layout. Each href
+  // is emitted verbatim, so it may be a URL, a path under a copied `assets`
+  // folder, or a `file` shipped into the output. `stylesheets` / `fonts`
+  // become `<link rel="stylesheet">`; `scripts` become deferred `<script>`.
+  @doc("External stylesheet hrefs added to every page `<head>` as `<link rel=\"stylesheet\">` (verbatim — URL, copied asset, or shipped `file`).")
+  stylesheets:      list<utf8>?
+  @doc("Script srcs added to every page `<head>` as deferred `<script src=… defer>` (verbatim hrefs).")
+  scripts:          list<utf8>?
+  @doc("Web-font stylesheet hrefs added to every page `<head>` as `<link rel=\"stylesheet\">` (e.g. a Google Fonts URL).")
+  fonts:            list<utf8>?
+  // Folders copied verbatim into the site output directory (recursively),
+  // for assets built by an external tool (a Vite/webpack `dist/`, etc.).
+  // Each entry is resolved relative to the document; reference the copied
+  // files from `stylesheets` / `scripts` or your layout by their output path.
+  @doc("Folders copied verbatim (recursively) into the site output — e.g. a Vite `dist/`. Resolved relative to the document; reference copied files by their output path.")
+  assets:           list<utf8>?
   // Render a light/dark toggle (the `book` template shows it). Pair
   // with `class` blocks that declare `dark {}` / `light {}` modes.
   @doc("When `true`, adds a light/dark toggle button.")

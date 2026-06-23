@@ -25,6 +25,7 @@ import <components.wcl>       // wdoc_component / wdoc_slot / wdoc_body / wdoc_r
 import <project.wcl>          // body (addressable content) + project (render by reference)
 import <templates.wcl>        // page templates (webpage / book) + parts
 import <presentation.wcl>     // presentation deck (slides + sections + template)
+import <website.wcl>          // website template (named regions + head assets)
 import <inline.wcl>           // inline-span union + pattern type
 import <inline-patterns.wcl>  // built-in inline patterns (bold/italic/…)
 import <icons.wcl>            // iconset / icon_def / icon

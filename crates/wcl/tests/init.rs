@@ -65,6 +65,65 @@ fn multifolder_templates_scaffold_check_and_build() {
     }
 }
 
+/// The `website` scaffold has its own layout (a custom raw-HTML template +
+/// shipped assets), so it gets a dedicated check rather than the shared
+/// multi-folder loop above.
+#[test]
+fn init_website_scaffold_checks_and_builds() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let dest = tmp.path().join("proj");
+    wcl()
+        .args(["init", "website"])
+        .arg(&dest)
+        .args(["-D", "name=Acme Co", "--defaults"])
+        .assert()
+        .success();
+
+    for rel in [
+        "main.wcl",
+        "theme.wcl",
+        "content.wcl",
+        "assets/site.css",
+        "assets/app.js",
+    ] {
+        assert!(dest.join(rel).exists(), "website: missing {rel}");
+    }
+    let main = std::fs::read_to_string(dest.join("main.wcl")).expect("read main.wcl");
+    assert!(
+        main.contains("title       = \"Acme Co\""),
+        "website: site title not substituted: {main}"
+    );
+
+    wcl()
+        .arg("check")
+        .arg(dest.join("main.wcl"))
+        .assert()
+        .success();
+    wcl()
+        .args(["wdoc", "build"])
+        .arg(dest.join("main.wcl"))
+        .arg("--out")
+        .arg(dest.join("_site"))
+        .assert()
+        .success();
+
+    // The build wires the design assets into <head> and slots the page's
+    // regions + content into the custom layout.
+    let html = std::fs::read_to_string(dest.join("_site/index.html")).expect("read index.html");
+    assert!(
+        html.contains("assets/site.css") && html.contains("assets/app.js"),
+        "website: head assets not linked: {html}"
+    );
+    assert!(
+        html.contains("Build something great"),
+        "website: hero region not rendered: {html}"
+    );
+    assert!(
+        dest.join("_site/assets/site.css").exists(),
+        "website: assets folder not copied into the build"
+    );
+}
+
 #[test]
 fn init_minimal_with_default_answer() {
     let tmp = TempDir::new().expect("mkdir tempdir");

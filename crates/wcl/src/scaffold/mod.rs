@@ -36,6 +36,7 @@ const BUILTIN_TEMPLATES: &[(&str, &str)] = &[
     ("minimal", include_str!("templates/minimal.wcl")),
     ("page", include_str!("templates/page.wcl")),
     ("book", include_str!("templates/book.wcl")),
+    ("website", include_str!("templates/website.wcl")),
     ("presentation", include_str!("templates/presentation.wcl")),
     ("wskill", include_str!("templates/wskill.wcl")),
     (

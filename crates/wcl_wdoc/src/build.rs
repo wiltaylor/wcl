@@ -10,8 +10,8 @@ use crate::inline::InlinePatterns;
 use crate::render::{
     DeckSectionNode, MAX_LOWER_DEPTH, MenuNode, TocNode, escape_html, expand_component_children,
     expand_instance_children, expand_repeater_children, field_bool, field_id, field_symbol,
-    field_symbol_list_opt, field_utf8, find_template, label_string, read_deck, read_menu, read_toc,
-    render_block, render_class, render_page, render_template, site_theme_css,
+    field_symbol_list_opt, field_utf8, field_utf8_list, find_template, label_string, read_deck,
+    read_menu, read_toc, render_block, render_class, render_page, render_template, site_theme_css,
 };
 
 /// The wdoc standard library, embedded in the binary and registered
@@ -47,6 +47,7 @@ pub fn schema_registry() -> Registry {
         "wdoc/presentation.wcl",
         include_str!("../lib/presentation.wcl"),
     );
+    r.register("wdoc/website.wcl", include_str!("../lib/website.wcl"));
     r.register("wdoc/inline.wcl", include_str!("../lib/inline.wcl"));
     r.register(
         "wdoc/inline-patterns.wcl",
@@ -1099,6 +1100,29 @@ fn build_site(
         }
     };
 
+    // Extra `<head>` assets a custom (e.g. `website`) layout pulls in:
+    // `stylesheets` + `fonts` become `<link rel="stylesheet">`, `scripts`
+    // become deferred `<script>`. Hrefs are emitted verbatim (escaped),
+    // so they may be URLs, copied `assets`, or shipped `file`s.
+    let head_extra = site_head_extra(spec.block.as_ref());
+
+    // Folders copied verbatim into this site's output (e.g. a Vite `dist/`),
+    // so a layout can reference externally-built CSS/JS by its output path.
+    for entry in spec
+        .block
+        .as_ref()
+        .map(|b| field_utf8_list(b, "assets"))
+        .unwrap_or_default()
+    {
+        let src = match base_dir {
+            Some(dir) => dir.join(&entry),
+            None => PathBuf::from(&entry),
+        };
+        let dest = out_dir.join(&entry);
+        copy_dir_all(&src, &dest)
+            .map_err(|e| BuildError::Io(e, format!("copy assets folder {entry}")))?;
+    }
+
     // Everything the page-rendering paths read but never mutate, resolved
     // once and shared by the presentation and per-page paths below.
     let ctx = PageRenderCtx {
@@ -1108,6 +1132,7 @@ fn build_site(
         out_dir,
         css: &css,
         favicon: &favicon,
+        head_extra: &head_extra,
         inline_patterns: &inline_patterns,
         default_template: default_template.as_deref(),
         site_title: site_title.as_deref(),
@@ -1245,6 +1270,9 @@ struct PageRenderCtx<'a> {
     out_dir: &'a Path,
     css: &'a str,
     favicon: &'a str,
+    // Extra `<head>` HTML from the site's `stylesheets` / `scripts` /
+    // `fonts` fields, spliced into every page before `</head>`.
+    head_extra: &'a str,
     inline_patterns: &'a InlinePatterns,
     default_template: Option<&'a str>,
     site_title: Option<&'a str>,
@@ -1336,10 +1364,12 @@ fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError>
         .map(str::to_string)
         .or_else(|| ctx.spec.name.clone())
         .unwrap_or_else(|| "Presentation".to_string());
-    let mut body = render_template(
+    let mut rendered = render_template(
         ctx.doc,
         &tmpl,
         "",
+        // A presentation has no named regions; it lays out the `deck`.
+        Value::List(std::sync::Arc::new(Vec::new())),
         &title,
         "",
         ctx.pages,
@@ -1353,15 +1383,18 @@ fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError>
         ctx.inline_patterns,
     );
     // The slides may use the same interactive assets a normal page can.
-    ctx.players.inject(&mut body);
+    ctx.players.inject(&mut rendered.body);
     // The deck keyboard-navigation player.
     write_asset(
         ctx.out_dir,
         "presentation.js",
         crate::render::PRESENTATION_PLAYER_JS,
     )?;
-    body.push_str("\n<script src=\"_wdoc/presentation.js\" defer></script>\n");
-    let html = render_page(&title, ctx.css, &body, Some(ctx.favicon));
+    rendered
+        .body
+        .push_str("\n<script src=\"_wdoc/presentation.js\" defer></script>\n");
+    let head = format!("{}{}", ctx.head_extra, rendered.head);
+    let html = render_page(&title, ctx.css, &rendered.body, Some(ctx.favicon), &head);
     let out_path = ctx.out_dir.join("index.html");
     fs::write(&out_path, html)
         .map_err(|e| BuildError::Io(e, format!("write {}", out_path.display())))?;
@@ -1405,22 +1438,51 @@ fn build_normal_page(
         });
     }
 
-    // The `content` part: this page's own blocks, rendered exactly
-    // as before (trailing newline per block).
+    // Split the page's blocks into the default `content` part (everything
+    // outside a `region`) and the named `region "name" { … }` regions,
+    // each rendered separately so a template can slot them independently.
+    // A `region`'s inline label is its name; its children are wdoc blocks.
     let mut content = String::new();
-    for b in page
-        .blocks()
-        .filter_map(|b| render_block(ctx.doc, &b, ctx.inline_patterns, ctx.base_dir))
-    {
-        content.push_str(&b);
-        content.push('\n');
+    let mut regions: Vec<(String, String)> = Vec::new();
+    for b in page.blocks() {
+        if b.kind() == "region" {
+            let name = label_string(&b).unwrap_or_default();
+            let mut html = String::new();
+            for cb in b
+                .blocks()
+                .filter_map(|c| render_block(ctx.doc, &c, ctx.inline_patterns, ctx.base_dir))
+            {
+                html.push_str(&cb);
+                html.push('\n');
+            }
+            regions.push((name, html));
+            continue;
+        }
+        if let Some(s) = render_block(ctx.doc, &b, ctx.inline_patterns, ctx.base_dir) {
+            content.push_str(&s);
+            content.push('\n');
+        }
     }
+    let regions_val = Value::list(
+        regions
+            .iter()
+            .map(|(name, html)| {
+                let mut m = BTreeMap::new();
+                m.insert("name".to_string(), Value::Utf8(name.clone()));
+                m.insert("content".to_string(), Value::Utf8(html.clone()));
+                Value::Record {
+                    ty: vec!["Region".to_string()],
+                    fields: std::sync::Arc::new(m),
+                }
+            })
+            .collect(),
+    );
 
     // Resolve the template: the page's own `template` overrides the
     // site `default_template`. None ⇒ render content bare.
     let template_name =
         field_symbol(page, "template").or_else(|| ctx.default_template.map(str::to_string));
-    let mut body = match template_name {
+    let mut rendered = match template_name {
         // `:ai_skill` is a Markdown-only target, not an HTML template.
         Some(name) if name == "ai_skill" => {
             return Err(BuildError::BadPage(
@@ -1441,6 +1503,7 @@ fn build_normal_page(
                 ctx.doc,
                 &tmpl,
                 &content,
+                regions_val,
                 &title,
                 &page_name,
                 ctx.pages,
@@ -1454,9 +1517,12 @@ fn build_normal_page(
                 ctx.inline_patterns,
             )
         }
-        None => content.clone(),
+        None => crate::render::Rendered {
+            body: content.clone(),
+            head: String::new(),
+        },
     };
-    ctx.players.inject(&mut body);
+    ctx.players.inject(&mut rendered.body);
     // Browser tab title: the page's own `title` (else its name), suffixed
     // with the site title as `<page> — <site>` when the site sets one.
     let page_title = field_utf8(page, "title").unwrap_or_else(|| page_name.clone());
@@ -1464,7 +1530,16 @@ fn build_normal_page(
         Some(st) if st != page_title.as_str() => format!("{page_title} — {st}"),
         _ => page_title,
     };
-    let html = render_page(&doc_title, ctx.css, &body, Some(ctx.favicon));
+    // The site-level head assets come first, then any head the template
+    // emitted (so a template can override the site's links).
+    let head = format!("{}{}", ctx.head_extra, rendered.head);
+    let html = render_page(
+        &doc_title,
+        ctx.css,
+        &rendered.body,
+        Some(ctx.favicon),
+        &head,
+    );
 
     let out_path = ctx.out_dir.join(format!("{page_name}.html"));
     fs::write(&out_path, html)
@@ -1634,9 +1709,55 @@ fn write_chooser_index(
     // owns it), written into the root `_wdoc/`.
     write_default_favicon(out_dir)?;
     let favicon = format!("{}/favicon.svg", crate::terminal::ASSET_DIR);
-    let html = render_page("index", css, &body, Some(&favicon));
+    let html = render_page("index", css, &body, Some(&favicon), "");
     let path = out_dir.join("index.html");
     fs::write(&path, html).map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
+    Ok(())
+}
+
+/// Build the verbatim `<head>` HTML for a site's `stylesheets` / `fonts`
+/// (`<link rel="stylesheet">`) and `scripts` (deferred `<script>`) fields.
+/// Hrefs are HTML-escaped but otherwise emitted as authored, so they may be
+/// URLs, paths under a copied `assets` folder, or shipped `file`s. Empty
+/// when the site (or its block) declares none.
+fn site_head_extra(site: Option<&Block<'_>>) -> String {
+    let Some(site) = site else {
+        return String::new();
+    };
+    let mut out = String::new();
+    for href in field_utf8_list(site, "stylesheets")
+        .iter()
+        .chain(field_utf8_list(site, "fonts").iter())
+    {
+        out.push_str(&format!(
+            "<link rel=\"stylesheet\" href=\"{}\">",
+            escape_html(href)
+        ));
+    }
+    for src in field_utf8_list(site, "scripts") {
+        out.push_str(&format!(
+            "<script src=\"{}\" defer></script>",
+            escape_html(&src)
+        ));
+    }
+    out
+}
+
+/// Recursively copy the directory tree at `src` into `dest`, creating
+/// `dest` (and parents) as needed. Used to ship a site's `assets` folders
+/// (an externally-built `dist/`, etc.) verbatim into the output.
+fn copy_dir_all(src: &Path, dest: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dest)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let from = entry.path();
+        let to = dest.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_all(&from, &to)?;
+        } else {
+            fs::copy(&from, &to)?;
+        }
+    }
     Ok(())
 }
 

@@ -69,6 +69,7 @@ site reference {
     chapter "wdoc" {
       chapter "Overview"               { page = wdoc_overview }
       chapter "Sites & Templates"      { page = wdoc_sites }
+      chapter "Websites"               { page = wdoc_websites }
       chapter "Pages"                  { page = wdoc_pages }
       chapter "Including sub-sites"    { page = wdoc_includes }
       chapter "Block Visibility"       { page = wdoc_visibility }
@@ -113,6 +114,7 @@ import "./pages/reference/intro.wcl"
 // Reference book — wdoc section.
 import "./pages/reference/wdoc/overview.wcl"
 import "./pages/reference/wdoc/sites.wcl"
+import "./pages/reference/wdoc/websites.wcl"
 import "./pages/reference/wdoc/pages.wcl"
 import "./pages/reference/wdoc/includes.wcl"
 import "./pages/reference/wdoc/visibility.wcl"

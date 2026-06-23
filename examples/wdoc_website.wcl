@@ -1,0 +1,86 @@
+// wdoc `website` template — a Hugo-style site where you own the HTML/CSS
+// design and slot wdoc-rendered content into it.
+//
+//   wcl wdoc build --out _site examples/wdoc_website.wcl
+//
+// The page authors named `region`s (hero / sidebar / footer) plus default
+// content; the custom `landing` layout — authored as a raw-HTML heredoc
+// with `${…}` slots — places each region and adds `<head>` content with the
+// `wdoc_head_*` helpers. (A real site would link an external stylesheet via
+// the site's `stylesheets` field; here the design CSS is inlined so the
+// example is a single self-contained file.)
+import <wdoc.wcl>
+
+site web {
+  default_template = :landing
+  title            = "Nimbus"
+  root             = true
+  fonts            = ["https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap"]
+}
+
+// The design's CSS, inlined as a body <style> for a single-file example.
+let landing_css = <<CSS
+  body { font-family: Inter, system-ui, sans-serif; }
+  .nav { display: flex; align-items: center; justify-content: space-between; padding: 1rem 2rem; border-bottom: 1px solid var(--wdoc-border); position: sticky; top: 0; background: var(--wdoc-bg); }
+  .nav .brand { font-weight: 700; font-size: 1.2rem; }
+  .hero { text-align: center; padding: 5rem 2rem; background: color-mix(in srgb, var(--wdoc-accent) 12%, var(--wdoc-bg)); }
+  .hero h1 { font-size: 3rem; margin: 0 0 .5rem; }
+  .wrap { display: grid; grid-template-columns: minmax(0,1fr) 15rem; gap: 2.5rem; max-width: 64rem; margin: 0 auto; padding: 3rem 2rem; }
+  .foot { text-align: center; padding: 2rem; opacity: .7; border-top: 1px solid var(--wdoc-border); }
+  CSS
+
+// The custom layout: paste your design and mark the slots. Head content
+// comes from the `wdoc_head_*` helpers (top-level `Head` fundamentals)
+// plus the site's `fonts` field.
+template landing {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([
+      wdoc_head_meta("viewport", "width=device-width, initial-scale=1"),
+      wdoc_head_meta("description", "Nimbus — ship faster."),
+      [
+        HtmlFundamental::Element {
+          tag: "style", id: none, class: none, attrs: none,
+          children: [ HtmlFundamental::Raw { html: landing_css } ],
+        },
+        HtmlFundamental::Raw { html: $<<HTML
+          <header class="nav">
+            <span class="brand">${c.title}</span>
+            <nav><a href="index.html">Home</a></nav>
+          </header>
+          <section class="hero">${wdoc_region(c, "hero")}</section>
+          <div class="wrap">
+            <main>${c.content}</main>
+            <aside>${wdoc_region(c, "sidebar")}</aside>
+          </div>
+          <footer class="foot">${wdoc_region(c, "footer")}</footer>
+        HTML
+        },
+      ],
+    ])
+}
+
+page index { sites = [:web]  start = true
+  region "hero" {
+    h1 "Ship faster with Nimbus"
+    p "The deployment platform that gets out of your way."
+  }
+
+  region "sidebar" {
+    h3 "On this page"
+    list {
+      li "Why Nimbus"
+      li "How it works"
+    }
+  }
+
+  region "footer" {
+    p "© 2026 Nimbus. Built with WCL + wdoc."
+  }
+
+  h2 "Why Nimbus"
+  p "Everything outside a `region` renders into the default content slot — write it in wdoc and it picks up the site theme."
+
+  h2 "How it works"
+  p "Author your design once, drop content into regions, and rebuild."
+  code bash { source = "wcl wdoc build site/main.wcl --out site/_site" }
+}

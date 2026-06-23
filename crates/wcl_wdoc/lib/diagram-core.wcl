@@ -503,6 +503,12 @@ union HtmlFundamental {
   // Verbatim, pre-rendered HTML — NOT escaped. Used to embed already-
   // rendered content (e.g. a page's `content` part) inside a template.
   Raw { html: utf8 }
+  // Head content. When a template (or a part it calls) returns a `Head`
+  // at the TOP LEVEL of its fundamentals list, the renderer hoists its
+  // `children` into the page `<head>` instead of the `<body>` — the seam
+  // a custom (e.g. `website`) layout uses to add `<link>` / `<script>` /
+  // `<meta>` / fonts. A `Head` nested inside the body renders to nothing.
+  Head { children: list<HtmlFundamental> }
   // A child-slot marker for container blocks. A block whose `lower`
   // emits this (e.g. a wireframe `wf_window`) has its nested child
   // blocks rendered by the renderer and spliced in at this point —

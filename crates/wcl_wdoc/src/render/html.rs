@@ -17,8 +17,17 @@ use super::*;
 /// (title + favicon + global stylesheet) is owned here regardless of
 /// template; templates control the `<body>` contents via `render_template`.
 /// `favicon` is the resolved `<link rel="icon">` href (a `_wdoc/…` URL or an
-/// external one); `None` emits no favicon link.
-pub(crate) fn render_page(title: &str, css: &str, body: &str, favicon: Option<&str>) -> String {
+/// external one); `None` emits no favicon link. `head_extra` is verbatim
+/// HTML spliced in just before `</head>` — the site's `stylesheets` /
+/// `scripts` / `fonts` links plus any head fundamentals a template emits;
+/// pass `""` for none.
+pub(crate) fn render_page(
+    title: &str,
+    css: &str,
+    body: &str,
+    favicon: Option<&str>,
+    head_extra: &str,
+) -> String {
     let favicon_link = favicon
         .map(|href| {
             // An SVG favicon needs an explicit type; other formats are
@@ -35,12 +44,13 @@ pub(crate) fn render_page(title: &str, css: &str, body: &str, favicon: Option<&s
         "<!DOCTYPE html>\n\
          <html>\n\
          <head><meta charset=\"utf-8\"><title>{title}</title>{favicon_link}\n\
-         <style>{css}</style></head>\n\
+         <style>{css}</style>{head_extra}</head>\n\
          <body class=\"wdoc-body\">\n\
          {body}</body>\n\
          </html>\n",
         title = escape_html(title),
         favicon_link = favicon_link,
+        head_extra = head_extra,
         body = body,
     )
 }
@@ -272,9 +282,20 @@ pub(crate) fn read_deck(site: &Block<'_>) -> Vec<DeckSectionNode> {
         .collect()
 }
 
+/// A rendered template, split into the page `<body>` and any `<head>`
+/// content the template emitted via top-level `HtmlFundamental::Head`
+/// fundamentals (hoisted out of the body — see [`head_fundamental_html`]).
+#[derive(Default)]
+pub(crate) struct Rendered {
+    pub body: String,
+    pub head: String,
+}
+
 /// Render a page through `template`'s `render` function. Builds a
-/// `TemplateCtx` record (content + title + page_name + pages + toc) and
-/// invokes the WCL function, then renders the returned fundamentals.
+/// `TemplateCtx` record (content + regions + title + page_name + pages +
+/// toc) and invokes the WCL function, then renders the returned
+/// fundamentals — partitioning top-level `Head` fundamentals into
+/// [`Rendered::head`] and the rest into [`Rendered::body`].
 /// Best-effort: a missing/failed `render` yields an empty body, like
 /// the rest of the lowering pipeline. When `toc_nodes` is empty the
 /// `toc` falls back to a flat entry per page.
@@ -283,6 +304,7 @@ pub(crate) fn render_template(
     doc: &Document,
     template: &Block<'_>,
     content: &str,
+    regions: Value,
     title: &str,
     page_name: &str,
     pages: &[(String, String, String)],
@@ -294,12 +316,12 @@ pub(crate) fn render_template(
     home_title: &str,
     search: bool,
     patterns: &InlinePatterns,
-) -> String {
+) -> Rendered {
     let Some(field) = template.field("render") else {
-        return String::new();
+        return Rendered::default();
     };
     let Ok(Value::Function(fv)) = field.value() else {
-        return String::new();
+        return Rendered::default();
     };
     let fv = fv.clone();
     let page_ref = |n: &str, h: &str| {
@@ -340,6 +362,7 @@ pub(crate) fn render_template(
     };
     let mut ctx = BTreeMap::new();
     ctx.insert("content".to_string(), Value::Utf8(content.to_string()));
+    ctx.insert("regions".to_string(), regions);
     ctx.insert("title".to_string(), Value::Utf8(title.to_string()));
     ctx.insert("page_name".to_string(), Value::Utf8(page_name.to_string()));
     ctx.insert("pages".to_string(), pages_val);
@@ -360,12 +383,20 @@ pub(crate) fn render_template(
         fields: std::sync::Arc::new(ctx),
     };
     let Ok(Value::List(items)) = doc.call_value(&fv, &[arg]) else {
-        return String::new();
+        return Rendered::default();
     };
-    items
-        .iter()
-        .map(|v| render_html_variant(doc, v, 0, patterns))
-        .collect()
+    // Partition the template's top-level fundamentals: a `Head` hoists its
+    // children into `<head>`; everything else renders into the `<body>`.
+    let mut rendered = Rendered::default();
+    for v in items.iter() {
+        match head_fundamental_html(doc, v, patterns) {
+            Some(h) => rendered.head.push_str(&h),
+            None => rendered
+                .body
+                .push_str(&render_html_variant(doc, v, 0, patterns)),
+        }
+    }
+    rendered
 }
 
 pub(crate) fn render_block(
@@ -390,6 +421,11 @@ pub(crate) fn render_block(
     }
     match block.kind() {
         "column" => Some(render_column(doc, block, patterns, base_dir)),
+        // A `region` is a named content slot pulled out and rendered
+        // separately by `build_normal_page` (it becomes a `TemplateCtx`
+        // region). Reached here only when nested outside the page top
+        // level — render nothing so it never leaks into the default body.
+        "region" => Some(String::new()),
         // A presentation `fragment` wraps its children in a step-reveal
         // box (`<div class="wdoc-fragment">`); the deck player reveals
         // them one keypress at a time. Like `column`, the `@children`

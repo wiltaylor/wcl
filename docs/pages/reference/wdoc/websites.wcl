@@ -1,0 +1,121 @@
+// wdoc section: Websites (the `website` template variant).
+page wdoc_websites { sites = [:reference]  title = "Websites"
+  h1 "Websites"
+
+  p "The `website` template is a Hugo-style variant of the page template for building marketing and product sites: you bring the *design* (the HTML/CSS — a Figma export, a Claude artifact, a hand-built theme, an externally-built bundle) and slot **wdoc-rendered content** into it. The split is deliberate — HTML/CSS for the fancy shell, wdoc for the words."
+
+  p "Deploy the built-in template with `default_template = :website`, or author your own `template` (recommended for a real design — see below). Scaffold a ready-to-edit project with `wcl init website ./my-site`."
+
+  h2 "Three new pieces"
+
+  p "On top of the ordinary template mechanism (`Sites & Templates`), the `website` workflow adds:"
+
+  list {
+    li "**Named regions** — a page declares `region \"hero\" { … }` blocks whose wdoc bodies render independently. A layout pulls each out by name with `wdoc_region(c, \"hero\")` (returns `\"\"` when the page declares no such region). Everything outside a region is the default `c.content`."
+    li "**Head assets** — the `site` block's `stylesheets` / `scripts` / `fonts` fields add `<link>` / `<script>` to every page `<head>`; the `assets` field copies a whole folder (a Vite/webpack `dist/`) into the output verbatim. A layout can also emit head content itself with the `wdoc_head_*` helpers."
+    li "**Raw-HTML layouts** — author the shell as a heredoc with `${…}` slots and paste your design in, instead of building `HtmlFundamental` trees by hand."
+  }
+
+  h2 "Authoring a layout"
+
+  p "A `template` is a function returning fundamentals. For a website, return one `Raw` fundamental holding the design, with the slots interpolated — `${c.title}`, `${c.content}`, and `${wdoc_region(c, \"name\")}` for each region. Use the interpolating heredoc form (`$<<HTML`):"
+
+  code wcl {
+    source = <<'WCL'
+template site_main {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([
+      // Head content the layout owns (the site's `stylesheets` /
+      // `scripts` add the rest).
+      wdoc_head_meta("viewport", "width=device-width, initial-scale=1"),
+      [ HtmlFundamental::Raw { html: $<<HTML
+        <header class="nav">
+          <a class="brand" href="index.html">${c.title}</a>
+          <nav><a href="index.html">Home</a></nav>
+        </header>
+        <section class="hero">${wdoc_region(c, "hero")}</section>
+        <main class="content">${c.content}</main>
+        <footer class="foot">${wdoc_region(c, "footer")}</footer>
+      HTML
+      } ],
+    ])
+}
+WCL
+  }
+
+  callout "Heredoc terminator" { class = ["note"]
+    body = "The closing `HTML` delimiter must sit alone on its line — `HTML } ],` on one line is an unterminated heredoc. Put `}` on the next line."
+  }
+
+  h2 "Authoring content with regions"
+
+  p "A page joined to a `:website` site renders normally; wrap any part you want to slot separately in a `region`. Everything else becomes `${c.content}`."
+
+  code wcl {
+    source = <<'WCL'
+page index { sites = [:web]  start = true
+  region "hero" {
+    h1 "Build something great"
+    p "The design lives in CSS; the words live here."
+  }
+
+  h2 "About this page"
+  p "Everything outside a region lands in the default content slot."
+
+  region "footer" {
+    p "© Built with WCL + wdoc."
+  }
+}
+WCL
+  }
+
+  h2 "Wiring the design's assets"
+
+  p "Ship the design's stylesheet and script with the site. `assets` copies a folder verbatim into the output (resolved relative to the document); `stylesheets` / `scripts` / `fonts` link files into every page `<head>` (hrefs are emitted verbatim, so they may be a copied asset, a shipped `file`, or a URL):"
+
+  code wcl {
+    source = <<'WCL'
+site web {
+  default_template = :site_main
+  title       = "Acme"
+  root        = true
+  assets      = ["assets"]                 // copies ./assets/ → _site/assets/
+  stylesheets = ["assets/site.css"]        // <link> in every <head>
+  scripts     = ["assets/app.js"]          // deferred <script> in every <head>
+  fonts       = ["https://fonts.example/Inter.css"]
+}
+WCL
+  }
+
+  p "Because `assets` copies the folder unchanged, the same field takes an externally-built bundle — point it at a Vite or webpack `dist/` and reference the hashed files it emits."
+
+  h2 "Head from the layout"
+
+  p "When a region or the site fields aren't enough, a layout (or a part it calls) can emit `<head>` content directly by returning a `Head` fundamental at the **top level** of its list. The `wdoc_head_*` helpers wrap the common cases:"
+
+  table {
+    rows:
+      | "Helper"                          | "Adds to the page head"                |
+      | "`wdoc_head_stylesheet(href)`"    | "`<link rel=\"stylesheet\" href>`"     |
+      | "`wdoc_head_script(src)`"         | "deferred `<script src>`"              |
+      | "`wdoc_head_font(href)`"          | "a web-font `<link rel=\"stylesheet\">`" |
+      | "`wdoc_head_meta(name, content)`" | "`<meta name content>`"                |
+      | "`wdoc_head_raw(html)`"           | "verbatim head HTML"                   |
+  }
+
+  callout "Top level only" { class = ["note"]
+    body = "A `Head` is hoisted only when returned at the layout's top level. A `Head` nested inside the body renders to nothing — it never leaks into `<body>`."
+  }
+
+  h2 "The default layout"
+
+  p "`default_template = :website` uses a built-in, theme-aware shell (sticky header with the title + `menu`, an optional `hero` region, the content with an optional `sidebar` region, and a `footer` region). It's a fine starting point and a reference to copy: `wdoc_website_layout(c)` is its whole body, composed from `wdoc_part_website_css()`, `website_header(c)`, and the region parts."
+
+  h2 "Scaffold"
+
+  p "`wcl init website ./my-site` generates a complete project: `main.wcl` (the site + head assets), `theme.wcl` (a custom raw-HTML layout), `content.wcl` (a page with regions), and `assets/site.css` + `assets/app.js`. Build it with `wcl wdoc build my-site/main.wcl --out my-site/_site`."
+
+  h2 "Site fields"
+
+  type_table { type = SiteConfig }
+}

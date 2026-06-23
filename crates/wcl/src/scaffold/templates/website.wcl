@@ -1,0 +1,125 @@
+// The `website` built-in template: a Hugo-style website project where you
+// own the HTML/CSS design and slot wdoc-rendered content into it.
+//
+//   wcl init website ./my-site
+//
+// Layout it generates:
+//   main.wcl           — imports + the `site` (default template, head assets)
+//   theme.wcl          — your custom `template`, authored as raw HTML + slots
+//   content.wcl        — the page: named `region`s + the default content
+//   assets/site.css    — the design's stylesheet (shipped verbatim)
+//   assets/app.js      — the design's script (shipped verbatim)
+//
+// The `site` block copies the whole `assets/` folder into the output
+// (`assets = ["assets"]`) — the same path an externally-built bundle (a
+// Vite/webpack `dist/`) takes — and links it via `stylesheets` / `scripts`.
+//
+// Only `main.wcl` interpolates a scaffold answer (`${answer("name")}`), so
+// it uses an interpolating heredoc; the others are raw (`<<'TAG'`) so their
+// `${c.content}` / `$<<HTML …` slots reach the generated files verbatim and
+// are evaluated by `wcl wdoc build`, not at scaffold time.
+import <scaffold.wcl>
+
+property "name" {
+  prompt = "Site name"
+  default = "my-site"
+}
+
+file "main.wcl" {
+  content = $<<MAIN
+// Project root: pull in the wdoc schema, your layout + content, then
+// declare the site. `assets = ["assets"]` copies the folder verbatim into
+// the build output; `stylesheets` / `scripts` link the copied files into
+// every page `<head>`.
+import <wdoc.wcl>
+import "./theme.wcl"
+import "./content.wcl"
+
+site web {
+  default_template = :site_main
+  title       = "${answer("name")}"
+  root        = true
+  assets      = ["assets"]
+  stylesheets = ["assets/site.css"]
+  scripts     = ["assets/app.js"]
+}
+MAIN
+}
+
+file "theme.wcl" {
+  content = <<'THEME'
+// Your website layout. Paste a design here (a Figma export, a Claude
+// artifact, a hand-built theme) and mark the slots:
+//
+//   ${c.title}                — the site title
+//   ${c.content}              — the page's default content (everything
+//                               outside a `region`)
+//   ${wdoc_region(c, "name")} — a named `region "name" { … }` block, or ""
+//
+// `wdoc_head_*` helpers add `<head>` content from the layout (here, a
+// viewport meta); the site's `stylesheets` / `scripts` add the rest.
+template site_main {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([
+      wdoc_head_meta("viewport", "width=device-width, initial-scale=1"),
+      [ HtmlFundamental::Raw { html: $<<HTML
+        <header class="nav">
+          <a class="brand" href="index.html">${c.title}</a>
+          <nav><a href="index.html">Home</a></nav>
+        </header>
+        <section class="hero">${wdoc_region(c, "hero")}</section>
+        <main class="content">${c.content}</main>
+        <footer class="foot">${wdoc_region(c, "footer")}</footer>
+      HTML
+      } ],
+    ])
+}
+THEME
+}
+
+file "content.wcl" {
+  content = <<'CONTENT'
+// The page content, authored in wdoc. `region` blocks render into the
+// matching `${wdoc_region(c, "name")}` slot in theme.wcl; everything else
+// becomes the default `${c.content}`.
+page index { sites = [:web]  start = true
+  region "hero" {
+    h1 "Build something great"
+    p "A starter website — the design lives in assets/site.css, the words live here."
+  }
+
+  h2 "About this page"
+  p "Everything outside a `region` lands in the default content slot. Add headings, lists, code, diagrams — any wdoc block."
+
+  region "footer" {
+    p "© Built with WCL + wdoc."
+  }
+}
+CONTENT
+}
+
+file "assets/site.css" {
+  content = <<'CSS'
+/* The design. This is shipped verbatim and linked into every page <head>.
+   Replace it with your own (or an externally-built bundle). */
+:root { --ink: #16181d; --bg: #ffffff; --accent: #4060ff; --muted: #5b6472; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+.nav { display: flex; align-items: center; justify-content: space-between; padding: 1rem clamp(1rem, 5vw, 3rem); border-bottom: 1px solid #e6e8ee; position: sticky; top: 0; background: var(--bg); }
+.nav .brand { font-weight: 700; font-size: 1.15rem; text-decoration: none; color: var(--ink); }
+.nav nav a { color: var(--muted); text-decoration: none; margin-left: 1.25rem; }
+.nav nav a:hover { color: var(--accent); }
+.hero { padding: clamp(3rem, 10vw, 6rem) clamp(1rem, 5vw, 3rem); text-align: center; background: linear-gradient(180deg, #f4f6ff, var(--bg)); }
+.hero h1 { font-size: clamp(2rem, 6vw, 3.5rem); margin: 0 0 .5rem; }
+.content { max-width: 48rem; margin: 0 auto; padding: clamp(2rem, 5vw, 3.5rem) clamp(1rem, 5vw, 3rem); }
+.foot { padding: 2rem; text-align: center; color: var(--muted); border-top: 1px solid #e6e8ee; }
+CSS
+}
+
+file "assets/app.js" {
+  content = <<'JS'
+// The design's script — shipped verbatim and loaded (deferred) on every
+// page. Replace with your own bundle.
+console.log("site ready");
+JS
+}

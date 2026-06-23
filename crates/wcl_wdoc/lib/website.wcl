@@ -1,0 +1,230 @@
+// ── The `website` template ──────────────────────────────────────────
+//
+// A Hugo-style layout variant for building marketing / product sites: you
+// bring the "fancy" HTML/CSS (a design exported from Figma, a Claude
+// artifact, a hand-built theme) and slot wdoc-rendered content into it.
+//
+// Two seams make this work, on top of the ordinary `template` mechanism:
+//
+//   • Named REGIONS. A page declares `region "hero" { … }` blocks whose
+//     wdoc bodies render independently; a layout pulls each out by name
+//     with `wdoc_region(c, "hero")` (returns "" when absent). Everything
+//     outside a region is the default `c.content`.
+//
+//   • HEAD assets. A layout emits `HtmlFundamental::Head { … }` at the TOP
+//     LEVEL of its fundamentals to add `<link>` / `<script>` / `<meta>` /
+//     fonts to the page `<head>` — wrap the common cases with the
+//     `wdoc_head_*` helpers below. (The `site` block's `stylesheets` /
+//     `scripts` / `fonts` fields do the same declaratively, and `assets`
+//     copies an externally-built folder verbatim into the output.)
+//
+// The intended authoring style is a raw-HTML heredoc with `${…}` slots —
+// paste the design, mark `${c.content}` / `${wdoc_region(c, "name")}` /
+// `${c.title}`. See the `website` scaffold (`wcl init website`) and the
+// Websites reference page for a worked example. The default layout below
+// is composed from parts so it stays robust when a region is absent.
+
+namespace wdoc
+
+// A named content region of a page: its inline label is the region name,
+// its children are ordinary wdoc blocks. `build_normal_page` pulls these
+// out and renders each separately into the `TemplateCtx.regions` list
+// (so its `lower` is never invoked — it's handled directly in Rust).
+@block("region")
+type PageRegion extends WdocBlock {
+  @inline(0) name: utf8
+  id:    identifier?
+  @children(WdocBlock) body: list<WdocBlock>
+  lower = fn(r: PageRegion) -> list<HtmlFundamental> []
+}
+
+// ── Region + head helpers ───────────────────────────────────────────
+
+// The already-rendered HTML of the page's `region "name" { … }` block,
+// or "" when the page declares no such region. Interpolate it into a
+// layout heredoc: `<header>${wdoc_region(c, "hero")}</header>`.
+let wdoc_region = fn(c: TemplateCtx, name: utf8) -> utf8 {
+  let matches = filter(c.regions, fn(r: Region) -> bool r.name == name);
+  if len(matches) == 0 { "" }
+  else {
+    // Bind before member access — `.content` on a call result isn't a
+    // resolvable reference (the bind-before-access rule).
+    let first = at(matches, 0);
+    first.content
+  }
+}
+
+// A `<link rel="stylesheet" href>` added to the page `<head>`. `href` is
+// emitted verbatim, so it may be a URL, a copied `assets` path, or a
+// shipped `file`. Return it at a template's top level to take effect.
+let wdoc_head_stylesheet = fn(href: utf8) -> list<HtmlFundamental> [
+  HtmlFundamental::Head { children: [
+    HtmlFundamental::Element {
+      tag: "link", id: none, class: none,
+      attrs: [["rel", "stylesheet"], ["href", href]],
+      children: [],
+    },
+  ] },
+]
+
+// A deferred `<script src defer>` added to the page `<head>`.
+let wdoc_head_script = fn(src: utf8) -> list<HtmlFundamental> [
+  HtmlFundamental::Head { children: [
+    HtmlFundamental::Element {
+      tag: "script", id: none, class: none,
+      attrs: [["src", src], ["defer", ""]],
+      children: [],
+    },
+  ] },
+]
+
+// A web-font `<link rel="stylesheet" href>` (e.g. a Google Fonts URL).
+// Identical to `wdoc_head_stylesheet`; named for intent at the call site.
+let wdoc_head_font = fn(href: utf8) -> list<HtmlFundamental>
+  wdoc_head_stylesheet(href)
+
+// A `<meta name content>` tag added to the page `<head>` (description,
+// viewport, an Open Graph `og:*` name, …).
+let wdoc_head_meta = fn(name: utf8, content: utf8) -> list<HtmlFundamental> [
+  HtmlFundamental::Head { children: [
+    HtmlFundamental::Element {
+      tag: "meta", id: none, class: none,
+      attrs: [["name", name], ["content", content]],
+      children: [],
+    },
+  ] },
+]
+
+// Verbatim head HTML — an escape hatch for anything the typed helpers
+// don't cover (a `<base>`, a preconnect, an inline `<style>`, …).
+let wdoc_head_raw = fn(html: utf8) -> list<HtmlFundamental> [
+  HtmlFundamental::Head { children: [ HtmlFundamental::Raw { html: html } ] },
+]
+
+// ── The default layout ──────────────────────────────────────────────
+//
+// A clean, theme-aware shell you can use as-is or copy and replace with
+// your own design. It paints from the same `--wdoc-*` theme variables as
+// the rest of wdoc, so it follows the site `theme` / `accent`.
+//
+// IMPORTANT: this heredoc is emitted verbatim into the page <style>, so
+// it must be pure CSS — never a `//` line (CSS has no `//` comment).
+let website_css = <<CSS
+  .ws-header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding: 0.9rem clamp(1rem, 5vw, 3rem); background: var(--wdoc-bg, #fff); border-bottom: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); }
+  .ws-header .ws-brand { font-weight: 700; font-size: 1.15rem; color: inherit; text-decoration: none; }
+  .ws-header ul.menu { list-style: none; margin: 0; padding: 0; display: flex; gap: 1.25rem; align-items: center; }
+  .ws-header ul.menu a { color: inherit; text-decoration: none; opacity: 0.85; }
+  .ws-header ul.menu a:hover, .ws-header ul.menu a.current { opacity: 1; color: var(--wdoc-accent, inherit); }
+  .ws-hero { padding: clamp(3rem, 10vw, 6rem) clamp(1rem, 5vw, 3rem); text-align: center; background: color-mix(in srgb, var(--wdoc-accent, #4060ff) 12%, var(--wdoc-bg)); border-bottom: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); }
+  .ws-hero h1 { font-size: clamp(2rem, 6vw, 3.5rem); margin: 0 0 0.75rem; }
+  .ws-layout { display: grid; grid-template-columns: 1fr; gap: 2.5rem; max-width: 70rem; margin: 0 auto; padding: clamp(2rem, 5vw, 3.5rem) clamp(1rem, 5vw, 3rem); box-sizing: border-box; }
+  .ws-layout.has-aside { grid-template-columns: minmax(0, 1fr) 16rem; }
+  @media (max-width: 48rem) { .ws-layout.has-aside { grid-template-columns: 1fr; } }
+  .ws-aside { font-size: 0.95rem; }
+  .ws-footer { padding: 2rem clamp(1rem, 5vw, 3rem); text-align: center; opacity: 0.7; border-top: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); }
+  CSS
+
+// The `website` template's `<style>` block — include it to inherit the
+// default header / hero / layout / footer styling, or drop it for your own.
+let wdoc_part_website_css = fn() -> list<HtmlFundamental> [
+  HtmlFundamental::Element {
+    tag: "style", id: none, class: none, attrs: none,
+    children: [ HtmlFundamental::Raw { html: website_css } ],
+  },
+]
+
+// The sticky site header: the title as a home link plus the curated
+// `menu` (or a flat link per page when no `menu` is declared).
+let website_header = fn(c: TemplateCtx) -> HtmlFundamental
+  HtmlFundamental::Element {
+    tag: "header", id: none, class: ["ws-header"], attrs: none,
+    children: flatten([
+      [ HtmlFundamental::Element {
+          tag: "a", id: none, class: ["ws-brand"],
+          attrs: [["href", if c.home_href == "" { "index.html" } else { c.home_href }]],
+          children: [ HtmlFundamental::Raw { html: c.title } ],
+      } ],
+      if len(c.menu) == 0 {
+        [ HtmlFundamental::Element {
+            tag: "ul", id: none, class: ["menu"], attrs: none,
+            children: map(c.pages, fn(p: PageRef) -> HtmlFundamental
+              HtmlFundamental::Element {
+                tag: "li", id: none, class: none, attrs: none,
+                children: [ HtmlFundamental::Element {
+                  tag: "a", id: none, class: none,
+                  attrs: [["href", p.href]],
+                  children: [ HtmlFundamental::Raw { html: p.name } ],
+                } ],
+              }),
+        } ]
+      } else {
+        wdoc_part_menu_tree(c.menu)
+      },
+    ]),
+  }
+
+// A named region wrapped in `<tag class>`, or nothing when the page
+// declares no such region (so the wrapper is never emitted empty).
+let website_region_section = fn(c: TemplateCtx, name: utf8, tag: utf8, cls: utf8) -> list<HtmlFundamental> {
+  let html = wdoc_region(c, name);
+  if html == "" { [] }
+  else {
+    [ HtmlFundamental::Element {
+        tag: tag, id: none, class: [cls], attrs: none,
+        children: [ HtmlFundamental::Raw { html: html } ],
+    } ]
+  }
+}
+
+// The main content area: the default `content` plus, when the page
+// declares a `region "sidebar"`, an `<aside>` next to it (two-column).
+let website_body = fn(c: TemplateCtx) -> HtmlFundamental {
+  let aside = wdoc_region(c, "sidebar");
+  HtmlFundamental::Element {
+    tag: "div", id: none,
+    class: if aside == "" { ["ws-layout"] } else { ["ws-layout", "has-aside"] },
+    attrs: none,
+    children: flatten([
+      [ HtmlFundamental::Element {
+          tag: "main", id: none, class: ["ws-main"], attrs: none,
+          children: [ HtmlFundamental::Raw { html: c.content } ],
+      } ],
+      if aside == "" { [] }
+      else {
+        [ HtmlFundamental::Element {
+            tag: "aside", id: none, class: ["ws-aside"], attrs: none,
+            children: [ HtmlFundamental::Raw { html: aside } ],
+        } ]
+      },
+    ]),
+  }
+}
+
+// The site footer: a `region "footer"` when declared, else the site title.
+let website_footer = fn(c: TemplateCtx) -> HtmlFundamental {
+  let footer = wdoc_region(c, "footer");
+  HtmlFundamental::Element {
+    tag: "footer", id: none, class: ["ws-footer"], attrs: none,
+    children: [ HtmlFundamental::Raw {
+      html: if footer == "" { c.title } else { footer },
+    } ],
+  }
+}
+
+// The full default `website` layout: style, header, optional hero region,
+// the content body (+ optional sidebar), and the footer. The `website`
+// template is exactly this — copy its body and swap parts to retheme.
+let wdoc_website_layout = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  flatten([
+    wdoc_part_website_css(),
+    [ website_header(c) ],
+    website_region_section(c, "hero", "section", "ws-hero"),
+    [ website_body(c) ],
+    [ website_footer(c) ],
+    wdoc_part_menu_script(c.menu),
+  ])
+
+template website {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    wdoc_website_layout(c)
+}
