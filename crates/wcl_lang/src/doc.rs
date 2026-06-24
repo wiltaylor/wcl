@@ -934,15 +934,27 @@ impl Document {
         // Fall back to document root, served from a once-built index
         // (label/id value → block) that preserves the DFS first-match
         // order of the per-name walk it replaces.
+        //
+        // A re-entrant call *while the index is being built* (a label eval
+        // looped back here) must not touch the index again — re-entering its
+        // `OnceLock::get_or_init` would deadlock. The local frames above were
+        // already consulted; give up on the global fallback for this call.
+        if BUILDING_CONN_INDEX.with(std::cell::Cell::get) {
+            return None;
+        }
         self.conn_operand_index().get(name).cloned()
     }
 
     /// The root-scope operand index — see the `conn_operand_index`
     /// field. Built under the caller's `ConnOperandGuard`, so the
     /// label / `id` evaluations it runs can't re-enter `@connections`
-    /// projection, exactly like the per-name walk did.
+    /// projection, exactly like the per-name walk did. The
+    /// [`BuildingConnIndexGuard`] additionally stops a label eval that
+    /// loops back into operand resolution from re-entering this
+    /// `OnceLock::get_or_init` (which would deadlock).
     fn conn_operand_index(&self) -> &HashMap<String, ConnOperand> {
         self.conn_operand_index.get_or_init(|| {
+            let _building = BuildingConnIndexGuard::enter();
             fn insert_identity(
                 map: &mut HashMap<String, ConnOperand>,
                 v: Value,
@@ -977,8 +989,12 @@ impl Document {
                             // Identity precedence per block: first label,
                             // then `id` field — mirroring
                             // `match_block_first_label` / `match_block_id_field`.
+                            // Use `eval_literal` (not full resolution) so a
+                            // bare-identifier label stays an opaque name in
+                            // O(1); resolving every block's label as a
+                            // reference made this index quadratic.
                             if let Some(first) = b.labels.first()
-                                && let Ok(v) = doc.eval_in_scope(first, &Scope::root())
+                                && let Ok(v) = doc.eval_literal(first)
                             {
                                 insert_identity(map, v, b, file_ns);
                             }
@@ -2495,6 +2511,14 @@ thread_local! {
     /// otherwise be unbounded recursion (operand → label eval → projection
     /// → operand → …).
     static RESOLVING_CONN_OPERAND: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+
+    /// Set while the root operand index (`conn_operand_index`) is being
+    /// built. The build evaluates every block's identifying label, and a
+    /// label eval can loop back into `resolve_connection_operand`; without
+    /// this flag that re-entrant call would re-enter the index's
+    /// `OnceLock::get_or_init` and deadlock. While set, operand resolution
+    /// skips the global index (local scope frames are still consulted).
+    static BUILDING_CONN_INDEX: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// RAII guard that sets [`RESOLVING_CONN_OPERAND`] for its lifetime and
@@ -2515,9 +2539,31 @@ impl Drop for ConnOperandGuard {
     }
 }
 
+/// RAII guard that marks the root operand index as being built — see
+/// [`BUILDING_CONN_INDEX`].
+struct BuildingConnIndexGuard(bool);
+
+impl BuildingConnIndexGuard {
+    fn enter() -> Self {
+        let prev = BUILDING_CONN_INDEX.with(|f| f.replace(true));
+        Self(prev)
+    }
+}
+
+impl Drop for BuildingConnIndexGuard {
+    fn drop(&mut self) {
+        BUILDING_CONN_INDEX.with(|f| f.set(self.0));
+    }
+}
+
 fn match_block_first_label(doc: &Document, b: &ast::Block, name: &str) -> Option<Value> {
     let first = b.labels.first()?;
-    let v = doc.eval_in_scope(first, &Scope::root()).ok()?;
+    // A block label is an opaque identity name, not a reference: `eval_literal`
+    // short-circuits a bare identifier to `Value::Identifier(s)` in O(1) instead
+    // of resolving it across the whole document scope (which made building the
+    // root operand index quadratic over a large doc). Non-identifier labels
+    // (string literals, interpolations) still evaluate at root, as before.
+    let v = doc.eval_literal(first).ok()?;
     let matches = match &v {
         Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s == name,
         _ => false,

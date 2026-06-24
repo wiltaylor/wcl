@@ -2765,6 +2765,43 @@ fn non_dynamic_connection_drops_unresolved_operand() {
     );
 }
 
+#[test]
+fn connection_operand_resolves_block_by_opaque_label_not_by_reference() {
+    // A connection operand identifies a block by its label *name*, treated
+    // as an opaque literal — not by resolving that name as a reference.
+    // Here a node's label (`src_name`) collides with a top-level field of a
+    // different value; the node's identity stays `src_name` (so
+    // `src_name -> target` projects) rather than the field's `"shadow"`.
+    // `match_block_first_label` keeps this O(1) via `eval_literal` (resolving
+    // each label as a reference instead is what made the operand-index build
+    // pathologically slow on a large document).
+    let src = r#"
+        @block("node") type Node { @inline(0) id: identifier }
+        symbol_set EdgeKind { default flow }
+        connection Edge: Node -> Node : EdgeKind
+        @document type Model {
+            @children("node") nodes: list<Node>
+            @connections(Edge) edges: list<Edge>
+            src_name: utf8
+            probe: list<Edge>
+        }
+        src_name = "shadow"
+        node src_name {}
+        node target {}
+        src_name -> target :flow
+        probe = edges
+    "#;
+    let doc = open(src);
+    assert_eq!(
+        edge_records(&doc),
+        vec![(
+            "src_name".to_string(),
+            "target".to_string(),
+            "flow".to_string()
+        )]
+    );
+}
+
 fn has_unknown_operand_error(doc: &Document) -> bool {
     doc.schema_errors().iter().any(|e| {
         matches!(
