@@ -284,11 +284,27 @@ page processes_page {
 
 // One page per procedure — document-root generator → process_<id>.html.
 wdoc_repeater { each = procedures  as = :pr
-  page $"process_${pr.id}" { title = $"${pr.title}"
+  @comment(id = "ctmvss39", body = "Remove this", loc = "9", target = "callout — \"Verificationwcl init wskill produced a folder whose topic is\"", page = "process_creating_a_wskill") page $"process_${pr.id}" { title = $"${pr.title}"
     h1 $"${pr.title}"
     p  $"**Purpose:** ${pr.purpose}"
     wdoc_repeater { each = match len(pr.preconditions) { 0 => [], _ => [true] }  as = :_p
       p $"_Preconditions:_ ${join(pr.preconditions, ", ")}"
+    }
+    diagram {
+      width = 540  height = len(pr.steps) * 96 + 64
+      layout = :layered  direction = :top_to_bottom  layer_gap = 28.0  node_gap = 32.0
+      wdoc_repeater { each = pr.steps  as = :s
+        wdoc_repeater { each = match s.shape { :process => [true], _ => [] }  as = :_sh
+          process $"${s.n}. ${s.title ?? ""}" { id = $"${s.id}"  width = 180.0  height = 46.0 } }
+        wdoc_repeater { each = match s.shape { :decision => [true], _ => [] }  as = :_sh
+          decision $"${s.title ?? ""}" { id = $"${s.id}"  width = 160.0  height = 72.0 } }
+        wdoc_repeater { each = match s.shape { :terminator => [true], _ => [] }  as = :_sh
+          terminator $"${s.title ?? ""}" { id = $"${s.id}"  width = 140.0  height = 46.0 } }
+      }
+      edges = map(pr.flow, fn(e: StepFlow) -> Edge {
+        { source: $"${e.source}", destination: $"${e.destination}",
+          kind: :flow, label: match e.kind { :yes => "yes", :no => "no", _ => "" } }
+      })
     }
     wdoc_repeater { each = pr.steps  as = :s
       column { widths = [6.0, 94.0]

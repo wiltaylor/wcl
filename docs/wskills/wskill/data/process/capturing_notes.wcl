@@ -5,7 +5,7 @@ procedure capturing_notes {
   related = [fleeting_note, permanent_note, atomic_note, zettelkasten, concept, entity, fact, process]
   audience = :both
 
-  step 1 {
+  step jot { n = 1
     title = "Jot it down in capture/"
     body screen { code "wcl" { source = <<'SRC'
 // capture/decision-unit.wcl
@@ -21,7 +21,7 @@ SRC
     body steps { p "Add a `capture/<slug>.wcl` file holding one `fleeting` block and add its import to `capture/main.wcl`. Write fast and rough — a slug, the raw idea, optional `captured` date and `tags`. Do not polish it; the only job is to not lose the thought." }
   }
 
-  step 2 {
+  step validate { n = 2
     title = "Validate the inbox"
     body screen { code "console" { source = <<'SH'
 $ wcl check capture/main.wcl
@@ -31,15 +31,19 @@ SH
     body steps { p "Run `wcl check capture/main.wcl` so a malformed capture is caught early. The capture document is separate from the wskill model, so this never affects `wcl check wskill.wcl`." }
   }
 
-  step 3 {
+  step process_it { n = 3
     title = "Process it into the model"
     body steps { p "When you triage the inbox, turn each fleeting note into one or more real units — a `concept`, `entity`, `fact` or `procedure` under `data/` — each atomic and self-contained, cross-linked with `related`. One fleeting note often becomes several units." }
   }
 
-  step 4 {
+  step discard { n = 4
     title = "Discard the capture"
     body steps { p "Once the idea lives in the model, delete the `capture/<slug>.wcl` file and its import from `capture/main.wcl`. The capture folder holds only *unprocessed* notes — a processed note is redundant with the unit it became." }
   }
+
+  jot        -> validate
+  validate   -> process_it
+  process_it -> discard
 
   verification = "`capture/` contains only notes you have not processed yet; every processed idea appears as a unit under `data/` and its fleeting file is gone."
 }

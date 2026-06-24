@@ -5,7 +5,7 @@ procedure creating_a_wskill {
   related = [wskill, book_view, skill_view, datapresentation, selfcontained, capturing_notes, fleeting_note, breaking_down_a_topic]
   audience = :both
 
-  step 1 {
+  step scaffold { n = 1
     title = "Scaffold from the template"
     body screen { code "console" { source = <<'SH'
 $ wcl init wskill docs/wskills/<topic>
@@ -15,7 +15,7 @@ SH
     body steps { p "Run `wcl init wskill` to scaffold a new wskill folder from the built-in template — don't hand-create it. It writes `wskill.wcl`, the `schema/`, the `wdoc/` templates, an empty `data/` skeleton, and the `capture/` inbox. (`wcl init --list` shows the available templates.)" }
   }
 
-  step 2 {
+  step set_topic { n = 2
     title = "Set the topic"
     body screen { code "wcl" { source = <<'WCL'
 topic <id> {
@@ -29,7 +29,7 @@ WCL
     body steps { p "Edit `wskill.wcl` and fill in the single `topic` block — its `id`, `name` and `summary` describe the whole wskill." }
   }
 
-  step 3 {
+  step model { n = 3
     title = "Capture and model the content"
     body screen { code "wcl" { source = <<'WCL'
 // capture/<slug>.wcl — a rough, disposable note
@@ -44,6 +44,9 @@ WCL
     } }
     body steps { p "Capture as you go so nothing is lost: drop a `fleeting` block into a `capture/<slug>.wcl` file and import it from `capture/main.wcl` — quick and rough, written for your present self. Then process each fleeting note into real units under `data/` — a `concept`, `entity`, `fact` or `procedure`, each atomic, self-contained, and cross-linked with `related`. See *Capture and process a fleeting note* for the capture loop and *Breaking a topic down into the data model* for how to classify each note." }
   }
+
+  scaffold  -> set_topic
+  set_topic -> model
 
   verification = "`wcl init wskill` produced a folder whose `topic` is filled in, and the topic's knowledge is captured as units under `data/`."
 }
