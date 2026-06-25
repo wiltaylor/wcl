@@ -8,10 +8,11 @@ use wcl_lang::{Block, Document, Environment, Registry, Value, disk_loader, from_
 use crate::highlight;
 use crate::inline::InlinePatterns;
 use crate::render::{
-    DeckSectionNode, MAX_LOWER_DEPTH, MenuNode, TocNode, escape_html, expand_component_children,
-    expand_instance_children, expand_repeater_children, field_bool, field_id, field_symbol,
-    field_symbol_list_opt, field_utf8, field_utf8_list, find_template, label_string, read_deck,
-    read_menu, read_toc, render_block, render_class, render_page, render_template, site_theme_css,
+    DeckSectionNode, FooterButtonNode, MAX_LOWER_DEPTH, MenuNode, TocNode, escape_html,
+    expand_component_children, expand_instance_children, expand_repeater_children, field_bool,
+    field_id, field_symbol, field_symbol_list_opt, field_utf8, field_utf8_list, find_template,
+    label_string, read_deck, read_menu, read_sidebar_footer, read_toc, render_block, render_class,
+    render_page, render_template, site_theme_css,
 };
 
 /// The wdoc standard library, embedded in the binary and registered
@@ -399,7 +400,71 @@ pub fn build_with_options(
     opts: &BuildOptions,
 ) -> Result<(usize, Option<wcl_lang::Profile>), BuildError> {
     let mut seen = HashSet::new();
-    build_guarded(file, out_dir, site_filter, opts, &mut seen, 0)
+    let (outcome, profile) = build_guarded(file, out_dir, site_filter, opts, None, &mut seen, 0)?;
+    Ok((outcome.pages(), profile))
+}
+
+/// Outcome of an incremental rebuild attempt ([`build_incremental`]).
+pub enum RebuildOutcome {
+    /// A full site rebuild ran — the safe fallback, identical to
+    /// [`build_with_options`]. Carries the page count.
+    Full { pages: usize },
+    /// Only the listed pages were re-rendered in place; the prior full
+    /// build's shared site-wide artifacts (icon sprite, search index, the
+    /// CSS embedded per page) were left untouched.
+    Targeted { pages: Vec<String> },
+}
+
+/// Incremental rebuild for the dev server. Re-parses the document (imports
+/// force this regardless), then — from `changed_paths` mapped onto block
+/// origins — decides whether a targeted per-page re-render is safe. When it
+/// is, only the affected `<name>.html` files are rewritten and the shared
+/// site-wide artifacts are reused; otherwise it falls back to a full
+/// [`build_with_options`] and returns [`RebuildOutcome::Full`].
+///
+/// The savings come from skipping the per-page render of unaffected pages
+/// (and the aggregate sprite / search-index writes), not from skipping the
+/// parse — a change in an imported library, the page set, the CSS, an asset
+/// declaration, a repeater, or a newly-referenced icon all force a full
+/// rebuild.
+pub fn build_incremental(
+    file: &Path,
+    out_dir: &Path,
+    site_filter: Option<&str>,
+    opts: &BuildOptions,
+    changed_paths: &[PathBuf],
+) -> Result<RebuildOutcome, BuildError> {
+    let mut seen = HashSet::new();
+    let (outcome, _) = build_guarded(
+        file,
+        out_dir,
+        site_filter,
+        opts,
+        Some(changed_paths),
+        &mut seen,
+        0,
+    )?;
+    Ok(match outcome {
+        BuildOutcome::Full(pages) => RebuildOutcome::Full { pages },
+        BuildOutcome::Targeted(pages) => RebuildOutcome::Targeted { pages },
+    })
+}
+
+/// What a build pass actually did: a full render (page count) or a targeted
+/// incremental re-render (the page names rewritten in place).
+enum BuildOutcome {
+    Full(usize),
+    Targeted(Vec<String>),
+}
+
+impl BuildOutcome {
+    /// The number of pages rendered, either way.
+    fn pages(&self) -> usize {
+        match self {
+            BuildOutcome::Full(n) => *n,
+            BuildOutcome::Targeted(names) => names.len(),
+        }
+    }
 }
 
 /// [`build_with_options`] wrapped in the `include` cycle / depth guard.
@@ -412,11 +477,12 @@ fn build_guarded(
     out_dir: &Path,
     site_filter: Option<&str>,
     opts: &BuildOptions,
+    changed: Option<&[PathBuf]>,
     seen: &mut HashSet<PathBuf>,
     depth: usize,
-) -> Result<(usize, Option<wcl_lang::Profile>), BuildError> {
+) -> Result<(BuildOutcome, Option<wcl_lang::Profile>), BuildError> {
     let canon = crate::include::guard_enter(file, seen, depth)?;
-    let result = build_inner(file, out_dir, site_filter, opts, seen, depth);
+    let result = build_inner(file, out_dir, site_filter, opts, changed, seen, depth);
     seen.remove(&canon);
     result
 }
@@ -426,9 +492,10 @@ fn build_inner(
     out_dir: &Path,
     site_filter: Option<&str>,
     opts: &BuildOptions,
+    changed: Option<&[PathBuf]>,
     seen: &mut HashSet<PathBuf>,
     depth: usize,
-) -> Result<(usize, Option<wcl_lang::Profile>), BuildError> {
+) -> Result<(BuildOutcome, Option<wcl_lang::Profile>), BuildError> {
     let user_src = fs::read_to_string(file)
         .map_err(|e| BuildError::Io(e, format!("read {}", file.display())))?;
 
@@ -549,6 +616,82 @@ fn build_inner(
     // go to `<out>/<name>/`. A chooser index is generated only when there
     // are several sites and none claims the root.
     let multi = build_set.len() > 1;
+
+    // Incremental dev-server path: when the caller passed the set of changed
+    // files, try to re-render only the page(s) they touch instead of the
+    // whole site. `affected_pages` returns `None` — fall through to the full
+    // rebuild below — for any change that could invalidate shared state (an
+    // imported library, the page set, CSS, an asset declaration, a repeater).
+    if let Some(changed) = changed
+        && let Some(targets) = affected_pages(&doc, file, changed)
+    {
+        let _ = crate::render::take_route_error();
+        let _ = crate::render::take_render_warnings();
+        let (result, eval_err) =
+            crate::render::scoped_eval_errors(|| -> Result<Option<Vec<String>>, BuildError> {
+                let mut rendered = Vec::new();
+                for spec in &build_set {
+                    // Only this site's pages that the change actually touched.
+                    let site_targets: HashSet<String> = spec
+                        .pages
+                        .iter()
+                        .filter_map(page_name)
+                        .filter(|n| targets.contains(n))
+                        .collect();
+                    if site_targets.is_empty() {
+                        continue;
+                    }
+                    let (site_out, current_prefix, home_href, home_title) =
+                        site_layout(spec, out_dir, multi, root_site.as_deref(), &root_title);
+                    fs::create_dir_all(&site_out).map_err(|e| {
+                        BuildError::Io(e, format!("create_dir_all {}", site_out.display()))
+                    })?;
+                    let built = build_site(
+                        &doc,
+                        base_dir.as_deref(),
+                        spec,
+                        &site_out,
+                        current_prefix,
+                        &site_pages,
+                        &site_prefix,
+                        &home_href,
+                        &home_title,
+                        opts.comment_mode,
+                        Some(&site_targets),
+                    )?;
+                    if built.need_full {
+                        // A targeted render reached shared state (a new icon, or
+                        // a presentation deck) — give up and full-rebuild.
+                        return Ok(None);
+                    }
+                    // Re-copy the landing `index.html` when the start page was
+                    // among those re-rendered.
+                    if let Some(start) = site_start_page(spec)?
+                        && start != "index"
+                        && site_targets.contains(&start)
+                    {
+                        let src = site_out.join(format!("{start}.html"));
+                        let dst = site_out.join("index.html");
+                        fs::copy(&src, &dst).map_err(|e| {
+                            BuildError::Io(e, format!("copy {} to index.html", src.display()))
+                        })?;
+                    }
+                    rendered.extend(built.rendered);
+                }
+                Ok(Some(rendered))
+            });
+        if let Some((e, src)) = eval_err {
+            return Err(BuildError::eval(e, src));
+        }
+        if let Some(msg) = crate::render::take_route_error() {
+            return Err(BuildError::EdgeRouting(msg));
+        }
+        if let Some(rendered) = result? {
+            return Ok((BuildOutcome::Targeted(rendered), doc.profile()));
+        }
+        // `need_full` ⇒ fall through to the full build below.
+    }
+
     // Clear any routing error / render warnings stranded by an earlier build
     // (e.g. a previous `wcl wdoc serve` pass) so stale messages can't leak
     // into this one. Render warnings are left in the sink after a successful
@@ -563,20 +706,8 @@ fn build_inner(
                 spec.name.as_deref().unwrap_or("site"),
                 spec.pages.len()
             ));
-            let at_root = !multi || (root_site.is_some() && spec.name == root_site);
-            let (site_out, current_prefix) = if at_root {
-                (out_dir.to_path_buf(), String::new())
-            } else {
-                let name = spec.name.as_deref().unwrap_or("site");
-                (out_dir.join(name), format!("{name}/"))
-            };
-            // Sub-sites (anything not at the root, in a multi-site build) get
-            // a back-link to the root index; the root site itself gets none.
-            let (home_href, home_title) = if at_root || !multi {
-                (String::new(), String::new())
-            } else {
-                ("../index.html".to_string(), root_title.clone())
-            };
+            let (site_out, current_prefix, home_href, home_title) =
+                site_layout(spec, out_dir, multi, root_site.as_deref(), &root_title);
             fs::create_dir_all(&site_out)
                 .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", site_out.display())))?;
             count += build_site(
@@ -590,7 +721,9 @@ fn build_inner(
                 &home_href,
                 &home_title,
                 opts.comment_mode,
-            )?;
+                None,
+            )?
+            .count;
             // Landing page: a page marked `start` is copied to this site's
             // `index.html`, so `/` (or `/<site>/`) serves it without needing
             // a page literally named `index`. The page also stays reachable
@@ -648,7 +781,71 @@ fn build_inner(
         depth,
     )?;
     // `profile()` is `None` unless `opts.profile` enabled collection.
-    Ok((count, doc.profile()))
+    Ok((BuildOutcome::Full(count), doc.profile()))
+}
+
+/// Decide whether a set of `changed` source files can be served by
+/// re-rendering only the page(s) they touch, returning those page names —
+/// or `None` to fall back to a full rebuild.
+///
+/// The decision is purely structural and conservative: a change is targetable
+/// only when every changed file maps, through block origins
+/// ([`Document::blocks_with_source`]), to `page` blocks *and nothing else*.
+/// A changed file that declares a `site` / `class` / `stylesheet` / `iconset`
+/// / `component` (or any non-page block), a top-level `wdoc_repeater` (whose
+/// generated page set may shift), or that declares no top-level block at all
+/// (a pure `fn` / `type` helper library imported for its definitions) all
+/// force `None`. Because the change is then localized to one or more pages'
+/// own content, the page set, the per-page-embedded CSS, and the asset
+/// registries are unchanged by construction — no cross-build state is needed.
+fn affected_pages(doc: &Document, file: &Path, changed: &[PathBuf]) -> Option<HashSet<String>> {
+    if changed.is_empty() {
+        return None;
+    }
+    // Canonicalize every changed path; one we can't resolve (e.g. a deleted
+    // file) forces a full rebuild. The root document's blocks report no
+    // origin, so they map to `file`.
+    let mut changed_canon: HashSet<PathBuf> = HashSet::new();
+    for p in changed {
+        changed_canon.insert(fs::canonicalize(p).ok()?);
+    }
+    let root_canon = fs::canonicalize(file).ok()?;
+
+    let mut targets: HashSet<String> = HashSet::new();
+    let mut matched: HashSet<PathBuf> = HashSet::new();
+    for (origin, block) in doc.blocks_with_source() {
+        // Disk imports already store canonical paths; a synthetic system
+        // import (the wdoc stdlib) won't canonicalize and is simply skipped
+        // (it's never on disk in the watched tree, so never `changed`).
+        let origin_canon = match origin {
+            Some(p) => match fs::canonicalize(p) {
+                Ok(c) => c,
+                Err(_) => continue,
+            },
+            None => root_canon.clone(),
+        };
+        if !changed_canon.contains(&origin_canon) {
+            continue;
+        }
+        matched.insert(origin_canon);
+        match block.kind() {
+            "page" => match page_name(&block) {
+                Some(n) => {
+                    targets.insert(n);
+                }
+                None => return None,
+            },
+            // Any non-page top-level block sharing a changed file could shift
+            // site-wide state — fall back to a full rebuild.
+            _ => return None,
+        }
+    }
+    // Every changed file must have contributed at least one page block. A
+    // changed file with no matched top-level block isn't safe to isolate.
+    if matched.len() != changed_canon.len() || targets.is_empty() {
+        return None;
+    }
+    Some(targets)
 }
 
 /// Build the sub-sites declared by every `include` block into `out_dir`,
@@ -674,15 +871,16 @@ fn build_includes(
             s.name,
             s.out_subdir.display()
         ));
-        let (n, _) = build_guarded(
+        let (outcome, _) = build_guarded(
             &s.src_path,
             &out_dir.join(&s.out_subdir),
             s.site.as_deref(),
             opts,
+            None,
             seen,
             depth + 1,
         )?;
-        count += n;
+        count += outcome.pages();
     }
     Ok(count)
 }
@@ -938,11 +1136,57 @@ fn site_css(doc: &Document, site_name: Option<&str>, site_block: Option<&Block<'
     format!("{}\n{stylesheet_css}\n{class_css}", highlight::theme_css())
 }
 
+/// The output dir, URL prefix, and home back-link for one site within the
+/// overall layout — shared by the full per-site loop and the incremental
+/// targeted path so both place a site's files identically. `at_root` (a
+/// single/`--site` build, or the `root` site) renders flat at `out_dir`;
+/// every other site renders under `<out_dir>/<name>/` and gets a back-link
+/// to the root index.
+fn site_layout(
+    spec: &SiteSpec<'_>,
+    out_dir: &Path,
+    multi: bool,
+    root_site: Option<&str>,
+    root_title: &str,
+) -> (PathBuf, String, String, String) {
+    let at_root = !multi || (root_site.is_some() && spec.name.as_deref() == root_site);
+    let (site_out, current_prefix) = if at_root {
+        (out_dir.to_path_buf(), String::new())
+    } else {
+        let name = spec.name.as_deref().unwrap_or("site");
+        (out_dir.join(name), format!("{name}/"))
+    };
+    let (home_href, home_title) = if at_root || !multi {
+        (String::new(), String::new())
+    } else {
+        ("../index.html".to_string(), root_title.to_string())
+    };
+    (site_out, current_prefix, home_href, home_title)
+}
+
+/// What [`build_site`] produced — the page count, the page names actually
+/// rendered (for the incremental path's report), and whether a targeted
+/// render had to bail to a full rebuild (`need_full`, e.g. a newly-used
+/// icon the shared sprite lacks, or a presentation deck).
+struct SiteBuild {
+    count: usize,
+    rendered: Vec<String>,
+    need_full: bool,
+}
+
 /// Render one site's pages into `out_dir`. Everything that scopes to a
 /// site — its template/title/toc, nav page list, link-resolution name
 /// set, and `_wdoc/` assets — comes from `spec`, so each site is a
 /// self-contained directory whose pages use plain relative `_wdoc/…`
-/// references. Returns the number of pages written.
+/// references.
+///
+/// `target` drives the dev server's incremental path: `None` is a normal
+/// full render (every page, all shared site-wide assets written); `Some`
+/// re-renders only the named pages, reusing the prior full build's
+/// aggregate artifacts (icon sprite, search index) rather than rewriting
+/// them — page-local media is still copied, and a newly-used icon the
+/// on-disk sprite lacks sets `need_full` so the caller falls back to a full
+/// rebuild.
 #[allow(clippy::too_many_arguments)]
 fn build_site(
     doc: &Document,
@@ -955,33 +1199,41 @@ fn build_site(
     home_href: &str,
     home_title: &str,
     comment_mode: bool,
-) -> Result<usize, BuildError> {
+    target: Option<&HashSet<String>>,
+) -> Result<SiteBuild, BuildError> {
+    // A targeted incremental render reuses the prior full build's aggregate
+    // site-wide assets (player scripts, default favicon, copied `assets/`
+    // folders, the search index and icon sprite) rather than rewriting them.
+    let write_shared = target.is_none();
+
     // The page <style>: bundled theme + stylesheets + class rules, scoped
     // to this site (global blocks plus those whose `sites` list names it).
     let css = site_css(doc, spec.name.as_deref(), spec.block.as_ref());
 
     // Terminal + pan/zoom assets, scoped to this site's pages, so a site
-    // that uses neither pays nothing.
+    // that uses neither pays nothing. The `uses_*` flags drive each page's
+    // `<script>` tags, so they're computed regardless; only the asset
+    // writes are skipped on the incremental path.
     let uses_terminals = spec.pages.iter().any(crate::terminal::uses_terminal);
-    if uses_terminals {
+    if uses_terminals && write_shared {
         write_terminal_assets(out_dir)?;
     }
     let uses_pan_zoom = spec.pages.iter().any(crate::render::uses_pan_zoom);
     let uses_map = spec.pages.iter().any(crate::render::uses_map);
     // A map drives the same viewBox camera as a pan/zoom diagram, so it
     // needs the pan/zoom player too — plus its own layer/card player.
-    if uses_pan_zoom || uses_map {
+    if (uses_pan_zoom || uses_map) && write_shared {
         write_asset(
             out_dir,
             "diagram-pan-zoom.js",
             crate::render::DIAGRAM_PAN_ZOOM_JS,
         )?;
     }
-    if uses_map {
+    if uses_map && write_shared {
         write_asset(out_dir, "wdoc-map.js", crate::render::WDOC_MAP_JS)?;
     }
     let uses_dopesheet = spec.pages.iter().any(crate::dopesheet::uses_dopesheet);
-    if uses_dopesheet {
+    if uses_dopesheet && write_shared {
         write_asset(
             out_dir,
             "dopesheet-player.js",
@@ -989,7 +1241,7 @@ fn build_site(
         )?;
     }
     let uses_video = spec.pages.iter().any(crate::video::uses_video);
-    if uses_video {
+    if uses_video && write_shared {
         write_asset(out_dir, "wdoc-video.js", crate::render::WDOC_VIDEO_JS)?;
     }
 
@@ -1014,6 +1266,11 @@ fn build_site(
     let toc_nodes: Vec<TocNode> = spec.block.as_ref().map(read_toc).unwrap_or_default();
     let menu_nodes: Vec<MenuNode> = spec.block.as_ref().map(read_menu).unwrap_or_default();
     let deck_nodes: Vec<DeckSectionNode> = spec.block.as_ref().map(read_deck).unwrap_or_default();
+    let footer_nodes: Vec<FooterButtonNode> = spec
+        .block
+        .as_ref()
+        .map(read_sidebar_footer)
+        .unwrap_or_default();
     // A `presentation` site renders all its slides into one `index.html`
     // (a deck), rather than one file per page. The `deck` block supplies
     // the slide grid; `default_template = :presentation` selects it.
@@ -1046,6 +1303,18 @@ fn build_site(
         }
     }
 
+    // Incremental: a page added or removed shifts every other page's
+    // template `pages` list (auto nav / prev-next), so a targeted render
+    // can't stay isolated — detect it against the prior build's on-disk
+    // pages and bail to a full rebuild.
+    if target.is_some() && !page_set_matches_disk(out_dir, &page_names) {
+        return Ok(SiteBuild {
+            count: 0,
+            rendered: Vec::new(),
+            need_full: true,
+        });
+    }
+
     if let Some(missing) = toc_missing_page(&toc_nodes, &page_names) {
         return Err(BuildError::BadTemplate(format!(
             "toc chapter links to unknown page \"{missing}\""
@@ -1054,6 +1323,11 @@ fn build_site(
     if let Some(missing) = menu_missing_page(&menu_nodes, &page_names) {
         return Err(BuildError::BadTemplate(format!(
             "menu item links to unknown page \"{missing}\""
+        )));
+    }
+    if let Some(missing) = footer_missing_page(&footer_nodes, &page_names) {
+        return Err(BuildError::BadTemplate(format!(
+            "sidebar_footer button links to unknown page \"{missing}\""
         )));
     }
     if is_presentation {
@@ -1103,7 +1377,9 @@ fn build_site(
     let favicon = match &site_icon {
         Some(src) => inline_patterns.images().register(src).url,
         None => {
-            write_default_favicon(out_dir)?;
+            if write_shared {
+                write_default_favicon(out_dir)?;
+            }
             format!("{}/favicon.svg", crate::terminal::ASSET_DIR)
         }
     };
@@ -1116,19 +1392,21 @@ fn build_site(
 
     // Folders copied verbatim into this site's output (e.g. a Vite `dist/`),
     // so a layout can reference externally-built CSS/JS by its output path.
-    for entry in spec
-        .block
-        .as_ref()
-        .map(|b| field_utf8_list(b, "assets"))
-        .unwrap_or_default()
-    {
-        let src = match base_dir {
-            Some(dir) => dir.join(&entry),
-            None => PathBuf::from(&entry),
-        };
-        let dest = out_dir.join(&entry);
-        copy_dir_all(&src, &dest)
-            .map_err(|e| BuildError::Io(e, format!("copy assets folder {entry}")))?;
+    if write_shared {
+        for entry in spec
+            .block
+            .as_ref()
+            .map(|b| field_utf8_list(b, "assets"))
+            .unwrap_or_default()
+        {
+            let src = match base_dir {
+                Some(dir) => dir.join(&entry),
+                None => PathBuf::from(&entry),
+            };
+            let dest = out_dir.join(&entry);
+            copy_dir_all(&src, &dest)
+                .map_err(|e| BuildError::Io(e, format!("copy assets folder {entry}")))?;
+        }
     }
 
     // Everything the page-rendering paths read but never mutate, resolved
@@ -1147,6 +1425,7 @@ fn build_site(
         theme_toggle,
         toc_nodes: &toc_nodes,
         menu_nodes: &menu_nodes,
+        footer_nodes: &footer_nodes,
         deck_nodes: &deck_nodes,
         pages: &pages,
         home_href,
@@ -1162,15 +1441,32 @@ fn build_site(
         search,
     };
 
+    // A presentation deck renders all its slides into one `index.html`, so a
+    // single-page edit can't be isolated — bail to a full rebuild.
+    if is_presentation && target.is_some() {
+        return Ok(SiteBuild {
+            count: 0,
+            rendered: Vec::new(),
+            need_full: true,
+        });
+    }
+
     // A `presentation` site renders all its slides into a single deck
-    // `index.html`; every other site renders one file per page.
+    // `index.html`; every other site renders one file per page. On the
+    // incremental path only the pages named in `target` are re-rendered.
     let mut search_entries: Vec<SearchEntry> = Vec::new();
+    let mut rendered: Vec<String> = Vec::new();
     let count = if is_presentation {
         build_presentation_page(&ctx)?
     } else {
         let mut count = 0;
         let total = spec.pages.len();
         for (i, page) in spec.pages.iter().enumerate() {
+            if let Some(want) = target
+                && !page_name(page).is_some_and(|n| want.contains(&n))
+            {
+                continue;
+            }
             progress(format_args!(
                 "  page {}/{} {}",
                 i + 1,
@@ -1180,14 +1476,20 @@ fn build_site(
             if let Some(entry) = build_normal_page(&ctx, page)? {
                 search_entries.push(entry);
             }
+            if let Some(n) = page_name(page) {
+                rendered.push(n);
+            }
             count += 1;
         }
         count
     };
 
-    // The opt-in (`search = true`) site search: the client-side widget
-    // plus the per-page text index it queries, both under `_wdoc/`.
-    if search {
+    // The opt-in (`search = true`) site search: the client-side widget plus
+    // the per-page text index it queries, both under `_wdoc/`. The index is
+    // an aggregate over every page, so the incremental path can't rewrite it
+    // from one page's entry — it's left from the prior full build (refreshed
+    // on the next one).
+    if search && write_shared {
         write_asset(out_dir, "wdoc-search.js", WDOC_SEARCH_JS)?;
         let entries: Vec<serde_json::Value> =
             search_entries.iter().map(SearchEntry::to_json).collect();
@@ -1198,10 +1500,22 @@ fn build_site(
     // Every icon resolved while rendering goes into one shared sprite
     // (`_wdoc/icons.svg`) that the pages reference via `<use>`. Written
     // after the page loop so it holds exactly the icons that were used.
-    if let Some(sprite) = inline_patterns.icons().build_sprite() {
-        write_icon_sprite(out_dir, &sprite)?;
+    // The sprite is an aggregate over every page, so the incremental path
+    // must not overwrite it with one page's subset: instead it verifies the
+    // re-rendered page's icons are already in the on-disk sprite, falling
+    // back to a full rebuild (`need_full`) when one is new.
+    let mut need_full = false;
+    if write_shared {
+        if let Some(sprite) = inline_patterns.icons().build_sprite() {
+            write_icon_sprite(out_dir, &sprite)?;
+        }
+    } else if !sprite_has_icons(out_dir, &inline_patterns.icons().used_ids()) {
+        need_full = true;
     }
 
+    // Page-local media: each referenced asset copies to its own file under
+    // `_wdoc/`, never touching another page's, so the incremental path
+    // copies them too (idempotent — only the re-rendered page's references).
     // Copy each spritesheet referenced by a rendered tilemap into
     // `_wdoc/`. No-op when the site used no tilemap.
     inline_patterns.tilesets().copy_used_images(out_dir)?;
@@ -1219,13 +1533,62 @@ fn build_site(
     inline_patterns.files().copy_used(out_dir)?;
 
     // Inline `[text](page)` references that didn't resolve to a known
-    // page in this site surface as a build error here.
+    // page in this site surface as a build error here. On the incremental
+    // path this is scoped to the re-rendered pages — a broken link on an
+    // unrendered page can't be newly introduced (its source didn't change).
     let link_errors = inline_patterns.take_link_errors();
     if !link_errors.is_empty() {
         return Err(BuildError::BadLink(link_errors));
     }
 
-    Ok(count)
+    Ok(SiteBuild {
+        count,
+        rendered,
+        need_full,
+    })
+}
+
+/// Whether the site's current page set matches the `<name>.html` files
+/// already on disk (one per page, ignoring the `index.html` landing copy and
+/// any page literally named `index`). The incremental path uses this to fall
+/// back to a full rebuild when a page was added or removed — either shifts
+/// every other page's template `pages` list (auto nav / prev-next).
+fn page_set_matches_disk(site_out: &Path, page_names: &HashSet<String>) -> bool {
+    let Ok(entries) = fs::read_dir(site_out) else {
+        return false;
+    };
+    let mut on_disk: HashSet<String> = HashSet::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if name == "index.html" {
+            continue;
+        }
+        if let Some(stem) = name.strip_suffix(".html") {
+            on_disk.insert(stem.to_string());
+        }
+    }
+    let expected: HashSet<String> = page_names
+        .iter()
+        .filter(|n| n.as_str() != "index")
+        .cloned()
+        .collect();
+    on_disk == expected
+}
+
+/// Whether the on-disk shared icon sprite at `out_dir/_wdoc/icons.svg`
+/// already defines a `<symbol>` for every `used` id (`{pack}-{name}`). Used
+/// by the incremental path to detect a page edit that introduced an icon
+/// the prior full build's sprite lacks. An absent sprite with no used icons
+/// is trivially satisfied; an absent sprite with used icons is not.
+fn sprite_has_icons(out_dir: &Path, used: &[String]) -> bool {
+    if used.is_empty() {
+        return true;
+    }
+    let Ok(text) = fs::read_to_string(out_dir.join(crate::icons::SPRITE_HREF)) else {
+        return false;
+    };
+    used.iter().all(|id| text.contains(&format!("id=\"{id}\"")))
 }
 
 /// Which interactive players a site uses, so each page loads only the
@@ -1287,6 +1650,7 @@ struct PageRenderCtx<'a> {
     theme_toggle: bool,
     toc_nodes: &'a [TocNode],
     menu_nodes: &'a [MenuNode],
+    footer_nodes: &'a [FooterButtonNode],
     deck_nodes: &'a [DeckSectionNode],
     pages: &'a [(String, String, String)],
     home_href: &'a str,
@@ -1383,6 +1747,7 @@ fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError>
         ctx.pages,
         ctx.toc_nodes,
         ctx.menu_nodes,
+        ctx.footer_nodes,
         Value::List(std::sync::Arc::new(sections_val)),
         ctx.theme_toggle,
         ctx.home_href,
@@ -1533,6 +1898,7 @@ fn build_normal_page(
                 ctx.pages,
                 ctx.toc_nodes,
                 ctx.menu_nodes,
+                ctx.footer_nodes,
                 Value::List(std::sync::Arc::new(Vec::new())),
                 ctx.theme_toggle,
                 ctx.home_href,
@@ -1936,6 +2302,23 @@ fn menu_missing_page<'a>(nodes: &'a [MenuNode], known: &HashSet<String>) -> Opti
         }
         if let Some(missing) = menu_missing_page(&n.children, known) {
             return Some(missing);
+        }
+    }
+    None
+}
+
+/// Return the first `sidebar_footer` button `page` reference that isn't a
+/// known page name, in source order. External `href`s are not checked.
+/// `None` if every page link resolves (or no button links a page).
+fn footer_missing_page<'a>(
+    nodes: &'a [FooterButtonNode],
+    known: &HashSet<String>,
+) -> Option<&'a str> {
+    for n in nodes {
+        if let Some(page) = &n.page
+            && !known.contains(page)
+        {
+            return Some(page);
         }
     }
     None

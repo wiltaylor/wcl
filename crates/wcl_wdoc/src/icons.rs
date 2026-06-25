@@ -239,6 +239,19 @@ impl IconRegistry {
         }
     }
 
+    /// The sprite `<symbol>` ids (`{pack}-{name}`) for every icon recorded
+    /// during this render. The dev server's incremental path compares these
+    /// against the on-disk sprite to decide whether a targeted page render
+    /// introduced an icon the prior full build's sprite lacks (⇒ fall back
+    /// to a full rebuild rather than overwrite the shared sprite).
+    pub(crate) fn used_ids(&self) -> Vec<String> {
+        self.used
+            .borrow()
+            .iter()
+            .map(|(pack, name)| format!("{pack}-{name}"))
+            .collect()
+    }
+
     /// Build the shared sprite from every recorded icon, or `None` when
     /// none were used. Called once after all pages render.
     pub(crate) fn build_sprite(&self) -> Option<String> {

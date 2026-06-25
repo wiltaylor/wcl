@@ -16,7 +16,7 @@ use notify::{Event, EventKind, RecursiveMode, Watcher};
 use tempfile::TempDir;
 use tokio::sync::mpsc::UnboundedReceiver;
 use wcl_lang::Span;
-use wcl_wdoc::{BuildOptions, build_with_options, comments};
+use wcl_wdoc::{BuildOptions, RebuildOutcome, build_incremental, build_with_options, comments};
 
 /// How long the watch loop waits for the event stream to go quiet
 /// before rebuilding — one editor save fires several notify events,
@@ -65,11 +65,19 @@ body.wcl-picking [data-wcl-block].wcl-hot{outline:2px solid #4c8bf5;outline-offs
 .wcl-pop button.ghost{background:#333}
 .wcl-err{color:#f88;margin-top:8px;font-size:12px;white-space:pre-wrap;max-height:8em;overflow:auto}
 .wcl-bar{position:fixed;bottom:18px;right:18px;z-index:99999;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.wcl-actions{display:flex;flex-direction:column;gap:8px;align-items:flex-end;
+ opacity:0;transform:translateY(8px);pointer-events:none;transition:opacity .15s ease,transform .15s ease}
+.wcl-bar.wcl-open .wcl-actions{opacity:1;transform:none;pointer-events:auto}
 .wcl-bar button{background:#4c8bf5;color:#fff;border:0;border-radius:20px;padding:9px 16px;
  font:600 13px system-ui;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.4)}
 .wcl-bar button.on{background:#e0a000;color:#1c1c1c}
 .wcl-bar button.wcl-count{background:#2f6f4f}
 .wcl-bar button.wcl-fleet{background:#6a5acd}
+.wcl-bar button.wcl-toggle{position:relative;width:48px;height:48px;padding:0;border-radius:50%;font-size:20px}
+.wcl-bar button.wcl-toggle .wcl-badge{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;
+ box-sizing:border-box;padding:0 4px;border-radius:9px;background:#e0a000;color:#1c1c1c;
+ font:bold 11px system-ui;display:none;align-items:center;justify-content:center}
+.wcl-bar:not(.wcl-open) button.wcl-toggle .wcl-badge.on{display:flex}
 .wcl-hint{position:fixed;top:0;left:0;right:0;z-index:99999;background:#4c8bf5;color:#fff;
  text-align:center;padding:7px;font:600 13px system-ui}
 [data-wcl-block].wcl-flash{outline:3px solid #e0a000!important;outline-offset:2px!important}
@@ -241,6 +249,7 @@ async function refresh(){
  try{const r=await fetch('/__wdoc_comment');allComments=r.ok?await r.json():[];}catch(_){allComments=[];}
  const n=pageComments().length;
  countBtn.textContent='💬 '+n+(n===1?' comment':' comments');
+ updateBadge();
 }
 
 // Jump-to works for comments with a visible inline anchor (direct block
@@ -303,6 +312,7 @@ let fleetNotes=[];
 async function refreshFleet(){
  try{const r=await fetch('/__wdoc_fleeting');fleetNotes=r.ok?await r.json():[];}catch(_){fleetNotes=[];}
  fleetBtn.textContent='📝 '+fleetNotes.length+(fleetNotes.length===1?' note':' notes');
+ updateBadge();
 }
 function openFleeting(){
  closeModal();
@@ -340,17 +350,27 @@ function openFleeting(){
 }
 
 const bar=document.createElement('div');bar.className='wcl-bar';
+const actions=document.createElement('div');actions.className='wcl-actions';
 const countBtn=document.createElement('button');countBtn.className='wcl-count';countBtn.textContent='💬 …';
-countBtn.onclick=openModal;
+countBtn.onclick=()=>{setOpen(false);openModal();};
 const selBtn=document.createElement('button');selBtn.textContent='🎯 Comment on a block';
-selBtn.onclick=()=>setPick(!picking);
+selBtn.onclick=()=>{setOpen(false);setPick(!picking);};
 const pageBtn=document.createElement('button');pageBtn.textContent='💬 Comment on page';
-pageBtn.onclick=()=>{setPick(false);if(pageEl)openForm(pageEl,true);};
+pageBtn.onclick=()=>{setOpen(false);setPick(false);if(pageEl)openForm(pageEl,true);};
 const fleetBtn=document.createElement('button');fleetBtn.className='wcl-fleet';fleetBtn.textContent='📝 …';
-fleetBtn.onclick=openFleeting;
-if(pageEl)bar.appendChild(countBtn);
-bar.appendChild(selBtn);if(pageEl)bar.appendChild(pageBtn);
-bar.appendChild(fleetBtn);
+fleetBtn.onclick=()=>{setOpen(false);openFleeting();};
+if(pageEl)actions.appendChild(countBtn);
+actions.appendChild(selBtn);if(pageEl)actions.appendChild(pageBtn);
+actions.appendChild(fleetBtn);
+// Persistent launcher: collapsed by default, expands the action buttons.
+const toggleBtn=document.createElement('button');toggleBtn.className='wcl-toggle';toggleBtn.title='Review tools';
+const badge=document.createElement('span');badge.className='wcl-badge';
+toggleBtn.appendChild(document.createTextNode('💬'));toggleBtn.appendChild(badge);
+function setOpen(open){bar.classList.toggle('wcl-open',open);toggleBtn.firstChild.textContent=open?'✕':'💬';}
+toggleBtn.onclick=()=>setOpen(!bar.classList.contains('wcl-open'));
+function updateBadge(){const n=(pageEl?pageComments().length:0)+fleetNotes.length;
+ badge.textContent=n>99?'99+':String(n);badge.classList.toggle('on',n>0);}
+bar.appendChild(actions);bar.appendChild(toggleBtn);
 document.body.appendChild(bar);
 refresh();
 refreshFleet();
@@ -413,6 +433,49 @@ fn run_build(file: &Path, out: &Path, site: Option<&str>, state: &ServeState, re
         }
     }
     state.generation.send_modify(|g| *g += 1);
+}
+
+/// Run one watch-triggered rebuild over the `changed` source files: an
+/// incremental re-render of just the affected page(s) when safe, else a full
+/// rebuild (decided inside [`build_incremental`]). Reports to stderr, records
+/// the outcome in `state`, and bumps the live-reload generation — a targeted
+/// rebuild still bumps it, so parked clients reload the rewritten page.
+fn run_rebuild(
+    file: &Path,
+    out: &Path,
+    site: Option<&str>,
+    state: &ServeState,
+    changed: &[PathBuf],
+) {
+    let opts = BuildOptions {
+        comment_mode: state.comment_mode,
+        ..Default::default()
+    };
+    match build_incremental(file, out, site, &opts, changed) {
+        Ok(outcome) => {
+            print_edge_warnings();
+            match outcome {
+                RebuildOutcome::Targeted { pages } => {
+                    eprintln!("rebuilt {}: {}", page_count(pages.len()), pages.join(", "));
+                }
+                RebuildOutcome::Full { pages } => {
+                    eprintln!("rebuilt: {} (full)", page_count(pages));
+                }
+            }
+            *state.error.write().unwrap_or_else(|e| e.into_inner()) = None;
+        }
+        Err(err) => {
+            eprintln!("rebuild failed:");
+            err.report();
+            *state.error.write().unwrap_or_else(|e| e.into_inner()) = Some(err.render_plain());
+        }
+    }
+    state.generation.send_modify(|g| *g += 1);
+}
+
+/// `"1 page"` / `"3 pages"`.
+fn page_count(n: usize) -> String {
+    format!("{n} page{}", if n == 1 { "" } else { "s" })
 }
 
 pub(crate) async fn serve(
@@ -496,8 +559,12 @@ pub(crate) async fn serve(
             if !is_relevant(&event) {
                 continue;
             }
-            drain_quiet(&mut rx).await;
-            run_build(&bg_file, &bg_out, bg_site.as_deref(), &bg_state, true);
+            // Gather the `.wcl` paths of this event and every relevant event
+            // coalesced during the quiet window, so the rebuild knows exactly
+            // which files changed and can re-render only the affected page(s).
+            let mut changed: Vec<PathBuf> = wcl_paths(&event);
+            drain_quiet(&mut rx, &mut changed).await;
+            run_rebuild(&bg_file, &bg_out, bg_site.as_deref(), &bg_state, &changed);
         }
     };
 
@@ -547,11 +614,12 @@ pub(crate) async fn serve(
 /// further *relevant* event. Irrelevant events (e.g. the build's own
 /// output writes when `--out` sits inside the watched tree) are
 /// swallowed without extending the window.
-async fn drain_quiet(rx: &mut UnboundedReceiver<Event>) {
+async fn drain_quiet(rx: &mut UnboundedReceiver<Event>, changed: &mut Vec<PathBuf>) {
     let mut deadline = tokio::time::Instant::now() + QUIET_WINDOW;
     loop {
         match tokio::time::timeout_at(deadline, rx.recv()).await {
             Ok(Some(ev)) if is_relevant(&ev) => {
+                changed.extend(wcl_paths(&ev));
                 deadline = tokio::time::Instant::now() + QUIET_WINDOW;
             }
             Ok(Some(_)) => {}
@@ -570,6 +638,17 @@ fn is_relevant(event: &Event) -> bool {
         .paths
         .iter()
         .any(|p| p.extension().is_some_and(|e| e == "wcl"))
+}
+
+/// The `.wcl` paths an event touched (the granularity `build_incremental`
+/// maps onto pages).
+fn wcl_paths(event: &Event) -> Vec<PathBuf> {
+    event
+        .paths
+        .iter()
+        .filter(|p| p.extension().is_some_and(|e| e == "wcl"))
+        .cloned()
+        .collect()
 }
 
 /// Live-reload long-poll. Without `?gen=`, answers immediately with the

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
-use wcl_wdoc::{BuildError, build};
+use wcl_wdoc::{BuildError, BuildOptions, RebuildOutcome, build, build_incremental};
 
 fn examples_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -885,6 +885,109 @@ page index {
         index.contains("cont_db.html") && index.contains("Database"),
         "book TOC should include every generated chapter:\n{index}"
     );
+}
+
+#[test]
+fn build_renders_sidebar_footer_button_with_icon() {
+    // A `sidebar_footer { button … }` on a `book` site renders a pinned
+    // icon-only footer button in the sidebar: an `<a class="book-footer-btn">`
+    // linking to its `page`, carrying the named icon (resolved into the shared
+    // sprite), the label as its `aria-label` / `title`, and marked `current`
+    // on the page it links to.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("footer.wcl");
+    write_fixture(
+        &src,
+        r#"
+site docbook {
+  default_template = :book
+  title = "Catalog"
+  toc { chapter "Home" { page = index } }
+  sidebar_footer {
+    button "Reference" { page = reference  icon = "lucide.chart-network" }
+  }
+}
+
+page index {
+  sites = [:docbook]
+  start = true
+  h1 "Home"
+}
+
+page reference {
+  sites = [:docbook]
+  h1 "Reference"
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+    assert!(
+        index.contains("<div class=\"book-sidebar-footer\">"),
+        "the sidebar should carry a pinned footer:\n{index}"
+    );
+    assert!(
+        index.contains("<a class=\"book-footer-btn\" href=\"reference.html\""),
+        "the footer button should link to its page:\n{index}"
+    );
+    assert!(
+        index.contains("_wdoc/icons.svg#lucide-chart-network"),
+        "the footer button should reference its icon in the sprite:\n{index}"
+    );
+    assert!(
+        index.contains("aria-label=\"Reference\""),
+        "the footer button should carry its label as an accessible name:\n{index}"
+    );
+    assert!(
+        !index.contains("book-footer-label"),
+        "the footer button should be icon-only (no visible label span):\n{index}"
+    );
+
+    // On the page it links to, the button is marked `current`.
+    let reference =
+        std::fs::read_to_string(out.path().join("reference.html")).expect("read reference.html");
+    assert!(
+        reference.contains("<a class=\"book-footer-btn current\" href=\"reference.html\""),
+        "the footer button should be `current` on the page it links to:\n{reference}"
+    );
+}
+
+#[test]
+fn build_rejects_sidebar_footer_button_to_unknown_page() {
+    // A `sidebar_footer` button pointing at a page that doesn't exist is a
+    // build error, mirroring `toc` / `menu` page-link validation.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("bad-footer.wcl");
+    write_fixture(
+        &src,
+        r#"
+site docbook {
+  default_template = :book
+  title = "Catalog"
+  toc { chapter "Home" { page = index } }
+  sidebar_footer { button "Reference" { page = nope } }
+}
+
+page index {
+  sites = [:docbook]
+  start = true
+  h1 "Home"
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::BadTemplate(msg)) => {
+            assert!(
+                msg.contains("nope"),
+                "error should name the missing page: {msg}"
+            );
+        }
+        Ok(n) => panic!("expected BadTemplate for unknown footer page, built {n} pages"),
+        Err(_) => panic!("expected BadTemplate for unknown footer page, got a different error"),
+    }
 }
 
 #[test]
@@ -10225,4 +10328,215 @@ fn included_sites_records_carry_title_and_summary() {
         index.contains("bar::Bar summary"),
         "title falls back to name: {index}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Incremental rebuild (`build_incremental`) — the dev server's targeted path.
+// ---------------------------------------------------------------------------
+
+/// Lay out a small multi-file book under `dir`: `main.wcl` (the `site` + an
+/// `iconset` + imports), two page files `a.wcl` / `b.wcl`, and a `lib.wcl`
+/// holding a `class`. Mirrors how the real docs split pages across imported
+/// files. Returns the `main.wcl` path.
+fn write_incremental_book(dir: &Path) -> PathBuf {
+    let main = dir.join("main.wcl");
+    write_fixture(
+        &main,
+        r#"
+iconset lucide {}
+
+site docs {
+  default_template = :book
+  title = "Docs"
+  toc {
+    chapter "A" { page = "a" }
+    chapter "B" { page = "b" }
+  }
+}
+
+import "./a.wcl"
+import "./b.wcl"
+import "./lib.wcl"
+"#,
+    );
+    // Page files don't re-import the wdoc schema — it resolves document-wide
+    // through main.wcl's `import <wdoc.wcl>`, exactly like the real docs.
+    std::fs::write(
+        dir.join("a.wcl"),
+        "page a {\n  sites = [:docs]\n  h1 \"Page A\"\n  p \"Original A content.\"\n}\n",
+    )
+    .expect("write a.wcl");
+    std::fs::write(
+        dir.join("b.wcl"),
+        "page b {\n  sites = [:docs]\n  h1 \"Page B\"\n  p \"Original B content.\"\n}\n",
+    )
+    .expect("write b.wcl");
+    std::fs::write(
+        dir.join("lib.wcl"),
+        "class \"note\" { accent = \"#333333\" }\n",
+    )
+    .expect("write lib.wcl");
+    main
+}
+
+fn rebuild(main: &Path, out: &Path, changed: &[PathBuf]) -> RebuildOutcome {
+    match build_incremental(main, out, None, &BuildOptions::default(), changed) {
+        Ok(o) => o,
+        Err(e) => panic!("incremental build failed: {}", e.render_plain()),
+    }
+}
+
+#[test]
+fn incremental_targets_only_the_edited_page() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = write_incremental_book(tmp.path());
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&main, out.path());
+
+    // Capture page B's output so we can prove a targeted A rebuild leaves it
+    // byte-for-byte untouched.
+    let b_before = std::fs::read_to_string(out.path().join("b.html")).expect("read b.html");
+
+    // Edit only page A's content file.
+    let a = tmp.path().join("a.wcl");
+    std::fs::write(
+        &a,
+        "page a {\n  sites = [:docs]\n  h1 \"Page A\"\n  p \"Edited A content!\"\n}\n",
+    )
+    .expect("rewrite a.wcl");
+
+    match rebuild(&main, out.path(), &[a]) {
+        RebuildOutcome::Targeted { pages } => assert_eq!(pages, vec!["a".to_string()]),
+        RebuildOutcome::Full { pages } => panic!("expected targeted, got full ({pages} pages)"),
+    }
+
+    let a_html = std::fs::read_to_string(out.path().join("a.html")).expect("read a.html");
+    assert!(a_html.contains("Edited A content!"), "{a_html}");
+    let b_after = std::fs::read_to_string(out.path().join("b.html")).expect("read b.html");
+    assert_eq!(b_before, b_after, "page B must not be re-rendered");
+}
+
+#[test]
+fn incremental_falls_back_when_site_file_changes() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = write_incremental_book(tmp.path());
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&main, out.path());
+
+    // Touch main.wcl — it carries the `site` block, so a change there could
+    // shift site-wide state and must full-rebuild.
+    let current = std::fs::read_to_string(&main).expect("read main");
+    std::fs::write(&main, format!("{current}\n// touched\n")).expect("rewrite main");
+
+    match rebuild(&main, out.path(), std::slice::from_ref(&main)) {
+        RebuildOutcome::Full { .. } => {}
+        RebuildOutcome::Targeted { pages } => panic!("expected full, got targeted: {pages:?}"),
+    }
+}
+
+#[test]
+fn incremental_falls_back_for_library_change() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = write_incremental_book(tmp.path());
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&main, out.path());
+
+    // lib.wcl declares a `class` (a non-page block) — editing it affects the
+    // site CSS embedded in every page, so it must full-rebuild.
+    let lib = tmp.path().join("lib.wcl");
+    std::fs::write(&lib, "class \"note\" { accent = \"#abcdef\" }\n").expect("rewrite lib.wcl");
+
+    match rebuild(&main, out.path(), &[lib]) {
+        RebuildOutcome::Full { .. } => {}
+        RebuildOutcome::Targeted { pages } => panic!("expected full, got targeted: {pages:?}"),
+    }
+}
+
+#[test]
+fn incremental_falls_back_when_a_page_is_added() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = write_incremental_book(tmp.path());
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&main, out.path());
+
+    // Add a second page to a.wcl: the page set grows, which shifts every
+    // other page's template `pages` list, so a targeted render is unsafe.
+    let a = tmp.path().join("a.wcl");
+    std::fs::write(
+        &a,
+        "page a {\n  sites = [:docs]\n  h1 \"Page A\"\n  p \"A\"\n}\n\
+         page a2 {\n  sites = [:docs]\n  h1 \"Page A2\"\n  p \"A2\"\n}\n",
+    )
+    .expect("rewrite a.wcl");
+
+    match rebuild(&main, out.path(), &[a]) {
+        RebuildOutcome::Full { .. } => {}
+        RebuildOutcome::Targeted { pages } => panic!("expected full, got targeted: {pages:?}"),
+    }
+}
+
+#[test]
+fn incremental_falls_back_when_an_unseen_icon_is_added() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = write_incremental_book(tmp.path());
+    let out = TempDir::new().expect("mkdir out");
+    // Seed page A with one icon so the initial sprite holds `lucide-check`.
+    let a = tmp.path().join("a.wcl");
+    std::fs::write(
+        &a,
+        "page a {\n  sites = [:docs]\n  h1 \"Page A\"\n  p \"Status: :lucide.check: ok\"\n}\n",
+    )
+    .expect("seed a.wcl");
+    build_ok(&main, out.path());
+
+    // Now use an icon the on-disk sprite never captured — the targeted path
+    // can't merge it into the shared sprite, so it must full-rebuild.
+    std::fs::write(
+        &a,
+        "page a {\n  sites = [:docs]\n  h1 \"Page A\"\n  p \"Status: :lucide.house: home\"\n}\n",
+    )
+    .expect("rewrite a.wcl");
+
+    match rebuild(&main, out.path(), &[a]) {
+        RebuildOutcome::Full { .. } => {}
+        RebuildOutcome::Targeted { pages } => panic!("expected full, got targeted: {pages:?}"),
+    }
+
+    // The full fallback rewrote the sprite to include the new icon.
+    let sprite =
+        std::fs::read_to_string(out.path().join("_wdoc").join("icons.svg")).expect("read sprite");
+    assert!(sprite.contains("id=\"lucide-house\""), "{sprite}");
+}
+
+#[test]
+fn incremental_reuses_an_already_present_icon() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = write_incremental_book(tmp.path());
+    let out = TempDir::new().expect("mkdir out");
+    // Both pages use the same icon, so it's already in the shared sprite.
+    let a = tmp.path().join("a.wcl");
+    let b = tmp.path().join("b.wcl");
+    std::fs::write(
+        &a,
+        "page a {\n  sites = [:docs]\n  h1 \"Page A\"\n  p \":lucide.check: A\"\n}\n",
+    )
+    .expect("seed a.wcl");
+    std::fs::write(
+        &b,
+        "page b {\n  sites = [:docs]\n  h1 \"Page B\"\n  p \":lucide.check: B\"\n}\n",
+    )
+    .expect("seed b.wcl");
+    build_ok(&main, out.path());
+
+    // Re-edit A's prose but keep using the already-captured icon — targetable.
+    std::fs::write(
+        &a,
+        "page a {\n  sites = [:docs]\n  h1 \"Page A\"\n  p \":lucide.check: edited\"\n}\n",
+    )
+    .expect("rewrite a.wcl");
+
+    match rebuild(&main, out.path(), &[a]) {
+        RebuildOutcome::Targeted { pages } => assert_eq!(pages, vec!["a".to_string()]),
+        RebuildOutcome::Full { pages } => panic!("expected targeted, got full ({pages} pages)"),
+    }
 }

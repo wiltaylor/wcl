@@ -37,7 +37,8 @@ mod visibility;
 mod wireframe;
 
 pub use build::{
-    BuildError, BuildOptions, build, build_with_options, schema_registry, take_render_warnings,
+    BuildError, BuildOptions, RebuildOutcome, build, build_incremental, build_with_options,
+    schema_registry, take_render_warnings,
 };
 pub use comments::{CommentRecord, CommentScope};
 pub use markdown::{markdown, skill};
