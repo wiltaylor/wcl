@@ -1,18 +1,12 @@
-// Graph projection — a force-directed map of every unit in the wskill.
-//
-// Imported by main.wcl; adds the `graph_page` listed in the book's Reference
-// section, next to Concepts / Entities / Facts / Processes. Each concept,
-// entity, fact and process is a circle node carrying the note's name and
-// linking to its own page; edges are the units' `related` links. The diagram
-// uses force layout wrapped in an interactive pan + zoom viewport.
+// Book Reference landing — a force-directed graph of every unit at the top,
+// then a menu of the four unit kinds. Each row is gated so empty kinds don't
+// appear. Imported by book/main.wcl. Not standalone-checkable (resolves the
+// `concepts` / `entities` / `facts` / `procedures` lets defined in main.wcl).
 
-import <wdoc.wcl>
-import "../../wskill.wcl"
-
-// Record for the diagram's computed `edges = [...]` field. Node ids are the raw
-// unit ids, so a `related` id maps straight to its node. The diagram's Edge
-// connection is `@dynamic`, so an endpoint naming a missing node is dropped with
-// a build warning rather than failing the build.
+// Record for the graph diagram's computed `edges = [...]` field. Node ids are
+// the raw unit ids, so a `related` id maps straight to its node. The diagram's
+// Edge connection is `@dynamic`, so an endpoint naming a missing node is dropped
+// with a build warning rather than failing the build.
 type GraphEdge { source: utf8  destination: utf8 }
 
 // One edge per (unit, related-id) pair, across all four unit kinds.
@@ -37,10 +31,10 @@ text.gnode-concept, text.gnode-entity, text.gnode-fact, text.gnode-process { fil
 CSS
 }
 
-page graph_page { title = "Graph"
-  h1 "Graph"
-  p "Every concept, entity, fact and process in this wskill, drawn as a force-directed graph — each circle is a note (click it to open its page) and each line is a `related` link. Scroll to zoom and drag to pan."
-  p "Nodes are colour-coded by type — **concepts** blue, **entities** amber, **facts** green, **processes** purple."
+page reference_page {
+  h1 "WSkill Graph"
+  p  "Everything about this topic, mapped below as a force-directed graph and listed beneath it."
+  p  "Each circle is a note (click it to open its page) and each line is a `related` link — colour-coded by type (**concepts** blue, **entities** amber, **facts** green, **processes** purple). Scroll to zoom and drag to pan."
   diagram {
     width    = 960
     height   = 640
@@ -62,5 +56,17 @@ page graph_page { title = "Graph"
     wdoc_repeater { each = procedures as = :p  node $"${p.title}" { id = p.id  link = $"process_${p.id}"  class = ["gnode-process"]  width = 120.0  height = 120.0 } }
 
     edges = note_edges
+  }
+  wdoc_repeater { each = match len(concepts) { 0 => [], _ => [true] }  as = :_uc
+    p $"- [**Concepts**](concepts_page) — ${len(concepts)} ideas to understand."
+  }
+  wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_ue
+    p $"- [**Entities**](entities_page) — ${len(entities)} concrete things in the topic's world."
+  }
+  wdoc_repeater { each = match len(facts) { 0 => [], _ => [true] }  as = :_uf
+    p $"- [**Facts**](facts_page) — ${len(facts)} values and value tables."
+  }
+  wdoc_repeater { each = match len(procedures) { 0 => [], _ => [true] }  as = :_up
+    p $"- [**Processes**](processes_page) — ${len(procedures)} runbooks for doing tasks."
   }
 }

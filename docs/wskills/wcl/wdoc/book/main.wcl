@@ -78,31 +78,14 @@ site book {
     wdoc_repeater { each = match len(clis) { 0 => [], _ => [true] }  as = :_clg
       chapter "CLI Reference" { page = clis_page }
     }
-    // Reference groups the four units (concept / entity / fact / process) plus any
-    // typed-extension reference sections. Each unit sub-chapter is gated.
-    chapter "Reference"      { page = reference_page
-      wdoc_repeater { each = match len(concepts) { 0 => [], _ => [true] }  as = :_cg
-        chapter "Concepts" { page = concepts_page
-          wdoc_repeater { each = concepts  as = :c  chapter $"${c.name}" { page = $"concept_${c.id}" } }
-        }
-      }
-      wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_eg
-        chapter "Entities" { page = entities_page
-          wdoc_repeater { each = entities  as = :e  chapter $"${e.name}" { page = $"entity_${e.id}" } }
-        }
-      }
-      wdoc_repeater { each = match len(facts) { 0 => [], _ => [true] }  as = :_fg
-        chapter "Facts" { page = facts_page
-          wdoc_repeater { each = facts  as = :f  chapter $"${f.title}" { page = $"fact_${f.id}" } }
-        }
-      }
-      wdoc_repeater { each = match len(procedures) { 0 => [], _ => [true] }  as = :_pg
-        chapter "Processes" { page = processes_page
-          wdoc_repeater { each = procedures  as = :pr  chapter $"${pr.title}" { page = $"process_${pr.id}" } }
-        }
-      }
-    }
     chapter "Glossary"       { page = glossary_page }
+  }
+  // The Reference catalogue (the four units and the per-unit pages) lives
+  // behind a single pinned sidebar button rather than a sprawling TOC section —
+  // `reference_page` lists everything; the unit pages are still generated
+  // (their document-scope repeaters are below) and reached from there.
+  sidebar_footer {
+    button "Reference" { page = reference_page  icon = "lucide.chart-network" }
   }
 }
 
@@ -154,7 +137,7 @@ page index { start = true
 
 page concepts_page {
   h1 "Concepts"
-  p  "Each concept has its own page — open one from the list or the sidebar."
+  p  "Each concept has its own page — open one from the list below."
   wdoc_repeater { each = concepts  as = :c
     p $"- [**${c.name}**](concept_${c.id}) — ${c.summary}"
   }
@@ -185,7 +168,7 @@ wdoc_repeater { each = concepts  as = :c
 wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_ei
   page entities_page {
     h1 "Entities"
-    p  "Each entity has its own page — open one from the list or the sidebar."
+    p  "Each entity has its own page — open one from the list below."
     wdoc_repeater { each = entities  as = :e
       p $"- [**${e.name}**](entity_${e.id}) — _${e.kind}_${match e.summary { none => "", s => $" — ${s}" }}"
     }
@@ -275,7 +258,7 @@ page reference_page {
 
 page processes_page {
   h1 "Processes"
-  p  "Each process is a runbook on its own page — open one from the list or the sidebar."
+  p  "Each process is a runbook on its own page — open one from the list below."
   wdoc_repeater { each = procedures  as = :pr
     p $"- [**${pr.title}**](process_${pr.id}) — ${pr.purpose}"
   }
@@ -283,10 +266,13 @@ page processes_page {
 wdoc_repeater { each = procedures  as = :pr
   page $"process_${pr.id}" { title = $"${pr.title}"
     h1 $"${pr.title}"
-    p  $"**Purpose:** ${pr.purpose}"
+    h2 "Purpose"
+    p  $"${pr.purpose}"
     wdoc_repeater { each = match len(pr.preconditions) { 0 => [], _ => [true] }  as = :_p
-      p $"_Preconditions:_ ${join(pr.preconditions, ", ")}"
+      h2 "Prerequisites"
+      list { items = map(pr.preconditions, fn(pc: utf8) -> Li { { text: pc } }) }
     }
+    h2 "Steps"
     wdoc_repeater { each = pr.steps  as = :s
       column { widths = [6.0, 94.0]
         h3 $"${s.n}"

@@ -86,6 +86,7 @@ connectable by edges), not a page block. Everything deeper → the doc page or t
 | math (LaTeX) | `src/math.rs` | `math.wcl` | `math.wcl` |
 | themes / styling | `src/render/` | `theme.wcl`, `css-classes.wcl` | `styling.wcl` |
 | templates / presentation | `src/render/` | `templates.wcl`, `presentation.wcl` | `sites.wcl`, `pages.wcl` |
+| book sidebar footer buttons (`sidebar_footer { button … }` → `TemplateCtx.footer`) | `src/render/html.rs` (`read_sidebar_footer`, `FooterButtonNode`, `render_template` footer value w/ icon resolved via `patterns.icons()`), `src/build.rs` (thread `footer_nodes`, `footer_missing_page`) | `templates.wcl` (`wdoc_part_sidebar_footer`) | `sites.wcl` |
 | website template (named `region`s + `<head>` assets) | `src/build.rs` (regions partition, `head_extra`, `assets` folder copy), `src/render/html.rs` (`Rendered{body,head}`, `render_page` head_extra), `src/render/lower.rs` (`Head` fundamental) | `website.wcl` | `websites.wcl` |
 | block visibility (`@only`/`@except`) | `src/visibility.rs` | `visibility.wcl` | `visibility.wcl` |
 | review comments + fleeting notes (`@comment`, `wcl wdoc comments` + `serve --comment`; fleeting notes in `.wdoc-fleeting.json`) | `src/comments.rs`, dev server `crates/wcl/src/serve.rs` | `comment.wcl` | `comments.wcl` |

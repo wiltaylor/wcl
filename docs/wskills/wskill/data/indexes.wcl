@@ -1,0 +1,25 @@
+// Curated navigation — every unit pinned into a topic-meaningful tree via
+// `index` blocks. In the book each index is a heading in the sidebar whose
+// children are the units it lists in `related` (resolved to their unit pages);
+// a nested `index` adds a sub-branch. Indexes default to the `:book` audience,
+// so they shape the book nav while the skill keeps its per-kind reference lists.
+
+index what {
+  name = "WSkill"
+  summary = "wskill"
+  related = [wskill_concept, creating_a_wskill, breaking_down_a_topic,capturing_notes]
+
+    index views {
+    name    = "Views & registry"
+    summary = "How a wskill is projected and discovered."
+    related = [book_view, skill_view, wskill_registry]
+  }
+
+}
+
+index data_model {
+  name    = "Data Model"
+  summary = "The unit kinds a wskill captures."
+  related = [concept, entity, fact, process, index, schema_reference]
+}
+

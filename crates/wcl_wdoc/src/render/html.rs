@@ -253,6 +253,36 @@ pub(crate) fn menu_to_value(nodes: &[MenuNode], current: &str) -> Value {
     )
 }
 
+/// One pinned sidebar-footer button, read from the `site` block's
+/// `sidebar_footer`. `page` is an internal page link (validated), `href`
+/// an external/raw URL; `icon` is the icon name (`set.name`) to draw
+/// beside the label, resolved to SVG markup at render time.
+pub(crate) struct FooterButtonNode {
+    pub label: String,
+    pub page: Option<String>,
+    pub href: Option<String>,
+    pub icon: Option<String>,
+}
+
+/// Read the pinned sidebar-footer buttons from a `site` block's
+/// `sidebar_footer` child. Empty when there is none (templates then
+/// render no footer).
+pub(crate) fn read_sidebar_footer(site: &Block<'_>) -> Vec<FooterButtonNode> {
+    let Some(footer) = site.block("sidebar_footer") else {
+        return Vec::new();
+    };
+    footer
+        .blocks()
+        .filter(|b| b.kind() == "button")
+        .map(|b| FooterButtonNode {
+            label: label_string(&b).unwrap_or_default(),
+            page: field_id(&b, "page"),
+            href: field_utf8(&b, "href"),
+            icon: field_utf8(&b, "icon"),
+        })
+        .collect()
+}
+
 /// One section of a presentation deck, read from the `site` block's
 /// `deck`. `title` is the section heading; `slides` are the page names
 /// it shows, in order.
@@ -310,6 +340,7 @@ pub(crate) fn render_template(
     pages: &[(String, String, String)],
     toc_nodes: &[TocNode],
     menu_nodes: &[MenuNode],
+    footer_nodes: &[FooterButtonNode],
     deck: Value,
     theme_toggle: bool,
     home_href: &str,
@@ -368,6 +399,41 @@ pub(crate) fn render_template(
     ctx.insert("pages".to_string(), pages_val);
     ctx.insert("toc".to_string(), toc_val);
     ctx.insert("menu".to_string(), menu_to_value(menu_nodes, page_name));
+    // `footer`: the resolved sidebar-footer buttons. Each button's href is
+    // its internal `page` (→ `<page>.html`), else its raw `href`, else
+    // empty; `current` marks the one linking to the page being rendered;
+    // `icon` is resolved to inline SVG markup via the icon registry (which
+    // also records it into the shared sprite), empty when unset/unresolved.
+    let footer_val = Value::list(
+        footer_nodes
+            .iter()
+            .map(|b| {
+                let href = match (&b.page, &b.href) {
+                    (Some(p), _) => format!("{p}.html"),
+                    (None, Some(h)) => h.clone(),
+                    (None, None) => String::new(),
+                };
+                let icon = b
+                    .icon
+                    .as_deref()
+                    .and_then(|name| patterns.icons().resolve_html_icon(name, &[]))
+                    .unwrap_or_default();
+                let mut m = BTreeMap::new();
+                m.insert("label".to_string(), Value::Utf8(b.label.clone()));
+                m.insert("href".to_string(), Value::Utf8(href));
+                m.insert(
+                    "current".to_string(),
+                    Value::Bool(b.page.as_deref() == Some(page_name)),
+                );
+                m.insert("icon".to_string(), Value::Utf8(icon));
+                Value::Record {
+                    ty: vec!["FooterButton".to_string()],
+                    fields: std::sync::Arc::new(m),
+                }
+            })
+            .collect(),
+    );
+    ctx.insert("footer".to_string(), footer_val);
     // The resolved presentation deck — populated only on the
     // presentation build path, empty (an empty list) for normal pages.
     ctx.insert("deck".to_string(), deck);

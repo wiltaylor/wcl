@@ -246,14 +246,18 @@ type Fact {
   @child("body") body: WdocAddressableBody?
 }
 
-// An index — a curated landing page that gathers links to other parts of the
-// wskill in a topic-meaningful arrangement. Unlike concept/entity/fact/procedure
-// it is NOT filed under Reference: each index gets its own top-level entry in the
-// book menu (between Overview and Reference). The body (an addressable `body { … }`)
-// holds the curated links/prose; `related` auto-resolves to a link list.
+// An index — a curated grouping that pins units (concepts / entities / facts /
+// procedures) into a topic-meaningful arrangement. Unlike concept/entity/fact/
+// procedure it is NOT filed under Reference: each index is a top-level entry in
+// the book navigation (between Overview and Reference). In the BOOK it renders as
+// a sidebar heading (no page of its own) whose children are the unit pages named
+// in `related`, pinned into the nav tree. In the SKILL it renders as a
+// link-collection page: the `body` (an addressable `body { … }`) holds the
+// curated prose and `related` auto-resolves to a link list (so `body` is read by
+// the skill projection only).
 // An index may nest child indexes one level deep (`@children("index")`): write a
 // child `index { … }` block inside the parent and both projections render it
-// nested — under the parent chapter in the book TOC, indented under the parent
+// nested — under the parent heading in the book nav, indented under the parent
 // bullet in the skill. Document-level `@children("index")` gathers only direct
 // children, so a nested index is not also listed at the top level.
 @block("index")

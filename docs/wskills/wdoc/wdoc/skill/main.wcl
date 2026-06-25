@@ -304,10 +304,13 @@ page processes_ref { sites = [:skill]
 wdoc_repeater { each = procedures  as = :pr
   page $"process_${pr.id}" { sites = [:skill]  title = $"${pr.title}"
     h1 $"${pr.title}"
-    p  $"**Purpose:** ${pr.purpose}"
+    h2 "Purpose"
+    p  $"${pr.purpose}"
     wdoc_repeater { each = match len(pr.preconditions) { 0 => [], _ => [true] }  as = :_p
-      p $"_Preconditions:_ ${join(pr.preconditions, ", ")}"
+      h2 "Prerequisites"
+      list { items = map(pr.preconditions, fn(pc: utf8) -> Li { { text: pc } }) }
     }
+    h2 "Steps"
     wdoc_repeater { each = pr.steps  as = :s
       h3 $"Step ${s.n}${match s.title { none => "", ti => $": ${ti}" }}"
       project { from = s.bodies }

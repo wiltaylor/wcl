@@ -48,6 +48,19 @@ type MenuEntry {
   children: list<MenuEntry>
 }
 
+// A resolved sidebar-footer button handed to templates. Built by the
+// renderer from the `site`'s `sidebar_footer` block. `href` is the link
+// target (`<page>.html` for an internal `page`, the raw URL for an external
+// `href`, empty for neither); `current` is true when it links to the page
+// being rendered; `icon` is the button's icon already rendered to SVG markup
+// (embed it with `Raw`), empty when the button declares none.
+type FooterButton {
+  label:   utf8
+  href:    utf8
+  current: bool
+  icon:    utf8
+}
+
 // Context handed to a template's (and any part function's) `render`.
 type TemplateCtx {
   @doc("The page's rendered body HTML — embed it with `Raw`.")
@@ -64,6 +77,8 @@ type TemplateCtx {
   toc:          list<TocEntry>
   @doc("The site's curated navbar menu; empty when the site declares no `menu`.")
   menu:         list<MenuEntry>
+  @doc("Pinned sidebar-footer buttons (the site's `sidebar_footer`); empty when none declared. Each carries its icon already rendered to SVG markup.")
+  footer:       list<FooterButton>
   @doc("The resolved presentation deck; empty unless the `presentation` template renders the whole site at once.")
   deck:         list<DeckSection>
   @doc("Whether to render a light/dark toggle (the site's `theme_toggle` flag).")
@@ -124,6 +139,29 @@ type MenuItem {
 type Menu {
   @children("item") items: list<MenuItem>
   @children("wdoc_repeater") generators: list<WdocRepeater>
+}
+
+// One pinned button at the bottom of the `book` sidebar. `page` (optional)
+// links it to a page (validated; rendered as `<page>.html`), `href` (optional)
+// links it to a raw/external URL (`page` wins over `href`); `icon` (optional)
+// is an icon name (`set.name`, e.g. `"lucide.chart-network"`) — the built-in
+// `book` template renders the button icon-only, using the inline label as the
+// hover tooltip / accessible name (and as the visible text when no `icon` is
+// given).
+@block("button")
+type SidebarButton {
+  @inline(0) label: utf8
+  page: identifier?
+  href: utf8?
+  icon: utf8?
+}
+
+// Pinned buttons at the bottom of the `book` template's sidebar — an
+// ordered list of `button`s, declared inside the `site` block. Use it to
+// surface a launcher (e.g. a reference index) without crowding the TOC.
+@block("sidebar_footer")
+type SidebarFooter {
+  @children("button") buttons: list<SidebarButton>
 }
 
 // Document descriptor. One per document; sets the default template and
@@ -212,6 +250,11 @@ type SiteConfig {
   // `menu`, `webpage` falls back to a flat list of every page.
   @doc("Top navbar entries for the `webpage` template.")
   @child("menu") menu: Menu?
+  // Pinned launcher buttons at the bottom of the `book` template's
+  // sidebar (each may link to a page or URL and carry an icon). Surfaced
+  // to templates as `TemplateCtx.footer`. Ignored by other templates.
+  @doc("Pinned buttons at the bottom of the `book` sidebar.")
+  @child("sidebar_footer") sidebar_footer: SidebarFooter?
   // Presentation deck: groups this site's pages into the slide grid the
   // `presentation` template renders (sections = columns, slides = rows).
   // See `presentation.wcl`.
@@ -633,7 +676,7 @@ let book_pagenav = fn(toc: list<TocEntry>) -> list<HtmlFundamental> {
 // the chapter / section colours are the bundled `class "book-chapter" /
 // "book-section" / "current"`.
 let book_css = <<CSS
-  .book-sidebar { position: fixed; top: 0; left: 0; width: 16rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem; border-right: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); background: var(--wdoc-bg-alt, rgba(127,127,127,0.06)); }
+  .book-sidebar { position: fixed; top: 0; left: 0; width: 16rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem; border-right: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); background: var(--wdoc-bg-alt, rgba(127,127,127,0.06)); display: flex; flex-direction: column; }
   .book-title { font-weight: bold; font-size: 1.1rem; margin-bottom: 0.75rem; }
   .book-home { display: block; margin-bottom: 0.6rem; opacity: 0.8; text-decoration: none; color: inherit; }
   .book-home:hover { opacity: 1; text-decoration: underline; }
@@ -658,6 +701,11 @@ let book_css = <<CSS
   .book-pagenav .book-nav { text-decoration: none; opacity: 0.85; }
   .book-pagenav .book-nav:hover { opacity: 1; text-decoration: underline; }
   .book-pagenav .book-nav-next { margin-left: auto; text-align: right; }
+  .book-sidebar-footer { position: sticky; bottom: 0; margin: auto -1rem -1rem; padding: 0.6rem 1rem; background: var(--wdoc-bg-alt, rgba(127,127,127,0.06)); border-top: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); display: flex; flex-direction: column; gap: 0.4rem; }
+  .book-footer-btn { display: flex; align-items: center; justify-content: center; padding: 0.45rem 0.6rem; text-decoration: none; color: inherit; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.4)); border-radius: 6px; opacity: 0.85; }
+  .book-footer-btn:hover { opacity: 1; border-color: var(--wdoc-accent, currentColor); }
+  .book-footer-btn.current { color: var(--wdoc-accent, inherit); border-color: var(--wdoc-accent, currentColor); opacity: 1; }
+  .book-footer-btn .wdoc-icon { width: 1.4em; height: 1.4em; flex: 0 0 auto; }
   CSS
 
 // Stdlib `book` template: an mdbook-style layout — a fixed left
@@ -676,11 +724,42 @@ let wdoc_part_book_css = fn() -> list<HtmlFundamental> [
   },
 ]
 
+// One pinned sidebar-footer button: an icon-only `<a class="book-footer-btn">`
+// linking to `b.href`, carrying the current page's highlight and the button's
+// icon (already rendered to SVG markup by the renderer, embedded via `Raw`).
+// The label drives the `title` / `aria-label` (a hover tooltip + accessible
+// name) rather than visible text; a button with no icon falls back to its
+// label as text so it is never empty.
+let book_footer_button = fn(b: FooterButton) -> HtmlFundamental
+  HtmlFundamental::Element {
+    tag: "a", id: none,
+    class: if b.current { ["book-footer-btn", "current"] } else { ["book-footer-btn"] },
+    attrs: [["href", b.href], ["title", b.label], ["aria-label", b.label]],
+    children: if b.icon == "" {
+        [ HtmlFundamental::Raw { html: b.label } ]
+      } else {
+        [ HtmlFundamental::Raw { html: b.icon } ]
+      },
+  }
+
+// The pinned sidebar footer (`<div class="book-sidebar-footer">`): one button
+// per `c.footer` entry. Empty (renders nothing) when the site declares no
+// `sidebar_footer`. Pinned to the bottom of the sidebar by `book_css`.
+let wdoc_part_sidebar_footer = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  if len(c.footer) == 0 { [] }
+  else {
+    [ HtmlFundamental::Element {
+        tag: "div", id: none, class: ["book-sidebar-footer"], attrs: none,
+        children: map(c.footer, book_footer_button),
+      } ]
+  }
+
 // The fixed left sidebar (`<nav class="book-sidebar">`): the book title, the
-// back-to-root link, the search box, the theme toggle, the TOC tree, and the
-// scroll-to-current script — in the built-in book order. The scroll script
-// runs after the TOC is in the DOM (an inline script executes at parse time,
-// so it sees its sibling chapter `<a>`s) and centres the current chapter.
+// back-to-root link, the search box, the theme toggle, the TOC tree, the
+// pinned footer buttons, and the scroll-to-current script — in the built-in
+// book order. The scroll script runs after the TOC is in the DOM (an inline
+// script executes at parse time, so it sees its sibling chapter `<a>`s) and
+// centres the current chapter.
 let wdoc_part_sidebar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
   HtmlFundamental::Element {
     tag: "nav", id: none, class: ["book-sidebar"], attrs: none,
@@ -693,6 +772,7 @@ let wdoc_part_sidebar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
       wdoc_search_box(c.search),
       if c.theme_toggle { book_theme_toggle } else { [] },
       book_toc(c.toc),
+      wdoc_part_sidebar_footer(c),
       [book_sidebar_scroll, book_sidebar_toggle],
     ]),
   },

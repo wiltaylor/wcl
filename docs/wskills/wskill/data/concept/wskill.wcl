@@ -1,0 +1,22 @@
+import <wdoc.wcl>
+
+concept wskill_concept {
+    name = "What is wskill"
+    summary = "A wskill is a self contanied unit of knowledge that can be shared"
+    related = [permanent_note, process, entity, fact]
+    body {
+        p <<BODY
+            A wskill is a self contanied unit of knowledge that is fully self contained. The goals of wskill are as follows:
+        BODY
+
+        list {
+
+            li "To be shareable."
+            li "To be fully self contained."
+            li "To allow people to learn the skill from the package."
+            li "To be a complete refefence."
+            li "To be easy to update with newer material."
+        }
+
+    }
+}

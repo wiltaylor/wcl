@@ -1,0 +1,12 @@
+// Book Glossary — a table of terms, definitions and aliases.
+// Imported by book/main.wcl (resolves its `terms` let). Not standalone-checkable.
+
+page glossary_page {
+  h1 "Glossary"
+  wdoc_repeater { each = match len(terms) { 0 => [], _ => [true] }  as = :_g
+    table {
+      header = ["Term", "Definition", "Aliases"]
+      rows = map(terms, fn(t: Term) -> list<utf8> { [t.term, t.definition, join(t.aliases, ", ")] })
+    }
+  }
+}

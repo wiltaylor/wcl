@@ -54,6 +54,24 @@ WCL
   }
   p "Chapters nest to any depth. A `chapter` with no `page =` is a grouping heading. A `chapter` pointing at an unknown page is a build error."
 
+  h3 "Sidebar footer buttons"
+
+  p "A `sidebar_footer` block pins one or more launcher buttons to the very bottom of the `book` sidebar — handy for a reference index or an external link you want reachable from every page without crowding the chapter tree. Each `button` takes an inline label, a `page` (internal, validated → `<page>.html`) or `href` (raw/external URL; `page` wins), and an optional `icon` (an icon name like `lucide.chart-network`). The built-in `book` template renders the button icon-only, using the label as its hover tooltip / accessible name (and as visible text when no `icon` is given). A button linking to an unknown page is a build error."
+  code wcl {
+    source = <<'WCL'
+site docs {
+  default_template = :book
+  title            = "Project Docs"
+  toc { chapter "Intro" { page = index } }
+  sidebar_footer {
+    button "Reference" { page = reference_page  icon = "lucide.chart-network" }
+    button "Source"    { href = "https://example.com/repo" }
+  }
+}
+WCL
+  }
+  p "Templates see the resolved buttons as `TemplateCtx.footer` (each with its `icon` already rendered to SVG markup); the built-in `book` template draws them via the `wdoc_part_sidebar_footer(c)` part."
+
   h2 "Search"
 
   p "Set `search = true` on a site to add client-side full-text search. The build writes a per-page text index to `_wdoc/search-index.json` (page title from its first `h1`, plus the page body text) and the `book` and `webpage` templates render a search box — in the sidebar and the nav respectively — backed by a small bundled script. Typing ranks pages by title and body matches and shows the top hits with a context snippet; Enter opens the first hit, Escape clears."
@@ -130,7 +148,8 @@ WCL
       | "`wdoc_part_content(c)`"                  | "The page content in the reading card `<main>`" |
       | "`wdoc_part_menu_tree(c.menu)`"           | "Just the nested `<ul class=\"menu\">`, no surrounding nav" |
       | "`wdoc_book_layout(c)`"                   | "The whole `book` body: css + sidebar + content-with-pagination" |
-      | "`wdoc_part_sidebar(c)`"                  | "The fixed `book-sidebar` — title, back-link, search, toggle, TOC, scroll" |
+      | "`wdoc_part_sidebar(c)`"                  | "The fixed `book-sidebar` — title, back-link, search, toggle, TOC, footer, scroll" |
+      | "`wdoc_part_sidebar_footer(c)`"           | "The pinned `book-sidebar-footer` buttons (empty unless `sidebar_footer` declared)" |
       | "`wdoc_part_book_content(c)`"             | "The reading column `<main>` plus prev/next pagination" |
       | "`wdoc_part_toc_tree(c.toc)`"             | "Just the nested `<ul class=\"book-toc\">`" |
       | "`wdoc_part_pagenav(c.toc)`"              | "The bottom prev/next pagination links" |
