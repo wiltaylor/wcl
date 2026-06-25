@@ -180,6 +180,45 @@ pub(crate) fn assign_force_offsets(
         temperature = (temperature - cooling).max(0.0);
     }
 
+    // Hard collision-resolution. The relaxation above is the only thing
+    // spreading nodes, and its repulsion both weakens with distance and is
+    // frozen by the cooling schedule — so a dense or large-node graph (many
+    // nodes sharing a hub, big boxes) can settle with boxes still
+    // overlapping. That leaves the edge router no clear lane and forces
+    // lines straight through node boxes. These sweeps project any
+    // overlapping pair apart along their centre line until the circles
+    // bounding their boxes (the same half-diagonal `radius`, plus a margin
+    // for the router's breathing room) are disjoint — which guarantees the
+    // boxes are disjoint too. Only overlapping pairs move, so a graph that
+    // already relaxed cleanly is left exactly as it was.
+    const COLLIDE_MARGIN: f64 = 8.0;
+    const COLLIDE_SWEEPS: usize = 200;
+    for _ in 0..COLLIDE_SWEEPS {
+        let mut moved = false;
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let dx = pos[i].0 - pos[j].0;
+                let dy = pos[i].1 - pos[j].1;
+                let dist = dx.hypot(dy).max(EPS);
+                let min_dist = radius[i] + radius[j] + COLLIDE_MARGIN;
+                if dist < min_dist {
+                    // Split the correction so neither node dominates; many
+                    // sweeps relax a jammed cluster the way d3's collide does.
+                    let push = (min_dist - dist) / 2.0;
+                    let (ux, uy) = (dx / dist, dy / dist);
+                    pos[i].0 += ux * push;
+                    pos[i].1 += uy * push;
+                    pos[j].0 -= ux * push;
+                    pos[j].1 -= uy * push;
+                    moved = true;
+                }
+            }
+        }
+        if !moved {
+            break;
+        }
+    }
+
     // Normalize: shift so the children's bounding box top-left is at
     // (0, 0), and return per-child top-left offsets. This keeps the
     // layered-style `content_size` max-loop and container auto-fit
@@ -339,6 +378,29 @@ mod tests {
             ("e".into(), "a".into()),
             ("e".into(), "f".into()),
         ];
+        let offsets = assign_force_offsets(&nodes, &edges, ForceParams::default());
+        assert_no_overlap(&nodes, &offsets);
+    }
+
+    #[test]
+    fn dense_large_node_hub_graph_has_no_overlap() {
+        // Mirrors the wskill note graph: many large (120×120) nodes wired
+        // into a few hubs. The relaxation alone leaves overlaps at this
+        // scale; the collision-resolution pass must still hand back a
+        // disjoint layout so the edge router has clean lanes.
+        let big = |id: &str| Node {
+            id: Some(id.into()),
+            size: (120.0, 120.0),
+        };
+        let nodes: Vec<Node> = (0..24).map(|i| big(&format!("n{i}"))).collect();
+        // Hub-and-spoke: n0 and n1 are hubs every other node links to.
+        let mut edges: Vec<(String, String)> = Vec::new();
+        for i in 2..24 {
+            edges.push(("n0".into(), format!("n{i}")));
+            if i % 2 == 0 {
+                edges.push(("n1".into(), format!("n{i}")));
+            }
+        }
         let offsets = assign_force_offsets(&nodes, &edges, ForceParams::default());
         assert_no_overlap(&nodes, &offsets);
     }
