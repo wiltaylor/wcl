@@ -1,7 +1,8 @@
 // Book Reference landing — a force-directed graph of every unit at the top,
-// then a menu of the four unit kinds. Each row is gated so empty kinds don't
-// appear. Imported by book/main.wcl. Not standalone-checkable (resolves the
-// `concepts` / `entities` / `facts` / `procedures` lets defined in main.wcl).
+// then a per-kind "index coverage" table (each note and how many indexes pin
+// it). Each table is gated so empty kinds don't appear. Imported by
+// book/main.wcl. Not standalone-checkable (resolves the `concepts` /
+// `entities` / `facts` / `procedures` / `indexes` lets defined in main.wcl).
 
 // Record for the graph diagram's computed `edges = [...]` field. Node ids are
 // the raw unit ids, so a `related` id maps straight to its node. The diagram's
@@ -47,7 +48,7 @@ text.gnode-concept, text.gnode-entity, text.gnode-fact, text.gnode-process { fil
 CSS
 }
 
-@comment(id = "cpv8pu6v", body = "Remove the links to pages for the concepts, events, processes and fats since this info is now on the wskill graph page now instead.", loc = "4", target = "p — \"- Concepts — 15 ideas to understand.\"", page = "reference_page") page reference_page {
+page reference_page {
   h1 "WSkill Graph"
   p  "Everything about this topic, mapped below as a force-directed graph and listed beneath it."
   p  "Each circle is a note (click it to open its page) and each line is a `related` link — colour-coded by type (**concepts** blue, **entities** amber, **facts** green, **processes** purple). Scroll to zoom and drag to pan."
@@ -72,18 +73,6 @@ CSS
     wdoc_repeater { each = procedures as = :p  node $"${p.title}" { id = p.id  link = $"process_${p.id}"  class = ["gnode-process"]  width = 120.0  height = 120.0 } }
 
     edges = note_edges
-  }
-  wdoc_repeater { each = match len(concepts) { 0 => [], _ => [true] }  as = :_uc
-    p $"- [**Concepts**](concepts_page) — ${len(concepts)} ideas to understand."
-  }
-  wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_ue
-    p $"- [**Entities**](entities_page) — ${len(entities)} concrete things in the topic's world."
-  }
-  wdoc_repeater { each = match len(facts) { 0 => [], _ => [true] }  as = :_uf
-    p $"- [**Facts**](facts_page) — ${len(facts)} values and value tables."
-  }
-  wdoc_repeater { each = match len(procedures) { 0 => [], _ => [true] }  as = :_up
-    p $"- [**Processes**](processes_page) — ${len(procedures)} runbooks for doing tasks."
   }
 
   h2 "Index coverage"
