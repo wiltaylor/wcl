@@ -96,6 +96,16 @@ docs-serve *ARGS:
 docs-build *ARGS:
     cargo run -p wcl -- wdoc build docs/main.wcl --out docs/_site {{ARGS}}
 
+# Serve the WCL architecture book (.wad/) in comment mode — hot reload, click a block to leave a review note
+[group('dev')]
+wad-serve *ARGS:
+    cargo run -p wcl -- wdoc serve .wad/wdoc/book/main.wcl --addr 127.0.0.1:8138 --comment {{ARGS}}
+
+# Build the WCL architecture book (.wad/) into .wad/_site/ (gitignored)
+[group('dev')]
+wad-build *ARGS:
+    cargo run -p wcl -- wdoc build .wad/wdoc/book/main.wcl --out .wad/_site {{ARGS}}
+
 # List review @comments left in docs/ via `just docs-serve` (--format json, or `resolve <id>` to delete one)
 [group('dev')]
 docs-comments *ARGS:

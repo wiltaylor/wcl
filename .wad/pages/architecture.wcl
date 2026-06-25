@@ -1,0 +1,6 @@
+import <wdoc.wcl>
+
+page architecture {
+  h1 "Architecture"
+  p "The crates, their responsibilities, and how they fit together."
+}

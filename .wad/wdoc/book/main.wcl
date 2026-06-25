@@ -1,0 +1,30 @@
+// WCL's own architecture, authored as a WAD (Wil's Architecture Document) and
+// rendered by `wcl wdoc`. One document, one `book`-template site.
+//
+//   wcl wdoc serve .wad/wdoc/book/main.wcl          # dev server
+//   wcl wdoc build .wad/wdoc/book/main.wcl --out .wad/_site
+//
+// Skeleton only: an index plus a couple of stub chapters. The single
+// `import <wdoc.wcl>` pulls in the embedded wdoc stdlib (`page` / `h1` / `p`
+// / `toc` / …), in scope here and in every imported page.
+import <wdoc.wcl>
+
+site book {
+  default_template = :book
+  title            = "WCL Architecture"
+  root             = true
+  theme            = :nord
+  accent           = :cyan
+  theme_toggle     = true
+  search           = true
+  toc {
+    chapter "Home"         { page = index }
+    chapter "Overview"     { page = overview }
+    chapter "Architecture" { page = architecture }
+  }
+}
+
+// Pages — one block per file under .wad/pages/.
+import "../../pages/index.wcl"
+import "../../pages/overview.wcl"
+import "../../pages/architecture.wcl"
