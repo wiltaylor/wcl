@@ -47,7 +47,7 @@ text.gnode-concept, text.gnode-entity, text.gnode-fact, text.gnode-process { fil
 CSS
 }
 
-page reference_page {
+@comment(id = "cpv8pu6v", body = "Remove the links to pages for the concepts, events, processes and fats since this info is now on the wskill graph page now instead.", loc = "4", target = "p — \"- Concepts — 15 ideas to understand.\"", page = "reference_page") page reference_page {
   h1 "WSkill Graph"
   p  "Everything about this topic, mapped below as a force-directed graph and listed beneath it."
   p  "Each circle is a note (click it to open its page) and each line is a `related` link — colour-coded by type (**concepts** blue, **entities** amber, **facts** green, **processes** purple). Scroll to zoom and drag to pan."
