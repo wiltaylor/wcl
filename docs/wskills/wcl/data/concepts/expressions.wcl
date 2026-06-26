@@ -1,61 +1,17 @@
 concept expressions {
   name     = "Expressions"
   summary  = "The expression grammar — operators, member access, calls, and constructor forms."
-  related  = [numbers, strings, control_flow, functions]
+  related  = [member_access, function_calls, operators, numeric_promotion, functions]
   audience = :both
   body {
     p "Every field value, function argument, and `let` right-hand side is an **expression** — something that produces a value. WCL's expression grammar is small: literals, identifiers, member access, calls, operators, and a handful of constructor forms."
     callout "Covered elsewhere" { class = ["info"]  body = "Literal forms live with their types (Numbers, Strings, Booleans, Symbols, Optionals, Lists, Tensors). Function literals are in Functions; if / match / let / block in Control Flow." }
-    h2 "Operators"
-    table {
-      header = ["Group", "Operators"]
-      rows = [
-        ["Arithmetic", "`+` `-` `*` `/` `%`"],
-        ["Comparison", "`==` `!=` `<` `<=` `>` `>=`"],
-        ["Logical", "`&&` `||` `!`"],
-        ["Coalescing", "`??` (left value unless `none`)"],
-        ["Unary", "`-expr` (negate), `!expr` (not)"],
-      ]
-    }
-    p "Precedence follows the usual conventions: unary tightest, then `*` `/` `%`, then `+` `-`, then comparison, then `&&`, then `||`, then `??` loosest. Use parentheses to group when in doubt."
-    h2 "Numeric promotion"
-    p "Arithmetic and comparison widen mixed [numeric](concept_numbers) operands to a common type, so cross-width and integer/float mixing work without explicit casts."
-    code "wcl" { source = <<'SRC'
-a = 1 + 2.0        // i64 widened to f64 -> 3.0
-b = 1u32 == 1i64   // true
-c = 3.0 * 2u8      // 6.0
-SRC
-    }
-    h2 "Member access"
-    p "A dotted path reads a field. Access chains through records, variant payloads, and any composite that exposes named members."
-    code "wcl" { source = <<'SRC'
-region = service.metadata.region
-deep   = config.services.web.metadata.region
-SRC
-    }
-    h2 "Function calls"
-    p "Parentheses call a function or constructor. Arguments are expressions, evaluated lazily; the call evaluates the body in a fresh context."
-    code "wcl" { source = <<'SRC'
-n      = len(items)
-total  = sum(map(items, fn(x: i64) -> i64 x * 2))
-shape  = Point { x: 1.0, y: 2.0 }
-SRC
-    }
-    h2 "Variant construction"
-    p "Build a union variant with `Union::Variant`. Record bodies go in braces, typeref payloads in parentheses, unit constructors stand bare. See [Unions](concept_unions)."
-    code "wcl" { source = <<'SRC'
-a = Shape::Circle { radius: 5.0, stroke: 0.5 }
-b = Shape::Polygon(7)
-c = Shape::Empty
-SRC
-    }
-    h2 "List literals"
-    p "Square brackets and commas build a `list<T>`. See [Lists](concept_lists) for nested lists and the collection builtins."
-    code "wcl" { source = <<'SRC'
-xs    = [1, 2, 3]
-names = ["alice", "bob"]
-empty = []
-SRC
-    }
+    p "WCL's operators — arithmetic, comparison, logic, `??`, `^`, `[]`, and `.` — are tabulated in [Operators](fact_operators)."
+    p "- [Member access](concept_member_access) — dotted paths that read fields."
+    p "- [Function calls](concept_function_calls) — call a function or constructor."
+    p "- [Operators](fact_operators) — arithmetic, comparison, logic, and the rest."
+    p "- [Numeric promotion](concept_numeric_promotion) — mixed numeric operands widen to a common type."
+    p "- [Unions](concept_unions) — variant construction with `Union::Variant`."
+    p "- [Lists](concept_lists) — list literals and the collection builtins."
   }
 }

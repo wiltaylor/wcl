@@ -1,0 +1,25 @@
+concept raw_heredocs {
+  name     = "Raw Heredocs"
+  summary  = "Single-quoted opening tag takes the body verbatim — no escapes, no interpolation."
+  related  = [strings, string_literals, string_escapes, heredocs, string_interpolation, expressions]
+  audience = :both
+  body {
+    h2 "Raw heredocs"
+    p <<PROSE
+A **raw heredoc** uses a single-quoted opening tag and takes the body verbatim —
+no escapes, no interpolation, just literal bytes. Ideal for LaTeX, regexes, code
+samples with backslashes, or anything where you do not want WCL touching the
+contents. Common leading whitespace is still stripped.
+PROSE
+    code "wcl" { source = <<'SRC'
+regex = <<'RAW'
+\d{3}-\d{4}
+RAW
+
+latex = <<'TEX'
+\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+TEX
+SRC
+    }
+  }
+}

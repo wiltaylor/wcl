@@ -1,7 +1,7 @@
 concept records {
   name     = "Records"
   summary  = "Named records via the type keyword — fixed sets of named, typed fields."
-  related  = [unions, interfaces, schema]
+  related  = [unions, interfaces, schema, type_aliases]
   audience = :both
   body {
     p "A `type` declares a named record — a fixed set of named, typed fields. Records describe the shape of values, function parameters, and the backing type of every block."
@@ -13,21 +13,6 @@ type Dog {
 }
 
 let rex = Dog { name: "Rex", age: 4u32 }
-SRC
-    }
-    h2 "Type aliases"
-    p "`type Name = TypeRef` declares a transparent alias — a readable name for any type, resolved wherever the name is used (transitively). Constraint decorators on the alias travel with it: every field declared with the alias is validated by `wcl check`."
-    code "wcl" { source = <<'SRC'
-@min(1) @max(65535)
-type Port = u16
-
-@non_empty
-type Name = utf8
-
-type Service {
-  name: Name        # rejects ""
-  port: Port        # rejects 0u16 and 70000-ish values
-}
 SRC
     }
     h2 "extends"

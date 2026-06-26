@@ -1,0 +1,17 @@
+concept block_expressions {
+  name     = "Block Expressions"
+  summary  = "A { ... } expression holds let bindings followed by a tail expression, which is the block's value."
+  related  = [control_flow, let_bindings, expressions]
+  audience = :both
+  body {
+    p "A `{ ... }` expression holds zero or more `let ... ;` bindings followed by a tail expression, which is the block's value."
+    code "wcl" { source = <<'SRC'
+result = {
+  let a = to_upper("x");
+  let b = to_upper("y");
+  len(a) + len(b)
+}
+SRC
+    }
+  }
+}

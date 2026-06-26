@@ -1,0 +1,31 @@
+concept block_schema {
+  name     = "Block Schema"
+  summary  = "Declaring nestable blocks with @block, @inline, @child/@children, and @default."
+  related  = [schema, document_schema, ref_integrity, child_count_constraints, fields_blocks, records]
+  audience = :both
+  body {
+    p "`@block(\"kind\")` makes a type a nestable block of that kind. `@inline(slot)` binds the block label to a field at that position, `@child(\"kind\")` / `@children(\"kind\")` declare nested blocks, and `@default(expr)` supplies a value when a field is omitted. The block label maps to the `@inline` field — `service \"web\"` sets `name = \"web\"`."
+    h2 "A worked example"
+    p "A document root with one kind of child block, whose label becomes an inline field and whose port has a default:"
+    code "wcl" { source = <<'SRC'
+@block("service")
+type Service {
+  @inline(0)   name: utf8     // service "web" -> name = "web"
+  @default(80) port: u32
+  region: utf8
+}
+
+@document
+type Config {
+  @children("service") services: list<Service>
+}
+SRC
+    }
+    p "Given that schema, this document validates: each `service` block contributes a `Service`, with `name` from the label and `port` defaulting to `80`."
+    code "wcl" { source = <<'SRC'
+service "web" { region = "us-east-1" }
+service "api" { port = 9090u32  region = "eu-west-1" }
+SRC
+    }
+  }
+}

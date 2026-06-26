@@ -17,6 +17,7 @@ import "../component/entity.wcl"    // entity_body
 import "../component/fact.wcl"      // fact_body
 import "../component/process.wcl"   // process_body
 import "../component/type_index.wcl" // shared unit-index page component
+import "../component/function.wcl"  // function_body (per-builtin pages)
 
 // Built-in standalone pages — one file each under pages/ (the generated per-unit
 // pages stay as repeaters below). These resolve the `let`s defined in this file,
@@ -58,6 +59,22 @@ let top_features    = flatten(map(languages, fn(l: Language) -> list<Feature> { 
 let child_features  = flatten(map(top_features,   fn(f: Feature) -> list<Feature> { f.children }))
 let gchild_features = flatten(map(child_features, fn(f: Feature) -> list<Feature> { f.children }))
 let all_features    = flatten([top_features, flatten([child_features, gchild_features])])
+
+// Builtin functions are flat data under the feature(s) that carry them; each
+// gets its own page (function_<id>), grouped into per-category overview pages by
+// its `category` slug. `fn_categories` fixes the group order + display text;
+// membership is data-driven (the function's `category` field), not feature nesting.
+let all_functions = filter(flatten(map(all_features, fn(f: Feature) -> list<Function> { f.functions })), fn(fc: Function) -> bool { in_book(fc.audience) })
+let fn_categories = [
+  { slug: "collections", name: "Collection functions", blurb: "Transform, search, and reshape lists and tensors." },
+  { slug: "strings",     name: "String functions",     blurb: "Search, split, join, reshape, and slice text." },
+  { slug: "math",        name: "Math functions",       blurb: "Arithmetic, rounding, roots, logs, and trigonometry." },
+  { slug: "records",     name: "Record functions",     blurb: "Read and combine record fields." },
+  { slug: "reflection",  name: "Reflection functions", blurb: "Inspect declarations, types, and signatures at evaluation time." },
+  { slug: "tensors",     name: "Tensor functions",     blurb: "Build, read, and reshape shape-carrying arrays." },
+  { slug: "control",     name: "Control & error functions", blurb: "Abort, assert, and signal evaluation failure." },
+]
+let functions_in = fn(slug: utf8) -> list<Function> { filter(all_functions, fn(fc: Function) -> bool { (fc.category ?? "") == slug }) }
 
 // Opt-in `cli` module (schema/cli.wcl): a CLI maps to a top-level "CLI" section;
 // each cli renders all its commands on one page with an in-page jump index.
@@ -109,6 +126,13 @@ site book {
       chapter "Language" { page = languages_page
         wdoc_repeater { each = languages  as = :l
           wdoc_repeater { each = l.features  as = :f  chapter $"${f.name}" { page = $"feature_${f.id}"
+            // A feature carrying builtin functions nests one chapter per category
+            // (the per-function pages are reached from those category pages).
+            wdoc_repeater { each = match len(filter(f.functions, fn(fc: Function) -> bool { in_book(fc.audience) })) { 0 => [], _ => fn_categories }  as = :cat
+              wdoc_repeater { each = match len(filter(f.functions, fn(fc: Function) -> bool { in_book(fc.audience) && (fc.category ?? "") == cat.slug })) { 0 => [], _ => [true] }  as = :_cc
+                chapter $"${cat.name}" { page = $"builtins_${cat.slug}" }
+              }
+            }
             wdoc_repeater { each = f.children  as = :cf  chapter $"${cf.name}" { page = $"feature_${cf.id}"
               wdoc_repeater { each = cf.children  as = :gf  chapter $"${gf.name}" { page = $"feature_${gf.id}" } }
             } }
@@ -266,34 +290,41 @@ wdoc_repeater { each = all_features  as = :f
         wdoc_repeater { each = match ex.result { none => [], rr => [rr] }  as = :rr  p $"**Result:** `${rr}`" }
       }
     }
-    // Function objects projected on this feature page (data is authored alphabetically).
-    // An index of jump-links (each heading carries an explicit id anchor) sits on top.
+    // Functions carried by a feature are builtins. Rather than dumping them inline
+    // (defeating one-page-per-function), the feature page becomes a builtins
+    // landing: links to the per-category overview pages, then an alphabetical
+    // index linking to each function's own page.
     wdoc_repeater { each = match len(filter(f.functions, fn(fc: Function) -> bool { in_book(fc.audience) })) { 0 => [], _ => [true] }  as = :_fi
-      h2 "Functions"
-      p $"${join(map(filter(f.functions, fn(fc: Function) -> bool { in_book(fc.audience) }), fn(fc: Function) -> utf8 { $"[${fc.name}](#${fc.id})" }), " · ")}"
-    }
-    wdoc_repeater { each = filter(f.functions, fn(fc: Function) -> bool { in_book(fc.audience) })  as = :fc
-      h3 $"${fc.name}(${join(map(fc.parameters, fn(p: Parameter) -> utf8 { $"${p.name}: ${p.type ?? "?"}" }), ", ")})${match fc.returns { none => "", r => $" → ${r}" }}" { id = fc.id }
-      wdoc_repeater { each = match fc.description { none => [], d => [d] }  as = :d  p $"${d}" }
-      wdoc_repeater { each = match len(fc.parameters) + (match fc.returns { none => 0, r => 1 }) { 0 => [], _ => [true] }  as = :_pt
-        table {
-          header = ["Parameter", "Type", "Description", "Remarks"]
-          rows = flatten([
-            map(fc.parameters, fn(p: Parameter) -> list<utf8> { [p.name, p.type ?? "—", p.description ?? "—", p.remarks ?? "—"] }),
-            match fc.returns { none => [], r => [["returns", r, fc.returns_description ?? "—", "—"]] }
-          ])
+      h2 "By category"
+      wdoc_repeater { each = fn_categories  as = :cat
+        wdoc_repeater { each = match len(filter(f.functions, fn(fc: Function) -> bool { in_book(fc.audience) && (fc.category ?? "") == cat.slug })) { 0 => [], _ => [true] }  as = :_cc
+          p $"- [**${cat.name}**](builtins_${cat.slug}) — ${cat.blurb}"
         }
       }
-      wdoc_repeater { each = match fc.remarks { none => [], r => [r] }  as = :r  p $"**Remarks:** ${r}" }
-      wdoc_repeater { each = fc.examples  as = :ex
-        wdoc_repeater { each = match ex.description { none => [], d => [d] }  as = :d  p $"${d}" }
-        code $"${ex.lang ?? "text"}" { source = ex.code }
-        wdoc_repeater { each = match ex.result { none => [], rr => [rr] }  as = :rr  p $"**Result:** `${rr}`" }
-      }
+      h2 "All functions"
+      p $"${join(map(filter(f.functions, fn(fc: Function) -> bool { in_book(fc.audience) }), fn(fc: Function) -> utf8 { $"[${fc.name}](function_${fc.id})" }), " · ")}"
     }
     // A grouping feature (e.g. Syntax) links to its nested child features.
     wdoc_repeater { each = f.children  as = :cf
       p $"- [**${cf.name}**](feature_${cf.id})${match cf.summary { none => "", s => $" — ${s}" }}"
+    }
+  }
+}
+
+// --- Builtin functions (opt-in language module) — one page per function, plus a
+// per-category overview page. Both are generated from the flat `all_functions`
+// list; category membership comes from each function's `category` slug.
+wdoc_repeater { each = all_functions  as = :fc
+  page $"function_${fc.id}" { title = $"${fc.name}"
+    function_body { func = fc }
+  }
+}
+wdoc_repeater { each = fn_categories  as = :cat
+  page $"builtins_${cat.slug}" { title = $"${cat.name}"
+    h1 $"${cat.name}"
+    p  $"${cat.blurb}"
+    wdoc_repeater { each = functions_in(cat.slug)  as = :fc
+      p $"- [**${fc.name}**](function_${fc.id})${match fc.description { none => "", d => $" — ${d}" }}"
     }
   }
 }

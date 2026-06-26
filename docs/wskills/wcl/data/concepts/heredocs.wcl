@@ -1,0 +1,21 @@
+concept heredocs {
+  name     = "Heredocs"
+  summary  = "`<<TAG ... TAG` multi-line strings interpret escapes and strip common indentation."
+  related  = [strings, string_literals, string_escapes, raw_heredocs, string_interpolation, expressions]
+  audience = :both
+  body {
+    h2 "Plain heredocs"
+    p <<PROSE
+`<<TAG ... TAG` introduces a heredoc whose body runs until a line matching the
+closing tag. Escape sequences are interpreted, and indentation is stripped to
+match the closing tag's indentation, so heredocs nest comfortably inside blocks.
+PROSE
+    code "wcl" { source = <<'SRC'
+note = <<END
+First line.
+Second line.
+END
+SRC
+    }
+  }
+}

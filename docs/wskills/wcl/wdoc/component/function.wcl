@@ -1,0 +1,33 @@
+// Function page body — renders one builtin `function` object on its own page
+// (the book's per-function pages). Mirrors the parameter/returns table, remarks
+// and examples the feature pages used to render inline. The slot is named
+// `func` (not `fn`) to avoid clashing with the `fn(...)` literal keyword used
+// inside the body.
+
+import <wdoc.wcl>
+import "../../schema/language.wcl"   // Function / Parameter / CodeExample
+
+wdoc_component function_body {
+  wdoc_slot func
+  wdoc_body {
+    h1 $"${func.name}(${join(map(func.parameters, fn(p: Parameter) -> utf8 { $"${p.name}: ${p.type ?? "?"}" }), ", ")})${match func.returns { none => "", r => $" → ${r}" }}"
+    wdoc_repeater { each = match func.category { none => [], c => [c] }  as = :c  p $"_Category: [${c}](builtins_${c})_" }
+    wdoc_repeater { each = match func.description { none => [], d => [d] }  as = :d  p $"${d}" }
+    wdoc_repeater { each = match len(func.parameters) + (match func.returns { none => 0, r => 1 }) { 0 => [], _ => [true] }  as = :_pt
+      table {
+        header = ["Parameter", "Type", "Description", "Remarks"]
+        rows = flatten([
+          map(func.parameters, fn(p: Parameter) -> list<utf8> { [p.name, p.type ?? "—", p.description ?? "—", p.remarks ?? "—"] }),
+          match func.returns { none => [], r => [["returns", r, func.returns_description ?? "—", "—"]] }
+        ])
+      }
+    }
+    wdoc_repeater { each = match func.remarks { none => [], r => [r] }  as = :r  p $"**Remarks:** ${r}" }
+    wdoc_repeater { each = func.examples  as = :ex
+      wdoc_repeater { each = match ex.description { none => [], d => [d] }  as = :d  p $"${d}" }
+      code $"${ex.lang ?? "text"}" { source = ex.code }
+      wdoc_repeater { each = match ex.result { none => [], rr => [rr] }  as = :rr  p $"**Result:** `${rr}`" }
+    }
+    wdoc_content
+  }
+}

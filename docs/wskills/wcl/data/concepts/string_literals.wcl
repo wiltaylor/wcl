@@ -1,0 +1,28 @@
+concept string_literals {
+  name     = "String Literals"
+  summary  = "UTF-8 by default; ascii/utf16/utf32 prefixes select another encoding."
+  related  = [strings, string_escapes, heredocs, raw_heredocs, string_interpolation, symbols, expressions]
+  audience = :both
+  body {
+    h2 "Literals"
+    code "wcl" { source = <<'SRC'
+name  = "hello"          // utf8 (default)
+label = utf8"hello"      // explicit
+tag   = ascii"id-007"
+wide  = utf16"hello"
+quad  = utf32"hello"
+SRC
+    }
+    h2 "Types"
+    table {
+      header = ["Type", "Use"]
+      rows = [
+        ["`utf8`", "Default. Variable-width Unicode in 1-4 byte sequences."],
+        ["`ascii`", "7-bit text; one byte per char, no Unicode."],
+        ["`utf16`", "Variable-width, two bytes per BMP code unit."],
+        ["`utf32`", "Fixed-width, four bytes per code point."],
+      ]
+    }
+    callout "Encoding is metadata" { class = ["note"]  body = "The encoding is part of the value's type: a utf8 field rejects an ascii literal; widen or convert at the host layer." }
+  }
+}

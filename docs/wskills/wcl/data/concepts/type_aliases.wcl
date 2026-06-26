@@ -1,0 +1,23 @@
+concept type_aliases {
+  name     = "Type Aliases"
+  summary  = "type Name = TypeRef declares a transparent alias; constraint decorators travel to every field using it."
+  related  = [records, type_constraints, schema]
+  audience = :both
+  body {
+    h2 "Type aliases"
+    p "`type Name = TypeRef` declares a transparent alias — a readable name for any type, resolved wherever the name is used (transitively). Constraint decorators on the alias travel with it: every field declared with the alias is validated by `wcl check`."
+    code "wcl" { source = <<'SRC'
+@min(1) @max(65535)
+type Port = u16
+
+@non_empty
+type Name = utf8
+
+type Service {
+  name: Name        # rejects ""
+  port: Port        # rejects 0u16 and 70000-ish values
+}
+SRC
+    }
+  }
+}

@@ -1,7 +1,7 @@
 concept namespaces {
   name     = "Namespaces"
   summary  = "Scope declarations under a dotted path; use and :: control how names resolve."
-  related  = [imports, identifiers, schema]
+  related  = [use_declarations, qualified_kinds, imports, identifiers, schema]
   audience = :both
   body {
     p "A `namespace` declaration scopes a file's declarations under a dotted path, `use` pulls names from other namespaces into local scope, and a `ns::kind` qualifier picks a block schema from a specific namespace. Together they let independently-authored libraries share a document without name collisions."
@@ -15,40 +15,5 @@ type shapes.Circle { center: utils.Point  radius: f64 }
 SRC
     }
     p "Imported files keep their own `namespace` — an `import` brings their declarations in, but the names stay qualified under the imported file's path. See [Imports & Modules](concept_imports)."
-    h2 "use declarations"
-    p "`use` brings qualified names into local scope so they can be written bare. It is top-level only; an unknown target or duplicate alias is an error when the document is opened."
-    code "wcl" { source = <<'SRC'
-use company.utils.Point          // bind the leaf: write `Point`
-use company.utils.Point as P     // leaf under another name: `P`
-use company.utils                // whole namespace: every member resolves bare
-use company.utils as U           // namespace alias: `U.Point`
-use company.shapes.{Circle, Square as Sq}   // pick several members at once
-SRC
-    }
-    table {
-      header = ["Form", "Effect"]
-      rows = [
-        ["`use ns.Name`", "Binds `Name` locally"],
-        ["`use ns.Name as Alias`", "Binds the member under `Alias`"],
-        ["`use ns`", "Adds the namespace to the bare-name search path"],
-        ["`use ns as Alias`", "Namespace alias — members reachable as `Alias.Name`"],
-        ["`use ns.{A, B as C}`", "Binds several members in one declaration"],
-      ]
-    }
-    h2 "Qualified block kinds"
-    p "Block (and table) kinds are namespace-scoped too. A `::`-qualified kind at the instance site selects the `@block` declaration from that namespace, even when a local declaration shadows the bare kind."
-    code "wcl" { source = <<'SRC'
-import <wdoc.wcl>
-
-// A local @block("process") shadows the bare kind...
-@block("process") type MyProcess { @inline(0) text: utf8  cost: i64 }
-
-process "mine" { cost = 3 }          // -> MyProcess (local wins)
-wdoc::process "theirs" { }           // -> wdoc's Process, explicitly
-SRC
-    }
-    h2 "How bare names resolve"
-    p "A bare kind prefers a declaration in the referencing file's own namespace; otherwise it falls back to an imported one. So a user `@block(\"process\")` deterministically shadows a library's. Two same-kind declarations in the **same** namespace are an error; the same kind across different namespaces is fine — disambiguate at the instance with `::`."
-    callout "import vs namespace vs use" { class = ["info"]  body = "An import decides which files participate. The imported file's namespace decides what its declarations are called, and your use declarations (or :: qualifiers) decide how you refer to them." }
   }
 }

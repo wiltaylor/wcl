@@ -1,0 +1,14 @@
+concept function_literals {
+  name     = "Function Literals"
+  summary  = "Inline `fn(params) -> Return body` function values."
+  related  = [functions, fn_items, higher_order_functions, function_types, expressions]
+  audience = :both
+  body {
+    p "`fn(params) -> Return body`. The body is a single expression, or a `{ ... }` block expression."
+    code "wcl" { source = <<'SRC'
+double = fn(x: i32) -> i32 x * 2
+sum_sq = fn(x: i32, y: i32) -> i32 { let s = x + y; s * s }
+SRC
+    }
+  }
+}

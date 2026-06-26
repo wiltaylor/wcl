@@ -44,6 +44,25 @@ let procedures = filter(procedures, fn(p: Procedure) -> bool { in_skill(p.audien
 let languages  = filter(languages,  fn(x: Language)  -> bool { in_skill(x.audience) })
 let clis       = filter(clis,       fn(x: Cli)       -> bool { in_skill(x.audience) })
 
+// Builtin functions, flattened across every feature and audience-filtered, with
+// the same category grouping the book uses. The skill renders them on a single
+// grouped reference page (lean + greppable) rather than one page per function.
+let sk_top_features    = flatten(map(languages, fn(l: Language) -> list<Feature> { l.features }))
+let sk_child_features  = flatten(map(sk_top_features,   fn(f: Feature) -> list<Feature> { f.children }))
+let sk_gchild_features = flatten(map(sk_child_features, fn(f: Feature) -> list<Feature> { f.children }))
+let all_features  = flatten([sk_top_features, flatten([sk_child_features, sk_gchild_features])])
+let all_functions = filter(flatten(map(all_features, fn(f: Feature) -> list<Function> { f.functions })), fn(fc: Function) -> bool { in_skill(fc.audience) })
+let fn_categories = [
+  { slug: "collections", name: "Collection functions" },
+  { slug: "strings",     name: "String functions" },
+  { slug: "math",        name: "Math functions" },
+  { slug: "records",     name: "Record functions" },
+  { slug: "reflection",  name: "Reflection functions" },
+  { slug: "tensors",     name: "Tensor functions" },
+  { slug: "control",     name: "Control & error functions" },
+]
+let functions_in = fn(slug: utf8) -> list<Function> { filter(all_functions, fn(fc: Function) -> bool { (fc.category ?? "") == slug }) }
+
 // Flattened cross-reference rows over the skill's audience-filtered units, so a
 // unit's `related` ids resolve to links (UnitRef + the components live in
 // component/common.wcl).
@@ -109,7 +128,32 @@ page index { sites = [:skill]  start = true
 
   h2 "Reference"
   p "- [Language reference](language_ref) — the WCL language, area by area."
+  p "- [Builtin functions](builtins_ref) — every builtin, grouped by category."
   p "- [CLI reference](cli_ref) — the `wcl` CLI: every subcommand, its arguments and switches."
+}
+
+// --- references/builtins_ref.md — every builtin function, grouped by category --
+page builtins_ref { sites = [:skill]  title = $"${topic.name} — builtin functions"
+  h1 $"${topic.name} — builtin functions"
+  p  "Every WCL builtin, grouped by category. Signature, parameters, and an example each."
+  wdoc_repeater { each = fn_categories  as = :cat
+    wdoc_repeater { each = match len(functions_in(cat.slug)) { 0 => [], _ => [true] }  as = :_ch  h2 $"${cat.name}" }
+    wdoc_repeater { each = functions_in(cat.slug)  as = :fc
+      h3 $"${fc.name}(${join(map(fc.parameters, fn(p: Parameter) -> utf8 { $"${p.name}: ${p.type ?? "?"}" }), ", ")})${match fc.returns { none => "", r => $" → ${r}" }}"
+      wdoc_repeater { each = match fc.description { none => [], d => [d] }  as = :d  p $"${d}" }
+      wdoc_repeater { each = match len(fc.parameters) + (match fc.returns { none => 0, r => 1 }) { 0 => [], _ => [true] }  as = :_pt
+        table {
+          header = ["Parameter", "Type", "Description"]
+          rows = flatten([
+            map(fc.parameters, fn(p: Parameter) -> list<utf8> { [p.name, p.type ?? "—", p.description ?? "—"] }),
+            match fc.returns { none => [], r => [["returns", r, fc.returns_description ?? "—"]] }
+          ])
+        }
+      }
+      wdoc_repeater { each = fc.examples  as = :ex  code $"${ex.lang ?? "text"}" { source = ex.code } }
+    }
+  }
+  p "[← Back to SKILL.md](index)"
 }
 
 // --- Units: concept / entity / fact — index + per-unit page (body rendered by
@@ -190,6 +234,7 @@ page language_ref { sites = [:skill]  title = $"${topic.name} — language refer
       wdoc_repeater { each = f.facts  as = :fid
         wdoc_repeater { each = filter(facts, fn(x: Fact) -> bool { x.id == fid })  as = :x  p $"- [${x.title}](fact_${x.id})" }
       }
+      wdoc_repeater { each = match len(filter(f.functions, fn(fc: Function) -> bool { in_skill(fc.audience) })) { 0 => [], _ => [true] }  as = :_bf  p "- [Builtin functions, by category](builtins_ref)" }
       wdoc_repeater { each = f.children  as = :cf
         h3 $"${cf.name}"
   wdoc_repeater { each = cf.concepts  as = :cid

@@ -1,0 +1,16 @@
+concept fields {
+  name     = "Fields"
+  summary  = "A field binds a name to a value with `=`."
+  related  = [blocks, fields_blocks, expressions, schema]
+  audience = :both
+  body {
+    p "A field binds a name to a value with `=`. The value is any [expression](concept_expressions)."
+    code "wcl" { source = <<'SRC'
+name    = "alpha"
+count   = 3u32
+enabled = true
+ratio   = count / 2u32
+SRC
+    }
+  }
+}

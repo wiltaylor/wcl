@@ -54,10 +54,15 @@ type CodeExample {
 }
 
 // A function definition. `id` is unique; `name` may repeat across overloads.
+// `category` is a free-text group slug ("collections", "strings", "math",
+// "records", "reflection", "tensors", "control") used to generate per-category
+// builtin overview pages — a flat function list grouped by the field, rather
+// than by feature nesting.
 @block("function")
 type Function {
   @inline(0) id: identifier
   name:        utf8
+  category:    utf8?               // group slug for generated overview pages
   description: utf8?
   remarks:     utf8?
   returns:             utf8?       // return type
