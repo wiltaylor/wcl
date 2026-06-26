@@ -2,19 +2,3 @@
 // and read back by `wcl wdoc comments`. Each `comment` block is keyed by page
 // name + block locator; safe to hand-edit or generate.
 
-comment {
-  id = "cvk38niq"
-  page = "concept_decomposing_information"
-  page_file = "docs/wskills/wskill/wdoc/book/main.wcl"
-  loc = "5"
-  target = "p — \"When in doubt, prefer the smaller, more specific kind and li\""
-  body = "I think we need to add a concept for structured data and link to it form here.. This is the idea of data that has a specific format that we can create new schemas for and then have this information encoded into the concept, entity, factor process formats."
-}
-
-comment {
-  id = "cmyooe0b"
-  page = "index"
-  page_file = "/home/wil/dev/WCL/docs/wskills/wskill/wdoc/pages/overview.wcl"
-  body = "Create a top level index entry for philosophy"
-}
-

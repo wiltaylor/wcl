@@ -1,7 +1,7 @@
 concept decomposing_information {
   name    = "Decomposing information"
   summary = "Break a topic into atomic notes — one idea each — then file each as the unit kind that fits it: concept, entity, fact or process."
-  related = [atomic_note, concept, entity, fact, process]
+  related = [atomic_note, structured_data, concept, entity, fact, process]
   body {
     p <<BODY
       Knowledge goes into a wskill as atomic notes: each unit captures exactly one idea, thing,
@@ -24,6 +24,12 @@ concept decomposing_information {
     p <<BODY
       When in doubt, prefer the smaller, more specific kind and link the pieces together with
       `related` — the web of links, not a folder hierarchy, is what makes the model navigable.
+    BODY
+
+    p <<BODY
+      Each kind is a format with defined fields — [structured data](concept_structured_data). When a
+      topic has a shape the four built-in kinds don't capture, define a new schema for it rather than
+      forcing it into prose.
     BODY
   }
 }

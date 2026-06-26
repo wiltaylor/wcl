@@ -10,6 +10,12 @@ index what {
   related = [wskill_concept, why_use_wskill, decomposing_information, creating_a_wskill]
 }
 
+index philosophy {
+  name    = "Philosophy"
+  summary = "The principles the wskill format is built on."
+  related = [datapresentation, selfcontained, atomic_note, structured_data]
+}
+
 index wskill_reference {
   name    = "Reference"
   summary = "The wskill schema and the unit kinds it captures."
