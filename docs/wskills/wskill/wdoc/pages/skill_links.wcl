@@ -176,9 +176,9 @@ page skill_links_page {
 // file byte-for-byte.
 
 wdoc_repeater { each = skill_procedures  as = :pr
-  page $"skillpage_process_${pr.id}" { title = $"references/process_${pr.id}.md"
-    h1 $"`references/process_${pr.id}.md`"
-    p  $"The generated Markdown for the **${pr.title}** skill page — [open its book page](process_${pr.id}) · [back to the skill graph](skill_links_page)."
+  page $"skillpage_process_${pr.id}" { title = $"${pr.title}"
+    h1 $"${pr.title}"
+    p  $"Generated Markdown for `references/process_${pr.id}.md` — [open its book page](process_${pr.id}) · [back to the skill graph](skill_links_page)."
     markdown_source { id = $"process_${pr.id}"  start_page = "index"  reference = true  pages = skill_pages
       process_body { unit = pr  all_units = skill_all_units  step_style = "skill"
         p "[← Back to SKILL.md](index)"
@@ -188,9 +188,9 @@ wdoc_repeater { each = skill_procedures  as = :pr
 }
 
 wdoc_repeater { each = skill_concepts  as = :c
-  page $"skillpage_concept_${c.id}" { title = $"references/concept_${c.id}.md"
-    h1 $"`references/concept_${c.id}.md`"
-    p  $"The generated Markdown for the **${c.name}** skill page — [open its book page](concept_${c.id}) · [back to the skill graph](skill_links_page)."
+  page $"skillpage_concept_${c.id}" { title = $"${c.name}"
+    h1 $"${c.name}"
+    p  $"Generated Markdown for `references/concept_${c.id}.md` — [open its book page](concept_${c.id}) · [back to the skill graph](skill_links_page)."
     markdown_source { id = $"concept_${c.id}"  start_page = "index"  reference = true  pages = skill_pages
       concept_body { unit = c  examples = examples  all_units = skill_all_units
         p "[← Back to SKILL.md](index)"
@@ -200,9 +200,9 @@ wdoc_repeater { each = skill_concepts  as = :c
 }
 
 wdoc_repeater { each = skill_entities  as = :e
-  page $"skillpage_entity_${e.id}" { title = $"references/entity_${e.id}.md"
-    h1 $"`references/entity_${e.id}.md`"
-    p  $"The generated Markdown for the **${e.name}** skill page — [open its book page](entity_${e.id}) · [back to the skill graph](skill_links_page)."
+  page $"skillpage_entity_${e.id}" { title = $"${e.name}"
+    h1 $"${e.name}"
+    p  $"Generated Markdown for `references/entity_${e.id}.md` — [open its book page](entity_${e.id}) · [back to the skill graph](skill_links_page)."
     markdown_source { id = $"entity_${e.id}"  start_page = "index"  reference = true  pages = skill_pages
       entity_body { unit = e  examples = examples  all_units = skill_all_units
         p "[← Back to SKILL.md](index)"
@@ -212,9 +212,9 @@ wdoc_repeater { each = skill_entities  as = :e
 }
 
 wdoc_repeater { each = skill_facts  as = :f
-  page $"skillpage_fact_${f.id}" { title = $"references/fact_${f.id}.md"
-    h1 $"`references/fact_${f.id}.md`"
-    p  $"The generated Markdown for the **${f.title}** skill page — [open its book page](fact_${f.id}) · [back to the skill graph](skill_links_page)."
+  page $"skillpage_fact_${f.id}" { title = $"${f.title}"
+    h1 $"${f.title}"
+    p  $"Generated Markdown for `references/fact_${f.id}.md` — [open its book page](fact_${f.id}) · [back to the skill graph](skill_links_page)."
     markdown_source { id = $"fact_${f.id}"  start_page = "index"  reference = true  pages = skill_pages
       fact_body { unit = f  examples = examples  all_units = skill_all_units
         p "[← Back to SKILL.md](index)"
