@@ -108,9 +108,34 @@ site book {
   search           = true
   toc {
     chapter "Overview"       { page = index }
-    wdoc_repeater { each = indexes  as = :ix  chapter $"${ix.name}" { page = $"index_${ix.id}"
-      wdoc_repeater { each = filter(ix.children, fn(x: Index) -> bool { in_book(x.audience) })  as = :cix  chapter $"${cix.name}" { page = $"index_${cix.id}" } }
-    } }
+    // Curated indexes. A *content* index (one with a `body`, e.g. Quick Start)
+    // renders as its own page chapter. A *nav* index (no body) is a pure heading
+    // whose children are the concept / fact / process pages it pins via `related`
+    // — and any nested child indexes, each pinning its own units — so the units
+    // sit directly in the menu rather than behind a link-list page.
+    wdoc_repeater { each = indexes  as = :ix
+      wdoc_repeater { each = match ix.body { none => [], _ => [true] }  as = :_cp
+        chapter $"${ix.name}" { page = $"index_${ix.id}" }
+      }
+      wdoc_repeater { each = match ix.body { none => [true], _ => [] }  as = :_nv
+        chapter $"${ix.name}" {
+          wdoc_repeater { each = ix.related  as = :rid
+            wdoc_repeater { each = filter(concepts,   fn(x: Concept)   -> bool { x.id == rid })  as = :t  chapter $"${t.name}"  { page = $"concept_${t.id}" } }
+            wdoc_repeater { each = filter(entities,   fn(x: Entity)    -> bool { x.id == rid })  as = :t  chapter $"${t.name}"  { page = $"entity_${t.id}" } }
+            wdoc_repeater { each = filter(facts,      fn(x: Fact)      -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"fact_${t.id}" } }
+            wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"process_${t.id}" } }
+          }
+          wdoc_repeater { each = filter(ix.children, fn(x: Index) -> bool { in_book(x.audience) })  as = :cix  chapter $"${cix.name}" {
+            wdoc_repeater { each = cix.related  as = :rid
+              wdoc_repeater { each = filter(concepts,   fn(x: Concept)   -> bool { x.id == rid })  as = :t  chapter $"${t.name}"  { page = $"concept_${t.id}" } }
+              wdoc_repeater { each = filter(entities,   fn(x: Entity)    -> bool { x.id == rid })  as = :t  chapter $"${t.name}"  { page = $"entity_${t.id}" } }
+              wdoc_repeater { each = filter(facts,      fn(x: Fact)      -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"fact_${t.id}" } }
+              wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"process_${t.id}" } }
+            }
+          } }
+        }
+      }
+    }
     // Builtins — a top-level "Builtins" section with one chapter per category
     // (per-function pages are reached from those category pages). Gated so it
     // vanishes when no builtins are documented.
@@ -177,20 +202,22 @@ wdoc_repeater { each = procedures  as = :pr
   }
 }
 
-// --- Indexes — curated link-collection pages (top-level menu entries) --------
+// --- Indexes — only a *content* index (one with a `body`, e.g. Quick Start) gets
+// its own page. Nav indexes (no body) pin their units directly into the menu via
+// the TOC above, so they need no link-list page.
 wdoc_repeater { each = all_indexes  as = :ix
-  page $"index_${ix.id}" { title = $"${ix.name}"
-    h1 $"${ix.name}"
-    wdoc_repeater { each = match ix.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
-    // `body` is optional (child indexes often omit it); only project when present,
-    // keeping the named `ix.body` path so it resolves as an addressable body.
-    wdoc_repeater { each = match ix.body { none => [], _ => [true] }  as = :_hb  project { from = ix.body } }
-    wdoc_repeater { each = match len(ix.related) { 0 => [], _ => [true] }  as = :_r  h2 "Related" }
-    wdoc_repeater { each = ix.related  as = :rid
-      wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
-      wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
-      wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
-      wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
+  wdoc_repeater { each = match ix.body { none => [], _ => [true] }  as = :_pg
+    page $"index_${ix.id}" { title = $"${ix.name}"
+      h1 $"${ix.name}"
+      wdoc_repeater { each = match ix.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
+      project { from = ix.body }
+      wdoc_repeater { each = match len(ix.related) { 0 => [], _ => [true] }  as = :_r  h2 "Related" }
+      wdoc_repeater { each = ix.related  as = :rid
+        wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
+        wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
+        wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
+        wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
+      }
     }
   }
 }

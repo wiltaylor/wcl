@@ -9,9 +9,6 @@ index language {
   name    = "Language"
   summary = "The WCL language, area by area — syntax, types, expressions, control flow, functions, modules, and schema."
   audience = :both
-  body {
-    p "WCL element by element. Pick an area below; each lists its concepts and reference tables."
-  }
 
   index lang_basic_syntax {
     name    = "Basic Syntax"
