@@ -47,6 +47,9 @@ let indexes    = filter(indexes,    fn(x: Index)      -> bool { in_book(x.audien
 // (a child of a book-excluded parent is intentionally dropped with its parent).
 let child_indexes = filter(flatten(map(indexes, fn(x: Index) -> list<Index> { x.children })), fn(x: Index) -> bool { in_book(x.audience) })
 let all_indexes   = flatten([indexes, child_indexes])
+// Alias matching the canonical reference page (it counts index coverage over the
+// book-filtered indexes); `indexes` is already that book-filtered list.
+let book_indexes  = indexes
 let procedures = filter(procedures, fn(p: Procedure) -> bool { in_book(p.audience) })
 // Opt-in builtins module (schema/builtins.wcl): the gathered `functions` list.
 // Each builtin gets its own page (function_<id>), grouped into per-category pages

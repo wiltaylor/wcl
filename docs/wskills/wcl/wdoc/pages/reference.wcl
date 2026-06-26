@@ -1,13 +1,8 @@
-// Book Reference landing — a force-directed graph of every unit at the top, then
-// a page-type summary and a per-kind catalogue. Imported by book/main.wcl. Not
-// standalone-checkable (resolves the `concepts` / `entities` / `facts` /
-// `procedures` / `all_functions` / `fn_categories` / `functions_in` lets defined
-// in main.wcl).
-//
-// The main menu (the sidebar TOC) carries Overview, Builtins (+ categories) and CLI.
-// The concept / fact / entity / process pages are reached from this
-// Reference catalogue rather than the menu — the "Page types" table below records
-// which kinds are in the menu and which are Reference-only.
+// Book Reference landing — a force-directed graph of every unit at the top,
+// then a per-kind "index coverage" table (each note and how many indexes pin
+// it). Each table is gated so empty kinds don't appear. Imported by
+// book/main.wcl. Not standalone-checkable (resolves the `concepts` /
+// `entities` / `facts` / `procedures` / `book_indexes` lets defined in main.wcl).
 
 // Record for the graph diagram's computed `edges = [...]` field. Node ids are
 // the raw unit ids, so a `related` id maps straight to its node. The diagram's
@@ -22,6 +17,22 @@ let note_edges = flatten([
   flatten(map(facts,      fn(f: Fact)      -> list<GraphEdge> { map(f.related, fn(r: identifier) -> GraphEdge { { source: $"${f.id}", destination: $"${r}" } }) })),
   flatten(map(procedures, fn(p: Procedure) -> list<GraphEdge> { map(p.related, fn(r: identifier) -> GraphEdge { { source: $"${p.id}", destination: $"${r}" } }) })),
 ])
+
+// Every unit id pinned by an index — each index's own `related`, plus one level
+// of nested child indexes (`schema/base.wcl` nests indexes one level). The
+// "Index coverage" tables below count, per note, how many entries here equal its
+// id: i.e. how many times it is pinned into the curated navigation.
+let index_refs = flatten([
+  flatten(map(book_indexes, fn(i: Index) -> list<identifier> { i.related })),
+  flatten(map(book_indexes, fn(i: Index) -> list<identifier> {
+    flatten(map(i.children, fn(c: Index) -> list<identifier> { c.related }))
+  })),
+])
+
+// How many index `related` lists (top-level or nested) reference `id`.
+fn index_link_count(id: identifier) -> i64 {
+  len(filter(index_refs, fn(t: identifier) -> bool { t == id }))
+}
 
 // Node colours for the graph: paint each circle by note type, and give the
 // label white text so it stays legible on the fill in both light and dark mode
@@ -38,9 +49,9 @@ CSS
 }
 
 page reference_page {
-  h1 "Reference"
-  p  "Everything about this topic, mapped below as a force-directed graph of `related` links, then catalogued by kind."
-  p  "Each circle is a note (click it to open its page) and each line is a `related` link — colour-coded by type (**concepts** blue, **entities** amber, **facts** green, **processes** purple). Scroll to zoom and drag to pan. (Builtin functions carry no `related` links, so they are catalogued in the tables below rather than drawn here.)"
+  h1 "WSkill Graph"
+  p  "Everything about this topic, mapped below as a force-directed graph and listed beneath it."
+  p  "Each circle is a note (click it to open its page) and each line is a `related` link — colour-coded by type (**concepts** blue, **entities** amber, **facts** green, **processes** purple). Scroll to zoom and drag to pan."
   diagram {
     width    = 960
     height   = 640
@@ -64,47 +75,43 @@ page reference_page {
     edges = note_edges
   }
 
-  // ---- Page-type summary -----------------------------------------------------
-  h2 "Page types"
-  p  "Every kind of page this reference generates, how many there are, and whether the kind is surfaced in the **sidebar menu** or reached only from this Reference catalogue."
-  table {
-    header = ["Page type", "Count", "In the sidebar menu?"]
-    // The Entities row only appears when entities exist — entities_page is gated
-    // on a non-empty entity list, so linking it unconditionally would dangle.
-    rows = flatten([
-      [
-        [$"[Concepts](concepts_page)",   $"${len(concepts)}",   "No — reached from this Reference catalogue"],
-        [$"[Facts](facts_page)",         $"${len(facts)}",      "No — reached from this Reference catalogue"],
-      ],
-      match len(entities) { 0 => [], _ => [[$"[Entities](entities_page)", $"${len(entities)}", "No — reached from this Reference catalogue"]] },
-      [
-        [$"[Processes](processes_page)", $"${len(procedures)}", "No — reached from this Reference catalogue"],
-        [$"[Builtin functions](builtins_page)", $"${len(all_functions)}", "Reached from their category page (Builtins menu)"],
-        ["Builtin categories",           $"${len(fn_categories)}", "Yes — chapters under Builtins"],
-      ],
-    ])
-  }
+  h2 "Index coverage"
+  p  "How many times each note is pinned into a curated index (counting nested indexes). A `0` means the note isn't reachable from the index navigation yet."
 
-  // ---- Catalogue -------------------------------------------------------------
-  h2 "Catalogue"
-  wdoc_repeater { each = match len(concepts) { 0 => [], _ => [true] }  as = :_uc
-    p $"- [**Concepts**](concepts_page) — ${len(concepts)} ideas to understand."
+  wdoc_repeater { each = match len(concepts) { 0 => [], _ => [true] }  as = :_tc
+    h3 "Concepts"
+    table {
+      header = ["Concept", "Index links"]
+      rows = map(concepts, fn(c: Concept) -> list<utf8> {
+        [$"[**${c.name}**](concept_${c.id})", $"${index_link_count(c.id)}"]
+      })
+    }
   }
-  wdoc_repeater { each = match len(facts) { 0 => [], _ => [true] }  as = :_uf
-    p $"- [**Facts**](facts_page) — ${len(facts)} values and reference tables."
+  wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_te
+    h3 "Entities"
+    table {
+      header = ["Entity", "Index links"]
+      rows = map(entities, fn(e: Entity) -> list<utf8> {
+        [$"[**${e.name}**](entity_${e.id})", $"${index_link_count(e.id)}"]
+      })
+    }
   }
-  wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_ue
-    p $"- [**Entities**](entities_page) — ${len(entities)} concrete things in the topic's world."
+  wdoc_repeater { each = match len(facts) { 0 => [], _ => [true] }  as = :_tf
+    h3 "Facts"
+    table {
+      header = ["Fact", "Index links"]
+      rows = map(facts, fn(f: Fact) -> list<utf8> {
+        [$"[**${f.title}**](fact_${f.id})", $"${index_link_count(f.id)}"]
+      })
+    }
   }
-  wdoc_repeater { each = match len(procedures) { 0 => [], _ => [true] }  as = :_up
-    p $"- [**Processes**](processes_page) — ${len(procedures)} runbooks for doing tasks."
-  }
-  wdoc_repeater { each = match len(all_functions) { 0 => [], _ => [true] }  as = :_ub
-    p $"- [**Builtins**](builtins_page) — ${len(all_functions)} builtin functions, grouped by category:"
-    wdoc_repeater { each = fn_categories  as = :cat
-      wdoc_repeater { each = match len(functions_in(cat.slug)) { 0 => [], _ => [true] }  as = :_cc
-        p $"    - [${cat.name}](builtins_${cat.slug}) — ${len(functions_in(cat.slug))} functions."
-      }
+  wdoc_repeater { each = match len(procedures) { 0 => [], _ => [true] }  as = :_tp
+    h3 "Processes"
+    table {
+      header = ["Process", "Index links"]
+      rows = map(procedures, fn(p: Procedure) -> list<utf8> {
+        [$"[**${p.title}**](process_${p.id})", $"${index_link_count(p.id)}"]
+      })
     }
   }
 }
