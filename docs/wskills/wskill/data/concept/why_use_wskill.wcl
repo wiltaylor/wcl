@@ -1,23 +1,22 @@
 import <wdoc.wcl>
 
 concept why_use_wskill {
-    name    = "Why use wskill"
-    summary = "Capture a topic once, as self-contained data, and get both a readable book and a Claude Code skill from the same source — kept honest as the topic changes."
-    related = [wskill_concept, selfcontained, book_view, skill_view]
+    name    = "Why use this?"
+    summary = "Preserve a topic's knowledge in a reusable format that serves both people and AI agents — and still works manually if you lose access to the agent."
+    related = [wskill_concept, selfcontained]
     body {
         p <<BODY
-            A wskill earns its place when one topic has to serve more than one audience and outlive
-            more than one sitting. Instead of writing a wiki page for people and a separate prompt
-            for an AI — and watching the two drift apart — you capture the topic once as structured
-            data and let the templates project it. The same source becomes a human-readable book
-            and a Claude Code skill, so there is a single thing to write, review, and correct.
+            The reason to use a wskill is to preserve knowledge in a reusable format. This matters
+            more as work shifts to AI: knowledge that lives only in someone's head, or only inside a
+            model, is easily lost. Capturing a topic once as self-contained data keeps it durable,
+            shareable, and easy to keep current.
         BODY
 
-        list {
-            li "**Shareable.** A wskill is a self-contained folder — hand it to a person or an agent and nothing else is needed to use it."
-            li "**One source of truth.** Reference, processes, and curated navigation live as data, so the book and the skill can never disagree."
-            li "**Built to learn from.** Concepts, entities, facts, and processes are atomic and cross-linked, so a reader (or a model) can pick the topic up from the package alone."
-            li "**Easy to keep current.** When the topic changes you edit the data once; every projection re-renders, and the schema fact reflects the live schema so the reference can't go stale."
-        }
+        p <<BODY
+            The same source also produces a Claude Code skill, so an AI agent can carry out the
+            topic's tasks for you. And because a wskill stands on its own, if you ever lose access to
+            the agent you can still follow it by hand — the knowledge and its processes stay usable
+            either way.
+        BODY
     }
 }

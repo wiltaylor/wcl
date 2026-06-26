@@ -1,8 +1,0 @@
-concept wskill_registry {
-  name     = "wskill registry"
-  summary  = "A collection of many wskills under one landing page — built into a single hostable deploy tree."
-  related  = [wskill, book_view]
-  body {
-    p "The wskill registry is a collection: many member wskills under a `wskills/` subdirectory with a top-level landing page. Building it — `wcl wdoc build wdoc/page/main.wcl --out out/site` — auto-discovers each member through the landing page's `include` and produces one hostable static site: `index.html` at the root, and each member's book under `wskills/<name>/`, linked relatively."
-  }
-}

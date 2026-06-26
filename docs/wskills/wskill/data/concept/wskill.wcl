@@ -1,7 +1,7 @@
 import <wdoc.wcl>
 
 concept wskill_concept {
-    name = "What is wskill"
+    name = "What is it?"
     summary = "A wskill is a self contanied unit of knowledge that can be shared"
     related = [permanent_note, process, entity, fact]
     body {

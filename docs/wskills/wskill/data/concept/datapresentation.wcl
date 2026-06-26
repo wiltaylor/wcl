@@ -4,7 +4,7 @@
 concept datapresentation {
   name     = "Separation of Data and Presentation"
   summary  = "Keep data and presentation separate: declare the topic once as data in a natural shape, and let the templates own how it looks — so one model can feed several outputs with nothing hand-duplicated."
-  related  = [book_view, skill_view]
+  related  = [wskill_concept]
   body {
     p <<BODY
       The wskill model separates data from presentation. You declare the topic once as

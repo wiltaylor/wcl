@@ -1,8 +1,8 @@
 procedure creating_a_wskill {
   title   = "Creating a new wskill"
-  purpose = "Start a new wskill for a topic from the wcl template, then capture and model the knowledge."
-  preconditions = ["The `wcl` CLI on your PATH (`wcl --version`)"]
-  related = [wskill, book_view, skill_view, datapresentation, selfcontained, breaking_down_a_topic]
+  purpose = "Start a new wskill for a topic from the wcl template and set its topic."
+  preconditions = ["WCL installed — see the [WCL wskill](../wcl/) to install it."]
+  related = [wskill, datapresentation, selfcontained]
   audience = :both
 
   step scaffold { n = 1
@@ -12,7 +12,7 @@ $ wcl init wskill docs/wskills/<topic>
 $ cd docs/wskills/<topic>
 SH
     } }
-    body steps { p "Run `wcl init wskill` to scaffold a new wskill folder from the built-in template — don't hand-create it. It writes `wskill.wcl`, the `schema/`, the `wdoc/` templates, and an empty `data/` skeleton. (`wcl init --list` shows the available templates.)" }
+    body steps { p "Run `wcl init wskill <path>` to scaffold the folder — `wskill.wcl`, the `schema/`, the `wdoc/` templates and an empty `data/`. Don't hand-create it." }
   }
 
   step set_topic { n = 2
@@ -29,23 +29,5 @@ WCL
     body steps { p "Edit `wskill.wcl` and fill in the single `topic` block — its `id`, `name` and `summary` describe the whole wskill." }
   }
 
-  step model { n = 3
-    title = "Model the content"
-    body screen { code "wcl" { source = <<'WCL'
-// data/<kind>/<slug>.wcl — one atomic unit
-concept <slug> {
-  name    = "<Name>"
-  summary = "<One line.>"
-  related = [<other_unit>]
-  body { p "The idea, in your own words." }
-}
-WCL
-    } }
-    body steps { p "Write the topic's knowledge as units under `data/` — a `concept`, `entity`, `fact` or `procedure`, each atomic, self-contained, and cross-linked with `related`. One unit per file; add an import line per new file in the data aggregator. See *Breaking a topic down into the data model* for how to classify each piece." }
-  }
-
-  scaffold  -> set_topic
-  set_topic -> model
-
-  verification = "`wcl init wskill` produced a folder whose `topic` is filled in, and the topic's knowledge is captured as units under `data/`."
+  scaffold -> set_topic
 }
