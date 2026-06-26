@@ -1,0 +1,74 @@
+// Language — a curated index that puts the language reference back into the book
+// menu (a "Language" section between Quick Start and the Builtins section). It
+// pins most of the language concepts and reference facts via `related`, grouped
+// by child indexes (one level), so the old area-by-area navigation is restored
+// without the removed `feature` module. `related` ids resolve to links on each
+// index page (and drive the "Index coverage" counts on the Reference page).
+
+index language {
+  name    = "Language"
+  summary = "The WCL language, area by area — syntax, types, expressions, control flow, functions, modules, and schema."
+  audience = :both
+  body {
+    p "WCL element by element. Pick an area below; each lists its concepts and reference tables."
+  }
+
+  index lang_basic_syntax {
+    name    = "Basic Syntax"
+    summary = "How a document is written before any types apply."
+    related = [comments, fields_blocks, tables, self_parent]
+  }
+
+  index lang_primitive_types {
+    name    = "Primitive Types"
+    summary = "Scalar values — numbers, strings, booleans, symbols, identifiers, references."
+    related = [
+      primitive_types, numbers, number_literals, numeric_promotion,
+      booleans, identifiers, references,
+      symbols, symbol_set,
+      strings, string_literals, string_escapes, heredocs, raw_heredocs, string_interpolation,
+    ]
+  }
+
+  index lang_complex_types {
+    name    = "Complex Types"
+    summary = "Composite shapes — lists, tensors, records, unions, interfaces, optionals."
+    related = [lists, tensors, records, type_aliases, type_constraints, unions, interfaces, optionals]
+  }
+
+  index lang_expressions {
+    name    = "Expressions & Operators"
+    summary = "Producing values — operators, member access, and calls."
+    related = [expressions, member_access, function_calls, operators]
+  }
+
+  index lang_control_flow {
+    name    = "Control Flow"
+    summary = "if/else, match, patterns, if let, let bindings, blocks, try/catch."
+    related = [control_flow, if_else, match_expr, if_let, let_bindings, block_expressions, try_catch, patterns]
+  }
+
+  index lang_functions {
+    name    = "Functions"
+    summary = "First-class function values — literals, fn items, higher-order, function types."
+    related = [functions, function_literals, fn_items, higher_order_functions, function_types]
+  }
+
+  index lang_modules {
+    name    = "Namespaces & Imports"
+    summary = "Scoping declarations under a path and composing files."
+    related = [namespaces, use_declarations, qualified_kinds, imports]
+  }
+
+  index lang_schema {
+    name    = "Schema & Decorators"
+    summary = "Declaring and constraining the document model."
+    related = [schema, block_schema, document_schema, ref_integrity, child_count_constraints, field_decorators]
+  }
+
+  index lang_connections {
+    name    = "Connections"
+    summary = "Wiring blocks together with `->` statements."
+    related = [connections]
+  }
+}
