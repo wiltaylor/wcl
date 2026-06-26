@@ -4,8 +4,8 @@
 // `procedures` / `all_functions` / `fn_categories` / `functions_in` lets defined
 // in main.wcl).
 //
-// The main menu (the sidebar TOC) carries Overview, Builtins (+ categories), CLI
-// and Glossary. The concept / fact / entity / process pages are reached from this
+// The main menu (the sidebar TOC) carries Overview, Builtins (+ categories) and CLI.
+// The concept / fact / entity / process pages are reached from this
 // Reference catalogue rather than the menu — the "Page types" table below records
 // which kinds are in the menu and which are Reference-only.
 

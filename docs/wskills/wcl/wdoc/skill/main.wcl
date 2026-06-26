@@ -34,7 +34,6 @@ let in_skill   = fn(a: Audience) -> bool { match a { :book => false, _ => true }
 let concepts   = filter(concepts,   fn(c: Concept)   -> bool { in_skill(c.audience) })
 let entities   = filter(entities,   fn(e: Entity)    -> bool { in_skill(e.audience) })
 let facts      = filter(facts,      fn(f: Fact)      -> bool { in_skill(f.audience) })
-let terms      = filter(terms,      fn(t: Term)      -> bool { in_skill(t.audience) })
 let examples   = filter(examples,   fn(x: Example)   -> bool { in_skill(x.audience) })
 let indexes    = filter(indexes,    fn(x: Index)      -> bool { in_skill(x.audience) })
 let child_indexes = filter(flatten(map(indexes, fn(x: Index) -> list<Index> { x.children })), fn(x: Index) -> bool { in_skill(x.audience) })

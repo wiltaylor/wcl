@@ -7,7 +7,7 @@
 // the WSKILL PRD §10. The per-unit page bodies are rendered by the shared
 // components under component/ (concept_body / entity_body / fact_body /
 // process_body); the standalone pages live one-per-file under pages/. The
-// topic-specific Builtins / CLI / Glossary projections stay inline below.
+// topic-specific Builtins / CLI projections stay inline below.
 
 import <wdoc.wcl>
 import "../../wskill.wcl"
@@ -40,7 +40,6 @@ let in_book    = fn(a: Audience) -> bool { match a { :ai => false, _ => true } }
 let concepts   = filter(concepts,   fn(c: Concept)   -> bool { in_book(c.audience) })
 let entities   = filter(entities,   fn(e: Entity)    -> bool { in_book(e.audience) })
 let facts      = filter(facts,      fn(f: Fact)      -> bool { in_book(f.audience) })
-let terms      = filter(terms,      fn(t: Term)      -> bool { in_book(t.audience) })
 let examples   = filter(examples,   fn(x: Example)   -> bool { in_book(x.audience) })
 let indexes    = filter(indexes,    fn(x: Index)      -> bool { in_book(x.audience) })
 // Top-level indexes are book-filtered above; child_indexes flattens each one's
@@ -126,7 +125,6 @@ site book {
     wdoc_repeater { each = match len(clis) { 0 => [], _ => [true] }  as = :_clg
       chapter "CLI Reference" { page = clis_page }
     }
-    chapter "Glossary"       { page = glossary_page }
   }
   // The Reference catalogue (the four units, the graph, and the per-unit pages)
   // lives behind a single pinned sidebar button rather than a sprawling TOC
@@ -140,7 +138,7 @@ site book {
 // --- 1. Overview / index pages ----------------------------------------------
 // The Overview, Reference and per-kind index pages live one-per-file under
 // pages/ (imported above). The generated per-unit pages stay here as repeaters,
-// each delegating to a component. The topic-specific Builtins / CLI / Glossary
+// each delegating to a component. The topic-specific Builtins / CLI
 // pages stay inline below.
 
 // --- 2. Concepts — one generated page per concept ---------------------------
@@ -283,14 +281,3 @@ page clis_page {
   }
 }
 
-// --- 6. Glossary ------------------------------------------------------------
-
-page glossary_page {
-  h1 "Glossary"
-  wdoc_repeater { each = match len(terms) { 0 => [], _ => [true] }  as = :_g
-    table {
-      header = ["Term", "Definition", "Aliases"]
-      rows = map(terms, fn(t: Term) -> list<utf8> { [t.term, t.definition, join(t.aliases, ", ")] })
-    }
-  }
-}

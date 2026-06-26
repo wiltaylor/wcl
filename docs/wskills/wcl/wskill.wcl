@@ -10,7 +10,7 @@ import "./schema/extensions.wcl"
 import "./schema/builtins.wcl"          // opt-in: builtin functions as data (projected into pages)
 import "./schema/cli.wcl"               // opt-in: map the wcl CLI as data
 
-// Data — reference units, glossary, examples and processes. Concepts, facts and
+// Data — reference units, examples and processes. Concepts, facts and
 // processes are one file per entry under their per-type folder.
 import "./data/main.wcl"
 
