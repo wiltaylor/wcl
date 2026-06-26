@@ -79,6 +79,37 @@ pub(crate) fn emit_page_with_front_matter(
     Ok(md)
 }
 
+/// Lower a slice of body blocks to a Markdown string (no front matter),
+/// reusing the same [`Emitter`] as full-page emission. Any nested
+/// diagram / terminal SVGs are written under `<out_dir>/_wdoc/`, prefixed
+/// with `page_name`. Used by the HTML `markdown_source` block, which embeds a
+/// skill page's generated Markdown verbatim in a `code` block so it can be
+/// previewed (and review-commented) inside the book.
+pub(crate) fn body_to_markdown(
+    doc: &Document,
+    blocks: &[Block<'_>],
+    page_name: &str,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
+    out_dir: &Path,
+) -> Result<String, BuildError> {
+    let mut em = Emitter {
+        doc,
+        patterns,
+        base_dir,
+        out_dir,
+        page: page_name,
+        svg_seq: 0,
+    };
+    let mut parts: Vec<String> = Vec::new();
+    for block in blocks {
+        em.block(block, &mut parts)?;
+    }
+    let mut md = parts.join("\n\n");
+    md.push('\n');
+    Ok(md)
+}
+
 struct Emitter<'a> {
     doc: &'a Document,
     patterns: &'a InlinePatterns,

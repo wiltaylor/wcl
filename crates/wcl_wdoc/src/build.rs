@@ -71,6 +71,10 @@ pub fn schema_registry() -> Registry {
     r.register("wdoc/headings.wcl", include_str!("../lib/headings.wcl"));
     r.register("wdoc/p.wcl", include_str!("../lib/p.wcl"));
     r.register("wdoc/code.wcl", include_str!("../lib/code.wcl"));
+    r.register(
+        "wdoc/markdown_source.wcl",
+        include_str!("../lib/markdown_source.wcl"),
+    );
     r.register("wdoc/terminal.wcl", include_str!("../lib/terminal.wcl"));
     r.register("wdoc/tui.wcl", include_str!("../lib/tui.wcl"));
     r.register("wdoc/math.wcl", include_str!("../lib/math.wcl"));
@@ -1369,6 +1373,8 @@ fn build_site(
     // Wireframe (`wf_*`) elements bake from this site's UI theme.
     inline_patterns.set_ui_theme(crate::render::resolve_ui_theme(spec.block.as_ref()));
     inline_patterns.set_comment_mode(comment_mode);
+    // The `markdown_source` block writes its Markdown's diagram SVGs here.
+    inline_patterns.set_output_dir(out_dir.to_path_buf());
 
     // Resolve the site favicon once. A user `icon` path is resolved + copied
     // via the image registry (already copied after the page loop); an
@@ -1837,18 +1843,15 @@ fn build_normal_page(
         }
     }
     // Comment mode (`--comment` dev server): wrap the page content in a
-    // `display:contents` div carrying the page's source anchor, so the comment
-    // client can attach page-attached + generic comments to the page block.
-    // `display:contents` keeps it invisible to layout.
+    // `display:contents` div carrying the page's source file (so the client can
+    // locate the owning `comments.wcl` sidecar) and resolved name (the comment
+    // key). `display:contents` keeps it invisible to layout.
     if ctx.inline_patterns.comment_mode() {
-        let span = page.span();
         let src = page.named_source();
         content = format!(
-            "<div data-wcl-page-file=\"{}\" data-wcl-page-span=\"{}..{}\" \
-             data-wcl-page-name=\"{}\" style=\"display:contents\">\n{content}</div>\n",
+            "<div data-wcl-page-file=\"{}\" data-wcl-page-name=\"{}\" \
+             style=\"display:contents\">\n{content}</div>\n",
             escape_html(src.name()),
-            span.start,
-            span.end,
             escape_html(&page_name),
         );
     }

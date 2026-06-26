@@ -45,6 +45,7 @@ import <tree.wcl>             // indented file-tree shape (nested nodes + guides
 import <headings.wcl>         // h1..h6
 import <p.wcl>                // single-span paragraph shorthand
 import <code.wcl>             // syntax-highlighted code block
+import <markdown_source.wcl>  // preview a (skill) page's generated Markdown
 import <terminal.wcl>         // terminal grid + primitives
 import <tui.wcl>              // single-line TUI widgets (progress/button/…)
 import <math.wcl>             // LaTeX equations → SVG (RaTeX)

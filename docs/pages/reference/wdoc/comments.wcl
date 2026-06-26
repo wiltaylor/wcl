@@ -2,46 +2,39 @@
 page wdoc_comments { sites = [:reference]  title = "Review Comments"
   h1 "Review Comments"
 
-  p "Run the dev server with `--comment` to turn any preview into a review surface. A small JavaScript client lets you click a rendered block — or the page itself — and leave a note. Each note is saved straight back into your source as a `@comment` decorator, so comments live with the document and survive in version control."
+  p "Run the dev server with `--comment` to turn any preview into a review surface. A small JavaScript client lets you click a rendered block — or the page itself — and leave a note. Notes are saved into a `comments.wcl` sidecar (not into your document source), so adding one writes only the sidecar and the comment appears instantly — the document never rebuilds."
 
   code bash {
     source = "wcl wdoc serve --comment docs/main.wcl"
   }
 
-  p "Click **🎯 Comment on a block** in the bottom-right toolbar to enter select mode, then click any block — including whole tables and diagrams — to leave a note on it (press **Esc** to cancel). The **💬 Comment on page** button leaves a note about the page as a whole. Saving rewrites the source and the page live-reloads with the comment shown."
+  p "Click **🎯 Comment on a block** in the bottom-right toolbar to enter select mode, then click any block — including whole tables and diagrams — to leave a note on it (press **Esc** to cancel). The **💬 Comment on page** button leaves a note about the page as a whole. Saving writes the sidecar and the pin appears in place — no rebuild, no live-reload."
 
-  p "The toolbar's **💬 N comments** button shows how many comments live on the current page; click it for a modal listing them all — each with its target, body and quote, a **Jump to** link (for block comments), an **Edit** button (change the note in place), and a **Resolve** button. Individual comments also appear inline as ✓ pins you can click."
+  p "The toolbar's **💬 N comments** button shows how many comments live on the current page; click it for a modal listing them all — each with its target, body and quote, a **Jump to** link (for block comments), an **Edit** button (change the note in place), and a **Resolve** button. Individual block comments also appear inline as ✓ pins you can click."
 
   callout "Fleeting notes" {
     class = ["info"]
     body  = "The toolbar also carries a **📝 Notes** button for *fleeting notes* — free-form quick captures that aren't tied to any block or page. Add, edit and delete them from its modal. They're stored beside the source in `.wdoc-fleeting.json` (gitignored — disposable, per-machine), not in the document."
   }
 
-  h2 "Where the comment is stored"
+  h2 "Where comments are stored"
 
-  p "Comments always attach to a *real, editable* source block, in one of three shapes:"
+  p "Comments live in a `comments.wcl` sidecar — one beside each wskill's `wskill.wcl`, or beside the served root document for a page that isn't inside a wskill. The dev server's watcher ignores `comments.wcl`, and comments are placed client-side (the JS resolves each stored locator against the live page), so a note never triggers a document rebuild. This also means a *generated* comment is just a matter of writing the same `comment { … }` shape into the sidecar."
 
-  table {
-    rows:
-      | "Shape" | "Stored as" | "When" |
-      | "Direct" | "`@comment` on the block itself" | "The block is hand-authored (has a source span)" |
-      | "Page-attached" | "`@comment` on the `page`, with `loc` + `target`" | "The block is generated (a repeater / component) and has no editable span" |
-      | "Generic page" | "`@comment` on the `page`, no `loc`" | "The note is about the whole page" |
-  }
+  p "Each `comment` block is keyed by the **page name** plus a positional **block locator** (`loc`) within that page. A comment with no `loc` is about the whole page. A `target` records an auto description of the block (e.g. `card — \"Fast builds\"`) so a reader can tell which block was meant."
 
-  p "Generated blocks have no source of their own to decorate, so their comments are recorded on the enclosing page with a positional locator (`loc`) and an auto-generated description (`target`, e.g. `3rd card — \"Fast builds\"`) so you can still tell which block was meant."
-
-  h2 "The @comment decorator"
+  h2 "The comments.wcl sidecar"
 
   code wcl {
     source = <<'WCL'
-page home {
-  // Direct: on a hand-authored block.
-  @comment(id = "c1a2b3", body = "tighten this heading", quote = "Install")
-  h1 "Install"
-
-  // Page-attached: a generated block, described on the page.
-  // @comment(id="c4d5e6", body="2nd card is stale", loc="0/2/1", target="card — \"Fast builds\"")
+comment {
+  id = "c1a2b3"
+  page = "home"
+  loc = "0/2/1"                  // omit for a whole-page comment
+  target = "card — \"Fast builds\""
+  body = "2nd card is stale"
+  author = "wil"
+  quote = "Fast builds"
 }
 WCL
   }
@@ -50,23 +43,25 @@ WCL
     rows:
       | "Field" | "Meaning" |
       | "`id`" | "Stable handle — survives edits, so `resolve` can find the comment" |
+      | "`page`" | "The page name the comment is on" |
+      | "`page_file`" | "The page's source file (disambiguates same-named pages across wskills)" |
+      | "`loc`" | "Positional locator of the targeted block within the page (omit for the whole page)" |
+      | "`target`" | "Auto description of that block" |
       | "`body`" | "The reviewer's note" |
       | "`author`" | "Who left it (optional)" |
       | "`status`" | "`:open` (default) or `:resolved`" |
-      | "`loc`" | "Positional locator of the targeted generated block (page-attached only)" |
-      | "`target`" | "Auto description of that block (page-attached only)" |
       | "`quote`" | "Exact text highlighted when commenting (optional)" |
   }
 
   h2 "Reading & resolving comments"
 
-  p "An AI agent (or you) reads the stored comments, acts on them, and removes each once addressed. List them as JSON:"
+  p "An AI agent (or you) reads the stored comments, acts on them, and removes each once addressed. `wcl wdoc comments` scans every `comments.wcl` under the doc's directory. List them as JSON:"
 
   code bash {
     source = "wcl wdoc comments docs/main.wcl --format json"
   }
 
-  p "Each entry carries the `id`, `scope`, source `file`, enclosing `page`, the `body` and `quote`, and — for page-attached comments — the `loc` and `target` describing which generated block the note is about. After acting on a comment, delete it by its id:"
+  p "Each entry carries the `id`, `scope`, sidecar `file`, the `page` (and `page_file`), the `body` and `quote`, and the `loc` and `target` describing which block the note is about. After acting on a comment, delete it by its id:"
 
   code bash {
     source = "wcl wdoc comments docs/main.wcl resolve c1a2b3"
@@ -80,7 +75,7 @@ WCL
 
   callout "Resolve by id, not by position" {
     class = ["info"]
-    body  = "Editing the document shifts every block's span and locator, so the `id` is the durable handle. `resolve <id>` finds the matching `@comment` across the document's source files and removes just that decorator."
+    body  = "Re-rendering can shift a block's locator, so the `id` is the durable handle. `resolve <id>` finds the matching `comment` across the sidecars and removes just that record."
   }
 
   callout "Comment mode is dev-server only" {

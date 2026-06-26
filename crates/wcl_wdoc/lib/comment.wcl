@@ -1,32 +1,42 @@
 // wdoc standard library — review comments.
 //
-// `@comment` records a review note in the source. It is written by
-// `wcl wdoc serve --comment` (the dev server injects a JS client that lets
-// you click a rendered block, or the page, and leave a note) and read back
-// by `wcl wdoc comments` so an AI agent can act on the notes and then
-// `wcl wdoc comments resolve <id>` to delete them.
+// Review comments are NOT stored in the document source. `wcl wdoc serve
+// --comment` (the dev server injects a JS client that lets you click a
+// rendered block, or the page, and leave a note) persists each note into a
+// `comments.wcl` sidecar — one beside each wskill's `wskill.wcl`, or beside
+// the served root document for a page not inside a wskill. The watcher ignores
+// `comments.wcl`, so a note shows client-side with no document rebuild.
+// `wcl wdoc comments` reads them back so an AI agent can act on the notes and
+// `wcl wdoc comments resolve <id>` to delete them. See
+// `crates/wcl_wdoc/src/comments.rs`.
 //
-// A comment attaches to a *real, editable* source block in one of three
-// shapes (see `crates/wcl_wdoc/src/comments.rs`):
+// A sidecar is a list of `comment` blocks, each keyed by the page name plus a
+// positional block locator within that page (absent locator = the whole page):
 //
-//   - on a hand-authored block directly      → `@comment(id=…, body=…)`
-//   - on the enclosing `page`, for a block    → `@comment(id=…, body=…,
-//     produced by a repeater/component           loc="0/2/1", target="…")`
-//   - on the `page` as a whole (generic)      → `@comment(id=…, body=…)`  (no loc)
+//   comment {
+//     id = "c12ab3"
+//     page = "concept_records"
+//     loc = "0/2/1"                 // omit for a whole-page comment
+//     target = "card — \"3rd card\""
+//     body = "tighten this"
+//   }
 //
-//   @comment(id="c12ab3", body="tighten this heading") heading "Install" { … }
+// This `@block` type documents that shape; the sidecar is read leniently (it
+// needs no `import`), but importing it gives an authored/generated sidecar
+// schema validation and LSP.
 
 namespace wdoc
 
-@decorator("comment")
+@block("comment")
 type Comment {
   id: utf8            // stable handle; survives edits so `resolve` can find it
+  page: utf8          // the page name the comment is on
+  page_file: utf8?    // the page's source file (disambiguates same-named pages
+                      // across different sites / wskills)
+  loc: utf8?          // positional locator of the block within the page
+  target: utf8?       // human description of the referenced block
   body: utf8          // the reviewer's note
   author: utf8?       // who left it
   status: symbol?     // :open (default) / :resolved
-  loc: utf8?          // positional locator within the page (page-attached only)
-  target: utf8?       // auto description of the referenced generated block
   quote: utf8?        // exact text the reviewer had highlighted when commenting
-  page: utf8?         // resolved page name the comment was made on (scopes it to
-                      // a single generated page whose source label can't resolve)
 }

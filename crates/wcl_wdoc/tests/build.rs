@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
-use wcl_wdoc::{BuildError, BuildOptions, RebuildOutcome, build, build_incremental};
+use wcl_wdoc::{
+    BuildError, BuildOptions, RebuildOutcome, build, build_incremental, build_with_options,
+};
 
 fn examples_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -10539,4 +10541,57 @@ fn incremental_reuses_an_already_present_icon() {
         RebuildOutcome::Targeted { pages } => assert_eq!(pages, vec!["a".to_string()]),
         RebuildOutcome::Full { pages } => panic!("expected targeted, got full ({pages} pages)"),
     }
+}
+
+/// `markdown_source` renders its body to a highlighted Markdown code block,
+/// rewrites internal links into the skill-folder layout, and — in comment
+/// mode — carries a `data-wcl-block` anchor so the review client can attach a
+/// comment (an agent then fixes the named source).
+#[test]
+fn markdown_source_previews_skill_markdown_and_is_commentable() {
+    let tmp = TempDir::new().expect("tempdir");
+    let out = TempDir::new().expect("out");
+    let main = tmp.path().join("main.wcl");
+    write_fixture(
+        &main,
+        "site s { default_template = :webpage  root = true }\n\
+         page index { start = true\n  \
+           markdown_source { start_page = \"index\"  reference = true  pages = [\"index\", \"other_ref\"]\n    \
+             h2 \"Sample\"\n    \
+             p \"Body with a [link](other_ref).\"\n  \
+           }\n\
+         }\n\
+         page other_ref { h1 \"Other\" }\n",
+    );
+
+    let opts = BuildOptions {
+        profile: false,
+        comment_mode: true,
+    };
+    if build_with_options(&main, out.path(), None, &opts).is_err() {
+        panic!("build with comment mode failed");
+    }
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+
+    // The body lowered to Markdown, shown in a highlighted `markdown` code block.
+    assert!(
+        html.contains("language-markdown"),
+        "expected a markdown code block"
+    );
+    // The body lowered to Markdown then syntect-highlighted: the `## Sample`
+    // heading survives as a heading token run plus its text.
+    assert!(
+        html.contains("tok-heading") && html.contains(">Sample<"),
+        "expected the body rendered as a Markdown heading, got:\n{html}"
+    );
+    // Internal links resolve into the skill folder layout (reference page).
+    assert!(
+        html.contains("../references/other_ref.md"),
+        "expected skill-folder link rewrite, got:\n{html}"
+    );
+    // Comment mode anchors the block so a reviewer can pin a note to it.
+    assert!(
+        html.contains("data-wcl-kind=\"markdown_source\""),
+        "expected a comment anchor on the markdown_source block, got:\n{html}"
+    );
 }

@@ -15,7 +15,6 @@ use axum::routing::get;
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use tempfile::TempDir;
 use tokio::sync::mpsc::UnboundedReceiver;
-use wcl_lang::Span;
 use wcl_wdoc::{BuildOptions, RebuildOutcome, build_incremental, build_with_options, comments};
 
 /// How long the watch loop waits for the event stream to go quiet
@@ -104,17 +103,35 @@ const pageEl=document.querySelector('[data-wcl-page-file]');
 function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function chrome(t){return t.closest('.wcl-pop')||t.closest('.wcl-bar')||t.closest('.wcl-hint')||t.closest('.wcl-pin');}
 
-// Positional locator: index path among [data-wcl-block] from the page root.
+// Block tree: a block's children are the nearest [data-wcl-block] descendants
+// of `node` not separated from it by another block. `locOf` / `elByLoc` are an
+// invertible pair over this tree — locOf emits the child-index path from the
+// page root to `el`, elByLoc walks that path back to the element.
+function blockChildren(node){
+ return [...node.querySelectorAll('[data-wcl-block]')].filter(b=>{
+  let p=b.parentElement;
+  while(p&&p!==node){if(p.hasAttribute('data-wcl-block'))return false;p=p.parentElement;}
+  return p===node;
+ });
+}
 function locOf(el){
- const path=[];let n=el;
- while(n && n!==pageEl){
-  if(n.hasAttribute&&n.hasAttribute('data-wcl-block')){
-   const sibs=[...n.parentNode.children].filter(c=>c.hasAttribute&&c.hasAttribute('data-wcl-block'));
-   path.unshift(sibs.indexOf(n));
-  }
-  n=n.parentNode;
+ const path=[];let cur=el;
+ while(cur&&cur!==pageEl){
+  let p=cur.parentElement,pb=null;
+  while(p&&p!==pageEl){if(p.hasAttribute('data-wcl-block')){pb=p;break;}p=p.parentElement;}
+  path.unshift(blockChildren(pb||pageEl).indexOf(cur));
+  cur=pb;
  }
  return path.join('/');
+}
+function elByLoc(loc){
+ if(loc===''||loc==null||!pageEl)return null;
+ let node=pageEl;
+ for(const part of String(loc).split('/')){
+  node=blockChildren(node)[+part];
+  if(!node)return null;
+ }
+ return node;
 }
 function descOf(el){
  const kind=el.getAttribute('data-wcl-kind')||'block';
@@ -155,26 +172,17 @@ function openForm(el,onPage){
  const ta=pop.querySelector('textarea');ta.focus();
  pop.querySelector('[data-x]').onclick=closePop;
  pop.querySelector('[data-ok]').onclick=async()=>{
-  const body=ta.value.trim();if(!body)return;
-  const anchorable=el.hasAttribute('data-wcl-file');
-  // Record the resolved page name so the comment scopes to this one page
-  // (a generated page's source label can't be resolved statically).
-  const pname=pageEl&&pageEl.getAttribute('data-wcl-page-name');
-  let payload={body,quote:quote||null,page:pname||null};
-  if(onPage||!anchorable){
-   if(!pageEl)return;
-   const ps=pageEl.getAttribute('data-wcl-page-span').split('..');
-   payload.on_page=true;
-   payload.file=pageEl.getAttribute('data-wcl-page-file');
-   payload.span_start=+ps[0];payload.span_end=+ps[1];
-   if(!onPage){payload.loc=locOf(el);payload.target=descOf(el);}
-  }else{
-   const s=el.getAttribute('data-wcl-span').split('..');
-   payload.on_page=false;
-   payload.file=el.getAttribute('data-wcl-file');
-   payload.span_start=+s[0];payload.span_end=+s[1];
-  }
-  if(await post(payload,pop))closePop(); // a rebuild + live-reload re-renders with the comment shown
+  const body=ta.value.trim();if(!body||!pageEl)return;
+  // The page key (name + source file) routes the comment to the owning
+  // comments.wcl sidecar; a block comment also carries its locator + target.
+  const payload={
+   body,quote:quote||null,
+   page:pageEl.getAttribute('data-wcl-page-name'),
+   page_file:pageEl.getAttribute('data-wcl-page-file'),
+  };
+  if(!onPage){payload.loc=locOf(el);payload.target=descOf(el);}
+  // Write the sidecar, then re-fetch + re-pin client-side — no rebuild.
+  if(await post(payload,pop)){closePop();await refresh();}
  };
 }
 
@@ -203,13 +211,22 @@ document.addEventListener('click',e=>{
 },true);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(picking)setPick(false);else{closePop();closeModal();}}});
 
-// Existing comments: pin + click to view / resolve.
-for(const el of document.querySelectorAll('[data-wcl-comment-id]')){
- const id=el.getAttribute('data-wcl-comment-id');
- const body=el.getAttribute('data-wcl-comment')||'';
- const pin=document.createElement('div');pin.className='wcl-pin';pin.textContent='✓';pin.title=body;
- pin.onclick=ev=>{ev.stopPropagation();ev.preventDefault();showComment(el,id,body);};
- el.appendChild(pin);
+// Existing block comments: resolve each stored locator to its element and add
+// a pin + outline (the dashed-outline CSS keys off data-wcl-comment-id, which
+// we now set client-side). Whole-page comments (no loc) show only in the modal.
+function placePins(){
+ for(const el of document.querySelectorAll('[data-wcl-comment-id]')){
+  el.removeAttribute('data-wcl-comment-id');el.removeAttribute('data-wcl-comment');
+  el.querySelectorAll(':scope > .wcl-pin').forEach(p=>p.remove());
+ }
+ for(const c of pageComments()){
+  if(!c.loc)continue;
+  const el=elByLoc(c.loc);if(!el)continue;
+  el.setAttribute('data-wcl-comment-id',c.id);el.setAttribute('data-wcl-comment',c.body);
+  const pin=document.createElement('div');pin.className='wcl-pin';pin.textContent='✓';pin.title=c.body;
+  pin.onclick=ev=>{ev.stopPropagation();ev.preventDefault();showComment(el,c.id,c.body);};
+  el.appendChild(pin);
+ }
 }
 function showComment(el,id,body){
  closePop();const r=el.getBoundingClientRect();
@@ -220,41 +237,30 @@ function showComment(el,id,body){
  document.body.appendChild(pop);
  pop.querySelector('[data-x]').onclick=closePop;
  pop.querySelector('[data-r]').onclick=async()=>{
-  if(await post({resolve_id:id},pop))closePop();
+  if(await post({resolve_id:id},pop)){closePop();await refresh();}
  };
 }
 
-// Comments on *this* page: fetched from the server and filtered to the page's
-// own source file + name, so it covers all three shapes (direct, page-attached,
-// generic) — not just the inline pins.
+// Comments on *this* page: fetched from the sidecar(s) and filtered by the
+// page key (name + source file), which disambiguates same-named pages across
+// different sites / wskills.
 let allComments=[];
 function pageComments(){
  if(!pageEl)return [];
- const pf=pageEl.getAttribute('data-wcl-page-file');
  const pname=pageEl.getAttribute('data-wcl-page-name');
- const pspan=pageEl.getAttribute('data-wcl-page-span');
- return allComments.filter(c=>{
-  // A direct block comment is recognised by its inline pin being in this DOM.
-  if(document.querySelector('[data-wcl-comment-id="'+c.id+'"]')) return true;
-  if(c.file!==pf) return false;
-  // A comment that recorded its page scopes to exactly that page — so a note
-  // on one generated page (e.g. `entity_foo`) doesn't show on its siblings.
-  if(c.page) return c.page===pname;
-  // Older page-level comments without a recorded page: match the page block's
-  // span (they live on the page block, whose span equals the wrapper's).
-  return (c.span_start+'..'+c.span_end)===pspan;
- });
+ const pf=pageEl.getAttribute('data-wcl-page-file');
+ return allComments.filter(c=>c.page===pname&&(!c.page_file||c.page_file===pf));
 }
 async function refresh(){
  try{const r=await fetch('/__wdoc_comment');allComments=r.ok?await r.json():[];}catch(_){allComments=[];}
+ placePins();
  const n=pageComments().length;
  countBtn.textContent='💬 '+n+(n===1?' comment':' comments');
  updateBadge();
 }
 
-// Jump-to works for comments with a visible inline anchor (direct block
-// comments, which carry a data-wcl-comment-id pin).
-function elForComment(c){return document.querySelector('[data-wcl-comment-id="'+c.id+'"]');}
+// Jump-to works for any block comment whose locator resolves on this page.
+function elForComment(c){return c.loc?elByLoc(c.loc):null;}
 function jumpTo(c){
  const el=elForComment(c);if(!el)return;
  el.scrollIntoView({behavior:'smooth',block:'center'});
@@ -274,7 +280,7 @@ function openModal(){
   box.innerHTML='<div class="wcl-modal-h"><span>Comments on this page ('+list.length+')</span><button data-x>Close</button></div>';
   if(!list.length){const e=document.createElement('div');e.className='wcl-empty';e.textContent='No comments on this page yet.';box.appendChild(e);}
   for(const c of list){
-   const where=c.scope==='page'?'Whole page':(c.target||c.host_kind||'block');
+   const where=c.scope==='page'?'Whole page':(c.target||'block');
    const who=c.author?(' · '+c.author):'';
    const div=document.createElement('div');div.className='wcl-c';
    const head='<div class="meta">'+esc(where)+esc(who)+'</div>'+(c.quote?'<div class="q">'+esc(c.quote)+'</div>':'');
@@ -390,10 +396,8 @@ struct ServeState {
     /// expose the `/__wdoc_comment` endpoints, and build with `data-wcl-*`
     /// anchors.
     comment_mode: bool,
-    /// The document the dev server is serving, scanned by the comment-list
-    /// endpoint.
-    src_file: PathBuf,
-    /// Watched source root; comment writes are sandboxed to within it.
+    /// Watched source root; `comments.wcl` sidecars are discovered under it and
+    /// comment writes are sandboxed to within it.
     watch_root: PathBuf,
 }
 
@@ -529,7 +533,6 @@ pub(crate) async fn serve(
         error: RwLock::new(None),
         generation: tokio::sync::watch::Sender::new(0),
         comment_mode,
-        src_file: file.clone(),
         watch_root: watch_root.clone(),
     });
 
@@ -634,19 +637,24 @@ fn is_relevant(event: &Event) -> bool {
     matches!(
         event.kind,
         EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
-    ) && event
-        .paths
-        .iter()
-        .any(|p| p.extension().is_some_and(|e| e == "wcl"))
+    ) && event.paths.iter().any(|p| is_source_wcl(p))
 }
 
-/// The `.wcl` paths an event touched (the granularity `build_incremental`
-/// maps onto pages).
+/// A `.wcl` path that is part of the document — i.e. not a `comments.wcl`
+/// sidecar, whose writes must never trigger a rebuild (comments render
+/// client-side, so the build doesn't read it).
+fn is_source_wcl(p: &Path) -> bool {
+    p.extension().is_some_and(|e| e == "wcl")
+        && p.file_name().and_then(|n| n.to_str()) != Some("comments.wcl")
+}
+
+/// The document `.wcl` paths an event touched (the granularity
+/// `build_incremental` maps onto pages); `comments.wcl` sidecars are excluded.
 fn wcl_paths(event: &Event) -> Vec<PathBuf> {
     event
         .paths
         .iter()
-        .filter(|p| p.extension().is_some_and(|e| e == "wcl"))
+        .filter(|p| is_source_wcl(p))
         .cloned()
         .collect()
 }
@@ -685,7 +693,7 @@ async fn handle_comment_js() -> Response {
 
 /// List every stored comment as JSON, for the comment client to re-show them.
 async fn handle_comment_list(State(state): State<Arc<ServeState>>) -> Response {
-    match comments::list(&state.src_file, None) {
+    match comments::list(&state.watch_root) {
         Ok(recs) => {
             let arr = serde_json::Value::Array(recs.iter().map(comment_to_json).collect());
             json_response(StatusCode::OK, &arr)
@@ -705,7 +713,7 @@ async fn handle_comment_post(State(state): State<Arc<ServeState>>, body: String)
 
     // Resolve (delete) an existing comment by id.
     if let Some(id) = str_of("resolve_id") {
-        return match comments::resolve(&state.src_file, None, id) {
+        return match comments::resolve(&state.watch_root, id) {
             Ok(true) => json_response(StatusCode::OK, &serde_json::json!({ "resolved": id })),
             Ok(false) => json_error(StatusCode::NOT_FOUND, "no such comment"),
             Err(e) => json_error(StatusCode::INTERNAL_SERVER_ERROR, &e.render_plain()),
@@ -718,49 +726,35 @@ async fn handle_comment_post(State(state): State<Arc<ServeState>>, body: String)
 
     // Edit an existing comment's body by id.
     if let Some(id) = str_of("edit_id") {
-        return match comments::edit(&state.src_file, None, id, body_text) {
+        return match comments::edit(&state.watch_root, id, body_text) {
             Ok(true) => json_response(StatusCode::OK, &serde_json::json!({ "edited": id })),
             Ok(false) => json_error(StatusCode::NOT_FOUND, "no such comment"),
             Err(e) => json_error(StatusCode::INTERNAL_SERVER_ERROR, &e.render_plain()),
         };
     }
-    let Some(file) = str_of("file") else {
-        return json_error(StatusCode::BAD_REQUEST, "missing file");
+
+    // Add: route to the comments.wcl sidecar that owns the page (beside the
+    // page's wskill, else the served root). `page_file` is the page's source.
+    let Some(page) = str_of("page").filter(|s| !s.is_empty()) else {
+        return json_error(StatusCode::BAD_REQUEST, "missing page");
     };
-    let (Some(s), Some(e)) = (
-        v.get("span_start").and_then(serde_json::Value::as_u64),
-        v.get("span_end").and_then(serde_json::Value::as_u64),
-    ) else {
-        return json_error(StatusCode::BAD_REQUEST, "missing span");
+    let page_file = str_of("page_file");
+    // Sandbox the page's source file, then derive the sidecar from it (the
+    // sidecar path is always within the served root).
+    let sidecar = match page_file.and_then(|f| sandboxed(&state.watch_root, Path::new(f))) {
+        Some(pf) => comments::comments_path(&pf, &state.watch_root),
+        None => state.watch_root.join("comments.wcl"),
     };
-    let Some(path) = sandboxed(&state.watch_root, Path::new(file)) else {
-        return json_error(StatusCode::FORBIDDEN, "file outside the served root");
-    };
-    let span = Span::new(s as usize, e as usize);
-    let author = str_of("author");
-    let quote = str_of("quote");
-    let on_page = v
-        .get("on_page")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
-    // The resolved page name the comment was made on, so it scopes to a single
-    // generated page (whose source label can't resolve statically).
-    let page = str_of("page");
-    let res = if on_page {
-        comments::add_to_page(
-            &path,
-            span,
-            body_text,
-            author,
-            str_of("loc"),
-            str_of("target"),
-            quote,
-            page,
-        )
-    } else {
-        comments::add_to_block(&path, span, body_text, author, quote, page)
-    };
-    match res {
+    match comments::add(
+        &sidecar,
+        page,
+        page_file,
+        str_of("loc"),
+        str_of("target"),
+        body_text,
+        str_of("author"),
+        str_of("quote"),
+    ) {
         Ok(id) => json_response(StatusCode::OK, &serde_json::json!({ "id": id })),
         Err(e) => json_error(StatusCode::INTERNAL_SERVER_ERROR, &e.render_plain()),
     }
@@ -781,16 +775,13 @@ fn comment_to_json(r: &comments::CommentRecord) -> serde_json::Value {
         "scope": r.scope.as_str(),
         "file": r.file.display().to_string(),
         "page": r.page,
-        "host_kind": r.host_kind,
-        "host_label": r.host_label,
+        "page_file": r.page_file,
         "loc": r.loc,
         "target": r.target,
         "quote": r.quote,
         "body": r.body,
         "author": r.author,
         "status": r.status,
-        "span_start": r.span_start,
-        "span_end": r.span_end,
     })
 }
 

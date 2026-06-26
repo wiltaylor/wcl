@@ -23,8 +23,8 @@ let note_edges = flatten([
 // "Index coverage" tables below count, per note, how many entries here equal its
 // id: i.e. how many times it is pinned into the curated navigation.
 let index_refs = flatten([
-  flatten(map(indexes, fn(i: Index) -> list<identifier> { i.related })),
-  flatten(map(indexes, fn(i: Index) -> list<identifier> {
+  flatten(map(book_indexes, fn(i: Index) -> list<identifier> { i.related })),
+  flatten(map(book_indexes, fn(i: Index) -> list<identifier> {
     flatten(map(i.children, fn(c: Index) -> list<identifier> { c.related }))
   })),
 ])
@@ -52,6 +52,7 @@ page reference_page {
   h1 "WSkill Graph"
   p  "Everything about this topic, mapped below as a force-directed graph and listed beneath it."
   p  "Each circle is a note (click it to open its page) and each line is a `related` link — colour-coded by type (**concepts** blue, **entities** amber, **facts** green, **processes** purple). Scroll to zoom and drag to pan."
+  p  "Curious how the *skill* projection is wired? See [Skill links](skill_links_page) — a graph of the skill's pages (`SKILL.md` + `references/*`) and each page's generated Markdown."
   diagram {
     width    = 960
     height   = 640

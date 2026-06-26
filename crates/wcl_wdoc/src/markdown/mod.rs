@@ -13,7 +13,7 @@
 //! Reuses [`crate::build`]'s site grouping and registry setup, so failures
 //! surface as the shared [`BuildError`] and map to the same CLI exit codes.
 
-mod emit;
+pub(crate) mod emit;
 mod skill;
 mod yaml;
 

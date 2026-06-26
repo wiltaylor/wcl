@@ -103,6 +103,17 @@ pub(crate) struct InlinePatterns {
     /// prefix. Both are interior-mutable, set per page by the skill backend.
     skill_start: RefCell<Option<String>>,
     skill_current_ref: RefCell<bool>,
+    /// Overrides the page-name set used to validate / rewrite internal links
+    /// while the skill layout is active. `None` ⇒ use the current site's
+    /// `page_names`. The HTML `markdown_source` block sets this to the *skill*
+    /// site's page names so a skill page's Markdown (links into `references/…`)
+    /// reproduces faithfully even though it is rendered inside the book build.
+    skill_pages: RefCell<Option<HashSet<String>>>,
+    /// The current site's output directory (set per build by `set_output_dir`).
+    /// Rides here so the `markdown_source` block reaches it — its Markdown
+    /// lowering writes any nested diagram SVGs under `<output_dir>/_wdoc/`,
+    /// exactly like the Markdown backend's page emitter.
+    output_dir: RefCell<std::path::PathBuf>,
     /// The current site's resolved UI/application theme — what `wf_*`
     /// wireframe elements bake their colours from (separate from the
     /// document theme). Set per site by the build (`set_ui_theme`), it
@@ -215,6 +226,8 @@ impl InlinePatterns {
             files,
             skill_start: RefCell::new(None),
             skill_current_ref: RefCell::new(false),
+            skill_pages: RefCell::new(None),
+            output_dir: RefCell::new(std::path::PathBuf::new()),
             ui_theme: RefCell::new(crate::render::UiTheme::default()),
             backend,
             vis_site: RefCell::new(None),
@@ -317,6 +330,41 @@ impl InlinePatterns {
     /// Called per page by the skill backend.
     pub(crate) fn set_skill_current_reference(&self, is_reference: bool) {
         *self.skill_current_ref.borrow_mut() = is_reference;
+    }
+
+    /// Record the current site's output directory so the `markdown_source`
+    /// block can write the diagram SVGs its Markdown lowering produces into
+    /// `<output_dir>/_wdoc/` (the same place the rest of the build's assets go).
+    pub(crate) fn set_output_dir(&self, dir: std::path::PathBuf) {
+        *self.output_dir.borrow_mut() = dir;
+    }
+
+    /// The current site's output directory (see [`set_output_dir`]).
+    pub(crate) fn output_dir(&self) -> std::path::PathBuf {
+        self.output_dir.borrow().clone()
+    }
+
+    /// Run `f` with the skill-folder link layout temporarily active: bare
+    /// internal page links resolve into `SKILL.md` / `references/<name>.md`,
+    /// validated against `pages` (the *skill* site's page names) rather than
+    /// the current site's, and prefixed with `../` when `reference`. The prior
+    /// skill state is restored afterwards. Used by the HTML `markdown_source`
+    /// block to reproduce a skill page's Markdown inside the book build.
+    pub(crate) fn with_skill_layout<R>(
+        &self,
+        start_page: String,
+        reference: bool,
+        pages: HashSet<String>,
+        f: impl FnOnce() -> R,
+    ) -> R {
+        let prev_start = self.skill_start.replace(Some(start_page));
+        let prev_ref = self.skill_current_ref.replace(reference);
+        let prev_pages = self.skill_pages.replace(Some(pages));
+        let out = f();
+        *self.skill_start.borrow_mut() = prev_start;
+        *self.skill_current_ref.borrow_mut() = prev_ref;
+        *self.skill_pages.borrow_mut() = prev_pages;
+        out
     }
 
     /// Relative prefix from the current page's output location back to the
@@ -722,7 +770,15 @@ impl InlinePatterns {
                 None => (href, ""),
             };
             if !target.contains(':') {
-                if self.page_names.contains(target) {
+                // While `markdown_source` previews a skill page inside the
+                // book build, validate links against the skill site's page
+                // names (set via `with_skill_layout`); otherwise the current
+                // site's set.
+                let known = match &*self.skill_pages.borrow() {
+                    Some(pages) => pages.contains(target),
+                    None => self.page_names.contains(target),
+                };
+                if known {
                     let rel = if target == start {
                         "SKILL.md".to_string()
                     } else {

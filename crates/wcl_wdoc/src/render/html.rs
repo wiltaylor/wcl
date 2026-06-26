@@ -529,6 +529,12 @@ pub(crate) fn render_block(
         // `base_dir` lets a `source` recording path resolve relative to
         // the source file.
         "terminal" => Some(crate::terminal::render_terminal(doc, block, base_dir)),
+        // Renders its body to a Markdown string (the same output the Markdown /
+        // skill backend produces) and shows it in a highlighted `code` block.
+        // Special-cased here because reaching into the Markdown emitter from a
+        // WCL `lower` isn't possible. Book-only; in other backends its stub
+        // `lower` makes it render empty.
+        "markdown_source" => Some(render_markdown_source(doc, block, patterns, base_dir)),
         // Wireframe widgets (`wf_*`) are diagram shapes now — they render only
         // inside a `diagram` (via `render_shape`), never as a page block.
         // A `wdoc_repeater` renders its body once per element of `each`.
@@ -559,11 +565,10 @@ pub(crate) fn render_block(
 }
 
 /// In comment mode (the `--comment` dev server), stamp a rendered block's root
-/// tag with the `data-wcl-*` anchors the comment client reads. Every block gets
-/// `data-wcl-block` and `data-wcl-kind`. A directly anchorable block (one that
-/// is hand-authored, with a single source span) additionally gets
-/// `data-wcl-file` and `data-wcl-span`, so a comment can decorate it directly,
-/// and any existing `@comment` is surfaced so the client shows it. A no-op
+/// tag with `data-wcl-block` + `data-wcl-kind` so the comment client can locate
+/// it (the locator is a positional path among `[data-wcl-block]` elements).
+/// Comments themselves live in a `comments.wcl` sidecar and are placed
+/// client-side, so no source span or stored comment is stamped here. A no-op
 /// outside comment mode, so normal builds emit no extra markup.
 fn anchor_comment(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> String {
     if !patterns.comment_mode() {
@@ -578,28 +583,7 @@ fn anchor_comment(block: &Block<'_>, html: String, patterns: &InlinePatterns) ->
     ) {
         return html;
     }
-    let mut attrs = format!(" data-wcl-block data-wcl-kind=\"{}\"", escape_html(kind));
-    // Directly anchorable: a hand-authored block (not a repeater/component
-    // expansion) carries a real source span a decorator can attach to.
-    if block.binding_scope_depth() == 0 {
-        let span = block.span();
-        let file = block.named_source();
-        attrs.push_str(&format!(
-            " data-wcl-file=\"{}\" data-wcl-span=\"{}..{}\"",
-            escape_html(file.name()),
-            span.start,
-            span.end
-        ));
-    }
-    // Surface an existing comment so the client can show it in place.
-    if let Some(c) = block.decorators().find(|d| d.name() == "comment") {
-        if let Some(Ok(Value::Utf8(id) | Value::Ascii(id))) = c.named_arg("id") {
-            attrs.push_str(&format!(" data-wcl-comment-id=\"{}\"", escape_html(&id)));
-        }
-        if let Some(Ok(Value::Utf8(body) | Value::Ascii(body))) = c.named_arg("body") {
-            attrs.push_str(&format!(" data-wcl-comment=\"{}\"", escape_html(&body)));
-        }
-    }
+    let attrs = format!(" data-wcl-block data-wcl-kind=\"{}\"", escape_html(kind));
     splice_attrs(&html, &attrs)
 }
 
@@ -988,6 +972,46 @@ pub(crate) fn render_inline_fundamental(
 ) -> String {
     let text = map_utf8(map, "text").unwrap_or_default();
     patterns.render(doc, &text)
+}
+
+/// Render a `markdown_source` block: lower its body to a Markdown string (via
+/// the Markdown backend's emitter, so the output matches `wcl wdoc markdown` /
+/// `skill`) and present it in a highlighted `code` block, mirroring the WCL
+/// `code` lower's `<pre class="code-block"><code class="language-markdown">…`.
+///
+/// When `start_page` is set, the body is lowered under the skill-folder link
+/// layout (`reference` ⇒ a `references/…` page with `../` prefixes), with
+/// internal links validated against `pages` (the skill site's page names) — so
+/// a skill page's Markdown reproduces faithfully even inside the book build.
+fn render_markdown_source(
+    doc: &Document,
+    block: &Block<'_>,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
+) -> String {
+    let children: Vec<Block<'_>> = block.blocks().collect();
+    let out_dir = patterns.output_dir();
+    let pages: std::collections::HashSet<String> =
+        field_utf8_list(block, "pages").into_iter().collect();
+    let reference = field_bool(block, "reference").unwrap_or(true);
+    // Stem for any SVGs the body's Markdown writes — the previewed page's
+    // name, so `![](_wdoc/…)` refs match the real skill output.
+    let stem = field_utf8(block, "id").unwrap_or_else(|| "markdown_source".to_string());
+
+    let emit = || {
+        crate::markdown::emit::body_to_markdown(doc, &children, &stem, patterns, base_dir, &out_dir)
+    };
+    let md = match field_utf8(block, "start_page") {
+        Some(start) => patterns.with_skill_layout(start, reference, pages, emit),
+        None => emit(),
+    };
+    let body = match md {
+        Ok(s) => highlight::highlight_html(s.trim_end(), "markdown"),
+        // Surface a lowering failure in the preview rather than failing the
+        // whole build — the block is a documentation aid, not load-bearing.
+        Err(_) => escape_html("markdown_source: failed to render body to Markdown"),
+    };
+    format!("<pre class=\"code-block\"><code class=\"language-markdown\">{body}</code></pre>")
 }
 
 /// Render an `HtmlFundamental::Highlighted { source, language }` to the

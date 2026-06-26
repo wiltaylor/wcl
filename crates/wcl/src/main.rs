@@ -353,14 +353,15 @@ enum WdocCommand {
         site: Option<String>,
         /// Enable comment mode: inject a JS client that lets you click a
         /// rendered block (or the page) and leave a review note, persisted
-        /// into the source as a `@comment` decorator. List them with
-        /// `wcl wdoc comments`.
+        /// into a `comments.wcl` sidecar (no document rebuild). List them
+        /// with `wcl wdoc comments`.
         #[arg(long)]
         comment: bool,
     },
-    /// List the review `@comment`s stored in `<file>` (left by `wcl wdoc
-    /// serve --comment`), or `resolve <id>` to delete one. JSON output
-    /// (`--format json`) is aimed at an AI agent acting on the notes.
+    /// List the review comments stored in the `comments.wcl` sidecars under
+    /// `<file>`'s directory (left by `wcl wdoc serve --comment`), or
+    /// `resolve <id>` to delete one. JSON output (`--format json`) is aimed
+    /// at an AI agent acting on the notes.
     Comments {
         /// Path to the WCL source file (the doc's entry point).
         file: PathBuf,
@@ -739,23 +740,21 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
         }
         WdocCommand::Comments {
             file,
-            site,
+            site: _,
             format,
             cmd,
-        } => run_comments(&file, site.as_deref(), format, cmd),
+        } => run_comments(&file, format, cmd),
     }
 }
 
-/// `wcl wdoc comments` — list stored `@comment`s, or `resolve <id>` one.
-fn run_comments(
-    file: &Path,
-    site: Option<&str>,
-    format: CommentFormat,
-    cmd: Option<CommentsSub>,
-) -> u8 {
+/// `wcl wdoc comments` — list comments stored in the `comments.wcl` sidecars
+/// under `<file>`'s directory, or `resolve` / `edit` one by id.
+fn run_comments(file: &Path, format: CommentFormat, cmd: Option<CommentsSub>) -> u8 {
+    // Sidecars live beside each wskill / the root doc; scan from `<file>`'s dir.
+    let root = file.parent().unwrap_or_else(|| Path::new("."));
     match cmd {
         Some(CommentsSub::Resolve { id }) => {
-            return match wcl_wdoc::comments::resolve(file, site, &id) {
+            return match wcl_wdoc::comments::resolve(root, &id) {
                 Ok(true) => {
                     eprintln!("resolved comment {id}");
                     EXIT_OK
@@ -771,7 +770,7 @@ fn run_comments(
             };
         }
         Some(CommentsSub::Edit { id, body }) => {
-            return match wcl_wdoc::comments::edit(file, site, &id, &body) {
+            return match wcl_wdoc::comments::edit(root, &id, &body) {
                 Ok(true) => {
                     eprintln!("edited comment {id}");
                     EXIT_OK
@@ -788,7 +787,7 @@ fn run_comments(
         }
         None => {}
     }
-    let recs = match wcl_wdoc::comments::list(file, site) {
+    let recs = match wcl_wdoc::comments::list(root) {
         Ok(r) => r,
         Err(err) => {
             err.report();
@@ -808,17 +807,12 @@ fn run_comments(
             }
             for r in &recs {
                 let where_ = match r.scope {
-                    wcl_wdoc::CommentScope::Block => {
-                        format!("{} {}", r.host_kind, r.host_label.as_deref().unwrap_or(""))
-                    }
-                    wcl_wdoc::CommentScope::PageBlock => format!(
+                    wcl_wdoc::CommentScope::Block => format!(
                         "page {} → {}",
-                        r.page.as_deref().unwrap_or("?"),
+                        r.page,
                         r.target.as_deref().unwrap_or("(block)")
                     ),
-                    wcl_wdoc::CommentScope::Page => {
-                        format!("page {}", r.page.as_deref().unwrap_or("?"))
-                    }
+                    wcl_wdoc::CommentScope::Page => format!("page {}", r.page),
                 };
                 println!("[{}] {} — {}", r.id, where_.trim(), r.body);
                 if let Some(q) = &r.quote {
@@ -837,16 +831,13 @@ fn comment_record_json(r: &wcl_wdoc::CommentRecord) -> serde_json::Value {
         "scope": r.scope.as_str(),
         "file": r.file.display().to_string(),
         "page": r.page,
-        "host_kind": r.host_kind,
-        "host_label": r.host_label,
+        "page_file": r.page_file,
         "loc": r.loc,
         "target": r.target,
         "quote": r.quote,
         "body": r.body,
         "author": r.author,
         "status": r.status,
-        "span_start": r.span_start,
-        "span_end": r.span_end,
     })
 }
 

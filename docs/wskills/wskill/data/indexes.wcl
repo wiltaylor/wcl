@@ -7,7 +7,7 @@
 index what {
   name = "WSkill"
   summary = "wskill"
-  related = [wskill_concept, creating_a_wskill, breaking_down_a_topic,capturing_notes]
+  related = [wskill_concept, why_use_wskill, creating_a_wskill, breaking_down_a_topic,capturing_notes]
 
     index views {
     name    = "Views & registry"
@@ -17,9 +17,20 @@ index what {
 
 }
 
-index data_model {
-  name    = "Data Model"
-  summary = "The unit kinds a wskill captures."
+index wskill_reference {
+  name    = "WSKill reference"
+  summary = "The wskill schema and the unit kinds it captures."
   related = [concept, entity, fact, process, index, schema_reference]
+}
+
+// Skill-only navigation. The skill's SKILL.md is driven entirely by the
+// `:ai`/`:both` indexes (there are no per-kind reference pages there), so this
+// index curates the runbooks an agent reaches for. `:ai` keeps it out of the
+// book, whose nav already lists these processes under the indexes above.
+index skill_tasks {
+  audience = :ai
+  name     = "Task runbooks"
+  summary  = "Step-by-step runbooks for building and maintaining a wskill."
+  related  = [creating_a_wskill, breaking_down_a_topic, capturing_notes, updating_a_wskill]
 }
 

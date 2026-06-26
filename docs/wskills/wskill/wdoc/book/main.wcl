@@ -21,11 +21,11 @@ import "../component/type_index.wcl" // shared unit-index page component
 // this file, so they are only valid as part of this document.
 import "../pages/overview.wcl"     // index (start page)
 import "../pages/reference.wcl"    // reference_page
+import "../pages/skill_links.wcl"  // skill_links_page
 import "../pages/concepts.wcl"     // concepts_page
 import "../pages/entities.wcl"     // entities_page
 import "../pages/facts.wcl"        // facts_page
 import "../pages/processes.wcl"    // processes_page
-import "../pages/glossary.wcl"     // glossary_page
 
 // The single topic block, bound from its gather list (see base.wcl
 // for why it is a list). A wskill always has exactly one.
@@ -38,12 +38,14 @@ let in_book    = fn(a: Audience) -> bool { match a { :ai => false, _ => true } }
 let concepts   = filter(concepts,   fn(c: Concept)   -> bool { in_book(c.audience) })
 let entities   = filter(entities,   fn(e: Entity)    -> bool { in_book(e.audience) })
 let facts      = filter(facts,      fn(f: Fact)      -> bool { in_book(f.audience) })
-let terms      = filter(terms,      fn(t: Term)      -> bool { in_book(t.audience) })
 let examples   = filter(examples,   fn(x: Example)   -> bool { in_book(x.audience) })
-// Top-level indexes only — each pins its units into the nav tree (see the
-// `toc` below); nested sub-indexes are reached through `ix.children` there, so
-// there's no flattened all-indexes list to maintain.
-let indexes    = filter(indexes,    fn(x: Index)      -> bool { in_book(x.audience) })
+// `all_indexes` is the raw gathered list (every audience); `book_indexes` is
+// the book view (drops `:ai`). The skill_links page derives the skill view
+// (`:ai`/`:both`) from `all_indexes` — it can't re-filter `book_indexes`, which
+// has already dropped the `:ai`-only skill-nav indexes. Top-level only; nested
+// sub-indexes are reached through `ix.children`.
+let all_indexes  = indexes
+let book_indexes = filter(all_indexes, fn(x: Index) -> bool { in_book(x.audience) })
 let procedures = filter(procedures, fn(p: Procedure) -> bool { in_book(p.audience) })
 
 // Backlinks: every unit flattened to { name, href, related } so a unit page can
@@ -77,7 +79,7 @@ site book {
     // process pages it lists in `related` — resolved to their unit pages — plus
     // any nested sub-indexes, each pinning its own units. A `related` id that
     // resolves to no book-included unit simply contributes nothing.
-    wdoc_repeater { each = indexes  as = :ix  chapter $"${ix.name}" {
+    wdoc_repeater { each = book_indexes  as = :ix  chapter $"${ix.name}" {
       wdoc_repeater { each = ix.related  as = :rid
         wdoc_repeater { each = filter(concepts,   fn(x: Concept)   -> bool { x.id == rid })  as = :t  chapter $"${t.name}"  { page = $"concept_${t.id}" } }
         wdoc_repeater { each = filter(entities,   fn(x: Entity)    -> bool { x.id == rid })  as = :t  chapter $"${t.name}"  { page = $"entity_${t.id}" } }
@@ -93,7 +95,6 @@ site book {
         }
       } }
     } }
-    chapter "Glossary"       { page = glossary_page }
   }
   // The Reference catalogue (the four units, the graph, and the per-unit
   // pages) lives behind a single pinned sidebar button rather than a sprawling
@@ -160,4 +161,3 @@ wdoc_repeater { each = procedures  as = :pr
 // sidebar whose children are the unit pages it lists in `related` (plus nested
 // sub-indexes). The `toc` block above wires this up; nothing is generated here.
 
-// --- 6. Glossary — glossary_page lives in pages/glossary.wcl -----------------

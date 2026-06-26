@@ -691,6 +691,8 @@ let book_css = <<CSS
   .book-sidebar .book-toc-row > a.book-chapter, .book-sidebar .book-toc-row > .book-section { flex: 1 1 auto; }
   .book-sidebar .book-toc-toggle { flex: 0 0 1rem; cursor: pointer; user-select: none; text-align: center; opacity: 0.55; }
   .book-sidebar .book-toc-toggle:hover { opacity: 1; }
+  .book-sidebar li.book-branch > .book-toc-row { cursor: pointer; user-select: none; }
+  .book-sidebar li.book-branch > .book-toc-row:hover > .book-toc-toggle { opacity: 1; }
   .book-sidebar li.book-branch > .book-toc-row > .book-toc-toggle::before { content: "▸"; display: inline-block; transition: transform 0.12s ease; }
   .book-sidebar li.book-branch.open > .book-toc-row > .book-toc-toggle::before { transform: rotate(90deg); }
   .book-sidebar li.book-branch > ul.book-toc { display: none; }
@@ -842,11 +844,13 @@ let book_sidebar_scroll = HtmlFundamental::Raw {
 }
 
 // Manual expand/collapse: a delegated click handler on the sidebar toggles a
-// branch's `open` class. Only fires when the clicked toggle's own `<li>` is a
-// branch (`<row> -> <li.book-branch>`), so a leaf row's alignment spacer and
-// the chapter links themselves are left alone. Server-side rendering already
-// opens the active path; this just lets the reader override it.
+// branch's `open` class. Clicking anywhere on a branch's row — the toggle arrow
+// or its section label — flips it, so an index container expands without having
+// to hit the little arrow. Clicks on a real chapter `<a>` are left to navigate
+// (a branch that also links to a page still opens that page from its label), and
+// a leaf row (no branch) is ignored. Server-side rendering already opens the
+// active path; this just lets the reader override it.
 let book_sidebar_toggle = HtmlFundamental::Raw {
-  html: "<script>(function(){var s=document.querySelector('.book-sidebar');if(!s)return;s.addEventListener('click',function(e){var t=e.target.closest&&e.target.closest('.book-toc-toggle');if(!t)return;var row=t.parentNode,li=row&&row.parentNode;if(li&&li.classList&&li.classList.contains('book-branch')){e.preventDefault();li.classList.toggle('open');}});})();</script>",
+  html: "<script>(function(){var s=document.querySelector('.book-sidebar');if(!s)return;s.addEventListener('click',function(e){if(!e.target.closest)return;if(e.target.closest('a'))return;var row=e.target.closest('.book-toc-row');if(!row)return;var li=row.parentNode;if(li&&li.classList&&li.classList.contains('book-branch')){e.preventDefault();li.classList.toggle('open');}});})();</script>",
 }
 
