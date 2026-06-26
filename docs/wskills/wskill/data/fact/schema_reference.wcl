@@ -164,35 +164,132 @@ let example_for = fn(n: utf8) -> list<utf8> {
       fn(e: BlockExample) -> utf8 { e.code })
 }
 
-// The schema, reflected. Instead of hand-maintaining a block catalogue, this fact
-// reflects the live `wcl.wskill` schema with WCL's reflection builtins: it walks
-// every declaration in the namespace (`namespace_decls`), prints its name and doc
-// comment (`decl_info` / `doc_comment`), and renders its fields with the built-in
-// `type_table` component (built on `type_fields`). The page is generated from the
-// schema itself, so it can never drift from base.wcl / extensions.wcl.
-fact schema_reference {
-  title    = "The wskill schema"
-  related  = [datapresentation, selfcontained]
+// One fact per schema block type. Each renders the block's `type_table` (its
+// field reference, reflected from the live schema with `type_fields`, so it can't
+// drift) plus a worked example; blocks with nested slots render a `type_table`
+// per nested block too. `type_table { type = <Name> }` takes a direct type
+// reference — the reflection forms (`namespace_decls` / filtered `top_blocks`)
+// don't survive being threaded through the component slot. Pin each fact into the
+// Reference → "Schema blocks" index in data/indexes.wcl.
+
+fact block_topic {
+  title = "Topic block"  related = [structured_data]
   body {
-    p "A complete reference of the `wcl.wskill` namespace, reflected from the live schema (`namespace_decls` / `decl_info` / `type_fields`) so it never drifts from base.wcl / extensions.wcl. Top-level blocks — the ones the root document gathers — come first in declaration order; any blocks nested inside a block are listed directly under it. The document roots and shared types follow."
-    h2 "Blocks"
-    wdoc_repeater { each = top_blocks()  as = :b
-      h3 $"${decl_name(b)}"
-      p  $"${doc_comment(b)}"
-      type_table { type = b }
-      wdoc_repeater { each = example_for(decl_name(b))  as = :ex  code "wcl" { source = ex } }
-      wdoc_repeater { each = nested_blocks(b)  as = :n
-        h4 $"${decl_name(n)}"
-        p  $"${doc_comment(n)}"
-        type_table { type = n }
-        wdoc_repeater { each = example_for(decl_name(n))  as = :ex  code "wcl" { source = ex } }
-      }
-    }
-    h2 "Document roots & shared types"
+    p "The overarching subject — exactly one per wskill — plus the document's own metadata (creation / update dates)."
+    type_table { type = Topic }
+    wdoc_repeater { each = example_for("Topic")  as = :ex  code "wcl" { source = ex } }
+  }
+}
+
+fact block_skill {
+  title = "Skill block"  related = [structured_data]
+  body {
+    p "Configures the generated `SKILL.md` — tool permissions, summary, parameters and boundaries — and bundles the skill's scripts and assets."
+    type_table { type = Skill }
+    h3 "Script"
+    type_table { type = Script }
+    h3 "Asset"
+    type_table { type = Asset }
+    h3 "Summary"
+    type_table { type = Summary }
+    h3 "SkillParam"
+    type_table { type = SkillParam }
+    h3 "SkillBoundary"
+    type_table { type = SkillBoundary }
+  }
+}
+
+fact block_source {
+  title = "Source block"  related = [structured_data]
+  body {
+    p "Where authoritative information about the topic lives; drives the update workflow only — it is never rendered as topic content."
+    type_table { type = Source }
+    wdoc_repeater { each = example_for("Source")  as = :ex  code "wcl" { source = ex } }
+  }
+}
+
+fact block_wskill_ref {
+  title = "WskillRef block"  related = [structured_data]
+  body {
+    p "A cross-reference to another wskill, resolved by name against repo peers or by url."
+    type_table { type = WskillRef }
+    wdoc_repeater { each = example_for("WskillRef")  as = :ex  code "wcl" { source = ex } }
+  }
+}
+
+fact block_concept {
+  title = "Concept block"  related = [structured_data, concept]
+  body {
+    p "An idea the reader must understand — captured as a thin record plus an addressable wdoc `body`."
+    type_table { type = Concept }
+    wdoc_repeater { each = example_for("Concept")  as = :ex  code "wcl" { source = ex } }
+  }
+}
+
+fact block_entity {
+  title = "Entity block"  related = [structured_data, entity]
+  body {
+    p "A concrete, named thing in the topic's world (a tool, a command, a file type, an organisation)."
+    type_table { type = Entity }
+    wdoc_repeater { each = example_for("Entity")  as = :ex  code "wcl" { source = ex } }
+  }
+}
+
+fact block_fact {
+  title = "Fact block"  related = [structured_data, fact]
+  body {
+    p "A factual unit — a container for values, constants or value tables; the body holds the data."
+    type_table { type = Fact }
+    wdoc_repeater { each = example_for("Fact")  as = :ex  code "wcl" { source = ex } }
+  }
+}
+
+fact block_index {
+  title = "Index block"  related = [structured_data, index]
+  body {
+    p "A curated landing page that groups links to other units into a meaningful tree; may nest child indexes one level deep."
+    type_table { type = Index }
+    wdoc_repeater { each = example_for("Index")  as = :ex  code "wcl" { source = ex } }
+  }
+}
+
+fact block_term {
+  title = "Term block"  related = [structured_data]
+  body {
+    p "A glossary entry — a term, its definition and any aliases."
+    type_table { type = Term }
+    wdoc_repeater { each = example_for("Term")  as = :ex  code "wcl" { source = ex } }
+  }
+}
+
+fact block_example {
+  title = "Example block"  related = [structured_data]
+  body {
+    p "A worked example or code sample; it projects onto the unit named by its `unit` field rather than getting its own page."
+    type_table { type = Example }
+    wdoc_repeater { each = example_for("Example")  as = :ex  code "wcl" { source = ex } }
+  }
+}
+
+fact block_procedure {
+  title = "Procedure block"  related = [structured_data, process]
+  body {
+    p "A runbook for doing a task as ordered steps — the `process` unit. Each step carries addressable body fragments."
+    type_table { type = Procedure }
+    wdoc_repeater { each = example_for("Procedure")  as = :ex  code "wcl" { source = ex } }
+    h3 "Step"
+    type_table { type = Step }
+    wdoc_repeater { each = example_for("Step")  as = :ex  code "wcl" { source = ex } }
+  }
+}
+
+// The @document roots that gather the blocks, plus shared types (Attr, Audience).
+fact schema_internals {
+  title = "Document roots & shared types"  related = [structured_data]
+  body {
+    p "The `@document` roots that gather every block, and the shared types they use."
     wdoc_repeater { each = other_decls()  as = :x
       h3 $"${decl_name(x)}"
-      // A record renders as a doc paragraph + field table; a symbol_set has no
-      // fields, so just list its allowed members.
       wdoc_repeater { each = match has_fields(x) { true => [true], _ => [] }  as = :_t
         p  $"${doc_comment(x)}"
         type_table { type = x }

@@ -1,0 +1,43 @@
+procedure building_the_index {
+  title   = "Building the wskill index"
+  purpose = "Curate the wskill's navigation by writing `index` blocks that group units into a meaningful tree."
+  related = [index, structured_data, creating_a_wskill]
+  audience = :both
+
+  step add { n = 1
+    title = "Add an index block"
+    body screen { code "wcl" { source = <<'WCL'
+// data/indexes.wcl
+index commands {
+  name    = "Commands"
+  summary = "The everyday command set."
+  related = [git_add, git_commit, status_fact]
+}
+WCL
+    } }
+    body steps { p "Add an `index` block (in `data/indexes.wcl` or its own file). Give it a `name` — the sidebar heading — and a `summary`, then list the unit ids it groups in `related`. Each id resolves to a link to that unit's page; an id that matches no unit is simply dropped." }
+  }
+
+  step nest { n = 2
+    title = "Nest sub-indexes"
+    body screen { code "wcl" { source = <<'WCL'
+index reference {
+  name = "Reference"
+  index commands { name = "Commands"  related = [git_add, git_commit] }
+  index config   { name = "Config"    related = [core_settings] }
+}
+WCL
+    } }
+    body steps { p "An index may hold child `index` blocks one level deep — write them inside the parent. The book renders them nested under the parent chapter. Document gathering is direct-only, so a nested index is not also listed at the top level." }
+  }
+
+  step audience { n = 3
+    title = "Choose the audience"
+    body steps { p "Indexes default to `:book`. Set `audience = :ai` (or `:both`) on an index meant to steer the AI skill — `:ai`/`:both` indexes drive `SKILL.md`, while `:book` indexes shape only the book sidebar. See *Setting up AI skill generation*." }
+  }
+
+  add  -> nest
+  nest -> audience
+
+  verification = "Each `index` appears as a chapter in the book sidebar (and, when `:ai`/`:both`, as a section in `SKILL.md`), listing links to the units it pins."
+}

@@ -7,19 +7,25 @@
 index what {
   name = "WSkill"
   summary = "wskill"
-  related = [wskill_concept, why_use_wskill, decomposing_information, creating_a_wskill]
+  related = [wskill_concept, why_use_wskill, creating_a_wskill, building_the_index, setup_ai_skill, decomposing_information, structured_data]
 }
 
 index philosophy {
   name    = "Philosophy"
   summary = "The principles the wskill format is built on."
-  related = [datapresentation, selfcontained, atomic_note, structured_data]
+  related = [datapresentation, selfcontained, atomic_note]
 }
 
 index wskill_reference {
   name    = "Reference"
   summary = "The wskill schema and the unit kinds it captures."
-  related = [concept, entity, fact, process, index, schema_reference]
+  related = [concept, entity, fact, process, index]
+
+  index schema_blocks {
+    name    = "Schema blocks"
+    summary = "Every block type in the schema, reflected from the live definition — one page each."
+    related = [block_topic, block_skill, block_source, block_wskill_ref, block_concept, block_entity, block_fact, block_index, block_term, block_example, block_procedure, schema_internals]
+  }
 }
 
 // Skill-only navigation. The skill's SKILL.md is driven entirely by the
@@ -30,6 +36,6 @@ index skill_tasks {
   audience = :ai
   name     = "Task runbooks"
   summary  = "Step-by-step runbooks for building and maintaining a wskill."
-  related  = [creating_a_wskill, updating_a_wskill]
+  related  = [creating_a_wskill, building_the_index, setup_ai_skill, updating_a_wskill]
 }
 

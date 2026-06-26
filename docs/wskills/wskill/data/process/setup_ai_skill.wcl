@@ -1,0 +1,52 @@
+procedure setup_ai_skill {
+  title   = "Setting up AI skill generation"
+  purpose = "Configure the wskill so it projects into a Claude Code skill, and choose what the agent sees."
+  related = [structured_data, building_the_index, creating_a_wskill]
+  audience = :both
+
+  step configure { n = 1
+    title = "Configure the skill block"
+    body screen { code "wcl" { source = <<'WCL'
+// wskill.wcl
+skill {
+  allowed_tools = ["Bash", "Read"]
+  summary { overview = ["What the skill does and when to use it."] }
+  skill_param "$ARGUMENTS" { description = "..."  value = "..." }
+  skill_boundary { always = ["..."]  never = ["..."] }
+}
+WCL
+    } }
+    body steps { p "Add the single `skill` block in `wskill.wcl`. Its fields become `SKILL.md`'s front matter and intro: the `allowed_tools` / `disallowed_tools` / `disable_model_invocation` permissions, a `summary` overview, invocation `skill_param`s, and `skill_boundary` guardrails the agent must follow." }
+  }
+
+  step tag { n = 2
+    title = "Tag content for the skill"
+    body screen { code "wcl" { source = <<'WCL'
+concept fast_forward { audience = :both  ... }   // book + skill
+fact   port_table    { audience = :ai    ... }   // skill only
+WCL
+    } }
+    body steps { p "Every unit defaults to `audience = :book`, so it stays out of the skill. Mark the units the agent needs `:ai` (skill only) or `:both` (book and skill). Curate up — the skill stays lean because content has to opt in." }
+  }
+
+  step nav { n = 3
+    title = "Curate the skill navigation"
+    body steps { p "`SKILL.md` is index-driven: add an `index` with `audience = :ai` (or `:both`) whose `related` lists the units the agent should reach. Each such index is inlined into `SKILL.md` as a section linking straight to those units. See *Building the wskill index*." }
+  }
+
+  step build { n = 4
+    title = "Build and install the skill"
+    body screen { code "console" { source = <<'SH'
+$ wcl wdoc skill wdoc/skill/main.wcl --out out/skill
+$ cp -r out/skill <repo>/.claude/skills/<name>
+SH
+    } }
+    body steps { p "Render the skill folder with `wcl wdoc skill` — it writes `SKILL.md` plus `references/*.md`. Install it by copying `out/skill` into a repo's `.claude/skills/<name>/`." }
+  }
+
+  configure -> tag
+  tag       -> nav
+  nav       -> build
+
+  verification = "`wcl wdoc skill` produces a `SKILL.md` whose reference section lists your `:ai`/`:both` indexes, with a `references/` page per `:ai`/`:both` unit."
+}
