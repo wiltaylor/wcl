@@ -7,7 +7,7 @@
 index what {
   name = "WSkill"
   summary = "wskill"
-  related = [wskill_concept, why_use_wskill, creating_a_wskill, breaking_down_a_topic,capturing_notes]
+  related = [wskill_concept, why_use_wskill, creating_a_wskill, breaking_down_a_topic]
 
     index views {
     name    = "Views & registry"
@@ -31,6 +31,6 @@ index skill_tasks {
   audience = :ai
   name     = "Task runbooks"
   summary  = "Step-by-step runbooks for building and maintaining a wskill."
-  related  = [creating_a_wskill, breaking_down_a_topic, capturing_notes, updating_a_wskill]
+  related  = [creating_a_wskill, breaking_down_a_topic, updating_a_wskill]
 }
 

@@ -1,12 +1,12 @@
 procedure breaking_down_a_topic {
   title   = "Breaking a topic down into the data model"
   purpose = "Turn what you know about a topic into the wskill's typed units — concepts, entities, facts and processes — extending the schema only when a shape recurs."
-  related = [concept, entity, fact, process, atomic_note, selfcontained, creating_a_wskill, capturing_notes]
+  related = [concept, entity, fact, process, atomic_note, selfcontained, creating_a_wskill]
   audience = :both
 
   step dump { n = 1
     title = "Brain-dump the topic"
-    body steps { p "Before classifying anything, get it all down — capture every idea, term, value and task as rough `fleeting` notes in `capture/`. Go for breadth; structure comes next." }
+    body steps { p "Before classifying anything, get it all down — jot every idea, term, value and task somewhere rough. Go for breadth; structure comes next." }
   }
 
   step sort { n = 2
@@ -18,7 +18,7 @@ fact      default_port { ... }   // a value / constant that can't be disputed
 procedure deploy       { ... }   // a repeatable task, as ordered steps
 WCL
     } }
-    body steps { p "Classify each captured note by what it *is*: an idea or mental model is a **concept**; a concrete, named thing is an **entity**; a value or constant is a **fact**; a repeatable task is a **process**. One fleeting note often splits into several units — keep each atomic, one idea per unit." }
+    body steps { p "Classify each rough note by what it *is*: an idea or mental model is a **concept**; a concrete, named thing is an **entity**; a value or constant is a **fact**; a repeatable task is a **process**. One rough note often splits into several units — keep each atomic, one idea per unit." }
   }
 
   step link { n = 3

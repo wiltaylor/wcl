@@ -5,7 +5,7 @@
 //! server persists every note into a **`comments.wcl` sidecar** keyed by the
 //! page name + a positional block locator. The watcher ignores `comments.wcl`,
 //! so a comment writes only the sidecar and the page re-shows it client-side —
-//! **no document rebuild**. (This mirrors the fleeting-notes JSON sidecar.)
+//! **no document rebuild**.
 //!
 //! The sidecar is a small, schemaless WCL file — read leniently off the AST
 //! (like `wcl init`'s answer files), so it needs no `import` / `@document`

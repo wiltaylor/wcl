@@ -12,11 +12,6 @@ page wdoc_comments { sites = [:reference]  title = "Review Comments"
 
   p "The toolbar's **💬 N comments** button shows how many comments live on the current page; click it for a modal listing them all — each with its target, body and quote, a **Jump to** link (for block comments), an **Edit** button (change the note in place), and a **Resolve** button. Individual block comments also appear inline as ✓ pins you can click."
 
-  callout "Fleeting notes" {
-    class = ["info"]
-    body  = "The toolbar also carries a **📝 Notes** button for *fleeting notes* — free-form quick captures that aren't tied to any block or page. Add, edit and delete them from its modal. They're stored beside the source in `.wdoc-fleeting.json` (gitignored — disposable, per-machine), not in the document."
-  }
-
   h2 "Where comments are stored"
 
   p "Comments live in a `comments.wcl` sidecar — one beside each wskill's `wskill.wcl`, or beside the served root document for a page that isn't inside a wskill. The dev server's watcher ignores `comments.wcl`, and comments are placed client-side (the JS resolves each stored locator against the live page), so a note never triggers a document rebuild. This also means a *generated* comment is just a matter of writing the same `comment { … }` shape into the sidecar."

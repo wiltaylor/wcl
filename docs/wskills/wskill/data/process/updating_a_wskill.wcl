@@ -2,7 +2,7 @@ procedure updating_a_wskill {
   title   = "Updating a wskill when its source changes"
   purpose = "Keep a wskill faithful to its upstream — check each source for drift, and update and re-pin the units only when the source has actually moved."
   preconditions = ["The wskill declares its `source`s and a pinned `topic.version`"]
-  related = [wskill, selfcontained, datapresentation, fleeting_note, capturing_notes, breaking_down_a_topic, creating_a_wskill]
+  related = [wskill, selfcontained, datapresentation, breaking_down_a_topic, creating_a_wskill]
   audience = :both
 
   step start { n = 1  shape = :terminator
@@ -32,7 +32,7 @@ WCL
 
   step update { n = 4
     title = "Update the affected units"
-    body steps { p "Capture each new or changed fact as a rough `fleeting` note first (see *Capture and process a fleeting note*), then fold it into the model: edit the `concept`, `entity`, `fact` or `procedure` units the change touches, keeping each atomic and re-checking its `related` links (see *Breaking a topic down into the data model*). Only touch the units the source actually moved." }
+    body steps { p "Fold each change into the model: edit the `concept`, `entity`, `fact` or `procedure` units the change touches, keeping each atomic and re-checking its `related` links (see *Breaking a topic down into the data model*). Only touch the units the source actually moved." }
   }
 
   step reverify { n = 5

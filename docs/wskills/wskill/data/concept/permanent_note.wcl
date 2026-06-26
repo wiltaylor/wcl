@@ -1,7 +1,7 @@
 concept permanent_note {
   name     = "Permanent Note"
   summary  = "A note refined for keeps: one idea, in your own words, self-contained and linked — the standard every wskill unit is held to."
-  related  = [fleeting_note, atomic_note, zettelkasten, selfcontained]
+  related  = [atomic_note, zettelkasten, selfcontained]
   body {
     p <<BODY
       A permanent note is one that is written to last. It states a single idea fully and in
@@ -14,8 +14,8 @@ concept permanent_note {
     p <<BODY
       Every unit in a wskill is a permanent note. A concept, entity, fact or process is held to
       exactly this standard — atomic, self-contained, and cross-referenced through `related` —
-      because the unit is the durable record the templates project. Fleeting notes are the raw
-      input; permanent notes are what the wskill actually stores.
+      because the unit is the durable record the templates project. A rough first draft is the
+      raw input; the permanent note is what the wskill actually stores.
     BODY
   }
 }
