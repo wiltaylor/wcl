@@ -5,7 +5,7 @@
 // inside the body.
 
 import <wdoc.wcl>
-import "../../schema/language.wcl"   // Function / Parameter / CodeExample
+import "../../schema/builtins.wcl"   // Function / Parameter / CodeExample
 
 wdoc_component function_body {
   wdoc_slot func

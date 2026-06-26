@@ -7,7 +7,7 @@
 // Every other page lands under references/. Like the book template it contains
 // NO topic content — only projections. The per-unit page bodies are rendered by
 // the shared components under component/ (concept_body / entity_body /
-// fact_body / process_body); the topic-specific Language / CLI reference pages
+// fact_body / process_body); the topic-specific Builtins / CLI reference pages
 // stay inline below.
 
 import <wdoc.wcl>
@@ -40,18 +40,13 @@ let indexes    = filter(indexes,    fn(x: Index)      -> bool { in_skill(x.audie
 let child_indexes = filter(flatten(map(indexes, fn(x: Index) -> list<Index> { x.children })), fn(x: Index) -> bool { in_skill(x.audience) })
 let all_indexes   = flatten([indexes, child_indexes])
 let procedures = filter(procedures, fn(p: Procedure) -> bool { in_skill(p.audience) })
-// Opt-in language/cli modules (schema/language.wcl, schema/cli.wcl).
-let languages  = filter(languages,  fn(x: Language)  -> bool { in_skill(x.audience) })
+// Opt-in cli module (schema/cli.wcl).
 let clis       = filter(clis,       fn(x: Cli)       -> bool { in_skill(x.audience) })
 
-// Builtin functions, flattened across every feature and audience-filtered, with
-// the same category grouping the book uses. The skill renders them on a single
-// grouped reference page (lean + greppable) rather than one page per function.
-let sk_top_features    = flatten(map(languages, fn(l: Language) -> list<Feature> { l.features }))
-let sk_child_features  = flatten(map(sk_top_features,   fn(f: Feature) -> list<Feature> { f.children }))
-let sk_gchild_features = flatten(map(sk_child_features, fn(f: Feature) -> list<Feature> { f.children }))
-let all_features  = flatten([sk_top_features, flatten([sk_child_features, sk_gchild_features])])
-let all_functions = filter(flatten(map(all_features, fn(f: Feature) -> list<Function> { f.functions })), fn(fc: Function) -> bool { in_skill(fc.audience) })
+// Builtin functions (schema/builtins.wcl) — the gathered `functions` list,
+// audience-filtered, with the same category grouping the book uses. The skill
+// renders them on a single grouped reference page (lean + greppable).
+let all_functions = filter(functions, fn(fc: Function) -> bool { in_skill(fc.audience) })
 let fn_categories = [
   { slug: "collections", name: "Collection functions" },
   { slug: "strings",     name: "String functions" },
@@ -127,7 +122,8 @@ page index { sites = [:skill]  start = true
   }
 
   h2 "Reference"
-  p "- [Language reference](language_ref) — the WCL language, area by area."
+  p "- [Concepts](concepts_ref) — the WCL language, concept by concept."
+  p "- [Facts](facts_ref) — reference tables (operators, decorators, patterns, …)."
   p "- [Builtin functions](builtins_ref) — every builtin, grouped by category."
   p "- [CLI reference](cli_ref) — the `wcl` CLI: every subcommand, its arguments and switches."
 }
@@ -217,42 +213,6 @@ wdoc_repeater { each = procedures  as = :pr
   page $"process_${pr.id}" { sites = [:skill]  title = $"${pr.title}"
     process_body { unit = pr  all_units = all_units  step_style = "skill"  backlinks = []
       p "[← Back to SKILL.md](index)"
-    }
-  }
-}
-
-// --- references/language_ref.md — the WCL language as a tree index ----------
-page language_ref { sites = [:skill]  title = $"${topic.name} — language reference"
-  h1 $"${topic.name} — language reference"
-  p  "The WCL language, area by area. Each entry links to its reference page."
-  wdoc_repeater { each = languages  as = :l
-    wdoc_repeater { each = l.features  as = :f
-      h2 $"${f.name}"
-  wdoc_repeater { each = f.concepts  as = :cid
-        wdoc_repeater { each = filter(concepts, fn(c: Concept) -> bool { c.id == cid })  as = :c  p $"- [${c.name}](concept_${c.id})" }
-      }
-      wdoc_repeater { each = f.facts  as = :fid
-        wdoc_repeater { each = filter(facts, fn(x: Fact) -> bool { x.id == fid })  as = :x  p $"- [${x.title}](fact_${x.id})" }
-      }
-      wdoc_repeater { each = match len(filter(f.functions, fn(fc: Function) -> bool { in_skill(fc.audience) })) { 0 => [], _ => [true] }  as = :_bf  p "- [Builtin functions, by category](builtins_ref)" }
-      wdoc_repeater { each = f.children  as = :cf
-        h3 $"${cf.name}"
-  wdoc_repeater { each = cf.concepts  as = :cid
-          wdoc_repeater { each = filter(concepts, fn(c: Concept) -> bool { c.id == cid })  as = :c  p $"- [${c.name}](concept_${c.id})" }
-        }
-        wdoc_repeater { each = cf.facts  as = :fid
-          wdoc_repeater { each = filter(facts, fn(x: Fact) -> bool { x.id == fid })  as = :x  p $"- [${x.title}](fact_${x.id})" }
-        }
-        wdoc_repeater { each = cf.children  as = :gf
-          h4 $"${gf.name}"
-  wdoc_repeater { each = gf.concepts  as = :cid
-            wdoc_repeater { each = filter(concepts, fn(c: Concept) -> bool { c.id == cid })  as = :c  p $"- [${c.name}](concept_${c.id})" }
-          }
-          wdoc_repeater { each = gf.facts  as = :fid
-            wdoc_repeater { each = filter(facts, fn(x: Fact) -> bool { x.id == fid })  as = :x  p $"- [${x.title}](fact_${x.id})" }
-          }
-        }
-      }
     }
   }
 }

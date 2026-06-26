@@ -12,7 +12,7 @@ namespace wcl.wskill
 
 import <wdoc.wcl>
 import "./base.wcl"        // Audience
-import "./language.wcl"    // reuse CodeExample
+import "./builtins.wcl"    // reuse CodeExample
 
 // A positional argument of a command. The label is a block id; `name` is the
 // displayed argument name (which may contain characters a bare label can't).

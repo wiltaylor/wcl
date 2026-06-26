@@ -1,0 +1,58 @@
+// wskill OPTIONAL module — document a library of builtin functions as data.
+//
+// Keeps the `function` object form (a typed signature: `parameter` children, a
+// return type, and `code_example`s) so the builtin reference stays data-driven
+// rather than hand-written prose. The consuming wskill's templates PROJECT each
+// function into its own fact-style page, grouped by its `category` slug.
+//
+// All declarations share the base schema's `wcl.wskill` namespace; importers keep
+// using bare names. The merging @document below adds `functions` to the gathered
+// document only in wskills that import this file.
+namespace wcl.wskill
+
+import <wdoc.wcl>
+import "./base.wcl"          // for Audience
+
+// A function parameter.
+@block("parameter")
+type Parameter {
+  @inline(0) name: utf8
+  type:        utf8?                // optional (some params untyped)
+  description: utf8?
+  remarks:     utf8?
+}
+
+// A worked example attached to a function (nested; not gathered globally).
+@block("code_example")
+type CodeExample {
+  @inline(0) title: utf8?
+  lang:        utf8?               // code-fence language
+  code:        utf8                // the sample
+  description: utf8?
+  result:      utf8?               // expected result / output
+}
+
+// A builtin function. `id` is unique; `name` may repeat across overloads.
+// `category` is a free-text group slug ("collections", "strings", "math",
+// "records", "reflection", "tensors", "control") used to generate the
+// per-category builtin pages.
+@block("function")
+type Function {
+  @inline(0) id: identifier
+  name:        utf8
+  category:    utf8?               // group slug for the generated category pages
+  description: utf8?
+  remarks:     utf8?
+  returns:             utf8?       // return type
+  returns_description: utf8?
+  @default(:book) audience: Audience
+  @children("parameter")    parameters: list<Parameter>
+  @children("code_example") examples:   list<CodeExample>
+}
+
+// Merges with the base @document, so `functions` joins the gathered document
+// only in wskills that import this module.
+@document
+type BuiltinsDoc {
+  @children("function") functions: list<Function>
+}

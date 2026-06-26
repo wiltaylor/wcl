@@ -7,7 +7,7 @@
 import <wdoc.wcl>
 import "./schema/base.wcl"
 import "./schema/extensions.wcl"
-import "./schema/language.wcl"          // opt-in: describe WCL as data (projected into the book)
+import "./schema/builtins.wcl"          // opt-in: builtin functions as data (projected into pages)
 import "./schema/cli.wcl"               // opt-in: map the wcl CLI as data
 
 // Data — reference units, glossary, examples and processes. Concepts, facts and
