@@ -11,6 +11,7 @@ wskill.wcl            # entry point: topic, version pin, meta, sources, data imp
 schema/base.wcl       # base block types (DO NOT hand-edit)
 schema/extensions.wcl # custom block types for this topic
 data/                 # the content: reference / processes
+assets/               # images, PDFs, data files referenced by pages (see assets/README.md)
 wdoc/book, wdoc/skill # projection templates (no content — pure structure)
 out/                  # generated outputs (gitignored)
 ```

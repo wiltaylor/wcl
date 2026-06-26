@@ -5,11 +5,17 @@
 // The start page becomes SKILL.md (lean: topic summary, version pin, concept
 // index, process menus, pointers to reference files).
 // Every other page lands under references/. Like the book template it contains
-// NO topic content — only projections. When you add a typed extension block in
-// schema/extensions.wcl, add a render section (search "TYPED EXTENSION").
+// NO topic content — only projections. The per-unit page bodies live in
+// component/*.wcl (shared with the book); the skill calls them with no
+// backlinks, the skill step-style, and a back-to-SKILL.md footer.
 
 import <wdoc.wcl>
 import "../../wskill.wcl"
+import "../component/common.wcl"    // UnitRef + shared per-unit sub-sections
+import "../component/concept.wcl"   // concept_body
+import "../component/entity.wcl"    // entity_body
+import "../component/fact.wcl"      // fact_body
+import "../component/process.wcl"   // process_body
 
 // The single topic block, bound from its gather list (see base.wcl).
 let topic = head(topics)
@@ -39,6 +45,16 @@ let languages      = filter(languages,  fn(x: Language)  -> bool { in_skill(x.au
 let top_features   = flatten(map(languages,     fn(l: Language) -> list<Feature> { l.features }))
 let child_features = flatten(map(top_features,  fn(f: Feature)  -> list<Feature> { f.children }))
 let all_features   = flatten([top_features, child_features])
+
+// Flattened cross-reference rows over the skill's audience-filtered units, so a
+// unit's `related` ids resolve to links (UnitRef + the components live in
+// component/common.wcl).
+let all_units = flatten([
+  map(concepts,   fn(c: Concept)   -> UnitRef { { id: c.id, name: c.name,  href: $"concept_${c.id}", related: c.related } }),
+  map(entities,   fn(e: Entity)    -> UnitRef { { id: e.id, name: e.name,  href: $"entity_${e.id}",  related: e.related } }),
+  map(facts,      fn(f: Fact)      -> UnitRef { { id: f.id, name: f.title, href: $"fact_${f.id}",    related: f.related } }),
+  map(procedures, fn(p: Procedure) -> UnitRef { { id: p.id, name: p.title, href: $"process_${p.id}", related: p.related } }),
+])
 
 site skill {
   default_template = :ai_skill
@@ -119,9 +135,10 @@ page index { sites = [:skill]  start = true
   }
 }
 
-// --- Units: concept / entity / fact — index + per-unit page + body + related -
-// Each unit's body is an addressable `body`, projected onto its own page;
-// `related` ids resolve to links to the matching unit's page (any of the kinds).
+// --- Units: concept / entity / fact — index + per-unit page (via component) --
+// Each unit's body is rendered by its component; `related` ids resolve to links,
+// `backlinks = []` (the skill has no "Referenced by"), and the caller-supplied
+// footer is a back-link to SKILL.md.
 
 page concepts_ref { sites = [:skill]
   h1 $"${topic.name} — concepts"
@@ -132,25 +149,9 @@ page concepts_ref { sites = [:skill]
 }
 wdoc_repeater { each = concepts  as = :c
   page $"concept_${c.id}" { sites = [:skill]  title = $"${c.name}"
-    h1 $"${c.name}"
-    p  $"_${c.summary}_"
-    project { from = c.body }
-    // Examples projected onto this unit (example.unit == this id).
-    wdoc_repeater { each = match len(filter(examples, fn(z: Example) -> bool { z.unit == c.id })) { 0 => [], _ => [true] }  as = :_xh  h2 "Examples" }
-    wdoc_repeater { each = filter(examples, fn(z: Example) -> bool { z.unit == c.id })  as = :z
-      h3 $"${z.title}"
-      wdoc_repeater { each = match z.narrative { none => [], n => [n] }  as = :n  p $"${n}" }
-      wdoc_repeater { each = match z.code { none => [], cc => [cc] }  as = :src  code $"${z.code_lang ?? "text"}" { source = src } }
-      wdoc_repeater { each = match z.expected { none => [], e => [e] }  as = :e  p $"**Expected:** ${e}" }
+    concept_body { unit = c  examples = examples  all_units = all_units  backlinks = []
+      p "[← Back to SKILL.md](index)"
     }
-    wdoc_repeater { each = match len(c.related) { 0 => [], _ => [true] }  as = :_r  h2 "Related" }
-    wdoc_repeater { each = c.related  as = :rid
-      wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
-      wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
-      wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
-      wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
-    }
-    p "[← All concepts](concepts_ref)"
   }
 }
 
@@ -165,26 +166,9 @@ wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_ei
 }
 wdoc_repeater { each = entities  as = :e
   page $"entity_${e.id}" { sites = [:skill]  title = $"${e.name}"
-    h1 $"${e.name}"
-    p  $"_${e.kind}_"
-    wdoc_repeater { each = match e.summary { none => [], s => [s] }  as = :s  p $"${s}" }
-    project { from = e.body }
-    // Examples projected onto this unit (example.unit == this id).
-    wdoc_repeater { each = match len(filter(examples, fn(z: Example) -> bool { z.unit == e.id })) { 0 => [], _ => [true] }  as = :_xh  h2 "Examples" }
-    wdoc_repeater { each = filter(examples, fn(z: Example) -> bool { z.unit == e.id })  as = :z
-      h3 $"${z.title}"
-      wdoc_repeater { each = match z.narrative { none => [], n => [n] }  as = :n  p $"${n}" }
-      wdoc_repeater { each = match z.code { none => [], cc => [cc] }  as = :src  code $"${z.code_lang ?? "text"}" { source = src } }
-      wdoc_repeater { each = match z.expected { none => [], e => [e] }  as = :e  p $"**Expected:** ${e}" }
+    entity_body { unit = e  examples = examples  all_units = all_units  backlinks = []
+      p "[← Back to SKILL.md](index)"
     }
-    wdoc_repeater { each = match len(e.related) { 0 => [], _ => [true] }  as = :_r  h2 "Related" }
-    wdoc_repeater { each = e.related  as = :rid
-      wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
-      wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
-      wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
-      wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
-    }
-    p "[← All entities](entities_ref)"
   }
 }
 
@@ -199,50 +183,10 @@ wdoc_repeater { each = match len(facts) { 0 => [], _ => [true] }  as = :_fi
 }
 wdoc_repeater { each = facts  as = :f
   page $"fact_${f.id}" { sites = [:skill]  title = $"${f.title}"
-    h1 $"${f.title}"
-    project { from = f.body }
-    // Examples projected onto this unit (example.unit == this id).
-    wdoc_repeater { each = match len(filter(examples, fn(z: Example) -> bool { z.unit == f.id })) { 0 => [], _ => [true] }  as = :_xh  h2 "Examples" }
-    wdoc_repeater { each = filter(examples, fn(z: Example) -> bool { z.unit == f.id })  as = :z
-      h3 $"${z.title}"
-      wdoc_repeater { each = match z.narrative { none => [], n => [n] }  as = :n  p $"${n}" }
-      wdoc_repeater { each = match z.code { none => [], cc => [cc] }  as = :src  code $"${z.code_lang ?? "text"}" { source = src } }
-      wdoc_repeater { each = match z.expected { none => [], e => [e] }  as = :e  p $"**Expected:** ${e}" }
+    fact_body { unit = f  examples = examples  all_units = all_units  backlinks = []
+      p "[← Back to SKILL.md](index)"
     }
-    wdoc_repeater { each = match len(f.related) { 0 => [], _ => [true] }  as = :_r  h2 "Related" }
-    wdoc_repeater { each = f.related  as = :rid
-      wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
-      wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
-      wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
-      wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
-    }
-    p "[← All facts](facts_ref)"
   }
-}
-
-// --- references/references.md -----------------------------------------------
-
-page references_ref { sites = [:skill]
-  h1 $"${topic.name} — reference"
-  p  "The four units, plus examples and any typed-extension sections."
-  wdoc_repeater { each = match len(concepts) { 0 => [], _ => [true] }  as = :_uc
-    p $"- [**Concepts**](concepts_ref) — ${len(concepts)} ideas to understand."
-  }
-  wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_ue
-    p $"- [**Entities**](entities_ref) — ${len(entities)} concrete things in the topic's world."
-  }
-  wdoc_repeater { each = match len(facts) { 0 => [], _ => [true] }  as = :_uf
-    p $"- [**Facts**](facts_ref) — ${len(facts)} values and value tables."
-  }
-  wdoc_repeater { each = match len(procedures) { 0 => [], _ => [true] }  as = :_up
-    p $"- [**Processes**](processes_ref) — ${len(procedures)} runbooks for doing tasks."
-  }
-
-  // ---- TYPED EXTENSION BLOCKS render here ------------------------------------
-  // The base schema has no generic table/custom block. Model topic-specific content
-  // (lookup tables, cards, a CLI vocabulary) as typed @blocks in schema/extensions.wcl
-  // and add their render here (and in the book template). Worked examples attach to a
-  // unit via `example.unit` and render on that unit's page. See references/schema.md.
 }
 
 // --- references/assets.md + the shipped scripts/assets ----------------------
@@ -303,29 +247,9 @@ page processes_ref { sites = [:skill]
 }
 wdoc_repeater { each = procedures  as = :pr
   page $"process_${pr.id}" { sites = [:skill]  title = $"${pr.title}"
-    h1 $"${pr.title}"
-    h2 "Purpose"
-    p  $"${pr.purpose}"
-    wdoc_repeater { each = match len(pr.preconditions) { 0 => [], _ => [true] }  as = :_p
-      h2 "Prerequisites"
-      list { items = map(pr.preconditions, fn(pc: utf8) -> Li { { text: pc } }) }
+    process_body { unit = pr  all_units = all_units  step_style = "skill"  backlinks = []
+      p "[← Back to SKILL.md](index)"
     }
-    h2 "Steps"
-    wdoc_repeater { each = pr.steps  as = :s
-      h3 $"Step ${s.n}${match s.title { none => "", ti => $": ${ti}" }}"
-      project { from = s.bodies }
-    }
-    wdoc_repeater { each = match pr.verification { none => [], v => [v] }  as = :v
-      callout "Verification" { class = ["success"]  body = $"${v}" }
-    }
-    wdoc_repeater { each = match len(pr.related) { 0 => [], _ => [true] }  as = :_r  h2 "Related" }
-    wdoc_repeater { each = pr.related  as = :rid
-      wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
-      wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
-      wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
-      wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
-    }
-    p "[← All processes](processes_ref)"
   }
 }
 

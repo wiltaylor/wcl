@@ -1,0 +1,13 @@
+// Book Entities index — links to each entity's generated page via the shared
+// type_index component (gated: no page when there are no entities). Imported by
+// book/main.wcl. Not standalone-checkable.
+
+wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_ei
+  page entities_page {
+    type_index {
+      heading = "Entities"
+      intro   = "Each entity has its own page — open one from the list below or the sidebar."
+      items   = map(entities, fn(e: Entity) -> utf8 { $"[**${e.name}**](entity_${e.id}) — _${e.kind}_${match e.summary { none => "", s => $" — ${s}" }}" })
+    }
+  }
+}

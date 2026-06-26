@@ -5,7 +5,7 @@ procedure scaffold_init {
   related = [cli]
   audience = :both
 
-  step 1 {
+  step list_templates { n = 1
     title = "List the available templates"
     body screen {
       code "console" { source = <<'SH'
@@ -21,7 +21,7 @@ SH
     body steps { p "Run `wcl init --list` to see the built-in templates: `minimal` (a single commented `main.wcl`) plus the multi-folder wdoc projects `page`, `book` and `presentation`." }
   }
 
-  step 2 {
+  step scaffold { n = 2
     title = "Scaffold from a template"
     body screen {
       code "console" { source = <<'SH'
@@ -34,7 +34,7 @@ SH
     body steps { p "Run `wcl init <template> <dest>`, e.g. `wcl init minimal ./my-project`. You are prompted for each `property` the template declares; pass `-D name=value` to answer inline or `--defaults` to skip prompts." }
   }
 
-  step 3 {
+  step validate { n = 3
     title = "Validate the generated project"
     body screen {
       code "console" { source = <<'SH'
@@ -45,6 +45,9 @@ SH
     }
     body steps { p "Change into the new folder and run `wcl check` on its `main.wcl` to confirm the scaffold validates before you start editing." }
   }
+
+  list_templates -> scaffold
+  scaffold -> validate
 
   verification = "The destination contains the template's files and `wcl check` on its entry `main.wcl` exits 0."
 }

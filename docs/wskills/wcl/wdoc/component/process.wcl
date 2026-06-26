@@ -1,0 +1,61 @@
+// Process (procedure) page body — invoked by the per-process page repeater in
+// each projection's main.wcl. Renders purpose, prerequisites, the step
+// flowchart, the step descriptions, verification and related links; the caller
+// fills `wdoc_content` with its projection-specific footer.
+//
+// `step_style` selects the step-heading layout: `:book`-style "book" (a
+// number / title two-column row) or "skill" ("Step N: title").
+
+import "./common.wcl"
+
+wdoc_component process_body {
+  wdoc_slot unit
+  wdoc_slot all_units
+  wdoc_slot step_style { default = "book" }
+  wdoc_slot backlinks
+  wdoc_slot layout     { default = "stack" }
+  wdoc_body {
+    h1 $"${unit.title}"
+    h2 "Purpose"
+    p  $"${unit.purpose}"
+    wdoc_repeater { each = match len(unit.preconditions) { 0 => [], _ => [true] }  as = :_p
+      h2 "Prerequisites"
+      list { items = map(unit.preconditions, fn(pc: utf8) -> Li { { text: pc } }) }
+    }
+    h2 "Flowchart"
+    diagram {
+      width = 540  height = len(unit.steps) * 96 + 64
+      layout = :layered  direction = :top_to_bottom  layer_gap = 28.0  node_gap = 32.0
+      wdoc_repeater { each = unit.steps  as = :s
+        wdoc_repeater { each = match s.shape { :process => [true], _ => [] }  as = :_sh
+          process $"${s.n}. ${s.title ?? ""}" { id = $"${s.id}"  width = 180.0  height = 46.0 } }
+        wdoc_repeater { each = match s.shape { :decision => [true], _ => [] }  as = :_sh
+          decision $"${s.title ?? ""}" { id = $"${s.id}"  width = 160.0  height = 72.0 } }
+        wdoc_repeater { each = match s.shape { :terminator => [true], _ => [] }  as = :_sh
+          terminator $"${s.title ?? ""}" { id = $"${s.id}"  width = 140.0  height = 46.0 } }
+      }
+      edges = map(unit.flow, fn(e: StepFlow) -> Edge {
+        { source: $"${e.source}", destination: $"${e.destination}",
+          kind: :flow, label: match e.kind { :yes => "yes", :no => "no", _ => "" } }
+      })
+    }
+    h2 "Steps"
+    wdoc_repeater { each = unit.steps  as = :s
+      wdoc_repeater { each = match step_style { "skill" => [], _ => [true] }  as = :_bk
+        column { widths = [6.0, 94.0]
+          h3 $"${s.n}"
+          h3 $"${s.title ?? ""}"
+        }
+      }
+      wdoc_repeater { each = match step_style { "skill" => [true], _ => [] }  as = :_sk
+        h3 $"Step ${s.n}${match s.title { none => "", ti => $": ${ti}" }}"
+      }
+      project { from = s.bodies }
+    }
+    wdoc_repeater { each = match unit.verification { none => [], v => [v] }  as = :v
+      callout "Verification" { class = ["success"]  body = $"${v}" }
+    }
+    related_section { related = unit.related  all_units = all_units  backlinks = backlinks  layout = layout }
+    wdoc_content
+  }
+}

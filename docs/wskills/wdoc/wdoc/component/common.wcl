@@ -1,0 +1,78 @@
+// Shared infrastructure for the per-unit page components (concept / entity /
+// fact / process), which live one-per-file alongside this one.
+//
+// A component body resolves names in THIS file's lexical scope plus its own
+// slots — never the call site's `let`s — so every list/value a body needs is
+// threaded in as a slot (`unit`, `examples`, `all_units`, …). Both projections
+// (book + skill) import these files; the page repeaters in each `main.wcl`
+// just invoke the matching component.
+
+import <wdoc.wcl>
+import "../../schema/base.wcl"
+
+// A flattened cross-reference row: every unit projected to a uniform
+// { id, name, href, related } so a unit's `related` ids resolve to links and
+// the inverse (backlinks) can be computed. Each projection builds `all_units`
+// over its own audience-filtered lists and passes it into the components.
+type UnitRef { id: identifier  name: utf8  href: utf8  related: list<identifier> }
+
+// "Examples" — examples authored against this unit (`example.unit == id`).
+wdoc_component unit_examples {
+  wdoc_slot unit_id
+  wdoc_slot examples
+  wdoc_body {
+    wdoc_repeater { each = match len(filter(examples, fn(z: Example) -> bool { z.unit == unit_id })) { 0 => [], _ => [true] }  as = :_xh  h2 "Examples" }
+    wdoc_repeater { each = filter(examples, fn(z: Example) -> bool { z.unit == unit_id })  as = :z
+      h3 $"${z.title}"
+      wdoc_repeater { each = match z.narrative { none => [], n => [n] }  as = :n  p $"${n}" }
+      wdoc_repeater { each = match z.code { none => [], cc => [cc] }  as = :src  code $"${z.code_lang ?? "text"}" { source = src } }
+      wdoc_repeater { each = match z.expected { none => [], e => [e] }  as = :e  p $"**Expected:** ${e}" }
+    }
+  }
+}
+
+// "Related" — each related id resolved to a link via `all_units`.
+wdoc_component unit_related {
+  wdoc_slot related
+  wdoc_slot all_units
+  wdoc_body {
+    wdoc_repeater { each = match len(related) { 0 => [], _ => [true] }  as = :_r  h2 "Related" }
+    wdoc_repeater { each = related  as = :rid
+      wdoc_repeater { each = filter(all_units, fn(u: UnitRef) -> bool { u.id == rid })  as = :u  p $"- [${u.name}](${u.href})" }
+    }
+  }
+}
+
+// "Referenced by" — units whose `related` points at this one (book footer).
+wdoc_component unit_referenced_by {
+  wdoc_slot backlinks
+  wdoc_body {
+    wdoc_repeater { each = match len(backlinks) { 0 => [], _ => [true] }  as = :_rb  h2 "Referenced by" }
+    wdoc_repeater { each = backlinks  as = :u  p $"- [${u.name}](${u.href})" }
+  }
+}
+
+// "Related" + "Referenced by" together. `layout = "columns"` lays them side by
+// side in a two-column grid (the book); any other value stacks them. The skill
+// keeps the default "stack" because the Markdown backend drops `column`, and it
+// passes no `backlinks`, so "Referenced by" renders nothing there.
+wdoc_component related_section {
+  wdoc_slot related
+  wdoc_slot all_units
+  wdoc_slot backlinks
+  wdoc_slot layout { default = "stack" }
+  wdoc_body {
+    wdoc_repeater { each = match layout { "columns" => [true], _ => [] }  as = :_col
+      // Each side is wrapped in its own single-column `column` so it is one grid
+      // cell — otherwise the section's heading + links would interleave across
+      // the two outer columns.
+      column { widths = [50.0, 50.0]  class = ["related-cols"]
+        column { widths = [100.0]  unit_related       { related = related  all_units = all_units } }
+        column { widths = [100.0]  unit_referenced_by { backlinks = backlinks } }
+      }
+    }
+    wdoc_repeater { each = match layout { "columns" => [], _ => [true] }  as = :_stk
+      unit_related { related = related  all_units = all_units }
+    }
+  }
+}

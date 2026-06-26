@@ -1,0 +1,23 @@
+// Shared index-page component for the four unit kinds (concept / entity / fact /
+// process). Renders the kind heading, an intro line, and a bullet list of
+// pre-formatted entries — the caller maps its units to bullet text (the format
+// differs per kind: summary, kind, purpose, …) and passes them as `items`.
+//
+//   type_index {
+//     heading = "Concepts"
+//     intro   = "Each concept has its own page — …"
+//     items   = map(concepts, fn(c: Concept) -> utf8 { $"[**${c.name}**](concept_${c.id}) — ${c.summary}" })
+//   }
+
+import <wdoc.wcl>
+
+wdoc_component type_index {
+  wdoc_slot heading
+  wdoc_slot intro
+  wdoc_slot items
+  wdoc_body {
+    h1 $"${heading}"
+    p  $"${intro}"
+    wdoc_repeater { each = items  as = :it  p $"- ${it}" }
+  }
+}

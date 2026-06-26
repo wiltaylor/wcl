@@ -1,0 +1,47 @@
+// Book Overview — the start page (topic header, metadata, related skills, sources).
+//
+// Imported by book/main.wcl; resolves that file's `let`s (`topic`) and the
+// gathered document lists (`refs`, `sources`). Not standalone-checkable — it is
+// only valid as part of the book document.
+
+page index { start = true
+  h1 $"${topic.name}"
+  callout "Summary" { class = ["info"]  body = $"${topic.summary}" }
+  table {
+    header = ["", ""]
+    rows = [
+      ["Version", topic.version ?? "—"],
+      ["Created", topic.created],
+      ["Last updated", topic.updated ?? "—"],
+      ["Maintainer", match topic.maintainer_entity { none => topic.maintainer ?? "—", id => $"[${topic.maintainer ?? "maintainer"}](entity_${id})" }],
+    ]
+  }
+  wdoc_repeater { each = match topic.description { none => [], d => [d] }  as = :d
+    p $"${d}"
+  }
+
+
+  h2 "Related skills"
+  wdoc_repeater { each = match len(refs) { 0 => [true], _ => [] }  as = :_n
+    p "No related wskills declared yet."
+  }
+  wdoc_repeater { each = match len(refs) { 0 => [], _ => [true] }  as = :_r
+    table {
+      header = ["Name", "Relation", "Status"]
+      rows = map(refs, fn(r: WskillRef) -> list<utf8> {
+        [match r.url { none => r.name, u => $"[${r.name}](${u})" }, r.relation ?? "—", r.status]
+      })
+    }
+  }
+
+  wdoc_repeater { each = match len(sources) { 0 => [], _ => [true] }  as = :_s
+    h2 "Sources"
+    p "Sources drive the update workflow only — they are not topic content."
+    table {
+      header = ["ID", "Kind", "Locator", "Covers", "Last checked", "Reflects version"]
+      rows   = map(sources, fn(s: Source) -> list<utf8> {
+        [$"${s.id}", s.kind, s.locator, s.covers, s.last_checked ?? "—", s.reflects_version ?? "—"]
+      })
+    }
+  }
+}

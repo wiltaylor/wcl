@@ -2,7 +2,7 @@ procedure updating_a_wskill {
   title   = "Updating a wskill when its source changes"
   purpose = "Keep a wskill faithful to its upstream — check each source for drift, and update and re-pin the units only when the source has actually moved."
   preconditions = ["The wskill declares its `source`s and a pinned `topic.version`"]
-  related = [wskill, selfcontained, datapresentation, creating_a_wskill]
+  related = [wskill_concept, selfcontained, datapresentation, creating_a_wskill]
   audience = :both
 
   step start { n = 1  shape = :terminator

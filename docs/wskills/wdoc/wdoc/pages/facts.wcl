@@ -1,0 +1,13 @@
+// Book Facts index — links to each fact's generated page via the shared
+// type_index component (gated: no page when there are no facts). Imported by
+// book/main.wcl. Not standalone-checkable.
+
+wdoc_repeater { each = match len(facts) { 0 => [], _ => [true] }  as = :_fi
+  page facts_page {
+    type_index {
+      heading = "Facts"
+      intro   = "Each fact is a container of factual data on its own page."
+      items   = map(facts, fn(f: Fact) -> utf8 { $"[**${f.title}**](fact_${f.id})" })
+    }
+  }
+}

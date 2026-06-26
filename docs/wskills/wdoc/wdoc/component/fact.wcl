@@ -1,0 +1,20 @@
+// Fact page body — invoked by the per-fact page repeater in each projection's
+// main.wcl. Renders the projected body, examples and related links; the caller
+// fills `wdoc_content` with its projection-specific footer.
+
+import "./common.wcl"
+
+wdoc_component fact_body {
+  wdoc_slot unit
+  wdoc_slot examples
+  wdoc_slot all_units
+  wdoc_slot backlinks
+  wdoc_slot layout    { default = "stack" }
+  wdoc_body {
+    h1 $"${unit.title}"
+    project { from = unit.body }
+    unit_examples { unit_id = unit.id  examples = examples }
+    related_section { related = unit.related  all_units = all_units  backlinks = backlinks  layout = layout }
+    wdoc_content
+  }
+}

@@ -246,14 +246,18 @@ type Fact {
   @child("body") body: WdocAddressableBody?
 }
 
-// An index — a curated landing page that gathers links to other parts of the
-// wskill in a topic-meaningful arrangement. Unlike concept/entity/fact/procedure
-// it is NOT filed under Reference: each index gets its own top-level entry in the
-// book menu (between Overview and Reference). The body (an addressable `body { … }`)
-// holds the curated links/prose; `related` auto-resolves to a link list.
+// An index — a curated grouping that pins units (concepts / entities / facts /
+// procedures) into a topic-meaningful arrangement. Unlike concept/entity/fact/
+// procedure it is NOT filed under Reference: each index is a top-level entry in
+// the book navigation (between Overview and Reference). In the BOOK it renders as
+// a sidebar heading (no page of its own) whose children are the unit pages named
+// in `related`, pinned into the nav tree. In the SKILL it renders as a
+// link-collection page: the `body` (an addressable `body { … }`) holds the
+// curated prose and `related` auto-resolves to a link list (so `body` is read by
+// the skill projection only).
 // An index may nest child indexes one level deep (`@children("index")`): write a
 // child `index { … }` block inside the parent and both projections render it
-// nested — under the parent chapter in the book TOC, indented under the parent
+// nested — under the parent heading in the book nav, indented under the parent
 // bullet in the skill. Document-level `@children("index")` gathers only direct
 // children, so a nested index is not also listed at the top level.
 @block("index")
@@ -299,11 +303,23 @@ type Example {
 // Processes (ordered step blocks)
 // ---------------------------------------------------------------------------
 
-// One ordered step in a process (procedure). The label is its number.
+// The flowchart shape a step draws in the process flow chart: a `process` box
+// (an action), a `decision` diamond (a branch), or a `terminator` oval (start/end).
+symbol_set StepShape { process decision terminator }
+
+// The label on a flow edge between two steps: `:default` is a plain arrow, while
+// `:yes` / `:no` annotate the branches out of a decision step.
+symbol_set StepFlowKind { default yes no }
+
+// One step in a process (procedure). The label is its `id` — the name the
+// procedure's `from -> to` flow statements wire together. `n` is its display
+// number and `shape` its flow-chart shape.
 @block("step")
 type Step {
-  @inline(0) n: u32
+  @inline(0) id: identifier
+  n: u32                                  // display number (gutter / "Step N")
   title: utf8?
+  @default(:process) shape: StepShape     // its shape in the flow chart
   // Two addressable body fragments per step: `body screen { … }` (what's on screen —
   // a callout/code/image box) and `body steps { … }` (the steps to follow — a list).
   // The book lays the number in a gutter beside the title; both fragments project
@@ -311,11 +327,17 @@ type Step {
   @children("body") bodies: list<WdocAddressableBody>
 }
 
+// A directed flow edge between two steps, authored as `from -> to` (optionally
+// `from -> to :yes` / `:no`) in the procedure body — the wiring the flow chart draws.
+connection StepFlow: Step -> Step : StepFlowKind
+
 // A runbook for *doing* a specific task. Written for someone who already knows
 // the topic and needs the reliable sequence. A `procedure` is a fourth interlinking
 // unit (alongside concept/entity/fact) — it keeps its structured, step-based shape,
 // but carries `related` and renders to its own page, so units can link to and from
-// it. (`process` is the user-facing name; the block is `procedure`.)
+// it. Its steps render as a flow chart (wired by the author's `from -> to` flow
+// statements) above the step detail. (`process` is the user-facing name; the block
+// is `procedure`.)
 @block("procedure", required_children = ["step"])
 type Procedure {
   @inline(0) id: identifier
@@ -327,6 +349,7 @@ type Procedure {
   @default(:book) audience: Audience     // :book (default) | :ai | :both
   @default([]) tags: list<utf8>
   @children("step") steps: list<Step>
+  @connections(StepFlow) flow: list<StepFlow>   // the `from -> to` step wiring
 }
 
 // ---------------------------------------------------------------------------

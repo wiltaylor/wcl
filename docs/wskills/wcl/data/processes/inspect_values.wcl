@@ -5,7 +5,7 @@ procedure inspect_values {
   related = [cli, references]
   audience = :both
 
-  step 1 {
+  step read { n = 1
     title = "Read a field with eval"
     body screen {
       code "console" { source = <<'SH'
@@ -17,7 +17,7 @@ SH
     body steps { p "Run `wcl eval site.wcl <dotted.path>` (aliased `wcl get`) to resolve a path from the document root and print its value. Add `--json` for machine-readable output." }
   }
 
-  step 2 {
+  step edit { n = 2
     title = "Edit a field with set"
     body screen {
       code "console" { source = <<'SH'
@@ -29,7 +29,7 @@ SH
     body steps { p "Run `wcl set site.wcl <path> <value>` to rewrite the field. `wcl set` follows the import chain and edits the file that actually declares the field." }
   }
 
-  step 3 {
+  step confirm { n = 3
     title = "Confirm the change with diff"
     body screen {
       code "console" { source = <<'SH'
@@ -42,6 +42,9 @@ SH
     }
     body steps { p "Run `wcl diff <old> <new>` over the evaluated views to see exactly what changed. Either side may be a `<rev>:<path>` git specifier, so you can diff the working tree against a committed version." }
   }
+
+  read -> edit
+  edit -> confirm
 
   verification = "`wcl eval` returns the new value and `wcl diff` reports a single modified field — confirming the edit landed where you intended."
 }

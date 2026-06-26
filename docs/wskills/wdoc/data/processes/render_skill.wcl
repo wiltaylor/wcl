@@ -5,7 +5,7 @@ procedure render_skill {
   related = [skills, sites]
   audience = :both
 
-  step 1 {
+  step run { n = 1
     title = "Run the skill target"
     body screen { code "console" { source = <<'SH'
 $ wcl wdoc skill site.wcl --out out/skill
@@ -14,7 +14,7 @@ SH
     body steps { p "Render the document to a skill folder under `out/skill`. The output directory is created if missing; with several skill sites, each renders into its own `out/skill/<name>/` subfolder." }
   }
 
-  step 2 {
+  step inspect { n = 2
     title = "Inspect the folder layout"
     body screen { code "console" { source = <<'SH'
 $ ls -R out/skill
@@ -27,7 +27,7 @@ SH
     body steps { p "The `start` page becomes `SKILL.md` at the root with its front matter from the `skill { }` block; every other page is written under `references/<name>.md`; and each `file` block ships into the subfolder named by its `dir` (`scripts/`, `assets/`)." }
   }
 
-  step 3 {
+  step check_target { n = 3
     title = "Check it builds as a skill, not HTML"
     body screen { callout "Use the skill target" {
       class = ["warning"]
@@ -35,6 +35,9 @@ SH
     } }
     body steps { p "If `wcl wdoc build` errors on this site, that is expected: skill sites only render through `wcl wdoc skill`." }
   }
+
+  run -> inspect
+  inspect -> check_target
 
   verification = "`out/skill/SKILL.md` exists with name/description front matter, and the non-start pages appear under `out/skill/references/`."
 }

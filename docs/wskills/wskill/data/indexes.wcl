@@ -7,7 +7,7 @@
 index what {
   name = "WSkill"
   summary = "wskill"
-  related = [wskill_concept, why_use_wskill, creating_a_wskill, building_the_index, setup_ai_skill, decomposing_information, structured_data]
+  related = [wskill_concept, why_use_wskill, creating_a_wskill, building_the_index, setup_ai_skill, decomposing_information, structured_data, assets]
 }
 
 index philosophy {

@@ -2,7 +2,7 @@ procedure creating_a_wskill {
   title   = "Creating a new wskill"
   purpose = "Start a new wskill for a topic from the wcl template and set its topic."
   preconditions = ["WCL installed — see the [WCL wskill](../wcl/) to install it."]
-  related = [wskill, datapresentation, selfcontained]
+  related = [wskill_concept, datapresentation, selfcontained]
   audience = :both
 
   step scaffold { n = 1

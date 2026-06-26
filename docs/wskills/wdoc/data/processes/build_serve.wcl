@@ -5,7 +5,7 @@ procedure build_serve {
   related = [sites, pages]
   audience = :both
 
-  step 1 {
+  step render { n = 1
     title = "Render to a folder"
     body screen { code "console" { source = <<'SH'
 $ wcl wdoc build site.wcl --out out
@@ -14,7 +14,7 @@ SH
     body steps { p "Render every `page` block in `site.wcl` to `out/`. Each page lands at `out/<name>.html`; with several sites, each renders into its own `out/<name>/` subdirectory with a chooser index." }
   }
 
-  step 2 {
+  step open { n = 2
     title = "Open the output"
     body screen { code "console" { source = <<'SH'
 $ ls out
@@ -24,7 +24,7 @@ SH
     body steps { p "Open `out/index.html` in a browser to check the rendered result." }
   }
 
-  step 3 {
+  step serve { n = 3
     title = "Switch to a live preview"
     body screen { code "console" { source = <<'SH'
 $ wcl wdoc serve site.wcl
@@ -33,6 +33,9 @@ SH
     } }
     body steps { p "Run `wcl wdoc serve` to start a dev server that watches the source for `.wcl` changes and re-renders on each save. Refresh the browser to see updates; pass `--addr` to change the bind address." }
   }
+
+  render -> open
+  open -> serve
 
   verification = "`out/` holds one `.html` per page, and editing the source under `wcl wdoc serve` updates the served page after a refresh."
 }
