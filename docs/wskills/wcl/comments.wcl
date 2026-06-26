@@ -1,0 +1,8 @@
+// Review comments for this wskill / doc — written by `wcl wdoc serve --comment`
+// and read back by `wcl wdoc comments`. Each `comment` block is keyed by page
+// name + block locator; safe to hand-edit or generate.
+//
+// All open comments processed:
+//   - "fields & blocks on one page" → fields/blocks consolidated into concept_fields_blocks
+//   - "split number literals to their own note" → covered by fact_number_literals
+//   - "type aliases up one level" → resolved by removing the language-feature nesting

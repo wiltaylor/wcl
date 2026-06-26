@@ -10,18 +10,7 @@ integer literal defaults to `i64`; a suffix pins the exact type. Underscores may
 group digits for readability and are ignored. See [Expressions](concept_expressions)
 for numeric promotion across mixed operands.
 PROSE
-    h2 "Literals"
-    code "wcl" { source = <<'SRC'
-a = 42          // i64 (default)
-b = 200u8       // unsigned 8-bit
-c = 9_000i64    // underscores are ignored
-d = 3.14f64     // float
-e = -120i8      // signed
-f = 0xFFu32     // hex
-g = 0b1010_1100u8   // binary
-h = 0o755u16    // octal
-SRC
-    }
+    p "Literal syntax — radixes, width suffixes, and digit-grouping underscores — is its own note: [Number literals](fact_number_literals)."
     h2 "Types"
     table {
       header = ["Width", "Signed", "Unsigned", "Float"]
