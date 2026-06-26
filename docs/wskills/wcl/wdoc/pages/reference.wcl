@@ -1,9 +1,13 @@
 // Book Reference landing — a force-directed graph of every unit at the top, then
-// a per-kind catalogue of the four units (plus any typed-extension sections).
-// Imported by book/main.wcl. Not standalone-checkable (resolves the `concepts` /
-// `entities` / `facts` / `procedures` lets defined in main.wcl). This wskill has
-// no curated `index` blocks, so the index-coverage tables from the canonical
-// reference page are omitted.
+// a page-type summary and per-kind "navigation coverage" tables. Imported by
+// book/main.wcl. Not standalone-checkable (resolves the `concepts` / `entities` /
+// `facts` / `procedures` / `all_features` / `all_functions` / `fn_categories`
+// lets defined in main.wcl).
+//
+// This wskill navigates by the `language` feature tree (the "Language" menu), not
+// curated `index` blocks — so "in the index" here means "pinned into a feature",
+// i.e. reachable from the Language navigation. A unit with a 0 count still has its
+// own Reference page; it just isn't surfaced in the menu.
 
 // Record for the graph diagram's computed `edges = [...]` field. Node ids are
 // the raw unit ids, so a `related` id maps straight to its node. The diagram's
@@ -18,6 +22,21 @@ let note_edges = flatten([
   flatten(map(facts,      fn(f: Fact)      -> list<GraphEdge> { map(f.related, fn(r: identifier) -> GraphEdge { { source: $"${f.id}", destination: $"${r}" } }) })),
   flatten(map(procedures, fn(p: Procedure) -> list<GraphEdge> { map(p.related, fn(r: identifier) -> GraphEdge { { source: $"${p.id}", destination: $"${r}" } }) })),
 ])
+
+// Every unit id pinned into the `language` feature tree — each feature's
+// `concepts` and `facts` lists, across all nesting levels (all_features is
+// already flattened in main.wcl). The "navigation coverage" tables below count,
+// per unit, how many features pin it: a 0 means it isn't reachable from the
+// Language menu yet (it still has its own Reference page).
+let feature_pins = flatten([
+  flatten(map(all_features, fn(f: Feature) -> list<identifier> { f.concepts })),
+  flatten(map(all_features, fn(f: Feature) -> list<identifier> { f.facts })),
+])
+
+// How many features pin `id` into the Language navigation.
+fn feature_pin_count(id: identifier) -> i64 {
+  len(filter(feature_pins, fn(t: identifier) -> bool { t == id }))
+}
 
 // Node colours for the graph: paint each circle by note type, and give the
 // label white text so it stays legible on the fill in both light and dark mode
@@ -35,8 +54,8 @@ CSS
 
 page reference_page {
   h1 "Reference"
-  p  "Everything about this topic, mapped below as a force-directed graph and catalogued beneath it."
-  p  "Each circle is a note (click it to open its page) and each line is a `related` link — colour-coded by type (**concepts** blue, **entities** amber, **facts** green, **processes** purple). Scroll to zoom and drag to pan."
+  p  "Everything about this topic, mapped below as a force-directed graph of `related` links, then catalogued with per-kind navigation-coverage tables."
+  p  "Each circle is a note (click it to open its page) and each line is a `related` link — colour-coded by type (**concepts** blue, **entities** amber, **facts** green, **processes** purple). Scroll to zoom and drag to pan. (Builtin functions carry no `related` links, so they are catalogued in the tables below rather than drawn here.)"
   diagram {
     width    = 960
     height   = 640
@@ -60,24 +79,56 @@ page reference_page {
     edges = note_edges
   }
 
-  h2 "Catalogue"
-  p  "The four unit kinds, plus examples and any typed-extension sections."
-  wdoc_repeater { each = match len(concepts) { 0 => [], _ => [true] }  as = :_uc
-    p $"- [**Concepts**](concepts_page) — ${len(concepts)} ideas to understand."
-  }
-  wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_ue
-    p $"- [**Entities**](entities_page) — ${len(entities)} concrete things in the topic's world."
-  }
-  wdoc_repeater { each = match len(facts) { 0 => [], _ => [true] }  as = :_uf
-    p $"- [**Facts**](facts_page) — ${len(facts)} values and value tables."
-  }
-  wdoc_repeater { each = match len(procedures) { 0 => [], _ => [true] }  as = :_up
-    p $"- [**Processes**](processes_page) — ${len(procedures)} runbooks for doing tasks."
+  // ---- Page-type summary -----------------------------------------------------
+  h2 "Page types"
+  p  "Every kind of page this reference generates, how many there are, and whether the kind is surfaced in the **Language** navigation menu (the sidebar index) or reachable only from this Reference catalogue."
+  table {
+    header = ["Page type", "Count", "In the Language menu?"]
+    rows = [
+      [$"[Concepts](concepts_page)",                  $"${len(concepts)}",      "Each is pinned into a Language feature (see coverage below)"],
+      [$"[Facts](facts_page)",                        $"${len(facts)}",         "Each is pinned into a Language feature (see coverage below)"],
+      [$"[Builtin functions](feature_lang_builtins)", $"${len(all_functions)}", "Reached from their category page (Language → Builtin Functions)"],
+      ["Builtin categories",                          $"${len(fn_categories)}", "Yes — chapters under Builtin Functions"],
+      [$"[Processes](processes_page)",                $"${len(procedures)}",    "No — Reference catalogue only"],
+    ]
   }
 
-  // ---- TYPED EXTENSION BLOCKS render here ------------------------------------
-  // The base schema has no generic table/custom block. Model topic-specific content
-  // (lookup tables, cards, a CLI vocabulary) as typed @blocks in schema/extensions.wcl
-  // and add their render here (and in the skill template). Worked examples attach to a
-  // unit via `example.unit` and render on that unit's page.
+  // ---- Navigation coverage ---------------------------------------------------
+  h2 "Navigation coverage"
+  p  "How many Language-menu features pin each note. A `0` means the note has its own Reference page but isn't reachable from the Language navigation yet."
+
+  wdoc_repeater { each = match len(concepts) { 0 => [], _ => [true] }  as = :_tc
+    h3 "Concepts"
+    table {
+      header = ["Concept", "Menu features"]
+      rows = map(concepts, fn(c: Concept) -> list<utf8> {
+        [$"[**${c.name}**](concept_${c.id})", $"${feature_pin_count(c.id)}"]
+      })
+    }
+  }
+  wdoc_repeater { each = match len(facts) { 0 => [], _ => [true] }  as = :_tf
+    h3 "Facts"
+    table {
+      header = ["Fact", "Menu features"]
+      rows = map(facts, fn(f: Fact) -> list<utf8> {
+        [$"[**${f.title}**](fact_${f.id})", $"${feature_pin_count(f.id)}"]
+      })
+    }
+  }
+  wdoc_repeater { each = match len(procedures) { 0 => [], _ => [true] }  as = :_tp
+    h3 "Processes"
+    table {
+      header = ["Process", "Menu features"]
+      rows = map(procedures, fn(p: Procedure) -> list<utf8> {
+        [$"[**${p.title}**](process_${p.id})", "—"]
+      })
+    }
+  }
+  wdoc_repeater { each = match len(all_functions) { 0 => [], _ => [true] }  as = :_tb
+    h3 "Builtin functions"
+    p  "All builtins are reached from their category page, each a chapter under **Language → Builtin Functions**."
+    wdoc_repeater { each = fn_categories  as = :cat
+      p $"- [**${cat.name}**](builtins_${cat.slug}) — ${len(functions_in(cat.slug))} functions."
+    }
+  }
 }
