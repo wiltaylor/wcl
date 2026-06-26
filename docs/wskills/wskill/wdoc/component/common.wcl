@@ -66,7 +66,7 @@ wdoc_component related_section {
       // Each side is wrapped in its own single-column `column` so it is one grid
       // cell — otherwise the section's heading + links would interleave across
       // the two outer columns.
-      column { widths = [50.0, 50.0]
+      column { widths = [50.0, 50.0]  class = ["related-cols"]
         column { widths = [100.0]  unit_related       { related = related  all_units = all_units } }
         column { widths = [100.0]  unit_referenced_by { backlinks = backlinks } }
       }

@@ -1,0 +1,29 @@
+concept decomposing_information {
+  name    = "Decomposing information"
+  summary = "Break a topic into atomic notes — one idea each — then file each as the unit kind that fits it: concept, entity, fact or process."
+  related = [atomic_note, concept, entity, fact, process]
+  body {
+    p <<BODY
+      Knowledge goes into a wskill as atomic notes: each unit captures exactly one idea, thing,
+      value or task. Before writing anything, break the topic down into these single-idea pieces —
+      if a note tries to hold two ideas, split it. Atomic notes stay easy to link, reuse and keep
+      current, and they are what the templates project into the book and the skill.
+    BODY
+
+    p <<BODY
+      Once a piece is atomic, file it as one of the four unit kinds — pick by what it *is*:
+    BODY
+
+    list {
+      li "**Concept** — an idea or mental model: a pattern, a principle, a way of thinking about the topic."
+      li "**Entity** — a concrete, named thing in the topic's world: a tool, a command, a file type, an organisation."
+      li "**Fact** — a value, constant or table that can't really be disputed: a default port, an API surface, a lookup table."
+      li "**Process** — a repeatable task as ordered steps, written for someone who already knows the topic."
+    }
+
+    p <<BODY
+      When in doubt, prefer the smaller, more specific kind and link the pieces together with
+      `related` — the web of links, not a folder hierarchy, is what makes the model navigable.
+    BODY
+  }
+}

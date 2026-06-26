@@ -62,6 +62,17 @@ let referenced_by = fn(uid: identifier) -> list<UnitRef> {
   filter(all_units, fn(u: UnitRef) -> bool { list_contains(u.related, uid) })
 }
 
+// The per-unit "Related" / "Referenced by" two-column block: top-align the two
+// columns and tighten the bullet rows (grid cells don't collapse margins, which
+// otherwise leaves the lists looking double-spaced).
+stylesheet "related-cols" {
+  css = <<CSS
+.related-cols { align-items: start; }
+.related-cols p { margin: 0.15rem 0; }
+.related-cols .heading-2 { margin: 0 0 0.35rem; }
+CSS
+}
+
 // --- site -------------------------------------------------------------------
 
 site book {

@@ -7,11 +7,11 @@
 index what {
   name = "WSkill"
   summary = "wskill"
-  related = [wskill_concept, why_use_wskill, creating_a_wskill]
+  related = [wskill_concept, why_use_wskill, decomposing_information, creating_a_wskill]
 }
 
 index wskill_reference {
-  name    = "WSKill reference"
+  name    = "Reference"
   summary = "The wskill schema and the unit kinds it captures."
   related = [concept, entity, fact, process, index, schema_reference]
 }

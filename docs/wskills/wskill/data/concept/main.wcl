@@ -2,6 +2,7 @@
 import "./datapresentation.wcl"
 import "./selfcontained.wcl"
 import "./atomic_note.wcl"
+import "./decomposing_information.wcl"
 import "./concept.wcl"
 import "./entity.wcl"
 import "./fact.wcl"
