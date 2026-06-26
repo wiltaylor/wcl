@@ -182,7 +182,9 @@ wdoc_repeater { each = all_indexes  as = :ix
   page $"index_${ix.id}" { title = $"${ix.name}"
     h1 $"${ix.name}"
     wdoc_repeater { each = match ix.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
-    project { from = ix.body }
+    // `body` is optional (child indexes often omit it); only project when present,
+    // keeping the named `ix.body` path so it resolves as an addressable body.
+    wdoc_repeater { each = match ix.body { none => [], _ => [true] }  as = :_hb  project { from = ix.body } }
     wdoc_repeater { each = match len(ix.related) { 0 => [], _ => [true] }  as = :_r  h2 "Related" }
     wdoc_repeater { each = ix.related  as = :rid
       wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
