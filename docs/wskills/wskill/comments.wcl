@@ -1,0 +1,95 @@
+// Review comments for this wskill / doc — written by `wcl wdoc serve --comment`
+// and read back by `wcl wdoc comments`. Each `comment` block is keyed by page
+// name + block locator; safe to hand-edit or generate.
+
+comment {
+  id = "cqj6iocw"
+  page = "concept_wskill_concept"
+  page_file = "docs/wskills/wskill/wdoc/book/main.wcl"
+  loc = "0"
+  target = "h1 — \"What is wskill\""
+  body = "Change title to What is it?"
+}
+
+comment {
+  id = "cawi9peb"
+  page = "concept_why_use_wskill"
+  page_file = "docs/wskills/wskill/wdoc/book/main.wcl"
+  loc = "0"
+  target = "h1 — \"Why use wskill\""
+  body = "Change title to why use this?"
+}
+
+comment {
+  id = "cyrvqx9w"
+  page = "concept_why_use_wskill"
+  page_file = "docs/wskills/wskill/wdoc/book/main.wcl"
+  loc = "1"
+  target = "p — \"Capture a topic once, as self-contained data, and get both a\""
+  body = "I want you to re-word this whole note. The reason to use wskill is to help preserve knowledge in a re-usable format. This is particularly important with the increased use of AI because knowledge will be lost. We can also use this to enable ai agents to do skills too and in the event we lose access to them we can still use them manually."
+}
+
+comment {
+  id = "cdu2k0s4"
+  page = "process_creating_a_wskill"
+  page_file = "docs/wskills/wskill/wdoc/book/main.wcl"
+  loc = "4"
+  target = "list — \"The wcl CLI on your PATH (wcl --version)\""
+  body = "WCL installed. Link to the WCL wskill for details on how to install."
+}
+
+comment {
+  id = "cvxxf44v"
+  page = "process_creating_a_wskill"
+  page_file = "docs/wskills/wskill/wdoc/book/main.wcl"
+  loc = "11"
+  target = "p — \"Run wcl init wskill to scaffold a new wskill folder from the\""
+  body = "To verbose. Please keep this short."
+}
+
+comment {
+  id = "cmtmqzfq"
+  page = "process_creating_a_wskill"
+  page_file = "docs/wskills/wskill/wdoc/book/main.wcl"
+  loc = "17"
+  target = "h3 — \"Model the content\""
+  body = "Remove this step we will create seperate processes on filling content."
+}
+
+comment {
+  id = "ct0ntzl5"
+  page = "process_creating_a_wskill"
+  page_file = "docs/wskills/wskill/wdoc/book/main.wcl"
+  loc = "20"
+  target = "callout — \"Verificationwcl init wskill produced a folder whose topic is\""
+  body = "Remove this."
+}
+
+comment {
+  id = "csi4ccov"
+  page = "process_breaking_down_a_topic"
+  page_file = "docs/wskills/wskill/wdoc/book/main.wcl"
+  body = "Remove this page."
+}
+
+comment {
+  id = "c03v4pn1"
+  page = "concept_book_view"
+  page_file = "docs/wskills/wskill/wdoc/book/main.wcl"
+  body = "Remove this page and the view & registry index entry."
+}
+
+comment {
+  id = "c9hjkiib"
+  page = "concept_skill_view"
+  page_file = "docs/wskills/wskill/wdoc/book/main.wcl"
+  body = "remove this page"
+}
+
+comment {
+  id = "ch2sk6hc"
+  page = "concept_wskill_registry"
+  page_file = "docs/wskills/wskill/wdoc/book/main.wcl"
+  body = "remove this page"
+}
+

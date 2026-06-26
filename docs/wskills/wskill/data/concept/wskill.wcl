@@ -6,17 +6,13 @@ concept wskill_concept {
     related = [permanent_note, process, entity, fact]
     body {
         p <<BODY
-            A wskill is a self contanied unit of knowledge that is fully self contained. The goals of wskill are as follows:
+            The primary idea of a wskill is to be a unit that has self contained knowledge on a specific topic.
         BODY
 
-        list {
-
-            li "To be shareable."
-            li "To be fully self contained."
-            li "To allow people to learn the skill from the package."
-            li "To be a complete refefence."
-            li "To be easy to update with newer material."
-        }
-
+        p <<BODY
+            This means someone can pick the wskill file up and use it to learn the target skill or find processes inside it to
+            do acctivites they need to do some work. An added bonus is we also get an AI Skill that we can use with a AI coding
+            agent like claude code.
+        BODY
     }
 }

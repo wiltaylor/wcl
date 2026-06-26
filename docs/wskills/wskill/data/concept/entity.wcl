@@ -1,7 +1,7 @@
 concept entity {
   name     = "Entity"
   summary  = "An entity is a unit of knowledge that is a noun and an actual instance of something."
-  related  = [concept, fact, process, permanent_note]
+  related  = [concept, fact, process]
   body {
     p <<BODY
       An entity is a unit of knowledge that is a noun and an actual instance of something.
