@@ -12,6 +12,8 @@ wdoc_component process_body {
   wdoc_slot unit
   wdoc_slot all_units
   wdoc_slot step_style { default = "book" }
+  wdoc_slot backlinks
+  wdoc_slot layout     { default = "stack" }
   wdoc_body {
     h1 $"${unit.title}"
     h2 "Purpose"
@@ -53,7 +55,7 @@ wdoc_component process_body {
     wdoc_repeater { each = match unit.verification { none => [], v => [v] }  as = :v
       callout "Verification" { class = ["success"]  body = $"${v}" }
     }
-    unit_related { related = unit.related  all_units = all_units }
+    related_section { related = unit.related  all_units = all_units  backlinks = backlinks  layout = layout }
     wdoc_content
   }
 }

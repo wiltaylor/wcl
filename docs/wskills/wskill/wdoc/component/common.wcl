@@ -51,3 +51,28 @@ wdoc_component unit_referenced_by {
     wdoc_repeater { each = backlinks  as = :u  p $"- [${u.name}](${u.href})" }
   }
 }
+
+// "Related" + "Referenced by" together. `layout = "columns"` lays them side by
+// side in a two-column grid (the book); any other value stacks them. The skill
+// keeps the default "stack" because the Markdown backend drops `column`, and it
+// passes no `backlinks`, so "Referenced by" renders nothing there.
+wdoc_component related_section {
+  wdoc_slot related
+  wdoc_slot all_units
+  wdoc_slot backlinks
+  wdoc_slot layout { default = "stack" }
+  wdoc_body {
+    wdoc_repeater { each = match layout { "columns" => [true], _ => [] }  as = :_col
+      // Each side is wrapped in its own single-column `column` so it is one grid
+      // cell — otherwise the section's heading + links would interleave across
+      // the two outer columns.
+      column { widths = [50.0, 50.0]
+        column { widths = [100.0]  unit_related       { related = related  all_units = all_units } }
+        column { widths = [100.0]  unit_referenced_by { backlinks = backlinks } }
+      }
+    }
+    wdoc_repeater { each = match layout { "columns" => [], _ => [true] }  as = :_stk
+      unit_related { related = related  all_units = all_units }
+    }
+  }
+}

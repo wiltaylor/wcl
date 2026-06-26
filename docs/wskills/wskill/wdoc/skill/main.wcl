@@ -142,7 +142,7 @@ page index { sites = [:skill]  start = true
 // is no per-kind index page — a concept is reached via a curated `index`.
 wdoc_repeater { each = concepts  as = :c
   page $"concept_${c.id}" { sites = [:skill]  title = $"${c.name}"
-    concept_body { unit = c  examples = examples  all_units = all_units
+    concept_body { unit = c  examples = examples  all_units = all_units  backlinks = []
       p "[← Back to SKILL.md](index)"
     }
   }
@@ -151,7 +151,7 @@ wdoc_repeater { each = concepts  as = :c
 // One page per entity — reached via a curated `index`.
 wdoc_repeater { each = entities  as = :e
   page $"entity_${e.id}" { sites = [:skill]  title = $"${e.name}"
-    entity_body { unit = e  examples = examples  all_units = all_units
+    entity_body { unit = e  examples = examples  all_units = all_units  backlinks = []
       p "[← Back to SKILL.md](index)"
     }
   }
@@ -160,7 +160,7 @@ wdoc_repeater { each = entities  as = :e
 // One page per fact — reached via a curated `index`.
 wdoc_repeater { each = facts  as = :f
   page $"fact_${f.id}" { sites = [:skill]  title = $"${f.title}"
-    fact_body { unit = f  examples = examples  all_units = all_units
+    fact_body { unit = f  examples = examples  all_units = all_units  backlinks = []
       p "[← Back to SKILL.md](index)"
     }
   }
@@ -170,7 +170,7 @@ wdoc_repeater { each = facts  as = :f
 // via a curated `index`; there is no per-kind process index page.
 wdoc_repeater { each = procedures  as = :pr
   page $"process_${pr.id}" { sites = [:skill]  title = $"${pr.title}"
-    process_body { unit = pr  all_units = all_units  step_style = "skill"
+    process_body { unit = pr  all_units = all_units  step_style = "skill"  backlinks = []
       p "[← Back to SKILL.md](index)"
     }
   }

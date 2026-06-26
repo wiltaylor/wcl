@@ -118,27 +118,21 @@ site book {
 // One page per concept — body projected, related ids resolved to unit-page links.
 wdoc_repeater { each = concepts  as = :c
   page $"concept_${c.id}" { title = $"${c.name}"
-    concept_body { unit = c  examples = examples  all_units = all_units
-      unit_referenced_by { backlinks = referenced_by(c.id) }
-    }
+    concept_body { unit = c  examples = examples  all_units = all_units  backlinks = referenced_by(c.id)  layout = "columns" }
   }
 }
 
 // --- 2b. Entities — one page per entity (entities_page → pages/entities.wcl) -
 wdoc_repeater { each = entities  as = :e
   page $"entity_${e.id}" { title = $"${e.name}"
-    entity_body { unit = e  examples = examples  all_units = all_units
-      unit_referenced_by { backlinks = referenced_by(e.id) }
-    }
+    entity_body { unit = e  examples = examples  all_units = all_units  backlinks = referenced_by(e.id)  layout = "columns" }
   }
 }
 
 // --- 2c. Facts — one page per fact (facts_page → pages/facts.wcl) ------------
 wdoc_repeater { each = facts  as = :f
   page $"fact_${f.id}" { title = $"${f.title}"
-    fact_body { unit = f  examples = examples  all_units = all_units
-      unit_referenced_by { backlinks = referenced_by(f.id) }
-    }
+    fact_body { unit = f  examples = examples  all_units = all_units  backlinks = referenced_by(f.id)  layout = "columns" }
   }
 }
 
@@ -150,9 +144,7 @@ wdoc_repeater { each = facts  as = :f
 // One page per procedure — document-root generator → process_<id>.html.
 wdoc_repeater { each = procedures  as = :pr
   page $"process_${pr.id}" { title = $"${pr.title}"
-    process_body { unit = pr  all_units = all_units
-      unit_referenced_by { backlinks = referenced_by(pr.id) }
-    }
+    process_body { unit = pr  all_units = all_units  backlinks = referenced_by(pr.id)  layout = "columns" }
   }
 }
 
