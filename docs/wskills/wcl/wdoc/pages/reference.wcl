@@ -69,14 +69,20 @@ page reference_page {
   p  "Every kind of page this reference generates, how many there are, and whether the kind is surfaced in the **sidebar menu** or reached only from this Reference catalogue."
   table {
     header = ["Page type", "Count", "In the sidebar menu?"]
-    rows = [
-      [$"[Concepts](concepts_page)",     $"${len(concepts)}",      "No — reached from this Reference catalogue"],
-      [$"[Facts](facts_page)",           $"${len(facts)}",         "No — reached from this Reference catalogue"],
-      [$"[Entities](entities_page)",     $"${len(entities)}",      "No — reached from this Reference catalogue"],
-      [$"[Processes](processes_page)",   $"${len(procedures)}",    "No — reached from this Reference catalogue"],
-      [$"[Builtin functions](builtins_page)", $"${len(all_functions)}", "Reached from their category page (Builtins menu)"],
-      ["Builtin categories",             $"${len(fn_categories)}", "Yes — chapters under Builtins"],
-    ]
+    // The Entities row only appears when entities exist — entities_page is gated
+    // on a non-empty entity list, so linking it unconditionally would dangle.
+    rows = flatten([
+      [
+        [$"[Concepts](concepts_page)",   $"${len(concepts)}",   "No — reached from this Reference catalogue"],
+        [$"[Facts](facts_page)",         $"${len(facts)}",      "No — reached from this Reference catalogue"],
+      ],
+      match len(entities) { 0 => [], _ => [[$"[Entities](entities_page)", $"${len(entities)}", "No — reached from this Reference catalogue"]] },
+      [
+        [$"[Processes](processes_page)", $"${len(procedures)}", "No — reached from this Reference catalogue"],
+        [$"[Builtin functions](builtins_page)", $"${len(all_functions)}", "Reached from their category page (Builtins menu)"],
+        ["Builtin categories",           $"${len(fn_categories)}", "Yes — chapters under Builtins"],
+      ],
+    ])
   }
 
   // ---- Catalogue -------------------------------------------------------------
