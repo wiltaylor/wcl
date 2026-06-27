@@ -36,24 +36,13 @@ let in_book    = fn(a: Audience) -> bool { match a { :ai => false, _ => true } }
 let concepts   = filter(concepts,   fn(c: Concept)   -> bool { in_book(c.audience) })
 let entities   = filter(entities,   fn(e: Entity)    -> bool { in_book(e.audience) })
 let facts      = filter(facts,      fn(f: Fact)      -> bool { in_book(f.audience) })
-let terms      = filter(terms,      fn(t: Term)      -> bool { in_book(t.audience) })
 let examples   = filter(examples,   fn(x: Example)   -> bool { in_book(x.audience) })
-// Top-level indexes are book-filtered above; child_indexes flattens each one's
-// nested sub-indexes (book-filtered too). all_indexes drives per-page rendering
-// (a child of a book-excluded parent is intentionally dropped with its parent).
-// `book_indexes` is the alias the reference page expects (top-level only).
+// Top-level indexes (book-filtered). Each is a nav section in the TOC whose
+// `related` units are pinned directly beneath it — there are no index landing
+// pages. `book_indexes` is the alias the reference page expects.
 let indexes      = filter(indexes, fn(x: Index) -> bool { in_book(x.audience) })
 let book_indexes = indexes
-let child_indexes = filter(flatten(map(indexes, fn(x: Index) -> list<Index> { x.children })), fn(x: Index) -> bool { in_book(x.audience) })
-let all_indexes   = flatten([indexes, child_indexes])
 let procedures = filter(procedures, fn(p: Procedure) -> bool { in_book(p.audience) })
-// Opt-in `language` module (schema/language.wcl): the schema reference. Each
-// language's features carry schema-reflected `type_table`s in their body, and
-// each feature (top-level or nested one level) generates its own sub-page below.
-let languages      = filter(languages,  fn(x: Language)  -> bool { in_book(x.audience) })
-let top_features   = flatten(map(languages,     fn(l: Language) -> list<Feature> { l.features }))
-let child_features = flatten(map(top_features,  fn(f: Feature)  -> list<Feature> { f.children }))
-let all_features   = flatten([top_features, child_features])
 
 // Backlinks: every unit flattened to { id, name, href, related } so a unit page
 // can list the notes that point *at* it (the inverse of its own `related`).
@@ -92,25 +81,28 @@ site book {
   search           = true
   toc {
     chapter "Overview"       { page = index }
-    // Each curated index is its own landing page (index_<id>), with nested
-    // sub-indexes hung beneath it as child chapters. wdoc's content is
-    // organised around these index landing pages.
-    wdoc_repeater { each = indexes  as = :ix  chapter $"${ix.name}" { page = $"index_${ix.id}"
-      wdoc_repeater { each = filter(ix.children, fn(x: Index) -> bool { in_book(x.audience) })  as = :cix  chapter $"${cix.name}" { page = $"index_${cix.id}" } }
-    } }
-    // Opt-in language module — a top-level "Language" section (the schema
-    // reference), one chapter per block family beneath it. Gated so it
-    // vanishes when no language is described.
-    wdoc_repeater { each = match len(languages) { 0 => [], _ => [true] }  as = :_lg
-      chapter "Language" { page = languages_page
-        wdoc_repeater { each = languages  as = :l
-          wdoc_repeater { each = l.features  as = :f  chapter $"${f.name}" { page = $"feature_${f.id}"
-            wdoc_repeater { each = f.children  as = :cf  chapter $"${cf.name}" { page = $"feature_${cf.id}" } }
-          } }
+    // Each index is a nav section heading (no landing page) whose body nests its
+    // child-index sub-groups; each sub-group nests the concept / fact / process
+    // pages it pins via `related`, so the units sit directly in the menu tree. A
+    // section's own direct `related` (if any) is pinned before its sub-groups.
+    wdoc_repeater { each = indexes  as = :ix
+      chapter $"${ix.name}" {
+        wdoc_repeater { each = ix.related  as = :rid
+          wdoc_repeater { each = filter(concepts,   fn(x: Concept)   -> bool { x.id == rid })  as = :t  chapter $"${t.name}"  { page = $"concept_${t.id}" } }
+          wdoc_repeater { each = filter(facts,      fn(x: Fact)      -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"fact_${t.id}" } }
+          wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"process_${t.id}" } }
+        }
+        wdoc_repeater { each = filter(ix.children, fn(x: Index) -> bool { in_book(x.audience) })  as = :cix
+          chapter $"${cix.name}" {
+            wdoc_repeater { each = cix.related  as = :rid
+              wdoc_repeater { each = filter(concepts,   fn(x: Concept)   -> bool { x.id == rid })  as = :t  chapter $"${t.name}"  { page = $"concept_${t.id}" } }
+              wdoc_repeater { each = filter(facts,      fn(x: Fact)      -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"fact_${t.id}" } }
+              wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"process_${t.id}" } }
+            }
+          }
         }
       }
     }
-    chapter "Glossary"       { page = glossary_page }
   }
   // The Reference catalogue (the four units, the graph, and the per-unit
   // pages) lives behind a single pinned sidebar button rather than a sprawling
@@ -123,10 +115,9 @@ site book {
 }
 
 // --- 1. Overview / index pages ----------------------------------------------
-// The Overview, Reference, per-kind index and Glossary pages live one-per-file
-// under pages/ (imported above) — except the Glossary and Language pages, which
-// stay inline below because they are wdoc-specific. The generated per-unit pages
-// stay here as repeaters, each delegating to a component.
+// The Overview, Reference and per-kind index pages live one-per-file under
+// pages/ (imported above). The generated per-unit pages stay here as repeaters,
+// each delegating to a component.
 
 // --- 2. Concepts — one generated page per concept ---------------------------
 wdoc_repeater { each = concepts  as = :c
@@ -158,56 +149,5 @@ wdoc_repeater { each = procedures  as = :pr
   }
 }
 
-// --- Indexes — curated link-collection landing pages (top-level menu entries)
-wdoc_repeater { each = all_indexes  as = :ix
-  page $"index_${ix.id}" { title = $"${ix.name}"
-    h1 $"${ix.name}"
-    wdoc_repeater { each = match ix.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
-    project { from = ix.body }
-    wdoc_repeater { each = match len(ix.related) { 0 => [], _ => [true] }  as = :_r  h2 "Related" }
-    wdoc_repeater { each = ix.related  as = :rid
-      wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
-      wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
-      wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
-      wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
-    }
-  }
-}
-
-// --- Language (opt-in module) — schema reference: a landing page + a sub-page
-// per feature (block family). `language`/`feature` are data, not units. The
-// landing links to one sub-page per family; each family page projects its
-// `body` — the schema-reflected `type_table`s for the types in that family.
-page languages_page {
-  h1 "Language"
-  wdoc_repeater { each = languages  as = :l
-    project { from = l.body }
-    wdoc_repeater { each = match len(l.features) { 0 => [], _ => [true] }  as = :_fh  h2 "Block families" }
-    wdoc_repeater { each = l.features  as = :f
-      p $"- [**${f.name}**](feature_${f.id})${match f.summary { none => "", s => $" — ${s}" }}"
-    }
-  }
-}
-wdoc_repeater { each = all_features  as = :f
-  page $"feature_${f.id}" { title = $"${f.name}"
-    h1 $"${f.name}"
-    wdoc_repeater { each = match f.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
-    project { from = f.body }
-    // A grouping feature links to its nested child features.
-    wdoc_repeater { each = f.children  as = :cf
-      p $"- [**${cf.name}**](feature_${cf.id})${match cf.summary { none => "", s => $" — ${s}" }}"
-    }
-  }
-}
-
-// --- 6. Glossary ------------------------------------------------------------
-
-page glossary_page {
-  h1 "Glossary"
-  wdoc_repeater { each = match len(terms) { 0 => [], _ => [true] }  as = :_g
-    table {
-      header = ["Term", "Definition", "Aliases"]
-      rows = map(terms, fn(t: Term) -> list<utf8> { [t.term, t.definition, join(t.aliases, ", ")] })
-    }
-  }
-}
+// Indexes have no landing page — their `related` units are pinned straight into
+// the TOC above and reached as their own generated unit pages.

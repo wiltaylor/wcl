@@ -1,3 +1,5 @@
+import <wdoc.wcl>
+
 concept markdown {
   name     = "Markdown output"
   summary  = "The `wcl wdoc markdown` render target, its block mapping, caveats, and frontmatter."
@@ -40,5 +42,8 @@ page intro { sites = [:demo]
 SRC
     }
     callout "Arbitrary keys are fine" { class = ["note"]  body = "The `frontmatter` type is declared `@schemaless` in the stdlib, so undeclared keys pass WCL's strict schema check — no per-instance marker is needed." }
+
+    h2 "Block reference"
+    block_doc { type = Frontmatter  description = "A `frontmatter` block: an open, schemaless set of `key = value` entries serialized as a `---`-fenced YAML header on the page's Markdown (ignored by the HTML and PDF targets)." }
   }
 }

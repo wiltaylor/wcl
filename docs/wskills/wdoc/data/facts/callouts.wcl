@@ -1,0 +1,32 @@
+import <wdoc.wcl>
+
+fact callouts {
+  title    = "callout"
+  related  = [tables_block, lists_block]
+  audience = :both
+  body {
+    block_doc {
+      type        = Callout
+      description = "A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are selected by `class`, each shipping a default colour and icon — `note`, `info`, `tip`, `warning`, `error`, `success`. See [callout classes](fact_callout_classes)."
+    }
+    demo {
+      callout "Note"    { class = ["note"]    body = "Background context the reader should remember." }
+      callout "Info"    { class = ["info"]    body = "Neutral information worth surfacing." }
+      callout "Tip"     { class = ["tip"]     body = "A helpful shortcut or best practice." }
+      callout "Warning" { class = ["warning"] body = "Something to be careful about." }
+      callout "Error"   { class = ["error"]   body = "A failure or hard constraint." }
+      callout "Success" { class = ["success"] body = "Confirm an action completed." }
+    }
+    h2 "Custom types"
+    p "For a custom type, give a `class` an `accent` colour and list it in the callout's `class` — that sets the accent (heading, border, icon) with no CSS — and the `icon` field picks any glyph. See [styling](concept_styling)."
+    code "wcl" { source = <<'SRC'
+class "deploy" { accent = "#b48ead" }
+callout "Deploying" {
+  class = ["deploy"]
+  icon  = "lucide.rocket"
+  body  = "A custom type — the class sets its accent colour."
+}
+SRC
+    }
+  }
+}

@@ -1,11 +1,14 @@
-entity dopesheets {
-  name     = "dopesheet"
-  kind     = "block"
-  summary  = "Animated sprite-sheet playback: plays a range of frames cropped from a sheet at a set fps, a placeable diagram shape."
+import <wdoc.wcl>
+
+fact dopesheets {
+  title    = "dopesheet"
   related  = [tilemaps, images, diagrams]
   audience = :both
   body {
-    p "`dopesheet` plays a range of frames from a sprite sheet at a set `fps`. Like `tilemap` it's a placeable SVG block — a legal child of any `diagram` or `container`. The sheet is referenced by URL (an `@inline(0)` source, like `image`), so frames resolve when the site is **served**, not when the page is opened directly from disk."
+    block_doc {
+      type        = Dopesheet
+      description = "`dopesheet` plays a range of frames from a sprite sheet at a set `fps`. Like `tilemap` it's a placeable SVG block — a legal child of any `diagram` or `container`. The sheet is referenced by URL (an `@inline(0)` source, like `image`), so frames resolve when the site is **served**, not when the page is opened directly from disk."
+    }
     h2 "Frame geometry and playback"
     p "Describe the frame grid with `frame_width` / `frame_height`, plus `offset_x` / `offset_y` and `stride_x` / `stride_y` for padding or gaps; `columns` defaults to as many frames as fit across the sheet. `from` / `to` pick an inclusive sub-range. `scale` enlarges pixel art; `image-rendering: pixelated` is the default, so set `smooth = true` for non-pixel sources. Autoplay, loop, and controls are on by default — click to pause or resume."
     code "wcl" { source = <<'SRC'

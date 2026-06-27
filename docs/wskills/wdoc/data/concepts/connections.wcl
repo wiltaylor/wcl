@@ -5,7 +5,7 @@ concept connections {
   audience = :both
   body {
     p <<PROSE
-Inside a `diagram`, `source -> destination :kind` draws an edge between two shapes (matched by `id`). The optional `:kind` tag is a symbol; the renderer routes the edge based on the diagram's layout and styles it by kind. Connections are the wiring under every relational diagram — see also [entity diagrams](entity_diagrams), [flowcharts](entity_flowcharts), [sequence diagrams](entity_sequence_diagrams), and [state diagrams](entity_state_diagrams).
+Inside a `diagram`, `source -> destination :kind` draws an edge between two shapes (matched by `id`). The optional `:kind` tag is a symbol; the renderer routes the edge based on the diagram's layout and styles it by kind. Connections are the wiring under every relational diagram — see also [entity diagrams](fact_diagrams), [flowcharts](fact_flowcharts), [sequence diagrams](fact_sequence_diagrams), and [state diagrams](fact_state_diagrams).
 PROSE
     code "wcl" { source = <<'SRC'
 diagram {

@@ -1,0 +1,46 @@
+import <wdoc.wcl>
+
+fact diagrams {
+  title    = "diagram"
+  related  = [flowcharts, sequence_diagrams, state_diagrams, charts, tree, images, icons]
+  audience = :both
+  body {
+    block_doc {
+      type        = Diagram
+      description = "A `diagram` is wdoc's drawing surface. It declares a `width` / `height` and holds shapes that break down into primitives and render as SVG. Connect two shapes by id with an `a -> b` edge; set `pan_zoom = true` for an interactive viewport; set a `layout` (`:layered` / `:radial` / `:force`) to place shapes automatically (see [layout modes](fact_layout_modes)). Higher-level families (flowcharts, charts, trees, maps, tilemaps, wireframes) are shapes that live inside a `diagram` too. See the [connections](concept_connections) concept and the SVG [primitives](concept_primitives)."
+    }
+    demo {
+      diagram = true
+      diagram {
+        width = 320  height = 160  pan_zoom = true
+        zoom_min = 0.5  zoom_max = 4.0
+        rect { id = a  x = 20.0   y = 30.0  width = 80.0  height = 50.0  fill = "#88c0d0" }
+        rect { id = b  x = 210.0  y = 90.0  width = 80.0  height = 50.0  fill = "#a3be8c" }
+        a -> b
+      }
+    }
+
+    h2 "Primitive shapes"
+    p "The base shapes a diagram is built from. Everything else (flowchart nodes, cards, trees) lowers to these."
+    block_doc { type = Rect       description = "An axis-aligned rectangle — the workhorse box." }
+    block_doc { type = Circle     description = "A circle placed by its centre and radius." }
+    block_doc { type = Line       description = "A straight segment between two points." }
+    block_doc { type = Label      description = "A free-floating text label." }
+    block_doc { type = Polygon    description = "An arbitrary closed shape from a point list." }
+    block_doc { type = Container  description = "A titled box that groups and frames child shapes." }
+    block_doc { type = Card       description = "A box whose body is rich wdoc content (paragraphs, lists, nested diagrams), drawn in a foreignObject." }
+    block_doc { type = NodeTable  description = "A row-table shape for DB / class diagrams, with per-row connection ports." }
+    block_doc { type = NodeRow    description = "One row of a node_table." }
+
+    h2 "Styling shapes with classes"
+    p "Every shape takes a `class` list. A `class` emits SVG paint — `fill`, `stroke`, `stroke_width`, `opacity` — with `dark { }` / `light { }` overrides, so a shape follows the site theme and the reader's light/dark mode. See [styling](concept_styling)."
+    demo {
+      diagram = true
+      diagram { width = 320  height = 120
+        rect { x = 20.0  y = 25.0  width = 110.0  height = 70.0  class = ["wdoc-node"] }
+        circle { cx = 230.0  cy = 60.0  r = 35.0  class = ["wdoc-process"] }
+      }
+    }
+    callout "Accessibility" { class = ["tip"]  body = "Give a diagram a `desc` — it becomes the SVG's title and aria-label, so screen readers announce it instead of skipping it." }
+  }
+}

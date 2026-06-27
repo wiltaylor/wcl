@@ -10,6 +10,7 @@
 pub mod build;
 mod card;
 pub mod comments;
+mod demo;
 mod dopesheet;
 mod file;
 mod force;

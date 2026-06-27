@@ -1,3 +1,5 @@
+import <wdoc.wcl>
+
 concept includes {
   name     = "Including sub-sites"
   summary  = "The `include` block and `included_sites` builtin discover and embed other wdoc documents."
@@ -64,5 +66,8 @@ wcl wdoc build  landing.wcl    --out out/site     # landing + each member's :boo
 wcl wdoc skill  collection.wcl --out dist/skills  # each member's :skill → dist/skills/members/<name>/
 SRC
     }
+
+    h2 "Block reference"
+    block_doc { type = IncludeSites  description = "An `include` block: a folder of other wdoc documents to build independently and ship into a subdirectory, discovered by `pattern` or `entry`." }
   }
 }

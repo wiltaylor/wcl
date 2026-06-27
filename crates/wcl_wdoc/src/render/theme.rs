@@ -116,6 +116,7 @@ pre.code-block{background:var(--wdoc-bg-inset);color:var(--wdoc-fg);border-color
 .wdoc-table th,.wdoc-table td{border-color:var(--wdoc-border);}
 .wdoc-map-card{background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);}
 .wdoc-card{background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);}
+.wdoc-preview{background:var(--wdoc-bg);color:var(--wdoc-fg);border-color:var(--wdoc-border);}
 .wdoc-node-table-frame{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-border);}
 .wdoc-node-table-sep{stroke:var(--wdoc-border);}
 .wdoc-node-table-port{fill:var(--wdoc-blue);stroke:var(--wdoc-border);}
@@ -309,6 +310,13 @@ pub(crate) fn site_theme_css(doc: &Document, site_block: Option<&Block<'_>>) -> 
         .expect("write to String");
     writeln!(out, ":root[data-theme=\"dark\"]{{{dv}}}").expect("write to String");
     writeln!(out, ":root[data-theme=\"light\"]{{{lv}}}").expect("write to String");
+    // Subtree-scoped palettes: a wrapper carrying `.wdoc-theme-light` /
+    // `.wdoc-theme-dark` re-defines the `--wdoc-*` vars for its descendants,
+    // so a doc can show the *same* content under both palettes at once
+    // (the `demo` block's side-by-side preview) regardless of the reader's
+    // global toggle. Custom properties inherit, so a closer ancestor wins.
+    writeln!(out, ".wdoc-theme-dark{{{dv}}}").expect("write to String");
+    writeln!(out, ".wdoc-theme-light{{{lv}}}").expect("write to String");
     out.push_str(&APPLY.replace("{ACCENT}", accent));
     Some(out)
 }

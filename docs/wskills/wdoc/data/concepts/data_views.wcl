@@ -1,3 +1,5 @@
+import <wdoc.wcl>
+
 concept data_views {
   name     = "Data Views"
   summary  = "Render content from WCL data: wdoc_component / slot / repeater / instance, body & project, partial & collect."
@@ -145,5 +147,17 @@ SRC
     p <<PROSE
 The built-in `type_table` component documents a schema type by reflecting it — `type_table { type = Image }` renders a table of the type's properties (name, type, required, description), including inherited fields. Descriptions and visibility are authored on the schema with `@doc("…")` and `@hidden`. `block_reference { type = MyDoc }` walks a document's `@child` / `@children` slots and emits an `h3` plus a `type_table` for each.
 PROSE
+
+    h2 "Block reference"
+    block_doc { type = WdocComponent  description = "A `wdoc_component` block: a reusable fragment of wdoc markup with named slots, instantiated by its own name." }
+    block_doc { type = WdocSlot  description = "A `wdoc_slot` inside a component: a named, optionally-defaulted parameter filled at instantiation." }
+    block_doc { type = WdocBody  description = "A `wdoc_body` inside a component: the markup template that renders, with the slots in scope." }
+    block_doc { type = WdocContent  description = "A `wdoc_content` marker in a component body: where the instance's own nested blocks render, framing arbitrary content." }
+    block_doc { type = WdocRepeater  description = "A `wdoc_repeater` block: renders its body once per element of `each`, binding the element to the symbol named by `as`." }
+    block_doc { type = WdocInstance  description = "A `wdoc_instance` block: renders the component named by the value of its `component` field, filling slots from its like-named fields." }
+    block_doc { type = WdocPartial  description = "A `partial` block: tags a body of blocks for later collection — invisible where defined unless `show_here = true`." }
+    block_doc { type = WdocCollect  description = "A `collect` block: gathers every matching `partial` across the document and renders their bodies in document order at the collect site." }
+    block_doc { type = WdocAddressableBody  description = "A `body` block: a chunk of renderable content attached to a data record as a property, rendered elsewhere by `project`." }
+    block_doc { type = WdocProject  description = "A `project` block: renders an addressable `body` by reference (`from = …`), resolving `${…}` against that record." }
   }
 }

@@ -1,0 +1,38 @@
+import <wdoc.wcl>
+
+fact tree {
+  title    = "tree"
+  related  = [diagrams, icons]
+  audience = :both
+  body {
+    p "`tree` renders an **indented file-tree**: one row per `tree_node`, indented by depth with the classic file-explorer connector guides drawn between a parent and its children. Each node carries a `title` (its positional label) plus an optional `icon` and `color`, and nodes nest arbitrarily, so it suits a directory layout, a config tree, or any hierarchy. A `tree` is a diagram shape, so it lives inside a `diagram` and is placed by `x` / `y` (or anchors)."
+    block_doc {
+      type        = Tree
+      description = "An indented file-tree diagram shape — one row per `tree_node`, with file-explorer connector guides between parents and children."
+    }
+    block_doc {
+      type        = TreeNode
+      description = "One row of a tree; carries a positional `title` label plus an optional `icon` and `color`, and nests further `tree_node`s arbitrarily."
+    }
+    demo {
+      diagram = true
+      diagram { width = 360  height = 220
+        tree {
+          tree_node "src/" {
+            icon  = "lucide.folder"
+            color = "#88c0d0"
+            tree_node "render/" {
+              icon = "lucide.folder"
+              tree_node "svg.rs"  { icon = "lucide.file" }
+              tree_node "html.rs" { icon = "lucide.file" }
+            }
+            tree_node "lib.rs"  { icon = "lucide.file" }
+            tree_node "tree.rs" { icon = "lucide.file" }
+          }
+          tree_node "Cargo.toml" { icon = "lucide.file" }
+        }
+      }
+    }
+    p "Icons resolve from any declared [iconset](fact_icons); a node's `color` is any CSS colour and themes its label and icon. Give a node an `id` to make it an edge target — an `edge` then attaches to that node's row (west / east), exactly like connecting any other shape."
+  }
+}

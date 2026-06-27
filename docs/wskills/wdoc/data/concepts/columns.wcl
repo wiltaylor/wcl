@@ -1,3 +1,5 @@
+import <wdoc.wcl>
+
 concept columns {
   name     = "Columns"
   summary  = "The `column` layout block and its content (any wdoc block, per-slot widths)."
@@ -33,5 +35,8 @@ SRC
 Columns can hold any wdoc content — paragraphs, headings, callouts, code blocks, diagrams, charts, even other columns. Apply a shared `class` to the column itself to style the group.
 PROSE
     callout "Page columns vs diagram columns" { class = ["info"]  body = "On a page, a `column` holds any block. Inside a wdoc `column` cell used as a book-step gutter, only paragraph / heading content fits — code, lists, callouts and `project` can't sit in such a cell." }
+
+    h2 "Block reference"
+    block_doc { type = Column  description = "A `column` block: side-by-side layout of its child blocks, one `widths` percentage per child slot." }
   }
 }

@@ -1,11 +1,15 @@
-entity tilemaps {
-  name     = "tileset / tile / tilemap"
-  kind     = "block"
-  summary  = "A 2D grid of indexed tiles cropped from a shared spritesheet, authored numerically or via a glyph legend."
+import <wdoc.wcl>
+
+fact tilemaps {
+  title    = "tileset / tile / tilemap"
   related  = [dopesheets, images, diagrams]
   audience = :both
   body {
     p "A `tilemap` draws a 2D grid of indexed tiles cropped from a shared spritesheet. A `tileset` names that spritesheet plus its slice geometry and hangs off the document root (like `iconset`); tile index N maps to sheet column `N % columns`, row `N / columns`. The tilemap is a diagram shape, so anything drawn after it overlays on top."
+    block_doc {
+      type        = Tileset
+      description = "A root-level declaration that names a spritesheet and its slice geometry (`tile_width` / `tile_height` / `columns`); tile index N maps to sheet column `N % columns`, row `N / columns`."
+    }
     code "wcl" { source = <<'SRC'
 tileset platformer {
   source      = "assets/kenney-platformer.png"
@@ -17,6 +21,14 @@ SRC
     }
     h2 "Symbolic and numeric maps"
     p "For map-like authoring, declare a glyph legend with `tile` children and supply `map` — a list of utf8 rows; each character resolves through the legend to a tile index (an unmapped glyph draws nothing). Or write raw index rows with `tiles` (one inner list per row); `-1`, the default `empty` index, leaves a cell blank."
+    block_doc {
+      type        = Tilemap
+      description = "A placeable diagram shape that paints a grid of indexed tiles from a `tileset`, authored either symbolically via `map` (utf8 rows through a glyph legend) or numerically via `tiles` (raw index rows)."
+    }
+    block_doc {
+      type        = TileKey
+      description = "A `tile` child of a tilemap that binds one legend glyph to a tile `index`."
+    }
     code "wcl" { source = <<'SRC'
 diagram { width = 280  height = 230
   tilemap {

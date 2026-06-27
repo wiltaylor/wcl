@@ -1,3 +1,5 @@
+import <wdoc.wcl>
+
 concept pages {
   name     = "Pages"
   summary  = "The `page` block: id, title, the sites it joins, and the start page."
@@ -29,5 +31,8 @@ PROSE
 p "See [the about page](about) or jump to [the docs](docs:index)."
 SRC
     }
+
+    h2 "Block reference"
+    block_doc { type = Page  description = "A `page` block: one rendered page — its id, title, the sites it joins, the start-page flag, and the content blocks that make up its body." }
   }
 }

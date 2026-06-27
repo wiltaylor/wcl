@@ -1,44 +1,65 @@
-// Indexes — curated landing pages mirroring the structure of the original wdoc
-// section of the WCL reference book: the core document/content chapters, with the
-// "Diagrams" sub-section nested as a child index. `documents` is a top-level book
-// menu entry; `diagrams_section` renders nested beneath it (book TOC + skill list).
+// Indexes — the wskill's top-level navigation. Each top-level index is a menu
+// section; its child indexes are sub-groups, and each sub-group's `related`
+// units are projected directly: pinned into the sidebar (book) and listed
+// (skill). No landing-page bodies — the units are the pages. Order is preserved.
 
 index documents {
   name    = "Documents & Content"
-  summary = "The core wdoc chapters: the document model (pages, sites, render targets) and the content blocks that fill a page."
+  summary = "The document model (pages, sites, render targets) and the content blocks that fill a page."
   audience = :both
-  body {
-    p "This mirrors the **wdoc** section of the reference (everything before the Diagrams sub-section) — how a document is structured and what goes on a page."
 
-    h2 "The document model"
-    p "Start with the [overview](concept_overview), then the pieces: [Sites](concept_sites), [Templates](concept_templates), [Pages](concept_pages), [Including sub-sites](concept_includes), [Block Visibility](concept_visibility), [Markdown Output](concept_markdown) and [Skill Folders](concept_skills). The built-in [template kinds](fact_template_kinds) and [themes](fact_themes) set the output shape and palette."
-
-    h2 "Content blocks"
-    p "What fills a page: [Formatting](concept_formatting) and the text [primitives](concept_primitives) — headings, paragraphs and code — plus [Tables](entity_tables_block), [lists](entity_lists_block), [callouts](entity_callouts), [Columns](concept_columns), [Math Equations](entity_math), [Icons](entity_icons), [Images](entity_images) and [Videos](entity_videos). The [callout classes](fact_callout_classes) list the admonition styles."
-
-    h2 "Data & styling"
-    p "Project content from a typed model with [Data Views](concept_data_views) (repeaters, components, bodies), and theme it with [Styling](concept_styling)."
-  }
-
-  // Nested sub-index — renders beneath "Documents & Content" in both projections.
-  index diagrams_section {
-    name    = "Diagrams"
-    summary = "The diagram family: the SVG canvas, the auto-layout modes, and every higher-level shape — graphs, charts, maps, sprites, terminals and wireframes."
+  index doc_model {
+    name    = "The document model"
+    summary = "How a document is structured and rendered."
     audience = :both
-    body {
-      p "This mirrors the nested **Diagrams** sub-section of the reference. Everything here lives inside a [diagram](entity_diagrams) canvas, built from [primitive shapes](concept_primitives) and wired with [connections](concept_connections); the [layout modes](fact_layout_modes) place shapes automatically."
+    related = [overview, sites, templates, pages, includes, visibility, markdown, skills, template_kinds, themes]
+  }
+  index content_blocks {
+    name    = "Content blocks"
+    summary = "What fills a page: prose, tables, lists, callouts, media."
+    audience = :both
+    related = [formatting, columns, tables_block, lists_block, callouts, math, icons, images, videos, callout_classes]
+  }
+  index doc_data_styling {
+    name    = "Data & styling"
+    audience = :both
+    related = [data_views, styling]
+  }
+}
 
-      h2 "Graphs & flow"
-      p "[Flowcharts](entity_flowcharts), [sequence diagrams](entity_sequence_diagrams), [state diagrams](entity_state_diagrams) and [trees](entity_tree) turn a connection graph into a ranked, routed picture."
+index diagrams_section {
+  name    = "Diagrams"
+  summary = "The diagram family: the SVG canvas, the auto-layout modes, and every higher-level shape — graphs, charts, maps, sprites, terminals and wireframes."
+  audience = :both
 
-      h2 "Data visualisation"
-      p "[Charts](entity_charts) (bar / line / pie) and [timelines](entity_timelines) plot values directly from WCL data."
-
-      h2 "Grids & sprites"
-      p "[Tilemaps](entity_tilemaps), [dopesheets](entity_dopesheets) and [maps](entity_maps) lay out tiled, animated, or pinned content."
-
-      h2 "Terminal & UI"
-      p "[Terminals](entity_terminals) render an ANSI grid; [wireframes](entity_wireframe) mock up UI with `wf_*` widgets."
-    }
+  index dia_core {
+    name    = "Canvas & layout"
+    summary = "The drawing surface, its primitive shapes, connections, and auto-layout."
+    audience = :both
+    related = [diagrams, primitives, connections, layout_modes]
+  }
+  index dia_graphs {
+    name    = "Graphs & flow"
+    summary = "Turn a connection graph into a ranked, routed picture."
+    audience = :both
+    related = [flowcharts, sequence_diagrams, state_diagrams, tree]
+  }
+  index dia_dataviz {
+    name    = "Data visualisation"
+    summary = "Plot values directly from WCL data."
+    audience = :both
+    related = [charts, timelines]
+  }
+  index dia_grids {
+    name    = "Grids & sprites"
+    summary = "Tiled, animated, or pinned content."
+    audience = :both
+    related = [tilemaps, dopesheets, maps]
+  }
+  index dia_term_ui {
+    name    = "Terminal & UI"
+    summary = "ANSI terminal grids and wireframe UI mockups."
+    audience = :both
+    related = [terminals, wireframe]
   }
 }

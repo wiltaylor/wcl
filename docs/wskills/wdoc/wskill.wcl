@@ -9,7 +9,11 @@
 import <wdoc.wcl>
 import "./schema/base.wcl"
 import "./schema/extensions.wcl"
-import "./schema/language.wcl"
+
+// `block_doc` (description + reflected `type_table`) is used inside entity
+// bodies, so it must be in document scope for both schema validation and
+// rendering; the book / skill projections pick it up transitively.
+import "./wdoc/component/block_doc.wcl"
 
 // Data — reference units (concepts + entities), facts, glossary, examples,
 // processes, and the schema-reflected language reference. Concepts, entities,

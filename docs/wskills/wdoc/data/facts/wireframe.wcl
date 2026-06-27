@@ -1,0 +1,116 @@
+import <wdoc.wcl>
+
+fact wireframe {
+  title    = "wf_* widgets"
+  related  = [terminals, diagrams]
+  audience = :both
+  body {
+    p "Wireframe widgets mock up a UI — windows, device frames (browser / phone / tablet), panels, inputs, controls — as **diagram shapes**. Each `wf_*` block extends `SvgBlock`, so it lives inside a `diagram`: place it with `x` / `y` (or anchors), connect widgets with edges, and mix them with any other shape. Container widgets nest other widgets, so you compose a window of panels of rows of controls. They're static SVG mockups, not interactive."
+    h2 "Containers"
+    p "Container widgets take `@children(Widget)`. The Rust renderer measures and lays out the children internally (their `x` / `y` are ignored); only the root widget's placement positions the group. Device frames have a realistic fixed default size; everything else is sized to its content."
+    block_doc {
+      type        = WfWindow
+      description = "A desktop window frame with a title bar; nests child widgets as its content."
+    }
+    block_doc {
+      type        = WfBrowser
+      description = "A browser-chrome frame (address bar + tabs) wrapping its child widgets."
+    }
+    block_doc {
+      type        = WfPhone
+      description = "A phone device frame with a realistic fixed default size, holding child widgets."
+    }
+    block_doc {
+      type        = WfTablet
+      description = "A tablet device frame with a realistic fixed default size, holding child widgets."
+    }
+    block_doc {
+      type        = WfPanel
+      description = "A titled panel that groups and frames child widgets within a window or page."
+    }
+    block_doc {
+      type        = WfRow
+      description = "Lays its child widgets out horizontally."
+    }
+    block_doc {
+      type        = WfColumn
+      description = "Lays its child widgets out vertically."
+    }
+    block_doc {
+      type        = WfGrid
+      description = "Arranges its child widgets in a measured grid."
+    }
+    demo {
+      diagram = true
+      diagram {
+        width = 300  height = 200
+        wf_window "Account settings" {
+          wf_panel { title = "Profile"
+            wf_input "Display name" { value = "Wil Taylor" }
+            wf_input "Email"        { value = "ai@wiltaylor.dev" }
+          }
+          wf_row {
+            wf_button "Cancel"
+            wf_button "Save" { icon = "lucide.check" }
+          }
+        }
+      }
+    }
+    h2 "Controls"
+    p "The leaf controls are `wf_label`, `wf_button` (optional leading `icon`), `wf_input` (placeholder vs `value`), `wf_dropdown`, `wf_checkbox`, `wf_radio`, and `wf_toggle`."
+    block_doc {
+      type        = WfButton
+      description = "A button with a label and an optional leading `icon`."
+    }
+    block_doc {
+      type        = WfInput
+      description = "A text field showing either a placeholder or a current `value`."
+    }
+    block_doc {
+      type        = WfCheckbox
+      description = "A labelled checkbox with a checked / unchecked state."
+    }
+    block_doc {
+      type        = WfRadio
+      description = "A labelled radio option from a mutually-exclusive group."
+    }
+    block_doc {
+      type        = WfToggle
+      description = "A labelled on / off switch."
+    }
+    block_doc {
+      type        = WfDropdown
+      description = "A select control showing the current choice and a disclosure caret."
+    }
+    block_doc {
+      type        = WfLabel
+      description = "A free-standing text label within a widget layout."
+    }
+    block_doc {
+      type        = WfLink
+      description = "Within a `wf_node_graph`, wires one node's port to another (`\"node.port\"` → `\"node.port\"`)."
+    }
+    h2 "Node graphs"
+    p "A `wf_node_graph` mocks up a node editor: each `wf_node` is a titled box with `inputs` and `outputs`, and a `wf_link` wires `\"node.port\"` to `\"node.port\"`, auto-laid-out left-to-right. Declare a `@block(\"name\") type … extends Widget` with a `lower` returning `list<SvgFundamental>` for a custom widget."
+    block_doc {
+      type        = WfNodeGraph
+      description = "A node-editor canvas: holds `wf_node` boxes wired by `wf_link`, auto-laid-out left-to-right."
+    }
+    block_doc {
+      type        = WfNode
+      description = "A titled node box with named `inputs` and `outputs` ports."
+    }
+    demo {
+      diagram = true
+      diagram { width = 560  height = 240
+        wf_node_graph {
+          wf_node "Texture"  { id = tex   outputs = ["RGB", "Alpha"] }
+          wf_node "Multiply" { id = mul   inputs = ["A", "B"]  outputs = ["Result"] }
+          wf_node "Output"   { id = out   inputs = ["Color"] }
+          wf_link "tex.RGB"     { to = "mul.A" }
+          wf_link "mul.Result"  { to = "out.Color" }
+        }
+      }
+    }
+  }
+}

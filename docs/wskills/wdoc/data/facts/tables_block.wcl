@@ -1,0 +1,24 @@
+import <wdoc.wcl>
+
+fact tables_block {
+  title    = "table"
+  related  = [lists_block, callouts]
+  audience = :both
+  body {
+    block_doc {
+      type        = TableBlock
+      description = "A `table { rows: | … | }` renders a tabular data grid using WCL's native pipe-row syntax. The first row becomes the `<thead>`; the remaining rows go in `<tbody>`. (In a wskill data block the pipe-row form is the page-authoring shape; wskill's own reference tables use a `header` / `rows` field pair.)"
+    }
+    demo {
+      table {
+        rows:
+          | "Name"  | "Role"     | "Years" |
+          | "Alice" | "**Dev**"  | 3       |
+          | "Bob"   | "_Ops_"    | 5       |
+      }
+    }
+    h2 "Cells"
+    p "Cells are expressions in the row schema's field positions. utf8 cells run through the inline pattern engine, so **bold**, italic, `inline code`, links, icons, and math all work inside cells. Numeric, boolean, and symbol cells stringify. See [formatting](concept_formatting)."
+    callout "Pipes in cells" { class = ["warning"]  body = "A literal pipe outside a quoted cell splits the row, so wrap any cell that contains a pipe in a string literal." }
+  }
+}

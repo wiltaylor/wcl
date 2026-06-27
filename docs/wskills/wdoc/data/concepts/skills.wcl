@@ -1,3 +1,5 @@
+import <wdoc.wcl>
+
 concept skills {
   name     = "Skill folders"
   summary  = "The `:ai_skill` target: the `skill { }` block, folder layout, front matter, and `file` blocks."
@@ -93,5 +95,9 @@ page deploys { sites = [:handbook, :assistant]
 }
 SRC
     }
+
+    h2 "Block reference"
+    block_doc { type = SkillConfig  description = "A `skill` block: the `:ai_skill` front-matter — the required `name` and `description` (plus optional `license`) written onto `SKILL.md`." }
+    block_doc { type = FileObj  description = "A `file` block: copies a file from beside the document into the output (keeping its basename), into the `dir` subfolder, optionally rendering a link via `as`." }
   }
 }

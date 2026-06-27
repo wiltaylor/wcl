@@ -1,0 +1,60 @@
+import <wdoc.wcl>
+
+fact flowcharts {
+  title    = "flowchart shapes"
+  related  = [diagrams, sequence_diagrams, state_diagrams]
+  audience = :both
+  body {
+    p "Flowchart shapes plus the layered auto-layout mode turn a `diagram` into a flowchart: declare the shapes and the edges, and the renderer ranks them topologically and elbow-routes the connections. The three stdlib shapes lower to SVG primitives and take the same fields, differing only in the figure drawn: `process` is a rectangle (an action/step), `decision` a diamond (a yes/no branch), and `terminator` an oval (a start/end node). See [connections](concept_connections)."
+    block_doc {
+      type        = Process
+      description = "A rectangle node — an action or step in the flow."
+    }
+    block_doc {
+      type        = Decision
+      description = "A diamond node — a yes/no branch point."
+    }
+    block_doc {
+      type        = Terminator
+      description = "An oval node — a start or end point of the flow."
+    }
+    block_doc {
+      type        = GraphNode
+      description = "The shared base of the flowchart shapes — the fields (`id`, `width`, `height`, `fill`, …) every figure takes."
+    }
+
+    h2 "Layered auto-layout"
+    p "Set `layout = :layered` on the diagram. Shapes are topologically ranked from the connection graph and stacked top-to-bottom; elbow routing then connects them with right-angled paths, and `layer_gap` controls the spacing between ranks."
+    demo {
+      diagram = true
+      diagram {
+        width = 320  height = 220  layout = :layered  layer_gap = 20.0
+
+        process    "Parse"  { id = parse   width = 100.0  height = 40.0  fill = "#88c0d0" }
+        decision   "Valid?" { id = valid   width = 100.0  height = 60.0  fill = "#ebcb8b" }
+        terminator "Render" { id = render  width = 100.0  height = 40.0  fill = "#b48ead" }
+
+        parse -> valid  :flow
+        valid -> render :flow
+      }
+    }
+
+    h2 "Radial layout and boundaries"
+    p "Set `layout = :radial` for an \"X and everything it talks to\" shape: one `hub` shape sits at the centre and the rest ring around it (pairs well with `routing = :straight`). A `boundary` draws a labelled box behind a set of shapes named in `members` — it owns no layout, so it works on `:radial` and `:force` where a `container` cannot."
+    demo {
+      diagram = true
+      diagram {
+        width = 360  height = 300  layout = :radial  hub = platform  routing = :straight
+
+        process    "Platform"  { id = platform  width = 96.0  height = 44.0 }
+        process    "Warehouse" { id = warehouse width = 96.0  height = 44.0 }
+        process    "Billing"   { id = billing   width = 96.0  height = 44.0 }
+
+        platform -> warehouse :flow
+        platform -> billing   :flow
+
+        boundary "Achmisoft" { members = [platform, warehouse, billing] }
+      }
+    }
+  }
+}

@@ -183,6 +183,18 @@ impl Emitter<'_> {
                 }
             }
             "callout" => out.push(self.callout(block)),
+            // A `demo` degrades to its example source (a fenced `wcl` block)
+            // plus one static render of the children — Markdown has no theming,
+            // so the dual light/dark preview collapses to a single pass.
+            "demo" => {
+                let src = crate::demo::demo_source(block);
+                if !src.is_empty() {
+                    out.push(format!("```wcl\n{src}\n```"));
+                }
+                for c in block.blocks() {
+                    self.block(&c, out)?;
+                }
+            }
             // A repeater stamps its body once per element of `each`; expand to
             // the bound child blocks and walk them.
             "wdoc_repeater" => {

@@ -1,11 +1,14 @@
-entity images {
-  name     = "image"
-  kind     = "block"
-  summary  = "Embeds a static image; renders as an <img> on a page or as a placeable SvgBlock inside a diagram."
+import <wdoc.wcl>
+
+fact images {
+  title    = "image"
   related  = [diagrams, videos, maps]
   audience = :both
   body {
-    p "`image` embeds a static image. The source path resolves relative to the build entry file and the file is copied verbatim into `_wdoc/` at build time, so the output site is self-contained. Because it's referenced by a relative `_wdoc/` URL, it only resolves when the site is served — not when the page is opened directly from disk (same as icons and tilemaps)."
+    block_doc {
+      type        = Image
+      description = "`image` embeds a static image. The source path resolves relative to the build entry file and the file is copied verbatim into `_wdoc/` at build time, so the output site is self-contained. Because it's referenced by a relative `_wdoc/` URL, it only resolves when the site is served — not when the page is opened directly from disk (same as icons and tilemaps)."
+    }
     h2 "On a page"
     p "An `image` block directly under a `page` renders as a standalone `<img>`. The source is the inline label; set `width` / `height` to size it, `alt` for accessibility, and a `class` for styling."
     code "wcl" { source = <<'SRC'

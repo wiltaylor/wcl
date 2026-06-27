@@ -1,3 +1,5 @@
+import <wdoc.wcl>
+
 concept formatting {
   name     = "Formatting"
   summary  = "Inline patterns (bold / italic / code / links / icons / math), headings, code, lists, callouts."
@@ -104,5 +106,12 @@ callout "Deploying" {
 }
 SRC
     }
+
+    h2 "Block reference"
+    block_doc { type = P  description = "A `p` block: a prose paragraph whose label text runs through the inline-pattern engine." }
+    block_doc { type = Span  description = "A `span`: an inline run of text inside a `text` block, carrying its own `class`." }
+    block_doc { type = Text  description = "A `text` block: a paragraph assembled from `span`s, each independently styled." }
+    block_doc { type = H1  description = "A heading block — `h1` through `h6` all share this one type — taking the heading text and an optional `id` anchor." }
+    block_doc { type = Code  description = "A `code` block: a syntax-highlighted listing, its language tag picking the grammar and `source` (usually a raw heredoc) holding the body." }
   }
 }

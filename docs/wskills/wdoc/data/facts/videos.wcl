@@ -1,11 +1,14 @@
-entity videos {
-  name     = "video"
-  kind     = "block"
-  summary  = "Embeds a video — a local file or a YouTube/Vimeo/other URL — as a click-to-play facade that loads the real player on click."
+import <wdoc.wcl>
+
+fact videos {
+  title    = "video"
   related  = [images]
   audience = :both
   body {
-    p "`video` embeds a video on a page. The source is either a local file (typically `.mp4`, copied into `_wdoc/` like an `image`) or a web URL — YouTube, Vimeo, or any other embeddable address. To keep a page light, a video first renders as a click-to-play **facade** (a poster thumbnail plus a play button); the real player loads only on click."
+    block_doc {
+      type        = Video
+      description = "`video` embeds a video on a page — either a local file (typically `.mp4`, copied into `_wdoc/` like an `image`) or a web URL (YouTube, Vimeo, or any other embeddable address). To keep a page light, a video first renders as a click-to-play **facade** (a poster thumbnail plus a play button); the real player loads only on click."
+    }
     h2 "A local file"
     p "Give `video` a doc-relative path and an optional `poster` thumbnail. Set `width` to size it and `title` for an accessible label. wdoc never decodes a local video, so it can't auto-generate a thumbnail — supply a `poster`, or a plain play-button placeholder shows."
     code "wcl" { source = <<'SRC'

@@ -93,6 +93,7 @@ connectable by edges), not a page block. Everything deeper → the doc page or t
 | PDF backend | `src/pdf/` | — | (memory: wdoc-pdf-backend) |
 | Markdown backend | `src/markdown/` | — | `markdown.wcl` |
 | markdown_source (preview a page's generated Markdown in a `code markdown` block; book-only — taps the Markdown emitter's `body_to_markdown` seam from the HTML build, with a `start_page`/`pages`/`reference` skill-link layout so a skill page reproduces byte-for-byte) | `src/render/html.rs` (`render_markdown_source`), `src/markdown/emit.rs` (`body_to_markdown`), `src/inline.rs` (`with_skill_layout`, `skill_pages`/`output_dir`) | `markdown_source.wcl` | — |
+| demo (example source + live light/dark preview of its children, side by side; renders children once and reuses the HTML for both palette-scoped `.wdoc-theme-*` wrappers — see the per-subtree palettes emitted by `site_theme_css`; `diagram = true` stacks the wide previews; degrades to source + one static render in Markdown/PDF) | `src/demo.rs`, dispatched in `src/render/html.rs`, `src/markdown/emit.rs`, `src/pdf/collect.rs`; scoped palettes in `src/render/theme.rs` | `demo.wcl` | — |
 | skill folders (`:ai_skill`) | `src/markdown/skill.rs` | (`skill` block in `templates.wcl`) | `skills.wcl` |
 | file assets (`file` block) | `src/file.rs` | `file.wcl` | `skills.wcl` |
 

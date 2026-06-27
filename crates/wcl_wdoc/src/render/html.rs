@@ -535,6 +535,10 @@ pub(crate) fn render_block(
         // WCL `lower` isn't possible. Book-only; in other backends its stub
         // `lower` makes it render empty.
         "markdown_source" => Some(render_markdown_source(doc, block, patterns, base_dir)),
+        // An example source listing + a live preview of the same children
+        // under both palettes (side by side). Special-cased in Rust: it reads
+        // the children's source text and re-renders them into themed wrappers.
+        "demo" => Some(crate::demo::render_html(doc, block, patterns, base_dir)),
         // Wireframe widgets (`wf_*`) are diagram shapes now — they render only
         // inside a `diagram` (via `render_shape`), never as a page block.
         // A `wdoc_repeater` renders its body once per element of `each`.

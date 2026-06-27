@@ -158,6 +158,15 @@ fn collect_block(
     if kind == "wdoc_content" {
         return;
     }
+    // A `demo` in static PDF can't show a dual light/dark preview (no
+    // theming) or syntax-highlighted source seam, so it collapses to one
+    // render of its children in place.
+    if kind == "demo" {
+        for child in block.blocks() {
+            collect_block(doc, &child, patterns, base_dir, out);
+        }
+        return;
+    }
     // A user-defined `wdoc_component` instance: expand its declarative
     // body with the instance's slots bound.
     if let Some(def) = doc.component_def(kind) {

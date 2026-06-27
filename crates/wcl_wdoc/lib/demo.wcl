@@ -1,0 +1,59 @@
+// ── Example + live preview block ───────────────────────────────────
+//
+// A `demo` shows a snippet of wdoc source AND renders it live, side by
+// side under both the light and the dark palette — so a component's
+// documentation proves what it produces. You author the component once,
+// as the demo's children; the renderer prints their formatted source as
+// the "example" and renders the same children twice, each wrapped in a
+// palette-scoped container (`.wdoc-theme-light` / `.wdoc-theme-dark`,
+// emitted by render/theme.rs), so both previews show regardless of the
+// reader's global theme toggle.
+//
+//   demo {
+//     callout "Tip" { class = ["tip"]  body = "Author once, see both." }
+//   }
+//
+// Set `diagram = true` for wide diagram-family components: the two
+// previews stack vertically (full width each) instead of side by side.
+//
+// Like `card` / `markdown_source`, a demo is special-cased in the
+// renderer (its `lower` is a stub): printing children as source and
+// re-rendering them into themed wrappers isn't expressible in WCL. In
+// the Markdown / skill backend it degrades to the source code block plus
+// one static (un-themed) render of the children.
+
+namespace wdoc
+
+@block("demo")
+type Demo extends WdocBlock {
+  @doc("Optional caption shown above the example.")
+  @inline(0) title: utf8?
+  @doc("Stack the light and dark previews vertically (full width each) instead of side by side — for wide diagram-family components.")
+  @default(false) diagram: bool
+  @doc("Optional explicit HTML id.")
+  id: identifier?
+  @doc("The component(s) to show. Printed as the example source and rendered live as the light/dark preview.")
+  @children(WdocBlock) children: list<WdocBlock>
+
+  // Stub: the source listing + dual-theme preview are rendered in Rust
+  // (see src/demo.rs); a pure-WCL lower can't reach the source text or
+  // re-render its own children into themed wrappers.
+  lower = fn(d: Demo) -> list<HtmlFundamental> []
+}
+
+// Structural styling for the demo wrapper and its preview panes. Bare-class
+// selectors with neutral defaults and no `var(--wdoc-*)` (so a `site`-less doc
+// stays unthemed, like `wdoc-card`); a themed site recolours `.wdoc-preview`
+// via the theme apply rules in render/theme.rs, where the palette-scoped
+// `.wdoc-theme-light` / `.wdoc-theme-dark` wrappers feed each pane its colours.
+stylesheet "wdoc-demo" {
+  css = <<CSS
+    .wdoc-demo { margin: 0.75rem 0; }
+    .wdoc-demo-label { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.7; margin: 0.4rem 0 0.2rem; }
+    .wdoc-preview-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+    .wdoc-preview-stack { display: grid; grid-template-columns: 1fr; gap: 0.6rem; }
+    .wdoc-preview { padding: 0.8rem; border-radius: 6px; border: 1px solid #444; background: #262b33; color: #e6e6e6; overflow: auto; }
+    .wdoc-preview > :first-child { margin-top: 0; }
+    .wdoc-preview > :last-child  { margin-bottom: 0; }
+    CSS
+}
