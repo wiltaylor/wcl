@@ -12,27 +12,35 @@ fact maps {
     h2 "Pins and cards"
     p "Each `pin` is an icon dropped at `x` / `y` in the map's coordinate space (its `id` is the inline label, unique on the page). Style the marker with a `class` (themable, supports `dark` / `light`) or the one-off `color`. A pin's child blocks become a floating **card** anchored to the marker: text, lists, callouts, code, images all compose in."
     block_doc { type = MapPin    description = "A pin dropped at `x` / `y` in the map's coordinate space; its child blocks become a floating card anchored to the marker." }
-    code "wcl" { source = <<'SRC'
-diagram {
-  width    = 640
-  height   = 320
-  zoom_max = 8.0
-  map "earth" {
-    source = "assets/map/blue-marble.png"
-    width  = 1280
-    height = 640
+    p "**Scroll to zoom, drag to pan, then click a marker** to open its card:"
+    demo {
+      diagram = true
+      diagram {
+        width    = 640
+        height   = 320
+        zoom_max = 8.0
+        map "earth" {
+          source = "../../assets/blue-marble.png"
+          width  = 1280
+          height = 640
 
-    pin "newyork" {
-      x = 377  y = 175
-      icon  = "lucide.building-2"
-      class = ["pin-city"]
-      title = "New York"
-      text { span "Financial capital on the US east coast." {} }
-      callout "Tip" { class = ["tip"]  body = "Cards accept any wdoc content." }
-    }
-  }
-}
-SRC
+          pin "newyork" {
+            x = 377  y = 175
+            icon  = "lucide.building-2"
+            color = "#fbbf24"
+            title = "New York"
+            text { span "Financial capital on the US east coast." {} }
+            callout "Tip" { class = ["tip"]  body = "Cards accept any wdoc content." }
+          }
+          pin "london" {
+            x = 640  y = 137
+            icon  = "lucide.landmark"
+            color = "#fbbf24"
+            title = "London"
+            text { span "On the prime meridian (longitude 0)." {} }
+          }
+        }
+      }
     }
     h2 "Level-of-detail layers"
     p "Omit `layer`s and the map's `source` is the only image. For large maps, supply several `layer`s and the player shows the sharpest layer that suits the current zoom. A layer is one image when `cols` / `rows` are `1`, or a grid of tiles otherwise — `source` is then a folder and each tile's filename comes from `pattern` (default `{x}_{y}.png`, 0-based)."

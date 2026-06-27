@@ -8,6 +8,7 @@ fact wireframe {
     p "Wireframe widgets mock up a UI — windows, device frames (browser / phone / tablet), panels, inputs, controls — as **diagram shapes**. Each `wf_*` block extends `SvgBlock`, so it lives inside a `diagram`: place it with `x` / `y` (or anchors), connect widgets with edges, and mix them with any other shape. Container widgets nest other widgets, so you compose a window of panels of rows of controls. They're static SVG mockups, not interactive."
     h2 "Containers"
     p "Container widgets take `@children(Widget)`. The Rust renderer measures and lays out the children internally (their `x` / `y` are ignored); only the root widget's placement positions the group. Device frames have a realistic fixed default size; everything else is sized to its content."
+    p "A desktop window frame with a title bar; nests child widgets as its content."
     demo {
       diagram = true
       diagram {
@@ -24,10 +25,7 @@ fact wireframe {
         }
       }
     }
-    block_doc {
-      type        = WfWindow
-      description = "A desktop window frame with a title bar; nests child widgets as its content."
-    }
+    type_table { type = WfWindow }
     block_doc {
       type        = WfBrowser
       description = "A browser-chrome frame (address bar + tabs) wrapping its child widgets."

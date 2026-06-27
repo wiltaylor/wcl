@@ -11,24 +11,19 @@ fact dopesheets {
     }
     h2 "Frame geometry and playback"
     p "Describe the frame grid with `frame_width` / `frame_height`, plus `offset_x` / `offset_y` and `stride_x` / `stride_y` for padding or gaps; `columns` defaults to as many frames as fit across the sheet. `from` / `to` pick an inclusive sub-range. `scale` enlarges pixel art; `image-rendering: pixelated` is the default, so set `smooth = true` for non-pixel sources. Autoplay, loop, and controls are on by default — click to pause or resume."
-    code "wcl" { source = <<'SRC'
-diagram { width = 96  height = 96
-  dopesheet "assets/pixel-coin.png" {
-    frame_width  = 12
-    frame_height = 12
-    stride_x     = 12
-    stride_y     = 12
-    columns      = 6
-    from         = 0
-    to           = 2
-    fps          = 6.0
-    autoplay     = false
-    scale        = 6.0
-    x            = 12.0
-    y            = 12.0
-  }
-}
-SRC
+    demo {
+      diagram = true
+      diagram { width = 96  height = 96
+        dopesheet "../../assets/pixel-coin.png" {
+          frame_width  = 12
+          frame_height = 12
+          scale        = 6.0
+          fps          = 12.0
+          x            = 12.0
+          y            = 12.0
+        }
+      }
     }
+    p "The whole sheet — six 12×12 frames — loops at 12 fps (`columns` defaults to `72 / 12 = 6`). Add `from` / `to` for an inclusive sub-range and `autoplay = false` to leave it paused until clicked. The sample sheet is truezipp's CC0 \"Pixel Coins Asset\"."
   }
 }

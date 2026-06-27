@@ -5,6 +5,7 @@ fact diagrams {
   related  = [flowcharts, sequence_diagrams, state_diagrams, charts, tree, images, icons]
   audience = :both
   body {
+    p "A `diagram` is wdoc's drawing surface. It declares a `width` / `height` and holds shapes that break down into primitives and render as SVG. Connect two shapes by id with an `a -> b` edge; set `pan_zoom = true` for an interactive viewport; set a `layout` (`:layered` / `:radial` / `:force`) to place shapes automatically (see [layout modes](fact_layout_modes)). Higher-level families (flowcharts, charts, trees, maps, tilemaps, wireframes) are shapes that live inside a `diagram` too. See the [connections](concept_connections) concept and the SVG [primitives](concept_primitives)."
     demo {
       diagram = true
       diagram {
@@ -15,20 +16,87 @@ fact diagrams {
         a -> b
       }
     }
-    block_doc {
-      type        = Diagram
-      description = "A `diagram` is wdoc's drawing surface. It declares a `width` / `height` and holds shapes that break down into primitives and render as SVG. Connect two shapes by id with an `a -> b` edge; set `pan_zoom = true` for an interactive viewport; set a `layout` (`:layered` / `:radial` / `:force`) to place shapes automatically (see [layout modes](fact_layout_modes)). Higher-level families (flowcharts, charts, trees, maps, tilemaps, wireframes) are shapes that live inside a `diagram` too. See the [connections](concept_connections) concept and the SVG [primitives](concept_primitives)."
-    }
+    type_table { type = Diagram }
 
     h2 "Primitive shapes"
-    p "The base shapes a diagram is built from. Everything else (flowchart nodes, cards, trees) lowers to these."
+    p "The base shapes a diagram is built from. Everything else (flowchart nodes, cards, trees) lowers to these. The five simplest, side by side:"
+    demo {
+      diagram = true
+      diagram { width = 360  height = 230
+        // Row 1: rect, circle, line
+        rect    { x = 35.0  y = 30.0  width = 70.0  height = 50.0  fill = "#88c0d0"  stroke = "#333" }
+        circle  { cx = 180.0  cy = 55.0  r = 25.0  fill = "#8fbcbb"  stroke = "#333" }
+        line    { x1 = 260.0  y1 = 80.0  x2 = 320.0  y2 = 30.0  stroke = "#bf616a" }
+        label "rect"   { x = 70.0   y = 102.0  font_size = 12.0  fill = "#888" }
+        label "circle" { x = 180.0  y = 102.0  font_size = 12.0  fill = "#888" }
+        label "line"   { x = 290.0  y = 102.0  font_size = 12.0  fill = "#888" }
+        // Row 2: polygon, label
+        polygon { points = "40,190 70,140 100,190"  fill = "#ebcb8b"  stroke = "#333" }
+        label "Aa" { x = 180.0  y = 178.0  font_size = 26.0  fill = "#5e81ac" }
+        label "polygon" { x = 70.0   y = 212.0  font_size = 12.0  fill = "#888" }
+        label "label"   { x = 180.0  y = 212.0  font_size = 12.0  fill = "#888" }
+      }
+    }
     block_doc { type = Rect       description = "An axis-aligned rectangle — the workhorse box." }
     block_doc { type = Circle     description = "A circle placed by its centre and radius." }
     block_doc { type = Line       description = "A straight segment between two points." }
     block_doc { type = Label      description = "A free-floating text label." }
     block_doc { type = Polygon    description = "An arbitrary closed shape from a point list." }
+
+    h2 "Composite shapes"
+    p "These hold or lay out content rather than drawing a single primitive, so each leads with its own preview."
+
+    h3 "container"
+    p "A `container` frames its children and can lay them out automatically (here a 2-column grid):"
+    demo {
+      diagram = true
+      diagram { width = 240  height = 130
+        container {
+          anchor_left = 10.0  anchor_top = 10.0
+          fill = "#eef"  stroke = "#88a"  padding = 10.0
+          layout = :grid  columns = 2  cell_width = 90.0  cell_height = 44.0  gap = 10.0
+          rect { fill = "#88c0d0" }
+          rect { fill = "#a3be8c" }
+          rect { fill = "#ebcb8b" }
+          rect { fill = "#b48ead" }
+        }
+      }
+    }
     block_doc { type = Container  description = "A titled box that groups and frames child shapes." }
+
+    h3 "card"
+    p "A `card`'s body is rich wdoc content (paragraphs, lists, even nested diagrams), drawn in a `foreignObject`:"
+    demo {
+      diagram = true
+      diagram { width = 260  height = 110
+        card { x = 20.0  y = 15.0  width = 220.0  height = 80.0
+          title = "Note"
+          p "Rich **text** inside a diagram."
+        }
+      }
+    }
     block_doc { type = Card       description = "A box whose body is rich wdoc content (paragraphs, lists, nested diagrams), drawn in a foreignObject." }
+
+    h3 "node_table"
+    p "Two `node_table`s joined by a foreign-key edge that targets a single row:"
+    demo {
+      diagram = true
+      diagram { width = 420  height = 170  routing = :straight
+        node_table { id = users
+          x = 20.0  y = 20.0  width = 150.0
+          title = "users"
+          node_row { id = users_id    p "id: int" }
+          node_row { id = users_email p "email: text" }
+        }
+        node_table { id = orders
+          x = 250.0  y = 20.0  width = 150.0
+          title = "orders"
+          node_row { id = orders_id      p "id: int" }
+          node_row { id = orders_user_id p "user_id: int" }
+        }
+        orders_user_id -> users_id :data
+      }
+    }
     block_doc { type = NodeTable  description = "A row-table shape for DB / class diagrams, with per-row connection ports." }
     block_doc { type = NodeRow    description = "One row of a node_table." }
 

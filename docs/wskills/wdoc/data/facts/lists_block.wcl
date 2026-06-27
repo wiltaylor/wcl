@@ -5,6 +5,7 @@ fact lists_block {
   related  = [tables_block, callouts]
   audience = :both
   body {
+    p "A `list` holds `li` items. It's a bullet list by default; set `style = :numbered` for a numbered one. Each `li`'s text runs through the inline-pattern engine, so **bold**, `code`, links, and icons all work inside items. See [formatting](concept_formatting)."
     demo {
       list {
         li "Plain item"
@@ -15,10 +16,7 @@ fact lists_block {
         li "Second step"
       }
     }
-    block_doc {
-      type        = ListBlock
-      description = "A `list` holds `li` items. It's a bullet list by default; set `style = :numbered` for a numbered one. Each `li`'s text runs through the inline-pattern engine, so **bold**, `code`, links, and icons all work inside items. See [formatting](concept_formatting)."
-    }
+    type_table { type = ListBlock }
     block_doc {
       type        = Li
       description = "An `li` is one list item. Nest an `li` inside an `li` for a sublist, or drop a whole `list` block inside it for a sublist with a different style."

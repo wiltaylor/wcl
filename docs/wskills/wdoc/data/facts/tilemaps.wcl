@@ -1,5 +1,15 @@
 import <wdoc.wcl>
 
+// Root-level tileset (like `iconset`) backing this fact's live demo. Kenney's
+// CC0 "Platformer Pack": 5 columns of 64px tiles, so tile index N sits at sheet
+// column N%5, row N/5.
+tileset platformer {
+  source      = "../../assets/kenney-platformer.png"
+  tile_width  = 64
+  tile_height = 64
+  columns     = 5
+}
+
 fact tilemaps {
   title    = "tileset / tile / tilemap"
   related  = [dopesheets, images, diagrams]
@@ -29,25 +39,30 @@ SRC
       type        = TileKey
       description = "A `tile` child of a tilemap that binds one legend glyph to a tile `index`."
     }
-    code "wcl" { source = <<'SRC'
-diagram { width = 280  height = 230
-  tilemap {
-    set   = "platformer"
-    scale = 0.5
-    tile "#" { index = 25 }   // brown crate — ground
-    tile "~" { index = 1 }    // water surface
-    tile "T" { index = 16 }   // torch
-    map = [
-      "........",
-      ".T....",
-      "########",
-      "~~~~~~~~",
-    ]
-  }
-  label "Level 1" { x = 128.0  y = 146.0  font_size = 16.0  fill = "#003a8c" }
-}
-SRC
+    demo {
+      diagram = true
+      diagram { width = 280  height = 230
+        tilemap {
+          set   = "platformer"
+          scale = 0.5
+          tile "#" { index = 25 }   // brown crate — ground
+          tile "~" { index = 1 }    // water surface
+          tile "=" { index = 6 }    // deep water
+          tile "T" { index = 16 }   // torch
+          tile "G" { index = 28 }   // grass tuft
+          map = [
+            "........",
+            "........",
+            ".T.G....",
+            "########",
+            "~~~~~~~~",
+            "========",
+          ]
+        }
+        // Overlaid after the tilemap, so it sits over the tiles.
+        label "Level 1" { x = 128.0  y = 146.0  font_size = 16.0  fill = "#003a8c" }
+      }
     }
-    p "`scale` sizes the display; `image-rendering: pixelated` is the default, and `smooth = true` opts into the browser's smoothing. The sheet is copied to `_wdoc/`, so tiles resolve when served."
+    p "`scale` sizes the display; `image-rendering: pixelated` is the default, and `smooth = true` opts into the browser's smoothing. The sheet is copied to `_wdoc/`, so tiles resolve when served. (Sample sheet: Kenney's CC0 \"Platformer Pack\".)"
   }
 }

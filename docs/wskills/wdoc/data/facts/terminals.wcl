@@ -5,6 +5,7 @@ fact terminals {
   related  = [wireframe, diagrams]
   audience = :both
   body {
+    p "A `terminal` renders a monospace character grid as inline SVG, drawn with a bundled Nerd Font. The grid is populated three ways: authored text primitives, an inline ANSI-bearing `text` field, or replay of an `asciinema` recording. `cols` / `rows` size the grid; `chrome` toggles the window frame; `title` labels it."
     demo {
       diagram = true
       terminal {
@@ -16,10 +17,7 @@ fact terminals {
         term_text "rounded border" { row = 5  col = 4 }
       }
     }
-    block_doc {
-      type        = Terminal
-      description = "A `terminal` renders a monospace character grid as inline SVG, drawn with a bundled Nerd Font. The grid is populated three ways: authored text primitives, an inline ANSI-bearing `text` field, or replay of an `asciinema` recording. `cols` / `rows` size the grid; `chrome` toggles the window frame; `title` labels it."
-    }
+    type_table { type = Terminal }
     h2 "Primitives"
     p "`term_text` is the one base primitive — styled text at a 1-based `(row, col)` carrying `fg` / `bg` and `bold` / `italic` / `underline`. Higher-level helpers (`term_box`, `term_glyph`, `term_fill`) lower to runs of `term_text`. Colours are strings: an ANSI name (`\"red\"`), a 256-palette index (`\"208\"`), or a hex (`\"#ff5fd2\"`)."
     block_doc {

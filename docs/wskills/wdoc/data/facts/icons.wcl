@@ -6,13 +6,11 @@ fact icons {
   audience = :both
   body {
     p "Full **Lucide** and **Bootstrap Icons** packs ship compiled into the binary — no runtime disk read, and only used icons land in the output sprite (`_wdoc/icons.svg`). Icons paint with `currentColor`, so colour follows the surrounding text or class."
+    p "An `icon` is a placeable block — a legal `diagram` / `container` child positioned by `x` / `y` like a `rect`. The same `icon` / `icon_size` / `icon_pos` / `icon_class` fields also make any box-like shape (`rect` / `circle` / `container` / `process` / `decision` / `terminator`) wear a badge."
     demo {
       p "Status: :lucide.check: ready"
     }
-    block_doc {
-      type        = Icon
-      description = "An `icon` is a placeable block — a legal `diagram` / `container` child positioned by `x` / `y` like a `rect`. The same `icon` / `icon_size` / `icon_pos` / `icon_class` fields also make any box-like shape (`rect` / `circle` / `container` / `process` / `decision` / `terminator`) wear a badge."
-    }
+    type_table { type = Icon }
     h2 "Three ways to use an icon"
     p "Inline as a `:lucide.check:` pattern in a `p` or `span`; as a placeable `icon` block (a legal `diagram` / `container` child, positioned by `x` / `y` like a `rect`); or as a badge on a box-like shape (`rect` / `circle` / `container` / `process` / `decision` / `terminator`) via `icon` / `icon_size` / `icon_pos` / `icon_class`."
     p "Inline, a bare `:lucide.check:` pattern reads from the named pack and flows with the prose:"

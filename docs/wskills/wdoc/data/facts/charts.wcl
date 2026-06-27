@@ -9,6 +9,7 @@ fact charts {
 
     h2 "Bar and line charts"
     p "Both take a `series: list<ChartSeries>` — each series a `{ name, values }` record; multiple series produce grouped bars or multi-line plots, and `categories` labels the x-axis. `line_chart` adds `point_labels = true` (print every point's value) and `points` (author-named callouts, each `{ label, category, value }`)."
+    p "A grouped bar chart over a `series: list<ChartSeries>`, with `categories` labelling the x-axis."
     demo {
       diagram = true
       diagram { width = 360  height = 200
@@ -22,10 +23,7 @@ fact charts {
         }
       }
     }
-    block_doc {
-      type        = BarChart
-      description = "A grouped bar chart over a `series: list<ChartSeries>`, with `categories` labelling the x-axis."
-    }
+    type_table { type = BarChart }
     block_doc {
       type        = LineChart
       description = "A multi-line plot over a `series: list<ChartSeries>`; adds `point_labels` and author-named `points` callouts."

@@ -6,6 +6,7 @@ fact tree {
   audience = :both
   body {
     p "`tree` renders an **indented file-tree**: one row per `tree_node`, indented by depth with the classic file-explorer connector guides drawn between a parent and its children. Each node carries a `title` (its positional label) plus an optional `icon` and `color`, and nodes nest arbitrarily, so it suits a directory layout, a config tree, or any hierarchy. A `tree` is a diagram shape, so it lives inside a `diagram` and is placed by `x` / `y` (or anchors)."
+    p "An indented file-tree diagram shape — one row per `tree_node`, with file-explorer connector guides between parents and children."
     demo {
       diagram = true
       diagram { width = 360  height = 220
@@ -25,10 +26,7 @@ fact tree {
         }
       }
     }
-    block_doc {
-      type        = Tree
-      description = "An indented file-tree diagram shape — one row per `tree_node`, with file-explorer connector guides between parents and children."
-    }
+    type_table { type = Tree }
     block_doc {
       type        = TreeNode
       description = "One row of a tree; carries a positional `title` label plus an optional `icon` and `color`, and nests further `tree_node`s arbitrarily."

@@ -6,6 +6,7 @@ fact flowcharts {
   audience = :both
   body {
     p "Flowchart shapes plus the layered auto-layout mode turn a `diagram` into a flowchart: declare the shapes and the edges, and the renderer ranks them topologically and elbow-routes the connections. The three stdlib shapes lower to SVG primitives and take the same fields, differing only in the figure drawn: `process` is a rectangle (an action/step), `decision` a diamond (a yes/no branch), and `terminator` an oval (a start/end node). See [connections](concept_connections)."
+    p "A rectangle node — an action or step in the flow."
     demo {
       diagram = true
       diagram {
@@ -19,10 +20,7 @@ fact flowcharts {
         valid -> render :flow
       }
     }
-    block_doc {
-      type        = Process
-      description = "A rectangle node — an action or step in the flow."
-    }
+    type_table { type = Process }
     block_doc {
       type        = Decision
       description = "A diamond node — a yes/no branch point."
