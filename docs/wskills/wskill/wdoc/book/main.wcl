@@ -10,6 +10,7 @@
 import <wdoc.wcl>
 import "../../wskill.wcl"
 import "../component/common.wcl"    // UnitRef + shared per-unit sub-sections
+import "../component/skill_md.wcl"  // skill_md_body (shared SKILL.md body, for the preview)
 import "../component/concept.wcl"   // concept_body
 import "../component/entity.wcl"    // entity_body
 import "../component/fact.wcl"      // fact_body
@@ -113,7 +114,8 @@ site book {
   // still generated (their document-scope repeaters are below) and reached from
   // there and via cross-links.
   sidebar_footer {
-    button "Reference" { page = reference_page  icon = "lucide.chart-network" }
+    button "Reference"     { page = reference_page    icon = "lucide.chart-network" }
+    button "Skill preview" { page = skill_links_page   icon = "lucide.bot" }
   }
 }
 

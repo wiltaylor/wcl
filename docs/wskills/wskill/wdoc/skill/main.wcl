@@ -2,16 +2,17 @@
 //
 // Build:  wcl wdoc skill wdoc/skill/main.wcl --out out/skill
 //
-// The start page becomes SKILL.md (lean: topic summary, version pin, concept
-// index, process menus, pointers to reference files).
-// Every other page lands under references/. Like the book template it contains
-// NO topic content — only projections. concept/entity/fact each render to their own
-// page with their addressable `body` projected onto it and `related` links
-// resolved. When you add a typed extension block, add a render (search "TYPED").
+// The start page becomes SKILL.md; every other page lands under references/.
+// SKILL.md's body is the shared `skill_md_body` component (component/skill_md.wcl)
+// — it inlines the curated `:ai`/`:both` indexes, linking each pinned note's page
+// directly, so there are no per-kind reference pages. The same component renders
+// the book's skill preview (pages/skill_links.wcl), so the preview can't drift.
+// When you add a typed extension block, add a render (search "TYPED").
 
 import <wdoc.wcl>
 import "../../wskill.wcl"
 import "../component/common.wcl"    // UnitRef + shared per-unit sub-sections
+import "../component/skill_md.wcl"  // skill_md_body (shared with the preview)
 import "../component/concept.wcl"   // concept_body
 import "../component/entity.wcl"    // entity_body
 import "../component/fact.wcl"      // fact_body
@@ -27,22 +28,18 @@ let skill_scripts = skill.skill_scripts
 let skill_assets  = skill.skill_assets
 
 // Audience filter — keep the skill lean. Each `let` shadows the gathered list of
-// the same name with its "both"/"ai" subset (dropping book-only blocks), so
-// every projection below renders only what belongs in the skill.
+// the same name with its "both"/"ai" subset (dropping book-only blocks).
 let in_skill   = fn(a: Audience) -> bool { match a { :book => false, _ => true } }
 let concepts   = filter(concepts,   fn(c: Concept)   -> bool { in_skill(c.audience) })
 let entities   = filter(entities,   fn(e: Entity)    -> bool { in_skill(e.audience) })
 let facts      = filter(facts,      fn(f: Fact)      -> bool { in_skill(f.audience) })
-let terms      = filter(terms,      fn(t: Term)      -> bool { in_skill(t.audience) })
 let examples   = filter(examples,   fn(x: Example)   -> bool { in_skill(x.audience) })
 let indexes    = filter(indexes,    fn(x: Index)      -> bool { in_skill(x.audience) })
-let child_indexes = filter(flatten(map(indexes, fn(x: Index) -> list<Index> { x.children })), fn(x: Index) -> bool { in_skill(x.audience) })
-let all_indexes   = flatten([indexes, child_indexes])
 let procedures = filter(procedures, fn(p: Procedure) -> bool { in_skill(p.audience) })
 
 // Flattened cross-reference rows over the skill's audience-filtered units, so a
 // unit's `related` ids resolve to links (UnitRef + the components live in
-// component/units.wcl).
+// component/common.wcl).
 let all_units = flatten([
   map(concepts,   fn(c: Concept)   -> UnitRef { { id: c.id, name: c.name,  href: $"concept_${c.id}", related: c.related } }),
   map(entities,   fn(e: Entity)    -> UnitRef { { id: e.id, name: e.name,  href: $"entity_${e.id}",  related: e.related } }),
@@ -63,78 +60,14 @@ site skill {
 // --- SKILL.md (start page) --------------------------------------------------
 
 page index { sites = [:skill]  start = true
-  // Static frontmatter: the base-schema version this wskill was built from. It is
-  // a required field (always present), so reading it here is safe. The upstream
-  // topic version lives in the body line below — it's hand-maintained in
-  // wskill.wcl (bump it on updates), not stamped in.
+  // Static frontmatter: the base-schema version + skill controls.
   @schemaless frontmatter {
     wskill_schema_version = $"${schema_version}"
-    // Skill frontmatter controls, from the skill block (empty/false = unrestricted).
     "allowed-tools"            = skill.allowed_tools
     "disallowed-tools"         = skill.disallowed_tools
     "disable-model-invocation" = skill.disable_model_invocation
   }
-
-  h1 $"${topic.name}"
-  p  $"${topic.summary}"
-  wdoc_repeater { each = match topic.version { none => [], v => [v] }  as = :v
-    p $"**Upstream version:** `${v}`. If the real upstream has moved past this, the skill may be stale — bump `topic.version` and re-verify (see the update workflow)."
-  }
-
-  // Custom summary details, pulled from the skill's `summary` sub-block (field reads,
-  // not a body projection — works on the static start page).
-  wdoc_repeater { each = skill.summary  as = :sm
-    wdoc_repeater { each = sm.overview  as = :o  p $"${o}" }
-  }
-
-  // Invocation parameters (Claude Code placeholders $ARGUMENTS, $1, $2, …), pulled
-  // from the skill block's `skill_param` sub-blocks.
-  wdoc_repeater { each = match len(skill.parameters) { 0 => [], _ => [true] }  as = :_pmh
-    h2 "Parameters"
-    p  "Values to pass when invoking this skill — reference them as `$ARGUMENTS`, `$1`, `$2`, … in the prompt."
-    table {
-      header = ["Parameter", "Description", "How to determine the value"]
-      rows = map(skill.parameters, fn(pp: SkillParam) -> list<utf8> { [pp.name, pp.description ?? "—", pp.value ?? "—"] })
-    }
-  }
-
-  // Behavioural guardrails, rendered inside <Boundary> tags (hard rules for an agent).
-  wdoc_repeater { each = skill.boundary  as = :bd
-    p "<Boundary>"
-    wdoc_repeater { each = match len(bd.always) { 0 => [], _ => [true] }  as = :_ba  p "**Always:**" }
-    wdoc_repeater { each = bd.always  as = :it  p $"- ${it}" }
-    wdoc_repeater { each = match len(bd.ask) { 0 => [], _ => [true] }  as = :_bk  p "**Ask first:**" }
-    wdoc_repeater { each = bd.ask  as = :it  p $"- ${it}" }
-    wdoc_repeater { each = match len(bd.never) { 0 => [], _ => [true] }  as = :_bn  p "**Never:**" }
-    wdoc_repeater { each = bd.never  as = :it  p $"- ${it}" }
-    p "</Boundary>"
-  }
-
-  h2 "Reference"
-  // The `:ai`/`:both` curated indexes are inlined here — each becomes a section
-  // listing the notes it pins (links straight to the per-unit pages). There are
-  // no separate index or per-kind reference pages.
-  wdoc_repeater { each = indexes  as = :ix
-    h3 $"${ix.name}"
-    wdoc_repeater { each = match ix.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
-    wdoc_repeater { each = match ix.body { none => [], b => [true] }  as = :_b  project { from = ix.body } }
-    wdoc_repeater { each = ix.related  as = :rid
-      wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
-      wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
-      wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
-      wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
-    }
-    wdoc_repeater { each = filter(ix.children, fn(x: Index) -> bool { in_skill(x.audience) })  as = :cix
-      h4 $"${cix.name}"
-      wdoc_repeater { each = match cix.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
-      wdoc_repeater { each = cix.related  as = :rid
-        wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
-        wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
-        wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
-        wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
-      }
-    }
-  }
+  skill_md_body { topic = topic  skill = skill  indexes = indexes  concepts = concepts  entities = entities  facts = facts  procedures = procedures  extra_refs = [] }
 }
 
 // One page per concept. The body is the addressable `body`, projected here;
@@ -175,4 +108,3 @@ wdoc_repeater { each = procedures  as = :pr
     }
   }
 }
-

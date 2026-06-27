@@ -12,6 +12,7 @@
 import <wdoc.wcl>
 import "../../wskill.wcl"
 import "../component/common.wcl"    // UnitRef + shared per-unit sub-sections
+import "../component/skill_md.wcl"  // skill_md_body (shared SKILL.md body, for the preview)
 import "../component/concept.wcl"   // concept_body
 import "../component/entity.wcl"    // entity_body
 import "../component/fact.wcl"      // fact_body
@@ -28,6 +29,7 @@ import "../pages/concepts.wcl"     // concepts_page
 import "../pages/entities.wcl"     // entities_page
 import "../pages/facts.wcl"        // facts_page
 import "../pages/processes.wcl"    // processes_page
+import "../pages/skill_links.wcl"  // skill_links_page (+ per-page Markdown previews)
 
 // The single topic block, bound from its gather list (see base.wcl
 // for why it is a list). A wskill always has exactly one.
@@ -171,7 +173,8 @@ site book {
   // section — `reference_page` lists everything; the unit / graph pages are still
   // generated (their document-scope repeaters are below) and reached from there.
   sidebar_footer {
-    button "Reference" { page = reference_page  icon = "lucide.chart-network" }
+    button "Reference"     { page = reference_page    icon = "lucide.chart-network" }
+    button "Skill preview" { page = skill_links_page   icon = "lucide.bot" }
   }
 }
 

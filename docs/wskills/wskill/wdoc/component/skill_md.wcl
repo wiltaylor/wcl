@@ -1,0 +1,86 @@
+// Shared SKILL.md body — the canonical content of the skill's start page,
+// everything after the YAML frontmatter. Rendered by BOTH the real skill
+// projection (wdoc/skill/main.wcl) and the book's skill preview
+// (wdoc/pages/skill_links.wcl), so the preview can never drift from the file
+// `wcl wdoc skill` actually writes.
+//
+// It emits: the topic heading + summary, the skill's overview / parameters /
+// boundary, then a "Reference" section that inlines each curated index (and its
+// child sub-groups), linking the units it pins directly — followed by any
+// `extra_refs` (content pages that aren't unit pages, e.g. a CLI or builtin
+// reference). The caller passes already audience-filtered lists.
+
+import <wdoc.wcl>
+import "../../schema/base.wcl"
+
+wdoc_component skill_md_body {
+  wdoc_slot topic
+  wdoc_slot skill
+  wdoc_slot indexes
+  wdoc_slot concepts
+  wdoc_slot entities
+  wdoc_slot facts
+  wdoc_slot procedures
+  // Trailing reference links for non-unit content pages: a list of
+  // `{ label, href, summary? }` records (pass `[]` for none).
+  wdoc_slot extra_refs
+  wdoc_body {
+    h1 $"${topic.name}"
+    p  $"${topic.summary}"
+    wdoc_repeater { each = match topic.version { none => [], v => [v] }  as = :v
+      p $"**Upstream version:** `${v}`. If the real upstream has moved past this, the skill may be stale — bump `topic.version` and re-verify (see the update workflow)." }
+
+    // Skill overview lines, from the skill block's `summary` sub-block.
+    wdoc_repeater { each = skill.summary  as = :sm
+      wdoc_repeater { each = sm.overview  as = :o  p $"${o}" } }
+
+    // Invocation parameters ($ARGUMENTS, $1, …).
+    wdoc_repeater { each = match len(skill.parameters) { 0 => [], _ => [true] }  as = :_pmh
+      h2 "Parameters"
+      p  "Values to pass when invoking this skill — reference them as `$ARGUMENTS`, `$1`, `$2`, … in the prompt."
+      table {
+        header = ["Parameter", "Description", "How to determine the value"]
+        rows = map(skill.parameters, fn(pp: SkillParam) -> list<utf8> { [pp.name, pp.description ?? "—", pp.value ?? "—"] })
+      } }
+
+    // Behavioural guardrails, inside <Boundary> tags.
+    wdoc_repeater { each = skill.boundary  as = :bd
+      p "<Boundary>"
+      wdoc_repeater { each = match len(bd.always) { 0 => [], _ => [true] }  as = :_ba  p "**Always:**" }
+      wdoc_repeater { each = bd.always  as = :it  p $"- ${it}" }
+      wdoc_repeater { each = match len(bd.ask) { 0 => [], _ => [true] }  as = :_bk  p "**Ask first:**" }
+      wdoc_repeater { each = bd.ask  as = :it  p $"- ${it}" }
+      wdoc_repeater { each = match len(bd.never) { 0 => [], _ => [true] }  as = :_bn  p "**Never:**" }
+      wdoc_repeater { each = bd.never  as = :it  p $"- ${it}" }
+      p "</Boundary>" }
+
+    h2 "Reference"
+    // Each curated index becomes a section listing the notes it pins (links
+    // straight to the per-unit pages); child indexes become sub-sections.
+    wdoc_repeater { each = indexes  as = :ix
+      h3 $"${ix.name}"
+      wdoc_repeater { each = match ix.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
+      wdoc_repeater { each = match ix.body { none => [], b => [true] }  as = :_b  project { from = ix.body } }
+      wdoc_repeater { each = ix.related  as = :rid
+        wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
+        wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
+        wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
+        wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
+      }
+      wdoc_repeater { each = filter(ix.children, fn(x: Index) -> bool { match x.audience { :book => false, _ => true } })  as = :cix
+        h4 $"${cix.name}"
+        wdoc_repeater { each = match cix.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
+        wdoc_repeater { each = cix.related  as = :rid
+          wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
+          wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
+          wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
+          wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
+        }
+      }
+    }
+    // Extra content pages (e.g. CLI / builtins) that aren't unit pages.
+    wdoc_repeater { each = extra_refs  as = :r
+      p $"- [${r.label}](${r.href})${match r.summary { none => "", s => $" — ${s}" }}"
+    }
+  }
+}

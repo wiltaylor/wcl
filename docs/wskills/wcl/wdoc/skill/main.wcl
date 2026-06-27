@@ -2,42 +2,33 @@
 //
 // Build:  wcl wdoc skill wdoc/skill/main.wcl --out out/skill
 //
-// The start page becomes SKILL.md (lean: topic summary, version pin, concept
-// index, process menus, pointers to reference files).
-// Every other page lands under references/. Like the book template it contains
-// NO topic content — only projections. The per-unit page bodies are rendered by
-// the shared components under component/ (concept_body / entity_body /
-// fact_body / process_body); the topic-specific Builtins / CLI reference pages
-// stay inline below.
+// The start page becomes SKILL.md; every other page lands under references/.
+// SKILL.md is index-driven: its body is the shared `skill_md_body` component
+// (component/skill_md.wcl) — it inlines the curated indexes, linking each pinned
+// note's page directly, then links the non-unit content pages (builtins / CLI)
+// via `extra_refs`. There are NO per-kind index pages. The same component renders
+// the book's skill preview (pages/skill_links.wcl), so the preview can't drift.
 
 import <wdoc.wcl>
 import "../../wskill.wcl"
 import "../component/common.wcl"    // UnitRef + shared per-unit sub-sections
+import "../component/skill_md.wcl"  // skill_md_body (shared with the preview)
 import "../component/concept.wcl"   // concept_body
 import "../component/entity.wcl"    // entity_body
 import "../component/fact.wcl"      // fact_body
 import "../component/process.wcl"   // process_body
-import "../component/type_index.wcl" // shared unit-index page component
 
 // The single topic block, bound from its gather list (see base.wcl).
 let topic = head(topics)
 let skill = head(skills)
 
-// Skill artifacts are authored as children of the skill block (base.wcl).
-let skill_scripts = skill.skill_scripts
-let skill_assets  = skill.skill_assets
-
-// Audience filter — keep the skill lean. Each `let` shadows the gathered list of
-// the same name with its "both"/"ai" subset (dropping book-only blocks), so
-// every projection below renders only what belongs in the skill.
+// Audience filter — keep the skill lean.
 let in_skill   = fn(a: Audience) -> bool { match a { :book => false, _ => true } }
 let concepts   = filter(concepts,   fn(c: Concept)   -> bool { in_skill(c.audience) })
 let entities   = filter(entities,   fn(e: Entity)    -> bool { in_skill(e.audience) })
 let facts      = filter(facts,      fn(f: Fact)      -> bool { in_skill(f.audience) })
 let examples   = filter(examples,   fn(x: Example)   -> bool { in_skill(x.audience) })
 let indexes    = filter(indexes,    fn(x: Index)      -> bool { in_skill(x.audience) })
-let child_indexes = filter(flatten(map(indexes, fn(x: Index) -> list<Index> { x.children })), fn(x: Index) -> bool { in_skill(x.audience) })
-let all_indexes   = flatten([indexes, child_indexes])
 let procedures = filter(procedures, fn(p: Procedure) -> bool { in_skill(p.audience) })
 // Opt-in cli module (schema/cli.wcl).
 let clis       = filter(clis,       fn(x: Cli)       -> bool { in_skill(x.audience) })
@@ -57,9 +48,13 @@ let fn_categories = [
 ]
 let functions_in = fn(slug: utf8) -> list<Function> { filter(all_functions, fn(fc: Function) -> bool { (fc.category ?? "") == slug }) }
 
-// Flattened cross-reference rows over the skill's audience-filtered units, so a
-// unit's `related` ids resolve to links (UnitRef + the components live in
-// component/common.wcl).
+// Non-unit content pages linked at the foot of SKILL.md's Reference section.
+let extra_refs = flatten([
+  match len(all_functions) { 0 => [], _ => [{ label: "Builtin functions", href: "builtins_ref", summary: "every builtin, grouped by category" }] },
+  match len(clis)          { 0 => [], _ => [{ label: "CLI reference",     href: "cli_ref",      summary: "the `wcl` CLI — every subcommand, its arguments and switches" }] },
+])
+
+// Flattened cross-reference rows over the skill's units, so `related` ids resolve.
 let all_units = flatten([
   map(concepts,   fn(c: Concept)   -> UnitRef { { id: c.id, name: c.name,  href: $"concept_${c.id}", related: c.related } }),
   map(entities,   fn(e: Entity)    -> UnitRef { { id: e.id, name: e.name,  href: $"entity_${e.id}",  related: e.related } }),
@@ -72,59 +67,19 @@ site skill {
   skill {
     name        = $"${topic.name}"
     description = $"Reference and processes for ${topic.name}. ${topic.summary} Use when working with ${topic.name} or answering questions about it."
-    // license  = "MIT"   // optional; written to SKILL.md front matter
   }
 }
 
 // --- SKILL.md (start page) --------------------------------------------------
 
 page index { sites = [:skill]  start = true
-  // Static frontmatter: the base-schema version this wskill was built from. It is
-  // a required field (always present), so reading it here is safe. The upstream
-  // topic version lives in the body line below — it's hand-maintained in
-  // wskill.wcl (bump it on updates), not stamped in.
   @schemaless frontmatter {
     wskill_schema_version = $"${schema_version}"
-    // Skill frontmatter controls, from the skill block (empty/false = unrestricted).
     "allowed-tools"            = skill.allowed_tools
     "disallowed-tools"         = skill.disallowed_tools
     "disable-model-invocation" = skill.disable_model_invocation
   }
-
-  h1 $"${topic.name}"
-
-  wdoc_repeater { each = skill.summary  as = :sm
-    wdoc_repeater { each = sm.overview  as = :o  p $"${o}" }
-  }
-
-  // Invocation parameters (Claude Code placeholders $ARGUMENTS, $1, $2, …), pulled
-  // from the skill block's `skill_param` sub-blocks.
-  wdoc_repeater { each = match len(skill.parameters) { 0 => [], _ => [true] }  as = :_pmh
-    h2 "Parameters"
-    p  "Values to pass when invoking this skill — reference them as `$ARGUMENTS`, `$1`, `$2`, … in the prompt."
-    table {
-      header = ["Parameter", "Description", "How to determine the value"]
-      rows = map(skill.parameters, fn(pp: SkillParam) -> list<utf8> { [pp.name, pp.description ?? "—", pp.value ?? "—"] })
-    }
-  }
-
-  // Behavioural guardrails, rendered inside <Boundary> tags (hard rules for an agent).
-  wdoc_repeater { each = skill.boundary  as = :bd
-    p "<Boundary>"
-    wdoc_repeater { each = match len(bd.always) { 0 => [], _ => [true] }  as = :_ba  p "**Always:**" }
-    wdoc_repeater { each = bd.always  as = :it  p $"- ${it}" }
-    wdoc_repeater { each = match len(bd.ask) { 0 => [], _ => [true] }  as = :_bk  p "**Ask first:**" }
-    wdoc_repeater { each = bd.ask  as = :it  p $"- ${it}" }
-    wdoc_repeater { each = match len(bd.never) { 0 => [], _ => [true] }  as = :_bn  p "**Never:**" }
-    wdoc_repeater { each = bd.never  as = :it  p $"- ${it}" }
-    p "</Boundary>"
-  }
-
-  h2 "Reference"
-  p "- [Concepts](concepts_ref) — the WCL language, concept by concept."
-  p "- [Facts](facts_ref) — reference tables (operators, decorators, patterns, …)."
-  p "- [Builtin functions](builtins_ref) — every builtin, grouped by category."
-  p "- [CLI reference](cli_ref) — the `wcl` CLI: every subcommand, its arguments and switches."
+  skill_md_body { topic = topic  skill = skill  indexes = indexes  concepts = concepts  entities = entities  facts = facts  procedures = procedures  extra_refs = extra_refs }
 }
 
 // --- references/builtins_ref.md — every builtin function, grouped by category --
@@ -151,63 +106,28 @@ page builtins_ref { sites = [:skill]  title = $"${topic.name} — builtin functi
   p "[← Back to SKILL.md](index)"
 }
 
-// --- Units: concept / entity / fact — index + per-unit page (body rendered by
-// the shared components). Each unit's body is an addressable `body`, projected on
-// its own page; `related` ids resolve to links to the matching unit's page.
-
-page concepts_ref { sites = [:skill]
-  h1 $"${topic.name} — concepts"
-  p  "Each concept has its own page. This is the index."
-  wdoc_repeater { each = concepts  as = :c
-    p $"- [**${c.name}**](concept_${c.id}) — ${c.summary}"
-  }
-}
+// --- Per-unit pages (body rendered by the shared components) -----------------
 wdoc_repeater { each = concepts  as = :c
   page $"concept_${c.id}" { sites = [:skill]  title = $"${c.name}"
     concept_body { unit = c  examples = examples  all_units = all_units  backlinks = []
-      p "[← All concepts](concepts_ref)"
       p "[← Back to SKILL.md](index)"
-    }
-  }
-}
-
-wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_ei
-  page entities_ref { sites = [:skill]
-    h1 $"${topic.name} — entities"
-    p  "Each entity has its own page. This is the index."
-    wdoc_repeater { each = entities  as = :e
-      p $"- [**${e.name}**](entity_${e.id}) — _${e.kind}_${match e.summary { none => "", s => $" — ${s}" }}"
     }
   }
 }
 wdoc_repeater { each = entities  as = :e
   page $"entity_${e.id}" { sites = [:skill]  title = $"${e.name}"
     entity_body { unit = e  examples = examples  all_units = all_units  backlinks = []
-      p "[← All entities](entities_ref)"
       p "[← Back to SKILL.md](index)"
-    }
-  }
-}
-
-wdoc_repeater { each = match len(facts) { 0 => [], _ => [true] }  as = :_fi
-  page facts_ref { sites = [:skill]
-    h1 $"${topic.name} — facts"
-    p  "Each fact is a container of factual data on its own page. This is the index."
-    wdoc_repeater { each = facts  as = :f
-      p $"- [**${f.title}**](fact_${f.id})"
     }
   }
 }
 wdoc_repeater { each = facts  as = :f
   page $"fact_${f.id}" { sites = [:skill]  title = $"${f.title}"
     fact_body { unit = f  examples = examples  all_units = all_units  backlinks = []
-      p "[← All facts](facts_ref)"
       p "[← Back to SKILL.md](index)"
     }
   }
 }
-
-// One page per procedure — references/process_<id>.md for each element.
 wdoc_repeater { each = procedures  as = :pr
   page $"process_${pr.id}" { sites = [:skill]  title = $"${pr.title}"
     process_body { unit = pr  all_units = all_units  step_style = "skill"  backlinks = []

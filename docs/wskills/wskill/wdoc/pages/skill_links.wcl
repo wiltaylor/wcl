@@ -250,59 +250,18 @@ wdoc_repeater { each = skill_facts  as = :f
   }
 }
 
-// --- Entry, index & support page previews -----------------------------------
-// Reproduced from wdoc/skill/main.wcl so the preview matches the real file —
-// KEEP IN SYNC with that file. SKILL.md is the start page (`reference = false`,
-// links resolve to `references/…` with no `../`); the rest are reference pages.
+// --- Entry page preview ------------------------------------------------------
+// SKILL.md is the start page (`reference = false`, links resolve to
+// `references/…` with no `../`). Its body is the shared `skill_md_body`
+// component — the exact same one wdoc/skill/main.wcl renders — so this preview
+// reproduces the real file with nothing to keep in sync.
 
 page skillpage_index { title = "SKILL.md"
   h1 "`SKILL.md`"
-  p  "The skill's entry point. The build also prepends YAML front matter (`name`, `description`, `wskill_schema_version`, tool permissions), shown by `wcl wdoc skill` but not reproduced here. [Back to the skill graph](skill_links_page)."
+  p  "The skill's entry point. The build also prepends YAML front matter (`name`, `description`, `wskill_schema_version`, tool permissions), shown by `wcl wdoc skill` but not reproduced here."
+  p  $"[:lucide.arrow-left: Back to the skill graph](skill_links_page)" { class = ["skill-nav"] }
   markdown_source { id = "index"  start_page = "index"  reference = false  pages = skill_pages
-    h1 $"${topic.name}"
-    p  $"${topic.summary}"
-    wdoc_repeater { each = match topic.version { none => [], v => [v] }  as = :v
-      p $"**Upstream version:** `${v}`. If the real upstream has moved past this, the skill may be stale — bump `topic.version` and re-verify (see the update workflow)." }
-    wdoc_repeater { each = skill.summary  as = :sm
-      wdoc_repeater { each = sm.overview  as = :o  p $"${o}" } }
-    wdoc_repeater { each = match len(skill.parameters) { 0 => [], _ => [true] }  as = :_pmh
-      h2 "Parameters"
-      p  "Values to pass when invoking this skill — reference them as `$ARGUMENTS`, `$1`, `$2`, … in the prompt."
-      table {
-        header = ["Parameter", "Description", "How to determine the value"]
-        rows = map(skill.parameters, fn(pp: SkillParam) -> list<utf8> { [pp.name, pp.description ?? "—", pp.value ?? "—"] })
-      } }
-    wdoc_repeater { each = skill.boundary  as = :bd
-      p "<Boundary>"
-      wdoc_repeater { each = match len(bd.always) { 0 => [], _ => [true] }  as = :_ba  p "**Always:**" }
-      wdoc_repeater { each = bd.always  as = :it  p $"- ${it}" }
-      wdoc_repeater { each = match len(bd.ask) { 0 => [], _ => [true] }  as = :_bk  p "**Ask first:**" }
-      wdoc_repeater { each = bd.ask  as = :it  p $"- ${it}" }
-      wdoc_repeater { each = match len(bd.never) { 0 => [], _ => [true] }  as = :_bn  p "**Never:**" }
-      wdoc_repeater { each = bd.never  as = :it  p $"- ${it}" }
-      p "</Boundary>" }
-    h2 "Reference"
-    wdoc_repeater { each = skill_indexes  as = :ix
-      h3 $"${ix.name}"
-      wdoc_repeater { each = match ix.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
-      wdoc_repeater { each = match ix.body { none => [], b => [true] }  as = :_b  project { from = ix.body } }
-      wdoc_repeater { each = ix.related  as = :rid
-        wdoc_repeater { each = filter(skill_concepts,   fn(x: Concept)   -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
-        wdoc_repeater { each = filter(skill_entities,   fn(x: Entity)    -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
-        wdoc_repeater { each = filter(skill_facts,      fn(x: Fact)      -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
-        wdoc_repeater { each = filter(skill_procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
-      }
-      wdoc_repeater { each = filter(ix.children, fn(x: Index) -> bool { in_skill(x.audience) })  as = :cix
-        h4 $"${cix.name}"
-        wdoc_repeater { each = match cix.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
-        wdoc_repeater { each = cix.related  as = :rid
-          wdoc_repeater { each = filter(skill_concepts,   fn(x: Concept)   -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
-          wdoc_repeater { each = filter(skill_entities,   fn(x: Entity)    -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
-          wdoc_repeater { each = filter(skill_facts,      fn(x: Fact)      -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
-          wdoc_repeater { each = filter(skill_procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
-        }
-      }
-    }
+    skill_md_body { topic = topic  skill = skill  indexes = skill_indexes  concepts = skill_concepts  entities = skill_entities  facts = skill_facts  procedures = skill_procedures  extra_refs = [] }
   }
 }
 
