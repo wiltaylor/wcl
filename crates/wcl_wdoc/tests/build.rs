@@ -4735,7 +4735,7 @@ page usage {
     // Content lands in the reading column.
     assert!(
         intro
-            .contains("<main class=\"book-content\"><p class=\"heading-1\" id=\"intro\"><span>Intro</span></p>"),
+            .contains("<main class=\"book-content\"><div class=\"book-measure\"><p class=\"heading-1\" id=\"intro\"><span>Intro</span></p>"),
         "{intro}"
     );
 

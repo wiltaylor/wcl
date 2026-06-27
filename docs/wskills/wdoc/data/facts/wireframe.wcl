@@ -8,6 +8,22 @@ fact wireframe {
     p "Wireframe widgets mock up a UI — windows, device frames (browser / phone / tablet), panels, inputs, controls — as **diagram shapes**. Each `wf_*` block extends `SvgBlock`, so it lives inside a `diagram`: place it with `x` / `y` (or anchors), connect widgets with edges, and mix them with any other shape. Container widgets nest other widgets, so you compose a window of panels of rows of controls. They're static SVG mockups, not interactive."
     h2 "Containers"
     p "Container widgets take `@children(Widget)`. The Rust renderer measures and lays out the children internally (their `x` / `y` are ignored); only the root widget's placement positions the group. Device frames have a realistic fixed default size; everything else is sized to its content."
+    demo {
+      diagram = true
+      diagram {
+        width = 300  height = 200
+        wf_window "Account settings" {
+          wf_panel { title = "Profile"
+            wf_input "Display name" { value = "Wil Taylor" }
+            wf_input "Email"        { value = "ai@wiltaylor.dev" }
+          }
+          wf_row {
+            wf_button "Cancel"
+            wf_button "Save" { icon = "lucide.check" }
+          }
+        }
+      }
+    }
     block_doc {
       type        = WfWindow
       description = "A desktop window frame with a title bar; nests child widgets as its content."
@@ -39,22 +55,6 @@ fact wireframe {
     block_doc {
       type        = WfGrid
       description = "Arranges its child widgets in a measured grid."
-    }
-    demo {
-      diagram = true
-      diagram {
-        width = 300  height = 200
-        wf_window "Account settings" {
-          wf_panel { title = "Profile"
-            wf_input "Display name" { value = "Wil Taylor" }
-            wf_input "Email"        { value = "ai@wiltaylor.dev" }
-          }
-          wf_row {
-            wf_button "Cancel"
-            wf_button "Save" { icon = "lucide.check" }
-          }
-        }
-      }
     }
     h2 "Controls"
     p "The leaf controls are `wf_label`, `wf_button` (optional leading `icon`), `wf_input` (placeholder vs `value`), `wf_dropdown`, `wf_checkbox`, `wf_radio`, and `wf_toggle`."

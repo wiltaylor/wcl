@@ -65,7 +65,7 @@ let referenced_by = fn(uid: identifier) -> list<UnitRef> {
 // otherwise leaves the lists looking double-spaced).
 stylesheet "related-cols" {
   css = <<CSS
-.related-cols { align-items: start; }
+.related-cols { align-items: start; margin-top: 2.75rem; padding-top: 1.6rem; border-top: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); }
 .related-cols p { margin: 0.15rem 0; }
 .related-cols .heading-2 { margin: 0 0 0.35rem; }
 CSS

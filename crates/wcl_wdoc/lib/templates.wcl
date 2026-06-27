@@ -711,7 +711,8 @@ let book_css = <<CSS
   .book-sidebar li.book-branch.open > .book-toc-row > .book-toc-toggle::before { transform: rotate(90deg); }
   .book-sidebar li.book-branch > ul.book-toc { display: none; }
   .book-sidebar li.book-branch.open > ul.book-toc { display: block; }
-  .book-content { margin-left: 16rem; padding: 2.5rem 3rem 6rem; max-width: 46rem; background: var(--wdoc-book-bg); min-height: 100vh; box-sizing: border-box; font-family: var(--wdoc-font-body); }
+  .book-content { margin-left: 16rem; margin-right: 15rem; min-height: 100vh; box-sizing: border-box; }
+  .book-content .book-measure { max-width: 60rem; margin: 0 auto; padding: 2.5rem 3.5rem 6rem; background: var(--wdoc-book-bg); min-height: 100vh; box-sizing: border-box; font-family: var(--wdoc-font-body); }
   .theme-toggle { display: block; margin: 0 0 0.75rem; padding: 0.25rem 0.7rem; cursor: pointer; background: var(--wdoc-bg-alt); border: 1px solid var(--wdoc-border-strong); border-radius: 999px; color: inherit; font: inherit; font-family: var(--wdoc-font-head); font-size: 0.8rem; }
   .book-pagenav { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 3.5rem; }
   .book-pagenav .book-nav { display: block; padding: 0.9rem 1.1rem; border: 1px solid var(--wdoc-border); border-radius: 8px; background: var(--wdoc-book-bg); text-decoration: none; color: var(--wdoc-heading); font-family: var(--wdoc-font-head); font-weight: 600; }
@@ -730,7 +731,7 @@ let book_css = <<CSS
   .book-palette { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 1.6rem; }
   .book-palette span { width: 22px; height: 22px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--wdoc-fg) 14%, transparent); }
   .heading-marker { display: block; font-size: 0.78rem; margin-bottom: 0.2rem; }
-  @media (max-width: 82rem) { .book-rail { display: none; } }
+  @media (max-width: 82rem) { .book-rail { display: none; } .book-content { margin-right: 0; } }
   CSS
 
 // Stdlib `book` template: an mdbook-style layout — a fixed left
@@ -804,14 +805,21 @@ let wdoc_part_sidebar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
 ]
 
 // The page content in the book reading column (`<main class="book-content">`),
-// followed by the previous/next pagination derived from the TOC order.
+// followed by the previous/next pagination derived from the TOC order. The
+// inner `book-measure` caps the reading width and centres the column between
+// the fixed sidebar and rail.
 let wdoc_part_book_content = fn(c: TemplateCtx) -> list<HtmlFundamental> [
   HtmlFundamental::Element {
     tag: "main", id: none, class: ["book-content"], attrs: none,
-    children: flatten([
-      [ HtmlFundamental::Raw { html: c.content } ],
-      book_pagenav(c.toc),
-    ]),
+    children: [
+      HtmlFundamental::Element {
+        tag: "div", id: none, class: ["book-measure"], attrs: none,
+        children: flatten([
+          [ HtmlFundamental::Raw { html: c.content } ],
+          book_pagenav(c.toc),
+        ]),
+      },
+    ],
   },
 ]
 

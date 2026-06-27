@@ -13,8 +13,9 @@
 //     callout "Tip" { class = ["tip"]  body = "Author once, see both." }
 //   }
 //
-// Set `diagram = true` for wide diagram-family components: the two
-// previews stack vertically (full width each) instead of side by side.
+// Set `diagram = true` for diagram-family components: the two previews
+// stay side by side but centre and scale their diagram to fit the pane, so
+// a compact diagram isn't lost in a wide, half-empty box.
 //
 // Like `card` / `markdown_source`, a demo is special-cased in the
 // renderer (its `lower` is a stub): printing children as source and
@@ -28,7 +29,7 @@ namespace wdoc
 type Demo extends WdocBlock {
   @doc("Optional caption shown above the example.")
   @inline(0) title: utf8?
-  @doc("Stack the light and dark previews vertically (full width each) instead of side by side — for wide diagram-family components.")
+  @doc("Centre + scale the light/dark previews for diagram-family components (kept side by side), so a compact diagram fills its pane instead of sitting in a half-empty box.")
   @default(false) diagram: bool
   @doc("Optional explicit HTML id.")
   id: identifier?
@@ -50,10 +51,15 @@ stylesheet "wdoc-demo" {
   css = <<CSS
     .wdoc-demo { margin: 0.75rem 0; }
     .wdoc-demo-label { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.7; margin: 0.4rem 0 0.2rem; }
-    .wdoc-preview-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
-    .wdoc-preview-stack { display: grid; grid-template-columns: 1fr; gap: 0.6rem; }
-    .wdoc-preview { padding: 0.8rem; border-radius: 6px; border: 1px solid #444; background: #262b33; color: #e6e6e6; overflow: auto; }
+    .wdoc-preview-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; align-items: start; }
+    /* `min-height: 0` resets the 100vh the shared `wdoc-body` class carries
+       (core.wcl) — a preview pane sizes to its content, not the viewport. */
+    .wdoc-preview { padding: 0.8rem; border-radius: 6px; border: 1px solid #444; background: #262b33; color: #e6e6e6; overflow: auto; min-height: 0; }
     .wdoc-preview > :first-child { margin-top: 0; }
     .wdoc-preview > :last-child  { margin-bottom: 0; }
+    /* Diagram previews: centre the (scaled-to-fit) diagram in its pane. */
+    .wdoc-preview-diagram .wdoc-preview { display: flex; align-items: center; justify-content: center; }
+    .wdoc-preview-diagram .wdoc-preview .wdoc-diagram-viewport, .wdoc-preview-diagram .wdoc-preview svg { max-width: 100%; }
+    @media (max-width: 48rem) { .wdoc-preview-row { grid-template-columns: 1fr; } }
     CSS
 }

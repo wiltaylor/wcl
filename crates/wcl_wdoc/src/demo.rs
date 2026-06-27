@@ -37,14 +37,16 @@ pub(crate) fn demo_source(block: &Block<'_>) -> String {
 
 /// Render a `demo` block to HTML: the example source in a highlighted `code`
 /// block, then the children rendered live inside a light-themed and a
-/// dark-themed preview pane (side by side, or stacked when `diagram = true`).
+/// dark-themed preview pane, side by side. With `diagram = true` the panes
+/// also centre + scale their contents (so a compact diagram doesn't sit in a
+/// wide, half-empty pane).
 pub(crate) fn render_html(
     doc: &Document,
     block: &Block<'_>,
     patterns: &InlinePatterns,
     base_dir: Option<&Path>,
 ) -> String {
-    let stacked = field_bool(block, "diagram").unwrap_or(false);
+    let diagram = field_bool(block, "diagram").unwrap_or(false);
 
     let mut out = String::from("<div class=\"wdoc-demo\"");
     append_attr(&mut out, "id", field_id(block, "id").as_deref());
@@ -60,26 +62,14 @@ pub(crate) fn render_html(
         .expect("write to String");
     }
 
-    // Example — the children's formatted source, highlighted like `code`
-    // (mirrors the WCL `code` lower: tokens inside `<pre><code language-…>`).
-    let source = demo_source(block);
-    if !source.is_empty() {
-        let body = highlight::highlight_html(&source, "wcl", false);
-        out.push_str("<p class=\"wdoc-demo-label\">Example</p>");
-        write!(
-            out,
-            "<pre class=\"code-block\"><code class=\"language-wcl\">{body}</code></pre>"
-        )
-        .expect("write to String");
-    }
-
     // Preview — the children rendered live once, shown under each palette.
+    // Shown first (above the example source) so the visual result leads.
     let children: String = block
         .blocks()
         .filter_map(|b| render_block(doc, &b, patterns, base_dir))
         .collect();
-    let row_class = if stacked {
-        "wdoc-preview-stack"
+    let row_class = if diagram {
+        "wdoc-preview-row wdoc-preview-diagram"
     } else {
         "wdoc-preview-row"
     };
@@ -91,6 +81,22 @@ pub(crate) fn render_html(
          <div class=\"wdoc-body wdoc-theme-dark wdoc-preview\">{children}</div>"
     )
     .expect("write to String");
-    out.push_str("</div></div>");
+    out.push_str("</div>");
+
+    // Example — the children's formatted source, highlighted like `code`
+    // (mirrors the WCL `code` lower: tokens inside `<pre><code language-…>`),
+    // shown just below the preview.
+    let source = demo_source(block);
+    if !source.is_empty() {
+        let body = highlight::highlight_html(&source, "wcl", false);
+        out.push_str("<p class=\"wdoc-demo-label\">Example</p>");
+        write!(
+            out,
+            "<pre class=\"code-block\"><code class=\"language-wcl\">{body}</code></pre>"
+        )
+        .expect("write to String");
+    }
+
+    out.push_str("</div>");
     out
 }

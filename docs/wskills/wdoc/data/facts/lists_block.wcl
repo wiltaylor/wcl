@@ -5,14 +5,6 @@ fact lists_block {
   related  = [tables_block, callouts]
   audience = :both
   body {
-    block_doc {
-      type        = ListBlock
-      description = "A `list` holds `li` items. It's a bullet list by default; set `style = :numbered` for a numbered one. Each `li`'s text runs through the inline-pattern engine, so **bold**, `code`, links, and icons all work inside items. See [formatting](concept_formatting)."
-    }
-    block_doc {
-      type        = Li
-      description = "An `li` is one list item. Nest an `li` inside an `li` for a sublist, or drop a whole `list` block inside it for a sublist with a different style."
-    }
     demo {
       list {
         li "Plain item"
@@ -22,6 +14,14 @@ fact lists_block {
         li "First step"
         li "Second step"
       }
+    }
+    block_doc {
+      type        = ListBlock
+      description = "A `list` holds `li` items. It's a bullet list by default; set `style = :numbered` for a numbered one. Each `li`'s text runs through the inline-pattern engine, so **bold**, `code`, links, and icons all work inside items. See [formatting](concept_formatting)."
+    }
+    block_doc {
+      type        = Li
+      description = "An `li` is one list item. Nest an `li` inside an `li` for a sublist, or drop a whole `list` block inside it for a sublist with a different style."
     }
     h2 "Nesting"
     p "Nest an `li` inside an `li` for a sublist — it inherits the parent list's style, so a numbered list numbers sublists hierarchically (`2.1`, `2.2`). For a sublist with a **different** style, drop a whole `list` block inside the `li` instead."

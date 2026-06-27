@@ -5,10 +5,6 @@ fact diagrams {
   related  = [flowcharts, sequence_diagrams, state_diagrams, charts, tree, images, icons]
   audience = :both
   body {
-    block_doc {
-      type        = Diagram
-      description = "A `diagram` is wdoc's drawing surface. It declares a `width` / `height` and holds shapes that break down into primitives and render as SVG. Connect two shapes by id with an `a -> b` edge; set `pan_zoom = true` for an interactive viewport; set a `layout` (`:layered` / `:radial` / `:force`) to place shapes automatically (see [layout modes](fact_layout_modes)). Higher-level families (flowcharts, charts, trees, maps, tilemaps, wireframes) are shapes that live inside a `diagram` too. See the [connections](concept_connections) concept and the SVG [primitives](concept_primitives)."
-    }
     demo {
       diagram = true
       diagram {
@@ -18,6 +14,10 @@ fact diagrams {
         rect { id = b  x = 210.0  y = 90.0  width = 80.0  height = 50.0  fill = "#a3be8c" }
         a -> b
       }
+    }
+    block_doc {
+      type        = Diagram
+      description = "A `diagram` is wdoc's drawing surface. It declares a `width` / `height` and holds shapes that break down into primitives and render as SVG. Connect two shapes by id with an `a -> b` edge; set `pan_zoom = true` for an interactive viewport; set a `layout` (`:layered` / `:radial` / `:force`) to place shapes automatically (see [layout modes](fact_layout_modes)). Higher-level families (flowcharts, charts, trees, maps, tilemaps, wireframes) are shapes that live inside a `diagram` too. See the [connections](concept_connections) concept and the SVG [primitives](concept_primitives)."
     }
 
     h2 "Primitive shapes"
