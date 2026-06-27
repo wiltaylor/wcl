@@ -1,11 +1,15 @@
 // ── Stdlib code block ──────────────────────────────────────────────
 //
-// Syntax-highlighted source listing. Lowers to `<pre class="code-block …">
-// <code class="language-X">…</code></pre>`; the per-token colouring is
-// produced in Rust by syntect (the `Highlighted` fundamental) since it
-// isn't expressible in WCL, but the `<pre>`/`<code>` structure + classes
-// are authored here. The `language` tag picks the grammar (`rust`,
-// `python`, `wcl`, …); an unknown tag falls back to plain-text rendering.
+// Syntax-highlighted source listing, rendered as the book code-card: a
+// `<figure class="code-card">` wrapping a header bar (window dots, an
+// optional `filename`, the language tag) and the `<pre class="code-block">
+// <code class="language-X">…</code></pre>` listing. The per-token
+// colouring is produced in Rust by syntect (the `Highlighted`
+// fundamental), which also wraps each line in `<span class="code-line">`
+// so a CSS counter draws the line-number gutter. The header is a single
+// `Raw` so the Markdown / PDF backends (which read the block's fields,
+// not its lowered HTML) ignore it. The `language` tag picks the grammar
+// (`rust`, `python`, `wcl`, …); an unknown tag falls back to plain text.
 
 namespace wdoc
 
@@ -15,27 +19,55 @@ type Code extends WdocBlock {
   @inline(0) language: identifier
   @doc("The code text — usually a raw heredoc (`<<'TAG'`).")
   source: utf8
+  @doc("Optional filename shown in the code-card header bar.")
+  filename: utf8?
   @doc("Optional explicit HTML id.")
   id:     identifier?
   @doc("Optional class list (in addition to `code-block`).")
   class:  list<utf8>?
-  lower = fn(c: Code) -> list<HtmlFundamental> [
-    HtmlFundamental::Element {
-      tag: "pre", id: c.id,
-      class: flatten([["code-block"], if c.class == none { [] } else { c.class }]),
-      attrs: none,
-      children: [
-        HtmlFundamental::Element {
-          tag: "code", id: none,
-          class: [format("language-{}", c.language)], attrs: none,
-          children: [
-            HtmlFundamental::Highlighted {
-              source: c.source, language: format("{}", c.language),
-            },
-          ],
-        },
-      ],
-    },
-  ]
+  lower = fn(c: Code) -> list<HtmlFundamental> {
+    let dots = "<span class=\"code-dots\"><span></span><span></span><span></span></span>";
+    let name = if c.filename == none { "" } else { format("<span class=\"code-name\">{}</span>", c.filename ?? "") };
+    let header = format("<div class=\"code-filename\">{}{}<span class=\"code-lang\">{}</span></div>", dots, name, c.language);
+    [
+      HtmlFundamental::Element {
+        tag: "figure", id: none, class: ["code-card"], attrs: none,
+        children: [
+          HtmlFundamental::Raw { html: header },
+          HtmlFundamental::Element {
+            tag: "pre", id: c.id,
+            class: flatten([["code-block"], if c.class == none { [] } else { c.class }]),
+            attrs: none,
+            children: [
+              HtmlFundamental::Element {
+                tag: "code", id: none,
+                class: [format("language-{}", c.language)], attrs: none,
+                children: [
+                  HtmlFundamental::Highlighted {
+                    source: c.source, language: format("{}", c.language),
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]
+  }
+}
+
+// Code-card chrome + line-number gutter. Element+descendant selectors a
+// bare `class` can't express; colours come from the theme apply rules.
+stylesheet "wdoc-code" {
+  css = <<CSS
+    .code-card { margin: 1.2rem 0; border-radius: 8px; overflow: hidden; }
+    .code-filename { display: flex; align-items: center; gap: 0.55rem; padding: 0.45rem 0.85rem; font-size: 0.78rem; }
+    .code-dots { display: inline-flex; gap: 4px; }
+    .code-dots span { width: 9px; height: 9px; border-radius: 999px; }
+    .code-lang { margin-left: auto; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.68rem; }
+    .code-card pre.code-block { margin: 0; border: none; border-radius: 0; padding-left: 3.3rem; counter-reset: code-line; }
+    .code-card .code-line { display: block; position: relative; counter-increment: code-line; }
+    .code-card .code-line::before { content: counter(code-line); position: absolute; left: -2.7rem; width: 2.2rem; text-align: right; color: #999; opacity: 0.75; user-select: none; }
+    CSS
 }
 

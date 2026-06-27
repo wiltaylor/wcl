@@ -14,6 +14,7 @@ namespace wdoc
 
 import <core.wcl>             // @document Site, block interfaces, Page, Class
 import <theme.wcl>            // ColourTheme / Palette + built-in colour themes
+import <fonts.wcl>            // @font-face faces + --wdoc-font-* defaults
 import <css-classes.wcl>      // bundled default `class` instances
 import <diagram-core.wcl>     // diagram, container, SVG shapes, fundamentals
 import <text.wcl>             // text / span / column
@@ -43,6 +44,8 @@ import <card.wcl>             // rich-text card shape (foreignObject)
 import <node_table.wcl>       // row-table shape (DB / class diagrams) + per-row ports
 import <tree.wcl>             // indented file-tree shape (nested nodes + guides)
 import <headings.wcl>         // h1..h6
+import <chapter_header.wcl>   // rich page header (kicker + h1 + meta)
+import <footnotes.wcl>        // footnote definitions + [^id] references
 import <p.wcl>                // single-span paragraph shorthand
 import <code.wcl>             // syntax-highlighted code block
 import <markdown_source.wcl>  // preview a (skill) page's generated Markdown

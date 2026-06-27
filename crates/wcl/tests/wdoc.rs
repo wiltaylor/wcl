@@ -50,5 +50,8 @@ fn wcl_wdoc_build_renders_fundamental_blocks() {
     assert!(overview.contains("<p><span>"), "{overview}");
     assert!(overview.contains("<svg"), "{overview}");
     assert!(overview.contains("class=\""), "{overview}");
-    assert!(overview.contains("<p class=\"heading-1\">"), "{overview}");
+    assert!(
+        overview.contains("<p class=\"heading-1\" id="),
+        "{overview}"
+    );
 }

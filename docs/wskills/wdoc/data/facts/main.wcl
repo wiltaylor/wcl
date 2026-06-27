@@ -4,6 +4,12 @@
 // light/dark preview).
 import "./template_kinds.wcl"
 import "./themes.wcl"
+import "./theme_nord.wcl"
+import "./theme_tokyonight.wcl"
+import "./theme_gruvbox.wcl"
+import "./theme_catppuccin.wcl"
+import "./theme_rose.wcl"
+import "./theme_paper.wcl"
 import "./callout_classes.wcl"
 import "./layout_modes.wcl"
 

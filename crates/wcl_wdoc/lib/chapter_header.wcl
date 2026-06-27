@@ -1,0 +1,72 @@
+// ── Stdlib chapter header ──────────────────────────────────────────
+//
+// A rich page header: an optional kicker (chapter / section eyebrow), the
+// page's `h1`, and an optional meta line (reading time / updated date /
+// version). Lowers to a `<header class="book-chapter-header">` wrapping a
+// real `heading-1` paragraph — so the book's nav-title fallback (first h1
+// on the page) still finds it, and the Markdown / PDF backends descend the
+// header and emit the `# title` plus the kicker/meta as plain text.
+
+namespace wdoc
+
+@block("chapter_header")
+type ChapterHeader extends WdocBlock {
+  @doc("The page title (the inline label slot) — rendered as the page `h1`.")
+  @inline(0) title: utf8
+  @doc("Small eyebrow above the title (e.g. a chapter number + section name).")
+  kicker: utf8?
+  @doc("Estimated reading time (e.g. `\"9 min read\"`).")
+  reading_time: utf8?
+  @doc("Last-updated label (e.g. a date).")
+  updated: utf8?
+  @doc("Version label (e.g. `\"wdoc 0.24.1-alpha\"`).")
+  version: utf8?
+  @doc("Optional explicit HTML id for the heading.")
+  id: identifier?
+  lower = fn(c: ChapterHeader) -> list<HtmlFundamental> {
+    let kicker =
+      if c.kicker == none { [] }
+      else { [ HtmlFundamental::Element {
+        tag: "p", id: none, class: ["book-kicker"], attrs: none,
+        children: [ HtmlFundamental::Raw { html: c.kicker ?? "" } ],
+      } ] };
+    let meta_items = flatten([
+      if c.reading_time == none { [] } else { [ HtmlFundamental::Element {
+        tag: "span", id: none, class: ["book-meta-item"], attrs: none,
+        children: [ HtmlFundamental::Raw { html: c.reading_time ?? "" } ] } ] },
+      if c.updated == none { [] } else { [ HtmlFundamental::Element {
+        tag: "span", id: none, class: ["book-meta-item"], attrs: none,
+        children: [ HtmlFundamental::Raw { html: c.updated ?? "" } ] } ] },
+      if c.version == none { [] } else { [ HtmlFundamental::Element {
+        tag: "span", id: none, class: ["book-meta-item"], attrs: none,
+        children: [ HtmlFundamental::Raw { html: c.version ?? "" } ] } ] },
+    ]);
+    let meta =
+      if len(meta_items) == 0 { [] }
+      else { [ HtmlFundamental::Element {
+        tag: "div", id: none, class: ["book-meta"], attrs: none, children: meta_items,
+      } ] };
+    [
+      HtmlFundamental::Element {
+        tag: "header", id: none, class: ["book-chapter-header"], attrs: none,
+        children: flatten([
+          kicker,
+          [ HtmlFundamental::Paragraph { id: c.id, class: ["heading-1"], spans: [c.title] } ],
+          meta,
+        ]),
+      },
+    ]
+  }
+}
+
+// Chapter-header layout; colours come from the theme apply rules.
+stylesheet "wdoc-chapter-header" {
+  css = <<CSS
+    .book-chapter-header { margin: 0 0 2.5rem; }
+    .book-kicker { font-size: 0.8rem; letter-spacing: 0.04em; margin: 0 0 0.6rem; }
+    .book-chapter-header .heading-1 { margin-top: 0; }
+    .book-meta { display: flex; flex-wrap: wrap; gap: 0.5rem 1.1rem; margin-top: 1rem; padding-top: 0.9rem; font-size: 0.82rem; }
+    .book-meta-item { white-space: nowrap; }
+    .book-meta-item + .book-meta-item::before { content: "·"; margin-right: 1.1rem; }
+    CSS
+}

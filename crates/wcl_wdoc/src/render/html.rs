@@ -391,8 +391,17 @@ pub(crate) fn render_template(
     } else {
         toc_to_value(toc_nodes, page_name)
     };
+    // Stamp heading anchors + section markers and collect the in-page
+    // heading list for the "on this page" rail (book template), then link
+    // any `[^id]` footnote references to their definitions.
+    let (content, page_headings) = super::headings::process_page_headings(content);
+    let content = super::headings::process_footnotes(&content);
     let mut ctx = BTreeMap::new();
-    ctx.insert("content".to_string(), Value::Utf8(content.to_string()));
+    ctx.insert("content".to_string(), Value::Utf8(content));
+    ctx.insert(
+        "on_this_page".to_string(),
+        super::headings::on_this_page_value(&page_headings),
+    );
     ctx.insert("regions".to_string(), regions);
     ctx.insert("title".to_string(), Value::Utf8(title.to_string()));
     ctx.insert("page_name".to_string(), Value::Utf8(page_name.to_string()));
@@ -1010,7 +1019,7 @@ fn render_markdown_source(
         None => emit(),
     };
     let body = match md {
-        Ok(s) => highlight::highlight_html(s.trim_end(), "markdown"),
+        Ok(s) => highlight::highlight_html(s.trim_end(), "markdown", false),
         // Surface a lowering failure in the preview rather than failing the
         // whole build — the block is a documentation aid, not load-bearing.
         Err(_) => escape_html("markdown_source: failed to render body to Markdown"),
@@ -1024,7 +1033,9 @@ fn render_markdown_source(
 pub(crate) fn render_highlighted_fundamental(map: &BTreeMap<String, Value>) -> String {
     let source = map_utf8(map, "source").unwrap_or_default();
     let language = map_utf8(map, "language").unwrap_or_default();
-    highlight::highlight_html(&source, &language)
+    // Code blocks render as the book code-card with a line-number gutter;
+    // each line is wrapped in `<span class="code-line">` for the counter.
+    highlight::highlight_html(&source, &language, true)
 }
 
 pub(crate) fn render_paragraph_payload(map: &BTreeMap<String, Value>) -> String {

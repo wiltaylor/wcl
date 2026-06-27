@@ -75,7 +75,7 @@ WCL
 
   h3 "Selecting a built-in theme"
 
-  p "Set `theme = :<name>` on a `site` — a symbol naming a `theme` block. Seven built-in palettes ship, each with co-ordinated dark and light variants. `theme_toggle = true` adds a light/dark toggle button to the chrome."
+  p "Set `theme = :<name>` on a `site` — a symbol naming a `theme` block. Six built-in palettes ship, each with co-ordinated dark and light variants and its own typography. `theme_toggle = true` adds a light/dark toggle button to the chrome."
 
   code wcl {
     source = <<'WCL'
@@ -94,12 +94,11 @@ WCL
     rows:
       | "Theme"        | "Notes" |
       | "`nord`"       | "Cool blue-grey, the default" |
-      | "`gruvbox`"    | "Warm retro" |
-      | "`solarized`"  | "Classic Solarized" |
-      | "`catppuccin`" | "Soft pastel" |
       | "`tokyonight`" | "Vivid night palette" |
-      | "`kanagawa`"   | "Muted with hints of indigo" |
-      | "`everforest`" | "Green forest tones" |
+      | "`gruvbox`"    | "Warm retro" |
+      | "`catppuccin`" | "Soft pastel" |
+      | "`rose`"       | "Muted rosé" |
+      | "`paper`"      | "Warm print look, serif headings" |
   }
 
   h3 "Accent colour"

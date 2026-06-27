@@ -61,6 +61,17 @@ type FooterButton {
   icon:    utf8
 }
 
+// One in-page heading for the book's "on this page" rail. Built by the
+// renderer from the current page's `h2` / `h3` headings: `level` is 2 or 3,
+// `id` the (synthesised) anchor target, `title` the heading text, `number`
+// the `§` section number (e.g. `"4.1"`).
+type OnPageHeading {
+  level:  i64
+  id:     utf8
+  title:  utf8
+  number: utf8
+}
+
 // Context handed to a template's (and any part function's) `render`.
 type TemplateCtx {
   @doc("The page's rendered body HTML — embed it with `Raw`.")
@@ -75,6 +86,8 @@ type TemplateCtx {
   pages:        list<PageRef>
   @doc("The book TOC tree; flat (one entry per page) when the site declares no `toc`.")
   toc:          list<TocEntry>
+  @doc("The current page's `h2`/`h3` headings, for the book's 'on this page' rail. Empty when the page has none.")
+  on_this_page: list<OnPageHeading>
   @doc("The site's curated navbar menu; empty when the site declares no `menu`.")
   menu:         list<MenuEntry>
   @doc("Pinned sidebar-footer buttons (the site's `sidebar_footer`); empty when none declared. Each carries its icon already rendered to SVG markup.")
@@ -676,17 +689,18 @@ let book_pagenav = fn(toc: list<TocEntry>) -> list<HtmlFundamental> {
 // the chapter / section colours are the bundled `class "book-chapter" /
 // "book-section" / "current"`.
 let book_css = <<CSS
-  .book-sidebar { position: fixed; top: 0; left: 0; width: 16rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem; border-right: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); background: var(--wdoc-bg-alt, rgba(127,127,127,0.06)); display: flex; flex-direction: column; }
-  .book-title { font-weight: bold; font-size: 1.1rem; margin-bottom: 0.75rem; }
+  .book-sidebar { position: fixed; top: 0; left: 0; width: 16rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem; border-right: 1px solid var(--wdoc-border); background: var(--wdoc-bg-alt); display: flex; flex-direction: column; font-family: var(--wdoc-font-head); scrollbar-width: thin; scrollbar-color: var(--wdoc-border-strong) transparent; }
+  .book-sidebar::-webkit-scrollbar { width: 9px; }
+  .book-sidebar::-webkit-scrollbar-thumb { background: var(--wdoc-border-strong); border-radius: 999px; border: 2px solid var(--wdoc-bg-alt); }
+  .book-title { font-weight: 600; font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--wdoc-fg-muted); margin-bottom: 0.9rem; }
   .book-home { display: block; margin-bottom: 0.6rem; opacity: 0.8; text-decoration: none; color: inherit; }
   .book-home:hover { opacity: 1; text-decoration: underline; }
   .book-sidebar ul.book-toc { list-style: none; margin: 0; padding-left: 0; }
   .book-sidebar ul.book-toc ul.book-toc { padding-left: 0.85rem; }
-  .book-sidebar a.book-chapter { display: block; padding: 0.2rem 0; opacity: 0.85; }
-  .book-chapter { text-decoration: none; }
-  .book-chapter:hover { opacity: 1; text-decoration: underline; }
-  .book-sidebar a.book-chapter.current { opacity: 1; color: var(--wdoc-accent, inherit); }
-  .book-sidebar .book-section { display: block; padding: 0.35rem 0 0.1rem; font-weight: 600; opacity: 0.7; }
+  .book-sidebar a.book-chapter { display: block; padding: 0.25rem 0 0.25rem 0.6rem; border-left: 2px solid transparent; color: var(--wdoc-fg-muted); text-decoration: none; }
+  .book-sidebar a.book-chapter:hover { color: var(--wdoc-fg); }
+  .book-sidebar a.book-chapter.current { color: var(--wdoc-accent); border-left-color: var(--wdoc-accent); font-weight: 600; }
+  .book-sidebar .book-section { display: block; padding: 0.5rem 0 0.15rem; font-weight: 600; font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--wdoc-fg-subtle); }
   .book-sidebar .book-toc-row { display: flex; align-items: baseline; }
   .book-sidebar .book-toc-row > a.book-chapter, .book-sidebar .book-toc-row > .book-section { flex: 1 1 auto; }
   .book-sidebar .book-toc-toggle { flex: 0 0 1rem; cursor: pointer; user-select: none; text-align: center; opacity: 0.55; }
@@ -697,17 +711,26 @@ let book_css = <<CSS
   .book-sidebar li.book-branch.open > .book-toc-row > .book-toc-toggle::before { transform: rotate(90deg); }
   .book-sidebar li.book-branch > ul.book-toc { display: none; }
   .book-sidebar li.book-branch.open > ul.book-toc { display: block; }
-  .book-content { margin-left: 16rem; padding: 1rem 2.5rem; max-width: 46rem; }
-  .theme-toggle { display: block; margin: 0 0 0.75rem; padding: 0.2rem 0.6rem; cursor: pointer; background: transparent; border: 1px solid var(--wdoc-border, currentColor); border-radius: 4px; color: inherit; font: inherit; }
-  .book-pagenav { display: flex; gap: 1rem; margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); }
-  .book-pagenav .book-nav { text-decoration: none; opacity: 0.85; }
-  .book-pagenav .book-nav:hover { opacity: 1; text-decoration: underline; }
-  .book-pagenav .book-nav-next { margin-left: auto; text-align: right; }
-  .book-sidebar-footer { position: sticky; bottom: 0; margin: auto -1rem -1rem; padding: 0.6rem 1rem; background: var(--wdoc-bg-alt, rgba(127,127,127,0.06)); border-top: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); display: flex; flex-direction: column; gap: 0.4rem; }
-  .book-footer-btn { display: flex; align-items: center; justify-content: center; padding: 0.45rem 0.6rem; text-decoration: none; color: inherit; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.4)); border-radius: 6px; opacity: 0.85; }
-  .book-footer-btn:hover { opacity: 1; border-color: var(--wdoc-accent, currentColor); }
-  .book-footer-btn.current { color: var(--wdoc-accent, inherit); border-color: var(--wdoc-accent, currentColor); opacity: 1; }
+  .book-content { margin-left: 16rem; padding: 2.5rem 3rem 6rem; max-width: 46rem; background: var(--wdoc-book-bg); min-height: 100vh; box-sizing: border-box; font-family: var(--wdoc-font-body); }
+  .theme-toggle { display: block; margin: 0 0 0.75rem; padding: 0.25rem 0.7rem; cursor: pointer; background: var(--wdoc-bg-alt); border: 1px solid var(--wdoc-border-strong); border-radius: 999px; color: inherit; font: inherit; font-family: var(--wdoc-font-head); font-size: 0.8rem; }
+  .book-pagenav { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 3.5rem; }
+  .book-pagenav .book-nav { display: block; padding: 0.9rem 1.1rem; border: 1px solid var(--wdoc-border); border-radius: 8px; background: var(--wdoc-book-bg); text-decoration: none; color: var(--wdoc-heading); font-family: var(--wdoc-font-head); font-weight: 600; }
+  .book-pagenav .book-nav:hover { border-color: var(--wdoc-accent); }
+  .book-pagenav .book-nav-next { grid-column: 2; text-align: right; }
+  .book-sidebar-footer { position: sticky; bottom: 0; margin: auto -1rem -1rem; padding: 0.6rem 1rem; background: var(--wdoc-bg-alt); border-top: 1px solid var(--wdoc-border); display: flex; flex-direction: column; gap: 0.4rem; }
+  .book-footer-btn { display: flex; align-items: center; justify-content: center; padding: 0.45rem 0.6rem; text-decoration: none; color: inherit; border: 1px solid var(--wdoc-border); border-radius: 6px; opacity: 0.85; }
+  .book-footer-btn:hover { opacity: 1; border-color: var(--wdoc-accent); }
+  .book-footer-btn.current { color: var(--wdoc-accent); border-color: var(--wdoc-accent); opacity: 1; }
   .book-footer-btn .wdoc-icon { width: 1.4em; height: 1.4em; flex: 0 0 auto; }
+  .book-rail { position: fixed; top: 0; right: 0; width: 15rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 2.5rem 1.4rem; font-family: var(--wdoc-font-head); scrollbar-width: thin; scrollbar-color: var(--wdoc-border-strong) transparent; }
+  .book-rail-title { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.9rem; }
+  .book-onpage { display: flex; flex-direction: column; }
+  .book-onpage-link { display: block; padding: 0.2rem 0 0.2rem 0.7rem; font-size: 0.82rem; line-height: 1.35; text-decoration: none; }
+  .book-onpage-link.level-3 { padding-left: 1.5rem; font-size: 0.78rem; }
+  .book-palette { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 1.6rem; }
+  .book-palette span { width: 22px; height: 22px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--wdoc-fg) 14%, transparent); }
+  .heading-marker { display: block; font-size: 0.78rem; margin-bottom: 0.2rem; }
+  @media (max-width: 82rem) { .book-rail { display: none; } }
   CSS
 
 // Stdlib `book` template: an mdbook-style layout — a fixed left
@@ -792,6 +815,50 @@ let wdoc_part_book_content = fn(c: TemplateCtx) -> list<HtmlFundamental> [
   },
 ]
 
+// One "on this page" rail link (`<a class="book-onpage-link level-N">`),
+// anchoring to the heading's synthesised id; `level-2` / `level-3` drive the
+// indent. The title is pre-escaped HTML, embedded via `Raw`.
+let book_onpage_link = fn(h: OnPageHeading) -> HtmlFundamental
+  HtmlFundamental::Element {
+    tag: "a", id: none,
+    class: ["book-onpage-link", format("level-{}", h.level)],
+    attrs: [["href", format("#{}", h.id)]],
+    children: [ HtmlFundamental::Raw { html: h.title } ],
+  }
+
+// A small theme-palette strip shown at the foot of the rail.
+let book_rail_palette = HtmlFundamental::Raw {
+  html: "<div class=\"book-palette\"><span style=\"background:var(--wdoc-accent)\"></span><span style=\"background:var(--wdoc-accent2)\"></span><span style=\"background:var(--wdoc-green)\"></span><span style=\"background:var(--wdoc-yellow)\"></span><span style=\"background:var(--wdoc-red)\"></span><span style=\"background:var(--wdoc-blue)\"></span></div>",
+}
+
+// Highlights the rail link whose section is currently in view, via an
+// IntersectionObserver over the heading anchors.
+let book_rail_script = HtmlFundamental::Raw {
+  html: "<script>(function(){var ls=[].slice.call(document.querySelectorAll('.book-onpage-link'));if(!ls.length||!window.IntersectionObserver)return;var m={};ls.forEach(function(a){m[a.getAttribute('href').slice(1)]=a;});var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){ls.forEach(function(a){a.classList.remove('active');});var a=m[e.target.id];if(a)a.classList.add('active');}});},{rootMargin:'0px 0px -75% 0px'});ls.forEach(function(a){var el=document.getElementById(a.getAttribute('href').slice(1));if(el)io.observe(el);});})();</script>",
+}
+
+// The right-hand "on this page" rail (`<aside class="book-rail">`): the
+// current page's h2/h3 headings as anchor links, a palette strip, and the
+// scroll-spy script. Empty (renders nothing) on a page with no such headings.
+let wdoc_part_book_rail = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  if len(c.on_this_page) == 0 { [] }
+  else {
+    [ HtmlFundamental::Element {
+        tag: "aside", id: none, class: ["book-rail"], attrs: none,
+        children: flatten([
+          [ HtmlFundamental::Element {
+              tag: "div", id: none, class: ["book-rail-title"], attrs: none,
+              children: [ HtmlFundamental::Raw { html: "On this page" } ],
+          } ],
+          [ HtmlFundamental::Element {
+              tag: "nav", id: none, class: ["book-onpage"], attrs: none,
+              children: map(c.on_this_page, book_onpage_link),
+          } ],
+          [ book_rail_palette, book_rail_script ],
+        ]),
+    } ]
+  }
+
 // The nested TOC list (`<ul class="book-toc">`) on its own — the sidebar's
 // chapter tree without the surrounding `<nav>`.
 let wdoc_part_toc_tree = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
@@ -809,6 +876,7 @@ let wdoc_book_layout = fn(c: TemplateCtx) -> list<HtmlFundamental>
     wdoc_part_book_css(),
     wdoc_part_sidebar(c),
     wdoc_part_book_content(c),
+    wdoc_part_book_rail(c),
   ])
 
 template book {

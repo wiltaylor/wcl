@@ -28,6 +28,7 @@ pub fn schema_registry() -> Registry {
     r.register("wdoc/prelude.wcl", include_str!("../lib/prelude.wcl"));
     r.register("wdoc/core.wcl", include_str!("../lib/core.wcl"));
     r.register("wdoc/theme.wcl", include_str!("../lib/theme.wcl"));
+    r.register("wdoc/fonts.wcl", include_str!("../lib/fonts.wcl"));
     r.register(
         "wdoc/css-classes.wcl",
         include_str!("../lib/css-classes.wcl"),
@@ -69,6 +70,11 @@ pub fn schema_registry() -> Registry {
     r.register("wdoc/node_table.wcl", include_str!("../lib/node_table.wcl"));
     r.register("wdoc/tree.wcl", include_str!("../lib/tree.wcl"));
     r.register("wdoc/headings.wcl", include_str!("../lib/headings.wcl"));
+    r.register(
+        "wdoc/chapter_header.wcl",
+        include_str!("../lib/chapter_header.wcl"),
+    );
+    r.register("wdoc/footnotes.wcl", include_str!("../lib/footnotes.wcl"));
     r.register("wdoc/p.wcl", include_str!("../lib/p.wcl"));
     r.register("wdoc/code.wcl", include_str!("../lib/code.wcl"));
     r.register(
@@ -1381,6 +1387,14 @@ fn build_site(
     // Resolve the site favicon once. A user `icon` path is resolved + copied
     // via the image registry (already copied after the page loop); an
     // external URL passes through. Absent ⇒ ship the embedded default.
+    // Book typography (Source Serif 4 / IBM Plex Sans / JetBrains Mono) is
+    // referenced by the always-bundled `wdoc-fonts` `@font-face` rules, so a
+    // themed site needs the faces on disk. Written once with the other shared
+    // assets; a bare (site-less) document renders unthemed and skips them.
+    if spec.block.is_some() && write_shared {
+        write_book_font_assets(out_dir)?;
+    }
+
     let site_icon = spec.block.as_ref().and_then(|b| field_utf8(b, "icon"));
     let favicon = match &site_icon {
         Some(src) => inline_patterns.images().register(src).url,
@@ -2177,6 +2191,76 @@ fn write_terminal_assets(out_dir: &Path) -> Result<(), BuildError> {
         write_asset(out_dir, name, bytes)?;
     }
     write_asset(out_dir, "terminal-player.js", crate::terminal::PLAYER_JS)
+}
+
+/// Embedded book typography faces — Source Serif 4 (body), IBM Plex Sans
+/// (headings), and JetBrains Mono (prose code) — written into `<out>/_wdoc/`
+/// so the `wdoc-fonts` `@font-face` rules resolve. Distinct from the terminal
+/// grid's `'JetBrainsMono Nerd Font'`; this is the plain `'JetBrains Mono'`
+/// family. `(filename, bytes)`.
+const BOOK_FONT_FILES: &[(&str, &[u8])] = &[
+    (
+        "SourceSerif4-Regular.woff2",
+        include_bytes!("../assets/fonts/SourceSerif4-Regular.woff2"),
+    ),
+    (
+        "SourceSerif4-Medium.woff2",
+        include_bytes!("../assets/fonts/SourceSerif4-Medium.woff2"),
+    ),
+    (
+        "SourceSerif4-SemiBold.woff2",
+        include_bytes!("../assets/fonts/SourceSerif4-SemiBold.woff2"),
+    ),
+    (
+        "SourceSerif4-Bold.woff2",
+        include_bytes!("../assets/fonts/SourceSerif4-Bold.woff2"),
+    ),
+    (
+        "SourceSerif4-Italic.woff2",
+        include_bytes!("../assets/fonts/SourceSerif4-Italic.woff2"),
+    ),
+    (
+        "SourceSerif4-MediumItalic.woff2",
+        include_bytes!("../assets/fonts/SourceSerif4-MediumItalic.woff2"),
+    ),
+    (
+        "IBMPlexSans-Regular.woff2",
+        include_bytes!("../assets/fonts/IBMPlexSans-Regular.woff2"),
+    ),
+    (
+        "IBMPlexSans-Medium.woff2",
+        include_bytes!("../assets/fonts/IBMPlexSans-Medium.woff2"),
+    ),
+    (
+        "IBMPlexSans-SemiBold.woff2",
+        include_bytes!("../assets/fonts/IBMPlexSans-SemiBold.woff2"),
+    ),
+    (
+        "IBMPlexSans-Bold.woff2",
+        include_bytes!("../assets/fonts/IBMPlexSans-Bold.woff2"),
+    ),
+    (
+        "JetBrainsMono-Regular.woff2",
+        include_bytes!("../assets/fonts/JetBrainsMono-Regular.woff2"),
+    ),
+    (
+        "JetBrainsMono-Medium.woff2",
+        include_bytes!("../assets/fonts/JetBrainsMono-Medium.woff2"),
+    ),
+    (
+        "JetBrainsMono-SemiBold.woff2",
+        include_bytes!("../assets/fonts/JetBrainsMono-SemiBold.woff2"),
+    ),
+];
+
+/// Write the bundled book typography faces into `<out>/_wdoc/`. The
+/// `wdoc-fonts` stylesheet references them by relative URL, so the dev
+/// server and any static host resolve them the same way.
+fn write_book_font_assets(out_dir: &Path) -> Result<(), BuildError> {
+    for (name, bytes) in BOOK_FONT_FILES {
+        write_asset(out_dir, name, bytes)?;
+    }
+    Ok(())
 }
 
 /// The default favicon, shipped when a `site` sets no `icon`.

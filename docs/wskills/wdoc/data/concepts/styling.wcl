@@ -46,7 +46,7 @@ PROSE
 
     h2 "Themes"
     p <<PROSE
-A theme is a complete colour palette plus the rules that map it onto every built-in element — page background, links, headings, code, charts, callouts, tables, inline emphasis. Set `theme = :<name>` on a `site` — a symbol naming a `theme` block. Seven built-in palettes ship (`nord` the default, plus `gruvbox`, `solarized`, `catppuccin`, `tokyonight`, `kanagawa`, `everforest`), each with co-ordinated dark and light variants. `theme_toggle = true` adds a light/dark toggle button.
+A theme is a complete colour palette plus the rules that map it onto every built-in element — page background, links, headings, code, charts, callouts, tables, inline emphasis. Set `theme = :<name>` on a `site` — a symbol naming a `theme` block. Six built-in palettes ship (`nord` the default, plus `tokyonight`, `gruvbox`, `catppuccin`, `rose`, `paper`), each with co-ordinated dark and light variants and its own typography. `theme_toggle = true` adds a light/dark toggle button.
 PROSE
     code "wcl" { source = <<'SRC'
 site mysite {

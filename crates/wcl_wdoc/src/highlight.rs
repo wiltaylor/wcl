@@ -40,24 +40,47 @@ fn syntax_set() -> &'static SyntaxSet {
 /// drop inside `<pre><code>…</code></pre>` — a stream of nested
 /// `<span class="tok-…">` elements. Unknown languages fall back to
 /// plain-text rendering (no token classes; text is still escaped).
-pub(crate) fn highlight_html(source: &str, language: &str) -> String {
+///
+/// When `line_numbers` is set, each source line is wrapped in a
+/// `<span class="code-line">` so a CSS counter can draw the gutter (the
+/// book code-card). Each wrapped line is highlighted independently, so a
+/// construct that spans lines (a block comment) restarts its scope per
+/// line — acceptable for the short listings docs carry, and it keeps the
+/// per-line HTML self-balanced.
+pub(crate) fn highlight_html(source: &str, language: &str, line_numbers: bool) -> String {
     let ss = syntax_set();
     let syn = ss
         .find_syntax_by_token(language)
         .or_else(|| ss.find_syntax_by_name(language))
         .unwrap_or_else(|| ss.find_syntax_plain_text());
-    let mut out = ClassedHTMLGenerator::new_with_class_style(syn, ss, CLASS_STYLE);
+    if !line_numbers {
+        let mut out = ClassedHTMLGenerator::new_with_class_style(syn, ss, CLASS_STYLE);
+        for line in LinesWithEndings::from(source) {
+            // The only error this returns is regex failure inside a
+            // grammar; treat it as "stop here" rather than panicking.
+            if out
+                .parse_html_for_line_which_includes_newline(line)
+                .is_err()
+            {
+                break;
+            }
+        }
+        return out.finalize();
+    }
+    let mut out = String::new();
     for line in LinesWithEndings::from(source) {
-        // The only error this returns is regex failure inside a
-        // grammar; treat it as "stop here" rather than panicking.
-        if out
-            .parse_html_for_line_which_includes_newline(line)
-            .is_err()
-        {
+        let mut g = ClassedHTMLGenerator::new_with_class_style(syn, ss, CLASS_STYLE);
+        if g.parse_html_for_line_which_includes_newline(line).is_err() {
             break;
         }
+        // `finalize` closes every span; the line's own trailing newline is
+        // plain text at the very end, so trimming it is safe and lets the
+        // `display:block` line wrapper own the break.
+        out.push_str("<span class=\"code-line\">");
+        out.push_str(g.finalize().trim_end_matches('\n'));
+        out.push_str("</span>");
     }
-    out.finalize()
+    out
 }
 
 /// Bundled CSS for `.code-block` containers and `.tok-*` token

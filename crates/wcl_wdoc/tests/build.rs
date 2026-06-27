@@ -139,7 +139,9 @@ fn build_emits_fundamentals_for_example_site() {
     // stdlib heading lowering — h1 reduces to a paragraph with the
     // matching heading class.
     assert!(
-        overview.contains("<p class=\"heading-1\"><span>Pipeline overview</span></p>"),
+        overview.contains(
+            "<p class=\"heading-1\" id=\"pipeline-overview\"><span>Pipeline overview</span></p>"
+        ),
         "{overview}"
     );
     // stdlib flowchart lowering — process emits a rect + centered
@@ -4110,7 +4112,9 @@ page about {
     assert!(html.contains("<a href=\"about.html\">about</a>"), "{html}");
     // The page's own content lands inside <main>.
     assert!(
-        html.contains("<main class=\"site-main\"><p class=\"heading-1\"><span>Home</span></p>"),
+        html.contains(
+            "<main class=\"site-main\"><p class=\"heading-1\" id=\"home\"><span>Home</span></p>"
+        ),
         "{html}"
     );
 }
@@ -4200,7 +4204,7 @@ page index {
     );
     // The non-region blocks form the default content <main>.
     assert!(
-        html.contains("<main class=\"ws-main\"><p class=\"heading-2\"><span>Body heading</span>"),
+        html.contains("<main class=\"ws-main\"><p class=\"heading-2\" id=\"body-heading\"><span class=\"heading-marker\">§ 1</span><span>Body heading</span>"),
         "non-region blocks should be the default content:\n{html}"
     );
     // Region content must not be duplicated into the default content <main>.
@@ -4731,7 +4735,7 @@ page usage {
     // Content lands in the reading column.
     assert!(
         intro
-            .contains("<main class=\"book-content\"><p class=\"heading-1\"><span>Intro</span></p>"),
+            .contains("<main class=\"book-content\"><p class=\"heading-1\" id=\"intro\"><span>Intro</span></p>"),
         "{intro}"
     );
 
@@ -4966,10 +4970,16 @@ page index { sites = [:home]
     assert!(html.contains(".bold { font-weight:bold; }"), "{html}");
     assert!(html.contains(".italic { font-style:italic; }"), "{html}");
     assert!(html.contains("font-family:ui-monospace"), "{html}");
-    // Per-theme colour, driven by the palette (so it differs per theme).
-    assert!(html.contains(".bold{color:var(--wdoc-orange);}"), "{html}");
+    // Per-theme colour, driven by the palette (so it differs per theme):
+    // bold takes the heading ink, inline code a themed chip.
     assert!(
-        html.contains(".code{background:var(--wdoc-bg-inset);"),
+        html.contains("strong,.bold{color:var(--wdoc-heading);}"),
+        "{html}"
+    );
+    assert!(
+        html.contains(
+            ".code,code,kbd{font-family:var(--wdoc-font-mono);background:var(--wdoc-bg-alt);"
+        ),
         "{html}"
     );
     // The patterns emit the classes onto the rendered spans.
@@ -5084,7 +5094,7 @@ page syntax {
     // (emitted before the user's colour override below).
     assert!(
         html.contains(
-            ".heading-1 { font-weight:700;font-size:1.9rem;line-height:1.2;margin:1.4rem 0 0.6rem; }"
+            ".heading-1 { font-weight:700;font-size:2.6rem;line-height:1.1;letter-spacing:-0.02em;margin:1.6rem 0 0.7rem; }"
         ),
         "default heading sizing missing:\n{html}"
     );
@@ -5094,7 +5104,9 @@ page syntax {
         "{html}"
     );
     assert!(
-        html.contains("<p class=\"heading-2\"><span>Fields</span></p>"),
+        html.contains(
+            "<p class=\"heading-2\" id=\"fields\"><span class=\"heading-marker\">§ 1</span><span>Fields</span></p>"
+        ),
         "{html}"
     );
 }
@@ -7260,12 +7272,12 @@ fn wireframe_element_overrides_ui_theme() {
 #[test]
 fn wireframe_element_mode_picks_light_palette() {
     // `mode = :light` bakes the theme's light palette: nord light `bg_alt`
-    // (#e5e9f0), not the dark one (#3b4252).
+    // (#e5e9f0), not the dark window surface (#2e3440).
     let html = wireframe_html(
         "  wf_window \"App\" { theme = :nord  mode = :light\n    wf_label \"x\"\n  }",
     );
     assert!(
-        html.contains("fill=\"#e5e9f0\"") && !html.contains("fill=\"#3b4252\""),
+        html.contains("fill=\"#e5e9f0\"") && !html.contains("fill=\"#2e3440\""),
         "nord light palette not baked:\n{html}"
     );
 }
@@ -7721,16 +7733,16 @@ page index { text { span "Hi" {} } }
 
     // Mocha (dark) base + Latte (light) base, each emitted on :root.
     assert!(
-        html.contains("--wdoc-bg:#1e1e2e;"),
+        html.contains("--wdoc-bg:#181825;"),
         "mocha bg missing:\n{html}"
     );
     assert!(
-        html.contains("--wdoc-bg:#eff1f5;"),
+        html.contains("--wdoc-bg:#dce0e8;"),
         "latte bg missing:\n{html}"
     );
     // The toggle override side (book/webpage both get it via site_css).
     assert!(
-        html.contains(":root[data-theme=\"light\"]{--wdoc-bg:#eff1f5;"),
+        html.contains(":root[data-theme=\"light\"]{--wdoc-bg:#dce0e8;"),
         "data-theme light override missing:\n{html}"
     );
     // Accent resolves to the chosen hue var, and is applied to links.
@@ -7738,13 +7750,12 @@ page index { text { span "Hi" {} } }
         html.contains("--wdoc-accent:var(--wdoc-green);"),
         "accent var missing:\n{html}"
     );
-    assert!(
-        html.contains("a,.link{color:var(--wdoc-accent);}"),
-        "{html}"
-    );
+    assert!(html.contains("a,.link{color:var(--wdoc-link);"), "{html}");
     // Apply rules reach the body and the chart palette.
     assert!(
-        html.contains("body,.wdoc-body{background:var(--wdoc-bg);color:var(--wdoc-fg);}"),
+        html.contains(
+            "body,.wdoc-body{background:var(--wdoc-bg);color:var(--wdoc-fg);font-family:"
+        ),
         "{html}"
     );
     assert!(
@@ -7768,19 +7779,19 @@ page index { text { span "Hi" {} } }
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
 
-    // Nord polar-night bg (dark) + snow-storm bg (light), and the
-    // default accent (blue) when `accent` is unset.
+    // Nord outer bg (dark) + light bg, and the accent defaulting to the
+    // theme's own `accent` (via `--wdoc-accent-pal`) when `accent` is unset.
     assert!(
-        html.contains("--wdoc-bg:#2e3440;"),
+        html.contains("--wdoc-bg:#242933;"),
         "nord dark bg missing:\n{html}"
     );
     assert!(
-        html.contains("--wdoc-bg:#eceff4;"),
+        html.contains("--wdoc-bg:#d8dee9;"),
         "nord light bg missing:\n{html}"
     );
     assert!(
-        html.contains("--wdoc-accent:var(--wdoc-blue);"),
-        "default accent should be blue:\n{html}"
+        html.contains("--wdoc-accent:var(--wdoc-accent-pal);"),
+        "default accent should follow the palette:\n{html}"
     );
 }
 
@@ -7859,7 +7870,7 @@ fn per_site_themes_are_independent() {
         &src,
         r#"
 site a { root = true  default_template = :webpage  theme = :gruvbox }
-site b { default_template = :webpage  theme = :everforest }
+site b { default_template = :webpage  theme = :rose }
 page pa { sites = [:a]  text { span "A" {} } }
 page pb { sites = [:b]  text { span "B" {} } }
 "#,
@@ -7870,19 +7881,19 @@ page pb { sites = [:b]  text { span "B" {} } }
     let b = std::fs::read_to_string(out.path().join("b").join("pb.html")).expect("read pb");
 
     assert!(
-        a.contains("--wdoc-bg:#282828;"),
+        a.contains("--wdoc-bg:#1d2021;"),
         "site a should be gruvbox:\n{a}"
     );
     assert!(
-        !a.contains("--wdoc-bg:#2d353b;"),
-        "site a must not leak everforest:\n{a}"
+        !a.contains("--wdoc-bg:#191724;"),
+        "site a must not leak rose:\n{a}"
     );
     assert!(
-        b.contains("--wdoc-bg:#2d353b;"),
-        "site b should be everforest:\n{b}"
+        b.contains("--wdoc-bg:#191724;"),
+        "site b should be rose:\n{b}"
     );
     assert!(
-        !b.contains("--wdoc-bg:#282828;"),
+        !b.contains("--wdoc-bg:#1d2021;"),
         "site b must not leak gruvbox:\n{b}"
     );
 }

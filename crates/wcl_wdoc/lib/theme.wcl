@@ -35,155 +35,210 @@
 //   site "docs" { theme = :midnight }
 
 // A full set of colour roles for one mode, labelled `dark` or `light`.
-// Generic on purpose — these 18 roles cover page chrome, text hierarchy,
-// and an 8-hue palette that doubles as the chart cycle and the accent
-// vocabulary — so templates and blocks added later have everything they
-// need. Every role is optional: an omitted role simply emits no var (so a
-// partial custom palette inherits the rest from the cascade).
-//   bg          page background
-//   bg_alt      raised surface (sidebar, card, table header)
-//   bg_inset    sunken surface (code block)
-//   overlay     subtle fill / divider background
-//   border      hairline borders
-//   fg          body text
-//   fg_muted    secondary text (nav, captions)
-//   fg_subtle   faint text (code comments)
-//   heading     heading text
-//   selection   text-selection background
+// Generic on purpose — these roles cover page chrome, text hierarchy, a
+// dedicated accent/link vocabulary, syntax-token colours, and an 8-hue
+// ring that doubles as the chart cycle — so templates and blocks added
+// later have everything they need. Every role is optional: an omitted
+// role simply emits no var (so a partial custom palette inherits the
+// rest from the cascade).
+//   bg            outer page background (the gutter around the reading column)
+//   book_bg       reading-column / card surface
+//   bg_alt        raised surface (sidebar, code card, table header, inline code)
+//   bg_inset      sunken surface (legacy code-block fill; usually = bg_alt)
+//   overlay       subtle fill / divider background
+//   border        hairline borders
+//   border_strong stronger borders / kbd outlines / rules
+//   fg            body text
+//   fg_muted      secondary text (nav, captions, punctuation)
+//   fg_subtle     faint text (comments, metadata)
+//   heading       heading + strong text
+//   selection     text-selection background
+//   accent        primary accent (active nav, markers, focus)
+//   accent_2      secondary accent
+//   link          hyperlink colour
+//   on_accent     text/icon drawn on an accent fill
+//   syn_kw syn_str syn_num syn_fn syn_type syn_comment syn_punct
+//                 syntax-highlighting token colours
 //   red orange yellow green cyan blue purple pink
-//               the hue ring — chart series 1-8 and the accent options
+//                 the hue ring — chart series 1-8 + callout accents
 namespace wdoc
 
 @block("palette")
 type PaletteBlock {
   @inline(0) mode: identifier        // `dark` or `light`
-  bg: utf8?  bg_alt: utf8?  bg_inset: utf8?  overlay: utf8?  border: utf8?
+  bg: utf8?  book_bg: utf8?  bg_alt: utf8?  bg_inset: utf8?  overlay: utf8?
+  border: utf8?  border_strong: utf8?
   fg: utf8?  fg_muted: utf8?  fg_subtle: utf8?  heading: utf8?  selection: utf8?
+  accent: utf8?  accent_2: utf8?  link: utf8?  on_accent: utf8?
+  syn_kw: utf8?  syn_str: utf8?  syn_num: utf8?  syn_fn: utf8?
+  syn_type: utf8?  syn_comment: utf8?  syn_punct: utf8?
   red: utf8?  orange: utf8?  yellow: utf8?  green: utf8?
   cyan: utf8?  blue: utf8?  purple: utf8?  pink: utf8?
 }
 
 // A named theme: a `dark` palette (the default mode) and a `light` one
-// (system `prefers-color-scheme: light`, or the explicit toggle).
+// (system `prefers-color-scheme: light`, or the explicit toggle), plus
+// the three font stacks the book reads through `--wdoc-font-head/-body/
+// -mono` (omitted ⇒ the `wdoc-fonts` defaults: IBM Plex Sans / Source
+// Serif 4 / JetBrains Mono).
 @block("theme")
 type ThemeBlock {
   @inline(0) name: identifier
+  font_head: utf8?  font_body: utf8?  font_mono: utf8?
   @children("palette") palettes: list<PaletteBlock>
 }
 
 // ── Built-in themes ────────────────────────────────────────────────
-// Palettes sourced from each project's official reference. A handful of
-// roles a palette doesn't define (e.g. a distinct `pink`, or a `bg_inset`
-// step) reuse the nearest hue / shade.
+// The six book themes, each with a co-ordinated `dark` + `light` palette.
+// Roles map onto the design's full vocabulary (bg / book-bg / surfaces /
+// borders / ink hierarchy / accent set / syntax tokens). The 8-hue ring
+// is derived from each theme's semantic + syntax colours so the
+// hue-driven systems (chart series, callout accents, diagram shapes)
+// stay co-ordinated: red=danger, orange=syn-num, yellow=warn, green=tip,
+// cyan=info, blue=note, purple=syn-kw, pink=accent-2. Fonts default to
+// the `wdoc-fonts` stacks; only `paper` overrides (serif headings).
 
-// Nord — nordtheme.com. Light mode is built from the Snow Storm tints.
+// Nord — cool blue-grey (the default).
 theme nord {
   palette dark {
-    bg = "#2e3440"  bg_alt = "#3b4252"  bg_inset = "#272c36"  overlay = "#434c5e"  border = "#4c566a"
-    fg = "#d8dee9"  fg_muted = "#9aa5b8"  fg_subtle = "#4c566a"  heading = "#eceff4"  selection = "#434c5e"
-    red = "#bf616a"  orange = "#d08770"  yellow = "#ebcb8b"  green = "#a3be8c"
-    cyan = "#88c0d0"  blue = "#81a1c1"  purple = "#b48ead"  pink = "#8fbcbb"
+    bg = "#242933"  book_bg = "#2e3440"  bg_alt = "#3b4252"  bg_inset = "#3b4252"  overlay = "#434c5e"
+    border = "#3b4252"  border_strong = "#4c566a"
+    heading = "#eceff4"  fg = "#d8dee9"  fg_muted = "#a0aabe"  fg_subtle = "#7a8699"  selection = "#88c0d0"
+    accent = "#88c0d0"  accent_2 = "#81a1c1"  link = "#8fbcbb"  on_accent = "#2e3440"
+    syn_kw = "#81a1c1"  syn_str = "#a3be8c"  syn_num = "#b48ead"  syn_fn = "#88c0d0"
+    syn_type = "#8fbcbb"  syn_comment = "#616e88"  syn_punct = "#eceff4"
+    red = "#bf616a"  orange = "#b48ead"  yellow = "#ebcb8b"  green = "#a3be8c"
+    cyan = "#81a1c1"  blue = "#81a1c1"  purple = "#81a1c1"  pink = "#81a1c1"
   }
   palette light {
-    bg = "#eceff4"  bg_alt = "#e5e9f0"  bg_inset = "#d8dee9"  overlay = "#d8dee9"  border = "#d8dee9"
-    fg = "#2e3440"  fg_muted = "#4c566a"  fg_subtle = "#7b8794"  heading = "#2e3440"  selection = "#d8dee9"
-    red = "#bf616a"  orange = "#d08770"  yellow = "#b9952f"  green = "#7e9a5c"
-    cyan = "#5e81ac"  blue = "#5e81ac"  purple = "#9d7495"  pink = "#8fbcbb"
+    bg = "#d8dee9"  book_bg = "#eceff4"  bg_alt = "#e5e9f0"  bg_inset = "#e5e9f0"  overlay = "#d8dee9"
+    border = "#d8dee9"  border_strong = "#c0c8d6"
+    heading = "#2e3440"  fg = "#3b4252"  fg_muted = "#566173"  fg_subtle = "#707d92"  selection = "#5e81ac"
+    accent = "#5e81ac"  accent_2 = "#81a1c1"  link = "#5e81ac"  on_accent = "#eceff4"
+    syn_kw = "#5e81ac"  syn_str = "#4f7a3e"  syn_num = "#94618c"  syn_fn = "#2f7a86"
+    syn_type = "#3d7a86"  syn_comment = "#8a95a8"  syn_punct = "#3b4252"
+    red = "#a84b54"  orange = "#94618c"  yellow = "#9a7411"  green = "#4f7a3e"
+    cyan = "#5e81ac"  blue = "#5e81ac"  purple = "#5e81ac"  pink = "#81a1c1"
   }
 }
 
-// Gruvbox — github.com/morhetz/gruvbox (medium contrast, both modes).
-theme gruvbox {
-  palette dark {
-    bg = "#282828"  bg_alt = "#3c3836"  bg_inset = "#1d2021"  overlay = "#504945"  border = "#504945"
-    fg = "#ebdbb2"  fg_muted = "#a89984"  fg_subtle = "#928374"  heading = "#fbf1c7"  selection = "#504945"
-    red = "#fb4934"  orange = "#fe8019"  yellow = "#fabd2f"  green = "#b8bb26"
-    cyan = "#8ec07c"  blue = "#83a598"  purple = "#d3869b"  pink = "#d3869b"
-  }
-  palette light {
-    bg = "#fbf1c7"  bg_alt = "#ebdbb2"  bg_inset = "#f9f5d7"  overlay = "#d5c4a1"  border = "#bdae93"
-    fg = "#3c3836"  fg_muted = "#7c6f64"  fg_subtle = "#928374"  heading = "#282828"  selection = "#d5c4a1"
-    red = "#9d0006"  orange = "#af3a03"  yellow = "#b57614"  green = "#79740e"
-    cyan = "#427b58"  blue = "#076678"  purple = "#8f3f71"  pink = "#8f3f71"
-  }
-}
-
-// Solarized — ethanschoonover.com/solarized (accents shared by both modes).
-theme solarized {
-  palette dark {
-    bg = "#002b36"  bg_alt = "#073642"  bg_inset = "#00252e"  overlay = "#586e75"  border = "#073642"
-    fg = "#839496"  fg_muted = "#657b83"  fg_subtle = "#586e75"  heading = "#93a1a1"  selection = "#073642"
-    red = "#dc322f"  orange = "#cb4b16"  yellow = "#b58900"  green = "#859900"
-    cyan = "#2aa198"  blue = "#268bd2"  purple = "#6c71c4"  pink = "#d33682"
-  }
-  palette light {
-    bg = "#fdf6e3"  bg_alt = "#eee8d5"  bg_inset = "#fdf6e3"  overlay = "#93a1a1"  border = "#eee8d5"
-    fg = "#657b83"  fg_muted = "#93a1a1"  fg_subtle = "#93a1a1"  heading = "#586e75"  selection = "#eee8d5"
-    red = "#dc322f"  orange = "#cb4b16"  yellow = "#b58900"  green = "#859900"
-    cyan = "#2aa198"  blue = "#268bd2"  purple = "#6c71c4"  pink = "#d33682"
-  }
-}
-
-// Catppuccin — catppuccin.com/palette (Mocha = dark, Latte = light).
-theme catppuccin {
-  palette dark {
-    bg = "#1e1e2e"  bg_alt = "#313244"  bg_inset = "#181825"  overlay = "#6c7086"  border = "#45475a"
-    fg = "#cdd6f4"  fg_muted = "#a6adc8"  fg_subtle = "#7f849c"  heading = "#cdd6f4"  selection = "#414458"
-    red = "#f38ba8"  orange = "#fab387"  yellow = "#f9e2af"  green = "#a6e3a1"
-    cyan = "#94e2d5"  blue = "#89b4fa"  purple = "#cba6f7"  pink = "#f5c2e7"
-  }
-  palette light {
-    bg = "#eff1f5"  bg_alt = "#ccd0da"  bg_inset = "#e6e9ef"  overlay = "#9ca0b0"  border = "#bcc0cc"
-    fg = "#4c4f69"  fg_muted = "#6c6f85"  fg_subtle = "#8c8fa1"  heading = "#4c4f69"  selection = "#bcc0cc"
-    red = "#d20f39"  orange = "#fe640b"  yellow = "#df8e1d"  green = "#40a02b"
-    cyan = "#179299"  blue = "#1e66f5"  purple = "#8839ef"  pink = "#ea76cb"
-  }
-}
-
-// Tokyo Night — github.com/folke/tokyonight.nvim (Night = dark, Day = light).
+// Tokyo Night — vivid night palette.
 theme tokyonight {
   palette dark {
-    bg = "#1a1b26"  bg_alt = "#24283b"  bg_inset = "#16161e"  overlay = "#414868"  border = "#3b4261"
-    fg = "#c0caf5"  fg_muted = "#a9b1d6"  fg_subtle = "#565f89"  heading = "#c0caf5"  selection = "#283457"
+    bg = "#16161e"  book_bg = "#1a1b26"  bg_alt = "#1f2335"  bg_inset = "#1f2335"  overlay = "#24283b"
+    border = "#2a2e42"  border_strong = "#3b4261"
+    heading = "#c0caf5"  fg = "#a9b1d6"  fg_muted = "#7982b3"  fg_subtle = "#565f89"  selection = "#7aa2f7"
+    accent = "#7aa2f7"  accent_2 = "#bb9af7"  link = "#7dcfff"  on_accent = "#16161e"
+    syn_kw = "#bb9af7"  syn_str = "#9ece6a"  syn_num = "#ff9e64"  syn_fn = "#7aa2f7"
+    syn_type = "#2ac3de"  syn_comment = "#565f89"  syn_punct = "#89ddff"
     red = "#f7768e"  orange = "#ff9e64"  yellow = "#e0af68"  green = "#9ece6a"
-    cyan = "#7dcfff"  blue = "#7aa2f7"  purple = "#bb9af7"  pink = "#ff007c"
+    cyan = "#7dcfff"  blue = "#7aa2f7"  purple = "#bb9af7"  pink = "#bb9af7"
   }
   palette light {
-    bg = "#e1e2e7"  bg_alt = "#d0d5e3"  bg_inset = "#c1c9df"  overlay = "#a8aecb"  border = "#b4b5b9"
-    fg = "#3760bf"  fg_muted = "#6172b0"  fg_subtle = "#848cb5"  heading = "#3760bf"  selection = "#b7c1e3"
+    bg = "#d5d6db"  book_bg = "#e1e2e7"  bg_alt = "#dcdee3"  bg_inset = "#dcdee3"  overlay = "#cdcfdb"
+    border = "#c4c8da"  border_strong = "#a8aecb"
+    heading = "#343b58"  fg = "#4c505e"  fg_muted = "#5a6296"  fg_subtle = "#8990b3"  selection = "#2e7de9"
+    accent = "#2e7de9"  accent_2 = "#9854f1"  link = "#2e7de9"  on_accent = "#e1e2e7"
+    syn_kw = "#9854f1"  syn_str = "#587539"  syn_num = "#b15c00"  syn_fn = "#2e7de9"
+    syn_type = "#007197"  syn_comment = "#9699a8"  syn_punct = "#006c86"
     red = "#f52a65"  orange = "#b15c00"  yellow = "#8c6c3e"  green = "#587539"
-    cyan = "#007197"  blue = "#2e7de9"  purple = "#9854f1"  pink = "#9854f1"
+    cyan = "#07879d"  blue = "#2e7de9"  purple = "#9854f1"  pink = "#9854f1"
   }
 }
 
-// Kanagawa — github.com/rebelot/kanagawa.nvim (Wave = dark, Lotus = light).
-theme kanagawa {
+// Gruvbox — warm retro.
+theme gruvbox {
   palette dark {
-    bg = "#1f1f28"  bg_alt = "#2a2a37"  bg_inset = "#16161d"  overlay = "#363646"  border = "#54546d"
-    fg = "#dcd7ba"  fg_muted = "#c8c093"  fg_subtle = "#727169"  heading = "#dcd7ba"  selection = "#2d4f67"
-    red = "#e46876"  orange = "#ffa066"  yellow = "#e6c384"  green = "#98bb6c"
-    cyan = "#7aa89f"  blue = "#7e9cd8"  purple = "#957fb8"  pink = "#d27e99"
+    bg = "#1d2021"  book_bg = "#282828"  bg_alt = "#32302f"  bg_inset = "#32302f"  overlay = "#3c3836"
+    border = "#3c3836"  border_strong = "#504945"
+    heading = "#ebdbb2"  fg = "#d5c4a1"  fg_muted = "#a89984"  fg_subtle = "#928374"  selection = "#fabd2f"
+    accent = "#fe8019"  accent_2 = "#83a598"  link = "#83a598"  on_accent = "#282828"
+    syn_kw = "#fb4934"  syn_str = "#b8bb26"  syn_num = "#d3869b"  syn_fn = "#8ec07c"
+    syn_type = "#fabd2f"  syn_comment = "#928374"  syn_punct = "#fe8019"
+    red = "#fb4934"  orange = "#d3869b"  yellow = "#fabd2f"  green = "#b8bb26"
+    cyan = "#8ec07c"  blue = "#83a598"  purple = "#fb4934"  pink = "#83a598"
   }
   palette light {
-    bg = "#f2ecbc"  bg_alt = "#e7dba0"  bg_inset = "#d5cea3"  overlay = "#dcd7ba"  border = "#dcd5ac"
-    fg = "#545464"  fg_muted = "#716e61"  fg_subtle = "#8a8980"  heading = "#43436c"  selection = "#c9cbd1"
-    red = "#c84053"  orange = "#cc6d00"  yellow = "#836f4a"  green = "#6f894e"
-    cyan = "#597b75"  blue = "#4d699b"  purple = "#624c83"  pink = "#b35b79"
+    bg = "#ece0bf"  book_bg = "#fbf1c7"  bg_alt = "#f2e5bc"  bg_inset = "#f2e5bc"  overlay = "#ebdbb2"
+    border = "#e3d5a8"  border_strong = "#d5c4a1"
+    heading = "#3c3836"  fg = "#504945"  fg_muted = "#7c6f64"  fg_subtle = "#928374"  selection = "#b57614"
+    accent = "#af3a03"  accent_2 = "#076678"  link = "#076678"  on_accent = "#fbf1c7"
+    syn_kw = "#9d0006"  syn_str = "#79740e"  syn_num = "#8f3f71"  syn_fn = "#427b58"
+    syn_type = "#b57614"  syn_comment = "#a89984"  syn_punct = "#af3a03"
+    red = "#9d0006"  orange = "#8f3f71"  yellow = "#b57614"  green = "#79740e"
+    cyan = "#427b58"  blue = "#076678"  purple = "#9d0006"  pink = "#076678"
   }
 }
 
-// Everforest — github.com/sainnhe/everforest (medium contrast, both modes).
-theme everforest {
+// Catppuccin — soft pastel (Mocha = dark, Latte = light).
+theme catppuccin {
   palette dark {
-    bg = "#2d353b"  bg_alt = "#343f44"  bg_inset = "#232a2e"  overlay = "#475258"  border = "#4f585e"
-    fg = "#d3c6aa"  fg_muted = "#9da9a0"  fg_subtle = "#859289"  heading = "#d3c6aa"  selection = "#475258"
-    red = "#e67e80"  orange = "#e69875"  yellow = "#dbbc7f"  green = "#a7c080"
-    cyan = "#83c092"  blue = "#7fbbb3"  purple = "#d699b6"  pink = "#d699b6"
+    bg = "#181825"  book_bg = "#1e1e2e"  bg_alt = "#313244"  bg_inset = "#313244"  overlay = "#45475a"
+    border = "#313244"  border_strong = "#45475a"
+    heading = "#cdd6f4"  fg = "#bac2de"  fg_muted = "#a6adc8"  fg_subtle = "#7f849c"  selection = "#cba6f7"
+    accent = "#cba6f7"  accent_2 = "#89b4fa"  link = "#89b4fa"  on_accent = "#1e1e2e"
+    syn_kw = "#cba6f7"  syn_str = "#a6e3a1"  syn_num = "#fab387"  syn_fn = "#89b4fa"
+    syn_type = "#f9e2af"  syn_comment = "#6c7086"  syn_punct = "#94e2d5"
+    red = "#f38ba8"  orange = "#fab387"  yellow = "#f9e2af"  green = "#a6e3a1"
+    cyan = "#89dceb"  blue = "#89b4fa"  purple = "#cba6f7"  pink = "#89b4fa"
   }
   palette light {
-    bg = "#fdf6e3"  bg_alt = "#f4f0d9"  bg_inset = "#efebd4"  overlay = "#e0dcc7"  border = "#ddd8be"
-    fg = "#5c6a72"  fg_muted = "#829181"  fg_subtle = "#939f91"  heading = "#5c6a72"  selection = "#e0dcc7"
-    red = "#f85552"  orange = "#f57d26"  yellow = "#dfa000"  green = "#8da101"
-    cyan = "#35a77c"  blue = "#3a94c5"  purple = "#df69ba"  pink = "#df69ba"
+    bg = "#dce0e8"  book_bg = "#eff1f5"  bg_alt = "#e6e9ef"  bg_inset = "#e6e9ef"  overlay = "#ccd0da"
+    border = "#ccd0da"  border_strong = "#acb0be"
+    heading = "#4c4f69"  fg = "#5c5f77"  fg_muted = "#6c6f85"  fg_subtle = "#8c8fa1"  selection = "#8839ef"
+    accent = "#8839ef"  accent_2 = "#1e66f5"  link = "#1e66f5"  on_accent = "#eff1f5"
+    syn_kw = "#8839ef"  syn_str = "#40a02b"  syn_num = "#fe640b"  syn_fn = "#1e66f5"
+    syn_type = "#df8e1d"  syn_comment = "#9ca0b0"  syn_punct = "#179299"
+    red = "#d20f39"  orange = "#fe640b"  yellow = "#df8e1d"  green = "#40a02b"
+    cyan = "#04a5e5"  blue = "#1e66f5"  purple = "#8839ef"  pink = "#1e66f5"
+  }
+}
+
+// Rosé Pine — muted rose (Main = dark, Dawn = light).
+theme rose {
+  palette dark {
+    bg = "#191724"  book_bg = "#1f1d2e"  bg_alt = "#26233a"  bg_inset = "#26233a"  overlay = "#2a273f"
+    border = "#26233a"  border_strong = "#403d52"
+    heading = "#e0def4"  fg = "#c9c7e0"  fg_muted = "#908caa"  fg_subtle = "#6e6a86"  selection = "#c4a7e7"
+    accent = "#c4a7e7"  accent_2 = "#ebbcba"  link = "#9ccfd8"  on_accent = "#1f1d2e"
+    syn_kw = "#c4a7e7"  syn_str = "#f6c177"  syn_num = "#ebbcba"  syn_fn = "#ebbcba"
+    syn_type = "#9ccfd8"  syn_comment = "#6e6a86"  syn_punct = "#908caa"
+    red = "#eb6f92"  orange = "#ebbcba"  yellow = "#f6c177"  green = "#9ccfd8"
+    cyan = "#31748f"  blue = "#31748f"  purple = "#c4a7e7"  pink = "#ebbcba"
+  }
+  palette light {
+    bg = "#f4ede8"  book_bg = "#fffaf3"  bg_alt = "#f2e9e1"  bg_inset = "#f2e9e1"  overlay = "#fdf0e9"
+    border = "#f2e9e1"  border_strong = "#dfdad9"
+    heading = "#575279"  fg = "#6e6a86"  fg_muted = "#797593"  fg_subtle = "#9893a5"  selection = "#907aa9"
+    accent = "#907aa9"  accent_2 = "#d7827e"  link = "#286983"  on_accent = "#fffaf3"
+    syn_kw = "#907aa9"  syn_str = "#ea9d34"  syn_num = "#d7827e"  syn_fn = "#d7827e"
+    syn_type = "#56949f"  syn_comment = "#9893a5"  syn_punct = "#797593"
+    red = "#b4637a"  orange = "#d7827e"  yellow = "#ea9d34"  green = "#56949f"
+    cyan = "#286983"  blue = "#286983"  purple = "#907aa9"  pink = "#d7827e"
+  }
+}
+
+// Paper — warm print look with serif headings.
+theme paper {
+  font_head = "'Source Serif 4', Georgia, serif"
+  palette dark {
+    bg = "#171513"  book_bg = "#211e1b"  bg_alt = "#2a2622"  bg_inset = "#2a2622"  overlay = "#322d28"
+    border = "#322d28"  border_strong = "#443d35"
+    heading = "#ece4d6"  fg = "#d2c8b6"  fg_muted = "#9a8f7d"  fg_subtle = "#756c5d"  selection = "#d98b8b"
+    accent = "#d98b8b"  accent_2 = "#8fb0cf"  link = "#d98b8b"  on_accent = "#211e1b"
+    syn_kw = "#d98b8b"  syn_str = "#9bbd86"  syn_num = "#c7a0d9"  syn_fn = "#8fb0cf"
+    syn_type = "#d9b779"  syn_comment = "#756c5d"  syn_punct = "#d2c8b6"
+    red = "#d98b8b"  orange = "#c7a0d9"  yellow = "#d9b779"  green = "#9bbd86"
+    cyan = "#8fb0cf"  blue = "#8fb0cf"  purple = "#d98b8b"  pink = "#8fb0cf"
+  }
+  palette light {
+    bg = "#e7e3da"  book_bg = "#fcfbf7"  bg_alt = "#f4f1ea"  bg_inset = "#f4f1ea"  overlay = "#ebe7dd"
+    border = "#ddd8cc"  border_strong = "#c4bdab"
+    heading = "#1a1714"  fg = "#3a352e"  fg_muted = "#6b6358"  fg_subtle = "#8a8174"  selection = "#8a1c1c"
+    accent = "#8a1c1c"  accent_2 = "#2c4a6e"  link = "#8a1c1c"  on_accent = "#fcfbf7"
+    syn_kw = "#8a1c1c"  syn_str = "#3a5f2e"  syn_num = "#6a4a8a"  syn_fn = "#2c4a6e"
+    syn_type = "#8a5a12"  syn_comment = "#9a9082"  syn_punct = "#3a352e"
+    red = "#8a1c1c"  orange = "#6a4a8a"  yellow = "#8a5a12"  green = "#3a5f2e"
+    cyan = "#2c4a6e"  blue = "#2c4a6e"  purple = "#8a1c1c"  pink = "#2c4a6e"
   }
 }

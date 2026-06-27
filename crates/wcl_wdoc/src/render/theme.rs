@@ -24,15 +24,31 @@ use super::{field_symbol, field_utf8, label_string};
 /// deterministic.
 const ROLES: &[(&str, &str)] = &[
     ("bg", "bg"),
+    ("book_bg", "book-bg"),
     ("bg_alt", "bg-alt"),
     ("bg_inset", "bg-inset"),
     ("overlay", "overlay"),
     ("border", "border"),
+    ("border_strong", "border-strong"),
     ("fg", "fg"),
     ("fg_muted", "fg-muted"),
     ("fg_subtle", "fg-subtle"),
     ("heading", "heading"),
     ("selection", "selection"),
+    // The palette's own accent is emitted as `--wdoc-accent-pal`; the
+    // active `--wdoc-accent` points at it (or at a `site.accent` hue) via
+    // the APPLY rule, so the override still wins by source order.
+    ("accent", "accent-pal"),
+    ("accent_2", "accent2"),
+    ("link", "link"),
+    ("on_accent", "on-accent"),
+    ("syn_kw", "syn-kw"),
+    ("syn_str", "syn-str"),
+    ("syn_num", "syn-num"),
+    ("syn_fn", "syn-fn"),
+    ("syn_type", "syn-type"),
+    ("syn_comment", "syn-comment"),
+    ("syn_punct", "syn-punct"),
     ("red", "red"),
     ("orange", "orange"),
     ("yellow", "yellow"),
@@ -42,6 +58,11 @@ const ROLES: &[(&str, &str)] = &[
     ("purple", "purple"),
     ("pink", "pink"),
 ];
+
+/// Default `--wdoc-font-*` stacks (matching the `wdoc-fonts` `@font-face`
+/// families). Emitted only for themed sites; a theme's `font_*` fields
+/// override these by source order.
+const FONT_DEFAULTS: &str = ":root{--wdoc-font-head:'IBM Plex Sans',system-ui,sans-serif;--wdoc-font-body:'Source Serif 4',Georgia,serif;--wdoc-font-mono:'JetBrains Mono',ui-monospace,monospace;}\n";
 
 /// The hue roles a site's `accent` may name; anything else falls back to
 /// `blue`.
@@ -56,25 +77,47 @@ const HUES: &[&str] = &[
 /// — it only references `var(--wdoc-*)` — so it is emitted once.
 /// `{ACCENT}` is replaced with the chosen hue.
 const APPLY: &str = "\
-:root{--wdoc-accent:var(--wdoc-{ACCENT});}
-body,.wdoc-body{background:var(--wdoc-bg);color:var(--wdoc-fg);}
-::selection{background:var(--wdoc-selection);}
-a,.link{color:var(--wdoc-accent);}
-.heading-1,.heading-2,.heading-3,.heading-4,.heading-5,.heading-6{color:var(--wdoc-heading);}
-pre.code-block{background:var(--wdoc-bg-inset);color:var(--wdoc-fg);border-color:var(--wdoc-border);}
-.tok-comment{color:var(--wdoc-fg-subtle);}
-.tok-keyword{color:var(--wdoc-purple);}
-.tok-storage{color:var(--wdoc-purple);}
-.tok-storage.tok-type{color:var(--wdoc-yellow);}
-.tok-string{color:var(--wdoc-green);}
-.tok-constant{color:var(--wdoc-orange);}
-.tok-constant.tok-numeric{color:var(--wdoc-orange);}
-.tok-entity.tok-name.tok-function{color:var(--wdoc-blue);}
+:root{--wdoc-accent:{ACCENT_EXPR};}
+body,.wdoc-body{background:var(--wdoc-bg);color:var(--wdoc-fg);font-family:var(--wdoc-font-body);font-size:17px;line-height:1.7;}
+::selection{background:color-mix(in srgb, var(--wdoc-selection) 28%, transparent);}
+a,.link{color:var(--wdoc-link);text-decoration:none;border-bottom:1px solid color-mix(in srgb, var(--wdoc-link) 35%, transparent);}
+a:hover,.link:hover{border-bottom-color:var(--wdoc-link);}
+.heading-1,.heading-2,.heading-3,.heading-4,.heading-5,.heading-6{color:var(--wdoc-heading);font-family:var(--wdoc-font-head);}
+strong,.bold{color:var(--wdoc-heading);}
+.code,code,kbd{font-family:var(--wdoc-font-mono);background:var(--wdoc-bg-alt);border:1px solid var(--wdoc-border);border-radius:4px;padding:0.05em 0.35em;}
+kbd{border-color:var(--wdoc-border-strong);border-bottom-width:2px;color:var(--wdoc-fg-muted);}
+blockquote{border-left:3px solid var(--wdoc-accent);color:var(--wdoc-fg-muted);}
+hr{border:none;border-top:1px solid var(--wdoc-border);}
+figcaption{color:var(--wdoc-fg-muted);}
+.code-card{background:var(--wdoc-bg-alt);border:1px solid var(--wdoc-border);}
+.code-filename{color:var(--wdoc-fg-muted);border-bottom:1px solid var(--wdoc-border);font-family:var(--wdoc-font-mono);}
+.code-lang{color:var(--wdoc-fg-subtle);}
+.code-dots span{background:color-mix(in srgb, var(--wdoc-fg) 22%, transparent);}
+.code-card .code-line::before{color:var(--wdoc-fg-subtle);}
+.heading-marker{color:var(--wdoc-accent);font-family:var(--wdoc-font-mono);}
+.book-kicker{color:var(--wdoc-accent);font-family:var(--wdoc-font-mono);}
+.book-meta{color:var(--wdoc-fg-muted);border-top:1px solid var(--wdoc-border);}
+.book-rail-title,.book-onpage-title{color:var(--wdoc-fg-subtle);}
+.book-onpage-link{color:var(--wdoc-fg-muted);border-left:2px solid transparent;}
+.book-onpage-link:hover{color:var(--wdoc-fg);}
+.book-onpage-link.active{color:var(--wdoc-accent);border-left-color:var(--wdoc-accent);}
+.footnotes{border-top:1px solid var(--wdoc-border);color:var(--wdoc-fg-muted);}
+.footnote-ref{color:var(--wdoc-accent);}
+.wdoc-badge{font-family:var(--wdoc-font-head);background:color-mix(in srgb, var(--wdoc-accent) 16%, var(--wdoc-book-bg));color:var(--wdoc-accent);border:1px solid color-mix(in srgb, var(--wdoc-accent) 32%, transparent);}
+pre.code-block{background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);font-family:var(--wdoc-font-mono);}
+.tok-comment{color:var(--wdoc-syn-comment);}
+.tok-keyword{color:var(--wdoc-syn-kw);}
+.tok-storage{color:var(--wdoc-syn-kw);}
+.tok-storage.tok-type{color:var(--wdoc-syn-type);}
+.tok-string{color:var(--wdoc-syn-str);}
+.tok-constant{color:var(--wdoc-syn-num);}
+.tok-constant.tok-numeric{color:var(--wdoc-syn-num);}
+.tok-entity.tok-name.tok-function{color:var(--wdoc-syn-fn);}
 .tok-entity.tok-name.tok-tag{color:var(--wdoc-red);}
-.tok-entity.tok-name.tok-class{color:var(--wdoc-yellow);}
+.tok-entity.tok-name.tok-class{color:var(--wdoc-syn-type);}
 .tok-variable{color:var(--wdoc-fg);}
-.tok-support{color:var(--wdoc-cyan);}
-.tok-punctuation{color:var(--wdoc-fg-muted);}
+.tok-support{color:var(--wdoc-syn-type);}
+.tok-punctuation{color:var(--wdoc-syn-punct);}
 .tok-meta.tok-tag{color:var(--wdoc-red);}
 .tok-invalid{color:var(--wdoc-bg);background:var(--wdoc-red);}
 .wdoc-series-1{fill:var(--wdoc-blue);stroke:var(--wdoc-blue);}
@@ -111,18 +154,18 @@ pre.code-block{background:var(--wdoc-bg-inset);color:var(--wdoc-fg);border-color
 .callout.warning{--callout-accent:var(--wdoc-yellow);}
 .callout.error{--callout-accent:var(--wdoc-red);}
 .callout.success{--callout-accent:var(--wdoc-green);}
+.callout{background:color-mix(in srgb, var(--callout-accent) 9%, var(--wdoc-book-bg));}
 .wdoc-terminal-error,.wdoc-math-error{color:var(--wdoc-red);}
-.wdoc-table th{background:var(--wdoc-bg-alt);}
+.wdoc-table th{background:var(--wdoc-bg-alt);color:var(--wdoc-fg-muted);font-family:var(--wdoc-font-head);}
 .wdoc-table th,.wdoc-table td{border-color:var(--wdoc-border);}
+.wdoc-table tbody tr:nth-child(even){background:color-mix(in srgb, var(--wdoc-fg) 4%, transparent);}
 .wdoc-map-card{background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);}
 .wdoc-card{background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);}
 .wdoc-preview{background:var(--wdoc-bg);color:var(--wdoc-fg);border-color:var(--wdoc-border);}
 .wdoc-node-table-frame{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-border);}
 .wdoc-node-table-sep{stroke:var(--wdoc-border);}
 .wdoc-node-table-port{fill:var(--wdoc-blue);stroke:var(--wdoc-border);}
-.wdoc-node-table-title,.wdoc-node-row{color:var(--wdoc-fg);}
-.bold{color:var(--wdoc-orange);}
-.code{background:var(--wdoc-bg-inset);border-radius:4px;padding:0.05em 0.3em;}";
+.wdoc-node-table-title,.wdoc-node-row{color:var(--wdoc-fg);}";
 
 /// Append `--wdoc-<role>:<hex>;` for every role the palette block sets.
 fn palette_vars(pal: &Block<'_>, out: &mut String) {
@@ -130,6 +173,25 @@ fn palette_vars(pal: &Block<'_>, out: &mut String) {
         if let Some(c) = field_utf8(pal, field) {
             write!(out, "--wdoc-{var}:{c};").expect("write to String");
         }
+    }
+}
+
+/// Emit `:root{ --wdoc-font-*: … }` for the font stacks a `theme` sets.
+/// Mode-independent, so written once and placed after the `wdoc-fonts`
+/// lib defaults — a theme (e.g. `paper`) overrides them by source order.
+fn theme_font_vars(theme: &Block<'_>, out: &mut String) {
+    let mut decl = String::new();
+    for (field, var) in [
+        ("font_head", "font-head"),
+        ("font_body", "font-body"),
+        ("font_mono", "font-mono"),
+    ] {
+        if let Some(v) = field_utf8(theme, field) {
+            write!(decl, "--wdoc-{var}:{v};").expect("write to String");
+        }
+    }
+    if !decl.is_empty() {
+        writeln!(out, ":root{{{decl}}}").expect("write to String");
     }
 }
 
@@ -185,24 +247,24 @@ impl Default for UiTheme {
 fn nord_roles(mode: &str) -> ThemeRoles {
     if mode == "light" {
         ThemeRoles {
-            bg: "#eceff4".into(),
+            bg: "#eceff4".into(), // nord light `book_bg` (panel surface)
             bg_alt: "#e5e9f0".into(),
-            bg_inset: "#d8dee9".into(),
+            bg_inset: "#e5e9f0".into(),
             overlay: "#d8dee9".into(),
             border: "#d8dee9".into(),
-            fg: "#2e3440".into(),
-            fg_muted: "#4c566a".into(),
+            fg: "#3b4252".into(),
+            fg_muted: "#566173".into(),
             accent: "#5e81ac".into(), // nord light `blue`
         }
     } else {
         ThemeRoles {
-            bg: "#2e3440".into(),
+            bg: "#2e3440".into(), // nord dark `book_bg` (panel surface)
             bg_alt: "#3b4252".into(),
-            bg_inset: "#272c36".into(),
+            bg_inset: "#3b4252".into(),
             overlay: "#434c5e".into(),
-            border: "#4c566a".into(),
+            border: "#3b4252".into(),
             fg: "#d8dee9".into(),
-            fg_muted: "#9aa5b8".into(),
+            fg_muted: "#a0aabe".into(),
             accent: "#81a1c1".into(), // nord dark `blue`
         }
     }
@@ -261,7 +323,11 @@ pub(crate) fn resolve_roles(doc: &Document, theme: &str, accent: &str, mode: &st
     let role =
         |f: &str, fallback: &str| field_utf8(&pal, f).unwrap_or_else(|| fallback.to_string());
     ThemeRoles {
-        bg: role("bg", &def.bg),
+        // The wireframe panel sits on the reading surface (`book_bg`), not
+        // the darker outer gutter (`bg`); fall back to `bg` then nord.
+        bg: field_utf8(&pal, "book_bg")
+            .or_else(|| field_utf8(&pal, "bg"))
+            .unwrap_or_else(|| def.bg.clone()),
         bg_alt: role("bg_alt", &def.bg_alt),
         bg_inset: role("bg_inset", &def.bg_inset),
         overlay: role("overlay", &def.overlay),
@@ -282,11 +348,13 @@ pub(crate) fn site_theme_css(doc: &Document, site_block: Option<&Block<'_>>) -> 
     // The `theme` symbol names a `theme` block; default to `nord`.
     let name = field_symbol(block, "theme").unwrap_or_else(|| "nord".to_string());
 
-    let accent_raw = field_symbol(block, "accent").unwrap_or_default();
-    let accent = if HUES.contains(&accent_raw.as_str()) {
-        accent_raw.as_str()
-    } else {
-        "blue"
+    // The active accent: a `site.accent` hue wins (re-points `--wdoc-accent`
+    // at that hue var); otherwise the theme's own `accent` role drives it
+    // (via `--wdoc-accent-pal`). So a theme looks "designed" out of the box,
+    // and `accent = :green` still overrides on demand.
+    let accent_expr = match field_symbol(block, "accent") {
+        Some(a) if HUES.contains(&a.as_str()) => format!("var(--wdoc-{a})"),
+        _ => "var(--wdoc-accent-pal)".to_string(),
     };
 
     // Find the named `theme` block (built-in or user-declared), falling
@@ -305,6 +373,9 @@ pub(crate) fn site_theme_css(doc: &Document, site_block: Option<&Block<'_>>) -> 
     }
 
     let mut out = String::new();
+    // Default font stacks (themed sites only — keeps a site-less doc bare).
+    // A theme's `font_*` fields override these via `theme_font_vars` below.
+    out.push_str(FONT_DEFAULTS);
     writeln!(out, ":root{{{dv}}}").expect("write to String");
     writeln!(out, "@media (prefers-color-scheme: light){{:root{{{lv}}}}}")
         .expect("write to String");
@@ -317,6 +388,8 @@ pub(crate) fn site_theme_css(doc: &Document, site_block: Option<&Block<'_>>) -> 
     // global toggle. Custom properties inherit, so a closer ancestor wins.
     writeln!(out, ".wdoc-theme-dark{{{dv}}}").expect("write to String");
     writeln!(out, ".wdoc-theme-light{{{lv}}}").expect("write to String");
-    out.push_str(&APPLY.replace("{ACCENT}", accent));
+    // Theme font stacks (mode-independent), after the palette blocks.
+    theme_font_vars(&theme, &mut out);
+    out.push_str(&APPLY.replace("{ACCENT_EXPR}", &accent_expr));
     Some(out)
 }

@@ -64,7 +64,7 @@ pub(crate) fn render_html(
     // (mirrors the WCL `code` lower: tokens inside `<pre><code language-…>`).
     let source = demo_source(block);
     if !source.is_empty() {
-        let body = highlight::highlight_html(&source, "wcl");
+        let body = highlight::highlight_html(&source, "wcl", false);
         out.push_str("<p class=\"wdoc-demo-label\">Example</p>");
         write!(
             out,

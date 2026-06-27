@@ -16,6 +16,7 @@
 mod accessors;
 mod css;
 mod expand;
+mod headings;
 mod html;
 mod lower;
 mod svg;

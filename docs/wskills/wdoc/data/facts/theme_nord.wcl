@@ -1,0 +1,37 @@
+import <wdoc.wcl>
+
+// Theme preview — swatches are literal hex, mirroring `lib/theme.wcl`'s
+// `nord` palettes (dark + light). Keep in sync with that file by hand.
+fact theme_nord {
+  title = "Nordic theme"
+  related = [themes]
+  audience = :both
+  body {
+    p "`theme = :nord` — cool blue-grey, the default. Dark (top) and light (bottom): page, surface, border, accent, accent-2, tip, warn, danger, keyword. See [all themes](fact_themes)."
+    diagram {
+      width = 340  height = 116
+      label "Dark"  { x = 6.0  y = 30.0  font_size = 11.0  fill = "#a0aabe" }
+      rect { x = 46.0  y = 18.0  width = 24.0  height = 24.0  fill = "#242933" }
+      rect { x = 73.0  y = 18.0  width = 24.0  height = 24.0  fill = "#2e3440" }
+      rect { x = 100.0  y = 18.0  width = 24.0  height = 24.0  fill = "#3b4252" }
+      rect { x = 127.0  y = 18.0  width = 24.0  height = 24.0  fill = "#3b4252" }
+      rect { x = 154.0  y = 18.0  width = 24.0  height = 24.0  fill = "#88c0d0" }
+      rect { x = 181.0  y = 18.0  width = 24.0  height = 24.0  fill = "#81a1c1" }
+      rect { x = 208.0  y = 18.0  width = 24.0  height = 24.0  fill = "#a3be8c" }
+      rect { x = 235.0  y = 18.0  width = 24.0  height = 24.0  fill = "#ebcb8b" }
+      rect { x = 262.0  y = 18.0  width = 24.0  height = 24.0  fill = "#bf616a" }
+      rect { x = 289.0  y = 18.0  width = 24.0  height = 24.0  fill = "#81a1c1" }
+      label "Light" { x = 6.0  y = 84.0  font_size = 11.0  fill = "#566173" }
+      rect { x = 46.0  y = 72.0  width = 24.0  height = 24.0  fill = "#d8dee9" }
+      rect { x = 73.0  y = 72.0  width = 24.0  height = 24.0  fill = "#eceff4" }
+      rect { x = 100.0  y = 72.0  width = 24.0  height = 24.0  fill = "#e5e9f0" }
+      rect { x = 127.0  y = 72.0  width = 24.0  height = 24.0  fill = "#d8dee9" }
+      rect { x = 154.0  y = 72.0  width = 24.0  height = 24.0  fill = "#5e81ac" }
+      rect { x = 181.0  y = 72.0  width = 24.0  height = 24.0  fill = "#81a1c1" }
+      rect { x = 208.0  y = 72.0  width = 24.0  height = 24.0  fill = "#4f7a3e" }
+      rect { x = 235.0  y = 72.0  width = 24.0  height = 24.0  fill = "#9a7411" }
+      rect { x = 262.0  y = 72.0  width = 24.0  height = 24.0  fill = "#a84b54" }
+      rect { x = 289.0  y = 72.0  width = 24.0  height = 24.0  fill = "#5e81ac" }
+    }
+  }
+}

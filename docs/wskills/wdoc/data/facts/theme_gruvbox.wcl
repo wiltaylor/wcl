@@ -1,0 +1,37 @@
+import <wdoc.wcl>
+
+// Theme preview — swatches are literal hex, mirroring `lib/theme.wcl`'s
+// `gruvbox` palettes (dark + light). Keep in sync with that file by hand.
+fact theme_gruvbox {
+  title = "Gruvbox theme"
+  related = [themes]
+  audience = :both
+  body {
+    p "`theme = :gruvbox` — warm retro. Dark (top) and light (bottom): page, surface, border, accent, accent-2, tip, warn, danger, keyword. See [all themes](fact_themes)."
+    diagram {
+      width = 340  height = 116
+      label "Dark"  { x = 6.0  y = 30.0  font_size = 11.0  fill = "#a89984" }
+      rect { x = 46.0  y = 18.0  width = 24.0  height = 24.0  fill = "#1d2021" }
+      rect { x = 73.0  y = 18.0  width = 24.0  height = 24.0  fill = "#282828" }
+      rect { x = 100.0  y = 18.0  width = 24.0  height = 24.0  fill = "#32302f" }
+      rect { x = 127.0  y = 18.0  width = 24.0  height = 24.0  fill = "#3c3836" }
+      rect { x = 154.0  y = 18.0  width = 24.0  height = 24.0  fill = "#fe8019" }
+      rect { x = 181.0  y = 18.0  width = 24.0  height = 24.0  fill = "#83a598" }
+      rect { x = 208.0  y = 18.0  width = 24.0  height = 24.0  fill = "#b8bb26" }
+      rect { x = 235.0  y = 18.0  width = 24.0  height = 24.0  fill = "#fabd2f" }
+      rect { x = 262.0  y = 18.0  width = 24.0  height = 24.0  fill = "#fb4934" }
+      rect { x = 289.0  y = 18.0  width = 24.0  height = 24.0  fill = "#fb4934" }
+      label "Light" { x = 6.0  y = 84.0  font_size = 11.0  fill = "#7c6f64" }
+      rect { x = 46.0  y = 72.0  width = 24.0  height = 24.0  fill = "#ece0bf" }
+      rect { x = 73.0  y = 72.0  width = 24.0  height = 24.0  fill = "#fbf1c7" }
+      rect { x = 100.0  y = 72.0  width = 24.0  height = 24.0  fill = "#f2e5bc" }
+      rect { x = 127.0  y = 72.0  width = 24.0  height = 24.0  fill = "#e3d5a8" }
+      rect { x = 154.0  y = 72.0  width = 24.0  height = 24.0  fill = "#af3a03" }
+      rect { x = 181.0  y = 72.0  width = 24.0  height = 24.0  fill = "#076678" }
+      rect { x = 208.0  y = 72.0  width = 24.0  height = 24.0  fill = "#79740e" }
+      rect { x = 235.0  y = 72.0  width = 24.0  height = 24.0  fill = "#b57614" }
+      rect { x = 262.0  y = 72.0  width = 24.0  height = 24.0  fill = "#9d0006" }
+      rect { x = 289.0  y = 72.0  width = 24.0  height = 24.0  fill = "#9d0006" }
+    }
+  }
+}
