@@ -3,7 +3,7 @@ import <wdoc.wcl>
 concept formatting {
   name     = "Formatting"
   summary  = "Inline patterns (bold / italic / code / links / icons / math), headings, code, lists, callouts."
-  related  = [primitives, columns]
+  related  = [columns]
   audience = :both
   body {
     p <<PROSE

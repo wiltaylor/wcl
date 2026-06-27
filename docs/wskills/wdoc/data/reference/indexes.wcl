@@ -36,13 +36,13 @@ index diagrams_section {
     name    = "Canvas & layout"
     summary = "The drawing surface, its primitive shapes, connections, and auto-layout."
     audience = :both
-    related = [diagrams, primitives, connections, layout_modes]
+    related = [diagrams, connections, layout_modes]
   }
   index dia_graphs {
     name    = "Graphs & flow"
     summary = "Turn a connection graph into a ranked, routed picture."
     audience = :both
-    related = [flowcharts, sequence_diagrams, state_diagrams, tree]
+    related = [flowcharts, swimlanes, sequence_diagrams, state_diagrams, tree]
   }
   index dia_dataviz {
     name    = "Data visualisation"

@@ -5,12 +5,7 @@ fact dopesheets {
   related  = [tilemaps, images, diagrams]
   audience = :both
   body {
-    block_doc {
-      type        = Dopesheet
-      description = "`dopesheet` plays a range of frames from a sprite sheet at a set `fps`. Like `tilemap` it's a placeable SVG block — a legal child of any `diagram` or `container`. The sheet is referenced by URL (an `@inline(0)` source, like `image`), so frames resolve when the site is **served**, not when the page is opened directly from disk."
-    }
-    h2 "Frame geometry and playback"
-    p "Describe the frame grid with `frame_width` / `frame_height`, plus `offset_x` / `offset_y` and `stride_x` / `stride_y` for padding or gaps; `columns` defaults to as many frames as fit across the sheet. `from` / `to` pick an inclusive sub-range. `scale` enlarges pixel art; `image-rendering: pixelated` is the default, so set `smooth = true` for non-pixel sources. Autoplay, loop, and controls are on by default — click to pause or resume."
+    p "`dopesheet` plays a range of frames from a sprite sheet at a set `fps` — a placeable SVG block, a legal child of any `diagram` or `container`. Here the whole sheet loops at 12 fps (click the coin to pause):"
     demo {
       diagram = true
       diagram { width = 96  height = 96
@@ -24,6 +19,11 @@ fact dopesheets {
         }
       }
     }
-    p "The whole sheet — six 12×12 frames — loops at 12 fps (`columns` defaults to `72 / 12 = 6`). Add `from` / `to` for an inclusive sub-range and `autoplay = false` to leave it paused until clicked. The sample sheet is truezipp's CC0 \"Pixel Coins Asset\"."
+    block_doc {
+      type        = Dopesheet
+      description = "`dopesheet` plays a range of frames from a sprite sheet at a set `fps`. Like `tilemap` it's a placeable SVG block — a legal child of any `diagram` or `container`. The sheet is referenced by URL (an `@inline(0)` source, like `image`), so frames resolve when the site is **served**, not when the page is opened directly from disk."
+    }
+    h2 "Frame geometry and playback"
+    p "Describe the frame grid with `frame_width` / `frame_height`, plus `offset_x` / `offset_y` and `stride_x` / `stride_y` for padding or gaps; `columns` defaults to as many frames as fit across the sheet. `from` / `to` pick an inclusive sub-range. `scale` enlarges pixel art; `image-rendering: pixelated` is the default, so set `smooth = true` for non-pixel sources. Autoplay, loop, and controls are on by default — click to pause or resume. (The sample sheet is truezipp's CC0 \"Pixel Coins Asset\".)"
   }
 }

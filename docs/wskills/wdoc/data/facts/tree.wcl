@@ -13,7 +13,6 @@ fact tree {
         tree {
           tree_node "src/" {
             icon  = "lucide.folder"
-            color = "#88c0d0"
             tree_node "render/" {
               icon = "lucide.folder"
               tree_node "svg.rs"  { icon = "lucide.file" }

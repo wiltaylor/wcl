@@ -1,22 +1,22 @@
 concept connections {
   name     = "Connections"
   summary  = "Edges between diagram blocks: source -> destination :kind, generated endpoints, computed edges, routing."
-  related  = [data_views, primitives]
+  related  = [data_views]
   audience = :both
   body {
     p <<PROSE
 Inside a `diagram`, `source -> destination :kind` draws an edge between two shapes (matched by `id`). The optional `:kind` tag is a symbol; the renderer routes the edge based on the diagram's layout and styles it by kind. Connections are the wiring under every relational diagram — see also [entity diagrams](fact_diagrams), [flowcharts](fact_flowcharts), [sequence diagrams](fact_sequence_diagrams), and [state diagrams](fact_state_diagrams).
 PROSE
-    code "wcl" { source = <<'SRC'
-diagram {
-  width = 320  height = 120
-  rect { id = a  x = 10.0   y = 10.0  width = 60.0  height = 40.0  fill = "#88c0d0" }
-  rect { id = b  x = 200.0  y = 10.0  width = 60.0  height = 40.0  fill = "#a3be8c" }
-
-  a -> b
-  a -> b :flow
-}
-SRC
+    demo {
+      diagram = true
+      diagram {
+        width = 380  height = 90
+        rect { id = a  x = 10.0   y = 25.0  width = 70.0  height = 40.0  fill = "#88c0d0" }
+        rect { id = b  x = 150.0  y = 25.0  width = 70.0  height = 40.0  fill = "#a3be8c" }
+        rect { id = c  x = 290.0  y = 25.0  width = 70.0  height = 40.0  fill = "#ebcb8b" }
+        a -> b :flow
+        b -> c :data
+      }
     }
 
     h2 "Syntax"
@@ -58,18 +58,30 @@ SRC
     p <<PROSE
 Besides `->` statements, a diagram (or container) accepts a computed `edges = [...]` field — a list of records with `source` / `destination` (shape ids) and an optional `kind`. The two forms may coexist. Only the record form carries presentation payload: `label` renders as text at the edge's midpoint, and `dash` becomes an inline `stroke-dasharray`.
 PROSE
-    code "wcl" { source = <<'SRC'
-diagram {
-  rect { id = la ... }
-  rect { id = lb ... }
-  edges = [ { source: "la", destination: "lb", label: "ships to", dash: "5 4" } ]
-}
-SRC
+    demo {
+      diagram = true
+      diagram {
+        width = 340  height = 90
+        rect { id = la  x = 10.0   y = 25.0  width = 90.0  height = 40.0  fill = "#88c0d0" }
+        rect { id = lb  x = 240.0  y = 25.0  width = 90.0  height = 40.0  fill = "#a3be8c" }
+        edges = [ { source: "la", destination: "lb", label: "ships to", dash: "5 4" } ]
+      }
     }
 
     h2 "Routing"
     p <<PROSE
 How an edge gets from source to destination is set on the *diagram*, not the edge: `routing = :elbow` (default) draws an orthogonal multi-bend polyline that routes around other shapes; `routing = :straight` draws a single direct line. Use `connect_points` on a shape to restrict which sides (`:north`/`:east`/`:south`/`:west`) an edge may attach to.
 PROSE
+    p "Elbow routing (the default) bends around an intervening shape:"
+    demo {
+      diagram = true
+      diagram {
+        width = 320  height = 160  routing = :elbow
+        rect { id = s  x = 10.0   y = 60.0  width = 70.0  height = 40.0  fill = "#88c0d0" }
+        rect { id = o  x = 125.0  y = 10.0  width = 70.0  height = 40.0  fill = "#bf616a" }
+        rect { id = d  x = 240.0  y = 60.0  width = 70.0  height = 40.0  fill = "#a3be8c" }
+        s -> d :flow
+      }
+    }
   }
 }

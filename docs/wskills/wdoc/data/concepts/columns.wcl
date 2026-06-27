@@ -3,7 +3,7 @@ import <wdoc.wcl>
 concept columns {
   name     = "Columns"
   summary  = "The `column` layout block and its content (any wdoc block, per-slot widths)."
-  related  = [formatting, primitives]
+  related  = [formatting]
   audience = :both
   body {
     p <<PROSE

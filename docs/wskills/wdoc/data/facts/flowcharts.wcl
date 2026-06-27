@@ -6,7 +6,16 @@ fact flowcharts {
   audience = :both
   body {
     p "Flowchart shapes plus the layered auto-layout mode turn a `diagram` into a flowchart: declare the shapes and the edges, and the renderer ranks them topologically and elbow-routes the connections. The three stdlib shapes lower to SVG primitives and take the same fields, differing only in the figure drawn: `process` is a rectangle (an action/step), `decision` a diamond (a yes/no branch), and `terminator` an oval (a start/end node). See [connections](concept_connections)."
-    p "A rectangle node — an action or step in the flow."
+    p "The three shapes side by side — `process` (rectangle), `decision` (diamond), `terminator` (oval):"
+    demo {
+      diagram = true
+      diagram { width = 440  height = 110
+        process    "process"    { id = gp  x = 20.0   y = 35.0  width = 120.0  height = 44.0  fill = "#88c0d0" }
+        decision   "decision"   { id = gd  x = 165.0  y = 25.0  width = 110.0  height = 64.0  fill = "#ebcb8b" }
+        terminator "terminator" { id = gt  x = 300.0  y = 35.0  width = 120.0  height = 44.0  fill = "#b48ead" }
+      }
+    }
+    p "Wired into a flow with `:layered` auto-layout:"
     demo {
       diagram = true
       diagram {

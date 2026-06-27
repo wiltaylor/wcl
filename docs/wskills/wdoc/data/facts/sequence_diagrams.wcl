@@ -30,6 +30,22 @@ fact sequence_diagrams {
 
     h2 "Participants, messages, notes"
     p "A `participant`'s `kind` picks the head: `:box` (default), `:actor` (stick figure), `:external` (dashed box); `link` makes it clickable. A `message`'s `kind` picks the arrow: `:sync` (solid line, filled head, default), `:async` (solid, open head), `:reply` (dashed, open head); the same `from` and `to` renders a self-message loop. A `note` is a margin annotation drawn at the row of the message named by `at`."
+    p "One figure exercising all three participant kinds, the three arrow kinds, a self-message, and a note:"
+    demo {
+      diagram = true
+      sequence_diagram {
+        width = 600
+        participant "user" { name = "User"     kind = :actor }
+        participant "svc"  { name = "Service" }
+        participant "ext"  { name = "Provider" kind = :external }
+        message "a" { from = "user" to = "svc" text = "request" }
+        message "b" { from = "svc"  to = "ext" text = "fetch"   kind = :async }
+        message "c" { from = "ext"  to = "svc" text = "data"    kind = :reply }
+        message "d" { from = "svc"  to = "svc" text = "cache result" }
+        message "e" { from = "svc"  to = "user" text = "response" kind = :reply }
+        note "n1" { at = "b"  text = "async: solid line, open head" }
+      }
+    }
     block_doc {
       type        = Participant
       description = "A lifeline; `kind` picks the head (`:box` / `:actor` / `:external`) and `link` makes it clickable."

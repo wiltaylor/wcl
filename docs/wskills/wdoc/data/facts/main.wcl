@@ -25,6 +25,7 @@ import "./math.wcl"
 // Components — the diagram family (each lives inside / is a diagram).
 import "./diagrams.wcl"
 import "./flowcharts.wcl"
+import "./swimlanes.wcl"
 import "./sequence_diagrams.wcl"
 import "./state_diagrams.wcl"
 import "./charts.wcl"
