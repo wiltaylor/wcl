@@ -62,12 +62,27 @@ pub(crate) fn render_html(
         .expect("write to String");
     }
 
-    // Preview — the children rendered live once, shown under each palette.
-    // Shown first (above the example source) so the visual result leads.
-    let children: String = block
-        .blocks()
-        .filter_map(|b| render_block(doc, &b, patterns, base_dir))
-        .collect();
+    // Preview — the children rendered live, shown under each palette. HTML
+    // content re-themes for free via the scoped `--wdoc-*` vars on each pane,
+    // but SVG content (wireframe / diagrams) *bakes* the resolved UI palette in
+    // Rust (no `currentColor`, for PDF parity), so one render can't adapt to
+    // both panes. Render the children twice — once per mode — flipping the UI
+    // theme so each pane's baked colours match its palette. Registry writes
+    // (images / icons) are keyed by source, so the second pass is idempotent.
+    let saved_ui = patterns.ui_theme();
+    let render_mode = |mode: &str| -> String {
+        let mut ui = saved_ui.clone();
+        ui.mode = mode.to_string();
+        patterns.set_ui_theme(ui);
+        block
+            .blocks()
+            .filter_map(|b| render_block(doc, &b, patterns, base_dir))
+            .collect()
+    };
+    let children_light = render_mode("light");
+    let children_dark = render_mode("dark");
+    patterns.set_ui_theme(saved_ui);
+
     let row_class = if diagram {
         "wdoc-preview-row wdoc-preview-diagram"
     } else {
@@ -77,8 +92,8 @@ pub(crate) fn render_html(
     write!(out, "<div class=\"{row_class}\">").expect("write to String");
     write!(
         out,
-        "<div class=\"wdoc-body wdoc-theme-light wdoc-preview\">{children}</div>\
-         <div class=\"wdoc-body wdoc-theme-dark wdoc-preview\">{children}</div>"
+        "<div class=\"wdoc-body wdoc-theme-light wdoc-preview\">{children_light}</div>\
+         <div class=\"wdoc-body wdoc-theme-dark wdoc-preview\">{children_dark}</div>"
     )
     .expect("write to String");
     out.push_str("</div>");

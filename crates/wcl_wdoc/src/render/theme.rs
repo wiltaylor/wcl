@@ -165,7 +165,9 @@ pre.code-block{background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:v
 .wdoc-node-table-frame{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-border);}
 .wdoc-node-table-sep{stroke:var(--wdoc-border);}
 .wdoc-node-table-port{fill:var(--wdoc-blue);stroke:var(--wdoc-border);}
-.wdoc-node-table-title,.wdoc-node-row{color:var(--wdoc-fg);}";
+.wdoc-node-table-title,.wdoc-node-row{color:var(--wdoc-fg);}
+.wdoc-tree-label{fill:var(--wdoc-fg);}
+.wdoc-tree-guide{stroke:var(--wdoc-border-strong);}";
 
 /// Append `--wdoc-<role>:<hex>;` for every role the palette block sets.
 fn palette_vars(pal: &Block<'_>, out: &mut String) {

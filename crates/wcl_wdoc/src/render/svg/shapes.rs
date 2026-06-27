@@ -564,7 +564,14 @@ pub(crate) fn render_icon(
     parent_h: f64,
     icons: &IconRegistry,
 ) -> String {
-    let name = label_string(block).unwrap_or_default();
+    // The icon name is `@inline(0)`, so it may be written inline
+    // (`icon "lucide.compass"`) or as the explicit field (`icon { name =
+    // "lucide.compass" }`). `label_string` only sees the inline form, so fall
+    // back to the `name` field for the explicit one.
+    let name = label_string(block)
+        .or_else(|| field_id(block, "name"))
+        .or_else(|| field_utf8(block, "name"))
+        .unwrap_or_default();
     let set = field_id(block, "set");
     let (x, y, mut w, mut h) = resolve_rect_box(block, parent_w, parent_h);
     if let Some(scale) = field_f64(block, "scale") {
