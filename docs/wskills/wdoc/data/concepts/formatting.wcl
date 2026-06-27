@@ -26,6 +26,11 @@ $x^2$                // → inline LaTeX (text style)
 $$\int x \, dx$$     // → display-style LaTeX
 SRC
     }
+    demo {
+      p <<'PROSE'
+**bold**, _italic_, `code`, a [link](concept_overview), an inline icon :lucide.check:, and math $x^2$ — every pattern lights up automatically.
+PROSE
+    }
     p <<PROSE
 For a paragraph mixing several styled segments, use a `text` block holding `span`s — each `span` takes its own `class`.
 PROSE
@@ -88,6 +93,21 @@ list { style = :numbered
 }
 SRC
     }
+    demo {
+      list { style = :numbered
+        li "Setup"
+        li "Build" {
+          li "Compile"
+          li "Link"
+        }
+        li "Run" {
+          list {
+            li "Foreground"
+            li "Background"
+          }
+        }
+      }
+    }
 
     h2 "Callouts"
     p <<PROSE
@@ -105,6 +125,10 @@ callout "Deploying" {
   body  = "A **custom** type — the class above sets its accent colour."
 }
 SRC
+    }
+    demo {
+      callout "Note"    { class = ["note"]    body = "Background context the reader should remember." }
+      callout "Warning" { class = ["warning"] body = "Something to be careful about — composes **inline patterns** too." }
     }
 
     h2 "Block reference"

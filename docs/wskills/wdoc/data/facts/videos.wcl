@@ -35,6 +35,9 @@ video "https://vimeo.com/76979871" {
 }
 SRC
     }
-    callout "PDF output" { class = ["note"]  body = "A PDF can't play video, so `wcl wdoc pdf` renders the poster thumbnail and, for an online video only, a link to it." }
+    h2 "PDF output"
+    p "A PDF can't play video, so `wcl wdoc pdf` degrades every `video` to a still: it renders the `poster` thumbnail (or a plain play-button placeholder when none is given) at the block's `width`, and — for an **online** video only — prints the URL beneath it as a tappable link. A local-file video has nowhere to link to, so it shows the poster alone."
+    p "So author a `poster` for any video you expect to appear in a PDF — otherwise the page shows only the placeholder box. The same `poster` doubles as the click-to-play facade in HTML, so it's worth setting regardless of target."
+    callout "Rule of thumb" { class = ["tip"]  body = "Always give a local-file `video` a `poster`: it's the HTML facade thumbnail **and** the PDF still. YouTube derives its own poster from the video id, so an embed can skip it." }
   }
 }

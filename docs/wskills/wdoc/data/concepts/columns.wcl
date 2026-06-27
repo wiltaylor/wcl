@@ -9,25 +9,23 @@ concept columns {
     p <<PROSE
 `column` lays wdoc content out in side-by-side columns on a page, instead of stacking it sequentially. The `widths` list gives a CSS percentage for each child slot — one entry per child, summing to about `100`.
 PROSE
-    code "wcl" { source = <<'SRC'
-column {
-  widths = [50.0, 50.0]
-  p "**Left.** The first child fills the first 50% slot."
-  p "**Right.** The second child fills the other half."
-}
-SRC
+    demo {
+      column {
+        widths = [50.0, 50.0]
+        p "**Left.** The first child fills the first 50% slot."
+        p "**Right.** The second child fills the other half."
+      }
     }
     p <<PROSE
 Any number of columns is allowed — here three equal thirds, each holding its own content.
 PROSE
-    code "wcl" { source = <<'SRC'
-column {
-  widths = [33.3, 33.3, 33.3]
-  h4 "One"
-  h4 "Two"
-  h4 "Three"
-}
-SRC
+    demo {
+      column {
+        widths = [33.3, 33.3, 33.3]
+        h4 "One"
+        h4 "Two"
+        h4 "Three"
+      }
     }
 
     h2 "Children"

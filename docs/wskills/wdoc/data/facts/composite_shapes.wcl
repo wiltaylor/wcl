@@ -1,0 +1,64 @@
+import <wdoc.wcl>
+
+fact composite_shapes {
+  title    = "composite shapes"
+  related  = [diagrams, primitive_shapes, connections]
+  audience = :both
+  body {
+    p "Composite shapes hold or lay out content rather than drawing a single primitive — a `container` frames child shapes, a `card` embeds rich wdoc content, and a `node_table` builds a row-table with per-row connection ports. Each leads with its own preview."
+
+    h2 "container"
+    p "A `container` frames its children and can lay them out automatically (here a 2-column grid):"
+    demo {
+      diagram = true
+      diagram { width = 240  height = 130
+        container {
+          anchor_left = 10.0  anchor_top = 10.0
+          fill = "#eef"  stroke = "#88a"  padding = 10.0
+          layout = :grid  columns = 2  cell_width = 90.0  cell_height = 44.0  gap = 10.0
+          rect { fill = "#88c0d0" }
+          rect { fill = "#a3be8c" }
+          rect { fill = "#ebcb8b" }
+          rect { fill = "#b48ead" }
+        }
+      }
+    }
+    block_doc { type = Container  description = "A titled box that groups and frames child shapes." }
+
+    h2 "card"
+    p "A `card`'s body is rich wdoc content (paragraphs, lists, even nested diagrams), drawn in a `foreignObject`:"
+    demo {
+      diagram = true
+      diagram { width = 260  height = 110
+        card { x = 20.0  y = 15.0  width = 220.0  height = 80.0
+          title = "Note"
+          p "Rich **text** inside a diagram."
+        }
+      }
+    }
+    block_doc { type = Card       description = "A box whose body is rich wdoc content (paragraphs, lists, nested diagrams), drawn in a foreignObject." }
+
+    h2 "node_table"
+    p "Two `node_table`s joined by a foreign-key edge that targets a single row:"
+    demo {
+      diagram = true
+      diagram { width = 420  height = 170  routing = :straight
+        node_table { id = users
+          x = 20.0  y = 20.0  width = 150.0
+          title = "users"
+          node_row { id = users_id    p "id: int" }
+          node_row { id = users_email p "email: text" }
+        }
+        node_table { id = orders
+          x = 250.0  y = 20.0  width = 150.0
+          title = "orders"
+          node_row { id = orders_id      p "id: int" }
+          node_row { id = orders_user_id p "user_id: int" }
+        }
+        orders_user_id -> users_id :data
+      }
+    }
+    block_doc { type = NodeTable  description = "A row-table shape for DB / class diagrams, with per-row connection ports." }
+    block_doc { type = NodeRow    description = "One row of a node_table." }
+  }
+}

@@ -1,11 +1,15 @@
 import <wdoc.wcl>
 
+// Custom callout class backing the "Custom types" demo below (declared at the
+// document root, like any `class`).
+class "deploy" { accent = "#b48ead" }
+
 fact callouts {
   title    = "callout"
-  related  = [tables_block, lists_block]
+  related  = [tables_block, lists_block, formatting]
   audience = :both
   body {
-    p "A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are selected by `class`, each shipping a default colour and icon — `note`, `info`, `tip`, `warning`, `error`, `success`. See [callout classes](fact_callout_classes)."
+    p "A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are selected by `class`, each shipping a default colour and icon — `note`, `info`, `tip`, `warning`, `error`, `success`."
     demo {
       callout "Note"    { class = ["note"]    body = "Background context the reader should remember." }
       callout "Info"    { class = ["info"]    body = "Neutral information worth surfacing." }
@@ -15,8 +19,29 @@ fact callouts {
       callout "Success" { class = ["success"] body = "Confirm an action completed." }
     }
     type_table { type = Callout }
+
+    h2 "The six classes"
+    table {
+      header = ["Class", "Use"]
+      rows = [
+        ["note", "Background context the reader should remember"],
+        ["info", "Neutral information worth surfacing"],
+        ["tip", "A helpful shortcut or best practice"],
+        ["warning", "Something to be careful about"],
+        ["success", "Confirm an action completed"],
+        ["error", "A failure or hard constraint"],
+      ]
+    }
+
     h2 "Custom types"
     p "For a custom type, give a `class` an `accent` colour and list it in the callout's `class` — that sets the accent (heading, border, icon) with no CSS — and the `icon` field picks any glyph. See [styling](concept_styling)."
+    demo {
+      callout "Deploying" {
+        class = ["deploy"]
+        icon  = "lucide.rocket"
+        body  = "A **custom** type — the `deploy` class sets its accent colour, and `icon` picks the glyph."
+      }
+    }
     code "wcl" { source = <<'SRC'
 class "deploy" { accent = "#b48ead" }
 callout "Deploying" {

@@ -18,7 +18,7 @@ index documents {
     name    = "Content blocks"
     summary = "What fills a page: prose, tables, lists, callouts, media."
     audience = :both
-    related = [formatting, columns, tables_block, lists_block, callouts, math, icons, images, videos, callout_classes]
+    related = [formatting, columns, tables_block, lists_block, callouts, math, icons, images, videos]
   }
   index doc_data_styling {
     name    = "Data & styling"
@@ -36,7 +36,7 @@ index diagrams_section {
     name    = "Canvas & layout"
     summary = "The drawing surface, its primitive shapes, connections, and auto-layout."
     audience = :both
-    related = [diagrams, connections, layout_modes]
+    related = [diagrams, primitive_shapes, composite_shapes, shape_styling, connections, layout_modes]
   }
   index dia_graphs {
     name    = "Graphs & flow"

@@ -56,9 +56,35 @@ tileset platformer {
 }
 SRC
     }
+    p "The set's tiles, by index — a single numeric `tiles` row doubles as a palette of what the sheet can paint:"
+    demo {
+      diagram = true
+      diagram { width = 320  height = 44
+        tilemap {
+          set   = "platformer"
+          scale = 0.6
+          tiles = [ [ 25, 9, 1, 6, 16, 28, 27, 37 ] ]
+        }
+      }
+    }
 
     h2 "Symbolic and numeric maps"
     p "For map-like authoring, declare a glyph legend with `tile` children and supply `map` — a list of utf8 rows; each character resolves through the legend to a tile index (an unmapped glyph draws nothing). Or write raw index rows with `tiles` (one inner list per row); `-1`, the default `empty` index, leaves a cell blank."
+    p "The numeric form — raw index rows, `-1` for a blank cell:"
+    demo {
+      diagram = true
+      diagram { width = 180  height = 120
+        tilemap {
+          set   = "platformer"
+          scale = 0.5
+          tiles = [
+            [ 16, -1, 28 ],
+            [ 25, 25, 25 ],
+            [  1,  1,  1 ],
+          ]
+        }
+      }
+    }
     block_doc {
       type        = Tilemap
       description = "A placeable diagram shape that paints a grid of indexed tiles from a `tileset`, authored either symbolically via `map` (utf8 rows through a glyph legend) or numerically via `tiles` (raw index rows)."

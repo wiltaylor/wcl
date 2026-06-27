@@ -29,14 +29,51 @@ fact flowcharts {
         valid -> render :flow
       }
     }
+    h3 "process"
+    p "A rectangle — an action or step in the flow:"
+    demo {
+      diagram = true
+      diagram { width = 200  height = 80
+        process "Render page" { x = 30.0  y = 20.0  width = 140.0  height = 40.0  fill = "#88c0d0" }
+      }
+    }
     type_table { type = Process }
+
+    h3 "decision"
+    p "A diamond — a yes/no branch point:"
+    demo {
+      diagram = true
+      diagram { width = 200  height = 120
+        decision "Valid?" { x = 40.0  y = 20.0  width = 120.0  height = 80.0  fill = "#ebcb8b" }
+      }
+    }
     block_doc {
       type        = Decision
       description = "A diamond node — a yes/no branch point."
     }
+
+    h3 "terminator"
+    p "An oval — a start or end point of the flow:"
+    demo {
+      diagram = true
+      diagram { width = 200  height = 80
+        terminator "Start" { x = 35.0  y = 20.0  width = 130.0  height = 44.0  fill = "#b48ead" }
+      }
+    }
     block_doc {
       type        = Terminator
       description = "An oval node — a start or end point of the flow."
+    }
+
+    h3 "GraphNode (shared base)"
+    p "`process` / `decision` / `terminator` all extend `GraphNode`, so they share the same fields (`id`, `width`, `height`, `fill`, …) — only the figure drawn differs, as the demo below shows three nodes built with identical fields:"
+    demo {
+      diagram = true
+      diagram { width = 420  height = 90
+        process    "id, fill, w/h" { x = 20.0   y = 25.0  width = 120.0  height = 44.0  fill = "#88c0d0" }
+        decision   "same fields"   { x = 165.0  y = 18.0  width = 110.0  height = 58.0  fill = "#a3be8c" }
+        terminator "same fields"   { x = 300.0  y = 25.0  width = 110.0  height = 44.0  fill = "#b48ead" }
+      }
     }
     block_doc {
       type        = GraphNode
