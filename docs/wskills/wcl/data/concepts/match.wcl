@@ -1,7 +1,7 @@
 concept match_expr {
   name     = "match"
   summary  = "Tests a value against a sequence of patterns, returning the body of the first that matches."
-  related  = [control_flow, patterns, if_let, unions, optionals]
+  related  = [patterns, if_let, unions, optionals]
   audience = :both
   body {
     p "`match` tests a value against a sequence of patterns, returning the body of the first that matches. It is WCL's primary tool for destructuring unions, optionals, and any shape with multiple cases."

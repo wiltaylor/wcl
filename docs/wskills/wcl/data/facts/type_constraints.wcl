@@ -1,6 +1,6 @@
 fact type_constraints {
   title    = "Type & field constraints"
-  related  = [records, schema, fields_blocks]
+  related  = [records, type_aliases, dec_default]
   audience = :both
   body {
     p "Constraint decorators bound a field's value, and `wcl check` enforces them. They also attach to a **type alias** (`type Name = TypeRef`), in which case every field declared with that alias is validated against them — the constraint travels with the name."

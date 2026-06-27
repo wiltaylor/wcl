@@ -1,7 +1,7 @@
 concept imports {
   name     = "Imports & Modules"
   summary  = "Pull another file's declarations into the document — disk and system forms."
-  related  = [namespaces, identifiers, schema]
+  related  = [namespaces, identifiers]
   audience = :both
   body {
     p "An `import` pulls another file's declarations into the current document. There are two forms, distinguished by how the path is written."

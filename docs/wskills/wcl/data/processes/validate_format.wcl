@@ -2,7 +2,7 @@ procedure validate_format {
   title   = "Validate and format a WCL file"
   purpose = "Confirm a file conforms to its schema, then normalise its layout before committing."
   preconditions = ["The file and any files it imports are on disk."]
-  related = [cli, schema]
+  related = [cli, block_schema]
   audience = :both
 
   step check { n = 1

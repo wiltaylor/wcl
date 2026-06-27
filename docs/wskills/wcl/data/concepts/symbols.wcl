@@ -26,16 +26,5 @@ type Tag {
 t = Tag { name: "release", kind: :stable }
 SRC
     }
-    h2 "When to use which"
-    p "WCL has three closely-related tools for a value that is one of a set of names. The right pick depends on whether the vocabulary is open and whether each variant carries data."
-    table {
-      header = ["Need", "Use"]
-      rows = [
-        ["Closed vocabulary, no payload", "`symbol_set`"],
-        ["Closed vocabulary with data per variant", "[union](concept_unions)"],
-        ["Open string-typed tag", "plain `utf8`"],
-        ["Free-form symbol (any `:name`)", "`symbol`"],
-      ]
-    }
   }
 }

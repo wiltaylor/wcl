@@ -1,7 +1,7 @@
 concept lists {
   name     = "Lists"
   summary  = "Ordered, homogeneous sequences — list<T> — and the collection builtins over them."
-  related  = [tables, tensors, expressions]
+  related  = [tables, tensors]
   audience = :both
   body {
     p "A `list<T>` is an ordered, homogeneous sequence of values of type `T`. Lists are how you write any many-of-the-same-thing — including the data flowing through `@children`, `@connections`, and table rows."

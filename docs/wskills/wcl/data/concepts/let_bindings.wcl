@@ -1,7 +1,7 @@
 concept let_bindings {
   name     = "let bindings"
   summary  = "A let names a reusable value or function; resolves by name but is not document data."
-  related  = [control_flow, block_expressions, functions, expressions]
+  related  = [block_expressions, function_literals, fn_items]
   audience = :both
   body {
     p "A `let` names a reusable value or function. It resolves by name in sibling and descendant expressions but is **not** document data — it never appears in output, JSON, or schema validation. Lexically scoped, lazily evaluated, cycle-detected."
@@ -18,7 +18,7 @@ service "api" {
 }
 SRC
     }
-    p "Because a `let` can bind a function, it doubles as a composition helper. See [Functions](concept_functions)."
+    p "Because a `let` can bind a function, it doubles as a composition helper. See [Function Literals](concept_function_literals)."
     code "wcl" { source = <<'SRC'
 let scale = fn(p: f64) -> f64 p * 2.0
 

@@ -1,7 +1,7 @@
 concept if_let {
   name     = "if let"
   summary  = "Binds and branches in a single step when you only care about a single variant or pattern."
-  related  = [control_flow, match_expr, patterns, optionals]
+  related  = [match_expr, patterns, optionals]
   audience = :both
   body {
     p "`if let pattern = value { ... } else { ... }` binds and branches in a single step. Use it when you only care about a single variant or pattern."

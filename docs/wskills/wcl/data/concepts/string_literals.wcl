@@ -1,7 +1,7 @@
 concept string_literals {
   name     = "String Literals"
   summary  = "UTF-8 by default; ascii/utf16/utf32 prefixes select another encoding."
-  related  = [strings, string_escapes, heredocs, raw_heredocs, string_interpolation, symbols, expressions]
+  related  = [strings, string_interpolation, symbols]
   audience = :both
   body {
     h2 "Literals"
@@ -24,5 +24,51 @@ SRC
       ]
     }
     callout "Encoding is metadata" { class = ["note"]  body = "The encoding is part of the value's type: a utf8 field rejects an ascii literal; widen or convert at the host layer." }
+
+    h2 "Escapes"
+    p <<PROSE
+Inside a double-quoted string the usual escape sequences apply: backslash,
+escaped quote, `\n`, `\r`, `\t`. For backslash-heavy text — regexes, LaTeX,
+Windows paths — prefer a **raw heredoc** (below).
+PROSE
+    code "wcl" { source = <<'SRC'
+greeting = "Hello,\nworld!"        // newline embedded
+quoted   = "She said \"hi\"."
+SRC
+    }
+
+    h2 "Heredocs"
+    p <<PROSE
+`<<TAG ... TAG` introduces a heredoc whose body runs until a line matching the
+closing tag. Escape sequences are interpreted, and indentation is stripped to
+match the closing tag's indentation, so heredocs nest comfortably inside blocks.
+PROSE
+    code "wcl" { source = <<'SRC'
+note = <<END
+First line.
+Second line.
+END
+SRC
+    }
+
+    h2 "Raw heredocs"
+    p <<PROSE
+A **raw heredoc** uses a single-quoted opening tag and takes the body verbatim —
+no escapes, no interpolation, just literal bytes. Ideal for LaTeX, regexes, code
+samples with backslashes, or anything where you do not want WCL touching the
+contents. Common leading whitespace is still stripped.
+PROSE
+    code "wcl" { source = <<'SRC'
+regex = <<'RAW'
+\d{3}-\d{4}
+RAW
+
+latex = <<'TEX'
+\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+TEX
+SRC
+    }
+
+    p "Opt a string into expression interpolation with a `$` prefix — see [String Interpolation](concept_string_interpolation)."
   }
 }

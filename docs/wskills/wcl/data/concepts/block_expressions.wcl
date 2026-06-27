@@ -1,7 +1,7 @@
 concept block_expressions {
   name     = "Block Expressions"
   summary  = "A { ... } expression holds let bindings followed by a tail expression, which is the block's value."
-  related  = [control_flow, let_bindings, expressions]
+  related  = [let_bindings]
   audience = :both
   body {
     p "A `{ ... }` expression holds zero or more `let ... ;` bindings followed by a tail expression, which is the block's value."

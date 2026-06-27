@@ -1,7 +1,7 @@
 concept optionals {
   name     = "Optionals"
   summary  = "Values that may be present or absent — the none literal and the ? type suffix."
-  related  = [unions, control_flow]
+  related  = [unions, match_expr, if_let]
   audience = :both
   body {
     p "An **optional** is a value that may be present or absent. The literal `none` represents absence; a `?` suffix on a type makes its values optional. Together they let a field be omitted, a function return no answer, or a slot be cleared explicitly."
@@ -25,7 +25,7 @@ note: utf8? = none
 SRC
     }
     h2 "Working with optionals"
-    p "Pattern-match an optional to handle the two cases. The `if let` shorthand is convenient when you only care about the present case. See [Control Flow](concept_control_flow)."
+    p "Pattern-match an optional to handle the two cases. The `if let` shorthand is convenient when you only care about the present case. See [match](concept_match_expr) and [if let](concept_if_let)."
     code "wcl" { source = <<'SRC'
 display = match maybe_name {
   none => "anonymous",

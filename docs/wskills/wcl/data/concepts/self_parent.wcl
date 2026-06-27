@@ -1,7 +1,7 @@
 concept self_parent {
   name     = "self & parent"
   summary  = "Keywords that navigate the enclosing scope — self is the current block, parent the one around it."
-  related  = [references, fields_blocks, expressions]
+  related  = [references, fields, blocks]
   audience = :both
   body {
     p "Inside a block, the `self` and `parent` keywords are navigators into the document — the same kind of lazy reference a `&T` field holds. `self` resolves to the **current** block (the innermost enclosing scope); `parent` resolves to the block **around** it. Both walk the lexical scope chain upward, so a field can read a sibling or an ancestor without naming the whole path."

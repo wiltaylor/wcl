@@ -1,6 +1,6 @@
 fact operators {
   title    = "Operators"
-  related  = [expressions, optionals, references]
+  related  = [optionals, references]
   audience = :both
   body {
     p "WCL's operator set: arithmetic, comparison, logic, none-coalescing, and member access. Precedence runs unary tightest, then `*` `/` `%`, then `+` `-`, then comparison, then `&&`, then `||`, then `??` loosest."

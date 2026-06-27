@@ -1,0 +1,17 @@
+concept fields {
+  name     = "Fields"
+  summary  = "A field binds a name to a value with `=`; the value is any expression."
+  related  = [blocks, records, document_schema]
+  audience = :both
+  body {
+    p "A field binds a name to a value with `=`. The value is any expression — a literal, a reference, a call, or arithmetic over other values."
+    code "wcl" { source = <<'SRC'
+name    = "alpha"
+count   = 3u32
+enabled = true
+ratio   = count / 2u32
+SRC
+    }
+    p "Fields are the leaves of a document: everything else — [blocks](concept_blocks), types, schema — exists to group and constrain them."
+  }
+}

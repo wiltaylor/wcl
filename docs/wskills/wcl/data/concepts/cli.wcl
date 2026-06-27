@@ -1,7 +1,7 @@
 concept cli {
   name     = "CLI Reference"
   summary  = "The wcl binary: parse, check, eval, set, fmt, repl, lsp, init, wdoc, and diff."
-  related  = [schema, imports]
+  related  = [imports]
   audience = :both
   body {
     p "The `wcl` binary drives parsing, checking, evaluation, editing, formatting, the language server, and wdoc."

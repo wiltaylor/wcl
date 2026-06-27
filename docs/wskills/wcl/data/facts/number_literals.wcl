@@ -1,6 +1,6 @@
 fact number_literals {
-  title    = "Number literals: radixes and width suffixes"
-  related  = [numbers, expressions]
+  title    = "Number literals"
+  related  = [numbers, numeric_promotion]
   audience = :both
   body {
     p "An integer literal may be written in decimal, hexadecimal (`0x`), octal (`0o`), or binary (`0b`); floats accept scientific notation (`1e6`). A width suffix pins the exact numeric type, and underscores may group digits for readability (they are ignored)."

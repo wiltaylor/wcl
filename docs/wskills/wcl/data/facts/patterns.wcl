@@ -1,6 +1,6 @@
 fact patterns {
   title    = "Patterns"
-  related  = [match_expr, control_flow, unions, optionals]
+  related  = [match_expr, unions, optionals]
   audience = :both
   body {
     p "Patterns destructure and test values in `match`, `if let`, and guard arms."

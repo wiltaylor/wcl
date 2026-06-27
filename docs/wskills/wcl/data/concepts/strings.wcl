@@ -1,7 +1,7 @@
 concept strings {
   name     = "Strings"
   summary  = "UTF-8 by default, with encoding prefixes, heredocs, and opt-in interpolation."
-  related  = [string_literals, string_escapes, heredocs, raw_heredocs, string_interpolation, symbols, expressions]
+  related  = [string_literals, string_interpolation, symbols]
   audience = :both
   body {
     p <<PROSE
@@ -10,10 +10,7 @@ offer multi-line and verbatim variants; a `$` prefix opts the string into
 expression interpolation. String builtins (split, join, replace, contains, slice,
 and so on) are covered in the String functions reference.
 PROSE
-    p "- [String Literals](concept_string_literals) — UTF-8 by default plus `ascii`/`utf16`/`utf32` prefixes."
-    p "- [String Escapes](concept_string_escapes) — backslash escapes inside double-quoted strings."
-    p "- [Heredocs](concept_heredocs) — `<<TAG ... TAG` multi-line strings with escapes and indentation stripping."
-    p "- [Raw Heredocs](concept_raw_heredocs) — single-quoted tag takes the body verbatim."
+    p "- [String Literals](concept_string_literals) — UTF-8 by default plus `ascii`/`utf16`/`utf32` prefixes, backslash escapes, plain and raw heredocs."
     p "- [String Interpolation](concept_string_interpolation) — opt-in `$` prefix with `${ ... }` slots."
   }
 }

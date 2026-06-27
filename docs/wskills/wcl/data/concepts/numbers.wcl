@@ -1,14 +1,14 @@
 concept numbers {
   name     = "Numbers"
   summary  = "Fixed-width signed and unsigned integers plus two float widths, with literal suffixes."
-  related  = [expressions, lists, numeric_promotion]
+  related  = [lists, numeric_promotion]
   audience = :both
   body {
     p <<PROSE
 WCL has fixed-width signed and unsigned integers plus two float widths. A bare
 integer literal defaults to `i64`; a suffix pins the exact type. Underscores may
-group digits for readability and are ignored. See [Expressions](concept_expressions)
-for numeric promotion across mixed operands.
+group digits for readability and are ignored. See [Numeric promotion](concept_numeric_promotion)
+for how mixed operands widen to a common type.
 PROSE
     p "Literal syntax — radixes, width suffixes, and digit-grouping underscores — is its own note: [Number literals](fact_number_literals)."
     h2 "Types"

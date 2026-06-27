@@ -26,8 +26,6 @@ users:
   | "cara"  | 42 | true  |
 SRC
     }
-    h2 "Why a table"
-    p "A table is just a `list<T>` underneath — the pipe-row syntax is shorthand for writing many [records](concept_records) compactly. The same data could be authored as block instances, but the table is denser and reads like a spreadsheet."
     callout "Cells are expressions" { class = ["info"]  body = "Each cell is an expression in the row type's field position: strings, numbers, booleans, symbols, even computed values via let bindings." }
   }
 }

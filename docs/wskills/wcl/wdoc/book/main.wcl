@@ -132,26 +132,38 @@ site book {
               wdoc_repeater { each = filter(facts,      fn(x: Fact)      -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"fact_${t.id}" } }
               wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"process_${t.id}" } }
             }
+            // Builtins live under the Functions index: append the builtins landing,
+            // an A–Z page, and one chapter per category (per-function pages reached
+            // from those). Gated so it only attaches to lang_functions and only when
+            // builtins are documented.
+            wdoc_repeater { each = match (cix.name == "Functions") { false => [], _ => match len(all_functions) { 0 => [], _ => [true] } }  as = :_bf
+              chapter "Builtin functions" { page = builtins_page
+                chapter "All functions (A–Z)" { page = builtins_all }
+                wdoc_repeater { each = fn_categories  as = :cat
+                  wdoc_repeater { each = match len(functions_in(cat.slug)) { 0 => [], _ => [true] }  as = :_cc
+                    chapter $"${cat.name}" { page = $"builtins_${cat.slug}" }
+                  }
+                }
+              }
+            }
           } }
         }
       }
     }
-    // Builtins — a top-level "Builtins" section with one chapter per category
-    // (per-function pages are reached from those category pages). Gated so it
-    // vanishes when no builtins are documented.
-    wdoc_repeater { each = match len(all_functions) { 0 => [], _ => [true] }  as = :_bg
-      chapter "Builtins" { page = builtins_page
-        wdoc_repeater { each = fn_categories  as = :cat
-          wdoc_repeater { each = match len(functions_in(cat.slug)) { 0 => [], _ => [true] }  as = :_cc
-            chapter $"${cat.name}" { page = $"builtins_${cat.slug}" }
+    // Opt-in cli module — "CLI Reference" is an index landing (clis_page) whose
+    // children are one page per subcommand (and per nested subcommand).
+    wdoc_repeater { each = match len(clis) { 0 => [], _ => [true] }  as = :_clg
+      chapter "CLI Reference" { page = clis_page
+        wdoc_repeater { each = clis  as = :c
+          wdoc_repeater { each = c.subcommands  as = :sc
+            chapter $"${c.name} ${sc.name}" { page = $"cli_${sc.id}"
+              wdoc_repeater { each = sc.subcommands  as = :ns
+                chapter $"${c.name} ${sc.name} ${ns.name}" { page = $"cli_${ns.id}" }
+              }
+            }
           }
         }
       }
-    }
-    // Opt-in cli module — the cli(s) projected directly onto one "CLI Reference"
-    // page (commands reached via its in-page index).
-    wdoc_repeater { each = match len(clis) { 0 => [], _ => [true] }  as = :_clg
-      chapter "CLI Reference" { page = clis_page }
     }
   }
   // The Reference catalogue (the four units, the graph, and the per-unit pages)
@@ -222,16 +234,27 @@ wdoc_repeater { each = all_indexes  as = :ix
   }
 }
 
-// --- Builtins (opt-in module) — a landing page linking the per-category pages,
-// then one page per builtin function and one page per category. All generated
-// from the flat gathered `all_functions` list; grouping is the `category` slug.
+// --- Builtins (opt-in module) — a landing page linking the per-category pages
+// plus an alphabetical all-functions page, then one page per builtin function and
+// one page per category. All generated from the flat gathered `all_functions`
+// list; grouping is the `category` slug. The whole section is nested under the
+// Functions area of the Language index (see the toc above).
 page builtins_page {
-  h1 "Builtins"
-  p  "WCL's builtin functions, grouped by category. Each function has its own page."
+  h1 "Builtin functions"
+  p  "WCL's builtin functions. Browse by category below, or see [all functions A–Z](builtins_all). Each function has its own page."
+  p  "- [**All functions (A–Z)**](builtins_all) — every builtin in one alphabetical list."
   wdoc_repeater { each = fn_categories  as = :cat
     wdoc_repeater { each = match len(functions_in(cat.slug)) { 0 => [], _ => [true] }  as = :_cc
       p $"- [**${cat.name}**](builtins_${cat.slug}) — ${cat.blurb}"
     }
+  }
+}
+// Alphabetical index of every builtin, regardless of category.
+page builtins_all { title = "All functions (A–Z)"
+  h1 "All builtin functions"
+  p  "Every WCL builtin in alphabetical order. Each links to its full reference page."
+  wdoc_repeater { each = sort_by(all_functions, fn(fc: Function) -> utf8 { fc.name })  as = :fc
+    p $"- [**${fc.name}**](function_${fc.id})${match fc.description { none => "", d => $" — ${d}" }}"
   }
 }
 wdoc_repeater { each = all_functions  as = :fc
@@ -249,8 +272,9 @@ wdoc_repeater { each = fn_categories  as = :cat
   }
 }
 
-// --- CLI Reference (opt-in cli module) — the cli(s) projected directly onto the
-// "CLI Reference" page, with a jump-link index of every command at the top.
+// --- CLI Reference (opt-in cli module) — the cli is an index: clis_page is the
+// landing (version, description, global switches, and a link list of commands),
+// and each subcommand (and nested subcommand) renders to its own page below.
 page clis_page {
   h1 "CLI Reference"
   wdoc_repeater { each = clis  as = :c
@@ -263,17 +287,21 @@ page clis_page {
         rows = map(c.switches, fn(sw: CliSwitch) -> list<utf8> { [$"${match sw.short { none => "", s => $"${s}, " }}${sw.long}", sw.value_name ?? "—", sw.description ?? "—", sw.remarks ?? "—"] })
       }
     }
-    // Index — jump-links to every command on this page (nested under their parent).
+    // Commands — links to each command's own page (nested under their parent).
     h2 "Commands"
     wdoc_repeater { each = c.subcommands  as = :sc
-      p $"- [`${c.name} ${sc.name}`](#${sc.id})"
+      p $"- [`${c.name} ${sc.name}`](cli_${sc.id})${match sc.description { none => "", d => $" — ${d}" }}"
       wdoc_repeater { each = sc.subcommands  as = :ns
-        p $"  - [`${c.name} ${sc.name} ${ns.name}`](#${ns.id})"
+        p $"  - [`${c.name} ${sc.name} ${ns.name}`](cli_${ns.id})${match ns.description { none => "", d => $" — ${d}" }}"
       }
     }
-    // Each command rendered inline (h3 top-level, h4 nested), heading carries an id anchor.
-    wdoc_repeater { each = c.subcommands  as = :sc
-      h3 $"${c.name} ${sc.name}" { id = sc.id }
+  }
+}
+// One page per top-level subcommand.
+wdoc_repeater { each = clis  as = :c
+  wdoc_repeater { each = c.subcommands  as = :sc
+    page $"cli_${sc.id}" { title = $"${c.name} ${sc.name}"
+      h1 $"${c.name} ${sc.name}"
       wdoc_repeater { each = match len(sc.aliases) { 0 => [], _ => [true] }  as = :_al  p $"_alias: ${join(sc.aliases, ", ")}_" }
       wdoc_repeater { each = match sc.description { none => [], d => [d] }  as = :d  p $"${d}" }
       wdoc_repeater { each = match len(sc.args) { 0 => [], _ => [true] }  as = :_ah
@@ -290,8 +318,17 @@ page clis_page {
       }
       wdoc_repeater { each = sc.examples  as = :ex  code $"${ex.lang ?? "text"}" { source = ex.code } }
       wdoc_repeater { each = match sc.remarks { none => [], r => [r] }  as = :r  p $"**Remarks:** ${r}" }
-      wdoc_repeater { each = sc.subcommands  as = :ns
-        h4 $"${c.name} ${sc.name} ${ns.name}" { id = ns.id }
+      wdoc_repeater { each = match len(sc.subcommands) { 0 => [], _ => [true] }  as = :_nsh
+        h2 "Subcommands"
+        wdoc_repeater { each = sc.subcommands  as = :ns
+          p $"- [`${c.name} ${sc.name} ${ns.name}`](cli_${ns.id})${match ns.description { none => "", d => $" — ${d}" }}"
+        }
+      }
+    }
+    // One page per nested subcommand.
+    wdoc_repeater { each = sc.subcommands  as = :ns
+      page $"cli_${ns.id}" { title = $"${c.name} ${sc.name} ${ns.name}"
+        h1 $"${c.name} ${sc.name} ${ns.name}"
         wdoc_repeater { each = match len(ns.aliases) { 0 => [], _ => [true] }  as = :_al  p $"_alias: ${join(ns.aliases, ", ")}_" }
         wdoc_repeater { each = match ns.description { none => [], d => [d] }  as = :d  p $"${d}" }
         wdoc_repeater { each = match len(ns.args) { 0 => [], _ => [true] }  as = :_ah

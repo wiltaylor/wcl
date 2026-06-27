@@ -1,7 +1,7 @@
 concept try_catch {
   name     = "try / catch"
   summary  = "Evaluates a body; on failure the rendered message binds to the catch name and the handler's value is the result."
-  related  = [control_flow, block_expressions, expressions]
+  related  = [block_expressions]
   audience = :both
   body {
     p "`try body catch name => handler` evaluates the body; if evaluation fails — a builtin error, an `error()` call, a cycle, or a propagated field error — the rendered message binds to the catch name (a `utf8`) and the handler's value is the result. Both sides accept a `{ ... }` block."

@@ -1,7 +1,7 @@
 concept block_schema {
   name     = "Block Schema"
   summary  = "Declaring nestable blocks with @block, @inline, @child/@children, and @default."
-  related  = [schema, document_schema, ref_integrity, child_count_constraints, fields_blocks, records]
+  related  = [document_schema, ref_integrity, child_count_constraints, fields, blocks, records]
   audience = :both
   body {
     p "`@block(\"kind\")` makes a type a nestable block of that kind. `@inline(slot)` binds the block label to a field at that position, `@child(\"kind\")` / `@children(\"kind\")` declare nested blocks, and `@default(expr)` supplies a value when a field is omitted. The block label maps to the `@inline` field — `service \"web\"` sets `name = \"web\"`."

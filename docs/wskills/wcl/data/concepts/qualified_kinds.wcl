@@ -1,7 +1,7 @@
 concept qualified_kinds {
   name     = "Qualified Block Kinds"
   summary  = "Block and table kinds are namespace-scoped; a ::-qualified kind picks a schema from a specific namespace."
-  related  = [namespaces, use_declarations, imports, schema]
+  related  = [namespaces, use_declarations, imports]
   audience = :both
   body {
     h2 "Qualified block kinds"

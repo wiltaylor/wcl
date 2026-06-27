@@ -1,7 +1,7 @@
 concept child_count_constraints {
   name     = "Child-count Constraints"
   summary  = "Constraining nested children with max_children and required_children on @block."
-  related  = [schema, block_schema, document_schema, ref_integrity]
+  related  = [block_schema, document_schema, ref_integrity]
   audience = :both
   body {
     h2 "Child-count constraints on @block"

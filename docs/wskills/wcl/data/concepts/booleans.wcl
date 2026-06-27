@@ -1,7 +1,7 @@
 concept booleans {
   name     = "Booleans"
   summary  = "The bool type with exactly two values, true and false."
-  related  = [expressions, control_flow]
+  related  = [operators, if_else]
   audience = :both
   body {
     p "The `bool` type has exactly two values: `true` and `false`."
@@ -11,12 +11,11 @@ strict  = false
 SRC
     }
     h2 "In expressions"
-    p "Booleans are produced by every comparison and combined with the logical operators `&&`, `||`, and `!`. See [Expressions](concept_expressions) for the full set."
+    p "Booleans are produced by every comparison and combined with the logical operators `&&`, `||`, and `!`. See [Operators](fact_operators) for the full set."
     code "wcl" { source = <<'SRC'
 ready    = !pending && enabled
 oversize = width > 100u32 || height > 100u32
 SRC
     }
-    callout "Branching on a bool" { class = ["info"]  body = "An if expression takes a bool condition; see Control Flow for the if / else syntax." }
   }
 }

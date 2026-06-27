@@ -1,7 +1,7 @@
 concept fn_items {
   name     = "fn Items"
   summary  = "The `fn` item form — a reusable named function declaration."
-  related  = [functions, function_literals, higher_order_functions, function_types, expressions]
+  related  = [function_literals, higher_order_functions, function_types]
   audience = :both
   body {
     p "A reusable function is declared once with the `fn` item form — sugar for `let name = fn(...)` with two extras: the name shows up in editor tooling and it can carry a `@doc` decorator. Like a `let`, an `fn` item is a composition helper, not data."

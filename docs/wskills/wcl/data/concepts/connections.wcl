@@ -1,7 +1,7 @@
 concept connections {
   name     = "Connections"
   summary  = "Typed relationships between block instances, populated by arrow statements."
-  related  = [schema, references, symbols]
+  related  = [references, symbols]
   audience = :both
   body {
     p "A `connection` declaration defines a typed relationship between block instances; arrow statements then populate it. The result is a list of records that hosts can consume — render edges, build dependency graphs, validate references."

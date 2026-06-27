@@ -1,7 +1,7 @@
 concept numeric_promotion {
   name     = "Numeric Promotion"
   summary  = "Arithmetic and comparison widen mixed numeric operands to a common type."
-  related  = [numbers, expressions]
+  related  = [numbers]
   audience = :both
   body {
     h2 "Numeric promotion"

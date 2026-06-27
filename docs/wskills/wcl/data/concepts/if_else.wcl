@@ -1,7 +1,7 @@
 concept if_else {
   name     = "if / else"
   summary  = "An if is an expression; branches must agree on a type, else if chains for multi-way branches."
-  related  = [control_flow, match_expr, if_let, expressions]
+  related  = [match_expr, if_let]
   audience = :both
   body {
     p "An `if` is an expression. The branches must agree on a type. `else if` chains for multi-way branches."

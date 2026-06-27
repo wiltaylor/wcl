@@ -1,7 +1,7 @@
 concept references {
   name     = "References"
   summary  = "&T fields that accept any value structurally satisfying an interface."
-  related  = [interfaces, schema, connections]
+  related  = [interfaces, connections]
   audience = :both
   body {
     p "A `&T` field accepts any value that structurally satisfies interface `T`. It is how a record or function declares give-me-anything-that-looks-like-this without committing to a specific concrete type."

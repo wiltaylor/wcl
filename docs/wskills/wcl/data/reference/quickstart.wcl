@@ -21,9 +21,6 @@ SH
     }
     p "If `~/.local/bin` is not on your `PATH`, add it. Verify with `wcl --version`."
 
-    h2 "What WCL is"
-    p "WCL is a typed configuration & schema language: you declare record types, compose a document of block instances, and the toolchain validates and evaluates it."
-
     h2 "A minimal document"
     p "Declare a block type, point a `@document` at it, then write an instance:"
     code "wcl" {
@@ -47,8 +44,5 @@ $ wcl check config.wcl     # type-checks the document, reports errors
 $ wcl eval config.wcl      # prints the evaluated data
 SH
     }
-
-    h2 "Where to go next"
-    p "Walk the essentials: [Fields & Blocks](concept_fields_blocks), [Records](concept_records), [Schema & Decorators](concept_schema), and the [CLI](concept_cli)."
   }
 }

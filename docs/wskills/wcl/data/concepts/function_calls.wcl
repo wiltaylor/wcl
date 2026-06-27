@@ -1,7 +1,7 @@
 concept function_calls {
   name     = "Function Calls"
   summary  = "Parentheses call a function or constructor with lazily-evaluated arguments."
-  related  = [expressions, member_access, functions]
+  related  = [member_access]
   audience = :both
   body {
     p "Parentheses call a function or constructor. Arguments are expressions, evaluated lazily; the call evaluates the body in a fresh context."

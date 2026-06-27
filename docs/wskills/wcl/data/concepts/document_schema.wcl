@@ -1,7 +1,7 @@
 concept document_schema {
   name     = "Document Schema"
   summary  = "Marking a document root with @document, and how schemas merge per namespace."
-  related  = [schema, block_schema, ref_integrity, child_count_constraints, records]
+  related  = [block_schema, ref_integrity, child_count_constraints, records]
   audience = :both
   body {
     h2 "Composing document schemas"

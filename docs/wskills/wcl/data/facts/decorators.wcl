@@ -1,0 +1,261 @@
+fact dec_document {
+  title    = "@document"
+  related  = [dec_block, dec_children, document_schema]
+  audience = :both
+  body {
+    p "`@document` marks a type as the document-root schema. The toolchain gathers every block instance that matches the schema's `@child`/`@children` fields and assembles them into one document value that `wcl check` validates."
+    p "Document schemas compose per namespace: when several `@document` types are visible (for example a library's and your own), they **merge**, so you can import a base schema and still add your own top-level fields."
+    code "wcl" {
+      source = <<'SRC'
+@document type Config {
+  @children("server") servers: list<Server>
+}
+
+@block("server") type Server {
+  @inline(0) name: identifier
+  port: u16
+}
+
+server web { port: 8080 }
+SRC
+    }
+  }
+}
+
+fact dec_block {
+  title    = "@block"
+  related  = [dec_inline, dec_child, dec_children, block_schema]
+  audience = :both
+  body {
+    p "`@block(\"kind\")` makes a type a nestable block of a named kind. The kind string is the keyword you write to author an instance, so `@block(\"server\")` lets you write `server web { ... }`."
+    code "wcl" {
+      source = <<'SRC'
+@block("server") type Server {
+  @inline(0) name: identifier
+  port: u16
+}
+
+server web {
+  port = 8080
+}
+SRC
+    }
+  }
+}
+
+fact dec_child {
+  title    = "@child"
+  related  = [dec_children, dec_block, block_schema]
+  audience = :both
+  body {
+    p "`@child(\"kind\")` declares a field that holds a **single** nested block of the given kind. Make the field optional (`Type?`) when the child may be omitted. Contrast with `@children`, which holds a list."
+    code "wcl" {
+      source = <<'SRC'
+@block("service") type Service {
+  @child("metadata") meta: Metadata?
+}
+
+@block("metadata") type Metadata {
+  owner: utf8
+}
+
+service api {
+  metadata { owner = "platform" }
+}
+SRC
+    }
+  }
+}
+
+fact dec_children {
+  title    = "@children"
+  related  = [dec_child, dec_block, document_schema]
+  audience = :both
+  body {
+    p "`@children(\"kind\")` declares a field that holds a **list** of nested blocks of a kind. If the field's element type is a union, instances are dispatched to the matching variant by record shape."
+    code "wcl" {
+      source = <<'SRC'
+@block("router") type Router {
+  @children("route") routes: list<Route>
+}
+
+@block("route") type Route {
+  @inline(0) path: utf8
+}
+
+router main {
+  route "/users" {}
+  route "/orders" {}
+}
+SRC
+    }
+  }
+}
+
+fact dec_inline {
+  title    = "@inline"
+  related  = [dec_block, blocks]
+  audience = :both
+  body {
+    p "`@inline(slot)` binds a block's positional label to a field by zero-based slot index. Multiple `@inline(n)` decorators expose multiple labels, so `route \"GET\" \"/users\"` fills slot `0` and slot `1`."
+    code "wcl" {
+      source = <<'SRC'
+@block("route") type Route {
+  @inline(0) method: utf8
+  @inline(1) path: utf8
+}
+
+route "GET" "/users" {}
+SRC
+    }
+  }
+}
+
+fact dec_default {
+  title    = "@default"
+  related  = [dec_block, fields]
+  audience = :both
+  body {
+    p "`@default(expr)` supplies the value a field takes when the author omits it. The expression is any constant value of the field's type."
+    p "Absent-equivalent defaults — an empty list, `false`, an empty string — are always safe to emit, since they behave the same as leaving the field out."
+    code "wcl" {
+      source = <<'SRC'
+@block("server") type Server {
+  @default(8080) port: u16
+  @default([]) tags: list<utf8>
+}
+
+server web {}   // port = 8080, tags = []
+SRC
+    }
+  }
+}
+
+fact dec_table {
+  title    = "@table"
+  related  = [tables, dec_block]
+  audience = :both
+  body {
+    p "`@table(\"kind\")` marks a row type as the schema for pipe-table syntax. Each `| ... |` row is parsed against the type's fields in declaration order, giving terse tabular data with full schema checking."
+    code "wcl" {
+      source = <<'SRC'
+@table("user") type User {
+  name: utf8
+  age:  u8
+}
+
+user
+| name    | age |
+| Ada     | 36  |
+| Grace   | 45  |
+SRC
+    }
+  }
+}
+
+fact dec_decorator {
+  title    = "@decorator"
+  related  = [dec_block, block_schema]
+  audience = :both
+  body {
+    p "`@decorator(\"name\")` makes a type the schema for a user-defined `@name` decorator's arguments. This lets you declare your own decorators with typed, validated arguments rather than relying only on the built-in set."
+    code "wcl" {
+      source = <<'SRC'
+@decorator("range") type Range {
+  @inline(0) min: i64
+  @inline(1) max: i64
+}
+
+@block("field") type Field {
+  @range(0, 100) score: i64
+}
+SRC
+    }
+  }
+}
+
+fact dec_doc {
+  title    = "@doc"
+  related  = [dec_block]
+  audience = :both
+  body {
+    p "`@doc` carries documentation metadata attached to a declaration. The text travels with the type or field so tooling can surface it in hovers, generated reference, and other introspection."
+    code "wcl" {
+      source = <<'SRC'
+@block("server") type Server {
+  @doc("Listening port; must be free at startup.")
+  port: u16
+}
+SRC
+    }
+  }
+}
+
+fact dec_by_ref {
+  title    = "@by_ref"
+  related  = [references, dec_block]
+  audience = :both
+  body {
+    p "`@by_ref` makes a block of this kind reify to a **resolvable reference** instead of inlining its body at the use site. The value is carried on a record and rendered (or resolved) elsewhere, which keeps cross-cutting definitions in one place."
+    code "wcl" {
+      source = <<'SRC'
+@by_ref @block("color") type Color {
+  @inline(0) name: identifier
+  hex: utf8
+}
+
+color brand { hex = "#3366ff" }
+
+@block("box") type Box {
+  fill: &Color   // a reference, not an inlined copy
+}
+SRC
+    }
+  }
+}
+
+fact dec_only_except {
+  title    = "@only / @except"
+  related  = [dec_children, block_schema]
+  audience = :both
+  body {
+    p "`@only` and `@except` restrict which kinds (or fields) a slot accepts. `@only` is an include-list — nothing outside it is allowed — while `@except` is an exclude-list that admits everything else."
+    code "wcl" {
+      source = <<'SRC'
+@block("layout") type Layout {
+  @only("header", "footer")
+  @children("section") fixed: list<Section>
+
+  @except("draft")
+  @children("section") published: list<Section>
+}
+SRC
+    }
+  }
+}
+
+fact dec_connections {
+  title    = "@connections"
+  related  = [connections, dec_block]
+  audience = :both
+  body {
+    p "`@connections(S)` accumulates `->` connection statements on a field, turning each into a record of the connection schema `S`. This is how graph-shaped blocks (flowcharts, state machines) collect their edges declaratively."
+    code "wcl" {
+      source = <<'SRC'
+@block("graph") type Graph {
+  @connections(Edge) edges: list<Edge>
+}
+
+type Edge {
+  from: identifier
+  to:   identifier
+}
+
+graph flow {
+  a -> b
+  b -> c
+}
+SRC
+    }
+  }
+}

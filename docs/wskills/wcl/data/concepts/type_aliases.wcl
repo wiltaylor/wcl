@@ -1,7 +1,7 @@
 concept type_aliases {
   name     = "Type Aliases"
   summary  = "type Name = TypeRef declares a transparent alias; constraint decorators travel to every field using it."
-  related  = [records, type_constraints, schema]
+  related  = [records, type_constraints]
   audience = :both
   body {
     h2 "Type aliases"

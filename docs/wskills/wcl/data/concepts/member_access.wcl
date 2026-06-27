@@ -1,7 +1,7 @@
 concept member_access {
   name     = "Member Access"
   summary  = "A dotted path reads a field from records, variants, and composites."
-  related  = [expressions, function_calls, fields_blocks]
+  related  = [function_calls, fields, blocks]
   audience = :both
   body {
     p "A dotted path reads a field. Access chains through records, variant payloads, and any composite that exposes named members."

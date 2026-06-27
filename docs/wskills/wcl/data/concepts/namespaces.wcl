@@ -1,7 +1,7 @@
 concept namespaces {
   name     = "Namespaces"
   summary  = "Scope declarations under a dotted path; use and :: control how names resolve."
-  related  = [use_declarations, qualified_kinds, imports, identifiers, schema]
+  related  = [use_declarations, qualified_kinds, imports, identifiers, document_schema]
   audience = :both
   body {
     p "A `namespace` declaration scopes a file's declarations under a dotted path, `use` pulls names from other namespaces into local scope, and a `ns::kind` qualifier picks a block schema from a specific namespace. Together they let independently-authored libraries share a document without name collisions."
@@ -12,6 +12,26 @@ namespace company
 
 type utils.Point  { x: f64  y: f64 }
 type shapes.Circle { center: utils.Point  radius: f64 }
+SRC
+    }
+    h2 "Nested namespaces"
+    p "Namespaces nest arbitrarily deep. Both forms below produce the same `acme.graphics.color.RGB` — a multi-segment `namespace` path, or a dotted declaration name under a shorter namespace:"
+    code "wcl" { source = <<'SRC'
+namespace acme.graphics
+
+// nests via the declaration name
+type color.RGB { r: u8  g: u8  b: u8 }   // acme.graphics.color.RGB
+SRC
+    }
+    p "Within a namespace, sibling and child segments are reachable by their relative path — `color.RGB` from inside `acme.graphics` — while a fully-qualified path always works:"
+    code "wcl" { source = <<'SRC'
+namespace acme.graphics
+
+type color.RGB  { r: u8  g: u8  b: u8 }
+type theme.Swatch {
+  fill:   color.RGB              // relative: resolves to acme.graphics.color.RGB
+  stroke: acme.graphics.color.RGB   // fully-qualified: same type
+}
 SRC
     }
     p "Imported files keep their own `namespace` — an `import` brings their declarations in, but the names stay qualified under the imported file's path. See [Imports & Modules](concept_imports)."

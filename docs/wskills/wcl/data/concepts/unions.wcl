@@ -1,7 +1,7 @@
 concept unions {
   name     = "Unions"
   summary  = "Tagged variant sets — a value that is exactly one of several alternatives."
-  related  = [records, symbols, control_flow]
+  related  = [records, symbols]
   audience = :both
   body {
     p "A `union` is a tagged set of variants — a value that is exactly one of several alternatives. Each variant carries its own payload (or none), and pattern matching dispatches on the tag."

@@ -1,7 +1,7 @@
 concept records {
   name     = "Records"
   summary  = "Named records via the type keyword — fixed sets of named, typed fields."
-  related  = [unions, interfaces, schema, type_aliases]
+  related  = [unions, interfaces, type_aliases]
   audience = :both
   body {
     p "A `type` declares a named record — a fixed set of named, typed fields. Records describe the shape of values, function parameters, and the backing type of every block."

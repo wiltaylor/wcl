@@ -1,0 +1,38 @@
+concept blocks {
+  name     = "Blocks"
+  summary  = "A named group of fields that can also nest other blocks; the schema sets its labels and fields."
+  related  = [fields, namespaces, child_count_constraints, document_schema]
+  audience = :both
+  body {
+    p "A block is a named group of [fields](concept_fields) that also lets you nest other blocks under it. The available fields and labels are set by the [block schema](concept_block_schema). A block kind may also be namespace-qualified (`wdoc::process { ... }`)."
+    code "wcl" { source = <<'SRC'
+// One label -> name = "web".
+service "web" {
+  port   = 8080u32
+  region = "us-east-1"
+}
+SRC
+    }
+    p "Multiple labels work the same way — declare an `@inline` for each position you want to expose:"
+    code "wcl" { source = <<'SRC'
+// Two labels -> verb = "GET", path = "/users".
+route "GET" "/users" {
+  handler = "list_users"
+}
+SRC
+    }
+    h2 "Nested blocks"
+    p "Blocks can hold further blocks. Nesting depth is unbounded; structure is constrained by the schema (`@child` for one, `@children` for many)."
+    code "wcl" { source = <<'SRC'
+service "web" {
+  metadata {
+    region = "us-east-1"
+    tags {
+      environment = "prod"
+    }
+  }
+}
+SRC
+    }
+  }
+}

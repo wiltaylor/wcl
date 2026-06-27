@@ -1,7 +1,7 @@
 concept interfaces {
   name     = "Interfaces"
   summary  = "Structural contracts — a set of fields a type must have, satisfied automatically."
-  related  = [records, references, schema]
+  related  = [records, references]
   audience = :both
   body {
     p "An `interface` declares a structural contract — a set of fields a type must have to satisfy it. Any type with the right fields satisfies it automatically, with no explicit `implements`."

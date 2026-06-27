@@ -1,7 +1,7 @@
 concept ref_integrity {
   name     = "Referential Integrity"
   summary  = "Validating that id fields name an existing block with @ref."
-  related  = [schema, block_schema, document_schema, references, connections]
+  related  = [block_schema, document_schema, references, connections]
   audience = :both
   body {
     h2 "Referential integrity with @ref"

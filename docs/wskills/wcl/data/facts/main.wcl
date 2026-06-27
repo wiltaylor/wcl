@@ -1,7 +1,6 @@
 // facts — one import per entry.
-import "./primitive_types.wcl"
 import "./operators.wcl"
 import "./number_literals.wcl"
-import "./field_decorators.wcl"
+import "./decorators.wcl"
 import "./type_constraints.wcl"
 import "./patterns.wcl"

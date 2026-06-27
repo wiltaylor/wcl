@@ -1,7 +1,7 @@
 concept string_interpolation {
   name     = "String Interpolation"
   summary  = "Opt-in with a `$` prefix; `${ ... }` slots splice evaluated expressions into the string."
-  related  = [strings, string_literals, string_escapes, heredocs, raw_heredocs, expressions]
+  related  = [strings, string_literals]
   audience = :both
   body {
     h2 "Interpolation"

@@ -1,0 +1,11 @@
+concept what_is_wcl {
+  name     = "What WCL Is"
+  summary  = "A typed configuration & schema language: declare types, compose a document, validate and evaluate it."
+  related  = [fields, blocks, records, document_schema]
+  audience = :both
+  body {
+    p "WCL is a typed configuration & schema language: you declare record types, compose a document of block instances, and the toolchain validates and evaluates it."
+    p "A WCL document is built from two structural pieces — [fields](concept_fields) that bind names to values and [blocks](concept_blocks) that group and nest them — and a schema (written with decorators) that says which blocks and fields are legal. `wcl check` validates a document against that schema, and `wcl eval` resolves it to plain data."
+    p "Where most config formats stop at untyped key/value data, WCL adds a type system (numbers with widths, strings with encodings, unions, interfaces, references), first-class functions, and a document model that gathers and validates structured blocks — so a configuration can carry its own schema and be checked before anything consumes it."
+  }
+}
