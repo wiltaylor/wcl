@@ -290,7 +290,7 @@ let landing_html = <<HTML
           </div>
 
           <div style="display:flex; gap:12px; flex-wrap:wrap; padding-top:4px;">
-            <a href="getting_started.html" class="wcl-btn-primary" style="display:inline-flex; align-items:center; gap:8px; height:40px; padding:0 18px; border-radius:4px; background:var(--accent); color:var(--accent-contrast); font-weight:600; font-size:14px;">
+            <a href="#start" class="wcl-btn-primary" style="display:inline-flex; align-items:center; gap:8px; height:40px; padding:0 18px; border-radius:4px; background:var(--accent); color:var(--accent-contrast); font-weight:600; font-size:14px;">
               Read the getting-started guide
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
             </a>
@@ -313,8 +313,8 @@ let landing_html = <<HTML
       <div style="display:flex; flex-direction:column; gap:10px;">
         <div style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fg-3); font-weight:600; margin-bottom:2px;">WCL</div>
         <a href="index.html" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1);">Home</a>
-        <a href="features.html" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1);">Features</a>
-        <a href="getting_started.html" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1);">Getting started</a>
+        <a href="#features" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1);">Features</a>
+        <a href="#start" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1);">Getting started</a>
       </div>
       <div style="display:flex; flex-direction:column; gap:10px;">
         <div style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fg-3); font-weight:600; margin-bottom:2px;">Reference</div>

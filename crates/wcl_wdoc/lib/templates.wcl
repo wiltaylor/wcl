@@ -728,8 +728,6 @@ let book_css = <<CSS
   .book-onpage { display: flex; flex-direction: column; }
   .book-onpage-link { display: block; padding: 0.2rem 0 0.2rem 0.7rem; font-size: 0.82rem; line-height: 1.35; text-decoration: none; }
   .book-onpage-link.level-3 { padding-left: 1.5rem; font-size: 0.78rem; }
-  .book-palette { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 1.6rem; }
-  .book-palette span { width: 22px; height: 22px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--wdoc-fg) 14%, transparent); }
   .heading-marker { display: block; font-size: 0.78rem; margin-bottom: 0.2rem; }
   @media (max-width: 82rem) { .book-rail { display: none; } .book-content { margin-right: 0; } }
   CSS
@@ -834,11 +832,6 @@ let book_onpage_link = fn(h: OnPageHeading) -> HtmlFundamental
     children: [ HtmlFundamental::Raw { html: h.title } ],
   }
 
-// A small theme-palette strip shown at the foot of the rail.
-let book_rail_palette = HtmlFundamental::Raw {
-  html: "<div class=\"book-palette\"><span style=\"background:var(--wdoc-accent)\"></span><span style=\"background:var(--wdoc-accent2)\"></span><span style=\"background:var(--wdoc-green)\"></span><span style=\"background:var(--wdoc-yellow)\"></span><span style=\"background:var(--wdoc-red)\"></span><span style=\"background:var(--wdoc-blue)\"></span></div>",
-}
-
 // Highlights the rail link whose section is currently in view, via an
 // IntersectionObserver over the heading anchors.
 let book_rail_script = HtmlFundamental::Raw {
@@ -846,8 +839,8 @@ let book_rail_script = HtmlFundamental::Raw {
 }
 
 // The right-hand "on this page" rail (`<aside class="book-rail">`): the
-// current page's h2/h3 headings as anchor links, a palette strip, and the
-// scroll-spy script. Empty (renders nothing) on a page with no such headings.
+// current page's h2/h3 headings as anchor links plus the scroll-spy script.
+// Empty (renders nothing) on a page with no such headings.
 let wdoc_part_book_rail = fn(c: TemplateCtx) -> list<HtmlFundamental>
   if len(c.on_this_page) == 0 { [] }
   else {
@@ -862,7 +855,7 @@ let wdoc_part_book_rail = fn(c: TemplateCtx) -> list<HtmlFundamental>
               tag: "nav", id: none, class: ["book-onpage"], attrs: none,
               children: map(c.on_this_page, book_onpage_link),
           } ],
-          [ book_rail_palette, book_rail_script ],
+          [ book_rail_script ],
         ]),
     } ]
   }

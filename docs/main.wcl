@@ -38,8 +38,6 @@ site wcl {
   accent           = :cyan
   menu {
     item "Home"            { page = index }
-    item "Features"        { page = features }
-    item "Getting started" { page = getting_started }
     // Cross-site dropdown: each reference is its own built site, so link
     // by root-relative output path (a `page =` here would only resolve
     // within this site). An `item` with nested `item`s renders as a
@@ -107,8 +105,6 @@ site reference {
 // WCL landing pages (sites = [:wcl]).
 import "./pages/wcl/landing.wcl"   // the `landing` template (index page design)
 import "./pages/wcl/index.wcl"
-import "./pages/wcl/features.wcl"
-import "./pages/wcl/getting-started.wcl"
 
 // Reference book — Introduction.
 import "./pages/reference/intro.wcl"
