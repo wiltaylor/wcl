@@ -124,7 +124,13 @@ impl<'a> Lexer<'a> {
         };
 
         numeric::finalize(parsed)
-            .map(|n| Token::new(TokenKind::Number(n), literal_span))
+            .map(|fin| {
+                let kind = match fin.unit {
+                    Some(unit) => TokenKind::NumberWithUnit(Box::new((fin.lit, unit))),
+                    None => TokenKind::Number(fin.lit),
+                };
+                Token::new(kind, literal_span)
+            })
             .map_err(|e| LexError {
                 message: e.message,
                 span: literal_span,

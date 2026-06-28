@@ -547,6 +547,7 @@ impl<'a> Parser<'a> {
             | TokenKind::LBrace
             | TokenKind::Ident(_)
             | TokenKind::Number(_)
+            | TokenKind::NumberWithUnit(..)
             | TokenKind::Bool(_)
             | TokenKind::Symbol(_)
             | TokenKind::None => {
@@ -827,6 +828,7 @@ fn is_expr_start(t: &TokenKind) -> bool {
     matches!(
         t,
         TokenKind::Number(_)
+            | TokenKind::NumberWithUnit(..)
             | TokenKind::Str(_)
             | TokenKind::Bool(_)
             | TokenKind::Symbol(_)
@@ -843,6 +845,7 @@ pub(super) fn describe(t: &TokenKind) -> String {
         TokenKind::Ident(s) => format!("identifier '{s}'"),
         TokenKind::Str(_) => "string".to_string(),
         TokenKind::Number(_) => "number".to_string(),
+        TokenKind::NumberWithUnit(..) => "number with unit".to_string(),
         TokenKind::Bool(_) => "boolean".to_string(),
         TokenKind::Symbol(_) => "symbol literal".to_string(),
         TokenKind::None => "'none'".to_string(),

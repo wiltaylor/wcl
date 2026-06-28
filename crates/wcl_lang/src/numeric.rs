@@ -134,9 +134,24 @@ pub struct ParsedNumber<'a> {
     pub suffix: &'a str,
 }
 
+/// Outcome of [`finalize`]: the typed magnitude plus an optional unit.
+///
+/// A recognised numeric type suffix (`u8`, `i64`, `f32`, …) yields
+/// `unit == None`. Any other non-empty suffix is a **literal unit**
+/// (`5MiB`, `3km`): the magnitude defaults to `i64`/`f64` and the suffix
+/// rides along as `unit` for type-directed resolution later. Units are
+/// user- and stdlib-defined, so the lexer carries the string verbatim
+/// with no validation here.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FinalizedNumber {
+    pub lit: NumberLit,
+    pub unit: Option<String>,
+}
+
 /// Resolve the typed [`NumberLit`] for a tokenised number, applying
-/// suffix-driven range checks.
-pub fn finalize(parsed: ParsedNumber<'_>) -> Result<NumberLit, NumericParseError> {
+/// suffix-driven range checks. An unrecognised suffix is treated as a
+/// literal-unit name rather than an error (see [`FinalizedNumber`]).
+pub fn finalize(parsed: ParsedNumber<'_>) -> Result<FinalizedNumber, NumericParseError> {
     if parsed.is_float {
         finalize_float(&parsed)
     } else {
@@ -144,7 +159,7 @@ pub fn finalize(parsed: ParsedNumber<'_>) -> Result<NumberLit, NumericParseError
     }
 }
 
-fn finalize_float(p: &ParsedNumber) -> Result<NumberLit, NumericParseError> {
+fn finalize_float(p: &ParsedNumber) -> Result<FinalizedNumber, NumericParseError> {
     if p.base != 10 {
         return Err(NumericParseError::new(
             "float literals must be decimal (no 0x/0b/0o prefix)",
@@ -162,25 +177,32 @@ fn finalize_float(p: &ParsedNumber) -> Result<NumberLit, NumericParseError> {
     let f = text
         .parse::<f64>()
         .map_err(|e| NumericParseError::new(format!("invalid float literal: {e}")))?;
-    match p.suffix {
-        "" | "f64" => Ok(NumberLit::F64(f)),
+    let lit = match p.suffix {
+        "" | "f64" => NumberLit::F64(f),
         "f32" => {
             let narrowed = f as f32;
             if !narrowed.is_finite() && f.is_finite() {
                 return Err(NumericParseError::new("literal overflows f32"));
             }
-            Ok(NumberLit::F32(narrowed))
+            NumberLit::F32(narrowed)
         }
-        other if is_int_suffix(other) => Err(NumericParseError::new(format!(
-            "integer suffix '{other}' cannot be applied to a float literal"
-        ))),
-        other => Err(NumericParseError::new(format!(
-            "unknown numeric type suffix '{other}'"
-        ))),
-    }
+        other if is_int_suffix(other) => {
+            return Err(NumericParseError::new(format!(
+                "integer suffix '{other}' cannot be applied to a float literal"
+            )));
+        }
+        // Any other suffix is a literal unit; the magnitude defaults to f64.
+        other => {
+            return Ok(FinalizedNumber {
+                lit: NumberLit::F64(f),
+                unit: Some(other.to_string()),
+            });
+        }
+    };
+    Ok(FinalizedNumber { lit, unit: None })
 }
 
-fn finalize_int(p: &ParsedNumber) -> Result<NumberLit, NumericParseError> {
+fn finalize_int(p: &ParsedNumber) -> Result<FinalizedNumber, NumericParseError> {
     // Parse magnitude as u128. The body has `_` already stripped.
     let mag = u128_from_str_radix(p.body, p.base)
         .map_err(|e| NumericParseError::new(format!("invalid integer literal: {e}")))?;
@@ -196,28 +218,36 @@ fn finalize_int(p: &ParsedNumber) -> Result<NumberLit, NumericParseError> {
             p.suffix
         )));
     }
-    match p.suffix {
+    let lit = match p.suffix {
         "" | "i64" => signed::<i64>(p.neg, mag, "i64", i64::MIN as i128, i64::MAX as i128)
-            .map(|n| NumberLit::I64(n as i64)),
+            .map(|n| NumberLit::I64(n as i64))?,
         "i8" => signed::<i8>(p.neg, mag, "i8", i8::MIN as i128, i8::MAX as i128)
-            .map(|n| NumberLit::I8(n as i8)),
+            .map(|n| NumberLit::I8(n as i8))?,
         "i16" => signed::<i16>(p.neg, mag, "i16", i16::MIN as i128, i16::MAX as i128)
-            .map(|n| NumberLit::I16(n as i16)),
+            .map(|n| NumberLit::I16(n as i16))?,
         "i32" => signed::<i32>(p.neg, mag, "i32", i32::MIN as i128, i32::MAX as i128)
-            .map(|n| NumberLit::I32(n as i32)),
-        "i128" => signed_128(p.neg, mag).map(NumberLit::I128),
+            .map(|n| NumberLit::I32(n as i32))?,
+        "i128" => signed_128(p.neg, mag).map(NumberLit::I128)?,
         "isize" => signed::<isize>(p.neg, mag, "isize", isize::MIN as i128, isize::MAX as i128)
-            .map(|n| NumberLit::Isize(n as isize)),
-        "u8" => unsigned(mag, "u8", u8::MAX as u128).map(|n| NumberLit::U8(n as u8)),
-        "u16" => unsigned(mag, "u16", u16::MAX as u128).map(|n| NumberLit::U16(n as u16)),
-        "u32" => unsigned(mag, "u32", u32::MAX as u128).map(|n| NumberLit::U32(n as u32)),
-        "u64" => unsigned(mag, "u64", u64::MAX as u128).map(|n| NumberLit::U64(n as u64)),
-        "u128" => Ok(NumberLit::U128(mag)),
-        "usize" => unsigned(mag, "usize", usize::MAX as u128).map(|n| NumberLit::Usize(n as usize)),
-        other => Err(NumericParseError::new(format!(
-            "unknown numeric type suffix '{other}'"
-        ))),
-    }
+            .map(|n| NumberLit::Isize(n as isize))?,
+        "u8" => unsigned(mag, "u8", u8::MAX as u128).map(|n| NumberLit::U8(n as u8))?,
+        "u16" => unsigned(mag, "u16", u16::MAX as u128).map(|n| NumberLit::U16(n as u16))?,
+        "u32" => unsigned(mag, "u32", u32::MAX as u128).map(|n| NumberLit::U32(n as u32))?,
+        "u64" => unsigned(mag, "u64", u64::MAX as u128).map(|n| NumberLit::U64(n as u64))?,
+        "u128" => NumberLit::U128(mag),
+        "usize" => {
+            unsigned(mag, "usize", usize::MAX as u128).map(|n| NumberLit::Usize(n as usize))?
+        }
+        // Any other suffix is a literal unit; the magnitude defaults to i64.
+        other => {
+            let n = signed::<i64>(p.neg, mag, "i64", i64::MIN as i128, i64::MAX as i128)?;
+            return Ok(FinalizedNumber {
+                lit: NumberLit::I64(n as i64),
+                unit: Some(other.to_string()),
+            });
+        }
+    };
+    Ok(FinalizedNumber { lit, unit: None })
 }
 
 fn signed<T>(
@@ -343,6 +373,7 @@ mod tests {
             is_float: false,
             suffix,
         })
+        .map(|f| f.lit)
     }
 
     fn parse_float(
@@ -359,6 +390,7 @@ mod tests {
             is_float: true,
             suffix,
         })
+        .map(|f| f.lit)
     }
 
     #[test]
@@ -447,9 +479,35 @@ mod tests {
     }
 
     #[test]
-    fn unknown_suffix_errors() {
-        let err = parse("1", "q9", 10, false).unwrap_err();
-        assert!(err.message.contains("unknown"));
+    fn unknown_suffix_becomes_unit() {
+        // An unrecognised suffix is now a literal unit, not an error: the
+        // magnitude defaults to i64 and the suffix rides along as `unit`.
+        let fin = finalize(ParsedNumber {
+            neg: false,
+            base: 10,
+            body: "5",
+            exponent: None,
+            is_float: false,
+            suffix: "MiB",
+        })
+        .unwrap();
+        assert_eq!(fin.lit, NumberLit::I64(5));
+        assert_eq!(fin.unit.as_deref(), Some("MiB"));
+    }
+
+    #[test]
+    fn float_unit_defaults_to_f64() {
+        let fin = finalize(ParsedNumber {
+            neg: false,
+            base: 10,
+            body: "1.5",
+            exponent: None,
+            is_float: true,
+            suffix: "km",
+        })
+        .unwrap();
+        assert_eq!(fin.lit, NumberLit::F64(1.5));
+        assert_eq!(fin.unit.as_deref(), Some("km"));
     }
 
     #[test]

@@ -23,6 +23,10 @@ impl<'a> Parser<'a> {
         let span = tok.span;
         let expr = match tok.kind {
             TokenKind::Number(n) => number_to_expr(n),
+            TokenKind::NumberWithUnit(b) => {
+                let (value, unit) = *b;
+                Expr::UnitLiteral { value, unit, span }
+            }
             TokenKind::Str(s) => self.string_lit_to_expr(s, span)?,
             TokenKind::Bool(b) => Expr::Bool(b),
             TokenKind::Ident(s) => Expr::Identifier(s, span),

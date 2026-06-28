@@ -29,6 +29,7 @@ mod parser;
 mod profile;
 mod reflect;
 mod symbols;
+mod units;
 mod value;
 
 pub use ast::Span;

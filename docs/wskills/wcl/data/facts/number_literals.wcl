@@ -1,9 +1,9 @@
 fact number_literals {
   title    = "Number literals"
-  related  = [numbers, numeric_promotion]
+  related  = [numbers, numeric_promotion, literal_units]
   audience = :both
   body {
-    p "An integer literal may be written in decimal, hexadecimal (`0x`), octal (`0o`), or binary (`0b`); floats accept scientific notation (`1e6`). A width suffix pins the exact numeric type, and underscores may group digits for readability (they are ignored)."
+    p "An integer literal may be written in decimal, hexadecimal (`0x`), octal (`0o`), or binary (`0b`); floats accept scientific notation (`1e6`). A width suffix pins the exact numeric type, and underscores may group digits for readability (they are ignored). A non-numeric suffix is a [literal unit](concept_literal_units) (`5MiB`) instead."
     code "wcl" {
       source = <<'SRC'
 a = 42          // i64 (default)

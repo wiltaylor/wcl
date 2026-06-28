@@ -1383,6 +1383,35 @@ impl Document {
         out
     }
 
+    /// The multiplier declared for `unit` on `ty`'s alias chain via a
+    /// `@unit(name, factor)` decorator, or `None` if the type declares no
+    /// such unit. Mirrors `schema_check::constraint_violation`'s
+    /// alias-chain decorator walk; the factor expression evaluates through
+    /// the document (so `@unit("MiB", 1024 * 1024)` works). Backs both
+    /// literal-unit resolution and the `format_unit` builtin.
+    pub(crate) fn unit_factor(&self, ty: &crate::value::TypeRef, unit: &str) -> Option<Value> {
+        for link in self.alias_chain(ty) {
+            for d in link.ast.decorators.iter() {
+                if d.name.join(".") != "unit" {
+                    continue;
+                }
+                let Some(name_val) = d.positional.first().and_then(|e| self.eval(e).ok()) else {
+                    continue;
+                };
+                let matches = matches!(&name_val,
+                    Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s)
+                        if s == unit);
+                if !matches {
+                    continue;
+                }
+                if let Some(factor) = d.positional.get(1).and_then(|e| self.eval(e).ok()) {
+                    return Some(factor);
+                }
+            }
+        }
+        None
+    }
+
     pub fn type_decl(&self, fqn: &str) -> Option<TypeDecl<'_>> {
         find_decl!(self, fqn, TypeDecl, cells, is_imported);
         // Synthetic types live in the root namespace (no file ns prefix)
@@ -3016,7 +3045,8 @@ fn span_of(expr: &ast::Expr) -> Span {
         | E::Try { span, .. }
         | E::Variant { span, .. }
         | E::Record { span, .. }
-        | E::InterpolatedString { span, .. } => *span,
+        | E::InterpolatedString { span, .. }
+        | E::UnitLiteral { span, .. } => *span,
         E::SelfKw(s) | E::ParentKw(s) => *s,
     }
 }

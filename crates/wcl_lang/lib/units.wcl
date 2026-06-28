@@ -1,0 +1,43 @@
+// Built-in literal-unit types. Always available — the language injects
+// these aliases into every Environment, so no `import` is needed.
+//
+// A numeric literal with a unit suffix (`5MiB`, `3km`, `30s`) resolves
+// against its declared type by multiplying the magnitude by the matching
+// `@unit(name, factor)` decorator. The stored value is in the type's base
+// unit, so `size: std.ByteSize = 5MiB` holds 5242880 (bytes).
+//
+// These are an ordinary, user-replicable pattern: declare a numeric type
+// alias and hang `@unit` decorators on it to give it your own units.
+
+// Data sizes. Base unit: byte.
+//   IEC units (KiB, MiB, …) are powers of 1024.
+//   SI  units (kB,  MB,  …) are powers of 1000.
+@unit("B", 1)
+@unit("KiB", 1024)
+@unit("MiB", 1024 * 1024)
+@unit("GiB", 1024 * 1024 * 1024)
+@unit("TiB", 1024 * 1024 * 1024 * 1024)
+@unit("PiB", 1024 * 1024 * 1024 * 1024 * 1024)
+@unit("kB", 1000)
+@unit("MB", 1000 * 1000)
+@unit("GB", 1000 * 1000 * 1000)
+@unit("TB", 1000 * 1000 * 1000 * 1000)
+type std.ByteSize = i64
+
+// Distances. Base unit: millimetre.
+@unit("mm", 1)
+@unit("cm", 10)
+@unit("dm", 100)
+@unit("m", 1000)
+@unit("km", 1000 * 1000)
+type std.Distance = i64
+
+// Durations. Base unit: nanosecond.
+@unit("ns", 1)
+@unit("us", 1000)
+@unit("ms", 1000 * 1000)
+@unit("s", 1000 * 1000 * 1000)
+@unit("min", 60 * 1000 * 1000 * 1000)
+@unit("h", 60 * 60 * 1000 * 1000 * 1000)
+@unit("d", 24 * 60 * 60 * 1000 * 1000 * 1000)
+type std.Duration = i64

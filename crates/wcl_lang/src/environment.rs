@@ -39,9 +39,11 @@ impl Environment {
     pub fn new() -> Self {
         let mut env = Self::empty();
         env.types.extend(builtin_decorator_schemas());
+        env.types.extend(stdlib_unit_types());
         crate::collections::register(&mut env);
         crate::math::register(&mut env);
         crate::reflect::register(&mut env);
+        crate::units::register(&mut env);
         env
     }
 
@@ -87,6 +89,28 @@ impl Environment {
 
 fn synthetic_span() -> Span {
     Span::new(0, 0)
+}
+
+/// The always-on built-in unit types (`std.ByteSize`, `std.Distance`,
+/// `std.Duration`), parsed once from the embedded `lib/units.wcl` and
+/// cloned into every [`Environment::new`]. They are plain type aliases
+/// carrying `@unit` decorators, injected as synthetic types so a literal
+/// unit (`5MiB`) resolves with no `import`.
+fn stdlib_unit_types() -> Vec<ast::TypeDecl> {
+    static UNITS: std::sync::LazyLock<Vec<ast::TypeDecl>> = std::sync::LazyLock::new(|| {
+        const SRC: &str = include_str!("../lib/units.wcl");
+        let source =
+            crate::parse_for_edit(SRC, "<wcl-units>").expect("built-in lib/units.wcl must parse");
+        source
+            .items
+            .into_iter()
+            .filter_map(|item| match item {
+                ast::Item::TypeDecl(t) => Some(t),
+                _ => None,
+            })
+            .collect()
+    });
+    UNITS.clone()
 }
 
 fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
@@ -384,6 +408,11 @@ fn value_to_expr(v: Value) -> ast::Expr {
         }
         Value::DataPath { .. } => {
             unreachable!("data path values are not constructible via the schema builder API")
+        }
+        Value::PendingUnit { .. } => {
+            unreachable!(
+                "unresolved unit literals are not constructible via the schema builder API"
+            )
         }
     }
 }

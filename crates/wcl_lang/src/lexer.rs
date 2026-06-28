@@ -8,6 +8,11 @@ pub enum TokenKind {
     Ident(String),
     Bool(bool),
     Number(NumberLit),
+    /// A numeric literal carrying a **literal unit** suffix (`5MiB`, `3km`):
+    /// the magnitude plus the unit name, resolved against the declared type
+    /// at evaluation time. Boxed so `TokenKind` (and thus `Token`, which
+    /// parse-recursion frames hold) stays small.
+    NumberWithUnit(Box<(NumberLit, String)>),
     Str(StringLit),
     Symbol(String),
     None,
@@ -669,6 +674,28 @@ mod tests {
     }
 
     #[test]
+    fn literal_unit_suffix() {
+        // An unrecognised suffix lexes as a unit-bearing number, magnitude
+        // defaulting to i64 (int) / f64 (float).
+        assert_eq!(
+            one("5MiB"),
+            TokenKind::NumberWithUnit(Box::new((NumberLit::I64(5), "MiB".to_string())))
+        );
+        assert_eq!(
+            one("512KiB"),
+            TokenKind::NumberWithUnit(Box::new((NumberLit::I64(512), "KiB".to_string())))
+        );
+        assert_eq!(
+            one("1.5km"),
+            TokenKind::NumberWithUnit(Box::new((NumberLit::F64(1.5), "km".to_string())))
+        );
+        assert_eq!(
+            one("-5MiB"),
+            TokenKind::NumberWithUnit(Box::new((NumberLit::I64(-5), "MiB".to_string())))
+        );
+    }
+
+    #[test]
     fn underscores_in_digits() {
         assert_eq!(
             one("1_000_000"),
@@ -704,10 +731,13 @@ mod tests {
     }
 
     #[test]
-    fn unknown_suffix_errors() {
-        let mut lex = Lexer::new("1zz");
-        let err = lex.next_token().unwrap_err();
-        assert!(err.message.contains("unknown"));
+    fn unknown_suffix_becomes_unit() {
+        // An unrecognised suffix is no longer a lex error — it lexes as a
+        // literal unit (resolved later against the declared type).
+        assert_eq!(
+            one("1zz"),
+            TokenKind::NumberWithUnit(Box::new((NumberLit::I64(1), "zz".to_string())))
+        );
     }
 
     #[test]
@@ -726,12 +756,15 @@ mod tests {
 
     #[test]
     fn float_exponent_requires_decimal_point() {
-        // Per the lexer rules: float mode is triggered by '.' followed by digit.
-        // `2e3` therefore lexes as int `2` followed by ident `e3` — which yields
-        // an unknown-suffix lex error. That keeps the grammar simple.
-        let mut lex = Lexer::new("2e3");
-        let err = lex.next_token().unwrap_err();
-        assert!(err.message.contains("unknown"));
+        // Per the lexer rules: float mode is triggered by '.' followed by
+        // digit. `2e3` is therefore not a float; `e3` is taken as a suffix,
+        // and since it isn't a numeric type suffix it lexes as a literal
+        // unit named `e3` (which fails later unless such a unit is declared)
+        // — write `2.0e3` for scientific notation. Keeps the grammar simple.
+        assert_eq!(
+            one("2e3"),
+            TokenKind::NumberWithUnit(Box::new((NumberLit::I64(2), "e3".to_string())))
+        );
     }
 
     #[test]

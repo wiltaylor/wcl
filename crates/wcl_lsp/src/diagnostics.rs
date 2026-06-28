@@ -98,7 +98,9 @@ fn eval_error_span(err: &EvalError) -> miette::SourceSpan {
         | EvalError::ImportFailed { span, .. }
         | EvalError::SchemaViolation { span, .. }
         | EvalError::UnresolvedReference { span, .. }
-        | EvalError::NotAReference { span, .. } => *span,
+        | EvalError::NotAReference { span, .. }
+        | EvalError::UnitNoMatch { span, .. }
+        | EvalError::UnitWithoutType { span, .. } => *span,
     }
 }
 
@@ -124,6 +126,8 @@ fn diagnostic_code(err: &EvalError) -> &'static str {
         EvalError::SchemaViolation { .. } => "wcl::eval::schema_violation",
         EvalError::UnresolvedReference { .. } => "wcl::eval::unresolved_reference",
         EvalError::NotAReference { .. } => "wcl::eval::not_a_reference",
+        EvalError::UnitNoMatch { .. } => "wcl::eval::unit_no_match",
+        EvalError::UnitWithoutType { .. } => "wcl::eval::unit_without_type",
     }
 }
 

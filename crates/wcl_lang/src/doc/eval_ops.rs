@@ -59,6 +59,7 @@ pub(super) fn describe_expr(expr: &ast::Expr) -> &'static str {
         E::Try { .. } => "try expression",
         E::Variant { .. } => "variant constructor",
         E::Record { .. } => "record literal",
+        E::UnitLiteral { .. } => "unit literal",
     }
 }
 

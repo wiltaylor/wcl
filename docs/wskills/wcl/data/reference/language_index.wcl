@@ -21,6 +21,7 @@ index language {
     summary = "Scalar values — numbers, strings, booleans, symbols, identifiers, references."
     related = [
       numbers, number_literals, numeric_promotion,
+      literal_units, literal_unit_syntax,
       booleans, identifiers, references,
       symbols, symbol_set,
       strings, string_literals, string_interpolation,

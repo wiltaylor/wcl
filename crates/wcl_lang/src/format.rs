@@ -718,6 +718,13 @@ impl Printer {
             }
             Expr::F64(v) => self.print_float(*v),
 
+            // A literal unit prints as `<magnitude><unit>` (the suffix form
+            // it was parsed from), reusing suffix-aware numeric printing.
+            Expr::UnitLiteral { value, unit, .. } => {
+                self.print_expr(&number_lit_to_expr(value), 0);
+                self.push(unit);
+            }
+
             // ----- strings -----
             Expr::Utf8(s) => self.print_string_lit_in(s, StringEncoding::Utf8, allow_heredoc),
             Expr::Ascii(s) => {

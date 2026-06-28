@@ -84,6 +84,18 @@ pub enum Expr {
     F32(f32),
     F64(f64),
 
+    /// A numeric literal with a **literal unit** suffix (`5MiB`, `3km`).
+    /// `value` is the raw magnitude (int → `i64`, float → `f64` by
+    /// default); `unit` is the suffix name. The unit is resolved against
+    /// the binding's declared type during evaluation — multiplying by the
+    /// type's `@unit(name, factor)` decorator — so a `UnitLiteral` only
+    /// type-checks where a unit-bearing type is in context.
+    UnitLiteral {
+        value: crate::lexer::NumberLit,
+        unit: String,
+        span: Span,
+    },
+
     Utf8(String),
     Ascii(String),
     Utf16(Vec<u16>),

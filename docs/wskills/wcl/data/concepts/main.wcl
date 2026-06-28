@@ -2,6 +2,7 @@
 import "./what_is_wcl.wcl"
 import "./numbers.wcl"
 import "./numeric_promotion.wcl"
+import "./literal_units.wcl"
 import "./strings.wcl"
 import "./string_literals.wcl"
 import "./string_interpolation.wcl"

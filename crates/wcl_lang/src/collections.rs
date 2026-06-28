@@ -1564,6 +1564,7 @@ pub(crate) fn format_value(v: &Value) -> String {
         Value::F64(n) => n.to_string(),
         Value::Utf16(units) => String::from_utf16_lossy(units),
         Value::Utf32(chars) => chars.iter().collect(),
+        Value::PendingUnit { magnitude, unit } => format!("{}{unit}", format_value(magnitude)),
         Value::List(items) => {
             let parts: Vec<String> = items.iter().map(format_value).collect();
             format!("[{}]", parts.join(", "))

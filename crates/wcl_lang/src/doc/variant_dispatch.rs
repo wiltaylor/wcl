@@ -203,13 +203,31 @@ pub(crate) fn coerce_value_to_type(
     span: ast::Span,
 ) -> Result<Value, EvalError> {
     use crate::value::TypeRef;
+    // A literal unit resolves against the declared type — multiply by the
+    // type's matching `@unit(name, factor)` decorator — regardless of the
+    // union fast-path below. An unresolvable unit is an error here.
+    if let Value::PendingUnit { magnitude, unit } = value {
+        return resolve_unit_literal(doc, *magnitude, &unit, ty, span);
+    }
     // Fast path: when the declared type can't involve a union anywhere
     // (memoised lookup), the value passes through untouched. This runs
     // per function invocation per argument, so without it every closure
     // call re-ran name resolution — and rebuilt entire list arguments —
     // only to find there was nothing to coerce.
+    //
+    // Exception: a `list<NamedAlias>` may hold unit literals even when the
+    // element type isn't a union. A cheap discriminant scan (gated on a
+    // named element type, so `list<utf8>` etc. stay on the fast path)
+    // detects that case and falls through to the list arm, which resolves
+    // each element.
     if !type_may_coerce(doc, ty) {
-        return Ok(value);
+        let list_needs_units = matches!((&value, ty),
+            (Value::List(items), TypeRef::List(inner))
+                if matches!(inner.as_ref(), TypeRef::Named(_))
+                    && items.iter().any(|v| matches!(v, Value::PendingUnit { .. })));
+        if !list_needs_units {
+            return Ok(value);
+        }
     }
     match (value, ty) {
         (Value::List(items), TypeRef::List(inner)) => {
@@ -258,6 +276,114 @@ pub(crate) fn coerce_value_to_type(
             })
         }
         (other, _) => Ok(other),
+    }
+}
+
+/// Resolve a literal unit (`5MiB`) against its declared type: find the
+/// matching `@unit(name, factor)` decorator on the type's alias chain,
+/// multiply the magnitude by the factor, and cast the product to the
+/// alias's underlying numeric type. Mirrors `schema_check::constraint_violation`'s
+/// decorator collection (alias-chain decorators, args evaluated through
+/// the document). No matching unit on the type is `UnitNoMatch`.
+fn resolve_unit_literal(
+    doc: &Document,
+    magnitude: Value,
+    unit: &str,
+    ty: &crate::value::TypeRef,
+    span: ast::Span,
+) -> Result<Value, EvalError> {
+    match doc.unit_factor(ty, unit) {
+        Some(factor) => apply_unit_factor(doc, &magnitude, &factor, ty, unit, span),
+        None => Err(EvalError::unit_no_match(unit, ty.to_string(), span)),
+    }
+}
+
+/// Multiply `magnitude` by `factor` and cast to the alias's underlying
+/// numeric builtin. Integer products stay exact (i128); a fractional
+/// product against an integer target, or one out of range, is an error.
+fn apply_unit_factor(
+    doc: &Document,
+    magnitude: &Value,
+    factor: &Value,
+    ty: &crate::value::TypeRef,
+    unit: &str,
+    span: ast::Span,
+) -> Result<Value, EvalError> {
+    use crate::value::{BuiltinType as B, TypeRef};
+    let (Some(mf), Some(ff)) = (magnitude.as_f64(), factor.as_f64()) else {
+        // A non-numeric factor means the decorator isn't a real unit.
+        return Err(EvalError::unit_no_match(unit, ty.to_string(), span));
+    };
+    let int_product = magnitude
+        .as_i128()
+        .zip(factor.as_i128())
+        .and_then(|(a, b)| a.checked_mul(b));
+    let float_product = mf * ff;
+
+    let target = match doc.resolve_alias(ty) {
+        TypeRef::Builtin(b) if b.is_numeric() => Some(b),
+        _ => None,
+    };
+
+    let frac_err = || {
+        EvalError::schema_violation(
+            crate::error::SchemaViolationKind::FieldTypeMismatch,
+            format!("unit '{unit}' produces a fractional value for integer type '{ty}'"),
+            span,
+        )
+    };
+    let range_err = || {
+        EvalError::schema_violation(
+            crate::error::SchemaViolationKind::FieldTypeMismatch,
+            format!("unit '{unit}' product is out of range for type '{ty}'"),
+            span,
+        )
+    };
+    // The integer magnitude for an integer target: prefer the exact i128
+    // product; fall back to a whole-valued float product.
+    let as_int = |i128_opt: Option<i128>| -> Result<i128, EvalError> {
+        match i128_opt {
+            Some(i) => Ok(i),
+            None => {
+                if float_product.fract() != 0.0 {
+                    Err(frac_err())
+                } else {
+                    Ok(float_product as i128)
+                }
+            }
+        }
+    };
+    macro_rules! to_int {
+        ($V:ident, $T:ty) => {{
+            let i = as_int(int_product)?;
+            <$T>::try_from(i).map(Value::$V).map_err(|_| range_err())
+        }};
+    }
+    match target {
+        Some(B::I8) => to_int!(I8, i8),
+        Some(B::I16) => to_int!(I16, i16),
+        Some(B::I32) => to_int!(I32, i32),
+        Some(B::I64) => to_int!(I64, i64),
+        Some(B::Isize) => to_int!(Isize, isize),
+        Some(B::I128) => as_int(int_product).map(Value::I128),
+        Some(B::U8) => to_int!(U8, u8),
+        Some(B::U16) => to_int!(U16, u16),
+        Some(B::U32) => to_int!(U32, u32),
+        Some(B::U64) => to_int!(U64, u64),
+        Some(B::U128) => {
+            let i = as_int(int_product)?;
+            u128::try_from(i).map(Value::U128).map_err(|_| range_err())
+        }
+        Some(B::Usize) => to_int!(Usize, usize),
+        Some(B::F32) => Ok(Value::F32(float_product as f32)),
+        Some(B::F64) => Ok(Value::F64(float_product)),
+        // Non-builtin or non-numeric target alias: emit a default-typed
+        // number (integer when exact, else float) and let the ordinary
+        // value/type check weigh in.
+        _ => Ok(match int_product {
+            Some(i) => Value::I64(i as i64),
+            None => Value::F64(float_product),
+        }),
     }
 }
 

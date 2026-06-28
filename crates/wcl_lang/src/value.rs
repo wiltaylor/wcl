@@ -80,6 +80,17 @@ pub enum Value {
         kind: String,
         segments: Vec<String>,
     },
+    /// Transient value for a literal unit (`5MiB`) that has been
+    /// evaluated but not yet resolved against a declared type. It carries
+    /// the raw `magnitude` and the `unit` name; type-directed coercion
+    /// (`coerce_value_to_type`) multiplies by the type's `@unit` factor
+    /// and replaces it with a concrete number. A `PendingUnit` that
+    /// reaches any other sink (serialization, arithmetic) is a
+    /// "unit literal without a type" error.
+    PendingUnit {
+        magnitude: Box<Value>,
+        unit: String,
+    },
 }
 
 impl serde::Serialize for Value {
@@ -147,6 +158,9 @@ impl serde::Serialize for Value {
                 map.serialize_entry("path", segments)?;
                 map.end()
             }
+            Value::PendingUnit { unit, .. } => Err(serde::ser::Error::custom(format!(
+                "unit literal '{unit}' has no declared type to resolve against"
+            ))),
         }
     }
 }
@@ -404,6 +418,7 @@ impl Value {
             Value::Variant { .. } => "variant",
             Value::Record { .. } => "record",
             Value::DataPath { .. } => "data_path",
+            Value::PendingUnit { .. } => "pending_unit",
         }
     }
 }
@@ -684,6 +699,7 @@ impl std::fmt::Display for Value {
             Value::DataPath { kind, segments } => {
                 write!(f, "&{}<{kind}>", segments.join("."))
             }
+            Value::PendingUnit { magnitude, unit } => write!(f, "{magnitude}{unit}"),
         }
     }
 }

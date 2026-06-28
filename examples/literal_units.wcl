@@ -1,0 +1,42 @@
+// Literal units. A numeric literal with a unit suffix (`5MiB`, `3km`,
+// `30s`) is multiplied by the unit's factor and stored in the type's base
+// unit. Units are type-scoped: a literal resolves against the declared
+// type of the field it is assigned to.
+//
+// The `std.ByteSize` / `std.Distance` / `std.Duration` types are always
+// available — no import needed. You can also declare your own: any numeric
+// type alias with `@unit(name, factor)` decorators carries units.
+
+// A user-defined unit type, exactly like the built-ins.
+@unit("kg", 1000)
+@unit("g", 1)
+type Grams = i64
+
+@document
+type Config {
+  // Built-in unit types (base units: byte / millimetre / nanosecond).
+  buffer:   std.ByteSize        // bytes
+  disk:     std.ByteSize
+  iso_disk: std.ByteSize
+  radius:   std.Distance        // millimetres
+  timeout:  std.Duration        // nanoseconds
+  sizes:    list<std.ByteSize>
+
+  // A user-defined unit type.
+  weight:   Grams
+
+  // Formatting back to a chosen unit.
+  buffer_label: utf8
+}
+
+buffer   = 4MiB                 // 4194304
+disk     = 2GiB                 // 2147483648
+iso_disk = 2GB                  // 2000000000  (SI, powers of 1000)
+radius   = 3km                  // 3000000
+timeout  = 30s                  // 30000000000
+sizes    = [256KiB, 1MiB, 4MiB]
+weight   = 5kg                  // 5000
+
+// `format_unit(value, type, unit)` renders a stored value in a unit,
+// looking the factor up from the type — the inverse of resolution.
+buffer_label = format_unit(buffer, "std.ByteSize", "MiB")   // "4 MiB"

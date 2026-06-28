@@ -235,6 +235,11 @@ impl<'a> crate::builtins::Caller for EvalCaller<'a, '_> {
         names.sort();
         names
     }
+
+    fn unit_factor(&self, type_name: &str, unit: &str) -> Option<f64> {
+        let ty = crate::value::TypeRef::Named(type_name.split('.').map(str::to_string).collect());
+        self.doc.unit_factor(&ty, unit).and_then(|v| v.as_f64())
+    }
 }
 
 impl Document {
@@ -313,7 +318,12 @@ impl Document {
     /// [`EvalError::UnresolvedReference`]. Designed for hosts that
     /// drive ad-hoc evaluation — `wcl repl` and embedded REPLs.
     pub fn eval_expr(&self, expr: &ast::Expr) -> Result<Value, EvalError> {
-        self.eval_in_scope(expr, &Scope::root())
+        let v = self.eval_in_scope(expr, &Scope::root())?;
+        // A bare unit literal has no declared type to resolve against.
+        if let Value::PendingUnit { unit, .. } = &v {
+            return Err(EvalError::unit_without_type(unit.clone(), span_of(expr)));
+        }
+        Ok(v)
     }
 
     /// Trivial value-literal expressions: scalar number/bool/string
@@ -344,6 +354,13 @@ impl Document {
             E::Utf32(v) => Value::Utf32(v.clone()),
             E::Symbol(s) => Value::Symbol(s.clone()),
             E::None => Value::None,
+            // A literal unit evaluates to a transient `PendingUnit`; the
+            // declared type resolves it (multiplying by its `@unit` factor)
+            // in `coerce_value_to_type`. Left unresolved, it is an error.
+            E::UnitLiteral { value, unit, .. } => Value::PendingUnit {
+                magnitude: Box::new(super::match_pat::number_lit_to_value(value)),
+                unit: unit.clone(),
+            },
             _ => return None,
         })
     }
@@ -567,7 +584,8 @@ impl Document {
             | E::Utf16(_)
             | E::Utf32(_)
             | E::Symbol(_)
-            | E::None => unreachable!("handled by eval_value_literal"),
+            | E::None
+            | E::UnitLiteral { .. } => unreachable!("handled by eval_value_literal"),
         })
     }
 

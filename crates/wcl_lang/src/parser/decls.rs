@@ -1136,6 +1136,7 @@ impl<'a> Parser<'a> {
                 // evaluates in the block's scope (see `Block::labels`).
                 | TokenKind::Str(StringLit::Interpolated { .. })
                 | TokenKind::Number(_)
+                | TokenKind::NumberWithUnit(..)
                 | TokenKind::Bool(_)
                 | TokenKind::Symbol(_)
                 | TokenKind::None => {

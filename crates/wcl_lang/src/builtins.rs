@@ -111,6 +111,15 @@ pub trait Caller {
     fn builtin_names(&self) -> Vec<String> {
         Vec::new()
     }
+
+    /// The multiplier of `unit` on the type named by `type_name` (dotted,
+    /// e.g. `"std.ByteSize"`), via its `@unit(unit, factor)` decorator —
+    /// the inverse of literal-unit resolution. Backs the `format_unit`
+    /// builtin. `None` when the type or unit is unknown. Defaults to `None`
+    /// so hosts that don't wire it up aren't forced to.
+    fn unit_factor(&self, _type_name: &str, _unit: &str) -> Option<f64> {
+        None
+    }
 }
 
 /// One documented parameter of a built-in function: its name, a printable

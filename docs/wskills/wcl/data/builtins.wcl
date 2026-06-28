@@ -360,6 +360,28 @@ function fn_format {
   parameter template { type = "utf8"  description = "Template string with `{}` placeholders." }
   code_example { lang = "wcl"  code = "format(\"{} = {}\", \"x\", 42)   // substitute the args into the {} slots → \"x = 42\"" }
 }
+function fn_format_unit {
+  name        = "format_unit"
+  category    = "strings"
+  description = "Render a base-unit value in a chosen literal unit, looking the factor up from a unit type by name — the inverse of literal-unit resolution, so it stays correct if the type's `@unit` factor changes."
+  returns     = "utf8"
+  returns_description = "The value divided by the unit's factor, suffixed with the unit (e.g. `\"5 MiB\"`)."
+  parameter value { type = "i64"  description = "The stored value, in the type's base unit." }
+  parameter type { type = "utf8"  description = "The unit type's dotted name, e.g. `\"std.ByteSize\"`." }
+  parameter unit { type = "utf8"  description = "The unit to render in, e.g. `\"MiB\"`." }
+  code_example { lang = "wcl"  code = "format_unit(5242880, \"std.ByteSize\", \"MiB\")   // render bytes as MiB → \"5 MiB\"" }
+}
+function fn_format_unit_value {
+  name        = "format_unit_value"
+  category    = "strings"
+  description = "Render a number in a unit given its factor explicitly — the primitive behind `format_unit` for callers that already hold the factor."
+  returns     = "utf8"
+  returns_description = "`value / factor` followed by the unit label."
+  parameter value { type = "i64"  description = "The stored value, in the type's base unit." }
+  parameter factor { type = "i64"  description = "The unit's multiplier (base units per one unit)." }
+  parameter unit { type = "utf8"  description = "The unit label to append." }
+  code_example { lang = "wcl"  code = "format_unit_value(5242880, 1048576, \"MiB\")   // divide by the factor and label → \"5 MiB\"" }
+}
 function fn_group_by {
   name        = "group_by"
   category    = "collections"

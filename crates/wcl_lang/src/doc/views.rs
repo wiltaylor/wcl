@@ -1636,6 +1636,17 @@ impl<'a> Field<'a> {
                     None => Ok(v),
                 })
         };
+        // A literal unit that reached here unresolved (e.g. an untyped
+        // field, or a `&T`/identifier-typed field that doesn't coerce) has
+        // no declared type to resolve against — that is an error, not a
+        // silent `PendingUnit`. (A typed field already resolved or errored
+        // in `coerce_value_to_type` above.)
+        let result = result.and_then(|v| match v {
+            Value::PendingUnit { unit, .. } => {
+                Err(EvalError::unit_without_type(unit, self.ast.span))
+            }
+            other => Ok(other),
+        });
         cell.evaluating.store(false, Ordering::Release);
         cell.value.get_or_init(|| result).as_ref()
     }

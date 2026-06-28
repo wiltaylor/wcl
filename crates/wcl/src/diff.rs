@@ -458,7 +458,10 @@ fn value_to_wcl(v: &Value) -> String {
         Value::Variant { .. }
         | Value::Tensor { .. }
         | Value::Function(_)
-        | Value::DataPath { .. } => quote_wcl(&v.to_string()),
+        | Value::DataPath { .. }
+        // A resolved document never carries an unresolved unit literal;
+        // quote it defensively rather than emit a non-re-parseable form.
+        | Value::PendingUnit { .. } => quote_wcl(&v.to_string()),
     }
 }
 

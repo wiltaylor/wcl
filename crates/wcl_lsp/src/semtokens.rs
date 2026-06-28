@@ -155,7 +155,7 @@ fn classify(kind: &TokenKind, prev: Option<&TokenKind>) -> Option<u32> {
     match kind {
         TokenKind::Bool(_) | TokenKind::None => Some(T_KEYWORD),
         TokenKind::If | TokenKind::Else | TokenKind::Match => Some(T_KEYWORD),
-        TokenKind::Number(_) => Some(T_NUMBER),
+        TokenKind::Number(_) | TokenKind::NumberWithUnit(..) => Some(T_NUMBER),
         TokenKind::Str(_) => Some(T_STRING),
         TokenKind::Symbol(_) => Some(T_ENUM_MEMBER),
         TokenKind::At => Some(T_DECORATOR),

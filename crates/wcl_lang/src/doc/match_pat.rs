@@ -139,7 +139,7 @@ fn match_variant_payload(
     }
 }
 
-fn number_lit_to_value(lit: &NumberLit) -> Value {
+pub(crate) fn number_lit_to_value(lit: &NumberLit) -> Value {
     match lit {
         NumberLit::I8(n) => Value::I8(*n),
         NumberLit::I16(n) => Value::I16(*n),

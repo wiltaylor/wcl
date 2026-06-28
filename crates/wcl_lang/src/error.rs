@@ -240,6 +240,31 @@ pub enum EvalError {
         #[label("not a reference")]
         span: SourceSpan,
     },
+
+    #[error("'{unit}' is not a unit of type '{ty}'")]
+    #[diagnostic(
+        code(wcl::eval::unit_no_match),
+        help(
+            "declare it with `@unit(\"{unit}\", <factor>)` on the type alias, or use one of its declared units"
+        )
+    )]
+    UnitNoMatch {
+        unit: String,
+        ty: String,
+        #[label("unknown unit for this type")]
+        span: SourceSpan,
+    },
+
+    #[error("unit literal '{unit}' has no declared type to resolve against")]
+    #[diagnostic(
+        code(wcl::eval::unit_without_type),
+        help("assign it to a field or binding whose type carries `@unit(...)` declarations")
+    )]
+    UnitWithoutType {
+        unit: String,
+        #[label("needs a unit-bearing type in context")]
+        span: SourceSpan,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -323,6 +348,25 @@ pub enum SchemaViolationKind {
 }
 
 impl EvalError {
+    pub(crate) fn unit_no_match(
+        unit: impl Into<String>,
+        ty: impl Into<String>,
+        span: crate::ast::Span,
+    ) -> Self {
+        Self::UnitNoMatch {
+            unit: unit.into(),
+            ty: ty.into(),
+            span: span_to_miette(span),
+        }
+    }
+
+    pub(crate) fn unit_without_type(unit: impl Into<String>, span: crate::ast::Span) -> Self {
+        Self::UnitWithoutType {
+            unit: unit.into(),
+            span: span_to_miette(span),
+        }
+    }
+
     pub(crate) fn not_a_leaf(kind: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::NotALeaf {
             kind: kind.into(),
