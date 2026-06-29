@@ -548,6 +548,16 @@ pub(crate) fn render_block(
         // under both palettes (side by side). Special-cased in Rust: it reads
         // the children's source text and re-renders them into themed wrappers.
         "demo" => Some(crate::demo::render_html(doc, block, patterns, base_dir)),
+        // An "edit this object" button. Edit mode is not visible to a WCL
+        // `lower`, so it is emitted here and only when the WYSIWYG editor is
+        // active (`--edit`); outside edit mode (plain build / comment-only /
+        // markdown / pdf) it renders nothing, so the button never leaks into
+        // published output.
+        "edit_object" => Some(if patterns.edit_mode() {
+            render_edit_object_button(block)
+        } else {
+            String::new()
+        }),
         // Wireframe widgets (`wf_*`) are diagram shapes now — they render only
         // inside a `diagram` (via `render_shape`), never as a page block.
         // A `wdoc_repeater` renders its body once per element of `each`.
@@ -594,9 +604,17 @@ fn anchor_block(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> S
     let kind = block.kind();
     // Synthetic wrappers / multi-root expansions have no single root tag to
     // stamp; their content children are anchored individually when rendered.
+    // `edit_object` is an edit-only injected control, not authored content —
+    // it must not become a selectable / commentable block target.
     if matches!(
         kind,
-        "region" | "column" | "fragment" | "wdoc_repeater" | "wdoc_instance" | "wdoc_content"
+        "region"
+            | "column"
+            | "fragment"
+            | "wdoc_repeater"
+            | "wdoc_instance"
+            | "wdoc_content"
+            | "edit_object"
     ) {
         return html;
     }
@@ -611,6 +629,35 @@ fn anchor_block(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> S
         ));
     }
     splice_attrs(&html, &attrs)
+}
+
+/// Render the `edit_object` button (edit mode only). Emits a button the
+/// injected WYSIWYG client wires up to open the object editor pre-targeted at
+/// the `kind` field (and, when given, the specific `target` instance).
+fn render_edit_object_button(block: &Block<'_>) -> String {
+    use std::fmt::Write as _;
+    let kind = field_utf8(block, "kind").unwrap_or_default();
+    if kind.is_empty() {
+        return String::new();
+    }
+    let mut classes = vec!["wcl-edit-object-btn".to_string()];
+    classes.extend(field_utf8_list(block, "class"));
+    let cls = classes
+        .iter()
+        .map(|s| escape_html(s))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let text = field_utf8(block, "label").unwrap_or_else(|| format!("Edit {kind}"));
+    let mut out = format!("<button type=\"button\" class=\"{cls}\"");
+    if let Some(id) = field_id(block, "id") {
+        let _ = write!(out, " id=\"{}\"", escape_html(&id));
+    }
+    let _ = write!(out, " data-wcl-edit-kind=\"{}\"", escape_html(&kind));
+    if let Some(target) = field_utf8(block, "target") {
+        let _ = write!(out, " data-wcl-edit-target=\"{}\"", escape_html(&target));
+    }
+    let _ = write!(out, ">\u{270e} {}</button>", escape_html(&text));
+    out
 }
 
 /// Insert `attrs` into the first opening tag of `html`. Falls back to a

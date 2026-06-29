@@ -385,6 +385,21 @@ enum WdocCommand {
         #[command(subcommand)]
         cmd: Option<CommentsSub>,
     },
+    /// Wait for a reviewer to finish, then print the comments — the agent side
+    /// of the review handshake. Blocks until the reviewer clicks "Send to
+    /// agent" in a running `wcl wdoc serve --comment` toolbar, then lists the
+    /// comments (like `comments`) so the agent can act on them. Run it again
+    /// after making changes: the toolbar shows the agent is waiting once more,
+    /// so the reviewer can rebuild and keep reviewing. With no server running it
+    /// just lists the current comments without blocking.
+    Review {
+        /// Path to the WCL source file (the doc's entry point) — the same path
+        /// passed to `wcl wdoc serve`.
+        file: PathBuf,
+        /// Output format for the comments printed once released.
+        #[arg(long, value_enum, default_value_t = CommentFormat::Json)]
+        format: CommentFormat,
+    },
 }
 
 #[derive(Subcommand)]
@@ -755,7 +770,58 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
             format,
             cmd,
         } => run_comments(&file, format, cmd),
+        WdocCommand::Review { file, format } => run_review(&file, format),
     }
+}
+
+/// `wcl wdoc review` — the agent side of the review handshake. Blocks until the
+/// reviewer clicks "Send to agent" in a running `serve --comment` toolbar, then
+/// prints the comments. With no server up, lists them without blocking.
+fn run_review(file: &Path, format: CommentFormat) -> u8 {
+    let root = file.parent().unwrap_or_else(|| Path::new("."));
+    let hs = wcl_wdoc::Handshake::new(file);
+    if !hs.server_alive() {
+        eprintln!(
+            "no running `wcl wdoc serve --comment` found for this document — \
+             listing current comments without waiting."
+        );
+        return print_comments(root, format);
+    }
+    let round = match hs.begin_wait() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("could not start review wait: {e}");
+            return EXIT_IO;
+        }
+    };
+    eprintln!(
+        "waiting for the reviewer — click \"Send to agent\" in the browser toolbar… (Ctrl-C to stop)"
+    );
+
+    // Poll for release on a small runtime so Ctrl-C cleans up the marker (which
+    // otherwise leaves the toolbar showing the agent as still waiting).
+    let rt = match build_runtime() {
+        Ok(rt) => rt,
+        Err(code) => return code,
+    };
+    let released = rt.block_on(async {
+        loop {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => return false,
+                _ = tokio::time::sleep(std::time::Duration::from_millis(400)) => {
+                    if hs.released(round) { return true; }
+                    // If the server went away while we waited, stop blocking.
+                    if !hs.server_alive() { return true; }
+                }
+            }
+        }
+    });
+    hs.end_wait();
+    if !released {
+        eprintln!("review wait cancelled.");
+        return EXIT_OK;
+    }
+    print_comments(root, format)
 }
 
 /// `wcl wdoc comments` — list comments stored in the `comments.wcl` sidecars
@@ -798,6 +864,12 @@ fn run_comments(file: &Path, format: CommentFormat, cmd: Option<CommentsSub>) ->
         }
         None => {}
     }
+    print_comments(root, format)
+}
+
+/// List the comments under `root` and print them in `format`. Shared by
+/// `wcl wdoc comments` (the plain list) and `wcl wdoc review` (after release).
+fn print_comments(root: &Path, format: CommentFormat) -> u8 {
     let recs = match wcl_wdoc::comments::list(root) {
         Ok(r) => r,
         Err(err) => {

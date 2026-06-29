@@ -14,6 +14,8 @@ wdoc_component concept_body {
   wdoc_slot layout    { default = "stack" }
   wdoc_body {
     h1 $"${unit.name}"
+    // Edit-mode only: jump straight into this object in the WYSIWYG editor.
+    edit_object { kind = "concept" target = $"${unit.id}" label = "Edit this concept" }
     p  $"_${unit.summary}_"
     project { from = unit.body }
     unit_examples { unit_id = unit.id  examples = examples }

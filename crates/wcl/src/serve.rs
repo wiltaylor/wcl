@@ -155,6 +155,13 @@ body.wcl-picking [data-wcl-block].wcl-hot{outline:2px solid #4c8bf5;outline-offs
 .wcl-c textarea{width:100%;box-sizing:border-box;min-height:56px;margin-top:4px;background:#111;color:#eee;
  border:1px solid #444;border-radius:6px;padding:6px;font:13px system-ui;resize:vertical}
 .wcl-empty{padding:24px;text-align:center;opacity:.7}
+.wcl-review-bar{position:fixed;top:0;left:0;right:0;z-index:100001;background:#7c3aed;color:#fff;
+ padding:9px 14px;font:600 13px system-ui;display:flex;align-items:center;justify-content:center;gap:12px;
+ box-shadow:0 2px 12px rgba(0,0,0,.3)}
+.wcl-review-bar button{background:#fff;color:#7c3aed;border:0;border-radius:6px;padding:5px 12px;
+ cursor:pointer;font:600 13px system-ui}
+.wcl-review-bar button.ghost{background:rgba(255,255,255,.22);color:#fff}
+.wcl-review-bar button:disabled{opacity:.6;cursor:default}
 `;
 const st=document.createElement('style');st.textContent=CSS;document.head.appendChild(st);
 
@@ -423,6 +430,38 @@ document.body.appendChild(bar);
 // Show the "rebuilt" note carried across the post-rebuild reload.
 try{const done=sessionStorage.getItem('wcl-rebuilt');if(done!==null){sessionStorage.removeItem('wcl-rebuilt');showRebuild('done','✓ Rebuilt '+done);}}catch(_){ }
 refresh();
+
+// Review handshake: a `wcl wdoc review` agent waiting for the reviewer shows a
+// banner inviting them to rebuild, comment, and send. The status long-poll
+// re-surfaces it each round, so when the agent finishes its changes and waits
+// again the banner reappears as the "agent is done" notification.
+let reviewBar=null,reviewRound=0;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function showReview(on){
+ if(on){
+  if(reviewBar)return;
+  reviewBar=document.createElement('div');reviewBar.className='wcl-review-bar';
+  reviewBar.innerHTML='<span>🤖 An AI agent is ready for your review — rebuild to see its latest changes, leave comments, then send.</span>'+
+    '<button class="ghost wcl-rv-rebuild">🔁 Rebuild</button><button class="wcl-rv-send">✅ Send to agent</button>';
+  document.body.appendChild(reviewBar);
+  reviewBar.querySelector('.wcl-rv-rebuild').onclick=()=>rebuildBtn.onclick();
+  reviewBar.querySelector('.wcl-rv-send').onclick=async()=>{
+   const b=reviewBar.querySelector('.wcl-rv-send');b.disabled=true;b.textContent='Sending…';
+   try{await fetch('/__wdoc_review/ready',{method:'POST'});}catch(_){ }
+   showReview(false);
+  };
+ }else if(reviewBar){reviewBar.remove();reviewBar=null;}
+}
+async function pollReview(){
+ for(;;){
+  let j=null;
+  try{const r=await fetch('/__wdoc_review/status?round='+reviewRound);if(r.ok)j=await r.json();}catch(_){ }
+  if(!j){await sleep(2000);continue;}
+  reviewRound=j.round||0;
+  showReview(!!j.waiting);
+ }
+}
+pollReview();
 })();"#;
 
 /// Shared between the rebuild loop and the request handlers.
@@ -458,6 +497,9 @@ struct ServeState {
     /// and the `/__wdoc_rebuild` endpoint both use it; the rebuild worker runs
     /// one build per request and (when asked) reports completion back.
     rebuild_tx: tokio::sync::mpsc::UnboundedSender<RebuildReq>,
+    /// Review handshake markers (comment mode only): the file-based coordination
+    /// with a `wcl wdoc review` process. `None` when `--comment` is off.
+    review: Option<wcl_wdoc::Handshake>,
 }
 
 /// A rebuild request handed to the rebuild worker.
@@ -662,10 +704,27 @@ pub(crate) async fn serve(
     // and any in-flight build) and, by ending the process, blocks all further
     // rebuilds. It skips the TempDir guard's `Drop`, so clean the temp output
     // dir by hand first.
+    // Review handshake (comment mode only): publish a "server is live" marker
+    // so a `wcl wdoc review` process can hand off to this server, and clear it
+    // on shutdown.
+    let review = if comment_mode {
+        let hs = wcl_wdoc::Handshake::new(&file);
+        if let Err(e) = hs.serve_started() {
+            eprintln!("warning: could not initialise review handshake: {e}");
+        }
+        Some(hs)
+    } else {
+        None
+    };
+
     let temp_cleanup = _tempdir_guard.as_ref().map(|td| td.path().to_path_buf());
+    let review_cleanup = review.clone();
     tokio::spawn(async move {
         let _ = tokio::signal::ctrl_c().await;
         eprintln!("\nshutting down");
+        if let Some(hs) = &review_cleanup {
+            hs.serve_stopped();
+        }
         if let Some(p) = temp_cleanup {
             let _ = std::fs::remove_dir_all(&p);
         }
@@ -692,6 +751,7 @@ pub(crate) async fn serve(
         root_file: file.clone(),
         pending: Mutex::new(Vec::new()),
         rebuild_tx: rebuild_tx.clone(),
+        review,
     });
 
     // Initial build. Failure is non-fatal — HTML requests serve the
@@ -798,6 +858,11 @@ pub(crate) async fn serve(
             .route(
                 "/__wdoc_comment",
                 get(handle_comment_list).post(handle_comment_post),
+            )
+            .route("/__wdoc_review/status", get(handle_review_status))
+            .route(
+                "/__wdoc_review/ready",
+                axum::routing::post(handle_review_ready),
             );
     }
     if edit_mode {
@@ -954,6 +1019,51 @@ async fn handle_rebuild(State(state): State<Arc<ServeState>>, body: String) -> R
             }),
         ),
         Err(_) => json_error(StatusCode::INTERNAL_SERVER_ERROR, "rebuild was cancelled"),
+    }
+}
+
+/// Review-handshake status long-poll (the comment toolbar). The client passes
+/// its last-known wait round as `?round=N` (0 = not waiting). While the current
+/// state matches, the request parks up to `POLL_TIMEOUT`, polling the `agent`
+/// marker; it answers `{waiting, round}` as soon as the round changes (a fresh
+/// `wcl wdoc review` wait, or its end) or the window elapses. A new round each
+/// time `review` runs is what re-shows the banner after the agent's changes.
+async fn handle_review_status(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
+    let asked: u64 = uri
+        .query()
+        .and_then(|q| q.split('&').find_map(|kv| kv.strip_prefix("round=")))
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let Some(hs) = &state.review else {
+        return json_response(
+            StatusCode::OK,
+            &serde_json::json!({ "waiting": false, "round": 0 }),
+        );
+    };
+    let deadline = tokio::time::Instant::now() + POLL_TIMEOUT;
+    let mut current = hs.agent_waiting().unwrap_or(0);
+    while current == asked && tokio::time::Instant::now() < deadline {
+        tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+        current = hs.agent_waiting().unwrap_or(0);
+    }
+    json_response(
+        StatusCode::OK,
+        &serde_json::json!({ "waiting": current != 0, "round": current }),
+    )
+}
+
+/// Release a blocked `wcl wdoc review` (the toolbar's "Send to agent" button):
+/// write the `ready` marker the review process is polling for.
+async fn handle_review_ready(State(state): State<Arc<ServeState>>) -> Response {
+    let Some(hs) = &state.review else {
+        return json_error(StatusCode::BAD_REQUEST, "review handshake is not active");
+    };
+    match hs.signal_ready() {
+        Ok(()) => json_response(StatusCode::OK, &serde_json::json!({ "ok": true })),
+        Err(e) => json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("could not signal the agent: {e}"),
+        ),
     }
 }
 

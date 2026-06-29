@@ -1006,6 +1006,8 @@ wdoc_component concept_body {
   wdoc_slot layout    { default = "stack" }
   wdoc_body {
     h1 $"${unit.name}"
+    // Edit-mode only: jump straight into this object in the WYSIWYG editor.
+    edit_object { kind = "concept" target = $"${unit.id}" label = "Edit this concept" }
     p  $"_${unit.summary}_"
     project { from = unit.body }
     unit_examples { unit_id = unit.id  examples = examples }
@@ -1033,6 +1035,8 @@ wdoc_component entity_body {
   wdoc_slot layout    { default = "stack" }
   wdoc_body {
     h1 $"${unit.name}"
+    // Edit-mode only: jump straight into this object in the WYSIWYG editor.
+    edit_object { kind = "entity" target = $"${unit.id}" label = "Edit this entity" }
     p  $"_${unit.kind}_"
     wdoc_repeater { each = match unit.summary { none => [], s => [s] }  as = :s  p $"${s}" }
     project { from = unit.body }
@@ -1060,6 +1064,8 @@ wdoc_component fact_body {
   wdoc_slot layout    { default = "stack" }
   wdoc_body {
     h1 $"${unit.title}"
+    // Edit-mode only: jump straight into this object in the WYSIWYG editor.
+    edit_object { kind = "fact" target = $"${unit.id}" label = "Edit this fact" }
     project { from = unit.body }
     unit_examples { unit_id = unit.id  examples = examples }
     related_section { related = unit.related  all_units = all_units  backlinks = backlinks  layout = layout }
@@ -1089,6 +1095,8 @@ wdoc_component process_body {
   wdoc_slot layout     { default = "stack" }
   wdoc_body {
     h1 $"${unit.title}"
+    // Edit-mode only: jump straight into this object in the WYSIWYG editor.
+    edit_object { kind = "procedure" target = $"${unit.id}" label = "Edit this process" }
     h2 "Purpose"
     p  $"${unit.purpose}"
     wdoc_repeater { each = match len(unit.preconditions) { 0 => [], _ => [true] }  as = :_p

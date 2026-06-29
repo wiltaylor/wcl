@@ -12,6 +12,8 @@ wdoc_component fact_body {
   wdoc_slot layout    { default = "stack" }
   wdoc_body {
     h1 $"${unit.title}"
+    // Edit-mode only: jump straight into this object in the WYSIWYG editor.
+    edit_object { kind = "fact" target = $"${unit.id}" label = "Edit this fact" }
     project { from = unit.body }
     unit_examples { unit_id = unit.id  examples = examples }
     related_section { related = unit.related  all_units = all_units  backlinks = backlinks  layout = layout }

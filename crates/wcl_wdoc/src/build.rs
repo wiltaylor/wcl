@@ -94,6 +94,10 @@ pub fn schema_registry() -> Registry {
         "wdoc/file_placement.wcl",
         include_str!("../lib/file_placement.wcl"),
     );
+    r.register(
+        "wdoc/edit_object.wcl",
+        include_str!("../lib/edit_object.wcl"),
+    );
     r
 }
 

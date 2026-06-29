@@ -485,6 +485,20 @@ body.wcl-ed-picking [data-wcl-block].wcl-ed-hot{outline:2px solid #16a34a;outlin
   const targetFileValue = body => ((body.querySelector('#wcl-ed-target') || {}).value || '').trim();
   const shortFile = f => f.split('/').slice(-2).join('/');
 
+  // Open the object editor for one specific instance, matched by its inline
+  // label (its id for the wskill units) — backs the in-page `edit_object`
+  // buttons. Falls back to the kind's instance list when there's no target or
+  // the target can't be resolved.
+  async function openObjectByTarget(kind, targetId) {
+    if (!targetId) { openKind(kind); return; }
+    let objs;
+    try { objs = await getJSON('/__wdoc_objects?kind=' + encodeURIComponent(kind) + pfq()); }
+    catch (e) { openKind(kind); return; }
+    const hit = objs.find(o => o.label === targetId);
+    if (hit) openObjectText(kind, { file: hit.file, span: hit.span });
+    else openKind(kind);
+  }
+
   // ---- select mode + toolbar ---------------------------------------------
 
   let picking = false, hot = null, hint = null;
@@ -541,6 +555,16 @@ body.wcl-ed-picking [data-wcl-block].wcl-ed-hot{outline:2px solid #16a34a;outlin
   bar.appendChild(actions);
   bar.appendChild(toggle);
   document.body.appendChild(bar);
+
+  // In-page `edit_object` buttons (rendered by the server, edit mode only):
+  // jump straight into the object editor for the targeted instance.
+  document.querySelectorAll('.wcl-edit-object-btn').forEach(b => {
+    b.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      const kind = b.getAttribute('data-wcl-edit-kind');
+      if (kind) { setOpen(true); openObjectByTarget(kind, b.getAttribute('data-wcl-edit-target')); }
+    });
+  });
 
   // Restore the view after a save-triggered reload.
   const r = popStash();
