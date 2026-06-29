@@ -10576,8 +10576,8 @@ fn markdown_source_previews_skill_markdown_and_is_commentable() {
     );
 
     let opts = BuildOptions {
-        profile: false,
         comment_mode: true,
+        ..Default::default()
     };
     if build_with_options(&main, out.path(), None, &opts).is_err() {
         panic!("build with comment mode failed");
@@ -10604,5 +10604,59 @@ fn markdown_source_previews_skill_markdown_and_is_commentable() {
     assert!(
         html.contains("data-wcl-kind=\"markdown_source\""),
         "expected a comment anchor on the markdown_source block, got:\n{html}"
+    );
+}
+
+/// Edit mode (`wcl wdoc serve --edit`) stamps each block with its source span
+/// and home file (plus the shared `data-wcl-*` block anchor and the page-block
+/// span on the wrapper) so the WYSIWYG client can map a rendered block back to
+/// the AST node to mutate. A plain build emits none of this markup.
+#[test]
+fn edit_mode_stamps_source_span_and_file_anchors() {
+    let tmp = TempDir::new().expect("tempdir");
+    let out = TempDir::new().expect("out");
+    let main = tmp.path().join("main.wcl");
+    write_fixture(
+        &main,
+        "site s { default_template = :webpage  root = true }\n\
+         page index { start = true\n  h1 \"Hello\"\n  p \"Body.\"\n }\n",
+    );
+
+    let opts = BuildOptions {
+        edit_mode: true,
+        ..Default::default()
+    };
+    if build_with_options(&main, out.path(), None, &opts).is_err() {
+        panic!("build with edit mode failed");
+    }
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+
+    // Each block carries its kind, a byte span, and its home file.
+    assert!(
+        html.contains("data-wcl-kind=\"h1\""),
+        "expected a block anchor, got:\n{html}"
+    );
+    assert!(
+        html.contains("data-wcl-span=\""),
+        "expected a source span anchor in edit mode, got:\n{html}"
+    );
+    assert!(
+        html.contains("data-wcl-file=\""),
+        "expected a home-file anchor in edit mode, got:\n{html}"
+    );
+    // The page wrapper carries the page block's own span for top-level inserts.
+    assert!(
+        html.contains("data-wcl-page-span=\""),
+        "expected the page-block span on the wrapper, got:\n{html}"
+    );
+
+    // A plain build leaks none of the editor markup.
+    if build_with_options(&main, out.path(), None, &BuildOptions::default()).is_err() {
+        panic!("plain build failed");
+    }
+    let plain = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+    assert!(
+        !plain.contains("data-wcl-span=") && !plain.contains("data-wcl-block"),
+        "plain build must not emit editor anchors, got:\n{plain}"
     );
 }

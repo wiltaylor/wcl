@@ -38,8 +38,9 @@ mod visibility;
 mod wireframe;
 
 pub use build::{
-    BuildError, BuildOptions, RebuildOutcome, build, build_incremental, build_with_options,
-    schema_registry, take_render_warnings,
+    BuildError, BuildOptions, PageSubSite, RebuildOutcome, build, build_incremental,
+    build_with_options, doc_entry_for_page, open_doc_for_edit, schema_registry, subsite_for_page,
+    take_render_warnings,
 };
 pub use comments::{CommentRecord, CommentScope};
 pub use markdown::{markdown, skill};

@@ -138,6 +138,11 @@ pub(crate) struct InlinePatterns {
     /// client. Rides here so the renderer reaches it without a new param,
     /// like `ui_theme`; set per build via `set_comment_mode`.
     comment_mode: Cell<bool>,
+    /// Edit mode (the `wcl wdoc serve --edit` dev server): like `comment_mode`,
+    /// but additionally stamps each block with its source `data-wcl-span` and
+    /// `data-wcl-file` so the WYSIWYG client can map a rendered block back to
+    /// the exact AST node to mutate. Set per build via `set_edit_mode`.
+    edit_mode: Cell<bool>,
 }
 
 struct CompiledPattern {
@@ -233,6 +238,7 @@ impl InlinePatterns {
             vis_site: RefCell::new(None),
             vis_template: RefCell::new(None),
             comment_mode: Cell::new(false),
+            edit_mode: Cell::new(false),
         }
     }
 
@@ -241,9 +247,21 @@ impl InlinePatterns {
         self.comment_mode.set(on);
     }
 
-    /// Whether `render_block` should stamp `data-wcl-*` comment anchors.
-    pub(crate) fn comment_mode(&self) -> bool {
-        self.comment_mode.get()
+    /// Enable edit-mode markup for this build (the `--edit` dev server).
+    pub(crate) fn set_edit_mode(&self, on: bool) {
+        self.edit_mode.set(on);
+    }
+
+    /// Whether `render_block` should stamp the editor's `data-wcl-span` /
+    /// `data-wcl-file` anchors.
+    pub(crate) fn edit_mode(&self) -> bool {
+        self.edit_mode.get()
+    }
+
+    /// Whether block-anchoring markup (`data-wcl-block` / page wrapper) is on:
+    /// true under either the comment or the edit dev server.
+    pub(crate) fn anchor_mode(&self) -> bool {
+        self.comment_mode.get() || self.edit_mode.get()
     }
 
     /// Set the current site's name and template kind for block-visibility

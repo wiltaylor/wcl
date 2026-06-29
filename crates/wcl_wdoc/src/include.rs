@@ -57,6 +57,9 @@ pub(crate) struct IncludedSite {
     pub href: String,
     /// The entry `.wcl` file on disk to build.
     pub src_path: PathBuf,
+    /// The sub-site's source directory on disk (`<folder>/<name>`); the page's
+    /// source files all live under it. Used to scope a page's rebuild.
+    pub src_root: PathBuf,
     /// Output subdirectory relative to the build root (`<prefix>/<name>`).
     pub out_subdir: PathBuf,
     /// The site to build for this member (the include's `site` selector),
@@ -240,10 +243,12 @@ pub(crate) fn resolve_included(
             )));
         }
         by_subdir.insert(out_subdir.clone(), src.clone());
+        let src_root = root.join(&name);
         out.push(IncludedSite {
             href: format!("{prefix}/{name}/"),
             name,
             src_path: src,
+            src_root,
             out_subdir,
             site: spec.site.clone(),
         });
@@ -308,6 +313,48 @@ pub(crate) fn collect_includes(
         }
     }
     Ok(all)
+}
+
+/// Find the included sub-site whose source folder owns `page_file`, returning
+/// its entry `.wcl` (the document the page was built from). `None` when the page
+/// belongs to the root document itself (no matching `include`). Used by the
+/// `--edit` server so the object/schema endpoints introspect the right document
+/// when the user is editing a sub-site (e.g. a wskill) page from the top-level
+/// server. Matches the deepest sub-site folder that is an ancestor of the page.
+pub(crate) fn entry_for_page(
+    doc: &Document,
+    base_dir: Option<&Path>,
+    page_file: &Path,
+) -> Option<IncludedSite> {
+    let page = std::fs::canonicalize(page_file).ok()?;
+    let mut best: Option<(usize, IncludedSite)> = None;
+    for b in doc.blocks().filter(|b| b.kind() == "include") {
+        let Some(folder) = label_string(&b) else {
+            continue;
+        };
+        let spec = IncludeSpec {
+            folder: folder.clone(),
+            pattern: field_utf8(&b, "pattern"),
+            entry: field_utf8(&b, "entry"),
+            site: field_utf8(&b, "site"),
+        };
+        let Ok(sites) = resolve_included(base_dir, &spec) else {
+            continue;
+        };
+        for s in sites {
+            // The page's source file lives under the sub-site's source folder.
+            let Ok(src_root) = std::fs::canonicalize(&s.src_root) else {
+                continue;
+            };
+            if page.starts_with(&src_root) {
+                let depth = src_root.components().count();
+                if best.as_ref().is_none_or(|(d, _)| depth > *d) {
+                    best = Some((depth, s));
+                }
+            }
+        }
+    }
+    best.map(|(_, s)| s)
 }
 
 /// Best-effort: open an included entry document and read its selected site's

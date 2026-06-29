@@ -86,10 +86,10 @@ cli-run *ARGS:
 wdoc-serve *ARGS:
     cargo run -p wcl -- wdoc serve examples/wdoc/main.wcl --comment {{ARGS}}
 
-# Serve docs/ in comment mode (landing at /, reference book at /reference/) — click a block to leave a review note, list them with `just docs-comments`
+# Serve docs/ in comment + edit mode (landing at /, reference book at /reference/) — click a block to leave a review note (list with `just docs-comments`) or edit it in place
 [group('dev')]
 docs-serve *ARGS:
-    cargo run -p wcl -- wdoc serve docs/main.wcl --addr 127.0.0.1:8137 --comment {{ARGS}}
+    cargo run -p wcl -- wdoc serve docs/main.wcl --addr 127.0.0.1:8137 --comment --edit {{ARGS}}
 
 # Build the project's docs/ site into docs/_site/ (gitignored)
 [group('dev')]

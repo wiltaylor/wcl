@@ -90,6 +90,10 @@ pub fn schema_registry() -> Registry {
     r.register("wdoc/statechart.wcl", include_str!("../lib/statechart.wcl"));
     r.register("wdoc/visibility.wcl", include_str!("../lib/visibility.wcl"));
     r.register("wdoc/comment.wcl", include_str!("../lib/comment.wcl"));
+    r.register(
+        "wdoc/file_placement.wcl",
+        include_str!("../lib/file_placement.wcl"),
+    );
     r
 }
 
@@ -156,6 +160,67 @@ pub(crate) fn wdoc_environment(base_dir: Option<&Path>) -> Environment {
         ),
     );
     env
+}
+
+/// Open `file` as an evaluated [`Document`] exactly the way [`build`] does —
+/// the embedded wdoc schema registry plus the wdoc [`Environment`] — so callers
+/// outside the build (the `wcl wdoc serve --edit` editor) introspect the same
+/// schemas (`@block` / `@table` / `@wdoc.file`) and resolve the same block
+/// kinds the build sees. A plain `Document::from_file` would miss the wdoc
+/// builtins and registry imports.
+pub fn open_doc_for_edit(file: &Path) -> Result<Document, wcl_lang::ParseError> {
+    // `ParseError` carries `#[from] io::Error`, so a read failure surfaces as
+    // one error type alongside any syntax error.
+    let user_src = fs::read_to_string(file)?;
+    let name = file.display().to_string();
+    let base_dir = file.parent().map(Path::to_path_buf);
+    let loader = schema_registry().loader(disk_loader());
+    Document::open_at_with_loader(
+        &user_src,
+        &name,
+        base_dir.clone(),
+        &wdoc_environment(base_dir.as_deref()),
+        loader,
+    )
+}
+
+/// The entry document that owns `page_file` — a sub-site's entry `.wcl` when the
+/// page belongs to an `include`d sub-site (e.g. a wskill book under the
+/// top-level docs site), else `root_file` itself. Lets the `--edit` server
+/// introspect the schema/objects of the document the page actually came from
+/// when `--edit` is pointed at the top-level site. Falls back to `root_file` on
+/// any resolution failure.
+pub fn doc_entry_for_page(root_file: &Path, page_file: &Path) -> PathBuf {
+    subsite_for_page(root_file, page_file)
+        .map(|s| s.entry)
+        .unwrap_or_else(|| root_file.to_path_buf())
+}
+
+/// The included sub-site that owns `page_file` — its entry document, on-disk
+/// source root, and output subdirectory — or `None` when the page belongs to
+/// the root document. Lets the `--edit` server rebuild *only* the sub-site a
+/// page lives in (e.g. one wskill) instead of the whole top-level site.
+pub struct PageSubSite {
+    /// The sub-site entry `.wcl` to (re)build.
+    pub entry: PathBuf,
+    /// The sub-site's source directory; its pages' files live under it.
+    pub src_root: PathBuf,
+    /// Output subdirectory under the build root (`<prefix>/<name>`).
+    pub out_subdir: PathBuf,
+    /// The site selector for the sub-build (the include's `site` field).
+    pub site: Option<String>,
+}
+
+pub fn subsite_for_page(root_file: &Path, page_file: &Path) -> Option<PageSubSite> {
+    let doc = open_doc_for_edit(root_file).ok()?;
+    let base = root_file.parent();
+    let s = crate::include::entry_for_page(&doc, base, page_file)?;
+    Some(PageSubSite {
+        entry: s.src_path,
+        src_root: s.src_root,
+        out_subdir: s.out_subdir,
+        site: s.site,
+    })
 }
 
 /// Read an `included_sites(...)` options record into an [`IncludeSpec`].
@@ -401,6 +466,11 @@ pub struct BuildOptions {
     /// rendered block with `data-wcl-*` anchors so the injected JS client can
     /// attach review comments. Off for normal builds — no markup leaks.
     pub comment_mode: bool,
+    /// Edit mode (the `wcl wdoc serve --edit` dev server): stamp each rendered
+    /// block with its source `data-wcl-span` / `data-wcl-file` (plus the shared
+    /// `data-wcl-*` block anchors) so the WYSIWYG client can map a rendered
+    /// block back to the AST node to mutate. Off for normal builds.
+    pub edit_mode: bool,
 }
 
 /// [`build`] with [`BuildOptions`]. Returns the page count plus, when
@@ -669,6 +739,7 @@ fn build_inner(
                         &home_href,
                         &home_title,
                         opts.comment_mode,
+                        opts.edit_mode,
                         Some(&site_targets),
                     )?;
                     if built.need_full {
@@ -733,6 +804,7 @@ fn build_inner(
                 &home_href,
                 &home_title,
                 opts.comment_mode,
+                opts.edit_mode,
                 None,
             )?
             .count;
@@ -1211,6 +1283,7 @@ fn build_site(
     home_href: &str,
     home_title: &str,
     comment_mode: bool,
+    edit_mode: bool,
     target: Option<&HashSet<String>>,
 ) -> Result<SiteBuild, BuildError> {
     // A targeted incremental render reuses the prior full build's aggregate
@@ -1381,6 +1454,7 @@ fn build_site(
     // Wireframe (`wf_*`) elements bake from this site's UI theme.
     inline_patterns.set_ui_theme(crate::render::resolve_ui_theme(spec.block.as_ref()));
     inline_patterns.set_comment_mode(comment_mode);
+    inline_patterns.set_edit_mode(edit_mode);
     // The `markdown_source` block writes its Markdown's diagram SVGs here.
     inline_patterns.set_output_dir(out_dir.to_path_buf());
 
@@ -1858,17 +1932,23 @@ fn build_normal_page(
             content.push('\n');
         }
     }
-    // Comment mode (`--comment` dev server): wrap the page content in a
-    // `display:contents` div carrying the page's source file (so the client can
-    // locate the owning `comments.wcl` sidecar) and resolved name (the comment
-    // key). `display:contents` keeps it invisible to layout.
-    if ctx.inline_patterns.comment_mode() {
+    // Comment/edit mode (`--comment` / `--edit` dev server): wrap the page
+    // content in a `display:contents` div carrying the page's source file (so
+    // the client can locate the owning `comments.wcl` sidecar, or the file to
+    // edit) and resolved name (the comment key). `display:contents` keeps it
+    // invisible to layout.
+    if ctx.inline_patterns.anchor_mode() {
         let src = page.named_source();
+        // The page block's own span lets the editor insert a new top-level
+        // block into the page (`--edit`); harmless for `--comment`.
+        let page_span = page.span();
         content = format!(
             "<div data-wcl-page-file=\"{}\" data-wcl-page-name=\"{}\" \
-             style=\"display:contents\">\n{content}</div>\n",
+             data-wcl-page-span=\"{}:{}\" style=\"display:contents\">\n{content}</div>\n",
             escape_html(src.name()),
             escape_html(&page_name),
+            page_span.start,
+            page_span.end,
         );
     }
     let regions_val = Value::list(

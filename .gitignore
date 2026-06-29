@@ -15,3 +15,4 @@ docs/_md/
 crates/wcl_lang/fuzz/target/
 crates/wcl_lang/fuzz/artifacts/
 crates/wcl_lang/fuzz/coverage/
+.playwright-cli/

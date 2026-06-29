@@ -3,11 +3,12 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use wcl_lang::{
-    Document, Environment, ParseError, ast, format as wcl_format, parse_expr, parse_for_edit,
+    Document, Environment, ParseError, format as wcl_format, parse_expr, parse_for_edit,
 };
 
 mod diff;
 mod dump;
+mod edit;
 mod gitspec;
 mod scaffold;
 mod serve;
@@ -334,15 +335,17 @@ enum WdocCommand {
         #[arg(long, value_enum, default_value_t = PdfPageSize::A4)]
         page_size: PdfPageSize,
     },
-    /// Run a local dev server. Watches the source for `.wcl` changes
-    /// and re-renders on each modification — refresh the browser to
-    /// see updates.
+    /// Run a local dev server. Watches the source for `.wcl` changes but
+    /// does not rebuild automatically — press Enter in the console (or use
+    /// the comment toolbar's Rebuild button) to rebuild, then the browser
+    /// reloads.
     Serve {
         /// Path to a WCL source file declaring one or more `page` blocks.
         file: PathBuf,
-        /// Bind address. Default `127.0.0.1:8080`.
+        /// Bind address, or `auto` to pick the first free port near 8080.
+        /// Default `127.0.0.1:8080`.
         #[arg(long, default_value = "127.0.0.1:8080")]
-        addr: std::net::SocketAddr,
+        addr: serve::BindSpec,
         /// Output directory. When omitted, a temp directory is used
         /// and removed on shutdown.
         #[arg(long)]
@@ -357,6 +360,13 @@ enum WdocCommand {
         /// with `wcl wdoc comments`.
         #[arg(long)]
         comment: bool,
+        /// Enable edit mode: inject a WYSIWYG client that lets you select a
+        /// rendered block and edit its fields / text, add / remove / reorder
+        /// blocks, and add / edit / remove schema-defined data objects —
+        /// writing the changes straight into the `.wcl` source (which the
+        /// watcher rebuilds + reloads). Composes with `--comment`.
+        #[arg(long)]
+        edit: bool,
     },
     /// List the review comments stored in the `comments.wcl` sidecars under
     /// `<file>`'s directory (left by `wcl wdoc serve --comment`), or
@@ -720,12 +730,13 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
             out,
             site,
             comment,
+            edit,
         } => {
             let rt = match build_runtime() {
                 Ok(rt) => rt,
                 Err(code) => return code,
             };
-            let result = rt.block_on(serve::serve(file, out, addr, site, comment));
+            let result = rt.block_on(serve::serve(file, out, addr, site, comment, edit));
             // Tear the runtime down with a bound so a stray in-flight
             // `spawn_blocking` (e.g. a `tokio::fs::read` in the static
             // handler) can never hang process exit on Ctrl-C.
@@ -1213,14 +1224,15 @@ fn run_set(file: &Path, path: &str, value: &str) -> Result<u8, String> {
             return Ok(EXIT_PARSE);
         }
     };
-    let slot = find_field_by_span(&mut ast.items, target_span).ok_or_else(|| {
-        format!(
-            "internal: could not relocate field at span {}..{} in {}",
-            target_span.start,
-            target_span.end,
-            home_path.display()
-        )
-    })?;
+    let slot =
+        wcl_lang::edit::find_field_by_span(&mut ast.items, target_span).ok_or_else(|| {
+            format!(
+                "internal: could not relocate field at span {}..{} in {}",
+                target_span.start,
+                target_span.end,
+                home_path.display()
+            )
+        })?;
     slot.expr = new_expr;
     let formatted = wcl_format::to_source(&ast);
     if let Err(e) = verify_reparses(&formatted) {
@@ -1237,25 +1249,6 @@ fn run_set(file: &Path, path: &str, value: &str) -> Result<u8, String> {
     // edited file may not be the one named on the command line.
     eprintln!("updated {path} in {}", home_path.display());
     Ok(EXIT_OK)
-}
-
-/// Walk `items` (and recursively into `Item::Block.items`) to find
-/// the [`ast::Field`] whose `span` matches `span`. Span-equality
-/// works because `run_set` re-parses the same source bytes that
-/// `Document` parsed, so item positions match exactly.
-fn find_field_by_span(items: &mut [ast::Item], span: ast::Span) -> Option<&mut ast::Field> {
-    for item in items {
-        match item {
-            ast::Item::Field(f) if f.span == span => return Some(f),
-            ast::Item::Block(b) => {
-                if let Some(found) = find_field_by_span(&mut b.items, span) {
-                    return Some(found);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
 }
 
 /// Write `contents` to `target` via a same-directory temp file +

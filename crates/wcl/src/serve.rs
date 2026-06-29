@@ -2,7 +2,7 @@ use std::future::IntoFuture;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use axum::Router;
@@ -26,6 +26,58 @@ const QUIET_WINDOW: Duration = Duration::from_millis(150);
 /// with the unchanged generation. Short enough that intermediaries
 /// don't kill the connection; the client just re-polls.
 const POLL_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The address `serve` binds to when neither `--addr` nor `auto` shifts
+/// it elsewhere. `auto` scans upward from this port.
+pub(crate) const DEFAULT_BIND: SocketAddr =
+    SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 8080);
+
+/// How the dev server chooses its bind address.
+///
+/// `--addr auto` picks the first free port near [`DEFAULT_BIND`]; any other
+/// value is parsed as an explicit `SocketAddr` and bound as-is (hard error if
+/// the port is busy).
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum BindSpec {
+    /// Scan upward from [`DEFAULT_BIND`] for a free port.
+    Auto,
+    /// Bind exactly this address.
+    Fixed(SocketAddr),
+}
+
+impl std::str::FromStr for BindSpec {
+    type Err = std::net::AddrParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.eq_ignore_ascii_case("auto") {
+            Ok(BindSpec::Auto)
+        } else {
+            s.parse().map(BindSpec::Fixed)
+        }
+    }
+}
+
+/// Bind a listener by scanning a fixed window of ports upward from `base`,
+/// returning the first that's free. Keeping the successfully bound listener
+/// avoids a check-then-bind race.
+async fn bind_auto(base: SocketAddr) -> std::io::Result<tokio::net::TcpListener> {
+    const RANGE: u16 = 100; // scan base..base+100
+    let mut last_err = None;
+    for offset in 0..RANGE {
+        let Some(port) = base.port().checked_add(offset) else {
+            break;
+        };
+        let cand = SocketAddr::new(base.ip(), port);
+        match tokio::net::TcpListener::bind(cand).await {
+            Ok(l) => return Ok(l),
+            Err(e) if e.kind() == ErrorKind::AddrInUse => last_err = Some(e),
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        std::io::Error::new(ErrorKind::AddrInUse, "no free port found near default")
+    }))
+}
 
 /// Injected into every served HTML page (and the error/404 pages):
 /// long-polls `/__wdoc_reload` and reloads when the build generation
@@ -78,6 +130,14 @@ body.wcl-picking [data-wcl-block].wcl-hot{outline:2px solid #4c8bf5;outline-offs
 .wcl-bar:not(.wcl-open) button.wcl-toggle .wcl-badge.on{display:flex}
 .wcl-hint{position:fixed;top:0;left:0;right:0;z-index:99999;background:#4c8bf5;color:#fff;
  text-align:center;padding:7px;font:600 13px system-ui}
+.wcl-rebuild{position:fixed;top:0;left:0;right:0;z-index:100002;padding:8px;text-align:center;
+ font:600 13px system-ui;color:#fff;display:flex;align-items:center;justify-content:center;gap:8px}
+.wcl-rb-running{background:#4c8bf5}
+.wcl-rb-done{background:#2f6f4f}
+.wcl-rb-error{background:#b91c1c}
+.wcl-rb-spin{width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;
+ border-radius:50%;display:inline-block;animation:wcl-spin .7s linear infinite}
+@keyframes wcl-spin{to{transform:rotate(360deg)}}
 [data-wcl-block].wcl-flash{outline:3px solid #e0a000!important;outline-offset:2px!important}
 .wcl-modal{position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.5);display:flex;
  align-items:center;justify-content:center}
@@ -319,7 +379,36 @@ const selBtn=document.createElement('button');selBtn.textContent='🎯 Comment o
 selBtn.onclick=()=>{setOpen(false);setPick(!picking);};
 const pageBtn=document.createElement('button');pageBtn.textContent='💬 Comment on page';
 pageBtn.onclick=()=>{setOpen(false);setPick(false);if(pageEl)openForm(pageEl,true);};
+// A top banner shows rebuild progress; a done note is stashed so it survives
+// the post-rebuild reload and shows on the fresh page.
+let rbBanner=null,rbTimer=null;
+function showRebuild(kind,text){
+ if(!rbBanner){rbBanner=document.createElement('div');document.body.appendChild(rbBanner);}
+ rbBanner.className='wcl-rebuild wcl-rb-'+kind;
+ rbBanner.innerHTML=(kind==='running'?'<span class="wcl-rb-spin"></span>':'')+esc(text);
+ if(rbTimer){clearTimeout(rbTimer);rbTimer=null;}
+ if(kind!=='running'){rbTimer=setTimeout(()=>{if(rbBanner){rbBanner.remove();rbBanner=null;}},4000);}
+}
+// Auto-rebuild is off server-side; this asks the server to rebuild now. With a
+// page in scope it rebuilds only that page's sub-site; the call blocks until the
+// build finishes (so the spinner spans it), then the reload script refreshes.
+const rebuildBtn=document.createElement('button');rebuildBtn.textContent='🔁 Rebuild';
+rebuildBtn.onclick=async()=>{
+ setOpen(false);rebuildBtn.disabled=true;
+ const pf=pageEl?pageEl.getAttribute('data-wcl-page-file'):null;
+ showRebuild('running','Rebuilding'+(pf?' this page…':'…'));
+ let res=null;
+ try{const r=await fetch('/__wdoc_rebuild',{method:'POST',headers:{'content-type':'application/json'},
+   body:JSON.stringify({page_file:pf})});res=await r.json();}catch(e){res={ok:false,summary:String(e)};}
+ rebuildBtn.disabled=false;
+ if(res&&res.ok){
+  // Stash the done note; the reload (gen bumped by the build) shows it next load.
+  try{sessionStorage.setItem('wcl-rebuilt',res.summary||'done');}catch(_){ }
+  showRebuild('done','✓ Rebuilt '+(res.summary||''));
+ }else{showRebuild('error','⚠ '+((res&&res.summary)||'rebuild failed'));}
+};
 if(pageEl)actions.appendChild(countBtn);
+actions.appendChild(rebuildBtn);
 actions.appendChild(selBtn);if(pageEl)actions.appendChild(pageBtn);
 // Persistent launcher: collapsed by default, expands the action buttons.
 const toggleBtn=document.createElement('button');toggleBtn.className='wcl-toggle';toggleBtn.title='Review tools';
@@ -331,6 +420,8 @@ function updateBadge(){const n=pageEl?pageComments().length:0;
  badge.textContent=n>99?'99+':String(n);badge.classList.toggle('on',n>0);}
 bar.appendChild(actions);bar.appendChild(toggleBtn);
 document.body.appendChild(bar);
+// Show the "rebuilt" note carried across the post-rebuild reload.
+try{const done=sessionStorage.getItem('wcl-rebuilt');if(done!==null){sessionStorage.removeItem('wcl-rebuilt');showRebuild('done','✓ Rebuilt '+done);}}catch(_){ }
 refresh();
 })();"#;
 
@@ -348,9 +439,45 @@ struct ServeState {
     /// expose the `/__wdoc_comment` endpoints, and build with `data-wcl-*`
     /// anchors.
     comment_mode: bool,
+    /// Edit mode (`--edit`): inject the WYSIWYG editor client into HTML,
+    /// expose the `/__wdoc_edit*` / `/__wdoc_object*` endpoints, and build
+    /// with `data-wcl-span` / `data-wcl-file` anchors. Composes with
+    /// `comment_mode` — both clients can be injected at once.
+    edit_mode: bool,
     /// Watched source root; `comments.wcl` sidecars are discovered under it and
-    /// comment writes are sandboxed to within it.
+    /// comment / edit writes are sandboxed to within it.
     watch_root: PathBuf,
+    /// The document entry-point file passed to `serve` — the root `.wcl` the
+    /// editor reopens to introspect schemas and resolve object instances.
+    root_file: PathBuf,
+    /// Source `.wcl` files changed since the last rebuild. The watcher
+    /// accumulates here instead of rebuilding; a rebuild is triggered manually
+    /// (Enter in the console, or the toolbar's Rebuild button) and drains this.
+    pending: Mutex<Vec<PathBuf>>,
+    /// Send a [`RebuildReq`] to request a rebuild. The console (stdin Enter)
+    /// and the `/__wdoc_rebuild` endpoint both use it; the rebuild worker runs
+    /// one build per request and (when asked) reports completion back.
+    rebuild_tx: tokio::sync::mpsc::UnboundedSender<RebuildReq>,
+}
+
+/// A rebuild request handed to the rebuild worker.
+struct RebuildReq {
+    /// The page the request came from (the toolbar Rebuild button), used to
+    /// scope the rebuild to that page's included sub-site. `None` for a console
+    /// (Enter) rebuild, which rebuilds the whole served site.
+    page_file: Option<PathBuf>,
+    /// Resolved when the build finishes, so the HTTP handler can report the
+    /// result (and time its progress spinner). `None` for the console path.
+    done: Option<tokio::sync::oneshot::Sender<RebuildReport>>,
+}
+
+/// What a rebuild did, returned to the Rebuild button for its status display.
+struct RebuildReport {
+    ok: bool,
+    /// What was rebuilt — `"site"` or the sub-site's output subdir.
+    scope: String,
+    /// Human summary (page count, or the first line of the error).
+    summary: String,
 }
 
 /// Print any non-fatal edge warnings left by the most recent build (edges
@@ -366,6 +493,7 @@ fn print_edge_warnings() {
 fn run_build(file: &Path, out: &Path, site: Option<&str>, state: &ServeState, rebuild: bool) {
     let opts = BuildOptions {
         comment_mode: state.comment_mode,
+        edit_mode: state.edit_mode,
         ..Default::default()
     };
     match build_with_options(file, out, site, &opts).map(|(n, _)| n) {
@@ -391,42 +519,111 @@ fn run_build(file: &Path, out: &Path, site: Option<&str>, state: &ServeState, re
     state.generation.send_modify(|g| *g += 1);
 }
 
-/// Run one watch-triggered rebuild over the `changed` source files: an
-/// incremental re-render of just the affected page(s) when safe, else a full
-/// rebuild (decided inside [`build_incremental`]). Reports to stderr, records
-/// the outcome in `state`, and bumps the live-reload generation — a targeted
-/// rebuild still bumps it, so parked clients reload the rewritten page.
-fn run_rebuild(
+/// Handle one [`RebuildReq`]. When the request names a page that belongs to an
+/// included sub-site (e.g. a wskill), rebuild **only** that sub-site into its
+/// output subdir, draining just the pending changes under it — so the Rebuild
+/// button on a sub-site page is fast and scoped. Otherwise (console Enter, or a
+/// root page) drain all pending and rebuild the top-level site. Records the
+/// outcome in `state`, bumps the live-reload generation, and returns a report.
+fn run_rebuild_request(
     file: &Path,
     out: &Path,
     site: Option<&str>,
     state: &ServeState,
-    changed: &[PathBuf],
-) {
+    page_file: Option<PathBuf>,
+) -> RebuildReport {
     let opts = BuildOptions {
         comment_mode: state.comment_mode,
+        edit_mode: state.edit_mode,
         ..Default::default()
     };
-    match build_incremental(file, out, site, &opts, changed) {
-        Ok(outcome) => {
+
+    // Scope to the page's sub-site when the request names one.
+    if let Some(pf) = page_file.as_deref()
+        && let Some(sub) = wcl_wdoc::subsite_for_page(file, pf)
+    {
+        let changed = drain_pending_under(state, Some(&sub.src_root));
+        let sub_out = out.join(&sub.out_subdir);
+        let scope = sub.out_subdir.display().to_string();
+        let result = build_incremental(&sub.entry, &sub_out, sub.site.as_deref(), &opts, &changed);
+        return finish_rebuild(state, scope, result.map(rebuild_summary));
+    }
+
+    // Whole-site rebuild: drain everything pending; full when nothing's pending.
+    let changed = drain_pending_under(state, None);
+    let result = if changed.is_empty() {
+        build_with_options(file, out, site, &opts).map(|(n, _)| format!("{} (full)", page_count(n)))
+    } else {
+        build_incremental(file, out, site, &opts, &changed).map(rebuild_summary)
+    };
+    finish_rebuild(state, "site".to_string(), result)
+}
+
+/// Drain pending changed paths: those under `scope` (a sub-site source root),
+/// leaving the rest queued; or *all* of them when `scope` is `None`.
+fn drain_pending_under(state: &ServeState, scope: Option<&Path>) -> Vec<PathBuf> {
+    let mut g = state.pending.lock().unwrap_or_else(|e| e.into_inner());
+    let mut taken = match scope {
+        None => std::mem::take(&mut *g),
+        Some(root) => {
+            let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+            let (under, rest): (Vec<_>, Vec<_>) =
+                std::mem::take(&mut *g).into_iter().partition(|p| {
+                    std::fs::canonicalize(p)
+                        .map(|c| c.starts_with(&root))
+                        .unwrap_or(false)
+                });
+            *g = rest;
+            under
+        }
+    };
+    taken.sort();
+    taken.dedup();
+    taken
+}
+
+/// Record a build outcome in `state`, bump the live-reload generation, and
+/// build the [`RebuildReport`]. `result` is `Ok(summary)` or the build error.
+fn finish_rebuild(
+    state: &ServeState,
+    scope: String,
+    result: Result<String, wcl_wdoc::BuildError>,
+) -> RebuildReport {
+    let report = match result {
+        Ok(summary) => {
             print_edge_warnings();
-            match outcome {
-                RebuildOutcome::Targeted { pages } => {
-                    eprintln!("rebuilt {}: {}", page_count(pages.len()), pages.join(", "));
-                }
-                RebuildOutcome::Full { pages } => {
-                    eprintln!("rebuilt: {} (full)", page_count(pages));
-                }
-            }
+            eprintln!("rebuilt {scope}: {summary}");
             *state.error.write().unwrap_or_else(|e| e.into_inner()) = None;
+            RebuildReport {
+                ok: true,
+                scope,
+                summary,
+            }
         }
         Err(err) => {
-            eprintln!("rebuild failed:");
+            eprintln!("rebuild failed ({scope}):");
             err.report();
-            *state.error.write().unwrap_or_else(|e| e.into_inner()) = Some(err.render_plain());
+            let plain = err.render_plain();
+            *state.error.write().unwrap_or_else(|e| e.into_inner()) = Some(plain.clone());
+            RebuildReport {
+                ok: false,
+                scope,
+                summary: plain.lines().next().unwrap_or("build failed").to_string(),
+            }
         }
-    }
+    };
     state.generation.send_modify(|g| *g += 1);
+    report
+}
+
+/// A one-line summary of an incremental rebuild outcome.
+fn rebuild_summary(outcome: RebuildOutcome) -> String {
+    match outcome {
+        RebuildOutcome::Targeted { pages } => {
+            format!("{} ({})", page_count(pages.len()), pages.join(", "))
+        }
+        RebuildOutcome::Full { pages } => format!("{} (full)", page_count(pages)),
+    }
 }
 
 /// `"1 page"` / `"3 pages"`.
@@ -437,9 +634,10 @@ fn page_count(n: usize) -> String {
 pub(crate) async fn serve(
     file: PathBuf,
     out: Option<PathBuf>,
-    addr: SocketAddr,
+    addr: BindSpec,
     site: Option<String>,
     comment_mode: bool,
+    edit_mode: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Resolve the output directory. If `--out` wasn't given, create a
     // TempDir and hold it for the lifetime of `serve` so cleanup runs
@@ -480,16 +678,24 @@ pub(crate) async fn serve(
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
 
+    // Rebuilds are triggered manually (not on every file change). Both the
+    // console (stdin Enter) and the `/__wdoc_rebuild` endpoint send on this.
+    let (rebuild_tx, mut rebuild_rx) = tokio::sync::mpsc::unbounded_channel::<RebuildReq>();
+
     let state = Arc::new(ServeState {
         out: out_dir.clone(),
         error: RwLock::new(None),
         generation: tokio::sync::watch::Sender::new(0),
         comment_mode,
+        edit_mode,
         watch_root: watch_root.clone(),
+        root_file: file.clone(),
+        pending: Mutex::new(Vec::new()),
+        rebuild_tx: rebuild_tx.clone(),
     });
 
-    // Initial build. Failure is non-fatal — the watcher will retry, and
-    // HTML requests serve the build-failure page in the meantime.
+    // Initial build. Failure is non-fatal — HTML requests serve the
+    // build-failure page until the next (manual) rebuild succeeds.
     run_build(&file, &out_dir, site.as_deref(), &state, false);
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
@@ -500,26 +706,81 @@ pub(crate) async fn serve(
     })?;
     watcher.watch(&watch_root, RecursiveMode::Recursive)?;
 
-    let bg_file = file.clone();
-    let bg_out = out_dir.clone();
-    let bg_site = site.clone();
+    // Console driver: pressing Enter requests a rebuild. A blocking thread (not
+    // an async stdin reader, which can stall process exit) feeds the trigger
+    // channel; EOF (no interactive console — piped/closed stdin) just ends the
+    // thread so non-interactive runs don't spin.
+    {
+        let trigger = rebuild_tx.clone();
+        std::thread::spawn(move || {
+            let stdin = std::io::stdin();
+            let mut line = String::new();
+            loop {
+                line.clear();
+                match stdin.read_line(&mut line) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {
+                        // A console Enter rebuilds the whole served site.
+                        if trigger
+                            .send(RebuildReq {
+                                page_file: None,
+                                done: None,
+                            })
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     let bg_state = Arc::clone(&state);
-    // The rebuild loop is a *local* future (not a detached `tokio::spawn`)
-    // owned by the `select!` below, so when the server shuts down it is
-    // dropped here — which drops the `notify` watcher and stops its inotify
-    // thread. A detached task would outlive `serve` and hang process exit.
+    // The watcher no longer rebuilds — it accumulates the changed `.wcl` paths
+    // into `state.pending` and notifies the console. A *local* future (not a
+    // detached task) so it drops with `serve`, stopping the inotify thread.
     let watch_loop = async move {
         let _watcher = watcher; // keep the watcher alive for this future's lifetime
         while let Some(event) = rx.recv().await {
             if !is_relevant(&event) {
                 continue;
             }
-            // Gather the `.wcl` paths of this event and every relevant event
-            // coalesced during the quiet window, so the rebuild knows exactly
-            // which files changed and can re-render only the affected page(s).
+            // Coalesce the notify event storm one save fires into a single note.
             let mut changed: Vec<PathBuf> = wcl_paths(&event);
             drain_quiet(&mut rx, &mut changed).await;
-            run_rebuild(&bg_file, &bg_out, bg_site.as_deref(), &bg_state, &changed);
+            let n = changed.len();
+            bg_state
+                .pending
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .extend(changed);
+            eprintln!(
+                "{n} file change{} pending — press Enter (or click Rebuild) to rebuild",
+                if n == 1 { "" } else { "s" }
+            );
+        }
+    };
+
+    let rb_file = file.clone();
+    let rb_out = out_dir.clone();
+    let rb_site = site.clone();
+    let rb_state = Arc::clone(&state);
+    // Rebuild worker: one build per request. Scopes to the request's sub-site
+    // when given (the Rebuild button on a sub-site page), else rebuilds the
+    // whole site (console Enter). Reports completion back when asked.
+    let rebuild_loop = async move {
+        while let Some(req) = rebuild_rx.recv().await {
+            let report = run_rebuild_request(
+                &rb_file,
+                &rb_out,
+                rb_site.as_deref(),
+                &rb_state,
+                req.page_file,
+            );
+            if let Some(done) = req.done {
+                let _ = done.send(report);
+            }
         }
     };
 
@@ -528,7 +789,9 @@ pub(crate) async fn serve(
     // nested multi-site one (`/<site>/…`, `/<site>/_wdoc/…`) plus the
     // generated chooser at `/`, with no per-route knowledge. The reload
     // endpoint sits outside the output tree's namespace.
-    let mut app = Router::new().route("/__wdoc_reload", get(handle_reload));
+    let mut app = Router::new()
+        .route("/__wdoc_reload", get(handle_reload))
+        .route("/__wdoc_rebuild", axum::routing::post(handle_rebuild));
     if comment_mode {
         app = app
             .route("/__wdoc_comment.js", get(handle_comment_js))
@@ -537,26 +800,51 @@ pub(crate) async fn serve(
                 get(handle_comment_list).post(handle_comment_post),
             );
     }
+    if edit_mode {
+        app = app
+            .route("/__wdoc_edit.js", get(handle_edit_js))
+            .route("/__wdoc_schema", get(handle_edit_schema))
+            .route("/__wdoc_object_kinds", get(handle_object_kinds))
+            .route("/__wdoc_objects", get(handle_object_instances))
+            .route("/__wdoc_object_source", get(handle_object_source))
+            .route("/__wdoc_object_template", get(handle_object_template))
+            .route(
+                "/__wdoc_object",
+                get(handle_read_object).post(handle_object_post),
+            )
+            .route("/__wdoc_edit/field", axum::routing::post(handle_edit_field))
+            .route("/__wdoc_edit/add", axum::routing::post(handle_edit_add))
+            .route(
+                "/__wdoc_edit/delete",
+                axum::routing::post(handle_edit_delete),
+            )
+            .route("/__wdoc_edit/move", axum::routing::post(handle_edit_move));
+    }
     let app = app
         .fallback(get(handle_static))
         .with_state(Arc::clone(&state))
         .layer(middleware::from_fn(log_requests));
 
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    let listener = match addr {
+        BindSpec::Auto => bind_auto(DEFAULT_BIND).await?,
+        BindSpec::Fixed(a) => tokio::net::TcpListener::bind(a).await?,
+    };
     let bound = listener.local_addr()?;
     println!(
         "serving http://{bound}  (source: {}, out: {})",
         file.display(),
         out_dir.display()
     );
+    println!("auto-rebuild is off — press Enter here (or click Rebuild) to rebuild after edits");
 
-    // Run the server and the watch loop concurrently. Neither branch
-    // completes in normal operation — the loop runs until the Ctrl-C task
-    // above hard-exits the process. No graceful shutdown: a parked reload
-    // long-poll (up to `POLL_TIMEOUT`) must not delay teardown.
+    // Run the server, the watcher, and the rebuild worker concurrently. None
+    // completes in normal operation — they run until the Ctrl-C task above
+    // hard-exits the process. No graceful shutdown: a parked reload long-poll
+    // (up to `POLL_TIMEOUT`) must not delay teardown.
     tokio::select! {
         res = axum::serve(listener, app).into_future() => res?,
         _ = watch_loop => {}
+        _ = rebuild_loop => {}
     }
     Ok(())
 }
@@ -627,6 +915,46 @@ async fn handle_reload(State(state): State<Arc<ServeState>>, uri: Uri) -> Respon
         current.to_string(),
     )
         .into_response()
+}
+
+/// Request a rebuild (the toolbar's Rebuild button). Scopes to the current
+/// page's sub-site (from the optional `page_file` body field) and **waits** for
+/// the build to finish, so the button can show a running/done indication; the
+/// reload long-poll then reloads the page when the generation bumps. A missing
+/// `page_file` (or a root page) rebuilds the whole site.
+async fn handle_rebuild(State(state): State<Arc<ServeState>>, body: String) -> Response {
+    let page_file = serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|v| {
+            v.get("page_file")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        })
+        .filter(|s| !s.is_empty())
+        .and_then(|f| sandboxed(&state.watch_root, Path::new(&f)));
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    if state
+        .rebuild_tx
+        .send(RebuildReq {
+            page_file,
+            done: Some(tx),
+        })
+        .is_err()
+    {
+        return json_error(StatusCode::INTERNAL_SERVER_ERROR, "rebuild worker is gone");
+    }
+    match rx.await {
+        Ok(report) => json_response(
+            StatusCode::OK,
+            &serde_json::json!({
+                "ok": report.ok,
+                "scope": report.scope,
+                "summary": report.summary,
+            }),
+        ),
+        Err(_) => json_error(StatusCode::INTERNAL_SERVER_ERROR, "rebuild was cancelled"),
+    }
 }
 
 /// Serve the comment-mode client script.
@@ -708,9 +1036,215 @@ async fn handle_comment_post(State(state): State<Arc<ServeState>>, body: String)
     }
 }
 
-/// Canonicalize `file` and confirm it sits inside `root`, so a comment write
-/// can't escape the served source tree. Returns the canonical path to edit.
-fn sandboxed(root: &Path, file: &Path) -> Option<PathBuf> {
+// --- WYSIWYG editor (`--edit`) handlers. Thin wrappers over `crate::edit`. ---
+
+/// Serve the WYSIWYG editor client script.
+async fn handle_edit_js() -> Response {
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        crate::edit::EDIT_CLIENT_JS,
+    )
+        .into_response()
+}
+
+/// Read the `kind` query parameter (`?kind=...`), URL-decoding `%xx` / `+`.
+fn query_param(uri: &Uri, key: &str) -> Option<String> {
+    uri.query()?.split('&').find_map(|kv| {
+        let (k, v) = kv.split_once('=')?;
+        (k == key).then(|| url_decode(v))
+    })
+}
+
+/// Minimal `application/x-www-form-urlencoded` decode for query values.
+fn url_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => out.push(b' '),
+            b'%' if i + 2 < bytes.len() => {
+                let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).ok();
+                match hex.and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                    Some(byte) => {
+                        out.push(byte);
+                        i += 2;
+                    }
+                    None => out.push(b'%'),
+                }
+            }
+            b => out.push(b),
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// The document entry the editor should introspect for a request: the included
+/// sub-site (e.g. a wskill) that owns `page_file`, else the served root. Lets
+/// `--edit` on the top-level site edit a sub-site's objects/schema.
+fn entry_for(state: &ServeState, page_file: Option<&str>) -> PathBuf {
+    match page_file
+        .filter(|s| !s.is_empty())
+        .and_then(|f| sandboxed(&state.watch_root, Path::new(f)))
+    {
+        Some(pf) => wcl_wdoc::doc_entry_for_page(&state.root_file, &pf),
+        None => state.root_file.clone(),
+    }
+}
+
+/// Map a `Result<json, message>` from `crate::edit` to an HTTP response.
+fn edit_result(r: Result<serde_json::Value, String>) -> Response {
+    match r {
+        Ok(v) => json_response(StatusCode::OK, &v),
+        Err(e) => json_error(StatusCode::BAD_REQUEST, &e),
+    }
+}
+
+/// Parse a JSON request body, or an error message on malformed JSON.
+fn parse_json_body(body: &str) -> Result<serde_json::Value, String> {
+    serde_json::from_str(body).map_err(|e| format!("bad json: {e}"))
+}
+
+async fn handle_edit_schema(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
+    let Some(kind) = query_param(&uri, "kind") else {
+        return json_error(StatusCode::BAD_REQUEST, "missing kind");
+    };
+    let entry = entry_for(&state, query_param(&uri, "page_file").as_deref());
+    edit_result(crate::edit::schema_descriptor(&entry, &kind))
+}
+
+async fn handle_object_kinds(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
+    let entry = entry_for(&state, query_param(&uri, "page_file").as_deref());
+    edit_result(crate::edit::object_kinds(&entry))
+}
+
+async fn handle_object_instances(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
+    let Some(kind) = query_param(&uri, "kind") else {
+        return json_error(StatusCode::BAD_REQUEST, "missing kind");
+    };
+    let entry = entry_for(&state, query_param(&uri, "page_file").as_deref());
+    edit_result(crate::edit::object_instances(&entry, &kind))
+}
+
+async fn handle_read_object(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
+    let (Some(kind), Some(file), Some(span)) = (
+        query_param(&uri, "kind"),
+        query_param(&uri, "file"),
+        query_param(&uri, "span"),
+    ) else {
+        return json_error(StatusCode::BAD_REQUEST, "missing kind/file/span");
+    };
+    let Some(file) = sandboxed(&state.watch_root, Path::new(&file)) else {
+        return json_error(StatusCode::BAD_REQUEST, "file outside the served tree");
+    };
+    let Some((start, end)) = span.split_once(':') else {
+        return json_error(StatusCode::BAD_REQUEST, "bad span");
+    };
+    let (Ok(start), Ok(end)) = (start.parse(), end.parse()) else {
+        return json_error(StatusCode::BAD_REQUEST, "bad span");
+    };
+    let entry = entry_for(&state, query_param(&uri, "page_file").as_deref());
+    edit_result(crate::edit::read_object(
+        &entry,
+        &file,
+        wcl_lang::Span::new(start, end),
+        &kind,
+    ))
+}
+
+async fn handle_object_source(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
+    let (Some(file), Some(span)) = (query_param(&uri, "file"), query_param(&uri, "span")) else {
+        return json_error(StatusCode::BAD_REQUEST, "missing file/span");
+    };
+    let Some(file) = sandboxed(&state.watch_root, Path::new(&file)) else {
+        return json_error(StatusCode::BAD_REQUEST, "file outside the served tree");
+    };
+    let Some((start, end)) = span.split_once(':') else {
+        return json_error(StatusCode::BAD_REQUEST, "bad span");
+    };
+    let (Ok(start), Ok(end)) = (start.parse(), end.parse()) else {
+        return json_error(StatusCode::BAD_REQUEST, "bad span");
+    };
+    edit_result(crate::edit::read_object_source(
+        &file,
+        wcl_lang::Span::new(start, end),
+    ))
+}
+
+async fn handle_object_template(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
+    let Some(kind) = query_param(&uri, "kind") else {
+        return json_error(StatusCode::BAD_REQUEST, "missing kind");
+    };
+    let entry = entry_for(&state, query_param(&uri, "page_file").as_deref());
+    edit_result(crate::edit::object_template(&entry, &kind))
+}
+
+async fn handle_edit_field(State(state): State<Arc<ServeState>>, body: String) -> Response {
+    let v = match parse_json_body(&body) {
+        Ok(v) => v,
+        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
+    };
+    let entry = entry_for(
+        &state,
+        v.get("page_file").and_then(serde_json::Value::as_str),
+    );
+    edit_result(crate::edit::field_edit(&state.watch_root, &entry, &v))
+}
+
+async fn handle_edit_add(State(state): State<Arc<ServeState>>, body: String) -> Response {
+    let v = match parse_json_body(&body) {
+        Ok(v) => v,
+        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
+    };
+    let entry = entry_for(
+        &state,
+        v.get("page_file").and_then(serde_json::Value::as_str),
+    );
+    edit_result(crate::edit::add_block(&state.watch_root, &entry, &v))
+}
+
+async fn handle_edit_delete(State(state): State<Arc<ServeState>>, body: String) -> Response {
+    let v = match parse_json_body(&body) {
+        Ok(v) => v,
+        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
+    };
+    let entry = entry_for(
+        &state,
+        v.get("page_file").and_then(serde_json::Value::as_str),
+    );
+    edit_result(crate::edit::delete_block(&state.watch_root, &entry, &v))
+}
+
+async fn handle_edit_move(State(state): State<Arc<ServeState>>, body: String) -> Response {
+    let v = match parse_json_body(&body) {
+        Ok(v) => v,
+        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
+    };
+    let entry = entry_for(
+        &state,
+        v.get("page_file").and_then(serde_json::Value::as_str),
+    );
+    edit_result(crate::edit::move_block(&state.watch_root, &entry, &v))
+}
+
+async fn handle_object_post(State(state): State<Arc<ServeState>>, body: String) -> Response {
+    let v = match parse_json_body(&body) {
+        Ok(v) => v,
+        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
+    };
+    let entry = entry_for(
+        &state,
+        v.get("page_file").and_then(serde_json::Value::as_str),
+    );
+    edit_result(crate::edit::object_post(&state.watch_root, &entry, &v))
+}
+
+/// Canonicalize `file` and confirm it sits inside `root`, so a comment / edit
+/// write can't escape the served source tree. Returns the canonical path to
+/// edit.
+pub(crate) fn sandboxed(root: &Path, file: &Path) -> Option<PathBuf> {
     let root = std::fs::canonicalize(root).ok()?;
     let file = std::fs::canonicalize(file).ok()?;
     file.starts_with(&root).then_some(file)
@@ -733,7 +1267,7 @@ fn comment_to_json(r: &comments::CommentRecord) -> serde_json::Value {
     })
 }
 
-fn json_response(status: StatusCode, value: &serde_json::Value) -> Response {
+pub(crate) fn json_response(status: StatusCode, value: &serde_json::Value) -> Response {
     (
         status,
         [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
@@ -742,7 +1276,7 @@ fn json_response(status: StatusCode, value: &serde_json::Value) -> Response {
         .into_response()
 }
 
-fn json_error(status: StatusCode, msg: &str) -> Response {
+pub(crate) fn json_error(status: StatusCode, msg: &str) -> Response {
     json_response(status, &serde_json::json!({ "error": msg }))
 }
 
@@ -784,6 +1318,9 @@ async fn handle_static(State(state): State<Arc<ServeState>>, uri: Uri) -> Respon
                 bytes.extend_from_slice(RELOAD_SCRIPT.as_bytes());
                 if state.comment_mode {
                     bytes.extend_from_slice(COMMENT_SCRIPT_TAG.as_bytes());
+                }
+                if state.edit_mode {
+                    bytes.extend_from_slice(crate::edit::EDIT_SCRIPT_TAG.as_bytes());
                 }
             }
             (

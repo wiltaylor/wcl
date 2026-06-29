@@ -574,17 +574,21 @@ pub(crate) fn render_block(
             }
         }
     };
-    rendered.map(|html| anchor_comment(block, html, patterns))
+    rendered.map(|html| anchor_block(block, html, patterns))
 }
 
-/// In comment mode (the `--comment` dev server), stamp a rendered block's root
-/// tag with `data-wcl-block` + `data-wcl-kind` so the comment client can locate
-/// it (the locator is a positional path among `[data-wcl-block]` elements).
-/// Comments themselves live in a `comments.wcl` sidecar and are placed
-/// client-side, so no source span or stored comment is stamped here. A no-op
-/// outside comment mode, so normal builds emit no extra markup.
-fn anchor_comment(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> String {
-    if !patterns.comment_mode() {
+/// In comment / edit mode (the `--comment` / `--edit` dev server), stamp a
+/// rendered block's root tag so the injected JS client can locate it:
+///
+/// - both modes emit `data-wcl-block` + `data-wcl-kind` — the comment client
+///   keys off these to compute a positional locator;
+/// - edit mode additionally emits `data-wcl-span="start:end"` (byte offsets
+///   into the declaring file) and `data-wcl-file="<path>"` so the WYSIWYG
+///   client can map the block back to the exact AST node to mutate.
+///
+/// A no-op outside both modes, so normal builds emit no extra markup.
+fn anchor_block(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> String {
+    if !patterns.anchor_mode() {
         return html;
     }
     let kind = block.kind();
@@ -596,7 +600,16 @@ fn anchor_comment(block: &Block<'_>, html: String, patterns: &InlinePatterns) ->
     ) {
         return html;
     }
-    let attrs = format!(" data-wcl-block data-wcl-kind=\"{}\"", escape_html(kind));
+    let mut attrs = format!(" data-wcl-block data-wcl-kind=\"{}\"", escape_html(kind));
+    if patterns.edit_mode() {
+        let span = block.span();
+        attrs.push_str(&format!(
+            " data-wcl-span=\"{}:{}\" data-wcl-file=\"{}\"",
+            span.start,
+            span.end,
+            escape_html(block.named_source().name()),
+        ));
+    }
     splice_attrs(&html, &attrs)
 }
 

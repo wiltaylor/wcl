@@ -19,6 +19,7 @@ mod builtins;
 mod collections;
 mod data;
 mod doc;
+pub mod edit;
 mod environment;
 mod error;
 pub mod format;
