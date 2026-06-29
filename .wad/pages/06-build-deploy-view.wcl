@@ -1,0 +1,13 @@
+import <wdoc.wcl>
+
+// This page will have the following details on the solution:
+// - CICD Pipeline.
+// - How package is deployed and promoted between environments
+// - Repositories involved and their structure.
+// - Local development environment, how its setup etc.
+// - Versions that exist, how they are managed etc.
+
+page build-deploy {
+  
+}
+

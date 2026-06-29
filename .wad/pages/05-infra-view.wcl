@@ -1,0 +1,11 @@
+import <wdoc.wcl>
+
+// This is a view that will let us drill down into infrastructure that the system uses.
+// This will include thnigs like the different environments. What infrastructure they use and share between environments.
+// This will also include things like the VMs, containers and services the systems run on. 
+// This allows infrastructure nodes to be nested and related to many levels since this will change depending on the solution.
+
+page infrastructure {
+  
+}
+

@@ -1,0 +1,11 @@
+import <wdoc.wcl>
+
+// Sysadmin view has all the details of:
+// - Standard operating proceedures for managing the system
+// - How incidents, changes etc are handled.
+// - Automation runbooks used with the system
+
+page sysadmin {
+  
+}
+

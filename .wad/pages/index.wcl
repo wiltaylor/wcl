@@ -1,9 +1,0 @@
-import <wdoc.wcl>
-
-// Start page of the WCL architecture book (WAD). Skeleton only — real
-// content (crate breakdown, C4 views) lands in a later pass.
-page index { start = true
-  h1 "WCL Architecture"
-  p "WCL described as a WAD (Wil's Architecture Document): one model, projected into this book."
-  p "This is a skeleton. Chapters below are placeholders to be filled in."
-}

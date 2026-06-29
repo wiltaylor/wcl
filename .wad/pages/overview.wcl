@@ -1,6 +1,0 @@
-import <wdoc.wcl>
-
-page overview {
-  h1 "Overview"
-  p "What WCL is, who it's for, and the goals this architecture serves."
-}

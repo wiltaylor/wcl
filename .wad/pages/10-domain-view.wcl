@@ -1,0 +1,9 @@
+import <wdoc.wcl>
+
+// This is where all the details of the domain objects are stored about the system.
+// Sub pages can be created under here to cover specific topics that are important to cover for the system.
+
+page domain_view {
+  
+}
+

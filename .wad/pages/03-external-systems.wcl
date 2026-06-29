@@ -1,0 +1,14 @@
+import <wdoc.wcl>
+
+// List of external systems that this design uses.
+// Should generate sub pages for each external system.
+// External systems should have details on relevant things to them.
+//  - Who supporst them. Contact details.
+//  - Connection details (urls, ip addresses, other configuration)
+//  - API documentation or other relevant details
+//  - Security details.
+
+page external-systems {
+  
+}
+
