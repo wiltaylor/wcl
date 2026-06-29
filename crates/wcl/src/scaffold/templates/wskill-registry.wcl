@@ -218,13 +218,17 @@ WSK_SCHEMA_COLLECTION_WCL
 
 file "wdoc/page/main.wcl" {
   content = <<'WSK_WDOC_PAGE_MAIN_WCL'
-// Collection landing page — a wdoc `:webpage` site over the collection model.
+// Collection landing page — a wskill registry rendered in the Forge design.
 //
 // Build:  wcl wdoc build wdoc/page/main.wcl --out out/site
 //   The `include` below builds each member wskill's book into out/site/wskills/<name>/
 //   (entry mode: only each member's wdoc/book/main.wcl, no recursion into out/ or
-//   bundled trees), and `included_sites(...)` discovers the same set for the links —
+//   bundled trees), and `included_sites(...)` discovers the same set for the cards —
 //   so there is no member list to maintain and one command builds everything.
+//
+// The HTML projection uses a bespoke `registry` template (a topbar + hero + live
+// search + a card grid, scoped under `.wsk-root`). The page body below is the
+// Markdown / PDF fallback (templates are HTML-only) and lists the same members.
 
 import <wdoc.wcl>
 import "../../collection.wcl"
@@ -236,14 +240,212 @@ include "../../wskills" { entry = "wdoc/book/main.wcl" }
 // omitted optional fields — the same pattern wskill templates use for topic).
 let coll = head(collections)
 
+// Every member wskill, discovered + built by the `include` above. Each record is
+// { name, href, title, summary? } (href root-relative; title falls back to name).
+let wskills = included_sites({ folder: "../../wskills", entry: "wdoc/book/main.wcl" })
+
+// One registry card per member. `$<<` interpolates the slots; `summary` is
+// optional, so a `match` folds it onto the description when present.
+let card = fn(s: IncludeEntry) -> utf8 $<<CARD
+<article class="wsk-card" data-search="${s.name} ${s.title}${match s.summary { none => "", su => $" ${su}" }}">
+  <a class="wsk-cover" href="./${s.href}"><span class="wsk-cover-name">${s.name}</span><span class="wsk-kindtag">wskill</span></a>
+  <div class="wsk-card-body">
+    <a class="wsk-name" href="./${s.href}">${s.name}</a>
+    <p class="wsk-desc">${s.title}${match s.summary { none => "", su => $" — ${su}" }}</p>
+  </div>
+  <div class="wsk-card-foot">
+    <a class="wsk-view" href="./${s.href}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>book</a>
+  </div>
+</article>
+CARD
+
+let cards_html = join(map(wskills, card), "\n")
+
+// ---- the Forge design system, scoped to .wsk-root (dark default + light) -----
+// Emitted verbatim into a page <style>: pure CSS, no `//` lines (CSS has none).
+let registry_css = <<CSS
+.wsk-root *{box-sizing:border-box;}
+.wsk-root{
+  --bg-0:#0B0D10;--bg-1:#11141A;--bg-2:#171B22;--bg-3:#1E232C;--bg-4:#252B36;
+  --fg-0:#ECEEF2;--fg-1:#B7BDC8;--fg-2:#7C8593;--fg-3:#4E5664;
+  --border-subtle:#1A1F27;--border:#262C36;--border-strong:#3A4250;
+  --accent:oklch(0.62 0.16 250);--accent-hover:oklch(0.66 0.17 250);--accent-press:oklch(0.56 0.16 250);
+  --accent-bg:oklch(0.62 0.16 250 / 0.14);--accent-fg:oklch(0.82 0.13 250);--accent-contrast:#fff;
+  --success:oklch(0.68 0.14 150);--warning:oklch(0.78 0.14 75);--info:oklch(0.68 0.13 230);
+  --font-sans:'IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+  --fs-xs:11px;--fs-sm:12px;--fs-base:14px;--fs-md:16px;--fs-lg:18px;--fs-xl:22px;--fs-2xl:28px;--fs-3xl:34px;
+  --lh-relaxed:1.65;--fw-regular:400;--fw-medium:500;--fw-semibold:600;
+  --tracking-tight:-0.01em;--tracking-wide:0.04em;--tracking-eyebrow:0.08em;
+  --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;--sp-6:24px;--sp-8:32px;--sp-10:40px;--sp-12:48px;--sp-16:64px;
+  --r-sm:4px;--r-md:6px;--r-lg:8px;--r-pill:999px;
+  --ease-out:cubic-bezier(0.2,0,0,1);--dur-1:80ms;
+  background:var(--bg-0);color:var(--fg-0);font-family:var(--font-sans);font-size:var(--fs-base);line-height:1.5;
+  min-height:100vh;-webkit-font-smoothing:antialiased;font-feature-settings:'cv02','cv03','cv04','cv11';
+}
+@media (prefers-color-scheme: light){
+  .wsk-root:not([data-theme="dark"]){
+    --bg-0:#FAFAFA;--bg-1:#FFFFFF;--bg-2:#F4F5F7;--bg-3:#EAECEF;--bg-4:#FFFFFF;
+    --fg-0:#0C0F14;--fg-1:#3D4654;--fg-2:#6B7383;--fg-3:#A0A6B2;
+    --border-subtle:#EEF0F3;--border:#DCDFE4;--border-strong:#B6BBC4;
+    --accent:oklch(0.52 0.18 250);--accent-hover:oklch(0.46 0.19 250);--accent-press:oklch(0.40 0.19 250);
+    --accent-bg:oklch(0.55 0.17 250 / 0.14);--accent-fg:oklch(0.38 0.19 250);
+  }
+}
+.wsk-root[data-theme="light"]{
+  --bg-0:#FAFAFA;--bg-1:#FFFFFF;--bg-2:#F4F5F7;--bg-3:#EAECEF;--bg-4:#FFFFFF;
+  --fg-0:#0C0F14;--fg-1:#3D4654;--fg-2:#6B7383;--fg-3:#A0A6B2;
+  --border-subtle:#EEF0F3;--border:#DCDFE4;--border-strong:#B6BBC4;
+  --accent:oklch(0.52 0.18 250);--accent-hover:oklch(0.46 0.19 250);--accent-press:oklch(0.40 0.19 250);
+  --accent-bg:oklch(0.55 0.17 250 / 0.14);--accent-fg:oklch(0.38 0.19 250);
+}
+.wsk-root::selection,.wsk-root *::selection{background:var(--accent-bg);color:var(--fg-0);}
+.wsk-root a{text-decoration:none;color:inherit;}
+.wsk-topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;height:56px;padding:0 var(--sp-6);border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--bg-0) 80%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+.wsk-brandwrap{display:flex;align-items:center;gap:var(--sp-3);}
+.wsk-mark{width:26px;height:26px;color:var(--fg-0);}
+.wsk-brand{font-family:var(--font-mono);font-size:var(--fs-md);font-weight:var(--fw-medium);color:var(--fg-0);letter-spacing:var(--tracking-tight);}
+.wsk-brand .wsk-reg{color:var(--fg-2);font-weight:var(--fw-regular);}
+.wsk-navlinks{display:flex;align-items:center;gap:var(--sp-5);}
+.wsk-navlink{font-size:var(--fs-sm);color:var(--fg-2);}
+.wsk-navlink:hover{color:var(--fg-0);}
+.wsk-iconbtn{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--bg-1);color:var(--fg-1);cursor:pointer;transition:border-color var(--dur-1) var(--ease-out),background var(--dur-1) var(--ease-out);}
+.wsk-iconbtn:hover{border-color:var(--border-strong);background:var(--bg-2);color:var(--fg-0);}
+.wsk-iconbtn svg{width:16px;height:16px;}
+.wsk-page{max-width:1200px;margin:0 auto;padding:var(--sp-12) var(--sp-6) var(--sp-16);}
+.wsk-hero{display:flex;flex-direction:column;gap:var(--sp-4);max-width:680px;margin-bottom:var(--sp-10);}
+.wsk-eyebrow{font-size:var(--fs-xs);font-weight:var(--fw-semibold);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--fg-2);}
+.wsk-herotitle{font-size:var(--fs-3xl);font-weight:var(--fw-semibold);letter-spacing:var(--tracking-tight);margin:0;line-height:1.1;}
+.wsk-herosub{font-size:var(--fs-md);color:var(--fg-1);line-height:var(--lh-relaxed);margin:0;}
+.wsk-herostat{font-size:var(--fs-sm);color:var(--fg-2);font-variant-numeric:tabular-nums;}
+.wsk-herostat b{color:var(--fg-1);font-weight:var(--fw-medium);}
+.wsk-search{position:relative;margin-top:var(--sp-2);max-width:440px;}
+.wsk-search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--fg-2);}
+.wsk-searchinput{width:100%;height:40px;padding:0 var(--sp-4) 0 38px;background:var(--bg-1);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--fg-0);font-family:var(--font-sans);font-size:var(--fs-base);outline:none;transition:border-color var(--dur-1) var(--ease-out);}
+.wsk-searchinput::placeholder{color:var(--fg-3);}
+.wsk-searchinput:focus{border-color:var(--accent);}
+.wsk-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:var(--sp-5);}
+.wsk-card{display:flex;flex-direction:column;background:var(--bg-1);border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;transition:border-color var(--dur-1) var(--ease-out),background var(--dur-1) var(--ease-out);}
+.wsk-card:hover{border-color:var(--border-strong);background:var(--bg-2);}
+.wsk-cover{position:relative;display:flex;align-items:center;height:128px;padding:0 var(--sp-5);background-color:var(--bg-2);background-image:radial-gradient(var(--border) 1px,transparent 1px);background-size:14px 14px;border-bottom:1px solid var(--border-subtle);}
+.wsk-card:hover .wsk-cover{background-color:var(--bg-3);}
+.wsk-cover-name{font-family:var(--font-mono);font-size:var(--fs-2xl);font-weight:var(--fw-medium);color:var(--fg-0);letter-spacing:var(--tracking-tight);}
+.wsk-cover-name::before{content:"/";color:var(--fg-3);margin-right:2px;}
+.wsk-kindtag{position:absolute;top:var(--sp-3);right:var(--sp-3);font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--fg-2);letter-spacing:var(--tracking-wide);text-transform:uppercase;}
+.wsk-card-body{display:flex;flex-direction:column;gap:var(--sp-3);padding:var(--sp-5);flex:1;}
+.wsk-name{font-family:var(--font-mono);font-size:var(--fs-md);font-weight:var(--fw-medium);color:var(--fg-0);}
+.wsk-name:hover{color:var(--accent-fg);}
+.wsk-desc{font-size:var(--fs-sm);color:var(--fg-1);line-height:var(--lh-relaxed);text-wrap:pretty;margin:0;}
+.wsk-card-foot{display:flex;align-items:center;justify-content:flex-end;gap:var(--sp-3);padding:var(--sp-3) var(--sp-5);border-top:1px solid var(--border-subtle);}
+.wsk-view{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 var(--sp-2);border-radius:var(--r-sm);font-size:var(--fs-xs);font-weight:var(--fw-medium);color:var(--fg-1);border:1px solid transparent;transition:background var(--dur-1) var(--ease-out),color var(--dur-1) var(--ease-out),border-color var(--dur-1) var(--ease-out);}
+.wsk-view svg{width:13px;height:13px;}
+.wsk-view:hover{background:var(--bg-3);border-color:var(--border);color:var(--fg-0);}
+.wsk-empty{grid-column:1/-1;display:none;flex-direction:column;align-items:center;gap:var(--sp-2);padding:var(--sp-16) 0;text-align:center;}
+.wsk-empty.on{display:flex;}
+.wsk-empty h4{color:var(--fg-1);font-weight:var(--fw-medium);margin:0;}
+.wsk-empty p{font-size:var(--fs-sm);color:var(--fg-2);margin:0;}
+.wsk-root .ico-moon{display:none;}
+.wsk-root .ico-sun{display:inline-flex;}
+@media (prefers-color-scheme: light){
+  .wsk-root:not([data-theme="dark"]) .ico-sun{display:none;}
+  .wsk-root:not([data-theme="dark"]) .ico-moon{display:inline-flex;}
+}
+.wsk-root[data-theme="dark"] .ico-sun{display:inline-flex;}
+.wsk-root[data-theme="dark"] .ico-moon{display:none;}
+.wsk-root[data-theme="light"] .ico-sun{display:none;}
+.wsk-root[data-theme="light"] .ico-moon{display:inline-flex;}
+@media (prefers-reduced-motion: reduce){.wsk-root *{transition-duration:.01ms!important;}}
+CSS
+
+// ---- topbar + hero + open card grid (needs coll / count → interpolating) -----
+let registry_top = $<<HTML
+<div class="wsk-root">
+  <header class="wsk-topbar">
+    <div class="wsk-brandwrap">
+      <svg class="wsk-mark" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9 L26 9 L22 15 L10 15 Z"></path><path d="M4 19 L28 19 L24 25 L8 25 Z"></path><line x1="16" y1="15" x2="16" y2="19"></line></svg>
+      <span class="wsk-brand">wskill<span class="wsk-reg"> registry</span></span>
+    </div>
+    <nav class="wsk-navlinks">
+      <a class="wsk-navlink" href="https://wcl.dev">wcl.dev</a>
+      <a class="wsk-navlink" href="https://github.com/wiltaylor/wcl">github</a>
+      <button class="wsk-iconbtn" type="button" data-theme-toggle title="Toggle theme" aria-label="Toggle theme">
+        <span class="ico-moon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path></svg></span>
+        <span class="ico-sun"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg></span>
+      </button>
+    </nav>
+  </header>
+  <main class="wsk-page">
+    <section class="wsk-hero">
+      <span class="wsk-eyebrow">registry</span>
+      <h1 class="wsk-herotitle">${coll.name}</h1>
+      <p class="wsk-herosub">${coll.summary}</p>
+      <div class="wsk-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input class="wsk-searchinput" id="wsk-search" type="text" placeholder="Search wskills…" autocomplete="off">
+      </div>
+      <span class="wsk-herostat"><b>${len(wskills)}</b> wskills · book view · built with wdoc</span>
+    </section>
+    <div class="wsk-cards" id="wsk-cards">
+HTML
+
+// ---- empty-state + closing tags (no interpolation) ---------------------------
+let registry_bottom = <<HTML
+      <div class="wsk-empty" id="wsk-empty">
+        <h4>No wskills to show.</h4>
+        <p>Try a different search, or add a wskill folder under wskills/.</p>
+      </div>
+    </div>
+  </main>
+</div>
+HTML
+
+// ---- theme toggle (persisted) + live search ----------------------------------
+let registry_js = <<JS
+<script>
+(function(){
+  var root = document.querySelector('.wsk-root');
+  if (!root) return;
+  try {
+    var saved = localStorage.getItem('wsk-theme');
+    if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+  } catch (e) {}
+  var btn = root.querySelector('[data-theme-toggle]');
+  if (btn) btn.addEventListener('click', function () {
+    var cur = root.getAttribute('data-theme');
+    if (!cur) cur = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+    var next = cur === 'light' ? 'dark' : 'light';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('wsk-theme', next); } catch (e) {}
+  });
+  var input = root.querySelector('#wsk-search');
+  var cards = Array.prototype.slice.call(root.querySelectorAll('.wsk-card'));
+  var empty = root.querySelector('#wsk-empty');
+  if (input) input.addEventListener('input', function () {
+    var q = input.value.trim().toLowerCase();
+    var shown = 0;
+    cards.forEach(function (c) {
+      var hay = (c.getAttribute('data-search') || '').toLowerCase();
+      var hit = q === '' || hay.indexOf(q) !== -1;
+      c.style.display = hit ? '' : 'none';
+      if (hit) shown++;
+    });
+    if (empty) empty.classList.toggle('on', shown === 0);
+  });
+  if (empty && cards.length === 0) empty.classList.add('on');
+})();
+</script>
+JS
+
+// --- site -------------------------------------------------------------------
+
 site landing {
-  default_template = :webpage
+  default_template = :registry
   title            = $"${coll.name}"
   root             = true
-  theme            = :nord
-  theme_toggle     = true
 }
 
+// Markdown / PDF fallback body — templates are HTML-only, so this lists the same
+// members for the non-HTML backends.
 page index { sites = [:landing]  start = true
   h1 $"${coll.name}"
   p  $"${coll.summary}"
@@ -253,15 +455,34 @@ page index { sites = [:landing]  start = true
 
   h2 "Skills"
   // Empty-state: shown until a member wskill is added under wskills/.
-  wdoc_repeater { each = match len(included_sites({ folder: "../../wskills", entry: "wdoc/book/main.wcl" })) { 0 => [true], _ => [] }  as = :_n
+  wdoc_repeater { each = match len(wskills) { 0 => [true], _ => [] }  as = :_n
     p "No wskills found in this collection yet."
   }
-  // One linked entry per member, discovered + built by the `include` above. The
-  // title / summary come from each member's book site; the `wskills/<name>/` href is
-  // root-relative (the landing is the root site, so no `../` prefix is needed).
-  wdoc_repeater { each = included_sites({ folder: "../../wskills", entry: "wdoc/book/main.wcl" })  as = :s
+  wdoc_repeater { each = wskills  as = :s
     p $"**[${s.title}](./${s.href})**${match s.summary { none => "", su => $" — ${su}" }}"
   }
+}
+
+// --- the Forge registry template (HTML only) --------------------------------
+// Fonts go into <head> (so they load before paint), then the scoped <style>, the
+// topbar/hero, the dynamically-built cards, the empty-state, and the toggle +
+// search script. `c.content` is intentionally ignored — the page body above is
+// the Markdown / PDF fallback.
+template registry {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([
+      wdoc_head_font("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"),
+      [
+        HtmlFundamental::Element {
+          tag: "style", id: none, class: none, attrs: none,
+          children: [ HtmlFundamental::Raw { html: registry_css } ],
+        },
+        HtmlFundamental::Raw { html: registry_top },
+        HtmlFundamental::Raw { html: cards_html },
+        HtmlFundamental::Raw { html: registry_bottom },
+        HtmlFundamental::Raw { html: registry_js },
+      ],
+    ])
 }
 WSK_WDOC_PAGE_MAIN_WCL
 }
