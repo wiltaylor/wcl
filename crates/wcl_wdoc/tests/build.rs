@@ -1994,6 +1994,73 @@ page index {
 }
 
 #[test]
+fn build_layered_boundary_evicts_non_members() {
+    // Layered layout knows nothing about boundaries, so without the
+    // eviction pass the outsider `p` (layer 0, below `a`) lands inside the
+    // bbox of {a, b1, b2} + padding — reading as if `p` were a member. The
+    // post-plan pass must push it out of the boundary's would-be box.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("evict.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 900
+    height = 500
+    layout = :layered
+    direction = :left_to_right
+    process "A"  { id = a   width = 160.0  height = 60.0 }
+    process "B1" { id = b1  width = 160.0  height = 60.0 }
+    process "B2" { id = b2  width = 160.0  height = 60.0 }
+    process "P"  { id = p   width = 160.0  height = 60.0 }
+    a -> b1
+    a -> b2
+    p -> b2
+    boundary "Owned" { members = [a, b1, b2] }
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    // Parse the boundary rect's box.
+    let b = html
+        .find("<rect class=\"wdoc-boundary\"")
+        .expect("boundary rect present");
+    let attr = |name: &str| -> f64 {
+        let seg = &html[b..html[b..].find("/>").expect("rect closes") + b];
+        let k = format!("{name}=\"");
+        let s = seg.find(&k).expect("attr present") + k.len();
+        let e = seg[s..].find('"').expect("attr closes") + s;
+        seg[s..e].parse::<f64>().expect("numeric attr")
+    };
+    let (bx, by, bw, bh) = (attr("x"), attr("y"), attr("width"), attr("height"));
+
+    // Parse p's absolute position: its rect is x/y 0 inside a translated
+    // group, so read the nearest preceding translate().
+    let pi = html.find("id=\"p\"").expect("p rect present");
+    let t = html[..pi]
+        .rfind("translate(")
+        .expect("p is in a translated group")
+        + "translate(".len();
+    let te = html[t..].find(')').expect("translate closes") + t;
+    let mut parts = html[t..te].split([',', ' ']).filter(|s| !s.is_empty());
+    let px: f64 = parts.next().expect("tx").parse().expect("tx numeric");
+    let py: f64 = parts.next().expect("ty").parse().expect("ty numeric");
+    let (pw, ph) = (160.0, 60.0);
+
+    let intersects = px < bx + bw && bx < px + pw && py < by + bh && by < py + ph;
+    assert!(
+        !intersects,
+        "non-member p ({px},{py} {pw}x{ph}) must be evicted from the boundary \
+         box ({bx},{by} {bw}x{bh}):\n{html}"
+    );
+}
+
+#[test]
 fn build_layered_container_label_does_not_displace_shapes() {
     // A `label` inside an auto-layout (`:layered`) container is a
     // zero-footprint annotation, not a flow node: it must NOT be allocated

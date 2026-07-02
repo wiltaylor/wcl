@@ -161,13 +161,6 @@ wdoc_repeater { each = containers  as = :c
       }
     }
 
-    wdoc_repeater { each = match len(code_items_of(c.id)) { 0 => [], _ => [true] }  as = :_k
-      h2 "Code items"
-      wdoc_repeater { each = code_items_of(c.id)  as = :ci
-        p $"- [${ci.name}](code_${ci.id}) (`${ci.kind}`)${match ci.summary { none => "", sx => $" — ${sx}" }}"
-      }
-    }
-
     wdoc_repeater { each = match len(screens_of(c.id)) { 0 => [], _ => [true] }  as = :_s
       h2 "Screens"
       wdoc_repeater { each = screens_of(c.id)  as = :sc
@@ -201,8 +194,14 @@ wdoc_repeater { each = sw_components  as = :co
     wdoc_repeater { each = match co.body { none => [], _ => [true] }  as = :_b
       project { from = co.body }
     }
-    wdoc_repeater { each = filter(code_items, fn(ci: CodeItem) -> bool { ci.component == co.id })  as = :ci
-      p $"- [${ci.name}](code_${ci.id}) (`${ci.kind}`)"
+    // Code items live at component level: each renders its diagram right
+    // here (the heading link drills into the code item's own page).
+    wdoc_repeater { each = code_items_of_comp(co.id)  as = :ci
+      h2 $"[${ci.name}](code_${ci.id})"
+      wdoc_repeater { each = match ci.summary { none => [], sx => [sx] }  as = :sx
+        p $"_${sx}_"
+      }
+      code_item_view { ci = ci }
     }
     // Screens attach at component level — the flow chart of this
     // component's screens draws here, not on the system page.
@@ -221,14 +220,13 @@ wdoc_repeater { each = sw_components  as = :co
   }
 }
 
-// --- one page per code item (kind-dispatched renderer) -------------------------
-wdoc_repeater { each = code_items  as = :ci
-  page $"code_${ci.id}" { title = $"${ci.name}"
-    h1 $"${ci.name}"
-    wdoc_repeater { each = match ci.summary { none => [], sx => [sx] }  as = :sx
-      p $"_${sx}_"
-    }
-
+// --- code item payload rendering (shared) ---------------------------------------
+// Kind-dispatched rendering of one code item's payload. Instantiated on the
+// owning component's page (the drill-in view) AND on the code item's own
+// page, so both stay identical.
+wdoc_component code_item_view {
+  wdoc_slot ci
+  wdoc_body {
     // :module_graph — layered dependency diagram over the code nodes.
     wdoc_repeater { each = match ci.kind { :module_graph => [true], _ => [] }  as = :_mg
       diagram { width = 940  height = 520  layout = :layered  layer_gap = 70.0  node_gap = 34.0  pan_zoom = true
@@ -290,7 +288,17 @@ wdoc_repeater { each = code_items  as = :ci
         }
       }
     }
+  }
+}
 
+// --- one page per code item -------------------------------------------------------
+wdoc_repeater { each = code_items  as = :ci
+  page $"code_${ci.id}" { title = $"${ci.name}"
+    h1 $"${ci.name}"
+    wdoc_repeater { each = match ci.summary { none => [], sx => [sx] }  as = :sx
+      p $"_${sx}_"
+    }
+    code_item_view { ci = ci }
     wdoc_repeater { each = match ci.body { none => [], _ => [true] }  as = :_b
       project { from = ci.body }
     }

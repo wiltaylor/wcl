@@ -150,11 +150,13 @@ let containers_of = fn(sid: identifier) -> list<Container> {
 let components_of = fn(cid: identifier) -> list<Component> {
   filter(sw_components, fn(c: Component) -> bool { c.container == cid })
 }
+// Code items attach at component level; direct container attachment is the
+// fallback for WADs that don't model components (kept navigable in the toc).
 let code_items_of = fn(cid: identifier) -> list<CodeItem> {
-  filter(code_items, fn(ci: CodeItem) -> bool {
-    ci.container == cid
-      || list_contains(map(components_of(cid), fn(c: Component) -> identifier { c.id }), ci.component ?? cid)
-  })
+  filter(code_items, fn(ci: CodeItem) -> bool { ci.container == cid })
+}
+let code_items_of_comp = fn(coid: identifier) -> list<CodeItem> {
+  filter(code_items, fn(ci: CodeItem) -> bool { ci.component == coid })
 }
 let screens_of = fn(cid: identifier) -> list<Screen> {
   filter(screens, fn(sc: Screen) -> bool { sc.container == cid })
@@ -217,6 +219,9 @@ site book {
             chapter $"${c.name}" { page = $"container_${c.id}"
               wdoc_repeater { each = components_of(c.id)  as = :co
                 chapter $"${co.name}" { page = $"component_${co.id}"
+                  wdoc_repeater { each = code_items_of_comp(co.id)  as = :ci
+                    chapter $"${ci.name}" { page = $"code_${ci.id}" }
+                  }
                   wdoc_repeater { each = screens_of_comp(co.id)  as = :sc
                     chapter $"${sc.name}" { page = $"screen_${sc.id}" }
                   }

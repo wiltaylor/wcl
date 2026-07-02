@@ -15,9 +15,10 @@ page system_context { title = "System context"
       body = "Author `relation` blocks under data/context/ and this diagram draws itself." }
   }
 
-  // Radial layout on purpose: its boundary-member inflation seats every
-  // non-member (personas, externals) OUTSIDE the boundary band — a layered
-  // flow can place users inside the owned-systems hull.
+  // Radial layout: hub-and-spoke reads naturally for a context view, and
+  // its boundary-member inflation gives non-members (personas, externals)
+  // clearance from the boundary band. (Every planned layout additionally
+  // guarantees non-members are evicted from boundary boxes post-plan.)
   diagram { width = 960  height = 560  layout = :radial
     node_gap = 48.0  pan_zoom = true
     desc = $"System context diagram for ${wad.name}"

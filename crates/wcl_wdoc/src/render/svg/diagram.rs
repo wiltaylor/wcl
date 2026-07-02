@@ -421,10 +421,155 @@ pub(crate) fn compute_planned_plan(
     block: &Block<'_>,
     children: &[Block<'_>],
 ) -> (Vec<(f64, f64)>, Vec<f64>, Vec<f64>) {
-    match field_symbol(block, "layout").unwrap_or_default().as_str() {
-        "force" => compute_force_plan(block, children),
-        "radial" => compute_radial_plan(block, children),
-        _ => compute_layered_plan(block, children),
+    let (mut offsets, widths, heights) =
+        match field_symbol(block, "layout").unwrap_or_default().as_str() {
+            "force" => compute_force_plan(block, children),
+            "radial" => compute_radial_plan(block, children),
+            _ => compute_layered_plan(block, children),
+        };
+    evict_boundary_outsiders(children, &mut offsets, &widths, &heights);
+    (offsets, widths, heights)
+}
+
+/// Post-plan pass: a `boundary` draws around its members after layout, but
+/// the solvers know nothing about it — a non-member can be planned inside
+/// the box, which reads as membership (a user drawn inside the system
+/// boundary). Push every non-member flow child fully out of every sibling
+/// boundary's would-be box (the member bbox plus its padding and label
+/// headroom, mirroring `render_one_boundary`), along the axis needing the
+/// smallest shift, then keep pushing while the new spot overlaps another
+/// flow shape. Runs on every planned layout so the guarantee holds
+/// regardless of solver; deterministic, so the collect and render passes
+/// (which each recompute the plan) agree. Boundaries whose members live
+/// deeper than this level (inside a `container` child) are skipped — their
+/// geometry isn't known at this level's plan time.
+fn evict_boundary_outsiders(
+    children: &[Block<'_>],
+    offsets: &mut [(f64, f64)],
+    widths: &[f64],
+    heights: &[f64],
+) {
+    const GAP: f64 = 24.0;
+    let ids: Vec<Option<String>> = children.iter().map(|c| field_id(c, "id")).collect();
+    let overlaps = |a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)| {
+        a.0 < b.0 + b.2 && b.0 < a.0 + a.2 && a.1 < b.1 + b.3 && b.1 < a.1 + a.3
+    };
+    let mut evicted_any = false;
+    // A later eviction can push a shape into an earlier boundary, so sweep
+    // until stable (bounded — each round only ever moves shapes outward).
+    for _round in 0..3 {
+        let mut moved_any = false;
+        for b in children.iter().filter(|c| c.kind() == "boundary") {
+            let member_ids = boundary_member_ids(b);
+            let is_member = |i: usize| {
+                ids[i]
+                    .as_deref()
+                    .is_some_and(|id| member_ids.iter().any(|m| m == id))
+            };
+            let mut min_x = f64::INFINITY;
+            let mut min_y = f64::INFINITY;
+            let mut max_x = f64::NEG_INFINITY;
+            let mut max_y = f64::NEG_INFINITY;
+            let mut found = false;
+            for i in 0..children.len() {
+                if is_member(i) {
+                    min_x = min_x.min(offsets[i].0);
+                    min_y = min_y.min(offsets[i].1);
+                    max_x = max_x.max(offsets[i].0 + widths[i]);
+                    max_y = max_y.max(offsets[i].1 + heights[i]);
+                    found = true;
+                }
+            }
+            if !found {
+                continue;
+            }
+            // The box render_one_boundary will draw: padding all round plus
+            // the label band on the labelled edge.
+            let pad = field_f64(b, "padding").unwrap_or(12.0).max(0.0);
+            let label_pad = (LABEL_INSET + crate::text::DEFAULT_FONT_SIZE + 4.0).max(pad);
+            let has_label = label_string(b).filter(|s| !s.is_empty()).is_some();
+            let label_on_bottom = matches!(
+                field_symbol(b, "label_pos").unwrap_or_default().as_str(),
+                "bottom_left" | "bottom" | "bottom_right"
+            );
+            let (pad_top, pad_bottom) = match (has_label, label_on_bottom) {
+                (false, _) => (pad, pad),
+                (true, true) => (pad, label_pad),
+                (true, false) => (label_pad, pad),
+            };
+            let bbox = (
+                min_x - pad,
+                min_y - pad_top,
+                (max_x - min_x) + 2.0 * pad,
+                (max_y - min_y) + pad_top + pad_bottom,
+            );
+            for i in 0..children.len() {
+                if is_layout_annotation(children[i].kind()) || is_member(i) {
+                    continue;
+                }
+                let rect = (offsets[i].0, offsets[i].1, widths[i], heights[i]);
+                if !overlaps(rect, bbox) {
+                    continue;
+                }
+                // Smallest displacement that clears the box (plus a gap).
+                let candidates = [
+                    (-(rect.0 + rect.2 - bbox.0) - GAP, 0.0), // out left
+                    (bbox.0 + bbox.2 - rect.0 + GAP, 0.0),    // out right
+                    (0.0, -(rect.1 + rect.3 - bbox.1) - GAP), // out top
+                    (0.0, bbox.1 + bbox.3 - rect.1 + GAP),    // out bottom
+                ];
+                let (dx, dy) = candidates
+                    .into_iter()
+                    .min_by(|a, b| (a.0.abs() + a.1.abs()).total_cmp(&(b.0.abs() + b.1.abs())))
+                    .expect("four candidates");
+                offsets[i].0 += dx;
+                offsets[i].1 += dy;
+                moved_any = true;
+                evicted_any = true;
+                // The evicted spot may land on another flow shape — keep
+                // stepping along the same direction until clear (bounded).
+                let (sx, sy) = (dx.signum(), dy.signum());
+                for _ in 0..16 {
+                    let here = (offsets[i].0, offsets[i].1, widths[i], heights[i]);
+                    let hit = (0..children.len()).find(|&j| {
+                        j != i
+                            && !is_layout_annotation(children[j].kind())
+                            && overlaps(here, (offsets[j].0, offsets[j].1, widths[j], heights[j]))
+                    });
+                    match hit {
+                        None => break,
+                        Some(j) => {
+                            offsets[i].0 += sx * (widths[j] + GAP);
+                            offsets[i].1 += sy * (heights[j] + GAP);
+                        }
+                    }
+                }
+            }
+        }
+        if !moved_any {
+            break;
+        }
+    }
+    // The edge router's grid assumes non-negative coordinates — an eviction
+    // that pushed a shape into negative space would strand its edge
+    // endpoints off-grid. Slide the whole plan (annotations included, so
+    // labels stay aligned) back to the origin.
+    if evicted_any {
+        let mut min_x = 0.0_f64;
+        let mut min_y = 0.0_f64;
+        for i in 0..children.len() {
+            if is_layout_annotation(children[i].kind()) {
+                continue;
+            }
+            min_x = min_x.min(offsets[i].0);
+            min_y = min_y.min(offsets[i].1);
+        }
+        if min_x < 0.0 || min_y < 0.0 {
+            for off in offsets.iter_mut() {
+                off.0 -= min_x;
+                off.1 -= min_y;
+            }
+        }
     }
 }
 

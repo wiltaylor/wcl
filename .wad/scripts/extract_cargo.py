@@ -4,9 +4,9 @@
 # dependencies = []
 # ///
 """Extract workspace crate dependencies from `cargo metadata` into
-data/generated/cargo.wcl: `relation` blocks between the WAD's container ids
-(so the container diagrams stay honest against Cargo.toml) plus a
-:module_graph `code_item` of the workspace crates."""
+data/generated/cargo.wcl: `relation` blocks between the WAD's container ids,
+so the system's container diagram stays honest against Cargo.toml (the
+crates are containers, so the diagram *is* the crate dependency picture)."""
 
 import json
 import subprocess
@@ -81,36 +81,6 @@ def main() -> int:
                 "",
             ]
 
-    # The crate graph itself, drawn on the wcl_cli container page.
-    lines += [
-        "code_item crate_graph {",
-        "  container = wcl_cli",
-        '  name      = "Workspace crates"',
-        '  summary   = "The Cargo workspace members and their internal dependency edges (extracted from cargo metadata)."',
-        "  kind      = :module_graph",
-    ]
-    for pkg in members:
-        internal = sorted(
-            d["name"]
-            for d in pkg["dependencies"]
-            if d["name"] in member_names and d["kind"] is None
-        )
-        node_id = f"crate_{pkg['name'].replace('-', '_')}"
-        deps = ", ".join(f"crate_{d.replace('-', '_')}" for d in internal)
-        ext_count = sum(
-            1
-            for d in pkg["dependencies"]
-            if d["name"] not in member_names and d["kind"] is None
-        )
-        summary = f"v{pkg['version']} · {ext_count} external deps"
-        lines += [
-            f"  code_node {node_id} {{",
-            f"    name = {wcl_str(pkg['name'])}",
-            f"    deps = [{deps}]",
-            f"    summary = {wcl_str(summary)}",
-            "  }",
-        ]
-    lines += ["}", ""]
 
     OUT.write_text("\n".join(lines))
     print(f"wrote {OUT.relative_to(WAD_ROOT)}")

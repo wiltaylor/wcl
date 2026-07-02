@@ -25,29 +25,7 @@ container wcl_cli {
   technology = "Rust (clap, axum)"
   repo       = wcl_monorepo
   body {
-    p "Every command the binary exposes, with its home in the source tree:"
-    table {
-      header = ["Command", "What it does", "Lives in"]
-      rows = [
-        ["`wcl parse`", "Parse a document and print the AST / syntax diagnostics.", "`crates/wcl/src/main.rs`"],
-        ["`wcl check`", "Validate a document against its schemas (syntax + schema diagnostics).", "`crates/wcl/src/main.rs`"],
-        ["`wcl eval` / `wcl get`", "Evaluate a document or read one field, printed as WCL or JSON.", "`crates/wcl/src/main.rs`"],
-        ["`wcl set`", "Edit a field in place through the parse-for-edit → mutate → reformat pipeline.", "`crates/wcl/src/main.rs`"],
-        ["`wcl fmt`", "Reformat source (in place or to stdout).", "`crates/wcl/src/main.rs`"],
-        ["`wcl diff`", "WCL-aware entity/field diff of two documents; either side may be a `<rev>:<path>` git specifier.", "`crates/wcl/src/diff.rs`, `gitspec.rs`"],
-        ["`wcl init`", "Scaffold a project folder from a WCL template (built-in, user, or disk path).", "`crates/wcl/src/scaffold/`"],
-        ["`wcl repl`", "Interactive expression evaluation against a document.", "`crates/wcl/src/main.rs`"],
-        ["`wcl lsp`", "Run the language server (stdio or TCP).", "`crates/wcl_lsp`"],
-        ["`wcl wad spec`", "Derive a change-spec skeleton for a WAD from a reviewed git revision.", "`crates/wcl/src/wad.rs`"],
-        ["`wcl wdoc build`", "Render a wdoc site to static HTML.", "`crates/wcl_wdoc`"],
-        ["`wcl wdoc serve`", "Dev server: watch + rebuild-on-demand, `--comment` review mode, `--edit` WYSIWYG editing.", "`crates/wcl/src/serve.rs`"],
-        ["`wcl wdoc pdf`", "Render a wdoc document to PDF.", "`crates/wcl_wdoc/src/pdf/`"],
-        ["`wcl wdoc markdown`", "Render a wdoc site to AI-consumable Markdown.", "`crates/wcl_wdoc/src/markdown/`"],
-        ["`wcl wdoc skill`", "Emit a Claude skill folder from a wdoc site.", "`crates/wcl_wdoc/src/markdown/skill.rs`"],
-        ["`wcl wdoc comments`", "List / resolve the review comments a served document collected.", "`crates/wcl_wdoc/src/comments.rs`"],
-        ["`wcl wdoc review`", "Block until the reviewer sends the current comment round to the agent.", "`crates/wcl_wdoc/src/review.rs`"],
-      ]
-    }
+    p "The full command reference — every command with its usage and flags — lives in the [CLI component](component_cli_commands)."
   }
 }
 

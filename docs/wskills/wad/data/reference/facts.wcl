@@ -111,7 +111,7 @@ fact system_blocks {
         [":other", "—", "just the `body`"],
       ]
     }
-    p "Who populates: systems/containers/components by hand (interview or scan); code items by extractor, and they document the **public interface** — internals are read from the code, not mirrored into the WAD. Screens live at **component level**: they render under their owning component with a screen-flow diagram there (never on the system page — that's container altitude)."
+    p "Who populates: systems/containers/components by hand (interview or scan); code items by extractor, and they document the **public interface** — internals are read from the code, not mirrored into the WAD. Code items and screens both live at **component level**: a component's page renders each owned code item's diagram in place (drill into the code item's own page for detail) and the component's screen-flow diagram (never on the system or container page — wrong altitude)."
   }
 }
 

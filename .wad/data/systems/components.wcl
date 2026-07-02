@@ -63,9 +63,37 @@ component registry {
 
 component cli_commands {
   container = wcl_cli
-  name      = "Commands"
-  summary   = "parse / check / eval / set / fmt / diff / repl / lsp / wdoc — the clap surface and exit codes."
+  name      = "CLI"
+  summary   = "The clap surface: every command and subcommand of the `wcl` binary, with its arguments and flags."
   kind      = "module"
+  body {
+    p "The full command reference (from the binary's own `--help` output). A non-zero exit code always means diagnostics were printed."
+
+    h3 "Core document commands"
+    p "`wcl parse [--profile] <file>` — parse a WCL file and print the resulting document tree (forces evaluation). `--profile` prints a call-tree profile of the forcing as JSON on stderr."
+    p "`wcl check [--json] <file>` — parse and validate against the document's schemas; `<file>` may be `-` to read stdin. `--json` emits `{ok, file, errors[]}` (code / message / offset / length) on stdout for tooling; exit codes are unchanged."
+    p "`wcl eval [--json] [--profile] <file> <path>` — resolve a dotted path from the document root and print the value (aliased as `wcl get`). `--json` serialises the value instead of the WCL display form (function values become `null`)."
+    p "`wcl set <file> <path> <value>` — replace the field at a dotted path, writing real source through the parse-for-edit → mutate → reformat pipeline. `<value>` is a WCL expression — strings, suffixed numbers, symbols, lists all accepted (quote shell-special characters)."
+    p "`wcl fmt [--in-place] [--indent <n>] [--no-trailing-comma] <file>` — re-emit canonical form (`-` reads stdin, writes stdout). Comments and blank-line groupings survive; indentation, brace style, number radix and string delimiters normalise. Without `--in-place` the result goes to stdout."
+    p "`wcl diff [--format wcl|json] <old> <new>` — compare two documents on their *evaluated* views (formatting-only edits produce no diff). Either operand may be a `<rev>:<path>` git specifier whose whole tree materialises so imports resolve. Default output is a re-parseable WCL tree; `--format json` gives the flat change array."
+
+    h3 "Interactive & editor commands"
+    p "`wcl repl [file]` — read-eval-print loop for WCL expressions. With a file argument, identifiers resolve against its top-level fields; without one, self-contained expressions still evaluate."
+    p "`wcl lsp [--tcp <host:port>] [--log <file>]` — run the language server. Defaults to stdio (what editors spawn); `--tcp` accepts any number of independent sessions. Logging goes to a file only — stderr would corrupt the stdio LSP stream."
+
+    h3 "Scaffolding"
+    p "`wcl init [--list] [--answers <file>] [-D key=value]… [--defaults] [--force] [template] [dest]` — scaffold a project folder from a WCL template: a built-in name (`--list` shows them), a user template under `$XDG_DATA_HOME/wcl/templates/<name>/`, or a path to a template `.wcl`. Property answers come from `-D` (highest precedence), an answers `.wcl`/`.json` file, the interactive prompt, or `--defaults`."
+    p "`wcl wad spec --from <rev> [--id <id>] [--title <t>] [--format wcl|json] [--include-specs] [entry]` — derive a change-spec skeleton for a WAD: diff the working tree against a reviewed revision and write a schema-valid `spec` block (status `:planning`, exact entity/field change list, TODO intent) into `data/specs/`."
+
+    h3 "wdoc — the site generator"
+    p "`wcl wdoc build --out <dir> <file>` — render every `page` to `<out>/<name>.html`."
+    p "`wcl wdoc serve [--addr <host:port>|auto] [--out <dir>] [--site <name>] [--comment] [--edit] <file>` — the dev server. Watches for `.wcl` changes but rebuilds only on demand (Enter in the console, or the toolbar's Rebuild button). `--comment` injects the click-to-review client (notes persist to a `comments.wcl` sidecar); `--edit` injects the WYSIWYG editor that writes real source; the two compose."
+    p "`wcl wdoc markdown --out <dir> <file>` — one `.md` per page with diagrams as standalone `.svg` files; the AI/text-consumer projection."
+    p "`wcl wdoc skill --out <dir> <file>` — emit an agent skill folder: the start page becomes `SKILL.md`, other pages land under `references/`, `file` blocks ship into their `dir`."
+    p "`wcl wdoc pdf --out <dir> <file>` — render each site to a paginated PDF (pure Rust, no browser)."
+    p "`wcl wdoc comments [--format json] <file> [resolve <id> | edit <id>]` — list, delete, or reword the review notes collected by a served document."
+    p "`wcl wdoc review <file>` — the agent side of the review handshake: block until the reviewer clicks “Send to agent” in a running comment-mode server, then print the notes. With no server running it lists current comments without blocking."
+  }
 }
 
 component cli_scaffold {

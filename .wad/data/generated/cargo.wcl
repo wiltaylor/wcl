@@ -37,30 +37,3 @@ relation r_gen_wcl_wdoc_wcl_lang {
   kind = :depends_on  protocol = "Rust crate"
   data = "wcl_wdoc depends on wcl_lang (Cargo.toml)"
 }
-
-code_item crate_graph {
-  container = wcl_cli
-  name      = "Workspace crates"
-  summary   = "The Cargo workspace members and their internal dependency edges (extracted from cargo metadata)."
-  kind      = :module_graph
-  code_node crate_wcl {
-    name = "wcl"
-    deps = [crate_wcl_lang, crate_wcl_lsp, crate_wcl_wdoc]
-    summary = "v0.0.0 · 7 external deps"
-  }
-  code_node crate_wcl_lang {
-    name = "wcl_lang"
-    deps = []
-    summary = "v0.0.0 · 3 external deps"
-  }
-  code_node crate_wcl_lsp {
-    name = "wcl_lsp"
-    deps = [crate_wcl_lang, crate_wcl_wdoc]
-    summary = "v0.0.0 · 8 external deps"
-  }
-  code_node crate_wcl_wdoc {
-    name = "wcl_wdoc"
-    deps = [crate_wcl_lang]
-    summary = "v0.0.0 · 15 external deps"
-  }
-}
