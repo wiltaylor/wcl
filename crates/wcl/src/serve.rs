@@ -868,6 +868,18 @@ pub(crate) async fn serve(
     if edit_mode {
         app = app
             .route("/__wdoc_edit.js", get(handle_edit_js))
+            .route("/__wdoc_editor.js", get(handle_editor_js))
+            .route(
+                "/__wdoc_highlight",
+                axum::routing::post(handle_editor_highlight),
+            )
+            .route("/__wdoc_check", axum::routing::post(handle_editor_check))
+            .route("/__wdoc_format", axum::routing::post(handle_editor_format))
+            .route("/__wdoc_files", get(handle_files_list))
+            .route(
+                "/__wdoc_file",
+                get(handle_file_read).post(handle_file_write),
+            )
             .route("/__wdoc_schema", get(handle_edit_schema))
             .route("/__wdoc_object_kinds", get(handle_object_kinds))
             .route("/__wdoc_objects", get(handle_object_instances))
@@ -1158,6 +1170,77 @@ async fn handle_edit_js() -> Response {
         .into_response()
 }
 
+/// Serve the shared source-editor component script (`WclEditor`).
+async fn handle_editor_js() -> Response {
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        crate::edit::EDITOR_CLIENT_JS,
+    )
+        .into_response()
+}
+
+/// `POST /__wdoc_highlight` — highlight a buffer for the editor backdrop.
+async fn handle_editor_highlight(body: String) -> Response {
+    let v = match parse_json_body(&body) {
+        Ok(v) => v,
+        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
+    };
+    edit_result(crate::edit::highlight_source(&v))
+}
+
+/// `POST /__wdoc_format` — canonically format a buffer (`wcl fmt` core).
+async fn handle_editor_format(body: String) -> Response {
+    let v = match parse_json_body(&body) {
+        Ok(v) => v,
+        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
+    };
+    edit_result(crate::edit::format_source(&v))
+}
+
+/// `POST /__wdoc_check` — dry-run syntax + schema diagnostics for a buffer.
+async fn handle_editor_check(State(state): State<Arc<ServeState>>, body: String) -> Response {
+    let v = match parse_json_body(&body) {
+        Ok(v) => v,
+        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
+    };
+    edit_result(crate::edit::check_source(
+        &state.root_file,
+        &state.watch_root,
+        &v,
+    ))
+}
+
+/// `GET /__wdoc_files` — the source-editor file tree (page-scoped).
+async fn handle_files_list(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
+    edit_result(crate::edit::list_files(
+        &state.root_file,
+        &state.watch_root,
+        query_param(&uri, "page_file").as_deref(),
+    ))
+}
+
+/// `GET /__wdoc_file?path=` — a source file's text + etag.
+async fn handle_file_read(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
+    let Some(path) = query_param(&uri, "path") else {
+        return json_error(StatusCode::BAD_REQUEST, "missing path");
+    };
+    edit_result(crate::edit::read_file(&state.watch_root, &path))
+}
+
+/// `POST /__wdoc_file` — whole-file save (validate → write → rollback).
+async fn handle_file_write(State(state): State<Arc<ServeState>>, body: String) -> Response {
+    let v = match parse_json_body(&body) {
+        Ok(v) => v,
+        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
+    };
+    let entry = entry_for(
+        &state,
+        v.get("page_file").and_then(serde_json::Value::as_str),
+    );
+    edit_result(crate::edit::write_file(&state.watch_root, &entry, &v))
+}
+
 /// Read the `kind` query parameter (`?kind=...`), URL-decoding `%xx` / `+`.
 fn query_param(uri: &Uri, key: &str) -> Option<String> {
     uri.query()?.split('&').find_map(|kv| {
@@ -1430,6 +1513,10 @@ async fn handle_static(State(state): State<Arc<ServeState>>, uri: Uri) -> Respon
                     bytes.extend_from_slice(COMMENT_SCRIPT_TAG.as_bytes());
                 }
                 if state.edit_mode {
+                    // The shared source-editor component loads first so the
+                    // edit client can instantiate it (plain script tags
+                    // execute in document order).
+                    bytes.extend_from_slice(crate::edit::EDITOR_SCRIPT_TAG.as_bytes());
                     bytes.extend_from_slice(crate::edit::EDIT_SCRIPT_TAG.as_bytes());
                 }
             }

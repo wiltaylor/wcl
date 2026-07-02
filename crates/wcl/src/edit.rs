@@ -30,6 +30,13 @@ pub(crate) const EDIT_SCRIPT_TAG: &str = "<script src=\"/__wdoc_edit.js\"></scri
 // The client script is kept in its own file for readability.
 pub(crate) const EDIT_CLIENT_JS: &str = include_str!("edit_client.js");
 
+/// Loads the shared source-editor component (`WclEditor`) — injected before
+/// the edit client, which instantiates it for raw-WCL editing surfaces.
+pub(crate) const EDITOR_SCRIPT_TAG: &str = "<script src=\"/__wdoc_editor.js\"></script>";
+
+// The source-editor component, in its own file for readability.
+pub(crate) const EDITOR_CLIENT_JS: &str = include_str!("editor_client.js");
+
 // ---------------------------------------------------------------------------
 // Read endpoints
 // ---------------------------------------------------------------------------
@@ -286,12 +293,12 @@ pub(crate) fn add_block(
     //   parent_span → insert as the index-th block child of that parent
     //   neither     → insert at top level by index
     if let Some(after) = body.get("after_span").and_then(serde_json::Value::as_str) {
-        let aspan = parse_span(after).ok_or("bad after_span")?;
+        let aspan = parse_span(after).map_err(|e| format!("after_span: {e}"))?;
         if !ast_edit::insert_block_after_span(&mut ast.items, aspan, block) {
             return Err("anchor block not found".to_string());
         }
     } else if let Some(ps) = body.get("parent_span").and_then(serde_json::Value::as_str) {
-        let pspan = parse_span(ps).ok_or("bad parent_span")?;
+        let pspan = parse_span(ps).map_err(|e| format!("parent_span: {e}"))?;
         let parent = ast_edit::find_block_by_span(&mut ast.items, pspan)
             .ok_or_else(|| "parent block not found".to_string())?;
         ast_edit::insert_block_at_index(&mut parent.items, index, block);
@@ -654,6 +661,215 @@ fn build_block_from_inputs(
 }
 
 // ---------------------------------------------------------------------------
+// Source-editor endpoints (the `serve --edit` in-browser source editor)
+// ---------------------------------------------------------------------------
+
+/// `POST /__wdoc_highlight` — classed-HTML highlighting for the editor's
+/// backdrop, via the same syntect grammar the rendered code blocks use (the
+/// `tok-*` classes are styled by the theme CSS already on every page).
+pub(crate) fn highlight_source(body: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let text = str_field(body, "text")?;
+    let lang = body
+        .get("lang")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("wcl");
+    Ok(serde_json::json!({ "html": wcl_wdoc::highlight_code(text, lang) }))
+}
+
+/// `POST /__wdoc_format` — canonically format WCL source (the `wcl fmt` core:
+/// parse for edit, re-render). A syntax error comes back as `Err` so the
+/// client keeps the buffer untouched.
+pub(crate) fn format_source(body: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let text = str_field(body, "text")?;
+    let ast = parse_for_edit(text, "<editor>".to_string()).map_err(render_err)?;
+    Ok(serde_json::json!({ "text": wcl_format::to_source(&ast) }))
+}
+
+/// `POST /__wdoc_check` — dry-run diagnostics for an unsaved buffer, no disk
+/// writes. Two passes:
+///
+/// 1. **Syntax** on the buffer alone — precise `line`/`col` positions in the
+///    edited text (`scope: "syntax"`, `in_edited_file: true`).
+/// 2. **Schema** on the owning document with the buffer overlaid (the same
+///    overlay loader the LSP uses) — reported as the errors this edit would
+///    *introduce* over the on-disk baseline, mirroring [`commit`]'s gate.
+///    Multi-file spans carry no file attribution, so these come back
+///    position-less (`scope: "schema"`) for the client's problems list.
+pub(crate) fn check_source(
+    root_file: &Path,
+    watch_root: &Path,
+    body: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    use std::collections::HashSet;
+
+    let text = str_field(body, "text")?;
+    let path_str = str_field(body, "path")?;
+    let path = crate::serve::sandboxed(watch_root, Path::new(path_str))
+        .ok_or_else(|| format!("file outside the served tree: {path_str}"))?;
+
+    // Pass 1: syntax on the buffer alone — exact positions.
+    if let Err(e) = parse_for_edit(text, path.display().to_string()) {
+        let (message, offset, length) = match &e {
+            wcl_lang::ParseError::Syntax(sy) => (
+                format!("{}: {}", sy.message, sy.label),
+                sy.span.offset(),
+                sy.span.len(),
+            ),
+            other => (other.to_string(), 0, 0),
+        };
+        let (line, col) = line_col(text, offset);
+        return Ok(serde_json::json!({
+            "ok": false,
+            "diagnostics": [{
+                "scope": "syntax",
+                "message": message,
+                "in_edited_file": true,
+                "offset": offset, "length": length,
+                "line": line, "col": col,
+            }],
+        }));
+    }
+
+    // Pass 2: schema on the owning document with the buffer overlaid; report
+    // only what this edit introduces over the on-disk baseline.
+    let entry = body
+        .get("page_file")
+        .and_then(serde_json::Value::as_str)
+        .map(|pf| wcl_wdoc::doc_entry_for_page(root_file, Path::new(pf)))
+        .unwrap_or_else(|| root_file.to_path_buf());
+    let baseline: HashSet<String> = wcl_wdoc::open_doc_for_edit(&entry)
+        .map(|d| d.schema_errors().iter().map(|e| e.to_string()).collect())
+        .unwrap_or_default();
+    let canon = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+    let overlay = std::collections::HashMap::from([(canon, text.to_string())]);
+    let diagnostics: Vec<serde_json::Value> =
+        match wcl_wdoc::open_doc_for_edit_with_overlay(&entry, overlay) {
+            Ok(doc) => doc
+                .schema_errors()
+                .iter()
+                .filter(|e| !baseline.contains(&e.to_string()))
+                .map(|e| serde_json::json!({ "scope": "schema", "message": e.to_string() }))
+                .collect(),
+            // The overlay parses on its own (pass 1) but breaks the document —
+            // e.g. the buffer removes a declaration an import relies on.
+            Err(e) => vec![serde_json::json!({ "scope": "schema", "message": render_err(e) })],
+        };
+    Ok(serde_json::json!({ "ok": diagnostics.is_empty(), "diagnostics": diagnostics }))
+}
+
+/// 1-based `(line, col)` of a byte offset in `text` (col counts chars).
+fn line_col(text: &str, offset: usize) -> (usize, usize) {
+    let clamped = offset.min(text.len());
+    let before = &text[..clamped];
+    let line = before.matches('\n').count() + 1;
+    let col = before.rsplit('\n').next().map_or(0, |l| l.chars().count()) + 1;
+    (line, col)
+}
+
+// ---------------------------------------------------------------------------
+// File endpoints (the source editor's file tree + whole-file save)
+// ---------------------------------------------------------------------------
+
+/// `GET /__wdoc_files` — every `.wcl` source under the scope root: the page's
+/// owning sub-site source folder when `page_file` names one (so a wskill page
+/// browses its own wskill), else the whole watch root. `files` are relative
+/// to the returned absolute `root`.
+pub(crate) fn list_files(
+    root_file: &Path,
+    watch_root: &Path,
+    page_file: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    let scope = page_file
+        .and_then(|pf| wcl_wdoc::subsite_for_page(root_file, Path::new(pf)))
+        .map(|s| s.src_root)
+        .unwrap_or_else(|| watch_root.to_path_buf());
+    let scope = std::fs::canonicalize(&scope).map_err(|e| format!("scope: {e}"))?;
+    let mut files = Vec::new();
+    collect_wcl_files(&scope, &scope, &mut files)?;
+    files.sort();
+    Ok(serde_json::json!({
+        "root": scope.display().to_string(),
+        "files": files,
+    }))
+}
+
+/// Recursively collect `.wcl` files under `dir` as `root`-relative strings,
+/// skipping generated / hidden trees (`out`, `_wdoc`, dot-dirs).
+fn collect_wcl_files(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), String> {
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map_err(|e| format!("read_dir {}: {e}", dir.display()))?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .collect();
+    entries.sort();
+    for path in entries {
+        let name = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or_default();
+        if path.is_dir() {
+            if name.starts_with('.') || name == "out" || name == "_wdoc" {
+                continue;
+            }
+            collect_wcl_files(root, &path, out)?;
+        } else if path.extension().and_then(|s| s.to_str()) == Some("wcl")
+            && let Ok(rel) = path.strip_prefix(root)
+        {
+            out.push(rel.to_string_lossy().replace('\\', "/"));
+        }
+    }
+    Ok(())
+}
+
+/// `GET /__wdoc_file?path=` — a source file's text plus a content etag the
+/// save endpoint uses to detect concurrent modification.
+pub(crate) fn read_file(watch_root: &Path, path: &str) -> Result<serde_json::Value, String> {
+    let file = crate::serve::sandboxed(watch_root, Path::new(path))
+        .ok_or_else(|| format!("file outside the served tree: {path}"))?;
+    let text = read(&file)?;
+    Ok(serde_json::json!({
+        "path": file.display().to_string(),
+        "text": text,
+        "etag": content_etag(&text),
+    }))
+}
+
+/// `POST /__wdoc_file` — whole-file save through the same validate-then-write
+/// pipeline every editor write uses. `base_etag` (from the read) rejects the
+/// save when the file changed on disk underneath the buffer; `.wcl` only.
+pub(crate) fn write_file(
+    watch_root: &Path,
+    entry: &Path,
+    body: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let path = str_field(body, "path")?;
+    let text = str_field(body, "text")?;
+    let file = crate::serve::sandboxed(watch_root, Path::new(path))
+        .ok_or_else(|| format!("file outside the served tree: {path}"))?;
+    if file.extension().and_then(|s| s.to_str()) != Some("wcl") {
+        return Err("only .wcl files can be saved from the source editor".to_string());
+    }
+    if let Some(base) = body.get("base_etag").and_then(serde_json::Value::as_str) {
+        let current = content_etag(&read(&file)?);
+        if current != base {
+            return Err(
+                "conflict: the file changed on disk — reload it and re-apply your edit".to_string(),
+            );
+        }
+    }
+    let result = commit(entry, vec![(file, text.to_string())])?;
+    Ok(serde_json::json!({ "ok": true, "etag": content_etag(text), "result": result }))
+}
+
+/// A stable-within-this-process content hash used as the save etag.
+fn content_etag(text: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut h);
+    format!("{:x}", h.finish())
+}
+
+// ---------------------------------------------------------------------------
 // Commit pipeline (write → validate → rollback)
 // ---------------------------------------------------------------------------
 
@@ -684,8 +900,11 @@ fn commit(root_file: &Path, changes: Vec<(PathBuf, String)>) -> Result<serde_jso
         .map(|(p, _)| (p.clone(), std::fs::read_to_string(p).ok()))
         .collect();
     for (path, content) in &changes {
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+        if let Some(parent) = path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            restore(&backups);
+            return Err(format!("create directory {}: {e}", parent.display()));
         }
         if let Err(e) = crate::write_atomic(path, content) {
             restore(&backups);
@@ -738,11 +957,11 @@ fn block_target(watch_root: &Path, body: &serde_json::Value) -> Result<(PathBuf,
     let file_str = str_field(body, "file")?;
     let file = crate::serve::sandboxed(watch_root, Path::new(file_str))
         .ok_or_else(|| format!("file outside the served tree: {file_str}"))?;
-    let span = body
-        .get("span")
-        .and_then(serde_json::Value::as_str)
-        .and_then(parse_span)
-        .ok_or("missing or bad span")?;
+    let span = parse_span(
+        body.get("span")
+            .and_then(serde_json::Value::as_str)
+            .ok_or("missing span")?,
+    )?;
     Ok((file, span))
 }
 
@@ -780,9 +999,17 @@ fn read(path: &Path) -> Result<String, String> {
 }
 
 /// Parse a `"start:end"` span string.
-fn parse_span(s: &str) -> Option<Span> {
-    let (a, b) = s.split_once(':')?;
-    Some(Span::new(a.parse().ok()?, b.parse().ok()?))
+fn parse_span(s: &str) -> Result<Span, String> {
+    let (a, b) = s
+        .split_once(':')
+        .ok_or_else(|| format!("span {s:?} is missing the ':' separator"))?;
+    let start = a
+        .parse()
+        .map_err(|_| format!("span {s:?} has a bad start offset"))?;
+    let end = b
+        .parse()
+        .map_err(|_| format!("span {s:?} has a bad end offset"))?;
+    Ok(Span::new(start, end))
 }
 
 /// A short, plain rendering of a scalar value (labels, defaults, enum names).

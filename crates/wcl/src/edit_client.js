@@ -68,6 +68,17 @@ body.wcl-ed-picking [data-wcl-block].wcl-ed-hot{outline:2px solid #16a34a;outlin
 .wcl-ed-modal-box .wcl-ed-body{padding:12px 14px}
 .wcl-ed-item{display:flex;justify-content:space-between;align-items:center;gap:8px;
  padding:8px;border:1px solid #2a2a2a;border-radius:6px;margin-bottom:6px}
+/* Source view: file tree beside the editor, both filling the wide modal. */
+.wcl-ed-srcgrid{display:flex;gap:10px;flex:1;min-height:0}
+.wcl-ed-files{flex:none;width:240px;overflow:auto;border:1px solid #2a2a2a;border-radius:6px;
+ padding:6px;font:12px ui-monospace,Menlo,Consolas,monospace}
+.wcl-ed-files div{padding:3px 6px;border-radius:4px;cursor:pointer;color:#bbb;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wcl-ed-files div:hover{background:#262626;color:#eee}
+.wcl-ed-files div.on{background:#14532d;color:#fff}
+.wcl-ed-srcpane{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0;min-height:0}
+.wcl-ed-srchdr{display:flex;align-items:center;gap:8px;font-size:12px;color:#aaa}
+.wcl-ed-srchdr .dirty{color:#fbbf24}
 .wcl-ed-item .acts{display:flex;gap:6px}
 .wcl-ed-tag{font-size:11px;opacity:.6}
 `;
@@ -461,29 +472,141 @@ body.wcl-ed-picking [data-wcl-block].wcl-ed-hot{outline:2px solid #16a34a;outlin
         `<div class="hint">${fd && fd.folder ? 'folder: one file per object' : "where the new object is written"}</div></div>`
       : `<div class="wcl-ed-row"><label>Source <span class="wcl-ed-tag">${esc(shortFile(target.file))}</span></label></div>`;
     body.innerHTML = fileRow +
-      `<textarea class="wcl-ed-code" spellcheck="false">${esc(data.text || '')}</textarea>`;
+      `<div class="wcl-ed-srcmount" style="display:flex;flex-direction:column;min-height:45vh;flex:1"></div>`;
+    // The shared source-editor component (highlighting, line numbers, live
+    // dry-run diagnostics) replaces the bare textarea; the check runs against
+    // the object's real file, so only existing objects get schema checking.
+    const ed = window.WclEditor.create(body.querySelector('.wcl-ed-srcmount'), {
+      value: data.text || '',
+      path: isNew ? null : target.file,
+      pageFile: pageFile() || undefined,
+    });
     const foot = document.createElement('div');
     foot.className = 'wcl-ed-foot';
-    foot.innerHTML = `<button data-save>Save</button><button class="ghost" data-cancel>Cancel</button>`;
+    foot.innerHTML = `<button data-save>Save</button><button class="ghost" data-fmt>Format</button><button class="ghost" data-cancel>Cancel</button>`;
     body.appendChild(foot);
-    const ta = body.querySelector('textarea');
     const showErr = m => {
       let e = body.querySelector('.wcl-ed-err');
       if (!e) { e = document.createElement('div'); e.className = 'wcl-ed-err'; body.appendChild(e); }
       e.textContent = '⚠ ' + m;
     };
     foot.querySelector('[data-cancel]').onclick = () => openKind(kind);
+    foot.querySelector('[data-fmt]').onclick = () =>
+      ed.format().catch(e => showErr(e.message || e));
     foot.querySelector('[data-save]').onclick = () => {
-      const text = ta.value;
+      const text = ed.getValue();
       const payload = isNew
         ? { op: 'create', kind, text, ...(targetFileValue(body) ? { target_file: targetFileValue(body) } : {}) }
         : { op: 'save', file: target.file, span: target.span, text };
       save(payload, '/__wdoc_object', { view: 'kind', kind }, showErr);
     };
+    ed.focus();
   }
 
   const targetFileValue = body => ((body.querySelector('#wcl-ed-target') || {}).value || '').trim();
   const shortFile = f => f.split('/').slice(-2).join('/');
+
+  // ---- source view: file tree + whole-file editor -------------------------
+
+  // Browse every .wcl under the page's sub-site (or the served root) and edit
+  // whole files — highlighted, live-checked, saved through the validating
+  // pipeline (a save that would introduce schema errors is rejected).
+  async function openSource() {
+    const body = openModalShell('Source');
+    body.closest('.wcl-ed-modal-box').classList.add('wcl-ed-wide');
+    let listing;
+    try { listing = await getJSON('/__wdoc_files?_=1' + pfq()); }
+    catch (e) { body.innerHTML = `<div class="wcl-ed-err">⚠ ${esc(e.message || e)}</div>`; return; }
+    body.innerHTML =
+      `<div class="wcl-ed-srcgrid"><div class="wcl-ed-files"></div>` +
+      `<div class="wcl-ed-srcpane">` +
+      `<div class="wcl-ed-srchdr"><span data-cur>select a file…</span><span class="dirty" data-dirty></span></div>` +
+      `<div class="wcl-ed-srcmount" style="display:flex;flex-direction:column;flex:1;min-height:0"></div>` +
+      `<div class="wcl-ed-foot"><button data-save disabled>Save</button>` +
+      `<button data-sr disabled>Save &amp; Rebuild</button>` +
+      `<button class="ghost" data-fmt disabled>Format</button></div>` +
+      `</div></div>`;
+    const filesEl = body.querySelector('.wcl-ed-files');
+    const curEl = body.querySelector('[data-cur]');
+    const dirtyEl = body.querySelector('[data-dirty]');
+    const btnSave = body.querySelector('[data-save]');
+    const btnSR = body.querySelector('[data-sr]');
+    const btnFmt = body.querySelector('[data-fmt]');
+    const showErr = m => {
+      let e = body.querySelector('.wcl-ed-err');
+      if (!e) { e = document.createElement('div'); e.className = 'wcl-ed-err'; body.querySelector('.wcl-ed-srcpane').appendChild(e); }
+      e.textContent = '⚠ ' + m;
+    };
+    const clearErr = () => { const e = body.querySelector('.wcl-ed-err'); if (e) e.remove(); };
+
+    let cur = null; // { path, etag, dirty }
+    const ed = window.WclEditor.create(body.querySelector('.wcl-ed-srcmount'), {
+      value: '',
+      pageFile: pageFile() || undefined,
+      onChange: () => { if (cur && !cur.dirty) { cur.dirty = true; dirtyEl.textContent = '● unsaved'; } },
+    });
+
+    listing.files.forEach(rel => {
+      const row = document.createElement('div');
+      row.textContent = rel;
+      row.title = rel;
+      row.onclick = () => open(rel, row);
+      filesEl.appendChild(row);
+    });
+
+    async function open(rel, row) {
+      if (cur && cur.dirty && !confirm('Discard unsaved changes?')) return;
+      clearErr();
+      let data;
+      try { data = await getJSON('/__wdoc_file?path=' + encodeURIComponent(listing.root + '/' + rel)); }
+      catch (e) { showErr(e.message || e); return; }
+      filesEl.querySelectorAll('.on').forEach(x => x.classList.remove('on'));
+      row.classList.add('on');
+      cur = { path: data.path, etag: data.etag, dirty: false };
+      ed.setPath(data.path);
+      ed.setValue(data.text);
+      cur.dirty = false;
+      dirtyEl.textContent = '';
+      curEl.textContent = rel;
+      btnSave.disabled = btnSR.disabled = btnFmt.disabled = false;
+      ed.focus();
+    }
+
+    async function saveCurrent() {
+      if (!cur) return false;
+      clearErr();
+      try {
+        const r = await fetch('/__wdoc_file', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ path: cur.path, text: ed.getValue(), base_etag: cur.etag, page_file: pageFile() || undefined }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) { showErr(j.error || r.statusText); return false; }
+        cur.etag = j.etag;
+        cur.dirty = false;
+        dirtyEl.textContent = '✓ saved';
+        setTimeout(() => { if (!cur.dirty) dirtyEl.textContent = ''; }, 1500);
+        return true;
+      } catch (e) { showErr(e.message || e); return false; }
+    }
+
+    btnSave.onclick = saveCurrent;
+    btnFmt.onclick = () => ed.format().catch(e => showErr(e.message || e));
+    btnSR.onclick = async () => {
+      if (!(await saveCurrent())) return;
+      dirtyEl.textContent = '⟳ rebuilding…';
+      try {
+        await fetch('/__wdoc_rebuild', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ page_file: pageFile() || undefined }),
+        });
+      } catch (_) { /* the reload below shows whatever state the build left */ }
+      location.reload();
+    };
+    body.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveCurrent(); }
+    });
+  }
 
   // Open the object editor for one specific instance, matched by its inline
   // label (its id for the wskill units) — backs the in-page `edit_object`
@@ -544,8 +667,12 @@ body.wcl-ed-picking [data-wcl-block].wcl-ed-hot{outline:2px solid #16a34a;outlin
   const objBtn = document.createElement('button');
   objBtn.textContent = '⛁ Objects';
   objBtn.onclick = () => { setOpen(false); setPick(false); openObjects(); };
+  const srcBtn = document.createElement('button');
+  srcBtn.textContent = '⌨ Source';
+  srcBtn.onclick = () => { setOpen(false); setPick(false); openSource(); };
   actions.appendChild(selBtn);
   actions.appendChild(objBtn);
+  actions.appendChild(srcBtn);
   const toggle = document.createElement('button');
   toggle.className = 'wcl-ed-toggle';
   toggle.title = 'Editor tools';

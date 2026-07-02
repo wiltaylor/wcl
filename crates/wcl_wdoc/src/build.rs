@@ -188,6 +188,32 @@ pub fn open_doc_for_edit(file: &Path) -> Result<Document, wcl_lang::ParseError> 
     )
 }
 
+/// [`open_doc_for_edit`] with unsaved buffers shadowing disk: every import
+/// (and the root file itself) resolves through `overlay` first, so the
+/// `serve --edit` editor can dry-run-validate or preview an edit without
+/// writing it. Overlay keys should be canonical absolute paths (raw keys
+/// are accepted as a fallback, matching [`wcl_lang::overlay_loader`]).
+pub fn open_doc_for_edit_with_overlay(
+    file: &Path,
+    overlay: std::collections::HashMap<PathBuf, String>,
+) -> Result<Document, wcl_lang::ParseError> {
+    let canon = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
+    let user_src = match overlay.get(&canon).or_else(|| overlay.get(file)) {
+        Some(s) => s.clone(),
+        None => fs::read_to_string(file)?,
+    };
+    let name = file.display().to_string();
+    let base_dir = file.parent().map(Path::to_path_buf);
+    let loader = schema_registry().loader(wcl_lang::overlay_loader(overlay));
+    Document::open_at_with_loader(
+        &user_src,
+        &name,
+        base_dir.clone(),
+        &wdoc_environment(base_dir.as_deref()),
+        loader,
+    )
+}
+
 /// The entry document that owns `page_file` — a sub-site's entry `.wcl` when the
 /// page belongs to an `include`d sub-site (e.g. a wskill book under the
 /// top-level docs site), else `root_file` itself. Lets the `--edit` server
