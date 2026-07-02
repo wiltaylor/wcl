@@ -3,6 +3,17 @@
 // see landing.wcl) for the HTML build; that template ignores `c.content`,
 // so the wdoc blocks below exist purely so the Markdown / PDF backends —
 // which don't run the template — still get a sensible page.
+
+// The optional views each member ships (empty lists when nobody does) —
+// appended to a member's entry as extra links.
+let wskill_decks   = included_sites({ folder: "wskills", entry: "wdoc/presentation/main.wcl", prefix: "decks" })
+let wskill_courses = included_sites({ folder: "wskills", entry: "wdoc/training/main.wcl", prefix: "training" })
+let wskill_view_links = fn(n: utf8) -> utf8 {
+  let d = join(map(filter(wskill_decks,   fn(x: IncludeEntry) -> bool { x.name == n }), fn(x: IncludeEntry) -> utf8 { $" · [deck](./${x.href})" }), "");
+  let c = join(map(filter(wskill_courses, fn(x: IncludeEntry) -> bool { x.name == n }), fn(x: IncludeEntry) -> utf8 { $" · [course](./${x.href})" }), "");
+  $"${d}${c}"
+}
+
 page index { sites = [:wcl]  title = "Why WCL?"  start = true  template = :landing
   callout "Heavy development — not production ready" {
     class = ["warning"]
@@ -23,8 +34,10 @@ page index { sites = [:wcl]  title = "Why WCL?"  start = true  template = :landi
   // One linked entry per wskill under docs/wskills/, discovered and built by the
   // `include` in main.wcl. Title / summary come from each member's book site; the
   // `wskills/<name>/` href is root-relative (this landing is the root site).
+  // Members that ship the optional deck / training views get extra links (their
+  // entry files exist only when a member ships that view).
   wdoc_repeater { each = included_sites({ folder: "wskills", entry: "wdoc/book/main.wcl" })  as = :s
-    p $"**[${s.title}](./${s.href})**${match s.summary { none => "", su => $" — ${su}" }}"
+    p $"**[${s.title}](./${s.href})**${match s.summary { none => "", su => $" — ${su}" }}${wskill_view_links(s.name)}"
   }
 
   h2 "A taste"

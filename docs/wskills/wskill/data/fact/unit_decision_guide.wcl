@@ -1,0 +1,80 @@
+// The classification guard — THE reference for filing a piece of knowledge as
+// the right unit kind. Referenced from the skill boundary, so agents consult
+// it before creating units instead of defaulting everything to `entity`.
+
+type GuideEdge { source: utf8  destination: utf8  kind: symbol  label: utf8 }
+let guide_edges = [
+  { source: "g_start",   destination: "g_task",    kind: :flow, label: "" },
+  { source: "g_task",    destination: "g_process", kind: :flow, label: "yes" },
+  { source: "g_task",    destination: "g_named",   kind: :flow, label: "no" },
+  { source: "g_named",   destination: "g_entity",  kind: :flow, label: "yes" },
+  { source: "g_named",   destination: "g_value",   kind: :flow, label: "no" },
+  { source: "g_value",   destination: "g_fact",    kind: :flow, label: "yes" },
+  { source: "g_value",   destination: "g_word",    kind: :flow, label: "no" },
+  { source: "g_word",    destination: "g_term",    kind: :flow, label: "yes" },
+  { source: "g_word",    destination: "g_concept", kind: :flow, label: "no" },
+]
+
+fact unit_decision_guide {
+  title    = "Which unit kind? — the decision guide"
+  audience = :both
+  related  = [decomposing_information, concept, entity, fact, process, atomic_note]
+  body {
+    p <<BODY
+      File every atomic note as the kind it *is* — not the kind that feels convenient. The most
+      common mistake is treating `entity` as a catch-all: entities are reserved for concrete
+      NAMED things (a person, a piece of software, a place, an organisation, a file format).
+      An idea is never an entity. A table of values is never an entity.
+    BODY
+
+    h2 "The decision path"
+    diagram {
+      width = 720  height = 560
+      layout = :layered  direction = :top_to_bottom  layer_gap = 26.0  node_gap = 30.0
+      terminator "A piece of knowledge" { id = "g_start"  width = 180.0  height = 44.0 }
+      decision "A repeatable task, done in steps?" { id = "g_task"  width = 210.0  height = 78.0 }
+      process "process" { id = "g_process"  width = 130.0  height = 44.0 }
+      decision "A concrete thing with a name of its own?" { id = "g_named"  width = 220.0  height = 78.0 }
+      process "entity" { id = "g_entity"  width = 130.0  height = 44.0 }
+      decision "A value, constant, or lookup table?" { id = "g_value"  width = 210.0  height = 78.0 }
+      process "fact" { id = "g_fact"  width = 130.0  height = 44.0 }
+      decision "Just a word needing a definition?" { id = "g_word"  width = 210.0  height = 78.0 }
+      process "term (glossary)" { id = "g_term"  width = 150.0  height = 44.0 }
+      process "concept" { id = "g_concept"  width = 130.0  height = 44.0 }
+      edges = guide_edges
+    }
+
+    h2 "By symptom"
+    table {
+      header = ["The note is…", "Kind", "Test"]
+      rows = [
+        ["A way of thinking, a pattern, a mental model, an explanation of *why*", "`concept`", "You'd say \"the reader must **understand** this\""],
+        ["A person, an organisation, a tool, an application, a file format, a place", "`entity`", "It has a proper name and you could point at it; a kind from `schema/kinds.wcl` fits"],
+        ["A default value, a limit, a table of options, a version matrix", "`fact`", "Nobody argues with it — you'd cite it, not explain it"],
+        ["A task someone performs: install, upgrade, review, publish", "`process`", "It has steps in an order and a way to verify it worked"],
+        ["A curated grouping that arranges other units", "`index`", "It holds no knowledge of its own — only `related` links"],
+        ["One word or phrase and its meaning", "`term`", "One sentence covers it; it needs no page of its own"],
+        ["Code or commands that illustrate another unit", "`example`", "It makes no sense without the unit it belongs to (`unit = <id>`)"],
+      ]
+    }
+
+    h2 "Wrong vs right"
+    table {
+      header = ["Tempting (wrong)", "Correct", "Why"]
+      rows = [
+        ["`entity fast_forward` for Git's fast-forward merge", "`concept fast_forward`", "It's a behaviour to understand, not a named thing you can point at"],
+        ["`entity default_ports` holding a port table", "`fact default_ports` with a `table` body", "Values belong in facts; a reference table is a fact whose body is a table"],
+        ["`concept installing` describing install steps", "`process installing` with real `step`s", "Steps in an order are a process — a concept can't be verified or followed"],
+        ["`fact git` describing what Git is", "`entity git { kind = :software }`", "A named piece of software is exactly what entities are for"],
+        ["One giant `concept overview` covering everything", "Several atomic units linked via `related`", "One idea per unit — split until each note holds exactly one"],
+      ]
+    }
+
+    p <<BODY
+      Two follow-up rules. First: when a note seems to be two kinds at once, it is two notes —
+      split it and link them with `related`. Second: `kind` on an entity comes from the closed
+      vocabulary in `schema/kinds.wcl`; if no kind fits and you cannot justify adding one, that
+      is the format telling you the note is not an entity.
+    BODY
+  }
+}

@@ -4,7 +4,8 @@
 concept datapresentation {
   name     = "Separation of Data and Presentation"
   summary  = "Keep data and presentation separate: declare the topic once as data in a natural shape, and let the templates own how it looks — so one model can feed several outputs with nothing hand-duplicated."
-  related  = [wskill_concept]
+  audience = :both
+  related  = [wskill_concept, views, components_look_feel]
   body {
     p <<BODY
       The wskill model separates data from presentation. You declare the topic once as
@@ -19,11 +20,11 @@ concept datapresentation {
       those lists. Projection is the render — the gathered data is laid out into an output
       format. Because the data is the single source, every presentation of it stays in sync.
     BODY
-    p <<BODY    
-      That separation is what lets the one data set become multiple outputs: the wdoc book
-      (a human-readable site) and the Claude Code skill (a SKILL.md plus reference files).
-      Change a block once and it appears, hand-duplicated nowhere, in every output on the
-      next render.
+    p <<BODY
+      That separation is what lets the one data set become multiple outputs: the wdoc book (a
+      human-readable site), the Claude Code skill (a SKILL.md plus reference files), and the
+      optional presentation deck and training book. Change a block once and it appears,
+      hand-duplicated nowhere, in every view on the next render.
     BODY
   }
 }

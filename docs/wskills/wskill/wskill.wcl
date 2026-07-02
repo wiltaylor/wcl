@@ -44,10 +44,18 @@ wcl.wskill::skill {
     value       = "Take it from the user's request (a topic name, or a path to a wskill folder). If empty, ask what to work on."
   }
   skill_boundary {
-    always = ["Create content in data folder using the schema in schema/ folder"]
-    always = ["If we have new data that has a common structure you should create new schema enteries in the schema/"]
+    always = [
+      "Classify every new unit with the decision guide (fact `unit_decision_guide`) before creating it — entities are reserved for concrete NAMED things (people, software, places); ideas are concepts, values are facts, tasks are processes.",
+      "Create content in data/ using the schema in schema/; give an entity a `kind` from schema/kinds.wcl.",
+      "When new data has a recurring structure the base kinds don't fit, model it as a typed schema extension (see `creating_schema_extension`) rather than forcing it into prose.",
+      "Run `wcl check wskill.wcl` after every change and keep it green before rendering.",
+    ]
     ask    = ["Before deleting data files or overwriting an existing wskill."]
-    never  = ["Hand-edit a wskill's `schema/base.wcl` — it is generated/propagated. Create other files instead."]
+    never  = [
+      "Hand-edit a wskill's `schema/base.wcl` — it is generated/propagated. Topic-owned edits go in schema/kinds.wcl and schema/extensions.wcl.",
+      "Invent schema fields or block kinds that aren't in the reflected schema reference — check the `Schema blocks` pages instead of guessing.",
+      "Hand-edit anything under out/ — it is generated output.",
+    ]
   }
 }
 
@@ -73,7 +81,7 @@ wskill_ref wcl {
   url      = "../wcl/"
 }
 
-wskill_ref wcl {
+wskill_ref wdoc {
   name     = "wdoc"
   relation = "peer — reference for the wdoc rendering language"
   status   = "exists"

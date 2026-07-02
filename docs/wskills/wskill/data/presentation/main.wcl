@@ -12,6 +12,7 @@ presentation intro {
     }
     pres_slide why {
       unit = why_use_wskill
+      speaker_notes = "Durability is the pitch: knowledge that outlives heads, chats, and model versions — and still works by hand."
     }
     pres_slide separation {
       unit = datapresentation
@@ -29,14 +30,60 @@ presentation intro {
         p "- **Fact** — values and value tables"
         p "- **Process** — a runbook of steps"
       }
-      speaker_notes = "Classification discipline is the core skill — the decision guide fact covers the edge cases."
+      speaker_notes = "Classification discipline is the core skill — the decision guide fact settles the edge cases."
     }
-    pres_slide views {
-      title = "One model, many views"
+    pres_slide guardrail {
+      unit = unit_decision_guide
       body {
-        p "The same data renders as a **book**, an **AI skill**, this **deck**, and an optional **training course**."
-        p "Each unit opts into audiences (`:book`, `:ai`, `:both`) and each view filters accordingly."
+        p "Entities are **reserved** for concrete named things."
+        p "An idea is a concept. A table is a fact. A task is a process."
       }
+      speaker_notes = "Call out the classic failure: dumping everything into entities. The guide's flowchart is in the book."
+    }
+    pres_slide linking {
+      unit = atomic_note
+      body {
+        p "One idea per unit; `related` links weave the web."
+        p "Curated `index` trees shape the nav — in the book AND in SKILL.md."
+      }
+    }
+  }
+
+  pres_section the_views {
+    title = "The views"
+    pres_slide views_overview {
+      unit = views
+      body {
+        p "**Book** — the reference · **Skill** — for agents"
+        p "**Deck** — first contact · **Training** — learning path"
+      }
+    }
+    pres_slide skill_view {
+      unit = skill_anatomy
+      body {
+        p "Curated up: units opt in with `audience = :ai` / `:both`."
+        p "Boundaries render as hard rules; indexes become the agent's entry points."
+      }
+      speaker_notes = "This deck itself is the presentation view of the wskill wskill — the format eats its own dog food."
+    }
+    pres_slide extending {
+      unit = custom_projection
+      body {
+        p "A language's builtins, a CLI surface, keybindings — typed blocks, projected pages."
+      }
+    }
+  }
+
+  pres_section getting_started {
+    title = "Getting started"
+    pres_slide start {
+      title = "Three commands"
+      body {
+        p "`wcl init wskill ./my-topic`"
+        p "`wcl check wskill.wcl`"
+        p "`just render`"
+      }
+      speaker_notes = "Point people at the training course for the guided path, and the book's Task runbooks for the day-to-day."
     }
   }
 }

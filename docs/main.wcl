@@ -17,7 +17,11 @@ import <wdoc.wcl>
 // docs/wskills/, each projected into a book (included here) and a Claude Code
 // skill. `include` builds every member's book under docs/_site/wskills/<name>/;
 // the landing page lists them via `included_sites(...)` (a registry, by hand).
+// Members that ship the optional views (the entry file exists only when they
+// do) build under decks/<name>/ and training/<name>/ too.
 include "wskills" { entry = "wdoc/book/main.wcl" }
+include "wskills" { entry = "wdoc/presentation/main.wcl"  prefix = "decks" }
+include "wskills" { entry = "wdoc/training/main.wcl"      prefix = "training" }
 
 // Reused in hero prose: paints with the active theme's accent hue so it
 // stays readable on dark and light.

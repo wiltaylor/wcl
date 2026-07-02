@@ -1,0 +1,58 @@
+procedure upgrading_schema_version {
+  title   = "Upgrading a wskill to a new base schema"
+  purpose = "Move an existing wskill onto a newer wskill base schema without losing content."
+  preconditions = ["A newer wskill scaffold is available (a newer `wcl` release)."]
+  related = [creating_a_wskill, structured_data, folder_layout]
+  audience = :both
+
+  step compare { n = 1
+    title = "Scaffold a reference copy"
+    body screen { code "console" { source = <<'SH'
+$ wcl init wskill /tmp/wskill-ref --defaults
+$ diff schema/base.wcl /tmp/wskill-ref/schema/base.wcl
+SH
+    } }
+    body steps { p "Scaffold a throwaway wskill with the new `wcl` and diff its `schema/base.wcl` against yours — that diff IS the upgrade. Check the header's `Schema version:` line for how far apart you are." }
+  }
+
+  step topic_files { n = 2
+    title = "Create any new topic-owned files FIRST"
+    body steps { p "If the new base imports topic-owned files you don't have yet (e.g. `schema/kinds.wcl`), copy them from the reference scaffold BEFORE replacing base.wcl — a base that imports a missing file fails `wcl check` with a confusing unknown-type error. Your existing `kinds.wcl`/`extensions.wcl` are yours; keep them and merge any new baseline entries." }
+  }
+
+  step swap { n = 3
+    title = "Replace the generated files"
+    body screen { code "console" { source = <<'SH'
+$ cp /tmp/wskill-ref/schema/base.wcl schema/base.wcl
+# template sets only if you never customised them:
+$ diff -r wdoc/ /tmp/wskill-ref/wdoc/
+SH
+    } }
+    body steps { p "Overwrite `schema/base.wcl` with the new one (it is generated — never hand-merged). Diff the `wdoc/` template sets too: take the new ones wholesale if you never customised them, otherwise port the diff into your customised copies." }
+  }
+
+  step fix_data { n = 4
+    title = "Check and fix the data"
+    body screen { code "console" { source = <<'SH'
+$ wcl check wskill.wcl        # every violation, file + line
+SH
+    } }
+    body steps { p "Run `wcl check` and fix what it reports — renamed fields, newly constrained values (e.g. a free-text entity `kind` becoming a `:symbol` from kinds.wcl), new required fields. The errors are the migration checklist." }
+  }
+
+  step bump { n = 5
+    title = "Bump schema_version and re-render"
+    body screen { code "console" { source = <<'SH'
+$ just render && just book-serve
+SH
+    } }
+    body steps { p "Set `schema_version` in `wskill.wcl` to the new base's version, re-render every shipped view, and spot-check the book. Commit the upgrade as one change." }
+  }
+
+  compare -> topic_files
+  topic_files -> swap
+  swap -> fix_data
+  fix_data -> bump
+
+  verification = "`wcl check` passes on the new base, `schema_version` matches the base header, and every shipped view renders."
+}

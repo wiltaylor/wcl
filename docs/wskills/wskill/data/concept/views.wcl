@@ -1,0 +1,28 @@
+concept views {
+  name     = "The view family"
+  summary  = "One data model, four projections: the book and the AI skill are standard; the presentation deck and the training book are optional."
+  audience = :both
+  related  = [datapresentation, audience_control, presentation_view, training_view, skill_anatomy]
+  body {
+    p <<BODY
+      A wskill's data renders into up to four *views*, each declared as an `artifact` block in
+      `wskill.wcl` and built from its own template under `wdoc/`. The data is the single source;
+      the views never carry topic content of their own.
+    BODY
+    table {
+      header = ["View", "Audience", "What it is", "Ships"]
+      rows = [
+        ["**Book**", "humans, reference", "The comprehensive reference site — every unit gets a page, indexes shape the nav", "always"],
+        ["**AI skill**", "agents", "SKILL.md + references/, filtered to `:ai`/`:both` content, with boundaries and parameters", "always"],
+        ["**Presentation**", "humans, first contact", "An overview deck introducing the topic — slides feature existing units", "optional"],
+        ["**Training book**", "humans, learning", "An ordered tutorial series with hands-on exercises and expected results", "optional"],
+      ]
+    }
+    p <<BODY
+      The four serve different moments: the deck for *meeting* a topic, the training book for
+      *learning* it, the book for *using* it day to day, and the skill for *an agent doing it
+      for you*. Ship the optional two only when the topic warrants them — declaring the
+      `artifact` and authoring `data/presentation/` or `data/training/` is all it takes.
+    BODY
+  }
+}

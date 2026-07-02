@@ -2,7 +2,7 @@
 
 term wskill {
   term       = "wskill"
-  definition = "One self-contained folder capturing a topic as a WCL data model, with the schema and source metadata travelling with it, projected into a book and a skill."
+  definition = "One self-contained folder capturing a topic as a WCL data model, with the schema and source metadata travelling with it, projected into its declared views."
 }
 
 term topic {
@@ -10,10 +10,19 @@ term topic {
   definition = "The overarching subject a wskill describes, declared once in the entry point."
 }
 
+term unit {
+  term       = "unit"
+  definition = "One atomic note of captured knowledge — a concept, entity, fact, or process — with an id, a headline, related links, and a wdoc body."
+}
 
 term projection {
   term       = "projection"
-  definition = "A deterministic render of the one data model into a specific output. A wskill has two: the book and the skill."
+  definition = "A deterministic render of the one data model into a specific output. A wskill has up to four: the book, the skill, the presentation deck, and the training book."
+}
+
+term view {
+  term       = "view"
+  definition = "One of the output families a wskill can ship — book, AI skill, presentation, training — declared as an artifact block and built from its wdoc/ template."
 }
 
 term book {
@@ -26,6 +35,31 @@ term skill {
   definition = "The Claude Code projection: a SKILL.md plus reference files an agent loads to work with the topic."
 }
 
+term deck {
+  term       = "deck"
+  definition = "The presentation view's output: a single-file slide deck introducing the topic, authored as pres_section / pres_slide data."
+}
+
+term slide {
+  term       = "slide"
+  definition = "One pres_slide in the presentation data — an explicit title plus body, or a featured unit whose headline and summary are pulled onto the slide."
+}
+
+term lesson {
+  term       = "lesson"
+  definition = "One ordered step of the training view — objectives, prerequisites, teaching body, and exercises — teaching toward the reference units it names in related."
+}
+
+term exercise {
+  term       = "exercise"
+  definition = "A hands-on task inside a lesson with an expected result, so the learner (or a grading agent) can verify their work."
+}
+
+term module {
+  term       = "module"
+  definition = "An ordered group of lessons — one part of a training course."
+}
+
 term gather {
   term       = "gather"
   definition = "The mechanism by which the root document collects every block instance of a kind into a single list field for the templates to repeat over."
@@ -33,7 +67,7 @@ term gather {
 
 term block {
   term       = "block"
-  definition = "One unit of content — a concept, fact, tutorial, step, and so on — declared with a kind and gathered into the document."
+  definition = "One declared instance of a schema kind — a concept, fact, step, slide, and so on — gathered into the document."
 }
 
 term audience {
@@ -43,12 +77,50 @@ term audience {
 
 term artifact {
   term       = "artifact"
-  definition = "A real file (script, template, or data) bundled into the emitted skill via a skill-artifact block, rather than projected from content."
+  definition = "An artifact block in wskill.wcl declaring one shipped view — its kind, entry file, and output folder — so the overview and registries can enumerate what the wskill ships."
+}
+
+term skill_artifact {
+  term       = "skill artifact"
+  definition = "A real file (script or data asset) bundled into the emitted skill via a script / asset block inside the skill config, rather than projected from content."
+  aliases    = ["bundled file"]
+}
+
+term boundary {
+  term       = "boundary"
+  definition = "A skill_boundary rule set (always / ask / never) rendered into SKILL.md inside Boundary tags, which an agent treats as hard rules."
+}
+
+term frontmatter {
+  term       = "frontmatter"
+  definition = "The YAML header of the generated SKILL.md: the skill name, trigger description, tool controls, and schema version."
+}
+
+term decision_guide {
+  term       = "decision guide"
+  definition = "The classification fact (unit_decision_guide) that settles which unit kind a note is — the guard against misfiling everything as entities."
+}
+
+term entity_kind {
+  term       = "entity kind"
+  definition = "The closed vocabulary (schema/kinds.wcl) an entity's kind field must come from — person, software, place, … — topic-extensible by editing that file."
+}
+
+term schema_extension {
+  term       = "schema extension"
+  definition = "A topic-declared typed block plus a merging @document (in schema/extensions.wcl or a module file) that adds a new gathered kind — the custom-projection mechanism."
+  aliases    = ["extension module"]
+}
+
+term component {
+  term       = "component"
+  definition = "A wdoc_component under wdoc/component/ — the single shared template fragment that renders every unit of a kind identically across projections."
 }
 
 term collection {
   term       = "collection"
-  definition = "A repo of many wskills (under a wskills/ subdirectory) with one auto-discovered landing page linking down to every member's book."
+  definition = "A repo of many wskills (under a wskills/ subdirectory) with one auto-discovered landing page linking down to every member's views."
+  aliases    = ["registry"]
 }
 
 term member {

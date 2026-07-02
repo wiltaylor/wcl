@@ -1,0 +1,27 @@
+concept training_view {
+  name     = "The training view"
+  summary  = "An optional tutorial-series book — ordered lessons with hands-on exercises and expected results, for learners rather than practitioners."
+  audience = :both
+  related  = [views, presentation_view, process, creating_training_book]
+  body {
+    p <<BODY
+      The training view renders a separate book from `lesson` data in `data/training/`: an
+      ordered course a newcomer walks through to *learn* the topic. Lessons order by `n`, group
+      into `module`s when the course has parts, declare `objectives` ("after this lesson you
+      can …") and `prerequisites` (other lessons), and end in `exercise`s — each with a task,
+      optional starter code, a `hint`, and an `expected` result so the learner (or a grading
+      agent) can verify their work.
+    BODY
+    p <<BODY
+      Training is not process documentation. A [process](concept_process) is a runbook for a
+      practitioner who already knows the topic and needs the reliable sequence; a lesson
+      *teaches*, building understanding in order. The two link rather than duplicate: a
+      lesson's `related` names the reference units it teaches, so the course points into the
+      book instead of restating it.
+    BODY
+    p <<BODY
+      The view is optional. Ship it by declaring `artifact training { kind = :training … }` in
+      `wskill.wcl` and authoring lessons; `just training-build` renders it.
+    BODY
+  }
+}

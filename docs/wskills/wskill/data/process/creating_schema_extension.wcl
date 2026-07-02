@@ -1,0 +1,58 @@
+procedure creating_schema_extension {
+  title   = "Creating a schema extension"
+  purpose = "Model topic-specific recurring data as its own typed blocks and project it into generated pages."
+  preconditions = ["The recurring shape genuinely doesn't fit concept/entity/fact/process — check the decision guide first."]
+  related = [custom_projection, structured_data, components_look_feel, unit_decision_guide]
+  audience = :both
+
+  step declare { n = 1
+    title = "Declare the blocks + a merging @document"
+    body screen { code "wcl" { source = <<'WCL'
+// schema/extensions.wcl (or a dedicated module file)
+namespace wcl.wskill
+
+@block("keybinding")
+type Keybinding {
+  @inline(0) id: identifier
+  keys:    utf8
+  action:  utf8
+  context: utf8?
+}
+
+@document
+type KeybindingDoc {
+  @children("keybinding") keybindings: list<Keybinding>
+}
+WCL
+    } }
+    body steps { p "Declare an `@block` per shape (fields typed, `@inline(0) id` first) plus an `@document` gathering it. Imported `@document`s merge with the base, so the new list appears alongside `concepts`/`facts`. Keep it in `schema/extensions.wcl`, or in its own `schema/<area>.wcl` module for a large surface (the wcl wskill's `builtins.wcl` / `cli.wcl` pattern)." }
+  }
+
+  step author { n = 2
+    title = "Author instances in data/"
+    body screen { code "wcl" { source = <<'WCL'
+// data/reference/keybindings.wcl
+keybinding save   { keys = "Ctrl+S"  action = "Save the buffer" }
+keybinding search { keys = "Ctrl+F"  action = "Find in file"    context = "editor" }
+WCL
+    } }
+    body steps { p "Write instances like any other unit; import the file from `wskill.wcl` (or the data aggregator). `wcl check` now validates them against your schema." }
+  }
+
+  step render { n = 3
+    title = "Add a render to every template set"
+    body screen { code "wcl" { source = <<'WCL'
+// wdoc/book/main.wcl and wdoc/skill/main.wcl (and pages/ where it fits)
+wdoc_repeater { each = keybindings  as = :k
+  p $"`${k.keys}` — ${k.action}"
+}
+WCL
+    } }
+    body steps { p "Project the gathered list in BOTH the book and the skill templates — a table, a page per instance, or a `wdoc_component` for a full house-style page body (see [Components](concept_components_look_feel)). Extension data that renders in only one view drifts." }
+  }
+
+  declare -> author
+  author -> render
+
+  verification = "`just wskill-check` passes with instances present, and both the book and the skill show the new section on the next render."
+}

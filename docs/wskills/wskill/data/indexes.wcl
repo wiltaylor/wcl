@@ -1,19 +1,42 @@
 // Curated navigation — every unit pinned into a topic-meaningful tree via
 // `index` blocks. In the book each index is a heading in the sidebar whose
 // children are the units it lists in `related` (resolved to their unit pages);
-// a nested `index` adds a sub-branch. Indexes default to the `:book` audience,
-// so they shape the book nav while the skill keeps its per-kind reference lists.
+// a nested `index` adds a sub-branch. A `:both` index also becomes a section
+// of SKILL.md's Reference (linking only the units that exist in the skill),
+// so the same curation shapes both the book nav and the agent's entry points.
 
 index what {
-  name = "WSkill"
-  summary = "wskill"
-  related = [wskill_concept, why_use_wskill, creating_a_wskill, building_the_index, setup_ai_skill, decomposing_information, structured_data, assets]
+  name    = "WSkill"
+  summary = "What a wskill is, why it exists, and how to start one."
+  audience = :both
+  related = [wskill_concept, why_use_wskill, views, creating_a_wskill]
 }
 
 index philosophy {
   name    = "Philosophy"
   summary = "The principles the wskill format is built on."
-  related = [datapresentation, selfcontained, atomic_note]
+  related = [datapresentation, selfcontained, atomic_note, structured_data]
+}
+
+index authoring {
+  name    = "Authoring"
+  summary = "Capturing knowledge: decomposition, classification, the capture loop, and the tools."
+  audience = :both
+  related = [decomposing_information, unit_decision_guide, adding_content, building_the_index, folder_layout, authoring_cli, assets]
+}
+
+index views_idx {
+  name    = "Views & Rendering"
+  summary = "The four views, what controls what renders where, and how to build and install each."
+  audience = :both
+  related = [views, audience_control, visibility_scoping, skill_anatomy, setup_ai_skill, installing_the_skill, presentation_view, training_view, justfile_recipes, collections_registries, claude_code]
+}
+
+index extending_idx {
+  name    = "Extending"
+  summary = "Custom schemas and projections for topic-specific data, and the component system behind the shared look."
+  audience = :both
+  related = [custom_projection, creating_schema_extension, components_look_feel]
 }
 
 index wskill_reference {
@@ -24,18 +47,16 @@ index wskill_reference {
   index schema_blocks {
     name    = "Schema blocks"
     summary = "Every block type in the schema, reflected from the live definition — one page each."
-    related = [block_topic, block_skill, block_source, block_wskill_ref, block_concept, block_entity, block_fact, block_index, block_term, block_example, block_procedure, schema_internals]
+    related = [block_topic, block_skill, block_source, block_wskill_ref, block_artifact, block_concept, block_entity, block_fact, block_index, block_term, block_example, block_procedure, block_presentation, block_lesson, schema_internals]
   }
 }
 
-// Skill-only navigation. The skill's SKILL.md is driven entirely by the
-// `:ai`/`:both` indexes (there are no per-kind reference pages there), so this
-// index curates the runbooks an agent reaches for. `:ai` keeps it out of the
-// book, whose nav already lists these processes under the indexes above.
+// Skill-only navigation. `:ai` keeps it out of the book, whose nav already
+// lists these processes under the indexes above — this curates the runbooks
+// an agent reaches for, with the decision guide pinned first.
 index skill_tasks {
   audience = :ai
   name     = "Task runbooks"
-  summary  = "Step-by-step runbooks for building and maintaining a wskill."
-  related  = [creating_a_wskill, building_the_index, setup_ai_skill, updating_a_wskill]
+  summary  = "Step-by-step runbooks for building and maintaining a wskill — classify with the decision guide before creating any unit."
+  related  = [unit_decision_guide, creating_a_wskill, adding_content, building_the_index, setup_ai_skill, installing_the_skill, attaching_to_registry, creating_schema_extension, creating_presentation, creating_training_book, updating_a_wskill, upgrading_schema_version, reviewing_a_wskill, editing_via_serve]
 }
-

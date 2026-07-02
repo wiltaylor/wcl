@@ -1,8 +1,8 @@
 procedure creating_a_wskill {
   title   = "Creating a new wskill"
-  purpose = "Start a new wskill for a topic from the wcl template and set its topic."
+  purpose = "Start a new wskill for a topic from the wcl template, set its topic, and prove the empty model renders."
   preconditions = ["WCL installed — see the [WCL wskill](../wcl/) to install it."]
-  related = [wskill_concept, datapresentation, selfcontained]
+  related = [wskill_concept, datapresentation, selfcontained, adding_content, folder_layout]
   audience = :both
 
   step scaffold { n = 1
@@ -12,7 +12,7 @@ $ wcl init wskill docs/wskills/<topic>
 $ cd docs/wskills/<topic>
 SH
     } }
-    body steps { p "Run `wcl init wskill <path>` to scaffold the folder — `wskill.wcl`, the `schema/`, the `wdoc/` templates and an empty `data/`. Don't hand-create it." }
+    body steps { p "Run `wcl init wskill <path>` to scaffold the folder — `wskill.wcl`, the `schema/`, the `wdoc/` templates and an empty `data/`. Don't hand-create it. Answer the prompts (topic id, name, summary, whether to ship the optional presentation/training views), or pass `-D key=value` / `--defaults`." }
   }
 
   step set_topic { n = 2
@@ -26,8 +26,28 @@ topic <id> {
 }
 WCL
     } }
-    body steps { p "Edit `wskill.wcl` and fill in the single `topic` block — its `id`, `name` and `summary` describe the whole wskill." }
+    body steps { p "Edit `wskill.wcl` and fill in the single `topic` block — its `id`, `name` and `summary` describe the whole wskill. Pin `version` to the upstream version when the topic has one, and add `source` blocks for where authoritative information lives (they drive the update workflow)." }
+  }
+
+  step first_render { n = 3
+    title = "Check and render the empty model"
+    body screen { code "console" { source = <<'SH'
+$ just wskill-check     # wcl check on the model + every template
+$ just render           # out/book + out/skill
+$ just book-serve       # live preview
+SH
+    } }
+    body steps { p "Before adding any content, prove the pipeline: the scaffolded model must check clean and render. If this fails now, fix it now — every later error will then be about your content." }
+  }
+
+  step first_content { n = 4
+    title = "Capture the first units and curate the nav"
+    body steps { p "Follow [Adding content](process_adding_content) for the capture loop — decompose, classify with the decision guide, write, link, and pin each unit into an `index`. Once a handful of units exist, [build the index](process_building_the_index) so the book nav and SKILL.md reflect the topic's real shape." }
   }
 
   scaffold -> set_topic
+  set_topic -> first_render
+  first_render -> first_content
+
+  verification = "`just wskill-check` passes and `just render` writes out/book and out/skill; the served book shows your topic name, and each unit you add appears as its own page on the next render."
 }

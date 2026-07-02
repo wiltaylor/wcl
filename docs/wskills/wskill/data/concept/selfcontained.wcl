@@ -1,6 +1,7 @@
 concept selfcontained {
   name     = "Self-Contained Content"
   summary  = "Capture the information itself; never defer to an external source for it. Attribution citations are fine; the only learning pointers are cross-references."
+  audience = :both
   related  = [datapresentation]
   body {
     p <<BODY

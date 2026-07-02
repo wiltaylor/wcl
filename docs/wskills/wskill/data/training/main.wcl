@@ -11,7 +11,7 @@ lesson scaffold_first_wskill {
     "Name the parts of the generated tree and what each is for",
     "Validate the empty model with `wcl check`",
   ]
-  related = [wskill_concept, creating_a_wskill]
+  related = [wskill_concept, creating_a_wskill, folder_layout]
   body {
     p "A wskill starts from the built-in scaffold: one command generates the whole folder — the schema, the projection templates, and empty data files ready for content."
     p "The generated tree splits into three zones: `schema/` (the data model — `base.wcl` is generated, `kinds.wcl` and `extensions.wcl` are yours), `data/` (the content you'll write), and `wdoc/` (the projection templates that render it)."
@@ -33,16 +33,16 @@ SH
 lesson capture_first_units {
   n       = 2
   title   = "Capture your first units"
-  summary = "Decompose a corner of the topic into concepts, facts, and an entity."
+  summary = "Decompose a corner of the topic and classify each piece with the decision guide."
   objectives = [
     "Classify a piece of knowledge as concept, entity, fact, or process",
     "Write a unit file with a body and related links",
     "Render the book and find your unit's page",
   ]
   prerequisites = [scaffold_first_wskill]
-  related = [decomposing_information, concept, entity, fact]
+  related = [decomposing_information, unit_decision_guide, concept, entity, fact]
   body {
-    p "Content lives in `data/` as block instances. Pick one small corner of your topic and split it into atomic units: an idea the reader must understand is a `concept`, a concrete named thing (a person, a tool, a file format) is an `entity`, and a value or lookup table is a `fact`."
+    p "Content lives in `data/` as block instances. Pick one small corner of your topic and split it into atomic units — one idea each. Then classify each piece with the decision guide: an idea the reader must understand is a `concept`, a concrete named thing (a person, a tool, a file format) is an `entity` with a `kind` from `schema/kinds.wcl`, and a value or lookup table is a `fact`. Never default to entity."
     p "Every unit gets an id, a headline, and a `body { … }` of wdoc blocks. Link units to each other with `related = [other_id]` — the projections turn those into links both ways."
   }
   exercise first_concept {
@@ -61,5 +61,135 @@ wcl check wskill.wcl && wcl wdoc build wdoc/book/main.wcl --out out/book
 SH
     expected = "The build reports the pages written, and `out/book/concept_my_first_idea.html` exists with your body text."
     hint     = "If `wcl check` fails, the error names the file, line, and field — fix and re-run."
+  }
+  exercise classify_three {
+    title     = "Classify three notes"
+    task      = "Take three pieces of your topic — one idea, one named tool, one value table — and file each as the right kind."
+    expected  = "One `concept`, one `entity` (with a `kind` symbol that isn't a stretch), one `fact` with a table body — and `wcl check` stays green."
+    hint      = "If no `EntityKind` fits without lying, the note isn't an entity — re-run it through the decision guide."
+  }
+}
+
+lesson processes_and_index {
+  n       = 3
+  title   = "Processes and the curated index"
+  summary = "Capture a runbook as steps, then pin everything into a navigable tree."
+  objectives = [
+    "Write a procedure with steps, flow edges, and a verification",
+    "Curate an index so the book nav reflects the topic's shape",
+  ]
+  prerequisites = [capture_first_units]
+  related = [process, index, adding_content, building_the_index]
+  body {
+    p "A repeatable task is a `procedure`: ordered `step`s (each with a `body screen` showing what's on screen and a `body steps` saying what to do), `from -> to` flow edges that draw the flowchart, and a `verification` line — how you know it worked."
+    p "Units become navigable when an `index` pins them: each index is a sidebar branch whose `related` lists the unit ids it owns. Unpinned units stay reachable through links but invisible in the nav."
+  }
+  exercise first_procedure {
+    title     = "Capture a runbook"
+    task      = "Write the task you do most often in your topic as a `procedure` with at least two steps and a verification, then pin it (and your earlier units) into an `index`."
+    code_lang = "wcl"
+    code      = <<'WCL'
+procedure daily_task {
+  title   = "…"
+  purpose = "…"
+  step first  { n = 1  body steps { p "Do this." } }
+  step second { n = 2  body steps { p "Then this." } }
+  first -> second
+  verification = "How you know it worked."
+}
+
+index basics {
+  name    = "Basics"
+  related = [my_first_idea, daily_task]
+}
+WCL
+    expected = "The book nav shows a \"Basics\" branch containing your units, and the procedure's page opens with a flowchart above the steps."
+  }
+}
+
+lesson ship_the_skill {
+  n       = 4
+  title   = "Ship the AI skill"
+  summary = "Curate what an agent sees, render the skill, and install it."
+  objectives = [
+    "Opt units into the skill with `audience`",
+    "Configure the skill block (description, parameters, boundaries)",
+    "Build and install the skill where an agent loads it",
+  ]
+  prerequisites = [processes_and_index]
+  related = [audience_control, skill_anatomy, setup_ai_skill, installing_the_skill, claude_code]
+  body {
+    p "The skill is curated up: every unit defaults to `:book`, so mark what the agent needs `:both` (shared reference) or `:ai` (agent-only notes). The `skill` block in `wskill.wcl` becomes SKILL.md's frontmatter — its `description` is the trigger text — and `skill_boundary` rules render as hard rules the agent must follow."
+    p "An `:ai`/`:both` index becomes a section of SKILL.md's Reference — curating those indexes IS designing the agent's entry points."
+  }
+  exercise build_and_install {
+    title     = "Render and install"
+    task      = "Tag your best units `:both`, add an `:ai` index over your runbooks, then build the skill and install it into a repo."
+    code_lang = "bash"
+    code      = <<'SH'
+just skill-build
+cp -r out/skill <repo>/.claude/skills/my-topic
+SH
+    expected = "`.claude/skills/my-topic/SKILL.md` lists your index as a Reference section, and an agent session in that repo can answer from the skill's pages."
+    hint      = "If the agent never invokes the skill, sharpen the `description` in the skill block — it is what the agent matches requests against."
+  }
+}
+
+lesson optional_views {
+  n       = 5
+  title   = "Ship a deck or a course"
+  summary = "Add the optional presentation and training views when the topic warrants them."
+  objectives = [
+    "Decide when a topic deserves a deck or a training course",
+    "Author slide and lesson data and render the optional views",
+  ]
+  prerequisites = [ship_the_skill]
+  related = [views, presentation_view, training_view, creating_presentation, creating_training_book]
+  body {
+    p "The deck introduces (slides feature existing units — `unit = <id>` pulls the headline and summary); the training book teaches (ordered lessons ending in exercises with expected results). Both are data like everything else, and both are optional — declare the `artifact` and author the data only when the topic warrants the view."
+    p "This course and the wskill deck are themselves the worked example: the same model you're learning renders them."
+  }
+  exercise add_a_deck {
+    title     = "Add a three-slide deck"
+    task      = "Enable the presentation view and author one section with three slides, each featuring one of your units."
+    code_lang = "bash"
+    code      = <<'SH'
+# scaffolded with the view off? copy the pieces from a fresh scaffold:
+wcl init wskill /tmp/ref --defaults -D include_presentation=yes
+cp /tmp/ref/wdoc/presentation/main.wcl wdoc/presentation/main.wcl
+cp /tmp/ref/data/presentation/main.wcl data/presentation/main.wcl
+# then: uncomment the artifact + data import in wskill.wcl, author slides, and
+just presentation-build
+SH
+    expected = "`out/presentation/index.html` opens as a deck: a generated title slide plus your three slides showing their units' headlines."
+  }
+}
+
+lesson keep_it_alive {
+  n       = 6
+  title   = "Review, edit, and keep it current"
+  summary = "The maintenance loop: browser editing, the human⇄agent review handshake, and source-driven updates."
+  objectives = [
+    "Edit units from the rendered book with serve --edit",
+    "Run the comment/review loop between a reviewer and an agent",
+    "Use source blocks to drive update sweeps",
+  ]
+  prerequisites = [ship_the_skill]
+  related = [editing_via_serve, reviewing_a_wskill, updating_a_wskill]
+  body {
+    p "A wskill is alive: `wcl wdoc serve --edit --comment` gives you in-browser editing (every unit page has an Edit button that opens the exact object) and click-to-comment review. An agent runs `wcl wdoc review .` to wait for a reviewer's send, then works through the comments and resolves them by id."
+    p "`source` blocks record where authoritative information lives and when it was last checked — an update sweep walks them, refreshes what drifted, and bumps `topic.version`."
+  }
+  exercise review_loop {
+    title     = "Run one review round"
+    task      = "Serve with `--comment`, pin a comment on any page, list it from the CLI, then resolve it."
+    code_lang = "bash"
+    code      = <<'SH'
+wcl wdoc serve wdoc/book/main.wcl --comment &
+# click a block in the browser, leave a note, then:
+wcl wdoc comments . --format json
+wcl wdoc comments . resolve <id>
+SH
+    expected = "The comment appears in the JSON list with a page and locator, and disappears after resolve."
   }
 }

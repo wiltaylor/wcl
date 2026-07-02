@@ -1,3 +1,4 @@
 // entity — one import per entry.
 import "./wil_taylor.wcl"
 import "./wcl.wcl"
+import "./claude_code.wcl"

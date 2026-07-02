@@ -1,0 +1,37 @@
+procedure attaching_to_registry {
+  title   = "Attaching a wskill to a registry"
+  purpose = "Add a wskill to a collection so its views are discovered, built, and linked from the landing page."
+  preconditions = ["A registry/collection repo (scaffold one with `wcl init wskill-registry`)."]
+  related = [collections_registries, creating_a_wskill, views]
+  audience = :both
+
+  step place { n = 1
+    title = "Place the wskill under wskills/"
+    body screen { code "console" { source = <<'SH'
+$ mv <topic>/ <registry>/wskills/<topic>/
+# or scaffold in place:
+$ wcl init wskill <registry>/wskills/<topic>
+SH
+    } }
+    body steps { p "Discovery is file-based: any immediate subdirectory of `wskills/` with a `wdoc/book/main.wcl` becomes a member. There is no member list to edit." }
+  }
+
+  step build { n = 2
+    title = "Build the registry site"
+    body screen { code "console" { source = <<'SH'
+$ wcl wdoc build wdoc/page/main.wcl --out out/site
+SH
+    } }
+    body steps { p "The landing's `include` blocks build every member's book under `wskills/<name>/` — plus `decks/<name>/` and `training/<name>/` for members that ship those views — and the card grid picks the new member up automatically." }
+  }
+
+  step check_links { n = 3
+    title = "Check the landing entry"
+    body steps { p "Open the built landing: the new card shows the member's title and summary (read from its book site block and topic), links to the book, and shows deck/course buttons only if the member ships those views. A missing summary means the member's `topic.summary` is empty; a missing card means the entry file isn't at `wskills/<name>/wdoc/book/main.wcl`." }
+  }
+
+  place -> build
+  build -> check_links
+
+  verification = "The rebuilt landing lists the new wskill with working links to each of its shipped views."
+}

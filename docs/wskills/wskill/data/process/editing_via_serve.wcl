@@ -1,0 +1,38 @@
+procedure editing_via_serve {
+  title   = "Editing a wskill in the browser"
+  purpose = "Use `wcl wdoc serve --edit` to modify units and blocks from the rendered book, writing real .wcl source."
+  preconditions = ["The wskill renders (`just wskill-check` passes)."]
+  related = [reviewing_a_wskill, adding_content, authoring_cli]
+  audience = :both
+
+  step serve { n = 1
+    title = "Serve in edit mode"
+    body screen { code "console" { source = <<'SH'
+$ wcl wdoc serve wdoc/book/main.wcl --edit --comment
+SH
+    } }
+    body steps { p "`--edit` injects the WYSIWYG client (it composes with `--comment`). Every edit writes real `.wcl` source through a validate-then-write pipeline — a change that would introduce schema errors rolls back." }
+  }
+
+  step edit_units { n = 2
+    title = "Edit units via the object editor"
+    body steps { p "Every unit page carries an **Edit this concept/entity/fact/process** button that opens that exact object as raw WCL in the object editor. The editor also browses all schema objects by kind and namespace, and creates new ones from a schema template — new objects land in the right data file via the placement decorator, with the import wired automatically." }
+  }
+
+  step edit_blocks { n = 3
+    title = "Edit page blocks in place"
+    body steps { p "Select any rendered block to edit its fields in the side panel, double-click text to edit it inline, and add / move / delete blocks. This is for page-level material; unit content is better edited through the object editor so it stays one unit in one file." }
+  }
+
+  step rebuild { n = 4
+    title = "Rebuild to apply"
+    body steps { p "The server does not auto-rebuild: click the toolbar's **Rebuild** button (it rebuilds just the current page's sub-site and reloads) or press Enter in the server console for a full rebuild. Verify your change on the reloaded page." }
+  }
+
+  serve -> edit_units
+  serve -> edit_blocks
+  edit_units -> rebuild
+  edit_blocks -> rebuild
+
+  verification = "The edited value appears in the data file (git diff shows a clean, minimal change) and on the reloaded page after rebuild."
+}

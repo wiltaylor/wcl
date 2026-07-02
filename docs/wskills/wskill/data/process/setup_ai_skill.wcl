@@ -1,7 +1,7 @@
 procedure setup_ai_skill {
   title   = "Setting up AI skill generation"
   purpose = "Configure the wskill so it projects into a Claude Code skill, and choose what the agent sees."
-  related = [structured_data, building_the_index, creating_a_wskill]
+  related = [structured_data, building_the_index, creating_a_wskill, installing_the_skill, skill_anatomy]
   audience = :both
 
   step configure { n = 1
@@ -41,7 +41,7 @@ $ wcl wdoc skill wdoc/skill/main.wcl --out out/skill
 $ cp -r out/skill <repo>/.claude/skills/<name>
 SH
     } }
-    body steps { p "Render the skill folder with `wcl wdoc skill` — it writes `SKILL.md` plus `references/*.md`. Install it by copying `out/skill` into a repo's `.claude/skills/<name>/`." }
+    body steps { p "Render the skill folder with `wcl wdoc skill` — it writes `SKILL.md` plus `references/*.md`. Install it by copying `out/skill` into a repo's `.claude/skills/<name>/`; [Building and installing the AI skill](process_installing_the_skill) covers the install and how to verify the agent actually loads it." }
   }
 
   configure -> tag

@@ -321,6 +321,8 @@ let landing_html = <<HTML
         <a href="wskills/wcl/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wcl</a>
         <a href="wskills/wdoc/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wdoc</a>
         <a href="wskills/wskill/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wskill</a>
+        <a href="decks/wskill/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wskill deck</a>
+        <a href="training/wskill/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wskill course</a>
       </div>
       <div style="display:flex; flex-direction:column; gap:10px;">
         <div style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fg-3); font-weight:600; margin-bottom:2px;">Project</div>

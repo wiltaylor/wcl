@@ -1,6 +1,7 @@
 concept fact {
   name     = "Fact"
   summary  = "A unit that holds factual data — a value, a constant, a value table."
+  audience = :both
   related  = [concept, entity, process]
   body {
     p <<BODY

@@ -1,0 +1,47 @@
+concept custom_projection {
+  name     = "Custom projections (schema extension modules)"
+  summary  = "Model domain data — a language's builtins, a CLI surface — as typed blocks in a schema module, then project them into generated reference pages."
+  audience = :both
+  related  = [structured_data, components_look_feel, creating_schema_extension]
+  body {
+    p <<BODY
+      When a topic has recurring domain data the four unit kinds don't capture — the builtin
+      functions of a language, the subcommand tree of a CLI, a keybinding table — model it as
+      its OWN schema and project it, instead of flattening it into prose facts. The pattern is
+      a *schema extension module*: a `.wcl` file declaring typed `@block`s plus a merging
+      `@document` that gathers them.
+    BODY
+    code "wcl" { source = <<'WCL'
+// schema/keybindings.wcl — a topic-specific extension module
+namespace wcl.wskill
+
+@block("keybinding")
+type Keybinding {
+  @inline(0) id: identifier
+  keys:    utf8
+  action:  utf8
+  context: utf8?
+}
+
+// Merges with the base @document — `keybindings` gathers only where imported.
+@document
+type KeybindingDoc {
+  @children("keybinding") keybindings: list<Keybinding>
+}
+WCL
+    }
+    p <<BODY
+      Import the module from `wskill.wcl`, author instances in `data/`, then add a render to
+      each projection template — typically a `wdoc_repeater` generating one page (or one table
+      row) per instance. Because imported `@document` schemas MERGE with the base, the
+      extension composes cleanly with everything else.
+    BODY
+    p <<BODY
+      The wcl wskill is the worked example at scale: its `schema/builtins.wcl` and
+      `schema/cli.wcl` modules capture 80+ builtin functions and the whole `wcl` subcommand
+      tree as data, projected into generated per-function and per-command reference pages.
+      Two standard modules ship with every wskill — the [presentation](concept_presentation_view)
+      and [training](concept_training_view) views use exactly this mechanism.
+    BODY
+  }
+}

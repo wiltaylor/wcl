@@ -1,0 +1,63 @@
+procedure creating_training_book {
+  title   = "Creating the training view"
+  purpose = "Ship the optional tutorial series: declare the artifact, design the course, author lessons with exercises, render."
+  preconditions = ["The reference content exists — lessons teach toward the book, they don't replace it."]
+  related = [training_view, views, adding_content, process]
+  audience = :both
+
+  step enable { n = 1
+    title = "Declare the artifact"
+    body screen { code "wcl" { source = <<'WCL'
+// wskill.wcl — uncomment (or add) the artifact line
+artifact training { kind = :training  entry = "wdoc/training/main.wcl"  output = "out/training" }
+// and make sure the data import is active:
+import "./data/training/main.wcl"
+WCL
+    } }
+    body steps { p "A scaffold created with the training answer set to `yes` already has everything wired. Enabling later: uncomment the artifact and data import, and copy `wdoc/training/main.wcl` + a starter `data/training/main.wcl` from a fresh scaffold (`wcl init wskill /tmp/t --defaults -D include_training=yes`)." }
+  }
+
+  step design { n = 2
+    title = "Design the course"
+    body steps { p "Sequence the lessons before writing any: what can the learner DO after each one (`objectives`), and what must come first (`prerequisites`)? Group into `module`s when the course has parts. Each lesson should teach a small cluster of reference units — note their ids for `related`." }
+  }
+
+  step author { n = 3
+    title = "Author lessons and exercises"
+    body screen { code "wcl" { source = <<'WCL'
+// data/training/main.wcl
+lesson getting_started {
+  n          = 1
+  title      = "Getting started"
+  objectives = ["First capability the learner gains"]
+  related    = [<unit_ids>]           // links back into the reference book
+  body { p "The lesson material — any wdoc blocks." }
+  exercise try_it {
+    title    = "Try it"
+    task     = "What to do, imperatively."
+    code     = "echo hello"
+    code_lang = "bash"
+    expected = "How the learner knows it worked."
+    hint     = "A nudge for when they get stuck."
+  }
+}
+WCL
+    } }
+    body steps { p "Every lesson ends in at least one `exercise` with an `expected` result — hands-on verification is what separates training from prose. Lessons order by `n` within their module (or the course)." }
+  }
+
+  step render { n = 4
+    title = "Render and walk it"
+    body screen { code "console" { source = <<'SH'
+$ just training-build     # → out/training/ (a separate book)
+SH
+    } }
+    body steps { p "Walk the built course as a learner would: do every exercise and check it against its expected result. An exercise you can't verify needs a better `expected`; a lesson that assumes something unstated needs a prerequisite." }
+  }
+
+  enable -> design
+  design -> author
+  author -> render
+
+  verification = "out/training/ renders a syllabus plus one page per lesson in order, and every exercise's expected result is verifiable by following the lesson alone."
+}

@@ -1,7 +1,8 @@
 concept decomposing_information {
-  name    = "Decomposing information"
-  summary = "Break a topic into atomic notes — one idea each — then file each as the unit kind that fits it: concept, entity, fact or process."
-  related = [atomic_note, structured_data, concept, entity, fact, process]
+  name     = "Decomposing information"
+  summary  = "Break a topic into atomic notes — one idea each — then file each as the unit kind that fits it: concept, entity, fact or process."
+  audience = :both
+  related  = [atomic_note, structured_data, unit_decision_guide, concept, entity, fact, process]
   body {
     p <<BODY
       Knowledge goes into a wskill as atomic notes: each unit captures exactly one idea, thing,
@@ -22,8 +23,11 @@ concept decomposing_information {
     }
 
     p <<BODY
-      When in doubt, prefer the smaller, more specific kind and link the pieces together with
-      `related` — the web of links, not a folder hierarchy, is what makes the model navigable.
+      When in doubt, run the note through the [decision guide](fact_unit_decision_guide) —
+      its flowchart and symptom table settle the edge cases (and name the classic mistake:
+      entities are reserved for concrete named things, never a catch-all). Prefer the smaller,
+      more specific kind and link the pieces together with `related` — the web of links, not a
+      folder hierarchy, is what makes the model navigable.
     BODY
 
     p <<BODY

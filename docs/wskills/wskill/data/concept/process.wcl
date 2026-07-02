@@ -1,6 +1,7 @@
 concept process {
   name     = "Process"
   summary  = "A unit (authored as a procedure) that captures the reliable sequence for doing a task — ordered steps, for someone who already knows the topic."
+  audience = :both
   related  = [concept, entity, fact]
   body {
     p <<BODY

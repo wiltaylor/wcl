@@ -1,6 +1,7 @@
 concept index {
   name     = "Index"
   summary  = "A curated grouping that pins units into the wskill's navigation as a top-level tree — beyond the auto-gathered Reference."
+  audience = :both
   related  = [datapresentation, concept]
   body {
     p <<BODY

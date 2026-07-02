@@ -1,0 +1,48 @@
+procedure reviewing_a_wskill {
+  title   = "Reviewing a wskill (human ⇄ agent loop)"
+  purpose = "Run the review loop: a human pins comments on the rendered book; an agent collects, fixes, and resolves them."
+  preconditions = ["The wskill renders (`just wskill-check` passes)."]
+  related = [editing_via_serve, updating_a_wskill, authoring_cli]
+  audience = :both
+
+  step serve { n = 1
+    title = "Serve in comment mode"
+    body screen { code "console" { source = <<'SH'
+$ wcl wdoc serve wdoc/book/main.wcl --comment
+SH
+    } }
+    body steps { p "The dev server injects a review client: click any block on a rendered page, type a note, save. Comments land in a `comments.wcl` sidecar beside `wskill.wcl` — no rebuild, they re-appear on reload." }
+  }
+
+  step agent_wait { n = 2
+    title = "Agent: wait for the reviewer"
+    body screen { code "console" { source = <<'SH'
+$ wcl wdoc review .        # blocks until the reviewer clicks "Send to agent"
+SH
+    } }
+    body steps { p "When an agent has just made changes and wants review, it runs `wcl wdoc review <root>` — this registers it as waiting and blocks. The reviewer's toolbar shows a banner: rebuild, look at the changes, leave comments, then click **Send to agent**. The command unblocks and prints the comments." }
+  }
+
+  step fix { n = 3
+    title = "Work through the comments"
+    body screen { code "console" { source = <<'SH'
+$ wcl wdoc comments . --format json     # list (id, page, target, body)
+$ wcl wdoc comments . resolve <id>      # delete one once addressed
+SH
+    } }
+    body steps { p "Address each comment in the data files, resolve it by id, and rebuild. Comments pin to a page + block locator, so open the named page to see exactly what the note refers to." }
+  }
+
+  step iterate { n = 4
+    title = "Iterate until clean"
+    shape = :decision
+    body steps { p "More comments after the next Send? Fix and resolve again. The loop ends when `wcl wdoc comments .` lists nothing unresolved." }
+  }
+
+  serve -> agent_wait
+  agent_wait -> fix
+  fix -> iterate
+  iterate -> agent_wait :yes
+
+  verification = "`wcl wdoc comments .` reports no open comments and the reviewer signs off on the served book."
+}

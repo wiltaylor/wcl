@@ -7,12 +7,14 @@
 main:
 	@just --list
 
-# Validate the wskill model and both templates against the schema
+# Validate the wskill model and every projection template against the schema
 [group('check')]
 wskill-check:
 	wcl check wskill.wcl
 	wcl check wdoc/book/main.wcl
 	wcl check wdoc/skill/main.wcl
+	@[ ! -f wdoc/presentation/main.wcl ] || wcl check wdoc/presentation/main.wcl
+	@[ ! -f wdoc/training/main.wcl ] || wcl check wdoc/training/main.wcl
 
 # Render the human-readable book projection to out/book
 [group('render')]
@@ -24,9 +26,19 @@ book-build: wskill-check
 skill-build: wskill-check
 	wcl wdoc skill wdoc/skill/main.wcl --out out/skill
 
-# Render both projections
+# Render the presentation (overview deck) projection to out/presentation
 [group('render')]
-render: book-build skill-build
+presentation-build: wskill-check
+	wcl wdoc build wdoc/presentation/main.wcl --out out/presentation
+
+# Render the training (tutorial series) projection to out/training
+[group('render')]
+training-build: wskill-check
+	wcl wdoc build wdoc/training/main.wcl --out out/training
+
+# Render every shipped projection
+[group('render')]
+render: book-build skill-build presentation-build training-build
 
 # Serve the book projection with live reload
 [group('render')]

@@ -1,0 +1,35 @@
+procedure installing_the_skill {
+  title   = "Building and installing the AI skill"
+  purpose = "Render the skill projection and install it where an agent loads it."
+  preconditions = ["The `skill` block is configured — see [Setting up AI skill generation](process_setup_ai_skill)."]
+  related = [skill_anatomy, setup_ai_skill, claude_code, justfile_recipes]
+  audience = :both
+
+  step build { n = 1
+    title = "Render the skill folder"
+    body screen { code "console" { source = <<'SH'
+$ just skill-build          # → out/skill/  (SKILL.md + references/)
+SH
+    } }
+    body steps { p "`wcl wdoc skill` writes `SKILL.md`, one `references/*.md` per `:ai`/`:both` unit, and any bundled `scripts/`/`assets/` files. The build fails loudly on broken links or schema errors — fix and re-run." }
+  }
+
+  step install { n = 2
+    title = "Install into the host repo"
+    body screen { code "console" { source = <<'SH'
+$ cp -r out/skill <repo>/.claude/skills/<name>
+SH
+    } }
+    body steps { p "Copy the rendered folder into the target repo's `.claude/skills/<name>/`. Use the `name` from the generated SKILL.md frontmatter — that is what the agent invokes. A repo that hosts the wskill source usually wraps this in its own just recipe so the installed copy regenerates with the model." }
+  }
+
+  step verify { n = 3
+    title = "Verify the agent loads it"
+    body steps { p "Open an agent session in the target repo and ask something squarely inside the skill's description. The agent should invoke the skill and answer citing its reference pages. If it never triggers, sharpen the `description` in the `skill` block — it is the trigger text." }
+  }
+
+  build -> install
+  install -> verify
+
+  verification = "`.claude/skills/<name>/SKILL.md` exists with the expected frontmatter, and an agent session in that repo invokes the skill on a matching request."
+}

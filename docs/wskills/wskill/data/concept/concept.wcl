@@ -1,6 +1,7 @@
 concept concept {
   name     = "Concept"
   summary  = "A unit that captures an idea or mental model of something."
+  audience = :both
   related  = [entity, fact, process, datapresentation]
   body {
     p <<BODY

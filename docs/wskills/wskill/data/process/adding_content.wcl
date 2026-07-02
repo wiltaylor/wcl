@@ -1,0 +1,61 @@
+procedure adding_content {
+  title   = "Adding content to a wskill"
+  purpose = "The core capture loop: decompose a piece of knowledge, classify it, write the unit, link it, pin it, render."
+  preconditions = ["An existing wskill folder that checks clean (`just wskill-check`)."]
+  related = [decomposing_information, unit_decision_guide, atomic_note, building_the_index, selfcontained]
+  audience = :both
+
+  step decompose { n = 1
+    title = "Decompose to atomic notes"
+    body steps { p "Break the knowledge into single-idea pieces — one idea, thing, value or task per note. If a draft note needs an \"and\" in its summary, split it. See [Decomposing information](concept_decomposing_information)." }
+  }
+
+  step classify { n = 2
+    title = "Classify with the decision guide"
+    shape = :decision
+    body steps { p "Run each note through [the decision guide](fact_unit_decision_guide): a repeatable task → `procedure`; a concrete NAMED thing (person, software, place, …) → `entity` with a `kind` from `schema/kinds.wcl`; an indisputable value/table → `fact`; a word needing a definition → `term`; otherwise → `concept`. Never default to entity." }
+  }
+
+  step write { n = 3
+    title = "Write the unit file"
+    body screen { code "wcl" { source = <<'WCL'
+// data/reference/<id>.wcl (or the per-kind folder)
+concept <id> {
+  name     = "<Headline>"
+  summary  = "<One-liner the indexes show.>"
+  audience = :both              // opt into the skill when the agent needs it
+  related  = [<other_ids>]
+  body { p "The substance — capture it here, never defer to an external source." }
+}
+WCL
+    } }
+    body steps { p "Write the block instance in `data/` (one file per unit as the wskill grows; add the import line to the folder's `main.wcl`). Give it a stable `id`, a headline, a summary, and a self-contained body. Attach worked examples as `example` blocks with `unit = <id>`." }
+  }
+
+  step link { n = 4
+    title = "Link it into the web"
+    body steps { p "Fill `related` with the ids of the units this one leans on or explains — links resolve both ways (each page also lists what references it). A unit with no links is usually either misfiled or not atomic." }
+  }
+
+  step pin { n = 5
+    title = "Pin it into an index"
+    body steps { p "Add the id to the `related` list of the `index` that owns its area (or create a new index branch — see [Building the wskill index](process_building_the_index)). Unpinned units stay reachable via links but invisible in the nav." }
+  }
+
+  step render { n = 6
+    title = "Check and render"
+    body screen { code "console" { source = <<'SH'
+$ just wskill-check && just render
+SH
+    } }
+    body steps { p "`wcl check` catches schema violations (a wrong entity kind, a missing required field) with file/line errors; the render makes the new pages. Fix anything it reports before moving to the next note." }
+  }
+
+  decompose -> classify
+  classify -> write
+  write -> link
+  link -> pin
+  pin -> render
+
+  verification = "The new unit has its own page in the rendered book, appears under its index in the nav, and its related links resolve in both directions."
+}

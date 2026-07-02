@@ -1,0 +1,36 @@
+concept skill_anatomy {
+  name     = "Anatomy of the AI skill"
+  summary  = "What `wcl wdoc skill` emits: SKILL.md (frontmatter, boundaries, parameters, index-driven Reference) plus references/, scripts/, assets/."
+  audience = :both
+  related  = [views, audience_control, setup_ai_skill, installing_the_skill]
+  body {
+    p <<BODY
+      The AI-skill view renders the wskill into a Claude Code skill folder. Its shape is fixed,
+      so an agent always knows where to look:
+    BODY
+    code "text" { source = <<'TXT'
+out/skill/
+  SKILL.md            # the start page — what the agent loads first
+  references/  *.md   # one page per :ai/:both unit + curated index pages
+  scripts/            # runnable helpers (from `script` blocks in the skill config)
+  assets/             # static data files (from `asset` blocks)
+TXT
+    }
+    p <<BODY
+      SKILL.md is generated from the `skill` block in `wskill.wcl` plus the topic metadata. Its
+      YAML frontmatter carries the skill `name`, trigger-tuned `description`, tool controls
+      (`allowed-tools`, `disallowed-tools`, `disable-model-invocation`) and the wskill schema
+      version. The body then stacks: the topic summary and overview lines, a **Parameters**
+      table (`skill_param` blocks — what to pass as `$ARGUMENTS`, `$1`, …), the
+      **boundaries** (`skill_boundary` always/ask/never rules, rendered inside
+      `<Boundary>` tags so the agent treats them as hard rules), and a **Reference** section
+      driven by the `:ai`/`:both` indexes — each index becomes a link section pointing into
+      `references/`.
+    BODY
+    p <<BODY
+      Because the Reference section is index-driven, curating the `:ai` indexes IS designing
+      the agent's entry points. A unit that no index pins is still reachable via `related`
+      links, but the indexes are what the agent scans first.
+    BODY
+  }
+}

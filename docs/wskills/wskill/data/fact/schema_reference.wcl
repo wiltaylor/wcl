@@ -158,6 +158,41 @@ step 1 {
 }
 WCL
   },
+  { name: "Artifact", code: <<'WCL'
+artifact book   { kind = :book          entry = "wdoc/book/main.wcl"          output = "out/book" }
+artifact slides { kind = :presentation  entry = "wdoc/presentation/main.wcl"  output = "out/presentation" }
+WCL
+  },
+  { name: "Presentation", code: <<'WCL'
+presentation intro {
+  summary = "One-line deck subtitle."
+  pres_section what {
+    title = "What & why"
+    pres_slide opening {
+      unit = fast_forward            // pulls that unit's headline + summary
+      speaker_notes = "What to say while this slide is up."
+    }
+  }
+}
+WCL
+  },
+  { name: "Lesson", code: <<'WCL'
+lesson first_commit {
+  n          = 1
+  title      = "Your first commit"
+  objectives = ["Record a snapshot in a new repository"]
+  related    = [git_cli]
+  body { p "The lesson material — any wdoc blocks." }
+  exercise commit_it {
+    title    = "Commit a file"
+    task     = "Stage and commit README.md."
+    code_lang = "bash"
+    code     = "git add README.md && git commit -m 'docs: add readme'"
+    expected = "`git log --oneline` shows your commit at the top."
+  }
+}
+WCL
+  },
 ]
 let example_for = fn(n: utf8) -> list<utf8> {
   map(filter(block_examples, fn(e: BlockExample) -> bool { e.name == n }),
@@ -280,6 +315,41 @@ fact block_procedure {
     h3 "Step"
     type_table { type = Step }
     wdoc_repeater { each = example_for("Step")  as = :ex  code "wcl" { source = ex } }
+  }
+}
+
+fact block_artifact {
+  title = "Artifact block"  related = [structured_data, views]
+  body {
+    p "Declares one shipped view — its kind (from `schema/kinds.wcl`), projection entry file, and output folder. The overview and registry landings enumerate these."
+    type_table { type = Artifact }
+    wdoc_repeater { each = example_for("Artifact")  as = :ex  code "wcl" { source = ex } }
+  }
+}
+
+fact block_presentation {
+  title = "Presentation blocks (optional module)"  related = [structured_data, presentation_view]
+  body {
+    p "The overview-deck view's data (schema/presentation.wcl): one `presentation` holding `pres_section` columns of `pres_slide`s. A slide features an existing unit via `unit`, or carries its own short body."
+    type_table { type = Presentation }
+    h3 "PresSection"
+    type_table { type = PresSection }
+    h3 "PresSlide"
+    type_table { type = PresSlide }
+    wdoc_repeater { each = example_for("Presentation")  as = :ex  code "wcl" { source = ex } }
+  }
+}
+
+fact block_lesson {
+  title = "Training blocks (optional module)"  related = [structured_data, training_view]
+  body {
+    p "The training view's data (schema/training.wcl): ordered `lesson`s (grouped into `module`s when the course has parts), each ending in `exercise`s with expected results."
+    type_table { type = Lesson }
+    h3 "Exercise"
+    type_table { type = Exercise }
+    h3 "TrainingModule"
+    type_table { type = TrainingModule }
+    wdoc_repeater { each = example_for("Lesson")  as = :ex  code "wcl" { source = ex } }
   }
 }
 
