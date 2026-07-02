@@ -39,7 +39,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
       - uses: taiki-e/install-action@just
-      - uses: taiki-e/install-action@cargo-fuzz
+      # Explicit `tool:` form — the `@cargo-fuzz` ref pins a commit but leaves
+      # the tool input empty, so nothing gets installed.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
       - uses: Swatinem/rust-cache@v2
         with:
           key: fuzz
