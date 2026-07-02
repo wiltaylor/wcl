@@ -109,11 +109,11 @@ WCL
 
   h2 "The default layout"
 
-  p "`default_template = :website` uses a built-in, theme-aware shell (sticky header with the title + `menu`, an optional `hero` region, the content with an optional `sidebar` region, and a `footer` region). It's a fine starting point and a reference to copy: `wdoc_website_layout(c)` is its whole body, composed from `wdoc_part_website_css()`, `website_header(c)`, and the region parts."
+  p "`default_template = :website` uses a built-in, theme-aware shell (sticky header with the title + `menu`, optional `banner` and `hero` regions, the content with an optional `sidebar` region, and a `footer` region). When the site sets `search = true` / `theme_toggle = true`, the header grows a right-side controls cluster with the search box and the standard light/dark toggle; with neither flag the header is unchanged. It's a fine starting point and a reference to copy: `wdoc_website_layout(c)` is its whole body, composed from `wdoc_part_website_css()`, `website_header(c)`, and the region parts."
 
   h2 "Scaffold"
 
-  p "`wcl init website ./my-site` generates a complete project: `main.wcl` (the site + head assets), `theme.wcl` (a custom raw-HTML layout), `content.wcl` (a page with regions), and `assets/site.css` + `assets/app.js`. Build it with `wcl wdoc build my-site/main.wcl --out my-site/_site`."
+  p "`wcl init website ./my-site` generates a complete project: `main.wcl` (the site + head assets), `theme.wcl` (a custom raw-HTML layout), `components.wcl` (starter landing components — hero, feature cards, steps, footer — to edit or replace), `content.wcl` (the page, built from those components + regions), and `assets/site.css` + `assets/app.js`. Build it with `wcl wdoc build my-site/main.wcl --out my-site/_site`."
 
   h2 "Site fields"
 

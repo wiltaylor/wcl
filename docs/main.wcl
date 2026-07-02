@@ -2,7 +2,7 @@
 //
 //   wcl wdoc serve docs/main.wcl                 # / = WCL landing, /reference/ = book
 //   wcl wdoc build docs/main.wcl --out docs/_site
-//     → docs/_site/index.html        WCL landing (webpage template)
+//     → docs/_site/index.html        WCL landing (website template)
 //       docs/_site/reference/…       WCL language reference (book template)
 //
 // One document, two sites. A page joins a site via its `sites` array
@@ -30,27 +30,25 @@ class accent {
   bold  = true
 }
 
-// The WCL landing: the `webpage` template (title header + top navbar).
-// `root = true` serves it at `/`; the reference book renders under
-// `/reference/`. Nord theme, cyan accent. Subject is the language itself —
-// wdoc (the tool rendering this very site) is one of WCL's features.
+// The WCL landing: the `website` template (sticky header + regions),
+// its content authored from the landing components in
+// pages/wcl/landing-parts.wcl. `root = true` serves it at `/`; the
+// reference book renders under `/reference/`. Nord theme, cyan accent.
+// Subject is the language itself — wdoc (the tool rendering this very
+// site) is one of WCL's features.
 site wcl {
-  default_template = :webpage
+  default_template = :website
   title            = "WCL"
   root             = true
   theme            = :nord
   accent           = :cyan
+  theme_toggle     = true
+  // Flat anchor menu (the single landing page carries every section);
+  // dropdown menus are a `webpage`-template feature, so keep it flat.
   menu {
-    item "Home"            { page = index }
-    // Cross-site dropdown: each reference is its own built site, so link
-    // by root-relative output path (a `page =` here would only resolve
-    // within this site). An `item` with nested `item`s renders as a
-    // click-to-open dropdown parent.
-    item "Reference" {
-      item "wcl"    { href = "wskills/wcl/" }
-      item "wdoc"   { href = "wskills/wdoc/" }
-      item "wskill" { href = "wskills/wskill/" }
-    }
+    item "Features"        { href = "#features" }
+    item "Reference"       { href = "#reference" }
+    item "Getting started" { href = "#start" }
     item "Source"          { href = "https://github.com/wiltaylor/wcl" }
   }
 }
@@ -107,7 +105,7 @@ site reference {
 }
 
 // WCL landing pages (sites = [:wcl]).
-import "./pages/wcl/landing.wcl"   // the `landing` template (index page design)
+import "./pages/wcl/landing-parts.wcl"   // the landing components + stylesheet
 import "./pages/wcl/index.wcl"
 
 // Reference book — Introduction.

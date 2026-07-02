@@ -47,6 +47,33 @@ fn writes_one_md_per_page() {
 }
 
 #[test]
+fn region_children_render_in_place() {
+    // A named `region` slots into an HTML template; Markdown has no
+    // template, so the region's children render where the block sits
+    // instead of being dropped.
+    let (_t, out) = build(
+        "page index {\n  region \"hero\" {\n    h1 \"Welcome\"\n  }\n  p \"Body.\"\n  region \"footer\" {\n    p \"Footer note.\"\n  }\n}\n",
+    );
+    let md = read(&out, "index.md");
+    assert!(
+        md.contains("# Welcome"),
+        "hero region heading survives:\n{md}"
+    );
+    assert!(md.contains("Body."), "default content survives:\n{md}");
+    assert!(
+        md.contains("Footer note."),
+        "footer region content survives:\n{md}"
+    );
+    let hero = md.find("# Welcome").expect("hero present");
+    let body = md.find("Body.").expect("body present");
+    let foot = md.find("Footer note.").expect("footer present");
+    assert!(
+        hero < body && body < foot,
+        "region content renders in document order:\n{md}"
+    );
+}
+
+#[test]
 fn skill_site_is_skipped_and_rejected_when_named() {
     // A `:ai_skill` site alongside a plain markdown site: the markdown target
     // skips the skill site, and naming it with `--site` is an error.

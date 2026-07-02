@@ -1,70 +1,165 @@
 // WCL landing page. `start = true` makes it the page served at `/`.
-// `template = :landing` renders the bespoke marketing design (HTML/CSS,
-// see landing.wcl) for the HTML build; that template ignores `c.content`,
-// so the wdoc blocks below exist purely so the Markdown / PDF backends —
-// which don't run the template — still get a sensible page.
+// Rendered through the stdlib `website` template: the warning banner and
+// the footer are named `region`s (slotted by the template), everything
+// else is ordinary page content built from the landing components in
+// landing-parts.wcl. The same content degrades to the Markdown / PDF
+// backends — no parallel fallback copy needed.
 
-// The optional views each member ships (empty lists when nobody does) —
-// appended to a member's entry as extra links.
+// The wskill registry, discovered from the `include`s in main.wcl: every
+// member's book, plus the optional deck / training views (their entry
+// files exist only when a member ships that view).
+let wskill_books   = included_sites({ folder: "wskills", entry: "wdoc/book/main.wcl" })
 let wskill_decks   = included_sites({ folder: "wskills", entry: "wdoc/presentation/main.wcl", prefix: "decks" })
 let wskill_courses = included_sites({ folder: "wskills", entry: "wdoc/training/main.wcl", prefix: "training" })
+
+// Extra ` · [deck](…) · [course](…)` links appended to a member's card
+// when it ships those views.
 let wskill_view_links = fn(n: utf8) -> utf8 {
   let d = join(map(filter(wskill_decks,   fn(x: IncludeEntry) -> bool { x.name == n }), fn(x: IncludeEntry) -> utf8 { $" · [deck](./${x.href})" }), "");
   let c = join(map(filter(wskill_courses, fn(x: IncludeEntry) -> bool { x.name == n }), fn(x: IncludeEntry) -> utf8 { $" · [course](./${x.href})" }), "");
   $"${d}${c}"
 }
 
-page index { sites = [:wcl]  title = "Why WCL?"  start = true  template = :landing
-  callout "Heavy development — not production ready" {
-    class = ["warning"]
-    body  = "WCL is under **heavy active development** and is **not ready for production use**. The language, APIs, and `wdoc` output can change at any time without notice."
+// Card icon per wskill; new members fall back to a generic book.
+let wskill_icon = fn(n: utf8) -> utf8
+  if n == "wcl" { "lucide.code-xml" }
+  else if n == "wdoc" { "lucide.file-text" }
+  else if n == "wskill" { "lucide.book-open" }
+  else { "lucide.book" }
+
+// One reference card per wskill book (data for `lp_cards`).
+let ref_cards = map(wskill_books, fn(s: IncludeEntry) -> LpRefCard {
+  {
+    name: s.name,
+    summary: s.summary ?? "",
+    href: $"./${s.href}",
+    icon: wskill_icon(s.name),
+    links: wskill_view_links(s.name),
+  }
+})
+
+// Every published view as a footer link (books, then decks, then courses).
+let ref_links = flatten([
+  map(wskill_books,   fn(s: IncludeEntry) -> LpFootlink { { label: s.name, href: $"./${s.href}" } }),
+  map(wskill_decks,   fn(s: IncludeEntry) -> LpFootlink { { label: $"${s.name} deck", href: $"./${s.href}" } }),
+  map(wskill_courses, fn(s: IncludeEntry) -> LpFootlink { { label: $"${s.name} course", href: $"./${s.href}" } }),
+])
+
+page index { sites = [:wcl]  title = "Why WCL?"  start = true
+  region "banner" {
+    callout "Heavy development — not production ready." {
+      class = ["warning"]
+      body  = "The language, APIs, and `wdoc` output can change at any time without notice."
+    }
   }
 
-  h1 "Why WCL?"
-
-
-  p "WCL was created out of my desire to have a language that could express most forms of data in a natural way."
-
-  p "This then enables a lot of different use cases. Detailed configurations, WDoc which lets you model the data in a format that makes sense and then present multiple views on it."
-
-  h2 "Reference"
-
-  p "WCL's reference is published as **wskills** — self-contained WCL models, each projected into a book (linked below) and a Claude Code skill. The [wdoc Reference](reference:index) book documents the documentation generator's blocks."
-
-  // One linked entry per wskill under docs/wskills/, discovered and built by the
-  // `include` in main.wcl. Title / summary come from each member's book site; the
-  // `wskills/<name>/` href is root-relative (this landing is the root site).
-  // Members that ship the optional deck / training views get extra links (their
-  // entry files exist only when a member ships that view).
-  wdoc_repeater { each = included_sites({ folder: "wskills", entry: "wdoc/book/main.wcl" })  as = :s
-    p $"**[${s.title}](./${s.href})**${match s.summary { none => "", su => $" — ${su}" }}${wskill_view_links(s.name)}"
+  lp_hero "One language for every shape of data." {
+    badge    = "Typed configuration & schema language"
+    lede     = "WCL lets you express structured data the way it actually is — records, unions, interfaces, and decorators — gather it into a document model that validates itself, then project that single model into config, HTML, Markdown, books, and Claude skills."
+    footnote = "Open source · built in the open by Wil Taylor"
+    lp_cta "Get started"  { href = "#start"  primary = true }
+    lp_cta "View source"  { href = "https://github.com/wiltaylor/wcl" }
   }
 
-  h2 "A taste"
+  lp_showcase {
+    id      = taste
+    eyebrow = "A taste"
+    heading = "A document is fields and blocks. A schema is the rules they follow."
+    body    = "Declare your types with decorators that describe how raw syntax maps onto them — `@inline`, `@default`, `@children`. The data reads like the thing it describes, and the document model validates the whole shape before anything downstream sees it."
+    code wcl {
+      filename = "service.wcl"
+      source = <<'WCL'
+        @block("service")
+        type Service {
+          @inline(0)   name: utf8     // service "web" → name = "web"
+          @default(80) port: u32
+          region: utf8
+        }
 
-  p "A document is fields and blocks; a schema declared with decorators validates the structure."
+        @document
+        type Config {
+          @children("service") services: list<Service>
+        }
 
-  code wcl {
-    source = <<'WCL'
-      @block("service")
-      type Service {
-        @inline(0)   name: utf8     // service "web" → name = "web"
-        @default(80) port: u32
-        region: utf8
-      }
+        service "web" {
+          region = "us-east-1"
+        }
+        service "api" {
+          port   = 9090u32
+          region = "eu-west-1"
+        }
+        WCL
+    }
+  }
 
-      @document
-      type Config {
-        @children("service") services: list<Service>
-      }
+  lp_features {
+    id      = features
+    eyebrow = "Why WCL"
+    title   = "Built to express data naturally — and keep it honest."
+    lede    = "A small, typed core that scales from a single config file to a complete documented model."
 
-      service "web" {
-        region = "us-east-1"
+    lp_feature "Flexible structure" {
+      icon = "lucide.blocks"
+      body = "Map almost any data structure with a statically typed core — records, vectors and tensors, union types, interfaces, and decorators that bind surface syntax to your model. Express the shapes you actually have, checked before runtime."
+    }
+    lp_feature "Schemas" {
+      icon = "lucide.shield-check"
+      body = "Declare a schema once and easily validate your data against it — types, required fields, and constraints all checked, so mistakes surface before anything downstream runs."
+    }
+    lp_feature "Natural, block-based syntax" {
+      icon = "lucide.braces"
+      body = "Blocks and fields read like the thing you're describing — `service \"web\" { … }` — not a wall of nested brackets."
+    }
+    lp_feature "One format, multiple uses" {
+      icon = "lucide.share-2"
+      body = "The same WCL format is equally at home as typed application configuration and as the source for documentation — pages, sites, books, and Claude skills rendered with wdoc."
+    }
+    lp_feature "Data–presentation separation" {
+      icon = "lucide.component"
+      body = "Keep your data model separate from how it's shown. Project the same typed data structures into documentation — many views and layouts over one validated source, with no copy-paste."
+    }
+    lp_feature "Rich diagram support" {
+      icon = "lucide.workflow"
+      body = "wdoc draws diagrams straight from WCL — flowcharts, sequence and state diagrams, charts, timelines, trees, and class/DB tables — with automatic layout and edge routing, themed to match the page."
+    }
+  }
+
+  lp_cards {
+    id      = reference
+    eyebrow = "Reference"
+    title   = "The manuals"
+    lede    = "Each reference is published as a **wskill** — a self-contained WCL model projected into both a readable book and a Claude Code skill. The [wdoc Reference](reference:index) book documents the documentation generator's blocks."
+    cards   = ref_cards
+  }
+
+  lp_steps {
+    id      = start
+    eyebrow = "Getting started"
+    title   = "Install it and scaffold your first project."
+    lede    = "Grab a prebuilt binary with the install script, then let `wcl init` scaffold a ready-to-build project — a book, a presentation deck, and more."
+
+    lp_step "Install the CLI"          { command = "curl -fsSL https://wcl.dev/install.sh | sh -s -- --pre" }
+    lp_step "Scaffold a new book"      { command = "wcl init book ./my-book" }
+    lp_step "…or a presentation deck"  { command = "wcl init presentation ./my-deck" }
+  }
+
+  region "footer" {
+    lp_footer {
+      brand     = "wcl.dev"
+      tagline   = "A typed configuration and schema language. Open source, built in the open."
+      copyright = "© 2026 WCL · Wil Taylor"
+      note      = "Heavy development — not production ready"
+
+      lp_footcol "WCL" {
+        lp_footlink "Home"            { href = "index" }
+        lp_footlink "Features"        { href = "#features" }
+        lp_footlink "Getting started" { href = "#start" }
       }
-      service "api" {
-        port   = 9090u32
-        region = "eu-west-1"
+      lp_footcol "Reference" { links = ref_links }
+      lp_footcol "Project" {
+        lp_footlink "GitHub" { href = "https://github.com/wiltaylor/wcl" }
+        lp_footlink "Issues" { href = "https://github.com/wiltaylor/wcl/issues" }
       }
-      WCL
+    }
   }
 }

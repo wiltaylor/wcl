@@ -110,11 +110,17 @@ let wdoc_head_raw = fn(html: utf8) -> list<HtmlFundamental> [
 // IMPORTANT: this heredoc is emitted verbatim into the page <style>, so
 // it must be pure CSS — never a `//` line (CSS has no `//` comment).
 let website_css = <<CSS
+  html { scroll-padding-top: 4.5rem; }
   .ws-header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding: 0.9rem clamp(1rem, 5vw, 3rem); background: var(--wdoc-bg, #fff); border-bottom: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); }
   .ws-header .ws-brand { font-weight: 700; font-size: 1.15rem; color: inherit; text-decoration: none; }
   .ws-header ul.menu { list-style: none; margin: 0; padding: 0; display: flex; gap: 1.25rem; align-items: center; }
   .ws-header ul.menu a { color: inherit; text-decoration: none; opacity: 0.85; }
   .ws-header ul.menu a:hover, .ws-header ul.menu a.current { opacity: 1; color: var(--wdoc-accent, inherit); }
+  .ws-header .ws-controls { display: flex; align-items: center; gap: 0.6rem; }
+  .ws-header .ws-controls .wdoc-search { margin: 0; min-width: 12rem; }
+  .ws-header .ws-controls .theme-toggle { margin: 0; padding: 0.25rem 0.7rem; cursor: pointer; background: transparent; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.4)); border-radius: 999px; color: inherit; font: inherit; font-size: 0.8rem; white-space: nowrap; }
+  .ws-header .ws-controls .theme-toggle:hover { border-color: var(--wdoc-border-strong, rgba(127,127,127,0.7)); }
+  .ws-banner { border-bottom: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); padding: 0 clamp(1rem, 5vw, 3rem); }
   .ws-hero { padding: clamp(3rem, 10vw, 6rem) clamp(1rem, 5vw, 3rem); text-align: center; background: color-mix(in srgb, var(--wdoc-accent, #4060ff) 12%, var(--wdoc-bg)); border-bottom: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); }
   .ws-hero h1 { font-size: clamp(2rem, 6vw, 3.5rem); margin: 0 0 0.75rem; }
   .ws-layout { display: grid; grid-template-columns: 1fr; gap: 2.5rem; max-width: 70rem; margin: 0 auto; padding: clamp(2rem, 5vw, 3.5rem) clamp(1rem, 5vw, 3rem); box-sizing: border-box; }
@@ -134,7 +140,9 @@ let wdoc_part_website_css = fn() -> list<HtmlFundamental> [
 ]
 
 // The sticky site header: the title as a home link plus the curated
-// `menu` (or a flat link per page when no `menu` is declared).
+// `menu` (or a flat link per page when no `menu` is declared), and a
+// right-side controls cluster — the search box and the light/dark theme
+// toggle — when the site enables them (`search` / `theme_toggle`).
 let website_header = fn(c: TemplateCtx) -> HtmlFundamental
   HtmlFundamental::Element {
     tag: "header", id: none, class: ["ws-header"], attrs: none,
@@ -160,8 +168,23 @@ let website_header = fn(c: TemplateCtx) -> HtmlFundamental
       } else {
         wdoc_part_menu_tree(c.menu)
       },
+      website_header_controls(c),
     ]),
   }
+
+// The header's right-side controls: search + theme toggle, wrapped in a
+// `.ws-controls` cluster. Empty when neither feature is enabled, so
+// sites that set neither flag get exactly the header they had before.
+let website_header_controls = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  if c.search || c.theme_toggle {
+    [ HtmlFundamental::Element {
+        tag: "div", id: none, class: ["ws-controls"], attrs: none,
+        children: flatten([
+          wdoc_part_search_box(c.search),
+          wdoc_part_theme_toggle(c.theme_toggle),
+        ]),
+    } ]
+  } else { [] }
 
 // A named region wrapped in `<tag class>`, or nothing when the page
 // declares no such region (so the wrapper is never emitted empty).
@@ -211,13 +234,15 @@ let website_footer = fn(c: TemplateCtx) -> HtmlFundamental {
   }
 }
 
-// The full default `website` layout: style, header, optional hero region,
-// the content body (+ optional sidebar), and the footer. The `website`
-// template is exactly this — copy its body and swap parts to retheme.
+// The full default `website` layout: style, header, optional banner and
+// hero regions, the content body (+ optional sidebar), and the footer.
+// The `website` template is exactly this — copy its body and swap parts
+// to retheme.
 let wdoc_website_layout = fn(c: TemplateCtx) -> list<HtmlFundamental>
   flatten([
     wdoc_part_website_css(),
     [ website_header(c) ],
+    website_region_section(c, "banner", "div", "ws-banner"),
     website_region_section(c, "hero", "section", "ws-hero"),
     [ website_body(c) ],
     [ website_footer(c) ],

@@ -4220,6 +4220,74 @@ page index {
 }
 
 #[test]
+fn website_template_header_controls_and_banner_region() {
+    // `theme_toggle = true` puts the standard light/dark toggle in the
+    // header's `.ws-controls` cluster, and a `region "banner"` renders in
+    // a `.ws-banner` strip between the header and the content.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("site.wcl");
+    write_fixture(
+        &src,
+        r#"
+site { default_template = :website  title = "Acme"  theme_toggle = true }
+page index {
+  region "banner" {
+    p "Heads up." {}
+  }
+  h2 "Body heading" {}
+}
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("class=\"ws-controls\""),
+        "theme_toggle should add the header controls cluster:\n{html}"
+    );
+    assert!(
+        html.contains("<button class=\"theme-toggle\" onclick=\"wdocToggleTheme()\">"),
+        "the standard theme toggle should render in the header:\n{html}"
+    );
+    assert!(
+        html.contains("<div class=\"ws-banner\"><p>Heads up.</p>"),
+        "the banner region should render in the .ws-banner strip:\n{html}"
+    );
+    let banner_at = html.find("ws-banner").expect("banner present");
+    let main_at = html.find("<main class=\"ws-main\"").expect("main present");
+    assert!(
+        banner_at < main_at,
+        "the banner should render before the content:\n{html}"
+    );
+}
+
+#[test]
+fn website_template_header_has_no_controls_without_flags() {
+    // A site that enables neither `search` nor `theme_toggle` gets no
+    // `.ws-controls` cluster at all — the header is exactly as before.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("site.wcl");
+    write_fixture(
+        &src,
+        r#"
+site { default_template = :website  title = "Acme" }
+page index { h2 "Body heading" {} }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // (The `.ws-controls` / `.theme-toggle` CSS rules still ship in the
+    // template's <style>; only the markup must be absent.)
+    assert!(
+        !html.contains("class=\"ws-controls\"") && !html.contains("<button class=\"theme-toggle\""),
+        "a no-flag site's header must not grow a controls cluster:\n{html}"
+    );
+}
+
+#[test]
 fn site_head_fields_inject_link_and_script_tags() {
     // A site's `stylesheets` / `fonts` become `<link rel="stylesheet">`
     // and `scripts` become deferred `<script>`, all inside <head> — never

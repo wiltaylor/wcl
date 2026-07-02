@@ -1,111 +1,27 @@
-// The `website` built-in template: a Hugo-style website project where you
-// own the HTML/CSS design and slot wdoc-rendered content into it.
-//
-//   wcl init website ./my-site
-//
-// Layout it generates:
-//   main.wcl           — imports + the `site` (default template, head assets)
-//   theme.wcl          — your custom `template`, authored as raw HTML + slots
-//   components.wcl     — starter landing components (hero / features / steps /
-//                        footer), themed via `--wdoc-*` — edit or replace them
-//   content.wcl        — the page: components + regions + default content
-//   assets/site.css    — the design's stylesheet (shipped verbatim)
-//   assets/app.js      — the design's script (shipped verbatim)
-//
-// The `site` block copies the whole `assets/` folder into the output
-// (`assets = ["assets"]`) — the same path an externally-built bundle (a
-// Vite/webpack `dist/`) takes — and links it via `stylesheets` / `scripts`.
-//
-// Only `main.wcl` interpolates a scaffold answer (`${answer("name")}`), so
-// it uses an interpolating heredoc; the others are raw (`<<'TAG'`) so their
-// `${c.content}` / `$<<HTML …` / `$"…"` slots reach the generated files
-// verbatim and are evaluated by `wcl wdoc build`, not at scaffold time.
-import <scaffold.wcl>
-
-property "name" {
-  prompt = "Site name"
-  default = "my-site"
-}
-
-file "main.wcl" {
-  content = $<<MAIN
-// Project root: pull in the wdoc schema, your layout + components +
-// content, then declare the site. `assets = ["assets"]` copies the folder
-// verbatim into the build output; `stylesheets` / `scripts` link the
-// copied files into every page `<head>`. `theme_toggle = true` puts the
-// standard light/dark toggle in the header (see theme.wcl).
-import <wdoc.wcl>
-import "./theme.wcl"
-import "./components.wcl"
-import "./content.wcl"
-
-site web {
-  default_template = :site_main
-  title        = "${answer("name")}"
-  root         = true
-  theme_toggle = true
-  assets       = ["assets"]
-  stylesheets  = ["assets/site.css"]
-  scripts      = ["assets/app.js"]
-}
-MAIN
-}
-
-file "theme.wcl" {
-  content = <<'THEME'
-// Your website layout. Paste a design here (a Figma export, a Claude
-// artifact, a hand-built theme) and mark the slots:
-//
-//   ${c.title}                — the site title
-//   ${c.content}              — the page's default content (everything
-//                               outside a `region`)
-//   ${wdoc_region(c, "name")} — a named `region "name" { … }` block, or ""
-//
-// Raw HTML and stdlib parts compose freely: the header below is raw HTML
-// split around `wdoc_part_theme_toggle` (the standard light/dark button),
-// and `wdoc_head_*` helpers add `<head>` content (here, a viewport meta);
-// the site's `stylesheets` / `scripts` add the rest.
-template site_main {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
-    flatten([
-      wdoc_head_meta("viewport", "width=device-width, initial-scale=1"),
-      [ HtmlFundamental::Raw { html: $<<HTML
-        <header class="nav">
-          <a class="brand" href="index.html">${c.title}</a>
-          <nav><a href="#features">Features</a><a href="#start">Get started</a></nav>
-        HTML
-      } ],
-      wdoc_part_theme_toggle(c.theme_toggle),
-      [ HtmlFundamental::Raw { html: $<<HTML
-        </header>
-        <main class="content">${c.content}</main>
-        <footer class="foot">${wdoc_region(c, "footer")}</footer>
-      HTML
-      } ],
-    ])
-}
-THEME
-}
-
-file "components.wcl" {
-  content = <<'COMPONENTS'
-// Starter landing components: `lp_hero` (+ `lp_cta` buttons),
-// `lp_features` (+ `lp_feature` cards), `lp_steps` (+ `lp_step` rows),
-// and `lp_footer` (+ `lp_footcol` / `lp_footlink`). Each is an ordinary
+// Landing-page components for the `wcl` site. Each is an ordinary
 // user-declared `@block(...) extends WdocBlock` whose `lower` builds a
-// semantic element tree, so the same content renders as HTML here and
-// degrades to sensible Markdown / PDF (headings stay headings, links
-// ride `Inline` markdown text, chrome drops away). Edit them, restyle
-// them, or replace them with your own.
+// semantic element tree, so the same page content renders through the
+// `website` template for HTML and degrades to sensible Markdown / PDF
+// (headings stay headings, links ride `Inline` markdown text, chrome —
+// icons, filename bars, backdrops — drops away silently).
+//
+// Children are rendered from the parent's materialised `@children`
+// records (top-level `lp_*_el` helpers), not via a `Children {}` slot —
+// the slot is HTML-only, and building the whole tree in the `lower`
+// keeps all three backends consistent.
 //
 // Everything paints from `var(--wdoc-*, fallback)`, so the design
-// follows the site `theme` / `accent` and the standard theme toggle.
+// follows the site `theme` / `accent` and the standard wdoc theme
+// toggle — no bespoke palette, no parallel toggle script.
 
+// ── Styling ──────────────────────────────────────────────────────────
 // IMPORTANT: the heredoc is emitted verbatim into <head>, so it must be
 // pure CSS — never a `//` line (CSS has no `//` comment).
-stylesheet "site-components" {
-  sites = [:web]
+stylesheet "wcl-landing" {
+  sites = [:wcl]
   css = <<CSS
+    .ws-banner .callout { display: flex; align-items: center; justify-content: center; gap: 0.75rem; max-width: 70rem; margin: 0 auto; padding: 0.45rem 1rem; border: 0; border-radius: 0; background: none; font-size: 0.85rem; }
+    .ws-banner .callout-title, .ws-banner .callout-body p { margin: 0; }
     .lp-hero { position: relative; text-align: center; padding: 4.5rem 0 3rem; }
     .lp-hero > :not(.lp-hero-bg) { position: relative; }
     .lp-hero-bg { position: absolute; inset: 0; pointer-events: none; opacity: 0.55; background-image: linear-gradient(var(--wdoc-border, rgba(127,127,127,0.25)) 1px, transparent 1px), linear-gradient(90deg, var(--wdoc-border, rgba(127,127,127,0.25)) 1px, transparent 1px); background-size: 44px 44px; -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 0%, transparent 72%); mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 0%, transparent 72%); }
@@ -125,16 +41,30 @@ stylesheet "site-components" {
     .lp-hero-footnote { margin-top: 1.4rem; font-size: 0.8rem; color: var(--wdoc-fg-subtle, inherit); }
     .lp-section { padding: 2.75rem 0 1rem; }
     .lp-section-head { display: block; text-align: center; max-width: 60ch; margin: 0 auto 2.25rem; }
-    .lp-section-head h2 { margin: 0.7rem 0 0; font-size: 1.9rem; letter-spacing: -0.02em; line-height: 1.12; }
+    .lp-section-head h2, .lp-showcase-text h2 { margin: 0.7rem 0 0; font-size: 1.9rem; letter-spacing: -0.02em; line-height: 1.12; }
     .lp-section-head .lp-lede { margin: 0.85rem auto 0; font-size: 1rem; }
     .lp-eyebrow { margin: 0; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--wdoc-fg-subtle, inherit); }
     .lp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(17.5rem, 1fr)); gap: 1rem; }
-    .lp-card { display: flex; flex-direction: column; margin: 0; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 8px; background: var(--wdoc-bg-alt, transparent); padding: 1.4rem; }
-    .lp-card:hover { border-color: var(--wdoc-border-strong, rgba(127,127,127,0.7)); }
+    .lp-card, .lp-refcard { display: flex; flex-direction: column; margin: 0; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 8px; background: var(--wdoc-bg-alt, transparent); padding: 1.4rem; }
+    .lp-card:hover, .lp-refcard:hover { border-color: var(--wdoc-border-strong, rgba(127,127,127,0.7)); }
     .lp-card-icon { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; margin: 0 0 0.85rem; border-radius: 8px; background: color-mix(in srgb, var(--wdoc-accent, #4060ff) 14%, transparent); color: var(--wdoc-accent, #4060ff); }
     .lp-card-icon svg.wdoc-icon { width: 1.2rem; height: 1.2rem; }
     .lp-card h3 { margin: 0 0 0.4rem; font-size: 1rem; }
-    .lp-card p:last-child { margin: 0; font-size: 0.88rem; line-height: 1.6; color: var(--wdoc-fg-muted, inherit); }
+    .lp-card p:last-child, .lp-refcard p { margin: 0; font-size: 0.88rem; line-height: 1.6; color: var(--wdoc-fg-muted, inherit); }
+    .lp-refcard-head { display: flex; align-items: center; gap: 0.65rem; margin-bottom: 0.85rem; }
+    .lp-refcard-head .lp-card-icon { margin: 0; }
+    .lp-refcard-name { margin: 0; font-family: var(--wdoc-font-mono, ui-monospace, monospace); font-weight: 600; font-size: 1.05rem; color: var(--wdoc-heading, inherit); }
+    .lp-refcard-body { flex: 1; margin-bottom: 1rem; }
+    .lp-refcard-cta { font-size: 0.85rem; font-weight: 500; }
+    .lp-showcase { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.75rem; align-items: start; }
+    .lp-codepanel { margin: 0; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 8px; background: var(--wdoc-bg-alt, transparent); overflow: hidden; }
+    .lp-codehead { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.9rem; border-bottom: 1px solid var(--wdoc-border, rgba(127,127,127,0.25)); background: var(--wdoc-bg-inset, rgba(127,127,127,0.08)); font-family: var(--wdoc-font-mono, ui-monospace, monospace); font-size: 0.8rem; color: var(--wdoc-fg-muted, inherit); }
+    .lp-codehead svg.wdoc-icon { width: 0.95rem; height: 0.95rem; }
+    .lp-codetag { margin-left: auto; padding: 0.1rem 0.5rem; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 4px; font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase; }
+    .lp-code { margin: 0; padding: 1.1rem 1.25rem; overflow-x: auto; line-height: 1.65; font-size: 0.85rem; }
+    .lp-code code { background: none; border: 0; padding: 0; }
+    .lp-showcase-text { display: block; }
+    .lp-showcase-text p:last-child { margin-bottom: 0; max-width: 62ch; color: var(--wdoc-fg-muted, inherit); line-height: 1.65; }
     .lp-steps-panel { border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 8px; background: var(--wdoc-bg-alt, transparent); padding: 1.9rem; }
     .lp-steps-panel .lp-section-head { text-align: left; margin: 0 0 1.5rem; max-width: 60ch; }
     ol.lp-steps { list-style: none; counter-reset: lp-step; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1rem; }
@@ -144,7 +74,8 @@ stylesheet "site-components" {
     .lp-cmd { margin: 0; padding: 0.65rem 0.9rem; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.25)); border-radius: 6px; background: var(--wdoc-bg-inset, rgba(127,127,127,0.06)); font-size: 0.85rem; overflow-x: auto; white-space: nowrap; }
     .lp-cmd::before { content: "$ "; color: var(--wdoc-fg-subtle, inherit); font-family: var(--wdoc-font-mono, ui-monospace, monospace); }
     .lp-cmd code { background: none; border: 0; padding: 0; }
-    .lp-footgrid { max-width: 70rem; margin: 0 auto; padding: 2.75rem clamp(1rem, 5vw, 3rem); display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 2rem; }
+    footer.ws-footer { opacity: 1; text-align: left; padding: 0; }
+    .lp-footgrid { max-width: 70rem; margin: 0 auto; padding: 2.75rem clamp(1rem, 5vw, 3rem); display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 2rem; }
     .lp-footbrand p { margin: 0 0 0.75rem; }
     .lp-footlogo { display: flex; align-items: center; gap: 0.6rem; font-family: var(--wdoc-font-mono, ui-monospace, monospace); font-weight: 600; color: var(--wdoc-heading, inherit); }
     .lp-footlogo svg.wdoc-icon { width: 1.1rem; height: 1.1rem; color: var(--wdoc-accent, #4060ff); }
@@ -162,7 +93,8 @@ stylesheet "site-components" {
 
 // ── Child-element helpers ────────────────────────────────────────────
 // Top-level `let` fns so every parent `lower` can map its materialised
-// `@children` records through them.
+// `@children` records through them (lowering fns resolve free names via
+// root lets, not lexical capture).
 
 // A call-to-action button: a styled `<p><a></a></p>` whose link rides
 // the inline-pattern engine, so Markdown keeps a real `[label](href)`.
@@ -195,6 +127,35 @@ let lp_feature_el = fn(f: LpFeature) -> HtmlFundamental {
     ],
   }
 }
+
+// One reference-manual card, built from a data record (see `lp_cards`).
+let lp_refcard_el = fn(r: LpRefCard) -> HtmlFundamental
+  HtmlFundamental::Element {
+    tag: "article", id: none, class: ["lp-refcard"], attrs: none,
+    children: [
+      HtmlFundamental::Element {
+        tag: "header", id: none, class: ["lp-refcard-head"], attrs: none,
+        children: [
+          HtmlFundamental::Element {
+            tag: "p", id: none, class: ["lp-card-icon"], attrs: none,
+            children: [ HtmlFundamental::Icon { name: r.icon, class: none } ],
+          },
+          HtmlFundamental::Element {
+            tag: "p", id: none, class: ["lp-refcard-name"], attrs: none,
+            children: [ HtmlFundamental::Inline { text: $"**${r.name}**" } ],
+          },
+        ],
+      },
+      HtmlFundamental::Element {
+        tag: "p", id: none, class: ["lp-refcard-body"], attrs: none,
+        children: [ HtmlFundamental::Inline { text: r.summary } ],
+      },
+      HtmlFundamental::Element {
+        tag: "p", id: none, class: ["lp-refcard-cta"], attrs: none,
+        children: [ HtmlFundamental::Inline { text: $"[Read the manual](${r.href})${r.links}" } ],
+      },
+    ],
+  }
 
 // One getting-started step: a numbered row (the number is a CSS counter)
 // with a title and a command line rendered as inline code.
@@ -232,9 +193,10 @@ let lp_footcol_el = fn(col: LpFootcol) -> HtmlFundamental {
   }
 }
 
-// The eyebrow / title / lede header shared by the section wrappers. The
-// wrapper is a `<header>` (not a `<div>`) so Markdown descends into it
-// as blocks and the `<h2>` survives as a `##` heading.
+// The eyebrow / title / lede header shared by the section wrappers.
+// `cls` is the wrapping class ("lp-section-head"); the wrapper is a
+// `<header>` (not a `<div>`) so Markdown descends into it as blocks and
+// the `<h2>` survives as a `##` heading. Absent fields render nothing.
 let lp_section_head = fn(eyebrow: utf8, title: utf8, lede: utf8, cls: utf8) -> list<HtmlFundamental> {
   let parts = flatten([
     if eyebrow == none || eyebrow == "" { [] }
@@ -381,6 +343,110 @@ type LpFeature extends WdocBlock {
   lower = fn(f: LpFeature) -> list<HtmlFundamental> [ lp_feature_el(f) ]
 }
 
+// A reference card record for `lp_cards` (built with `map(...)` from
+// `included_sites(...)` data, so the grid stays discovery-driven).
+type LpRefCard {
+  name: utf8
+  summary: utf8
+  href: utf8
+  icon: utf8
+  @doc("Extra markdown appended to the CTA line, e.g. ` · [deck](…)`.")
+  links: utf8
+}
+
+// A data-driven card grid: same shell as `lp_features`, but the cards
+// come from a value field instead of child blocks.
+@block("lp_cards")
+type LpCards extends WdocBlock {
+  eyebrow: utf8?
+  title: utf8?
+  lede: utf8?
+  id: identifier?
+  cards: list<LpRefCard>?
+
+  lower = fn(b: LpCards) -> list<HtmlFundamental> {
+    let cards = if b.cards == none { [] } else { b.cards };
+    [
+      HtmlFundamental::Element {
+        tag: "section", id: b.id, class: ["lp-section"], attrs: none,
+        children: flatten([
+          lp_section_head(b.eyebrow, b.title, b.lede, "lp-section-head"),
+          if len(cards) == 0 { [] }
+          else {
+            [ HtmlFundamental::Element {
+                tag: "section", id: none, class: ["lp-grid"], attrs: none,
+                children: map(cards, lp_refcard_el),
+            } ]
+          },
+        ]),
+      },
+    ]
+  }
+}
+
+// A code showcase: a filename-chromed, syntax-highlighted panel (fed by
+// a nested stdlib `code` block) above the explanatory text. The chrome
+// (filename bar, language tag) is `Raw`, so Markdown drops it and keeps
+// just the fenced listing.
+@block("lp_showcase")
+type LpShowcase extends WdocBlock {
+  heading: utf8
+  body: utf8
+  eyebrow: utf8?
+  id: identifier?
+  @children("code") snippets: list<Code>?
+
+  lower = fn(b: LpShowcase) -> list<HtmlFundamental> {
+    let snips = if b.snippets == none { [] } else { b.snippets };
+    let panel =
+      if len(snips) == 0 { [] }
+      else {
+        let sn = at(snips, 0);
+        let fname = if sn.filename == none { "" } else { sn.filename };
+        let lang = format("{}", sn.language);
+        [
+          HtmlFundamental::Element {
+            tag: "figure", id: none, class: ["lp-codepanel"], attrs: none,
+            children: [
+              HtmlFundamental::Element {
+                tag: "figcaption", id: none, class: ["lp-codehead"], attrs: none,
+                children: [
+                  HtmlFundamental::Icon { name: "lucide.file-text", class: none },
+                  HtmlFundamental::Element {
+                    tag: "span", id: none, class: ["lp-codename"], attrs: none,
+                    children: [ HtmlFundamental::Raw { html: fname } ],
+                  },
+                  HtmlFundamental::Element {
+                    tag: "span", id: none, class: ["lp-codetag"], attrs: none,
+                    children: [ HtmlFundamental::Raw { html: lang } ],
+                  },
+                ],
+              },
+              HtmlFundamental::Element {
+                tag: "pre", id: none, class: ["lp-code"], attrs: none,
+                children: [
+                  HtmlFundamental::Element {
+                    tag: "code", id: none, class: [format("language-{}", lang)], attrs: none,
+                    children: [ HtmlFundamental::Highlighted { source: sn.source, language: lang } ],
+                  },
+                ],
+              },
+            ],
+          },
+        ]
+      };
+    [
+      HtmlFundamental::Element {
+        tag: "section", id: b.id, class: ["lp-section", "lp-showcase"], attrs: none,
+        children: flatten([
+          panel,
+          lp_section_head(b.eyebrow, b.heading, b.body, "lp-showcase-text"),
+        ]),
+      },
+    ]
+  }
+}
+
 // A getting-started panel: header plus numbered steps, each a title over
 // a command line.
 @block("lp_steps")
@@ -517,100 +583,4 @@ type LpFootlink extends WdocBlock {
       children: [ HtmlFundamental::Inline { text: $"[${l.label}](${l.href})" } ],
     },
   ]
-}
-COMPONENTS
-}
-
-file "content.wcl" {
-  content = <<'CONTENT'
-// The page content, authored in wdoc from the starter components in
-// components.wcl. `region` blocks render into the matching
-// `${wdoc_region(c, "name")}` slot in theme.wcl; everything else becomes
-// the default `${c.content}`.
-page index { sites = [:web]  start = true
-  lp_hero "Build something great" {
-    badge    = "A wdoc starter"
-    lede     = "A starter website — the layout lives in theme.wcl, the components in components.wcl, the design in assets/site.css, and the words live here."
-    footnote = "Built with WCL + wdoc."
-    lp_cta "Get started" { href = "#start"  primary = true }
-    lp_cta "Learn wdoc"  { href = "https://wcl.dev/wskills/wdoc/" }
-  }
-
-  lp_features {
-    id      = features
-    eyebrow = "Features"
-    title   = "Everything is a block."
-    lede    = "Edit these cards in content.wcl — or open components.wcl and change what a card is."
-
-    lp_feature "Your layout" {
-      icon = "lucide.layout-template"
-      body = "The `site_main` template in theme.wcl is raw HTML with slots — paste any design and mark where the content goes."
-    }
-    lp_feature "Your components" {
-      icon = "lucide.blocks"
-      body = "Each `lp_*` block lowers to semantic HTML and degrades to clean Markdown. Copy one to invent your own."
-    }
-    lp_feature "Any wdoc block" {
-      icon = "lucide.sparkles"
-      body = "Headings, lists, code, tables, diagrams — everything outside a `region` lands in the default content slot."
-    }
-  }
-
-  lp_steps {
-    id      = start
-    eyebrow = "Getting started"
-    title   = "Build and serve it."
-    lede    = "The dev server rebuilds on Enter; the build writes a static site."
-
-    lp_step "Serve with live preview" { command = "wcl wdoc serve main.wcl" }
-    lp_step "Build the static site"   { command = "wcl wdoc build main.wcl --out _site" }
-  }
-
-  region "footer" {
-    lp_footer {
-      brand   = "my-site"
-      tagline = "A starter website built with WCL + wdoc."
-      note    = "Edit this footer in content.wcl."
-
-      lp_footcol "Site" {
-        lp_footlink "Home"     { href = "index" }
-        lp_footlink "Features" { href = "#features" }
-      }
-      lp_footcol "wdoc" {
-        lp_footlink "wcl.dev"        { href = "https://wcl.dev/" }
-        lp_footlink "wdoc reference" { href = "https://wcl.dev/wskills/wdoc/" }
-      }
-    }
-  }
-}
-CONTENT
-}
-
-file "assets/site.css" {
-  content = <<'CSS'
-/* The design's shell (header, content column, footer). Shipped verbatim
-   and linked into every page <head>. It paints from var(--wdoc-*)
-   fallbacks so it follows the site theme and the theme toggle; replace
-   it with your own (or an externally-built bundle). */
-* { box-sizing: border-box; }
-body { margin: 0; }
-.nav { display: flex; align-items: center; gap: 1.5rem; padding: 0.9rem clamp(1rem, 5vw, 3rem); border-bottom: 1px solid var(--wdoc-border, #e6e8ee); position: sticky; top: 0; z-index: 10; background: var(--wdoc-bg, #fff); }
-.nav .brand { font-weight: 700; font-size: 1.15rem; text-decoration: none; color: inherit; }
-.nav nav { margin-left: auto; display: flex; gap: 1.25rem; }
-.nav nav a { color: inherit; opacity: 0.8; text-decoration: none; }
-.nav nav a:hover { opacity: 1; color: var(--wdoc-accent, #4060ff); }
-.nav .theme-toggle { margin: 0; padding: 0.25rem 0.7rem; cursor: pointer; background: transparent; border: 1px solid var(--wdoc-border, #dcdfe4); border-radius: 999px; color: inherit; font: inherit; font-size: 0.8rem; white-space: nowrap; }
-.nav .theme-toggle:hover { border-color: var(--wdoc-border-strong, #b6bbc4); }
-.content { max-width: 70rem; margin: 0 auto; padding: 1rem clamp(1rem, 5vw, 3rem) 3rem; }
-.foot { border-top: 1px solid var(--wdoc-border, #e6e8ee); }
-html { scroll-padding-top: 4.5rem; }
-CSS
-}
-
-file "assets/app.js" {
-  content = <<'JS'
-// The design's script — shipped verbatim and loaded (deferred) on every
-// page. Replace with your own bundle.
-console.log("site ready");
-JS
 }

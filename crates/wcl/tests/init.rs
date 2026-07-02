@@ -82,6 +82,7 @@ fn init_website_scaffold_checks_and_builds() {
     for rel in [
         "main.wcl",
         "theme.wcl",
+        "components.wcl",
         "content.wcl",
         "assets/site.css",
         "assets/app.js",
@@ -90,7 +91,7 @@ fn init_website_scaffold_checks_and_builds() {
     }
     let main = std::fs::read_to_string(dest.join("main.wcl")).expect("read main.wcl");
     assert!(
-        main.contains("title       = \"Acme Co\""),
+        main.contains("title        = \"Acme Co\""),
         "website: site title not substituted: {main}"
     );
 
@@ -116,7 +117,7 @@ fn init_website_scaffold_checks_and_builds() {
     );
     assert!(
         html.contains("Build something great"),
-        "website: hero region not rendered: {html}"
+        "website: hero component not rendered: {html}"
     );
     assert!(
         dest.join("_site/assets/site.css").exists(),

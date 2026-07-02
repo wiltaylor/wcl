@@ -66,6 +66,14 @@ fn collect_block(
         }
         return;
     }
+    // A named `region` slots into an HTML template; a PDF has no template,
+    // so its children render in place.
+    if kind == "region" {
+        for child in block.blocks() {
+            collect_block(doc, &child, patterns, base_dir, out);
+        }
+        return;
+    }
     // Diagrams (and charts/tilemaps within them) already render to a complete
     // SVG in Rust. If the diagram has `card` shapes (foreignObject boxes), the
     // SVG draws everything but the card content, and each card body is collected

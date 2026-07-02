@@ -144,6 +144,13 @@ impl Emitter<'_> {
                     self.block(&c, out)?;
                 }
             }
+            // A named `region` slots into an HTML template; Markdown has no
+            // template, so its children render in place.
+            "region" => {
+                for c in block.blocks() {
+                    self.block(&c, out)?;
+                }
+            }
             // Diagrams (and the charts / timelines / maps / tilemaps nested in
             // them) render to one self-contained static SVG.
             "diagram" => {
