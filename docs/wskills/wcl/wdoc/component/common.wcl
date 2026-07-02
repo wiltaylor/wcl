@@ -9,6 +9,7 @@
 
 import <wdoc.wcl>
 import "../../schema/base.wcl"
+import "../../schema/builtins.wcl"   // Function / Parameter (fn_signature)
 
 // A flattened cross-reference row: every unit projected to a uniform
 // { id, name, href, related } so a unit's `related` ids resolve to links and
@@ -20,6 +21,14 @@ type UnitRef { id: identifier  name: utf8  href: utf8  related: list<identifier>
 // wherever an entity's `kind` (or an artifact's) renders as prose. Symbols
 // interpolate as `:name`, so pass the interpolated string: `kind_text($"${e.kind}")`.
 let kind_text = fn(k: utf8) -> utf8 { replace(replace(k, ":", ""), "_", " ") }
+
+// A builtin's full signature — `name(param: type, …) → ret` — the one form
+// every builtin render site (index tables, per-function page heading, the
+// skill's section headings) shares, so signatures can't drift between them.
+let fn_signature = fn(fc: Function) -> utf8 {
+  let params = join(map(fc.parameters, fn(pp: Parameter) -> utf8 { $"${pp.name}: ${pp.type ?? "?"}" }), ", ");
+  $"${fc.name}(${params})${match fc.returns { none => "", r => $" → ${r}" }}"
+}
 
 // "Examples" — examples authored against this unit (`example.unit == id`).
 wdoc_component unit_examples {

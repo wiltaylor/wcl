@@ -89,7 +89,7 @@ page builtins_ref { sites = [:skill]  title = $"${topic.name} — builtin functi
   wdoc_repeater { each = fn_categories  as = :cat
     wdoc_repeater { each = match len(functions_in(cat.slug)) { 0 => [], _ => [true] }  as = :_ch  h2 $"${cat.name}" }
     wdoc_repeater { each = functions_in(cat.slug)  as = :fc
-      h3 $"${fc.name}(${join(map(fc.parameters, fn(p: Parameter) -> utf8 { $"${p.name}: ${p.type ?? "?"}" }), ", ")})${match fc.returns { none => "", r => $" → ${r}" }}"
+      h3 $"${fn_signature(fc)}"
       wdoc_repeater { each = match fc.description { none => [], d => [d] }  as = :d  p $"${d}" }
       wdoc_repeater { each = match len(fc.parameters) + (match fc.returns { none => 0, r => 1 }) { 0 => [], _ => [true] }  as = :_pt
         table {

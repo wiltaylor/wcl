@@ -45,7 +45,10 @@ type Function {
   remarks:     utf8?
   returns:             utf8?       // return type
   returns_description: utf8?
-  @default(:book) audience: Audience
+  // Reference-library data defaults to :both — this skill promises the full
+  // builtin library, so an agent must see it (unlike prose units, which
+  // curate up from :book).
+  @default(:both) audience: Audience
   @children("parameter")    parameters: list<Parameter>
   @children("code_example") examples:   list<CodeExample>
 }

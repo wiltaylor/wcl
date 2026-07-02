@@ -6,11 +6,12 @@
 
 import <wdoc.wcl>
 import "../../schema/builtins.wcl"   // Function / Parameter / CodeExample
+import "./common.wcl"                // fn_signature
 
 wdoc_component function_body {
   wdoc_slot func
   wdoc_body {
-    h1 $"${func.name}(${join(map(func.parameters, fn(p: Parameter) -> utf8 { $"${p.name}: ${p.type ?? "?"}" }), ", ")})${match func.returns { none => "", r => $" → ${r}" }}"
+    h1 $"${fn_signature(func)}"
     wdoc_repeater { each = match func.category { none => [], c => [c] }  as = :c  p $"_Category: [${c}](builtins_${c})_" }
     wdoc_repeater { each = match func.description { none => [], d => [d] }  as = :d  p $"${d}" }
     wdoc_repeater { each = match len(func.parameters) + (match func.returns { none => 0, r => 1 }) { 0 => [], _ => [true] }  as = :_pt

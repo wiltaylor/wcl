@@ -252,12 +252,17 @@ page builtins_page {
     }
   }
 }
-// Alphabetical index of every builtin, regardless of category.
+// Alphabetical index of every builtin, regardless of category. The signature
+// (via the shared fn_signature helper) is the link text, so the index doubles
+// as a quick type reference.
 page builtins_all { title = "All functions (A–Z)"
   h1 "All builtin functions"
-  p  "Every WCL builtin in alphabetical order. Each links to its full reference page."
-  wdoc_repeater { each = sort_by(all_functions, fn(fc: Function) -> utf8 { fc.name })  as = :fc
-    p $"- [**${fc.name}**](function_${fc.id})${match fc.description { none => "", d => $" — ${d}" }}"
+  p  "Every WCL builtin in alphabetical order. Each signature links to its full reference page."
+  table {
+    header = ["Function", "Description"]
+    rows = map(sort_by(all_functions, fn(fc: Function) -> utf8 { fc.name }), fn(fc: Function) -> list<utf8> {
+      [$"[`${fn_signature(fc)}`](function_${fc.id})", fc.description ?? "—"]
+    })
   }
 }
 wdoc_repeater { each = all_functions  as = :fc
@@ -269,8 +274,11 @@ wdoc_repeater { each = fn_categories  as = :cat
   page $"builtins_${cat.slug}" { title = $"${cat.name}"
     h1 $"${cat.name}"
     p  $"${cat.blurb}"
-    wdoc_repeater { each = functions_in(cat.slug)  as = :fc
-      p $"- [**${fc.name}**](function_${fc.id})${match fc.description { none => "", d => $" — ${d}" }}"
+    table {
+      header = ["Function", "Description"]
+      rows = map(functions_in(cat.slug), fn(fc: Function) -> list<utf8> {
+        [$"[`${fn_signature(fc)}`](function_${fc.id})", fc.description ?? "—"]
+      })
     }
   }
 }

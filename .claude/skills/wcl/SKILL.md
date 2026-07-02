@@ -104,6 +104,10 @@ _Step-by-step runbooks for the day-to-day wcl workflows._
 
 - [Upgrade a document when WCL moves](references/process_upgrading_with_wcl.md)
 
+- [Builtin functions](references/builtins_ref.md) — every builtin, grouped by category
+
+- [CLI reference](references/cli_ref.md) — the `wcl` CLI — every subcommand, its arguments and switches
+
 ## Views
 
 Beyond this skill, the wskill ships these views — build them with `just render` in the wskill folder:

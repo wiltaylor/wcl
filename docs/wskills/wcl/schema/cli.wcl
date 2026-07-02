@@ -45,7 +45,9 @@ type Subcommand {
   description: utf8?
   remarks: utf8?
   @default([]) aliases: list<utf8>
-  @default(:book) audience: Audience
+  // Reference-library data defaults to :both — the skill promises the full
+  // CLI surface (unlike prose units, which curate up from :book).
+  @default(:both) audience: Audience
   @children("cli_arg")      args:        list<CliArg>
   @children("cli_switch")   switches:    list<CliSwitch>
   @children("subcommand")   subcommands: list<Subcommand>   // nested subcommands
@@ -59,7 +61,9 @@ type Cli {
   name: utf8
   description: utf8?
   version: utf8?
-  @default(:book) audience: Audience
+  // Reference-library data defaults to :both — the skill promises the full
+  // CLI surface (unlike prose units, which curate up from :book).
+  @default(:both) audience: Audience
   @children("cli_switch")   switches:    list<CliSwitch>    // GLOBAL switches
   @children("cli_arg")      args:        list<CliArg>
   @children("subcommand")   subcommands: list<Subcommand>
