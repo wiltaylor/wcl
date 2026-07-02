@@ -140,11 +140,19 @@ docs-comments *ARGS:
 md-build *ARGS:
     cargo run -p wcl -- wdoc markdown docs/main.wcl --out docs/_md {{ARGS}}
 
-# Build the WCL authoring skill into .claude/skills/wcl/ (committed) from the
-# `wcl` wskill (docs/wskills/wcl) — smoke-tests `wcl wdoc skill`
+# Install every wskill's AI skill into .claude/skills/<name>/ (committed) —
+# discovery matches the registry (skill entry file presence under docs/wskills/*),
+# so a new wskill is picked up with no list to maintain; each target folder is
+# replaced wholesale so removed pages don't linger. Smoke-tests `wcl wdoc skill`.
 [group('dev')]
-skill-build *ARGS:
-    cargo run -p wcl -- wdoc skill docs/wskills/wcl/wdoc/skill/main.wcl --out .claude/skills/wcl {{ARGS}}
+skills-install:
+    @for d in docs/wskills/*; do \
+        [ -f "$d/wdoc/skill/main.wcl" ] || continue; \
+        name=$(basename "$d"); \
+        echo "==> $name" >&2; \
+        rm -rf ".claude/skills/$name"; \
+        cargo run -q -p wcl -- wdoc skill "$d/wdoc/skill/main.wcl" --out ".claude/skills/$name"; \
+    done
 
 # Render the example and the docs to PDF under target/pdf/ — smoke-tests `wcl wdoc pdf`
 [group('dev')]
