@@ -4,22 +4,11 @@ _Fixed-width signed and unsigned integers plus two float widths, with literal su
 
 WCL has fixed-width signed and unsigned integers plus two float widths. A bare
 integer literal defaults to `i64`; a suffix pins the exact type. Underscores may
-group digits for readability and are ignored. See [Expressions](../references/concept_expressions.md)
-for numeric promotion across mixed operands.
+group digits for readability and are ignored. See [Numeric promotion](../references/concept_numeric_promotion.md)
+for how mixed operands widen to a common type.
 
 
-## Literals
-
-```wcl
-a = 42          // i64 (default)
-b = 200u8       // unsigned 8-bit
-c = 9_000i64    // underscores are ignored
-d = 3.14f64     // float
-e = -120i8      // signed
-f = 0xFFu32     // hex
-g = 0b1010_1100u8   // binary
-h = 0o755u16    // octal
-```
+Literal syntax — radixes, width suffixes, and digit-grouping underscores — is its own note: [Number literals](../references/fact_number_literals.md).
 
 ## Types
 
@@ -34,20 +23,10 @@ h = 0o755u16    // octal
 
 The platform-default size (`isize` / `usize`) is the pointer width of the machine WCL runs on — 64-bit on most desktops/servers, 32-bit on smaller targets — so its exact width changes depending on the platform.
 
-## Numeric promotion
-
-Arithmetic and comparison widen mixed numeric operands to a common type, so cross-width and integer/float mixing work without explicit casts.
-
-```wcl
-a = 1 + 2.0        // i64 widened to f64 -> 3.0
-b = 1u32 == 1i64   // true
-c = 3.0 * 2u8      // 6.0
-```
-
 ## Related
-
-- [Expressions](../references/concept_expressions.md)
 
 - [Lists](../references/concept_lists.md)
 
-[← All concepts](../references/concepts_ref.md)
+- [Numeric Promotion](../references/concept_numeric_promotion.md)
+
+[← Back to SKILL.md](../SKILL.md)

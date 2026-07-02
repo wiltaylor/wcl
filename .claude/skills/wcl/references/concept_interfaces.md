@@ -50,6 +50,4 @@ interface Sized extends Drawable {
 
 - [References](../references/concept_references.md)
 
-- [Schema & Decorators](../references/concept_schema.md)
-
-[← All concepts](../references/concepts_ref.md)
+[← Back to SKILL.md](../SKILL.md)

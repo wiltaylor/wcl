@@ -104,8 +104,6 @@ wcl diff main:a.wcl feature:a.wcl        # across two branches
 
 ## Related
 
-- [Schema & Decorators](../references/concept_schema.md)
-
 - [Imports & Modules](../references/concept_imports.md)
 
-[← All concepts](../references/concepts_ref.md)
+[← Back to SKILL.md](../SKILL.md)

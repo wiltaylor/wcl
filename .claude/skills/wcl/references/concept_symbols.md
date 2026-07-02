@@ -26,41 +26,12 @@ type Tag {
 t = Tag { name: "release", kind: :stable }
 ```
 
-## Symbol sets
-
-A `symbol_set` names a **closed vocabulary** of symbols. A field typed by the symbol set is restricted to exactly those members, giving an enum-like type without the weight of a union.
-
-```wcl
-symbol_set Color {
-  red
-  green
-  blue
-}
-
-type Paint {
-  shade: Color     // only :red, :green, or :blue
-}
-
-cream = Paint { shade: :red }
-```
-
-Use a symbol set wherever you would reach for an enum in another language: severity levels, edge kinds, named layout modes, palette hues.
-
-## When to use which
-
-WCL has three closely-related tools for a value that is one of a set of names. The right pick depends on whether the vocabulary is open and whether each variant carries data.
-
-| Need | Use |
-| --- | --- |
-| Closed vocabulary, no payload | `symbol_set` |
-| Closed vocabulary with data per variant | [union](../references/concept_unions.md) |
-| Open string-typed tag | plain `utf8` |
-| Free-form symbol (any `:name`) | `symbol` |
-
 ## Related
 
 - [Unions](../references/concept_unions.md)
 
 - [Identifiers](../references/concept_identifiers.md)
 
-[← All concepts](../references/concepts_ref.md)
+- [Symbol Sets](../references/concept_symbol_set.md)
+
+[← Back to SKILL.md](../SKILL.md)

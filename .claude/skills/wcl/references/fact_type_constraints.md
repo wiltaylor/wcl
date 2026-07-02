@@ -25,8 +25,8 @@ type Service {
 
 - [Records](../references/concept_records.md)
 
-- [Schema & Decorators](../references/concept_schema.md)
+- [Type Aliases](../references/concept_type_aliases.md)
 
-- [Fields & Blocks](../references/concept_fields_blocks.md)
+- [@default](../references/fact_dec_default.md)
 
-[← All facts](../references/facts_ref.md)
+[← Back to SKILL.md](../SKILL.md)

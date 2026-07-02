@@ -9,10 +9,14 @@ import "./schema/base.wcl"
 import "./schema/extensions.wcl"
 import "./schema/builtins.wcl"          // opt-in: builtin functions as data (projected into pages)
 import "./schema/cli.wcl"               // opt-in: map the wcl CLI as data
+import "./schema/presentation.wcl"      // opt-in: the overview deck view
+import "./schema/training.wcl"          // opt-in: the tutorial-series view
 
 // Data — reference units, examples and processes. Concepts, facts and
 // processes are one file per entry under their per-type folder.
 import "./data/main.wcl"
+import "./data/presentation/main.wcl"
+import "./data/training/main.wcl"
 
 schema_version = "1.0.0"
 
@@ -34,6 +38,7 @@ END
   tags = ["wcl", "configuration", "schema", "language", "dsl"]
   created    = "2026-06-20"
   maintainer = "ai@wiltaylor.dev"
+  maintainer_entity = wil_taylor
 }
 
 // Skill-projection config (→ SKILL.md frontmatter). No bundled artifacts.
@@ -62,6 +67,8 @@ wcl.wskill::skill {
 // landing can enumerate. Declaring one documents it; `just render` builds it.
 artifact book     { kind = :book      entry = "wdoc/book/main.wcl"   output = "out/book" }
 artifact ai_skill { kind = :ai_skill  entry = "wdoc/skill/main.wcl"  output = "out/skill" }
+artifact slides   { kind = :presentation  entry = "wdoc/presentation/main.wcl"  output = "out/presentation"  summary = "WCL in a nutshell — an overview deck." }
+artifact training { kind = :training      entry = "wdoc/training/main.wcl"      output = "out/training"      summary = "Learn WCL — a hands-on lesson series." }
 
 // ---- Sources (update-workflow metadata only) ----
 

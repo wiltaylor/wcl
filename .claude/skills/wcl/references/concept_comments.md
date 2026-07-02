@@ -15,6 +15,8 @@ service "web" {
 
 ## Related
 
-- [Fields & Blocks](../references/concept_fields_blocks.md)
+- [Fields](../references/concept_fields.md)
 
-[← All concepts](../references/concepts_ref.md)
+- [Blocks](../references/concept_blocks.md)
+
+[← Back to SKILL.md](../SKILL.md)

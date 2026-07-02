@@ -321,6 +321,10 @@ let landing_html = <<HTML
         <a href="wskills/wcl/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wcl</a>
         <a href="wskills/wdoc/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wdoc</a>
         <a href="wskills/wskill/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wskill</a>
+        <a href="decks/wcl/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wcl deck</a>
+        <a href="training/wcl/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wcl course</a>
+        <a href="decks/wdoc/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wdoc deck</a>
+        <a href="training/wdoc/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wdoc course</a>
         <a href="decks/wskill/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wskill deck</a>
         <a href="training/wskill/" class="wcl-footlink" style="font-size:13.5px; color:var(--fg-1); font-family:var(--font-mono);">wskill course</a>
       </div>

@@ -11,21 +11,17 @@ strict  = false
 
 ## In expressions
 
-Booleans are produced by every comparison and combined with the logical operators `&&`, `||`, and `!`. See [Expressions](../references/concept_expressions.md) for the full set.
+Booleans are produced by every comparison and combined with the logical operators `&&`, `||`, and `!`. See [Operators](../references/fact_operators.md) for the full set.
 
 ```wcl
 ready    = !pending && enabled
 oversize = width > 100u32 || height > 100u32
 ```
 
-> [!NOTE]
-> **Branching on a bool**
-> An if expression takes a bool condition; see Control Flow for the if / else syntax.
-
 ## Related
 
-- [Expressions](../references/concept_expressions.md)
+- [Operators](../references/fact_operators.md)
 
-- [Control Flow](../references/concept_control_flow.md)
+- [if / else](../references/concept_if_else.md)
 
-[← All concepts](../references/concepts_ref.md)
+[← Back to SKILL.md](../SKILL.md)

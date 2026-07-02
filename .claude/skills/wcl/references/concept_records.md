@@ -15,23 +15,6 @@ type Dog {
 let rex = Dog { name: "Rex", age: 4u32 }
 ```
 
-## Type aliases
-
-`type Name = TypeRef` declares a transparent alias — a readable name for any type, resolved wherever the name is used (transitively). Constraint decorators on the alias travel with it: every field declared with the alias is validated by `wcl check`.
-
-```wcl
-@min(1) @max(65535)
-type Port = u16
-
-@non_empty
-type Name = utf8
-
-type Service {
-  name: Name        # rejects ""
-  port: Port        # rejects 0u16 and 70000-ish values
-}
-```
-
 ## extends
 
 A record may `extends` another, inheriting all its fields. The child type is a structural superset; it satisfies any context that accepts the parent.
@@ -86,6 +69,6 @@ let rex = Dog { name: "Rex", age: 4u32 }
 
 - [Interfaces](../references/concept_interfaces.md)
 
-- [Schema & Decorators](../references/concept_schema.md)
+- [Type Aliases](../references/concept_type_aliases.md)
 
-[← All concepts](../references/concepts_ref.md)
+[← Back to SKILL.md](../SKILL.md)

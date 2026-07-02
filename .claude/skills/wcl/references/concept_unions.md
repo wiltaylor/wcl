@@ -81,6 +81,4 @@ c = Shape::Empty
 
 - [Symbols](../references/concept_symbols.md)
 
-- [Control Flow](../references/concept_control_flow.md)
-
-[← All concepts](../references/concepts_ref.md)
+[← Back to SKILL.md](../SKILL.md)

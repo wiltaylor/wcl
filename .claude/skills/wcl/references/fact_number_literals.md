@@ -1,6 +1,6 @@
-# Number literals: radixes and width suffixes
+# Number literals
 
-An integer literal may be written in decimal, hexadecimal (`0x`), octal (`0o`), or binary (`0b`); floats accept scientific notation (`1e6`). A width suffix pins the exact numeric type, and underscores may group digits for readability (they are ignored).
+An integer literal may be written in decimal, hexadecimal (`0x`), octal (`0o`), or binary (`0b`); floats accept scientific notation (`1e6`). A width suffix pins the exact numeric type, and underscores may group digits for readability (they are ignored). A non-numeric suffix is a [literal unit](../references/concept_literal_units.md) (`5MiB`) instead.
 
 ```wcl
 a = 42          // i64 (default)
@@ -25,6 +25,8 @@ h = 0o755u16    // octal
 
 - [Numbers](../references/concept_numbers.md)
 
-- [Expressions](../references/concept_expressions.md)
+- [Numeric Promotion](../references/concept_numeric_promotion.md)
 
-[← All facts](../references/facts_ref.md)
+- [Literal Units](../references/concept_literal_units.md)
+
+[← Back to SKILL.md](../SKILL.md)

@@ -1,0 +1,493 @@
+// The training view's course — "Learn WCL" (schema/training.wcl). Ordered
+// lessons with hands-on exercises; `related` links each lesson back to the
+// reference units it teaches. Every snippet here is runnable as written.
+
+lesson install_and_first_file {
+  n       = 1
+  title   = "Install wcl and check your first file"
+  summary = "Get the toolchain running, write a tiny typed document, and check and evaluate it."
+  objectives = [
+    "Install the `wcl` binary and verify it runs",
+    "Write a minimal document: a `@document` type plus a few fields",
+    "Validate with `wcl check` and read a value with `wcl eval`",
+  ]
+  related = [what_is_wcl, fields, cli]
+  body {
+    p "WCL ships as one binary, `wcl`. Install the newest pre-release with the install script (`curl -fsSL https://wcl.dev/install.sh | sh -s -- --pre`), or build from source with Cargo, then confirm `wcl --version` prints a version."
+    p "The smallest useful document has two halves: a `@document` type that says which top-level fields are legal, and the fields themselves. That split is the whole idea of WCL in miniature — data plus the schema that validates it, in one file. `wcl check` gates on the schema (exit 0 = valid), and `wcl eval` resolves a named field to its value."
+  }
+  exercise hello {
+    title     = "A first checked document"
+    task      = "Write a three-field document with its schema, validate it, then read one field back."
+    code_lang = "bash"
+    code      = <<'SH'
+cat > hello.wcl <<'WCL'
+@document
+type Hello {
+  name:    utf8
+  count:   u32
+  enabled: bool
+}
+
+name    = "world"
+count   = 3u32
+enabled = true
+WCL
+wcl check hello.wcl
+wcl eval hello.wcl count
+SH
+    expected = "`wcl check` prints `OK`, and `wcl eval hello.wcl count` prints `3u32`."
+    hint     = "Every top-level field must be declared by a `@document` schema — delete the `count:` line from the type and `wcl check` reports exactly that."
+  }
+}
+
+lesson fields_blocks_comments {
+  n       = 2
+  title   = "Fields, blocks, and comments"
+  summary = "The two structural pieces every document is made of, plus how to annotate them."
+  objectives = [
+    "Bind names to expression values with `=`",
+    "Author block instances with one or more labels",
+    "Comment WCL source with `//`",
+  ]
+  prerequisites = [install_and_first_file]
+  related = [fields, blocks, comments]
+  body {
+    p "A field binds a name to a value with `=`, and the value is any expression — a literal, a reference to a sibling field, a call, or arithmetic. A block is a named group of fields that can nest further blocks; its positional labels map to fields via the schema's `@inline` slots, so `route \"GET\" \"/users\"` fills two fields at once."
+    p "Line comments start with `//` and run to the end of the line. The formatter preserves them, so comment freely — they survive `wcl fmt`."
+  }
+  exercise routes {
+    title     = "Author blocks against a schema"
+    task      = "Given a two-label `route` block kind, author two endpoints and validate them."
+    code_lang = "wcl"
+    code      = <<'WCL'
+// The API surface — one route block per endpoint.
+@block("route")
+type Route {
+  @inline(0) method: utf8
+  @inline(1) path:   utf8
+  handler: utf8
+}
+
+@document
+type Api {
+  @children("route") routes: list<Route>
+}
+
+route "GET"  "/users" { handler = "list_users" }
+route "POST" "/users" { handler = "create_user" }
+WCL
+    expected = "`wcl check` prints `OK` — each `route` block contributes one `Route`, its labels filling `method` and `path`."
+    hint     = "Labels are positional: slot 0 is the first label after the kind. Swap the two strings and the block still checks — WCL can't know a verb from a path — so keep the order the schema documents."
+  }
+}
+
+lesson primitive_types {
+  n       = 3
+  title   = "Primitive types and literals"
+  summary = "Numbers with width suffixes, strings and heredocs, symbols, and booleans."
+  objectives = [
+    "Pin a number's exact type with a width suffix",
+    "Write multi-line text with a heredoc",
+    "Use symbols for enum-like tagged values",
+  ]
+  prerequisites = [fields_blocks_comments]
+  related = [numbers, number_literals, strings, string_literals, symbols, booleans]
+  body {
+    p "WCL's numbers are fixed-width: signed `i8`–`i128`, unsigned `u8`–`u128`, floats `f32`/`f64`, plus platform-sized `isize`/`usize`. A bare integer defaults to `i64`; a suffix like `200u8` pins the exact type, and underscores may group digits (`1_000_000u32`)."
+    p "Strings are UTF-8. A quoted literal handles one line; a heredoc (`<<END` … `END`) keeps line breaks for multi-line text, and the `$\"...\"` form interpolates expressions. Symbols are identifier-like values written `:name` — use them where you'd otherwise reach for a magic string."
+  }
+  exercise literals {
+    title     = "One of everything"
+    task      = "Write a document exercising each primitive literal form, then evaluate the heredoc field."
+    code_lang = "wcl"
+    code      = <<'WCL'
+@document
+type Doc {
+  small:    u8
+  big:      i64
+  ratio:    f64
+  grouped:  u32
+  greeting: utf8
+  banner:   utf8
+  shade:    symbol
+  ok:       bool
+}
+
+small    = 200u8
+big      = -42
+ratio    = 2.5
+grouped  = 1_000_000u32
+greeting = "hello"
+banner   = <<END
+Multi-line text keeps
+its line breaks.
+END
+shade = :amber
+ok    = true
+WCL
+    expected = "`wcl check` prints `OK`, and `wcl eval doc.wcl banner` prints the two-line string with an embedded `\\n`."
+    hint     = "Try `small = 300u8` — the check fails because 300 doesn't fit in a u8. Width suffixes are real constraints, not annotations."
+  }
+}
+
+lesson lists_records_tables {
+  n       = 4
+  title   = "Lists, records, and pipe-tables"
+  summary = "The composite shapes: ordered lists, named-field records, and compact row tables."
+  objectives = [
+    "Author lists and bare record literals",
+    "Declare a `@table` row type and write pipe-rows",
+    "Know when a table beats a list of records",
+  ]
+  prerequisites = [primitive_types]
+  related = [lists, records, tables]
+  body {
+    p "A list is square brackets over any element type: `tags = [\"alpha\", \"beta\"]`. A record is named fields in braces — and when the declared type is known, a **bare** record literal (`{ name: \"Ops team\", contact: \"...\" }`) coerces to it, so you rarely spell the type name at the value site."
+    p "When many values share one shape, pipe-table syntax keeps them readable: declare the row type with `@table(\"kind\")`, give a block a `@children(\"kind\")` field, then write the field as `name:` followed by `| cell | cell |` rows — each row becomes one record."
+  }
+  exercise composite {
+    title     = "A catalogue with all three"
+    task      = "Author a document holding a list, a record, and a pipe-table of users, then read the list back."
+    code_lang = "wcl"
+    code      = <<'WCL'
+type Owner { name: utf8  contact: utf8 }
+
+@table("user")
+type User {
+  name:    utf8
+  age:     u32
+  enabled: bool
+}
+
+@block("db")
+type Db {
+  @inline(0) id: identifier
+  @children("user") users: list<User>
+}
+
+@document
+type Doc {
+  tags:  list<utf8>
+  owner: Owner
+  @child("db") db: Db
+}
+
+tags  = ["alpha", "beta", "gamma"]
+owner = { name: "Ops team", contact: "ops@example.com" }
+
+db production {
+  users:
+    | "alice" | 30 | true  |
+    | "bob"   | 25 | false |
+    | "cara"  | 42 | true  |
+}
+WCL
+    expected = "`wcl check` prints `OK`, and `wcl eval doc.wcl tags` prints `[\"alpha\", \"beta\", \"gamma\"]`."
+    hint     = "Table cells are expressions in the row type's field order: string, number, bool here. Add a fourth cell to a row and the shape no longer lines up."
+  }
+}
+
+lesson declaring_types {
+  n       = 5
+  title   = "Declaring types and decorators"
+  summary = "Turn record types into an authoring vocabulary with @block, @inline, and @default."
+  objectives = [
+    "Declare a nestable block kind with `@block(\"kind\")`",
+    "Bind block labels to fields with `@inline(slot)`",
+    "Fill omitted fields with `@default(expr)`",
+  ]
+  prerequisites = [lists_records_tables]
+  related = [block_schema, dec_block, dec_inline, dec_default, type_aliases]
+  body {
+    p "Decorators are prefix annotations that turn a plain record type into schema. `@block(\"service\")` makes the type authorable as `service ... { ... }` blocks; `@inline(0)` says the first label lands in that field; `@default(80)` supplies a value when the author omits the field, so common cases stay terse."
+    p "The pattern to internalise: the type declaration is the *vocabulary*, the block instances are the *content*. Constraints (`@min`, `@max`, `@non_empty`) and `type` aliases layer onto the same declarations as your model grows."
+  }
+  exercise services {
+    title     = "Design a block kind"
+    task      = "Declare a `service` block with a labelled name and a defaulted port, author two instances, and confirm the default applies."
+    code_lang = "wcl"
+    code      = <<'WCL'
+@block("service")
+type Service {
+  @inline(0)   name: utf8
+  @default(80) port: u32
+  region: utf8
+}
+
+@document
+type Config {
+  @children("service") services: list<Service>
+}
+
+service "web" { region = "us-east-1" }
+service "api" { port = 9090u32  region = "eu-west-1" }
+WCL
+    expected = "`wcl check` prints `OK`, and `wcl eval config.wcl services.web.port` prints `80` — the default filled the omitted field."
+    hint     = "Remove `@default(80)` and the `web` instance stops validating: without a default, `port` is required."
+  }
+}
+
+lesson document_and_gathering {
+  n       = 6
+  title   = "The @document and gathering"
+  summary = "How one root schema collects every block instance into a single validated document."
+  objectives = [
+    "Declare a `@document` root with `@child` / `@children` slots",
+    "Gather several block kinds into one document",
+    "Explain how document schemas merge per namespace",
+  ]
+  prerequisites = [declaring_types]
+  related = [document_schema, dec_document, dec_children, dec_child, child_count_constraints]
+  body {
+    p "`@document` marks the root schema. The toolchain *gathers*: every top-level block instance whose kind matches a `@child`/`@children` field is collected into that field, and every top-level field must be declared — that is what `wcl check` checks. Paths like `servers.api.port` then address the gathered tree from the root."
+    p "Document schemas **merge** per namespace: when several `@document` types are visible — say a library's (via `import <wdoc.wcl>`) and your own — a top-level item is legal if any of them declares it. Only a second root-authored `@document` in the same namespace is an error, so libraries compose without ceremony."
+  }
+  exercise gather {
+    title     = "Two kinds, one document"
+    task      = "Gather two block kinds under one root and address values through the gathered paths."
+    code_lang = "wcl"
+    code      = <<'WCL'
+@block("server")
+type Server {
+  @inline(0) name: identifier
+  port: u16
+}
+
+@block("cache")
+type Cache {
+  @inline(0) name: identifier
+  size_mb: u32
+}
+
+@document
+type Infra {
+  @children("server") servers: list<Server>
+  @children("cache")  caches:  list<Cache>
+}
+
+server web { port = 8080u16 }
+server api { port = 9090u16 }
+cache  hot { size_mb = 512u32 }
+WCL
+    expected = "`wcl check` prints `OK`; `wcl eval infra.wcl servers.api.port` prints `9090u16` and `wcl eval infra.wcl caches.hot.size_mb` prints `512u32`."
+    hint     = "Author a block kind the root doesn't declare (say `queue jobs {}`) and `wcl check` rejects it — gathering is also the membership check."
+  }
+}
+
+lesson optionals_unions_match {
+  n       = 7
+  title   = "Optionals, unions, and match"
+  summary = "Model absence with `T?` and `none`, alternatives with unions, and consume both with match."
+  objectives = [
+    "Declare optional fields and default them with `??`",
+    "Construct union variants and dispatch bare records by shape",
+    "Destructure values with `match`, ending in a `_` or binding arm",
+  ]
+  prerequisites = [document_and_gathering]
+  related = [optionals, unions, match_expr, if_let, patterns]
+  body {
+    p "A `T?` field accepts a value or the literal `none`; the `??` operator supplies the default (`bob.bio ?? \"anonymous\"`), evaluating its right side only when needed. Use `T?` when the only states are present and absent — when absence carries information, reach for a union."
+    p "A union names its variants: construct one as `Status::Failed { reason: \"timeout\" }`, or — where the expected type is already a union — write a bare record and let the field shape pick the variant. `match` takes the value apart; record payloads destructure as `Status::Failed { reason } => ...`, and the arm list must end with a `_` wildcard or a binding arm so every case is covered."
+  }
+  exercise status {
+    title     = "Absence and alternatives"
+    task      = "Model a status union and an optional bio; extract the failure reason with match and default the bio with `??`."
+    code_lang = "wcl"
+    code      = <<'WCL'
+union Status {
+  Ok     { code: u32 }
+  Failed { reason: utf8 }
+}
+
+let bob = { name: "Bob", bio: none }
+
+@document
+type Doc {
+  status:  Status
+  label:   utf8
+  display: utf8
+}
+
+status  = Status::Failed { reason: "timeout" }
+label   = match status {
+  Status::Failed { reason } => reason,
+  _                         => "ok",
+}
+display = bob.bio ?? "anonymous"
+WCL
+    expected = "`wcl eval doc.wcl label` prints `\"timeout\"` and `wcl eval doc.wcl display` prints `\"anonymous\"`."
+    hint     = "Drop the `_` arm and the parser refuses the match outright: every match must end with a wildcard or binding arm."
+  }
+}
+
+lesson functions {
+  n       = 8
+  title   = "Functions and higher-order patterns"
+  summary = "Named fn items, fn literals, and the map/filter/fold trio."
+  objectives = [
+    "Declare a named function with `fn name(...) -> T { ... }`",
+    "Pass fn literals to `map`, `filter`, and `fold`",
+    "Decide when computation belongs in the document",
+  ]
+  prerequisites = [optionals_unions_match]
+  related = [fn_items, function_literals, higher_order_functions, function_calls, function_types]
+  body {
+    p "Functions are first-class values. A named `fn` item declares a reusable function at file scope; an inline literal (`fn(n: i64) -> bool { n % 2 == 0 }`) is handy exactly where a builtin wants a callback. Parameters and returns are typed, like everything else."
+    p "The workhorse trio: `map` transforms each element, `filter` keeps the ones a predicate accepts, `fold` reduces a list to one value from an initial accumulator. Together with `let` items (file-scope bindings that are visible to expressions but invisible to the document), they let a configuration *derive* values instead of repeating them."
+  }
+  exercise pipeline {
+    title     = "Derive, don't repeat"
+    task      = "From one list of numbers, derive a doubled list, the even subset, and a total."
+    code_lang = "wcl"
+    code      = <<'WCL'
+fn double(n: i64) -> i64 { n * 2 }
+
+let nums  = [1, 2, 3, 4, 5]
+let evens = filter(nums, fn(n: i64) -> bool { n % 2 == 0 })
+
+@document
+type Doc {
+  doubled: list<i64>
+  even:    list<i64>
+  total:   i64
+}
+
+doubled = map(nums, double)
+even    = evens
+total   = fold(nums, 0, fn(acc: i64, n: i64) -> i64 { acc + n })
+WCL
+    expected = "`wcl eval doc.wcl doubled` prints `[2, 4, 6, 8, 10]` and `wcl eval doc.wcl total` prints `15`."
+    hint     = "`let` items like `nums` never appear in the evaluated document — only the declared fields do. That's why the schema doesn't mention them."
+  }
+}
+
+lesson imports_namespaces {
+  n       = 9
+  title   = "Imports and namespaces"
+  summary = "Split a model across files and keep independently-authored names from colliding."
+  objectives = [
+    "Import declarations from disk with a quoted path",
+    "Scope a file's declarations with `namespace`",
+    "Reference a namespaced type by its qualified path",
+  ]
+  prerequisites = [functions]
+  related = [imports, namespaces, use_declarations, qualified_kinds]
+  body {
+    p "A quoted `import \"./types.wcl\"` pulls a file's declarations in from disk, resolved relative to the importing file; an angle-bracket `import <wdoc.wcl>` asks the host for a *system* module (that one line is how a document opts into the whole wdoc stdlib). Imported declarations behave as if local — they participate in validation and name resolution."
+    p "A `namespace` declaration — first item in the file — scopes everything under a dotted path, so a library's `Product` is really `shop.Product` and can't collide with yours. Reference it by qualified path, pull names in with `use`, or pick a block schema explicitly with the `ns::kind` qualifier."
+  }
+  exercise split {
+    title     = "A two-file model"
+    task      = "Move a type into its own namespaced file and use it from the main document."
+    code_lang = "bash"
+    code      = <<'SH'
+mkdir -p mod
+cat > mod/types.wcl <<'WCL'
+namespace shop
+
+type Product { name: utf8  price: f64 }
+WCL
+cat > main.wcl <<'WCL'
+import "./mod/types.wcl"
+
+@document
+type Doc {
+  featured: shop.Product
+}
+
+featured = { name: "Kettle", price: 39.5 }
+WCL
+wcl check main.wcl
+wcl eval main.wcl featured --json
+SH
+    expected = "`wcl check` prints `OK`, and the eval prints the record as JSON — the bare record coerced to `shop.Product` across the file boundary."
+    hint     = "Rename the field's type to just `Product` and check fails: the import brought the declaration in, but its name stays qualified under `shop`."
+  }
+}
+
+lesson tooling_day_to_day {
+  n       = 10
+  title   = "Tooling day-to-day"
+  summary = "The edit loop around a living document: fmt, set, diff, and the repl."
+  objectives = [
+    "Normalise a file with `wcl fmt`",
+    "Edit a field from the shell with `wcl set` and see it with `wcl diff`",
+    "Explore a document interactively with `wcl repl`",
+  ]
+  prerequisites = [imports_namespaces]
+  related = [cli, wcl_cli, validate_format, inspect_values]
+  body {
+    p "Once a document exists, most work is small edits. `wcl fmt --in-place` rewrites to canonical form (comments and blank-line groupings survive). `wcl set file.wcl path value` updates one field in place, following the import chain to the file that declares it — the value is parsed as a WCL expression, so quote it from the shell. `wcl diff old new` compares the *evaluated* documents, so a formatting-only change is an empty diff."
+    p "For exploration, `wcl repl file.wcl` gives you a prompt whose identifiers resolve against the file's top-level fields — the quickest way to poke at expressions before committing them."
+  }
+  exercise edit_loop {
+    title     = "One full edit loop"
+    task      = "Take the services file from lesson 5, change a port with `wcl set`, and inspect the change with `wcl diff`."
+    code_lang = "bash"
+    code      = <<'SH'
+cp config.wcl config.new.wcl
+wcl set config.new.wcl services.api.port 8443u32
+wcl diff config.wcl config.new.wcl
+wcl fmt config.new.wcl --in-place
+wcl check config.new.wcl
+SH
+    expected = "`wcl set` reports the update, and the diff shows one `modified \"service:api\"` entry with `old = 9090u32`, `new = 8443u32`. The final check prints `OK`."
+    hint     = "`wcl set` edits explicitly-authored fields; the diff output is itself re-parseable WCL — pipe it to a file and inspect it like any document. Use `--format json` for scripting."
+  }
+}
+
+lesson capstone_config {
+  n       = 11
+  title   = "Capstone: schema a real config"
+  summary = "Put it all together — vocabulary, constraints, document root, and instances for a deployment config."
+  objectives = [
+    "Design a closed vocabulary with `symbol_set`",
+    "Declare block kinds with labels, defaults, and list fields",
+    "Validate instances against the schema and evaluate the result",
+  ]
+  prerequisites = [tooling_day_to_day]
+  related = [symbol_set, block_schema, document_schema, dec_default, type_constraints]
+  body {
+    p "The capstone is the workflow you'll actually use: pick a config your project needs (deployments, pipelines, fixtures), declare its vocabulary as types, point a `@document` at them, and author real instances. A `symbol_set` closes an enum-like field — `wcl check` rejects any symbol not in the set — which is usually the first constraint worth adding."
+    p "Work schema-first: get one instance validating, then tighten (defaults for the common case, `@min`/`@max` where numbers have bounds, optionals where absence is legal). When the schema stops surprising you, the config is done."
+  }
+  exercise deploy {
+    title     = "A deployment config from scratch"
+    task      = "Model apps deployed to environments: a closed `Env` vocabulary, an `app` block with defaults, and two instances."
+    code_lang = "wcl"
+    code      = <<'WCL'
+// A tiny deployment config — schema and data in one file.
+symbol_set Env { dev  staging  prod }
+
+@block("app")
+type App {
+  @inline(0)   name: identifier
+  env:         Env
+  @default(1)  replicas: u32
+  @default([]) domains: list<utf8>
+}
+
+@document
+type Deploy {
+  @children("app") apps: list<App>
+}
+
+app web {
+  env      = :prod
+  replicas = 3u32
+  domains  = ["example.com", "www.example.com"]
+}
+
+app worker { env = :staging }
+WCL
+    expected = "`wcl check` prints `OK`, and `wcl eval deploy.wcl apps.web.replicas` prints `3u32`; `worker` picked up `replicas = 1` and `domains = []` from the defaults."
+    hint     = "Set `env = :production` on an app — the check fails because `production` isn't in the `Env` symbol_set. Closed vocabularies catch typos schemas otherwise miss."
+  }
+  exercise extend {
+    title     = "Make it yours"
+    task      = "Extend the schema with one thing your real config needs — a nested block (`@child`), a numeric bound (`@min`), or an optional field — and keep the document validating."
+    expected  = "`wcl check` still prints `OK` after the extension, and at least one instance exercises the new declaration."
+    hint      = "Add the constraint first and watch check fail, then fix the data — the error message names the file, field, and rule, which is the debugging loop you'll live in."
+  }
+}

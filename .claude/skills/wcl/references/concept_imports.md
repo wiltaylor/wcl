@@ -37,6 +37,4 @@ An `import` inside a block also splices the imported file's top-level block inst
 
 - [Identifiers](../references/concept_identifiers.md)
 
-- [Schema & Decorators](../references/concept_schema.md)
-
-[← All concepts](../references/concepts_ref.md)
+[← Back to SKILL.md](../SKILL.md)

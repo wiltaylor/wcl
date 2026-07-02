@@ -75,3 +75,12 @@ index language {
     related = [connections]
   }
 }
+
+// Tasks — the runbook procedures, pinned so they sit in the book nav (and in
+// SKILL.md's Reference, since the index is :both like the procedures it lists).
+index tasks {
+  name     = "Tasks"
+  summary  = "Step-by-step runbooks for the day-to-day wcl workflows."
+  audience = :both
+  related  = [validate_format, inspect_values, scaffold_init, upgrading_with_wcl]
+}

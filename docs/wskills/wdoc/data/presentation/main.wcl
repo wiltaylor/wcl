@@ -1,0 +1,115 @@
+// The presentation view's deck — "A wdoc tour" as slides
+// (schema/presentation.wcl). Slides feature existing units where possible
+// (`unit = <id>` pulls the headline + summary); detail stays in the book.
+presentation intro {
+  title   = "A wdoc tour"
+  summary = "Declare pages and sites in WCL, project them from data, and render one model to HTML, Markdown, a skill folder, or PDF."
+
+  pres_section the_model {
+    title = "The model"
+    pres_slide what {
+      unit = overview
+      speaker_notes = "The whole system in one line: page → site → template → render target. Every other slide is a zoom into one of those four."
+    }
+    pres_slide pages_and_sites {
+      title = "Pages & sites"
+      unit  = sites
+      body {
+        p "- A `page` holds content blocks and joins sites via `sites`"
+        p "- A `site` picks a template, title, theme, and navigation"
+        p "- Several sites per document; `root = true` owns `/`"
+      }
+      speaker_notes = "Stress that pages and sites are many-to-many: one page can serve a webpage and a book at once."
+    }
+    pres_slide four_templates {
+      unit = template_kinds
+      body {
+        p "- `:webpage` — header + sticky navbar from `menu`"
+        p "- `:book` — mdBook-style sidebar from `toc`"
+        p "- `:presentation` — this deck: a keyboard-driven 2-D grid"
+        p "- `:ai_skill` — a Claude skill folder via `wcl wdoc skill`"
+      }
+      speaker_notes = "The built-ins aren't special — a custom template is just a render fn over a TemplateCtx."
+    }
+  }
+
+  pres_section filling_a_page {
+    title = "Filling a page"
+    pres_slide prose {
+      title = "Prose, tables & callouts"
+      unit  = formatting
+      body {
+        p "- Inline patterns light up everywhere: **bold**, `code`, links, icons, math"
+        p "- `table { rows: | … | }` — pipe rows, inline patterns in cells"
+        p "- Six callout classes from `note` to `error`; `column` for side-by-side layout"
+      }
+    }
+    pres_slide diagram_family {
+      unit = diagrams
+      body {
+        p "- Shapes on a sized canvas, wired by `a -> b` edges"
+        p "- Auto-layout: `:layered`, `:radial`, `:force`"
+        p "- Flowcharts, sequence & state diagrams, trees, maps, tilemaps, terminals, wireframes"
+      }
+      speaker_notes = "Everything here is SVG lowered from WCL blocks — no external diagram tool in the loop."
+    }
+    pres_slide charts_and_data {
+      unit = charts
+      body {
+        p "- `bar_chart` / `line_chart` / `pie_chart` over `{ name, values }` series"
+        p "- `timeline` — a real calendar axis with items, phases, and event cards"
+      }
+    }
+  }
+
+  pres_section data_driven {
+    title = "Data-driven docs"
+    pres_slide components {
+      unit = data_views
+      body {
+        p "- `wdoc_component` + `wdoc_slot` — reusable markup with parameters"
+        p "- `wdoc_repeater` stamps blocks, pages, and nav entries from lists"
+        p "- `body` / `project` — content rides on data records, rendered by reference"
+      }
+      speaker_notes = "This is the wskill mechanism in miniature: the book you're reading is projected exactly this way."
+    }
+    pres_slide scoping {
+      title = "Visibility & themes"
+      unit  = visibility
+      body {
+        p "- `@only` / `@except` scope any block by site, template, or backend"
+        p "- Six built-in themes (`theme = :nord`, …) with a light/dark toggle"
+      }
+    }
+  }
+
+  pres_section shipping {
+    title = "Shipping"
+    pres_slide render_targets {
+      title = "Render targets"
+      unit  = build_serve
+      body {
+        p "- `wcl wdoc build` → HTML · `serve` → live preview"
+        p "- `markdown` → a `.md` per page · `pdf` → paginated A4"
+        p "- `skill` → SKILL.md + references/ for agents"
+      }
+    }
+    pres_slide review_loop {
+      unit = review_comments
+      body {
+        p "- `wcl wdoc serve --comment` — click any block to pin a note"
+        p "- `wcl wdoc comments` lists and resolves; `wcl wdoc review` hands off to an agent"
+      }
+      speaker_notes = "The loop is file-based — comments land in a sidecar, so reviewing never dirties the document."
+    }
+    pres_slide where_next {
+      title = "Where to go next"
+      body {
+        p "- The **book** — every block family with live demos"
+        p "- The **training course** — twelve hands-on lessons"
+        p "- The **skill** — the same reference, loaded by your agent"
+      }
+      speaker_notes = "Close by pointing at the training course for newcomers and the Task runbooks section for day-to-day rendering."
+    }
+  }
+}

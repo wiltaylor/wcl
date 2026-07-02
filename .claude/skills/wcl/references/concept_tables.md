@@ -27,10 +27,6 @@ users:
   | "cara"  | 42 | true  |
 ```
 
-## Why a table
-
-A table is just a `list<T>` underneath — the pipe-row syntax is shorthand for writing many [records](../references/concept_records.md) compactly. The same data could be authored as block instances, but the table is denser and reads like a spreadsheet.
-
 > [!NOTE]
 > **Cells are expressions**
 > Each cell is an expression in the row type's field position: strings, numbers, booleans, symbols, even computed values via let bindings.
@@ -63,4 +59,4 @@ users:
 
 - [Records](../references/concept_records.md)
 
-[← All concepts](../references/concepts_ref.md)
+[← Back to SKILL.md](../SKILL.md)

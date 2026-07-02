@@ -9,6 +9,8 @@
 import <wdoc.wcl>
 import "./schema/base.wcl"
 import "./schema/extensions.wcl"
+import "./schema/presentation.wcl"     // opt-in: the overview deck view
+import "./schema/training.wcl"         // opt-in: the tutorial-series view
 
 // `block_doc` (description + reflected `type_table`) is used inside entity
 // bodies, so it must be in document scope for both schema validation and
@@ -19,6 +21,8 @@ import "./wdoc/component/block_doc.wcl"
 // processes, and the schema-reflected language reference. Concepts, entities,
 // facts and processes are one file per entry under their per-type folder.
 import "./data/main.wcl"
+import "./data/presentation/main.wcl"
+import "./data/training/main.wcl"
 
 schema_version = "1.0.0"
 
@@ -40,16 +44,36 @@ END
   tags = ["wdoc", "wcl", "static-site", "documentation", "skill"]
   created    = "2026-06-20"
   maintainer = "ai@wiltaylor.dev"
+  maintainer_entity = wil_taylor
 }
 
 // Skill-projection config (→ SKILL.md frontmatter). No bundled artifacts.
 wcl.wskill::skill {
+  summary {
+    overview = [
+      "wdoc is WCL's static-site and skill generator. This skill captures its full reference as data — every block family, template, and render target — projected from one model.",
+    ]
+  }
+  skill_param "$ARGUMENTS" {
+    description = "The wdoc block or render concept to look up."
+    value       = "Take it from the user's request — e.g. the block kind, template, or render target they asked about. If empty, summarise the reference and ask what they need."
+  }
+  skill_boundary {
+    always = [
+      "Cite the exact reference page (a fact/concept page) when answering.",
+      "Prefer the documented block fields over guesses.",
+    ]
+    ask    = ["Before running any command that edits files."]
+    never  = ["Invent blocks, fields, or template kinds that aren't in the reference — check the fact pages instead."]
+  }
 }
 
 // The views this wskill ships — first-class data the overview and any registry
 // landing can enumerate. Declaring one documents it; `just render` builds it.
 artifact book     { kind = :book      entry = "wdoc/book/main.wcl"   output = "out/book" }
 artifact ai_skill { kind = :ai_skill  entry = "wdoc/skill/main.wcl"  output = "out/skill" }
+artifact slides   { kind = :presentation  entry = "wdoc/presentation/main.wcl"  output = "out/presentation"  summary = "A wdoc tour — an overview deck." }
+artifact training { kind = :training      entry = "wdoc/training/main.wcl"      output = "out/training"      summary = "wdoc authoring tutorial — a hands-on lesson series." }
 
 // ---- Sources (update-workflow metadata only) ----
 

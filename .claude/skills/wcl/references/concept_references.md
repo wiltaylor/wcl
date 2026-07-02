@@ -39,8 +39,6 @@ s2 = Scene { focus: Square { x: 10.0, y: 10.0, side:   8.0 } }
 
 - [Interfaces](../references/concept_interfaces.md)
 
-- [Schema & Decorators](../references/concept_schema.md)
-
 - [Connections](../references/concept_connections.md)
 
-[← All concepts](../references/concepts_ref.md)
+[← Back to SKILL.md](../SKILL.md)

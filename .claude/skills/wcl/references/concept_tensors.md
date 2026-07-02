@@ -46,4 +46,4 @@ m_t = tensor_reshape(m, [3, 2])     // re-view the same numbers as 3x2
 
 - [Numbers](../references/concept_numbers.md)
 
-[← All concepts](../references/concepts_ref.md)
+[← Back to SKILL.md](../SKILL.md)

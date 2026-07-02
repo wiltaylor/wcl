@@ -63,3 +63,10 @@ index diagrams_section {
     related = [terminals, wireframe]
   }
 }
+
+index workflows {
+  name    = "Task runbooks"
+  summary = "Step-by-step procedures for rendering and reviewing wdoc output."
+  audience = :both
+  related = [build_serve, render_skill, render_pdf_markdown, render_presentation, review_comments]
+}

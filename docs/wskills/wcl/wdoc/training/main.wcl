@@ -1,0 +1,116 @@
+// Training projection — a tutorial-series book over the wskill's lessons.
+//
+// Build:  wcl wdoc build wdoc/training/main.wcl --out out/training
+//
+// A separate `:book` site rendering the `lesson` / `module` data
+// (schema/training.wcl, authored under data/training/). The syllabus (start
+// page + toc) orders top-level lessons first, then each module's lessons;
+// every lesson gets its own page with objectives, prerequisites, the projected
+// body, its exercises (task → starter code → expected result → hint), and
+// links back into the reference book for the units it teaches.
+
+import <wdoc.wcl>
+import "../../wskill.wcl"
+
+let topic = head(topics)
+
+// Ordering: lessons by `n` (top-level course lessons first, then each sorted
+// module's lessons, module-major).
+let by_lesson_n    = fn(l: Lesson) -> u32 { l.n }
+let course_lessons = sort_by(lessons, by_lesson_n)
+let sorted_modules = sort_by(modules, fn(m: TrainingModule) -> u32 { m.n })
+let all_lessons    = flatten([course_lessons, flatten(map(sorted_modules,
+                       fn(m: TrainingModule) -> list<Lesson> { sort_by(m.lessons, by_lesson_n) }))])
+
+// A lesson id resolved to a syllabus link (empty when unknown, so a stale
+// prerequisite degrades to nothing rather than an error).
+let lesson_link = fn(lid: identifier) -> list<utf8> {
+  map(filter(all_lessons, fn(x: Lesson) -> bool { x.id == lid }),
+      fn(x: Lesson) -> utf8 { $"[${x.title}](lesson_${x.id})" })
+}
+
+// --- site --------------------------------------------------------------------
+
+site training {
+  default_template = :book
+  title   = $"${topic.name} — training"
+  summary = $"A hands-on tutorial series for ${topic.name}."
+  root         = true
+  theme        = :nord
+  theme_toggle = true
+  search       = true
+  toc {
+    chapter "Start here" { page = index }
+    wdoc_repeater { each = course_lessons  as = :l
+      chapter $"${l.n}. ${l.title}" { page = $"lesson_${l.id}" }
+    }
+    wdoc_repeater { each = sorted_modules  as = :m
+      chapter $"${m.title}" {
+        wdoc_repeater { each = sort_by(m.lessons, by_lesson_n)  as = :l
+          chapter $"${l.n}. ${l.title}" { page = $"lesson_${l.id}" }
+        }
+      }
+    }
+  }
+}
+
+// --- syllabus (start page) ----------------------------------------------------
+
+page index { start = true
+  h1 $"${topic.name} — training"
+  p  $"${topic.summary}"
+  p  "Work through the lessons in order — each builds on the previous one, and every lesson ends with exercises you can check against the expected results."
+
+  wdoc_repeater { each = match len(course_lessons) { 0 => [], _ => [true] }  as = :_cl
+    h2 "Lessons"
+    wdoc_repeater { each = course_lessons  as = :l
+      p $"${l.n}. [${l.title}](lesson_${l.id})${match l.summary { none => "", s => $" — ${s}" }}"
+    }
+  }
+  wdoc_repeater { each = sorted_modules  as = :m
+    h2 $"${m.title}"
+    wdoc_repeater { each = match m.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
+    wdoc_repeater { each = sort_by(m.lessons, by_lesson_n)  as = :l
+      p $"${l.n}. [${l.title}](lesson_${l.id})${match l.summary { none => "", s => $" — ${s}" }}"
+    }
+  }
+}
+
+// --- lesson pages --------------------------------------------------------------
+
+wdoc_repeater { each = all_lessons  as = :l
+  page $"lesson_${l.id}" { title = $"${l.title}"
+    h1 $"${l.n}. ${l.title}"
+    wdoc_repeater { each = match l.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
+
+    wdoc_repeater { each = match len(l.objectives) { 0 => [], _ => [true] }  as = :_ob
+      callout "After this lesson you can" { class = ["info"]
+        body = join(map(l.objectives, fn(o: utf8) -> utf8 { $"- ${o}" }), "\n")
+      }
+    }
+    wdoc_repeater { each = match len(l.prerequisites) { 0 => [], _ => [true] }  as = :_pr
+      p $"**Before you start:** ${join(flatten(map(l.prerequisites, lesson_link)), " · ")}"
+    }
+
+    wdoc_repeater { each = match l.body { none => [], b => [true] }  as = :_b
+      project { from = l.body }
+    }
+
+    wdoc_repeater { each = l.exercises  as = :ex
+      h2 $"Exercise: ${ex.title}"
+      p $"${ex.task}"
+      wdoc_repeater { each = match ex.code { none => [], c => [c] }  as = :c
+        code $"${ex.code_lang ?? "text"}" { source = c }
+      }
+      wdoc_repeater { each = match ex.body { none => [], b => [true] }  as = :_b
+        project { from = ex.body }
+      }
+      wdoc_repeater { each = match ex.expected { none => [], e => [e] }  as = :e
+        callout "Expected result" { class = ["success"]  body = $"${e}" }
+      }
+      wdoc_repeater { each = match ex.hint { none => [], h => [h] }  as = :h
+        callout "Hint" { class = ["warning"]  body = $"${h}" }
+      }
+    }
+  }
+}

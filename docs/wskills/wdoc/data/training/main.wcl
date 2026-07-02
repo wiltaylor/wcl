@@ -1,0 +1,489 @@
+// The training view's course — "wdoc authoring tutorial" (schema/training.wcl).
+// Ordered lessons with hands-on exercises; `related` links each lesson back to
+// the reference units it teaches.
+
+lesson first_page {
+  n       = 1
+  title   = "Your first page"
+  summary = "Write a minimal wdoc page and preview it with the dev server."
+  objectives = [
+    "Write a one-page wdoc document from scratch",
+    "Build it to HTML with `wcl wdoc build`",
+    "Iterate under `wcl wdoc serve` with live rebuilds",
+  ]
+  related = [overview, pages, build_serve]
+  body {
+    p "Every wdoc document is a `.wcl` file that starts with `import <wdoc.wcl>` — that import brings in the whole block vocabulary. The smallest useful document is a single `page` holding content blocks: a heading, a paragraph, whatever the page needs. `start = true` marks the entry page."
+    p "Two commands cover the whole authoring loop: `wcl wdoc build <file> --out <dir>` renders the HTML once, and `wcl wdoc serve <file>` starts a dev server that watches the source and re-renders on save."
+  }
+  exercise hello_page {
+    title     = "Hello, wdoc"
+    task      = "Create `hello.wcl` with one page, build it, then serve it and edit the paragraph while watching the browser."
+    code_lang = "bash"
+    code      = <<'SH'
+cat > hello.wcl <<'WCL'
+import <wdoc.wcl>
+
+page index { start = true
+  h1 "Hello wdoc"
+  p "My **first** page, with _italic_ and `code`."
+}
+WCL
+wcl wdoc build hello.wcl --out out
+wcl wdoc serve hello.wcl
+SH
+    expected = "`out/index.html` renders the heading and formatted paragraph, and under `serve` a saved edit shows up after a browser refresh."
+    hint     = "No `site` block is needed yet — a lone page renders standalone. Sites arrive in the next lesson."
+  }
+}
+
+lesson book_site {
+  n       = 2
+  title   = "A book site and its table of contents"
+  summary = "Group pages into a `site`, pick the `:book` template, and wire the sidebar with `toc`."
+  objectives = [
+    "Declare a `site` and join pages to it via `sites`",
+    "Select a template with `default_template`",
+    "Build a nested sidebar with `toc` chapters and mark the start page",
+  ]
+  prerequisites = [first_page]
+  related = [sites, templates, template_kinds, pages]
+  body {
+    p "A `site` block configures one output target: its template, title, theme, and navigation. Each page joins one or more sites through its `sites` field, and cross-page links are markdown-style — `[text](page_name)` — validated at build time, so a renamed page can't silently break navigation."
+    p "The `:book` template reads a `toc` block off the site: `chapter`s nest to any depth, a chapter without `page =` is a grouping heading, and a chapter pointing at an unknown page is a build error."
+  }
+  exercise build_a_book {
+    title     = "A two-page book"
+    task      = "Turn your document into a `:book` site with a nested table of contents and a link between the pages."
+    code_lang = "wcl"
+    code      = <<'WCL'
+import <wdoc.wcl>
+
+site docs {
+  default_template = :book
+  title            = "Project Docs"
+  toc {
+    chapter "Intro" { page = index }
+    chapter "Guide" {
+      chapter "Setup" { page = setup }
+    }
+  }
+}
+
+page index { sites = [:docs]  start = true
+  h1 "Project docs"
+  p "Start with the [setup guide](setup)."
+}
+
+page setup { sites = [:docs]
+  h1 "Setup"
+  p "Back to the [intro](index)."
+}
+WCL
+    expected = "The build renders a fixed left sidebar with an Intro chapter and a Guide group containing Setup, and the in-page links navigate between the two pages."
+    hint     = "If the build fails with an unknown-page error, the `toc` or a link names a page id that doesn't exist — page ids, not titles, are the link targets."
+  }
+}
+
+lesson everyday_formatting {
+  n       = 3
+  title   = "Formatting, callouts, and columns"
+  summary = "The everyday blocks: inline patterns, admonition callouts, and side-by-side layout."
+  objectives = [
+    "Use the inline patterns in any paragraph, cell, or list item",
+    "Pick the right callout class for an admonition",
+    "Lay content out side by side with `column` and `widths`",
+  ]
+  prerequisites = [book_site]
+  related = [formatting, callouts, columns]
+  body {
+    p "Inline patterns light up automatically wherever prose renders: `**bold**`, `_italic_` (underscores, not asterisks), backtick code, `[text](page)` links, `:lucide.check:` icons, and `$x^2$` math. For a paragraph mixing styled segments, a `text` block holds `span`s, each with its own `class`."
+    p "A `callout` is an admonition with an icon and a coloured heading — six built-in classes: `note`, `info`, `tip`, `warning`, `error`, `success`. A `column` block lays its children side by side; `widths` gives one CSS percentage per child, summing to about 100."
+  }
+  exercise formatted_page {
+    title     = "A formatted page"
+    task      = "Add a page using at least three inline patterns, two differently-classed callouts, and a two-column layout."
+    code_lang = "wcl"
+    code      = <<'WCL'
+page style_tour { sites = [:docs]
+  h1 "Style tour"
+  p "Mix **bold**, _italic_, `code`, and an icon :lucide.check: in one line."
+  callout "Tip"     { class = ["tip"]      body = "A helpful shortcut or best practice." }
+  callout "Warning" { class = ["warning"]  body = "Something to be careful about." }
+  column {
+    widths = [50.0, 50.0]
+    p "**Left.** The first child fills the first slot."
+    p "**Right.** The second child fills the other half."
+  }
+}
+WCL
+    expected = "The page shows the styled inline segments, two callouts with distinct accent colours and icons, and two paragraphs sitting side by side."
+    hint     = "Italic is `_underscores_` — asterisk pairs only mean bold. One `widths` entry per column child."
+  }
+}
+
+lesson tables_and_lists {
+  n       = 4
+  title   = "Tables and lists"
+  summary = "Pipe-row tables and nestable lists — with inline patterns inside every cell and item."
+  objectives = [
+    "Author a `table` with WCL's native pipe-row syntax",
+    "Build bulleted and numbered `list`s and nest sublists",
+  ]
+  prerequisites = [everyday_formatting]
+  related = [tables_block, lists_block]
+  body {
+    p "A `table { rows: | … | }` uses WCL's pipe-row syntax: the first row becomes the header, the rest the body. Cells are expressions — `utf8` cells run through the inline-pattern engine, so bold, links, and icons work inside them; numbers and booleans stringify."
+    p "A `list` holds `li` items and is bulleted by default; `style = :numbered` numbers it. Nest an `li` inside an `li` for a sublist that inherits the style (numbered lists number hierarchically: 2.1, 2.2); drop a whole `list` block inside an `li` for a sublist with a different style."
+  }
+  exercise table_and_list {
+    title     = "A roster and a runbook"
+    task      = "Add a table with a formatted cell and a numbered list with a nested sublist."
+    code_lang = "wcl"
+    code      = <<'WCL'
+page roster { sites = [:docs]
+  h1 "Roster"
+  table {
+    rows:
+      | "Name"  | "Role"    | "Years" |
+      | "Alice" | "**Dev**" | 3       |
+      | "Bob"   | "_Ops_"   | 5       |
+  }
+  list { style = :numbered
+    li "Setup"
+    li "Build" {
+      li "Compile"
+      li "Link"
+    }
+  }
+}
+WCL
+    expected = "The table renders with a header row and a bold **Dev** cell, and the list numbers the sublist hierarchically (2.1, 2.2)."
+    hint     = "A literal pipe inside an unquoted cell splits the row — wrap any cell containing a pipe in a string literal."
+  }
+}
+
+lesson images_and_assets {
+  n       = 5
+  title   = "Images and assets"
+  summary = "Embed images on pages and in diagrams, and understand how assets ship with the build."
+  objectives = [
+    "Embed an `image` with alt text and an explicit size",
+    "Explain where copied assets land in the output tree",
+    "Drop inline icons into prose",
+  ]
+  prerequisites = [everyday_formatting]
+  related = [images, icons, videos]
+  body {
+    p "An `image` block takes its source path as the inline label, resolved relative to the build entry file; the file is copied into `_wdoc/` at build time so the output site is self-contained. Set `width` / `height` to size it and `alt` for accessibility. Because the copy is referenced by a relative URL, it resolves when the site is served — not when a page is opened directly from disk."
+    p "Icons need no asset at all: `:pack.name:` (for example `:lucide.rocket:`) drops a glyph inline anywhere prose renders. An `image` is also a placeable diagram shape, positioned by `x` / `y` next to rects and circles."
+  }
+  exercise add_an_image {
+    title     = "Ship a screenshot"
+    task      = "Add an image to a page with alt text and a fixed width, build, and find the copied file in the output."
+    code_lang = "wcl"
+    code      = <<'WCL'
+page media { sites = [:docs]
+  h1 "Media"
+  p "The dashboard :lucide.gauge: looks like this:"
+  image "assets/dashboard.png" {
+    alt   = "The dashboard on first boot"
+    width = 480.0
+  }
+}
+WCL
+    expected = "The build copies the file under `out/_wdoc/`, and the page shows the image at 480px with the icon inline in the paragraph."
+    hint     = "The path is relative to the entry `.wcl` file you build, not to the file the block sits in."
+  }
+}
+
+lesson first_diagram {
+  n       = 6
+  title   = "Your first diagram"
+  summary = "Shapes on a canvas, `a -> b` connections, and letting the layered layout place a flowchart."
+  objectives = [
+    "Place primitive shapes on a sized `diagram` canvas",
+    "Connect shapes by id with `a -> b` edges",
+    "Switch on `:layered` auto-layout for a flowchart",
+  ]
+  prerequisites = [book_site]
+  related = [diagrams, primitive_shapes, connections, layout_modes, flowcharts]
+  body {
+    p "A `diagram` is the drawing surface: it declares a `width` / `height` and holds shapes that render as SVG. Give shapes an `id` and wire them with `a -> b` edge statements. With no layout set you position shapes yourself via `x` / `y`."
+    p "Flowcharts come from three stdlib shapes — `process` (rectangle), `decision` (diamond), `terminator` (oval) — plus `layout = :layered`, which ranks the connection graph topologically and elbow-routes the edges, so you omit the coordinates entirely."
+  }
+  exercise flowchart {
+    title     = "An auto-laid flowchart"
+    task      = "Draw a three-node flowchart and let the layered layout place it — no x/y on any shape."
+    code_lang = "wcl"
+    code      = <<'WCL'
+page flow { sites = [:docs]
+  h1 "Build flow"
+  diagram {
+    width = 320  height = 220  layout = :layered  layer_gap = 20.0
+
+    process    "Parse"  { id = parse   width = 100.0  height = 40.0 }
+    decision   "Valid?" { id = valid   width = 100.0  height = 60.0 }
+    terminator "Render" { id = render  width = 100.0  height = 40.0 }
+
+    parse -> valid  :flow
+    valid -> render :flow
+  }
+}
+WCL
+    expected = "The three shapes stack in ranked layers with elbow-routed arrows between them, without any hand-placed coordinates."
+    hint     = "Edges reference shape `id`s. If everything piles up at the origin, the `layout = :layered` line is missing."
+  }
+}
+
+lesson charts_from_data {
+  n       = 7
+  title   = "Charts and timelines from data"
+  summary = "Plot series data with `bar_chart` and put real dates on a `timeline` — both inside a `diagram`."
+  objectives = [
+    "Plot grouped series with `bar_chart` categories and series records",
+    "Lay events and phases on a real-calendar `timeline`",
+  ]
+  prerequisites = [first_diagram]
+  related = [charts, timelines, diagrams]
+  body {
+    p "The chart kinds — `bar_chart`, `line_chart`, `pie_chart` — are diagram shapes, so each sits inside a `diagram` sharing its size. Bar and line charts take a `series` list of `{ name, values }` records with `categories` labelling the x-axis; a pie takes `slices` of `{ label, value }`. Bare `{ … }` records are enough — the variant is inferred from the shape."
+    p "A `timeline` is a real-time axis: dates are ISO strings, a `unit` (`:minutes` … `:years`) sets the tick granularity, `items` are point events, and `phases` are labelled spans drawn as bands."
+  }
+  exercise plot_the_quarter {
+    title     = "A chart and a roadmap"
+    task      = "Plot two series over four quarters, then lay a kickoff and a release on a year-long timeline with one phase."
+    code_lang = "wcl"
+    code      = <<'WCL'
+page metrics { sites = [:docs]
+  h1 "Metrics"
+  diagram { width = 360  height = 200
+    bar_chart { width = 360.0  height = 200.0
+      title = "Revenue"  x_label = "Quarter"  y_label = "$k"
+      categories = ["Q1", "Q2", "Q3", "Q4"]
+      series = [
+        { name: "2025", values: [42.0, 55.0, 61.0, 78.0] },
+        { name: "2026", values: [30.0, 48.0, 52.0, 66.0] },
+      ]
+    }
+  }
+  diagram { width = 560  height = 220
+    timeline { width = 560.0  height = 220.0
+      title = "2026 roadmap"
+      start = "2026-01-01"
+      end   = "2026-12-31"
+      unit  = :months
+      items = [
+        { label: "Kickoff", on: "2026-02-20" },
+        { label: "Release", on: "2026-09-20" },
+      ]
+      phases = [ { label: "Build", from: "2026-02-01", to: "2026-06-15" } ]
+    }
+  }
+}
+WCL
+    expected = "The bar chart shows grouped pairs per quarter with a legend, and the timeline places both events on real month boundaries with the Build band beneath."
+    hint     = "Chart values are floats (`42.0`, not `42`), and the chart's own `width`/`height` should match the surrounding diagram's."
+  }
+}
+
+lesson components_and_repeaters {
+  n       = 8
+  title   = "Components and repeaters"
+  summary = "Declare data once, then stamp markup from it with `wdoc_component`, slots, and `wdoc_repeater`."
+  objectives = [
+    "Declare a `wdoc_component` with defaulted `wdoc_slot`s",
+    "Fill slots via interpolated strings and bare field references",
+    "Stamp one instance per data row with `wdoc_repeater`",
+  ]
+  prerequisites = [book_site]
+  related = [data_views]
+  body {
+    p "A component is a reusable fragment of ordinary wdoc markup with named slots: declare `wdoc_slot`s and a `wdoc_body`, then instantiate the component by its own name anywhere a block is allowed. Slot values land in text through `$\"…${slot}…\"` interpolated strings; bare references (like `class = [status]`) need no prefix. A slot with a `default` is optional at the call site."
+    p "A `wdoc_repeater` renders its body once per element of `each`, binding the element to the symbol named by `as` — combined with a component it stamps one card per data row. The same repeater emits pages at the document root and `chapter`s inside a `toc`, so navigation can be data-driven too."
+  }
+  exercise metric_cards {
+    title     = "One card per metric"
+    task      = "Declare a metric-card component and a data list, then render one card per row with a repeater."
+    code_lang = "wcl"
+    code      = <<'WCL'
+let metrics = [
+  { name: "CPU",    pct: 42, sev: "warning" },
+  { name: "Memory", pct: 88, sev: "error" },
+]
+
+wdoc_component metric_card {
+  wdoc_slot label
+  wdoc_slot value
+  wdoc_slot status { default = "note" }
+  wdoc_body {
+    callout $"${label}" { class = [status]  body = $"Currently at **${value}%**" }
+  }
+}
+
+page health { sites = [:docs]
+  h1 "Health"
+  wdoc_repeater { each = metrics  as = :m
+    metric_card { label = m.name  value = m.pct  status = m.sev }
+  }
+}
+WCL
+    expected = "The page shows one callout per data row — a warning-coloured CPU card and an error-coloured Memory card — with the values interpolated into the bodies."
+    hint     = "Interpolated strings need the `$` prefix; a plain `\"…\"` renders `${…}` literally."
+  }
+}
+
+lesson bodies_and_projection {
+  n       = 9
+  title   = "Addressable bodies and projection"
+  summary = "Attach renderable content to your own typed data records and render it elsewhere with `project` — the wskill mechanism."
+  objectives = [
+    "Declare a custom `@block` type with a `@child(\"body\")` content slot",
+    "Gather instances with a merging `@document`",
+    "Render each record's body by reference with `project`",
+  ]
+  prerequisites = [components_and_repeaters]
+  related = [data_views]
+  body {
+    p "A `body` attaches a chunk of renderable content to a **data record** as a property — the record itself is not a renderable block. Declare your own `@block` type with a `@child(\"body\") … : WdocAddressableBody?` slot, plus a merging `@document` so the document gathers the instances into a list your pages can repeat over."
+    p "A `project { from = record.body }` then renders *that* record's fragment wherever the projection needs it; `${…}` inside the body resolves against the record. A body never renders where it is declared, only where projected. This body/project pattern is exactly how a wskill's book projects its concept and fact pages."
+  }
+  exercise server_fleet {
+    title     = "A projected fleet page"
+    task      = "Declare a `server` block carrying a body, author two servers, and project each body onto a fleet page."
+    code_lang = "wcl"
+    code      = <<'WCL'
+import <wdoc.wcl>
+
+@block("server")
+type Server {
+  @inline(0) name: identifier
+  region: utf8?
+  @child("body") overview: WdocAddressableBody?
+}
+
+@document
+type FleetDoc {
+  @children("server") servers: list<Server>
+}
+
+server web01 { region = "us-east"
+  body { p $"Frontend in ${region}." }
+}
+
+server web02 { region = "eu-west"
+  body { p $"Frontend in ${region}." }
+}
+
+page fleet { start = true
+  h1 "Fleet"
+  wdoc_repeater { each = servers  as = :s
+    h2 $"${s.name}"
+    project { from = s.overview }
+  }
+}
+WCL
+    expected = "The fleet page shows an h2 per server followed by its projected body — each paragraph naming its own region."
+    hint     = "Your own `@document` merges with wdoc's, so `page` blocks stay legal alongside `server`. The single `@child(\"body\")` slot means the body needs no name."
+  }
+}
+
+lesson render_targets {
+  n       = 10
+  title   = "Render targets"
+  summary = "One model, four outputs: HTML, Markdown, a skill folder, and PDF."
+  objectives = [
+    "Render the same document to HTML, Markdown, and PDF",
+    "Project an `:ai_skill` site into a skill folder",
+    "Pick a single site out of a multi-site document with `--site`",
+  ]
+  prerequisites = [book_site]
+  related = [build_serve, render_pdf_markdown, render_skill, markdown, skills]
+  body {
+    p "The render targets all consume the same document: `wcl wdoc build` writes HTML, `markdown` writes one `.md` per page (diagrams become static `.svg` files it references), and `pdf` writes a paginated, pure-Rust PDF per site. When a document declares several sites, `--site <name>` renders just one."
+    p "The fourth target is the skill folder: a site with `default_template = :ai_skill` and a `skill { }` block (its `name` and `description` become SKILL.md front matter) renders through `wcl wdoc skill` — the `start` page becomes `SKILL.md` and every other page lands under `references/`. Running `build` on a skill site is an error that points you at the right command."
+  }
+  exercise render_all {
+    title     = "Render everything"
+    task      = "Render your book to HTML, Markdown, and PDF, then add a minimal `:ai_skill` site and render the skill folder."
+    code_lang = "bash"
+    code      = <<'SH'
+wcl wdoc build    docs.wcl --out out/html
+wcl wdoc markdown docs.wcl --out out/md
+wcl wdoc pdf      docs.wcl --out out/pdf
+# after adding:  site helper { default_template = :ai_skill
+#                  skill { name = "docs-helper"  description = "When to use this skill." } }
+wcl wdoc skill docs.wcl --out out/skill --site helper
+SH
+    expected = "`out/html` holds the site, `out/md` one `.md` per page with `.svg` diagram assets, `out/pdf` a paginated PDF, and `out/skill/SKILL.md` carries the name/description front matter."
+    hint     = "The skill site needs a page marked `start = true` — that page becomes SKILL.md itself."
+  }
+}
+
+lesson visibility_and_themes {
+  n       = 11
+  title   = "Visibility and themes"
+  summary = "Scope blocks per site, template, or backend with `@only` / `@except`, and restyle a whole site in one line."
+  objectives = [
+    "Scope a block to a subset of the build with `@only` / `@except`",
+    "Switch a site's palette with `theme` and add a light/dark toggle",
+  ]
+  prerequisites = [render_targets]
+  related = [visibility, themes, styling]
+  body {
+    p "Any block can carry `@only(...)` or `@except(...)` to scope it by three axes: `sites` (site names), `templates` (`:webpage` / `:book` / `:presentation`), and `backends` (`:html` / `:pdf` / `:markdown`). `@only` renders the block only where the conditions match; `@except` everywhere else. This is how one document serves a web build and a print PDF without forking content."
+    p "Themes recolour the whole site in one line: `theme = :nord` (or `tokyonight`, `gruvbox`, `catppuccin`, `rose`, `paper`), each with dark and light variants — add `theme_toggle = true` for the switcher button. Local styling stays available through `class` blocks, which always win over theme defaults."
+  }
+  exercise scope_and_style {
+    title     = "A print-aware, themed page"
+    task      = "Theme your site, then add one block that skips the PDF and one that renders only in it."
+    code_lang = "wcl"
+    code      = <<'WCL'
+site docs {
+  default_template = :book
+  title            = "Project Docs"
+  theme            = :gruvbox
+  theme_toggle     = true
+  toc { chapter "Intro" { page = index } }
+}
+
+page index { sites = [:docs]  start = true
+  h1 "Project docs"
+  @except(backends=[:pdf]) video { src = "demo.mp4" }
+  @only(backends=[:pdf])   p "See the online docs for the screencast."
+}
+WCL
+    expected = "The HTML build shows the video and the theme toggle in gruvbox colours; the PDF drops the video and prints the fallback sentence instead."
+    hint     = "Both decorators take the same three list arguments — an empty axis matches everything."
+  }
+}
+
+lesson review_loop {
+  n       = 12
+  title   = "The review loop"
+  summary = "Pin comments on the served site, work through them from the CLI, and hand off rounds with the review handshake."
+  objectives = [
+    "Serve with the click-to-comment client",
+    "List and resolve comments from the CLI",
+    "Run the agent-side `wcl wdoc review` wait",
+  ]
+  prerequisites = [render_targets]
+  related = [review_comments, build_serve]
+  body {
+    p "`wcl wdoc serve <file> --comment` injects a review client into every page: click any rendered block to pin a note on it. Comments land in a `comments.wcl` sidecar beside the document — keyed by page and locator — and never trigger a rebuild, so reviewing stays non-destructive."
+    p "From the CLI, `wcl wdoc comments .` lists every open note and `comments . resolve <id>` closes one. For human⇄agent rounds, the agent runs `wcl wdoc review <file>`: it blocks until the reviewer clicks \"Send to agent\" in the comment toolbar, then prints that round's comments for the agent to work through."
+  }
+  exercise one_round {
+    title     = "Run one review round"
+    task      = "Serve with `--comment`, pin a note on any block in the browser, list it from the CLI, then resolve it."
+    code_lang = "bash"
+    code      = <<'SH'
+wcl wdoc serve docs.wcl --comment &
+# click a block in the browser and leave a note, then:
+wcl wdoc comments .
+wcl wdoc comments . resolve <id>
+SH
+    expected = "The note appears in the CLI list with its id, page, and text, and disappears from the open list after resolve."
+    hint     = "The comments live in `comments.wcl` next to the document — open it to see exactly what the client wrote."
+  }
+}

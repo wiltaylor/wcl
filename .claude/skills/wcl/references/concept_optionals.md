@@ -29,7 +29,7 @@ note: utf8? = none
 
 ## Working with optionals
 
-Pattern-match an optional to handle the two cases. The `if let` shorthand is convenient when you only care about the present case. See [Control Flow](../references/concept_control_flow.md).
+Pattern-match an optional to handle the two cases. The `if let` shorthand is convenient when you only care about the present case. See [match](../references/concept_match_expr.md) and [if let](../references/concept_if_let.md).
 
 ```wcl
 display = match maybe_name {
@@ -80,6 +80,8 @@ theme   = page.theme ?? site.theme ?? :nord
 
 - [Unions](../references/concept_unions.md)
 
-- [Control Flow](../references/concept_control_flow.md)
+- [match](../references/concept_match_expr.md)
 
-[← All concepts](../references/concepts_ref.md)
+- [if let](../references/concept_if_let.md)
+
+[← Back to SKILL.md](../SKILL.md)

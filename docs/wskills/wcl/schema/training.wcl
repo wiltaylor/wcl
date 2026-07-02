@@ -1,0 +1,74 @@
+// wskill OPTIONAL standard module — a tutorial series (training book) as data.
+//
+// Imported from the wskill root (`import "./schema/training.wcl"`); the
+// gathered lists stay empty until you author `lesson` / `module` blocks under
+// data/training/. The view SHIPS when you declare a matching
+// `artifact { kind = :training … }` in wskill.wcl and render
+// wdoc/training/main.wcl as a separate book. Training is for LEARNERS walking
+// the topic for the first time — ordered lessons with hands-on exercises —
+// where a `procedure` is for practitioners who already know the topic and
+// need the reliable sequence.
+//
+// Lessons order by `n`; group them into `module`s when the course has parts (a
+// small topic can author top-level lessons only). `related` names the reference
+// units a lesson teaches, so the course links back into the book.
+//
+// All declarations share the base `wcl.wskill` namespace. The merging @document
+// below adds `modules` / `lessons` to the gathered document only in wskills
+// that import this file.
+namespace wcl.wskill
+
+import <wdoc.wcl>
+import "./base.wcl"          // WdocAddressableBody
+
+// A hands-on exercise inside a lesson, with the expected result so the learner
+// (or a grading agent) can verify their work.
+@block("exercise")
+type Exercise {
+  @inline(0) id: identifier
+  title:     utf8
+  task:      utf8              // what to do, imperatively
+  code_lang: utf8?             // language tag for the starter snippet
+  code:      utf8?             // starter code / command (raw heredoc)
+  expected:  utf8?             // expected result / output — "how you know it worked"
+  hint:      utf8?
+  @child("body") body: WdocAddressableBody?   // richer material when fields aren't enough
+}
+
+// One tutorial step. `related` names the reference units (concept/entity/fact/
+// procedure ids) the lesson teaches, rendered as "Covered in the reference"
+// links back into the book's pages.
+@block("lesson")
+type Lesson {
+  @inline(0) id: identifier
+  title:   utf8
+  summary: utf8?
+  n:       u32                                   // order within its module (or the course)
+  @default([]) objectives:    list<utf8>         // "after this lesson you can …"
+  @default([]) prerequisites: list<identifier>   // lesson ids to complete first
+  @default([]) related:       list<identifier>   // reference units this lesson teaches
+  @default([]) tags: list<utf8>
+  @child("body") body: WdocAddressableBody?
+  @children("exercise") exercises: list<Exercise>
+}
+
+// A part of the course: an ordered group of lessons. Optional — a small topic
+// can author top-level lessons only. (`module` is safe as a kind because the
+// schema is namespaced: `wcl.wskill::module`.)
+@block("module")
+type TrainingModule {
+  @inline(0) id: identifier
+  title:   utf8
+  summary: utf8?
+  n:       u32
+  @children("lesson") lessons: list<Lesson>
+}
+
+// Merges with the base @document — gathered only when this module is imported.
+// Document-level @children gathers direct children only, so a module-nested
+// lesson is not also listed in `lessons`.
+@document
+type TrainingDoc {
+  @children("module") modules: list<TrainingModule>
+  @children("lesson") lessons: list<Lesson>   // ungrouped top-level lessons
+}

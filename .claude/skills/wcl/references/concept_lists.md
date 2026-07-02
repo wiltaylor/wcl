@@ -60,6 +60,4 @@ middle    = slice([1, 2, 3, 4], 1, 3)                          // [2, 3]
 
 - [Tensors](../references/concept_tensors.md)
 
-- [Expressions](../references/concept_expressions.md)
-
-[← All concepts](../references/concepts_ref.md)
+[← Back to SKILL.md](../SKILL.md)

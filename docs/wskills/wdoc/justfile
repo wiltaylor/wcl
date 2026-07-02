@@ -38,7 +38,7 @@ training-build: wskill-check
 
 # Render every shipped projection
 [group('render')]
-render: book-build skill-build
+render: book-build skill-build presentation-build training-build
 
 # Serve the book projection with live reload
 [group('render')]

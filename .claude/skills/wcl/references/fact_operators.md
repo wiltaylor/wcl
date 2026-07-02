@@ -15,10 +15,8 @@ WCL's operator set: arithmetic, comparison, logic, none-coalescing, and member a
 
 ## Related
 
-- [Expressions](../references/concept_expressions.md)
-
 - [Optionals](../references/concept_optionals.md)
 
 - [References](../references/concept_references.md)
 
-[← All facts](../references/facts_ref.md)
+[← Back to SKILL.md](../SKILL.md)

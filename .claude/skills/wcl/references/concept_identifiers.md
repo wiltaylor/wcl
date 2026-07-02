@@ -60,4 +60,4 @@ The standard library follows Rust-like conventions, but the language does not en
 
 - [Symbols](../references/concept_symbols.md)
 
-[← All concepts](../references/concepts_ref.md)
+[← Back to SKILL.md](../SKILL.md)

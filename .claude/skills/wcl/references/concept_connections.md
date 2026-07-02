@@ -54,10 +54,8 @@ A still-unmatched id is the host's responsibility. Leave `@dynamic` off for conn
 
 ## Related
 
-- [Schema & Decorators](../references/concept_schema.md)
-
 - [References](../references/concept_references.md)
 
 - [Symbols](../references/concept_symbols.md)
 
-[← All concepts](../references/concepts_ref.md)
+[← Back to SKILL.md](../SKILL.md)
