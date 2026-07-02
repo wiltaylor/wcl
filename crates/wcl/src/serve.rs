@@ -500,6 +500,9 @@ struct ServeState {
     /// Review handshake markers (comment mode only): the file-based coordination
     /// with a `wcl wdoc review` process. `None` when `--comment` is off.
     review: Option<wcl_wdoc::Handshake>,
+    /// Preview-without-saving scratch state (edit mode only): the temp output
+    /// tree the `/__wdoc_preview` endpoints render into and serve from.
+    preview: Option<crate::preview::Preview>,
 }
 
 /// A rebuild request handed to the rebuild worker.
@@ -752,6 +755,11 @@ pub(crate) async fn serve(
         pending: Mutex::new(Vec::new()),
         rebuild_tx: rebuild_tx.clone(),
         review,
+        preview: if edit_mode {
+            Some(crate::preview::Preview::new()?)
+        } else {
+            None
+        },
     });
 
     // Initial build. Failure is non-fatal — HTML requests serve the
@@ -880,6 +888,8 @@ pub(crate) async fn serve(
                 "/__wdoc_file",
                 get(handle_file_read).post(handle_file_write),
             )
+            .route("/__wdoc_preview", axum::routing::post(handle_preview_build))
+            .route("/__wdoc_preview/{*path}", get(handle_preview_file))
             .route("/__wdoc_schema", get(handle_edit_schema))
             .route("/__wdoc_object_kinds", get(handle_object_kinds))
             .route("/__wdoc_objects", get(handle_object_instances))
@@ -1239,6 +1249,61 @@ async fn handle_file_write(State(state): State<Arc<ServeState>>, body: String) -
         v.get("page_file").and_then(serde_json::Value::as_str),
     );
     edit_result(crate::edit::write_file(&state.watch_root, &entry, &v))
+}
+
+/// `POST /__wdoc_preview` — render unsaved buffers into the scratch tree and
+/// return the preview URL of the current page. Serialized (previews coalesce
+/// behind one gate) and run off the async executor — a render is real work.
+async fn handle_preview_build(State(state): State<Arc<ServeState>>, body: String) -> Response {
+    let Some(preview) = &state.preview else {
+        return json_error(StatusCode::BAD_REQUEST, "preview requires --edit");
+    };
+    let v = match parse_json_body(&body) {
+        Ok(v) => v,
+        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
+    };
+    let _gate = preview.lock().await;
+    let state2 = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let preview = state2
+            .preview
+            .as_ref()
+            .expect("preview state checked above");
+        crate::preview::preview_build(preview, &state2.root_file, &state2.watch_root, &v)
+    })
+    .await
+    .unwrap_or_else(|e| Err(format!("preview task failed: {e}")));
+    edit_result(result)
+}
+
+/// `GET /__wdoc_preview/{*path}` — serve a rendered preview file from the
+/// scratch tree, with **no** reload/comment/edit scripts injected (a preview
+/// iframe must neither live-reload nor recurse the editor chrome).
+async fn handle_preview_file(
+    State(state): State<Arc<ServeState>>,
+    axum::extract::Path(path): axum::extract::Path<String>,
+) -> Response {
+    let Some(preview) = &state.preview else {
+        return json_error(StatusCode::BAD_REQUEST, "preview requires --edit");
+    };
+    // Resolve inside the scratch tree only (reject traversal).
+    let rel = Path::new(&path);
+    if rel
+        .components()
+        .any(|c| !matches!(c, std::path::Component::Normal(_)))
+    {
+        return json_error(StatusCode::BAD_REQUEST, "bad preview path");
+    }
+    let file = preview.root().join(rel);
+    match tokio::fs::read(&file).await {
+        Ok(bytes) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, content_type(&file))],
+            bytes,
+        )
+            .into_response(),
+        Err(_) => json_error(StatusCode::NOT_FOUND, "no such preview file"),
+    }
 }
 
 /// Read the `kind` query parameter (`?kind=...`), URL-decoding `%xx` / `+`.

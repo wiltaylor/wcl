@@ -502,6 +502,15 @@ pub struct BuildOptions {
     /// `data-wcl-*` block anchors) so the WYSIWYG client can map a rendered
     /// block back to the AST node to mutate. Off for normal builds.
     pub edit_mode: bool,
+    /// Unsaved buffers shadowing disk (the `serve --edit` preview): every
+    /// source read — the root file and all imports — resolves through this
+    /// map first. Keys should be canonical absolute paths.
+    pub overlay: Option<std::collections::HashMap<PathBuf, String>>,
+    /// Render only these page names, skipping the changed-file analysis — the
+    /// preview path re-renders just the page being looked at into an
+    /// already-warm output dir. A page-set change still falls back to a full
+    /// render (the targeted path bails via `need_full`).
+    pub page_filter: Option<HashSet<String>>,
 }
 
 /// [`build`] with [`BuildOptions`]. Returns the page count plus, when
@@ -609,8 +618,17 @@ fn build_inner(
     seen: &mut HashSet<PathBuf>,
     depth: usize,
 ) -> Result<(BuildOutcome, Option<wcl_lang::Profile>), BuildError> {
-    let user_src = fs::read_to_string(file)
-        .map_err(|e| BuildError::Io(e, format!("read {}", file.display())))?;
+    // An overlay (the preview path) shadows disk for every read, including
+    // the root file itself.
+    let overlay_src = opts.overlay.as_ref().and_then(|o| {
+        let canon = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
+        o.get(&canon).or_else(|| o.get(file)).cloned()
+    });
+    let user_src = match overlay_src {
+        Some(s) => s,
+        None => fs::read_to_string(file)
+            .map_err(|e| BuildError::Io(e, format!("read {}", file.display())))?,
+    };
 
     let name = file.display().to_string();
 
@@ -620,7 +638,10 @@ fn build_inner(
     // file's own directory, not the wdoc working directory — so disk
     // imports fall through to the disk loader with that base.
     let base_dir = file.parent().map(std::path::Path::to_path_buf);
-    let loader = schema_registry().loader(disk_loader());
+    let loader = match &opts.overlay {
+        Some(o) => schema_registry().loader(wcl_lang::overlay_loader(o.clone())),
+        None => schema_registry().loader(disk_loader()),
+    };
     let mut doc = Document::open_at_with_loader(
         &user_src,
         &name,
@@ -735,9 +756,13 @@ fn build_inner(
     // whole site. `affected_pages` returns `None` — fall through to the full
     // rebuild below — for any change that could invalidate shared state (an
     // imported library, the page set, CSS, an asset declaration, a repeater).
-    if let Some(changed) = changed
-        && let Some(targets) = affected_pages(&doc, file, changed)
-    {
+    // An explicit `page_filter` (the preview path) names the targets directly.
+    let targets = match (&opts.page_filter, changed) {
+        (Some(pf), _) => Some(pf.clone()),
+        (None, Some(changed)) => affected_pages(&doc, file, changed),
+        (None, None) => None,
+    };
+    if let Some(targets) = targets {
         let _ = crate::render::take_route_error();
         let _ = crate::render::take_render_warnings();
         let (result, eval_err) =

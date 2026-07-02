@@ -79,6 +79,7 @@ body.wcl-ed-picking [data-wcl-block].wcl-ed-hot{outline:2px solid #16a34a;outlin
 .wcl-ed-srcpane{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0;min-height:0}
 .wcl-ed-srchdr{display:flex;align-items:center;gap:8px;font-size:12px;color:#aaa}
 .wcl-ed-srchdr .dirty{color:#fbbf24}
+.wcl-ed-preview{flex:1;min-width:0;border:1px solid #2a2a2a;border-radius:6px;background:#fff}
 .wcl-ed-item .acts{display:flex;gap:6px}
 .wcl-ed-tag{font-size:11px;opacity:.6}
 `;
@@ -91,6 +92,7 @@ body.wcl-ed-picking [data-wcl-block].wcl-ed-hot{outline:2px solid #16a34a;outlin
   // resolve the sub-site (e.g. a wskill) this page belongs to and introspect
   // that document, not just the top-level one `--edit` was pointed at.
   const pageFile = () => (pageEl && pageEl.getAttribute('data-wcl-page-file')) || '';
+  const pageName = () => (pageEl && pageEl.getAttribute('data-wcl-page-name')) || '';
   const pfq = () => '&page_file=' + encodeURIComponent(pageFile());
   const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -524,14 +526,19 @@ body.wcl-ed-picking [data-wcl-block].wcl-ed-hot{outline:2px solid #16a34a;outlin
       `<div class="wcl-ed-srcmount" style="display:flex;flex-direction:column;flex:1;min-height:0"></div>` +
       `<div class="wcl-ed-foot"><button data-save disabled>Save</button>` +
       `<button data-sr disabled>Save &amp; Rebuild</button>` +
+      `<button class="ghost" data-pv disabled>Preview</button>` +
       `<button class="ghost" data-fmt disabled>Format</button></div>` +
-      `</div></div>`;
+      `</div>` +
+      `<iframe class="wcl-ed-preview" style="display:none" title="preview"></iframe>` +
+      `</div>`;
     const filesEl = body.querySelector('.wcl-ed-files');
     const curEl = body.querySelector('[data-cur]');
     const dirtyEl = body.querySelector('[data-dirty]');
     const btnSave = body.querySelector('[data-save]');
     const btnSR = body.querySelector('[data-sr]');
     const btnFmt = body.querySelector('[data-fmt]');
+    const btnPv = body.querySelector('[data-pv]');
+    const frame = body.querySelector('.wcl-ed-preview');
     const showErr = m => {
       let e = body.querySelector('.wcl-ed-err');
       if (!e) { e = document.createElement('div'); e.className = 'wcl-ed-err'; body.querySelector('.wcl-ed-srcpane').appendChild(e); }
@@ -568,7 +575,7 @@ body.wcl-ed-picking [data-wcl-block].wcl-ed-hot{outline:2px solid #16a34a;outlin
       cur.dirty = false;
       dirtyEl.textContent = '';
       curEl.textContent = rel;
-      btnSave.disabled = btnSR.disabled = btnFmt.disabled = false;
+      btnSave.disabled = btnSR.disabled = btnFmt.disabled = btnPv.disabled = false;
       ed.focus();
     }
 
@@ -592,6 +599,30 @@ body.wcl-ed-picking [data-wcl-block].wcl-ed-hot{outline:2px solid #16a34a;outlin
 
     btnSave.onclick = saveCurrent;
     btnFmt.onclick = () => ed.format().catch(e => showErr(e.message || e));
+    // Preview: render the CURRENT BROWSER PAGE with the unsaved buffer
+    // overlaid — nothing touches disk. First preview warms the scratch
+    // build (slow once); later ones re-render just the page.
+    btnPv.onclick = async () => {
+      if (!cur) return;
+      clearErr();
+      const first = frame.style.display === 'none';
+      dirtyEl.textContent = first ? '⟳ warming preview…' : '⟳ previewing…';
+      try {
+        const r = await fetch('/__wdoc_preview', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            page: pageName() || 'index',
+            page_file: pageFile() || undefined,
+            files: [{ path: cur.path, text: ed.getValue() }],
+          }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) { dirtyEl.textContent = cur.dirty ? '● unsaved' : ''; showErr(j.error || r.statusText); return; }
+        frame.style.display = '';
+        frame.src = j.href + '?t=' + Date.now();
+        dirtyEl.textContent = cur.dirty ? '● unsaved (previewed)' : '';
+      } catch (e) { dirtyEl.textContent = cur.dirty ? '● unsaved' : ''; showErr(e.message || e); }
+    };
     btnSR.onclick = async () => {
       if (!(await saveCurrent())) return;
       dirtyEl.textContent = '⟳ rebuilding…';

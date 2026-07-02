@@ -10,6 +10,7 @@ mod diff;
 mod dump;
 mod edit;
 mod gitspec;
+mod preview;
 mod scaffold;
 mod serve;
 
@@ -1043,8 +1044,9 @@ fn repl_input_complete(src: &str) -> bool {
             ')' => depth_paren -= 1,
             '[' => depth_brack += 1,
             ']' => depth_brack -= 1,
-            '#' => {
-                // Line comment — skip to end-of-line.
+            '/' if chars.peek() == Some(&'/') => {
+                // `//` line comment — skip to end-of-line so a brace
+                // inside a comment doesn't keep the REPL reading.
                 for c in chars.by_ref() {
                     if c == '\n' {
                         break;
