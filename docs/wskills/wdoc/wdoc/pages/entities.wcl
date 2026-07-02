@@ -7,7 +7,7 @@ wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_ei
     type_index {
       heading = "Entities"
       intro   = "Each entity has its own page — open one from the list below or the sidebar."
-      items   = map(entities, fn(e: Entity) -> utf8 { $"[**${e.name}**](entity_${e.id}) — _${e.kind}_${match e.summary { none => "", s => $" — ${s}" }}" })
+      items   = map(entities, fn(e: Entity) -> utf8 { $"[**${e.name}**](entity_${e.id}) — _${kind_text($"${e.kind}")}_${match e.summary { none => "", s => $" — ${s}" }}" })
     }
   }
 }

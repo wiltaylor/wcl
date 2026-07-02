@@ -95,7 +95,7 @@ WCL
   { name: "Entity", code: <<'WCL'
 entity git_cli {
   name    = "git"
-  kind    = "tool"
+  kind    = :tool
   summary = "The Git command-line client."
   body { p "Installed via your package manager; check with `git --version`." }
 }

@@ -236,6 +236,12 @@ import "../../collection.wcl"
 // Build every member book as a sub-site under out/site/wskills/<name>/.
 include "../../wskills" { entry = "wdoc/book/main.wcl" }
 
+// Members that ship the optional views — the entry file exists only when a
+// member ships that view — built as extra sub-sites under decks/ / training/
+// (`prefix` keeps them clear of the book output).
+include "../../wskills" { entry = "wdoc/presentation/main.wcl"  prefix = "decks" }
+include "../../wskills" { entry = "wdoc/training/main.wcl"      prefix = "training" }
+
 // The single collection block, bound from its gather list (head(...) resolves
 // omitted optional fields — the same pattern wskill templates use for topic).
 let coll = head(collections)
@@ -243,6 +249,15 @@ let coll = head(collections)
 // Every member wskill, discovered + built by the `include` above. Each record is
 // { name, href, title, summary? } (href root-relative; title falls back to name).
 let wskills = included_sites({ folder: "../../wskills", entry: "wdoc/book/main.wcl" })
+
+// The optional views per member (empty lists when nobody ships one). A card
+// adds a deck / course link only for members present here.
+let decks     = included_sites({ folder: "../../wskills", entry: "wdoc/presentation/main.wcl", prefix: "decks" })
+let trainings = included_sites({ folder: "../../wskills", entry: "wdoc/training/main.wcl", prefix: "training" })
+let deck_link = fn(n: utf8) -> utf8 join(map(filter(decks, fn(d: IncludeEntry) -> bool { d.name == n }),
+  fn(d: IncludeEntry) -> utf8 { $"<a class='wsk-view' href='./${d.href}'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><rect x='2' y='4' width='20' height='14' rx='2'></rect><line x1='8' y1='22' x2='16' y2='22'></line><line x1='12' y1='18' x2='12' y2='22'></line></svg>deck</a>" }), "")
+let training_link = fn(n: utf8) -> utf8 join(map(filter(trainings, fn(t: IncludeEntry) -> bool { t.name == n }),
+  fn(t: IncludeEntry) -> utf8 { $"<a class='wsk-view' href='./${t.href}'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M22 10v6M2 10l10-5 10 5-10 5z'></path><path d='M6 12v5c3 3 9 3 12 0v-5'></path></svg>course</a>" }), "")
 
 // One registry card per member. `$<<` interpolates the slots; `summary` is
 // optional, so a `match` folds it onto the description when present.
@@ -254,7 +269,7 @@ let card = fn(s: IncludeEntry) -> utf8 $<<CARD
     <p class="wsk-desc">${s.title}${match s.summary { none => "", su => $" — ${su}" }}</p>
   </div>
   <div class="wsk-card-foot">
-    <a class="wsk-view" href="./${s.href}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>book</a>
+    ${deck_link(s.name)}${training_link(s.name)}<a class="wsk-view" href="./${s.href}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>book</a>
   </div>
 </article>
 CARD

@@ -65,7 +65,7 @@ page index { sites = [:skill]  start = true
     "disallowed-tools"         = skill.disallowed_tools
     "disable-model-invocation" = skill.disable_model_invocation
   }
-  skill_md_body { topic = topic  skill = skill  indexes = indexes  concepts = concepts  entities = entities  facts = facts  procedures = procedures  extra_refs = extra_refs }
+  skill_md_body { topic = topic  skill = skill  indexes = indexes  concepts = concepts  entities = entities  facts = facts  procedures = procedures  extra_refs = extra_refs  artifacts = artifacts }
 }
 
 // --- Per-unit pages (body rendered by the shared components) -----------------

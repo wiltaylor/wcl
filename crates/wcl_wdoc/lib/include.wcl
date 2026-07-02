@@ -72,6 +72,8 @@ type IncludeSites {
   entry: utf8?
   @doc("Which named site of each (multi-site) member to build, passed as `--site`. Absent ⇒ the member's own default site selection.")
   site: utf8?
+  @doc("Output prefix override: sub-sites ship to `<prefix>/<name>/` instead of `<folder-basename>/<name>/`. Lets two includes over the same folder (different entries — e.g. each member's book and its deck) target distinct subdirectories.")
+  prefix: utf8?
 }
 
 // Shape of the records returned by the `included_sites(options)` builtin —

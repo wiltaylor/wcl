@@ -14,7 +14,7 @@ import "./schema/cli.wcl"               // opt-in: map the wcl CLI as data
 // processes are one file per entry under their per-type folder.
 import "./data/main.wcl"
 
-schema_version = "1.1.0"
+schema_version = "1.0.0"
 
 topic wcl {
   name    = "WCL"
@@ -57,6 +57,11 @@ wcl.wskill::skill {
     never  = ["Invent builtins, flags, or syntax that aren't in the reference."]
   }
 }
+
+// The views this wskill ships — first-class data the overview and any registry
+// landing can enumerate. Declaring one documents it; `just render` builds it.
+artifact book     { kind = :book      entry = "wdoc/book/main.wcl"   output = "out/book" }
+artifact ai_skill { kind = :ai_skill  entry = "wdoc/skill/main.wcl"  output = "out/skill" }
 
 // ---- Sources (update-workflow metadata only) ----
 

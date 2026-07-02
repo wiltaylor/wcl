@@ -20,7 +20,7 @@ import "./wdoc/component/block_doc.wcl"
 // facts and processes are one file per entry under their per-type folder.
 import "./data/main.wcl"
 
-schema_version = "1.1.0"
+schema_version = "1.0.0"
 
 topic wdoc {
   name    = "wdoc"
@@ -45,6 +45,11 @@ END
 // Skill-projection config (→ SKILL.md frontmatter). No bundled artifacts.
 wcl.wskill::skill {
 }
+
+// The views this wskill ships — first-class data the overview and any registry
+// landing can enumerate. Declaring one documents it; `just render` builds it.
+artifact book     { kind = :book      entry = "wdoc/book/main.wcl"   output = "out/book" }
+artifact ai_skill { kind = :ai_skill  entry = "wdoc/skill/main.wcl"  output = "out/skill" }
 
 // ---- Sources (update-workflow metadata only) ----
 

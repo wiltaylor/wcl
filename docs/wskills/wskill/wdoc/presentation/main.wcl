@@ -1,0 +1,78 @@
+// Presentation projection — a single-file overview deck over the wskill data.
+//
+// Build:  wcl wdoc build wdoc/presentation/main.wcl --out out/presentation
+//
+// Like the book/skill templates this contains NO topic content — only
+// projections over the `presentation` data (schema/presentation.wcl, authored
+// under data/presentation/). The deck opens with a generated title slide from
+// `topic`; every authored `pres_slide` becomes one slide. A slide that names a
+// `unit` pulls that concept/entity/fact/procedure's headline + summary onto
+// the slide (its `body`, if any, renders below); the reference detail stays in
+// the book.
+
+import <wdoc.wcl>
+import "../../wskill.wcl"
+
+// The single topic / presentation block, bound from their gather lists.
+let topic = head(topics)
+
+// Every authored slide, in deck order (sections in authored order).
+let all_slides = flatten(map(presentations, fn(pr: Presentation) -> list<PresSlide> {
+  flatten(map(pr.sections, fn(sec: PresSection) -> list<PresSlide> { sec.slides }))
+}))
+
+// Featured-unit lookup: unit id -> [{ name, summary }] (empty when the id
+// matches no unit, so a stale reference degrades to an empty pull, not an error).
+type UnitHead { name: utf8  summary: utf8 }
+let featured = fn(uid: identifier) -> list<UnitHead> { flatten([
+  map(filter(concepts,   fn(c: Concept)   -> bool { c.id == uid }), fn(c: Concept)   -> UnitHead { { name: c.name,  summary: c.summary } }),
+  map(filter(entities,   fn(e: Entity)    -> bool { e.id == uid }), fn(e: Entity)    -> UnitHead { { name: e.name,  summary: e.summary ?? "" } }),
+  map(filter(facts,      fn(f: Fact)      -> bool { f.id == uid }), fn(f: Fact)      -> UnitHead { { name: f.title, summary: "" } }),
+  map(filter(procedures, fn(p: Procedure) -> bool { p.id == uid }), fn(p: Procedure) -> UnitHead { { name: p.title, summary: p.purpose } }),
+]) }
+
+// --- site --------------------------------------------------------------------
+
+site deck {
+  default_template = :presentation
+  title = $"${topic.name}"
+  theme = :nord
+  deck {
+    section "Overview" { slide title_slide }
+    wdoc_repeater { each = presentations  as = :pr
+      wdoc_repeater { each = pr.sections  as = :sec
+        section $"${sec.title}" {
+          wdoc_repeater { each = sec.slides  as = :s  slide $"pres_${s.id}" }
+        }
+      }
+    }
+  }
+}
+
+// --- generated slides ---------------------------------------------------------
+
+page title_slide { sites = [:deck]
+  h1 $"${topic.name}"
+  wdoc_repeater { each = presentations  as = :pr
+    wdoc_repeater { each = match pr.summary { none => [topic.summary], su => [su] }  as = :su
+      p $"${su}"
+    }
+  }
+}
+
+wdoc_repeater { each = all_slides  as = :s
+  page $"pres_${s.id}" { sites = [:deck]
+    // Heading: the explicit title, else the featured unit's name.
+    wdoc_repeater { each = match s.title { none => [], t => [t] }  as = :t  h2 $"${t}" }
+    wdoc_repeater { each = match s.unit { none => [], u => featured(u) }  as = :fu
+      wdoc_repeater { each = match s.title { none => [fu.name], _ => [] }  as = :n  h2 $"${n}" }
+      wdoc_repeater { each = match fu.summary { "" => [], su => [su] }  as = :su  p $"_${su}_" }
+    }
+    wdoc_repeater { each = match s.body { none => [], b => [true] }  as = :_b
+      project { from = s.body }
+    }
+    wdoc_repeater { each = match s.speaker_notes { none => [], n => [n] }  as = :n
+      notes { p $"${n}" }
+    }
+  }
+}

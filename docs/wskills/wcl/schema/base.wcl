@@ -1,10 +1,13 @@
 // wskill base schema — ships with the WSKILL skill scaffold.
 //
-// DO NOT HAND-EDIT. Everything topic-specific belongs in `extensions.wcl`.
-// This file is versioned with the WSKILL skill; upgrade procedures live in the
-// skill's references/schema.md. It defines the base block types (the wskill
-// data model) and the root @document that gathers every block instance so the
-// wdoc template sets can project over them.
+// Schema version: 1.0.0 (mirror it in `schema_version` in wskill.wcl).
+//
+// DO NOT HAND-EDIT. Everything topic-specific belongs in `extensions.wcl`, and
+// the topic-owned vocabularies (entity kinds, artifact kinds) in `kinds.wcl` —
+// that file IS hand-editable. This file is versioned with the WSKILL skill;
+// upgrade procedures live in the skill's references. It defines the base block
+// types (the wskill data model) and the root @document that gathers every
+// block instance so the wdoc template sets can project over them.
 //
 // The schema travels with the document: a wskill folder is fully interpretable
 // (lint + render) without the WSKILL skill present.
@@ -19,6 +22,7 @@
 namespace wcl.wskill
 
 import <wdoc.wcl>
+import "./kinds.wcl"     // topic-owned vocabularies (EntityKind, ArtifactKind)
 
 // ---------------------------------------------------------------------------
 // Shared row types
@@ -184,6 +188,25 @@ type WskillRef {
 }
 
 // ---------------------------------------------------------------------------
+// Artifacts — the views this wskill ships, as first-class described data
+// ---------------------------------------------------------------------------
+
+// One shipped view (book / ai_skill / presentation / training — the ArtifactKind
+// vocabulary lives in schema/kinds.wcl). The book overview lists these, a
+// registry landing can enumerate them, and processes can name them in prose.
+// Declaring an artifact documents that `entry` exists and renders to `output`;
+// it does not build anything by itself.
+@block("artifact")
+type Artifact {
+  @inline(0) id: identifier
+  kind:    ArtifactKind          // which view family (see schema/kinds.wcl)
+  name:    utf8?                 // display name; the templates default it per kind
+  summary: utf8?
+  entry:   utf8                  // projection entry file, e.g. "wdoc/book/main.wcl"
+  output:  utf8?                 // conventional output dir, e.g. "out/book"
+}
+
+// ---------------------------------------------------------------------------
 // Reference blocks
 // ---------------------------------------------------------------------------
 //
@@ -219,12 +242,16 @@ type Concept {
   @child("body") body: WdocAddressableBody?
 }
 
-// A concrete thing in the topic's world (type, command, screen, card, …).
+// A concrete NAMED thing in the topic's world — a person, an organization, a
+// piece of software, a command, a file format, a place. NOT a catch-all: an
+// idea is a `concept`, a value/table is a `fact`, a repeatable task is a
+// `procedure`. `kind` classifies it against the closed EntityKind vocabulary
+// (schema/kinds.wcl — extend the set there when a topic needs a new kind).
 @block("entity")
 type Entity {
   @inline(0) id: identifier
   name:    utf8
-  kind:    utf8                          // free text classifier ("file type", "command")
+  kind:    EntityKind                    // e.g. :software, :person (see schema/kinds.wcl)
   summary: utf8?                         // optional one-liner for the index
   @default([]) related: list<identifier>
   @default(:book) audience: Audience     // :book (default) | :ai | :both
@@ -382,6 +409,7 @@ type WSkillDoc {
 
   @children("source")     sources:    list<Source>
   @children("wskill_ref") refs:       list<WskillRef>
+  @children("artifact")   artifacts:  list<Artifact>
 
   @children("concept")   concepts:   list<Concept>
   @children("entity")    entities:   list<Entity>

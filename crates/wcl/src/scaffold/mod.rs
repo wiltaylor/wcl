@@ -400,13 +400,17 @@ fn read_properties(doc: &Document) -> Result<Vec<Prop>, InitError> {
 }
 
 /// Read the `file` and `folder` blocks. Returns `(files, folders)` where
-/// each file is `(path, content)`.
+/// each file is `(path, content)`. A block whose `when` field evaluates to
+/// `false` is skipped (conditional generation, gated on answers).
 fn read_tree(doc: &Document) -> Result<Tree, InitError> {
     let mut files = Vec::new();
     let mut folders = Vec::new();
     for b in doc.blocks() {
         match b.kind() {
             "file" => {
+                if field_bool(&b, "when")? == Some(false) {
+                    continue;
+                }
                 let path = block_label(&b)?.ok_or_else(|| {
                     InitError::Io("a `file` block is missing its path label".to_string())
                 })?;
@@ -414,6 +418,9 @@ fn read_tree(doc: &Document) -> Result<Tree, InitError> {
                 files.push((path, content));
             }
             "folder" => {
+                if field_bool(&b, "when")? == Some(false) {
+                    continue;
+                }
                 let path = block_label(&b)?.ok_or_else(|| {
                     InitError::Io("a `folder` block is missing its path label".to_string())
                 })?;
@@ -437,6 +444,18 @@ fn field_string(block: &Block, name: &str) -> Result<Option<String>, InitError> 
     match block.field(name) {
         Some(f) => match f.value() {
             Ok(v) => Ok(value_string(v)),
+            Err(e) => Err(InitError::Eval(e.clone())),
+        },
+        None => Ok(None),
+    }
+}
+
+/// A block's boolean field, evaluated. `None` when absent or not a bool.
+fn field_bool(block: &Block, name: &str) -> Result<Option<bool>, InitError> {
+    match block.field(name) {
+        Some(f) => match f.value() {
+            Ok(Value::Bool(b)) => Ok(Some(*b)),
+            Ok(_) => Ok(None),
             Err(e) => Err(InitError::Eval(e.clone())),
         },
         None => Ok(None),

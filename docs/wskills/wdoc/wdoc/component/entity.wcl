@@ -15,7 +15,7 @@ wdoc_component entity_body {
     h1 $"${unit.name}"
     // Edit-mode only: jump straight into this object in the WYSIWYG editor.
     edit_object { kind = "entity" target = $"${unit.id}" label = "Edit this entity" }
-    p  $"_${unit.kind}_"
+    p  $"_${kind_text($"${unit.kind}")}_"
     wdoc_repeater { each = match unit.summary { none => [], s => [s] }  as = :s  p $"${s}" }
     project { from = unit.body }
     unit_examples { unit_id = unit.id  examples = examples }

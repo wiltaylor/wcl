@@ -34,13 +34,16 @@ type Property {
 
 // A file to generate. `path` is relative to the destination directory and
 // may include subdirectories (their parents are created). `content` is
-// the file body; absent or empty produces an empty file.
+// the file body; absent or empty produces an empty file. `when` gates
+// generation on an answer (e.g. `when = answer("ship_docs") == "yes"`).
 @block("file")
 type File {
   @doc("Destination-relative path (the inline label). May include subdirectories.")
   @inline(0) path: utf8
   @doc("File body. Absent ⇒ an empty file.")
   content: utf8?
+  @doc("Generate only when true (typically an `answer(...)` comparison). Absent ⇒ always.")
+  when: bool?
 }
 
 // An (otherwise empty) directory to create in the destination. Folders
@@ -50,4 +53,6 @@ type File {
 type Folder {
   @doc("Destination-relative directory path (the inline label).")
   @inline(0) path: utf8
+  @doc("Create only when true (typically an `answer(...)` comparison). Absent ⇒ always.")
+  when: bool?
 }

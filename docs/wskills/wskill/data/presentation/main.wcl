@@ -1,0 +1,42 @@
+// The presentation view's deck — the topic's introduction as slides
+// (schema/presentation.wcl). Slides feature existing units where possible
+// (`unit = <id>` pulls the headline + summary); detail stays in the book.
+presentation intro {
+  summary = "A self-contained knowledge format: capture a topic once, project it into a book, an AI skill, a deck, and a training course."
+
+  pres_section what_and_why {
+    title = "What & why"
+    pres_slide what {
+      unit = wskill_concept
+      speaker_notes = "One folder, one data model, several projections. Everything else in the deck hangs off this."
+    }
+    pres_slide why {
+      unit = why_use_wskill
+    }
+    pres_slide separation {
+      unit = datapresentation
+    }
+  }
+
+  pres_section how_it_works {
+    title = "How it works"
+    pres_slide units {
+      title = "Four kinds of unit"
+      unit  = decomposing_information
+      body {
+        p "- **Concept** — an idea to understand"
+        p "- **Entity** — a concrete named thing (person, software, place)"
+        p "- **Fact** — values and value tables"
+        p "- **Process** — a runbook of steps"
+      }
+      speaker_notes = "Classification discipline is the core skill — the decision guide fact covers the edge cases."
+    }
+    pres_slide views {
+      title = "One model, many views"
+      body {
+        p "The same data renders as a **book**, an **AI skill**, this **deck**, and an optional **training course**."
+        p "Each unit opts into audiences (`:book`, `:ai`, `:both`) and each view filters accordingly."
+      }
+    }
+  }
+}

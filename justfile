@@ -72,9 +72,32 @@ workspace-fmt:
 workspace-lint:
     cargo clippy --workspace --all-targets -- -D warnings
 
-# Full CI gate: fmt-check + workspace-lint + workspace-test + docs-build
+# Print the canonical wskill base schema (the scaffold template's heredoc) to stdout
+[private]
+wskill-schema-extract:
+    @sed -n "/<<'WSK_SCHEMA_BASE_WCL'/,/^WSK_SCHEMA_BASE_WCL$/p" crates/wcl/src/scaffold/templates/wskill.wcl | sed '1d;$d'
+
+# Propagate the canonical wskill base schema to every wskill under docs/wskills/
 [group('quality')]
-ci: fmt-check workspace-lint workspace-test docs-build
+wskill-schema-sync:
+    @for d in docs/wskills/*; do \
+        [ -d "$d/schema" ] || continue; \
+        just wskill-schema-extract > "$d/schema/base.wcl"; \
+        echo "synced $d/schema/base.wcl"; \
+    done
+
+# Fail when a live wskill base.wcl drifts from the scaffold heredoc (runs in ci)
+[group('quality')]
+wskill-schema-check:
+    @for d in docs/wskills/*; do \
+        [ -d "$d/schema" ] || continue; \
+        diff <(just wskill-schema-extract) "$d/schema/base.wcl" >/dev/null \
+            || { echo "wskill schema drift: $d/schema/base.wcl — run 'just wskill-schema-sync'"; exit 1; }; \
+    done
+
+# Full CI gate: fmt-check + workspace-lint + workspace-test + wskill-schema-check + docs-build
+[group('quality')]
+ci: fmt-check workspace-lint workspace-test wskill-schema-check docs-build
 
 # Run the CLI: just cli-run -- parse examples/basic.wcl
 [group('dev')]

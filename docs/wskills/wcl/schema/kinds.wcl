@@ -1,0 +1,35 @@
+// wskill vocabulary — the topic-OWNED symbol sets the base schema builds on.
+//
+// Unlike base.wcl, this file IS yours to edit: append topic-specific members
+// below. A symbol_set is a closed vocabulary — `wcl check` rejects any symbol
+// not listed here — so adding a member is how you extend it. The shipped
+// members are the shared baseline; keep them so cross-wskill tooling can rely
+// on a common vocabulary.
+namespace wcl.wskill
+
+// What an `entity` is — the classifier shown on entity pages and indexes.
+// Entities are reserved for concrete NAMED things; if none of these (or your
+// additions) fit, the unit is probably a concept, fact, or procedure instead.
+symbol_set EntityKind {
+  person          // a human (maintainer, author, researcher)
+  organization    // a company, team, standards body
+  software        // an application, language, or product
+  tool            // a CLI tool or utility
+  command         // a single command of a CLI
+  library         // a code library or framework
+  service         // a hosted service / API
+  hardware        // a physical device
+  file_format     // a file type or on-disk format
+  standard        // a specification or protocol
+  place           // a physical or virtual location
+  document        // a named external document
+  dataset         // a named data collection
+}
+
+// Which views a wskill ships — used by the `artifact` block in base.wcl.
+symbol_set ArtifactKind {
+  book            // the human-readable reference book (wdoc/book)
+  ai_skill        // the Claude Code skill folder (wdoc/skill)
+  presentation    // the topic-overview slide deck (wdoc/presentation)
+  training        // the hands-on tutorial book (wdoc/training)
+}

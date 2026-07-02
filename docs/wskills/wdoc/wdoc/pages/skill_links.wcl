@@ -148,7 +148,7 @@ page skillpage_index { title = "SKILL.md"
   p  "The skill's entry point (the build also prepends YAML front matter, not shown here)."
   p  $"[:lucide.arrow-left: Back to the skill graph](skill_links_page)" { class = ["skill-nav"] }
   markdown_source { id = "index"  start_page = "index"  reference = false  pages = skill_pages
-    skill_md_body { topic = topic  skill = skill  indexes = skill_indexes  concepts = skill_concepts  entities = skill_entities  facts = skill_facts  procedures = skill_procedures  extra_refs = extra_refs }
+    skill_md_body { topic = topic  skill = skill  indexes = skill_indexes  concepts = skill_concepts  entities = skill_entities  facts = skill_facts  procedures = skill_procedures  extra_refs = extra_refs  artifacts = artifacts }
   }
 }
 

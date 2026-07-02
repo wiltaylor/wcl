@@ -28,6 +28,16 @@ property "date" {
   default = "1970-01-01"
 }
 
+property "include_presentation" {
+  prompt  = "Ship a presentation view — an overview deck? (yes/no)"
+  default = "no"
+}
+
+property "include_training" {
+  prompt  = "Ship a training view — a hands-on tutorial series? (yes/no)"
+  default = "no"
+}
+
 file ".gitignore" {
   content = <<'WSK__GITIGNORE'
 # Generated projections — regenerate with `just render`.
@@ -42,17 +52,20 @@ file "README.md" {
 
 A **wskill**: one self-contained folder capturing everything about *${answer("topic_name")}*
 — reference, processes, and curated indexes — as a single WCL data model, projected into
-a human-readable book and a Claude Code skill.
+a human-readable book and a Claude Code skill (plus optional presentation-deck and
+training-course views).
 
 ## Layout
 
 ```
 wskill.wcl            # entry point: topic, version pin, meta, sources, data imports
 schema/base.wcl       # base block types (DO NOT hand-edit)
+schema/kinds.wcl      # topic-owned vocabularies (entity kinds, …) — extend freely
 schema/extensions.wcl # custom block types for this topic
-data/                 # the content: reference / processes
+data/                 # the content: reference / processes / presentation / training
 assets/               # images, PDFs, data files referenced by pages (see assets/README.md)
-wdoc/book, wdoc/skill # projection templates (no content — pure structure)
+wdoc/                 # projection templates (no content — pure structure):
+                      #   book, skill, presentation (deck), training (tutorial book)
 out/                  # generated outputs (gitignored)
 ```
 
@@ -161,8 +174,9 @@ file "data/reference/reference.wcl" {
 //     body { p "The body — paragraphs, tables, links." }
 //   }
 //
-//   entity <id> {
-//     name = "…"  kind = "…"  summary = "…"  related = [other_unit]
+//   entity <id> {                    // reserved for concrete NAMED things
+//     name = "…"  kind = :software  summary = "…"  related = [other_unit]
+//     // kind is a closed vocabulary — see schema/kinds.wcl (extend it there)
 //     body {
 //       table { header = ["Attribute", "Value"]  rows = [["key", "value"]] }
 //     }
@@ -182,6 +196,75 @@ file "data/reference/reference.wcl" {
 WSK_DATA_REFERENCE_REFERENCE_WCL
 }
 
+file "data/presentation/main.wcl" {
+  when    = answer("include_presentation") == "yes"
+  content = <<'WSK_DATA_PRESENTATION_MAIN_WCL'
+// The presentation view's deck — the topic's introduction as slides
+// (schema/presentation.wcl). Author ONE `presentation` block; each
+// `pres_section` is a deck column, each `pres_slide` one slide. A slide that
+// names a `unit` pulls that concept/entity/fact/procedure's headline + summary
+// onto the slide; `body` holds extra wdoc blocks; `speaker_notes` shows in the
+// presenter's notes overlay (toggle with `s`). Ship the view by uncommenting
+// the `artifact slides { … }` line in wskill.wcl and rendering with
+// `just presentation-build`.
+//
+// presentation intro {
+//   summary = "One-line deck subtitle (falls back to the topic summary)."
+//   pres_section first {
+//     title = "Section title"
+//     pres_slide opening {
+//       unit = some_concept              // pull headline + summary from a unit
+//       speaker_notes = "What to say while this slide is up."
+//     }
+//     pres_slide detail {
+//       title = "Explicit slide title"
+//       body {
+//         p "- bullet one"
+//         p "- bullet two"
+//       }
+//     }
+//   }
+// }
+WSK_DATA_PRESENTATION_MAIN_WCL
+}
+
+file "data/training/main.wcl" {
+  when    = answer("include_training") == "yes"
+  content = <<'WSK_DATA_TRAINING_MAIN_WCL'
+// The training view's course — an ordered tutorial series
+// (schema/training.wcl). Author `lesson` blocks (grouped into `module`s when
+// the course has parts); lessons order by `n`, link back to the reference
+// units they teach via `related`, and end with hands-on `exercise`s whose
+// `expected` result lets the learner verify their work. Ship the view by
+// uncommenting the `artifact training { … }` line in wskill.wcl and rendering
+// with `just training-build`.
+//
+// lesson getting_started {
+//   n       = 1
+//   title   = "Getting started"
+//   summary = "What the learner can do after this lesson."
+//   objectives    = ["First capability", "Second capability"]
+//   related       = [some_concept]      // reference units this lesson teaches
+//   body { p "The lesson material — any wdoc blocks." }
+//   exercise try_it {
+//     title     = "Try it"
+//     task      = "What to do, imperatively."
+//     code_lang = "bash"
+//     code      = "echo hello"
+//     expected  = "How the learner knows it worked."
+//     hint      = "A nudge for when they get stuck."
+//   }
+// }
+//
+// lesson next_steps {
+//   n             = 2
+//   title         = "Next steps"
+//   prerequisites = [getting_started]   // lesson ids to complete first
+//   body { p "Builds on lesson 1." }
+// }
+WSK_DATA_TRAINING_MAIN_WCL
+}
+
 file "justfile" {
   content = $<<WSK_JUSTFILE
 # ${answer("topic_name")} wskill — build recipes.
@@ -193,12 +276,14 @@ file "justfile" {
 main:
 	@just --list
 
-# Validate the wskill model and both templates against the schema
+# Validate the wskill model and every projection template against the schema
 [group('check')]
 wskill-check:
 	wcl check wskill.wcl
 	wcl check wdoc/book/main.wcl
 	wcl check wdoc/skill/main.wcl
+	@[ ! -f wdoc/presentation/main.wcl ] || wcl check wdoc/presentation/main.wcl
+	@[ ! -f wdoc/training/main.wcl ] || wcl check wdoc/training/main.wcl
 
 # Render the human-readable book projection to out/book
 [group('render')]
@@ -210,9 +295,19 @@ book-build: wskill-check
 skill-build: wskill-check
 	wcl wdoc skill wdoc/skill/main.wcl --out out/skill
 
-# Render both projections
+# Render the presentation (overview deck) projection to out/presentation
 [group('render')]
-render: book-build skill-build
+presentation-build: wskill-check
+	wcl wdoc build wdoc/presentation/main.wcl --out out/presentation
+
+# Render the training (tutorial series) projection to out/training
+[group('render')]
+training-build: wskill-check
+	wcl wdoc build wdoc/training/main.wcl --out out/training
+
+# Render every shipped projection
+[group('render')]
+render: book-build skill-build${match answer("include_presentation") { "yes" => " presentation-build", _ => "" }}${match answer("include_training") { "yes" => " training-build", _ => "" }}
 
 # Serve the book projection with live reload
 [group('render')]
@@ -230,11 +325,14 @@ file "schema/base.wcl" {
   content = <<'WSK_SCHEMA_BASE_WCL'
 // wskill base schema — ships with the WSKILL skill scaffold.
 //
-// DO NOT HAND-EDIT. Everything topic-specific belongs in `extensions.wcl`.
-// This file is versioned with the WSKILL skill; upgrade procedures live in the
-// skill's references/schema.md. It defines the base block types (the wskill
-// data model) and the root @document that gathers every block instance so the
-// wdoc template sets can project over them.
+// Schema version: 1.0.0 (mirror it in `schema_version` in wskill.wcl).
+//
+// DO NOT HAND-EDIT. Everything topic-specific belongs in `extensions.wcl`, and
+// the topic-owned vocabularies (entity kinds, artifact kinds) in `kinds.wcl` —
+// that file IS hand-editable. This file is versioned with the WSKILL skill;
+// upgrade procedures live in the skill's references. It defines the base block
+// types (the wskill data model) and the root @document that gathers every
+// block instance so the wdoc template sets can project over them.
 //
 // The schema travels with the document: a wskill folder is fully interpretable
 // (lint + render) without the WSKILL skill present.
@@ -249,6 +347,7 @@ file "schema/base.wcl" {
 namespace wcl.wskill
 
 import <wdoc.wcl>
+import "./kinds.wcl"     // topic-owned vocabularies (EntityKind, ArtifactKind)
 
 // ---------------------------------------------------------------------------
 // Shared row types
@@ -414,6 +513,25 @@ type WskillRef {
 }
 
 // ---------------------------------------------------------------------------
+// Artifacts — the views this wskill ships, as first-class described data
+// ---------------------------------------------------------------------------
+
+// One shipped view (book / ai_skill / presentation / training — the ArtifactKind
+// vocabulary lives in schema/kinds.wcl). The book overview lists these, a
+// registry landing can enumerate them, and processes can name them in prose.
+// Declaring an artifact documents that `entry` exists and renders to `output`;
+// it does not build anything by itself.
+@block("artifact")
+type Artifact {
+  @inline(0) id: identifier
+  kind:    ArtifactKind          // which view family (see schema/kinds.wcl)
+  name:    utf8?                 // display name; the templates default it per kind
+  summary: utf8?
+  entry:   utf8                  // projection entry file, e.g. "wdoc/book/main.wcl"
+  output:  utf8?                 // conventional output dir, e.g. "out/book"
+}
+
+// ---------------------------------------------------------------------------
 // Reference blocks
 // ---------------------------------------------------------------------------
 //
@@ -449,12 +567,16 @@ type Concept {
   @child("body") body: WdocAddressableBody?
 }
 
-// A concrete thing in the topic's world (type, command, screen, card, …).
+// A concrete NAMED thing in the topic's world — a person, an organization, a
+// piece of software, a command, a file format, a place. NOT a catch-all: an
+// idea is a `concept`, a value/table is a `fact`, a repeatable task is a
+// `procedure`. `kind` classifies it against the closed EntityKind vocabulary
+// (schema/kinds.wcl — extend the set there when a topic needs a new kind).
 @block("entity")
 type Entity {
   @inline(0) id: identifier
   name:    utf8
-  kind:    utf8                          // free text classifier ("file type", "command")
+  kind:    EntityKind                    // e.g. :software, :person (see schema/kinds.wcl)
   summary: utf8?                         // optional one-liner for the index
   @default([]) related: list<identifier>
   @default(:book) audience: Audience     // :book (default) | :ai | :both
@@ -612,6 +734,7 @@ type WSkillDoc {
 
   @children("source")     sources:    list<Source>
   @children("wskill_ref") refs:       list<WskillRef>
+  @children("artifact")   artifacts:  list<Artifact>
 
   @children("concept")   concepts:   list<Concept>
   @children("entity")    entities:   list<Entity>
@@ -623,6 +746,46 @@ type WSkillDoc {
   @children("procedure") procedures: list<Procedure>
 }
 WSK_SCHEMA_BASE_WCL
+}
+
+file "schema/kinds.wcl" {
+  content = <<'WSK_SCHEMA_KINDS_WCL'
+// wskill vocabulary — the topic-OWNED symbol sets the base schema builds on.
+//
+// Unlike base.wcl, this file IS yours to edit: append topic-specific members
+// below. A symbol_set is a closed vocabulary — `wcl check` rejects any symbol
+// not listed here — so adding a member is how you extend it. The shipped
+// members are the shared baseline; keep them so cross-wskill tooling can rely
+// on a common vocabulary.
+namespace wcl.wskill
+
+// What an `entity` is — the classifier shown on entity pages and indexes.
+// Entities are reserved for concrete NAMED things; if none of these (or your
+// additions) fit, the unit is probably a concept, fact, or procedure instead.
+symbol_set EntityKind {
+  person          // a human (maintainer, author, researcher)
+  organization    // a company, team, standards body
+  software        // an application, language, or product
+  tool            // a CLI tool or utility
+  command         // a single command of a CLI
+  library         // a code library or framework
+  service         // a hosted service / API
+  hardware        // a physical device
+  file_format     // a file type or on-disk format
+  standard        // a specification or protocol
+  place           // a physical or virtual location
+  document        // a named external document
+  dataset         // a named data collection
+}
+
+// Which views a wskill ships — used by the `artifact` block in base.wcl.
+symbol_set ArtifactKind {
+  book            // the human-readable reference book (wdoc/book)
+  ai_skill        // the Claude Code skill folder (wdoc/skill)
+  presentation    // the topic-overview slide deck (wdoc/presentation)
+  training        // the hands-on tutorial book (wdoc/training)
+}
+WSK_SCHEMA_KINDS_WCL
 }
 
 file "schema/cli.wcl" {
@@ -714,16 +877,13 @@ file "schema/extensions.wcl" {
 namespace wcl.wskill
 
 // The base schema (base.wcl) is never edited in place; everything topic-specific
-// goes here. Two ways to add custom content:
-//
-//   1. The generic `custom` block (defined in base.wcl) needs NOTHING here — use
-//      it for quick topic-specific data. Both projections render it generically.
-//
-//   2. A first-class typed custom block: declare an @block with your own fields
-//      AND a @document that gathers it. Imported @document schemas MERGE with the
-//      base, so this composes cleanly. Then add a render snippet to BOTH template
-//      sets (wdoc/book/main.wcl and wdoc/skill/main.wcl) — the WSKILL skill helps
-//      with this. See the skill's references/schema.md.
+// goes here (new vocabulary members — entity kinds — go in kinds.wcl instead).
+// There is no generic catch-all block: topic-specific content that doesn't fit a
+// base block is modeled as a first-class typed custom block — declare an @block
+// with your own fields AND a @document that gathers it. Imported @document
+// schemas MERGE with the base, so this composes cleanly. Then add a render
+// snippet to BOTH template sets (wdoc/book/main.wcl and wdoc/skill/main.wcl) —
+// the WSKILL skill helps with this.
 //
 // Example (uncomment and adapt):
 //
@@ -876,6 +1036,153 @@ type LanguageDoc {
 WSK_SCHEMA_LANGUAGE_WCL
 }
 
+file "schema/presentation.wcl" {
+  content = <<'WSK_SCHEMA_PRESENTATION_WCL'
+// wskill OPTIONAL standard module — a topic-overview slide deck as data.
+//
+// Imported from the wskill root (`import "./schema/presentation.wcl"`); the
+// gathered list stays empty until you author a `presentation` block under
+// data/presentation/. The view SHIPS when you declare a matching
+// `artifact { kind = :presentation … }` in wskill.wcl and render
+// wdoc/presentation/main.wcl (the stdlib `:presentation` template). A
+// presentation is the topic's INTRODUCTION — an overview deck a reader flips
+// through before the reference book — not a second home for reference content:
+// a slide `unit`-features an existing concept/entity/fact/procedure or carries
+// a short `body`, and the detail stays in the unit it points at.
+//
+// All declarations share the base `wcl.wskill` namespace; the merging @document
+// below adds `presentations` to the gathered document only in wskills that
+// import this file. Block kinds are `pres_`-prefixed because bare `slide` /
+// `section` / `deck` are wdoc template blocks.
+namespace wcl.wskill
+
+import <wdoc.wcl>
+import "./base.wcl"          // WdocAddressableBody
+
+// One slide. Content comes from `unit` (the projection pulls the named
+// concept/entity/fact/procedure's headline + summary onto the slide), from the
+// wdoc `body`, or both (pulled headline first). `speaker_notes` lands in the
+// deck's notes overlay (toggle with `s` while presenting); use a
+// `fragment { … }` inside `body` for step-reveals.
+@block("pres_slide")
+type PresSlide {
+  @inline(0) id: identifier
+  title: utf8?                    // slide heading; defaults to the featured unit's name
+  unit:  identifier?              // concept / entity / fact / procedure id to feature
+  speaker_notes: utf8?
+  @default([]) tags: list<utf8>
+  @child("body") body: WdocAddressableBody?
+}
+
+// One deck column (maps to a wdoc deck `section`; ← → move between sections,
+// ↑ ↓ between the slides within one).
+@block("pres_section")
+type PresSection {
+  @inline(0) id: identifier
+  title: utf8
+  @children("pres_slide") slides: list<PresSlide>
+}
+
+// The wskill's presentation view — an overview/introduction deck. At most one
+// per wskill. The projection generates a title slide from `topic`, then one
+// deck section per pres_section.
+@block("presentation")
+type Presentation {
+  @inline(0) id: identifier
+  title:   utf8?                  // deck title; defaults to topic.name
+  summary: utf8?                  // subtitle on the generated title slide
+  @default([]) tags: list<utf8>
+  @children("pres_section") sections: list<PresSection>
+}
+
+// Merges with the base @document — `presentations` gathered only when this
+// module is imported.
+@document
+type PresentationDoc {
+  @children("presentation") presentations: list<Presentation>
+}
+WSK_SCHEMA_PRESENTATION_WCL
+}
+
+file "schema/training.wcl" {
+  content = <<'WSK_SCHEMA_TRAINING_WCL'
+// wskill OPTIONAL standard module — a tutorial series (training book) as data.
+//
+// Imported from the wskill root (`import "./schema/training.wcl"`); the
+// gathered lists stay empty until you author `lesson` / `module` blocks under
+// data/training/. The view SHIPS when you declare a matching
+// `artifact { kind = :training … }` in wskill.wcl and render
+// wdoc/training/main.wcl as a separate book. Training is for LEARNERS walking
+// the topic for the first time — ordered lessons with hands-on exercises —
+// where a `procedure` is for practitioners who already know the topic and
+// need the reliable sequence.
+//
+// Lessons order by `n`; group them into `module`s when the course has parts (a
+// small topic can author top-level lessons only). `related` names the reference
+// units a lesson teaches, so the course links back into the book.
+//
+// All declarations share the base `wcl.wskill` namespace. The merging @document
+// below adds `modules` / `lessons` to the gathered document only in wskills
+// that import this file.
+namespace wcl.wskill
+
+import <wdoc.wcl>
+import "./base.wcl"          // WdocAddressableBody
+
+// A hands-on exercise inside a lesson, with the expected result so the learner
+// (or a grading agent) can verify their work.
+@block("exercise")
+type Exercise {
+  @inline(0) id: identifier
+  title:     utf8
+  task:      utf8              // what to do, imperatively
+  code_lang: utf8?             // language tag for the starter snippet
+  code:      utf8?             // starter code / command (raw heredoc)
+  expected:  utf8?             // expected result / output — "how you know it worked"
+  hint:      utf8?
+  @child("body") body: WdocAddressableBody?   // richer material when fields aren't enough
+}
+
+// One tutorial step. `related` names the reference units (concept/entity/fact/
+// procedure ids) the lesson teaches, rendered as "Covered in the reference"
+// links back into the book's pages.
+@block("lesson")
+type Lesson {
+  @inline(0) id: identifier
+  title:   utf8
+  summary: utf8?
+  n:       u32                                   // order within its module (or the course)
+  @default([]) objectives:    list<utf8>         // "after this lesson you can …"
+  @default([]) prerequisites: list<identifier>   // lesson ids to complete first
+  @default([]) related:       list<identifier>   // reference units this lesson teaches
+  @default([]) tags: list<utf8>
+  @child("body") body: WdocAddressableBody?
+  @children("exercise") exercises: list<Exercise>
+}
+
+// A part of the course: an ordered group of lessons. Optional — a small topic
+// can author top-level lessons only. (`module` is safe as a kind because the
+// schema is namespaced: `wcl.wskill::module`.)
+@block("module")
+type TrainingModule {
+  @inline(0) id: identifier
+  title:   utf8
+  summary: utf8?
+  n:       u32
+  @children("lesson") lessons: list<Lesson>
+}
+
+// Merges with the base @document — gathered only when this module is imported.
+// Document-level @children gathers direct children only, so a module-nested
+// lesson is not also listed in `lessons`.
+@document
+type TrainingDoc {
+  @children("module") modules: list<TrainingModule>
+  @children("lesson") lessons: list<Lesson>   // ungrouped top-level lessons
+}
+WSK_SCHEMA_TRAINING_WCL
+}
+
 file "skill/assets/.gitkeep" {
   content = <<'WSK_SKILL_ASSETS__GITKEEP'
 # Drop static data files (datasets, sample configs) here. A `skill_asset` block
@@ -924,6 +1231,11 @@ import "../../schema/base.wcl"
 // the inverse (backlinks) can be computed. Each projection builds `all_units`
 // over its own audience-filtered lists and passes it into the components.
 type UnitRef { id: identifier  name: utf8  href: utf8  related: list<identifier> }
+
+// A kind symbol's display text ( `$"${:file_format}"` → "file format" ) — used
+// wherever an entity's `kind` (or an artifact's) renders as prose. Symbols
+// interpolate as `:name`, so pass the interpolated string: `kind_text($"${e.kind}")`.
+let kind_text = fn(k: utf8) -> utf8 { replace(replace(k, ":", ""), "_", " ") }
 
 // "Examples" — examples authored against this unit (`example.unit == id`).
 wdoc_component unit_examples {
@@ -1037,7 +1349,7 @@ wdoc_component entity_body {
     h1 $"${unit.name}"
     // Edit-mode only: jump straight into this object in the WYSIWYG editor.
     edit_object { kind = "entity" target = $"${unit.id}" label = "Edit this entity" }
-    p  $"_${unit.kind}_"
+    p  $"_${kind_text($"${unit.kind}")}_"
     wdoc_repeater { each = match unit.summary { none => [], s => [s] }  as = :s  p $"${s}" }
     project { from = unit.body }
     unit_examples { unit_id = unit.id  examples = examples }
@@ -1201,6 +1513,17 @@ page index { start = true
     p $"${d}"
   }
 
+  wdoc_repeater { each = match len(artifacts) { 0 => [], _ => [true] }  as = :_af
+    h2 "Artifacts"
+    p  "The views this wskill ships — build them with `just render` (or the per-view recipes)."
+    table {
+      header = ["View", "Entry", "Output"]
+      rows = map(artifacts, fn(a: Artifact) -> list<utf8> {
+        [a.name ?? kind_text($"${a.kind}"), $"`${a.entry}`", match a.output { none => "—", o => $"`${o}`" }]
+      })
+    }
+  }
+
   h2 "Related skills"
   wdoc_repeater { each = match len(refs) { 0 => [true], _ => [] }  as = :_n
     p "No related wskills declared yet."
@@ -1350,7 +1673,7 @@ wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_ei
     type_index {
       heading = "Entities"
       intro   = "Each entity has its own page — open one from the list below or the sidebar."
-      items   = map(entities, fn(e: Entity) -> utf8 { $"[**${e.name}**](entity_${e.id}) — _${e.kind}_${match e.summary { none => "", s => $" — ${s}" }}" })
+      items   = map(entities, fn(e: Entity) -> utf8 { $"[**${e.name}**](entity_${e.id}) — _${kind_text($"${e.kind}")}_${match e.summary { none => "", s => $" — ${s}" }}" })
     }
   }
 }
@@ -1747,7 +2070,7 @@ wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_ei
     h1 $"${topic.name} — entities"
     p  "Each entity has its own page. This is the index."
     wdoc_repeater { each = entities  as = :e
-      p $"- [**${e.name}**](entity_${e.id}) — _${e.kind}_${match e.summary { none => "", s => $" — ${s}" }}"
+      p $"- [**${e.name}**](entity_${e.id}) — _${kind_text($"${e.kind}")}_${match e.summary { none => "", s => $" — ${s}" }}"
     }
   }
 }
@@ -1891,6 +2214,212 @@ page related_ref { sites = [:skill]
 WSK_WDOC_SKILL_MAIN_WCL
 }
 
+file "wdoc/presentation/main.wcl" {
+  when    = answer("include_presentation") == "yes"
+  content = <<'WSK_WDOC_PRESENTATION_MAIN_WCL'
+// Presentation projection — a single-file overview deck over the wskill data.
+//
+// Build:  wcl wdoc build wdoc/presentation/main.wcl --out out/presentation
+//
+// Like the book/skill templates this contains NO topic content — only
+// projections over the `presentation` data (schema/presentation.wcl, authored
+// under data/presentation/). The deck opens with a generated title slide from
+// `topic`; every authored `pres_slide` becomes one slide. A slide that names a
+// `unit` pulls that concept/entity/fact/procedure's headline + summary onto
+// the slide (its `body`, if any, renders below); the reference detail stays in
+// the book.
+
+import <wdoc.wcl>
+import "../../wskill.wcl"
+
+// The single topic / presentation block, bound from their gather lists.
+let topic = head(topics)
+
+// Every authored slide, in deck order (sections in authored order).
+let all_slides = flatten(map(presentations, fn(pr: Presentation) -> list<PresSlide> {
+  flatten(map(pr.sections, fn(sec: PresSection) -> list<PresSlide> { sec.slides }))
+}))
+
+// Featured-unit lookup: unit id -> [{ name, summary }] (empty when the id
+// matches no unit, so a stale reference degrades to an empty pull, not an error).
+type UnitHead { name: utf8  summary: utf8 }
+let featured = fn(uid: identifier) -> list<UnitHead> { flatten([
+  map(filter(concepts,   fn(c: Concept)   -> bool { c.id == uid }), fn(c: Concept)   -> UnitHead { { name: c.name,  summary: c.summary } }),
+  map(filter(entities,   fn(e: Entity)    -> bool { e.id == uid }), fn(e: Entity)    -> UnitHead { { name: e.name,  summary: e.summary ?? "" } }),
+  map(filter(facts,      fn(f: Fact)      -> bool { f.id == uid }), fn(f: Fact)      -> UnitHead { { name: f.title, summary: "" } }),
+  map(filter(procedures, fn(p: Procedure) -> bool { p.id == uid }), fn(p: Procedure) -> UnitHead { { name: p.title, summary: p.purpose } }),
+]) }
+
+// --- site --------------------------------------------------------------------
+
+site deck {
+  default_template = :presentation
+  title = $"${topic.name}"
+  theme = :nord
+  deck {
+    section "Overview" { slide title_slide }
+    wdoc_repeater { each = presentations  as = :pr
+      wdoc_repeater { each = pr.sections  as = :sec
+        section $"${sec.title}" {
+          wdoc_repeater { each = sec.slides  as = :s  slide $"pres_${s.id}" }
+        }
+      }
+    }
+  }
+}
+
+// --- generated slides ---------------------------------------------------------
+
+page title_slide { sites = [:deck]
+  h1 $"${topic.name}"
+  wdoc_repeater { each = presentations  as = :pr
+    wdoc_repeater { each = match pr.summary { none => [topic.summary], su => [su] }  as = :su
+      p $"${su}"
+    }
+  }
+}
+
+wdoc_repeater { each = all_slides  as = :s
+  page $"pres_${s.id}" { sites = [:deck]
+    // Heading: the explicit title, else the featured unit's name.
+    wdoc_repeater { each = match s.title { none => [], t => [t] }  as = :t  h2 $"${t}" }
+    wdoc_repeater { each = match s.unit { none => [], u => featured(u) }  as = :fu
+      wdoc_repeater { each = match s.title { none => [fu.name], _ => [] }  as = :n  h2 $"${n}" }
+      wdoc_repeater { each = match fu.summary { "" => [], su => [su] }  as = :su  p $"_${su}_" }
+    }
+    wdoc_repeater { each = match s.body { none => [], b => [true] }  as = :_b
+      project { from = s.body }
+    }
+    wdoc_repeater { each = match s.speaker_notes { none => [], n => [n] }  as = :n
+      notes { p $"${n}" }
+    }
+  }
+}
+WSK_WDOC_PRESENTATION_MAIN_WCL
+}
+
+file "wdoc/training/main.wcl" {
+  when    = answer("include_training") == "yes"
+  content = <<'WSK_WDOC_TRAINING_MAIN_WCL'
+// Training projection — a tutorial-series book over the wskill's lessons.
+//
+// Build:  wcl wdoc build wdoc/training/main.wcl --out out/training
+//
+// A separate `:book` site rendering the `lesson` / `module` data
+// (schema/training.wcl, authored under data/training/). The syllabus (start
+// page + toc) orders top-level lessons first, then each module's lessons;
+// every lesson gets its own page with objectives, prerequisites, the projected
+// body, its exercises (task → starter code → expected result → hint), and
+// links back into the reference book for the units it teaches.
+
+import <wdoc.wcl>
+import "../../wskill.wcl"
+
+let topic = head(topics)
+
+// Ordering: lessons by `n` (top-level course lessons first, then each sorted
+// module's lessons, module-major).
+let by_lesson_n    = fn(l: Lesson) -> u32 { l.n }
+let course_lessons = sort_by(lessons, by_lesson_n)
+let sorted_modules = sort_by(modules, fn(m: TrainingModule) -> u32 { m.n })
+let all_lessons    = flatten([course_lessons, flatten(map(sorted_modules,
+                       fn(m: TrainingModule) -> list<Lesson> { sort_by(m.lessons, by_lesson_n) }))])
+
+// A lesson id resolved to a syllabus link (empty when unknown, so a stale
+// prerequisite degrades to nothing rather than an error).
+let lesson_link = fn(lid: identifier) -> list<utf8> {
+  map(filter(all_lessons, fn(x: Lesson) -> bool { x.id == lid }),
+      fn(x: Lesson) -> utf8 { $"[${x.title}](lesson_${x.id})" })
+}
+
+// --- site --------------------------------------------------------------------
+
+site training {
+  default_template = :book
+  title   = $"${topic.name} — training"
+  summary = $"A hands-on tutorial series for ${topic.name}."
+  root         = true
+  theme        = :nord
+  theme_toggle = true
+  search       = true
+  toc {
+    chapter "Start here" { page = index }
+    wdoc_repeater { each = course_lessons  as = :l
+      chapter $"${l.n}. ${l.title}" { page = $"lesson_${l.id}" }
+    }
+    wdoc_repeater { each = sorted_modules  as = :m
+      chapter $"${m.title}" {
+        wdoc_repeater { each = sort_by(m.lessons, by_lesson_n)  as = :l
+          chapter $"${l.n}. ${l.title}" { page = $"lesson_${l.id}" }
+        }
+      }
+    }
+  }
+}
+
+// --- syllabus (start page) ----------------------------------------------------
+
+page index { start = true
+  h1 $"${topic.name} — training"
+  p  $"${topic.summary}"
+  p  "Work through the lessons in order — each builds on the previous one, and every lesson ends with exercises you can check against the expected results."
+
+  wdoc_repeater { each = match len(course_lessons) { 0 => [], _ => [true] }  as = :_cl
+    h2 "Lessons"
+    wdoc_repeater { each = course_lessons  as = :l
+      p $"${l.n}. [${l.title}](lesson_${l.id})${match l.summary { none => "", s => $" — ${s}" }}"
+    }
+  }
+  wdoc_repeater { each = sorted_modules  as = :m
+    h2 $"${m.title}"
+    wdoc_repeater { each = match m.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
+    wdoc_repeater { each = sort_by(m.lessons, by_lesson_n)  as = :l
+      p $"${l.n}. [${l.title}](lesson_${l.id})${match l.summary { none => "", s => $" — ${s}" }}"
+    }
+  }
+}
+
+// --- lesson pages --------------------------------------------------------------
+
+wdoc_repeater { each = all_lessons  as = :l
+  page $"lesson_${l.id}" { title = $"${l.title}"
+    h1 $"${l.n}. ${l.title}"
+    wdoc_repeater { each = match l.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
+
+    wdoc_repeater { each = match len(l.objectives) { 0 => [], _ => [true] }  as = :_ob
+      callout "After this lesson you can" { class = ["info"]
+        body = join(map(l.objectives, fn(o: utf8) -> utf8 { $"- ${o}" }), "\n")
+      }
+    }
+    wdoc_repeater { each = match len(l.prerequisites) { 0 => [], _ => [true] }  as = :_pr
+      p $"**Before you start:** ${join(flatten(map(l.prerequisites, lesson_link)), " · ")}"
+    }
+
+    wdoc_repeater { each = match l.body { none => [], b => [true] }  as = :_b
+      project { from = l.body }
+    }
+
+    wdoc_repeater { each = l.exercises  as = :ex
+      h2 $"Exercise: ${ex.title}"
+      p $"${ex.task}"
+      wdoc_repeater { each = match ex.code { none => [], c => [c] }  as = :c
+        code $"${ex.code_lang ?? "text"}" { source = c }
+      }
+      wdoc_repeater { each = match ex.body { none => [], b => [true] }  as = :_b
+        project { from = ex.body }
+      }
+      wdoc_repeater { each = match ex.expected { none => [], e => [e] }  as = :e
+        callout "Expected result" { class = ["success"]  body = $"${e}" }
+      }
+      wdoc_repeater { each = match ex.hint { none => [], h => [h] }  as = :h
+        callout "Hint" { class = ["warning"]  body = $"${h}" }
+      }
+    }
+  }
+}
+WSK_WDOC_TRAINING_MAIN_WCL
+}
+
 file "wskill.wcl" {
   content = $<<WSK_WSKILL_WCL
 // ${answer("topic_name")} — wskill root document.
@@ -1902,13 +2431,17 @@ file "wskill.wcl" {
 import <wdoc.wcl>
 import "./schema/base.wcl"
 import "./schema/extensions.wcl"
+import "./schema/presentation.wcl"     // the overview-deck view (author data/presentation/)
+import "./schema/training.wcl"         // the tutorial-series view (author data/training/)
 
 // Data — split into more files by area as the wskill grows, adding
 // an import line per file. Keep templates (wdoc/) free of topic content.
 import "./data/reference/reference.wcl"
 import "./data/processes/processes.wcl"
+${match answer("include_presentation") { "yes" => "", _ => "// " }}import "./data/presentation/main.wcl"
+${match answer("include_training") { "yes" => "", _ => "// " }}import "./data/training/main.wcl"
 
-schema_version = "1.1.0"
+schema_version = "1.0.0"
 
 topic ${answer("topic_id")} {
   name    = "${answer("topic_name")}"
@@ -1917,6 +2450,15 @@ topic ${answer("topic_id")} {
   created = "${answer("date")}"
   // maintainer = "you@example.com"
 }
+
+// The views this wskill ships — first-class data the overview and any registry
+// landing can enumerate. Declaring one documents it; the just recipes build
+// them. The optional views (deck / training) ship once uncommented AND
+// authored (data/presentation/, data/training/).
+artifact book     { kind = :book      entry = "wdoc/book/main.wcl"   output = "out/book" }
+artifact ai_skill { kind = :ai_skill  entry = "wdoc/skill/main.wcl"  output = "out/skill" }
+${match answer("include_presentation") { "yes" => "", _ => "// " }}artifact slides   { kind = :presentation  entry = "wdoc/presentation/main.wcl"  output = "out/presentation" }
+${match answer("include_training") { "yes" => "", _ => "// " }}artifact training { kind = :training      entry = "wdoc/training/main.wcl"      output = "out/training" }
 
 // Skill-projection config — written into SKILL.md frontmatter. The defaults (no
 // tool pre-approval, model may invoke) are safe; pre-approve tools if needed.

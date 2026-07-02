@@ -12,6 +12,7 @@
 
 import <wdoc.wcl>
 import "../../schema/base.wcl"
+import "./common.wcl"          // kind_text
 
 wdoc_component skill_md_body {
   wdoc_slot topic
@@ -24,6 +25,8 @@ wdoc_component skill_md_body {
   // Trailing reference links for non-unit content pages: a list of
   // `{ label, href, summary? }` records (pass `[]` for none).
   wdoc_slot extra_refs
+  // The wskill's `artifact` blocks (pass the gathered `artifacts` list).
+  wdoc_slot artifacts
   wdoc_body {
     h1 $"${topic.name}"
     p  $"${topic.summary}"
@@ -81,6 +84,15 @@ wdoc_component skill_md_body {
     // Extra content pages (e.g. CLI / builtins) that aren't unit pages.
     wdoc_repeater { each = extra_refs  as = :r
       p $"- [${r.label}](${r.href})${match r.summary { none => "", s => $" — ${s}" }}"
+    }
+
+    // The views this wskill ships (`artifact` blocks in the root wskill.wcl).
+    wdoc_repeater { each = match len(artifacts) { 0 => [], _ => [true] }  as = :_af
+      h2 "Views"
+      p  "Beyond this skill, the wskill ships these views — build them with `just render` in the wskill folder:"
+    }
+    wdoc_repeater { each = artifacts  as = :a
+      p $"- **${a.name ?? kind_text($"${a.kind}")}**${match a.summary { none => "", s => $" — ${s}" }} (`${a.entry}`)"
     }
   }
 }

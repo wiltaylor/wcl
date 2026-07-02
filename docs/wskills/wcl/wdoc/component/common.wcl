@@ -16,6 +16,11 @@ import "../../schema/base.wcl"
 // over its own audience-filtered lists and passes it into the components.
 type UnitRef { id: identifier  name: utf8  href: utf8  related: list<identifier> }
 
+// A kind symbol's display text ( `$"${:file_format}"` → "file format" ) — used
+// wherever an entity's `kind` (or an artifact's) renders as prose. Symbols
+// interpolate as `:name`, so pass the interpolated string: `kind_text($"${e.kind}")`.
+let kind_text = fn(k: utf8) -> utf8 { replace(replace(k, ":", ""), "_", " ") }
+
 // "Examples" — examples authored against this unit (`example.unit == id`).
 wdoc_component unit_examples {
   wdoc_slot unit_id

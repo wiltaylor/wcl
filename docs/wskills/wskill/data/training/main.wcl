@@ -1,0 +1,65 @@
+// The training view's course — "Build your first wskill" (schema/training.wcl).
+// Ordered lessons with hands-on exercises; `related` links each lesson back to
+// the reference units it teaches.
+
+lesson scaffold_first_wskill {
+  n       = 1
+  title   = "Scaffold your first wskill"
+  summary = "Create a wskill folder with `wcl init` and take the tour."
+  objectives = [
+    "Scaffold a new wskill folder from the built-in template",
+    "Name the parts of the generated tree and what each is for",
+    "Validate the empty model with `wcl check`",
+  ]
+  related = [wskill_concept, creating_a_wskill]
+  body {
+    p "A wskill starts from the built-in scaffold: one command generates the whole folder — the schema, the projection templates, and empty data files ready for content."
+    p "The generated tree splits into three zones: `schema/` (the data model — `base.wcl` is generated, `kinds.wcl` and `extensions.wcl` are yours), `data/` (the content you'll write), and `wdoc/` (the projection templates that render it)."
+  }
+  exercise scaffold {
+    title     = "Scaffold and validate"
+    task      = "Create a wskill about a topic you know well, then validate the empty model."
+    code_lang = "bash"
+    code      = <<'SH'
+wcl init wskill ./my-topic
+cd my-topic
+wcl check wskill.wcl
+SH
+    expected = "`wcl check` prints `OK` — the scaffolded model is valid before you add any content."
+    hint     = "`wcl init wskill` prompts for a topic id, name, and summary; accept the defaults with `--defaults` if you just want to explore."
+  }
+}
+
+lesson capture_first_units {
+  n       = 2
+  title   = "Capture your first units"
+  summary = "Decompose a corner of the topic into concepts, facts, and an entity."
+  objectives = [
+    "Classify a piece of knowledge as concept, entity, fact, or process",
+    "Write a unit file with a body and related links",
+    "Render the book and find your unit's page",
+  ]
+  prerequisites = [scaffold_first_wskill]
+  related = [decomposing_information, concept, entity, fact]
+  body {
+    p "Content lives in `data/` as block instances. Pick one small corner of your topic and split it into atomic units: an idea the reader must understand is a `concept`, a concrete named thing (a person, a tool, a file format) is an `entity`, and a value or lookup table is a `fact`."
+    p "Every unit gets an id, a headline, and a `body { … }` of wdoc blocks. Link units to each other with `related = [other_id]` — the projections turn those into links both ways."
+  }
+  exercise first_concept {
+    title     = "Write a concept and render it"
+    task      = "Add a concept to `data/reference/reference.wcl`, then build the book and open your concept's page."
+    code_lang = "bash"
+    code      = <<'SH'
+cat >> data/reference/reference.wcl <<'WCL'
+concept my_first_idea {
+  name    = "My first idea"
+  summary = "The one-liner the index shows."
+  body { p "The explanation a reader needs." }
+}
+WCL
+wcl check wskill.wcl && wcl wdoc build wdoc/book/main.wcl --out out/book
+SH
+    expected = "The build reports the pages written, and `out/book/concept_my_first_idea.html` exists with your body text."
+    hint     = "If `wcl check` fails, the error names the file, line, and field — fix and re-run."
+  }
+}

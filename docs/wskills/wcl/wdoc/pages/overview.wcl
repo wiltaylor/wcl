@@ -21,6 +21,17 @@ page index { start = true
   }
 
 
+  wdoc_repeater { each = match len(artifacts) { 0 => [], _ => [true] }  as = :_af
+    h2 "Artifacts"
+    p  "The views this wskill ships — build them with `just render` (or the per-view recipes)."
+    table {
+      header = ["View", "Entry", "Output"]
+      rows = map(artifacts, fn(a: Artifact) -> list<utf8> {
+        [a.name ?? kind_text($"${a.kind}"), $"`${a.entry}`", match a.output { none => "—", o => $"`${o}`" }]
+      })
+    }
+  }
+
   h2 "Related skills"
   wdoc_repeater { each = match len(refs) { 0 => [true], _ => [] }  as = :_n
     p "No related wskills declared yet."

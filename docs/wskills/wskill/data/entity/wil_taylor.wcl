@@ -2,7 +2,7 @@
 // to their details. Book-only — an agent working with the topic doesn't need it.
 entity wil_taylor {
   name     = "Wil Taylor"
-  kind     = "maintainer"
+  kind     = :person
   summary  = "Maintainer of this wskill."
   audience = :book
   body {

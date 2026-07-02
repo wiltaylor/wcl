@@ -45,6 +45,10 @@ pub(crate) struct IncludeSpec {
     pub entry: Option<String>,
     /// The named site of each member to build (`--site`), if narrowing.
     pub site: Option<String>,
+    /// Output prefix override (`<prefix>/<name>/`); defaults to the folder
+    /// basename. Lets two `include`s over the same folder (different entries,
+    /// e.g. a member's book and its deck) ship to distinct subdirectories.
+    pub prefix: Option<String>,
 }
 
 /// One discovered sub-site entry point.
@@ -205,7 +209,11 @@ pub(crate) fn resolve_included(
             root.display()
         )));
     }
-    let prefix = prefix_of(&spec.folder);
+    let prefix = spec
+        .prefix
+        .clone()
+        .filter(|p| !p.is_empty())
+        .unwrap_or_else(|| prefix_of(&spec.folder));
 
     let pairs = match (&spec.pattern, &spec.entry) {
         (Some(_), Some(_)) => {
@@ -276,6 +284,7 @@ pub(crate) fn collect_includes(
             pattern: field_utf8(&b, "pattern"),
             entry: field_utf8(&b, "entry"),
             site: field_utf8(&b, "site"),
+            prefix: field_utf8(&b, "prefix"),
         };
         all.extend(resolve_included(base_dir, &spec)?);
     }
@@ -337,6 +346,7 @@ pub(crate) fn entry_for_page(
             pattern: field_utf8(&b, "pattern"),
             entry: field_utf8(&b, "entry"),
             site: field_utf8(&b, "site"),
+            prefix: field_utf8(&b, "prefix"),
         };
         let Ok(sites) = resolve_included(base_dir, &spec) else {
             continue;
@@ -446,6 +456,7 @@ mod tests {
             pattern: Some("*.wcl".to_string()),
             entry: None,
             site: None,
+            prefix: None,
         };
         let r = resolve_included(Some(Path::new("/nonexistent-wdoc-root")), &spec);
         assert!(r.is_err());

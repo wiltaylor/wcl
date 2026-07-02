@@ -6,17 +6,21 @@
 
 import <wdoc.wcl>
 import "./schema/base.wcl"
+import "./schema/presentation.wcl"     // opt-in: the overview deck view
+import "./schema/training.wcl"         // opt-in: the tutorial-series view
 
 // Data — split into more files by area as the wskill grows. Each per-type
 // folder exposes a main.wcl; data/main.wcl aggregates them all.
 import "./data/main.wcl"
+import "./data/presentation/main.wcl"
+import "./data/training/main.wcl"
 
-schema_version = "1.1.0"
+schema_version = "1.0.0"
 
 topic wskill {
   name    = "wskill"
   summary = "A WCL document designed to hold complete set of knowledge on a topic and expose it in multiple views for multiple audiences."
-  version = "1.1.0"             // the wskill format / base-schema version this describes
+  version = "1.0.0"             // the wskill format / base-schema version this describes
   description = <<END
     A wskill is a self contained set of documentation on a specific topic. The idea is the document will generate multilpe views on the same
     information so it can be used in different ways. Data in a wskill are stored in a natural way that makes sense to the knoweldge and then
@@ -46,6 +50,15 @@ wcl.wskill::skill {
     never  = ["Hand-edit a wskill's `schema/base.wcl` — it is generated/propagated. Create other files instead."]
   }
 }
+
+// The views this wskill ships — first-class data the overview and any registry
+// landing can enumerate. Declaring one documents it; `just render` builds it.
+artifact book     { kind = :book      entry = "wdoc/book/main.wcl"   output = "out/book" }
+artifact ai_skill { kind = :ai_skill  entry = "wdoc/skill/main.wcl"  output = "out/skill" }
+artifact slides   { kind = :presentation  entry = "wdoc/presentation/main.wcl"  output = "out/presentation"
+  summary = "An introduction to the wskill format as an overview deck." }
+artifact training { kind = :training      entry = "wdoc/training/main.wcl"      output = "out/training"
+  summary = "Build your first wskill — a hands-on lesson series." }
 
 // No external sources — this wskill is self-describing (it documents the format it
 // is built with), so there is nothing upstream to track for the update workflow.

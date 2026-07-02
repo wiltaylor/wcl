@@ -249,6 +249,7 @@ fn include_spec_from_value(v: &Value) -> Result<crate::include::IncludeSpec, Str
         pattern: get("pattern"),
         entry: get("entry"),
         site: get("site"),
+        prefix: get("prefix"),
     };
     match (&spec.pattern, &spec.entry) {
         (Some(_), Some(_)) => {
