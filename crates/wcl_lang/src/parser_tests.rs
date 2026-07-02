@@ -1749,3 +1749,91 @@ fn let_round_trips_through_formatter() {
         "format round-trip changed the AST"
     );
 }
+
+/// Fuzz regression: `parse → format → parse → format` must be
+/// text-stable, and the printed form must always re-parse. Unary minus
+/// over numeric literals used to break both: `- 0` printed as `-0`,
+/// which re-lexes as a single literal whose zero sign vanishes on the
+/// next pass, and `- 5u8` printed as `-5u8`, which the lexer rejects
+/// ("negative value cannot have an unsigned suffix").
+#[test]
+fn format_is_idempotent_for_negated_numeric_literals() {
+    let cases = [
+        "i = - 0\n",
+        "i = --0\n",
+        "i = - - 0\n",
+        "i = - 5u8\n",
+        "i = - 0u8\n",
+        "i = - 0.0\n",
+        "i = - 5MiB\n",
+        "i = - 0MiB\n",
+        "i = 1 - - 5\n",
+        "i = - -9223372036854775808\n",
+        "c = if - 0 { 1 } else { :zo }\n",
+        // A zero-valued unit literal whose unit starts like a radix
+        // prefix (`00xa` = 0 + unit "xa") must not print as `0xa`,
+        // which re-lexes as hex 10.
+        "ma 00xFu0a 00xa 00x0 00b1 00o7\n",
+        "i = 00xa\n",
+        // Negation over a digit-first *compound* (member access on a
+        // literal) must parenthesize: `-0.u3` would re-lex the zero as
+        // a signed literal and drop the negation.
+        "E = { --0.u3 }\n",
+        "i = - 0 . u3\n",
+        "i = --0.abs\n",
+        // A float with an exponent and an `e`-leading unit (`2.1e3` +
+        // unit "e") prints as `2100.0e`; the lexer must rewind a
+        // digit-less `e` into the unit suffix instead of erroring.
+        "f 2.1e3e\n",
+        "i = 2.5eV\n",
+        // An `e<digit>…` unit glued to an exponent-less float body
+        // re-lexes as an exponent; the printer forces a no-op `e0`.
+        "f 2.1e2e2e\n",
+        // A numeric member segment glued to a digit-last receiver
+        // re-lexes as a float (`8 . 80` → `8.80`); the printer
+        // parenthesizes the receiver.
+        "o = [8.\n80]\n",
+        "o = x.0 . 80\n",
+        "o = steps.1\n",
+        // A negative numeric member segment must keep a space after the
+        // dot (`x. -2`); flush, `-` is not a valid member start.
+        "p = 2. -2\n",
+        "p = x. -2. -3\n",
+        // An empty block whose kind doubles as an item-starter keyword
+        // must keep `{}` — bare `namespace` + next-line identifier
+        // re-dispatches as a namespace *declaration*.
+        "namespace {}\ns 10\n",
+        "type {}\nx 10\n",
+        "let {}\ny 2\n",
+        // The same numeric-segment glue rules apply to variant type
+        // paths (`join_path`), not just `Expr::Member` printing.
+        "p = a. -2.e::p\n",
+        "p = a.0 . 80.e::V\n",
+        // An overflowing float literal saturates to infinity, which
+        // must print as an overflowing literal — Debug's `inf` re-lexes
+        // as an identifier.
+        "interface 1.5E555\n",
+        "x = -1.5E555\n",
+    ];
+    for src in cases {
+        let printed1 = crate::format::to_source(&parse(src));
+        let reparsed = Parser::new(&printed1, "test")
+            .parse_source()
+            .unwrap_or_else(|e| panic!("printed form of {src:?} must re-parse: {e}\n{printed1}"))
+            .0;
+        let printed2 = crate::format::to_source(&reparsed);
+        assert_eq!(
+            printed1, printed2,
+            "formatter is not idempotent for {src:?}"
+        );
+    }
+}
+
+/// Fuzz regression: a digit the base's body scan refused (`0b08`,
+/// `0o9`) must be a lex error, not a digit-leading "unit" suffix —
+/// `0b0` + unit `8` printed as `08`, which re-lexes as decimal 8.
+#[test]
+fn invalid_digit_for_base_is_rejected_not_unit_suffix() {
+    assert_syntax_err(parse_err("a 0b08\n"), "invalid digit '8' for base 2");
+    assert_syntax_err(parse_err("a 0o9\n"), "invalid digit '9' for base 8");
+}

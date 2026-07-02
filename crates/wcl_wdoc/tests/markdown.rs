@@ -316,23 +316,29 @@ fn cross_root_children_render_in_a_page() {
 }
 
 #[test]
-fn lowerless_block_warns_instead_of_vanishing() {
-    // A declared block kind with no `lower` renders nothing on every
-    // backend — legal, but almost always a missing lowering, so the
-    // build records a warning instead of dropping the block silently.
-    let (_t, out) = build(
+fn lowerless_block_fails_the_build() {
+    // A declared block kind with no `lower` would render nothing on
+    // every backend — almost always a missing lowering, so the build
+    // fails with a diagnostic instead of dropping the block silently.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
         "@block(\"gadget\")\ntype Gadget extends WdocBlock {\n  id: identifier?\n}\n\
          page p {\n  gadget {}\n  p \"kept\"\n}\n",
     );
-    let md = read(&out, "p.md");
-    assert!(md.contains("kept"), "surrounding prose kept: {md}");
-    let warnings = wcl_wdoc::take_render_warnings();
-    assert!(
-        warnings
-            .iter()
-            .any(|w| w.contains("gadget") && w.contains("`lower`")),
-        "expected a lowerless-block warning, got: {warnings:?}"
-    );
+    let out = tmp.path().join("out");
+    match markdown(&src, &out, None) {
+        Err(BuildError::Eval(r)) => {
+            let text = format!("{r:?}");
+            assert!(
+                text.contains("gadget") && text.contains("lower"),
+                "names the kind and the missing lowering: {text}"
+            );
+        }
+        Ok(n) => panic!("expected an eval error, but wrote {n} page(s)"),
+        Err(_) => panic!("expected BuildError::Eval, got a different error"),
+    }
 }
 
 #[test]

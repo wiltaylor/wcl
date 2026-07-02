@@ -328,13 +328,26 @@ pub(crate) fn compute_force_plan(
     children: &[Block<'_>],
 ) -> (Vec<(f64, f64)>, Vec<f64>, Vec<f64>) {
     let defaults = ForceParams::default();
+    // Clamp `iterations` (an unbounded value would spin the simulation
+    // for hours) and ignore non-finite tuning knobs, which would turn
+    // every position into NaN.
+    let finite = |v: f64, dflt: f64| if v.is_finite() { v } else { dflt };
     let params = ForceParams {
         iterations: field_i64(block, "iterations")
-            .map(|v| v.max(0) as usize)
+            .map(|v| v.clamp(0, 10_000) as usize)
             .unwrap_or(defaults.iterations),
-        repulsion: field_f64(block, "repulsion").unwrap_or(defaults.repulsion),
-        link_distance: field_f64(block, "link_distance").unwrap_or(defaults.link_distance),
-        gravity: field_f64(block, "gravity").unwrap_or(defaults.gravity),
+        repulsion: finite(
+            field_f64(block, "repulsion").unwrap_or(defaults.repulsion),
+            defaults.repulsion,
+        ),
+        link_distance: finite(
+            field_f64(block, "link_distance").unwrap_or(defaults.link_distance),
+            defaults.link_distance,
+        ),
+        gravity: finite(
+            field_f64(block, "gravity").unwrap_or(defaults.gravity),
+            defaults.gravity,
+        ),
         seed: field_i64(block, "seed").unwrap_or(defaults.seed),
     };
 

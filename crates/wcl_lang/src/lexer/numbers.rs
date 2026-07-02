@@ -75,6 +75,7 @@ impl<'a> Lexer<'a> {
 
         let mut exponent_text: Option<String> = None;
         if base == 10 && is_float && matches!(self.peek(), Some(b'e' | b'E')) {
+            let e_pos = self.pos;
             self.pos += 1; // consume 'e'
             let exp_start = self.pos;
             if matches!(self.peek(), Some(b'+' | b'-')) {
@@ -82,18 +83,32 @@ impl<'a> Lexer<'a> {
             }
             let exp_scan = self.scan_digits_with_underscores(|c| c.is_ascii_digit())?;
             if !exp_scan.had_digit {
-                return Err(LexError {
-                    message: "expected digits in exponent".into(),
-                    span: Span::new(exp_start, self.pos),
-                });
+                // Not an exponent after all — rewind and let the `e…`
+                // be a unit suffix (`2.5eV`, and the printed form of a
+                // float carrying an `e`-leading unit: `2.1e3e` →
+                // `2100.0` + unit `e` → `2100.0e` must re-lex).
+                self.pos = e_pos;
+            } else {
+                exponent_text = Some(
+                    std::str::from_utf8(&self.src[exp_start..self.pos])
+                        .expect("ASCII exponent")
+                        .replace('_', ""),
+                );
             }
-            exponent_text = Some(
-                std::str::from_utf8(&self.src[exp_start..self.pos])
-                    .expect("ASCII exponent")
-                    .replace('_', ""),
-            );
         }
 
+        // A digit here is one the base's body scan refused (`0b08`,
+        // `0o9`). Reject it — otherwise it would be swallowed as a
+        // digit-leading "unit" suffix, which the printer re-emits in
+        // decimal where the digit re-lexes as part of the number.
+        if let Some(c) = self.peek()
+            && c.is_ascii_digit()
+        {
+            return Err(LexError {
+                message: format!("invalid digit '{}' for base {base}", c as char),
+                span: Span::new(self.pos, self.pos + 1),
+            });
+        }
         let suffix_start = self.pos;
         while matches!(self.peek(), Some(c) if c.is_ascii_alphanumeric()) {
             self.pos += 1;

@@ -280,8 +280,28 @@ impl Printer {
         // Empty-body shorthand: omit `{}` entirely when there are no items.
         // The parser accepts both `kind labels` (no braces) and
         // `kind labels {}` (explicit empty braces); the canonical form is
-        // the shorter one.
+        // the shorter one. Exception: a kind that doubles as an item-starter
+        // keyword must keep its braces — a bare `namespace` line followed by
+        // an identifier re-dispatches as a namespace *declaration* (the
+        // keyword forms are recognised by `kind` + identifier lookahead,
+        // which doesn't stop at line breaks), silently rewriting the tree.
+        const ITEM_STARTERS: &[&str] = &[
+            "import",
+            "use",
+            "namespace",
+            "type",
+            "interface",
+            "union",
+            "symbol_set",
+            "let",
+            "fn",
+            "table",
+            "connection",
+        ];
         if b.items.is_empty() {
+            if b.kind_ns.is_empty() && ITEM_STARTERS.contains(&b.kind.as_str()) {
+                self.push(" {}");
+            }
             self.print_trailing_comment(&b.trailing_comment);
             self.newline();
             return;
@@ -721,7 +741,31 @@ impl Printer {
             // A literal unit prints as `<magnitude><unit>` (the suffix form
             // it was parsed from), reusing suffix-aware numeric printing.
             Expr::UnitLiteral { value, unit, .. } => {
+                // A bare `0` glued to a unit that starts like a radix
+                // prefix (`0` + unit `xa` → `0xa`) re-lexes as a
+                // radix-prefixed number instead of a unit literal. A
+                // doubled zero (`00xa`) keeps the lexer on the
+                // decimal-then-unit path. Only the default-suffix
+                // integer zero renders as a bare `0`; every other
+                // value ends in a type suffix or a fractional part.
+                if matches!(value, crate::lexer::NumberLit::I64(0))
+                    && unit.starts_with(['x', 'X', 'b', 'B', 'o', 'O'])
+                {
+                    self.push("0");
+                }
+                let mark = self.buf.len();
                 self.print_expr(&number_lit_to_expr(value), 0);
+                // An `e<digit>…` unit glued to an exponent-less float
+                // body re-lexes as an exponent (`210.0` + unit `e2e` →
+                // `210.0e2e` → 21000.0 + unit `e`). Force an explicit
+                // no-op exponent so the unit survives the round trip.
+                if matches!(value, crate::lexer::NumberLit::F64(_))
+                    && !self.buf[mark..].contains('e')
+                    && unit.starts_with(['e', 'E'])
+                    && unit.as_bytes().get(1).is_some_and(|b| b.is_ascii_digit())
+                {
+                    self.push("e0");
+                }
                 self.push(unit);
             }
 
@@ -774,8 +818,31 @@ impl Printer {
                 self.push("]");
             }
             Expr::Member { recv, name, .. } => {
+                let mark = self.buf.len();
                 self.print_expr(recv, MEMBER_BP);
-                self.push(".");
+                // A numeric member segment (`steps.1` label access) glued
+                // to a receiver that rendered digit-last re-lexes as a
+                // float (`8 . 80` → `8.80`, `x.0.80` → `x` . `0.80`) —
+                // parenthesize the receiver so the member chain survives.
+                if name.as_bytes().first().is_some_and(|b| b.is_ascii_digit())
+                    && self
+                        .buf
+                        .as_bytes()
+                        .last()
+                        .is_some_and(|b| b.is_ascii_digit())
+                    && self.buf.len() > mark
+                {
+                    self.buf.insert(mark, '(');
+                    self.buf.push(')');
+                }
+                // A negative numeric segment (`x. -2`) needs the space:
+                // flush against the dot, `-` is not a valid member start
+                // (the signed-number lexer form requires a separator).
+                if name.starts_with('-') {
+                    self.push(". ");
+                } else {
+                    self.push(".");
+                }
                 self.push(name);
             }
             Expr::Call {
@@ -805,11 +872,41 @@ impl Printer {
                 self.push(")");
             }
             Expr::Unary { op, operand, .. } => {
-                self.push(match op {
-                    UnaryOp::Neg => "-",
-                    UnaryOp::Not => "!",
-                });
-                self.print_expr(operand, UNARY_BP);
+                // A `-` printed flush against digits re-lexes as one signed
+                // literal, which drops the sign of integer zero (`- 0` →
+                // `-0` → `0` on the next pass) and rejects unsigned
+                // suffixes (`- 5u8` → `-5u8` → parse error). Fold the
+                // negation into signed/float literals; parenthesize the
+                // numeric operands that can't absorb it (unsigned,
+                // unit literals, `iN::MIN`).
+                if matches!(op, UnaryOp::Neg)
+                    && let Some(folded) = fold_neg(operand)
+                {
+                    self.print_expr(&folded, min_bp);
+                } else {
+                    self.push(match op {
+                        UnaryOp::Neg => "-",
+                        UnaryOp::Not => "!",
+                    });
+                    let mark = self.buf.len();
+                    self.print_expr(operand, UNARY_BP);
+                    // Any operand that rendered digit-first glues onto
+                    // the `-` (`- 0 . u3` → `-0.u3`, whose zero re-lexes
+                    // as a *signed* literal and drops the negation) —
+                    // parenthesize it. Checking the rendered text covers
+                    // every such shape: unsigned/unit literals, `iN::MIN`,
+                    // member access or calls on a numeric literal, ….
+                    if matches!(op, UnaryOp::Neg)
+                        && self
+                            .buf
+                            .as_bytes()
+                            .get(mark)
+                            .is_some_and(|b| b.is_ascii_digit())
+                    {
+                        self.buf.insert(mark, '(');
+                        self.buf.push(')');
+                    }
+                }
             }
             Expr::Binary { op, lhs, rhs, .. } => {
                 let (lbp, rbp) = op.binding_power();
@@ -912,6 +1009,14 @@ impl Printer {
     }
 
     fn print_float(&mut self, v: f64) {
+        // Infinity has no literal form — an overflowing literal
+        // (`1.5E555`) saturates to it, and Debug's `inf` re-lexes as an
+        // *identifier*. Emit an overflowing literal instead; it parses
+        // back to the same value.
+        if v.is_infinite() {
+            self.push(if v < 0.0 { "-1.0e999" } else { "1.0e999" });
+            return;
+        }
         // Use Debug so finite floats round-trip; ensure a `.` is
         // always present so `2.0` doesn't get printed as `2` (which
         // would re-parse as an integer). Debug prints small/large
@@ -1449,7 +1554,29 @@ fn trivia_has_comment(trivia: &[Trivia]) -> bool {
 }
 
 fn join_path(parts: &[String]) -> String {
-    parts.join(".")
+    // Mirrors the `Expr::Member` printing rules: a variant type path can
+    // carry numeric member segments, and gluing them re-lexes wrongly —
+    // `.` + `-2` is not a valid member start, and a digit-leading segment
+    // after a digit-ending one merges into a float (`0.80`). A space
+    // after the dot keeps the reparse on the member-chain path.
+    let mut out = String::new();
+    for (i, p) in parts.iter().enumerate() {
+        if i > 0 {
+            out.push('.');
+            let glue = p.starts_with('-')
+                || (p.as_bytes().first().is_some_and(u8::is_ascii_digit)
+                    && out
+                        .len()
+                        .checked_sub(2)
+                        .and_then(|i| out.as_bytes().get(i))
+                        .is_some_and(u8::is_ascii_digit));
+            if glue {
+                out.push(' ');
+            }
+        }
+        out.push_str(p);
+    }
+    out
 }
 
 /// Render a field key: bare when it is a valid identifier, otherwise as a
@@ -1561,4 +1688,34 @@ fn number_lit_to_expr(n: &crate::lexer::NumberLit) -> Expr {
         N::F32(v) => Expr::F32(v),
         N::F64(v) => Expr::F64(v),
     }
+}
+
+/// Negation folded into a numeric literal, when the result is exactly
+/// representable: signed ints via `checked_neg` (so `iN::MIN` bails),
+/// floats always, unsigned only at zero (where `-` is a no-op). Double
+/// negation over a foldable literal cancels. `None` means the caller
+/// must print the `-` some other way.
+fn fold_neg(e: &Expr) -> Option<Expr> {
+    Some(match e {
+        Expr::I8(v) => Expr::I8(v.checked_neg()?),
+        Expr::I16(v) => Expr::I16(v.checked_neg()?),
+        Expr::I32(v) => Expr::I32(v.checked_neg()?),
+        Expr::I64(v) => Expr::I64(v.checked_neg()?),
+        Expr::I128(v) => Expr::I128(v.checked_neg()?),
+        Expr::Isize(v) => Expr::Isize(v.checked_neg()?),
+        Expr::U8(0) => Expr::U8(0),
+        Expr::U16(0) => Expr::U16(0),
+        Expr::U32(0) => Expr::U32(0),
+        Expr::U64(0) => Expr::U64(0),
+        Expr::U128(0) => Expr::U128(0),
+        Expr::Usize(0) => Expr::Usize(0),
+        Expr::F32(v) => Expr::F32(-v),
+        Expr::F64(v) => Expr::F64(-v),
+        Expr::Unary {
+            op: UnaryOp::Neg,
+            operand,
+            ..
+        } if fold_neg(operand).is_some() => (**operand).clone(),
+        _ => return None,
+    })
 }

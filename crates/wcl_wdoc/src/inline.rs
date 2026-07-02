@@ -480,9 +480,10 @@ impl InlinePatterns {
     }
 
     /// Scan every pattern starting at `pos`, return the earliest-
-    /// starting match. Ties broken by pattern declaration order so
-    /// the built-ins (declared first in `wdoc.wcl`) win over a
-    /// user override with the same syntax at the same position.
+    /// starting match. Ties broken by compiled order — root-authored
+    /// blocks enumerate before imported ones (`Document::blocks`), so
+    /// a user pattern with the same syntax at the same position
+    /// overrides the `wdoc.wcl` built-in.
     fn find_next(&self, text: &str, pos: usize) -> Option<Match> {
         let mut best: Option<Match> = None;
         for (i, pat) in self.compiled.iter().enumerate() {
@@ -953,4 +954,280 @@ fn class_list(map: &BTreeMap<String, Value>) -> Vec<String> {
             _ => None,
         })
         .collect()
+}
+
+// ── Tests ─────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wcl_lang::{Environment, disk_loader};
+
+    /// Open a fixture through the embedded wdoc registry, so the built-in
+    /// bold/italic/code/… patterns compile exactly as they do in a real
+    /// build; `extra` appends user declarations after the stdlib import.
+    fn open_wdoc(extra: &str) -> Document {
+        let src = format!("import <wdoc.wcl>\n{extra}");
+        let loader = crate::schema_registry().loader(disk_loader());
+        Document::open_at_with_loader(&src, "inline-test.wcl", None, &Environment::new(), loader)
+            .expect("open inline fixture")
+    }
+
+    /// Wire an `InlinePatterns` over `doc` with an empty site context —
+    /// the engine under test only needs the compiled pattern table (and
+    /// `pages` for the href-resolution tests).
+    fn patterns_for(doc: &Document, pages: &[&str]) -> InlinePatterns {
+        InlinePatterns::load(
+            doc,
+            pages.iter().map(|s| s.to_string()).collect(),
+            None,
+            String::new(),
+            BTreeMap::new(),
+            BTreeMap::new(),
+            IconRegistry::load(doc),
+            // `BuildError` carries no Debug impl, so unwrap by hand;
+            // fixtures declare no tilesets, so this can't fail.
+            TilesetRegistry::load(doc, None)
+                .unwrap_or_else(|_| panic!("tileset registry over an empty fixture")),
+            ImageRegistry::new(None),
+            VideoRegistry::new(None),
+            FileRegistry::new(None),
+            Backend::Html,
+        )
+    }
+
+    fn render_builtin(text: &str) -> String {
+        let doc = open_wdoc("");
+        let pats = patterns_for(&doc, &[]);
+        pats.render(&doc, text)
+    }
+
+    #[test]
+    fn empty_input_renders_empty() {
+        assert_eq!(render_builtin(""), "");
+    }
+
+    #[test]
+    fn no_patterns_emits_whole_text_as_escaped_literal() {
+        // A document that never imports the stdlib compiles zero patterns;
+        // the engine must still escape (would-be delimiters stay literal).
+        let doc = Document::open("", "empty.wcl").expect("open empty doc");
+        let pats = patterns_for(&doc, &[]);
+        assert_eq!(pats.render(&doc, "**a** <x>"), "**a** &lt;x&gt;");
+    }
+
+    #[test]
+    fn matches_at_start_end_and_back_to_back_lose_no_text() {
+        // Adjacent matches at both string edges: the scan must not skip or
+        // duplicate the boundary bytes between them.
+        assert_eq!(
+            render_builtin("**a**_b_ and **z**"),
+            "<span class=\"bold\">a</span><span class=\"italic\">b</span> \
+             and <span class=\"bold\">z</span>"
+        );
+    }
+
+    #[test]
+    fn unclosed_delimiter_is_literal_text() {
+        // No closing `**` / backtick ⇒ the regex simply never matches; the
+        // opener must survive as prose rather than swallowing to EOF.
+        assert_eq!(render_builtin("**never closed"), "**never closed");
+        assert_eq!(render_builtin("start `still open"), "start `still open");
+    }
+
+    #[test]
+    fn earliest_start_wins_and_match_text_is_retokenized() {
+        // Italic opens at byte 0, bold at byte 3: the earlier start wins the
+        // outer span, and its captured text re-runs the engine so the bold
+        // nests inside.
+        assert_eq!(
+            render_builtin("_i **b** j_"),
+            "<span class=\"italic\">i <span class=\"bold\">b</span> j</span>"
+        );
+    }
+
+    #[test]
+    fn same_position_tie_goes_to_root_authored_override() {
+        // Ties break by compiled order, and `Document::blocks` enumerates
+        // the root document before its imports — so a user pattern with the
+        // built-in bold syntax beats the stdlib one at the same position.
+        let doc = open_wdoc(
+            r#"
+inline_pattern user_bold {
+  pattern = "\\*\\*([^*\n]+)\\*\\*"
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Plain { text: at(g, 1), class: ["user-bold"] }]
+}
+"#,
+        );
+        let pats = patterns_for(&doc, &[]);
+        assert_eq!(
+            pats.render(&doc, "**x**"),
+            "<span class=\"user-bold\">x</span>"
+        );
+    }
+
+    #[test]
+    fn two_user_patterns_tie_break_in_declaration_order() {
+        let doc = open_wdoc(
+            r#"
+inline_pattern tag_first {
+  pattern = "@(\\w+)"
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Plain { text: at(g, 1), class: ["first"] }]
+}
+inline_pattern tag_second {
+  pattern = "@(\\w+)"
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Plain { text: at(g, 1), class: ["second"] }]
+}
+"#,
+        );
+        let pats = patterns_for(&doc, &[]);
+        assert_eq!(
+            pats.render(&doc, "@here"),
+            "<span class=\"first\">here</span>"
+        );
+    }
+
+    #[test]
+    fn code_span_is_verbatim_not_retokenized() {
+        // `_b_` inside a code span must stay literal — render_plain skips
+        // re-tokenizing when the `code` class is present.
+        assert_eq!(
+            render_builtin("`a _b_ c`"),
+            "<span class=\"code\">a _b_ c</span>"
+        );
+    }
+
+    #[test]
+    fn multibyte_text_around_and_inside_matches_does_not_panic() {
+        // Multi-byte chars hugging both delimiters and inside the capture:
+        // every span boundary the scan slices at must be a char boundary.
+        assert_eq!(
+            render_builtin("é🎉**wörld—ünïcode**🎉é"),
+            "é🎉<span class=\"bold\">wörld—ünïcode</span>🎉é"
+        );
+    }
+
+    #[test]
+    fn zero_length_match_advances_one_char_and_terminates() {
+        // `x*` matches empty at every position — the zero-length guard must
+        // step forward by a whole char (not a byte, or `é` would split and
+        // panic) and the scan must still terminate.
+        let doc = open_wdoc(
+            r#"
+inline_pattern empty_ok {
+  pattern = "x*"
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Plain { text: at(g, 0), class: ["z"] }]
+}
+"#,
+        );
+        let pats = patterns_for(&doc, &[]);
+        assert_eq!(
+            pats.render(&doc, "éé"),
+            "<span class=\"z\"></span>é<span class=\"z\"></span>é"
+        );
+    }
+
+    #[test]
+    fn retokenizing_stops_at_max_depth() {
+        // Each level of this pattern strips one `>` from the front, so the
+        // recursion is driven purely by re-tokenization. With more `>`s than
+        // MAX_DEPTH, the guard must emit the remainder as a literal instead
+        // of recursing forever.
+        let doc = open_wdoc(
+            r#"
+inline_pattern gt {
+  pattern = ">([^\n]*)"
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Plain { text: at(g, 1), class: ["q"] }]
+}
+"#,
+        );
+        let pats = patterns_for(&doc, &[]);
+        let out = pats.render(&doc, &">".repeat(MAX_DEPTH + 2));
+        assert_eq!(out.matches("class=\"q\"").count(), MAX_DEPTH);
+        // The two leftover `>`s surface literally (html-escaped).
+        assert!(out.contains("&gt;&gt;"), "unexpected output: {out}");
+    }
+
+    #[test]
+    fn literals_are_html_escaped_inside_and_outside_matches() {
+        assert_eq!(
+            render_builtin("a<b & **c<d**"),
+            "a&lt;b &amp; <span class=\"bold\">c&lt;d</span>"
+        );
+    }
+
+    #[test]
+    fn resolve_href_rewrites_known_pages_and_records_bad_links() {
+        let doc = open_wdoc("");
+        let pats = patterns_for(&doc, &["intro"]);
+        assert_eq!(pats.resolve_href("intro"), "intro.html");
+        // Fragment survives the rewrite; external / anchor hrefs pass through.
+        assert_eq!(pats.resolve_href("intro#sec"), "intro.html#sec");
+        assert_eq!(pats.resolve_href("https://e.com/x"), "https://e.com/x");
+        assert_eq!(pats.resolve_href("#top"), "#top");
+        assert!(pats.take_link_errors().is_empty());
+        // An unknown bare token passes through but is recorded so the build
+        // can fail after the page loop.
+        assert_eq!(pats.resolve_href("missing"), "missing");
+        let errs = pats.take_link_errors();
+        assert_eq!(errs.len(), 1);
+        assert!(errs[0].contains("missing"), "unexpected error: {errs:?}");
+    }
+
+    #[test]
+    fn markdown_twin_escapes_literals_and_keeps_code_verbatim() {
+        let doc = open_wdoc("");
+        let pats = patterns_for(&doc, &[]);
+        // Literal `[` `]` `*` are escaped so prose can't accidentally
+        // format; a code span's content is emitted raw (no escaping,
+        // no emphasis nesting).
+        assert_eq!(
+            pats.render_markdown(&doc, "see [x] *y* **b** `c*d`"),
+            "see \\[x\\] \\*y\\* **b** `c*d`"
+        );
+    }
+
+    #[test]
+    fn pdf_runs_twin_keeps_code_verbatim_and_maps_styles() {
+        let doc = open_wdoc("");
+        let pats = patterns_for(&doc, &[]);
+        // The code span must come through as a single Mono run — an inner
+        // `_…_` pair re-interpreted as italic would split it.
+        let runs = pats.render_runs(&doc, "a **b** `c _d_`");
+        let flat: Vec<(&str, bool, bool)> = runs
+            .iter()
+            .map(|r| match r {
+                InlineRun::Text { text, style } => (
+                    text.as_str(),
+                    style.bold,
+                    matches!(style.family, FontFamily::Mono),
+                ),
+                other => panic!("unexpected run: {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            flat,
+            vec![
+                ("a ", false, false),
+                ("b", true, false),
+                (" ", false, false),
+                ("c _d_", false, true),
+            ]
+        );
+    }
+
+    #[test]
+    fn md_code_span_follows_commonmark_fence_rules() {
+        // Fence widens past the longest interior backtick run; a leading or
+        // trailing backtick forces the space padding.
+        assert_eq!(md_code_span("a"), "`a`");
+        assert_eq!(md_code_span("a`b"), "``a`b``");
+        assert_eq!(md_code_span("`a"), "`` `a ``");
+        assert_eq!(md_code_span("a``b"), "```a``b```");
+    }
 }

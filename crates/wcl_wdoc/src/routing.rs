@@ -95,6 +95,19 @@ pub(crate) fn route_elbow(
     borders: &[(f64, f64, f64, f64)],
     viewport: (f64, f64),
 ) -> Option<Vec<(f64, f64)>> {
+    // Pre-flight the grid size once so an over-cap diagram gets a
+    // size diagnostic instead of the misleading "too tightly packed"
+    // message the caller records for an exhausted search.
+    if grid_dims(src, dst, obstacles, viewport, PAD).is_none() {
+        crate::render::record_route_error(format!(
+            "diagram is too large to route edges: content extends to roughly \
+             ({:.0}, {:.0}) SVG units, beyond the routing grid's capacity. \
+             Reduce the diagram's coordinates/size, or set routing: \"straight\".",
+            viewport.0.max(src.0).max(dst.0),
+            viewport.1.max(src.1).max(dst.1),
+        ));
+        return None;
+    }
     for pad in [PAD, 1.0, 0.0] {
         // `borders` is the same at every pad: the penalty is a soft cost,
         // independent of the obstacle-padding relaxation.
@@ -105,6 +118,41 @@ pub(crate) fn route_elbow(
         }
     }
     None
+}
+
+/// Hard ceiling on the routing grid's total cell count. Beyond this
+/// the search is hopeless anyway, and the cell math / allocation would
+/// otherwise overflow i32 or OOM on absurd user coordinates.
+const MAX_GRID_CELLS: i64 = 4_000_000;
+
+/// Size the grid to cover the declared viewport *and* all content
+/// (obstacles + both endpoints), then add a routing margin so an edge
+/// has room to detour below / right of a tightly-packed row instead of
+/// being boxed in by the grid edge. Sizing from content also keeps
+/// routing working when a diagram omits `width`/`height` (viewport 0).
+///
+/// Sized in i64 and capped at [`MAX_GRID_CELLS`]; `None` means the
+/// coordinates are too large to route.
+fn grid_dims(
+    src: (f64, f64),
+    dst: (f64, f64),
+    obstacles: &[Obstacle],
+    viewport: (f64, f64),
+    pad: f64,
+) -> Option<(i32, i32)> {
+    const MARGIN_CELLS: i64 = 4;
+    let mut max_x = viewport.0.max(src.0).max(dst.0);
+    let mut max_y = viewport.1.max(src.1).max(dst.1);
+    for o in obstacles {
+        max_x = max_x.max(o.x + o.w + pad);
+        max_y = max_y.max(o.y + o.h + pad);
+    }
+    let gw = ((max_x / CELL).ceil() as i64).saturating_add(2 + MARGIN_CELLS);
+    let gh = ((max_y / CELL).ceil() as i64).saturating_add(2 + MARGIN_CELLS);
+    if gw <= 0 || gh <= 0 || gw.saturating_mul(gh) > MAX_GRID_CELLS {
+        return None;
+    }
+    Some((gw as i32, gh as i32))
 }
 
 // ── A* search ──────────────────────────────────────────────────────
@@ -151,22 +199,7 @@ fn astar_route(
     viewport: (f64, f64),
     pad: f64,
 ) -> Option<Vec<(f64, f64)>> {
-    // Size the grid to cover the declared viewport *and* all content
-    // (obstacles + both endpoints), then add a routing margin so an edge
-    // has room to detour below / right of a tightly-packed row instead of
-    // being boxed in by the grid edge. Sizing from content also keeps
-    // routing working when a diagram omits `width`/`height` (viewport 0).
-    const MARGIN_CELLS: i32 = 4;
-    let mut max_x = viewport.0.max(src.0).max(dst.0);
-    let mut max_y = viewport.1.max(src.1).max(dst.1);
-    for o in obstacles {
-        max_x = max_x.max(o.x + o.w + pad);
-        max_y = max_y.max(o.y + o.h + pad);
-    }
-    let (gw, gh) = (
-        (max_x / CELL).ceil() as i32 + 2 + MARGIN_CELLS,
-        (max_y / CELL).ceil() as i32 + 2 + MARGIN_CELLS,
-    );
+    let (gw, gh) = grid_dims(src, dst, obstacles, viewport, pad)?;
     let blocked = build_blocked_grid(obstacles, gw, gh, pad);
     let start_cell = snap(src);
     let goal_cell = snap(dst);
@@ -705,6 +738,42 @@ pub(crate) fn separate_edges(paths: &mut [EdgePath], step: f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn absurd_coordinates_bail_instead_of_allocating() {
+        // A viewport in the 1e30 range used to overflow the i32 cell
+        // math and attempt a colossal grid allocation. It must fail
+        // fast with `None` (and record a route error) instead.
+        let got = route_elbow(
+            (50.0, 100.0),
+            Side::East,
+            (1.0e30, 100.0),
+            Side::West,
+            &[],
+            &[],
+            (1.0e30, 1.0e30),
+        );
+        assert!(got.is_none());
+        let err = crate::render::take_route_error().expect("size diagnostic recorded");
+        assert!(err.contains("too large"), "unexpected message: {err}");
+    }
+
+    #[test]
+    fn nan_coordinates_do_not_panic() {
+        // `f64::max` ignores NaN, so sizing falls back to the finite
+        // endpoint and snap() maps NaN to cell 0. The router may or may
+        // not find a path — the guarantee is no panic, no huge alloc.
+        let _ = route_elbow(
+            (f64::NAN, f64::NAN),
+            Side::East,
+            (250.0, 100.0),
+            Side::West,
+            &[],
+            &[],
+            (f64::NAN, 200.0),
+        );
+        crate::render::take_route_error();
+    }
 
     #[test]
     fn straight_horizontal_path_has_no_bends() {

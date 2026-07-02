@@ -189,20 +189,33 @@ pub(crate) fn lower_to_values_named(
     kind: &str,
     field: &str,
 ) -> Option<Vec<Value>> {
-    // A block that can't produce a record or has no lowering renders
-    // nothing on every backend — that may be a legitimately schema-only
-    // declaration, but more often it's a missing `lower`, so say so
-    // instead of vanishing silently.
+    // A block that can't produce a record or has no lowering would
+    // render nothing on every backend. That silent vanishing is almost
+    // always a missing `lower` or a data-only kind placed in a page
+    // body — fail the build with a snippet instead. (A lowering that
+    // wants to render nothing conditionally returns `none` or `[]`.)
     let Some(arg) = block_to_record(doc, block, kind) else {
-        record_render_warning(format!(
-            "block '{kind}' has no schema record to lower — it renders nothing"
-        ));
+        record_lower_error(
+            block,
+            EvalError::user_error(
+                format!("block '{kind}' has no schema record to lower — it would render nothing"),
+                block.span(),
+            ),
+        );
         return None;
     };
     let Some(fv) = lookup_block_lower_named(doc, block, kind, field) else {
-        record_render_warning(format!(
-            "block '{kind}' has no `{field}` lowering — it renders nothing"
-        ));
+        record_lower_error(
+            block,
+            EvalError::user_error(
+                format!(
+                    "block '{kind}' has no `{field}` lowering — it would render nothing. \
+                     Declare `fn {field}(b: {kind}) -> …` for the kind, or remove the \
+                     block from the page."
+                ),
+                block.span(),
+            ),
+        );
         return None;
     };
     match doc.call_value(&fv, &[arg]) {

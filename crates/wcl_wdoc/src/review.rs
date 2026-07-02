@@ -103,6 +103,12 @@ impl Handshake {
 
     /// True once the reviewer has sent the current `round` (a `ready` marker
     /// whose round matches, or `0` for an untargeted release).
+    ///
+    /// `0` is the recovery path: if the dev server restarts mid-wait it
+    /// clears the `agent` marker, so a subsequent "Send to agent" click
+    /// can't know the round and writes `0`. Accepting it can't release a
+    /// *stale* wait — [`Self::begin_wait`] deletes any leftover `ready`
+    /// before the wait starts, so any `0` seen here was written after.
     pub fn released(&self, round: u64) -> bool {
         match read_round(&self.ready_path()) {
             Some(r) => r == round || r == 0,

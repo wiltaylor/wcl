@@ -28,6 +28,24 @@ jobs:
       # pages, before they reach the deploy workflow.
       - run: just docs-build
 
+  # ── Fuzz smoke ────────────────────────────────────────────────────────────
+  # Bounded sweep over every wcl_lang fuzz target (~15s each) so parser /
+  # evaluator / printer regressions on the corpus-adjacent inputs are caught
+  # on each push, not only when someone runs the fuzzers locally.
+  fuzz:
+    name: fuzz smoke (all targets)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: taiki-e/install-action@just
+      - uses: taiki-e/install-action@cargo-fuzz
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: fuzz
+          workspaces: crates/wcl_lang/fuzz
+      - run: just fuzz-sweep
+
   # ── Version ───────────────────────────────────────────────────────────────
   # Trailer-gated. Only `pre-release: true` cuts a GitHub pre-release (an -alpha
   # version with artifacts). A stable `release: true` is intentionally blocked —

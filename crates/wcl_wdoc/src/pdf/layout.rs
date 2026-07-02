@@ -593,7 +593,11 @@ fn place_code(
         let seg_page = pages.len() - 1;
         let seg_top = top + *cy;
         *cy += pad;
-        while i < lines.len() && *cy + lh + pad <= content_h {
+        // Always take at least one line at the top of a page — a single line
+        // taller than the page overflows rather than loops (mirrors the
+        // paragraph break rule; without this, a content box shorter than one
+        // padded code line would push blank pages forever).
+        while i < lines.len() && (*at_page_top || *cy + lh + pad <= content_h) {
             let page = pages.last_mut().expect("at least one page");
             draw_code_line(page, book, &lines[i], left + pad, top + *cy, size);
             *cy += lh;
@@ -1164,4 +1168,380 @@ fn flush_link(
         h: size * 1.05,
         href: href.clone(),
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::icons::IconRegistry;
+    use crate::image::ImageRegistry;
+    use crate::pdf::ir::InlineRun;
+    use crate::pdf::palette::Palette;
+    use crate::tileset::TilesetRegistry;
+
+    /// Build a shaper + an embedder over empty registries (mirrors
+    /// `svg_embed::tests::with_embedder`) so tests can drive the solver with
+    /// hand-built IR and no real document.
+    fn with_ctx(f: impl FnOnce(&mut FontBook, &SvgEmbedder)) {
+        let doc = wcl_lang::Document::open("", "test.wcl").expect("empty doc parses");
+        let icons = IconRegistry::load(&doc);
+        let images = ImageRegistry::new(None);
+        let Ok(tilesets) = TilesetRegistry::load(&doc, None) else {
+            panic!("empty doc declares no tilesets");
+        };
+        let palette = Palette::default();
+        let embedder = SvgEmbedder::new(
+            &palette,
+            "",
+            &icons,
+            &images,
+            &tilesets,
+            "#ffffff".to_string(),
+            "#cccccc".to_string(),
+        );
+        let mut book = FontBook::new();
+        f(&mut book, &embedder);
+    }
+
+    /// A geometry whose content box is exactly `w` × `h` — production geometry
+    /// only comes from `PageSize`, so tests shrink the box to force pagination
+    /// without shaping thousands of lines.
+    fn geo(w: f32, h: f32) -> Geometry {
+        Geometry {
+            width: w + 20.0,
+            height: h + 20.0,
+            margin_x: 10.0,
+            margin_top: 10.0,
+            margin_bottom: 10.0,
+        }
+    }
+
+    fn text_run(text: &str) -> InlineRun {
+        InlineRun::Text {
+            text: text.to_string(),
+            style: TextStyle::body(),
+        }
+    }
+
+    fn para(text: &str) -> BlockNode {
+        BlockNode::Paragraph {
+            runs: vec![text_run(text)],
+        }
+    }
+
+    fn code_lines(n: usize) -> BlockNode {
+        BlockNode::Code {
+            lines: (0..n)
+                .map(|i| {
+                    vec![CodeSpan {
+                        text: format!("line {i}"),
+                        color: (0, 0, 0),
+                    }]
+                })
+                .collect(),
+        }
+    }
+
+    /// Breaks happen *before* placement, so no baseline may land outside the
+    /// content box (an at-page-top oversized item is the documented exception —
+    /// callers of this helper only feed content that fits line by line).
+    fn assert_glyphs_within(pages: &[LaidOutPage], geo: &Geometry) {
+        let top = geo.content_top() - 0.01;
+        let bottom = geo.content_top() + geo.content_height() + 0.01;
+        for (pi, page) in pages.iter().enumerate() {
+            for glyph in &page.glyphs {
+                assert!(
+                    glyph.y >= top && glyph.y <= bottom,
+                    "glyph at y {} escapes the content box on page {pi}",
+                    glyph.y
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn no_sections_still_yield_one_page() {
+        with_ctx(|book, embedder| {
+            let geo = geo(200.0, 200.0);
+            // The paint pass indexes `pages.last_mut()` unconditionally, so
+            // even an empty layout must produce one (blank) page.
+            let (pages, starts) = layout(&[], book, embedder, &geo);
+            assert_eq!(pages.len(), 1);
+            assert!(starts.is_empty());
+            // A section with no blocks is a legal blank page, not a crash.
+            let (pages, starts) = layout(&[vec![]], book, embedder, &geo);
+            assert_eq!(pages.len(), 1);
+            assert_eq!(starts, vec![0]);
+        });
+    }
+
+    #[test]
+    fn each_section_starts_on_a_fresh_page() {
+        with_ctx(|book, embedder| {
+            let geo = geo(300.0, 400.0);
+            let sections = [vec![para("one")], vec![para("two")], vec![para("three")]];
+            let (pages, starts) = layout(&sections, book, embedder, &geo);
+            // One source `page` block = one fresh physical page, and the
+            // recorded starts are what internal links jump to.
+            assert_eq!(pages.len(), 3);
+            assert_eq!(starts, vec![0, 1, 2]);
+            assert!(pages.iter().all(|p| !p.glyphs.is_empty()));
+        });
+    }
+
+    #[test]
+    fn long_paragraph_paginates_inside_the_content_box() {
+        with_ctx(|book, embedder| {
+            let geo = geo(200.0, 100.0);
+            let text = "lorem ipsum dolor ".repeat(200);
+            let (pages, starts) = layout(&[vec![para(&text)]], book, embedder, &geo);
+            assert_eq!(starts, vec![0]);
+            assert!(pages.len() > 1, "content must spill past one page");
+            assert_glyphs_within(&pages, &geo);
+            // A break never strands a blank page behind it.
+            assert!(pages.iter().all(|p| !p.glyphs.is_empty()));
+        });
+    }
+
+    #[test]
+    fn overwide_word_and_empty_runs_do_not_panic() {
+        with_ctx(|book, embedder| {
+            let geo = geo(40.0, 120.0);
+            let blocks = vec![
+                // One unbreakable "word" much wider than the column: policy is
+                // overflow (or forced glyph wrap), never a hang or a panic.
+                para(&"x".repeat(300)),
+                para(""),
+                BlockNode::Paragraph { runs: vec![] },
+                para("   "),
+            ];
+            let (pages, _) = layout(&[blocks], book, embedder, &geo);
+            assert!(!pages.is_empty());
+            let glyphs: usize = pages.iter().map(|p| p.glyphs.len()).sum();
+            assert!(glyphs >= 300, "the oversized word still gets painted");
+        });
+    }
+
+    #[test]
+    fn degenerate_negative_geometry_terminates() {
+        // A content box with negative width and height: every line overflows,
+        // so each takes its own page — page count stays proportional to the
+        // content, never an unbounded break loop. (cosmic-text clamps negative
+        // wrap widths to zero, so shaping is safe too.)
+        with_ctx(|book, embedder| {
+            let geo = Geometry {
+                width: 5.0,
+                height: 5.0,
+                margin_x: 10.0,
+                margin_top: 10.0,
+                margin_bottom: 10.0,
+            };
+            let blocks = vec![
+                para("a few words of prose"),
+                code_lines(3),
+                BlockNode::List {
+                    lines: vec![ListLine {
+                        depth: 0,
+                        marker: "•".to_string(),
+                        runs: vec![text_run("item")],
+                    }],
+                },
+            ];
+            let (pages, _) = layout(&[blocks], book, embedder, &geo);
+            assert!(pages.len() < 64, "unbounded page growth: {}", pages.len());
+        });
+    }
+
+    #[test]
+    fn oversized_code_line_at_page_top_overflows_rather_than_loops() {
+        // A content box shorter than one padded code line: without the
+        // at-page-top escape in `place_code` the segment loop would place
+        // nothing and push blank pages forever.
+        with_ctx(|book, embedder| {
+            let geo = geo(200.0, 10.0);
+            let (pages, _) = layout(&[vec![code_lines(3)]], book, embedder, &geo);
+            assert_eq!(pages.len(), 3, "exactly one (overflowing) line per page");
+            for page in &pages {
+                assert!(!page.glyphs.is_empty(), "every page carries its line");
+                assert!(page.rects.iter().any(|r| r.color == CODE_BG));
+            }
+        });
+    }
+
+    #[test]
+    fn code_block_splits_with_a_background_box_per_page() {
+        with_ctx(|book, embedder| {
+            // Fits two padded code lines per page; five lines force splits.
+            let geo = geo(300.0, 50.0);
+            let (pages, _) = layout(&[vec![code_lines(5)]], book, embedder, &geo);
+            assert!(
+                pages.len() >= 2 && pages.len() <= 5,
+                "expected a multi-page split, got {} pages",
+                pages.len()
+            );
+            let bottom = geo.content_top() + geo.content_height() + 0.01;
+            for page in &pages {
+                // A fresh box per page segment, and the box never runs off
+                // the bottom of its page.
+                let boxes: Vec<_> = page.rects.iter().filter(|r| r.color == CODE_BG).collect();
+                assert_eq!(boxes.len(), 1, "one background box per segment");
+                assert!(boxes[0].y + boxes[0].h <= bottom);
+                assert!(!page.glyphs.is_empty());
+            }
+        });
+    }
+
+    #[test]
+    fn svg_taller_than_the_page_scales_to_fit() {
+        with_ctx(|book, embedder| {
+            let geo = geo(200.0, 100.0);
+            let svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" \
+                       width=\"1000\" height=\"4000\" viewBox=\"0 0 1000 4000\"></svg>";
+            let blocks = vec![
+                BlockNode::Svg { svg: svg.into() },
+                // A render string with no `<svg>` (e.g. a math-error marker)
+                // is skipped benignly, not a fatal embed error.
+                BlockNode::Svg {
+                    svg: "no markup here".into(),
+                },
+            ];
+            let (pages, _) = layout(&[blocks], book, embedder, &geo);
+            assert_eq!(pages.len(), 1);
+            assert_eq!(pages[0].svgs.len(), 1);
+            let placed = &pages[0].svgs[0];
+            // Width-fit would leave 800pt of height, so the height clamp wins:
+            // scale = 100/4000, preserving aspect and centring horizontally.
+            assert!((placed.h - 100.0).abs() < 0.01, "h {}", placed.h);
+            assert!((placed.w - 25.0).abs() < 0.01, "w {}", placed.w);
+            assert!((placed.x - 97.5).abs() < 0.01, "x {}", placed.x);
+            assert!(crate::pdf::svg_embed::take_embed_error().is_none());
+        });
+    }
+
+    #[test]
+    fn callout_taller_than_the_page_overflows_in_one_piece() {
+        with_ctx(|book, embedder| {
+            let geo = geo(150.0, 40.0);
+            let body = "callout body text that wraps across many short lines ".repeat(10);
+            let blocks = vec![BlockNode::Callout {
+                accent: (200, 60, 60),
+                heading: vec![text_run("Note")],
+                body: vec![text_run(&body)],
+            }];
+            let (pages, _) = layout(&[blocks], book, embedder, &geo);
+            // Callouts render as one unit: taller than the page means the box
+            // overflows — never a split box, never a break loop.
+            assert_eq!(pages.len(), 1);
+            let tint = pages[0].rects.first().expect("tint box painted");
+            assert!(tint.h > geo.content_height(), "box really is oversized");
+        });
+    }
+
+    #[test]
+    fn toc_rows_link_and_fill_with_leader_dots() {
+        with_ctx(|book, embedder| {
+            let geo = geo(300.0, 400.0);
+            let entries = vec![
+                TocLine {
+                    depth: 0,
+                    title: "Introduction".to_string(),
+                    page: Some("intro".to_string()),
+                    number: "3".to_string(),
+                },
+                TocLine {
+                    depth: 0,
+                    title: "Grouping".to_string(),
+                    page: None,
+                    number: String::new(),
+                },
+            ];
+            let (pages, _) = layout(&[vec![BlockNode::Toc { entries }]], book, embedder, &geo);
+            let page = &pages[0];
+            // Only the entry that names a page becomes a clickable row; the
+            // internal `<page>.html` form is what paint resolves to a dest.
+            assert_eq!(page.links.len(), 1);
+            assert_eq!(page.links[0].href, "intro.html");
+            // The title→number gap fills with muted leader dots.
+            assert!(
+                page.glyphs
+                    .iter()
+                    .any(|g| g.color == TOC_DOT_COLOR && g.cluster == ".")
+            );
+        });
+    }
+
+    #[test]
+    fn flow_is_top_down_and_inline_links_get_boxes() {
+        with_ctx(|book, embedder| {
+            let geo = geo(400.0, 600.0);
+            let blocks = vec![
+                BlockNode::Heading {
+                    level: 1,
+                    runs: vec![text_run("Title")],
+                },
+                para("first paragraph"),
+                BlockNode::Paragraph {
+                    runs: vec![InlineRun::Link {
+                        runs: vec![text_run("a link")],
+                        href: "https://example.com".to_string(),
+                    }],
+                },
+            ];
+            let (pages, _) = layout(&[blocks], book, embedder, &geo);
+            assert_eq!(pages.len(), 1);
+            let page = &pages[0];
+            // Glyphs are pushed in layout order, so spacing accumulation must
+            // move baselines strictly down the page — never back up.
+            let mut last = f32::MIN;
+            for glyph in &page.glyphs {
+                assert!(
+                    glyph.y >= last - 0.01,
+                    "baseline moved up: {} after {last}",
+                    glyph.y
+                );
+                last = last.max(glyph.y);
+            }
+            let link = page
+                .links
+                .iter()
+                .find(|l| l.href == "https://example.com")
+                .expect("link box built");
+            assert!(link.w > 0.0 && link.h > 0.0);
+            assert!(page.glyphs.iter().any(|g| g.color == LINK_COLOR));
+        });
+    }
+
+    #[test]
+    fn table_rows_paginate_and_keep_rules_inside_the_page() {
+        with_ctx(|book, embedder| {
+            let geo = geo(300.0, 60.0);
+            let cell = |t: &str| vec![text_run(t)];
+            let header = vec![cell("Name"), cell("Value")];
+            let rows: Vec<Row> = (0..6)
+                .map(|i| vec![cell(&format!("row {i}")), cell("v")])
+                .collect();
+            let (pages, _) = layout(
+                &[vec![BlockNode::Table { header, rows }]],
+                book,
+                embedder,
+                &geo,
+            );
+            assert!(pages.len() > 1, "seven rows cannot fit a 60pt box");
+            // The shaded header paints once — rows that break to a new page
+            // do not repeat it.
+            let header_boxes = pages
+                .iter()
+                .flat_map(|p| &p.rects)
+                .filter(|r| r.color == TABLE_HEADER_BG)
+                .count();
+            assert_eq!(header_boxes, 1);
+            let bottom = geo.content_top() + geo.content_height() + 0.01;
+            for page in &pages {
+                for r in &page.rects {
+                    assert!(r.y + r.h <= bottom, "rule at {}+{} escapes", r.y, r.h);
+                }
+                assert!(!page.glyphs.is_empty(), "no blank pages from row breaks");
+            }
+        });
+    }
 }

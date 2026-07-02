@@ -112,7 +112,10 @@ pub(crate) fn materialize_rev(rev: &str, root: &Path) -> Result<TempDir, String>
         .spawn()
         .map_err(|e| format!("failed to run git archive: {e}"))?;
 
-    let archive_out = archive.stdout.take().expect("git archive stdout is piped");
+    let archive_out = archive
+        .stdout
+        .take()
+        .ok_or_else(|| "git archive produced no stdout handle".to_string())?;
     let tar = Command::new("tar")
         .arg("-x")
         .arg("-C")

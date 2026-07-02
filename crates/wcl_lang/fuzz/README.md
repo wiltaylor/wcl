@@ -32,8 +32,8 @@ just fuzz-run parse -- -runs=10000           # bounded
 just fuzz-run format_round_trip -- -max_total_time=30
 ```
 
-The CI workflow runs `parse` for a 30-second smoke as part of every
-push (not blocking PRs).
+The CI workflow runs `just fuzz-sweep` — a bounded pass over every
+target (~15s each) — as part of every push.
 
 ## Corpus
 

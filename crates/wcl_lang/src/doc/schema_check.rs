@@ -159,39 +159,40 @@ pub(super) fn validate_connection_stmts(
         };
         let lhs = doc.resolve_connection_operand(scope, &stmt.lhs);
         let rhs = doc.resolve_connection_operand(scope, &stmt.rhs);
-        if lhs.is_none() || rhs.is_none() {
-            // An operand that doesn't name a literal block is a typo for a
-            // static connection — but under a `@dynamic` connection it may
-            // be an id generated at render time (`wdoc_repeater` /
-            // `wdoc_component`), which we can't resolve statically. Suppress
-            // the error only when such a connection plausibly accepts this
-            // statement; otherwise flag it as before. (Mirrors the original
-            // single-operand reporting: source is reported first.)
-            if !dynamic_connection_admits(doc, &lhs, &rhs) {
-                if lhs.is_none() {
-                    errs.push(EvalError::schema_violation(
-                        Kind::UnknownConnectionOperand,
-                        format!(
-                            "connection source '{}' does not name a block in scope",
-                            stmt.lhs
-                        ),
-                        stmt.lhs_span,
-                    ));
-                } else {
-                    errs.push(EvalError::schema_violation(
-                        Kind::UnknownConnectionOperand,
-                        format!(
-                            "connection destination '{}' does not name a block in scope",
-                            stmt.rhs
-                        ),
-                        stmt.rhs_span,
-                    ));
+        let (lhs, rhs) = match (lhs, rhs) {
+            (Some(lhs), Some(rhs)) => (lhs, rhs),
+            (lhs, rhs) => {
+                // An operand that doesn't name a literal block is a typo for a
+                // static connection — but under a `@dynamic` connection it may
+                // be an id generated at render time (`wdoc_repeater` /
+                // `wdoc_component`), which we can't resolve statically. Suppress
+                // the error only when such a connection plausibly accepts this
+                // statement; otherwise flag it as before. (Mirrors the original
+                // single-operand reporting: source is reported first.)
+                if !dynamic_connection_admits(doc, &lhs, &rhs) {
+                    if lhs.is_none() {
+                        errs.push(EvalError::schema_violation(
+                            Kind::UnknownConnectionOperand,
+                            format!(
+                                "connection source '{}' does not name a block in scope",
+                                stmt.lhs
+                            ),
+                            stmt.lhs_span,
+                        ));
+                    } else {
+                        errs.push(EvalError::schema_violation(
+                            Kind::UnknownConnectionOperand,
+                            format!(
+                                "connection destination '{}' does not name a block in scope",
+                                stmt.rhs
+                            ),
+                            stmt.rhs_span,
+                        ));
+                    }
                 }
+                continue;
             }
-            continue;
-        }
-        let lhs = lhs.unwrap();
-        let rhs = rhs.unwrap();
+        };
         let Some(lhs_decl) = doc.operand_schema(&lhs) else {
             continue; // block kind without a schema; UnregisteredKind already fires.
         };

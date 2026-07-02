@@ -421,14 +421,25 @@ pub(crate) fn match_record_variant_by_shape<'a>(
     }
     let v = pick_unique_match(*union_decl, full_matches, name_matches, span)?;
     // Re-extract the matched variant from the Value::Variant we got back.
+    // Both invariants hold by construction (`pick_unique_match` returns a
+    // `Value::Variant` built from the effective list); report an internal
+    // error rather than panicking mid-validation if they ever drift.
     let Value::Variant { variant: name, .. } = &v else {
-        unreachable!("pick_unique_match returns Value::Variant on success");
+        return Err(EvalError::user_error(
+            "internal: variant dispatch produced a non-variant value",
+            span,
+        ));
     };
     let m = effective
         .iter()
         .find(|v| v.name == *name)
         .copied()
-        .expect("matched variant is in effective list");
+        .ok_or_else(|| {
+            EvalError::user_error(
+                format!("internal: matched variant '{name}' is not in the effective variant list"),
+                span,
+            )
+        })?;
     Ok(m)
 }
 
