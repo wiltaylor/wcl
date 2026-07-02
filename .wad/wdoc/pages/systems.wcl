@@ -1,0 +1,327 @@
+// View 4 — Systems: the C4 drill-down. A landing page, then one page per
+// system (derived container diagram), per container (components, code items,
+// deployments), per component (with its screens and their flow), per code
+// item (renderer dispatched on its kind: module graph / db schema / class
+// diagram / api), and per screen. Resolves the `let` helpers from
+// wdoc/book/main.wcl.
+
+// Dependency edges for a code item's nodes (module graphs, class diagrams).
+let dep_edges = fn(ci: CodeItem) -> list<Edge> {
+  flatten(map(ci.nodes, fn(nd: CodeNode) -> list<Edge> {
+    map(nd.deps, fn(d2: identifier) -> Edge { { source: nd.id, destination: d2 } })
+  }))
+}
+// Foreign-key edges for a code item's db schema — row-level ports on both
+// ends when the referenced column is named, the whole table otherwise.
+let db_fk_edges = fn(ci: CodeItem) -> list<Edge> {
+  flatten(map(ci.tables, fn(t: DbTable) -> list<Edge> {
+    flatten(map(t.columns, fn(col: DbColumn) -> list<Edge> {
+      match col.ref_table {
+        none => [],
+        rt => [{
+          source: $"${t.id}_${col.name}",
+          destination: match col.ref_column { none => $"${rt}", rc => $"${rt}_${rc}" },
+          label: "fk",
+        }],
+      }
+    }))
+  }))
+}
+let screen_flow_edges = fn(scs: list<Screen>) -> list<Edge> {
+  flatten(map(scs, fn(sc: Screen) -> list<Edge> {
+    map(sc.nav_to, fn(t2: identifier) -> Edge { { source: sc.id, destination: t2 } })
+  }))
+}
+// Component-level edges inside one container: relations whose endpoints are
+// both components of that container (endpoints equal to the container id
+// itself are the container's own relations, drawn a level up).
+let comp_rels = fn(cid: identifier) -> list<RolledEdge> {
+  map(filter(relations, fn(r: Relation) -> bool {
+    r.source != cid && r.destination != cid && r.source != r.destination
+      && owner_container(r.source) == cid && owner_container(r.destination) == cid
+  }), fn(r: Relation) -> RolledEdge {
+    { key: $"${r.source}|${r.destination}", source: r.source, destination: r.destination, label: rel_label(r) }
+  })
+}
+
+page systems_page { title = "Systems"
+  h1 "Systems"
+  p  "The C4 drill-down: each system decomposes into containers (independently runnable units), components, and code-level artefacts. Drill into a system for its containers."
+  wdoc_repeater { each = match len(systems) { 0 => [true], _ => [] }  as = :_e
+    p "_No systems recorded._"
+  }
+  wdoc_repeater { each = match len(systems) { 0 => [], _ => [true] }  as = :_t
+    table {
+      header = ["System", "Summary"]
+      rows = map(systems, fn(s: System) -> list<utf8> {
+        [$"[${s.name}](system_${s.id})", s.summary]
+      })
+    }
+  }
+}
+
+// --- one page per system ------------------------------------------------------
+wdoc_repeater { each = systems  as = :s
+  page $"system_${s.id}" { title = $"${s.name}"
+    h1 $"${s.name}"
+    p  $"_${s.summary}_"
+    wdoc_repeater { each = match s.owner { none => [], o => [o] }  as = :o
+      p $"**Owner:** ${stakeholder_names([o])}"
+    }
+    wdoc_repeater { each = match len(s.repos) { 0 => [], _ => [true] }  as = :_r
+      p $"**Repositories:** ${join(map(s.repos, fn(rid: identifier) -> utf8 { link_of(rid) }), ", ")}"
+    }
+    wdoc_repeater { each = match s.body { none => [], _ => [true] }  as = :_b
+      project { from = s.body }
+    }
+
+    // A system with no containers (a small deliverable that needs no
+    // drill-down) skips the container diagram rather than drawing empty.
+    wdoc_repeater { each = match len(containers_of(s.id)) { 0 => [], _ => [true] }  as = :_cd
+      h2 "Containers"
+      diagram { width = 960  height = 560  layout = :layered  direction = :left_to_right
+        layer_gap = 90.0  node_gap = 40.0  pan_zoom = true
+        desc = $"Container diagram for ${s.name}"
+        wdoc_repeater { each = containers_of(s.id)  as = :c
+          card { id = c.id  title = c.name  width = 190.0  height = 105.0
+            text $"${c.summary} [Details](container_${c.id})"
+          }
+        }
+        // Non-persona neighbours draw as dashed cards; personas draw as
+        // icon'd actors, matching the context diagram.
+        wdoc_repeater { each = filter(sys_neighbors(s.id), fn(nb: NodeRef) -> bool { nb.level != "persona" })  as = :nb
+          card { id = nb.id  title = nb.name  width = 170.0  height = 70.0  class = ["wad-external"]
+            text $"${nb.level} — ${link_of(nb.id)}"
+          }
+        }
+        wdoc_repeater { each = filter(sys_neighbors(s.id), fn(nb: NodeRef) -> bool { nb.level == "persona" })  as = :nb
+          process $"${nb.name}" { id = nb.id  width = 140.0  height = 60.0
+            icon = "lucide.user"  link = $"persona_${nb.id}"
+          }
+        }
+        boundary $"${s.name}" {
+          members = map(containers_of(s.id), fn(c: Container) -> identifier { c.id })
+        }
+        edges = dedup_edges(sys_rolled(s.id))
+      }
+    }
+    edit_object { kind = "system"  target = $"${s.id}" }
+  }
+}
+
+// --- one page per container ---------------------------------------------------
+wdoc_repeater { each = containers  as = :c
+  page $"container_${c.id}" { title = $"${c.name}"
+    h1 $"${c.name}"
+    p  $"_${c.summary}_"
+    table {
+      rows = [
+        ["System", link_of(c.system)],
+        ["Kind", $"${c.kind}"],
+        ["Technology", c.technology ?? "—"],
+        ["Repository", match c.repo { none => "—", rid => link_of(rid) }],
+      ]
+    }
+    wdoc_repeater { each = match c.body { none => [], _ => [true] }  as = :_b
+      project { from = c.body }
+    }
+
+    wdoc_repeater { each = match len(filter(deploy_targets, fn(dt: DeployTarget) -> bool { dt.container == c.id })) { 0 => [], _ => [true] }  as = :_d
+      h2 "Deployments"
+      table {
+        header = ["Environment", "Runs on", "Replicas", "URL"]
+        rows = map(filter(deploy_targets, fn(dt: DeployTarget) -> bool { dt.container == c.id }),
+                   fn(dt: DeployTarget) -> list<utf8> {
+          [link_of(dt.environment), name_of(dt.infra_node),
+           match dt.replicas { none => "—", n2 => $"${n2}" }, dt.url ?? "—"]
+        })
+      }
+    }
+
+    wdoc_repeater { each = match len(components_of(c.id)) { 0 => [], _ => [true] }  as = :_c
+      h2 "Components"
+      // The C4 level-3 picture: every component inside the container's
+      // boundary. Grid-placed (component relations are rare, so a flow
+      // layout would stack them in one column); any component-level
+      // relations still draw as edges.
+      diagram { width = 960  height = 460
+        layout = :grid  columns = 3  cell_width = 250.0  cell_height = 110.0  gap = 28.0
+        pan_zoom = true
+        desc = $"Component diagram for ${c.name}"
+        wdoc_repeater { each = components_of(c.id)  as = :co
+          card { id = co.id  title = co.name  width = 250.0  height = 110.0
+            text $"${co.summary} [Details](component_${co.id})"
+          }
+        }
+        boundary $"${c.name}" {
+          members = map(components_of(c.id), fn(co: Component) -> identifier { co.id })
+          padding = 28.0
+        }
+        edges = dedup_edges(comp_rels(c.id))
+      }
+    }
+
+    wdoc_repeater { each = match len(code_items_of(c.id)) { 0 => [], _ => [true] }  as = :_k
+      h2 "Code items"
+      wdoc_repeater { each = code_items_of(c.id)  as = :ci
+        p $"- [${ci.name}](code_${ci.id}) (`${ci.kind}`)${match ci.summary { none => "", sx => $" — ${sx}" }}"
+      }
+    }
+
+    wdoc_repeater { each = match len(screens_of(c.id)) { 0 => [], _ => [true] }  as = :_s
+      h2 "Screens"
+      wdoc_repeater { each = screens_of(c.id)  as = :sc
+        p $"- [${sc.name}](screen_${sc.id})${match sc.summary { none => "", sx => $" — ${sx}" }}"
+      }
+    }
+
+    wdoc_repeater { each = match len(rels_touching([c.id])) { 0 => [], _ => [true] }  as = :_r
+      h2 "Relations"
+      table {
+        header = ["From", "Relation", "To", "Protocol", "Data"]
+        rows = rel_rows(rels_touching([c.id]))
+      }
+    }
+    edit_object { kind = "container"  target = $"${c.id}" }
+  }
+}
+
+// --- one page per component ---------------------------------------------------
+wdoc_repeater { each = sw_components  as = :co
+  page $"component_${co.id}" { title = $"${co.name}"
+    h1 $"${co.name}"
+    p  $"_${co.summary}_"
+    table {
+      rows = [
+        ["Container", link_of(co.container)],
+        ["Kind", co.kind ?? "—"],
+        ["Technology", co.technology ?? "—"],
+      ]
+    }
+    wdoc_repeater { each = match co.body { none => [], _ => [true] }  as = :_b
+      project { from = co.body }
+    }
+    wdoc_repeater { each = filter(code_items, fn(ci: CodeItem) -> bool { ci.component == co.id })  as = :ci
+      p $"- [${ci.name}](code_${ci.id}) (`${ci.kind}`)"
+    }
+    // Screens attach at component level — the flow chart of this
+    // component's screens draws here, not on the system page.
+    wdoc_repeater { each = match len(screens_of_comp(co.id)) { 0 => [], _ => [true] }  as = :_s
+      h2 "Screens"
+      diagram { width = 860  height = 380  layout = :layered  direction = :left_to_right  pan_zoom = true
+        wdoc_repeater { each = screens_of_comp(co.id)  as = :sc
+          card { id = sc.id  title = sc.name  width = 180.0  height = 80.0
+            text $"${sc.summary ?? ""} [Open](screen_${sc.id})"
+          }
+        }
+        edges = screen_flow_edges(screens_of_comp(co.id))
+      }
+    }
+    edit_object { kind = "component"  target = $"${co.id}" }
+  }
+}
+
+// --- one page per code item (kind-dispatched renderer) -------------------------
+wdoc_repeater { each = code_items  as = :ci
+  page $"code_${ci.id}" { title = $"${ci.name}"
+    h1 $"${ci.name}"
+    wdoc_repeater { each = match ci.summary { none => [], sx => [sx] }  as = :sx
+      p $"_${sx}_"
+    }
+
+    // :module_graph — layered dependency diagram over the code nodes.
+    wdoc_repeater { each = match ci.kind { :module_graph => [true], _ => [] }  as = :_mg
+      diagram { width = 940  height = 520  layout = :layered  layer_gap = 70.0  node_gap = 34.0  pan_zoom = true
+        wdoc_repeater { each = ci.nodes  as = :nd
+          process $"${nd.name}" { id = nd.id  width = 170.0  height = 56.0 }
+        }
+        edges = dep_edges(ci)
+      }
+      wdoc_repeater { each = filter(ci.nodes, fn(nd: CodeNode) -> bool { nd.summary != none })  as = :nd
+        p $"- **${nd.name}**${match nd.summary { none => "", sx => $" — ${sx}" }}"
+      }
+    }
+
+    // :db_schema — node_table per table, FK edges on row-level ports.
+    wdoc_repeater { each = match ci.kind { :db_schema => [true], _ => [] }  as = :_db
+      diagram { width = 940  height = 560  layout = :force  link_distance = 200.0  pan_zoom = true
+        wdoc_repeater { each = ci.tables  as = :t
+          node_table { id = t.id  title = t.name ?? $"${t.id}"  width = 220.0
+            wdoc_repeater { each = t.columns  as = :col
+              node_row { id = $"${t.id}_${col.name}"
+                text $"${match col.pk { true => "🔑 ", _ => "" }}${col.name}: `${col.type}`${match col.nullable { true => "?", _ => "" }}"
+              }
+            }
+          }
+        }
+        edges = db_fk_edges(ci)
+      }
+    }
+
+    // :class_diagram — node_table per class, member rows, dep edges.
+    wdoc_repeater { each = match ci.kind { :class_diagram => [true], _ => [] }  as = :_cd
+      diagram { width = 940  height = 560  layout = :force  link_distance = 220.0  pan_zoom = true
+        wdoc_repeater { each = ci.nodes  as = :nd
+          node_table { id = nd.id  title = nd.name  width = 230.0
+            wdoc_repeater { each = nd.members  as = :m
+              node_row { text $"`${m}`" }
+            }
+          }
+        }
+        edges = dep_edges(ci)
+      }
+    }
+
+    // :api — endpoint table plus request/response detail.
+    wdoc_repeater { each = match ci.kind { :api => [true], _ => [] }  as = :_api
+      table {
+        header = ["Method", "Path", "Summary"]
+        rows = map(ci.endpoints, fn(ep: ApiEndpoint) -> list<utf8> {
+          [$"`${ep.method}`", $"`${ep.path}`", ep.summary]
+        })
+      }
+      wdoc_repeater { each = filter(ci.endpoints, fn(ep: ApiEndpoint) -> bool { ep.request != none || ep.response != none })  as = :ep
+        h3 $"`${ep.method} ${ep.path}`"
+        wdoc_repeater { each = match ep.request { none => [], rq => [rq] }  as = :rq
+          p $"**Request:** ${rq}"
+        }
+        wdoc_repeater { each = match ep.response { none => [], rs => [rs] }  as = :rs
+          p $"**Response:** ${rs}"
+        }
+      }
+    }
+
+    wdoc_repeater { each = match ci.body { none => [], _ => [true] }  as = :_b
+      project { from = ci.body }
+    }
+    edit_object { kind = "code_item"  target = $"${ci.id}" }
+  }
+}
+
+// --- one page per screen --------------------------------------------------------
+wdoc_repeater { each = screens  as = :sc
+  page $"screen_${sc.id}" { title = $"${sc.name}"
+    h1 $"${sc.name}"
+    wdoc_repeater { each = match sc.summary { none => [], sx => [sx] }  as = :sx
+      p $"_${sx}_"
+    }
+    table {
+      rows = [
+        ["Component", match sc.component { none => "—", coid => link_of(coid) }],
+        ["Container", match sc.container { none => "—", cid => link_of(cid) }],
+        ["Route", match sc.route { none => "—", rt => $"`${rt}`" }],
+        ["Used by", match len(sc.personas) { 0 => "—", _ => join(map(sc.personas, fn(pid: identifier) -> utf8 { link_of(pid) }), ", ") }],
+      ]
+    }
+    wdoc_repeater { each = match sc.body { none => [], _ => [true] }  as = :_b
+      project { from = sc.body }
+    }
+    wdoc_repeater { each = match len(sc.nav_to) { 0 => [], _ => [true] }  as = :_n
+      h2 "Navigates to"
+      wdoc_repeater { each = sc.nav_to  as = :t2
+        p $"- ${link_of(t2)}"
+      }
+    }
+    edit_object { kind = "screen"  target = $"${sc.id}" }
+  }
+}

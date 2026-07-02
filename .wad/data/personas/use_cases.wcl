@@ -1,0 +1,171 @@
+// Use cases — a selection of typical flows per persona, broad enough to
+// exercise most of what that user kind does (they double as user-acceptance
+// test scripts). Each renders as a flowchart on its own page under the
+// persona.
+namespace wcl.wad
+
+// --- document creator --------------------------------------------------------
+
+use_case uc_author_site {
+  title   = "Author and publish a docs site"
+  persona = document_creator
+  summary = "From an empty folder to a rendered site: scaffold, author, preview, build."
+  preconditions = ["`wcl` installed (install.sh / install.ps1)"]
+  outcome = "A static site under the output folder, ready to host."
+  step scaffold { n = 1
+    title = "Scaffold a project"
+    body steps { p "`wcl init` a template (or start from a bare `main.wcl` with `import <wdoc.wcl>`)." }
+  }
+  step author { n = 2
+    title = "Author pages and data"
+    body steps { p "Write `page` blocks and typed data; keep `wcl check main.wcl` green as the file grows." }
+  }
+  step preview { n = 3
+    title = "Preview live"
+    body steps { p "`wcl wdoc serve main.wcl` — edit, press Enter in the console to rebuild, reload." }
+  }
+  step happy { n = 4
+    title = "Looks right?"
+    shape = :decision
+    body steps { p "Wrong facts are fixed in data, layout problems in templates — then rebuild." }
+  }
+  step build { n = 5
+    title = "Build and publish"
+    body steps { p "`wcl wdoc build main.wcl --out _site` and upload `_site/` to any static host." }
+  }
+  scaffold -> author
+  author -> preview
+  preview -> happy
+  happy -> build :yes
+  happy -> author :no
+}
+
+use_case uc_review_comments {
+  title   = "Review a document with comments"
+  persona = document_creator
+  summary = "The click-to-comment review loop between a reviewer and an authoring agent."
+  preconditions = ["A document being served with `wcl wdoc serve <entry> --comment`"]
+  outcome = "Every review note actioned and resolved out of the `comments.wcl` sidecar."
+  step read { n = 1
+    title = "Read and comment"
+    body steps { p "Click any rendered block and leave a note — it lands in the `comments.wcl` sidecar without rebuilding." }
+  }
+  step send { n = 2
+    title = "Send to the agent"
+    body steps { p "“✅ Send to agent” releases a blocked `wcl wdoc review`; an agent (or `wcl wdoc comments`) reads the notes." }
+  }
+  step action { n = 3
+    title = "Action the notes"
+    body steps { p "The agent edits data/templates, rebuilds, and resolves each note (`wcl wdoc comments <entry> resolve <id>`)." }
+  }
+  step satisfied { n = 4
+    title = "Satisfied?"
+    shape = :decision
+    body steps { p "Re-read the rebuilt pages; leave another round of comments if not." }
+  }
+  step done { n = 5
+    title = "Done"
+    shape = :terminator
+    body steps { p "The sidecar is empty and the document reflects the review." }
+  }
+  read -> send
+  send -> action
+  action -> satisfied
+  satisfied -> done :yes
+  satisfied -> read :no
+}
+
+use_case uc_ship_skill {
+  title   = "Project a model into a Claude skill"
+  persona = document_creator
+  summary = "One typed model, two projections: the human book and the agent skill folder."
+  preconditions = ["A wskill (or any wdoc document with a skill projection)"]
+  outcome = "A skill folder an agent can load, byte-faithful to the book's content."
+  step model { n = 1
+    title = "Author the model once"
+    body steps { p "Concepts, facts, processes — typed data under the wskill's `data/`." }
+  }
+  step book { n = 2
+    title = "Render the book"
+    body steps { p "`wcl wdoc build wdoc/book/main.wcl --out out/book` — the human-review projection." }
+  }
+  step skill { n = 3
+    title = "Emit the skill"
+    body steps { p "`wcl wdoc skill wdoc/skill/main.wcl --out out/skill` — SKILL.md plus references/." }
+  }
+  step install { n = 4
+    title = "Install where agents run"
+    body steps { p "Copy `out/skill` into the target repo's skills folder." }
+  }
+  model -> book
+  book -> skill
+  skill -> install
+}
+
+// --- application developer ------------------------------------------------------
+
+use_case uc_embed_config {
+  title   = "Embed WCL as an application's config language"
+  persona = app_developer
+  summary = "Typed, validated config with source-snippet errors, via the host-binding API."
+  preconditions = ["A Rust application; `wcl_lang` added as a dependency"]
+  outcome = "The app loads config through WCL and rejects invalid files with pointed diagnostics."
+  step schema { n = 1
+    title = "Declare the schema"
+    body steps { p "Ship a `.wcl` schema (`@document`, `@block`, constraints) describing the app's config shape." }
+  }
+  step bind { n = 2
+    title = "Bind the host API"
+    body steps { p "Build an `Environment`, add app-specific builtins with `from_fn`, open the user's document." }
+  }
+  step valid { n = 3
+    title = "Config valid?"
+    shape = :decision
+    body steps { p "Schema violations surface as miette diagnostics with spans — print them and refuse to start." }
+  }
+  step consume { n = 4
+    title = "Read typed values"
+    body steps { p "Pull fields through `FromValue` into the app's own types; lazy eval means untouched fields cost nothing." }
+  }
+  step reject { n = 5
+    title = "Report and exit"
+    shape = :terminator
+    body steps { p "The user sees the offending line with the violated constraint underneath it." }
+  }
+  schema -> bind
+  bind -> valid
+  valid -> consume :yes
+  valid -> reject :no
+}
+
+// --- config user -------------------------------------------------------------------
+
+use_case uc_fix_config {
+  title   = "Change a config value without breaking the app"
+  persona = config_user
+  summary = "Edit, check, fix — the everyday loop for a third-party app's WCL config."
+  preconditions = ["An app that embeds WCL; its config file on disk"]
+  outcome = "The app runs with the new value; invalid edits never reach it."
+  step edit { n = 1
+    title = "Edit the value"
+    body steps { p "Change the field in the editor (the VS Code extension gives completion and live diagnostics) or via `wcl set`." }
+  }
+  step check { n = 2
+    title = "Check it"
+    body steps { p "`wcl check config.wcl` — the same validation the app runs at startup." }
+  }
+  step ok { n = 3
+    title = "Check green?"
+    shape = :decision
+    body steps { p "A violation prints the offending line and the constraint — fix and re-check." }
+  }
+  step run { n = 4
+    title = "Restart / reload the app"
+    shape = :terminator
+    body steps { p "The app picks up the validated config." }
+  }
+  edit -> check
+  check -> ok
+  ok -> run :yes
+  ok -> edit :no
+}

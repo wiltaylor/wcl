@@ -1,0 +1,92 @@
+// View 10 — Domain: the ER diagram over every domain object (node_table per
+// object, relationship edges attached to field rows via `via_field`), one
+// page per object, and the glossary. Resolves the `let` helpers from
+// wdoc/book/main.wcl.
+
+let domain_rel_text = fn(k: DomainRelKind) -> utf8 {
+  match k { :has_one => "has one", :has_many => "has many", :references => "references",
+            :extends => "extends", :uses => "uses", _ => "relates to" }
+}
+// ER edges: leave from a field row when `via_field` names one, from the
+// whole object otherwise; always land on the target object.
+let er_edges = flatten(map(domain_objects, fn(d: DomainObject) -> list<Edge> {
+  map(d.relations, fn(r: DomainRel) -> Edge {
+    { source: match r.via_field { none => $"${d.id}", vf => $"${d.id}_${vf}" },
+      destination: $"${r.to}",
+      label: r.label ?? domain_rel_text(r.kind) }
+  })
+}))
+
+page domain_page { title = "Domain"
+  h1 "Domain"
+  p  "The objects the system's model is built around, their fields, and how they relate."
+
+  wdoc_repeater { each = match len(domain_objects) { 0 => [true], _ => [] }  as = :_e
+    p "_No domain objects recorded._"
+  }
+  wdoc_repeater { each = match len(domain_objects) { 0 => [], _ => [true] }  as = :_d
+    diagram { width = 960  height = 620  layout = :force  link_distance = 230.0  repulsion = 14000.0  pan_zoom = true
+      desc = "Domain object relationships"
+      wdoc_repeater { each = domain_objects  as = :d
+        node_table { id = d.id  title = d.name  width = 220.0
+          wdoc_repeater { each = d.fields  as = :f
+            node_row { id = $"${d.id}_${f.name}"
+              text $"${f.name}: `${f.type}`${match f.required { true => "", _ => "?" }}"
+            }
+          }
+        }
+      }
+      edges = er_edges
+    }
+    wdoc_repeater { each = domain_objects  as = :d
+      p $"- [${d.name}](domain_${d.id}) — ${d.summary}"
+    }
+  }
+  p "See also the [glossary](glossary_page)."
+}
+
+// --- one page per domain object -------------------------------------------------------
+wdoc_repeater { each = domain_objects  as = :d
+  page $"domain_${d.id}" { title = $"${d.name}"
+    h1 $"${d.name}"
+    p  $"_${d.summary}_"
+
+    wdoc_repeater { each = match len(d.fields) { 0 => [], _ => [true] }  as = :_f
+      h2 "Fields"
+      table {
+        header = ["Field", "Type", "Required", "Summary"]
+        rows = map(d.fields, fn(f: DomainField) -> list<utf8> {
+          [$"`${f.name}`", $"`${f.type}`", match f.required { true => "yes", _ => "no" }, f.summary ?? "—"]
+        })
+      }
+    }
+
+    wdoc_repeater { each = match len(d.relations) { 0 => [], _ => [true] }  as = :_r
+      h2 "Relationships"
+      wdoc_repeater { each = d.relations  as = :r
+        p $"- ${domain_rel_text(r.kind)} [${name_of(r.to)}](domain_${r.to})${match r.via_field { none => "", vf => $" (via `${vf}`)" }}"
+      }
+    }
+
+    wdoc_repeater { each = match d.body { none => [], _ => [true] }  as = :_b
+      project { from = d.body }
+    }
+    edit_object { kind = "domain_object"  target = $"${d.id}" }
+  }
+}
+
+// --- glossary -------------------------------------------------------------------------
+page glossary_page { title = "Glossary"
+  h1 "Glossary"
+  wdoc_repeater { each = match len(terms) { 0 => [true], _ => [] }  as = :_e
+    p "_No terms recorded._"
+  }
+  wdoc_repeater { each = match len(terms) { 0 => [], _ => [true] }  as = :_t
+    table {
+      header = ["Term", "Definition", "Aliases"]
+      rows = map(sort_by(terms, fn(t2: Term) -> utf8 { to_lower(t2.term) }), fn(t2: Term) -> list<utf8> {
+        [$"**${t2.term}**", t2.definition, match len(t2.aliases) { 0 => "—", _ => join(t2.aliases, ", ") }]
+      })
+    }
+  }
+}

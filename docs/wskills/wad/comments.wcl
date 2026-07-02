@@ -1,0 +1,4 @@
+// Review comments for this wskill / doc — written by `wcl wdoc serve --comment`
+// and read back by `wcl wdoc comments`. Each `comment` block is keyed by page
+// name + block locator; safe to hand-edit or generate.
+

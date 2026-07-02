@@ -1,0 +1,133 @@
+// View 1 data — stakeholders, the RACI matrix, and the ADRs.
+namespace wcl.wad
+
+// --- stakeholders -----------------------------------------------------------
+
+stakeholder wil_taylor {
+  name    = "Wil Taylor"
+  role    = "Author & maintainer"
+}
+
+// --- RACI ----------------------------------------------------------------------
+
+raci_entry raci_language {
+  activity    = "Language & schema design"
+  responsible = [wil_taylor]
+  accountable = [wil_taylor]
+}
+raci_entry raci_releases {
+  activity    = "Cutting pre-releases"
+  responsible = [wil_taylor]
+  accountable = [wil_taylor]
+}
+raci_entry raci_docs {
+  activity    = "Docs site & wskill content"
+  responsible = [wil_taylor]
+  accountable = [wil_taylor]
+}
+raci_entry raci_wad {
+  activity    = "Keeping this WAD current"
+  responsible = [wil_taylor]
+  accountable = [wil_taylor]
+}
+
+// --- ADRs -------------------------------------------------------------------------
+
+adr adr_hand_written_parser {
+  n        = 1
+  title    = "Hand-written lexer and recursive-descent parser"
+  status   = :accepted
+  date     = "2026-05-10"
+  deciders = ["Wil Taylor"]
+  context  = "The rewrite needed a parser strategy: a generator (nom, LALRPOP, tree-sitter) or hand-rolled."
+  decision = "Hand-write the lexer and a recursive-descent parser; no parser generators or combinator crates."
+  consequences = "Full control over error recovery and spans (every parse error carries one); more code to maintain, offset by the fuzz suite guarding it."
+}
+
+adr adr_miette_diagnostics {
+  n        = 2
+  title    = "miette + thiserror for every diagnostic"
+  status   = :accepted
+  date     = "2026-05-10"
+  deciders = ["Wil Taylor"]
+  context  = "Diagnostics needed to render source snippets in the CLI and map cleanly into the LSP."
+  decision = "All errors are miette diagnostics carrying a Span and a NamedSource."
+  consequences = "One diagnostic model serves the CLI, the LSP, and the dev server's dry-run check endpoint."
+}
+
+adr adr_embedded_stdlib {
+  n        = 3
+  title    = "Embedded stdlibs behind angle-bracket imports"
+  status   = :accepted
+  date     = "2026-05-20"
+  deciders = ["Wil Taylor"]
+  context  = "wdoc (and the scaffolder) need standard block schemas available without any install step or search path."
+  decision = "System imports (`import <wdoc.wcl>`) resolve against a Registry of libraries embedded into the binary at build time."
+  consequences = "A single binary is fully self-contained; stdlib changes ship with the binary, and documents opt in explicitly."
+}
+
+adr adr_rust_special_cases {
+  n        = 5
+  title    = "Rich shapes special-cased in Rust with stub WCL lowers"
+  status   = :accepted
+  date     = "2026-06-05"
+  deciders = ["Wil Taylor"]
+  context  = "Some block output (calendar math, ANSI grids, LaTeX, measured layout, HTML-in-SVG) is not expressible in WCL lowering functions."
+  decision = "Blocks like card, node_table, terminal, timeline, math keep a stub `lower` and render in Rust; everything else lowers in WCL."
+  consequences = "The lowering seam stays pure for user-extensible shapes, while the special cases carry an explicit list to keep honest."
+}
+
+adr adr_scaffold_heredoc_schema {
+  n        = 7
+  title    = "Scaffold heredoc is the canonical schema copy"
+  status   = :accepted
+  date     = "2026-06-18"
+  deciders = ["Wil Taylor"]
+  context  = "The wskill (and now WAD) base schema exists both in the `wcl init` template and in every instance on disk; they must not drift."
+  decision = "The template heredoc is canonical; instances regenerate via `just *-schema-sync` and CI fails on drift."
+  consequences = "One source of truth with an enforced propagation path; editing an instance's base.wcl is always wrong."
+}
+
+adr adr_trailer_gated_releases {
+  n        = 4
+  title    = "Trailer-gated pre-releases; stable releases blocked"
+  status   = :accepted
+  date     = "2026-06-01"
+  deciders = ["Wil Taylor"]
+  context  = "Every push to main runs CI, but not every push should ship artifacts; the language is pre-1.0."
+  decision = "A GitHub pre-release cuts only when the commit carries a `pre-release: true` trailer. `release: true` fails the build on purpose."
+  consequences = "Releasing is an explicit, auditable act in the commit message; nobody can cut a stable release by accident."
+}
+
+adr adr_no_file_scheme {
+  n        = 6
+  title    = "Docs never mention the local-file URL scheme"
+  status   = :accepted
+  date     = "2026-06-10"
+  deciders = ["Wil Taylor"]
+  context  = "Some assets only resolve over a server, and docs kept explaining that with the literal URL scheme, which readers then tried."
+  decision = "Docs and code comments say “when served / hosted” and “not opened directly from disk”, never the scheme itself."
+  consequences = "The phrasing rule is enforceable in review and keeps broken-by-construction instructions out of the docs."
+}
+
+adr adr_namespaced_wad_kinds {
+  n        = 8
+  title    = "WAD block kinds live in the wcl.wad namespace"
+  status   = :accepted
+  date     = "2026-07-02"
+  deciders = ["Wil Taylor"]
+  context  = "The C4 container block first shipped as `sw_container` to dodge wdoc's diagram `container` shape; the prefix leaked an implementation problem into the user-facing format."
+  decision = "All WAD blocks are declared in the `wcl.wad` namespace and authored bare in namespaced data files — block kinds are namespace-scoped, so the C4 unit is plain `container`."
+  consequences = "Natural block names throughout; data files must carry `namespace wcl.wad` (the scaffold writes it); templates keep using wdoc's kinds unqualified."
+}
+
+adr adr_specs_for_agents {
+  n        = 9
+  title    = "The book is for humans; agents get the WAD and decomposed specs"
+  status   = :accepted
+  date     = "2026-07-02"
+  deciders = ["Wil Taylor"]
+  context  = "The first design treated a Markdown render of the book as the AI-consumption channel and a spec as a diff artefact."
+  decision = "Humans review the rendered book; AI coding agents work from the WAD data itself and from specs — work packages an LLM (human-shaped) decomposes out of reviewed WAD changes, sized for the implementing model."
+  consequences = "Strong models can implement straight from the WAD + diff; weaker models get narrow explicit specs; `wcl wad spec` stays the mechanical seeder (baseline sha + change list), never the spec author."
+}

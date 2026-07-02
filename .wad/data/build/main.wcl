@@ -1,0 +1,5 @@
+// View data hub — repositories, articles (local dev, branching & releases).
+// Pipelines and releases are extractor-owned — see data/generated/.
+namespace wcl.wad
+import "./build.wcl"
+import "./articles.wcl"

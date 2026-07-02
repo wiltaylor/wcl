@@ -99,9 +99,61 @@ wskill-schema-check:
             || { echo "wskill schema drift: $d/schema/base.wcl — run 'just wskill-schema-sync'"; exit 1; }; \
     done
 
-# Full CI gate: fmt-check + workspace-lint + workspace-test + wskill-schema-check + docs-build
+# Fail when the wskill scaffold's topic-agnostic wdoc templates drift from the
+# live reference implementation (docs/wskills/wskill) — improvements to the
+# meta wskill must be back-ported so new scaffolds don't strand on stale
+# templates (runs in ci). wdoc/skill/main.wcl is exempt: its skill description
+# is topic-tuned in the live instance.
 [group('quality')]
-ci: fmt-check workspace-lint workspace-test wskill-schema-check docs-build
+wskill-template-check:
+    @for pair in \
+        WSK_WDOC_COMPONENT_COMMON_WCL:component/common.wcl \
+        WSK_WDOC_COMPONENT_SKILL_MD_WCL:component/skill_md.wcl \
+        WSK_WDOC_COMPONENT_CONCEPT_WCL:component/concept.wcl \
+        WSK_WDOC_COMPONENT_ENTITY_WCL:component/entity.wcl \
+        WSK_WDOC_COMPONENT_FACT_WCL:component/fact.wcl \
+        WSK_WDOC_COMPONENT_PROCESS_WCL:component/process.wcl \
+        WSK_WDOC_COMPONENT_TYPE_INDEX_WCL:component/type_index.wcl \
+        WSK_WDOC_PAGES_OVERVIEW_WCL:pages/overview.wcl \
+        WSK_WDOC_PAGES_REFERENCE_WCL:pages/reference.wcl \
+        WSK_WDOC_PAGES_SKILL_LINKS_WCL:pages/skill_links.wcl \
+        WSK_WDOC_PAGES_CONCEPTS_WCL:pages/concepts.wcl \
+        WSK_WDOC_PAGES_ENTITIES_WCL:pages/entities.wcl \
+        WSK_WDOC_PAGES_FACTS_WCL:pages/facts.wcl \
+        WSK_WDOC_PAGES_PROCESSES_WCL:pages/processes.wcl \
+        WSK_WDOC_BOOK_MAIN_WCL:book/main.wcl \
+    ; do \
+        term="${pair%%:*}"; path="${pair#*:}"; \
+        diff <(sed -n "/<<'$term'/,/^$term$/p" crates/wcl/src/scaffold/templates/wskill.wcl | sed '1d;$d' | sed -z 's/\n*$/\n/') \
+             <(sed -z 's/\n*$/\n/' "docs/wskills/wskill/wdoc/$path") >/dev/null \
+            || { echo "wskill template drift: docs/wskills/wskill/wdoc/$path vs scaffold heredoc $term — back-port one side"; exit 1; }; \
+    done
+
+# Print the canonical WAD base schema (the scaffold template's heredoc) to stdout
+[private]
+wad-schema-extract:
+    @sed -n "/<<'WAD_SCHEMA_BASE_WCL'/,/^WAD_SCHEMA_BASE_WCL$/p" crates/wcl/src/scaffold/templates/wad.wcl | sed '1d;$d'
+
+# Propagate the canonical WAD base schema to .wad/schema/base.wcl
+[group('quality')]
+wad-schema-sync:
+    @just wad-schema-extract > .wad/schema/base.wcl && echo "synced .wad/schema/base.wcl"
+
+# Fail when .wad/schema/base.wcl drifts from the scaffold heredoc (runs in ci)
+[group('quality')]
+wad-schema-check:
+    @diff <(just wad-schema-extract) .wad/schema/base.wcl >/dev/null \
+        || { echo "wad schema drift: .wad/schema/base.wcl — run 'just wad-schema-sync'"; exit 1; }
+
+# Validate the WCL architecture document (.wad/) — model + book template
+[group('quality')]
+wad-check:
+    cargo run -p wcl -- check .wad/wad.wcl
+    cargo run -p wcl -- check .wad/wdoc/book/main.wcl
+
+# Full CI gate: fmt-check + workspace-lint + workspace-test + schema drift checks + doc builds
+[group('quality')]
+ci: fmt-check workspace-lint workspace-test wskill-schema-check wskill-template-check wad-schema-check wad-check wad-build docs-build
 
 # Run the CLI: just cli-run -- parse examples/basic.wcl
 [group('dev')]
@@ -128,10 +180,29 @@ docs-build *ARGS:
 wad-serve *ARGS:
     cargo run -p wcl -- wdoc serve .wad/wdoc/book/main.wcl --addr 127.0.0.1:8138 --comment {{ARGS}}
 
-# Build the WCL architecture book (.wad/) into .wad/_site/ (gitignored)
+# Build the WCL architecture book (.wad/) into .wad/_site/ (gitignored).
+# The output dir is wiped first: a build never deletes pages that no longer
+# exist, so removed entities would otherwise linger as orphaned HTML.
 [group('dev')]
 wad-build *ARGS:
+    rm -rf .wad/_site
     cargo run -p wcl -- wdoc build .wad/wdoc/book/main.wcl --out .wad/_site {{ARGS}}
+
+# Render the WCL architecture book as AI-consumable Markdown into .wad/_md/ (gitignored)
+[group('dev')]
+wad-md *ARGS:
+    cargo run -p wcl -- wdoc markdown .wad/wdoc/book/main.wcl --out .wad/_md {{ARGS}}
+
+# Run every WAD extractor script (rewrites .wad/data/generated/), then re-validate
+[group('dev')]
+wad-extract:
+    for s in .wad/scripts/extract_*.py; do echo "==> $s" >&2; uv run "$s"; done
+    just wad-check
+
+# Derive a change-spec skeleton for the WAD from a reviewed revision: just wad-spec HEAD~3
+[group('dev')]
+wad-spec REV:
+    cargo run -p wcl -- wad spec --from {{REV}} .wad/wad.wcl
 
 # List review @comments left in docs/ via `just docs-serve` (--format json, or `resolve <id>` to delete one)
 [group('dev')]

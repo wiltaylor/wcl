@@ -1,0 +1,11 @@
+// Book Processes index — links to each process's generated page via the shared
+// type_index component. Imported by book/main.wcl (resolves its `procedures`
+// let). Not standalone-checkable.
+
+page processes_page {
+  type_index {
+    heading = "Processes"
+    intro   = "Each process is a runbook on its own page — open one from the list below or the sidebar."
+    items   = map(procedures, fn(pr: Procedure) -> utf8 { $"[**${pr.title}**](process_${pr.id}) — ${pr.purpose}" })
+  }
+}

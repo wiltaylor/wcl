@@ -2,6 +2,7 @@
 docs/_site/
 docs/_md/
 .wad/_site/
+.wad/_md/
 .env
 # Fleeting notes captured via `wcl wdoc serve --comment` — disposable, per-machine.
 .wdoc-fleeting.json

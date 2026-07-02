@@ -26,8 +26,9 @@ wdoc_component process_body {
     }
     h2 "Flowchart"
     diagram {
-      width = 540  height = len(unit.steps) * 96 + 64
+      width = 720  height = len(unit.steps) * 96 + 64
       layout = :layered  direction = :top_to_bottom  layer_gap = 28.0  node_gap = 32.0
+      pan_zoom = true  zoom_max = 6.0
       wdoc_repeater { each = unit.steps  as = :s
         wdoc_repeater { each = match s.shape { :process => [true], _ => [] }  as = :_sh
           process $"${s.n}. ${s.title ?? ""}" { id = $"${s.id}"  width = 180.0  height = 46.0 } }

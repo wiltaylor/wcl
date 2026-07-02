@@ -1,0 +1,25 @@
+// Freeform articles — filed under their views via `section`.
+namespace wcl.wad
+
+article why_wcl_exists {
+  title   = "Why WCL exists"
+  section = :overview
+  summary = "The problem the language answers and the shape of the bet."
+  order   = 1
+  body {
+    p "Most configuration formats make you choose: expressive but untyped (YAML with conventions), or typed but hostile to prose and structure (bespoke DSLs). WCL bets that **documents are data**: give configuration a real type system — records, unions, interfaces, constraints — plus a document model that gathers typed blocks, and both humans and tools can work on the same source."
+    p "The consequences drive everything in this WAD: the docs site is a WCL document, skills for AI agents are a projection of the same data, and this architecture document is itself a typed WCL model rendered to the book you are reading."
+  }
+}
+
+article evaluation_model {
+  title   = "Evaluation model — laziness and cycles"
+  section = :domain
+  summary = "Why fields evaluate on demand, and what that buys."
+  order   = 1
+  related = [dom_document, dom_field]
+  body {
+    p "A `Document` never evaluates everything up front. Each field computes on first read and caches; a chain of reads that returns to an in-flight field is reported as a cycle rather than looping. Two things fall out:"
+    p "**Big documents stay cheap** — `wcl init`'s first template pass reads only the `property` blocks and never forces the file bodies. **Errors localise** — a broken expression fails the field that reads it, with a span, instead of failing the whole document load."
+  }
+}

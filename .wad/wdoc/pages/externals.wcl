@@ -1,0 +1,95 @@
+// View 3 — External systems: a landing table plus one page per external
+// system (support contacts, connection endpoints per environment, API
+// references, security notes, touching relations). Resolves the `let`
+// helpers from wdoc/book/main.wcl.
+
+let criticality_text = fn(c: Criticality) -> utf8 {
+  match c { :low => "low", :medium => "medium", :high => "high", :critical => "critical", _ => "—" }
+}
+let ext_kind_text = fn(k: ExternalKind) -> utf8 {
+  match k { :saas => "SaaS", :api => "API", :registry => "registry", :identity => "identity",
+            :datastore => "datastore", :ci => "CI", :cdn => "CDN", :payment => "payment",
+            :partner => "partner", :ai_service => "AI service", _ => "other" }
+}
+
+page externals_page { title = "External systems"
+  h1 "External systems"
+  p  "Systems outside this design that it depends on or integrates with — who runs them, how to reach them, and what to watch."
+
+  wdoc_repeater { each = match len(externals) { 0 => [true], _ => [] }  as = :_e
+    p "_No external systems recorded._"
+  }
+  wdoc_repeater { each = match len(externals) { 0 => [], _ => [true] }  as = :_t
+    table {
+      header = ["System", "Kind", "Vendor", "Criticality"]
+      rows = map(externals, fn(e: ExternalSystem) -> list<utf8> {
+        [$"[${e.name}](external_${e.id})", ext_kind_text(e.kind), e.vendor ?? "—",
+         match e.criticality { none => "—", c => criticality_text(c) }]
+      })
+    }
+  }
+}
+
+// --- one page per external system --------------------------------------------
+wdoc_repeater { each = externals  as = :e
+  page $"external_${e.id}" { title = $"${e.name}"
+    h1 $"${e.name}"
+    p  $"_${e.summary}_"
+    table {
+      rows = [
+        ["Kind", ext_kind_text(e.kind)],
+        ["Vendor", e.vendor ?? "—"],
+        ["URL", e.url ?? "—"],
+        ["Criticality", match e.criticality { none => "—", c => criticality_text(c) }],
+      ]
+    }
+
+    wdoc_repeater { each = match len(e.contacts) { 0 => [], _ => [true] }  as = :_c
+      h2 "Support"
+      table {
+        header = ["Contact", "Role", "Channel", "Details"]
+        rows = map(e.contacts, fn(ct: SupportContact) -> list<utf8> {
+          [ct.name, ct.role ?? "—", ct.channel, ct.details ?? "—"]
+        })
+      }
+    }
+
+    wdoc_repeater { each = match len(e.endpoints) { 0 => [], _ => [true] }  as = :_p
+      h2 "Connection details"
+      table {
+        header = ["Name", "Environment", "Kind", "Value", "Notes"]
+        rows = map(e.endpoints, fn(ep: Endpoint) -> list<utf8> {
+          [ep.name, match ep.environment { none => "shared", env => name_of(env) },
+           ep.kind, $"`${ep.value}`", ep.notes ?? "—"]
+        })
+      }
+    }
+
+    wdoc_repeater { each = match len(e.api_refs) { 0 => [], _ => [true] }  as = :_a
+      h2 "API & integration references"
+      wdoc_repeater { each = e.api_refs  as = :ar
+        p $"- **${ar.name}** (${ar.kind}) — ${ar.location}${match ar.notes { none => "", nx => $" — ${nx}" }}"
+      }
+    }
+
+    wdoc_repeater { each = e.security  as = :sn
+      callout $"${sn.title}" {
+        class = [match sn.severity { none => "note", :low => "note", :medium => "warning", _ => "error" }]
+        body  = $"${sn.detail}"
+      }
+    }
+
+    wdoc_repeater { each = match len(rels_touching([e.id])) { 0 => [], _ => [true] }  as = :_r
+      h2 "Relations involving this system"
+      table {
+        header = ["From", "Relation", "To", "Protocol", "Data"]
+        rows = rel_rows(rels_touching([e.id]))
+      }
+    }
+
+    wdoc_repeater { each = match e.body { none => [], _ => [true] }  as = :_b
+      project { from = e.body }
+    }
+    edit_object { kind = "external_system"  target = $"${e.id}" }
+  }
+}

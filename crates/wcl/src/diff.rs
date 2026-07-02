@@ -93,6 +93,13 @@ pub(crate) struct FieldChange {
     new: Option<Value>,
 }
 
+impl Change {
+    /// Entity key (`kind:label`, bare `kind`, or `<document>`).
+    pub(crate) fn entity(&self) -> &str {
+        &self.entity
+    }
+}
+
 /// The synthetic entity key under which top-level bare fields are diffed.
 const DOCUMENT_ENTITY: &str = "<document>";
 
@@ -465,6 +472,41 @@ fn value_to_wcl(v: &Value) -> String {
     }
 }
 
+/// Render the changes as the `change` blocks of a WAD spec skeleton (see
+/// `wad::run_spec`), matching the WAD schema's `SpecChange` / `FieldChange`
+/// shape: the entity key is the inline label, `op` a symbol, and every value
+/// is carried as *rendered WCL text* (a string), so arbitrary value shapes
+/// stay schema-valid and legible. Indented two spaces to sit inside the
+/// `spec` block.
+pub(crate) fn render_spec_changes(changes: &[Change]) -> String {
+    let mut out = String::new();
+    for c in changes {
+        out.push_str(&format!("  change {} {{\n", quote_wcl(&c.entity)));
+        out.push_str(&format!("    op = :{}\n", c.op.as_str()));
+        if let Some(v) = &c.entity_value {
+            out.push_str(&format!("    value = {}\n", quote_wcl(&value_to_wcl(v))));
+        }
+        for f in &c.fields {
+            let path = if f.path.is_empty() {
+                "<value>"
+            } else {
+                &f.path
+            };
+            out.push_str(&format!("    field_change {} {{\n", quote_wcl(path)));
+            out.push_str(&format!("      kind = {}\n", quote_wcl(f.kind.as_str())));
+            if let Some(o) = &f.old {
+                out.push_str(&format!("      old = {}\n", quote_wcl(&value_to_wcl(o))));
+            }
+            if let Some(n) = &f.new {
+                out.push_str(&format!("      new = {}\n", quote_wcl(&value_to_wcl(n))));
+            }
+            out.push_str("    }\n");
+        }
+        out.push_str("  }\n");
+    }
+    out
+}
+
 /// Quote a string as a WCL inline string literal, escaping the characters
 /// the lexer treats specially. Used for entity keys / field paths (which
 /// aren't valid identifiers) and as the fallback for non-round-trippable
@@ -647,6 +689,45 @@ mod tests {
         assert!(text.contains("added \"spec:impl\""));
         // Re-parse to prove well-formedness (syntax only, no schema/eval).
         wcl_lang::parse_for_edit(&text, "<diff>").expect("rendered diff re-parses");
+    }
+
+    #[test]
+    fn rendered_spec_changes_reparse_inside_a_spec_block() {
+        // The `wad spec` skeleton embeds these blocks inside `spec … { }`;
+        // prove the emitted shape parses in that position.
+        let changes = vec![
+            Change {
+                op: ChangeOp::Modified,
+                entity: "container:api".to_string(),
+                entity_value: None,
+                fields: vec![FieldChange {
+                    path: "summary".to_string(),
+                    kind: FieldKind::Changed,
+                    old: Some(Value::Utf8("a".into())),
+                    new: Some(Value::Utf8("b\"quoted\"".into())),
+                }],
+            },
+            Change {
+                op: ChangeOp::Added,
+                entity: "system:core".to_string(),
+                entity_value: Some(Value::Record {
+                    ty: vec!["System".to_string()],
+                    fields: std::sync::Arc::new(
+                        [("id".to_string(), Value::Identifier("core".into()))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                }),
+                fields: Vec::new(),
+            },
+        ];
+        let body = render_spec_changes(&changes);
+        assert!(body.contains("change \"container:api\""));
+        assert!(body.contains("field_change \"summary\""));
+        let doc = format!(
+            "spec t {{\n  title = \"t\"\n  status = :planning\n  created = \"2026-01-01\"\n  summary = \"s\"\n{body}}}\n"
+        );
+        wcl_lang::parse_for_edit(&doc, "<spec>").expect("rendered spec changes re-parse");
     }
 
     #[test]

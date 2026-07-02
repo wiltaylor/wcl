@@ -1,0 +1,65 @@
+// Documentation view data — everything the project publishes to be read.
+// The docs site used to be modelled as a system; it is an output of the
+// toolchain, so it lives here instead.
+namespace wcl.wad
+
+doc_item wcl_dev_site {
+  name      = "wcl.dev docs site"
+  summary   = "The public documentation site: language & CLI reference (the wcl wskill), the wdoc block reference, and the wskill registry — plus the install scripts at the site root so the `curl | sh` one-liners resolve."
+  kind      = :site
+  source    = "docs/main.wcl (docs/, wskills under docs/wskills/)"
+  url       = "https://wcl.dev"
+  built_by  = wcl_cli
+  hosted_on = "Cloudflare Pages (Pages project `wcl-dev`; deployed by the Deploy Site workflow on docs/** pushes to main)"
+  audience  = [document_creator, app_developer, config_user]
+  body {
+    p "The site is itself the largest wdoc consumer: one WCL document builds the whole thing (`just docs-build` → `docs/_site/`), and the same model projects the wskills into Claude skill folders. Docs are data, not hand-maintained HTML (see the documentation-conventions standard)."
+  }
+}
+
+doc_item wcl_wskill {
+  name     = "wcl wskill (language & CLI reference)"
+  summary  = "The self-contained WCL model of the language, builtins, and CLI — projected into both a book on wcl.dev and a Claude skill."
+  kind     = :skill
+  source   = "docs/wskills/wcl/"
+  built_by = wcl_cli
+  audience = [document_creator, app_developer, config_user]
+}
+
+doc_item wdoc_wskill {
+  name     = "wdoc wskill (site & skill generator reference)"
+  summary  = "The wskill covering wdoc: pages, sites, blocks, backends, and the dev-server workflows."
+  kind     = :skill
+  source   = "docs/wskills/wdoc/"
+  built_by = wcl_cli
+  audience = [document_creator]
+}
+
+doc_item wad_wskill {
+  name     = "wad wskill (architecture document format)"
+  summary  = "The wskill teaching the WAD format: the views, the block vocabulary, extractors, and the review → spec workflow."
+  kind     = :skill
+  source   = "docs/wskills/wad/"
+  built_by = wcl_cli
+  audience = [document_creator]
+}
+
+doc_item wad_book {
+  name      = "This architecture book"
+  summary   = "The rendered projection of this WAD — the book you are reading."
+  kind      = :book
+  source    = ".wad/ (wad.wcl + wdoc/book/)"
+  built_by  = wcl_cli
+  audience  = [document_creator, app_developer]
+  body {
+    p "Built by `just wad-build` into `.wad/_site/` and reviewed live with `just wad-serve` (comment mode). The Markdown render (`just wad-md`) is the AI-consumable projection."
+  }
+}
+
+doc_item readme_quickstart {
+  name     = "README quickstart"
+  summary  = "The user-facing quickstart at the repository root: install, first document, first render."
+  kind     = :readme
+  source   = "README.md"
+  audience = [document_creator, app_developer, config_user]
+}

@@ -1,0 +1,64 @@
+// Indexes — the wskill's navigation. Top-level indexes are menu sections;
+// child indexes are sub-groups whose `related` units pin directly into the
+// sidebar (book) and list (skill).
+
+index what_section {
+  name    = "What a WAD is"
+  summary = "The format, its views, and how it is consumed."
+  audience = :both
+  related = [what_is_a_wad, twelve_views, c4_drilldown, consumption_modes, creating_a_wad]
+}
+
+index model_section {
+  name    = "The data model"
+  summary = "How the model is organised, and the block reference per view."
+  audience = :both
+
+  index model_structure {
+    name    = "Structure"
+    audience = :both
+    related = [wad_layout, data_vs_presentation, generated_vs_hand, relations_model, wad_kinds]
+  }
+  index model_views {
+    name    = "Blocks by view"
+    audience = :both
+    related = [overview_blocks, context_blocks, external_blocks, system_blocks, infra_blocks,
+               build_deploy_blocks, documentation_blocks, persona_blocks, sysadmin_blocks,
+               standards_blocks, domain_blocks, spec_blocks]
+  }
+}
+
+index populating_section {
+  name    = "Populating a WAD"
+  summary = "The interview, the codebase scan, and the extractor scripts."
+  audience = :both
+  related = [populate_strategies, designing_new_system, documenting_existing_system,
+             interview_question_bank, scan_checklist,
+             writing_extractor, extractor_anatomy]
+}
+
+index change_section {
+  name    = "Review & change"
+  summary = "Reviewing the book, deriving specs from diffs, and staying current."
+  audience = :both
+  related = [spec_lifecycle, living_wad, reviewing_a_wad, evolving_and_spec,
+             keeping_wad_current, wcl_diff_wad]
+}
+
+index reference_section {
+  name    = "Reference"
+  summary = "Commands, standards, and tools."
+  related = [wad_cli, wcl_init_wad, arc42, c4_model, uv]
+}
+
+// AI entry points: the dispatcher first, then the runbooks, then the two
+// checklists the runbooks walk.
+index skill_tasks {
+  name    = "Tasks"
+  summary = "Start here: pick the process that matches the request."
+  audience = :ai
+  related = [populate_strategies, creating_a_wad, designing_new_system,
+             documenting_existing_system, writing_extractor, reviewing_a_wad,
+             evolving_and_spec, keeping_wad_current,
+             interview_question_bank, scan_checklist]
+}

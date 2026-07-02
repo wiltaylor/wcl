@@ -1,0 +1,123 @@
+// User personas view: who uses the system, what they're trying to do, how
+// they get access (security controls only — installation isn't access
+// control), and their typical use cases as flowcharts. Resolves the `let`
+// helpers from wdoc/book/main.wcl.
+
+let persona_icon = fn(k: PersonaKind) -> utf8 {
+  match k { :ai_agent => "lucide.bot", :service => "lucide.cog", _ => "lucide.user" }
+}
+let persona_kind_text = fn(k: PersonaKind) -> utf8 {
+  match k { :ai_agent => "AI agent", :service => "service", _ => "human" }
+}
+let use_cases_of = fn(pid: identifier) -> list<UseCase> {
+  filter(use_cases, fn(uc: UseCase) -> bool { uc.persona == pid })
+}
+
+page personas_page { title = "User personas"
+  h1 "User personas"
+  p  "The kinds of user — human, AI agent, or service — that interact with the system, and how each is granted access."
+
+  wdoc_repeater { each = match len(personas) { 0 => [true], _ => [] }  as = :_e
+    p "_No personas recorded._"
+  }
+  wdoc_repeater { each = match len(personas) { 0 => [], _ => [true] }  as = :_t
+    table {
+      header = ["Persona", "Kind", "Summary"]
+      rows = map(personas, fn(pe: Persona) -> list<utf8> {
+        [$"[${pe.name}](persona_${pe.id})", persona_kind_text(pe.kind), pe.summary]
+      })
+    }
+  }
+}
+
+// --- one page per persona --------------------------------------------------------
+wdoc_repeater { each = personas  as = :pe
+  page $"persona_${pe.id}" { title = $"${pe.name}"
+    h1 $"${pe.name}"
+    p  $"_${pe.summary}_ (`${persona_kind_text(pe.kind)}`)"
+
+    wdoc_repeater { each = match len(pe.goals) { 0 => [], _ => [true] }  as = :_g
+      h2 "Goals"
+      wdoc_repeater { each = pe.goals  as = :g
+        p $"- ${g}"
+      }
+    }
+
+    wdoc_repeater { each = match len(pe.access) { 0 => [], _ => [true] }  as = :_a
+      h2 "Access"
+      table {
+        header = ["System", "How access is granted", "Approver"]
+        rows = map(pe.access, fn(ag: AccessGrant) -> list<utf8> {
+          [link_of(ag.system), ag.method, ag.approver ?? "—"]
+        })
+      }
+    }
+
+    wdoc_repeater { each = match len(use_cases_of(pe.id)) { 0 => [], _ => [true] }  as = :_u
+      h2 "Use cases"
+      p  "Typical flows for this persona — a selection broad enough to exercise most of what they do (they double as user-acceptance test scripts)."
+      wdoc_repeater { each = use_cases_of(pe.id)  as = :uc
+        p $"- [${uc.title}](uc_${uc.id})${match uc.summary { none => "", sx => $" — ${sx}" }}"
+      }
+    }
+
+    wdoc_repeater { each = match len(filter(screens, fn(sc: Screen) -> bool { list_contains(sc.personas, pe.id) })) { 0 => [], _ => [true] }  as = :_s
+      h2 "Screens used"
+      wdoc_repeater { each = filter(screens, fn(sc: Screen) -> bool { list_contains(sc.personas, pe.id) })  as = :sc
+        p $"- [${sc.name}](screen_${sc.id})"
+      }
+    }
+
+    wdoc_repeater { each = match pe.body { none => [], _ => [true] }  as = :_b
+      project { from = pe.body }
+    }
+    edit_object { kind = "persona"  target = $"${pe.id}" }
+  }
+}
+
+// --- one page per use case ---------------------------------------------------------
+wdoc_repeater { each = use_cases  as = :uc
+  page $"uc_${uc.id}" { title = $"${uc.title}"
+    h1 $"${uc.title}"
+    wdoc_repeater { each = match uc.summary { none => [], sx => [sx] }  as = :sx
+      p $"_${sx}_"
+    }
+    p $"**Persona:** ${link_of(uc.persona)}"
+
+    wdoc_repeater { each = match len(uc.preconditions) { 0 => [], _ => [true] }  as = :_p
+      h2 "Preconditions"
+      wdoc_repeater { each = uc.preconditions  as = :pc
+        p $"- ${pc}"
+      }
+    }
+
+    h2 "Flow"
+    diagram {
+      width = 560  height = len(uc.steps) * 96 + 64
+      layout = :layered  direction = :top_to_bottom  layer_gap = 28.0  node_gap = 32.0
+      wdoc_repeater { each = uc.steps  as = :st
+        wdoc_repeater { each = match st.shape { :process => [true], _ => [] }  as = :_sh
+          process $"${st.n}. ${st.title ?? ""}" { id = $"${st.id}"  width = 190.0  height = 46.0 } }
+        wdoc_repeater { each = match st.shape { :decision => [true], _ => [] }  as = :_sh
+          decision $"${st.title ?? ""}" { id = $"${st.id}"  width = 170.0  height = 72.0 } }
+        wdoc_repeater { each = match st.shape { :terminator => [true], _ => [] }  as = :_sh
+          terminator $"${st.title ?? ""}" { id = $"${st.id}"  width = 150.0  height = 46.0 } }
+      }
+      edges = map(uc.flow, fn(e: StepFlow) -> Edge {
+        { source: $"${e.source}", destination: $"${e.destination}",
+          kind: :flow, label: match e.kind { :yes => "yes", :no => "no", _ => "" } }
+      })
+    }
+
+    h2 "Steps"
+    wdoc_repeater { each = uc.steps  as = :st
+      h3 $"Step ${st.n}${match st.title { none => "", ti => $": ${ti}" }}"
+      project { from = st.bodies }
+    }
+
+    wdoc_repeater { each = match uc.outcome { none => [], v => [v] }  as = :v
+      callout "Outcome" { class = ["success"]  body = $"${v}" }
+    }
+    edit_object { kind = "use_case"  target = $"${uc.id}" }
+  }
+}

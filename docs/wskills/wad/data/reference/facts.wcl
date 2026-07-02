@@ -1,0 +1,354 @@
+// Facts — the WAD block reference (one fact per view's block family, from
+// the canonical schema in the scaffold template), the folder layout, the
+// vocabularies, the command table, and extractor anatomy.
+//
+// Field tables are hand-reflected from schema 0.2.0 (see the wad_schema
+// source in wskill.wcl); `?` marks optional, `[]` marks a defaulted list.
+
+fact wad_layout {
+  title   = "WAD folder layout"
+  related = [what_is_a_wad, generated_vs_hand]
+  audience = :both
+  body {
+    code "text" { source = <<'TXT'
+wad.wcl               # root: `wad` metadata block, schema_version, imports
+schema/base.wcl       # block schema — scaffold-owned, synced, never hand-edited
+schema/kinds.wcl      # symbol_set vocabularies — extend freely
+schema/extensions.wcl # system-specific custom blocks (+ merging @document)
+data/main.wcl         # imports every view hub
+data/<view>/main.wcl  # per-view hub: one import line per data file
+data/generated/       # extractor-owned, committed; main.wcl imports each output
+scripts/              # extractor scripts (uv single-file Python)
+wdoc/book/main.wcl    # site + toc + shared helpers (the projection)
+wdoc/pages/*.wcl      # one file per view: landing page + per-entity page repeaters
+_site/ _md/           # rendered output (gitignored)
+TXT
+    }
+    p "Everything lives in the `wcl.wad` namespace (declared at the top of every schema and data file), so WAD block kinds never collide with wdoc's — which is why the C4 unit is plain `container`. A WAD is fully interpretable — check + render — with nothing but the `wcl` binary; the canonical schema ships inside the `wcl init wad` scaffold and is synced to instances."
+    p "Adding data = write a block file under its view + one import line in that view's hub. Every top-level block carries an `@inline(0) id` that becomes its page route (`A-Za-z0-9_-` only), and diagram-node kinds (system / container / component / external_system / persona / environment / infra_node / screen) share **one id space** so relation endpoints resolve unambiguously."
+    p "Gather-list names for templates: `wads`, `stakeholders`, `raci`, `adrs`, `relations`, `externals`, `systems`, `containers`, `sw_components` (bare `components` collides with wdoc's own document schema), `code_items`, `environments`, `infra_nodes`, `deploy_targets`, `repositories`, `pipelines`, `releases`, `personas`, `use_cases`, `sops`, `standards`, `domain_objects`, `terms`, `specs`, `doc_items`, `screens`, `articles`."
+  }
+}
+
+fact overview_blocks {
+  title   = "Overview blocks"
+  related = [twelve_views]
+  audience = :both
+  body {
+    table {
+      header = ["Block", "Fields", "Notes"]
+      rows = [
+        ["`wad`", "`name`, `summary`, `description?`, `version?`, `created`, `updated?`, `maintainer?`, `tags[]`", "exactly one, hand-authored in wad.wcl; `version` is the *described* system's"],
+        ["`stakeholder`", "`name`, `role`, `org?`, `contact?`, `persona?`", "the people who fund, build, approve, and operate"],
+        ["`raci_entry`", "`activity`, `responsible[]`, `accountable[]`, `consulted[]`, `informed[]`", "one row per activity; the four lists hold stakeholder ids — renders the matrix directly"],
+        ["`adr`", "`n`, `title`, `status`, `date`, `deciders[]`, `context?`, `decision?`, `consequences?`, `supersedes?`, `related[]`, `body?`", "`n` renders as ADR-001 and is never renumbered; the index page tables every decision plus a timeline"],
+      ]
+    }
+    p "Who populates: hand — stakeholders and RACI at framing time, an `adr` at the moment each decision is made."
+  }
+}
+
+fact context_blocks {
+  title   = "Context blocks"
+  related = [relations_model]
+  audience = :both
+  body {
+    table {
+      header = ["Block", "Fields", "Notes"]
+      rows = [
+        ["`relation`", "`source`, `destination`, `kind`, `label?`, `protocol?`, `data?`, `notes?`", "a directed edge between two node-space ids; `kind` (RelationKind) supplies the default edge label"],
+      ]
+    }
+    p "Authoring rules: lowest meaningful level only (roll-up derives every higher diagram); endpoints must resolve to declared ids; one relation per meaningful edge — parallel relations between the same rolled pair merge into one labelled edge. Who populates: hand for business/persona edges; extractors for dependency edges a build system can prove (see the reference WAD's `extract_cargo.py`)."
+  }
+}
+
+fact external_blocks {
+  title   = "External-system blocks"
+  related = [twelve_views]
+  audience = :both
+  body {
+    callout "Integrations, not platforms" { class = ["warning"]
+      body = "An external system is a third party the design integrates with **as part of its function** — an API it calls, an identity provider, a payment gateway, a data feed. Platforms that *host, build, or ship* the system (a cloud, a CI service, a CDN, a git host, a package registry the build pulls from) are **infrastructure** (`infra_node`, view 5), not externals. Test: does the *running system* talk to it to do its job, or does it merely run, build, or ship on it? A WAD with no externals is fine — a self-contained system honestly has none."
+    }
+    table {
+      header = ["Block", "Fields", "Notes"]
+      rows = [
+        ["`external_system`", "`name`, `summary`, `kind`, `vendor?`, `url?`, `criticality?`, `body?`", "one per integration; the four child families below nest inside it"],
+        ["`support_contact`", "`name`, `role?`, `channel`, `details?`", "who to call and how"],
+        ["`endpoint`", "`name`, `environment?`, `kind` (url/ip/config/queue…), `value`, `notes?`", "connection details, per environment when they differ"],
+        ["`api_ref`", "`name`, `kind` (openapi/docs/repo…), `location`, `notes?`", "integration references"],
+        ["`security_note`", "`title`, `detail`, `severity?`", "what to watch at the boundary"],
+      ]
+    }
+    p "Never invent contacts or security posture — these come from the user or the vendor, and the interview asks for them explicitly."
+  }
+}
+
+fact system_blocks {
+  title   = "Systems blocks"
+  related = [c4_drilldown]
+  audience = :both
+  body {
+    table {
+      header = ["Block", "Fields", "Notes"]
+      rows = [
+        ["`system`", "`name`, `summary`, `owner?`, `repos[]`, `body?`", "C4 level 1 — one box to an outsider"],
+        ["`container`", "`system`, `name`, `summary`, `kind`, `technology?`, `repo?`, `body?`", "C4 level 2 — an independently runnable unit: a service, a database, a web app, a CLI, a queue"],
+        ["`component`", "`container`, `name`, `summary`, `kind?`, `technology?`, `body?`", "C4 level 3 — a cohesive part with no deployment identity"],
+        ["`code_item`", "`component?` or `container?`, `name`, `summary?`, `kind`, payload children, `body?`", "C4 level 4 — extractor-generated, public interface only; `kind` selects the payload family below"],
+        ["`screen`", "`name`, `summary?`, `component?`, `container?`, `route?`, `personas[]`, `nav_to[]`, `body?`", "a user-facing surface — web page, CLI command, TUI screen; attach it to its `component` (or `container` when components aren't modelled); the body holds the wireframe or terminal mock-up"],
+      ]
+    }
+    p "A `code_item`'s `kind` selects which payload children the renderer reads:"
+    table {
+      header = ["kind", "payload children", "renders as"]
+      rows = [
+        [":module_graph", "`code_node` (`name`, `deps[]`, `summary?`)", "layered dependency diagram"],
+        [":db_schema", "`db_table` → `db_column` (`type`, `pk`, `nullable`, `ref_table?`, `ref_column?`)", "node tables with FK edges on row-level ports"],
+        [":class_diagram", "`code_node` with `members[]`", "class boxes with member rows, dep edges"],
+        [":api", "`api_endpoint` (`method`, `path`, `summary`, `request?`, `response?`)", "endpoint table + detail"],
+        [":other", "—", "just the `body`"],
+      ]
+    }
+    p "Who populates: systems/containers/components by hand (interview or scan); code items by extractor, and they document the **public interface** — internals are read from the code, not mirrored into the WAD. Screens live at **component level**: they render under their owning component with a screen-flow diagram there (never on the system page — that's container altitude)."
+  }
+}
+
+fact infra_blocks {
+  title   = "Infrastructure blocks"
+  related = [twelve_views]
+  audience = :both
+  body {
+    table {
+      header = ["Block", "Fields", "Notes"]
+      rows = [
+        ["`environment`", "`name`, `summary?`, `kind?`, `order?`, `promotes_to?`, `url?`, `body?`", "`promotes_to` draws the promotion chain; `order` sorts the landing table"],
+        ["`infra_node`", "`name`, `kind`, `parent?`, `environments[]`, `technology?`, `address?`, `notes?`, `body?`", "flat `parent` refs nest to arbitrary depth (the book renders four levels); more than one environment = shared infra, flagged on the landing page"],
+        ["`deploy_target`", "`container`, `environment`, `infra_node`, `replicas?`, `url?`, `notes?`", "the row that says where each container actually runs — the deployment map"],
+      ]
+    }
+    p "Hosting, CI, CDN, git, and package-registry platforms all live here (as `infra_node`s), not in externals."
+  }
+}
+
+fact build_deploy_blocks {
+  title   = "Build & deploy blocks"
+  related = [twelve_views]
+  audience = :both
+  body {
+    table {
+      header = ["Block", "Fields", "Notes"]
+      rows = [
+        ["`repository`", "`name`, `url`, `summary?`, `primary_language?`, `body?`", "local-dev quickstart prose lives in the body or a `:dev` sop"],
+        ["`repo_path`", "`path`, `description`", "nested in `repository` — one row per notable path"],
+        ["`pipeline`", "`name`, `repo?`, `trigger?`, `summary?`, `body?`", "one per workflow"],
+        ["`pipeline_stage`", "`name?`, `summary?`, `environment?`, `gates[]`, `next[]`", "nested in `pipeline`; `next` wires the stage DAG the flowchart draws — branch- and fan-out-safe; `summary` says what the stage does (the pipeline page renders per-stage detail)"],
+        ["`release`", "`version`, `date?`, `repo?`, `summary?`, `highlights[]`, `url?`", "one per shipped version — the Build & deploy releases table; extractor-owned (git tags), never hand-maintained"],
+      ]
+    }
+    p "A `repo_path` that is really another repository says so: `repo` for one of OUR repos pulled in as a submodule/subtree (the structure diagram links to its page), `external_url` for a submodule outside our control (drawn dashed). This covers monorepos, multi-repo estates, and vendored trees with one vocabulary."
+    p "Who populates: pipelines and releases are ideal extractor territory (parse the real CI config / the git tags — see the reference WAD's `extract_ci.py` and `extract_releases.py`); repositories start from `extract_repo.py` and get hand-written descriptions."
+  }
+}
+
+fact documentation_blocks {
+  title   = "Documentation blocks"
+  related = [twelve_views]
+  audience = :both
+  body {
+    callout "Outputs, not systems" { class = ["warning"]
+      body = "A docs site, a rendered book, a skill folder, a README — anything the project publishes *to be read* — is a **documentation artefact**, never a `system` or `container` in view 4. Test: does it execute, or is it read? Read → `doc_item`. Where a published artefact is hosted goes in its `hosted_on` field, not in a system of its own."
+    }
+    table {
+      header = ["Block", "Fields", "Notes"]
+      rows = [
+        ["`doc_item`", "`name`, `summary`, `kind`, `source?`, `url?`, `built_by?`, `hosted_on?`, `audience[]`, `body?`", "`kind` is a DocKind (site / book / skill / reference / readme / guide / changelog); `built_by` names the container that renders it; `audience` holds persona ids"],
+      ]
+    }
+    p "Who populates: hand — documentation is small enough to enumerate, and the fields force the useful questions (where's the source? what builds it? where is it hosted? who is it for?)."
+  }
+}
+
+fact persona_blocks {
+  title   = "Persona blocks"
+  related = [twelve_views]
+  audience = :both
+  body {
+    callout "Users, not builders" { class = ["warning"]
+      body = "A persona is a kind of **user of the system** — who it exists for. The people and agents who *build, maintain, or operate* it (the maintainer, contributors, an AI implementation agent, the on-call engineer) are **stakeholders** (view 1) with RACI rows, never personas. Test: would this party still exist if the system were bought instead of built? Yes → persona; no → stakeholder."
+    }
+    callout "Access grants are security controls" { class = ["warning"]
+      body = "An `access_grant` records a **security control**: SSO, an approved signup, an admin invite — something that *gates* access, with an approver where one exists. Installing freely-available software is NOT access control; a system with no access control honestly has **no** access grants, not a grant that says “installs it”."
+    }
+    table {
+      header = ["Block", "Fields", "Notes"]
+      rows = [
+        ["`persona`", "`name`, `summary`, `kind`, `goals[]`, `body?`", "`kind` is `:human` / `:ai_agent` / `:service` — an agent or service persona is one that *uses* the system, not one that develops it"],
+        ["`access_grant`", "`system`, `method`, `approver?`", "nested in `persona` — the security control gating this user kind's access; omit entirely when there is none"],
+        ["`use_case`", "`title`, `persona`, `summary?`, `preconditions[]`, `outcome?`, steps + flow, `body?`", "a typical flow for one persona, rendered as a flowchart (reuses the SOP `step` / `from -> to` machinery); record a good selection per persona — they double as user-acceptance tests"],
+      ]
+    }
+    p "Personas are diagram nodes: relations from a persona to a container put them on the context diagram, and screens list the personas that use them (`screen.personas`). Use cases render under their persona's chapter, one page each with the flowchart above the step detail."
+  }
+}
+
+fact sysadmin_blocks {
+  title   = "System-admin blocks"
+  related = [twelve_views]
+  audience = :both
+  body {
+    table {
+      header = ["Block", "Fields", "Notes"]
+      rows = [
+        ["`sop`", "`title`, `purpose`, `kind`, `preconditions[]`, `verification?`, `automation?`, `related[]`, steps + flow", "`kind`: operations / incident / change / runbook / release / dev; `automation` names where an automated runbook lives"],
+        ["`step`", "inline id, `n`, `title?`, `shape`, `body <name> { … }` fragments", "`shape` is `:process` (default) / `:decision` / `:terminator`; the sop's `from -> to` statements (with `:yes` / `:no` branch labels) wire the flowchart"],
+      ]
+    }
+  }
+}
+
+fact standards_blocks {
+  title   = "Standards blocks"
+  related = [twelve_views]
+  audience = :both
+  body {
+    table {
+      header = ["Block", "Fields", "Notes"]
+      rows = [
+        ["`standard`", "`title`, `kind`, `summary`, `body?`", "`kind`: coding / style / business / security / process / documentation"],
+        ["`rule`", "`text`, `rationale?`, `enforced_by?`", "nested in `standard`; leave `enforced_by` unset for aspirational rules, honestly"],
+      ]
+    }
+  }
+}
+
+fact domain_blocks {
+  title   = "Domain blocks"
+  related = [twelve_views]
+  audience = :both
+  body {
+    p "The domain view captures the **business objects** — the nouns the business uses — and how they relate: the ubiquitous language, in typed form."
+    table {
+      header = ["Block", "Fields", "Notes"]
+      rows = [
+        ["`domain_object`", "`name`, `summary`, `body?`", "one business object; fields and relations nest inside"],
+        ["`field`", "inline name, `type`, `required`, `summary?`", "nested — one per field that matters to the business"],
+        ["`domain_rel`", "`to`, `kind`, `label?`, `via_field?`", "nested — `kind` is has_one / has_many / references / extends / uses; `via_field` pins the ER edge to a field row"],
+        ["`term`", "`term`, `definition`, `aliases[]`", "the glossary — alphabetised automatically"],
+      ]
+    }
+    p "The landing page derives an ER diagram from the objects and their relations; each object also gets its own page."
+  }
+}
+
+fact spec_blocks {
+  title   = "Spec blocks & the status lifecycle"
+  related = [spec_lifecycle]
+  audience = :both
+  body {
+    p "A `spec` is a work package: the implementation detail an AI coding agent needs to build part of the system. `wcl wad spec --from <rev>` can seed one mechanically (baseline sha + exact change list); the intent — summary, rationale, ordered instructions — is authored by the LLM/human decomposing the change."
+    table {
+      header = ["Block", "Fields", "Notes"]
+      rows = [
+        ["`spec`", "`title`, `status`, `created`, `updated?`, `owner?`, `summary`, `from_rev?`, `affected[]`, `supersedes?`, `body?`", "`affected` holds system/container ids; `from_rev` records the baseline sha when the spec was seeded from a diff"],
+        ["`change`", "entity key as inline label, `op`, `value?`", "mechanical change list rows — `op` is `:added` / `:removed` / `:modified`; `value` is the rendered WCL of an added/removed entity"],
+        ["`field_change`", "path as inline label, `kind`, `old?`, `new?`", "nested in `change`; `old`/`new` carry rendered WCL text"],
+      ]
+    }
+    table {
+      header = ["Status", "Meaning", "Who moves it"]
+      rows = [
+        [":planning", "skeleton written, intent being authored/reviewed", "author"],
+        [":in_progress", "an implementer picked it up", "implementer"],
+        [":complete", "landed and confirmed by the user", "author, after user confirmation"],
+        [":abandoned", "won't happen — revert the data or keep it with an ADR explaining", "author"],
+      ]
+    }
+  }
+}
+
+fact wad_kinds {
+  title   = "WAD vocabularies (kinds.wcl)"
+  related = [wad_layout]
+  audience = :both
+  body {
+    p "The symbol_sets the kind fields draw from — extend them in the instance's `schema/kinds.wcl` (add members; don't rename, data references them):"
+    table {
+      header = ["Set", "Members"]
+      rows = [
+        ["ContainerKind", "service web_app spa cli library db queue cache batch_job function mobile_app desktop_app editor_plugin gateway static_site other"],
+        ["ExternalKind", "saas api registry identity datastore ci cdn payment partner ai_service other"],
+        ["RelationKind", "sync_api async_msg reads writes reads_writes publishes subscribes uses depends_on authenticates triggers hosts other"],
+        ["InfraKind", "cloud region network vpc cluster namespace vm container_runtime physical_host paas_service ci_runner registry workstation storage edge other"],
+        ["EnvKind", "local ci dev test staging prod dr other"],
+        ["AdrStatus", "proposed accepted rejected superseded deprecated"],
+        ["SpecStatus", "planning in_progress complete abandoned"],
+        ["PersonaKind", "human ai_agent service"],
+        ["SopKind", "operations incident change runbook release dev"],
+        ["StandardKind", "coding style business security process documentation"],
+        ["DomainRelKind", "has_one has_many references extends uses"],
+        ["CodeItemKind", "module_graph db_schema class_diagram api other"],
+        ["Criticality", "low medium high critical"],
+        ["DocKind", "site book skill reference readme guide changelog other"],
+        ["WadSection", "overview context externals systems infrastructure build_deploy documentation personas sysadmin standards domain specs"],
+      ]
+    }
+    p "There is deliberately no RaciRole set — a `raci_entry` row carries four id-lists, which renders the matrix directly."
+  }
+}
+
+fact wad_cli {
+  title   = "WAD command table"
+  related = [wcl_init_wad, wcl_diff_wad]
+  audience = :both
+  body {
+    table {
+      header = ["Command", "Does"]
+      rows = [
+        ["`wcl init wad <dir>`", "scaffold a WAD (`-D key=value --defaults` for non-interactive)"],
+        ["`wcl check wad.wcl`", "validate the whole model — the gate after every data edit"],
+        ["`wcl wdoc serve wdoc/book/main.wcl --comment`", "live book with click-to-comment review (for humans)"],
+        ["`wcl wdoc build wdoc/book/main.wcl --out _site`", "render the HTML book"],
+        ["`wcl diff <rev>:wad.wcl wad.wcl`", "what changed since a revision (evaluated views) — a delta source for spec writing"],
+        ["`wcl wad spec --from <rev> [wad.wcl]`", "seed a spec skeleton in data/specs/ from the diff (`--id`, `--title`, `--format json`, `--include-specs`)"],
+      ]
+    }
+    p "A scaffolded WAD's justfile wraps these as `wad-check`, `book-build`, `book-serve`, `md-build`, `extract`, `spec-new REV`, `clean`. In the WCL repository the root justfile prefixes them `wad-*`."
+  }
+}
+
+fact extractor_anatomy {
+  title   = "Extractor scripts"
+  related = [generated_vs_hand, writing_extractor, uv]
+  audience = :both
+  body {
+    p "Extractors are single-file Python scripts run with `uv run`: a `# /// script` inline-metadata header declares dependencies, so any source of truth — a database, workflow YAML, cargo metadata, an HTTP API — is one dependency line away. Python is the extractor language on purpose: agents write it well and the library ecosystem covers everything. Each script reads one source of truth and fully overwrites one WCL file under `data/generated/`."
+    code "python" { source = <<'PY'
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []            # e.g. ["pyyaml>=6"]
+# ///
+"""Extract <what> from <source> into data/generated/<name>.wcl."""
+
+from pathlib import Path
+
+WAD_ROOT = Path(__file__).resolve().parents[1]
+OUT = WAD_ROOT / "data" / "generated" / "<name>.wcl"
+
+def wcl_str(s: str) -> str:            # the ~5-line emit helper every script copies
+    out = s.replace("\\", "\\\\").replace('"', '\\"')
+    out = out.replace("\n", "\\n").replace("\t", "\\t").replace("\r", "\\r")
+    return f'"{out}"'
+
+# 1. read the source of truth
+# 2. map records onto WAD blocks (in-script tables for human naming)
+# 3. render lines, sorted, no timestamps
+OUT.write_text("\n".join(lines))
+PY
+    }
+    p "The eight rules that make extraction safe: uv single-file; **one script, one output file**; full overwrite, never append; generated banner first; deterministic output (sorted, no timestamps — unchanged sources are git-quiet); stable ids derived from source names; an empty result still writes the banner so imports never dangle; output passes `wcl check`. Exit non-zero on failure so `just extract` stops."
+    p "When the data doesn't fit the base blocks, declare a **typed extension block** in `schema/extensions.wcl` and have the extractor emit that, with a matching render in the book template — extraction isn't limited to the built-in families. The bundled `extractor_template.py` (skill scripts folder) is the skeleton ready to copy."
+  }
+}

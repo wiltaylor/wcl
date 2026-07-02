@@ -35,6 +35,18 @@ inline_pattern link {
     [InlineSpan::Link { text: at(g, 1), href: at(g, 2), class: ["link"] }]
 }
 
+// A bare absolute URL becomes a link without markdown syntax. Declared
+// after `link`, whose earlier `[` start wins for `[text](https://…)`.
+// The URL may not end in punctuation (a sentence-final `.` stays prose)
+// and stops at whitespace, quotes, or brackets. The display text drops
+// the scheme — which also keeps the nested re-tokenize pass (link text
+// runs back through the patterns) from matching it a second time.
+inline_pattern autolink {
+  pattern = "(https?://)([^\\s<>\"'()\\[\\]]*[^\\s<>\"'()\\[\\].,:;!?])"
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Link { text: at(g, 2), href: $"${at(g, 1)}${at(g, 2)}", class: ["link"] }]
+}
+
 // `:name:` / `:set.name:` → an icon. The renderer resolves the name
 // against the declared `iconset`s; an unknown name (or no iconsets)
 // falls back to the literal matched text, so prose like `time: 10:30`

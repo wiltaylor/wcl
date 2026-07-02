@@ -96,6 +96,15 @@ pub(crate) fn repo_rel(path: &str) -> Result<(PathBuf, String), String> {
     }
 }
 
+/// Resolve `rev` to its full commit sha in the repo at `root` — the
+/// immutable baseline a generated change-spec records.
+pub(crate) fn resolve_rev(rev: &str, root: &Path) -> Result<String, String> {
+    git(
+        root,
+        &["rev-parse", "--verify", &format!("{rev}^{{commit}}")],
+    )
+}
+
 /// Extract the whole tree at `rev` into a fresh temp dir via
 /// `git archive <rev> | tar -x`. The returned `TempDir` cleans itself up on
 /// drop, so the caller must hold it for as long as the opened document is

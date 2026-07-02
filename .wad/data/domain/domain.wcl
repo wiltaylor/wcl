@@ -1,0 +1,73 @@
+// View 10 data — the domain objects of the language implementation, and the
+// glossary of ubiquitous language.
+namespace wcl.wad
+
+domain_object dom_source {
+  name    = "Source"
+  summary = "A parsed WCL file: the AST plus its symbol index."
+  field path        { type = "PathBuf"        required = true }
+  field items       { type = "list<Item>"     required = true  summary = "top-level declarations, blocks, fields, lets" }
+  field symbol_index { type = "SymbolIndex"   summary = "name → declaration lookup" }
+}
+
+domain_object dom_document {
+  name    = "Document"
+  summary = "The evaluated view over a root Source and everything it imports."
+  field root    { type = "Source"        required = true }
+  field imports { type = "list<Source>"  summary = "eagerly-imported files, walked for gathering" }
+  field cache   { type = "field cache"   summary = "lazy per-field results with cycle detection" }
+  domain_rel dd_src   { to = dom_source  kind = :references  via_field = root }
+  domain_rel dd_field { to = dom_field   kind = :has_many }
+}
+
+domain_object dom_field {
+  name    = "Field"
+  summary = "One named slot on a document or block, evaluated on demand."
+  field name  { type = "utf8"  required = true }
+  field value { type = "Value" summary = "the evaluated result, cached" }
+  field declared_type { type = "TypeRef?"  summary = "the schema type it must satisfy" }
+  domain_rel df_val  { to = dom_value    kind = :has_one  via_field = value }
+  domain_rel df_type { to = dom_typedecl kind = :references  via_field = declared_type }
+}
+
+domain_object dom_value {
+  name    = "Value"
+  summary = "The runtime value universe: scalars, lists, records, variants, tensors, functions."
+  field kind { type = "enum"  required = true
+    summary = "Utf8 / I64 / F64 / Bool / Symbol / Identifier / List / Record / Variant / Tensor / Fn / None" }
+}
+
+domain_object dom_typedecl {
+  name    = "TypeDecl"
+  summary = "A declared type: record shape, union, interface, symbol_set, alias — plus its decorators."
+  field name       { type = "utf8"   required = true }
+  field decorators { type = "list"   summary = "@block / @document / @default / @min / …" }
+  field is_imported { type = "bool"  summary = "drives @document merge preference" }
+}
+
+domain_object dom_registry {
+  name    = "Registry"
+  summary = "Named system libraries resolvable through angle-bracket imports."
+  field libraries { type = "map<utf8, Source>"  required = true }
+  domain_rel dr_src { to = dom_source  kind = :has_many  via_field = libraries }
+}
+
+domain_object dom_diagnostic {
+  name    = "Diagnostic"
+  summary = "An error or warning with everything needed to render a snippet."
+  field span   { type = "Span"         required = true }
+  field source { type = "NamedSource"  required = true }
+  field message { type = "utf8"        required = true }
+  domain_rel dg_src { to = dom_source  kind = :references  via_field = source }
+}
+
+// --- glossary ------------------------------------------------------------------
+
+term t_block      { term = "block"      definition = "A typed instance in a document: `kind label { fields… }` — the unit schemas gather and templates iterate." }
+term t_document   { term = "document schema" definition = "An @document type whose @children fields gather every block instance of a kind; imported document schemas merge per namespace." }
+term t_symbol_set { term = "symbol_set" definition = "A closed vocabulary of symbols (`:accepted`, `:prod`) used as a field type." }
+term t_lowering   { term = "lowering"   definition = "Turning a block into fundamentals via its `<kind>_lower` fn, recursively, until only renderable primitives remain." }
+term t_projection { term = "projection" definition = "A template set that renders one data model into a target (book, skill, deck) without owning any content." }
+term t_gather     { term = "gather list" definition = "The list an @document field collects (`systems`, `adrs`) — the thing templates repeat over." }
+term t_rollup     { term = "roll-up"    definition = "Lifting relation endpoints to a coarser level (component → container → system) so higher-level diagrams derive instead of being re-drawn." }
+term t_wskill     { term = "wskill"     definition = "A self-contained WCL folder capturing a topic, projected into a book and an AI skill." }

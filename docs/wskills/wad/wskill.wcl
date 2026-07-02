@@ -1,0 +1,113 @@
+// WAD — wskill root document.
+//
+// Single entry point: declares the topic (subject + metadata) and sources, and
+// includes the data files. `wcl check wskill.wcl` validates the whole model.
+// The wdoc template sets in wdoc/ project this model into the book and skill.
+
+import <wdoc.wcl>
+import "./schema/base.wcl"
+import "./schema/extensions.wcl"
+
+import "./data/reference/concepts.wcl"
+import "./data/reference/entities.wcl"
+import "./data/reference/facts.wcl"
+import "./data/reference/checklists.wcl"
+import "./data/reference/glossary.wcl"
+import "./data/reference/indexes.wcl"
+import "./data/processes/processes.wcl"
+
+schema_version = "1.0.0"
+
+topic wad {
+  name    = "WAD"
+  summary = "Wil's Architecture Document: a typed WCL data model of a software system — C4 drill-down, arc42-style views — rendered into a twelve-chapter architecture book."
+  version = "0.1.0"     // the WAD schema version this wskill documents
+  description = <<END
+A **WAD** captures a software system's architecture as typed WCL data:
+systems, containers, relations, infrastructure, decisions, procedures, domain
+objects, screens, and specs, filed under twelve views. Humans and extractor
+scripts populate `data/`; wdoc templates derive every diagram and render the
+book — the book is for humans. For implementation, an LLM decomposes reviewed
+WAD changes into specs sized for the coding agent that builds them (a strong
+model can implement straight from the WAD). This wskill covers the format, how
+to populate a WAD for a new or existing system (including the interview and
+codebase-scan checklists), extractor scripts, and the spec workflow.
+END
+  tags       = ["wad", "architecture", "c4", "arc42", "documentation"]
+  created    = "2026-07-02"
+  maintainer_entity = wil_taylor
+}
+
+artifact book     { kind = :book      entry = "wdoc/book/main.wcl"   output = "out/book" }
+artifact ai_skill { kind = :ai_skill  entry = "wdoc/skill/main.wcl"  output = "out/skill" }
+
+// Skill-projection config — written into SKILL.md frontmatter.
+wcl.wskill::skill {
+  allowed_tools = ["Bash", "Read"]
+
+  summary {
+    overview = [
+      "A WAD is a typed architecture document. This skill creates and populates one — by interviewing you about a new design or scanning an existing codebase — keeps it current with extractor scripts, and decomposes reviewed changes into implementation specs for coding agents.",
+    ]
+  }
+
+  skill_param "$ARGUMENTS" {
+    description = "Path to a WAD folder, or the system/codebase to document."
+    value       = "Take it from the user's request. If empty, ask whether to create, populate, evolve, or review a WAD, then follow the matching process."
+  }
+
+  skill_boundary {
+    always = [
+      "Run `wcl check wad.wcl` after every data edit and keep it green before rendering.",
+      "File every architecture fact under its correct view — consult the twelve-views map before writing.",
+      "Ask the user rather than inventing architecture facts — especially support contacts, security details, and infrastructure that is not visible in the code.",
+      "Record any decision made during a session as an `adr` block on the spot.",
+      "When populating, follow the design-interview or codebase-scan process rather than free-forming.",
+    ]
+    ask = [
+      "Before running extractor scripts against live or production systems.",
+      "Before overwriting hand-authored data with extractor-owned data (moving ownership of a block family to a script).",
+      "Before marking a spec `:complete` or deleting data files.",
+    ]
+    never = [
+      "Hand-edit files under `data/**/generated/` — fix the extractor and re-run it.",
+      "Hand-edit a WAD's `schema/base.wcl` — it is scaffold-owned and synced (`kinds.wcl` / `extensions.wcl` are the editable files).",
+      "Author a relation whose endpoints don't resolve to declared block ids.",
+      "Model the system's builders, maintainers, or operators as personas — personas are USERS of the system; builders/operators are view-1 stakeholders with RACI rows.",
+      "Model hosting, CI, CDN, git, or package-registry platforms as external_systems — anything the system merely runs, builds, or ships on is an infra_node in view 5; externals are functional integrations only.",
+    ]
+  }
+
+  script extractor_template {
+    source      = "skill/scripts/extractor_template.py"
+    name        = "extractor_template.py"
+    description = "The PEP 723 uv single-file skeleton for a new WAD extractor script — copy it, point it at a source of truth, and emit WCL into data/generated/."
+    usage       = "cp scripts/extractor_template.py <wad>/scripts/extract_<thing>.py, then edit"
+  }
+}
+
+// Sources — where current information lives; they drive the update workflow.
+source wad_schema {
+  kind         = "code"
+  locator      = "crates/wcl/src/scaffold/templates/wad.wcl (heredoc WAD_SCHEMA_BASE_WCL — the canonical schema)"
+  covers       = "Every block type and field the per-view facts document."
+  last_checked = "2026-07-02"
+  reflects_version = "0.1.0"
+}
+source reference_wad {
+  kind         = "code"
+  locator      = ".wad/ in the WCL repository (the reference WAD, documenting WCL itself)"
+  covers       = "Worked examples: data files, extractors, book output."
+  last_checked = "2026-07-02"
+}
+source wad_cli_help {
+  kind         = "cli"
+  locator      = "wcl init --help / wcl wad spec --help / wcl diff --help"
+  covers       = "The command table fact."
+  last_checked = "2026-07-02"
+}
+
+// Cross-references to the sibling wskills — link, never re-document.
+wskill_ref wcl_ref    { name = "wcl"    relation = "prerequisite — WADs are WCL documents"        status = "exists" }
+wskill_ref wdoc_ref   { name = "wdoc"   relation = "peer — serve/comment/markdown mechanics"      status = "exists" }
+wskill_ref wskill_fmt { name = "wskill" relation = "peer — the format this wskill is built with"  status = "exists" }

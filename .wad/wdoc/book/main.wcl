@@ -1,30 +1,321 @@
-// WCL's own architecture, authored as a WAD (Wil's Architecture Document) and
-// rendered by `wcl wdoc`. One document, one `book`-template site.
+// Book projection — the twelve-chapter architecture book over the WAD data
+// model. This template contains NO architecture content — only projections
+// over the blocks gathered by the root @document (systems, relations, ADRs…).
 //
-//   wcl wdoc serve .wad/wdoc/book/main.wcl          # dev server
+//   wcl wdoc serve .wad/wdoc/book/main.wcl --comment   # review it
 //   wcl wdoc build .wad/wdoc/book/main.wcl --out .wad/_site
 //
-// Skeleton only: an index plus a couple of stub chapters. The single
-// `import <wdoc.wcl>` pulls in the embedded wdoc stdlib (`page` / `h1` / `p`
-// / `toc` / …), in scope here and in every imported page.
-import <wdoc.wcl>
+// Structure: this file holds the site + toc + the shared `let` helper layer
+// (node index, name/link resolution, edge roll-up). Each view's landing page
+// and its generated per-entity pages live in one file under pages/ — those
+// files resolve the `let`s defined here, so they are only valid as part of
+// this document.
 
+import <wdoc.wcl>
+import "../../wad.wcl"
+
+import "../pages/overview.wcl"        // index, adrs_page, adr_* pages
+import "../pages/context.wcl"         // system_context
+import "../pages/externals.wcl"       // externals_page, external_*
+import "../pages/systems.wcl"         // systems_page, system_*, container_*, component_*, code_*, screen_*
+import "../pages/infrastructure.wcl"  // infrastructure_page, env_*
+import "../pages/build.wcl"           // build_page, repo_*, pipeline_*
+import "../pages/documentation.wcl"   // documentation_page, doc_*
+import "../pages/personas.wcl"        // personas_page, persona_*
+import "../pages/sysadmin.wcl"        // sysadmin_page, sop_*
+import "../pages/standards.wcl"       // standards_page, standard_*
+import "../pages/domain.wcl"          // domain_page, domain_*, glossary_page
+import "../pages/specs.wcl"           // specs_page, spec_*
+import "../pages/articles.wcl"        // article_* pages
+
+// --- the document's one wad block ---------------------------------------
+let wad = head(wads)
+
+// --- node index: every diagram-node id → name + page route ---------------
+// Systems, containers, components, externals, personas, environments and
+// screens share one id space (relation endpoints resolve against it).
+type NodeRef { id: identifier  name: utf8  href: utf8  level: utf8 }
+let all_nodes = flatten([
+  map(systems,      fn(s: System)         -> NodeRef { { id: s.id, name: s.name, href: $"system_${s.id}",    level: "system" } }),
+  map(containers,   fn(c: Container)      -> NodeRef { { id: c.id, name: c.name, href: $"container_${c.id}", level: "container" } }),
+  map(sw_components,   fn(c: Component)      -> NodeRef { { id: c.id, name: c.name, href: $"component_${c.id}", level: "component" } }),
+  map(externals,    fn(e: ExternalSystem) -> NodeRef { { id: e.id, name: e.name, href: $"external_${e.id}",  level: "external" } }),
+  map(personas,     fn(pe: Persona)       -> NodeRef { { id: pe.id, name: pe.name, href: $"persona_${pe.id}", level: "persona" } }),
+  map(environments, fn(e: Environment)    -> NodeRef { { id: e.id, name: e.name, href: $"env_${e.id}",       level: "environment" } }),
+  map(screens,      fn(sc: Screen)        -> NodeRef { { id: sc.id, name: sc.name, href: $"screen_${sc.id}", level: "screen" } }),
+  map(infra_nodes,  fn(n: InfraNode)      -> NodeRef { { id: n.id, name: n.name, href: "",                   level: "infra" } }),
+  map(repositories, fn(r: Repository)     -> NodeRef { { id: r.id, name: r.name, href: $"repo_${r.id}",      level: "repository" } }),
+  map(doc_items,    fn(d: DocItem)        -> NodeRef { { id: d.id, name: d.name, href: $"doc_${d.id}",       level: "documentation" } }),
+])
+let node_of = fn(nid: identifier) -> NodeRef {
+  find(all_nodes, fn(n: NodeRef) -> bool { n.id == nid }) ?? { id: nid, name: $"${nid}", href: "", level: "unknown" }
+}
+let name_of = fn(nid: identifier) -> utf8 { let n = node_of(nid); n.name }
+// Markdown link to a node's page, or its bare name when it has none.
+let link_of = fn(nid: identifier) -> utf8 {
+  let n = node_of(nid);
+  match n.href { "" => n.name, _ => $"[${n.name}](${n.href})" }
+}
+
+// --- ownership roll-up ----------------------------------------------------
+// Lift any node id to its owning container / system. Ids that aren't a
+// component/container (externals, personas, systems themselves) pass through.
+let owner_container = fn(nid: identifier) -> identifier {
+  let c = find(sw_components, fn(x: Component) -> bool { x.id == nid });
+  match c { none => nid, _ => c.container }
+}
+let owner_system = fn(nid: identifier) -> identifier {
+  let cid = owner_container(nid);
+  let c = find(containers, fn(x: Container) -> bool { x.id == cid });
+  match c { none => cid, _ => c.system }
+}
+
+// --- relation → edge derivation -------------------------------------------
+let kind_text = fn(k: RelationKind) -> utf8 {
+  match k {
+    :sync_api => "calls", :async_msg => "messages", :reads => "reads",
+    :writes => "writes", :reads_writes => "reads/writes",
+    :publishes => "publishes", :subscribes => "subscribes", :uses => "uses",
+    :depends_on => "depends on", :authenticates => "authenticates",
+    :triggers => "triggers", :hosts => "hosts", _ => "relates to",
+  }
+}
+let rel_label = fn(r: Relation) -> utf8 { r.label ?? kind_text(r.kind) }
+
+// One relation lifted to an arbitrary level, keyed for dedup.
+type RolledEdge { key: utf8  source: identifier  destination: identifier  label: utf8 }
+
+// Dedup a rolled list into renderable edges, merging parallel labels.
+let dedup_edges = fn(rolled: list<RolledEdge>) -> list<Edge> {
+  map(unique(map(rolled, fn(e: RolledEdge) -> utf8 { e.key })), fn(k: utf8) -> Edge {
+    let es = filter(rolled, fn(x: RolledEdge) -> bool { x.key == k });
+    let e = head(es);
+    { source: e.source, destination: e.destination,
+      label: join(unique(map(es, fn(x: RolledEdge) -> utf8 { x.label })), ", ") }
+  })
+}
+
+// System-level context edges (View 2): endpoints rolled to their systems,
+// self-edges dropped, parallel relations merged.
+let ctx_rolled = filter(
+  map(relations, fn(r: Relation) -> RolledEdge {
+    let s = owner_system(r.source);
+    let d = owner_system(r.destination);
+    { key: $"${s}|${d}", source: s, destination: d, label: rel_label(r) }
+  }),
+  fn(e: RolledEdge) -> bool { e.source != e.destination })
+let ctx_edges = dedup_edges(ctx_rolled)
+
+// Container-level edges touching one system (View 4 system pages).
+let sys_rolled = fn(sid: identifier) -> list<RolledEdge> {
+  filter(
+    map(relations, fn(r: Relation) -> RolledEdge {
+      let s = owner_container(r.source);
+      let d = owner_container(r.destination);
+      { key: $"${s}|${d}", source: s, destination: d, label: rel_label(r) }
+    }),
+    fn(e: RolledEdge) -> bool {
+      e.source != e.destination
+        && (owner_system(e.source) == sid || owner_system(e.destination) == sid)
+    })
+}
+
+// The nodes a system's container diagram must draw besides its own
+// containers: everything its rolled edges touch that lives elsewhere.
+let sys_neighbors = fn(sid: identifier) -> list<NodeRef> {
+  let es = sys_rolled(sid);
+  let ids = unique(flatten(map(es, fn(e: RolledEdge) -> list<identifier> { [e.source, e.destination] })));
+  map(filter(ids, fn(nid: identifier) -> bool { owner_system(nid) != sid }),
+      fn(nid: identifier) -> NodeRef { node_of(nid) })
+}
+
+// Relations touching the given ids (directly or via ownership roll-up).
+let rels_touching = fn(ids: list<identifier>) -> list<Relation> {
+  filter(relations, fn(r: Relation) -> bool {
+    list_contains(ids, r.source) || list_contains(ids, r.destination)
+      || list_contains(ids, owner_container(r.source)) || list_contains(ids, owner_container(r.destination))
+      || list_contains(ids, owner_system(r.source)) || list_contains(ids, owner_system(r.destination))
+  })
+}
+let rel_rows = fn(rels: list<Relation>) -> list<list<utf8>> {
+  map(rels, fn(r: Relation) -> list<utf8> {
+    [link_of(r.source), rel_label(r), link_of(r.destination), r.protocol ?? "—", r.data ?? "—"]
+  })
+}
+
+// --- misc shared helpers ----------------------------------------------------
+let containers_of = fn(sid: identifier) -> list<Container> {
+  filter(containers, fn(c: Container) -> bool { c.system == sid })
+}
+let components_of = fn(cid: identifier) -> list<Component> {
+  filter(sw_components, fn(c: Component) -> bool { c.container == cid })
+}
+let code_items_of = fn(cid: identifier) -> list<CodeItem> {
+  filter(code_items, fn(ci: CodeItem) -> bool {
+    ci.container == cid
+      || list_contains(map(components_of(cid), fn(c: Component) -> identifier { c.id }), ci.component ?? cid)
+  })
+}
+let screens_of = fn(cid: identifier) -> list<Screen> {
+  filter(screens, fn(sc: Screen) -> bool { sc.container == cid })
+}
+let screens_of_comp = fn(coid: identifier) -> list<Screen> {
+  filter(screens, fn(sc: Screen) -> bool { sc.component == coid })
+}
+let stakeholder_names = fn(ids: list<identifier>) -> utf8 {
+  let xs = map(ids, fn(sid: identifier) -> utf8 {
+    let st = find(stakeholders, fn(x: Stakeholder) -> bool { x.id == sid });
+    match st { none => $"${sid}", _ => st.name }
+  });
+  match len(xs) { 0 => "—", _ => join(xs, ", ") }
+}
+// Articles filed under a view, in `order`.
+let articles_in = fn(sec: WadSection) -> list<Article> {
+  sort_by(filter(articles, fn(a: Article) -> bool { a.section == sec }),
+          fn(a: Article) -> utf8 { pad_start($"${a.order ?? 99}", 4, "0") })
+}
+let envs_sorted = sort_by(environments, fn(e: Environment) -> utf8 { pad_start($"${e.order ?? 99}", 4, "0") })
+
+// --- site -------------------------------------------------------------------
 site book {
   default_template = :book
-  title            = "WCL Architecture"
+  title            = $"${wad.name} — Architecture"
+  summary          = $"${wad.summary}"
   root             = true
   theme            = :nord
   accent           = :cyan
   theme_toggle     = true
   search           = true
   toc {
-    chapter "Home"         { page = index }
-    chapter "Overview"     { page = overview }
-    chapter "Architecture" { page = architecture }
+    chapter "Overview" { page = index
+      chapter "Decisions (ADRs)" { page = adrs_page
+        wdoc_repeater { each = adrs_sorted  as = :a
+          chapter $"${adr_ref(a)}: ${a.title}" { page = $"adr_${a.id}" }
+        }
+      }
+      wdoc_repeater { each = articles_in(:overview)  as = :ar
+        chapter $"${ar.title}" { page = $"article_${ar.id}" }
+      }
+    }
+    chapter "System context" { page = system_context
+      wdoc_repeater { each = articles_in(:context)  as = :ar
+        chapter $"${ar.title}" { page = $"article_${ar.id}" }
+      }
+    }
+    chapter "External systems" { page = externals_page
+      wdoc_repeater { each = externals  as = :e
+        chapter $"${e.name}" { page = $"external_${e.id}" }
+      }
+      wdoc_repeater { each = articles_in(:externals)  as = :ar
+        chapter $"${ar.title}" { page = $"article_${ar.id}" }
+      }
+    }
+    chapter "Systems" { page = systems_page
+      wdoc_repeater { each = systems  as = :s
+        chapter $"${s.name}" { page = $"system_${s.id}"
+          wdoc_repeater { each = containers_of(s.id)  as = :c
+            chapter $"${c.name}" { page = $"container_${c.id}"
+              wdoc_repeater { each = components_of(c.id)  as = :co
+                chapter $"${co.name}" { page = $"component_${co.id}"
+                  wdoc_repeater { each = screens_of_comp(co.id)  as = :sc
+                    chapter $"${sc.name}" { page = $"screen_${sc.id}" }
+                  }
+                }
+              }
+              wdoc_repeater { each = code_items_of(c.id)  as = :ci
+                chapter $"${ci.name}" { page = $"code_${ci.id}" }
+              }
+              wdoc_repeater { each = screens_of(c.id)  as = :sc
+                chapter $"${sc.name}" { page = $"screen_${sc.id}" }
+              }
+            }
+          }
+        }
+      }
+      wdoc_repeater { each = articles_in(:systems)  as = :ar
+        chapter $"${ar.title}" { page = $"article_${ar.id}" }
+      }
+    }
+    chapter "Infrastructure" { page = infrastructure_page
+      wdoc_repeater { each = envs_sorted  as = :e
+        chapter $"${e.name}" { page = $"env_${e.id}" }
+      }
+      wdoc_repeater { each = articles_in(:infrastructure)  as = :ar
+        chapter $"${ar.title}" { page = $"article_${ar.id}" }
+      }
+    }
+    chapter "Build & deploy" { page = build_page
+      wdoc_repeater { each = repositories  as = :r
+        chapter $"${r.name}" { page = $"repo_${r.id}" }
+      }
+      wdoc_repeater { each = pipelines  as = :pl
+        chapter $"${pl.name}" { page = $"pipeline_${pl.id}" }
+      }
+      wdoc_repeater { each = articles_in(:build_deploy)  as = :ar
+        chapter $"${ar.title}" { page = $"article_${ar.id}" }
+      }
+    }
+    chapter "Documentation" { page = documentation_page
+      wdoc_repeater { each = doc_items  as = :d
+        chapter $"${d.name}" { page = $"doc_${d.id}" }
+      }
+      wdoc_repeater { each = articles_in(:documentation)  as = :ar
+        chapter $"${ar.title}" { page = $"article_${ar.id}" }
+      }
+    }
+    chapter "User personas" { page = personas_page
+      wdoc_repeater { each = personas  as = :pe
+        chapter $"${pe.name}" { page = $"persona_${pe.id}"
+          wdoc_repeater { each = filter(use_cases, fn(uc: UseCase) -> bool { uc.persona == pe.id })  as = :uc
+            chapter $"${uc.title}" { page = $"uc_${uc.id}" }
+          }
+        }
+      }
+      wdoc_repeater { each = articles_in(:personas)  as = :ar
+        chapter $"${ar.title}" { page = $"article_${ar.id}" }
+      }
+    }
+    chapter "System admin" { page = sysadmin_page
+      wdoc_repeater { each = sops  as = :so
+        chapter $"${so.title}" { page = $"sop_${so.id}" }
+      }
+      wdoc_repeater { each = articles_in(:sysadmin)  as = :ar
+        chapter $"${ar.title}" { page = $"article_${ar.id}" }
+      }
+    }
+    chapter "Standards & rules" { page = standards_page
+      wdoc_repeater { each = standards  as = :st
+        chapter $"${st.title}" { page = $"standard_${st.id}" }
+      }
+      wdoc_repeater { each = articles_in(:standards)  as = :ar
+        chapter $"${ar.title}" { page = $"article_${ar.id}" }
+      }
+    }
+    chapter "Domain" { page = domain_page
+      wdoc_repeater { each = domain_objects  as = :d
+        chapter $"${d.name}" { page = $"domain_${d.id}" }
+      }
+      chapter "Glossary" { page = glossary_page }
+      wdoc_repeater { each = articles_in(:domain)  as = :ar
+        chapter $"${ar.title}" { page = $"article_${ar.id}" }
+      }
+    }
+    chapter "Specs" { page = specs_page
+      wdoc_repeater { each = specs  as = :sp
+        chapter $"${sp.title}" { page = $"spec_${sp.id}" }
+      }
+      wdoc_repeater { each = articles_in(:specs)  as = :ar
+        chapter $"${ar.title}" { page = $"article_${ar.id}" }
+      }
+    }
   }
 }
 
-// Pages — one block per file under .wad/pages/.
-import "../../pages/index.wcl"
-import "../../pages/overview.wcl"
-import "../../pages/architecture.wcl"
+// Small shared stylesheet: the external-system card tint plus tightened
+// metadata paragraphs. Everything else rides on the theme.
+stylesheet "wad-book" {
+  css = <<CSS
+.wad-external { border-style: dashed; opacity: 0.92; }
+.wad-meta p { margin: 0.15rem 0; }
+CSS
+}

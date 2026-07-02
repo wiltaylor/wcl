@@ -42,6 +42,12 @@ pub struct FormatConfig {
     /// already coalesces runs of blank lines to a single marker, so
     /// any value `>= 1` is currently equivalent). Default: 1.
     pub blank_line_cap: usize,
+    /// Column at which a long single-line string label on a prose block
+    /// (see [`TEXT_WRAP_KINDS`]) is converted to a wrapped heredoc.
+    /// Wrapping inserts real newlines into the value — safe for prose
+    /// blocks because every renderer treats a newline inside paragraph
+    /// text as a space. Default: 100.
+    pub text_wrap_width: usize,
 }
 
 impl Default for FormatConfig {
@@ -50,9 +56,35 @@ impl Default for FormatConfig {
             indent: 2,
             trailing_comma_in_match: true,
             blank_line_cap: 1,
+            text_wrap_width: 100,
         }
     }
 }
+
+/// Block kinds whose inline string label is *prose* — long text the
+/// formatter may wrap into a heredoc (a value-changing edit: wrapping
+/// inserts `\n`s, which paragraph rendering treats as spaces). Only
+/// kinds with markdown-style flowing text belong here; everything else
+/// keeps its label byte-exact.
+pub const TEXT_WRAP_KINDS: &[&str] = &["p"];
+
+/// Block kinds that double as item-starter keywords: an empty-body
+/// block of one of these must keep explicit `{}` (see `print_block`),
+/// which also makes a heredoc label illegal (the closing tag must be
+/// followed by a bare newline).
+const ITEM_STARTERS: &[&str] = &[
+    "import",
+    "use",
+    "namespace",
+    "type",
+    "interface",
+    "union",
+    "symbol_set",
+    "let",
+    "fn",
+    "table",
+    "connection",
+];
 
 /// Canonical source for an AST using the default [`FormatConfig`].
 /// Mutate the AST via the public `ast::*` types, then call this to
@@ -273,6 +305,23 @@ impl Printer {
             self.push("::");
         }
         self.push(&b.kind);
+        // A single string label may print as a heredoc — legal only when
+        // nothing can follow it on the line (empty body, no trailing
+        // comment: the closing tag needs a bare newline, and item-starter
+        // kinds keep `{}`). Two cases:
+        //   - value-preserving: a multi-line label (an authored heredoc
+        //     label) keeps its heredoc form instead of degrading to a
+        //     `\n`-escaped one-liner — any kind;
+        //   - prose wrapping: a TEXT_WRAP_KINDS block whose quoted label
+        //     would overflow `text_wrap_width` is wrapped at safe break
+        //     points (never inside an inline-markup construct — the
+        //     stdlib inline patterns deliberately don't match `\n`).
+        if let Some(body) = self.heredoc_label(b) {
+            self.push_ch(' ');
+            self.print_heredoc(&body, "", false);
+            self.newline();
+            return;
+        }
         for label in &b.labels {
             self.push_ch(' ');
             self.print_expr(label, 0);
@@ -285,19 +334,6 @@ impl Printer {
         // an identifier re-dispatches as a namespace *declaration* (the
         // keyword forms are recognised by `kind` + identifier lookahead,
         // which doesn't stop at line breaks), silently rewriting the tree.
-        const ITEM_STARTERS: &[&str] = &[
-            "import",
-            "use",
-            "namespace",
-            "type",
-            "interface",
-            "union",
-            "symbol_set",
-            "let",
-            "fn",
-            "table",
-            "connection",
-        ];
         if b.items.is_empty() {
             if b.kind_ns.is_empty() && ITEM_STARTERS.contains(&b.kind.as_str()) {
                 self.push(" {}");
@@ -318,6 +354,43 @@ impl Printer {
         self.push("}");
         self.print_trailing_comment(&b.trailing_comment);
         self.newline();
+    }
+
+    /// The heredoc body to print for `b`'s label, when a heredoc label is
+    /// both legal and wanted (see the comment at the call site). `None`
+    /// falls back to ordinary label printing.
+    fn heredoc_label(&self, b: &Block) -> Option<String> {
+        if !b.items.is_empty() || b.trailing_comment.is_some() {
+            return None;
+        }
+        if b.kind_ns.is_empty() && ITEM_STARTERS.contains(&b.kind.as_str()) {
+            return None;
+        }
+        let [Expr::Utf8(s)] = b.labels.as_slice() else {
+            return None;
+        };
+        // Authored multi-line label: keep the heredoc form (value-preserving).
+        if s.lines().count() >= 2 {
+            return (heredoc_round_trips(s)).then(|| s.clone());
+        }
+        // Prose wrapping: only for text-bearing kinds, and only when the
+        // quoted one-liner would overflow the configured width.
+        if !TEXT_WRAP_KINDS.contains(&b.kind.as_str()) {
+            return None;
+        }
+        let line_len = self.cfg.indent * self.depth as usize
+            + b.kind.chars().count()
+            + 3 // ` "` + closing `"`
+            + EscapeString(s).to_string().chars().count();
+        if line_len <= self.cfg.text_wrap_width {
+            return None;
+        }
+        // The heredoc body prints indented one level deeper than the block,
+        // so wrap to the width that remains after that indent.
+        let body_indent = self.cfg.indent * (self.depth as usize + 1);
+        let content_width = self.cfg.text_wrap_width.saturating_sub(body_indent).max(20);
+        let wrapped = wrap_prose(s, content_width);
+        (wrapped.lines().count() >= 2 && heredoc_round_trips(&wrapped)).then_some(wrapped)
     }
 
     fn print_type_decl(&mut self, t: &TypeDecl) {
@@ -1603,6 +1676,103 @@ fn is_bare_ident(name: &str) -> bool {
         return false;
     }
     bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_')
+}
+
+/// Greedy-wrap single-line prose at `width` columns, breaking only at
+/// spaces that sit outside inline-markup constructs, and return the
+/// heredoc-shaped body (lines joined with `\n`, trailing `\n`).
+///
+/// The stdlib inline patterns (bold / italic / code / link / math)
+/// deliberately don't match across `\n`, so a break inside `**…**` or
+/// `[…](…)` would change rendering. The scanner below marks those spans
+/// unbreakable; a false positive (e.g. two incidental underscores) only
+/// costs a break opportunity, never correctness. A word longer than
+/// `width` (a URL) is left on its own over-long line rather than split.
+fn wrap_prose(text: &str, width: usize) -> String {
+    let breaks = safe_break_points(text);
+    let cols: Vec<usize> = {
+        // Byte index → visual column (chars before it), for width checks.
+        let mut v = vec![0; text.len() + 1];
+        for (col, (i, c)) in text.char_indices().enumerate() {
+            v[i] = col;
+            for b in 1..c.len_utf8() {
+                v[i + b] = col;
+            }
+        }
+        v[text.len()] = text.chars().count();
+        v
+    };
+
+    let mut out = String::with_capacity(text.len() + 8);
+    let mut start = 0usize;
+    while start < text.len() {
+        let line_end_col = cols[start] + width;
+        // The last safe break within the width, else the first one past it.
+        let within = breaks
+            .iter()
+            .filter(|&&b| b > start && cols[b] <= line_end_col)
+            .max()
+            .copied();
+        let past = breaks.iter().filter(|&&b| b > start).min().copied();
+        let cut = match (cols[text.len()] <= line_end_col, within, past) {
+            (true, ..) => None, // the rest fits
+            (false, Some(b), _) | (false, None, Some(b)) => Some(b),
+            (false, None, None) => None,
+        };
+        match cut {
+            Some(b) => {
+                out.push_str(text[start..b].trim_end());
+                out.push('\n');
+                start = b + 1; // consume the break space…
+                while text.as_bytes().get(start) == Some(&b' ') {
+                    start += 1; // …and any run of spaces after it
+                }
+            }
+            None => {
+                out.push_str(text[start..].trim_end());
+                out.push('\n');
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// Byte offsets of the spaces in `text` where a line break is safe:
+/// outside inline code spans, bold/italic runs, links, and math — and
+/// not after a `>` (the blockquote pattern styles to end-of-line, so a
+/// break would move where the quote ends).
+fn safe_break_points(text: &str) -> Vec<usize> {
+    let bytes = text.as_bytes();
+    let mut out = Vec::new();
+    let mut in_code = false; // `…`
+    let mut in_bold = false; // **…**
+    let mut in_italic = false; // _…_
+    let mut in_math = false; // $…$ / $$…$$
+    let mut link_depth = 0u32; // […](…) — [ to the closing )
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let c = bytes[i];
+        match c {
+            b'`' => in_code = !in_code,
+            _ if in_code => {} // a code span hides every other marker
+            b'>' => break,     // nothing after a `>` is a safe break
+            b'*' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                in_bold = !in_bold;
+                i += 1;
+            }
+            b'_' if text[i + 1..].contains('_') || in_italic => in_italic = !in_italic,
+            b'$' => in_math = !in_math,
+            b'[' => link_depth += 1,
+            // `](` continues the link into its target; a bare `]` ends it.
+            b']' if link_depth > 0 && bytes.get(i + 1) != Some(&b'(') => link_depth -= 1,
+            b')' if link_depth > 0 => link_depth -= 1,
+            b' ' if !in_bold && !in_italic && !in_math && link_depth == 0 => out.push(i),
+            _ => {}
+        }
+        i += 1;
+    }
+    out
 }
 
 /// `true` when `body` would survive a heredoc round-trip exactly.

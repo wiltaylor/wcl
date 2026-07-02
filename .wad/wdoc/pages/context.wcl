@@ -1,0 +1,46 @@
+// View 2 — System context: one derived diagram of the whole estate (systems
+// in a boundary, externals dashed, personas as actors) wired by the
+// system-level roll-up of every authored relation. Nothing here is drawn by
+// hand — it all derives from `relation` blocks. Resolves the `let` helpers
+// from wdoc/book/main.wcl.
+
+let ctx_sys_ids = map(systems, fn(s: System) -> identifier { s.id })
+
+page system_context { title = "System context"
+  h1 "System context"
+  p  $"How ${wad.name} sits in the world: the systems this design owns, the external systems it integrates with, and the personas that use it. Every edge derives from an authored `relation`, rolled up to system level."
+
+  wdoc_repeater { each = match len(relations) { 0 => [true], _ => [] }  as = :_e
+    callout "No relations yet" { class = ["note"]
+      body = "Author `relation` blocks under data/context/ and this diagram draws itself." }
+  }
+
+  // Radial layout on purpose: its boundary-member inflation seats every
+  // non-member (personas, externals) OUTSIDE the boundary band — a layered
+  // flow can place users inside the owned-systems hull.
+  diagram { width = 960  height = 560  layout = :radial
+    node_gap = 48.0  pan_zoom = true
+    desc = $"System context diagram for ${wad.name}"
+    wdoc_repeater { each = systems  as = :s
+      card { id = s.id  title = s.name  width = 190.0  height = 100.0
+        text $"${s.summary} [Details](system_${s.id})"
+      }
+    }
+    wdoc_repeater { each = externals  as = :e
+      card { id = e.id  title = e.name  width = 190.0  height = 90.0  class = ["wad-external"]
+        text $"${e.summary} [Details](external_${e.id})"
+      }
+    }
+    wdoc_repeater { each = personas  as = :pe
+      process $"${pe.name}" { id = pe.id  width = 140.0  height = 60.0
+        icon = "lucide.user"  link = $"persona_${pe.id}"
+      }
+    }
+    wdoc_repeater { each = match len(systems) { 0 => [], _ => [true] }  as = :_bd
+      // Padding ≥ the label headroom so the member inflation the radial
+      // solver applies covers the title band too.
+      boundary $"${wad.name}" { members = ctx_sys_ids  padding = 28.0 }
+    }
+    edges = ctx_edges
+  }
+}

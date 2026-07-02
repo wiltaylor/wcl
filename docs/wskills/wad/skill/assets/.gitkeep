@@ -1,0 +1,2 @@
+# Drop static data files (datasets, sample configs) here. A `skill_asset` block
+# in data/skill/artifacts.wcl ships each one into the rendered skill's assets/.

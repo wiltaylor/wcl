@@ -1,0 +1,121 @@
+// View 5 — Infrastructure: the environment list + promotion chain on the
+// landing page, then one page per environment rendering its infra-node
+// hierarchy (flat `parent` refs unrolled to four levels — deeper nodes land
+// in a flat table) and its deployment map. Resolves the `let` helpers from
+// wdoc/book/main.wcl.
+
+let infra_children = fn(pid: identifier) -> list<InfraNode> {
+  filter(infra_nodes, fn(n: InfraNode) -> bool { n.parent == pid })
+}
+let env_top_nodes = fn(eid: identifier) -> list<InfraNode> {
+  filter(infra_nodes, fn(n: InfraNode) -> bool {
+    n.parent == none && list_contains(n.environments, eid)
+  })
+}
+let shared_mark = fn(n: InfraNode) -> utf8 {
+  match len(n.environments) { 0 => "", 1 => "", _ => " · _shared_" }
+}
+let infra_line = fn(n: InfraNode) -> utf8 {
+  $"**${n.name}** (`${n.kind}`)${match n.technology { none => "", t2 => $" — ${t2}" }}${match n.address { none => "", ad => $" · `${ad}`" }}${shared_mark(n)}"
+}
+// Nodes deeper than the 4 rendered levels (level-4 nodes that still have
+// children) — surfaced in a flat table so nothing silently disappears.
+let promo_edges = flatten(map(environments, fn(e: Environment) -> list<Edge> {
+  match e.promotes_to { none => [], t2 => [{ source: e.id, destination: t2, label: "promotes to" }] }
+}))
+let env_deploys = fn(eid: identifier) -> list<DeployTarget> {
+  filter(deploy_targets, fn(dt: DeployTarget) -> bool { dt.environment == eid })
+}
+let shared_nodes = filter(infra_nodes, fn(n: InfraNode) -> bool { len(n.environments) > 1 })
+
+page infrastructure_page { title = "Infrastructure"
+  h1 "Infrastructure"
+  p  "The environments the system runs in, how changes promote between them, and the infrastructure shared across them."
+
+  wdoc_repeater { each = match len(environments) { 0 => [true], _ => [] }  as = :_e
+    p "_No environments recorded._"
+    p "Having no infrastructure is common — software that runs entirely on the user's machine (CLI tools, desktop apps, libraries) has no environments to promote through. Build and release plumbing lives in Build & deploy."
+  }
+
+  wdoc_repeater { each = match len(environments) { 0 => [], _ => [true] }  as = :_d
+    diagram { width = 860  height = 220  layout = :layered  direction = :left_to_right
+      layer_gap = 110.0  pan_zoom = true
+      desc = "Environment promotion chain"
+      wdoc_repeater { each = envs_sorted  as = :e
+        card { id = e.id  title = e.name  width = 170.0  height = 80.0
+          text $"${e.summary ?? ""} [Details](env_${e.id})"
+        }
+      }
+      edges = promo_edges
+    }
+    table {
+      header = ["Environment", "Kind", "URL"]
+      rows = map(envs_sorted, fn(e: Environment) -> list<utf8> {
+        [$"[${e.name}](env_${e.id})", match e.kind { none => "—", k2 => $"${k2}" }, e.url ?? "—"]
+      })
+    }
+  }
+
+  wdoc_repeater { each = match len(shared_nodes) { 0 => [], _ => [true] }  as = :_s
+    h2 "Shared infrastructure"
+    p  "Nodes serving more than one environment — changes here have blast radius."
+    table {
+      header = ["Node", "Kind", "Environments"]
+      rows = map(shared_nodes, fn(n: InfraNode) -> list<utf8> {
+        [n.name, $"${n.kind}", join(map(n.environments, fn(eid: identifier) -> utf8 { link_of(eid) }), ", ")]
+      })
+    }
+  }
+}
+
+// --- one page per environment ---------------------------------------------------
+wdoc_repeater { each = environments  as = :e
+  page $"env_${e.id}" { title = $"${e.name}"
+    h1 $"${e.name}"
+    wdoc_repeater { each = match e.summary { none => [], sx => [sx] }  as = :sx
+      p $"_${sx}_"
+    }
+    wdoc_repeater { each = match e.url { none => [], u2 => [u2] }  as = :u2
+      p $"**URL:** ${u2}"
+    }
+    wdoc_repeater { each = match e.promotes_to { none => [], t2 => [t2] }  as = :t2
+      p $"**Promotes to:** ${link_of(t2)}"
+    }
+    wdoc_repeater { each = match e.body { none => [], _ => [true] }  as = :_b
+      project { from = e.body }
+    }
+
+    h2 "Infrastructure"
+    wdoc_repeater { each = match len(env_top_nodes(e.id)) { 0 => [true], _ => [] }  as = :_n
+      p "_No infrastructure nodes recorded for this environment._"
+    }
+    wdoc_repeater { each = env_top_nodes(e.id)  as = :n1
+      h3 $"${n1.name}"
+      p  $"`${n1.kind}`${match n1.technology { none => "", t2 => $" — ${t2}" }}${match n1.address { none => "", ad => $" · `${ad}`" }}${shared_mark(n1)}${match n1.notes { none => "", nt => $" — ${nt}" }}"
+      wdoc_repeater { each = match n1.body { none => [], _ => [true] }  as = :_b
+        project { from = n1.body }
+      }
+      wdoc_repeater { each = infra_children(n1.id)  as = :n2
+        p $"- ${infra_line(n2)}"
+        wdoc_repeater { each = infra_children(n2.id)  as = :n3
+          p $"    - ${infra_line(n3)}"
+          wdoc_repeater { each = infra_children(n3.id)  as = :n4
+            p $"        - ${infra_line(n4)}"
+          }
+        }
+      }
+    }
+
+    wdoc_repeater { each = match len(env_deploys(e.id)) { 0 => [], _ => [true] }  as = :_d
+      h2 "Deployment map"
+      table {
+        header = ["Container", "Runs on", "Replicas", "URL"]
+        rows = map(env_deploys(e.id), fn(dt: DeployTarget) -> list<utf8> {
+          [link_of(dt.container), name_of(dt.infra_node),
+           match dt.replicas { none => "—", n2 => $"${n2}" }, dt.url ?? "—"]
+        })
+      }
+    }
+    edit_object { kind = "environment"  target = $"${e.id}" }
+  }
+}

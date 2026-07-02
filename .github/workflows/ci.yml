@@ -23,6 +23,18 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: just workspace-lint
       - run: just workspace-test
+      # Schema heredocs in the scaffold templates are canonical — fail on
+      # drift between them and the live copies (docs/wskills/*, .wad/).
+      - run: just wskill-schema-check
+      # The wskill scaffold's wdoc templates must match the live reference
+      # implementation (docs/wskills/wskill) — improvements get back-ported
+      # instead of stranding new scaffolds on stale templates.
+      - run: just wskill-template-check
+      - run: just wad-schema-check
+      # The reference WAD (.wad/) is the first wcl-init-wad consumer —
+      # validate its model and build its book like docs-build below.
+      - run: just wad-check
+      - run: just wad-build
       # The docs/ site is the largest real-world wdoc consumer — building it
       # catches renderer regressions that unit tests miss, and broken doc
       # pages, before they reach the deploy workflow.

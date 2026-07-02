@@ -1,0 +1,97 @@
+// The one system in the estate — WCL — and its C4 containers: the four
+// crates that compose into the binary plus the two editor integrations,
+// which ship separately but belong to the same system. The docs site is
+// NOT a system — documentation is an output and lives in the
+// documentation view (data/documentation/).
+namespace wcl.wad
+
+system wcl {
+  name    = "WCL"
+  summary = "The WCL language and its tooling: the `wcl` binary, the wdoc generator, the language server, and the editor integrations."
+  owner   = wil_taylor
+  repos   = [wcl_monorepo]
+  body {
+    p "One Rust workspace builds everything a user installs: the `wcl` binary (parse / check / eval / format / diff / scaffold / wdoc / LSP) plus the separately-shipped editor integrations. The documentation the system renders about itself is catalogued in the documentation view."
+  }
+}
+
+// --- containers of wcl ------------------------------------------------------
+
+container wcl_cli {
+  system     = wcl
+  name       = "WCL binary"
+  summary    = "The `wcl` binary — every user-facing command, the scaffolder, and the wdoc dev server."
+  kind       = :cli
+  technology = "Rust (clap, axum)"
+  repo       = wcl_monorepo
+  body {
+    p "Every command the binary exposes, with its home in the source tree:"
+    table {
+      header = ["Command", "What it does", "Lives in"]
+      rows = [
+        ["`wcl parse`", "Parse a document and print the AST / syntax diagnostics.", "`crates/wcl/src/main.rs`"],
+        ["`wcl check`", "Validate a document against its schemas (syntax + schema diagnostics).", "`crates/wcl/src/main.rs`"],
+        ["`wcl eval` / `wcl get`", "Evaluate a document or read one field, printed as WCL or JSON.", "`crates/wcl/src/main.rs`"],
+        ["`wcl set`", "Edit a field in place through the parse-for-edit → mutate → reformat pipeline.", "`crates/wcl/src/main.rs`"],
+        ["`wcl fmt`", "Reformat source (in place or to stdout).", "`crates/wcl/src/main.rs`"],
+        ["`wcl diff`", "WCL-aware entity/field diff of two documents; either side may be a `<rev>:<path>` git specifier.", "`crates/wcl/src/diff.rs`, `gitspec.rs`"],
+        ["`wcl init`", "Scaffold a project folder from a WCL template (built-in, user, or disk path).", "`crates/wcl/src/scaffold/`"],
+        ["`wcl repl`", "Interactive expression evaluation against a document.", "`crates/wcl/src/main.rs`"],
+        ["`wcl lsp`", "Run the language server (stdio or TCP).", "`crates/wcl_lsp`"],
+        ["`wcl wad spec`", "Derive a change-spec skeleton for a WAD from a reviewed git revision.", "`crates/wcl/src/wad.rs`"],
+        ["`wcl wdoc build`", "Render a wdoc site to static HTML.", "`crates/wcl_wdoc`"],
+        ["`wcl wdoc serve`", "Dev server: watch + rebuild-on-demand, `--comment` review mode, `--edit` WYSIWYG editing.", "`crates/wcl/src/serve.rs`"],
+        ["`wcl wdoc pdf`", "Render a wdoc document to PDF.", "`crates/wcl_wdoc/src/pdf/`"],
+        ["`wcl wdoc markdown`", "Render a wdoc site to AI-consumable Markdown.", "`crates/wcl_wdoc/src/markdown/`"],
+        ["`wcl wdoc skill`", "Emit a Claude skill folder from a wdoc site.", "`crates/wcl_wdoc/src/markdown/skill.rs`"],
+        ["`wcl wdoc comments`", "List / resolve the review comments a served document collected.", "`crates/wcl_wdoc/src/comments.rs`"],
+        ["`wcl wdoc review`", "Block until the reviewer sends the current comment round to the agent.", "`crates/wcl_wdoc/src/review.rs`"],
+      ]
+    }
+  }
+}
+
+container wcl_lang {
+  system     = wcl
+  name       = "wcl_lang"
+  summary    = "The language library: lexer, parser, AST, document view, lazy evaluator, schema validator, host bindings."
+  kind       = :library
+  technology = "Rust"
+  repo       = wcl_monorepo
+}
+
+container wcl_wdoc {
+  system     = wcl
+  name       = "wcl_wdoc"
+  summary    = "The static-site / skill generator: WCL stdlib, HTML/Markdown/PDF/skill backends, diagram layout."
+  kind       = :library
+  technology = "Rust"
+  repo       = wcl_monorepo
+}
+
+container wcl_lsp {
+  system     = wcl
+  name       = "wcl_lsp"
+  summary    = "The language server behind `wcl lsp`: diagnostics, completion, formatting, cross-file navigation."
+  kind       = :service
+  technology = "Rust (tower-lsp, ropey)"
+  repo       = wcl_monorepo
+}
+
+container vscode_extension {
+  system     = wcl
+  name       = "VS Code extension"
+  summary    = "Editor client that spawns `wcl lsp` and wires WCL files to it. Ships separately as a `.vsix`."
+  kind       = :editor_plugin
+  technology = "TypeScript"
+  repo       = wcl_monorepo
+}
+
+container tree_sitter_wcl {
+  system     = wcl
+  name       = "tree-sitter-wcl"
+  summary    = "Tree-sitter grammar for editors that highlight via tree-sitter. Ships separately from the binary."
+  kind       = :library
+  technology = "Tree-sitter (C)"
+  repo       = wcl_monorepo
+}

@@ -1,9 +1,0 @@
-import <wdoc.wcl>
-
-// This is where standards and rules are documented for the system.
-// This is where coding standards live and any business or style rules for anything related to the system.
-
-page standards-rules {
-  
-}
-

@@ -13,6 +13,7 @@ mod gitspec;
 mod preview;
 mod scaffold;
 mod serve;
+mod wad;
 
 const EXIT_OK: u8 = 0;
 const EXIT_PARSE: u8 = 1;
@@ -241,6 +242,47 @@ enum Command {
         /// Output format: `wcl` (default) or `json`.
         #[arg(long, value_enum, default_value_t = DiffFormat::Wcl)]
         format: DiffFormat,
+    },
+    /// WAD (architecture document) helpers. Scaffold a WAD with
+    /// `wcl init wad`.
+    Wad {
+        #[command(subcommand)]
+        cmd: WadCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum WadCommand {
+    /// Derive a change-spec skeleton from a WAD diff: compare the working
+    /// tree against a reviewed git revision (evaluated views, imports
+    /// resolved from each side) and write a schema-valid `spec` block —
+    /// status `:planning`, the exact entity/field change list, TODO
+    /// rationale/instructions — into `data/specs/` beside the entry
+    /// document. Changes to `spec` entities themselves are filtered out
+    /// unless `--include-specs`.
+    ///
+    /// Examples:
+    ///   wcl wad spec --from v1.2 wad.wcl
+    ///   wcl wad spec --from HEAD~3 --id spec_billing --title "Billing split"
+    Spec {
+        /// Reviewed baseline revision to diff from (any git rev).
+        #[arg(long)]
+        from: String,
+        /// WAD root document (default: wad.wcl in the current directory).
+        entry: Option<PathBuf>,
+        /// Spec id — also the filename (default: spec_from_<shortsha>).
+        #[arg(long)]
+        id: Option<String>,
+        /// Spec title (default: "Changes since <rev>").
+        #[arg(long)]
+        title: Option<String>,
+        /// Keep changes to `spec` entities in the change list.
+        #[arg(long)]
+        include_specs: bool,
+        /// `wcl` writes the skeleton file; `json` prints the change list
+        /// to stdout instead (nothing is written).
+        #[arg(long, value_enum, default_value_t = wad::SpecFormat::Wcl)]
+        format: wad::SpecFormat,
     },
 }
 
@@ -528,6 +570,19 @@ fn main() -> ExitCode {
         } => scaffold::run_init(template, dest, answers, define, defaults, force, list),
         Command::Wdoc { cmd } => run_wdoc(cmd),
         Command::Diff { old, new, format } => run_diff(&old, &new, format),
+        Command::Wad { cmd } => match cmd {
+            WadCommand::Spec {
+                from,
+                entry,
+                id,
+                title,
+                include_specs,
+                format,
+            } => {
+                let entry = entry.unwrap_or_else(|| PathBuf::from("wad.wcl"));
+                wad::run_spec(&from, &entry, id, title, include_specs, format)
+            }
+        },
     };
     ExitCode::from(code)
 }

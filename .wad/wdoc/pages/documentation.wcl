@@ -1,0 +1,44 @@
+// Documentation view — the documentation artefacts the project ships: sites,
+// books, agent skills, references, READMEs. Documentation is an OUTPUT of
+// the system, not a system: this view records where each artefact is
+// authored, what builds it, where it's hosted, and who it serves. Resolves
+// the `let` helpers from wdoc/book/main.wcl.
+
+page documentation_page { title = "Documentation"
+  h1 "Documentation"
+  p  "Everything the project publishes to be read. Each artefact records where it's authored, what builds it, where it's hosted, and who it serves — so the docs estate is reviewable like the rest of the architecture."
+
+  wdoc_repeater { each = match len(doc_items) { 0 => [true], _ => [] }  as = :_e
+    p "_No documentation recorded._"
+  }
+  wdoc_repeater { each = match len(doc_items) { 0 => [], _ => [true] }  as = :_t
+    table {
+      header = ["Artefact", "Kind", "Published at", "Summary"]
+      rows = map(doc_items, fn(d: DocItem) -> list<utf8> {
+        [$"[${d.name}](doc_${d.id})", $"`${d.kind}`", d.url ?? "—", d.summary]
+      })
+    }
+  }
+}
+
+// --- one page per doc_item -----------------------------------------------------
+wdoc_repeater { each = doc_items  as = :d
+  page $"doc_${d.id}" { title = $"${d.name}"
+    h1 $"${d.name}"
+    p  $"_${d.summary}_"
+    table {
+      rows = [
+        ["Kind", $"${d.kind}"],
+        ["Source", match d.source { none => "—", sx => $"`${sx}`" }],
+        ["Published at", d.url ?? "—"],
+        ["Built by", match d.built_by { none => "—", b2 => link_of(b2) }],
+        ["Hosted on", d.hosted_on ?? "—"],
+        ["Audience", match len(d.audience) { 0 => "—", _ => join(map(d.audience, fn(pid: identifier) -> utf8 { link_of(pid) }), ", ") }],
+      ]
+    }
+    wdoc_repeater { each = match d.body { none => [], _ => [true] }  as = :_b
+      project { from = d.body }
+    }
+    edit_object { kind = "doc_item"  target = $"${d.id}" }
+  }
+}

@@ -1,0 +1,39 @@
+// View data — the personas that USE the toolchain. Personas are the
+// system's users, not its builders: the maintainer lives in view 1 as a
+// stakeholder with RACI rows.
+//
+// No access_grant blocks on purpose: an access grant records a SECURITY
+// control (SSO, signup approval, admin invite) — WCL is a freely installed
+// tool with no access control, so the honest record is none at all.
+// Installation itself is not access control.
+namespace wcl.wad
+
+persona document_creator {
+  name    = "Document creator"
+  summary = "Authors WCL documents — docs sites, books, skills, typed data — and ships them with wdoc."
+  kind    = :human
+  goals   = [
+    "Author pages and data as one typed model and see them live-reload",
+    "Publish the same model as a website, a book, Markdown, and a skill folder",
+  ]
+}
+
+persona app_developer {
+  name    = "Application developer"
+  summary = "Builds their own application and embeds WCL as its configuration/schema language."
+  kind    = :human
+  goals   = [
+    "Give their app typed, validated config with good error messages for free",
+    "Expose app-specific builtins and read values through the host bindings",
+  ]
+}
+
+persona config_user {
+  name    = "User"
+  summary = "Edits the WCL config files of third-party applications that embed WCL."
+  kind    = :human
+  goals   = [
+    "Change a config value without breaking the app",
+    "Get a pointed error with a source snippet when they do",
+  ]
+}

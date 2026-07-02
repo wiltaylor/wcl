@@ -1,9 +1,0 @@
-import <wdoc.wcl>
-
-// Lists all of the different user personas that use the system.
-// Details on how the user is granted access to the system, etc.
-
-page user-persona {
-  
-}
-

@@ -510,12 +510,14 @@ page index {
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
 
-    // shop bbox (20,20,120,50) + default padding 12 ⇒ box (8,8,144,74).
+    // shop bbox (20,20,120,50) + default padding 12, with the labelled top
+    // edge widened to 8 + 14 + 4 = 26 of headroom so the title is never
+    // covered by a member ⇒ box (8,-6,144,88).
     assert!(
         html.contains(
-            "<rect class=\"wdoc-boundary\" x=\"8\" y=\"8\" width=\"144\" height=\"74\" />"
+            "<rect class=\"wdoc-boundary\" x=\"8\" y=\"-6\" width=\"144\" height=\"88\" />"
         ),
-        "boundary should hug shop's manual bbox:\n{html}"
+        "boundary should hug shop's manual bbox plus label headroom:\n{html}"
     );
     // Exactly one boundary is drawn — the `Ghost` boundary (members all
     // unresolved) draws nothing.

@@ -1,0 +1,5 @@
+// View data hub — screens: wireframes / terminal mock-ups, owned by
+// components. This estate has none: the `wcl` binary is a CLI and its
+// terminal output is documented in the commands table, not modelled as
+// screens.
+namespace wcl.wad

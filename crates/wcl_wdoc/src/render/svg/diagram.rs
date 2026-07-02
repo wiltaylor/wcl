@@ -589,10 +589,20 @@ fn render_one_boundary(
     }
 
     let pad = field_f64(block, "padding").unwrap_or(12.0).max(0.0);
+    // The labelled edge reserves headroom for the title band (inset + one
+    // text line + a small gap) so member shapes never cover the label.
+    let label_pad = (LABEL_INSET + crate::text::DEFAULT_FONT_SIZE + 4.0).max(pad);
+    let pos = field_symbol(block, "label_pos").unwrap_or_default();
+    let label_on_bottom = matches!(pos.as_str(), "bottom_left" | "bottom" | "bottom_right");
+    let (pad_top, pad_bottom) = match (&label, label_on_bottom) {
+        (None, _) => (pad, pad),
+        (Some(_), true) => (pad, label_pad),
+        (Some(_), false) => (label_pad, pad),
+    };
     let x = min_x - pad;
-    let y = min_y - pad;
+    let y = min_y - pad_top;
     let w = (max_x - min_x).max(0.0) + 2.0 * pad;
-    let h = (max_y - min_y).max(0.0) + 2.0 * pad;
+    let h = (max_y - min_y).max(0.0) + pad_top + pad_bottom;
     let bbox = (x, y, w, h);
 
     let mut svg = boundary_rect(block, bbox);
@@ -629,11 +639,16 @@ fn boundary_rect(block: &Block<'_>, bbox: (f64, f64, f64, f64)) -> String {
     out
 }
 
+/// How far the boundary title sits inside its box corner. The boundary
+/// box reserves `LABEL_INSET + font + gap` of padding on the labelled
+/// edge (see `render_one_boundary`) so members can't cover the text.
+const LABEL_INSET: f64 = 8.0;
+
 /// The boundary's title `<text>`, placed per `label_pos` (default
 /// `:top_left`), inset from the box corner. Carries the themed
 /// `wdoc-boundary-label` class.
 fn boundary_label(block: &Block<'_>, text: &str, bbox: (f64, f64, f64, f64)) -> String {
-    const INSET: f64 = 8.0;
+    const INSET: f64 = LABEL_INSET;
     let (x, y, w, h) = bbox;
     let pos = field_symbol(block, "label_pos").unwrap_or_default();
     let (lx, anchor) = match pos.as_str() {

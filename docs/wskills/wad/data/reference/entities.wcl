@@ -1,0 +1,65 @@
+// Entities — the concrete named things around the WAD format.
+
+entity wcl_init_wad {
+  name    = "wcl init wad"
+  kind    = :command
+  summary = "Scaffolds a complete WAD: schema, empty per-view data hubs, the book templates, extractor starter, justfile."
+  related = [creating_a_wad, wad_cli]
+  audience = :both
+  body {
+    p "Prompts for `system_id`, `system_name`, `system_summary`, `date`, and `include_extractors` (gates `scripts/` + the generated-data placeholder). Answer non-interactively with `-D key=value` and `--defaults`:"
+    code "console" { source = <<'SH'
+$ wcl init wad ./acme-wad -D system_id=acme -D system_name="Acme Shop" --defaults
+SH
+    }
+    p "The scaffolded book renders immediately (`just book-build`) — every chapter shows a “not recorded yet” stub until its data arrives. All twelve views are always scaffolded; empty folders are the checklist."
+  }
+}
+
+entity wcl_diff_wad {
+  name    = "wcl diff (WAD usage)"
+  kind    = :command
+  summary = "Diffs two WAD revisions over the evaluated views — the seam the change workflow builds on."
+  related = [spec_lifecycle, wad_cli]
+  audience = :both
+  body {
+    p "`wcl diff <rev>:wad.wcl wad.wcl` compares the *evaluated* documents: the git side materialises that revision's whole tree (so imports — including committed generated data — resolve from it), and formatting-only churn produces no diff. Entities key as `kind:label`; field edits report by path with old/new values; `--format json` for tooling."
+    p "For change management it is one of the delta sources the spec-writing LLM reads (alongside `git diff`, and seeded by `wcl wad spec --from <rev>`), and it is the fast answer to “what changed since the review?”. General diff semantics live in the wcl wskill."
+  }
+}
+
+entity c4_model {
+  name    = "C4 model"
+  kind    = :standard
+  summary = "Simon Brown's four-level architecture-diagram model — the shape of a WAD's Systems view."
+  related = [c4_drilldown]
+  body {
+    p "Context / Container / Component / Code, each level zooming into the last — see [c4model.com](https://c4model.com). WAD adapts it: the context diagram is derived from relations rather than drawn, and the Code level is a typed `code_item` (module graph / DB schema / class diagram / API) that extractor scripts own, documenting the public interface only."
+  }
+}
+
+entity arc42 {
+  name    = "arc42"
+  kind    = :standard
+  summary = "The template of named architecture-documentation sections WAD's twelve views descend from."
+  related = [twelve_views]
+  body {
+    p "[arc42](https://arc42.org) fixes a section list so readers navigate any architecture document blind. WAD keeps that property with its own twelve views, roughly mapping: arc42 §1–2 → Overview; §3 → System context + External systems; §5 → Systems; §7 → Infrastructure + Build & deploy; §8 → Domain + Standards; §9 → ADRs; §10–11 → articles where needed. WAD adds what arc42 leaves informal: typed data, derived diagrams, personas, SOPs, and the spec lifecycle."
+  }
+}
+
+entity uv {
+  name    = "uv"
+  kind    = :tool
+  summary = "The Python runner behind WAD extractors — single-file scripts with inline PEP 723 dependency metadata."
+  related = [extractor_anatomy]
+  body {
+    p "Only two features matter here: `uv run script.py` resolves and runs a script in an isolated environment, and the `# /// script` header pins `requires-python` and `dependencies` inside the file itself. That makes an extractor one self-contained artefact — no venv, no requirements.txt, no packaging."
+  }
+}
+
+entity wil_taylor {
+  name    = "Wil Taylor"
+  kind    = :person
+  summary = "Author and maintainer of WCL and the WAD format."
+}

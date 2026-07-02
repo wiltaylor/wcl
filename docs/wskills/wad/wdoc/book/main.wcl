@@ -1,0 +1,168 @@
+// Book projection — human-readable wdoc site over the wskill data model.
+//
+// Build:  wcl wdoc build wdoc/book/main.wcl --out out/book
+//
+// This template contains NO topic content — only projections over the data
+// gathered by the root @document (concepts, entities, …). Chapter order follows
+// the WSKILL PRD §10. When you add a typed extension block in schema/extensions.wcl,
+// add a render section for it here (search for "CUSTOM BLOCKS").
+
+import <wdoc.wcl>
+import "../../wskill.wcl"
+import "../component/common.wcl"    // UnitRef + shared per-unit sub-sections
+import "../component/skill_md.wcl"  // skill_md_body (shared SKILL.md body, for the preview)
+import "../component/concept.wcl"   // concept_body
+import "../component/entity.wcl"    // entity_body
+import "../component/fact.wcl"      // fact_body
+import "../component/process.wcl"   // process_body
+import "../component/type_index.wcl" // shared unit-index page component
+
+// Built-in standalone pages — one file each under pages/ (the generated
+// per-unit pages stay as repeaters below). These resolve the `let`s defined in
+// this file, so they are only valid as part of this document.
+import "../pages/overview.wcl"     // index (start page)
+import "../pages/reference.wcl"    // reference_page
+import "../pages/skill_links.wcl"  // skill_links_page
+import "../pages/concepts.wcl"     // concepts_page
+import "../pages/entities.wcl"     // entities_page
+import "../pages/facts.wcl"        // facts_page
+import "../pages/processes.wcl"    // processes_page
+
+// The single topic block, bound from its gather list (see base.wcl
+// for why it is a list). A wskill always has exactly one.
+let topic = head(topics)
+
+// Audience filter — the book is the comprehensive human reference. Each `let`
+// shadows the gathered list of the same name with its "both"/"book" subset
+// (dropping ai-only notes), so the book renders everything meant for readers.
+let in_book    = fn(a: Audience) -> bool { match a { :ai => false, _ => true } }
+let concepts   = filter(concepts,   fn(c: Concept)   -> bool { in_book(c.audience) })
+let entities   = filter(entities,   fn(e: Entity)    -> bool { in_book(e.audience) })
+let facts      = filter(facts,      fn(f: Fact)      -> bool { in_book(f.audience) })
+let examples   = filter(examples,   fn(x: Example)   -> bool { in_book(x.audience) })
+// `all_indexes` is the raw gathered list (every audience); `book_indexes` is
+// the book view (drops `:ai`). The skill_links page derives the skill view
+// (`:ai`/`:both`) from `all_indexes` — it can't re-filter `book_indexes`, which
+// has already dropped the `:ai`-only skill-nav indexes. Top-level only; nested
+// sub-indexes are reached through `ix.children`.
+let all_indexes  = indexes
+let book_indexes = filter(all_indexes, fn(x: Index) -> bool { in_book(x.audience) })
+let procedures = filter(procedures, fn(p: Procedure) -> bool { in_book(p.audience) })
+
+// Backlinks: every unit flattened to { name, href, related } so a unit page can
+// list the notes that point *at* it (the inverse of its own `related`). Built
+// from the audience-filtered lists above, so backlinks track the book's view.
+// UnitRef is declared in component/units.wcl (shared with the components).
+let all_units = flatten([
+  map(concepts,   fn(c: Concept)   -> UnitRef { { id: c.id, name: c.name,  href: $"concept_${c.id}", related: c.related } }),
+  map(entities,   fn(e: Entity)    -> UnitRef { { id: e.id, name: e.name,  href: $"entity_${e.id}",  related: e.related } }),
+  map(facts,      fn(f: Fact)      -> UnitRef { { id: f.id, name: f.title, href: $"fact_${f.id}",    related: f.related } }),
+  map(procedures, fn(p: Procedure) -> UnitRef { { id: p.id, name: p.title, href: $"process_${p.id}", related: p.related } }),
+])
+let referenced_by = fn(uid: identifier) -> list<UnitRef> {
+  filter(all_units, fn(u: UnitRef) -> bool { list_contains(u.related, uid) })
+}
+
+// The per-unit "Related" / "Referenced by" two-column block: top-align the two
+// columns and tighten the bullet rows (grid cells don't collapse margins, which
+// otherwise leaves the lists looking double-spaced).
+stylesheet "related-cols" {
+  css = <<CSS
+.related-cols { align-items: start; margin-top: 2.75rem; padding-top: 1.6rem; border-top: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); }
+.related-cols p { margin: 0.15rem 0; }
+.related-cols .heading-2 { margin: 0 0 0.35rem; }
+CSS
+}
+
+// --- site -------------------------------------------------------------------
+
+site book {
+  default_template = :book
+  title            = $"${topic.name}"
+  summary          = $"${topic.summary}"
+  root             = true
+  theme            = :nord
+  theme_toggle     = true
+  search           = true
+  toc {
+    chapter "Overview"       { page = index }
+    // Each `index` is a curated grouping pinned into the nav tree: a heading
+    // (no page of its own) whose children are the concept / entity / fact /
+    // process pages it lists in `related` — resolved to their unit pages — plus
+    // any nested sub-indexes, each pinning its own units. A `related` id that
+    // resolves to no book-included unit simply contributes nothing.
+    wdoc_repeater { each = book_indexes  as = :ix  chapter $"${ix.name}" {
+      wdoc_repeater { each = ix.related  as = :rid
+        wdoc_repeater { each = filter(concepts,   fn(x: Concept)   -> bool { x.id == rid })  as = :t  chapter $"${t.name}"  { page = $"concept_${t.id}" } }
+        wdoc_repeater { each = filter(entities,   fn(x: Entity)    -> bool { x.id == rid })  as = :t  chapter $"${t.name}"  { page = $"entity_${t.id}" } }
+        wdoc_repeater { each = filter(facts,      fn(x: Fact)      -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"fact_${t.id}" } }
+        wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"process_${t.id}" } }
+      }
+      wdoc_repeater { each = filter(ix.children, fn(x: Index) -> bool { in_book(x.audience) })  as = :cix  chapter $"${cix.name}" {
+        wdoc_repeater { each = cix.related  as = :rid
+          wdoc_repeater { each = filter(concepts,   fn(x: Concept)   -> bool { x.id == rid })  as = :t  chapter $"${t.name}"  { page = $"concept_${t.id}" } }
+          wdoc_repeater { each = filter(entities,   fn(x: Entity)    -> bool { x.id == rid })  as = :t  chapter $"${t.name}"  { page = $"entity_${t.id}" } }
+          wdoc_repeater { each = filter(facts,      fn(x: Fact)      -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"fact_${t.id}" } }
+          wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"process_${t.id}" } }
+        }
+      } }
+    } }
+  }
+  // The Reference catalogue (the four units, the graph, and the per-unit
+  // pages) lives behind a single pinned sidebar button rather than a sprawling
+  // TOC section — `reference_page` lists everything; the unit / graph pages are
+  // still generated (their document-scope repeaters are below) and reached from
+  // there and via cross-links.
+  sidebar_footer {
+    button "Reference"     { page = reference_page    icon = "lucide.chart-network" }
+    button "Skill preview" { page = skill_links_page   icon = "lucide.bot" }
+  }
+}
+
+// --- 1. Overview / index pages ----------------------------------------------
+// The Overview, Reference, per-kind index and Glossary pages live one-per-file
+// under pages/ (imported above). The generated per-unit pages stay here as
+// repeaters, each delegating to a component.
+
+// --- 2. Concepts — one generated page per concept ---------------------------
+// concepts_page (the index) lives in pages/concepts.wcl; each concept's body
+// is generated below and appears as a TOC sub-entry.
+
+// One page per concept — body projected, related ids resolved to unit-page links.
+wdoc_repeater { each = concepts  as = :c
+  page $"concept_${c.id}" { title = $"${c.name}"
+    concept_body { unit = c  examples = examples  all_units = all_units  backlinks = referenced_by(c.id)  layout = "columns" }
+  }
+}
+
+// --- 2b. Entities — one page per entity (entities_page → pages/entities.wcl) -
+wdoc_repeater { each = entities  as = :e
+  page $"entity_${e.id}" { title = $"${e.name}"
+    entity_body { unit = e  examples = examples  all_units = all_units  backlinks = referenced_by(e.id)  layout = "columns" }
+  }
+}
+
+// --- 2c. Facts — one page per fact (facts_page → pages/facts.wcl) ------------
+wdoc_repeater { each = facts  as = :f
+  page $"fact_${f.id}" { title = $"${f.title}"
+    fact_body { unit = f  examples = examples  all_units = all_units  backlinks = referenced_by(f.id)  layout = "columns" }
+  }
+}
+
+// --- 3. Reference — reference_page lives in pages/reference.wcl --------------
+
+// --- 5. Processes — one generated page per procedure ------------------------
+// processes_page (the index) lives in pages/processes.wcl.
+
+// One page per procedure — document-root generator → process_<id>.html.
+wdoc_repeater { each = procedures  as = :pr
+  page $"process_${pr.id}" { title = $"${pr.title}"
+    process_body { unit = pr  all_units = all_units  backlinks = referenced_by(pr.id)  layout = "columns" }
+  }
+}
+
+// --- Indexes — curated groupings pinned into the nav tree (see the `toc`) -----
+// An index no longer renders its own page in the book: it's a heading in the
+// sidebar whose children are the unit pages it lists in `related` (plus nested
+// sub-indexes). The `toc` block above wires this up; nothing is generated here.
+

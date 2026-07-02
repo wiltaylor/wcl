@@ -1,0 +1,792 @@
+// WAD base schema — ships with the `wcl init wad` scaffold.
+//
+// Schema version: 0.2.0 (mirror it in `schema_version` in wad.wcl).
+//
+// DO NOT HAND-EDIT. The canonical copy lives in the scaffold template
+// (crates/wcl/src/scaffold/templates/wad.wcl); regenerate with
+// `just wad-schema-sync`. Everything system-specific belongs in
+// `extensions.wcl`, and the vocabularies (kinds.wcl) ARE hand-editable.
+//
+// A WAD (Wil's Architecture Document) is a typed data model of a software
+// system — arc42-inspired views over a C4 drill-down — that users and
+// extractor scripts populate under data/, and the wdoc templates under
+// wdoc/book/ render into a twelve-chapter book. The schema travels with
+// the document: a WAD folder is fully interpretable (check + render)
+// without any external tooling beyond `wcl`.
+//
+// Conventions:
+//   - every top-level block carries `@inline(0) id: identifier`; ids become
+//     page routes, so keep them to `A-Za-z0-9_-`
+//   - diagram-node kinds (system / container / component / external_system /
+//     persona / environment / infra_node / screen) share ONE id space — a
+//     `relation` endpoint must resolve unambiguously
+//   - cross-references are bare identifiers (`system = acme_shop`), never
+//     nested blocks — scripts can emit them line by line
+//   - freeform prose rides on records via `@child("body")` and is projected
+//     by the templates; it is never required
+namespace wcl.wad
+
+import <wdoc.wcl>
+import "./kinds.wcl"
+
+// ---------------------------------------------------------------------------
+// Root metadata (exactly one per WAD)
+// ---------------------------------------------------------------------------
+
+// The document's own metadata — which system this WAD describes and the
+// version of that system it reflects. Templates bind `let wad = head(wads)`.
+@block("wad")
+type Wad {
+  @inline(0) id: identifier
+  @doc("Human name of the described system.")
+  name: utf8
+  @doc("One-line summary of the described system.")
+  summary: utf8
+  @doc("Longer prose introduction (heredoc).")
+  description: utf8?
+  @doc("Version of the DESCRIBED system this WAD reflects.")
+  version: utf8?
+  @default([]) tags: list<utf8>
+  @doc("ISO date the WAD was created.")
+  created: utf8
+  @doc("ISO date of the last full update sweep.")
+  updated: utf8?
+  maintainer: utf8?
+}
+
+// ---------------------------------------------------------------------------
+// View 1 — Overview: stakeholders, RACI, ADRs
+// ---------------------------------------------------------------------------
+
+// A named person or party with a stake in the system.
+@block("stakeholder")
+type Stakeholder {
+  @inline(0) id: identifier
+  name: utf8
+  @doc("Their role relative to the system (sponsor, architect, operator…).")
+  role: utf8
+  org: utf8?
+  contact: utf8?
+  @doc("Optional persona id this stakeholder acts as.")
+  persona: identifier?
+}
+
+// One RACI row: an activity and who is Responsible / Accountable /
+// Consulted / Informed for it (stakeholder ids).
+@block("raci_entry")
+type RaciEntry {
+  @inline(0) id: identifier
+  @doc("The activity or concern this row governs.")
+  activity: utf8
+  @default([]) responsible: list<identifier>
+  @default([]) accountable: list<identifier>
+  @default([]) consulted:   list<identifier>
+  @default([]) informed:    list<identifier>
+}
+
+// An architecture decision record. Short structured form in fields; long
+// form (options considered, full context) in the body.
+@block("adr")
+type Adr {
+  @inline(0) id: identifier
+  @doc("ADR number — the book renders and cross-references it as ADR-<n> (zero-padded). Assign sequentially; never renumber.")
+  n: u32
+  title: utf8
+  status: AdrStatus
+  @doc("ISO date the decision was made (or last moved status).")
+  date: utf8
+  @default([]) deciders: list<utf8>
+  @doc("What situation forced a decision.")
+  context: utf8?
+  @doc("What was decided.")
+  decision: utf8?
+  @doc("What follows from the decision — good and bad.")
+  consequences: utf8?
+  @doc("ADR id this decision supersedes (the inverse link is computed).")
+  supersedes: identifier?
+  @default([]) related: list<identifier>
+  @default([]) tags: list<utf8>
+  @child("body") body: WdocAddressableBody?
+}
+
+// ---------------------------------------------------------------------------
+// View 2 — System context: relations
+// ---------------------------------------------------------------------------
+
+// A directed relationship between two nodes (any ids from the shared node
+// space: systems, containers, components, externals, personas). Author a
+// relation at the LOWEST meaningful level — container↔container,
+// container↔external, persona↔container; every diagram above that level
+// derives its edges by rolling endpoints up, never by duplicate authoring.
+@block("relation")
+type Relation {
+  @inline(0) id: identifier
+  @doc("Origin node id.")
+  source: identifier
+  @doc("Target node id.")
+  destination: identifier
+  kind: RelationKind
+  @doc("Edge text; defaults from the kind when omitted.")
+  label: utf8?
+  @doc("Wire protocol / mechanism (HTTPS, AMQP, spawn, …).")
+  protocol: utf8?
+  @doc("What data flows across this relation.")
+  data: utf8?
+  notes: utf8?
+  @default([]) tags: list<utf8>
+}
+
+// ---------------------------------------------------------------------------
+// View 3 — External systems
+// ---------------------------------------------------------------------------
+
+// Someone to call when the external system misbehaves.
+@block("support_contact")
+type SupportContact {
+  @inline(0) id: identifier
+  name: utf8
+  role: utf8?
+  @doc("How to reach them (email, portal, phone…).")
+  channel: utf8
+  details: utf8?
+}
+
+// A concrete connection detail: URL, IP, queue name, config knob.
+@block("endpoint")
+type Endpoint {
+  @inline(0) id: identifier
+  name: utf8
+  @doc("Environment id this endpoint belongs to (omit when shared).")
+  environment: identifier?
+  @doc("What sort of detail this is: url / ip / config / queue / …")
+  kind: utf8
+  value: utf8
+  notes: utf8?
+}
+
+// A pointer to API documentation or another integration reference.
+@block("api_ref")
+type ApiRef {
+  @inline(0) id: identifier
+  name: utf8
+  @doc("What sort of reference: openapi / docs / repo / postman / …")
+  kind: utf8
+  @doc("Where it lives (URL or path).")
+  location: utf8
+  notes: utf8?
+}
+
+// A security-relevant fact about the integration.
+@block("security_note")
+type SecurityNote {
+  @inline(0) id: identifier
+  title: utf8
+  detail: utf8
+  severity: Criticality?
+}
+
+// A third-party system this design integrates with AS PART OF ITS FUNCTION —
+// an API it calls, an identity provider, a payment gateway, a data feed.
+// Platforms that host, build, or ship the system (clouds, CI services, CDNs,
+// package registries the build pulls from) are NOT externals — model those
+// as `infra_node`s in the infrastructure view.
+@block("external_system")
+type ExternalSystem {
+  @inline(0) id: identifier
+  name: utf8
+  summary: utf8
+  kind: ExternalKind
+  vendor: utf8?
+  url: utf8?
+  criticality: Criticality?
+  @default([]) tags: list<utf8>
+  @children("support_contact") contacts:  list<SupportContact>
+  @children("endpoint")        endpoints: list<Endpoint>
+  @children("api_ref")         api_refs:  list<ApiRef>
+  @children("security_note")   security:  list<SecurityNote>
+  @child("body") body: WdocAddressableBody?
+}
+
+// ---------------------------------------------------------------------------
+// View 4 — Systems: the C4 drill-down (system → container → component → code)
+// ---------------------------------------------------------------------------
+
+// A system: the top C4 level — something you'd draw as one box when
+// explaining the estate to an outsider.
+@block("system")
+type System {
+  @inline(0) id: identifier
+  name: utf8
+  summary: utf8
+  @doc("Stakeholder id who owns this system.")
+  owner: identifier?
+  @default([]) repos: list<identifier>
+  @default([]) tags: list<utf8>
+  @child("body") body: WdocAddressableBody?
+}
+
+// A container: the independently deployable / runnable unit inside a system
+// (C4 level 2). Block kinds are namespace-scoped, so `container` here lives
+// in `wcl.wad` and never collides with wdoc's diagram-grouping `container`
+// shape — data files carry `namespace wcl.wad`, so they author it bare.
+@block("container")
+type Container {
+  @inline(0) id: identifier
+  @doc("System id this container belongs to.")
+  system: identifier
+  name: utf8
+  summary: utf8
+  kind: ContainerKind
+  @doc("Runtime / language / stack (\"Rust\", \"Postgres 16\", …).")
+  technology: utf8?
+  @doc("Repository id where this container's source lives.")
+  repo: identifier?
+  @default([]) tags: list<utf8>
+  @child("body") body: WdocAddressableBody?
+}
+
+// A component: a cohesive part inside a container (C4 level 3).
+@block("component")
+type Component {
+  @inline(0) id: identifier
+  @doc("Container id this component belongs to.")
+  container: identifier
+  name: utf8
+  summary: utf8
+  @doc("Free-text component taxonomy (\"module\", \"handler\", \"store\"…).")
+  kind: utf8?
+  technology: utf8?
+  @default([]) tags: list<utf8>
+  @child("body") body: WdocAddressableBody?
+}
+
+// One node in a `code_item`'s module graph or class diagram.
+@block("code_node")
+type CodeNode {
+  @inline(0) id: identifier
+  name: utf8
+  kind: utf8?
+  summary: utf8?
+  @doc("Ids of other code_nodes this one depends on (drawn as edges).")
+  @default([]) deps: list<identifier>
+  @doc("Member lines for class-diagram rendering (fields / methods).")
+  @default([]) members: list<utf8>
+}
+
+// One column of a database table.
+@block("db_column")
+type DbColumn {
+  @inline(0) name: identifier
+  type: utf8
+  @default(false) pk: bool
+  @default(false) nullable: bool
+  @doc("Foreign key: the table id this column references.")
+  ref_table: identifier?
+  @doc("Foreign key: the column name referenced in ref_table.")
+  ref_column: identifier?
+}
+
+// One database table of a `code_item`'s db_schema payload.
+@block("db_table")
+type DbTable {
+  @inline(0) id: identifier
+  name: utf8?
+  @children("db_column") columns: list<DbColumn>
+}
+
+// One endpoint of a `code_item`'s api payload.
+@block("api_endpoint")
+type ApiEndpoint {
+  @inline(0) id: identifier
+  @doc("HTTP method or verb-equivalent (GET / POST / subscribe…).")
+  method: utf8
+  path: utf8
+  summary: utf8
+  request: utf8?
+  response: utf8?
+}
+
+// A code-level artefact (C4 level 4): a module graph, DB schema, class
+// diagram, or API surface. `kind` selects which payload family the
+// renderer reads; the unused families stay empty. This is the level
+// extractor scripts usually own.
+@block("code_item")
+type CodeItem {
+  @inline(0) id: identifier
+  @doc("Component id this code item details (set this or `container`).")
+  component: identifier?
+  @doc("Container id this code item details (set this or `component`).")
+  container: identifier?
+  name: utf8
+  summary: utf8?
+  kind: CodeItemKind
+  @children("code_node")    nodes:     list<CodeNode>
+  @children("db_table")     tables:    list<DbTable>
+  @children("api_endpoint") endpoints: list<ApiEndpoint>
+  @child("body") body: WdocAddressableBody?
+}
+
+// ---------------------------------------------------------------------------
+// View 5 — Infrastructure
+// ---------------------------------------------------------------------------
+
+// A deployment environment (local, ci, staging, prod…).
+@block("environment")
+type Environment {
+  @inline(0) id: identifier
+  name: utf8
+  summary: utf8?
+  kind: EnvKind?
+  @doc("Display / promotion sort order (lower first).")
+  order: u32?
+  @doc("Environment id changes promote to (drawn as the promotion chain).")
+  promotes_to: identifier?
+  url: utf8?
+  @child("body") body: WdocAddressableBody?
+}
+
+// A piece of infrastructure. Nodes nest to arbitrary depth via `parent`
+// (flat references, so scripts can append nodes without editing parents).
+// A node listing more than one environment is shared infrastructure.
+@block("infra_node")
+type InfraNode {
+  @inline(0) id: identifier
+  name: utf8
+  kind: InfraKind
+  @doc("Parent infra_node id; omit for a top-level node.")
+  parent: identifier?
+  @doc("Environment ids this node serves; >1 marks shared infra.")
+  @default([]) environments: list<identifier>
+  technology: utf8?
+  @doc("Address / locator (hostname, IP, ARN…).")
+  address: utf8?
+  notes: utf8?
+  @child("body") body: WdocAddressableBody?
+}
+
+// Where a container runs: container × environment × infra node.
+@block("deploy_target")
+type DeployTarget {
+  @inline(0) id: identifier
+  @doc("Container id that is deployed.")
+  container: identifier
+  @doc("Environment id it runs in.")
+  environment: identifier
+  @doc("Infra node id it runs on.")
+  infra_node: identifier
+  replicas: u32?
+  url: utf8?
+  notes: utf8?
+}
+
+// ---------------------------------------------------------------------------
+// View 6 — Build & deploy
+// ---------------------------------------------------------------------------
+
+// One notable path inside a repository. A path that is really another
+// repository (a git submodule / vendored tree) says so: `repo` when it is
+// one of ours (renders as a link to that repository's page), `external_url`
+// when it is outside our control (renders marked external).
+@block("repo_path")
+type RepoPath {
+  @inline(0) id: identifier
+  path: utf8
+  description: utf8
+  @doc("Repository id when this path is one of OUR repos pulled in as a submodule/subtree.")
+  repo: identifier?
+  @doc("Upstream URL when this path is a submodule outside our control.")
+  external_url: utf8?
+}
+
+// A source repository.
+@block("repository")
+type Repository {
+  @inline(0) id: identifier
+  name: utf8
+  url: utf8
+  summary: utf8?
+  primary_language: utf8?
+  @children("repo_path") structure: list<RepoPath>
+  @child("body") body: WdocAddressableBody?
+}
+
+// One stage of a pipeline. `next` wires the stage DAG (branch-safe) that
+// the pipeline flowchart draws.
+@block("pipeline_stage")
+type PipelineStage {
+  @inline(0) id: identifier
+  name: utf8?
+  summary: utf8?
+  @doc("Environment id this stage deploys to, when it deploys.")
+  environment: identifier?
+  @doc("Human gates / conditions on this stage (\"main branch only\"…).")
+  @default([]) gates: list<utf8>
+  @doc("Stage ids that run after this one.")
+  @default([]) next: list<identifier>
+}
+
+// A CI/CD pipeline.
+@block("pipeline")
+type Pipeline {
+  @inline(0) id: identifier
+  name: utf8
+  @doc("Repository id the pipeline belongs to.")
+  repo: identifier?
+  @doc("What starts it (push, tag, schedule, manual…).")
+  trigger: utf8?
+  summary: utf8?
+  @children("pipeline_stage") stages: list<PipelineStage>
+  @child("body") body: WdocAddressableBody?
+}
+
+// One released version of the system — what shipped and when. Ideal
+// extractor territory: derive these from git tags or the hosting
+// platform's releases API, never by hand.
+@block("release")
+type Release {
+  @inline(0) id: identifier
+  version: utf8
+  @doc("ISO date the release was cut.")
+  date: utf8?
+  @doc("Repository id the release was cut from.")
+  repo: identifier?
+  summary: utf8?
+  @doc("What went into the release (one line per change).")
+  @default([]) highlights: list<utf8>
+  url: utf8?
+}
+
+// ---------------------------------------------------------------------------
+// View 8 — User personas
+// ---------------------------------------------------------------------------
+
+// How a persona gets access to a system.
+@block("access_grant")
+type AccessGrant {
+  @inline(0) id: identifier
+  @doc("System id the grant is for.")
+  system: identifier
+  @doc("How access is granted (SSO, signup, admin invite, install…).")
+  method: utf8
+  @doc("Who approves the grant, when someone does.")
+  approver: utf8?
+}
+
+// A kind of USER of the system — human, AI agent, or service. Personas are
+// who the system exists for; the people who build, maintain, or operate it
+// are `stakeholder`s (view 1, with RACI rows), not personas.
+@block("persona")
+type Persona {
+  @inline(0) id: identifier
+  name: utf8
+  summary: utf8
+  kind: PersonaKind
+  @default([]) goals: list<utf8>
+  @children("access_grant") access: list<AccessGrant>
+  @child("body") body: WdocAddressableBody?
+}
+
+// A typical way one persona uses the system, as a checkable flow. Record a
+// good selection per persona — enough to exercise what that user kind does
+// day to day (they make good user-acceptance tests). Steps and `from -> to`
+// flow statements reuse the SOP machinery (view 9), so each use case
+// renders as a flowchart above its step detail.
+@block("use_case", required_children = ["step"])
+type UseCase {
+  @inline(0) id: identifier
+  title: utf8
+  @doc("Persona id this use case belongs to.")
+  persona: identifier
+  summary: utf8?
+  @doc("What the user has / knows before starting.")
+  @default([]) preconditions: list<utf8>
+  @doc("The observable result when the use case succeeds.")
+  outcome: utf8?
+  @default([]) tags: list<utf8>
+  @children("step") steps: list<Step>
+  @connections(StepFlow) flow: list<StepFlow>
+  @child("body") body: WdocAddressableBody?
+}
+
+// ---------------------------------------------------------------------------
+// View 9 — System admin: SOPs / runbooks
+// ---------------------------------------------------------------------------
+
+// Flow-chart shape of a step.
+symbol_set StepShape { process decision terminator }
+
+// The label on a flow edge between two steps: `:default` is a plain arrow,
+// `:yes` / `:no` annotate the branches out of a decision step.
+symbol_set StepFlowKind { default yes no }
+
+// One step in an SOP. The label is its `id` — the name the `from -> to`
+// flow statements wire together. `n` is its display number.
+@block("step")
+type Step {
+  @inline(0) id: identifier
+  n: u32
+  title: utf8?
+  @default(:process) shape: StepShape
+  @children("body") bodies: list<WdocAddressableBody>
+}
+
+// A directed flow edge between two steps, authored as `from -> to`
+// (optionally `from -> to :yes` / `:no`) in the sop body.
+connection StepFlow: Step -> Step : StepFlowKind
+
+// A standard operating procedure / runbook: the reliable sequence for a
+// task. Steps render as a flow chart above the step detail.
+@block("sop", required_children = ["step"])
+type Sop {
+  @inline(0) id: identifier
+  title: utf8
+  purpose: utf8
+  kind: SopKind
+  @default([]) preconditions: list<utf8>
+  @doc("How you know it worked.")
+  verification: utf8?
+  @doc("Where the automation lives, for automated runbooks (script, workflow…).")
+  automation: utf8?
+  @default([]) related: list<identifier>
+  @default([]) tags: list<utf8>
+  @children("step") steps: list<Step>
+  @connections(StepFlow) flow: list<StepFlow>
+}
+
+// ---------------------------------------------------------------------------
+// View 10 — Standards & rules
+// ---------------------------------------------------------------------------
+
+// One enforceable rule inside a standard.
+@block("rule")
+type Rule {
+  @inline(0) id: identifier
+  text: utf8
+  rationale: utf8?
+  @doc("What enforces it (CI, review, linter…), when something does.")
+  enforced_by: utf8?
+}
+
+// A named standard the system is held to.
+@block("standard")
+type Standard {
+  @inline(0) id: identifier
+  title: utf8
+  kind: StandardKind
+  summary: utf8
+  @children("rule") rules: list<Rule>
+  @child("body") body: WdocAddressableBody?
+}
+
+// ---------------------------------------------------------------------------
+// View 11 — Domain
+// ---------------------------------------------------------------------------
+
+// One field of a domain object.
+@block("field")
+type DomainField {
+  @inline(0) name: identifier
+  type: utf8
+  @default(false) required: bool
+  summary: utf8?
+}
+
+// A relationship from one domain object to another. `via_field` attaches
+// the ER edge to a specific field row instead of the whole object.
+@block("domain_rel")
+type DomainRel {
+  @inline(0) id: identifier
+  @doc("Target domain_object id.")
+  to: identifier
+  kind: DomainRelKind
+  label: utf8?
+  @doc("Field name on THIS object the edge leaves from (row-level port).")
+  via_field: identifier?
+}
+
+// A domain object: a concept the system's data model is built around.
+@block("domain_object")
+type DomainObject {
+  @inline(0) id: identifier
+  name: utf8
+  summary: utf8
+  @children("field") fields: list<DomainField>
+  @children("domain_rel") relations: list<DomainRel>
+  @child("body") body: WdocAddressableBody?
+}
+
+// A glossary entry (ubiquitous-language term).
+@block("term")
+type Term {
+  @inline(0) id: identifier
+  term: utf8
+  definition: utf8
+  @default([]) aliases: list<utf8>
+}
+
+// ---------------------------------------------------------------------------
+// View 12 — Specs
+// ---------------------------------------------------------------------------
+
+// One field-level change inside a spec `change` block. `old` / `new` carry
+// the rendered WCL of the values (any type renders legibly as text).
+@block("field_change")
+type FieldChange {
+  @inline(0) path: utf8
+  @doc("What happened: changed / added / removed / …")
+  kind: utf8
+  old: utf8?
+  new: utf8?
+}
+
+// One entity-level change a spec covers. The inline label is the diff's
+// entity key (`kind:label`); `value` carries the rendered WCL of an added
+// or removed entity. Emitted mechanically by `wcl wad spec`.
+@block("change")
+type SpecChange {
+  @inline(0) entity: utf8
+  @doc(":added / :removed / :modified")
+  op: symbol
+  @doc("Rendered WCL of the added/removed entity.")
+  value: utf8?
+  @children("field_change") fields: list<FieldChange>
+}
+
+// A work package for an implementing agent: the detail needed to build
+// part of the system, carried through the status lifecycle. Optionally
+// seeded mechanically from a WAD diff (`wcl wad spec` pins the baseline
+// sha and the exact change list); the intent — summary, instructions —
+// is authored by the LLM/human decomposing the change.
+@block("spec")
+type Spec {
+  @inline(0) id: identifier
+  title: utf8
+  status: SpecStatus
+  @doc("ISO date the spec was created.")
+  created: utf8
+  updated: utf8?
+  owner: utf8?
+  summary: utf8
+  @doc("Git revision (full sha) of the WAD baseline this spec diffs from.")
+  from_rev: utf8?
+  @doc("System / container ids this spec touches.")
+  @default([]) affected: list<identifier>
+  @doc("Spec id this one supersedes.")
+  supersedes: identifier?
+  @default([]) tags: list<utf8>
+  @children("change") changes: list<SpecChange>
+  @child("body") body: WdocAddressableBody?
+}
+
+// ---------------------------------------------------------------------------
+// View 7 — Documentation
+// ---------------------------------------------------------------------------
+
+// A documentation artefact the project ships: a hosted site, a book, an
+// agent skill folder, a reference, a README. Documentation is an OUTPUT of
+// the system, not a system — model where it lives and who it serves here,
+// never as a `system`/`container` in view 4.
+@block("doc_item")
+type DocItem {
+  @inline(0) id: identifier
+  name: utf8
+  summary: utf8
+  kind: DocKind
+  @doc("Where the source is authored (repo path, \"docs/main.wcl\"…).")
+  source: utf8?
+  @doc("Where readers find it (URL or install location).")
+  url: utf8?
+  @doc("Container id that builds / renders this artefact, when one does.")
+  built_by: identifier?
+  @doc("Where the published artefact is hosted (\"Cloudflare Pages\"…).")
+  hosted_on: utf8?
+  @doc("Persona ids this documentation serves.")
+  @default([]) audience: list<identifier>
+  @default([]) tags: list<utf8>
+  @child("body") body: WdocAddressableBody?
+}
+
+// ---------------------------------------------------------------------------
+// Screens (rendered inside View 4 under their owning component / container)
+// ---------------------------------------------------------------------------
+
+// A screen / UI surface of the system. The body holds its wireframe
+// (`diagram { wf_browser { … } }`) or terminal mock-up. Screens attach at
+// component level (`component`); `container` is the coarser fallback when
+// the WAD doesn't model components.
+@block("screen")
+type Screen {
+  @inline(0) id: identifier
+  name: utf8
+  summary: utf8?
+  @doc("Component id that serves this screen (preferred).")
+  component: identifier?
+  @doc("Container id that serves this screen (fallback when components aren't modelled).")
+  container: identifier?
+  @doc("Route / location inside the container (URL path, menu path…).")
+  route: utf8?
+  @doc("Persona ids that use this screen.")
+  @default([]) personas: list<identifier>
+  @doc("Screen ids this one navigates to (drawn as the screen-flow).")
+  @default([]) nav_to: list<identifier>
+  @child("body") body: WdocAddressableBody?
+}
+
+// ---------------------------------------------------------------------------
+// Articles — freeform sub-pages for any view
+// ---------------------------------------------------------------------------
+
+// A freeform prose page filed under one of the eleven views — the escape
+// hatch for topics the typed blocks don't cover.
+@block("article")
+type Article {
+  @inline(0) id: identifier
+  title: utf8
+  @doc("Which view's chapter the article appears under.")
+  section: WadSection
+  summary: utf8?
+  @doc("Sort order within the section (lower first).")
+  order: u32?
+  @default([]) related: list<identifier>
+  @child("body") body: WdocAddressableBody?
+}
+
+// ---------------------------------------------------------------------------
+// Root document — gathers every block instance for the projections
+// ---------------------------------------------------------------------------
+
+// NOTE: gather-field names share the merged document schema with wdoc's own
+// @document, so they must not reuse its field names (pages, templates,
+// components, sites, bodies, …). That is why component instances gather as
+// `sw_components` — bare `components` is wdoc's wdoc_component list, and the
+// collision breaks template iteration.
+@document
+type WadDoc {
+  schema_version: utf8
+  @children("wad")             wads:            list<Wad>
+  @children("stakeholder")     stakeholders:    list<Stakeholder>
+  @children("raci_entry")      raci:            list<RaciEntry>
+  @children("adr")             adrs:            list<Adr>
+  @children("relation")        relations:       list<Relation>
+  @children("external_system") externals:       list<ExternalSystem>
+  @children("system")          systems:         list<System>
+  @children("container")       containers:      list<Container>
+  @children("component")       sw_components:   list<Component>
+  @children("code_item")       code_items:      list<CodeItem>
+  @children("environment")     environments:    list<Environment>
+  @children("infra_node")      infra_nodes:     list<InfraNode>
+  @children("deploy_target")   deploy_targets:  list<DeployTarget>
+  @children("repository")      repositories:    list<Repository>
+  @children("pipeline")        pipelines:       list<Pipeline>
+  @children("release")         releases:        list<Release>
+  @children("persona")         personas:        list<Persona>
+  @children("use_case")        use_cases:       list<UseCase>
+  @children("sop")             sops:            list<Sop>
+  @children("standard")        standards:       list<Standard>
+  @children("domain_object")   domain_objects:  list<DomainObject>
+  @children("term")            terms:           list<Term>
+  @children("spec")            specs:           list<Spec>
+  @children("doc_item")        doc_items:       list<DocItem>
+  @children("screen")          screens:         list<Screen>
+  @children("article")         articles:        list<Article>
+}

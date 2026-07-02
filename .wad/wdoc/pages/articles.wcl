@@ -1,0 +1,22 @@
+// Articles — freeform prose sub-pages filed under a view via `section`.
+// The toc in wdoc/book/main.wcl places each under its view's chapter; this
+// file generates the pages themselves.
+
+wdoc_repeater { each = articles  as = :ar
+  page $"article_${ar.id}" { title = $"${ar.title}"
+    h1 $"${ar.title}"
+    wdoc_repeater { each = match ar.summary { none => [], sx => [sx] }  as = :sx
+      p $"_${sx}_"
+    }
+    wdoc_repeater { each = match ar.body { none => [], _ => [true] }  as = :_b
+      project { from = ar.body }
+    }
+    wdoc_repeater { each = match len(ar.related) { 0 => [], _ => [true] }  as = :_r
+      h2 "Related"
+      wdoc_repeater { each = ar.related  as = :rid
+        p $"- ${link_of(rid)}"
+      }
+    }
+    edit_object { kind = "article"  target = $"${ar.id}" }
+  }
+}

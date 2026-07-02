@@ -1,0 +1,112 @@
+// View 8 data — standard operating procedures.
+namespace wcl.wad
+
+sop cut_pre_release {
+  title   = "Cut a pre-release"
+  purpose = "Ship a new alpha build of the CLI (and VS Code package) through the trailer-gated release path."
+  kind    = :release
+  preconditions = ["Working tree clean and green (`just workspace-test`, `just workspace-lint`, fmt check)."]
+  verification = "The GitHub pre-release exists with artifacts for every target, and `wcl --version` on a fresh install reports the new version."
+  related = [ci_pipeline]
+
+  step trailer { n = 1
+    title = "Commit the release trigger"
+    body steps { p "Create an empty (or content) commit on `main` carrying the `pre-release: true` trailer — the version job reads the trailer of the pushed commit and refuses stable `release: true`." }
+  }
+  step push { n = 2
+    title = "Push and watch CI"
+    body steps { p "Push to `main` and watch the workflow: check → version → build matrix → package → pre-release. Any red stage means no artifacts ship." }
+  }
+  step ci_green { n = 3
+    title = "CI green?"
+    shape = :decision
+    body steps { p "If a stage failed, fix and re-trigger with a fresh trailer commit; a re-run of a stale commit re-reads the same trailer." }
+  }
+  step install { n = 4
+    title = "Install and smoke-test locally"
+    body steps { p "Run the install script against the new pre-release and spot-check `wcl check` / `wcl wdoc build` on a known document." }
+  }
+
+  trailer -> push
+  push -> ci_green
+  ci_green -> install :yes
+  ci_green -> trailer :no
+}
+
+sop sync_schema_copies {
+  title   = "Sync scaffold-owned schemas"
+  purpose = "Propagate the canonical wskill/WAD base schemas from the scaffold heredocs to every instance, and keep CI's drift gate green."
+  kind    = :runbook
+  automation = "just wskill-schema-sync / just wad-schema-sync (checked by *-schema-check in CI)"
+  verification = "`just wskill-schema-check` and `just wad-schema-check` both exit 0."
+  step edit_template { n = 1
+    title = "Edit the scaffold heredoc"
+    body steps { p "The canonical copy lives in `crates/wcl/src/scaffold/templates/` — never edit an instance's `schema/base.wcl` directly." }
+  }
+  step run_sync { n = 2
+    title = "Run the sync recipes"
+    body steps { p "Run `just wskill-schema-sync` and `just wad-schema-sync`; commit the regenerated copies together with the template change." }
+  }
+  step check { n = 3
+    title = "Run the drift checks"
+    body steps { p "`just wskill-schema-check && just wad-schema-check` — the same gates CI runs." }
+  }
+  edit_template -> run_sync
+  run_sync -> check
+}
+
+sop cut_full_release {
+  title   = "Cut a stable release"
+  purpose = "Ship a stable (non-alpha) version — the path that is deliberately blocked until WCL commits to 1.0."
+  kind    = :release
+  preconditions = [
+    "The pre-1.0 stability bar is met (language surface, schema formats, and CLI flags considered frozen).",
+    "The latest pre-release has soaked with no open release-blocking issues.",
+  ]
+  verification = "CI publishes a GitHub release (not pre-release) with artifacts for every target, and a fresh install reports the stable version."
+  related = [ci_pipeline]
+
+  step lift_guard { n = 1
+    title = "Lift the stable-release guard in CI"
+    body steps { p "The version job fails any commit carrying `release: true` on purpose (trailer-gated releases ADR). Remove that guard in `.github/workflows/ci.yml` and make the job compute a stable (non `-alpha`) version for `release: true` trailers." }
+  }
+  step trailer { n = 2
+    title = "Commit the release trigger"
+    body steps { p "Commit on `main` with the `release: true` trailer — the same auditable act as a pre-release, different trailer." }
+  }
+  step ci_green { n = 3
+    title = "CI green?"
+    shape = :decision
+    body steps { p "Any red stage means nothing ships; fix and re-trigger with a fresh trailer commit." }
+  }
+  step verify { n = 4
+    title = "Install and verify"
+    body steps { p "Install from the new release on a clean machine and smoke-test `wcl check` / `wcl wdoc build`; confirm the release is not marked pre-release on GitHub." }
+  }
+  lift_guard -> trailer
+  trailer -> ci_green
+  ci_green -> verify :yes
+  ci_green -> lift_guard :no
+}
+
+sop local_dev_setup {
+  title   = "Set up a local development environment"
+  purpose = "Go from a fresh machine to running the tests and the docs dev server."
+  kind    = :dev
+  preconditions = ["Rust (stable) via rustup", "`just` installed", "uv installed (for the WAD extractor scripts)"]
+  verification = "`just workspace-test` passes and `just docs-serve` serves the site locally."
+  step clone { n = 1
+    title = "Clone and build"
+    body steps { p "Clone the repository and run `cargo build -p wcl` — the workspace builds with stable Rust, no extra system deps." }
+  }
+  step test { n = 2
+    title = "Run the gates"
+    body steps { p "`just workspace-test`, `just workspace-lint`, `cargo fmt --all -- --check` — the same three gates CI enforces." }
+  }
+  step serve { n = 3
+    title = "Serve the docs"
+    body steps { p "`just docs-serve` starts the wdoc dev server; press Enter in its console to rebuild after edits." }
+  }
+  clone -> test
+  test -> serve
+}

@@ -27,6 +27,13 @@ let skill = head(skills)
 let skill_scripts = skill.skill_scripts
 let skill_assets  = skill.skill_assets
 
+// Bundled artifacts → an extra SKILL.md reference link + the assets_ref page
+// below (which also physically ships each file via a `file` block).
+let bundle_refs = match len(skill_scripts) + len(skill_assets) {
+  0 => [],
+  _ => [{ label: "Bundled files", href: "assets_ref", summary: "The scripts and data files shipped with this skill, and how to run them." }],
+}
+
 // Audience filter — keep the skill lean. Each `let` shadows the gathered list of
 // the same name with its "both"/"ai" subset (dropping book-only blocks).
 let in_skill   = fn(a: Audience) -> bool { match a { :book => false, _ => true } }
@@ -67,7 +74,7 @@ page index { sites = [:skill]  start = true
     "disallowed-tools"         = skill.disallowed_tools
     "disable-model-invocation" = skill.disable_model_invocation
   }
-  skill_md_body { topic = topic  skill = skill  indexes = indexes  concepts = concepts  entities = entities  facts = facts  procedures = procedures  extra_refs = []  artifacts = artifacts }
+  skill_md_body { topic = topic  skill = skill  indexes = indexes  concepts = concepts  entities = entities  facts = facts  procedures = procedures  extra_refs = bundle_refs  artifacts = artifacts }
 }
 
 // One page per concept. The body is the addressable `body`, projected here;
@@ -106,5 +113,35 @@ wdoc_repeater { each = procedures  as = :pr
     process_body { unit = pr  all_units = all_units  step_style = "skill"  backlinks = []
       p "[← Back to SKILL.md](index)"
     }
+  }
+}
+
+// --- references/assets_ref.md + the shipped scripts/assets -------------------
+// Present only when the skill bundles artifacts; the `file` blocks ship each
+// source into the emitted skill's scripts/ and assets/ folders.
+
+wdoc_repeater { each = match len(skill_scripts) + len(skill_assets) { 0 => [], _ => [true] }  as = :_bundle
+  page assets_ref { sites = [:skill]  title = $"${topic.name} — bundled files"
+    h1 $"${topic.name} — bundled files"
+    wdoc_repeater { each = match len(skill_scripts) { 0 => [], _ => [true] }  as = :_s
+      h2 "Scripts"
+      p  "Runnable scripts shipped under the skill's `scripts/` directory."
+    }
+    wdoc_repeater { each = skill_scripts  as = :s
+      h3 $"${s.name}"
+      p  $"${s.description}"
+      p  $"**Run:** `${s.usage}` — shipped to `scripts/${s.name}`."
+      file $"../../${s.source}" { dir = "scripts" }
+    }
+    wdoc_repeater { each = match len(skill_assets) { 0 => [], _ => [true] }  as = :_a
+      h2 "Data files"
+      p  "Static data shipped under `assets/`."
+    }
+    wdoc_repeater { each = skill_assets  as = :a
+      h3 $"${a.name}"
+      p  $"${a.description} — shipped to `assets/${a.name}`."
+      file $"../../${a.source}" { dir = "assets" }
+    }
+    p "[← Back to SKILL.md](index)"
   }
 }

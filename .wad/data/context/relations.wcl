@@ -1,0 +1,46 @@
+// Relations — the directed edges every diagram derives from. Authored at
+// the lowest meaningful level (container↔container, container↔external,
+// persona↔container); the context and container diagrams roll them up.
+//
+// NOTE: the crate-to-crate :depends_on relations are NOT authored here —
+// scripts/extract_cargo.py owns them (data/generated/cargo.wcl), so the
+// container diagrams stay honest against Cargo.toml.
+//
+// Hosting/CI/release plumbing is deliberately absent: the pipelines (view 6)
+// carry the build → release story, and the documentation artefacts the
+// toolchain renders live in the documentation view. Relations describe the
+// system's function, not where it runs or what it publishes.
+namespace wcl.wad
+
+// --- editor integrations ---------------------------------------------------
+
+relation r_vscode_lsp {
+  source = vscode_extension  destination = wcl_lsp
+  kind = :triggers  label = "spawns"
+  protocol = "LSP (stdio / TCP)"
+  data = "diagnostics, completion, formatting"
+}
+
+// --- persona usage ------------------------------------------------------------
+
+relation r_doc_creator_cli {
+  source = document_creator  destination = wcl_cli
+  kind = :uses  label = "authors with"
+  data = "wdoc serve / build / markdown / skill, check, fmt"
+}
+relation r_app_dev_lang {
+  source = app_developer  destination = wcl_lang
+  kind = :uses  label = "embeds"
+  protocol = "Rust crate (host bindings)"
+  data = "typed config for their own application"
+}
+relation r_config_user_cli {
+  source = config_user  destination = wcl_cli
+  kind = :uses
+  data = "check / eval / fmt on a third-party app's config files"
+}
+relation r_config_user_editor {
+  source = config_user  destination = vscode_extension
+  kind = :uses
+  data = "editing config with diagnostics and completion"
+}

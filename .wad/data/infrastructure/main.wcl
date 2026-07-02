@@ -1,0 +1,5 @@
+// View data hub — environments, infra_nodes, deploy_targets. This estate
+// has none: the `wcl` binary is a CLI tool a user installs — it has no
+// runtime environments to promote through. The build/release plumbing is
+// view 6 (pipelines) and the hosted documentation is the documentation view.
+namespace wcl.wad

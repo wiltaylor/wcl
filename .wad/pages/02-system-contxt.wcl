@@ -1,8 +1,0 @@
-import <wdoc.wcl>
-
-// Has a digram of the system that shows the systems in this design and how they are connected to external systems and what users use them.
-
-page system_context {
-  
-}
-

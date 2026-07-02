@@ -1,0 +1,70 @@
+// WAD vocabularies — the hand-editable half of the schema.
+//
+// These symbol_sets are the closed vocabularies the base schema's kind fields
+// draw from. Extend them freely for your system (add members; avoid renaming
+// existing ones — data files reference them by symbol). Structural types stay
+// in base.wcl (DO NOT HAND-EDIT); everything here is yours.
+namespace wcl.wad
+
+// What a C4 container (a `container` block) fundamentally is.
+symbol_set ContainerKind {
+  service web_app spa cli library db queue cache batch_job function
+  mobile_app desktop_app editor_plugin gateway static_site other
+}
+
+// What an external system is to this design.
+symbol_set ExternalKind {
+  saas api registry identity datastore ci cdn payment partner ai_service other
+}
+
+// How two nodes relate — drives edge labels in the generated diagrams.
+symbol_set RelationKind {
+  sync_api async_msg reads writes reads_writes publishes subscribes
+  uses depends_on authenticates triggers hosts other
+}
+
+// What an infrastructure node is.
+symbol_set InfraKind {
+  cloud region network vpc cluster namespace vm container_runtime
+  physical_host paas_service ci_runner registry workstation storage edge other
+}
+
+// What an environment is for.
+symbol_set EnvKind { local ci dev test staging prod dr other }
+
+// ADR lifecycle.
+symbol_set AdrStatus { proposed accepted rejected superseded deprecated }
+
+// Spec lifecycle: planning → in_progress → complete | abandoned.
+symbol_set SpecStatus { planning in_progress complete abandoned }
+
+// Who (or what) a persona is.
+symbol_set PersonaKind { human ai_agent service }
+
+// What kind of operating procedure an `sop` is.
+symbol_set SopKind { operations incident change runbook release dev }
+
+// What a standard governs.
+symbol_set StandardKind { coding style business security process documentation }
+
+// How one domain object relates to another.
+symbol_set DomainRelKind { has_one has_many references extends uses }
+
+// Which payload family a `code_item` carries (selects the renderer).
+symbol_set CodeItemKind { module_graph db_schema class_diagram api other }
+
+// Severity / criticality scale (externals, security notes).
+symbol_set Criticality { low medium high critical }
+
+// What a `doc_item` (view 12) fundamentally is.
+symbol_set DocKind { site book skill reference readme guide changelog other }
+
+// The twelve views — an `article` files itself under one of these.
+symbol_set WadSection {
+  overview context externals systems infrastructure build_deploy
+  documentation personas sysadmin standards domain specs
+}
+
+// NOTE: there is deliberately no RaciRole vocabulary — a `raci_entry` row
+// carries four stakeholder-id lists (responsible / accountable / consulted /
+// informed), which renders the matrix directly.

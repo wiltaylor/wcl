@@ -1,0 +1,38 @@
+// Review comments for this wskill / doc — written by `wcl wdoc serve --comment`
+// and read back by `wcl wdoc comments`. Each `comment` block is keyed by page
+// name + block locator; safe to hand-edit or generate.
+
+comment {
+  id = "ceiba3j4"
+  page = "system_wcl"
+  page_file = "/home/wil/dev/WCL/.wad/wdoc/pages/systems.wcl"
+  loc = "6"
+  target = "diagram — \"Container diagram for WCLWCLWCL binarywcl_langwcl_wdocwcl_ls\""
+  body = "Users should be created out side of the boundary for the system always. Update the template to do this."
+}
+
+comment {
+  id = "cjvzj76z"
+  page = "component_cli_commands"
+  page_file = "/home/wil/dev/WCL/.wad/wdoc/pages/systems.wcl"
+  body = "Rename this component CLI"
+}
+
+comment {
+  id = "cn3kw02r"
+  page = "container_wcl_cli"
+  page_file = "/home/wil/dev/WCL/.wad/wdoc/pages/systems.wcl"
+  loc = "4"
+  target = "table — \"CommandWhat it doesLives inwcl parseParse a document and pri\""
+  body = "Remove this and create a proper cli listing inside the CLI component. I want it to read like cli docs where we see the commands and args along with full usage descriptions."
+}
+
+comment {
+  id = "cppe43u2"
+  page = "container_wcl_cli"
+  page_file = "/home/wil/dev/WCL/.wad/wdoc/pages/systems.wcl"
+  loc = "7"
+  target = "h2 — \"Code items\""
+  body = "Shouldn't be at this level. Should be a diagram inside each component as a diagram we can drill into."
+}
+

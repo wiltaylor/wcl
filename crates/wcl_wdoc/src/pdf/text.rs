@@ -181,7 +181,7 @@ impl FontBook {
         b.set_wrap(if wrap { Wrap::Word } else { Wrap::None });
         b.set_size(width, None);
         let default = attrs_for(TextStyle::body());
-        let spans: Vec<(&str, Attrs)> = leaves
+        let spans: Vec<(String, Attrs)> = leaves
             .iter()
             .map(|leaf| {
                 let mut attrs = attrs_for(leaf.style);
@@ -192,10 +192,24 @@ impl FontBook {
                     (None, Some(l)) => l + 1,
                     (None, None) => 0,
                 };
-                (leaf.text.as_str(), attrs)
+                // In wrapped (paragraph) text a `\n` is a soft break — HTML
+                // and Markdown already render it as whitespace, and the
+                // formatter wraps long prose with real newlines — so soften
+                // it here too; cosmic-text would otherwise hard-break.
+                let text = if wrap {
+                    leaf.text.replace('\n', " ")
+                } else {
+                    leaf.text.clone()
+                };
+                (text, attrs)
             })
             .collect();
-        b.set_rich_text(spans, &default, Shaping::Advanced, None);
+        b.set_rich_text(
+            spans.iter().map(|(t, a)| (t.as_str(), a.clone())),
+            &default,
+            Shaping::Advanced,
+            None,
+        );
 
         // Collect the raw glyph geometry first; resolving krilla fonts borrows
         // `self.fs` again, which would conflict with the `borrow_with` above.

@@ -14,7 +14,9 @@ wdoc_component fact_body {
     h1 $"${unit.title}"
     // Edit-mode only: jump straight into this object in the WYSIWYG editor.
     edit_object { kind = "fact" target = $"${unit.id}" label = "Edit this fact" }
-    project { from = unit.body }
+    wdoc_repeater { each = match unit.body { none => [], _ => [true] }  as = :_b
+      project { from = unit.body }
+    }
     unit_examples { unit_id = unit.id  examples = examples }
     related_section { related = unit.related  all_units = all_units  backlinks = backlinks  layout = layout }
     wdoc_content

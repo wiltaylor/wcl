@@ -1,0 +1,40 @@
+// WAD custom block types — per-system schema extensions.
+//
+// Custom blocks declared here join the `wcl.wad` namespace (shared with the
+// base schema). The namespace line below is the file's first statement;
+// uncomment your @block/@document beneath it and they are scoped
+// automatically — bare references from data files and templates keep
+// resolving.
+namespace wcl.wad
+
+// The base schema (base.wcl) is never edited in place; everything
+// system-specific goes here. Two ways to add custom content:
+//
+//   1. An `article` block (defined in base.wcl) needs NOTHING here — file a
+//      freeform prose page under any view with `section = :domain` (etc.).
+//
+//   2. A first-class typed custom block: declare an @block with your own
+//      fields AND a @document that gathers it. Imported @document schemas
+//      MERGE with the base, so this composes cleanly. Then add a render
+//      snippet to the book template (wdoc/book/main.wcl or a component).
+//
+// Example (uncomment and adapt):
+//
+// @block("slo")
+// type Slo {
+//   @inline(0) id: identifier
+//   metric:  utf8
+//   target:  utf8
+//   window:  utf8?
+// }
+//
+// @document
+// type Extensions {
+//   @children("slo") slos: list<Slo>
+// }
+//
+// Then in the book template, alongside the other sections:
+//
+//   wdoc_repeater { each = slos  as = :s
+//     p $"`${s.metric}` — ${s.target}"
+//   }

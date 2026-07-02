@@ -1,0 +1,62 @@
+// View 9 data — the standards the codebase is held to.
+namespace wcl.wad
+
+standard verification_gates {
+  title   = "Verification gates"
+  kind    = :process
+  summary = "No change is done until the three workspace gates pass."
+  rule vg_test { text = "`just workspace-test` passes (unit + integration across the workspace)."
+    enforced_by = "CI `check` job" }
+  rule vg_lint { text = "`just workspace-lint` passes (clippy --workspace -- -D warnings)."
+    enforced_by = "CI `check` job" }
+  rule vg_fmt  { text = "`cargo fmt --all -- --check` is clean."
+    enforced_by = "CI `check` job" }
+  rule vg_bench { text = "Parser hot-path changes run `just workspace-bench` before merging."
+    rationale = "The eval_scale bench guards the wdoc build times real documents depend on."
+    enforced_by = "review" }
+}
+
+standard coding_conventions {
+  title   = "Coding conventions"
+  kind    = :coding
+  summary = "The rules a contributor must follow. Each is a do/don't, not a description of the code."
+  rule cc_parser { text = "Do not introduce parser generators or combinator crates (nom, LALRPOP, pest…) — extend the hand-written lexer and recursive-descent parser."
+    rationale = "Control over error recovery and spans beats generated tables (hand-written parser ADR)."
+    enforced_by = "review" }
+  rule cc_diag { text = "Define every user-facing error as a miette diagnostic (thiserror) carrying a Span and a NamedSource — never a bare string error."
+    rationale = "One diagnostic model serves CLI, LSP, and dev-server checks; a string error can't render a snippet." }
+  rule cc_spans { text = "Never drop a Span: any new token, AST node, or value that can appear in an error must carry its source location."
+    rationale = "Snippets are the language's main UX; losing a span anywhere breaks the CLI, the LSP, and the dev server at once."
+    enforced_by = "review" }
+  rule cc_no_panic { text = "Never panic on user input: parse/eval/schema failures must surface as diagnostics. Use `unwrap`/`expect` only on invariants the surrounding code itself establishes, with the invariant in the message."
+    rationale = "The binary runs on untrusted documents (third-party configs, served edits); a panic is a denial of the whole session."
+    enforced_by = "tests" }
+  rule cc_no_unsafe { text = "Do not write `unsafe` code."
+    rationale = "The workspace is 100% safe Rust today; nothing it does needs to change that."
+    enforced_by = "review" }
+  rule cc_boxing { text = "Box any chunky payload you add to the TokenKind / Expr enums — do not inline large variants."
+    rationale = "Deeply nested documents recurse through the parser; fat variants eat the stack margin the recursion depends on."
+    enforced_by = "the deeply-nested parser test" }
+  rule cc_lowering { text = "Implement new wdoc blocks as WCL `lower` fns returning fundamentals; special-case in Rust only when the output is not expressible in WCL, and document why."
+    rationale = "The lowering seam stays pure for user-extensible shapes (Rust-special-cases ADR)."
+    enforced_by = "review" }
+  rule cc_tests { text = "Land every feature with unit/integration tests in the owning crate; put shared fixtures under examples/, never inline blobs copied between tests."
+    rationale = "The verification gates only protect what the suite actually exercises."
+    enforced_by = "CI `check` job" }
+  rule cc_deps { text = "Do not add a dependency without justifying it in the PR — a new crate must earn its place."
+    rationale = "Supply-chain surface and compile times both stay bounded."
+    enforced_by = "review" }
+}
+
+standard doc_conventions {
+  title   = "Documentation conventions"
+  kind    = :documentation
+  summary = "How user-facing text is written and built."
+  rule dc_scheme { text = "Never write the local-file URL scheme in docs or comments; say “when served / hosted” and “not opened directly from disk”."
+    rationale = "Assets that need a server should never be documented with an instruction that can't work."
+    enforced_by = "review" }
+  rule dc_wcl { text = "The docs site is authored in WCL and built by wdoc — docs are data, not hand-maintained HTML."
+    enforced_by = "CI builds docs on every push" }
+  rule dc_canonical { text = "Scaffold-owned schema copies are regenerated, never hand-edited (see the sync runbook)."
+    enforced_by = "just *-schema-check in CI" }
+}

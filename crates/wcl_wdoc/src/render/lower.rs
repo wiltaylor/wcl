@@ -447,7 +447,7 @@ pub(crate) fn render_html_variant(
         return String::new();
     };
     match kind.as_str() {
-        "paragraph" => render_paragraph_payload(map),
+        "paragraph" => render_paragraph_payload(doc, map, patterns),
         "table" => render_table_payload(map),
         "element" => render_element_payload(doc, map, depth, patterns),
         "raw" => render_raw_payload(map),

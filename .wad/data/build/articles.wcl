@@ -1,0 +1,50 @@
+// Freeform articles for the Build & deploy view: the local development
+// environment and the branching / release model.
+namespace wcl.wad
+
+article local_development {
+  title   = "Local development"
+  section = :build_deploy
+  summary = "From a fresh machine to running the gates and the dev servers."
+  order   = 1
+  related = [wcl_monorepo]
+  body {
+    p "**Setup.** Stable Rust via rustup, `just`, and `uv` (for the WAD extractor scripts). Clone and `cargo build -p wcl` — the workspace builds with no extra system dependencies."
+    p "**The gates.** Every change is done only when the three workspace gates pass — the same ones CI runs (see the verification-gates standard):"
+    list {
+      li "`just workspace-test` — unit + integration tests across the workspace"
+      li "`just workspace-lint` — clippy with warnings denied"
+      li "`cargo fmt --all -- --check`"
+    }
+    p "**Build scripts.** The root justfile is the catalogue of every dev entry point; the ones reached for daily:"
+    table {
+      header = ["Recipe", "What it does"]
+      rows = [
+        ["`just docs-serve` / `just docs-build`", "Serve or render the wcl.dev site from `docs/main.wcl`"],
+        ["`just wad-serve` / `just wad-build`", "Review (comment mode) or render this architecture book"],
+        ["`just wad-check` / `just wad-extract`", "Validate the WAD model / re-run the extractor scripts"],
+        ["`just wskill-schema-sync` / `just wad-schema-sync`", "Propagate the canonical scaffold-owned schemas"],
+        ["`just workspace-bench`", "Parser hot-path benches (run before merging parser changes)"],
+      ]
+    }
+    p "The step-by-step runbook is the [set-up-local-development SOP](sop_local_dev_setup)."
+  }
+}
+
+article branching_releases {
+  title   = "Branching & releases"
+  section = :build_deploy
+  summary = "Trunk-based development on main; releases are trailer-gated commits."
+  order   = 2
+  related = [ci]
+  body {
+    p "**Branching.** Development is trunk-based: work lands directly on `main` and every push runs the full CI check job. There are no long-lived feature branches; the working tree stays releasable because the gates gate every commit."
+    p "**How a release happens.** Releasing is an explicit, auditable act in a commit message, not a branch or a button (see the trailer-gated releases ADR):"
+    list {
+      li "A commit on `main` carrying the `pre-release: true` trailer makes CI's version job compute the next `-alpha` version, build the artifact matrix (Linux/Windows CLI binaries, the VS Code `.vsix`), and publish a GitHub pre-release tagged `vX.Y.Z-alpha`."
+      li "A `release: true` trailer **fails the build on purpose** — stable releases are disabled while WCL is pre-1.0, so nobody can ship one by accident."
+      li "No trailer → tests only, nothing ships."
+    }
+    p "The runbooks: [cut a pre-release](sop_cut_pre_release) for the routine path, and [cut a stable release](sop_cut_full_release) for what it will take to ship 1.0. Shipped versions and their contents are extracted from git tags into the releases table on the Build & deploy page."
+  }
+}

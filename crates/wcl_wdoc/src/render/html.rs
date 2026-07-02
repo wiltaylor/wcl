@@ -1132,12 +1132,19 @@ pub(crate) fn render_highlighted_fundamental(map: &BTreeMap<String, Value>) -> S
     highlight::highlight_html(&source, &language, true)
 }
 
-pub(crate) fn render_paragraph_payload(map: &BTreeMap<String, Value>) -> String {
+pub(crate) fn render_paragraph_payload(
+    doc: &Document,
+    map: &BTreeMap<String, Value>,
+    patterns: &InlinePatterns,
+) -> String {
     let cls = class_attr_from_map(map);
     let spans = map_utf8_list(map, "spans");
+    // Spans run through the inline-pattern engine (which html-escapes
+    // literal text), so links / bold / code work in headings and callout
+    // titles — the `Paragraph` fundamental's documented contract.
     let inner: String = spans
         .iter()
-        .map(|s| format!("<span>{}</span>", escape_html(s)))
+        .map(|s| format!("<span>{}</span>", patterns.render(doc, s)))
         .collect();
     let mut out = format!("<p{cls}");
     append_attr(&mut out, "id", map_id(map, "id").as_deref());

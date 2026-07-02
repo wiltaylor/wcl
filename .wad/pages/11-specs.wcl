@@ -1,9 +1,0 @@
-import <wdoc.wcl>
-
-// Once specs have been written for the system this is where they are all listed.
-// They will include their status (planning, in progress, complete, abandoned)
-
-page specs {
-  
-}
-

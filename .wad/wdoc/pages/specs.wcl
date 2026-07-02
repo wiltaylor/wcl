@@ -1,0 +1,92 @@
+// View 11 — Specs: change contracts grouped by status, one page per spec
+// (metadata, affected nodes, the mechanical change list emitted by
+// `wcl wad spec`, and the authored rationale/instructions body). Resolves
+// the `let` helpers from wdoc/book/main.wcl.
+
+let spec_groups = [
+  { status: :in_progress, name: "In progress", class: "note" },
+  { status: :planning,    name: "Planning",    class: "note" },
+  { status: :complete,    name: "Complete",    class: "success" },
+  { status: :abandoned,   name: "Abandoned",   class: "warning" },
+]
+let specs_with = fn(s: SpecStatus) -> list<Spec> {
+  filter(specs, fn(sp: Spec) -> bool { sp.status == s })
+}
+let spec_status_text = fn(s: SpecStatus) -> utf8 {
+  match s { :planning => "Planning", :in_progress => "In progress",
+            :complete => "Complete", :abandoned => "Abandoned", _ => "Unknown" }
+}
+let spec_status_class = fn(s: SpecStatus) -> utf8 {
+  match s { :complete => "success", :abandoned => "warning", _ => "note" }
+}
+
+page specs_page { title = "Specs"
+  h1 "Specs"
+  p  "Work packages decomposed from this architecture: the implementation detail an AI coding agent needs to build part of the system, each carried through planning → in progress → complete (or abandoned). Seed one mechanically from a WAD diff with `wcl wad spec --from <rev>`; the intent is authored by whoever cuts the change."
+
+  wdoc_repeater { each = match len(specs) { 0 => [true], _ => [] }  as = :_e
+    p "_No specs recorded._"
+  }
+  wdoc_repeater { each = spec_groups  as = :g
+    wdoc_repeater { each = match len(specs_with(g.status)) { 0 => [], _ => [true] }  as = :_h
+      h2 $"${g.name}"
+      table {
+        header = ["Spec", "Created", "Updated", "Owner", "Affects"]
+        rows = map(specs_with(g.status), fn(sp: Spec) -> list<utf8> {
+          [$"[${sp.title}](spec_${sp.id})", sp.created, sp.updated ?? "—", sp.owner ?? "—",
+           match len(sp.affected) { 0 => "—", _ => join(map(sp.affected, fn(aid: identifier) -> utf8 { link_of(aid) }), ", ") }]
+        })
+      }
+    }
+  }
+}
+
+// --- one page per spec ------------------------------------------------------------------
+wdoc_repeater { each = specs  as = :sp
+  page $"spec_${sp.id}" { title = $"${sp.title}"
+    h1 $"${sp.title}"
+    callout $"${spec_status_text(sp.status)}" {
+      class = [spec_status_class(sp.status)]
+      body  = $"Created ${sp.created}${match sp.updated { none => "", u2 => $" · updated ${u2}" }}${match sp.owner { none => "", o2 => $" · owner ${o2}" }}."
+    }
+    p $"_${sp.summary}_"
+    wdoc_repeater { each = match len(sp.affected) { 0 => [], _ => [true] }  as = :_a
+      p $"**Affects:** ${join(map(sp.affected, fn(aid: identifier) -> utf8 { link_of(aid) }), ", ")}"
+    }
+    wdoc_repeater { each = match sp.from_rev { none => [], rv => [rv] }  as = :rv
+      p $"**Baseline revision:** `${rv}`"
+    }
+
+    wdoc_repeater { each = match len(sp.changes) { 0 => [], _ => [true] }  as = :_c
+      h2 "Changes"
+      wdoc_repeater { each = sp.changes  as = :ch
+        h3 $"`${ch.entity}` — ${match ch.op { :added => "added", :removed => "removed", _ => "modified" }}"
+        wdoc_repeater { each = match ch.value { none => [], vx => [vx] }  as = :vx
+          code wcl { source = vx }
+        }
+        wdoc_repeater { each = match len(ch.fields) { 0 => [], _ => [true] }  as = :_f
+          table {
+            header = ["Field", "Change", "Old", "New"]
+            rows = map(ch.fields, fn(fc: FieldChange) -> list<utf8> {
+              [$"`${fc.path}`", fc.kind, match fc.old { none => "—", ov => $"`${ov}`" }, match fc.new { none => "—", nv => $"`${nv}`" }]
+            })
+          }
+        }
+      }
+    }
+
+    wdoc_repeater { each = match sp.body { none => [], _ => [true] }  as = :_b
+      project { from = sp.body }
+    }
+
+    wdoc_repeater { each = match sp.supersedes { none => [], sid => [sid] }  as = :sid
+      wdoc_repeater { each = filter(specs, fn(x: Spec) -> bool { x.id == sid })  as = :prev
+        p $"Supersedes [${prev.title}](spec_${prev.id})."
+      }
+    }
+    wdoc_repeater { each = filter(specs, fn(x: Spec) -> bool { x.supersedes == sp.id })  as = :nxt
+      p $"Superseded by [${nxt.title}](spec_${nxt.id})."
+    }
+    edit_object { kind = "spec"  target = $"${sp.id}" }
+  }
+}
