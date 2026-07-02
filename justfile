@@ -49,17 +49,21 @@ workspace-test:
 wdoc-test:
     cargo test -p wcl_wdoc
 
-# Run one cargo-fuzz target (nightly + cargo-fuzz required); pass extra flags after --
+# Run one cargo-fuzz target (nightly + cargo-fuzz required); pass extra flags after --.
+# The explicit --target pins the REAL host triple: a prebuilt musl cargo-fuzz
+# binary (e.g. from taiki-e/install-action in CI) otherwise defaults to ITS OWN
+# build triple, and musl + ASan don't mix.
 [group('test')]
 fuzz-run TARGET *ARGS:
-    cd crates/wcl_lang && cargo +nightly fuzz run {{TARGET}} {{ARGS}}
+    cd crates/wcl_lang && cargo +nightly fuzz run --target "$(rustc +nightly -vV | sed -n 's/^host: //p')" {{TARGET}} {{ARGS}}
 
 # Bounded fuzz sweep across every target (~15s each, ~75s total)
 [group('test')]
 fuzz-sweep:
-    @for t in parse eval format_round_trip json_round_trip set_edit_path; do \
+    @host="$(rustc +nightly -vV | sed -n 's/^host: //p')"; \
+    for t in parse eval format_round_trip json_round_trip set_edit_path; do \
         echo "==> fuzz $t" >&2; \
-        (cd crates/wcl_lang && cargo +nightly fuzz run "$t" -- -runs=2000 -max_total_time=15) || exit 1; \
+        (cd crates/wcl_lang && cargo +nightly fuzz run --target "$host" "$t" -- -runs=2000 -max_total_time=15) || exit 1; \
     done
 
 # Format all code
