@@ -629,6 +629,50 @@ Remove leading and trailing whitespace from a string.
 trim("  hi  ")   // strip leading/trailing whitespace → "hi"
 ```
 
+## Path & glob functions
+
+### glob_match(pattern: utf8, path: utf8) → bool
+
+Match one concrete path against a glob. `*` stays within a segment, `**` spans segments, `?` matches one character, `[a-z]` / `[!x]` are character classes. A trailing `/` on the pattern matches the whole subtree.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| pattern | utf8 | The glob pattern. |
+| path | utf8 | The concrete path to test. |
+| returns | bool | `true` if the path matches the pattern. |
+
+```wcl
+glob_match("src/*.rs", "src/main.rs")   // one segment, .rs extension → true
+```
+
+### glob_overlaps(a: utf8, b: utf8) → bool
+
+Whether two glob patterns can match a common path. Concrete paths are patterns too, so this subsumes `glob_match` for overlap gates. Trailing `/` means the whole subtree. Conservative: exotic negated-class pairings may report `true` when no shared path exists, never `false` when one does.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| a | utf8 | The first glob pattern (or concrete path). |
+| b | utf8 | The second glob pattern (or concrete path). |
+| returns | bool | `true` if some path is matched by both patterns. |
+
+```wcl
+glob_overlaps("src/", "src/*.rs")   // the subtree owns every .rs directly under src → true
+```
+
+### path_contains(parent: utf8, child: utf8) → bool
+
+Segment-aware path prefix test: whether `child` is `parent` itself or lives under it. Splits on `/`, so `src/` does not contain `src2/x`. A path contains itself.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| parent | utf8 | The containing path (trailing slash optional). |
+| child | utf8 | The path to test. |
+| returns | bool | `true` if `child` equals `parent` or is nested beneath it. |
+
+```wcl
+path_contains("src/", "src/core/mod.rs")   // nested under src/, segment-aware → true
+```
+
 ## Math functions
 
 ### abs(x: f64) → f64

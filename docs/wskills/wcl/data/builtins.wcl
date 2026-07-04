@@ -382,6 +382,26 @@ function fn_format_unit_value {
   parameter unit { type = "utf8"  description = "The unit label to append." }
   code_example { lang = "wcl"  code = "format_unit_value(5242880, 1048576, \"MiB\")   // divide by the factor and label → \"5 MiB\"" }
 }
+function fn_glob_match {
+  name        = "glob_match"
+  category    = "paths"
+  description = "Match one concrete path against a glob. `*` stays within a segment, `**` spans segments, `?` matches one character, `[a-z]` / `[!x]` are character classes. A trailing `/` on the pattern matches the whole subtree."
+  returns     = "bool"
+  returns_description = "`true` if the path matches the pattern."
+  parameter pattern { type = "utf8"  description = "The glob pattern." }
+  parameter path { type = "utf8"  description = "The concrete path to test." }
+  code_example { lang = "wcl"  code = "glob_match(\"src/*.rs\", \"src/main.rs\")   // one segment, .rs extension → true" }
+}
+function fn_glob_overlaps {
+  name        = "glob_overlaps"
+  category    = "paths"
+  description = "Whether two glob patterns can match a common path. Concrete paths are patterns too, so this subsumes `glob_match` for overlap gates. Trailing `/` means the whole subtree. Conservative: exotic negated-class pairings may report `true` when no shared path exists, never `false` when one does."
+  returns     = "bool"
+  returns_description = "`true` if some path is matched by both patterns."
+  parameter a { type = "utf8"  description = "The first glob pattern (or concrete path)." }
+  parameter b { type = "utf8"  description = "The second glob pattern (or concrete path)." }
+  code_example { lang = "wcl"  code = "glob_overlaps(\"src/\", \"src/*.rs\")   // the subtree owns every .rs directly under src → true" }
+}
 function fn_group_by {
   name        = "group_by"
   category    = "collections"
@@ -596,6 +616,16 @@ function fn_panic {
   returns_description = "Never returns — aborts evaluation."
   parameter msg { type = "utf8"  description = "The failure message to report." }
   code_example { lang = "wcl"  code = "panic(\"invariant violated\")   // abort with an unrecoverable failure → (aborts)" }
+}
+function fn_path_contains {
+  name        = "path_contains"
+  category    = "paths"
+  description = "Segment-aware path prefix test: whether `child` is `parent` itself or lives under it. Splits on `/`, so `src/` does not contain `src2/x`. A path contains itself."
+  returns     = "bool"
+  returns_description = "`true` if `child` equals `parent` or is nested beneath it."
+  parameter parent { type = "utf8"  description = "The containing path (trailing slash optional)." }
+  parameter child { type = "utf8"  description = "The path to test." }
+  code_example { lang = "wcl"  code = "path_contains(\"src/\", \"src/core/mod.rs\")   // nested under src/, segment-aware → true" }
 }
 function fn_pi {
   name        = "pi"

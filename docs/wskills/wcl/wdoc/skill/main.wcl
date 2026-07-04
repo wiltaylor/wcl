@@ -40,6 +40,7 @@ let all_functions = filter(functions, fn(fc: Function) -> bool { in_skill(fc.aud
 let fn_categories = [
   { slug: "collections", name: "Collection functions" },
   { slug: "strings",     name: "String functions" },
+  { slug: "paths",       name: "Path & glob functions" },
   { slug: "math",        name: "Math functions" },
   { slug: "records",     name: "Record functions" },
   { slug: "reflection",  name: "Reflection functions" },

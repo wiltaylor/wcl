@@ -674,3 +674,35 @@ fn chars_repeat_and_padding() {
         Value::Utf8("abcd".into())
     );
 }
+
+#[test]
+fn path_and_glob_builtins() {
+    assert_eq!(
+        eval("@schemaless result = path_contains(\"src/\", \"src/core/mod.rs\")\n"),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        eval("@schemaless result = path_contains(\"src/\", \"src2/x\")\n"),
+        Value::Bool(false)
+    );
+    assert_eq!(
+        eval("@schemaless result = glob_match(\"src/*.rs\", \"src/main.rs\")\n"),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        eval("@schemaless result = glob_match(\"src/*.rs\", \"src/sub/mod.rs\")\n"),
+        Value::Bool(false)
+    );
+    assert_eq!(
+        eval("@schemaless result = glob_overlaps(\"src/*.rs\", \"src/main.rs\")\n"),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        eval("@schemaless result = glob_overlaps(\"src/\", \"src/core/\")\n"),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        eval("@schemaless result = glob_overlaps(\"src/*.rs\", \"docs/*.md\")\n"),
+        Value::Bool(false)
+    );
+}

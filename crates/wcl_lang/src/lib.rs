@@ -27,6 +27,7 @@ mod lexer;
 mod math;
 mod numeric;
 mod parser;
+mod paths;
 mod profile;
 mod reflect;
 mod symbols;

@@ -42,6 +42,7 @@ impl Environment {
         env.types.extend(stdlib_unit_types());
         crate::collections::register(&mut env);
         crate::math::register(&mut env);
+        crate::paths::register(&mut env);
         crate::reflect::register(&mut env);
         crate::units::register(&mut env);
         env

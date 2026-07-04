@@ -61,6 +61,7 @@ let all_functions = filter(functions, fn(fc: Function) -> bool { in_book(fc.audi
 let fn_categories = [
   { slug: "collections", name: "Collection functions", blurb: "Transform, search, and reshape lists and tensors." },
   { slug: "strings",     name: "String functions",     blurb: "Search, split, join, reshape, and slice text." },
+  { slug: "paths",       name: "Path & glob functions", blurb: "Segment-aware path containment, glob matching, and glob-overlap tests." },
   { slug: "math",        name: "Math functions",       blurb: "Arithmetic, rounding, roots, logs, and trigonometry." },
   { slug: "records",     name: "Record functions",     blurb: "Read and combine record fields." },
   { slug: "reflection",  name: "Reflection functions", blurb: "Inspect declarations, types, and signatures at evaluation time." },
