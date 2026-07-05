@@ -2,7 +2,7 @@
 
 The four units, plus examples and any typed-extension sections.
 
-- [**Concepts**](../references/concepts_ref.md) — 13 ideas to understand.
+- [**Concepts**](../references/concepts_ref.md) — 14 ideas to understand.
 
 - [**Facts**](../references/facts_ref.md) — 6 values and value tables.
 

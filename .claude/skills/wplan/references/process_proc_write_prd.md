@@ -38,9 +38,17 @@ Interface contracts (contracts.wcl) are usually authored during spec breakdown, 
 
 You own the gates. Keep the defaults; uncomment or add project-specific assertions (the template ships optional strictness gates as comments).
 
-### Step 7: User approval and signoffs
+### Step 7: Project the WAD and review it with the user
 
-Present the PRD, surfaces, models and scenarios; on approval, resolve the phase signoffs in signoffs.wcl (interview/research/surfaces/scenarios/data_model/prd each :done, or :not_applicable with a why-note - e.g. surfaces n/a for a pure library). `just check-full` must pass before spec breakdown.
+```console
+$ just wad-extract && just wad-serve   # review with click-to-comment
+```
+
+The steering pass: hand-author the planned system's containers in wad/data/systems/ (and real personas if the plan has distinct user kinds), fill the attribution tables in scripts/extract_plan.py, then extract and serve. The book now shows the finished solution - every screen with its wireframe, the domain model as an ER diagram, each scenario as a flowchart. Walk it with the user; comments land in the book's comments.wcl sidecar, and every correction is a plan edit (fix surfaces/models/scenarios, re-extract) - never an edit to the generated file. Record decisions made during the walk as `adr` blocks in the WAD on the spot.
+
+### Step 8: User approval and signoffs
+
+Present the PRD, surfaces, models and scenarios (the WAD walk usually IS this presentation); on approval, resolve the phase signoffs in signoffs.wcl (interview/research/surfaces/scenarios/data_model/prd each :done, or :not_applicable with a why-note - e.g. surfaces n/a for a pure library). `just check-full` must pass before spec breakdown.
 
 > [!TIP]
 > **Verification**

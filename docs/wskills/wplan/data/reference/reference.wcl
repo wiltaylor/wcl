@@ -148,6 +148,18 @@ concept lessons_loop {
   }
 }
 
+concept plan_wad {
+  name     = "The plan's WAD"
+  summary  = "A browsable architecture book of the future system, derived from the plan - the steering surface during planning, the living WAD after the build."
+  audience = :both
+  related  = [surfaces, data_models, contracts, scenarios, lessons_loop]
+  body {
+    p "Every scaffolded plan can carry a WAD (Wil's Architecture Document) at `wad/`: `just wad-init <id> \"<Name>\"` scaffolds it with `wcl init wad`, and `just wad-extract` derives `wad/data/generated/plan.wcl` from the plan itself - surfaces become screens (wireframes carried over) and API endpoints, contracts become module-API code items, models become domain objects with an ER diagram, scenarios become use cases with flowcharts, PRD requirements and rules become standards, and specs become WAD specs whose status tracks the build. The result is a twelve-chapter book of the system *as it will exist when the plan completes* - `just wad-book` renders it, `just wad-serve` reviews it with click-to-comment."
+    p "**Two layers, one model.** The extractor owns exactly one file (`wad/data/generated/plan.wcl`, regenerated wholesale - never hand-edit it); everything else in `wad/data/` is hand-authored and layers on top: the system/container decomposition, real personas, context relations, planned infrastructure, ADRs for decisions made while planning. The attribution tables at the top of `scripts/extract_plan.py` (SURFACE_CONTAINER / SPEC_CONTAINER / SCENARIO_PERSONA) tie the derived blocks to the hand-authored ones; anything unmapped lands under the synthetic `plan_unassigned` container and `plan_user` persona, whose presence in the book is the visible prompt to steer. Hand-authored data must never reuse plan ids or the `plan_` prefix - the extractor fails loudly on collisions."
+    p "**Graduation.** After the build completes, the WAD outlives the plan: move `wad/` to the built repo's WAD home (e.g. `.wad/`), delete `scripts/extract_plan.py` and the generated import, convert the derived blocks worth keeping into hand-authored data files (the plan stops being the source of truth once code exists), install the normal code extractors, and run the WAD skill's codebase-scan checklist to backfill what the plan never knew (infrastructure, build pipelines, externals). The plan's WAD becomes the system's living WAD."
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Facts
 // ---------------------------------------------------------------------------
@@ -176,7 +188,9 @@ fact fact_folder_layout {
         ["status.wcl", "Verification agent's ledger - one status row per spec; never shown to implementation agents"],
         ["lessons.wcl", "Durable observations from build runs"],
         ["gates.wcl", "Gate blocks; the planning model configures these"],
-        ["justfile", "check / book / specs / render / serve / status recipes"],
+        ["justfile", "check / book / specs / render / serve / status recipes, plus wad-init / wad-extract / wad-book / wad-serve"],
+        ["scripts/extract_plan.py", "Derives wad/data/generated/plan.wcl from the plan; its attribution tables are the WAD steering knobs"],
+        ["wad/", "The plan's WAD - the architecture book of the future system (see the plan's-WAD concept); scaffolded by `just wad-init`"],
         ["wdoc/book/main.wcl", "Human book projection (PRD, interview, research, DAG diagram, waves, per-spec pages)"],
         ["wdoc/agent/main.wcl", "Agent projection - one self-contained .md brief per spec plus index.md"],
         ["out/", "Generated output - never hand-edited"]

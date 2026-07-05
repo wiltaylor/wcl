@@ -18,7 +18,9 @@
 | status.wcl | Verification agent's ledger - one status row per spec; never shown to implementation agents |
 | lessons.wcl | Durable observations from build runs |
 | gates.wcl | Gate blocks; the planning model configures these |
-| justfile | check / book / specs / render / serve / status recipes |
+| justfile | check / book / specs / render / serve / status recipes, plus wad-init / wad-extract / wad-book / wad-serve |
+| scripts/extract_plan.py | Derives wad/data/generated/plan.wcl from the plan; its attribution tables are the WAD steering knobs |
+| wad/ | The plan's WAD - the architecture book of the future system (see the plan's-WAD concept); scaffolded by `just wad-init` |
 | wdoc/book/main.wcl | Human book projection (PRD, interview, research, DAG diagram, waves, per-spec pages) |
 | wdoc/agent/main.wcl | Agent projection - one self-contained .md brief per spec plus index.md |
 | out/ | Generated output - never hand-edited |

@@ -30,4 +30,6 @@ The ideas the runbooks rely on. Read pipeline first; briefs and role_split expla
 
 - [The project context file](../references/concept_project_context.md)
 
+- [The plan's WAD](../references/concept_plan_wad.md)
+
 - [The lessons loop](../references/concept_lessons_loop.md)

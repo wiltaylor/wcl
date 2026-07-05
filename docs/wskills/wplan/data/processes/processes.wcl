@@ -19,9 +19,15 @@ procedure proc_starting_a_plan {
     body screen { code "console" { source = "$ cd <destination>/plan && just check" } }
     body steps { p "All default gates must pass on the empty template (they hold vacuously). If this fails now, fix the environment now - every later error will then be about content." }
   }
+  step wad_boot { n = 4
+    title = "Scaffold the plan's WAD"
+    body screen { code "console" { source = "$ just wad-init <system_id> \"<System Name>\"" } }
+    body steps { p "Scaffolds `wad/` - the architecture book of the future system (see the plan's-WAD concept). Do it now so the extract/review loop is one command away from the PRD phase on; skip only for a plan too small to steer visually." }
+  }
   placement -> extract
   extract -> prove
-  verification = "just check prints OK twice and every default gate passing."
+  prove -> wad_boot
+  verification = "just check prints OK twice and every default gate passing; wad/wad.wcl checks green."
 }
 
 procedure proc_interview {
@@ -120,17 +126,23 @@ procedure proc_write_prd {
     title = "Configure gates.wcl"
     body steps { p "You own the gates. Keep the defaults; uncomment or add project-specific assertions (the template ships optional strictness gates as comments)." }
   }
-  step approve { n = 7
+  step wad_review { n = 7
+    title = "Project the WAD and review it with the user"
+    body screen { code "console" { source = "$ just wad-extract && just wad-serve   # review with click-to-comment" } }
+    body steps { p "The steering pass: hand-author the planned system's containers in wad/data/systems/ (and real personas if the plan has distinct user kinds), fill the attribution tables in scripts/extract_plan.py, then extract and serve. The book now shows the finished solution - every screen with its wireframe, the domain model as an ER diagram, each scenario as a flowchart. Walk it with the user; comments land in the book's comments.wcl sidecar, and every correction is a plan edit (fix surfaces/models/scenarios, re-extract) - never an edit to the generated file. Record decisions made during the walk as `adr` blocks in the WAD on the spot." }
+  }
+  step approve { n = 8
     title = "User approval and signoffs"
     shape = :terminator
-    body steps { p "Present the PRD, surfaces, models and scenarios; on approval, resolve the phase signoffs in signoffs.wcl (interview/research/surfaces/scenarios/data_model/prd each :done, or :not_applicable with a why-note - e.g. surfaces n/a for a pure library). `just check-full` must pass before spec breakdown." }
+    body steps { p "Present the PRD, surfaces, models and scenarios (the WAD walk usually IS this presentation); on approval, resolve the phase signoffs in signoffs.wcl (interview/research/surfaces/scenarios/data_model/prd each :done, or :not_applicable with a why-note - e.g. surfaces n/a for a pure library). `just check-full` must pass before spec breakdown." }
   }
   author -> surfaces_pass
   surfaces_pass -> models_pass
   models_pass -> scenarios_pass
   scenarios_pass -> contracts_note
   contracts_note -> configure_gates
-  configure_gates -> approve
+  configure_gates -> wad_review
+  wad_review -> approve
   verification = "just check-full green and explicit user approval recorded in the conversation."
 }
 
@@ -155,10 +167,15 @@ procedure proc_spec_breakdown {
     title = "Wire each spec in"
     body steps { p "An import line in plan.wcl and a status row in status.wcl per spec - then just check. Fix anything the gates report before the next spec." }
   }
+  step wad_refresh { n = 5
+    title = "Refresh the WAD"
+    body steps { p "With specs and contracts in: map each spec to its container in SPEC_CONTAINER, `just wad-extract`, and give the book a second steering pass - the specs chapter now shows the whole work breakdown and the contracts render as module-API code items on their containers." }
+  }
   bootstraps -> slice
   slice -> fields
   fields -> wire
   wire -> slice :yes
+  wire -> wad_refresh
   verification = "just check green: DAG acyclic, ownership disjoint, status covered, surfaces implemented exactly once, models defined exactly once, contract order holds, harnesses present."
 }
 
@@ -203,6 +220,7 @@ procedure proc_render_handoff {
   step render { n = 1
     title = "Render"
     body screen { code "console" { source = "$ just render   # out/book (human) + out/specs (agents)" } }
+    body steps { p "If the plan carries a WAD, also `just wad-extract` so the committed generated data never lags the plan - and re-run it whenever status.wcl moves during the build (the WAD's spec statuses track the plan's verbatim, via plan_state tags)." }
   }
   step handoff { n = 2
     title = "Hand off by role"

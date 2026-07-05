@@ -21,6 +21,8 @@ Produce both projections and give each role exactly what it needs.
 $ just render   # out/book (human) + out/specs (agents)
 ```
 
+If the plan carries a WAD, also `just wad-extract` so the committed generated data never lags the plan - and re-run it whenever status.wcl moves during the build (the WAD's spec statuses track the plan's verbatim, via plan_state tags).
+
 ### Step 2: Hand off by role
 
 Implementation agents get ONLY their out/specs/spec_<id>.md. The orchestrator gets out/specs/index.md (waves + worktree convention). The verification agent gets the verification procedure plus access to the plan folder. Re-run just render after any plan edit; never hand-edit out/.

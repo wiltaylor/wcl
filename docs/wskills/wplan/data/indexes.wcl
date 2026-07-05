@@ -12,7 +12,7 @@ index design {
   name     = "Design"
   summary  = "Why the pipeline is shaped this way - gates, the DAG, ownership, briefs, roles."
   audience = :both
-  related  = [pipeline, gates, dag_waves, ownership, briefs, surfaces, scenarios, contracts, data_models, signoffs, role_split, project_context, lessons_loop]
+  related  = [pipeline, gates, dag_waves, ownership, briefs, surfaces, scenarios, contracts, data_models, signoffs, role_split, project_context, plan_wad, lessons_loop]
   body { p "The ideas the runbooks rely on. Read pipeline first; briefs and role_split explain the constraints most often violated." }
 }
 

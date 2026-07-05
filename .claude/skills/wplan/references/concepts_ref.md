@@ -27,3 +27,5 @@ Each concept has its own page. This is the index.
 - [**The project context file**](../references/concept_project_context.md) — Durable, repo-level knowledge - stack, commands, conventions, landmines - kept at plans/project-context.md, verified (not regenerated) by each plan, and copied into briefs like any finding.
 
 - [**The lessons loop**](../references/concept_lessons_loop.md) — lessons.wcl captures what each run teaches; durable lessons flow back into this wskill's template and content.
+
+- [**The plan's WAD**](../references/concept_plan_wad.md) — A browsable architecture book of the future system, derived from the plan - the steering surface during planning, the living WAD after the build.

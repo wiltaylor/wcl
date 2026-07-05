@@ -30,6 +30,10 @@ depends_on (spec-level), `covers` listing the PRD requirement ids this spec impl
 
 An import line in plan.wcl and a status row in status.wcl per spec - then just check. Fix anything the gates report before the next spec.
 
+### Step 5: Refresh the WAD
+
+With specs and contracts in: map each spec to its container in SPEC_CONTAINER, `just wad-extract`, and give the book a second steering pass - the specs chapter now shows the whole work breakdown and the contracts render as module-API code items on their containers.
+
 > [!TIP]
 > **Verification**
 > just check green: DAG acyclic, ownership disjoint, status covered, surfaces implemented exactly once, models defined exactly once, contract order holds, harnesses present.

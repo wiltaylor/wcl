@@ -35,8 +35,16 @@ $ cd <destination>/plan && just check
 
 All default gates must pass on the empty template (they hold vacuously). If this fails now, fix the environment now - every later error will then be about content.
 
+### Step 4: Scaffold the plan's WAD
+
+```console
+$ just wad-init <system_id> "<System Name>"
+```
+
+Scaffolds `wad/` - the architecture book of the future system (see the plan's-WAD concept). Do it now so the extract/review loop is one command away from the PRD phase on; skip only for a plan too small to steer visually.
+
 > [!TIP]
 > **Verification**
-> just check prints OK twice and every default gate passing.
+> just check prints OK twice and every default gate passing; wad/wad.wcl checks green.
 
 [← All processes](../references/processes_ref.md) · [← Back to SKILL.md](../SKILL.md)
