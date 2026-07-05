@@ -152,6 +152,24 @@ wad-check:
     cargo run -p wcl -- check .wad/wad.wcl
     cargo run -p wcl -- check .wad/wdoc/book/main.wcl
 
+# Fail when .wad/data/generated/ is stale — re-runs every extractor and requires a quiet git tree after (runs in ci; needs uv and full git history)
+[group('quality')]
+wad-extract-check: wad-extract
+    @if [ -n "$(git status --porcelain -- .wad/data/generated)" ]; then \
+        git --no-pager diff -- .wad/data/generated | head -80; \
+        echo "wad generated-data drift: run 'just wad-extract' and commit the result"; \
+        exit 1; \
+    fi
+    @echo "wad-extract-check OK — .wad/data/generated is fresh"
+
+# Fail when the wad wskill's hand-reflected fact tables lag the WAD schema version (runs in ci)
+[group('quality')]
+wad-facts-check:
+    @V=$(grep -m1 'schema_version = ' crates/wcl/src/scaffold/templates/wad.wcl | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
+    grep -q "hand-reflected from schema $V" docs/wskills/wad/data/reference/facts.wcl \
+        || { echo "wad wskill facts drift: docs/wskills/wad/data/reference/facts.wcl must say 'hand-reflected from schema $V' — re-reflect the fact tables against the current WAD schema, then update the header"; exit 1; }
+    @echo "wad-facts-check OK"
+
 # Print the canonical wplan plan schema (the scaffold template's heredoc) to stdout
 [private]
 wplan-schema-extract:
@@ -171,7 +189,7 @@ wplan-template-check:
 
 # Full CI gate: fmt-check + workspace-lint + workspace-test + schema drift checks + doc builds
 [group('quality')]
-ci: fmt-check workspace-lint workspace-test wskill-schema-check wskill-template-check wad-schema-check wad-check wad-build wplan-template-check docs-build
+ci: fmt-check workspace-lint workspace-test wskill-schema-check wskill-template-check wad-schema-check wad-check wad-extract-check wad-facts-check wad-build wplan-template-check docs-build
 
 # Run the CLI: just cli-run -- parse examples/basic.wcl
 [group('dev')]
@@ -213,9 +231,8 @@ wad-md *ARGS:
 
 # Run every WAD extractor script (rewrites .wad/data/generated/), then re-validate
 [group('dev')]
-wad-extract:
+wad-extract: && wad-check
     for s in .wad/scripts/extract_*.py; do echo "==> $s" >&2; uv run "$s"; done
-    just wad-check
 
 # Derive a change-spec skeleton for the WAD from a reviewed revision: just wad-spec HEAD~3
 [group('dev')]

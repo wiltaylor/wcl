@@ -31,17 +31,19 @@ Gather what actually changed between the reviewed baseline and the new state: th
 
 An LLM reads the delta (and the surrounding WAD for context) and writes the **implementation specs**: each one a self-contained work package — scope, ordered instructions, acceptance criteria — sized for the model that will implement it. A strong model may need one broad spec (or none — it can implement from the WAD + diff directly); smaller coding models need the change cut into narrow, explicit pieces. A human shapes the cut — decomposition is hard to get right. The mechanical change list is fact: never edit it by hand, re-derive it if the data moves again.
 
+**The bridge to issue mode.** When the change is more than one strong-model sitting — multiple work packages, parallel agents, verification wanted — don't hand-run the specs: seed an **issue-mode plan** from the delta. The WAD spec's change list and context become recon input and the mini-PRD's requirements; record the WAD spec id in the plan (a `rule` or the goal text) so the two ledgers reference each other; build mode then executes with its full verify/review/merge machinery. The WAD spec stays the architecture-level record; the plan's specs are its implementation cut.
+
 ### Step 4: Review
 
 Review the specs (and the changed book) with the comment loop. Not approved → re-cut the specs or keep editing the data, or mark a spec `:abandoned` and revert (keep an `adr` if the abandonment itself is a decision worth recording).
 
 ### Step 5: Hand to the implementer
 
-Set status `:in_progress` and hand the implementing agent its spec — the raw `data/specs/<id>.wcl` is typed and legible, and the WAD itself is the surrounding context. The agent implements against the instructions and acceptance criteria.
+Set status `:in_progress` and hand off. Small change, strong model: give the agent its spec directly — the raw `data/specs/<id>.wcl` is typed and legible, and the WAD itself is the surrounding context. Larger change: the issue-mode plan seeded in the decompose step is the handoff — build mode runs it (dispatch, verification, review, merges) and reports back.
 
 ### Step 6: Close the loop
 
-When the work lands and the user confirms, set `:complete` (with `updated`), re-run extractors so generated data reflects the new reality, and record the merged revision as the next baseline.
+When the work lands and the user confirms (for a plan-executed change: build mode's completion — every spec :merged, scenarios green), set `:complete` (with `updated`), re-run extractors so generated data reflects the new reality, and record the merged revision as the next baseline.
 
 > [!TIP]
 > **Verification**

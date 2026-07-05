@@ -1,0 +1,194 @@
+// Build mode (wbuild) processes - orchestrating implementation, verification,
+// review, fix and merge agents over a plan's spec DAG.
+// Ported from the former hand-written wbuild skill.
+
+procedure proc_orchestrator_loop {
+  title   = "The orchestrator loop"
+  audience = :both
+  purpose = "Preflight, the resumable wave loop, mid-run course correction, and completion - derived from status.wcl + git every iteration, never remembered."
+  preconditions = ["A rendered plan (out/specs/ exists) produced by plan or issue mode", "The orchestrator session never writes application code"]
+  step preflight { n = 1
+    title = "Preflight (once per run)"
+    body steps {
+      p "1. **Locate the plan** ($ARGUMENTS or ./plan; confirm plan.wcl, justfile, specs/, status.wcl exist; repo root is the plan folder's parent unless the user says otherwise). 2. **Green-check and render**: `just check-full` must pass, then `just specs` so briefs match the current plan - never dispatch from stale briefs; if the check fails, stop and show the user the failing gate output, never edit plan files to make it pass (plan edits are plan/issue mode's job). 3. **Read the DAG**: parse out/specs/index.md for the spec list, waves, each spec's depends_on/branch/owns, and the **Final acceptance scenarios** section - it is the completion criterion, not documentation; cross-check state per spec with `just status <spec_id>`. 4. **Git preflight**: on trunk, `git status --porcelain` must print nothing (else show the user and ask); confirm `.tree/` is gitignored; note existing `spec/*` branches or `.tree/*` worktrees from a previous run - resume state, not garbage. 5. **Load config**: read `.wbuild/config` if present, else offer the bundled `init-wbuild.sh` or proceed with defaults (see the runner-contract fact). 6. **Present the plan**: waves, current states, what the first iteration will do; get a go-ahead before the first dispatch."
+      p "**Resume note:** a spec found `:in_progress` at preflight with no running agent and no failure report was interrupted mid-implementation. Inspect its worktree: committed work means treat as `:implemented` and verify; dirty or empty means ask the user whether to re-dispatch."
+    }
+  }
+  step classify { n = 2
+    title = "Classify every spec, act in priority order"
+    shape = :decision
+    body steps { p "Repeat until every spec is `:merged` (or something is `:blocked` and escalated). Each iteration, recompute from status.wcl + git and act in this order - merging first keeps the DAG unblocking: **1. Merge-ready** (`:reviewed`, all deps `:merged`) - merge per the fix-and-merge runbook, then run any scenario whose ready_after names the just-merged spec. **2. Review-ready** (`:verified`) - run the review runbook. **3. Verify-ready** (`:implemented`) - run the verification runbook. **4. Fix-ready** (`:in_progress` with a failure or review report in .wbuild/reports/ and no agent running) - the fix loop; at MAX_FIX_ATTEMPTS set `:blocked` and escalate. **5. Dispatch-ready** (`:todo`, all deps `:merged`) - the current wave: re-render briefs first (`just specs`) so as-built notes reach dependent briefs, then dispatch up to MAX_PARALLEL per the dispatch runbook (fewer high-complexity specs in flight at once, ownership breadth as the proxy). **6. Nothing ready** - agents running: wait; nothing running and specs remain: the DAG is stuck on something `:blocked` - summarise the stuck subgraph and escalate." }
+  }
+  step wad_sync { n = 3
+    title = "Keep the plan's WAD tracking the build"
+    body steps { p "If the plan carries a WAD (`wad/` beside plan.wcl - plan mode scaffolds one), run `just wad-extract` in the plan folder after status.wcl moves - at minimum once per loop iteration that changed any state. The WAD's spec statuses track the plan's verbatim via plan_state tags, so the architecture book of the future system always shows the build's real progress. This is cheap (one extractor run) and keeping it current is what makes the graduation step at completion trustworthy." }
+  }
+  step correct_course { n = 4
+    title = "Correct course (mid-run plan changes)"
+    shape = :decision
+    body steps { p "When implementation reveals the *plan* is wrong - a dependency assumption that doesn't hold, an obsolete requirement, a spec whose scope no longer makes sense - do not improvise around it: 1. Pause dispatch (let running agents finish). 2. Amend the plan at the source - the .wcl files, through plan/issue mode, with the user's approval for anything that changes scope or requirements; never out/. 3. Re-gate and re-render (`just check`, then `just specs`); a failing check means the amendment is incomplete. 4. Diff the affected briefs (git diff on out/specs/): `:merged` specs are history; `:in_progress` specs with a changed brief need a user decision (finish against the old brief and fix after, or abandon the worktree and re-dispatch). 5. Resume the loop - the wave computation picks up the amended DAG automatically. Small corrections affecting only one spec's future work are usually better recorded as an `asbuilt` row than a plan amendment." }
+  }
+  step completion { n = 5
+    title = "Completion"
+    shape = :terminator
+    body steps {
+      p "When all specs are `:merged`: 1. Run the post-merge check one final time on trunk. 2. **Final acceptance scenarios**: execute every scenario from index.md end to end on trunk, in order. Scenarios are cross-spec, so a failure does NOT automatically reopen a spec: write a scenario-failure report (`.wbuild/reports/scenario-<id>.md` - failed step, surface involved, expected vs observed) and escalate with your read on which spec is implicated; the user may reopen a spec, amend the plan, or raise a fresh issue. **The run is not complete until every scenario passes.**"
+      p "3. **Fold knowledge back.** (a) If the plan folder has a sibling capability-deltas.md (issue plans), apply its ADDED/MODIFIED/REMOVED lines to `plans/capabilities/<capability>.md` and stamp the deltas file `Merged into capabilities on <date>.` (b) Create or update `plans/project-context.md` with what the run established: canonical build/test commands actually used, conventions agents were held to, landmines hit. (c) **Update the architecture record.** Greenfield plan carrying a WAD: run the graduation runbook - the plan's WAD becomes the repo's living WAD. Repo that already has a living `.wad/`: run the keeping-current sweep (re-extract, diff against the reviewed baseline, capture ADRs for decisions made during the build); when the change was architectural, `wcl wad spec --from <pre-build-rev>` derives the record of what actually changed."
+      p "4. Remove remaining `.tree/*` worktrees (`git worktree prune` after removal) and, unless KEEP_BRANCHES=true, delete the merged `spec/*` branches. 5. Summarise the run: waves executed, fix cycles per spec, scenario results, anything notable. 6. Review lessons.wcl with the user - durable lessons flow back into the planning template and this skill."
+    }
+  }
+  preflight -> classify
+  classify -> wad_sync :yes
+  classify -> completion :no
+  wad_sync -> correct_course
+  correct_course -> classify
+  verification = "Every spec :merged, every scenario green on trunk, knowledge folded back (capabilities, project-context, the WAD), worktrees pruned."
+}
+
+procedure proc_dispatch {
+  title   = "Dispatching implementation"
+  audience = :both
+  purpose = "Branch/worktree setup, prompt assembly, launch and collection for each dispatch-ready spec."
+  preconditions = ["A dispatch-ready spec (:todo, all deps :merged)", "Fresh briefs (just specs ran this iteration)"]
+  step worktree { n = 1
+    title = "Branch + worktree"
+    body screen { code "console" { source = <<'SH'
+$ git branch <branch> <TRUNK>            # skip if it already exists (resume)
+$ git worktree add .tree/<branch> <branch>
+SH
+    } }
+    body steps { p "The brief's frontmatter names the branch (spec/NNN-name). Create it from current trunk and mount a worktree. If .tree/<branch> already exists from an interrupted run, reuse it after inspecting it (see the orchestrator loop's resume note)." }
+  }
+  step assemble { n = 2
+    title = "Assemble the prompt"
+    body screen { code "markdown" { source = <<'MD'
+# Role
+
+You are an implementation agent. Implement the spec below exactly as written.
+Your working directory is: <absolute worktree path>
+The git branch and worktree are ALREADY set up — ignore any branch/worktree
+setup instructions inside the spec and just work in the directory above.
+
+# Hard rules
+
+- Work ONLY inside your working directory, and within it touch only the paths
+  the spec allows. Do not read or modify anything outside it.
+- Follow the spec literally. If something is ambiguous, choose the smallest
+  reasonable interpretation and note the choice in AGENT_NOTES.md in the
+  worktree root — do not expand scope.
+- Run the spec's acceptance commands yourself before finishing; make them pass.
+- Commit all work on the current branch with clear messages. Do not push,
+  do not merge, do not switch branches.
+- When the spec is complete: commit, write a short completion summary as the
+  final section of AGENT_NOTES.md, and STOP. Do not update any status or
+  tracking files of any kind.
+
+# The spec
+
+<full brief text pasted here>
+MD
+    } }
+    body steps { p "Write `.wbuild/prompts/<spec>-<attempt>.md`: the wrapper above followed by the **full brief text** from plan/out/specs/<spec>.md, copied verbatim - never summarise or trim a brief. The closing \"do not update any status files\" line is deliberate cheap insurance (weak models weight recent task text heavily). Nothing about status.wcl, the plan folder, or other specs may appear in the prompt. After writing, verify the brief went in whole: the file must end with the brief's final line and its line count must be at least wrapper plus brief - a truncated brief is a silent scope cut." }
+  }
+  step launch { n = 3
+    title = "Launch and record"
+    body steps { p "Set the spec's status row to `:in_progress` (by = \"orchestrator\"). Launch via the runner (or the Task-subagent fallback - see the runner-contract fact), backgrounded, respecting MAX_PARALLEL. Log to .wbuild/logs/." }
+  }
+  step collect { n = 4
+    title = "Collect"
+    shape = :terminator
+    body steps { p "When the runner exits: exit 0 **and** the branch has new commits - set `:implemented` and queue verification. Exit 0 but no commits - treat as a failure: write a short report (\"agent finished without committing\") to .wbuild/reports/ and enter the fix loop. Non-zero exit (crash/timeout) - leave `:in_progress`, inspect the log; re-dispatch once, and if it crashes again, `:blocked` + escalate." }
+  }
+  worktree -> assemble
+  assemble -> launch
+  launch -> collect
+  verification = "Prompt file contains the whole brief; status row moved; runner logged; outcome classified on exit."
+}
+
+procedure proc_verify {
+  title   = "The verification procedure"
+  audience = :both
+  purpose = "Judge an implemented spec against its brief from scratch - the verifier never trusts the implementer's self-report and is the only role recording verdicts."
+  preconditions = ["A spec in :implemented", "The brief, the spec's source .wcl, and the worktree at .tree/<branch>"]
+  step checks { n = 1
+    title = "Run the checks in order - fail fast, keep collecting findings"
+    shape = :decision
+    body steps {
+      p "1. **Commits exist**: `git log <TRUNK>..<branch>` is non-empty. 2. **Ownership respected**: every path in `git diff --name-only <TRUNK>...<branch>` falls under the spec's owns (or an explicit allowed entry) - directory prefixes DO count here even though the plan-time gate is exact-string; any path outside fails, and ownership violations are the most important findings to feed lessons.wcl. 3. **not_allowed respected**: check manifest diffs (Cargo.toml, package.json, csproj) explicitly for forbidden dependency changes. 4. **Acceptance checks pass**: run each accept command in the worktree exactly as written; for accepts marked (manual walkthrough) or carrying numbered steps, launch the app using the brief's \"How to run this spec's work\" harness line and execute the steps in order, checking each stated expectation - a step whose expectation does not hold is a failure with the step quoted verbatim."
+      p "5. **Contracts honoured**: \"Contract you MUST provide\" signatures exist in the code verbatim - names, parameter types, return types, error shapes; consuming code calls through consumed contracts without reaching past them or reimplementing them. 6. **Surface contracts complete**: for every \"Surface to implement\" section, each listed element exists, each interaction produces its stated outcome, and each of the four screen states (empty/loading/error/populated) is demonstrably reachable and matches its shows text - exercise them (empty data dir, kill the backend for error); a missing state fails verification even when every test passes, which is precisely why this check exists. 7. **Done list holds**: verify each item concretely (run a command, read the file) - not by trusting AGENT_NOTES.md. 8. **Worktree hygiene**: `git status` clean."
+    }
+  }
+  step pass { n = 2
+    title = "Pass verdict"
+    body screen { code "wcl" { source = "status <spec_id> { state = :verified  by = \"verifier\"  note = \"all accepts green\" }" } }
+    body steps { p "Edit the spec's row in plan/status.wcl. Also record an `asbuilt` row in plan/asbuilt.wcl for any deviation from the brief that downstream specs must know (renamed module, changed command, adjusted signature) - no deviations, no row; as-built rows render into dependent briefs on the next `just specs`. Then `just check` in the plan folder to confirm the ledger still validates." }
+  }
+  step fail { n = 2
+    title = "Fail verdict"
+    body screen { code "markdown" { source = <<'MD'
+# Verification failure: <spec_id> (attempt N)
+
+## What failed
+- <check>: <exact command run> → <exact error/output excerpt>
+- <ownership violation: path X changed but is owned by spec_Y>
+
+## What passed
+- <so the fixer doesn't re-litigate working parts>
+
+## Required to pass
+- <concrete, minimal statements of what must change>
+MD
+    } }
+    body steps { p "Write `.wbuild/reports/<spec>-attempt-<N>.md` and set the row back to `:in_progress` with by = \"verifier\" and a one-line note pointing at the report. The report must be self-contained and literal - the fixer may be a weak model and cannot investigate beyond what the report and brief say." }
+  }
+  checks -> pass :yes
+  checks -> fail :no
+  verification = "A verdict recorded in status.wcl (or a failure report written); just check green in the plan folder."
+}
+
+procedure proc_review {
+  title   = "The review procedure"
+  audience = :both
+  purpose = "A strong-model code review of each verified spec's diff before merge - verification asked whether it complies with the brief; review asks whether it is good."
+  preconditions = ["A spec in :verified", "A strong model for the reviewer role - never the cheap model that implemented"]
+  step review_diff { n = 1
+    title = "Review the diff against the brief"
+    body steps { p "Inputs: the brief and source .wcl (the contract - review judges against it, never beyond it), the diff (`git diff <TRUNK>...<branch>`) with the worktree for context, the plan's project rules, and any as-built notes of dependencies. Look for: bugs the accepts didn't exercise (edge cases, off-by-ones, races, leaks, unhandled error paths); error handling (swallowed errors, panics on user input, missing validation at trust boundaries); security (injection, path traversal, secrets, unsafe deserialization); test quality (a test that cannot fail is a blocker); convention adherence beyond mechanics; needless complexity." }
+  }
+  step scope { n = 2
+    title = "Scope discipline"
+    shape = :decision
+    body steps { p "The reviewer judges the code, not the plan. It must NOT expand scope, demand refactors of files outside the spec's ownership, relitigate decisions the brief fixed, or fail a spec for faithfully following its brief. \"The brief itself is wrong/incomplete\" is a real finding - but it goes to the orchestrator as a plan concern (lessons.wcl / user escalation), not into a change request to the implementer. Tier every finding: **Blocker** (bugs, security, error-handling holes, vacuous tests, project-rule violations) or **Suggestion** (style, minor structure). Any blocker means request changes; NEVER block on suggestions alone - note them and approve." }
+  }
+  step approve { n = 3
+    title = "Approve"
+    body screen { code "wcl" { source = "status <spec_id> { state = :reviewed  by = \"reviewer\"  note = \"approved; N suggestions noted\" }" } }
+    body steps { p "Edit the spec's row, then `just check` in the plan folder. (Pre-1.3.0 plans lack the `:reviewed` symbol: record approval only in `.wbuild/reports/<spec>-review-approved.md`, treat :verified + approval report as merge-ready, and suggest the user add `reviewed` to the plan schema's state set.)" }
+  }
+  step request_changes { n = 3
+    title = "Request changes"
+    body steps { p "Write `.wbuild/reports/<spec>-review-<N>.md` in the same self-contained, literal style as verification failure reports: What must change (each blocker: file, line, the problem, why it matters, a concrete fix direction), What is fine, Suggestions (non-blocking), and Plan concerns if any. Set the row back to `:in_progress` with a note pointing at the report; the spec re-enters the fix loop, then re-verification, then re-review. Count review attempts by counting `<spec>-review-*.md`; at MAX_FIX_ATTEMPTS, `:blocked` and escalate with your read on whether the fault is code or spec." }
+  }
+  review_diff -> scope
+  scope -> approve :no
+  scope -> request_changes :yes
+  verification = "Every merged spec carries either :reviewed or (pre-1.3.0) an approval report; no spec was blocked on suggestions alone."
+}
+
+procedure proc_fix_and_merge {
+  title   = "The fix loop and merging"
+  audience = :both
+  purpose = "Bounded fix retries in the same worktree, escalation on exhaustion, and dependency-ordered merges with a post-merge check."
+  preconditions = ["A failure or review report in .wbuild/reports/, or a merge-ready (:reviewed) spec"]
+  step fix { n = 1
+    title = "The fix loop"
+    body steps { p "Triggered by a verification failure report OR a review change-request for a spec below MAX_FIX_ATTEMPTS (counted separately: `<spec>-attempt-*.md` and `<spec>-review-*.md` - count files, no separate counter to lose). 1. Assemble `.wbuild/prompts/<spec>-fix-<N>.md`: the implementer wrapper with the role line changed to \"You are a fix agent. A verification pass found problems with an implementation of the spec below.\", then the **failure report in full**, then the **brief in full**; same hard rules, same silence about status files. 2. Dispatch with role fixer into the **same worktree** - the fixer continues on the existing branch; the failed attempt's history is context, not something to rewrite (no force-pushes, no branch resets). 3. On runner exit with new commits: `:implemented` again - re-verify (a review-triggered fix re-enters at verification: verify, then re-review). 4. Attempts exhausted: set `:blocked` and escalate with the spec id, all reports, and your read on whether the fault is the implementation or the spec; if the user amends the spec, follow the correct-course procedure, reset the attempt counter, and re-enter." }
+  }
+  step merge { n = 2
+    title = "Merging"
+    shape = :terminator
+    body steps { p "For each merge-ready spec (:reviewed, all deps :merged), in dependency order: 1. **Sync the branch**: in the worktree, `git merge <TRUNK>` (trunk moved if siblings merged first). Disjoint ownership makes conflicts unlikely - a conflict therefore signals an ownership problem: do NOT resolve it yourself; abort, write a report describing the conflicting paths, and send it through the fix loop. 2. **Re-verify if the sync changed anything**: if the merge produced a new commit, re-run the spec's accept commands in the worktree. 3. **Merge to trunk**: in the repo root, `git merge --no-ff <branch>` with a message like `merge spec/030-cli: CLI layer`. 4. **Post-merge check**: run POST_MERGE_CHECK on trunk; if unset, prefer the project's full test suite over just the merged spec's accepts - one spec's merge can break a sibling's behaviour its own accepts never exercise. Failure means an integration problem the per-worktree checks couldn't see: stop, do not mark merged, do not revert on your own - show the user and agree a path. 5. **Record and clean**: set `:merged` (by = \"orchestrator\"), `just check`, `git worktree remove .tree/<branch>`, and (unless KEEP_BRANCHES) `git branch -d <branch>`. Merging first each iteration matters: every merge can unlock the next wave, so specs sitting :reviewed are the highest-value work in the queue." }
+  }
+  fix -> merge
+  verification = "Merges land in dependency order with the post-merge check green; conflicts route through the fix loop, never hand-resolved."
+}

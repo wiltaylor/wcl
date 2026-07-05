@@ -100,28 +100,34 @@ procedure documenting_existing_system {
   related = [scan_checklist, interview_question_bank, writing_extractor]
   audience = :both
 
-  step order { n = 1
+  step adopt { n = 1
+    title = "Built from a plan? Adopt its WAD"
+    shape = :decision
+    body steps { p "If the system was built by build mode from a plan that carried a WAD, don't scan cold — **graduate the plan's WAD** and treat the scan as backfill: move `wad/` from the plan folder to the repo's WAD home (conventionally `.wad/`), delete `scripts/extract_plan.py` and the `data/generated/plan.wcl` import, convert the derived blocks worth keeping into hand-authored data files (code is the source of truth once it exists), and install the normal code extractors. Then run the scan below only for what the plan never knew — infrastructure, build pipelines, externals, SOPs. No plan WAD? Scaffold fresh (`wcl init wad`) and scan everything." }
+  }
+  step order { n = 2
     title = "Scan order"
     body steps { p "Work the scan-checklist rows top to bottom — repo layout → CI/build → entry points → externals → data layer → infrastructure → personas/governance → standards → SOPs. Cheap, high-signal sources come first; each row says what to read, what blocks to emit, and what to ask when the source is silent." }
   }
-  step probe { n = 2
+  step probe { n = 3
     title = "Probe and emit"
     body steps { p "For each row: read the sources, write the blocks, `wcl check`, render. Anything machine-derivable that will drift (pipelines, dependency edges, schemas) should be **extracted, not hand-copied** — write the extractor now (see the write-an-extractor process) so the fact stays true next month." }
   }
-  step never_invent { n = 3
+  step never_invent { n = 4
     title = "Respect the silence"
     body steps { p "Code cannot tell you: support contacts, approval chains, off-repo infrastructure, security posture, or why anything is the way it is. Leave those blank for the next step — a scanned WAD full of plausible inventions is worse than an empty one." }
   }
-  step gap_interview { n = 4
+  step gap_interview { n = 5
     title = "Gap interview"
     shape = :decision
     body steps { p "Run a targeted mini-interview from the question bank, restricted to what the probes couldn't fill — and back-fill the load-bearing decisions as `adr`s (“why is it like this?”). Still-unanswered items become open-question lines in an `article`." }
   }
-  step verify { n = 5
+  step verify { n = 6
     title = "Verify with the user"
     body steps { p "Serve the book with `--comment`, have the user walk it against reality, fix data from the comments, and record the reviewed revision as the diff baseline." }
   }
 
+  adopt -> order
   order -> probe
   probe -> never_invent
   never_invent -> gap_interview
@@ -216,7 +222,10 @@ SH
   }
   step decompose { n = 3
     title = "Decompose into specs"
-    body steps { p "An LLM reads the delta (and the surrounding WAD for context) and writes the **implementation specs**: each one a self-contained work package — scope, ordered instructions, acceptance criteria — sized for the model that will implement it. A strong model may need one broad spec (or none — it can implement from the WAD + diff directly); smaller coding models need the change cut into narrow, explicit pieces. A human shapes the cut — decomposition is hard to get right. The mechanical change list is fact: never edit it by hand, re-derive it if the data moves again." }
+    body steps {
+      p "An LLM reads the delta (and the surrounding WAD for context) and writes the **implementation specs**: each one a self-contained work package — scope, ordered instructions, acceptance criteria — sized for the model that will implement it. A strong model may need one broad spec (or none — it can implement from the WAD + diff directly); smaller coding models need the change cut into narrow, explicit pieces. A human shapes the cut — decomposition is hard to get right. The mechanical change list is fact: never edit it by hand, re-derive it if the data moves again."
+      p "**The bridge to issue mode.** When the change is more than one strong-model sitting — multiple work packages, parallel agents, verification wanted — don't hand-run the specs: seed an **issue-mode plan** from the delta. The WAD spec's change list and context become recon input and the mini-PRD's requirements; record the WAD spec id in the plan (a `rule` or the goal text) so the two ledgers reference each other; build mode then executes with its full verify/review/merge machinery. The WAD spec stays the architecture-level record; the plan's specs are its implementation cut."
+    }
   }
   step review { n = 4
     title = "Review"
@@ -225,11 +234,11 @@ SH
   }
   step hand_off { n = 5
     title = "Hand to the implementer"
-    body steps { p "Set status `:in_progress` and hand the implementing agent its spec — the raw `data/specs/<id>.wcl` is typed and legible, and the WAD itself is the surrounding context. The agent implements against the instructions and acceptance criteria." }
+    body steps { p "Set status `:in_progress` and hand off. Small change, strong model: give the agent its spec directly — the raw `data/specs/<id>.wcl` is typed and legible, and the WAD itself is the surrounding context. Larger change: the issue-mode plan seeded in the decompose step is the handoff — build mode runs it (dispatch, verification, review, merges) and reports back." }
   }
   step close { n = 6
     title = "Close the loop"
-    body steps { p "When the work lands and the user confirms, set `:complete` (with `updated`), re-run extractors so generated data reflects the new reality, and record the merged revision as the next baseline." }
+    body steps { p "When the work lands and the user confirms (for a plan-executed change: build mode's completion — every spec :merged, scenarios green), set `:complete` (with `updated`), re-run extractors so generated data reflects the new reality, and record the merged revision as the next baseline." }
   }
 
   edit -> derive
@@ -250,7 +259,7 @@ procedure keeping_wad_current {
 
   step trigger { n = 1
     title = "Trigger"
-    body steps { p "Run the sweep when something meaningful lands: code merged, infrastructure changed, a decision made, an incident that revealed the doc was wrong." }
+    body steps { p "Run the sweep when something meaningful lands: code merged, infrastructure changed, a decision made, an incident that revealed the doc was wrong. Build mode's completion step is a **standing trigger** — every finished plan run (greenfield or issue) ends by updating the architecture record, either by graduating the plan's WAD or by running this sweep on the existing one. Manual changes outside the pipeline still need the human trigger." }
   }
   step extract { n = 2
     title = "Re-run the extractors"

@@ -131,9 +131,20 @@ concept relations_model {
 concept living_wad {
   name    = "A WAD stays current"
   summary = "The document is maintained continuously — drift between WAD and reality is the failure mode the format exists to prevent."
-  related = [generated_vs_hand, spec_lifecycle, keeping_wad_current]
+  related = [generated_vs_hand, spec_lifecycle, keeping_wad_current, lifecycle]
   body {
     p "A WAD written once and abandoned is worse than no WAD — it answers questions wrongly with confidence. The format fights drift three ways: extractors re-derive machine-readable facts from the live system on every run; `wcl diff` against the last reviewed revision makes any drift visible as a change list; and decisions are captured as `adr` blocks at the moment they're made, not reconstructed later."
-    p "The habits: after a meaningful change lands, re-run the extractors, update the hand-authored blocks the change invalidates, and record new decisions. Periodically, have an LLM read the **git commit history since the last sweep** and flag what the WAD hasn't caught up with — commits are the change log the document must answer to. The keep-current process turns all of this into a runbook."
+    p "The habits: after a meaningful change lands, re-run the extractors, update the hand-authored blocks the change invalidates, and record new decisions. Periodically, have an LLM read the **git commit history since the last sweep** and flag what the WAD hasn't caught up with — commits are the change log the document must answer to. The keep-current process turns all of this into a runbook — and build mode's completion step invokes it, so pipeline-driven changes never rely on memory."
+  }
+}
+
+concept lifecycle {
+  name    = "The lifecycle: how the four modes hand off"
+  summary = "plan and issue produce plans, build executes them, doc records the result — and every seam is an explicit step, not a convention."
+  related = [plan_wad, issue_mode, living_wad, documenting_existing_system, evolving_and_spec, keeping_wad_current, proc_orchestrator_loop]
+  body {
+    p "**New software:** plan mode scaffolds the plan *and* a WAD of the future system (`just wad-init`), keeps that WAD extracted from the plan as it grows, and hands the rendered briefs to build mode. Build mode re-extracts the WAD as spec statuses move, and at completion **graduates** it: the plan's WAD moves into the built repo (conventionally `.wad/`), sheds `extract_plan.py`, gains the code extractors, and the doc-mode scan backfills what the plan never knew. From then on the repo has a living WAD."
+    p "**Changing software:** two entry points, one convergence. *Issue-first* (a bug or feature): issue mode's recon starts by reading the living WAD, the plan executes through build mode, and completion updates the WAD (the keeping-current sweep; `wcl wad spec --from <pre-build-rev>` when the change turned out architectural). *WAD-first* (an architecture change): edit the WAD's target state, derive the delta with `wcl wad spec`, and either implement directly (small change, strong model) or seed an issue-mode plan from the delta — the evolving-and-spec runbook's bridge. Either way the merged revision becomes the WAD's next reviewed baseline."
+    p "**Choosing the entry point:** if the work is best described as *behaviour* (\"X is broken\", \"add Y\"), start issue-first — recon will tell you whether the architecture moves. If it is best described as *structure* (\"split the monolith's auth into a service\", \"swap the queue\"), start WAD-first — editing the target state first makes the review happen at the architecture level, where it is cheapest. Capability specs (behaviour, EARS statements under plans/capabilities/) and the WAD (structure) are updated together at build completion; they are the two halves of the repo's memory."
   }
 }

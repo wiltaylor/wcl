@@ -1,8 +1,8 @@
 // The `wplan` built-in template: scaffold a wplan plan folder — a software
 // project planned as a gated WCL pipeline (interview, research, PRD, a DAG
 // of parallel-safe specs) rendered into a human book and self-contained
-// markdown briefs. Ported verbatim from the wplan skill's verified
-// plan-template (docs/wskills/wplan); every file is emitted as a raw
+// markdown briefs. Originally ported from the wplan skill (now the plan
+// mode of the wad wskill, docs/wskills/wad); every file is emitted as a raw
 // heredoc — the plan is generic until the planning process fills it in.
 //
 //   wcl init wplan <project>/plan --defaults
@@ -100,6 +100,22 @@ wad-book: wad-extract
 # Review the WAD book live with click-to-comment.
 wad-serve:
     wcl wdoc serve wad/wdoc/book/main.wcl --comment
+
+# Graduate the plan's WAD into the built repo (run after the build completes):
+# moves wad/ to <dest>, sheds the plan extractor + its generated file, and
+# leaves the adopt checklist. <dest> is the repo's WAD home, e.g. ../../.wad
+# for a plan at <repo>/plans/<slug>/plan. Then: convert derived blocks worth
+# keeping into hand-authored data, install code extractors, and run the wad
+# skill's codebase-scan checklist to backfill what the plan never knew.
+wad-graduate dest:
+    test -d wad || { echo 'no wad/ folder to graduate'; exit 1; }
+    test ! -e {{dest}} || { echo '{{dest}} already exists — not overwriting'; exit 1; }
+    rm -f scripts/extract_plan.py wad/data/generated/plan.wcl
+    grep -v 'extract_plan.py (plan folder)' wad/data/generated/main.wcl > wad/data/generated/main.wcl.tmp \
+        && mv wad/data/generated/main.wcl.tmp wad/data/generated/main.wcl
+    mv wad {{dest}}
+    wcl check {{dest}}/wad.wcl
+    @echo "graduated: {{dest}} — next: convert keeper blocks to hand-authored data, add code extractors, run the codebase-scan backfill"
 
 WPLAN_JUSTFILE
 }

@@ -76,6 +76,10 @@ site skill {
 page index { sites = [:skill]  start = true
   // Static frontmatter: the base-schema version + skill controls.
   @schemaless frontmatter {
+    // Canonical-skill invocation controls. The argument-hint mirrors the
+    // `skill_param "$ARGUMENTS"` block in wskill.wcl — keep them in sync.
+    "user-invocable" = true
+    "argument-hint"  = "<plan|issue|build|doc> <idea | bug/feature [repo] | plan-folder | wad-folder>"
     "allowed-tools"            = skill.allowed_tools
     "disable-model-invocation" = skill.disable_model_invocation
     metadata = {

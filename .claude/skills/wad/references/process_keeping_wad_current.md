@@ -16,7 +16,7 @@ The maintenance sweep that stops the document drifting from reality.
 
 ### Step 1: Trigger
 
-Run the sweep when something meaningful lands: code merged, infrastructure changed, a decision made, an incident that revealed the doc was wrong.
+Run the sweep when something meaningful lands: code merged, infrastructure changed, a decision made, an incident that revealed the doc was wrong. Build mode's completion step is a **standing trigger** — every finished plan run (greenfield or issue) ends by updating the architecture record, either by graduating the plan's WAD or by running this sweep on the existing one. Manual changes outside the pipeline still need the human trigger.
 
 ### Step 2: Re-run the extractors
 

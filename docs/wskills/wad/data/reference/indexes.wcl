@@ -1,6 +1,23 @@
 // Indexes — the wskill's navigation. Top-level indexes are menu sections;
 // child indexes are sub-groups whose `related` units pin directly into the
 // sidebar (book) and list (skill).
+//
+// Section order: the AI mode dispatcher first, then the doc-mode (WAD)
+// sections; the plan/issue/build workflow indexes follow from their own
+// data files (import order in wskill.wcl).
+
+// AI entry point: route by mode, then follow that mode's runbooks.
+index skill_tasks {
+  name    = "Modes"
+  summary = "Start here: route the request to a mode, then follow its workflow. plan = new software (start with proc_starting_a_plan). issue = change existing software (proc_issue_pipeline; trivial single-file fixes skip the pipeline — see issue_mode). build = execute a rendered plan (fact_roles, then proc_orchestrator_loop). doc = the WAD itself (populate_strategies dispatches between interview, scan, and extractors)."
+  audience = :ai
+  related = [lifecycle,
+             proc_starting_a_plan, proc_issue_pipeline, proc_orchestrator_loop,
+             populate_strategies, creating_a_wad, designing_new_system,
+             documenting_existing_system, writing_extractor, reviewing_a_wad,
+             evolving_and_spec, keeping_wad_current,
+             interview_question_bank, scan_checklist]
+}
 
 index what_section {
   name    = "What a WAD is"
@@ -40,9 +57,9 @@ index populating_section {
 
 index change_section {
   name    = "Review & change"
-  summary = "Reviewing the book, deriving specs from diffs, and staying current."
+  summary = "Reviewing the book, deriving specs from diffs, staying current, and how the four modes hand off."
   audience = :both
-  related = [spec_lifecycle, living_wad, reviewing_a_wad, evolving_and_spec,
+  related = [spec_lifecycle, living_wad, lifecycle, reviewing_a_wad, evolving_and_spec,
              keeping_wad_current, wcl_diff_wad]
 }
 
@@ -52,14 +69,3 @@ index reference_section {
   related = [wad_cli, wcl_init_wad, arc42, c4_model, uv]
 }
 
-// AI entry points: the dispatcher first, then the runbooks, then the two
-// checklists the runbooks walk.
-index skill_tasks {
-  name    = "Tasks"
-  summary = "Start here: pick the process that matches the request."
-  audience = :ai
-  related = [populate_strategies, creating_a_wad, designing_new_system,
-             documenting_existing_system, writing_extractor, reviewing_a_wad,
-             evolving_and_spec, keeping_wad_current,
-             interview_question_bank, scan_checklist]
-}

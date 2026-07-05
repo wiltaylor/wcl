@@ -15,10 +15,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: extract_releases.py derives .wad release data from
+          # git tags, and the wad-extract-check freshness gate re-runs it.
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - uses: taiki-e/install-action@just
+      # uv runs the .wad extractor scripts (wad-extract-check).
+      - uses: astral-sh/setup-uv@v5
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
       - run: just workspace-lint
@@ -34,6 +40,11 @@ jobs:
       # The reference WAD (.wad/) is the first wcl-init-wad consumer —
       # validate its model and build its book like docs-build below.
       - run: just wad-check
+      # Generated data freshness: re-run every extractor and fail if the
+      # committed .wad/data/generated/ lags reality. The facts check pins the
+      # wad wskill's hand-reflected tables to the current WAD schema version.
+      - run: just wad-extract-check
+      - run: just wad-facts-check
       - run: just wad-build
       # The shipped wplan template must scaffold, check, and pass its
       # structural gates against the current binary — the moral equivalent

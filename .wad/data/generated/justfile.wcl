@@ -163,6 +163,20 @@ dev_command dev_wad_check {
   category    = "quality"
 }
 
+dev_command dev_wad_extract_check {
+  name        = "wad-extract-check"
+  command     = "just wad-extract-check"
+  description = "Fail when .wad/data/generated/ is stale — re-runs every extractor and requires a quiet git tree after (runs in ci; needs uv and full git history)"
+  category    = "quality"
+}
+
+dev_command dev_wad_facts_check {
+  name        = "wad-facts-check"
+  command     = "just wad-facts-check"
+  description = "Fail when the wad wskill's hand-reflected fact tables lag the WAD schema version (runs in ci)"
+  category    = "quality"
+}
+
 dev_command dev_wad_schema_check {
   name        = "wad-schema-check"
   command     = "just wad-schema-check"
@@ -188,6 +202,13 @@ dev_command dev_workspace_lint {
   name        = "workspace-lint"
   command     = "just workspace-lint"
   description = "Lint with clippy (warnings are errors)"
+  category    = "quality"
+}
+
+dev_command dev_wplan_template_check {
+  name        = "wplan-template-check"
+  command     = "just wplan-template-check"
+  description = "Scaffold the shipped wplan template into target/ and run its structural gates (runs in ci)"
   category    = "quality"
 }
 

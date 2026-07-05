@@ -385,7 +385,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_markdown {
     name = "markdown"
     kind = "module"
-    summary = "4 files, 7 pub items"
+    summary = "4 files, 8 pub items"
     deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_terminal, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_math {
@@ -7451,6 +7451,11 @@ code_item code_api_wdoc_backends {
       kind = "fn"
       visibility = "crate"
     }
+    code_member m_n_api_wdoc_backends_yaml_fns_agent_front_matter {
+      signature = "fn agent_front_matter(agent: &Block<'_>, name: &str) -> Result<…"
+      kind = "fn"
+      visibility = "crate"
+    }
   }
   code_node n_api_wdoc_backends_PageSize {
     name = "PageSize"
@@ -8771,6 +8776,7 @@ code_item code_mod_wdoc_stdlib {
   code_node n_wdoc_stdlib_templates {
     name = "templates"
     members = [
+      "agent",
       "button",
       "chapter",
       "item",

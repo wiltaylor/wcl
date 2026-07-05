@@ -1,0 +1,122 @@
+// Issue mode (wissue) reference - brownfield concepts, the template surgery
+// fact, and the issue-mode navigation.
+// Ported from the former hand-written wissue skill.
+
+// ---------------------------------------------------------------------------
+// Concepts
+// ---------------------------------------------------------------------------
+
+concept issue_mode {
+  name     = "Issue mode: wplan compressed for brownfield"
+  summary  = "The same schema, gates, briefs and ledger as plan mode - with recon instead of open research, a targeted interview, a mini-PRD of scope fences, and the greenfield bootstraps removed."
+  audience = :both
+  related  = [pipeline, spec_shapes, capabilities, fact_template_adaptation, proc_issue_pipeline, proc_recon]
+  body {
+    p "Issue mode turns a change request against an existing codebase into a real wplan plan folder that build mode executes unchanged: open-ended research becomes **codebase reconnaissance** (plus conditional external research when the change introduces technology the repo doesn't already use), the interview shrinks to only what recon can't answer, the PRD becomes a mini-PRD dominated by scope fences, and the greenfield bootstrap specs (spec_000_repo, spec_010_build) are removed - the repo and build already exist. Everything downstream is unchanged: same schema, same gates, same `just check` / `just specs`, same `spec/NNN-name` branches, same status.wcl ledger. Build mode cannot tell an issue plan from a greenfield plan."
+    p "Plans live at `plans/<slug>/plan/` inside the target repo (slug like `fix-login-timeout`), so multiple change plans coexist; hand build mode the specific path. The owns_disjoint gate only sees within one plan - before creating a plan when another plan in plans/ has unmerged specs touching overlapping paths, compare their `owns` lists by hand and warn the user."
+    p "**When NOT to use issue mode.** A trivial change - single file, no surface/model/contract impact, an obvious failing-test-first regression test - should just be fixed directly (test first, then the smallest fix, full suite green). Issue mode starts paying for itself at multi-file or multi-spec scope, when ownership needs splitting, or when the change touches anything user-facing. Ceremony disproportionate to the change is how planning pipelines lose users; say so and fix the trivial thing."
+  }
+}
+
+concept spec_shapes {
+  name     = "Brownfield spec shapes"
+  summary  = "The bug-fix spec (test-first, usually the whole DAG), feature decomposition along ownership lines, ownership in an existing tree, and the conditional prep spec."
+  audience = :both
+  related  = [issue_mode, ownership, fact_ears, proc_issue_pipeline]
+  body {
+    p "Specs use wplan's schema unchanged (`spec` blocks with `title`, `objective`, `depends_on`, `branch`, `owns`, `allowed`, `not_allowed`, `done`, `task`/`accept` children, and a `body` of copied-in context). Numbering: `spec_0NN_name`, branch `spec/0NN-name`, gaps of 10. What differs in brownfield is the *content patterns*."
+    p "**Requirement phrasing.** EARS form throughout - and the brownfield signature pattern `WHEN [condition] THE SYSTEM SHALL CONTINUE TO [existing behaviour]` pins behaviour the change must NOT break. Write one for each adjacent behaviour recon showed the change could plausibly disturb; each becomes a regression assertion in the full-suite accept."
+    p "**The bug-fix spec** (usually the whole DAG) is test-first structurally, not as advice: task 1 writes a failing regression test reproducing the bug exactly as the r_repro finding recorded it, and confirms it FAILS for the reported reason before any source changes; task 2 is the smallest fix that makes it pass; task 3 runs the full suite and STOPS (reporting in AGENT_NOTES.md) if anything outside the owned files breaks. Accepts: the regression test, then the full suite. Accept commands come from finding r_commands - the repo's real commands, never guessed. The body copies in the reproduction, the affected-code map, and the conventions verbatim."
+    p "**Feature decomposition** works as in plan mode: split along disjoint ownership, dependency-order the splits, and prefer fewer, larger specs over many entangled ones - brownfield merges are riskiest where specs interleave in existing files. Every spec's body copies in its slice of the findings; every spec's final accept runs the full existing suite."
+    p "**Ownership in an existing tree.** `owns` covers every path the spec will create **or modify** - for brownfield that means existing files. The owns_disjoint gate is exact-string only, so check file-vs-directory overlaps yourself. Shared integration points (DI registration, route tables, manifest files, migration indexes) that several specs would touch: give ownership to the **last** dependency-ordered spec that touches them; earlier specs note their contribution under `allowed` (the stub-then-own pattern)."
+    p "**spec_000_prep - conditional.** Only when the scaffold script reports `.tree/` NOT gitignored, or recon found no green baseline command. Owns `[\".gitignore\"]`; tasks: add `.tree/` to .gitignore, run the baseline build/test from r_commands and record the result, commit. Everything else then `depends_on = [spec_000_prep]`. When neither condition holds, omit it - a one-spec bug fix should not pay a two-merge tax."
+  }
+}
+
+concept capabilities {
+  name     = "Living capability specs"
+  summary  = "Cross-plan behavioural memory: one EARS statement of current behaviour per capability under plans/capabilities/, updated by each plan's deltas when it merges."
+  audience = :both
+  related  = [issue_mode, project_context, proc_issue_pipeline, proc_orchestrator_loop]
+  body {
+    p "Each issue plan is self-contained, but the *knowledge* it produces shouldn't die with it. Capability specs make repeat work against the same subsystem compound instead of starting cold. `plans/capabilities/<capability>.md` - one file per capability the repo's issues have touched (`auth.md`, `csv-export.md`) - holds a purpose line, EARS SHALL statements describing **current behaviour**, and a Notes section with the durable pointers recon would otherwise re-derive (entry points, test locations). Seeded **incrementally**: never spec the whole legacy system up front, only the capability the current issue touches, and only what recon actually established. Optional-but-recommended for the first issue against a repo; expected from the second issue onward."
+    p "**The delta discipline.** A plan never rewrites a capability file directly. At mini-PRD time, write `plans/<slug>/capability-deltas.md` stating only what this change does to each touched capability, under three headers: `### ADDED` / `### MODIFIED` (old line, arrow, new line) / `### REMOVED` (line + one-line why). Match requirements by their exact text; keep the wording identical to prd.wcl where they overlap. If the capability file doesn't exist yet, recon seeds it first (current behaviour) - a delta against nothing is just a rewrite in disguise. The user approves the deltas together with the mini-PRD."
+    p "**Merging on completion.** When build mode finishes the plan (all specs merged, scenarios green), its completion procedure applies the deltas - append ADDED lines, replace MODIFIED lines, delete REMOVED lines - then stamps the deltas file `Merged into capabilities on <date>.` at the top. A deltas file without that stamp means an unfinished merge: reconcile before trusting the capability files. **The known failure mode** (learned from OpenSpec, which pioneered this model): unmerged deltas rot the living specs. The merge is cheap - do it at completion, not \"later\". If capability files and reality have visibly drifted, fix them during recon and note the correction as a finding."
+    p "Capability specs answer \"what does this subsystem DO\" in EARS terms; the repo's WAD answers \"how is it BUILT\". They complement rather than compete - recon reads both, and build-mode completion updates both."
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Facts
+// ---------------------------------------------------------------------------
+
+fact fact_template_adaptation {
+  title    = "Template adaptation: the brownfield surgery"
+  audience = :both
+  related  = [issue_mode, spec_shapes, proc_issue_pipeline]
+  body {
+    p "`scripts/new-issue-plan.sh` (bundled with this skill) scaffolds wplan's verified template with `wcl init wplan <repo>/plans/<slug>/plan --defaults` and performs deterministic brownfield surgery:"
+    list { style = :numbered
+      li "Deletes the greenfield bootstraps: `specs/spec_000_repo.wcl` and `specs/spec_010_build.wcl`."
+      li "Removes exactly their import lines from plan.wcl and their status rows from status.wcl. The script greps for each expected line **before** removing it and aborts loudly if any is missing - that means the built-in template has drifted from what this surgery was written against; re-verify the surgery by hand and update this skill."
+      li "Reports whether `.tree/x` is git-ignored in the target repo (`git check-ignore`), which decides the conditional prep spec (see the spec-shapes concept)."
+    }
+    p "It never touches schema/, gates.wcl, the justfile, or the wdoc projections - the brief renderer derives waves from whatever specs exist, so removing specs is safe. After the script: `just check` in the new plan folder must pass with zero specs. If it doesn't, stop and investigate before adding content."
+    p "**What you add by hand:** brownfield rules in prd.wcl alongside the template's defaults - these are copied verbatim into every brief. Adjust wording to the repo (e.g. name the actual suite command) but keep the three intents: convention-matching, no drive-by changes, whole-suite green."
+    code wcl { source = <<'WCL'
+rule rule_conventions { text = "Match the surrounding code's existing conventions exactly - naming, error handling, test structure. Do not introduce new patterns." }
+rule rule_no_reformat { text = "Never reformat, reorder, or 'clean up' code you are not functionally changing." }
+rule rule_suite_green { text = "The project's full existing test suite must pass before you finish. If a pre-existing test fails for reasons unrelated to your change, STOP and report it in AGENT_NOTES.md rather than fixing it." }
+WCL
+    }
+    p "Everything else - questions, research + finding files, goals/non-goals/requirements, specs, status rows - is normal wplan authoring. One import line in plan.wcl per new spec file and per finding file; one status row per spec."
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Examples
+// ---------------------------------------------------------------------------
+
+example issue_bugfix_spec {
+  title     = "A complete brownfield bug-fix spec"
+  unit      = spec_shapes
+  audience  = :both
+  narrative = "Test-first is structural: the failing regression test is task 1, the fix is task 2, and the full existing suite gates completion. The body copies in the recon findings verbatim."
+  code_lang = "wcl"
+  code = <<'WCL'
+spec spec_010_fix_login_timeout {
+  title = "Fix login timeout on slow LDAP"
+  objective = "Login must not time out when LDAP responds within the configured limit."
+  depends_on = []
+  covers = [req_login_timeout]
+  branch = "spec/010-fix-login-timeout"
+  owns = ["src/Auth/LdapAuthenticator.cs", "tests/Auth/LdapAuthenticatorTests.cs"]
+  allowed = ["adding test helpers inside the owned test file"]
+  not_allowed = ["changing the public API of LdapAuthenticator", "touching other authenticators", "reformatting untouched code", "adding dependencies"]
+  done = ["regression test exists and passes", "full test suite green"]
+  task t1 { text = "Write a failing regression test reproducing the bug exactly as described in the reproduction section below. Run it and confirm it FAILS for the reported reason before changing any source." }
+  task t2 { text = "Fix the defect (see Affected code below). Smallest change that makes t1 pass." }
+  task t3 { text = "Run the full suite; fix nothing outside your owned files - if something else breaks, STOP and report it in AGENT_NOTES.md." }
+  accept a1 { check = "Regression test passes" command = "dotnet test --filter LdapAuthenticatorTests" }
+  accept a2 { check = "Full suite green" command = "dotnet test" }
+  body {
+    p "Reproduction (finding r_repro): <verbatim repro command, observed vs expected output>."
+    p "Affected code (finding r_map): <call path, key symbols, likely defect site>."
+    p "Conventions (finding r_conventions): <test naming/location, error-handling pattern to imitate>."
+  }
+}
+WCL
+  expected = "wcl check plan.wcl passes; just specs emits a standalone brief with the copied-in context. Wire it in with two literal lines: the import in plan.wcl and `status spec_010_fix_login_timeout { state = :todo }` in status.wcl."
+}
+
+// ---------------------------------------------------------------------------
+// Index
+// ---------------------------------------------------------------------------
+
+index issue_workflow {
+  name     = "Issue mode — workflow"
+  summary  = "Raise a bug or feature against an existing codebase and break it into a build-ready plan."
+  audience = :both
+  related  = [proc_issue_pipeline, proc_recon, issue_mode, spec_shapes, fact_template_adaptation, capabilities]
+  body { p "Start with the pipeline runbook; recon is its heart. Trivial single-file changes skip the pipeline entirely - fix them directly (see the issue-mode concept's when-NOT-to-use rule)." }
+}
