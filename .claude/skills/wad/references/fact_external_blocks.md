@@ -1,8 +1,8 @@
 # External-system blocks
 
 > [!WARNING]
-> **Integrations, not platforms**
-> An external system is a third party the design integrates with **as part of its function** — an API it calls, an identity provider, a payment gateway, a data feed. Platforms that \*host, build, or ship\* the system (a cloud, a CI service, a CDN, a git host, a package registry the build pulls from) are **infrastructure** (`infra_node`, view 5), not externals. Test: does the \*running system\* talk to it to do its job, or does it merely run, build, or ship on it? A WAD with no externals is fine — a self-contained system honestly has none.
+> **Integrations, not platforms — and not libraries**
+> An external system is a third party the design integrates with **as part of its function** — an API it calls, an identity provider, a payment gateway, a data feed. Platforms that \*host, build, or ship\* the system (a cloud, a CI service, a CDN, a git host, a package registry the build pulls from) are **infrastructure** (`infra_node`, view 5), not externals. Linked or vendored **libraries and frameworks** (an SDL2, a web framework, a JSON parser) are not externals either — they are part of the container that links them: name them in its `technology` field. Test: does the \*running system\* talk to it over a boundary to do its job? If it's compiled in, it's technology; if it runs/builds/ships the system, it's infra. A WAD with no externals is fine — a self-contained system honestly has none.
 
 | Block | Fields | Notes |
 | --- | --- | --- |

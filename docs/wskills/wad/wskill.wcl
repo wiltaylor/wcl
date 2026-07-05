@@ -90,6 +90,7 @@ wcl.wskill::skill {
       "In build mode: verify then review before merging (the reviewer must be a strong model), merge only :reviewed specs whose dependencies are :merged in dependency order, and run the final acceptance scenarios on trunk — the run is not complete until they all pass.",
       "Keep the architecture record current: re-run `just wad-extract` when a plan's status.wcl moves during a build; at completion, graduate a plan's WAD into the repo (greenfield) or run the keeping-current sweep on the existing living WAD (brownfield).",
       "In doc mode: file every architecture fact under its correct view, follow the interview or codebase-scan process rather than free-forming, ask rather than inventing facts (support contacts, security, off-code infrastructure), and record decisions as `adr` blocks on the spot.",
+      "Author every reference field as a BARE identifier (`system = shop_system`, `source = customer`, `repos = [repo_shop]`) — never a quoted string. Quoted refs coerce on newer wcl but silently break every derived view (empty drill-down, dead roll-ups) on older binaries, and bare is the canonical form all examples use.",
     ]
     ask = [
       "Before overwriting an existing plan/ or WAD folder, or deleting any data file.",
@@ -104,6 +105,7 @@ wcl.wskill::skill {
       "Let two specs own the same path, include out-of-scope refactoring or drive-by fixes in an issue spec, or push to any remote unless the user asks.",
       "Hand-edit anything under out/, files under a WAD's `data/**/generated/` (fix the extractor and re-run), or a `schema/base.wcl` (scaffold-owned and synced; `kinds.wcl` / `extensions.wcl` are the editable files).",
       "Author a relation whose endpoints don't resolve; model builders/operators as personas (personas are USERS; builders are view-1 stakeholders); model hosting, CI, CDN, git, or package registries as external_systems (they are infra_nodes; externals are functional integrations only).",
+      "Model a platform or service as a stakeholder (stakeholders are people/organisations), a linked library or framework as an external_system (it belongs in its container's `technology` field), or build/test/release instructions as sysadmin SOPs (they are view-6 `pipeline` blocks; SOPs are for operating the running system).",
     ]
   }
 

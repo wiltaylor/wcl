@@ -1612,8 +1612,12 @@ impl<'a> Field<'a> {
             // name (`id = web` → `"web"`, not a variable lookup), but any
             // other expression evaluates in the field's scope — so a
             // data-derived `id = s.key` (a repeater/component binding)
-            // resolves instead of being looked up at root.
-            self.doc.eval_literal_in_scope(&self.ast.expr, &self.scope)
+            // resolves instead of being looked up at root. A string result
+            // (quoted ref, interpolation) coerces to `Value::Identifier` so
+            // `ref == id` joins hold regardless of authoring style.
+            self.doc
+                .eval_literal_in_scope(&self.ast.expr, &self.scope)
+                .map(str_to_identifier)
         } else if matches!(
             self.declared_type_ref(),
             Some(TypeRef::List(inner)) if matches!(inner.as_ref(), TypeRef::Builtin(BuiltinType::Identifier))
@@ -1621,9 +1625,19 @@ impl<'a> Field<'a> {
             // `list<identifier>` field: the element-wise lift of the rule
             // above. A bare-id list (`members = [shop, stripe]`) keeps each
             // name opaque so it can reference shapes by id, while a
-            // data-derived expression still evaluates normally.
+            // data-derived expression still evaluates normally. String
+            // elements coerce to identifiers like the scalar rule above.
             self.doc
                 .eval_identifier_list_in_scope(&self.ast.expr, &self.scope)
+                .map(|v| match v {
+                    Value::List(items) => Value::List(std::sync::Arc::new(
+                        std::sync::Arc::unwrap_or_clone(items)
+                            .into_iter()
+                            .map(str_to_identifier)
+                            .collect(),
+                    )),
+                    other => other,
+                })
         } else {
             self.doc
                 .eval_in_scope(&self.ast.expr, &self.scope)
@@ -3029,6 +3043,17 @@ fn push_generated_matching<'a>(generator: &Block<'a>, kind: &str, out: &mut Vec<
 /// exactly the labels `BlockList::child` matches.
 fn block_label_segment(b: &Block<'_>) -> Option<String> {
     b.labels().ok()?.first()?.as_path_segment()
+}
+
+/// Coerce a string value to an identifier — the value-level rule for
+/// identifier-declared fields, so a quoted ref (`system = "web"`) and a
+/// bare one (`system = web`) evaluate identically and `ref == id`
+/// comparisons in templates hold. Non-string values pass through.
+fn str_to_identifier(v: Value) -> Value {
+    match v {
+        Value::Utf8(s) | Value::Ascii(s) => Value::Identifier(s),
+        other => other,
+    }
 }
 
 /// Reify a single block at document path `base`. A block whose kind is

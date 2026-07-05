@@ -292,6 +292,12 @@ pub enum SchemaViolationKind {
     /// kind is ambiguous. Declarations in *different* namespaces are
     /// fine — they're disambiguated by a `::` qualifier.
     DuplicateBlockKind,
+    /// Two sibling blocks of the same kind share an identity label —
+    /// the kind's schema declares an `@inline(0) identifier` field, so
+    /// the label is an id and a duplicate makes every reference to it
+    /// ambiguous. Kinds whose label isn't identifier-typed (`code wcl`,
+    /// `li`, …) repeat freely.
+    DuplicateBlockId,
     /// A `wdoc_component`'s name collides with a registered
     /// `@block`/`@table` kind. The dispatch paths disagree on the
     /// winner (expansion prefers the component, schema lookup the

@@ -188,10 +188,13 @@ pub(super) fn table_row_to_variant<'a>(
 /// else is a guaranteed pass-through, letting `coerce_value_to_type`
 /// skip per-call resolution and list rebuilds.
 fn type_may_coerce(doc: &Document, ty: &crate::value::TypeRef) -> bool {
-    use crate::value::TypeRef;
+    use crate::value::{BuiltinType, TypeRef};
     match ty {
         TypeRef::Named(path) => doc.union_fqn_for_path(path).is_some(),
         TypeRef::List(inner) => type_may_coerce(doc, inner),
+        // Strings coerce to identifiers on identifier-declared slots
+        // (quoted refs join like bare ones — see `str == id` templates).
+        TypeRef::Builtin(BuiltinType::Identifier) => true,
         _ => false,
     }
 }
@@ -230,6 +233,13 @@ pub(crate) fn coerce_value_to_type(
         }
     }
     match (value, ty) {
+        // Identifier-declared slot: a string coerces to the identifier it
+        // names, so quoted and bare refs evaluate identically (mirrors the
+        // field-eval rule in `views.rs`). Other values pass through.
+        (
+            Value::Utf8(s) | Value::Ascii(s),
+            TypeRef::Builtin(crate::value::BuiltinType::Identifier),
+        ) => Ok(Value::Identifier(s)),
         (Value::List(items), TypeRef::List(inner)) => {
             let mut out = Vec::with_capacity(items.len());
             for it in std::sync::Arc::unwrap_or_clone(items) {

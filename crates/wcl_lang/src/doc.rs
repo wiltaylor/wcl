@@ -2078,6 +2078,28 @@ impl Document {
             }
         }
 
+        // Duplicate identity labels among top-level blocks, grouped per
+        // namespace — every source of one namespace feeds the same
+        // gather lists, so two `component engine { }` blocks in
+        // different data files silently coexist without this. Only
+        // kinds whose schema declares an `@inline(0) identifier` label
+        // participate (see `schema_check::identity_label`); nested
+        // duplicates are caught per parent in `compute_schema_errors`.
+        {
+            let mut by_ns: BTreeMap<Vec<String>, Vec<Block<'_>>> = BTreeMap::new();
+            for src in self.all_sources() {
+                for b in iter_blocks(src.items, src.cells, self, src.file_ns, Scope::root()) {
+                    if has_schemaless(&b.ast.decorators) {
+                        continue;
+                    }
+                    by_ns.entry(src.file_ns.to_vec()).or_default().push(b);
+                }
+            }
+            for blocks in by_ns.into_values() {
+                crate::doc::schema_check::duplicate_id_violations(blocks.into_iter(), &mut out);
+            }
+        }
+
         // Validate every union declaration: cycles in the extends
         // chain, duplicate variants across that chain, and structural
         // collisions between variant bodies.

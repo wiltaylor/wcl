@@ -24,6 +24,34 @@ A `code_item`'s `kind` selects which payload children the renderer reads:
 
 Who populates: systems/containers/components by hand (interview or scan); code items by extractor, and they document the **exposed interface** — internals below it are read from the code, not mirrored into the WAD. Code items and screens both live at **component level**: a component's page renders each owned code item's diagram in place (drill into the code item's own page for detail) and the component's screen-flow diagram (never on the system or container page — wrong altitude). **Every component should end up with code data**: a per-component surface extractor (see the reference WAD's `extract_modules.py` — a component→modules map, one `:class_diagram` item per component with the modules' exposed items as members) keeps the whole drill-down populated mechanically.
 
+> [!WARNING]
+> **Reference fields are bare identifiers**
+> `system`, `container`, `repo`, `owner`, relation endpoints — every field that names another block's id is written **bare**, never quoted: `system = shop_system`, not `system = "shop_system"`. Newer wcl coerces a quoted ref to the identifier it names, but older binaries treat it as a plain string that equals nothing — every derived view (the drill-down, roll-ups, screen attachment) then silently renders empty while `wcl check` stays green. Bare is the canonical form; follow the shape below.
+
+The drill-down authored in full — one system, a container, a component, all linked by bare ids:
+
+```wcl
+system shop_system {
+  name    = "Shop"
+  summary = "The web shop."
+  repos   = [repo_shop]
+}
+container shop_api {
+  system     = shop_system        // bare id — never "shop_system"
+  name       = "shop-api"
+  summary    = "The HTTP API."
+  kind       = :service
+  technology = "Rust, axum, SQLx"  // linked libraries live HERE, not in externals
+  repo       = repo_shop
+}
+component checkout {
+  container = shop_api             // bare id
+  name      = "Checkout"
+  summary   = "Cart, pricing, order placement."
+  kind      = "module"
+}
+```
+
 ## Related
 
 - [The C4 drill-down](../references/concept_c4_drilldown.md)

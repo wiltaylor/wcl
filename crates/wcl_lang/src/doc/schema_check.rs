@@ -124,6 +124,62 @@ fn collect_ref_ids(value: &Value, out: &mut Vec<String>) {
     }
 }
 
+/// The block's identity label: its first label, when the block's resolved
+/// schema declares `@inline(0) id: identifier` — i.e. the label IS an id
+/// (a WAD `component`, a wskill `concept`, a wplan `spec`). The field must
+/// be *named* `id`: identifier-typed labels under other names are
+/// parameters (`code wcl`'s language, a component's `name`), which repeat
+/// freely. `None` for unlabeled blocks and schema-less kinds.
+pub(super) fn identity_label(block: &Block<'_>) -> Option<String> {
+    use crate::value::{BuiltinType, TypeRef};
+    let schema = block.schema()?;
+    let id_typed = schema.fields().any(|f| {
+        f.name() == "id"
+            && f.inline_slot() == Some(0)
+            && matches!(f.type_ref(), TypeRef::Builtin(BuiltinType::Identifier))
+    });
+    if !id_typed {
+        return None;
+    }
+    block.labels().ok()?.first()?.as_path_segment()
+}
+
+/// Flag every repeated (kind, identity label) among `siblings` — two
+/// blocks of one kind sharing an id make every reference to that id
+/// ambiguous, and gathered lists silently carry both. Pushed as
+/// `DuplicateBlockId` at each repeat's span.
+pub(super) fn duplicate_id_violations<'a>(
+    siblings: impl Iterator<Item = Block<'a>>,
+    errs: &mut Vec<EvalError>,
+) {
+    use crate::error::SchemaViolationKind as Kind;
+    let mut seen: HashMap<(String, String, String), ast::Span> = HashMap::new();
+    for b in siblings {
+        let Some(label) = identity_label(&b) else {
+            continue;
+        };
+        let key = (b.kind_ns().join("."), b.kind().to_string(), label.clone());
+        match seen.get(&key) {
+            Some(_first) => {
+                errs.push(EvalError::schema_violation(
+                    Kind::DuplicateBlockId,
+                    format!(
+                        "duplicate id: '{}' block '{label}' is already declared \
+                         — ids must be unique among a parent's (or the document's) \
+                         '{}' blocks",
+                        b.kind(),
+                        b.kind(),
+                    ),
+                    b.span(),
+                ));
+            }
+            None => {
+                seen.insert(key, b.span());
+            }
+        }
+    }
+}
+
 pub(super) fn has_schemaless(decorators: &[ast::Decorator]) -> bool {
     let name = BuiltinDecorator::Schemaless.as_str();
     decorators
@@ -672,6 +728,10 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
             }
         }
     }
+
+    // 1b. Duplicate identity labels among this block's direct children:
+    // two same-kind siblings sharing an id-typed label are ambiguous.
+    duplicate_id_violations(block.blocks(), &mut errs);
 
     // 2. Build the allowed-child set: union of @child/@children kinds
     // across this type's fields.
