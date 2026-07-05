@@ -35,7 +35,7 @@ Check installed wskill research pages BEFORE the web: glob `.claude/skills/*/ref
 
 ### Step 4: Promote durable findings
 
-After the items are :done, offer the user promotion: a finding that is durable and project-independent (a library's API shape, a format's gotcha, a platform quirk) belongs in the matching topic wskill as a `research` block, so the next plan starts from it instead of re-researching — the wskill skill's `capturing_research` runbook does the authoring. Project-specific conclusions stay in this plan's research/ folder.
+After the items are :done, offer the user promotion: a finding that is durable and project-independent (a library's API shape, a format's gotcha, a platform quirk) belongs in the matching topic wskill as a `research` block, so the next plan starts from it instead of re-researching — the wskill skill's `capturing_research` runbook does the authoring. When no wskill exists for the topic yet, the wskill skill's `researching_a_topic` pipeline authors one from scratch. Project-specific conclusions stay in this plan's research/ folder.
 
 > [!TIP]
 > **Verification**

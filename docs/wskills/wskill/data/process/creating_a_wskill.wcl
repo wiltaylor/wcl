@@ -2,7 +2,7 @@ procedure creating_a_wskill {
   title   = "Creating a new wskill"
   purpose = "Start a new wskill for a topic from the wcl template, set its topic, and prove the empty model renders."
   preconditions = ["WCL installed — see the [WCL wskill](../wcl/) to install it."]
-  related = [wskill_concept, datapresentation, selfcontained, adding_content, folder_layout]
+  related = [wskill_concept, datapresentation, selfcontained, adding_content, folder_layout, researching_a_topic]
   audience = :both
 
   step scaffold { n = 1
@@ -42,7 +42,7 @@ SH
 
   step first_content { n = 4
     title = "Capture the first units and curate the nav"
-    body steps { p "Follow [Adding content](process_adding_content) for the capture loop — decompose, classify with the decision guide, write, link, and pin each unit into an `index`. Once a handful of units exist, [build the index](process_building_the_index) so the book nav and SKILL.md reflect the topic's real shape." }
+    body steps { p "Follow [Adding content](process_adding_content) for the capture loop — decompose, classify with the decision guide, write, link, and pin each unit into an `index`. Once a handful of units exist, [build the index](process_building_the_index) so the book nav and SKILL.md reflect the topic's real shape. To author a whole topic by research instead of hand-capture, follow [Researching a topic](process_researching_a_topic)." }
   }
 
   scaffold -> set_topic

@@ -2,7 +2,7 @@ procedure capturing_research {
   title   = "Capturing research into a wskill"
   purpose = "Turn the durable output of an investigation into `research` blocks other agents — and external pipelines like a planner's researcher — can reuse instead of re-investigating."
   preconditions = ["An existing wskill folder that checks clean (`just wskill-check`)."]
-  related = [adding_content, updating_a_wskill, unit_decision_guide]
+  related = [adding_content, updating_a_wskill, unit_decision_guide, researching_a_topic]
   audience = :both
 
   step investigate { n = 1

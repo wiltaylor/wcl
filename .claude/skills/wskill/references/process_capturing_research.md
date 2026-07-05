@@ -65,4 +65,6 @@ The rendered skill must contain `references/research_<id>.md` for the new findin
 
 - [Which unit kind? — the decision guide](../references/fact_unit_decision_guide.md)
 
+- [Researching a topic into a wskill](../references/process_researching_a_topic.md)
+
 [← Back to SKILL.md](../SKILL.md)

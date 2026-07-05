@@ -48,7 +48,7 @@ Before adding any content, prove the pipeline: the scaffolded model must check c
 
 ### Step 4: Capture the first units and curate the nav
 
-Follow [Adding content](../references/process_adding_content.md) for the capture loop — decompose, classify with the decision guide, write, link, and pin each unit into an `index`. Once a handful of units exist, [build the index](../references/process_building_the_index.md) so the book nav and SKILL.md reflect the topic's real shape.
+Follow [Adding content](../references/process_adding_content.md) for the capture loop — decompose, classify with the decision guide, write, link, and pin each unit into an `index`. Once a handful of units exist, [build the index](../references/process_building_the_index.md) so the book nav and SKILL.md reflect the topic's real shape. To author a whole topic by research instead of hand-capture, follow [Researching a topic](../references/process_researching_a_topic.md).
 
 > [!TIP]
 > **Verification**
@@ -65,5 +65,7 @@ Follow [Adding content](../references/process_adding_content.md) for the capture
 - [Adding content to a wskill](../references/process_adding_content.md)
 
 - [The wskill folder layout](../references/fact_folder_layout.md)
+
+- [Researching a topic into a wskill](../references/process_researching_a_topic.md)
 
 [← Back to SKILL.md](../SKILL.md)

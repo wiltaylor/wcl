@@ -66,8 +66,9 @@ site skill {
     // The topic id, not the display name: SKILL.md's `name` must be lowercase
     // and equal the install directory (canonical-skill frontmatter rules).
     name        = skill_cfg.name ?? $"${topic.id}"
-    // Trigger-tuned description (this skill is the wskill toolchain itself).
-    description = skill_cfg.description ?? "Create, edit, update and render wskill documents — self-contained WCL folders that capture everything about a topic (reference, processes, curated indexes) and project into both a human-readable book and a Claude Code skill. Use when the user wants to build, update, render, or install a wskill, capture a topic as a reusable skill, or asks about /wskill."
+    // The trigger-tuned text lives on the skill block in wskill.wcl; this
+    // fallback only covers a config with no description set.
+    description = skill_cfg.description ?? $"Create, edit, update and render wskill documents for ${topic.name}."
     // license  = "MIT"   // optional; written to SKILL.md front matter
   }
 }

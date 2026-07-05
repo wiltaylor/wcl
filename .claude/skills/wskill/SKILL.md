@@ -1,6 +1,6 @@
 ---
 name: wskill
-description: "Create, edit, update and render wskill documents — self-contained WCL folders that capture everything about a topic (reference, processes, curated indexes) and project into both a human-readable book and a Claude Code skill. Use when the user wants to build, update, render, or install a wskill, capture a topic as a reusable skill, or asks about /wskill."
+description: "Create, edit, update and render wskill documents — self-contained WCL folders that capture everything about a topic (reference, processes, curated indexes) and project into both a human-readable book and a Claude Code skill. Use when the user wants to build, update, render, or install a wskill, capture a topic as a reusable skill, research a topic into a wskill (deep-research a subject and author it as a skill), or asks about /wskill."
 allowed-tools:
   - Bash
   - Read
@@ -38,6 +38,7 @@ wskill is a unified format that allows saving knowledge for use by Humans and AI
 - Route with the skill-vs-wskill rule (fact `skill_vs_wskill`) before scaffolding anything: AI-only knowledge → a plain canonical skill via /meta-skill; knowledge humans also consume → a wskill.
 - Classify every new unit with the decision guide (fact `unit_decision_guide`) before creating it — entities are reserved for concrete NAMED things (people, software, places); ideas are concepts, values are facts, tasks are processes, dated findings are research.
 - Capture durable investigation output as `research` blocks under data/research/ so it ships at references/research_<id>.md for other agents and pipelines to reuse.
+- For whole-topic research-to-wskill authoring, follow the `researching_a_topic` runbook — dispatch `wskill-researcher` subagents in parallel rather than researching serially in-session.
 - Create content in data/ using the schema in schema/; give an entity a `kind` from schema/kinds.wcl.
 - When new data has a recurring structure the base kinds don't fit, model it as a typed schema extension (see `creating_schema_extension`) rather than forcing it into prose.
 - Run `wcl check wskill.wcl` after every change and keep it green before rendering.
@@ -77,6 +78,7 @@ _Capturing knowledge: decomposition, classification, the capture loop, and the t
 - [Which unit kind? — the decision guide](references/fact_unit_decision_guide.md)
 - [Adding content to a wskill](references/process_adding_content.md)
 - [Capturing research into a wskill](references/process_capturing_research.md)
+- [Researching a topic into a wskill](references/process_researching_a_topic.md)
 - [Building the wskill index](references/process_building_the_index.md)
 - [The wskill folder layout](references/fact_folder_layout.md)
 - [The wcl commands an author uses](references/fact_authoring_cli.md)
@@ -112,6 +114,7 @@ _Step-by-step runbooks for building and maintaining a wskill — classify with t
 - [Creating a new wskill](references/process_creating_a_wskill.md)
 - [Adding content to a wskill](references/process_adding_content.md)
 - [Capturing research into a wskill](references/process_capturing_research.md)
+- [Researching a topic into a wskill](references/process_researching_a_topic.md)
 - [Building the wskill index](references/process_building_the_index.md)
 - [Setting up AI skill generation](references/process_setup_ai_skill.md)
 - [Building and installing the AI skill](references/process_installing_the_skill.md)
