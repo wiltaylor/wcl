@@ -418,6 +418,7 @@ fn init_wplan_scaffold_checks_and_builds() {
         "status.wcl",
         "lessons.wcl",
         "gates.wcl",
+        "scripts/extract_plan.py",
         "wdoc/book/main.wcl",
         "wdoc/agent/main.wcl",
     ] {
