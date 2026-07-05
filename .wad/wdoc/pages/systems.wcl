@@ -361,7 +361,12 @@ wdoc_component code_item_view {
     // member signature; a row is an edge port, so signature type-references
     // draw from the exact member to the type it mentions.
     wdoc_repeater { each = match ci.kind { :module_api => [true], _ => [] }  as = :_ma
-      diagram { width = 960  height = 640  layout = :force  link_distance = 260.0  repulsion = 16000.0  pan_zoom = true
+      // Straight edges: these force-packed API graphs route fine on some
+      // machines and not others (text metrics shift the packing just enough
+      // for elbow routing to dead-end — the CI runner hit this on the
+      // host-bindings item while local builds passed). Row-port edges read
+      // well straight, and straight routing cannot fail.
+      diagram { width = 960  height = 640  layout = :force  link_distance = 260.0  repulsion = 16000.0  pan_zoom = true  routing = :straight
         wdoc_repeater { each = ci.nodes  as = :nd
           node_table { id = nd.id  width = 280.0
             title = $"${nd.name}${match nd.kind { none => "", k2 => $" «${k2}»" }}"
