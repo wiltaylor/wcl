@@ -98,6 +98,16 @@ wdoc_repeater { each = adrs  as = :a
       h2 "Context"
       p $"${c}"
     }
+    wdoc_repeater { each = match len(a.options) { 0 => [], _ => [true] }  as = :_o
+      h2 "Options considered"
+      table {
+        header = ["Option", "Summary", "Outcome"]
+        rows = map(a.options, fn(o: AdrOption) -> list<utf8> {
+          [$"**${o.title}**", o.summary ?? "—",
+           match o.rejected_because { none => "**Chosen**", rb => $"Rejected — ${rb}" }]
+        })
+      }
+    }
     wdoc_repeater { each = match a.decision { none => [], d => [d] }  as = :d
       h2 "Decision"
       p $"${d}"

@@ -92,6 +92,11 @@ fn wad_spec_generates_planning_skeleton() {
     assert!(spec.contains("change \"system:core\""), "{spec}");
     assert!(spec.contains("change \"container:api\""), "{spec}");
     assert!(spec.contains("op = :added"), "{spec}");
+    // The intent skeleton is typed fields (schema 0.4.0), not a prose body.
+    assert!(spec.contains("context = \"TODO"), "{spec}");
+    assert!(spec.contains("instructions = ["), "{spec}");
+    assert!(spec.contains("acceptance = ["), "{spec}");
+    assert!(!spec.contains("body {"), "{spec}");
 
     // Wire the import and prove the whole model still validates — this is
     // the contract lock between the tool's output and the WAD schema.

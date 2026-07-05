@@ -17,7 +17,8 @@ index model_section {
   index model_structure {
     name    = "Structure"
     audience = :both
-    related = [wad_layout, data_vs_presentation, generated_vs_hand, relations_model, wad_kinds]
+    related = [wad_layout, data_vs_presentation, generated_vs_hand, relations_model, wad_kinds,
+               extensions_worked_example]
   }
   index model_views {
     name    = "Blocks by view"

@@ -1,8 +1,10 @@
 // View data — specs. A spec is a work package for an implementing agent:
 // enough context, instructions, and acceptance criteria that the agent
-// needs nothing else. These three are completed records kept as the bar for
-// what a spec must contain. `wcl wad spec --from <rev>` writes new
-// skeletons beside this one; add an import line here for each.
+// needs nothing else — all typed fields since schema 0.4.0 (`context`,
+// `instructions`, `acceptance`); the body is for extras only. These three
+// are completed records kept as the bar for what a spec must contain.
+// `wcl wad spec --from <rev>` writes new skeletons beside this one; add an
+// import line here for each.
 namespace wcl.wad
 
 spec spec_node_table {
@@ -13,14 +15,17 @@ spec spec_node_table {
   owner   = "Wil Taylor"
   summary = "A titled row-table diagram shape with per-row connection ports, for DB/ER tables and UML class diagrams."
   affected = [wcl_wdoc]
-  body {
-    p "**Context.** ER and class diagrams need edges that land on a *row* (a column, a member), not on the whole box. No existing shape supports sub-shape ports."
-    p "**Instructions.**"
-    p "1. Add `node_table` / `node_row` blocks to the wdoc stdlib (`crates/wcl_wdoc/lib/node_table.wcl`) with stub `lower`s — the output (HTML rows measured inside an SVG frame) is not expressible in WCL, so the renderer special-cases them (per the Rust-special-cases ADR)."
-    p "2. Implement the renderer in `crates/wcl_wdoc/src/node_table.rs`: the title bar and frame are SVG, the rows are HTML in a `foreignObject`; each row carrying an `id` registers as a sub-shape in the diagram's position index."
-    p "3. Route edges: an edge whose endpoint names a row id must anchor on that row's left/right port instead of the table frame."
-    p "**Acceptance.** A diagram with two `node_table`s and an edge from a row id to another row id renders with the edge anchored on both rows (integration test in `crates/wcl_wdoc/tests/`); the shape documents itself on the primitives page of the docs site; `just workspace-test` green."
-  }
+  context = "ER and class diagrams need edges that land on a *row* (a column, a member), not on the whole box. No existing shape supports sub-shape ports."
+  instructions = [
+    "Add `node_table` / `node_row` blocks to the wdoc stdlib (`crates/wcl_wdoc/lib/node_table.wcl`) with stub `lower`s — the output (HTML rows measured inside an SVG frame) is not expressible in WCL, so the renderer special-cases them (per the Rust-special-cases ADR).",
+    "Implement the renderer in `crates/wcl_wdoc/src/node_table.rs`: the title bar and frame are SVG, the rows are HTML in a `foreignObject`; each row carrying an `id` registers as a sub-shape in the diagram's position index.",
+    "Route edges: an edge whose endpoint names a row id must anchor on that row's left/right port instead of the table frame.",
+  ]
+  acceptance = [
+    "A diagram with two `node_table`s and an edge from a row id to another row id renders with the edge anchored on both rows (integration test in `crates/wcl_wdoc/tests/`).",
+    "The shape documents itself on the primitives page of the docs site.",
+    "`just workspace-test` green.",
+  ]
 }
 
 spec spec_diff_gitspec {
@@ -31,14 +36,17 @@ spec spec_diff_gitspec {
   owner   = "Wil Taylor"
   summary = "Either side of `wcl diff` may be `<rev>:<path>`; the revision's whole tree materialises so imports resolve."
   affected = [wcl_cli]
-  body {
-    p "**Context.** Diffing a working document against its last reviewed revision is the seam the WAD change workflow builds on — but a document's imports must resolve from the *same revision*, so checking out one file is not enough."
-    p "**Instructions.**"
-    p "1. Add a `<rev>:<path>` operand parser in `crates/wcl/src/gitspec.rs`: split on the first `:`, validate the revision with `git rev-parse`."
-    p "2. Materialise the revision's whole tree into a temp dir via `git archive <rev> | tar -x`, then open `<path>` inside it — relative imports resolve against the materialised tree; the temp dir is removed when the diff completes."
-    p "3. Wire both operands of `wcl diff` (`crates/wcl/src/diff.rs`) through the specifier: plain paths behave as before, either or both sides may be git specifiers."
-    p "**Acceptance.** `wcl diff HEAD~1:doc.wcl doc.wcl` reports field-level changes with imports resolving from the old revision; a bad revision or path exits non-zero with a miette diagnostic naming it; integration tests cover both (`crates/wcl/tests/`)."
-  }
+  context = "Diffing a working document against its last reviewed revision is the seam the WAD change workflow builds on — but a document's imports must resolve from the *same revision*, so checking out one file is not enough."
+  instructions = [
+    "Add a `<rev>:<path>` operand parser in `crates/wcl/src/gitspec.rs`: split on the first `:`, validate the revision with `git rev-parse`.",
+    "Materialise the revision's whole tree into a temp dir via `git archive <rev> | tar -x`, then open `<path>` inside it — relative imports resolve against the materialised tree; the temp dir is removed when the diff completes.",
+    "Wire both operands of `wcl diff` (`crates/wcl/src/diff.rs`) through the specifier: plain paths behave as before, either or both sides may be git specifiers.",
+  ]
+  acceptance = [
+    "`wcl diff HEAD~1:doc.wcl doc.wcl` reports field-level changes with imports resolving from the old revision.",
+    "A bad revision or path exits non-zero with a miette diagnostic naming it.",
+    "Integration tests cover both (`crates/wcl/tests/`).",
+  ]
 }
 
 spec spec_wad_format {
@@ -49,14 +57,18 @@ spec spec_wad_format {
   owner   = "Wil Taylor"
   summary = "A typed architecture data model (this document), a twelve-chapter book projection, a `wcl init wad` scaffold, extractor scripts, and the LLM-decomposed spec workflow."
   affected = [wcl_cli, wcl_wdoc]
-  body {
-    p "**Context.** Architecture knowledge lived in prose and stale diagrams. The bet: model it as typed WCL data (arc42-inspired views over a C4 drill-down), derive every diagram from the data, and let agents work from the model instead of the rendered book."
-    p "**Deliverables (all shipped, this document being the first WAD).**"
-    p "1. The base schema as a canonical scaffold heredoc (`crates/wcl/src/scaffold/templates/wad.wcl`, terminator `WAD_SCHEMA_BASE_WCL`) with drift gates (`just wad-schema-sync` / `wad-schema-check`, CI-enforced)."
-    p "2. The book projection under `wdoc/book/` — pure templates, no content: node index, relation roll-up, one page file per view."
-    p "3. The `wcl init wad` scaffold and the `wcl wad spec --from <rev>` seeder (`crates/wcl/src/wad.rs`) that pins the baseline sha and the mechanical change list of a new spec."
-    p "4. Extractor scripts under `.wad/scripts/` (uv single-file Python) owning `data/generated/` — cargo metadata, CI workflows, the serve HTTP API."
-    p "5. The `wad` wskill teaching the format, plus the classification rules (personas are users; hosting platforms are not externals; documentation is an output, not a system) and ADR-008/ADR-009."
-    p "**Acceptance (met).** `wcl check .wad/wad.wcl` green; the book renders all chapters with derived diagrams; `wcl init wad` scaffolds a WAD that checks and builds; a data edit round-trips into a spec skeleton via `wcl wad spec --from <rev>`."
-  }
+  context = "Architecture knowledge lived in prose and stale diagrams. The bet: model it as typed WCL data (arc42-inspired views over a C4 drill-down), derive every diagram from the data, and let agents work from the model instead of the rendered book."
+  instructions = [
+    "Ship the base schema as a canonical scaffold heredoc (`crates/wcl/src/scaffold/templates/wad.wcl`, terminator `WAD_SCHEMA_BASE_WCL`) with drift gates (`just wad-schema-sync` / `wad-schema-check`, CI-enforced).",
+    "Ship the book projection under `wdoc/book/` — pure templates, no content: node index, relation roll-up, one page file per view.",
+    "Ship the `wcl init wad` scaffold and the `wcl wad spec --from <rev>` seeder (`crates/wcl/src/wad.rs`) that pins the baseline sha and the mechanical change list of a new spec.",
+    "Ship extractor scripts under `.wad/scripts/` (uv single-file Python) owning `data/generated/` — cargo metadata, CI workflows, the serve HTTP API.",
+    "Ship the `wad` wskill teaching the format, plus the classification rules (personas are users; hosting platforms are not externals; documentation is an output, not a system) and ADR-008/ADR-009.",
+  ]
+  acceptance = [
+    "`wcl check .wad/wad.wcl` green.",
+    "The book renders all chapters with derived diagrams.",
+    "`wcl init wad` scaffolds a WAD that checks and builds.",
+    "A data edit round-trips into a spec skeleton via `wcl wad spec --from <rev>`.",
+  ]
 }

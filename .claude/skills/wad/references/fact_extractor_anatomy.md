@@ -28,7 +28,7 @@ OUT.write_text("\n".join(lines))
 
 The eight rules that make extraction safe: uv single-file; **one script, one output file**; full overwrite, never append; generated banner first; deterministic output (sorted, no timestamps — unchanged sources are git-quiet); stable ids derived from source names; an empty result still writes the banner so imports never dangle; output passes `wcl check`. Exit non-zero on failure so `just extract` stops.
 
-When the data doesn't fit the base blocks, declare a **typed extension block** in `schema/extensions.wcl` and have the extractor emit that, with a matching render in the book template — extraction isn't limited to the built-in families. The bundled `extractor_template.py` (skill scripts folder) is the skeleton ready to copy.
+When the data doesn't fit the base blocks, declare a **typed extension block** in `schema/extensions.wcl` and have the extractor emit that, with a matching render in the book template — extraction isn't limited to the built-in families (see the extensions worked example). The bundled `extractor_template.py` (skill scripts folder) is the skeleton ready to copy.
 
 ## Related
 

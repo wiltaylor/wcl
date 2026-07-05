@@ -35,8 +35,8 @@ symbol_set EnvKind { local ci dev test staging prod dr other }
 // ADR lifecycle.
 symbol_set AdrStatus { proposed accepted rejected superseded deprecated }
 
-// Spec lifecycle: planning → in_progress → complete | abandoned.
-symbol_set SpecStatus { planning in_progress complete abandoned }
+// Spec lifecycle: planning → in_progress (↔ blocked) → complete | abandoned.
+symbol_set SpecStatus { planning in_progress blocked complete abandoned }
 
 // Who (or what) a persona is.
 symbol_set PersonaKind { human ai_agent service }

@@ -3,6 +3,10 @@
 // repository gets a structure diagram (submodule-aware) and each pipeline a
 // stage flowchart (from the stage `next` DAG) with per-stage detail.
 // Resolves the `let` helpers from wdoc/book/main.wcl.
+//
+// NOTE: this page deliberately DIVERGES from the scaffold copy — it also
+// renders this WAD's extension blocks (schema/extensions.wcl): the
+// release-trigger rules and the extractor-owned dev-command catalogue.
 
 let stage_edges = fn(pl: Pipeline) -> list<Edge> {
   flatten(map(pl.stages, fn(st: PipelineStage) -> list<Edge> {
@@ -48,6 +52,20 @@ page build_page { title = "Build & deploy"
     p $"- [${pl.name}](pipeline_${pl.id})${match pl.trigger { none => "", t2 => $" — triggered by ${t2}" }}${match pl.summary { none => "", sx => $" — ${sx}" }}"
   }
 
+  h2 "Release triggers"
+  wdoc_repeater { each = match len(release_triggers) { 0 => [true], _ => [] }  as = :_e5
+    p "_No release triggers recorded._"
+  }
+  wdoc_repeater { each = match len(release_triggers) { 0 => [], _ => [true] }  as = :_rt2
+    p "What a commit trailer on `main` makes CI do — see the trailer-gated releases ADR."
+    table {
+      header = ["Trailer", "CI does", "Why"]
+      rows = map(release_triggers, fn(rt: ReleaseTrigger) -> list<utf8> {
+        [$"`${rt.trailer}`", rt.effect, rt.notes ?? "—"]
+      })
+    }
+  }
+
   h2 "Releases"
   wdoc_repeater { each = match len(releases) { 0 => [true], _ => [] }  as = :_e3
     p "_No releases recorded._"
@@ -68,6 +86,17 @@ page build_page { title = "Build & deploy"
     p  "The day-to-day development runbooks (articles under this chapter carry the longer setup / branching / release detail):"
     wdoc_repeater { each = filter(sops, fn(so: Sop) -> bool { so.kind == :dev })  as = :so
       p $"- [${so.title}](sop_${so.id}) — ${so.purpose}"
+    }
+  }
+
+  wdoc_repeater { each = match len(dev_commands) { 0 => [], _ => [true] }  as = :_dc
+    h2 "Dev commands"
+    p  "Every dev entry point — the root justfile's recipe catalogue, extractor-owned (run `just` for the live list)."
+    table {
+      header = ["Command", "Group", "What it does"]
+      rows = map(dev_commands, fn(dc: DevCommand) -> list<utf8> {
+        [$"`${dc.command}`", dc.category ?? "—", dc.description]
+      })
     }
   }
 }

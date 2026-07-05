@@ -15,7 +15,7 @@ metadata:
 
 Wil's Architecture Document: a typed WCL data model of a software system — C4 drill-down, arc42-style views — rendered into a twelve-chapter architecture book.
 
-**Upstream version:** `0.1.0`. If the real upstream has moved past this, the skill may be stale — bump `topic.version` and re-verify (see the update workflow).
+**Upstream version:** `0.4.0`. If the real upstream has moved past this, the skill may be stale — bump `topic.version` and re-verify (see the update workflow).
 
 A WAD is a typed architecture document. This skill creates and populates one — by interviewing you about a new design or scanning an existing codebase — keeps it current with extractor scripts, and decomposes reviewed changes into implementation specs for coding agents.
 
@@ -83,6 +83,7 @@ _How the model is organised, and the block reference per view._
 - [Generated vs hand-authored data](references/concept_generated_vs_hand.md)
 - [Relations wire the diagrams](references/concept_relations_model.md)
 - [WAD vocabularies (kinds.wcl)](references/fact_wad_kinds.md)
+- [Custom blocks (extensions.wcl) — a worked example](references/fact_extensions_worked_example.md)
 
 #### Blocks by view
 

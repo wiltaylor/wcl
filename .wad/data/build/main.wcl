@@ -1,5 +1,7 @@
-// View data hub — repositories, articles (local dev, branching & releases).
-// Pipelines and releases are extractor-owned — see data/generated/.
+// View data hub — repositories, release trigger rules, articles (local dev,
+// branching & releases). Pipelines, releases, and the dev-command catalogue
+// are extractor-owned — see data/generated/.
 namespace wcl.wad
 import "./build.wcl"
+import "./release_triggers.wcl"
 import "./articles.wcl"

@@ -2,9 +2,8 @@
 //
 // Custom blocks declared here join the `wcl.wad` namespace (shared with the
 // base schema). The namespace line below is the file's first statement;
-// uncomment your @block/@document beneath it and they are scoped
-// automatically — bare references from data files and templates keep
-// resolving.
+// @block/@document declared beneath it are scoped automatically — bare
+// references from data files and templates keep resolving.
 namespace wcl.wad
 
 // The base schema (base.wcl) is never edited in place; everything
@@ -16,25 +15,47 @@ namespace wcl.wad
 //   2. A first-class typed custom block: declare an @block with your own
 //      fields AND a @document that gathers it. Imported @document schemas
 //      MERGE with the base, so this composes cleanly. Then add a render
-//      snippet to the book template (wdoc/book/main.wcl or a component).
+//      snippet to the book template (a page under wdoc/pages/ may diverge
+//      from the scaffold copy to render extension blocks — this WAD's
+//      wdoc/pages/build.wcl does exactly that).
 //
-// Example (uncomment and adapt):
-//
-// @block("slo")
-// type Slo {
-//   @inline(0) id: identifier
-//   metric:  utf8
-//   target:  utf8
-//   window:  utf8?
-// }
-//
-// @document
-// type Extensions {
-//   @children("slo") slos: list<Slo>
-// }
-//
-// Then in the book template, alongside the other sections:
-//
-//   wdoc_repeater { each = slos  as = :s
-//     p $"`${s.metric}` — ${s.target}"
-//   }
+// The two blocks below are this WAD's extensions, both rendered on the
+// Build & deploy page.
+
+// A dev entry point: one justfile recipe. EXTRACTOR-OWNED — emitted by
+// scripts/extract_justfile.py into data/generated/justfile.wcl from the
+// root justfile's recipes, doc comments, and groups.
+@block("dev_command")
+type DevCommand {
+  @inline(0) id: identifier
+  @doc("Recipe name as `just --list` shows it (\"wad-build\").")
+  name: utf8
+  @doc("The invocation as typed, parameters included (\"just wad-spec REV\").")
+  command: utf8
+  @doc("What the recipe does — the justfile doc comment.")
+  description: utf8
+  @doc("Justfile group (\"build\" / \"test\" / \"quality\" / \"dev\").")
+  category: utf8?
+}
+
+// One commit-trailer rule of the release process: what a trailer on a
+// main-branch commit makes CI do (see the trailer-gated releases ADR).
+@block("release_trigger")
+type ReleaseTrigger {
+  @inline(0) id: identifier
+  @doc("The trailer, verbatim (\"pre-release: true\"), or \"(none)\".")
+  trailer: utf8
+  @doc("What CI does when a commit on main carries it.")
+  effect: utf8
+  @doc("Why the rule exists / what it guards.")
+  notes: utf8?
+}
+
+// Merging @document — these gather fields join the base WadDoc + wdoc
+// document space; names must avoid wdoc's (components, pages, sites,
+// bodies, …) and the base schema's gather fields.
+@document
+type WclWadExtensions {
+  @children("dev_command")     dev_commands:     list<DevCommand>
+  @children("release_trigger") release_triggers: list<ReleaseTrigger>
+}

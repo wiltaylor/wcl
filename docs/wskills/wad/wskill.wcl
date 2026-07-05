@@ -21,7 +21,7 @@ schema_version = "1.2.0"
 topic wad {
   name    = "WAD"
   summary = "Wil's Architecture Document: a typed WCL data model of a software system — C4 drill-down, arc42-style views — rendered into a twelve-chapter architecture book."
-  version = "0.1.0"     // the WAD schema version this wskill documents
+  version = "0.4.0"     // the WAD schema version this wskill documents
   description = <<END
 A **WAD** captures a software system's architecture as typed WCL data:
 systems, containers, relations, infrastructure, decisions, procedures, domain
@@ -91,14 +91,14 @@ source wad_schema {
   kind         = "code"
   locator      = "crates/wcl/src/scaffold/templates/wad.wcl (heredoc WAD_SCHEMA_BASE_WCL — the canonical schema)"
   covers       = "Every block type and field the per-view facts document."
-  last_checked = "2026-07-02"
-  reflects_version = "0.1.0"
+  last_checked = "2026-07-05"
+  reflects_version = "0.4.0"
 }
 source reference_wad {
   kind         = "code"
   locator      = ".wad/ in the WCL repository (the reference WAD, documenting WCL itself)"
   covers       = "Worked examples: data files, extractors, book output."
-  last_checked = "2026-07-02"
+  last_checked = "2026-07-05"
 }
 source wad_cli_help {
   kind         = "cli"

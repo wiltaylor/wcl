@@ -1,6 +1,8 @@
 // WAD base schema — ships with the `wcl init wad` scaffold.
 //
-// Schema version: 0.3.0 (mirror it in `schema_version` in wad.wcl).
+// Schema version: 0.4.0 (mirror it in `schema_version` in wad.wcl).
+// 0.4.0 is additive over 0.3.0 (adr_option children on adr; typed
+// context/instructions/acceptance on spec) — 0.3.0 data validates unchanged.
 //
 // DO NOT HAND-EDIT. The canonical copy lives in the scaffold template
 // (crates/wcl/src/scaffold/templates/wad.wcl); regenerate with
@@ -84,8 +86,21 @@ type RaciEntry {
   @default([]) informed:    list<identifier>
 }
 
-// An architecture decision record. Short structured form in fields; long
-// form (options considered, full context) in the body.
+// One alternative weighed while making a decision. An option without
+// `rejected_because` is the one that won (the ADR's `decision` states it);
+// record the losers with why they lost.
+@block("adr_option")
+type AdrOption {
+  @inline(0) id: identifier
+  title: utf8
+  summary: utf8?
+  @doc("Why this option lost, for the ones that did.")
+  rejected_because: utf8?
+}
+
+// An architecture decision record. Short structured form in fields, the
+// alternatives weighed as `adr_option` children; the body is for extras
+// (diagrams, long-form context) the typed fields don't carry.
 @block("adr")
 type Adr {
   @inline(0) id: identifier
@@ -104,6 +119,8 @@ type Adr {
   consequences: utf8?
   @doc("ADR id this decision supersedes (the inverse link is computed).")
   supersedes: identifier?
+  @doc("The alternatives weighed, including the winner when naming it adds signal.")
+  @children("adr_option") options: list<AdrOption>
   @default([]) related: list<identifier>
   @default([]) tags: list<utf8>
   @child("body") body: WdocAddressableBody?
@@ -776,8 +793,10 @@ type SpecChange {
 // A work package for an implementing agent: the detail needed to build
 // part of the system, carried through the status lifecycle. Optionally
 // seeded mechanically from a WAD diff (`wcl wad spec` pins the baseline
-// sha and the exact change list); the intent — summary, instructions —
-// is authored by the LLM/human decomposing the change.
+// sha and the exact change list); the intent — the typed `context`,
+// `instructions`, and `acceptance` fields — is authored by the LLM/human
+// decomposing the change. The body is for extras (diagrams, long-form
+// rationale) the typed fields don't carry.
 @block("spec")
 type Spec {
   @inline(0) id: identifier
@@ -788,6 +807,12 @@ type Spec {
   updated: utf8?
   owner: utf8?
   summary: utf8
+  @doc("The situation the work starts from — why this change set exists.")
+  context: utf8?
+  @doc("Ordered implementation steps — name the files/modules to touch.")
+  @default([]) instructions: list<utf8>
+  @doc("Checkable criteria that prove the work is done (commands, tests, rendered output).")
+  @default([]) acceptance: list<utf8>
   @doc("Git revision (full sha) of the WAD baseline this spec diffs from.")
   from_rev: utf8?
   @doc("System / container ids this spec touches.")

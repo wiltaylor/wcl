@@ -9,6 +9,7 @@ namespace wcl.wad
 import "./cargo.wcl"    // owned by scripts/extract_cargo.py
 import "./ci.wcl"       // owned by scripts/extract_ci.py
 import "./http_api.wcl" // owned by scripts/extract_http_api.py
+import "./justfile.wcl" // owned by scripts/extract_justfile.py
 import "./modules.wcl"  // owned by scripts/extract_modules.py
 import "./releases.wcl" // owned by scripts/extract_releases.py
 

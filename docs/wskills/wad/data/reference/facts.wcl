@@ -2,7 +2,7 @@
 // the canonical schema in the scaffold template), the folder layout, the
 // vocabularies, the command table, and extractor anatomy.
 //
-// Field tables are hand-reflected from schema 0.2.0 (see the wad_schema
+// Field tables are hand-reflected from schema 0.4.0 (see the wad_schema
 // source in wskill.wcl); `?` marks optional, `[]` marks a defaulted list.
 
 fact wad_layout {
@@ -41,10 +41,11 @@ fact overview_blocks {
         ["`wad`", "`name`, `summary`, `description?`, `version?`, `created`, `updated?`, `maintainer?`, `tags[]`", "exactly one, hand-authored in wad.wcl; `version` is the *described* system's"],
         ["`stakeholder`", "`name`, `role`, `org?`, `contact?`, `persona?`", "the people who fund, build, approve, and operate"],
         ["`raci_entry`", "`activity`, `responsible[]`, `accountable[]`, `consulted[]`, `informed[]`", "one row per activity; the four lists hold stakeholder ids — renders the matrix directly"],
-        ["`adr`", "`n`, `title`, `status`, `date`, `deciders[]`, `context?`, `decision?`, `consequences?`, `supersedes?`, `related[]`, `body?`", "`n` renders as ADR-001 and is never renumbered; the index page tables every decision plus a timeline"],
+        ["`adr`", "`n`, `title`, `status`, `date`, `deciders[]`, `context?`, `decision?`, `consequences?`, `supersedes?`, `options[]`, `related[]`, `body?`", "`n` renders as ADR-001 and is never renumbered; the index page tables every decision plus a timeline"],
+        ["`adr_option`", "`title`, `summary?`, `rejected_because?`", "nested in `adr` — one alternative weighed; an option **without** `rejected_because` marks the winner. The ADR page renders them as an Options-considered table"],
       ]
     }
-    p "Who populates: hand — stakeholders and RACI at framing time, an `adr` at the moment each decision is made."
+    p "Who populates: hand — stakeholders and RACI at framing time, an `adr` at the moment each decision is made (with its `adr_option` children when alternatives were genuinely weighed; a convention-recording ADR honestly has none)."
   }
 }
 
@@ -250,11 +251,11 @@ fact spec_blocks {
   related = [spec_lifecycle]
   audience = :both
   body {
-    p "A `spec` is a work package: the implementation detail an AI coding agent needs to build part of the system. `wcl wad spec --from <rev>` can seed one mechanically (baseline sha + exact change list); the intent — summary, rationale, ordered instructions — is authored by the LLM/human decomposing the change."
+    p "A `spec` is a work package: the implementation detail an AI coding agent needs to build part of the system. `wcl wad spec --from <rev>` can seed one mechanically (baseline sha + exact change list + TODO intent fields); the intent — the typed `context`, ordered `instructions`, and checkable `acceptance` — is authored by the LLM/human decomposing the change. The `body` is for extras (diagrams, long-form rationale) the typed fields don't carry."
     table {
       header = ["Block", "Fields", "Notes"]
       rows = [
-        ["`spec`", "`title`, `status`, `created`, `updated?`, `owner?`, `summary`, `from_rev?`, `affected[]`, `supersedes?`, `body?`", "`affected` holds system/container ids; `from_rev` records the baseline sha when the spec was seeded from a diff"],
+        ["`spec`", "`title`, `status`, `created`, `updated?`, `owner?`, `summary`, `context?`, `instructions[]`, `acceptance[]`, `from_rev?`, `affected[]`, `supersedes?`, `body?`", "`affected` holds system/container ids; `from_rev` records the baseline sha when the spec was seeded from a diff; the spec page renders Context, a numbered Instructions list, and an Acceptance checklist from the typed fields"],
         ["`change`", "entity key as inline label, `op`, `value?`", "mechanical change list rows — `op` is `:added` / `:removed` / `:modified`; `value` is the rendered WCL of an added/removed entity"],
         ["`field_change`", "path as inline label, `kind`, `old?`, `new?`", "nested in `change`; `old`/`new` carry rendered WCL text"],
       ]
@@ -264,6 +265,7 @@ fact spec_blocks {
       rows = [
         [":planning", "skeleton written, intent being authored/reviewed", "author"],
         [":in_progress", "an implementer picked it up", "implementer"],
+        [":blocked", "an implementer started and cannot proceed — record why in the body", "implementer"],
         [":complete", "landed and confirmed by the user", "author, after user confirmation"],
         [":abandoned", "won't happen — revert the data or keep it with an ADR explaining", "author"],
       ]
@@ -286,7 +288,7 @@ fact wad_kinds {
         ["InfraKind", "cloud region network vpc cluster namespace vm container_runtime physical_host paas_service ci_runner registry workstation storage edge other"],
         ["EnvKind", "local ci dev test staging prod dr other"],
         ["AdrStatus", "proposed accepted rejected superseded deprecated"],
-        ["SpecStatus", "planning in_progress complete abandoned"],
+        ["SpecStatus", "planning in_progress blocked complete abandoned"],
         ["PersonaKind", "human ai_agent service"],
         ["SopKind", "operations incident change runbook release dev"],
         ["StandardKind", "coding style business security process documentation"],
@@ -353,6 +355,24 @@ OUT.write_text("\n".join(lines))
 PY
     }
     p "The eight rules that make extraction safe: uv single-file; **one script, one output file**; full overwrite, never append; generated banner first; deterministic output (sorted, no timestamps — unchanged sources are git-quiet); stable ids derived from source names; an empty result still writes the banner so imports never dangle; output passes `wcl check`. Exit non-zero on failure so `just extract` stops."
-    p "When the data doesn't fit the base blocks, declare a **typed extension block** in `schema/extensions.wcl` and have the extractor emit that, with a matching render in the book template — extraction isn't limited to the built-in families. The bundled `extractor_template.py` (skill scripts folder) is the skeleton ready to copy."
+    p "When the data doesn't fit the base blocks, declare a **typed extension block** in `schema/extensions.wcl` and have the extractor emit that, with a matching render in the book template — extraction isn't limited to the built-in families (see the extensions worked example). The bundled `extractor_template.py` (skill scripts folder) is the skeleton ready to copy."
+  }
+}
+
+fact extensions_worked_example {
+  title   = "Custom blocks (extensions.wcl) — a worked example"
+  related = [wad_layout, extractor_anatomy]
+  audience = :both
+  body {
+    p "System-specific typed content is a three-part recipe, all instance-owned: **(1)** declare an `@block` with your fields in `schema/extensions.wcl`, **(2)** declare a merging `@document` in the same file that gathers it (imported `@document` schemas merge with the base, so the new gather list simply appears), and **(3)** render the gather list from a book template. Gather-field names share the merged document space — avoid the base schema's names and wdoc's own (`components`, `pages`, `sites`, `bodies`, …)."
+    p "The reference WAD (the WCL repo's `.wad/`) exercises this with two extension blocks on the Build & deploy page:"
+    table {
+      header = ["Block", "Fields", "Populated by"]
+      rows = [
+        ["`dev_command`", "`name`, `command`, `description`, `category?`", "extractor — `scripts/extract_justfile.py` reads `just --dump` and owns `data/generated/justfile.wcl`; the page renders the recipe catalogue as a table"],
+        ["`release_trigger`", "`trailer`, `effect`, `notes?`", "hand — three rows in `data/build/release_triggers.wcl` capture the commit-trailer release rules that used to be article prose"],
+      ]
+    }
+    p "A page template that renders extension blocks legitimately **diverges from the scaffold copy** — note the divergence in the page's header comment (the reference WAD's `wdoc/pages/build.wcl` does). Prefer a typed extension block over article prose whenever the content is a repeating shape (a table, a rule set, a catalogue): typed rows stay queryable, extractable, and honest, while `article` stays the escape hatch for genuine narrative."
   }
 }

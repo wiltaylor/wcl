@@ -1,10 +1,12 @@
 // View 11 — Specs: change contracts grouped by status, one page per spec
 // (metadata, affected nodes, the mechanical change list emitted by
-// `wcl wad spec`, and the authored rationale/instructions body). Resolves
-// the `let` helpers from wdoc/book/main.wcl.
+// `wcl wad spec`, and the authored intent — the typed context /
+// instructions / acceptance fields). Resolves the `let` helpers from
+// wdoc/book/main.wcl.
 
 let spec_groups = [
   { status: :in_progress, name: "In progress", class: "note" },
+  { status: :blocked,     name: "Blocked",     class: "warning" },
   { status: :planning,    name: "Planning",    class: "note" },
   { status: :complete,    name: "Complete",    class: "success" },
   { status: :abandoned,   name: "Abandoned",   class: "warning" },
@@ -13,16 +15,16 @@ let specs_with = fn(s: SpecStatus) -> list<Spec> {
   filter(specs, fn(sp: Spec) -> bool { sp.status == s })
 }
 let spec_status_text = fn(s: SpecStatus) -> utf8 {
-  match s { :planning => "Planning", :in_progress => "In progress",
+  match s { :planning => "Planning", :in_progress => "In progress", :blocked => "Blocked",
             :complete => "Complete", :abandoned => "Abandoned", _ => "Unknown" }
 }
 let spec_status_class = fn(s: SpecStatus) -> utf8 {
-  match s { :complete => "success", :abandoned => "warning", _ => "note" }
+  match s { :complete => "success", :abandoned => "warning", :blocked => "warning", _ => "note" }
 }
 
 page specs_page { title = "Specs"
   h1 "Specs"
-  p  "Work packages decomposed from this architecture: the implementation detail an AI coding agent needs to build part of the system, each carried through planning → in progress → complete (or abandoned). Seed one mechanically from a WAD diff with `wcl wad spec --from <rev>`; the intent is authored by whoever cuts the change."
+  p  "Work packages decomposed from this architecture: the implementation detail an AI coding agent needs to build part of the system, each carried through planning → in progress (or blocked) → complete (or abandoned). Seed one mechanically from a WAD diff with `wcl wad spec --from <rev>`; the intent — context, instructions, acceptance — is authored by whoever cuts the change."
 
   wdoc_repeater { each = match len(specs) { 0 => [true], _ => [] }  as = :_e
     p "_No specs recorded._"
@@ -57,6 +59,11 @@ wdoc_repeater { each = specs  as = :sp
       p $"**Baseline revision:** `${rv}`"
     }
 
+    wdoc_repeater { each = match sp.context { none => [], cx => [cx] }  as = :cx
+      h2 "Context"
+      p $"${cx}"
+    }
+
     wdoc_repeater { each = match len(sp.changes) { 0 => [], _ => [true] }  as = :_c
       h2 "Changes"
       wdoc_repeater { each = sp.changes  as = :ch
@@ -72,6 +79,19 @@ wdoc_repeater { each = specs  as = :sp
             })
           }
         }
+      }
+    }
+
+    wdoc_repeater { each = match len(sp.instructions) { 0 => [], _ => [true] }  as = :_i
+      h2 "Instructions"
+      list { style = :numbered
+        items = map(sp.instructions, fn(t: utf8) -> Li { { text: t } })
+      }
+    }
+    wdoc_repeater { each = match len(sp.acceptance) { 0 => [], _ => [true] }  as = :_ac
+      h2 "Acceptance"
+      list {
+        items = map(sp.acceptance, fn(t: utf8) -> Li { { text: t } })
       }
     }
 

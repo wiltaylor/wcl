@@ -10,7 +10,7 @@ The symbol_sets the kind fields draw from — extend them in the instance's `sch
 | InfraKind | cloud region network vpc cluster namespace vm container_runtime physical_host paas_service ci_runner registry workstation storage edge other |
 | EnvKind | local ci dev test staging prod dr other |
 | AdrStatus | proposed accepted rejected superseded deprecated |
-| SpecStatus | planning in_progress complete abandoned |
+| SpecStatus | planning in_progress blocked complete abandoned |
 | PersonaKind | human ai_agent service |
 | SopKind | operations incident change runbook release dev |
 | StandardKind | coding style business security process documentation |

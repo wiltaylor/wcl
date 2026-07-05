@@ -216,7 +216,7 @@ import "./schema/base.wcl"
 import "./schema/extensions.wcl"
 import "./data/main.wcl"
 
-schema_version = "0.3.0"
+schema_version = "0.4.0"
 
 wad ${answer("system_id")} {
   name    = "${answer("system_name")}"
@@ -230,7 +230,9 @@ file "schema/base.wcl" {
   content = <<'WAD_SCHEMA_BASE_WCL'
 // WAD base schema — ships with the `wcl init wad` scaffold.
 //
-// Schema version: 0.3.0 (mirror it in `schema_version` in wad.wcl).
+// Schema version: 0.4.0 (mirror it in `schema_version` in wad.wcl).
+// 0.4.0 is additive over 0.3.0 (adr_option children on adr; typed
+// context/instructions/acceptance on spec) — 0.3.0 data validates unchanged.
 //
 // DO NOT HAND-EDIT. The canonical copy lives in the scaffold template
 // (crates/wcl/src/scaffold/templates/wad.wcl); regenerate with
@@ -314,8 +316,21 @@ type RaciEntry {
   @default([]) informed:    list<identifier>
 }
 
-// An architecture decision record. Short structured form in fields; long
-// form (options considered, full context) in the body.
+// One alternative weighed while making a decision. An option without
+// `rejected_because` is the one that won (the ADR's `decision` states it);
+// record the losers with why they lost.
+@block("adr_option")
+type AdrOption {
+  @inline(0) id: identifier
+  title: utf8
+  summary: utf8?
+  @doc("Why this option lost, for the ones that did.")
+  rejected_because: utf8?
+}
+
+// An architecture decision record. Short structured form in fields, the
+// alternatives weighed as `adr_option` children; the body is for extras
+// (diagrams, long-form context) the typed fields don't carry.
 @block("adr")
 type Adr {
   @inline(0) id: identifier
@@ -334,6 +349,8 @@ type Adr {
   consequences: utf8?
   @doc("ADR id this decision supersedes (the inverse link is computed).")
   supersedes: identifier?
+  @doc("The alternatives weighed, including the winner when naming it adds signal.")
+  @children("adr_option") options: list<AdrOption>
   @default([]) related: list<identifier>
   @default([]) tags: list<utf8>
   @child("body") body: WdocAddressableBody?
@@ -1006,8 +1023,10 @@ type SpecChange {
 // A work package for an implementing agent: the detail needed to build
 // part of the system, carried through the status lifecycle. Optionally
 // seeded mechanically from a WAD diff (`wcl wad spec` pins the baseline
-// sha and the exact change list); the intent — summary, instructions —
-// is authored by the LLM/human decomposing the change.
+// sha and the exact change list); the intent — the typed `context`,
+// `instructions`, and `acceptance` fields — is authored by the LLM/human
+// decomposing the change. The body is for extras (diagrams, long-form
+// rationale) the typed fields don't carry.
 @block("spec")
 type Spec {
   @inline(0) id: identifier
@@ -1018,6 +1037,12 @@ type Spec {
   updated: utf8?
   owner: utf8?
   summary: utf8
+  @doc("The situation the work starts from — why this change set exists.")
+  context: utf8?
+  @doc("Ordered implementation steps — name the files/modules to touch.")
+  @default([]) instructions: list<utf8>
+  @doc("Checkable criteria that prove the work is done (commands, tests, rendered output).")
+  @default([]) acceptance: list<utf8>
   @doc("Git revision (full sha) of the WAD baseline this spec diffs from.")
   from_rev: utf8?
   @doc("System / container ids this spec touches.")
@@ -1184,8 +1209,8 @@ symbol_set EnvKind { local ci dev test staging prod dr other }
 // ADR lifecycle.
 symbol_set AdrStatus { proposed accepted rejected superseded deprecated }
 
-// Spec lifecycle: planning → in_progress → complete | abandoned.
-symbol_set SpecStatus { planning in_progress complete abandoned }
+// Spec lifecycle: planning → in_progress (↔ blocked) → complete | abandoned.
+symbol_set SpecStatus { planning in_progress blocked complete abandoned }
 
 // Who (or what) a persona is.
 symbol_set PersonaKind { human ai_agent service }
@@ -2607,6 +2632,16 @@ wdoc_repeater { each = adrs  as = :a
       h2 "Context"
       p $"${c}"
     }
+    wdoc_repeater { each = match len(a.options) { 0 => [], _ => [true] }  as = :_o
+      h2 "Options considered"
+      table {
+        header = ["Option", "Summary", "Outcome"]
+        rows = map(a.options, fn(o: AdrOption) -> list<utf8> {
+          [$"**${o.title}**", o.summary ?? "—",
+           match o.rejected_because { none => "**Chosen**", rb => $"Rejected — ${rb}" }]
+        })
+      }
+    }
     wdoc_repeater { each = match a.decision { none => [], d => [d] }  as = :d
       h2 "Decision"
       p $"${d}"
@@ -2764,11 +2799,13 @@ file "wdoc/pages/specs.wcl" {
   content = <<'WAD_WDOC_PAGES_SPECS_WCL'
 // View 11 — Specs: change contracts grouped by status, one page per spec
 // (metadata, affected nodes, the mechanical change list emitted by
-// `wcl wad spec`, and the authored rationale/instructions body). Resolves
-// the `let` helpers from wdoc/book/main.wcl.
+// `wcl wad spec`, and the authored intent — the typed context /
+// instructions / acceptance fields). Resolves the `let` helpers from
+// wdoc/book/main.wcl.
 
 let spec_groups = [
   { status: :in_progress, name: "In progress", class: "note" },
+  { status: :blocked,     name: "Blocked",     class: "warning" },
   { status: :planning,    name: "Planning",    class: "note" },
   { status: :complete,    name: "Complete",    class: "success" },
   { status: :abandoned,   name: "Abandoned",   class: "warning" },
@@ -2777,16 +2814,16 @@ let specs_with = fn(s: SpecStatus) -> list<Spec> {
   filter(specs, fn(sp: Spec) -> bool { sp.status == s })
 }
 let spec_status_text = fn(s: SpecStatus) -> utf8 {
-  match s { :planning => "Planning", :in_progress => "In progress",
+  match s { :planning => "Planning", :in_progress => "In progress", :blocked => "Blocked",
             :complete => "Complete", :abandoned => "Abandoned", _ => "Unknown" }
 }
 let spec_status_class = fn(s: SpecStatus) -> utf8 {
-  match s { :complete => "success", :abandoned => "warning", _ => "note" }
+  match s { :complete => "success", :abandoned => "warning", :blocked => "warning", _ => "note" }
 }
 
 page specs_page { title = "Specs"
   h1 "Specs"
-  p  "Work packages decomposed from this architecture: the implementation detail an AI coding agent needs to build part of the system, each carried through planning → in progress → complete (or abandoned). Seed one mechanically from a WAD diff with `wcl wad spec --from <rev>`; the intent is authored by whoever cuts the change."
+  p  "Work packages decomposed from this architecture: the implementation detail an AI coding agent needs to build part of the system, each carried through planning → in progress (or blocked) → complete (or abandoned). Seed one mechanically from a WAD diff with `wcl wad spec --from <rev>`; the intent — context, instructions, acceptance — is authored by whoever cuts the change."
 
   wdoc_repeater { each = match len(specs) { 0 => [true], _ => [] }  as = :_e
     p "_No specs recorded._"
@@ -2821,6 +2858,11 @@ wdoc_repeater { each = specs  as = :sp
       p $"**Baseline revision:** `${rv}`"
     }
 
+    wdoc_repeater { each = match sp.context { none => [], cx => [cx] }  as = :cx
+      h2 "Context"
+      p $"${cx}"
+    }
+
     wdoc_repeater { each = match len(sp.changes) { 0 => [], _ => [true] }  as = :_c
       h2 "Changes"
       wdoc_repeater { each = sp.changes  as = :ch
@@ -2836,6 +2878,19 @@ wdoc_repeater { each = specs  as = :sp
             })
           }
         }
+      }
+    }
+
+    wdoc_repeater { each = match len(sp.instructions) { 0 => [], _ => [true] }  as = :_i
+      h2 "Instructions"
+      list { style = :numbered
+        items = map(sp.instructions, fn(t: utf8) -> Li { { text: t } })
+      }
+    }
+    wdoc_repeater { each = match len(sp.acceptance) { 0 => [], _ => [true] }  as = :_ac
+      h2 "Acceptance"
+      list {
+        items = map(sp.acceptance, fn(t: utf8) -> Li { { text: t } })
       }
     }
 
