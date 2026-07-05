@@ -1,0 +1,6 @@
+// As-built notes - written by the VERIFICATION agent when it verifies a spec:
+// any deviation from the brief that downstream specs must know (renamed
+// modules, changed commands, adjusted signatures). "none" needs no row.
+// Rendered into the briefs of every spec that depends on the noted spec, so
+// re-render (just specs) after adding rows. Implementation agents never edit this.
+// asbuilt spec_010_build { note = "test recipe is `just test`, not cargo test directly." }

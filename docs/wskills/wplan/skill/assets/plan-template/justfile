@@ -1,0 +1,40 @@
+# wplan justfile — run from the plan/ directory.
+
+# Structural tier: schema + every gate EXCEPT phase signoffs. Green on a fresh
+# template; keep it green after every edit.
+check:
+    wcl check plan.wcl
+    wcl check gates.wcl
+    @for g in $(grep -oE '^gate [a-z_0-9]+' gates.wcl | cut -d' ' -f2 | grep -v '^signoffs_complete$'); do \
+        printf 'gate %-24s ' "$g"; \
+        wcl eval gates.wcl "gates.$g.ok" || exit 1; \
+    done
+
+# Full tier: everything including signoffs. Rendering requires this, so a plan
+# cannot be handed to agents while a phase was skipped silently.
+check-full: check
+    @printf 'gate %-24s ' signoffs_complete
+    @wcl eval gates.wcl gates.signoffs_complete.ok
+
+# Build the human-readable book.
+book:
+    wcl wdoc build wdoc/book/main.wcl --out out/book
+
+# Export one self-contained markdown brief per spec for implementation agents.
+specs:
+    wcl wdoc markdown wdoc/agent/main.wcl --out out/specs
+
+# Gates + both outputs.
+render: check-full book specs
+
+# Walk pending interview questions interactively and record answers.
+answer:
+    wcl answer plan.wcl
+
+# Live-preview the book.
+serve:
+    wcl wdoc serve wdoc/book/main.wcl
+
+# Query a spec's status (verification agents update status.wcl directly).
+status spec:
+    wcl eval plan.wcl statuses.{{spec}}.state

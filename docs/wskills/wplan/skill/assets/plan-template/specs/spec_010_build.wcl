@@ -1,0 +1,16 @@
+spec spec_010_build {
+  title = "Build setup"
+  objective = "Create the cargo workspace and CI-runnable build/test commands."
+  depends_on = [spec_000_repo]
+  branch = "spec/010-build"
+  owns = ["Cargo.toml", "Cargo.lock", "justfile"]
+  allowed = ["cargo init", "create justfile with build/test/lint recipes"]
+  not_allowed = ["implementing any feature logic"]
+  done = ["cargo build and cargo test pass", "just build works"]
+  task t1 { text = "Run `cargo init --name demo` and confirm `cargo build` passes." }
+  task t2 { text = "Create a justfile with recipes: build, test, lint (clippy)." }
+  accept a1 { check = "Builds clean" command = "cargo build 2>&1 | grep -qv error" }
+  body {
+    p "TEMPLATE: adapt this spec to the project language/toolchain settled in the interview. The Rust content below is the default."
+  }
+}

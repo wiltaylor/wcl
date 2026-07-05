@@ -1,0 +1,25 @@
+// wplan indexes - the curated navigation for both projections.
+
+index workflow {
+  name     = "Workflow"
+  summary  = "The pipeline runbooks, in order. Follow these top to bottom for a new project."
+  audience = :both
+  related  = [proc_starting_a_plan, proc_interview, proc_research, proc_write_prd, proc_spec_breakdown, proc_analyze_plan, proc_render_handoff, proc_verify_spec]
+  body { p "A new project runs these top to bottom: start, interview, research, PRD, spec breakdown, analyze, render/handoff. The verification procedure runs per-spec during implementation." }
+}
+
+index design {
+  name     = "Design"
+  summary  = "Why the pipeline is shaped this way - gates, the DAG, ownership, briefs, roles."
+  audience = :both
+  related  = [pipeline, gates, dag_waves, ownership, briefs, surfaces, scenarios, contracts, data_models, signoffs, role_split, project_context, lessons_loop]
+  body { p "The ideas the runbooks rely on. Read pipeline first; briefs and role_split explain the constraints most often violated." }
+}
+
+index lookup {
+  name     = "Lookup"
+  summary  = "Reference tables: folder layout, gates, states, CLI, and behaviour verified against the wcl binary."
+  audience = :both
+  related  = [fact_folder_layout, fact_default_gates, fact_state_vocab, fact_ears, fact_cli, fact_wcl_notes]
+  body { p "Cite, don't re-derive. fact_wcl_notes is binding when writing any non-template WCL." }
+}

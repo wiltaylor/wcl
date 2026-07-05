@@ -1,0 +1,239 @@
+// wplan book — the human-readable view. Build: wcl wdoc build wdoc/book/main.wcl --out out/book
+import "../../plan.wcl"
+
+// Waves: fold Kahn's algorithm into list of waves for the build-order table.
+let all_owns = flatten(map(specs, fn(s: PlanSpec) -> list<utf8> { s.owns }))
+let waves = fold(range(0, len(specs)), [],
+  fn(acc: list<list<identifier>>, _i: i64) -> list<list<identifier>> {
+    let resolved = flatten(acc);
+    let next = map(
+      filter(specs, fn(s: PlanSpec) -> bool {
+        !list_contains(resolved, s.id) &&
+        all(s.depends_on, fn(d: identifier) -> bool { list_contains(resolved, d) })
+      }),
+      fn(s: PlanSpec) -> identifier { s.id });
+    if len(next) == 0 { acc } else { flatten([acc, [next]]) }
+  })
+
+site plan {
+  default_template = :book
+  title = "Project Plan"
+  theme = :tokyonight
+  theme_toggle = true
+  root = true
+  toc {
+    chapter "PRD" { page = index }
+    chapter "Interview" { page = interview }
+    chapter "Research" { page = research_page }
+    chapter "Surfaces" {
+      page = surface_map
+      wdoc_repeater { each = surfaces  as = :sf
+        chapter $"${sf.name}" { page = $"surface_${sf.id}" }
+      }
+    }
+    chapter "Scenarios" { page = scenarios_page }
+    chapter "Contracts" { page = contracts_page }
+    chapter "Data models" { page = models_page }
+    chapter "Spec DAG" { page = dag }
+    chapter "Specs" {
+      wdoc_repeater { each = specs  as = :s
+        chapter $"${s.title}" { page = $"spec_${s.id}" }
+      }
+    }
+    chapter "Status" { page = status_page }
+    chapter "Lessons" { page = lessons_page }
+  }
+}
+
+page index { sites = [:plan]  start = true
+  h1 "Product Requirements"
+  h2 "Goals"
+  wdoc_repeater { each = goals  as = :g  p $"**${g.id}** — ${g.text}" }
+  h2 "Non-goals"
+  wdoc_repeater { each = non_goals  as = :g  p $"**${g.id}** — ${g.text}" }
+  h2 "Requirements"
+  wdoc_repeater { each = requirements  as = :r  p $"**${r.id}** (${r.priority}) — ${r.text}" }
+  h2 "Project rules"
+  wdoc_repeater { each = rules  as = :r  p $"**${r.id}** — ${r.text}" }
+}
+
+page interview { sites = [:plan]
+  h1 "Interview questions"
+  wdoc_repeater { each = questions  as = :q
+    h3 $"${q.id} (${q.status})"
+    p $"${q.question}"
+    p $"**Answer:** ${q.answer}"
+  }
+}
+
+page research_page { sites = [:plan]
+  h1 "Research"
+  wdoc_repeater { each = research  as = :r
+    h3 $"${r.id} (${r.status})"
+    p $"${r.topic}"
+    p $"_Why:_ ${r.why}"
+  }
+  h2 "Findings"
+  wdoc_repeater { each = findings  as = :f
+    h3 $"${f.id}"
+    p $"${f.summary}"
+    project { from = f.detail }
+  }
+}
+
+page dag { sites = [:plan]
+  h1 "Spec dependency DAG"
+  diagram {
+    width = 700
+    height = 500
+    layout = :layered
+    direction = :top_to_bottom
+    layer_gap = 40.0
+    wdoc_repeater { each = specs  as = :s
+      process $"${s.id}" { id = $"${s.id}"  width = 170.0  height = 44.0  link = $"spec_${s.id}" }
+    }
+    edges = flatten(map(specs, fn(s: PlanSpec) -> list<record> {
+      map(s.depends_on, fn(d: identifier) -> record {
+        { source: $"${d}", destination: $"${s.id}" }
+      })
+    }))
+  }
+  h2 "Build order (parallel waves)"
+  wdoc_repeater { each = enumerate(waves)  as = :w
+    p $"**Wave ${at(w, 0)}:** ${join(map(at(w, 1), fn(i: identifier) -> utf8 { $"`${i}`" }), ", ")}"
+  }
+}
+
+wdoc_repeater { each = specs  as = :s
+  page $"spec_${s.id}" { sites = [:plan]
+    title = s.title
+    h1 $"${s.id} — ${s.title}"
+    p $"${s.objective}"
+    p $"**Branch:** `${s.branch}` · **Depends on:** ${join(map(s.depends_on, fn(d: identifier) -> utf8 { $"`${d}`" }), ", ")}"
+    h2 "Context"
+    wdoc_repeater { each = filter([s], fn(x: PlanSpec) -> bool { x.context != none })  as = :sc
+      project { from = sc.context }
+    }
+    h2 "Owns"
+    wdoc_repeater { each = s.owns  as = :o  p $"`${o}`" }
+    h2 "Tasks"
+    wdoc_repeater { each = s.tasks  as = :t  p $"**${t.id}** — ${t.text}" }
+    h2 "Boundary"
+    callout "Allowed" { class = ["success"]  body = join(s.allowed, " · ") }
+    callout "Not allowed" { class = ["error"]  body = join(s.not_allowed, " · ") }
+    h2 "Acceptance"
+    wdoc_repeater { each = s.acceptance  as = :a  p $"**${a.id}** — ${a.check} — `${a.command}`" }
+    h2 "Definition of done"
+    wdoc_repeater { each = s.done  as = :d  p $"- ${d}" }
+  }
+}
+
+page surface_map { sites = [:plan]
+  h1 "Surface navigation map"
+  diagram {
+    width = 700
+    height = 400
+    layout = :layered
+    direction = :left_to_right
+    layer_gap = 60.0
+    wdoc_repeater { each = surfaces  as = :sf
+      process $"${sf.name}" { id = $"${sf.id}"  width = 170.0  height = 44.0  link = $"surface_${sf.id}" }
+    }
+    edges = flatten(map(surfaces, fn(sf: PlanSurface) -> list<record> {
+      map(sf.leads_to, fn(d: identifier) -> record {
+        { source: $"${sf.id}", destination: $"${d}" }
+      })
+    }))
+  }
+}
+
+wdoc_repeater { each = surfaces  as = :sf
+  page $"surface_${sf.id}" { sites = [:plan]
+    title = sf.name
+    h1 $"${sf.name} (`${sf.id}`)"
+    p $"${sf.purpose}"
+    p $"**Kind:** ${sf.kind} · **Entry:** ${sf.entry}"
+    p $"**Layout:** ${sf.layout}"
+    wdoc_repeater { each = filter([sf], fn(x: PlanSurface) -> bool { x.detail != none })  as = :sfd
+      project { from = sfd.detail }
+    }
+    h2 "Elements"
+    wdoc_repeater { each = sf.elements  as = :e  p $"- **${e.id}** — ${e.text}" }
+    h2 "States"
+    wdoc_repeater { each = sf.states  as = :st  p $"- **${st.kind}** — ${st.shows}" }
+    h2 "Interactions"
+    wdoc_repeater { each = sf.interactions  as = :i  p $"- ${i.action} → ${i.outcome}" }
+  }
+}
+
+page scenarios_page { sites = [:plan]
+  h1 "Usage scenarios"
+  wdoc_repeater { each = scenarios  as = :sc
+    h2 $"${sc.name}"
+    p $"${sc.goal}"
+    p $"**Touches:** ${join(map(sc.touches, fn(t: identifier) -> utf8 { $"`${t}`" }), ", ")}"
+    wdoc_repeater { each = sc.steps  as = :s
+      p $"1. ${s.action} → _${s.expect}_"
+    }
+  }
+}
+
+page contracts_page { sites = [:plan]
+  h1 "Interface contracts"
+  wdoc_repeater { each = contracts  as = :c
+    h2 $"${c.name} (`${c.id}`)"
+    p $"${c.purpose}"
+    p $"**Provided by:** `${c.provided_by}`"
+    wdoc_repeater { each = c.items  as = :ci
+      p $"- `${ci.signature}`${if ci.notes != none { $" — ${ci.notes}" } else { "" }}"
+    }
+  }
+}
+
+page models_page { sites = [:plan]
+  h1 "Data models"
+  diagram {
+    width = 700
+    height = 350
+    layout = :layered
+    direction = :left_to_right
+    layer_gap = 60.0
+    wdoc_repeater { each = models  as = :m
+      process $"${m.name}" { id = $"${m.id}"  width = 150.0  height = 44.0 }
+    }
+    edges = flatten(map(models, fn(m: PlanModel) -> list<record> {
+      map(m.relates_to, fn(r: identifier) -> record {
+        { source: $"${m.id}", destination: $"${r}" }
+      })
+    }))
+  }
+  wdoc_repeater { each = models  as = :m
+    h2 $"${m.name} (`${m.id}`)"
+    p $"${m.purpose}"
+    p $"**Persistence:** ${m.persistence}"
+    wdoc_repeater { each = m.fields  as = :f
+      p $"- **${f.id}**: `${f.type}`${if f.required { "" } else { " (optional)" }}${if f.validation != none { $" — ${f.validation}" } else { "" }}"
+    }
+  }
+}
+
+page status_page { sites = [:plan]
+  h1 "Status"
+  h2 "Phase signoffs"
+  wdoc_repeater { each = signoffs  as = :sg
+    p $"`${sg.id}` — **${sg.state}**${if sg.note != none { $" — ${sg.note}" } else { "" }}"
+  }
+  h2 "Specs"
+  wdoc_repeater { each = statuses  as = :st
+    p $"`${st.spec}` — **${st.state}**"
+  }
+}
+
+page lessons_page { sites = [:plan]
+  h1 "Lessons learnt"
+  wdoc_repeater { each = lessons  as = :l
+    h3 $"${l.id} (${l.date})"
+    p $"_Context:_ ${l.context}"
+    p $"${l.lesson}"
+  }
+}

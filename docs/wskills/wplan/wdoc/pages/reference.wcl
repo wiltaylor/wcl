@@ -1,0 +1,90 @@
+// Book Reference landing — a force-directed graph of every unit, with a bullet
+// summary of the four kinds beneath it. Imported by book/main.wcl. Not
+// standalone-checkable (resolves the `concepts` / `entities` / `facts` /
+// `procedures` lets defined in main.wcl).
+//
+// (The canonical wskill also shows an "index coverage" table here; a starter
+// has no curated indexes yet, so this page keeps to the graph + summary and
+// grows once you add `index` blocks and a richer reference page.)
+
+// Record for the graph diagram's computed `edges = [...]` field. Node ids are
+// the raw unit ids, so a `related` id maps straight to its node. The diagram's
+// Edge connection is `@dynamic`, so an endpoint naming a missing node is dropped
+// with a build warning rather than failing the build.
+type GraphEdge { source: utf8  destination: utf8 }
+
+// One edge per (unit, related-id) pair, across all four unit kinds.
+let note_edges = flatten([
+  flatten(map(concepts,   fn(c: Concept)   -> list<GraphEdge> { map(c.related, fn(r: identifier) -> GraphEdge { { source: $"${c.id}", destination: $"${r}" } }) })),
+  flatten(map(entities,   fn(e: Entity)    -> list<GraphEdge> { map(e.related, fn(r: identifier) -> GraphEdge { { source: $"${e.id}", destination: $"${r}" } }) })),
+  flatten(map(facts,      fn(f: Fact)      -> list<GraphEdge> { map(f.related, fn(r: identifier) -> GraphEdge { { source: $"${f.id}", destination: $"${r}" } }) })),
+  flatten(map(procedures, fn(p: Procedure) -> list<GraphEdge> { map(p.related, fn(r: identifier) -> GraphEdge { { source: $"${p.id}", destination: $"${r}" } }) })),
+])
+
+// Node colours for the graph: paint each circle by note type, and give the
+// label white text so it stays legible on the fill in both light and dark mode.
+stylesheet "graph-node-colours" {
+  css = <<CSS
+circle.gnode-concept { fill: #2563eb }
+circle.gnode-entity  { fill: #b45309 }
+circle.gnode-fact    { fill: #15803d }
+circle.gnode-process { fill: #7c3aed }
+text.gnode-concept, text.gnode-entity, text.gnode-fact, text.gnode-process { fill: #ffffff }
+CSS
+}
+
+page reference_page {
+  h1 "Reference"
+  p  "Everything about this topic, mapped below as a force-directed graph and listed beneath it."
+  p  "Each circle is a note (click it to open its page) and each line is a `related` link — colour-coded by type (**concepts** blue, **entities** amber, **facts** green, **processes** purple). Scroll to zoom and drag to pan."
+
+  wdoc_repeater { each = match len(note_edges) { 0 => [], _ => [true] }  as = :_g
+    diagram {
+      width    = 960
+      height   = 640
+      layout   = :force
+      pan_zoom = true
+      zoom_min = 1.0
+      zoom_max = 4.0
+      link_distance = 150.0
+      routing  = :straight
+      desc = "Force-directed graph of every wskill note and its related links."
+
+      wdoc_repeater { each = concepts   as = :c  node $"${c.name}"  { id = c.id  link = $"concept_${c.id}"  class = ["gnode-concept"]  width = 120.0  height = 120.0 } }
+      wdoc_repeater { each = entities   as = :e  node $"${e.name}"  { id = e.id  link = $"entity_${e.id}"   class = ["gnode-entity"]   width = 120.0  height = 120.0 } }
+      wdoc_repeater { each = facts      as = :f  node $"${f.title}" { id = f.id  link = $"fact_${f.id}"     class = ["gnode-fact"]     width = 120.0  height = 120.0 } }
+      wdoc_repeater { each = procedures as = :p  node $"${p.title}" { id = p.id  link = $"process_${p.id}"  class = ["gnode-process"]  width = 120.0  height = 120.0 } }
+
+      edges = note_edges
+    }
+  }
+
+  h2 "Catalogue"
+  wdoc_repeater { each = match len(concepts) { 0 => [], _ => [true] }  as = :_uc
+    p $"- [**Concepts**](concepts_page) — ${len(concepts)} ideas to understand."
+  }
+  wdoc_repeater { each = match len(entities) { 0 => [], _ => [true] }  as = :_ue
+    p $"- [**Entities**](entities_page) — ${len(entities)} concrete things in the topic's world."
+  }
+  wdoc_repeater { each = match len(facts) { 0 => [], _ => [true] }  as = :_uf
+    p $"- [**Facts**](facts_page) — ${len(facts)} values and value tables."
+  }
+  wdoc_repeater { each = match len(procedures) { 0 => [], _ => [true] }  as = :_up
+    p $"- [**Processes**](processes_page) — ${len(procedures)} runbooks for doing tasks."
+  }
+  wdoc_repeater { each = match len(flatten([concepts, []])) { 0 => [true], _ => [] }  as = :_empty
+    wdoc_repeater { each = match len(flatten([entities, []])) { 0 => [true], _ => [] }  as = :_e2
+      wdoc_repeater { each = match len(flatten([facts, []])) { 0 => [true], _ => [] }  as = :_f2
+        wdoc_repeater { each = match len(flatten([procedures, []])) { 0 => [true], _ => [] }  as = :_p2
+          p "No reference content yet. Add `concept` / `entity` / `fact` / `procedure` blocks in `data/reference/` and `data/processes/`."
+        }
+      }
+    }
+  }
+
+  // ---- TYPED EXTENSION BLOCKS render here ------------------------------------
+  // The base schema has no generic table/custom block. Model topic-specific content
+  // (lookup tables, cards, a CLI vocabulary) as typed @blocks in schema/extensions.wcl
+  // and add their render here (and in the skill template). Worked examples attach to a
+  // unit via `example.unit` and render on that unit's page. See references/schema.md.
+}

@@ -1,0 +1,63 @@
+// wskill OPTIONAL standard module — a topic-overview slide deck as data.
+//
+// Imported from the wskill root (`import "./schema/presentation.wcl"`); the
+// gathered list stays empty until you author a `presentation` block under
+// data/presentation/. The view SHIPS when you declare a matching
+// `artifact { kind = :presentation … }` in wskill.wcl and render
+// wdoc/presentation/main.wcl (the stdlib `:presentation` template). A
+// presentation is the topic's INTRODUCTION — an overview deck a reader flips
+// through before the reference book — not a second home for reference content:
+// a slide `unit`-features an existing concept/entity/fact/procedure or carries
+// a short `body`, and the detail stays in the unit it points at.
+//
+// All declarations share the base `wcl.wskill` namespace; the merging @document
+// below adds `presentations` to the gathered document only in wskills that
+// import this file. Block kinds are `pres_`-prefixed because bare `slide` /
+// `section` / `deck` are wdoc template blocks.
+namespace wcl.wskill
+
+import <wdoc.wcl>
+import "./base.wcl"          // WdocAddressableBody
+
+// One slide. Content comes from `unit` (the projection pulls the named
+// concept/entity/fact/procedure's headline + summary onto the slide), from the
+// wdoc `body`, or both (pulled headline first). `speaker_notes` lands in the
+// deck's notes overlay (toggle with `s` while presenting); use a
+// `fragment { … }` inside `body` for step-reveals.
+@block("pres_slide")
+type PresSlide {
+  @inline(0) id: identifier
+  title: utf8?                    // slide heading; defaults to the featured unit's name
+  unit:  identifier?              // concept / entity / fact / procedure id to feature
+  speaker_notes: utf8?
+  @default([]) tags: list<utf8>
+  @child("body") body: WdocAddressableBody?
+}
+
+// One deck column (maps to a wdoc deck `section`; ← → move between sections,
+// ↑ ↓ between the slides within one).
+@block("pres_section")
+type PresSection {
+  @inline(0) id: identifier
+  title: utf8
+  @children("pres_slide") slides: list<PresSlide>
+}
+
+// The wskill's presentation view — an overview/introduction deck. At most one
+// per wskill. The projection generates a title slide from `topic`, then one
+// deck section per pres_section.
+@block("presentation")
+type Presentation {
+  @inline(0) id: identifier
+  title:   utf8?                  // deck title; defaults to topic.name
+  summary: utf8?                  // subtitle on the generated title slide
+  @default([]) tags: list<utf8>
+  @children("pres_section") sections: list<PresSection>
+}
+
+// Merges with the base @document — `presentations` gathered only when this
+// module is imported.
+@document
+type PresentationDoc {
+  @children("presentation") presentations: list<Presentation>
+}

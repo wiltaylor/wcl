@@ -1,0 +1,27 @@
+// Surfaces: every screen, CLI command, or API endpoint the application exposes.
+// Defined during the PRD phase (draft before research, refine after). Gates:
+// each surface is implemented by exactly ONE spec, every :screen defines the
+// four standard states, and every surface is touched by at least one scenario.
+// Wireframes (wf_* diagram widgets) go in the body - book-only; the structured
+// fields ARE the contract that reaches implementation agents.
+// surface s_example {
+//   name = "Task list"
+//   kind = :screen                  // :screen | :command | :endpoint
+//   purpose = "Browse and manage all tasks."
+//   entry = "default screen on launch"
+//   layout = "Header bar with title and Add button; task table below."
+//   leads_to = [s_other]
+//   element e_add { text = "Add button (top right) - opens the edit screen." }
+//   state st_empty { kind = :empty  shows = "Centered 'No tasks yet' + Add button." }
+//   state st_loading { kind = :loading  shows = "Spinner over the table area." }
+//   state st_error { kind = :error  shows = "Red banner with error text and Retry." }
+//   state st_pop { kind = :populated  shows = "Task table; overdue rows tinted red." }
+//   interaction i_add { action = "Click Add"  outcome = "Navigate to edit screen with empty fields." }
+//   body {
+//     diagram { width = 420  height = 300
+//       wf_window "Tasks" {
+//         wf_button "Add" { icon = "lucide.plus" }
+//       }
+//     }
+//   }
+// }

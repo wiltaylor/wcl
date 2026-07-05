@@ -1,0 +1,129 @@
+// wplan agent export — one self-contained markdown brief per spec, plus an index.
+// Build: wcl wdoc markdown wdoc/agent/main.wcl --out out/specs
+// Implementation agents read ONLY these .md files. They never need wcl or wdoc.
+import "../../plan.wcl"
+
+let waves = fold(range(0, len(specs)), [],
+  fn(acc: list<list<identifier>>, _i: i64) -> list<list<identifier>> {
+    let resolved = flatten(acc);
+    let next = map(
+      filter(specs, fn(s: PlanSpec) -> bool {
+        !list_contains(resolved, s.id) &&
+        all(s.depends_on, fn(d: identifier) -> bool { list_contains(resolved, d) })
+      }),
+      fn(s: PlanSpec) -> identifier { s.id });
+    if len(next) == 0 { acc } else { flatten([acc, [next]]) }
+  })
+
+site agent {
+  default_template = :webpage
+  title = "Agent Specs"
+  root = true
+}
+
+page index { sites = [:agent]  start = true
+  frontmatter {
+    doc = "spec-index"
+    audience = "orchestrator"
+  }
+  h1 "Spec index"
+  p "One markdown file per spec. Build specs wave by wave; specs within a wave are independent and may be built in parallel on their own branches."
+  h2 "Build order (waves)"
+  wdoc_repeater { each = enumerate(waves)  as = :w
+    p $"**Wave ${at(w, 0)}:** ${join(map(at(w, 1), fn(i: identifier) -> utf8 { $"[`${i}`](spec_${i})" }), ", ")}"
+  }
+  h2 "Final acceptance scenarios"
+  p "After the last wave is merged, every scenario below must pass end to end on trunk. These are the system-level definition of done."
+  wdoc_repeater { each = scenarios  as = :sc
+    h3 $"${sc.name}"
+    p $"${sc.goal}"
+    p $"${if sc.ready_after != none { $"**Runnable after `${sc.ready_after}` merges** - run it then; do not wait for the end." } else { "**Final acceptance only** - runnable once every spec is merged." }}"
+    wdoc_repeater { each = sc.steps  as = :s
+      p $"1. ${s.action} → expect: ${s.expect}"
+    }
+  }
+  h2 "Worktree convention"
+  p "Each spec is implemented in its own git worktree at `.tree/<branch>` (branch named in the spec file). Example: `git worktree add .tree/spec/010-build -b spec/010-build`. Merge a spec's branch only after every spec it depends on is merged."
+}
+
+wdoc_repeater { each = specs  as = :s
+  page $"spec_${s.id}" { sites = [:agent]
+    title = s.title
+    frontmatter {
+      spec = $"${s.id}"
+      branch = s.branch
+      depends_on = map(s.depends_on, fn(d: identifier) -> utf8 { $"${d}" })
+      owns = s.owns
+    }
+    h1 $"${s.id} — ${s.title}"
+    h2 "Objective"
+    p $"${s.objective}"
+    h2 "Git instructions"
+    p $"Work ONLY in the worktree `.tree/${s.branch}` on branch `${s.branch}`. Create it from the project root with: `git worktree add .tree/${s.branch} -b ${s.branch}`. Commit your work to this branch. Do NOT merge; merging is handled after verification."
+    p $"**Depends on (must be merged before you start):** ${join(map(s.depends_on, fn(d: identifier) -> utf8 { $"`${d}`" }), ", ")}"
+    wdoc_repeater { each = filter(asbuilts, fn(ab: PlanAsBuilt) -> bool { list_contains(s.depends_on, ab.spec) })  as = :ab
+      p $"**As built (`${ab.spec}`):** ${ab.note}"
+    }
+    h2 "Project rules (apply to every spec)"
+    wdoc_repeater { each = rules  as = :r  p $"- **${r.id}**: ${r.text}" }
+    h2 "Context"
+    wdoc_repeater { each = filter([s], fn(x: PlanSpec) -> bool { x.context != none })  as = :sc
+      project { from = sc.context }
+    }
+    wdoc_repeater { each = filter(surfaces, fn(sf: PlanSurface) -> bool { list_contains(s.implements, sf.id) })  as = :sf
+      h2 $"Surface to implement: ${sf.name} (`${sf.id}`)"
+      p $"${sf.purpose}"
+      p $"**Kind:** ${sf.kind} · **Entry:** ${sf.entry}"
+      p $"**Layout:** ${sf.layout}"
+      p $"**Leads to:** ${join(map(sf.leads_to, fn(d: identifier) -> utf8 { $"`${d}`" }), ", ")}"
+      h3 "Elements (all REQUIRED)"
+      wdoc_repeater { each = sf.elements  as = :e  p $"- **${e.id}** — ${e.text}" }
+      h3 "States (all REQUIRED - the surface is incomplete until every state is implemented)"
+      wdoc_repeater { each = sf.states  as = :st  p $"- **${st.kind}** — ${st.shows}" }
+      h3 "Interactions (all REQUIRED)"
+      wdoc_repeater { each = sf.interactions  as = :i  p $"- ${i.action} → ${i.outcome}" }
+    }
+    wdoc_repeater { each = filter(contracts, fn(c: PlanContract) -> bool { c.provided_by == s.id })  as = :c
+      h2 $"Contract you MUST provide: ${c.name} (`${c.id}`)"
+      p $"${c.purpose} Other specs are built against these EXACT signatures - implement them verbatim; renaming or reshaping them breaks sibling specs."
+      wdoc_repeater { each = c.items  as = :ci
+        p $"- `${ci.signature}`${if ci.notes != none { $" — ${ci.notes}" } else { "" }}"
+      }
+    }
+    wdoc_repeater { each = filter(contracts, fn(c: PlanContract) -> bool { list_contains(s.consumes, c.id) })  as = :c
+      h2 $"Contract you consume: ${c.name} (`${c.id}`)"
+      p $"Provided by `${c.provided_by}` (already merged). Build against these EXACT signatures - do not reimplement them, do not reach past them into that spec's internals."
+      wdoc_repeater { each = c.items  as = :ci
+        p $"- `${ci.signature}`${if ci.notes != none { $" — ${ci.notes}" } else { "" }}"
+      }
+    }
+    wdoc_repeater { each = filter(models, fn(m: PlanModel) -> bool { list_contains(s.defines_models, m.id) || list_contains(s.uses_models, m.id) })  as = :m
+      h2 $"Data model: ${m.name} (`${m.id}`)${if list_contains(s.defines_models, m.id) { " — you implement this" } else { " — you use this exactly as defined" }}"
+      p $"${m.purpose}"
+      p $"**Persistence:** ${m.persistence}"
+      wdoc_repeater { each = m.fields  as = :f
+        p $"- **${f.id}**: `${f.type}`${if f.required { "" } else { " (optional)" }}${if f.validation != none { $" — ${f.validation}" } else { "" }}"
+      }
+    }
+    h2 "File ownership"
+    p "You may create or modify ONLY the paths listed below. Every other file in the repository is owned by another spec — do not touch it."
+    wdoc_repeater { each = s.owns  as = :o  p $"- `${o}`" }
+    h2 "Tasks (in order)"
+    wdoc_repeater { each = s.tasks  as = :t  p $"1. **${t.id}** — ${t.text}" }
+    h2 "Boundary"
+    callout "Allowed" { class = ["success"]  body = join(map(s.allowed, fn(x: utf8) -> utf8 { $"- ${x}" }), "\n") }
+    callout "Not allowed" { class = ["error"]  body = join(map(s.not_allowed, fn(x: utf8) -> utf8 { $"- ${x}" }), "\n") }
+    h2 "Acceptance checks"
+    p "Run every command below from the worktree root. All must pass before you finish."
+    p $"${if s.harness != none { $"**How to run this spec's work:** ${s.harness}" } else { "" }}"
+    wdoc_repeater { each = s.acceptance  as = :a
+      p $"- **${a.id}** — ${a.check}${if a.command != none { $": `${a.command}`" } else { " (manual walkthrough)" }}"
+      wdoc_repeater { each = a.walkthrough  as = :w
+        p $"    1. ${w.do} → expect: ${w.expect}"
+      }
+    }
+    h2 "Definition of done"
+    wdoc_repeater { each = s.done  as = :d  p $"- ${d}" }
+    p "When all of the above is complete, stop. Do NOT update any status files; a separate verification agent does that."
+  }
+}

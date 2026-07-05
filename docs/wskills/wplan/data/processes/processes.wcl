@@ -1,0 +1,252 @@
+// wplan processes - the workflow runbooks, in pipeline order.
+
+procedure proc_starting_a_plan {
+  title   = "Starting a plan"
+  audience = :both
+  purpose = "Place and extract the verified template, and prove it checks before any content goes in."
+  preconditions = ["wcl and just installed", "The user has named the project/idea"]
+  step placement { n = 1
+    title = "Decide where the plan lives"
+    body steps { p "Inside a project repo: `plan/` at the repo root (or `docs/plan/` if the user prefers). Central planning folder: one plan-shaped folder per project. On claude.ai: build under a scratch folder and present the folder as a download. Ask the user if it is not obvious from context." }
+  }
+  step extract { n = 2
+    title = "Extract the template"
+    body screen { code "console" { source = "$ scripts/new-plan.sh <destination>   # creates <destination>/plan" } }
+    body steps { p "Use the shipped script (or extract assets/plan-template.tar.gz directly). Never reconstruct the template from memory - it is verified against the wcl binary." }
+  }
+  step prove { n = 3
+    title = "Prove the empty plan checks"
+    body screen { code "console" { source = "$ cd <destination>/plan && just check" } }
+    body steps { p "All default gates must pass on the empty template (they hold vacuously). If this fails now, fix the environment now - every later error will then be about content." }
+  }
+  placement -> extract
+  extract -> prove
+  verification = "just check prints OK twice and every default gate passing."
+}
+
+procedure proc_interview {
+  title   = "Running the interview"
+  audience = :both
+  purpose = "Settle every decision an implementation agent could stumble on - by the user, in writing - before anything else happens."
+  preconditions = ["A plan/ folder that checks clean"]
+  step ask { n = 1
+    title = "Ask in structured rounds"
+    body steps { p "Group related questions; one round at a time. Cover at minimum: platforms/targets, language and toolchain, project name and repo location, licensing, external services, non-goals, and what done means for v1. Include a round that enumerates every surface (screen, CLI command, endpoint) the user expects - the list feeds the PRD's surface definitions." }
+  }
+  step record { n = 2
+    title = "Record each question when asked"
+    body screen { code "wcl" { source = <<'WCL'
+question q_platforms {
+  question = "What platforms must be supported?"
+  status = :answered
+  answer = "Linux x86_64 only for v1."
+}
+WCL
+    } }
+    body steps { p "One `question` block per question in questions.wcl, default :open. Write the user's answer verbatim and set :answered. Questions the user waves off get :dropped plus a why in answer. Never fill in an answer yourself; if the user says you decide, record the question, your decision, and delegated-by-user in the answer." }
+  }
+  step rounds { n = 2
+    title = "More rounds?"
+    shape = :decision
+    body steps { p "The phase ends when you can think of no question whose unknown answer could change a spec." }
+  }
+  ask -> record
+  record -> rounds
+  rounds -> ask :yes
+  verification = "The questions_closed gate passes and the user has confirmed the interview feels complete."
+}
+
+procedure proc_research {
+  title   = "Doing the research"
+  audience = :both
+  purpose = "Leave nothing for implementation agents to figure out - weak models doing mid-build research is the primary failure mode this pipeline exists to prevent."
+  preconditions = ["Interview complete (questions_closed passes)"]
+  step list_items { n = 1
+    title = "List the research items"
+    body steps { p "While interviewing, keep a running list: library/crate selection, API shapes, version constraints, algorithms, file-format details, platform quirks. Record each as a `research` block in research.wcl with `findings_file` naming its finding file." }
+  }
+  step finding_files { n = 2
+    title = "One finding file per item"
+    body screen { code "wcl" { source = <<'WCL'
+finding r_clap {
+  summary = "Use clap 4 with derive feature."
+  body { p "clap 4.x derive API is the standard. Add with: `cargo add clap --features derive`." }
+}
+WCL
+    } }
+    body steps { p "Create research/<id>.wcl per item and add its import line to plan.wcl. Separate files mean items can be researched in parallel (by you, subagents, or across sessions) without merge conflicts." }
+  }
+  step do_research { n = 3
+    title = "Research NOW, as the strong model"
+    body steps { p "Check installed wskill research pages BEFORE the web: glob `.claude/skills/*/references/research_*.md` (repo level), then `ls $HOME/.claude/skills/*/references/research_*.md 2>/dev/null` (user level). Grep the headline and `**Question:**` lines for the item's keywords; on a hit, read that skill's `references/index_research.md` for the full menu, verify the page's `Researched:` date / `applies to:` version is still current, reuse what applies, and cite it in the finding body (`p \"Source: wskill <name>, references/research_<id>.md (researched <date>).\"`). Web-search only the gaps; on a conflict with current official docs, trust the docs and flag the wskill page as stale. Set :done only when the finding contains enough detail that a spec can copy it in and an agent needs nothing else." }
+  }
+  step promote { n = 4
+    title = "Promote durable findings"
+    shape = :decision
+    body steps { p "After the items are :done, offer the user promotion: a finding that is durable and project-independent (a library's API shape, a format's gotcha, a platform quirk) belongs in the matching topic wskill as a `research` block, so the next plan starts from it instead of re-researching — the wskill skill's `capturing_research` runbook does the authoring. Project-specific conclusions stay in this plan's research/ folder." }
+  }
+  list_items -> finding_files
+  finding_files -> do_research
+  do_research -> promote
+  verification = "The research_done gate passes and every finding file is imported from plan.wcl."
+}
+
+procedure proc_write_prd {
+  title   = "Writing the PRD"
+  audience = :both
+  purpose = "Capture goals, non-goals, prioritised requirements and the universal project rules, then configure the gates."
+  preconditions = ["questions_closed and research_done both pass"]
+  step author { n = 1
+    title = "Author prd.wcl"
+    body steps { p "Goals, non-goals, requirements with :must/:should/:could/:wont priority. Phrase requirements in EARS form where possible - \"WHEN [event] THE SYSTEM SHALL [observable behaviour]\" (see the EARS patterns fact); a requirement that names an observable behaviour converts mechanically into an accept command later. Every :must requirement will need a covering spec at breakdown time (requirements_covered gate). Rules are copied verbatim into EVERY brief - keep them short, imperative and universal; anything spec-specific belongs in that spec." }
+  }
+  step surfaces_pass { n = 2
+    title = "Define every surface"
+    body steps { p "One `surface` block per screen/command/endpoint in surfaces.wcl: purpose, entry, layout text, every element, all four standard states for screens (empty/loading/error/populated - the surface_states gate enforces this), and every interaction with its outcome. Draft surfaces BEFORE research where possible; research often changes them, so revisit and refine AFTER research completes. Walk each surface through with the user. Wireframes (wf_* widgets) go in the body for the book - agents get the structured fields as text." }
+  }
+  step models_pass { n = 3
+    title = "Define the data models"
+    body steps { p "One `model` block per stored/shared entity in models.wcl: fields with types and validation, persistence, relations. Like surfaces: draft before research, refine after (research often settles persistence). Every model will need exactly one defining spec at breakdown time." }
+  }
+  step scenarios_pass { n = 4
+    title = "Write the usage scenarios"
+    body steps { p "End-to-end scenario blocks in scenarios.wcl: a user goal, the surfaces it touches, and ordered action/expect steps through the finished application. Scenarios are the system-level definition of done and every surface must appear in at least one (scenario_coverage gate). Confirm them with the user." }
+  }
+  step contracts_note { n = 5
+    title = "Contracts come later"
+    body steps { p "Interface contracts (contracts.wcl) are usually authored during spec breakdown, once the spec boundaries exist - but if research already fixed an API shape, capture it now." }
+  }
+  step configure_gates { n = 6
+    title = "Configure gates.wcl"
+    body steps { p "You own the gates. Keep the defaults; uncomment or add project-specific assertions (the template ships optional strictness gates as comments)." }
+  }
+  step approve { n = 7
+    title = "User approval and signoffs"
+    shape = :terminator
+    body steps { p "Present the PRD, surfaces, models and scenarios; on approval, resolve the phase signoffs in signoffs.wcl (interview/research/surfaces/scenarios/data_model/prd each :done, or :not_applicable with a why-note - e.g. surfaces n/a for a pure library). `just check-full` must pass before spec breakdown." }
+  }
+  author -> surfaces_pass
+  surfaces_pass -> models_pass
+  models_pass -> scenarios_pass
+  scenarios_pass -> contracts_note
+  contracts_note -> configure_gates
+  configure_gates -> approve
+  verification = "just check-full green and explicit user approval recorded in the conversation."
+}
+
+procedure proc_spec_breakdown {
+  title   = "Breaking down the specs"
+  audience = :both
+  purpose = "Produce the DAG of parallel-safe, weak-model-proof specs."
+  preconditions = ["Approved PRD"]
+  step bootstraps { n = 1
+    title = "Adapt the bootstrap specs"
+    body steps { p "spec_000_repo (git init, ignore rules incl. .tree/) and spec_010_build (toolchain, build/test commands) always come first. Adapt the template's Rust defaults to the interview answers. spec_000 runs directly on main - nothing exists to worktree from yet." }
+  }
+  step slice { n = 2
+    title = "Slice the work"
+    body steps { p "Number sparsely (000, 010, 020...) so insertions never renumber the DAG; ids spec_NNN_name, branches spec/NNN-name. Size each spec so a weak agent holds the whole brief: one module, one subsystem, one integration. Before finalising the slice, score each candidate spec's complexity 1-10 (breadth of ownership, number of unknowns, integration surface) with a one-line rationale: 7+ means split it or record why it must stay whole, and the scores inform wave sizing during the build (dispatch fewer high-complexity specs concurrently). Over ~10 ordered tasks or sprawling ownership means split it and wire the DAG. Author a `contract` block for every API crossing a spec boundary, owned by the providing spec. End the DAG with an explicit integration spec that wires the modules together and carries the harness the final scenarios run on - per-module specs verifying green does not make them cohere. Give scenarios a `ready_after` spec where they become runnable before the end, so integration errors surface early." }
+  }
+  step fields { n = 3
+    title = "Fill every spec's contract"
+    body steps { p "depends_on (spec-level), `covers` listing the PRD requirement ids this spec implements (every :must requirement needs at least one coverer - the requirements_covered gate enforces it), `implements` listing the surfaces this spec delivers, `defines_models`/`uses_models` for every model it touches (exactly one definer each), `consumes` for every contract it builds against (the provider must be among its transitive dependencies), a `harness` whenever it implements surfaces or has walkthroughs (how the verifier runs the work: command, stubs, seed data) (exactly one spec per surface - the surface_coverage gate enforces it; the brief automatically carries each implemented surface's full contract), exclusive owns paths (last-toucher-owns for handoffs), allowed/not_allowed boundary, ordered tasks, acceptance checks each with a runnable command where possible plus walkthrough wstep children for surface behaviour, a done end-state checklist, and a body copying in the PRD excerpts, research findings and conventions this spec relies on. Repeat the most-violated boundary inside the relevant task text." }
+  }
+  step wire { n = 4
+    title = "Wire each spec in"
+    body steps { p "An import line in plan.wcl and a status row in status.wcl per spec - then just check. Fix anything the gates report before the next spec." }
+  }
+  bootstraps -> slice
+  slice -> fields
+  fields -> wire
+  wire -> slice :yes
+  verification = "just check green: DAG acyclic, ownership disjoint, status covered, surfaces implemented exactly once, models defined exactly once, contract order holds, harnesses present."
+}
+
+procedure proc_analyze_plan {
+  title   = "Analyzing the plan"
+  audience = :both
+  purpose = "A judgment pass over the whole plan before rendering - catching what gates cannot express."
+  preconditions = ["just check green with all specs in"]
+  step read_whole { n = 1
+    title = "Read the plan end to end"
+    body steps { p "Gates verify structure; this pass verifies sense. Read prd.wcl, surfaces.wcl, scenarios.wcl, models.wcl, contracts.wcl and every spec in one sitting - drift hides between files read on different days." }
+  }
+  step check_language { n = 2
+    title = "Hunt unmeasurable language"
+    body steps { p "Flag every requirement, done item or accept check using an adjective with no metric - fast, secure, robust, scalable, simple, intuitive. Each one either gains a measurable form (a number, an EARS SHALL clause, a runnable command) or moves to goals, which are allowed to be aspirational." }
+  }
+  step check_consistency { n = 3
+    title = "Check cross-artifact consistency"
+    body steps { p "Terminology: the same thing must have the same name in the PRD, surfaces, models and specs (a Glossary drift check - 'task' in the PRD, 'item' in a model, 'todo' in a brief is three bugs waiting). Duplication: two requirements or two specs saying overlapping things means merge or sharpen the boundary. Contradiction: a non-goal that a spec quietly implements, a rule a task violates. Coverage direction: covers/implements/defines_models say specs deliver the plan - also check the reverse, that no spec does significant work no requirement or surface asked for." }
+  }
+  step check_briefs { n = 4
+    title = "Spot-check brief self-containedness"
+    body steps { p "Render a draft (just specs) and read the two briefs with the most dependencies as if you were the weak agent: every referenced convention, finding and contract must be IN the body, every command runnable as written, no 'see the PRD'. Fix at the source (the spec's body), never in out/." }
+  }
+  step resolve { n = 5
+    title = "Resolve findings before rendering"
+    shape = :terminator
+    body steps { p "Fix what you found (plan edits, then just check again), or record a deliberate acceptance in lessons.wcl with a why. Do not carry known ambiguity into briefs - weak agents treat ambiguity as permission." }
+  }
+  read_whole -> check_language
+  check_language -> check_consistency
+  check_consistency -> check_briefs
+  check_briefs -> resolve
+  verification = "No unmeasurable :must requirement, no terminology drift across artifacts, and the spot-checked briefs stand alone; just check still green."
+}
+
+procedure proc_render_handoff {
+  title   = "Rendering and handoff"
+  audience = :both
+  purpose = "Produce both projections and give each role exactly what it needs."
+  preconditions = ["just check green with all specs in", "The analyze pass ran and its findings are resolved"]
+  step render { n = 1
+    title = "Render"
+    body screen { code "console" { source = "$ just render   # out/book (human) + out/specs (agents)" } }
+  }
+  step handoff { n = 2
+    title = "Hand off by role"
+    body steps { p "Implementation agents get ONLY their out/specs/spec_<id>.md. The orchestrator gets out/specs/index.md (waves + worktree convention). The verification agent gets the verification procedure plus access to the plan folder. Re-run just render after any plan edit; never hand-edit out/." }
+  }
+  render -> handoff
+  verification = "out/book and out/specs exist; each brief is standalone; index.md lists the waves."
+}
+
+procedure proc_verify_spec {
+  title   = "Verifying and reviewing a spec"
+  audience = :both
+  purpose = "The verification agent's protocol: judge an implementation, record the verdict, control the merge."
+  preconditions = ["An implementation agent reports a spec complete", "Access to the plan folder and the repo worktrees"]
+  step run_checks { n = 1
+    title = "Run the acceptance checks"
+    body steps { p "Enter .tree/<branch> and run every acceptance command from the spec (all must exit 0), then execute every walkthrough step in order against the running application, checking each expect." }
+  }
+  step check_bounds { n = 2
+    title = "Check the diff against ownership"
+    body steps { p "The diff may only touch paths in the spec's owns list (plus paths its allowed items explicitly cover). An out-of-bounds diff is a failure even if tests pass. Check each done item holds." }
+  }
+  step verdict { n = 3
+    title = "Record the verdict"
+    body screen { code "wcl" { source = "status spec_020_core { state = :verified  by = \"verifier-1\"  note = \"all checks green\" }" } }
+    body steps { p "status.wcl is plain text - edit it directly. On failure: set :in_progress (or :blocked), write the reason in note, and return the spec to an implementation agent with the failing check named. On a PASS, also record an `asbuilt` row in asbuilt.wcl for any deviation from the brief that downstream specs must know (renamed module, changed command, adjusted signature) - no row means no deviations. Then re-render briefs (just specs) so dependents see it." }
+  }
+  step review { n = 4
+    title = "Strong-model review"
+    body steps { p "After verification passes, a strong model reviews the diff against the brief and project rules: design quality, hidden bugs, error handling, security, whether the tests actually test. Approve -> set :reviewed. Request changes -> a review report through the same fix loop as verification failures. The reviewer judges the code, never the plan - scope complaints go to lessons.wcl, not back to the implementer." }
+  }
+  step merge { n = 5
+    title = "Merge in wave order"
+    body steps { p "Merge a branch only when its spec is :reviewed AND every dependency is :merged. After merging: set :merged and git worktree remove .tree/<branch>." }
+  }
+  step final_scenarios { n = 5
+    title = "Run the acceptance scenarios"
+    shape = :terminator
+    body steps { p "After the final wave merges, execute every usage scenario from out/specs/index.md end to end on trunk. The project is done when all scenarios pass - not before." }
+  }
+  run_checks -> check_bounds
+  check_bounds -> verdict
+  verdict -> review
+  review -> merge
+  merge -> final_scenarios
+  verification = "Every spec is :merged in status.wcl and every usage scenario passes on trunk."
+}

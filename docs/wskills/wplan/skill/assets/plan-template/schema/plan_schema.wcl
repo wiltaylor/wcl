@@ -1,0 +1,293 @@
+// wplan schema — types for PRD planning documents.
+// Imported by plan.wcl; every data file is reached from there.
+import <wdoc.wcl>
+import <answer.wcl>
+
+// ---- state vocabularies -------------------------------------------------
+symbol_set PlanQuestionState { open answered dropped }
+symbol_set PlanResearchState { open in_progress done blocked }
+symbol_set PlanSpecState { todo in_progress implemented verified reviewed merged blocked }
+symbol_set PlanPriority { must should could wont }
+
+// ---- interview ----------------------------------------------------------
+@answerable(prompt = "question", response = "answer", status = "status",
+            pending = :open, resolved = :answered, skipped = :dropped)
+@block("question")
+type PlanQuestion {
+  @inline(0) id: identifier
+  question: utf8
+  @default(:open) status: PlanQuestionState
+  answer: utf8?
+  // :single_select | :multi_select | :free_text (default). Options accelerate
+  // the common case; `wcl answer` always offers free text alongside them.
+  kind: symbol?
+  @children("option") options: list<AnswerOption>
+}
+
+// ---- research -----------------------------------------------------------
+@block("research")
+type PlanResearch {
+  @inline(0) id: identifier
+  topic: utf8
+  why: utf8
+  @default(:open) status: PlanResearchState
+  // Path (relative to plan/) of the finding file, e.g. "research/r_auth.wcl".
+  findings_file: utf8?
+}
+
+@block("finding")
+type PlanFinding {
+  @inline(0) id: identifier
+  summary: utf8
+  // Rich detail rendered in the book and copyable into specs.
+  @child("body") detail: WdocAddressableBody?
+}
+
+// ---- PRD ----------------------------------------------------------------
+@block("goal")
+type PlanGoal {
+  @inline(0) id: identifier
+  text: utf8
+}
+
+@block("non_goal")
+type PlanNonGoal {
+  @inline(0) id: identifier
+  text: utf8
+}
+
+@block("requirement")
+type PlanRequirement {
+  @inline(0) id: identifier
+  text: utf8
+  @default(:must) priority: PlanPriority
+}
+
+// Project-wide rules copied verbatim into every exported spec.
+@block("rule")
+type PlanRule {
+  @inline(0) id: identifier
+  text: utf8
+}
+
+// ---- surfaces -------------------------------------------------------------
+symbol_set PlanSurfaceKind { screen command endpoint }
+symbol_set PlanStateKind { empty loading error populated custom }
+
+@block("element")
+type PlanElement {
+  @inline(0) id: identifier
+  text: utf8                        // what it is and how it behaves
+}
+
+@block("state")
+type PlanState {
+  @inline(0) id: identifier
+  kind: PlanStateKind
+  shows: utf8                       // exactly what the user sees in this state
+}
+
+@block("interaction")
+type PlanInteraction {
+  @inline(0) id: identifier
+  action: utf8                      // what the user does
+  outcome: utf8                     // what happens, including which surface it leads to
+}
+
+@block("surface")
+type PlanSurface {
+  @inline(0) id: identifier
+  name: utf8
+  kind: PlanSurfaceKind
+  purpose: utf8
+  entry: utf8                       // route / command / keybinding that reaches it
+  layout: utf8?                     // textual arrangement (renders into briefs)
+  @default([]) @ref("surface") leads_to: list<identifier>
+  @children("element") elements: list<PlanElement>
+  @children("state") states: list<PlanState>
+  @children("interaction") interactions: list<PlanInteraction>
+  // Book-only richness: wireframe diagrams + prose. NOT projected into briefs
+  // (diagrams render as images weak agents cannot see) - the structured fields
+  // above are the textual contract.
+  @child("body") detail: WdocAddressableBody?
+}
+
+// ---- scenarios --------------------------------------------------------------
+@block("sstep")
+type PlanScenarioStep {
+  @inline(0) id: identifier
+  action: utf8
+  expect: utf8
+}
+
+@block("scenario")
+type PlanScenario {
+  @inline(0) id: identifier
+  name: utf8
+  goal: utf8                        // what the user accomplishes end to end
+  @default([]) @ref("surface") touches: list<identifier>
+  // Run this scenario as soon as this spec merges (unset = final acceptance only).
+  @ref("spec") ready_after: identifier?
+  @children("sstep") steps: list<PlanScenarioStep>
+}
+
+// ---- contracts --------------------------------------------------------------
+@block("citem")
+type PlanContractItem {
+  @inline(0) id: identifier
+  signature: utf8                   // exact signature / type / error shape
+  notes: utf8?
+}
+
+@block("contract")
+type PlanContract {
+  @inline(0) id: identifier
+  name: utf8
+  purpose: utf8
+  @ref("spec") provided_by: identifier
+  @children("citem") items: list<PlanContractItem>
+}
+
+// ---- data models -------------------------------------------------------------
+@block("field")
+type PlanModelField {
+  @inline(0) id: identifier
+  type: utf8
+  @default(true) required: bool
+  validation: utf8?
+  notes: utf8?
+}
+
+@block("model")
+type PlanModel {
+  @inline(0) id: identifier
+  name: utf8
+  purpose: utf8
+  persistence: utf8                 // where/how stored (table, file, in-memory...)
+  @default([]) @ref("model") relates_to: list<identifier>
+  @children("field") fields: list<PlanModelField>
+}
+
+// ---- as-built notes (verification agent only) ---------------------------------
+@block("asbuilt")
+type PlanAsBuilt {
+  @inline(0) spec: identifier
+  note: utf8                        // deviations from the brief downstream specs must know
+}
+
+// ---- phase signoffs ------------------------------------------------------------
+symbol_set PlanSignoffState { pending done not_applicable }
+
+@block("signoff")
+type PlanSignoff {
+  @inline(0) id: identifier         // interview, research, surfaces, scenarios, data_model, prd
+  @default(:pending) state: PlanSignoffState
+  note: utf8?                       // why n/a, or approval context
+}
+
+// ---- specs --------------------------------------------------------------
+@block("task")
+type PlanTask {
+  @inline(0) id: identifier
+  text: utf8
+}
+
+@block("wstep")
+type PlanWalkStep {
+  @inline(0) id: identifier
+  do: utf8
+  expect: utf8
+}
+
+@block("accept")
+type PlanAccept {
+  @inline(0) id: identifier
+  check: utf8
+  // Runnable verification command; empty means manual check.
+  command: utf8?
+  // Manual walkthrough for surface behaviour the verifier executes in order.
+  @children("wstep") walkthrough: list<PlanWalkStep>
+}
+
+@block("spec")
+type PlanSpec {
+  @inline(0) id: identifier
+  title: utf8
+  objective: utf8
+  @default([]) @ref("spec") depends_on: list<identifier>
+  // Surfaces this spec fully implements (coverage gate: exactly one spec each).
+  @default([]) @ref("surface") implements: list<identifier>
+  // Contracts this spec provides (its own exports) / consumes (build against exactly).
+  @default([]) @ref("contract") consumes: list<identifier>
+  // Data models this spec owns the implementation of (exactly one spec each) / reads-writes.
+  @default([]) @ref("model") defines_models: list<identifier>
+  @default([]) @ref("model") uses_models: list<identifier>
+  // PRD requirements this spec implements (fully or in part). A requirement may
+  // be covered by several specs; every :must requirement must appear in at
+  // least one spec's covers list (requirements_covered gate).
+  @default([]) @ref("requirement") covers: list<identifier>
+  // How to launch/exercise this spec's work for walkthrough verification
+  // (command, stubs, seed data). REQUIRED when the spec implements surfaces
+  // or has walkthrough acceptance steps (harness_defined gate).
+  harness: utf8?
+  // Git branch this spec is built on, e.g. "spec/000-repo".
+  branch: utf8
+  // Files/dirs this spec owns exclusively (globs). No other spec may touch them.
+  owns: list<utf8>
+  allowed: list<utf8>
+  not_allowed: list<utf8>
+  done: list<utf8>
+  @children("task") tasks: list<PlanTask>
+  @children("accept") acceptance: list<PlanAccept>
+  // Self-contained context copied in at authoring time (PRD excerpts,
+  // research findings, conventions). Rendered into the exported markdown.
+  @child("body") context: WdocAddressableBody?
+}
+
+// ---- status (verification agent only) ------------------------------------
+@block("status")
+type PlanStatus {
+  @inline(0) spec: identifier
+  @default(:todo) state: PlanSpecState
+  by: utf8?
+  note: utf8?
+}
+
+// ---- lessons -------------------------------------------------------------
+@block("lesson")
+type PlanLesson {
+  @inline(0) id: identifier
+  date: utf8
+  context: utf8
+  lesson: utf8
+  action: utf8?
+}
+
+// ---- gates ----------------------------------------------------------------
+@block("gate")
+type PlanGate {
+  @inline(0) id: identifier
+  ok: bool
+}
+
+// ---- document root ---------------------------------------------------------
+@document
+type PlanDoc {
+  @children("question") questions: list<PlanQuestion>
+  @children("research") research: list<PlanResearch>
+  @children("finding") findings: list<PlanFinding>
+  @children("goal") goals: list<PlanGoal>
+  @children("non_goal") non_goals: list<PlanNonGoal>
+  @children("requirement") requirements: list<PlanRequirement>
+  @children("rule") rules: list<PlanRule>
+  @children("surface") surfaces: list<PlanSurface>
+  @children("scenario") scenarios: list<PlanScenario>
+  @children("contract") contracts: list<PlanContract>
+  @children("model") models: list<PlanModel>
+  @children("asbuilt") asbuilts: list<PlanAsBuilt>
+  @children("signoff") signoffs: list<PlanSignoff>
+  @children("spec") specs: list<PlanSpec>
+  @children("status") statuses: list<PlanStatus>
+  @children("lesson") lessons: list<PlanLesson>
+  @children("gate") gates: list<PlanGate>
+}

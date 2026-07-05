@@ -1,0 +1,114 @@
+// Topic — wskill root document.
+//
+// Single entry point: declares the topic (subject + metadata) and sources, and
+// includes the data files. `wcl check wskill.wcl` validates the whole model.
+// The wdoc template sets in wdoc/ project this model into the book and skill.
+
+import <wdoc.wcl>
+import "./schema/base.wcl"
+import "./schema/extensions.wcl"
+import "./schema/presentation.wcl"     // the overview-deck view (author data/presentation/)
+import "./schema/training.wcl"         // the tutorial-series view (author data/training/)
+
+// Data — split into more files by area as the wskill grows, adding
+// an import line per file. Keep templates (wdoc/) free of topic content.
+import "./data/reference/reference.wcl"
+import "./data/processes/processes.wcl"
+import "./data/indexes.wcl"
+// import "./data/presentation/main.wcl"
+// import "./data/training/main.wcl"
+
+schema_version = "1.2.0"
+
+topic wplan {
+  name    = "wplan"
+  summary = "Plan a software project as a gated WCL pipeline: interview, research, PRD, a DAG of parallel-safe specs, and self-contained markdown briefs weak AI agents can execute."
+  version = "1.6.0"     // the wplan format version this wskill documents
+  created = "2026-07-04"
+  updated = "2026-07-05"
+}
+
+// The views this wskill ships — first-class data the overview and any registry
+// landing can enumerate. Declaring one documents it; the just recipes build
+// them. The optional views (deck / training) ship once uncommented AND
+// authored (data/presentation/, data/training/).
+artifact book     { kind = :book      entry = "wdoc/book/main.wcl"   output = "out/book" }
+artifact ai_skill { kind = :ai_skill  entry = "wdoc/skill/main.wcl"  output = "out/skill" }
+// artifact slides   { kind = :presentation  entry = "wdoc/presentation/main.wcl"  output = "out/presentation" }
+// artifact training { kind = :training      entry = "wdoc/training/main.wcl"      output = "out/training" }
+
+// Skill-projection config — written into SKILL.md frontmatter. The defaults (no
+// tool pre-approval, model may invoke) are safe; pre-approve tools if needed.
+// Bundle real files into the emitted skill as script / asset CHILDREN of this block
+// (the scaffold ships matching example files under skill/). `source` is where the
+// file comes from (its path under the wskill root); `name` is the filename it ships
+// as in the rendered skill (the basename of source).
+wcl.wskill::skill {
+  allowed_tools = ["Bash", "Read"]
+
+  summary {
+    overview = [
+      "Turn an idea into (1) a human-readable wdoc book and (2) self-contained markdown spec briefs that implementation agents - including weak models - execute in parallel without any wcl/wdoc dependency. Everything lives in typed WCL so `just check` gates progress and validates the spec DAG.",
+      "Follow the workflow index in order. The verified template ships as an asset - extract it with scripts/new-plan.sh; never reconstruct it from memory."
+    ]
+  }
+
+  skill_param "$ARGUMENTS" {
+    description = "The project/idea to plan, or the path to an existing plan/ folder to continue."
+    value       = "Take it from the user's request. If empty, ask what to plan."
+  }
+
+  skill_boundary {
+    always = [
+      "Extract the template with scripts/new-plan.sh rather than writing schema/wdoc files from scratch, and keep `just check` green after every edit.",
+      "Add an import line to plan.wcl for every new spec and research finding file, and a status row to status.wcl for every spec.",
+      "Complete ALL research before finalising the PRD - implementation agents must never be left to research anything.",
+      "Consult installed wskill research pages (`.claude/skills/*/references/research_*.md`, then the same glob under `$HOME/.claude/skills/`) before web research, and cite a reused page in the finding.",
+      "Copy context INTO each spec's body (PRD excerpts, research findings, conventions); every exported brief must stand alone.",
+      "Keep status.wcl out of implementation-agent briefs - only the verification agent knows it exists.",
+      "Define every surface (all elements, states, interactions), data model, and scenario with the user before spec breakdown - under-specified surfaces and models are the main causes of half-finished applications.",
+      "Pin every API that crosses a spec boundary in a contract block, and resolve every phase signoff (:done or :not_applicable with a why) before rendering - just check-full gates this.",
+      "Set covers on every spec (the requirements_covered gate blocks orphaned :must requirements) and run the analyze pass before rendering - gates verify structure, the analyze pass verifies sense."
+    ]
+    ask = [
+      "Before overwriting an existing plan/ folder or deleting any data file.",
+      "Before finalising the PRD (present it; the user approves the phase transition)."
+    ]
+    never = [
+      "Answer an interview question on the user's behalf.",
+      "Let two specs own the same path, or hand-edit anything under out/.",
+      "Invent WCL/wdoc syntax - the template plus the verified-notes fact cover the tested forms; consult the wcl/wdoc skills beyond them."
+    ]
+  }
+
+  script new_plan {
+    source      = "skill/scripts/new-plan.sh"
+    name        = "new-plan.sh"
+    description = "Extracts the verified plan/ template tarball into a destination folder."
+    usage       = "scripts/new-plan.sh <destination-dir>   # creates <destination-dir>/plan"
+  }
+
+  asset plan_template {
+    source      = "skill/assets/plan-template.tar.gz"
+    name        = "plan-template.tar.gz"
+    description = "The verified plan/ template: schema, gates, bootstrap specs, justfile, and both wdoc projections."
+  }
+}
+
+// Sources describe where current information lives — they drive the update
+// workflow only and are never rendered as content. Add one per upstream source.
+//
+// source upstream_docs {
+//   kind         = "docs"
+//   locator      = "https://example.com/docs"
+//   covers       = "Reference for the whole topic."
+//   last_checked = "1970-01-01"
+// }
+
+// Cross-references to other wskills (status = "exists" | "planned").
+//
+// wskill_ref related {
+//   name     = "other-topic"
+//   relation = "see also"
+//   status   = "planned"
+// }

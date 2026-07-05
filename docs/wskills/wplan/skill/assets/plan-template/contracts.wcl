@@ -1,0 +1,11 @@
+// Interface contracts: the exact signatures/types/errors crossing spec
+// boundaries. The providing spec implements them verbatim; consuming specs
+// build against them and never reach past them. Consumers must (transitively)
+// depend on the provider (contract_order gate).
+// contract c_example {
+//   name = "Task store API"
+//   purpose = "How other modules read/write tasks."
+//   provided_by = spec_020_core
+//   citem fn_add { signature = "pub fn add_task(title: &str) -> Result<TaskId, StoreError>" }
+//   citem err { signature = "pub enum StoreError { Io(std::io::Error), Validation(String) }" }
+// }

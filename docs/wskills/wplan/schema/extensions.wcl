@@ -1,0 +1,37 @@
+// wskill custom block types — per-wskill schema extensions.
+//
+// Custom blocks declared here join the `wcl.wskill` namespace (shared with the base
+// schema). The namespace line below is the file's first statement; uncomment your
+// @block/@document beneath it and they are scoped automatically — bare references
+// from data files and templates keep resolving.
+namespace wcl.wskill
+
+// The base schema (base.wcl) is never edited in place; everything topic-specific
+// goes here (new vocabulary members — entity kinds — go in kinds.wcl instead).
+// There is no generic catch-all block: topic-specific content that doesn't fit a
+// base block is modeled as a first-class typed custom block — declare an @block
+// with your own fields AND a @document that gathers it. Imported @document
+// schemas MERGE with the base, so this composes cleanly. Then add a render
+// snippet to BOTH template sets (wdoc/book/main.wcl and wdoc/skill/main.wcl) —
+// the WSKILL skill helps with this.
+//
+// Example (uncomment and adapt):
+//
+// @block("keybinding")
+// type Keybinding {
+//   @inline(0) id: identifier
+//   keys:     utf8
+//   action:   utf8
+//   context:  utf8?
+// }
+//
+// @document
+// type Extensions {
+//   @children("keybinding") keybindings: list<Keybinding>
+// }
+//
+// Then in each template set, alongside the other sections:
+//
+//   wdoc_repeater { each = keybindings  as = :k
+//     p $"`${k.keys}` — ${k.action}"
+//   }

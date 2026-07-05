@@ -25,6 +25,7 @@ let wskill_icon = fn(n: utf8) -> utf8
   if n == "wcl" { "lucide.code-xml" }
   else if n == "wdoc" { "lucide.file-text" }
   else if n == "wskill" { "lucide.book-open" }
+  else if n == "wplan" { "lucide.list-checks" }
   else { "lucide.book" }
 
 // One reference card per wskill book (data for `lp_cards`).

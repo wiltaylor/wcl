@@ -1,0 +1,8 @@
+// Lessons learnt during this project's build runs. After the project ships,
+// feed durable lessons back into the wplan skill itself.
+// lesson l_example {
+//   date = "2026-07-04"
+//   context = "spec_020 agent added an unlisted dependency"
+//   lesson = "Weak models treat 'allowed' lists as suggestions unless the rule is repeated in tasks."
+//   action = "Repeat critical boundaries inside the relevant task text."
+// }
