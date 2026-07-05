@@ -14,9 +14,11 @@ namespace wcl.wad
 
 // --- editor integrations ---------------------------------------------------
 
-relation r_vscode_lsp {
-  source = vscode_extension  destination = wcl_lsp
-  kind = :triggers  label = "spawns"
+// The extension talks to the installed BINARY (`wcl lsp`), never to the
+// wcl_lsp crate directly — the crate dependency edges are extractor-owned.
+relation r_vscode_cli {
+  source = vscode_extension  destination = wcl_cli
+  kind = :triggers  label = "spawns `wcl lsp`"
   protocol = "LSP (stdio / TCP)"
   data = "diagnostics, completion, formatting"
 }

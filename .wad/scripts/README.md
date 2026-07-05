@@ -4,10 +4,15 @@ Standalone Python scripts that read a live source of truth (the build system,
 CI config, git tags, a database, an API) and write WCL data files into
 `../data/*/generated/` or `../data/generated/`. Run them all with
 `just wad-extract` (repo root) or `uv run scripts/<name>.py` individually.
-Current set: `extract_cargo.py` (crate dep relations + module graph),
+Current set: `extract_cargo.py` (crate dep relations),
 `extract_ci.py` (workflow YAML → pipeline stages with step summaries),
-`extract_http_api.py` (the serve endpoints), `extract_releases.py` (git tags
-→ the Build & deploy releases table).
+`extract_http_api.py` (the serve endpoints), `extract_modules.py`
+(tree-sitter-rust over `crates/*/src` → per-crate `:module_graph` items with
+use-dependency edges and extern-crate stubs, plus `:module_api` public
+surfaces — pub types with signature rows and type-reference deps — grouped
+onto components via `COMPONENT_PREFIXES`; also the wdoc stdlib block
+vocabulary), `extract_releases.py` (git tags → the Build & deploy releases
+table).
 
 ## The conventions (every extractor follows these)
 

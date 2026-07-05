@@ -1,5 +1,7 @@
-// View data hub — the C4 drill-down: systems, containers, components (gathered as `sw_components`). Code items are extractor-owned — see data/generated/.
-// Import one file per entry (or small group) below.
+// View data hub — the C4 drill-down: systems, containers, components
+// (gathered as `sw_components`), and the CLI command reference. Code items
+// are extractor-owned — see data/generated/.
 namespace wcl.wad
 import "./systems.wcl"
 import "./components.wcl"
+import "./cli.wcl"

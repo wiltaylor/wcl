@@ -1,0 +1,250 @@
+// The `wcl` command-line surface as typed `cli_command` blocks (from the
+// binary's own --help output), attached to the CLI component — this is how
+// a WAD documents a CLI, never prose paragraphs. Rendered API-docs style by
+// cli_command_view on the component page.
+namespace wcl.wad
+
+cli_command cmd_parse {
+  name      = "wcl parse"
+  summary   = "Parse a WCL file and print the resulting document tree (forces evaluation)."
+  component = cli_commands
+  cli_arg a_file { name = "<file>"  description = "Path to a WCL source file." }
+  cli_flag f_profile { name = "--profile"
+    description = "Record a call-tree profile of the document forcing and print it as JSON to stderr after the dump." }
+  cli_example ex0 { command = "wcl parse site.wcl"
+    description = "Dump the evaluated document tree of `site.wcl`." }
+  cli_example ex1 { command = "wcl parse --profile docs/main.wcl 2>profile.json"
+    description = "Profile what forcing the docs site costs, keeping the JSON aside." }
+}
+
+cli_command cmd_check {
+  name      = "wcl check"
+  summary   = "Parse and validate a WCL file against its schemas; exit non-zero with diagnostics on any violation."
+  component = cli_commands
+  cli_arg a_file { name = "<file>"
+    description = "Path to a WCL source file, or `-` to read stdin (relative imports then resolve against the current directory)." }
+  cli_flag f_json { name = "--json"
+    description = "Emit `{ok, file, errors[]}` (code / message / offset / length) on stdout instead of human-readable diagnostics; exit codes are unchanged." }
+  cli_example ex0 { command = "wcl check config.wcl"
+    description = "Validate a config file; prints miette snippets and exits non-zero on a violation." }
+  cli_example ex1 { command = "wcl check --json config.wcl | jq '.errors[0]'"
+    description = "Feed the first diagnostic to tooling." }
+}
+
+cli_command cmd_eval {
+  name      = "wcl eval"
+  summary   = "Resolve a dotted path inside a WCL file and print the resulting value."
+  component = cli_commands
+  aliases   = ["wcl get"]
+  cli_arg a_file { name = "<file>"  description = "Path to a WCL source file." }
+  cli_arg a_path { name = "<path>"  description = "Dotted path to resolve from the document root." }
+  cli_flag f_json { name = "--json"
+    description = "Emit the resolved value as JSON instead of the WCL display form (function values become `null`)." }
+  cli_flag f_profile { name = "--profile"
+    description = "Record a call-tree profile of the evaluation and print it as JSON to stderr." }
+  cli_example ex0 { command = "wcl eval site.wcl pages.0.title"
+    description = "Print one field's value." }
+  cli_example ex1 { command = "wcl get site.wcl server.port --json"
+    description = "Same read through the alias, as JSON." }
+}
+
+cli_command cmd_set {
+  name      = "wcl set"
+  summary   = "Update the field at a dotted path, writing real source through the parse-for-edit → mutate → reformat pipeline."
+  component = cli_commands
+  cli_arg a_file  { name = "<file>"  description = "Path to a WCL source file (entry point — imports are followed)." }
+  cli_arg a_path  { name = "<path>"  description = "Dotted path to the field whose value should be replaced." }
+  cli_arg a_value { name = "<value>"
+    description = "New value as a WCL expression — strings, suffixed numbers, symbols, lists all accepted (quote shell-special characters)." }
+  cli_example ex0 { command = "wcl set config.wcl server.port 8443u32"
+    description = "Rewrite one field in place, preserving formatting around it." }
+  cli_example ex1 { command = "wcl set site.wcl theme ':nord'"
+    description = "Symbols and any other WCL expression work as values." }
+}
+
+cli_command cmd_fmt {
+  name      = "wcl fmt"
+  summary   = "Re-emit a WCL file in canonical form. Comments and blank-line groupings survive; indentation, brace style, number radix and string delimiters normalise."
+  component = cli_commands
+  cli_arg a_file { name = "<file>"
+    description = "Path to a WCL source file, or `-` to read stdin and write the formatted source to stdout." }
+  cli_flag f_in_place { name = "--in-place"
+    description = "Overwrite the file in place (atomically). Without it the formatted source goes to stdout." }
+  cli_flag f_indent { name = "--indent"  value = "<n>"  default = "2"
+    description = "Spaces per indentation level." }
+  cli_flag f_no_trailing { name = "--no-trailing-comma"
+    description = "Strip the trailing comma the formatter places after every `match` arm (the parser accepts either form)." }
+  cli_example ex0 { command = "wcl fmt --in-place src/main.wcl"
+    description = "Canonicalise a file atomically." }
+  cli_example ex1 { command = "cat draft.wcl | wcl fmt -"
+    description = "Format stdin to stdout (editor integration)." }
+}
+
+cli_command cmd_diff {
+  name      = "wcl diff"
+  summary   = "Compare two WCL documents and print the changed entities / fields, operating on the evaluated views (a formatting-only edit produces no diff)."
+  component = cli_commands
+  description = "Each top-level block is an entity keyed `kind:label`; nested field edits report by path, recursing into lists by index. Either operand may be a `<rev>:<path>` git specifier whose whole tree materialises so imports resolve from that revision."
+  cli_arg a_old { name = "<old>"  description = "Old (base) document — a path or `<rev>:<path>` git specifier." }
+  cli_arg a_new { name = "<new>"  description = "New document — a path or `<rev>:<path>` git specifier." }
+  cli_flag f_format { name = "--format"  value = "<wcl|json>"  default = "wcl"
+    description = "Re-parseable WCL tree by default; `json` gives the flat change array." }
+  cli_example ex0 { command = "wcl diff HEAD~3:wad.wcl wad.wcl"
+    description = "What changed in the model since three commits ago — imports resolve from the old revision." }
+  cli_example ex1 { command = "wcl diff old.wcl new.wcl --format json"
+    description = "The flat change array for scripting." }
+}
+
+cli_command cmd_repl {
+  name      = "wcl repl"
+  summary   = "Read-eval-print loop for ad-hoc WCL expressions."
+  component = cli_commands
+  cli_arg a_file { name = "[file]"  required = false
+    description = "Optional WCL file whose top-level fields the REPL resolves identifiers against; without one, self-contained expressions still evaluate." }
+  cli_example ex0 { command = "wcl repl site.wcl"
+    description = "Poke at a document's fields interactively." }
+}
+
+cli_command cmd_lsp {
+  name      = "wcl lsp"
+  summary   = "Run the WCL language server."
+  component = cli_commands
+  cli_flag f_tcp { name = "--tcp"  value = "<host:port>"
+    description = "Listen for inbound TCP connections instead of stdio; each connection runs as an independent LSP session." }
+  cli_flag f_log { name = "--log"  value = "<file>"
+    description = "Write tracing log lines to this file — the server never logs to stderr (that would corrupt the stdio LSP stream)." }
+  cli_example ex0 { command = "wcl lsp --tcp 127.0.0.1:9257 --log /tmp/wcl-lsp.log"
+    description = "Run a TCP server for attaching a debug client." }
+}
+
+cli_command cmd_init {
+  name      = "wcl init"
+  summary   = "Scaffold a new project folder from a WCL template."
+  component = cli_commands
+  description = "`<template>` is a built-in name, a user template under `$XDG_DATA_HOME/wcl/templates/<name>/template.wcl`, or a path to a template `.wcl` file or folder. The template declares `property` questions plus the `file` / `folder` blocks to generate."
+  cli_arg a_template { name = "[template]"  required = false
+    description = "Built-in template name or path to a template `.wcl` file; optional only with `--list`." }
+  cli_arg a_dest { name = "[dest]"  required = false
+    description = "Destination directory; defaults to the answered `name` property, falling back to the template name." }
+  cli_flag f_list { name = "--list"
+    description = "List every available template (built-ins, user templates) and exit." }
+  cli_flag f_answers { name = "--answers"  value = "<file>"
+    description = "Answer file (`.wcl` or `.json`) supplying property answers." }
+  cli_flag f_define { name = "-D"  value = "<key=value>"  repeatable = true
+    description = "Supply a property answer inline; highest precedence." }
+  cli_flag f_defaults { name = "--defaults"
+    description = "Never prompt; use defaults for unanswered properties (error if one has no default)." }
+  cli_flag f_force { name = "--force"
+    description = "Write into the destination even if it already exists and is not empty." }
+  cli_example ex0 { command = "wcl init --list"
+    description = "Show every available template." }
+  cli_example ex1 { command = "wcl init wad ./my-system -D system_id=acme --defaults"
+    description = "Scaffold a WAD non-interactively." }
+}
+
+cli_command cmd_wad_spec {
+  name      = "wcl wad spec"
+  summary   = "Derive a change-spec skeleton from a WAD diff against a reviewed git revision."
+  component = cli_commands
+  description = "Writes a schema-valid `spec` block — status `:planning`, the exact entity/field change list, TODO rationale/instructions/acceptance — into `data/specs/` beside the entry document. Changes to `spec` entities themselves are filtered out unless `--include-specs`."
+  cli_arg a_entry { name = "[entry]"  required = false
+    description = "WAD root document (default: wad.wcl in the current directory)." }
+  cli_flag f_from { name = "--from"  value = "<rev>"
+    description = "The reviewed baseline revision the working tree is diffed against (required)." }
+  cli_flag f_id { name = "--id"  value = "<id>"
+    description = "Spec id (default derived from the revision)." }
+  cli_flag f_title { name = "--title"  value = "<title>"
+    description = "Spec title (default \"Changes since <rev>\")." }
+  cli_flag f_format { name = "--format"  value = "<wcl|json>"  default = "wcl"
+    description = "Skeleton output format." }
+  cli_flag f_include_specs { name = "--include-specs"
+    description = "Keep changes to `spec` entities in the change list." }
+  cli_example ex0 { command = "wcl wad spec --from v0.27.0-alpha wad.wcl"
+    description = "Seed a change-spec skeleton from the delta since the last reviewed release." }
+}
+
+cli_command cmd_wdoc_build {
+  name      = "wcl wdoc build"
+  summary   = "Render every `page` block in a document to `<out>/<name>.html`."
+  component = cli_commands
+  cli_arg a_file { name = "<file>"  description = "The wdoc entry document." }
+  cli_flag f_out { name = "--out"  value = "<dir>"  description = "Output directory (required)." }
+  cli_example ex0 { command = "wcl wdoc build docs/main.wcl --out docs/_site"
+    description = "Render the whole site." }
+}
+
+cli_command cmd_wdoc_serve {
+  name      = "wcl wdoc serve"
+  summary   = "Run the local dev server: watches for `.wcl` changes but rebuilds only on demand (Enter in the console, or the toolbar's Rebuild button)."
+  component = cli_commands
+  cli_arg a_file { name = "<file>"  description = "The wdoc entry document." }
+  cli_flag f_addr { name = "--addr"  value = "<host:port|auto>"  default = "127.0.0.1:8080"
+    description = "Bind address; `auto` picks the first free port near 8080." }
+  cli_flag f_out { name = "--out"  value = "<dir>"
+    description = "Output directory; a temp directory (removed on shutdown) when omitted." }
+  cli_flag f_site { name = "--site"  value = "<name>"
+    description = "Serve only this named `site` at `/`; otherwise every site serves under `/<name>/` with a chooser index." }
+  cli_flag f_comment { name = "--comment"
+    description = "Comment mode: click a rendered block to leave a review note, persisted to a `comments.wcl` sidecar (no rebuild)." }
+  cli_flag f_edit { name = "--edit"
+    description = "Edit mode: WYSIWYG client that edits fields/text/blocks and schema data objects, writing real `.wcl` source. Composes with `--comment`." }
+  cli_example ex0 { command = "wcl wdoc serve docs/main.wcl --addr auto"
+    description = "Preview on the first free port; press Enter in the console to rebuild." }
+  cli_example ex1 { command = "wcl wdoc serve .wad/wdoc/book/main.wcl --comment --edit"
+    description = "Review with click-to-comment and WYSIWYG editing together." }
+}
+
+cli_command cmd_wdoc_markdown {
+  name      = "wcl wdoc markdown"
+  summary   = "Render every page to Markdown (one `.md` per page) with diagrams as standalone `.svg` files — the AI / text-consumer projection."
+  component = cli_commands
+  cli_arg a_file { name = "<file>"  description = "The wdoc entry document." }
+  cli_flag f_out { name = "--out"  value = "<dir>"  description = "Output directory (required)." }
+  cli_example ex0 { command = "wcl wdoc markdown docs/main.wcl --out _md"
+    description = "The AI-consumable projection." }
+}
+
+cli_command cmd_wdoc_skill {
+  name      = "wcl wdoc skill"
+  summary   = "Render a document to an agent skill folder: the start page becomes `SKILL.md`, other pages go under `references/`, `file` blocks ship into their `dir`."
+  component = cli_commands
+  cli_arg a_file { name = "<file>"  description = "The wdoc entry document (a site opting in with `default_template = :ai_skill`)." }
+  cli_flag f_out { name = "--out"  value = "<dir>"  description = "Output directory (required)." }
+  cli_example ex0 { command = "wcl wdoc skill wdoc/skill/main.wcl --out out/skill"
+    description = "Emit SKILL.md plus references/ for an agent." }
+}
+
+cli_command cmd_wdoc_pdf {
+  name      = "wcl wdoc pdf"
+  summary   = "Render each site to a paginated PDF — pure Rust, no browser or external tools."
+  component = cli_commands
+  cli_arg a_file { name = "<file>"  description = "The wdoc entry document." }
+  cli_flag f_out { name = "--out"  value = "<dir>"  description = "Output directory (required)." }
+  cli_example ex0 { command = "wcl wdoc pdf report.wcl --out out"
+    description = "One paginated PDF per site." }
+}
+
+cli_command cmd_wdoc_comments {
+  name      = "wcl wdoc comments"
+  summary   = "List the review comments stored in the `comments.wcl` sidecars, or resolve / edit one by id."
+  component = cli_commands
+  cli_arg a_file { name = "<file>"  description = "The doc's entry point (sidecars found under its directory)." }
+  cli_arg a_sub  { name = "[resolve <id> | edit <id>]"  required = false
+    description = "Delete the comment with the given id, or replace its body." }
+  cli_flag f_format { name = "--format"  value = "<json>"
+    description = "JSON output, aimed at an AI agent acting on the notes." }
+  cli_example ex0 { command = "wcl wdoc comments book/main.wcl --format json"
+    description = "Read the review notes as JSON." }
+  cli_example ex1 { command = "wcl wdoc comments book/main.wcl resolve cmix44jt"
+    description = "Delete an actioned note." }
+}
+
+cli_command cmd_wdoc_review {
+  name      = "wcl wdoc review"
+  summary   = "The agent side of the review handshake: block until the reviewer clicks “Send to agent” in a running comment-mode server, then print the comments."
+  component = cli_commands
+  description = "Run it again after making changes — the toolbar shows the agent is waiting once more, so the reviewer can rebuild and keep reviewing. With no server running it lists the current comments without blocking."
+  cli_arg a_file { name = "<file>"  description = "The doc's entry point." }
+  cli_example ex0 { command = "wcl wdoc review book/main.wcl"
+    description = "Block until the reviewer sends the current round, then print it." }
+}

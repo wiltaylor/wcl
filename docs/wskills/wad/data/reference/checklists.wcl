@@ -79,8 +79,8 @@ interview_q iq_screens { view = "systems"
   question = "For each user-facing container: every screen/page, what is on it, and how the screens flow into each other. Spec them out completely — wireframe each one."
   maps_to  = "screen (wireframe body, nav_to)" }
 interview_q iq_cli_surface { view = "systems"
-  question = "For each CLI container: every command and subcommand, its arguments/flags, and what it prints — mock the important outputs."
-  maps_to  = "screen per command (route = the invocation, terminal body)" }
+  question = "For each CLI container: every command and subcommand, its arguments and flags, with a description of each — plus a terminal mock-up of the important outputs."
+  maps_to  = "cli_command (+ cli_arg / cli_flag children) per command; screen (terminal body) only for output mock-ups" }
 interview_q iq_tui_surface { view = "systems"
   question = "For each TUI container: every screen/panel, its widgets, and the navigation between them — mock each with terminal/TUI blocks."
   maps_to  = "screen per panel (terminal/tui body, nav_to)" }

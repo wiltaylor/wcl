@@ -1,6 +1,6 @@
 // WAD base schema — ships with the `wcl init wad` scaffold.
 //
-// Schema version: 0.2.0 (mirror it in `schema_version` in wad.wcl).
+// Schema version: 0.3.0 (mirror it in `schema_version` in wad.wcl).
 //
 // DO NOT HAND-EDIT. The canonical copy lives in the scaffold template
 // (crates/wcl/src/scaffold/templates/wad.wcl); regenerate with
@@ -260,7 +260,82 @@ type Component {
   @child("body") body: WdocAddressableBody?
 }
 
-// One node in a `code_item`'s module graph or class diagram.
+// One positional argument of a `cli_command`.
+@block("cli_arg")
+type CliArg {
+  @inline(0) id: identifier
+  @doc("Placeholder as it appears in usage (\"<file>\", \"[template]\").")
+  name: utf8
+  description: utf8
+  @default(true) required: bool
+}
+
+// One switch / option of a `cli_command`.
+@block("cli_flag")
+type CliFlag {
+  @inline(0) id: identifier
+  @doc("The flag as typed (\"--out\", \"-D\").")
+  name: utf8
+  @doc("Value placeholder when the flag takes one (\"<dir>\", \"<key=value>\").")
+  value: utf8?
+  description: utf8
+  @doc("Default value, when one applies.")
+  default: utf8?
+  @default(false) repeatable: bool
+}
+
+// One worked example of a `cli_command` — a real invocation plus what it does.
+@block("cli_example")
+type CliExample {
+  @inline(0) id: identifier
+  @doc("The command line as typed.")
+  command: utf8
+  @doc("What this invocation does.")
+  description: utf8?
+}
+
+// One CLI command or subcommand, documented like API docs: summary,
+// positional args, switches, longer prose. This is HOW a WAD documents a
+// command-line surface — never as prose paragraphs or a flat table.
+// Attach each command to the component that implements it; the
+// component's page renders the full listing.
+@block("cli_command")
+type CliCommand {
+  @inline(0) id: identifier
+  @doc("Full invocation (\"wcl parse\", \"wcl wdoc build\").")
+  name: utf8
+  summary: utf8
+  @doc("Component id this command belongs to.")
+  component: identifier?
+  @doc("Longer behaviour prose (heredoc).")
+  description: utf8?
+  @default([]) aliases: list<utf8>
+  @default([]) tags: list<utf8>
+  @children("cli_arg")     args:     list<CliArg>
+  @children("cli_flag")    flags:    list<CliFlag>
+  @children("cli_example") examples: list<CliExample>
+  @child("body") body: WdocAddressableBody?
+}
+
+// One member row of a `code_node` — a field, enum variant, method, or free
+// function with its rendered signature. A member is an edge PORT: the
+// renderer gives its node_row the member's id, so `deps` edges leave the
+// exact row. `deps` may only name code_nodes of the SAME code_item — each
+// code_item draws its own diagram, cross-item edges have nowhere to render.
+@block("code_member")
+type CodeMember {
+  @inline(0) id: identifier
+  @doc("Rendered signature line (\"fn parse(src: &str) -> Doc\", \"kind: TokenKind\").")
+  signature: utf8
+  @doc("What the member is: fn / method / field / variant / assoc_type / const / impl / overflow.")
+  kind: utf8?
+  @doc("Visibility when narrower than pub (\"crate\", \"super\").")
+  visibility: utf8?
+  @doc("Ids of code_nodes in the same code_item this signature references.")
+  @default([]) deps: list<identifier>
+}
+
+// One node in a `code_item`'s module graph or class/API diagram.
 @block("code_node")
 type CodeNode {
   @inline(0) id: identifier
@@ -271,6 +346,8 @@ type CodeNode {
   @default([]) deps: list<identifier>
   @doc("Member lines for class-diagram rendering (fields / methods).")
   @default([]) members: list<utf8>
+  @doc("Typed member rows with row-level edge ports (:module_api rendering).")
+  @children("code_member") rows: list<CodeMember>
 }
 
 // One column of a database table.
@@ -294,7 +371,40 @@ type DbTable {
   @children("db_column") columns: list<DbColumn>
 }
 
-// One endpoint of a `code_item`'s api payload.
+// One parameter of an `api_endpoint` (path / query / header / cookie).
+@block("api_param")
+type ApiParam {
+  @inline(0) id: identifier
+  name: utf8
+  @doc("Where the parameter rides (ApiParamLoc).")
+  location: ApiParamLoc
+  @doc("Value type, as legible text (\"string\", \"u32\", \"ISO date\"…).")
+  type: utf8?
+  @default(false) required: bool
+  description: utf8?
+  example: utf8?
+}
+
+// One response of an `api_endpoint`.
+@block("api_response")
+type ApiResponse {
+  @inline(0) id: identifier
+  @doc("HTTP status (\"200\", \"409\", \"2xx\").")
+  status: utf8
+  description: utf8
+  @doc("Media type (\"application/json\", \"text/html\").")
+  media_type: utf8?
+  @doc("Body schema or example, as legible text (heredoc).")
+  schema: utf8?
+}
+
+// One endpoint of a `code_item`'s api payload — OpenAPI-shaped on purpose:
+// method/path/summary/description map to an OpenAPI operation, `params` to
+// its parameters, `request`+`request_media_type` to the requestBody, and
+// `responses` to per-status responses — so an OpenAPI spec imports via a
+// mechanical extractor and a spec can be generated back out as a
+// projection. The bare `request`/`response` text fields remain the simple
+// form for surfaces that don't need per-status detail.
 @block("api_endpoint")
 type ApiEndpoint {
   @inline(0) id: identifier
@@ -302,14 +412,25 @@ type ApiEndpoint {
   method: utf8
   path: utf8
   summary: utf8
+  @doc("Longer behaviour prose (heredoc).")
+  description: utf8?
+  @doc("Auth requirement (\"none\", \"bearer token\", …).")
+  auth: utf8?
+  @default([]) tags: list<utf8>
+  @doc("Request body media type (\"application/json\").")
+  request_media_type: utf8?
+  @doc("Request body schema or example, as legible text.")
   request: utf8?
+  @doc("Simple-form response text (use `responses` for per-status detail).")
   response: utf8?
+  @children("api_param")    params:    list<ApiParam>
+  @children("api_response") responses: list<ApiResponse>
 }
 
 // A code-level artefact (C4 level 4): a module graph, DB schema, class
-// diagram, or API surface. `kind` selects which payload family the
-// renderer reads; the unused families stay empty. This is the level
-// extractor scripts usually own.
+// diagram, module API surface, or HTTP API surface. `kind` selects which
+// payload family the renderer reads; the unused families stay empty. This
+// is the level extractor scripts usually own.
 @block("code_item")
 type CodeItem {
   @inline(0) id: identifier
@@ -772,6 +893,7 @@ type WadDoc {
   @children("system")          systems:         list<System>
   @children("container")       containers:      list<Container>
   @children("component")       sw_components:   list<Component>
+  @children("cli_command")     cli_commands:    list<CliCommand>
   @children("code_item")       code_items:      list<CodeItem>
   @children("environment")     environments:    list<Environment>
   @children("infra_node")      infra_nodes:     list<InfraNode>

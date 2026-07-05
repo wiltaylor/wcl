@@ -2,39 +2,3 @@
 // and read back by `wcl wdoc comments`. Each `comment` block is keyed by page
 // name + block locator; safe to hand-edit or generate.
 
-comment {
-  id = "ck91qh0x"
-  page = "system_wcl"
-  page_file = "/home/wil/dev/WCL/.wad/wdoc/pages/systems.wcl"
-  loc = "6"
-  target = "diagram — \"Container diagram for WCLWCLWCL binarywcl_langwcl_wdocwcl_ls\""
-  body = "vscode extension actually uses the binary not wcl_lsp crate directly. So lets move the connection"
-}
-
-comment {
-  id = "crur5erf"
-  page = "system_wcl"
-  page_file = "/home/wil/dev/WCL/.wad/wdoc/pages/systems.wcl"
-  loc = "6"
-  target = "diagram — \"Container diagram for WCLWCLWCL binarywcl_langwcl_wdocwcl_ls\""
-  body = "wcl_lsp also depends on wcl_lang"
-}
-
-comment {
-  id = "c8lj0yww"
-  page = "component_cli_commands"
-  page_file = "/home/wil/dev/WCL/.wad/wdoc/pages/systems.wcl"
-  loc = "4"
-  target = "h3 — \"Core document commands\""
-  body = "This cli docs look pretty nasty to be honest. Can we update this so we have blocks that capture all the information about the cli sub commands, switches args etc. And the descriptions of each part. Then have a wdoc component that builds them out in a nice looking table so they look a bit more like api docs. Then update the wskill for wad and explain this is how you should document cli commands."
-}
-
-comment {
-  id = "cciikeo8"
-  page = "component_cli_serve"
-  page_file = "/home/wil/dev/WCL/.wad/wdoc/pages/systems.wcl"
-  loc = "5"
-  target = "table — \"MethodPathSummaryPOST/__wdoc_checkDry-run diagnostics for an\""
-  body = "I want more detail on the web api. Think the level of detail we get in swagger. I want you to create some blocks for capturing this data. The and a component to render these blocks with detail so they look a bit like swagger docs. Also this will mean we can import openapi specs and also generate them when we are working on building out specs. These should also be added to the wskill on wad so we know how to do this again in the future."
-}
-

@@ -5,7 +5,10 @@
 # ///
 """Extract the wdoc dev server's public HTTP surface from the axum route
 registrations in crates/wcl/src/serve.rs into data/generated/http_api.wcl:
-one :api code_item whose api_endpoint rows are the real routes."""
+one :api code_item whose api_endpoint rows are the real routes. The route
+list is mechanical; the swagger-level detail (params / request / responses)
+lives in the PATH_DETAILS table below — extend it when a handler's contract
+changes (the shapes come from edit.rs / serve.rs handler code)."""
 
 import re
 import sys
@@ -47,6 +50,89 @@ PATH_SUMMARIES = {
     "/__wdoc_preview/{*path}": "Serve the preview render (no reload/edit scripts injected).",
 }
 
+# Swagger-level detail per route: query/body parameters, request/response
+# shapes, per-status rows. Keys are optional; anything present becomes the
+# endpoint's params / request / responses children. Shapes mirror the
+# handlers in crates/wcl/src/{edit.rs,serve.rs}.
+JSON = "application/json"
+PATH_DETAILS: dict[str, dict] = {
+    "/__wdoc_check": {
+        "description": "Pass 1 checks the buffer's syntax with exact line/col; pass 2 overlays the buffer on the owning document and reports only the schema errors the edit *introduces* over the on-disk baseline.",
+        "request_media_type": JSON,
+        "request": '{ "path": "<served-tree .wcl file>", "text": "<buffer>", "page_file": "<current page (optional)>" }',
+        "responses": [
+            {"status": "200", "media_type": JSON, "description": "Check result — `ok` is true when no diagnostics.",
+             "schema": '{ "ok": bool, "diagnostics": [{ "scope": "syntax"|"schema", "message": str, "offset"?: int, "length"?: int, "line"?: int, "col"?: int }] }'},
+            {"status": "400", "media_type": JSON, "description": "Bad JSON body, or a path outside the served tree."},
+        ],
+    },
+    "/__wdoc_format": {
+        "request_media_type": JSON,
+        "request": '{ "text": "<buffer>" }',
+        "responses": [
+            {"status": "200", "media_type": JSON, "description": "The canonically formatted source.",
+             "schema": '{ "text": str }'},
+            {"status": "400", "media_type": JSON, "description": "The buffer does not parse (format needs a valid tree)."},
+        ],
+    },
+    "/__wdoc_file": {
+        "description": "GET reads; POST saves through the same validate-then-write pipeline every editor write uses. Only `.wcl` files may be saved.",
+        "params": [
+            {"name": "path", "location": "query", "type": "string", "required": True,
+             "description": "File path inside the served tree (GET read)."},
+        ],
+        "request_media_type": JSON,
+        "request": '{ "path": str, "text": str, "base_etag"?: str }',
+        "responses": [
+            {"status": "200", "media_type": JSON, "description": "Read: the file text plus its content etag. Save: confirmation with the new etag.",
+             "schema": 'GET: { "path": str, "text": str, "etag": str }   POST: { "ok": true, "etag": str, "result": str }'},
+            {"status": "400", "media_type": JSON, "description": "Save conflict (`base_etag` no longer matches — the file changed on disk), non-.wcl target, or a path outside the served tree."},
+        ],
+    },
+    "/__wdoc_files": {
+        "responses": [
+            {"status": "200", "media_type": JSON, "description": "The `.wcl` file tree scoped to the current page's owning sub-site."},
+        ],
+    },
+    "/__wdoc_rebuild": {
+        "description": "Blocks until the build finishes so the client can show a spinner then a done toast. A request carrying `page_file` rebuilds only that page's owning sub-site; without it the whole served site rebuilds.",
+        "request_media_type": JSON,
+        "request": '{ "page_file": "<the page the Rebuild button was on (optional)>" }',
+        "responses": [
+            {"status": "200", "media_type": JSON, "description": "What was rebuilt and how it went.",
+             "schema": '{ "ok": bool, "scope": "site" | "<sub-site subdir>", "summary": str }'},
+            {"status": "500", "media_type": JSON, "description": "The rebuild worker is gone or the build was cancelled."},
+        ],
+    },
+    "/__wdoc_review/status": {
+        "description": "Long-poll: returns when the agent-waiting marker changes, so the toolbar can show/hide the “Send to agent” banner.",
+        "responses": [
+            {"status": "200", "media_type": JSON, "description": "The current handshake state."},
+        ],
+    },
+    "/__wdoc_review/ready": {
+        "responses": [
+            {"status": "200", "media_type": JSON, "description": "The blocked `wcl wdoc review` was released.", "schema": '{ "ok": true }'},
+            {"status": "400", "media_type": JSON, "description": "No review handshake is active (no agent is waiting)."},
+        ],
+    },
+    "/__wdoc_comment": {
+        "description": "Comment-mode only. Creates or lists the review notes persisted in the `comments.wcl` sidecar beside the page's owning document; no rebuild happens.",
+        "responses": [
+            {"status": "200", "media_type": JSON, "description": "The comment list (GET) or the stored comment (POST)."},
+            {"status": "400", "media_type": JSON, "description": "Missing comment body or page on create."},
+        ],
+    },
+    "/__wdoc_preview": {
+        "description": "Renders the current page with unsaved buffers overlaid into a scratch TempDir. The first preview warms with a full sub-site build; later calls are targeted single-page renders.",
+        "request_media_type": JSON,
+        "request": '{ "page_file": str, "buffers": { "<path>": "<unsaved text>", … } }',
+        "responses": [
+            {"status": "200", "media_type": JSON, "description": "Where the preview iframe should navigate."},
+        ],
+    },
+}
+
 
 def wcl_str(s: str) -> str:
     out = s.replace("\\", "\\\\").replace('"', '\\"')
@@ -84,12 +170,38 @@ def main() -> int:
     for path in sorted(routes):
         methods = "/".join(sorted(routes[path]))
         summary = PATH_SUMMARIES.get(path, "(describe in extract_http_api.py's PATH_SUMMARIES)")
+        detail = PATH_DETAILS.get(path, {})
+        eid = slug(path)
         lines += [
-            f"  api_endpoint ep_{slug(path)} {{",
+            f"  api_endpoint ep_{eid} {{",
             f"    method = {wcl_str(methods)}  path = {wcl_str(path)}",
             f"    summary = {wcl_str(summary)}",
-            "  }",
         ]
+        if d := detail.get("description"):
+            lines.append(f"    description = {wcl_str(d)}")
+        if mt := detail.get("request_media_type"):
+            lines.append(f"    request_media_type = {wcl_str(mt)}")
+        if rq := detail.get("request"):
+            lines.append(f"    request = {wcl_str(rq)}")
+        for i, p in enumerate(detail.get("params", [])):
+            lines += [
+                f"    api_param pp_{eid}_{i} {{",
+                f"      name = {wcl_str(p['name'])}  location = :{p['location']}",
+                *([f"      type = {wcl_str(p['type'])}"] if p.get("type") else []),
+                *(["      required = true"] if p.get("required") else []),
+                *([f"      description = {wcl_str(p['description'])}"] if p.get("description") else []),
+                "    }",
+            ]
+        for i, r in enumerate(detail.get("responses", [])):
+            lines += [
+                f"    api_response rr_{eid}_{i} {{",
+                f"      status = {wcl_str(r['status'])}",
+                f"      description = {wcl_str(r['description'])}",
+                *([f"      media_type = {wcl_str(r['media_type'])}"] if r.get("media_type") else []),
+                *([f"      schema = {wcl_str(r['schema'])}"] if r.get("schema") else []),
+                "    }",
+            ]
+        lines.append("  }")
     lines += ["}", ""]
     OUT.write_text("\n".join(lines))
     print(f"wrote {OUT.relative_to(WAD_ROOT)} ({len(routes)} endpoints)")

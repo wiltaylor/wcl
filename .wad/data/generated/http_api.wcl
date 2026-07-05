@@ -10,10 +10,35 @@ code_item serve_http_api {
   api_endpoint ep_wdoc_check {
     method = "POST"  path = "/__wdoc_check"
     summary = "Dry-run diagnostics for an unsaved buffer (syntax + schema errors introduced)."
+    description = "Pass 1 checks the buffer's syntax with exact line/col; pass 2 overlays the buffer on the owning document and reports only the schema errors the edit *introduces* over the on-disk baseline."
+    request_media_type = "application/json"
+    request = "{ \"path\": \"<served-tree .wcl file>\", \"text\": \"<buffer>\", \"page_file\": \"<current page (optional)>\" }"
+    api_response rr_wdoc_check_0 {
+      status = "200"
+      description = "Check result — `ok` is true when no diagnostics."
+      media_type = "application/json"
+      schema = "{ \"ok\": bool, \"diagnostics\": [{ \"scope\": \"syntax\"|\"schema\", \"message\": str, \"offset\"?: int, \"length\"?: int, \"line\"?: int, \"col\"?: int }] }"
+    }
+    api_response rr_wdoc_check_1 {
+      status = "400"
+      description = "Bad JSON body, or a path outside the served tree."
+      media_type = "application/json"
+    }
   }
   api_endpoint ep_wdoc_comment {
     method = "GET"  path = "/__wdoc_comment"
     summary = "Create / list review comments in the comments.wcl sidecar."
+    description = "Comment-mode only. Creates or lists the review notes persisted in the `comments.wcl` sidecar beside the page's owning document; no rebuild happens."
+    api_response rr_wdoc_comment_0 {
+      status = "200"
+      description = "The comment list (GET) or the stored comment (POST)."
+      media_type = "application/json"
+    }
+    api_response rr_wdoc_comment_1 {
+      status = "400"
+      description = "Missing comment body or page on create."
+      media_type = "application/json"
+    }
   }
   api_endpoint ep_wdoc_comment_js {
     method = "GET"  path = "/__wdoc_comment.js"
@@ -46,14 +71,52 @@ code_item serve_http_api {
   api_endpoint ep_wdoc_file {
     method = "GET"  path = "/__wdoc_file"
     summary = "Whole-file source read/save with content-etag conflict detection."
+    description = "GET reads; POST saves through the same validate-then-write pipeline every editor write uses. Only `.wcl` files may be saved."
+    request_media_type = "application/json"
+    request = "{ \"path\": str, \"text\": str, \"base_etag\"?: str }"
+    api_param pp_wdoc_file_0 {
+      name = "path"  location = :query
+      type = "string"
+      required = true
+      description = "File path inside the served tree (GET read)."
+    }
+    api_response rr_wdoc_file_0 {
+      status = "200"
+      description = "Read: the file text plus its content etag. Save: confirmation with the new etag."
+      media_type = "application/json"
+      schema = "GET: { \"path\": str, \"text\": str, \"etag\": str }   POST: { \"ok\": true, \"etag\": str, \"result\": str }"
+    }
+    api_response rr_wdoc_file_1 {
+      status = "400"
+      description = "Save conflict (`base_etag` no longer matches — the file changed on disk), non-.wcl target, or a path outside the served tree."
+      media_type = "application/json"
+    }
   }
   api_endpoint ep_wdoc_files {
     method = "GET"  path = "/__wdoc_files"
     summary = "File tree for the source editor, scoped to the page's owning sub-site."
+    api_response rr_wdoc_files_0 {
+      status = "200"
+      description = "The `.wcl` file tree scoped to the current page's owning sub-site."
+      media_type = "application/json"
+    }
   }
   api_endpoint ep_wdoc_format {
     method = "POST"  path = "/__wdoc_format"
     summary = "Format a buffer with the `wcl fmt` core."
+    request_media_type = "application/json"
+    request = "{ \"text\": \"<buffer>\" }"
+    api_response rr_wdoc_format_0 {
+      status = "200"
+      description = "The canonically formatted source."
+      media_type = "application/json"
+      schema = "{ \"text\": str }"
+    }
+    api_response rr_wdoc_format_1 {
+      status = "400"
+      description = "The buffer does not parse (format needs a valid tree)."
+      media_type = "application/json"
+    }
   }
   api_endpoint ep_wdoc_highlight {
     method = "POST"  path = "/__wdoc_highlight"
@@ -82,6 +145,14 @@ code_item serve_http_api {
   api_endpoint ep_wdoc_preview {
     method = "POST"  path = "/__wdoc_preview"
     summary = "Render the current page with unsaved buffers overlaid into a scratch dir."
+    description = "Renders the current page with unsaved buffers overlaid into a scratch TempDir. The first preview warms with a full sub-site build; later calls are targeted single-page renders."
+    request_media_type = "application/json"
+    request = "{ \"page_file\": str, \"buffers\": { \"<path>\": \"<unsaved text>\", … } }"
+    api_response rr_wdoc_preview_0 {
+      status = "200"
+      description = "Where the preview iframe should navigate."
+      media_type = "application/json"
+    }
   }
   api_endpoint ep_wdoc_preview_path {
     method = "GET"  path = "/__wdoc_preview/{*path}"
@@ -90,6 +161,20 @@ code_item serve_http_api {
   api_endpoint ep_wdoc_rebuild {
     method = "POST"  path = "/__wdoc_rebuild"
     summary = "Trigger a rebuild; scoped to the sending page's sub-site, blocks until the build finishes."
+    description = "Blocks until the build finishes so the client can show a spinner then a done toast. A request carrying `page_file` rebuilds only that page's owning sub-site; without it the whole served site rebuilds."
+    request_media_type = "application/json"
+    request = "{ \"page_file\": \"<the page the Rebuild button was on (optional)>\" }"
+    api_response rr_wdoc_rebuild_0 {
+      status = "200"
+      description = "What was rebuilt and how it went."
+      media_type = "application/json"
+      schema = "{ \"ok\": bool, \"scope\": \"site\" | \"<sub-site subdir>\", \"summary\": str }"
+    }
+    api_response rr_wdoc_rebuild_1 {
+      status = "500"
+      description = "The rebuild worker is gone or the build was cancelled."
+      media_type = "application/json"
+    }
   }
   api_endpoint ep_wdoc_reload {
     method = "GET"  path = "/__wdoc_reload"
@@ -98,10 +183,27 @@ code_item serve_http_api {
   api_endpoint ep_wdoc_review_ready {
     method = "POST"  path = "/__wdoc_review/ready"
     summary = "Reviewer clicked “Send to agent” — release the blocked `wcl wdoc review`."
+    api_response rr_wdoc_review_ready_0 {
+      status = "200"
+      description = "The blocked `wcl wdoc review` was released."
+      media_type = "application/json"
+      schema = "{ \"ok\": true }"
+    }
+    api_response rr_wdoc_review_ready_1 {
+      status = "400"
+      description = "No review handshake is active (no agent is waiting)."
+      media_type = "application/json"
+    }
   }
   api_endpoint ep_wdoc_review_status {
     method = "GET"  path = "/__wdoc_review/status"
     summary = "Long-poll the review handshake (agent-waiting marker)."
+    description = "Long-poll: returns when the agent-waiting marker changes, so the toolbar can show/hide the “Send to agent” banner."
+    api_response rr_wdoc_review_status_0 {
+      status = "200"
+      description = "The current handshake state."
+      media_type = "application/json"
+    }
   }
   api_endpoint ep_wdoc_schema {
     method = "GET"  path = "/__wdoc_schema"

@@ -25,7 +25,7 @@ concept twelve_views {
         ["1", "Overview", "What is this, who cares, what was decided?", "`wad`, `stakeholder`, `raci_entry`, `adr`"],
         ["2", "System context", "How does the estate sit in the world?", "`relation` (the diagram derives)"],
         ["3", "External systems", "What third parties does it *integrate with* to do its job? (Platforms it merely runs/ships on are view 5.)", "`external_system` (+ contacts, endpoints, api_refs, security notes)"],
-        ["4", "Systems", "What are we made of? (C4 drill-down)", "`system`, `container`, `component`, `code_item`, `screen`"],
+        ["4", "Systems", "What are we made of? (C4 drill-down)", "`system`, `container`, `component`, `cli_command`, `code_item`, `screen`"],
         ["5", "Infrastructure", "Where does it run, per environment?", "`environment`, `infra_node`, `deploy_target`"],
         ["6", "Build & deploy", "How does a change become a running system?", "`repository`, `pipeline` (+ stages), `release`"],
         ["7", "Documentation", "What does the project publish to be read, and who serves it?", "`doc_item`"],

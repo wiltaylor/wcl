@@ -216,7 +216,7 @@ import "./schema/base.wcl"
 import "./schema/extensions.wcl"
 import "./data/main.wcl"
 
-schema_version = "0.2.0"
+schema_version = "0.3.0"
 
 wad ${answer("system_id")} {
   name    = "${answer("system_name")}"
@@ -230,7 +230,7 @@ file "schema/base.wcl" {
   content = <<'WAD_SCHEMA_BASE_WCL'
 // WAD base schema — ships with the `wcl init wad` scaffold.
 //
-// Schema version: 0.2.0 (mirror it in `schema_version` in wad.wcl).
+// Schema version: 0.3.0 (mirror it in `schema_version` in wad.wcl).
 //
 // DO NOT HAND-EDIT. The canonical copy lives in the scaffold template
 // (crates/wcl/src/scaffold/templates/wad.wcl); regenerate with
@@ -490,7 +490,82 @@ type Component {
   @child("body") body: WdocAddressableBody?
 }
 
-// One node in a `code_item`'s module graph or class diagram.
+// One positional argument of a `cli_command`.
+@block("cli_arg")
+type CliArg {
+  @inline(0) id: identifier
+  @doc("Placeholder as it appears in usage (\"<file>\", \"[template]\").")
+  name: utf8
+  description: utf8
+  @default(true) required: bool
+}
+
+// One switch / option of a `cli_command`.
+@block("cli_flag")
+type CliFlag {
+  @inline(0) id: identifier
+  @doc("The flag as typed (\"--out\", \"-D\").")
+  name: utf8
+  @doc("Value placeholder when the flag takes one (\"<dir>\", \"<key=value>\").")
+  value: utf8?
+  description: utf8
+  @doc("Default value, when one applies.")
+  default: utf8?
+  @default(false) repeatable: bool
+}
+
+// One worked example of a `cli_command` — a real invocation plus what it does.
+@block("cli_example")
+type CliExample {
+  @inline(0) id: identifier
+  @doc("The command line as typed.")
+  command: utf8
+  @doc("What this invocation does.")
+  description: utf8?
+}
+
+// One CLI command or subcommand, documented like API docs: summary,
+// positional args, switches, longer prose. This is HOW a WAD documents a
+// command-line surface — never as prose paragraphs or a flat table.
+// Attach each command to the component that implements it; the
+// component's page renders the full listing.
+@block("cli_command")
+type CliCommand {
+  @inline(0) id: identifier
+  @doc("Full invocation (\"wcl parse\", \"wcl wdoc build\").")
+  name: utf8
+  summary: utf8
+  @doc("Component id this command belongs to.")
+  component: identifier?
+  @doc("Longer behaviour prose (heredoc).")
+  description: utf8?
+  @default([]) aliases: list<utf8>
+  @default([]) tags: list<utf8>
+  @children("cli_arg")     args:     list<CliArg>
+  @children("cli_flag")    flags:    list<CliFlag>
+  @children("cli_example") examples: list<CliExample>
+  @child("body") body: WdocAddressableBody?
+}
+
+// One member row of a `code_node` — a field, enum variant, method, or free
+// function with its rendered signature. A member is an edge PORT: the
+// renderer gives its node_row the member's id, so `deps` edges leave the
+// exact row. `deps` may only name code_nodes of the SAME code_item — each
+// code_item draws its own diagram, cross-item edges have nowhere to render.
+@block("code_member")
+type CodeMember {
+  @inline(0) id: identifier
+  @doc("Rendered signature line (\"fn parse(src: &str) -> Doc\", \"kind: TokenKind\").")
+  signature: utf8
+  @doc("What the member is: fn / method / field / variant / assoc_type / const / impl / overflow.")
+  kind: utf8?
+  @doc("Visibility when narrower than pub (\"crate\", \"super\").")
+  visibility: utf8?
+  @doc("Ids of code_nodes in the same code_item this signature references.")
+  @default([]) deps: list<identifier>
+}
+
+// One node in a `code_item`'s module graph or class/API diagram.
 @block("code_node")
 type CodeNode {
   @inline(0) id: identifier
@@ -501,6 +576,8 @@ type CodeNode {
   @default([]) deps: list<identifier>
   @doc("Member lines for class-diagram rendering (fields / methods).")
   @default([]) members: list<utf8>
+  @doc("Typed member rows with row-level edge ports (:module_api rendering).")
+  @children("code_member") rows: list<CodeMember>
 }
 
 // One column of a database table.
@@ -524,7 +601,40 @@ type DbTable {
   @children("db_column") columns: list<DbColumn>
 }
 
-// One endpoint of a `code_item`'s api payload.
+// One parameter of an `api_endpoint` (path / query / header / cookie).
+@block("api_param")
+type ApiParam {
+  @inline(0) id: identifier
+  name: utf8
+  @doc("Where the parameter rides (ApiParamLoc).")
+  location: ApiParamLoc
+  @doc("Value type, as legible text (\"string\", \"u32\", \"ISO date\"…).")
+  type: utf8?
+  @default(false) required: bool
+  description: utf8?
+  example: utf8?
+}
+
+// One response of an `api_endpoint`.
+@block("api_response")
+type ApiResponse {
+  @inline(0) id: identifier
+  @doc("HTTP status (\"200\", \"409\", \"2xx\").")
+  status: utf8
+  description: utf8
+  @doc("Media type (\"application/json\", \"text/html\").")
+  media_type: utf8?
+  @doc("Body schema or example, as legible text (heredoc).")
+  schema: utf8?
+}
+
+// One endpoint of a `code_item`'s api payload — OpenAPI-shaped on purpose:
+// method/path/summary/description map to an OpenAPI operation, `params` to
+// its parameters, `request`+`request_media_type` to the requestBody, and
+// `responses` to per-status responses — so an OpenAPI spec imports via a
+// mechanical extractor and a spec can be generated back out as a
+// projection. The bare `request`/`response` text fields remain the simple
+// form for surfaces that don't need per-status detail.
 @block("api_endpoint")
 type ApiEndpoint {
   @inline(0) id: identifier
@@ -532,14 +642,25 @@ type ApiEndpoint {
   method: utf8
   path: utf8
   summary: utf8
+  @doc("Longer behaviour prose (heredoc).")
+  description: utf8?
+  @doc("Auth requirement (\"none\", \"bearer token\", …).")
+  auth: utf8?
+  @default([]) tags: list<utf8>
+  @doc("Request body media type (\"application/json\").")
+  request_media_type: utf8?
+  @doc("Request body schema or example, as legible text.")
   request: utf8?
+  @doc("Simple-form response text (use `responses` for per-status detail).")
   response: utf8?
+  @children("api_param")    params:    list<ApiParam>
+  @children("api_response") responses: list<ApiResponse>
 }
 
 // A code-level artefact (C4 level 4): a module graph, DB schema, class
-// diagram, or API surface. `kind` selects which payload family the
-// renderer reads; the unused families stay empty. This is the level
-// extractor scripts usually own.
+// diagram, module API surface, or HTTP API surface. `kind` selects which
+// payload family the renderer reads; the unused families stay empty. This
+// is the level extractor scripts usually own.
 @block("code_item")
 type CodeItem {
   @inline(0) id: identifier
@@ -1002,6 +1123,7 @@ type WadDoc {
   @children("system")          systems:         list<System>
   @children("container")       containers:      list<Container>
   @children("component")       sw_components:   list<Component>
+  @children("cli_command")     cli_commands:    list<CliCommand>
   @children("code_item")       code_items:      list<CodeItem>
   @children("environment")     environments:    list<Environment>
   @children("infra_node")      infra_nodes:     list<InfraNode>
@@ -1078,7 +1200,10 @@ symbol_set StandardKind { coding style business security process documentation }
 symbol_set DomainRelKind { has_one has_many references extends uses }
 
 // Which payload family a `code_item` carries (selects the renderer).
-symbol_set CodeItemKind { module_graph db_schema class_diagram api other }
+symbol_set CodeItemKind { module_graph db_schema class_diagram module_api api other }
+
+// Where an `api_param` rides (mirrors OpenAPI's parameter `in`).
+symbol_set ApiParamLoc { path query header cookie }
 
 // Severity / criticality scale (externals, security notes).
 symbol_set Criticality { low medium high critical }
@@ -2884,13 +3009,23 @@ file "wdoc/pages/systems.wcl" {
 // system (derived container diagram), per container (components, code items,
 // deployments), per component (with its screens and their flow), per code
 // item (renderer dispatched on its kind: module graph / db schema / class
-// diagram / api), and per screen. Resolves the `let` helpers from
-// wdoc/book/main.wcl.
+// diagram / module api / api), and per screen. Resolves the `let` helpers
+// from wdoc/book/main.wcl.
 
 // Dependency edges for a code item's nodes (module graphs, class diagrams).
 let dep_edges = fn(ci: CodeItem) -> list<Edge> {
   flatten(map(ci.nodes, fn(nd: CodeNode) -> list<Edge> {
     map(nd.deps, fn(d2: identifier) -> Edge { { source: nd.id, destination: d2 } })
+  }))
+}
+// Row-level edges for a code item's module_api payload: a member's deps
+// leave its own row (the port is the member id), landing on the whole
+// target node_table.
+let member_edges = fn(ci: CodeItem) -> list<Edge> {
+  flatten(map(ci.nodes, fn(nd: CodeNode) -> list<Edge> {
+    flatten(map(nd.rows, fn(m: CodeMember) -> list<Edge> {
+      map(m.deps, fn(d2: identifier) -> Edge { { source: m.id, destination: d2 } })
+    }))
   }))
 }
 // Foreign-key edges for a code item's db schema — row-level ports on both
@@ -2913,6 +3048,13 @@ let screen_flow_edges = fn(scs: list<Screen>) -> list<Edge> {
   flatten(map(scs, fn(sc: Screen) -> list<Edge> {
     map(sc.nav_to, fn(t2: identifier) -> Edge { { source: sc.id, destination: t2 } })
   }))
+}
+let cli_commands_of = fn(coid: identifier) -> list<CliCommand> {
+  filter(cli_commands, fn(c: CliCommand) -> bool { c.component == coid })
+}
+// Usage synopsis derived from the command's own args/flags.
+let cli_usage = fn(c: CliCommand) -> utf8 {
+  $"${c.name}${match len(c.flags) { 0 => "", _ => " [options]" }}${join(map(c.args, fn(a: CliArg) -> utf8 { $" ${a.name}" }), "")}"
 }
 // Component-level edges inside one container: relations whose endpoints are
 // both components of that container (endpoints equal to the container id
@@ -3043,6 +3185,16 @@ wdoc_repeater { each = containers  as = :c
       }
     }
 
+    // Container-attached code items (crate-level module graphs etc.) render
+    // inline here, like component-attached ones do on component pages.
+    wdoc_repeater { each = code_items_of(c.id)  as = :ci
+      h2 $"[${ci.name}](code_${ci.id})"
+      wdoc_repeater { each = match ci.summary { none => [], sx => [sx] }  as = :sx
+        p $"_${sx}_"
+      }
+      code_item_view { ci = ci }
+    }
+
     wdoc_repeater { each = match len(screens_of(c.id)) { 0 => [], _ => [true] }  as = :_s
       h2 "Screens"
       wdoc_repeater { each = screens_of(c.id)  as = :sc
@@ -3076,6 +3228,14 @@ wdoc_repeater { each = sw_components  as = :co
     wdoc_repeater { each = match co.body { none => [], _ => [true] }  as = :_b
       project { from = co.body }
     }
+    // A command-line surface documents itself as `cli_command` blocks,
+    // rendered API-docs style by cli_command_view.
+    wdoc_repeater { each = match len(cli_commands_of(co.id)) { 0 => [], _ => [true] }  as = :_cl
+      h2 "Commands"
+      wdoc_repeater { each = cli_commands_of(co.id)  as = :c
+        cli_command_view { c = c }
+      }
+    }
     // Code items live at component level: each renders its diagram right
     // here (the heading link drills into the code item's own page).
     wdoc_repeater { each = code_items_of_comp(co.id)  as = :ci
@@ -3099,6 +3259,58 @@ wdoc_repeater { each = sw_components  as = :co
       }
     }
     edit_object { kind = "component"  target = $"${co.id}" }
+  }
+}
+
+// --- CLI command rendering --------------------------------------------------------
+// One `cli_command` rendered like API docs: heading, summary, usage
+// synopsis, argument and flag tables. The blocks are the data — never
+// document a CLI as prose paragraphs.
+wdoc_component cli_command_view {
+  wdoc_slot c
+  wdoc_body {
+    h3 $"`${c.name}`"
+    p  $"${c.summary}"
+    code "text" { source = cli_usage(c) }
+    wdoc_repeater { each = match len(c.aliases) { 0 => [], _ => [true] }  as = :_al
+      p $"**Aliases:** ${join(map(c.aliases, fn(a2: utf8) -> utf8 { $"`${a2}`" }), ", ")}"
+    }
+    wdoc_repeater { each = match c.description { none => [], dx => [dx] }  as = :dx
+      p $"${dx}"
+    }
+    // Each table carries a label paragraph — it names the section AND keeps
+    // consecutive tables from sitting flush against each other.
+    wdoc_repeater { each = match len(c.args) { 0 => [], _ => [true] }  as = :_ar
+      p "**Arguments**"
+      table {
+        header = ["Argument", "", "Description"]
+        rows = map(c.args, fn(a: CliArg) -> list<utf8> {
+          [$"`${a.name}`", match a.required { true => "required", _ => "optional" }, a.description]
+        })
+      }
+    }
+    wdoc_repeater { each = match len(c.flags) { 0 => [], _ => [true] }  as = :_fl
+      p "**Flags**"
+      table {
+        header = ["Flag", "Default", "Description"]
+        rows = map(c.flags, fn(f2: CliFlag) -> list<utf8> {
+          [$"`${f2.name}${match f2.value { none => "", v2 => $" ${v2}" }}`${match f2.repeatable { true => " _(repeatable)_", _ => "" }}",
+           f2.default ?? "—", f2.description]
+        })
+      }
+    }
+    wdoc_repeater { each = match len(c.examples) { 0 => [], _ => [true] }  as = :_ex
+      p "**Examples**"
+      wdoc_repeater { each = c.examples  as = :ex
+        code "bash" { source = ex.command }
+        wdoc_repeater { each = match ex.description { none => [], dx2 => [dx2] }  as = :dx2
+          p $"${dx2}"
+        }
+      }
+    }
+    wdoc_repeater { each = match c.body { none => [], _ => [true] }  as = :_b
+      project { from = c.body }
+    }
   }
 }
 
@@ -3152,7 +3364,28 @@ wdoc_component code_item_view {
       }
     }
 
-    // :api — endpoint table plus request/response detail.
+    // :module_api — node_table per type (struct/enum/trait/fns), one row per
+    // member signature; a row is an edge port, so signature type-references
+    // draw from the exact member to the type it mentions.
+    wdoc_repeater { each = match ci.kind { :module_api => [true], _ => [] }  as = :_ma
+      diagram { width = 960  height = 640  layout = :force  link_distance = 260.0  repulsion = 16000.0  pan_zoom = true
+        wdoc_repeater { each = ci.nodes  as = :nd
+          node_table { id = nd.id  width = 280.0
+            title = $"${nd.name}${match nd.kind { none => "", k2 => $" «${k2}»" }}"
+            wdoc_repeater { each = nd.rows  as = :m
+              node_row { id = m.id  text $"`${m.signature}`" }
+            }
+          }
+        }
+        edges = flatten([dep_edges(ci), member_edges(ci)])
+      }
+      wdoc_repeater { each = filter(ci.nodes, fn(nd: CodeNode) -> bool { nd.summary != none })  as = :nd
+        p $"- **${nd.name}**${match nd.summary { none => "", sx => $" — ${sx}" }}"
+      }
+    }
+
+    // :api — the endpoint index, then one swagger-style detail section per
+    // endpoint that carries any depth (description, auth, params, bodies).
     wdoc_repeater { each = match ci.kind { :api => [true], _ => [] }  as = :_api
       table {
         header = ["Method", "Path", "Summary"]
@@ -3160,13 +3393,46 @@ wdoc_component code_item_view {
           [$"`${ep.method}`", $"`${ep.path}`", ep.summary]
         })
       }
-      wdoc_repeater { each = filter(ci.endpoints, fn(ep: ApiEndpoint) -> bool { ep.request != none || ep.response != none })  as = :ep
+      wdoc_repeater { each = filter(ci.endpoints, fn(ep: ApiEndpoint) -> bool {
+          ep.description != none || ep.auth != none || ep.request != none
+            || ep.response != none || len(ep.params) > 0 || len(ep.responses) > 0
+        })  as = :ep
         h3 $"`${ep.method} ${ep.path}`"
-        wdoc_repeater { each = match ep.request { none => [], rq => [rq] }  as = :rq
-          p $"**Request:** ${rq}"
+        p  $"${ep.summary}"
+        wdoc_repeater { each = match ep.description { none => [], dx => [dx] }  as = :dx
+          p $"${dx}"
         }
-        wdoc_repeater { each = match ep.response { none => [], rs => [rs] }  as = :rs
-          p $"**Response:** ${rs}"
+        wdoc_repeater { each = match ep.auth { none => [], au => [au] }  as = :au
+          p $"**Auth:** ${au}"
+        }
+        wdoc_repeater { each = match len(ep.params) { 0 => [], _ => [true] }  as = :_pp
+          table {
+            header = ["Parameter", "In", "Type", "", "Description"]
+            rows = map(ep.params, fn(pa: ApiParam) -> list<utf8> {
+              [$"`${pa.name}`", $"${pa.location}", pa.type ?? "—",
+               match pa.required { true => "required", _ => "optional" },
+               $"${pa.description ?? ""}${match pa.example { none => "", ex => $" — e.g. `${ex}`" }}"]
+            })
+          }
+        }
+        wdoc_repeater { each = match ep.request { none => [], rq => [rq] }  as = :rq
+          p $"**Request body${match ep.request_media_type { none => "", mt => $" (`${mt}`)" }}:**"
+          code "json" { source = rq }
+        }
+        wdoc_repeater { each = match len(ep.responses) { 0 => [], _ => [true] }  as = :_rr
+          table {
+            header = ["Status", "Media type", "Description"]
+            rows = map(ep.responses, fn(rs: ApiResponse) -> list<utf8> {
+              [$"`${rs.status}`", rs.media_type ?? "—", rs.description]
+            })
+          }
+          wdoc_repeater { each = filter(ep.responses, fn(rs: ApiResponse) -> bool { rs.schema != none })  as = :rs
+            p $"**${rs.status} body:**"
+            code "json" { source = rs.schema ?? "" }
+          }
+        }
+        wdoc_repeater { each = match ep.response { none => [], rs2 => [rs2] }  as = :rs2
+          p $"**Response:** ${rs2}"
         }
       }
     }

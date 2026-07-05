@@ -51,7 +51,10 @@ symbol_set StandardKind { coding style business security process documentation }
 symbol_set DomainRelKind { has_one has_many references extends uses }
 
 // Which payload family a `code_item` carries (selects the renderer).
-symbol_set CodeItemKind { module_graph db_schema class_diagram api other }
+symbol_set CodeItemKind { module_graph db_schema class_diagram module_api api other }
+
+// Where an `api_param` rides (mirrors OpenAPI's parameter `in`).
+symbol_set ApiParamLoc { path query header cookie }
 
 // Severity / criticality scale (externals, security notes).
 symbol_set Criticality { low medium high critical }
