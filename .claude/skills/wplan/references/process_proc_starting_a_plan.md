@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Place and extract the verified template, and prove it checks before any content goes in.
+Place and scaffold the verified template, and prove it checks before any content goes in.
 
 ## Prerequisites
 
@@ -19,13 +19,13 @@ Place and extract the verified template, and prove it checks before any content 
 
 Inside a project repo: `plan/` at the repo root (or `docs/plan/` if the user prefers). Central planning folder: one plan-shaped folder per project. On claude.ai: build under a scratch folder and present the folder as a download. Ask the user if it is not obvious from context.
 
-### Step 2: Extract the template
+### Step 2: Scaffold the template
 
 ```console
-$ scripts/new-plan.sh <destination>   # creates <destination>/plan
+$ wcl init wplan <destination>/plan --defaults
 ```
 
-Use the shipped script (or extract assets/plan-template.tar.gz directly). Never reconstruct the template from memory - it is verified against the wcl binary.
+Use the `wplan` built-in template of `wcl init`. Never reconstruct the template from memory - the shipped template is verified against the wcl binary in CI.
 
 ### Step 3: Prove the empty plan checks
 

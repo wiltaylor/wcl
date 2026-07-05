@@ -144,7 +144,7 @@ concept lessons_loop {
   audience = :both
   related  = [pipeline]
   body {
-    p "During and after implementation runs, record durable observations in lessons.wcl: what confused agents, which boundaries were violated, which spec shapes worked. When a project wraps, review lessons.wcl with the user and fold general lessons back into this wskill - its template (skill/assets/plan-template/, then `just pack-template`) and its reference content."
+    p "During and after implementation runs, record durable observations in lessons.wcl: what confused agents, which boundaries were violated, which spec shapes worked. When a project wraps, review lessons.wcl with the user and fold general lessons back into this wskill - its template (the `wplan` built-in of `wcl init`, canonical at crates/wcl/src/scaffold/templates/wplan.wcl in the WCL repo) and its reference content."
   }
 }
 

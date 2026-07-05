@@ -35,6 +35,10 @@ jobs:
       # validate its model and build its book like docs-build below.
       - run: just wad-check
       - run: just wad-build
+      # The shipped wplan template must scaffold, check, and pass its
+      # structural gates against the current binary — the moral equivalent
+      # of the old "verified tarball".
+      - run: just wplan-template-check
       # The docs/ site is the largest real-world wdoc consumer — building it
       # catches renderer regressions that unit tests miss, and broken doc
       # pages, before they reach the deploy workflow.

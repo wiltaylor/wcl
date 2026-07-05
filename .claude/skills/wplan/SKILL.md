@@ -21,7 +21,7 @@ Plan a software project as a gated WCL pipeline: interview, research, PRD, a DAG
 
 Turn an idea into (1) a human-readable wdoc book and (2) self-contained markdown spec briefs that implementation agents - including weak models - execute in parallel without any wcl/wdoc dependency. Everything lives in typed WCL so `just check` gates progress and validates the spec DAG.
 
-Follow the workflow index in order. The verified template ships as an asset - extract it with scripts/new-plan.sh; never reconstruct it from memory.
+Follow the workflow index in order. The verified template is a wcl built-in - scaffold it with `wcl init wplan <dest>/plan --defaults`; never reconstruct it from memory.
 
 </overview>
 
@@ -39,7 +39,7 @@ Follow the workflow index in order. The verified template ships as an asset - ex
 
 <always>
 
-- Extract the template with scripts/new-plan.sh rather than writing schema/wdoc files from scratch, and keep `just check` green after every edit.
+- Scaffold the template with `wcl init wplan <dest>/plan --defaults` rather than writing schema/wdoc files from scratch, and keep `just check` green after every edit.
 
 - Add an import line to plan.wcl for every new spec and research finding file, and a status row to status.wcl for every spec.
 
@@ -96,5 +96,3 @@ Follow the workflow index in order. The verified template ships as an asset - ex
 - [Glossary](references/glossary_ref.md) — terms and definitions.
 
 - [Related skills](references/related_ref.md) — cross-references to other wskills.
-
-- [Bundled files](references/assets_ref.md) — scripts and data shipped with this skill.

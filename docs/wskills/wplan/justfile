@@ -49,8 +49,3 @@ book-serve:
 [group('clean')]
 out-clean:
 	rm -rf out
-
-# Re-pack the plan template tarball after editing skill/assets/plan-template/
-[group('template')]
-pack-template:
-	tar -czf skill/assets/plan-template.tar.gz -C skill/assets plan-template

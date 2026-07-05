@@ -44,6 +44,7 @@ const BUILTIN_TEMPLATES: &[(&str, &str)] = &[
         include_str!("templates/wskill-registry.wcl"),
     ),
     ("wad", include_str!("templates/wad.wcl")),
+    ("wplan", include_str!("templates/wplan.wcl")),
 ];
 
 /// Manifest filename for a folder-based template (a built-in name resolves

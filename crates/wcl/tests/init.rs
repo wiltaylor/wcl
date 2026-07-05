@@ -384,3 +384,83 @@ fn init_wad_without_extractors() {
         .assert()
         .success();
 }
+
+/// The wplan template scaffolds a plan folder that validates, passes its
+/// structural gates, and renders both projections (book + agent briefs) —
+/// the same bar the old verified tarball guaranteed.
+#[test]
+fn init_wplan_scaffold_checks_and_builds() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let dest = tmp.path().join("proj").join("plan");
+    wcl()
+        .args(["init", "wplan"])
+        .arg(&dest)
+        .arg("--defaults")
+        .assert()
+        .success();
+
+    for rel in [
+        "plan.wcl",
+        "justfile",
+        "schema/plan_schema.wcl",
+        "questions.wcl",
+        "research.wcl",
+        "research", // empty folder for finding files
+        "prd.wcl",
+        "surfaces.wcl",
+        "scenarios.wcl",
+        "contracts.wcl",
+        "models.wcl",
+        "asbuilt.wcl",
+        "signoffs.wcl",
+        "specs/spec_000_repo.wcl",
+        "specs/spec_010_build.wcl",
+        "status.wcl",
+        "lessons.wcl",
+        "gates.wcl",
+        "wdoc/book/main.wcl",
+        "wdoc/agent/main.wcl",
+    ] {
+        assert!(dest.join(rel).exists(), "wplan: missing {rel}");
+    }
+
+    wcl()
+        .arg("check")
+        .arg(dest.join("plan.wcl"))
+        .assert()
+        .success();
+    wcl()
+        .arg("check")
+        .arg(dest.join("gates.wcl"))
+        .assert()
+        .success();
+    // The structural gates a fresh template must hold green (the full
+    // `just check` loop walks every gate; these two prove the seam).
+    for gate in ["gates.requirements_covered.ok", "gates.harness_defined.ok"] {
+        wcl()
+            .arg("eval")
+            .arg(dest.join("gates.wcl"))
+            .arg(gate)
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("true"));
+    }
+    wcl()
+        .args(["wdoc", "build"])
+        .arg(dest.join("wdoc/book/main.wcl"))
+        .arg("--out")
+        .arg(dest.join("out/book"))
+        .assert()
+        .success();
+    wcl()
+        .args(["wdoc", "markdown"])
+        .arg(dest.join("wdoc/agent/main.wcl"))
+        .arg("--out")
+        .arg(dest.join("out/specs"))
+        .assert()
+        .success();
+    assert!(
+        dest.join("out/specs/index.md").exists(),
+        "wplan: agent briefs index missing"
+    );
+}

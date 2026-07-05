@@ -2,7 +2,7 @@
 
 Each process is a runbook on its own page. This is the index.
 
-- [**Starting a plan**](../references/process_proc_starting_a_plan.md) — Place and extract the verified template, and prove it checks before any content goes in.
+- [**Starting a plan**](../references/process_proc_starting_a_plan.md) — Place and scaffold the verified template, and prove it checks before any content goes in.
 
 - [**Running the interview**](../references/process_proc_interview.md) — Settle every decision an implementation agent could stumble on - by the user, in writing - before anything else happens.
 

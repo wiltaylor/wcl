@@ -1,5 +1,0 @@
-// Managed by the VERIFICATION agent only. Implementation agents never edit
-// or read this file — their briefs do not mention it.
-// One row per spec (the status_covered gate enforces coverage).
-status spec_000_repo { state = :todo }
-status spec_010_build { state = :todo }

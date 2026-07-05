@@ -49,7 +49,7 @@ wcl.wskill::skill {
   summary {
     overview = [
       "Turn an idea into (1) a human-readable wdoc book and (2) self-contained markdown spec briefs that implementation agents - including weak models - execute in parallel without any wcl/wdoc dependency. Everything lives in typed WCL so `just check` gates progress and validates the spec DAG.",
-      "Follow the workflow index in order. The verified template ships as an asset - extract it with scripts/new-plan.sh; never reconstruct it from memory."
+      "Follow the workflow index in order. The verified template is a wcl built-in - scaffold it with `wcl init wplan <dest>/plan --defaults`; never reconstruct it from memory."
     ]
   }
 
@@ -60,7 +60,7 @@ wcl.wskill::skill {
 
   skill_boundary {
     always = [
-      "Extract the template with scripts/new-plan.sh rather than writing schema/wdoc files from scratch, and keep `just check` green after every edit.",
+      "Scaffold the template with `wcl init wplan <dest>/plan --defaults` rather than writing schema/wdoc files from scratch, and keep `just check` green after every edit.",
       "Add an import line to plan.wcl for every new spec and research finding file, and a status row to status.wcl for every spec.",
       "Complete ALL research before finalising the PRD - implementation agents must never be left to research anything.",
       "Consult installed wskill research pages (`.claude/skills/*/references/research_*.md`, then the same glob under `$HOME/.claude/skills/`) before web research, and cite a reused page in the finding.",
@@ -81,18 +81,9 @@ wcl.wskill::skill {
     ]
   }
 
-  script new_plan {
-    source      = "skill/scripts/new-plan.sh"
-    name        = "new-plan.sh"
-    description = "Extracts the verified plan/ template tarball into a destination folder."
-    usage       = "scripts/new-plan.sh <destination-dir>   # creates <destination-dir>/plan"
-  }
-
-  asset plan_template {
-    source      = "skill/assets/plan-template.tar.gz"
-    name        = "plan-template.tar.gz"
-    description = "The verified plan/ template: schema, gates, bootstrap specs, justfile, and both wdoc projections."
-  }
+  // The plan template ships as the `wplan` built-in of `wcl init` (canonical
+  // copy: crates/wcl/src/scaffold/templates/wplan.wcl in the WCL repo) —
+  // no bundled script/asset needed.
 }
 
 // Sources describe where current information lives — they drive the update

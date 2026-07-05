@@ -152,9 +152,26 @@ wad-check:
     cargo run -p wcl -- check .wad/wad.wcl
     cargo run -p wcl -- check .wad/wdoc/book/main.wcl
 
+# Print the canonical wplan plan schema (the scaffold template's heredoc) to stdout
+[private]
+wplan-schema-extract:
+    @sed -n "/<<'WPLAN_SCHEMA_WCL'/,/^WPLAN_SCHEMA_WCL$/p" crates/wcl/src/scaffold/templates/wplan.wcl | sed '1d;$d'
+
+# Scaffold the shipped wplan template into target/ and run its structural gates (runs in ci)
+[group('quality')]
+wplan-template-check:
+    rm -rf target/wplan-template-check
+    cargo run -p wcl -- init wplan target/wplan-template-check --defaults
+    cargo run -p wcl -- check target/wplan-template-check/plan.wcl
+    cargo run -p wcl -- check target/wplan-template-check/gates.wcl
+    @for g in $(grep -oE '^gate [a-z_0-9]+' target/wplan-template-check/gates.wcl | cut -d' ' -f2 | grep -v '^signoffs_complete$'); do \
+        printf 'gate %-24s ' "$g"; \
+        cargo run -q -p wcl -- eval target/wplan-template-check/gates.wcl "gates.$g.ok" || exit 1; \
+    done
+
 # Full CI gate: fmt-check + workspace-lint + workspace-test + schema drift checks + doc builds
 [group('quality')]
-ci: fmt-check workspace-lint workspace-test wskill-schema-check wskill-template-check wad-schema-check wad-check wad-build docs-build
+ci: fmt-check workspace-lint workspace-test wskill-schema-check wskill-template-check wad-schema-check wad-check wad-build wplan-template-check docs-build
 
 # Run the CLI: just cli-run -- parse examples/basic.wcl
 [group('dev')]
