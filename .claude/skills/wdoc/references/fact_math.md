@@ -30,7 +30,11 @@ $$
 Inside any `p` body or `span`, two inline patterns produce math: `$…$` is text-style (flows with the prose) and `$$…$$` is display-style (slightly larger, still inline). The `$…$` pattern requires a non-space at each delimiter, so currency stays untouched. See [formatting](../references/concept_formatting.md).
 
 ```wcl
-p "The quadratic root $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$ flows inline with the prose, while a display-style sum $$\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}$$ sits slightly larger but still in the line.\n"
+p <<'DOC'
+  The quadratic root $x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$ flows inline with the prose, while a
+  display-style sum $$\sum_{i=1}^{n} i = \frac{n(n+1)}{2}$$ sits slightly larger but still in the
+  line.
+DOC
 ```
 
 The quadratic root $x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$ flows inline with the prose, while a display-style sum $$\sum_{i=1}^{n} i = \frac{n(n+1)}{2}$$ sits slightly larger but still in the line.

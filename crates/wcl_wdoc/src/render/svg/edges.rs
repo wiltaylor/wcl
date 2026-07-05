@@ -81,7 +81,7 @@ pub(crate) fn render_edges(
     // would leave the same side and cross the shape body), so straight
     // edges skip it and each picks its own facing anchor below.
     let (source_overrides, dest_overrides) = if straight {
-        (AnchorMap::new(), AnchorMap::new())
+        (AnchorMap::new(), DestAnchorMap::new())
     } else {
         build_shared_anchors(&items, positions)
     };
@@ -181,13 +181,24 @@ pub(crate) fn gather_edges_recursive(block: &Block<'_>, out: &mut Vec<Value>) {
 /// appears as the source of multiple edges that face the *same* side,
 /// we pick one shared egress anchor (the one closest to the centroid
 /// of those destinations' bbox centers) so they converge into a clean
-/// branching trunk. Same for destinations. Crucially the grouping is
-/// **per facing side**, not per shape: edges radiating in opposing
-/// directions (a radial hub's spokes) land in different side-groups
-/// and so are *not* bundled — each falls back to its own natural
-/// facing anchor via `pick_closest_pair`. Self-loops are excluded.
-/// A `(shape, side)` group with only one edge gets no override.
+/// branching trunk. Crucially the grouping is **per facing side**, not
+/// per shape: edges radiating in opposing directions (a radial hub's
+/// spokes) land in different side-groups and so are *not* bundled —
+/// each falls back to its own natural facing anchor via
+/// `pick_closest_pair`. Self-loops are excluded. A `(shape, side)`
+/// group with only one edge gets no override.
+///
+/// Destinations get the opposite treatment: multiple edges *arriving*
+/// on one side are SPREAD into per-edge slots along that side instead
+/// of converging — arrowheads stacked on one point read as a single
+/// edge (an A→B→C chain's through-edge A→C would vanish under its
+/// neighbours at both ends). The dest map is therefore keyed by the
+/// arriving edge's source id as well.
 pub(crate) type AnchorMap = HashMap<(String, Side), SidedAnchor>;
+pub(crate) type DestAnchorMap = HashMap<(String, Side, String), SidedAnchor>;
+
+/// Gap between neighbouring arrival slots on a destination side.
+const ARRIVAL_SPREAD: f64 = 12.0;
 
 /// Dominant cardinal direction from `from` toward `to` (SVG y grows
 /// downward). Used both to group a shape's edges into facing-side
@@ -206,12 +217,16 @@ pub(crate) fn facing_side(from: (f64, f64), to: (f64, f64)) -> Side {
     }
 }
 
+/// One edge arriving at a destination group: its source shape id and
+/// that shape's bbox center.
+type Arrival = (String, (f64, f64));
+
 pub(crate) fn build_shared_anchors(
     items: &[Value],
     positions: &ShapePositions,
-) -> (AnchorMap, AnchorMap) {
+) -> (AnchorMap, DestAnchorMap) {
     let mut src_targets: HashMap<(String, Side), Vec<(f64, f64)>> = HashMap::new();
-    let mut dst_sources: HashMap<(String, Side), Vec<(f64, f64)>> = HashMap::new();
+    let mut dst_sources: HashMap<(String, Side), Vec<Arrival>> = HashMap::new();
     for v in items {
         let Value::Record { fields, .. } = v else {
             continue;
@@ -239,10 +254,10 @@ pub(crate) fn build_shared_anchors(
         dst_sources
             .entry((d, facing_side(d_center, s_center)))
             .or_default()
-            .push(s_center);
+            .push((s, s_center));
     }
     let mut sources = AnchorMap::new();
-    let mut dests = AnchorMap::new();
+    let mut dests = DestAnchorMap::new();
     for ((id, side), targets) in src_targets {
         if targets.len() < 2 {
             continue;
@@ -255,16 +270,35 @@ pub(crate) fn build_shared_anchors(
             sources.insert((id, side), anchor);
         }
     }
-    for ((id, side), sources_centers) in dst_sources {
-        if sources_centers.len() < 2 {
+    for ((id, side), mut arrivals) in dst_sources {
+        if arrivals.len() < 2 {
             continue;
         }
         let Some(metrics) = positions.get(&id) else {
             continue;
         };
-        let centroid = centroid_of(&sources_centers);
-        if let Some(anchor) = pick_anchor_toward(&metrics.anchors, centroid) {
-            dests.insert((id, side), anchor);
+        let centers: Vec<(f64, f64)> = arrivals.iter().map(|(_, c)| *c).collect();
+        let centroid = centroid_of(&centers);
+        let Some(base) = pick_anchor_toward(&metrics.anchors, centroid) else {
+            continue;
+        };
+        // One slot per arriving edge, centred on the base anchor and
+        // spread along the side's tangent axis (clamped inside the
+        // shape's extent), ordered by source id for determinism.
+        arrivals.sort_by(|a, b| a.0.cmp(&b.0));
+        let k = arrivals.len();
+        let (bx, by, bw, bh) = metrics.bbox;
+        for (i, (src_id, _)) in arrivals.into_iter().enumerate() {
+            let off = (i as f64 - (k as f64 - 1.0) / 2.0) * ARRIVAL_SPREAD;
+            let (_, ax, ay) = base;
+            let slot = match base.0 {
+                // Vertical sides spread along y, horizontal along x.
+                Side::East | Side::West => (base.0, ax, (ay + off).clamp(by + 8.0, by + bh - 8.0)),
+                Side::North | Side::South => {
+                    (base.0, (ax + off).clamp(bx + 8.0, bx + bw - 8.0), ay)
+                }
+            };
+            dests.insert((id.clone(), side, src_id), slot);
         }
     }
     (sources, dests)
@@ -333,7 +367,7 @@ pub(crate) fn plan_edge(
     viewport: (f64, f64),
     straight: bool,
     source_overrides: &AnchorMap,
-    dest_overrides: &AnchorMap,
+    dest_overrides: &DestAnchorMap,
 ) -> Option<(EdgePath, EdgeStyle)> {
     let Value::Record { fields, .. } = value else {
         return None;
@@ -367,7 +401,11 @@ pub(crate) fn plan_edge(
         .get(&(source_id.clone(), facing_side(src_center, dst_center)))
         .copied();
     let dst_override = dest_overrides
-        .get(&(dest_id.clone(), facing_side(dst_center, src_center)))
+        .get(&(
+            dest_id.clone(),
+            facing_side(dst_center, src_center),
+            source_id.clone(),
+        ))
         .copied();
     let pair = match (src_override, dst_override) {
         (Some(s), Some(d)) => Some((s, d)),

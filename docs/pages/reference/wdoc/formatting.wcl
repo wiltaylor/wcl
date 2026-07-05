@@ -32,7 +32,7 @@ WCL
 
   type_table { type = P }
 
-  p "For a paragraph mixing several styled segments, use a `text` block holding `span`s — each `span` takes its own `class`."
+  p "For a paragraph mixing several styled segments, use a `text` block holding `span`s — each `span` takes its own `class`. A `text` block also accepts a plain label of its own (`text \"...\"`), rendered before its spans — handy inside `card` bodies and `node_row`s where it's the natural shorthand."
 
   h2 "Inline patterns"
 

@@ -1,11 +1,17 @@
-// Paragraph — children are spans rendered in source order. Lowers to a
-// `<p>` whose children are `<span>`s; each span's text runs through the
-// inline-pattern engine via the `Inline` fundamental (the regex engine is
-// Rust, but the `<p>` / `<span>` structure is authored here).
+// Paragraph — an optional inline label plus spans rendered in source
+// order. Lowers to a `<p>` whose children are the label run and the
+// `<span>`s; text runs through the inline-pattern engine via the `Inline`
+// fundamental (the regex engine is Rust, but the `<p>` / `<span>`
+// structure is authored here). The label slot matters beyond convenience:
+// inside HTML bodies rendered by Rust hosts (card bodies, node_table
+// rows), `text "…"` is the natural authoring form — without the slot the
+// label silently vanished.
 namespace wdoc
 
 @block("text")
 type Text extends WdocBlock {
+  @doc("Optional single-run text (the inline label slot); inline patterns are applied. Use `span` children for styled runs.")
+  @inline(0) text: utf8?
   @doc("Optional explicit HTML id.")
   id:    identifier?
   @doc("Optional class list applied to the `<p>`.")
@@ -15,11 +21,14 @@ type Text extends WdocBlock {
   lower = fn(t: Text) -> list<HtmlFundamental> [
     HtmlFundamental::Element {
       tag: "p", id: t.id, class: t.class, attrs: none,
-      children: map(t.spans, fn(s: Span) -> HtmlFundamental
-        HtmlFundamental::Element {
-          tag: "span", id: s.id, class: s.class, attrs: none,
-          children: [ HtmlFundamental::Inline { text: s.text } ],
-        }),
+      children: flatten([
+        match t.text { none => [], tx => [HtmlFundamental::Inline { text: tx }] },
+        map(t.spans, fn(s: Span) -> HtmlFundamental
+          HtmlFundamental::Element {
+            tag: "span", id: s.id, class: s.class, attrs: none,
+            children: [ HtmlFundamental::Inline { text: s.text } ],
+          }),
+      ]),
     },
   ]
 }

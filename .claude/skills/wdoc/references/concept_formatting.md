@@ -23,7 +23,10 @@ $$\int x \, dx$$     // → display-style LaTeX
 ```
 
 ```wcl
-p "**bold**, _italic_, `code`, a [link](concept_overview), an inline icon :lucide.check:, and math $x^2$ — every pattern lights up automatically.\n"
+p <<DOC
+  **bold**, _italic_, `code`, a [link](concept_overview), an inline icon :lucide.check:, and math
+  $x^2$ — every pattern lights up automatically.
+DOC
 ```
 
 **bold**, _italic_, `code`, a [link](../references/concept_overview.md), an inline icon :lucide.check:, and math $x^2$ — every pattern lights up automatically.
@@ -175,6 +178,7 @@ A `text` block: a paragraph assembled from `span`s, each independently styled.
 
 | Property | Type | Required | Description |
 | --- | --- | --- | --- |
+| `text` | `utf8` | no | Optional single-run text (the inline label slot); inline patterns are applied. Use `span` children for styled runs. |
 | `id` | `identifier` | no | Optional explicit HTML id. |
 | `class` | `list<utf8>` | no | Optional class list applied to the `<p>`. |
 
