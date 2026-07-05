@@ -27,7 +27,7 @@ The questions the design interview asks, in interview order. Each answer becomes
 | Question | Maps to |  |
 | --- | --- | --- |
 | Which systems make up the solution — the boxes an outsider would see — with one line each? | `system` |  |
-| Which third-party systems does it integrate with to do its job (identity, payments, data feeds, notifications…)? Where it is hosted/built comes later, in infrastructure. | `external_system (stub) + relation; hosting/CI/CDN → infra_node (view 5)` |  |
+| Which third-party systems does it talk to over a boundary to do its job (identity, payments, data feeds, notifications…)? Libraries it links against don't count (they're container technology), and where it is hosted/built comes later, in infrastructure. | `external_system (stub) + relation; hosting/CI/CDN → infra_node (view 5); linked libraries → container.technology` |  |
 | For each connection: which direction, what protocol, what data crosses, sync or async? | `relation (kind, protocol, data)` |  |
 | Which persona uses which system/container? | `relation (persona → container, kind :uses)` |  |
 
