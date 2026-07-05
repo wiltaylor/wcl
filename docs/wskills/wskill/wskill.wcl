@@ -15,12 +15,12 @@ import "./data/main.wcl"
 import "./data/presentation/main.wcl"
 import "./data/training/main.wcl"
 
-schema_version = "1.1.0"
+schema_version = "1.2.0"
 
 topic wskill {
   name    = "wskill"
   summary = "A WCL document designed to hold complete set of knowledge on a topic and expose it in multiple views for multiple audiences."
-  version = "1.0.0"             // the wskill format / base-schema version this describes
+  version = "1.2.0"             // the wskill format / base-schema version this describes
   description = <<END
     A wskill is a self contained set of documentation on a specific topic. The idea is the document will generate multilpe views on the same
     information so it can be used in different ways. Data in a wskill are stored in a natural way that makes sense to the knoweldge and then
@@ -28,6 +28,7 @@ topic wskill {
   END
   tags = ["wcl", "wdoc", "documentation", "skills"]
   created    = "2026-06-17"
+  updated    = "2026-07-05"
   maintainer = "Wil Taylor"
   maintainer_entity = wil_taylor
 }
@@ -45,7 +46,9 @@ wcl.wskill::skill {
   }
   skill_boundary {
     always = [
-      "Classify every new unit with the decision guide (fact `unit_decision_guide`) before creating it — entities are reserved for concrete NAMED things (people, software, places); ideas are concepts, values are facts, tasks are processes.",
+      "Route with the skill-vs-wskill rule (fact `skill_vs_wskill`) before scaffolding anything: AI-only knowledge → a plain canonical skill via /meta-skill; knowledge humans also consume → a wskill.",
+      "Classify every new unit with the decision guide (fact `unit_decision_guide`) before creating it — entities are reserved for concrete NAMED things (people, software, places); ideas are concepts, values are facts, tasks are processes, dated findings are research.",
+      "Capture durable investigation output as `research` blocks under data/research/ so it ships at references/research_<id>.md for other agents and pipelines to reuse.",
       "Create content in data/ using the schema in schema/; give an entity a `kind` from schema/kinds.wcl.",
       "When new data has a recurring structure the base kinds don't fit, model it as a typed schema extension (see `creating_schema_extension`) rather than forcing it into prose.",
       "Run `wcl check wskill.wcl` after every change and keep it green before rendering.",

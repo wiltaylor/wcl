@@ -112,6 +112,7 @@ wskill-template-check:
         WSK_WDOC_COMPONENT_CONCEPT_WCL:component/concept.wcl \
         WSK_WDOC_COMPONENT_ENTITY_WCL:component/entity.wcl \
         WSK_WDOC_COMPONENT_FACT_WCL:component/fact.wcl \
+        WSK_WDOC_COMPONENT_RESEARCH_WCL:component/research.wcl \
         WSK_WDOC_COMPONENT_PROCESS_WCL:component/process.wcl \
         WSK_WDOC_COMPONENT_TYPE_INDEX_WCL:component/type_index.wcl \
         WSK_WDOC_PAGES_OVERVIEW_WCL:pages/overview.wcl \

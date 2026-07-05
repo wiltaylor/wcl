@@ -1,6 +1,6 @@
 // wskill base schema — ships with the WSKILL skill scaffold.
 //
-// Schema version: 1.1.0 (mirror it in `schema_version` in wskill.wcl).
+// Schema version: 1.2.0 (mirror it in `schema_version` in wskill.wcl).
 //
 // DO NOT HAND-EDIT. Everything topic-specific belongs in `extensions.wcl`, and
 // the topic-owned vocabularies (entity kinds, artifact kinds) in `kinds.wcl` —
@@ -169,6 +169,43 @@ type Source {
   covers:           utf8         // free text: what this source is good for
   last_checked:     utf8?       // ISO date the agent last consulted it
   reflects_version: utf8?       // upstream version this source described when checked
+}
+
+// ---------------------------------------------------------------------------
+// Research (captured findings — dated, source-linked, rendered content)
+// ---------------------------------------------------------------------------
+
+// A research unit's lifecycle: :current (trustworthy as of `checked`) →
+// :stale (flagged for a re-check on the next update sweep) → :superseded
+// (kept for the record; `superseded_by` names the replacement unit).
+symbol_set ResearchStatus { current stale superseded }
+
+// A captured research finding — the durable output of an investigation: the
+// question asked, what was found, how fresh it is, and where the evidence
+// lives. Unlike `source` (a locator only, never rendered) a research unit IS
+// content: the skill projection writes it to references/research_<id>.md —
+// the fixed path an external consumer (e.g. a planning pipeline's researcher
+// agent) globs to reuse findings instead of re-investigating — and lists it
+// in references/index_research.md. Audience defaults to :ai (research is
+// captured for agents first; opt into the book with :both) — note this
+// deviates from the :book default the other content blocks use.
+@block("research")
+type Research {
+  @inline(0) id: identifier
+  topic:    utf8                          // headline (also the link text)
+  question: utf8?                         // what the investigation set out to answer
+  summary:  utf8                          // one-line finding, for the research index
+  @default(:current) status: ResearchStatus
+  checked:  utf8                          // ISO date the finding was last verified
+  applies_to: utf8?                       // subject/version the finding holds for (e.g. "bevy 0.18")
+  @default([]) source_ids: list<identifier> // backing `source` block ids
+  @default([]) locators:   list<utf8>     // ad-hoc evidence (URLs/paths) not worth a source block
+  superseded_by: identifier?              // replacement research unit, when :superseded
+  @default([]) related: list<identifier>  // ids of related units (any kind)
+  @default(:ai) audience: Audience        // :ai (default) | :book | :both
+  @default([]) tags: list<utf8>
+  // The findings — an addressable `body { …wdoc… }`, projected onto its page.
+  @child("body") body: WdocAddressableBody?
 }
 
 // ---------------------------------------------------------------------------
@@ -449,6 +486,7 @@ type WSkillDoc {
   @children("skill") skills: list<Skill>
 
   @children("source")     sources:    list<Source>
+  @children("research")   research_units: list<Research>
   @children("question")   questions:  list<Question>
   @children("wskill_ref") refs:       list<WskillRef>
   @children("artifact")   artifacts:  list<Artifact>

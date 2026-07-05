@@ -22,6 +22,9 @@ let skill_concepts   = filter(concepts,   fn(c: Concept)   -> bool { in_skill(c.
 let skill_entities   = filter(entities,   fn(e: Entity)    -> bool { in_skill(e.audience) })
 let skill_facts      = filter(facts,      fn(f: Fact)      -> bool { in_skill(f.audience) })
 let skill_procedures = filter(procedures, fn(p: Procedure) -> bool { in_skill(p.audience) })
+// Research defaults to `:ai`, so filter the raw gathered list (the book scope
+// has no book-filtered shadow of it).
+let skill_research   = filter(research_units, fn(r: Research) -> bool { in_skill(r.audience) })
 
 // `indexes` in book scope is the book-filtered list (drops `:ai`), so an
 // `:ai`-only nav index would be invisible here. Re-derive from the gathered
@@ -40,6 +43,7 @@ let skill_all_units = flatten([
   map(skill_entities,   fn(e: Entity)    -> UnitRef { { id: e.id, name: e.name,  href: $"entity_${e.id}",  related: e.related } }),
   map(skill_facts,      fn(f: Fact)      -> UnitRef { { id: f.id, name: f.title, href: $"fact_${f.id}",    related: f.related } }),
   map(skill_procedures, fn(p: Procedure) -> UnitRef { { id: p.id, name: p.title, href: $"process_${p.id}", related: p.related } }),
+  map(skill_research,   fn(r: Research)  -> UnitRef { { id: r.id, name: r.topic, href: $"research_${r.id}", related: r.related } }),
 ])
 let skill_unit_ids = map(skill_all_units, fn(u: UnitRef) -> identifier { u.id })
 
@@ -63,6 +67,8 @@ let skill_pages = flatten([
   map(skill_entities,    fn(e: Entity)    -> utf8 { $"entity_${e.id}" }),
   map(skill_facts,       fn(f: Fact)      -> utf8 { $"fact_${f.id}" }),
   map(skill_procedures,  fn(p: Procedure) -> utf8 { $"process_${p.id}" }),
+  map(skill_research,    fn(r: Research)  -> utf8 { $"research_${r.id}" }),
+  match len(skill_research) { 0 => [], _ => ["index_research"] },
 ])
 
 // Every unit id the inlined indexes pin (filtered to skill units) — SKILL.md
@@ -79,6 +85,8 @@ type SkillPageEdge { source: utf8  destination: utf8 }
 let skill_edges = flatten([
   // SKILL.md inlines the curated indexes, linking each pinned note directly.
   map(skill_index_unit_ids, fn(r: identifier) -> SkillPageEdge { { source: "skill_md", destination: $"${r}" } }),
+  // SKILL.md's "Research" section links each finding directly.
+  map(skill_research, fn(r: Research) -> SkillPageEdge { { source: "skill_md", destination: $"${r.id}" } }),
   // Each unit → SKILL.md (the "← Back to SKILL.md" footer link).
   map(skill_all_units, fn(u: UnitRef) -> SkillPageEdge { { source: $"${u.id}", destination: "skill_md" } }),
   // Unit → related unit (only `related` ids that resolve to a skill page).
@@ -149,6 +157,7 @@ page skill_links_page {
     wdoc_repeater { each = skill_entities   as = :e  node $"${e.name}"  { id = e.id  link = $"skillpage_entity_${e.id}"   class = ["gpage-unit"]  width = 120.0  height = 120.0 } }
     wdoc_repeater { each = skill_facts      as = :f  node $"${f.title}" { id = f.id  link = $"skillpage_fact_${f.id}"     class = ["gpage-unit"]  width = 120.0  height = 120.0 } }
     wdoc_repeater { each = skill_procedures as = :p  node $"${p.title}" { id = p.id  link = $"skillpage_process_${p.id}"  class = ["gpage-unit"]  width = 120.0  height = 120.0 } }
+    wdoc_repeater { each = skill_research   as = :r  node $"${r.topic}" { id = r.id  link = $"skillpage_research_${r.id}" class = ["gpage-unit"]  width = 120.0  height = 120.0 } }
 
     edges = skill_edges
   }
@@ -194,6 +203,16 @@ page skill_links_page {
       header = ["Note", "Book page"]
       rows = map(skill_facts, fn(f: Fact) -> list<utf8> {
         [$"[**${f.title}**](skillpage_fact_${f.id})", $"[open](fact_${f.id})"]
+      })
+    }
+  }
+  wdoc_repeater { each = one_if(len(skill_research))  as = :_rh
+    h3 "Research pages"
+    p  "Captured findings — shipped at `references/research_<id>.md` (plus the `index_research` menu) so external consumers can discover them mechanically."
+    table {
+      header = ["Finding", "Checked"]
+      rows = map(skill_research, fn(r: Research) -> list<utf8> {
+        [$"[**${r.topic}**](skillpage_research_${r.id})", $"${r.checked}"]
       })
     }
   }
@@ -259,6 +278,33 @@ wdoc_repeater { each = skill_facts  as = :f
   }
 }
 
+wdoc_repeater { each = skill_research  as = :r
+  page $"skillpage_research_${r.id}" { title = $"${r.topic}"
+    h1 $"${r.topic}"
+    p  $"Generated Markdown for `references/research_${r.id}.md`."
+    p  $"[:lucide.arrow-left: Back to the skill graph](skill_links_page)" { class = ["skill-nav"] }
+    markdown_source { id = $"research_${r.id}"  start_page = "index"  reference = true  pages = skill_pages
+      research_body { unit = r  sources = sources  all_units = skill_all_units  backlinks = []
+        p "[← Back to SKILL.md](index)"
+      }
+    }
+  }
+}
+
+wdoc_repeater { each = one_if(len(skill_research))  as = :_rip
+  page skillpage_index_research { title = "Research index"
+    h1 "`references/index_research.md`"
+    p  "The research menu page — the per-skill list an external consumer reads after a `research_*.md` glob hit."
+    p  $"[:lucide.arrow-left: Back to the skill graph](skill_links_page)" { class = ["skill-nav"] }
+    markdown_source { id = "index_research"  start_page = "index"  reference = true  pages = skill_pages
+      h1 $"${topic.name} — research index"
+      p  "Captured research findings in this skill, one page each."
+      bullet_lines { lines = map(skill_research, fn(r: Research) -> utf8 { $"- [${r.topic}](research_${r.id}) — ${r.summary} _(checked ${r.checked}, ${replace($"${r.status}", ":", "")})_" }) }
+      p "[← Back to SKILL.md](index)"
+    }
+  }
+}
+
 // --- Entry page preview ------------------------------------------------------
 // SKILL.md is the start page (`reference = false`, links resolve to
 // `references/…` with no `../`). Its body is the shared `skill_md_body`
@@ -267,9 +313,9 @@ wdoc_repeater { each = skill_facts  as = :f
 
 page skillpage_index { title = "SKILL.md"
   h1 "`SKILL.md`"
-  p  "The skill's entry point. The build also prepends YAML front matter (`name`, `description`, `wskill_schema_version`, tool permissions), shown by `wcl wdoc skill` but not reproduced here."
+  p  "The skill's entry point. The build also prepends YAML front matter (`name`, `description`, tool permissions, and a `metadata` map carrying `wskill_schema_version`), shown by `wcl wdoc skill` but not reproduced here."
   p  $"[:lucide.arrow-left: Back to the skill graph](skill_links_page)" { class = ["skill-nav"] }
   markdown_source { id = "index"  start_page = "index"  reference = false  pages = skill_pages
-    skill_md_body { topic = topic  skill = skill  indexes = skill_indexes  concepts = skill_concepts  entities = skill_entities  facts = skill_facts  procedures = skill_procedures  extra_refs = skill_bundle_refs  artifacts = artifacts }
+    skill_md_body { topic = topic  skill = skill  indexes = skill_indexes  concepts = skill_concepts  entities = skill_entities  facts = skill_facts  procedures = skill_procedures  research_units = skill_research  extra_refs = skill_bundle_refs  artifacts = artifacts }
   }
 }

@@ -15,6 +15,7 @@ An idea is never an entity. A table of values is never an entity.
 | The note is… | Kind | Test |
 | --- | --- | --- |
 | A way of thinking, a pattern, a mental model, an explanation of \*why\* | `concept` | You'd say "the reader must **understand** this" |
+| A dated finding from an investigation — versions, API specifics, a verified gotcha | `research` | It answers a question you investigated and could go stale when the subject moves |
 | A person, an organisation, a tool, an application, a file format, a place | `entity` | It has a proper name and you could point at it; a kind from `schema/kinds.wcl` fits |
 | A default value, a limit, a table of options, a version matrix | `fact` | Nobody argues with it — you'd cite it, not explain it |
 | A task someone performs: install, upgrade, review, publish | `process` | It has steps in an order and a way to verify it worked |
@@ -74,5 +75,7 @@ concept fast_forward {
 - [Process](../references/concept_process.md)
 
 - [Atomic Note](../references/concept_atomic_note.md)
+
+- [Capturing research into a wskill](../references/process_capturing_research.md)
 
 [← Back to SKILL.md](../SKILL.md)

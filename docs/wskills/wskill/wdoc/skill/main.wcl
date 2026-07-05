@@ -16,6 +16,7 @@ import "../component/skill_md.wcl"  // skill_md_body (shared with the preview)
 import "../component/concept.wcl"   // concept_body
 import "../component/entity.wcl"    // entity_body
 import "../component/fact.wcl"      // fact_body
+import "../component/research.wcl"  // research_body
 import "../component/process.wcl"   // process_body
 import "../component/type_index.wcl" // shared unit-index page component
 
@@ -43,6 +44,7 @@ let facts      = filter(facts,      fn(f: Fact)      -> bool { in_skill(f.audien
 let examples   = filter(examples,   fn(x: Example)   -> bool { in_skill(x.audience) })
 let indexes    = filter(indexes,    fn(x: Index)      -> bool { in_skill(x.audience) })
 let procedures = filter(procedures, fn(p: Procedure) -> bool { in_skill(p.audience) })
+let research_units = filter(research_units, fn(r: Research) -> bool { in_skill(r.audience) })
 
 // Flattened cross-reference rows over the skill's audience-filtered units, so a
 // unit's `related` ids resolve to links (UnitRef + the components live in
@@ -52,12 +54,15 @@ let all_units = flatten([
   map(entities,   fn(e: Entity)    -> UnitRef { { id: e.id, name: e.name,  href: $"entity_${e.id}",  related: e.related } }),
   map(facts,      fn(f: Fact)      -> UnitRef { { id: f.id, name: f.title, href: $"fact_${f.id}",    related: f.related } }),
   map(procedures, fn(p: Procedure) -> UnitRef { { id: p.id, name: p.title, href: $"process_${p.id}", related: p.related } }),
+  map(research_units, fn(r: Research) -> UnitRef { { id: r.id, name: r.topic, href: $"research_${r.id}", related: r.related } }),
 ])
 
 site skill {
   default_template = :ai_skill
   skill {
-    name        = $"${topic.name}"
+    // The topic id, not the display name: SKILL.md's `name` must be lowercase
+    // and equal the install directory (canonical-skill frontmatter rules).
+    name        = $"${topic.id}"
     // Trigger-tuned description (this skill is the wskill toolchain itself).
     description = "Create, edit, update and render wskill documents — self-contained WCL folders that capture everything about a topic (reference, processes, curated indexes) and project into both a human-readable book and a Claude Code skill. Use when the user wants to build, update, render, or install a wskill, capture a topic as a reusable skill, or asks about /wskill."
     // license  = "MIT"   // optional; written to SKILL.md front matter
@@ -67,14 +72,16 @@ site skill {
 // --- SKILL.md (start page) --------------------------------------------------
 
 page index { sites = [:skill]  start = true
-  // Static frontmatter: the base-schema version + skill controls.
+  // Static frontmatter: skill controls at the top level (canonical-skill
+  // frontmatter spec), tooling key-values under `metadata`.
   @schemaless frontmatter {
-    wskill_schema_version = $"${schema_version}"
     "allowed-tools"            = skill.allowed_tools
-    "disallowed-tools"         = skill.disallowed_tools
     "disable-model-invocation" = skill.disable_model_invocation
+    metadata = {
+      wskill_schema_version: $"${schema_version}",
+    }
   }
-  skill_md_body { topic = topic  skill = skill  indexes = indexes  concepts = concepts  entities = entities  facts = facts  procedures = procedures  extra_refs = bundle_refs  artifacts = artifacts }
+  skill_md_body { topic = topic  skill = skill  indexes = indexes  concepts = concepts  entities = entities  facts = facts  procedures = procedures  research_units = research_units  extra_refs = bundle_refs  artifacts = artifacts }
 }
 
 // One page per concept. The body is the addressable `body`, projected here;
@@ -103,6 +110,25 @@ wdoc_repeater { each = facts  as = :f
     fact_body { unit = f  examples = examples  all_units = all_units  backlinks = []
       p "[← Back to SKILL.md](index)"
     }
+  }
+}
+
+// One page per research unit → references/research_<id>.md — the FIXED path
+// external consumers glob to reuse findings (see schema/base.wcl). Plus the
+// references/index_research.md menu page, emitted only when findings exist.
+wdoc_repeater { each = research_units  as = :r
+  page $"research_${r.id}" { sites = [:skill]  title = $"${r.topic}"
+    research_body { unit = r  sources = sources  all_units = all_units  backlinks = []
+      p "[← Back to SKILL.md](index)"
+    }
+  }
+}
+wdoc_repeater { each = match len(research_units) { 0 => [], _ => [true] }  as = :_ri
+  page index_research { sites = [:skill]  title = $"${topic.name} — research index"
+    h1 $"${topic.name} — research index"
+    p  "Captured research findings in this skill, one page each."
+    bullet_lines { lines = map(research_units, fn(r: Research) -> utf8 { $"- [${r.topic}](research_${r.id}) — ${r.summary} _(checked ${r.checked}, ${replace($"${r.status}", ":", "")})_" }) }
+    p "[← Back to SKILL.md](index)"
   }
 }
 

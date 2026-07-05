@@ -6,4 +6,5 @@ import "./reference/glossary.wcl"      // terms
 import "./fact/main.wcl"
 import "./reference/examples.wcl"      // worked examples
 import "./process/main.wcl"
+import "./research/main.wcl"            // captured research findings
 import "./indexes.wcl"                  // curated navigation (index blocks)

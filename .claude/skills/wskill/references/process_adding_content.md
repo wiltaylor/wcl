@@ -20,7 +20,7 @@ Break the knowledge into single-idea pieces — one idea, thing, value or task p
 
 ### Step 2: Classify with the decision guide
 
-Run each note through [the decision guide](../references/fact_unit_decision_guide.md): a repeatable task → `procedure`; a concrete NAMED thing (person, software, place, …) → `entity` with a `kind` from `schema/kinds.wcl`; an indisputable value/table → `fact`; a word needing a definition → `term`; otherwise → `concept`. Never default to entity.
+Run each note through [the decision guide](../references/fact_unit_decision_guide.md): a dated finding from an investigation → `research` (see [Capturing research](../references/process_capturing_research.md)); a repeatable task → `procedure`; a concrete NAMED thing (person, software, place, …) → `entity` with a `kind` from `schema/kinds.wcl`; an indisputable value/table → `fact`; a word needing a definition → `term`; otherwise → `concept`. Never default to entity.
 
 ### Step 3: Write the unit file
 

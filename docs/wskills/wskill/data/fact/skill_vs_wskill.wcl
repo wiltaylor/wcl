@@ -1,0 +1,53 @@
+// The routing rule between a plain Claude Code skill (meta-skill format) and a
+// wskill — asked BEFORE any scaffolding, by both toolchains: meta-skill's `new`
+// command gates on it, and this wskill's boundary pins it for the reverse
+// direction.
+
+fact skill_vs_wskill {
+  title    = "Plain skill or wskill? — the routing rule"
+  audience = :both
+  related  = [wskill_concept, why_use_wskill, views, creating_a_wskill]
+  body {
+    p <<BODY
+      One question decides the tool: **who consumes the knowledge?** If only AI agents ever read
+      it, build a plain Claude Code skill (`/meta-skill new` — the canonical SKILL.md format).
+      If humans also need it — as a book, a deck, a training series, or any rendered
+      documentation — capture it as a **wskill** (`wcl init wskill`), which projects the same
+      typed data into a human book AND a canonical Claude skill.
+    BODY
+
+    diagram {
+      width = 640  height = 300
+      layout = :layered  direction = :top_to_bottom  layer_gap = 30.0  node_gap = 40.0
+      terminator "Knowledge to capture" { id = "r_start"  width = 190.0  height = 44.0 }
+      decision "Do humans consume it too (docs, book, deck, training)?" { id = "r_humans"  width = 250.0  height = 90.0 }
+      process "wskill (wcl init wskill)" { id = "r_wskill"  width = 200.0  height = 44.0 }
+      process "plain skill (/meta-skill new)" { id = "r_plain"  width = 220.0  height = 44.0 }
+      edges = [
+        { source: "r_start",  destination: "r_humans", kind: :flow, label: "" },
+        { source: "r_humans", destination: "r_wskill", kind: :flow, label: "yes" },
+        { source: "r_humans", destination: "r_plain",  kind: :flow, label: "no" },
+      ]
+    }
+
+    h2 "The criteria"
+    table {
+      header = ["Signal", "Plain skill", "wskill"]
+      rows = [
+        ["Audience", "AI agents only", "Humans too — book / deck / training views"],
+        ["Lifespan", "Tool-shaped, replaceable", "Long-lived knowledge worth maintaining"],
+        ["Shape", "A workflow: commands, boundaries, scripts", "A topic: typed units (concepts, entities, facts, processes), curated indexes"],
+        ["Research", "Not stored", "`research` blocks ship as `references/research_*.md` other pipelines reuse"],
+        ["Consumers", "One repo's agents", "Multiple projections and repos (skill folders are generated, book is hosted)"],
+      ]
+    }
+
+    p <<BODY
+      Two clarifications. A wskill's generated skill IS meta-skill-canonical (same frontmatter
+      rules, same overview/variables/boundaries sections, lints clean), so choosing a wskill never
+      costs skill quality — it adds the human views on top. And the rule is about *consumption*,
+      not authorship: documentation written by agents but read by people is human-facing, so it
+      routes to a wskill.
+    BODY
+  }
+}

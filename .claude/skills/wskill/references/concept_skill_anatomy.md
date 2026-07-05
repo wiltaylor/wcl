@@ -10,19 +10,22 @@ so an agent always knows where to look:
 out/skill/
   SKILL.md            # the start page — what the agent loads first
   references/  *.md   # one page per :ai/:both unit + curated index pages
+    research_*.md     # captured research findings (fixed, glob-able names)
+    index_research.md # the research menu, when findings exist
   scripts/            # runnable helpers (from `script` blocks in the skill config)
   assets/             # static data files (from `asset` blocks)
 ```
 
-SKILL.md is generated from the `skill` block in `wskill.wcl` plus the topic metadata. Its
-YAML frontmatter carries the skill `name`, trigger-tuned `description`, tool controls
-(`allowed-tools`, `disallowed-tools`, `disable-model-invocation`) and the wskill schema
-version. The body then stacks: the topic summary and overview lines, a **Parameters**
-table (`skill_param` blocks — what to pass as `$ARGUMENTS`, `$1`, …), the
-**boundaries** (`skill_boundary` always/ask/never rules, rendered inside
-`<Boundary>` tags so the agent treats them as hard rules), and a **Reference** section
-driven by the `:ai`/`:both` indexes — each index becomes a link section pointing into
-`references/`.
+SKILL.md follows the canonical Claude-skill format (the meta-skill spec), so it lints
+clean against that toolchain's validator. Its YAML frontmatter carries the skill `name`
+(the topic **id** — lowercase, equal to the install directory), the trigger-tuned
+`description`, tool controls (`allowed-tools`, `disable-model-invocation`) and a
+`metadata` map holding `wskill_schema_version`. The body then stacks: the topic summary
+and overview lines inside `<overview>` tags, the invocation parameters (`skill_param`
+blocks) as `<variables>` bullets, the `skill_boundary` always/ask/never rules inside
+`<boundaries>` tags, a **Reference** section driven by the `:ai`/`:both` indexes — each
+index becomes a link section pointing into `references/` — a **Research** section listing
+captured `research` findings with their checked dates, and the shipped **Views**.
 
 
 Because the Reference section is index-driven, curating the `:ai` indexes IS designing
@@ -51,5 +54,7 @@ $ cp -r docs/wskills/git/out/skill .claude/skills/git
 - [Setting up AI skill generation](../references/process_setup_ai_skill.md)
 
 - [Building and installing the AI skill](../references/process_installing_the_skill.md)
+
+- [Capturing research into a wskill](../references/process_capturing_research.md)
 
 [← Back to SKILL.md](../SKILL.md)

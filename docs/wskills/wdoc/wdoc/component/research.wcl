@@ -1,0 +1,39 @@
+// Research page body — invoked by the per-research page repeater in each
+// projection's main.wcl. The skill projection writes each unit to
+// references/research_<id>.md, the fixed path external consumers glob (see
+// schema/base.wcl), so the header lines here — the H1, the metadata line and
+// the "**Question:**" line — are a greppable contract: keep them stable.
+// The caller fills `wdoc_content` with its projection-specific footer.
+
+import "./common.wcl"
+
+wdoc_component research_body {
+  wdoc_slot unit
+  wdoc_slot sources
+  wdoc_slot all_units
+  wdoc_slot backlinks
+  wdoc_slot layout    { default = "stack" }
+  wdoc_body {
+    h1 $"${unit.topic}"
+    p  $"_Researched: ${unit.checked} · status: ${replace($"${unit.status}", ":", "")}${match unit.applies_to { none => "", a => $" · applies to: ${a}" }}_"
+    wdoc_repeater { each = match unit.question { none => [], q => [q] }  as = :q  p $"**Question:** ${q}" }
+    wdoc_repeater { each = match unit.superseded_by { none => [], s => [s] }  as = :s
+      p $"**Superseded by** [${s}](research_${s}) — prefer that finding." }
+    // Edit-mode only: jump straight into this object in the WYSIWYG editor.
+    edit_object { kind = "research" target = $"${unit.id}" label = "Edit this research unit" }
+    h2 "Finding"
+    p  $"${unit.summary}"
+    wdoc_repeater { each = match unit.body { none => [], _ => [true] }  as = :_b
+      project { from = unit.body }
+    }
+    // Evidence: backing `source` blocks (resolved by id) plus ad-hoc locators.
+    wdoc_repeater { each = match len(unit.source_ids) + len(unit.locators) { 0 => [], _ => [true] }  as = :_ev  h2 "Sources" }
+    wdoc_repeater { each = unit.source_ids  as = :sid
+      wdoc_repeater { each = filter(sources, fn(s: Source) -> bool { s.id == sid })  as = :s
+        p $"- ${s.kind}: ${s.locator} — ${s.covers}${match s.last_checked { none => "", d => $" (last checked ${d})" }}" }
+    }
+    wdoc_repeater { each = unit.locators  as = :loc  p $"- ${loc}" }
+    related_section { related = unit.related  all_units = all_units  backlinks = backlinks  layout = layout }
+    wdoc_content
+  }
+}

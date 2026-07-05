@@ -4,15 +4,40 @@
 // (wdoc/pages/skill_links.wcl), so the preview can never drift from the file
 // `wcl wdoc skill` actually writes.
 //
-// It emits: the topic heading + summary, the skill's overview / parameters /
-// boundary, then a "Reference" section that inlines each curated index (and its
-// child sub-groups), linking the units it pins directly — followed by any
-// `extra_refs` (content pages that aren't unit pages, e.g. a CLI or builtin
-// reference). The caller passes already audience-filtered lists.
+// The layout follows the canonical Claude-skill format (meta-skill): an
+// <overview> block, invocation parameters inside <variables>, hard rules
+// inside <boundaries> (<always>/<ask>/<never>), then a "Reference" section
+// that inlines each curated index (and its child sub-groups), linking the
+// units it pins directly — followed by any `extra_refs` (content pages that
+// aren't unit pages, e.g. a CLI or builtin reference), captured research
+// findings, and the shipped views. The caller passes already
+// audience-filtered lists. Bullet runs are joined with "\n" into one
+// paragraph per list so the body stays inside the canonical 150-line budget.
 
 import <wdoc.wcl>
 import "../../schema/base.wcl"
 import "./common.wcl"          // kind_text
+
+// One "- [Name](href)" line per pinned unit id, over the four unit kinds.
+let unit_link_lines = fn(rids: list<identifier>, concepts: list<Concept>, entities: list<Entity>, facts: list<Fact>, procedures: list<Procedure>) -> list<utf8> {
+  flatten(map(rids, fn(rid: identifier) -> list<utf8> { flatten([
+    map(filter(concepts,   fn(x: Concept)   -> bool { x.id == rid }), fn(t: Concept)   -> utf8 { $"- [${t.name}](concept_${t.id})" }),
+    map(filter(entities,   fn(x: Entity)    -> bool { x.id == rid }), fn(t: Entity)    -> utf8 { $"- [${t.name}](entity_${t.id})" }),
+    map(filter(facts,      fn(x: Fact)      -> bool { x.id == rid }), fn(t: Fact)      -> utf8 { $"- [${t.title}](fact_${t.id})" }),
+    map(filter(procedures, fn(x: Procedure) -> bool { x.id == rid }), fn(t: Procedure) -> utf8 { $"- [${t.title}](process_${t.id})" }),
+  ]) }))
+}
+
+// A bullet run as ONE paragraph (lines separated by single newlines, so the
+// Markdown backend emits a compact list), or nothing when the run is empty.
+wdoc_component bullet_lines {
+  wdoc_slot lines
+  wdoc_body {
+    wdoc_repeater { each = match len(lines) { 0 => [], _ => [true] }  as = :_nz
+      p $"${join(lines, "\n")}"
+    }
+  }
+}
 
 wdoc_component skill_md_body {
   wdoc_slot topic
@@ -22,6 +47,9 @@ wdoc_component skill_md_body {
   wdoc_slot entities
   wdoc_slot facts
   wdoc_slot procedures
+  // Audience-filtered `research` units — rendered as the "Research" section
+  // (pass `[]` for none).
+  wdoc_slot research_units
   // Trailing reference links for non-unit content pages: a list of
   // `{ label, href, summary? }` records (pass `[]` for none).
   wdoc_slot extra_refs
@@ -29,56 +57,57 @@ wdoc_component skill_md_body {
   wdoc_slot artifacts
   wdoc_body {
     h1 $"${topic.name}"
+    p  "<overview>"
     p  $"${topic.summary}"
     wdoc_repeater { each = match topic.version { none => [], v => [v] }  as = :v
       p $"**Upstream version:** `${v}`. If the real upstream has moved past this, the skill may be stale — bump `topic.version` and re-verify (see the update workflow)." }
-
     // Skill overview lines, from the skill block's `summary` sub-block.
     wdoc_repeater { each = skill.summary  as = :sm
       wdoc_repeater { each = sm.overview  as = :o  p $"${o}" } }
+    p  "</overview>"
 
-    // Invocation parameters ($ARGUMENTS, $1, …).
-    wdoc_repeater { each = match len(skill.parameters) { 0 => [], _ => [true] }  as = :_pmh
-      h2 "Parameters"
-      p  "Values to pass when invoking this skill — reference them as `$ARGUMENTS`, `$1`, `$2`, … in the prompt."
-      table {
-        header = ["Parameter", "Description", "How to determine the value"]
-        rows = map(skill.parameters, fn(pp: SkillParam) -> list<utf8> { [pp.name, pp.description ?? "—", pp.value ?? "—"] })
-      } }
+    // Invocation parameters ($ARGUMENTS, $1, …), inside canonical <variables>
+    // tags. The ${CLAUDE_SKILL_DIR} bullet is a PLAIN string on purpose — in an
+    // interpolating $"…" form the slot would be evaluated, not emitted.
+    h2 "Parameters"
+    p  "<variables>"
+    p  "- `${CLAUDE_SKILL_DIR}`: path to this skill's directory (its `scripts/`, `assets/`, and `references/` live here)."
+    bullet_lines { lines = map(skill.parameters, fn(pp: SkillParam) -> utf8 { $"- `${pp.name}`: ${pp.description ?? "—"}${match pp.value { none => "", v => $" How to determine: ${v}" }}" }) }
+    p  "</variables>"
 
-    // Behavioural guardrails, inside <Boundary> tags.
+    // Behavioural guardrails inside canonical <boundaries> tags. Open/close
+    // tags are emitted unconditionally per subsection so they always balance.
     wdoc_repeater { each = skill.boundary  as = :bd
-      p "<Boundary>"
-      wdoc_repeater { each = match len(bd.always) { 0 => [], _ => [true] }  as = :_ba  p "**Always:**" }
-      wdoc_repeater { each = bd.always  as = :it  p $"- ${it}" }
-      wdoc_repeater { each = match len(bd.ask) { 0 => [], _ => [true] }  as = :_bk  p "**Ask first:**" }
-      wdoc_repeater { each = bd.ask  as = :it  p $"- ${it}" }
-      wdoc_repeater { each = match len(bd.never) { 0 => [], _ => [true] }  as = :_bn  p "**Never:**" }
-      wdoc_repeater { each = bd.never  as = :it  p $"- ${it}" }
-      p "</Boundary>" }
+      p "<boundaries>"
+      p "<always>"
+      bullet_lines { lines = map(bd.always, fn(it: utf8) -> utf8 { $"- ${it}" }) }
+      p "</always>"
+      p "<ask>"
+      bullet_lines { lines = map(bd.ask, fn(it: utf8) -> utf8 { $"- ${it}" }) }
+      p "</ask>"
+      p "<never>"
+      bullet_lines { lines = map(bd.never, fn(it: utf8) -> utf8 { $"- ${it}" }) }
+      p "</never>"
+      p "</boundaries>" }
 
     h2 "Reference"
     // Each curated index becomes a section listing the notes it pins (links
     // straight to the per-unit pages); child indexes become sub-sections.
     wdoc_repeater { each = indexes  as = :ix
       h3 $"${ix.name}"
-      wdoc_repeater { each = match ix.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
-      wdoc_repeater { each = match ix.body { none => [], b => [true] }  as = :_b  project { from = ix.body } }
-      wdoc_repeater { each = ix.related  as = :rid
-        wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
-        wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
-        wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
-        wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
+      // With a body, the summary stays its own paragraph above the projected
+      // prose; without one, it joins the link run (one paragraph, fewer lines).
+      wdoc_repeater { each = match ix.body { none => [], b => [true] }  as = :_b
+        wdoc_repeater { each = match ix.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
+        project { from = ix.body }
+        bullet_lines { lines = unit_link_lines(ix.related, concepts, entities, facts, procedures) }
+      }
+      wdoc_repeater { each = match ix.body { none => [true], _ => [] }  as = :_nb
+        bullet_lines { lines = flatten([match ix.summary { none => [], s => [$"_${s}_"] }, unit_link_lines(ix.related, concepts, entities, facts, procedures)]) }
       }
       wdoc_repeater { each = filter(ix.children, fn(x: Index) -> bool { match x.audience { :book => false, _ => true } })  as = :cix
         h4 $"${cix.name}"
-        wdoc_repeater { each = match cix.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
-        wdoc_repeater { each = cix.related  as = :rid
-          wdoc_repeater { each = filter(concepts, fn(x: Concept) -> bool { x.id == rid })  as = :t  p $"- [${t.name}](concept_${t.id})" }
-          wdoc_repeater { each = filter(entities, fn(x: Entity)  -> bool { x.id == rid })  as = :t  p $"- [${t.name}](entity_${t.id})" }
-          wdoc_repeater { each = filter(facts,    fn(x: Fact)    -> bool { x.id == rid })  as = :t  p $"- [${t.title}](fact_${t.id})" }
-          wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  p $"- [${t.title}](process_${t.id})" }
-        }
+        bullet_lines { lines = flatten([match cix.summary { none => [], s => [$"_${s}_"] }, unit_link_lines(cix.related, concepts, entities, facts, procedures)]) }
       }
     }
     // Extra content pages (e.g. CLI / builtins) that aren't unit pages.
@@ -86,13 +115,18 @@ wdoc_component skill_md_body {
       p $"- [${r.label}](${r.href})${match r.summary { none => "", s => $" — ${s}" }}"
     }
 
+    // Captured research findings — the discoverable index for consumers.
+    wdoc_repeater { each = match len(research_units) { 0 => [], _ => [true] }  as = :_rh
+      h2 "Research"
+      p  "Captured findings — check here before re-investigating. Each finding also ships as `references/research_<id>.md` for mechanical discovery."
+    }
+    bullet_lines { lines = map(research_units, fn(r: Research) -> utf8 { $"- [${r.topic}](research_${r.id}) — ${r.summary} _(checked ${r.checked}, ${replace($"${r.status}", ":", "")})_" }) }
+
     // The views this wskill ships (`artifact` blocks in the root wskill.wcl).
     wdoc_repeater { each = match len(artifacts) { 0 => [], _ => [true] }  as = :_af
       h2 "Views"
       p  "Beyond this skill, the wskill ships these views — build them with `just render` in the wskill folder:"
     }
-    wdoc_repeater { each = artifacts  as = :a
-      p $"- **${a.name ?? kind_text($"${a.kind}")}**${match a.summary { none => "", s => $" — ${s}" }} (`${a.entry}`)"
-    }
+    bullet_lines { lines = map(artifacts, fn(a: Artifact) -> utf8 { $"- **${a.name ?? kind_text($"${a.kind}")}**${match a.summary { none => "", s => $" — ${s}" }} (`${a.entry}`)" }) }
   }
 }

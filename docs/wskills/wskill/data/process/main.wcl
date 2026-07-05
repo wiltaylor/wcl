@@ -1,6 +1,7 @@
 // process — one import per entry.
 import "./creating_a_wskill.wcl"
 import "./adding_content.wcl"
+import "./capturing_research.wcl"
 import "./building_the_index.wcl"
 import "./setup_ai_skill.wcl"
 import "./installing_the_skill.wcl"

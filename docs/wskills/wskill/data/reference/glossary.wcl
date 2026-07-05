@@ -132,3 +132,9 @@ term source {
   term       = "source"
   definition = "A metadata entry naming where current information about the topic lives. It drives the update workflow and is never rendered as content."
 }
+
+term research_unit {
+  term       = "research"
+  definition = "A captured research finding — dated (`checked`), evidence-linked and rendered: the skill ships it at references/research_<id>.md so external consumers can reuse it instead of re-investigating."
+  aliases    = ["finding"]
+}

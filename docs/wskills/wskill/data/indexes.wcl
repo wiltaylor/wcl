@@ -9,7 +9,7 @@ index what {
   name    = "WSkill"
   summary = "What a wskill is, why it exists, and how to start one."
   audience = :both
-  related = [wskill_concept, why_use_wskill, views, creating_a_wskill]
+  related = [wskill_concept, why_use_wskill, skill_vs_wskill, views, creating_a_wskill]
 }
 
 index philosophy {
@@ -22,7 +22,7 @@ index authoring {
   name    = "Authoring"
   summary = "Capturing knowledge: decomposition, classification, the capture loop, and the tools."
   audience = :both
-  related = [decomposing_information, unit_decision_guide, adding_content, building_the_index, folder_layout, authoring_cli, assets]
+  related = [decomposing_information, unit_decision_guide, adding_content, capturing_research, building_the_index, folder_layout, authoring_cli, assets]
 }
 
 index views_idx {
@@ -47,7 +47,7 @@ index wskill_reference {
   index schema_blocks {
     name    = "Schema blocks"
     summary = "Every block type in the schema, reflected from the live definition — one page each."
-    related = [block_topic, block_skill, block_source, block_wskill_ref, block_artifact, block_concept, block_entity, block_fact, block_index, block_term, block_example, block_procedure, block_presentation, block_lesson, schema_internals]
+    related = [block_topic, block_skill, block_source, block_research, block_wskill_ref, block_artifact, block_concept, block_entity, block_fact, block_index, block_term, block_example, block_procedure, block_presentation, block_lesson, schema_internals]
   }
 }
 
@@ -58,5 +58,5 @@ index skill_tasks {
   audience = :ai
   name     = "Task runbooks"
   summary  = "Step-by-step runbooks for building and maintaining a wskill — classify with the decision guide before creating any unit."
-  related  = [unit_decision_guide, creating_a_wskill, adding_content, building_the_index, setup_ai_skill, installing_the_skill, attaching_to_registry, creating_schema_extension, creating_presentation, creating_training_book, updating_a_wskill, upgrading_schema_version, reviewing_a_wskill, editing_via_serve]
+  related  = [unit_decision_guide, skill_vs_wskill, creating_a_wskill, adding_content, capturing_research, building_the_index, setup_ai_skill, installing_the_skill, attaching_to_registry, creating_schema_extension, creating_presentation, creating_training_book, updating_a_wskill, upgrading_schema_version, reviewing_a_wskill, editing_via_serve]
 }

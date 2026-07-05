@@ -1,13 +1,15 @@
 ---
-name: WCL
+name: wcl
 description: "Reference and processes for WCL. A typed configuration and schema language: records, unions, interfaces, decorators, and a document model that gathers and validates structured data. Use when working with WCL or answering questions about it."
-wskill_schema_version: 1.1.0
 allowed-tools: []
-disallowed-tools: []
 disable-model-invocation: false
+metadata:
+  wskill_schema_version: 1.2.0
 ---
 
 # WCL
+
+<overview>
 
 A typed configuration and schema language: records, unions, interfaces, decorators, and a document model that gathers and validates structured data.
 
@@ -15,32 +17,41 @@ A typed configuration and schema language: records, unions, interfaces, decorato
 
 WCL is a typed configuration & schema language. This skill captures its full reference as data — the language, the builtin library, and the `wcl` CLI — projected from one model.
 
+</overview>
+
 ## Parameters
 
-Values to pass when invoking this skill — reference them as `$ARGUMENTS`, `$1`, `$2`, … in the prompt.
+<variables>
 
-| Parameter | Description | How to determine the value |
-| --- | --- | --- |
-| $ARGUMENTS | The WCL topic, builtin, or `wcl` subcommand to look up. | Take it from the user's request — e.g. the function name, type, or subcommand they asked about. If empty, summarise the reference and ask what they need. |
-| $1 | Optional area to scope the answer to: `language`, `builtins`, or `cli`. | Infer from the question; default to searching all areas when unset. |
+- `${CLAUDE_SKILL_DIR}`: path to this skill's directory (its `scripts/`, `assets/`, and `references/` live here).
 
-<Boundary>
+- `$ARGUMENTS`: The WCL topic, builtin, or `wcl` subcommand to look up. How to determine: Take it from the user's request — e.g. the function name, type, or subcommand they asked about. If empty, summarise the reference and ask what they need.
+- `$1`: Optional area to scope the answer to: `language`, `builtins`, or `cli`. How to determine: Infer from the question; default to searching all areas when unset.
 
-**Always:**
+</variables>
+
+<boundaries>
+
+<always>
 
 - Cite the exact reference page when answering.
-
 - Prefer the documented builtin/CLI form over guesses.
 
-**Ask first:**
+</always>
+
+<ask>
 
 - Before running `wcl set` or any command that edits files.
 
-**Never:**
+</ask>
+
+<never>
 
 - Invent builtins, flags, or syntax that aren't in the reference.
 
-</Boundary>
+</never>
+
+</boundaries>
 
 ## Reference
 
@@ -95,13 +106,9 @@ _The WCL language, area by area — syntax, types, expressions, control flow, fu
 ### Tasks
 
 _Step-by-step runbooks for the day-to-day wcl workflows._
-
 - [Validate and format a WCL file](references/process_validate_format.md)
-
 - [Inspect and edit values with eval, set and diff](references/process_inspect_values.md)
-
 - [Scaffold a new project with wcl init](references/process_scaffold_init.md)
-
 - [Upgrade a document when WCL moves](references/process_upgrading_with_wcl.md)
 
 - [Builtin functions](references/builtins_ref.md) — every builtin, grouped by category
@@ -113,9 +120,6 @@ _Step-by-step runbooks for the day-to-day wcl workflows._
 Beyond this skill, the wskill ships these views — build them with `just render` in the wskill folder:
 
 - **book** (`wdoc/book/main.wcl`)
-
 - **ai skill** (`wdoc/skill/main.wcl`)
-
 - **presentation** — WCL in a nutshell — an overview deck. (`wdoc/presentation/main.wcl`)
-
 - **training** — Learn WCL — a hands-on lesson series. (`wdoc/training/main.wcl`)

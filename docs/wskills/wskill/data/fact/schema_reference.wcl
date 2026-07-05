@@ -74,6 +74,19 @@ source upstream_docs {
 }
 WCL
   },
+  { name: "Research", code: <<'WCL'
+research submodule_pitfalls {
+  topic    = "Submodule update pitfalls"
+  question = "Why do submodules detach HEAD after `git submodule update`?"
+  summary  = "`git submodule update` checks out the recorded commit directly, so the submodule is left on a detached HEAD by design."
+  checked  = "2026-06-23"
+  applies_to = "git 2.45"
+  source_ids = [upstream_docs]
+  locators   = ["https://git-scm.com/book/en/v2/Git-Tools-Submodules"]
+  body { p "The recorded gitlink names a commit, not a branch — use `update --remote --merge` (or `branch = <name>` in .gitmodules) to track a branch instead." }
+}
+WCL
+  },
   { name: "Question", code: <<'WCL'
 question q_version_policy {
   question = "Which upstream version should this wskill pin?"
@@ -254,6 +267,16 @@ fact block_source {
     p "Where authoritative information about the topic lives; drives the update workflow only — it is never rendered as topic content."
     type_table { type = Source }
     wdoc_repeater { each = example_for("Source")  as = :ex  code "wcl" { source = ex } }
+  }
+}
+
+fact block_research {
+  title = "Research block"  related = [structured_data, capturing_research]
+  body {
+    p "A captured research finding — dated, evidence-linked, and rendered: the skill ships it at `references/research_<id>.md` (with an `index_research.md` menu) so external consumers — e.g. a planning pipeline's researcher — can glob and reuse it instead of re-investigating. Audience defaults to `:ai`; opt a finding into the book with `:both`. On an update sweep flip `status` to `:stale` (needs a re-check) or `:superseded` (+ `superseded_by`)."
+    type_table { type = Research }
+    p "`status` is a `ResearchStatus`: `:current`, `:stale` or `:superseded`."
+    wdoc_repeater { each = example_for("Research")  as = :ex  code "wcl" { source = ex } }
   }
 }
 
