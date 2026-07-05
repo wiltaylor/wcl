@@ -1,7 +1,7 @@
 ---
 name: WAD
 description: "Reference and processes for WAD. Wil's Architecture Document: a typed WCL data model of a software system — C4 drill-down, arc42-style views — rendered into a twelve-chapter architecture book. Use when working with WAD or answering questions about it."
-wskill_schema_version: 1.0.0
+wskill_schema_version: 1.1.0
 allowed-tools:
   - Bash
   - Read

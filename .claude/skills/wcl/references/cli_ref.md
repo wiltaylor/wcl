@@ -73,6 +73,26 @@ Update the field at a dotted path with a new WCL expression, following imports t
 wcl set site.wcl service.web.port 9090u32
 ```
 
+## wcl answer
+
+Walk a document's pending `@answerable` interview questions (from `import <answer.wcl>`) and record the answers — arrow-key menus for choice questions, free text always available, each answer written back immediately through the validating edit pipeline.
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| file | required | Path to the WCL document (imports are followed; answers land in the declaring file). |
+
+| Switch | Value | Description |
+| --- | --- | --- |
+| --list | — | List the pending questions as JSON instead of prompting. |
+| --id | ID | Answer one question non-interactively: the question block's label. |
+| --text | TEXT | Free-text answer for `--id` (may combine with `--pick`). |
+| --pick | OPTION | Pick an option by its id for `--id` (repeatable). |
+| --skip | — | Skip the `--id` question: writes its declared skipped status. |
+
+```console
+wcl answer plan.wcl --id q_platforms --pick linux
+```
+
 ## wcl fmt
 
 Reformat to canonical form (comments and blank-line groupings preserved).
@@ -215,6 +235,7 @@ Build and serve a wdoc site locally with live reload.
 | Switch | Value | Description |
 | --- | --- | --- |
 | --addr | ADDR | Address to bind (default 127.0.0.1:8080). |
+| --answer | — | Inject the questionnaire client: pending `@answerable` questions render as a form and answers write back into the source. |
 
 ```console
 wcl wdoc serve wdoc/book/main.wcl --addr 127.0.0.1:8080

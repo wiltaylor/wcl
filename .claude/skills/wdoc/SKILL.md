@@ -1,7 +1,7 @@
 ---
 name: wdoc
 description: "Reference and processes for wdoc. WCL's static-site and skill generator: declare pages and sites in WCL and render them to HTML, Markdown, a Claude skill folder, or PDF. Use when working with wdoc or answering questions about it."
-wskill_schema_version: 1.0.0
+wskill_schema_version: 1.1.0
 allowed-tools: []
 disallowed-tools: []
 disable-model-invocation: false

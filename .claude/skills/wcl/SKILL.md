@@ -1,7 +1,7 @@
 ---
 name: WCL
 description: "Reference and processes for WCL. A typed configuration and schema language: records, unions, interfaces, decorators, and a document model that gathers and validates structured data. Use when working with WCL or answering questions about it."
-wskill_schema_version: 1.0.0
+wskill_schema_version: 1.1.0
 allowed-tools: []
 disallowed-tools: []
 disable-model-invocation: false

@@ -1,7 +1,7 @@
 ---
 name: wskill
 description: "Create, edit, update and render wskill documents — self-contained WCL folders that capture everything about a topic (reference, processes, curated indexes) and project into both a human-readable book and a Claude Code skill. Use when the user wants to build, update, render, or install a wskill, capture a topic as a reusable skill, or asks about /wskill."
-wskill_schema_version: 1.0.0
+wskill_schema_version: 1.1.0
 allowed-tools:
   - Bash
   - Read

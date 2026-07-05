@@ -74,6 +74,20 @@ source upstream_docs {
 }
 WCL
   },
+  { name: "Question", code: <<'WCL'
+question q_version_policy {
+  question = "Which upstream version should this wskill pin?"
+  kind     = :single_select        // omit to infer: options → single, none → free text
+  context  = "The topic block's version field is unset."
+  option latest { label = "Track latest" }
+  option pinned { label = "Pin the current stable" }
+}
+// Answer it without touching WCL:
+//   wcl answer wskill.wcl                          — interactive walk-through
+//   wcl answer wskill.wcl --list                   — pending questions as JSON
+//   wcl wdoc serve wdoc/book/main.wcl --answer     — browser questionnaire
+WCL
+  },
   { name: "WskillRef", code: <<'WCL'
 wskill_ref wdoc {
   name     = "wdoc"

@@ -1,6 +1,6 @@
 // wskill base schema — ships with the WSKILL skill scaffold.
 //
-// Schema version: 1.0.0 (mirror it in `schema_version` in wskill.wcl).
+// Schema version: 1.1.0 (mirror it in `schema_version` in wskill.wcl).
 //
 // DO NOT HAND-EDIT. Everything topic-specific belongs in `extensions.wcl`, and
 // the topic-owned vocabularies (entity kinds, artifact kinds) in `kinds.wcl` —
@@ -22,6 +22,7 @@
 namespace wcl.wskill
 
 import <wdoc.wcl>
+import <answer.wcl>      // @answerable + the `option` block for `question`s
 import "./kinds.wcl"     // topic-owned vocabularies (EntityKind, ArtifactKind)
 
 // ---------------------------------------------------------------------------
@@ -168,6 +169,46 @@ type Source {
   covers:           utf8         // free text: what this source is good for
   last_checked:     utf8?       // ISO date the agent last consulted it
   reflects_version: utf8?       // upstream version this source described when checked
+}
+
+// ---------------------------------------------------------------------------
+// Open questions (update-workflow metadata, answered via answer mode)
+// ---------------------------------------------------------------------------
+
+// A question's lifecycle: :open (needs an answer) → :answered, or :dropped
+// when it is withdrawn/skipped.
+symbol_set QuestionStatus { open answered dropped }
+
+// How a choice question presents: one pick, several, or plain text. Free text
+// is ALWAYS also available — options accelerate, they never constrain.
+symbol_set QuestionKind { single_select multi_select free_text }
+
+// An open question about the topic, captured while authoring: an unclear
+// fact, a decision only the topic owner can make, a gap found during an
+// update sweep. Wired for guided answer mode via `@answerable` —
+// `wcl answer wskill.wcl` walks the :open ones in the terminal, and the
+// serve toolchain's `--answer` flag renders them as a browser questionnaire;
+// both write `answer` + `status` straight back into the data file, one
+// question at a time. When `kind` is omitted, a question with `option`
+// children behaves as :single_select and one without as :free_text.
+// Like `source`, a question is update-workflow metadata and never renders
+// as topic content: fold an :answered question's answer into real units on
+// the next sweep, then delete the block.
+@answerable(prompt = "question", response = "answer", status = "status",
+            pending = :open, resolved = :answered, skipped = :dropped)
+@block("question")
+type Question {
+  @inline(0) id: identifier
+  question: utf8                 // the prompt shown to the respondent
+  @default(:open) status: QuestionStatus
+  answer:   utf8?                // written by answer mode (or by hand)
+  kind:     QuestionKind?        // omit to infer from the presence of options
+  context:  utf8?                // why it's asked / what the answer unblocks
+  unit:     identifier?          // unit the answer should update, when known
+  // Choices, as `option <id> { label = … }` children (the answer stdlib's
+  // block; `label` falls back to the option's id).
+  @children("option") options: list<AnswerOption>
+  @default([]) tags: list<utf8>
 }
 
 // ---------------------------------------------------------------------------
@@ -408,6 +449,7 @@ type WSkillDoc {
   @children("skill") skills: list<Skill>
 
   @children("source")     sources:    list<Source>
+  @children("question")   questions:  list<Question>
   @children("wskill_ref") refs:       list<WskillRef>
   @children("artifact")   artifacts:  list<Artifact>
 
