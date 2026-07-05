@@ -152,15 +152,18 @@ wad-check:
     cargo run -p wcl -- check .wad/wad.wcl
     cargo run -p wcl -- check .wad/wdoc/book/main.wcl
 
-# Fail when .wad/data/generated/ is stale — re-runs every extractor and requires a quiet git tree after (runs in ci; needs uv and full git history)
+# Fail when .wad/data/generated/ is stale — re-runs every extractor and requires a quiet git tree after (runs in ci; needs uv and full git history).
+# releases.wcl is exempt: it derives from git tags, and the release pipeline creates a tag AFTER the commit CI builds from, so it can never be
+# fresh at gate time — the keep-current sweep picks new releases up instead.
 [group('quality')]
 wad-extract-check: wad-extract
-    @if [ -n "$(git status --porcelain -- .wad/data/generated)" ]; then \
-        git --no-pager diff -- .wad/data/generated | head -80; \
+    @if [ -n "$(git status --porcelain -- .wad/data/generated ':(exclude).wad/data/generated/releases.wcl')" ]; then \
+        git --no-pager diff -- .wad/data/generated ':(exclude).wad/data/generated/releases.wcl' | head -80; \
         echo "wad generated-data drift: run 'just wad-extract' and commit the result"; \
         exit 1; \
     fi
-    @echo "wad-extract-check OK — .wad/data/generated is fresh"
+    @git checkout -q -- .wad/data/generated/releases.wcl 2>/dev/null || true
+    @echo "wad-extract-check OK — .wad/data/generated is fresh (releases.wcl exempt: tag-derived)"
 
 # Fail when the wad wskill's hand-reflected fact tables lag the WAD schema version (runs in ci)
 [group('quality')]

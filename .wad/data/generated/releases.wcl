@@ -2,6 +2,78 @@
 // Source: git tags (v*) and the commit subjects between them
 namespace wcl.wad
 
+release rel_v0_30_0_alpha {
+  version = "v0.30.0-alpha"
+  date    = "2026-07-05"
+  repo    = wcl_monorepo
+  summary = "9 changes since v0.29.0-alpha"
+  highlights = [
+    "feat(wad): action both WAD review rounds — restructure, new views, renderer fixes",
+    "feat(wad): third review round — boundary eviction guarantee, CLI reference, component-level code items",
+    "feat(lang): path/glob builtins — path_contains, glob_match, glob_overlaps",
+    "feat(wdoc): text block label slot + per-edge arrival anchors",
+    "feat(wad): CLI command modelling + module-API code items",
+    "feat(answer): guided answer mode — @answerable questions, wcl answer, serve --answer",
+    "chore: cut pre-release",
+    "fix(wad): straight routing for module-API diagrams — un-break CI wad-build",
+    "… and 1 more changes",
+  ]
+  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.30.0-alpha"
+}
+
+release rel_v0_29_0_alpha {
+  version = "v0.29.0-alpha"
+  date    = "2026-07-02"
+  repo    = wcl_monorepo
+  summary = "2 changes since v0.28.2-alpha"
+  highlights = [
+    "feat(wdoc): rework the landing onto website-template components",
+    "chore: cut pre-release",
+  ]
+  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.29.0-alpha"
+}
+
+release rel_v0_28_2_alpha {
+  version = "v0.28.2-alpha"
+  date    = "2026-07-02"
+  repo    = wcl_monorepo
+  summary = "1 changes since v0.28.1-alpha"
+  highlights = [
+    "fix(just): pin the real host triple in the fuzz recipes",
+  ]
+  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.28.2-alpha"
+}
+
+release rel_v0_28_1_alpha {
+  version = "v0.28.1-alpha"
+  date    = "2026-07-02"
+  repo    = wcl_monorepo
+  summary = "1 changes since v0.28.0-alpha"
+  highlights = [
+    "fix(ci): install cargo-fuzz via the explicit tool input",
+  ]
+  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.28.1-alpha"
+}
+
+release rel_v0_28_0_alpha {
+  version = "v0.28.0-alpha"
+  date    = "2026-07-02"
+  repo    = wcl_monorepo
+  summary = "13 changes since v0.27.0-alpha"
+  highlights = [
+    "feat(init): reskin wskill-registry landing to the Forge design",
+    "feat(wdoc): edit_object button + agent⇄reviewer comment handshake",
+    "docs(wad): reorganize architecture pages into numbered views",
+    "feat(wskill): schema 1.0.0 — entity-kind vocabulary, artifacts, presentation + training views",
+    "feat(wskill): complete the meta wskill — decision guide, view docs, full runbook suite",
+    "feat(edit): in-browser source editor for `serve --edit` — highlighting, live check, file tree",
+    "feat(wskill): ship decks + training courses for the wcl and wdoc wskills",
+    "feat(edit): preview without saving — render unsaved buffers into a scratch tree",
+    "… and 5 more changes",
+  ]
+  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.28.0-alpha"
+}
+
 release rel_v0_27_0_alpha {
   version = "v0.27.0-alpha"
   date    = "2026-06-29"
@@ -204,88 +276,4 @@ release rel_v0_17_0_alpha {
     "… and 54 more changes",
   ]
   url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.17.0-alpha"
-}
-
-release rel_v0_16_0_alpha {
-  version = "v0.16.0-alpha"
-  date    = "2026-06-09"
-  repo    = wcl_monorepo
-  summary = "28 changes since v0.15.0-alpha"
-  highlights = [
-    "chore(skill): rebuild wcl skill reference docs",
-    "feat(wdoc): auto-document a @document's blocks via child_types/block_reference",
-    "fix(wcl_lang): resolve @connections fields across imported files",
-    "feat(wdoc): add node_table diagram shape with per-row connection points",
-    "fix(wdoc): reserve a container's real footprint in auto-layout",
-    "fix(wdoc): lead shape icon badges beside the label instead of overlapping",
-    "chore(skill): rebuild wcl skill reference docs",
-    "fix(wdoc): route diagram edges around tightly-packed shapes, else error",
-    "… and 20 more changes",
-  ]
-  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.16.0-alpha"
-}
-
-release rel_v0_15_0_alpha {
-  version = "v0.15.0-alpha"
-  date    = "2026-06-03"
-  repo    = wcl_monorepo
-  summary = "4 changes since v0.14.0-alpha"
-  highlights = [
-    "fix(wdoc): read cross-root @children from pages; surface eval errors",
-    "fix(wcl_lang): preserve comments through `wcl fmt` (#12)",
-    "feat(wcl_lang): namespace-scoped block/table/decorator kinds",
-    "chore: cut pre-release",
-  ]
-  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.15.0-alpha"
-}
-
-release rel_v0_14_0_alpha {
-  version = "v0.14.0-alpha"
-  date    = "2026-06-02"
-  repo    = wcl_monorepo
-  summary = "3 changes since v0.13.0-alpha"
-  highlights = [
-    "feat(wcl_lang): compose @document schemas per namespace",
-    "feat(wcl_lang): allow bare hyphen/slash block labels",
-    "chore: cut pre-release",
-  ]
-  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.14.0-alpha"
-}
-
-release rel_v0_13_0_alpha {
-  version = "v0.13.0-alpha"
-  date    = "2026-06-01"
-  repo    = wcl_monorepo
-  summary = "19 changes since v0.12.0-alpha"
-  highlights = [
-    "docs: slim CLAUDE.md into a lean navigation map",
-    "feat(wdoc): add click-to-play video block",
-    "feat(wdoc): add Markdown output target",
-    "feat(wdoc): auto-documenting type tables via reflection",
-    "docs(wdoc): generate field tables from the schema via type_table",
-    "feat(wdoc): add @only/@except block visibility filters",
-    "feat(wdoc): auto prev/next page links in the book template",
-    "feat(wdoc): site favicon + per-page browser title",
-    "… and 11 more changes",
-  ]
-  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.13.0-alpha"
-}
-
-release rel_v0_12_0_alpha {
-  version = "v0.12.0-alpha"
-  date    = "2026-05-31"
-  repo    = wcl_monorepo
-  summary = "229 changes since v0.11.2-alpha"
-  highlights = [
-    "feat(lang): add decorator search builtin",
-    "test(wdoc): fix stack-heavy template test",
-    "refactor(lang): resolve embedded libraries in memory",
-    "fix(zig): fix binding mutex compatibility",
-    "refactor: unify embedded wcl libraries",
-    "refactor: move bundled assets into wcl_lang",
-    "refactor: merge wdoc into wcl_lang",
-    "refactor(wdoc): move browser runtimes into embedded library",
-    "… and 221 more changes",
-  ]
-  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.12.0-alpha"
 }
