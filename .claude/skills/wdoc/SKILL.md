@@ -4,7 +4,7 @@ description: "Reference and processes for wdoc. WCL's static-site and skill gene
 allowed-tools: []
 disable-model-invocation: false
 metadata:
-  wskill_schema_version: 1.2.0
+  wskill_schema_version: 1.3.0
 ---
 
 # wdoc

@@ -299,6 +299,30 @@ type SkillConfig {
   license: utf8?
 }
 
+// A Claude Code agent (subagent) definition for the `:ai_skill` target
+// (`wcl wdoc skill`). Authored at the DOCUMENT level, a peer of `site` —
+// agents belong to the document, not to one skill; the backend writes
+// each to `agents/<name>.md` at the output root, beside the skill
+// folder(s) — YAML front matter from these fields (`tools` joined
+// comma-separated, the agent-file convention), the `body` child rendered
+// as the agent's system prompt in Markdown. Ignored by every other
+// target. The agent file is the standing role constitution; the
+// dispatching orchestrator's prompt carries the per-task payload, so
+// make the body self-contained.
+@block("agent")
+type AgentConfig {
+  @doc("Agent name — becomes the file `agents/<name>.md`; a kebab-case slug.")
+  @inline(0) name: utf8
+  @doc("Delegation trigger — when an orchestrator should dispatch this agent.")
+  description: utf8
+  @doc("Tool allowlist (front-matter `tools:`, comma-joined). Empty = the line is omitted (unrestricted).")
+  @default([]) tools: list<utf8>
+  @doc("Front-matter `model:` — e.g. \"sonnet\", \"opus\", \"haiku\", \"inherit\". Absent = omitted.")
+  model: utf8?
+  @doc("The agent's system prompt, rendered to Markdown.")
+  @child("body") body: WdocAddressableBody?
+}
+
 // A named template. `render` lays out a page body from the context.
 @block("template")
 type Template {

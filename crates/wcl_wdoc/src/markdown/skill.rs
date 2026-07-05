@@ -174,6 +174,15 @@ fn skill_inner(
                 &site_prefix,
             )?;
         }
+        // Document-level agents land once at the output root, beside the
+        // skill folder(s) — they belong to the document, not to one site.
+        count += emit_agents(
+            &doc,
+            base_dir.as_deref(),
+            out_dir,
+            &site_pages,
+            &site_prefix,
+        )?;
         Ok(count)
     });
     if let Some((e, src)) = eval_err {
@@ -223,6 +232,111 @@ fn skill_includes(
             seen,
             depth + 1,
         )?;
+    }
+    Ok(count)
+}
+
+/// Collect blocks of `kind`, expanding `wdoc_repeater`s in place (mirrors
+/// `collect_pages_into`) so templates can generate the blocks from data —
+/// used for the document's `agent` blocks and an agent's `body` child.
+fn collect_kind_into<'a>(
+    kind: &str,
+    blocks: impl Iterator<Item = Block<'a>>,
+    out: &mut Vec<Block<'a>>,
+) {
+    for b in blocks {
+        if b.kind() == kind {
+            out.push(b);
+        } else if b.kind() == "wdoc_repeater"
+            && b.binding_scope_depth() <= crate::render::MAX_LOWER_DEPTH
+        {
+            collect_kind_into(
+                kind,
+                crate::render::expand_repeater_children(&b).into_iter(),
+                out,
+            );
+        }
+    }
+}
+
+/// Write the document's `agent` blocks (peers of `site`) to
+/// `<out_dir>/agents/<name>.md` — YAML front matter from the fields, the
+/// `body` child rendered as the agent's system prompt. Agents belong to
+/// the document, not to one skill site, so they land once at the output
+/// root beside the skill folder(s); installers copy them into a repo's
+/// `.claude/agents/`. Returns the number of agent files written.
+fn emit_agents(
+    doc: &Document,
+    base_dir: Option<&Path>,
+    out_dir: &Path,
+    site_pages: &BTreeMap<String, HashSet<String>>,
+    site_prefix: &BTreeMap<String, String>,
+) -> Result<usize, BuildError> {
+    let mut agent_blocks: Vec<Block> = Vec::new();
+    collect_kind_into("agent", doc.blocks(), &mut agent_blocks);
+    if agent_blocks.is_empty() {
+        return Ok(0);
+    }
+    let agents_dir = out_dir.join("agents");
+    fs::create_dir_all(&agents_dir)
+        .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", agents_dir.display())))?;
+    // A siteless pattern context: an installed agent file lives outside any
+    // skill folder, so internal page links have nothing to resolve against —
+    // agent prompts must be self-contained (a dangling link fails the build).
+    let icons = IconRegistry::load(doc);
+    let tilesets = TilesetRegistry::load(doc, base_dir)?;
+    let images = ImageRegistry::new(base_dir.map(Path::to_path_buf));
+    let videos = crate::video::VideoRegistry::new(base_dir.map(Path::to_path_buf));
+    let files = crate::file::FileRegistry::new(base_dir.map(Path::to_path_buf));
+    let patterns = InlinePatterns::load(
+        doc,
+        HashSet::new(),
+        None,
+        String::new(),
+        site_pages.clone(),
+        site_prefix.clone(),
+        icons,
+        tilesets,
+        images,
+        videos,
+        files,
+        crate::inline::Backend::Markdown,
+    );
+    let mut count = 0;
+    let mut agent_names: HashSet<String> = HashSet::new();
+    for agent in &agent_blocks {
+        let agent_name = page_name(agent)
+            .ok_or_else(|| BuildError::BadPage("an `agent` block has no name label".into()))?;
+        if !agent_names.insert(agent_name.clone()) {
+            return Err(BuildError::BadPage(format!(
+                "agent \"{agent_name}\" is declared twice"
+            )));
+        }
+        let fm = yaml::agent_front_matter(agent, &agent_name)?;
+        let mut bodies: Vec<Block> = Vec::new();
+        collect_kind_into("body", agent.blocks(), &mut bodies);
+        let prompt = match bodies.first() {
+            Some(body) => {
+                let children: Vec<Block> = body.blocks().collect();
+                emit::body_to_markdown(
+                    doc,
+                    &children,
+                    &format!("agent_{agent_name}"),
+                    &patterns,
+                    base_dir,
+                    out_dir,
+                )?
+            }
+            None => String::new(),
+        };
+        let path = agents_dir.join(format!("{agent_name}.md"));
+        fs::write(&path, format!("{fm}\n{prompt}"))
+            .map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
+        count += 1;
+    }
+    let link_errors = patterns.take_link_errors();
+    if !link_errors.is_empty() {
+        return Err(BuildError::BadLink(link_errors));
     }
     Ok(count)
 }

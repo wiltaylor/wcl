@@ -239,12 +239,24 @@ md-build *ARGS:
 # replaced wholesale so removed pages don't linger. Smoke-tests `wcl wdoc skill`.
 [group('dev')]
 skills-install:
+    @mkdir -p .claude/agents target/skills-stage && rm -rf target/skills-stage/*
     @for d in docs/wskills/*; do \
         [ -f "$d/wdoc/skill/main.wcl" ] || continue; \
         name=$(basename "$d"); \
         echo "==> $name" >&2; \
-        rm -rf ".claude/skills/$name"; \
-        cargo run -q -p wcl -- wdoc skill "$d/wdoc/skill/main.wcl" --out ".claude/skills/$name"; \
+        stage="target/skills-stage/$name"; \
+        cargo run -q -p wcl -- wdoc skill "$d/wdoc/skill/main.wcl" --out "$stage"; \
+        for md in "$stage/SKILL.md" "$stage"/*/SKILL.md; do \
+            [ -f "$md" ] || continue; \
+            sd=$(dirname "$md"); \
+            sn=$(sed -n 's/^name: *//p' "$md" | head -1 | sed 's/^"//; s/"$//'); \
+            rm -rf ".claude/skills/$sn"; \
+            cp -r "$sd" ".claude/skills/$sn"; \
+        done; \
+        if [ -d "$stage/agents" ]; then \
+            echo "    agents: $(ls "$stage/agents")" >&2; \
+            cp "$stage/agents/"*.md .claude/agents/; \
+        fi; \
     done
 
 # Render the example and the docs to PDF under target/pdf/ — smoke-tests `wcl wdoc pdf`

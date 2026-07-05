@@ -100,6 +100,47 @@ pub(crate) fn skill_front_matter(
     Ok(format!("---\n{body}---\n"))
 }
 
+/// Build an agent file's `---`-fenced YAML front matter for the `:ai_skill`
+/// target from a site's `agent` block: `name` / `description`, `tools` as
+/// one comma-joined line (the agent-file convention, unlike SKILL.md's
+/// list form), and `model` when set. Errors when a required field can't
+/// be read.
+pub(crate) fn agent_front_matter(agent: &Block<'_>, name: &str) -> Result<String, BuildError> {
+    let mut body = String::new();
+    body.push_str(&yaml_key("name"));
+    emit_value(&mut body, &Value::Utf8(name.to_string()), 0);
+    let description = agent
+        .field("description")
+        .and_then(|f| f.value().ok().cloned())
+        .ok_or_else(|| {
+            BuildError::BadPage(format!(
+                "agent \"{name}\" is missing its `description` field"
+            ))
+        })?;
+    body.push_str(&yaml_key("description"));
+    emit_value(&mut body, &description, 0);
+    if let Some(Value::List(items)) = agent.field("tools").and_then(|f| f.value().ok().cloned()) {
+        let tools: Vec<String> = items
+            .iter()
+            .filter_map(|v| match v {
+                Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => Some(s.clone()),
+                _ => None,
+            })
+            .collect();
+        if !tools.is_empty() {
+            body.push_str(&yaml_key("tools"));
+            emit_value(&mut body, &Value::Utf8(tools.join(", ")), 0);
+        }
+    }
+    if let Some(Value::Utf8(model)) = agent.field("model").and_then(|f| f.value().ok().cloned())
+        && !model.is_empty()
+    {
+        body.push_str(&yaml_key("model"));
+        emit_value(&mut body, &Value::Utf8(model), 0);
+    }
+    Ok(format!("---\n{body}---\n"))
+}
+
 /// Append the value half of a `key:` entry (the key text is already in
 /// `out`), formatted `indent` spaces deep. Scalars stay on the key's line;
 /// lists and records open onto following, more-indented lines.

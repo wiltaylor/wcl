@@ -90,6 +90,32 @@ WCL
     body  = "`:ai_skill` is a Markdown-only target. Building a skill site with `wcl wdoc build` (HTML) fails with a message pointing you at `wcl wdoc skill`. The `file` block itself works on every target — on the HTML and Markdown targets a `dir`-less `file` lands in the `_wdoc/` asset folder."
   }
 
+  h2 "Shipping agents"
+
+  p "A document-level `agent` block (a peer of `site`) ships a Claude Code subagent definition: the backend writes each one to `agents/<name>.md` at the output root, beside the skill folder(s) — YAML front matter from its fields (`tools` joined onto one comma-separated line, the agent-file convention; empty list and absent `model` omit their lines) and the `body` child rendered as the agent's system prompt. Agents belong to the document, not to one skill, so a document with several skill sites ships one shared set. Installers copy them into a repo's `.claude/agents/`. The agent file is the standing role constitution; the dispatching orchestrator's prompt carries the per-task payload, so write the body self-contained. Every other target ignores `agent` blocks. Duplicate agent names fail the build."
+
+  code wcl {
+    source = <<'WCL'
+site assistant { default_template = :ai_skill
+  skill { name = "demo-skill"  description = "A demo skill." }
+}
+
+agent "demo-helper" {
+  description = "Runs one demo task. Use when dispatching demo work."
+  tools = ["Read", "Bash"]
+  model = "sonnet"
+  body {
+    h1 "Role"
+    p  "You are the demo helper. Your prompt carries one task; do it and stop."
+  }
+}
+WCL
+  }
+
+  h2 "Several skills from one document"
+
+  p "A document may declare more than one `:ai_skill` site. With a single skill site the folder renders flat at the output root; with several (and none marked `root = true`), each renders into its own named subfolder — `<out>/<site>/SKILL.md` — with the shared `agents/` beside them. Pages join a skill through the usual `sites = [ … ]` membership, so each skill curates its own page set (and pages may be shared)."
+
   h2 "Sharing pages with a website"
 
   p "A `:ai_skill` site can live in the same document as a `:webpage` or `:book` site. `wcl wdoc build` / `pdf` / `markdown` skip the skill site, and `wcl wdoc skill` builds only it — so one source feeds both a hosted site and a skill. Because a page joins a site through its `sites = [ … ]` list, the *same* reference page can belong to both: list both site names and it renders into the book and into the skill's `references/`."

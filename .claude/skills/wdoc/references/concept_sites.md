@@ -48,6 +48,7 @@ The `@document` root: the set of tags legal at the top level of a wdoc document 
 | `partials` | `partial` | yes |  |
 | `bodies` | `body` | yes |  |
 | `sites` | `site` | yes |  |
+| `agents` | `agent` | yes |  |
 | `includes` | `include` | yes |  |
 
 A `site` block configuring one output target — its template, title, theme, navigation, search, and multi-site routing.

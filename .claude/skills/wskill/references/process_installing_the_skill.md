@@ -28,7 +28,7 @@ $ just skill-build          # → out/skill/  (SKILL.md + references/)
 $ cp -r out/skill <repo>/.claude/skills/<name>
 ```
 
-Copy the rendered folder into the target repo's `.claude/skills/<name>/`. Use the `name` from the generated SKILL.md frontmatter — that is what the agent invokes. A repo that hosts the wskill source usually wraps this in its own just recipe so the installed copy regenerates with the model.
+Copy the rendered folder into the target repo's `.claude/skills/<name>/`. Use the `name` from the generated SKILL.md frontmatter — that is what the agent invokes. If the render has an `agents/` folder (the skill ships subagents), also copy `agents/*.md` into the repo's `.claude/agents/` — subagent files load at session start, so restart after installing. A repo that hosts the wskill source usually wraps this in its own just recipe so the installed copy regenerates with the model.
 
 ### Step 3: Verify the agent loads it
 

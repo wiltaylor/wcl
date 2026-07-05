@@ -23,6 +23,9 @@ import "../component/process.wcl"   // process_body
 // The single topic block, bound from its gather list (see base.wcl).
 let topic = head(topics)
 let skill = head(skills)
+// Alias for use INSIDE the wdoc `skill { }` config block below, where a bare
+// `skill.<field>` would self-reference that block instead of this binding.
+let skill_cfg = skill
 
 // Audience filter — keep the skill lean. Each `let` shadows the gathered list of
 // the same name with its "both"/"ai" subset (dropping book-only blocks).
@@ -55,8 +58,8 @@ site skill {
   skill {
     // The topic id, not the display name: SKILL.md's `name` must be lowercase
     // and equal the install directory (canonical-skill frontmatter rules).
-    name        = $"${topic.id}"
-    description = $"Reference and processes for ${topic.name}. ${topic.summary} Use when working with ${topic.name} or answering questions about it."
+    name        = skill_cfg.name ?? $"${topic.id}"
+    description = skill_cfg.description ?? $"Reference and processes for ${topic.name}. ${topic.summary} Use when working with ${topic.name} or answering questions about it."
   }
 }
 

@@ -257,3 +257,92 @@ fn include_fans_out_member_skills() {
     );
     assert!(md.contains("# Alpha"), "member page body rendered");
 }
+
+#[test]
+fn agent_blocks_emit_agent_files() {
+    let (_t, out) = build(
+        "site s {\n  default_template = :ai_skill\n  \
+           skill {\n    name = \"demo-skill\"\n    description = \"A demo skill.\"\n  }\n}\n\
+         agent \"demo-helper\" {\n  \
+           description = \"Runs one demo task. Use when dispatching demo work.\"\n  \
+           tools = [\"Read\", \"Bash\"]\n  \
+           model = \"sonnet\"\n  \
+           body {\n    h1 \"Role\"\n    p \"You are the demo helper agent.\"\n  }\n}\n\
+         agent \"demo-bare\" {\n  \
+           description = \"An agent with no tools list, no model, no body.\"\n}\n\
+         page overview { start = true\n  h1 \"Demo\"\n}\n",
+    );
+    let md = read(&out, "agents/demo-helper.md");
+    assert!(md.starts_with("---\n"), "front matter fence: {md}");
+    assert!(md.contains("name: demo-helper"), "agent name: {md}");
+    assert!(
+        md.contains("description: Runs one demo task. Use when dispatching demo work."),
+        "agent description: {md}"
+    );
+    assert!(
+        md.contains("tools: \"Read, Bash\""),
+        "tools comma-joined: {md}"
+    );
+    assert!(md.contains("model: sonnet"), "model line: {md}");
+    assert!(md.contains("# Role"), "body heading rendered: {md}");
+    assert!(
+        md.contains("You are the demo helper agent."),
+        "body prose rendered: {md}"
+    );
+
+    let bare = read(&out, "agents/demo-bare.md");
+    assert!(!bare.contains("tools:"), "empty tools omitted: {bare}");
+    assert!(!bare.contains("model:"), "absent model omitted: {bare}");
+}
+
+#[test]
+fn duplicate_agent_names_fail_the_build() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "site s {\n  default_template = :ai_skill\n  \
+           skill { name = \"demo\"  description = \"d\" }\n}\n\
+         agent \"dup\" { description = \"a\" }\n\
+         agent \"dup\" { description = \"b\" }\n\
+         page overview { start = true\n  h1 \"Demo\"\n}\n",
+    );
+    let out = tmp.path().join("out");
+    match skill(&src, &out, None) {
+        Err(BuildError::BadPage(m)) => assert!(m.contains("dup"), "names the duplicate: {m}"),
+        Ok(n) => panic!("expected duplicate-agent error, wrote {n} pages"),
+        Err(e) => panic!(
+            "expected duplicate-agent BadPage error, got: {}",
+            e.render_plain()
+        ),
+    }
+}
+
+/// Two `:ai_skill` sites in one document (none marked root) each render
+/// into their own named subfolder, and document-level agents land once at
+/// the output root beside them — the multi-skill wskill layout.
+#[test]
+fn multiple_skill_sites_render_side_by_side_with_shared_agents() {
+    let (_t, out) = build(
+        "site alpha {\n  default_template = :ai_skill\n  \
+           skill { name = \"alpha\"  description = \"Alpha skill.\" }\n}\n\
+         site beta {\n  default_template = :ai_skill\n  \
+           skill { name = \"beta\"  description = \"Beta skill.\" }\n}\n\
+         agent \"shared-helper\" { description = \"Shared by both skills.\" }\n\
+         page a_start { sites = [:alpha]  start = true\n  h1 \"Alpha\"\n}\n\
+         page b_start { sites = [:beta]  start = true\n  h1 \"Beta\"\n}\n",
+    );
+    let a = read(&out, "alpha/SKILL.md");
+    assert!(a.contains("name: alpha"), "alpha front matter: {a}");
+    let b = read(&out, "beta/SKILL.md");
+    assert!(b.contains("name: beta"), "beta front matter: {b}");
+    let ag = read(&out, "agents/shared-helper.md");
+    assert!(
+        ag.contains("name: shared-helper"),
+        "shared agent at the root: {ag}"
+    );
+    assert!(
+        !out.join("alpha/agents").exists() && !out.join("beta/agents").exists(),
+        "agents are not duplicated into the skill folders"
+    );
+}

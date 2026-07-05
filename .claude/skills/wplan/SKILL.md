@@ -8,7 +8,7 @@ allowed-tools:
   - Read
 disable-model-invocation: false
 metadata:
-  wskill_schema_version: 1.2.0
+  wskill_schema_version: 1.3.0
 ---
 
 # wplan

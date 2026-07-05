@@ -350,7 +350,11 @@ file "schema/base.wcl" {
   content = <<'WSK_SCHEMA_BASE_WCL'
 // wskill base schema — ships with the WSKILL skill scaffold.
 //
-// Schema version: 1.2.0 (mirror it in `schema_version` in wskill.wcl).
+// Schema version: 1.3.0 (mirror it in `schema_version` in wskill.wcl).
+// 1.3.0 is additive over 1.2.0: multiple skills per wskill (`skill` gains
+// optional name/description identity overrides; each extra skill pairs with
+// its own `:ai_skill` site) and shipped subagents (document-level wdoc
+// `agent` blocks, peers of the skills) — 1.2.0 data validates unchanged.
 //
 // DO NOT HAND-EDIT. Everything topic-specific belongs in `extensions.wcl`, and
 // the topic-owned vocabularies (entity kinds, artifact kinds) in `kinds.wcl` —
@@ -483,14 +487,39 @@ type Asset {
   @default([]) tags: list<utf8>
 }
 
+// NOTE on shipped agents: a wskill's Claude Code subagents are authored as
+// document-level wdoc `agent` blocks (peers of the `skill` blocks — an
+// agent belongs to the wskill, not to one of its skills; see AgentConfig
+// in wdoc's templates.wcl). The skill target writes each to
+// agents/<name>.md at the output root, beside the skill folder(s), and
+// installers copy them into a repo's .claude/agents/. The agent body is
+// the standing role constitution; the dispatching orchestrator's prompt
+// carries the per-task payload, so write it self-contained (a subagent
+// never sees the session's own prompt).
+//
+//   agent "topic-helper" {
+//     description = "Does one X task. Use when dispatching X work."
+//     tools = ["Read", "Bash"]        // empty/omitted = unrestricted
+//     model = "sonnet"                // omitted = inherit the session model
+//     body { p "You are …" }          // the whole system prompt
+//   }
+
 // Controls written into the generated SKILL.md frontmatter, plus the bundled
 // artifacts (script / asset children). A `skill` block kind is only possible
 // because the schema is namespaced (`wcl.wskill::skill`) — bare it would collide
 // with wdoc's own `skill` block. Defaults are absent-equivalent (empty list = no
 // pre-approval / no restriction; false = model may invoke), so they are safe to
-// always emit. Exactly one per wskill; the templates bind `let skill = head(skills)`.
+// always emit. A wskill ships ONE OR MORE skills: the templates bind the
+// primary as `let skill = head(skills)`; a further skill block sets `name`
+// (+ `description`) and pairs with its own `:ai_skill` site in the skill
+// template (each site renders into its own subfolder of out/skill).
 @block("skill")
 type Skill {
+  // Identity overrides — the PRIMARY skill omits both (the template derives
+  // name from the topic id and generates the reference-style description);
+  // every ADDITIONAL skill sets them (its install name and trigger text).
+  name:        utf8?
+  description: utf8?
   @default([])    allowed_tools:            list<utf8>   // → SKILL.md `allowed-tools`
   @default([])    disallowed_tools:         list<utf8>   // → `disallowed-tools`
   @default(false) disable_model_invocation: bool         // → `disable-model-invocation`
@@ -828,10 +857,14 @@ type Procedure {
 type WSkillDoc {
   schema_version: utf8
 
-  // Exactly one topic and one skill block are expected. They are gathered
-  // as lists — not @child singles — because list elements resolve omitted
-  // optional fields to `none`, which a single @child block does not. Templates
-  // bind `let topic = head(topics)` / `let skill = head(skills)`.
+  // Exactly one topic block is expected; a wskill ships ONE OR MORE skills
+  // (each `skill` block pairs with an `:ai_skill` site in the skill
+  // template). They are gathered as lists — not @child singles — because
+  // list elements resolve omitted optional fields to `none`, which a single
+  // @child block does not. Templates bind `let topic = head(topics)` /
+  // `let skill = head(skills)` (the primary skill). Shipped agents are
+  // document-level wdoc `agent` blocks (peers of the skills) — the merged
+  // wdoc @document gathers those as `agents`.
   @children("topic") topics: list<Topic>
   @children("skill") skills: list<Skill>
 
@@ -2580,6 +2613,9 @@ import "../component/type_index.wcl" // shared unit-index page component
 // The single topic block, bound from its gather list (see base.wcl).
 let topic = head(topics)
 let skill = head(skills)
+// Alias for use INSIDE the wdoc `skill { }` config block below, where a bare
+// `skill.<field>` would self-reference that block instead of this binding.
+let skill_cfg = skill
 
 // Skill artifacts are authored as children of the skill block (base.wcl).
 let skill_scripts = skill.skill_scripts
@@ -2620,8 +2656,8 @@ site skill {
     // The topic id, not the display name: SKILL.md's `name` must be lowercase
     // and equal the install directory (canonical-skill frontmatter rules), so
     // keep the topic id lowercase-hyphen-safe and install under that name.
-    name        = $"${topic.id}"
-    description = $"Reference and processes for ${topic.name}. ${topic.summary} Use when working with ${topic.name} or answering questions about it."
+    name        = skill_cfg.name ?? $"${topic.id}"
+    description = skill_cfg.description ?? $"Reference and processes for ${topic.name}. ${topic.summary} Use when working with ${topic.name} or answering questions about it."
     // license  = "MIT"   // optional; written to SKILL.md front matter
   }
 }
@@ -2959,7 +2995,7 @@ import "./data/research/research.wcl"
 ${match answer("include_presentation") { "yes" => "", _ => "// " }}import "./data/presentation/main.wcl"
 ${match answer("include_training") { "yes" => "", _ => "// " }}import "./data/training/main.wcl"
 
-schema_version = "1.2.0"
+schema_version = "1.3.0"
 
 topic ${answer("topic_id")} {
   name    = "${answer("topic_name")}"

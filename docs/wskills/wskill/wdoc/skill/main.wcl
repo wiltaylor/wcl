@@ -23,6 +23,9 @@ import "../component/type_index.wcl" // shared unit-index page component
 // The single topic block, bound from its gather list (see base.wcl).
 let topic = head(topics)
 let skill = head(skills)
+// Alias for use INSIDE the wdoc `skill { }` config block below, where a bare
+// `skill.<field>` would self-reference that block instead of this binding.
+let skill_cfg = skill
 
 // Skill artifacts are authored as children of the skill block (base.wcl).
 let skill_scripts = skill.skill_scripts
@@ -62,9 +65,9 @@ site skill {
   skill {
     // The topic id, not the display name: SKILL.md's `name` must be lowercase
     // and equal the install directory (canonical-skill frontmatter rules).
-    name        = $"${topic.id}"
+    name        = skill_cfg.name ?? $"${topic.id}"
     // Trigger-tuned description (this skill is the wskill toolchain itself).
-    description = "Create, edit, update and render wskill documents — self-contained WCL folders that capture everything about a topic (reference, processes, curated indexes) and project into both a human-readable book and a Claude Code skill. Use when the user wants to build, update, render, or install a wskill, capture a topic as a reusable skill, or asks about /wskill."
+    description = skill_cfg.description ?? "Create, edit, update and render wskill documents — self-contained WCL folders that capture everything about a topic (reference, processes, curated indexes) and project into both a human-readable book and a Claude Code skill. Use when the user wants to build, update, render, or install a wskill, capture a topic as a reusable skill, or asks about /wskill."
     // license  = "MIT"   // optional; written to SKILL.md front matter
   }
 }
