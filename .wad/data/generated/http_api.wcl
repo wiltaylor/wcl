@@ -7,6 +7,18 @@ code_item serve_http_api {
   name      = "Dev-server HTTP surface"
   summary   = "The endpoints `wcl wdoc serve` exposes (extracted from the axum router; comment/edit-mode routes appear only when those flags are on)."
   kind      = :api
+  api_endpoint ep_wdoc_answer {
+    method = "POST"  path = "/__wdoc_answer"
+    summary = "Record one answer/skip; re-discovers the question by file+span and writes through the validating pipeline."
+  }
+  api_endpoint ep_wdoc_answer_js {
+    method = "GET"  path = "/__wdoc_answer.js"
+    summary = "The questionnaire client script (answer mode)."
+  }
+  api_endpoint ep_wdoc_answers {
+    method = "GET"  path = "/__wdoc_answers"
+    summary = "Pending @answerable questions for the served document (answer mode)."
+  }
   api_endpoint ep_wdoc_check {
     method = "POST"  path = "/__wdoc_check"
     summary = "Dry-run diagnostics for an unsaved buffer (syntax + schema errors introduced)."

@@ -47,6 +47,18 @@ cli wcl_cli {
     code_example { lang = "console"  code = "wcl set site.wcl service.web.port 9090u32" }
   }
 
+  subcommand cmd_answer {
+    name = "answer"
+    description = "Walk a document's pending `@answerable` interview questions (from `import <answer.wcl>`) and record the answers — arrow-key menus for choice questions, free text always available, each answer written back immediately through the validating edit pipeline."
+    cli_arg    arg_file { name = "file"  description = "Path to the WCL document (imports are followed; answers land in the declaring file)." }
+    cli_switch sw_list { long = "--list"  description = "List the pending questions as JSON instead of prompting." }
+    cli_switch sw_id   { long = "--id"  value_name = "ID"  description = "Answer one question non-interactively: the question block's label." }
+    cli_switch sw_text { long = "--text"  value_name = "TEXT"  description = "Free-text answer for `--id` (may combine with `--pick`)." }
+    cli_switch sw_pick { long = "--pick"  value_name = "OPTION"  description = "Pick an option by its id for `--id` (repeatable)." }
+    cli_switch sw_skip { long = "--skip"  description = "Skip the `--id` question: writes its declared skipped status." }
+    code_example { lang = "console"  code = "wcl answer plan.wcl --id q_platforms --pick linux" }
+  }
+
   subcommand cmd_fmt {
     name = "fmt"
     description = "Reformat to canonical form (comments and blank-line groupings preserved)."
@@ -123,6 +135,7 @@ cli wcl_cli {
       description = "Build and serve a wdoc site locally with live reload."
       cli_arg    arg_entry { name = "entry"  description = "Path to the wdoc entry template." }
       cli_switch sw_addr { long = "--addr"  value_name = "ADDR"  description = "Address to bind (default 127.0.0.1:8080)." }
+      cli_switch sw_answer { long = "--answer"  description = "Inject the questionnaire client: pending `@answerable` questions render as a form and answers write back into the source." }
       code_example { lang = "console"  code = "wcl wdoc serve wdoc/book/main.wcl --addr 127.0.0.1:8080" }
     }
   }

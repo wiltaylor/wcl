@@ -483,6 +483,11 @@ struct ServeState {
     /// with `data-wcl-span` / `data-wcl-file` anchors. Composes with
     /// `comment_mode` — both clients can be injected at once.
     edit_mode: bool,
+    /// Answer mode (`--answer`): inject the questionnaire client into HTML
+    /// and expose the `/__wdoc_answers` / `/__wdoc_answer` endpoints — the
+    /// respondent-facing walk-through of `@answerable` question blocks.
+    /// Composes with both other modes.
+    answer_mode: bool,
     /// Watched source root; `comments.wcl` sidecars are discovered under it and
     /// comment / edit writes are sandboxed to within it.
     watch_root: PathBuf,
@@ -683,6 +688,7 @@ pub(crate) async fn serve(
     site: Option<String>,
     comment_mode: bool,
     edit_mode: bool,
+    answer_mode: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Resolve the output directory. If `--out` wasn't given, create a
     // TempDir and hold it for the lifetime of `serve` so cleanup runs
@@ -750,6 +756,7 @@ pub(crate) async fn serve(
         generation: tokio::sync::watch::Sender::new(0),
         comment_mode,
         edit_mode,
+        answer_mode,
         watch_root: watch_root.clone(),
         root_file: file.clone(),
         pending: Mutex::new(Vec::new()),
@@ -906,6 +913,12 @@ pub(crate) async fn serve(
                 axum::routing::post(handle_edit_delete),
             )
             .route("/__wdoc_edit/move", axum::routing::post(handle_edit_move));
+    }
+    if answer_mode {
+        app = app
+            .route("/__wdoc_answer.js", get(handle_answer_js))
+            .route("/__wdoc_answers", get(handle_answers_list))
+            .route("/__wdoc_answer", axum::routing::post(handle_answer_post));
     }
     let app = app
         .fallback(get(handle_static))
@@ -1499,6 +1512,32 @@ async fn handle_object_post(State(state): State<Arc<ServeState>>, body: String) 
     edit_result(crate::edit::object_post(&state.watch_root, &entry, &v))
 }
 
+async fn handle_answer_js() -> Response {
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        crate::answer::ANSWER_CLIENT_JS,
+    )
+        .into_response()
+}
+
+async fn handle_answers_list(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
+    let entry = entry_for(&state, query_param(&uri, "page_file").as_deref());
+    edit_result(crate::answer::answers_list(&entry))
+}
+
+async fn handle_answer_post(State(state): State<Arc<ServeState>>, body: String) -> Response {
+    let v = match parse_json_body(&body) {
+        Ok(v) => v,
+        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
+    };
+    let entry = entry_for(
+        &state,
+        v.get("page_file").and_then(serde_json::Value::as_str),
+    );
+    edit_result(crate::answer::answer_post(&state.watch_root, &entry, &v))
+}
+
 /// Canonicalize `file` and confirm it sits inside `root`, so a comment / edit
 /// write can't escape the served source tree. Returns the canonical path to
 /// edit.
@@ -1583,6 +1622,9 @@ async fn handle_static(State(state): State<Arc<ServeState>>, uri: Uri) -> Respon
                     // execute in document order).
                     bytes.extend_from_slice(crate::edit::EDITOR_SCRIPT_TAG.as_bytes());
                     bytes.extend_from_slice(crate::edit::EDIT_SCRIPT_TAG.as_bytes());
+                }
+                if state.answer_mode {
+                    bytes.extend_from_slice(crate::answer::ANSWER_SCRIPT_TAG.as_bytes());
                 }
             }
             (

@@ -877,7 +877,10 @@ fn content_etag(text: &str) -> String {
 /// document and run schema validation. If anything fails to re-parse or the
 /// document has schema errors, restore the originals and return the message —
 /// so a constraint violation surfaces as an error and never lands on disk.
-fn commit(root_file: &Path, changes: Vec<(PathBuf, String)>) -> Result<serde_json::Value, String> {
+pub(crate) fn commit(
+    root_file: &Path,
+    changes: Vec<(PathBuf, String)>,
+) -> Result<serde_json::Value, String> {
     use std::collections::HashSet;
 
     // Syntax gate before touching disk.
