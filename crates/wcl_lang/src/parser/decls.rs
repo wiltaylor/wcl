@@ -1105,6 +1105,12 @@ impl<'a> Parser<'a> {
         kind_end: usize,
         decorators: Vec<Decorator>,
     ) -> Result<Item, ParseError> {
+        // Drain this block's leading trivia *before* the body is parsed:
+        // `current_item_trivia` is a single shared slot that every nested
+        // `parse_item()` overwrites, so draining it after the body (as the
+        // construction sites below used to) lost any comment or blank line
+        // that preceded a block.
+        let leading_trivia = self.take_item_trivia();
         // Labels are value expressions in positional slots. Their types are
         // determined by the schema's `@inline(N)`-decorated fields.
         //
@@ -1170,7 +1176,7 @@ impl<'a> Parser<'a> {
                 items: Vec::new(),
                 decorators,
                 span: Span::new(start, end_offset),
-                leading_trivia: self.take_item_trivia(),
+                leading_trivia,
                 trailing_comment: None,
                 trailing_trivia: Vec::new(),
             }));
@@ -1222,7 +1228,7 @@ impl<'a> Parser<'a> {
             items,
             decorators,
             span: Span::new(start, rbrace.span.end),
-            leading_trivia: self.take_item_trivia(),
+            leading_trivia,
             trailing_comment: None,
             trailing_trivia,
         }))

@@ -28,6 +28,7 @@ type Service {
   @inline(0) id: identifier
   port: u32
 }
+
 service "web" {
   port = 8080u32
 }

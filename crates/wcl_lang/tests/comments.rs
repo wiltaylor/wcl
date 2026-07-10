@@ -164,3 +164,39 @@ fn table_trailing_comment_lands_after_last_row() {
         "comment must not sit on the header:\n{out}"
     );
 }
+
+#[test]
+fn comment_before_top_level_block_survives() {
+    // Regression: the block construction sites drained the shared
+    // item-trivia slot *after* parsing the body, so every nested
+    // `parse_item` had already clobbered the block's own leading trivia.
+    let out = fmt_stable(
+        "# the demo lab\nlab \"demo\" {\n  a = 1\n}\n",
+        "# the demo lab",
+    );
+    let comment = out.find("# the demo lab").unwrap();
+    let block = out.find("lab \"demo\"").unwrap();
+    assert!(comment < block, "comment must precede the block:\n{out}");
+}
+
+#[test]
+fn comment_before_nested_block_survives() {
+    let src = "lab \"demo\" {\n  # the domain controller\n  vm \"dc01\" {\n    cpus = 4\n  }\n}\n";
+    let out = fmt_stable(src, "# the domain controller");
+    let comment = out.find("# the domain controller").unwrap();
+    let vm = out.find("vm \"dc01\"").unwrap();
+    assert!(
+        comment < vm,
+        "comment must precede the nested block:\n{out}"
+    );
+}
+
+#[test]
+fn blank_line_before_block_survives() {
+    let src = "a = 1\n\nlab \"demo\" {\n  b = 2\n}\n";
+    let out = fmt_stable(src, "lab \"demo\"");
+    assert!(
+        out.contains("a = 1\n\nlab"),
+        "blank line should survive:\n{out}"
+    );
+}
