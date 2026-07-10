@@ -1,5 +1,6 @@
 ---
 source: crates/wcl_lang/tests/snapshots.rs
+assertion_line: 36
 expression: printed
 ---
 # Connections between blocks.
@@ -28,6 +29,7 @@ type Service {
   @inline(0) id: identifier
   port: u32
 }
+
 service "web" {
   port = 8080u32
 }

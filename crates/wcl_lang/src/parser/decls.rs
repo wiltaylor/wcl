@@ -1175,6 +1175,11 @@ impl<'a> Parser<'a> {
                 trailing_trivia: Vec::new(),
             }));
         }
+        // Capture this block's leading trivia before parsing the body:
+        // every nested `parse_item` overwrites the shared buffer, so
+        // draining it after the body would lose the comments/blank lines
+        // that precede the block.
+        let leading_trivia = self.take_item_trivia();
         self.bump()?; // consume '{'
         self.enter_recursion()?;
         self.block_depth += 1;
@@ -1222,7 +1227,7 @@ impl<'a> Parser<'a> {
             items,
             decorators,
             span: Span::new(start, rbrace.span.end),
-            leading_trivia: self.take_item_trivia(),
+            leading_trivia,
             trailing_comment: None,
             trailing_trivia,
         }))

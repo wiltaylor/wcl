@@ -1,5 +1,6 @@
 ---
 source: crates/wcl_lang/tests/snapshots.rs
+assertion_line: 28
 expression: printed
 ---
 # A small WCL example used by tests and CLI demos.
@@ -32,9 +33,11 @@ type Metadata {
 name = "alpha"
 count = 3u32
 enabled = true
+
 service "web" {
   port = 8080u32
   host = "0.0.0.0"
+
   metadata {
     region = "us-east-1"
     tier = "prod"
