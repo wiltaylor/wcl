@@ -57,6 +57,6 @@ import <demo.wcl>             // demo: example source + live light/dark preview
 import <sequence.wcl>         // sequence diagrams (participants / messages / notes)
 import <statechart.wcl>       // state diagrams (states / transitions, auto-ranked)
 import <visibility.wcl>       // @only / @except block visibility filters
-import <comment.wcl>          // @comment review notes (wcl wdoc serve --comment)
+import <comment.wcl>          // @comment review notes (the wcl editor preview pane)
 import <file_placement.wcl>   // @wdoc::file object placement (wcl wdoc serve --edit)
 import <edit_object.wcl>      // edit_object button (wcl wdoc serve --edit)

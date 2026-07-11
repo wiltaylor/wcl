@@ -4,6 +4,7 @@
 // light/dark preview).
 import "./template_kinds.wcl"
 import "./themes.wcl"
+import "./theme_forge.wcl"
 import "./theme_nord.wcl"
 import "./theme_tokyonight.wcl"
 import "./theme_gruvbox.wcl"

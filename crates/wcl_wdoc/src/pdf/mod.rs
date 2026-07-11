@@ -251,7 +251,7 @@ pub fn pdf(
     let (card_fill, card_stroke) = match site_blocks.first() {
         Some(site) => {
             let theme =
-                crate::render::field_symbol(site, "theme").unwrap_or_else(|| "nord".to_string());
+                crate::render::field_symbol(site, "theme").unwrap_or_else(|| "forge".to_string());
             let accent =
                 crate::render::field_symbol(site, "accent").unwrap_or_else(|| "blue".to_string());
             let roles = crate::render::resolve_roles(&doc, &theme, &accent, "light");

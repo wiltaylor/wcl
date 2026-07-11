@@ -87,7 +87,7 @@ site book {
   title            = $"${topic.name}"
   summary          = $"${topic.summary}"
   root             = true
-  theme            = :nord
+  theme            = :forge
   theme_toggle     = true
   search           = true
   toc {
@@ -184,4 +184,3 @@ wdoc_repeater { each = research_book  as = :r
 // An index no longer renders its own page in the book: it's a heading in the
 // sidebar whose children are the unit pages it lists in `related` (plus nested
 // sub-indexes). The `toc` block above wires this up; nothing is generated here.
-

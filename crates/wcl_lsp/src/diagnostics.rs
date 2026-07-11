@@ -1,21 +1,70 @@
 //! Parse + schema-validate a source string and translate the
 //! resulting errors into LSP [`Diagnostic`] values.
 
+use std::path::Path;
+
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Range};
-use wcl_lang::{Document, EvalError, ParseError, Span};
+use wcl_lang::{Document, EvalError, FileLoader, ParseError, Span};
 
 use crate::convert::span_to_range;
 
+/// Open `source` the way the wdoc build would: system imports
+/// (`import <wdoc.wcl>`) resolve through the caller's loader (the embedded
+/// registry over an overlay of open buffers), relative imports resolve
+/// against `base_dir`, and the wdoc [`Environment`](wcl_lang::Environment)
+/// supplies builtins like `included_sites`. A bare `Document::open` would
+/// flag all three as errors in perfectly valid documents.
+fn open_document(
+    source: &str,
+    uri: &str,
+    base_dir: Option<&Path>,
+    loader: FileLoader,
+) -> Result<Document, ParseError> {
+    Document::open_at_with_loader(
+        source,
+        uri,
+        base_dir.map(Path::to_path_buf),
+        &wcl_wdoc::wdoc_environment(base_dir),
+        loader,
+    )
+}
+
 /// Compute diagnostics for `source`. Returns an empty list when the
 /// document parses and validates cleanly.
-pub(crate) fn compute(source: &str, uri: &str) -> Vec<Diagnostic> {
-    match Document::open(source, uri) {
+pub(crate) fn compute(
+    source: &str,
+    uri: &str,
+    base_dir: Option<&Path>,
+    loader: FileLoader,
+) -> Vec<Diagnostic> {
+    match open_document(source, uri, base_dir, loader) {
         Ok(doc) => doc
             .schema_errors()
             .into_iter()
             .map(|e| eval_error_to_diagnostic(source, &e))
             .collect(),
-        Err(ParseError::Syntax(syntax)) => {
+        Err(e) => parse_error_to_diagnostics(source, e),
+    }
+}
+
+/// Syntax-only diagnostics for `source` — used for non-root files in a
+/// rooted workspace, where schema-validating the fragment in isolation
+/// reports false positives for everything the root document supplies.
+pub(crate) fn compute_syntax_only(
+    source: &str,
+    uri: &str,
+    base_dir: Option<&Path>,
+    loader: FileLoader,
+) -> Vec<Diagnostic> {
+    match open_document(source, uri, base_dir, loader) {
+        Ok(_) => Vec::new(),
+        Err(e) => parse_error_to_diagnostics(source, e),
+    }
+}
+
+fn parse_error_to_diagnostics(source: &str, err: ParseError) -> Vec<Diagnostic> {
+    match err {
+        ParseError::Syntax(syntax) => {
             vec![Diagnostic {
                 range: source_span_to_range(source, syntax.span),
                 severity: Some(DiagnosticSeverity::ERROR),
@@ -25,7 +74,7 @@ pub(crate) fn compute(source: &str, uri: &str) -> Vec<Diagnostic> {
                 ..Default::default()
             }]
         }
-        Err(ParseError::Io(err)) => {
+        ParseError::Io(err) => {
             vec![Diagnostic {
                 range: Range::default(),
                 severity: Some(DiagnosticSeverity::ERROR),
@@ -136,10 +185,16 @@ mod tests {
     use super::*;
     use tower_lsp::lsp_types::Position;
 
+    /// The loader the live server threads in: the embedded wdoc registry
+    /// over disk (no open-buffer overlay in unit tests).
+    fn loader() -> FileLoader {
+        wcl_wdoc::schema_registry().loader(wcl_lang::disk_loader())
+    }
+
     #[test]
     fn clean_document_has_no_diagnostics() {
         let src = "// no schema, no fields, nothing to validate\n";
-        let diags = compute(src, "test.wcl");
+        let diags = compute(src, "test.wcl", None, loader());
         assert!(diags.is_empty(), "expected no diagnostics, got {diags:#?}");
     }
 
@@ -147,7 +202,7 @@ mod tests {
     fn syntax_error_emits_one_diagnostic() {
         // Unclosed brace fixture from examples/errors.
         let src = "@schemaless config {\n  region = \"us-east-1\"\n";
-        let diags = compute(src, "test.wcl");
+        let diags = compute(src, "test.wcl", None, loader());
         assert_eq!(diags.len(), 1, "expected one syntax diagnostic");
         let d = &diags[0];
         assert_eq!(d.severity, Some(DiagnosticSeverity::ERROR));
@@ -156,10 +211,38 @@ mod tests {
     }
 
     #[test]
+    fn system_import_resolves_in_both_paths() {
+        // `import <wdoc.wcl>` must resolve through the registry loader —
+        // a bare disk loader turns it into a bogus parse error (the bug
+        // this loader threading fixed).
+        let src = "import <wdoc.wcl>\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n";
+        let diags = compute(src, "test.wcl", None, loader());
+        assert!(diags.is_empty(), "root path flagged: {diags:#?}");
+        let diags = compute_syntax_only(src, "test.wcl", None, loader());
+        assert!(diags.is_empty(), "syntax-only path flagged: {diags:#?}");
+    }
+
+    #[test]
+    fn relative_import_resolves_against_base_dir() {
+        // A cross-file workspace: main.wcl imports pages.wcl by relative
+        // path; both use the system import. Diagnostics for either file
+        // must resolve the quoted import against the file's directory.
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(
+            td.path().join("pages.wcl"),
+            "import <wdoc.wcl>\n\npage about {\n  title = \"About\"\n\n  h1 \"About\"\n}\n",
+        )
+        .unwrap();
+        let main_src = "import <wdoc.wcl>\nimport \"pages.wcl\"\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n";
+        let diags = compute(main_src, "main.wcl", Some(td.path()), loader());
+        assert!(diags.is_empty(), "rooted main flagged: {diags:#?}");
+    }
+
+    #[test]
     fn schema_violation_reports_at_field_span() {
         // Mirror examples/errors/unknown_field.wcl.
         let src = "@document\ntype Root {\n  region: utf8\n}\n@block(\"service\")\ntype Service {\n  region: utf8\n}\nservice web {\n  region = \"us-east-1\"\n  unexpected = \"boom\"\n}\n";
-        let diags = compute(src, "test.wcl");
+        let diags = compute(src, "test.wcl", None, loader());
         assert!(!diags.is_empty(), "expected at least one schema diagnostic");
         let has_unknown = diags.iter().any(|d| {
             matches!(&d.code, Some(NumberOrString::String(c)) if c == "wcl::eval::schema_violation")

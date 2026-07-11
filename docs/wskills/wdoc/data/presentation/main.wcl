@@ -78,7 +78,7 @@ presentation intro {
       unit  = visibility
       body {
         p "- `@only` / `@except` scope any block by site, template, or backend"
-        p "- Six built-in themes (`theme = :nord`, …) with a light/dark toggle"
+        p "- Seven built-in themes (`theme = :forge` by default) with a light/dark toggle"
       }
     }
   }

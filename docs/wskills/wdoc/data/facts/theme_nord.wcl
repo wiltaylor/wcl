@@ -7,7 +7,7 @@ fact theme_nord {
   related = [themes]
   audience = :both
   body {
-    p "`theme = :nord` — cool blue-grey, the default. Dark (top) and light (bottom): page, surface, border, accent, accent-2, tip, warn, danger, keyword. See [all themes](fact_themes)."
+    p "`theme = :nord` — cool blue-grey. Dark (top) and light (bottom): page, surface, border, accent, accent-2, tip, warn, danger, keyword. See [all themes](fact_themes)."
     diagram {
       width = 340  height = 116
       label "Dark"  { x = 6.0  y = 30.0  font_size = 11.0  fill = "#a0aabe" }

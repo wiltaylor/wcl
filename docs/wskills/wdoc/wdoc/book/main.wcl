@@ -84,7 +84,7 @@ site book {
   title            = $"${topic.name}"
   summary          = $"${topic.summary}"
   root             = true
-  theme            = :nord
+  theme            = :forge
   theme_toggle     = true
   search           = true
   toc {

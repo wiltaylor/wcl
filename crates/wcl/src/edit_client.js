@@ -1,7 +1,6 @@
 /* wcl wdoc serve --edit — WYSIWYG editor client.
  *
- * Two surfaces, one floating toolbar (bottom-left, so it composes with the
- * --comment toolbar at bottom-right):
+ * Two surfaces, one floating toolbar (bottom-left):
  *   • Page editor — select a rendered block to edit its fields in a side panel,
  *     double-click a text block to edit text inline, and add / move / delete
  *     blocks. Locates blocks by the `data-wcl-span` / `data-wcl-file` anchors
@@ -96,10 +95,9 @@ body.wcl-ed-picking [data-wcl-block].wcl-ed-hot{outline:2px solid #16a34a;outlin
   const pfq = () => '&page_file=' + encodeURIComponent(pageFile());
   const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  // Ignore clicks on our chrome and the --comment client's chrome.
+  // Ignore clicks on our own chrome.
   const chrome = t => t.closest && (t.closest('.wcl-ed-bar') || t.closest('.wcl-ed-panel') ||
-    t.closest('.wcl-ed-modal') || t.closest('.wcl-ed-hint') ||
-    t.closest('.wcl-bar') || t.closest('.wcl-pop') || t.closest('.wcl-pin'));
+    t.closest('.wcl-ed-modal') || t.closest('.wcl-ed-hint'));
 
   async function getJSON(u) {
     const r = await fetch(u);

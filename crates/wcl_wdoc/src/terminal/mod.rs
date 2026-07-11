@@ -275,7 +275,7 @@ fn class_color(doc: &Document, classes: &[String], field: &str) -> Option<String
 /// explicit `palette = :light` opt-in follows the theme.
 fn light_preset_colors(doc: &Document) -> Option<(String, String)> {
     let site = doc.blocks().find(|b| b.kind() == "site")?;
-    let theme = field_symbol(&site, "theme").unwrap_or_else(|| "nord".to_string());
+    let theme = field_symbol(&site, "theme").unwrap_or_else(|| "forge".to_string());
     let accent = field_symbol(&site, "accent").unwrap_or_else(|| "blue".to_string());
     let roles = resolve_roles(doc, &theme, &accent, "light");
     Some((roles.fg, roles.bg))

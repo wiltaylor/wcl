@@ -58,7 +58,7 @@ term slot {
 
 term theme {
   term       = "theme"
-  definition = "A site-wide palette selected with `theme = :<name>` — six ship (nord, tokyonight, gruvbox, catppuccin, rose, paper), each with dark and light variants."
+  definition = "A site-wide palette selected with `theme = :<name>` — seven ship (forge, nord, tokyonight, gruvbox, catppuccin, rose, paper), each with dark and light variants."
 }
 
 term frontmatter {

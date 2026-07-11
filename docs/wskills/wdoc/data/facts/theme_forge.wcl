@@ -1,0 +1,35 @@
+import <wdoc.wcl>
+
+// Theme preview — swatches are literal hex, mirroring `lib/theme.wcl`'s
+// `forge` palettes (dark + light). Keep in sync with that file by hand.
+fact theme_forge {
+  title = "Forge theme"
+  related = [themes]
+  audience = :both
+  body {
+    p "`theme = :forge` — the Forge control palette and wdoc default. Dark (top) and light (bottom): page, surface, border, accent, accent-2, tip, warn, danger, keyword. See [all themes](fact_themes)."
+    diagram {
+      width = 340  height = 116
+      label "Dark"  { x = 6.0  y = 30.0  font_size = 11.0  fill = "#7c8593" }
+      rect { x = 46.0  y = 18.0  width = 24.0  height = 24.0  fill = "#0b0d10" }
+      rect { x = 73.0  y = 18.0  width = 24.0  height = 24.0  fill = "#11141a" }
+      rect { x = 100.0  y = 18.0  width = 24.0  height = 24.0  fill = "#262c36" }
+      rect { x = 127.0  y = 18.0  width = 24.0  height = 24.0  fill = "#2389e2" }
+      rect { x = 154.0  y = 18.0  width = 24.0  height = 24.0  fill = "#1ca6d9" }
+      rect { x = 181.0  y = 18.0  width = 24.0  height = 24.0  fill = "#4eb068" }
+      rect { x = 208.0  y = 18.0  width = 24.0  height = 24.0  fill = "#eba941" }
+      rect { x = 235.0  y = 18.0  width = 24.0  height = 24.0  fill = "#f14d4c" }
+      rect { x = 262.0  y = 18.0  width = 24.0  height = 24.0  fill = "#80caff" }
+      label "Light" { x = 6.0  y = 84.0  font_size = 11.0  fill = "#6b7383" }
+      rect { x = 46.0  y = 72.0  width = 24.0  height = 24.0  fill = "#fafafa" }
+      rect { x = 73.0  y = 72.0  width = 24.0  height = 24.0  fill = "#ffffff" }
+      rect { x = 100.0  y = 72.0  width = 24.0  height = 24.0  fill = "#dcdfe4" }
+      rect { x = 127.0  y = 72.0  width = 24.0  height = 24.0  fill = "#0069ca" }
+      rect { x = 154.0  y = 72.0  width = 24.0  height = 24.0  fill = "#006fa3" }
+      rect { x = 181.0  y = 72.0  width = 24.0  height = 24.0  fill = "#00792f" }
+      rect { x = 208.0  y = 72.0  width = 24.0  height = 24.0  fill = "#c17000" }
+      rect { x = 235.0  y = 72.0  width = 24.0  height = 24.0  fill = "#c90019" }
+      rect { x = 262.0  y = 72.0  width = 24.0  height = 24.0  fill = "#003ca1" }
+    }
+  }
+}

@@ -24,11 +24,16 @@ tempfile = { workspace = true }
 tokio = { workspace = true, features = ["fs", "signal", "time"] }
 axum = { workspace = true }
 notify = { workspace = true }
+# `wcl editor`: gitignore-aware repo walk + the embedded SolidJS editor UI
+# (editor-ui/dist, built by build.rs when pnpm is available).
+ignore = { workspace = true }
+rust-embed = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
 predicates = { workspace = true }
 insta = { workspace = true }
+tower = { workspace = true }
 
 [lints]
 workspace = true

@@ -1,11 +1,11 @@
 //! Review comments stored in a `comments.wcl` sidecar.
 //!
-//! `wcl wdoc serve --comment` lets a reviewer click a rendered block (or the
-//! page) and leave a note. Rather than touch the document source, the dev
-//! server persists every note into a **`comments.wcl` sidecar** keyed by the
-//! page name + a positional block locator. The watcher ignores `comments.wcl`,
-//! so a comment writes only the sidecar and the page re-shows it client-side —
-//! **no document rebuild**.
+//! The `wcl editor` preview pane lets a reviewer click a rendered block (or
+//! the page) and leave a note. Rather than touch the document source, every
+//! note persists into a **`comments.wcl` sidecar** keyed by the page name + a
+//! positional block locator. Watchers ignore `comments.wcl`, so a comment
+//! writes only the sidecar and the page re-shows it client-side — **no
+//! document rebuild**.
 //!
 //! The sidecar is a small, schemaless WCL file — read leniently off the AST
 //! (like `wcl init`'s answer files), so it needs no `import` / `@document`
@@ -289,9 +289,9 @@ pub fn edit(root: &Path, id: &str, body: &str) -> Result<bool, BuildError> {
 /// re-parses, then write it atomically.
 fn write_file(path: &Path, recs: &[CommentRecord]) -> Result<(), BuildError> {
     let mut out = String::from(
-        "// Review comments for this wskill / doc — written by `wcl wdoc serve --comment`\n\
-         // and read back by `wcl wdoc comments`. Each `comment` block is keyed by page\n\
-         // name + block locator; safe to hand-edit or generate.\n\n",
+        "// Review comments for this wskill / doc — written from the `wcl editor`\n\
+         // preview pane and read back by `wcl wdoc comments`. Each `comment` block is\n\
+         // keyed by page name + block locator; safe to hand-edit or generate.\n\n",
     );
     for r in recs {
         out.push_str("comment {\n");

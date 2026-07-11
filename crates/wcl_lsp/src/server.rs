@@ -148,11 +148,37 @@ impl Backend {
     /// errors surfaced by the root document are not attributed back
     /// to the originating file (that needs source-path tagging on
     /// `EvalError`, a separate change).
+    ///
+    /// When a root document is configured and `uri` is some *other*
+    /// file, only syntax errors are published: schema validation of a
+    /// fragment in isolation reports false positives for everything the
+    /// root supplies (imported `@block` declarations, document schemas,
+    /// referenced data), which would paint valid files red.
     async fn publish(&self, uri: Url, version: Option<i32>) {
         let Some(source) = self.document_text(&uri) else {
             return;
         };
-        let diags = diagnostics::compute(&source, uri.as_str());
+        let is_non_root_fragment = match (self.root_path(), uri.to_file_path()) {
+            (Some(root), Ok(path)) => std::fs::canonicalize(&path)
+                .map(|c| c != root)
+                .unwrap_or(true),
+            (Some(_), Err(())) => true,
+            (None, _) => false,
+        };
+        let base_dir = uri
+            .to_file_path()
+            .ok()
+            .and_then(|p| p.parent().map(std::path::Path::to_path_buf));
+        let diags = if is_non_root_fragment {
+            diagnostics::compute_syntax_only(
+                &source,
+                uri.as_str(),
+                base_dir.as_deref(),
+                self.loader(),
+            )
+        } else {
+            diagnostics::compute(&source, uri.as_str(), base_dir.as_deref(), self.loader())
+        };
         self.client.publish_diagnostics(uri, diags, version).await;
     }
 

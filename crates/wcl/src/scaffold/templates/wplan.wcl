@@ -97,9 +97,9 @@ wad-extract:
 wad-book: wad-extract
     wcl wdoc build wad/wdoc/book/main.wcl --out wad/_site
 
-# Review the WAD book live with click-to-comment.
+# Serve the WAD book (review comments live in `wcl editor`'s preview pane).
 wad-serve:
-    wcl wdoc serve wad/wdoc/book/main.wcl --comment
+    wcl wdoc serve wad/wdoc/book/main.wcl
 
 # Graduate the plan's WAD into the built repo (run after the build completes):
 # moves wad/ to <dest>, sheds the plan extractor + its generated file, and

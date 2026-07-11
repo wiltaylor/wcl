@@ -132,7 +132,7 @@ book-build: wad-check
 # Serve the book with live reload; click a block to leave a review comment
 [group('render')]
 book-serve:
-	wcl wdoc serve wdoc/book/main.wcl --comment
+	wcl wdoc serve wdoc/book/main.wcl
 
 # Render the AI-consumable Markdown to _md/ (wiped first)
 [group('render')]
@@ -182,7 +182,7 @@ book-build: wad-check
 # Serve the book with live reload; click a block to leave a review comment
 [group('render')]
 book-serve:
-	wcl wdoc serve wdoc/book/main.wcl --comment
+	wcl wdoc serve wdoc/book/main.wcl
 
 # Render the AI-consumable Markdown to _md/ (wiped first)
 [group('render')]
@@ -207,7 +207,7 @@ file "wad.wcl" {
 // ${answer("system_name")} — architecture document (WAD) root.
 //
 //   wcl check wad.wcl                              # validate the model
-//   wcl wdoc serve wdoc/book/main.wcl --comment    # review the book
+//   wcl wdoc serve wdoc/book/main.wcl              # browse the book (review comments: wcl editor)
 //   wcl wdoc build wdoc/book/main.wcl --out _site  # render it
 //   wcl wad spec --from <rev> wad.wcl              # derive a change spec
 
@@ -1590,7 +1590,7 @@ file "wdoc/book/main.wcl" {
 // model. This template contains NO architecture content — only projections
 // over the blocks gathered by the root @document (systems, relations, ADRs…).
 //
-//   wcl wdoc serve .wad/wdoc/book/main.wcl --comment   # review it
+//   wcl wdoc serve .wad/wdoc/book/main.wcl   # browse it (review comments: wcl editor)
 //   wcl wdoc build .wad/wdoc/book/main.wcl --out .wad/_site
 //
 // Structure: this file holds the site + toc + the shared `let` helper layer

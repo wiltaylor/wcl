@@ -12,7 +12,7 @@
 //     accent = :blue         // red orange yellow green cyan blue purple pink
 //   }
 //
-// A `site` with no `theme` defaults to `:nord`. A document with no `site`
+// A `site` with no `theme` defaults to `:forge`. A document with no `site`
 // block renders bare (unthemed).
 //
 // HOW IT WORKS: the renderer finds the named `theme` block and emits CSS
@@ -89,16 +89,46 @@ type ThemeBlock {
 }
 
 // ── Built-in themes ────────────────────────────────────────────────
-// The six book themes, each with a co-ordinated `dark` + `light` palette.
+// The seven book themes, each with a co-ordinated `dark` + `light` palette.
 // Roles map onto the design's full vocabulary (bg / book-bg / surfaces /
 // borders / ink hierarchy / accent set / syntax tokens). The 8-hue ring
 // is derived from each theme's semantic + syntax colours so the
 // hue-driven systems (chart series, callout accents, diagram shapes)
 // stay co-ordinated: red=danger, orange=syn-num, yellow=warn, green=tip,
 // cyan=info, blue=note, purple=syn-kw, pink=accent-2. Fonts default to
-// the `wdoc-fonts` stacks; only `paper` overrides (serif headings).
+// the `wdoc-fonts` stacks; `forge` uses sans body copy and `paper` uses
+// serif headings.
 
-// Nord — cool blue-grey (the default).
+// Forge — the compact, high-contrast palette used by Forge controls (the default).
+// Its semantic and syntax colours are hex equivalents of Forge's OKLCH tokens so
+// they also work in wdoc's SVG and PDF renderers.
+theme forge {
+  font_head = "'IBM Plex Sans', system-ui, sans-serif"
+  font_body = "'IBM Plex Sans', system-ui, sans-serif"
+  font_mono = "'JetBrains Mono', ui-monospace, monospace"
+  palette dark {
+    bg = "#0b0d10"  book_bg = "#11141a"  bg_alt = "#171b22"  bg_inset = "#171b22"  overlay = "#1e232c"
+    border = "#262c36"  border_strong = "#3a4250"
+    heading = "#eceef2"  fg = "#b7bdc8"  fg_muted = "#7c8593"  fg_subtle = "#4e5664"  selection = "#2389e2"
+    accent = "#2389e2"  accent_2 = "#1ca6d9"  link = "#80caff"  on_accent = "#ffffff"
+    syn_kw = "#80caff"  syn_str = "#6de18b"  syn_num = "#67d2ff"  syn_fn = "#eceef2"
+    syn_type = "#fec766"  syn_comment = "#4e5664"  syn_punct = "#7c8593"
+    red = "#f14d4c"  orange = "#fec766"  yellow = "#eba941"  green = "#4eb068"
+    cyan = "#67d2ff"  blue = "#2389e2"  purple = "#1ca6d9"  pink = "#ff8a82"
+  }
+  palette light {
+    bg = "#fafafa"  book_bg = "#ffffff"  bg_alt = "#f4f5f7"  bg_inset = "#f4f5f7"  overlay = "#eaecef"
+    border = "#dcdfe4"  border_strong = "#b6bbc4"
+    heading = "#0c0f14"  fg = "#3d4654"  fg_muted = "#6b7383"  fg_subtle = "#a0a6b2"  selection = "#0069ca"
+    accent = "#0069ca"  accent_2 = "#006fa3"  link = "#003ca1"  on_accent = "#ffffff"
+    syn_kw = "#003ca1"  syn_str = "#004f08"  syn_num = "#004573"  syn_fn = "#0c0f14"
+    syn_type = "#7a2c00"  syn_comment = "#a0a6b2"  syn_punct = "#6b7383"
+    red = "#c90019"  orange = "#7a2c00"  yellow = "#c17000"  green = "#00792f"
+    cyan = "#004573"  blue = "#0069ca"  purple = "#006fa3"  pink = "#9e0000"
+  }
+}
+
+// Nord — cool blue-grey.
 theme nord {
   palette dark {
     bg = "#242933"  book_bg = "#2e3440"  bg_alt = "#3b4252"  bg_inset = "#3b4252"  overlay = "#434c5e"

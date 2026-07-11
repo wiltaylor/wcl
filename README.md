@@ -65,10 +65,24 @@ WCL
 }
 ```
 
+## Browser editor
+
+`wcl editor` serves a browser IDE for the current directory: a
+gitignore-aware file tree, tabbed CodeMirror editing of any text file, WCL
+language support (completion, hover, diagnostics from the built-in language
+server), and a live preview pane that renders the wdoc page you are editing
+— unsaved changes included — from the project's root document (an explicit
+argument, else `./main.wcl`).
+
+```bash
+cd my-site && wcl editor          # then open the printed URL
+```
+
 ## Layout
 
 - `crates/wcl_lang` — parser and AST library (`wcl_lang::parse`, `wcl_lang::parse_file`)
 - `crates/wcl` — `wcl` CLI binary (`wcl parse`, `wcl check`)
+- `editor-ui/` — the `wcl editor` web frontend (SolidJS + Forge), embedded into the binary at build time
 - `examples/` — sample input files
 
 ## Development
@@ -80,6 +94,11 @@ just workspace-lint       # clippy with -D warnings
 just workspace-bench      # criterion benchmarks
 just cli-run -- check examples/basic.wcl
 ```
+
+Building the `wcl` crate builds the editor frontend when it is stale, which
+needs `pnpm` on PATH (`editor-ui/`). Without node/pnpm, set
+`WCL_EDITOR_UI_SKIP=1` to embed a placeholder page instead — everything else
+works normally.
 
 Editor + install:
 

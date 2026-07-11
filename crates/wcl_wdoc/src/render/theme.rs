@@ -19,6 +19,8 @@ use wcl_lang::{Block, Document};
 
 use super::{field_symbol, field_utf8, label_string};
 
+const DEFAULT_THEME: &str = "forge";
+
 /// The 18 `Palette` roles, paired with the CSS custom-property suffix
 /// (`bg_alt` → `--wdoc-bg-alt`). Emission order is fixed so output is
 /// deterministic.
@@ -198,13 +200,13 @@ fn theme_font_vars(theme: &Block<'_>, out: &mut String) {
 }
 
 /// Find a `theme` block by its inline name (built-in or user-declared),
-/// falling back to the built-in `nord` when the name doesn't resolve.
+/// falling back to the built-in `forge` when the name doesn't resolve.
 fn find_theme<'a>(doc: &'a Document, name: &str) -> Option<Block<'a>> {
     let is_theme =
         |b: &Block<'_>, n: &str| b.kind() == "theme" && label_string(b).as_deref() == Some(n);
     doc.blocks()
         .find(|b| is_theme(b, name))
-        .or_else(|| doc.blocks().find(|b| is_theme(b, "nord")))
+        .or_else(|| doc.blocks().find(|b| is_theme(b, DEFAULT_THEME)))
 }
 
 /// Concrete colours for the theme roles the wireframe renderer bakes into
@@ -237,51 +239,51 @@ pub(crate) struct UiTheme {
 impl Default for UiTheme {
     fn default() -> Self {
         UiTheme {
-            theme: "nord".to_string(),
+            theme: DEFAULT_THEME.to_string(),
             accent: "blue".to_string(),
             mode: "dark".to_string(),
         }
     }
 }
 
-/// The built-in Nord palette for a mode (lib/theme.wcl) — the fallback for any
+/// The built-in Forge palette for a mode (lib/theme.wcl) — the fallback for any
 /// role a custom palette omits, and for documents with no `theme`.
-fn nord_roles(mode: &str) -> ThemeRoles {
+fn default_roles(mode: &str) -> ThemeRoles {
     if mode == "light" {
         ThemeRoles {
-            bg: "#eceff4".into(), // nord light `book_bg` (panel surface)
-            bg_alt: "#e5e9f0".into(),
-            bg_inset: "#e5e9f0".into(),
-            overlay: "#d8dee9".into(),
-            border: "#d8dee9".into(),
-            fg: "#3b4252".into(),
-            fg_muted: "#566173".into(),
-            accent: "#5e81ac".into(), // nord light `blue`
+            bg: "#ffffff".into(),
+            bg_alt: "#f4f5f7".into(),
+            bg_inset: "#f4f5f7".into(),
+            overlay: "#eaecef".into(),
+            border: "#dcdfe4".into(),
+            fg: "#3d4654".into(),
+            fg_muted: "#6b7383".into(),
+            accent: "#0069ca".into(),
         }
     } else {
         ThemeRoles {
-            bg: "#2e3440".into(), // nord dark `book_bg` (panel surface)
-            bg_alt: "#3b4252".into(),
-            bg_inset: "#3b4252".into(),
-            overlay: "#434c5e".into(),
-            border: "#3b4252".into(),
-            fg: "#d8dee9".into(),
-            fg_muted: "#a0aabe".into(),
-            accent: "#81a1c1".into(), // nord dark `blue`
+            bg: "#11141a".into(),
+            bg_alt: "#171b22".into(),
+            bg_inset: "#171b22".into(),
+            overlay: "#1e232c".into(),
+            border: "#262c36".into(),
+            fg: "#b7bdc8".into(),
+            fg_muted: "#7c8593".into(),
+            accent: "#2389e2".into(),
         }
     }
 }
 
 /// Read the UI theme a `site` selects: its `ui_theme`/`ui_accent`/`ui_mode`
 /// fields, falling back to the document `theme`/`accent` (mode `dark`). A
-/// site-less document gets the Nord-dark default.
+/// site-less document gets the Forge-dark default.
 pub(crate) fn resolve_ui_theme(site: Option<&Block<'_>>) -> UiTheme {
     let Some(site) = site else {
         return UiTheme::default();
     };
     let theme = field_symbol(site, "ui_theme")
         .or_else(|| field_symbol(site, "theme"))
-        .unwrap_or_else(|| "nord".to_string());
+        .unwrap_or_else(|| DEFAULT_THEME.to_string());
     let accent_raw = field_symbol(site, "ui_accent")
         .or_else(|| field_symbol(site, "accent"))
         .unwrap_or_default();
@@ -302,8 +304,8 @@ pub(crate) fn resolve_ui_theme(site: Option<&Block<'_>>) -> UiTheme {
 }
 
 /// Resolve a `theme` name + `accent` hue + `mode` (`dark`/`light`) to concrete
-/// role colours: find the named `theme` block (fallback nord), read the
-/// matching-mode `palette` child, and fill any missing role from the Nord
+/// role colours: find the named `theme` block (fallback Forge), read the
+/// matching-mode `palette` child, and fill any missing role from the Forge
 /// palette of that mode. Unknown accent ⇒ blue; unknown mode ⇒ dark.
 pub(crate) fn resolve_roles(doc: &Document, theme: &str, accent: &str, mode: &str) -> ThemeRoles {
     let mode = if mode == "light" { "light" } else { "dark" };
@@ -312,7 +314,7 @@ pub(crate) fn resolve_roles(doc: &Document, theme: &str, accent: &str, mode: &st
     } else {
         "blue"
     };
-    let def = nord_roles(mode);
+    let def = default_roles(mode);
     let Some(theme) = find_theme(doc, theme) else {
         return def;
     };
@@ -326,7 +328,7 @@ pub(crate) fn resolve_roles(doc: &Document, theme: &str, accent: &str, mode: &st
         |f: &str, fallback: &str| field_utf8(&pal, f).unwrap_or_else(|| fallback.to_string());
     ThemeRoles {
         // The wireframe panel sits on the reading surface (`book_bg`), not
-        // the darker outer gutter (`bg`); fall back to `bg` then nord.
+        // the darker outer gutter (`bg`); fall back to `bg` then Forge.
         bg: field_utf8(&pal, "book_bg")
             .or_else(|| field_utf8(&pal, "bg"))
             .unwrap_or_else(|| def.bg.clone()),
@@ -342,13 +344,13 @@ pub(crate) fn resolve_roles(doc: &Document, theme: &str, accent: &str, mode: &st
 
 /// The themed `<style>` content for one site, or `None` when there is no
 /// `site` block (bare documents stay unthemed) or no `theme` block can be
-/// resolved. A `site` without an explicit `theme` defaults to `nord`; an
-/// unknown name also falls back to `nord`.
+/// resolved. A `site` without an explicit `theme` defaults to `forge`; an
+/// unknown name also falls back to `forge`.
 pub(crate) fn site_theme_css(doc: &Document, site_block: Option<&Block<'_>>) -> Option<String> {
     let block = site_block?;
 
-    // The `theme` symbol names a `theme` block; default to `nord`.
-    let name = field_symbol(block, "theme").unwrap_or_else(|| "nord".to_string());
+    // The `theme` symbol names a `theme` block; default to `forge`.
+    let name = field_symbol(block, "theme").unwrap_or_else(|| DEFAULT_THEME.to_string());
 
     // The active accent: a `site.accent` hue wins (re-points `--wdoc-accent`
     // at that hue var); otherwise the theme's own `accent` role drives it
@@ -360,7 +362,7 @@ pub(crate) fn site_theme_css(doc: &Document, site_block: Option<&Block<'_>>) -> 
     };
 
     // Find the named `theme` block (built-in or user-declared), falling
-    // back to the built-in `nord` when the name doesn't resolve.
+    // back to the built-in `forge` when the name doesn't resolve.
     let theme = find_theme(doc, &name)?;
 
     // Pull the `--wdoc-*` vars from its `dark` / `light` palette children.

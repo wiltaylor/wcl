@@ -25,6 +25,14 @@ jobs:
       - uses: taiki-e/install-action@just
       # uv runs the .wad extractor scripts (wad-extract-check).
       - uses: astral-sh/setup-uv@v5
+      # node + pnpm: crates/wcl's build.rs builds the `wcl editor` frontend
+      # (editor-ui/ → embedded dist) when it is stale or missing.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
       - run: just workspace-lint
@@ -186,6 +194,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      # node + pnpm: build.rs builds the `wcl editor` frontend into the binary.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - uses: Swatinem/rust-cache@v2
         with:
           key: cli-${{ matrix.target }}

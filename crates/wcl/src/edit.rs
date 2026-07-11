@@ -862,7 +862,7 @@ pub(crate) fn write_file(
 }
 
 /// A stable-within-this-process content hash used as the save etag.
-fn content_etag(text: &str) -> String {
+pub(crate) fn content_etag(text: &str) -> String {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     text.hash(&mut h);
@@ -991,13 +991,13 @@ fn value_expr(body: &serde_json::Value) -> Result<ast::Expr, String> {
     Err("field value missing `raw` or `expr`".to_string())
 }
 
-fn str_field<'a>(body: &'a serde_json::Value, key: &str) -> Result<&'a str, String> {
+pub(crate) fn str_field<'a>(body: &'a serde_json::Value, key: &str) -> Result<&'a str, String> {
     body.get(key)
         .and_then(serde_json::Value::as_str)
         .ok_or_else(|| format!("missing `{key}`"))
 }
 
-fn read(path: &Path) -> Result<String, String> {
+pub(crate) fn read(path: &Path) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))
 }
 

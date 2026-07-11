@@ -1,0 +1,39 @@
+{
+  "name": "wcl-editor-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.18.0",
+    "@codemirror/commands": "^6.8.0",
+    "@codemirror/language": "^6.11.0",
+    "@codemirror/lint": "^6.8.5",
+    "@codemirror/search": "^6.5.8",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.38.0",
+    "@lezer/common": "^1.2.0",
+    "@lezer/highlight": "^1.2.0",
+    "@forge/code": "github:wiltaylor/forge#main&path:packages/code",
+    "@forge/tokens": "github:wiltaylor/forge#main&path:packages/tokens",
+    "@forge/ui": "github:wiltaylor/forge#main&path:packages/ui",
+    "solid-js": "^1.9.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "vite-plugin-solid": "^2.11.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@forge/tokens": "github:wiltaylor/forge#main&path:packages/tokens"
+    },
+    "onlyBuiltDependencies": [
+      "@forge/tokens@https://codeload.github.com/wiltaylor/forge/tar.gz/0365090da3584e8a92316bc1d1c4462f755d81c2#path:packages/tokens",
+      "@forge/ui@https://codeload.github.com/wiltaylor/forge/tar.gz/0365090da3584e8a92316bc1d1c4462f755d81c2#path:packages/ui",
+      "@forge/code@https://codeload.github.com/wiltaylor/forge/tar.gz/0365090da3584e8a92316bc1d1c4462f755d81c2#path:packages/code"
+    ]
+  }
+}

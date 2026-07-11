@@ -36,7 +36,7 @@ let featured = fn(uid: identifier) -> list<UnitHead> { flatten([
 site deck {
   default_template = :presentation
   title = $"${topic.name}"
-  theme = :nord
+  theme = :forge
   deck {
     section "Overview" { slide title_slide }
     wdoc_repeater { each = presentations  as = :pr

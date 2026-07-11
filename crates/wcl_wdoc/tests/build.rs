@@ -7270,14 +7270,14 @@ fn wireframe_nested_containers_resolve_recursively() {
 #[test]
 fn wireframe_state_classes_and_icons() {
     // Checked / on states drive the SVG with the theme's accent colour, and a
-    // placeholder input renders italic. Default theme is Nord → accent blue
-    // (#81a1c1): the checked box and the radio dot fill with it.
+    // placeholder input renders italic. Default theme is Forge → accent blue
+    // (#2389e2): the checked box and the radio dot fill with it.
     let html = wireframe_html(
         "  wf_checkbox \"R\" { checked = true }\n  wf_radio \"S\" { selected = true  y = 40.0 }\n  wf_input \"ph\" { y = 80.0 }",
     );
     // The checked box + selected radio dot fill with the resolved accent.
     assert!(
-        html.matches("fill=\"#81a1c1\"").count() >= 2,
+        html.matches("fill=\"#2389e2\"").count() >= 2,
         "checked/selected states not filled with the theme accent:\n{html}"
     );
     // The check mark is drawn natively (a polyline), not a sprite <use>.
@@ -7902,7 +7902,7 @@ page index { text { span "Hi" {} } }
 }
 
 #[test]
-fn site_without_theme_defaults_to_nord() {
+fn site_without_theme_defaults_to_forge() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("default.wcl");
     write_fixture(
@@ -7916,15 +7916,20 @@ page index { text { span "Hi" {} } }
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
 
-    // Nord outer bg (dark) + light bg, and the accent defaulting to the
+    // Forge outer bg (dark) + light bg, and the accent defaulting to the
     // theme's own `accent` (via `--wdoc-accent-pal`) when `accent` is unset.
     assert!(
-        html.contains("--wdoc-bg:#242933;"),
-        "nord dark bg missing:\n{html}"
+        html.contains("--wdoc-bg:#0b0d10;"),
+        "forge dark bg missing:\n{html}"
     );
     assert!(
-        html.contains("--wdoc-bg:#d8dee9;"),
-        "nord light bg missing:\n{html}"
+        html.contains("--wdoc-bg:#fafafa;"),
+        "forge light bg missing:\n{html}"
+    );
+    assert!(
+        html.contains("--wdoc-link:#80caff;")
+            && html.contains("--wdoc-font-body:'IBM Plex Sans', system-ui, sans-serif;"),
+        "forge link or body-font token missing:\n{html}"
     );
     assert!(
         html.contains("--wdoc-accent:var(--wdoc-accent-pal);"),

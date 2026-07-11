@@ -2168,7 +2168,7 @@ page skill_links_page {
   }
 
   h2 "Pages"
-  p  "Every file the skill emits has its own preview page — open one to read its **real generated Markdown** (the same output `wcl wdoc skill` writes, internal links and all) and comment on any line (`wcl wdoc serve --comment`) to flag a fix. Clicking a circle in the graph above opens the same page."
+  p  "Every file the skill emits has its own preview page — open one to read its **real generated Markdown** (the same output `wcl wdoc skill` writes, internal links and all) and comment on any line (the `wcl editor` preview pane) to flag a fix. Clicking a circle in the graph above opens the same page."
 
   h3 "Entry page"
   p  "[**SKILL.md**](skillpage_index) — the entry point; it inlines the curated indexes and links each note's page directly."
@@ -2486,7 +2486,7 @@ site book {
   title            = $"${topic.name}"
   summary          = $"${topic.summary}"
   root             = true
-  theme            = :nord
+  theme            = :forge
   theme_toggle     = true
   search           = true
   toc {
@@ -2808,7 +2808,7 @@ let featured = fn(uid: identifier) -> list<UnitHead> { flatten([
 site deck {
   default_template = :presentation
   title = $"${topic.name}"
-  theme = :nord
+  theme = :forge
   deck {
     section "Overview" { slide title_slide }
     wdoc_repeater { each = presentations  as = :pr
@@ -2892,7 +2892,7 @@ site training {
   title   = $"${topic.name} — training"
   summary = $"A hands-on tutorial series for ${topic.name}."
   root         = true
-  theme        = :nord
+  theme        = :forge
   theme_toggle = true
   search       = true
   toc {

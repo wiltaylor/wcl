@@ -39,6 +39,21 @@ pub async fn start_stdio() {
     Server::new(stdin, stdout, socket).serve(service).await;
 }
 
+/// Serve a single LSP session over an arbitrary byte stream speaking
+/// the standard `Content-Length`-framed LSP wire protocol. Runs a
+/// fresh [`Backend`] (no document state shared with other sessions)
+/// and returns when the stream closes. This is the transport-agnostic
+/// core behind [`start_tcp`]; `wcl editor` also drives it through an
+/// in-memory duplex bridged to a WebSocket.
+pub async fn serve_stream<R, W>(read: R, write: W)
+where
+    R: tokio::io::AsyncRead + Unpin,
+    W: tokio::io::AsyncWrite,
+{
+    let (service, socket) = LspService::new(Backend::new);
+    Server::new(read, write, socket).serve(service).await;
+}
+
 /// Listen on `addr` for inbound TCP connections and serve each one
 /// as an independent LSP session. Intended for debug clients (e.g.
 /// an editor's LSP inspector) where stdio isn't convenient. Each
@@ -53,8 +68,7 @@ pub async fn start_tcp(addr: SocketAddr) -> std::io::Result<()> {
         tracing::info!(%peer, "wcl-lsp client connected");
         tokio::spawn(async move {
             let (read, write) = tokio::io::split(stream);
-            let (service, socket) = LspService::new(Backend::new);
-            Server::new(read, write, socket).serve(service).await;
+            serve_stream(read, write).await;
             tracing::info!(%peer, "wcl-lsp client disconnected");
         });
     }

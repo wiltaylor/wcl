@@ -234,10 +234,10 @@ type SiteConfig {
   @doc("When `true`, adds a client-side full-text search box (book and webpage templates).")
   search:           bool?
   // Colour theme for this site — a symbol naming a `theme` block: a
-  // built-in (`:nord` / `:gruvbox` / `:solarized` / `:catppuccin` /
-  // `:tokyonight` / `:kanagawa` / `:everforest`) or one you declare
-  // yourself. Unset ⇒ the renderer applies `:nord`. See `theme.wcl`.
-  @doc("Symbol naming a colour `theme` block (`:nord` …) — see Styling.")
+  // built-in (`:forge` / `:nord` / `:tokyonight` / `:gruvbox` /
+  // `:catppuccin` / `:rose` / `:paper`) or one you declare yourself.
+  // Unset ⇒ the renderer applies `:forge`. See `theme.wcl`.
+  @doc("Symbol naming a colour `theme` block (`:forge` …) — see Styling.")
   theme:  symbol?
   // Which hue drives links / highlights (`--wdoc-accent`): one of
   // red orange yellow green cyan blue purple pink. Unset ⇒ blue.
@@ -946,4 +946,3 @@ let book_sidebar_scroll = HtmlFundamental::Raw {
 let book_sidebar_toggle = HtmlFundamental::Raw {
   html: "<script>(function(){var s=document.querySelector('.book-sidebar');if(!s)return;s.addEventListener('click',function(e){if(!e.target.closest)return;if(e.target.closest('a'))return;var row=e.target.closest('.book-toc-row');if(!row)return;var li=row.parentNode;if(li&&li.classList&&li.classList.contains('book-branch')){e.preventDefault();li.classList.toggle('open');}});})();</script>",
 }
-

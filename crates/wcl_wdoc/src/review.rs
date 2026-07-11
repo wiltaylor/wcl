@@ -1,16 +1,16 @@
 //! Filesystem handshake between `wcl wdoc review` (the agent's blocking wait)
-//! and a running `wcl wdoc serve --comment` dev server.
+//! and a running `wcl editor` hosting the comment UI in its preview pane.
 //!
 //! The two are separate processes, so they coordinate through marker files in a
 //! per-document state dir under the OS temp dir — no network client, no port
 //! discovery. The dir is keyed by the *canonicalized* root path so a relative
-//! and an absolute invocation of serve / review resolve to the same place.
+//! and an absolute invocation of the editor / review resolve to the same place.
 //!
 //! Markers (each holds a "round" token — nanosecond stamp — as plain text):
-//!   `serve`  — present while a dev server is up (presence = a live server).
+//!   `serve`  — present while an editor is up (presence = a live peer).
 //!   `agent`  — present while `review` is blocked (presence = "agent waiting"),
 //!              its content the current wait's round.
-//!   `ready`  — written by serve when the reviewer clicks "Send to agent",
+//!   `ready`  — written when the reviewer clicks "Send to agent",
 //!              its content the released round; `review` consumes it and returns.
 //!
 //! Rounds increase each time `review` is invoked, so the UI can tell a fresh
@@ -54,7 +54,7 @@ impl Handshake {
 
     // -- serve side --------------------------------------------------------
 
-    /// Mark a live dev server and clear any stale `agent` / `ready` from a
+    /// Mark a live editor peer and clear any stale `agent` / `ready` from a
     /// previous run, so the UI doesn't show a phantom "agent waiting".
     pub fn serve_started(&self) -> std::io::Result<()> {
         self.ensure_dir()?;
@@ -63,7 +63,7 @@ impl Handshake {
         fs::write(self.serve_path(), std::process::id().to_string())
     }
 
-    /// Best-effort teardown when the dev server exits.
+    /// Best-effort teardown when the editor exits.
     pub fn serve_stopped(&self) {
         let _ = fs::remove_file(self.serve_path());
         let _ = fs::remove_file(self.ready_path());
@@ -79,14 +79,14 @@ impl Handshake {
     }
 
     /// The round the agent is currently waiting on, if any (presence of the
-    /// `agent` marker). Used by the dev server's review-status endpoint.
+    /// `agent` marker). Used by the editor's review-status endpoint.
     pub fn agent_waiting(&self) -> Option<u64> {
         read_round(&self.agent_path())
     }
 
     // -- review (agent) side ----------------------------------------------
 
-    /// True if a dev server marker is present.
+    /// True if a live editor marker is present.
     pub fn server_alive(&self) -> bool {
         self.serve_path().exists()
     }
@@ -104,7 +104,7 @@ impl Handshake {
     /// True once the reviewer has sent the current `round` (a `ready` marker
     /// whose round matches, or `0` for an untargeted release).
     ///
-    /// `0` is the recovery path: if the dev server restarts mid-wait it
+    /// `0` is the recovery path: if the editor restarts mid-wait it
     /// clears the `agent` marker, so a subsequent "Send to agent" click
     /// can't know the round and writes `0`. Accepting it can't release a
     /// *stale* wait — [`Self::begin_wait`] deletes any leftover `ready`

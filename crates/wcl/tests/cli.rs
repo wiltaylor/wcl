@@ -1001,3 +1001,14 @@ fn diff_git_bad_revision_errors() {
         .assert()
         .code(4); // EXIT_IO
 }
+
+#[test]
+fn editor_help_describes_the_command() {
+    wcl()
+        .arg("editor")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("browser-based editor"))
+        .stdout(predicate::str::contains("--addr"));
+}

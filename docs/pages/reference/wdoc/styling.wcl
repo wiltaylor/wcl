@@ -75,7 +75,7 @@ WCL
 
   h3 "Selecting a built-in theme"
 
-  p "Set `theme = :<name>` on a `site` — a symbol naming a `theme` block. Six built-in palettes ship, each with co-ordinated dark and light variants and its own typography. `theme_toggle = true` adds a light/dark toggle button to the chrome."
+  p "Set `theme = :<name>` on a `site` — a symbol naming a `theme` block. Seven built-in palettes ship, each with co-ordinated dark and light variants and its own typography. `theme_toggle = true` adds a light/dark toggle button to the chrome."
 
   code wcl {
     source = <<'WCL'
@@ -93,7 +93,8 @@ WCL
   table {
     rows:
       | "Theme"        | "Notes" |
-      | "`nord`"       | "Cool blue-grey, the default" |
+      | "`forge`"      | "Forge control palette, the default" |
+      | "`nord`"       | "Cool blue-grey" |
       | "`tokyonight`" | "Vivid night palette" |
       | "`gruvbox`"    | "Warm retro" |
       | "`catppuccin`" | "Soft pastel" |

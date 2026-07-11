@@ -621,8 +621,8 @@ pub(crate) fn render_block(
     rendered.map(|html| anchor_block(block, html, patterns))
 }
 
-/// In comment / edit mode (the `--comment` / `--edit` dev server), stamp a
-/// rendered block's root tag so the injected JS client can locate it:
+/// In comment mode (the `wcl editor` preview) or edit mode (the `--edit`
+/// dev server), stamp a rendered block's root tag so the client can locate it:
 ///
 /// - both modes emit `data-wcl-block` + `data-wcl-kind` — the comment client
 ///   keys off these to compute a positional locator;

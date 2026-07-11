@@ -28,6 +28,11 @@ vscode-package: vscode-build
 vscode-install: vscode-package
     cd editors/vscode && code --install-extension "$(ls -t wcl-vscode-*.vsix | head -1)" --force
 
+# Build the `wcl editor` frontend (editor-ui/ → editor-ui/dist, embedded by build.rs)
+[group('build')]
+editor-ui-build:
+    cd editor-ui && pnpm install && pnpm build
+
 # Build the wcl CLI in release mode (target/release/wcl)
 [group('build')]
 cli-build:
@@ -199,25 +204,30 @@ ci: fmt-check workspace-lint workspace-test wskill-schema-check wskill-template-
 cli-run *ARGS:
     cargo run -p wcl -- {{ARGS}}
 
-# Serve examples/wdoc/main.wcl in comment mode — click a block to leave a review note (--site picks one of its three sites; flags after --)
+# Open the browser editor on this repo (root document: docs/main.wcl, so the preview pane renders the docs site)
+[group('dev')]
+editor *ARGS:
+    cargo run -p wcl -- editor docs/main.wcl --addr 127.0.0.1:8139 {{ARGS}}
+
+# Serve examples/wdoc/main.wcl — hot-reload dev server (--site picks one of its three sites; flags after --). Review comments live in `just editor`'s preview pane.
 [group('dev')]
 wdoc-serve *ARGS:
-    cargo run -p wcl -- wdoc serve examples/wdoc/main.wcl --comment {{ARGS}}
+    cargo run -p wcl -- wdoc serve examples/wdoc/main.wcl {{ARGS}}
 
-# Serve docs/ in comment + edit mode (landing at /, reference book at /reference/) — click a block to leave a review note (list with `just docs-comments`) or edit it in place
+# Serve docs/ in edit mode (landing at /, reference book at /reference/) — click a block to edit it in place. Review comments live in `just editor`'s preview pane (list with `just docs-comments`)
 [group('dev')]
 docs-serve *ARGS:
-    cargo run -p wcl -- wdoc serve docs/main.wcl --addr 127.0.0.1:8137 --comment --edit {{ARGS}}
+    cargo run -p wcl -- wdoc serve docs/main.wcl --addr 127.0.0.1:8137 --edit {{ARGS}}
 
 # Build the project's docs/ site into docs/_site/ (gitignored)
 [group('dev')]
 docs-build *ARGS:
     cargo run -p wcl -- wdoc build docs/main.wcl --out docs/_site {{ARGS}}
 
-# Serve the WCL architecture book (.wad/) in comment mode — hot reload, click a block to leave a review note
+# Serve the WCL architecture book (.wad/) — hot-reload dev server. Review comments live in `just editor`'s preview pane
 [group('dev')]
 wad-serve *ARGS:
-    cargo run -p wcl -- wdoc serve .wad/wdoc/book/main.wcl --addr 127.0.0.1:8138 --comment {{ARGS}}
+    cargo run -p wcl -- wdoc serve .wad/wdoc/book/main.wcl --addr 127.0.0.1:8138 {{ARGS}}
 
 # Build the WCL architecture book (.wad/) into .wad/_site/ (gitignored).
 # The output dir is wiped first: a build never deletes pages that no longer
@@ -242,7 +252,7 @@ wad-extract: && wad-check
 wad-spec REV:
     cargo run -p wcl -- wad spec --from {{REV}} .wad/wad.wcl
 
-# List review @comments left in docs/ via `just docs-serve` (--format json, or `resolve <id>` to delete one)
+# List review @comments left in docs/ via `just editor`'s preview pane (--format json, or `resolve <id>` to delete one)
 [group('dev')]
 docs-comments *ARGS:
     cargo run -p wcl -- wdoc comments docs/main.wcl {{ARGS}}

@@ -11,6 +11,7 @@ mod answer_tui;
 mod diff;
 mod dump;
 mod edit;
+mod editor;
 mod gitspec;
 mod preview;
 mod scaffold;
@@ -172,6 +173,19 @@ enum Command {
         /// so a file sink is the only supported destination.
         #[arg(long)]
         log: Option<PathBuf>,
+    },
+    /// Serve a browser-based editor for the current directory: a
+    /// gitignore-aware file tree, CodeMirror editing with WCL language
+    /// support and LSP (completion, hover, diagnostics), and a live wdoc
+    /// preview built from the root document down.
+    Editor {
+        /// Root `.wcl` document (defaults to `./main.wcl` when present).
+        /// The preview pane and schema-validated saves need it; plain
+        /// editing works without one.
+        root: Option<PathBuf>,
+        /// Bind address, or `auto` to pick the first free port near 8080.
+        #[arg(long, default_value = "auto")]
+        addr: serve::BindSpec,
     },
     /// Scaffold a new project folder from a WCL template. `<template>`
     /// is a built-in name (`wcl init --list`), a user template under
@@ -418,8 +432,9 @@ enum WdocCommand {
     },
     /// Run a local dev server. Watches the source for `.wcl` changes but
     /// does not rebuild automatically — press Enter in the console (or use
-    /// the comment toolbar's Rebuild button) to rebuild, then the browser
-    /// reloads.
+    /// the edit toolbar's Rebuild button under `--edit`) to rebuild, then
+    /// the browser reloads. Review comments live in `wcl editor`'s preview
+    /// pane, not here.
     Serve {
         /// Path to a WCL source file declaring one or more `page` blocks.
         file: PathBuf,
@@ -435,17 +450,11 @@ enum WdocCommand {
         /// site is served under `/<name>/` with a chooser index at `/`.
         #[arg(long)]
         site: Option<String>,
-        /// Enable comment mode: inject a JS client that lets you click a
-        /// rendered block (or the page) and leave a review note, persisted
-        /// into a `comments.wcl` sidecar (no document rebuild). List them
-        /// with `wcl wdoc comments`.
-        #[arg(long)]
-        comment: bool,
         /// Enable edit mode: inject a WYSIWYG client that lets you select a
         /// rendered block and edit its fields / text, add / remove / reorder
         /// blocks, and add / edit / remove schema-defined data objects —
         /// writing the changes straight into the `.wcl` source (which the
-        /// watcher rebuilds + reloads). Composes with `--comment`.
+        /// watcher rebuilds + reloads).
         #[arg(long)]
         edit: bool,
         /// Enable answer mode: inject a questionnaire client that walks the
@@ -453,12 +462,12 @@ enum WdocCommand {
         /// options as radio buttons / checkboxes, free text always available
         /// — writing each answer straight into the `.wcl` source. The
         /// respondent-facing counterpart to `wcl answer`. Composes with
-        /// `--comment` / `--edit`.
+        /// `--edit`.
         #[arg(long)]
         answer: bool,
     },
     /// List the review comments stored in the `comments.wcl` sidecars under
-    /// `<file>`'s directory (left by `wcl wdoc serve --comment`), or
+    /// `<file>`'s directory (left from the `wcl editor` preview pane), or
     /// `resolve <id>` to delete one. JSON output (`--format json`) is aimed
     /// at an AI agent acting on the notes.
     Comments {
@@ -476,14 +485,14 @@ enum WdocCommand {
     },
     /// Wait for a reviewer to finish, then print the comments — the agent side
     /// of the review handshake. Blocks until the reviewer clicks "Send to
-    /// agent" in a running `wcl wdoc serve --comment` toolbar, then lists the
+    /// agent" in the preview pane of a running `wcl editor`, then lists the
     /// comments (like `comments`) so the agent can act on them. Run it again
-    /// after making changes: the toolbar shows the agent is waiting once more,
-    /// so the reviewer can rebuild and keep reviewing. With no server running it
-    /// just lists the current comments without blocking.
+    /// after making changes: the editor shows the agent is waiting once more,
+    /// so the reviewer can rebuild and keep reviewing. With no editor running
+    /// it just lists the current comments without blocking.
     Review {
-        /// Path to the WCL source file (the doc's entry point) — the same path
-        /// passed to `wcl wdoc serve`.
+        /// Path to the WCL source file (the doc's entry point) — the same
+        /// root document the `wcl editor` was started with.
         file: PathBuf,
         /// Output format for the comments printed once released.
         #[arg(long, value_enum, default_value_t = CommentFormat::Json)]
@@ -554,6 +563,23 @@ fn main() -> ExitCode {
                 None => {
                     rt.block_on(wcl_lsp::start_stdio());
                     EXIT_OK
+                }
+            }
+        }
+        Command::Editor { root, addr } => {
+            let rt = match build_runtime() {
+                Ok(rt) => rt,
+                Err(code) => return ExitCode::from(code),
+            };
+            let result = rt.block_on(editor::serve(root, addr));
+            // Bounded teardown so a stray in-flight blocking task can never
+            // hang process exit (mirrors `wdoc serve`).
+            rt.shutdown_timeout(std::time::Duration::from_millis(200));
+            match result {
+                Ok(()) => EXIT_OK,
+                Err(e) => {
+                    eprintln!("editor failed: {e}");
+                    EXIT_IO
                 }
             }
         }
@@ -854,7 +880,6 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
             addr,
             out,
             site,
-            comment,
             edit,
             answer,
         } => {
@@ -862,7 +887,7 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
                 Ok(rt) => rt,
                 Err(code) => return code,
             };
-            let result = rt.block_on(serve::serve(file, out, addr, site, comment, edit, answer));
+            let result = rt.block_on(serve::serve(file, out, addr, site, edit, answer));
             // Tear the runtime down with a bound so a stray in-flight
             // `spawn_blocking` (e.g. a `tokio::fs::read` in the static
             // handler) can never hang process exit on Ctrl-C.
@@ -885,15 +910,16 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
     }
 }
 
-/// `wcl wdoc review` — the agent side of the review handshake. Blocks until the
-/// reviewer clicks "Send to agent" in a running `serve --comment` toolbar, then
-/// prints the comments. With no server up, lists them without blocking.
+/// `wcl wdoc review` — the agent side of the review handshake. Blocks until
+/// the reviewer clicks "Send to agent" in the preview pane of a running
+/// `wcl editor`, then prints the comments. With no editor up, lists them
+/// without blocking.
 fn run_review(file: &Path, format: CommentFormat) -> u8 {
     let root = file.parent().unwrap_or_else(|| Path::new("."));
     let hs = wcl_wdoc::Handshake::new(file);
     if !hs.server_alive() {
         eprintln!(
-            "no running `wcl wdoc serve --comment` found for this document — \
+            "no running `wcl editor` found for this document — \
              listing current comments without waiting."
         );
         return print_comments(root, format);
@@ -906,7 +932,7 @@ fn run_review(file: &Path, format: CommentFormat) -> u8 {
         }
     };
     eprintln!(
-        "waiting for the reviewer — click \"Send to agent\" in the browser toolbar… (Ctrl-C to stop)"
+        "waiting for the reviewer — click \"Send to agent\" in the editor's preview pane… (Ctrl-C to stop)"
     );
 
     // Poll for release on a small runtime so Ctrl-C cleans up the marker (which
@@ -1018,8 +1044,9 @@ fn print_comments(root: &Path, format: CommentFormat) -> u8 {
     EXIT_OK
 }
 
-/// Render a [`wcl_wdoc::CommentRecord`] to a JSON object for `--format json`.
-fn comment_record_json(r: &wcl_wdoc::CommentRecord) -> serde_json::Value {
+/// Render a [`wcl_wdoc::CommentRecord`] to a JSON object — the one shape
+/// shared by `--format json` and the editor's `/api/comments`.
+pub(crate) fn comment_record_json(r: &wcl_wdoc::CommentRecord) -> serde_json::Value {
     serde_json::json!({
         "id": r.id,
         "scope": r.scope.as_str(),

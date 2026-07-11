@@ -1,11 +1,11 @@
 // wdoc standard library — review comments.
 //
-// Review comments are NOT stored in the document source. `wcl wdoc serve
-// --comment` (the dev server injects a JS client that lets you click a
-// rendered block, or the page, and leave a note) persists each note into a
-// `comments.wcl` sidecar — one beside each wskill's `wskill.wcl`, or beside
-// the served root document for a page not inside a wskill. The watcher ignores
-// `comments.wcl`, so a note shows client-side with no document rebuild.
+// Review comments are NOT stored in the document source. The `wcl editor`
+// preview pane lets you click a rendered block (or the page) and leave a
+// note, persisting each one into a `comments.wcl` sidecar — one beside each
+// wskill's `wskill.wcl`, or beside the served root document for a page not
+// inside a wskill. Watchers ignore `comments.wcl`, so a note shows
+// client-side with no document rebuild.
 // `wcl wdoc comments` reads them back so an AI agent can act on the notes and
 // `wcl wdoc comments resolve <id>` to delete them. See
 // `crates/wcl_wdoc/src/comments.rs`.

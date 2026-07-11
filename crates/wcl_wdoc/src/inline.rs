@@ -133,7 +133,7 @@ pub(crate) struct InlinePatterns {
     backend: Backend,
     vis_site: RefCell<Option<String>>,
     vis_template: RefCell<Option<String>>,
-    /// Comment mode (the `--comment` dev server): when set, `render_block`
+    /// Comment mode (the `wcl editor` preview build): when set, `render_block`
     /// stamps each block's root tag with `data-wcl-*` anchors for the comment
     /// client. Rides here so the renderer reaches it without a new param,
     /// like `ui_theme`; set per build via `set_comment_mode`.
@@ -242,7 +242,7 @@ impl InlinePatterns {
         }
     }
 
-    /// Enable comment-mode markup for this build (the `--comment` dev server).
+    /// Enable comment-mode markup for this build (the `wcl editor` preview).
     pub(crate) fn set_comment_mode(&self, on: bool) {
         self.comment_mode.set(on);
     }

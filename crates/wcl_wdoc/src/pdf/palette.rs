@@ -17,14 +17,14 @@ pub(crate) struct Palette {
 
 impl Default for Palette {
     fn default() -> Self {
-        // The bundled chart palette (lib/css-classes.wcl order) on a near-black
+        // The Forge light chart palette (lib/theme.wcl order) on its body
         // foreground — legible on the white PDF page and consistent with the
         // web default theme.
         Self {
-            fg: "#1a1a1a",
+            fg: "#3d4654",
             series: [
-                "#5e81ac", "#a3be8c", "#ebcb8b", "#bf616a", "#b48ead", "#88c0d0", "#d08770",
-                "#8fbcbb",
+                "#0069ca", "#00792f", "#c17000", "#c90019", "#006fa3", "#004573", "#7a2c00",
+                "#9e0000",
             ],
         }
     }
