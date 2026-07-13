@@ -16,6 +16,13 @@ dev_command dev_cli_install {
   category    = "build"
 }
 
+dev_command dev_editor_ui_build {
+  name        = "editor-ui-build"
+  command     = "just editor-ui-build"
+  description = "Build the `wcl editor` frontend (editor-ui/ → editor-ui/dist, embedded by build.rs)"
+  category    = "build"
+}
+
 dev_command dev_vscode_build {
   name        = "vscode-build"
   command     = "just vscode-build"
@@ -61,14 +68,21 @@ dev_command dev_docs_build {
 dev_command dev_docs_comments {
   name        = "docs-comments"
   command     = "just docs-comments [ARGS]..."
-  description = "List review @comments left in docs/ via `just docs-serve` (--format json, or `resolve <id>` to delete one)"
+  description = "List review @comments left in docs/ via `just editor`'s preview pane (--format json, or `resolve <id>` to delete one)"
   category    = "dev"
 }
 
 dev_command dev_docs_serve {
   name        = "docs-serve"
   command     = "just docs-serve [ARGS]..."
-  description = "Serve docs/ in comment + edit mode (landing at /, reference book at /reference/) — click a block to leave a review note (list with `just docs-comments`) or edit it in place"
+  description = "Serve docs/ in edit mode (landing at /, reference book at /reference/) — click a block to edit it in place. Review comments live in `just editor`'s preview pane (list with `just docs-comments`)"
+  category    = "dev"
+}
+
+dev_command dev_editor {
+  name        = "editor"
+  command     = "just editor [ARGS]..."
+  description = "Open the browser editor on this repo (root document: docs/main.wcl, so the preview pane renders the docs site)"
   category    = "dev"
 }
 
@@ -117,7 +131,7 @@ dev_command dev_wad_md {
 dev_command dev_wad_serve {
   name        = "wad-serve"
   command     = "just wad-serve [ARGS]..."
-  description = "Serve the WCL architecture book (.wad/) in comment mode — hot reload, click a block to leave a review note"
+  description = "Serve the WCL architecture book (.wad/) — hot-reload dev server. Review comments live in `just editor`'s preview pane"
   category    = "dev"
 }
 
@@ -138,7 +152,7 @@ dev_command dev_wdoc_pdf {
 dev_command dev_wdoc_serve {
   name        = "wdoc-serve"
   command     = "just wdoc-serve [ARGS]..."
-  description = "Serve examples/wdoc/main.wcl in comment mode — click a block to leave a review note (--site picks one of its three sites; flags after --)"
+  description = "Serve examples/wdoc/main.wcl — hot-reload dev server (--site picks one of its three sites; flags after --). Review comments live in `just editor`'s preview pane."
   category    = "dev"
 }
 
@@ -153,6 +167,13 @@ dev_command dev_ci {
   name        = "ci"
   command     = "just ci"
   description = "Full CI gate: fmt-check + workspace-lint + workspace-test + schema drift checks + doc builds"
+  category    = "quality"
+}
+
+dev_command dev_skills_check {
+  name        = "skills-check"
+  command     = "just skills-check"
+  description = ".claude/agents/README.md are exempt."
   category    = "quality"
 }
 
@@ -209,6 +230,27 @@ dev_command dev_wplan_template_check {
   name        = "wplan-template-check"
   command     = "just wplan-template-check"
   description = "Scaffold the shipped wplan template into target/ and run its structural gates (runs in ci)"
+  category    = "quality"
+}
+
+dev_command dev_wskill_artifact_check {
+  name        = "wskill-artifact-check"
+  command     = "just wskill-artifact-check"
+  description = "enumerate them), so a rename or deletion would otherwise dangle silently (runs in ci)"
+  category    = "quality"
+}
+
+dev_command dev_wskill_coverage {
+  name        = "wskill-coverage"
+  command     = "just wskill-coverage"
+  description = "authored without `audience = :both` silently never reaches the skill."
+  category    = "quality"
+}
+
+dev_command dev_wskill_crosstopic_check {
+  name        = "wskill-crosstopic-check"
+  command     = "just wskill-crosstopic-check"
+  description = "book imports, which docs-build catches (runs in ci)."
   category    = "quality"
 }
 

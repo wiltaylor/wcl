@@ -37,25 +37,6 @@ code_item serve_http_api {
       media_type = "application/json"
     }
   }
-  api_endpoint ep_wdoc_comment {
-    method = "GET"  path = "/__wdoc_comment"
-    summary = "Create / list review comments in the comments.wcl sidecar."
-    description = "Comment-mode only. Creates or lists the review notes persisted in the `comments.wcl` sidecar beside the page's owning document; no rebuild happens."
-    api_response rr_wdoc_comment_0 {
-      status = "200"
-      description = "The comment list (GET) or the stored comment (POST)."
-      media_type = "application/json"
-    }
-    api_response rr_wdoc_comment_1 {
-      status = "400"
-      description = "Missing comment body or page on create."
-      media_type = "application/json"
-    }
-  }
-  api_endpoint ep_wdoc_comment_js {
-    method = "GET"  path = "/__wdoc_comment.js"
-    summary = "The review-comment client script (comment mode)."
-  }
   api_endpoint ep_wdoc_edit_js {
     method = "GET"  path = "/__wdoc_edit.js"
     summary = "The WYSIWYG edit client script (edit mode)."
@@ -191,31 +172,6 @@ code_item serve_http_api {
   api_endpoint ep_wdoc_reload {
     method = "GET"  path = "/__wdoc_reload"
     summary = "Live-reload long-poll: the injected client waits here and reloads the page when a rebuild lands."
-  }
-  api_endpoint ep_wdoc_review_ready {
-    method = "POST"  path = "/__wdoc_review/ready"
-    summary = "Reviewer clicked “Send to agent” — release the blocked `wcl wdoc review`."
-    api_response rr_wdoc_review_ready_0 {
-      status = "200"
-      description = "The blocked `wcl wdoc review` was released."
-      media_type = "application/json"
-      schema = "{ \"ok\": true }"
-    }
-    api_response rr_wdoc_review_ready_1 {
-      status = "400"
-      description = "No review handshake is active (no agent is waiting)."
-      media_type = "application/json"
-    }
-  }
-  api_endpoint ep_wdoc_review_status {
-    method = "GET"  path = "/__wdoc_review/status"
-    summary = "Long-poll the review handshake (agent-waiting marker)."
-    description = "Long-poll: returns when the agent-waiting marker changes, so the toolbar can show/hide the “Send to agent” banner."
-    api_response rr_wdoc_review_status_0 {
-      status = "200"
-      description = "The current handshake state."
-      media_type = "application/json"
-    }
   }
   api_endpoint ep_wdoc_schema {
     method = "GET"  path = "/__wdoc_schema"

@@ -135,6 +135,119 @@ wskill-template-check:
             || { echo "wskill template drift: docs/wskills/wskill/wdoc/$path vs scaffold heredoc $term — back-port one side"; exit 1; }; \
     done
 
+# Fail when a topic's copy of a topic-agnostic wdoc template drifts from the
+# reference implementation (docs/wskills/wskill/wdoc/). Per-topic exemptions
+# cover verified intentional divergence: skill/main.wcl everywhere (topic-tuned
+# description); wcl's common.wcl (builtins fn_signature superset), overview,
+# reference, skill_links, book (builtins/CLI projections); wdoc's reference,
+# skill_links, book (index-nav TOC architecture). Files a topic doesn't ship
+# (wad: presentation/training) are skipped — a deleted copy breaks that topic's
+# book imports, which docs-build catches (runs in ci).
+[group('quality')]
+wskill-crosstopic-check:
+    @fail=0; \
+    exempt_wcl="component/common.wcl pages/overview.wcl pages/reference.wcl pages/skill_links.wcl book/main.wcl"; \
+    exempt_wdoc="pages/reference.wcl pages/skill_links.wcl book/main.wcl"; \
+    exempt_wad=""; \
+    ref=docs/wskills/wskill/wdoc; \
+    for d in docs/wskills/*; do \
+        t=$(basename "$d"); [ "$t" = wskill ] && continue; [ -d "$d/wdoc" ] || continue; \
+        eval "exempt=\"\${exempt_$t:-} skill/main.wcl\""; \
+        for f in $(cd "$ref" && find . -type f -name '*.wcl' | sed 's|^\./||' | sort); do \
+            case " $exempt " in *" $f "*) continue;; esac; \
+            [ -f "$d/wdoc/$f" ] || continue; \
+            diff "$ref/$f" "$d/wdoc/$f" >/dev/null \
+                || { echo "cross-topic template drift: $d/wdoc/$f vs $ref/$f — sync from the reference (or add an exemption here if newly topic-tuned)"; fail=1; }; \
+        done; \
+    done; \
+    [ "$fail" -eq 0 ] && echo "wskill-crosstopic-check OK"; \
+    exit $fail
+
+# Fail when a wskill declares an `artifact` whose entry file does not exist —
+# entry paths are metadata (the registry landing and per-wskill justfiles
+# enumerate them), so a rename or deletion would otherwise dangle silently (runs in ci)
+[group('quality')]
+wskill-artifact-check:
+    @fail=0; \
+    for d in docs/wskills/*; do \
+        [ -f "$d/wskill.wcl" ] || continue; \
+        for e in $(grep -oE 'entry *= *"[^"]+"' "$d/wskill.wcl" | sed 's/.*"\(.*\)"/\1/'); do \
+            [ -f "$d/$e" ] || { echo "dangling artifact entry: $d/wskill.wcl declares $e but $d/$e does not exist"; fail=1; }; \
+        done; \
+    done; \
+    [ "$fail" -eq 0 ] && echo "wskill-artifact-check OK"; \
+    exit $fail
+
+# Fail when a wskill's skill projection breaks, when the committed artifacts
+# (.claude/skills/<name>/, .claude/agents/*.md) drift from their wskill sources,
+# when two wskills declare the same agent name (the flat install copy would
+# silently clobber), or when a committed generated skill/agent has no producing
+# wskill (runs in ci). Discovery and name extraction match skills-install.
+# Hand-authored skills (no wskill_schema_version metadata in SKILL.md) and
+# .claude/agents/README.md are exempt.
+[group('quality')]
+skills-check:
+    @rm -rf target/skills-check && mkdir -p target/skills-check
+    @fail=0; agent_names=""; skill_names=""; \
+    for d in docs/wskills/*; do \
+        [ -f "$d/wdoc/skill/main.wcl" ] || continue; \
+        topic=$(basename "$d"); \
+        stage="target/skills-check/$topic"; \
+        echo "==> $topic" >&2; \
+        cargo run -q -p wcl -- wdoc skill "$d/wdoc/skill/main.wcl" --out "$stage" \
+            || { echo "skill projection FAILED: $d/wdoc/skill/main.wcl"; exit 1; }; \
+        for md in "$stage/SKILL.md" "$stage"/*/SKILL.md; do \
+            [ -f "$md" ] || continue; \
+            sd=$(dirname "$md"); \
+            sn=$(sed -n 's/^name: *//p' "$md" | head -1 | sed 's/^"//; s/"$//'); \
+            skill_names="$skill_names $sn"; \
+            diff -r "$sd" ".claude/skills/$sn" >/dev/null 2>&1 \
+                || { echo "skill artifact drift: .claude/skills/$sn vs $d — run 'just skills-install' and commit"; \
+                     diff -r "$sd" ".claude/skills/$sn" 2>&1 | head -20; fail=1; }; \
+        done; \
+        if [ -d "$stage/agents" ]; then \
+            for a in "$stage/agents/"*.md; do \
+                an=$(basename "$a" .md); \
+                case " $agent_names " in *" $an "*) \
+                    echo "agent name collision: $an declared by more than one wskill"; fail=1;; \
+                esac; \
+                agent_names="$agent_names $an"; \
+                diff "$a" ".claude/agents/$an.md" >/dev/null 2>&1 \
+                    || { echo "agent artifact drift: .claude/agents/$an.md vs $d — run 'just skills-install' and commit"; fail=1; }; \
+            done; \
+        fi; \
+    done; \
+    for smd in .claude/skills/*/SKILL.md; do \
+        [ -f "$smd" ] || continue; \
+        grep -q 'wskill_schema_version' "$smd" || continue; \
+        sn=$(basename "$(dirname "$smd")"); \
+        case " $skill_names " in *" $sn "*) ;; *) \
+            echo "stale generated skill: .claude/skills/$sn — no wskill produces it; delete it or restore its source"; fail=1;; \
+        esac; \
+    done; \
+    for a in .claude/agents/*.md; do \
+        an=$(basename "$a" .md); [ "$an" = README ] && continue; \
+        case " $agent_names " in *" $an "*) ;; *) \
+            echo "stale agent: $a — no wskill produces it; delete it or restore its source"; fail=1;; \
+        esac; \
+    done; \
+    [ "$fail" -eq 0 ] && echo "skills-check OK — projections build clean and match committed artifacts"; \
+    exit $fail
+
+# Report book/skill audience coverage per wskill (units kept vs total per
+# projection) — informational, not a gate. An excluded unit is otherwise
+# invisible: audience defaults to :book (research: :ai), so e.g. a fact
+# authored without `audience = :both` silently never reaches the skill.
+[group('quality')]
+wskill-coverage:
+    @for d in docs/wskills/*; do \
+        [ -f "$d/wskill.wcl" ] || continue; \
+        echo "== $(basename "$d")"; \
+        grep -vE '^\s*(//|$)' docs/wskills/coverage.repl \
+            | cargo run -q -p wcl -- repl "$d/wskill.wcl" \
+            | sed 's/^"//; s/"$//'; \
+    done
+
 # Print the canonical WAD base schema (the scaffold template's heredoc) to stdout
 [private]
 wad-schema-extract:
@@ -197,7 +310,7 @@ wplan-template-check:
 
 # Full CI gate: fmt-check + workspace-lint + workspace-test + schema drift checks + doc builds
 [group('quality')]
-ci: fmt-check workspace-lint workspace-test wskill-schema-check wskill-template-check wad-schema-check wad-check wad-extract-check wad-facts-check wad-build wplan-template-check docs-build
+ci: fmt-check workspace-lint workspace-test wskill-schema-check wskill-template-check wskill-crosstopic-check wskill-artifact-check wad-schema-check wad-check wad-extract-check wad-facts-check wad-build wplan-template-check skills-check docs-build
 
 # Run the CLI: just cli-run -- parse examples/basic.wcl
 [group('dev')]
@@ -270,7 +383,8 @@ md-build *ARGS:
 [group('dev')]
 skills-install:
     @mkdir -p .claude/agents target/skills-stage && rm -rf target/skills-stage/*
-    @for d in docs/wskills/*; do \
+    @agent_names=""; \
+    for d in docs/wskills/*; do \
         [ -f "$d/wdoc/skill/main.wcl" ] || continue; \
         name=$(basename "$d"); \
         echo "==> $name" >&2; \
@@ -285,6 +399,13 @@ skills-install:
         done; \
         if [ -d "$stage/agents" ]; then \
             echo "    agents: $(ls "$stage/agents")" >&2; \
+            for a in "$stage/agents/"*.md; do \
+                an=$(basename "$a" .md); \
+                case " $agent_names " in *" $an "*) \
+                    echo "agent name collision: $an declared by more than one wskill — refusing to clobber .claude/agents/$an.md"; exit 1;; \
+                esac; \
+                agent_names="$agent_names $an"; \
+            done; \
             cp "$stage/agents/"*.md .claude/agents/; \
         fi; \
     done

@@ -34,8 +34,14 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_edit {
     name = "edit"
     kind = "module"
-    summary = "1 file, 22 pub items"
+    summary = "1 file, 25 pub items"
     deps = [n_cg_wcl_xc_wcl_lang]
+  }
+  code_node n_cg_wcl_editor {
+    name = "editor"
+    kind = "module"
+    summary = "6 files, 10 pub items"
+    deps = [n_cg_wcl_edit, n_cg_wcl_serve, n_cg_wcl_xc_wcl_wdoc]
   }
   code_node n_cg_wcl_gitspec {
     name = "gitspec"
@@ -57,7 +63,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_serve {
     name = "serve"
     kind = "module"
-    summary = "1 file, 6 pub items"
+    summary = "1 file, 12 pub items"
     deps = [n_cg_wcl_xc_wcl_wdoc]
   }
   code_node n_cg_wcl_wad {
@@ -220,7 +226,7 @@ code_item code_crate_wcl_lsp {
   code_node n_cg_wcl_lsp_diagnostics {
     name = "diagnostics"
     kind = "module"
-    summary = "1 file, 1 pub items"
+    summary = "1 file, 2 pub items"
     deps = [n_cg_wcl_lsp_convert, n_cg_wcl_lsp_xc_wcl_lang]
   }
   code_node n_cg_wcl_lsp_folding {
@@ -303,7 +309,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_build {
     name = "build"
     kind = "module"
-    summary = "1 file, 22 pub items"
+    summary = "1 file, 25 pub items"
     deps = [n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_card {
@@ -428,6 +434,12 @@ code_item code_crate_wcl_wdoc {
     kind = "module"
     summary = "1 file, 5 pub items"
   }
+  code_node n_cg_wcl_wdoc_sites {
+    name = "sites"
+    kind = "module"
+    summary = "1 file, 3 pub items"
+    deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_include, n_cg_wcl_wdoc_render]
+  }
   code_node n_cg_wcl_wdoc_terminal {
     name = "terminal"
     kind = "module"
@@ -487,6 +499,16 @@ code_item code_api_cli_commands {
   name      = "Public surface"
   summary   = "Pub / pub(crate) types, traits, and functions — the surface a sibling component sees (tree-sitter over wcl)."
   kind      = :module_api
+  code_node n_api_cli_commands_crate_root_fns {
+    name = "crate root"
+    kind = "fns"
+    summary = "src/main.rs"
+    code_member m_n_api_cli_commands_crate_root_fns_comment_record_json {
+      signature = "fn comment_record_json(r: &wcl_wdoc::CommentRecord) -> serde_js…"
+      kind = "fn"
+      visibility = "crate"
+    }
+  }
   code_node n_api_cli_commands_SelectKind {
     name = "SelectKind"
     kind = "enum"
@@ -778,6 +800,83 @@ code_item code_api_cli_commands {
       visibility = "crate"
     }
   }
+  code_node n_api_cli_commands_EditorState {
+    name = "EditorState"
+    kind = "struct"
+    summary = "src/editor/mod.rs"
+  }
+  code_node n_api_cli_commands_editor_fns {
+    name = "editor"
+    kind = "fns"
+    summary = "src/editor/mod.rs"
+    code_member m_n_api_cli_commands_editor_fns_serve {
+      signature = "fn serve( root: Option<PathBuf>, addr: BindSpec, ) -> Result<()…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_editor_fns_router {
+      signature = "fn router(state: Arc<EditorState>) -> Router"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_cli_commands_EditorState]
+    }
+  }
+  code_node n_api_cli_commands_assets_fns {
+    name = "assets"
+    kind = "fns"
+    summary = "src/editor/assets.rs"
+    code_member m_n_api_cli_commands_assets_fns_spa_fallback {
+      signature = "fn spa_fallback(uri: Uri) -> Response"
+      kind = "fn"
+      visibility = "crate"
+    }
+  }
+  code_node n_api_cli_commands_files_fns {
+    name = "files"
+    kind = "fns"
+    summary = "src/editor/files.rs"
+    code_member m_n_api_cli_commands_files_fns_list_tree {
+      signature = "fn list_tree(root_dir: &Path) -> Result<serde_json::Value, Stri…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_files_fns_read_text {
+      signature = "fn read_text(root_dir: &Path, path: &str) -> Result<serde_json:…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_files_fns_read_raw {
+      signature = "fn read_raw(root_dir: &Path, path: &str) -> Result<(PathBuf, Ve…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_files_fns_save_file {
+      signature = "fn save_file( root_dir: &Path, root_file: Option<&Path>, body: …"
+      kind = "fn"
+      visibility = "crate"
+    }
+  }
+  code_node n_api_cli_commands_lsp_bridge_fns {
+    name = "lsp_bridge"
+    kind = "fns"
+    summary = "src/editor/lsp_bridge.rs"
+    code_member m_n_api_cli_commands_lsp_bridge_fns_handle_lsp_ws {
+      signature = "fn handle_lsp_ws( ws: WebSocketUpgrade, State(state): State<Arc…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_cli_commands_EditorState]
+    }
+  }
+  code_node n_api_cli_commands_sites_fns {
+    name = "sites"
+    kind = "fns"
+    summary = "src/editor/sites.rs"
+    code_member m_n_api_cli_commands_sites_fns_scan_sites {
+      signature = "fn scan_sites( root_dir: &Path, root_file: Option<&Path>, ) -> …"
+      kind = "fn"
+      visibility = "crate"
+    }
+  }
   code_node n_api_cli_commands_SpecFormat {
     name = "SpecFormat"
     kind = "enum"
@@ -879,7 +978,7 @@ code_item code_api_cli_serve {
       visibility = "crate"
     }
     code_member m_n_api_cli_serve_edit_fns_more {
-      signature = "… +9 more"
+      signature = "… +12 more"
       kind = "overflow"
     }
   }
@@ -918,9 +1017,19 @@ code_item code_api_cli_serve {
     name = "serve"
     kind = "fns"
     summary = "src/serve.rs"
+    code_member m_n_api_cli_serve_serve_fns_POLL_TIMEOUT {
+      signature = "const POLL_TIMEOUT: Duration"
+      kind = "const"
+      visibility = "crate"
+    }
     code_member m_n_api_cli_serve_serve_fns_DEFAULT_BIND {
       signature = "const DEFAULT_BIND: SocketAddr"
       kind = "const"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_serve_serve_fns_bind_auto {
+      signature = "fn bind_auto(base: SocketAddr) -> std::io::Result<tokio::net::T…"
+      kind = "fn"
       visibility = "crate"
     }
     code_member m_n_api_cli_serve_serve_fns_serve {
@@ -929,8 +1038,23 @@ code_item code_api_cli_serve {
       visibility = "crate"
       deps = [n_api_cli_serve_BindSpec]
     }
+    code_member m_n_api_cli_serve_serve_fns_query_param {
+      signature = "fn query_param(uri: &Uri, key: &str) -> Option<String>"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_serve_serve_fns_parse_json_body {
+      signature = "fn parse_json_body(body: &str) -> Result<serde_json::Value, Str…"
+      kind = "fn"
+      visibility = "crate"
+    }
     code_member m_n_api_cli_serve_serve_fns_sandboxed {
       signature = "fn sandboxed(root: &Path, file: &Path) -> Option<PathBuf>"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_serve_serve_fns_sandboxed_create {
+      signature = "fn sandboxed_create(root: &Path, file: &Path) -> Option<PathBuf>"
       kind = "fn"
       visibility = "crate"
     }
@@ -941,6 +1065,11 @@ code_item code_api_cli_serve {
     }
     code_member m_n_api_cli_serve_serve_fns_json_error {
       signature = "fn json_error(status: StatusCode, msg: &str) -> Response"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_serve_serve_fns_content_type {
+      signature = "fn content_type(path: &Path) -> &'static str"
       kind = "fn"
       visibility = "crate"
     }
@@ -2429,7 +2558,7 @@ code_item code_api_doc_view {
       kind = "method"
     }
     code_member m_n_api_doc_view_Document_more {
-      signature = "… +72 more"
+      signature = "… +73 more"
       kind = "overflow"
     }
   }
@@ -4144,16 +4273,16 @@ code_item code_api_wcl_lang_error {
       signature = "DuplicateBlockKind"
       kind = "variant"
     }
+    code_member m_n_api_wcl_lang_error_SchemaViolationKind_DuplicateBlockId {
+      signature = "DuplicateBlockId"
+      kind = "variant"
+    }
     code_member m_n_api_wcl_lang_error_SchemaViolationKind_ComponentKindCollision {
       signature = "ComponentKindCollision"
       kind = "variant"
     }
-    code_member m_n_api_wcl_lang_error_SchemaViolationKind_InterfaceNotImplemented {
-      signature = "InterfaceNotImplemented"
-      kind = "variant"
-    }
     code_member m_n_api_wcl_lang_error_SchemaViolationKind_more {
-      signature = "… +13 more"
+      signature = "… +15 more"
       kind = "overflow"
     }
   }
@@ -4861,6 +4990,10 @@ code_item code_api_wcl_lsp_root {
       signature = "fn start_stdio()"
       kind = "fn"
     }
+    code_member m_n_api_wcl_lsp_root_crate_root_fns_serve_stream {
+      signature = "fn serve_stream<R, W>(read: R, write: W)"
+      kind = "fn"
+    }
     code_member m_n_api_wcl_lsp_root_crate_root_fns_start_tcp {
       signature = "fn start_tcp(addr: SocketAddr) -> std::io::Result<()>"
       kind = "fn"
@@ -4948,7 +5081,12 @@ code_item code_api_wcl_lsp_diagnostics {
     kind = "fns"
     summary = "src/diagnostics.rs"
     code_member m_n_api_wcl_lsp_diagnostics_diagnostics_fns_compute {
-      signature = "fn compute(source: &str, uri: &str) -> Vec<Diagnostic>"
+      signature = "fn compute( source: &str, uri: &str, base_dir: Option<&Path>, l…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_lsp_diagnostics_diagnostics_fns_compute_syntax_only {
+      signature = "fn compute_syntax_only( source: &str, uri: &str, base_dir: Opti…"
       kind = "fn"
       visibility = "crate"
     }
@@ -5348,7 +5486,6 @@ code_item code_api_wcl_wdoc_build {
     code_member m_n_api_wcl_wdoc_build_build_fns_wdoc_environment {
       signature = "fn wdoc_environment(base_dir: Option<&Path>) -> Environment"
       kind = "fn"
-      visibility = "crate"
     }
     code_member m_n_api_wcl_wdoc_build_build_fns_open_doc_for_edit {
       signature = "fn open_doc_for_edit(file: &Path) -> Result<Document, wcl_lang:…"
@@ -5366,6 +5503,10 @@ code_item code_api_wcl_wdoc_build {
       signature = "fn subsite_for_page(root_file: &Path, page_file: &Path) -> Opti…"
       kind = "fn"
       deps = [n_api_wcl_wdoc_build_PageSubSite]
+    }
+    code_member m_n_api_wcl_wdoc_build_build_fns_pages_in_file {
+      signature = "fn pages_in_file( root_file: &Path, page_file: &Path, overlay: …"
+      kind = "fn"
     }
     code_member m_n_api_wcl_wdoc_build_build_fns_reserved_kind_errors {
       signature = "fn reserved_kind_errors(doc: &Document) -> Vec<Report>"
@@ -5397,14 +5538,8 @@ code_item code_api_wcl_wdoc_build {
       visibility = "crate"
       deps = [n_api_wcl_wdoc_build_SiteSpec, n_api_wcl_wdoc_build_BuildError]
     }
-    code_member m_n_api_wcl_wdoc_build_build_fns_is_skill_site {
-      signature = "fn is_skill_site(spec: &SiteSpec<'_>) -> bool"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wcl_wdoc_build_SiteSpec]
-    }
     code_member m_n_api_wcl_wdoc_build_build_fns_more {
-      signature = "… +4 more"
+      signature = "… +7 more"
       kind = "overflow"
     }
   }
@@ -8167,6 +8302,61 @@ code_item code_api_wcl_wdoc_review {
     code_member m_n_api_wcl_wdoc_review_Handshake_end_wait {
       signature = "fn end_wait(&self)"
       kind = "method"
+    }
+  }
+}
+
+code_item code_api_wcl_wdoc_sites {
+  container = wcl_wdoc
+  name      = "Public surface — sites"
+  summary   = "Pub / pub(crate) types, traits, and functions — the surface a sibling component sees (tree-sitter over wcl_wdoc::sites)."
+  kind      = :module_api
+  code_node n_api_wcl_wdoc_sites_EntrySiteInfo {
+    name = "EntrySiteInfo"
+    kind = "struct"
+    summary = "src/sites.rs"
+    code_member m_n_api_wcl_wdoc_sites_EntrySiteInfo_site {
+      signature = "site: Option<String>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_sites_EntrySiteInfo_title {
+      signature = "title: Option<String>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_sites_EntrySiteInfo_root {
+      signature = "root: bool"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_sites_EntrySiteInfo_skill {
+      signature = "skill: bool"
+      kind = "field"
+    }
+  }
+  code_node n_api_wcl_wdoc_sites_EntryIncludeInfo {
+    name = "EntryIncludeInfo"
+    kind = "struct"
+    summary = "src/sites.rs"
+    code_member m_n_api_wcl_wdoc_sites_EntryIncludeInfo_name {
+      signature = "name: String"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_sites_EntryIncludeInfo_entry {
+      signature = "entry: PathBuf"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_sites_EntryIncludeInfo_site {
+      signature = "site: Option<String>"
+      kind = "field"
+    }
+  }
+  code_node n_api_wcl_wdoc_sites_sites_fns {
+    name = "sites"
+    kind = "fns"
+    summary = "src/sites.rs"
+    code_member m_n_api_wcl_wdoc_sites_sites_fns_entry_site_info {
+      signature = "fn entry_site_info( entry: &Path, ) -> Result<(Vec<EntrySiteInf…"
+      kind = "fn"
+      deps = [n_api_wcl_wdoc_sites_EntrySiteInfo, n_api_wcl_wdoc_sites_EntryIncludeInfo]
     }
   }
 }

@@ -44,6 +44,11 @@ jobs:
       # implementation (docs/wskills/wskill) — improvements get back-ported
       # instead of stranding new scaffolds on stale templates.
       - run: just wskill-template-check
+      # The other topics' copies of the topic-agnostic templates must match
+      # the reference too (per-topic exemptions cover intentional divergence),
+      # and every declared artifact entry file must exist.
+      - run: just wskill-crosstopic-check
+      - run: just wskill-artifact-check
       - run: just wad-schema-check
       # The reference WAD (.wad/) is the first wcl-init-wad consumer —
       # validate its model and build its book like docs-build below.
@@ -58,6 +63,11 @@ jobs:
       # structural gates against the current binary — the moral equivalent
       # of the old "verified tarball".
       - run: just wplan-template-check
+      # Every wskill's skill projection must build and match the committed
+      # .claude/skills + .claude/agents artifacts (drift, agent-name
+      # collisions, stale generated files) — the book-only docs-build below
+      # never exercises `wcl wdoc skill`.
+      - run: just skills-check
       # The docs/ site is the largest real-world wdoc consumer — building it
       # catches renderer regressions that unit tests miss, and broken doc
       # pages, before they reach the deploy workflow.
