@@ -41,7 +41,12 @@ pub(crate) fn compute(
         Ok(doc) => doc
             .schema_errors()
             .into_iter()
-            .map(|e| eval_error_to_diagnostic(source, &e))
+            .map(|e| eval_error_to_diagnostic(source, &e, DiagnosticSeverity::ERROR))
+            .chain(
+                doc.schema_warnings()
+                    .into_iter()
+                    .map(|w| eval_error_to_diagnostic(source, &w, DiagnosticSeverity::WARNING)),
+            )
             .collect(),
         Err(e) => parse_error_to_diagnostics(source, e),
     }
@@ -87,11 +92,15 @@ fn parse_error_to_diagnostics(source: &str, err: ParseError) -> Vec<Diagnostic> 
     }
 }
 
-fn eval_error_to_diagnostic(source: &str, err: &EvalError) -> Diagnostic {
+fn eval_error_to_diagnostic(
+    source: &str,
+    err: &EvalError,
+    severity: DiagnosticSeverity,
+) -> Diagnostic {
     let span = eval_error_span(err);
     Diagnostic {
         range: source_span_to_range(source, span),
-        severity: Some(DiagnosticSeverity::ERROR),
+        severity: Some(severity),
         code: Some(NumberOrString::String(diagnostic_code(err).into())),
         source: Some("wcl".into()),
         message: err.to_string(),
@@ -236,6 +245,29 @@ mod tests {
         let main_src = "import <wdoc.wcl>\nimport \"pages.wcl\"\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n";
         let diags = compute(main_src, "main.wcl", Some(td.path()), loader());
         assert!(diags.is_empty(), "rooted main flagged: {diags:#?}");
+    }
+
+    #[test]
+    fn gather_shadow_surfaces_as_warning_severity() {
+        // A root @document gather field shadowing the wdoc stdlib's
+        // `pages` gather — advisory, so WARNING, not ERROR.
+        let src = "import <wdoc.wcl>\n\n@block(\"part\")\ntype Part {\n  name: utf8\n}\n@document\ntype Mine {\n  @children(\"part\") pages: list<Part>\n}\n";
+        let diags = compute(src, "test.wcl", None, loader());
+        let warn = diags
+            .iter()
+            .find(|d| d.severity == Some(DiagnosticSeverity::WARNING))
+            .expect("shadow warning present");
+        assert!(
+            warn.message.contains("pages"),
+            "warning names the field: {}",
+            warn.message
+        );
+        assert!(
+            !diags
+                .iter()
+                .any(|d| d.severity == Some(DiagnosticSeverity::ERROR)),
+            "no errors expected: {diags:#?}"
+        );
     }
 
     #[test]

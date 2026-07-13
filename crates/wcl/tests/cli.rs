@@ -653,6 +653,45 @@ fn check_json_reports_ok_document() {
 }
 
 #[test]
+fn check_prints_gather_shadow_warning_but_exits_ok() {
+    // The fixture's root @document gather field shadows the imported
+    // library's `components` — advisory only: stderr warning, exit 0.
+    wcl()
+        .arg("check")
+        .arg(examples_dir().join("warnings/gather_shadow/main.wcl"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("OK"))
+        .stderr(predicate::str::contains("warning:"))
+        .stderr(predicate::str::contains("components"));
+}
+
+#[test]
+fn check_json_reports_gather_shadow_warning_with_ok_true() {
+    let out = wcl()
+        .arg("check")
+        .arg("--json")
+        .arg(examples_dir().join("warnings/gather_shadow/main.wcl"))
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout).to_string();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(v["ok"], serde_json::json!(true), "warnings don't gate");
+    assert_eq!(v["errors"], serde_json::json!([]));
+    let warn = &v["warnings"][0];
+    assert_eq!(
+        warn["code"],
+        serde_json::json!("wcl::eval::schema_violation")
+    );
+    assert!(
+        warn["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("components")),
+        "warning names the shadowed field: {warn}"
+    );
+}
+
+#[test]
 fn check_json_reports_parse_error_with_span() {
     let out = wcl()
         .arg("check")

@@ -1,0 +1,12 @@
+// Library side of the gather-shadow warning fixture: an imported
+// @document whose gather field the root document shadows.
+
+@block("component")
+type LibComponent {
+  name: utf8
+}
+
+@document
+type LibDoc {
+  @children("component") components: list<LibComponent>
+}

@@ -351,6 +351,15 @@ pub enum SchemaViolationKind {
     /// A field carrying `@ref("kind")` holds an id that doesn't name any
     /// existing block of that kind — a dangling reference.
     DanglingReference,
+    /// Two `@document` schemas that co-govern a namespace declare the
+    /// same field name and at least one side is a gather slot
+    /// (`@child`/`@children`). The merged document schema resolves the
+    /// name to only one declaration, so the other schema's gathered
+    /// blocks silently vanish from templates iterating the field.
+    /// Reported by [`Document::schema_warnings`], never by
+    /// `schema_errors` — merging is a designed feature and existing
+    /// documents must keep building.
+    DocumentFieldShadow,
 }
 
 impl EvalError {

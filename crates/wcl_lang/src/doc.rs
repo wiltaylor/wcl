@@ -1884,6 +1884,114 @@ impl Document {
         DocSchemas { schemas }
     }
 
+    /// Non-fatal schema diagnostics — advisory siblings of
+    /// [`schema_errors`](Self::schema_errors) that hosts surface without
+    /// failing (the CLI prints them, builds ignore them, the LSP maps
+    /// them to `Warning` severity).
+    ///
+    /// Currently detects **gather-field shadowing** between `@document`
+    /// schemas ([`SchemaViolationKind::DocumentFieldShadow`]): two
+    /// schemas that co-govern a namespace declaring the same field name
+    /// where at least one side is a `@child`/`@children` gather slot.
+    /// The merge (`doc_schemas_for_ns`) resolves such a name first-wins,
+    /// so the shadowed schema's gathered blocks silently vanish from any
+    /// template iterating the field — the failure mode that forced the
+    /// WAD schema to rename its `component` gather to `sw_components`.
+    /// Pairs are checked across *all* co-governing declarations (not
+    /// just root-vs-imported): `is_imported` means "from an imported
+    /// file", so two library schemas (e.g. wdoc's `Site` and a base
+    /// schema imported from disk) can shadow each other too. Scalar
+    /// fields colliding with scalar fields are deliberately not
+    /// reported — only gather slots break silently.
+    ///
+    /// The lazy validation path (`Field::schema_membership_error`) is
+    /// intentionally untouched: the strict/lazy agreement contract
+    /// covers membership *errors* only.
+    pub fn schema_warnings(&self) -> Vec<EvalError> {
+        use crate::error::SchemaViolationKind as Kind;
+        let mut out = Vec::new();
+
+        let decls = self.document_schema_decls();
+        // `document_schema_decls` just built the location cache; zip
+        // each decl with its source path so messages can name files
+        // (the `TypeDecl` view itself doesn't carry one).
+        let sources = self.all_sources();
+        let locs = self
+            .document_schema_locs
+            .get()
+            .expect("document_schema_decls built the cache");
+        let paths: Vec<Option<&Path>> = locs
+            .iter()
+            .map(|loc| match *loc {
+                DeclLoc::Source { source, .. } => sources[source].path,
+                DeclLoc::Synthetic(_) => None,
+            })
+            .collect();
+
+        let is_gather = |f: &TypeField<'_>| {
+            f.child_kind_or_union().is_some() || f.children_kind_or_union().is_some()
+        };
+        let file_of = |p: Option<&Path>| match p {
+            Some(p) => format!(" ({})", p.display()),
+            None => " (this document)".to_string(),
+        };
+
+        let mut seen: HashSet<(usize, String)> = HashSet::new();
+        for (bi, b) in decls.iter().enumerate() {
+            for (ai, a) in decls.iter().enumerate().take(bi) {
+                // Co-governance mirrors `doc_schemas_for_ns`: an
+                // imported `@document` governs every namespace, a
+                // root-authored one only its own.
+                let co_govern = a.is_imported() || b.is_imported() || a.file_ns() == b.file_ns();
+                if !co_govern {
+                    continue;
+                }
+                for fb in b.fields() {
+                    let Some(fa) = a.field(fb.name()) else {
+                        continue;
+                    };
+                    if !is_gather(&fa) && !is_gather(&fb) {
+                        continue;
+                    }
+                    // Anchor at the root-authored side when exactly one
+                    // side is root-authored (that span is valid against
+                    // the root source, which is what the CLI snippet
+                    // renderer and the LSP have open); otherwise at the
+                    // later declaration (in practice the schema the
+                    // user imported last).
+                    let (anchor_idx, anchor_field, other, other_idx) =
+                        if !a.is_imported() && b.is_imported() {
+                            (ai, fa, b, bi)
+                        } else {
+                            (bi, fb, a, ai)
+                        };
+                    if !seen.insert((anchor_idx, anchor_field.name().to_string())) {
+                        continue;
+                    }
+                    let anchored = decls[anchor_idx];
+                    out.push(EvalError::schema_violation_named(
+                        Kind::DocumentFieldShadow,
+                        format!(
+                            "gather field '{name}' of @document '{anchored_fqn}'{anchored_file} \
+                             collides with '{name}' declared by @document '{other_fqn}'{other_file} \
+                             — the merged document schema resolves '{name}' to only one \
+                             declaration, so the other schema's gathered blocks silently \
+                             vanish; rename one field",
+                            name = anchor_field.name(),
+                            anchored_fqn = anchored.full_name(),
+                            anchored_file = file_of(paths[anchor_idx]),
+                            other_fqn = other.full_name(),
+                            other_file = file_of(paths[other_idx]),
+                        ),
+                        anchor_field.name(),
+                        anchor_field.span(),
+                    ));
+                }
+            }
+        }
+        out
+    }
+
     /// Every type declaration carrying the named decorator. Used by
     /// the document-level validator to detect duplicate `@document`
     /// declarations.

@@ -1232,11 +1232,17 @@ fn diagnostic_json(diag: &dyn miette::Diagnostic) -> serde_json::Value {
     serde_json::Value::Object(obj)
 }
 
-fn check_report_json(name: &str, errors: Vec<serde_json::Value>) -> String {
+fn check_report_json(
+    name: &str,
+    errors: Vec<serde_json::Value>,
+    warnings: Vec<serde_json::Value>,
+) -> String {
+    // `ok` stays errors-only: warnings are advisory and never gate.
     serde_json::to_string_pretty(&serde_json::json!({
         "ok": errors.is_empty(),
         "file": name,
         "errors": errors,
+        "warnings": warnings,
     }))
     .expect("string-keyed JSON object always serializes")
 }
@@ -1263,14 +1269,28 @@ fn run_check(file: &Path, json: bool) -> u8 {
     match doc {
         Ok(doc) => {
             let errs = doc.schema_errors();
+            let warns = doc.schema_warnings();
             if json {
                 let errors = errs.iter().map(|e| diagnostic_json(e)).collect();
-                println!("{}", check_report_json(&name, errors));
+                let warnings = warns.iter().map(|w| diagnostic_json(w)).collect();
+                println!("{}", check_report_json(&name, errors, warnings));
                 return if errs.is_empty() {
                     EXIT_OK
                 } else {
                     EXIT_SCHEMA
                 };
+            }
+            // Warnings are advisory: printed to stderr, never fatal —
+            // the exit code (and `OK`) reflect errors only.
+            for w in &warns {
+                eprintln!("warning: {w}");
+            }
+            if !warns.is_empty() {
+                let count = warns.len();
+                eprintln!(
+                    "{name}: {count} warning{}",
+                    if count == 1 { "" } else { "s" }
+                );
             }
             if errs.is_empty() {
                 println!("OK");
@@ -1289,7 +1309,10 @@ fn run_check(file: &Path, json: bool) -> u8 {
         }
         Err(err) => {
             if json {
-                println!("{}", check_report_json(&name, vec![diagnostic_json(&err)]));
+                println!(
+                    "{}",
+                    check_report_json(&name, vec![diagnostic_json(&err)], Vec::new())
+                );
             } else {
                 eprintln!("{:?}", miette::Report::new(err));
             }

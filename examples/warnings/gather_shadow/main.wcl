@@ -1,0 +1,22 @@
+// Fixture for `wcl check`'s DocumentFieldShadow warning: the root
+// @document declares a gather field named like the imported library's
+// (`components`), so the merged document schema resolves the name to
+// only one declaration and the other schema's gathered blocks silently
+// vanish from templates. This is a WARNING, not an error — the check
+// exits 0 and `--json` reports `"ok": true` with a `warnings` array.
+
+import "./lib.wcl"
+
+@block("part")
+type Part {
+  name: utf8
+}
+
+@document
+type Mine {
+  @children("part") components: list<Part>
+}
+
+part alpha {
+  name = "Alpha"
+}
