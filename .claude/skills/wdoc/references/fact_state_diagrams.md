@@ -8,6 +8,7 @@ A page-level block drawing an entity lifecycle; `state`s auto-rank along `direct
 state_diagram {
   width = 640
   direction = :left_to_right
+
   state "pending" {
     name = "Pending"
     initial = true
@@ -23,6 +24,7 @@ state_diagram {
     name = "Cancelled"
     final = true
   }
+
   transition "t1" {
     from = "pending"
     to = "paid"

@@ -45,6 +45,7 @@ diagram {
   height = 220
   layout = :layered
   layer_gap = 20.0
+
   process "Parse" {
     id = parse
     width = 100.0
@@ -258,6 +259,7 @@ diagram {
   layout = :radial
   hub = platform
   routing = :straight
+
   process "Platform" {
     id = platform
     width = 96.0
@@ -276,6 +278,7 @@ diagram {
 
   platform -> warehouse :flow
   platform -> billing :flow
+
   boundary "Achmisoft" {
     members = [platform, warehouse, billing]
   }

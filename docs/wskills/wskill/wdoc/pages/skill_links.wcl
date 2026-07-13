@@ -163,7 +163,7 @@ page skill_links_page {
   }
 
   h2 "Pages"
-  p  "Every file the skill emits has its own preview page — open one to read its **real generated Markdown** (the same output `wcl wdoc skill` writes, internal links and all) and comment on any line (`wcl wdoc serve --comment`) to flag a fix. Clicking a circle in the graph above opens the same page."
+  p  "Every file the skill emits has its own preview page — open one to read its **real generated Markdown** (the same output `wcl wdoc skill` writes, internal links and all) and comment on any line (the `wcl editor` preview pane) to flag a fix. Clicking a circle in the graph above opens the same page."
 
   h3 "Entry page"
   p  "[**SKILL.md**](skillpage_index) — the entry point; it inlines the curated indexes and links each note's page directly."

@@ -39,7 +39,7 @@ Hyphenated class names may be written bare — `class wdoc-series-1 { fill = "#8
 
 ## Themes
 
-A theme is a complete colour palette plus the rules that map it onto every built-in element — page background, links, headings, code, charts, callouts, tables, inline emphasis. Set `theme = :<name>` on a `site` — a symbol naming a `theme` block. Six built-in palettes ship (`nord` the default, plus `tokyonight`, `gruvbox`, `catppuccin`, `rose`, `paper`), each with co-ordinated dark and light variants and its own typography. `theme_toggle = true` adds a light/dark toggle button.
+A theme is a complete colour palette plus the rules that map it onto every built-in element — page background, links, headings, code, charts, callouts, tables, inline emphasis. Set `theme = :<name>` on a `site` — a symbol naming a `theme` block. Seven built-in palettes ship (`forge` is the default, plus `nord`, `tokyonight`, `gruvbox`, `catppuccin`, `rose`, and `paper`), each with co-ordinated dark and light variants and its own typography. `theme_toggle = true` adds a light/dark toggle button.
 
 
 ```wcl

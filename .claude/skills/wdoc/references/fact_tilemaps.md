@@ -28,6 +28,7 @@ diagram {
     }  # grass tuft
     map = ["........", "........", ".T.G....", "########", "~~~~~~~~", "========"]
   }
+  # Overlaid after the tilemap, so it sits over the tiles.
   label "Level 1" {
     x = 128.0
     y = 146.0

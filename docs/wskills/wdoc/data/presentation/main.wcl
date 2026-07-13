@@ -97,7 +97,7 @@ presentation intro {
     pres_slide review_loop {
       unit = review_comments
       body {
-        p "- `wcl wdoc serve --comment` — click any block to pin a note"
+        p "- the `wcl editor` preview pane — click any block to pin a note"
         p "- `wcl wdoc comments` lists and resolves; `wcl wdoc review` hands off to an agent"
       }
       speaker_notes = "The loop is file-based — comments land in a sidecar, so reviewing never dirties the document."

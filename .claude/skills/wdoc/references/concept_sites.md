@@ -67,7 +67,7 @@ A `site` block configuring one output target — its template, title, theme, nav
 | `assets` | `list<utf8>` | no | Folders copied verbatim (recursively) into the site output — e.g. a Vite `dist/`. Resolved relative to the document; reference copied files by their output path. |
 | `theme_toggle` | `bool` | no | When `true`, adds a light/dark toggle button. |
 | `search` | `bool` | no | When `true`, adds a client-side full-text search box (book and webpage templates). |
-| `theme` | `symbol` | no | Symbol naming a colour `theme` block (`:nord` …) — see Styling. |
+| `theme` | `symbol` | no | Symbol naming a colour `theme` block (`:forge` …) — see Styling. |
 | `accent` | `symbol` | no | Symbol naming the accent hue (`:red`..`:pink`); default `:blue`. |
 | `ui_theme` | `symbol` | no | UI theme for `wf_*` wireframe elements (the mocked app's theme), separate from the document `theme`. Falls back to `theme`. |
 | `ui_accent` | `symbol` | no | Accent hue for `wf_*` wireframe elements; falls back to `accent`. |

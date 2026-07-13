@@ -7,6 +7,7 @@ A page-level block drawing a runtime interaction; `participant`s rank left-to-ri
 ```wcl
 sequence_diagram {
   width = 720
+
   participant "customer" {
     name = "Customer"
     kind = :actor
@@ -21,6 +22,7 @@ sequence_diagram {
     name = "Stripe"
     kind = :external
   }
+
   message "m1" {
     from = "customer"
     to = "web"

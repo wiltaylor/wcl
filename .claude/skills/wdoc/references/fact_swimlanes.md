@@ -11,6 +11,7 @@ diagram {
   width = 560
   height = 240
   routing = :elbow
+  # Lane bands — translucent grey reads on light + dark.
   rect {
     x = 0.0
     y = 0.0
@@ -50,6 +51,7 @@ diagram {
     font_size = 12.0
     fill = "#888"
   }
+  # Nodes, each placed inside its lane.
   process "Place order" {
     id = order
     x = 120.0

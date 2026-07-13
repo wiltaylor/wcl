@@ -6,6 +6,7 @@ The base shapes a `diagram` is built from — everything else (flowchart nodes, 
 diagram {
   width = 360
   height = 230
+  # Row 1: rect, circle, line
   rect {
     x = 35.0
     y = 30.0
@@ -46,6 +47,7 @@ diagram {
     font_size = 12.0
     fill = "#888"
   }
+  # Row 2: polygon, label
   polygon {
     points = "40,190 70,140 100,190"
     fill = "#ebcb8b"
