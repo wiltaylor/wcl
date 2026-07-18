@@ -21,7 +21,7 @@
 
 Implementers and fixers write **nothing** here and are never told the ledger exists - the load-bearing invariant from the plan-mode role split; the orchestrator/verifier/reviewer write-split above is build mode's refinement of it.
 
-**Editing the ledger.** Every spec already has a row (the status_covered gate guarantees it). Edit fields in place in plan/status.wcl - plain text, no tooling: \`status spec_030_cli { state = :implemented  by = "orchestrator"  note = "runner exited 0, 4 commits" }`. After **every** edit, `just check` in the plan folder must stay green. Query one spec with `just status <spec_id>\`. Keep notes one line and factual - the ledger is an audit trail, not a journal; longer narrative belongs in .wbuild/reports/ or lessons.wcl.
+**Editing the ledger.** Every spec already has a row (the status_covered gate guarantees it). Edit fields in place in plan/status.wcl - plain text, no tooling: `status spec_030_cli { state = :implemented  by = "orchestrator"  note = "runner exited 0, 4 commits" }`. After **every** edit, `just check` in the plan folder must stay green. Query one spec with `just status <spec_id>`. Keep notes one line and factual - the ledger is an audit trail, not a journal; longer narrative belongs in .wbuild/reports/ or lessons.wcl.
 
 **lessons.wcl.** Append a `lesson` block whenever something durable surfaces: a boundary agents repeatedly violated, a brief shape that confused the runner's model, an ownership split that caused a merge conflict, a flaky accept command. Match the block shape already present in the file rather than inventing fields. At run end, review lessons with the user - general ones flow back into the planning template per the lessons loop.
 

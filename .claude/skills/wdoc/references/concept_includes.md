@@ -1,6 +1,6 @@
 # Including sub-sites
 
-_The `include` block and \`included_sites\` builtin discover and embed other wdoc documents._
+_The `include` block and `included_sites` builtin discover and embed other wdoc documents._
 
 The `include` block builds \*other\* wdoc documents found under a folder and ships each one's rendered output into a subdirectory of this build — exactly as if you had run `wcl wdoc build` (or `wcl wdoc skill`) on each one separately. Unlike imports (which merge another file's blocks into the current document), an included document stays a **separate artifact**: it keeps its own pages and `_wdoc/` assets under its own output subdirectory.
 

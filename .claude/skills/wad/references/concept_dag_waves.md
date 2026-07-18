@@ -1,6 +1,6 @@
 # The spec DAG and build waves
 
-_Spec-level \`depends_on\` forms a validated DAG; waves of independent specs build in parallel on their own branches and merge in dependency order._
+_Spec-level `depends_on` forms a validated DAG; waves of independent specs build in parallel on their own branches and merge in dependency order._
 
 Dependencies are spec-level only (`depends_on = [spec_a, spec_b]`). `wcl check` validates every id via `@ref("spec")`, and the `dag_acyclic` gate rejects cycles with a Kahn-style fixpoint (the `sort_connected` builtin does not error on cycles, so it cannot serve as the detector).
 

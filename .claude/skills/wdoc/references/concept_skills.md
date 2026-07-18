@@ -1,6 +1,6 @@
 # Skill folders
 
-_The \`:ai_skill` target: the `skill { }` block, folder layout, front matter, and `file\` blocks._
+_The `:ai_skill` target: the `skill { }` block, folder layout, front matter, and `file` blocks._
 
 `wcl wdoc skill <file> --out <dir>` renders a document to an agent / Claude **skill folder** — a `SKILL.md` plus the conventional `references/`, `scripts/` and `assets/` subfolders. It's a Markdown-backed target (the [Markdown output](../references/concept_markdown.md) mapping applies), but the \*folder layout\* and `SKILL.md` front matter follow the skill convention.
 

@@ -227,6 +227,7 @@ An `inline_pattern` block: a custom inline text pattern recognised in prose, map
 | --- | --- | --- | --- |
 | `name` | `identifier` | yes |  |
 | `pattern` | `utf8` | yes |  |
+| `boundary` | `bool` | no |  |
 
 ## Related
 

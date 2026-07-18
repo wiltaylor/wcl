@@ -12,7 +12,7 @@ Specs use wplan's schema unchanged (`spec` blocks with `title`, `objective`, `de
 
 **Ownership in an existing tree.** `owns` covers every path the spec will create **or modify** - for brownfield that means existing files. The owns_disjoint gate is exact-string only, so check file-vs-directory overlaps yourself. Shared integration points (DI registration, route tables, manifest files, migration indexes) that several specs would touch: give ownership to the **last** dependency-ordered spec that touches them; earlier specs note their contribution under `allowed` (the stub-then-own pattern).
 
-**spec_000_prep - conditional.** Only when the scaffold script reports `.tree/` NOT gitignored, or recon found no green baseline command. Owns `[".gitignore"]`; tasks: add `.tree/` to .gitignore, run the baseline build/test from r_commands and record the result, commit. Everything else then \`depends_on = \[spec_000_prep\]\`. When neither condition holds, omit it - a one-spec bug fix should not pay a two-merge tax.
+**spec_000_prep - conditional.** Only when the scaffold script reports `.tree/` NOT gitignored, or recon found no green baseline command. Owns `[".gitignore"]`; tasks: add `.tree/` to .gitignore, run the baseline build/test from r_commands and record the result, commit. Everything else then `depends_on = [spec_000_prep]`. When neither condition holds, omit it - a one-spec bug fix should not pay a two-merge tax.
 
 ## Examples
 
