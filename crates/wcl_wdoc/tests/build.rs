@@ -3116,6 +3116,26 @@ fn build_renders_italic_inline() {
 }
 
 #[test]
+fn build_intraword_underscores_stay_literal() {
+    // The italic pattern is boundary-gated: `_mode_` inside a snake_case
+    // identifier must not italicize (CommonMark's intraword rule), while a
+    // properly flanked `_word_` in the same text still does.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = write_inline_fixture(&tmp, "set safe_mode_password to a _real_ value");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("safe_mode_password"),
+        "snake_case identifier mangled:\n{html}"
+    );
+    assert!(
+        html.contains("a <span class=\"italic\">real</span> value"),
+        "flanked italic lost:\n{html}"
+    );
+}
+
+#[test]
 fn build_renders_code_inline() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     // Escape backticks for the WCL string literal — we want the

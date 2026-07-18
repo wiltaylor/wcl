@@ -32,6 +32,11 @@ union InlineSpan {
 type InlinePattern {
   @inline(0) name: identifier
   pattern: utf8
+  // When true, a match is skipped if it touches a word character (ASCII
+  // alphanumeric or `_`) on either side — so `_mode_` inside
+  // `safe_mode_password` stays literal while `a _word_ here` formats.
+  // The regex crate has no lookaround; the engine applies this guard.
+  @default(false) boundary: bool
   to_span: fn(list<utf8>) -> list<InlineSpan>
 }
 

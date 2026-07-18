@@ -17,6 +17,9 @@ inline_pattern bold {
 
 inline_pattern italic {
   pattern = "_([^_\n]+)_"
+  // Word-boundary gated: snake_case identifiers are everywhere in this
+  // domain, so intraword underscores must stay literal (CommonMark rule).
+  boundary = true
   to_span = fn(g: list<utf8>) -> list<InlineSpan>
     [InlineSpan::Plain { text: at(g, 1), class: ["italic"] }]
 }

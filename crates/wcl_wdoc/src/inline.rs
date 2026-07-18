@@ -147,6 +147,9 @@ pub(crate) struct InlinePatterns {
 
 struct CompiledPattern {
     regex: Regex,
+    /// Skip matches touching a word character on either side (the
+    /// `boundary = true` block field) — intraword `_` stays literal.
+    boundary: bool,
     to_span: FnValue,
 }
 
@@ -211,8 +214,13 @@ impl InlinePatterns {
             let Ok(Value::Function(fv)) = to_span_field.value() else {
                 continue;
             };
+            let boundary = block
+                .field("boundary")
+                .and_then(|f| f.value().ok())
+                .is_some_and(|v| matches!(v, Value::Bool(true)));
             compiled.push(CompiledPattern {
                 regex,
+                boundary,
                 to_span: fv.clone(),
             });
         }
@@ -485,9 +493,43 @@ impl InlinePatterns {
     /// a user pattern with the same syntax at the same position
     /// overrides the `wdoc.wcl` built-in.
     fn find_next(&self, text: &str, pos: usize) -> Option<Match> {
+        // True when the byte position is flanked by a word character —
+        // boundary-gated patterns must not start/end against one.
+        let word_before = |at: usize| {
+            text[..at]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+        };
+        let word_after = |at: usize| {
+            text[at..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+        };
         let mut best: Option<Match> = None;
         for (i, pat) in self.compiled.iter().enumerate() {
-            let Some(caps) = pat.regex.captures_at(text, pos) else {
+            // Boundary-gated patterns rescan past rejected occurrences
+            // (`_mode_` inside `safe_mode_password`), one char at a time,
+            // until a properly flanked match (or none) is found.
+            let mut search = pos;
+            let caps = loop {
+                let Some(caps) = pat.regex.captures_at(text, search) else {
+                    break None;
+                };
+                let Some(m) = caps.get(0) else { break None };
+                if pat.boundary && (word_before(m.start()) || word_after(m.end())) {
+                    let step = text[m.start()..]
+                        .chars()
+                        .next()
+                        .map(char::len_utf8)
+                        .unwrap_or(1);
+                    search = m.start() + step;
+                    continue;
+                }
+                break Some(caps);
+            };
+            let Some(caps) = caps else {
                 continue;
             };
             let m = caps.get(0)?;
