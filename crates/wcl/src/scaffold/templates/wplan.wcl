@@ -422,8 +422,8 @@ file "questions.wcl" {
   content = <<'WPLAN_QUESTIONS_WCL'
 // Interview questions. The PRD may not be written while any question has
 // status :open (default). Record the user's answer verbatim in `answer`.
-// Answer via `just answer` (interactive), `wcl wdoc serve --answer` (browser),
-// or non-interactively: wcl answer plan.wcl --id q_example --pick linux --text "..."
+// Answer via `just answer` (interactive), or non-interactively:
+//   wcl answer plan.wcl --id q_example --pick linux --text "..."
 // Give likely answers as options where you can - choices are faster for the
 // user and free text is always offered alongside.
 // question q_example {

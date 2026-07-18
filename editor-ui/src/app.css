@@ -33,8 +33,12 @@ html, body, #root { height: 100%; margin: 0; }
 }
 .ed-tree-row:hover { background: var(--bg-2); }
 .ed-tree-row.is-active { background: var(--accent-bg); color: var(--accent-fg); }
-.ed-tree-row .chev { width: 1em; display: inline-block; text-align: center; color: var(--fg-3); }
-.ed-tree-row .glyph { color: var(--fg-3); }
+.ed-tree-row .chev,
+.ed-tree-row .glyph {
+  width: 14px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--fg-3);
+}
 
 /* Tab strip */
 .ed-tabs {
@@ -48,10 +52,14 @@ html, body, #root { height: 100%; margin: 0; }
   cursor: pointer; white-space: nowrap;
 }
 .ed-tab.is-active { background: var(--bg-0); color: var(--fg-0); }
-.ed-tab .dot { color: var(--accent); font-size: 10px; }
+.ed-tab .dot, .ed-status .dot {
+  width: 6px; height: 6px; flex: none;
+  border-radius: 999px; background: var(--accent);
+}
 .ed-tab .close {
   border: 0; background: none; color: var(--fg-3); cursor: pointer;
   font: inherit; padding: 0 2px; border-radius: var(--r-sm);
+  display: inline-flex; align-items: center;
 }
 .ed-tab .close:hover { color: var(--fg-0); background: var(--bg-3); }
 .ed-topbar { display: flex; align-items: stretch; }
@@ -121,12 +129,18 @@ html, body, #root { height: 100%; margin: 0; }
   background: var(--bg-1); border-top: 1px solid var(--border);
 }
 .ed-status .spacer { flex: 1; }
+.ed-status-path { display: inline-flex; align-items: center; gap: 6px; }
+.ed-status-diags { display: inline-flex; gap: var(--sp-2); }
+.ed-status .diag-err,
+.ed-status .diag-warn { display: inline-flex; align-items: center; gap: 3px; }
 .ed-status .diag-err { color: var(--danger); }
-.ed-status .diag-warn { color: var(--warning, #d97706); }
+.ed-status .diag-warn { color: var(--warning); }
+.ed-status .lsp { display: inline-flex; align-items: center; gap: var(--sp-1); }
 .ed-status button {
   border: 1px solid var(--border); background: var(--bg-2); color: var(--fg-1);
   border-radius: var(--r-sm); padding: 1px 8px; font: inherit; cursor: pointer;
 }
 .ed-status button:hover { background: var(--bg-3); }
+.ed-status button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .ed-empty { height: 100%; display: grid; place-items: center; color: var(--fg-3); }

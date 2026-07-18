@@ -52,9 +52,9 @@ pub use sites::{EntryIncludeInfo, EntrySiteInfo, entry_site_info};
 
 /// Highlight `source` as HTML `<span class="tok-…">` runs using the same
 /// syntect grammar + classed output the rendered code blocks use — so an
-/// in-browser editor (the `serve --edit` source editor) gets identical
-/// token classes to the site's own `code` blocks, styled by the theme CSS
-/// already on every page. Unknown languages fall back to plain text.
+/// in-browser editor gets identical token classes to the site's own `code`
+/// blocks, styled by the theme CSS already on every page. Unknown languages
+/// fall back to plain text.
 pub fn highlight_code(source: &str, language: &str) -> String {
     highlight::highlight_html(source, language, false)
 }

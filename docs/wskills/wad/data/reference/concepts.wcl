@@ -96,7 +96,7 @@ concept consumption_modes {
   summary = "Humans review the rendered book; AI agents work from the WAD data and the specs decomposed from it."
   related = [what_is_a_wad, spec_lifecycle]
   body {
-    p "The book is **for humans**: `wcl wdoc serve wdoc/book/main.wcl --comment` renders the live twelve-chapter site with click-to-comment review (comments land in a `comments.wcl` sidecar; the review handshake blocks an agent until the reviewer sends them)."
+    p "The book is **for humans**: `wcl editor wdoc/book/main.wcl` previews the live twelve-chapter site with click-to-comment review (comments land in a `comments.wcl` sidecar; the review handshake blocks an agent until the reviewer sends them)."
     p "AI agents don't get a rendered book — they work from the **WAD itself** (the raw `data/*.wcl` files are typed and legible) and, for implementation work, from the **specs** decomposed out of it. A strong model can implement straight from the WAD; weaker coding models are handed generated specs scoped to what they can hold. See the spec workflow."
   }
 }

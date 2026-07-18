@@ -2,6 +2,7 @@
    connection dot, and format/save actions. */
 
 import { Show } from 'solid-js';
+import { CircleX, TriangleAlert } from 'lucide-solid';
 import { StatusDot, toast } from '@forge/ui';
 
 import { api } from '../api';
@@ -41,17 +42,23 @@ export default function StatusBar(props) {
   return (
     <div class="ed-status">
       <Show when={active()} fallback={<span>wcl editor</span>}>
-        <span>
+        <span class="ed-status-path">
           {active()}
-          <Show when={buf()?.dirty}> ●</Show>
+          <Show when={buf()?.dirty}>
+            <span class="dot" />
+          </Show>
         </span>
         <Show when={counts().err + counts().warn > 0}>
-          <span>
+          <span class="ed-status-diags">
             <Show when={counts().err > 0}>
-              <span class="diag-err">✗ {counts().err} </span>
+              <span class="diag-err">
+                <CircleX size={12} strokeWidth={1.5} /> {counts().err}
+              </span>
             </Show>
             <Show when={counts().warn > 0}>
-              <span class="diag-warn">⚠ {counts().warn}</span>
+              <span class="diag-warn">
+                <TriangleAlert size={12} strokeWidth={1.5} /> {counts().warn}
+              </span>
             </Show>
           </span>
         </Show>
@@ -66,7 +73,7 @@ export default function StatusBar(props) {
       <button type="button" onClick={() => props.onTogglePreview?.()}>
         {props.previewOpen ? 'Hide preview' : 'Show preview'}
       </button>
-      <span title={`LSP: ${lspStatus()}`} style={{ display: 'inline-flex', 'align-items': 'center', gap: '4px' }}>
+      <span class="lsp" title={`LSP: ${lspStatus()}`}>
         <StatusDot tone={lspTone()} /> lsp
       </span>
     </div>

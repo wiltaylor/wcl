@@ -4,8 +4,8 @@
 //! `comments.wcl` sidecars via the shared [`wcl_wdoc::comments`] core (the
 //! sidecar beside the owning wskill, else the served root), and the review
 //! handshake pairs a blocked `wcl wdoc review <root>` process with the
-//! editor's "Send to agent" button through the same marker files the old
-//! `wdoc serve --comment` toolbar used.
+//! editor's "Send to agent" button through marker files (see
+//! [`wcl_wdoc::Handshake`]).
 
 use std::sync::Arc;
 

@@ -172,10 +172,10 @@ pub fn wdoc_environment(base_dir: Option<&Path>) -> Environment {
 
 /// Open `file` as an evaluated [`Document`] exactly the way [`build`] does —
 /// the embedded wdoc schema registry plus the wdoc [`Environment`] — so callers
-/// outside the build (the `wcl wdoc serve --edit` editor) introspect the same
-/// schemas (`@block` / `@table` / `@wdoc.file`) and resolve the same block
-/// kinds the build sees. A plain `Document::from_file` would miss the wdoc
-/// builtins and registry imports.
+/// outside the build (the `wcl editor` save/locate pipeline, `wcl answer`)
+/// introspect the same schemas (`@block` / `@table` / `@wdoc.file`) and
+/// resolve the same block kinds the build sees. A plain `Document::from_file`
+/// would miss the wdoc builtins and registry imports.
 pub fn open_doc_for_edit(file: &Path) -> Result<Document, wcl_lang::ParseError> {
     // `ParseError` carries `#[from] io::Error`, so a read failure surfaces as
     // one error type alongside any syntax error.
@@ -194,9 +194,9 @@ pub fn open_doc_for_edit(file: &Path) -> Result<Document, wcl_lang::ParseError> 
 
 /// [`open_doc_for_edit`] with unsaved buffers shadowing disk: every import
 /// (and the root file itself) resolves through `overlay` first, so the
-/// `serve --edit` editor can dry-run-validate or preview an edit without
-/// writing it. Overlay keys should be canonical absolute paths (raw keys
-/// are accepted as a fallback, matching [`wcl_lang::overlay_loader`]).
+/// `wcl editor` can validate or resolve against an edit without writing it.
+/// Overlay keys should be canonical absolute paths (raw keys are accepted as
+/// a fallback, matching [`wcl_lang::overlay_loader`]).
 pub fn open_doc_for_edit_with_overlay(
     file: &Path,
     overlay: std::collections::HashMap<PathBuf, String>,
@@ -220,10 +220,10 @@ pub fn open_doc_for_edit_with_overlay(
 
 /// The entry document that owns `page_file` — a sub-site's entry `.wcl` when the
 /// page belongs to an `include`d sub-site (e.g. a wskill book under the
-/// top-level docs site), else `root_file` itself. Lets the `--edit` server
-/// introspect the schema/objects of the document the page actually came from
-/// when `--edit` is pointed at the top-level site. Falls back to `root_file` on
-/// any resolution failure.
+/// top-level docs site), else `root_file` itself. Lets the `wcl editor`
+/// introspect the schema/objects of the document a page actually came from
+/// when it serves the top-level site. Falls back to `root_file` on any
+/// resolution failure.
 pub fn doc_entry_for_page(root_file: &Path, page_file: &Path) -> PathBuf {
     subsite_for_page(root_file, page_file)
         .map(|s| s.entry)
@@ -232,8 +232,9 @@ pub fn doc_entry_for_page(root_file: &Path, page_file: &Path) -> PathBuf {
 
 /// The included sub-site that owns `page_file` — its entry document, on-disk
 /// source root, and output subdirectory — or `None` when the page belongs to
-/// the root document. Lets the `--edit` server rebuild *only* the sub-site a
-/// page lives in (e.g. one wskill) instead of the whole top-level site.
+/// the root document. Lets the dev server's `/__wdoc_rebuild` rebuild *only*
+/// the sub-site a page lives in (e.g. one wskill) instead of the whole
+/// top-level site.
 pub struct PageSubSite {
     /// The sub-site entry `.wcl` to (re)build.
     pub entry: PathBuf,
@@ -546,12 +547,13 @@ pub struct BuildOptions {
     /// block with `data-wcl-*` anchors so the editor's comment UI can attach
     /// review comments. Off for normal builds — no markup leaks.
     pub comment_mode: bool,
-    /// Edit mode (the `wcl wdoc serve --edit` dev server): stamp each rendered
-    /// block with its source `data-wcl-span` / `data-wcl-file` (plus the shared
-    /// `data-wcl-*` block anchors) so the WYSIWYG client can map a rendered
-    /// block back to the AST node to mutate. Off for normal builds.
+    /// Edit mode (the `wcl editor` preview build): stamp each rendered block
+    /// with its source `data-wcl-span` / `data-wcl-file` (plus the shared
+    /// `data-wcl-*` block anchors) and render `edit_object` buttons, so the
+    /// editor can map a rendered block back to the source that declares it.
+    /// Off for normal builds.
     pub edit_mode: bool,
-    /// Unsaved buffers shadowing disk (the `serve --edit` preview): every
+    /// Unsaved buffers shadowing disk (the `wcl editor` preview): every
     /// source read — the root file and all imports — resolves through this
     /// map first. Keys should be canonical absolute paths.
     pub overlay: Option<std::collections::HashMap<PathBuf, String>>,
@@ -2038,15 +2040,15 @@ fn build_normal_page(
             content.push('\n');
         }
     }
-    // Comment mode (the editor preview) / edit mode (`--edit`): wrap the page
-    // content in a `display:contents` div carrying the page's source file (so
-    // the client can locate the owning `comments.wcl` sidecar, or the file to
+    // Comment / edit mode (the `wcl editor` preview): wrap the page content
+    // in a `display:contents` div carrying the page's source file (so the
+    // client can locate the owning `comments.wcl` sidecar, or the file to
     // edit) and resolved name (the comment key). `display:contents` keeps it
     // invisible to layout.
     if ctx.inline_patterns.anchor_mode() {
         let src = page.named_source();
-        // The page block's own span lets the editor insert a new top-level
-        // block into the page (`--edit`); harmless for comment mode.
+        // The page block's own span lets an editor client anchor edits to
+        // the page itself; harmless for comment mode.
         let page_span = page.span();
         content = format!(
             "<div data-wcl-page-file=\"{}\" data-wcl-page-name=\"{}\" \

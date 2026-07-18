@@ -4,7 +4,8 @@
    status bar — plus global Ctrl+S and the save conflict modal. */
 
 import { Show, createEffect, createSignal, onCleanup, onMount } from 'solid-js';
-import { AppShell, Button, Modal, SplitPane, Spinner, Toaster, toast } from '@forge/ui';
+import { Moon } from 'lucide-solid';
+import { AppShell, Button, IconButton, Modal, SplitPane, Spinner, Toaster, toast } from '@forge/ui';
 
 import FileTree from './components/FileTree';
 import TabStrip from './components/TabStrip';
@@ -24,6 +25,16 @@ import { building, loadSites, rebuild, selected } from './state/sites';
 
 export default function App() {
   const [previewOpen, setPreviewOpen] = createSignal(true);
+
+  // Dark is the default (prefers-color-scheme via the tokens); the toggle
+  // pins an explicit data-theme from wherever the system landed.
+  const toggleTheme = () => {
+    const el = document.documentElement;
+    const current =
+      el.getAttribute('data-theme') ??
+      (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    el.setAttribute('data-theme', current === 'dark' ? 'light' : 'dark');
+  };
 
   const saveActive = async () => {
     const path = active();
@@ -84,6 +95,7 @@ export default function App() {
             <Spinner size={16} label="Building preview" />
           </Show>
           <div style={{ flex: 1 }} />
+          <IconButton icon={Moon} label="Toggle dark/light" onClick={toggleTheme} />
         </>
       }
       sidebar={<FileTree />}

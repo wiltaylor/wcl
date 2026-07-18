@@ -15,9 +15,9 @@ Get a human architecture review of the rendered book, and record the reviewed re
 
 ## Steps
 
-### Step 1: Serve in comment mode
+### Step 1: Open the editor's preview
 
-`wcl wdoc serve wdoc/book/main.wcl --comment` — the reviewer clicks any block to leave a note (notes land in a `comments.wcl` sidecar, no rebuild). An agent waiting on the review blocks with `wcl wdoc review <entry>` until the reviewer hits “Send to agent”. Mechanics are the wdoc wskill's — this process only adds the WAD-specific step below.
+`wcl editor wdoc/book/main.wcl` — the reviewer rebuilds the preview and picks any block to leave a note (notes land in a `comments.wcl` sidecar, no rebuild). An agent waiting on the review blocks with `wcl wdoc review <entry>` until the reviewer hits “Send to agent”. Mechanics are the wdoc wskill's — this process only adds the WAD-specific step below.
 
 ### Step 2: Fix from comments
 

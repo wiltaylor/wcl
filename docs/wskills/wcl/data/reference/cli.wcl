@@ -132,10 +132,9 @@ cli wcl_cli {
     }
     subcommand cmd_wdoc_serve {
       name = "serve"
-      description = "Build and serve a wdoc site locally with live reload."
+      description = "Build and serve a wdoc site locally with live reload. Watches for `.wcl` changes; press Enter in the console (or `POST /__wdoc_rebuild`) to rebuild. Browser editing lives in `wcl editor`."
       cli_arg    arg_entry { name = "entry"  description = "Path to the wdoc entry template." }
       cli_switch sw_addr { long = "--addr"  value_name = "ADDR"  description = "Address to bind (default 127.0.0.1:8080)." }
-      cli_switch sw_answer { long = "--answer"  description = "Inject the questionnaire client: pending `@answerable` questions render as a form and answers write back into the source." }
       code_example { lang = "console"  code = "wcl wdoc serve wdoc/book/main.wcl --addr 127.0.0.1:8080" }
     }
   }

@@ -6,16 +6,18 @@
    is Forge components (see CommentPanel). */
 
 import { Show, createEffect, onCleanup, onMount } from 'solid-js';
-import { Progress } from '@forge/ui';
+import { Progress, toast } from '@forge/ui';
 
 import { api } from '../api';
-import { active } from '../state/buffers';
+import { active, dirtyFiles, openFile } from '../state/buffers';
+import { revealSpan } from '../state/views';
 import { buildError, buildSeq, building, previewHref, selected } from '../state/sites';
 import {
   allComments,
   commentPage,
   loadComments,
   pageComments,
+  picking,
   setCommentPage,
   setFocusId,
   setListOpen,
@@ -23,7 +25,7 @@ import {
   startReviewPoll,
 } from '../state/comments';
 import { CommentMenu, CommentOverlays } from './CommentPanel';
-import { injectCss, pageInfo, placePins } from '../preview/frame';
+import { installEditButtons, injectCss, pageInfo, placePins } from '../preview/frame';
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|bmp)$/i;
 
@@ -45,11 +47,34 @@ export default function PreviewPane() {
     placePins(doc, pageComments(), onPin);
   };
 
+  // "Edit this …" button clicked in the preview: resolve the object to its
+  // declaring file + span (against the current buffers) and open the source
+  // there. The edit buttons only exist in edit-mode preview builds.
+  const onEditObject = async ({ kind, target }) => {
+    const doc = iframe?.contentDocument;
+    const res = await api.locateObject({
+      entry: selected()?.entry,
+      page_file: pageInfo(doc)?.file ?? undefined,
+      kind,
+      target: target ?? undefined,
+      files: dirtyFiles(),
+    });
+    if (!res.ok) {
+      toast(res.error, { tone: 'danger', duration: 6000 });
+      return;
+    }
+    const opened = await openFile(res.file);
+    if (opened.ok) revealSpan(res.file, res.span.start, res.span.end);
+    else toast(opened.error, { tone: 'danger', duration: 6000 });
+  };
+
   // Fires on every in-iframe navigation and on rebuild reloads: the old
   // document (with any active pick-mode listeners) is gone, so reset pick
-  // state and re-anchor the comment UI to the new page.
+  // state, rewire the edit buttons, and re-anchor the comment UI to the
+  // new page.
   const onFrameLoad = () => {
     setPicking(false);
+    installEditButtons(iframe?.contentDocument, onEditObject, () => !picking());
     refreshFrame();
   };
 

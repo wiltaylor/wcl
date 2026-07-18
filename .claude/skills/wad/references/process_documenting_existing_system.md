@@ -37,7 +37,7 @@ Run a targeted mini-interview from the question bank, restricted to what the pro
 
 ### Step 6: Verify with the user
 
-Serve the book with `--comment`, have the user walk it against reality, fix data from the comments, and record the reviewed revision as the diff baseline.
+Open the book in `wcl editor`'s preview pane, have the user walk it against reality, fix data from the comments, and record the reviewed revision as the diff baseline.
 
 > [!TIP]
 > **Verification**

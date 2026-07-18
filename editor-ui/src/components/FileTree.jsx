@@ -2,6 +2,7 @@
    exists — plain rows styled with tokens, chevron toggles per directory. */
 
 import { For, Show, createSignal } from 'solid-js';
+import { ChevronDown, ChevronRight, File, FileCode } from 'lucide-solid';
 import { Spinner, toast } from '@forge/ui';
 
 import { treeData } from '../state/tree';
@@ -18,6 +19,7 @@ async function openTreeFile(path) {
 function Node(props) {
   const [open, setOpen] = createSignal(props.depth < 1);
   const indent = () => `${8 + props.depth * 14}px`;
+  const isWclFile = props.node.name.endsWith('.wcl');
 
   return (
     <Show
@@ -31,7 +33,13 @@ function Node(props) {
           onClick={() => openTreeFile(props.node.path)}
           title={props.node.path}
         >
-          <span class="glyph">▪</span>
+          <span class="glyph">
+            {isWclFile ? (
+              <FileCode size={14} strokeWidth={1.5} />
+            ) : (
+              <File size={14} strokeWidth={1.5} />
+            )}
+          </span>
           {props.node.name}
         </button>
       }
@@ -42,7 +50,13 @@ function Node(props) {
         style={{ 'padding-left': indent() }}
         onClick={() => setOpen(!open())}
       >
-        <span class="chev">{open() ? '▾' : '▸'}</span>
+        <span class="chev">
+          {open() ? (
+            <ChevronDown size={14} strokeWidth={1.5} />
+          ) : (
+            <ChevronRight size={14} strokeWidth={1.5} />
+          )}
+        </span>
         {props.node.name}
       </button>
       <Show when={open()}>

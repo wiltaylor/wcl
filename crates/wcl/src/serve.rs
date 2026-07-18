@@ -98,45 +98,30 @@ struct ServeState {
     /// Bumped after every build attempt — success *and* failure — so
     /// a browser parked on the error page reloads when the fix lands.
     generation: tokio::sync::watch::Sender<u64>,
-    /// Edit mode (`--edit`): inject the WYSIWYG editor client into HTML,
-    /// expose the `/__wdoc_edit*` / `/__wdoc_object*` endpoints, and build
-    /// with `data-wcl-span` / `data-wcl-file` anchors.
-    edit_mode: bool,
-    /// Answer mode (`--answer`): inject the questionnaire client into HTML
-    /// and expose the `/__wdoc_answers` / `/__wdoc_answer` endpoints — the
-    /// respondent-facing walk-through of `@answerable` question blocks.
-    /// Composes with edit mode.
-    answer_mode: bool,
-    /// Watched source root; edit writes are sandboxed to within it.
+    /// Watched source root; `/__wdoc_rebuild` page paths are sandboxed to it.
     watch_root: PathBuf,
-    /// The document entry-point file passed to `serve` — the root `.wcl` the
-    /// editor reopens to introspect schemas and resolve object instances.
-    root_file: PathBuf,
     /// Source `.wcl` files changed since the last rebuild. The watcher
     /// accumulates here instead of rebuilding; a rebuild is triggered manually
-    /// (Enter in the console, or the toolbar's Rebuild button) and drains this.
+    /// (Enter in the console, or `POST /__wdoc_rebuild`) and drains this.
     pending: Mutex<Vec<PathBuf>>,
     /// Send a [`RebuildReq`] to request a rebuild. The console (stdin Enter)
     /// and the `/__wdoc_rebuild` endpoint both use it; the rebuild worker runs
     /// one build per request and (when asked) reports completion back.
     rebuild_tx: tokio::sync::mpsc::UnboundedSender<RebuildReq>,
-    /// Preview-without-saving scratch state (edit mode only): the temp output
-    /// tree the `/__wdoc_preview` endpoints render into and serve from.
-    preview: Option<crate::preview::Preview>,
 }
 
 /// A rebuild request handed to the rebuild worker.
 struct RebuildReq {
-    /// The page the request came from (the toolbar Rebuild button), used to
+    /// The page the request came from (`POST /__wdoc_rebuild`), used to
     /// scope the rebuild to that page's included sub-site. `None` for a console
     /// (Enter) rebuild, which rebuilds the whole served site.
     page_file: Option<PathBuf>,
     /// Resolved when the build finishes, so the HTTP handler can report the
-    /// result (and time its progress spinner). `None` for the console path.
+    /// result. `None` for the console path.
     done: Option<tokio::sync::oneshot::Sender<RebuildReport>>,
 }
 
-/// What a rebuild did, returned to the Rebuild button for its status display.
+/// What a rebuild did, returned to the `/__wdoc_rebuild` caller.
 struct RebuildReport {
     ok: bool,
     /// What was rebuilt — `"site"` or the sub-site's output subdir.
@@ -156,10 +141,7 @@ fn print_edge_warnings() {
 /// Run one build, report to stderr, record the outcome in `state`, and
 /// bump the live-reload generation.
 fn run_build(file: &Path, out: &Path, site: Option<&str>, state: &ServeState, rebuild: bool) {
-    let opts = BuildOptions {
-        edit_mode: state.edit_mode,
-        ..Default::default()
-    };
+    let opts = BuildOptions::default();
     match build_with_options(file, out, site, &opts).map(|(n, _)| n) {
         Ok(n) => {
             print_edge_warnings();
@@ -185,10 +167,11 @@ fn run_build(file: &Path, out: &Path, site: Option<&str>, state: &ServeState, re
 
 /// Handle one [`RebuildReq`]. When the request names a page that belongs to an
 /// included sub-site (e.g. a wskill), rebuild **only** that sub-site into its
-/// output subdir, draining just the pending changes under it — so the Rebuild
-/// button on a sub-site page is fast and scoped. Otherwise (console Enter, or a
-/// root page) drain all pending and rebuild the top-level site. Records the
-/// outcome in `state`, bumps the live-reload generation, and returns a report.
+/// output subdir, draining just the pending changes under it — so a rebuild
+/// requested from a sub-site page is fast and scoped. Otherwise (console Enter,
+/// or a root page) drain all pending and rebuild the top-level site. Records
+/// the outcome in `state`, bumps the live-reload generation, and returns a
+/// report.
 fn run_rebuild_request(
     file: &Path,
     out: &Path,
@@ -196,10 +179,7 @@ fn run_rebuild_request(
     state: &ServeState,
     page_file: Option<PathBuf>,
 ) -> RebuildReport {
-    let opts = BuildOptions {
-        edit_mode: state.edit_mode,
-        ..Default::default()
-    };
+    let opts = BuildOptions::default();
 
     // Scope to the page's sub-site when the request names one.
     if let Some(pf) = page_file.as_deref()
@@ -299,8 +279,6 @@ pub(crate) async fn serve(
     out: Option<PathBuf>,
     addr: BindSpec,
     site: Option<String>,
-    edit_mode: bool,
-    answer_mode: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Resolve the output directory. If `--out` wasn't given, create a
     // TempDir and hold it for the lifetime of `serve` so cleanup runs
@@ -349,17 +327,9 @@ pub(crate) async fn serve(
         out: out_dir.clone(),
         error: RwLock::new(None),
         generation: tokio::sync::watch::Sender::new(0),
-        edit_mode,
-        answer_mode,
         watch_root: watch_root.clone(),
-        root_file: file.clone(),
         pending: Mutex::new(Vec::new()),
         rebuild_tx: rebuild_tx.clone(),
-        preview: if edit_mode {
-            Some(crate::preview::Preview::new()?)
-        } else {
-            None
-        },
     });
 
     // Initial build. Failure is non-fatal — HTML requests serve the
@@ -424,7 +394,7 @@ pub(crate) async fn serve(
                 .unwrap_or_else(|e| e.into_inner())
                 .extend(changed);
             eprintln!(
-                "{n} file change{} pending — press Enter (or click Rebuild) to rebuild",
+                "{n} file change{} pending — press Enter to rebuild",
                 if n == 1 { "" } else { "s" }
             );
         }
@@ -435,8 +405,8 @@ pub(crate) async fn serve(
     let rb_site = site.clone();
     let rb_state = Arc::clone(&state);
     // Rebuild worker: one build per request. Scopes to the request's sub-site
-    // when given (the Rebuild button on a sub-site page), else rebuilds the
-    // whole site (console Enter). Reports completion back when asked.
+    // when given (`POST /__wdoc_rebuild` with a `page_file`), else rebuilds
+    // the whole site (console Enter). Reports completion back when asked.
     let rebuild_loop = async move {
         while let Some(req) = rebuild_rx.recv().await {
             let report = run_rebuild_request(
@@ -457,50 +427,9 @@ pub(crate) async fn serve(
     // nested multi-site one (`/<site>/…`, `/<site>/_wdoc/…`) plus the
     // generated chooser at `/`, with no per-route knowledge. The reload
     // endpoint sits outside the output tree's namespace.
-    let mut app = Router::new()
+    let app = Router::new()
         .route("/__wdoc_reload", get(handle_reload))
-        .route("/__wdoc_rebuild", axum::routing::post(handle_rebuild));
-    if edit_mode {
-        app = app
-            .route("/__wdoc_edit.js", get(handle_edit_js))
-            .route("/__wdoc_editor.js", get(handle_editor_js))
-            .route(
-                "/__wdoc_highlight",
-                axum::routing::post(handle_editor_highlight),
-            )
-            .route("/__wdoc_check", axum::routing::post(handle_editor_check))
-            .route("/__wdoc_format", axum::routing::post(handle_editor_format))
-            .route("/__wdoc_files", get(handle_files_list))
-            .route(
-                "/__wdoc_file",
-                get(handle_file_read).post(handle_file_write),
-            )
-            .route("/__wdoc_preview", axum::routing::post(handle_preview_build))
-            .route("/__wdoc_preview/{*path}", get(handle_preview_file))
-            .route("/__wdoc_schema", get(handle_edit_schema))
-            .route("/__wdoc_object_kinds", get(handle_object_kinds))
-            .route("/__wdoc_objects", get(handle_object_instances))
-            .route("/__wdoc_object_source", get(handle_object_source))
-            .route("/__wdoc_object_template", get(handle_object_template))
-            .route(
-                "/__wdoc_object",
-                get(handle_read_object).post(handle_object_post),
-            )
-            .route("/__wdoc_edit/field", axum::routing::post(handle_edit_field))
-            .route("/__wdoc_edit/add", axum::routing::post(handle_edit_add))
-            .route(
-                "/__wdoc_edit/delete",
-                axum::routing::post(handle_edit_delete),
-            )
-            .route("/__wdoc_edit/move", axum::routing::post(handle_edit_move));
-    }
-    if answer_mode {
-        app = app
-            .route("/__wdoc_answer.js", get(handle_answer_js))
-            .route("/__wdoc_answers", get(handle_answers_list))
-            .route("/__wdoc_answer", axum::routing::post(handle_answer_post));
-    }
-    let app = app
+        .route("/__wdoc_rebuild", axum::routing::post(handle_rebuild))
         .fallback(get(handle_static))
         .with_state(Arc::clone(&state))
         .layer(middleware::from_fn(log_requests));
@@ -515,7 +444,7 @@ pub(crate) async fn serve(
         file.display(),
         out_dir.display()
     );
-    println!("auto-rebuild is off — press Enter here (or click Rebuild) to rebuild after edits");
+    println!("auto-rebuild is off — press Enter here to rebuild after edits");
 
     // Run the server, the watcher, and the rebuild worker concurrently. None
     // completes in normal operation — they run until the Ctrl-C task above
@@ -597,11 +526,11 @@ async fn handle_reload(State(state): State<Arc<ServeState>>, uri: Uri) -> Respon
         .into_response()
 }
 
-/// Request a rebuild (the toolbar's Rebuild button). Scopes to the current
-/// page's sub-site (from the optional `page_file` body field) and **waits** for
-/// the build to finish, so the button can show a running/done indication; the
-/// reload long-poll then reloads the page when the generation bumps. A missing
-/// `page_file` (or a root page) rebuilds the whole site.
+/// Request a rebuild over HTTP. Scopes to the current page's sub-site (from
+/// the optional `page_file` body field) and **waits** for the build to finish,
+/// so the caller can show a running/done indication; the reload long-poll then
+/// reloads the page when the generation bumps. A missing `page_file` (or a
+/// root page) rebuilds the whole site.
 async fn handle_rebuild(State(state): State<Arc<ServeState>>, body: String) -> Response {
     let page_file = serde_json::from_str::<serde_json::Value>(&body)
         .ok()
@@ -634,144 +563,6 @@ async fn handle_rebuild(State(state): State<Arc<ServeState>>, body: String) -> R
             }),
         ),
         Err(_) => json_error(StatusCode::INTERNAL_SERVER_ERROR, "rebuild was cancelled"),
-    }
-}
-
-// --- WYSIWYG editor (`--edit`) handlers. Thin wrappers over `crate::edit`. ---
-
-/// Serve the WYSIWYG editor client script.
-async fn handle_edit_js() -> Response {
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
-        crate::edit::EDIT_CLIENT_JS,
-    )
-        .into_response()
-}
-
-/// Serve the shared source-editor component script (`WclEditor`).
-async fn handle_editor_js() -> Response {
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
-        crate::edit::EDITOR_CLIENT_JS,
-    )
-        .into_response()
-}
-
-/// `POST /__wdoc_highlight` — highlight a buffer for the editor backdrop.
-async fn handle_editor_highlight(body: String) -> Response {
-    let v = match parse_json_body(&body) {
-        Ok(v) => v,
-        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
-    };
-    edit_result(crate::edit::highlight_source(&v))
-}
-
-/// `POST /__wdoc_format` — canonically format a buffer (`wcl fmt` core).
-async fn handle_editor_format(body: String) -> Response {
-    let v = match parse_json_body(&body) {
-        Ok(v) => v,
-        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
-    };
-    edit_result(crate::edit::format_source(&v))
-}
-
-/// `POST /__wdoc_check` — dry-run syntax + schema diagnostics for a buffer.
-async fn handle_editor_check(State(state): State<Arc<ServeState>>, body: String) -> Response {
-    let v = match parse_json_body(&body) {
-        Ok(v) => v,
-        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
-    };
-    edit_result(crate::edit::check_source(
-        &state.root_file,
-        &state.watch_root,
-        &v,
-    ))
-}
-
-/// `GET /__wdoc_files` — the source-editor file tree (page-scoped).
-async fn handle_files_list(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
-    edit_result(crate::edit::list_files(
-        &state.root_file,
-        &state.watch_root,
-        query_param(&uri, "page_file").as_deref(),
-    ))
-}
-
-/// `GET /__wdoc_file?path=` — a source file's text + etag.
-async fn handle_file_read(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
-    let Some(path) = query_param(&uri, "path") else {
-        return json_error(StatusCode::BAD_REQUEST, "missing path");
-    };
-    edit_result(crate::edit::read_file(&state.watch_root, &path))
-}
-
-/// `POST /__wdoc_file` — whole-file save (validate → write → rollback).
-async fn handle_file_write(State(state): State<Arc<ServeState>>, body: String) -> Response {
-    let v = match parse_json_body(&body) {
-        Ok(v) => v,
-        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
-    };
-    let entry = entry_for(
-        &state,
-        v.get("page_file").and_then(serde_json::Value::as_str),
-    );
-    edit_result(crate::edit::write_file(&state.watch_root, &entry, &v))
-}
-
-/// `POST /__wdoc_preview` — render unsaved buffers into the scratch tree and
-/// return the preview URL of the current page. Serialized (previews coalesce
-/// behind one gate) and run off the async executor — a render is real work.
-async fn handle_preview_build(State(state): State<Arc<ServeState>>, body: String) -> Response {
-    let Some(preview) = &state.preview else {
-        return json_error(StatusCode::BAD_REQUEST, "preview requires --edit");
-    };
-    let v = match parse_json_body(&body) {
-        Ok(v) => v,
-        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
-    };
-    let _gate = preview.lock().await;
-    let state2 = state.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let preview = state2
-            .preview
-            .as_ref()
-            .expect("preview state checked above");
-        crate::preview::preview_build(preview, &state2.root_file, &state2.watch_root, &v)
-    })
-    .await
-    .unwrap_or_else(|e| Err(format!("preview task failed: {e}")));
-    edit_result(result)
-}
-
-/// `GET /__wdoc_preview/{*path}` — serve a rendered preview file from the
-/// scratch tree, with **no** reload/comment/edit scripts injected (a preview
-/// iframe must neither live-reload nor recurse the editor chrome).
-async fn handle_preview_file(
-    State(state): State<Arc<ServeState>>,
-    axum::extract::Path(path): axum::extract::Path<String>,
-) -> Response {
-    let Some(preview) = &state.preview else {
-        return json_error(StatusCode::BAD_REQUEST, "preview requires --edit");
-    };
-    // Resolve inside the scratch tree only (reject traversal).
-    let rel = Path::new(&path);
-    if rel
-        .components()
-        .any(|c| !matches!(c, std::path::Component::Normal(_)))
-    {
-        return json_error(StatusCode::BAD_REQUEST, "bad preview path");
-    }
-    let file = preview.root().join(rel);
-    match tokio::fs::read(&file).await {
-        Ok(bytes) => (
-            StatusCode::OK,
-            [(header::CONTENT_TYPE, content_type(&file))],
-            bytes,
-        )
-            .into_response(),
-        Err(_) => json_error(StatusCode::NOT_FOUND, "no such preview file"),
     }
 }
 
@@ -808,190 +599,9 @@ fn url_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// The document entry the editor should introspect for a request: the included
-/// sub-site (e.g. a wskill) that owns `page_file`, else the served root. Lets
-/// `--edit` on the top-level site edit a sub-site's objects/schema.
-fn entry_for(state: &ServeState, page_file: Option<&str>) -> PathBuf {
-    match page_file
-        .filter(|s| !s.is_empty())
-        .and_then(|f| sandboxed(&state.watch_root, Path::new(f)))
-    {
-        Some(pf) => wcl_wdoc::doc_entry_for_page(&state.root_file, &pf),
-        None => state.root_file.clone(),
-    }
-}
-
-/// Map a `Result<json, message>` from `crate::edit` to an HTTP response.
-fn edit_result(r: Result<serde_json::Value, String>) -> Response {
-    match r {
-        Ok(v) => json_response(StatusCode::OK, &v),
-        Err(e) => json_error(StatusCode::BAD_REQUEST, &e),
-    }
-}
-
 /// Parse a JSON request body, or an error message on malformed JSON.
 pub(crate) fn parse_json_body(body: &str) -> Result<serde_json::Value, String> {
     serde_json::from_str(body).map_err(|e| format!("bad json: {e}"))
-}
-
-async fn handle_edit_schema(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
-    let Some(kind) = query_param(&uri, "kind") else {
-        return json_error(StatusCode::BAD_REQUEST, "missing kind");
-    };
-    let entry = entry_for(&state, query_param(&uri, "page_file").as_deref());
-    edit_result(crate::edit::schema_descriptor(&entry, &kind))
-}
-
-async fn handle_object_kinds(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
-    let entry = entry_for(&state, query_param(&uri, "page_file").as_deref());
-    edit_result(crate::edit::object_kinds(&entry))
-}
-
-async fn handle_object_instances(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
-    let Some(kind) = query_param(&uri, "kind") else {
-        return json_error(StatusCode::BAD_REQUEST, "missing kind");
-    };
-    let entry = entry_for(&state, query_param(&uri, "page_file").as_deref());
-    edit_result(crate::edit::object_instances(&entry, &kind))
-}
-
-async fn handle_read_object(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
-    let (Some(kind), Some(file), Some(span)) = (
-        query_param(&uri, "kind"),
-        query_param(&uri, "file"),
-        query_param(&uri, "span"),
-    ) else {
-        return json_error(StatusCode::BAD_REQUEST, "missing kind/file/span");
-    };
-    let Some(file) = sandboxed(&state.watch_root, Path::new(&file)) else {
-        return json_error(StatusCode::BAD_REQUEST, "file outside the served tree");
-    };
-    let Some((start, end)) = span.split_once(':') else {
-        return json_error(StatusCode::BAD_REQUEST, "bad span");
-    };
-    let (Ok(start), Ok(end)) = (start.parse(), end.parse()) else {
-        return json_error(StatusCode::BAD_REQUEST, "bad span");
-    };
-    let entry = entry_for(&state, query_param(&uri, "page_file").as_deref());
-    edit_result(crate::edit::read_object(
-        &entry,
-        &file,
-        wcl_lang::Span::new(start, end),
-        &kind,
-    ))
-}
-
-async fn handle_object_source(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
-    let (Some(file), Some(span)) = (query_param(&uri, "file"), query_param(&uri, "span")) else {
-        return json_error(StatusCode::BAD_REQUEST, "missing file/span");
-    };
-    let Some(file) = sandboxed(&state.watch_root, Path::new(&file)) else {
-        return json_error(StatusCode::BAD_REQUEST, "file outside the served tree");
-    };
-    let Some((start, end)) = span.split_once(':') else {
-        return json_error(StatusCode::BAD_REQUEST, "bad span");
-    };
-    let (Ok(start), Ok(end)) = (start.parse(), end.parse()) else {
-        return json_error(StatusCode::BAD_REQUEST, "bad span");
-    };
-    edit_result(crate::edit::read_object_source(
-        &file,
-        wcl_lang::Span::new(start, end),
-    ))
-}
-
-async fn handle_object_template(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
-    let Some(kind) = query_param(&uri, "kind") else {
-        return json_error(StatusCode::BAD_REQUEST, "missing kind");
-    };
-    let entry = entry_for(&state, query_param(&uri, "page_file").as_deref());
-    edit_result(crate::edit::object_template(&entry, &kind))
-}
-
-async fn handle_edit_field(State(state): State<Arc<ServeState>>, body: String) -> Response {
-    let v = match parse_json_body(&body) {
-        Ok(v) => v,
-        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
-    };
-    let entry = entry_for(
-        &state,
-        v.get("page_file").and_then(serde_json::Value::as_str),
-    );
-    edit_result(crate::edit::field_edit(&state.watch_root, &entry, &v))
-}
-
-async fn handle_edit_add(State(state): State<Arc<ServeState>>, body: String) -> Response {
-    let v = match parse_json_body(&body) {
-        Ok(v) => v,
-        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
-    };
-    let entry = entry_for(
-        &state,
-        v.get("page_file").and_then(serde_json::Value::as_str),
-    );
-    edit_result(crate::edit::add_block(&state.watch_root, &entry, &v))
-}
-
-async fn handle_edit_delete(State(state): State<Arc<ServeState>>, body: String) -> Response {
-    let v = match parse_json_body(&body) {
-        Ok(v) => v,
-        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
-    };
-    let entry = entry_for(
-        &state,
-        v.get("page_file").and_then(serde_json::Value::as_str),
-    );
-    edit_result(crate::edit::delete_block(&state.watch_root, &entry, &v))
-}
-
-async fn handle_edit_move(State(state): State<Arc<ServeState>>, body: String) -> Response {
-    let v = match parse_json_body(&body) {
-        Ok(v) => v,
-        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
-    };
-    let entry = entry_for(
-        &state,
-        v.get("page_file").and_then(serde_json::Value::as_str),
-    );
-    edit_result(crate::edit::move_block(&state.watch_root, &entry, &v))
-}
-
-async fn handle_object_post(State(state): State<Arc<ServeState>>, body: String) -> Response {
-    let v = match parse_json_body(&body) {
-        Ok(v) => v,
-        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
-    };
-    let entry = entry_for(
-        &state,
-        v.get("page_file").and_then(serde_json::Value::as_str),
-    );
-    edit_result(crate::edit::object_post(&state.watch_root, &entry, &v))
-}
-
-async fn handle_answer_js() -> Response {
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
-        crate::answer::ANSWER_CLIENT_JS,
-    )
-        .into_response()
-}
-
-async fn handle_answers_list(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
-    let entry = entry_for(&state, query_param(&uri, "page_file").as_deref());
-    edit_result(crate::answer::answers_list(&entry))
-}
-
-async fn handle_answer_post(State(state): State<Arc<ServeState>>, body: String) -> Response {
-    let v = match parse_json_body(&body) {
-        Ok(v) => v,
-        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
-    };
-    let entry = entry_for(
-        &state,
-        v.get("page_file").and_then(serde_json::Value::as_str),
-    );
-    edit_result(crate::answer::answer_post(&state.watch_root, &entry, &v))
 }
 
 /// Canonicalize `file` and confirm it sits inside `root`, so a comment / edit
@@ -1088,16 +698,6 @@ async fn handle_static(State(state): State<Arc<ServeState>>, uri: Uri) -> Respon
                 // Appending after `</html>` is valid enough for a dev
                 // server and avoids parsing the page.
                 bytes.extend_from_slice(RELOAD_SCRIPT.as_bytes());
-                if state.edit_mode {
-                    // The shared source-editor component loads first so the
-                    // edit client can instantiate it (plain script tags
-                    // execute in document order).
-                    bytes.extend_from_slice(crate::edit::EDITOR_SCRIPT_TAG.as_bytes());
-                    bytes.extend_from_slice(crate::edit::EDIT_SCRIPT_TAG.as_bytes());
-                }
-                if state.answer_mode {
-                    bytes.extend_from_slice(crate::answer::ANSWER_SCRIPT_TAG.as_bytes());
-                }
             }
             (
                 StatusCode::OK,

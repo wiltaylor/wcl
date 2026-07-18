@@ -170,23 +170,23 @@ lesson keep_it_alive {
   title   = "Review, edit, and keep it current"
   summary = "The maintenance loop: browser editing, the human⇄agent review handshake, and source-driven updates."
   objectives = [
-    "Edit units from the rendered book with serve --edit",
+    "Edit units from the rendered book with wcl editor",
     "Run the comment/review loop between a reviewer and an agent",
     "Use source blocks to drive update sweeps",
   ]
   prerequisites = [ship_the_skill]
   related = [editing_via_serve, reviewing_a_wskill, updating_a_wskill]
   body {
-    p "A wskill is alive: `wcl wdoc serve --edit --comment` gives you in-browser editing (every unit page has an Edit button that opens the exact object) and click-to-comment review. An agent runs `wcl wdoc review .` to wait for a reviewer's send, then works through the comments and resolves them by id."
+    p "A wskill is alive: `wcl editor wdoc/book/main.wcl` gives you in-browser editing (every unit page in the preview pane has an Edit button that opens the exact object's source) and click-to-comment review. An agent runs `wcl wdoc review .` to wait for a reviewer's send, then works through the comments and resolves them by id."
     p "`source` blocks record where authoritative information lives and when it was last checked — an update sweep walks them, refreshes what drifted, and bumps `topic.version`."
   }
   exercise review_loop {
     title     = "Run one review round"
-    task      = "Serve with `--comment`, pin a comment on any page, list it from the CLI, then resolve it."
+    task      = "Open the editor, rebuild the preview, pin a comment on any page, list it from the CLI, then resolve it."
     code_lang = "bash"
     code      = <<'SH'
-wcl wdoc serve wdoc/book/main.wcl --comment &
-# click a block in the browser, leave a note, then:
+wcl editor wdoc/book/main.wcl &
+# Rebuild the preview, comment on a block from its ⋯ menu, then:
 wcl wdoc comments . --format json
 wcl wdoc comments . resolve <id>
 SH

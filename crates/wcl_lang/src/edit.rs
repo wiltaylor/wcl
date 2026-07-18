@@ -3,7 +3,7 @@
 //! These operate on the owned, fully-public [`ast`] returned by
 //! [`crate::parse_for_edit`]: locate a node by its byte [`Span`], build new
 //! nodes, and splice them into an items list. They are deliberately
-//! schema-agnostic — the caller (the `wcl wdoc serve --edit` server, or
+//! schema-agnostic — the caller (the `wcl editor` save pipeline, or
 //! `wcl set`) resolves schema concerns (inline-label slots, child kinds)
 //! and hands these helpers the concrete values to write. Synthesised nodes
 //! carry a zero [`Span::new(0, 0)`]; the source printer re-lays them out, so

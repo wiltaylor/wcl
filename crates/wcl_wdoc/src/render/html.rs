@@ -583,10 +583,10 @@ pub(crate) fn render_block(
         // the children's source text and re-renders them into themed wrappers.
         "demo" => Some(crate::demo::render_html(doc, block, patterns, base_dir)),
         // An "edit this object" button. Edit mode is not visible to a WCL
-        // `lower`, so it is emitted here and only when the WYSIWYG editor is
-        // active (`--edit`); outside edit mode (plain build / comment-only /
-        // markdown / pdf) it renders nothing, so the button never leaks into
-        // published output.
+        // `lower`, so it is emitted here and only in edit mode (the
+        // `wcl editor` preview); outside edit mode (plain build / markdown /
+        // pdf) it renders nothing, so the button never leaks into published
+        // output.
         "edit_object" => Some(if patterns.edit_mode() {
             render_edit_object_button(block)
         } else {
@@ -621,14 +621,14 @@ pub(crate) fn render_block(
     rendered.map(|html| anchor_block(block, html, patterns))
 }
 
-/// In comment mode (the `wcl editor` preview) or edit mode (the `--edit`
-/// dev server), stamp a rendered block's root tag so the client can locate it:
+/// In comment or edit mode (the `wcl editor` preview), stamp a rendered
+/// block's root tag so the client can locate it:
 ///
 /// - both modes emit `data-wcl-block` + `data-wcl-kind` — the comment client
 ///   keys off these to compute a positional locator;
 /// - edit mode additionally emits `data-wcl-span="start:end"` (byte offsets
-///   into the declaring file) and `data-wcl-file="<path>"` so the WYSIWYG
-///   client can map the block back to the exact AST node to mutate.
+///   into the declaring file) and `data-wcl-file="<path>"` so an editor
+///   client can map the block back to the source that declares it.
 ///
 /// A no-op outside both modes, so normal builds emit no extra markup.
 fn anchor_block(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> String {
@@ -638,8 +638,8 @@ fn anchor_block(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> S
     let kind = block.kind();
     // Synthetic wrappers / multi-root expansions have no single root tag to
     // stamp; their content children are anchored individually when rendered.
-    // `edit_object` is an edit-only injected control, not authored content —
-    // it must not become a selectable / commentable block target.
+    // `edit_object` is an edit-mode-only injected control, not authored
+    // content — it must not become a selectable / commentable block target.
     if matches!(
         kind,
         "region"
@@ -666,8 +666,9 @@ fn anchor_block(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> S
 }
 
 /// Render the `edit_object` button (edit mode only). Emits a button the
-/// injected WYSIWYG client wires up to open the object editor pre-targeted at
-/// the `kind` field (and, when given, the specific `target` instance).
+/// `wcl editor` preview pane wires up: clicking resolves the `kind` (and,
+/// when given, the specific `target` instance) via `/api/object/locate` and
+/// opens the declaring `.wcl` source at that instance.
 fn render_edit_object_button(block: &Block<'_>) -> String {
     use std::fmt::Write as _;
     let kind = field_utf8(block, "kind").unwrap_or_default();

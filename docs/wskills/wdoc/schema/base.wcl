@@ -252,10 +252,9 @@ symbol_set QuestionKind { single_select multi_select free_text }
 // An open question about the topic, captured while authoring: an unclear
 // fact, a decision only the topic owner can make, a gap found during an
 // update sweep. Wired for guided answer mode via `@answerable` —
-// `wcl answer wskill.wcl` walks the :open ones in the terminal, and the
-// serve toolchain's `--answer` flag renders them as a browser questionnaire;
-// both write `answer` + `status` straight back into the data file, one
-// question at a time. When `kind` is omitted, a question with `option`
+// `wcl answer wskill.wcl` walks the :open ones in the terminal and writes
+// `answer` + `status` straight back into the data file, one question at a
+// time. When `kind` is omitted, a question with `option`
 // children behaves as :single_select and one without as :free_text.
 // Like `source`, a question is update-workflow metadata and never renders
 // as topic content: fold an :answered question's answer into real units on

@@ -136,6 +136,7 @@ pub(crate) fn router(state: Arc<EditorState>) -> Router {
         .route("/api/review/ready", post(comments::handle_review_ready))
         .route("/api/preview", post(handle_preview))
         .route("/api/preview/{*path}", get(handle_preview_file))
+        .route("/api/object/locate", post(handle_object_locate))
         .route("/api/raw", get(handle_raw))
         .fallback(get(assets::spa_fallback))
         .with_state(state)
@@ -265,6 +266,45 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
         .and_then(serde_json::Value::as_str)
         .map(str::to_string);
 
+    let overlay = overlay_files(state, v)?;
+
+    // A stable slug per (entry, site) so distinct selections coexist in
+    // the scratch tree and re-selecting one reuses its output.
+    let slug: String = format!("{entry}__{}", site.as_deref().unwrap_or(""))
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let out = state.preview.root().join("sites").join(&slug);
+
+    // comment_mode stamps the `data-wcl-block` / `data-wcl-page-*` anchors
+    // the preview pane's comment UI keys on; edit_mode adds the per-block
+    // `data-wcl-span` / `data-wcl-file` anchors and the `edit_object`
+    // "Edit this …" buttons the pane resolves via `/api/object/locate` —
+    // still no injected scripts.
+    let opts = wcl_wdoc::BuildOptions {
+        overlay: Some(overlay),
+        comment_mode: true,
+        edit_mode: true,
+        ..Default::default()
+    };
+    wcl_wdoc::build_with_options(&entry_abs, &out, site.as_deref(), &opts)
+        .map_err(|e| e.render_plain())?;
+    // Per-render warnings would otherwise pile up for whoever drains next.
+    let _ = wcl_wdoc::take_render_warnings();
+
+    let index = index_page(&out).ok_or("the site built but produced no HTML page")?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "href": format!("/api/preview/sites/{slug}/{index}"),
+    }))
+}
+
+/// The posted unsaved buffers (`files: [{path, text}]`) as an overlay map,
+/// sandbox-checked and canonically keyed.
+fn overlay_files(
+    state: &EditorState,
+    v: &serde_json::Value,
+) -> Result<std::collections::HashMap<PathBuf, String>, String> {
     let mut overlay = std::collections::HashMap::new();
     for f in v
         .get("files")
@@ -278,32 +318,57 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
             .ok_or_else(|| format!("file outside the served tree: {path}"))?;
         overlay.insert(canon, text.to_string());
     }
+    Ok(overlay)
+}
 
-    // A stable slug per (entry, site) so distinct selections coexist in
-    // the scratch tree and re-selecting one reuses its output.
-    let slug: String = format!("{entry}__{}", site.as_deref().unwrap_or(""))
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-        .collect();
-    let out = state.preview.root().join("sites").join(&slug);
-
-    // comment_mode stamps the `data-wcl-block` / `data-wcl-page-*` anchors
-    // the preview pane's comment UI keys on — anchors only, no edit chrome
-    // and still no injected scripts.
-    let opts = wcl_wdoc::BuildOptions {
-        overlay: Some(overlay),
-        comment_mode: true,
-        ..Default::default()
+/// `POST /api/object/locate` — resolve an `edit_object` button's `kind` +
+/// optional `target` to the declaring `.wcl` file (repo-relative) and byte
+/// span, so the client can open the source at that instance. Unsaved buffers
+/// (`files`) overlay disk; `page_file` scopes the lookup to the page's owning
+/// included sub-site (a wskill page resolves against its own document).
+async fn handle_object_locate(State(state): State<Arc<EditorState>>, body: String) -> Response {
+    let v = match parse_json_body(&body) {
+        Ok(v) => v,
+        Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
     };
-    wcl_wdoc::build_with_options(&entry_abs, &out, site.as_deref(), &opts)
-        .map_err(|e| e.render_plain())?;
-    // Per-render warnings would otherwise pile up for whoever drains next.
-    let _ = wcl_wdoc::take_render_warnings();
+    let state2 = Arc::clone(&state);
+    run_blocking(move || locate_object(&state2, &v)).await
+}
 
-    let index = index_page(&out).ok_or("the site built but produced no HTML page")?;
+/// The blocking half of [`handle_object_locate`].
+fn locate_object(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let entry = crate::edit::str_field(v, "entry")?;
+    let entry_abs = crate::serve::sandboxed(&state.root_dir, &state.root_dir.join(entry))
+        .ok_or_else(|| format!("file outside the served tree: {entry}"))?;
+    let kind = crate::edit::str_field(v, "kind")?;
+    let target = v
+        .get("target")
+        .and_then(serde_json::Value::as_str)
+        .filter(|s| !s.is_empty());
+
+    // A page inside an included sub-site resolves against that sub-site's
+    // own document, so a wskill page's kinds match its own schema.
+    let doc_entry = v
+        .get("page_file")
+        .and_then(serde_json::Value::as_str)
+        .filter(|s| !s.is_empty())
+        .and_then(|pf| crate::serve::sandboxed(&state.root_dir, Path::new(pf)))
+        .map(|pf| wcl_wdoc::doc_entry_for_page(&entry_abs, &pf))
+        .unwrap_or_else(|| entry_abs.clone());
+
+    let overlay = overlay_files(state, v)?;
+    let (file, span) = crate::edit::locate_object(&doc_entry, kind, target, overlay)?;
+    let canon = std::fs::canonicalize(&file).unwrap_or(file);
+    let rel = canon.strip_prefix(&state.root_dir).map_err(|_| {
+        format!(
+            "{} is outside the served directory — not editable here",
+            canon.display()
+        )
+    })?;
     Ok(serde_json::json!({
         "ok": true,
-        "href": format!("/api/preview/sites/{slug}/{index}"),
+        "file": rel.to_string_lossy().replace('\\', "/"),
+        "span": { "start": span.start, "end": span.end },
     }))
 }
 
@@ -516,10 +581,140 @@ mod tests {
             .unwrap();
         let html = String::from_utf8_lossy(&bytes);
         assert!(html.contains("Overlaid text"), "overlay not applied");
-        // Comment anchors for the preview pane's comment UI, but no edit chrome.
+        // Comment anchors for the preview pane's comment UI, plus the
+        // edit-mode source anchors the edit_object jump keys on — but still
+        // no injected scripts (the SPA drives the iframe from outside).
         assert!(html.contains("data-wcl-page-file"), "missing page anchor");
         assert!(html.contains("data-wcl-block"), "missing block anchors");
-        assert!(!html.contains("data-wcl-span"), "edit chrome leaked");
+        assert!(
+            html.contains("data-wcl-span"),
+            "missing source span anchors"
+        );
+        assert!(!html.contains("<script"), "scripts injected into preview");
+    }
+
+    /// A document with a user schema kind (`thing`) plus `edit_object`
+    /// buttons targeting its instances.
+    const OBJECT_DOC: &str = "import <wdoc.wcl>\n\n\
+        @document\ntype Doc {\n  @children(\"thing\") things: list<Thing>\n}\n\n\
+        @block(\"thing\")\ntype Thing {\n  @inline(0) name: utf8\n  note: utf8?\n}\n\n\
+        site docs {\n  title = \"The Docs\"\n  root = true\n}\n\n\
+        thing \"alpha\" {\n  note = \"first\"\n}\n\n\
+        thing \"beta\" {\n  note = \"second\"\n}\n\n\
+        page index {\n  title = \"Hi\"\n\n  h1 \"Hello\"\n\n  edit_object {\n    kind = \"thing\"\n    target = \"alpha\"\n  }\n}\n";
+
+    #[tokio::test]
+    async fn preview_renders_edit_object_button() {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("main.wcl"), OBJECT_DOC).unwrap();
+        let state = state_for(td.path(), None);
+
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/preview",
+            Some(serde_json::json!({ "entry": "main.wcl", "site": "docs", "files": [] })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let href = v["href"].as_str().unwrap();
+        let req = Request::builder().uri(href).body(Body::empty()).unwrap();
+        let resp = router(Arc::clone(&state)).oneshot(req).await.unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1 << 22)
+            .await
+            .unwrap();
+        let html = String::from_utf8_lossy(&bytes);
+        assert!(
+            html.contains("data-wcl-edit-kind=\"thing\""),
+            "missing edit_object button: {html}"
+        );
+        assert!(html.contains("data-wcl-edit-target=\"alpha\""));
+    }
+
+    #[tokio::test]
+    async fn object_locate_finds_instance_by_label() {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("main.wcl"), OBJECT_DOC).unwrap();
+        let state = state_for(td.path(), None);
+
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/object/locate",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "kind": "thing", "target": "beta", "files": [],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        assert_eq!(v["file"], "main.wcl");
+        let (start, end) = (
+            v["span"]["start"].as_u64().unwrap() as usize,
+            v["span"]["end"].as_u64().unwrap() as usize,
+        );
+        let src = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        let text = &src[start..end];
+        assert!(text.starts_with("thing \"beta\""), "span slices {text:?}");
+    }
+
+    #[tokio::test]
+    async fn object_locate_respects_overlay_and_errors() {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("main.wcl"), OBJECT_DOC).unwrap();
+        let state = state_for(td.path(), None);
+
+        // Overlay renames beta → gamma: gamma resolves, beta no longer does.
+        let edited = OBJECT_DOC.replace("thing \"beta\"", "thing \"gamma\"");
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/object/locate",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "kind": "thing", "target": "gamma",
+                "files": [{ "path": "main.wcl", "text": edited }],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let (start, end) = (
+            v["span"]["start"].as_u64().unwrap() as usize,
+            v["span"]["end"].as_u64().unwrap() as usize,
+        );
+        assert!(edited[start..end].starts_with("thing \"gamma\""));
+
+        // Unknown target → clean 400 naming the kind.
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/object/locate",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "kind": "thing", "target": "nope", "files": [],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(v["error"].as_str().unwrap().contains("thing"));
+
+        // No target with two instances → 400 listing the labels.
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/object/locate",
+            Some(serde_json::json!({ "entry": "main.wcl", "kind": "thing", "files": [] })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(v["error"].as_str().unwrap().contains("alpha"));
+
+        // An escaping entry → 400.
+        let (status, _) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/object/locate",
+            Some(serde_json::json!({ "entry": "../x.wcl", "kind": "thing", "files": [] })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

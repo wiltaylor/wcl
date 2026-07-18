@@ -11,7 +11,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_answer {
     name = "answer"
     kind = "module"
-    summary = "1 file, 13 pub items"
+    summary = "1 file, 9 pub items"
     deps = [n_cg_wcl_xc_wcl_lang]
   }
   code_node n_cg_wcl_answer_tui {
@@ -34,7 +34,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_edit {
     name = "edit"
     kind = "module"
-    summary = "1 file, 25 pub items"
+    summary = "1 file, 6 pub items"
     deps = [n_cg_wcl_xc_wcl_lang]
   }
   code_node n_cg_wcl_editor {
@@ -51,8 +51,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_preview {
     name = "preview"
     kind = "module"
-    summary = "1 file, 2 pub items"
-    deps = [n_cg_wcl_xc_wcl_wdoc]
+    summary = "1 file, 1 pub items"
   }
   code_node n_cg_wcl_scaffold {
     name = "scaffold"
@@ -75,7 +74,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_xc_wcl_lang {
     name = "wcl_lang (crate)"
     kind = "extern_crate"
-    summary = "uses Block, DeclName, Decorator, Document, +21 more"
+    summary = "uses Block, DeclName, Decorator, Document, +18 more"
   }
   code_node n_cg_wcl_xc_wcl_wdoc {
     name = "wcl_wdoc (crate)"
@@ -635,26 +634,6 @@ code_item code_api_cli_commands {
       kind = "fn"
       visibility = "crate"
     }
-    code_member m_n_api_cli_commands_answer_fns_ANSWER_SCRIPT_TAG {
-      signature = "const ANSWER_SCRIPT_TAG: &str"
-      kind = "const"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_commands_answer_fns_ANSWER_CLIENT_JS {
-      signature = "const ANSWER_CLIENT_JS: &str"
-      kind = "const"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_commands_answer_fns_answers_list {
-      signature = "fn answers_list(entry: &Path) -> Result<serde_json::Value, Stri…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_commands_answer_fns_answer_post {
-      signature = "fn answer_post( watch_root: &Path, entry: &Path, body: &serde_j…"
-      kind = "fn"
-      visibility = "crate"
-    }
     code_member m_n_api_cli_commands_answer_fns_question_json {
       signature = "fn question_json(q: &Question) -> serde_json::Value"
       kind = "fn"
@@ -912,74 +891,35 @@ code_item code_api_cli_serve {
     name = "edit"
     kind = "fns"
     summary = "src/edit.rs"
-    code_member m_n_api_cli_serve_edit_fns_EDIT_SCRIPT_TAG {
-      signature = "const EDIT_SCRIPT_TAG: &str"
-      kind = "const"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_serve_edit_fns_EDIT_CLIENT_JS {
-      signature = "const EDIT_CLIENT_JS: &str"
-      kind = "const"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_serve_edit_fns_EDITOR_SCRIPT_TAG {
-      signature = "const EDITOR_SCRIPT_TAG: &str"
-      kind = "const"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_serve_edit_fns_EDITOR_CLIENT_JS {
-      signature = "const EDITOR_CLIENT_JS: &str"
-      kind = "const"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_serve_edit_fns_object_kinds {
-      signature = "fn object_kinds(root_file: &Path) -> Result<serde_json::Value, …"
+    code_member m_n_api_cli_serve_edit_fns_locate_object {
+      signature = "fn locate_object( doc_entry: &Path, kind: &str, target: Option<…"
       kind = "fn"
       visibility = "crate"
     }
-    code_member m_n_api_cli_serve_edit_fns_schema_descriptor {
-      signature = "fn schema_descriptor(root_file: &Path, kind: &str) -> Result<se…"
+    code_member m_n_api_cli_serve_edit_fns_format_source {
+      signature = "fn format_source(body: &serde_json::Value) -> Result<serde_json…"
       kind = "fn"
       visibility = "crate"
     }
-    code_member m_n_api_cli_serve_edit_fns_object_instances {
-      signature = "fn object_instances(root_file: &Path, kind: &str) -> Result<ser…"
+    code_member m_n_api_cli_serve_edit_fns_content_etag {
+      signature = "fn content_etag(text: &str) -> String"
       kind = "fn"
       visibility = "crate"
     }
-    code_member m_n_api_cli_serve_edit_fns_read_object {
-      signature = "fn read_object( root_file: &Path, file: &Path, span: Span, kind…"
+    code_member m_n_api_cli_serve_edit_fns_commit {
+      signature = "fn commit( root_file: &Path, changes: Vec<(PathBuf, String)>, )…"
       kind = "fn"
       visibility = "crate"
     }
-    code_member m_n_api_cli_serve_edit_fns_read_object_source {
-      signature = "fn read_object_source(file: &Path, span: Span) -> Result<serde_…"
+    code_member m_n_api_cli_serve_edit_fns_str_field {
+      signature = "fn str_field<'a>(body: &'a serde_json::Value, key: &str) -> Res…"
       kind = "fn"
       visibility = "crate"
     }
-    code_member m_n_api_cli_serve_edit_fns_object_template {
-      signature = "fn object_template(root_file: &Path, kind: &str) -> Result<serd…"
+    code_member m_n_api_cli_serve_edit_fns_read {
+      signature = "fn read(path: &Path) -> Result<String, String>"
       kind = "fn"
       visibility = "crate"
-    }
-    code_member m_n_api_cli_serve_edit_fns_field_edit {
-      signature = "fn field_edit( watch_root: &Path, root_file: &Path, body: &serd…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_serve_edit_fns_add_block {
-      signature = "fn add_block( watch_root: &Path, root_file: &Path, body: &serde…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_serve_edit_fns_delete_block {
-      signature = "fn delete_block( watch_root: &Path, root_file: &Path, body: &se…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_serve_edit_fns_more {
-      signature = "… +12 more"
-      kind = "overflow"
     }
   }
   code_node n_api_cli_serve_Preview {
@@ -1000,17 +940,6 @@ code_item code_api_cli_serve {
       signature = "fn lock(&self) -> tokio::sync::MutexGuard<'_, ()>"
       kind = "method"
       visibility = "crate"
-    }
-  }
-  code_node n_api_cli_serve_preview_fns {
-    name = "preview"
-    kind = "fns"
-    summary = "src/preview.rs"
-    code_member m_n_api_cli_serve_preview_fns_preview_build {
-      signature = "fn preview_build( preview: &Preview, root_file: &Path, watch_ro…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_cli_serve_Preview]
     }
   }
   code_node n_api_cli_serve_serve_fns {

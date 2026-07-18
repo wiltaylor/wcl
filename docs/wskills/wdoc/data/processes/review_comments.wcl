@@ -6,22 +6,22 @@ procedure review_comments {
   audience = :both
 
   step serve { n = 1
-    title = "Serve with the review client"
+    title = "Open the editor's preview"
     body screen { code "console" { source = <<'SH'
-$ wcl wdoc serve site.wcl --comment
-Serving on http://127.0.0.1:8080
+$ wcl editor site.wcl
+wcl editor at http://127.0.0.1:8080
 SH
     } }
-    body steps { p "Start the dev server with `--comment` to inject the review client into every page. The comments live in a `comments.wcl` sidecar beside the document — writing one never triggers a rebuild." }
+    body steps { p "Run `wcl editor` and press **Rebuild** to render the site in the preview pane — the pane hosts the comment UI. The comments live in a `comments.wcl` sidecar beside the document — writing one never triggers a rebuild." }
   }
 
   step comment { n = 2
-    title = "Pin comments in the browser"
+    title = "Pin comments in the preview"
     body screen { callout "Click to comment" {
       class = ["info"]
-      body = "Click any rendered block to attach a note to it. Each comment is keyed by page and locator, so it stays pinned to that block across reloads."
+      body = "Pick any rendered block to attach a note to it. Each comment is keyed by page and locator, so it stays pinned to that block across reloads."
     } }
-    body steps { p "In the browser, click the block the note is about and type the comment. Repeat on any page of the site; everything lands in the `comments.wcl` sidecar." }
+    body steps { p "In the preview header's comment menu, choose **Comment on a block**, click the block the note is about, and type the comment (or **Comment on this page** for a page-level note). Repeat on any page of the site; everything lands in the `comments.wcl` sidecar." }
   }
 
   step list { n = 3
@@ -41,7 +41,7 @@ $ wcl wdoc review site.wcl
 waiting for the reviewer…
 SH
     } }
-    body steps { p "An agent working the loop runs `wcl wdoc review` instead: it blocks until the reviewer clicks \"Send to agent\" in the comment toolbar, then prints the round's comments exactly like `comments`. Re-running it re-shows the toolbar banner for the next round." }
+    body steps { p "An agent working the loop runs `wcl wdoc review` instead: it blocks until the reviewer clicks \"Send to agent\" in the editor's preview pane, then prints the round's comments exactly like `comments`. Re-running it re-shows the banner for the next round." }
   }
 
   serve -> comment

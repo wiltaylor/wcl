@@ -327,9 +327,10 @@ pub(crate) fn collect_includes(
 /// Find the included sub-site whose source folder owns `page_file`, returning
 /// its entry `.wcl` (the document the page was built from). `None` when the page
 /// belongs to the root document itself (no matching `include`). Used by the
-/// `--edit` server so the object/schema endpoints introspect the right document
-/// when the user is editing a sub-site (e.g. a wskill) page from the top-level
-/// server. Matches the deepest sub-site folder that is an ancestor of the page.
+/// `wcl editor` so its object/schema lookups introspect the right document
+/// when the user is working on a sub-site (e.g. a wskill) page from the
+/// top-level root. Matches the deepest sub-site folder that is an ancestor
+/// of the page.
 pub(crate) fn entry_for_page(
     doc: &Document,
     base_dir: Option<&Path>,

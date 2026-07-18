@@ -10769,10 +10769,11 @@ fn markdown_source_previews_skill_markdown_and_is_commentable() {
     );
 }
 
-/// Edit mode (`wcl wdoc serve --edit`) stamps each block with its source span
-/// and home file (plus the shared `data-wcl-*` block anchor and the page-block
-/// span on the wrapper) so the WYSIWYG client can map a rendered block back to
-/// the AST node to mutate. A plain build emits none of this markup.
+/// Edit mode (the `wcl editor` preview build) stamps each block with its
+/// source span and home file (plus the shared `data-wcl-*` block anchor and
+/// the page-block span on the wrapper) so an editor client can map a rendered
+/// block back to the source that declares it. A plain build emits none of
+/// this markup.
 #[test]
 fn edit_mode_stamps_source_span_and_file_anchors() {
     let tmp = TempDir::new().expect("tempdir");

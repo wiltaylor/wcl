@@ -1,5 +1,4 @@
-//! Guided answer mode — the shared core behind `wcl answer` and
-//! `wcl wdoc serve --answer`.
+//! Guided answer mode — the core behind `wcl answer`.
 //!
 //! A document opts a block type into answer mode with the `@answerable`
 //! decorator (declared in the `<answer.wcl>` stdlib), which maps the
@@ -544,99 +543,7 @@ fn defer_key(q: &Question) -> String {
     format!("{}\u{0}{}", q.file.display(), q.prompt)
 }
 
-// ---------------------------------------------------------------------------
-// `wcl wdoc serve --answer` endpoints
-// ---------------------------------------------------------------------------
-
-/// Loads the questionnaire client (`wcl wdoc serve --answer`).
-pub(crate) const ANSWER_SCRIPT_TAG: &str = "<script src=\"/__wdoc_answer.js\"></script>";
-
-// The client script is kept in its own file for readability.
-pub(crate) const ANSWER_CLIENT_JS: &str = include_str!("answer_client.js");
-
-/// `GET /__wdoc_answers` — the pending questions (and discovery warnings)
-/// for the served document.
-pub(crate) fn answers_list(entry: &Path) -> Result<serde_json::Value, String> {
-    let doc = wcl_wdoc::open_doc_for_edit(entry).map_err(|e| e.to_string())?;
-    let (questions, warnings) = pending_questions(&doc, entry);
-    Ok(serde_json::json!({
-        "questions": questions.iter().map(question_json).collect::<Vec<_>>(),
-        "warnings": warnings,
-    }))
-}
-
-/// `POST /__wdoc_answer` — record one outcome:
-/// `{file, span, action: "answer"|"skip", picks: [option ids], other}`.
-/// The question is re-discovered by file + span, so a stale client (the
-/// source changed since the list was fetched) gets a clean "no longer
-/// pending" error instead of splicing into the wrong block.
-pub(crate) fn answer_post(
-    watch_root: &Path,
-    entry: &Path,
-    body: &serde_json::Value,
-) -> Result<serde_json::Value, String> {
-    let file_str = body
-        .get("file")
-        .and_then(serde_json::Value::as_str)
-        .ok_or("missing file")?;
-    let file = crate::serve::sandboxed(watch_root, Path::new(file_str))
-        .ok_or_else(|| format!("file outside the served tree: {file_str}"))?;
-    let span_str = body
-        .get("span")
-        .and_then(serde_json::Value::as_str)
-        .ok_or("missing span")?;
-    let (start, end) = span_str
-        .split_once(':')
-        .and_then(|(s, e)| Some((s.parse::<usize>().ok()?, e.parse::<usize>().ok()?)))
-        .ok_or_else(|| format!("bad span {span_str:?}"))?;
-
-    let doc = wcl_wdoc::open_doc_for_edit(entry).map_err(|e| e.to_string())?;
-    let (questions, _) = pending_questions(&doc, entry);
-    drop(doc);
-    let q = questions
-        .into_iter()
-        .find(|q| {
-            q.span.start == start
-                && q.span.end == end
-                && std::fs::canonicalize(&q.file).ok().as_deref() == Some(file.as_path())
-        })
-        .ok_or("question is no longer pending — refresh the list")?;
-
-    let action = body
-        .get("action")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("answer");
-    let outcome = match action {
-        "skip" => Outcome::Skip,
-        "answer" => {
-            let picks: Vec<String> = body
-                .get("picks")
-                .and_then(serde_json::Value::as_array)
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|v| v.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default();
-            let mut chosen: Vec<&AnswerOption> = Vec::new();
-            for p in &picks {
-                chosen.push(
-                    q.options
-                        .iter()
-                        .find(|o| &o.id == p)
-                        .ok_or_else(|| format!("no option `{p}` on this question"))?,
-                );
-            }
-            let other = body.get("other").and_then(serde_json::Value::as_str);
-            Outcome::Answer(compose_response(q.kind, &chosen, other)?)
-        }
-        other => return Err(format!("unknown action `{other}`")),
-    };
-    record_outcome(entry, &q, &outcome)?;
-    Ok(serde_json::json!({ "ok": true }))
-}
-
-/// The JSON shape both `wcl answer --list` and `GET /__wdoc_answers` emit.
+/// The JSON shape `wcl answer --list` emits.
 pub(crate) fn question_json(q: &Question) -> serde_json::Value {
     serde_json::json!({
         "id": q.id,

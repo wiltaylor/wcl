@@ -1,38 +1,37 @@
 procedure editing_via_serve {
   title   = "Editing a wskill in the browser"
-  purpose = "Use `wcl wdoc serve --edit` to modify units and blocks from the rendered book, writing real .wcl source."
+  purpose = "Use `wcl editor` to modify units from the rendered book preview, writing real .wcl source."
   preconditions = ["The wskill renders (`just wskill-check` passes)."]
   related = [reviewing_a_wskill, adding_content, authoring_cli]
   audience = :both
 
   step serve { n = 1
-    title = "Serve in edit mode"
+    title = "Open the editor"
     body screen { code "console" { source = <<'SH'
-$ wcl wdoc serve wdoc/book/main.wcl --edit --comment
+$ cd path/to/wskill && wcl editor wdoc/book/main.wcl
 SH
     } }
-    body steps { p "`--edit` injects the WYSIWYG client (it composes with `--comment`). Every edit writes real `.wcl` source through a validate-then-write pipeline — a change that would introduce schema errors rolls back." }
+    body steps { p "`wcl editor` serves a browser IDE for the directory: a file tree, tabbed CodeMirror editing with WCL language support, and a preview pane. Pick the book in the topbar's site selector and press **Rebuild** to render it (unsaved buffers are overlaid, so the preview always shows what you see in the tabs)." }
   }
 
   step edit_units { n = 2
-    title = "Edit units via the object editor"
-    body steps { p "Every unit page carries an **Edit this concept/entity/fact/process** button that opens that exact object as raw WCL in the object editor. The editor also browses all schema objects by kind and namespace, and creates new ones from a schema template — new objects land in the right data file via the placement decorator, with the import wired automatically." }
+    title = "Jump from a rendered unit to its source"
+    body steps { p "Every unit page carries an **Edit this concept/entity/fact/process** button. Clicking it opens the unit's declaring `.wcl` data file in an editor tab, selected at that exact block — no hunting through the tree. Edit the WCL directly; the LSP flags syntax and schema problems as you type." }
   }
 
-  step edit_blocks { n = 3
-    title = "Edit page blocks in place"
-    body steps { p "Select any rendered block to edit its fields in the side panel, double-click text to edit it inline, and add / move / delete blocks. This is for page-level material; unit content is better edited through the object editor so it stays one unit in one file." }
+  step save { n = 3
+    title = "Save through the validating pipeline"
+    body steps { p "Saving (`Ctrl+S` or the status-bar **Save**) writes through a validate-then-write pipeline — a change that would introduce schema errors rolls back with the message shown as a toast, and concurrent on-disk changes surface as a reload-vs-overwrite conflict dialog." }
   }
 
   step rebuild { n = 4
-    title = "Rebuild to apply"
-    body steps { p "The server does not auto-rebuild: click the toolbar's **Rebuild** button (it rebuilds just the current page's sub-site and reloads) or press Enter in the server console for a full rebuild. Verify your change on the reloaded page." }
+    title = "Rebuild to verify"
+    body steps { p "Press **Rebuild** again to re-render the book with your change and verify it on the reloaded preview page." }
   }
 
   serve -> edit_units
-  serve -> edit_blocks
-  edit_units -> rebuild
-  edit_blocks -> rebuild
+  edit_units -> save
+  save -> rebuild
 
-  verification = "The edited value appears in the data file (git diff shows a clean, minimal change) and on the reloaded page after rebuild."
+  verification = "The edited value appears in the data file (git diff shows a clean, minimal change) and on the rebuilt preview page."
 }

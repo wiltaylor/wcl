@@ -226,7 +226,7 @@ wcl wdoc pdf wdoc/book/main.wcl --out book.pdf
 
 ### wcl wdoc serve
 
-Build and serve a wdoc site locally with live reload.
+Build and serve a wdoc site locally with live reload. Watches for `.wcl` changes; press Enter in the console (or `POST /__wdoc_rebuild`) to rebuild. Browser editing lives in `wcl editor`.
 
 | Argument | Required | Description |
 | --- | --- | --- |
@@ -235,7 +235,6 @@ Build and serve a wdoc site locally with live reload.
 | Switch | Value | Description |
 | --- | --- | --- |
 | --addr | ADDR | Address to bind (default 127.0.0.1:8080). |
-| --answer | — | Inject the questionnaire client: pending `@answerable` questions render as a form and answers write back into the source. |
 
 ```console
 wcl wdoc serve wdoc/book/main.wcl --addr 127.0.0.1:8080

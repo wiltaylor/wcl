@@ -44,11 +44,11 @@ use_case uc_review_comments {
   title   = "Review a document with comments"
   persona = document_creator
   summary = "The click-to-comment review loop between a reviewer and an authoring agent."
-  preconditions = ["A document being served with `wcl wdoc serve <entry> --comment`"]
+  preconditions = ["A document open in `wcl editor <entry>` with the preview rebuilt"]
   outcome = "Every review note actioned and resolved out of the `comments.wcl` sidecar."
   step read { n = 1
     title = "Read and comment"
-    body steps { p "Click any rendered block and leave a note — it lands in the `comments.wcl` sidecar without rebuilding." }
+    body steps { p "Pick any rendered block in the preview pane and leave a note — it lands in the `comments.wcl` sidecar without rebuilding." }
   }
   step send { n = 2
     title = "Send to the agent"

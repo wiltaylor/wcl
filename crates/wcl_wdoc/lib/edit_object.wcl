@@ -1,17 +1,16 @@
 // ── edit_object ────────────────────────────────────────────────────
 //
-// An "edit this object" button, rendered ONLY when the WYSIWYG editor is
-// active (`wcl wdoc serve --edit`). Clicking it opens the editor's object
-// editor pre-targeted at one schema data object, so editing a rendered unit
-// (a wskill concept / entity / fact / process) is one click from its content
-// instead of a hunt through the ⛁ Objects browser.
+// An "edit this object" button, rendered ONLY in the `wcl editor` preview
+// pane. Clicking it resolves one schema data object and opens its declaring
+// `.wcl` source in an editor tab at that instance, so editing a rendered unit
+// (a wskill concept / entity / fact / process) is one click from its content.
 //
 //   edit_object { kind = "concept" target = unit.id label = "Edit this concept" }
 //
 //   • `kind`   — the schema `@block`/`@table` kind to edit (e.g. "concept").
-//   • `target` — the instance id/label to open directly (matched against the
-//                object's inline label, which is its id for the wskill units);
-//                omit it to open the kind's instance list instead.
+//   • `target` — the instance id/label to open (matched against the object's
+//                inline label, which is its id for the wskill units); omit it
+//                only when the document has exactly one instance of the kind.
 //   • `label`  — button text override (defaults to "Edit <kind>").
 //
 // Special-cased in Rust: edit mode is not visible to a WCL `lower`, so the
@@ -25,7 +24,7 @@ namespace wdoc
 type EditObject extends WdocBlock {
   @doc("The schema object kind to edit, e.g. \"concept\".")
   kind: utf8
-  @doc("Instance id/label to open directly (matched against the object's inline label). Omit to open the kind's instance list.")
+  @doc("Instance id/label to open (matched against the object's inline label). May be omitted only when the kind has exactly one instance.")
   target: utf8?
   @doc("Button text override; defaults to \"Edit <kind>\".")
   label: utf8?
@@ -37,8 +36,8 @@ type EditObject extends WdocBlock {
 }
 
 // Styling for the injected button. Kept self-contained (no `--wdoc-*` vars) so
-// it is safe even though the stylesheet only matters when the edit client is
-// injected. The button only ever appears in the edit dev server.
+// it is safe even though the button only ever appears in the `wcl editor`
+// preview pane.
 stylesheet "wdoc-edit-object" {
   css = <<CSS
     .wcl-edit-object-btn { display: inline-flex; align-items: center; gap: 0.35rem; margin: 0.4rem 0; padding: 0.3rem 0.7rem; border: 1px solid #4c8bf5; border-radius: 6px; background: rgba(76,139,245,0.12); color: #4c8bf5; font: 600 13px system-ui, sans-serif; cursor: pointer; }

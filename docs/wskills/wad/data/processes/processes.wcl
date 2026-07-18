@@ -124,7 +124,7 @@ procedure documenting_existing_system {
   }
   step verify { n = 6
     title = "Verify with the user"
-    body steps { p "Serve the book with `--comment`, have the user walk it against reality, fix data from the comments, and record the reviewed revision as the diff baseline." }
+    body steps { p "Open the book in `wcl editor`'s preview pane, have the user walk it against reality, fix data from the comments, and record the reviewed revision as the diff baseline." }
   }
 
   adopt -> order
@@ -179,8 +179,8 @@ procedure reviewing_a_wad {
   audience = :both
 
   step serve { n = 1
-    title = "Serve in comment mode"
-    body steps { p "`wcl wdoc serve wdoc/book/main.wcl --comment` — the reviewer clicks any block to leave a note (notes land in a `comments.wcl` sidecar, no rebuild). An agent waiting on the review blocks with `wcl wdoc review <entry>` until the reviewer hits “Send to agent”. Mechanics are the wdoc wskill's — this process only adds the WAD-specific step below." }
+    title = "Open the editor's preview"
+    body steps { p "`wcl editor wdoc/book/main.wcl` — the reviewer rebuilds the preview and picks any block to leave a note (notes land in a `comments.wcl` sidecar, no rebuild). An agent waiting on the review blocks with `wcl wdoc review <entry>` until the reviewer hits “Send to agent”. Mechanics are the wdoc wskill's — this process only adds the WAD-specific step below." }
   }
   step fix { n = 2
     title = "Fix from comments"

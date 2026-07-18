@@ -2,11 +2,10 @@
 //
 // `@wdoc.file(...)` (or bare `@file(...)`, which resolves to the same wdoc
 // decorator) tags a *data-object* schema (a `@block` / `@table` type) with a
-// default location for NEW objects created through the WYSIWYG object editor
-// (`wcl wdoc serve --edit`). It does not change how the document is parsed or
-// rendered — it is a hint the editor reads (via reflection over the schema's
-// decorators) when deciding which `.wcl` file to append a new object to. The
-// editor UI always lets the author override the target per object.
+// default location for NEW objects created through editor tooling. It does
+// not change how the document is parsed or rendered — it is a hint a tool
+// reads (via reflection over the schema's decorators) when deciding which
+// `.wcl` file to append a new object to.
 //
 //   @block("character") @wdoc.file("data/characters.wcl")
 //   type Character { @inline(0) id: identifier  name: utf8  hp: u32 }
@@ -14,15 +13,15 @@
 //   @block("npc") @file("data/npcs", folder = true)
 //   type Npc { @inline(0) id: identifier  name: utf8 }   // → data/npcs/<id>.wcl
 //
-// Semantics (all enforced by the editor, not the language):
+// Semantics (all enforced by tooling, not the language):
 //   - no `@wdoc.file`         → new objects go into the document's own file
 //   - `path` (a single file)  → new objects are appended to that file
 //   - `folder = true`         → each new object gets its own file
 //                               `<path>/<id>.wcl` (id from the `@inline(0)` slot)
 //   - existing objects stay where they are; the decorator only steers creation.
 //
-// Read by `crates/wcl/src/edit.rs`; declaring it here documents the argument
-// slots and lets reflection / the LSP see them.
+// Declaring it here documents the argument slots and lets reflection / the
+// LSP see them.
 
 namespace wdoc
 

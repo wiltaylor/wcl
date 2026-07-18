@@ -8,6 +8,7 @@ import { For, Show, onCleanup } from 'solid-js';
 import { CodeEditor } from '@forge/code';
 
 import { buffers, active, editBuffer, setAnnotations } from '../state/buffers';
+import { registerView } from '../state/views';
 import { wclLanguage } from '../lang/wcl';
 import { wclLspExtensions, toAnnotations } from '../lsp/extension';
 import { lsp, isWcl, docUri } from '../lsp/client';
@@ -20,8 +21,9 @@ const EXT_LANG = {
 
 function languageFor(path) {
   if (isWcl(path)) {
-    // Arrays flatten: smuggle the whole LSP stack through `language`.
-    return [wclLanguage, wclLspExtensions(docUri(path))];
+    // Arrays flatten: smuggle the whole LSP stack (and the view registry
+    // the edit_object reveal uses) through `language`.
+    return [wclLanguage, wclLspExtensions(docUri(path)), registerView(path)];
   }
   return EXT_LANG[path.split('.').pop()];
 }

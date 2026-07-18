@@ -38,7 +38,7 @@ If the upstream still matches every source's `reflects_version`, the wskill is a
 
 ### Step 4: Update the affected units
 
-Fold each change into the model: edit the `concept`, `entity`, `fact` or `procedure` units the change touches, keeping each atomic and re-checking its `related` links. Only touch the units the source actually moved. Where a change raises something only the topic owner can settle (a policy choice, an ambiguity the source doesn't resolve), don't guess — capture it as a `question` block; the owner answers later via `wcl answer wskill.wcl` (or the serve `--answer` questionnaire), and the next sweep folds each `:answered` question into real units and deletes the block. Sweep the `research` blocks too: a finding whose subject moved past its `applies_to` gets re-verified (update `checked`) or flipped to `status = :stale`; a finding replaced by new research becomes `:superseded` with `superseded_by` naming the replacement.
+Fold each change into the model: edit the `concept`, `entity`, `fact` or `procedure` units the change touches, keeping each atomic and re-checking its `related` links. Only touch the units the source actually moved. Where a change raises something only the topic owner can settle (a policy choice, an ambiguity the source doesn't resolve), don't guess — capture it as a `question` block; the owner answers later via `wcl answer wskill.wcl`, and the next sweep folds each `:answered` question into real units and deletes the block. Sweep the `research` blocks too: a finding whose subject moved past its `applies_to` gets re-verified (update `checked`) or flipped to `status = :stale`; a finding replaced by new research becomes `:superseded` with `superseded_by` naming the replacement.
 
 ### Step 5: Re-verify and re-pin
 

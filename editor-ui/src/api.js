@@ -41,6 +41,8 @@ export const api = {
   sites: () => json('GET', '/api/sites'),
   /** Full build of one site with unsaved buffers overlaid → { ok, href } */
   preview: (entry, site, files) => json('POST', '/api/preview', { entry, site, files }),
+  /** Resolve an edit_object target to its source → { file, span: {start, end} } */
+  locateObject: (payload) => json('POST', '/api/object/locate', payload),
   rawUrl: (path) => `/api/raw?path=${encodeURIComponent(path)}`,
   /** → { comments: [{id, scope, page, page_file, loc, target, quote, body, …}] } */
   comments: () => json('GET', '/api/comments'),

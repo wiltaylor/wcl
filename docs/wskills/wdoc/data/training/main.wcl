@@ -463,23 +463,23 @@ lesson review_loop {
   title   = "The review loop"
   summary = "Pin comments on the served site, work through them from the CLI, and hand off rounds with the review handshake."
   objectives = [
-    "Serve with the click-to-comment client",
+    "Review a rendered site from the wcl editor preview pane",
     "List and resolve comments from the CLI",
     "Run the agent-side `wcl wdoc review` wait",
   ]
   prerequisites = [render_targets]
   related = [review_comments, build_serve]
   body {
-    p "`wcl wdoc serve <file> --comment` injects a review client into every page: click any rendered block to pin a note on it. Comments land in a `comments.wcl` sidecar beside the document — keyed by page and locator — and never trigger a rebuild, so reviewing stays non-destructive."
-    p "From the CLI, `wcl wdoc comments .` lists every open note and `comments . resolve <id>` closes one. For human⇄agent rounds, the agent runs `wcl wdoc review <file>`: it blocks until the reviewer clicks \"Send to agent\" in the comment toolbar, then prints that round's comments for the agent to work through."
+    p "The `wcl editor` preview pane carries a review client on every rendered page: pick any block from the comment menu to pin a note on it. Comments land in a `comments.wcl` sidecar beside the document — keyed by page and locator — and never trigger a rebuild, so reviewing stays non-destructive."
+    p "From the CLI, `wcl wdoc comments .` lists every open note and `comments . resolve <id>` closes one. For human⇄agent rounds, the agent runs `wcl wdoc review <file>`: it blocks until the reviewer clicks \"Send to agent\" in the preview pane, then prints that round's comments for the agent to work through."
   }
   exercise one_round {
     title     = "Run one review round"
-    task      = "Serve with `--comment`, pin a note on any block in the browser, list it from the CLI, then resolve it."
+    task      = "Open the editor, rebuild the preview, pin a note on any block, list it from the CLI, then resolve it."
     code_lang = "bash"
     code      = <<'SH'
-wcl wdoc serve docs.wcl --comment &
-# click a block in the browser and leave a note, then:
+wcl editor docs.wcl &
+# rebuild the preview, comment on a block, then:
 wcl wdoc comments .
 wcl wdoc comments . resolve <id>
 SH

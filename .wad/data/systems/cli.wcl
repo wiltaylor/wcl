@@ -197,7 +197,7 @@ cli_command cmd_wdoc_build {
 
 cli_command cmd_wdoc_serve {
   name      = "wcl wdoc serve"
-  summary   = "Run the local dev server: watches for `.wcl` changes but rebuilds only on demand (Enter in the console, or the toolbar's Rebuild button)."
+  summary   = "Run the local dev server: watches for `.wcl` changes but rebuilds only on demand (Enter in the console, or `POST /__wdoc_rebuild`). Browser editing and review comments live in `wcl editor`."
   component = cli_commands
   cli_arg a_file { name = "<file>"  description = "The wdoc entry document." }
   cli_flag f_addr { name = "--addr"  value = "<host:port|auto>"  default = "127.0.0.1:8080"
@@ -206,16 +206,8 @@ cli_command cmd_wdoc_serve {
     description = "Output directory; a temp directory (removed on shutdown) when omitted." }
   cli_flag f_site { name = "--site"  value = "<name>"
     description = "Serve only this named `site` at `/`; otherwise every site serves under `/<name>/` with a chooser index." }
-  cli_flag f_comment { name = "--comment"
-    description = "Comment mode: click a rendered block to leave a review note, persisted to a `comments.wcl` sidecar (no rebuild)." }
-  cli_flag f_edit { name = "--edit"
-    description = "Edit mode: WYSIWYG client that edits fields/text/blocks and schema data objects, writing real `.wcl` source. Composes with `--comment`." }
-  cli_flag f_answer { name = "--answer"
-    description = "Answer mode: questionnaire client over pending `@answerable` question blocks — answers write straight into the source. Composes with the other modes." }
   cli_example ex0 { command = "wcl wdoc serve docs/main.wcl --addr auto"
     description = "Preview on the first free port; press Enter in the console to rebuild." }
-  cli_example ex1 { command = "wcl wdoc serve .wad/wdoc/book/main.wcl --comment --edit"
-    description = "Review with click-to-comment and WYSIWYG editing together." }
 }
 
 cli_command cmd_wdoc_markdown {

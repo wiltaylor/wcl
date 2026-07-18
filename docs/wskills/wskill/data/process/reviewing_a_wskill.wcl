@@ -6,12 +6,12 @@ procedure reviewing_a_wskill {
   audience = :both
 
   step serve { n = 1
-    title = "Serve in comment mode"
+    title = "Open the editor's preview"
     body screen { code "console" { source = <<'SH'
-$ wcl wdoc serve wdoc/book/main.wcl --comment
+$ wcl editor wdoc/book/main.wcl
 SH
     } }
-    body steps { p "The dev server injects a review client: click any block on a rendered page, type a note, save. Comments land in a `comments.wcl` sidecar beside `wskill.wcl` — no rebuild, they re-appear on reload." }
+    body steps { p "The editor's preview pane hosts the review client: rebuild the book, pick any block from the comment menu, type a note, save. Comments land in a `comments.wcl` sidecar beside `wskill.wcl` — no rebuild, they re-appear on reload." }
   }
 
   step agent_wait { n = 2

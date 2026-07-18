@@ -98,7 +98,6 @@ question q_version_policy {
 // Answer it without touching WCL:
 //   wcl answer wskill.wcl                          — interactive walk-through
 //   wcl answer wskill.wcl --list                   — pending questions as JSON
-//   wcl wdoc serve wdoc/book/main.wcl --answer     — browser questionnaire
 WCL
   },
   { name: "WskillRef", code: <<'WCL'

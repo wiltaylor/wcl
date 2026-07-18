@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Use `wcl wdoc serve --edit` to modify units and blocks from the rendered book, writing real .wcl source.
+Use `wcl editor` to modify units from the rendered book preview, writing real .wcl source.
 
 ## Prerequisites
 
@@ -14,29 +14,29 @@ Use `wcl wdoc serve --edit` to modify units and blocks from the rendered book, w
 
 ## Steps
 
-### Step 1: Serve in edit mode
+### Step 1: Open the editor
 
 ```console
-$ wcl wdoc serve wdoc/book/main.wcl --edit --comment
+$ cd path/to/wskill && wcl editor wdoc/book/main.wcl
 ```
 
-`--edit` injects the WYSIWYG client (it composes with `--comment`). Every edit writes real `.wcl` source through a validate-then-write pipeline — a change that would introduce schema errors rolls back.
+`wcl editor` serves a browser IDE for the directory: a file tree, tabbed CodeMirror editing with WCL language support, and a preview pane. Pick the book in the topbar's site selector and press **Rebuild** to render it (unsaved buffers are overlaid, so the preview always shows what you see in the tabs).
 
-### Step 2: Edit units via the object editor
+### Step 2: Jump from a rendered unit to its source
 
-Every unit page carries an **Edit this concept/entity/fact/process** button that opens that exact object as raw WCL in the object editor. The editor also browses all schema objects by kind and namespace, and creates new ones from a schema template — new objects land in the right data file via the placement decorator, with the import wired automatically.
+Every unit page carries an **Edit this concept/entity/fact/process** button. Clicking it opens the unit's declaring `.wcl` data file in an editor tab, selected at that exact block — no hunting through the tree. Edit the WCL directly; the LSP flags syntax and schema problems as you type.
 
-### Step 3: Edit page blocks in place
+### Step 3: Save through the validating pipeline
 
-Select any rendered block to edit its fields in the side panel, double-click text to edit it inline, and add / move / delete blocks. This is for page-level material; unit content is better edited through the object editor so it stays one unit in one file.
+Saving (`Ctrl+S` or the status-bar **Save**) writes through a validate-then-write pipeline — a change that would introduce schema errors rolls back with the message shown as a toast, and concurrent on-disk changes surface as a reload-vs-overwrite conflict dialog.
 
-### Step 4: Rebuild to apply
+### Step 4: Rebuild to verify
 
-The server does not auto-rebuild: click the toolbar's **Rebuild** button (it rebuilds just the current page's sub-site and reloads) or press Enter in the server console for a full rebuild. Verify your change on the reloaded page.
+Press **Rebuild** again to re-render the book with your change and verify it on the reloaded preview page.
 
 > [!TIP]
 > **Verification**
-> The edited value appears in the data file (git diff shows a clean, minimal change) and on the reloaded page after rebuild.
+> The edited value appears in the data file (git diff shows a clean, minimal change) and on the rebuilt preview page.
 
 ## Related
 

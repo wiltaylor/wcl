@@ -14,13 +14,13 @@ Run the review loop: a human pins comments on the rendered book; an agent collec
 
 ## Steps
 
-### Step 1: Serve in comment mode
+### Step 1: Open the editor's preview
 
 ```console
-$ wcl wdoc serve wdoc/book/main.wcl --comment
+$ wcl editor wdoc/book/main.wcl
 ```
 
-The dev server injects a review client: click any block on a rendered page, type a note, save. Comments land in a `comments.wcl` sidecar beside `wskill.wcl` — no rebuild, they re-appear on reload.
+The editor's preview pane hosts the review client: rebuild the book, pick any block from the comment menu, type a note, save. Comments land in a `comments.wcl` sidecar beside `wskill.wcl` — no rebuild, they re-appear on reload.
 
 ### Step 2: Agent: wait for the reviewer
 

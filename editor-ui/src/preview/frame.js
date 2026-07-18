@@ -178,6 +178,30 @@ export function beginPick(doc, { onPick, onCancel }) {
   return () => cancel(true);
 }
 
+/** Idempotently wire the page's edit_object "Edit this …" buttons
+    ([data-wcl-edit-kind], emitted by the edit-mode preview build): a
+    capture-phase click hands {kind, target} to `onEdit`. `enabled()`
+    gates it off (letting the click fall through) while block-pick mode
+    owns the iframe's clicks. */
+export function installEditButtons(doc, onEdit, enabled = () => true) {
+  if (!doc || doc.__wclEditButtonsWired) return;
+  doc.__wclEditButtonsWired = true;
+  doc.addEventListener(
+    'click',
+    (e) => {
+      const btn = e.target.closest?.('[data-wcl-edit-kind]');
+      if (!btn || !enabled()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onEdit({
+        kind: btn.getAttribute('data-wcl-edit-kind'),
+        target: btn.getAttribute('data-wcl-edit-target') || null,
+      });
+    },
+    true,
+  );
+}
+
 /** Scroll a comment's block into view and flash it. */
 export function jumpTo(doc, comment) {
   const page = pageInfo(doc);

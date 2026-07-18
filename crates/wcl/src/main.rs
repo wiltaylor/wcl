@@ -431,10 +431,9 @@ enum WdocCommand {
         page_size: PdfPageSize,
     },
     /// Run a local dev server. Watches the source for `.wcl` changes but
-    /// does not rebuild automatically — press Enter in the console (or use
-    /// the edit toolbar's Rebuild button under `--edit`) to rebuild, then
-    /// the browser reloads. Review comments live in `wcl editor`'s preview
-    /// pane, not here.
+    /// does not rebuild automatically — press Enter in the console (or
+    /// `POST /__wdoc_rebuild`) to rebuild, then the browser reloads.
+    /// Editing and review comments live in `wcl editor`, not here.
     Serve {
         /// Path to a WCL source file declaring one or more `page` blocks.
         file: PathBuf,
@@ -450,21 +449,6 @@ enum WdocCommand {
         /// site is served under `/<name>/` with a chooser index at `/`.
         #[arg(long)]
         site: Option<String>,
-        /// Enable edit mode: inject a WYSIWYG client that lets you select a
-        /// rendered block and edit its fields / text, add / remove / reorder
-        /// blocks, and add / edit / remove schema-defined data objects —
-        /// writing the changes straight into the `.wcl` source (which the
-        /// watcher rebuilds + reloads).
-        #[arg(long)]
-        edit: bool,
-        /// Enable answer mode: inject a questionnaire client that walks the
-        /// document's pending `@answerable` question blocks as a form —
-        /// options as radio buttons / checkboxes, free text always available
-        /// — writing each answer straight into the `.wcl` source. The
-        /// respondent-facing counterpart to `wcl answer`. Composes with
-        /// `--edit`.
-        #[arg(long)]
-        answer: bool,
     },
     /// List the review comments stored in the `comments.wcl` sidecars under
     /// `<file>`'s directory (left from the `wcl editor` preview pane), or
@@ -880,14 +864,12 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
             addr,
             out,
             site,
-            edit,
-            answer,
         } => {
             let rt = match build_runtime() {
                 Ok(rt) => rt,
                 Err(code) => return code,
             };
-            let result = rt.block_on(serve::serve(file, out, addr, site, edit, answer));
+            let result = rt.block_on(serve::serve(file, out, addr, site));
             // Tear the runtime down with a bound so a stray in-flight
             // `spawn_blocking` (e.g. a `tokio::fs::read` in the static
             // handler) can never hang process exit on Ctrl-C.

@@ -34,10 +34,9 @@
 // field as prose (picked labels joined with ", ", typed text appended), so
 // downstream consumers only ever read one utf8 field.
 //
-// Consumed by `wcl answer <file>` (terminal walk-through) and
-// `wcl wdoc serve --answer` (browser questionnaire); both write through the
-// validating edit pipeline one question at a time, so an interrupted session
-// loses nothing. Read by `crates/wcl/src/answer.rs`.
+// Consumed by `wcl answer <file>` (terminal walk-through), which writes
+// through the validating edit pipeline one question at a time, so an
+// interrupted session loses nothing. Read by `crates/wcl/src/answer.rs`.
 
 namespace answer
 
