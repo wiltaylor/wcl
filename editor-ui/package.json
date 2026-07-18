@@ -15,9 +15,9 @@
     "@codemirror/search": "^6.5.8",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.0",
-    "@forge/code": "github:wiltaylor/forge#main&path:packages/code",
-    "@forge/tokens": "github:wiltaylor/forge#main&path:packages/tokens",
-    "@forge/ui": "github:wiltaylor/forge#main&path:packages/ui",
+    "@forge/code": "github:wiltaylor/forge#0365090da3584e8a92316bc1d1c4462f755d81c2&path:packages/code",
+    "@forge/tokens": "github:wiltaylor/forge#0365090da3584e8a92316bc1d1c4462f755d81c2&path:packages/tokens",
+    "@forge/ui": "github:wiltaylor/forge#0365090da3584e8a92316bc1d1c4462f755d81c2&path:packages/ui",
     "@lezer/common": "^1.2.0",
     "@lezer/highlight": "^1.2.0",
     "lucide-solid": "^1.24.0",
@@ -29,12 +29,12 @@
   },
   "pnpm": {
     "overrides": {
-      "@forge/tokens": "github:wiltaylor/forge#main&path:packages/tokens"
+      "@forge/tokens": "github:wiltaylor/forge#0365090da3584e8a92316bc1d1c4462f755d81c2&path:packages/tokens"
     },
     "onlyBuiltDependencies": [
-      "@forge/tokens@https://codeload.github.com/wiltaylor/forge/tar.gz/d513b163c92fdc95d413301f437cfb80ffab2fa7#path:packages/tokens",
-      "@forge/ui@https://codeload.github.com/wiltaylor/forge/tar.gz/d513b163c92fdc95d413301f437cfb80ffab2fa7#path:packages/ui",
-      "@forge/code@https://codeload.github.com/wiltaylor/forge/tar.gz/d513b163c92fdc95d413301f437cfb80ffab2fa7#path:packages/code"
+      "@forge/tokens@https://codeload.github.com/wiltaylor/forge/tar.gz/0365090da3584e8a92316bc1d1c4462f755d81c2#path:packages/tokens",
+      "@forge/ui@https://codeload.github.com/wiltaylor/forge/tar.gz/0365090da3584e8a92316bc1d1c4462f755d81c2#path:packages/ui",
+      "@forge/code@https://codeload.github.com/wiltaylor/forge/tar.gz/0365090da3584e8a92316bc1d1c4462f755d81c2#path:packages/code"
     ]
   }
 }
