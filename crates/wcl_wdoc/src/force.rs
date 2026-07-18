@@ -229,12 +229,17 @@ pub(crate) fn assign_force_offsets(
         min_x = min_x.min(p.0 - node.size.0 / 2.0);
         min_y = min_y.min(p.1 - node.size.1 / 2.0);
     }
+    // Quantize to a micro-pixel grid: cos/sin/hypot round differently
+    // across libm builds, and the iteration amplifies that into the
+    // printed digits — committed SVG artifacts must not depend on the
+    // build machine's libc.
+    let quant = |v: f64| (v * 1e6).round() / 1e6;
     pos.iter()
         .zip(nodes)
         .map(|(p, node)| {
             (
-                p.0 - node.size.0 / 2.0 - min_x,
-                p.1 - node.size.1 / 2.0 - min_y,
+                quant(p.0 - node.size.0 / 2.0 - min_x),
+                quant(p.1 - node.size.1 / 2.0 - min_y),
             )
         })
         .collect()
