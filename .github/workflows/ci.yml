@@ -195,10 +195,15 @@ jobs:
             target: x86_64-unknown-linux-gnu
             bin: wcl
             suffix: linux-x86_64
+          # editor_ui_skip: pnpm can't prepare the forge git-subdir deps on
+          # Windows (the nested `pnpm install` in the prepare hook dies with
+          # "The system cannot find the path specified"), so the Windows
+          # binary embeds the placeholder editor UI instead of the SPA.
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             bin: wcl.exe
             suffix: windows-x86_64.exe
+            editor_ui_skip: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -220,6 +225,8 @@ jobs:
           sed -i 's/"0\.0\.0"/"'"$V"'"/g' Cargo.toml
       - name: Build
         run: cargo build -p wcl --bin wcl --release --target ${{ matrix.target }}
+        env:
+          WCL_EDITOR_UI_SKIP: ${{ matrix.editor_ui_skip || '' }}
       - name: Stage asset
         run: |
           V="${{ needs.version.outputs.version }}"
