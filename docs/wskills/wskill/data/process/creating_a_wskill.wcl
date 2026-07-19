@@ -1,48 +1,87 @@
 procedure creating_a_wskill {
-  title   = "Creating a new wskill"
+  title = "Creating a new wskill"
   purpose = "Start a new wskill for a topic from the wcl template, set its topic, and prove the empty model renders."
   preconditions = ["WCL installed — see the [WCL wskill](../wcl/) to install it."]
-  related = [wskill_concept, datapresentation, selfcontained, adding_content, folder_layout, researching_a_topic]
+  related = [wskill_concept, datapresentation, selfcontained, adding_content, researching_a_topic]
   audience = :both
 
-  step scaffold { n = 1
+  step scaffold {
+    n = 1
     title = "Scaffold from the template"
-    body screen { code "console" { source = <<'SH'
-$ wcl init wskill docs/wskills/<topic>
-$ cd docs/wskills/<topic>
-SH
-    } }
-    body steps { p "Run `wcl init wskill <path>` to scaffold the folder — `wskill.wcl`, the `schema/`, the `wdoc/` templates and an empty `data/`. Don't hand-create it. Answer the prompts (topic id, name, summary, whether to ship the optional presentation/training views), or pass `-D key=value` / `--defaults`." }
+    body screen {
+      code "console" {
+        source = <<DOC
+          $ wcl init wskill docs/wskills/<topic>
+          $ cd docs/wskills/<topic>
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        Run `wcl init wskill <path>` to scaffold the folder — `wskill.wcl`, the `schema/`, the
+        `wdoc/` templates and an empty `data/`. Don't hand-create it. Answer the prompts (topic id,
+        name, summary, whether to ship the optional presentation/training views), or pass
+        `-D key=value` / `--defaults`.
+      DOC
+    }
   }
 
-  step set_topic { n = 2
+  step set_topic {
+    n = 2
     title = "Set the topic"
-    body screen { code "wcl" { source = <<'WCL'
-topic <id> {
-  name    = "<Topic name>"
-  summary = "<One-line description of the topic.>"
-  version = "1.0.0"
-  created = "<YYYY-MM-DD>"
-}
-WCL
-    } }
-    body steps { p "Edit `wskill.wcl` and fill in the single `topic` block — its `id`, `name` and `summary` describe the whole wskill. Pin `version` to the upstream version when the topic has one, and add `source` blocks for where authoritative information lives (they drive the update workflow)." }
+    body screen {
+      code "wcl" {
+        source = <<DOC
+          topic <id> {
+            name    = "<Topic name>"
+            summary = "<One-line description of the topic.>"
+            version = "1.0.0"
+            created = "<YYYY-MM-DD>"
+          }
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        Edit `wskill.wcl` and fill in the single `topic` block — its `id`, `name` and `summary`
+        describe the whole wskill. Pin `version` to the upstream version when the topic has one, and
+        add `source` blocks for where authoritative information lives (they drive the update
+        workflow).
+      DOC
+    }
   }
 
-  step first_render { n = 3
+  step first_render {
+    n = 3
     title = "Check and render the empty model"
-    body screen { code "console" { source = <<'SH'
-$ just wskill-check     # wcl check on the model + every template
-$ just render           # out/book + out/skill
-$ just book-serve       # live preview
-SH
-    } }
-    body steps { p "Before adding any content, prove the pipeline: the scaffolded model must check clean and render. If this fails now, fix it now — every later error will then be about your content." }
+    body screen {
+      code "console" {
+        source = <<DOC
+          $ just wskill-check     # wcl check on the model + every template
+          $ just render           # out/book + out/skill
+          $ just book-serve       # live preview
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        Before adding any content, prove the pipeline: the scaffolded model must check clean and
+        render. If this fails now, fix it now — every later error will then be about your content.
+      DOC
+    }
   }
 
-  step first_content { n = 4
+  step first_content {
+    n = 4
     title = "Capture the first units and curate the nav"
-    body steps { p "Follow [Adding content](process_adding_content) for the capture loop — decompose, classify with the decision guide, write, link, and pin each unit into an `index`. Once a handful of units exist, [build the index](process_building_the_index) so the book nav and SKILL.md reflect the topic's real shape. To author a whole topic by research instead of hand-capture, follow [Researching a topic](process_researching_a_topic)." }
+    body steps {
+      p <<DOC
+        Follow [Adding content](process_adding_content) for the capture loop — decompose, classify
+        with the decision guide, write, link, and pin each unit into an `index`. Once a handful of
+        units exist,
+        [build the index](process_building_the_index) so the book nav and SKILL.md reflect the topic's real shape. To author a whole topic by research instead of hand-capture, follow [Researching a topic](process_researching_a_topic).
+      DOC
+    }
   }
 
   scaffold -> set_topic

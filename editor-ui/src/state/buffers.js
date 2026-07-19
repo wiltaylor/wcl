@@ -93,6 +93,15 @@ export async function saveBuffer(path, { overwrite = false } = {}) {
   return res;
 }
 
+/** Refresh a clean open buffer after an out-of-band disk write (a Design
+    mode commit already knows the new text + etag — no round-trip). */
+export function applyDiskUpdate(path, text, etag) {
+  const b = store.buffers[path];
+  if (!b || b.dirty) return;
+  setStore('buffers', path, { text, savedText: text, etag });
+  if (isWcl(path)) lsp.scheduleChange(docUri(path), text);
+}
+
 /** Conflict resolution: drop the buffer's changes and reload from disk. */
 export async function reloadFromDisk(path) {
   const res = await api.readFile(path);

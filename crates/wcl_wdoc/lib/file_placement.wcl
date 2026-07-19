@@ -30,3 +30,19 @@ type FilePlacement {
   @inline(0) path: utf8   // default target path for new objects (file, or folder)
   folder: bool?           // treat `path` as a folder: one file per object
 }
+
+// `@wdoc.editable(...)` (or bare `@editable(...)`) opts a data-object schema
+// into the `wcl editor`'s Data mode: the editor shows one table of all its
+// instances with add / modify / remove. The optional `file` names where new
+// rows go; without it the `@wdoc.file` placement hint applies, and without
+// either new rows land in the file already holding the most instances.
+//
+//   @block("character") @wdoc.editable("data/characters.wcl")
+//   type Character { @inline(0) id: identifier  name: utf8  hp: u32 }
+//
+// Like `@wdoc.file` this is pure tooling vocabulary — parsing and rendering
+// ignore it.
+@decorator("editable")
+type Editable {
+  @inline(0) file: utf8?  // default target file for new rows
+}

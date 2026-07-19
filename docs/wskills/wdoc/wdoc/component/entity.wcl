@@ -12,7 +12,9 @@ wdoc_component entity_body {
   wdoc_slot backlinks
   wdoc_slot layout    { default = "stack" }
   wdoc_body {
-    h1 $"${unit.name}"
+    edit_field { kind = "entity" target = $"${unit.id}" field = "name" plain = true
+      h1 $"${unit.name}"
+    }
     // Edit-mode only: jump straight into this object in the WYSIWYG editor.
     edit_object { kind = "entity" target = $"${unit.id}" label = "Edit this entity" }
     p  $"_${kind_text($"${unit.kind}")}_"

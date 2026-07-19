@@ -91,7 +91,7 @@ Page & data:
 | `SettingsRow` | children | `.settings-row` two-column field grid. |
 | `Empty` | `title`, `action` (JSX), children (one sentence) | `.empty` dashed empty state. |
 | `Eyebrow` | children | `.eyebrow` micro-label. |
-| `Modal` | `open`, `onClose`, `title`, `footer` (JSX), children | Portal + `.fmodal`; closes on Escape, backdrop click, head X. Controlled by a signal. **Requires the `.fmodal` block in console.css — copy both files together.** |
+| `Modal` | `open`, `onClose`, `title`, `size` (`'md'` 480px default \| `'lg'` 720px \| `'xl'` 960px), `footer` (JSX), children | Portal + `.fmodal`; closes on Escape, backdrop click, head X. Controlled by a signal. **Requires the `.fmodal` block in console.css — copy both files together.** |
 
 Form controls (all controlled; Checkbox/Toggle/Radio keep a hidden native input for a11y):
 

@@ -53,4 +53,7 @@ export default defineConfig({
       '/api': { target: apiTarget, changeOrigin: true, ws: true },
     },
   },
+  test: {
+    environment: 'happy-dom',
+  },
 });

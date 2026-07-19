@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "test": "vitest run"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.0",
@@ -25,7 +26,9 @@
   },
   "devDependencies": {
     "vite": "^6.0.0",
-    "vite-plugin-solid": "^2.11.0"
+    "vite-plugin-solid": "^2.11.0",
+    "vitest": "^3.0.0",
+    "happy-dom": "^17.0.0"
   },
   "pnpm": {
     "overrides": {

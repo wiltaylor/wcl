@@ -1454,10 +1454,14 @@ wdoc_component concept_body {
   wdoc_slot backlinks
   wdoc_slot layout    { default = "stack" }
   wdoc_body {
-    h1 $"${unit.name}"
+    edit_field { kind = "concept" target = $"${unit.id}" field = "name" plain = true
+      h1 $"${unit.name}"
+    }
     // Edit-mode only: jump straight into this object in the WYSIWYG editor.
     edit_object { kind = "concept" target = $"${unit.id}" label = "Edit this concept" }
-    p  $"_${unit.summary}_"
+    edit_field { kind = "concept" target = $"${unit.id}" field = "summary"
+      p  $"_${unit.summary}_"
+    }
     wdoc_repeater { each = match unit.body { none => [], _ => [true] }  as = :_b
       project { from = unit.body }
     }
@@ -1485,7 +1489,9 @@ wdoc_component entity_body {
   wdoc_slot backlinks
   wdoc_slot layout    { default = "stack" }
   wdoc_body {
-    h1 $"${unit.name}"
+    edit_field { kind = "entity" target = $"${unit.id}" field = "name" plain = true
+      h1 $"${unit.name}"
+    }
     // Edit-mode only: jump straight into this object in the WYSIWYG editor.
     edit_object { kind = "entity" target = $"${unit.id}" label = "Edit this entity" }
     p  $"_${kind_text($"${unit.kind}")}_"
@@ -1516,7 +1522,9 @@ wdoc_component fact_body {
   wdoc_slot backlinks
   wdoc_slot layout    { default = "stack" }
   wdoc_body {
-    h1 $"${unit.title}"
+    edit_field { kind = "fact" target = $"${unit.id}" field = "title" plain = true
+      h1 $"${unit.title}"
+    }
     // Edit-mode only: jump straight into this object in the WYSIWYG editor.
     edit_object { kind = "fact" target = $"${unit.id}" label = "Edit this fact" }
     wdoc_repeater { each = match unit.body { none => [], _ => [true] }  as = :_b
@@ -1548,7 +1556,9 @@ wdoc_component research_body {
   wdoc_slot backlinks
   wdoc_slot layout    { default = "stack" }
   wdoc_body {
-    h1 $"${unit.topic}"
+    edit_field { kind = "research" target = $"${unit.id}" field = "topic" plain = true
+      h1 $"${unit.topic}"
+    }
     p  $"_Researched: ${unit.checked} · status: ${replace($"${unit.status}", ":", "")}${match unit.applies_to { none => "", a => $" · applies to: ${a}" }}_"
     wdoc_repeater { each = match unit.question { none => [], q => [q] }  as = :q  p $"**Question:** ${q}" }
     wdoc_repeater { each = match unit.superseded_by { none => [], s => [s] }  as = :s
@@ -1556,7 +1566,9 @@ wdoc_component research_body {
     // Edit-mode only: jump straight into this object in the WYSIWYG editor.
     edit_object { kind = "research" target = $"${unit.id}" label = "Edit this research unit" }
     h2 "Finding"
-    p  $"${unit.summary}"
+    edit_field { kind = "research" target = $"${unit.id}" field = "summary"
+      p  $"${unit.summary}"
+    }
     wdoc_repeater { each = match unit.body { none => [], _ => [true] }  as = :_b
       project { from = unit.body }
     }
@@ -1593,11 +1605,15 @@ wdoc_component process_body {
   wdoc_slot backlinks
   wdoc_slot layout     { default = "stack" }
   wdoc_body {
-    h1 $"${unit.title}"
+    edit_field { kind = "procedure" target = $"${unit.id}" field = "title" plain = true
+      h1 $"${unit.title}"
+    }
     // Edit-mode only: jump straight into this object in the WYSIWYG editor.
     edit_object { kind = "procedure" target = $"${unit.id}" label = "Edit this process" }
     h2 "Purpose"
-    p  $"${unit.purpose}"
+    edit_field { kind = "procedure" target = $"${unit.id}" field = "purpose"
+      p  $"${unit.purpose}"
+    }
     wdoc_repeater { each = match len(unit.preconditions) { 0 => [], _ => [true] }  as = :_p
       h2 "Prerequisites"
       list { items = map(unit.preconditions, fn(pc: utf8) -> Li { { text: pc } }) }

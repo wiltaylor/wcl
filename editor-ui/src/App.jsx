@@ -4,8 +4,18 @@
    status bar — plus global Ctrl+S and the save conflict modal. */
 
 import { Show, createEffect, createSignal, onCleanup, onMount } from 'solid-js';
-import { Moon } from 'lucide-solid';
-import { AppShell, Button, IconButton, Modal, SplitPane, Spinner, Toaster, toast } from '@forge/ui';
+import { Code2, Database, Moon, PenTool } from 'lucide-solid';
+import {
+  AppShell,
+  Button,
+  IconButton,
+  Modal,
+  SplitPane,
+  Spinner,
+  Toaster,
+  ToggleGroup,
+  toast,
+} from '@forge/ui';
 
 import FileTree from './components/FileTree';
 import TabStrip from './components/TabStrip';
@@ -13,6 +23,8 @@ import EditorPane from './components/EditorPane';
 import PreviewPane from './components/PreviewPane';
 import SitePicker from './components/SitePicker';
 import StatusBar from './components/StatusBar';
+import DesignView from './components/design/DesignView';
+import DataView from './components/data/DataView';
 import {
   active,
   conflict,
@@ -22,6 +34,7 @@ import {
 } from './state/buffers';
 import { treeData } from './state/tree';
 import { building, loadSites, rebuild, selected } from './state/sites';
+import { enterData, enterDesign, exitDesign, mode } from './state/design';
 
 export default function App() {
   const [previewOpen, setPreviewOpen] = createSignal(true);
@@ -53,6 +66,13 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     onCleanup(() => window.removeEventListener('keydown', onKey));
+  });
+
+  // Design mode collapses the AppShell's sidebar grid column (the shell
+  // always reserves --sidebar-w, even with an empty nav) so the design
+  // view sticks to the left edge like the code editor does.
+  createEffect(() => {
+    document.body.classList.toggle('ed-design-mode', mode() !== 'code');
   });
 
   // Discover sites once the tree has loaded (it supplies the workspace
@@ -88,9 +108,32 @@ export default function App() {
             <span class="ed-brand-sub">editor</span>
           </div>
           <SitePicker />
-          <Button size="sm" onClick={runRebuild} disabled={!selected() || building()}>
-            Rebuild
-          </Button>
+          <ToggleGroup
+            options={[
+              { value: 'code', label: 'Code', icon: Code2 },
+              { value: 'design', label: 'Design', icon: PenTool, disabled: !selected() },
+              { value: 'data', label: 'Data', icon: Database, disabled: !selected() },
+            ]}
+            value={mode()}
+            onChange={async (m) => {
+              if (m === mode()) return;
+              if (m === 'design') {
+                const ok = await enterDesign();
+                // Always rebuild on entry: the canvas needs fresh anchors —
+                // an older build's byte spans may not match disk any more.
+                if (ok) runRebuild();
+              } else if (m === 'data') {
+                await enterData();
+              } else {
+                exitDesign();
+              }
+            }}
+          />
+          <Show when={mode() === 'code'}>
+            <Button size="sm" onClick={runRebuild} disabled={!selected() || building()}>
+              Rebuild
+            </Button>
+          </Show>
           <Show when={building()}>
             <Spinner size={16} label="Building preview" />
           </Show>
@@ -98,20 +141,31 @@ export default function App() {
           <IconButton icon={Moon} label="Toggle dark/light" onClick={toggleTheme} />
         </>
       }
-      sidebar={<FileTree />}
+      sidebar={mode() === 'code' ? <FileTree /> : undefined}
     >
       <div class="ed-shell-main">
         <div class="ed-main">
-          <Show when={previewOpen()} fallback={editorColumn}>
-            <SplitPane
-              first={editorColumn}
-              second={<PreviewPane />}
-              initial={Math.round(window.innerWidth * 0.42)}
-              min={320}
-            />
+          <Show
+            when={mode() !== 'code'}
+            fallback={
+              <Show when={previewOpen()} fallback={editorColumn}>
+                <SplitPane
+                  first={editorColumn}
+                  second={<PreviewPane />}
+                  initial={Math.round(window.innerWidth * 0.42)}
+                  min={320}
+                />
+              </Show>
+            }
+          >
+            <Show when={mode() === 'design'} fallback={<DataView />}>
+              <DesignView />
+            </Show>
           </Show>
         </div>
-        <StatusBar previewOpen={previewOpen()} onTogglePreview={() => setPreviewOpen(!previewOpen())} />
+        <Show when={mode() === 'code'}>
+          <StatusBar previewOpen={previewOpen()} onTogglePreview={() => setPreviewOpen(!previewOpen())} />
+        </Show>
       </div>
 
       <Modal

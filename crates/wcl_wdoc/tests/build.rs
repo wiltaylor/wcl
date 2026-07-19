@@ -10823,3 +10823,108 @@ fn edit_mode_stamps_source_span_and_file_anchors() {
         "plain build must not emit editor anchors, got:\n{plain}"
     );
 }
+
+/// Edit mode anchors each `li` item too — items render directly (not through
+/// the block dispatcher), and the Design mode's item-level editing needs each
+/// `<li>`'s own source span, not just the outer `list`'s.
+#[test]
+fn edit_mode_anchors_list_items() {
+    let tmp = TempDir::new().expect("tempdir");
+    let out = TempDir::new().expect("out");
+    let main = tmp.path().join("main.wcl");
+    write_fixture(
+        &main,
+        "site s { default_template = :webpage  root = true }\n\
+         page index { start = true\n  list {\n    li \"First\"\n    li \"Second\" {\n      li \"Nested\"\n    }\n  }\n }\n",
+    );
+
+    let opts = BuildOptions {
+        edit_mode: true,
+        ..Default::default()
+    };
+    if build_with_options(&main, out.path(), None, &opts).is_err() {
+        panic!("build with edit mode failed");
+    }
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+    // Every item — including the nested one — carries its own anchor.
+    assert_eq!(
+        html.matches("data-wcl-kind=\"li\"").count(),
+        3,
+        "expected all three li items anchored, got:\n{html}"
+    );
+    assert!(
+        html.contains("<li data-wcl-block data-wcl-kind=\"li\" data-wcl-span=\""),
+        "expected span-stamped li tags, got:\n{html}"
+    );
+
+    // A plain build emits clean list markup.
+    if build_with_options(&main, out.path(), None, &BuildOptions::default()).is_err() {
+        panic!("plain build failed");
+    }
+    let plain = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+    assert!(
+        !plain.contains("data-wcl-kind=\"li\""),
+        "plain build must not anchor list items, got:\n{plain}"
+    );
+}
+
+/// `edit_field` is a transparent wrapper binding its children to one field of
+/// a data object: the children render in place in every mode; edit mode
+/// additionally stamps `data-wcl-field-kind` / `-target` / `-name` (and the
+/// `plain` flag) onto the first child's root tag. It never becomes a block
+/// anchor target itself.
+#[test]
+fn edit_field_binds_children_in_edit_mode_only() {
+    let tmp = TempDir::new().expect("tempdir");
+    let out = TempDir::new().expect("out");
+    let main = tmp.path().join("main.wcl");
+    write_fixture(
+        &main,
+        "site s { default_template = :webpage  root = true }\n\
+         page index { start = true\n\
+           edit_field { kind = \"concept\"  target = \"alpha\"  field = \"name\"\n    h1 \"Hello\"\n  }\n\
+           edit_field { kind = \"concept\"  target = \"alpha\"  field = \"summary\"  plain = true\n    p \"Lede.\"\n  }\n\
+         }\n",
+    );
+
+    let opts = BuildOptions {
+        edit_mode: true,
+        ..Default::default()
+    };
+    if build_with_options(&main, out.path(), None, &opts).is_err() {
+        panic!("build with edit mode failed");
+    }
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+    assert!(html.contains(">Hello<"), "wrapped h1 must render:\n{html}");
+    assert!(
+        html.contains("data-wcl-field-kind=\"concept\"")
+            && html.contains("data-wcl-field-target=\"alpha\"")
+            && html.contains("data-wcl-field-name=\"name\""),
+        "expected field-binding attributes, got:\n{html}"
+    );
+    assert!(
+        html.contains("data-wcl-field-plain"),
+        "expected the plain flag on the summary binding, got:\n{html}"
+    );
+    // The binding rides the child's root tag (which keeps its own block
+    // anchor); the wrapper itself is not a block target.
+    assert!(
+        !html.contains("data-wcl-kind=\"edit_field\""),
+        "edit_field must not be a selectable block, got:\n{html}"
+    );
+
+    // Outside edit mode the children render unchanged, with no bindings.
+    if build_with_options(&main, out.path(), None, &BuildOptions::default()).is_err() {
+        panic!("plain build failed");
+    }
+    let plain = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+    assert!(
+        plain.contains(">Hello<"),
+        "wrapped h1 must render:\n{plain}"
+    );
+    assert!(plain.contains("Lede."), "wrapped p must render:\n{plain}");
+    assert!(
+        !plain.contains("data-wcl-field-"),
+        "plain build must not emit field bindings, got:\n{plain}"
+    );
+}

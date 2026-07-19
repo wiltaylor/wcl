@@ -1,16 +1,16 @@
-// wskill — wskill root document.
-//
-// Single entry point: declares the topic (subject + metadata) and sources, and
-// includes the data files. `wcl check wskill.wcl` validates the whole model.
-// The wdoc template sets in wdoc/ project this model into the book and skill.
+# wskill — wskill root document.
+# 
+# Single entry point: declares the topic (subject + metadata) and sources, and
+# includes the data files. `wcl check wskill.wcl` validates the whole model.
+# The wdoc template sets in wdoc/ project this model into the book and skill.
 
 import <wdoc.wcl>
 import "./schema/base.wcl"
-import "./schema/presentation.wcl"     // opt-in: the overview deck view
-import "./schema/training.wcl"         // opt-in: the tutorial-series view
+import "./schema/presentation.wcl"  # opt-in: the overview deck view
+import "./schema/training.wcl"  # opt-in: the tutorial-series view
 
-// Data — split into more files by area as the wskill grows. Each per-type
-// folder exposes a main.wcl; data/main.wcl aggregates them all.
+# Data — split into more files by area as the wskill grows. Each per-type
+# folder exposes a main.wcl; data/main.wcl aggregates them all.
 import "./data/main.wcl"
 import "./data/presentation/main.wcl"
 import "./data/training/main.wcl"
@@ -18,98 +18,108 @@ import "./data/training/main.wcl"
 schema_version = "1.3.0"
 
 topic wskill {
-  name    = "wskill"
+  name = "wskill"
   summary = "A WCL document designed to hold complete set of knowledge on a topic and expose it in multiple views for multiple audiences."
-  version = "1.2.0"             // the wskill format / base-schema version this describes
-  description = <<END
+  version = "1.2.0"  # the wskill format / base-schema version this describes
+  description = <<DOC
     A wskill is a self contained set of documentation on a specific topic. The idea is the document will generate multilpe views on the same
     information so it can be used in different ways. Data in a wskill are stored in a natural way that makes sense to the knoweldge and then
     projected into the different views. This makes updating and using the information easier.
-  END
+  DOC
   tags = ["wcl", "wdoc", "documentation", "skills"]
-  created    = "2026-06-17"
-  updated    = "2026-07-05"
+  created = "2026-06-17"
+  updated = "2026-07-05"
   maintainer = "Wil Taylor"
   maintainer_entity = wil_taylor
 }
 
-// Skill-projection config (→ SKILL.md frontmatter).
+# Skill-projection config (→ SKILL.md frontmatter).
 wcl.wskill::skill {
-  // Trigger-tuned description (this skill is the wskill toolchain itself).
+  # Trigger-tuned description (this skill is the wskill toolchain itself).
   description = "Create, edit, update and render wskill documents — self-contained WCL folders that capture everything about a topic (reference, processes, curated indexes) and project into both a human-readable book and a Claude Code skill. Use when the user wants to build, update, render, or install a wskill, capture a topic as a reusable skill, research a topic into a wskill (deep-research a subject and author it as a skill), or asks about /wskill."
-  // Pre-approve the tools the workflows lean on (wcl/wdoc via Bash; files via Read).
+  # Pre-approve the tools the workflows lean on (wcl/wdoc via Bash; files via Read).
   allowed_tools = ["Bash", "Read"]
   summary {
     overview = ["wskill is a unified format that allows saving knowledge for use by Humans and AI."]
   }
   skill_param "$ARGUMENTS" {
     description = "The topic to capture, or the existing wskill to build / update / render."
-    value       = "Take it from the user's request (a topic name, or a path to a wskill folder). If empty, ask what to work on."
+    value = "Take it from the user's request (a topic name, or a path to a wskill folder). If empty, ask what to work on."
   }
   skill_boundary {
-    always = [
-      "Route with the skill-vs-wskill rule (fact `skill_vs_wskill`) before scaffolding anything: AI-only knowledge → a plain canonical skill via /meta-skill; knowledge humans also consume → a wskill.",
-      "Classify every new unit with the decision guide (fact `unit_decision_guide`) before creating it — entities are reserved for concrete NAMED things (people, software, places); ideas are concepts, values are facts, tasks are processes, dated findings are research.",
-      "Capture durable investigation output as `research` blocks under data/research/ so it ships at references/research_<id>.md for other agents and pipelines to reuse.",
-      "For whole-topic research-to-wskill authoring, follow the `researching_a_topic` runbook — dispatch `wskill-researcher` subagents in parallel rather than researching serially in-session.",
-      "Create content in data/ using the schema in schema/; give an entity a `kind` from schema/kinds.wcl.",
-      "When new data has a recurring structure the base kinds don't fit, model it as a typed schema extension (see `creating_schema_extension`) rather than forcing it into prose.",
-      "Run `wcl check wskill.wcl` after every change and keep it green before rendering.",
-    ]
-    ask    = ["Before deleting data files or overwriting an existing wskill."]
-    never  = [
-      "Hand-edit a wskill's `schema/base.wcl` — it is generated/propagated. Topic-owned edits go in schema/kinds.wcl and schema/extensions.wcl.",
-      "Invent schema fields or block kinds that aren't in the reflected schema reference — check the `Schema blocks` pages instead of guessing.",
-      "Hand-edit anything under out/ — it is generated output.",
-    ]
+    always = ["Route with the skill-vs-wskill rule (fact `skill_vs_wskill`) before scaffolding anything: AI-only knowledge → a plain canonical skill via /meta-skill; knowledge humans also consume → a wskill.", "Classify every new unit with the decision guide (fact `unit_decision_guide`) before creating it — entities are reserved for concrete NAMED things (people, software, places); ideas are concepts, values are facts, tasks are processes, dated findings are research.", "Capture durable investigation output as `research` blocks under data/research/ so it ships at references/research_<id>.md for other agents and pipelines to reuse.", "For whole-topic research-to-wskill authoring, follow the `researching_a_topic` runbook — dispatch `wskill-researcher` subagents in parallel rather than researching serially in-session.", "Create content in data/ using the schema in schema/; give an entity a `kind` from schema/kinds.wcl.", "When new data has a recurring structure the base kinds don't fit, model it as a typed schema extension (see `creating_schema_extension`) rather than forcing it into prose.", "Run `wcl check wskill.wcl` after every change and keep it green before rendering."]
+    ask = ["Before deleting data files or overwriting an existing wskill."]
+    never = ["Hand-edit a wskill's `schema/base.wcl` — it is generated/propagated. Topic-owned edits go in schema/kinds.wcl and schema/extensions.wcl.", "Invent schema fields or block kinds that aren't in the reflected schema reference — check the `Schema blocks` pages instead of guessing.", "Hand-edit anything under out/ — it is generated output."]
   }
 }
 
-// The views this wskill ships — first-class data the overview and any registry
-// landing can enumerate. Declaring one documents it; `just render` builds it.
-artifact book     { kind = :book      entry = "wdoc/book/main.wcl"   output = "out/book" }
-artifact ai_skill { kind = :ai_skill  entry = "wdoc/skill/main.wcl"  output = "out/skill" }
-artifact slides   { kind = :presentation  entry = "wdoc/presentation/main.wcl"  output = "out/presentation"
-  summary = "An introduction to the wskill format as an overview deck." }
-artifact training { kind = :training      entry = "wdoc/training/main.wcl"      output = "out/training"
-  summary = "Build your first wskill — a hands-on lesson series." }
+# The views this wskill ships — first-class data the overview and any registry
+# landing can enumerate. Declaring one documents it; `just render` builds it.
+artifact book {
+  kind = :book
+  entry = "wdoc/book/main.wcl"
+  output = "out/book"
+}
+artifact ai_skill {
+  kind = :ai_skill
+  entry = "wdoc/skill/main.wcl"
+  output = "out/skill"
+}
+artifact training {
+  kind = :training
+  entry = "wdoc/training/main.wcl"
+  output = "out/training"
+  summary = "Build your first wskill — a hands-on lesson series."
+}
 
-// No external sources — this wskill is self-describing (it documents the format it
-// is built with), so there is nothing upstream to track for the update workflow.
+# No external sources — this wskill is self-describing (it documents the format it
+# is built with), so there is nothing upstream to track for the update workflow.
 
-// Cross-references to the WCL/wdoc wskills the toolchain rests on. These now
-// exist as peer wskills in this collection, so they resolve rather than render
-// as backlog stubs.
+# Cross-references to the WCL/wdoc wskills the toolchain rests on. These now
+# exist as peer wskills in this collection, so they resolve rather than render
+# as backlog stubs.
 wskill_ref wcl {
-  name     = "wcl"
+  name = "wcl"
   relation = "peer — the language the format is built on"
-  status   = "exists"
-  url      = "../wcl/"
+  status = "exists"
+  url = "../wcl/"
 }
 
 wskill_ref wdoc {
-  name     = "wdoc"
+  name = "wdoc"
   relation = "peer — reference for the wdoc rendering language"
-  status   = "exists"
-  url      = "../wdoc/"
+  status = "exists"
+  url = "../wdoc/"
 }
 
-// The research subagent for the researching_a_topic pipeline — a document-level
-// wdoc `agent` block, a PEER of the skill config above (agents belong to the
-// wskill, not to one skill). The skill target renders it to
-// agents/wskill-researcher.md and `just skills-install` copies it into
-// .claude/agents/. The body IS the agent's whole system prompt: it must stand
-// alone (a subagent never sees the session prompt; the dispatching
-// orchestrator's prompt carries the one research item).
+# The research subagent for the researching_a_topic pipeline — a document-level
+# wdoc `agent` block, a PEER of the skill config above (agents belong to the
+# wskill, not to one skill). The skill target renders it to
+# agents/wskill-researcher.md and `just skills-install` copies it into
+# .claude/agents/. The body IS the agent's whole system prompt: it must stand
+# alone (a subagent never sees the session prompt; the dispatching
+# orchestrator's prompt carries the one research item).
 agent "wskill-researcher" {
   description = "Completes one wskill research item and writes its research unit. Use during the wskill skill's researching_a_topic pipeline to parallelise items, passing the item (id, question, context), the wskill folder path, and today's date."
-  tools       = ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebFetch", "WebSearch"]
-  model       = "inherit"
+  tools = ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebFetch", "WebSearch"]
+  model = "inherit"
   body {
-    p "You are a research agent for a wskill being authored by research. Your prompt contains one research item (id, question, context), the absolute path of the wskill folder, and today's date. Your job: settle the question thoroughly NOW and capture the finding as a durable `research` unit no future consumer has to re-investigate."
-    p "The bar for done: a distiller can turn your finding into concept/entity/fact/procedure units, and an external planner can copy it into a spec, with nothing left to look up. That means exact names and versions (crate/package, API), the specific calls or commands to use, integration gotchas, and a minimal usage example. Vague summaries fail the bar; \"check the docs\" fails the bar."
+    p <<DOC
+      You are a research agent for a wskill being authored by research. Your prompt contains one
+      research item (id, question, context), the absolute path of the wskill folder, and today's
+      date. Your job: settle the question thoroughly NOW and capture the finding as a durable
+      `research` unit no future consumer has to re-investigate.
+    DOC
+    p <<DOC
+      The bar for done: a distiller can turn your finding into concept/entity/fact/procedure units,
+      and an external planner can copy it into a spec, with nothing left to look up. That means
+      exact names and versions (crate/package, API), the specific calls or commands to use,
+      integration gotchas, and a minimal usage example. Vague summaries fail the bar; "check the
+      docs" fails the bar.
+    DOC
     p "Rules:"
-    list { style = :numbered
+    list {
+      style = :numbered
       li "Check installed wskill research pages BEFORE the web: glob `.claude/skills/*/references/research_*.md` from the repo root, then `ls $HOME/.claude/skills/*/references/research_*.md 2>/dev/null` (the Glob tool doesn't expand `~`). Grep the `# ` headline and `**Question:**` lines for your item's keywords; on a hit, read that skill's `references/index_research.md` for the full menu. Where a page answers part of the item, reuse it, check its `Researched:` date / `applies to:` version for freshness, and cite it in the finding body: `p \"Source: wskill <name>, references/research_<id>.md (researched <date>).\"` Web-search only the gaps. If a page conflicts with current official docs, trust the docs and flag the wskill page as stale in your report."
       li "Use current sources (web search/fetch); prefer official docs and release notes over blog posts. Note the version your finding applies to."
       li "Write the finding to `<wskill>/data/research/<id>.wcl` in exactly the shape shown below — do not invent other fields. Set `checked` to today's date, `status` stays the default `:current`, and scope `applies_to` to the subject/version the finding holds for."
@@ -120,26 +130,27 @@ agent "wskill-researcher" {
       li "Touch nothing in the wskill folder except your own finding file, its import line in data/research/main.wcl, and your own question block."
     }
     p "The finding shape (rule 3):"
-    code wcl { source = <<'WCLX'
-// data/research/<id>.wcl
-research <id> {
-  topic    = "<Headline of the finding>"
-  question = "<What the investigation set out to answer.>"
-  summary  = "<One-line finding — shown in the research index.>"
-  checked  = "<YYYY-MM-DD>"
-  applies_to = "<subject/version it holds for, e.g. bevy 0.18>"
-  source_ids = [<source block ids>]
-  locators   = ["<ad-hoc evidence URLs/paths>"]
-  body { p "The full findings — exact names, versions, calls, gotchas." }
-}
-
-source <source_id> {
-  kind         = "docs"                       // website | repo | book | docs
-  locator      = "<URL, git URL, ISBN, or path>"
-  covers       = "<what this source is good for>"
-  last_checked = "<YYYY-MM-DD>"
-}
-WCLX
+    code wcl {
+      source = <<DOC
+        // data/research/<id>.wcl
+        research <id> {
+          topic    = "<Headline of the finding>"
+          question = "<What the investigation set out to answer.>"
+          summary  = "<One-line finding — shown in the research index.>"
+          checked  = "<YYYY-MM-DD>"
+          applies_to = "<subject/version it holds for, e.g. bevy 0.18>"
+          source_ids = [<source block ids>]
+          locators   = ["<ad-hoc evidence URLs/paths>"]
+          body { p "The full findings — exact names, versions, calls, gotchas." }
+        }
+        
+        source <source_id> {
+          kind         = "docs"                       // website | repo | book | docs
+          locator      = "<URL, git URL, ISBN, or path>"
+          covers       = "<what this source is good for>"
+          last_checked = "<YYYY-MM-DD>"
+        }
+      DOC
     }
     p "Report: the item id, :done or :blocked, and your one-line summary."
   }

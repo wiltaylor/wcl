@@ -45,6 +45,7 @@ pub use build::{
     pages_in_file, schema_registry, subsite_for_page, take_render_warnings, wdoc_environment,
 };
 pub use comments::{CommentRecord, CommentScope};
+pub use force::layout_graph;
 pub use markdown::{markdown, skill};
 pub use pdf::{PageSize, PdfError, pdf};
 pub use review::Handshake;

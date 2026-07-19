@@ -74,6 +74,14 @@ fn collect_block(
         }
         return;
     }
+    // An `edit_field` binds its children to a data-object field for the
+    // editor's Design mode — a transparent wrapper here.
+    if kind == "edit_field" {
+        for child in block.blocks() {
+            collect_block(doc, &child, patterns, base_dir, out);
+        }
+        return;
+    }
     // Diagrams (and charts/tilemaps within them) already render to a complete
     // SVG in Rust. If the diagram has `card` shapes (foreignObject boxes), the
     // SVG draws everything but the card content, and each card body is collected

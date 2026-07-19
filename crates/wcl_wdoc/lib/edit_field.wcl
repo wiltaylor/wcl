@@ -1,0 +1,40 @@
+// ── edit_field ─────────────────────────────────────────────────────
+//
+// A transparent wrapper that binds its rendered children to ONE field of a
+// schema data object, for the `wcl editor` Design mode. A component template
+// renders a unit's `name` as an `h1` — the h1's source anchor points at the
+// *template*, so inline-editing it would edit the wrong file. Wrapping it:
+//
+//   edit_field { kind = "concept" target = unit.id field = "name"
+//     h1 $"${unit.name}"
+//   }
+//
+// stamps `data-wcl-field-kind` / `-target` / `-name` onto the first child's
+// root tag (edit mode only), so the editor can start an inline session that
+// reads and writes the *object's* field through `/api/unit/field`.
+//
+//   • `kind`   — the schema `@block`/`@table` kind that owns the field.
+//   • `target` — the instance id/label (matched against the inline label).
+//   • `field`  — the field name the children display.
+//   • `plain`  — the field is plain text (markup isn't meaningful there);
+//                the editor suppresses its formatting toolbar.
+//
+// Special-cased in Rust in all three backends as a transparent wrapper: the
+// children render in place everywhere; only the edit-mode HTML build adds
+// the data attributes. The `lower` here is a never-called stub.
+
+namespace wdoc
+
+@block("edit_field")
+type EditField extends WdocBlock {
+  @doc("The schema object kind that owns the field, e.g. \"concept\".")
+  kind: utf8
+  @doc("Instance id/label (matched against the object's inline label). May be omitted only when the kind has exactly one instance.")
+  target: utf8?
+  @doc("The field of the object the wrapped children display.")
+  field: utf8
+  @doc("The field is plain text — the editor suppresses its formatting toolbar.")
+  plain: bool?
+  @children(WdocBlock) children: list<WdocBlock>
+  lower = fn(b: EditField) -> list<HtmlFundamental> []
+}

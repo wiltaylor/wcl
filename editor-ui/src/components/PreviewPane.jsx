@@ -11,7 +11,7 @@ import { Progress, toast } from '@forge/ui';
 import { api } from '../api';
 import { active, dirtyFiles, openFile } from '../state/buffers';
 import { revealSpan } from '../state/views';
-import { buildError, buildSeq, building, previewHref, selected } from '../state/sites';
+import { activeEntry, buildError, buildSeq, building, previewHref, selected } from '../state/sites';
 import {
   allComments,
   commentPage,
@@ -53,7 +53,7 @@ export default function PreviewPane() {
   const onEditObject = async ({ kind, target }) => {
     const doc = iframe?.contentDocument;
     const res = await api.locateObject({
-      entry: selected()?.entry,
+      entry: activeEntry(),
       page_file: pageInfo(doc)?.file ?? undefined,
       kind,
       target: target ?? undefined,

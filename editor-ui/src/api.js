@@ -39,10 +39,52 @@ export const api = {
   format: (text) => json('POST', '/api/format', { text }),
   /** → { sites: [{entry, site, label, skill, children: […]}] } */
   sites: () => json('GET', '/api/sites'),
-  /** Full build of one site with unsaved buffers overlaid → { ok, href } */
-  preview: (entry, site, files) => json('POST', '/api/preview', { entry, site, files }),
+  /** Full build of one site with unsaved buffers overlaid → { ok, href }.
+      `extra` may carry { pages, changed } for a targeted Design-mode
+      re-render into a warm output dir. */
+  preview: (entry, site, files, extra = {}) =>
+    json('POST', '/api/preview', { entry, site, files, ...extra }),
   /** Resolve an edit_object target to its source → { file, span: {start, end} } */
   locateObject: (payload) => json('POST', '/api/object/locate', payload),
+  /** A block's exact source + slot classification → { kind, source, etag,
+      labels: [{slot, state, text}], fields: {name: {state, text}} } */
+  blockSource: (payload) => json('POST', '/api/block/source', payload),
+  /** A batch of span-addressed mutations on one file → { file, etag,
+      file_text, spans: [{role, span}] } */
+  blockOps: (payload) => json('POST', '/api/block/ops', payload),
+  /** Set one field on a located data object (edit_field write path) */
+  unitField: (payload) => json('POST', '/api/unit/field', payload),
+  /** Create a data-object instance (file placement + optional index pin) */
+  unitCreate: (payload) => json('POST', '/api/unit/create', payload),
+  /** → { site_type, wskill, unit_kinds, body_kinds, components } */
+  palette: (entry, site, pageFile) =>
+    json(
+      'GET',
+      `/api/palette?entry=${encodeURIComponent(entry)}&site=${encodeURIComponent(site ?? '')}` +
+        (pageFile ? `&page_file=${encodeURIComponent(pageFile)}` : ''),
+    ),
+  /** → { site_type, wskill, nav, units?, pages, container? } */
+  nav: (entry, site) =>
+    json('GET', `/api/nav?entry=${encodeURIComponent(entry)}&site=${encodeURIComponent(site ?? '')}`),
+  /** Structural nav edit → { ok } */
+  navOp: (payload) => json('POST', '/api/nav/op', payload),
+  /** Enable/disable a wskill profile (artifact + projection files) */
+  wskillProfile: (registry, kind, enable) =>
+    json('POST', '/api/wskill/profile', { registry, kind, enable }),
+  /** The unit graph: laid-out nodes + edges + per-view block visibility */
+  graph: (entry, sites) =>
+    json(
+      'GET',
+      `/api/graph?entry=${encodeURIComponent(entry)}&sites=${encodeURIComponent(sites.join(','))}`,
+    ),
+  /** Data mode: `@wdoc.editable` types with form metadata + target files */
+  dataTypes: (entry) => json('GET', `/api/data/types?entry=${encodeURIComponent(entry)}`),
+  /** Data mode: one kind's instances as classified table rows */
+  dataRows: (entry, kind) =>
+    json(
+      'GET',
+      `/api/data/rows?entry=${encodeURIComponent(entry)}&kind=${encodeURIComponent(kind)}`,
+    ),
   rawUrl: (path) => `/api/raw?path=${encodeURIComponent(path)}`,
   /** → { comments: [{id, scope, page, page_file, loc, target, quote, body, …}] } */
   comments: () => json('GET', '/api/comments'),

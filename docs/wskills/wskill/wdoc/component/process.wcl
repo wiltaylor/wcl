@@ -15,11 +15,15 @@ wdoc_component process_body {
   wdoc_slot backlinks
   wdoc_slot layout     { default = "stack" }
   wdoc_body {
-    h1 $"${unit.title}"
+    edit_field { kind = "procedure" target = $"${unit.id}" field = "title" plain = true
+      h1 $"${unit.title}"
+    }
     // Edit-mode only: jump straight into this object in the WYSIWYG editor.
     edit_object { kind = "procedure" target = $"${unit.id}" label = "Edit this process" }
     h2 "Purpose"
-    p  $"${unit.purpose}"
+    edit_field { kind = "procedure" target = $"${unit.id}" field = "purpose"
+      p  $"${unit.purpose}"
+    }
     wdoc_repeater { each = match len(unit.preconditions) { 0 => [], _ => [true] }  as = :_p
       h2 "Prerequisites"
       list { items = map(unit.preconditions, fn(pc: utf8) -> Li { { text: pc } }) }

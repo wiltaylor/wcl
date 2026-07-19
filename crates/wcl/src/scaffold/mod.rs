@@ -288,6 +288,47 @@ fn run(
     Ok(())
 }
 
+/// A template's generated output: `(files as (path, content), folders)`.
+pub(crate) type TemplateTree = (Vec<(String, String)>, Vec<String>);
+
+/// Evaluate a template (built-in name, user template, or disk path) with
+/// the given answers — property defaults fill anything unanswered — and
+/// return the generated `(files, folders)` without touching disk. The
+/// `wcl editor`'s wskill profile re-add path uses this to scaffold one
+/// view's files into an existing wskill.
+pub(crate) fn evaluate_template_tree(
+    template: &str,
+    answers: BTreeMap<String, String>,
+) -> Result<TemplateTree, String> {
+    fn err(e: InitError) -> String {
+        match e {
+            InitError::Io(m) => m,
+            InitError::Parse(e) => e.to_string(),
+            InitError::Eval(e) => e.to_string(),
+            InitError::Schema(es) => es
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join("; "),
+        }
+    }
+    let tpl = resolve_template(template).map_err(err)?;
+    let discover = open_template(&tpl, empty_env()).map_err(err)?;
+    let props = read_properties(&discover).map_err(err)?;
+    let mut resolved = BTreeMap::new();
+    for p in &props {
+        let value = answers
+            .get(&p.name)
+            .cloned()
+            .or_else(|| p.default.clone())
+            .ok_or_else(|| format!("no answer for template property `{}`", p.name))?;
+        resolved.insert(p.name.clone(), value);
+    }
+    let doc = open_template(&tpl, answer_env(Arc::new(resolved))).map_err(err)?;
+    let tree = read_tree(&doc).map_err(err)?;
+    Ok((tree.files, tree.folders))
+}
+
 /// Resolve a template argument, in order of precedence: a built-in name
 /// (embedded), a user template folder under the XDG data dir, then a path
 /// on disk (a `.wcl` file or a folder holding a `template.wcl` manifest).

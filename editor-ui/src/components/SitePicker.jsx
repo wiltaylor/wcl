@@ -5,11 +5,8 @@
 import { RefreshCw } from 'lucide-solid';
 import { IconButton, Select } from '@forge/ui';
 
-import { flatSites, loadSites, selectSite, selected, siteTree } from '../state/sites';
+import { flatSites, loadSites, nodeKey, selectSite, selected, siteTree } from '../state/sites';
 
-/* Stable option value for a node — JSON survives any characters the entry
-   path or site name might contain. */
-const keyOf = (node) => JSON.stringify([node.entry, node.site ?? null]);
 
 const INDENT = '  '; // NBSP — plain spaces collapse when rendered
 
@@ -17,17 +14,17 @@ export default function SitePicker() {
   const flat = () => flatSites(siteTree());
   const options = () =>
     flat().map(({ node, depth }) => ({
-      value: keyOf(node),
-      label: `${INDENT.repeat(depth)}${depth ? '└ ' : ''}${node.label}`,
+      value: nodeKey(node),
+      label: `${INDENT.repeat(depth)}${depth ? '└ ' : ''}${node.label}${node.wskill ? ' — wskill' : ''}`,
     }));
 
   return (
     <div class="ed-site-picker">
       <Select
         options={options()}
-        value={selected() ? keyOf(selected()) : undefined}
+        value={selected() ? nodeKey(selected()) : undefined}
         onChange={(value) => {
-          const hit = flat().find(({ node }) => keyOf(node) === value);
+          const hit = flat().find(({ node }) => nodeKey(node) === value);
           if (hit) selectSite(hit.node);
         }}
         placeholder={options().length ? 'Select a site…' : 'No wdoc sites found'}

@@ -47,6 +47,22 @@ fn writes_one_md_per_page() {
 }
 
 #[test]
+fn edit_field_children_render_in_place() {
+    let (_t, out) = build(
+        "page one {\n  edit_field { kind = \"concept\"  target = \"a\"  field = \"name\"\n    h1 \"Hello\"\n  }\n}\n",
+    );
+    let md = read(&out, "one.md");
+    assert!(
+        md.contains("# Hello"),
+        "wrapped heading must survive:\n{md}"
+    );
+    assert!(
+        !md.contains("edit_field") && !md.contains("data-wcl-field"),
+        "no binding markup in Markdown:\n{md}"
+    );
+}
+
+#[test]
 fn region_children_render_in_place() {
     // A named `region` slots into an HTML template; Markdown has no
     // template, so the region's children render where the block sits

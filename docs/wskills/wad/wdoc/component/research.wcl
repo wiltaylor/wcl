@@ -14,7 +14,9 @@ wdoc_component research_body {
   wdoc_slot backlinks
   wdoc_slot layout    { default = "stack" }
   wdoc_body {
-    h1 $"${unit.topic}"
+    edit_field { kind = "research" target = $"${unit.id}" field = "topic" plain = true
+      h1 $"${unit.topic}"
+    }
     p  $"_Researched: ${unit.checked} · status: ${replace($"${unit.status}", ":", "")}${match unit.applies_to { none => "", a => $" · applies to: ${a}" }}_"
     wdoc_repeater { each = match unit.question { none => [], q => [q] }  as = :q  p $"**Question:** ${q}" }
     wdoc_repeater { each = match unit.superseded_by { none => [], s => [s] }  as = :s
@@ -22,7 +24,9 @@ wdoc_component research_body {
     // Edit-mode only: jump straight into this object in the WYSIWYG editor.
     edit_object { kind = "research" target = $"${unit.id}" label = "Edit this research unit" }
     h2 "Finding"
-    p  $"${unit.summary}"
+    edit_field { kind = "research" target = $"${unit.id}" field = "summary"
+      p  $"${unit.summary}"
+    }
     wdoc_repeater { each = match unit.body { none => [], _ => [true] }  as = :_b
       project { from = unit.body }
     }

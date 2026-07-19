@@ -592,6 +592,11 @@ pub(crate) fn render_block(
         } else {
             String::new()
         }),
+        // A transparent wrapper binding its children to one field of a data
+        // object (the Design-mode inline-editing seam). The children render
+        // in place in every mode; edit mode additionally stamps the binding
+        // attributes onto the first child's root tag.
+        "edit_field" => Some(render_edit_field(doc, block, patterns, base_dir)),
         // Wireframe widgets (`wf_*`) are diagram shapes now — they render only
         // inside a `diagram` (via `render_shape`), never as a page block.
         // A `wdoc_repeater` renders its body once per element of `each`.
@@ -640,6 +645,8 @@ fn anchor_block(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> S
     // stamp; their content children are anchored individually when rendered.
     // `edit_object` is an edit-mode-only injected control, not authored
     // content — it must not become a selectable / commentable block target.
+    // `edit_field` is a transparent binding wrapper; its children carry
+    // their own anchors plus the field-binding attributes.
     if matches!(
         kind,
         "region"
@@ -649,6 +656,7 @@ fn anchor_block(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> S
             | "wdoc_instance"
             | "wdoc_content"
             | "edit_object"
+            | "edit_field"
     ) {
         return html;
     }
@@ -663,6 +671,43 @@ fn anchor_block(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> S
         ));
     }
     splice_attrs(&html, &attrs)
+}
+
+/// Render an `edit_field` wrapper: the children in place, with the
+/// field-binding data attributes (`data-wcl-field-kind` / `-target` /
+/// `-name` / `-plain`) spliced onto the first child's root tag in edit mode
+/// — the `wcl editor` Design mode keys its inline field sessions off these.
+fn render_edit_field(
+    doc: &Document,
+    block: &Block<'_>,
+    patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
+) -> String {
+    use std::fmt::Write as _;
+    let inner: String = block
+        .blocks()
+        .filter_map(|b| render_block(doc, &b, patterns, base_dir))
+        .collect();
+    if !patterns.edit_mode() {
+        return inner;
+    }
+    let kind = field_utf8(block, "kind").unwrap_or_default();
+    let field = field_utf8(block, "field").unwrap_or_default();
+    if kind.is_empty() || field.is_empty() {
+        return inner;
+    }
+    let mut attrs = format!(
+        " data-wcl-field-kind=\"{}\" data-wcl-field-name=\"{}\"",
+        escape_html(&kind),
+        escape_html(&field),
+    );
+    if let Some(target) = field_utf8(block, "target") {
+        let _ = write!(attrs, " data-wcl-field-target=\"{}\"", escape_html(&target));
+    }
+    if field_bool(block, "plain").unwrap_or(false) {
+        attrs.push_str(" data-wcl-field-plain");
+    }
+    splice_attrs(&inner, &attrs)
 }
 
 /// Render the `edit_object` button (edit mode only). Emits a button the
@@ -924,7 +969,10 @@ pub(crate) fn render_li(
         out.push_str(&render_list(doc, &b, patterns, base_dir));
     }
     out.push_str("</li>");
-    out
+    // Items are rendered directly (not through `render_block`), so anchor
+    // them here — item-level selection/editing in the `wcl editor` Design
+    // mode needs each `<li>`'s source span, not just the outer `list`'s.
+    anchor_block(block, out, patterns)
 }
 
 /// Render a `@block("table")` instance. Two authoring forms:

@@ -169,6 +169,44 @@ fn insert_after_inner(items: &mut Vec<Item>, after: Span, block: ast::Block) -> 
     carry
 }
 
+/// Replace the [`Item::Block`] whose `span` matches `span` with `block`
+/// (recursing into nested block bodies). The replacement inherits the old
+/// block's leading trivia (comments / blank lines) and its span — so callers
+/// can still locate the replacement by the original span before re-printing.
+/// Returns whether a block was replaced.
+pub fn replace_block_by_span(items: &mut [Item], span: Span, block: ast::Block) -> bool {
+    replace_inner(items, span, block).is_none()
+}
+
+/// Returns `None` once replaced, or `Some(block)` (handed back) when the
+/// target span wasn't found at this level.
+fn replace_inner(items: &mut [Item], span: Span, block: ast::Block) -> Option<ast::Block> {
+    if let Some(pos) = items
+        .iter()
+        .position(|it| matches!(it, Item::Block(b) if b.span == span))
+    {
+        let Item::Block(old) = &items[pos] else {
+            unreachable!("position matched a block item")
+        };
+        let mut new = block;
+        new.leading_trivia = old.leading_trivia.clone();
+        new.span = span;
+        items[pos] = Item::Block(new);
+        return None;
+    }
+    let mut carry = Some(block);
+    for item in items.iter_mut() {
+        if let Item::Block(b) = item {
+            let blk = carry.take().expect("carry is present until replaced");
+            match replace_inner(&mut b.items, span, blk) {
+                None => return None,
+                Some(returned) => carry = Some(returned),
+            }
+        }
+    }
+    carry
+}
+
 /// Remove the [`Item::Block`] whose `span` matches `span` (recursing into
 /// nested block bodies). Returns whether a block was removed.
 pub fn remove_block_by_span(items: &mut Vec<Item>, span: Span) -> bool {
@@ -218,6 +256,35 @@ pub fn move_block_by_span(items: &mut [Item], span: Span, down: bool) -> bool {
         }
     }
     false
+}
+
+/// Replace the block's decorator with the single-segment name `name` with a
+/// fresh one carrying `named` arguments, or remove it entirely when `named`
+/// is empty. Existing decorators with other names keep their order; a new
+/// decorator appends. Used for the editor's visibility toggles
+/// (`@except(sites = [:deck])`).
+pub fn set_or_remove_decorator(block: &mut ast::Block, name: &str, named: Vec<(String, Expr)>) {
+    block
+        .decorators
+        .retain(|d| !(d.name.len() == 1 && d.name[0] == name));
+    if named.is_empty() {
+        return;
+    }
+    block.decorators.push(ast::Decorator {
+        name: vec![name.to_string()],
+        positional: Vec::new(),
+        named: named
+            .into_iter()
+            .map(|(name, value)| ast::NamedArg {
+                name,
+                value,
+                span: Span::new(0, 0),
+                leading_trivia: Vec::new(),
+                trailing_comment: None,
+            })
+            .collect(),
+        span: Span::new(0, 0),
+    });
 }
 
 /// Ensure `src` has a quoted disk `import "<rel_path>"`. No-op (returns
@@ -392,6 +459,106 @@ mod tests {
         let xi = out.find("\"x\"").unwrap();
         let bi = out.find("\"b\"").unwrap();
         assert!(ai < xi && xi < bi, "x should sit between a and b: {out}");
+        reparse(&out);
+    }
+
+    #[test]
+    fn replace_block_preserves_trivia_and_span() {
+        let src =
+            "page {\n  # keep me\n  card \"a\" {\n    body = \"old\"\n  }\n  card \"b\" {}\n}\n";
+        let mut ast = parse_for_edit(src, "t").unwrap();
+        let page = match &ast.items[0] {
+            Item::Block(b) => b,
+            _ => panic!(),
+        };
+        let a_span = match &page.items[0] {
+            Item::Block(b) => b.span,
+            _ => panic!(),
+        };
+        let new = build_block(
+            "note",
+            &[],
+            vec![string_literal_expr("x")],
+            vec![("body".to_string(), string_literal_expr("new"))],
+        );
+        assert!(replace_block_by_span(&mut ast.items, a_span, new));
+        // The replacement is findable by the original span before printing.
+        assert!(find_block_by_span(&mut ast.items, a_span).is_some());
+        let out = format::to_source(&ast);
+        assert!(!out.contains("card \"a\""), "{out}");
+        assert!(out.contains("note \"x\""), "{out}");
+        assert!(out.contains("# keep me"), "leading trivia lost: {out}");
+        // Order: the replacement sits where "a" was, before "b".
+        let ni = out.find("note \"x\"").unwrap();
+        let bi = out.find("card \"b\"").unwrap();
+        assert!(ni < bi, "{out}");
+        reparse(&out);
+        // A missing span leaves the tree untouched.
+        let stray = build_block("note", &[], vec![], vec![]);
+        assert!(!replace_block_by_span(
+            &mut ast.items,
+            Span::new(9999, 10000),
+            stray
+        ));
+    }
+
+    #[test]
+    fn set_or_remove_decorator_round_trips() {
+        let src = "@only(sites = [:book])\ncard \"a\" {\n  body = \"x\"\n}\n";
+        let mut ast = parse_for_edit(src, "t").unwrap();
+        let span = match &ast.items[0] {
+            Item::Block(b) => b.span,
+            _ => panic!(),
+        };
+        let block = find_block_by_span(&mut ast.items, span).unwrap();
+        // Add a second decorator with symbol-list args.
+        let list = Expr::ListLit {
+            elements: vec![Expr::Symbol("deck".into()), Expr::Symbol("training".into())],
+            elem_trivia: vec![Default::default(), Default::default()],
+            trailing_trivia: Vec::new(),
+            span: Span::new(0, 0),
+        };
+        set_or_remove_decorator(block, "except", vec![("sites".to_string(), list)]);
+        let out = format::to_source(&ast);
+        assert!(out.contains("@only(sites = [:book])"), "{out}");
+        assert!(out.contains("@except(sites = [:deck, :training])"), "{out}");
+        reparse(&out);
+
+        // Replace it (single symbol) — the old one goes, order stable.
+        let mut ast = parse_for_edit(&out, "t").unwrap();
+        let span = match ast.items.iter().find_map(|it| match it {
+            Item::Block(b) => Some(b.span),
+            _ => None,
+        }) {
+            Some(s) => s,
+            None => panic!(),
+        };
+        let block = find_block_by_span(&mut ast.items, span).unwrap();
+        let list = Expr::ListLit {
+            elements: vec![Expr::Symbol("deck".into())],
+            elem_trivia: vec![Default::default()],
+            trailing_trivia: Vec::new(),
+            span: Span::new(0, 0),
+        };
+        set_or_remove_decorator(block, "except", vec![("sites".to_string(), list)]);
+        let out = format::to_source(&ast);
+        assert!(out.contains("@except(sites = [:deck])"), "{out}");
+        assert!(!out.contains(":training"), "{out}");
+
+        // Empty args ⇒ removed entirely; the other decorator survives.
+        let mut ast = parse_for_edit(&out, "t").unwrap();
+        let span = match ast.items.iter().find_map(|it| match it {
+            Item::Block(b) => Some(b.span),
+            _ => None,
+        }) {
+            Some(s) => s,
+            None => panic!(),
+        };
+        let block = find_block_by_span(&mut ast.items, span).unwrap();
+        set_or_remove_decorator(block, "except", Vec::new());
+        let out = format::to_source(&ast);
+        assert!(!out.contains("@except"), "{out}");
+        assert!(out.contains("@only(sites = [:book])"), "{out}");
         reparse(&out);
     }
 

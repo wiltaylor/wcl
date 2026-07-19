@@ -11,7 +11,9 @@ wdoc_component fact_body {
   wdoc_slot backlinks
   wdoc_slot layout    { default = "stack" }
   wdoc_body {
-    h1 $"${unit.title}"
+    edit_field { kind = "fact" target = $"${unit.id}" field = "title" plain = true
+      h1 $"${unit.title}"
+    }
     // Edit-mode only: jump straight into this object in the WYSIWYG editor.
     edit_object { kind = "fact" target = $"${unit.id}" label = "Edit this fact" }
     wdoc_repeater { each = match unit.body { none => [], _ => [true] }  as = :_b

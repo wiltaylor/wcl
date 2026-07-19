@@ -14,15 +14,20 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use wcl_lang::ast::{Expr, Item};
+
 /// Mirror `include`'s recursion backstop.
 const MAX_DEPTH: usize = 8;
 
 /// `GET /api/sites` — every previewable site under `root_dir`, nested.
+/// A wskill's projection entries (registered by its `artifact` blocks)
+/// collapse into one `{ wskill: true, views: […] }` node.
 pub(crate) fn scan_sites(
     root_dir: &Path,
     root_file: Option<&Path>,
 ) -> Result<serde_json::Value, String> {
     let mut candidates: BTreeSet<PathBuf> = BTreeSet::new();
+    let mut registries: Vec<PathBuf> = Vec::new();
     let walk = ignore::WalkBuilder::new(root_dir)
         .hidden(false)
         .require_git(false)
@@ -42,6 +47,9 @@ pub(crate) fn scan_sites(
         if declares_site_block(path) {
             candidates.insert(canon(path));
         }
+        if declares_wskill_registry(path) {
+            registries.push(canon(path));
+        }
     }
     if let Some(rf) = root_file {
         candidates.insert(canon(rf));
@@ -56,12 +64,173 @@ pub(crate) fn scan_sites(
         let nodes = nodes_for_entry(root_dir, entry, None, 0, &mut visited, &mut claimed);
         trees.push((entry.clone(), nodes));
     }
-    let sites: Vec<serde_json::Value> = trees
+    let mut sites: Vec<serde_json::Value> = trees
         .into_iter()
         .filter(|(entry, _)| !claimed.contains(entry))
         .flat_map(|(_, nodes)| nodes)
         .collect();
+    for registry in &registries {
+        group_wskill(root_dir, registry, &mut sites);
+    }
     Ok(serde_json::json!({ "sites": sites }))
+}
+
+/// Collapse a wskill's projection entries into one picker node with a
+/// `views` list, ordered by the artifact registry. Matching nodes are taken
+/// from **anywhere** in the tree — a projection also shows up nested under
+/// a top-level site that `include`s the wskill (the docs site pulls every
+/// wskill book in), and listing it there *and* in the grouped node would
+/// show everything twice.
+fn group_wskill(root_dir: &Path, registry: &Path, sites: &mut Vec<serde_json::Value>) {
+    let Some(reg) = read_wskill_registry(registry) else {
+        return;
+    };
+    let dir = registry.parent().unwrap_or(registry);
+    // Artifact entry (registry-relative) → repo-relative entry string.
+    let rel_of = |entry: &str| -> Option<String> {
+        let abs = canon(&dir.join(entry));
+        abs.strip_prefix(root_dir)
+            .ok()
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+    };
+    let mut views: Vec<serde_json::Value> = Vec::new();
+    for (id, kind, entry) in &reg.artifacts {
+        let Some(rel) = rel_of(entry) else { continue };
+        // Every node of this entry, wherever it sits, becomes a view (a
+        // projection file with several sites yields one view per site).
+        let mut matched: Vec<serde_json::Value> = Vec::new();
+        take_nodes_with_entry(sites, &rel, &mut matched);
+        for node in matched {
+            // The same projection can be pulled in by several includes —
+            // one view per (entry, site) is enough.
+            if views
+                .iter()
+                .any(|v| v["entry"] == node["entry"] && v["site"] == node["site"])
+            {
+                continue;
+            }
+            views.push(serde_json::json!({
+                "id": id,
+                "kind": kind,
+                "entry": node["entry"],
+                "site": node["site"],
+                "label": node["label"],
+                "skill": node["skill"],
+                "children": node["children"],
+            }));
+        }
+    }
+    if views.is_empty() {
+        return;
+    }
+    let root_rel = dir
+        .strip_prefix(root_dir)
+        .unwrap_or(dir)
+        .to_string_lossy()
+        .replace('\\', "/");
+    sites.push(serde_json::json!({
+        "wskill": true,
+        "label": reg.topic_name,
+        "root": root_rel,
+        "registry": registry
+            .strip_prefix(root_dir)
+            .unwrap_or(registry)
+            .to_string_lossy()
+            .replace('\\', "/"),
+        "views": views,
+    }));
+}
+
+/// Remove every node with `entry` from the tree (any depth), collecting the
+/// removed nodes.
+fn take_nodes_with_entry(
+    nodes: &mut Vec<serde_json::Value>,
+    entry: &str,
+    out: &mut Vec<serde_json::Value>,
+) {
+    nodes.retain(|n| {
+        if n["entry"] == entry {
+            out.push(n.clone());
+            false
+        } else {
+            true
+        }
+    });
+    for n in nodes.iter_mut() {
+        if let Some(children) = n.get_mut("children").and_then(|c| c.as_array_mut()) {
+            take_nodes_with_entry(children, entry, out);
+        }
+    }
+}
+
+struct WskillRegistry {
+    topic_name: String,
+    /// `(artifact id, kind symbol, entry path)` in registry order.
+    artifacts: Vec<(String, String, String)>,
+}
+
+/// Parse-level prefilter + reader for a wskill registry file: a `topic`
+/// block plus `artifact` blocks with literal `entry` paths.
+fn declares_wskill_registry(path: &Path) -> bool {
+    let Ok(src) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    src.contains("artifact") && src.contains("topic") && read_wskill_registry(path).is_some()
+}
+
+fn read_wskill_registry(path: &Path) -> Option<WskillRegistry> {
+    let src = std::fs::read_to_string(path).ok()?;
+    let ast = wcl_lang::parse_for_edit(&src, path.display().to_string()).ok()?;
+    let mut topic_name = None;
+    let mut artifacts = Vec::new();
+    for item in &ast.items {
+        let Item::Block(b) = item else { continue };
+        match b.kind.as_str() {
+            "topic" => {
+                let name = b.items.iter().find_map(|it| match it {
+                    Item::Field(f) if f.name == "name" => match &f.expr {
+                        Expr::Utf8(s) | Expr::Ascii(s) => Some(s.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                });
+                topic_name = name.or_else(|| super::blocks::ast_label(b)).or(topic_name);
+            }
+            "artifact" => {
+                let Some(id) = super::blocks::ast_label(b) else {
+                    continue;
+                };
+                let field = |name: &str| {
+                    b.items.iter().find_map(|it| match it {
+                        Item::Field(f) if f.name == name => Some(&f.expr),
+                        _ => None,
+                    })
+                };
+                let kind = match field("kind") {
+                    Some(Expr::Symbol(s)) => s.clone(),
+                    _ => continue,
+                };
+                let entry = match field("entry") {
+                    Some(Expr::Utf8(s) | Expr::Ascii(s)) => s.clone(),
+                    _ => continue,
+                };
+                artifacts.push((id, kind, entry));
+            }
+            _ => {}
+        }
+    }
+    if artifacts.is_empty() {
+        return None;
+    }
+    Some(WskillRegistry {
+        topic_name: topic_name.unwrap_or_else(|| {
+            path.parent()
+                .and_then(Path::file_name)
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "wskill".to_string())
+        }),
+        artifacts,
+    })
 }
 
 /// Parse-level prefilter: does the file declare a top-level `site` block?

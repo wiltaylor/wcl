@@ -24,14 +24,18 @@ body.wcl-picking, body.wcl-picking * { cursor: crosshair !important; }
   transition: outline-color .3s ease; }
 `;
 
-/** The anchored page in `doc`, or null (non-wdoc content, not yet loaded). */
+/** The anchored page in `doc`, or null (non-wdoc content, not yet loaded).
+    `span` (edit-mode builds only) is the page block's byte span in `file`. */
 export function pageInfo(doc) {
   const el = doc?.querySelector?.('[data-wcl-page-file]');
   if (!el) return null;
+  const raw = el.getAttribute('data-wcl-page-span');
+  const [start, end] = raw ? raw.split(':').map(Number) : [];
   return {
     el,
     name: el.getAttribute('data-wcl-page-name'),
     file: el.getAttribute('data-wcl-page-file'),
+    span: raw ? { start, end } : null,
   };
 }
 

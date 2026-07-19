@@ -151,6 +151,13 @@ impl Emitter<'_> {
                     self.block(&c, out)?;
                 }
             }
+            // An `edit_field` binds its children to a data-object field for
+            // the editor's Design mode — a transparent wrapper here.
+            "edit_field" => {
+                for c in block.blocks() {
+                    self.block(&c, out)?;
+                }
+            }
             // Diagrams (and the charts / timelines / maps / tilemaps nested in
             // them) render to one self-contained static SVG.
             "diagram" => {

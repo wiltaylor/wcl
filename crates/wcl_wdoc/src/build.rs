@@ -98,6 +98,7 @@ pub fn schema_registry() -> Registry {
         "wdoc/edit_object.wcl",
         include_str!("../lib/edit_object.wcl"),
     );
+    r.register("wdoc/edit_field.wcl", include_str!("../lib/edit_field.wcl"));
     // Guided answer mode. A top-level entry (not part of the wdoc prelude):
     // a data document opts in with `import <answer.wcl>` alone, without
     // pulling in the whole wdoc page/site vocabulary.
