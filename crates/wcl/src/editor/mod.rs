@@ -1870,6 +1870,145 @@ mod tests {
         assert!(!text.contains("callout"), "{text}");
     }
 
+    /// Nested fixture for the span-map tests: 7 blocks (site, page, p,
+    /// list, li, li, p).
+    const NESTED_DOC: &str = "import <wdoc.wcl>\n\nsite docs {\n  title = \"D\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  p \"First\"\n\n  list {\n    li \"one\"\n    li \"two\"\n  }\n\n  p \"Last\"\n}\n";
+
+    fn count_blocks(items: &[wcl_lang::ast::Item]) -> usize {
+        items
+            .iter()
+            .map(|it| match it {
+                wcl_lang::ast::Item::Block(b) => 1 + count_blocks(&b.items),
+                _ => 0,
+            })
+            .sum()
+    }
+
+    /// The client's no-reload path patches every live `data-wcl-span`
+    /// anchor from the response's `span_map` — it must cover every block
+    /// (nested included) and slice the new text at the right places.
+    #[tokio::test]
+    async fn block_ops_span_map_covers_every_block() {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("main.wcl"), NESTED_DOC).unwrap();
+        let state = state_for(td.path(), None);
+        let disk = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        let total = count_blocks(&wcl_lang::parse_for_edit(&disk, "t").unwrap().items);
+        let first_p = span_of(&disk, |b| {
+            b.kind == "p"
+                && matches!(b.labels.first(), Some(wcl_lang::ast::Expr::Utf8(s)) if s == "First")
+        });
+
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/block/ops",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [{ "op": "move", "span": span_json(first_p), "dir": "down" }],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let new_text = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        let map = v["span_map"].as_array().unwrap();
+        assert_eq!(map.len(), total, "one entry per surviving block: {v:#}");
+        // Every `from` slices the OLD text and `to` the NEW text at the
+        // same block (same kind token; a move keeps content identical).
+        for e in map {
+            let f = (
+                e["from"]["start"].as_u64().unwrap() as usize,
+                e["from"]["end"].as_u64().unwrap() as usize,
+            );
+            let t = (
+                e["to"]["start"].as_u64().unwrap() as usize,
+                e["to"]["end"].as_u64().unwrap() as usize,
+            );
+            let old_kind = disk[f.0..f.1].split_whitespace().next().unwrap();
+            let new_kind = new_text[t.0..t.1].split_whitespace().next().unwrap();
+            assert_eq!(old_kind, new_kind, "{e:#}");
+        }
+        // The moved paragraph and a nested li map to their exact new text.
+        let mapped = |span: wcl_lang::Span| -> String {
+            let e = map
+                .iter()
+                .find(|e| {
+                    e["from"]["start"].as_u64().unwrap() as usize == span.start
+                        && e["from"]["end"].as_u64().unwrap() as usize == span.end
+                })
+                .unwrap_or_else(|| panic!("span {span:?} not in map"));
+            let (a, b) = (
+                e["to"]["start"].as_u64().unwrap() as usize,
+                e["to"]["end"].as_u64().unwrap() as usize,
+            );
+            new_text[a..b].to_string()
+        };
+        assert!(mapped(first_p).starts_with("p \"First\""));
+        let li_one = span_of(&disk, |b| {
+            b.kind == "li"
+                && matches!(b.labels.first(), Some(wcl_lang::ast::Expr::Utf8(s)) if s == "one")
+        });
+        assert!(mapped(li_one).starts_with("li \"one\""));
+        // And the move actually happened.
+        assert!(new_text.find("list").unwrap() < new_text.find("p \"First\"").unwrap());
+    }
+
+    #[tokio::test]
+    async fn block_ops_span_map_on_set_visibility_and_inserts() {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("main.wcl"), NESTED_DOC).unwrap();
+        let state = state_for(td.path(), None);
+        let disk = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        let total = count_blocks(&wcl_lang::parse_for_edit(&disk, "t").unwrap().items);
+        let first_p = span_of(&disk, |b| {
+            b.kind == "p"
+                && matches!(b.labels.first(), Some(wcl_lang::ast::Expr::Utf8(s)) if s == "First")
+        });
+
+        // set_visibility + an insert in one batch: the map still covers
+        // exactly the surviving pre-edit blocks (the inserted subtree's
+        // sentinel spans are skipped).
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/block/ops",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [
+                    { "op": "set_visibility", "span": span_json(first_p),
+                      "except_sites": ["deck"] },
+                    { "op": "insert_after", "span": span_json(first_p),
+                      "source": "p \"Inserted\"" },
+                ],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let new_text = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        let map = v["span_map"].as_array().unwrap();
+        assert_eq!(map.len(), total, "inserted block not in the map: {v:#}");
+        let e = map
+            .iter()
+            .find(|e| e["from"]["start"].as_u64().unwrap() as usize == first_p.start)
+            .unwrap();
+        let (a, b) = (
+            e["to"]["start"].as_u64().unwrap() as usize,
+            e["to"]["end"].as_u64().unwrap() as usize,
+        );
+        // A block's span starts at its kind token — the decorator sits just
+        // before the mapped slice in the new text.
+        assert!(
+            new_text[a..b].starts_with("p \"First\""),
+            "edited block maps to itself: {}",
+            &new_text[a..b]
+        );
+        assert!(
+            new_text.contains("@except(sites = [:deck]) p \"First\"")
+                || new_text.contains("@except(sites = [:deck])\np \"First\""),
+            "decorator written: {new_text}"
+        );
+    }
+
     #[tokio::test]
     async fn block_source_classifies_literal_list_tables() {
         let doc = "import <wdoc.wcl>\n\nsite docs {\n  title = \"D\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  table {\n    header = [\"Signal\", \"Plain\"]\n    rows = [[\"Audience\", \"AI agents\"], [\"Lifespan\", \"Long-lived\"]]\n  }\n}\n";

@@ -513,6 +513,12 @@ fn block_ops(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::V
         .map(|(role, mark)| (*role, index_path_by_span(&src.items, *mark)))
         .collect();
     crate::edit::commit(&doc_entry, vec![(file_abs.clone(), new_text.clone())])?;
+    // The disk changed under every built preview: bump each session's
+    // generation so the lazy per-page GET rebuild stops serving pre-commit
+    // HTML as fresh (the in-place commit path never POSTs /api/preview).
+    for s in state.preview_sessions.lock().unwrap().values_mut() {
+        s.generation += 1;
+    }
     let fresh = parse_for_edit(&new_text, "<post-format>").map_err(parse_err)?;
     let spans: Vec<serde_json::Value> = paths
         .into_iter()
@@ -530,6 +536,7 @@ fn block_ops(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::V
         "etag": crate::edit::content_etag(&new_text),
         "file_text": new_text,
         "spans": spans,
+        "span_map": span_map_json(&src.items, &fresh.items),
     }))
 }
 
@@ -575,6 +582,48 @@ pub(super) fn is_identifier(s: &str) -> bool {
     let mut chars = s.chars();
     matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Old-span → new-span for every block surviving the batch, by parallel
+/// structural walk of the mutated AST and its post-format re-parse (the
+/// printed text re-parses to the exact same item structure with fresh
+/// spans). Inserted subtrees carry sentinel spans and are skipped — their
+/// children's fragment-relative spans never existed in the pre-edit file.
+/// The client uses the map to patch the live preview's `data-wcl-span`
+/// anchors after an in-place commit (no rebuild, no iframe reload).
+fn collect_span_map(old: &[Item], new: &[Item], out: &mut Vec<(Span, Span)>) {
+    for (o, n) in old.iter().zip(new.iter()) {
+        if let (Item::Block(ob), Item::Block(nb)) = (o, n) {
+            if ob.span.end == usize::MAX {
+                continue; // inserted sentinel subtree
+            }
+            out.push((ob.span, nb.span));
+            collect_span_map(&ob.items, &nb.items, out);
+        }
+    }
+}
+
+/// [`collect_span_map`] with duplicate `from` spans dropped (defensive: a
+/// `replace_source` fragment's children carry fragment-relative spans that
+/// could collide with a genuine pre-edit span), as the response JSON.
+fn span_map_json(old: &[Item], new: &[Item]) -> Vec<serde_json::Value> {
+    let mut pairs: Vec<(Span, Span)> = Vec::new();
+    collect_span_map(old, new, &mut pairs);
+    let mut counts: std::collections::HashMap<(usize, usize), u32> =
+        std::collections::HashMap::new();
+    for (from, _) in &pairs {
+        *counts.entry((from.start, from.end)).or_default() += 1;
+    }
+    pairs
+        .into_iter()
+        .filter(|(from, _)| counts[&(from.start, from.end)] == 1)
+        .map(|(from, to)| {
+            serde_json::json!({
+                "from": { "start": from.start, "end": from.end },
+                "to": { "start": to.start, "end": to.end },
+            })
+        })
+        .collect()
 }
 
 /// The item-index path of the block whose span matches `span`, walking the

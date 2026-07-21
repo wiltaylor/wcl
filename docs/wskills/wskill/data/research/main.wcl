@@ -16,11 +16,6 @@ research meta_skill_canonical_format {
   related = [skill_anatomy]
   body {
     p <<DOC
-      Warnings: missing `<overview>` / `<variables>` / `<boundaries>` (with
-      `<always>`/`<ask>`/`<never>`) sections; body over 150 lines after frontmatter; description
-      under 40 chars or without trigger phrasing ("use when …").
-    DOC
-    p <<DOC
       Hard failures (exit 1): frontmatter `name` must match `^[a-z][a-z0-9-]{0,62}[a-z0-9]$` AND
       equal the skill's directory name; line-start lowercase XML tags must balance;
       `${CLAUDE_SKILL_DIR}/…` file references must resolve.
@@ -29,6 +24,11 @@ research meta_skill_canonical_format {
       The frontmatter spec's home for tooling key-values is a `metadata:` map — unknown top-level
       keys are not rejected by the lint, but `metadata` is the compliant place for them
       (`wskill_schema_version` lives there).
+    DOC
+    @except(sites = [:book]) p <<DOC
+      Warnings: missing `<overview>` / `<variables>` / `<boundaries>` (with
+      `<always>`/`<ask>`/`<never>`) sections; body over 150 lines after frontmatter; description
+      under 40 chars or without trigger phrasing ("use when …").
     DOC
     p <<DOC
       Description style: third person, states what the skill does AND when to use it, with real

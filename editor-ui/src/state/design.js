@@ -6,13 +6,16 @@
    commits straight to disk through the validating pipeline, and open
    (clean) buffers of touched files are refreshed from the response — so
    spans and etags stay single-sourced. After any commit all held spans are
-   stale (the canonical printer reformats the whole file); the mandatory
-   rebuild refreshes the anchors before the next edit is allowed. */
+   stale (the canonical printer reformats the whole file); either the
+   rebuild refreshes the anchors before the next edit (the default loop),
+   or an in-place commit (`commitOpsLocal`) patches the live DOM's anchors
+   from the response's `span_map` without reloading the iframe. */
 
 import { createSignal } from 'solid-js';
 
 import { api } from '../api';
 import { applyDiskUpdate, buffers, buffer, openFile, saveBuffer } from './buffers';
+import { reloadGraph } from './graph';
 import { activeEntry, activeSite, rebuild, selected } from './sites';
 import { treeData } from './tree';
 import { revealSpan } from './views';
@@ -88,6 +91,59 @@ export async function commitOpsQuiet(file, ops, opts = {}) {
   }
   syncBuffer(res.file, res.file_text, res.etag);
   setCanvasStale(true);
+  return res;
+}
+
+/** Listeners for in-place commits (`commitOpsLocal`) — the content modal
+    subscribes to mark its cached per-view builds stale without rebuilding
+    the surface the commit just patched. */
+const localCommitListeners = new Set();
+export function onLocalCommit(fn) {
+  localCommitListeners.add(fn);
+  return () => localCommitListeners.delete(fn);
+}
+
+/** A commit applied IN PLACE — no preview rebuild, no iframe reload. The
+    caller's `onApplied(res)` mirrors the change in the live DOM (move the
+    element, restamp visibility) and patches the stale anchors from the
+    response's `span_map`; returning `false` means the change can't be
+    represented in place (e.g. un-hiding a block absent from this view's
+    DOM) and the normal rebuild tail runs instead. Everything else — the
+    graph payload, the canvas behind a modal, the other view tabs — is
+    marked stale and refreshes lazily. */
+export async function commitOpsLocal(file, ops, opts = {}) {
+  const entry = activeEntry();
+  if (!entry || busy()) return { ok: false, error: 'busy' };
+  if (!dirtyGuard(file)) return { ok: false, error: 'dirty buffer' };
+  setBusy(true);
+  const res = await api.blockOps({
+    entry,
+    page_file: currentPage()?.file ?? undefined,
+    file,
+    ...(opts.etag ? { etag: opts.etag } : {}),
+    ops,
+  });
+  if (!res.ok) {
+    setBusy(false);
+    toast(res.error, { tone: 'danger', duration: 8000 });
+    return res;
+  }
+  syncBuffer(res.file, res.file_text, res.etag);
+  const applied = opts.onApplied ? opts.onApplied(res) : true;
+  if (applied === false) {
+    // Not representable in place — the full loop (busy released by the
+    // rebuilt frame's load, or by afterCommit on failure).
+    await afterCommit({ changed: [res.file] });
+    return res;
+  }
+  // The graph payload's spans shifted with the reformat.
+  reloadGraph({ keepPositions: true });
+  // The canvas is stale unless it IS the patched surface (no modal open,
+  // canvas tab showing) — setting the flag there would trigger an
+  // immediate rebuild of the surface we just patched.
+  if (surfaceRebuild || designTab() !== 'canvas') setCanvasStale(true);
+  for (const fn of localCommitListeners) fn({ file: res.file });
+  setBusy(false); // no frame load coming — release directly
   return res;
 }
 

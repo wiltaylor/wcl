@@ -93,8 +93,10 @@ export function moveSteps(sameFile, fromIdx, dropIdx) {
     toolbar). Options:
     - onProfile({file, span}) — the profile button: pop up the visibility
       editor for this block;
-    - onReorder({file, span, steps}) — a completed handle drag; steps < 0
-      moves up, > 0 down, among the block's same-file siblings;
+    - onReorder({file, span, steps, el, sameFile, dropIdx}) — a completed
+      handle drag; steps < 0 moves up, > 0 down, among the block's
+      same-file siblings (el/sameFile/dropIdx let the caller mirror the
+      move in the DOM without a rebuild);
     - merged: the merged build — the profile button doubles as the
       indicator (amber = hidden in some view, dashed = custom visibility,
       read from the build's stamps);
@@ -203,7 +205,7 @@ function wireDrag(doc, handle, el, blocks, { onReorder, enabled }) {
       line.remove();
       if (!commit || dropIdx == null) return;
       const steps = moveSteps(sameFile, fromIdx, dropIdx);
-      if (steps !== 0) onReorder({ file, span, steps });
+      if (steps !== 0) onReorder({ file, span, steps, el, sameFile, dropIdx });
     };
     const up = () => finish(true);
     const key = (ev) => {

@@ -30,7 +30,9 @@ import { loadSites, selected } from '../../state/sites';
 import {
   busy,
   commitOps,
+  commitOpsLocal,
   currentPage,
+  onLocalCommit,
   frameReady,
   loadNav,
   loadPalette,
@@ -217,6 +219,14 @@ export default function ContentModal(props) {
     </Show>
   );
 
+  // In-place commits (reorder / visibility) don't rebuild anything — the
+  // ACTIVE surface was patched directly. Its cached build is stale on disk
+  // though, so the next reactivation must rebuild. Plain non-reactive
+  // state on purpose: dropping the active href reactively would rebuild
+  // (and reload) the very iframe the commit just patched.
+  const staleViews = new Set();
+  let mergedStale = false;
+
   // Build the shown view on activation (and every not-yet-built view when
   // the All tab opens; the merged build when returning to a stale Merged
   // tab after a commit elsewhere dropped it).
@@ -225,18 +235,21 @@ export default function ContentModal(props) {
     if (t === 'all') {
       (async () => {
         for (const v of previewViews()) {
-          if (!hrefs()[v.id]) await buildView(v);
+          if (!hrefs()[v.id] || staleViews.delete(v.id)) await buildView(v);
         }
       })();
       return;
     }
     if (t === 'merged') {
       const mv = mergedView();
-      if (mv && !mergedHref()) buildMerged(mv);
+      if (mv && (!mergedHref() || mergedStale)) {
+        mergedStale = false;
+        buildMerged(mv);
+      }
       return;
     }
     const v = currentView();
-    if (v && !hrefs()[v.id]) buildView(v);
+    if (v && (!hrefs()[v.id] || staleViews.delete(v.id))) buildView(v);
   });
 
   // ---- the skill projection's Markdown for this unit ----
@@ -275,6 +288,19 @@ export default function ContentModal(props) {
       .catch((e) => setSkillText(`(failed to load: ${e})`));
   });
 
+  // ---- react to in-place commits (no rebuild ran; caches went stale) ----
+  const offLocal = onLocalCommit(() => {
+    setSkill(null);
+    setSkillText(null);
+    // Drop every INACTIVE cached build; mark the active one stale for its
+    // next reactivation (it was patched in place — don't reload it now).
+    const activeId = currentView()?.id;
+    setHrefs((h) => (activeId && h[activeId] ? { [activeId]: h[activeId] } : {}));
+    if (activeId) staleViews.add(activeId);
+    if (activeTab() === 'merged' && mergedView()) mergedStale = true;
+    else setMergedHref(null);
+  });
+
   // ---- route the commit loop here while the modal is open ----
   const prevPage = currentPage();
   setSurfaceRebuild(async ({ changed }) => {
@@ -310,6 +336,7 @@ export default function ContentModal(props) {
     return last;
   });
   onCleanup(() => {
+    offLocal();
     setSurfaceRebuild(null);
     setSelection(null);
     setEditingSession(null);
@@ -392,10 +419,11 @@ export default function ContentModal(props) {
     const steps = target - from;
     if (!b || steps === 0) return;
     const dir = steps < 0 ? 'up' : 'down';
-    await commitOps(
+    // In place: no iframe exists here — the graph reload inside
+    // commitOpsLocal refreshes the rows.
+    await commitOpsLocal(
       b.file,
       Array.from({ length: Math.abs(steps) }, () => ({ op: 'move', span: b.span, dir })),
-      { reveal: null },
     );
   };
 
@@ -640,6 +668,7 @@ export default function ContentModal(props) {
                   src={() => srcFor(currentView())}
                   reloadSeq={reloadSeq}
                   hideChrome
+                  site={currentView().site}
                   fallback={<div class="ed-empty">Building preview…</div>}
                 />
               </Show>

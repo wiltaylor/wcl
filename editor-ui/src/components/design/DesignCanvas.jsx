@@ -8,6 +8,7 @@ import { FileCode2 } from 'lucide-solid';
 import { Button, Spinner, Tabs, ToggleGroup } from '@forge/ui';
 
 import {
+  activeSite,
   activeView,
   buildSeq,
   previewHref,
@@ -128,6 +129,7 @@ export default function DesignCanvas() {
         <EditSurface
           src={previewHref}
           reloadSeq={buildSeq}
+          site={activeSite()}
           onNavigate={(handle) => {
             surface = handle;
           }}

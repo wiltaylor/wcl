@@ -22,7 +22,10 @@
                     { merged, currentSite } — merged builds tint the button
                     from the visibility stamps and ghost blocks hidden in
                     the rendering view. The button pops up the visibility
-                    editor; the handle re-orders via batched `move` ops. */
+                    editor; the handle re-orders via batched `move` ops.
+   - site         — the site this build renders under (non-merged
+                    surfaces); the visibility editor uses it to hide a
+                    block in place when it excludes the current view. */
 
 import { Show, createEffect, createSignal, onCleanup } from 'solid-js';
 import {
@@ -52,6 +55,7 @@ import { activeEntry, selected } from '../../state/sites';
 import {
   busy,
   commitOps,
+  commitOpsLocal,
   commitUnitField,
   currentPage,
   editingSession,
@@ -67,6 +71,13 @@ import {
   setSelection,
 } from '../../state/design';
 import { injectBareCss, pageInfo } from '../../preview/frame';
+import {
+  adjacentSameFileSibling,
+  elsBySpan,
+  mappedSpan,
+  moveDomBlock,
+  patchAnchors,
+} from '../../preview/localops';
 import { placeVisGutters } from '../../preview/visgutter';
 import {
   anchorOf,
@@ -426,21 +437,67 @@ export default function EditSurface(props) {
   // Frame lifecycle
   // ------------------------------------------------------------------
 
+  // Gutter placement, re-runnable after in-place commits (the sibling
+  // lists and stamps change without a frame reload).
+  const decorate = () => {
+    const d = doc();
+    if (!d) return;
+    placeVisGutters(d, {
+      merged: props.gutter?.merged ?? false,
+      currentSite: props.gutter?.currentSite,
+      onProfile: (a) =>
+        setPopover({ type: 'visibility', anchor: a, surface: surfaceHandle }),
+      onReorder: reorderLocal,
+      enabled: () => !busy(),
+    });
+  };
+
+  // How the visibility editor applies its change to THIS surface in place
+  // (merged-ness decides restamp vs remove; redecorate refreshes ghosts
+  // and button tints).
+  const surfaceHandle = {
+    doc,
+    merged: () => props.gutter?.merged ?? false,
+    currentSite: () => props.gutter?.currentSite ?? props.site,
+    redecorate: decorate,
+  };
+
+  /** Gutter drag → in-place move + local commit; anchors patched from the
+      response's span_map, so no rebuild or reload. Shared anchors
+      (repeater output rendering one source block in several places) fall
+      back to the full loop — moving one instance in place would lie. */
+  const reorderLocal = ({ file, span, steps, el, sameFile, dropIdx }) => {
+    const d = doc();
+    const dir = steps < 0 ? 'up' : 'down';
+    const ops = Array.from({ length: Math.abs(steps) }, () => ({ op: 'move', span, dir }));
+    if (!d || elsBySpan(d, file, span).length > 1) {
+      commitOps(file, ops, { reveal: 'edited' });
+      return;
+    }
+    // Optimistic move to the drop slot: before the slot's block, or after
+    // the last same-file block (never past unrelated trailing content).
+    const ref = sameFile[dropIdx] ?? sameFile[sameFile.length - 1].nextElementSibling;
+    const revert = moveDomBlock(el, ref);
+    decorate();
+    commitOpsLocal(file, ops, {
+      onApplied(res) {
+        patchAnchors(d, file, res.span_map ?? []);
+        setCurrentPage(pageInfo(d));
+        decorate();
+      },
+    }).then((res) => {
+      if (!res.ok) {
+        revert();
+        decorate();
+      }
+    });
+  };
+
   const onFrameLoad = () => {
     const d = doc();
     if (!d) return;
     if (props.hideChrome) injectBareCss(d);
-    placeVisGutters(d, {
-      merged: props.gutter?.merged ?? false,
-      currentSite: props.gutter?.currentSite,
-      onProfile: (a) => setPopover({ type: 'visibility', anchor: a }),
-      onReorder: ({ file, span, steps }) => {
-        const dir = steps < 0 ? 'up' : 'down';
-        const ops = Array.from({ length: Math.abs(steps) }, () => ({ op: 'move', span, dir }));
-        commitOps(file, ops, { reveal: 'edited' });
-      },
-      enabled: () => !busy(),
-    });
+    decorate();
     teardown?.();
     teardownDrag?.();
     session = null;
@@ -560,8 +617,36 @@ export default function EditSurface(props) {
     if (!a) return;
     commitOps(a.file, ops, opts);
   };
-  const moveSel = (dir) =>
-    structural([{ op: 'move', span: selection().span, dir }], { reveal: 'edited' });
+  /** Toolbar move: swap with the adjacent same-file sibling in place
+      (local commit, anchors patched, selection kept); shapes, shared
+      anchors and edge positions fall back to the full loop. */
+  const moveSel = (dir) => {
+    const a = selection();
+    if (!a) return;
+    const d = doc();
+    const ops = [{ op: 'move', span: a.span, dir }];
+    const sib =
+      d && !a.shape && !a.shared ? adjacentSameFileSibling(d, a.el, dir) : null;
+    if (!sib) {
+      structural(ops, { reveal: 'edited' });
+      return;
+    }
+    const revert = dir === 'up' ? moveDomBlock(a.el, sib) : moveDomBlock(sib, a.el);
+    decorate();
+    commitOpsLocal(a.file, ops, {
+      onApplied(res) {
+        patchAnchors(d, a.file, res.span_map ?? []);
+        setSelection({ ...a, span: mappedSpan(res.span_map ?? [], a.span) ?? a.span });
+        setCurrentPage(pageInfo(d));
+        decorate();
+      },
+    }).then((res) => {
+      if (!res.ok) {
+        revert();
+        decorate();
+      }
+    });
+  };
   const deleteSel = () => structural([{ op: 'delete', span: selection().span }], { reveal: null });
   const changeKind = (kind) =>
     structural([{ op: 'set_kind', span: selection().span, kind }], { reveal: 'edited' });
@@ -716,7 +801,13 @@ export default function EditSurface(props) {
                   <IconButton
                     icon={Eye}
                     label="Views (visibility)"
-                    onClick={() => setPopover({ type: 'visibility', anchor: selection() })}
+                    onClick={() =>
+                      setPopover({
+                        type: 'visibility',
+                        anchor: selection(),
+                        surface: surfaceHandle,
+                      })
+                    }
                   />
                 </Show>
                 <IconButton

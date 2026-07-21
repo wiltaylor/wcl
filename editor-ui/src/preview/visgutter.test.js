@@ -145,11 +145,15 @@ describe('placeVisGutters', () => {
     // Below `custom`'s midpoint (240), above `outer`'s (340) → slot 3.
     document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientY: 300 }));
     document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientY: 300 }));
-    expect(onReorder).toHaveBeenCalledWith({
-      file: 'main.wcl',
-      span: { start: 10, end: 20 },
-      steps: 2,
-    });
+    expect(onReorder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        file: 'main.wcl',
+        span: { start: 10, end: 20 },
+        steps: 2,
+        dropIdx: 3,
+        el: document.getElementById('plain'),
+      }),
+    );
   });
 
   it('drag cancelled with Escape commits nothing', () => {

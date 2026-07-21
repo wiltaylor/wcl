@@ -17,7 +17,19 @@ import { CodeEditor } from '@forge/code';
 import { api } from '../../api';
 import { wclLanguage } from '../../lang/wcl';
 import { loadSites, selected } from '../../state/sites';
-import { busy, commitOps, loadNav, loadPalette, palette, popover, setPopover } from '../../state/design';
+import {
+  busy,
+  commitOps,
+  commitOpsLocal,
+  loadNav,
+  loadPalette,
+  palette,
+  popover,
+  selection,
+  setPopover,
+  setSelection,
+} from '../../state/design';
+import { elsBySpan, patchAnchors, restampExcept } from '../../preview/localops';
 import { wclString } from '../../preview/wysiwyg';
 import {
   delColAt,
@@ -107,7 +119,13 @@ function BlockEditorModals() {
         <ComponentEditor anchor={anchor()} src={src()} onClose={close} onCommit={commitAnd} />
       </Show>
       <Show when={p()?.type === 'visibility' && src()}>
-        <VisibilityEditor anchor={anchor()} src={src()} onClose={close} onCommit={commitAnd} />
+        <VisibilityEditor
+          anchor={anchor()}
+          src={src()}
+          surface={p()?.surface}
+          onClose={close}
+          onCommit={commitAnd}
+        />
       </Show>
       <Show when={p()?.type === 'insert'}>
         <InsertPalette anchor={anchor()} onClose={close} onCommit={commitAnd} />
@@ -212,11 +230,41 @@ function VisibilityEditor(props) {
         .map((v) => v.site),
       ...foreign,
     ];
+    // Apply IN PLACE on the owning surface — restamp (merged) or remove
+    // (hidden in the shown view); no rebuild, no iframe reload. Un-hiding
+    // a block absent from a non-merged DOM can't be shown without a
+    // render, so that one case falls back to the full loop (`false`).
+    // Without a surface (the content modal's block-list fallback) the
+    // graph reload inside commitOpsLocal refreshes the rows.
+    const onApplied = (res) => {
+      const s = props.surface;
+      const d = s?.doc?.();
+      if (!d) return true;
+      const els = elsBySpan(d, props.anchor.file, props.anchor.span);
+      const site = s.currentSite();
+      const hidesHere = !s.merged() && site && except.includes(site);
+      const unhidesHere =
+        !s.merged() && site && initialExcept.has(site) && !except.includes(site);
+      if (unhidesHere && els.length === 0) return false;
+      patchAnchors(d, props.anchor.file, res.span_map ?? []);
+      for (const el of els) {
+        if (hidesHere) el.remove();
+        else restampExcept(el, except);
+      }
+      if (hidesHere) {
+        const sel = selection();
+        if (sel && sel.file === props.anchor.file && sel.span.start === props.anchor.span.start) {
+          setSelection(null);
+        }
+      }
+      s.redecorate();
+      return true;
+    };
     props.onCommit(
-      commitOps(
+      commitOpsLocal(
         props.anchor.file,
         [{ op: 'set_visibility', span: props.anchor.span, except_sites: except }],
-        { etag: props.src.etag, reveal: 'edited' },
+        { etag: props.src.etag, onApplied },
       ),
     );
   };
