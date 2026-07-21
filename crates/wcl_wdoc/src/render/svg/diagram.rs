@@ -82,6 +82,14 @@ fn render_diagram_inner(
     let defs = if edges.is_empty() { "" } else { ARROW_MARKER };
     let mut out = format!("<svg{cls}");
     append_attr(&mut out, "id", field_id(block, "id").as_deref());
+    // Edit mode: carry the effective layout mode on the root so the Design
+    // client can gate shape dragging (manual layouts only) and preselect
+    // the toolbar's layout picker without an extra API round trip.
+    if patterns.edit_mode() {
+        let layout = field_symbol(block, "layout").unwrap_or_default();
+        let layout = if layout.is_empty() { "free" } else { &layout };
+        write!(out, " data-wcl-layout=\"{}\"", escape_html(layout)).expect("write to String");
+    }
     // Accessibility: a `desc` field becomes the SVG's accessible name —
     // `role="img"` + `aria-label` on the element plus a `<title>` first
     // child (the SVG-native fallback screen readers announce).
@@ -169,7 +177,10 @@ pub(crate) fn render_layout_children(
         "layered" | "force" | "radial" => render_planned_children(block, ctx),
         _ => diagram_children(block)
             .iter()
-            .filter_map(|b| render_shape(b, pw, ph, ctx))
+            .filter_map(|b| {
+                let rendered = render_shape(b, pw, ph, ctx)?;
+                Some(wrap_shape_anchor(b, rendered, ctx.patterns))
+            })
             .collect(),
     }
 }
@@ -583,8 +594,9 @@ pub(crate) fn render_planned_children(block: &Block<'_>, ctx: RenderCtx<'_>) -> 
         .zip(widths.iter().zip(heights.iter()))
     {
         if let Some(rendered) = render_shape(child, *cw, *ch, ctx) {
+            let attrs = shape_anchor_attrs(child, ctx.patterns);
             out.push_str(&format!(
-                "<g transform=\"translate({tx} {ty})\">{rendered}</g>"
+                "<g transform=\"translate({tx} {ty})\"{attrs}>{rendered}</g>"
             ));
         }
     }
@@ -826,8 +838,9 @@ pub(crate) fn render_grid_children(block: &Block<'_>, ctx: RenderCtx<'_>) -> Str
         .filter_map(|(i, b)| {
             let rendered = render_shape(b, cw, ch, ctx)?;
             let (tx, ty) = grid_cell_offset(i, cols, cw, ch, gap);
+            let attrs = shape_anchor_attrs(b, ctx.patterns);
             Some(format!(
-                "<g transform=\"translate({tx} {ty})\">{rendered}</g>"
+                "<g transform=\"translate({tx} {ty})\"{attrs}>{rendered}</g>"
             ))
         })
         .collect()

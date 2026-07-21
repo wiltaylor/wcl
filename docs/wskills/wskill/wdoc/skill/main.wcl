@@ -5,14 +5,13 @@
 // The start page becomes SKILL.md; every other page lands under references/.
 // SKILL.md's body is the shared `skill_md_body` component (component/skill_md.wcl)
 // — it inlines the curated `:ai`/`:both` indexes, linking each pinned note's page
-// directly, so there are no per-kind reference pages. The same component renders
-// the book's skill preview (pages/skill_links.wcl), so the preview can't drift.
+// directly, so there are no per-kind reference pages.
 // When you add a typed extension block, add a render (search "TYPED").
 
 import <wdoc.wcl>
 import "../../wskill.wcl"
 import "../component/common.wcl"    // UnitRef + shared per-unit sub-sections
-import "../component/skill_md.wcl"  // skill_md_body (shared with the preview)
+import "../component/skill_md.wcl"  // skill_md_body (the SKILL.md body)
 import "../component/concept.wcl"   // concept_body
 import "../component/entity.wcl"    // entity_body
 import "../component/fact.wcl"      // fact_body

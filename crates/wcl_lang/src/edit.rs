@@ -62,6 +62,17 @@ pub fn set_or_insert_field(block: &mut ast::Block, name: &str, expr: Expr) {
     block.items.push(Item::Field(synth_field(name, expr)));
 }
 
+/// Remove the `name = expr` field item from `block`, if present. Returns
+/// whether a field was removed. Used to clear an optional field (e.g. the
+/// editor's "reset position" dropping a shape's `x`/`y`).
+pub fn remove_field(block: &mut ast::Block, name: &str) -> bool {
+    let before = block.items.len();
+    block
+        .items
+        .retain(|item| !matches!(item, Item::Field(f) if f.name == name));
+    block.items.len() != before
+}
+
 /// Set the block's inline-label slot `slot` (the positional value matched by a
 /// schema field's `@inline(slot)`). Returns `false` when `slot` is past the end
 /// of the existing labels and not the immediate next slot — the caller should
@@ -358,6 +369,29 @@ mod tests {
         let out = format::to_source(&ast);
         assert!(out.contains("title = \"new\""), "{out}");
         assert!(out.contains("body = \"added\""), "{out}");
+        reparse(&out);
+    }
+
+    #[test]
+    fn remove_field_drops_field_and_tolerates_absent() {
+        let mut ast = parse_for_edit(
+            "rect {\n  x = 20.0\n  y = 30.0\n  fill = \"#88c\"\n}\n",
+            "t",
+        )
+        .unwrap();
+        let span = match &ast.items[0] {
+            Item::Block(b) => b.span,
+            _ => panic!(),
+        };
+        let block = find_block_by_span(&mut ast.items, span).unwrap();
+        assert!(remove_field(block, "x"));
+        assert!(remove_field(block, "y"));
+        assert!(!remove_field(block, "y")); // already gone
+        assert!(!remove_field(block, "width")); // never present
+        let out = format::to_source(&ast);
+        assert!(!out.contains("x ="), "{out}");
+        assert!(!out.contains("y ="), "{out}");
+        assert!(out.contains("fill = \"#88c\""), "{out}");
         reparse(&out);
     }
 

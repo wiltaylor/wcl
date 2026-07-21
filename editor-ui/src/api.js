@@ -71,11 +71,13 @@ export const api = {
   /** Enable/disable a wskill profile (artifact + projection files) */
   wskillProfile: (registry, kind, enable) =>
     json('POST', '/api/wskill/profile', { registry, kind, enable }),
-  /** The unit graph: laid-out nodes + edges + per-view block visibility */
-  graph: (entry, sites) =>
+  /** The unit graph: laid-out nodes + edges + per-view block visibility.
+      `kinds` maps each site to its artifact kind (`site=kind` pairs) so the
+      server can fold audience routing into the per-view booleans. */
+  graph: (entry, sites, kinds = []) =>
     json(
       'GET',
-      `/api/graph?entry=${encodeURIComponent(entry)}&sites=${encodeURIComponent(sites.join(','))}`,
+      `/api/graph?entry=${encodeURIComponent(entry)}&sites=${encodeURIComponent(sites.join(','))}&kinds=${encodeURIComponent(kinds.join(','))}`,
     ),
   /** Data mode: `@wdoc.editable` types with form metadata + target files */
   dataTypes: (entry) => json('GET', `/api/data/types?entry=${encodeURIComponent(entry)}`),

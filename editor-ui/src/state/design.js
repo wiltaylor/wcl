@@ -110,6 +110,29 @@ export async function commitNavOpQuiet(payload) {
   return res;
 }
 
+/** Unit creation without the canvas rebuild loop — the graph view's write
+    path (its caller refetches the graph; the canvas rebuilds when shown
+    again). Same payload as [`commitUnitCreate`]. */
+export async function commitUnitCreateQuiet(unit, pin) {
+  const entry = activeEntry();
+  if (!entry || busy()) return { ok: false, error: 'busy' };
+  setBusy(true);
+  const res = await api.unitCreate({
+    entry,
+    page_file: currentPage()?.file ?? undefined,
+    unit,
+    ...(pin ? { pin } : {}),
+  });
+  setBusy(false);
+  if (!res.ok) {
+    toast(res.error, { tone: 'danger', duration: 8000 });
+    return res;
+  }
+  setCanvasStale(true);
+  loadNav();
+  return res;
+}
+
 export async function loadNav() {
   const entry = activeEntry();
   if (!entry) return { ok: false, error: 'no site selected' };
@@ -234,7 +257,11 @@ export async function commitOps(file, ops, opts = {}) {
   const role = opts.reveal ?? 'edited';
   const hit = role && res.spans?.find((sp) => sp.role === role);
   if (hit) {
-    setPendingReveal({ file: res.file, span: hit.span, edit: opts.edit ?? false });
+    // Key the reveal by the caller's `file` (the anchor's data-wcl-file
+    // string), not the server's repo-relative `res.file` — the rebuilt
+    // page stamps anchors with the path the document was parsed from, and
+    // elBySpan must match that exact attribute value.
+    setPendingReveal({ file, span: hit.span, edit: opts.edit ?? false });
   }
   await afterCommit({ changed: [res.file], refreshNav: opts.refreshNav });
   return res;
@@ -300,6 +327,15 @@ export async function commitUnitCreate(unit, pin) {
   return res;
 }
 
+/** When set, the commit tail rebuilds through this hook instead of the main
+    preview — the graph content modal registers its own targeted view build
+    while it is open, so edits made inside it refresh its iframe (and not the
+    hidden canvas). Receives { changed } and must resolve to { ok }. */
+let surfaceRebuild = null;
+export function setSurfaceRebuild(fn) {
+  surfaceRebuild = fn;
+}
+
 /** The shared tail of every commit: rebuild (targeted when possible — the
     server falls back to full on structural change), refresh models, release
     the busy gate once the iframe has reloaded (onFrameReady). */
@@ -307,17 +343,19 @@ async function afterCommit({ changed, refreshNav }) {
   setSelection(null);
   setEditingSession(null);
   const page = currentPage()?.name;
-  const res = await rebuild({
-    ...(page ? { pages: [page] } : {}),
-    changed: changed ?? [],
-  });
+  const res = surfaceRebuild
+    ? await surfaceRebuild({ changed: changed ?? [] })
+    : await rebuild({
+        ...(page ? { pages: [page] } : {}),
+        changed: changed ?? [],
+      });
   if (!res.ok) {
     setBusy(false);
     toast('Rebuild failed — see the preview pane', { tone: 'danger', duration: 6000 });
   }
   if (refreshNav) loadNav();
-  // busy is released by onFrameReady (DesignCanvas) once anchors are fresh;
-  // a failed rebuild released it above.
+  // busy is released by onFrameReady (the owning EditSurface) once anchors
+  // are fresh; a failed rebuild released it above.
 }
 
 /** Called by the canvas when the iframe (re)loaded and anchors are fresh. */

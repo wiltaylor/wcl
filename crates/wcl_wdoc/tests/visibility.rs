@@ -4,7 +4,9 @@
 use std::path::Path;
 
 use tempfile::TempDir;
-use wcl_wdoc::{BuildError, PageSize, PdfError, build, markdown, pdf};
+use wcl_wdoc::{
+    BuildError, BuildOptions, PageSize, PdfError, build, build_with_options, markdown, pdf,
+};
 
 /// A two-site document (a `:webpage` site `main` and a `:book` site `guide`)
 /// with one page whose blocks carry every flavour of filter. Each backend
@@ -76,6 +78,84 @@ fn html_filters_by_site_template_and_backend() {
     // Template-kind axis (main = :webpage, guide = :book).
     assert!(!main.contains("ONLY_BOOK"));
     assert!(guide.contains("ONLY_BOOK"));
+}
+
+#[test]
+fn all_sites_renders_everything_and_stamps_visibility() {
+    // The editor's merged all-views preview: `all_sites` bypasses every
+    // `@only` / `@except` filter, and (with `edit_mode` on) stamps each
+    // block's visibility on its anchor so the client can indicate/toggle it.
+    let tmp = TempDir::new().unwrap();
+    let src = write(tmp.path(), DOC);
+    let out = tmp.path().join("merged");
+    let opts = BuildOptions {
+        edit_mode: true,
+        all_sites: true,
+        ..Default::default()
+    };
+    match build_with_options(&src, &out, Some("main"), &opts) {
+        Ok(_) => {}
+        Err(BuildError::Schema(n)) => panic!("schema error: {n} violations"),
+        Err(_) => panic!("build failed"),
+    }
+    let main = read(&out, "home.html");
+
+    // Every block renders, whatever its filters say about site `main`.
+    for marker in [
+        "ALWAYS_HERE",
+        "ONLY_MAIN",
+        "NOT_MAIN",
+        "ONLY_BOOK",
+        "NOT_PDF",
+        "ONLY_PDF",
+        "MAIN_AND_BOOK",
+    ] {
+        assert!(main.contains(marker), "{marker} renders under all_sites");
+    }
+
+    // `@except(sites=[:main])` stamps its site list on the anchor…
+    assert!(
+        main.contains("data-wcl-except=\"main\""),
+        "except sites stamped: {main}"
+    );
+    // …while `@only` and the templates/backends axes classify as custom.
+    assert!(main.contains("data-wcl-vis=\"custom\""), "custom stamped");
+    // The unfiltered block carries neither stamp: after `split('<')` its
+    // chunk is exactly `p …attrs…>ALWAYS_HERE`, so the visibility
+    // attributes would sit in the same chunk if they leaked.
+    let always = main
+        .split('<')
+        .find(|tag| tag.contains("ALWAYS_HERE"))
+        .expect("ALWAYS_HERE tag");
+    assert!(
+        always.contains("data-wcl-span"),
+        "edit-mode anchor present: {always}"
+    );
+    assert!(
+        !always.contains("data-wcl-except") && !always.contains("data-wcl-vis"),
+        "plain block unstamped: {always}"
+    );
+}
+
+#[test]
+fn normal_edit_mode_build_emits_no_visibility_stamps() {
+    let tmp = TempDir::new().unwrap();
+    let src = write(tmp.path(), DOC);
+    let out = tmp.path().join("plain");
+    let opts = BuildOptions {
+        edit_mode: true,
+        ..Default::default()
+    };
+    match build_with_options(&src, &out, Some("main"), &opts) {
+        Ok(_) => {}
+        Err(BuildError::Schema(n)) => panic!("schema error: {n} violations"),
+        Err(_) => panic!("build failed"),
+    }
+    let main = read(&out, "home.html");
+    // Filtering still applies and no visibility stamps leak.
+    assert!(!main.contains("NOT_MAIN"));
+    assert!(!main.contains("data-wcl-except"));
+    assert!(!main.contains("data-wcl-vis"));
 }
 
 #[test]

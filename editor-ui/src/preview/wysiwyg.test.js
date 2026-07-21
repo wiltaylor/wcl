@@ -4,7 +4,14 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { beginTextSession, blockAt, wclString, wrapSelection } from './wysiwyg';
+import {
+  anchorChainAt,
+  beginTextSession,
+  blockAt,
+  installDesign,
+  wclString,
+  wrapSelection,
+} from './wysiwyg';
 import { cellDisplay, cellRaw, splitPipeRow } from './table';
 
 function setup(html) {
@@ -103,6 +110,138 @@ describe('blockAt', () => {
     expect(blockAt(document.getElementById('content'))?.getAttribute('data-wcl-file')).toBe(
       'data/x.wcl',
     );
+  });
+});
+
+/* A nested-anchor page: a diagram <svg> anchor containing shape anchors
+   (as the edit-mode build stamps them). happy-dom renders SVG as generic
+   elements, which is fine — the chain/selection logic is pure DOM. */
+const NESTED = `
+  <div data-wcl-span="0:5" data-wcl-file="main.wcl" data-wcl-kind="p" id="para">text</div>
+  <svg data-wcl-span="10:99" data-wcl-file="main.wcl" data-wcl-kind="diagram" data-wcl-layout="free" id="dia">
+    <g data-wcl-shape data-wcl-span="20:40" data-wcl-file="main.wcl" data-wcl-kind="rect" id="shape">
+      <rect id="inner" />
+    </g>
+  </svg>`;
+
+describe('anchorChainAt', () => {
+  it('collects anchors innermost to outermost', () => {
+    setup(NESTED);
+    const chain = anchorChainAt(document.getElementById('inner'));
+    expect(chain.map((el) => el.id)).toEqual(['shape', 'dia']);
+    expect(anchorChainAt(document.getElementById('para')).map((el) => el.id)).toEqual(['para']);
+  });
+});
+
+describe('installDesign drill-in selection', () => {
+  const wire = () => {
+    const onSelect = vi.fn();
+    const onEditIntent = vi.fn();
+    const teardown = installDesign(document, {
+      enabled: () => true,
+      onSelect: (a) => {
+        onSelect(a);
+        // Mirror EditSurface: selection state lives on the element.
+        for (const s of document.querySelectorAll('.wcl-wys-selected')) {
+          s.classList.remove('wcl-wys-selected');
+        }
+        a?.el.classList.add('wcl-wys-selected');
+      },
+      onEditIntent,
+    });
+    return { onSelect, onEditIntent, teardown };
+  };
+  const click = (el) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+  it('selects the shape directly on first click; diagram via background', () => {
+    setup(NESTED);
+    const { onSelect, onEditIntent, teardown } = wire();
+    const inner = document.getElementById('inner');
+    const dia = document.getElementById('dia');
+
+    // Nearest-first: a shape click shows its selection (and panel) at once.
+    click(inner);
+    expect(onSelect).toHaveBeenLastCalledWith(
+      expect.objectContaining({ kind: 'rect', shape: true, layout: 'free' }),
+    );
+    expect(onEditIntent).not.toHaveBeenCalled();
+
+    click(inner);
+    expect(onEditIntent).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'rect' }),
+      inner,
+      expect.anything(),
+    );
+
+    // Clicking the diagram background selects the diagram itself.
+    click(dia);
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'diagram' }));
+    teardown();
+  });
+
+  it('nested HTML anchors select the innermost directly (nearest behavior)', () => {
+    setup(
+      '<div data-wcl-span="0:50" data-wcl-file="main.wcl" data-wcl-kind="demo" id="demo">' +
+        '<table data-wcl-span="5:45" data-wcl-file="main.wcl" data-wcl-kind="table" id="tbl">' +
+        '<tbody><tr><td id="cell">x</td></tr></tbody></table></div>',
+    );
+    const { onSelect, onEditIntent, teardown } = wire();
+    const cell = document.getElementById('cell');
+
+    // One click: the table, not the wrapping demo block.
+    click(cell);
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'table' }));
+    // Second click: straight to the editor.
+    click(cell);
+    expect(onEditIntent).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'table' }),
+      cell,
+      expect.anything(),
+    );
+    // Esc still pops out to the container.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'demo' }));
+    teardown();
+  });
+
+  it('single-anchor blocks keep select-then-edit behavior', () => {
+    setup(NESTED);
+    const { onSelect, onEditIntent, teardown } = wire();
+    const para = document.getElementById('para');
+    click(para);
+    expect(onSelect).toHaveBeenLastCalledWith(
+      expect.objectContaining({ kind: 'p', shape: false }),
+    );
+    click(para);
+    expect(onEditIntent).toHaveBeenCalled();
+    teardown();
+  });
+
+  it('Escape pops the selection one level, then deselects', () => {
+    setup(NESTED);
+    const { onSelect, teardown } = wire();
+    const inner = document.getElementById('inner');
+    click(inner); // shape selected directly
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'diagram' }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(onSelect).toHaveBeenLastCalledWith(null);
+    teardown();
+  });
+
+  it('lets the merged view visibility chips own their clicks', () => {
+    setup(
+      '<div data-wcl-span="0:5" data-wcl-file="main.wcl" data-wcl-kind="p" id="para">text' +
+        '<div class="wcl-vis-gutter"><button class="wcl-vis-chip" id="chip">B</button></div></div>',
+    );
+    const { onSelect, onEditIntent, teardown } = wire();
+    click(document.getElementById('chip'));
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onEditIntent).not.toHaveBeenCalled();
+    // A click on the block itself still selects.
+    click(document.getElementById('para'));
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ kind: 'p' }));
+    teardown();
   });
 });
 

@@ -3,12 +3,16 @@
 //! the individual body blocks — so the graph shows exactly which blocks
 //! ship in which view, and the client can toggle them.
 //!
-//! `GET /api/graph?entry=…&sites=book,deck,…` — `sites` is the wskill's
-//! view site-name list (the client has it from the grouped `/api/sites`
-//! payload); per-view booleans are computed from each block's
+//! `GET /api/graph?entry=…&sites=book,deck,…&kinds=book=book,deck=presentation,…`
+//! — `sites` is the wskill's view site-name list and `kinds` maps each site
+//! to its artifact kind (both from the grouped `/api/sites` payload).
+//! Per-view booleans combine two mechanisms: each block's
 //! `@except(sites = […])` decorator (anything richer reports `custom` and
-//! the client sends users to the source). Layout is server-side via the
-//! deterministic diagram force solver ([`wcl_wdoc::layout_graph`]).
+//! the client sends users to the source), and — for top-level units and
+//! indexes — the wskill `audience` routing (`:book`/`:ai`/`:both`): the
+//! book renders `!= :ai`, the skill `!= :book`, and indexes exist only in
+//! those two views. Layout is server-side via the deterministic diagram
+//! force solver ([`wcl_wdoc::layout_graph`]).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -19,19 +23,21 @@ use axum::http::Uri;
 use axum::response::Response;
 
 use wcl_lang::ast::{self, Item};
-use wcl_lang::{Span, Value, parse_for_edit};
+use wcl_lang::{Document, Span, Value, parse_for_edit};
 
 use super::blocks::{ast_label, first_label, unit_kinds, value_string, visibility_json};
+
 use super::{EditorState, run_blocking};
 use crate::serve::{query_param, sandboxed};
 
 pub(super) async fn handle_graph(State(state): State<Arc<EditorState>>, uri: Uri) -> Response {
     let entry = query_param(&uri, "entry");
     let sites = query_param(&uri, "sites").unwrap_or_default();
+    let kinds = query_param(&uri, "kinds").unwrap_or_default();
     let state2 = Arc::clone(&state);
     run_blocking(move || {
         let entry = entry.ok_or("missing entry")?;
-        graph(&state2, &entry, &sites)
+        graph(&state2, &entry, &sites, &kinds)
     })
     .await
 }
@@ -46,15 +52,84 @@ struct NodeInfo {
     file: PathBuf,
     span: Span,
     visibility: serde_json::Value,
+    /// The wskill audience routing value (`book` / `ai` / `both`) — the
+    /// block's own field, else its kind schema's declared default.
+    audience: String,
     blocks: Vec<serde_json::Value>,
     related: Vec<String>,
     related_editable: bool,
     /// For `index` nodes: the ordered pinned ids (the `related` list) —
     /// the index panel edits this order.
     pinned: Vec<String>,
+    /// For `index` nodes: nested sub-indexes (`{id, title, pinned,
+    /// related_editable, children}`, recursive) — the index panel's
+    /// sub-headings. Sub-indexes are not graph nodes; their pins ride the
+    /// top-level index's edges with an `index_id` attribution.
+    children: Vec<serde_json::Value>,
 }
 
-fn graph(state: &EditorState, entry: &str, sites_csv: &str) -> Result<serde_json::Value, String> {
+/// The ordered `related` id list of an index/unit block (empty when the
+/// field is absent or not a literal-enough list to evaluate).
+fn related_ids(b: &wcl_lang::Block<'_>) -> Vec<String> {
+    b.field("related")
+        .and_then(|f| f.value().ok().cloned())
+        .map(|v| match v {
+            Value::List(items) => items.iter().map(value_string).collect(),
+            _ => Vec::new(),
+        })
+        .unwrap_or_default()
+}
+
+/// A `related` list is editable only when absent or a literal list — a
+/// computed expression must not be clobbered by pin/unpin/reorder writes.
+fn related_editable_of(blk: Option<&ast::Block>) -> bool {
+    blk.is_some_and(|blk| {
+        !blk.items.iter().any(|it| {
+            matches!(it, Item::Field(f)
+                if f.name == "related" && !matches!(f.expr, ast::Expr::ListLit { .. }))
+        })
+    })
+}
+
+/// Recurse an index's nested sub-index blocks into the panel's tree
+/// payload, pushing every nested pin as `(top_id, owning id, unit id)`.
+fn index_children(
+    src: &ast::Source,
+    b: &wcl_lang::Block<'_>,
+    top_id: &str,
+    pins: &mut Vec<(String, String, String)>,
+) -> Vec<serde_json::Value> {
+    let mut out = Vec::new();
+    for c in b.blocks().filter(|c| c.kind() == "index") {
+        let Some(id) = first_label(&c) else { continue };
+        let title = c
+            .field("name")
+            .and_then(|f| f.value().ok().cloned())
+            .as_ref()
+            .map(value_string)
+            .unwrap_or_else(|| id.clone());
+        let pinned = related_ids(&c);
+        for rid in &pinned {
+            pins.push((top_id.to_string(), id.clone(), rid.clone()));
+        }
+        let children = index_children(src, &c, top_id, pins);
+        out.push(serde_json::json!({
+            "id": id,
+            "title": title,
+            "pinned": pinned,
+            "related_editable": related_editable_of(find_block_at(&src.items, c.span())),
+            "children": children,
+        }));
+    }
+    out
+}
+
+fn graph(
+    state: &EditorState,
+    entry: &str,
+    sites_csv: &str,
+    kinds_csv: &str,
+) -> Result<serde_json::Value, String> {
     let entry_abs = sandboxed(&state.root_dir, &state.root_dir.join(entry))
         .ok_or_else(|| format!("file outside the served tree: {entry}"))?;
     let doc = wcl_wdoc::open_doc_for_edit(&entry_abs).map_err(|e| e.to_string())?;
@@ -63,6 +138,14 @@ fn graph(state: &EditorState, entry: &str, sites_csv: &str) -> Result<serde_json
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
+        .collect();
+    // site name → artifact kind (`book` / `ai_skill` / `presentation` / …).
+    let site_kinds: HashMap<String, String> = kinds_csv
+        .split(',')
+        .filter_map(|pair| {
+            let (site, kind) = pair.trim().split_once('=')?;
+            (!site.is_empty()).then(|| (site.to_string(), kind.to_string()))
+        })
         .collect();
 
     let kind_names: Vec<String> = unit_kinds(&doc)
@@ -77,7 +160,9 @@ fn graph(state: &EditorState, entry: &str, sites_csv: &str) -> Result<serde_json
     let mut asts: HashMap<PathBuf, ast::Source> = HashMap::new();
 
     let mut nodes: Vec<NodeInfo> = Vec::new();
-    let mut pins: Vec<(String, String)> = Vec::new(); // (index id, unit id)
+    // (top-level index id, owning index id, unit id) — the owner differs
+    // from the top-level id for pins inside nested sub-indexes.
+    let mut pins: Vec<(String, String, String)> = Vec::new();
 
     for (path, b) in doc.blocks_with_source() {
         let kind = b.kind().to_string();
@@ -114,26 +199,24 @@ fn graph(state: &EditorState, entry: &str, sites_csv: &str) -> Result<serde_json
             .unwrap_or_default();
         // The out-port is editable only when the `related` field is absent
         // or a literal list — a computed expression must not be clobbered.
-        let related_editable = ast_block.is_some_and(|blk| {
-            !blk.items.iter().any(|it| {
-                matches!(it, Item::Field(f)
-                    if f.name == "related" && !matches!(f.expr, ast::Expr::ListLit { .. }))
-            })
-        });
+        let related_editable = related_editable_of(ast_block);
+
+        // Audience routing: the block's own field wins, else the kind
+        // schema's declared default (research ships `:ai`, the rest `:book`).
+        let audience = b
+            .field("audience")
+            .and_then(|f| f.value().ok().cloned())
+            .map(|v| value_string(&v))
+            .unwrap_or_else(|| default_audience(&doc, &kind));
 
         // Edges.
-        let related: Vec<String> = b
-            .field("related")
-            .and_then(|f| f.value().ok().cloned())
-            .map(|v| match v {
-                Value::List(items) => items.iter().map(value_string).collect(),
-                _ => Vec::new(),
-            })
-            .unwrap_or_default();
+        let related = related_ids(&b);
+        let mut children = Vec::new();
         if is_index {
             for rid in &related {
-                pins.push((id.clone(), rid.clone()));
+                pins.push((id.clone(), id.clone(), rid.clone()));
             }
+            children = index_children(src, &b, &id, &mut pins);
         }
 
         nodes.push(NodeInfo {
@@ -145,6 +228,7 @@ fn graph(state: &EditorState, entry: &str, sites_csv: &str) -> Result<serde_json
             file,
             span,
             visibility,
+            audience,
             blocks,
             pinned: if is_index {
                 related.clone()
@@ -153,6 +237,7 @@ fn graph(state: &EditorState, entry: &str, sites_csv: &str) -> Result<serde_json
             },
             related: if is_index { Vec::new() } else { related },
             related_editable,
+            children,
         });
     }
 
@@ -175,14 +260,16 @@ fn graph(state: &EditorState, entry: &str, sites_csv: &str) -> Result<serde_json
             }
         }
     }
-    for (index_id, unit_id) in &pins {
+    for (top_id, owner_id, unit_id) in &pins {
         if let (Some(&i), Some(&j)) = (
-            index_of_id.get(index_id.as_str()),
+            index_of_id.get(top_id.as_str()),
             index_of_id.get(unit_id.as_str()),
         ) {
             layout_edges.push((i, j));
+            // `index_id` is the level whose `related` list holds the pin —
+            // the sub-index itself for nested pins (edge writes target it).
             edges.push(serde_json::json!({
-                "from": key_of(i), "to": key_of(j), "kind": "pin",
+                "from": key_of(i), "to": key_of(j), "kind": "pin", "index_id": owner_id,
             }));
         }
     }
@@ -211,10 +298,18 @@ fn graph(state: &EditorState, entry: &str, sites_csv: &str) -> Result<serde_json
                 "span": { "start": n.span.start, "end": n.span.end },
                 "x": x, "y": y, "w": w, "h": h,
                 "visibility": n.visibility,
-                "views": views_map(&sites, &n.visibility),
+                "audience": n.audience,
+                "views": node_views_map(
+                    &sites,
+                    &site_kinds,
+                    &n.visibility,
+                    &n.audience,
+                    n.node_type == "index",
+                ),
                 "blocks": n.blocks,
                 "related_editable": n.related_editable,
                 "pinned": n.pinned,
+                "children": n.children,
             })
         })
         .collect();
@@ -246,6 +341,54 @@ fn views_map(sites: &[String], visibility: &serde_json::Value) -> serde_json::Va
         .map(|s| (s.clone(), (!except.contains(&s.as_str())).into()))
         .collect();
     serde_json::Value::Object(map)
+}
+
+/// Per-view membership for a top-level unit / index node: the `@except`
+/// visibility axis AND the wskill audience routing. The book renders
+/// `audience != :ai`, the skill `!= :book`; indexes shape only those two
+/// views (a deck / training site reports them absent), while units in the
+/// other views stay visibility-governed (their data is selected by the
+/// template, not by audience). A site with no known kind (a caller that
+/// didn't pass `kinds`) keeps the plain visibility behaviour.
+fn node_views_map(
+    sites: &[String],
+    site_kinds: &HashMap<String, String>,
+    visibility: &serde_json::Value,
+    audience: &str,
+    is_index: bool,
+) -> serde_json::Value {
+    let except: Vec<&str> = visibility["except_sites"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|s| s.as_str()).collect())
+        .unwrap_or_default();
+    let map: serde_json::Map<String, serde_json::Value> = sites
+        .iter()
+        .map(|s| {
+            let visible = !except.contains(&s.as_str());
+            let routed = match site_kinds.get(s).map(String::as_str) {
+                Some("book") => audience != "ai",
+                Some("ai_skill") => audience != "book",
+                Some(_) => !is_index,
+                None => true,
+            };
+            (s.clone(), (visible && routed).into())
+        })
+        .collect();
+    serde_json::Value::Object(map)
+}
+
+/// The declared `@default` of a kind schema's `audience` field, else
+/// `book` (the base schema's default for every unit kind except research).
+fn default_audience(doc: &Document, kind: &str) -> String {
+    doc.block_schema(kind)
+        .and_then(|schema| {
+            schema
+                .effective_fields()
+                .into_iter()
+                .find(|f| f.name() == "audience")
+                .and_then(|f| f.default_value().as_ref().map(value_string))
+        })
+        .unwrap_or_else(|| "book".to_string())
 }
 
 fn find_block_at(items: &[Item], span: Span) -> Option<&ast::Block> {

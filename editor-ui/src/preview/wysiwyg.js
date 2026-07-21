@@ -24,6 +24,11 @@ const FRAME_CSS = `
 .wcl-wys-editing * { font: inherit !important; }
 .wcl-wys-saving { opacity: .55; pointer-events: none; }
 .wcl-wys-locked { outline: 2px dashed #6b7280 !important; outline-offset: 2px; }
+.wcl-wys-sel-box {
+  fill: none; stroke: #3b82f6; stroke-width: 1.5; stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke; pointer-events: none;
+}
+.wcl-wys-sel-box.wcl-wys-shared { stroke: #8b5cf6; }
 `;
 
 /** Idempotently install the Design-mode styles into the iframe head. */
@@ -46,12 +51,19 @@ export function anchorOf(doc, el) {
   const dup = doc.querySelectorAll(
     `[data-wcl-span="${CSS.escape(span)}"][data-wcl-file="${CSS.escape(file)}"]`,
   );
+  // A diagram child (an SVG shape anchor) carries data-wcl-shape, and its
+  // owning <svg> the diagram's effective layout mode — the Design layer
+  // gates dragging (manual layouts only) off it. The diagram block itself
+  // exposes the layout too (its anchor IS the <svg>).
+  const svg = el.closest?.('svg[data-wcl-layout]') ?? null;
   return {
     el,
     file,
     span: { start, end },
     kind: el.getAttribute('data-wcl-kind') || 'block',
     shared: dup.length > 1,
+    shape: el.hasAttribute('data-wcl-shape'),
+    layout: svg?.getAttribute('data-wcl-layout') ?? null,
   };
 }
 
@@ -85,6 +97,21 @@ export function blockAt(target) {
   return el;
 }
 
+/** Every selectable anchor at or above `target`, innermost → outermost
+    (chrome skipped). Nested anchors happen for diagram shapes (shape inside
+    the diagram's <svg>, possibly inside a container's <g>) and nested HTML
+    blocks (an `li` inside a `list`, a table inside a `demo`). */
+export function anchorChainAt(target) {
+  const chain = [];
+  let el = blockAt(target);
+  while (el) {
+    chain.push(el);
+    el = el.parentElement ? blockAt(el.parentElement) : null;
+  }
+  return chain;
+}
+
+
 /** Install the Design-mode interaction layer. `handlers`:
     - onSelect(anchor|null) — click selected/deselected a block
     - onEditIntent(anchor, regionEl) — click inside the already-selected
@@ -103,7 +130,7 @@ export function installDesign(doc, handlers) {
     hot = null;
   };
   const move = (e) => {
-    if (!handlers.enabled()) {
+    if (!handlers.enabled() || e.target.closest?.('.wcl-vis-gutter')) {
       clearHot();
       return;
     }
@@ -118,10 +145,13 @@ export function installDesign(doc, handlers) {
     if (!handlers.enabled()) return;
     // Let the existing edit_object buttons keep their own capture handler.
     if (e.target.closest?.('[data-wcl-edit-kind]')) return;
+    // The merged view's visibility chips own their clicks (visgutter.js).
+    if (e.target.closest?.('.wcl-vis-gutter')) return;
     // An editing session owns its element's clicks.
     if (e.target.closest?.('.wcl-wys-editing')) return;
     const binding = fieldBindingOf(e.target);
-    const el = blockAt(e.target);
+    const chain = anchorChainAt(e.target);
+    const el = chain[0] ?? null;
     if (!el && !binding) {
       handlers.onSelect?.(null);
       return;
@@ -132,31 +162,84 @@ export function installDesign(doc, handlers) {
       handlers.onFieldIntent?.(binding, e);
       return;
     }
-    const anchor = anchorOf(doc, el);
-    if (!anchor) return;
+    // A fresh click selects the NEAREST anchor — a diagram shape as much as
+    // a table or an `li` (a shape click shows its properties panel at once;
+    // the diagram itself is selected by clicking its background, and Esc
+    // pops outward through the chain). A click inside the current selection
+    // drills one level toward the target; a click on the already-innermost
+    // anchor fires the edit intent.
     const selected = doc.querySelector('.wcl-wys-selected');
-    if (selected === el) handlers.onEditIntent?.(anchor, e.target, e);
-    else handlers.onSelect?.(anchor);
+    const idx = chain.indexOf(selected);
+    if (idx === 0) {
+      const anchor = anchorOf(doc, el);
+      if (anchor) handlers.onEditIntent?.(anchor, e.target, e);
+      return;
+    }
+    const next = idx > 0 ? chain[idx - 1] : chain[0];
+    const anchor = next ? anchorOf(doc, next) : null;
+    if (anchor) handlers.onSelect?.(anchor);
+  };
+  const onKeyDown = (e) => {
+    if (e.key !== 'Escape' || !handlers.enabled()) return;
+    // An active text session owns Escape (it cancels the session).
+    if (doc.querySelector('.wcl-wys-editing')) return;
+    const selected = doc.querySelector('.wcl-wys-selected');
+    if (!selected) return;
+    e.preventDefault();
+    // Pop the selection one anchor level up; at the top, deselect.
+    const parent = selected.parentElement ? blockAt(selected.parentElement) : null;
+    handlers.onSelect?.(parent ? anchorOf(doc, parent) : null);
   };
   doc.addEventListener('mousemove', move);
   doc.addEventListener('click', click, true);
+  doc.addEventListener('keydown', onKeyDown, true);
   return () => {
     clearHot();
     doc.removeEventListener('mousemove', move);
     doc.removeEventListener('click', click, true);
+    doc.removeEventListener('keydown', onKeyDown, true);
     delete doc.__wclDesignWired;
   };
 }
 
-/** Mark `el` as the selected block (clearing any previous selection). */
+/** Mark `el` as the selected block (clearing any previous selection).
+    SVG shape anchors additionally get an injected bbox rect — CSS outlines
+    don't render on SVG <g> elements. */
 export function markSelected(doc, el, shared) {
   for (const s of doc.querySelectorAll('.wcl-wys-selected')) {
     s.classList.remove('wcl-wys-selected', 'wcl-wys-shared');
   }
+  for (const r of doc.querySelectorAll('.wcl-wys-sel-box')) r.remove();
   if (el) {
     el.classList.add('wcl-wys-selected');
     if (shared) el.classList.add('wcl-wys-shared');
+    if (el.hasAttribute?.('data-wcl-shape')) addShapeSelBox(doc, el, shared);
   }
+}
+
+/** Append a dashed selection rect inside the shape's own <g> (so it rides
+    the g's transform, including a live drag preview). Feature-detected —
+    getBBox is unavailable outside real SVG renderers (tests). */
+function addShapeSelBox(doc, el, shared) {
+  if (typeof el.getBBox !== 'function') return;
+  let box;
+  try {
+    box = el.getBBox();
+  } catch {
+    return; // detached/unrendered SVG
+  }
+  // Stash the content bbox before injecting chrome — later measurements
+  // (resize handles, drag preview in preview/diagram.js) would otherwise
+  // include the padded selection rect itself.
+  el.__wclShapeBox = box;
+  const pad = 3;
+  const rect = doc.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  rect.setAttribute('class', `wcl-wys-sel-box${shared ? ' wcl-wys-shared' : ''}`);
+  rect.setAttribute('x', box.x - pad);
+  rect.setAttribute('y', box.y - pad);
+  rect.setAttribute('width', box.width + 2 * pad);
+  rect.setAttribute('height', box.height + 2 * pad);
+  el.appendChild(rect);
 }
 
 /** Find a block element by its source binding (after a rebuild refreshed

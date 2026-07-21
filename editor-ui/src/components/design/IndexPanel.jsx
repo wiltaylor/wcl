@@ -1,26 +1,143 @@
 /* The graph tab's left bar: the wskill's indexes as an editable pick-list.
-   Selecting an index scopes the graph to it (non-members fade) and opens
-   its ordered member list — reorder with the arrows, unpin with the ×,
-   pin more units via the select or by DRAGGING a node from the graph onto
-   this panel (GraphView hit-tests the drop against the element registered
-   here). A view filter narrows the list to indexes visible in one view.
-   All writes go through the quiet nav-op path (pin_unit / unpin_unit /
-   reorder_children) and refetch the graph keeping positions. */
+   Selecting an index scopes the graph to its subtree (non-members fade)
+   and opens its member tree — top-level pins plus nested sub-indexes as
+   indented sub-headings, always fully expanded. Reorder with the arrows
+   (within one level), unpin with the −, pin more units via the select or
+   by DRAGGING a node from the graph onto this panel (GraphView hit-tests
+   the drop against the element registered here). While a unit node is
+   focused on the graph, every heading and sub-heading grows a + that pins
+   it right there, and the panel auto-expands the index containing the
+   unit (reveal only — selection/scoping stays an explicit row click),
+   scrolling to and highlighting its rows. A view filter narrows the list
+   to indexes visible in one view. All writes go through the quiet nav-op
+   path (pin_unit / unpin_unit / reorder_children — id-addressed, so they
+   reach nested levels) and refetch the graph keeping positions. */
 
-import { For, Show, createSignal, onCleanup, onMount } from 'solid-js';
-import { ArrowDown, ArrowUp, Pin, X } from 'lucide-solid';
+import { For, Show, createEffect, createSignal, onCleanup, onMount } from 'solid-js';
+import { ArrowDown, ArrowUp, Minus, Pin, Plus } from 'lucide-solid';
 import { Badge, IconButton, Select } from '@forge/ui';
 
 import { busy, commitNavOpQuiet } from '../../state/design';
 import {
+  focusedUnitNode,
   graphData,
+  indexHitsForUnit,
   nodeDragging,
   reloadGraph,
+  revealedIndex,
   selectedIndex,
   selectedIndexNode,
   setIndexPanelEl,
+  setRevealedIndex,
   setSelectedIndex,
+  subtreePinnedIds,
 } from '../../state/graph';
+
+const afterOp = (res) => {
+  if (res.ok) reloadGraph({ keepPositions: true });
+};
+/** Swap a pinned id with its neighbour within one index level. */
+const moveIn = (level, id, dir) => {
+  const ids = [...(level.pinned ?? [])];
+  const i = ids.indexOf(id);
+  const j = dir === 'up' ? i - 1 : i + 1;
+  if (i < 0 || j < 0 || j >= ids.length) return;
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  commitNavOpQuiet({ op: 'reorder_children', index_id: level.id, order: ids }).then(afterOp);
+};
+const unpinFrom = (level, id) =>
+  commitNavOpQuiet({ op: 'unpin_unit', index_id: level.id, unit_id: id }).then(afterOp);
+const pinInto = (level, id) =>
+  id && commitNavOpQuiet({ op: 'pin_unit', index_id: level.id, unit_id: id }).then(afterOp);
+
+const nodeById = (id) => graphData()?.nodes.find((n) => n.id === id);
+
+/** The focused-unit "+" for one heading level: pin it into this level's
+    own `related` list. Hidden while nothing is focused, the unit is
+    already here, or the level's list is computed. */
+function PinHereButton(props) {
+  const canPin = () => {
+    const unit = focusedUnitNode();
+    return (
+      unit &&
+      props.level.related_editable !== false &&
+      !(props.level.pinned ?? []).includes(unit.id)
+    );
+  };
+  return (
+    <Show when={canPin()}>
+      <IconButton
+        icon={Plus}
+        label={`Pin “${focusedUnitNode().title}” into ${props.level.title}`}
+        disabled={busy()}
+        onClick={() => pinInto(props.level, focusedUnitNode().id)}
+      />
+    </Show>
+  );
+}
+
+/** One index level's member rows plus its sub-headings, recursively.
+    Depth 0 is the accordion entry itself (its heading is the index row);
+    deeper levels render an indented sub-heading first. */
+function IndexSection(props) {
+  const indent = (extra = 0) => ({ 'padding-left': `${props.depth * 14 + extra}px` });
+  const editable = () => props.level.related_editable !== false;
+  return (
+    <>
+      <Show when={props.depth > 0}>
+        <li class="ed-index-subhead" style={indent()}>
+          <span class="ed-index-title" title={props.level.id}>
+            {props.level.title}
+          </span>
+          <span class="ed-index-count">{props.level.pinned?.length ?? 0}</span>
+          <PinHereButton level={props.level} />
+        </li>
+      </Show>
+      <For each={props.level.pinned ?? []}>
+        {(id) => {
+          const unit = () => nodeById(id);
+          return (
+            <li
+              class="ed-index-member"
+              classList={{ 'is-hit': focusedUnitNode()?.id === id }}
+              style={indent()}
+            >
+              <span class="ed-index-title" title={id}>
+                {unit()?.title ?? id}
+              </span>
+              <Show when={unit()} fallback={<Badge tone="danger">missing</Badge>}>
+                <Badge>{unit().kind}</Badge>
+              </Show>
+              <span class="ed-nav-actions">
+                <IconButton
+                  icon={ArrowUp}
+                  label="Move up"
+                  disabled={busy() || !editable()}
+                  onClick={() => moveIn(props.level, id, 'up')}
+                />
+                <IconButton
+                  icon={ArrowDown}
+                  label="Move down"
+                  disabled={busy() || !editable()}
+                  onClick={() => moveIn(props.level, id, 'down')}
+                />
+                <IconButton
+                  icon={Minus}
+                  label="Unpin from here"
+                  disabled={busy() || !editable()}
+                  onClick={() => unpinFrom(props.level, id)}
+                />
+              </span>
+            </li>
+          );
+        }}
+      </For>
+      <For each={props.level.children ?? []}>
+        {(c) => <IndexSection level={c} depth={props.depth + 1} />}
+      </For>
+    </>
+  );
+}
 
 export default function IndexPanel() {
   let el;
@@ -32,29 +149,40 @@ export default function IndexPanel() {
     (graphData()?.nodes ?? [])
       .filter((n) => n.type === 'index')
       .filter((n) => !viewFilter() || n.views?.[viewFilter()] !== false);
-  const nodeById = (id) => graphData()?.nodes.find((n) => n.id === id);
   const idx = selectedIndexNode;
 
-  const afterOp = (res) => {
-    if (res.ok) reloadGraph({ keepPositions: true });
-  };
-  const move = (id, dir) => {
-    const ids = [...(idx()?.pinned ?? [])];
-    const i = ids.indexOf(id);
-    const j = dir === 'up' ? i - 1 : i + 1;
-    if (i < 0 || j < 0 || j >= ids.length) return;
-    [ids[i], ids[j]] = [ids[j], ids[i]];
-    commitNavOpQuiet({ op: 'reorder_children', index_id: idx().id, order: ids }).then(afterOp);
-  };
-  const unpin = (id) =>
-    commitNavOpQuiet({ op: 'unpin_unit', index_id: idx().id, unit_id: id }).then(afterOp);
-  const pin = (id) =>
-    id && commitNavOpQuiet({ op: 'pin_unit', index_id: idx().id, unit_id: id }).then(afterOp);
-
-  const unpinned = () =>
+  // Units offered by an index's bottom "pin a unit…" select — anything not
+  // already in that index's own top-level list (sub-index membership does
+  // not block an intentional top-level pin).
+  const unpinnedFor = (n) =>
     (graphData()?.nodes ?? []).filter(
-      (n) => n.type === 'unit' && !(idx()?.pinned ?? []).includes(n.id),
+      (u) => u.type === 'unit' && !(n.pinned ?? []).includes(u.id),
     );
+
+  // Reveal where the focused unit lives: expand (not select) the first
+  // containing index — preferring one already open — and scroll to its
+  // highlighted row once per focused unit (graph refetches re-run this).
+  let lastRevealed = null;
+  createEffect(() => {
+    const unit = focusedUnitNode();
+    if (!unit) {
+      lastRevealed = null;
+      setRevealedIndex(null);
+      return;
+    }
+    const hits = indexHitsForUnit(graphData(), unit.id);
+    if (hits.length === 0) {
+      setRevealedIndex(null);
+      return;
+    }
+    const open = hits.find((h) => h.topKey === selectedIndex() || h.topKey === revealedIndex());
+    if (!open) setRevealedIndex(hits[0].topKey);
+    if (lastRevealed === unit.id) return;
+    lastRevealed = unit.id;
+    requestAnimationFrame(() =>
+      el?.querySelector('.ed-index-member.is-hit')?.scrollIntoView({ block: 'nearest' }),
+    );
+  });
 
   return (
     <div
@@ -64,6 +192,11 @@ export default function IndexPanel() {
     >
       <div class="ed-nav-head">
         <strong>Indexes</strong>
+        <Show when={focusedUnitNode()}>
+          <span class="ed-index-focushint" title="The + buttons below pin the focused graph node">
+            <Pin size={11} /> {focusedUnitNode().title}
+          </span>
+        </Show>
       </div>
       <Show when={graphData()} fallback={<div class="ed-empty">Loading the graph…</div>}>
         <div class="ed-index-viewfilter">
@@ -94,66 +227,35 @@ export default function IndexPanel() {
           <For each={indexes()}>
             {(n) => (
               <li>
-                <button
-                  type="button"
-                  class="ed-index-row"
-                  classList={{ 'is-selected': selectedIndex() === n.key }}
-                  onClick={() => setSelectedIndex(selectedIndex() === n.key ? null : n.key)}
-                >
-                  <span class="ed-index-title">{n.title}</span>
-                  <span class="ed-index-count">{n.pinned?.length ?? 0}</span>
-                </button>
-                <Show when={selectedIndex() === n.key}>
+                <div class="ed-index-rowwrap">
+                  <button
+                    type="button"
+                    class="ed-index-row"
+                    classList={{ 'is-selected': selectedIndex() === n.key }}
+                    onClick={() => setSelectedIndex(selectedIndex() === n.key ? null : n.key)}
+                  >
+                    <span class="ed-index-title">{n.title}</span>
+                    <span class="ed-index-count">{subtreePinnedIds(n).size}</span>
+                  </button>
+                  <PinHereButton level={n} />
+                </div>
+                <Show when={selectedIndex() === n.key || revealedIndex() === n.key}>
                   <ul class="ed-index-members">
-                    <For each={n.pinned ?? []}>
-                      {(id) => {
-                        const unit = () => nodeById(id);
-                        return (
-                          <li class="ed-index-member">
-                            <span class="ed-index-title" title={id}>
-                              {unit()?.title ?? id}
-                            </span>
-                            <Show when={unit()} fallback={<Badge tone="danger">missing</Badge>}>
-                              <Badge>{unit().kind}</Badge>
-                            </Show>
-                            <span class="ed-nav-actions">
-                              <IconButton
-                                icon={ArrowUp}
-                                label="Move up"
-                                disabled={busy()}
-                                onClick={() => move(id, 'up')}
-                              />
-                              <IconButton
-                                icon={ArrowDown}
-                                label="Move down"
-                                disabled={busy()}
-                                onClick={() => move(id, 'down')}
-                              />
-                              <IconButton
-                                icon={X}
-                                label="Unpin"
-                                disabled={busy()}
-                                onClick={() => unpin(id)}
-                              />
-                            </span>
-                          </li>
-                        );
-                      }}
-                    </For>
-                    <Show when={(n.pinned ?? []).length === 0}>
+                    <IndexSection level={n} depth={0} />
+                    <Show when={subtreePinnedIds(n).size === 0}>
                       <li class="ed-graph-noblocks">nothing pinned yet</li>
                     </Show>
                     <li class="ed-nav-pinrow">
                       <Pin size={12} />
                       <Select
-                        options={unpinned().map((u) => ({
+                        options={unpinnedFor(n).map((u) => ({
                           value: u.id,
                           label: `${u.title} (${u.kind})`,
                         }))}
                         placeholder="Pin a unit…"
                         value={undefined}
                         disabled={busy()}
-                        onChange={pin}
+                        onChange={(id) => pinInto(n, id)}
                       />
                     </li>
                   </ul>

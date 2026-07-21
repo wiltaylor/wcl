@@ -144,6 +144,12 @@ pub(crate) struct InlinePatterns {
     /// map a rendered block back to the source that declares it. Set per
     /// build via `set_edit_mode`.
     edit_mode: Cell<bool>,
+    /// All-sites mode (the editor's merged "all views" preview): renders
+    /// every block regardless of its `@only` / `@except` visibility, and —
+    /// combined with `edit_mode` — stamps each block's visibility metadata
+    /// (`data-wcl-except` / `data-wcl-vis`) so the client can draw per-view
+    /// indicators. Set per build via `set_all_sites`.
+    all_sites: Cell<bool>,
 }
 
 struct CompiledPattern {
@@ -248,6 +254,7 @@ impl InlinePatterns {
             vis_template: RefCell::new(None),
             comment_mode: Cell::new(false),
             edit_mode: Cell::new(false),
+            all_sites: Cell::new(false),
         }
     }
 
@@ -271,6 +278,18 @@ impl InlinePatterns {
     /// true under either comment or edit mode (the `wcl editor` preview).
     pub(crate) fn anchor_mode(&self) -> bool {
         self.comment_mode.get() || self.edit_mode.get()
+    }
+
+    /// Enable the merged all-views render for this build (the `wcl editor`
+    /// content modal's Merged tab).
+    pub(crate) fn set_all_sites(&self, on: bool) {
+        self.all_sites.set(on);
+    }
+
+    /// Whether `block_visible` is bypassed and edit-mode anchors carry the
+    /// per-block visibility stamps.
+    pub(crate) fn all_sites(&self) -> bool {
+        self.all_sites.get()
     }
 
     /// Set the current site's name and template kind for block-visibility

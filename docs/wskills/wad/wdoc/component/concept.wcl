@@ -16,8 +16,6 @@ wdoc_component concept_body {
     edit_field { kind = "concept" target = $"${unit.id}" field = "name" plain = true
       h1 $"${unit.name}"
     }
-    // Edit-mode only: jump straight into this object in the WYSIWYG editor.
-    edit_object { kind = "concept" target = $"${unit.id}" label = "Edit this concept" }
     edit_field { kind = "concept" target = $"${unit.id}" field = "summary"
       p  $"_${unit.summary}_"
     }

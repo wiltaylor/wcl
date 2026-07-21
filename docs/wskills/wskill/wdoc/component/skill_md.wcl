@@ -1,8 +1,6 @@
-// Shared SKILL.md body — the canonical content of the skill's start page,
-// everything after the YAML frontmatter. Rendered by BOTH the real skill
-// projection (wdoc/skill/main.wcl) and the book's skill preview
-// (wdoc/pages/skill_links.wcl), so the preview can never drift from the file
-// `wcl wdoc skill` actually writes.
+// SKILL.md body — the canonical content of the skill's start page: everything
+// after the YAML frontmatter of the file `wcl wdoc skill` writes. Rendered by
+// the skill projection (wdoc/skill/main.wcl).
 //
 // The layout follows the canonical Claude-skill format (meta-skill): an
 // <overview> block, invocation parameters inside <variables>, hard rules

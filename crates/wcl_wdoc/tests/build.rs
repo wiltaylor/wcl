@@ -10592,6 +10592,45 @@ fn incremental_targets_only_the_edited_page() {
 }
 
 #[test]
+fn full_build_writes_page_manifest_targeted_leaves_it() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = write_incremental_book(tmp.path());
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&main, out.path());
+
+    // A full build writes the per-site page manifest the editor's lazy
+    // preview rebuild maps `<name>.html` requests through.
+    let manifest_path = out.path().join(wcl_wdoc::PAGES_MANIFEST_HREF);
+    let before = std::fs::read_to_string(&manifest_path).expect("read pages.json");
+    let v: serde_json::Value = serde_json::from_str(&before).expect("parse pages.json");
+    assert_eq!(v["start"], "index", "no page sets start = true");
+    let pages: Vec<&str> = v["pages"]
+        .as_array()
+        .expect("pages array")
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    assert_eq!(pages, vec!["a", "b"]);
+
+    // A targeted rebuild reuses the prior full build's manifest untouched.
+    let a = tmp.path().join("a.wcl");
+    std::fs::write(
+        &a,
+        "page a {\n  sites = [:docs]\n  h1 \"Page A\"\n  p \"Edited A content!\"\n}\n",
+    )
+    .expect("rewrite a.wcl");
+    match rebuild(&main, out.path(), &[a]) {
+        RebuildOutcome::Targeted { pages } => assert_eq!(pages, vec!["a".to_string()]),
+        RebuildOutcome::Full { pages } => panic!("expected targeted, got full ({pages} pages)"),
+    }
+    let after = std::fs::read_to_string(&manifest_path).expect("re-read pages.json");
+    assert_eq!(
+        before, after,
+        "targeted rebuild must not rewrite the manifest"
+    );
+}
+
+#[test]
 fn incremental_falls_back_when_site_file_changes() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let main = write_incremental_book(tmp.path());
@@ -10821,6 +10860,87 @@ fn edit_mode_stamps_source_span_and_file_anchors() {
     assert!(
         !plain.contains("data-wcl-span=") && !plain.contains("data-wcl-block"),
         "plain build must not emit editor anchors, got:\n{plain}"
+    );
+}
+
+/// Edit mode anchors each diagram child shape: a free-layout child gets a
+/// transform-less wrapping `<g>` carrying `data-wcl-shape` + kind/span/file,
+/// a solver-laid child gets the same attributes on its existing translate
+/// wrapper, and the `<svg>` root carries the effective `data-wcl-layout`.
+#[test]
+fn edit_mode_anchors_diagram_shapes() {
+    let tmp = TempDir::new().expect("tempdir");
+    let out = TempDir::new().expect("out");
+    let main = tmp.path().join("main.wcl");
+    write_fixture(
+        &main,
+        "site s { default_template = :webpage  root = true }\n\
+         page index { start = true\n\
+           diagram {\n    width = 320\n    height = 160\n\
+             rect { id = a  x = 20.0  y = 30.0  width = 80.0  height = 50.0 }\n\
+             container { id = c  width = 120.0  height = 100.0\n\
+               circle { id = n  cx = 30.0  cy = 30.0  r = 20.0 }\n    }\n  }\n\
+           diagram {\n    width = 400\n    height = 300\n    layout = :layered\n\
+             process p1 \"Start\"\n    process p2 \"End\"\n    p1 -> p2\n  }\n }\n",
+    );
+
+    let opts = BuildOptions {
+        edit_mode: true,
+        ..Default::default()
+    };
+    if build_with_options(&main, out.path(), None, &opts).is_err() {
+        panic!("build with edit mode failed");
+    }
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+
+    // Free layout: each child is wrapped in an anchored, transform-less <g>.
+    assert!(
+        html.contains("<g data-wcl-shape data-wcl-kind=\"rect\" data-wcl-span=\""),
+        "expected an anchored free-layout rect, got:\n{html}"
+    );
+    // The nested container and its own child are both anchored.
+    assert!(
+        html.contains("data-wcl-shape data-wcl-kind=\"container\""),
+        "expected an anchored container, got:\n{html}"
+    );
+    assert!(
+        html.contains("data-wcl-shape data-wcl-kind=\"circle\""),
+        "expected an anchored nested circle, got:\n{html}"
+    );
+    // Solver layout: the attrs ride the existing translate wrapper.
+    assert!(
+        html.contains("\" data-wcl-shape data-wcl-kind=\"process\""),
+        "expected anchored layered shapes, got:\n{html}"
+    );
+    let planned = html
+        .split("data-wcl-shape data-wcl-kind=\"process\"")
+        .next()
+        .expect("split");
+    assert!(
+        planned
+            .rsplit("<g ")
+            .next()
+            .is_some_and(|tail| tail.starts_with("transform=\"translate(")),
+        "process anchor should sit on the translate wrapper, got:\n{html}"
+    );
+    // The svg roots carry the effective layout for the Design client.
+    assert!(
+        html.contains("data-wcl-layout=\"free\""),
+        "expected the free diagram's layout attr, got:\n{html}"
+    );
+    assert!(
+        html.contains("data-wcl-layout=\"layered\""),
+        "expected the layered diagram's layout attr, got:\n{html}"
+    );
+
+    // A plain build leaks none of the shape markup.
+    if build_with_options(&main, out.path(), None, &BuildOptions::default()).is_err() {
+        panic!("plain build failed");
+    }
+    let plain = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+    assert!(
+        !plain.contains("data-wcl-shape") && !plain.contains("data-wcl-layout"),
+        "plain build must not emit shape anchors, got:\n{plain}"
     );
 }
 

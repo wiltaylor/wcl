@@ -17,7 +17,7 @@
 
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
-import { Eye, FileCode2, ListFilter, RefreshCw, SlidersHorizontal, X } from 'lucide-solid';
+import { Eye, FileCode2, FilePlus, ListFilter, RefreshCw, SlidersHorizontal, X } from 'lucide-solid';
 import {
   Badge,
   Button,
@@ -30,15 +30,18 @@ import {
 } from '@forge/ui';
 
 import { api } from '../../api';
-import { openFile } from '../../state/buffers';
+import { dirtyFiles, openFile } from '../../state/buffers';
 import { revealSpan } from '../../state/views';
-import { activeEntry, selected } from '../../state/sites';
+import { activeEntry, activeView, rebuild, selectView, selected } from '../../state/sites';
 import {
   busy,
   commitNavOpQuiet,
   commitOpsQuiet,
+  commitUnitCreateQuiet,
   designTab,
   exitDesign,
+  loadNav,
+  loadPalette,
   setDesignTab,
   setGotoPage,
 } from '../../state/design';
@@ -51,7 +54,12 @@ import {
   setNodeDragging,
   setGraphReload,
   indexPanelAt,
+  focusedNode,
+  setFocusedNode,
+  pinCounts as pinCountsOf,
+  subtreePinnedIds,
 } from '../../state/graph';
+import AddUnitDialog from './AddUnitDialog';
 import ContentModal from './ContentModal';
 import { DEFAULT_PARAMS, createSimulation } from './forceSim';
 
@@ -81,7 +89,11 @@ export default function GraphView() {
   const data = graphData;
   const setData = setGraphData;
   const [loading, setLoading] = createSignal(false);
-  const [focus, setFocus] = createSignal(null); // node key
+  // Focus is shared state (state/graph.js) so the index panel can offer
+  // per-section pin buttons for the focused node.
+  const focus = focusedNode;
+  const setFocus = setFocusedNode;
+  const [addOpen, setAddOpen] = createSignal(false);
   const [viewBox, setViewBox] = createSignal(null); // {x, y, w, h}
   // Client-owned node positions (top-left, world coords) — seeded from the
   // server layout, then driven by the simulation.
@@ -102,6 +114,8 @@ export default function GraphView() {
 
   const sites = () =>
     (selected()?.views ?? []).map((v) => v.site).filter(Boolean);
+  const siteKinds = () =>
+    (selected()?.views ?? []).filter((v) => v.site).map((v) => `${v.site}=${v.kind}`);
 
   // ---- simulation loop ---------------------------------------------
   const [simParams, setSimParams] = createSignal(loadSimParams());
@@ -131,7 +145,7 @@ export default function GraphView() {
     const entry = activeEntry();
     if (!entry) return;
     setLoading(true);
-    const res = await api.graph(entry, sites());
+    const res = await api.graph(entry, sites(), siteKinds());
     setLoading(false);
     if (!res.ok) {
       toast(res.error, { tone: 'danger', duration: 6000 });
@@ -199,24 +213,9 @@ export default function GraphView() {
   const pinnedKeys = createMemo(
     () => new Set((data()?.edges ?? []).filter((e) => e.kind === 'pin').map((e) => e.to)),
   );
-  // Per-unit index-membership counts: total + per view (an index hidden in
-  // a view doesn't count toward it) — the node corner badges.
-  const pinCounts = createMemo(() => {
-    const d = data();
-    if (!d) return {};
-    const byKey = Object.fromEntries(d.nodes.map((n) => [n.key, n]));
-    const out = {};
-    for (const e of d.edges) {
-      if (e.kind !== 'pin') continue;
-      const idx = byKey[e.from];
-      const rec = (out[e.to] ??= { total: 0, sites: {} });
-      rec.total += 1;
-      for (const s of d.sites) {
-        if (idx?.views?.[s] !== false) rec.sites[s] = (rec.sites[s] ?? 0) + 1;
-      }
-    }
-    return out;
-  });
+  // Per-unit index-membership counts (state/graph.js pinCounts, shared
+  // with the content modal's per-view badge) — the node corner badges.
+  const pinCounts = createMemo(() => pinCountsOf(data()));
   const countOf = (n) => pinCounts()[n.key] ?? { total: 0, sites: {} };
   const countTitle = (n) => {
     const c = countOf(n);
@@ -232,9 +231,10 @@ export default function GraphView() {
   /** True when the node fails any active filter (rendered faded). Index
       nodes are the navigation structure — the index filter skips them. */
   const faded = (n) => {
-    // A selected index (the left panel) scopes the graph to it + members.
+    // A selected index (the left panel) scopes the graph to it + members —
+    // subtree-wide, so sub-index pins count as membership.
     const idx = selectedIndexNode();
-    if (idx && n.key !== idx.key && !(idx.pinned ?? []).includes(n.id)) return true;
+    if (idx && n.key !== idx.key && !subtreePinnedIds(idx).has(n.id)) return true;
     for (const site of viewFilter()) {
       if (n.views?.[site] === false) return true;
     }
@@ -306,6 +306,22 @@ export default function GraphView() {
     return true;
   };
 
+  /** The index level owning a pin edge's `related` list: the index node
+      itself for top-level pins, else the matching entry in its nested
+      `children` tree (sub-index pins carry the owning id on the edge). */
+  const pinLevel = (n, indexId) => {
+    if (!n || n.id === indexId) return n;
+    const walk = (levels) => {
+      for (const c of levels ?? []) {
+        if (c.id === indexId) return c;
+        const hit = walk(c.children);
+        if (hit) return hit;
+      }
+      return null;
+    };
+    return walk(n.children) ?? n;
+  };
+
   const onPointerDown = (e) => {
     const portEl = e.target.closest('[data-port]');
     const edgeEl = e.target.closest('[data-edge-handle]');
@@ -330,7 +346,7 @@ export default function GraphView() {
       if (Math.hypot(w.x - ip.x, w.y - ip.y) > Math.hypot(w.x - op.x, w.y - op.y)) {
         return;
       }
-      if (!editable(a)) return;
+      if (!editable(edge.kind === 'pin' ? pinLevel(a, edge.index_id) : a)) return;
       drag = { type: 'rewire', edge, index };
       setLinking({ from: edge.from });
       setHiddenEdge(index);
@@ -489,6 +505,26 @@ export default function GraphView() {
   const rewireEdge = async (edge, toKey) => {
     const a = node(edge.from);
     const oldB = node(edge.to);
+    // Pin edges write the owning index level's `related` list — a nested
+    // sub-index for attributed pins — via the id-addressed nav ops (the
+    // from-node's span would target the top-level list only).
+    if (edge.kind === 'pin') {
+      const owner = edge.index_id ?? a.id;
+      const res = await commitNavOpQuiet({ op: 'unpin_unit', index_id: owner, unit_id: oldB.id });
+      if (!res.ok) {
+        setHiddenEdge(null);
+        return;
+      }
+      let msg = `Unpinned ${oldB.id} from ${owner}`;
+      if (toKey) {
+        const b = node(toKey);
+        const r2 = await commitNavOpQuiet({ op: 'pin_unit', index_id: owner, unit_id: b.id });
+        if (r2.ok) msg = `Moved pin ${oldB.id} → ${b.id} in ${owner}`;
+      }
+      toast(msg, { duration: 3000 });
+      await load({ keepPositions: true });
+      return;
+    }
     const ops = [{ op: 'related_remove', span: a.span, id: oldB.id }];
     let msg = `Removed ${a.id} → ${oldB.id}`;
     if (toKey) {
@@ -509,10 +545,56 @@ export default function GraphView() {
   /** The node whose content modal is open (key), if any. */
   const [contentFor, setContentFor] = createSignal(null);
 
-  const openInCanvas = (n) => {
+  /** Does `view`'s built site contain `page`? Builds the view (targeted;
+      warm dirs are cheap, an unknown page falls back to a full build) and
+      reads its manifest — the content modal's hasPage pattern. */
+  const viewHasPage = async (view, page) => {
+    const res = await api.preview(view.entry, view.site, dirtyFiles(), { pages: [page] });
+    if (!res.ok) return false;
+    try {
+      const dir = res.href.slice(0, res.href.lastIndexOf('/') + 1);
+      const manifest = await (await fetch(`${dir}_wdoc/pages.json`)).json();
+      return (manifest.pages ?? []).includes(page);
+    } catch {
+      return false;
+    }
+  };
+
+  const [openingPage, setOpeningPage] = createSignal(false);
+  /** Open the unit's page in the canvas. The page may exist only in
+      another view's site (a lesson is a training page; an :ai-only unit
+      has no HTML page at all), so probe the active view first, then the
+      rest, switching the canvas view when the page lives elsewhere. */
+  const openInCanvas = async (n) => {
+    if (openingPage()) return;
     const prefix = n.kind === 'procedure' ? 'process' : n.kind;
-    setDesignTab('canvas');
-    setGotoPage(`${prefix}_${n.id}`);
+    const page = `${prefix}_${n.id}`;
+    setOpeningPage(true);
+    try {
+      const views = (selected()?.views ?? []).filter((v) => !v.skill);
+      const act = activeView();
+      const ordered = [act, ...views.filter((v) => v.id !== act?.id)].filter(Boolean);
+      for (const v of ordered) {
+        if (!(await viewHasPage(v, page))) continue;
+        if (v.id !== act?.id) {
+          selectView(v.id);
+          setDesignTab('canvas');
+          // The pending goto must wait for the new view's base href.
+          await rebuild();
+          loadNav();
+          loadPalette();
+        } else {
+          setDesignTab('canvas');
+        }
+        setGotoPage(page);
+        return;
+      }
+      toast(`No view builds a page for “${n.title}” — preview it via Content & visibility`, {
+        duration: 5000,
+      });
+    } finally {
+      setOpeningPage(false);
+    }
   };
 
   const openCode = async (n) => {
@@ -575,6 +657,9 @@ export default function GraphView() {
           <Spinner size={12} label="Loading graph" />
         </Show>
         <span class="spacer" />
+        <Button size="sm" disabled={busy() || !data()} onClick={() => setAddOpen(true)}>
+          <FilePlus size={13} /> Add unit
+        </Button>
         <Popover label="Forces" icon={SlidersHorizontal} size="sm" align="end" width={280}>
           <div class="ed-graph-forces">
             <Slider
@@ -779,8 +864,8 @@ export default function GraphView() {
             </div>
             <div class="ed-graph-panel-actions">
               <Show when={focused().type === 'unit'}>
-                <Button size="sm" onClick={() => openInCanvas(focused())}>
-                  Open page
+                <Button size="sm" disabled={openingPage()} onClick={() => openInCanvas(focused())}>
+                  {openingPage() ? 'Opening…' : 'Open page'}
                 </Button>
               </Show>
               <Button size="sm" onClick={() => openCode(focused())}>
@@ -796,6 +881,17 @@ export default function GraphView() {
         <Show when={contentFor()}>
           <ContentModal nodeKey={contentFor()} onClose={() => setContentFor(null)} />
         </Show>
+
+        <AddUnitDialog
+          open={addOpen()}
+          onClose={() => setAddOpen(false)}
+          indexes={(data()?.nodes ?? []).filter((n) => n.type === 'index')}
+          onSubmit={async (unit, pin) => {
+            const res = await commitUnitCreateQuiet(unit, pin);
+            if (res.ok) load({ keepPositions: true });
+            return res;
+          }}
+        />
       </div>
     </div>
   );

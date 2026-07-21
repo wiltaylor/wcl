@@ -11,7 +11,16 @@ import { Progress, toast } from '@forge/ui';
 import { api } from '../api';
 import { active, dirtyFiles, openFile } from '../state/buffers';
 import { revealSpan } from '../state/views';
-import { activeEntry, buildError, buildSeq, building, previewHref, selected } from '../state/sites';
+import {
+  activeEntry,
+  buildError,
+  buildMode,
+  buildSeq,
+  building,
+  previewHref,
+  selected,
+  setPreviewPage,
+} from '../state/sites';
 import {
   allComments,
   commentPage,
@@ -76,6 +85,9 @@ export default function PreviewPane() {
     setPicking(false);
     installEditButtons(iframe?.contentDocument, onEditObject, () => !picking());
     refreshFrame();
+    // The page now shown is the manual Rebuild's target (null on non-wdoc
+    // pages like a multi-site chooser — the server then does a full build).
+    setPreviewPage(pageInfo(iframe?.contentDocument)?.name ?? null);
   };
 
   // A finished rebuild with an unchanged href reloads the iframe in place
@@ -125,6 +137,9 @@ export default function PreviewPane() {
           <span>{selected() ? selected().label : 'no site selected'}</span>
           <Show when={building()}>
             <span>building…</span>
+          </Show>
+          <Show when={!building() && buildMode()}>
+            <span>{buildMode() === 'targeted' ? 'page build' : 'full build'}</span>
           </Show>
           <Show when={buildError()}>
             <span class="err">{buildError()}</span>

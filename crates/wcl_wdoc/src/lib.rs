@@ -40,9 +40,10 @@ mod visibility;
 mod wireframe;
 
 pub use build::{
-    BuildError, BuildOptions, PageSubSite, RebuildOutcome, build, build_incremental,
-    build_with_options, doc_entry_for_page, open_doc_for_edit, open_doc_for_edit_with_overlay,
-    pages_in_file, schema_registry, subsite_for_page, take_render_warnings, wdoc_environment,
+    BuildError, BuildOptions, PAGES_MANIFEST_HREF, PageSubSite, RebuildOutcome, build,
+    build_incremental, build_with_options, doc_entry_for_page, open_doc_for_edit,
+    open_doc_for_edit_with_overlay, pages_in_file, schema_registry, subsite_for_page,
+    take_render_warnings, wdoc_environment,
 };
 pub use comments::{CommentRecord, CommentScope};
 pub use force::layout_graph;

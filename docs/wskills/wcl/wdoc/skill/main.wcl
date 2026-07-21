@@ -6,13 +6,12 @@
 // SKILL.md is index-driven: its body is the shared `skill_md_body` component
 // (component/skill_md.wcl) — it inlines the curated indexes, linking each pinned
 // note's page directly, then links the non-unit content pages (builtins / CLI)
-// via `extra_refs`. There are NO per-kind index pages. The same component renders
-// the book's skill preview (pages/skill_links.wcl), so the preview can't drift.
+// via `extra_refs`. There are NO per-kind index pages.
 
 import <wdoc.wcl>
 import "../../wskill.wcl"
 import "../component/common.wcl"    // UnitRef + shared per-unit sub-sections
-import "../component/skill_md.wcl"  // skill_md_body (shared with the preview)
+import "../component/skill_md.wcl"  // skill_md_body (the SKILL.md body)
 import "../component/concept.wcl"   // concept_body
 import "../component/entity.wcl"    // entity_body
 import "../component/fact.wcl"      // fact_body

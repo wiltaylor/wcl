@@ -16,9 +16,9 @@ import {
   commitUnitCreate,
   loadNav,
   navModel,
-  palette,
   setGotoPage,
 } from '../../state/design';
+import AddUnitDialog from './AddUnitDialog';
 
 export default function NavPanel() {
   const model = () => navModel();
@@ -101,20 +101,6 @@ export default function NavPanel() {
             }
           : null,
       });
-    } else if (d.type === 'add_unit') {
-      if (!d.id || !d.kind) return toast('Pick a kind and an id', { tone: 'danger', duration: 4000 });
-      const kindDef = palette()?.unit_kinds?.find((k) => k.kind === d.kind);
-      const fields = {};
-      for (const f of kindDef?.fields ?? []) {
-        if (f.inline_slot != null) continue;
-        const v = d.fields?.[f.name];
-        if (v == null || v === '') continue;
-        fields[f.name] = f.symbols ? { sym: v } : v;
-      }
-      res = await commitUnitCreate(
-        { kind: d.kind, id: d.id, fields },
-        d.pin ? { index_id: d.pin } : null,
-      );
     }
     if (res.ok) setDialog(null);
   };
@@ -234,9 +220,7 @@ export default function NavPanel() {
           disabled={busy() || !model()}
           onClick={() =>
             setDialog(
-              wskill()
-                ? { type: 'add_unit', kind: '', id: '', fields: {}, pin: '' }
-                : { type: 'add_page', name: '', title: '', link: true },
+              wskill() ? { type: 'add_unit' } : { type: 'add_page', name: '', title: '', link: true },
             )
           }
         />
@@ -249,15 +233,20 @@ export default function NavPanel() {
       </Show>
 
       {/* ---- dialogs ---- */}
+      <AddUnitDialog
+        open={d()?.type === 'add_unit'}
+        onClose={() => setDialog(null)}
+        indexes={(model()?.nav ?? []).filter((n) => n.kind === 'index')}
+        onSubmit={commitUnitCreate}
+      />
       <Modal
-        open={d() !== null}
+        open={d() !== null && d()?.type !== 'add_unit'}
         onClose={() => setDialog(null)}
         title={
           {
             rename: 'Rename entry',
             add_section: 'Add section',
             add_page: 'Add page',
-            add_unit: 'Add unit',
           }[d()?.type] ?? ''
         }
         footer={
@@ -289,55 +278,6 @@ export default function NavPanel() {
               <Checkbox checked={d().link} onChange={(v) => setD({ link: v })}>
                 Link it in the navigation
               </Checkbox>
-            </Show>
-          </div>
-        </Show>
-        <Show when={d()?.type === 'add_unit'}>
-          <div class="ed-form">
-            <Select
-              options={(palette()?.unit_kinds ?? [])
-                .filter((k) => k.kind !== 'index')
-                .map((k) => ({ value: k.kind, label: k.kind }))}
-              value={d().kind || undefined}
-              placeholder="Kind…"
-              onChange={(kind) => setD({ kind, fields: {} })}
-            />
-            <Input value={d().id} onInput={(e) => setD({ id: e.currentTarget.value })} placeholder="id (identifier)" />
-            <For each={(palette()?.unit_kinds ?? []).find((k) => k.kind === d().kind)?.fields ?? []}>
-              {(f) => (
-                <Show when={f.inline_slot == null}>
-                  <Show
-                    when={f.symbols}
-                    fallback={
-                      <Input
-                        value={d().fields?.[f.name] ?? ''}
-                        onInput={(e) => setD({ fields: { ...d().fields, [f.name]: e.currentTarget.value } })}
-                        placeholder={`${f.name}${f.optional ? '' : ' (required)'}`}
-                      />
-                    }
-                  >
-                    <Select
-                      options={f.symbols.map((s) => ({ value: s, label: `:${s}` }))}
-                      value={d().fields?.[f.name] || undefined}
-                      placeholder={f.name}
-                      onChange={(v) => setD({ fields: { ...d().fields, [f.name]: v } })}
-                    />
-                  </Show>
-                </Show>
-              )}
-            </For>
-            <Show when={wskill()}>
-              <Select
-                options={[
-                  { value: '', label: '(no section)' },
-                  ...(model()?.nav ?? [])
-                    .filter((n) => n.kind === 'index')
-                    .map((n) => ({ value: n.id, label: `Pin into: ${n.title}` })),
-                ]}
-                value={d().pin ?? ''}
-                placeholder="Pin into a section…"
-                onChange={(v) => setD({ pin: v })}
-              />
             </Show>
           </div>
         </Show>

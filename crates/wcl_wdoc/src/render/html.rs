@@ -669,6 +669,21 @@ fn anchor_block(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> S
             span.end,
             escape_html(block.named_source().name()),
         ));
+        // The merged all-views preview additionally stamps each block's
+        // visibility so the client can draw + toggle per-view indicators
+        // without mapping spans back to a separate payload.
+        if patterns.all_sites() {
+            let (except_sites, custom) = crate::visibility::classify_visibility(block);
+            if !except_sites.is_empty() {
+                attrs.push_str(&format!(
+                    " data-wcl-except=\"{}\"",
+                    escape_html(&except_sites.join(" "))
+                ));
+            }
+            if custom {
+                attrs.push_str(" data-wcl-vis=\"custom\"");
+            }
+        }
     }
     splice_attrs(&html, &attrs)
 }

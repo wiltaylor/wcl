@@ -17,9 +17,9 @@ use axum::http::Uri;
 use axum::response::Response;
 
 use wcl_lang::ast::{self, Item};
-use wcl_lang::{DeclName, Document, Value, parse_for_edit};
+use wcl_lang::{DeclName, Document, parse_for_edit};
 
-use super::blocks::{first_label, kind_entry, visibility_json};
+use super::blocks::{dec_first_string, first_label, kind_entry, visibility_json};
 use super::{EditorState, run_blocking};
 use crate::serve::{query_param, sandboxed};
 
@@ -30,13 +30,6 @@ fn dec_name<'a>(d: &wcl_lang::Decorator<'a>) -> Option<&'a str> {
         [ns, n] if ns == "wdoc" => Some(n.as_str()),
         _ => None,
     }
-}
-
-fn dec_first_string(d: &wcl_lang::Decorator<'_>) -> Option<String> {
-    d.positional().ok()?.first().map(|v| match v {
-        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s.clone(),
-        other => format!("{other:?}"),
-    })
 }
 
 /// Every `@wdoc.editable` type: `(kind, target file hint, TypeDecl)`.

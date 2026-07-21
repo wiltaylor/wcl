@@ -19,7 +19,15 @@ import { wclLanguage } from '../../lang/wcl';
 import { loadSites, selected } from '../../state/sites';
 import { busy, commitOps, loadNav, loadPalette, palette, popover, setPopover } from '../../state/design';
 import { wclString } from '../../preview/wysiwyg';
-import { cellDisplay, cellRaw, splitPipeRow } from '../../preview/table';
+import {
+  delColAt,
+  insertColAt,
+  insertRowAt,
+  moveCol,
+  moveRow,
+  parseTable,
+  tableCommit,
+} from '../../preview/table';
 import { designTab } from '../../state/design';
 import DesignCanvas, { viewLabel } from './DesignCanvas';
 import GraphView from './GraphView';
@@ -103,6 +111,9 @@ function BlockEditorModals() {
       </Show>
       <Show when={p()?.type === 'insert'}>
         <InsertPalette anchor={anchor()} onClose={close} onCommit={commitAnd} />
+      </Show>
+      <Show when={p()?.type === 'add-shape' && src()}>
+        <AddShapeModal anchor={anchor()} src={src()} onClose={close} onCommit={commitAnd} />
       </Show>
       <Show when={p()?.type === 'profiles'}>
         <ProfilesModal onClose={close} />
@@ -279,6 +290,9 @@ function FragmentEditor(props) {
         </>
       }
     >
+      <Show when={props.notice}>
+        <p class="ed-fragment-notice">{props.notice}</p>
+      </Show>
       <div class="ed-design-code">
         <CodeEditor value={text()} onChange={setText} language={wclLanguage} height="320px" />
       </div>
@@ -335,48 +349,48 @@ function CodeBlockEditor(props) {
 }
 
 // ---------------------------------------------------------------------------
-// Table (pipe-row cell grid)
+// Table (cell grid over pipe rows OR all-literal `rows = [[…]]` lists)
 // ---------------------------------------------------------------------------
 
 function TableEditor(props) {
-  // Computed rows (a `rows` field) → the grid can't represent expressions.
-  if (props.src.fields?.rows) return <FragmentEditor {...props} />;
-  const lines = props.src.source.split('\n');
-  const rowIdx = [];
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim().startsWith('|')) rowIdx.push(i);
+  // Shared source model: all-literal `rows = [[…]]` lists, literal pipe
+  // rows, or null for computed tables (fragment editor + explanation).
+  const model = parseTable(props.src);
+  if (!model) {
+    return (
+      <FragmentEditor
+        {...props}
+        notice={
+          props.src.fields?.rows
+            ? 'This table is generated: its rows come from an expression over data, so there is no cell grid — edit the expression here, or edit the underlying data objects it draws from.'
+            : 'No literal pipe rows found in this table — edit its source directly.'
+        }
+      />
+    );
   }
-  if (rowIdx.length === 0) return <FragmentEditor {...props} />;
-  const [grid, setGrid] = createSignal(
-    rowIdx.map((i) => splitPipeRow(lines[i].trim()).map(cellDisplay)),
-  );
+  const [grid, setGrid] = createSignal(model.grid.map((r) => [...r]));
   const cols = () => Math.max(...grid().map((r) => r.length), 1);
 
   const setCell = (r, c, v) =>
     setGrid(grid().map((row, ri) => (ri === r ? row.map((x, ci) => (ci === c ? v : x)) : row)));
-  const addRow = () => setGrid([...grid(), Array(cols()).fill('')]);
+  const addRow = () => setGrid(insertRowAt(grid(), grid().length - 1, cols()));
   const delRow = (r) => grid().length > 1 && setGrid(grid().filter((_, ri) => ri !== r));
-  const addCol = () => setGrid(grid().map((row) => [...row, '']));
-  const delCol = (c) => cols() > 1 && setGrid(grid().map((row) => row.filter((_, ci) => ci !== c)));
+  const addCol = () => setGrid(insertColAt(grid(), cols() - 1));
 
   const save = () => {
-    const indent = (lines[rowIdx[0]].match(/^\s*/) ?? [''])[0] || '    ';
-    const rendered = grid().map(
-      (row) => `${indent}| ${row.map((c) => cellRaw(c)).join(' | ')} |`,
+    const w = tableCommit(model, grid(), props.anchor.span);
+    props.onCommit(
+      w.ops
+        ? commitOps(props.anchor.file, w.ops, { etag: props.src.etag, reveal: 'edited' })
+        : replaceSource(props.anchor, w.source, props.src.etag),
     );
-    const out = [
-      ...lines.slice(0, rowIdx[0]),
-      ...rendered,
-      ...lines.slice(rowIdx[rowIdx.length - 1] + 1),
-    ].join('\n');
-    props.onCommit(replaceSource(props.anchor, out, props.src.etag));
   };
 
   return (
     <Modal
       open
       onClose={props.onClose}
-      title="Edit table (first row is the header)"
+      title={model.headerRows ? 'Edit table (first row is the header)' : 'Edit table'}
       footer={
         <>
           <Button onClick={addRow}>+ Row</Button>
@@ -392,6 +406,27 @@ function TableEditor(props) {
       <div class="ed-table-grid">
         <table>
           <tbody>
+            <tr>
+              <For each={Array.from({ length: cols() })}>
+                {(_, c) => (
+                  <td class="ed-table-rowctl">
+                    <Button size="sm" title="Move column left" onClick={() => setGrid(moveCol(grid(), c(), -1))}>
+                      ←
+                    </Button>
+                    <Button size="sm" title="Move column right" onClick={() => setGrid(moveCol(grid(), c(), 1))}>
+                      →
+                    </Button>
+                    <Button size="sm" title="Insert column right" onClick={() => setGrid(insertColAt(grid(), c()))}>
+                      ＋
+                    </Button>
+                    <Button size="sm" title="Delete column" onClick={() => setGrid(delColAt(grid(), c()))}>
+                      ×
+                    </Button>
+                  </td>
+                )}
+              </For>
+              <td />
+            </tr>
             <For each={grid()}>
               {(row, r) => (
                 <tr>
@@ -406,25 +441,22 @@ function TableEditor(props) {
                     )}
                   </For>
                   <td class="ed-table-rowctl">
-                    <Button size="sm" onClick={() => delRow(r())}>
+                    <Button size="sm" title="Move row up" onClick={() => setGrid(moveRow(grid(), r(), -1))}>
+                      ↑
+                    </Button>
+                    <Button size="sm" title="Move row down" onClick={() => setGrid(moveRow(grid(), r(), 1))}>
+                      ↓
+                    </Button>
+                    <Button size="sm" title="Insert row below" onClick={() => setGrid(insertRowAt(grid(), r(), cols()))}>
+                      ＋
+                    </Button>
+                    <Button size="sm" title="Delete row" onClick={() => delRow(r())}>
                       ×
                     </Button>
                   </td>
                 </tr>
               )}
             </For>
-            <tr>
-              <For each={Array.from({ length: cols() })}>
-                {(_, c) => (
-                  <td class="ed-table-rowctl">
-                    <Button size="sm" onClick={() => delCol(c())}>
-                      ×
-                    </Button>
-                  </td>
-                )}
-              </For>
-              <td />
-            </tr>
           </tbody>
         </table>
       </div>
@@ -562,6 +594,154 @@ function ComponentEditor(props) {
 // ---------------------------------------------------------------------------
 // Insert palette (body blocks + components)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Add-shape palette (diagram children)
+// ---------------------------------------------------------------------------
+
+/** Curated first-class shapes, in display order; wf_* get their own tab and
+    everything else lands under "All" (user-declared kinds included). */
+const CURATED_SHAPES = [
+  'process',
+  'decision',
+  'terminator',
+  'node',
+  'rect',
+  'circle',
+  'label',
+  'line',
+  'polygon',
+  'container',
+  'card',
+  'node_table',
+  'tree',
+  'state',
+  'icon',
+  'image',
+];
+
+/** A numeric literal matching the field's declared type. */
+const shapeNum = (field, v) =>
+  /^[iu]/.test((field?.type ?? 'f64').replace(/\?$/, ''))
+    ? String(Math.round(v))
+    : Number.isInteger(v)
+      ? `${v}.0`
+      : String(v);
+
+/** Build an insertion snippet for a shape kind from its schema entry:
+    inline slots filled (identifier → a fresh id, string → a placeholder),
+    required fields defaulted, and — under a manual layout — a staggered
+    x/y (or cx/cy) so consecutive adds don't stack at the origin. */
+function shapeSnippet(entry, { uid, manual, index }) {
+  const fields = entry.fields ?? [];
+  const byName = (n) => fields.find((f) => f.name === n);
+  const isSlot = (f) => f.inline_slot !== null && f.inline_slot !== undefined;
+  const bare = (f) => (f.type ?? '').replace(/\?$/, '');
+
+  const labels = [];
+  let usedId = false;
+  for (const f of [...fields].sort((a, b) => (a.inline_slot ?? 0) - (b.inline_slot ?? 0))) {
+    if (!isSlot(f)) continue;
+    if (bare(f) === 'identifier') {
+      labels.push(uid);
+      usedId = true;
+    } else if (bare(f).startsWith('utf8') || bare(f).startsWith('ascii')) {
+      labels.push(wclString('Label'));
+    } else if (!f.optional && f.default == null) {
+      labels.push('0');
+    }
+  }
+
+  const body = [];
+  if (!usedId && byName('id')) body.push(`id = ${uid}`);
+  if (manual) {
+    const off = 20 + 24 * (index % 8);
+    const pos = byName('x') && byName('y') ? ['x', 'y'] : byName('cx') && byName('cy') ? ['cx', 'cy'] : [];
+    for (const name of pos) body.push(`${name} = ${shapeNum(byName(name), off)}`);
+  }
+  // Required, defaultless fields must be present for the commit to validate.
+  for (const f of fields) {
+    if (isSlot(f) || f.optional || f.default != null) continue;
+    if (body.some((line) => line.startsWith(`${f.name} `))) continue;
+    const ty = bare(f);
+    if (ty.startsWith('utf8') || ty.startsWith('ascii')) body.push(`${f.name} = ${wclString('')}`);
+    else if (ty === 'bool') body.push(`${f.name} = false`);
+    else if (f.symbols?.length) body.push(`${f.name} = :${f.symbols[0]}`);
+    else if (ty === 'identifier') body.push(`${f.name} = ${uid}_ref`);
+    else body.push(`${f.name} = ${shapeNum(f, 0)}`);
+  }
+
+  const head = [entry.kind, ...labels].join(' ');
+  return body.length ? `${head} {\n${body.map((l) => `  ${l}`).join('\n')}\n}` : `${head} {}`;
+}
+
+function AddShapeModal(props) {
+  const [tab, setTab] = createSignal('shapes');
+  const kinds = () => palette()?.diagram_kinds ?? [];
+  const curated = () =>
+    CURATED_SHAPES.map((k) => kinds().find((e) => e.kind === k)).filter(Boolean);
+  const wireframe = () => kinds().filter((e) => e.kind.startsWith('wf_'));
+  const rest = () =>
+    kinds().filter((e) => !CURATED_SHAPES.includes(e.kind) && !e.kind.startsWith('wf_'));
+
+  const insert = (entry) => {
+    const a = props.anchor;
+    const source = props.src.source ?? '';
+    // Fresh id: dodge every identifier already used as an `id = …` field or
+    // an inline shape id anywhere in the diagram's source.
+    const used = new Set(
+      [...source.matchAll(/\bid\s*=\s*([A-Za-z_]\w*)/g)]
+        .map((m) => m[1])
+        .concat([...source.matchAll(/^\s*[a-z_]\w*\s+([a-z_]\w*)\b/gm)].map((m) => m[1])),
+    );
+    let n = 1;
+    while (used.has(`${entry.kind}_${n}`)) n += 1;
+    const manual = ['free', 'none'].includes(a.layout ?? 'free');
+    const index =
+      a.el?.querySelectorAll?.('[data-wcl-shape]')?.length ??
+      (source.match(/\bid\s*=/g) ?? []).length;
+    const snippet = shapeSnippet(entry, { uid: `${entry.kind}_${n}`, manual, index });
+    props.onCommit(
+      commitOps(
+        a.file,
+        [{ op: 'insert_child', span: a.span, index: 9999, source: snippet }],
+        { etag: props.src.etag, reveal: 'inserted' },
+      ),
+    );
+  };
+
+  const grid = (entries) => (
+    <div class="ed-insert-grid">
+      <For each={entries}>
+        {(entry) => (
+          <Button onClick={() => insert(entry)} disabled={busy()} title={entry.doc ?? undefined}>
+            {entry.kind}
+          </Button>
+        )}
+      </For>
+      <Show when={entries.length === 0}>
+        <div class="ed-empty">No shape kinds in this tab</div>
+      </Show>
+    </div>
+  );
+
+  return (
+    <Modal open onClose={props.onClose} title="Add a diagram shape">
+      <Tabs
+        tabs={[
+          { id: 'shapes', label: 'Shapes' },
+          { id: 'wireframe', label: 'Wireframe' },
+          { id: 'all', label: 'All' },
+        ]}
+        active={tab()}
+        onChange={setTab}
+      />
+      <Show when={tab() === 'shapes'}>{grid(curated())}</Show>
+      <Show when={tab() === 'wireframe'}>{grid(wireframe())}</Show>
+      <Show when={tab() === 'all'}>{grid(rest())}</Show>
+    </Modal>
+  );
+}
 
 function InsertPalette(props) {
   const [tab, setTab] = createSignal('blocks');

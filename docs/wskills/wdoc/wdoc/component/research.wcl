@@ -21,8 +21,6 @@ wdoc_component research_body {
     wdoc_repeater { each = match unit.question { none => [], q => [q] }  as = :q  p $"**Question:** ${q}" }
     wdoc_repeater { each = match unit.superseded_by { none => [], s => [s] }  as = :s
       p $"**Superseded by** [${s}](research_${s}) — prefer that finding." }
-    // Edit-mode only: jump straight into this object in the WYSIWYG editor.
-    edit_object { kind = "research" target = $"${unit.id}" label = "Edit this research unit" }
     h2 "Finding"
     edit_field { kind = "research" target = $"${unit.id}" field = "summary"
       p  $"${unit.summary}"

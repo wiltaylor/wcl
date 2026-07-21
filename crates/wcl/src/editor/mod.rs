@@ -6,8 +6,12 @@
 //! an in-process [`wcl_lsp`] session), and a wdoc preview pane. Preview is
 //! site-scoped: `/api/sites` discovers every `site`-declaring entry under
 //! the served tree (nested by `include` membership), and `/api/preview`
-//! full-builds the selected one on demand — the client's Rebuild button,
-//! not a per-edit loop. The root document follows the LSP's model: the
+//! builds the selected one on demand — the client's Rebuild button, not a
+//! per-edit loop. On a warm output dir the build targets only the page the
+//! client is viewing; pages that leaves stale are lazily re-rendered when
+//! the iframe navigates to them (a per-slug [`PreviewSession`] remembers
+//! the last build's inputs), with an automatic full rebuild whenever a
+//! targeted one isn't possible. The root document follows the LSP's model: the
 //! explicit argument, else `./main.wcl` when present. Without one the
 //! editor still works — schema-validated saves and the LSP root degrade
 //! gracefully.
@@ -50,10 +54,68 @@ pub(crate) struct EditorState {
     root_file: Option<PathBuf>,
     /// Scratch output tree for preview renders.
     preview: crate::preview::Preview,
+    /// Warm preview state per `sites/<slug>` output dir, so a stale page can
+    /// be lazily re-rendered when the iframe navigates to it. Guarded by a
+    /// plain mutex — only ever held briefly; builds themselves serialize
+    /// behind the preview gate.
+    preview_sessions: std::sync::Mutex<std::collections::HashMap<String, PreviewSession>>,
     /// Review handshake pairing a blocked `wcl wdoc review <root>` with the
     /// preview pane's "Send to agent" button. `None` without a root document
     /// (`review` then falls back to its non-blocking listing).
     review: Option<wcl_wdoc::Handshake>,
+}
+
+/// What the last `/api/preview` build of one output slug rendered, and with
+/// which inputs — enough to lazily materialize a stale page on request.
+///
+/// After a targeted rebuild only the named pages reflect the latest inputs;
+/// every other `<name>.html` on disk is a leftover from an earlier build.
+/// The `generation` counter (bumped per `/api/preview` POST) tracks that: a
+/// page is fresh iff the last build was full (`full_gen == generation`) or
+/// the page itself was rendered at the current generation. Lazy rebuilds
+/// materialize the *current* generation, so they never bump it.
+struct PreviewSession {
+    entry_abs: PathBuf,
+    site: Option<String>,
+    /// Whether this slug is the merged all-views build (`merged: true` on
+    /// the POST — visibility bypassed, per-block visibility stamped). Lazy
+    /// rebuilds must reuse it or a stale merged page would silently
+    /// re-render without the bypass.
+    all_sites: bool,
+    /// The unsaved buffers the last POST built with — lazy rebuilds reuse
+    /// them so navigation stays consistent with the last Rebuild.
+    overlay: std::collections::HashMap<PathBuf, String>,
+    generation: u64,
+    full_gen: u64,
+    page_gen: std::collections::HashMap<String, u64>,
+}
+
+impl PreviewSession {
+    fn is_fresh(&self, page: &str) -> bool {
+        self.full_gen == self.generation || self.page_gen.get(page) == Some(&self.generation)
+    }
+
+    /// Record what a build pass rendered at the current generation.
+    fn note(&mut self, result: &PreviewBuild) {
+        match result {
+            PreviewBuild::Full => {
+                self.full_gen = self.generation;
+                self.page_gen.clear();
+            }
+            PreviewBuild::Targeted(pages) => {
+                for p in pages {
+                    self.page_gen.insert(p.clone(), self.generation);
+                }
+            }
+        }
+    }
+}
+
+/// What a preview build pass did — the session bookkeeping half of
+/// [`wcl_wdoc::RebuildOutcome`].
+enum PreviewBuild {
+    Full,
+    Targeted(Vec<String>),
 }
 
 pub(crate) async fn serve(
@@ -91,6 +153,7 @@ pub(crate) async fn serve(
         root_dir: root_dir.clone(),
         root_file: root_file.clone(),
         preview: crate::preview::Preview::new()?,
+        preview_sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
         review,
     });
 
@@ -284,12 +347,43 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
 
     let overlay = overlay_files(state, v)?;
 
+    // The merged all-views render (the content modal's Merged tab): every
+    // block regardless of `@only` / `@except`, with per-block visibility
+    // stamped on the edit-mode anchors.
+    let merged = v.get("merged").and_then(serde_json::Value::as_bool) == Some(true);
+    if merged && v.get("skill").and_then(serde_json::Value::as_bool) == Some(true) {
+        return Err("merged has no meaning for a skill build".to_string());
+    }
+    // A merged build may additionally ask for a synthetic page for one unit
+    // (`unit: {kind, id}`) — the fallback for units no view builds a page
+    // for (they render embedded elsewhere). The page projects the unit's
+    // `body`, so its blocks keep their real file/span anchors and stay
+    // editable.
+    let unit = v.get("unit").filter(|u| u.is_object());
+    if unit.is_some() && !merged {
+        return Err("unit previews are only available for merged builds".to_string());
+    }
+
     // A stable slug per (entry, site) so distinct selections coexist in
-    // the scratch tree and re-selecting one reuses its output.
-    let slug: String = format!("{entry}__{}", site.as_deref().unwrap_or(""))
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-        .collect();
+    // the scratch tree and re-selecting one reuses its output. A merged
+    // build gets its own slug — its pages must never shadow the normal
+    // per-view output (and vice versa); a synthetic unit page gets a slug
+    // per unit so its extra page keeps each dir's page set stable.
+    let unit_id = unit
+        .map(|u| crate::edit::str_field(u, "id").map(str::to_string))
+        .transpose()?;
+    let slug: String = format!(
+        "{entry}__{}{}{}",
+        site.as_deref().unwrap_or(""),
+        if merged { "__merged" } else { "" },
+        unit_id
+            .as_deref()
+            .map(|id| format!("__unit_{id}"))
+            .unwrap_or_default(),
+    )
+    .chars()
+    .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+    .collect();
     let out = state.preview.root().join("sites").join(&slug);
 
     // A skill view builds the actual skill folder (the Markdown backend's
@@ -297,7 +391,9 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
     // with the file listing so the client can browse it.
     if v.get("skill").and_then(serde_json::Value::as_bool) == Some(true) {
         // A fresh dir per build: stale files from renamed pages would
-        // otherwise linger in the listing.
+        // otherwise linger in the listing. Any recorded session refers to
+        // the wiped output, so it goes too.
+        state.preview_sessions.lock().unwrap().remove(&slug);
         let _ = std::fs::remove_dir_all(&out);
         wcl_wdoc::skill(&entry_abs, &out, site.as_deref()).map_err(|e| e.render_plain())?;
         let _ = wcl_wdoc::take_render_warnings();
@@ -312,22 +408,11 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
         }));
     }
 
-    // comment_mode stamps the `data-wcl-block` / `data-wcl-page-*` anchors
-    // the preview pane's comment UI keys on; edit_mode adds the per-block
-    // `data-wcl-span` / `data-wcl-file` anchors and the `edit_object`
-    // "Edit this …" buttons the pane resolves via `/api/object/locate` —
-    // still no injected scripts.
-    let mut opts = wcl_wdoc::BuildOptions {
-        overlay: Some(overlay),
-        comment_mode: true,
-        edit_mode: true,
-        ..Default::default()
-    };
-    // Design-mode fast path: after a block commit the client posts the pages
-    // it's looking at plus the changed files — when the output dir is warm
-    // from a prior full build, only those pages re-render in place (the
-    // incremental path self-falls-back to a full build when the change is
-    // structural: page set, imports, CSS, repeaters, …).
+    // Targeted fast path: the client posts the page it's looking at (the
+    // manual Rebuild) or the pages a design-mode commit touched, plus the
+    // changed files — when the output dir is warm from a prior full build,
+    // only those pages re-render in place. [`run_preview_build`] falls back
+    // to a full build whenever that isn't safe.
     let pages: Option<std::collections::HashSet<String>> = v
         .get("pages")
         .and_then(serde_json::Value::as_array)
@@ -347,22 +432,48 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
                 .collect()
         })
         .unwrap_or_default();
-    let warm = out.join("index.html").is_file() || index_page(&out).is_some();
-    let mode = if warm && (pages.is_some() || !changed.is_empty()) {
-        opts.page_filter = pages;
-        match wcl_wdoc::build_incremental(&entry_abs, &out, site.as_deref(), &opts, &changed)
-            .map_err(|e| e.render_plain())?
-        {
-            wcl_wdoc::RebuildOutcome::Targeted { .. } => "targeted",
-            wcl_wdoc::RebuildOutcome::Full { .. } => "full",
-        }
-    } else {
-        wcl_wdoc::build_with_options(&entry_abs, &out, site.as_deref(), &opts)
-            .map_err(|e| e.render_plain())?;
-        "full"
+    let mut overlay = overlay;
+    if let Some(u) = unit {
+        let kind = crate::edit::str_field(u, "kind")?;
+        let id = unit_id.as_deref().unwrap_or_default();
+        append_synthetic_unit_page(&entry_abs, &mut overlay, kind, id)?;
+    }
+    let built = run_preview_build(
+        &entry_abs,
+        &out,
+        site.as_deref(),
+        merged,
+        overlay.clone(),
+        pages,
+        &changed,
+    )?;
+    let mode = match &built {
+        PreviewBuild::Targeted(_) => "targeted",
+        PreviewBuild::Full => "full",
     };
-    // Per-render warnings would otherwise pile up for whoever drains next.
-    let _ = wcl_wdoc::take_render_warnings();
+
+    // Record the session so navigating to a page this build left stale can
+    // lazily re-render it with the same inputs. A POST is a new generation:
+    // its inputs (buffers, saved files) supersede whatever came before.
+    let mut sessions = state.preview_sessions.lock().unwrap();
+    let session = sessions
+        .entry(slug.clone())
+        .or_insert_with(|| PreviewSession {
+            entry_abs: entry_abs.clone(),
+            site: site.clone(),
+            all_sites: merged,
+            overlay: std::collections::HashMap::new(),
+            generation: 0,
+            full_gen: 0,
+            page_gen: std::collections::HashMap::new(),
+        });
+    session.entry_abs = entry_abs;
+    session.site = site;
+    session.all_sites = merged;
+    session.overlay = overlay;
+    session.generation += 1;
+    session.note(&built);
+    drop(sessions);
 
     let index = index_page(&out).ok_or("the site built but produced no HTML page")?;
     Ok(serde_json::json!({
@@ -370,6 +481,131 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
         "mode": mode,
         "href": format!("/api/preview/sites/{slug}/{index}"),
     }))
+}
+
+/// One preview build pass into `out`: targeted when the dir is warm and the
+/// caller named pages (or changed files map cleanly onto pages), else a full
+/// build. Shared by the `/api/preview` POST and the lazy per-page rebuild in
+/// [`handle_preview_file`].
+///
+/// comment_mode stamps the `data-wcl-block` / `data-wcl-page-*` anchors the
+/// preview pane's comment UI keys on; edit_mode adds the per-block
+/// `data-wcl-span` / `data-wcl-file` anchors and the `edit_object` "Edit
+/// this …" buttons the pane resolves via `/api/object/locate` — still no
+/// injected scripts. `all_sites` is the merged all-views render (the content
+/// modal's Merged tab): `@only` / `@except` visibility is bypassed and each
+/// block's anchor carries its visibility stamps for the client's per-view
+/// indicator gutter.
+///
+/// An explicit `pages` filter that renders nothing (the viewed page isn't
+/// one of this entry's site pages — a chooser index, an included sub-site's
+/// page, a renamed page) means the targeted path can't refresh it, so it
+/// falls back to a full build rather than reporting a no-op as success. The
+/// incremental engine itself also self-falls-back on structural change
+/// (page set, decks, new icons).
+fn run_preview_build(
+    entry_abs: &Path,
+    out: &Path,
+    site: Option<&str>,
+    all_sites: bool,
+    overlay: std::collections::HashMap<PathBuf, String>,
+    pages: Option<std::collections::HashSet<String>>,
+    changed: &[PathBuf],
+) -> Result<PreviewBuild, String> {
+    let mut opts = wcl_wdoc::BuildOptions {
+        overlay: Some(overlay),
+        comment_mode: true,
+        edit_mode: true,
+        all_sites,
+        ..Default::default()
+    };
+    let explicit = pages.is_some();
+    let warm = out.join("index.html").is_file() || index_page(out).is_some();
+    if warm && (explicit || !changed.is_empty()) {
+        opts.page_filter = pages;
+        let outcome = wcl_wdoc::build_incremental(entry_abs, out, site, &opts, changed)
+            .map_err(|e| e.render_plain())?;
+        // Per-render warnings would otherwise pile up for whoever drains next.
+        let _ = wcl_wdoc::take_render_warnings();
+        match outcome {
+            wcl_wdoc::RebuildOutcome::Targeted { pages: rendered } => {
+                if !rendered.is_empty() || !explicit {
+                    return Ok(PreviewBuild::Targeted(rendered));
+                }
+                // Explicit filter matched nothing — full-build below.
+                opts.page_filter = None;
+            }
+            wcl_wdoc::RebuildOutcome::Full { .. } => return Ok(PreviewBuild::Full),
+        }
+    }
+    wcl_wdoc::build_with_options(entry_abs, out, site, &opts).map_err(|e| e.render_plain())?;
+    let _ = wcl_wdoc::take_render_warnings();
+    Ok(PreviewBuild::Full)
+}
+
+/// The page name synthetic unit previews build under (the content modal's
+/// merged tab for units with no page of their own).
+pub(crate) const UNIT_PREVIEW_PAGE: &str = "__wcl_unit_preview";
+
+/// Append the merged preview's synthetic unit page to the entry's overlay:
+/// a `page __wcl_unit_preview { project { from = <gather>.<id>.body } }`
+/// that renders the unit's addressable `body` via a static label path — the
+/// projected blocks are the unit file's own doc-view blocks, so their
+/// edit-mode anchors carry the REAL file/span and every editing op works.
+/// Errors when the kind has no document gather or the instance carries no
+/// `body` (nothing to render — the client keeps its list fallback).
+fn append_synthetic_unit_page(
+    entry_abs: &Path,
+    overlay: &mut std::collections::HashMap<PathBuf, String>,
+    kind: &str,
+    id: &str,
+) -> Result<(), String> {
+    if id.is_empty()
+        || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        || id.starts_with(|c: char| c.is_ascii_digit())
+    {
+        return Err(format!("bad unit id `{id}`"));
+    }
+    let doc = wcl_wdoc::open_doc_for_edit_with_overlay(entry_abs, overlay.clone())
+        .map_err(|e| e.to_string())?;
+    let gather = doc
+        .type_decls()
+        .filter(|d| d.decorators().any(|dec| dec.name() == "document"))
+        .flat_map(|d| d.effective_fields())
+        .find(|f| f.children_block_kind().as_deref() == Some(kind))
+        .map(|f| f.name().to_string())
+        .ok_or_else(|| format!("no document gather for kind `{kind}`"))?;
+    let unit = doc
+        .blocks()
+        .find(|b| {
+            b.kind() == kind
+                && b.labels().ok().is_some_and(|ls| {
+                    matches!(
+                        ls.first(),
+                        Some(
+                            wcl_lang::Value::Utf8(s)
+                                | wcl_lang::Value::Ascii(s)
+                                | wcl_lang::Value::Identifier(s)
+                        ) if s == id
+                    )
+                })
+        })
+        .ok_or_else(|| format!("no `{kind}` with id `{id}`"))?;
+    if !unit.blocks().any(|c| c.kind() == "body") {
+        return Err(format!(
+            "`{kind} {id}` has no body — nothing to render standalone"
+        ));
+    }
+    let base = match overlay.get(entry_abs) {
+        Some(text) => text.clone(),
+        None => std::fs::read_to_string(entry_abs)
+            .map_err(|e| format!("read {}: {e}", entry_abs.display()))?,
+    };
+    let synthetic = format!(
+        "\n\npage {UNIT_PREVIEW_PAGE} {{\n  title = \"{id}\"\n  project {{ from = {gather}.{id}.body }}\n}}\n"
+    );
+    overlay.insert(entry_abs.to_path_buf(), base + &synthetic);
+    Ok(())
 }
 
 /// The posted unsaved buffers (`files: [{path, text}]`) as an overlay map,
@@ -481,6 +717,11 @@ fn index_page(out: &Path) -> Option<String> {
 /// `GET /api/preview/{*path}` — serve a rendered file from the preview
 /// scratch tree (the iframe target). No editor/reload scripts are involved:
 /// the scratch tree holds a plain wdoc build.
+///
+/// A page left stale by a targeted rebuild is lazily re-rendered (with the
+/// same inputs as the last `/api/preview` build) before it's served, so
+/// navigating the preview always shows the last Rebuild's state without
+/// paying for a full site build up front.
 async fn handle_preview_file(
     State(state): State<Arc<EditorState>>,
     axum::extract::Path(path): axum::extract::Path<String>,
@@ -493,6 +734,7 @@ async fn handle_preview_file(
         return json_error(StatusCode::BAD_REQUEST, "bad preview path");
     }
     let file = state.preview.root().join(rel);
+    lazy_page_rebuild(&state, &path, &file).await;
     match tokio::fs::read(&file).await {
         Ok(bytes) => (
             StatusCode::OK,
@@ -502,6 +744,114 @@ async fn handle_preview_file(
             .into_response(),
         Err(_) => json_error(StatusCode::NOT_FOUND, "no such preview file"),
     }
+}
+
+/// Lazily materialize a stale preview page before it's served. Only
+/// `sites/<slug>/…/<stem>.html` requests with a recorded [`PreviewSession`]
+/// participate; everything else (assets, skill files, unknown slugs) serves
+/// as-is. Best-effort: a failing build logs and serves the stale file — a
+/// broken document surfaces through the Rebuild button, not navigation.
+async fn lazy_page_rebuild(state: &Arc<EditorState>, rel: &str, file: &Path) {
+    let Some(slug) = rel
+        .strip_prefix("sites/")
+        .and_then(|r| r.split('/').next())
+        .filter(|s| !s.is_empty())
+    else {
+        return;
+    };
+    if !rel.ends_with(".html") {
+        return;
+    }
+    let Some(stem) = file
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(str::to_string)
+    else {
+        return;
+    };
+    let slug = slug.to_string();
+
+    // Cheap pre-check without the build gate: right after a full build
+    // (`full_gen == generation`, the common case) everything is fresh.
+    // `index.html` is a copy of the start page, so its freshness needs the
+    // manifest — resolved under the gate below.
+    {
+        let sessions = state.preview_sessions.lock().unwrap();
+        let Some(s) = sessions.get(&slug) else { return };
+        if s.full_gen == s.generation || (stem != "index" && s.is_fresh(&stem)) {
+            return;
+        }
+    }
+
+    // Serialize behind the preview gate, re-check (another request may have
+    // materialized the page while we waited), then build off the executor.
+    let _gate = state.preview.lock().await;
+    let state2 = Arc::clone(state);
+    let file2 = file.to_path_buf();
+    let rel2 = rel.to_string();
+    let _ = tokio::task::spawn_blocking(move || {
+        // Map the html file back to its page through the sibling manifest a
+        // full build wrote. No manifest / unknown stem (a chooser index, an
+        // included sub-site's page the root entry's targeted path can't
+        // reach) ⇒ `None` ⇒ full rebuild.
+        let page = manifest_page(&file2, &stem);
+        let (entry_abs, site, all_sites, overlay) = {
+            let sessions = state2.preview_sessions.lock().unwrap();
+            let Some(s) = sessions.get(&slug) else { return };
+            let fresh = match &page {
+                Some(p) => s.is_fresh(p),
+                None => s.full_gen == s.generation,
+            };
+            if fresh {
+                return;
+            }
+            (
+                s.entry_abs.clone(),
+                s.site.clone(),
+                s.all_sites,
+                s.overlay.clone(),
+            )
+        };
+        let out = state2.preview.root().join("sites").join(&slug);
+        let filter = page.map(|p| std::collections::HashSet::from([p]));
+        match run_preview_build(
+            &entry_abs,
+            &out,
+            site.as_deref(),
+            all_sites,
+            overlay,
+            filter,
+            &[],
+        ) {
+            Ok(built) => {
+                let mut sessions = state2.preview_sessions.lock().unwrap();
+                if let Some(s) = sessions.get_mut(&slug) {
+                    s.note(&built);
+                }
+            }
+            Err(e) => eprintln!("preview: lazy rebuild for {rel2} failed: {e}"),
+        }
+    })
+    .await;
+}
+
+/// The page name behind a built `<stem>.html`, read from the sibling
+/// `_wdoc/pages.json` manifest the full build wrote: `index.html` maps to
+/// the site's start page, any other stem must be listed. `None` when the
+/// manifest is missing or the stem is unknown.
+fn manifest_page(file: &Path, stem: &str) -> Option<String> {
+    let manifest = file.parent()?.join(wcl_wdoc::PAGES_MANIFEST_HREF);
+    let text = std::fs::read_to_string(manifest).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    if stem == "index" {
+        return v.get("start")?.as_str().map(str::to_string);
+    }
+    v.get("pages")?
+        .as_array()?
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .find(|p| *p == stem)
+        .map(str::to_string)
 }
 
 /// Run a filesystem-touching operation off the async executor and map its
@@ -536,6 +886,7 @@ mod tests {
             root_dir: std::fs::canonicalize(dir).unwrap(),
             root_file,
             preview: crate::preview::Preview::new().unwrap(),
+            preview_sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
             review,
         })
     }
@@ -679,6 +1030,291 @@ mod tests {
             "missing source span anchors"
         );
         assert!(!html.contains("<script"), "scripts injected into preview");
+    }
+
+    /// Two-page site for the targeted-rebuild / lazy-materialization tests:
+    /// `alpha` is the start page (so `index.html` is its copy), `beta` the
+    /// page a targeted alpha rebuild leaves stale.
+    const TWO_PAGE_DOC: &str = "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\npage alpha {\n  start = true\n\n  h1 \"Alpha\"\n\n  p \"alpha original\"\n}\n\npage beta {\n  h1 \"Beta\"\n\n  p \"beta original\"\n}\n";
+
+    async fn fetch_preview(state: &Arc<EditorState>, href: &str) -> String {
+        let req = Request::builder().uri(href).body(Body::empty()).unwrap();
+        let resp = router(Arc::clone(state)).oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "GET {href}");
+        let bytes = axum::body::to_bytes(resp.into_body(), 1 << 22)
+            .await
+            .unwrap();
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+
+    #[tokio::test]
+    async fn preview_targeted_rebuild_lazily_materializes_stale_pages() {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("main.wcl"), TWO_PAGE_DOC).unwrap();
+        let state = state_for(td.path(), None);
+
+        // Cold dir: even with a page hint the first build is full.
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/preview",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "files": [], "pages": ["alpha"],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        assert_eq!(v["mode"], "full");
+        let base = v["href"]
+            .as_str()
+            .unwrap()
+            .rsplit_once('/')
+            .unwrap()
+            .0
+            .to_string();
+
+        // Warm dir + page hint: only alpha re-renders; beta.html goes stale.
+        let edited = TWO_PAGE_DOC
+            .replace("alpha original", "alpha edited")
+            .replace("beta original", "beta edited");
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/preview",
+            Some(serde_json::json!({
+                "entry": "main.wcl",
+                "files": [{ "path": "main.wcl", "text": edited }],
+                "pages": ["alpha"],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        assert_eq!(v["mode"], "targeted");
+        let alpha = fetch_preview(&state, &format!("{base}/alpha.html")).await;
+        assert!(alpha.contains("alpha edited"), "targeted page not rebuilt");
+
+        // Navigating to the stale page materializes it on request with the
+        // same overlay the last POST built with.
+        let beta = fetch_preview(&state, &format!("{base}/beta.html")).await;
+        assert!(
+            beta.contains("beta edited"),
+            "stale page not lazily rebuilt"
+        );
+
+        // `index.html` is a copy of the start page: a targeted beta rebuild
+        // leaves it stale, and a lazy fetch resolves it to `alpha` through
+        // the pages.json manifest (re-copying the landing file).
+        let edited2 = edited.replace("alpha edited", "alpha edited again");
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/preview",
+            Some(serde_json::json!({
+                "entry": "main.wcl",
+                "files": [{ "path": "main.wcl", "text": edited2 }],
+                "pages": ["beta"],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        assert_eq!(v["mode"], "targeted");
+        let index = fetch_preview(&state, &format!("{base}/index.html")).await;
+        assert!(
+            index.contains("alpha edited again"),
+            "stale start-page copy not lazily rebuilt"
+        );
+
+        // A page name that matches nothing in this entry's sites can't be
+        // refreshed by the targeted path — automatic full fallback.
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/preview",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "files": [], "pages": ["no-such-page"],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        assert_eq!(v["mode"], "full");
+    }
+
+    /// Two-page site with per-site-hidden blocks for the merged all-views
+    /// preview tests: both pages carry an `@except(sites = [:docs])` block
+    /// a normal `docs` build drops.
+    const MERGED_DOC: &str = "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\npage alpha {\n  start = true\n\n  h1 \"Alpha\"\n\n  p \"alpha original\"\n\n  @except(sites = [:docs]) p \"ALPHA_HIDDEN\"\n}\n\npage beta {\n  h1 \"Beta\"\n\n  p \"beta original\"\n\n  @except(sites = [:docs]) p \"BETA_HIDDEN\"\n}\n";
+
+    #[tokio::test]
+    async fn preview_merged_renders_all_blocks_in_its_own_slug() {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("main.wcl"), MERGED_DOC).unwrap();
+        let state = state_for(td.path(), None);
+
+        // Normal build: the `@except(:docs)` block is dropped.
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/preview",
+            Some(serde_json::json!({ "entry": "main.wcl", "site": "docs", "files": [] })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let normal_base = v["href"]
+            .as_str()
+            .unwrap()
+            .rsplit_once('/')
+            .unwrap()
+            .0
+            .to_string();
+        assert!(!normal_base.contains("__merged"), "{normal_base}");
+        let alpha = fetch_preview(&state, &format!("{normal_base}/alpha.html")).await;
+        assert!(!alpha.contains("ALPHA_HIDDEN"), "normal build filters");
+
+        // Merged build: its own slug, every block rendered, visibility
+        // stamped on the anchors.
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/preview",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "site": "docs", "merged": true, "files": [],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let merged_base = v["href"]
+            .as_str()
+            .unwrap()
+            .rsplit_once('/')
+            .unwrap()
+            .0
+            .to_string();
+        assert!(merged_base.contains("__merged"), "{merged_base}");
+        let alpha = fetch_preview(&state, &format!("{merged_base}/alpha.html")).await;
+        assert!(alpha.contains("ALPHA_HIDDEN"), "merged build shows all");
+        assert!(
+            alpha.contains("data-wcl-except=\"docs\""),
+            "merged build stamps visibility: {alpha}"
+        );
+
+        // The normal slug's output is untouched by the merged build.
+        let alpha = fetch_preview(&state, &format!("{normal_base}/alpha.html")).await;
+        assert!(!alpha.contains("ALPHA_HIDDEN"), "normal output poisoned");
+
+        // A targeted merged rebuild of alpha leaves beta stale; the lazy
+        // materialization must remember the merged flag (or beta would
+        // silently re-render filtered).
+        let edited = MERGED_DOC.replace("beta original", "beta edited");
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/preview",
+            Some(serde_json::json!({
+                "entry": "main.wcl",
+                "site": "docs",
+                "merged": true,
+                "files": [{ "path": "main.wcl", "text": edited }],
+                "pages": ["alpha"],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        assert_eq!(v["mode"], "targeted");
+        let beta = fetch_preview(&state, &format!("{merged_base}/beta.html")).await;
+        assert!(
+            beta.contains("beta edited"),
+            "stale page not lazily rebuilt"
+        );
+        assert!(
+            beta.contains("BETA_HIDDEN"),
+            "lazy merged rebuild lost the all-sites flag"
+        );
+
+        // merged + skill is meaningless — an explicit error.
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/preview",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "site": "docs", "merged": true, "skill": true, "files": [],
+            })),
+        )
+        .await;
+        assert_ne!(status, StatusCode::OK);
+        assert!(v["error"].as_str().unwrap().contains("merged"), "{v}");
+    }
+
+    /// A document with a gathered unit kind carrying an addressable `body`
+    /// — but NO page for the unit — for the synthetic merged unit preview.
+    const UNIT_BODY_DOC: &str = "import <wdoc.wcl>\n\n\
+        @document\ntype Doc {\n  @children(\"thing\") things: list<Thing>\n}\n\n\
+        @block(\"thing\")\ntype Thing {\n  @inline(0) id: identifier\n  @child(\"body\") body: wdoc.WdocAddressableBody?\n}\n\n\
+        site docs {\n  title = \"The Docs\"\n  root = true\n}\n\n\
+        thing alpha {\n  body {\n    p \"ALPHA_BODY_TEXT\"\n  }\n}\n\n\
+        thing beta {\n}\n\n\
+        page index {\n  start = true\n\n  h1 \"Home\"\n}\n";
+
+    #[tokio::test]
+    async fn preview_merged_unit_builds_synthetic_body_page() {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("main.wcl"), UNIT_BODY_DOC).unwrap();
+        let state = state_for(td.path(), None);
+
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/preview",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "site": "docs", "merged": true,
+                "unit": { "kind": "thing", "id": "alpha" },
+                "pages": [UNIT_PREVIEW_PAGE], "files": [],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let base = v["href"]
+            .as_str()
+            .unwrap()
+            .rsplit_once('/')
+            .unwrap()
+            .0
+            .to_string();
+        assert!(base.contains("__unit_alpha"), "own slug per unit: {base}");
+        let page = fetch_preview(&state, &format!("{base}/{UNIT_PREVIEW_PAGE}.html")).await;
+        assert!(page.contains("ALPHA_BODY_TEXT"), "body projected: {page}");
+        // The projected blocks anchor to the REAL declaring file, so every
+        // editing op (reorder, visibility, text) targets real source.
+        assert!(
+            page.contains("main.wcl\""),
+            "anchors point at the unit's file: {page}"
+        );
+
+        // A unit without a body has nothing to render standalone.
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/preview",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "site": "docs", "merged": true,
+                "unit": { "kind": "thing", "id": "beta" }, "files": [],
+            })),
+        )
+        .await;
+        assert_ne!(status, StatusCode::OK);
+        assert!(v["error"].as_str().unwrap().contains("no body"), "{v}");
+
+        // `unit` without `merged` is an explicit error.
+        let (status, _) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/preview",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "site": "docs",
+                "unit": { "kind": "thing", "id": "alpha" }, "files": [],
+            })),
+        )
+        .await;
+        assert_ne!(status, StatusCode::OK);
     }
 
     /// A document with a user schema kind (`thing`) plus `edit_object`
@@ -1235,6 +1871,85 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn block_source_classifies_literal_list_tables() {
+        let doc = "import <wdoc.wcl>\n\nsite docs {\n  title = \"D\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  table {\n    header = [\"Signal\", \"Plain\"]\n    rows = [[\"Audience\", \"AI agents\"], [\"Lifespan\", \"Long-lived\"]]\n  }\n}\n";
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("main.wcl"), doc).unwrap();
+        let state = state_for(td.path(), None);
+        let disk = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        let table = span_of(&disk, |b| b.kind == "table");
+
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/block/source",
+            Some(serde_json::json!({ "file": "main.wcl", "span": span_json(table) })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        // All-string list → `list` with items; list-of-lists → `rows`.
+        assert_eq!(v["fields"]["header"]["state"], "list", "{v:#}");
+        assert_eq!(v["fields"]["header"]["items"][1], "Plain");
+        assert_eq!(v["fields"]["rows"]["state"], "rows", "{v:#}");
+        assert_eq!(v["fields"]["rows"]["rows"][1][0], "Lifespan");
+
+        // A computed rows expression stays `computed` (no grid).
+        let doc2 = doc.replace(
+            "rows = [[\"Audience\", \"AI agents\"], [\"Lifespan\", \"Long-lived\"]]",
+            "rows = map([\"x\"], fn(s: utf8) -> list<utf8> { [s, s] })",
+        );
+        std::fs::write(td.path().join("main.wcl"), &doc2).unwrap();
+        let table = span_of(&doc2, |b| b.kind == "table");
+        let (_, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/block/source",
+            Some(serde_json::json!({ "file": "main.wcl", "span": span_json(table) })),
+        )
+        .await;
+        assert_eq!(v["fields"]["rows"]["state"], "computed", "{v:#}");
+    }
+
+    #[tokio::test]
+    async fn block_ops_remove_field_on_nested_shape() {
+        let doc = "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  diagram {\n    width = 320\n    height = 160\n\n    rect {\n      id = a\n      x = 20.0\n      y = 30.0\n      width = 80.0\n      height = 50.0\n      fill = \"#88c0d0\"\n    }\n  }\n}\n";
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("main.wcl"), doc).unwrap();
+        let state = state_for(td.path(), None);
+        let disk = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        let rect = span_of(&disk, |b| b.kind == "rect");
+
+        // Reset-position batch: drop x/y plus a field that was never there —
+        // absent fields are tolerated so clients can batch removals blindly.
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/block/ops",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [
+                    { "op": "remove_field", "span": span_json(rect), "field": "x" },
+                    { "op": "remove_field", "span": span_json(rect), "field": "y" },
+                    { "op": "remove_field", "span": span_json(rect), "field": "cx" },
+                ],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let text = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        assert!(!text.contains("x = 20"), "{text}");
+        assert!(!text.contains("y = 30"), "{text}");
+        assert!(text.contains("fill = \"#88c0d0\""), "{text}");
+        // The edited span in the response slices the rect in the new text.
+        let s = &v["spans"].as_array().unwrap()[0];
+        let (a, b) = (
+            s["span"]["start"].as_u64().unwrap() as usize,
+            s["span"]["end"].as_u64().unwrap() as usize,
+        );
+        assert!(text[a..b].starts_with("rect"), "{}", &text[a..b]);
+    }
+
+    #[tokio::test]
     async fn block_ops_conflict_and_rollback() {
         let td = tempfile::tempdir().unwrap();
         std::fs::write(td.path().join("main.wcl"), BODY_DOC).unwrap();
@@ -1601,6 +2316,19 @@ mod tests {
             body.iter()
                 .all(|k| k["template_source"].as_str().is_some_and(|s| !s.is_empty()))
         );
+        // Diagram shape kinds: SvgBlock descendants with introspected fields.
+        let shapes = v["diagram_kinds"].as_array().unwrap();
+        let process = shapes
+            .iter()
+            .find(|k| k["kind"] == "process")
+            .unwrap_or_else(|| panic!("no process shape kind: {v:#}"));
+        let pf = process["fields"].as_array().unwrap();
+        for want in ["x", "y", "width", "height"] {
+            assert!(pf.iter().any(|f| f["name"] == want), "{v:#}");
+        }
+        assert!(shapes.iter().any(|k| k["kind"] == "rect"), "{v:#}");
+        // Page-level HTML blocks don't extend SvgBlock.
+        assert!(!shapes.iter().any(|k| k["kind"] == "diagram"), "{v:#}");
         // The authored component with its slot contract.
         let comps = v["components"].as_array().unwrap();
         let card = comps.iter().find(|c| c["name"] == "metric_card").unwrap();
@@ -2123,6 +2851,153 @@ mod tests {
             .find(|b| b["preview"] == "Everywhere")
             .unwrap();
         assert_eq!(shown["views"]["deck"], true);
+    }
+
+    /// The mini wskill with a nested sub-index: `alpha` pinned at the top
+    /// level, `beta` (and later `alpha` too) inside `lang_sub`.
+    fn write_mini_wskill_nested(root: &Path) {
+        write_mini_wskill(root);
+        let main = std::fs::read_to_string(root.join("main.wcl")).unwrap();
+        let main = main.replace(
+            "@block(\"index\")\ntype Index {\n  @inline(0) id: identifier\n  name: utf8\n  related: list<identifier>?\n}",
+            "@block(\"index\")\ntype Index {\n  @inline(0) id: identifier\n  name: utf8\n  related: list<identifier>?\n  @children(\"index\") children: list<Index>?\n}",
+        );
+        std::fs::write(root.join("main.wcl"), main).unwrap();
+        std::fs::write(
+            root.join("data/indexes.wcl"),
+            "index lang {\n  name = \"Language\"\n  related = [alpha]\n\n  index lang_sub {\n    name = \"Sub\"\n    related = [beta]\n  }\n}\n",
+        )
+        .unwrap();
+    }
+
+    /// Sub-indexes ride the graph payload as the index node's nested
+    /// `children` tree, and their pins become edges attributed to the
+    /// owning level via `index_id` (a unit pinned at two levels yields
+    /// two edges).
+    #[tokio::test]
+    async fn graph_nested_index_children_and_pins() {
+        let td = tempfile::tempdir().unwrap();
+        write_mini_wskill_nested(td.path());
+        let state = state_for(td.path(), None);
+
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "GET",
+            "/api/graph?entry=main.wcl&sites=book",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let nodes = v["nodes"].as_array().unwrap();
+        let idx = nodes.iter().find(|n| n["id"] == "lang").unwrap();
+        assert_eq!(idx["pinned"], serde_json::json!(["alpha"]));
+        let children = idx["children"].as_array().unwrap();
+        assert_eq!(children.len(), 1, "{v:#}");
+        assert_eq!(children[0]["id"], "lang_sub");
+        assert_eq!(children[0]["title"], "Sub");
+        assert_eq!(children[0]["pinned"], serde_json::json!(["beta"]));
+        assert_eq!(children[0]["related_editable"], true);
+        assert_eq!(children[0]["children"], serde_json::json!([]));
+        // The sub-index never becomes a node of its own.
+        assert!(!nodes.iter().any(|n| n["id"] == "lang_sub"), "{v:#}");
+        let edges = v["edges"].as_array().unwrap();
+        assert!(
+            edges.iter().any(|e| e["from"] == "index:lang"
+                && e["to"] == "concept:alpha"
+                && e["kind"] == "pin"
+                && e["index_id"] == "lang"),
+            "{v:#}"
+        );
+        assert!(
+            edges.iter().any(|e| e["from"] == "index:lang"
+                && e["to"] == "concept:beta"
+                && e["kind"] == "pin"
+                && e["index_id"] == "lang_sub"),
+            "{v:#}"
+        );
+
+        // Pin alpha into the sub-index too: two pin edges to alpha, one
+        // per owning level.
+        let (status, _) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/nav/op",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "op": "pin_unit",
+                "index_id": "lang_sub", "unit_id": "alpha",
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let (_, v) = send(
+            router(Arc::clone(&state)),
+            "GET",
+            "/api/graph?entry=main.wcl&sites=book",
+            None,
+        )
+        .await;
+        let alpha_pins: Vec<&serde_json::Value> = v["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|e| e["kind"] == "pin" && e["to"] == "concept:alpha")
+            .collect();
+        assert_eq!(alpha_pins.len(), 2, "{v:#}");
+    }
+
+    /// The id-addressed related ops reach nested sub-indexes (the owning
+    /// file used to be resolved with a top-level-only scan, so these all
+    /// errored for sub-index ids).
+    #[tokio::test]
+    async fn nav_op_targets_sub_index() {
+        let td = tempfile::tempdir().unwrap();
+        write_mini_wskill_nested(td.path());
+        let state = state_for(td.path(), None);
+
+        let op = |body: serde_json::Value| {
+            let state = Arc::clone(&state);
+            async move { send(router(state), "POST", "/api/nav/op", Some(body)).await }
+        };
+        let (status, v) = op(serde_json::json!({
+            "entry": "main.wcl", "op": "pin_unit",
+            "index_id": "lang_sub", "unit_id": "alpha",
+        }))
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let (status, v) = op(serde_json::json!({
+            "entry": "main.wcl", "op": "reorder_children",
+            "index_id": "lang_sub", "order": ["alpha", "beta"],
+        }))
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let (status, v) = op(serde_json::json!({
+            "entry": "main.wcl", "op": "unpin_unit",
+            "index_id": "lang_sub", "unit_id": "beta",
+        }))
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+
+        // The writes landed on the NESTED list; the top-level one is
+        // untouched.
+        let (_, v) = send(
+            router(Arc::clone(&state)),
+            "GET",
+            "/api/graph?entry=main.wcl&sites=book",
+            None,
+        )
+        .await;
+        let idx = v["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["id"] == "lang")
+            .unwrap();
+        assert_eq!(idx["pinned"], serde_json::json!(["alpha"]), "{v:#}");
+        assert_eq!(
+            idx["children"][0]["pinned"],
+            serde_json::json!(["alpha"]),
+            "{v:#}"
+        );
     }
 
     /// The graph view's edge writes: `related_add` / `related_remove` block

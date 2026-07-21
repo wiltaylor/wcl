@@ -162,6 +162,37 @@ body.ed-design-mode .app-shell > .fsidebar { display: none; }
 .ed-design-note .fbtn { display: inline-flex; align-items: center; gap: 5px; }
 .ed-design-page { color: var(--fg-2); font-family: ui-monospace, monospace; }
 .ed-design-canvas { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+
+/* Diagram-shape properties dock: floats beside the selected shape (inside
+   whichever surface hosts it — the canvas or the graph content modal). */
+.ed-shape-dock {
+  position: absolute; z-index: 29; width: 320px; max-height: min(420px, calc(100% - 12px));
+  display: flex; overflow: hidden;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--bg-1); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+.ed-shape-panel {
+  flex: 1; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: var(--sp-3);
+}
+.ed-shape-panel .ed-form { min-width: 0; }
+/* Everything on a field row must be able to shrink below its intrinsic
+   width (Forge inputs/selects carry their own min-widths) — the fixed-width
+   name column is the one exception. */
+.ed-shape-field > *, .ed-shape-field .fg-select, .ed-shape-field select { min-width: 0; flex: 1; }
+.ed-shape-field > .ed-shape-name { flex: none; }
+.ed-shape-head { display: flex; align-items: center; gap: var(--sp-1); }
+.ed-shape-head .spacer, .ed-shape-actions .spacer { flex: 1; }
+.ed-shape-doc { margin: 0; font-size: var(--fs-xs); color: var(--fg-2); }
+.ed-shape-field { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); }
+.ed-shape-name {
+  width: 84px; flex: none; color: var(--fg-2);
+  font-family: ui-monospace, monospace; font-size: var(--fs-xs);
+  overflow: hidden; text-overflow: ellipsis;
+}
+.ed-shape-field .fg-input, .ed-shape-field input[type="text"] { min-width: 0; flex: 1; }
+.ed-shape-actions { display: flex; align-items: center; gap: var(--sp-1); padding-top: var(--sp-2); }
 .ed-design-canvas iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 .ed-design-toolbar {
   position: absolute; z-index: 30; display: flex; align-items: center; gap: 2px;
@@ -174,15 +205,39 @@ body.ed-design-mode .app-shell > .fsidebar { display: none; }
   white-space: nowrap;
 }
 .ed-design-code { border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; }
+.ed-fragment-notice {
+  margin: 0 0 var(--sp-2); padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-xs); color: var(--fg-2);
+  border: 1px solid var(--border); border-left: 3px solid var(--accent, #3b82f6);
+  border-radius: var(--r-sm); background: var(--bg-2);
+  max-width: 560px;
+}
 .ed-form { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 320px; }
 .ed-insert-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   gap: var(--sp-2); padding-top: var(--sp-3); min-width: 380px;
 }
 .ed-table-grid { max-height: 60vh; overflow: auto; }
-.ed-table-grid table { border-collapse: collapse; }
+.ed-table-grid table { border-collapse: collapse; width: max-content; }
 .ed-table-grid td { padding: 2px; }
-.ed-table-grid .ed-table-rowctl { text-align: center; }
+/* Control cells hold a horizontal button strip — never let it wrap into a
+   vertical stack. */
+.ed-table-grid .ed-table-rowctl {
+  text-align: center; white-space: nowrap; width: 1%;
+}
+.ed-table-grid .ed-table-rowctl > * { display: inline-flex; vertical-align: middle; }
+
+/* Inline table-cell session: the compact row/column ops on the toolbar. */
+.ed-tbl-sep {
+  width: 1px; align-self: stretch; margin: 2px 4px;
+  background: var(--border);
+}
+.ed-tbl-op {
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: transparent; color: var(--fg-2);
+  font-size: var(--fs-xs); padding: 2px 6px; cursor: pointer; white-space: nowrap;
+}
+.ed-tbl-op:hover { background: var(--bg-2); color: var(--fg-1); }
 
 /* Nav panel */
 .ed-nav-panel {
@@ -315,6 +370,13 @@ g.is-hidden > .ed-graph-edge-hit { display: none; }
 .ed-index-panel.is-dropready { outline: 2px dashed var(--accent); outline-offset: -4px; }
 .ed-index-viewfilter { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 var(--sp-2) var(--sp-2); }
 .ed-index-list { list-style: none; margin: 0; padding: 0 var(--sp-2); overflow-y: auto; flex: 1; }
+.ed-index-rowwrap { display: flex; align-items: center; gap: 2px; }
+.ed-index-rowwrap .ed-index-row { flex: 1; min-width: 0; }
+.ed-index-focushint {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0;
+  font-size: var(--fs-xs); color: var(--fg-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .ed-index-row {
   width: 100%; display: flex; align-items: center; gap: var(--sp-2);
   padding: 5px 8px; border: 1px solid transparent; border-radius: var(--r-sm);
@@ -336,6 +398,17 @@ g.is-hidden > .ed-graph-edge-hit { display: none; }
   min-height: 26px; font-size: var(--fs-xs); color: var(--fg-2);
 }
 .ed-index-member .ed-index-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-index-member:hover .ed-nav-actions { display: inline-flex; }
+.ed-index-member.is-hit {
+  background: var(--accent-bg); outline: 1px solid var(--accent);
+  outline-offset: -1px; border-radius: var(--r-sm);
+}
+.ed-index-subhead {
+  display: flex; align-items: center; gap: var(--sp-2); min-height: 24px;
+  margin-top: 2px; font-size: var(--fs-xs); font-weight: 600; color: var(--fg-3);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.ed-index-subhead .ed-index-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ed-index-drophint {
   margin: var(--sp-2); padding: var(--sp-2); border: 1px dashed var(--accent);
   border-radius: var(--r-sm); color: var(--accent-fg); background: var(--accent-bg);
@@ -343,9 +416,19 @@ g.is-hidden > .ed-graph-edge-hit { display: none; }
 }
 .ed-index-drophint.is-muted { border-color: var(--border); background: var(--bg-2); color: var(--fg-3); }
 
-/* Content & visibility modal (widen the Forge panel that hosts it) */
-.fmodal-panel:has(.ed-content-modal) { width: min(84vw, 1040px); max-width: min(84vw, 1040px); }
-.ed-content-modal { display: flex; gap: var(--sp-3); min-height: 440px; }
+/* Content & visibility modal: near-fullscreen — the preview needs room.
+   Size the Forge panel, make its body a flex cell, and let the inner
+   layout fill the height (the iframe already flexes). */
+.fmodal-panel:has(.ed-content-modal) {
+  width: calc(100vw - 48px);
+  max-width: none;
+  height: calc(100dvh - 48px);
+  max-height: calc(100dvh - 48px);
+}
+.fmodal-panel:has(.ed-content-modal) .fmodal-body {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
+.ed-content-modal { display: flex; gap: var(--sp-3); flex: 1; min-height: 0; }
 .ed-content-side { width: 340px; flex: none; display: flex; flex-direction: column; gap: var(--sp-3); min-height: 0; }
 .ed-content-blocks { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; flex: 1; }
 .ed-content-profiles { border-top: 1px solid var(--border); padding-top: var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-1); }
@@ -354,6 +437,43 @@ g.is-hidden > .ed-graph-edge-hit { display: none; }
 .ed-content-preview iframe {
   flex: 1; width: 100%; border: 1px solid var(--border); border-radius: var(--r-sm);
   background: #fff;
+}
+.ed-content-hint { font-size: var(--fs-xs); color: var(--fg-3); margin: var(--sp-2) 0 0; }
+.ed-merged-list { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; flex: 1; }
+.ed-merged-list .ed-content-hint { margin: 0 0 var(--sp-2); }
+.ed-merged-row {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm);
+  border-top: 2px solid transparent; border-bottom: 2px solid transparent;
+}
+.ed-merged-row:hover { background: var(--bg-2); }
+.ed-merged-row.is-dragging { opacity: .45; }
+.ed-merged-row.is-dropline { border-top-color: var(--accent); }
+.ed-merged-row.is-dropline-end { border-bottom-color: var(--accent); }
+.ed-merged-handle { color: var(--fg-3); cursor: grab; user-select: none; font-size: var(--fs-xs); }
+.ed-merged-handle:active { cursor: grabbing; }
+.ed-merged-label {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: var(--fs-xs); color: var(--fg-2);
+}
+.ed-merged-profile {
+  width: 18px; height: 18px; padding: 0; border-radius: var(--r-sm);
+  border: 1px solid var(--border); background: transparent; color: var(--fg-2);
+  font-size: 11px; line-height: 1; cursor: pointer;
+}
+.ed-merged-profile:hover { border-color: var(--accent); color: var(--accent); }
+.ed-merged-profile.is-partial { border-color: var(--warning); color: var(--warning); }
+.ed-merged-profile.is-custom { border-style: dashed; border-color: var(--warning); color: var(--warning); }
+.ed-content-preview .ed-design-canvas { border: 1px solid var(--border); border-radius: var(--r-sm); }
+.ed-content-preview .ed-skill-text {
+  border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg-1);
+}
+/* The All tab: one column per profile (plus the skill Markdown), side by side. */
+.ed-content-all { flex: 1; min-height: 0; display: flex; gap: var(--sp-2); }
+.ed-content-all-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.ed-content-all-head { font-size: var(--fs-xs); color: var(--fg-3); font-weight: 600; }
+.ed-content-all-col .ed-skill-text {
+  flex: 1; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg-1);
 }
 
 /* Data mode */

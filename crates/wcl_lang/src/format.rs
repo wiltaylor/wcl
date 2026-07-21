@@ -154,6 +154,13 @@ struct Printer {
     /// re-parse. Consumed (reset to `false`) at the top of every
     /// `print_expr`, so only the outermost expression sees it.
     allow_heredoc: bool,
+    /// Depth of `${…}` interpolation slots currently being printed. A
+    /// slot must not span multiple lines, so while inside one every
+    /// construct with a multi-line form (`match` arms, block
+    /// expressions with `let`s, comment-carrying records / lists /
+    /// parameter lists) prints its single-line form instead — a
+    /// multi-line render there is unparseable output, not style.
+    slot_depth: u16,
 }
 
 impl Printer {
@@ -165,7 +172,14 @@ impl Printer {
             cfg,
             indent_str,
             allow_heredoc: false,
+            slot_depth: 0,
         }
+    }
+
+    /// Whether printing is inside a `${…}` interpolation slot, where the
+    /// output must stay on one line to re-parse.
+    fn in_slot(&self) -> bool {
+        self.slot_depth > 0
     }
 
     fn push(&mut self, s: &str) {
@@ -873,7 +887,7 @@ impl Printer {
                 ..
             } => {
                 self.push("[");
-                if Self::elem_seq_multiline(elem_trivia, trailing_trivia) {
+                if !self.in_slot() && Self::elem_seq_multiline(elem_trivia, trailing_trivia) {
                     self.print_elem_seq_multiline(
                         elements.len(),
                         elem_trivia,
@@ -927,7 +941,7 @@ impl Printer {
             } => {
                 self.print_expr(callee, CALL_BP);
                 self.push("(");
-                if Self::elem_seq_multiline(arg_trivia, trailing_trivia) {
+                if !self.in_slot() && Self::elem_seq_multiline(arg_trivia, trailing_trivia) {
                     self.print_elem_seq_multiline(
                         args.len(),
                         arg_trivia,
@@ -1191,7 +1205,9 @@ impl Printer {
                     }
                     TemplatePart::Expr(e) => {
                         self.push("${");
+                        self.slot_depth += 1;
                         self.print_expr(e, 0);
+                        self.slot_depth -= 1;
                         self.push("}");
                     }
                 }
@@ -1215,7 +1231,9 @@ impl Printer {
                     }
                     TemplatePart::Expr(e) => {
                         self.push("${");
+                        self.slot_depth += 1;
                         self.print_expr(e, 0);
+                        self.slot_depth -= 1;
                         self.push("}");
                     }
                 }
@@ -1317,10 +1335,11 @@ impl Printer {
             self.push("{}");
             return;
         }
-        let multiline = fields
-            .iter()
-            .any(|f| f.trailing_comment.is_some() || trivia_has_comment(&f.leading_trivia))
-            || trivia_has_comment(trailing_trivia);
+        let multiline = !self.in_slot()
+            && (fields
+                .iter()
+                .any(|f| f.trailing_comment.is_some() || trivia_has_comment(&f.leading_trivia))
+                || trivia_has_comment(trailing_trivia));
         if multiline {
             self.push("{");
             self.newline();
@@ -1365,6 +1384,21 @@ impl Printer {
             self.push(" }");
             return;
         }
+        // Inside an interpolation slot the bindings join on one line
+        // (`{ let a = 1; tail }`) — the multi-line form can't re-parse.
+        if self.in_slot() {
+            self.push("{ ");
+            for b in lets {
+                self.push("let ");
+                self.push(&b.name);
+                self.push(" = ");
+                self.print_expr(&b.value, 0);
+                self.push("; ");
+            }
+            self.print_expr(tail, 0);
+            self.push(" }");
+            return;
+        }
         self.push("{");
         self.newline();
         self.depth += 1;
@@ -1391,6 +1425,33 @@ impl Printer {
     }
 
     fn print_match_expr(&mut self, scrut: &Expr, arms: &[MatchArm], trailing_trivia: &[Trivia]) {
+        // Inside an interpolation slot the arms print comma-separated on
+        // one line (trivia dropped — single-line source can't carry line
+        // comments anyway).
+        if self.in_slot() {
+            self.push("match ");
+            self.print_expr(scrut, 0);
+            self.push(" { ");
+            for (i, arm) in arms.iter().enumerate() {
+                if i > 0 {
+                    self.push(", ");
+                }
+                for (j, pat) in arm.patterns.iter().enumerate() {
+                    if j > 0 {
+                        self.push(" | ");
+                    }
+                    self.print_pattern(pat);
+                }
+                if let Some(g) = &arm.guard {
+                    self.push(" if ");
+                    self.print_expr(g, 0);
+                }
+                self.push(" => ");
+                self.print_expr(&arm.body, 0);
+            }
+            self.push(" }");
+            return;
+        }
         self.push("match ");
         self.print_expr(scrut, 0);
         self.push(" {");
@@ -1462,11 +1523,11 @@ impl Printer {
     /// the `fn` keyword. Shared by expression literals and `fn name(…)`
     /// items (which splice the name between `fn` and the parameters).
     fn print_function_signature_and_body(&mut self, f: &FunctionLit) {
-        let multiline = f
-            .params
-            .iter()
-            .any(|p| p.trailing_comment.is_some() || trivia_has_comment(&p.leading_trivia))
-            || trivia_has_comment(&f.trailing_trivia);
+        let multiline =
+            !self.in_slot()
+                && (f.params.iter().any(|p| {
+                    p.trailing_comment.is_some() || trivia_has_comment(&p.leading_trivia)
+                }) || trivia_has_comment(&f.trailing_trivia));
         self.push("(");
         if multiline {
             self.newline();

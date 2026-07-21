@@ -1,27 +1,38 @@
-// Research findings — durable outputs of investigations, one `research` block
-// each. A finding is dated (`checked`), evidence-linked (`source_ids` /
-// `locators`), and ships in the skill at references/research_<id>.md so
-// external consumers (e.g. a planning pipeline's researcher) can reuse it
-// instead of re-investigating. Flip `status` to :stale on an update sweep
-// when the subject may have moved; :superseded (+ `superseded_by`) when a
-// newer finding replaces it. Imported by ../main.wcl.
+# Research findings — durable outputs of investigations, one `research` block
+# each. A finding is dated (`checked`), evidence-linked (`source_ids` /
+# `locators`), and ships in the skill at references/research_<id>.md so
+# external consumers (e.g. a planning pipeline's researcher) can reuse it
+# instead of re-investigating. Flip `status` to :stale on an update sweep
+# when the subject may have moved; :superseded (+ `superseded_by`) when a
+# newer finding replaces it. Imported by ../main.wcl.
 
 research meta_skill_canonical_format {
-  topic    = "Canonical Claude-skill format (meta-skill)"
+  topic = "Canonical Claude-skill format (meta-skill)"
   question = "What shape must a generated SKILL.md have to lint clean against the meta-skill validator?"
-  summary  = "SKILL.md needs a lowercase-hyphen name matching its directory, a trigger-phrased description, canonical overview/variables/boundaries sections (always/ask/never), and a body within 150 lines."
-  checked  = "2026-07-05"
+  summary = "SKILL.md needs a lowercase-hyphen name matching its directory, a trigger-phrased description, canonical overview/variables/boundaries sections (always/ask/never), and a body within 150 lines."
+  checked = "2026-07-05"
   applies_to = "meta-skill skill-lint.py as of 2026-07"
-  locators = [
-    "~/.claude/skills/meta-skill/reference/frontmatter-spec.md",
-    "~/.claude/skills/meta-skill/reference/skill-template.md",
-    "~/.claude/skills/meta-skill/scripts/skill-lint.py",
-  ]
+  locators = ["~/.claude/skills/meta-skill/reference/frontmatter-spec.md", "~/.claude/skills/meta-skill/reference/skill-template.md", "~/.claude/skills/meta-skill/scripts/skill-lint.py"]
   related = [skill_anatomy]
   body {
-    p "Hard failures (exit 1): frontmatter `name` must match `^[a-z][a-z0-9-]{0,62}[a-z0-9]$` AND equal the skill's directory name; line-start lowercase XML tags must balance; `${CLAUDE_SKILL_DIR}/…` file references must resolve."
-    p "Warnings: missing `<overview>` / `<variables>` / `<boundaries>` (with `<always>`/`<ask>`/`<never>`) sections; body over 150 lines after frontmatter; description under 40 chars or without trigger phrasing (\"use when …\")."
-    p "The frontmatter spec's home for tooling key-values is a `metadata:` map — unknown top-level keys are not rejected by the lint, but `metadata` is the compliant place for them (`wskill_schema_version` lives there)."
-    p "Description style: third person, states what the skill does AND when to use it, with real trigger keywords a router would match."
+    p <<DOC
+      Warnings: missing `<overview>` / `<variables>` / `<boundaries>` (with
+      `<always>`/`<ask>`/`<never>`) sections; body over 150 lines after frontmatter; description
+      under 40 chars or without trigger phrasing ("use when …").
+    DOC
+    p <<DOC
+      Hard failures (exit 1): frontmatter `name` must match `^[a-z][a-z0-9-]{0,62}[a-z0-9]$` AND
+      equal the skill's directory name; line-start lowercase XML tags must balance;
+      `${CLAUDE_SKILL_DIR}/…` file references must resolve.
+    DOC
+    p <<DOC
+      The frontmatter spec's home for tooling key-values is a `metadata:` map — unknown top-level
+      keys are not rejected by the lint, but `metadata` is the compliant place for them
+      (`wskill_schema_version` lives there).
+    DOC
+    p <<DOC
+      Description style: third person, states what the skill does AND when to use it, with real
+      trigger keywords a router would match.
+    DOC
   }
 }

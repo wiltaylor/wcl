@@ -554,6 +554,12 @@ pub struct BuildOptions {
     /// editor can map a rendered block back to the source that declares it.
     /// Off for normal builds.
     pub edit_mode: bool,
+    /// Render every block regardless of its `@only` / `@except` visibility
+    /// (the editor's merged "all views" preview). Combined with `edit_mode`,
+    /// each block's anchor additionally stamps its visibility metadata
+    /// (`data-wcl-except` / `data-wcl-vis`) so the client can draw per-view
+    /// indicators. Off for normal builds.
+    pub all_sites: bool,
     /// Unsaved buffers shadowing disk (the `wcl editor` preview): every
     /// source read — the root file and all imports — resolves through this
     /// map first. Keys should be canonical absolute paths.
@@ -577,6 +583,12 @@ pub fn build_with_options(
     let (outcome, profile) = build_guarded(file, out_dir, site_filter, opts, None, &mut seen, 0)?;
     Ok((outcome.pages(), profile))
 }
+
+/// Site-relative path of the per-site page manifest a full build writes
+/// (`{"start": …, "pages": […]}`) — the map from a built `<name>.html`
+/// back to its page name that the editor's lazy per-page preview rebuild
+/// reads between full builds.
+pub const PAGES_MANIFEST_HREF: &str = "_wdoc/pages.json";
 
 /// Outcome of an incremental rebuild attempt ([`build_incremental`]).
 pub enum RebuildOutcome {
@@ -848,6 +860,7 @@ fn build_inner(
                         &home_title,
                         opts.comment_mode,
                         opts.edit_mode,
+                        opts.all_sites,
                         Some(&site_targets),
                     )?;
                     if built.need_full {
@@ -913,6 +926,7 @@ fn build_inner(
                 &home_title,
                 opts.comment_mode,
                 opts.edit_mode,
+                opts.all_sites,
                 None,
             )?
             .count;
@@ -1393,6 +1407,7 @@ fn build_site(
     home_title: &str,
     comment_mode: bool,
     edit_mode: bool,
+    all_sites: bool,
     target: Option<&HashSet<String>>,
 ) -> Result<SiteBuild, BuildError> {
     // A targeted incremental render reuses the prior full build's aggregate
@@ -1497,6 +1512,18 @@ fn build_site(
         }
     }
 
+    // The per-site page manifest (`_wdoc/pages.json`): the start page plus
+    // the ordered page names. Written only on full builds — the targeted
+    // path can't change the page set (guarded below) — so a consumer (the
+    // editor's lazy per-page preview rebuild) can map a requested
+    // `<name>.html` back to its page between full builds.
+    if write_shared {
+        let start = site_start_page(spec)?.unwrap_or_else(|| "index".to_string());
+        let names: Vec<&str> = pages.iter().map(|(n, _, _)| n.as_str()).collect();
+        let manifest = serde_json::json!({ "start": start, "pages": names });
+        write_asset(out_dir, "pages.json", manifest.to_string())?;
+    }
+
     // Incremental: a page added or removed shifts every other page's
     // template `pages` list (auto nav / prev-next), so a targeted render
     // can't stay isolated — detect it against the prior build's on-disk
@@ -1564,6 +1591,7 @@ fn build_site(
     inline_patterns.set_ui_theme(crate::render::resolve_ui_theme(spec.block.as_ref()));
     inline_patterns.set_comment_mode(comment_mode);
     inline_patterns.set_edit_mode(edit_mode);
+    inline_patterns.set_all_sites(all_sites);
     // The `markdown_source` block writes its Markdown's diagram SVGs here.
     inline_patterns.set_output_dir(out_dir.to_path_buf());
 

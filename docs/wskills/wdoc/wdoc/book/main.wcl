@@ -9,7 +9,6 @@
 import <wdoc.wcl>
 import "../../wskill.wcl"
 import "../component/common.wcl"    // UnitRef + shared per-unit sub-sections
-import "../component/skill_md.wcl"  // skill_md_body (shared SKILL.md body, for the preview)
 import "../component/concept.wcl"   // concept_body
 import "../component/entity.wcl"    // entity_body
 import "../component/fact.wcl"      // fact_body
@@ -21,12 +20,10 @@ import "../component/type_index.wcl" // shared unit-index page component
 // per-unit pages stay as repeaters below). These resolve the `let`s defined in
 // this file, so they are only valid as part of this document.
 import "../pages/overview.wcl"     // index (start page)
-import "../pages/reference.wcl"    // reference_page
 import "../pages/concepts.wcl"     // concepts_page
 import "../pages/entities.wcl"     // entities_page
 import "../pages/facts.wcl"        // facts_page
 import "../pages/processes.wcl"    // processes_page
-import "../pages/skill_links.wcl"  // skill_links_page (+ per-page Markdown previews)
 
 // The single topic block, bound from its gather list (see base.wcl
 // for why it is a list). A wskill always has exactly one.
@@ -42,13 +39,11 @@ let facts      = filter(facts,      fn(f: Fact)      -> bool { in_book(f.audienc
 let examples   = filter(examples,   fn(x: Example)   -> bool { in_book(x.audience) })
 // Top-level indexes (book-filtered). Each is a nav section in the TOC whose
 // `related` units are pinned directly beneath it — there are no index landing
-// pages. `book_indexes` is the alias the reference page expects.
-let indexes      = filter(indexes, fn(x: Index) -> bool { in_book(x.audience) })
-let book_indexes = indexes
+// pages.
+let indexes = filter(indexes, fn(x: Index) -> bool { in_book(x.audience) })
 let procedures = filter(procedures, fn(p: Procedure) -> bool { in_book(p.audience) })
 // Research defaults to `:ai`, so the book shows a Research section only when a
-// finding opts in with `:book`/`:both`. Bound under a distinct name (not a
-// shadow) so pages/skill_links.wcl can filter the raw gathered list itself.
+// finding opts in with `:book`/`:both`.
 let research_book = filter(research_units, fn(r: Research) -> bool { in_book(r.audience) })
 
 // Backlinks: every unit flattened to { id, name, href, related } so a unit page
@@ -118,19 +113,10 @@ site book {
       }
     }
   }
-  // The Reference catalogue (the four units, the graph, and the per-unit
-  // pages) lives behind a single pinned sidebar button rather than a sprawling
-  // TOC section — `reference_page` lists everything; the unit / graph pages are
-  // still generated (their document-scope repeaters are below) and reached from
-  // there and via cross-links.
-  sidebar_footer {
-    button "Reference"     { page = reference_page    icon = "lucide.chart-network" }
-    button "Skill preview" { page = skill_links_page   icon = "lucide.bot" }
-  }
 }
 
 // --- 1. Overview / index pages ----------------------------------------------
-// The Overview, Reference and per-kind index pages live one-per-file under
+// The Overview and per-kind index pages live one-per-file under
 // pages/ (imported above). The generated per-unit pages stay here as repeaters,
 // each delegating to a component.
 
@@ -154,8 +140,6 @@ wdoc_repeater { each = facts  as = :f
     fact_body { unit = f  examples = examples  all_units = all_units  backlinks = referenced_by(f.id)  layout = "columns" }
   }
 }
-
-// --- 3. Reference — reference_page lives in pages/reference.wcl --------------
 
 // --- 5. Processes — one generated page per procedure ------------------------
 wdoc_repeater { each = procedures  as = :pr

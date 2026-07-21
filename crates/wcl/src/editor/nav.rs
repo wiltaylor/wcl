@@ -560,8 +560,19 @@ enum RelatedOp {
     Reorder,
 }
 
+/// Does this block's subtree contain an `index` with the given id?
+/// (Sub-indexes nest inside their parent block, so the owning *file* must
+/// be found by searching recursively — the block itself is then relocated
+/// by the equally recursive `find_block_by_kind_label`.)
+fn subtree_has_index(b: &wcl_lang::Block<'_>, id: &str) -> bool {
+    (b.kind() == "index" && first_label(b).as_deref() == Some(id))
+        || b.blocks().any(|c| subtree_has_index(&c, id))
+}
+
 /// Rewrite an index's `related` list: pin (append), unpin (remove), or
 /// reorder (replace with the posted order, which must be a permutation).
+/// `index_id` may name an index at any nesting depth; index ids are
+/// assumed document-unique (first match wins).
 fn related_op(
     entry_abs: &Path,
     v: &serde_json::Value,
@@ -571,7 +582,7 @@ fn related_op(
     let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(|e| e.to_string())?;
     let ifile = doc
         .blocks_with_source()
-        .find(|(_, b)| b.kind() == "index" && first_label(b).as_deref() == Some(index_id))
+        .find(|(_, b)| subtree_has_index(b, index_id))
         .map(|(p, _)| {
             p.map(Path::to_path_buf)
                 .unwrap_or_else(|| entry_abs.to_path_buf())

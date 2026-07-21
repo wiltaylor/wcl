@@ -1,18 +1,49 @@
-/* The graph view's "Content & visibility" modal for one unit: its content
-   blocks with per-view visibility toggles on the left, a live preview of
-   the unit's rendered page on the right (tab per profile — each tab builds
-   that view on demand and shows the unit's page in an iframe), plus the
-   wskill profile on/off switches (enable re-scaffolds the view, disable
-   removes it — same endpoint as the Design-mode Profiles dialog). */
+/* The graph view's "Content & visibility" modal for one unit. The preview
+   pane is the same WYSIWYG EditSurface as the design canvas — click a block
+   to select it (the block toolbar carries move/insert/delete/visibility),
+   click again to edit its contents in place; every commit rebuilds just the
+   unit's page in the shown view (setSurfaceRebuild routes the commit loop
+   here while the modal is open).
 
-import { For, Show, createEffect, createSignal } from 'solid-js';
-import { Button, Checkbox, Modal, Spinner, ToggleGroup, toast } from '@forge/ui';
+   Tabs: a Merged tab (the default landing) rendering the unit's page with
+   EVERY block visible regardless of `@only` / `@except` — each block gets a
+   left gutter of per-view letter chips (visgutter.js, fed by the merged
+   build's visibility stamps) that toggle its `@except(sites = […])` per
+   view — then one per previewable profile (Book / Deck / Training), a
+   Skill tab showing the unit's generated Markdown (exactly what the AI
+   skill ships), and an All tab rendering every profile side by side for
+   comparison. The merged page renders under the first view whose site
+   builds the unit's page (a lesson uses the Training template); no page
+   anywhere shows an explicit empty state. The left column keeps the
+   whole-unit visibility chips and the profile on/off switches.
+   Previews are chrome-stripped (injectBareCss hides the book
+   sidebar/rail/pagenav — an unindexed unit has no TOC entry, so the chrome
+   only reads as broken) and a tab showing the unit's own page carries a
+   "not in any … index" badge when no index visible in that view pins it. */
+
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
+import { Badge, Button, Checkbox, Modal, Spinner, ToggleGroup, toast } from '@forge/ui';
 
 import { api } from '../../api';
 import { dirtyFiles } from '../../state/buffers';
 import { loadSites, selected } from '../../state/sites';
-import { busy, commitOpsQuiet, loadNav, loadPalette } from '../../state/design';
-import { graphData, reloadGraph } from '../../state/graph';
+import {
+  busy,
+  commitOps,
+  currentPage,
+  frameReady,
+  loadNav,
+  loadPalette,
+  setCanvasStale,
+  setCurrentPage,
+  setEditingSession,
+  setPopover,
+  setSelection,
+  setSurfaceRebuild,
+} from '../../state/design';
+import { graphData, pinCounts, reloadGraph } from '../../state/graph';
+import { injectBareCss } from '../../preview/frame';
+import EditSurface from './EditSurface';
 import { viewLabel } from './DesignCanvas';
 
 const ALL_PROFILES = ['book', 'ai_skill', 'presentation', 'training'];
@@ -21,14 +52,14 @@ export default function ContentModal(props) {
   const node = () => graphData()?.nodes.find((n) => n.key === props.nodeKey);
   const sites = () => graphData()?.sites ?? [];
   const views = () => (selected()?.wskill ? (selected().views ?? []) : []);
-  // The skill view has no HTML pages — it can't be previewed here.
+  // The skill view has no HTML pages — it gets the Markdown tab instead.
   const previewViews = () => views().filter((v) => !v.skill);
-  const [tab, setTab] = createSignal(null);
-  const currentView = () => previewViews().find((v) => v.id === tab()) ?? previewViews()[0] ?? null;
+  const skillView = () => views().find((v) => v.skill) ?? null;
 
-  // Per-view built preview hrefs, invalidated on every visibility commit.
-  const [hrefs, setHrefs] = createSignal({});
-  const [buildingPreview, setBuildingPreview] = createSignal(false);
+  const [tab, setTab] = createSignal(null);
+  const activeTab = () =>
+    tab() ?? (previewViews().length ? 'merged' : skillView() ? 'skill' : null);
+  const currentView = () => previewViews().find((v) => v.id === activeTab()) ?? null;
 
   const slug = () => {
     const n = node();
@@ -37,45 +68,422 @@ export default function ContentModal(props) {
     return `${prefix}_${n.id}`;
   };
 
-  const ensurePreview = async (view) => {
-    if (!view || hrefs()[view.id]) return;
+  // ---- per-view builds (targeted at the unit's page) ----
+  const [hrefs, setHrefs] = createSignal({});
+  const [reloadSeq, setReloadSeq] = createSignal(0);
+  const [buildingPreview, setBuildingPreview] = createSignal(false);
+
+  const doBuildView = async (view, changed) => {
     setBuildingPreview(true);
-    const res = await api.preview(view.entry, view.site, dirtyFiles());
+    const res = await api.preview(view.entry, view.site, dirtyFiles(), {
+      pages: [slug()],
+      changed,
+    });
     setBuildingPreview(false);
-    if (res.ok) setHrefs({ ...hrefs(), [view.id]: res.href });
-    else toast(res.error, { tone: 'danger', duration: 6000 });
+    if (!res.ok) {
+      toast(res.error, { tone: 'danger', duration: 6000 });
+      return res;
+    }
+    // Not every view has a page per unit (a lesson is a training page; an
+    // :ai-only unit has none) — the site's pages.json manifest says whether
+    // this unit's page exists; without one the tab shows an explicit
+    // "no page in this view" state instead of the view's index.
+    const dir = res.href.slice(0, res.href.lastIndexOf('/') + 1);
+    let hasPage = false;
+    try {
+      const manifest = await (await fetch(`${dir}_wdoc/pages.json`)).json();
+      hasPage = (manifest.pages ?? []).includes(slug());
+    } catch {
+      /* no manifest — treat as no page */
+    }
+    setHrefs((h) => ({ ...h, [view.id]: { href: res.href, hasPage } }));
+    setReloadSeq((s) => s + 1);
+    return res;
   };
+  // The tab-activation effect and the initial page-bearing-tab probe both
+  // build on mount — share one in-flight promise per view.
+  const inFlight = new Map();
+  const buildView = (view, changed = []) => {
+    const existing = inFlight.get(view.id);
+    if (existing) return existing;
+    const p = doBuildView(view, changed).finally(() => inFlight.delete(view.id));
+    inFlight.set(view.id, p);
+    return p;
+  };
+
+  const hasPageIn = (view) => hrefs()[view?.id]?.hasPage === true;
+  const noPageIn = (view) => hrefs()[view?.id]?.hasPage === false;
+
+  const srcFor = (view) => {
+    const entry = view && hrefs()[view.id];
+    if (!entry || !entry.hasPage) return null;
+    return `${entry.href.slice(0, entry.href.lastIndexOf('/') + 1)}${slug()}.html`;
+  };
+
+  // ---- the merged all-views build (the Merged tab) ----
+  // The merged page renders under one view's template with every block
+  // visible; `mergedView` is that view (the first whose site builds the
+  // unit's page), `mergedHref` the built page (null = stale/unbuilt).
+  // Units with no page in ANY view get a server-side synthetic page
+  // (`unit: {kind, id}` — the unit's body projected standalone, anchors
+  // pointing at the real source) so they render and edit like the rest.
+  const UNIT_PAGE = '__wcl_unit_preview';
+  const [mergedView, setMergedView] = createSignal(null); // view | false (nothing renderable)
+  const [mergedHref, setMergedHref] = createSignal(null); // { href, hasPage } | null
+  const [mergedSynthetic, setMergedSynthetic] = createSignal(false);
+  const mergedPage = () => (mergedSynthetic() ? UNIT_PAGE : slug());
+
+  const doBuildMerged = async (view, changed, { synthetic, quiet } = {}) => {
+    const useSynthetic = synthetic ?? mergedSynthetic();
+    const page = useSynthetic ? UNIT_PAGE : slug();
+    setBuildingPreview(true);
+    const res = await api.preview(view.entry, view.site, dirtyFiles(), {
+      pages: [page],
+      changed,
+      merged: true,
+      ...(useSynthetic ? { unit: { kind: node()?.kind, id: node()?.id } } : {}),
+    });
+    setBuildingPreview(false);
+    if (!res.ok) {
+      if (!quiet) toast(res.error, { tone: 'danger', duration: 6000 });
+      return res;
+    }
+    const dir = res.href.slice(0, res.href.lastIndexOf('/') + 1);
+    let hasPage = false;
+    try {
+      const manifest = await (await fetch(`${dir}_wdoc/pages.json`)).json();
+      hasPage = (manifest.pages ?? []).includes(page);
+    } catch {
+      /* no manifest — treat as no page */
+    }
+    setMergedHref({ href: res.href, hasPage });
+    setReloadSeq((s) => s + 1);
+    return res;
+  };
+  const buildMerged = (view, changed = [], opts = {}) => {
+    const existing = inFlight.get('merged');
+    if (existing) return existing;
+    const p = doBuildMerged(view, changed, opts).finally(() => inFlight.delete('merged'));
+    inFlight.set('merged', p);
+    return p;
+  };
+
+  const mergedSrc = () => {
+    const entry = mergedHref();
+    if (!entry || !entry.hasPage) return null;
+    return `${entry.href.slice(0, entry.href.lastIndexOf('/') + 1)}${mergedPage()}.html`;
+  };
+
+  // Land the Merged tab on a view that actually shows this unit: probe the
+  // views in tab order with merged builds until one's manifest carries the
+  // unit's page (a lesson merges under the Training template, not the
+  // book's). No page anywhere → the synthetic standalone body preview;
+  // units with nothing to render (no body) keep the block-list fallback.
+  (async () => {
+    for (const v of previewViews()) {
+      const res = await buildMerged(v, [], { synthetic: false });
+      if (!res?.ok) return; // build failed — the toast already said so
+      if (mergedHref()?.hasPage) {
+        setMergedView(v);
+        return;
+      }
+    }
+    const v0 = previewViews()[0];
+    if (v0 && node()?.type === 'unit') {
+      const res = await buildMerged(v0, [], { synthetic: true, quiet: true });
+      if (res?.ok && mergedHref()?.hasPage) {
+        setMergedSynthetic(true);
+        setMergedView(v0);
+        return;
+      }
+    }
+    setMergedView(false);
+    setMergedHref(null);
+  })();
+
+  // Per-view index membership (shared pinCounts semantics with the graph's
+  // node badges): an unindexed unit's page still builds, but nothing links
+  // it from that view's navigation — worth a warning on the preview. Only
+  // when the tab shows the unit's own page (a deck/training tab falling
+  // back to the view's index isn't making an index-membership claim).
+  const unitPins = createMemo(() => pinCounts(graphData())[node()?.key]?.sites ?? {});
+  const unindexedFor = (view) =>
+    !!view && node()?.type === 'unit' && hasPageIn(view) && !(unitPins()[view.site] > 0);
+  const unindexedBadge = (view) => (
+    <Show when={unindexedFor(view)}>
+      <span title="The page is built, but no index in this view lists the unit — it won't appear in the view's navigation.">
+        <Badge tone="warning">Not in any {viewLabel(view.kind)} index</Badge>
+      </span>
+    </Show>
+  );
+
+  // Build the shown view on activation (and every not-yet-built view when
+  // the All tab opens; the merged build when returning to a stale Merged
+  // tab after a commit elsewhere dropped it).
   createEffect(() => {
-    ensurePreview(currentView());
+    const t = activeTab();
+    if (t === 'all') {
+      (async () => {
+        for (const v of previewViews()) {
+          if (!hrefs()[v.id]) await buildView(v);
+        }
+      })();
+      return;
+    }
+    if (t === 'merged') {
+      const mv = mergedView();
+      if (mv && !mergedHref()) buildMerged(mv);
+      return;
+    }
+    const v = currentView();
+    if (v && !hrefs()[v.id]) buildView(v);
   });
 
-  const previewSrc = () => {
-    const v = currentView();
-    const href = v && hrefs()[v.id];
-    if (!href) return null;
-    // A deck has no per-unit pages — show the presentation itself.
-    if (v.kind === 'presentation') return href;
-    return `${href.slice(0, href.lastIndexOf('/') + 1)}${slug()}.html`;
-  };
+  // ---- the skill projection's Markdown for this unit ----
+  const [skill, setSkill] = createSignal(null); // { base, files } | null
+  const [skillText, setSkillText] = createSignal(null);
+  createEffect(() => {
+    const t = activeTab();
+    const sv = skillView();
+    if ((t !== 'skill' && t !== 'all') || !sv || skill()) return;
+    (async () => {
+      setBuildingPreview(true);
+      const res = await api.preview(sv.entry, sv.site, dirtyFiles(), { skill: true });
+      setBuildingPreview(false);
+      if (!res.ok) {
+        toast(res.error, { tone: 'danger', duration: 6000 });
+        return;
+      }
+      setSkill({ base: res.base, files: res.files ?? [] });
+    })();
+  });
+  createEffect(() => {
+    const s = skill();
+    setSkillText(null);
+    if (!s) return;
+    const want = `${slug()}.md`;
+    const file =
+      s.files.find((f) => f === `references/${want}`) ??
+      s.files.find((f) => f.endsWith(`/${want}`) || f === want);
+    if (!file) {
+      setSkillText(false); // not part of the skill
+      return;
+    }
+    fetch(`${s.base}${file}`)
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(r.statusText))))
+      .then(setSkillText)
+      .catch((e) => setSkillText(`(failed to load: ${e})`));
+  });
 
-  // ---- visibility toggles (same set_visibility op as everywhere) ----
-  const toggleView = async (block, site) => {
+  // ---- route the commit loop here while the modal is open ----
+  const prevPage = currentPage();
+  setSurfaceRebuild(async ({ changed }) => {
+    // Everything derived from the last build is stale now.
+    setSkill(null);
+    setSkillText(null);
+    const onMerged = activeTab() === 'merged' && mergedView();
+    const targets =
+      activeTab() === 'all' ? previewViews() : currentView() ? [currentView()] : [];
+    // Keep only what's about to rebuild — a later tab switch rebuilds fresh.
+    setHrefs((h) => {
+      const keep = {};
+      for (const v of targets) if (h[v.id]) keep[v.id] = h[v.id];
+      return keep;
+    });
+    if (!onMerged && mergedHref()) setMergedHref(null);
+    let last = { ok: true };
+    if (onMerged) {
+      last = await buildMerged(mergedView(), changed);
+    } else {
+      for (const v of targets) {
+        last = await buildView(v, changed);
+        if (!last.ok) break;
+      }
+    }
+    if (last.ok) {
+      reloadGraph({ keepPositions: true });
+      setCanvasStale(true);
+    }
+    // Only a view/merged tab's EditSurface reload releases the busy gate
+    // itself.
+    if (activeTab() === 'all' || (!currentView() && !onMerged)) frameReady();
+    return last;
+  });
+  onCleanup(() => {
+    setSurfaceRebuild(null);
+    setSelection(null);
+    setEditingSession(null);
+    setCurrentPage(prevPage);
+  });
+
+  // ---- whole-unit visibility ----
+  // Two mechanisms govern a top-level unit: the wskill `audience` field
+  // routes it into the book (`!= :ai`) and the skill (`!= :book`), while
+  // `@except(sites = […])` hides it per view on top. Toggling a book /
+  // skill chip therefore edits the audience (widening to `:both`, narrowing
+  // to the other side) and only falls back to `@except` when the audience
+  // alone can't express the change (hiding the last routed view); other
+  // views (deck / training) stay pure `@except` toggles.
+  const toggleUnitView = async (block, site) => {
     if (block.visibility?.custom) {
       toast('Custom visibility — edit this block as source', { duration: 4000 });
       return;
     }
+    const kind = siteKindOf(site);
+    const on = block.views?.[site] !== false;
     const except = new Set(block.visibility?.except_sites ?? []);
-    if (except.has(site)) except.delete(site);
-    else except.add(site);
-    const res = await commitOpsQuiet(block.file, [
-      { op: 'set_visibility', span: block.span, except_sites: [...except] },
-    ]);
-    if (res.ok) {
-      await reloadGraph({ keepPositions: true });
-      setHrefs({}); // every built preview is stale now
-      ensurePreview(currentView());
+    const ops = [];
+    const audienceOp = (value) => ({
+      op: 'set_field',
+      span: block.span,
+      field: 'audience',
+      expr: `:${value}`,
+    });
+    const exceptOp = () => ({
+      op: 'set_visibility',
+      span: block.span,
+      except_sites: [...except],
+    });
+    if (kind === 'book' || kind === 'ai_skill') {
+      const side = kind === 'book' ? 'book' : 'ai';
+      const other = kind === 'book' ? 'ai' : 'book';
+      const aud = block.audience ?? 'book';
+      if (on) {
+        if (aud === 'both') {
+          ops.push(audienceOp(other));
+        } else {
+          except.add(site);
+          ops.push(exceptOp());
+        }
+      } else {
+        if (aud === other) ops.push(audienceOp('both'));
+        if (except.has(site)) {
+          except.delete(site);
+          ops.push(exceptOp());
+        }
+      }
+    } else if (node()?.type === 'index') {
+      toast('Indexes only shape the book and skill views', { duration: 4000 });
+      return;
+    } else {
+      if (except.has(site)) except.delete(site);
+      else except.add(site);
+      ops.push(exceptOp());
     }
+    if (ops.length === 0) return;
+    await commitOps(block.file, ops, { reveal: null });
   };
+
+  const mergedGutter = () => ({
+    merged: true,
+    currentSite: mergedView() ? mergedView().site : undefined,
+  });
+
+  // Not every unit has a body to render standalone (some kinds keep their
+  // content in fields) — the merged tab then falls back to the graph
+  // payload's block list: one row per content block with a drag handle
+  // (re-order via batched `move` ops) and a profile button popping up the
+  // visibility editor, mirroring the rendered gutter.
+  const [dragIdx, setDragIdx] = createSignal(null);
+  const [dropIdx, setDropIdx] = createSignal(null);
+  const listReorder = async (from, drop) => {
+    const b = (node()?.blocks ?? [])[from];
+    const target = drop > from ? drop - 1 : drop;
+    const steps = target - from;
+    if (!b || steps === 0) return;
+    const dir = steps < 0 ? 'up' : 'down';
+    await commitOps(
+      b.file,
+      Array.from({ length: Math.abs(steps) }, () => ({ op: 'move', span: b.span, dir })),
+      { reveal: null },
+    );
+  };
+
+  const mergedBlockList = () => (
+    <div class="ed-merged-list">
+      <p class="ed-content-hint">
+        No view builds a page for this unit and it carries no body content to render
+        standalone — its blocks are listed here: drag to re-order, and the ◐ button
+        picks the profiles each block shows in.
+      </p>
+      <Show
+        when={(node()?.blocks ?? []).length}
+        fallback={
+          <div class="ed-empty">
+            This unit has no content blocks — its content lives in fields. Use the
+            whole-unit chips on the left.
+          </div>
+        }
+      >
+        <For each={node()?.blocks ?? []}>
+          {(b, i) => (
+            <div
+              class="ed-merged-row"
+              classList={{
+                'is-dropline': dropIdx() === i(),
+                'is-dropline-end':
+                  dropIdx() === (node()?.blocks ?? []).length &&
+                  i() === (node()?.blocks ?? []).length - 1,
+                'is-dragging': dragIdx() === i(),
+              }}
+              onDragOver={(e) => {
+                if (dragIdx() == null) return;
+                e.preventDefault();
+                const r = e.currentTarget.getBoundingClientRect();
+                setDropIdx(e.clientY < r.top + r.height / 2 ? i() : i() + 1);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const from = dragIdx();
+                const drop = dropIdx();
+                setDragIdx(null);
+                setDropIdx(null);
+                if (from != null && drop != null && !busy()) listReorder(from, drop);
+              }}
+            >
+              <span
+                class="ed-merged-handle"
+                draggable
+                title="Drag to re-order"
+                onDragStart={(e) => {
+                  if (busy()) {
+                    e.preventDefault();
+                    return;
+                  }
+                  setDragIdx(i());
+                  e.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragEnd={() => {
+                  setDragIdx(null);
+                  setDropIdx(null);
+                }}
+              >
+                ⋮⋮
+              </span>
+              <span class="ed-merged-label">
+                {b.preview ? `${b.kind} — ${b.preview}` : b.kind}
+              </span>
+              <button
+                type="button"
+                class="ed-merged-profile"
+                classList={{
+                  'is-partial': (b.visibility?.except_sites ?? []).length > 0,
+                  'is-custom': b.visibility?.custom,
+                }}
+                title="Set which profiles this block shows in"
+                disabled={busy()}
+                onClick={() =>
+                  setPopover({ type: 'visibility', anchor: { file: b.file, span: b.span } })
+                }
+              >
+                ◐
+              </button>
+            </div>
+          )}
+        </For>
+      </Show>
+    </div>
+  );
 
   const unitRow = () => {
     const n = node();
@@ -86,6 +494,7 @@ export default function ContentModal(props) {
         span: n.span,
         views: n.views,
         visibility: n.visibility,
+        audience: n.audience,
       }
     );
   };
@@ -109,12 +518,39 @@ export default function ContentModal(props) {
     });
     // The view set changed: refresh discovery, the design models, the graph.
     setHrefs({});
+    setSkill(null);
+    setSkillText(null);
     setTab(null);
     await loadSites();
     loadNav();
     loadPalette();
     reloadGraph({ keepPositions: true });
   };
+
+  const tabOptions = () => [
+    ...(previewViews().length ? [{ value: 'merged', label: 'Merged' }] : []),
+    ...previewViews().map((v) => ({ value: v.id, label: viewLabel(v.kind) })),
+    ...(skillView() ? [{ value: 'skill', label: 'Skill' }] : []),
+    { value: 'all', label: 'All' },
+  ];
+
+  const skillPane = () => (
+    <Show
+      when={skillText() !== null}
+      fallback={<div class="ed-empty">Building the skill projection…</div>}
+    >
+      <Show
+        when={skillText() !== false}
+        fallback={
+          <div class="ed-empty">
+            This unit isn't part of the skill projection (audience is book-only).
+          </div>
+        }
+      >
+        <pre class="ed-skill-text">{skillText()}</pre>
+      </Show>
+    </Show>
+  );
 
   return (
     <Modal
@@ -127,20 +563,12 @@ export default function ContentModal(props) {
         <div class="ed-content-modal">
           <div class="ed-content-side">
             <div class="ed-content-blocks">
-              <ViewToggles label="whole unit" block={unitRow()} sites={sites()} onToggle={toggleView} />
-              <For each={node()?.blocks ?? []}>
-                {(b) => (
-                  <ViewToggles
-                    label={b.preview ? `${b.kind} — ${b.preview}` : b.kind}
-                    block={b}
-                    sites={sites()}
-                    onToggle={toggleView}
-                  />
-                )}
-              </For>
-              <Show when={(node()?.blocks ?? []).length === 0}>
-                <div class="ed-graph-noblocks">no content blocks</div>
-              </Show>
+              <ViewToggles label="whole unit" block={unitRow()} sites={sites()} onToggle={toggleUnitView} />
+              <p class="ed-content-hint">
+                The Merged tab shows every block with per-view chips on its left — click a
+                chip to toggle that view. Click a block to edit it; its toolbar carries the
+                visibility eye too.
+              </p>
             </div>
             <div class="ed-content-profiles">
               <strong>Profiles</strong>
@@ -177,24 +605,80 @@ export default function ContentModal(props) {
           </div>
           <div class="ed-content-preview">
             <div class="ed-content-preview-head">
-              <ToggleGroup
-                options={previewViews().map((v) => ({ value: v.id, label: viewLabel(v.kind) }))}
-                value={currentView()?.id}
-                onChange={setTab}
-              />
-              <Show when={buildingPreview()}>
+              <ToggleGroup options={tabOptions()} value={activeTab()} onChange={setTab} />
+              <Show when={currentView()}>{unindexedBadge(currentView())}</Show>
+              <Show when={activeTab() === 'merged' && mergedView()}>
+                <span title="Every block renders here regardless of visibility — the chips left of each block show and toggle the views it appears in.">
+                  <Badge>All blocks — {viewLabel(mergedView().kind)} layout</Badge>
+                </span>
+              </Show>
+              <Show when={buildingPreview() || busy()}>
                 <Spinner size={12} label="Building preview" />
               </Show>
             </div>
-            <Show
-              when={previewSrc()}
-              fallback={
-                <div class="ed-empty">
-                  {buildingPreview() ? 'Building preview…' : 'No previewable view'}
-                </div>
-              }
-            >
-              <iframe src={previewSrc()} title="unit preview" />
+            <Show when={activeTab() === 'merged'}>
+              <Show when={mergedView() !== false} fallback={mergedBlockList()}>
+                <EditSurface
+                  src={mergedSrc}
+                  reloadSeq={reloadSeq}
+                  hideChrome
+                  gutter={mergedGutter()}
+                  fallback={<div class="ed-empty">Building the merged preview…</div>}
+                />
+              </Show>
+            </Show>
+            <Show when={currentView()}>
+              <Show
+                when={!noPageIn(currentView())}
+                fallback={
+                  <div class="ed-empty">
+                    This unit has no page in the {viewLabel(currentView().kind)} view.
+                  </div>
+                }
+              >
+                <EditSurface
+                  src={() => srcFor(currentView())}
+                  reloadSeq={reloadSeq}
+                  hideChrome
+                  fallback={<div class="ed-empty">Building preview…</div>}
+                />
+              </Show>
+            </Show>
+            <Show when={activeTab() === 'skill'}>{skillPane()}</Show>
+            <Show when={activeTab() === 'all'}>
+              <div class="ed-content-all">
+                <For each={previewViews()}>
+                  {(v) => (
+                    <div class="ed-content-all-col">
+                      <div class="ed-content-all-head">
+                        {viewLabel(v.kind)}
+                        {unindexedBadge(v)}
+                      </div>
+                      <Show
+                        when={!noPageIn(v)}
+                        fallback={<div class="ed-empty">No page in this view.</div>}
+                      >
+                        <Show
+                          when={srcFor(v)}
+                          fallback={<div class="ed-empty">Building…</div>}
+                        >
+                          <iframe
+                            src={srcFor(v)}
+                            title={`${viewLabel(v.kind)} preview`}
+                            onLoad={(e) => injectBareCss(e.currentTarget.contentDocument)}
+                          />
+                        </Show>
+                      </Show>
+                    </div>
+                  )}
+                </For>
+                <Show when={skillView()}>
+                  <div class="ed-content-all-col">
+                    <div class="ed-content-all-head">Skill</div>
+                    {skillPane()}
+                  </div>
+                </Show>
+              </div>
             </Show>
           </div>
         </div>

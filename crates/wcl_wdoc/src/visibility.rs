@@ -28,6 +28,12 @@ use crate::inline::InlinePatterns;
 /// honouring its `@only` / `@except` decorators. Blocks with neither
 /// decorator are always visible.
 pub(crate) fn block_visible(block: &Block<'_>, ctx: &InlinePatterns) -> bool {
+    // The editor's merged "all views" preview renders everything — the
+    // per-block visibility instead surfaces as anchor stamps (see
+    // `classify_visibility`) so the client can indicate and toggle it.
+    if ctx.all_sites() {
+        return true;
+    }
     let site = ctx.vis_site();
     let template = ctx.vis_template();
     let backend = ctx.backend().symbol();
@@ -78,6 +84,51 @@ fn axis_ok(d: &Decorator<'_>, name: &str, current: Option<&str>) -> bool {
         Some(v) => list.iter().any(|s| s == v),
         None => false,
     }
+}
+
+/// The block's visibility as the editor's merged-view gutter understands it:
+/// the `@except(sites = [:…])` site names, plus a `custom` flag for anything
+/// richer (`@only`, positional args, `templates`/`backends` axes, non-symbol
+/// lists) — the client defers custom blocks to source editing. Mirrors the
+/// editor's `visibility_json` classification so the stamps agree with what
+/// the `set_visibility` block op will accept.
+pub(crate) fn classify_visibility(block: &Block<'_>) -> (Vec<String>, bool) {
+    let mut except_sites: Vec<String> = Vec::new();
+    let mut custom = false;
+    for d in block.decorators() {
+        let name = match d.name_segments() {
+            [n] => n.as_str(),
+            [ns, n] if ns == "wdoc" => n.as_str(),
+            _ => continue,
+        };
+        match name {
+            "only" => custom = true,
+            "except" => {
+                if !d.positional().map(|p| p.is_empty()).unwrap_or(false) {
+                    custom = true;
+                }
+                for arg in d.named() {
+                    if arg.name() != "sites" {
+                        custom = true;
+                        continue;
+                    }
+                    match arg.value() {
+                        Ok(Value::List(items))
+                            if items.iter().all(|v| matches!(v, Value::Symbol(_))) =>
+                        {
+                            except_sites.extend(items.iter().filter_map(|v| match v {
+                                Value::Symbol(s) => Some(s.clone()),
+                                _ => None,
+                            }));
+                        }
+                        _ => custom = true,
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    (except_sites, custom)
 }
 
 /// Read a decorator's `name` argument as a list of symbol names. Returns

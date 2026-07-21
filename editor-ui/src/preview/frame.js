@@ -48,6 +48,27 @@ export function injectCss(doc) {
   doc.head.appendChild(style);
 }
 
+const BARE_CSS_ID = 'wcl-bare-css';
+/* Chrome-stripping for embedded previews (the graph view's content modal):
+   hide the book template's nav chrome and let the reading column own the
+   frame. An unindexed unit's page has no TOC entry anyway, so the sidebar
+   only reads as broken there; deck/website templates lack these classes
+   and are untouched. Training uses the book template too. */
+const BARE_CSS = `
+.book-sidebar, .book-rail, .book-pagenav { display: none !important; }
+.book-content { margin-left: 0 !important; margin-right: 0 !important; }
+.book-content .book-measure { padding: 1.5rem 2rem 3rem; min-height: auto; }
+`;
+
+/** Idempotently hide the book template chrome in a preview iframe. */
+export function injectBareCss(doc) {
+  if (!doc?.head || doc.getElementById(BARE_CSS_ID)) return;
+  const style = doc.createElement('style');
+  style.id = BARE_CSS_ID;
+  style.textContent = BARE_CSS;
+  doc.head.appendChild(style);
+}
+
 /** Nearest [data-wcl-block] descendants of `node` not separated from it
     by another block — the block tree's direct children. */
 export function blockChildren(node) {

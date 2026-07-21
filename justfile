@@ -121,8 +121,6 @@ wskill-template-check:
         WSK_WDOC_COMPONENT_PROCESS_WCL:component/process.wcl \
         WSK_WDOC_COMPONENT_TYPE_INDEX_WCL:component/type_index.wcl \
         WSK_WDOC_PAGES_OVERVIEW_WCL:pages/overview.wcl \
-        WSK_WDOC_PAGES_REFERENCE_WCL:pages/reference.wcl \
-        WSK_WDOC_PAGES_SKILL_LINKS_WCL:pages/skill_links.wcl \
         WSK_WDOC_PAGES_CONCEPTS_WCL:pages/concepts.wcl \
         WSK_WDOC_PAGES_ENTITIES_WCL:pages/entities.wcl \
         WSK_WDOC_PAGES_FACTS_WCL:pages/facts.wcl \
@@ -139,15 +137,15 @@ wskill-template-check:
 # reference implementation (docs/wskills/wskill/wdoc/). Per-topic exemptions
 # cover verified intentional divergence: skill/main.wcl everywhere (topic-tuned
 # description); wcl's common.wcl (builtins fn_signature superset), overview,
-# reference, skill_links, book (builtins/CLI projections); wdoc's reference,
-# skill_links, book (index-nav TOC architecture). Files a topic doesn't ship
-# (wad: presentation/training) are skipped — a deleted copy breaks that topic's
-# book imports, which docs-build catches (runs in ci).
+# book (builtins/CLI projections); wdoc's book (index-nav TOC architecture).
+# Files a topic doesn't ship (wad: presentation/training) are skipped — a
+# deleted copy breaks that topic's book imports, which docs-build catches
+# (runs in ci).
 [group('quality')]
 wskill-crosstopic-check:
     @fail=0; \
-    exempt_wcl="component/common.wcl pages/overview.wcl pages/reference.wcl pages/skill_links.wcl book/main.wcl"; \
-    exempt_wdoc="pages/reference.wcl pages/skill_links.wcl book/main.wcl"; \
+    exempt_wcl="component/common.wcl pages/overview.wcl book/main.wcl"; \
+    exempt_wdoc="book/main.wcl"; \
     exempt_wad=""; \
     ref=docs/wskills/wskill/wdoc; \
     for d in docs/wskills/*; do \

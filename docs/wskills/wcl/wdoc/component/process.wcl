@@ -18,8 +18,6 @@ wdoc_component process_body {
     edit_field { kind = "procedure" target = $"${unit.id}" field = "title" plain = true
       h1 $"${unit.title}"
     }
-    // Edit-mode only: jump straight into this object in the WYSIWYG editor.
-    edit_object { kind = "procedure" target = $"${unit.id}" label = "Edit this process" }
     h2 "Purpose"
     edit_field { kind = "procedure" target = $"${unit.id}" field = "purpose"
       p  $"${unit.purpose}"

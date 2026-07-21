@@ -126,13 +126,7 @@ fn block_source(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
         .items
         .iter()
         .filter_map(|it| match it {
-            Item::Field(f) => {
-                let (state, text) = classify_expr(&f.expr);
-                Some((
-                    f.name.clone(),
-                    serde_json::json!({ "state": state, "text": text }),
-                ))
-            }
+            Item::Field(f) => Some((f.name.clone(), field_json(&f.expr))),
             _ => None,
         })
         .collect();
@@ -147,11 +141,67 @@ fn block_source(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
     }))
 }
 
-/// `literal` (plain string, editable in place) vs `computed` (interpolation /
-/// expression — fragment-editor only).
+/// Field-value JSON for `/api/block/source`: the scalar classification,
+/// plus structured contents for all-string-literal lists — `state: "list"`
+/// with `items` for `header = ["…", …]`, `state: "rows"` with `rows` for
+/// `rows = [["…", …], …]` — so the Design-mode table editor can grid-edit
+/// list-literal tables, not just pipe rows.
+fn field_json(e: &Expr) -> serde_json::Value {
+    let (state, text) = classify_expr(e);
+    let mut v = serde_json::json!({ "state": state, "text": text });
+    let strings = |es: &[Expr]| -> Option<Vec<String>> {
+        es.iter()
+            .map(|e| match e {
+                Expr::Utf8(s) | Expr::Ascii(s) => Some(s.clone()),
+                _ => None,
+            })
+            .collect()
+    };
+    if let Expr::ListLit { elements, .. } = e {
+        if !elements.is_empty()
+            && let Some(items) = strings(elements)
+        {
+            v["state"] = "list".into();
+            v["items"] = serde_json::json!(items);
+        } else if let Some(rows) = elements
+            .iter()
+            .map(|e| match e {
+                Expr::ListLit { elements, .. } => strings(elements),
+                _ => None,
+            })
+            .collect::<Option<Vec<_>>>()
+        {
+            v["state"] = "rows".into();
+            v["rows"] = serde_json::json!(rows);
+        }
+    }
+    v
+}
+
+/// `literal` (plain string, editable in place), `number` / `bool` /
+/// `symbol` (scalar literals — form-editable, written back as exprs), vs
+/// `computed` (interpolation / expression — fragment-editor only). Callers
+/// that can only write strings gate on `literal`; the shape properties
+/// editors additionally consume the scalar states.
 pub(super) fn classify_expr(e: &Expr) -> (&'static str, Option<String>) {
     match e {
         Expr::Utf8(s) | Expr::Ascii(s) => ("literal", Some(s.clone())),
+        Expr::Bool(b) => ("bool", Some(b.to_string())),
+        Expr::Symbol(s) => ("symbol", Some(s.clone())),
+        Expr::I8(n) => ("number", Some(n.to_string())),
+        Expr::I16(n) => ("number", Some(n.to_string())),
+        Expr::I32(n) => ("number", Some(n.to_string())),
+        Expr::I64(n) => ("number", Some(n.to_string())),
+        Expr::I128(n) => ("number", Some(n.to_string())),
+        Expr::Isize(n) => ("number", Some(n.to_string())),
+        Expr::U8(n) => ("number", Some(n.to_string())),
+        Expr::U16(n) => ("number", Some(n.to_string())),
+        Expr::U32(n) => ("number", Some(n.to_string())),
+        Expr::U64(n) => ("number", Some(n.to_string())),
+        Expr::U128(n) => ("number", Some(n.to_string())),
+        Expr::Usize(n) => ("number", Some(n.to_string())),
+        Expr::F32(n) => ("number", Some(n.to_string())),
+        Expr::F64(n) => ("number", Some(n.to_string())),
         _ => ("computed", None),
     }
 }
@@ -281,6 +331,15 @@ fn block_ops(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::V
                 let expr = value_expr(op)?;
                 let block = find_block(&mut src.items, span)?;
                 ast_edit::set_or_insert_field(block, field, expr);
+                tracked.push(("edited", span));
+            }
+            "remove_field" => {
+                let span = span_field(op, "span")?;
+                let field = crate::edit::str_field(op, "field")?;
+                let block = find_block(&mut src.items, span)?;
+                // Tolerant of an absent field so callers can batch removals
+                // (e.g. reset-position dropping x/y/width/height) blindly.
+                ast_edit::remove_field(block, field);
                 tracked.push(("edited", span));
             }
             "set_kind" => {
@@ -1068,6 +1127,7 @@ fn palette(
         "site_type": site_kind(&doc, site),
         "wskill": is_wskill(&doc),
         "unit_kinds": unit_kinds(&doc),
+        "diagram_kinds": diagram_kinds(&doc),
         "body_kinds": body_kinds,
         "components": components(state, &doc),
     }))
@@ -1132,6 +1192,40 @@ pub(super) fn unit_kinds(doc: &Document) -> Vec<serde_json::Value> {
     out
 }
 
+/// The first positional argument of a decorator, as a string.
+pub(super) fn dec_first_string(d: &wcl_lang::Decorator<'_>) -> Option<String> {
+    d.positional().ok()?.first().map(|v| match v {
+        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s.clone(),
+        other => format!("{other:?}"),
+    })
+}
+
+/// The addable diagram shape kinds: every `@block("kind")` type descending
+/// from `wdoc.SvgBlock`, with the same field metadata as `unit_kinds` (the
+/// shape properties form is generated from it). The client curates which
+/// kinds surface in the add-shape palette; the full list is served so any
+/// selected shape — including user-declared ones — gets a schema-driven form.
+pub(super) fn diagram_kinds(doc: &Document) -> Vec<serde_json::Value> {
+    let mut seen: Vec<String> = Vec::new();
+    let mut out: Vec<serde_json::Value> = Vec::new();
+    for decl in doc.type_decls() {
+        let Some(kind) = decl
+            .decorators()
+            .find(|d| d.name() == "block")
+            .and_then(|d| dec_first_string(&d))
+        else {
+            continue;
+        };
+        if seen.contains(&kind) || !decl.is_descendant_of("wdoc.SvgBlock") {
+            continue;
+        }
+        seen.push(kind.clone());
+        out.push(kind_entry(doc, &kind, &decl));
+    }
+    out.sort_by(|a, b| a["kind"].as_str().cmp(&b["kind"].as_str()));
+    out
+}
+
 pub(super) fn kind_entry(
     doc: &Document,
     kind: &str,
@@ -1151,6 +1245,11 @@ pub(super) fn kind_entry(
             continue;
         }
         let ty = f.type_ref();
+        // Function-valued fields (an SvgBlock's `lower`, computed hooks)
+        // aren't form-editable properties.
+        if ty.to_string().starts_with("fn") {
+            continue;
+        }
         let symbols: Option<Vec<String>> = match doc.resolve(ty) {
             ResolvedType::SymbolSet(ss) => {
                 Some(ss.symbols().map(|s| s.name().to_string()).collect())

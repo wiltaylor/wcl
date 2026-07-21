@@ -119,3 +119,37 @@ fn deeply_nested_input_errors_instead_of_overflowing_the_stack() {
     let ok = format!("x = {}1{}\n", "(".repeat(100), ")".repeat(100));
     parse_for_edit(&ok, "ok").expect("100 levels parse fine");
 }
+
+#[test]
+fn match_inside_interpolation_slot_stays_single_line() {
+    // Regression: a `${match … { … }}` slot used to print the match
+    // multi-line — but an interpolation slot must not span lines, so the
+    // output failed to re-parse (found via the editor's set_visibility
+    // commit on the wskill training template).
+    let out = round_trip("@schemaless x = $\"a${match y { none => \"\", s => $\" - ${s}\" }}b\"\n");
+    assert!(
+        out.contains("${match y { none => \"\", s => $\" - ${s}\" }}"),
+        "match prints one-line inside the slot:\n{out}"
+    );
+}
+
+#[test]
+fn let_block_inside_interpolation_slot_stays_single_line() {
+    let out = round_trip("@schemaless x = $\"v=${ { let a = 1; let b = 2; a + b } }\"\n");
+    assert!(
+        out.contains("${{ let a = 1; let b = 2; a + b }}")
+            || out.contains("${ { let a = 1; let b = 2; a + b } }"),
+        "block expr prints one-line inside the slot:\n{out}"
+    );
+}
+
+#[test]
+fn match_inside_interpolated_heredoc_slot_stays_single_line() {
+    let out = round_trip(
+        "@schemaless x = $<<DOC\nline ${match y { none => \"\", s => s }} tail\nsecond\nDOC\n",
+    );
+    assert!(
+        out.contains("${match y { none => \"\", s => s }}"),
+        "heredoc slot match stays one-line:\n{out}"
+    );
+}
