@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { indexHitsForUnit, pinCounts, subtreePinnedIds } from './graph';
 
 /** A payload with one top index, a sub-index, and a sub-sub-index:
-    `a` pinned at top AND sub-sub level, `b` only in the sub level. */
+    `a` pinned at top AND sub-sub level, `b` only in the sub level; a
+    lesson organized by the training syllabus (never index-pinned). */
 const data = {
   sites: ['book', 'deck'],
   nodes: [
@@ -25,6 +26,7 @@ const data = {
     },
     { key: 'concept:a', type: 'unit', id: 'a' },
     { key: 'concept:b', type: 'unit', id: 'b' },
+    { key: 'lesson:l1', type: 'unit', id: 'l1', organized: ['training'] },
   ],
   edges: [
     { from: 'index:top', to: 'concept:a', kind: 'pin', index_id: 'top' },
@@ -44,6 +46,15 @@ describe('pinCounts', () => {
   it('ignores related edges and handles a missing payload', () => {
     expect(pinCounts(null)).toEqual({});
     expect(pinCounts(data)['concept:a'].total).toBe(2);
+  });
+
+  it('counts structurally organized units as members of their site', () => {
+    const c = pinCounts(data);
+    // A lesson lives in the training syllabus by construction — never an
+    // orphan, even with zero pin edges.
+    expect(c['lesson:l1']).toEqual({ total: 1, sites: { training: 1 } });
+    // Ordinary units are unaffected.
+    expect(c['concept:a'].sites.training).toBeUndefined();
   });
 });
 

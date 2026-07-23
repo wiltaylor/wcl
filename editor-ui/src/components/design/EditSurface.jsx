@@ -462,14 +462,25 @@ export default function EditSurface(props) {
     redecorate: decorate,
   };
 
+  const spanOfEl = (e) => {
+    const [start, end] = (e.getAttribute('data-wcl-span') ?? '0:0').split(':').map(Number);
+    return { start, end };
+  };
+
   /** Gutter drag → in-place move + local commit; anchors patched from the
-      response's span_map, so no rebuild or reload. Shared anchors
-      (repeater output rendering one source block in several places) fall
-      back to the full loop — moving one instance in place would lie. */
-  const reorderLocal = ({ file, span, steps, el, sameFile, dropIdx }) => {
+      response's span_map, so no rebuild or reload. The `move_to` op is
+      span-addressed on both ends and resolves at the common-ancestor
+      level, so template blocks (an `edit_field`-wrapped title, a
+      `related_section`) move correctly past invisible AST siblings like
+      the `project` body splice. Shared anchors (repeater output rendering
+      one source block in several places) fall back to the full loop —
+      moving one instance in place would lie. */
+  const reorderLocal = ({ file, span, el, sameFile, dropIdx }) => {
     const d = doc();
-    const dir = steps < 0 ? 'up' : 'down';
-    const ops = Array.from({ length: Math.abs(steps) }, () => ({ op: 'move', span, dir }));
+    const target = sameFile[dropIdx]
+      ? { before: spanOfEl(sameFile[dropIdx]) }
+      : { after: spanOfEl(sameFile[sameFile.length - 1]) };
+    const ops = [{ op: 'move_to', span, ...target }];
     if (!d || elsBySpan(d, file, span).length > 1) {
       commitOps(file, ops, { reveal: 'edited' });
       return;
@@ -618,19 +629,24 @@ export default function EditSurface(props) {
     commitOps(a.file, ops, opts);
   };
   /** Toolbar move: swap with the adjacent same-file sibling in place
-      (local commit, anchors patched, selection kept); shapes, shared
-      anchors and edge positions fall back to the full loop. */
+      (local commit, anchors patched, selection kept — `move_to` relative
+      to the DOM neighbour, correct across invisible AST siblings); shapes,
+      shared anchors and edge positions fall back to the full loop. */
   const moveSel = (dir) => {
     const a = selection();
     if (!a) return;
     const d = doc();
-    const ops = [{ op: 'move', span: a.span, dir }];
     const sib =
       d && !a.shape && !a.shared ? adjacentSameFileSibling(d, a.el, dir) : null;
     if (!sib) {
-      structural(ops, { reveal: 'edited' });
+      structural([{ op: 'move', span: a.span, dir }], { reveal: 'edited' });
       return;
     }
+    const ops = [
+      dir === 'up'
+        ? { op: 'move_to', span: a.span, before: spanOfEl(sib) }
+        : { op: 'move_to', span: a.span, after: spanOfEl(sib) },
+    ];
     const revert = dir === 'up' ? moveDomBlock(a.el, sib) : moveDomBlock(sib, a.el);
     decorate();
     commitOpsLocal(a.file, ops, {

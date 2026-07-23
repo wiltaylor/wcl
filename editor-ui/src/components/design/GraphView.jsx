@@ -15,9 +15,18 @@
    batch) — every write commits immediately and refetches, keeping the
    current positions. */
 
-import { For, Show, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
-import { Eye, FileCode2, FilePlus, ListFilter, RefreshCw, SlidersHorizontal, X } from 'lucide-solid';
+import {
+  Eye,
+  FileCode2,
+  FilePlus,
+  ListFilter,
+  RefreshCw,
+  SlidersHorizontal,
+  Trash2,
+  X,
+} from 'lucide-solid';
 import {
   Badge,
   Button,
@@ -153,9 +162,12 @@ export default function GraphView() {
     }
     // Order matters: setData re-renders the <Show> children synchronously,
     // and the svg's viewBox attribute reads viewBox() — it must exist first.
+    // Units only — index nodes never render or simulate (see visNodes).
+    const simNodes = res.nodes.filter((n) => n.type !== 'index');
+    const simEdges = res.edges.filter((e) => e.kind !== 'pin');
     if (!viewBox()) {
-      const w = Math.max(600, ...res.nodes.map((n) => n.x + n.w)) + 60;
-      const h = Math.max(400, ...res.nodes.map((n) => n.y + n.h)) + 60;
+      const w = Math.max(600, ...simNodes.map((n) => n.x + n.w)) + 60;
+      const h = Math.max(400, ...simNodes.map((n) => n.y + n.h)) + 60;
       setViewBox({ x: -30, y: -30, w, h });
     }
     // A plain load resets to the server's deterministic layout; a
@@ -169,11 +181,11 @@ export default function GraphView() {
       // drag would visibly re-relax the whole graph instead of only
       // disturbing the neighborhood.
       sim = createSimulation(simParams());
-      sim.setGraph(res.nodes, res.edges);
+      sim.setGraph(simNodes, simEdges);
       sim.reheat();
       for (let i = 0; i < 600 && sim.tick(); i++);
     } else {
-      sim.setGraph(res.nodes, res.edges);
+      sim.setGraph(simNodes, simEdges);
     }
     applyPositions();
     setData(res);
@@ -209,9 +221,23 @@ export default function GraphView() {
   const node = (key) => data()?.nodes.find((n) => n.key === key);
   const pos = (n) => positions[n.key] ?? { x: n.x, y: n.y };
 
+  // Index nodes are TOC machinery (managed in the index panel), not pages
+  // to edit — the graph renders and simulates UNITS only, so pin edges
+  // (index → unit) drop too. The payload keeps both: the index panel, the
+  // pin-count badges and the delete cleanup all still read them.
+  const visNodes = createMemo(() => (data()?.nodes ?? []).filter((n) => n.type !== 'index'));
+  const visEdges = createMemo(() => (data()?.edges ?? []).filter((e) => e.kind !== 'pin'));
+
   // ---- filters -----------------------------------------------------
+  // "Indexed" = pinned by an index OR organized structurally (a lesson in
+  // the training syllabus, a presentation in its deck) — those units are
+  // placed by construction, never orphans.
   const pinnedKeys = createMemo(
-    () => new Set((data()?.edges ?? []).filter((e) => e.kind === 'pin').map((e) => e.to)),
+    () =>
+      new Set([
+        ...(data()?.edges ?? []).filter((e) => e.kind === 'pin').map((e) => e.to),
+        ...(data()?.nodes ?? []).filter((n) => (n.organized ?? []).length).map((n) => n.key),
+      ]),
   );
   // Per-unit index-membership counts (state/graph.js pinCounts, shared
   // with the content modal's per-view badge) — the node corner badges.
@@ -220,7 +246,10 @@ export default function GraphView() {
   const countTitle = (n) => {
     const c = countOf(n);
     const per = (data()?.sites ?? []).map((s) => `${s}: ${c.sites[s] ?? 0}`).join(' · ');
-    return `in ${c.total} ${c.total === 1 ? 'index' : 'indexes'}${per ? ` — ${per}` : ''}`;
+    const org = (n.organized ?? []).length
+      ? ` · organized by ${n.organized.join('/')}'s own navigation`
+      : '';
+    return `in ${c.total} ${c.total === 1 ? 'index' : 'indexes'}${per ? ` — ${per}` : ''}${org}`;
   };
   const toggleSiteFilter = (site) => {
     const next = new Set(viewFilter());
@@ -334,7 +363,7 @@ export default function GraphView() {
       setCursor(toWorld(e));
     } else if (edgeEl && !busy()) {
       const index = Number(edgeEl.getAttribute('data-edge-handle'));
-      const edge = data().edges[index];
+      const edge = visEdges()[index];
       const a = node(edge.from);
       const b = node(edge.to);
       if (!a || !b) return;
@@ -604,6 +633,73 @@ export default function GraphView() {
     else toast(res.error, { tone: 'danger', duration: 6000 });
   };
 
+  // ---- unit deletion (the side panel's Delete button) ----
+  const [confirmDelete, setConfirmDelete] = createSignal(false);
+  const [deleting, setDeleting] = createSignal(false);
+  // A fresh focus never inherits a pending confirmation.
+  createEffect(() => {
+    focused();
+    setConfirmDelete(false);
+  });
+
+  /** Delete a unit and clean up every reference the graph knows about:
+      `related` entries on other units (span-addressed removes, batched per
+      file — the unit's own file folds its removes into the delete batch so
+      all spans stay pre-reformat fresh), then index pins (id-addressed nav
+      ops, immune to the reformats). `related` ids are plain identifiers,
+      so the transient dangling states between commits are harmless.
+      Computed `related` expressions can't be edited — those are skipped
+      with a note. */
+  const deleteUnit = async (n) => {
+    setDeleting(true);
+    try {
+      const nodes = data()?.nodes ?? [];
+      const edges = data()?.edges ?? [];
+      const byKey = (k) => nodes.find((x) => x.key === k);
+      const opsByFile = new Map();
+      const skipped = [];
+      for (const e of edges) {
+        if (e.kind !== 'related' || e.to !== n.key) continue;
+        const src = byKey(e.from);
+        if (!src) continue;
+        if (src.related_editable === false) {
+          skipped.push(src.title);
+          continue;
+        }
+        const list = opsByFile.get(src.file) ?? [];
+        list.push({ op: 'related_remove', span: src.span, id: n.id });
+        opsByFile.set(src.file, list);
+      }
+      const ownOps = opsByFile.get(n.file) ?? [];
+      opsByFile.delete(n.file);
+      for (const [file, ops] of opsByFile) {
+        const res = await commitOpsQuiet(file, ops);
+        if (!res.ok) return;
+      }
+      const res = await commitOpsQuiet(n.file, [...ownOps, { op: 'delete', span: n.span }]);
+      if (!res.ok) return;
+      const unpinned = new Set();
+      for (const e of edges) {
+        if (e.kind !== 'pin' || e.to !== n.key) continue;
+        const owner = e.index_id ?? byKey(e.from)?.id;
+        if (!owner || unpinned.has(owner)) continue;
+        unpinned.add(owner);
+        await commitNavOpQuiet({ op: 'unpin_unit', index_id: owner, unit_id: n.id });
+      }
+      if (skipped.length) {
+        toast(`Computed related lists left untouched: ${skipped.join(', ')}`, {
+          duration: 6000,
+        });
+      }
+      toast(`Deleted ${n.title}`, { tone: 'success', duration: 3000 });
+      setFocus(null);
+      load({ keepPositions: true });
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
+
   return (
     <div class="ed-graph">
       <div class="ed-design-note">
@@ -759,7 +855,7 @@ export default function GraphView() {
               </marker>
             </defs>
             {/* edges under nodes */}
-            <For each={data().edges}>
+            <For each={visEdges()}>
               {(e, i) => (
                 <g classList={{ 'is-hidden': hiddenEdge() === i(), 'is-faded': edgeFaded(e) }}>
                   <path
@@ -771,7 +867,7 @@ export default function GraphView() {
                 </g>
               )}
             </For>
-            <For each={data().nodes}>
+            <For each={visNodes()}>
               {(n) => (
                 <g
                   data-node={n.key}
@@ -875,6 +971,38 @@ export default function GraphView() {
             <Button size="sm" variant="primary" onClick={() => setContentFor(focused().key)}>
               <Eye size={13} /> Content & visibility…
             </Button>
+            <Show when={focused().type === 'unit'}>
+              <Show
+                when={confirmDelete()}
+                fallback={
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    disabled={busy() || deleting()}
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    <Trash2 size={13} /> Delete unit…
+                  </Button>
+                }
+              >
+                <div class="ed-graph-panel-confirm">
+                  Delete “{focused().title}” and remove its pins/links? (recoverable via git)
+                  <div class="ed-graph-panel-confirm-actions">
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      disabled={deleting()}
+                      onClick={() => deleteUnit(focused())}
+                    >
+                      {deleting() ? 'Deleting…' : 'Delete'}
+                    </Button>
+                    <Button size="sm" disabled={deleting()} onClick={() => setConfirmDelete(false)}>
+                      Keep
+                    </Button>
+                  </div>
+                </div>
+              </Show>
+            </Show>
           </div>
         </Show>
 

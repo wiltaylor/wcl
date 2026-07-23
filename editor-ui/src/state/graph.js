@@ -44,7 +44,12 @@ export function selectedIndexNode() {
     toward it — the node corner badges and the content modal's per-view
     "not indexed" indicator. Returns { [nodeKey]: { total, sites } }.
     Sub-index pins ride their top-level index's edges, so they inherit its
-    per-view visibility (accepted approximation). */
+    per-view visibility (accepted approximation).
+
+    A node's `organized` sites (the training syllabus for lessons/modules,
+    the deck for its presentation unit — navigation built FROM the unit
+    data, never index-pinned) count as membership in those sites, so
+    structurally-placed units don't read as orphans. */
 export function pinCounts(data) {
   if (!data) return {};
   const byKey = Object.fromEntries(data.nodes.map((n) => [n.key, n]));
@@ -56,6 +61,13 @@ export function pinCounts(data) {
     rec.total += 1;
     for (const s of data.sites) {
       if (idx?.views?.[s] !== false) rec.sites[s] = (rec.sites[s] ?? 0) + 1;
+    }
+  }
+  for (const n of data.nodes) {
+    for (const s of n.organized ?? []) {
+      const rec = (out[n.key] ??= { total: 0, sites: {} });
+      rec.total += 1;
+      rec.sites[s] = (rec.sites[s] ?? 0) + 1;
     }
   }
   return out;

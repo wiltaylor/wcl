@@ -30,7 +30,6 @@ topic wskill {
   created = "2026-06-17"
   updated = "2026-07-05"
   maintainer = "Wil Taylor"
-  maintainer_entity = wil_taylor
 }
 
 # Skill-projection config (→ SKILL.md frontmatter).

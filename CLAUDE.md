@@ -1,8 +1,5 @@
 # WCL — Claude Code Instructions
 
-This branch (`rewrite`) is a clean restart of WCL. The previous implementation lives on
-`main` — do not consult it for current behaviour.
-
 This file is a **navigation map**, not a spec. For depth, follow the pointers in
 [Where the docs live](#where-the-docs-live) rather than expecting it all inline.
 

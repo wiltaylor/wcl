@@ -306,6 +306,11 @@ fn graph(
                     &n.audience,
                     n.node_type == "index",
                 ),
+                "organized": if n.node_type == "unit" {
+                    organized_sites(&n.kind, &sites, &site_kinds)
+                } else {
+                    Vec::new()
+                },
                 "blocks": n.blocks,
                 "related_editable": n.related_editable,
                 "pinned": n.pinned,
@@ -375,6 +380,30 @@ fn node_views_map(
         })
         .collect();
     serde_json::Value::Object(map)
+}
+
+/// The sites whose own navigation includes a unit of `kind` STRUCTURALLY —
+/// the training syllabus is built from the lesson/module data itself, and a
+/// deck renders its `presentation` unit as the slides. Such units are never
+/// index-pinned yet aren't "unindexed": the client folds these into the
+/// membership counts so lessons stop reading as orphans (and stop matching
+/// the unindexed filter). Kind names are hardcoded like the audience
+/// routing above — they're the canonical wskill base-schema vocabulary.
+fn organized_sites(
+    kind: &str,
+    sites: &[String],
+    site_kinds: &HashMap<String, String>,
+) -> Vec<String> {
+    sites
+        .iter()
+        .filter(|s| {
+            matches!(
+                (site_kinds.get(*s).map(String::as_str), kind),
+                (Some("training"), "lesson" | "module") | (Some("presentation"), "presentation")
+            )
+        })
+        .cloned()
+        .collect()
 }
 
 /// The declared `@default` of a kind schema's `audience` field, else

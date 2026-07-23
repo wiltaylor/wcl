@@ -1870,6 +1870,86 @@ mod tests {
         assert!(!text.contains("callout"), "{text}");
     }
 
+    /// `move_to` resolves at the common-ancestor level: dragging a
+    /// template title (an `h1` inside a transparent `edit_field` wrapper)
+    /// below a sibling section moves the WHOLE wrapper — and the position
+    /// is span-addressed, so invisible AST siblings between the two never
+    /// skew it.
+    #[tokio::test]
+    async fn block_ops_move_to_promotes_wrapped_blocks() {
+        let doc = "import <wdoc.wcl>\n\nsite docs {\n  title = \"D\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  edit_field {\n    kind = \"concept\"\n    field = \"name\"\n\n    h1 \"Title\"\n  }\n\n  p \"Summary\"\n\n  p \"References\"\n}\n";
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("main.wcl"), doc).unwrap();
+        let state = state_for(td.path(), None);
+        let disk = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        let h1 = span_of(&disk, |b| b.kind == "h1");
+        let refs = span_of(&disk, |b| {
+            b.kind == "p"
+                && matches!(b.labels.first(), Some(wcl_lang::ast::Expr::Utf8(s)) if s == "References")
+        });
+
+        // Drop the title after the references paragraph.
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/block/ops",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [{ "op": "move_to", "span": span_json(h1), "after": span_json(refs) }],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let text = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        // The wrapper travelled with its h1, landing after both paragraphs.
+        let (s, r, e) = (
+            text.find("Summary").unwrap(),
+            text.find("References").unwrap(),
+            text.find("edit_field").unwrap(),
+        );
+        assert!(s < r && r < e, "wrapper moved below references: {text}");
+
+        // And back above the summary via `before`.
+        let disk = text;
+        let h1 = span_of(&disk, |b| b.kind == "h1");
+        let summary = span_of(&disk, |b| {
+            b.kind == "p"
+                && matches!(b.labels.first(), Some(wcl_lang::ast::Expr::Utf8(s)) if s == "Summary")
+        });
+        let (status, _) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/block/ops",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [{ "op": "move_to", "span": span_json(h1), "before": span_json(summary) }],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let text = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        assert!(
+            text.find("edit_field").unwrap() < text.find("Summary").unwrap(),
+            "{text}"
+        );
+
+        // A block can't move relative to its own descendant.
+        let disk = text;
+        let ef = span_of(&disk, |b| b.kind == "edit_field");
+        let h1 = span_of(&disk, |b| b.kind == "h1");
+        let (status, _) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/block/ops",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [{ "op": "move_to", "span": span_json(ef), "before": span_json(h1) }],
+            })),
+        )
+        .await;
+        assert_ne!(status, StatusCode::OK);
+    }
+
     /// Nested fixture for the span-map tests: 7 blocks (site, page, p,
     /// list, li, li, p).
     const NESTED_DOC: &str = "import <wdoc.wcl>\n\nsite docs {\n  title = \"D\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  p \"First\"\n\n  list {\n    li \"one\"\n    li \"two\"\n  }\n\n  p \"Last\"\n}\n";

@@ -414,17 +414,19 @@ export default function ContentModal(props) {
   const [dragIdx, setDragIdx] = createSignal(null);
   const [dropIdx, setDropIdx] = createSignal(null);
   const listReorder = async (from, drop) => {
-    const b = (node()?.blocks ?? [])[from];
+    const blocks = node()?.blocks ?? [];
+    const b = blocks[from];
     const target = drop > from ? drop - 1 : drop;
-    const steps = target - from;
-    if (!b || steps === 0) return;
-    const dir = steps < 0 ? 'up' : 'down';
+    if (!b || target === from) return;
+    // Span-addressed `move_to` — correct even when the listed blocks span
+    // mixed parents (spliced body children beside direct unit children).
     // In place: no iframe exists here — the graph reload inside
     // commitOpsLocal refreshes the rows.
-    await commitOpsLocal(
-      b.file,
-      Array.from({ length: Math.abs(steps) }, () => ({ op: 'move', span: b.span, dir })),
-    );
+    const ref = drop < blocks.length ? blocks[drop] : null;
+    const op = ref
+      ? { op: 'move_to', span: b.span, before: ref.span }
+      : { op: 'move_to', span: b.span, after: blocks[blocks.length - 1].span };
+    await commitOpsLocal(b.file, [op]);
   };
 
   const mergedBlockList = () => (

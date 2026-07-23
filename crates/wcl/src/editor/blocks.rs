@@ -272,6 +272,10 @@ pub(super) fn visibility_json(block: &ast::Block) -> serde_json::Value {
 ///   refuses computed lists, duplicates, and self-loops)
 /// - `delete {}` — remove the block
 /// - `move { dir: "up"|"down" }` — swap with the adjacent block sibling
+/// - `move_to { before: span | after: span }` — move relative to another
+///   block, resolved at the common-ancestor level (a transparent wrapper
+///   like `edit_field` moves with its child; invisible AST siblings —
+///   `project` splices, view-hidden blocks — never skew the position)
 pub(super) async fn handle_block_ops(
     State(state): State<Arc<EditorState>>,
     body: String,
@@ -501,6 +505,20 @@ fn block_ops(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::V
                 }
                 tracked.push(("edited", span));
             }
+            "move_to" => {
+                let span = span_field(op, "span")?;
+                let (target, before) = if op.get("before").is_some() {
+                    (span_field(op, "before")?, true)
+                } else if op.get("after").is_some() {
+                    (span_field(op, "after")?, false)
+                } else {
+                    return Err("move_to needs `before` or `after`".into());
+                };
+                if !move_block_relative(&mut src.items, span, target, before) {
+                    return Err(stale_span());
+                }
+                tracked.push(("edited", span));
+            }
             other => return Err(format!("unknown op `{other}`")),
         }
     }
@@ -582,6 +600,45 @@ pub(super) fn is_identifier(s: &str) -> bool {
     let mut chars = s.chars();
     matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Move the block at `span` so it sits before/after the block at `target`
+/// — resolved at the COMMON-ANCESTOR level: the moved item is the dragged
+/// block's ancestor where the two index paths diverge, so a title `h1`
+/// inside a transparent `edit_field` wrapper moves WITH its wrapper when
+/// dropped relative to a sibling section. Span-addressed on both ends, so
+/// the client never counts steps across invisible AST siblings (a
+/// `project` body splice, blocks hidden in the current view). Fails when
+/// either span is stale or one block contains the other.
+fn move_block_relative(items: &mut Vec<Item>, span: Span, target: Span, before: bool) -> bool {
+    let (Some(pa), Some(pb)) = (
+        index_path_by_span(items, span),
+        index_path_by_span(items, target),
+    ) else {
+        return false;
+    };
+    let k = pa.iter().zip(pb.iter()).take_while(|(a, b)| a == b).count();
+    if k == pa.len() || k == pb.len() {
+        return false; // one contains the other
+    }
+    let mut list = items;
+    for &i in &pa[..k] {
+        match list.get_mut(i) {
+            Some(Item::Block(b)) => list = &mut b.items,
+            _ => return false,
+        }
+    }
+    let (ai, bi) = (pa[k], pb[k]);
+    if ai == bi {
+        return false;
+    }
+    let item = list.remove(ai);
+    let mut ti = bi - usize::from(ai < bi);
+    if !before {
+        ti += 1;
+    }
+    list.insert(ti, item);
+    true
 }
 
 /// Old-span → new-span for every block surviving the batch, by parallel
