@@ -19,6 +19,7 @@ mod icons;
 mod image;
 mod include;
 mod inline;
+mod kinds;
 mod layered;
 mod map;
 mod markdown;

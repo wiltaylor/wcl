@@ -20,6 +20,7 @@ use wcl_lang::{Block, Document, Value};
 
 use crate::build::BuildError;
 use crate::inline::InlinePatterns;
+use crate::kinds;
 use crate::render::{
     MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_component_children,
     expand_repeater_children, field_symbol, field_utf8, field_utf8_list, gather_inline_text,
@@ -139,68 +140,68 @@ impl Emitter<'_> {
         match kind {
             // A presentation fragment is a step-reveal wrapper — its children
             // render in place in static output.
-            "fragment" => {
+            kinds::FRAGMENT => {
                 for c in block.blocks() {
                     self.block(&c, out)?;
                 }
             }
             // A named `region` slots into an HTML template; Markdown has no
             // template, so its children render in place.
-            "region" => {
+            kinds::REGION => {
                 for c in block.blocks() {
                     self.block(&c, out)?;
                 }
             }
             // An `edit_field` binds its children to a data-object field for
             // the editor's Design mode — a transparent wrapper here.
-            "edit_field" => {
+            kinds::EDIT_FIELD => {
                 for c in block.blocks() {
                     self.block(&c, out)?;
                 }
             }
             // Diagrams (and the charts / timelines / maps / tilemaps nested in
             // them) render to one self-contained static SVG.
-            "diagram" => {
+            kinds::DIAGRAM => {
                 let svg = render_diagram_static(self.doc, block, self.patterns, self.base_dir);
                 let rel = self.write_svg("diagram", &svg)?;
                 out.push(image_ref(&self.svg_alt(block, "diagram"), &rel));
             }
             // Page-level SVG blocks lowered from WCL (`lower_svg`) write a
             // standalone `.svg` exactly like `diagram`.
-            "sequence_diagram" | "state_diagram" => {
+            kinds::SEQUENCE_DIAGRAM | "state_diagram" => {
                 let svg =
                     crate::render::render_lowered_svg_block(self.doc, block, kind, self.patterns);
                 let rel = self.write_svg(&kind.replace('_', "-"), &svg)?;
                 out.push(image_ref(&self.svg_alt(block, kind), &rel));
             }
-            "terminal" => {
+            kinds::TERMINAL => {
                 let svg = crate::terminal::render_terminal_pdf(self.doc, block, self.base_dir);
                 let rel = self.write_svg("terminal", &svg)?;
                 out.push(image_ref(&self.svg_alt(block, "terminal"), &rel));
             }
-            "list" => out.push(self.list(block)),
-            "table" => out.push(self.table(block)),
-            "code" => out.push(self.code(block)),
-            "image" => {
+            kinds::LIST => out.push(self.list(block)),
+            kinds::TABLE => out.push(self.table(block)),
+            kinds::CODE => out.push(self.code(block)),
+            kinds::IMAGE => {
                 if let Some(s) = self.image(block) {
                     out.push(s);
                 }
             }
-            "file" => {
+            kinds::FILE => {
                 if let Some(s) = self.file(block) {
                     out.push(s);
                 }
             }
-            "video" => {
+            kinds::VIDEO => {
                 if let Some(s) = self.video(block) {
                     out.push(s);
                 }
             }
-            "callout" => out.push(self.callout(block)),
+            kinds::CALLOUT => out.push(self.callout(block)),
             // A `demo` degrades to its example source (a fenced `wcl` block)
             // plus one static render of the children — Markdown has no theming,
             // so the dual light/dark preview collapses to a single pass.
-            "demo" => {
+            kinds::DEMO => {
                 let src = crate::demo::demo_source(block);
                 if !src.is_empty() {
                     out.push(format!("```wcl\n{src}\n```"));
@@ -211,7 +212,7 @@ impl Emitter<'_> {
             }
             // A repeater stamps its body once per element of `each`; expand to
             // the bound child blocks and walk them.
-            "wdoc_repeater" => {
+            kinds::REPEATER => {
                 if block.binding_scope_depth() <= MAX_LOWER_DEPTH {
                     for c in expand_repeater_children(block) {
                         self.block(&c, out)?;
@@ -220,7 +221,7 @@ impl Emitter<'_> {
             }
             // A `wdoc_instance` renders the component named by its `component`
             // value (render-by-reference); resolve the target and expand it.
-            "wdoc_instance" => {
+            kinds::INSTANCE => {
                 if block.binding_scope_depth() <= MAX_LOWER_DEPTH
                     && let Some(def) = instance_target_def(block)
                 {
@@ -229,7 +230,7 @@ impl Emitter<'_> {
             }
             // A bare `wdoc_content` outside a component has no effect (the
             // substitution happens in `component`).
-            "wdoc_content" => {}
+            kinds::CONTENT => {}
             kind => {
                 // A user-defined `wdoc_component` instance: expand its
                 // declarative body with the instance's slots bound.
@@ -258,7 +259,7 @@ impl Emitter<'_> {
             return Ok(());
         }
         for child in expand_component_children(instance, def) {
-            if child.kind() == "wdoc_content" {
+            if child.kind() == kinds::CONTENT {
                 for ic in instance.blocks() {
                     self.block(&ic, out)?;
                 }
@@ -399,7 +400,7 @@ impl Emitter<'_> {
                 self.li_group(&li, ordered, depth + 1, lines);
             }
             // Explicit nested `list` blocks with their own style.
-            for sub in li.blocks().filter(|b| b.kind() == "list") {
+            for sub in li.blocks().filter(|b| b.kind() == kinds::LIST) {
                 let sub_ordered = field_symbol(&sub, "style").as_deref() == Some("numbered");
                 self.li_group(&sub, sub_ordered, depth + 1, lines);
             }

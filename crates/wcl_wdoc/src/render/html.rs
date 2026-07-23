@@ -10,6 +10,7 @@ use wcl_lang::{Block, Document, Value};
 use crate::highlight;
 use crate::icons::IconRegistry;
 use crate::inline::InlinePatterns;
+use crate::kinds;
 
 use super::*;
 
@@ -95,7 +96,7 @@ fn push_toc_child(ch: &Block<'_>, out: &mut Vec<TocNode>) {
             page: field_id(ch, "page"),
             children: read_chapters(ch),
         }),
-        "wdoc_repeater" if ch.binding_scope_depth() <= MAX_LOWER_DEPTH => {
+        kinds::REPEATER if ch.binding_scope_depth() <= MAX_LOWER_DEPTH => {
             for c in expand_repeater_children(ch) {
                 push_toc_child(&c, out);
             }
@@ -213,7 +214,7 @@ fn push_menu_child(it: &Block<'_>, out: &mut Vec<MenuNode>) {
             href: field_utf8(it, "href"),
             children: read_menu_items(it),
         }),
-        "wdoc_repeater" if it.binding_scope_depth() <= MAX_LOWER_DEPTH => {
+        kinds::REPEATER if it.binding_scope_depth() <= MAX_LOWER_DEPTH => {
             for c in expand_repeater_children(it) {
                 push_menu_child(&c, out);
             }
@@ -307,7 +308,7 @@ fn push_deck_child(ch: &Block<'_>, out: &mut Vec<DeckSectionNode>) {
                 slides,
             });
         }
-        "wdoc_repeater" if ch.binding_scope_depth() <= MAX_LOWER_DEPTH => {
+        kinds::REPEATER if ch.binding_scope_depth() <= MAX_LOWER_DEPTH => {
             for c in expand_repeater_children(ch) {
                 push_deck_child(&c, out);
             }
@@ -321,7 +322,7 @@ fn push_deck_child(ch: &Block<'_>, out: &mut Vec<DeckSectionNode>) {
 fn push_deck_slide(ch: &Block<'_>, out: &mut Vec<String>) {
     match ch.kind() {
         "slide" => out.extend(label_string(ch)),
-        "wdoc_repeater" if ch.binding_scope_depth() <= MAX_LOWER_DEPTH => {
+        kinds::REPEATER if ch.binding_scope_depth() <= MAX_LOWER_DEPTH => {
             for c in expand_repeater_children(ch) {
                 push_deck_slide(&c, out);
             }
@@ -534,44 +535,44 @@ pub(crate) fn render_block(
         // separately by `build_normal_page` (it becomes a `TemplateCtx`
         // region). Reached here only when nested outside the page top
         // level — render nothing so it never leaks into the default body.
-        "region" => Some(String::new()),
+        kinds::REGION => Some(String::new()),
         // A presentation `fragment` wraps its children in a step-reveal
         // box (`<div class="wdoc-fragment">`); the deck player reveals
         // them one keypress at a time. Like `column`, the `@children`
         // wrapping can't live in a WCL `lower`, so it's rendered here.
-        "fragment" => Some(render_fragment(doc, block, patterns, base_dir)),
-        "table" => Some(render_table(doc, block, patterns)),
+        kinds::FRAGMENT => Some(render_fragment(doc, block, patterns, base_dir)),
+        kinds::TABLE => Some(render_table(doc, block, patterns)),
         // Lists are fundamental HTML blocks rendered directly (like
         // `table`): a pure-WCL lower can't see `@children`, so it can't
         // wrap nested items in the `<ul>/<ol>` that valid HTML and the
         // CSS-counter "1.1" numbering need. An `li` is normally reached
         // via `render_list`; the arm here is defensive.
-        "list" => Some(render_list(doc, block, patterns, base_dir)),
+        kinds::LIST => Some(render_list(doc, block, patterns, base_dir)),
         "li" => Some(render_li(doc, block, false, patterns, base_dir)),
         // A page image — the asset copy + src rewrite is special-cased in
         // Rust (the same `image` block is also a diagram shape; see
         // render_shape). Records usage in the image registry.
-        "image" => Some(crate::image::render_html(block, patterns.images())),
+        kinds::IMAGE => Some(crate::image::render_html(block, patterns.images())),
         // A `file` block ships an arbitrary file into the output (copied
         // into its `dir`, default `_wdoc/`) and renders a download link when
         // `as` is set. Special-cased in Rust like `image` — the copy + path
         // rewrite aren't expressible in WCL.
-        "file" => Some(crate::file::render_html(block, patterns.files())),
+        kinds::FILE => Some(crate::file::render_html(block, patterns.files())),
         // A page video — like `image`, the asset copy, URL classification,
         // and click-to-play facade are special-cased in Rust. Records usage
         // in the video registry (driving the local-file/poster copy).
-        "video" => Some(crate::video::render_html(block, patterns.videos())),
-        "diagram" => Some(render_diagram(doc, block, patterns, base_dir)),
+        kinds::VIDEO => Some(crate::video::render_html(block, patterns.videos())),
+        kinds::DIAGRAM => Some(render_diagram(doc, block, patterns, base_dir)),
         // Page-level SVG blocks whose geometry is a WCL `lower_svg` fn
         // (fitted viewBox, auto height) — see render/svg/standalone.rs.
-        kind @ ("sequence_diagram" | "state_diagram") => {
+        kind @ (kinds::SEQUENCE_DIAGRAM | kinds::STATE_DIAGRAM) => {
             Some(render_lowered_svg_block(doc, block, kind, patterns))
         }
         // The terminal is special-cased in Rust: its grid model, ANSI
         // handling, and asciinema replay aren't expressible in WCL.
         // `base_dir` lets a `source` recording path resolve relative to
         // the source file.
-        "terminal" => Some(crate::terminal::render_terminal(doc, block, base_dir)),
+        kinds::TERMINAL => Some(crate::terminal::render_terminal(doc, block, base_dir)),
         // Renders its body to a Markdown string (the same output the Markdown /
         // skill backend produces) and shows it in a highlighted `code` block.
         // Special-cased here because reaching into the Markdown emitter from a
@@ -581,13 +582,13 @@ pub(crate) fn render_block(
         // An example source listing + a live preview of the same children
         // under both palettes (side by side). Special-cased in Rust: it reads
         // the children's source text and re-renders them into themed wrappers.
-        "demo" => Some(crate::demo::render_html(doc, block, patterns, base_dir)),
+        kinds::DEMO => Some(crate::demo::render_html(doc, block, patterns, base_dir)),
         // An "edit this object" button. Edit mode is not visible to a WCL
         // `lower`, so it is emitted here and only in edit mode (the
         // `wcl editor` preview); outside edit mode (plain build / markdown /
         // pdf) it renders nothing, so the button never leaks into published
         // output.
-        "edit_object" => Some(if patterns.edit_mode() {
+        kinds::EDIT_OBJECT => Some(if patterns.edit_mode() {
             render_edit_object_button(block)
         } else {
             String::new()
@@ -596,18 +597,18 @@ pub(crate) fn render_block(
         // object (the Design-mode inline-editing seam). The children render
         // in place in every mode; edit mode additionally stamps the binding
         // attributes onto the first child's root tag.
-        "edit_field" => Some(render_edit_field(doc, block, patterns, base_dir)),
+        kinds::EDIT_FIELD => Some(render_edit_field(doc, block, patterns, base_dir)),
         // Wireframe widgets (`wf_*`) are diagram shapes now — they render only
         // inside a `diagram` (via `render_shape`), never as a page block.
         // A `wdoc_repeater` renders its body once per element of `each`.
-        "wdoc_repeater" => Some(render_repeat(doc, block, patterns, base_dir)),
+        kinds::REPEATER => Some(render_repeat(doc, block, patterns, base_dir)),
         // A `wdoc_instance` renders the component named by its `component`
         // value (render-by-reference) — a different component per data element.
-        "wdoc_instance" => Some(render_instance(doc, block, patterns, base_dir)),
+        kinds::INSTANCE => Some(render_instance(doc, block, patterns, base_dir)),
         // A `wdoc_content` marks where a component instance's own children
         // render — emit the sentinel; `render_component` substitutes it.
         // (Outside a component it has no effect; the sentinel is invisible.)
-        "wdoc_content" => Some(WF_CONTENT_SLOT.to_string()),
+        kinds::CONTENT => Some(WF_CONTENT_SLOT.to_string()),
         // Everything else lowers via WCL — `text` / `code` (which emit the
         // new `Inline` / `Highlighted` leaf fundamentals), the headings,
         // `callout`, and any custom block — UNLESS the kind names a
@@ -649,14 +650,14 @@ fn anchor_block(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> S
     // their own anchors plus the field-binding attributes.
     if matches!(
         kind,
-        "region"
+        kinds::REGION
             | "column"
-            | "fragment"
-            | "wdoc_repeater"
-            | "wdoc_instance"
-            | "wdoc_content"
-            | "edit_object"
-            | "edit_field"
+            | kinds::FRAGMENT
+            | kinds::REPEATER
+            | kinds::INSTANCE
+            | kinds::CONTENT
+            | kinds::EDIT_OBJECT
+            | kinds::EDIT_FIELD
     ) {
         return html;
     }
@@ -980,7 +981,7 @@ pub(crate) fn render_li(
         out.push_str(&list_html(numbered, &classes, None, &sub_items));
     }
     // A nested `list` block carries its own bullet/numbered style.
-    for b in block.blocks().filter(|b| b.kind() == "list") {
+    for b in block.blocks().filter(|b| b.kind() == kinds::LIST) {
         out.push_str(&render_list(doc, &b, patterns, base_dir));
     }
     out.push_str("</li>");
