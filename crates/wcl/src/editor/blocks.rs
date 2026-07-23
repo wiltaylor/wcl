@@ -544,7 +544,7 @@ fn block_ops(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::V
             let span = block_at_path(&fresh.items, &path?)?.span;
             Some(serde_json::json!({
                 "role": role,
-                "span": { "start": span.start, "end": span.end },
+                "span": super::span_json(span),
             }))
         })
         .collect();
@@ -676,8 +676,8 @@ fn span_map_json(old: &[Item], new: &[Item]) -> Vec<serde_json::Value> {
         .filter(|(from, _)| counts[&(from.start, from.end)] == 1)
         .map(|(from, to)| {
             serde_json::json!({
-                "from": { "start": from.start, "end": from.end },
-                "to": { "start": to.start, "end": to.end },
+                "from": super::span_json(from),
+                "to": super::span_json(to),
             })
         })
         .collect()
@@ -754,7 +754,7 @@ fn unit_field(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::
         .map(|b| {
             vec![serde_json::json!({
                 "role": "edited",
-                "span": { "start": b.span.start, "end": b.span.end },
+                "span": super::span_json(b.span),
             })]
         })
         .unwrap_or_default();

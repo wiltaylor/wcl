@@ -39,6 +39,7 @@ import {
 } from '@forge/ui';
 
 import { api } from '../../api';
+import { builtPageExists } from '../../preview/manifest';
 import { dirtyFiles, openFile } from '../../state/buffers';
 import { revealSpan } from '../../state/views';
 import { activeEntry, activeView, rebuild, selectView, selected } from '../../state/sites';
@@ -579,14 +580,7 @@ export default function GraphView() {
       reads its manifest — the content modal's hasPage pattern. */
   const viewHasPage = async (view, page) => {
     const res = await api.preview(view.entry, view.site, dirtyFiles(), { pages: [page] });
-    if (!res.ok) return false;
-    try {
-      const dir = res.href.slice(0, res.href.lastIndexOf('/') + 1);
-      const manifest = await (await fetch(`${dir}_wdoc/pages.json`)).json();
-      return (manifest.pages ?? []).includes(page);
-    } catch {
-      return false;
-    }
+    return res.ok && builtPageExists(res.href, page);
   };
 
   const [openingPage, setOpeningPage] = createSignal(false);

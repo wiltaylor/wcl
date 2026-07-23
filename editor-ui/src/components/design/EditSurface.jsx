@@ -70,6 +70,7 @@ import {
   setPopover,
   setSelection,
 } from '../../state/design';
+import { parseSpanAttr } from '../../preview/anchors';
 import { injectBareCss, pageInfo } from '../../preview/frame';
 import {
   adjacentSameFileSibling,
@@ -462,10 +463,7 @@ export default function EditSurface(props) {
     redecorate: decorate,
   };
 
-  const spanOfEl = (e) => {
-    const [start, end] = (e.getAttribute('data-wcl-span') ?? '0:0').split(':').map(Number);
-    return { start, end };
-  };
+  const spanOfEl = (e) => parseSpanAttr(e.getAttribute('data-wcl-span')) ?? { start: 0, end: 0 };
 
   /** Gutter drag → in-place move + local commit; anchors patched from the
       response's span_map, so no rebuild or reload. The `move_to` op is

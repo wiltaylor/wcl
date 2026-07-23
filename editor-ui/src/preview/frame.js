@@ -7,6 +7,8 @@
    not fuzzy — a stale locator resolves to null and its pin is dropped
    (the record itself survives in the sidecar). */
 
+import { parseSpanAttr } from './anchors';
+
 const CSS_ID = 'wcl-comment-css';
 /* The iframe holds a plain wdoc build with no Forge tokens, so these are
    literal colors: amber for comment marks, blue for the pick highlight. */
@@ -29,13 +31,11 @@ body.wcl-picking, body.wcl-picking * { cursor: crosshair !important; }
 export function pageInfo(doc) {
   const el = doc?.querySelector?.('[data-wcl-page-file]');
   if (!el) return null;
-  const raw = el.getAttribute('data-wcl-page-span');
-  const [start, end] = raw ? raw.split(':').map(Number) : [];
   return {
     el,
     name: el.getAttribute('data-wcl-page-name'),
     file: el.getAttribute('data-wcl-page-file'),
-    span: raw ? { start, end } : null,
+    span: parseSpanAttr(el.getAttribute('data-wcl-page-span')),
   };
 }
 

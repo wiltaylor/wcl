@@ -12,6 +12,7 @@
    Plain-DOM, same-origin, like frame.js. The wysiwyg click/move handlers
    ignore `.wcl-vis-gutter` hits so the controls own their events. */
 
+import { anchorSpanOf } from './anchors';
 import { blockChildren, pageInfo } from './frame';
 
 const CSS_ID = 'wcl-vis-css';
@@ -72,13 +73,6 @@ export function visOf(el) {
   };
 }
 
-function anchorInfoOf(el) {
-  const spanRaw = el.getAttribute('data-wcl-span');
-  const file = el.getAttribute('data-wcl-file');
-  if (!spanRaw || !file) return null;
-  const [start, end] = spanRaw.split(':').map(Number);
-  return { file, span: { start, end } };
-}
 
 /** How many positions (and in which direction) `from` must move among the
     ordered same-file block list `sameFile` to land before/after `to`. */
@@ -113,9 +107,9 @@ export function placeVisGutters(
   for (const g of doc.querySelectorAll('.wcl-vis-gutter, .wcl-vis-dropline')) g.remove();
   for (const h of doc.querySelectorAll('.wcl-vis-host')) h.classList.remove('wcl-vis-host');
   for (const h of doc.querySelectorAll('.wcl-vis-ghost')) h.classList.remove('wcl-vis-ghost');
-  const blocks = blockChildren(page.el).filter((el) => !isChrome(el) && anchorInfoOf(el));
+  const blocks = blockChildren(page.el).filter((el) => !isChrome(el) && anchorSpanOf(el));
   for (const el of blocks) {
-    const { file, span } = anchorInfoOf(el);
+    const { file, span } = anchorSpanOf(el);
     const { exceptSites, custom } = visOf(el);
     el.classList.add('wcl-vis-host');
     if (currentSite && exceptSites.includes(currentSite)) el.classList.add('wcl-vis-ghost');
@@ -167,7 +161,7 @@ function wireDrag(doc, handle, el, blocks, { onReorder, enabled }) {
     if (!enabled()) return;
     down.preventDefault();
     down.stopPropagation();
-    const { file, span } = anchorInfoOf(el);
+    const { file, span } = anchorSpanOf(el);
     const sameFile = blocks.filter((b) => b.getAttribute('data-wcl-file') === file);
     const fromIdx = sameFile.indexOf(el);
     if (fromIdx < 0 || sameFile.length < 2) return;

@@ -111,7 +111,7 @@ fn source_binding(state: &EditorState, file: &Path, span: Span) -> serde_json::V
         .unwrap_or_else(|_| file.display().to_string());
     serde_json::json!({
         "file": rel,
-        "span": { "start": span.start, "end": span.end },
+        "span": super::span_json(span),
     })
 }
 

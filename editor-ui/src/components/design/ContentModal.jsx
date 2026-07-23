@@ -45,6 +45,7 @@ import {
 } from '../../state/design';
 import { graphData, pinCounts, reloadGraph } from '../../state/graph';
 import { injectBareCss } from '../../preview/frame';
+import { builtPageExists } from '../../preview/manifest';
 import EditSurface from './EditSurface';
 import { viewLabel } from './DesignCanvas';
 
@@ -86,18 +87,9 @@ export default function ContentModal(props) {
       toast(res.error, { tone: 'danger', duration: 6000 });
       return res;
     }
-    // Not every view has a page per unit (a lesson is a training page; an
-    // :ai-only unit has none) — the site's pages.json manifest says whether
-    // this unit's page exists; without one the tab shows an explicit
-    // "no page in this view" state instead of the view's index.
-    const dir = res.href.slice(0, res.href.lastIndexOf('/') + 1);
-    let hasPage = false;
-    try {
-      const manifest = await (await fetch(`${dir}_wdoc/pages.json`)).json();
-      hasPage = (manifest.pages ?? []).includes(slug());
-    } catch {
-      /* no manifest — treat as no page */
-    }
+    // Without a manifest entry the tab shows an explicit "no page in this
+    // view" state instead of the view's index.
+    const hasPage = await builtPageExists(res.href, slug());
     setHrefs((h) => ({ ...h, [view.id]: { href: res.href, hasPage } }));
     setReloadSeq((s) => s + 1);
     return res;
@@ -150,14 +142,7 @@ export default function ContentModal(props) {
       if (!quiet) toast(res.error, { tone: 'danger', duration: 6000 });
       return res;
     }
-    const dir = res.href.slice(0, res.href.lastIndexOf('/') + 1);
-    let hasPage = false;
-    try {
-      const manifest = await (await fetch(`${dir}_wdoc/pages.json`)).json();
-      hasPage = (manifest.pages ?? []).includes(page);
-    } catch {
-      /* no manifest — treat as no page */
-    }
+    const hasPage = await builtPageExists(res.href, page);
     setMergedHref({ href: res.href, hasPage });
     setReloadSeq((s) => s + 1);
     return res;

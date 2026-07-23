@@ -6,6 +6,8 @@
    build stamps: data-wcl-kind / data-wcl-span ("start:end" byte offsets) /
    data-wcl-file, plus the edit_field bindings data-wcl-field-*. */
 
+import { parseSpanAttr, spanSelector } from './anchors';
+
 const CSS_ID = 'wcl-design-css';
 /* The iframe holds a plain wdoc build with no Forge tokens — literal colors:
    blue for hover/selection, violet for field bindings, amber while editing. */
@@ -47,10 +49,8 @@ export function anchorOf(doc, el) {
   const span = el.getAttribute('data-wcl-span');
   const file = el.getAttribute('data-wcl-file');
   if (!span || !file) return null;
-  const [start, end] = span.split(':').map(Number);
-  const dup = doc.querySelectorAll(
-    `[data-wcl-span="${CSS.escape(span)}"][data-wcl-file="${CSS.escape(file)}"]`,
-  );
+  const { start, end } = parseSpanAttr(span);
+  const dup = doc.querySelectorAll(spanSelector(file, { start, end }));
   // A diagram child (an SVG shape anchor) carries data-wcl-shape, and its
   // owning <svg> the diagram's effective layout mode — the Design layer
   // gates dragging (manual layouts only) off it. The diagram block itself
@@ -245,9 +245,7 @@ function addShapeSelBox(doc, el, shared) {
 /** Find a block element by its source binding (after a rebuild refreshed
     the anchors). */
 export function elBySpan(doc, file, span) {
-  return doc?.querySelector?.(
-    `[data-wcl-span="${span.start}:${span.end}"][data-wcl-file="${CSS.escape(file)}"]`,
-  );
+  return doc?.querySelector?.(spanSelector(file, span));
 }
 
 // ---------------------------------------------------------------------------

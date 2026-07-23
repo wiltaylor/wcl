@@ -154,7 +154,7 @@ fn data_rows(
         }
         let (text, src) = &asts[&file];
         let span = b.span();
-        let Some(blk) = find_block_at(&src.items, span) else {
+        let Some(blk) = super::find_block_at(&src.items, span) else {
             continue;
         };
         let labels: Vec<serde_json::Value> = blk
@@ -182,7 +182,7 @@ fn data_rows(
                 .strip_prefix(&state.root_dir)
                 .map(|p| p.to_string_lossy().replace('\\', "/"))
                 .unwrap_or_else(|_| file.display().to_string()),
-            "span": { "start": span.start, "end": span.end },
+            "span": super::span_json(span),
             "etag": crate::edit::content_etag(text),
             "labels": labels,
             "cells": cells,
@@ -209,18 +209,4 @@ fn classify_cell(e: &wcl_lang::ast::Expr) -> serde_json::Value {
         _ => ("computed", None, false),
     };
     serde_json::json!({ "state": state, "text": text, "expr": expr })
-}
-
-fn find_block_at(items: &[Item], span: wcl_lang::Span) -> Option<&ast::Block> {
-    for item in items {
-        if let Item::Block(b) = item {
-            if b.span == span {
-                return Some(b);
-            }
-            if let Some(found) = find_block_at(&b.items, span) {
-                return Some(found);
-            }
-        }
-    }
-    None
 }

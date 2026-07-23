@@ -5,6 +5,7 @@
    `span_map` and mirrors the change directly (move the element, restamp
    the visibility attributes). Same-origin, same style as frame.js. */
 
+import { spanSelector } from './anchors';
 import { blockChildren, pageInfo } from './frame';
 
 const key = (s) => `${s.start}:${s.end}`;
@@ -45,11 +46,7 @@ export function mappedSpan(spanMap, span) {
 /** Every element anchored at (file, span) — repeater/template output can
     render one source block more than once. */
 export function elsBySpan(doc, file, span) {
-  return [
-    ...doc.querySelectorAll(
-      `[data-wcl-file="${CSS.escape(file)}"][data-wcl-span="${span.start}:${span.end}"]`,
-    ),
-  ];
+  return [...doc.querySelectorAll(spanSelector(file, span))];
 }
 
 /** The adjacent same-file block sibling of `el` in `dir` ('up' | 'down'),

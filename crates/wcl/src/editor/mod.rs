@@ -608,6 +608,30 @@ fn append_synthetic_unit_page(
     Ok(())
 }
 
+/// A [`wcl_lang::Span`] as the `{ "start", "end" }` object every editor
+/// endpoint's JSON uses.
+pub(crate) fn span_json(span: wcl_lang::Span) -> serde_json::Value {
+    serde_json::json!({ "start": span.start, "end": span.end })
+}
+
+/// The block whose span is exactly `span`, searched recursively.
+pub(crate) fn find_block_at(
+    items: &[wcl_lang::ast::Item],
+    span: wcl_lang::Span,
+) -> Option<&wcl_lang::ast::Block> {
+    for item in items {
+        if let wcl_lang::ast::Item::Block(b) = item {
+            if b.span == span {
+                return Some(b);
+            }
+            if let Some(found) = find_block_at(&b.items, span) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
 /// The posted unsaved buffers (`files: [{path, text}]`) as an overlay map,
 /// sandbox-checked and canonically keyed.
 fn overlay_files(
@@ -677,7 +701,7 @@ fn locate_object(state: &EditorState, v: &serde_json::Value) -> Result<serde_jso
     Ok(serde_json::json!({
         "ok": true,
         "file": rel.to_string_lossy().replace('\\', "/"),
-        "span": { "start": span.start, "end": span.end },
+        "span": span_json(span),
     }))
 }
 
@@ -1778,10 +1802,6 @@ mod tests {
         }
         let src = wcl_lang::parse_for_edit(text, "t").unwrap();
         walk(&src.items, &pred).expect("no block matched").span
-    }
-
-    fn span_json(span: wcl_lang::Span) -> serde_json::Value {
-        serde_json::json!({ "start": span.start, "end": span.end })
     }
 
     const BODY_DOC: &str = "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  p \"First paragraph\"\n\n  p \"Second paragraph\"\n}\n";

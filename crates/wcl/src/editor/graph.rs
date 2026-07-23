@@ -117,7 +117,7 @@ fn index_children(
             "id": id,
             "title": title,
             "pinned": pinned,
-            "related_editable": related_editable_of(find_block_at(&src.items, c.span())),
+            "related_editable": related_editable_of(super::find_block_at(&src.items, c.span())),
             "children": children,
         }));
     }
@@ -190,7 +190,7 @@ fn graph(
             asts.insert(file.clone(), src);
         }
         let src = &asts[&file];
-        let ast_block = find_block_at(&src.items, span);
+        let ast_block = super::find_block_at(&src.items, span);
         let visibility = ast_block
             .map(visibility_json)
             .unwrap_or_else(|| serde_json::json!({ "except_sites": [], "custom": false }));
@@ -295,7 +295,7 @@ fn graph(
                 "kind": n.kind,
                 "title": n.title,
                 "file": rel(state, &n.file),
-                "span": { "start": n.span.start, "end": n.span.end },
+                "span": super::span_json(n.span),
                 "x": x, "y": y, "w": w, "h": h,
                 "visibility": n.visibility,
                 "audience": n.audience,
@@ -420,20 +420,6 @@ fn default_audience(doc: &Document, kind: &str) -> String {
         .unwrap_or_else(|| "book".to_string())
 }
 
-fn find_block_at(items: &[Item], span: Span) -> Option<&ast::Block> {
-    for item in items {
-        if let Item::Block(b) = item {
-            if b.span == span {
-                return Some(b);
-            }
-            if let Some(found) = find_block_at(&b.items, span) {
-                return Some(found);
-            }
-        }
-    }
-    None
-}
-
 /// The unit's content blocks, flattened one level: direct children, with
 /// transparent containers (`body`, the addressable per-step `bodies`)
 /// spliced so the graph shows the blocks that actually render.
@@ -479,7 +465,7 @@ fn block_entry(
         "kind": b.kind,
         "preview": preview,
         "file": rel(state, file),
-        "span": { "start": b.span.start, "end": b.span.end },
+        "span": super::span_json(b.span),
         "views": views_map(sites, &visibility),
         "visibility": visibility,
     })
