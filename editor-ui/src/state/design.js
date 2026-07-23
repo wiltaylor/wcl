@@ -70,27 +70,57 @@ export {
   setCanvasStale,
 };
 
-/** A commit without the canvas rebuild loop — the graph view's write path
-    (it refetches its own data; the canvas rebuilds when shown again). */
-export async function commitOpsQuiet(file, ops, opts = {}) {
+/** The shared scaffolding of every commit: the entry + busy gate, the
+    dirty-open-buffer guard, the busy flag around the API call, the danger
+    toast on failure, and (opt-in) the clean-buffer refresh from the
+    response. The variant tails — in-place patch, quiet stale-marking, or
+    the full rebuild loop — stay with the callers; `release` drops the busy
+    gate here on success (the quiet paths; the rebuild paths release via
+    frameReady, or afterCommit on a failed rebuild). */
+async function runCommit(run, { guardFile = null, sync = false, release = false } = {}) {
   const entry = activeEntry();
   if (!entry || busy()) return { ok: false, error: 'busy' };
-  if (!dirtyGuard(file)) return { ok: false, error: 'dirty buffer' };
+  if (guardFile && !dirtyGuard(guardFile)) return { ok: false, error: 'dirty buffer' };
   setBusy(true);
-  const res = await api.blockOps({
+  const res = await run(entry);
+  if (!res.ok) {
+    setBusy(false);
+    toast(res.error, { tone: 'danger', duration: 8000 });
+    return res;
+  }
+  if (sync) syncBuffer(res.file, res.file_text, res.etag);
+  if (release) setBusy(false);
+  return res;
+}
+
+/** The `/api/block/ops` call every commitOps variant makes. */
+const blockOpsCall = (file, ops, opts) => (entry) =>
+  api.blockOps({
     entry,
     page_file: currentPage()?.file ?? undefined,
     file,
     ...(opts.etag ? { etag: opts.etag } : {}),
     ops,
   });
-  setBusy(false);
-  if (!res.ok) {
-    toast(res.error, { tone: 'danger', duration: 8000 });
-    return res;
-  }
-  syncBuffer(res.file, res.file_text, res.etag);
-  setCanvasStale(true);
+
+/** The `/api/unit/create` call both commitUnitCreate variants make. */
+const unitCreateCall = (unit, pin) => (entry) =>
+  api.unitCreate({
+    entry,
+    page_file: currentPage()?.file ?? undefined,
+    unit,
+    ...(pin ? { pin } : {}),
+  });
+
+/** A commit without the canvas rebuild loop — the graph view's write path
+    (it refetches its own data; the canvas rebuilds when shown again). */
+export async function commitOpsQuiet(file, ops, opts = {}) {
+  const res = await runCommit(blockOpsCall(file, ops, opts), {
+    guardFile: file,
+    sync: true,
+    release: true,
+  });
+  if (res.ok) setCanvasStale(true);
   return res;
 }
 
@@ -112,23 +142,8 @@ export function onLocalCommit(fn) {
     graph payload, the canvas behind a modal, the other view tabs — is
     marked stale and refreshes lazily. */
 export async function commitOpsLocal(file, ops, opts = {}) {
-  const entry = activeEntry();
-  if (!entry || busy()) return { ok: false, error: 'busy' };
-  if (!dirtyGuard(file)) return { ok: false, error: 'dirty buffer' };
-  setBusy(true);
-  const res = await api.blockOps({
-    entry,
-    page_file: currentPage()?.file ?? undefined,
-    file,
-    ...(opts.etag ? { etag: opts.etag } : {}),
-    ops,
-  });
-  if (!res.ok) {
-    setBusy(false);
-    toast(res.error, { tone: 'danger', duration: 8000 });
-    return res;
-  }
-  syncBuffer(res.file, res.file_text, res.etag);
+  const res = await runCommit(blockOpsCall(file, ops, opts), { guardFile: file, sync: true });
+  if (!res.ok) return res;
   const applied = opts.onApplied ? opts.onApplied(res) : true;
   if (applied === false) {
     // Not representable in place — the full loop (busy released by the
@@ -151,16 +166,11 @@ export async function commitOpsLocal(file, ops, opts = {}) {
     write path (pin/unpin/reorder). The nav model refreshes so the canvas
     NavPanel stays in sync; the caller refetches the graph itself. */
 export async function commitNavOpQuiet(payload) {
-  const entry = activeEntry();
-  if (!entry || busy()) return { ok: false, error: 'busy' };
-  if (payload.file && !dirtyGuard(payload.file)) return { ok: false, error: 'dirty buffer' };
-  setBusy(true);
-  const res = await api.navOp({ entry, site: activeSite(), ...payload });
-  setBusy(false);
-  if (!res.ok) {
-    toast(res.error, { tone: 'danger', duration: 8000 });
-    return res;
-  }
+  const res = await runCommit((entry) => api.navOp({ entry, site: activeSite(), ...payload }), {
+    guardFile: payload.file,
+    release: true,
+  });
+  if (!res.ok) return res;
   setCanvasStale(true);
   loadNav();
   return res;
@@ -170,20 +180,8 @@ export async function commitNavOpQuiet(payload) {
     path (its caller refetches the graph; the canvas rebuilds when shown
     again). Same payload as [`commitUnitCreate`]. */
 export async function commitUnitCreateQuiet(unit, pin) {
-  const entry = activeEntry();
-  if (!entry || busy()) return { ok: false, error: 'busy' };
-  setBusy(true);
-  const res = await api.unitCreate({
-    entry,
-    page_file: currentPage()?.file ?? undefined,
-    unit,
-    ...(pin ? { pin } : {}),
-  });
-  setBusy(false);
-  if (!res.ok) {
-    toast(res.error, { tone: 'danger', duration: 8000 });
-    return res;
-  }
+  const res = await runCommit(unitCreateCall(unit, pin), { release: true });
+  if (!res.ok) return res;
   setCanvasStale(true);
   loadNav();
   return res;
@@ -293,23 +291,8 @@ function syncBuffer(file, fileText, etag) {
     opts: { etag?, reveal?: 'edited'|'inserted'|null, edit?: bool (start a
     text session on the revealed block), refreshNav?: bool } */
 export async function commitOps(file, ops, opts = {}) {
-  const entry = activeEntry();
-  if (!entry || busy()) return { ok: false, error: 'busy' };
-  if (!dirtyGuard(file)) return { ok: false, error: 'dirty buffer' };
-  setBusy(true);
-  const res = await api.blockOps({
-    entry,
-    page_file: currentPage()?.file ?? undefined,
-    file,
-    ...(opts.etag ? { etag: opts.etag } : {}),
-    ops,
-  });
-  if (!res.ok) {
-    setBusy(false);
-    toast(res.error, { tone: 'danger', duration: 8000 });
-    return res;
-  }
-  syncBuffer(res.file, res.file_text, res.etag);
+  const res = await runCommit(blockOpsCall(file, ops, opts), { guardFile: file, sync: true });
+  if (!res.ok) return res;
   const role = opts.reveal ?? 'edited';
   const hit = role && res.spans?.find((sp) => sp.role === role);
   if (hit) {
@@ -325,23 +308,19 @@ export async function commitOps(file, ops, opts = {}) {
 
 /** Write one field of a located data object (the edit_field bindings). */
 export async function commitUnitField(binding, value) {
-  const entry = activeEntry();
-  if (!entry || busy()) return { ok: false, error: 'busy' };
-  setBusy(true);
-  const res = await api.unitField({
-    entry,
-    page_file: currentPage()?.file ?? undefined,
-    kind: binding.kind,
-    target: binding.target ?? undefined,
-    field: binding.field,
-    value,
-  });
-  if (!res.ok) {
-    setBusy(false);
-    toast(res.error, { tone: 'danger', duration: 8000 });
-    return res;
-  }
-  syncBuffer(res.file, res.file_text, res.etag);
+  const res = await runCommit(
+    (entry) =>
+      api.unitField({
+        entry,
+        page_file: currentPage()?.file ?? undefined,
+        kind: binding.kind,
+        target: binding.target ?? undefined,
+        field: binding.field,
+        value,
+      }),
+    { sync: true },
+  );
+  if (!res.ok) return res;
   await afterCommit({ changed: [res.file], refreshNav: true });
   return res;
 }
@@ -349,36 +328,18 @@ export async function commitUnitField(binding, value) {
 /** A structural nav edit, then a rebuild (page-set changes take the full
     path automatically) and a nav-model reload. */
 export async function commitNavOp(payload) {
-  const entry = activeEntry();
-  if (!entry || busy()) return { ok: false, error: 'busy' };
-  if (payload.file && !dirtyGuard(payload.file)) return { ok: false, error: 'dirty buffer' };
-  setBusy(true);
-  const res = await api.navOp({ entry, site: activeSite(), ...payload });
-  if (!res.ok) {
-    setBusy(false);
-    toast(res.error, { tone: 'danger', duration: 8000 });
-    return res;
-  }
+  const res = await runCommit((entry) => api.navOp({ entry, site: activeSite(), ...payload }), {
+    guardFile: payload.file,
+  });
+  if (!res.ok) return res;
   await afterCommit({ changed: payload.file ? [payload.file] : [], refreshNav: true });
   return res;
 }
 
 /** Create a unit (with optional pin), then rebuild + refresh models. */
 export async function commitUnitCreate(unit, pin) {
-  const entry = activeEntry();
-  if (!entry || busy()) return { ok: false, error: 'busy' };
-  setBusy(true);
-  const res = await api.unitCreate({
-    entry,
-    page_file: currentPage()?.file ?? undefined,
-    unit,
-    ...(pin ? { pin } : {}),
-  });
-  if (!res.ok) {
-    setBusy(false);
-    toast(res.error, { tone: 'danger', duration: 8000 });
-    return res;
-  }
+  const res = await runCommit(unitCreateCall(unit, pin));
+  if (!res.ok) return res;
   await afterCommit({ changed: res.file ? [res.file] : [], refreshNav: true });
   return res;
 }

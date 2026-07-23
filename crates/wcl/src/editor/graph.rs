@@ -132,7 +132,7 @@ fn graph(
 ) -> Result<serde_json::Value, String> {
     let entry_abs = sandboxed(&state.root_dir, &state.root_dir.join(entry))
         .ok_or_else(|| format!("file outside the served tree: {entry}"))?;
-    let doc = wcl_wdoc::open_doc_for_edit(&entry_abs).map_err(|e| e.to_string())?;
+    let doc = wcl_wdoc::open_doc_for_edit(&entry_abs).map_err(super::err_str)?;
     let sites: Vec<String> = sites_csv
         .split(',')
         .map(str::trim)
@@ -185,8 +185,7 @@ fn graph(
         // AST-level detail for visibility + body blocks.
         if !asts.contains_key(&file) {
             let text = crate::edit::read(&file)?;
-            let src =
-                parse_for_edit(&text, file.display().to_string()).map_err(|e| e.to_string())?;
+            let src = parse_for_edit(&text, file.display().to_string()).map_err(super::err_str)?;
             asts.insert(file.clone(), src);
         }
         let src = &asts[&file];

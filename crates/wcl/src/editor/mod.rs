@@ -566,8 +566,8 @@ fn append_synthetic_unit_page(
     {
         return Err(format!("bad unit id `{id}`"));
     }
-    let doc = wcl_wdoc::open_doc_for_edit_with_overlay(entry_abs, overlay.clone())
-        .map_err(|e| e.to_string())?;
+    let doc =
+        wcl_wdoc::open_doc_for_edit_with_overlay(entry_abs, overlay.clone()).map_err(err_str)?;
     let gather = doc
         .type_decls()
         .filter(|d| d.decorators().any(|dec| dec.name() == "document"))
@@ -606,6 +606,39 @@ fn append_synthetic_unit_page(
     );
     overlay.insert(entry_abs.to_path_buf(), base + &synthetic);
     Ok(())
+}
+
+/// Uniform endpoint error mapping: any displayable error as its message.
+pub(crate) fn err_str(e: impl std::fmt::Display) -> String {
+    e.to_string()
+}
+
+/// The document a request resolves against: `entry` sandbox-checked, scoped
+/// to `page_file`'s owning included sub-site when given — a page inside an
+/// included sub-site (a wskill's) resolves against that sub-site's own
+/// document, so its kinds match its own schema.
+pub(crate) fn resolve_doc_entry(
+    state: &EditorState,
+    entry: &str,
+    page_file: Option<&str>,
+) -> Result<PathBuf, String> {
+    let entry_abs = crate::serve::sandboxed(&state.root_dir, &state.root_dir.join(entry))
+        .ok_or_else(|| format!("file outside the served tree: {entry}"))?;
+    Ok(page_file
+        .filter(|s| !s.is_empty())
+        .and_then(|pf| crate::serve::sandboxed(&state.root_dir, Path::new(pf)))
+        .map(|pf| wcl_wdoc::doc_entry_for_page(&entry_abs, &pf))
+        .unwrap_or(entry_abs))
+}
+
+/// [`resolve_doc_entry`] reading `entry` / `page_file` from a JSON body.
+pub(crate) fn resolve_doc_entry_from(
+    state: &EditorState,
+    v: &serde_json::Value,
+) -> Result<PathBuf, String> {
+    let entry = crate::edit::str_field(v, "entry")?;
+    let page_file = v.get("page_file").and_then(serde_json::Value::as_str);
+    resolve_doc_entry(state, entry, page_file)
 }
 
 /// A [`wcl_lang::Span`] as the `{ "start", "end" }` object every editor
@@ -670,25 +703,12 @@ async fn handle_object_locate(State(state): State<Arc<EditorState>>, body: Strin
 
 /// The blocking half of [`handle_object_locate`].
 fn locate_object(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let entry = crate::edit::str_field(v, "entry")?;
-    let entry_abs = crate::serve::sandboxed(&state.root_dir, &state.root_dir.join(entry))
-        .ok_or_else(|| format!("file outside the served tree: {entry}"))?;
+    let doc_entry = resolve_doc_entry_from(state, v)?;
     let kind = crate::edit::str_field(v, "kind")?;
     let target = v
         .get("target")
         .and_then(serde_json::Value::as_str)
         .filter(|s| !s.is_empty());
-
-    // A page inside an included sub-site resolves against that sub-site's
-    // own document, so a wskill page's kinds match its own schema.
-    let doc_entry = v
-        .get("page_file")
-        .and_then(serde_json::Value::as_str)
-        .filter(|s| !s.is_empty())
-        .and_then(|pf| crate::serve::sandboxed(&state.root_dir, Path::new(pf)))
-        .map(|pf| wcl_wdoc::doc_entry_for_page(&entry_abs, &pf))
-        .unwrap_or_else(|| entry_abs.clone());
-
     let overlay = overlay_files(state, v)?;
     let (file, span) = crate::edit::locate_object(&doc_entry, kind, target, overlay)?;
     let canon = std::fs::canonicalize(&file).unwrap_or(file);

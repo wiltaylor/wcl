@@ -31,21 +31,6 @@ use crate::serve::{json_error, parse_json_body, query_param, sandboxed};
 // Request context
 // ---------------------------------------------------------------------------
 
-/// The document a request's kinds/schemas resolve (and validate) against:
-/// the selected entry, scoped to the page's owning included sub-site when
-/// `page_file` is given — mirrors `/api/object/locate`.
-fn doc_entry_for(state: &EditorState, v: &serde_json::Value) -> Result<PathBuf, String> {
-    let entry = crate::edit::str_field(v, "entry")?;
-    let entry_abs = sandboxed(&state.root_dir, &state.root_dir.join(entry))
-        .ok_or_else(|| format!("file outside the served tree: {entry}"))?;
-    Ok(v.get("page_file")
-        .and_then(serde_json::Value::as_str)
-        .filter(|s| !s.is_empty())
-        .and_then(|pf| sandboxed(&state.root_dir, Path::new(pf)))
-        .map(|pf| wcl_wdoc::doc_entry_for_page(&entry_abs, &pf))
-        .unwrap_or(entry_abs))
-}
-
 /// Sandbox-check a repo-relative file from the request body.
 fn file_field(state: &EditorState, v: &serde_json::Value) -> Result<PathBuf, String> {
     let file = crate::edit::str_field(v, "file")?;
@@ -79,10 +64,6 @@ fn rel_path(state: &EditorState, file: &Path) -> Result<String, String> {
         })
 }
 
-fn parse_err(e: impl std::fmt::Display) -> String {
-    e.to_string()
-}
-
 // ---------------------------------------------------------------------------
 // `POST /api/block/source` — read a block's source + slot classification
 // ---------------------------------------------------------------------------
@@ -107,7 +88,7 @@ fn block_source(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
     let file_abs = file_field(state, v)?;
     let text = crate::edit::read(&file_abs)?;
     let span = span_field(v, "span")?;
-    let mut src = parse_for_edit(&text, file_abs.display().to_string()).map_err(parse_err)?;
+    let mut src = parse_for_edit(&text, file_abs.display().to_string()).map_err(super::err_str)?;
     let block = ast_edit::find_block_by_span(&mut src.items, span)
         .ok_or("no block at that span — the file changed; rebuild the preview")?;
     let source = text
@@ -289,7 +270,7 @@ pub(super) async fn handle_block_ops(
 }
 
 fn block_ops(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let doc_entry = doc_entry_for(state, v)?;
+    let doc_entry = super::resolve_doc_entry_from(state, v)?;
     let file_abs = file_field(state, v)?;
     let disk = crate::edit::read(&file_abs)?;
     if let Some(etag) = v.get("etag").and_then(serde_json::Value::as_str)
@@ -297,7 +278,7 @@ fn block_ops(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::V
     {
         return Err("conflict: the file changed on disk — rebuild the preview and retry".into());
     }
-    let mut src = parse_for_edit(&disk, file_abs.display().to_string()).map_err(parse_err)?;
+    let mut src = parse_for_edit(&disk, file_abs.display().to_string()).map_err(super::err_str)?;
 
     let ops = v
         .get("ops")
@@ -537,7 +518,7 @@ fn block_ops(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::V
     for s in state.preview_sessions.lock().unwrap().values_mut() {
         s.generation += 1;
     }
-    let fresh = parse_for_edit(&new_text, "<post-format>").map_err(parse_err)?;
+    let fresh = parse_for_edit(&new_text, "<post-format>").map_err(super::err_str)?;
     let spans: Vec<serde_json::Value> = paths
         .into_iter()
         .filter_map(|(role, path)| {
@@ -731,7 +712,7 @@ pub(super) async fn handle_unit_field(
 }
 
 fn unit_field(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let doc_entry = doc_entry_for(state, v)?;
+    let doc_entry = super::resolve_doc_entry_from(state, v)?;
     let kind = crate::edit::str_field(v, "kind")?;
     let target = v
         .get("target")
@@ -742,13 +723,13 @@ fn unit_field(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::
 
     let (file, span) = crate::edit::locate_object(&doc_entry, kind, target, HashMap::new())?;
     let text = crate::edit::read(&file)?;
-    let mut src = parse_for_edit(&text, file.display().to_string()).map_err(parse_err)?;
+    let mut src = parse_for_edit(&text, file.display().to_string()).map_err(super::err_str)?;
     let block = find_block(&mut src.items, span)?;
     ast_edit::set_or_insert_field(block, field, ast_edit::string_literal_expr(value));
     let new_text = wcl_format::to_source(&src);
     let path = index_path_by_span(&src.items, span);
     crate::edit::commit(&doc_entry, vec![(file.clone(), new_text.clone())])?;
-    let fresh = parse_for_edit(&new_text, "<post-format>").map_err(parse_err)?;
+    let fresh = parse_for_edit(&new_text, "<post-format>").map_err(super::err_str)?;
     let spans: Vec<serde_json::Value> = path
         .and_then(|p| block_at_path(&fresh.items, &p))
         .map(|b| {
@@ -794,7 +775,7 @@ pub(super) async fn handle_unit_create(
 }
 
 fn unit_create(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let doc_entry = doc_entry_for(state, v)?;
+    let doc_entry = super::resolve_doc_entry_from(state, v)?;
     let unit = v.get("unit").ok_or("missing `unit`")?;
     let kind = crate::edit::str_field(unit, "kind")?;
     let id = crate::edit::str_field(unit, "id")?;
@@ -803,7 +784,7 @@ fn unit_create(state: &EditorState, v: &serde_json::Value) -> Result<serde_json:
             "`{id}` is not a valid id (letters, digits, `_`, not starting with a digit)"
         ));
     }
-    let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(parse_err)?;
+    let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(super::err_str)?;
     if crate::edit::locate_object(&doc_entry, kind, Some(id), HashMap::new()).is_ok() {
         return Err(format!("a `{kind}` with id `{id}` already exists"));
     }
@@ -883,7 +864,7 @@ fn unit_create(state: &EditorState, v: &serde_json::Value) -> Result<serde_json:
             if let Some(agg) = aggregator {
                 let text = crate::edit::read(&agg)?;
                 let mut asrc =
-                    parse_for_edit(&text, agg.display().to_string()).map_err(parse_err)?;
+                    parse_for_edit(&text, agg.display().to_string()).map_err(super::err_str)?;
                 ast_edit::ensure_import(&mut asrc, &format!("./{id}.wcl"));
                 changes.push((agg, wcl_format::to_source(&asrc)));
             }
@@ -891,7 +872,8 @@ fn unit_create(state: &EditorState, v: &serde_json::Value) -> Result<serde_json:
         }
         Placement::Append { file } => {
             let text = crate::edit::read(&file)?;
-            let mut src = parse_for_edit(&text, file.display().to_string()).map_err(parse_err)?;
+            let mut src =
+                parse_for_edit(&text, file.display().to_string()).map_err(super::err_str)?;
             ast_edit::append_top_level_block(&mut src, block);
             changes.push((file.clone(), wcl_format::to_source(&src)));
             file
@@ -907,8 +889,8 @@ fn unit_create(state: &EditorState, v: &serde_json::Value) -> Result<serde_json:
             let entry_dir = doc_entry.parent().unwrap_or(&doc_entry);
             if let Ok(rel) = file.strip_prefix(entry_dir) {
                 let text = crate::edit::read(&doc_entry)?;
-                let mut esrc =
-                    parse_for_edit(&text, doc_entry.display().to_string()).map_err(parse_err)?;
+                let mut esrc = parse_for_edit(&text, doc_entry.display().to_string())
+                    .map_err(super::err_str)?;
                 if ast_edit::ensure_import(&mut esrc, &rel.to_string_lossy().replace('\\', "/")) {
                     changes.push((doc_entry.clone(), wcl_format::to_source(&esrc)));
                 }
@@ -1014,7 +996,7 @@ fn pin_into_index(
         Some((_, text)) => text.clone(),
         None => crate::edit::read(&ifile)?,
     };
-    let mut src = parse_for_edit(&base, ifile.display().to_string()).map_err(parse_err)?;
+    let mut src = parse_for_edit(&base, ifile.display().to_string()).map_err(super::err_str)?;
     let block = find_block_by_kind_label(&mut src.items, "index", index_id)
         .ok_or_else(|| format!("could not relocate index `{index_id}`"))?;
     let related = block.items.iter_mut().find_map(|it| match it {
@@ -1212,14 +1194,8 @@ fn palette(
     site: Option<&str>,
     page_file: Option<&str>,
 ) -> Result<serde_json::Value, String> {
-    let entry_abs = sandboxed(&state.root_dir, &state.root_dir.join(entry))
-        .ok_or_else(|| format!("file outside the served tree: {entry}"))?;
-    let doc_entry = page_file
-        .filter(|s| !s.is_empty())
-        .and_then(|pf| sandboxed(&state.root_dir, Path::new(pf)))
-        .map(|pf| wcl_wdoc::doc_entry_for_page(&entry_abs, &pf))
-        .unwrap_or(entry_abs);
-    let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(parse_err)?;
+    let doc_entry = super::resolve_doc_entry(state, entry, page_file)?;
+    let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(super::err_str)?;
 
     let body_kinds: Vec<serde_json::Value> = BODY_KINDS
         .iter()

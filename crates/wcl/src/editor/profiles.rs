@@ -97,7 +97,7 @@ fn disable_profile(registry_abs: &Path, kind: &str) -> Result<serde_json::Value,
     let dir = registry_abs.parent().ok_or("registry has no parent")?;
     let text = crate::edit::read(registry_abs)?;
     let mut src =
-        parse_for_edit(&text, registry_abs.display().to_string()).map_err(|e| e.to_string())?;
+        parse_for_edit(&text, registry_abs.display().to_string()).map_err(super::err_str)?;
     let victims = artifacts_of_kind(&src, kind);
     if victims.is_empty() {
         return Err(format!("no `{kind}` artifact in the registry"));
@@ -154,7 +154,7 @@ fn enable_profile(registry_abs: &Path, kind: &str) -> Result<serde_json::Value, 
     let dir = registry_abs.parent().ok_or("registry has no parent")?;
     let text = crate::edit::read(registry_abs)?;
     let mut src =
-        parse_for_edit(&text, registry_abs.display().to_string()).map_err(|e| e.to_string())?;
+        parse_for_edit(&text, registry_abs.display().to_string()).map_err(super::err_str)?;
     if !artifacts_of_kind(&src, kind).is_empty() {
         return Err(format!("a `{kind}` artifact already exists"));
     }
@@ -250,8 +250,7 @@ fn enable_profile(registry_abs: &Path, kind: &str) -> Result<serde_json::Value, 
             continue;
         }
         let disk = crate::edit::read(&abs)?;
-        let mut ast =
-            parse_for_edit(&disk, abs.display().to_string()).map_err(|e| e.to_string())?;
+        let mut ast = parse_for_edit(&disk, abs.display().to_string()).map_err(super::err_str)?;
         let mut touched = false;
         for imp in needed {
             touched |= ast_edit::ensure_import(&mut ast, &imp);
@@ -267,8 +266,7 @@ fn enable_profile(registry_abs: &Path, kind: &str) -> Result<serde_json::Value, 
         .find(|(rel, _)| rel == "wskill.wcl")
         .map(|(_, c)| c.as_str())
         .ok_or("the wskill template generated no wskill.wcl")?;
-    let gen_src =
-        parse_for_edit(gen_registry, "<generated wskill.wcl>").map_err(|e| e.to_string())?;
+    let gen_src = parse_for_edit(gen_registry, "<generated wskill.wcl>").map_err(super::err_str)?;
     let artifact = gen_src
         .items
         .iter()

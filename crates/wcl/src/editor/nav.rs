@@ -53,7 +53,7 @@ pub(super) async fn handle_nav(State(state): State<Arc<EditorState>>, uri: Uri) 
 fn nav(state: &EditorState, entry: &str, site: Option<&str>) -> Result<serde_json::Value, String> {
     let entry_abs = sandboxed(&state.root_dir, &state.root_dir.join(entry))
         .ok_or_else(|| format!("file outside the served tree: {entry}"))?;
-    let doc = wcl_wdoc::open_doc_for_edit(&entry_abs).map_err(|e| e.to_string())?;
+    let doc = wcl_wdoc::open_doc_for_edit(&entry_abs).map_err(super::err_str)?;
     let wskill = is_wskill(&doc);
     let site_type = site_kind(&doc, site);
 
@@ -261,7 +261,7 @@ fn static_site_nav(
     site_type: &str,
 ) -> Result<(Vec<serde_json::Value>, serde_json::Value), String> {
     let text = crate::edit::read(entry_abs)?;
-    let src = parse_for_edit(&text, entry_abs.display().to_string()).map_err(|e| e.to_string())?;
+    let src = parse_for_edit(&text, entry_abs.display().to_string()).map_err(super::err_str)?;
     let site_block = src
         .items
         .iter()
@@ -446,7 +446,7 @@ fn edit_file(
     mutate: impl FnOnce(&mut ast::Source) -> Result<(), String>,
 ) -> Result<serde_json::Value, String> {
     let text = crate::edit::read(file)?;
-    let mut src = parse_for_edit(&text, file.display().to_string()).map_err(|e| e.to_string())?;
+    let mut src = parse_for_edit(&text, file.display().to_string()).map_err(super::err_str)?;
     mutate(&mut src)?;
     let new_text = wcl_format::to_source(&src);
     crate::edit::commit(entry_abs, vec![(file.to_path_buf(), new_text)])?;
@@ -579,7 +579,7 @@ fn related_op(
     op: RelatedOp,
 ) -> Result<serde_json::Value, String> {
     let index_id = crate::edit::str_field(v, "index_id")?;
-    let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(|e| e.to_string())?;
+    let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(super::err_str)?;
     let ifile = doc
         .blocks_with_source()
         .find(|(_, b)| subtree_has_index(b, index_id))

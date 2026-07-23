@@ -20,8 +20,8 @@ use wcl_lang::ast::{self, Item};
 use wcl_lang::{DeclName, Document, parse_for_edit};
 
 use super::blocks::{dec_first_string, first_label, kind_entry, visibility_json};
-use super::{EditorState, run_blocking};
-use crate::serve::{query_param, sandboxed};
+use super::{EditorState, resolve_doc_entry, run_blocking};
+use crate::serve::query_param;
 
 /// The last segment of a decorator name when it's bare or `wdoc.`-qualified.
 fn dec_name<'a>(d: &wcl_lang::Decorator<'a>) -> Option<&'a str> {
@@ -69,27 +69,13 @@ pub(super) async fn handle_data_types(State(state): State<Arc<EditorState>>, uri
     .await
 }
 
-fn resolve_doc_entry(
-    state: &EditorState,
-    entry: &str,
-    page_file: Option<&str>,
-) -> Result<PathBuf, String> {
-    let entry_abs = sandboxed(&state.root_dir, &state.root_dir.join(entry))
-        .ok_or_else(|| format!("file outside the served tree: {entry}"))?;
-    Ok(page_file
-        .filter(|s| !s.is_empty())
-        .and_then(|pf| sandboxed(&state.root_dir, Path::new(pf)))
-        .map(|pf| wcl_wdoc::doc_entry_for_page(&entry_abs, &pf))
-        .unwrap_or(entry_abs))
-}
-
 fn data_types(
     state: &EditorState,
     entry: &str,
     page_file: Option<&str>,
 ) -> Result<serde_json::Value, String> {
     let doc_entry = resolve_doc_entry(state, entry, page_file)?;
-    let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(|e| e.to_string())?;
+    let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(super::err_str)?;
     let entry_dir = doc_entry.parent().unwrap_or(&doc_entry);
     let types: Vec<serde_json::Value> = editable_types(&doc)
         .into_iter()
@@ -136,7 +122,7 @@ fn data_rows(
     kind: &str,
 ) -> Result<serde_json::Value, String> {
     let doc_entry = resolve_doc_entry(state, entry, page_file)?;
-    let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(|e| e.to_string())?;
+    let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(super::err_str)?;
     let mut asts: HashMap<PathBuf, (String, ast::Source)> = HashMap::new();
     let mut rows: Vec<serde_json::Value> = Vec::new();
     for (path, b) in doc.blocks_with_source() {
@@ -148,8 +134,7 @@ fn data_rows(
             .unwrap_or_else(|| doc_entry.clone());
         if !asts.contains_key(&file) {
             let text = crate::edit::read(&file)?;
-            let src =
-                parse_for_edit(&text, file.display().to_string()).map_err(|e| e.to_string())?;
+            let src = parse_for_edit(&text, file.display().to_string()).map_err(super::err_str)?;
             asts.insert(file.clone(), (text, src));
         }
         let (text, src) = &asts[&file];
