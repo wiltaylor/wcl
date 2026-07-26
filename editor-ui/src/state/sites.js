@@ -79,6 +79,22 @@ export function activeSite() {
   return s?.wskill ? (activeView()?.site ?? null) : (s?.site ?? null);
 }
 
+/** Display name for an artifact-kind view (the wskill projection tabs). */
+export function viewLabel(kind) {
+  switch (kind) {
+    case 'book':
+      return 'Book';
+    case 'presentation':
+      return 'Deck';
+    case 'training':
+      return 'Training';
+    case 'ai_skill':
+      return 'Skill';
+    default:
+      return kind.charAt(0).toUpperCase() + kind.slice(1);
+  }
+}
+
 export function selectView(id) {
   setSelectedView(id);
   // A view switch changes the build target, so the shown page is stale.

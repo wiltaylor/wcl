@@ -15,6 +15,7 @@ import {
   rebuild,
   selectView,
   selected,
+  viewLabel,
 } from '../../state/sites';
 import {
   busy,
@@ -33,21 +34,7 @@ import {
 import EditSurface from './EditSurface';
 import SkillBrowser from './SkillBrowser';
 
-/** Display name for an artifact-kind view tab. */
-export function viewLabel(kind) {
-  switch (kind) {
-    case 'book':
-      return 'Book';
-    case 'presentation':
-      return 'Deck';
-    case 'training':
-      return 'Training';
-    case 'ai_skill':
-      return 'Skill';
-    default:
-      return kind.charAt(0).toUpperCase() + kind.slice(1);
-  }
-}
+export { viewLabel } from '../../state/sites';
 
 export default function DesignCanvas() {
   let surface = null; // { goto(url) } from EditSurface
