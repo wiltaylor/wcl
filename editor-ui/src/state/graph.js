@@ -110,6 +110,37 @@ export function indexHitsForUnit(data, unitId) {
   return hits;
 }
 
+/** Every index level a view's site renders — top-level index nodes plus
+    their nested sub-indexes, flattened — for the content modal's placement
+    editor. Each entry: `{ id, title, path, pinned, editable, syllabus }`,
+    where `path` is the "Top › Sub" trail and `pinned` the level's OWN
+    ordered id list. Sub-levels inherit the top node's per-view visibility
+    (the payload's approximation — see [`pinCounts`]). A syllabus level
+    (the training course) is structural: it can be reordered but never
+    pinned into, so the editor shows it read-only. */
+export function indexLevelsForSite(data, site) {
+  const out = [];
+  for (const n of data?.nodes ?? []) {
+    if (n.type !== 'index') continue;
+    if (site && n.views?.[site] === false) continue;
+    const walk = (level, trail) => {
+      const title = level.title ?? level.id;
+      const path = [...trail, title];
+      out.push({
+        id: level.id,
+        title,
+        path: path.join(' › '),
+        pinned: level.pinned ?? [],
+        editable: level.related_editable !== false,
+        syllabus: level.syllabus === true || n.syllabus === true,
+      });
+      for (const c of level.children ?? []) walk(c, path);
+    };
+    walk(n, []);
+  }
+  return out;
+}
+
 /** The viewBox origin that brings a node fully into view, or null when it
     already is. Pans only — never zooms — so the reader's scale is preserved.
     `vb` is {x, y, w, h}, `box` the node's {w, h}, `p` its top-left. */

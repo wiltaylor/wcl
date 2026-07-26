@@ -497,7 +497,23 @@ g.is-hidden > .ed-graph-edge-hit { display: none; }
 .ed-content-modal { display: flex; gap: var(--sp-3); flex: 1; min-height: 0; }
 .ed-content-side { width: 340px; flex: none; display: flex; flex-direction: column; gap: var(--sp-3); min-height: 0; }
 .ed-content-blocks { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; flex: 1; }
-.ed-content-profiles { border-top: 1px solid var(--border); padding-top: var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-1); }
+/* Index placement (content modal): where the unit is pinned, per view */
+.ed-content-places {
+  border-top: 1px solid var(--border); padding-top: var(--sp-2);
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  max-height: 45%; overflow-y: auto;
+}
+.ed-place-view { display: flex; flex-direction: column; gap: 2px; }
+.ed-place-head { display: flex; align-items: center; gap: var(--sp-2); }
+.ed-place-label { font-size: var(--fs-xs); font-weight: 600; color: var(--fg-1); }
+.ed-place-site { font-size: var(--fs-xs); color: var(--fg-3); font-family: var(--font-mono); }
+.ed-place-row {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: 2px var(--sp-2); border-radius: var(--r-sm); background: var(--bg-2);
+}
+.ed-place-path { flex: 1; min-width: 0; font-size: var(--fs-xs); color: var(--fg-1); overflow-wrap: anywhere; }
+.ed-place-note { font-size: var(--fs-xs); color: var(--fg-3); }
+.ed-place-empty { font-size: var(--fs-xs); color: var(--fg-3); padding-left: var(--sp-2); }
 .ed-content-preview { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
 .ed-content-preview-head { display: flex; align-items: center; gap: var(--sp-2); }
 .ed-content-preview iframe {

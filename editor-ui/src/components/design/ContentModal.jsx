@@ -15,29 +15,39 @@
    comparison. The merged page renders under the first view whose site
    builds the unit's page (a lesson uses the Training template); no page
    anywhere shows an explicit empty state. The left column keeps the
-   whole-unit visibility chips and the profile on/off switches.
+   whole-unit visibility chips and the unit's index placement per view
+   (pin / unpin where it sits in each view's navigation); the profile
+   on/off switches live on the graph toolbar's Profiles button.
    Previews are chrome-stripped (injectBareCss hides the book
    sidebar/rail/pagenav — an unindexed unit has no TOC entry, so the chrome
    only reads as broken) and a tab showing the unit's own page carries a
    "not in any … index" badge when no index visible in that view pins it. */
 
 import { For, Show, createEffect, createMemo, createResource, createSignal, onCleanup } from 'solid-js';
-import { Badge, Button, Checkbox, Modal, Spinner, ToggleGroup, toast } from '@forge/ui';
+import {
+  Badge,
+  Button,
+  IconButton,
+  Modal,
+  Select,
+  Spinner,
+  ToggleGroup,
+  toast,
+} from '@forge/ui';
 import { CodeEditor } from '@forge/code';
-import { FileCode2, Trash2 } from 'lucide-solid';
+import { FileCode2, Minus, Trash2 } from 'lucide-solid';
 
 import { api } from '../../api';
 import { dirtyFiles } from '../../state/buffers';
-import { loadSites, selected } from '../../state/sites';
+import { selected } from '../../state/sites';
 import {
   busy,
+  commitNavOpQuiet,
   commitOps,
   commitOpsLocal,
   currentPage,
   onLocalCommit,
   frameReady,
-  loadNav,
-  loadPalette,
   setCanvasStale,
   setCurrentPage,
   setEditingSession,
@@ -45,15 +55,13 @@ import {
   setSelection,
   setSurfaceRebuild,
 } from '../../state/design';
-import { graphData, pinCounts, reloadGraph } from '../../state/graph';
+import { graphData, indexLevelsForSite, pinCounts, reloadGraph } from '../../state/graph';
 import { wclLanguage } from '../../lang/wcl';
 import { injectBareCss } from '../../preview/frame';
 import { builtPageExists } from '../../preview/manifest';
 import EditSurface from './EditSurface';
 import { viewLabel } from './DesignCanvas';
 import FlowPanel from './FlowPanel';
-
-const ALL_PROFILES = ['book', 'ai_skill', 'presentation', 'training'];
 
 export default function ContentModal(props) {
   const node = () => graphData()?.nodes.find((n) => n.key === props.nodeKey);
@@ -518,33 +526,27 @@ export default function ContentModal(props) {
     );
   };
 
-  // ---- profiles (whole views on/off) ----
-  const enabled = (kind) => views().some((v) => v.kind === kind);
-  const [confirm, setConfirm] = createSignal(null); // kind pending disable
-  const [working, setWorking] = createSignal(false);
-  const applyProfile = async (kind, enable) => {
-    setWorking(true);
-    const res = await api.wskillProfile(selected().registry, kind, enable);
-    setWorking(false);
-    setConfirm(null);
-    if (!res.ok) {
-      toast(res.error, { tone: 'danger', duration: 8000 });
-      return;
-    }
-    toast(enable ? `Enabled ${viewLabel(kind)}` : `Removed ${viewLabel(kind)}`, {
-      tone: 'success',
-      duration: 3000,
-    });
-    // The view set changed: refresh discovery, the design models, the graph.
-    setHrefs({});
-    setSkill(null);
-    setSkillText(null);
-    setTab(null);
-    await loadSites();
-    loadNav();
-    loadPalette();
+  // ---- index placement (where the unit is pinned, per view) ----
+  // Index ids are document-wide unique, so a pin/unpin reaches any view's
+  // index from here — no view switch, no entry juggling. Writes go through
+  // the quiet nav-op path (id-addressed, immune to the reformats) and
+  // refetch the graph keeping positions, exactly like the index panel.
+  const placeOp = async (payload, msg) => {
+    const res = await commitNavOpQuiet(payload);
+    if (!res.ok) return;
+    toast(msg, { duration: 3000 });
     reloadGraph({ keepPositions: true });
   };
+  const pinInto = (level, unitId) =>
+    placeOp(
+      { op: 'pin_unit', index_id: level.id, unit_id: unitId },
+      `Pinned into “${level.title}”`,
+    );
+  const unpinFrom = (level, unitId) =>
+    placeOp(
+      { op: 'unpin_unit', index_id: level.id, unit_id: unitId },
+      `Unpinned from “${level.title}”`,
+    );
 
   const tabOptions = () => [
     ...(previewViews().length ? [{ value: 'merged', label: 'Merged' }] : []),
@@ -726,38 +728,9 @@ export default function ContentModal(props) {
                 visibility eye too.
               </p>
             </div>
-            <div class="ed-content-profiles">
-              <strong>Profiles</strong>
-              <For each={ALL_PROFILES}>
-                {(kind) => (
-                  <div class="ed-profile-row">
-                    <Checkbox
-                      checked={enabled(kind)}
-                      disabled={working() || busy() || (kind === 'book' && enabled('book'))}
-                      onChange={(on) => (on ? applyProfile(kind, true) : setConfirm(kind))}
-                    >
-                      {viewLabel(kind)}
-                    </Checkbox>
-                    <Show when={confirm() === kind}>
-                      <span class="ed-profile-confirm">
-                        Delete its <code>wdoc/</code> folder? (recoverable via git)
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          disabled={working()}
-                          onClick={() => applyProfile(kind, false)}
-                        >
-                          Remove
-                        </Button>
-                        <Button size="sm" onClick={() => setConfirm(null)}>
-                          Keep
-                        </Button>
-                      </span>
-                    </Show>
-                  </div>
-                )}
-              </For>
-            </div>
+            <Show when={node()?.type === 'unit'}>
+              <IndexPlacement node={node()} onPin={pinInto} onUnpin={unpinFrom} />
+            </Show>
           </div>
           <div class="ed-content-preview">
             <div class="ed-content-preview-head">
@@ -872,6 +845,102 @@ function ViewToggles(props) {
           )}
         </For>
       </span>
+    </div>
+  );
+}
+
+/** Where the unit sits in each view's navigation: one group per view site,
+    listing every index level whose own `related` list pins it — nested
+    sub-indexes shown as their "Top › Sub" trail — with a − to unpin, and a
+    select of that view's remaining index levels to pin it into. Views whose
+    navigation is structural (the training course, a deck) have nothing to
+    pin: their levels come back read-only and the group says so. */
+function IndexPlacement(props) {
+  const sites = () => graphData()?.sites ?? [];
+  return (
+    <div class="ed-content-places">
+      <strong>Index placement</strong>
+      <For each={sites()}>
+        {(site) => (
+          <PlacementView
+            site={site}
+            node={props.node}
+            onPin={props.onPin}
+            onUnpin={props.onUnpin}
+          />
+        )}
+      </For>
+      <Show when={sites().length === 0}>
+        <div class="ed-place-empty">no views to place this unit in</div>
+      </Show>
+    </div>
+  );
+}
+
+function PlacementView(props) {
+  const levels = createMemo(() => indexLevelsForSite(graphData(), props.site));
+  const pinnedIn = createMemo(() => levels().filter((l) => l.pinned.includes(props.node.id)));
+  const openLevels = createMemo(() =>
+    levels().filter((l) => !l.syllabus && l.editable && !l.pinned.includes(props.node.id)),
+  );
+  // Placed by the view's own data-driven navigation (a lesson in the
+  // course, the deck's presentation) rather than by any index.
+  const organized = () => (props.node.organized ?? []).includes(props.site);
+  const hidden = () => props.node.views?.[props.site] === false;
+
+  return (
+    <div class="ed-place-view">
+      <div class="ed-place-head">
+        <span class="ed-place-label">{viewLabel(siteKindOf(props.site))}</span>
+        <span class="ed-place-site">{props.site}</span>
+        <Show when={hidden()}>
+          <span title="The unit itself is hidden from this view — its index entries won't render.">
+            <Badge tone="warning">hidden</Badge>
+          </span>
+        </Show>
+      </div>
+      <For each={pinnedIn()}>
+        {(l) => (
+          <div class="ed-place-row">
+            <span class="ed-place-path" title={l.id}>
+              {l.path}
+            </span>
+            <Show
+              when={!l.syllabus && l.editable}
+              fallback={
+                <span class="ed-place-note">
+                  {l.syllabus ? 'by course order' : 'computed list'}
+                </span>
+              }
+            >
+              <IconButton
+                icon={Minus}
+                label={`Unpin from ${l.title}`}
+                disabled={busy()}
+                onClick={() => props.onUnpin(l, props.node.id)}
+              />
+            </Show>
+          </div>
+        )}
+      </For>
+      <Show when={pinnedIn().length === 0}>
+        <div class="ed-place-empty">
+          {organized()
+            ? "placed by this view's own navigation"
+            : levels().length === 0
+              ? 'this view has no indexes'
+              : 'not in any index'}
+        </div>
+      </Show>
+      <Show when={openLevels().length > 0}>
+        <Select
+          options={openLevels().map((l) => ({ value: l.id, label: l.path }))}
+          placeholder="Pin into…"
+          value={undefined}
+          disabled={busy()}
+          onChange={(id) => props.onPin(levels().find((l) => l.id === id), props.node.id)}
+        />
+      </Show>
     </div>
   );
 }

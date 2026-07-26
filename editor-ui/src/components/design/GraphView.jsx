@@ -20,6 +20,7 @@ import { createStore, produce } from 'solid-js/store';
 import {
   FileCode2,
   FilePlus,
+  Layers,
   ListFilter,
   RefreshCw,
   SlidersHorizontal,
@@ -50,6 +51,7 @@ import {
   loadPalette,
   setDesignTab,
   setGotoPage,
+  setPopover,
 } from '../../state/design';
 import {
   graphData,
@@ -760,6 +762,11 @@ export default function GraphView() {
         <Button size="sm" disabled={busy() || !data()} onClick={() => setAddOpen(true)}>
           <FilePlus size={13} /> Add unit
         </Button>
+        <Show when={selected()?.wskill}>
+          <Button size="sm" onClick={() => setPopover({ type: 'profiles' })}>
+            <Layers size={13} /> Profiles
+          </Button>
+        </Show>
         <Popover label="Forces" icon={SlidersHorizontal} size="sm" align="end" width={280}>
           <div class="ed-graph-forces">
             <Slider

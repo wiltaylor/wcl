@@ -29,6 +29,7 @@ import {
   setPopover,
   setSelection,
 } from '../../state/design';
+import { reloadGraph } from '../../state/graph';
 import { elsBySpan, patchAnchors, restampExcept } from '../../preview/localops';
 import { wclString } from '../../preview/wysiwyg';
 import {
@@ -165,10 +166,13 @@ function ProfilesModal(props) {
       tone: 'success',
       duration: 3000,
     });
-    // The view set changed: refresh discovery and the design models.
+    // The view set changed: refresh discovery, the design models, and the
+    // graph (its per-view chips, filters and placement lists are keyed by
+    // the site set) — the button lives on the graph toolbar too.
     await loadSites();
     loadNav();
     loadPalette();
+    reloadGraph({ keepPositions: true });
   };
 
   return (
