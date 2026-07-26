@@ -440,6 +440,16 @@ g.is-hidden > .ed-graph-edge-hit { display: none; }
   min-width: 0;
 }
 
+/* The content modal's Code tab: the unit's own WCL source, editable. The
+   editor fills the pane, so the header row stays a fixed strip above it. */
+.ed-content-code { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.ed-content-code-head {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding-bottom: var(--sp-2); font-size: var(--fs-xs); color: var(--fg-3);
+}
+.ed-content-code-head code { font-size: var(--fs-xs); }
+.ed-content-code > :last-child { flex: 1; min-height: 0; overflow: hidden; }
+
 /* Procedure step-flow editor (the modal's side column). A procedure's chart
    is repeater-generated, so its wiring is edited as a list here rather than
    dragged on the canvas. */

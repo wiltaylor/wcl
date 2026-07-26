@@ -21,8 +21,9 @@
    only reads as broken) and a tab showing the unit's own page carries a
    "not in any … index" badge when no index visible in that view pins it. */
 
-import { For, Show, createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
+import { For, Show, createEffect, createMemo, createResource, createSignal, onCleanup } from 'solid-js';
 import { Badge, Button, Checkbox, Modal, Spinner, ToggleGroup, toast } from '@forge/ui';
+import { CodeEditor } from '@forge/code';
 
 import { api } from '../../api';
 import { dirtyFiles } from '../../state/buffers';
@@ -44,6 +45,7 @@ import {
   setSurfaceRebuild,
 } from '../../state/design';
 import { graphData, pinCounts, reloadGraph } from '../../state/graph';
+import { wclLanguage } from '../../lang/wcl';
 import { injectBareCss } from '../../preview/frame';
 import { builtPageExists } from '../../preview/manifest';
 import EditSurface from './EditSurface';
@@ -547,8 +549,73 @@ export default function ContentModal(props) {
     ...(previewViews().length ? [{ value: 'merged', label: 'Merged' }] : []),
     ...previewViews().map((v) => ({ value: v.id, label: viewLabel(v.kind) })),
     ...(skillView() ? [{ value: 'skill', label: 'Skill' }] : []),
+    { value: 'code', label: 'Code' },
     { value: 'all', label: 'All' },
   ];
+
+  // ---- the Code tab: the unit's own WCL source ----
+  // Read from disk on open (and after every save) rather than from the graph
+  // payload: a commit reprints the whole file, so the span moves and the text
+  // has to come back with it. Saving goes through the same `replace_source`
+  // op the fragment editor uses.
+  const [codeSeq, setCodeSeq] = createSignal(0);
+  const [codeSrc] = createResource(
+    () => (activeTab() === 'code' && node() ? { n: node(), seq: codeSeq() } : null),
+    (k) => api.blockSource({ file: k.n.file, span: k.n.span }),
+  );
+  const [draft, setDraft] = createSignal(null);
+  // A fresh fetch discards an unsaved draft — the text it was based on is gone.
+  createEffect(() => {
+    if (codeSrc()?.ok) setDraft(codeSrc().source);
+  });
+
+  const saveCode = async () => {
+    const s = codeSrc();
+    const text = draft();
+    if (!s?.ok || text == null || text === s.source) return;
+    const res = await commitOps(
+      node().file,
+      [{ op: 'replace_source', span: node().span, source: text }],
+      { etag: s.etag, reveal: 'edited' },
+    );
+    if (res?.ok) {
+      toast('Saved', { duration: 2000 });
+      setCodeSeq((n) => n + 1);
+      reloadGraph({ keepPositions: true });
+    }
+  };
+
+  const codePane = () => (
+    <Show
+      when={codeSrc()?.ok}
+      fallback={
+        <div class="ed-empty">
+          {codeSrc.loading ? 'Reading the source…' : (codeSrc()?.error ?? 'No source for this unit.')}
+        </div>
+      }
+    >
+      <div class="ed-content-code">
+        <div class="ed-content-code-head">
+          <code>{node()?.file}</code>
+          <span class="spacer" />
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={busy() || draft() === codeSrc().source}
+            onClick={saveCode}
+          >
+            Save
+          </Button>
+        </div>
+        <CodeEditor
+          value={draft() ?? ''}
+          onChange={setDraft}
+          language={wclLanguage}
+          height="100%"
+        />
+      </div>
+    </Show>
+  );
 
   const skillPane = () => (
     <Show
@@ -679,6 +746,7 @@ export default function ContentModal(props) {
               </Show>
             </Show>
             <Show when={activeTab() === 'skill'}>{skillPane()}</Show>
+            <Show when={activeTab() === 'code'}>{codePane()}</Show>
             <Show when={activeTab() === 'all'}>
               <div class="ed-content-all">
                 <For each={previewViews()}>
