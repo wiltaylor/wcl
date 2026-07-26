@@ -416,6 +416,24 @@ g.is-hidden > .ed-graph-edge-hit { display: none; }
 }
 .ed-index-drophint.is-muted { border-color: var(--border); background: var(--bg-2); color: var(--fg-3); }
 
+/* Add-unit dialog: roomier than the Forge default (480px). A kind's metadata
+   fields are generated from its schema, so a unit with several of them ran
+   past the bottom of the panel — widen it and pair the fields into two
+   columns so the whole form is visible without scrolling. */
+.fmodal-panel:has(.ed-add-unit) {
+  width: min(720px, 100vw - 48px);
+  max-width: none;
+}
+.ed-add-unit-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-2);
+}
+/* Forge controls carry their own min-width; let them shrink into a column. */
+.ed-add-unit-fields > *, .ed-add-unit-fields .fg-select, .ed-add-unit-fields select {
+  min-width: 0;
+}
+
 /* Content & visibility modal: near-fullscreen — the preview needs room.
    Size the Forge panel, make its body a flex cell, and let the inner
    layout fill the height (the iframe already flexes). */

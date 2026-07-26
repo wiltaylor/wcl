@@ -52,7 +52,10 @@ export default function AddUnitDialog(props) {
         </>
       }
     >
-      <div class="ed-form">
+      <div class="ed-form ed-add-unit">
+        {/* Kind and id identify the unit, so they stay on their own full-width
+            rows; the kind's own metadata fields pair up below (see app.css) —
+            a kind with several fields would otherwise run past the fold. */}
         <Select
           options={(palette()?.unit_kinds ?? [])
             .filter((k) => k.kind !== 'index')
@@ -66,31 +69,35 @@ export default function AddUnitDialog(props) {
           onInput={(e) => patch({ id: e.currentTarget.value })}
           placeholder="id (identifier)"
         />
-        <For each={kindDef()?.fields ?? []}>
-          {(f) => (
-            <Show when={f.inline_slot == null}>
-              <Show
-                when={f.symbols}
-                fallback={
-                  <Input
-                    value={form().fields?.[f.name] ?? ''}
-                    onInput={(e) =>
-                      patch({ fields: { ...form().fields, [f.name]: e.currentTarget.value } })
+        <Show when={(kindDef()?.fields ?? []).some((f) => f.inline_slot == null)}>
+          <div class="ed-add-unit-fields">
+            <For each={kindDef()?.fields ?? []}>
+              {(f) => (
+                <Show when={f.inline_slot == null}>
+                  <Show
+                    when={f.symbols}
+                    fallback={
+                      <Input
+                        value={form().fields?.[f.name] ?? ''}
+                        onInput={(e) =>
+                          patch({ fields: { ...form().fields, [f.name]: e.currentTarget.value } })
+                        }
+                        placeholder={`${f.name}${f.optional ? '' : ' (required)'}`}
+                      />
                     }
-                    placeholder={`${f.name}${f.optional ? '' : ' (required)'}`}
-                  />
-                }
-              >
-                <Select
-                  options={f.symbols.map((s) => ({ value: s, label: `:${s}` }))}
-                  value={form().fields?.[f.name] || undefined}
-                  placeholder={f.name}
-                  onChange={(v) => patch({ fields: { ...form().fields, [f.name]: v } })}
-                />
-              </Show>
-            </Show>
-          )}
-        </For>
+                  >
+                    <Select
+                      options={f.symbols.map((s) => ({ value: s, label: `:${s}` }))}
+                      value={form().fields?.[f.name] || undefined}
+                      placeholder={f.name}
+                      onChange={(v) => patch({ fields: { ...form().fields, [f.name]: v } })}
+                    />
+                  </Show>
+                </Show>
+              )}
+            </For>
+          </div>
+        </Show>
         <Show when={(props.indexes ?? []).length > 0}>
           <Select
             options={[
