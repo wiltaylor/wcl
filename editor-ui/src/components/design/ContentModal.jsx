@@ -658,7 +658,7 @@ export default function ContentModal(props) {
                 span={node().span}
                 steps={(node().blocks ?? [])
                   .filter((b) => b.kind === 'step' && b.preview)
-                  .map((b) => b.preview)}
+                  .map((b) => ({ id: b.preview, file: b.file, span: b.span }))}
                 onChange={() => reloadGraph({ keepPositions: true })}
               />
             </Show>
