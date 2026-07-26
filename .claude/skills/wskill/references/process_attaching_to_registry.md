@@ -46,6 +46,6 @@ Open the built landing: the new card shows the member's title and summary (read 
 
 - [Creating a new wskill](../references/process_creating_a_wskill.md)
 
-- [The view family](../references/concept_views.md)
+- [Different Views](../references/concept_views.md)
 
 [← Back to SKILL.md](../SKILL.md)

@@ -58,7 +58,7 @@ the skills, shipped once per wskill.
 
 ## Related
 
-- [The view family](../references/concept_views.md)
+- [Different Views](../references/concept_views.md)
 
 - [Audience control](../references/concept_audience_control.md)
 

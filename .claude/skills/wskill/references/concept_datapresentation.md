@@ -24,7 +24,7 @@ hand-duplicated nowhere, in every view on the next render.
 
 - [What is it?](../references/concept_wskill_concept.md)
 
-- [The view family](../references/concept_views.md)
+- [Different Views](../references/concept_views.md)
 
 - [Components: one look for every unit](../references/concept_components_look_feel.md)
 

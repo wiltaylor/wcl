@@ -31,7 +31,7 @@ The WCL repo's own docs site works exactly this way over its three wskills.
 
 ## Related
 
-- [The view family](../references/concept_views.md)
+- [Different Views](../references/concept_views.md)
 
 - [Attaching a wskill to a registry](../references/process_attaching_to_registry.md)
 

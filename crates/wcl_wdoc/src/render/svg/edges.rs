@@ -61,6 +61,7 @@ pub(crate) fn render_edges(
     positions: &ShapePositions,
     borders: &[(f64, f64, f64, f64)],
     viewport: (f64, f64),
+    edit: bool,
 ) -> (String, Vec<(f64, f64, f64, f64)>) {
     let mut items: Vec<Value> = Vec::new();
     gather_edges_recursive(block, &mut items);
@@ -121,7 +122,7 @@ pub(crate) fn render_edges(
             let (w, h) = edge_label_extent(label);
             bboxes.push((x - w / 2.0, y - h / 2.0, w, h));
         }
-        out.push_str(&serialize_edge(&path, &style, straight));
+        out.push_str(&serialize_edge(&path, &style, straight, edit));
     }
     (out, bboxes)
 }
@@ -136,12 +137,26 @@ pub(crate) fn edge_label_extent(label: &str) -> (f64, f64) {
     )
 }
 
+/// The text a connection kind renders as, or `None` when the kind is purely
+/// presentational. Only the answer-shaped kinds label themselves.
+fn kind_label(kind: &str) -> Option<&'static str> {
+    match kind {
+        "yes" => Some("yes"),
+        "no" => Some("no"),
+        _ => None,
+    }
+}
+
 /// Per-edge presentation read off the edge record. `kind` comes from
 /// the `a -> b : kind` connection syntax or a computed record's `kind`
 /// field; `label` / `dash` are reachable only through computed
 /// `edges = [...]` records today — the `->` statement grammar carries
 /// no payload beyond the kind symbol.
 pub(crate) struct EdgeStyle {
+    /// The endpoint ids, so an edit-mode build can stamp an anchor the
+    /// Design client addresses the connection statement by.
+    pub(crate) from: String,
+    pub(crate) to: String,
     pub(crate) kind: Option<String>,
     pub(crate) label: Option<String>,
     pub(crate) dash: Option<String>,
@@ -417,9 +432,18 @@ pub(crate) fn plan_edge(
         Some(Value::Symbol(k)) => Some(k.clone()),
         _ => None,
     };
+    // A `->` statement can carry a kind but no label, so a labelling kind
+    // (anything but the neutral `:default`/`:flow`/`:data`) doubles as the
+    // label. An explicit `label` on a record form always wins.
+    let label = fields
+        .get("label")
+        .and_then(edge_endpoint_id)
+        .or_else(|| kind.as_deref().and_then(kind_label).map(str::to_string));
     let style = EdgeStyle {
+        from: source_id.clone(),
+        to: dest_id.clone(),
         kind,
-        label: fields.get("label").and_then(edge_endpoint_id),
+        label,
         dash: fields.get("dash").and_then(edge_endpoint_id),
     };
     let points = if straight {
@@ -493,7 +517,24 @@ pub(crate) fn plan_edge(
     Some((EdgePath { points }, style))
 }
 
-pub(crate) fn serialize_edge(path: &EdgePath, style: &EdgeStyle, straight: bool) -> String {
+pub(crate) fn serialize_edge(
+    path: &EdgePath,
+    style: &EdgeStyle,
+    straight: bool,
+    edit: bool,
+) -> String {
+    // Edit mode only, so published builds stay byte-identical: names the
+    // connection this path draws, plus a fat transparent hit path so a thin
+    // line is grabbable (the unit graph's `data-edge-handle` trick).
+    let edit_attr = if edit {
+        format!(
+            " data-wcl-edge=\"{}:{}\"",
+            escape_html(&style.from),
+            escape_html(&style.to)
+        )
+    } else {
+        String::new()
+    };
     let kind_attr = match style.kind.as_deref() {
         Some(k) => format!(" data-kind=\"{}\"", escape_html(k)),
         None => String::new(),
@@ -507,7 +548,7 @@ pub(crate) fn serialize_edge(path: &EdgePath, style: &EdgeStyle, straight: bool)
         let (x2, y2) = path.points[1];
         format!(
             "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" \
-             stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\"{dash_attr}{kind_attr} />"
+             stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\"{dash_attr}{kind_attr}{edit_attr} />"
         )
     } else {
         let points: Vec<String> = path
@@ -517,7 +558,7 @@ pub(crate) fn serialize_edge(path: &EdgePath, style: &EdgeStyle, straight: bool)
             .collect();
         format!(
             "<polyline points=\"{}\" fill=\"none\" \
-             stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\"{dash_attr}{kind_attr} />",
+             stroke=\"currentColor\" marker-end=\"url(#wdoc-arrow)\"{dash_attr}{kind_attr}{edit_attr} />",
             points.join(" ")
         )
     };

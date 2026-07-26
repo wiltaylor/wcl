@@ -328,6 +328,37 @@ export default function EditSurface(props) {
     );
   };
 
+  /** Port dragged from one shape onto another: wire them with an `a -> b`
+      connection statement. The op addresses the DIAGRAM (connections are its
+      items), not either shape, so resolve the enclosing svg's anchor. */
+  const shapeConnect = async (fromEl, toEl) => {
+    const d = doc();
+    if (!d) return;
+    const from = fromEl.getAttribute('data-wcl-shape-id');
+    const to = toEl.getAttribute('data-wcl-shape-id');
+    if (!from || !to) {
+      return toast('Both shapes need an id before they can be connected', { duration: 4000 });
+    }
+    const svg = fromEl.closest('svg[data-wcl-layout]');
+    const owner = svg && anchorOf(d, svg);
+    if (!owner) return toast('No diagram found for these shapes', { duration: 4000 });
+    // A generated diagram (a procedure's flowchart) shares one span across
+    // every instance — writing there would edit the component, not the data.
+    if (owner.shared) {
+      return toast('This diagram is generated — edit its source data instead', {
+        duration: 5000,
+      });
+    }
+    const src = await api.blockSource({ file: owner.file, span: owner.span });
+    if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
+    const res = await commitOps(
+      owner.file,
+      [{ op: 'connect_add', span: owner.span, from, to }],
+      { etag: src.etag, reveal: 'edited' },
+    );
+    if (res?.ok) toast(`Connected ${from} → ${to}`, { duration: 3000 });
+  };
+
   const shapeResize = async (el, delta) => {
     const d = doc();
     const a = d && anchorOf(d, el);
@@ -533,6 +564,7 @@ export default function EditSurface(props) {
       selectedShape: () => (selection()?.shape ? selection().el : null),
       onMove: shapeMove,
       onResize: shapeResize,
+      onConnect: shapeConnect,
     });
     // Re-anchor after a commit rebuild.
     const reveal = pendingReveal();

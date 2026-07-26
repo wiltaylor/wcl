@@ -33,7 +33,7 @@ The view is optional. Ship it by declaring `artifact training { kind = :training
 
 ## Related
 
-- [The view family](../references/concept_views.md)
+- [Different Views](../references/concept_views.md)
 
 - [The presentation view](../references/concept_presentation_view.md)
 

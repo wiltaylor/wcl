@@ -74,8 +74,13 @@ fn render_diagram_inner(
     // obstacle graph (they never become a `Block`). Their expanded boxes
     // join the viewBox fit so a padded boundary never clips.
     let (boundaries, boundary_bboxes) = render_boundaries(block, &collector.positions);
-    let (edges, edge_bboxes) =
-        render_edges(block, &collector.positions, &collector.containers, (vw, vh));
+    let (edges, edge_bboxes) = render_edges(
+        block,
+        &collector.positions,
+        &collector.containers,
+        (vw, vh),
+        patterns.edit_mode(),
+    );
     let mut content_bboxes = collector.bboxes.clone();
     content_bboxes.extend(boundary_bboxes);
     let viewbox = fit_viewbox(&content_bboxes, &edge_bboxes, vw, vh);

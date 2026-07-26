@@ -82,7 +82,7 @@ Walk the built course as a learner would: do every exercise, then answer every c
 
 - [The training view](../references/concept_training_view.md)
 
-- [The view family](../references/concept_views.md)
+- [Different Views](../references/concept_views.md)
 
 - [Adding content to a wskill](../references/process_adding_content.md)
 

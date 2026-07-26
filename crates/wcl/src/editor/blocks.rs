@@ -111,6 +111,18 @@ fn block_source(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
             _ => None,
         })
         .collect();
+    // `a -> b` statements are items, not fields, so they'd be invisible to
+    // the client otherwise — the edge editors read the wiring from here.
+    let connections: Vec<serde_json::Value> = block
+        .items
+        .iter()
+        .filter_map(|it| match it {
+            Item::Connection(c) => Some(serde_json::json!({
+                "from": c.lhs, "to": c.rhs, "kind": c.kind,
+            })),
+            _ => None,
+        })
+        .collect();
     Ok(serde_json::json!({
         "ok": true,
         "kind": block.kind,
@@ -118,6 +130,7 @@ fn block_source(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
         "etag": crate::edit::content_etag(&text),
         "labels": labels,
         "fields": fields,
+        "connections": connections,
         "visibility": visibility_json(block),
     }))
 }
@@ -248,6 +261,9 @@ pub(super) fn visibility_json(block: &ast::Block) -> serde_json::Value {
 /// - `append_top_level { source }` — a new top-level block (no `span`)
 /// - `set_visibility { except_sites: [names] }` — rewrite the block's
 ///   `@except(sites = [:…])` decorator (empty list removes it)
+/// - `connect_add { from, to, kind? }` / `connect_remove { from, to }` — add or
+///   drop an `a -> b` connection statement on the addressed container block
+///   (a diagram wiring its shapes, a procedure wiring its steps).
 /// - `related_add { id }` / `related_remove { id }` — append to / remove from
 ///   the block's `related` identifier list (the graph view's edge writes;
 ///   refuses computed lists, duplicates, and self-loops)
@@ -468,10 +484,52 @@ fn block_ops(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::V
                 );
                 tracked.push(("edited", span));
             }
+            // A diagram/procedure wires its children with `a -> b` connection
+            // STATEMENTS, not a list field — so these address the container
+            // block (the diagram, the procedure) and name its children by id.
+            "connect_add" | "connect_remove" => {
+                let span = span_field(op, "span")?;
+                let from = crate::edit::str_field(op, "from")?;
+                let to = crate::edit::str_field(op, "to")?;
+                for id in [from, to] {
+                    if !is_identifier(id) {
+                        return Err(format!("`{id}` is not a valid shape id"));
+                    }
+                }
+                if from == to {
+                    return Err("a shape cannot connect to itself".into());
+                }
+                let block = find_block(&mut src.items, span)?;
+                if name == "connect_add" {
+                    // The kind is a bare symbol (`a -> b :yes`); the schema
+                    // rejects one outside the connection's symbol set.
+                    let kind = op.get("kind").and_then(serde_json::Value::as_str);
+                    if let Some(k) = kind
+                        && !is_identifier(k)
+                    {
+                        return Err(format!("`{k}` is not a valid connection kind"));
+                    }
+                    if !ast_edit::add_connection(block, from, to, kind) {
+                        return Err(format!("`{from}` is already connected to `{to}`"));
+                    }
+                } else if !ast_edit::remove_connection(block, from, to) {
+                    return Err(format!("no connection `{from} -> {to}`"));
+                }
+                tracked.push(("edited", span));
+            }
             "delete" => {
                 let span = span_field(op, "span")?;
+                // A shape's edges name it by id, so deleting the shape must
+                // take them with it — an edge to a shape that no longer exists
+                // renders nothing and warns at build time.
+                let orphan = find_block(&mut src.items, span)
+                    .ok()
+                    .and_then(|b| shape_id_of(b));
                 if !ast_edit::remove_block_by_span(&mut src.items, span) {
                     return Err(stale_span());
+                }
+                if let Some(id) = orphan {
+                    prune_connections(&mut src.items, &id);
                 }
             }
             "move" => {
@@ -549,6 +607,31 @@ fn find_block(items: &mut [Item], span: Span) -> Result<&mut ast::Block, String>
 
 /// The value for `set_label` / `set_field`: `text` (a string literal) or
 /// `expr` (parsed WCL — symbols, numbers, lists).
+/// A diagram shape's own id — the name its `a -> b` edges use. Either an
+/// `id = <ident>` field or, for shapes whose id is an inline label, the first
+/// label. `None` when the block has neither (it can carry no edges).
+fn shape_id_of(block: &ast::Block) -> Option<String> {
+    let field = block.items.iter().find_map(|it| match it {
+        Item::Field(f) if f.name == "id" => match &f.expr {
+            Expr::Identifier(s, _) | Expr::Utf8(s) | Expr::Ascii(s) => Some(s.clone()),
+            _ => None,
+        },
+        _ => None,
+    });
+    field.or_else(|| ast_label(block))
+}
+
+/// Drop every connection statement naming `id`, anywhere in the tree — the
+/// deleted shape's container isn't known here, and an id is diagram-unique.
+fn prune_connections(items: &mut Vec<Item>, id: &str) {
+    items.retain(|it| !matches!(it, Item::Connection(c) if c.lhs == id || c.rhs == id));
+    for item in items.iter_mut() {
+        if let Item::Block(b) = item {
+            prune_connections(&mut b.items, id);
+        }
+    }
+}
+
 fn value_expr(op: &serde_json::Value) -> Result<Expr, String> {
     if let Some(text) = op.get("text").and_then(serde_json::Value::as_str) {
         return Ok(ast_edit::string_literal_expr(text));

@@ -18,7 +18,7 @@ Capture once, render everywhere — nothing is hand-duplicated between views.
 
 - [Separation of Data and Presentation](../references/concept_datapresentation.md)
 
-- [The view family](../references/concept_views.md)
+- [Different Views](../references/concept_views.md)
 
 - [Decomposing information](../references/concept_decomposing_information.md)
 

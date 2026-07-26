@@ -238,6 +238,61 @@ pub fn remove_block_by_span(items: &mut Vec<Item>, span: Span) -> bool {
     false
 }
 
+/// Append a `lhs -> rhs` connection statement to `block`, optionally with a
+/// `:kind` symbol. Returns `false` when the pair is already connected (the
+/// statement list is a set — a duplicate would render two identical edges).
+///
+/// The node is synthesised with zero spans and no trivia, like
+/// [`build_block`]: the printer reads neither, so the result round-trips.
+pub fn add_connection(block: &mut ast::Block, lhs: &str, rhs: &str, kind: Option<&str>) -> bool {
+    if find_connection(&block.items, lhs, rhs).is_some() {
+        return false;
+    }
+    block.items.push(Item::Connection(ast::ConnectionStmt {
+        lhs: lhs.to_string(),
+        lhs_span: Span::new(0, 0),
+        rhs: rhs.to_string(),
+        rhs_span: Span::new(0, 0),
+        kind: kind.map(str::to_string),
+        kind_span: None,
+        span: Span::new(0, 0),
+        leading_trivia: Vec::new(),
+        trailing_comment: None,
+    }));
+    true
+}
+
+/// Drop the `lhs -> rhs` connection statement from `block`. Returns whether
+/// one was removed.
+pub fn remove_connection(block: &mut ast::Block, lhs: &str, rhs: &str) -> bool {
+    match find_connection(&block.items, lhs, rhs) {
+        Some(idx) => {
+            block.items.remove(idx);
+            true
+        }
+        None => false,
+    }
+}
+
+/// Drop every connection statement naming `id` at either end — what a shape
+/// deletion needs, since an edge to a shape that no longer exists renders
+/// nothing and warns at build time. Returns how many were removed.
+pub fn remove_connections_touching(block: &mut ast::Block, id: &str) -> usize {
+    let before = block.items.len();
+    block
+        .items
+        .retain(|it| !matches!(it, Item::Connection(c) if c.lhs == id || c.rhs == id));
+    before - block.items.len()
+}
+
+/// Index of the `lhs -> rhs` statement among `items`, if present. Direction
+/// matters: `a -> b` and `b -> a` are different edges.
+fn find_connection(items: &[Item], lhs: &str, rhs: &str) -> Option<usize> {
+    items
+        .iter()
+        .position(|it| matches!(it, Item::Connection(c) if c.lhs == lhs && c.rhs == rhs))
+}
+
 /// Swap the block at `span` with its adjacent **block** sibling in `direction`
 /// (skipping interleaved fields / `let`s, which keep their positions). Returns
 /// `false` when the block isn't found or is already at the relevant edge.
@@ -604,5 +659,67 @@ mod tests {
         let out = format::to_source(&ast);
         assert!(out.contains("import \"data/b.wcl\""), "{out}");
         reparse(&out);
+    }
+
+    #[test]
+    fn connection_add_remove_round_trips() {
+        let mut ast = parse_for_edit("diagram {\n  rect a {}\n  rect b {}\n}\n", "t").unwrap();
+        let span = match &ast.items[0] {
+            Item::Block(b) => b.span,
+            _ => panic!(),
+        };
+        let block = find_block_by_span(&mut ast.items, span).unwrap();
+        assert!(add_connection(block, "a", "b", None));
+        assert!(add_connection(block, "b", "a", Some("flow")));
+        // The statement list is a set — the same pair twice is one edge.
+        assert!(!add_connection(block, "a", "b", None));
+
+        let out = format::to_source(&ast);
+        assert!(out.contains("a -> b\n"), "{out}");
+        assert!(out.contains("b -> a :flow"), "{out}");
+        reparse(&out);
+
+        let block = find_block_by_span(&mut ast.items, span).unwrap();
+        assert!(remove_connection(block, "a", "b"));
+        assert!(!remove_connection(block, "a", "b"));
+        let out = format::to_source(&ast);
+        assert!(!out.contains("a -> b"), "{out}");
+        assert!(out.contains("b -> a :flow"), "{out}");
+        reparse(&out);
+    }
+
+    #[test]
+    fn removing_a_shape_drops_only_the_edges_touching_it() {
+        let mut ast = parse_for_edit(
+            "diagram {\n  rect a {}\n  rect b {}\n  rect c {}\n  a -> b\n  b -> c\n  c -> a\n}\n",
+            "t",
+        )
+        .unwrap();
+        let span = match &ast.items[0] {
+            Item::Block(b) => b.span,
+            _ => panic!(),
+        };
+        let block = find_block_by_span(&mut ast.items, span).unwrap();
+        assert_eq!(remove_connections_touching(block, "b"), 2, "a->b and b->c");
+        let out = format::to_source(&ast);
+        assert!(out.contains("c -> a"), "the untouched edge survives: {out}");
+        assert!(!out.contains("-> b"), "{out}");
+        assert!(!out.contains("b ->"), "{out}");
+        reparse(&out);
+    }
+
+    #[test]
+    fn a_connection_keeps_its_direction() {
+        let mut ast = parse_for_edit("diagram {\n  a -> b\n}\n", "t").unwrap();
+        let span = match &ast.items[0] {
+            Item::Block(b) => b.span,
+            _ => panic!(),
+        };
+        let block = find_block_by_span(&mut ast.items, span).unwrap();
+        // `b -> a` is a different edge, so it neither dedupes nor removes.
+        assert!(add_connection(block, "b", "a", None));
+        assert!(remove_connection(block, "b", "a"));
+        assert!(!remove_connection(block, "b", "a"));
+        assert!(remove_connection(block, "a", "b"));
     }
 }

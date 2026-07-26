@@ -48,6 +48,7 @@ import { injectBareCss } from '../../preview/frame';
 import { builtPageExists } from '../../preview/manifest';
 import EditSurface from './EditSurface';
 import { viewLabel } from './DesignCanvas';
+import FlowPanel from './FlowPanel';
 
 const ALL_PROFILES = ['book', 'ai_skill', 'presentation', 'training'];
 
@@ -581,6 +582,19 @@ export default function ContentModal(props) {
       <Show when={node()} fallback={<div class="ed-empty">The unit is gone — reload the graph.</div>}>
         <div class="ed-content-modal">
           <div class="ed-content-side">
+            {/* A procedure's `from -> to` wiring. Not draggable on the canvas:
+                its chart is repeater-generated, so the shapes share one span
+                and the statements live here, on the unit block. */}
+            <Show when={node()?.kind === 'procedure'}>
+              <FlowPanel
+                file={node().file}
+                span={node().span}
+                steps={(node().blocks ?? [])
+                  .filter((b) => b.kind === 'step' && b.preview)
+                  .map((b) => b.preview)}
+                onChange={() => reloadGraph({ keepPositions: true })}
+              />
+            </Show>
             <div class="ed-content-blocks">
               <ViewToggles label="whole unit" block={unitRow()} sites={sites()} onToggle={toggleUnitView} />
               <p class="ed-content-hint">

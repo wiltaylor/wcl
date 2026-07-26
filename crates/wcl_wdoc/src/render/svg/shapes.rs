@@ -376,15 +376,23 @@ pub(crate) fn build_metrics(block: &Block<'_>, bbox: (f64, f64, f64, f64)) -> Sh
 /// map a click inside the SVG back to the declaring WCL block:
 /// `data-wcl-shape` (marks a diagram child, distinguishing it from page
 /// blocks) + the same `data-wcl-kind` / `data-wcl-span` / `data-wcl-file`
-/// triple `anchor_block` stamps on HTML blocks. Empty outside edit mode,
-/// so plain / comment-mode / Markdown / PDF builds are byte-identical.
+/// triple `anchor_block` stamps on HTML blocks, plus `data-wcl-shape-id` —
+/// the shape's OWN id, the name `a -> b` connections use, which the span
+/// alone can't supply (and which is the only per-instance identity a
+/// repeater-generated shape has, since every iteration shares one span).
+/// Empty outside edit mode, so plain / comment-mode / Markdown / PDF builds
+/// are byte-identical.
 pub(crate) fn shape_anchor_attrs(block: &Block<'_>, patterns: &InlinePatterns) -> String {
     if !patterns.edit_mode() {
         return String::new();
     }
     let span = block.span();
+    let id = match field_id(block, "id") {
+        Some(id) => format!(" data-wcl-shape-id=\"{}\"", escape_html(&id)),
+        None => String::new(),
+    };
     format!(
-        " data-wcl-shape data-wcl-kind=\"{}\" data-wcl-span=\"{}:{}\" data-wcl-file=\"{}\"",
+        " data-wcl-shape data-wcl-kind=\"{}\" data-wcl-span=\"{}:{}\" data-wcl-file=\"{}\"{id}",
         escape_html(block.kind()),
         span.start,
         span.end,

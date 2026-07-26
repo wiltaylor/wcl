@@ -29,6 +29,6 @@ examples, related links — for free.
 
 - [Custom projections (schema extension modules)](../references/concept_custom_projection.md)
 
-- [The view family](../references/concept_views.md)
+- [Different Views](../references/concept_views.md)
 
 [← Back to SKILL.md](../SKILL.md)

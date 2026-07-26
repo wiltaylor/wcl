@@ -1308,6 +1308,148 @@ mod tests {
 
     const BODY_DOC: &str = "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  p \"First paragraph\"\n\n  p \"Second paragraph\"\n}\n";
 
+    /// A document whose page holds a diagram of three wired shapes.
+    const DIAGRAM_DOC: &str = "import <wdoc.wcl>\n\nsite docs {\n  title = \"D\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  diagram {\n    width = 400\n    height = 300\n    rect {\n      id = a\n    }\n    rect {\n      id = b\n    }\n    rect {\n      id = c\n    }\n    a -> b\n  }\n}\n";
+
+    /// Wiring shapes together writes `a -> b` connection STATEMENTS — the
+    /// language's own relationship syntax — rather than a list field.
+    #[tokio::test]
+    async fn connect_ops_write_connection_statements() {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("main.wcl"), DIAGRAM_DOC).unwrap();
+        let state = state_for(td.path(), None);
+        // Every commit reprints the file, so the diagram's span moves — each
+        // request re-resolves it, exactly as the client re-anchors on reload.
+        let connect = |ops: Box<dyn Fn(wcl_lang::Span) -> serde_json::Value>| {
+            let state = Arc::clone(&state);
+            let path = td.path().join("main.wcl");
+            async move {
+                let disk = std::fs::read_to_string(&path).unwrap();
+                let diagram = span_of(&disk, |b| b.kind == "diagram");
+                send(
+                    router(state),
+                    "POST",
+                    "/api/block/ops",
+                    Some(serde_json::json!({
+                        "entry": "main.wcl", "file": "main.wcl",
+                        "etag": crate::edit::content_etag(&disk),
+                        "ops": ops(diagram),
+                    })),
+                )
+                .await
+            }
+        };
+
+        // Add one plain edge and one kinded edge.
+        let (status, v) = connect(Box::new(|d| {
+            serde_json::json!([
+                { "op": "connect_add", "span": span_json(d), "from": "b", "to": "c" },
+                { "op": "connect_add", "span": span_json(d), "from": "c", "to": "a", "kind": "flow" },
+            ])
+        }))
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let text = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        assert!(text.contains("b -> c"), "{text}");
+        assert!(text.contains("c -> a :flow"), "{text}");
+
+        // Removing one leaves the others alone.
+        let (status, v) = connect(Box::new(|d| {
+            serde_json::json!([
+                { "op": "connect_remove", "span": span_json(d), "from": "b", "to": "c" },
+            ])
+        }))
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let text = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        assert!(!text.contains("b -> c"), "{text}");
+        assert!(text.contains("c -> a :flow"), "{text}");
+        assert!(text.contains("a -> b"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn connect_ops_reject_nonsense() {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("main.wcl"), DIAGRAM_DOC).unwrap();
+        let state = state_for(td.path(), None);
+        let disk = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        let etag = crate::edit::content_etag(&disk);
+        let diagram = span_of(&disk, |b| b.kind == "diagram");
+
+        for (op, from, to) in [
+            ("connect_add", "a", "a"),    // self-connection
+            ("connect_add", "a", "b"),    // already wired
+            ("connect_remove", "a", "c"), // no such edge
+        ] {
+            let (status, _) = send(
+                router(Arc::clone(&state)),
+                "POST",
+                "/api/block/ops",
+                Some(serde_json::json!({
+                    "entry": "main.wcl", "file": "main.wcl", "etag": etag,
+                    "ops": [{ "op": op, "span": span_json(diagram), "from": from, "to": to }],
+                })),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::BAD_REQUEST,
+                "{op} {from}->{to} should fail"
+            );
+        }
+    }
+
+    /// Deleting a shape takes its edges with it — the sync failure that let a
+    /// removed shape leave dangling `a -> b` statements behind.
+    #[tokio::test]
+    async fn deleting_a_shape_removes_its_connections() {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("main.wcl"), DIAGRAM_DOC).unwrap();
+        let state = state_for(td.path(), None);
+        let disk = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        let etag = crate::edit::content_etag(&disk);
+        let diagram = span_of(&disk, |b| b.kind == "diagram");
+
+        // Wire c -> b as well, so `b` has an inbound and an outbound edge.
+        let (status, _) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/block/ops",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl", "etag": etag,
+                "ops": [{ "op": "connect_add", "span": span_json(diagram), "from": "c", "to": "b" }],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let disk = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        let etag = crate::edit::content_etag(&disk);
+        let shape_b = span_of(&disk, |b| {
+            b.kind == "rect"
+                && b.items.iter().any(|it| {
+                    matches!(it, wcl_lang::ast::Item::Field(f)
+                    if f.name == "id"
+                        && matches!(&f.expr, wcl_lang::ast::Expr::Identifier(s, _) if s == "b"))
+                })
+        });
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/block/ops",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl", "etag": etag,
+                "ops": [{ "op": "delete", "span": span_json(shape_b) }],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let text = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        assert!(!text.contains("a -> b"), "outbound edge went too: {text}");
+        assert!(!text.contains("c -> b"), "inbound edge went too: {text}");
+        assert!(text.contains("id = c"), "other shapes survive: {text}");
+    }
+
     #[tokio::test]
     async fn block_ops_edit_insert_move_delete() {
         let td = tempfile::tempdir().unwrap();

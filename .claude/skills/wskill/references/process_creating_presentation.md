@@ -66,7 +66,7 @@ Open the built single-file deck: ← → move between sections, ↑ ↓ within o
 
 - [The presentation view](../references/concept_presentation_view.md)
 
-- [The view family](../references/concept_views.md)
+- [Different Views](../references/concept_views.md)
 
 - [Adding content to a wskill](../references/process_adding_content.md)
 

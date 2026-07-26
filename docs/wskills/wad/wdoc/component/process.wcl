@@ -26,6 +26,9 @@ wdoc_component process_body {
       h2 "Prerequisites"
       list { items = map(unit.preconditions, fn(pc: utf8) -> Li { { text: pc } }) }
     }
+    // A `:simple` procedure is a plain ordered walk through its steps — no
+    // chart. The wiring stays authored either way; only the drawing is gated.
+    wdoc_repeater { each = match unit.style { :simple => [], _ => [true] }  as = :_fc
     h2 "Flowchart"
     diagram {
       width = 720  height = len(unit.steps) * 96 + 64
@@ -43,6 +46,7 @@ wdoc_component process_body {
         { source: $"${e.source}", destination: $"${e.destination}",
           kind: :flow, label: match e.kind { :yes => "yes", :no => "no", _ => "" } }
       })
+    }
     }
     h2 "Steps"
     wdoc_repeater { each = unit.steps  as = :s

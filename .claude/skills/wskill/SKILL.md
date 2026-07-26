@@ -67,8 +67,7 @@ wskill is a unified format that allows saving knowledge for use by Humans and AI
 
 _What a wskill is, why it exists, and how to start one._
 - [What is it?](references/concept_wskill_concept.md)
-- [Plain skill or wskill? — the routing rule](references/fact_skill_vs_wskill.md)
-- [The view family](references/concept_views.md)
+- [Different Views](references/concept_views.md)
 - [Creating a new wskill](references/process_creating_a_wskill.md)
 
 ### Authoring
@@ -87,7 +86,7 @@ _Capturing knowledge: decomposition, classification, the capture loop, and the t
 ### Views & Rendering
 
 _The four views, what controls what renders where, and how to build and install each._
-- [The view family](references/concept_views.md)
+- [Different Views](references/concept_views.md)
 - [Audience control](references/concept_audience_control.md)
 - [Visibility scoping (@only / @except)](references/concept_visibility_scoping.md)
 - [Anatomy of the AI skill](references/concept_skill_anatomy.md)
@@ -110,7 +109,6 @@ _Custom schemas and projections for topic-specific data, and the component syste
 
 _Step-by-step runbooks for building and maintaining a wskill — classify with the decision guide before creating any unit._
 - [Which unit kind? — the decision guide](references/fact_unit_decision_guide.md)
-- [Plain skill or wskill? — the routing rule](references/fact_skill_vs_wskill.md)
 - [Creating a new wskill](references/process_creating_a_wskill.md)
 - [Adding content to a wskill](references/process_adding_content.md)
 - [Capturing research into a wskill](references/process_capturing_research.md)

@@ -22,7 +22,7 @@ Audience selects whole units. To vary \*content inside one body\* per view, use
 
 ## Related
 
-- [The view family](../references/concept_views.md)
+- [Different Views](../references/concept_views.md)
 
 - [Anatomy of the AI skill](../references/concept_skill_anatomy.md)
 

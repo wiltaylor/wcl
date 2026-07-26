@@ -18,6 +18,16 @@ const FRAME_CSS = `
 .wcl-wys-handle[data-wcl-handle="nw"], .wcl-wys-handle[data-wcl-handle="se"] { cursor: nwse-resize; }
 .wcl-wys-handle[data-wcl-handle="ne"], .wcl-wys-handle[data-wcl-handle="sw"] { cursor: nesw-resize; }
 .wcl-wys-dragging, .wcl-wys-dragging * { cursor: grabbing !important; }
+.wcl-wys-port {
+  fill: #3b82f6; stroke: #ffffff; stroke-width: 1;
+  vector-effect: non-scaling-stroke; pointer-events: all; cursor: crosshair;
+}
+.wcl-wys-port:hover { fill: #2563eb; r: 6; }
+.wcl-wys-pending {
+  stroke: #3b82f6; stroke-width: 2; stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke; pointer-events: none;
+}
+.wcl-wys-drop > * { outline: 2px solid #3b82f6; outline-offset: 2px; }
 `;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -131,7 +141,30 @@ export function refreshShapeHandles(doc, el) {
     r.setAttribute('height', size);
     group.appendChild(r);
   }
+  // The out-port: drag it onto another shape to wire `a -> b`. Only shapes
+  // that HAVE an id can be an edge endpoint (a connection names ids).
+  if (el.getAttribute('data-wcl-shape-id')) {
+    const port = doc.createElementNS(SVG_NS, 'circle');
+    port.setAttribute('class', 'wcl-wys-port');
+    port.setAttribute('data-wcl-port', '');
+    port.setAttribute('cx', box.x + box.width);
+    port.setAttribute('cy', box.y + box.height / 2);
+    port.setAttribute('r', 5);
+    const t = doc.createElementNS(SVG_NS, 'title');
+    t.textContent = 'drag to another shape to connect';
+    port.appendChild(t);
+    group.appendChild(port);
+  }
   el.appendChild(group);
+}
+
+/** The shape under a client point, excluding `exclude`. The diagram is
+    server-rendered HTML with no client-side geometry model (unlike the unit
+    graph), so hit-testing goes through the document. */
+export function shapeAt(doc, x, y, exclude) {
+  const hit = doc.elementFromPoint?.(x, y);
+  const shape = hit?.closest?.('[data-wcl-shape][data-wcl-shape-id]');
+  return shape && shape !== exclude ? shape : null;
 }
 
 /** Install shape drag + resize on the iframe document. `handlers`:
@@ -156,8 +189,17 @@ export function installShapeDrag(doc, handlers) {
     if (!selected) return;
     const svg = selected.closest('svg');
     if (!svg) return;
+    const port = e.target.closest?.('.wcl-wys-port');
     const handle = e.target.closest?.('.wcl-wys-handle');
-    if (handle && selected.contains(handle)) {
+    if (port && selected.contains(port)) {
+      gesture = {
+        kind: 'connect',
+        el: selected,
+        svg,
+        startClient: { x: e.clientX, y: e.clientY },
+        moved: false,
+      };
+    } else if (handle && selected.contains(handle)) {
       gesture = {
         kind: 'resize',
         el: selected,
@@ -203,7 +245,9 @@ export function installShapeDrag(doc, handlers) {
     e.preventDefault();
     const { du, dv } = userDelta(gesture, e);
     gesture.lastUser = { du, dv };
-    if (gesture.kind === 'move') {
+    if (gesture.kind === 'connect') {
+      previewConnect(doc, gesture, e);
+    } else if (gesture.kind === 'move') {
       // Live preview: the wrapper <g> position is purely visual and is
       // discarded when the commit rebuilds the page.
       gesture.el.setAttribute(
@@ -225,6 +269,12 @@ export function installShapeDrag(doc, handlers) {
     e.preventDefault();
     // The compatibility click after a real drag must not re-drill/deselect.
     justDragged = true;
+    if (g.kind === 'connect') {
+      clearConnectPreview(doc);
+      const target = shapeAt(doc, e.clientX, e.clientY, g.el);
+      if (target) handlers.onConnect?.(g.el, target);
+      return;
+    }
     const { du, dv } = g.lastUser ?? userDelta(g, e);
     if (g.kind === 'move') handlers.onMove?.(g.el, { dx: du, dy: dv });
     else handlers.onResize?.(g.el, resizeDelta(g.corner, du, dv));
@@ -248,6 +298,37 @@ export function installShapeDrag(doc, handlers) {
     doc.removeEventListener('click', suppressClick, true);
     delete doc.__wclShapeDragWired;
   };
+}
+
+/** Live connect preview: a dashed line from the port to the cursor, plus a
+    ring on the shape under it. Injected imperatively — the diagram is
+    server-rendered markup, not a component we can re-render. */
+function previewConnect(doc, g, e) {
+  const box = shapeBox(g.el);
+  if (!box) return;
+  const base = readTranslate(g.el);
+  const from = { x: base.x + box.x + box.width, y: base.y + box.y + box.height / 2 };
+  const to = clientToUser(g.svg, e.clientX, e.clientY);
+  let line = g.svg.querySelector('.wcl-wys-pending');
+  if (!line) {
+    line = doc.createElementNS(SVG_NS, 'line');
+    line.setAttribute('class', 'wcl-wys-pending');
+    g.svg.appendChild(line);
+  }
+  line.setAttribute('x1', from.x);
+  line.setAttribute('y1', from.y);
+  line.setAttribute('x2', to.x);
+  line.setAttribute('y2', to.y);
+
+  for (const el of doc.querySelectorAll('.wcl-wys-drop')) el.classList.remove('wcl-wys-drop');
+  // The line follows the cursor, so it would hit-test as the topmost element.
+  line.style.pointerEvents = 'none';
+  shapeAt(doc, e.clientX, e.clientY, g.el)?.classList.add('wcl-wys-drop');
+}
+
+function clearConnectPreview(doc) {
+  for (const el of doc.querySelectorAll('.wcl-wys-pending')) el.remove();
+  for (const el of doc.querySelectorAll('.wcl-wys-drop')) el.classList.remove('wcl-wys-drop');
 }
 
 /** Live resize preview: stretch the selection box + reposition the handles

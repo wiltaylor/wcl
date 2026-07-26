@@ -810,6 +810,12 @@ connection StepFlow: Step -> Step : StepFlowKind
 // it. Its steps render as a flow chart (wired by the author's `from -> to` flow
 // statements) above the step detail. (`process` is the user-facing name; the block
 // is `procedure`.)
+// How a procedure presents its steps. `:graph` (the default) draws the flow
+// chart the `from -> to` wiring describes; `:simple` is a plain ordered walk
+// through the steps — for a runbook that is genuinely a list, where a chart
+// of one straight line adds nothing.
+symbol_set ProcedureStyle { graph simple }
+
 @block("procedure", required_children = ["step"])
 type Procedure {
   @inline(0) id: identifier
@@ -819,6 +825,7 @@ type Procedure {
   verification:  utf8?         // "how you know it worked"
   @default([]) related: list<identifier>   // ids of related units (any kind)
   @default(:book) audience: Audience     // :book (default) | :ai | :both
+  @default(:graph) style: ProcedureStyle // :graph (default) draws the flow chart
   @default([]) tags: list<utf8>
   @children("step") steps: list<Step>
   @connections(StepFlow) flow: list<StepFlow>   // the `from -> to` step wiring

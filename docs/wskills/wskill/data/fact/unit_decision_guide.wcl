@@ -2,13 +2,6 @@
 # the right unit kind. Referenced from the skill boundary, so agents consult
 # it before creating units instead of defaulting everything to `entity`.
 
-type GuideEdge {
-  source: utf8
-  destination: utf8
-  kind: symbol
-  label: utf8
-}
-let guide_edges = [{ source: "g_start", destination: "g_dated", kind: :flow, label: "" }, { source: "g_dated", destination: "g_research", kind: :flow, label: "yes" }, { source: "g_dated", destination: "g_task", kind: :flow, label: "no" }, { source: "g_task", destination: "g_process", kind: :flow, label: "yes" }, { source: "g_task", destination: "g_named", kind: :flow, label: "no" }, { source: "g_named", destination: "g_entity", kind: :flow, label: "yes" }, { source: "g_named", destination: "g_value", kind: :flow, label: "no" }, { source: "g_value", destination: "g_fact", kind: :flow, label: "yes" }, { source: "g_value", destination: "g_word", kind: :flow, label: "no" }, { source: "g_word", destination: "g_term", kind: :flow, label: "yes" }, { source: "g_word", destination: "g_concept", kind: :flow, label: "no" }]
 
 fact unit_decision_guide {
   title = "Which unit kind? — the decision guide"
@@ -80,7 +73,15 @@ fact unit_decision_guide {
         width = 130.0
         height = 44.0
       }
-      edges = guide_edges
+      g_start -> g_dated
+      g_dated -> g_research :yes
+      g_dated -> g_task     :no
+      g_task  -> g_process  :yes
+      g_task  -> g_named    :no
+      g_named -> g_entity   :yes
+      g_named -> g_value    :no
+      g_value -> g_fact     :yes
+      g_value -> g_concept  :no
     }
 
     h2 "By symptom"

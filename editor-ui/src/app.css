@@ -440,6 +440,27 @@ g.is-hidden > .ed-graph-edge-hit { display: none; }
   min-width: 0;
 }
 
+/* Procedure step-flow editor (the modal's side column). A procedure's chart
+   is repeater-generated, so its wiring is edited as a list here rather than
+   dragged on the canvas. */
+.ed-flow-panel {
+  border: 1px solid var(--border-subtle); border-radius: var(--r-sm);
+  padding: var(--sp-2); margin-bottom: var(--sp-3);
+}
+.ed-flow-head { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-xs); }
+.ed-flow-rows { list-style: none; margin: var(--sp-2) 0 0; padding: 0; }
+.ed-flow-row {
+  display: flex; align-items: center; gap: var(--sp-2);
+  min-height: 24px; font-size: var(--fs-xs); color: var(--fg-2);
+}
+.ed-flow-row:hover { background: var(--bg-2); border-radius: var(--r-sm); }
+.ed-flow-ends { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-flow-kind { color: var(--accent); font-family: var(--font-mono, monospace); }
+.ed-flow-add {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2);
+  margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--border-subtle);
+}
+
 /* Content & visibility modal: near-fullscreen — the preview needs room.
    Size the Forge panel, make its body a flex cell, and let the inner
    layout fill the height (the iframe already flexes). */

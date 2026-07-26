@@ -10898,6 +10898,12 @@ fn edit_mode_anchors_diagram_shapes() {
         html.contains("<g data-wcl-shape data-wcl-kind=\"rect\" data-wcl-span=\""),
         "expected an anchored free-layout rect, got:\n{html}"
     );
+    // The shape's own id rides along: it is the name `a -> b` connections
+    // use, and the only per-instance identity a repeater-generated shape has.
+    assert!(
+        html.contains("data-wcl-shape-id=\""),
+        "expected a stamped shape id, got:\n{html}"
+    );
     // The nested container and its own child are both anchored.
     assert!(
         html.contains("data-wcl-shape data-wcl-kind=\"container\""),

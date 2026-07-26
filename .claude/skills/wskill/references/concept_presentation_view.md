@@ -24,7 +24,7 @@ built deck, arrow keys move between sections and slides, Space steps through rev
 
 ## Related
 
-- [The view family](../references/concept_views.md)
+- [Different Views](../references/concept_views.md)
 
 - [The training view](../references/concept_training_view.md)
 

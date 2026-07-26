@@ -109,7 +109,10 @@ interface SvgBlock {
 // operand that doesn't resolve to a literal block is matched against the
 // rendered shape ids rather than dropped. An endpoint that matches no
 // shape is dropped with a build warning instead of a hard error.
-symbol_set EdgeKind { default flow data }
+// `:yes` / `:no` label their edge with that word — the `a -> b` statement
+// grammar carries no label of its own, so a decision branch names its answer
+// through the kind (the same trick a procedure's StepFlowKind uses).
+symbol_set EdgeKind { default flow data yes no }
 @dynamic
 connection Edge: &SvgBlock -> &SvgBlock : EdgeKind
 
