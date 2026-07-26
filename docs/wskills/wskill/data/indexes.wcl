@@ -9,7 +9,7 @@ index what {
   name = "WSkill"
   summary = "What a wskill is, why it exists, and how to start one."
   audience = :both
-  related = [wskill_concept, why_use_wskill, skill_vs_wskill, views, creating_a_wskill, block_lesson]
+  related = [wskill_concept, why_use_wskill, views, creating_a_wskill]
 }
 
 index philosophy {
@@ -58,5 +58,5 @@ index skill_tasks {
   audience = :ai
   name = "Task runbooks"
   summary = "Step-by-step runbooks for building and maintaining a wskill — classify with the decision guide before creating any unit."
-  related = [unit_decision_guide, skill_vs_wskill, creating_a_wskill, adding_content, capturing_research, researching_a_topic, building_the_index, setup_ai_skill, installing_the_skill, attaching_to_registry, creating_schema_extension, creating_presentation, creating_training_book, updating_a_wskill, upgrading_schema_version, editing_via_serve]
+  related = [unit_decision_guide, creating_a_wskill, adding_content, capturing_research, researching_a_topic, building_the_index, setup_ai_skill, installing_the_skill, attaching_to_registry, creating_schema_extension, creating_presentation, creating_training_book, updating_a_wskill, upgrading_schema_version, editing_via_serve]
 }

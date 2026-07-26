@@ -104,6 +104,18 @@ export function indexHitsForUnit(data, unitId) {
   return hits;
 }
 
+/** The viewBox origin that brings a node fully into view, or null when it
+    already is. Pans only — never zooms — so the reader's scale is preserved.
+    `vb` is {x, y, w, h}, `box` the node's {w, h}, `p` its top-left. */
+export function panToInclude(vb, box, p, margin = 40) {
+  let { x, y } = vb;
+  if (p.x - margin < x) x = p.x - margin;
+  else if (p.x + box.w + margin > x + vb.w) x = p.x + box.w + margin - vb.w;
+  if (p.y - margin < y) y = p.y - margin;
+  else if (p.y + box.h + margin > y + vb.h) y = p.y + box.h + margin - vb.h;
+  return x === vb.x && y === vb.y ? null : { ...vb, x, y };
+}
+
 /** The focused node when it is a unit (pinnable into sections), else null. */
 export function focusedUnitNode() {
   const key = focusedNode();

@@ -27,6 +27,7 @@ import {
   revealedIndex,
   selectedIndex,
   selectedIndexNode,
+  setFocusedNode,
   setIndexPanelEl,
   setRevealedIndex,
   setSelectedIndex,
@@ -97,11 +98,29 @@ function IndexSection(props) {
       <For each={props.level.pinned ?? []}>
         {(id) => {
           const unit = () => nodeById(id);
+          // Clicking a member focuses its graph node — the same selection a
+          // click on the node itself makes, so the panel doubles as a way to
+          // find a unit by name. Clicks on the row's own controls (reorder /
+          // unpin) are theirs; a dangling pin has no node to select.
+          const pick = (e) => {
+            if (e.target.closest?.('.ed-nav-actions')) return;
+            const n = unit();
+            if (n) setFocusedNode(n.key);
+          };
           return (
             <li
               class="ed-index-member"
-              classList={{ 'is-hit': focusedUnitNode()?.id === id }}
+              classList={{ 'is-hit': focusedUnitNode()?.id === id, 'is-pickable': !!unit() }}
               style={indent()}
+              onClick={pick}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  pick(e);
+                }
+              }}
+              tabindex={unit() ? 0 : undefined}
+              role={unit() ? 'button' : undefined}
             >
               <span class="ed-index-title" title={id}>
                 {unit()?.title ?? id}

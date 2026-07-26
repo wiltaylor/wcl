@@ -399,6 +399,12 @@ g.is-hidden > .ed-graph-edge-hit { display: none; }
 }
 .ed-index-member .ed-index-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ed-index-member:hover .ed-nav-actions { display: inline-flex; }
+/* A row with a graph node behind it selects that node on click. */
+.ed-index-member.is-pickable { cursor: pointer; border-radius: var(--r-sm); }
+.ed-index-member.is-pickable:hover { background: var(--bg-2); color: var(--fg-1); }
+.ed-index-member.is-pickable:focus-visible {
+  outline: 1px solid var(--accent); outline-offset: -1px; border-radius: var(--r-sm);
+}
 .ed-index-member.is-hit {
   background: var(--accent-bg); outline: 1px solid var(--accent);
   outline-offset: -1px; border-radius: var(--r-sm);

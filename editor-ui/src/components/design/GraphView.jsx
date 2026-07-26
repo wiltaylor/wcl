@@ -64,6 +64,7 @@ import {
   setNodeDragging,
   setGraphReload,
   indexPanelAt,
+  panToInclude,
   focusedNode,
   setFocusedNode,
   pinCounts as pinCountsOf,
@@ -503,6 +504,20 @@ export default function GraphView() {
   };
   onMount(() => window.addEventListener('keydown', onKeyDown));
   onCleanup(() => window.removeEventListener('keydown', onKeyDown));
+
+  // Keep the focused node on screen. Focus can arrive from somewhere the
+  // node isn't visible — clicking a row in the index panel — so pan (never
+  // zoom) the viewBox until it is. A node focused by clicking it on the
+  // canvas is already inside the box, so this is a no-op there.
+  createEffect(() => {
+    const key = focus();
+    if (!key) return;
+    const n = node(key);
+    const vb = viewBox();
+    if (!n || !vb || n.type === 'index') return;
+    const next = panToInclude(vb, n, pos(n));
+    if (next) setViewBox(next);
+  });
 
   const onWheel = (e) => {
     e.preventDefault();

@@ -2,7 +2,7 @@
 // nested-index lookups behind the index panel's focus-reveal.
 import { describe, expect, it } from 'vitest';
 
-import { indexHitsForUnit, pinCounts, subtreePinnedIds } from './graph';
+import { indexHitsForUnit, panToInclude, pinCounts, subtreePinnedIds } from './graph';
 
 /** A payload with one top index, a sub-index, and a sub-sub-index:
     `a` pinned at top AND sub-sub level, `b` only in the sub level; a
@@ -81,5 +81,40 @@ describe('indexHitsForUnit', () => {
   it('returns no hits for an unknown unit or missing payload', () => {
     expect(indexHitsForUnit(data, 'zzz')).toEqual([]);
     expect(indexHitsForUnit(null, 'a')).toEqual([]);
+  });
+});
+
+describe('panToInclude', () => {
+  const VB = { x: 0, y: 0, w: 800, h: 600 };
+  const BOX = { w: 120, h: 48 };
+  const sees = (vb, p) =>
+    p.x >= vb.x && p.x + BOX.w <= vb.x + vb.w && p.y >= vb.y && p.y + BOX.h <= vb.y + vb.h;
+
+  it('leaves a visible node alone', () => {
+    expect(panToInclude(VB, BOX, { x: 300, y: 200 })).toBe(null);
+  });
+
+  it('brings an off-screen node into view from any side', () => {
+    for (const p of [
+      { x: 900, y: 200 },
+      { x: -200, y: 200 },
+      { x: 300, y: 700 },
+      { x: 300, y: -150 },
+    ]) {
+      const next = panToInclude(VB, BOX, p);
+      expect(next, `expected a pan for ${JSON.stringify(p)}`).not.toBe(null);
+      expect(sees(next, p)).toBe(true);
+    }
+  });
+
+  it('pans without zooming', () => {
+    const next = panToInclude(VB, BOX, { x: 2000, y: 2000 });
+    expect(next.w).toBe(VB.w);
+    expect(next.h).toBe(VB.h);
+  });
+
+  it('keeps a margin around the node', () => {
+    const next = panToInclude(VB, BOX, { x: -200, y: 200 }, 40);
+    expect(next.x).toBe(-240);
   });
 });

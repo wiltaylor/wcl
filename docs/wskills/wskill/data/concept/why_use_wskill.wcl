@@ -1,22 +1,21 @@
 import <wdoc.wcl>
 
 concept why_use_wskill {
-    name    = "Why use this?"
-    summary = "Preserve a topic's knowledge in a reusable format that serves both people and AI agents — and still works manually if you lose access to the agent."
-    related = [wskill_concept, selfcontained]
-    body {
-        p <<BODY
-            The reason to use a wskill is to preserve knowledge in a reusable format. This matters
-            more as work shifts to AI: knowledge that lives only in someone's head, or only inside a
-            model, is easily lost. Capturing a topic once as self-contained data keeps it durable,
-            shareable, and easy to keep current.
-        BODY
+  name = "Why use this?"
+  summary = "Preserve a topic's knowledge in a reusable format that serves both people and AI agents — and still works manually if you lose access to the agent."
+  related = [wskill_concept, selfcontained]
+  body {
+    p <<DOC
+      The reason to use a wskill is to preserve knowledge in a reusable format. This matters
+      more as work shifts to AI: knowledge that lives only in someone's head, or only inside a
+      model, is easily lost. Capturing a topic once as self-contained data keeps it durable,
+      shareable, and easy to keep current.
+    DOC
 
-        p <<BODY
-            The same source also produces a Claude Code skill, so an AI agent can carry out the
-            topic's tasks for you. And because a wskill stands on its own, if you ever lose access to
-            the agent you can still follow it by hand — the knowledge and its processes stay usable
-            either way.
-        BODY
-    }
+    p <<DOC
+      The key idea is we have one source that can be used for multiple uses. A reference for the
+      topic, an AI Skill and also a training resource on the topic.
+    DOC
+    p ""
+  }
 }
