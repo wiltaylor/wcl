@@ -40,8 +40,8 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_editor {
     name = "editor"
     kind = "module"
-    summary = "6 files, 10 pub items"
-    deps = [n_cg_wcl_edit, n_cg_wcl_serve, n_cg_wcl_xc_wcl_wdoc]
+    summary = "12 files, 17 pub items"
+    deps = [n_cg_wcl_edit, n_cg_wcl_serve, n_cg_wcl_xc_wcl_lang, n_cg_wcl_xc_wcl_wdoc]
   }
   code_node n_cg_wcl_gitspec {
     name = "gitspec"
@@ -56,7 +56,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_scaffold {
     name = "scaffold"
     kind = "module"
-    summary = "2 files, 2 pub items"
+    summary = "2 files, 4 pub items"
     deps = [n_cg_wcl_xc_wcl_lang]
   }
   code_node n_cg_wcl_serve {
@@ -74,7 +74,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_xc_wcl_lang {
     name = "wcl_lang (crate)"
     kind = "extern_crate"
-    summary = "uses Block, DeclName, Decorator, Document, +18 more"
+    summary = "uses Block, DeclName, Decorator, Document, +21 more"
   }
   code_node n_cg_wcl_xc_wcl_wdoc {
     name = "wcl_wdoc (crate)"
@@ -120,7 +120,7 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_edit {
     name = "edit"
     kind = "module"
-    summary = "1 file, 12 pub items"
+    summary = "1 file, 18 pub items"
     deps = [n_cg_wcl_lang_ast]
   }
   code_node n_cg_wcl_lang_environment {
@@ -308,7 +308,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_build {
     name = "build"
     kind = "module"
-    summary = "1 file, 25 pub items"
+    summary = "1 file, 26 pub items"
     deps = [n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_card {
@@ -321,7 +321,7 @@ code_item code_crate_wcl_wdoc {
     name = "comments"
     kind = "module"
     summary = "1 file, 7 pub items"
-    deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_xc_wcl_lang]
+    deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_sidecar, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_demo {
     name = "demo"
@@ -344,7 +344,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_force {
     name = "force"
     kind = "module"
-    summary = "1 file, 2 pub items"
+    summary = "1 file, 3 pub items"
     deps = [n_cg_wcl_wdoc_layered]
   }
   code_node n_cg_wcl_wdoc_highlight {
@@ -376,6 +376,11 @@ code_item code_crate_wcl_wdoc {
     summary = "1 file, 2 pub items"
     deps = [n_cg_wcl_wdoc_file, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_pdf, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_video, n_cg_wcl_wdoc_xc_wcl_lang]
   }
+  code_node n_cg_wcl_wdoc_kinds {
+    name = "kinds"
+    kind = "module"
+    summary = "1 file, 19 pub items"
+  }
   code_node n_cg_wcl_wdoc_layered {
     name = "layered"
     kind = "module"
@@ -391,7 +396,7 @@ code_item code_crate_wcl_wdoc {
     name = "markdown"
     kind = "module"
     summary = "4 files, 8 pub items"
-    deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_terminal, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
+    deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_terminal, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_math {
     name = "math"
@@ -409,7 +414,7 @@ code_item code_crate_wcl_wdoc {
     name = "pdf"
     kind = "module"
     summary = "9 files, 45 pub items"
-    deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
+    deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_radial {
     name = "radial"
@@ -420,8 +425,8 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_render {
     name = "render"
     kind = "module"
-    summary = "14 files, 211 pub items"
-    deps = [n_cg_wcl_wdoc_dopesheet, n_cg_wcl_wdoc_force, n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_layered, n_cg_wcl_wdoc_map, n_cg_wcl_wdoc_radial, n_cg_wcl_wdoc_routing, n_cg_wcl_wdoc_text, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
+    summary = "14 files, 213 pub items"
+    deps = [n_cg_wcl_wdoc_dopesheet, n_cg_wcl_wdoc_force, n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_layered, n_cg_wcl_wdoc_map, n_cg_wcl_wdoc_radial, n_cg_wcl_wdoc_routing, n_cg_wcl_wdoc_text, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_review {
     name = "review"
@@ -432,6 +437,12 @@ code_item code_crate_wcl_wdoc {
     name = "routing"
     kind = "module"
     summary = "1 file, 5 pub items"
+  }
+  code_node n_cg_wcl_wdoc_sidecar {
+    name = "sidecar"
+    kind = "module"
+    summary = "1 file, 8 pub items"
+    deps = [n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_sites {
     name = "sites"
@@ -462,6 +473,12 @@ code_item code_crate_wcl_wdoc {
     summary = "1 file, 1 pub items"
     deps = [n_cg_wcl_wdoc_card, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
   }
+  code_node n_cg_wcl_wdoc_training {
+    name = "training"
+    kind = "module"
+    summary = "1 file, 9 pub items"
+    deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_sidecar, n_cg_wcl_wdoc_xc_wcl_lang]
+  }
   code_node n_cg_wcl_wdoc_tree {
     name = "tree"
     kind = "module"
@@ -477,7 +494,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_visibility {
     name = "visibility"
     kind = "module"
-    summary = "1 file, 1 pub items"
+    summary = "1 file, 2 pub items"
     deps = [n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_wireframe {
@@ -799,6 +816,33 @@ code_item code_api_cli_commands {
       visibility = "crate"
       deps = [n_api_cli_commands_EditorState]
     }
+    code_member m_n_api_cli_commands_editor_fns_err_str {
+      signature = "fn err_str(e: impl std::fmt::Display) -> String"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_editor_fns_resolve_doc_entry {
+      signature = "fn resolve_doc_entry( state: &EditorState, entry: &str, page_fi…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_cli_commands_EditorState]
+    }
+    code_member m_n_api_cli_commands_editor_fns_resolve_doc_entry_from {
+      signature = "fn resolve_doc_entry_from( state: &EditorState, v: &serde_json:…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_cli_commands_EditorState]
+    }
+    code_member m_n_api_cli_commands_editor_fns_span_json {
+      signature = "fn span_json(span: wcl_lang::Span) -> serde_json::Value"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_editor_fns_find_block_at {
+      signature = "fn find_block_at( items: &[wcl_lang::ast::Item], span: wcl_lang…"
+      kind = "fn"
+      visibility = "crate"
+    }
   }
   code_node n_api_cli_commands_assets_fns {
     name = "assets"
@@ -844,6 +888,26 @@ code_item code_api_cli_commands {
       kind = "fn"
       visibility = "crate"
       deps = [n_api_cli_commands_EditorState]
+    }
+  }
+  code_node n_api_cli_commands_PreviewSession {
+    name = "PreviewSession"
+    kind = "struct"
+    summary = "src/editor/preview.rs"
+    code_member m_n_api_cli_commands_PreviewSession_generation {
+      signature = "generation: u64"
+      kind = "field"
+      visibility = "crate"
+    }
+  }
+  code_node n_api_cli_commands_preview_fns {
+    name = "preview"
+    kind = "fns"
+    summary = "src/editor/preview.rs"
+    code_member m_n_api_cli_commands_preview_fns_UNIT_PREVIEW_PAGE {
+      signature = "const UNIT_PREVIEW_PAGE: &str"
+      kind = "const"
+      visibility = "crate"
     }
   }
   code_node n_api_cli_commands_sites_fns {
@@ -1079,6 +1143,16 @@ code_item code_api_cli_scaffold {
     summary = "src/scaffold/mod.rs"
     code_member m_n_api_cli_scaffold_scaffold_fns_run_init {
       signature = "fn run_init( template: Option<String>, dest: Option<PathBuf>, a…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_scaffold_scaffold_fns_TemplateTree {
+      signature = "type TemplateTree = (Vec<(String, String)>, Vec<String>)"
+      kind = "type"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_scaffold_scaffold_fns_evaluate_template_tree {
+      signature = "fn evaluate_template_tree( template: &str, answers: BTreeMap<St…"
       kind = "fn"
       visibility = "crate"
     }
@@ -3529,6 +3603,10 @@ code_item code_api_formatter {
       signature = "fn set_or_insert_field(block: &mut ast::Block, name: &str, expr…"
       kind = "fn"
     }
+    code_member m_n_api_formatter_edit_fns_remove_field {
+      signature = "fn remove_field(block: &mut ast::Block, name: &str) -> bool"
+      kind = "fn"
+    }
     code_member m_n_api_formatter_edit_fns_set_label {
       signature = "fn set_label(block: &mut ast::Block, slot: usize, expr: Expr) -…"
       kind = "fn"
@@ -3553,17 +3631,21 @@ code_item code_api_formatter {
       signature = "fn insert_block_after_span(items: &mut Vec<Item>, after: Span, …"
       kind = "fn"
     }
+    code_member m_n_api_formatter_edit_fns_replace_block_by_span {
+      signature = "fn replace_block_by_span(items: &mut [Item], span: Span, block:…"
+      kind = "fn"
+    }
     code_member m_n_api_formatter_edit_fns_remove_block_by_span {
       signature = "fn remove_block_by_span(items: &mut Vec<Item>, span: Span) -> b…"
       kind = "fn"
     }
-    code_member m_n_api_formatter_edit_fns_move_block_by_span {
-      signature = "fn move_block_by_span(items: &mut [Item], span: Span, down: boo…"
+    code_member m_n_api_formatter_edit_fns_add_connection {
+      signature = "fn add_connection(block: &mut ast::Block, lhs: &str, rhs: &str,…"
       kind = "fn"
     }
-    code_member m_n_api_formatter_edit_fns_ensure_import {
-      signature = "fn ensure_import(src: &mut ast::Source, rel_path: &str) -> bool"
-      kind = "fn"
+    code_member m_n_api_formatter_edit_fns_more {
+      signature = "… +5 more"
+      kind = "overflow"
     }
   }
   code_node n_api_formatter_FormatConfig {
@@ -5452,6 +5534,10 @@ code_item code_api_wcl_wdoc_build {
       kind = "fn"
       deps = [n_api_wcl_wdoc_build_BuildOptions, n_api_wcl_wdoc_build_BuildError]
     }
+    code_member m_n_api_wcl_wdoc_build_build_fns_PAGES_MANIFEST_HREF {
+      signature = "const PAGES_MANIFEST_HREF: &str"
+      kind = "const"
+    }
     code_member m_n_api_wcl_wdoc_build_build_fns_build_incremental {
       signature = "fn build_incremental( file: &Path, out_dir: &Path, site_filter:…"
       kind = "fn"
@@ -5461,14 +5547,8 @@ code_item code_api_wcl_wdoc_build {
       signature = "fn take_render_warnings() -> Vec<String>"
       kind = "fn"
     }
-    code_member m_n_api_wcl_wdoc_build_build_fns_root_site_name {
-      signature = "fn root_site_name(specs: &[SiteSpec<'_>]) -> Result<Option<Stri…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wcl_wdoc_build_SiteSpec, n_api_wcl_wdoc_build_BuildError]
-    }
     code_member m_n_api_wcl_wdoc_build_build_fns_more {
-      signature = "… +7 more"
+      signature = "… +8 more"
       kind = "overflow"
     }
   }
@@ -5568,6 +5648,10 @@ code_item code_api_wcl_wdoc_build {
     }
     code_member m_n_api_wcl_wdoc_build_BuildOptions_edit_mode {
       signature = "edit_mode: bool"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_build_BuildOptions_all_sites {
+      signature = "all_sites: bool"
       kind = "field"
     }
     code_member m_n_api_wcl_wdoc_build_BuildOptions_overlay {
@@ -5877,6 +5961,10 @@ code_item code_api_wdoc_layout {
       visibility = "crate"
       deps = [n_api_wdoc_layout_Node, n_api_wdoc_layout_ForceParams]
     }
+    code_member m_n_api_wdoc_layout_force_fns_layout_graph {
+      signature = "fn layout_graph(sizes: &[(f64, f64)], edges: &[(usize, usize)])…"
+      kind = "fn"
+    }
   }
   code_node n_api_wdoc_layout_Direction {
     name = "Direction"
@@ -6121,6 +6209,16 @@ code_item code_api_wdoc_html_renderer {
       kind = "method"
       visibility = "crate"
     }
+    code_member m_n_api_wdoc_html_renderer_InlinePatterns_set_all_sites {
+      signature = "fn set_all_sites(&self, on: bool)"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_InlinePatterns_all_sites {
+      signature = "fn all_sites(&self) -> bool"
+      kind = "method"
+      visibility = "crate"
+    }
     code_member m_n_api_wdoc_html_renderer_InlinePatterns_set_site_context {
       signature = "fn set_site_context(&self, site: Option<String>, template: Opti…"
       kind = "method"
@@ -6152,18 +6250,8 @@ code_item code_api_wdoc_html_renderer {
       kind = "method"
       visibility = "crate"
     }
-    code_member m_n_api_wdoc_html_renderer_InlinePatterns_icons {
-      signature = "fn icons(&self) -> &IconRegistry"
-      kind = "method"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_InlinePatterns_tilesets {
-      signature = "fn tilesets(&self) -> &TilesetRegistry"
-      kind = "method"
-      visibility = "crate"
-    }
     code_member m_n_api_wdoc_html_renderer_InlinePatterns_more {
-      signature = "… +14 more"
+      signature = "… +16 more"
       kind = "overflow"
     }
   }
@@ -6989,6 +7077,16 @@ code_item code_api_wdoc_html_renderer {
     name = "EdgeStyle"
     kind = "struct"
     summary = "src/render/svg/edges.rs"
+    code_member m_n_api_wdoc_html_renderer_EdgeStyle_from {
+      signature = "from: String"
+      kind = "field"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_EdgeStyle_to {
+      signature = "to: String"
+      kind = "field"
+      visibility = "crate"
+    }
     code_member m_n_api_wdoc_html_renderer_EdgeStyle_kind {
       signature = "kind: Option<String>"
       kind = "field"
@@ -7114,6 +7212,18 @@ code_item code_api_wdoc_html_renderer {
       kind = "fn"
       visibility = "crate"
       deps = [n_api_wdoc_html_renderer_ShapeMetrics]
+    }
+    code_member m_n_api_wdoc_html_renderer_shapes_fns_shape_anchor_attrs {
+      signature = "fn shape_anchor_attrs(block: &Block<'_>, patterns: &InlinePatte…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_wdoc_html_renderer_InlinePatterns]
+    }
+    code_member m_n_api_wdoc_html_renderer_shapes_fns_wrap_shape_anchor {
+      signature = "fn wrap_shape_anchor( block: &Block<'_>, rendered: String, patt…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_wdoc_html_renderer_InlinePatterns]
     }
     code_member m_n_api_wdoc_html_renderer_shapes_fns_render_shape {
       signature = "fn render_shape( block: &Block<'_>, parent_w: f64, parent_h: f6…"
@@ -7432,6 +7542,87 @@ code_item code_api_wcl_wdoc_include {
     code_member m_n_api_wcl_wdoc_include_IncludedSite_site {
       signature = "site: Option<String>"
       kind = "field"
+    }
+  }
+}
+
+code_item code_api_wcl_wdoc_kinds {
+  container = wcl_wdoc
+  name      = "Public surface — kinds"
+  summary   = "Pub / pub(crate) types, traits, and functions — the surface a sibling component sees (tree-sitter over wcl_wdoc::kinds)."
+  kind      = :module_api
+  code_node n_api_wcl_wdoc_kinds_kinds_fns {
+    name = "kinds"
+    kind = "fns"
+    summary = "src/kinds.rs"
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_FRAGMENT {
+      signature = "const FRAGMENT: &str"
+      kind = "const"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_REGION {
+      signature = "const REGION: &str"
+      kind = "const"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_EDIT_FIELD {
+      signature = "const EDIT_FIELD: &str"
+      kind = "const"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_EDIT_OBJECT {
+      signature = "const EDIT_OBJECT: &str"
+      kind = "const"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_DIAGRAM {
+      signature = "const DIAGRAM: &str"
+      kind = "const"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_SEQUENCE_DIAGRAM {
+      signature = "const SEQUENCE_DIAGRAM: &str"
+      kind = "const"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_STATE_DIAGRAM {
+      signature = "const STATE_DIAGRAM: &str"
+      kind = "const"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_TERMINAL {
+      signature = "const TERMINAL: &str"
+      kind = "const"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_LIST {
+      signature = "const LIST: &str"
+      kind = "const"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_TABLE {
+      signature = "const TABLE: &str"
+      kind = "const"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_CODE {
+      signature = "const CODE: &str"
+      kind = "const"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_IMAGE {
+      signature = "const IMAGE: &str"
+      kind = "const"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_FILE {
+      signature = "const FILE: &str"
+      kind = "const"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_more {
+      signature = "… +6 more"
+      kind = "overflow"
     }
   }
 }
@@ -8235,6 +8426,58 @@ code_item code_api_wcl_wdoc_review {
   }
 }
 
+code_item code_api_wcl_wdoc_sidecar {
+  container = wcl_wdoc
+  name      = "Public surface — sidecar"
+  summary   = "Pub / pub(crate) types, traits, and functions — the surface a sibling component sees (tree-sitter over wcl_wdoc::sidecar)."
+  kind      = :module_api
+  code_node n_api_wcl_wdoc_sidecar_sidecar_fns {
+    name = "sidecar"
+    kind = "fns"
+    summary = "src/sidecar.rs"
+    code_member m_n_api_wcl_wdoc_sidecar_sidecar_fns_sidecar_path {
+      signature = "fn sidecar_path(page_file: &Path, root: &Path, name: &str) -> P…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_sidecar_sidecar_fns_owner_dir {
+      signature = "fn owner_dir(start: &Path) -> Option<PathBuf>"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_sidecar_sidecar_fns_scan_for {
+      signature = "fn scan_for(dir: &Path, name: &str, out: &mut Vec<PathBuf>)"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_sidecar_sidecar_fns_read_blocks {
+      signature = "fn read_blocks(path: &Path, kind: &str) -> Vec<BTreeMap<String,…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_sidecar_sidecar_fns_value_string {
+      signature = "fn value_string(v: &Value) -> Option<String>"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_sidecar_sidecar_fns_wcl_string {
+      signature = "fn wcl_string(s: &str) -> String"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_sidecar_sidecar_fns_gen_id {
+      signature = "fn gen_id(prefix: char) -> String"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_sidecar_sidecar_fns_atomic_write {
+      signature = "fn atomic_write(target: &Path, contents: &str) -> std::io::Resu…"
+      kind = "fn"
+      visibility = "crate"
+    }
+  }
+}
+
 code_item code_api_wcl_wdoc_sites {
   container = wcl_wdoc
   name      = "Public surface — sites"
@@ -8489,6 +8732,103 @@ code_item code_api_wcl_wdoc_timeline {
   }
 }
 
+code_item code_api_wcl_wdoc_training {
+  container = wcl_wdoc
+  name      = "Public surface — training"
+  summary   = "Pub / pub(crate) types, traits, and functions — the surface a sibling component sees (tree-sitter over wcl_wdoc::training)."
+  kind      = :module_api
+  code_node n_api_wcl_wdoc_training_AnswerRecord {
+    name = "AnswerRecord"
+    kind = "struct"
+    summary = "src/training.rs"
+    code_member m_n_api_wcl_wdoc_training_AnswerRecord_id {
+      signature = "id: String"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_training_AnswerRecord_file {
+      signature = "file: PathBuf"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_training_AnswerRecord_course {
+      signature = "course: String"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_training_AnswerRecord_lesson {
+      signature = "lesson: String"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_training_AnswerRecord_check {
+      signature = "check: String"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_training_AnswerRecord_response {
+      signature = "response: String"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_training_AnswerRecord_status {
+      signature = "status: String"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_training_AnswerRecord_verdict {
+      signature = "verdict: Option<String>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_training_AnswerRecord_score {
+      signature = "score: Option<String>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_training_AnswerRecord_is_pending {
+      signature = "fn is_pending(&self) -> bool"
+      kind = "method"
+    }
+    code_member m_n_api_wcl_wdoc_training_AnswerRecord_passed {
+      signature = "fn passed(&self) -> bool"
+      kind = "method"
+    }
+  }
+  code_node n_api_wcl_wdoc_training_training_fns {
+    name = "training"
+    kind = "fns"
+    summary = "src/training.rs"
+    code_member m_n_api_wcl_wdoc_training_training_fns_training_path {
+      signature = "fn training_path(page_file: &Path, root: &Path) -> PathBuf"
+      kind = "fn"
+    }
+    code_member m_n_api_wcl_wdoc_training_training_fns_sidecar_for {
+      signature = "fn sidecar_for(dir: &Path) -> PathBuf"
+      kind = "fn"
+    }
+    code_member m_n_api_wcl_wdoc_training_training_fns_read_sidecar {
+      signature = "fn read_sidecar(file: &Path) -> Vec<AnswerRecord>"
+      kind = "fn"
+      deps = [n_api_wcl_wdoc_training_AnswerRecord]
+    }
+    code_member m_n_api_wcl_wdoc_training_training_fns_find_in {
+      signature = "fn find_in(file: &Path, course: &str, check: &str) -> Option<An…"
+      kind = "fn"
+      deps = [n_api_wcl_wdoc_training_AnswerRecord]
+    }
+    code_member m_n_api_wcl_wdoc_training_training_fns_list {
+      signature = "fn list(root: &Path) -> Result<Vec<AnswerRecord>, BuildError>"
+      kind = "fn"
+      deps = [n_api_wcl_wdoc_training_AnswerRecord]
+    }
+    code_member m_n_api_wcl_wdoc_training_training_fns_record {
+      signature = "fn record( file: &Path, course: &str, lesson: &str, check: &str…"
+      kind = "fn"
+    }
+    code_member m_n_api_wcl_wdoc_training_training_fns_find {
+      signature = "fn find(root: &Path, course: &str, check: &str) -> Result<Optio…"
+      kind = "fn"
+      deps = [n_api_wcl_wdoc_training_AnswerRecord]
+    }
+    code_member m_n_api_wcl_wdoc_training_training_fns_grade {
+      signature = "fn grade( root: &Path, id: &str, verdict: &str, pass: bool, sco…"
+      kind = "fn"
+    }
+  }
+}
+
 code_item code_api_wcl_wdoc_tree {
   container = wcl_wdoc
   name      = "Public surface — tree"
@@ -8602,6 +8942,11 @@ code_item code_api_wcl_wdoc_visibility {
     summary = "src/visibility.rs"
     code_member m_n_api_wcl_wdoc_visibility_visibility_fns_block_visible {
       signature = "fn block_visible(block: &Block<'_>, ctx: &InlinePatterns) -> bo…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_visibility_visibility_fns_classify_visibility {
+      signature = "fn classify_visibility(block: &Block<'_>) -> (Vec<String>, bool)"
       kind = "fn"
       visibility = "crate"
     }
@@ -8737,6 +9082,12 @@ code_item code_mod_wdoc_stdlib {
     name = "dopesheet"
     members = [
       "dopesheet",
+    ]
+  }
+  code_node n_wdoc_stdlib_edit_field {
+    name = "edit_field"
+    members = [
+      "edit_field",
     ]
   }
   code_node n_wdoc_stdlib_edit_object {

@@ -250,7 +250,7 @@ dev_command dev_wskill_coverage {
 dev_command dev_wskill_crosstopic_check {
   name        = "wskill-crosstopic-check"
   command     = "just wskill-crosstopic-check"
-  description = "book imports, which docs-build catches (runs in ci)."
+  description = "(runs in ci)."
   category    = "quality"
 }
 

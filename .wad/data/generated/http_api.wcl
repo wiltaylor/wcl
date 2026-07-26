@@ -29,4 +29,12 @@ code_item serve_http_api {
     method = "GET"  path = "/__wdoc_reload"
     summary = "Live-reload long-poll: the injected client waits here and reloads the page when a rebuild lands."
   }
+  api_endpoint ep_wdoc_training_answer {
+    method = "POST"  path = "/__wdoc_training/answer"
+    summary = "(describe in extract_http_api.py's PATH_SUMMARIES)"
+  }
+  api_endpoint ep_wdoc_training_state {
+    method = "GET"  path = "/__wdoc_training/state"
+    summary = "(describe in extract_http_api.py's PATH_SUMMARIES)"
+  }
 }
