@@ -141,13 +141,6 @@ index commands {
 }
 WCL
   },
-  { name: "Term", code: <<'WCL'
-term ref {
-  term       = "ref"
-  definition = "A name that points at a commit — a branch, tag or HEAD."
-}
-WCL
-  },
   { name: "Example", code: <<'WCL'
 example clone_cmd {
   title     = "Cloning a repository"
@@ -321,15 +314,6 @@ fact block_index {
     p "A curated landing page that groups links to other units into a meaningful tree; may nest child indexes one level deep."
     type_table { type = Index }
     wdoc_repeater { each = example_for("Index")  as = :ex  code "wcl" { source = ex } }
-  }
-}
-
-fact block_term {
-  title = "Term block"  related = [structured_data]
-  body {
-    p "A glossary entry — a term, its definition and any aliases."
-    type_table { type = Term }
-    wdoc_repeater { each = example_for("Term")  as = :ex  code "wcl" { source = ex } }
   }
 }
 

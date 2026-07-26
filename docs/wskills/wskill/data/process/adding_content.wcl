@@ -13,7 +13,7 @@ procedure adding_content {
   step classify { n = 2
     title = "Classify with the decision guide"
     shape = :decision
-    body steps { p "Run each note through [the decision guide](fact_unit_decision_guide): a dated finding from an investigation → `research` (see [Capturing research](process_capturing_research)); a repeatable task → `procedure`; a concrete NAMED thing (person, software, place, …) → `entity` with a `kind` from `schema/kinds.wcl`; an indisputable value/table → `fact`; a word needing a definition → `term`; otherwise → `concept`. Never default to entity." }
+    body steps { p "Run each note through [the decision guide](fact_unit_decision_guide): a dated finding from an investigation → `research` (see [Capturing research](process_capturing_research)); a repeatable task → `procedure`; a concrete NAMED thing (person, software, place, …) → `entity` with a `kind` from `schema/kinds.wcl`; an indisputable value/table (including a glossary) → `fact`; otherwise → `concept`. Never default to entity." }
   }
 
   step write { n = 3

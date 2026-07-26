@@ -20,20 +20,6 @@ Audience selects whole units. To vary \*content inside one body\* per view, use
 [visibility scoping](../references/concept_visibility_scoping.md) instead.
 
 
-## Examples
-
-### Opting units into the skill
-
-The default keeps content out of the AI skill; tag what the agent needs.
-
-```wcl
-concept fast_forward { audience = :both  ... }   // book + skill
-fact   port_table    { audience = :ai    ... }   // skill only
-concept history      { ... }                     // :book default — book only
-```
-
-**Expected:** The skill's references/ contains fast_forward and port_table but not history; the book shows fast_forward and history.
-
 ## Related
 
 - [The view family](../references/concept_views.md)

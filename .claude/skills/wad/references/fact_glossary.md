@@ -1,0 +1,25 @@
+# Glossary
+
+| Term | Definition |
+| --- | --- |
+| **ADR** | Architecture decision record — a dated, statused `adr` block: context, decision, consequences. |
+| **baseline** | The recorded git revision of the last reviewed WAD — what `wcl wad spec --from` diffs against. |
+| **brief** | The exported self-contained markdown file (out/specs/spec_<id>.md) an implementation agent executes. |
+| **code item** | C4 level 4 — a typed, extractor-generated diagram of a public interface: module graph, DB schema, class diagram, or API surface. |
+| **container** | C4 level 2 — an independently runnable/deployable unit: a service, database, web app, CLI (not a Docker container, though one may be). The kind lives in the wcl.wad namespace, so it never collides with wdoc's diagram shape. |
+| **extractor** | A uv single-file Python script that reads a live source of truth and fully overwrites one WCL file under data/generated/. |
+| **gate** _(also: gates)_ | A block whose ok field asserts a plan invariant; just check fails while any gate fails. |
+| **gather list** | The list an @document field collects (`systems`, `adrs`) — what the book templates repeat over. |
+| **generated data** | Extractor-owned, committed data files — never hand-edited; hand data may reference their ids. |
+| **node space** | The shared id namespace of systems, containers, components, externals, personas, environments, infra nodes and screens — what relation endpoints resolve against. |
+| **persona** | A kind of user — human, service, or AI agent — with goals and access grants. |
+| **RACI** | Responsible / Accountable / Consulted / Informed — one `raci_entry` row per activity, four stakeholder-id lists. |
+| **relation** | A directed, typed edge between two node ids; the single source every derived diagram draws from. |
+| **roll-up** | Lifting relation endpoints to a coarser level (component → container → system) so higher-level diagrams derive instead of being re-drawn. |
+| **SOP** _(also: runbook)_ | Standard operating procedure — a step-based `sop` block whose `from -> to` flow renders as a flowchart. |
+| **spec** | A work package for an AI coding agent — the implementation detail for part of the system, decomposed from the WAD; carried through planning → in_progress → complete / abandoned. |
+| **view** | One of the twelve fixed chapters of a WAD book; every data block files under exactly one. |
+| **WAD** | Wil's Architecture Document — a typed WCL data model of a software system, rendered into a twelve-chapter book. |
+| **wave** | The set of specs whose dependencies are all merged; members of a wave build in parallel. |
+
+[← Back to SKILL.md](../SKILL.md)

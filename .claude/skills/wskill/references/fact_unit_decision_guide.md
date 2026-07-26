@@ -20,7 +20,6 @@ An idea is never an entity. A table of values is never an entity.
 | A default value, a limit, a table of options, a version matrix | `fact` | Nobody argues with it — you'd cite it, not explain it |
 | A task someone performs: install, upgrade, review, publish | `process` | It has steps in an order and a way to verify it worked |
 | A curated grouping that arranges other units | `index` | It holds no knowledge of its own — only `related` links |
-| One word or phrase and its meaning | `term` | One sentence covers it; it needs no page of its own |
 | Code or commands that illustrate another unit | `example` | It makes no sense without the unit it belongs to (`unit = <id>`) |
 
 ## Wrong vs right
@@ -38,29 +37,6 @@ split it and link them with `related`. Second: `kind` on an entity comes from th
 vocabulary in `schema/kinds.wcl`; if no kind fits and you cannot justify adding one, that
 is the format telling you the note is not an entity.
 
-
-## Examples
-
-### Misfiled as an entity — and the fix
-
-The classic mistake: an idea filed as an entity. The kind field has no honest answer, which is the tell.
-
-```wcl
-// WRONG — a behaviour isn't a named thing; no EntityKind fits:
-entity fast_forward {
-  name = "Fast-forward merge"
-  kind = :software            // a lie — and the closest kind available
-}
-
-// RIGHT — it's an idea to understand:
-concept fast_forward {
-  name    = "Fast-forward merge"
-  summary = "Advancing a branch pointer when history hasn't diverged."
-  body { p "When the target already contains the source's history, Git just moves the pointer." }
-}
-```
-
-**Expected:** The wrong form either fails wcl check (no plausible kind) or reads as a lie; the concept form checks clean and files where readers look for ideas.
 
 ## Related
 

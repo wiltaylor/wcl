@@ -23,23 +23,6 @@ generated pages inherit the house style — heading, summary line, projected bod
 examples, related links — for free.
 
 
-## Examples
-
-### One component, every projection
-
-The book and the skill invoke the same component with different slot values — page structure lives once.
-
-```wcl
-// wdoc/book/main.wcl
-concept_body { unit = c  examples = examples  all_units = all_units
-               backlinks = referenced_by(c.id)  layout = "columns" }
-
-// wdoc/skill/main.wcl — same component, skill-flavoured slots
-concept_body { unit = c  examples = examples  all_units = all_units  backlinks = []
-  p "[← All concepts](concepts_ref) · [← Back to SKILL.md](index)"
-}
-```
-
 ## Related
 
 - [Separation of Data and Presentation](../references/concept_datapresentation.md)

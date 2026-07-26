@@ -6,13 +6,12 @@
 
 import <wdoc.wcl>
 import "./schema/base.wcl"
-import "./schema/presentation.wcl"  # opt-in: the overview deck view
+import "./schema/presentation.wcl"  # documented in the reference book; this wskill ships no deck
 import "./schema/training.wcl"  # opt-in: the tutorial-series view
 
 # Data — split into more files by area as the wskill grows. Each per-type
 # folder exposes a main.wcl; data/main.wcl aggregates them all.
 import "./data/main.wcl"
-import "./data/presentation/main.wcl"
 import "./data/training/main.wcl"
 
 schema_version = "1.3.0"

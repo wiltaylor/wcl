@@ -58,7 +58,6 @@ fact unit_decision_guide {
         ["A default value, a limit, a table of options, a version matrix", "`fact`", "Nobody argues with it — you'd cite it, not explain it"],
         ["A task someone performs: install, upgrade, review, publish", "`process`", "It has steps in an order and a way to verify it worked"],
         ["A curated grouping that arranges other units", "`index`", "It holds no knowledge of its own — only `related` links"],
-        ["One word or phrase and its meaning", "`term`", "One sentence covers it; it needs no page of its own"],
         ["Code or commands that illustrate another unit", "`example`", "It makes no sense without the unit it belongs to (`unit = <id>`)"],
       ]
     }

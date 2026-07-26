@@ -41,27 +41,6 @@ Two standard modules ship with every wskill — the [presentation](../references
 and [training](../references/concept_training_view.md) views use exactly this mechanism.
 
 
-## Examples
-
-### A typed custom block
-
-Declare an @block plus a @document that gathers it; imported documents merge with the base. Then add a render to both template sets.
-
-```wcl
-@block("keybinding")
-type Keybinding {
-  @inline(0) id: identifier
-  keys:     utf8
-  action:   utf8
-  context:  utf8?
-}
-
-@document
-type Extensions {
-  @children("keybinding") keybindings: list<Keybinding>
-}
-```
-
 ## Related
 
 - [Structured data](../references/concept_structured_data.md)

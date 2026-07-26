@@ -295,7 +295,7 @@ lesson keep_it_alive {
     "Use source blocks to drive update sweeps",
   ]
   prerequisites = [ship_the_skill]
-  related = [editing_via_serve, reviewing_a_wskill, updating_a_wskill]
+  related = [editing_via_serve, updating_a_wskill]
   body {
     p "A wskill is alive: `wcl editor wdoc/book/main.wcl` gives you in-browser editing (every unit page in the preview pane has an Edit button that opens the exact object's source) and click-to-comment review. An agent runs `wcl wdoc review .` to wait for a reviewer's send, then works through the comments and resolves them by id."
     p "`source` blocks record where authoritative information lives and when it was last checked — an update sweep walks them, refreshes what drifted, and bumps `topic.version`."
@@ -314,7 +314,7 @@ SH
   }
   check review_actor {
     prompt  = "In the review handshake, who is blocked waiting for whom?"
-    related = [reviewing_a_wskill]
+    related = [editing_via_serve]
     choice agent_waits {
       label   = "The agent waits for the reviewer to send"
       correct = true

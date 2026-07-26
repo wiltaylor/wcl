@@ -56,18 +56,6 @@ subfolder of `out/skill/`, with the shared `agents/` beside them; agents are pee
 the skills, shipped once per wskill.
 
 
-## Examples
-
-### Installing the skill into a repo
-
-After rendering, copy the skill projection into a repo's .claude/skills/.
-
-```console
-$ cp -r docs/wskills/git/out/skill .claude/skills/git
-```
-
-**Expected:** out/skill/ is copied to .claude/skills/git/ (use the name from the rendered SKILL.md frontmatter).
-
 ## Related
 
 - [The view family](../references/concept_views.md)

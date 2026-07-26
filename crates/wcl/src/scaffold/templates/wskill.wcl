@@ -755,17 +755,6 @@ type Index {
   @children("index") children: list<Index>   // nested sub-indexes (one level rendered)
 }
 
-// A glossary entry.
-@block("term")
-type Term {
-  @inline(0) id: identifier
-  term:       utf8
-  definition: utf8
-  @default([]) aliases: list<utf8>
-  @default(:book) audience: Audience     // :book (default) | :ai | :both
-  @default([]) tags: list<utf8>
-}
-
 // A worked example or code sample. It is NOT a section of its own — it projects
 // onto a unit: `unit` names the id of the concept/entity/fact it illustrates, and
 // the templates render it on that unit's page (after the body).
@@ -876,7 +865,6 @@ type WSkillDoc {
   @children("concept")   concepts:   list<Concept>
   @children("entity")    entities:   list<Entity>
   @children("fact")      facts:      list<Fact>
-  @children("term")      terms:      list<Term>
   @children("example")   examples:   list<Example>
   @children("index")     indexes:    list<Index>
 

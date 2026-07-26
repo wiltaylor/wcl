@@ -16,7 +16,7 @@ Every WAD renders the same twelve chapters, so a reader always knows where a fac
 | 8 | User personas | Who \*uses\* it, how are they gated, what do they typically do? | `persona` (+ access grants), `use_case` |
 | 9 | System admin | How is it operated? | `sop` (+ steps and flow) |
 | 10 | Standards & rules | What is the code/business held to? | `standard` (+ rules) |
-| 11 | Domain | What is the model made of? | `domain_object` (+ fields, relations), `term` |
+| 11 | Domain | What is the model made of? | `domain_object` (+ fields, relations) |
 | 12 | Specs | What changes are in flight? | `spec` (+ changes) |
 
 Freeform topics that fit no family become `article` blocks, filed under a view with `section = :overview` (etc.).

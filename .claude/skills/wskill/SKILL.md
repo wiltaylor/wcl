@@ -124,14 +124,7 @@ _Step-by-step runbooks for building and maintaining a wskill — classify with t
 - [Creating the training view](references/process_creating_training_book.md)
 - [Updating a wskill when its source changes](references/process_updating_a_wskill.md)
 - [Upgrading a wskill to a new base schema](references/process_upgrading_schema_version.md)
-- [Reviewing a wskill (human ⇄ agent loop)](references/process_reviewing_a_wskill.md)
 - [Editing a wskill in the browser](references/process_editing_via_serve.md)
-
-## Research
-
-Captured findings — check here before re-investigating. Each finding also ships as `references/research_<id>.md` for mechanical discovery.
-
-- [Canonical Claude-skill format (meta-skill)](references/research_meta_skill_canonical_format.md) — SKILL.md needs a lowercase-hyphen name matching its directory, a trigger-phrased description, canonical overview/variables/boundaries sections (always/ask/never), and a body within 150 lines. _(checked 2026-07-05, current)_
 
 ## Views
 
@@ -139,5 +132,4 @@ Beyond this skill, the wskill ships these views — build them with `just render
 
 - **book** (`wdoc/book/main.wcl`)
 - **ai skill** (`wdoc/skill/main.wcl`)
-- **presentation** — An introduction to the wskill format as an overview deck. (`wdoc/presentation/main.wcl`)
 - **training** — Build your first wskill — a hands-on lesson series. (`wdoc/training/main.wcl`)

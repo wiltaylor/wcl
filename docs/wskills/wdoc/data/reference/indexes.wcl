@@ -12,7 +12,7 @@ index documents {
     name    = "The document model"
     summary = "How a document is structured and rendered."
     audience = :both
-    related = [overview, sites, templates, pages, includes, visibility, markdown, skills, template_kinds, themes]
+    related = [overview, sites, templates, pages, includes, visibility, markdown, skills, template_kinds, themes, glossary]
   }
   index content_blocks {
     name    = "Content blocks"

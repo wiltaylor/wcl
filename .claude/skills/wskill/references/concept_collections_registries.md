@@ -29,24 +29,6 @@ member's declared artifacts. One build command renders the landing plus every me
 The WCL repo's own docs site works exactly this way over its three wskills.
 
 
-## Examples
-
-### A registry landing that discovers members
-
-File-based discovery: include builds every member; included_sites feeds the cards. No member list to maintain.
-
-```wcl
-include "../../wskills" { entry = "wdoc/book/main.wcl" }
-include "../../wskills" { entry = "wdoc/presentation/main.wcl"  prefix = "decks" }
-
-let wskills = included_sites({ folder: "../../wskills", entry: "wdoc/book/main.wcl" })
-wdoc_repeater { each = wskills  as = :s
-  p $"[**${s.title}**](./${s.href})${match s.summary { none => "", su => $" — ${su}" }}"
-}
-```
-
-**Expected:** Each member's book builds under wskills/<name>/ and lists on the landing; members shipping a deck also build under decks/<name>/.
-
 ## Related
 
 - [The view family](../references/concept_views.md)

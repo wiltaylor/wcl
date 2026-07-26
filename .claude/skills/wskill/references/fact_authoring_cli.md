@@ -15,13 +15,13 @@ Everything shells out to the `wcl` CLI. These are the commands the wskill workfl
 | `wcl wdoc review <root>` | Agent side of the review loop: block until the reviewer clicks "Send to agent", then print the comments |
 | `wcl fmt <file>` | Canonically format a `.wcl` file |
 
-Each wskill's `justfile` wraps the common ones — see [the standard recipes](../references/fact_justfile_recipes.md).
+Each wskill's `justfile` wraps the common ones — see
+[the standard recipes](../references/fact_justfile_recipes.md).
+
 
 ## Related
 
 - [Creating a new wskill](../references/process_creating_a_wskill.md)
-
-- [Reviewing a wskill (human ⇄ agent loop)](../references/process_reviewing_a_wskill.md)
 
 - [Editing a wskill in the browser](../references/process_editing_via_serve.md)
 

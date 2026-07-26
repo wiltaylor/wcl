@@ -71,6 +71,7 @@ _How a document is structured and rendered._
 - [Skill folders](references/concept_skills.md)
 - [Built-in site templates](references/fact_template_kinds.md)
 - [Built-in colour themes](references/fact_themes.md)
+- [Glossary](references/fact_glossary.md)
 
 #### Content blocks
 

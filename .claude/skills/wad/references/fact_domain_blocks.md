@@ -7,7 +7,6 @@ The domain view captures the **business objects** — the nouns the business use
 | `domain_object` | `name`, `summary`, `body?` | one business object; fields and relations nest inside |
 | `field` | inline name, `type`, `required`, `summary?` | nested — one per field that matters to the business |
 | `domain_rel` | `to`, `kind`, `label?`, `via_field?` | nested — `kind` is has_one / has_many / references / extends / uses; `via_field` pins the ER edge to a field row |
-| `term` | `term`, `definition`, `aliases[]` | the glossary — alphabetised automatically |
 
 The landing page derives an ER diagram from the objects and their relations; each object also gets its own page.
 

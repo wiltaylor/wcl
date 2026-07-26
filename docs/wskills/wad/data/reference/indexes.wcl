@@ -66,6 +66,6 @@ index change_section {
 index reference_section {
   name    = "Reference"
   summary = "Commands, standards, and tools."
-  related = [wad_cli, wcl_init_wad, arc42, c4_model, uv]
+  related = [wad_cli, wcl_init_wad, arc42, c4_model, uv, glossary]
 }
 

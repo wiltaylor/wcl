@@ -37,7 +37,7 @@ Per system: containers — the independently-runnable units: services, databases
 
 ### Step 6: Domain (view 10)
 
-The **business objects** of the system — the nouns the business itself uses — and how they relate: fields that matter, relationships and cardinality, invariants, glossary terms. Write `domain_object`s (+ `field`/`domain_rel`) and `term`s; render to see the ER diagram.
+The **business objects** of the system — the nouns the business itself uses — and how they relate: fields that matter, relationships and cardinality, invariants, glossary terms. Write `domain_object`s (+ `field`/`domain_rel`), and keep the vocabulary in the glossary `fact`; render to see the ER diagram.
 
 ### Step 7: Infrastructure, build, operations (views 5, 6, 8)
 
