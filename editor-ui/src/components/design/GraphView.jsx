@@ -18,17 +18,13 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
 import {
-  Eye,
   FileCode2,
   FilePlus,
   ListFilter,
   RefreshCw,
   SlidersHorizontal,
-  Trash2,
-  X,
 } from 'lucide-solid';
 import {
-  Badge,
   Button,
   IconButton,
   Popover,
@@ -475,7 +471,11 @@ export default function GraphView() {
     if (d.type === 'node') {
       setNodeDragging(null);
       if (!d.moved) {
-        setFocus(focus() === d.key ? null : d.key);
+        // Clicking a node opens its editor. Focus follows so the index panel
+        // still knows which unit is in play (its per-section pin buttons read
+        // it) once the modal closes.
+        setFocus(d.key);
+        setContentFor(d.key);
         return;
       }
       sim.release(d.key);
@@ -642,14 +642,10 @@ export default function GraphView() {
     else toast(res.error, { tone: 'danger', duration: 6000 });
   };
 
-  // ---- unit deletion (the side panel's Delete button) ----
-  const [confirmDelete, setConfirmDelete] = createSignal(false);
+  // ---- unit deletion (the modal's Delete button) ----
+  // The confirmation lives in the modal; the work stays here, where the whole
+  // graph payload is, so it can strip every reference to the unit.
   const [deleting, setDeleting] = createSignal(false);
-  // A fresh focus never inherits a pending confirmation.
-  createEffect(() => {
-    focused();
-    setConfirmDelete(false);
-  });
 
   /** Delete a unit and clean up every reference the graph knows about:
       `related` entries on other units (span-addressed removes, batched per
@@ -705,7 +701,6 @@ export default function GraphView() {
       load({ keepPositions: true });
     } finally {
       setDeleting(false);
-      setConfirmDelete(false);
     }
   };
 
@@ -958,65 +953,19 @@ export default function GraphView() {
           </svg>
         </Show>
 
-        {/* unit panel */}
-        <Show when={focused()}>
-          <div class="ed-graph-panel">
-            <div class="ed-graph-panel-head">
-              <strong>{focused().title}</strong>
-              <Badge>{focused().kind}</Badge>
-              <span class="spacer" />
-              <IconButton icon={X} label="Close" onClick={() => setFocus(null)} />
-            </div>
-            <div class="ed-graph-panel-actions">
-              <Show when={focused().type === 'unit'}>
-                <Button size="sm" disabled={openingPage()} onClick={() => openInCanvas(focused())}>
-                  {openingPage() ? 'Opening…' : 'Open page'}
-                </Button>
-              </Show>
-              <Button size="sm" onClick={() => openCode(focused())}>
-                <FileCode2 size={13} /> Open code
-              </Button>
-            </div>
-            <Button size="sm" variant="primary" onClick={() => setContentFor(focused().key)}>
-              <Eye size={13} /> Content & visibility…
-            </Button>
-            <Show when={focused().type === 'unit'}>
-              <Show
-                when={confirmDelete()}
-                fallback={
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    disabled={busy() || deleting()}
-                    onClick={() => setConfirmDelete(true)}
-                  >
-                    <Trash2 size={13} /> Delete unit…
-                  </Button>
-                }
-              >
-                <div class="ed-graph-panel-confirm">
-                  Delete “{focused().title}” and remove its pins/links? (recoverable via git)
-                  <div class="ed-graph-panel-confirm-actions">
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      disabled={deleting()}
-                      onClick={() => deleteUnit(focused())}
-                    >
-                      {deleting() ? 'Deleting…' : 'Delete'}
-                    </Button>
-                    <Button size="sm" disabled={deleting()} onClick={() => setConfirmDelete(false)}>
-                      Keep
-                    </Button>
-                  </div>
-                </div>
-              </Show>
-            </Show>
-          </div>
-        </Show>
-
         <Show when={contentFor()}>
-          <ContentModal nodeKey={contentFor()} onClose={() => setContentFor(null)} />
+          <ContentModal
+            nodeKey={contentFor()}
+            onClose={() => setContentFor(null)}
+            onOpenPage={(n) => openInCanvas(n)}
+            onOpenCode={(n) => openCode(n)}
+            opening={openingPage()}
+            onDelete={async (n) => {
+              await deleteUnit(n);
+              setContentFor(null);
+            }}
+            deleting={deleting()}
+          />
         </Show>
 
         <AddUnitDialog

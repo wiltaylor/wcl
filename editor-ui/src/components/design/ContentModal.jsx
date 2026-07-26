@@ -24,6 +24,7 @@
 import { For, Show, createEffect, createMemo, createResource, createSignal, onCleanup } from 'solid-js';
 import { Badge, Button, Checkbox, Modal, Spinner, ToggleGroup, toast } from '@forge/ui';
 import { CodeEditor } from '@forge/code';
+import { FileCode2, Trash2 } from 'lucide-solid';
 
 import { api } from '../../api';
 import { dirtyFiles } from '../../state/buffers';
@@ -558,6 +559,12 @@ export default function ContentModal(props) {
   // payload: a commit reprints the whole file, so the span moves and the text
   // has to come back with it. Saving goes through the same `replace_source`
   // op the fragment editor uses.
+  // Unit deletion moved here from the graph's side panel (which a node click
+  // now replaces). The work itself stays in GraphView — it strips inbound
+  // links and pins across files and needs the whole payload — so this only
+  // confirms and calls back.
+  const [confirmDelete, setConfirmDelete] = createSignal(false);
+
   const [codeSeq, setCodeSeq] = createSignal(0);
   const [codeSrc] = createResource(
     () => (activeTab() === 'code' && node() ? { n: node(), seq: codeSeq() } : null),
@@ -644,7 +651,56 @@ export default function ContentModal(props) {
          (concept / fact / procedure / lesson) read alike from the title alone.
          A string, not JSX: Forge uses `title` for the panel's aria-label too. */
       title={`${node()?.title ?? ''}${node()?.kind ? ` (${node().kind})` : ''} — content & visibility`}
-      footer={<Button onClick={props.onClose}>Close</Button>}
+      footer={
+        <>
+          <Show when={node()?.type === 'unit' && props.onOpenPage}>
+            <Button
+              size="sm"
+              disabled={props.opening || busy()}
+              onClick={() => props.onOpenPage(node())}
+            >
+              {props.opening ? 'Opening…' : 'Open page'}
+            </Button>
+          </Show>
+          <Show when={props.onOpenCode}>
+            <Button size="sm" onClick={() => props.onOpenCode(node())}>
+              <FileCode2 size={13} /> Open in code mode
+            </Button>
+          </Show>
+          <Show when={node()?.type === 'unit' && props.onDelete}>
+            <Show
+              when={confirmDelete()}
+              fallback={
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={busy() || props.deleting}
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <Trash2 size={13} /> Delete unit…
+                </Button>
+              }
+            >
+              <span class="ed-content-confirm">
+                Delete “{node().title}” and remove its pins/links? (recoverable via git)
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={props.deleting}
+                  onClick={() => props.onDelete(node())}
+                >
+                  {props.deleting ? 'Deleting…' : 'Delete'}
+                </Button>
+                <Button size="sm" disabled={props.deleting} onClick={() => setConfirmDelete(false)}>
+                  Keep
+                </Button>
+              </span>
+            </Show>
+          </Show>
+          <span class="spacer" />
+          <Button onClick={props.onClose}>Close</Button>
+        </>
+      }
     >
       <Show when={node()} fallback={<div class="ed-empty">The unit is gone — reload the graph.</div>}>
         <div class="ed-content-modal">

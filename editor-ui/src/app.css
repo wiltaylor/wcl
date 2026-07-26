@@ -440,6 +440,16 @@ g.is-hidden > .ed-graph-edge-hit { display: none; }
   min-width: 0;
 }
 
+/* The modal footer carries the unit actions the graph's side panel used to
+   (a node click opens this instead), so it lays out as a row with a spacer
+   rather than the default right-aligned button pair. */
+.fmodal-panel:has(.ed-content-modal) .fmodal-foot { justify-content: flex-start; align-items: center; }
+.fmodal-panel:has(.ed-content-modal) .fmodal-foot .spacer { flex: 1; }
+.ed-content-confirm {
+  display: flex; align-items: center; gap: var(--sp-2);
+  font-size: var(--fs-xs); color: var(--danger);
+}
+
 /* The content modal's Code tab: the unit's own WCL source, editable. The
    editor fills the pane, so the header row stays a fixed strip above it. */
 .ed-content-code { display: flex; flex-direction: column; flex: 1; min-height: 0; }
