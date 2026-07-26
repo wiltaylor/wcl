@@ -61,6 +61,7 @@ function PinHereButton(props) {
     return (
       unit &&
       props.level.related_editable !== false &&
+      !props.level.syllabus &&
       !(props.level.pinned ?? []).includes(unit.id)
     );
   };
@@ -121,12 +122,14 @@ function IndexSection(props) {
                   disabled={busy() || !editable()}
                   onClick={() => moveIn(props.level, id, 'down')}
                 />
-                <IconButton
-                  icon={Minus}
-                  label="Unpin from here"
-                  disabled={busy() || !editable()}
-                  onClick={() => unpinFrom(props.level, id)}
-                />
+                <Show when={!props.level.syllabus}>
+                  <IconButton
+                    icon={Minus}
+                    label="Unpin from here"
+                    disabled={busy() || !editable()}
+                    onClick={() => unpinFrom(props.level, id)}
+                  />
+                </Show>
               </span>
             </li>
           );
@@ -243,21 +246,27 @@ export default function IndexPanel() {
                   <ul class="ed-index-members">
                     <IndexSection level={n} depth={0} />
                     <Show when={subtreePinnedIds(n).size === 0}>
-                      <li class="ed-graph-noblocks">nothing pinned yet</li>
+                      <li class="ed-graph-noblocks">
+                        {n.syllabus ? 'no lessons yet' : 'nothing pinned yet'}
+                      </li>
                     </Show>
-                    <li class="ed-nav-pinrow">
-                      <Pin size={12} />
-                      <Select
-                        options={unpinnedFor(n).map((u) => ({
-                          value: u.id,
-                          label: `${u.title} (${u.kind})`,
-                        }))}
-                        placeholder="Pin a unit…"
-                        value={undefined}
-                        disabled={busy()}
-                        onChange={(id) => pinInto(n, id)}
-                      />
-                    </li>
+                    {/* A course has nothing to pin — every lesson is already in
+                        it; the arrows reorder it (rewriting each lesson's `n`). */}
+                    <Show when={!n.syllabus}>
+                      <li class="ed-nav-pinrow">
+                        <Pin size={12} />
+                        <Select
+                          options={unpinnedFor(n).map((u) => ({
+                            value: u.id,
+                            label: `${u.title} (${u.kind})`,
+                          }))}
+                          placeholder="Pin a unit…"
+                          value={undefined}
+                          disabled={busy()}
+                          onChange={(id) => pinInto(n, id)}
+                        />
+                      </li>
+                    </Show>
                   </ul>
                 </Show>
               </li>

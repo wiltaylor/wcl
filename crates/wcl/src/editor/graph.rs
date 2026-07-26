@@ -42,6 +42,11 @@ pub(super) async fn handle_graph(State(state): State<Arc<EditorState>>, uri: Uri
     .await
 }
 
+/// Id of the synthetic top-level syllabus node (a training view's stand-in
+/// for an `index`). Double-underscored so it cannot collide with an authored
+/// block id, which WCL identifiers never start with.
+pub(super) const SYLLABUS_ID: &str = "__course";
+
 /// One graph node under construction.
 struct NodeInfo {
     key: String,
@@ -302,6 +307,7 @@ fn graph(
                     &sites,
                     &site_kinds,
                     &n.visibility,
+                    &n.kind,
                     &n.audience,
                     n.node_type == "index",
                 ),
@@ -317,12 +323,146 @@ fn graph(
             })
         })
         .collect();
+    let mut nodes_json = nodes_json;
+    nodes_json.extend(syllabus_nodes(&doc, &sites, &site_kinds, state, &entry_abs));
     Ok(serde_json::json!({
         "ok": true,
         "sites": sites,
         "nodes": nodes_json,
         "edges": edges,
     }))
+}
+
+/// The training view's syllabus, shaped as index nodes so the index panel can
+/// show and reorder it.
+///
+/// A course has no `index` blocks — its structure IS the data: `module`s and
+/// `lesson`s ordered by `n`. Without this the panel is empty for a training
+/// view. One top-level node ("Course") carries the ungrouped lessons as pins
+/// and each module as a sub-level, mirroring the index / sub-index tree.
+///
+/// `syllabus: true` marks the levels as ordered-by-`n` rather than pinned by a
+/// `related` list: reordering rewrites the lessons' `n` (see
+/// `nav::syllabus_reorder`), and there is nothing to pin or unpin — a lesson
+/// belongs to the course by existing. Emitted after layout with zero geometry,
+/// since index nodes never render on the canvas.
+fn syllabus_nodes(
+    doc: &Document,
+    sites: &[String],
+    site_kinds: &HashMap<String, String>,
+    state: &EditorState,
+    entry_abs: &Path,
+) -> Vec<serde_json::Value> {
+    let training: Vec<&String> = sites
+        .iter()
+        .filter(|s| site_kinds.get(*s).map(String::as_str) == Some("training"))
+        .collect();
+    if training.is_empty() {
+        return Vec::new();
+    }
+    let (lessons, modules) = course_structure(doc);
+    if lessons.is_empty() && modules.is_empty() {
+        return Vec::new();
+    }
+    let views: serde_json::Map<String, serde_json::Value> = sites
+        .iter()
+        .map(|s| (s.clone(), training.contains(&s).into()))
+        .collect();
+    let children: Vec<serde_json::Value> = modules
+        .iter()
+        .map(|m| {
+            serde_json::json!({
+                "id": m.id,
+                "title": m.title,
+                "pinned": m.lessons,
+                "related_editable": true,
+                "syllabus": true,
+                "children": [],
+            })
+        })
+        .collect();
+    vec![serde_json::json!({
+        "key": format!("index:{SYLLABUS_ID}"),
+        "type": "index",
+        "id": SYLLABUS_ID,
+        "kind": "index",
+        "title": "Course",
+        "file": rel(state, entry_abs),
+        "span": super::span_json(Span::new(0, 0)),
+        "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0,
+        "visibility": serde_json::json!({ "except_sites": [], "custom": false }),
+        "audience": "book",
+        "views": serde_json::Value::Object(views),
+        "organized": Vec::<String>::new(),
+        "blocks": Vec::<serde_json::Value>::new(),
+        "related_editable": true,
+        "syllabus": true,
+        "pinned": lessons,
+        "children": children,
+    })]
+}
+
+/// One part of a course: its id, display title, and lesson ids in `n` order.
+pub(super) struct CourseModule {
+    pub id: String,
+    pub title: String,
+    pub lessons: Vec<String>,
+}
+
+/// The course: ungrouped lesson ids in `n` order, then each module in `n`
+/// order with its own lessons ordered the same way.
+pub(super) fn course_structure(doc: &Document) -> (Vec<String>, Vec<CourseModule>) {
+    let ordered = |blocks: Vec<wcl_lang::Block<'_>>| -> Vec<(u64, String)> {
+        let mut v: Vec<(u64, String)> = blocks
+            .iter()
+            .filter_map(|b| Some((order_of(b), first_label(b)?)))
+            .collect();
+        v.sort_by_key(|(n, _)| *n);
+        v
+    };
+    let lessons = ordered(doc.blocks().filter(|b| b.kind() == "lesson").collect())
+        .into_iter()
+        .map(|(_, id)| id)
+        .collect();
+    let mut modules: Vec<(u64, String, String, Vec<String>)> = doc
+        .blocks()
+        .filter(|b| b.kind() == "module")
+        .filter_map(|m| {
+            let id = first_label(&m)?;
+            let title = m
+                .field("title")
+                .and_then(|f| f.value().ok().cloned())
+                .as_ref()
+                .map(value_string)
+                .unwrap_or_else(|| id.clone());
+            let kids = ordered(m.blocks().filter(|b| b.kind() == "lesson").collect())
+                .into_iter()
+                .map(|(_, id)| id)
+                .collect();
+            Some((order_of(&m), id, title, kids))
+        })
+        .collect();
+    modules.sort_by_key(|(n, ..)| *n);
+    (
+        lessons,
+        modules
+            .into_iter()
+            .map(|(_, id, title, lessons)| CourseModule { id, title, lessons })
+            .collect(),
+    )
+}
+
+/// A course block's `n` (its position); missing / non-numeric sorts last.
+fn order_of(b: &wcl_lang::Block<'_>) -> u64 {
+    b.field("n")
+        .and_then(|f| f.value().ok().cloned())
+        .and_then(|v| match v {
+            Value::U32(n) => Some(n as u64),
+            Value::U64(n) => Some(n),
+            Value::I64(n) if n >= 0 => Some(n as u64),
+            _ => None,
+        })
+        .unwrap_or(u64::MAX)
 }
 
 fn rel(state: &EditorState, file: &Path) -> String {
@@ -354,10 +494,27 @@ fn views_map(sites: &[String], visibility: &serde_json::Value) -> serde_json::Va
 /// other views stay visibility-governed (their data is selected by the
 /// template, not by audience). A site with no known kind (a caller that
 /// didn't pass `kinds`) keeps the plain visibility behaviour.
+/// The site kind that OWNS a unit kind — the one view whose projection
+/// renders it, because that view is built from this data and no other reads
+/// it. `None` for reference content (concept / entity / fact / procedure /
+/// research / index), which the book and the skill share and route by
+/// `audience` instead.
+///
+/// Kind names are hardcoded like the audience routing below — they are the
+/// canonical wskill base-schema vocabulary.
+fn owning_view_kind(unit_kind: &str) -> Option<&'static str> {
+    match unit_kind {
+        "lesson" | "module" => Some("training"),
+        "presentation" => Some("presentation"),
+        _ => None,
+    }
+}
+
 fn node_views_map(
     sites: &[String],
     site_kinds: &HashMap<String, String>,
     visibility: &serde_json::Value,
+    unit_kind: &str,
     audience: &str,
     is_index: bool,
 ) -> serde_json::Value {
@@ -365,15 +522,28 @@ fn node_views_map(
         .as_array()
         .map(|a| a.iter().filter_map(|s| s.as_str()).collect())
         .unwrap_or_default();
+    let owner = if is_index {
+        None
+    } else {
+        owning_view_kind(unit_kind)
+    };
     let map: serde_json::Map<String, serde_json::Value> = sites
         .iter()
         .map(|s| {
             let visible = !except.contains(&s.as_str());
-            let routed = match site_kinds.get(s).map(String::as_str) {
-                Some("book") => audience != "ai",
-                Some("ai_skill") => audience != "book",
-                Some(_) => !is_index,
-                None => true,
+            let kind = site_kinds.get(s).map(String::as_str);
+            let routed = match owner {
+                // A view-owned kind appears ONLY in the view built from it: a
+                // lesson is not book content, and a concept is not a lesson.
+                Some(owner) => kind == Some(owner),
+                // Reference content is shared by the book and the skill,
+                // routed by audience; the data-owned views don't render it.
+                None => match kind {
+                    Some("book") => audience != "ai",
+                    Some("ai_skill") => audience != "book",
+                    Some(_) => false,
+                    None => true,
+                },
             };
             (s.clone(), (visible && routed).into())
         })
@@ -393,14 +563,12 @@ fn organized_sites(
     sites: &[String],
     site_kinds: &HashMap<String, String>,
 ) -> Vec<String> {
+    let Some(owner) = owning_view_kind(kind) else {
+        return Vec::new();
+    };
     sites
         .iter()
-        .filter(|s| {
-            matches!(
-                (site_kinds.get(*s).map(String::as_str), kind),
-                (Some("training"), "lesson" | "module") | (Some("presentation"), "presentation")
-            )
-        })
+        .filter(|s| site_kinds.get(*s).map(String::as_str) == Some(owner))
         .cloned()
         .collect()
 }

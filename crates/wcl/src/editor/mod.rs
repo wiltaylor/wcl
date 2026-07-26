@@ -2615,6 +2615,179 @@ mod tests {
     /// `children` tree, and their pins become edges attributed to the
     /// owning level via `index_id` (a unit pinned at two levels yields
     /// two edges).
+    /// A wskill with a training course: `lesson` blocks ordered by `n`.
+    fn write_mini_wskill_training(root: &Path) {
+        write_mini_wskill(root);
+        let main = std::fs::read_to_string(root.join("main.wcl")).unwrap();
+        let main = main
+            .replace(
+                "  @children(\"index\") indexes: list<Index>\n}",
+                "  @children(\"index\") indexes: list<Index>\n  @children(\"lesson\") lessons: list<Lesson>\n}",
+            )
+            .replace(
+                "@block(\"index\")",
+                "@block(\"lesson\")\ntype Lesson {\n  @inline(0) id: identifier\n  title: utf8\n  n: u32\n}\n\n@block(\"index\")",
+            );
+        std::fs::write(root.join("main.wcl"), main).unwrap();
+        std::fs::write(
+            root.join("data/lessons.wcl"),
+            "lesson first { title = \"First\"  n = 1u32 }\n\nlesson second { title = \"Second\"  n = 2u32 }\n",
+        )
+        .unwrap();
+        let main = std::fs::read_to_string(root.join("main.wcl")).unwrap();
+        std::fs::write(
+            root.join("main.wcl"),
+            main.replace(
+                "import \"data/indexes.wcl\"",
+                "import \"data/indexes.wcl\"\nimport \"data/lessons.wcl\"",
+            ),
+        )
+        .unwrap();
+    }
+
+    /// A unit kind belongs to the ONE view built from it: a lesson is not book
+    /// content, and a concept is not part of the course. Before this, every
+    /// non-index unit reported visible in a training view, so selecting the
+    /// training filter highlighted the whole graph.
+    #[tokio::test]
+    async fn graph_routes_units_to_the_view_that_renders_them() {
+        let td = tempfile::tempdir().unwrap();
+        write_mini_wskill_training(td.path());
+        let state = state_for(td.path(), None);
+
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "GET",
+            "/api/graph?entry=main.wcl&sites=book,course&kinds=book=book,course=training",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let nodes = v["nodes"].as_array().unwrap();
+
+        let alpha = nodes.iter().find(|n| n["id"] == "alpha").unwrap();
+        assert_eq!(alpha["views"]["book"], true, "a concept is book content");
+        assert_eq!(
+            alpha["views"]["course"], false,
+            "a concept is not part of the course"
+        );
+
+        let first = nodes.iter().find(|n| n["id"] == "first").unwrap();
+        assert_eq!(first["views"]["course"], true, "a lesson is course content");
+        assert_eq!(
+            first["views"]["book"], false,
+            "the book renders no lesson pages"
+        );
+        assert_eq!(
+            first["organized"],
+            serde_json::json!(["course"]),
+            "lessons are organized structurally, not index-pinned"
+        );
+    }
+
+    /// A course has no `index` blocks, so the index panel would be empty for a
+    /// training view; the graph synthesizes its structure instead.
+    #[tokio::test]
+    async fn graph_synthesizes_a_syllabus_for_a_training_view() {
+        let td = tempfile::tempdir().unwrap();
+        write_mini_wskill_training(td.path());
+        let state = state_for(td.path(), None);
+
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "GET",
+            "/api/graph?entry=main.wcl&sites=book,course&kinds=book=book,course=training",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let nodes = v["nodes"].as_array().unwrap();
+        let syl = nodes.iter().find(|n| n["syllabus"] == true).unwrap();
+        assert_eq!(syl["type"], "index");
+        assert_eq!(syl["pinned"], serde_json::json!(["first", "second"]));
+        assert_eq!(syl["views"]["course"], true);
+        assert_eq!(syl["views"]["book"], false, "the syllabus is course-only");
+
+        // No syllabus without a training view among the sites.
+        let (_, v2) = send(
+            router(Arc::clone(&state)),
+            "GET",
+            "/api/graph?entry=main.wcl&sites=book&kinds=book=book",
+            None,
+        )
+        .await;
+        assert!(
+            !v2["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["syllabus"] == true)
+        );
+    }
+
+    /// Reordering the syllabus rewrites each lesson's `n` — the course has no
+    /// `related` list to permute — and pinning has no meaning there.
+    #[tokio::test]
+    async fn syllabus_reorder_rewrites_lesson_order() {
+        let td = tempfile::tempdir().unwrap();
+        write_mini_wskill_training(td.path());
+        let state = state_for(td.path(), None);
+
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/nav/op",
+            Some(serde_json::json!({
+                "entry": "main.wcl",
+                "op": "reorder_children",
+                "index_id": "__course",
+                "order": ["second", "first"],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        // `n` carries the order, so the blocks stay where they were authored.
+        let text = std::fs::read_to_string(td.path().join("data/lessons.wcl")).unwrap();
+        let at = |id: &str| text.find(id).unwrap();
+        assert!(
+            at("lesson first") < at("lesson second"),
+            "source order is untouched"
+        );
+        let n_of = |id: &str| {
+            let rest = &text[at(&format!("lesson {id}"))..];
+            let at_n = rest.find("n = ").expect("an n field");
+            rest[at_n + 4..].trim_start().chars().next().unwrap()
+        };
+        assert_eq!(n_of("second"), '1', "second moved to the front: {text}");
+        assert_eq!(n_of("first"), '2', "first moved to the back: {text}");
+
+        // A permutation is required, so a stale client can't drop a lesson.
+        let (status, _) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/nav/op",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "op": "reorder_children",
+                "index_id": "__course", "order": ["first"],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        // Pinning into a course is meaningless — every lesson is already in it.
+        let (status, _) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/nav/op",
+            Some(serde_json::json!({
+                "entry": "main.wcl", "op": "pin_unit",
+                "index_id": "__course", "unit_id": "first",
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
     #[tokio::test]
     async fn graph_nested_index_children_and_pins() {
         let td = tempfile::tempdir().unwrap();

@@ -423,8 +423,16 @@ fn nav_op(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Valu
         }
         "add_section" => add_section(state, &entry_abs, v),
         "add_page" => add_page(&entry_abs, v),
+        // A training view's levels are the course itself, ordered by each
+        // lesson's `n` rather than pinned by a `related` list — so they
+        // reorder by rewriting `n`, and have nothing to pin or unpin.
+        "pin_unit" | "unpin_unit" if is_syllabus_level(&entry_abs, v)? => Err(
+            "a course has no pins — a lesson belongs to it by existing; reorder it instead"
+                .to_string(),
+        ),
         "pin_unit" => related_op(&entry_abs, v, RelatedOp::Pin),
         "unpin_unit" => related_op(&entry_abs, v, RelatedOp::Unpin),
+        "reorder_children" if is_syllabus_level(&entry_abs, v)? => syllabus_reorder(&entry_abs, v),
         "reorder_children" => related_op(&entry_abs, v, RelatedOp::Reorder),
         other => Err(format!("unknown nav op `{other}`")),
     }
@@ -660,4 +668,97 @@ fn related_op(
         );
         Ok(())
     })
+}
+
+// ---------------------------------------------------------------------------
+// The training syllabus: course order as `n`, not a `related` list
+// ---------------------------------------------------------------------------
+
+/// Whether `index_id` names a syllabus level — the synthetic course node, or a
+/// `module` block. Both order their lessons by `n`.
+fn is_syllabus_level(entry_abs: &Path, v: &serde_json::Value) -> Result<bool, String> {
+    let index_id = crate::edit::str_field(v, "index_id")?;
+    if index_id == super::graph::SYLLABUS_ID {
+        return Ok(true);
+    }
+    let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(super::err_str)?;
+    Ok(doc
+        .blocks()
+        .any(|b| b.kind() == "module" && first_label(&b).as_deref() == Some(index_id)))
+}
+
+/// Reorder a syllabus level by rewriting its lessons' `n` to `1..=len` in the
+/// posted order. `order` must be a permutation of the level's current lessons,
+/// so a stale client can't drop one. Lessons may live in several files; every
+/// touched file lands in ONE commit, so the course is never half-renumbered.
+fn syllabus_reorder(entry_abs: &Path, v: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let index_id = crate::edit::str_field(v, "index_id")?;
+    let order: Vec<String> = v
+        .get("order")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("missing `order`")?
+        .iter()
+        .filter_map(|s| s.as_str().map(str::to_string))
+        .collect();
+
+    let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(super::err_str)?;
+    let (top, modules) = super::graph::course_structure(&doc);
+    let current: Vec<String> = if index_id == super::graph::SYLLABUS_ID {
+        top
+    } else {
+        modules
+            .into_iter()
+            .find(|m| m.id == index_id)
+            .map(|m| m.lessons)
+            .ok_or_else(|| format!("no `module` with id `{index_id}`"))?
+    };
+    let (mut a, mut b) = (current.clone(), order.clone());
+    a.sort();
+    b.sort();
+    if a != b {
+        return Err("`order` must be a permutation of the level's lessons".into());
+    }
+
+    // Every lesson's declaring file + span, so the renumber can address them
+    // wherever they were authored.
+    let mut sites: HashMap<String, (PathBuf, Span)> = HashMap::new();
+    for (path, blk) in doc.blocks_with_source() {
+        if blk.kind() != "lesson" {
+            continue;
+        }
+        if let Some(id) = first_label(&blk) {
+            let file = path
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| entry_abs.to_path_buf());
+            sites.entry(id).or_insert((file, blk.span()));
+        }
+    }
+
+    // Group the renumbering by file, then mutate each file once.
+    let mut per_file: HashMap<PathBuf, Vec<(Span, u32)>> = HashMap::new();
+    for (i, id) in order.iter().enumerate() {
+        let (file, span) = sites
+            .get(id)
+            .ok_or_else(|| format!("no `lesson` with id `{id}`"))?;
+        per_file
+            .entry(file.clone())
+            .or_default()
+            .push((*span, i as u32 + 1));
+    }
+
+    let mut writes: Vec<(PathBuf, String)> = Vec::new();
+    for (file, mut spans) in per_file {
+        let text = crate::edit::read(&file)?;
+        let mut src = parse_for_edit(&text, file.display().to_string()).map_err(super::err_str)?;
+        // Descending span order keeps every span valid while mutating.
+        spans.sort_by_key(|(sp, _)| std::cmp::Reverse(sp.start));
+        for (span, n) in spans {
+            let blk = ast_edit::find_block_by_span(&mut src.items, span)
+                .ok_or("a lesson moved on disk — reload the graph")?;
+            ast_edit::set_or_insert_field(blk, "n", Expr::U32(n));
+        }
+        writes.push((file, wcl_format::to_source(&src)));
+    }
+    crate::edit::commit(entry_abs, writes)?;
+    Ok(serde_json::json!({ "ok": true }))
 }
