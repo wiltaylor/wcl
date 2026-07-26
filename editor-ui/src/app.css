@@ -415,6 +415,27 @@ g.is-hidden > .ed-graph-edge-hit { display: none; }
   text-transform: uppercase; letter-spacing: 0.04em;
 }
 .ed-index-subhead .ed-index-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Index structure controls: hover-revealed like the member rows', with the
+   delete confirmation wrapping onto its own line under the heading. */
+.ed-index-rowwrap, .ed-index-subhead { flex-wrap: wrap; }
+.ed-index-rowwrap:hover .ed-nav-actions,
+.ed-index-subhead:hover .ed-nav-actions { display: inline-flex; }
+.ed-index-confirm {
+  flex-basis: 100%; display: flex; align-items: center; gap: var(--sp-2);
+  flex-wrap: wrap; margin: 2px 0 var(--sp-2);
+  padding: var(--sp-2); border: 1px solid var(--danger); border-radius: var(--r-sm);
+  font: var(--fs-xs)/1.4 system-ui, sans-serif; text-transform: none;
+  letter-spacing: normal; color: var(--fg-2);
+}
+.ed-index-confirm-actions { display: flex; gap: var(--sp-2); margin-left: auto; }
+.ed-index-newform {
+  display: flex; flex-direction: column; gap: var(--sp-1);
+  margin: 2px 0 var(--sp-2); padding: var(--sp-2);
+  border: 1px solid var(--accent); border-radius: var(--r-sm); background: var(--bg-1);
+}
+.ed-index-newform-foot { display: flex; align-items: center; gap: var(--sp-2); }
+.ed-index-newform-foot .spacer { flex: 1; }
+.ed-index-newform code { font-size: var(--fs-xs); color: var(--fg-3); }
 .ed-index-drophint {
   margin: var(--sp-2); padding: var(--sp-2); border: 1px dashed var(--accent);
   border-radius: var(--r-sm); color: var(--accent-fg); background: var(--accent-bg);

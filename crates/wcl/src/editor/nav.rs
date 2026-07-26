@@ -365,6 +365,16 @@ fn static_entry(state: &EditorState, b: &ast::Block, entry_abs: &Path) -> serde_
 /// - `pin_unit { index_id, unit_id }` / `unpin_unit { index_id, unit_id }`
 /// - `reorder_children { index_id, order: [ids] }` — rewrite a `related`
 ///   list to exactly `order`
+///
+/// The wskill model's `index` blocks are structural, so they have their own
+/// id-addressed op family (spans shift under every reformat; ids don't):
+///
+/// - `create_index { id, name, parent_id? }` — a new `index` block, either
+///   placed by convention beside the existing ones or nested in `parent_id`
+/// - `delete_index { index_id }` — remove it and its subtree
+/// - `move_index { index_id, dir }` — swap with the adjacent `index` sibling
+/// - `promote_index { index_id }` — a sub-index becomes its parent's next
+///   sibling; `demote_index { index_id }` nests it under the index above
 pub(super) async fn handle_nav_op(State(state): State<Arc<EditorState>>, body: String) -> Response {
     let v = match parse_json_body(&body) {
         Ok(v) => v,
@@ -434,6 +444,11 @@ fn nav_op(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Valu
         "unpin_unit" => related_op(&entry_abs, v, RelatedOp::Unpin),
         "reorder_children" if is_syllabus_level(&entry_abs, v)? => syllabus_reorder(&entry_abs, v),
         "reorder_children" => related_op(&entry_abs, v, RelatedOp::Reorder),
+        "create_index" => create_index(state, &entry_abs, v),
+        "delete_index" => delete_index(&entry_abs, v),
+        "move_index" => move_index(&entry_abs, v),
+        "promote_index" => promote_index(&entry_abs, v),
+        "demote_index" => demote_index(&entry_abs, v),
         other => Err(format!("unknown nav op `{other}`")),
     }
 }
@@ -577,26 +592,31 @@ fn subtree_has_index(b: &wcl_lang::Block<'_>, id: &str) -> bool {
         || b.blocks().any(|c| subtree_has_index(&c, id))
 }
 
+/// The file declaring the `index` with `id` — sub-indexes nest inside their
+/// parent block, so the search recurses (the block itself is relocated by the
+/// equally recursive [`super::blocks::find_block_by_kind_label`]). Index ids
+/// are assumed document-unique; first match wins.
+fn index_file(entry_abs: &Path, index_id: &str) -> Result<PathBuf, String> {
+    let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(super::err_str)?;
+    doc.blocks_with_source()
+        .find(|(_, b)| subtree_has_index(b, index_id))
+        .map(|(p, _)| {
+            p.map(Path::to_path_buf)
+                .unwrap_or_else(|| entry_abs.to_path_buf())
+        })
+        .ok_or_else(|| format!("no `index` with id `{index_id}`"))
+}
+
 /// Rewrite an index's `related` list: pin (append), unpin (remove), or
 /// reorder (replace with the posted order, which must be a permutation).
-/// `index_id` may name an index at any nesting depth; index ids are
-/// assumed document-unique (first match wins).
+/// `index_id` may name an index at any nesting depth.
 fn related_op(
     entry_abs: &Path,
     v: &serde_json::Value,
     op: RelatedOp,
 ) -> Result<serde_json::Value, String> {
     let index_id = crate::edit::str_field(v, "index_id")?;
-    let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(super::err_str)?;
-    let ifile = doc
-        .blocks_with_source()
-        .find(|(_, b)| subtree_has_index(b, index_id))
-        .map(|(p, _)| {
-            p.map(Path::to_path_buf)
-                .unwrap_or_else(|| entry_abs.to_path_buf())
-        })
-        .ok_or_else(|| format!("no `index` with id `{index_id}`"))?;
-    drop(doc);
+    let ifile = index_file(entry_abs, index_id)?;
 
     let ident = |s: &str| Expr::Identifier(s.to_string(), Span::new(0, 0));
     edit_file(entry_abs, &ifile, |src| {
@@ -666,6 +686,221 @@ fn related_op(
                 span: Span::new(0, 0),
             },
         );
+        Ok(())
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Index structure: create / delete / reorder / promote / demote
+// ---------------------------------------------------------------------------
+//
+// The pin ops above edit an index's CONTENTS; these edit the index tree
+// itself — the wskill book's sidebar headings. All are id-addressed (spans
+// shift under every reformat) and rewrite exactly one file: an index and its
+// sub-indexes are one block subtree, so nesting never crosses files.
+
+/// Is this AST item the `index` block labelled `id`?
+fn is_index_item(it: &Item, id: &str) -> bool {
+    matches!(it, Item::Block(b)
+        if b.kind == "index" && super::blocks::ast_label(b).as_deref() == Some(id))
+}
+
+/// Does this AST block's subtree declare an `index` with `id`?
+fn ast_subtree_has_index(b: &ast::Block, id: &str) -> bool {
+    (b.kind == "index" && super::blocks::ast_label(b).as_deref() == Some(id))
+        || b.items
+            .iter()
+            .any(|it| matches!(it, Item::Block(c) if ast_subtree_has_index(c, id)))
+}
+
+/// The items list OWNING the `index` block with `id`, and its position in it
+/// — the handle every structural op needs (its siblings are right there).
+fn index_slot<'a>(items: &'a mut Vec<Item>, id: &str) -> Option<(&'a mut Vec<Item>, usize)> {
+    if let Some(i) = items.iter().position(|it| is_index_item(it, id)) {
+        return Some((items, i));
+    }
+    // Descend into the one child whose subtree holds it (chosen immutably,
+    // so the mutable reborrow below is the only live borrow).
+    let child = items
+        .iter()
+        .position(|it| matches!(it, Item::Block(b) if ast_subtree_has_index(b, id)))?;
+    match &mut items[child] {
+        Item::Block(b) => index_slot(&mut b.items, id),
+        _ => None,
+    }
+}
+
+/// The id of the `index` block whose DIRECT children include `id`, if any —
+/// `None` means `id` is a top-level index.
+fn parent_index_id(items: &[Item], id: &str) -> Option<String> {
+    for it in items {
+        let Item::Block(b) = it else { continue };
+        if b.kind == "index"
+            && b.items.iter().any(|c| is_index_item(c, id))
+            && let Some(label) = super::blocks::ast_label(b)
+        {
+            return Some(label);
+        }
+        if let Some(found) = parent_index_id(&b.items, id) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+/// The position of the adjacent `index` sibling in `dir`, skipping anything
+/// else at that level (fields, a `body` block, units sharing the file).
+fn index_sibling(items: &[Item], pos: usize, down: bool) -> Option<usize> {
+    let is_index = |i: &usize| matches!(&items[*i], Item::Block(b) if b.kind == "index");
+    if down {
+        (pos + 1..items.len()).find(is_index)
+    } else {
+        (0..pos).rev().find(is_index)
+    }
+}
+
+fn relocate_err(id: &str) -> String {
+    format!("could not relocate index `{id}`")
+}
+
+/// A new `index` block: nested inside `parent_id`, else placed by the same
+/// convention `unit_create` uses (beside the existing indexes).
+fn create_index(
+    state: &EditorState,
+    entry_abs: &Path,
+    v: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let id = crate::edit::str_field(v, "id")?;
+    if !super::blocks::is_identifier(id) {
+        return Err(format!(
+            "`{id}` is not a valid id (letters, digits, `_`, not starting with a digit)"
+        ));
+    }
+    let name = crate::edit::str_field(v, "name")?;
+    let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(super::err_str)?;
+    if doc
+        .blocks_with_source()
+        .any(|(_, b)| subtree_has_index(&b, id))
+    {
+        return Err(format!("an `index` with id `{id}` already exists"));
+    }
+    let block = ast_edit::build_block(
+        "index",
+        &[],
+        vec![Expr::Identifier(id.to_string(), Span::new(0, 0))],
+        vec![("name".to_string(), ast_edit::string_literal_expr(name))],
+    );
+
+    match v
+        .get("parent_id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
+        Some(parent) => {
+            drop(doc);
+            let file = index_file(entry_abs, parent)?;
+            edit_file(entry_abs, &file, |src| {
+                if let Some(gp) = parent_index_id(&src.items, parent) {
+                    return Err(format!(
+                        "`{parent}` is itself nested under `{gp}` — sub-indexes nest one level deep"
+                    ));
+                }
+                let pblock =
+                    super::blocks::find_block_by_kind_label(&mut src.items, "index", parent)
+                        .ok_or_else(|| relocate_err(parent))?;
+                pblock.items.push(Item::Block(block));
+                Ok(())
+            })
+        }
+        None => {
+            let placement = super::blocks::place_unit(&doc, entry_abs, "index")?;
+            let mut changes: Vec<(PathBuf, String)> = Vec::new();
+            let file =
+                super::blocks::write_new_block(placement, id, block, entry_abs, &mut changes)?;
+            drop(doc);
+            crate::edit::commit(entry_abs, changes)?;
+            Ok(serde_json::json!({
+                "ok": true,
+                "id": id,
+                "file": super::blocks::rel_path(state, &file)?,
+            }))
+        }
+    }
+}
+
+/// Remove an index and everything nested in it. Its pins are just ids in a
+/// `related` list, so nothing dangles elsewhere — the units stay put.
+fn delete_index(entry_abs: &Path, v: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let id = crate::edit::str_field(v, "index_id")?;
+    let file = index_file(entry_abs, id)?;
+    edit_file(entry_abs, &file, |src| {
+        let (items, pos) = index_slot(&mut src.items, id).ok_or_else(|| relocate_err(id))?;
+        items.remove(pos);
+        Ok(())
+    })
+}
+
+/// Swap an index with its adjacent `index` sibling. Top-level order is
+/// document order, so an index at the edge of ITS file can't move further
+/// here — the files' import order decides that.
+fn move_index(entry_abs: &Path, v: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let id = crate::edit::str_field(v, "index_id")?;
+    let down = match crate::edit::str_field(v, "dir")? {
+        "down" => true,
+        "up" => false,
+        other => return Err(format!("bad move dir `{other}`")),
+    };
+    let file = index_file(entry_abs, id)?;
+    edit_file(entry_abs, &file, |src| {
+        let (items, pos) = index_slot(&mut src.items, id).ok_or_else(|| relocate_err(id))?;
+        let target = index_sibling(items, pos, down).ok_or_else(|| {
+            format!(
+                "`{id}` is already the {} index at its level",
+                if down { "last" } else { "first" }
+            )
+        })?;
+        items.swap(pos, target);
+        Ok(())
+    })
+}
+
+/// Lift a sub-index out to its parent's level, placed right after it.
+fn promote_index(entry_abs: &Path, v: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let id = crate::edit::str_field(v, "index_id")?;
+    let file = index_file(entry_abs, id)?;
+    edit_file(entry_abs, &file, |src| {
+        let parent = parent_index_id(&src.items, id)
+            .ok_or_else(|| format!("`{id}` is already a top-level index"))?;
+        let (items, pos) = index_slot(&mut src.items, id).ok_or_else(|| relocate_err(id))?;
+        let block = items.remove(pos);
+        let (pitems, ppos) =
+            index_slot(&mut src.items, &parent).ok_or_else(|| relocate_err(&parent))?;
+        pitems.insert(ppos + 1, block);
+        Ok(())
+    })
+}
+
+/// Nest an index under the one above it. Sub-indexes render one level deep,
+/// so an already-nested index refuses rather than building a tree nothing
+/// projects.
+fn demote_index(entry_abs: &Path, v: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let id = crate::edit::str_field(v, "index_id")?;
+    let file = index_file(entry_abs, id)?;
+    edit_file(entry_abs, &file, |src| {
+        if let Some(parent) = parent_index_id(&src.items, id) {
+            return Err(format!(
+                "`{id}` is already nested under `{parent}` — sub-indexes nest one level deep"
+            ));
+        }
+        let (items, pos) = index_slot(&mut src.items, id).ok_or_else(|| relocate_err(id))?;
+        let target = index_sibling(items, pos, false).ok_or_else(|| {
+            format!("no index above `{id}` to nest it under — move it down first")
+        })?;
+        let block = items.remove(pos);
+        match &mut items[target] {
+            Item::Block(b) => b.items.push(block),
+            _ => return Err(relocate_err(id)),
+        }
         Ok(())
     })
 }

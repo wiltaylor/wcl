@@ -200,8 +200,30 @@ export default function GraphView() {
       startLoop();
     }
   };
-  onMount(() => {
-    setGraphReload(load);
+  onMount(() => setGraphReload(load));
+
+  // The graph is per-wskill: picking another one in the topbar must reload
+  // it in place (it used to need a Design-mode round trip). Keyed on the
+  // wskill, not on `activeEntry()`, so switching VIEW tabs — every view has
+  // its own entry over the same data — keeps the layout and the selection.
+  let loadedKey = null;
+  createEffect(() => {
+    // Only a wskill has a unit graph; picking a plain site drops back to
+    // the canvas rather than leaving another document's graph on screen.
+    if (selected() && !selected().wskill) {
+      setDesignTab('canvas');
+      return;
+    }
+    const key = selected()?.registry ?? selected()?.root ?? activeEntry();
+    if (!key || key === loadedKey) return;
+    loadedKey = key;
+    // Nothing from the previous wskill survives: its ids, pins and
+    // positions all belong to another document.
+    setSelectedIndex(null);
+    setFocus(null);
+    setContentFor(null);
+    setData(null);
+    setViewBox(null);
     load();
   });
 

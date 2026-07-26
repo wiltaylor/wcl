@@ -51,7 +51,7 @@ pub(super) fn span_field(v: &serde_json::Value, key: &str) -> Result<Span, Strin
 }
 
 /// A file path made repo-relative with `/` separators (the client's view).
-fn rel_path(state: &EditorState, file: &Path) -> Result<String, String> {
+pub(super) fn rel_path(state: &EditorState, file: &Path) -> Result<String, String> {
     let canon = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
     canon
         .strip_prefix(&state.root_dir)
@@ -932,6 +932,34 @@ fn unit_create(state: &EditorState, v: &serde_json::Value) -> Result<serde_json:
         }
         _ => place_unit(&doc, &doc_entry, kind)?,
     };
+    let new_file = write_new_block(placement, id, block, &doc_entry, &mut changes)?;
+
+    if let Some(pin) = v.get("pin") {
+        let index_id = crate::edit::str_field(pin, "index_id")?;
+        pin_into_index(&doc, &doc_entry, index_id, id, &mut changes)?;
+    }
+    drop(doc);
+
+    crate::edit::commit(&doc_entry, changes)?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "file": rel_path(state, &new_file)?,
+        "id": id,
+    }))
+}
+
+/// Realise a [`Placement`] for a freshly built top-level block: stage the
+/// file writes (a new `<id>.wcl` plus its aggregator import, an append to an
+/// existing file, or a named new target imported from the entry) into
+/// `changes` and answer the file the block landed in. Shared by
+/// [`handle_unit_create`] and the nav model's `create_index`.
+pub(super) fn write_new_block(
+    placement: Placement,
+    id: &str,
+    block: ast::Block,
+    doc_entry: &Path,
+    changes: &mut Vec<(PathBuf, String)>,
+) -> Result<PathBuf, String> {
     let new_file = match placement {
         Placement::NewFile { dir, aggregator } => {
             let file = dir.join(format!("{id}.wcl"));
@@ -969,34 +997,22 @@ fn unit_create(state: &EditorState, v: &serde_json::Value) -> Result<serde_json:
             ast_edit::append_top_level_block(&mut src, block);
             changes.push((file.clone(), wcl_format::to_source(&src)));
             // Import it from the entry so the new instances gather.
-            let entry_dir = doc_entry.parent().unwrap_or(&doc_entry);
+            let entry_dir = doc_entry.parent().unwrap_or(doc_entry);
             if let Ok(rel) = file.strip_prefix(entry_dir) {
-                let text = crate::edit::read(&doc_entry)?;
+                let text = crate::edit::read(doc_entry)?;
                 let mut esrc = parse_for_edit(&text, doc_entry.display().to_string())
                     .map_err(super::err_str)?;
                 if ast_edit::ensure_import(&mut esrc, &rel.to_string_lossy().replace('\\', "/")) {
-                    changes.push((doc_entry.clone(), wcl_format::to_source(&esrc)));
+                    changes.push((doc_entry.to_path_buf(), wcl_format::to_source(&esrc)));
                 }
             }
             file
         }
     };
-
-    if let Some(pin) = v.get("pin") {
-        let index_id = crate::edit::str_field(pin, "index_id")?;
-        pin_into_index(&doc, &doc_entry, index_id, id, &mut changes)?;
-    }
-    drop(doc);
-
-    crate::edit::commit(&doc_entry, changes)?;
-    Ok(serde_json::json!({
-        "ok": true,
-        "file": rel_path(state, &new_file)?,
-        "id": id,
-    }))
+    Ok(new_file)
 }
 
-enum Placement {
+pub(super) enum Placement {
     NewFile {
         dir: PathBuf,
         aggregator: Option<PathBuf>,
@@ -1013,7 +1029,11 @@ enum Placement {
 
 /// Where a new instance of `kind` belongs, derived from where the existing
 /// instances live (see [`handle_unit_create`]).
-fn place_unit(doc: &Document, doc_entry: &Path, kind: &str) -> Result<Placement, String> {
+pub(super) fn place_unit(
+    doc: &Document,
+    doc_entry: &Path,
+    kind: &str,
+) -> Result<Placement, String> {
     let mut per_file: Vec<(PathBuf, usize)> = Vec::new();
     for (path, block) in doc.blocks_with_source() {
         if block.kind() != kind {
