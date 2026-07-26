@@ -1665,6 +1665,28 @@ impl<'a> Field<'a> {
         cell.value.get_or_init(|| result).as_ref()
     }
 
+    /// Evaluate this field against a caller-supplied type instead of the
+    /// schema-declared one, named by its fully-qualified name
+    /// (`"std.Duration"`).
+    ///
+    /// The escape hatch for hosts whose blocks are `@schemaless`: a unit
+    /// literal resolves against a *declared* type, so in a block that
+    /// declares no fields `value()` can only report
+    /// [`EvalError::UnitWithoutType`]. A host that knows out-of-band what
+    /// a field means (say, from its own parameter schema) resolves it
+    /// here.
+    ///
+    /// A value that isn't a unit literal passes through whatever coercion
+    /// the named type implies, exactly as a declared field would. The
+    /// result is *not* cached — `value()`'s cache keeps meaning "the
+    /// schema-typed value" — so call this once per field and keep the
+    /// result.
+    pub fn value_typed(&self, type_fqn: &str) -> Result<Value, EvalError> {
+        let ty = TypeRef::Named(type_fqn.split('.').map(str::to_string).collect());
+        let value = self.doc.eval_in_scope(&self.ast.expr, &self.scope)?;
+        variant_dispatch::coerce_value_to_type(self.doc, value, &ty, self.ast.span)
+    }
+
     /// `Some(err)` if this field's name isn't accepted by the
     /// applicable schema (parent block, or the document if top-level).
     /// `None` means the membership check passes.

@@ -136,6 +136,69 @@ fn unit_literal_without_a_type_context_errors() {
 }
 
 #[test]
+fn value_typed_resolves_a_unit_a_schemaless_field_cannot() {
+    // The escape hatch for hosts whose blocks are `@schemaless`: the same
+    // field `value()` can only fail on resolves against a type the caller
+    // supplies out-of-band.
+    let doc = Document::open("@schemaless x = 5MiB\n", "test").unwrap();
+    let f = doc.get("x").expect("field x").as_field().expect("a field");
+    assert!(f.value().is_err());
+    assert_eq!(
+        f.value_typed("std.ByteSize").unwrap(),
+        Value::I64(5 * 1024 * 1024)
+    );
+}
+
+#[test]
+fn value_typed_rejects_a_unit_from_another_family() {
+    let doc = Document::open("@schemaless x = 5MiB\n", "test").unwrap();
+    let err = doc
+        .get("x")
+        .expect("field x")
+        .as_field()
+        .expect("a field")
+        .value_typed("std.Duration")
+        .unwrap_err();
+    assert!(
+        matches!(err, EvalError::UnitNoMatch { .. }),
+        "expected UnitNoMatch, got {err:?}"
+    );
+}
+
+#[test]
+fn value_typed_passes_a_non_unit_value_through() {
+    let doc = Document::open("@schemaless x = \"plain\"\n", "test").unwrap();
+    let f = doc.get("x").expect("field x").as_field().expect("a field");
+    assert_eq!(
+        f.value_typed("std.Duration").unwrap(),
+        Value::Utf8("plain".into())
+    );
+    // The schema-typed cache is untouched by a `value_typed` call.
+    assert_eq!(f.value().unwrap(), &Value::Utf8("plain".into()));
+}
+
+#[test]
+fn value_typed_resolves_every_duration_suffix() {
+    let doc = Document::open(
+        "@schemaless a = 90s\n@schemaless b = 2min\n@schemaless c = 1h\n@schemaless d = 7d\n",
+        "test",
+    )
+    .unwrap();
+    let ns = |name: &str| {
+        doc.get(name)
+            .expect("field")
+            .as_field()
+            .expect("a field")
+            .value_typed("std.Duration")
+            .unwrap()
+    };
+    assert_eq!(ns("a"), Value::I64(90 * 1_000_000_000));
+    assert_eq!(ns("b"), Value::I64(120 * 1_000_000_000));
+    assert_eq!(ns("c"), Value::I64(3600 * 1_000_000_000));
+    assert_eq!(ns("d"), Value::I64(7 * 86_400 * 1_000_000_000));
+}
+
+#[test]
 fn arithmetic_on_unresolved_units_errors() {
     // PendingUnit is non-numeric, so it can't participate in arithmetic.
     let err = eval_field("std.ByteSize", "5MiB + 1KiB").unwrap_err();
