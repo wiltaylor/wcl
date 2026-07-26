@@ -1,6 +1,9 @@
 # Interview question bank (per view)
 
-The questions the design interview asks, in interview order. Each answer becomes the block in its \*maps to\* column immediately — write, `wcl check`, then move on. Optional rows are asked only when relevant. (These are data — `interview_q` blocks — so tooling can walk them.)
+The questions the design interview asks, in interview order. Each answer becomes the block in
+its \*maps to\* column immediately — write, `wcl check`, then move on. Optional rows are asked
+only when relevant. (These are data — `interview_q` blocks — so tooling can walk them.)
+
 
 ## Overview / decisions
 
@@ -11,7 +14,6 @@ The questions the design interview asks, in interview order. Each answer becomes
 | Rank the qualities that matter: performance, availability, security, cost, time-to-market. | `article :overview (drives later trade-off ADRs)` |  |
 | What is already fixed — mandated stack, compliance regime, budget, deadline, existing contracts? | `adr (one per constraint that forecloses options)` |  |
 | What decisions have already been made, and why? | `adr (status :accepted, dated)` |  |
-| Who funds it, who approves changes, who builds it, who operates it, who gets paged? | `stakeholder + raci_entry rows per activity` |  |
 
 ## Personas
 
@@ -90,14 +92,12 @@ The questions the design interview asks, in interview order. Each answer becomes
 | --- | --- | --- |
 | What routine operations exist — deploys, secret rotation, restores, user admin? | `sop (kind :operations / :runbook)` |  |
 | What happens when it breaks at 3am — alerting destination, incident steps, escalation? | `sop (kind :incident)` |  |
-| How are changes approved and rolled back? | `sop (kind :change)` |  |
 
 ## Standards & rules
 
 | Question | Maps to |  |
 | --- | --- | --- |
 | What coding/style standards apply, and what enforces each (CI, linter, review)? | `standard (kind :coding / :style) + rule (enforced_by)` |  |
-| Which business or regulatory rules constrain behaviour (retention, audit, licensing)? | `standard (kind :business / :security)` |  |
 
 ## Related
 

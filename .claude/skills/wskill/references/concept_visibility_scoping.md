@@ -23,8 +23,6 @@ inside shared reference material, and media that one backend can't carry.
 
 ## Related
 
-- [Audience control](../references/concept_audience_control.md)
-
 - [Different Views](../references/concept_views.md)
 
 [← Back to SKILL.md](../SKILL.md)

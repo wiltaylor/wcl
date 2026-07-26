@@ -60,8 +60,6 @@ the skills, shipped once per wskill.
 
 - [Different Views](../references/concept_views.md)
 
-- [Audience control](../references/concept_audience_control.md)
-
 - [Setting up AI skill generation](../references/process_setup_ai_skill.md)
 
 - [Building and installing the AI skill](../references/process_installing_the_skill.md)

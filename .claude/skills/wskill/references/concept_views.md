@@ -24,8 +24,6 @@ for you\*. Ship the optional two only when the topic warrants them — declaring
 
 - [Separation of Data and Presentation](../references/concept_datapresentation.md)
 
-- [Audience control](../references/concept_audience_control.md)
-
 - [The presentation view](../references/concept_presentation_view.md)
 
 - [The training view](../references/concept_training_view.md)

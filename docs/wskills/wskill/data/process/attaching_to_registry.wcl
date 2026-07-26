@@ -1,33 +1,58 @@
 procedure attaching_to_registry {
-  title   = "Attaching a wskill to a registry"
+  title = "Attaching a wskill to a registry"
   purpose = "Add a wskill to a collection so its views are discovered, built, and linked from the landing page."
   preconditions = ["A registry/collection repo (scaffold one with `wcl init wskill-registry`)."]
-  related = [collections_registries, creating_a_wskill, views]
+  related = [creating_a_wskill, views]
   audience = :both
 
-  step place { n = 1
+  step place {
+    n = 1
     title = "Place the wskill under wskills/"
-    body screen { code "console" { source = <<'SH'
-$ mv <topic>/ <registry>/wskills/<topic>/
-# or scaffold in place:
-$ wcl init wskill <registry>/wskills/<topic>
-SH
-    } }
-    body steps { p "Discovery is file-based: any immediate subdirectory of `wskills/` with a `wdoc/book/main.wcl` becomes a member. There is no member list to edit." }
+    body screen {
+      code "console" {
+        source = <<DOC
+          $ mv <topic>/ <registry>/wskills/<topic>/
+          # or scaffold in place:
+          $ wcl init wskill <registry>/wskills/<topic>
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        Discovery is file-based: any immediate subdirectory of `wskills/` with a
+        `wdoc/book/main.wcl` becomes a member. There is no member list to edit.
+      DOC
+    }
   }
 
-  step build { n = 2
+  step build {
+    n = 2
     title = "Build the registry site"
-    body screen { code "console" { source = <<'SH'
-$ wcl wdoc build wdoc/page/main.wcl --out out/site
-SH
-    } }
-    body steps { p "The landing's `include` blocks build every member's book under `wskills/<name>/` — plus `decks/<name>/` and `training/<name>/` for members that ship those views — and the card grid picks the new member up automatically." }
+    body screen {
+      code "console" {
+        source = "$ wcl wdoc build wdoc/page/main.wcl --out out/site\n"
+      }
+    }
+    body steps {
+      p <<DOC
+        The landing's `include` blocks build every member's book under `wskills/<name>/` — plus
+        `decks/<name>/` and `training/<name>/` for members that ship those views — and the card grid
+        picks the new member up automatically.
+      DOC
+    }
   }
 
-  step check_links { n = 3
+  step check_links {
+    n = 3
     title = "Check the landing entry"
-    body steps { p "Open the built landing: the new card shows the member's title and summary (read from its book site block and topic), links to the book, and shows deck/course buttons only if the member ships those views. A missing summary means the member's `topic.summary` is empty; a missing card means the entry file isn't at `wskills/<name>/wdoc/book/main.wcl`." }
+    body steps {
+      p <<DOC
+        Open the built landing: the new card shows the member's title and summary (read from its
+        book site block and topic), links to the book, and shows deck/course buttons only if the
+        member ships those views. A missing summary means the member's `topic.summary` is empty; a
+        missing card means the entry file isn't at `wskills/<name>/wdoc/book/main.wcl`.
+      DOC
+    }
   }
 
   place -> build

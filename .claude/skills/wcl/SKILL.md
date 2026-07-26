@@ -99,6 +99,8 @@ $ wcl check config.wcl     # type-checks the document, reports errors
 $ wcl eval config.wcl      # prints the evaluated data
 ```
 
+- [What WCL Is](references/concept_what_is_wcl.md)
+
 ### Language
 
 _The WCL language, area by area — syntax, types, expressions, control flow, functions, modules, and schema._
@@ -121,5 +123,3 @@ Beyond this skill, the wskill ships these views — build them with `just render
 
 - **book** (`wdoc/book/main.wcl`)
 - **ai skill** (`wdoc/skill/main.wcl`)
-- **presentation** — WCL in a nutshell — an overview deck. (`wdoc/presentation/main.wcl`)
-- **training** — Learn WCL — a hands-on lesson series. (`wdoc/training/main.wcl`)

@@ -1,19 +1,19 @@
-// WCL — wskill root document.
-//
-// A complete reference for the WCL configuration/schema language and its `wcl`
-// command-line interface. `wcl check wskill.wcl` validates the whole model; the
-// wdoc template sets in wdoc/ project it into the book and the skill.
+# WCL — wskill root document.
+# 
+# A complete reference for the WCL configuration/schema language and its `wcl`
+# command-line interface. `wcl check wskill.wcl` validates the whole model; the
+# wdoc template sets in wdoc/ project it into the book and the skill.
 
 import <wdoc.wcl>
 import "./schema/base.wcl"
 import "./schema/extensions.wcl"
-import "./schema/builtins.wcl"          // opt-in: builtin functions as data (projected into pages)
-import "./schema/cli.wcl"               // opt-in: map the wcl CLI as data
-import "./schema/presentation.wcl"      // opt-in: the overview deck view
-import "./schema/training.wcl"          // opt-in: the tutorial-series view
+import "./schema/builtins.wcl"  # opt-in: builtin functions as data (projected into pages)
+import "./schema/cli.wcl"  # opt-in: map the wcl CLI as data
+import "./schema/presentation.wcl"  # opt-in: the overview deck view
+import "./schema/training.wcl"  # opt-in: the tutorial-series view
 
-// Data — reference units, examples and processes. Concepts, facts and
-// processes are one file per entry under their per-type folder.
+# Data — reference units, examples and processes. Concepts, facts and
+# processes are one file per entry under their per-type folder.
 import "./data/main.wcl"
 import "./data/presentation/main.wcl"
 import "./data/training/main.wcl"
@@ -21,85 +21,89 @@ import "./data/training/main.wcl"
 schema_version = "1.3.0"
 
 topic wcl {
-  name    = "WCL"
+  name = "WCL"
   summary = "A typed configuration and schema language: records, unions, interfaces, decorators, and a document model that gathers and validates structured data."
   version = "0.24.1-alpha"
-  description = <<END
-WCL is a strongly-typed configuration language. You declare **record types** with
-the `type` keyword, give them constraints and defaults with **prefix decorators**
-(`@default`, `@min`, `@block`, `@inline`, …), and compose a **document** whose root
-`@document` type gathers every block instance for validation and projection. Values
-range over a rich primitive set (integers with bit-width suffixes, floats, UTF-8
-strings with heredocs and interpolation, symbols, booleans, identifiers) and
-composites (lists, tensors, pipe-tables, optionals, unions, references). The `wcl`
-CLI parses, checks, evaluates, formats and scaffolds WCL, and drives the **wdoc**
-static-site / skill generator.
-END
+  description = <<DOC
+    WCL is a strongly-typed configuration language. You declare **record types** with
+    the `type` keyword, give them constraints and defaults with **prefix decorators**
+    (`@default`, `@min`, `@block`, `@inline`, …), and compose a **document** whose root
+    `@document` type gathers every block instance for validation and projection. Values
+    range over a rich primitive set (integers with bit-width suffixes, floats, UTF-8
+    strings with heredocs and interpolation, symbols, booleans, identifiers) and
+    composites (lists, tensors, pipe-tables, optionals, unions, references). The `wcl`
+    CLI parses, checks, evaluates, formats and scaffolds WCL, and drives the **wdoc**
+    static-site / skill generator.
+  DOC
   tags = ["wcl", "configuration", "schema", "language", "dsl"]
-  created    = "2026-06-20"
+  created = "2026-06-20"
   maintainer = "ai@wiltaylor.dev"
   maintainer_entity = wil_taylor
 }
 
-// Skill-projection config (→ SKILL.md frontmatter). No bundled artifacts.
+# Skill-projection config (→ SKILL.md frontmatter). No bundled artifacts.
 wcl.wskill::skill {
   summary {
-    overview = [
-      "WCL is a typed configuration & schema language. This skill captures its full reference as data — the language, the builtin library, and the `wcl` CLI — projected from one model.",
-    ]
+    overview = ["WCL is a typed configuration & schema language. This skill captures its full reference as data — the language, the builtin library, and the `wcl` CLI — projected from one model."]
   }
   skill_param "$ARGUMENTS" {
     description = "The WCL topic, builtin, or `wcl` subcommand to look up."
-    value       = "Take it from the user's request — e.g. the function name, type, or subcommand they asked about. If empty, summarise the reference and ask what they need."
+    value = "Take it from the user's request — e.g. the function name, type, or subcommand they asked about. If empty, summarise the reference and ask what they need."
   }
   skill_param "$1" {
     description = "Optional area to scope the answer to: `language`, `builtins`, or `cli`."
-    value       = "Infer from the question; default to searching all areas when unset."
+    value = "Infer from the question; default to searching all areas when unset."
   }
   skill_boundary {
     always = ["Cite the exact reference page when answering.", "Prefer the documented builtin/CLI form over guesses."]
-    ask    = ["Before running `wcl set` or any command that edits files."]
-    never  = ["Invent builtins, flags, or syntax that aren't in the reference."]
+    ask = ["Before running `wcl set` or any command that edits files."]
+    never = ["Invent builtins, flags, or syntax that aren't in the reference."]
   }
 }
 
-// The views this wskill ships — first-class data the overview and any registry
-// landing can enumerate. Declaring one documents it; `just render` builds it.
-artifact book     { kind = :book      entry = "wdoc/book/main.wcl"   output = "out/book" }
-artifact ai_skill { kind = :ai_skill  entry = "wdoc/skill/main.wcl"  output = "out/skill" }
-artifact slides   { kind = :presentation  entry = "wdoc/presentation/main.wcl"  output = "out/presentation"  summary = "WCL in a nutshell — an overview deck." }
-artifact training { kind = :training      entry = "wdoc/training/main.wcl"      output = "out/training"      summary = "Learn WCL — a hands-on lesson series." }
+# The views this wskill ships — first-class data the overview and any registry
+# landing can enumerate. Declaring one documents it; `just render` builds it.
+artifact book {
+  kind = :book
+  entry = "wdoc/book/main.wcl"
+  output = "out/book"
+}
+artifact ai_skill {
+  kind = :ai_skill
+  entry = "wdoc/skill/main.wcl"
+  output = "out/skill"
+}
 
-// ---- Sources (update-workflow metadata only) ----
+# ---- Sources (update-workflow metadata only) ----
 
 source wcl_docs {
-  kind         = "docs"
-  locator      = "/home/wil/dev/WCL/docs/pages/reference"
-  covers       = "The authoritative WCL reference site: a page per language feature, the CLI, and builtins."
+  kind = "docs"
+  locator = "/home/wil/dev/WCL/docs/pages/reference"
+  covers = "The authoritative WCL reference site: a page per language feature, the CLI, and builtins."
   last_checked = "2026-06-20"
   reflects_version = "0.24.1-alpha"
 }
 
 source wcl_repo {
-  kind         = "repo"
-  locator      = "/home/wil/dev/WCL"
-  covers       = "Source of truth for WCL: the parser, evaluator, CLI, and wdoc stdlib (crates/wcl_wdoc/lib)."
+  kind = "repo"
+  locator = "/home/wil/dev/WCL"
+  covers = "Source of truth for WCL: the parser, evaluator, CLI, and wdoc stdlib (crates/wcl_wdoc/lib)."
   last_checked = "2026-06-20"
   reflects_version = "0.24.1-alpha"
 }
 
 source wcl_cli {
-  kind         = "cli"
-  locator      = "wcl --help"
-  covers       = "Subcommand help text for parse/check/eval/set/fmt/repl/lsp/init/wdoc/diff."
+  kind = "cli"
+  locator = "wcl --help"
+  covers = "Subcommand help text for parse/check/eval/set/fmt/repl/lsp/init/wdoc/diff."
   last_checked = "2026-06-20"
   reflects_version = "0.24.1-alpha"
 }
 
-// ---- Cross-references to other wskills ----
+# ---- Cross-references to other wskills ----
 
 wskill_ref wdoc {
-  name     = "wdoc"
+  name = "wdoc"
   relation = "wdoc is WCL's document/projection system, driven by the wcl CLI"
-  status   = "exists"
+  status = "exists"
 }

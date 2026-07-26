@@ -2,7 +2,7 @@ procedure editing_via_serve {
   title = "Editing a wskill in the browser"
   purpose = "Use `wcl editor` to modify units from the rendered book preview, writing real .wcl source."
   preconditions = ["The wskill renders (`just wskill-check` passes)."]
-  related = [adding_content, authoring_cli]
+  related = [adding_content]
   audience = :both
 
   step serve {

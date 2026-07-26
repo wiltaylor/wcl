@@ -55,6 +55,4 @@ preview page.
 
 - [Adding content to a wskill](../references/process_adding_content.md)
 
-- [The wcl commands an author uses](../references/fact_authoring_cli.md)
-
 [← Back to SKILL.md](../SKILL.md)

@@ -75,28 +75,17 @@ _What a wskill is, why it exists, and how to start one._
 _Capturing knowledge: decomposition, classification, the capture loop, and the tools._
 - [Decomposing information](references/concept_decomposing_information.md)
 - [Which unit kind? — the decision guide](references/fact_unit_decision_guide.md)
-- [Adding content to a wskill](references/process_adding_content.md)
-- [Capturing research into a wskill](references/process_capturing_research.md)
-- [Researching a topic into a wskill](references/process_researching_a_topic.md)
-- [Building the wskill index](references/process_building_the_index.md)
 - [The wskill folder layout](references/fact_folder_layout.md)
-- [The wcl commands an author uses](references/fact_authoring_cli.md)
-- [Assets (images & data files)](references/concept_assets.md)
 
 ### Views & Rendering
 
 _The four views, what controls what renders where, and how to build and install each._
-- [Different Views](references/concept_views.md)
-- [Audience control](references/concept_audience_control.md)
 - [Visibility scoping (@only / @except)](references/concept_visibility_scoping.md)
 - [Anatomy of the AI skill](references/concept_skill_anatomy.md)
 - [Setting up AI skill generation](references/process_setup_ai_skill.md)
 - [Building and installing the AI skill](references/process_installing_the_skill.md)
 - [The presentation view](references/concept_presentation_view.md)
 - [The training view](references/concept_training_view.md)
-- [The standard just recipes](references/fact_justfile_recipes.md)
-- [Collections and registries](references/concept_collections_registries.md)
-- [Claude Code](references/entity_claude_code.md)
 
 ### Extending
 
@@ -130,4 +119,3 @@ Beyond this skill, the wskill ships these views — build them with `just render
 
 - **book** (`wdoc/book/main.wcl`)
 - **ai skill** (`wdoc/skill/main.wcl`)
-- **training** — Build your first wskill — a hands-on lesson series. (`wdoc/training/main.wcl`)

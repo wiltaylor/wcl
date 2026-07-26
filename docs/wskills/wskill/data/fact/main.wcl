@@ -3,5 +3,3 @@ import "./schema_reference.wcl"  // checkable facts (one file per entry under da
 import "./unit_decision_guide.wcl"
 import "./skill_vs_wskill.wcl"
 import "./folder_layout.wcl"
-import "./authoring_cli.wcl"
-import "./justfile_recipes.wcl"

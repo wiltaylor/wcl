@@ -1,229 +1,316 @@
-// The interview question bank and the codebase-scan probes — typed data
-// (see schema/extensions.wcl), rendered by the two facts at the bottom and
-// walked by the population processes. `view` values match WadSection ids.
+# The interview question bank and the codebase-scan probes — typed data
+# (see schema/extensions.wcl), rendered by the two facts at the bottom and
+# walked by the population processes. `view` values match WadSection ids.
 
-// ── Interview questions (design a new system) ─────────────────────────────
+# ── Interview questions (design a new system) ─────────────────────────────
 
-interview_q iq_frame_purpose { view = "overview"
+interview_q iq_frame_purpose {
+  view = "overview"
   question = "What is the system, in one sentence — and what business problem makes it worth building?"
-  maps_to  = "wad.summary / wad.description" }
-interview_q iq_frame_success { view = "overview"
+  maps_to = "wad.summary / wad.description"
+}
+interview_q iq_frame_success {
+  view = "overview"
   question = "How will you know it succeeded? (measurable criteria if possible)"
-  maps_to  = "wad.description / article :overview" }
-interview_q iq_quality { view = "overview"
+  maps_to = "wad.description / article :overview"
+}
+interview_q iq_quality {
+  view = "overview"
   question = "Rank the qualities that matter: performance, availability, security, cost, time-to-market."
-  maps_to  = "article :overview (drives later trade-off ADRs)" }
-interview_q iq_constraints { view = "overview"
+  maps_to = "article :overview (drives later trade-off ADRs)"
+}
+interview_q iq_constraints {
+  view = "overview"
   question = "What is already fixed — mandated stack, compliance regime, budget, deadline, existing contracts?"
-  maps_to  = "adr (one per constraint that forecloses options)" }
-interview_q iq_decided { view = "overview"
+  maps_to = "adr (one per constraint that forecloses options)"
+}
+interview_q iq_decided {
+  view = "overview"
   question = "What decisions have already been made, and why?"
-  maps_to  = "adr (status :accepted, dated)" }
-interview_q iq_stakeholders { view = "overview"
-  question = "Who funds it, who approves changes, who builds it, who operates it, who gets paged?"
-  maps_to  = "stakeholder + raci_entry rows per activity" }
+  maps_to = "adr (status :accepted, dated)"
+}
 
-interview_q iq_personas { view = "personas"
+interview_q iq_personas {
+  view = "personas"
   question = "Who USES the system — every distinct kind of user, including service accounts and AI agents that consume it? (Not the people who build or operate it — those are view-1 stakeholders.)"
-  maps_to  = "persona (kind :human / :service / :ai_agent); builders/operators → stakeholder" }
-interview_q iq_persona_goals { view = "personas"
+  maps_to = "persona (kind :human / :service / :ai_agent); builders/operators → stakeholder"
+}
+interview_q iq_persona_goals {
+  view = "personas"
   question = "For each persona: what are they trying to get done? What volume of them do you expect?"
-  maps_to  = "persona.goals / persona.body" }
-interview_q iq_persona_access { view = "personas"
+  maps_to = "persona.goals / persona.body"
+}
+interview_q iq_persona_access {
+  view = "personas"
   question = "What SECURITY CONTROL gates each persona's access — SSO, approved signup, admin invite — and who approves? (Freely installing the software is not access control: no control means no access_grant blocks at all.)"
-  maps_to  = "persona access_grant (method, approver) — or nothing" }
-interview_q iq_use_cases { view = "personas"
+  maps_to = "persona access_grant (method, approver) — or nothing"
+}
+interview_q iq_use_cases {
+  view = "personas"
   question = "For each persona: what are the typical things they do with the system, end to end? Pick a selection broad enough to exercise most of their usage — each becomes a step-by-step flow (and doubles as a user-acceptance test)."
-  maps_to  = "use_case (steps, from -> to flow, preconditions, outcome)" }
+  maps_to = "use_case (steps, from -> to flow, preconditions, outcome)"
+}
 
-interview_q iq_systems { view = "context"
+interview_q iq_systems {
+  view = "context"
   question = "Which systems make up the solution — the boxes an outsider would see — with one line each?"
-  maps_to  = "system" }
-interview_q iq_externals_list { view = "context"
+  maps_to = "system"
+}
+interview_q iq_externals_list {
+  view = "context"
   question = "Which third-party systems does it talk to over a boundary to do its job (identity, payments, data feeds, notifications…)? Libraries it links against don't count (they're container technology), and where it is hosted/built comes later, in infrastructure."
-  maps_to  = "external_system (stub) + relation; hosting/CI/CDN → infra_node (view 5); linked libraries → container.technology" }
-interview_q iq_relations { view = "context"
+  maps_to = "external_system (stub) + relation; hosting/CI/CDN → infra_node (view 5); linked libraries → container.technology"
+}
+interview_q iq_relations {
+  view = "context"
   question = "For each connection: which direction, what protocol, what data crosses, sync or async?"
-  maps_to  = "relation (kind, protocol, data)" }
-interview_q iq_persona_usage { view = "context"
+  maps_to = "relation (kind, protocol, data)"
+}
+interview_q iq_persona_usage {
+  view = "context"
   question = "Which persona uses which system/container?"
-  maps_to  = "relation (persona → container, kind :uses)" }
+  maps_to = "relation (persona → container, kind :uses)"
+}
 
-interview_q iq_ext_owner { view = "externals"
+interview_q iq_ext_owner {
+  view = "externals"
   question = "Per external system: who owns/runs it (vendor, team), and how critical is an outage to you?"
-  maps_to  = "external_system.vendor / .criticality" }
-interview_q iq_ext_support { view = "externals"
+  maps_to = "external_system.vendor / .criticality"
+}
+interview_q iq_ext_support {
+  view = "externals"
   question = "Who do you call when it breaks — support contact and escalation path?"
-  maps_to  = "support_contact" }
-interview_q iq_ext_conn { view = "externals"
+  maps_to = "support_contact"
+}
+interview_q iq_ext_conn {
+  view = "externals"
   question = "Connection details per environment: URLs, IPs, queue names, auth method?"
-  maps_to  = "endpoint (kind url/ip/config)" }
-interview_q iq_ext_api { view = "externals"
+  maps_to = "endpoint (kind url/ip/config)"
+}
+interview_q iq_ext_api {
+  view = "externals"
   question = "Where do the API docs / OpenAPI specs / integration references live?"
-  maps_to  = "api_ref" }
-interview_q iq_ext_security { view = "externals"
+  maps_to = "api_ref"
+}
+interview_q iq_ext_security {
+  view = "externals"
   question = "What data classification crosses the boundary, and where do the secrets live?"
-  maps_to  = "security_note" }
+  maps_to = "security_note"
+}
 
-interview_q iq_containers { view = "systems"
+interview_q iq_containers {
+  view = "systems"
   question = "Per system: what are the independently deployable/runnable units — services, databases, web apps, CLIs, queues, batch jobs — with runtime/language for each?"
-  maps_to  = "container (kind, technology)" }
-interview_q iq_components { view = "systems"
+  maps_to = "container (kind, technology)"
+}
+interview_q iq_components {
+  view = "systems"
   question = "Inside each significant container: what are the major parts and their responsibilities?"
-  maps_to  = "component" }
-interview_q iq_code_upfront { view = "systems"
+  maps_to = "component"
+}
+interview_q iq_code_upfront {
+  view = "systems"
   question = "Is any public interface fixed up front — a DB schema, an API contract, a key protocol? (Code items are otherwise extractor territory once code exists.)"
-  maps_to  = "code_item (:db_schema / :api)"
-  required = false }
-interview_q iq_screens { view = "systems"
+  maps_to = "code_item (:db_schema / :api)"
+  required = false
+}
+interview_q iq_screens {
+  view = "systems"
   question = "For each user-facing container: every screen/page, what is on it, and how the screens flow into each other. Spec them out completely — wireframe each one."
-  maps_to  = "screen (wireframe body, nav_to)" }
-interview_q iq_cli_surface { view = "systems"
+  maps_to = "screen (wireframe body, nav_to)"
+}
+interview_q iq_cli_surface {
+  view = "systems"
   question = "For each CLI container: every command and subcommand, its arguments and flags, with a description of each — plus a terminal mock-up of the important outputs."
-  maps_to  = "cli_command (+ cli_arg / cli_flag children) per command; screen (terminal body) only for output mock-ups" }
-interview_q iq_tui_surface { view = "systems"
+  maps_to = "cli_command (+ cli_arg / cli_flag children) per command; screen (terminal body) only for output mock-ups"
+}
+interview_q iq_tui_surface {
+  view = "systems"
   question = "For each TUI container: every screen/panel, its widgets, and the navigation between them — mock each with terminal/TUI blocks."
-  maps_to  = "screen per panel (terminal/tui body, nav_to)" }
+  maps_to = "screen per panel (terminal/tui body, nav_to)"
+}
 
-interview_q iq_domain_objects { view = "domain"
+interview_q iq_domain_objects {
+  view = "domain"
   question = "What are the business objects in this system — the nouns the business itself uses when talking about it?"
-  maps_to  = "domain_object" }
-interview_q iq_domain_fields { view = "domain"
+  maps_to = "domain_object"
+}
+interview_q iq_domain_fields {
+  view = "domain"
   question = "Per object: which fields matter, and how do objects relate (one-to-many, references)?"
-  maps_to  = "field + domain_rel children" }
-interview_q iq_domain_rules { view = "domain"
+  maps_to = "field + domain_rel children"
+}
+interview_q iq_domain_rules {
+  view = "domain"
   question = "What invariants or lifecycle rules must always hold?"
-  maps_to  = "domain_object.body / standard (kind :business)" }
-interview_q iq_glossary { view = "domain"
+  maps_to = "domain_object.body / standard (kind :business)"
+}
+interview_q iq_glossary {
+  view = "domain"
   question = "Which terms does the team use that an outsider would misread?"
-  maps_to  = "term" }
+  maps_to = "term"
+}
 
-interview_q iq_environments { view = "infrastructure"
+interview_q iq_environments {
+  view = "infrastructure"
   question = "Which environments exist (local, CI, dev, staging, prod, DR) and in what promotion order?"
-  maps_to  = "environment (order, promotes_to)" }
-interview_q iq_infra_where { view = "infrastructure"
+  maps_to = "environment (order, promotes_to)"
+}
+interview_q iq_infra_where {
+  view = "infrastructure"
   question = "Where does each container run per environment — cloud/k8s/VMs/serverless/SaaS — and what is shared between environments?"
-  maps_to  = "infra_node (parent nesting, environments) + deploy_target" }
-interview_q iq_infra_ha { view = "infrastructure"
+  maps_to = "infra_node (parent nesting, environments) + deploy_target"
+}
+interview_q iq_infra_ha {
+  view = "infrastructure"
   question = "What are the availability/scaling arrangements, and what gets backed up, how?"
-  maps_to  = "infra_node.notes / article :infrastructure"
-  required = false }
+  maps_to = "infra_node.notes / article :infrastructure"
+  required = false
+}
 
-interview_q iq_repos { view = "build_deploy"
+interview_q iq_repos {
+  view = "build_deploy"
   question = "One repo or many? What lives where inside them?"
-  maps_to  = "repository (+ repo_path rows)" }
-interview_q iq_ci { view = "build_deploy"
+  maps_to = "repository (+ repo_path rows)"
+}
+interview_q iq_ci {
+  view = "build_deploy"
   question = "What CI runs on a change, in what stages, and what gates promotion to each environment? Who approves?"
-  maps_to  = "pipeline (+ stages: gates, next, environment)" }
-interview_q iq_versioning { view = "build_deploy"
+  maps_to = "pipeline (+ stages: gates, next, environment)"
+}
+interview_q iq_versioning {
+  view = "build_deploy"
   question = "How are versions numbered, where are artifacts stored, and what shipped in past releases? (Releases are extractor territory — git tags / the platform's releases API.)"
-  maps_to  = "release (via an extractor) + pipeline.body / article :build_deploy" }
-interview_q iq_localdev { view = "build_deploy"
+  maps_to = "release (via an extractor) + pipeline.body / article :build_deploy"
+}
+interview_q iq_localdev {
+  view = "build_deploy"
   question = "How does a new developer get from clone to running tests?"
-  maps_to  = "sop (kind :dev) or repository.body" }
+  maps_to = "sop (kind :dev) or repository.body"
+}
 
-interview_q iq_documentation { view = "documentation"
+interview_q iq_documentation {
+  view = "documentation"
   question = "What will the project publish to be read — docs site, rendered book, agent skill, README — and for each: where is the source authored, what builds it, where is it hosted, and which personas is it for?"
-  maps_to  = "doc_item (source, built_by, hosted_on, url, audience)" }
+  maps_to = "doc_item (source, built_by, hosted_on, url, audience)"
+}
 
-interview_q iq_sops { view = "sysadmin"
+interview_q iq_sops {
+  view = "sysadmin"
   question = "What routine operations exist — deploys, secret rotation, restores, user admin?"
-  maps_to  = "sop (kind :operations / :runbook)" }
-interview_q iq_incidents { view = "sysadmin"
+  maps_to = "sop (kind :operations / :runbook)"
+}
+interview_q iq_incidents {
+  view = "sysadmin"
   question = "What happens when it breaks at 3am — alerting destination, incident steps, escalation?"
-  maps_to  = "sop (kind :incident)" }
-interview_q iq_changes { view = "sysadmin"
-  question = "How are changes approved and rolled back?"
-  maps_to  = "sop (kind :change)" }
+  maps_to = "sop (kind :incident)"
+}
 
-interview_q iq_standards { view = "standards"
+interview_q iq_standards {
+  view = "standards"
   question = "What coding/style standards apply, and what enforces each (CI, linter, review)?"
-  maps_to  = "standard (kind :coding / :style) + rule (enforced_by)" }
-interview_q iq_biz_rules { view = "standards"
-  question = "Which business or regulatory rules constrain behaviour (retention, audit, licensing)?"
-  maps_to  = "standard (kind :business / :security)" }
+  maps_to = "standard (kind :coding / :style) + rule (enforced_by)"
+}
 
-// ── Scan probes (document an existing system) ────────────────────────────
+# ── Scan probes (document an existing system) ────────────────────────────
 
-scan_probe sp_repo { view = "overview"
+scan_probe sp_repo {
+  view = "overview"
   look_at = "README, docs/, ADR folders, manifests (Cargo.toml / package.json / pyproject / go.mod), top-level directory names"
-  emit    = "wad summary draft, candidate systems/containers, repository (+ structure), existing decisions → adr"
-  ask_if_missing = "Which repositories are in scope, and is there prior architecture documentation anywhere?" }
-scan_probe sp_ci { view = "build_deploy"
+  emit = "wad summary draft, candidate systems/containers, repository (+ structure), existing decisions → adr"
+  ask_if_missing = "Which repositories are in scope, and is there prior architecture documentation anywhere?"
+}
+scan_probe sp_ci {
+  view = "build_deploy"
   look_at = ".github/workflows / .gitlab-ci.yml / Jenkinsfile, Dockerfiles, compose files, k8s manifests, IaC (terraform/, ansible/)"
-  emit    = "pipeline (+ stages from jobs and needs-edges), environment candidates, infra_node candidates — ideal first extractor"
-  ask_if_missing = "Who approves promotion between environments, and are there environments not represented in the repo?" }
-scan_probe sp_entry { view = "systems"
+  emit = "pipeline (+ stages from jobs and needs-edges), environment candidates, infra_node candidates — ideal first extractor"
+  ask_if_missing = "Who approves promotion between environments, and are there environments not represented in the repo?"
+}
+scan_probe sp_entry {
+  view = "systems"
   look_at = "main functions / entry points, service definitions, listen ports, Procfile / systemd units / serverless configs"
-  emit    = "container per runnable unit (kind, technology), component per major module"
-  ask_if_missing = "Are any of these deployed together as one unit, or is anything here dead code?" }
-scan_probe sp_externals { view = "externals"
-  look_at = "config files, .env.example, outbound URLs and hostnames in code, SDK/client dependencies — a dependency is EVIDENCE of an external, never the external itself: the Stripe SDK points at the Stripe service; SDL2 points at nothing"
-  emit    = "external_system stubs + relation edges for the remote systems the running code talks to across a boundary. Classify first: a linked/vendored library or framework is the owning container's `technology` (no external, no relation); anything that hosts/builds/ships the system (cloud, CI, CDN, git host, package registry) is an infra_node. If nothing sits on the other end of a network boundary at runtime, emit nothing — a self-contained system honestly has no externals"
-  ask_if_missing = "For each external: vendor contract owner, support contact, and the security posture — never inferable from code." }
-scan_probe sp_data { view = "domain"
+  emit = "container per runnable unit (kind, technology), component per major module"
+  ask_if_missing = "Are any of these deployed together as one unit, or is anything here dead code?"
+}
+scan_probe sp_data {
+  view = "domain"
   look_at = "migrations/, ORM models, schema.sql, protobuf/GraphQL schemas"
-  emit    = "domain_object (+ fields, relations) and/or a code_item :db_schema — write an extractor rather than hand-copying"
-  ask_if_missing = "Which of these tables/types are core domain vs plumbing?" }
-scan_probe sp_infra { view = "infrastructure"
+  emit = "domain_object (+ fields, relations) and/or a code_item :db_schema — write an extractor rather than hand-copying"
+  ask_if_missing = "Which of these tables/types are core domain vs plumbing?"
+}
+scan_probe sp_infra {
+  view = "infrastructure"
   look_at = "IaC state, cloud config, DNS zones, deployment target names in CI, secret-store references"
-  emit    = "environment, infra_node (nested via parent), deploy_target rows"
-  ask_if_missing = "What infrastructure was provisioned outside the repo (consoles, ClickOps), and what is shared across environments?" }
-scan_probe sp_personas { view = "personas"
+  emit = "environment, infra_node (nested via parent), deploy_target rows"
+  ask_if_missing = "What infrastructure was provisioned outside the repo (consoles, ClickOps), and what is shared across environments?"
+}
+scan_probe sp_personas {
+  view = "personas"
   look_at = "auth/RBAC code (role enums, permission tables), issue templates, CODEOWNERS, on-call/rota docs"
-  emit    = "persona per distinct role + access_grant, raci_entry candidates"
-  ask_if_missing = "Who are the real user populations behind these roles, and how is access actually granted?" }
-scan_probe sp_standards { view = "standards"
+  emit = "persona per distinct role + access_grant, raci_entry candidates"
+  ask_if_missing = "Who are the real user populations behind these roles, and how is access actually granted?"
+}
+scan_probe sp_standards {
+  view = "standards"
   look_at = "linter/formatter configs, CONTRIBUTING.md, style docs, CI gate steps"
-  emit    = "standard (+ rule rows with enforced_by from the CI step that runs it)"
-  ask_if_missing = "Are there unwritten rules reviewers enforce that no tool checks?" }
-scan_probe sp_sops { view = "sysadmin"
+  emit = "standard (+ rule rows with enforced_by from the CI step that runs it)"
+  ask_if_missing = "Are there unwritten rules reviewers enforce that no tool checks?"
+}
+scan_probe sp_sops {
+  view = "sysadmin"
   look_at = "runbooks/, ops/ docs, Makefile/justfile targets, cron definitions, alerting config"
-  emit    = "sop per procedure (automation = the target/script that runs it)"
-  ask_if_missing = "What do you actually do when X breaks — walk me through the last incident?" }
-scan_probe sp_screens { view = "systems"
+  emit = "sop per procedure (automation = the target/script that runs it)"
+  ask_if_missing = "What do you actually do when X breaks — walk me through the last incident?"
+}
+scan_probe sp_screens {
+  view = "systems"
   look_at = "route tables, page/component directories in UI code, navigation config"
-  emit    = "screen per surface (route, nav_to from links); wireframes sketched from the real layout"
-  ask_if_missing = "Which screens matter enough to document, and who uses each?" }
-scan_probe sp_docs { view = "documentation"
+  emit = "screen per surface (route, nav_to from links); wireframes sketched from the real layout"
+  ask_if_missing = "Which screens matter enough to document, and who uses each?"
+}
+scan_probe sp_docs {
+  view = "documentation"
   look_at = "docs/ folders, static-site configs, README links and badges, publishing workflows (Pages / Netlify / Read the Docs)"
-  emit    = "doc_item per published artefact (source, built_by from the rendering container, hosted_on from the deploy workflow, url)"
-  ask_if_missing = "Is documentation published anywhere outside the repo — wikis, hosted API docs, internal portals — and who maintains it?" }
-scan_probe sp_gaps { view = "overview"
+  emit = "doc_item per published artefact (source, built_by from the rendering container, hosted_on from the deploy workflow, url)"
+  ask_if_missing = "Is documentation published anywhere outside the repo — wikis, hosted API docs, internal portals — and who maintains it?"
+}
+scan_probe sp_gaps {
+  view = "overview"
   look_at = "everything still empty after the probes above"
-  emit    = "targeted mini-interview using the interview question bank, restricted to the gaps; unanswered items become open questions in an article, never guesses"
-  ask_if_missing = "Why is the system the way it is? (back-fill the load-bearing decisions as ADRs)" }
+  emit = "targeted mini-interview using the interview question bank, restricted to the gaps; unanswered items become open questions in an article, never guesses"
+  ask_if_missing = "Why is the system the way it is? (back-fill the load-bearing decisions as ADRs)"
+}
 
-// ── The two rendering facts ───────────────────────────────────────────────
+# ── The two rendering facts ───────────────────────────────────────────────
 
-let checklist_views = [
-  { key: "overview", name: "Overview / decisions" },
-  { key: "personas", name: "Personas" },
-  { key: "context", name: "System context" },
-  { key: "externals", name: "External systems" },
-  { key: "systems", name: "Systems (C4)" },
-  { key: "domain", name: "Domain" },
-  { key: "infrastructure", name: "Infrastructure" },
-  { key: "build_deploy", name: "Build & deploy" },
-  { key: "documentation", name: "Documentation" },
-  { key: "sysadmin", name: "System admin" },
-  { key: "standards", name: "Standards & rules" },
-]
+let checklist_views = [{ key: "overview", name: "Overview / decisions" }, { key: "personas", name: "Personas" }, { key: "context", name: "System context" }, { key: "externals", name: "External systems" }, { key: "systems", name: "Systems (C4)" }, { key: "domain", name: "Domain" }, { key: "infrastructure", name: "Infrastructure" }, { key: "build_deploy", name: "Build & deploy" }, { key: "documentation", name: "Documentation" }, { key: "sysadmin", name: "System admin" }, { key: "standards", name: "Standards & rules" }]
 
 fact interview_question_bank {
-  title   = "Interview question bank (per view)"
+  title = "Interview question bank (per view)"
   related = [designing_new_system, scan_checklist]
   audience = :both
   body {
-    p "The questions the design interview asks, in interview order. Each answer becomes the block in its *maps to* column immediately — write, `wcl check`, then move on. Optional rows are asked only when relevant. (These are data — `interview_q` blocks — so tooling can walk them.)"
-    wdoc_repeater { each = checklist_views  as = :v
-      wdoc_repeater { each = match len(filter(interview_qs, fn(q: InterviewQ) -> bool { q.view == v.key })) { 0 => [], _ => [true] }  as = :_h
+    p <<DOC
+      The questions the design interview asks, in interview order. Each answer becomes the block in
+      its *maps to* column immediately — write, `wcl check`, then move on. Optional rows are asked
+      only when relevant. (These are data — `interview_q` blocks — so tooling can walk them.)
+    DOC
+    wdoc_repeater {
+      each = checklist_views
+      as = :v
+      wdoc_repeater {
+        each = match len(filter(interview_qs, fn(q: InterviewQ) -> bool { q.view == v.key })) {
+          0 => [],
+          _ => [true],
+        }
+        as = :_h
         h2 $"${v.name}"
         table {
           header = ["Question", "Maps to", ""]
-          rows = map(filter(interview_qs, fn(q: InterviewQ) -> bool { q.view == v.key }), fn(q: InterviewQ) -> list<utf8> {
-            [q.question, $"`${q.maps_to}`", match q.required { true => "", _ => "_optional_" }]
-          })
+          rows = map(filter(interview_qs, fn(q: InterviewQ) -> bool { q.view == v.key }), fn(q: InterviewQ) -> list<utf8> { [q.question, $"`${q.maps_to}`", match q.required {
+            true => "",
+            _ => "_optional_",
+          }] })
         }
       }
     }
@@ -231,16 +318,18 @@ fact interview_question_bank {
 }
 
 fact scan_checklist {
-  title   = "Codebase scan checklist (per view)"
+  title = "Codebase scan checklist (per view)"
   related = [documenting_existing_system, interview_question_bank]
   audience = :both
   body {
-    p "The probes of the codebase scan, in scan order (cheap, high-signal sources first). Each row: what to read → what to emit → what to ask the user when the code can't answer. (These are data — `scan_probe` blocks.)"
+    p <<DOC
+      The probes of the codebase scan, in scan order (cheap, high-signal sources first). Each row:
+      what to read → what to emit → what to ask the user when the code can't answer. (These are data
+      — `scan_probe` blocks.)
+    DOC
     table {
       header = ["View", "Look at", "Emit", "Ask if missing"]
-      rows = map(scan_probes, fn(sp: ScanProbe) -> list<utf8> {
-        [sp.view, sp.look_at, sp.emit, sp.ask_if_missing ?? "—"]
-      })
+      rows = map(scan_probes, fn(sp: ScanProbe) -> list<utf8> { [sp.view, sp.look_at, sp.emit, sp.ask_if_missing ?? "—"] })
     }
   }
 }

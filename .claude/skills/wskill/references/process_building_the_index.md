@@ -21,7 +21,10 @@ index commands {
 }
 ```
 
-Add an `index` block (in `data/indexes.wcl` or its own file). Give it a `name` — the sidebar heading — and a `summary`, then list the unit ids it groups in `related`. Each id resolves to a link to that unit's page; an id that matches no unit is simply dropped.
+Add an `index` block (in `data/indexes.wcl` or its own file). Give it a `name` — the sidebar
+heading — and a `summary`, then list the unit ids it groups in `related`. Each id resolves
+to a link to that unit's page; an id that matches no unit is simply dropped.
+
 
 ### Step 2: Nest sub-indexes
 
@@ -33,19 +36,23 @@ index reference {
 }
 ```
 
-An index may hold child `index` blocks one level deep — write them inside the parent. The book renders them nested under the parent chapter. Document gathering is direct-only, so a nested index is not also listed at the top level.
+An index may hold child `index` blocks one level deep — write them inside the parent. The
+book renders them nested under the parent chapter. Document gathering is direct-only, so a
+nested index is not also listed at the top level.
+
 
 ### Step 3: Choose the audience
 
-Indexes default to `:book`. Set `audience = :ai` (or `:both`) on an index meant to steer the AI skill — `:ai`/`:both` indexes drive `SKILL.md`, while `:book` indexes shape only the book sidebar. See \*Setting up AI skill generation\*.
+Indexes default to `:book`. Set `audience = :ai` (or `:both`) on an index meant to steer the
+AI skill — `:ai`/`:both` indexes drive `SKILL.md`, while `:book` indexes shape only the book
+sidebar. See \*Setting up AI skill generation\*.
+
 
 > [!TIP]
 > **Verification**
 > Each `index` appears as a chapter in the book sidebar (and, when `:ai`/`:both`, as a section in `SKILL.md`), listing links to the units it pins.
 
 ## Related
-
-- [Index](../references/concept_index.md)
 
 - [Structured data](../references/concept_structured_data.md)
 

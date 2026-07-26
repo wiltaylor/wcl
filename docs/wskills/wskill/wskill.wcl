@@ -63,12 +63,6 @@ artifact ai_skill {
   entry = "wdoc/skill/main.wcl"
   output = "out/skill"
 }
-artifact training {
-  kind = :training
-  entry = "wdoc/training/main.wcl"
-  output = "out/training"
-  summary = "Build your first wskill — a hands-on lesson series."
-}
 
 # No external sources — this wskill is self-describing (it documents the format it
 # is built with), so there is nothing upstream to track for the update workflow.

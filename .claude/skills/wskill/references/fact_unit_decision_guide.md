@@ -15,12 +15,9 @@ An idea is never an entity. A table of values is never an entity.
 | The note is… | Kind | Test |
 | --- | --- | --- |
 | A way of thinking, a pattern, a mental model, an explanation of \*why\* | `concept` | You'd say "the reader must **understand** this" |
-| A dated finding from an investigation — versions, API specifics, a verified gotcha | `research` | It answers a question you investigated and could go stale when the subject moves |
 | A person, an organisation, a tool, an application, a file format, a place | `entity` | It has a proper name and you could point at it; a kind from `schema/kinds.wcl` fits |
 | A default value, a limit, a table of options, a version matrix | `fact` | Nobody argues with it — you'd cite it, not explain it |
 | A task someone performs: install, upgrade, review, publish | `process` | It has steps in an order and a way to verify it worked |
-| A curated grouping that arranges other units | `index` | It holds no knowledge of its own — only `related` links |
-| Code or commands that illustrate another unit | `example` | It makes no sense without the unit it belongs to (`unit = <id>`) |
 
 ## Wrong vs right
 
@@ -31,12 +28,6 @@ An idea is never an entity. A table of values is never an entity.
 | `concept installing` describing install steps | `process installing` with real `step`s | Steps in an order are a process — a concept can't be verified or followed |
 | `fact git` describing what Git is | `entity git { kind = :software }` | A named piece of software is exactly what entities are for |
 | One giant `concept overview` covering everything | Several atomic units linked via `related` | One idea per unit — split until each note holds exactly one |
-
-Two follow-up rules. First: when a note seems to be two kinds at once, it is two notes —
-split it and link them with `related`. Second: `kind` on an entity comes from the closed
-vocabulary in `schema/kinds.wcl`; if no kind fits and you cannot justify adding one, that
-is the format telling you the note is not an entity.
-
 
 ## Related
 

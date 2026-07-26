@@ -20,7 +20,10 @@ Render the skill projection and install it where an agent loads it.
 $ just skill-build          # → out/skill/  (SKILL.md + references/)
 ```
 
-`wcl wdoc skill` writes `SKILL.md`, one `references/*.md` per `:ai`/`:both` unit, and any bundled `scripts/`/`assets/` files. The build fails loudly on broken links or schema errors — fix and re-run.
+`wcl wdoc skill` writes `SKILL.md`, one `references/*.md` per `:ai`/`:both` unit, and any
+bundled `scripts/`/`assets/` files. The build fails loudly on broken links or schema errors
+— fix and re-run.
+
 
 ### Step 2: Install into the host repo
 
@@ -28,11 +31,20 @@ $ just skill-build          # → out/skill/  (SKILL.md + references/)
 $ cp -r out/skill <repo>/.claude/skills/<name>
 ```
 
-Copy the rendered folder into the target repo's `.claude/skills/<name>/`. Use the `name` from the generated SKILL.md frontmatter — that is what the agent invokes. If the render has an `agents/` folder (the skill ships subagents), also copy `agents/*.md` into the repo's `.claude/agents/` — subagent files load at session start, so restart after installing. A repo that hosts the wskill source usually wraps this in its own just recipe so the installed copy regenerates with the model.
+Copy the rendered folder into the target repo's `.claude/skills/<name>/`. Use the `name`
+from the generated SKILL.md frontmatter — that is what the agent invokes. If the render has
+an `agents/` folder (the skill ships subagents), also copy `agents/*.md` into the repo's
+`.claude/agents/` — subagent files load at session start, so restart after installing. A
+repo that hosts the wskill source usually wraps this in its own just recipe so the installed
+copy regenerates with the model.
+
 
 ### Step 3: Verify the agent loads it
 
-Open an agent session in the target repo and ask something squarely inside the skill's description. The agent should invoke the skill and answer citing its reference pages. If it never triggers, sharpen the `description` in the `skill` block — it is the trigger text.
+Open an agent session in the target repo and ask something squarely inside the skill's
+description. The agent should invoke the skill and answer citing its reference pages. If it
+never triggers, sharpen the `description` in the `skill` block — it is the trigger text.
+
 
 > [!TIP]
 > **Verification**
@@ -43,9 +55,5 @@ Open an agent session in the target repo and ask something squarely inside the s
 - [Anatomy of the AI skill](../references/concept_skill_anatomy.md)
 
 - [Setting up AI skill generation](../references/process_setup_ai_skill.md)
-
-- [Claude Code](../references/entity_claude_code.md)
-
-- [The standard just recipes](../references/fact_justfile_recipes.md)
 
 [← Back to SKILL.md](../SKILL.md)

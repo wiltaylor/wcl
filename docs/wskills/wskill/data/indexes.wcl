@@ -22,14 +22,14 @@ index authoring {
   name = "Authoring"
   summary = "Capturing knowledge: decomposition, classification, the capture loop, and the tools."
   audience = :both
-  related = [decomposing_information, unit_decision_guide, adding_content, capturing_research, researching_a_topic, building_the_index, folder_layout, authoring_cli, assets]
+  related = [decomposing_information, unit_decision_guide, folder_layout]
 }
 
 index views_idx {
   name = "Views & Rendering"
   summary = "The four views, what controls what renders where, and how to build and install each."
   audience = :both
-  related = [views, audience_control, visibility_scoping, skill_anatomy, setup_ai_skill, installing_the_skill, presentation_view, training_view, justfile_recipes, collections_registries, claude_code]
+  related = [visibility_scoping, skill_anatomy, setup_ai_skill, installing_the_skill, presentation_view, training_view]
 }
 
 index extending_idx {
@@ -42,7 +42,7 @@ index extending_idx {
 index wskill_reference {
   name = "Reference"
   summary = "The wskill schema and the unit kinds it captures."
-  related = [concept, entity, fact, process, index]
+  related = [concept, entity, fact, process]
 
   index schema_blocks {
     name = "Schema blocks"
