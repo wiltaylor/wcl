@@ -28,6 +28,30 @@ SH
     expected = "`wcl check` prints `OK` — the scaffolded model is valid before you add any content."
     hint     = "`wcl init wskill` prompts for a topic id, name, and summary; accept the defaults with `--defaults` if you just want to explore."
   }
+  check which_zone_is_generated {
+    prompt  = "Which part of a scaffolded wskill is generated and must not be hand-edited?"
+    related = [folder_layout]
+    choice base_schema {
+      label   = "`schema/base.wcl`"
+      correct = true
+      note    = "Right — it is synced from the canonical scaffold heredoc, so local edits are overwritten."
+    }
+    choice kinds {
+      label = "`schema/kinds.wcl`"
+      note  = "This one is yours — it holds the topic's own entity and artifact vocabularies."
+    }
+    choice data {
+      label = "`data/`"
+      note  = "`data/` is entirely yours; it is where the content lives."
+    }
+    explanation = "`base.wcl` is the shared wskill schema. Topic-specific vocabulary belongs in `kinds.wcl` and `extensions.wcl`, which the sync leaves alone."
+  }
+  check why_check_empty {
+    prompt  = "Why validate the model with `wcl check` before writing any content?"
+    kind    = :text
+    rubric  = "A good answer notes that it proves the scaffold is sound and the toolchain works, so any later error is caused by the content you added rather than by the setup — a known-good baseline to edit from."
+    related = [creating_a_wskill]
+  }
 }
 
 lesson capture_first_units {
@@ -68,6 +92,30 @@ SH
     expected  = "One `concept`, one `entity` (with a `kind` symbol that isn't a stretch), one `fact` with a table body — and `wcl check` stays green."
     hint      = "If no `EntityKind` fits without lying, the note isn't an entity — re-run it through the decision guide."
   }
+  check classify_a_tool {
+    prompt  = "You are documenting a command-line tool with a version, a homepage, and a maintainer. Which unit kind fits?"
+    related = [unit_decision_guide, entity]
+    choice entity_kind {
+      label   = "`entity` — a concrete named thing"
+      correct = true
+      note    = "Right — a named tool with attributes is the textbook entity, provided an `EntityKind` fits it honestly."
+    }
+    choice concept_kind {
+      label = "`concept` — an idea the reader must understand"
+      note  = "A concept explains an idea. The tool itself is a thing, not an idea."
+    }
+    choice fact_kind {
+      label = "`fact` — a value or lookup table"
+      note  = "A fact holds values. Its version is a value; the tool as a whole is not."
+    }
+    explanation = "Run every note through the decision guide: idea to concept, named thing to entity, value or table to fact, repeatable task to procedure."
+  }
+  check why_not_default_entity {
+    prompt  = "The decision guide warns you never to default to `entity`. Why does that rule exist?"
+    kind    = :text
+    rubric  = "A good answer explains that `entity` is the easiest kind to reach for, so defaulting to it collects notes that are really concepts or facts; the give-away is needing an `EntityKind` that does not fit without stretching. The cost is a book of shapeless things whose ideas are never actually explained."
+    related = [unit_decision_guide, decomposing_information]
+  }
 }
 
 lesson processes_and_index {
@@ -105,6 +153,30 @@ index basics {
 WCL
     expected = "The book nav shows a \"Basics\" branch containing your units, and the procedure's page opens with a flowchart above the steps."
   }
+  check what_makes_nav {
+    prompt  = "A unit renders its own page but never appears in the book's sidebar. What is missing?"
+    related = [index, building_the_index]
+    choice not_pinned {
+      label   = "No `index` pins it"
+      correct = true
+      note    = "Right — the nav is the curated index tree, so an unpinned unit stays reachable by link but invisible in the sidebar."
+    }
+    choice wrong_audience {
+      label = "Its `audience` excludes the book"
+      note  = "Audience routes between the book and the skill. An `:ai` unit would render no book page at all — but this one does."
+    }
+    choice missing_related {
+      label = "It has no `related` links"
+      note  = "`related` builds cross-links between units; the sidebar comes from indexes."
+    }
+    explanation = "Indexes are the deliberate shape of the topic. Pinning is an editorial act — what belongs in the nav is a smaller set than what exists."
+  }
+  check why_verification {
+    prompt  = "Every `procedure` carries a `verification` line. What does it buy that the steps alone do not?"
+    kind    = :text
+    rubric  = "A good answer says the steps describe what to do while the verification describes the observable end state — how you know it actually worked. Without it a reader can complete every step and still not know whether the task succeeded, and an agent has no success condition to check against."
+    related = [process]
+  }
 }
 
 lesson ship_the_skill {
@@ -132,6 +204,30 @@ cp -r out/skill <repo>/.claude/skills/my-topic
 SH
     expected = "`.claude/skills/my-topic/SKILL.md` lists your index as a Reference section, and an agent session in that repo can answer from the skill's pages."
     hint      = "If the agent never invokes the skill, sharpen the `description` in the skill block — it is what the agent matches requests against."
+  }
+  check default_audience {
+    prompt  = "You add a new `concept` and set no `audience`. Where does it render?"
+    related = [audience_control]
+    choice book_only {
+      label   = "The book only"
+      correct = true
+      note    = "Right — every unit defaults to `:book`, so the skill is curated UP from nothing rather than filtered down."
+    }
+    choice both {
+      label = "Both the book and the skill"
+      note  = "That is `:both`, and it has to be asked for explicitly."
+    }
+    choice neither {
+      label = "Neither, until it is pinned"
+      note  = "Pinning controls the nav, not whether a page renders."
+    }
+    explanation = "Curating up is the point: an agent's context is scarce, so each unit must earn its place in the skill with an explicit `:both` or `:ai`."
+  }
+  check curate_up {
+    prompt  = "Why does the skill curate up from nothing instead of shipping every unit the book has?"
+    kind    = :text
+    rubric  = "A good answer centres on the agent's limited context: everything shipped competes for attention, so a skill that includes the whole book buries what matters. Curating up forces a deliberate choice about what an agent actually needs, and the `:ai`/`:both` indexes become its entry points."
+    related = [audience_control, skill_anatomy]
   }
 }
 
@@ -163,6 +259,30 @@ just presentation-build
 SH
     expected = "`out/presentation/index.html` opens as a deck: a generated title slide plus your three slides showing their units' headlines."
   }
+  check what_ships_a_view {
+    prompt  = "You have authored lessons under `data/training/`, but no course renders. What actually makes the view ship?"
+    related = [views, training_view]
+    choice artifact_block {
+      label   = "An `artifact { kind = :training … }` in `wskill.wcl`"
+      correct = true
+      note    = "Right — the artifact declares the view exists and names its entry file. Data alone renders nothing."
+    }
+    choice data_alone {
+      label = "Authoring the lesson data is enough"
+      note  = "The data gathers into the model, but nothing projects it until a view is declared."
+    }
+    choice audience_flag {
+      label = "Setting `audience = :both` on the lessons"
+      note  = "Audience routes between the book and the skill; lessons carry no audience at all."
+    }
+    explanation = "Both optional views work the same way: declare the `artifact`, import the data, and render the projection. Each part is opt-in."
+  }
+  check deck_or_course {
+    prompt  = "A colleague asks whether their topic needs a deck, a course, or neither. How would you help them decide?"
+    kind    = :text
+    rubric  = "A good answer separates the jobs: a deck INTRODUCES (short, features existing units, for someone deciding whether to care), a course TEACHES (ordered, hands-on, for a newcomer working through the topic for the first time), and the book REFERENCES (for someone who already knows the topic). Neither optional view is worth its maintenance unless the topic has a real audience for that job."
+    related = [views, presentation_view, training_view]
+  }
 }
 
 lesson keep_it_alive {
@@ -191,5 +311,29 @@ wcl wdoc comments . --format json
 wcl wdoc comments . resolve <id>
 SH
     expected = "The comment appears in the JSON list with a page and locator, and disappears after resolve."
+  }
+  check review_actor {
+    prompt  = "In the review handshake, who is blocked waiting for whom?"
+    related = [reviewing_a_wskill]
+    choice agent_waits {
+      label   = "The agent waits for the reviewer to send"
+      correct = true
+      note    = "Right — `wcl wdoc review` blocks until the reviewer sends, then prints the comments to act on."
+    }
+    choice reviewer_waits {
+      label = "The reviewer waits for the agent to finish"
+      note  = "The reviewer works at their own pace in the browser; nothing blocks them."
+    }
+    choice neither {
+      label = "Neither — comments are polled on a timer"
+      note  = "The handshake is explicit rather than a poll, so the agent acts on a complete round of review."
+    }
+    explanation = "The loop is deliberate: review a whole round, send once, let the agent work through the comments and resolve them by id, then rebuild and review again."
+  }
+  check sources_drive_updates {
+    prompt  = "What role do `source` blocks play when a topic drifts out of date?"
+    kind    = :text
+    rubric  = "A good answer explains that a source records where authoritative information lives and when it was last checked, so an update sweep has a worklist rather than a re-read of everything: walk the sources, refresh what changed upstream, update the units that depended on them, and bump the topic version."
+    related = [updating_a_wskill]
   }
 }

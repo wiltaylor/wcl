@@ -35,6 +35,30 @@ SH
     expected = "`out/index.html` renders the heading and formatted paragraph, and under `serve` a saved edit shows up after a browser refresh."
     hint     = "No `site` block is needed yet — a lone page renders standalone. Sites arrive in the next lesson."
   }
+  check what_the_import_does {
+    prompt  = "What does `import <wdoc.wcl>` at the top of a document do?"
+    related = [overview, pages]
+    choice vocabulary {
+      label   = "Brings in the whole wdoc block vocabulary"
+      correct = true
+      note    = "Right — `page`, `h1`, `p`, `diagram` and the rest all arrive with that one line."
+    }
+    choice output_dir {
+      label = "Tells the build where to write the output"
+      note  = "The output directory comes from `--out` on the command line."
+    }
+    choice theme {
+      label = "Applies the default theme"
+      note  = "Theming is a `site` field; the import is about vocabulary."
+    }
+    explanation = "It is an angle-bracket system import: the host registers wdoc's stdlib, so the document opts into every block kind at once."
+  }
+  check build_versus_serve {
+    prompt  = "When would you reach for `wcl wdoc serve` instead of `wcl wdoc build`?"
+    kind    = :text
+    rubric  = "A good answer frames it as the authoring loop versus the finished artefact: `serve` watches the source and re-renders as you edit, so it is what you keep open while writing, while `build` renders once into a directory you can publish or inspect. Both consume the same document, so nothing about the output differs in kind."
+    related = [build_serve]
+  }
 }
 
 lesson book_site {
@@ -83,6 +107,30 @@ WCL
     expected = "The build renders a fixed left sidebar with an Intro chapter and a Guide group containing Setup, and the in-page links navigate between the two pages."
     hint     = "If the build fails with an unknown-page error, the `toc` or a link names a page id that doesn't exist — page ids, not titles, are the link targets."
   }
+  check broken_page_link {
+    prompt  = "You rename a page but leave a `[text](old_name)` link pointing at the old name. What happens?"
+    related = [sites, pages]
+    choice build_error {
+      label   = "The build fails — page links are validated"
+      correct = true
+      note    = "Right — cross-page links are checked at build time, so navigation cannot silently rot."
+    }
+    choice dead_link {
+      label = "It builds, and the link 404s for readers"
+      note  = "That is the failure mode wdoc's validation exists to prevent."
+    }
+    choice auto_fix {
+      label = "The link is repaired automatically"
+      note  = "wdoc reports the problem rather than guessing what you meant."
+    }
+    explanation = "The same rule covers a `toc` chapter pointing at an unknown page — both are build errors, not warnings."
+  }
+  check chapter_without_page {
+    prompt  = "A `chapter` in a `toc` can omit `page =`. What is such a chapter for?"
+    kind    = :text
+    rubric  = "A good answer says it is a grouping heading: it organises the nested chapters under it without being a destination of its own. That lets the sidebar express structure — sections that exist only to group — separately from the pages that actually render."
+    related = [sites, templates]
+  }
 }
 
 lesson everyday_formatting {
@@ -119,6 +167,30 @@ page style_tour { sites = [:docs]
 WCL
     expected = "The page shows the styled inline segments, two callouts with distinct accent colours and icons, and two paragraphs sitting side by side."
     hint     = "Italic is `_underscores_` — asterisk pairs only mean bold. One `widths` entry per column child."
+  }
+  check italic_syntax {
+    prompt  = "Which inline pattern makes text italic?"
+    related = [formatting]
+    choice underscores {
+      label   = "`_italic_` — underscores"
+      correct = true
+      note    = "Right — wdoc uses underscores for italic, not single asterisks."
+    }
+    choice single_star {
+      label = "`*italic*` — single asterisks"
+      note  = "Asterisks are the bold pattern in doubled form; single asterisks are not the italic marker here."
+    }
+    choice backticks {
+      label = "`` `italic` `` — backticks"
+      note  = "Backticks render inline code."
+    }
+    explanation = "Inline patterns light up automatically wherever prose renders — in paragraphs, table cells, list items and callout bodies alike."
+  }
+  check text_block_versus_p {
+    prompt  = "When does a `text` block earn its keep over a plain `p`?"
+    kind    = :text
+    rubric  = "A good answer says a `p` is one run of prose with inline patterns, while a `text` block holds `span`s that each carry their own `class` — so it is what you reach for when segments of one paragraph need different styling that the inline patterns do not express."
+    related = [formatting]
   }
 }
 
@@ -161,6 +233,30 @@ WCL
     expected = "The table renders with a header row and a bold **Dev** cell, and the list numbers the sublist hierarchically (2.1, 2.2)."
     hint     = "A literal pipe inside an unquoted cell splits the row — wrap any cell containing a pipe in a string literal."
   }
+  check table_header_row {
+    prompt  = "In a `table { rows: | … | }`, which row becomes the header?"
+    related = [tables_block]
+    choice first {
+      label   = "The first row"
+      correct = true
+      note    = "Right — the first pipe-row is the header and the rest are the body."
+    }
+    choice marked {
+      label = "Whichever row is marked `header = true`"
+      note  = "No marker is needed; position decides."
+    }
+    choice none {
+      label = "None — every row is a body row"
+      note  = "That would leave the columns unlabelled."
+    }
+    explanation = "Cells are expressions, so a `utf8` cell runs through the inline-pattern engine — bold, links and icons all work inside a table."
+  }
+  check two_ways_to_nest {
+    prompt  = "You can nest an `li` inside an `li`, or drop a whole `list` block inside an `li`. When does the difference matter?"
+    kind    = :text
+    rubric  = "A good answer explains that a nested `li` inherits the parent list's style — which is what you want for hierarchical numbering like 2.1, 2.2 — whereas an inner `list` block starts a list with its own style, so it is how you put a bulleted sublist inside a numbered one."
+    related = [lists_block]
+  }
 }
 
 lesson images_and_assets {
@@ -194,6 +290,30 @@ page media { sites = [:docs]
 WCL
     expected = "The build copies the file under `out/_wdoc/`, and the page shows the image at 480px with the icon inline in the paragraph."
     hint     = "The path is relative to the entry `.wcl` file you build, not to the file the block sits in."
+  }
+  check where_images_go {
+    prompt  = "What happens to an image file at build time?"
+    related = [images]
+    choice copied {
+      label   = "It is copied into `_wdoc/` and referenced by a relative URL"
+      correct = true
+      note    = "Right — that is what makes the output site self-contained."
+    }
+    choice inlined {
+      label = "It is inlined into the HTML as a data URI"
+      note  = "Inlining every asset would bloat each page that used it."
+    }
+    choice left {
+      label = "It is left where it is and linked by absolute path"
+      note  = "The output would then depend on the source tree still being present."
+    }
+    explanation = "Because the copy is referenced relatively, it resolves when the site is served — not when a page is opened directly from disk."
+  }
+  check icons_need_no_asset {
+    prompt  = "Icons need no asset file at all, unlike images. What does that difference mean for how you use each?"
+    kind    = :text
+    rubric  = "A good answer notes that an icon is a glyph resolved from a pack by name (`:lucide.rocket:`) and drops inline anywhere prose renders, so it is free to sprinkle through text; an image is a real file that must exist, be copied, and be sized and given alt text. So icons suit decoration and inline signalling, images suit actual content like screenshots and diagrams."
+    related = [images, icons]
   }
 }
 
@@ -233,6 +353,30 @@ page flow { sites = [:docs]
 WCL
     expected = "The three shapes stack in ranked layers with elbow-routed arrows between them, without any hand-placed coordinates."
     hint     = "Edges reference shape `id`s. If everything piles up at the origin, the `layout = :layered` line is missing."
+  }
+  check layered_layout {
+    prompt  = "You set `layout = :layered` on a diagram. What can you now leave out?"
+    related = [diagrams, layout_modes, flowcharts]
+    choice coordinates {
+      label   = "The `x` / `y` on every shape"
+      correct = true
+      note    = "Right — the layout ranks the connection graph and places the shapes for you."
+    }
+    choice ids {
+      label = "The shape `id`s"
+      note  = "Ids are what the `a -> b` edges refer to, so they are still required."
+    }
+    choice edges {
+      label = "The `a -> b` edge statements"
+      note  = "The edges ARE the input to the layout — without them there is no graph to rank."
+    }
+    explanation = "Manual placement stays available: with no layout set you position shapes yourself with `x` / `y`."
+  }
+  check three_flowchart_shapes {
+    prompt  = "Flowcharts use `process`, `decision`, and `terminator`. Why do these exist as distinct shapes rather than one rectangle with a label?"
+    kind    = :text
+    rubric  = "A good answer says the shapes carry conventional meaning a reader already knows — a rectangle is a step, a diamond is a branch, an oval is a start or end — so the diagram is readable at a glance without a legend. Encoding that in the vocabulary also means the author states intent and the renderer handles the geometry."
+    related = [flowcharts, primitive_shapes]
   }
 }
 
@@ -285,6 +429,30 @@ WCL
     expected = "The bar chart shows grouped pairs per quarter with a legend, and the timeline places both events on real month boundaries with the Build band beneath."
     hint     = "Chart values are floats (`42.0`, not `42`), and the chart's own `width`/`height` should match the surrounding diagram's."
   }
+  check charts_live_in_diagrams {
+    prompt  = "Where does a `bar_chart` block go?"
+    related = [charts, diagrams]
+    choice inside_diagram {
+      label   = "Inside a `diagram`, whose size it shares"
+      correct = true
+      note    = "Right — the chart kinds are diagram shapes, not page blocks."
+    }
+    choice page_level {
+      label = "Directly on the page, like a `table`"
+      note  = "Charts draw SVG, so they live on a drawing surface."
+    }
+    choice inside_column {
+      label = "Inside a `column`, which sizes it"
+      note  = "A column lays out children side by side; it is not a canvas."
+    }
+    explanation = "Because they are shapes, charts compose with the rest of the diagram vocabulary rather than being a special page-level case."
+  }
+  check bare_records_infer {
+    prompt  = "Chart series are written as bare `{ name: …, values: … }` records with no variant named. How does that work, and what happens if the shape is wrong?"
+    kind    = :text
+    rubric  = "A good answer explains that a bare record coerces to the matching union variant BY SHAPE when the declared type is a union, so the author writes the data and the variant is inferred. If no variant matches the record's shape the coercion fails and validation reports it, rather than silently picking the wrong one."
+    related = [charts]
+  }
 }
 
 lesson components_and_repeaters {
@@ -330,6 +498,30 @@ page health { sites = [:docs]
 WCL
     expected = "The page shows one callout per data row — a warning-coloured CPU card and an error-coloured Memory card — with the values interpolated into the bodies."
     hint     = "Interpolated strings need the `$` prefix; a plain `\"…\"` renders `${…}` literally."
+  }
+  check slot_with_default {
+    prompt  = "A `wdoc_slot` is declared with a `default`. What does that change at the call site?"
+    related = [data_views]
+    choice optional {
+      label   = "The slot becomes optional"
+      correct = true
+      note    = "Right — omit it and the default is used, exactly like `@default` on a schema field."
+    }
+    choice constant {
+      label = "The slot becomes a constant that cannot be overridden"
+      note  = "A default is a fallback, not a lock."
+    }
+    choice required_first {
+      label = "The slot must be passed first, before the others"
+      note  = "Slots are passed by name; order is free."
+    }
+    explanation = "Components are ordinary wdoc markup with named holes — the slot rules mirror the schema rules you already know."
+  }
+  check repeater_reach {
+    prompt  = "The same `wdoc_repeater` emits pages at the document root and `chapter`s inside a `toc`. Why is that worth knowing?"
+    kind    = :text
+    rubric  = "A good answer draws the conclusion that navigation can be data-driven too: the same list that generates one page per record can generate the sidebar entries for them, so adding a record adds both its page and its nav entry with no hand-maintained second list to fall out of sync."
+    related = [data_views]
   }
 }
 
@@ -386,6 +578,30 @@ WCL
     expected = "The fleet page shows an h2 per server followed by its projected body — each paragraph naming its own region."
     hint     = "Your own `@document` merges with wdoc's, so `page` blocks stay legal alongside `server`. The single `@child(\"body\")` slot means the body needs no name."
   }
+  check where_a_body_renders {
+    prompt  = "You attach a `body` to a data record. Where does it render?"
+    related = [data_views]
+    choice only_projected {
+      label   = "Only where a `project` renders it"
+      correct = true
+      note    = "Right — a body never renders where it is declared; the record is data, not a renderable block."
+    }
+    choice in_place {
+      label = "In place, where the record is declared"
+      note  = "That would make every data file a page, which is exactly what this pattern avoids."
+    }
+    choice both {
+      label = "Both in place and wherever it is projected"
+      note  = "It would then render twice in any document that projects it."
+    }
+    explanation = "This body/project split is precisely how a wskill's book turns concept and fact records into pages."
+  }
+  check why_separate_data_from_page {
+    prompt  = "What do you gain by keeping content on typed data records and projecting it, rather than writing the pages directly?"
+    kind    = :text
+    rubric  = "A good answer says the content becomes structured data that can be validated, queried, repeated over, and projected into MORE than one place — several views of one model — while a hand-written page is a single fixed output. It should connect this to the wskill case, where one set of records renders a book, a skill, and a course."
+    related = [data_views]
+  }
 }
 
 lesson render_targets {
@@ -417,6 +633,30 @@ wcl wdoc skill docs.wcl --out out/skill --site helper
 SH
     expected = "`out/html` holds the site, `out/md` one `.md` per page with `.svg` diagram assets, `out/pdf` a paginated PDF, and `out/skill/SKILL.md` carries the name/description front matter."
     hint     = "The skill site needs a page marked `start = true` — that page becomes SKILL.md itself."
+  }
+  check building_a_skill_site {
+    prompt  = "You run `wcl wdoc build` on a site whose `default_template = :ai_skill`. What happens?"
+    related = [render_skill, skills]
+    choice error {
+      label   = "An error that points you at `wcl wdoc skill`"
+      correct = true
+      note    = "Right — the mistake is caught and named rather than producing wrong output."
+    }
+    choice html {
+      label = "It renders as ordinary HTML"
+      note  = "A skill folder is a different artefact shape, not an HTML site."
+    }
+    choice ignored {
+      label = "The site is skipped and the others build"
+      note  = "Silently skipping would leave you wondering where the output went."
+    }
+    explanation = "In a skill folder the `start` page becomes `SKILL.md` and every other page lands under `references/`."
+  }
+  check one_model_four_outputs {
+    prompt  = "All four targets consume the same document. What does that buy an author, and where does it stop being free?"
+    kind    = :text
+    rubric  = "A good answer says content is written once and rendered as HTML, Markdown, PDF and a skill folder, so the versions cannot drift apart. It should also acknowledge the limit: the targets are genuinely different media, so some blocks do not translate — diagrams become static images in Markdown, interactive affordances have no meaning in print — which is why the visibility axes exist to scope blocks per backend."
+    related = [render_pdf_markdown, markdown]
   }
 }
 
@@ -456,6 +696,37 @@ WCL
     expected = "The HTML build shows the video and the theme toggle in gruvbox colours; the PDF drops the video and prints the fallback sentence instead."
     hint     = "Both decorators take the same three list arguments — an empty axis matches everything."
   }
+  check visibility_axes {
+    prompt  = "Which axes can `@only` / `@except` scope a block by?"
+    kind    = :multi
+    related = [visibility]
+    choice sites {
+      label   = "`sites` — site names"
+      correct = true
+      note    = "Yes — the axis that lets one document serve several sites."
+    }
+    choice templates {
+      label   = "`templates` — `:webpage` / `:book` / `:presentation`"
+      correct = true
+      note    = "Yes — scope by the layout a page renders under."
+    }
+    choice backends {
+      label   = "`backends` — `:html` / `:pdf` / `:markdown`"
+      correct = true
+      note    = "Yes — this is how a web build and a print PDF diverge without forking content."
+    }
+    choice themes {
+      label = "`themes` — the active colour theme"
+      note  = "Themes recolour a site; they are not a visibility axis."
+    }
+    explanation = "Three axes, two decorators: `@only` renders a block just where the conditions match, `@except` everywhere else."
+  }
+  check theme_versus_class {
+    prompt  = "Themes restyle a whole site in one line, and `class` blocks always win over theme defaults. How should you use each?"
+    kind    = :text
+    rubric  = "A good answer treats the theme as the site-wide baseline — one line picks a coherent palette with dark and light variants — and `class` as the targeted override for the few places that genuinely need to differ. Reaching for local styling first would fight the theme everywhere and lose the coherence the theme exists to provide."
+    related = [themes, styling]
+  }
 }
 
 lesson review_loop {
@@ -485,5 +756,29 @@ wcl wdoc comments . resolve <id>
 SH
     expected = "The note appears in the CLI list with its id, page, and text, and disappears from the open list after resolve."
     hint     = "The comments live in `comments.wcl` next to the document — open it to see exactly what the client wrote."
+  }
+  check comments_and_rebuilds {
+    prompt  = "Where do review comments live, and what do they trigger?"
+    related = [review_comments]
+    choice sidecar_no_rebuild {
+      label   = "A `comments.wcl` sidecar beside the document — and no rebuild"
+      correct = true
+      note    = "Right — the sidecar is deliberately ignored by the watcher, so reviewing is non-destructive."
+    }
+    choice in_source {
+      label = "Inline in the page source, triggering a rebuild"
+      note  = "Writing into the source would make review an edit, which is exactly what this avoids."
+    }
+    choice in_output {
+      label = "In the built HTML, discarded on the next build"
+      note  = "Notes would then be lost the moment anything was rebuilt."
+    }
+    explanation = "Keyed by page and locator, the sidecar survives edits and is safe to hand-edit or generate."
+  }
+  check why_a_handshake {
+    prompt  = "`wcl wdoc review` blocks until the reviewer sends, instead of the agent simply polling for new comments. Why design it that way?"
+    kind    = :text
+    rubric  = "A good answer says it gives the agent a COMPLETE round to work from rather than a stream of half-finished notes: the reviewer reads at their own pace and sends once they are done, so the agent sees a coherent set, acts on all of it, and hands back. Polling would have the agent reacting to comments while the reviewer is still forming them."
+    related = [review_comments]
   }
 }

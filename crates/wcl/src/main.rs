@@ -467,6 +467,28 @@ enum WdocCommand {
         #[command(subcommand)]
         cmd: Option<CommentsSub>,
     },
+    /// List the course answers stored in the `training.wcl` sidecars under
+    /// `<file>`'s directory (left by a training site running under
+    /// `wcl wdoc serve`), or `grade <id>` to write a verdict back.
+    ///
+    /// Free-text (`:text`) checks arrive `pending` and are listed first —
+    /// they are what an agent grades, judging the answer against the check's
+    /// `rubric`. Multiple-choice answers are graded in the page and recorded
+    /// here only as history. JSON output (`--format json`) is aimed at an
+    /// agent working the queue.
+    Training {
+        /// Path to the WCL source file (the doc's entry point).
+        file: PathBuf,
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = CommentFormat::Text)]
+        format: CommentFormat,
+        /// Only list answers still awaiting a grader.
+        #[arg(long)]
+        pending: bool,
+        /// `grade <id>` writes a verdict onto that answer.
+        #[command(subcommand)]
+        cmd: Option<TrainingSub>,
+    },
     /// Wait for a reviewer to finish, then print the comments — the agent side
     /// of the review handshake. Blocks until the reviewer clicks "Send to
     /// agent" in the preview pane of a running `wcl editor`, then lists the
@@ -481,6 +503,23 @@ enum WdocCommand {
         /// Output format for the comments printed once released.
         #[arg(long, value_enum, default_value_t = CommentFormat::Json)]
         format: CommentFormat,
+    },
+}
+
+#[derive(Subcommand)]
+enum TrainingSub {
+    /// Write a grader's verdict onto the answer with the given id.
+    Grade {
+        /// The answer id (from the listing).
+        id: String,
+        /// Feedback shown to the learner in the page.
+        verdict: String,
+        /// Mark the answer as not meeting the rubric.
+        #[arg(long)]
+        fail: bool,
+        /// Free-form score recorded alongside the verdict (a mark, a tally).
+        #[arg(long)]
+        score: Option<String>,
     },
 }
 
@@ -888,8 +927,105 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
             format,
             cmd,
         } => run_comments(&file, format, cmd),
+        WdocCommand::Training {
+            file,
+            format,
+            pending,
+            cmd,
+        } => run_training(&file, format, pending, cmd),
         WdocCommand::Review { file, format } => run_review(&file, format),
     }
+}
+
+/// `wcl wdoc training` — the grader's side of the course loop. Lists the
+/// answers a training site recorded (pending ones first), or writes a verdict
+/// back onto one. The learner's page long-polls, so a verdict written here
+/// shows up in their browser without a rebuild or a reload.
+fn run_training(
+    file: &Path,
+    format: CommentFormat,
+    pending_only: bool,
+    cmd: Option<TrainingSub>,
+) -> u8 {
+    // A course is usually entered below its wskill root (`wdoc/training/`), so
+    // resolve the owning wskill the same way the dev server does.
+    let dir = file.parent().unwrap_or_else(|| Path::new("."));
+    let owned = wcl_wdoc::training::sidecar_for(dir);
+    let root = owned.parent().unwrap_or(dir);
+    if let Some(TrainingSub::Grade {
+        id,
+        verdict,
+        fail,
+        score,
+    }) = cmd
+    {
+        return match wcl_wdoc::training::grade(root, &id, &verdict, !fail, score.as_deref()) {
+            Ok(true) => {
+                eprintln!("graded answer {id}");
+                EXIT_OK
+            }
+            Ok(false) => {
+                eprintln!("no answer with id {id}");
+                EXIT_EVAL
+            }
+            Err(err) => {
+                err.report();
+                build_error_code(&err)
+            }
+        };
+    }
+
+    let recs = match wcl_wdoc::training::list(root) {
+        Ok(r) => r,
+        Err(err) => {
+            err.report();
+            return build_error_code(&err);
+        }
+    };
+    let recs: Vec<_> = recs
+        .into_iter()
+        .filter(|r| !pending_only || r.is_pending())
+        .collect();
+
+    match format {
+        CommentFormat::Json => {
+            let arr = serde_json::Value::Array(
+                recs.iter()
+                    .map(|r| {
+                        serde_json::json!({
+                            "id": r.id,
+                            "file": r.file.display().to_string(),
+                            "course": r.course,
+                            "lesson": r.lesson,
+                            "check": r.check,
+                            "response": r.response,
+                            "status": r.status,
+                            "pending": r.is_pending(),
+                            "verdict": r.verdict,
+                            "score": r.score,
+                        })
+                    })
+                    .collect(),
+            );
+            let s = serde_json::to_string_pretty(&arr)
+                .expect("serde_json::Value always serializes (string-keyed objects)");
+            println!("{s}");
+        }
+        CommentFormat::Text => {
+            if recs.is_empty() {
+                eprintln!("no answers");
+            }
+            for r in &recs {
+                let mark = if r.is_pending() { "…" } else { "✓" };
+                println!("{mark} [{}] {} → {}", r.id, r.lesson, r.check);
+                println!("        {}", r.response);
+                if let Some(v) = &r.verdict {
+                    println!("        verdict: {v}");
+                }
+            }
+        }
+    }
+    EXIT_OK
 }
 
 /// `wcl wdoc review` — the agent side of the review handshake. Blocks until

@@ -86,6 +86,10 @@ workspace-lint:
 wskill-schema-extract:
     @sed -n "/<<'WSK_SCHEMA_BASE_WCL'/,/^WSK_SCHEMA_BASE_WCL$/p" crates/wcl/src/scaffold/templates/wskill.wcl | sed '1d;$d'
 
+[private]
+wskill-training-schema-extract:
+    @sed -n "/<<'WSK_SCHEMA_TRAINING_WCL'/,/^WSK_SCHEMA_TRAINING_WCL$/p" crates/wcl/src/scaffold/templates/wskill.wcl | sed '1d;$d'
+
 # Propagate the canonical wskill base schema to every wskill under docs/wskills/
 [group('quality')]
 wskill-schema-sync:
@@ -93,6 +97,9 @@ wskill-schema-sync:
         [ -d "$d/schema" ] || continue; \
         just wskill-schema-extract > "$d/schema/base.wcl"; \
         echo "synced $d/schema/base.wcl"; \
+        [ ! -f "$d/schema/training.wcl" ] || { \
+            just wskill-training-schema-extract > "$d/schema/training.wcl"; \
+            echo "synced $d/schema/training.wcl"; }; \
     done
 
 # Fail when a live wskill base.wcl drifts from the scaffold heredoc (runs in ci)
@@ -102,6 +109,9 @@ wskill-schema-check:
         [ -d "$d/schema" ] || continue; \
         diff <(just wskill-schema-extract) "$d/schema/base.wcl" >/dev/null \
             || { echo "wskill schema drift: $d/schema/base.wcl — run 'just wskill-schema-sync'"; exit 1; }; \
+        [ ! -f "$d/schema/training.wcl" ] || \
+            diff <(just wskill-training-schema-extract) "$d/schema/training.wcl" >/dev/null \
+            || { echo "wskill schema drift: $d/schema/training.wcl — run 'just wskill-schema-sync'"; exit 1; }; \
     done
 
 # Fail when the wskill scaffold's topic-agnostic wdoc templates drift from the

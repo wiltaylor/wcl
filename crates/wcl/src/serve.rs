@@ -100,6 +100,9 @@ struct ServeState {
     generation: tokio::sync::watch::Sender<u64>,
     /// Watched source root; `/__wdoc_rebuild` page paths are sandboxed to it.
     watch_root: PathBuf,
+    /// The `training.wcl` course answers are recorded into — resolved once at
+    /// startup to the owning wskill (the served entry is usually below it).
+    training_sidecar: PathBuf,
     /// Source `.wcl` files changed since the last rebuild. The watcher
     /// accumulates here instead of rebuilding; a rebuild is triggered manually
     /// (Enter in the console, or `POST /__wdoc_rebuild`) and drains this.
@@ -328,6 +331,7 @@ pub(crate) async fn serve(
         error: RwLock::new(None),
         generation: tokio::sync::watch::Sender::new(0),
         watch_root: watch_root.clone(),
+        training_sidecar: wcl_wdoc::training::sidecar_for(&watch_root),
         pending: Mutex::new(Vec::new()),
         rebuild_tx: rebuild_tx.clone(),
     });
@@ -430,6 +434,11 @@ pub(crate) async fn serve(
     let app = Router::new()
         .route("/__wdoc_reload", get(handle_reload))
         .route("/__wdoc_rebuild", axum::routing::post(handle_rebuild))
+        .route(
+            "/__wdoc_training/answer",
+            axum::routing::post(handle_training_answer),
+        )
+        .route("/__wdoc_training/state", get(handle_training_state))
         .fallback(get(handle_static))
         .with_state(Arc::clone(&state))
         .layer(middleware::from_fn(log_requests));
@@ -485,13 +494,21 @@ fn is_relevant(event: &Event) -> bool {
     ) && event.paths.iter().any(|p| is_source_wcl(p))
 }
 
-/// A `.wcl` path that is part of the document — i.e. not a `comments.wcl`
-/// sidecar, whose writes must never trigger a rebuild (comments render
-/// client-side, so the build doesn't read it).
+/// A `.wcl` path that is part of the document — i.e. not one of the sidecars
+/// ([`SIDECARS`]), whose writes must never trigger a rebuild (they render
+/// client-side, so the build doesn't read them).
 fn is_source_wcl(p: &Path) -> bool {
     p.extension().is_some_and(|e| e == "wcl")
-        && p.file_name().and_then(|n| n.to_str()) != Some("comments.wcl")
+        && !p
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| SIDECARS.contains(&n))
 }
+
+/// Sidecar file names: data *about* a document, written beside it. A rebuild
+/// must never be triggered by one — a review comment or a course answer is
+/// read by the client, not by the build.
+const SIDECARS: [&str; 2] = ["comments.wcl", "training.wcl"];
 
 /// The document `.wcl` paths an event touched (the granularity
 /// `build_incremental` maps onto pages); `comments.wcl` sidecars are excluded.
@@ -563,6 +580,100 @@ async fn handle_rebuild(State(state): State<Arc<ServeState>>, body: String) -> R
             }),
         ),
         Err(_) => json_error(StatusCode::INTERNAL_SERVER_ERROR, "rebuild was cancelled"),
+    }
+}
+
+/// `POST /__wdoc_training/answer` — record one course answer into the
+/// `training.wcl` sidecar beside the owning wskill.
+///
+/// The training site is static-first: it keeps progress in localStorage and
+/// only calls this when a server happens to be running, so a failure here is
+/// never fatal to the learner (the page falls back to self-check). Recording
+/// an answer writes only the sidecar, which the watcher ignores — no rebuild.
+///
+/// Body: `{ course, lesson, check, response, status }`. `status` is `pending`
+/// for a free-text answer awaiting an agent, or an already-decided
+/// `correct` / `wrong` for multiple choice.
+async fn handle_training_answer(State(state): State<Arc<ServeState>>, body: String) -> Response {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) else {
+        return json_error(StatusCode::BAD_REQUEST, "bad JSON body");
+    };
+    let field = |k: &str| {
+        v.get(k)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    let (check, response) = (field("check"), field("response"));
+    if check.is_empty() {
+        return json_error(StatusCode::BAD_REQUEST, "missing `check`");
+    }
+    let (course, lesson, status) = (field("course"), field("lesson"), field("status"));
+    let status = if status.is_empty() {
+        "pending".to_string()
+    } else {
+        status
+    };
+
+    // The sidecar was resolved at startup (beside the owning wskill), so the
+    // client never supplies a path it could forge.
+    let file = state.training_sidecar.clone();
+    match tokio::task::spawn_blocking(move || {
+        wcl_wdoc::training::record(&file, &course, &lesson, &check, &response, &status)
+    })
+    .await
+    {
+        Ok(Ok(id)) => json_response(StatusCode::OK, &serde_json::json!({ "ok": true, "id": id })),
+        Ok(Err(e)) => json_error(StatusCode::INTERNAL_SERVER_ERROR, &e.render_plain()),
+        Err(_) => json_error(StatusCode::INTERNAL_SERVER_ERROR, "record task failed"),
+    }
+}
+
+/// `GET /__wdoc_training/state?check=…&course=…` — the current record for one
+/// check, so the page can show a grader's verdict.
+///
+/// Long-polls: while the answer is still `pending` the request parks until the
+/// sidecar changes (or [`POLL_TIMEOUT`] elapses and the client asks again), so
+/// a verdict written by `wcl wdoc training grade` appears without a reload.
+async fn handle_training_state(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
+    let Some(check) = query_param(&uri, "check") else {
+        return json_error(StatusCode::BAD_REQUEST, "missing `check`");
+    };
+    let course = query_param(&uri, "course").unwrap_or_default();
+    let file = state.training_sidecar.clone();
+
+    let deadline = tokio::time::Instant::now() + POLL_TIMEOUT;
+    loop {
+        let (file2, course2, check2) = (file.clone(), course.clone(), check.clone());
+        let found = tokio::task::spawn_blocking(move || {
+            wcl_wdoc::training::find_in(&file2, &course2, &check2)
+        })
+        .await;
+        match found {
+            Ok(Some(rec)) if rec.status != "pending" => {
+                return json_response(
+                    StatusCode::OK,
+                    &serde_json::json!({
+                        "ok": true,
+                        "status": "graded",
+                        "verdict": rec.verdict,
+                        "score": rec.score,
+                        "pass": rec.passed(),
+                    }),
+                );
+            }
+            Err(_) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, "lookup task failed"),
+            _ => {}
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return json_response(
+                StatusCode::OK,
+                &serde_json::json!({ "ok": true, "status": "pending" }),
+            );
+        }
+        // No file watch on the sidecar (the watcher deliberately ignores it),
+        // so poll it on a slow tick — a grader's verdict is a human-scale event.
+        tokio::time::sleep(Duration::from_millis(750)).await;
     }
 }
 

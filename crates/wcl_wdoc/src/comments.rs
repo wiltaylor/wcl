@@ -31,19 +31,16 @@
 //! `wcl_wdoc` carries no serde dependency, so [`CommentRecord`] is a plain
 //! data struct; the `wcl` crate turns it into JSON for the CLI / dev server.
 
-use std::collections::BTreeMap;
-use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use miette::Report;
-use wcl_lang::{Document, Value, ast, parse_for_edit};
+use wcl_lang::parse_for_edit;
 
 use crate::build::BuildError;
+use crate::sidecar::{atomic_write, gen_id, read_blocks, scan_for, sidecar_path, wcl_string};
 
-/// How deep the sidecar tree-scan recurses (a runaway-loop backstop).
-const MAX_SCAN_DEPTH: usize = 32;
+/// The sidecar file name review comments live in.
+const SIDECAR: &str = "comments.wcl";
 
 /// Which shape a stored comment takes — derived from whether it has a `loc`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,56 +92,15 @@ pub struct CommentRecord {
 /// wskill page (whose source lives under `…/wdoc/book/`) still resolves to the
 /// `comments.wcl` beside that wskill's `wskill.wcl`.
 pub fn comments_path(page_file: &Path, root: &Path) -> PathBuf {
-    let root_canon = fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
-    let mut cur = page_file.parent().and_then(|d| fs::canonicalize(d).ok());
-    while let Some(dir) = cur {
-        // Only directories within the served root are candidates.
-        if !dir.starts_with(&root_canon) {
-            break;
-        }
-        if dir.join("wskill.wcl").is_file() {
-            return dir.join("comments.wcl");
-        }
-        if dir == root_canon {
-            break;
-        }
-        cur = dir.parent().map(Path::to_path_buf);
-    }
-    root_canon.join("comments.wcl")
+    sidecar_path(page_file, root, SIDECAR)
 }
 
 /// List every comment stored in any `comments.wcl` under `root` (so a server
 /// rooted at the top `docs/` finds every wskill's sidecar plus the root one).
 pub fn list(root: &Path) -> Result<Vec<CommentRecord>, BuildError> {
-    let mut out = Vec::new();
-    scan(root, &mut out, 0);
-    Ok(out)
-}
-
-/// Recurse `dir` for files named `comments.wcl`, reading each. Hidden (`.`) and
-/// generated (`_site` / `_wdoc`, any `_`-prefixed) directories are skipped.
-fn scan(dir: &Path, out: &mut Vec<CommentRecord>, depth: usize) {
-    if depth > MAX_SCAN_DEPTH {
-        return;
-    }
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Ok(ft) = entry.file_type() else { continue };
-        if ft.is_dir() {
-            let skip = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.starts_with('.') || n.starts_with('_'));
-            if !skip {
-                scan(&path, out, depth + 1);
-            }
-        } else if path.file_name().and_then(|n| n.to_str()) == Some("comments.wcl") {
-            out.extend(read_file(&path));
-        }
-    }
+    let mut files = Vec::new();
+    scan_for(root, SIDECAR, &mut files);
+    Ok(files.iter().flat_map(|p| read_file(p)).collect())
 }
 
 /// Parse every `comment { … }` block out of one `comments.wcl`, reading each
@@ -152,31 +108,8 @@ fn scan(dir: &Path, out: &mut Vec<CommentRecord>, depth: usize) {
 /// bypass `wcl init` uses for answer files). A malformed / missing file yields
 /// no records rather than erroring (a sidecar is non-critical metadata).
 fn read_file(path: &Path) -> Vec<CommentRecord> {
-    let Ok(text) = fs::read_to_string(path) else {
-        return Vec::new();
-    };
-    let Ok(parsed) = parse_for_edit(&text, path.display().to_string()) else {
-        return Vec::new();
-    };
-    // A scratch document supplies the evaluation context (literals need none).
-    let Ok(scratch) = Document::open("", "<comments>") else {
-        return Vec::new();
-    };
     let mut out = Vec::new();
-    for item in &parsed.items {
-        let ast::Item::Block(b) = item else { continue };
-        if b.kind != "comment" {
-            continue;
-        }
-        let mut fields: BTreeMap<String, String> = BTreeMap::new();
-        for it in &b.items {
-            if let ast::Item::Field(f) = it
-                && let Ok(v) = scratch.eval_expr(&f.expr)
-                && let Some(s) = value_string(&v)
-            {
-                fields.insert(f.name.clone(), s);
-            }
-        }
+    for mut fields in read_blocks(path, "comment") {
         let Some(id) = fields.remove("id") else {
             continue;
         };
@@ -202,15 +135,6 @@ fn read_file(path: &Path) -> Vec<CommentRecord> {
     out
 }
 
-/// Stringify a scalar field value; non-scalars are skipped.
-fn value_string(v: &Value) -> Option<String> {
-    match v {
-        Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
-        Value::Symbol(s) | Value::Identifier(s) => Some(s.clone()),
-        _ => None,
-    }
-}
-
 /// Append a comment to `comments_file` (creating it if absent) and return the
 /// generated id. `loc` empty / `None` ⇒ a whole-page comment.
 #[allow(clippy::too_many_arguments)]
@@ -224,7 +148,7 @@ pub fn add(
     author: Option<&str>,
     quote: Option<&str>,
 ) -> Result<String, BuildError> {
-    let id = gen_id();
+    let id = gen_id('c');
     let loc = loc.map(str::to_string).filter(|s| !s.is_empty());
     let mut recs = read_file(comments_file);
     recs.push(CommentRecord {
@@ -322,72 +246,11 @@ fn write_file(path: &Path, recs: &[CommentRecord]) -> Result<(), BuildError> {
     atomic_write(path, &out).map_err(|e| BuildError::Io(e, format!("write {}", path.display())))
 }
 
-/// Render `s` as a double-quoted WCL string literal (mirrors the language's
-/// own `EscapeString`).
-fn wcl_string(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\t' => out.push_str("\\t"),
-            '\r' => out.push_str("\\r"),
-            other => out.push(other),
-        }
-    }
-    out.push('"');
-    out
-}
-
-/// A short, unique-enough comment id: time-mixed with a process counter.
-fn gen_id() -> String {
-    static COUNTER: AtomicU64 = AtomicU64::new(1);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(0);
-    let mix = nanos
-        .wrapping_mul(0x9E37_79B9_7F4A_7C15)
-        .wrapping_add(n.wrapping_mul(0x1_0000_0001));
-    let s = base36(mix);
-    let tail = &s[s.len().saturating_sub(7)..];
-    format!("c{tail}")
-}
-
-fn base36(mut n: u64) -> String {
-    const DIGITS: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
-    if n == 0 {
-        return "0".to_string();
-    }
-    let mut buf = Vec::new();
-    while n > 0 {
-        buf.push(DIGITS[(n % 36) as usize]);
-        n /= 36;
-    }
-    buf.reverse();
-    String::from_utf8(buf).expect("base36 digits are ASCII")
-}
-
-/// Write `contents` to `target` via a same-directory temp file + rename, so an
-/// interrupted write never leaves a half-written sidecar.
-fn atomic_write(target: &Path, contents: &str) -> std::io::Result<()> {
-    let dir = target.parent().unwrap_or_else(|| Path::new("."));
-    let pid = std::process::id();
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let tmp = dir.join(format!(".wcl-comment-{pid}-{stamp}.tmp"));
-    fs::write(&tmp, contents)?;
-    fs::rename(&tmp, target)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     /// Unwrap a `Result<T, BuildError>` (BuildError isn't `Debug`).
     fn ok<T>(r: Result<T, BuildError>) -> T {
