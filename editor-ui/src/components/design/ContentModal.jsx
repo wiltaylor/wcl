@@ -571,7 +571,11 @@ export default function ContentModal(props) {
     <Modal
       open
       onClose={props.onClose}
-      title={`${node()?.title ?? ''} — content & visibility`}
+      /* The kind rides in the title because the graph's side panel — where it
+         showed as a badge — is covered while this is open, and several kinds
+         (concept / fact / procedure / lesson) read alike from the title alone.
+         A string, not JSX: Forge uses `title` for the panel's aria-label too. */
+      title={`${node()?.title ?? ''}${node()?.kind ? ` (${node().kind})` : ''} — content & visibility`}
       footer={<Button onClick={props.onClose}>Close</Button>}
     >
       <Show when={node()} fallback={<div class="ed-empty">The unit is gone — reload the graph.</div>}>
