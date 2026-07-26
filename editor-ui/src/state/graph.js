@@ -16,9 +16,13 @@ const [revealedIndex, setRevealedIndex] = createSignal(null);
 /** Set while a graph node is being dragged: { key, type, id } — the panel
     uses it to show its drop affordance. */
 const [nodeDragging, setNodeDragging] = createSignal(null);
-/** The focused graph node's key (the side panel's subject) — shared so the
-    index panel can offer per-section pin buttons for it. */
+/** The focused graph node's key — shared so the index panel can offer
+    per-section pin buttons for it. */
 const [focusedNode, setFocusedNode] = createSignal(null);
+/** The node whose content modal is open (key), if any. Shared because both
+    the canvas (a node click) and the index panel (a row double-click) open
+    it, while GraphView owns the rendering. */
+const [contentFor, setContentFor] = createSignal(null);
 
 export {
   graphData,
@@ -31,6 +35,8 @@ export {
   setNodeDragging,
   focusedNode,
   setFocusedNode,
+  contentFor,
+  setContentFor,
 };
 
 /** The selected index's node from the current payload. */

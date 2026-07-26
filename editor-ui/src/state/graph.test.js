@@ -2,7 +2,16 @@
 // nested-index lookups behind the index panel's focus-reveal.
 import { describe, expect, it } from 'vitest';
 
-import { indexHitsForUnit, panToInclude, pinCounts, subtreePinnedIds } from './graph';
+import {
+  contentFor,
+  focusedNode,
+  indexHitsForUnit,
+  panToInclude,
+  pinCounts,
+  setContentFor,
+  setFocusedNode,
+  subtreePinnedIds,
+} from './graph';
 
 /** A payload with one top index, a sub-index, and a sub-sub-index:
     `a` pinned at top AND sub-sub level, `b` only in the sub level; a
@@ -116,5 +125,24 @@ describe('panToInclude', () => {
   it('keeps a margin around the node', () => {
     const next = panToInclude(VB, BOX, { x: -200, y: 200 }, 40);
     expect(next.x).toBe(-240);
+  });
+});
+
+describe('focus vs the open editor', () => {
+  // The index panel focuses on a single click and opens the editor on a
+  // double click, so browsing the list must not throw modals; the canvas does
+  // both at once. Keeping the two signals independent is what allows that.
+  it('are independent signals', () => {
+    setFocusedNode(null);
+    setContentFor(null);
+
+    setFocusedNode('concept:a');
+    expect(contentFor()).toBe(null);
+
+    setContentFor('concept:a');
+    expect(focusedNode()).toBe('concept:a');
+
+    setContentFor(null);
+    expect(focusedNode()).toBe('concept:a', 'closing the editor keeps the focus');
   });
 });

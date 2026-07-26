@@ -63,6 +63,8 @@ import {
   panToInclude,
   focusedNode,
   setFocusedNode,
+  contentFor,
+  setContentFor,
   pinCounts as pinCountsOf,
   subtreePinnedIds,
 } from '../../state/graph';
@@ -587,8 +589,6 @@ export default function GraphView() {
   };
 
   const focused = () => (focus() ? node(focus()) : null);
-  /** The node whose content modal is open (key), if any. */
-  const [contentFor, setContentFor] = createSignal(null);
 
   /** Does `view`'s built site contain `page`? Builds the view (targeted;
       warm dirs are cheap, an unknown page falls back to a full build) and

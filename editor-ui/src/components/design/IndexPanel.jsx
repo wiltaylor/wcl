@@ -8,7 +8,9 @@
    focused on the graph, every heading and sub-heading grows a + that pins
    it right there, and the panel auto-expands the index containing the
    unit (reveal only — selection/scoping stays an explicit row click),
-   scrolling to and highlighting its rows. A view filter narrows the list
+   scrolling to and highlighting its rows. Clicking a member row focuses its
+   node on the canvas; double-clicking opens its editor. A view filter narrows
+   the list
    to indexes visible in one view. All writes go through the quiet nav-op
    path (pin_unit / unpin_unit / reorder_children — id-addressed, so they
    reach nested levels) and refetch the graph keeping positions. */
@@ -27,6 +29,7 @@ import {
   revealedIndex,
   selectedIndex,
   selectedIndexNode,
+  setContentFor,
   setFocusedNode,
   setIndexPanelEl,
   setRevealedIndex,
@@ -98,10 +101,11 @@ function IndexSection(props) {
       <For each={props.level.pinned ?? []}>
         {(id) => {
           const unit = () => nodeById(id);
-          // Clicking a member focuses its graph node — the same selection a
-          // click on the node itself makes, so the panel doubles as a way to
-          // find a unit by name. Clicks on the row's own controls (reorder /
-          // unpin) are theirs; a dangling pin has no node to select.
+          // Clicking a member focuses its graph node; double-clicking opens
+          // its editor, mirroring the canvas (where one click does both — the
+          // panel keeps them apart so browsing the list doesn't throw modals).
+          // Clicks on the row's own controls (reorder / unpin) are theirs; a
+          // dangling pin has no node behind it at all.
           const pick = (e) => {
             if (e.target.closest?.('.ed-nav-actions')) return;
             const n = unit();
@@ -113,6 +117,11 @@ function IndexSection(props) {
               classList={{ 'is-hit': focusedUnitNode()?.id === id, 'is-pickable': !!unit() }}
               style={indent()}
               onClick={pick}
+              onDblClick={(e) => {
+                if (e.target.closest?.('.ed-nav-actions')) return;
+                const n = unit();
+                if (n) setContentFor(n.key);
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
@@ -122,7 +131,10 @@ function IndexSection(props) {
               tabindex={unit() ? 0 : undefined}
               role={unit() ? 'button' : undefined}
             >
-              <span class="ed-index-title" title={id}>
+              <span
+                class="ed-index-title"
+                title={unit() ? `${id} — double-click to open` : id}
+              >
                 {unit()?.title ?? id}
               </span>
               <Show when={unit()} fallback={<Badge tone="danger">missing</Badge>}>
