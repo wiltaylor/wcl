@@ -39,7 +39,8 @@ wskill is a unified format that allows saving knowledge for use by Humans and AI
 - Classify every new unit with the decision guide (fact `unit_decision_guide`) before creating it — entities are reserved for concrete NAMED things (people, software, places); ideas are concepts, values are facts, tasks are processes, dated findings are research.
 - Capture durable investigation output as `research` blocks under data/research/ so it ships at references/research_<id>.md for other agents and pipelines to reuse.
 - For whole-topic research-to-wskill authoring, follow the `researching_a_topic` runbook — dispatch `wskill-researcher` subagents in parallel rather than researching serially in-session.
-- Create content in data/ using the schema in schema/; give an entity a `kind` from schema/kinds.wcl.
+- Create content in data/ using the schema in schema/; give an entity a `kind` from schema/kinds.wcl. Start from the unit kind's fill-out template (facts `template_concept` / `template_entity` / `template_fact` / `template_procedure` / `template_index` / `template_example` / `template_research`).
+- Follow the house style (fact `writing_style`) and keep `related` to roughly 3-5 ids per content unit (fact `linking_discipline`) — never write a hub unit whose body is only links to its children.
 - When new data has a recurring structure the base kinds don't fit, model it as a typed schema extension (see `creating_schema_extension`) rather than forcing it into prose.
 - Run `wcl check wskill.wcl` after every change and keep it green before rendering.
 
@@ -72,10 +73,23 @@ _What a wskill is, why it exists, and how to start one._
 
 ### Authoring
 
-_Capturing knowledge: decomposition, classification, the capture loop, and the tools._
+_Capturing knowledge: decomposition, classification, house style, and the capture loop._
 - [Decomposing information](references/concept_decomposing_information.md)
 - [Which unit kind? — the decision guide](references/fact_unit_decision_guide.md)
+- [Writing style for wskill content](references/fact_writing_style.md)
+- [Linking discipline — link sparingly](references/fact_linking_discipline.md)
 - [The wskill folder layout](references/fact_folder_layout.md)
+
+#### Unit templates
+
+_A copy-paste skeleton, worked example and done-when checklist for every unit kind._
+- [Template — concept](references/fact_template_concept.md)
+- [Template — entity](references/fact_template_entity.md)
+- [Template — fact](references/fact_template_fact.md)
+- [Template — process (procedure)](references/fact_template_procedure.md)
+- [Template — index](references/fact_template_index.md)
+- [Template — example](references/fact_template_example.md)
+- [Template — research](references/fact_template_research.md)
 
 ### Views & Rendering
 

@@ -9,9 +9,11 @@ A `tensor<T, [dims...]>` is an N-dimensional array. Unlike a `list<list<...>>`, 
 The second type argument is a list of dimensions. Dimensions may be **fixed integers** or **symbolic names** that the host program resolves.
 
 ```wcl
-weights: tensor<f64, [10, 20]>     // fixed 10 x 20 matrix
-batch:   tensor<f64, [N, 3]>       // N rows of 3 floats (symbolic N)
-volume:  tensor<u8,  [W, H, D]>    // three symbolic dims
+type Model {
+  weights: tensor<f64, [10, 20]>     // fixed 10 x 20 matrix
+  batch:   tensor<f64, [N, 3]>       // N rows of 3 floats (symbolic N)
+  volume:  tensor<u8,  [W, H, D]>    // three symbolic dims
+}
 ```
 
 ## Construction

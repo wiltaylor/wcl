@@ -21,8 +21,6 @@ MSG
 
 ## Related
 
-- [Strings](../references/concept_strings.md)
-
 - [String Literals](../references/concept_string_literals.md)
 
 [← Back to SKILL.md](../SKILL.md)

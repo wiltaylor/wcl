@@ -9,9 +9,16 @@ A `list<T>` is an ordered, homogeneous sequence of values of type `T`. Lists are
 Write a list literal with square brackets and commas. The element type is inferred from its contents, or pinned by the field's declared type.
 
 ```wcl
-xs:    list<i64>  = [1, 2, 3, 4]
-names: list<utf8> = ["alice", "bob"]
-empty: list<i64>  = []
+@document
+type Doc {
+  xs:    list<i64>
+  names: list<utf8>
+  empty: list<i64>
+}
+
+xs    = [1, 2, 3, 4]
+names = ["alice", "bob"]
+empty = []
 ```
 
 ## Nested lists
@@ -19,7 +26,12 @@ empty: list<i64>  = []
 List elements can themselves be lists. Use this for matrices, lookup tables, or any rectangular grid.
 
 ```wcl
-grid: list<list<i64>> = [
+@document
+type Doc {
+  grid: list<list<i64>>
+}
+
+grid = [
   [1, 2, 3],
   [4, 5, 6],
   [7, 8, 9],

@@ -4,7 +4,7 @@
 example ex_records {
   title     = "Declaring and constructing a record"
   unit      = records
-  narrative = "A `type` declares a named record; a record value fills its fields."
+  narrative = "A `type` declares a named record; a bare `{ … }` literal fills its fields, typed by the position it lands in."
   code_lang = "wcl"
   code = <<'CODE'
 type Dog {
@@ -12,9 +12,14 @@ type Dog {
   age:  u32
 }
 
-let rex = Dog { name: "Rex", age: 4u32 }
+@document
+type Kennel {
+  resident: Dog
+}
+
+resident = { name: "Rex", age: 4u32 }
 CODE
-  expected  = "`rex` is a `Dog` record with `name = \"Rex\"` and `age = 4`."
+  expected  = "`resident` is a `Dog` with `name = \"Rex\"` and `age = 4`."
   audience  = :both
 }
 
@@ -25,9 +30,16 @@ example ex_unions {
   code_lang = "wcl"
   code = <<'CODE'
 union Shape {
-  Circle { radius: f64, stroke: f64 }   // record variant
-  Polygon i32                            // typeref variant
-  Empty                                  // unit variant
+  Circle { radius: f64  stroke: f64 }   // record variant
+  Polygon i32                           // typeref variant
+  Empty none                            // unit variant
+}
+
+@document
+type Doc {
+  a: Shape
+  b: Shape
+  c: Shape
 }
 
 a = Shape::Circle { radius: 5.0, stroke: 0.5 }
@@ -40,7 +52,7 @@ CODE
 
 example ex_heredoc {
   title     = "Raw heredoc for backslash-heavy text"
-  unit      = strings
+  unit      = string_literals
   narrative = "A single-quoted tag takes the body verbatim — no escapes, no interpolation."
   code_lang = "wcl"
   code = <<'CODE'
@@ -58,7 +70,7 @@ CODE
 
 example ex_schema_block {
   title     = "A document root with one kind of child block"
-  unit      = schema
+  unit      = document_schema
   narrative = "The block label becomes an inline field; the port defaults to 80."
   code_lang = "wcl"
   code = <<'CODE'
@@ -83,7 +95,7 @@ CODE
 
 example ex_match {
   title     = "Matching a union with guards"
-  unit      = control_flow
+  unit      = match_expr
   narrative = "`match` returns the body of the first pattern that matches; a guard adds a runtime test."
   code_lang = "wcl"
   code = <<'CODE'
@@ -109,7 +121,13 @@ type Profile {
   bio:  utf8?      // optional — may be none
 }
 
-partial = Profile { name: "Bob", bio: none }
+@document
+type Doc {
+  partial: Profile
+  theme:   symbol
+}
+
+partial = { name: "Bob", bio: none }
 theme   = page.theme ?? site.theme ?? :nord
 CODE
   expected  = "`partial.bio` is `none`; `theme` falls back to `site.theme`, then `:nord`."

@@ -6,11 +6,11 @@ concept numbers {
   body {
     p <<PROSE
 WCL has fixed-width signed and unsigned integers plus two float widths. A bare
-integer literal defaults to `i64`; a suffix pins the exact type. Underscores may
-group digits for readability and are ignored. See [Numeric promotion](concept_numeric_promotion)
-for how mixed operands widen to a common type.
+integer literal defaults to `i64`; a suffix pins the exact type. See
+[Numeric promotion](concept_numeric_promotion) for how mixed operands widen to a
+common type, and [Number literals](fact_number_literals) for the literal syntax —
+radixes, width suffixes, and digit grouping.
 PROSE
-    p "Literal syntax — radixes, width suffixes, and digit-grouping underscores — is its own note: [Number literals](fact_number_literals)."
     h2 "Types"
     table {
       header = ["Width", "Signed", "Unsigned", "Float"]

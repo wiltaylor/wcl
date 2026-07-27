@@ -1,9 +1,10 @@
 concept string_literals {
   name     = "String Literals"
-  summary  = "UTF-8 by default; ascii/utf16/utf32 prefixes select another encoding."
-  related  = [strings, string_interpolation, symbols]
+  summary  = "UTF-8 by default; ascii/utf16/utf32 prefixes select another encoding, heredocs carry multi-line and verbatim text."
+  related  = [string_interpolation, symbols]
   audience = :both
   body {
+    p "String literals are UTF-8 by default. A prefix selects another encoding, heredocs carry multi-line and verbatim bodies, and a `$` prefix opts a literal into [interpolation](concept_string_interpolation). The builtins that search, split, join and slice text are in the String functions reference."
     h2 "Literals"
     code "wcl" { source = <<'SRC'
 name  = "hello"          // utf8 (default)

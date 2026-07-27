@@ -6,13 +6,13 @@ A `union` is a tagged set of variants — a value that is exactly one of several
 
 ## Variant body forms
 
-Three shapes are accepted: a **record** body with named fields, a **typeref** body for a single positional payload, or a **unit** body with no payload.
+Three shapes are accepted: a **record** body with named fields (space- or newline-separated, no commas), a **typeref** body for a single positional payload, or a **unit** body written `none`.
 
 ```wcl
 union Shape {
-  Circle { radius: f64, stroke: f64 }   // record variant
-  Polygon i32                            // typeref variant
-  Empty                                  // unit variant
+  Circle { radius: f64  stroke: f64 }   // record variant
+  Polygon i32                           // typeref variant
+  Empty none                            // unit variant
 }
 ```
 
@@ -46,7 +46,7 @@ A union can `extends` another, inheriting its variants and adding more — usefu
 
 ```wcl
 union BaseShape {
-  Empty
+  Empty none
 }
 
 union Shape extends BaseShape {
@@ -63,9 +63,16 @@ Variants may carry a record body, a single typeref payload, or nothing.
 
 ```wcl
 union Shape {
-  Circle { radius: f64, stroke: f64 }   // record variant
-  Polygon i32                            // typeref variant
-  Empty                                  // unit variant
+  Circle { radius: f64  stroke: f64 }   // record variant
+  Polygon i32                           // typeref variant
+  Empty none                            // unit variant
+}
+
+@document
+type Doc {
+  a: Shape
+  b: Shape
+  c: Shape
 }
 
 a = Shape::Circle { radius: 5.0, stroke: 0.5 }

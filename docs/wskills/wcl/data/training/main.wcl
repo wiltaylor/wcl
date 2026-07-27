@@ -11,7 +11,7 @@ lesson install_and_first_file {
     "Write a minimal document: a `@document` type plus a few fields",
     "Validate with `wcl check` and read a value with `wcl eval`",
   ]
-  related = [what_is_wcl, fields, cli]
+  related = [what_is_wcl, fields, wcl_cli]
   body {
     p "WCL ships as one binary, `wcl`. Install the newest pre-release with the install script (`curl -fsSL https://wcl.dev/install.sh | sh -s -- --pre`), or build from source with Cargo, then confirm `wcl --version` prints a version."
     p "The smallest useful document has two halves: a `@document` type that says which top-level fields are legal, and the fields themselves. That split is the whole idea of WCL in miniature — data plus the schema that validates it, in one file. `wcl check` gates on the schema (exit 0 = valid), and `wcl eval` resolves a named field to its value."
@@ -61,7 +61,7 @@ SH
     prompt  = "You have run `wcl check` and it printed `OK`. What does `wcl eval` tell you that check did not?"
     kind    = :text
     rubric  = "A good answer distinguishes validation from resolution: `check` gates the whole document against the schema and reports only pass/fail, while `eval` resolves one named path to its actual value — so it is how you confirm a field holds what you meant, and how you read a value out for a script."
-    related = [cli]
+    related = [wcl_cli]
   }
 }
 
@@ -140,7 +140,7 @@ lesson primitive_types {
     "Use symbols for enum-like tagged values",
   ]
   prerequisites = [fields_blocks_comments]
-  related = [numbers, number_literals, strings, string_literals, symbols, booleans]
+  related = [numbers, number_literals, string_literals, symbols, booleans]
   body {
     p "WCL's numbers are fixed-width: signed `i8`–`i128`, unsigned `u8`–`u128`, floats `f32`/`f64`, plus platform-sized `isize`/`usize`. A bare integer defaults to `i64`; a suffix like `200u8` pins the exact type, and underscores may group digits (`1_000_000u32`)."
     p "Strings are UTF-8. A quoted literal handles one line; a heredoc (`<<END` … `END`) keeps line breaks for multi-line text, and the `$\"...\"` form interpolates expressions. Symbols are identifier-like values written `:name` — use them where you'd otherwise reach for a magic string."
@@ -199,7 +199,7 @@ WCL
     prompt  = "When should a field hold a symbol (`:amber`) rather than a string (`\"amber\"`)?"
     kind    = :text
     rubric  = "A good answer says symbols are for enum-like values drawn from a closed set — where a magic string would otherwise be used — and that the payoff is checkability: paired with a `symbol_set` the validator rejects anything outside the set, whereas any string is as good as any other. Strings stay right for free-form human text."
-    related = [symbols, strings]
+    related = [symbols, string_literals]
   }
 }
 
@@ -632,7 +632,7 @@ lesson tooling_day_to_day {
     "Explore a document interactively with `wcl repl`",
   ]
   prerequisites = [imports_namespaces]
-  related = [cli, wcl_cli, validate_format, inspect_values]
+  related = [wcl_cli, validate_format, inspect_values]
   body {
     p "Once a document exists, most work is small edits. `wcl fmt --in-place` rewrites to canonical form (comments and blank-line groupings survive). `wcl set file.wcl path value` updates one field in place, following the import chain to the file that declares it — the value is parsed as a WCL expression, so quote it from the shell. `wcl diff old new` compares the *evaluated* documents, so a formatting-only change is an empty diff."
     p "For exploration, `wcl repl file.wcl` gives you a prompt whose identifiers resolve against the file's top-level fields — the quickest way to poke at expressions before committing them."

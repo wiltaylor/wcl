@@ -8,10 +8,13 @@
   age:  u8
 }
 
-user
-| name    | age |
-| Ada     | 36  |
-| Grace   | 45  |
+@document type Roster {
+  users: list<User>
+}
+
+users:                    // the FIELD name, with a colon; rows follow
+  | "Ada"   | 36 |
+  | "Grace" | 45 |
 ```
 
 ## Related

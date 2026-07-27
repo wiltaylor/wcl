@@ -32,16 +32,8 @@ forcing it into prose.
 
 - [Atomic Note](../references/concept_atomic_note.md)
 
-- [Structured data](../references/concept_structured_data.md)
-
 - [Which unit kind? — the decision guide](../references/fact_unit_decision_guide.md)
 
-- [Concept](../references/concept_concept.md)
-
-- [Entity](../references/concept_entity.md)
-
-- [Fact](../references/concept_fact.md)
-
-- [Process](../references/concept_process.md)
+- [Structured data](../references/concept_structured_data.md)
 
 [← Back to SKILL.md](../SKILL.md)

@@ -2,7 +2,7 @@ concept atomic_note {
   name     = "Atomic Note"
   summary  = "Each unit captures exactly one idea — one concept, entity, fact or process."
   audience = :both
-  related  = [concept, entity, fact, process, selfcontained, datapresentation, unit_decision_guide]
+  related  = [decomposing_information, unit_decision_guide, selfcontained, linking_discipline]
   body {
     p <<BODY
       An atomic note is a note which contains only one idea and is self contained. The note

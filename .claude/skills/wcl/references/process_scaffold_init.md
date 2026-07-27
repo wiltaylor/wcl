@@ -52,6 +52,6 @@ Change into the new folder and run `wcl check` on its `main.wcl` to confirm the 
 
 ## Related
 
-- [CLI Reference](../references/concept_cli.md)
+- [wcl](../references/entity_wcl_cli.md)
 
 [← Back to SKILL.md](../SKILL.md)

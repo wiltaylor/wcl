@@ -68,8 +68,6 @@ Record the upgrade: bump `topic.version`, and update each touched source's `last
 
 ## Related
 
-- [CLI Reference](../references/concept_cli.md)
-
 - [wcl](../references/entity_wcl_cli.md)
 
 - [Validate and format a WCL file](../references/process_validate_format.md)

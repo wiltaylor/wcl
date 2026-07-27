@@ -89,6 +89,10 @@ cp -r out/skill <repo>/.claude/skills/<name>
 Add content by writing block instances into `data/`. The templates project them
 automatically — never hand-edit `out/`. Keep `wskill-check` green and re-render
 after changes.
+
+Before writing, read the `wskill` skill's **Authoring** section: the unit decision
+guide (which kind is this note?), the writing-style rules, the linking discipline
+(keep `related` to a handful of ids), and a fill-out template per unit kind.
 WSK_README_MD
 }
 
@@ -157,10 +161,14 @@ WSK_DATA_PROCESSES_PROCESSES_WCL
 
 file "data/reference/reference.wcl" {
   content = $<<WSK_DATA_REFERENCE_REFERENCE_WCL
-// Reference content for ${answer("topic_name")}: concepts, entities, facts,
-// terms and examples. Split into more files under data/reference/
-// as this grows (add an import line in wskill.wcl per new file). For tables or any
-// other topic-specific shape, declare a typed block in schema/extensions.wcl.
+// Reference content for ${answer("topic_name")}: concepts, entities, facts and
+// examples. Split into more files under data/reference/ as this grows (add an
+// import line in wskill.wcl per new file). For tables or any other
+// topic-specific shape, declare a typed block in schema/extensions.wcl.
+//
+// The `wskill` skill carries a fill-out template per unit kind, the writing-style
+// rules, and the linking discipline — read those before writing. The skeletons
+// below are the short form.
 //
 // Block forms (all fields beyond the required ones are optional):
 //
@@ -186,7 +194,7 @@ file "data/reference/reference.wcl" {
 //     title = "…"  related = [other_unit]
 //     body { table { header = ["…"]  rows = [["…"]] } }
 //   }
-//   term <id>      { term = "…"  definition = "…"  aliases = ["…"] }
+//
 //   example <id>   { title = "…"  unit = <concept/entity/fact id>  // renders on that unit's page
 //                    narrative = "…"  code_lang = "bash"
 //                    code = <<'SH'

@@ -5,20 +5,11 @@
 // landing-parts.wcl. The same content degrades to the Markdown / PDF
 // backends — no parallel fallback copy needed.
 
-// The wskill registry, discovered from the `include`s in main.wcl: every
-// member's book, plus the optional deck / training views (their entry
-// files exist only when a member ships that view).
-let wskill_books   = included_sites({ folder: "wskills", entry: "wdoc/book/main.wcl" })
-let wskill_decks   = included_sites({ folder: "wskills", entry: "wdoc/presentation/main.wcl", prefix: "decks" })
-let wskill_courses = included_sites({ folder: "wskills", entry: "wdoc/training/main.wcl", prefix: "training" })
-
-// Extra ` · [deck](…) · [course](…)` links appended to a member's card
-// when it ships those views.
-let wskill_view_links = fn(n: utf8) -> utf8 {
-  let d = join(map(filter(wskill_decks,   fn(x: IncludeEntry) -> bool { x.name == n }), fn(x: IncludeEntry) -> utf8 { $" · [deck](./${x.href})" }), "");
-  let c = join(map(filter(wskill_courses, fn(x: IncludeEntry) -> bool { x.name == n }), fn(x: IncludeEntry) -> utf8 { $" · [course](./${x.href})" }), "");
-  $"${d}${c}"
-}
+// The wskill registry, discovered from the `include`s in main.wcl. Only the
+// books are listed: a member's deck and training views are still built and
+// served, but the landing links one entry point per topic so the registry
+// reads as a list of references rather than a matrix of views.
+let wskill_books = included_sites({ folder: "wskills", entry: "wdoc/book/main.wcl" })
 
 // Card icon per wskill; new members fall back to a generic book.
 let wskill_icon = fn(n: utf8) -> utf8
@@ -35,16 +26,12 @@ let ref_cards = map(wskill_books, fn(s: IncludeEntry) -> LpRefCard {
     summary: s.summary ?? "",
     href: $"./${s.href}",
     icon: wskill_icon(s.name),
-    links: wskill_view_links(s.name),
+    links: "",
   }
 })
 
-// Every published view as a footer link (books, then decks, then courses).
-let ref_links = flatten([
-  map(wskill_books,   fn(s: IncludeEntry) -> LpFootlink { { label: s.name, href: $"./${s.href}" } }),
-  map(wskill_decks,   fn(s: IncludeEntry) -> LpFootlink { { label: $"${s.name} deck", href: $"./${s.href}" } }),
-  map(wskill_courses, fn(s: IncludeEntry) -> LpFootlink { { label: $"${s.name} course", href: $"./${s.href}" } }),
-])
+// One footer link per reference book.
+let ref_links = map(wskill_books, fn(s: IncludeEntry) -> LpFootlink { { label: s.name, href: $"./${s.href}" } })
 
 page index { sites = [:wcl]  title = "Why WCL?"  start = true
   region "banner" {

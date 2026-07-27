@@ -18,7 +18,8 @@ import <wdoc.wcl>
 // skill. `include` builds every member's book under docs/_site/wskills/<name>/;
 // the landing page lists them via `included_sites(...)` (a registry, by hand).
 // Members that ship the optional views (the entry file exists only when they
-// do) build under decks/<name>/ and training/<name>/ too.
+// do) build under decks/<name>/ and training/<name>/ too — they are served but
+// deliberately NOT linked from the landing, which lists one book per topic.
 include "wskills" { entry = "wdoc/book/main.wcl" }
 include "wskills" { entry = "wdoc/presentation/main.wcl"  prefix = "decks" }
 include "wskills" { entry = "wdoc/training/main.wcl"      prefix = "training" }

@@ -33,12 +33,6 @@ service "api" { port = 9090u32  region = "eu-west-1" }
 
 - [Document Schema](../references/concept_document_schema.md)
 
-- [Referential Integrity](../references/concept_ref_integrity.md)
-
-- [Child-count Constraints](../references/concept_child_count_constraints.md)
-
-- [Fields](../references/concept_fields.md)
-
 - [Blocks](../references/concept_blocks.md)
 
 - [Records](../references/concept_records.md)

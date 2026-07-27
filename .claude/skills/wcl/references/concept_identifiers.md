@@ -8,16 +8,12 @@ Identifiers are the names used throughout WCL — for fields, types, block kinds
 
 An identifier starts with an **ASCII letter** (`a`-`z`, `A`-`Z`) or an **underscore**, and continues with letters, digits, or underscores. No Unicode, no dashes, no spaces.
 
-```wcl
-name           // ok
-my_field       // ok
-_internal      // ok
-v2             // ok
-HTTPStatus     // ok
-
-2nd_attempt    // NOT ok — must not start with a digit
-kebab-case     // NOT ok as a field/type name — dashes aren't identifier chars
-```
+| Name | Legal? | Why |
+| --- | --- | --- |
+| `name`, `my_field`, `_internal` | yes | Letters and underscores |
+| `v2`, `HTTPStatus` | yes | Digits and capitals are fine after the first character |
+| `2nd_attempt` | no | Must not start with a digit |
+| `kebab-case` | no | Dashes are not identifier characters — except in block labels, below |
 
 ## Block labels: kebab-case and paths
 

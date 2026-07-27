@@ -13,7 +13,7 @@ metadata:
 
 A typed configuration and schema language: records, unions, interfaces, decorators, and a document model that gathers and validates structured data.
 
-**Upstream version:** `0.24.1-alpha`. If the real upstream has moved past this, the skill may be stale — bump `topic.version` and re-verify (see the update workflow).
+**Upstream version:** `0.31.0-alpha`. If the real upstream has moved past this, the skill may be stale — bump `topic.version` and re-verify (see the update workflow).
 
 WCL is a typed configuration & schema language. This skill captures its full reference as data — the language, the builtin library, and the `wcl` CLI — projected from one model.
 

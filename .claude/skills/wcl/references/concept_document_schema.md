@@ -27,6 +27,31 @@ Imported (library) `@document` schemas merge silently. Only a **second root-auth
 > **Reflection**
 > decorator_names(T) and decorator_arg(T, name, slot) read decorators back at evaluation time — used by libraries (like wdoc) that dispatch on a block's declared kind.
 
+## Examples
+
+### A document root with one kind of child block
+
+The block label becomes an inline field; the port defaults to 80.
+
+```wcl
+@block("service")
+type Service {
+  @inline(0)   name: utf8     // service "web" → name = "web"
+  @default(80) port: u32
+  region: utf8
+}
+
+@document
+type Config {
+  @children("service") services: list<Service>
+}
+
+service "web" { region = "us-east-1" }
+service "api" { port = 9090u32  region = "eu-west-1" }
+```
+
+**Expected:** Each `service` block contributes a `Service`; `web`'s port defaults to 80.
+
 ## Related
 
 - [Block Schema](../references/concept_block_schema.md)

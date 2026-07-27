@@ -1,6 +1,8 @@
 # String Literals
 
-_UTF-8 by default; ascii/utf16/utf32 prefixes select another encoding._
+_UTF-8 by default; ascii/utf16/utf32 prefixes select another encoding, heredocs carry multi-line and verbatim text._
+
+String literals are UTF-8 by default. A prefix selects another encoding, heredocs carry multi-line and verbatim bodies, and a `$` prefix opts a literal into [interpolation](../references/concept_string_interpolation.md). The builtins that search, split, join and slice text are in the String functions reference.
 
 ## Literals
 
@@ -72,9 +74,25 @@ TEX
 
 Opt a string into expression interpolation with a `$` prefix — see [String Interpolation](../references/concept_string_interpolation.md).
 
-## Related
+## Examples
 
-- [Strings](../references/concept_strings.md)
+### Raw heredoc for backslash-heavy text
+
+A single-quoted tag takes the body verbatim — no escapes, no interpolation.
+
+```wcl
+regex = <<'RAW'
+\d{3}-\d{4}
+RAW
+
+latex = <<'TEX'
+\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+TEX
+```
+
+**Expected:** `regex` and `latex` hold the literal bytes, backslashes intact.
+
+## Related
 
 - [String Interpolation](../references/concept_string_interpolation.md)
 

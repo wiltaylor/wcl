@@ -1,11 +1,15 @@
 // The `wcl` CLI, mapped as data via the opt-in cli module (schema/cli.wcl).
-// Sourced from crates/wcl/src/main.rs and the CLI reference. The book renders a
-// top-level "CLI" section: wcl → its subcommands → wdoc's nested subcommands.
+// Mirrors `wcl <command> --help` from the binary — every subcommand, argument
+// and switch, with defaults and accepted values in `remarks`. `just wcl-refcheck`
+// fails when the subcommand set here drifts from the binary.
+//
+// The book renders a top-level "CLI" section: wcl → its subcommands → the nested
+// subcommands of `wdoc` and `wad`.
 
 cli wcl_cli {
   name        = "wcl"
-  version     = "0.24.1-alpha"
-  description = "The WCL command-line interface — parse, check, evaluate, edit, format, the language server, and the wdoc generator."
+  version     = "0.31.0-alpha"
+  description = "The WCL command-line interface — parse, check, evaluate, edit, format, diff, scaffold, the REPL, the language server, the browser editor, the wdoc generator, and the WAD helpers."
 
   // Global switches (apply to every subcommand).
   cli_switch sw_help    { long = "--help"     short = "-h"  description = "Print help and exit." }
@@ -13,17 +17,18 @@ cli wcl_cli {
 
   subcommand cmd_parse {
     name = "parse"
-    description = "Parse a file and print the resulting document tree (forces full evaluation)."
+    description = "Parse a file and print the resulting document tree. Forces full evaluation, so every field, import and computed expression is exercised."
     cli_arg    arg_file { name = "file"  description = "Path to a WCL source file." }
-    cli_switch sw_profile { long = "--profile"  description = "Write a call-tree profile as JSON to stderr." }
+    cli_switch sw_profile { long = "--profile"  description = "Record a call-tree profile of the document forcing and print it as JSON to stderr after the dump." }
     code_example { lang = "console"  code = "wcl parse site.wcl" }
   }
 
   subcommand cmd_check {
     name = "check"
-    description = "Parse and validate against the schema. Exit 0 = valid, 1 = parse error, 2 = schema violation."
-    cli_arg    arg_file { name = "file"  description = "WCL source file, or `-` to read from stdin." }
-    cli_switch sw_json { long = "--json"  description = "Emit the result as a JSON object instead of human-readable diagnostics." }
+    description = "Parse and validate against the schema. System imports resolve against the embedded wdoc library, so this is the fast edit-loop checker for wdoc projects too."
+    remarks = "Exit codes: `0` valid, `1` parse error, `2` schema violation."
+    cli_arg    arg_file { name = "file"  description = "Path to a WCL source file, or `-` to read from stdin."  remarks = "With `-`, relative imports resolve against the current directory." }
+    cli_switch sw_json { long = "--json"  description = "Emit the result as a JSON object on stdout (`ok`, `file`, `errors[]` with code / message / offset / length) instead of human-readable diagnostics."  remarks = "Exit codes are unchanged." }
     code_example { lang = "console"  code = "wcl check site.wcl" }
   }
 
@@ -33,73 +38,90 @@ cli wcl_cli {
     description = "Resolve a dotted path from the document root and print the value."
     cli_arg    arg_file { name = "file"  description = "Path to a WCL source file." }
     cli_arg    arg_path { name = "path"  description = "Dotted path to resolve from the document root." }
-    cli_switch sw_json    { long = "--json"     description = "Emit the value as JSON instead of the WCL display form." }
-    cli_switch sw_profile { long = "--profile"  description = "Write an evaluation profile as JSON to stderr." }
+    cli_switch sw_json    { long = "--json"     description = "Emit the resolved value as JSON instead of the WCL display form."  remarks = "Function values can't be serialized and are represented as `null`." }
+    cli_switch sw_profile { long = "--profile"  description = "Record a call-tree profile of the evaluation and print it as JSON to stderr after the value." }
     code_example { lang = "console"  code = "wcl eval site.wcl service.web.port" }
   }
 
   subcommand cmd_set {
     name = "set"
-    description = "Update the field at a dotted path with a new WCL expression, following imports to the declaring file."
-    cli_arg arg_file  { name = "file"   description = "Entry-point WCL file (imports are followed)." }
-    cli_arg arg_path  { name = "path"   description = "Dotted path to the field to replace." }
-    cli_arg arg_value { name = "value"  description = "New value, written as a WCL expression." }
+    description = "Update the field at a dotted path with a new WCL expression."
+    remarks = "When the path resolves through an import, `wcl set` follows the chain and edits the file that actually declares the field — not necessarily the file you named."
+    cli_arg arg_file  { name = "file"   description = "Path to a WCL source file (entry point — imports are followed)." }
+    cli_arg arg_path  { name = "path"   description = "Dotted path to the field whose value should be replaced." }
+    cli_arg arg_value { name = "value"  description = "New value, written as a WCL expression: strings, numbers with type suffixes, symbols, lists, records."  remarks = "Quote shell-special characters — `'\"alpha\"'` for a string." }
     code_example { lang = "console"  code = "wcl set site.wcl service.web.port 9090u32" }
   }
 
   subcommand cmd_answer {
     name = "answer"
-    description = "Walk a document's pending `@answerable` interview questions (from `import <answer.wcl>`) and record the answers — arrow-key menus for choice questions, free text always available, each answer written back immediately through the validating edit pipeline."
-    cli_arg    arg_file { name = "file"  description = "Path to the WCL document (imports are followed; answers land in the declaring file)." }
-    cli_switch sw_list { long = "--list"  description = "List the pending questions as JSON instead of prompting." }
+    description = "Walk a document's pending `@answerable` interview questions (from `import <answer.wcl>`) and record the answers — arrow-key menus for choice questions, free text always available."
+    remarks = "Each answer writes back immediately through the validating edit pipeline, so an interrupted session loses nothing."
+    cli_arg    arg_file { name = "file"  description = "Path to the WCL document."  remarks = "Imports are followed; each answer lands in the file that declares its question." }
+    cli_switch sw_list { long = "--list"  description = "List the pending questions as JSON (id, prompt, kind, options, skippable) instead of prompting." }
     cli_switch sw_id   { long = "--id"  value_name = "ID"  description = "Answer one question non-interactively: the question block's label." }
-    cli_switch sw_text { long = "--text"  value_name = "TEXT"  description = "Free-text answer for `--id` (may combine with `--pick`)." }
-    cli_switch sw_pick { long = "--pick"  value_name = "OPTION"  description = "Pick an option by its id for `--id` (repeatable)." }
-    cli_switch sw_skip { long = "--skip"  description = "Skip the `--id` question: writes its declared skipped status." }
+    cli_switch sw_text { long = "--text"  value_name = "TEXT"  description = "Free-text answer for `--id` (may combine with `--pick`)."  remarks = "Requires `--id`." }
+    cli_switch sw_pick { long = "--pick"  value_name = "OPTION"  description = "Pick an option by its id for `--id` (repeatable)."  remarks = "Requires `--id`." }
+    cli_switch sw_skip { long = "--skip"  description = "Skip the `--id` question: writes its declared skipped status."  remarks = "Requires `--id`; conflicts with `--text` and `--pick`." }
     code_example { lang = "console"  code = "wcl answer plan.wcl --id q_platforms --pick linux" }
   }
 
   subcommand cmd_fmt {
     name = "fmt"
-    description = "Reformat to canonical form (comments and blank-line groupings preserved)."
-    cli_arg    arg_file { name = "file"  description = "WCL source file, or `-` for stdin." }
-    cli_switch sw_inplace { long = "--in-place"  description = "Overwrite the file in place instead of printing to stdout." }
-    cli_switch sw_indent  { long = "--indent"  value_name = "N"  description = "Spaces per indentation level (default 2)." }
-    cli_switch sw_notrail { long = "--no-trailing-comma"  description = "Drop the trailing comma after match arms." }
+    description = "Reformat to canonical form. Comments and blank-line groupings survive; indentation, brace style, number radix and string-delimiter choice are normalized."
+    cli_arg    arg_file { name = "file"  description = "Path to a WCL source file, or `-` to read from stdin and write the formatted source to stdout." }
+    cli_switch sw_inplace { long = "--in-place"  description = "Overwrite the file in place (atomically)."  remarks = "Without it the formatted source goes to stdout and the file is left untouched." }
+    cli_switch sw_indent  { long = "--indent"  value_name = "N"  description = "Spaces per indentation level."  remarks = "Default `2` (the canonical formatter)." }
+    cli_switch sw_notrail { long = "--no-trailing-comma"  description = "Strip the trailing comma the formatter places after every `match` arm."  remarks = "The parser accepts either form." }
     code_example { lang = "console"  code = "wcl fmt site.wcl --in-place" }
   }
 
   subcommand cmd_diff {
     name = "diff"
-    description = "Compare two documents (evaluated views) and print the changed entities and fields."
-    cli_arg    arg_old { name = "old"  description = "Left side — a file or a `<rev>:<path>` git specifier." }
-    cli_arg    arg_new { name = "new"  description = "Right side — a file or a `<rev>:<path>` git specifier." }
-    cli_switch sw_format { long = "--format"  value_name = "wcl|json"  description = "Output format (default: a re-parseable WCL tree)." }
+    description = "Compare two documents and print the changed entities and fields. Operates on the *evaluated* views (imports resolved), so a formatting-only edit produces no diff."
+    remarks = "Each top-level block is an entity keyed `kind:label`; nested field edits are reported by path, recursing into lists by index."
+    cli_arg    arg_old { name = "old"  description = "Old (base) document — a path or a `<rev>:<path>` git specifier."  remarks = "A git specifier's imports resolve from that same revision." }
+    cli_arg    arg_new { name = "new"  description = "New document — a path or a `<rev>:<path>` git specifier." }
+    cli_switch sw_format { long = "--format"  value_name = "FORMAT"  description = "Output format."  remarks = "`wcl` (default) emits a re-parseable WCL tree; `json` emits the flat change array." }
     code_example { lang = "console"  code = "wcl diff HEAD~1:config.wcl config.wcl" }
   }
 
   subcommand cmd_init {
     name = "init"
-    description = "Scaffold a new project folder from a WCL template."
-    cli_arg    arg_template { name = "template"  description = "Built-in name, user template, or path to a template .wcl." }
-    cli_arg    arg_dest     { name = "dest"  required = false  description = "Destination directory (default: the answered `name`)." }
-    cli_switch sw_list     { long = "--list"      description = "List the built-in templates and exit." }
-    cli_switch sw_defaults { long = "--defaults"  description = "Use defaults for every property — no prompts." }
-    cli_switch sw_define   { long = "--define"  short = "-D"  value_name = "KEY=VALUE"  description = "Preset a template property (repeatable)." }
+    description = "Scaffold a new project folder from a WCL template. The template declares `property` questions plus the `file` / `folder` blocks to generate."
+    remarks = "Answer precedence: `-D` beats `--answers`, which beats the interactive prompt, which beats the property's `default`."
+    cli_arg    arg_template { name = "template"  required = false  description = "Built-in template name, a user template under `$XDG_DATA_HOME/wcl/templates/<name>/template.wcl`, or a path to a template `.wcl` file (or a folder holding `template.wcl`)."  remarks = "Optional only with `--list`." }
+    cli_arg    arg_dest     { name = "dest"  required = false  description = "Destination directory."  remarks = "Defaults to the answered `name` property, falling back to the template name." }
+    cli_switch sw_answers  { long = "--answers"  value_name = "ANSWERS"  description = "Answer file (`.wcl` or `.json`) supplying property answers." }
+    cli_switch sw_define   { long = "-D"  value_name = "KEY=VALUE"  description = "Supply a property answer inline (repeatable). Highest precedence." }
+    cli_switch sw_defaults { long = "--defaults"  description = "Non-interactive: never prompt; use defaults for unanswered properties."  remarks = "Errors when a property has no default." }
+    cli_switch sw_force    { long = "--force"  description = "Write into the destination even if it already exists and is not empty." }
+    cli_switch sw_list     { long = "--list"  description = "List the built-in templates and exit." }
     code_example { lang = "console"  code = "wcl init minimal ./app -D name=app --defaults" }
   }
 
   subcommand cmd_repl {
     name = "repl"
-    description = "Read-eval-print loop for ad-hoc WCL expressions."
-    cli_arg arg_file { name = "file"  required = false  description = "Optional file whose document is in scope in the REPL." }
+    description = "Read-eval-print loop for ad-hoc WCL expressions. Without a file you can still evaluate self-contained expressions — arithmetic, string ops, builtin calls."
+    cli_arg arg_file { name = "file"  required = false  description = "Optional WCL file whose top-level fields the REPL should resolve identifiers against." }
     code_example { lang = "console"  code = "wcl repl site.wcl" }
   }
 
   subcommand cmd_lsp {
     name = "lsp"
-    description = "Run the WCL language server over stdio (for editor integrations)."
+    description = "Run the WCL language server. Defaults to stdio — the transport editors expect."
+    cli_switch sw_tcp { long = "--tcp"  value_name = "HOST:PORT"  description = "Listen for inbound TCP connections instead of using stdio. Each connection runs as an independent LSP session."  remarks = "Useful for attaching debug clients, e.g. `--tcp 127.0.0.1:9257`." }
+    cli_switch sw_log { long = "--log"  value_name = "LOG"  description = "Write `tracing` log lines to this file."  remarks = "The server never logs to stderr (that would corrupt the stdio LSP stream), so a file sink is the only supported destination." }
     code_example { lang = "console"  code = "wcl lsp" }
+  }
+
+  subcommand cmd_editor {
+    name = "editor"
+    description = "Serve a browser-based editor for the current directory: a gitignore-aware file tree, CodeMirror editing with WCL language support and LSP (completion, hover, diagnostics), and a live wdoc preview built from the root document down."
+    remarks = "The preview pane also hosts the review-comment UI and the WYSIWYG Design mode."
+    cli_arg    arg_root { name = "root"  required = false  description = "Root `.wcl` document."  remarks = "Defaults to `./main.wcl` when present. The preview pane and schema-validated saves need it; plain editing works without one." }
+    cli_switch sw_addr { long = "--addr"  value_name = "ADDR"  description = "Bind address, or `auto` to pick the first free port near 8080."  remarks = "Default `auto`." }
+    code_example { lang = "console"  code = "wcl editor main.wcl --addr 127.0.0.1:8139" }
   }
 
   subcommand cmd_wdoc {
@@ -109,33 +131,94 @@ cli wcl_cli {
 
     subcommand cmd_wdoc_build {
       name = "build"
-      description = "Build a wdoc document into a static site."
-      cli_arg    arg_entry { name = "entry"  description = "Path to the wdoc entry template (e.g. wdoc/book/main.wcl)." }
-      cli_switch sw_out { long = "--out"  value_name = "DIR"  description = "Output directory for the generated site." }
+      description = "Render every `page` block in the file to `<out>/<name>.html`."
+      cli_arg    arg_entry { name = "file"  description = "Path to a WCL source file declaring one or more `page` blocks." }
+      cli_switch sw_out  { long = "--out"  value_name = "DIR"  description = "Output directory. Created if missing." }
+      cli_switch sw_site { long = "--site"  value_name = "SITE"  description = "Build only this named `site`, flat at `<out>`."  remarks = "Omitted: every site renders into its own `<out>/<name>/` subdirectory with a chooser index (a single-site document is unaffected)." }
+      cli_switch sw_profile { long = "--profile"  description = "Record a call-tree profile of the document evaluation driving the build and print it as JSON to stderr." }
       code_example { lang = "console"  code = "wcl wdoc build wdoc/book/main.wcl --out out/book" }
+    }
+    subcommand cmd_wdoc_markdown {
+      name = "markdown"
+      description = "Render every `page` block to a folder of Markdown files under `<out>` — one `.md` per page, with diagrams / terminals / wireframes written as standalone `.svg` files the Markdown references."
+      remarks = "Aimed at AI / text consumers: zoomable diagrams render as plain SVG, equations stay as LaTeX, and videos are skipped."
+      cli_arg    arg_entry { name = "file"  description = "Path to a WCL source file declaring one or more `page` blocks." }
+      cli_switch sw_out  { long = "--out"  value_name = "DIR"  description = "Output directory. Created if missing." }
+      cli_switch sw_site { long = "--site"  value_name = "SITE"  description = "Build only this named `site`, flat at `<out>`."  remarks = "Omitted: every site renders into its own `<out>/<name>/` subdirectory." }
+      code_example { lang = "console"  code = "wcl wdoc markdown docs/main.wcl --out docs/_md" }
     }
     subcommand cmd_wdoc_skill {
       name = "skill"
       aliases = ["md"]
-      description = "Project a wdoc :ai_skill target into a SKILL.md + references/ folder."
-      cli_arg    arg_entry { name = "entry"  description = "Path to the wdoc skill entry template." }
-      cli_switch sw_out { long = "--out"  value_name = "DIR"  description = "Output directory for the generated skill." }
+      description = "Render the file to an agent / Claude skill folder under `<out>`: the start page becomes `SKILL.md` (front matter from the site's `skill { }` block), every other page goes under `references/`, and `file` blocks ship into their `dir`."
+      remarks = "A site opts in with `default_template = :ai_skill`."
+      cli_arg    arg_entry { name = "file"  description = "Path to a WCL source file declaring a `:ai_skill` site." }
+      cli_switch sw_out  { long = "--out"  value_name = "DIR"  description = "Output directory (the skill folder). Created if missing." }
+      cli_switch sw_site { long = "--site"  value_name = "SITE"  description = "Build only this named `site`."  remarks = "Omitted: every skill site is built; multiple sites render into `<out>/<name>/` subfolders." }
       code_example { lang = "console"  code = "wcl wdoc skill wdoc/skill/main.wcl --out out/skill" }
     }
     subcommand cmd_wdoc_pdf {
       name = "pdf"
-      description = "Render a wdoc document to a PDF."
-      cli_arg    arg_entry { name = "entry"  description = "Path to the wdoc entry template." }
-      cli_switch sw_out { long = "--out"  value_name = "FILE"  description = "Output PDF path." }
-      cli_switch sw_page { long = "--page-size"  value_name = "A4|Letter"  description = "Page size (default A4)." }
-      code_example { lang = "console"  code = "wcl wdoc pdf wdoc/book/main.wcl --out book.pdf" }
+      description = "Render each `site` to `<out>/<name>.pdf` — a pure-Rust PDF, no browser or external tools."
+      cli_arg    arg_entry { name = "file"  description = "Path to a WCL source file declaring one or more `page` blocks." }
+      cli_switch sw_out  { long = "--out"  value_name = "DIR"  description = "Output directory. Created if missing." }
+      cli_switch sw_site { long = "--site"  value_name = "SITE"  description = "Render only this named `site`."  remarks = "Omitted: the source file stem names the output PDF." }
+      cli_switch sw_page { long = "--page-size"  value_name = "PAGE_SIZE"  description = "Page size."  remarks = "`a4` (default) or `letter`." }
+      code_example { lang = "console"  code = "wcl wdoc pdf wdoc/book/main.wcl --out out/pdf" }
     }
     subcommand cmd_wdoc_serve {
       name = "serve"
-      description = "Build and serve a wdoc site locally with live reload. Watches for `.wcl` changes; press Enter in the console (or `POST /__wdoc_rebuild`) to rebuild. Browser editing lives in `wcl editor`."
-      cli_arg    arg_entry { name = "entry"  description = "Path to the wdoc entry template." }
-      cli_switch sw_addr { long = "--addr"  value_name = "ADDR"  description = "Address to bind (default 127.0.0.1:8080)." }
+      description = "Run a local dev server. Watches the source for `.wcl` changes but does not rebuild automatically — press Enter in the console (or `POST /__wdoc_rebuild`) to rebuild, then the browser reloads."
+      remarks = "Editing and review comments live in `wcl editor`, not here."
+      cli_arg    arg_entry { name = "file"  description = "Path to a WCL source file declaring one or more `page` blocks." }
+      cli_switch sw_addr { long = "--addr"  value_name = "ADDR"  description = "Bind address, or `auto` to pick the first free port near 8080."  remarks = "Default `127.0.0.1:8080`." }
+      cli_switch sw_out  { long = "--out"  value_name = "DIR"  description = "Output directory."  remarks = "Omitted: a temp directory is used and removed on shutdown." }
+      cli_switch sw_site { long = "--site"  value_name = "SITE"  description = "Serve only this named `site` (at `/`)."  remarks = "Omitted: every site is served under `/<name>/` with a chooser index at `/`." }
       code_example { lang = "console"  code = "wcl wdoc serve wdoc/book/main.wcl --addr 127.0.0.1:8080" }
+    }
+    subcommand cmd_wdoc_comments {
+      name = "comments"
+      description = "List the review comments stored in the `comments.wcl` sidecars under the file's directory — left from the `wcl editor` preview pane — or `resolve <id>` to delete one."
+      remarks = "JSON output is aimed at an AI agent acting on the notes. `resolve` is a nested subcommand taking the comment id: `wcl wdoc comments <file> resolve <id>`."
+      cli_arg    arg_entry  { name = "file"  description = "Path to the WCL source file (the doc's entry point)." }
+      cli_switch sw_format { long = "--format"  value_name = "FORMAT"  description = "Output format."  remarks = "`text` (default) is a human-readable table; `json` is one object per comment." }
+      cli_switch sw_site   { long = "--site"  value_name = "SITE"  description = "Restrict to one named `site`."  remarks = "Reserved; currently lists all." }
+      code_example { lang = "console"  code = "wcl wdoc comments docs/main.wcl --format json\nwcl wdoc comments docs/main.wcl resolve c12ab3" }
+    }
+    subcommand cmd_wdoc_review {
+      name = "review"
+      description = "Wait for a reviewer to finish, then print the comments — the agent side of the review handshake. Blocks until the reviewer clicks \"Send to agent\" in the preview pane of a running `wcl editor`, then lists the comments like `comments`."
+      remarks = "Run it again after making changes: the editor shows the agent is waiting once more, so the reviewer can rebuild and keep reviewing. With no editor running it just lists the current comments without blocking."
+      cli_arg    arg_entry { name = "file"  description = "Path to the WCL source file (the doc's entry point)."  remarks = "The same root document `wcl editor` was started with." }
+      cli_switch sw_format { long = "--format"  value_name = "FORMAT"  description = "Output format for the comments printed once released."  remarks = "`json` (default) or `text`." }
+      code_example { lang = "console"  code = "wcl wdoc review docs/main.wcl" }
+    }
+    subcommand cmd_wdoc_training {
+      name = "training"
+      description = "List the course answers stored in the `training.wcl` sidecars under the file's directory — left by a training site running under `wcl wdoc serve` — or grade one."
+      remarks = "Free-text (`:text`) checks arrive `pending` and are listed first — they are what an agent grades, judging the answer against the check's `rubric`. Multiple-choice answers are graded in the page and recorded here only as history. `grade` is a nested subcommand: `wcl wdoc training <file> grade <id>`."
+      cli_arg    arg_entry  { name = "file"  description = "Path to the WCL source file (the doc's entry point)." }
+      cli_switch sw_format  { long = "--format"  value_name = "FORMAT"  description = "Output format."  remarks = "`text` (default) or `json`." }
+      cli_switch sw_pending { long = "--pending"  description = "Only list answers still awaiting a grader." }
+      code_example { lang = "console"  code = "wcl wdoc training wdoc/training/main.wcl --pending" }
+    }
+  }
+
+  subcommand cmd_wad {
+    name = "wad"
+    description = "WAD (architecture document) helpers. Scaffold a WAD with `wcl init wad`."
+    code_example { lang = "console"  code = "wcl wad spec --from HEAD~3 .wad/wad.wcl" }
+
+    subcommand cmd_wad_spec {
+      name = "spec"
+      description = "Derive a change-spec skeleton from a WAD diff: compare the working tree against a reviewed git revision (evaluated views, imports resolved from each side) and write a schema-valid `spec` block — status `:planning`, the exact entity/field change list, TODO rationale/instructions — into `data/specs/` beside the entry document."
+      cli_arg    arg_entry { name = "entry"  required = false  description = "WAD root document."  remarks = "Default: `wad.wcl` in the current directory." }
+      cli_switch sw_from    { long = "--from"  value_name = "FROM"  description = "Reviewed baseline revision to diff from (any git rev)."  remarks = "Required." }
+      cli_switch sw_id      { long = "--id"  value_name = "ID"  description = "Spec id — also the filename."  remarks = "Default `spec_from_<shortsha>`." }
+      cli_switch sw_title   { long = "--title"  value_name = "TITLE"  description = "Spec title."  remarks = "Default \"Changes since <rev>\"." }
+      cli_switch sw_incspec { long = "--include-specs"  description = "Keep changes to `spec` entities in the change list."  remarks = "They are filtered out by default." }
+      cli_switch sw_format  { long = "--format"  value_name = "FORMAT"  description = "What the command produces."  remarks = "`wcl` (default) writes `data/specs/<id>.wcl`; `json` prints the filtered change list to stdout and writes nothing." }
+      code_example { lang = "console"  code = "wcl wad spec --from v1.2 --id spec_billing --title \"Billing split\" wad.wcl" }
     }
   }
 }

@@ -7,16 +7,14 @@ concept identifiers {
     p "Identifiers are the names used throughout WCL — for fields, types, block kinds, block labels, variants, symbols, `let` bindings, and imported items. The lexical rule is the same everywhere, with one convenience exception for block labels."
     h2 "Lexical rule"
     p "An identifier starts with an **ASCII letter** (`a`-`z`, `A`-`Z`) or an **underscore**, and continues with letters, digits, or underscores. No Unicode, no dashes, no spaces."
-    code "wcl" { source = <<'SRC'
-name           // ok
-my_field       // ok
-_internal      // ok
-v2             // ok
-HTTPStatus     // ok
-
-2nd_attempt    // NOT ok — must not start with a digit
-kebab-case     // NOT ok as a field/type name — dashes aren't identifier chars
-SRC
+    table {
+      header = ["Name", "Legal?", "Why"]
+      rows = [
+        ["`name`, `my_field`, `_internal`", "yes", "Letters and underscores"],
+        ["`v2`, `HTTPStatus`", "yes", "Digits and capitals are fine after the first character"],
+        ["`2nd_attempt`", "no", "Must not start with a digit"],
+        ["`kebab-case`", "no", "Dashes are not identifier characters — except in block labels, below"],
+      ]
     }
     h2 "Block labels: kebab-case and paths"
     p "Block **labels** (the name after a block kind) are the one place a bare identifier may contain `-` and `/` connectors — so kebab-case class names and path-like page names need no quoting. The connector sits directly between name parts (no surrounding spaces)."

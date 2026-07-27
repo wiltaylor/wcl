@@ -35,6 +35,6 @@ A question whose status equals `pending` is open. Answering writes the composed 
 
 - [Block Schema](../references/concept_block_schema.md)
 
-- [CLI Reference](../references/concept_cli.md)
+- [wcl](../references/entity_wcl_cli.md)
 
 [← Back to SKILL.md](../SKILL.md)

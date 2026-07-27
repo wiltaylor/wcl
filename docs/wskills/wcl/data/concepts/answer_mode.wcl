@@ -2,7 +2,7 @@
 concept answer_mode {
   name     = "Answer Mode"
   summary  = "The `@answerable` decorator turns question blocks into a guided interview: `wcl answer` walks the pending ones and writes the answers back."
-  related  = [block_schema, cli]
+  related  = [block_schema, wcl_cli]
   audience = :both
   body {
     p "Documents that track interview-style questions as blocks (a planning pipeline, an elicitation checklist) get a *respondent* experience on top: walk the open questions, take answers, flip statuses — never show the respondent raw WCL. A block type opts in with `@answerable` from `import <answer.wcl>`, mapping the roles onto its own field names:"

@@ -14,7 +14,7 @@ Document schemas compose per namespace: when several `@document` types are visib
   port: u16
 }
 
-server web { port: 8080 }
+server web { port = 8080u16 }   // instance fields use `=`, not the `:` of a type
 ```
 
 ## Related

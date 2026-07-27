@@ -52,7 +52,7 @@ Run `wcl diff <old> <new>` over the evaluated views to see exactly what changed.
 
 ## Related
 
-- [CLI Reference](../references/concept_cli.md)
+- [wcl](../references/entity_wcl_cli.md)
 
 - [References](../references/concept_references.md)
 

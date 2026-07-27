@@ -23,7 +23,7 @@ schema_version = "1.3.0"
 topic wcl {
   name = "WCL"
   summary = "A typed configuration and schema language: records, unions, interfaces, decorators, and a document model that gathers and validates structured data."
-  version = "0.24.1-alpha"
+  version = "0.31.0-alpha"
   description = <<DOC
     WCL is a strongly-typed configuration language. You declare **record types** with
     the `type` keyword, give them constraints and defaults with **prefix decorators**
@@ -78,26 +78,26 @@ artifact ai_skill {
 
 source wcl_docs {
   kind = "docs"
-  locator = "/home/wil/dev/WCL/docs/pages/reference"
-  covers = "The authoritative WCL reference site: a page per language feature, the CLI, and builtins."
-  last_checked = "2026-06-20"
-  reflects_version = "0.24.1-alpha"
+  locator = "/home/wil/dev/WCL/docs/pages/reference/wdoc"
+  covers = "The wdoc block reference (charts, diagrams, timelines, terminals, math, …). The language, builtin and CLI reference is this wskill — the pages that once held it were folded in here."
+  last_checked = "2026-07-27"
+  reflects_version = "0.31.0-alpha"
 }
 
 source wcl_repo {
   kind = "repo"
   locator = "/home/wil/dev/WCL"
   covers = "Source of truth for WCL: the parser, evaluator, CLI, and wdoc stdlib (crates/wcl_wdoc/lib)."
-  last_checked = "2026-06-20"
-  reflects_version = "0.24.1-alpha"
+  last_checked = "2026-07-27"
+  reflects_version = "0.31.0-alpha"
 }
 
 source wcl_cli {
   kind = "cli"
   locator = "wcl --help"
-  covers = "Subcommand help text for parse/check/eval/set/fmt/repl/lsp/init/wdoc/diff."
-  last_checked = "2026-06-20"
-  reflects_version = "0.24.1-alpha"
+  covers = "Help text for every subcommand — parse, check, eval, set, answer, fmt, diff, init, repl, lsp, editor, wdoc, wad. `just wcl-refcheck` gates the reference against it."
+  last_checked = "2026-07-27"
+  reflects_version = "0.31.0-alpha"
 }
 
 # ---- Cross-references to other wskills ----

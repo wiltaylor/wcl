@@ -107,7 +107,7 @@ presentation nutshell {
   pres_section tooling_and_next {
     title = "Tooling & next steps"
     pres_slide tooling {
-      unit = cli
+      unit = wcl_cli
       body {
         p "- `wcl check` / `wcl eval` — validate and read"
         p "- `wcl set` / `wcl fmt` / `wcl diff` — edit, normalise, compare"

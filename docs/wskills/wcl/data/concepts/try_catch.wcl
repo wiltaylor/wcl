@@ -8,7 +8,7 @@ concept try_catch {
     code "wcl" { source = <<'SRC'
 rate    = try parse_rate(raw) catch m => 1.0
 summary = try {
-  let r = risky()
+  let r = risky();
   format("ok: {}", r)
 } catch msg {
   format("failed: {}", msg)

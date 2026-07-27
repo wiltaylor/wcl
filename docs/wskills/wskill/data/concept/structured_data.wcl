@@ -2,7 +2,7 @@ concept structured_data {
   name    = "Structured data"
   summary = "Information captured in a defined format — a schema — so every instance is uniform and the templates can read and project it reliably."
   audience = :both
-  related = [datapresentation, decomposing_information, concept, entity, fact, process]
+  related = [datapresentation, decomposing_information]
   body {
     p <<BODY
       Structured data is information that follows a defined format — a schema — rather than

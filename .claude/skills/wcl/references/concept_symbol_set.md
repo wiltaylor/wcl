@@ -17,7 +17,12 @@ type Paint {
   shade: Color     // only :red, :green, or :blue
 }
 
-cream = Paint { shade: :red }
+@document
+type Doc {
+  cream: Paint
+}
+
+cream = { shade: :red }
 ```
 
 Use a symbol set wherever you would reach for an enum in another language: severity levels, edge kinds, named layout modes, palette hues.

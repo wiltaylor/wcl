@@ -242,6 +242,32 @@ skills-check:
     [ "$fail" -eq 0 ] && echo "skills-check OK — projections build clean and match committed artifacts"; \
     exit $fail
 
+# Fail when the `wcl` wskill's reference drifts from the binary it documents:
+# the documented builtin names vs `builtin_names()`, and the documented
+# subcommand tree vs `wcl --help` / `wcl wdoc --help` / `wcl wad --help`
+# (runs in ci). The wskill IS the WCL language/CLI/builtin reference, so a
+# new builtin or subcommand must land in it or the docs quietly go stale.
+[group('quality')]
+wcl-refcheck:
+    @mkdir -p target/refcheck
+    @printf '@document\ntype D {\n  names: list<utf8>\n}\n\nnames = builtin_names()\n' > target/refcheck/builtins.wcl
+    @cargo run -q -p wcl -- eval target/refcheck/builtins.wcl names \
+        | tr -d '[]" ' | tr ',' '\n' | sed '/^$/d' | sort > target/refcheck/builtins-real.txt
+    @grep -oE '^  name *= *"[^"]+"' docs/wskills/wcl/data/builtins.wcl \
+        | sed 's/.*"\(.*\)"/\1/' | sort > target/refcheck/builtins-doc.txt
+    @diff target/refcheck/builtins-real.txt target/refcheck/builtins-doc.txt \
+        || { echo "wcl reference drift: builtins (< missing from docs/wskills/wcl/data/builtins.wcl, > documented but not a builtin)"; exit 1; }
+    @subs() { cargo run -q -p wcl -- $1 --help 2>&1 \
+        | sed -n '/^Commands:/,/^$/p' | sed -n 's/^  \([a-z][a-z-]*\) .*/\1/p' | grep -v '^help$'; }; \
+    { subs ""; subs wdoc | sed 's/^/wdoc /'; subs wad | sed 's/^/wad /'; } \
+        | sort > target/refcheck/commands-real.txt
+    @printf '{ let c = head(clis); join(flatten(map(c.subcommands, fn(s: Subcommand) -> list<utf8> { flatten([[s.name], map(s.subcommands, fn(n: Subcommand) -> utf8 { $"${s.name} ${n.name}" })]) })), "\\n") }\n' \
+        | cargo run -q -p wcl -- repl docs/wskills/wcl/wskill.wcl \
+        | sed 's/^"//; s/"$//' | sed 's/\\n/\n/g' | sort > target/refcheck/commands-doc.txt
+    @diff target/refcheck/commands-real.txt target/refcheck/commands-doc.txt \
+        || { echo "wcl reference drift: CLI subcommands (< missing from docs/wskills/wcl/data/reference/cli.wcl, > documented but not a subcommand)"; exit 1; }
+    @echo "wcl-refcheck OK — $(wc -l < target/refcheck/builtins-real.txt) builtins, $(wc -l < target/refcheck/commands-real.txt) subcommands match the binary"
+
 # Report book/skill audience coverage per wskill (units kept vs total per
 # projection) — informational, not a gate. An excluded unit is otherwise
 # invisible: audience defaults to :book (research: :ai), so e.g. a fact
@@ -318,7 +344,7 @@ wplan-template-check:
 
 # Full CI gate: fmt-check + workspace-lint + workspace-test + schema drift checks + doc builds
 [group('quality')]
-ci: fmt-check workspace-lint workspace-test wskill-schema-check wskill-template-check wskill-crosstopic-check wskill-artifact-check wad-schema-check wad-check wad-extract-check wad-facts-check wad-build wplan-template-check skills-check docs-build
+ci: fmt-check workspace-lint workspace-test wskill-schema-check wskill-template-check wskill-crosstopic-check wskill-artifact-check wcl-refcheck wad-schema-check wad-check wad-extract-check wad-facts-check wad-build wplan-template-check skills-check docs-build
 
 # Run the CLI: just cli-run -- parse examples/basic.wcl
 [group('dev')]

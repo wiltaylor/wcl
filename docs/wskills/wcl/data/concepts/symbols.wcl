@@ -23,7 +23,12 @@ type Tag {
   kind: symbol
 }
 
-t = Tag { name: "release", kind: :stable }
+@document
+type Doc {
+  t: Tag
+}
+
+t = { name: "release", kind: :stable }
 SRC
     }
   }

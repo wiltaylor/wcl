@@ -20,9 +20,18 @@ index philosophy {
 
 index authoring {
   name = "Authoring"
-  summary = "Capturing knowledge: decomposition, classification, the capture loop, and the tools."
+  summary = "Capturing knowledge: decomposition, classification, house style, and the capture loop."
   audience = :both
-  related = [decomposing_information, unit_decision_guide, folder_layout]
+  related = [decomposing_information, unit_decision_guide, writing_style, linking_discipline, folder_layout]
+
+  // A fill-out skeleton per unit kind — what each field is for, a filled
+  // example, and the checklist for calling the unit done.
+  index unit_templates {
+    name = "Unit templates"
+    summary = "A copy-paste skeleton, worked example and done-when checklist for every unit kind."
+    audience = :both
+    related = [template_concept, template_entity, template_fact, template_procedure, template_index, template_example, template_research]
+  }
 }
 
 index views_idx {

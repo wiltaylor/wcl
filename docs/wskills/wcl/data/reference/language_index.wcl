@@ -19,7 +19,7 @@ index language {
   index lang_primitive_types {
     name = "Primitive Types"
     summary = "Scalar values — numbers, strings, booleans, symbols, identifiers, references."
-    related = [numbers, number_literals, numeric_promotion, literal_units, literal_unit_syntax, booleans, identifiers, references, symbols, symbol_set, strings, string_literals, string_interpolation]
+    related = [numbers, number_literals, numeric_promotion, literal_units, literal_unit_syntax, booleans, identifiers, references, symbols, symbol_set, string_literals, string_interpolation]
   }
 
   index lang_complex_types {
@@ -55,7 +55,13 @@ index language {
   index lang_schema {
     name = "Schema & Decorators"
     summary = "Declaring and constraining the document model — decorators, types, and constraints."
-    related = [block_schema, document_schema, ref_integrity, child_count_constraints, type_aliases, type_constraints, dec_document, dec_block, dec_inline, dec_child, dec_children, dec_default, dec_table, dec_decorator, dec_doc, dec_by_ref, dec_only_except, dec_connections]
+    related = [block_schema, document_schema, ref_integrity, child_count_constraints, type_aliases, type_constraints, dec_document, dec_block, dec_inline, dec_child, dec_children, dec_default, dec_table, dec_decorator, dec_doc, dec_by_ref, dec_only_except, dec_connections, dec_schemaless]
+  }
+
+  index lang_interviews {
+    name = "Interview Documents"
+    summary = "Turning a document into a set of questions a respondent answers."
+    related = [answer_mode]
   }
 
   index lang_connections {

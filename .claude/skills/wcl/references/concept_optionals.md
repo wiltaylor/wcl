@@ -15,16 +15,36 @@ type Profile {
   age:   u32?       // optional
 }
 
-complete = Profile { name: "Alice", bio: "Author.", age: 34u32 }
-partial  = Profile { name: "Bob",   bio: none,      age: none }
+@document
+type Directory {
+  complete: Profile
+  partial:  Profile
+}
+
+complete = { name: "Alice", bio: "Author.", age: 34u32 }
+partial  = { name: "Bob",   bio: none,      age: none }
 ```
 
 ## The none literal
 
-`none` is the value that fills an absent optional. It is also the result of builtins that do not return a useful value (`error`, `panic`, `assert`) — those have type `none` and cannot meaningfully be used in a value position.
+`none` is the value an absent optional reads as. It is also the result of builtins that do not return a useful value (`error`, `panic`, `assert`) — those have type `none` and cannot meaningfully be used in a value position.
+
+Absence is expressed by **omitting** the field, not by assigning `none` to it: a `T?` field left out reads as `none`, while `field = none` on a document field or a block field is rejected by `wcl check`. Inside a record literal — where the value's shape is being written out in full — `none` is accepted for an optional member.
 
 ```wcl
-note: utf8? = none
+@block("note") type Note {
+  @inline(0) id: identifier
+  body: utf8?
+}
+
+@document
+type Doc {
+  @children("note") notes: list<Note>
+  headline: utf8?
+}
+
+note first {}            // body omitted → reads as none
+                         // `headline` omitted entirely → reads as none
 ```
 
 ## Working with optionals
@@ -70,7 +90,13 @@ type Profile {
   bio:  utf8?      // optional — may be none
 }
 
-partial = Profile { name: "Bob", bio: none }
+@document
+type Doc {
+  partial: Profile
+  theme:   symbol
+}
+
+partial = { name: "Bob", bio: none }
 theme   = page.theme ?? site.theme ?? :nord
 ```
 

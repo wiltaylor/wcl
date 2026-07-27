@@ -2,16 +2,15 @@
 
 _Numeric suffixes like MiB / km / s that multiply a literal into its type's base unit._
 
-A numeric literal may carry a **unit suffix** — `5MiB`, `512KiB`, `3km`, `30s` —
-written attached, with no space. The value is multiplied by the unit's factor and
-stored in the type's base unit, so `size: std.ByteSize = 5MiB` holds `5242880`
-(bytes). Units are \*type-scoped\*: a literal resolves against the declared type of
-the field or binding it is assigned to, using the `@unit(name, factor)` decorators
-on that type. A unit the type doesn't declare — or a unit literal with no declared
-type in context — is an error.
+A numeric literal may carry a **unit suffix** — `5MiB`, `512KiB`, `3km`, `30s`. The
+value is multiplied by the unit's factor and stored in the type's base unit, so a
+`std.ByteSize` field written `5MiB` holds `5242880` (bytes). Units are
+\*type-scoped\*: a literal resolves against the declared type of the field it is
+assigned to, using the `@unit(name, factor)` decorators on that type. A unit the
+type doesn't declare — or a unit literal with no declared type in context — is an
+error. [Literal unit syntax](../references/fact_literal_unit_syntax.md) covers the writing rules and
+how to declare your own units.
 
-
-The syntax and the built-in unit families are their own note: [Literal unit syntax](../references/fact_literal_unit_syntax.md).
 
 ## Built-in unit types
 
@@ -32,8 +31,14 @@ Three unit types are always in scope, no import needed. Each is an ordinary `i64
 `format_unit(value, type, unit)` renders a stored base-unit value in a chosen unit — the inverse of resolution — looking the factor up from the type by name. `format_unit_value(value, factor, unit)` does the same with an explicit factor.
 
 ```wcl
-buffer: std.ByteSize = 4MiB                              // 4194304
-label  = format_unit(buffer, "std.ByteSize", "MiB")     // "4 MiB"
+@document
+type Config {
+  buffer: std.ByteSize
+  label:  utf8
+}
+
+buffer = 4MiB                                        // 4194304
+label  = format_unit(buffer, "std.ByteSize", "MiB")  // "4 MiB"
 ```
 
 ## Related

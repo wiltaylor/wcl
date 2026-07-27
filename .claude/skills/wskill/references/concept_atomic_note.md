@@ -15,18 +15,12 @@ precise and keeps every view's pages focused.
 
 ## Related
 
-- [Concept](../references/concept_concept.md)
+- [Decomposing information](../references/concept_decomposing_information.md)
 
-- [Entity](../references/concept_entity.md)
-
-- [Fact](../references/concept_fact.md)
-
-- [Process](../references/concept_process.md)
+- [Which unit kind? — the decision guide](../references/fact_unit_decision_guide.md)
 
 - [Self-Contained Content](../references/concept_selfcontained.md)
 
-- [Separation of Data and Presentation](../references/concept_datapresentation.md)
-
-- [Which unit kind? — the decision guide](../references/fact_unit_decision_guide.md)
+- [Linking discipline — link sparingly](../references/fact_linking_discipline.md)
 
 [← Back to SKILL.md](../SKILL.md)

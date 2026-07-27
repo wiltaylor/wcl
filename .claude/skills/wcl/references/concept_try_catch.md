@@ -7,7 +7,7 @@ _Evaluates a body; on failure the rendered message binds to the catch name and t
 ```wcl
 rate    = try parse_rate(raw) catch m => 1.0
 summary = try {
-  let r = risky()
+  let r = risky();
   format("ok: {}", r)
 } catch msg {
   format("failed: {}", msg)

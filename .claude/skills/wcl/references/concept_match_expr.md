@@ -28,6 +28,23 @@ classify = match n {
 }
 ```
 
+## Examples
+
+### Matching a union with guards
+
+`match` returns the body of the first pattern that matches; a guard adds a runtime test.
+
+```wcl
+area = match shape {
+  Shape::Circle { radius, .. } => pi() * radius * radius,
+  Shape::Polygon(n) if n > 2   => 0.0,
+  Shape::Empty                 => 0.0,
+  _                            => 0.0,
+}
+```
+
+**Expected:** `area` is computed from whichever variant `shape` holds.
+
 ## Related
 
 - [Patterns](../references/fact_patterns.md)

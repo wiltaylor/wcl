@@ -31,8 +31,6 @@ An idea is never an entity. A table of values is never an entity.
 
 ## Related
 
-- [Decomposing information](../references/concept_decomposing_information.md)
-
 - [Concept](../references/concept_concept.md)
 
 - [Entity](../references/concept_entity.md)
@@ -40,8 +38,6 @@ An idea is never an entity. A table of values is never an entity.
 - [Fact](../references/concept_fact.md)
 
 - [Process](../references/concept_process.md)
-
-- [Atomic Note](../references/concept_atomic_note.md)
 
 - [Capturing research into a wskill](../references/process_capturing_research.md)
 

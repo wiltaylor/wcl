@@ -50,7 +50,7 @@ Formatting never changes meaning, but re-run `wcl check` as a cheap confirmation
 
 ## Related
 
-- [CLI Reference](../references/concept_cli.md)
+- [wcl](../references/entity_wcl_cli.md)
 
 - [Block Schema](../references/concept_block_schema.md)
 

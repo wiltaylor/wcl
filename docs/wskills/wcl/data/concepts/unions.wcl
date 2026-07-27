@@ -6,12 +6,12 @@ concept unions {
   body {
     p "A `union` is a tagged set of variants — a value that is exactly one of several alternatives. Each variant carries its own payload (or none), and pattern matching dispatches on the tag."
     h2 "Variant body forms"
-    p "Three shapes are accepted: a **record** body with named fields, a **typeref** body for a single positional payload, or a **unit** body with no payload."
+    p "Three shapes are accepted: a **record** body with named fields (space- or newline-separated, no commas), a **typeref** body for a single positional payload, or a **unit** body written `none`."
     code "wcl" { source = <<'SRC'
 union Shape {
-  Circle { radius: f64, stroke: f64 }   // record variant
-  Polygon i32                            // typeref variant
-  Empty                                  // unit variant
+  Circle { radius: f64  stroke: f64 }   // record variant
+  Polygon i32                           // typeref variant
+  Empty none                            // unit variant
 }
 SRC
     }
@@ -38,7 +38,7 @@ SRC
     p "A union can `extends` another, inheriting its variants and adding more — useful when a host wants to extend an open vocabulary without modifying the base declaration."
     code "wcl" { source = <<'SRC'
 union BaseShape {
-  Empty
+  Empty none
 }
 
 union Shape extends BaseShape {

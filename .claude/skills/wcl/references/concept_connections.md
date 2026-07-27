@@ -18,10 +18,21 @@ connection DependsOn: Service -> Service : EdgeKind
 Inside a `@connections(SchemaName)` field, write `source -> destination :tag` to populate it. The tag is optional; omit the `:kind` for an untagged edge.
 
 ```wcl
+symbol_set EdgeKind { uses  depends_on }
+connection DependsOn: Service -> Service : EdgeKind
+
+@block("service") type Service { @inline(0) id: identifier }
+
 @document
 type Config {
-  @connections(DependsOn) edges: list<DependsOn>
+  @children("service")    services: list<Service>
+  @connections(DependsOn) edges:    list<DependsOn>
 }
+
+service web {}
+service db {}
+service cache {}
+service api {}
 
 web   -> db                   // untagged
 web   -> cache :uses

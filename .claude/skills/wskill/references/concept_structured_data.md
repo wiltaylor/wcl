@@ -21,12 +21,4 @@ projected exactly like the built-in ones.
 
 - [Decomposing information](../references/concept_decomposing_information.md)
 
-- [Concept](../references/concept_concept.md)
-
-- [Entity](../references/concept_entity.md)
-
-- [Fact](../references/concept_fact.md)
-
-- [Process](../references/concept_process.md)
-
 [← Back to SKILL.md](../SKILL.md)

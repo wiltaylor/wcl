@@ -107,10 +107,4 @@ comments back into the units.
 
 - [Adding content to a wskill](../references/process_adding_content.md)
 
-- [Building the wskill index](../references/process_building_the_index.md)
-
-- [Which unit kind? — the decision guide](../references/fact_unit_decision_guide.md)
-
-- [Decomposing information](../references/concept_decomposing_information.md)
-
 [← Back to SKILL.md](../SKILL.md)

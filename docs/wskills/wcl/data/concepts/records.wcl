@@ -6,13 +6,19 @@ concept records {
   body {
     p "A `type` declares a named record — a fixed set of named, typed fields. Records describe the shape of values, function parameters, and the backing type of every block."
     h2 "Declaring a record type"
+    p "A record **value** is written as a bare `{ field: value, … }` literal. There is no `Dog { … }` constructor syntax: the literal takes its type from the position it lands in — the declared type of the field, parameter, or return it fills."
     code "wcl" { source = <<'SRC'
 type Dog {
   name: utf8
   age:  u32
 }
 
-let rex = Dog { name: "Rex", age: 4u32 }
+@document
+type Kennel {
+  resident: Dog
+}
+
+resident = { name: "Rex", age: 4u32 }   // checked against Dog
 SRC
     }
     h2 "extends"
@@ -31,7 +37,7 @@ SRC
     h2 "Working with records"
     p "Four builtins operate on record values: `keys` and `values` list a record's field names and values (sorted by name); `merge` combines two records, with the second winning on a clash; `map_values` transforms every value while keeping the keys."
     code "wcl" { source = <<'SRC'
-let rex      = Dog { name: "Rex", age: 4u32 }
+let rex      = { name: "Rex", age: 4u32 }
 let names    = keys(rex)                       // ["age", "name"]
 let defaults = { host: "localhost", port: 80 }
 let cfg      = merge(defaults, { port: 8080 }) // { host: "localhost", port: 8080 }

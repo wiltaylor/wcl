@@ -2,7 +2,7 @@ procedure researching_a_topic {
   title = "Researching a topic into a wskill"
   purpose = "Author a whole wskill by research: scope the topic in an interview, fan the open questions out to parallel researcher agents as `research` units, then distill the findings into concept/entity/fact/procedure units and a curated index."
   preconditions = ["A wskill folder for the topic that checks clean — scaffold one first via [Creating a new wskill](process_creating_a_wskill) if none exists."]
-  related = [creating_a_wskill, capturing_research, adding_content, building_the_index, unit_decision_guide, decomposing_information]
+  related = [creating_a_wskill, capturing_research, adding_content]
   audience = :both
 
   step scope {

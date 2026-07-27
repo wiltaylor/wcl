@@ -3,12 +3,11 @@
 _Fixed-width signed and unsigned integers plus two float widths, with literal suffixes._
 
 WCL has fixed-width signed and unsigned integers plus two float widths. A bare
-integer literal defaults to `i64`; a suffix pins the exact type. Underscores may
-group digits for readability and are ignored. See [Numeric promotion](../references/concept_numeric_promotion.md)
-for how mixed operands widen to a common type.
+integer literal defaults to `i64`; a suffix pins the exact type. See
+[Numeric promotion](../references/concept_numeric_promotion.md) for how mixed operands widen to a
+common type, and [Number literals](../references/fact_number_literals.md) for the literal syntax —
+radixes, width suffixes, and digit grouping.
 
-
-Literal syntax — radixes, width suffixes, and digit-grouping underscores — is its own note: [Number literals](../references/fact_number_literals.md).
 
 ## Types
 

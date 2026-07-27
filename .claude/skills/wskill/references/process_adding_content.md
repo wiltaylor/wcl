@@ -35,11 +35,11 @@ concept <id> {
 }
 ```
 
-Write the block instance in `data/` (one file per unit as the wskill grows; add the import line to the folder's `main.wcl`). Give it a stable `id`, a headline, a summary, and a self-contained body. Attach worked examples as `example` blocks with `unit = <id>`.
+Write the block instance in `data/` (one file per unit as the wskill grows; add the import line to the folder's `main.wcl`). Start from the kind's fill-out template (Unit templates) and follow the house style — [Writing style](../references/fact_writing_style.md). Give it a stable `id`, a headline, a summary, and a self-contained body. Attach worked examples as `example` blocks with `unit = <id>`.
 
 ### Step 4: Link it into the web
 
-Fill `related` with the ids of the units this one leans on or explains — links resolve both ways (each page also lists what references it). A unit with no links is usually either misfiled or not atomic.
+Fill `related` with the few ids a reader would go to next — roughly 3-5, not everything related. Links resolve both ways (each page also lists what references it), so a careless link adds noise at both ends; see [Linking discipline](../references/fact_linking_discipline.md). A unit with no links at all is usually misfiled or not atomic.
 
 ### Step 5: Pin it into an index
 
