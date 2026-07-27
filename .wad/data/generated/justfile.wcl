@@ -212,6 +212,13 @@ dev_command dev_wad_schema_sync {
   category    = "quality"
 }
 
+dev_command dev_wcl_refcheck {
+  name        = "wcl-refcheck"
+  command     = "just wcl-refcheck"
+  description = "new builtin or subcommand must land in it or the docs quietly go stale."
+  category    = "quality"
+}
+
 dev_command dev_workspace_fmt {
   name        = "workspace-fmt"
   command     = "just workspace-fmt"

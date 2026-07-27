@@ -114,7 +114,7 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_doc {
     name = "doc"
     kind = "module"
-    summary = "15 files, 62 pub items"
+    summary = "15 files, 63 pub items"
     deps = [n_cg_wcl_lang_ast, n_cg_wcl_lang_data, n_cg_wcl_lang_environment, n_cg_wcl_lang_error, n_cg_wcl_lang_lexer, n_cg_wcl_lang_numeric, n_cg_wcl_lang_parser, n_cg_wcl_lang_symbols, n_cg_wcl_lang_value]
   }
   code_node n_cg_wcl_lang_edit {
@@ -2648,6 +2648,11 @@ code_item code_api_doc_view {
       kind = "fn"
       visibility = "crate"
       deps = [n_api_doc_view_Document]
+    }
+    code_member m_n_api_doc_view_doc_fns_value_matches_declared {
+      signature = "fn value_matches_declared(value: &Value, ty: &TypeRef, optional…"
+      kind = "fn"
+      visibility = "crate"
     }
     code_member m_n_api_doc_view_doc_fns_value_matches_type_ref {
       signature = "fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool"
