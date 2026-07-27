@@ -2264,6 +2264,12 @@ impl Document {
         let Ok(v) = f.value() else {
             return;
         };
+        // An optional field written out as `none` is absent, not
+        // ill-typed: there is no value left to check against the
+        // declared type, a symbol set, or a `@min`/`@non_empty` bound.
+        if declared.optional() && matches!(v, Value::None) {
+            return;
+        }
         if let TypeRef::Named(path) = declared.type_ref()
             && let Some(union_decl) = self.union_decl(&path.join("."))
         {
@@ -2897,6 +2903,18 @@ impl Document {
         }
         self.blocks().any(|b| walk(&b, kind, id))
     }
+}
+
+/// Whether `value` satisfies a *declared field*: [`value_matches_type_ref`]
+/// plus the optional rule — a `T?` field accepts the `none` literal, so
+/// writing absence out (`note = none`) is as legal as omitting the field.
+///
+/// The `?` lives on the declaration (`ast::TypeField::optional`), not in
+/// `TypeRef`, so `value_matches_type_ref` cannot see it: on its own it
+/// answers `false` for `none` against every concrete type. Every
+/// value-vs-declared-type check goes through here so the two stay in step.
+pub(crate) fn value_matches_declared(value: &Value, ty: &TypeRef, optional: bool) -> bool {
+    (optional && matches!(value, Value::None)) || value_matches_type_ref(value, ty)
 }
 
 pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {

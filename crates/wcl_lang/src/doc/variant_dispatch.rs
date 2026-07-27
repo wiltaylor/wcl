@@ -521,7 +521,7 @@ fn names_equal(decl_fields: &[ast::TypeField], map: &BTreeMap<String, Value>) ->
 fn all_field_types_match(decl_fields: &[ast::TypeField], map: &BTreeMap<String, Value>) -> bool {
     decl_fields.iter().all(|f| {
         map.get(&f.name)
-            .map(|v| super::value_matches_type_ref(v, &f.ty))
+            .map(|v| super::value_matches_declared(v, &f.ty, f.optional))
             .unwrap_or(false)
     })
 }
@@ -535,7 +535,7 @@ fn first_type_mismatch<'a>(
 ) -> Option<(&'a str, &'a str, &'a crate::value::TypeRef)> {
     for f in decl_fields {
         if let Some(v) = map.get(&f.name)
-            && !super::value_matches_type_ref(v, &f.ty)
+            && !super::value_matches_declared(v, &f.ty, f.optional)
         {
             return Some((f.name.as_str(), v.type_name(), &f.ty));
         }

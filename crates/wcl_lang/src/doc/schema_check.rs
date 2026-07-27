@@ -555,6 +555,13 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
             continue;
         };
 
+        // An optional field written out as `none` is absent, not
+        // ill-typed: there is no value left to check against the
+        // declared type, a symbol set, or a `@min`/`@non_empty` bound.
+        if declared.optional() && matches!(value, Value::None) {
+            continue;
+        }
+
         // Computed-children splice: a `@children(kind)` / `@child(kind)`
         // slot authored as `field = <list expr>` instead of nested
         // blocks. The value is a list spliced into child blocks (see

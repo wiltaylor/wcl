@@ -4143,6 +4143,146 @@ fn variant_construction_missing_required_field_errors() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Optional fields accept an explicit `none`
+// ---------------------------------------------------------------------------
+//
+// `?` lives on the field declaration, not in `TypeRef`, so
+// `value_matches_type_ref` answers `false` for `none` against every concrete
+// type. Every value-vs-declared-type check therefore goes through
+// `value_matches_declared`, which adds the optional rule: writing absence out
+// is as legal as omitting the field.
+
+#[test]
+fn optional_document_field_accepts_explicit_none() {
+    let doc = Document::open(
+        r#"
+        @document type Doc { note: utf8?  other: utf8 }
+        note = none
+        other = "x"
+        "#,
+        "test",
+    )
+    .expect("open");
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+}
+
+#[test]
+fn optional_block_field_accepts_explicit_none() {
+    let doc = Document::open(
+        r#"
+        @block("b") type B { @inline(0) id: identifier  note: utf8? }
+        @document type Doc { @children("b") bs: list<B> }
+        b x { note = none }
+        "#,
+        "test",
+    )
+    .expect("open");
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+}
+
+#[test]
+fn required_field_still_rejects_none() {
+    let doc = Document::open(
+        r#"
+        @document type Doc { note: utf8 }
+        note = none
+        "#,
+        "test",
+    )
+    .expect("open");
+    let errs = doc.schema_errors();
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: crate::error::SchemaViolationKind::FieldTypeMismatch,
+                ..
+            }
+        )),
+        "expected FieldTypeMismatch, got {errs:?}"
+    );
+}
+
+#[test]
+fn optional_field_still_rejects_a_wrongly_typed_value() {
+    // Optionality excuses `none`, not everything else.
+    let doc = Document::open(
+        r#"
+        @document type Doc { n: i64? }
+        n = "not a number"
+        "#,
+        "test",
+    )
+    .expect("open");
+    let errs = doc.schema_errors();
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            EvalError::SchemaViolation {
+                kind: crate::error::SchemaViolationKind::FieldTypeMismatch,
+                ..
+            }
+        )),
+        "expected FieldTypeMismatch, got {errs:?}"
+    );
+}
+
+#[test]
+fn constraints_do_not_fire_on_an_optional_none() {
+    // An absent optional has no value to bound: `@min` / `@non_empty`
+    // apply to the `T`, not to its absence.
+    let doc = Document::open(
+        r#"
+        @document type Doc { @min(5) n: i64?  @non_empty s: utf8? }
+        n = none
+        s = none
+        "#,
+        "test",
+    )
+    .expect("open");
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+}
+
+#[test]
+fn variant_dispatch_matches_through_an_optional_none() {
+    // A bare record that spells out an optional slot as `none` still
+    // dispatches to the variant whose shape it has.
+    let doc = Document::open(
+        r#"
+        union Shape {
+          Circle { radius: f64  label: utf8? }
+          Square { side: f64 }
+        }
+        @document type Doc { s: Shape }
+        s = { radius: 5.0, label: none }
+        "#,
+        "test",
+    )
+    .expect("open");
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    let v = doc.field("s").unwrap().value().unwrap().clone();
+    match v {
+        Value::Variant { variant, .. } => assert_eq!(variant, "Circle"),
+        other => panic!("expected variant, got {other:?}"),
+    }
+}
+
+#[test]
+fn interface_is_satisfied_by_an_optional_none() {
+    let doc = Document::open(
+        r#"
+        interface Meta { id: utf8  note: utf8? }
+        type Holder { m: &Meta }
+        @document type Doc { h: Holder }
+        h = { m: { id: "a", note: none } }
+        "#,
+        "test",
+    )
+    .expect("open");
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+}
+
 #[test]
 fn non_record_value_passes_through_permissively() {
     // Scalars carry no field map, so they're not introspected.

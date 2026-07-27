@@ -13,7 +13,7 @@ use super::match_pat;
 use super::scope::Scope;
 use super::{
     Block, Document, expr_to_path_segments, materialise_dataref, materialise_dataref_value,
-    span_of, value_matches_type_ref,
+    span_of, value_matches_declared,
 };
 
 /// Hard cap on nested user-`fn` invocations during a single evaluation.
@@ -1089,7 +1089,7 @@ impl Document {
                 ));
             };
             let expected = &f.ty;
-            if !value_matches_type_ref(v, expected) {
+            if !value_matches_declared(v, expected, f.optional) {
                 return Err(EvalError::variant_shape_mismatch(
                     format!("interface field '{}': {expected:?}", f.name),
                     format!("value field is {}", v.type_name()),
