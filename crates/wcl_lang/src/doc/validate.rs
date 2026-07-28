@@ -603,7 +603,7 @@ fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Result<(), Pars
         }
     }
 
-    for (decl_fqn, _) in parent_map.iter() {
+    for decl_fqn in parent_map.keys() {
         let mut all_fields: Vec<FieldRow<'_>> = Vec::new();
         let mut seen: HashSet<Vec<String>> = HashSet::new();
         collect_ancestor_fields(

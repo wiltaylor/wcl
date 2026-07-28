@@ -1035,12 +1035,9 @@ fn affected_pages(doc: &Document, file: &Path, changed: &[PathBuf]) -> Option<Ha
         }
         matched.insert(origin_canon);
         match block.kind() {
-            "page" => match page_name(&block) {
-                Some(n) => {
-                    targets.insert(n);
-                }
-                None => return None,
-            },
+            "page" => {
+                targets.insert(page_name(&block)?);
+            }
             // Any non-page top-level block sharing a changed file could shift
             // site-wide state — fall back to a full rebuild.
             _ => return None,

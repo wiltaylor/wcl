@@ -171,10 +171,7 @@ fn insert_after_inner(items: &mut Vec<Item>, after: Span, block: ast::Block) -> 
     for item in items.iter_mut() {
         if let Item::Block(b) = item {
             let blk = carry.take().expect("carry is present until inserted");
-            match insert_after_inner(&mut b.items, after, blk) {
-                None => return None,
-                Some(returned) => carry = Some(returned),
-            }
+            carry = Some(insert_after_inner(&mut b.items, after, blk)?);
         }
     }
     carry
@@ -209,10 +206,7 @@ fn replace_inner(items: &mut [Item], span: Span, block: ast::Block) -> Option<as
     for item in items.iter_mut() {
         if let Item::Block(b) = item {
             let blk = carry.take().expect("carry is present until replaced");
-            match replace_inner(&mut b.items, span, blk) {
-                None => return None,
-                Some(returned) => carry = Some(returned),
-            }
+            carry = Some(replace_inner(&mut b.items, span, blk)?);
         }
     }
     carry

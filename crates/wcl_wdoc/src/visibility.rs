@@ -48,10 +48,8 @@ pub(crate) fn block_visible(block: &Block<'_>, ctx: &InlinePatterns) -> bool {
             }
             // `@except` hides the block only when every axis it specifies
             // matches the current context.
-            "except" => {
-                if axes_match(&d, site.as_deref(), template.as_deref(), backend) {
-                    except_hit = true;
-                }
+            "except" if axes_match(&d, site.as_deref(), template.as_deref(), backend) => {
+                except_hit = true;
             }
             _ => {}
         }
