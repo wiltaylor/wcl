@@ -11,7 +11,7 @@
     "url": "https://github.com/wiltaylor/wcl.git"
   },
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.91.0"
   },
   "categories": ["Programming Languages"],
   "main": "./out/extension.js",
@@ -48,11 +48,11 @@
     "watch": "tsc -watch -p ./"
   },
   "dependencies": {
-    "vscode-languageclient": "^9.0.1"
+    "vscode-languageclient": "^10.1.0"
   },
   "devDependencies": {
-    "@types/node": "^20.10.0",
-    "@types/vscode": "^1.85.0",
-    "typescript": "^5.3.3"
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.91.0",
+    "typescript": "^7.0.2"
   }
 }

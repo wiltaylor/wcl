@@ -1,11 +1,19 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
-    "target": "ES2020",
+    // `node20` (not the bare `commonjs`) because TypeScript 7 dropped the
+    // legacy node10 module resolution that `commonjs` used to imply, which
+    // left the `fs` / `os` / `path` imports below unresolvable. It still
+    // emits CommonJS — package.json declares no `"type"` — so the extension
+    // host loads `out/extension.js` exactly as before.
+    "module": "node20",
+    "target": "ES2022",
     "outDir": "out",
-    "lib": ["ES2020"],
+    "lib": ["ES2022"],
     "sourceMap": true,
     "rootDir": "src",
+    // TypeScript 7 no longer auto-includes every `@types/*` package, so the
+    // ambient type packages this extension relies on have to be named.
+    "types": ["node", "vscode"],
     "strict": true
   },
   "exclude": ["node_modules", ".vscode-test"]
