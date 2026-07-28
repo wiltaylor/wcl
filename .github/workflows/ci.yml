@@ -24,7 +24,10 @@ jobs:
           components: rustfmt, clippy
       - uses: taiki-e/install-action@just
       # uv runs the .wad extractor scripts (wad-extract-check).
-      - uses: astral-sh/setup-uv@v9
+      # Pinned to an exact patch, unlike every other action here: setup-uv
+      # stopped publishing floating major tags after v7, so `@v9` doesn't
+      # resolve. Bump this literal when moving to a newer uv setup action.
+      - uses: astral-sh/setup-uv@v9.0.0
       # node + pnpm: crates/wcl's build.rs builds the `wcl editor` frontend
       # (editor-ui/ → embedded dist) when it is stale or missing.
       - uses: pnpm/action-setup@v6
