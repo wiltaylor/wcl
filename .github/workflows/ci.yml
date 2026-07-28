@@ -14,7 +14,7 @@ jobs:
     name: fmt + lint + test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Full history: extract_releases.py derives .wad release data from
           # git tags, and the wad-extract-check freshness gate re-runs it.
@@ -24,13 +24,13 @@ jobs:
           components: rustfmt, clippy
       - uses: taiki-e/install-action@just
       # uv runs the .wad extractor scripts (wad-extract-check).
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v9
       # node + pnpm: crates/wcl's build.rs builds the `wcl editor` frontend
       # (editor-ui/ → embedded dist) when it is stale or missing.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - uses: Swatinem/rust-cache@v2
@@ -81,7 +81,7 @@ jobs:
     name: fuzz smoke (all targets)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
       - uses: taiki-e/install-action@just
       # Explicit `tool:` form — the `@cargo-fuzz` ref pins a commit but leaves
@@ -107,7 +107,7 @@ jobs:
       version: ${{ steps.calc.outputs.version }}
       do_release: ${{ steps.calc.outputs.do_release }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - id: calc
@@ -205,15 +205,15 @@ jobs:
             suffix: windows-x86_64.exe
             editor_ui_skip: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
       # node + pnpm: build.rs builds the `wcl editor` frontend into the binary.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - uses: Swatinem/rust-cache@v2
@@ -231,7 +231,7 @@ jobs:
         run: |
           V="${{ needs.version.outputs.version }}"
           cp "target/${{ matrix.target }}/release/${{ matrix.bin }}" "wcl-$V-${{ matrix.suffix }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cli-${{ matrix.target }}
           path: wcl-*-${{ matrix.suffix }}
@@ -246,10 +246,10 @@ jobs:
     if: needs.version.outputs.do_release == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '22'
       - uses: taiki-e/install-action@just
       - name: Stamp vsix version
         run: |
@@ -257,7 +257,7 @@ jobs:
           NUM="${V%-alpha}"
           sed -i -E 's/("version": ")[^"]+(")/\1'"$NUM"'\2/' editors/vscode/package.json
       - run: just vscode-package
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: vsix
           path: editors/vscode/*.vsix
@@ -274,10 +274,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
       - name: Tag
@@ -287,7 +287,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "v$V"
           git push origin "v$V"
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.version.outputs.version }}
           name: v${{ needs.version.outputs.version }}
