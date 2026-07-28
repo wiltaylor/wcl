@@ -8,8 +8,11 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 
 // Importing the state layer pulls in the LSP client, which opens a WebSocket
-// at module load. Stub it before the import graph is evaluated (vi.hoisted
-// runs first) — this suite exercises pure selection logic, not the socket.
+// at module load, and the review long-poll, which fires a fetch. Stub both
+// before the import graph is evaluated (vi.hoisted runs first) — this suite
+// exercises pure selection logic, not the transport. happy-dom implements
+// fetch for real, so an unstubbed call leaves an ECONNREFUSED to its default
+// origin dangling after the run.
 vi.hoisted(() => {
   globalThis.WebSocket = class {
     constructor() {
@@ -19,6 +22,7 @@ vi.hoisted(() => {
     close() {}
     addEventListener() {}
   };
+  globalThis.fetch = () => new Promise(() => {});
 });
 
 import {
