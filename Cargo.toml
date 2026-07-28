@@ -15,7 +15,7 @@ wcl_wdoc = { path = "crates/wcl_wdoc", version = "0.0.0" }
 clap = { version = "4", features = ["derive"] }
 miette = { version = "7", features = ["fancy"] }
 thiserror = "2"
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 assert_cmd = "2"
 predicates = "3"
 tempfile = "3"
