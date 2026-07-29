@@ -31,6 +31,7 @@ mod standalone;
 pub(crate) use diagram::*;
 pub(crate) use edges::*;
 pub(crate) use primitives::*;
+pub(crate) use shapes::shape_anchor_attrs;
 pub(crate) use shapes::*;
 pub(crate) use standalone::*;
 

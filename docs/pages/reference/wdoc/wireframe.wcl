@@ -313,7 +313,7 @@ WCL
 
   h3 "wf_grid"
 
-  p "A grid of equal-width columns; `columns` sets the count and children flow across the rows."
+  p "A grid of equal-width columns; `columns` sets the count (default 2) and children flow across the rows."
 
   diagram {
     width = 280  height = 120

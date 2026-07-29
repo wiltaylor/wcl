@@ -31,6 +31,7 @@ mod nav;
 mod preview;
 mod profiles;
 mod sites;
+mod systems;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -162,6 +163,8 @@ pub(crate) fn router(state: Arc<EditorState>) -> Router {
         .route("/api/nav/op", post(nav::handle_nav_op))
         .route("/api/wskill/profile", post(profiles::handle_profile))
         .route("/api/graph", get(graph::handle_graph))
+        .route("/api/systems", get(systems::handle_systems))
+        .route("/api/systems/detail", post(systems::handle_systems_detail))
         .route("/api/data/types", get(data::handle_data_types))
         .route("/api/data/rows", get(data::handle_data_rows))
         .route("/api/raw", get(handle_raw))
@@ -805,7 +808,11 @@ mod tests {
             .unwrap()
             .0
             .to_string();
-        assert!(base.contains("__unit_alpha"), "own slug per unit: {base}");
+        // ONE shared `__unit` slug for every unit of the (entry, site): the
+        // synthetic page name is constant, so switching units is a warm
+        // targeted rebuild instead of a cold full build per unit — and the
+        // dir never collides with the plain merged output.
+        assert!(base.ends_with("__unit"), "shared unit slug: {base}");
         let page = fetch_preview(&state, &format!("{base}/{UNIT_PREVIEW_PAGE}.html")).await;
         assert!(page.contains("ALPHA_BODY_TEXT"), "body projected: {page}");
         // The projected blocks anchor to the REAL declaring file, so every

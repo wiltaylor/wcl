@@ -7459,6 +7459,94 @@ fn wireframe_site_ui_theme_decouples_from_doc_theme() {
     );
 }
 
+/// Render the wireframe fixture with the editor's edit-mode build (shape
+/// anchors + layout-container guides) and return its HTML.
+fn wireframe_edit_html(body: &str) -> String {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("wf.wcl");
+    write_fixture(
+        &src,
+        format!("page index {{\n  diagram {{ width = 800  height = 600\n{body}\n  }}\n}}\n"),
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let opts = BuildOptions {
+        edit_mode: true,
+        ..Default::default()
+    };
+    if build_with_options(&src, out.path(), None, &opts).is_err() {
+        panic!("edit-mode build failed");
+    }
+    std::fs::read_to_string(out.path().join("index.html")).expect("read")
+}
+
+#[test]
+fn wireframe_layout_guides_are_edit_mode_only() {
+    // A layout container draws its guide chrome — the `data-wf-guide` group
+    // and the `data-wf-slot` drop zones — only on edit-mode builds; published
+    // output stays untouched.
+    let body = "  wf_grid { columns = 2\n    wf_button \"A\"\n    wf_button \"B\"\n    wf_button \"C\"\n  }";
+    let edit = wireframe_edit_html(body);
+    assert!(
+        edit.contains("data-wf-guide") && edit.contains("data-wf-slot=\"0\""),
+        "edit build missing the grid guide chrome:\n{edit}"
+    );
+    // Three children in a 2-column grid → a 2×2 cell lattice whose trailing
+    // empty cell is still a drop zone (slot 3 = append).
+    assert!(
+        edit.contains("data-wf-slot=\"3\""),
+        "trailing empty cell of the partial last row not stamped:\n{edit}"
+    );
+    let plain = wireframe_html(body);
+    assert!(
+        !plain.contains("data-wf-guide") && !plain.contains("data-wf-slot"),
+        "plain build must not emit layout guides:\n{plain}"
+    );
+}
+
+#[test]
+fn wireframe_empty_grid_keeps_placeholder_footprint() {
+    // An empty grid renders a visible placeholder — a tagged dashed box of
+    // `columns × 2` empty cells — instead of collapsing to 0×0, so the
+    // editor can see, select and drop into it.
+    let edit = wireframe_edit_html("  wf_grid { columns = 2 }");
+    assert!(
+        edit.contains(">grid ·2</text>"),
+        "empty grid missing its kind tag:\n{edit}"
+    );
+    for slot in 0..4 {
+        assert!(
+            edit.contains(&format!("data-wf-slot=\"{slot}\"")),
+            "empty grid missing placeholder cell {slot}:\n{edit}"
+        );
+    }
+    // The placeholder cells have real geometry (EMPTY_CELL_W × EMPTY_CELL_H).
+    assert!(
+        edit.contains("data-wf-slot=\"0\" x=\"0.00\" y=\"0.00\" width=\"72.00\" height=\"34.00\""),
+        "placeholder cell has no geometry:\n{edit}"
+    );
+}
+
+#[test]
+fn wireframe_row_gaps_are_insertion_slots() {
+    // A populated row stamps an invisible insertion strip over each
+    // inter-child gap: a drop between child 0 and 1 inserts at position 1.
+    let edit = wireframe_edit_html(
+        "  wf_row {\n    wf_button \"A\"\n    wf_button \"B\"\n    wf_button \"C\"\n  }",
+    );
+    assert!(
+        edit.contains("data-wf-guide"),
+        "row guide chrome missing:\n{edit}"
+    );
+    assert!(
+        edit.contains("data-wf-slot=\"1\"") && edit.contains("data-wf-slot=\"2\""),
+        "row gap insertion strips missing:\n{edit}"
+    );
+    assert!(
+        !edit.contains("data-wf-slot=\"3\""),
+        "a row has no trailing slot (the backing rect appends):\n{edit}"
+    );
+}
+
 // ── Multiple sites ────────────────────────────────────────────────────
 
 /// Build a multi-site fixture into a TempDir and hand the dir to `check`.

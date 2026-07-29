@@ -11,6 +11,7 @@
    - insert    — the add-block palette (body blocks + components) */
 
 import { For, Show, createEffect, createSignal } from 'solid-js';
+import { Dynamic } from 'solid-js/web';
 import { Button, Checkbox, Input, Modal, SplitPane, Tabs, toast } from '@forge/ui';
 import { CodeEditor } from '@forge/code';
 
@@ -31,6 +32,7 @@ import {
 } from '../../state/design';
 import { reloadGraph } from '../../state/graph';
 import { elsBySpan, patchAnchors, restampExcept } from '../../preview/localops';
+import { freshShapeId, shapeSnippet } from '../../preview/schemaform';
 import { wclString } from '../../preview/wysiwyg';
 import {
   delColAt,
@@ -46,21 +48,23 @@ import DesignCanvas, { viewLabel } from './DesignCanvas';
 import GraphView from './GraphView';
 import IndexPanel from './IndexPanel';
 import NavPanel from './NavPanel';
+import SystemsPanel from './SystemsPanel';
+import SystemsView from './SystemsView';
+
+/** The panel + surface pair for the active tab. */
+const SURFACES = {
+  graph: { first: IndexPanel, second: GraphView },
+  systems: { first: SystemsPanel, second: SystemsView },
+  canvas: { first: NavPanel, second: DesignCanvas },
+};
 
 export default function DesignView() {
+  const surface = () => SURFACES[designTab()] ?? SURFACES.canvas;
   return (
     <div class="ed-design-view">
       <SplitPane
-        first={
-          <Show when={designTab() === 'graph'} fallback={<NavPanel />}>
-            <IndexPanel />
-          </Show>
-        }
-        second={
-          <Show when={designTab() === 'graph'} fallback={<DesignCanvas />}>
-            <GraphView />
-          </Show>
-        }
+        first={<Dynamic component={surface().first} />}
+        second={<Dynamic component={surface().second} />}
         initial={280}
         min={200}
       />
@@ -672,61 +676,6 @@ const CURATED_SHAPES = [
   'image',
 ];
 
-/** A numeric literal matching the field's declared type. */
-const shapeNum = (field, v) =>
-  /^[iu]/.test((field?.type ?? 'f64').replace(/\?$/, ''))
-    ? String(Math.round(v))
-    : Number.isInteger(v)
-      ? `${v}.0`
-      : String(v);
-
-/** Build an insertion snippet for a shape kind from its schema entry:
-    inline slots filled (identifier → a fresh id, string → a placeholder),
-    required fields defaulted, and — under a manual layout — a staggered
-    x/y (or cx/cy) so consecutive adds don't stack at the origin. */
-function shapeSnippet(entry, { uid, manual, index }) {
-  const fields = entry.fields ?? [];
-  const byName = (n) => fields.find((f) => f.name === n);
-  const isSlot = (f) => f.inline_slot !== null && f.inline_slot !== undefined;
-  const bare = (f) => (f.type ?? '').replace(/\?$/, '');
-
-  const labels = [];
-  let usedId = false;
-  for (const f of [...fields].sort((a, b) => (a.inline_slot ?? 0) - (b.inline_slot ?? 0))) {
-    if (!isSlot(f)) continue;
-    if (bare(f) === 'identifier') {
-      labels.push(uid);
-      usedId = true;
-    } else if (bare(f).startsWith('utf8') || bare(f).startsWith('ascii')) {
-      labels.push(wclString('Label'));
-    } else if (!f.optional && f.default == null) {
-      labels.push('0');
-    }
-  }
-
-  const body = [];
-  if (!usedId && byName('id')) body.push(`id = ${uid}`);
-  if (manual) {
-    const off = 20 + 24 * (index % 8);
-    const pos = byName('x') && byName('y') ? ['x', 'y'] : byName('cx') && byName('cy') ? ['cx', 'cy'] : [];
-    for (const name of pos) body.push(`${name} = ${shapeNum(byName(name), off)}`);
-  }
-  // Required, defaultless fields must be present for the commit to validate.
-  for (const f of fields) {
-    if (isSlot(f) || f.optional || f.default != null) continue;
-    if (body.some((line) => line.startsWith(`${f.name} `))) continue;
-    const ty = bare(f);
-    if (ty.startsWith('utf8') || ty.startsWith('ascii')) body.push(`${f.name} = ${wclString('')}`);
-    else if (ty === 'bool') body.push(`${f.name} = false`);
-    else if (f.symbols?.length) body.push(`${f.name} = :${f.symbols[0]}`);
-    else if (ty === 'identifier') body.push(`${f.name} = ${uid}_ref`);
-    else body.push(`${f.name} = ${shapeNum(f, 0)}`);
-  }
-
-  const head = [entry.kind, ...labels].join(' ');
-  return body.length ? `${head} {\n${body.map((l) => `  ${l}`).join('\n')}\n}` : `${head} {}`;
-}
-
 function AddShapeModal(props) {
   const [tab, setTab] = createSignal('shapes');
   const kinds = () => palette()?.diagram_kinds ?? [];
@@ -739,20 +688,11 @@ function AddShapeModal(props) {
   const insert = (entry) => {
     const a = props.anchor;
     const source = props.src.source ?? '';
-    // Fresh id: dodge every identifier already used as an `id = …` field or
-    // an inline shape id anywhere in the diagram's source.
-    const used = new Set(
-      [...source.matchAll(/\bid\s*=\s*([A-Za-z_]\w*)/g)]
-        .map((m) => m[1])
-        .concat([...source.matchAll(/^\s*[a-z_]\w*\s+([a-z_]\w*)\b/gm)].map((m) => m[1])),
-    );
-    let n = 1;
-    while (used.has(`${entry.kind}_${n}`)) n += 1;
     const manual = ['free', 'none'].includes(a.layout ?? 'free');
     const index =
       a.el?.querySelectorAll?.('[data-wcl-shape]')?.length ??
       (source.match(/\bid\s*=/g) ?? []).length;
-    const snippet = shapeSnippet(entry, { uid: `${entry.kind}_${n}`, manual, index });
+    const snippet = shapeSnippet(entry, { uid: freshShapeId(entry.kind, source), manual, index });
     props.onCommit(
       commitOps(
         a.file,

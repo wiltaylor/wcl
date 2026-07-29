@@ -40,8 +40,9 @@ const [pendingReveal, setPendingReveal] = createSignal(null);
 const [popover, setPopover] = createSignal(null);
 /** Canvas navigation request: a page name the iframe should open. */
 const [gotoPage, setGotoPage] = createSignal(null);
-/** Which design surface shows: the WYSIWYG canvas or the unit graph. */
-const [designTab, setDesignTab] = createSignal('canvas'); // 'canvas' | 'graph'
+/** Which design surface shows: the WYSIWYG canvas, the wskill unit graph,
+    or a WAD's systems model. */
+const [designTab, setDesignTab] = createSignal('canvas'); // 'canvas' | 'graph' | 'systems'
 /** Graph-mode commits skip the iframe rebuild; the canvas rebuilds on
     return when this is set. */
 const [canvasStale, setCanvasStale] = createSignal(false);

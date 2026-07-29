@@ -9,7 +9,7 @@
 //! from the import), a qualified `lib.Gizmo` path, and the refs that
 //! `child_types` hands back.
 
-use wcl_lang::{Document, Environment, Registry, Value, disk_loader};
+use wcl_lang::{DeclName, Document, Environment, Registry, ResolvedType, Value, disk_loader};
 
 const LIB_SCHEMA: &str = r#"
 namespace lib
@@ -131,4 +131,65 @@ fn unresolvable_reflection_target_errors_instead_of_empty() {
         .expect_err("unresolvable type reference is an error, not silence");
     let msg = format!("{err:?}");
     assert!(msg.contains("NoSuchType"), "{msg}");
+}
+
+/// A gather field's element type must resolve in the namespace that DECLARED
+/// it, not the document root's. Two libraries may each declare a `Widget`
+/// (wdoc's diagram `container` shape and a WAD's C4 `container` are the real
+/// pair); resolving the WAD gather's `list<Widget>` from the root namespace
+/// answers whichever library happens to win the bare lookup, which silently
+/// hands schema introspection the wrong type.
+#[test]
+fn field_types_resolve_in_their_declaring_namespace() {
+    let mut reg = Registry::new();
+    reg.register(
+        "one.wcl",
+        r#"
+namespace one
+@block("widget")
+type Widget { @inline(0) id: utf8  one_only: utf8? }
+@document
+type OneModel { @children("widget") one_widgets: list<Widget> }
+"#,
+    );
+    reg.register(
+        "two.wcl",
+        r#"
+namespace two
+@block("widget")
+type Widget { @inline(0) id: utf8  two_only: utf8? }
+@document
+type TwoModel { @children("widget") two_widgets: list<Widget> }
+"#,
+    );
+    let loader = reg.loader(disk_loader());
+    let doc = Document::open_at_with_loader(
+        "import <one.wcl>\nimport <two.wcl>\n",
+        "main.wcl",
+        None,
+        &Environment::new(),
+        loader,
+    )
+    .expect("document opens");
+
+    let gather = |doc_type: &str, field: &str| -> String {
+        let decl = doc
+            .type_decls()
+            .find(|d| d.name() == doc_type)
+            .expect("document type");
+        let f = decl
+            .effective_fields()
+            .into_iter()
+            .find(|f| f.name() == field)
+            .expect("gather field");
+        match f.resolved_type() {
+            ResolvedType::List(inner) => match *inner {
+                ResolvedType::Named(d) => d.full_name(),
+                other => panic!("expected a named element type, got {other:?}"),
+            },
+            other => panic!("expected a list type, got {other:?}"),
+        }
+    };
+    assert_eq!(gather("OneModel", "one_widgets"), "one.Widget");
+    assert_eq!(gather("TwoModel", "two_widgets"), "two.Widget");
 }

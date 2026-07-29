@@ -80,7 +80,7 @@ fn data_types(
     let types: Vec<serde_json::Value> = editable_types(&doc)
         .into_iter()
         .map(|(kind, file_hint, decl)| {
-            let mut entry_json = kind_entry(&doc, &kind, &decl);
+            let mut entry_json = kind_entry(&kind, &decl);
             // The target for new rows, repo-relative (hints are
             // entry-relative by convention).
             let file = file_hint.map(|f| {
@@ -181,7 +181,7 @@ fn data_rows(
 /// literals (numbers, bools, symbols, identifiers) are editable too, with
 /// `expr: true` telling the client to write them back as parsed WCL rather
 /// than a quoted string.
-fn classify_cell(e: &wcl_lang::ast::Expr) -> serde_json::Value {
+pub(super) fn classify_cell(e: &wcl_lang::ast::Expr) -> serde_json::Value {
     use wcl_lang::ast::Expr;
     let (state, text, expr) = match e {
         Expr::Utf8(s) | Expr::Ascii(s) => ("literal", Some(s.clone()), false),

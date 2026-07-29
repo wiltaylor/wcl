@@ -4,7 +4,9 @@ The symbol_sets the kind fields draw from — extend them in the instance's `sch
 
 | Set | Members |
 | --- | --- |
+| BoundaryKind | enterprise organisation team trust_zone network vendor platform other |
 | ContainerKind | service web_app spa cli library db queue cache batch_job function mobile_app desktop_app editor_plugin gateway static_site other |
+| ComponentKind | cli tui web_api ui module handler store service library gateway other — the first four mark the editor's native content surfaces |
 | ExternalKind | saas api registry identity datastore ci cdn payment partner ai_service other |
 | RelationKind | sync_api async_msg reads writes reads_writes publishes subscribes uses depends_on authenticates triggers hosts other |
 | InfraKind | cloud region network vpc cluster namespace vm container_runtime physical_host paas_service ci_runner registry workstation storage edge other |

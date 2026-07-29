@@ -1319,6 +1319,15 @@ impl<'a> TypeField<'a> {
         doc_comment_from_trivia(&self.ast.leading_trivia)
     }
 
+    /// The field's declared type, resolved relative to the namespace of the
+    /// declaration that owns it. Prefer this over
+    /// `doc.resolve(field.type_ref())`, which resolves from the document's
+    /// root namespace and so can answer a same-named type from another
+    /// namespace (`wdoc.Container` for a `wcl.wad` field typed `Container`).
+    pub fn resolved_type(&self) -> ResolvedType<'a> {
+        self.doc.resolve_in(&self.ast.ty, self.file_ns)
+    }
+
     /// If this field carries an `@inline(N)` decorator, returns N.
     /// Used by schemas to map block label slots to typed fields.
     pub fn inline_slot(&self) -> Option<u64> {

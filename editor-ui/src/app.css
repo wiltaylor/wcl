@@ -650,3 +650,286 @@ g.is-hidden > .ed-graph-edge-hit { display: none; }
 }
 .ed-skill-img { flex: 1; overflow: auto; display: grid; place-items: center; }
 .ed-skill-img img { max-width: 95%; }
+
+/* ---------------------------------------------------------------------------
+   Systems view (WAD containment canvas)
+   --------------------------------------------------------------------------- */
+
+.ed-sys { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.ed-sys-body { flex: 1; min-height: 0; position: relative; display: flex; }
+.ed-sys-svg {
+  flex: 1; min-width: 0; background: var(--bg-0); cursor: grab;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.ed-sys-svg:active { cursor: grabbing; }
+
+/* Nesting reads as depth: each level sits a shade above its parent. */
+.ed-sys-node rect { fill: var(--bg-1); stroke: var(--border); stroke-width: 1.4; }
+.ed-sys-node.is-d1 > rect { fill: var(--bg-2); }
+.ed-sys-node.is-d2 > rect { fill: var(--bg-1); }
+.ed-sys-node.is-d3 > rect { fill: var(--bg-2); }
+.ed-sys-node.has-kids > rect { stroke-dasharray: none; }
+.ed-sys-node.is-selected > rect { stroke: var(--accent); stroke-width: 2.4; }
+.ed-sys-node.is-target > rect { stroke: var(--accent); stroke-width: 2.4; }
+.ed-sys-node.is-dragging { opacity: 0.35; }
+.ed-sys-title { fill: var(--fg-0); font: 600 12px system-ui, sans-serif; pointer-events: none; }
+.ed-sys-kind { fill: var(--fg-3); font: 10px system-ui, sans-serif; pointer-events: none; }
+.ed-sys-count circle { fill: var(--bg-2); stroke: var(--border); stroke-width: 1.2; }
+.ed-sys-count text {
+  fill: var(--fg-2); font: 700 9px system-ui, sans-serif; text-anchor: middle;
+  pointer-events: none;
+}
+.ed-sys-fold { cursor: pointer; }
+.ed-sys-fold rect { fill: var(--bg-2); stroke: var(--border); stroke-width: 1; }
+.ed-sys-fold:hover rect { stroke: var(--accent); }
+.ed-sys-fold text {
+  fill: var(--fg-2); font: 700 12px system-ui, sans-serif; text-anchor: middle;
+  pointer-events: none;
+}
+.ed-sys-port { fill: var(--accent); stroke: var(--bg-0); stroke-width: 1.5; cursor: crosshair; }
+.ed-sys-port:hover { r: 7; }
+
+.ed-sys-edge { stroke: var(--fg-3); stroke-width: 1.4; fill: none; }
+.ed-sys-refedge {
+  stroke: var(--border); stroke-width: 1.1; stroke-dasharray: 4 3; fill: none;
+  pointer-events: none;
+}
+.ed-sys-arrowhead { fill: var(--fg-3); }
+.ed-sys-edge-hit { stroke: transparent; stroke-width: 14; fill: none; cursor: grab; pointer-events: stroke; }
+g:has(> .ed-sys-edge-hit:hover) > .ed-sys-edge { stroke: var(--accent); }
+.ed-sys-edge-g.is-hidden { display: none; }
+.ed-sys-pending {
+  stroke: var(--accent); stroke-width: 1.6; stroke-dasharray: 5 4; fill: none;
+  pointer-events: none;
+}
+.ed-sys-ghost {
+  fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.4;
+  opacity: 0.5; pointer-events: none;
+}
+.ed-sys-droprect {
+  fill: none; stroke: var(--success, #10b981); stroke-width: 2.4;
+  stroke-dasharray: 6 4; pointer-events: none;
+}
+.ed-sys-droprect.is-illegal { stroke: var(--danger); }
+
+/* Property dock (right of the canvas) */
+.ed-sys-panel {
+  width: 320px; flex: none; overflow-y: auto;
+  border-left: 1px solid var(--border); background: var(--bg-1);
+  padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2);
+}
+.ed-sys-panel-head { display: flex; align-items: center; gap: var(--sp-2); }
+.ed-sys-panel-head .spacer { flex: 1; }
+.ed-sys-panel-id { margin: 0; font: 600 var(--fs-sm) var(--font-mono, monospace); color: var(--fg-0); }
+.ed-sys-panel-parent { margin: 0; font-size: var(--fs-xs); color: var(--fg-3); }
+.ed-sys-panel-doc { margin: 0; font-size: var(--fs-xs); color: var(--fg-2); }
+.ed-sys-panel-actions {
+  display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+  border-top: 1px solid var(--border); padding-top: var(--sp-2);
+}
+.ed-sys-panel-actions .spacer { flex: 1; }
+.ed-sys-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ed-sys-fieldname { font-size: var(--fs-xs); color: var(--fg-3); }
+
+/* Side panel (outline + kind filters) */
+.ed-sys-side {
+  height: 100%; min-height: 0; overflow-y: auto; background: var(--bg-1);
+  display: flex; flex-direction: column;
+}
+.ed-sys-side-head {
+  position: sticky; top: 0; z-index: 1;
+  padding: var(--sp-2) var(--sp-3); background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+  font: 600 var(--fs-xs) system-ui, sans-serif; color: var(--fg-3);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.ed-sys-outline { padding: var(--sp-1) 0; }
+.ed-sys-row {
+  display: flex; align-items: center; gap: var(--sp-2);
+  min-height: 24px; padding-right: var(--sp-2);
+  font-size: var(--fs-sm); color: var(--fg-1); cursor: pointer;
+}
+.ed-sys-row:hover { background: var(--bg-2); }
+.ed-sys-row.is-selected { background: var(--accent-bg); color: var(--accent-fg); }
+.ed-sys-rowfold {
+  width: 16px; height: 16px; flex: none; display: inline-flex;
+  align-items: center; justify-content: center;
+  border: none; background: none; color: var(--fg-3); cursor: pointer; padding: 0;
+}
+.ed-sys-rowdot { width: 16px; flex: none; }
+.ed-sys-rowtitle { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-sys-rowkind { font-size: var(--fs-xs); color: var(--fg-3); flex: none; }
+.ed-sys-kinds {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+}
+.ed-sys-kindname { font-size: var(--fs-sm); }
+.ed-sys-kindcount { margin-left: 6px; font-size: var(--fs-xs); color: var(--fg-3); }
+
+/* Systems-view details modal: near-fullscreen — the surface editors (the
+   wireframe canvas above all) need room. Same recipe as the content modal:
+   size the Forge panel, make its body a flex cell, let the tab content
+   fill the height. */
+.fmodal-panel:has(.ed-detail-body) {
+  width: calc(100vw - 48px);
+  max-width: none;
+  height: calc(100dvh - 48px);
+  max-height: calc(100dvh - 48px);
+}
+.fmodal-panel:has(.ed-detail-body) .fmodal-body {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
+.ed-detail-body {
+  display: flex; flex-direction: column; gap: var(--sp-3); padding-top: var(--sp-2);
+  flex: 1; min-height: 0; overflow-y: auto;
+}
+.ed-detail-form {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: var(--sp-2) var(--sp-3);
+}
+.ed-detail-req { color: var(--danger); margin-left: 2px; }
+.ed-detail-family {
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: var(--sp-2) var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2);
+}
+.ed-detail-family > header { display: flex; align-items: center; gap: var(--sp-2); }
+.ed-detail-family > header .spacer { flex: 1; }
+.ed-detail-child {
+  border-top: 1px solid var(--border); padding-top: var(--sp-2);
+  display: flex; flex-direction: column; gap: var(--sp-2);
+}
+.ed-detail-childhead { display: flex; align-items: center; gap: var(--sp-2); }
+.ed-detail-childhead .spacer { flex: 1; }
+.ed-detail-rel {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) 0; border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm); color: var(--fg-1);
+}
+.ed-detail-rel .spacer { flex: 1; }
+.ed-detail-rellabel { color: var(--fg-3); font-size: var(--fs-xs); }
+.ed-detail-actions { display: flex; justify-content: flex-end; gap: var(--sp-2); }
+.ed-detail-file {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--fs-xs); color: var(--fg-3);
+}
+.ed-detail-dirty { color: var(--warning); }
+
+/* Native surface editors (CLI / API / Screens tabs in the details modal) */
+.ed-surface-cli, .ed-surface-api, .ed-surface-agg {
+  display: flex; flex-direction: column; gap: var(--sp-3);
+}
+.ed-surface-usage {
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-md);
+  font-size: var(--fs-sm); overflow-x: auto; white-space: nowrap;
+}
+.ed-surface-summary { margin: 0; font-size: var(--fs-sm); color: var(--fg-2); }
+.ed-surface-family {
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: var(--sp-2) var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2);
+}
+.ed-surface-family > header { display: flex; align-items: center; gap: var(--sp-2); }
+.ed-surface-family > header .spacer { flex: 1; }
+.ed-surface-item { border-top: 1px solid var(--border); }
+.ed-surface-item:first-of-type { border-top: none; }
+.ed-surface-row {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) 0; cursor: pointer; font-size: var(--fs-sm);
+  min-width: 0;
+}
+.ed-surface-row:hover { color: var(--fg-0); }
+.ed-surface-row .spacer { flex: 1; }
+.ed-surface-desc {
+  color: var(--fg-3); font-size: var(--fs-xs);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.ed-surface-note {
+  flex: none; font-size: var(--fs-xs); color: var(--fg-3);
+  border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0 4px;
+}
+.ed-surface-method {
+  flex: none; font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.04em;
+  color: var(--accent); border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 0 5px; min-width: 34px; text-align: center;
+}
+.ed-surface-detail {
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: 0 0 var(--sp-2) var(--sp-4);
+}
+.ed-surface-add { display: flex; gap: var(--sp-2); align-items: center; }
+.ed-surface-add > :first-child { flex: 1; }
+.ed-surface-seed { display: flex; flex-direction: column; gap: var(--sp-2); }
+.ed-surface-seed p { margin: 0; font-size: var(--fs-sm); color: var(--fg-2); }
+.ed-surface-screen { display: flex; flex-direction: column; gap: var(--sp-2); min-height: 0; }
+.ed-surface-screenhead {
+  display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-xs);
+}
+.ed-surface-screenhead .spacer { flex: 1; }
+.ed-surface-hint { color: var(--fg-3); }
+/* The rendered screen hosts the shared EditSurface — fill the modal's
+   height on the direct Screen tab (flex chain), fall back to a viewport
+   share inside aggregate rows (normal flow). */
+.ed-surface-screen { flex: 1; min-height: 0; }
+.ed-surface-screenbody {
+  display: flex; gap: var(--sp-2);
+  flex: 1 1 60vh; height: 60vh; min-height: 320px;
+}
+.ed-surface-frame { flex: 1; min-width: 0; display: flex; }
+.ed-surface-frame .ed-design-canvas { flex: 1; }
+/* The widget palette: click to add into the current selection. */
+.ed-surface-widgets {
+  flex: none; width: 128px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 3px;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: var(--sp-2);
+}
+.ed-surface-widgets-target {
+  font-size: var(--fs-xs); color: var(--fg-3);
+  padding-bottom: var(--sp-1); border-bottom: 1px solid var(--border);
+}
+.ed-surface-widgets-group {
+  font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--fg-3); margin-top: var(--sp-2);
+}
+.ed-surface-widget {
+  text-align: left; font-size: var(--fs-sm); color: var(--fg-1);
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 3px 8px; cursor: grab; touch-action: none;
+}
+.ed-surface-widget:active { cursor: grabbing; }
+/* The pointer-drag ghost chip (palette + structure-tree drags). */
+.ed-drag-chip {
+  position: fixed; z-index: 1000; pointer-events: none;
+  font-size: var(--fs-xs); color: var(--fg-0);
+  background: var(--bg-2); border: 1px solid var(--accent); border-radius: var(--r-sm);
+  padding: 2px 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+/* The structure tree right of the canvas. */
+.ed-surface-tree {
+  flex: none; width: 210px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 1px;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: var(--sp-2);
+}
+.ed-surface-treerow {
+  display: flex; align-items: center; gap: 4px;
+  font-size: var(--fs-sm); color: var(--fg-1);
+  border-radius: var(--r-sm); padding-top: 2px; padding-bottom: 2px;
+  cursor: grab; touch-action: none; min-width: 0;
+}
+.ed-surface-treerow:hover { background: var(--bg-2); }
+.ed-surface-treerow.is-selected { background: var(--bg-2); color: var(--fg-0); box-shadow: inset 2px 0 0 var(--accent); }
+.ed-surface-treerow.is-droprow { outline: 1px dashed var(--accent); outline-offset: -1px; }
+.ed-surface-treefold {
+  flex: none; width: 14px; height: 14px; display: inline-flex; align-items: center;
+  justify-content: center; background: none; border: none; color: var(--fg-3);
+  cursor: pointer; padding: 0;
+}
+.ed-surface-treepad { flex: none; width: 14px; }
+.ed-surface-treekind { flex: none; }
+.ed-surface-treelabel {
+  color: var(--fg-3); font-size: var(--fs-xs);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.ed-surface-widget:hover:not(:disabled) { color: var(--fg-0); border-color: var(--accent); }
+.ed-surface-widget:disabled { opacity: 0.5; cursor: default; }

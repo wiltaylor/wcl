@@ -17,46 +17,7 @@ import { Button, Checkbox, Input, Select } from '@forge/ui';
 
 import { api } from '../../api';
 import { busy, commitOps, palette, selection, setPopover } from '../../state/design';
-
-const GEOMETRY = ['x', 'y', 'width', 'height'];
-
-/** Order schema fields for the form: inline slots, geometry, the rest. */
-function orderFields(fields) {
-  const slot = (f) => (f.inline_slot === null || f.inline_slot === undefined ? 1 : 0);
-  const geo = (f) => {
-    const i = GEOMETRY.indexOf(f.name);
-    return i === -1 ? GEOMETRY.length : i;
-  };
-  return [...fields].sort(
-    (a, b) =>
-      slot(a) - slot(b) ||
-      (a.inline_slot ?? 0) - (b.inline_slot ?? 0) ||
-      geo(a) - geo(b) ||
-      a.name.localeCompare(b.name),
-  );
-}
-
-/** The value expr for a field edit, typed from the schema entry. */
-function valueOp(span, field, text) {
-  const ty = (field.type ?? '').replace(/\?$/, '');
-  if (field.inline_slot !== null && field.inline_slot !== undefined) {
-    const op = { op: 'set_label', span, slot: field.inline_slot };
-    if (ty === 'identifier') return { ...op, expr: text };
-    if (ty.startsWith('utf8') || ty.startsWith('ascii')) return { ...op, text };
-    return { ...op, expr: text };
-  }
-  const op = { op: 'set_field', span, field: field.name };
-  if (ty.startsWith('utf8') || ty.startsWith('ascii')) return { ...op, text };
-  if (ty === 'bool') return { ...op, expr: text === 'true' ? 'true' : 'false' };
-  if (field.symbols) return { ...op, expr: `:${text}` };
-  if (/^[iu]/.test(ty)) return { ...op, expr: String(Math.round(Number(text))) };
-  if (/^f/.test(ty)) {
-    const n = Number(text);
-    return { ...op, expr: Number.isInteger(n) ? `${n}.0` : String(n) };
-  }
-  // Unknown type: trust the author's raw expression text.
-  return { ...op, expr: text };
-}
+import { orderFields, valueOp } from '../../preview/schemaform';
 
 export default function ShapePanel() {
   const anchor = () => (selection()?.shape ? selection() : null);

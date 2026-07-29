@@ -2,9 +2,9 @@
 
 | Block | Fields | Notes |
 | --- | --- | --- |
-| `system` | `name`, `summary`, `owner?`, `repos[]`, `body?` | C4 level 1 — one box to an outsider |
+| `system` | `name`, `summary`, `boundary?`, `owner?`, `repos[]`, `body?` | C4 level 1 — one box to an outsider; `boundary` files it under a view-2 `boundary` band |
 | `container` | `system`, `name`, `summary`, `kind`, `technology?`, `repo?`, `body?` | C4 level 2 — an independently runnable unit: a service, a database, a web app, a CLI, a queue |
-| `component` | `container`, `name`, `summary`, `kind?`, `technology?`, `body?` | C4 level 3 — a cohesive part with no deployment identity |
+| `component` | `container`, `name`, `summary`, `kind?`, `technology?`, `body?` | C4 level 3 — a cohesive part with no deployment identity; `kind` is a ComponentKind (`:cli` / `:tui` / `:web_api` / `:ui` mark the editor's native content surfaces) |
 | `code_item` | `component?` or `container?`, `name`, `summary?`, `kind`, payload children, `body?` | C4 level 4 — extractor-generated, public interface only; `kind` selects the payload family below |
 | `cli_command` | `name`, `summary`, `component?`, `description?`, `aliases[]`, args + flags, `body?` | one command or subcommand of a CLI surface — THE way a WAD documents a CLI (never prose paragraphs or a flat table); renders API-docs style on its component's page |
 | `cli_arg` / `cli_flag` / `cli_example` | arg: `name`, `description`, `required`; flag: `name`, `value?`, `description`, `default?`, `repeatable`; example: `command`, `description?` | nested in `cli_command` — the usage synopsis derives from args+flags; examples render as bash blocks under the tables |
@@ -48,7 +48,7 @@ component checkout {
   container = shop_api             // bare id
   name      = "Checkout"
   summary   = "Cart, pricing, order placement."
-  kind      = "module"
+  kind      = :module              // ComponentKind symbol, not a string
 }
 ```
 

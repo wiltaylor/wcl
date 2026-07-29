@@ -16,7 +16,7 @@ _site/ _md/           # rendered output (gitignored)
 
 Everything lives in the `wcl.wad` namespace (declared at the top of every schema and data file), so WAD block kinds never collide with wdoc's — which is why the C4 unit is plain `container`. A WAD is fully interpretable — check + render — with nothing but the `wcl` binary; the canonical schema ships inside the `wcl init wad` scaffold and is synced to instances.
 
-Adding data = write a block file under its view + one import line in that view's hub. Every top-level block carries an `@inline(0) id` that becomes its page route (`A-Za-z0-9_-` only), and diagram-node kinds (system / container / component / external_system / persona / environment / infra_node / screen) share **one id space** so relation endpoints resolve unambiguously.
+Adding data = write a block file under its view + one import line in that view's hub. Every top-level block carries an `@inline(0) id` that becomes its page route (`A-Za-z0-9_-` only), and diagram-node kinds (boundary / system / container / component / external_system / persona / environment / infra_node / screen) share **one id space** so relation endpoints resolve unambiguously.
 
 Gather-list names for templates: `wads`, `stakeholders`, `raci`, `adrs`, `relations`, `externals`, `systems`, `containers`, `sw_components` (bare `components` collides with wdoc's own document schema), `cli_commands`, `code_items`, `environments`, `infra_nodes`, `deploy_targets`, `repositories`, `pipelines`, `releases`, `personas`, `use_cases`, `sops`, `standards`, `domain_objects`, `terms`, `specs`, `doc_items`, `screens`, `articles`.
 

@@ -15,7 +15,7 @@ import "./schema/base.wcl"
 import "./schema/extensions.wcl"
 import "./data/main.wcl"
 
-schema_version = "0.4.0"
+schema_version = "0.6.0"
 
 wad wcl {
   name    = "WCL"

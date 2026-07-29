@@ -55,5 +55,8 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
+    // Node ≥22's experimental `localStorage` global shadows happy-dom's —
+    // the setup file swaps in a working in-memory Storage.
+    setupFiles: ['./vitest.setup.js'],
   },
 });

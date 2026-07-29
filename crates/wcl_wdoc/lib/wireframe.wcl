@@ -289,8 +289,8 @@ type WfRow extends Widget {
 
 @block("wf_grid")
 type WfGrid extends Widget {
-  @doc("Number of equal-width columns; children flow across the rows.")
-  columns: i64                   // number of equal-width columns
+  @doc("Number of equal-width columns (default 2); children flow across the rows.")
+  columns = 2                    // number of equal-width columns
   id: identifier?  class: list<utf8>?  disabled: bool?
   x = 0.0  y = 0.0  width: f64?  height: f64?
   anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?

@@ -1,13 +1,24 @@
 /* Diagram-shape interaction layer for the Design-mode iframe: drag-to-move
-   on the selected shape and corner resize handles, both writing back through
-   callbacks with USER-UNIT deltas (the caller commits x/y/width/height as
-   set_field ops). Position dragging is gated to manual layouts (`free` /
-   `none` — under a solver layout per-shape x/y is ignored by the renderer);
-   resizing is always available (solvers use width/height as node size).
+   on ANY shape (no pre-selection needed — the 3px threshold keeps clicks
+   and the drill-down selection intact) plus corner resize handles on the
+   selected one. A move's release resolves WHERE it landed:
+
+   - a top-level shape dropped on its own diagram (or over a sibling leaf)
+     under a manual layout → the classic positional move: `onMove(el,
+     {dx, dy})` in user units (the caller commits x/y);
+   - anything else with a valid target (into a container widget, after a
+     stacked sibling, out to the diagram) → `onRelocate(el, target,
+     clientPoint)` — the caller re-homes the block structurally;
+   - no valid outcome → the ghost snaps back, nothing commits.
+
+   During a move the dragged element goes `pointer-events: none` (the
+   connect-preview trick) so hit-testing sees what's BENEATH the ghost.
 
    Pointer handling is capture-phase and stops propagation, so the bundled
    pan-zoom player (bubble-phase listeners on the <svg>) never pans while a
    shape or handle is being dragged. */
+
+import { markDropTarget, resolveWidgetDrop } from './widgetdnd';
 
 const CSS_ID = 'wcl-diagram-css';
 const FRAME_CSS = `
@@ -28,6 +39,13 @@ const FRAME_CSS = `
   vector-effect: non-scaling-stroke; pointer-events: none;
 }
 .wcl-wys-drop > * { outline: 2px solid #3b82f6; outline-offset: 2px; }
+svg.wcl-wys-drop { outline: 2px dashed #3b82f6; outline-offset: -2px; }
+svg.wcl-wys-drop > * { outline: none; }
+.wcl-wys-drop-cell {
+  fill: rgba(59, 130, 246, 0.18) !important;
+  stroke: #3b82f6 !important; stroke-dasharray: none !important; opacity: 1 !important;
+  outline: none !important;
+}
 `;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -36,7 +54,9 @@ const MANUAL_LAYOUTS = ['free', 'none'];
 /** Client-pixel movement below this is a click, not a drag. */
 const DRAG_THRESHOLD = 3;
 
-function injectCss(doc) {
+/** Inject the interaction stylesheet (idempotent). Exported for the widget
+    drop layer, which shares the `.wcl-wys-drop` target highlight. */
+export function injectCss(doc) {
   if (!doc?.head || doc.getElementById(CSS_ID)) return;
   const style = doc.createElement('style');
   style.id = CSS_ID;
@@ -168,56 +188,67 @@ export function shapeAt(doc, x, y, exclude) {
 }
 
 /** Install shape drag + resize on the iframe document. `handlers`:
-    - enabled()          — gate (false while committing/rebuilding)
-    - selectedShape()    — the currently selected shape element (or null)
-    - onMove(el, d)      — drag released: d = { dx, dy } in user units
-    - onResize(el, d)    — handle released: d = { dx, dy, dw, dh }
+    - enabled()            — gate (false while committing/rebuilding)
+    - selectedShape()      — the currently selected shape element (or null)
+    - onMove(el, d)        — positional release: d = { dx, dy } user units
+    - onResize(el, d)      — handle released: d = { dx, dy, dw, dh }
+    - onConnect(from, to)  — port dropped on another shape
+    - acceptsChildren(kind) — may a shape of `kind` nest children?
+    - onRelocate(el, target, point) — structural release: `target` from
+      resolveWidgetDrop, `point` iframe client coords
     Returns a teardown. Idempotent per document. */
 export function installShapeDrag(doc, handlers) {
   if (!doc || doc.__wclShapeDragWired) return () => {};
   doc.__wclShapeDragWired = true;
   injectCss(doc);
 
-  /* One gesture at a time: null | { kind: 'move'|'resize', el, svg, corner?,
-     base (translate), startClient, moved, lastUser } */
+  /* One gesture at a time: null | { kind: 'move'|'resize'|'connect', el,
+     svg, corner?, base (translate), origTransform, startClient, moved,
+     lastUser } */
   let gesture = null;
   let justDragged = false;
 
   const down = (e) => {
     if (!handlers.enabled() || e.button !== 0) return;
     const selected = handlers.selectedShape?.();
-    if (!selected) return;
-    const svg = selected.closest('svg');
-    if (!svg) return;
     const port = e.target.closest?.('.wcl-wys-port');
     const handle = e.target.closest?.('.wcl-wys-handle');
-    if (port && selected.contains(port)) {
+    const shape = e.target.closest?.('[data-wcl-shape]');
+    if (port && selected?.contains(port)) {
       gesture = {
         kind: 'connect',
         el: selected,
-        svg,
+        svg: selected.closest('svg'),
         startClient: { x: e.clientX, y: e.clientY },
         moved: false,
       };
-    } else if (handle && selected.contains(handle)) {
+    } else if (handle && selected?.contains(handle)) {
       gesture = {
         kind: 'resize',
         el: selected,
-        svg,
+        svg: selected.closest('svg'),
         corner: handle.getAttribute('data-wcl-handle'),
         startClient: { x: e.clientX, y: e.clientY },
         moved: false,
       };
-    } else if (e.target.closest?.('[data-wcl-shape]') === selected && isDraggable(selected)) {
+    } else if (shape) {
+      // ANY shape drags directly — the nearest anchor, the same one a
+      // click would select. Whether the release is positional, structural,
+      // or a snap-back is decided at `up`.
       gesture = {
         kind: 'move',
-        el: selected,
-        svg,
-        base: readTranslate(selected),
+        el: shape,
+        svg: shape.closest('svg'),
+        base: readTranslate(shape),
+        origTransform: shape.getAttribute('transform'),
         startClient: { x: e.clientX, y: e.clientY },
         moved: false,
       };
     } else {
+      return;
+    }
+    if (!gesture.svg) {
+      gesture = null;
       return;
     }
     // Keep the pan-zoom player (bubble-phase svg listeners) from panning,
@@ -232,6 +263,31 @@ export function installShapeDrag(doc, handlers) {
     return { du: b.x - a.x, dv: b.y - a.y };
   };
 
+  const accepts = (kind) => handlers.acceptsChildren?.(kind) ?? false;
+  /** The would-be drop target under the cursor, excluding the dragged
+      subtree (its pointer-events are off during the drag, so the hit
+      already sees beneath it — the exclude is belt and braces). */
+  const dropTarget = (g, e) =>
+    resolveWidgetDrop(doc.elementFromPoint?.(e.clientX, e.clientY), accepts, g.el);
+  /** Is a resolved target the classic positional case (commit x/y) rather
+      than a structural re-home? Top-level shape, its own manual-layout
+      diagram — a drop on the background or over another TOP-LEVEL leaf both
+      count (free-position shapes overlap freely). A NESTED target leaf is
+      an ordering intent: insert after it, inside its container. */
+  const isPositional = (g, target) => {
+    if (!target) return false;
+    const nested = g.el.parentElement?.closest?.('[data-wcl-shape]');
+    if (nested || !isDraggable(g.el)) return false;
+    if (target.mode === 'diagram') return target.el === g.el.closest('svg[data-wcl-layout]');
+    return (
+      target.mode === 'after' &&
+      target.el.closest('svg') === g.svg &&
+      !target.el.parentElement?.closest?.('[data-wcl-shape]')
+    );
+  };
+
+  const markDrop = (el, cellEl = null) => markDropTarget(doc, el, cellEl);
+
   const move = (e) => {
     if (!gesture) return;
     const dx = e.clientX - gesture.startClient.x;
@@ -240,6 +296,7 @@ export function installShapeDrag(doc, handlers) {
     if (!gesture.moved) {
       gesture.moved = true;
       doc.documentElement.classList.add('wcl-wys-dragging');
+      if (gesture.kind === 'move') gesture.el.style.pointerEvents = 'none';
     }
     e.stopPropagation();
     e.preventDefault();
@@ -249,14 +306,26 @@ export function installShapeDrag(doc, handlers) {
       previewConnect(doc, gesture, e);
     } else if (gesture.kind === 'move') {
       // Live preview: the wrapper <g> position is purely visual and is
-      // discarded when the commit rebuilds the page.
+      // discarded when the commit rebuilds the page (or snapped back).
       gesture.el.setAttribute(
         'transform',
         `translate(${gesture.base.x + du} ${gesture.base.y + dv})`,
       );
+      // Highlight where a release would re-home the widget; positional
+      // moves get no highlight (nothing changes structurally). A resolved
+      // layout slot (grid cell / row gap) lights up individually.
+      const target = dropTarget(gesture, e);
+      const structural = target && !isPositional(gesture, target);
+      markDrop(structural ? target.el : null, structural ? (target.cellEl ?? null) : null);
     } else {
       previewResize(gesture, du, dv);
     }
+  };
+
+  /** Put the dragged element back exactly as it was rendered. */
+  const snapBack = (g) => {
+    if (g.origTransform == null) g.el.removeAttribute('transform');
+    else g.el.setAttribute('transform', g.origTransform);
   };
 
   const up = (e) => {
@@ -264,6 +333,7 @@ export function installShapeDrag(doc, handlers) {
     const g = gesture;
     gesture = null;
     doc.documentElement.classList.remove('wcl-wys-dragging');
+    markDrop(null);
     if (!g.moved) return;
     e.stopPropagation();
     e.preventDefault();
@@ -276,8 +346,25 @@ export function installShapeDrag(doc, handlers) {
       return;
     }
     const { du, dv } = g.lastUser ?? userDelta(g, e);
-    if (g.kind === 'move') handlers.onMove?.(g.el, { dx: du, dy: dv });
-    else handlers.onResize?.(g.el, resizeDelta(g.corner, du, dv));
+    if (g.kind === 'resize') {
+      handlers.onResize?.(g.el, resizeDelta(g.corner, du, dv));
+      return;
+    }
+    // Resolve the drop while the ghost is STILL hit-transparent — restoring
+    // pointer-events first would make elementFromPoint hit the dragged
+    // widget itself and every drop degrade to a positional move.
+    const target = dropTarget(g, e);
+    g.el.style.pointerEvents = '';
+    if (isPositional(g, target)) {
+      handlers.onMove?.(g.el, { dx: du, dy: dv });
+      return;
+    }
+    // Structural (or refused): the ghost snaps back either way — a commit
+    // re-renders the page, and a refusal must leave the DOM untouched.
+    snapBack(g);
+    if (target && handlers.onRelocate) {
+      handlers.onRelocate(g.el, target, { x: e.clientX, y: e.clientY });
+    }
   };
 
   const suppressClick = (e) => {

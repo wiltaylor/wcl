@@ -874,8 +874,15 @@ fn unit_create(state: &EditorState, v: &serde_json::Value) -> Result<serde_json:
 
     // The inline-label expression: an identifier when the schema's
     // `@inline(0)` field is identifier-typed (the wskill unit convention),
-    // else a string literal.
-    let schema = doc.block_schema(kind);
+    // else a string literal. `type_name` (the schema's fully-qualified name,
+    // served with every kind entry) disambiguates kind names shared across
+    // namespaces — a WAD `container` must not be schema'd by wdoc's
+    // diagram-grouping shape of the same name.
+    let schema = unit
+        .get("type_name")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|full| doc.type_decls().find(|d| d.full_name() == full))
+        .or_else(|| doc.block_schema(kind));
     let ident_label = schema
         .as_ref()
         .and_then(|s| {
@@ -1042,14 +1049,24 @@ pub(super) fn place_unit(
         let file = path
             .map(Path::to_path_buf)
             .unwrap_or_else(|| doc_entry.to_path_buf());
+        if is_generated(&file) {
+            continue;
+        }
         match per_file.iter_mut().find(|(p, _)| *p == file) {
             Some((_, n)) => *n += 1,
             None => per_file.push((file, 1)),
         }
     }
     if per_file.is_empty() {
+        // No instances to learn from. The entry document is the last resort,
+        // NOT the first: a projection entry (a WAD's book template, a
+        // wskill's) is a different namespace from the data it renders, and a
+        // block written there wouldn't even resolve to this schema. Look for
+        // a data file of a neighbouring kind instead — the kinds this one
+        // nests into, then the kinds that nest into it, then anything else
+        // declared in the same schema namespace.
         return Ok(Placement::Append {
-            file: doc_entry.to_path_buf(),
+            file: kin_file(doc, kind).unwrap_or_else(|| doc_entry.to_path_buf()),
         });
     }
     // One-per-file layout: every instance alone in its file, all in one
@@ -1071,6 +1088,72 @@ pub(super) fn place_unit(
         .max_by_key(|(_, n)| *n)
         .expect("non-empty");
     Ok(Placement::Append { file })
+}
+
+/// Is this file written by a generator? Extractor output carries a
+/// `GENERATED` banner and is overwritten wholesale on the next run — an
+/// object created there would be silently lost (and, where a CI gate checks
+/// the tree is fresh, would fail the build). Placement skips such files
+/// entirely; objects that are already in them stay editable in place.
+fn is_generated(file: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(file) else {
+        return false;
+    };
+    // The banner is a leading comment, so only the head of the file matters.
+    text.lines()
+        .take(5)
+        .take_while(|l| {
+            let t = l.trim_start();
+            t.is_empty() || t.starts_with("//") || t.starts_with('#')
+        })
+        .any(|l| l.contains("GENERATED"))
+}
+
+/// The data file a brand-new instance of `kind` should join when the kind
+/// has no instances of its own: the file holding the most instances of a
+/// neighbouring kind, tried in order — the kinds it nests into, the kinds
+/// that nest into it, then any other kind declared in the same schema
+/// namespace. `None` when the document holds no such data at all.
+fn kin_file(doc: &Document, kind: &str) -> Option<PathBuf> {
+    let links = kind_links(doc);
+    let me = links.iter().find(|k| k.kind == kind)?;
+    let ns = me.schema.namespace().to_vec();
+    let parents: Vec<&str> = me.parents.iter().map(|(_, k)| k.as_str()).collect();
+    let children: Vec<&str> = links
+        .iter()
+        .filter(|k| k.parents.iter().any(|(_, p)| p == kind))
+        .map(|k| k.kind.as_str())
+        .collect();
+    let same_ns: Vec<&str> = links
+        .iter()
+        .filter(|k| k.kind != kind && k.schema.namespace() == ns)
+        .map(|k| k.kind.as_str())
+        .collect();
+
+    for tier in [&parents, &children, &same_ns] {
+        let mut per_file: Vec<(PathBuf, usize)> = Vec::new();
+        for (path, block) in doc.blocks_with_source() {
+            if !tier.contains(&block.kind()) {
+                continue;
+            }
+            let Some(file) = path.map(Path::to_path_buf) else {
+                continue;
+            };
+            if is_generated(&file) {
+                continue;
+            }
+            match per_file.iter_mut().find(|(p, _)| *p == file) {
+                Some((_, n)) => *n += 1,
+                None => per_file.push((file, 1)),
+            }
+        }
+        // Ties go to the first file in document order, so placement is
+        // deterministic rather than dependent on iteration order.
+        if let Some((file, _)) = per_file.into_iter().max_by_key(|(_, n)| *n) {
+            return Some(file);
+        }
+    }
+    None
 }
 
 /// Append `id` to the `related` list of the `index` block labelled
@@ -1311,6 +1394,7 @@ fn palette(
         "ok": true,
         "site_type": site_kind(&doc, site),
         "wskill": is_wskill(&doc),
+        "wad": is_wad(&doc),
         "unit_kinds": unit_kinds(&doc),
         "diagram_kinds": diagram_kinds(&doc),
         "body_kinds": body_kinds,
@@ -1321,6 +1405,12 @@ fn palette(
 /// Whether the document carries the wskill data model (a gathered `topic`).
 pub(super) fn is_wskill(doc: &Document) -> bool {
     doc.blocks().any(|b| b.kind() == "topic")
+}
+
+/// Whether the document carries the WAD data model (its one `wad` root
+/// metadata block) — the flag that opens the Systems view.
+pub(super) fn is_wad(doc: &Document) -> bool {
+    doc.blocks().any(|b| b.kind() == "wad")
 }
 
 /// `book` / `website` / `presentation`, from the selected `site` block's
@@ -1344,13 +1434,14 @@ pub(super) fn site_kind(doc: &Document, site: Option<&str>) -> &'static str {
     }
 }
 
-/// The addable data-object kinds: every `@children`-gathered kind of the
-/// document's merged `@document` schemas, minus wdoc infrastructure (by
-/// declaring namespace) and wskill plumbing (by name). Field metadata feeds
-/// the generated create form.
-pub(super) fn unit_kinds(doc: &Document) -> Vec<serde_json::Value> {
+/// Every `@children`-gathered block kind of the document's merged
+/// `@document` schemas, minus wdoc's own infrastructure gathers (pages,
+/// sites, components, …, excluded by declaring namespace), as
+/// `(kind, schema)` in declaration order. The data-object surface every
+/// schema-driven view is built from.
+pub(super) fn gathered_kinds<'a>(doc: &'a Document) -> Vec<(String, wcl_lang::TypeDecl<'a>)> {
     let mut seen: Vec<String> = Vec::new();
-    let mut out: Vec<serde_json::Value> = Vec::new();
+    let mut out: Vec<(String, wcl_lang::TypeDecl<'a>)> = Vec::new();
     for decl in doc.type_decls() {
         if !decl.decorators().any(|d| d.name() == "document") {
             continue;
@@ -1359,22 +1450,142 @@ pub(super) fn unit_kinds(doc: &Document) -> Vec<serde_json::Value> {
             let Some(kind) = field.children_block_kind() else {
                 continue;
             };
-            if seen.contains(&kind) || UNIT_KIND_DENYLIST.contains(&kind.as_str()) {
+            if seen.contains(&kind) {
                 continue;
             }
             seen.push(kind.clone());
-            let Some(schema) = doc.block_schema(&kind) else {
+            let Some(schema) = gather_elem_decl(&field).or_else(|| doc.block_schema(&kind)) else {
                 continue;
             };
-            // wdoc's own document gathers (pages, sites, components, …) are
-            // not data units.
             if schema.full_name().starts_with("wdoc.") {
                 continue;
             }
-            out.push(kind_entry(doc, &kind, &schema));
+            out.push((kind, schema));
         }
     }
     out
+}
+
+/// The type a gather field's element names, resolved through the field's own
+/// declared type. Namespace-correct where a bare [`Document::block_schema`]
+/// name lookup is not: a WAD's `wcl.wad.Container` and wdoc's diagram
+/// `container` shape share a *kind* name, and the name lookup answers
+/// whichever happens to be declared first.
+pub(super) fn gather_elem_decl<'a>(
+    field: &wcl_lang::TypeField<'a>,
+) -> Option<wcl_lang::TypeDecl<'a>> {
+    fn named(t: ResolvedType<'_>) -> Option<wcl_lang::TypeDecl<'_>> {
+        match t {
+            ResolvedType::Named(d) => Some(d),
+            ResolvedType::List(inner) | ResolvedType::Reference(inner) => named(*inner),
+            _ => None,
+        }
+    }
+    named(field.resolved_type())
+}
+
+/// One gathered kind's derived structure — how instances of it nest, what
+/// they reference, and whether the kind is an edge rather than a node.
+///
+/// The rules (shared by the Systems view and the create path's file
+/// placement, so both read the same model):
+///
+/// - a **parent link** is a scalar `identifier` field whose NAME is another
+///   gathered kind's name (`component.container`, `system.boundary`), plus
+///   `parent` for self-nesting (`infra_node.parent`). Inline id slots name
+///   the block itself and never count.
+/// - a **reference** is any other `identifier` / `list<identifier>` field.
+/// - an **edge kind** carries both a `source` and a `destination`
+///   identifier field; its endpoints are wiring, not containment.
+pub(super) struct KindInfo<'a> {
+    pub kind: String,
+    pub schema: wcl_lang::TypeDecl<'a>,
+    /// `(field name, parent kind)` in declaration order.
+    pub parents: Vec<(String, String)>,
+    /// `(field name, is a list)` — cross-references, not containment.
+    pub refs: Vec<(String, bool)>,
+    /// `(source field, destination field)` when the kind is an edge kind.
+    pub edge: Option<(String, String)>,
+}
+
+/// A field's declared type with a trailing `?` stripped.
+pub(super) fn bare_type(f: &wcl_lang::TypeField<'_>) -> String {
+    let ty = f.type_ref().to_string();
+    ty.strip_suffix('?').unwrap_or(&ty).to_string()
+}
+
+/// Scalar fields only: child blocks, child-block lists and connections are
+/// structure, not properties.
+pub(super) fn is_scalar(f: &wcl_lang::TypeField<'_>) -> bool {
+    f.child_kind_or_union().is_none()
+        && f.children_kind_or_union().is_none()
+        && f.connection_schema().is_none()
+}
+
+/// [`KindInfo`] for every gathered kind of the document.
+pub(super) fn kind_links<'a>(doc: &'a Document) -> Vec<KindInfo<'a>> {
+    let gathered = gathered_kinds(doc);
+    let names: Vec<String> = gathered.iter().map(|(k, _)| k.clone()).collect();
+    gathered
+        .into_iter()
+        .map(|(kind, schema)| {
+            let mut parents: Vec<(String, String)> = Vec::new();
+            let mut refs: Vec<(String, bool)> = Vec::new();
+            let mut source = None;
+            let mut destination = None;
+            for f in schema.effective_fields() {
+                if !is_scalar(&f) {
+                    continue;
+                }
+                let name = f.name().to_string();
+                let ty = bare_type(&f);
+                if ty == "identifier" {
+                    if name == "source" {
+                        source = Some(name.clone());
+                    } else if name == "destination" {
+                        destination = Some(name.clone());
+                    }
+                    if f.inline_slot().is_some() {
+                        continue;
+                    }
+                    if name == "parent" {
+                        parents.push((name, kind.clone()));
+                    } else if names.contains(&name) {
+                        parents.push((name.clone(), name));
+                    } else {
+                        refs.push((name, false));
+                    }
+                } else if ty == "list<identifier>" {
+                    refs.push((name, true));
+                }
+            }
+            let edge = match (source, destination) {
+                (Some(s), Some(d)) => Some((s, d)),
+                _ => None,
+            };
+            if let Some((s, d)) = &edge {
+                parents.retain(|(f, _)| f != s && f != d);
+                refs.retain(|(f, _)| f != s && f != d);
+            }
+            KindInfo {
+                kind,
+                schema,
+                parents,
+                refs,
+                edge,
+            }
+        })
+        .collect()
+}
+
+/// The addable data-object kinds: [`gathered_kinds`] minus wskill plumbing
+/// (by name). Field metadata feeds the generated create form.
+pub(super) fn unit_kinds(doc: &Document) -> Vec<serde_json::Value> {
+    gathered_kinds(doc)
+        .into_iter()
+        .filter(|(kind, _)| !UNIT_KIND_DENYLIST.contains(&kind.as_str()))
+        .map(|(kind, schema)| kind_entry(&kind, &schema))
+        .collect()
 }
 
 /// The first positional argument of a decorator, as a string.
@@ -1405,22 +1616,26 @@ pub(super) fn diagram_kinds(doc: &Document) -> Vec<serde_json::Value> {
             continue;
         }
         seen.push(kind.clone());
-        out.push(kind_entry(doc, &kind, &decl));
+        out.push(kind_entry(&kind, &decl));
     }
     out.sort_by(|a, b| a["kind"].as_str().cmp(&b["kind"].as_str()));
     out
 }
 
-pub(super) fn kind_entry(
-    doc: &Document,
-    kind: &str,
-    schema: &wcl_lang::TypeDecl<'_>,
-) -> serde_json::Value {
+pub(super) fn kind_entry(kind: &str, schema: &wcl_lang::TypeDecl<'_>) -> serde_json::Value {
     let mut fields: Vec<serde_json::Value> = Vec::new();
     let mut has_body = false;
+    // Declares a `@children(...)` family — an `insert_child` may nest
+    // blocks inside instances of this kind (a wireframe container widget,
+    // a diagram grouping). The widget palette keys append-inside vs
+    // insert-after off it.
+    let mut accepts_children = false;
     for f in schema.effective_fields() {
         if f.child_block_kind().as_deref() == Some("body") {
             has_body = true;
+        }
+        if f.children_kind_or_union().is_some() {
+            accepts_children = true;
         }
         // Child blocks / connections aren't form fields.
         if f.child_kind_or_union().is_some()
@@ -1435,7 +1650,9 @@ pub(super) fn kind_entry(
         if ty.to_string().starts_with("fn") {
             continue;
         }
-        let symbols: Option<Vec<String>> = match doc.resolve(ty) {
+        // Resolved in the field's OWN namespace — a `wcl.wad` field typed
+        // `ContainerKind` must not pick up a same-named set elsewhere.
+        let symbols: Option<Vec<String>> = match f.resolved_type() {
             ResolvedType::SymbolSet(ss) => {
                 Some(ss.symbols().map(|s| s.name().to_string()).collect())
             }
@@ -1456,6 +1673,7 @@ pub(super) fn kind_entry(
         "doc": schema.doc_comment(),
         "fields": fields,
         "has_body": has_body,
+        "accepts_children": accepts_children,
     })
 }
 

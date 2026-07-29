@@ -216,7 +216,7 @@ import "./schema/base.wcl"
 import "./schema/extensions.wcl"
 import "./data/main.wcl"
 
-schema_version = "0.4.0"
+schema_version = "0.6.0"
 
 wad ${answer("system_id")} {
   name    = "${answer("system_name")}"
@@ -230,9 +230,12 @@ file "schema/base.wcl" {
   content = <<'WAD_SCHEMA_BASE_WCL'
 // WAD base schema — ships with the `wcl init wad` scaffold.
 //
-// Schema version: 0.4.0 (mirror it in `schema_version` in wad.wcl).
-// 0.4.0 is additive over 0.3.0 (adr_option children on adr; typed
-// context/instructions/acceptance on spec) — 0.3.0 data validates unchanged.
+// Schema version: 0.6.0 (mirror it in `schema_version` in wad.wcl).
+// 0.6.0 over 0.5.0: `component.kind` is now the ComponentKind vocabulary
+// (kinds.wcl) instead of free text — migrate `kind = "module"` to
+// `kind = :module` (and map stragglers onto the set, or extend it).
+// 0.5.0 was additive over 0.4.0 (`boundary` blocks; an optional `boundary`
+// on system / external_system).
 //
 // DO NOT HAND-EDIT. The canonical copy lives in the scaffold template
 // (crates/wcl/src/scaffold/templates/wad.wcl); regenerate with
@@ -249,9 +252,9 @@ file "schema/base.wcl" {
 // Conventions:
 //   - every top-level block carries `@inline(0) id: identifier`; ids become
 //     page routes, so keep them to `A-Za-z0-9_-`
-//   - diagram-node kinds (system / container / component / external_system /
-//     persona / environment / infra_node / screen) share ONE id space — a
-//     `relation` endpoint must resolve unambiguously
+//   - diagram-node kinds (boundary / system / container / component /
+//     external_system / persona / environment / infra_node / screen) share
+//     ONE id space — a `relation` endpoint must resolve unambiguously
 //   - cross-references are bare identifiers (`system = acme_shop`), never
 //     nested blocks — scripts can emit them line by line
 //   - freeform prose rides on records via `@child("body")` and is projected
@@ -357,8 +360,25 @@ type Adr {
 }
 
 // ---------------------------------------------------------------------------
-// View 2 — System context: relations
+// View 2 — System context: boundaries and relations
 // ---------------------------------------------------------------------------
+
+// A grouping band around systems and external systems: an enterprise, an
+// org unit, a trust zone, a vendor's estate. Membership is a flat reference
+// from the member (`boundary = acme`), so a system moves between boundaries
+// with a one-field edit and scripts can append members without touching the
+// boundary. A WAD with one obvious owner needs no boundary at all — the
+// context diagram falls back to a single band named after the WAD.
+@block("boundary")
+type Boundary {
+  @inline(0) id: identifier
+  name: utf8
+  summary: utf8?
+  @doc("What sort of grouping this is (BoundaryKind).")
+  kind: BoundaryKind?
+  @default([]) tags: list<utf8>
+  @child("body") body: WdocAddressableBody?
+}
 
 // A directed relationship between two nodes (any ids from the shared node
 // space: systems, containers, components, externals, personas). Author a
@@ -443,6 +463,8 @@ type ExternalSystem {
   name: utf8
   summary: utf8
   kind: ExternalKind
+  @doc("Boundary id this external system sits in (a vendor estate, a partner org).")
+  boundary: identifier?
   vendor: utf8?
   url: utf8?
   criticality: Criticality?
@@ -465,6 +487,8 @@ type System {
   @inline(0) id: identifier
   name: utf8
   summary: utf8
+  @doc("Boundary id this system sits in; omit when the WAD has one obvious owner.")
+  boundary: identifier?
   @doc("Stakeholder id who owns this system.")
   owner: identifier?
   @default([]) repos: list<identifier>
@@ -500,8 +524,8 @@ type Component {
   container: identifier
   name: utf8
   summary: utf8
-  @doc("Free-text component taxonomy (\"module\", \"handler\", \"store\"…).")
-  kind: utf8?
+  @doc("What the component fundamentally is (ComponentKind — :cli / :tui / :web_api / :ui mark the editor's native content surfaces).")
+  kind: ComponentKind?
   technology: utf8?
   @default([]) tags: list<utf8>
   @child("body") body: WdocAddressableBody?
@@ -1143,6 +1167,7 @@ type WadDoc {
   @children("stakeholder")     stakeholders:    list<Stakeholder>
   @children("raci_entry")      raci:            list<RaciEntry>
   @children("adr")             adrs:            list<Adr>
+  @children("boundary")        boundaries:      list<Boundary>
   @children("relation")        relations:       list<Relation>
   @children("external_system") externals:       list<ExternalSystem>
   @children("system")          systems:         list<System>
@@ -1180,10 +1205,25 @@ file "schema/kinds.wcl" {
 // in base.wcl (DO NOT HAND-EDIT); everything here is yours.
 namespace wcl.wad
 
+// What a `boundary` groups: an enterprise, an org unit, a trust/network
+// zone, a vendor's estate, a team's ownership, a hosting platform.
+symbol_set BoundaryKind {
+  enterprise organisation team trust_zone network vendor platform other
+}
+
 // What a C4 container (a `container` block) fundamentally is.
 symbol_set ContainerKind {
   service web_app spa cli library db queue cache batch_job function
   mobile_app desktop_app editor_plugin gateway static_site other
+}
+
+// What a component (a `container`'s cohesive part) fundamentally is.
+// The first four are the editor's native content surfaces — marking a
+// component :cli / :tui / :web_api / :ui surfaces that editor on it even
+// before any commands / endpoints / screens are attached.
+symbol_set ComponentKind {
+  cli tui web_api ui
+  module handler store service library gateway other
 }
 
 // What an external system is to this design.
@@ -2116,6 +2156,23 @@ file "wdoc/pages/context.wcl" {
 
 let ctx_sys_ids = map(systems, fn(s: System) -> identifier { s.id })
 
+// Members of one authored boundary: every system and external system that
+// names it. Membership is a flat reference from the member, so a boundary
+// never has to be edited when the estate grows.
+let ctx_boundary_members = fn(bid: identifier) -> list<identifier> {
+  flatten([
+    map(
+      filter(systems, fn(s: System) -> bool { match s.boundary { none => false, sb => sb == bid } }),
+      fn(s: System) -> identifier { s.id }),
+    map(
+      filter(externals, fn(e: ExternalSystem) -> bool { match e.boundary { none => false, eb => eb == bid } }),
+      fn(e: ExternalSystem) -> identifier { e.id }),
+  ])
+}
+// With no boundaries authored the diagram falls back to one band named
+// after the WAD, drawn around every system.
+let ctx_default_band = match len(boundaries) { 0 => ctx_sys_ids, _ => [] }
+
 page system_context { title = "System context"
   h1 "System context"
   p  $"How ${wad.name} sits in the world: the systems this design owns, the external systems it integrates with, and the personas that use it. Every edge derives from an authored `relation`, rolled up to system level."
@@ -2147,10 +2204,13 @@ page system_context { title = "System context"
         icon = "lucide.user"  link = $"persona_${pe.id}"
       }
     }
-    wdoc_repeater { each = match len(systems) { 0 => [], _ => [true] }  as = :_bd
-      // Padding ≥ the label headroom so the member inflation the radial
-      // solver applies covers the title band too.
-      boundary $"${wad.name}" { members = ctx_sys_ids  padding = 28.0 }
+    // Padding ≥ the label headroom so the member inflation the radial
+    // solver applies covers the title band too.
+    wdoc_repeater { each = boundaries  as = :bd
+      boundary $"${bd.name}" { members = ctx_boundary_members(bd.id)  padding = 28.0 }
+    }
+    wdoc_repeater { each = match len(ctx_default_band) { 0 => [], _ => [true] }  as = :_bd
+      boundary $"${wad.name}" { members = ctx_default_band  padding = 28.0 }
     }
     edges = ctx_edges
   }

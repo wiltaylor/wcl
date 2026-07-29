@@ -123,8 +123,14 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
     // A stable slug per (entry, site) so distinct selections coexist in
     // the scratch tree and re-selecting one reuses its output. A merged
     // build gets its own slug — its pages must never shadow the normal
-    // per-view output (and vice versa); a synthetic unit page gets a slug
-    // per unit so its extra page keeps each dir's page set stable.
+    // per-view output (and vice versa). Synthetic unit pages share ONE
+    // `__unit` slug per (entry, site): the extra page is always named
+    // `__wcl_unit_preview`, so the dir's page set stays stable across
+    // units and switching units is a warm targeted rebuild of that one
+    // page instead of a cold full build per unit. (Unit builds must not
+    // share the plain `__merged` dir: without the unit overlay the doc
+    // lacks the synthetic page, and the page-set drift would force a full
+    // rebuild on every alternation.)
     let unit_id = unit
         .map(|u| crate::edit::str_field(u, "id").map(str::to_string))
         .transpose()?;
@@ -132,10 +138,7 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
         "{entry}__{}{}{}",
         site.as_deref().unwrap_or(""),
         if merged { "__merged" } else { "" },
-        unit_id
-            .as_deref()
-            .map(|id| format!("__unit_{id}"))
-            .unwrap_or_default(),
+        if unit_id.is_some() { "__unit" } else { "" },
     )
     .chars()
     .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
@@ -194,6 +197,11 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
         let id = unit_id.as_deref().unwrap_or_default();
         append_synthetic_unit_page(&entry_abs, &mut overlay, kind, id)?;
     }
+    // Unit previews take the targeted path even on a COLD dir: the `__unit`
+    // slug only ever serves the one synthetic page, so rendering the other
+    // ~N book pages first is pure waste (a minute-plus on a big WAD in a
+    // debug build). When the single-page render genuinely needs shared
+    // state (a new icon), the build falls back to full on its own.
     let built = run_preview_build(
         &entry_abs,
         &out,
@@ -202,6 +210,7 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
         overlay.clone(),
         pages,
         &changed,
+        unit.is_some(),
     )?;
     let mode = match &built {
         PreviewBuild::Targeted(_) => "targeted",
@@ -259,6 +268,10 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
 /// falls back to a full build rather than reporting a no-op as success. The
 /// incremental engine itself also self-falls-back on structural change
 /// (page set, decks, new icons).
+///
+/// `assume_warm` skips the warm-dir gate — the unit-preview path, whose
+/// output dir never needs any page but the synthetic one.
+#[allow(clippy::too_many_arguments)]
 fn run_preview_build(
     entry_abs: &Path,
     out: &Path,
@@ -267,6 +280,7 @@ fn run_preview_build(
     overlay: std::collections::HashMap<PathBuf, String>,
     pages: Option<std::collections::HashSet<String>>,
     changed: &[PathBuf],
+    assume_warm: bool,
 ) -> Result<PreviewBuild, String> {
     let mut opts = wcl_wdoc::BuildOptions {
         overlay: Some(overlay),
@@ -276,7 +290,7 @@ fn run_preview_build(
         ..Default::default()
     };
     let explicit = pages.is_some();
-    let warm = out.join("index.html").is_file() || index_page(out).is_some();
+    let warm = assume_warm || out.join("index.html").is_file() || index_page(out).is_some();
     if warm && (explicit || !changed.is_empty()) {
         opts.page_filter = pages;
         let outcome = wcl_wdoc::build_incremental(entry_abs, out, site, &opts, changed)
@@ -505,6 +519,7 @@ async fn lazy_page_rebuild(state: &Arc<EditorState>, rel: &str, file: &Path) {
             overlay,
             filter,
             &[],
+            false,
         ) {
             Ok(built) => {
                 let mut sessions = state2.preview_sessions.lock().unwrap();
@@ -523,6 +538,13 @@ async fn lazy_page_rebuild(state: &Arc<EditorState>, rel: &str, file: &Path) {
 /// the site's start page, any other stem must be listed. `None` when the
 /// manifest is missing or the stem is unknown.
 fn manifest_page(file: &Path, stem: &str) -> Option<String> {
+    // The synthetic unit page maps to itself — its dir may have been built
+    // cold-targeted (no manifest written), and falling back to a full book
+    // build for the one page that never needs one would be exactly the
+    // stall the targeted path exists to avoid.
+    if stem == UNIT_PREVIEW_PAGE {
+        return Some(UNIT_PREVIEW_PAGE.to_string());
+    }
     let manifest = file.parent()?.join(wcl_wdoc::PAGES_MANIFEST_HREF);
     let text = std::fs::read_to_string(manifest).ok()?;
     let v: serde_json::Value = serde_json::from_str(&text).ok()?;

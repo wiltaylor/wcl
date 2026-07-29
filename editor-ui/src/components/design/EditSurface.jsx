@@ -90,10 +90,12 @@ import {
   wrapSelection,
 } from '../../preview/wysiwyg';
 import {
+  clientToUser,
   installShapeDrag,
   readTranslate,
   refreshShapeHandles,
 } from '../../preview/diagram';
+import { relocateOps } from '../../preview/widgetdnd';
 import {
   cellCoords,
   delColAt,
@@ -132,6 +134,10 @@ export default function EditSurface(props) {
       if (iframe) iframe.src = url;
     },
   });
+  // Read-only handle for hosts that need to resolve anchors in the frame
+  // themselves (the screen editor's widget palette finds the wireframe
+  // diagram through it).
+  props.surfaceRef?.({ doc });
 
   // ------------------------------------------------------------------
   // Sessions
@@ -359,6 +365,44 @@ export default function EditSurface(props) {
     if (res?.ok) toast(`Connected ${from} → ${to}`, { duration: 3000 });
   };
 
+  /** A move released somewhere structural: re-home the shape's source —
+      after a leaf sibling, into a container widget, or out onto the
+      diagram (with x/y at the drop point under a manual layout). One
+      atomic batch: insert the canonical slice at the target, delete the
+      original. */
+  const shapeRelocate = async (el, target, point) => {
+    const d = doc();
+    const a = d && anchorOf(d, el);
+    const t = d && anchorOf(d, target.el);
+    if (!a || !t) return;
+    if (a.shared || t.shared) {
+      return toast('This diagram is generated — edit its source data instead', {
+        duration: 5000,
+      });
+    }
+    if (a.file !== t.file) {
+      return toast('Cannot move a widget across files — edit the source instead', {
+        duration: 5000,
+      });
+    }
+    const src = await api.blockSource({ file: a.file, span: a.span });
+    if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
+    const at =
+      target.mode === 'diagram' &&
+      MANUAL_LAYOUTS.includes(target.el.getAttribute('data-wcl-layout') ?? '')
+        ? clientToUser(target.el, point.x, point.y)
+        : null;
+    const ops = relocateOps({
+      slice: src.source,
+      mode: target.mode,
+      targetSpan: t.span,
+      sourceSpan: a.span,
+      at,
+      slot: target.slot ?? null,
+    });
+    commitOps(a.file, ops, { etag: src.etag, reveal: 'inserted' });
+  };
+
   const shapeResize = async (el, delta) => {
     const d = doc();
     const a = d && anchorOf(d, el);
@@ -565,6 +609,9 @@ export default function EditSurface(props) {
       onMove: shapeMove,
       onResize: shapeResize,
       onConnect: shapeConnect,
+      acceptsChildren: (kind) =>
+        palette()?.diagram_kinds?.find((k) => k.kind === kind)?.accepts_children === true,
+      onRelocate: shapeRelocate,
     });
     // Re-anchor after a commit rebuild.
     const reveal = pendingReveal();
@@ -578,6 +625,9 @@ export default function EditSurface(props) {
         if (reveal.edit && anchor) startEditFor(anchor, el, null);
       }
     }
+    // Hosts that mirror the frame's content (the screen editor's structure
+    // tree) rebuild here — anchors are fresh.
+    props.onFrameLoad?.();
     frameReady();
   };
 

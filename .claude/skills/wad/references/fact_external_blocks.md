@@ -6,7 +6,7 @@
 
 | Block | Fields | Notes |
 | --- | --- | --- |
-| `external_system` | `name`, `summary`, `kind`, `vendor?`, `url?`, `criticality?`, `body?` | one per integration; the four child families below nest inside it |
+| `external_system` | `name`, `summary`, `kind`, `boundary?`, `vendor?`, `url?`, `criticality?`, `body?` | one per integration; the four child families below nest inside it |
 | `support_contact` | `name`, `role?`, `channel`, `details?` | who to call and how |
 | `endpoint` | `name`, `environment?`, `kind` (url/ip/config/queue…), `value`, `notes?` | connection details, per environment when they differ |
 | `api_ref` | `name`, `kind` (openapi/docs/repo…), `location`, `notes?` | integration references |

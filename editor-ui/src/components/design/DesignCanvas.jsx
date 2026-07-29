@@ -26,6 +26,7 @@ import {
   loadNav,
   loadPalette,
   openPageSource,
+  palette,
   setCanvasStale,
   setDesignTab,
   setGotoPage,
@@ -67,10 +68,14 @@ export default function DesignCanvas() {
   return (
     <div class="ed-design-col">
       <div class="ed-design-note">
+        {/* The second surface depends on the document: a wskill has a unit
+            graph, a WAD has its systems model, anything else has neither. */}
         <ToggleGroup
           options={[
             { value: 'canvas', label: 'Canvas' },
-            { value: 'graph', label: 'Graph', disabled: !selected()?.wskill },
+            ...(palette()?.wad && !selected()?.wskill
+              ? [{ value: 'systems', label: 'Systems' }]
+              : [{ value: 'graph', label: 'Graph', disabled: !selected()?.wskill }]),
           ]}
           value={designTab()}
           onChange={(t) => setDesignTab(t)}

@@ -1552,12 +1552,27 @@ impl Document {
     /// Resolve a [`TypeRef`] to either its built-in tag or the user-declared
     /// [`TypeDecl`] / [`UnionDecl`] it points to. `Named` refs are validated
     /// at [`Document::open`], so the lookup never fails here.
+    ///
+    /// Names resolve from the document's ROOT namespace. A reference written
+    /// inside a namespaced file must resolve from *that* namespace instead —
+    /// see [`Document::resolve_in`] and [`TypeField::resolved_type`].
     pub fn resolve<'a>(&'a self, t: &'a TypeRef) -> ResolvedType<'a> {
+        self.resolve_in(t, &self.file_ns)
+    }
+
+    /// [`Document::resolve`] for a reference written in a source whose
+    /// namespace is `file_ns`: the name resolves *within its declaring
+    /// namespace first*. This is what keeps two same-named types in
+    /// different namespaces apart — a WAD's `wcl.wad.Container` and wdoc's
+    /// diagram `wdoc.Container` are both named `Container`, and resolving a
+    /// `wcl.wad` field's type from the root namespace can answer the wrong
+    /// one.
+    pub fn resolve_in<'a>(&'a self, t: &'a TypeRef, file_ns: &[String]) -> ResolvedType<'a> {
         match t {
             TypeRef::Builtin(b) => ResolvedType::Builtin(*b),
             TypeRef::Named(path) => {
                 let fqn = self
-                    .resolve_path(path)
+                    .resolve_path_in(path, file_ns)
                     .expect("named ref validated at Document::open");
                 let fqn_dotted = fqn.join(".");
                 if let Some(decl) = self.type_decl(&fqn_dotted) {
@@ -1575,15 +1590,17 @@ impl Document {
                     )
                 }
             }
-            TypeRef::Reference(inner) => ResolvedType::Reference(Box::new(self.resolve(inner))),
-            TypeRef::List(inner) => ResolvedType::List(Box::new(self.resolve(inner))),
+            TypeRef::Reference(inner) => {
+                ResolvedType::Reference(Box::new(self.resolve_in(inner, file_ns)))
+            }
+            TypeRef::List(inner) => ResolvedType::List(Box::new(self.resolve_in(inner, file_ns))),
             TypeRef::Tensor { element, dims } => ResolvedType::Tensor {
-                element: Box::new(self.resolve(element)),
+                element: Box::new(self.resolve_in(element, file_ns)),
                 dims,
             },
             TypeRef::Function { params, return_ty } => ResolvedType::Function {
-                params: params.iter().map(|p| self.resolve(p)).collect(),
-                return_ty: Box::new(self.resolve(return_ty)),
+                params: params.iter().map(|p| self.resolve_in(p, file_ns)).collect(),
+                return_ty: Box::new(self.resolve_in(return_ty, file_ns)),
             },
         }
     }

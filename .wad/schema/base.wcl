@@ -1,8 +1,11 @@
 // WAD base schema — ships with the `wcl init wad` scaffold.
 //
-// Schema version: 0.4.0 (mirror it in `schema_version` in wad.wcl).
-// 0.4.0 is additive over 0.3.0 (adr_option children on adr; typed
-// context/instructions/acceptance on spec) — 0.3.0 data validates unchanged.
+// Schema version: 0.6.0 (mirror it in `schema_version` in wad.wcl).
+// 0.6.0 over 0.5.0: `component.kind` is now the ComponentKind vocabulary
+// (kinds.wcl) instead of free text — migrate `kind = "module"` to
+// `kind = :module` (and map stragglers onto the set, or extend it).
+// 0.5.0 was additive over 0.4.0 (`boundary` blocks; an optional `boundary`
+// on system / external_system).
 //
 // DO NOT HAND-EDIT. The canonical copy lives in the scaffold template
 // (crates/wcl/src/scaffold/templates/wad.wcl); regenerate with
@@ -19,9 +22,9 @@
 // Conventions:
 //   - every top-level block carries `@inline(0) id: identifier`; ids become
 //     page routes, so keep them to `A-Za-z0-9_-`
-//   - diagram-node kinds (system / container / component / external_system /
-//     persona / environment / infra_node / screen) share ONE id space — a
-//     `relation` endpoint must resolve unambiguously
+//   - diagram-node kinds (boundary / system / container / component /
+//     external_system / persona / environment / infra_node / screen) share
+//     ONE id space — a `relation` endpoint must resolve unambiguously
 //   - cross-references are bare identifiers (`system = acme_shop`), never
 //     nested blocks — scripts can emit them line by line
 //   - freeform prose rides on records via `@child("body")` and is projected
@@ -127,8 +130,25 @@ type Adr {
 }
 
 // ---------------------------------------------------------------------------
-// View 2 — System context: relations
+// View 2 — System context: boundaries and relations
 // ---------------------------------------------------------------------------
+
+// A grouping band around systems and external systems: an enterprise, an
+// org unit, a trust zone, a vendor's estate. Membership is a flat reference
+// from the member (`boundary = acme`), so a system moves between boundaries
+// with a one-field edit and scripts can append members without touching the
+// boundary. A WAD with one obvious owner needs no boundary at all — the
+// context diagram falls back to a single band named after the WAD.
+@block("boundary")
+type Boundary {
+  @inline(0) id: identifier
+  name: utf8
+  summary: utf8?
+  @doc("What sort of grouping this is (BoundaryKind).")
+  kind: BoundaryKind?
+  @default([]) tags: list<utf8>
+  @child("body") body: WdocAddressableBody?
+}
 
 // A directed relationship between two nodes (any ids from the shared node
 // space: systems, containers, components, externals, personas). Author a
@@ -213,6 +233,8 @@ type ExternalSystem {
   name: utf8
   summary: utf8
   kind: ExternalKind
+  @doc("Boundary id this external system sits in (a vendor estate, a partner org).")
+  boundary: identifier?
   vendor: utf8?
   url: utf8?
   criticality: Criticality?
@@ -235,6 +257,8 @@ type System {
   @inline(0) id: identifier
   name: utf8
   summary: utf8
+  @doc("Boundary id this system sits in; omit when the WAD has one obvious owner.")
+  boundary: identifier?
   @doc("Stakeholder id who owns this system.")
   owner: identifier?
   @default([]) repos: list<identifier>
@@ -270,8 +294,8 @@ type Component {
   container: identifier
   name: utf8
   summary: utf8
-  @doc("Free-text component taxonomy (\"module\", \"handler\", \"store\"…).")
-  kind: utf8?
+  @doc("What the component fundamentally is (ComponentKind — :cli / :tui / :web_api / :ui mark the editor's native content surfaces).")
+  kind: ComponentKind?
   technology: utf8?
   @default([]) tags: list<utf8>
   @child("body") body: WdocAddressableBody?
@@ -913,6 +937,7 @@ type WadDoc {
   @children("stakeholder")     stakeholders:    list<Stakeholder>
   @children("raci_entry")      raci:            list<RaciEntry>
   @children("adr")             adrs:            list<Adr>
+  @children("boundary")        boundaries:      list<Boundary>
   @children("relation")        relations:       list<Relation>
   @children("external_system") externals:       list<ExternalSystem>
   @children("system")          systems:         list<System>

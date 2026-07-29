@@ -2,7 +2,7 @@
 // the canonical schema in the scaffold template), the folder layout, the
 // vocabularies, the command table, and extractor anatomy.
 //
-// Field tables are hand-reflected from schema 0.4.0 (see the wad_schema
+// Field tables are hand-reflected from schema 0.6.0 (see the wad_schema
 // source in wskill.wcl); `?` marks optional, `[]` marks a defaulted list.
 
 fact wad_layout {
@@ -25,7 +25,7 @@ _site/ _md/           # rendered output (gitignored)
 TXT
     }
     p "Everything lives in the `wcl.wad` namespace (declared at the top of every schema and data file), so WAD block kinds never collide with wdoc's — which is why the C4 unit is plain `container`. A WAD is fully interpretable — check + render — with nothing but the `wcl` binary; the canonical schema ships inside the `wcl init wad` scaffold and is synced to instances."
-    p "Adding data = write a block file under its view + one import line in that view's hub. Every top-level block carries an `@inline(0) id` that becomes its page route (`A-Za-z0-9_-` only), and diagram-node kinds (system / container / component / external_system / persona / environment / infra_node / screen) share **one id space** so relation endpoints resolve unambiguously."
+    p "Adding data = write a block file under its view + one import line in that view's hub. Every top-level block carries an `@inline(0) id` that becomes its page route (`A-Za-z0-9_-` only), and diagram-node kinds (boundary / system / container / component / external_system / persona / environment / infra_node / screen) share **one id space** so relation endpoints resolve unambiguously."
     p "Gather-list names for templates: `wads`, `stakeholders`, `raci`, `adrs`, `relations`, `externals`, `systems`, `containers`, `sw_components` (bare `components` collides with wdoc's own document schema), `cli_commands`, `code_items`, `environments`, `infra_nodes`, `deploy_targets`, `repositories`, `pipelines`, `releases`, `personas`, `use_cases`, `sops`, `standards`, `domain_objects`, `terms`, `specs`, `doc_items`, `screens`, `articles`."
   }
 }
@@ -57,6 +57,7 @@ fact context_blocks {
     table {
       header = ["Block", "Fields", "Notes"]
       rows = [
+        ["`boundary`", "`name`, `summary?`, `kind?`, `tags[]`, `body?`", "a band around systems and external systems — an enterprise, an org unit, a trust zone, a vendor estate (`kind` is BoundaryKind). Members point AT it (`boundary = acme` on the system/external), so a boundary never changes as the estate grows; with none authored the context diagram draws one band named after the WAD"],
         ["`relation`", "`source`, `destination`, `kind`, `label?`, `protocol?`, `data?`, `notes?`", "a directed edge between two node-space ids; `kind` (RelationKind) supplies the default edge label"],
       ]
     }
@@ -85,7 +86,7 @@ fact external_blocks {
     table {
       header = ["Block", "Fields", "Notes"]
       rows = [
-        ["`external_system`", "`name`, `summary`, `kind`, `vendor?`, `url?`, `criticality?`, `body?`", "one per integration; the four child families below nest inside it"],
+        ["`external_system`", "`name`, `summary`, `kind`, `boundary?`, `vendor?`, `url?`, `criticality?`, `body?`", "one per integration; the four child families below nest inside it"],
         ["`support_contact`", "`name`, `role?`, `channel`, `details?`", "who to call and how"],
         ["`endpoint`", "`name`, `environment?`, `kind` (url/ip/config/queue…), `value`, `notes?`", "connection details, per environment when they differ"],
         ["`api_ref`", "`name`, `kind` (openapi/docs/repo…), `location`, `notes?`", "integration references"],
@@ -104,9 +105,9 @@ fact system_blocks {
     table {
       header = ["Block", "Fields", "Notes"]
       rows = [
-        ["`system`", "`name`, `summary`, `owner?`, `repos[]`, `body?`", "C4 level 1 — one box to an outsider"],
+        ["`system`", "`name`, `summary`, `boundary?`, `owner?`, `repos[]`, `body?`", "C4 level 1 — one box to an outsider; `boundary` files it under a view-2 `boundary` band"],
         ["`container`", "`system`, `name`, `summary`, `kind`, `technology?`, `repo?`, `body?`", "C4 level 2 — an independently runnable unit: a service, a database, a web app, a CLI, a queue"],
-        ["`component`", "`container`, `name`, `summary`, `kind?`, `technology?`, `body?`", "C4 level 3 — a cohesive part with no deployment identity"],
+        ["`component`", "`container`, `name`, `summary`, `kind?`, `technology?`, `body?`", "C4 level 3 — a cohesive part with no deployment identity; `kind` is a ComponentKind (`:cli` / `:tui` / `:web_api` / `:ui` mark the editor's native content surfaces)"],
         ["`code_item`", "`component?` or `container?`, `name`, `summary?`, `kind`, payload children, `body?`", "C4 level 4 — extractor-generated, public interface only; `kind` selects the payload family below"],
         ["`cli_command`", "`name`, `summary`, `component?`, `description?`, `aliases[]`, args + flags, `body?`", "one command or subcommand of a CLI surface — THE way a WAD documents a CLI (never prose paragraphs or a flat table); renders API-docs style on its component's page"],
         ["`cli_arg` / `cli_flag` / `cli_example`", "arg: `name`, `description`, `required`; flag: `name`, `value?`, `description`, `default?`, `repeatable`; example: `command`, `description?`", "nested in `cli_command` — the usage synopsis derives from args+flags; examples render as bash blocks under the tables"],
@@ -148,7 +149,7 @@ component checkout {
   container = shop_api             // bare id
   name      = "Checkout"
   summary   = "Cart, pricing, order placement."
-  kind      = "module"
+  kind      = :module              // ComponentKind symbol, not a string
 }
 WCL
     }
@@ -318,7 +319,9 @@ fact wad_kinds {
     table {
       header = ["Set", "Members"]
       rows = [
+        ["BoundaryKind", "enterprise organisation team trust_zone network vendor platform other"],
         ["ContainerKind", "service web_app spa cli library db queue cache batch_job function mobile_app desktop_app editor_plugin gateway static_site other"],
+        ["ComponentKind", "cli tui web_api ui module handler store service library gateway other — the first four mark the editor's native content surfaces"],
         ["ExternalKind", "saas api registry identity datastore ci cdn payment partner ai_service other"],
         ["RelationKind", "sync_api async_msg reads writes reads_writes publishes subscribes uses depends_on authenticates triggers hosts other"],
         ["InfraKind", "cloud region network vpc cluster namespace vm container_runtime physical_host paas_service ci_runner registry workstation storage edge other"],

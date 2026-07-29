@@ -1,123 +1,161 @@
-// Components — the cohesive parts inside each container (C4 level 3).
+# Components — the cohesive parts inside each container (C4 level 3).
 namespace wcl.wad
 
-// --- inside wcl_lang ---------------------------------------------------------
+# --- inside wcl_lang ---------------------------------------------------------
 
 component lexer {
-  container  = wcl_lang
-  name       = "Lexer"
-  summary    = "Hand-written tokenizer: strings/heredocs with escapes and interpolation, numbers with bit-width suffixes, symbols."
-  kind       = "module"
+  container = wcl_lang
+  name = "Lexer"
+  summary = "Hand-written tokenizer: strings/heredocs with escapes and interpolation, numbers with bit-width suffixes, symbols."
+  kind = :module
 }
 
 component parser {
-  container  = wcl_lang
-  name       = "Parser"
-  summary    = "Recursive-descent parser producing the Source AST and the SymbolIndex; every error carries a span."
-  kind       = "module"
+  container = wcl_lang
+  name = "Parser"
+  summary = "Recursive-descent parser producing the Source AST and the SymbolIndex; every error carries a span."
+  kind = :module
 }
 
 component doc_view {
-  container  = wcl_lang
-  name       = "Document view"
-  summary    = "Lazy, cached field evaluation over a Source with cycle detection; gathers block instances for @document schemas."
-  kind       = "module"
+  container = wcl_lang
+  name = "Document view"
+  summary = "Lazy, cached field evaluation over a Source with cycle detection; gathers block instances for @document schemas."
+  kind = :module
 }
 
 component evaluator {
-  container  = wcl_lang
-  name       = "Expression evaluator"
-  summary    = "Literals, member access, calls, fn literals, let-bindings, arithmetic/logic with numeric promotion, ??, try/catch."
-  kind       = "module"
+  container = wcl_lang
+  name = "Expression evaluator"
+  summary = "Literals, member access, calls, fn literals, let-bindings, arithmetic/logic with numeric promotion, ??, try/catch."
+  kind = :module
 }
 
 component schema_validator {
-  container  = wcl_lang
-  name       = "Schema validator"
-  summary    = "@document/@block/@children membership and type checks, constraints (@min/@max/@non_empty), variant dispatch."
-  kind       = "module"
+  container = wcl_lang
+  name = "Schema validator"
+  summary = "@document/@block/@children membership and type checks, constraints (@min/@max/@non_empty), variant dispatch."
+  kind = :module
 }
 
 component formatter {
-  container  = wcl_lang
-  name       = "Formatter & edit path"
-  summary    = "parse_for_edit + AST mutation + format::to_source — the pipeline behind `wcl fmt` and `wcl set`."
-  kind       = "module"
+  container = wcl_lang
+  name = "Formatter & edit path"
+  summary = "parse_for_edit + AST mutation + format::to_source — the pipeline behind `wcl fmt` and `wcl set`."
+  kind = :module
 }
 
 component host_bindings {
-  container  = wcl_lang
-  name       = "Host bindings"
-  summary    = "Environment, from_fn, FromValue/IntoValue — how Rust hosts add builtins and read values."
-  kind       = "module"
+  container = wcl_lang
+  name = "Host bindings"
+  summary = "Environment, from_fn, FromValue/IntoValue — how Rust hosts add builtins and read values."
+  kind = :module
 }
 
 component registry {
-  container  = wcl_lang
-  name       = "Registry"
-  summary    = "System-import resolution: `import <name.wcl>` resolves against embedded libraries."
-  kind       = "module"
+  container = wcl_lang
+  name = "Registry"
+  summary = "System-import resolution: `import <name.wcl>` resolves against embedded libraries."
+  kind = :module
 }
 
-// --- inside wcl_cli ------------------------------------------------------------
+# --- inside wcl_cli ------------------------------------------------------------
 
 component cli_commands {
   container = wcl_cli
-  name      = "CLI"
-  summary   = "The clap surface: every command and subcommand of the `wcl` binary, with its arguments and flags."
-  kind      = "module"
+  name = "CLI"
+  summary = "The clap surface: every command and subcommand of the `wcl` binary, with its arguments and flags."
+  kind = :cli
   body {
-    p "The full command reference, from the binary's own `--help` output, as `cli_command` blocks (see data/systems/cli.wcl). A non-zero exit code always means diagnostics were printed."
+    p <<DOC
+      The full command reference, from the binary's own `--help` output, as `cli_command` blocks
+      (see data/systems/cli.wcl). A non-zero exit code always means diagnostics were printed.
+    DOC
   }
 }
 
 component cli_scaffold {
   container = wcl_cli
-  name      = "Scaffolder"
-  summary   = "`wcl init`: built-in templates evaluated twice (properties pass, then answers bound), files written to disk."
-  kind      = "module"
+  name = "Scaffolder"
+  summary = "`wcl init`: built-in templates evaluated twice (properties pass, then answers bound), files written to disk."
+  kind = :module
 }
 
 component cli_serve {
   container = wcl_cli
-  name      = "Dev server"
-  summary   = "`wcl wdoc serve`: watch + axum, comment sidecar, WYSIWYG edit endpoints, source editor, preview."
-  kind      = "module"
+  name = "Dev server"
+  summary = "`wcl wdoc serve`: watch + axum, comment sidecar, WYSIWYG edit endpoints, source editor, preview."
+  kind = :module
 }
 
 component cli_gitspec {
   container = wcl_cli
-  name      = "Git specifiers"
-  summary   = "`<rev>:<path>` operands for `wcl diff` — materialises a revision via `git archive | tar` so imports resolve."
-  kind      = "module"
+  name = "Git specifiers"
+  summary = "`<rev>:<path>` operands for `wcl diff` — materialises a revision via `git archive | tar` so imports resolve."
+  kind = :module
 }
 
-// --- inside wcl_wdoc -------------------------------------------------------------
+# --- inside wcl_wdoc -------------------------------------------------------------
 
 component wdoc_stdlib {
   container = wcl_wdoc
-  name      = "WCL stdlib"
-  summary   = "lib/*.wcl — pages, blocks, diagrams, charts, themes; embedded into a Registry by build.rs."
-  kind      = "module"
+  name = "WCL stdlib"
+  summary = "lib/*.wcl — pages, blocks, diagrams, charts, themes; embedded into a Registry by build.rs."
+  kind = :module
 }
 
 component wdoc_html_renderer {
   container = wcl_wdoc
-  name      = "HTML renderer"
-  summary   = "Lowers blocks to fundamentals (recursively via <kind>_lower fns), renders pages, templates, search."
-  kind      = "module"
+  name = "HTML renderer"
+  summary = "Lowers blocks to fundamentals (recursively via <kind>_lower fns), renders pages, templates, search."
+  kind = :module
 }
 
 component wdoc_layout {
   container = wcl_wdoc
-  name      = "Layout solvers"
-  summary   = "Layered / force / radial diagram layouts plus A* elbow edge routing."
-  kind      = "module"
+  name = "Layout solvers"
+  summary = "Layered / force / radial diagram layouts plus A* elbow edge routing."
+  kind = :module
 }
 
 component wdoc_backends {
   container = wcl_wdoc
-  name      = "Backends"
-  summary   = "Markdown, PDF (krilla/cosmic-text), and agent-skill folder emitters over the same lowered model."
-  kind      = "module"
+  name = "Backends"
+  summary = "Markdown, PDF (krilla/cosmic-text), and agent-skill folder emitters over the same lowered model."
+  kind = :module
+}
+
+component editor {
+  container = wcl_cli
+  kind = :ui
+  name = "editor"
+  summary = "editor"
+  body
+}
+
+screen test {
+  component = editor
+  name = "test"
+  body {
+    diagram {
+      layout = :free
+      width = 720
+      height = 500
+      wf_browser "https://example.com" {
+        x = 20.0
+        y = 20.0
+        wf_grid {
+          id = wf_grid_1
+          columns = 4
+          wf_button "Label" {
+            id = wf_button_1
+          }
+          width = 500.0
+          height = 500.0
+        }
+        width = 1538.8
+        height = 566.0
+      }
+    }
+  }
 }

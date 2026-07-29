@@ -79,6 +79,12 @@ export const api = {
       'GET',
       `/api/graph?entry=${encodeURIComponent(entry)}&sites=${encodeURIComponent(sites.join(','))}&kinds=${encodeURIComponent(kinds.join(','))}`,
     ),
+  /** The Systems view's model: schema-derived containment metadata
+      (`kinds` with their parent links / refs / edge role) plus every data
+      object as a node and every relation as an edge. */
+  systems: (entry) => json('GET', `/api/systems?entry=${encodeURIComponent(entry)}`),
+  /** One object in full: properties, child-block families, body, relations. */
+  systemsDetail: (payload) => json('POST', '/api/systems/detail', payload),
   /** Data mode: `@wdoc.editable` types with form metadata + target files */
   dataTypes: (entry) => json('GET', `/api/data/types?entry=${encodeURIComponent(entry)}`),
   /** Data mode: one kind's instances as classified table rows */

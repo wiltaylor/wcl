@@ -6,6 +6,23 @@
 
 let ctx_sys_ids = map(systems, fn(s: System) -> identifier { s.id })
 
+// Members of one authored boundary: every system and external system that
+// names it. Membership is a flat reference from the member, so a boundary
+// never has to be edited when the estate grows.
+let ctx_boundary_members = fn(bid: identifier) -> list<identifier> {
+  flatten([
+    map(
+      filter(systems, fn(s: System) -> bool { match s.boundary { none => false, sb => sb == bid } }),
+      fn(s: System) -> identifier { s.id }),
+    map(
+      filter(externals, fn(e: ExternalSystem) -> bool { match e.boundary { none => false, eb => eb == bid } }),
+      fn(e: ExternalSystem) -> identifier { e.id }),
+  ])
+}
+// With no boundaries authored the diagram falls back to one band named
+// after the WAD, drawn around every system.
+let ctx_default_band = match len(boundaries) { 0 => ctx_sys_ids, _ => [] }
+
 page system_context { title = "System context"
   h1 "System context"
   p  $"How ${wad.name} sits in the world: the systems this design owns, the external systems it integrates with, and the personas that use it. Every edge derives from an authored `relation`, rolled up to system level."
@@ -37,10 +54,13 @@ page system_context { title = "System context"
         icon = "lucide.user"  link = $"persona_${pe.id}"
       }
     }
-    wdoc_repeater { each = match len(systems) { 0 => [], _ => [true] }  as = :_bd
-      // Padding ≥ the label headroom so the member inflation the radial
-      // solver applies covers the title band too.
-      boundary $"${wad.name}" { members = ctx_sys_ids  padding = 28.0 }
+    // Padding ≥ the label headroom so the member inflation the radial
+    // solver applies covers the title band too.
+    wdoc_repeater { each = boundaries  as = :bd
+      boundary $"${bd.name}" { members = ctx_boundary_members(bd.id)  padding = 28.0 }
+    }
+    wdoc_repeater { each = match len(ctx_default_band) { 0 => [], _ => [true] }  as = :_bd
+      boundary $"${wad.name}" { members = ctx_default_band  padding = 28.0 }
     }
     edges = ctx_edges
   }
