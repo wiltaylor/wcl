@@ -136,12 +136,7 @@ fn resolve_existing(ws: &Workspace, path: &str) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A workspace over a fresh temp dir — the one line a module-local test
-    /// needs (no preview scratch tree, no session map).
-    fn ws_at(dir: &Path) -> Workspace {
-        Workspace::at(dir)
-    }
+    use crate::editor::testsupport::workspace_built_by;
 
     fn tree_paths(v: &serde_json::Value) -> Vec<(String, String)> {
         v["files"]
@@ -159,19 +154,19 @@ mod tests {
 
     #[test]
     fn list_tree_honours_gitignore_and_skips_git_dir() {
-        let td = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(td.path()).unwrap();
-        std::fs::write(root.join(".gitignore"), "ignored.txt\ntarget/\n").unwrap();
-        std::fs::write(root.join("kept.wcl"), "name = \"x\"\n").unwrap();
-        std::fs::write(root.join("ignored.txt"), "nope").unwrap();
-        std::fs::create_dir(root.join("target")).unwrap();
-        std::fs::write(root.join("target").join("junk.bin"), "nope").unwrap();
-        std::fs::create_dir(root.join(".git")).unwrap();
-        std::fs::write(root.join(".git").join("HEAD"), "ref").unwrap();
-        std::fs::create_dir(root.join("src")).unwrap();
-        std::fs::write(root.join("src").join("lib.wcl"), "x = 1\n").unwrap();
+        let (_td, ws) = workspace_built_by(|root| {
+            std::fs::write(root.join(".gitignore"), "ignored.txt\ntarget/\n").unwrap();
+            std::fs::write(root.join("kept.wcl"), "name = \"x\"\n").unwrap();
+            std::fs::write(root.join("ignored.txt"), "nope").unwrap();
+            std::fs::create_dir(root.join("target")).unwrap();
+            std::fs::write(root.join("target").join("junk.bin"), "nope").unwrap();
+            std::fs::create_dir(root.join(".git")).unwrap();
+            std::fs::write(root.join(".git").join("HEAD"), "ref").unwrap();
+            std::fs::create_dir(root.join("src")).unwrap();
+            std::fs::write(root.join("src").join("lib.wcl"), "x = 1\n").unwrap();
+        });
 
-        let v = list_tree(&ws_at(&root)).unwrap();
+        let v = list_tree(&ws).unwrap();
         let paths = tree_paths(&v);
         assert!(paths.contains(&(".gitignore".into(), "file".into())));
         assert!(paths.contains(&("kept.wcl".into(), "file".into())));
@@ -188,20 +183,18 @@ mod tests {
 
     #[test]
     fn read_text_rejects_binary() {
-        let td = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(td.path()).unwrap();
-        std::fs::write(root.join("img.png"), b"\x89PNG\0\0").unwrap();
-        let err = read_text(&ws_at(&root), "img.png").unwrap_err();
+        let (_td, ws) = workspace_built_by(|root| {
+            std::fs::write(root.join("img.png"), b"\x89PNG\0\0").unwrap();
+        });
+        let err = read_text(&ws, "img.png").unwrap_err();
         assert!(err.contains("/api/raw"), "{err}");
     }
 
     #[test]
     fn save_rejects_traversal_and_stale_etag() {
-        let td = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(td.path()).unwrap();
-        std::fs::write(root.join("a.txt"), "one").unwrap();
-
-        let ws = ws_at(&root);
+        let (_td, ws) =
+            workspace_built_by(|root| std::fs::write(root.join("a.txt"), "one").unwrap());
+        let root = ws.root_dir().to_path_buf();
         let previews = Sessions::default();
         let esc = serde_json::json!({ "path": "../escape.txt", "text": "x" });
         assert!(save_file(&ws, &previews, &esc).is_err());
@@ -216,23 +209,21 @@ mod tests {
 
     #[test]
     fn save_writes_new_file_in_new_directory() {
-        let td = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(td.path()).unwrap();
+        let (_td, ws) = workspace_built_by(|_| {});
         let body = serde_json::json!({ "path": "notes/new.md", "text": "# hi\n" });
-        let v = save_file(&ws_at(&root), &Sessions::default(), &body).unwrap();
+        let v = save_file(&ws, &Sessions::default(), &body).unwrap();
         assert_eq!(v["ok"], true);
         assert_eq!(
-            std::fs::read_to_string(root.join("notes").join("new.md")).unwrap(),
+            std::fs::read_to_string(ws.root_dir().join("notes").join("new.md")).unwrap(),
             "# hi\n"
         );
     }
 
     #[test]
     fn save_wcl_without_root_still_gates_syntax() {
-        let td = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(td.path()).unwrap();
+        let (_td, ws) = workspace_built_by(|_| {});
         let body = serde_json::json!({ "path": "bad.wcl", "text": "block {{{" });
-        assert!(save_file(&ws_at(&root), &Sessions::default(), &body).is_err());
-        assert!(!root.join("bad.wcl").exists());
+        assert!(save_file(&ws, &Sessions::default(), &body).is_err());
+        assert!(!ws.root_dir().join("bad.wcl").exists());
     }
 }

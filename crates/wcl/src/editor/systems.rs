@@ -633,6 +633,7 @@ fn rel(ws: &Workspace, file: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::editor::testsupport::workspace_built_by;
 
     /// A miniature schema exercising every derivation rule: a three-level
     /// containment chain, a two-candidate parent, a self-parent, a plain
@@ -702,19 +703,22 @@ type D {
 }
 "#;
 
+    /// A workspace over [`SCHEMA`] plus `data` as `main.wcl`. The guard must
+    /// outlive the workspace — hold it for the length of the test.
+    fn project(data: &str) -> (tempfile::TempDir, Workspace) {
+        workspace_built_by(|root| {
+            std::fs::write(root.join("schema.wcl"), SCHEMA).expect("write schema");
+            std::fs::write(
+                root.join("main.wcl"),
+                format!("import \"./schema.wcl\"\n\n{data}"),
+            )
+            .expect("write main");
+        })
+    }
+
     fn model(data: &str) -> serde_json::Value {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let root = dir.path().canonicalize().expect("canon");
-        std::fs::write(root.join("schema.wcl"), SCHEMA).expect("write schema");
-        std::fs::write(
-            root.join("main.wcl"),
-            format!("import \"./schema.wcl\"\n\n{data}"),
-        )
-        .expect("write main");
-        let ws = Workspace::at(&root);
-        let v = systems(&ws, "main.wcl", None).expect("systems");
-        drop(dir);
-        v
+        let (_td, ws) = project(data);
+        systems(&ws, "main.wcl", None).expect("systems")
     }
 
     fn kind<'a>(v: &'a serde_json::Value, name: &str) -> &'a serde_json::Value {
@@ -815,26 +819,26 @@ type D {
     /// ([`super::super::blocks::place_unit`]'s neighbouring-kind fallback.)
     #[test]
     fn a_kind_with_no_instances_lands_beside_its_neighbours() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let root = dir.path().canonicalize().expect("canon");
-        std::fs::write(
-            root.join("schema.wcl"),
-            format!("namespace app\n{}", SCHEMA.replace("import <wdoc.wcl>", "")),
-        )
-        .expect("write schema");
-        std::fs::write(
-            root.join("data.wcl"),
-            "namespace app\n\nsystem s { name = \"S\" }\npart p { name = \"P\"  system = s }\n",
-        )
-        .expect("write data");
-        // The entry is the projection: it imports the model but declares none
-        // of it, and carries no `namespace`.
-        std::fs::write(
-            root.join("main.wcl"),
-            "import \"./schema.wcl\"\nimport \"./data.wcl\"\n",
-        )
-        .expect("write main");
-        let entry = root.join("main.wcl");
+        let (_td, ws) = workspace_built_by(|root| {
+            std::fs::write(
+                root.join("schema.wcl"),
+                format!("namespace app\n{}", SCHEMA.replace("import <wdoc.wcl>", "")),
+            )
+            .expect("write schema");
+            std::fs::write(
+                root.join("data.wcl"),
+                "namespace app\n\nsystem s { name = \"S\" }\npart p { name = \"P\"  system = s }\n",
+            )
+            .expect("write data");
+            // The entry is the projection: it imports the model but declares
+            // none of it, and carries no `namespace`.
+            std::fs::write(
+                root.join("main.wcl"),
+                "import \"./schema.wcl\"\nimport \"./data.wcl\"\n",
+            )
+            .expect("write main");
+        });
+        let entry = ws.root_dir().join("main.wcl");
         let doc = wcl_wdoc::open_doc_for_edit(&entry).expect("open");
 
         // `zone` has no instances; `system` (which nests into it) lives in
@@ -912,18 +916,11 @@ type D {
 
     #[test]
     fn detail_reports_children_body_and_relations() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let root = dir.path().canonicalize().expect("canon");
-        std::fs::write(root.join("schema.wcl"), SCHEMA).expect("write schema");
-        let data = "system a { name = \"A\"  tags = [\"x\", \"y\"] }\n\
-                    system b { name = \"B\" }\n\
-                    link l { source = a  destination = b  kind = \"calls\" }\n";
-        std::fs::write(
-            root.join("main.wcl"),
-            format!("import \"./schema.wcl\"\n\n{data}"),
-        )
-        .expect("write main");
-        let ws = Workspace::at(&root);
+        let (_td, ws) = project(
+            "system a { name = \"A\"  tags = [\"x\", \"y\"] }\n\
+             system b { name = \"B\" }\n\
+             link l { source = a  destination = b  kind = \"calls\" }\n",
+        );
         let model = systems(&ws, "main.wcl", None).expect("systems");
         let a = node(&model, "a");
         let v = systems_detail(
@@ -956,7 +953,6 @@ type D {
         assert_eq!(rels[0]["direction"], "out");
         assert_eq!(rels[0]["other"], "b");
         assert_eq!(rels[0]["other_title"], "B");
-        drop(dir);
     }
 
     /// The detail payload follows child families down: an endpoint's params
@@ -965,26 +961,19 @@ type D {
     /// so a wireframe's widgets show up).
     #[test]
     fn detail_reports_nested_children_and_body_kinds() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let root = dir.path().canonicalize().expect("canon");
-        std::fs::write(root.join("schema.wcl"), SCHEMA).expect("write schema");
-        let data = "part p {\n\
-                    \x20 name = \"P\"\n\
-                    \x20 wendpoint list_users {\n\
-                    \x20   path = \"/users\"\n\
-                    \x20   wparam limit { name = \"limit\" }\n\
-                    \x20 }\n\
-                    \x20 body {\n\
-                    \x20   diagram { wf_button ok { } }\n\
-                    \x20   terminal { }\n\
-                    \x20 }\n\
-                    }\n";
-        std::fs::write(
-            root.join("main.wcl"),
-            format!("import \"./schema.wcl\"\n\n{data}"),
-        )
-        .expect("write main");
-        let ws = Workspace::at(&root);
+        let (_td, ws) = project(
+            "part p {\n\
+             \x20 name = \"P\"\n\
+             \x20 wendpoint list_users {\n\
+             \x20   path = \"/users\"\n\
+             \x20   wparam limit { name = \"limit\" }\n\
+             \x20 }\n\
+             \x20 body {\n\
+             \x20   diagram { wf_button ok { } }\n\
+             \x20   terminal { }\n\
+             \x20 }\n\
+             }\n",
+        );
         let model = systems(&ws, "main.wcl", None).expect("systems");
         let p = node(&model, "p");
         let v = systems_detail(
@@ -1020,7 +1009,6 @@ type D {
             v["body"]["block_kinds"],
             serde_json::json!(["diagram", "wf_button", "terminal"])
         );
-        drop(dir);
     }
 
     /// The screen editor builds its synthetic previews from the file

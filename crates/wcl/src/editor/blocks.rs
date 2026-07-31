@@ -1152,6 +1152,9 @@ fn subtree_has_index(b: &wcl_lang::Block<'_>, id: &str) -> bool {
 /// assumed document-unique; first match wins. Shared by `unit_create`'s pin
 /// and the nav model's id-addressed index ops — two callers that each used
 /// to walk the document themselves, one of them only at the top level.
+/// Collapsing them therefore *changed* `unit_create`: a pin naming a nested
+/// sub-index used to be refused as "no `index` with id" and now lands, which
+/// is what the nav ops already did.
 pub(super) fn index_file(
     doc: &Document,
     doc_entry: &Path,
@@ -1720,7 +1723,8 @@ mod tests {
     use super::*;
     use crate::editor::span_json;
     use crate::editor::testsupport::{
-        BODY_DOC, OBJECT_DOC, span_of, workspace_with, write_mini_wskill,
+        BODY_DOC, Edits, OBJECT_DOC, kind_is, labelled, span_of, with_id, workspace_built_by,
+        workspace_with, write_mini_wskill,
     };
 
     /// A document whose page holds a diagram of three wired shapes.
@@ -1729,12 +1733,6 @@ mod tests {
     /// Nested fixture for the span-map tests: 7 blocks (site, page, p,
     /// list, li, li, p).
     const NESTED_DOC: &str = "import <wdoc.wcl>\n\nsite docs {\n  title = \"D\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  p \"First\"\n\n  list {\n    li \"one\"\n    li \"two\"\n  }\n\n  p \"Last\"\n}\n";
-
-    /// A write path's context: the served tree plus the invalidation handle.
-    /// Nothing here needs a preview scratch tree.
-    fn previews() -> Sessions {
-        Sessions::default()
-    }
 
     fn main_wcl(ws: &Workspace) -> PathBuf {
         ws.root_dir().join("main.wcl")
@@ -1749,43 +1747,28 @@ mod tests {
     #[test]
     fn connect_ops_write_connection_statements() {
         let (_td, ws) = workspace_with(DIAGRAM_DOC);
-        let previews = previews();
-        // Every commit reprints the file, so the diagram's span moves — each
-        // call re-resolves it, exactly as the client re-anchors on reload.
-        let connect = |ops: &dyn Fn(Span) -> serde_json::Value| {
-            let text = disk(&ws);
-            let diagram = span_of(&text, |b| b.kind == "diagram");
-            block_ops(
-                &ws,
-                &previews,
-                &serde_json::json!({
-                    "entry": "main.wcl", "file": "main.wcl",
-                    "etag": crate::edit::content_etag(&text),
-                    "ops": ops(diagram),
-                }),
-            )
-        };
+        let ed = Edits::main(&ws);
 
         // Add one plain edge and one kinded edge.
-        connect(&|d| {
+        ed.run(|at| {
             serde_json::json!([
-                { "op": "connect_add", "span": span_json(d), "from": "b", "to": "c" },
-                { "op": "connect_add", "span": span_json(d), "from": "c", "to": "a", "kind": "flow" },
+                { "op": "connect_add", "span": at(&kind_is("diagram")), "from": "b", "to": "c" },
+                { "op": "connect_add", "span": at(&kind_is("diagram")), "from": "c", "to": "a", "kind": "flow" },
             ])
         })
         .expect("connect_add");
-        let text = disk(&ws);
+        let text = ed.text();
         assert!(text.contains("b -> c"), "{text}");
         assert!(text.contains("c -> a :flow"), "{text}");
 
         // Removing one leaves the others alone.
-        connect(&|d| {
+        ed.run(|at| {
             serde_json::json!([
-                { "op": "connect_remove", "span": span_json(d), "from": "b", "to": "c" },
+                { "op": "connect_remove", "span": at(&kind_is("diagram")), "from": "b", "to": "c" },
             ])
         })
         .expect("connect_remove");
-        let text = disk(&ws);
+        let text = ed.text();
         assert!(!text.contains("b -> c"), "{text}");
         assert!(text.contains("c -> a :flow"), "{text}");
         assert!(text.contains("a -> b"), "{text}");
@@ -1794,23 +1777,18 @@ mod tests {
     #[test]
     fn connect_ops_reject_nonsense() {
         let (_td, ws) = workspace_with(DIAGRAM_DOC);
-        let text = disk(&ws);
-        let etag = crate::edit::content_etag(&text);
-        let diagram = span_of(&text, |b| b.kind == "diagram");
+        let ed = Edits::main(&ws);
 
         for (op, from, to) in [
             ("connect_add", "a", "a"),    // self-connection
             ("connect_add", "a", "b"),    // already wired
             ("connect_remove", "a", "c"), // no such edge
         ] {
-            let r = block_ops(
-                &ws,
-                &previews(),
-                &serde_json::json!({
-                    "entry": "main.wcl", "file": "main.wcl", "etag": etag,
-                    "ops": [{ "op": op, "span": span_json(diagram), "from": from, "to": to }],
-                }),
-            );
+            let r = ed.run(|at| {
+                serde_json::json!([
+                    { "op": op, "span": at(&kind_is("diagram")), "from": from, "to": to },
+                ])
+            });
             assert!(r.is_err(), "{op} {from}->{to} should fail");
         }
     }
@@ -1820,41 +1798,19 @@ mod tests {
     #[test]
     fn deleting_a_shape_removes_its_connections() {
         let (_td, ws) = workspace_with(DIAGRAM_DOC);
-        let previews = previews();
-        let text = disk(&ws);
-        let diagram = span_of(&text, |b| b.kind == "diagram");
+        let ed = Edits::main(&ws);
 
         // Wire c -> b as well, so `b` has an inbound and an outbound edge.
-        block_ops(
-            &ws,
-            &previews,
-            &serde_json::json!({
-                "entry": "main.wcl", "file": "main.wcl",
-                "etag": crate::edit::content_etag(&text),
-                "ops": [{ "op": "connect_add", "span": span_json(diagram), "from": "c", "to": "b" }],
-            }),
-        )
+        ed.run(|at| {
+            serde_json::json!([
+                { "op": "connect_add", "span": at(&kind_is("diagram")), "from": "c", "to": "b" },
+            ])
+        })
         .expect("connect_add");
+        ed.run(|at| serde_json::json!([{ "op": "delete", "span": at(&with_id("rect", "b")) }]))
+            .expect("delete");
 
-        let text = disk(&ws);
-        let shape_b = span_of(&text, |b| {
-            b.kind == "rect"
-                && b.items.iter().any(|it| {
-                    matches!(it, Item::Field(f)
-                    if f.name == "id" && matches!(&f.expr, Expr::Identifier(s, _) if s == "b"))
-                })
-        });
-        block_ops(
-            &ws,
-            &previews,
-            &serde_json::json!({
-                "entry": "main.wcl", "file": "main.wcl",
-                "etag": crate::edit::content_etag(&text),
-                "ops": [{ "op": "delete", "span": span_json(shape_b) }],
-            }),
-        )
-        .expect("delete");
-        let text = disk(&ws);
+        let text = ed.text();
         assert!(!text.contains("a -> b"), "outbound edge went too: {text}");
         assert!(!text.contains("c -> b"), "inbound edge went too: {text}");
         assert!(text.contains("id = c"), "other shapes survive: {text}");
@@ -1863,30 +1819,20 @@ mod tests {
     #[test]
     fn ops_edit_insert_move_delete() {
         let (_td, ws) = workspace_with(BODY_DOC);
-        let previews = previews();
-        let text = disk(&ws);
-        let first_p = span_of(&text, |b| {
-            b.kind == "p"
-                && matches!(b.labels.first(), Some(Expr::Utf8(s)) if s.starts_with("First"))
-        });
+        let ed = Edits::main(&ws);
 
         // Edit the paragraph text + insert a callout after it, atomically.
-        let v = block_ops(
-            &ws,
-            &previews,
-            &serde_json::json!({
-                "entry": "main.wcl", "file": "main.wcl",
-                "etag": crate::edit::content_etag(&text),
-                "ops": [
-                    { "op": "set_label", "span": span_json(first_p), "slot": 0,
-                      "text": "Edited paragraph" },
-                    { "op": "insert_after", "span": span_json(first_p),
+        let v = ed
+            .run(|at| {
+                serde_json::json!([
+                    { "op": "set_label", "span": at(&labelled("p", "First paragraph")),
+                      "slot": 0, "text": "Edited paragraph" },
+                    { "op": "insert_after", "span": at(&labelled("p", "First paragraph")),
                       "source": "callout \"Note\" {\n  body = \"hi\"\n}" },
-                ],
-            }),
-        )
-        .expect("edit + insert");
-        let new_text = disk(&ws);
+                ])
+            })
+            .expect("edit + insert");
+        let new_text = ed.text();
         assert_eq!(v["file_text"], new_text.as_str());
         assert_eq!(v["etag"], crate::edit::content_etag(&new_text).as_str());
         assert!(new_text.contains("Edited paragraph"), "{new_text}");
@@ -1911,29 +1857,15 @@ mod tests {
         assert!(ei < ci && ci < si, "{new_text}");
 
         // Move the callout below the second paragraph, then delete it.
-        let callout = span_of(&new_text, |b| b.kind == "callout");
-        block_ops(
-            &ws,
-            &previews,
-            &serde_json::json!({
-                "entry": "main.wcl", "file": "main.wcl",
-                "ops": [{ "op": "move", "span": span_json(callout), "dir": "down" }],
-            }),
-        )
+        ed.run(|at| {
+            serde_json::json!([{ "op": "move", "span": at(&kind_is("callout")), "dir": "down" }])
+        })
         .expect("move");
-        let text = disk(&ws);
+        let text = ed.text();
         assert!(text.find("Second paragraph").unwrap() < text.find("callout").unwrap());
-        let callout = span_of(&text, |b| b.kind == "callout");
-        block_ops(
-            &ws,
-            &previews,
-            &serde_json::json!({
-                "entry": "main.wcl", "file": "main.wcl",
-                "ops": [{ "op": "delete", "span": span_json(callout) }],
-            }),
-        )
-        .expect("delete");
-        assert!(!disk(&ws).contains("callout"), "{}", disk(&ws));
+        ed.run(|at| serde_json::json!([{ "op": "delete", "span": at(&kind_is("callout")) }]))
+            .expect("delete");
+        assert!(!ed.text().contains("callout"), "{}", ed.text());
     }
 
     /// `move_to` resolves at the common-ancestor level: dragging a
@@ -1945,24 +1877,17 @@ mod tests {
     fn ops_move_to_promotes_wrapped_blocks() {
         let doc = "import <wdoc.wcl>\n\nsite docs {\n  title = \"D\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  edit_field {\n    kind = \"concept\"\n    field = \"name\"\n\n    h1 \"Title\"\n  }\n\n  p \"Summary\"\n\n  p \"References\"\n}\n";
         let (_td, ws) = workspace_with(doc);
-        let previews = previews();
-        let text = disk(&ws);
-        let h1 = span_of(&text, |b| b.kind == "h1");
-        let refs = span_of(&text, |b| {
-            b.kind == "p" && matches!(b.labels.first(), Some(Expr::Utf8(s)) if s == "References")
-        });
+        let ed = Edits::main(&ws);
 
         // Drop the title after the references paragraph.
-        block_ops(
-            &ws,
-            &previews,
-            &serde_json::json!({
-                "entry": "main.wcl", "file": "main.wcl",
-                "ops": [{ "op": "move_to", "span": span_json(h1), "after": span_json(refs) }],
-            }),
-        )
+        ed.run(|at| {
+            serde_json::json!([{
+                "op": "move_to", "span": at(&kind_is("h1")),
+                "after": at(&labelled("p", "References")),
+            }])
+        })
         .expect("move_to after");
-        let text = disk(&ws);
+        let text = ed.text();
         // The wrapper travelled with its h1, landing after both paragraphs.
         let (s, r, e) = (
             text.find("Summary").unwrap(),
@@ -1972,37 +1897,27 @@ mod tests {
         assert!(s < r && r < e, "wrapper moved below references: {text}");
 
         // And back above the summary via `before`.
-        let h1 = span_of(&text, |b| b.kind == "h1");
-        let summary = span_of(&text, |b| {
-            b.kind == "p" && matches!(b.labels.first(), Some(Expr::Utf8(s)) if s == "Summary")
-        });
-        block_ops(
-            &ws,
-            &previews,
-            &serde_json::json!({
-                "entry": "main.wcl", "file": "main.wcl",
-                "ops": [{ "op": "move_to", "span": span_json(h1), "before": span_json(summary) }],
-            }),
-        )
+        ed.run(|at| {
+            serde_json::json!([{
+                "op": "move_to", "span": at(&kind_is("h1")),
+                "before": at(&labelled("p", "Summary")),
+            }])
+        })
         .expect("move_to before");
-        let text = disk(&ws);
+        let text = ed.text();
         assert!(
             text.find("edit_field").unwrap() < text.find("Summary").unwrap(),
             "{text}"
         );
 
         // A block can't move relative to its own descendant.
-        let ef = span_of(&text, |b| b.kind == "edit_field");
-        let h1 = span_of(&text, |b| b.kind == "h1");
         assert!(
-            block_ops(
-                &ws,
-                &previews,
-                &serde_json::json!({
-                    "entry": "main.wcl", "file": "main.wcl",
-                    "ops": [{ "op": "move_to", "span": span_json(ef), "before": span_json(h1) }],
-                }),
-            )
+            ed.run(|at| {
+                serde_json::json!([{
+                    "op": "move_to", "span": at(&kind_is("edit_field")),
+                    "before": at(&kind_is("h1")),
+                }])
+            })
             .is_err()
         );
     }
@@ -2031,7 +1946,7 @@ mod tests {
 
         let v = block_ops(
             &ws,
-            &previews(),
+            &Sessions::default(),
             &serde_json::json!({
                 "entry": "main.wcl", "file": "main.wcl",
                 "ops": [{ "op": "move", "span": span_json(first_p), "dir": "down" }],
@@ -2094,7 +2009,7 @@ mod tests {
         // sentinel spans are skipped).
         let v = block_ops(
             &ws,
-            &previews(),
+            &Sessions::default(),
             &serde_json::json!({
                 "entry": "main.wcl", "file": "main.wcl",
                 "ops": [
@@ -2167,24 +2082,20 @@ mod tests {
     fn ops_remove_field_on_nested_shape() {
         let doc = "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  diagram {\n    width = 320\n    height = 160\n\n    rect {\n      id = a\n      x = 20.0\n      y = 30.0\n      width = 80.0\n      height = 50.0\n      fill = \"#88c0d0\"\n    }\n  }\n}\n";
         let (_td, ws) = workspace_with(doc);
-        let rect = span_of(&disk(&ws), |b| b.kind == "rect");
+        let ed = Edits::main(&ws);
 
         // Reset-position batch: drop x/y plus a field that was never there —
         // absent fields are tolerated so clients can batch removals blindly.
-        let v = block_ops(
-            &ws,
-            &previews(),
-            &serde_json::json!({
-                "entry": "main.wcl", "file": "main.wcl",
-                "ops": [
-                    { "op": "remove_field", "span": span_json(rect), "field": "x" },
-                    { "op": "remove_field", "span": span_json(rect), "field": "y" },
-                    { "op": "remove_field", "span": span_json(rect), "field": "cx" },
-                ],
-            }),
-        )
-        .expect("remove_field");
-        let text = disk(&ws);
+        let v = ed
+            .run(|at| {
+                serde_json::json!([
+                    { "op": "remove_field", "span": at(&kind_is("rect")), "field": "x" },
+                    { "op": "remove_field", "span": at(&kind_is("rect")), "field": "y" },
+                    { "op": "remove_field", "span": at(&kind_is("rect")), "field": "cx" },
+                ])
+            })
+            .expect("remove_field");
+        let text = ed.text();
         assert!(!text.contains("x = 20"), "{text}");
         assert!(!text.contains("y = 30"), "{text}");
         assert!(text.contains("fill = \"#88c0d0\""), "{text}");
@@ -2207,7 +2118,7 @@ mod tests {
         // maps to 409, and leaves the file untouched.
         let e = block_ops(
             &ws,
-            &previews(),
+            &Sessions::default(),
             &serde_json::json!({
                 "entry": "main.wcl", "file": "main.wcl", "etag": "stale",
                 "ops": [{ "op": "delete", "span": span_json(p) }],
@@ -2223,7 +2134,7 @@ mod tests {
         assert!(
             block_ops(
                 &ws,
-                &previews(),
+                &Sessions::default(),
                 &serde_json::json!({
                     "entry": "main.wcl", "file": "main.wcl",
                     "ops": [{ "op": "replace_source", "span": span_json(page),
@@ -2237,7 +2148,7 @@ mod tests {
         // A bad fragment (two blocks) is rejected before anything happens.
         let e = block_ops(
             &ws,
-            &previews(),
+            &Sessions::default(),
             &serde_json::json!({
                 "entry": "main.wcl", "file": "main.wcl",
                 "ops": [{ "op": "insert_after", "span": span_json(p),
@@ -2283,33 +2194,34 @@ mod tests {
     #[test]
     fn visibility_toggle_round_trip() {
         let (_td, ws) = workspace_with(BODY_DOC);
-        let previews = previews();
-        let p = span_of(&disk(&ws), |b| b.kind == "p");
+        let ed = Edits::main(&ws);
+        let classify = |text: &str| {
+            block_source(
+                &ws,
+                &serde_json::json!({
+                    "file": "main.wcl",
+                    "span": span_json(span_of(text, kind_is("p"))),
+                }),
+            )
+            .expect("source")
+        };
 
         // Hide the paragraph from the deck + training views.
-        block_ops(
-            &ws,
-            &previews,
-            &serde_json::json!({
-                "entry": "main.wcl", "file": "main.wcl",
-                "ops": [{ "op": "set_visibility", "span": span_json(p),
-                          "except_sites": ["deck", "training"] }],
-            }),
-        )
+        ed.run(|at| {
+            serde_json::json!([{
+                "op": "set_visibility", "span": at(&kind_is("p")),
+                "except_sites": ["deck", "training"],
+            }])
+        })
         .expect("set_visibility");
-        let text = disk(&ws);
+        let text = ed.text();
         assert!(
             text.contains("@except(sites = [:deck, :training])"),
             "{text}"
         );
 
         // The classification reflects it.
-        let p2 = span_of(&text, |b| b.kind == "p");
-        let v = block_source(
-            &ws,
-            &serde_json::json!({ "file": "main.wcl", "span": span_json(p2) }),
-        )
-        .expect("source");
+        let v = classify(&text);
         assert_eq!(v["visibility"]["custom"], false);
         assert_eq!(
             v["visibility"]["except_sites"],
@@ -2317,17 +2229,13 @@ mod tests {
         );
 
         // Empty list removes the decorator again.
-        block_ops(
-            &ws,
-            &previews,
-            &serde_json::json!({
-                "entry": "main.wcl", "file": "main.wcl",
-                "ops": [{ "op": "set_visibility", "span": span_json(p2),
-                          "except_sites": [] }],
-            }),
-        )
+        ed.run(|at| {
+            serde_json::json!([{
+                "op": "set_visibility", "span": at(&kind_is("p")), "except_sites": [],
+            }])
+        })
         .expect("clear visibility");
-        assert!(!disk(&ws).contains("@except"), "{}", disk(&ws));
+        assert!(!ed.text().contains("@except"), "{}", ed.text());
 
         // A block with @only is custom: classified, and the toggle refuses.
         let custom_doc = BODY_DOC.replace(
@@ -2335,30 +2243,22 @@ mod tests {
             "  @only(sites = [:docs])\n  p \"First paragraph\"",
         );
         std::fs::write(main_wcl(&ws), &custom_doc).unwrap();
-        let pc = span_of(&custom_doc, |b| b.kind == "p");
-        let v = block_source(
-            &ws,
-            &serde_json::json!({ "file": "main.wcl", "span": span_json(pc) }),
-        )
-        .expect("source");
-        assert_eq!(v["visibility"]["custom"], true);
-        let e = block_ops(
-            &ws,
-            &previews,
-            &serde_json::json!({
-                "entry": "main.wcl", "file": "main.wcl",
-                "ops": [{ "op": "set_visibility", "span": span_json(pc),
-                          "except_sites": ["deck"] }],
-            }),
-        )
-        .unwrap_err();
+        assert_eq!(classify(&custom_doc)["visibility"]["custom"], true);
+        let e = ed
+            .run(|at| {
+                serde_json::json!([{
+                    "op": "set_visibility", "span": at(&kind_is("p")),
+                    "except_sites": ["deck"],
+                }])
+            })
+            .unwrap_err();
         assert!(e.contains("custom"), "{e}");
     }
 
     #[test]
     fn unit_field_and_unit_create_append_mode() {
         let (_td, ws) = workspace_with(OBJECT_DOC);
-        let previews = previews();
+        let previews = Sessions::default();
 
         // Set a field on a located object.
         unit_field(
@@ -2406,14 +2306,12 @@ mod tests {
 
     #[test]
     fn unit_create_per_file_layout_with_pin() {
-        let td = tempfile::tempdir().unwrap();
-        write_mini_wskill(td.path());
-        let ws = Workspace::at(td.path());
+        let (_td, ws) = workspace_built_by(write_mini_wskill);
         let root = ws.root_dir().to_path_buf();
 
         let v = unit_create(
             &ws,
-            &previews(),
+            &Sessions::default(),
             &serde_json::json!({
                 "entry": "main.wcl",
                 "unit": { "kind": "concept", "id": "gamma",

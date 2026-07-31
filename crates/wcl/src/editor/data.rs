@@ -213,9 +213,7 @@ mod tests {
             site docs {\n  title = \"D\"\n  root = true\n}\n\n\
             character hero {\n  name = \"Hero\"\n  hp = 10\n}\n\n\
             page index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n";
-        let td = tempfile::tempdir().unwrap();
-        std::fs::write(td.path().join("main.wcl"), doc).unwrap();
-        let ws = Workspace::at(td.path());
+        let (_td, ws) = crate::editor::testsupport::workspace_with(doc);
         let root = ws.root_dir().to_path_buf();
         let previews = Sessions::default();
         let rows = || data_rows(&ws, "main.wcl", None, "character").expect("rows");

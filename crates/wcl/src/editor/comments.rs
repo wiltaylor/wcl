@@ -211,11 +211,7 @@ fn review_ready(hs: Option<&wcl_wdoc::Handshake>) -> Result<serde_json::Value, S
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::editor::testsupport::SITE_DOC;
-
-    fn ws_at(dir: &std::path::Path) -> Workspace {
-        Workspace::at(dir)
-    }
+    use crate::editor::testsupport::{SITE_DOC, workspace_built_by, workspace_with};
 
     fn add(ws: &Workspace, body: serde_json::Value) -> Result<serde_json::Value, String> {
         add_comment(ws, &body)
@@ -223,9 +219,7 @@ mod tests {
 
     #[test]
     fn add_list_edit_resolve_roundtrip() {
-        let td = tempfile::tempdir().unwrap();
-        std::fs::write(td.path().join("main.wcl"), SITE_DOC).unwrap();
-        let ws = ws_at(td.path());
+        let (_td, ws) = workspace_with(SITE_DOC);
         let page_file = ws.root_dir().join("main.wcl").display().to_string();
 
         // Page comment + block comment.
@@ -274,12 +268,11 @@ mod tests {
 
     #[test]
     fn add_scopes_to_wskill_sidecar_and_validates() {
-        let td = tempfile::tempdir().unwrap();
-        let root = td.path();
-        std::fs::create_dir_all(root.join("sub")).unwrap();
-        std::fs::write(root.join("sub/wskill.wcl"), "// wskill marker\n").unwrap();
-        std::fs::write(root.join("sub/page.wcl"), "// page source\n").unwrap();
-        let ws = ws_at(root);
+        let (_td, ws) = workspace_built_by(|root| {
+            std::fs::create_dir_all(root.join("sub")).unwrap();
+            std::fs::write(root.join("sub/wskill.wcl"), "// wskill marker\n").unwrap();
+            std::fs::write(root.join("sub/page.wcl"), "// page source\n").unwrap();
+        });
         let page_file = ws.root_dir().join("sub/page.wcl").display().to_string();
 
         add(
