@@ -17,6 +17,7 @@ import {
   outerAnchorEl,
   stashShapeBox,
 } from './anchors';
+import { hasShapeHandles } from './diagram';
 
 const CSS_ID = 'wcl-design-css';
 /* The iframe holds a plain wdoc build with no Forge tokens — literal colors:
@@ -157,21 +158,23 @@ export function markSelected(doc, el, shared) {
   }
 }
 
-/* The chrome THIS layer and the diagram gestures inject into a shape's own
-   <g>. A shape carrying any of it can no longer be measured for its own
-   size — which is the whole reason the anchor module keeps a geometry
-   store; it is told which case this is. */
-const SHAPE_CHROME = '.wcl-wys-sel-box, .wcl-wys-handles';
+/* Is any editing chrome currently inside the shape's own <g>? Each layer
+   answers for what it injects: the selection rect below is this module's,
+   the resize handles and port are the diagram gesture layer's. A shape
+   holding either can no longer be measured for its own size, which is what
+   the anchor module's geometry store is for — so it is told which case
+   this is rather than guessing. */
+const holdsChrome = (el) => !!el.querySelector?.('.wcl-wys-sel-box') || hasShapeHandles(el);
 
 /** Append a dashed selection rect inside the shape's own <g> (so it rides
     the g's transform, including a live drag preview). Sized through the
     anchor module's geometry store, which re-measures a clean shape and
     stands on its record for one that already holds chrome — so a shape
-    resized in place resizes its outline, and re-selecting one can't grow
-    it. Skipped when the shape can't be measured (no SVG renderer,
-    detached node). */
+    resized in place picks up its new size on the next selection, while
+    re-selecting the one already selected can't grow its outline. Skipped
+    when the shape can't be measured (no SVG renderer, detached node). */
 function addShapeSelBox(doc, el, shared) {
-  const box = stashShapeBox(el, { chromeInside: !!el.querySelector?.(SHAPE_CHROME) });
+  const box = stashShapeBox(el, { chromeInside: holdsChrome(el) });
   if (!box) return;
   const pad = 3;
   const rect = doc.createElementNS('http://www.w3.org/2000/svg', 'rect');

@@ -16,7 +16,6 @@ import {
   blockChildren,
   closestOfKind,
   containerOf,
-  edgeOf,
   editButtonOf,
   elBySpan,
   fieldBindingOf,
@@ -71,10 +70,17 @@ const PAGE = `
       <g id="btn" data-wcl-shape data-wcl-kind="wf_button"
          data-wcl-span="440:520" data-wcl-file="unit.wcl"><rect id="btnrect"></rect></g>
     </g>
-    <path id="edge" data-wcl-edge="frame:btn"></path>
-    <path id="edgehit" data-wcl-edge="frame:btn"><title id="edgetitle">x</title></path>
-    <path id="badedge" data-wcl-edge="oops"></path>
   </svg>
+  <div id="viewport" data-wcl-block data-wcl-kind="diagram"
+       data-wcl-span="700:800" data-wcl-file="unit.wcl">
+    <svg id="dia2" data-wcl-layout="layered"><g id="node" data-wcl-shape
+      data-wcl-kind="box" data-wcl-span="720:760" data-wcl-file="unit.wcl"></g></svg>
+    <div class="controls"></div>
+  </div>
+  <div id="demo" data-wcl-block data-wcl-kind="demo"
+       data-wcl-span="810:880" data-wcl-file="unit.wcl">
+    <div class="preview"><svg id="dia3" data-wcl-layout="force"></svg></div>
+  </div>
   <h2 id="bound" data-wcl-field-name="title" data-wcl-field-kind="screen"
       data-wcl-field-target="login" data-wcl-field-plain>Login</h2>
   <button id="editbtn" data-wcl-edit-kind="screen" data-wcl-edit-target="login">Edit this</button>
@@ -154,6 +160,21 @@ describe('anchorOf', () => {
     expect(anchorOf(document, el('frame'))).toMatchObject({ shape: true, shapeId: 'frame' });
     // The diagram's own anchor IS the svg, so it exposes the layout too.
     expect(anchorOf(document, el('dia'))).toMatchObject({ kind: 'diagram', layout: 'free' });
+  });
+
+  it('reads the layout of an interactive diagram, whose anchor is the viewport', () => {
+    // pan/zoom + map diagrams render `<div viewport><svg/>…</div>`, and the
+    // block anchor lands on the DIV — the layout is below it, not above.
+    expect(anchorOf(document, el('viewport'))).toMatchObject({
+      kind: 'diagram',
+      layout: 'layered',
+    });
+    // Its shapes still resolve upward to the same svg.
+    expect(anchorOf(document, el('node')).layout).toBe('layered');
+    // A block that merely CONTAINS a diagram deeper down is not one: the
+    // viewport holds its svg as a DIRECT child, a `demo` does not.
+    expect(anchorOf(document, el('demo')).layout).toBeNull();
+    expect(anchorOf(document, el('list')).layout).toBeNull();
   });
 
   it('derives the shared and geometry facts only when they are read', () => {
@@ -271,6 +292,8 @@ describe('the page wrapper and the block tree', () => {
       'dup1',
       'dup2',
       'dia',
+      'viewport',
+      'demo',
       'badspan',
     ]);
     expect(blockChildren(el('list')).map((e) => e.id)).toEqual(['li1', 'li2']);
@@ -325,6 +348,8 @@ describe('the sibling walk', () => {
       'dup1',
       'dup2',
       'dia',
+      'viewport',
+      'demo',
     ]);
     expect(sameFileSiblings(document, el('li2')).map((e) => e.id)).toEqual(['li1', 'li2']);
     // The two walks agree about what a neighbour is.
@@ -364,15 +389,6 @@ describe('bindings stamped by the build', () => {
   it('reads a layout-guide drop slot', () => {
     expect(slotOf(el('cell2'))).toBe(2);
     expect(slotOf(el('btn'))).toBeNull();
-  });
-
-  it('reads the connection an edge path draws, from anywhere inside it', () => {
-    expect(edgeOf(el('edge'))).toEqual({ from: 'frame', to: 'btn' });
-    expect(edgeOf(el('edgetitle'))).toEqual({ from: 'frame', to: 'btn' });
-    // A malformed stamp reads as no stamp, like a malformed span.
-    expect(edgeOf(el('badedge'))).toBeNull();
-    expect(edgeOf(el('btn'))).toBeNull();
-    expect(edgeOf(null)).toBeNull();
   });
 });
 

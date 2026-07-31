@@ -119,6 +119,14 @@ export function resizeDelta(corner, du, dv) {
   }
 }
 
+/** Does `el` currently hold THIS layer's injected chrome? Measuring a shape
+    that does would swallow the handles/port, which is what the anchor
+    module's geometry store exists to avoid — so the layer that injects them
+    is the one that answers for them. */
+export function hasShapeHandles(el) {
+  return !!el?.querySelector?.('.wcl-wys-handles');
+}
+
 /** Create / refresh the corner resize handles inside the selected shape's
     <g> (they ride its transform, including the live drag preview), sized
     from the anchor module's stashed geometry so repeated selection can't
