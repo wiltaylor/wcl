@@ -24,18 +24,17 @@ use wcl_lang::{
     parse_expr, parse_for_edit,
 };
 
-use super::{EditorState, run_blocking};
-use crate::serve::{json_error, parse_json_body, query_param, sandboxed};
+use super::preview::Sessions;
+use super::{EditorState, Workspace, run_blocking};
+use crate::serve::{json_error, parse_json_body, query_param};
 
 // ---------------------------------------------------------------------------
 // Request context
 // ---------------------------------------------------------------------------
 
 /// Sandbox-check a repo-relative file from the request body.
-fn file_field(state: &EditorState, v: &serde_json::Value) -> Result<PathBuf, String> {
-    let file = crate::edit::str_field(v, "file")?;
-    sandboxed(&state.root_dir, &state.root_dir.join(file))
-        .ok_or_else(|| format!("file outside the served tree: {file}"))
+fn file_field(ws: &Workspace, v: &serde_json::Value) -> Result<PathBuf, String> {
+    ws.abs(crate::edit::str_field(v, "file")?)
 }
 
 /// A `{start, end}` byte span from a JSON object field.
@@ -48,20 +47,6 @@ pub(super) fn span_field(v: &serde_json::Value, key: &str) -> Result<Span, Strin
             .ok_or_else(|| format!("missing `{key}.{k}`"))
     };
     Ok(Span::new(num("start")?, num("end")?))
-}
-
-/// A file path made repo-relative with `/` separators (the client's view).
-pub(super) fn rel_path(state: &EditorState, file: &Path) -> Result<String, String> {
-    let canon = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
-    canon
-        .strip_prefix(&state.root_dir)
-        .map(|p| p.to_string_lossy().replace('\\', "/"))
-        .map_err(|_| {
-            format!(
-                "{} is outside the served directory — not editable here",
-                canon.display()
-            )
-        })
 }
 
 // ---------------------------------------------------------------------------
@@ -81,11 +66,11 @@ pub(super) async fn handle_block_source(
         Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
     };
     let state2 = Arc::clone(&state);
-    run_blocking(move || block_source(&state2, &v)).await
+    run_blocking(move || block_source(&state2.ws, &v)).await
 }
 
-fn block_source(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let file_abs = file_field(state, v)?;
+fn block_source(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let file_abs = file_field(ws, v)?;
     let text = crate::edit::read(&file_abs)?;
     let span = span_field(v, "span")?;
     let mut src = parse_for_edit(&text, file_abs.display().to_string()).map_err(super::err_str)?;
@@ -282,12 +267,16 @@ pub(super) async fn handle_block_ops(
         Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
     };
     let state2 = Arc::clone(&state);
-    run_blocking(move || block_ops(&state2, &v)).await
+    run_blocking(move || block_ops(&state2.ws, &state2.sessions, &v)).await
 }
 
-fn block_ops(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let doc_entry = super::resolve_doc_entry_from(state, v)?;
-    let file_abs = file_field(state, v)?;
+pub(super) fn block_ops(
+    ws: &Workspace,
+    previews: &Sessions,
+    v: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let doc_entry = ws.doc_entry_from(v)?;
+    let file_abs = file_field(ws, v)?;
     let disk = crate::edit::read(&file_abs)?;
     if let Some(etag) = v.get("etag").and_then(serde_json::Value::as_str)
         && etag != crate::edit::content_etag(&disk)
@@ -529,7 +518,7 @@ fn block_ops(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::V
                     return Err(stale_span());
                 }
                 if let Some(id) = orphan {
-                    prune_connections(&mut src.items, &id);
+                    ast_edit::remove_connections_touching(&mut src.items, &id);
                 }
             }
             "move" => {
@@ -570,12 +559,7 @@ fn block_ops(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::V
         .map(|(role, mark)| (*role, index_path_by_span(&src.items, *mark)))
         .collect();
     crate::edit::commit(&doc_entry, vec![(file_abs.clone(), new_text.clone())])?;
-    // The disk changed under every built preview: bump each session's
-    // generation so the lazy per-page GET rebuild stops serving pre-commit
-    // HTML as fresh (the in-place commit path never POSTs /api/preview).
-    for s in state.preview_sessions.lock().unwrap().values_mut() {
-        s.generation += 1;
-    }
+    previews.invalidate();
     let fresh = parse_for_edit(&new_text, "<post-format>").map_err(super::err_str)?;
     let spans: Vec<serde_json::Value> = paths
         .into_iter()
@@ -589,7 +573,7 @@ fn block_ops(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::V
         .collect();
     Ok(serde_json::json!({
         "ok": true,
-        "file": rel_path(state, &file_abs)?,
+        "file": ws.rel(&file_abs)?,
         "etag": crate::edit::content_etag(&new_text),
         "file_text": new_text,
         "spans": spans,
@@ -619,17 +603,6 @@ fn shape_id_of(block: &ast::Block) -> Option<String> {
         _ => None,
     });
     field.or_else(|| ast_label(block))
-}
-
-/// Drop every connection statement naming `id`, anywhere in the tree — the
-/// deleted shape's container isn't known here, and an id is diagram-unique.
-fn prune_connections(items: &mut Vec<Item>, id: &str) {
-    items.retain(|it| !matches!(it, Item::Connection(c) if c.lhs == id || c.rhs == id));
-    for item in items.iter_mut() {
-        if let Item::Block(b) = item {
-            prune_connections(&mut b.items, id);
-        }
-    }
 }
 
 fn value_expr(op: &serde_json::Value) -> Result<Expr, String> {
@@ -791,11 +764,15 @@ pub(super) async fn handle_unit_field(
         Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
     };
     let state2 = Arc::clone(&state);
-    run_blocking(move || unit_field(&state2, &v)).await
+    run_blocking(move || unit_field(&state2.ws, &state2.sessions, &v)).await
 }
 
-fn unit_field(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let doc_entry = super::resolve_doc_entry_from(state, v)?;
+fn unit_field(
+    ws: &Workspace,
+    previews: &Sessions,
+    v: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let doc_entry = ws.doc_entry_from(v)?;
     let kind = crate::edit::str_field(v, "kind")?;
     let target = v
         .get("target")
@@ -822,9 +799,10 @@ fn unit_field(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::
             })]
         })
         .unwrap_or_default();
+    previews.invalidate();
     Ok(serde_json::json!({
         "ok": true,
-        "file": rel_path(state, &file)?,
+        "file": ws.rel(&file)?,
         "etag": crate::edit::content_etag(&new_text),
         "file_text": new_text,
         "spans": spans,
@@ -854,11 +832,15 @@ pub(super) async fn handle_unit_create(
         Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
     };
     let state2 = Arc::clone(&state);
-    run_blocking(move || unit_create(&state2, &v)).await
+    run_blocking(move || unit_create(&state2.ws, &state2.sessions, &v)).await
 }
 
-fn unit_create(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let doc_entry = super::resolve_doc_entry_from(state, v)?;
+pub(super) fn unit_create(
+    ws: &Workspace,
+    previews: &Sessions,
+    v: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let doc_entry = ws.doc_entry_from(v)?;
     let unit = v.get("unit").ok_or("missing `unit`")?;
     let kind = crate::edit::str_field(unit, "kind")?;
     let id = crate::edit::str_field(unit, "id")?;
@@ -929,8 +911,7 @@ fn unit_create(state: &EditorState, v: &serde_json::Value) -> Result<serde_json:
     // imported into the entry so its instances gather.
     let placement = match unit.get("file").and_then(serde_json::Value::as_str) {
         Some(rel) if !rel.is_empty() => {
-            let abs = crate::serve::sandboxed_create(&state.root_dir, &state.root_dir.join(rel))
-                .ok_or_else(|| format!("file outside the served tree: {rel}"))?;
+            let abs = ws.abs_new(rel)?;
             if abs.is_file() {
                 Placement::Append { file: abs }
             } else {
@@ -948,9 +929,10 @@ fn unit_create(state: &EditorState, v: &serde_json::Value) -> Result<serde_json:
     drop(doc);
 
     crate::edit::commit(&doc_entry, changes)?;
+    previews.invalidate();
     Ok(serde_json::json!({
         "ok": true,
-        "file": rel_path(state, &new_file)?,
+        "file": ws.rel(&new_file)?,
         "id": id,
     }))
 }
@@ -1158,6 +1140,32 @@ fn kin_file(doc: &Document, kind: &str) -> Option<PathBuf> {
 
 /// Append `id` to the `related` list of the `index` block labelled
 /// `index_id`, layering on top of any pending change to the same file.
+/// Does this block's subtree declare an `index` with the given id?
+fn subtree_has_index(b: &wcl_lang::Block<'_>, id: &str) -> bool {
+    (b.kind() == "index" && first_label(b).as_deref() == Some(id))
+        || b.blocks().any(|c| subtree_has_index(&c, id))
+}
+
+/// The file declaring the `index` with `id`. Sub-indexes nest inside their
+/// parent block, so the search recurses (the block itself is then relocated
+/// by the equally recursive [`find_block_by_kind_label`]). Index ids are
+/// assumed document-unique; first match wins. Shared by `unit_create`'s pin
+/// and the nav model's id-addressed index ops — two callers that each used
+/// to walk the document themselves, one of them only at the top level.
+pub(super) fn index_file(
+    doc: &Document,
+    doc_entry: &Path,
+    index_id: &str,
+) -> Result<PathBuf, String> {
+    doc.blocks_with_source()
+        .find(|(_, b)| subtree_has_index(b, index_id))
+        .map(|(p, _)| {
+            p.map(Path::to_path_buf)
+                .unwrap_or_else(|| doc_entry.to_path_buf())
+        })
+        .ok_or_else(|| format!("no `index` with id `{index_id}`"))
+}
+
 fn pin_into_index(
     doc: &Document,
     doc_entry: &Path,
@@ -1165,17 +1173,7 @@ fn pin_into_index(
     id: &str,
     changes: &mut Vec<(PathBuf, String)>,
 ) -> Result<(), String> {
-    let (ifile, _) = doc
-        .blocks_with_source()
-        .find(|(_, b)| b.kind() == "index" && first_label(b).as_deref() == Some(index_id))
-        .map(|(p, b)| {
-            (
-                p.map(Path::to_path_buf)
-                    .unwrap_or_else(|| doc_entry.to_path_buf()),
-                b.span(),
-            )
-        })
-        .ok_or_else(|| format!("no `index` with id `{index_id}`"))?;
+    let ifile = index_file(doc, doc_entry, index_id)?;
     // Base text: a pending change to the same file, else disk. Located by
     // kind + label (not span) because pending edits shift spans.
     let base = match changes.iter().find(|(p, _)| *p == ifile) {
@@ -1333,7 +1331,7 @@ pub(super) async fn handle_palette(State(state): State<Arc<EditorState>>, uri: U
     let state2 = Arc::clone(&state);
     run_blocking(move || {
         let entry = entry.ok_or("missing entry")?;
-        palette(&state2, &entry, site.as_deref(), page_file.as_deref())
+        palette(&state2.ws, &entry, site.as_deref(), page_file.as_deref())
     })
     .await
 }
@@ -1375,12 +1373,12 @@ const BODY_KINDS: &[(&str, &str, &str)] = &[
 ];
 
 fn palette(
-    state: &EditorState,
+    ws: &Workspace,
     entry: &str,
     site: Option<&str>,
     page_file: Option<&str>,
 ) -> Result<serde_json::Value, String> {
-    let doc_entry = super::resolve_doc_entry(state, entry, page_file)?;
+    let doc_entry = ws.doc_entry(entry, page_file)?;
     let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(super::err_str)?;
 
     let body_kinds: Vec<serde_json::Value> = BODY_KINDS
@@ -1398,7 +1396,7 @@ fn palette(
         "unit_kinds": unit_kinds(&doc),
         "diagram_kinds": diagram_kinds(&doc),
         "body_kinds": body_kinds,
-        "components": components(state, &doc),
+        "components": components(ws, &doc),
     }))
 }
 
@@ -1680,14 +1678,14 @@ pub(super) fn kind_entry(kind: &str, schema: &wcl_lang::TypeDecl<'_>) -> serde_j
 /// `wdoc_component` declarations authored inside the served tree (stdlib
 /// components are excluded — their sources live outside the root), with the
 /// slot list that drives the property form.
-fn components(state: &EditorState, doc: &Document) -> Vec<serde_json::Value> {
+fn components(ws: &Workspace, doc: &Document) -> Vec<serde_json::Value> {
     let mut out = Vec::new();
     for (path, block) in doc.blocks_with_source() {
         if block.kind() != "wdoc_component" {
             continue;
         }
         if let Some(p) = path
-            && !p.starts_with(&state.root_dir)
+            && !p.starts_with(ws.root_dir())
         {
             continue;
         }
@@ -1711,8 +1709,789 @@ fn components(state: &EditorState, doc: &Document) -> Vec<serde_json::Value> {
                 })
             })
             .collect();
-        let file = path.and_then(|p| rel_path(state, p).ok());
+        let file = path.and_then(|p| ws.rel(p).ok());
         out.push(serde_json::json!({ "name": name, "file": file, "slots": slots }));
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::span_json;
+    use crate::editor::testsupport::{
+        BODY_DOC, OBJECT_DOC, span_of, workspace_with, write_mini_wskill,
+    };
+
+    /// A document whose page holds a diagram of three wired shapes.
+    const DIAGRAM_DOC: &str = "import <wdoc.wcl>\n\nsite docs {\n  title = \"D\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  diagram {\n    width = 400\n    height = 300\n    rect {\n      id = a\n    }\n    rect {\n      id = b\n    }\n    rect {\n      id = c\n    }\n    a -> b\n  }\n}\n";
+
+    /// Nested fixture for the span-map tests: 7 blocks (site, page, p,
+    /// list, li, li, p).
+    const NESTED_DOC: &str = "import <wdoc.wcl>\n\nsite docs {\n  title = \"D\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  p \"First\"\n\n  list {\n    li \"one\"\n    li \"two\"\n  }\n\n  p \"Last\"\n}\n";
+
+    /// A write path's context: the served tree plus the invalidation handle.
+    /// Nothing here needs a preview scratch tree.
+    fn previews() -> Sessions {
+        Sessions::default()
+    }
+
+    fn main_wcl(ws: &Workspace) -> PathBuf {
+        ws.root_dir().join("main.wcl")
+    }
+
+    fn disk(ws: &Workspace) -> String {
+        std::fs::read_to_string(main_wcl(ws)).unwrap()
+    }
+
+    /// Wiring shapes together writes `a -> b` connection STATEMENTS — the
+    /// language's own relationship syntax — rather than a list field.
+    #[test]
+    fn connect_ops_write_connection_statements() {
+        let (_td, ws) = workspace_with(DIAGRAM_DOC);
+        let previews = previews();
+        // Every commit reprints the file, so the diagram's span moves — each
+        // call re-resolves it, exactly as the client re-anchors on reload.
+        let connect = |ops: &dyn Fn(Span) -> serde_json::Value| {
+            let text = disk(&ws);
+            let diagram = span_of(&text, |b| b.kind == "diagram");
+            block_ops(
+                &ws,
+                &previews,
+                &serde_json::json!({
+                    "entry": "main.wcl", "file": "main.wcl",
+                    "etag": crate::edit::content_etag(&text),
+                    "ops": ops(diagram),
+                }),
+            )
+        };
+
+        // Add one plain edge and one kinded edge.
+        connect(&|d| {
+            serde_json::json!([
+                { "op": "connect_add", "span": span_json(d), "from": "b", "to": "c" },
+                { "op": "connect_add", "span": span_json(d), "from": "c", "to": "a", "kind": "flow" },
+            ])
+        })
+        .expect("connect_add");
+        let text = disk(&ws);
+        assert!(text.contains("b -> c"), "{text}");
+        assert!(text.contains("c -> a :flow"), "{text}");
+
+        // Removing one leaves the others alone.
+        connect(&|d| {
+            serde_json::json!([
+                { "op": "connect_remove", "span": span_json(d), "from": "b", "to": "c" },
+            ])
+        })
+        .expect("connect_remove");
+        let text = disk(&ws);
+        assert!(!text.contains("b -> c"), "{text}");
+        assert!(text.contains("c -> a :flow"), "{text}");
+        assert!(text.contains("a -> b"), "{text}");
+    }
+
+    #[test]
+    fn connect_ops_reject_nonsense() {
+        let (_td, ws) = workspace_with(DIAGRAM_DOC);
+        let text = disk(&ws);
+        let etag = crate::edit::content_etag(&text);
+        let diagram = span_of(&text, |b| b.kind == "diagram");
+
+        for (op, from, to) in [
+            ("connect_add", "a", "a"),    // self-connection
+            ("connect_add", "a", "b"),    // already wired
+            ("connect_remove", "a", "c"), // no such edge
+        ] {
+            let r = block_ops(
+                &ws,
+                &previews(),
+                &serde_json::json!({
+                    "entry": "main.wcl", "file": "main.wcl", "etag": etag,
+                    "ops": [{ "op": op, "span": span_json(diagram), "from": from, "to": to }],
+                }),
+            );
+            assert!(r.is_err(), "{op} {from}->{to} should fail");
+        }
+    }
+
+    /// Deleting a shape takes its edges with it — the sync failure that let a
+    /// removed shape leave dangling `a -> b` statements behind.
+    #[test]
+    fn deleting_a_shape_removes_its_connections() {
+        let (_td, ws) = workspace_with(DIAGRAM_DOC);
+        let previews = previews();
+        let text = disk(&ws);
+        let diagram = span_of(&text, |b| b.kind == "diagram");
+
+        // Wire c -> b as well, so `b` has an inbound and an outbound edge.
+        block_ops(
+            &ws,
+            &previews,
+            &serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "etag": crate::edit::content_etag(&text),
+                "ops": [{ "op": "connect_add", "span": span_json(diagram), "from": "c", "to": "b" }],
+            }),
+        )
+        .expect("connect_add");
+
+        let text = disk(&ws);
+        let shape_b = span_of(&text, |b| {
+            b.kind == "rect"
+                && b.items.iter().any(|it| {
+                    matches!(it, Item::Field(f)
+                    if f.name == "id" && matches!(&f.expr, Expr::Identifier(s, _) if s == "b"))
+                })
+        });
+        block_ops(
+            &ws,
+            &previews,
+            &serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "etag": crate::edit::content_etag(&text),
+                "ops": [{ "op": "delete", "span": span_json(shape_b) }],
+            }),
+        )
+        .expect("delete");
+        let text = disk(&ws);
+        assert!(!text.contains("a -> b"), "outbound edge went too: {text}");
+        assert!(!text.contains("c -> b"), "inbound edge went too: {text}");
+        assert!(text.contains("id = c"), "other shapes survive: {text}");
+    }
+
+    #[test]
+    fn ops_edit_insert_move_delete() {
+        let (_td, ws) = workspace_with(BODY_DOC);
+        let previews = previews();
+        let text = disk(&ws);
+        let first_p = span_of(&text, |b| {
+            b.kind == "p"
+                && matches!(b.labels.first(), Some(Expr::Utf8(s)) if s.starts_with("First"))
+        });
+
+        // Edit the paragraph text + insert a callout after it, atomically.
+        let v = block_ops(
+            &ws,
+            &previews,
+            &serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "etag": crate::edit::content_etag(&text),
+                "ops": [
+                    { "op": "set_label", "span": span_json(first_p), "slot": 0,
+                      "text": "Edited paragraph" },
+                    { "op": "insert_after", "span": span_json(first_p),
+                      "source": "callout \"Note\" {\n  body = \"hi\"\n}" },
+                ],
+            }),
+        )
+        .expect("edit + insert");
+        let new_text = disk(&ws);
+        assert_eq!(v["file_text"], new_text.as_str());
+        assert_eq!(v["etag"], crate::edit::content_etag(&new_text).as_str());
+        assert!(new_text.contains("Edited paragraph"), "{new_text}");
+        // The response spans slice the *new* text at the right blocks.
+        let spans = v["spans"].as_array().unwrap();
+        assert_eq!(spans.len(), 2, "{v:#}");
+        let slice = |s: &serde_json::Value| {
+            let (a, b) = (
+                s["span"]["start"].as_u64().unwrap() as usize,
+                s["span"]["end"].as_u64().unwrap() as usize,
+            );
+            new_text[a..b].to_string()
+        };
+        assert_eq!(spans[0]["role"], "edited");
+        assert!(slice(&spans[0]).starts_with("p \"Edited paragraph\""));
+        assert_eq!(spans[1]["role"], "inserted");
+        assert!(slice(&spans[1]).starts_with("callout \"Note\""));
+        // Order in the page: edited p, callout, second p.
+        let ei = new_text.find("Edited paragraph").unwrap();
+        let ci = new_text.find("callout").unwrap();
+        let si = new_text.find("Second paragraph").unwrap();
+        assert!(ei < ci && ci < si, "{new_text}");
+
+        // Move the callout below the second paragraph, then delete it.
+        let callout = span_of(&new_text, |b| b.kind == "callout");
+        block_ops(
+            &ws,
+            &previews,
+            &serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [{ "op": "move", "span": span_json(callout), "dir": "down" }],
+            }),
+        )
+        .expect("move");
+        let text = disk(&ws);
+        assert!(text.find("Second paragraph").unwrap() < text.find("callout").unwrap());
+        let callout = span_of(&text, |b| b.kind == "callout");
+        block_ops(
+            &ws,
+            &previews,
+            &serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [{ "op": "delete", "span": span_json(callout) }],
+            }),
+        )
+        .expect("delete");
+        assert!(!disk(&ws).contains("callout"), "{}", disk(&ws));
+    }
+
+    /// `move_to` resolves at the common-ancestor level: dragging a
+    /// template title (an `h1` inside a transparent `edit_field` wrapper)
+    /// below a sibling section moves the WHOLE wrapper — and the position
+    /// is span-addressed, so invisible AST siblings between the two never
+    /// skew it.
+    #[test]
+    fn ops_move_to_promotes_wrapped_blocks() {
+        let doc = "import <wdoc.wcl>\n\nsite docs {\n  title = \"D\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  edit_field {\n    kind = \"concept\"\n    field = \"name\"\n\n    h1 \"Title\"\n  }\n\n  p \"Summary\"\n\n  p \"References\"\n}\n";
+        let (_td, ws) = workspace_with(doc);
+        let previews = previews();
+        let text = disk(&ws);
+        let h1 = span_of(&text, |b| b.kind == "h1");
+        let refs = span_of(&text, |b| {
+            b.kind == "p" && matches!(b.labels.first(), Some(Expr::Utf8(s)) if s == "References")
+        });
+
+        // Drop the title after the references paragraph.
+        block_ops(
+            &ws,
+            &previews,
+            &serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [{ "op": "move_to", "span": span_json(h1), "after": span_json(refs) }],
+            }),
+        )
+        .expect("move_to after");
+        let text = disk(&ws);
+        // The wrapper travelled with its h1, landing after both paragraphs.
+        let (s, r, e) = (
+            text.find("Summary").unwrap(),
+            text.find("References").unwrap(),
+            text.find("edit_field").unwrap(),
+        );
+        assert!(s < r && r < e, "wrapper moved below references: {text}");
+
+        // And back above the summary via `before`.
+        let h1 = span_of(&text, |b| b.kind == "h1");
+        let summary = span_of(&text, |b| {
+            b.kind == "p" && matches!(b.labels.first(), Some(Expr::Utf8(s)) if s == "Summary")
+        });
+        block_ops(
+            &ws,
+            &previews,
+            &serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [{ "op": "move_to", "span": span_json(h1), "before": span_json(summary) }],
+            }),
+        )
+        .expect("move_to before");
+        let text = disk(&ws);
+        assert!(
+            text.find("edit_field").unwrap() < text.find("Summary").unwrap(),
+            "{text}"
+        );
+
+        // A block can't move relative to its own descendant.
+        let ef = span_of(&text, |b| b.kind == "edit_field");
+        let h1 = span_of(&text, |b| b.kind == "h1");
+        assert!(
+            block_ops(
+                &ws,
+                &previews,
+                &serde_json::json!({
+                    "entry": "main.wcl", "file": "main.wcl",
+                    "ops": [{ "op": "move_to", "span": span_json(ef), "before": span_json(h1) }],
+                }),
+            )
+            .is_err()
+        );
+    }
+
+    fn count_blocks(items: &[Item]) -> usize {
+        items
+            .iter()
+            .map(|it| match it {
+                Item::Block(b) => 1 + count_blocks(&b.items),
+                _ => 0,
+            })
+            .sum()
+    }
+
+    /// The client's no-reload path patches every live `data-wcl-span`
+    /// anchor from the response's `span_map` — it must cover every block
+    /// (nested included) and slice the new text at the right places.
+    #[test]
+    fn ops_span_map_covers_every_block() {
+        let (_td, ws) = workspace_with(NESTED_DOC);
+        let old = disk(&ws);
+        let total = count_blocks(&parse_for_edit(&old, "t").unwrap().items);
+        let first_p = span_of(&old, |b| {
+            b.kind == "p" && matches!(b.labels.first(), Some(Expr::Utf8(s)) if s == "First")
+        });
+
+        let v = block_ops(
+            &ws,
+            &previews(),
+            &serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [{ "op": "move", "span": span_json(first_p), "dir": "down" }],
+            }),
+        )
+        .expect("move");
+        let new_text = disk(&ws);
+        let map = v["span_map"].as_array().unwrap();
+        assert_eq!(map.len(), total, "one entry per surviving block: {v:#}");
+        // Every `from` slices the OLD text and `to` the NEW text at the
+        // same block (same kind token; a move keeps content identical).
+        for e in map {
+            let f = (
+                e["from"]["start"].as_u64().unwrap() as usize,
+                e["from"]["end"].as_u64().unwrap() as usize,
+            );
+            let t = (
+                e["to"]["start"].as_u64().unwrap() as usize,
+                e["to"]["end"].as_u64().unwrap() as usize,
+            );
+            let old_kind = old[f.0..f.1].split_whitespace().next().unwrap();
+            let new_kind = new_text[t.0..t.1].split_whitespace().next().unwrap();
+            assert_eq!(old_kind, new_kind, "{e:#}");
+        }
+        // The moved paragraph and a nested li map to their exact new text.
+        let mapped = |span: Span| -> String {
+            let e = map
+                .iter()
+                .find(|e| {
+                    e["from"]["start"].as_u64().unwrap() as usize == span.start
+                        && e["from"]["end"].as_u64().unwrap() as usize == span.end
+                })
+                .unwrap_or_else(|| panic!("span {span:?} not in map"));
+            let (a, b) = (
+                e["to"]["start"].as_u64().unwrap() as usize,
+                e["to"]["end"].as_u64().unwrap() as usize,
+            );
+            new_text[a..b].to_string()
+        };
+        assert!(mapped(first_p).starts_with("p \"First\""));
+        let li_one = span_of(&old, |b| {
+            b.kind == "li" && matches!(b.labels.first(), Some(Expr::Utf8(s)) if s == "one")
+        });
+        assert!(mapped(li_one).starts_with("li \"one\""));
+        // And the move actually happened.
+        assert!(new_text.find("list").unwrap() < new_text.find("p \"First\"").unwrap());
+    }
+
+    #[test]
+    fn ops_span_map_on_set_visibility_and_inserts() {
+        let (_td, ws) = workspace_with(NESTED_DOC);
+        let old = disk(&ws);
+        let total = count_blocks(&parse_for_edit(&old, "t").unwrap().items);
+        let first_p = span_of(&old, |b| {
+            b.kind == "p" && matches!(b.labels.first(), Some(Expr::Utf8(s)) if s == "First")
+        });
+
+        // set_visibility + an insert in one batch: the map still covers
+        // exactly the surviving pre-edit blocks (the inserted subtree's
+        // sentinel spans are skipped).
+        let v = block_ops(
+            &ws,
+            &previews(),
+            &serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [
+                    { "op": "set_visibility", "span": span_json(first_p),
+                      "except_sites": ["deck"] },
+                    { "op": "insert_after", "span": span_json(first_p),
+                      "source": "p \"Inserted\"" },
+                ],
+            }),
+        )
+        .expect("visibility + insert");
+        let new_text = disk(&ws);
+        let map = v["span_map"].as_array().unwrap();
+        assert_eq!(map.len(), total, "inserted block not in the map: {v:#}");
+        let e = map
+            .iter()
+            .find(|e| e["from"]["start"].as_u64().unwrap() as usize == first_p.start)
+            .unwrap();
+        let (a, b) = (
+            e["to"]["start"].as_u64().unwrap() as usize,
+            e["to"]["end"].as_u64().unwrap() as usize,
+        );
+        // A block's span starts at its kind token — the decorator sits just
+        // before the mapped slice in the new text.
+        assert!(
+            new_text[a..b].starts_with("p \"First\""),
+            "edited block maps to itself: {}",
+            &new_text[a..b]
+        );
+        assert!(
+            new_text.contains("@except(sites = [:deck]) p \"First\"")
+                || new_text.contains("@except(sites = [:deck])\np \"First\""),
+            "decorator written: {new_text}"
+        );
+    }
+
+    #[test]
+    fn source_classifies_literal_list_tables() {
+        let doc = "import <wdoc.wcl>\n\nsite docs {\n  title = \"D\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  table {\n    header = [\"Signal\", \"Plain\"]\n    rows = [[\"Audience\", \"AI agents\"], [\"Lifespan\", \"Long-lived\"]]\n  }\n}\n";
+        let (_td, ws) = workspace_with(doc);
+        let table = span_of(&disk(&ws), |b| b.kind == "table");
+
+        let v = block_source(
+            &ws,
+            &serde_json::json!({ "file": "main.wcl", "span": span_json(table) }),
+        )
+        .expect("source");
+        // All-string list → `list` with items; list-of-lists → `rows`.
+        assert_eq!(v["fields"]["header"]["state"], "list", "{v:#}");
+        assert_eq!(v["fields"]["header"]["items"][1], "Plain");
+        assert_eq!(v["fields"]["rows"]["state"], "rows", "{v:#}");
+        assert_eq!(v["fields"]["rows"]["rows"][1][0], "Lifespan");
+
+        // A computed rows expression stays `computed` (no grid).
+        let doc2 = doc.replace(
+            "rows = [[\"Audience\", \"AI agents\"], [\"Lifespan\", \"Long-lived\"]]",
+            "rows = map([\"x\"], fn(s: utf8) -> list<utf8> { [s, s] })",
+        );
+        std::fs::write(main_wcl(&ws), &doc2).unwrap();
+        let table = span_of(&doc2, |b| b.kind == "table");
+        let v = block_source(
+            &ws,
+            &serde_json::json!({ "file": "main.wcl", "span": span_json(table) }),
+        )
+        .expect("source");
+        assert_eq!(v["fields"]["rows"]["state"], "computed", "{v:#}");
+    }
+
+    #[test]
+    fn ops_remove_field_on_nested_shape() {
+        let doc = "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  diagram {\n    width = 320\n    height = 160\n\n    rect {\n      id = a\n      x = 20.0\n      y = 30.0\n      width = 80.0\n      height = 50.0\n      fill = \"#88c0d0\"\n    }\n  }\n}\n";
+        let (_td, ws) = workspace_with(doc);
+        let rect = span_of(&disk(&ws), |b| b.kind == "rect");
+
+        // Reset-position batch: drop x/y plus a field that was never there —
+        // absent fields are tolerated so clients can batch removals blindly.
+        let v = block_ops(
+            &ws,
+            &previews(),
+            &serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [
+                    { "op": "remove_field", "span": span_json(rect), "field": "x" },
+                    { "op": "remove_field", "span": span_json(rect), "field": "y" },
+                    { "op": "remove_field", "span": span_json(rect), "field": "cx" },
+                ],
+            }),
+        )
+        .expect("remove_field");
+        let text = disk(&ws);
+        assert!(!text.contains("x = 20"), "{text}");
+        assert!(!text.contains("y = 30"), "{text}");
+        assert!(text.contains("fill = \"#88c0d0\""), "{text}");
+        // The edited span in the response slices the rect in the new text.
+        let s = &v["spans"].as_array().unwrap()[0];
+        let (a, b) = (
+            s["span"]["start"].as_u64().unwrap() as usize,
+            s["span"]["end"].as_u64().unwrap() as usize,
+        );
+        assert!(text[a..b].starts_with("rect"), "{}", &text[a..b]);
+    }
+
+    #[test]
+    fn ops_conflict_and_rollback() {
+        let (_td, ws) = workspace_with(BODY_DOC);
+        let before = disk(&ws);
+        let p = span_of(&before, |b| b.kind == "p");
+
+        // A stale etag is refused with the `conflict:` prefix the router
+        // maps to 409, and leaves the file untouched.
+        let e = block_ops(
+            &ws,
+            &previews(),
+            &serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl", "etag": "stale",
+                "ops": [{ "op": "delete", "span": span_json(p) }],
+            }),
+        )
+        .unwrap_err();
+        assert!(e.starts_with("conflict:"), "{e}");
+        assert_eq!(disk(&ws), before);
+
+        // An edit that breaks the schema (a `page` needs a `title`) rolls
+        // back: error, disk unchanged.
+        let page = span_of(&before, |b| b.kind == "page");
+        assert!(
+            block_ops(
+                &ws,
+                &previews(),
+                &serde_json::json!({
+                    "entry": "main.wcl", "file": "main.wcl",
+                    "ops": [{ "op": "replace_source", "span": span_json(page),
+                              "source": "page index {\n  title = 42\n}" }],
+                }),
+            )
+            .is_err()
+        );
+        assert_eq!(disk(&ws), before, "schema-breaking edit must roll back");
+
+        // A bad fragment (two blocks) is rejected before anything happens.
+        let e = block_ops(
+            &ws,
+            &previews(),
+            &serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [{ "op": "insert_after", "span": span_json(p),
+                          "source": "p \"a\"\n\np \"b\"" }],
+            }),
+        )
+        .unwrap_err();
+        assert!(e.contains("exactly one block"), "{e}");
+    }
+
+    #[test]
+    fn source_classifies_slots() {
+        let doc = "import <wdoc.wcl>\n\nsite docs {\n  title = \"D\"\n  root = true\n}\n\nlet greeting = \"hi\"\n\npage index {\n  title = \"Hi\"\n\n  p \"Literal text\"\n\n  p $\"computed ${greeting}\"\n}\n";
+        let (_td, ws) = workspace_with(doc);
+        let literal = span_of(doc, |b| {
+            b.kind == "p" && matches!(b.labels.first(), Some(Expr::Utf8(_)))
+        });
+        let computed = span_of(doc, |b| {
+            b.kind == "p" && matches!(b.labels.first(), Some(Expr::InterpolatedString { .. }))
+        });
+
+        let v = block_source(
+            &ws,
+            &serde_json::json!({ "file": "main.wcl", "span": span_json(literal) }),
+        )
+        .expect("literal");
+        assert_eq!(v["kind"], "p");
+        assert_eq!(v["source"], "p \"Literal text\"");
+        assert_eq!(v["labels"][0]["state"], "literal");
+        assert_eq!(v["labels"][0]["text"], "Literal text");
+
+        let v = block_source(
+            &ws,
+            &serde_json::json!({ "file": "main.wcl", "span": span_json(computed) }),
+        )
+        .expect("computed");
+        assert_eq!(v["labels"][0]["state"], "computed");
+        assert!(v["labels"][0]["text"].is_null());
+    }
+
+    /// A per-block view toggle rides the `@except(sites = …)` decorator, and
+    /// a block whose visibility the toggles can't express is refused.
+    #[test]
+    fn visibility_toggle_round_trip() {
+        let (_td, ws) = workspace_with(BODY_DOC);
+        let previews = previews();
+        let p = span_of(&disk(&ws), |b| b.kind == "p");
+
+        // Hide the paragraph from the deck + training views.
+        block_ops(
+            &ws,
+            &previews,
+            &serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [{ "op": "set_visibility", "span": span_json(p),
+                          "except_sites": ["deck", "training"] }],
+            }),
+        )
+        .expect("set_visibility");
+        let text = disk(&ws);
+        assert!(
+            text.contains("@except(sites = [:deck, :training])"),
+            "{text}"
+        );
+
+        // The classification reflects it.
+        let p2 = span_of(&text, |b| b.kind == "p");
+        let v = block_source(
+            &ws,
+            &serde_json::json!({ "file": "main.wcl", "span": span_json(p2) }),
+        )
+        .expect("source");
+        assert_eq!(v["visibility"]["custom"], false);
+        assert_eq!(
+            v["visibility"]["except_sites"],
+            serde_json::json!(["deck", "training"])
+        );
+
+        // Empty list removes the decorator again.
+        block_ops(
+            &ws,
+            &previews,
+            &serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [{ "op": "set_visibility", "span": span_json(p2),
+                          "except_sites": [] }],
+            }),
+        )
+        .expect("clear visibility");
+        assert!(!disk(&ws).contains("@except"), "{}", disk(&ws));
+
+        // A block with @only is custom: classified, and the toggle refuses.
+        let custom_doc = BODY_DOC.replace(
+            "  p \"First paragraph\"",
+            "  @only(sites = [:docs])\n  p \"First paragraph\"",
+        );
+        std::fs::write(main_wcl(&ws), &custom_doc).unwrap();
+        let pc = span_of(&custom_doc, |b| b.kind == "p");
+        let v = block_source(
+            &ws,
+            &serde_json::json!({ "file": "main.wcl", "span": span_json(pc) }),
+        )
+        .expect("source");
+        assert_eq!(v["visibility"]["custom"], true);
+        let e = block_ops(
+            &ws,
+            &previews,
+            &serde_json::json!({
+                "entry": "main.wcl", "file": "main.wcl",
+                "ops": [{ "op": "set_visibility", "span": span_json(pc),
+                          "except_sites": ["deck"] }],
+            }),
+        )
+        .unwrap_err();
+        assert!(e.contains("custom"), "{e}");
+    }
+
+    #[test]
+    fn unit_field_and_unit_create_append_mode() {
+        let (_td, ws) = workspace_with(OBJECT_DOC);
+        let previews = previews();
+
+        // Set a field on a located object.
+        unit_field(
+            &ws,
+            &previews,
+            &serde_json::json!({
+                "entry": "main.wcl", "kind": "thing", "target": "alpha",
+                "field": "note", "value": "updated note",
+            }),
+        )
+        .expect("unit_field");
+        assert!(
+            disk(&ws).contains("note = \"updated note\""),
+            "{}",
+            disk(&ws)
+        );
+
+        // Create a new instance: appended to the file already holding the
+        // most `thing`s (main.wcl), duplicate ids rejected.
+        let v = unit_create(
+            &ws,
+            &previews,
+            &serde_json::json!({
+                "entry": "main.wcl",
+                "unit": { "kind": "thing", "id": "gamma",
+                          "fields": { "note": "third" } },
+            }),
+        )
+        .expect("unit_create");
+        assert_eq!(v["file"], "main.wcl");
+        let text = disk(&ws);
+        assert!(text.contains("thing \"gamma\""), "{text}");
+        assert!(text.contains("note = \"third\""), "{text}");
+        let e = unit_create(
+            &ws,
+            &previews,
+            &serde_json::json!({
+                "entry": "main.wcl",
+                "unit": { "kind": "thing", "id": "gamma" },
+            }),
+        )
+        .unwrap_err();
+        assert!(e.contains("already exists"), "{e}");
+    }
+
+    #[test]
+    fn unit_create_per_file_layout_with_pin() {
+        let td = tempfile::tempdir().unwrap();
+        write_mini_wskill(td.path());
+        let ws = Workspace::at(td.path());
+        let root = ws.root_dir().to_path_buf();
+
+        let v = unit_create(
+            &ws,
+            &previews(),
+            &serde_json::json!({
+                "entry": "main.wcl",
+                "unit": { "kind": "concept", "id": "gamma",
+                          "fields": { "name": "Gamma" } },
+                "pin": { "index_id": "lang" },
+            }),
+        )
+        .expect("unit_create");
+        assert_eq!(v["file"], "data/concepts/gamma.wcl");
+        // One-per-file layout: its own file, imported by the aggregator,
+        // pinned into the index — all in one commit.
+        let unit = std::fs::read_to_string(root.join("data/concepts/gamma.wcl")).unwrap();
+        assert!(unit.contains("concept gamma"), "{unit}");
+        assert!(unit.contains("name = \"Gamma\""), "{unit}");
+        let agg = std::fs::read_to_string(root.join("data/concepts/main.wcl")).unwrap();
+        assert!(agg.contains("import \"./gamma.wcl\""), "{agg}");
+        let idx = std::fs::read_to_string(root.join("data/indexes.wcl")).unwrap();
+        assert!(idx.contains("related = [alpha, beta, gamma]"), "{idx}");
+    }
+
+    #[test]
+    fn palette_lists_kinds_and_components() {
+        let doc = format!(
+            "{OBJECT_DOC}\nwdoc_component metric_card {{\n  wdoc_slot label\n  wdoc_slot status {{\n    default = \"ok\"\n  }}\n  wdoc_body {{\n    p $\"${{label}}\"\n  }}\n}}\n"
+        );
+        let (_td, ws) = workspace_with(&doc);
+
+        let v = palette(&ws, "main.wcl", Some("docs"), None).expect("palette");
+        assert_eq!(v["site_type"], "book");
+        assert_eq!(v["wskill"], false);
+        // The user schema kind, with introspected fields.
+        let kinds = v["unit_kinds"].as_array().unwrap();
+        let thing = kinds
+            .iter()
+            .find(|k| k["kind"] == "thing")
+            .unwrap_or_else(|| panic!("no thing kind: {v:#}"));
+        let fields = thing["fields"].as_array().unwrap();
+        let name = fields.iter().find(|f| f["name"] == "name").unwrap();
+        assert_eq!(name["inline_slot"], 0);
+        assert_eq!(name["optional"], false);
+        let note = fields.iter().find(|f| f["name"] == "note").unwrap();
+        assert_eq!(note["optional"], true);
+        // wdoc's own document gathers (site, page, …) are not offered.
+        assert!(
+            !kinds
+                .iter()
+                .any(|k| k["kind"] == "site" || k["kind"] == "page"),
+            "{v:#}"
+        );
+        // Curated body kinds carry insertion snippets.
+        let body = v["body_kinds"].as_array().unwrap();
+        assert!(body.iter().any(|k| k["kind"] == "p"));
+        assert!(
+            body.iter()
+                .all(|k| k["template_source"].as_str().is_some_and(|s| !s.is_empty()))
+        );
+        // Diagram shape kinds: SvgBlock descendants with introspected fields.
+        let shapes = v["diagram_kinds"].as_array().unwrap();
+        let process = shapes
+            .iter()
+            .find(|k| k["kind"] == "process")
+            .unwrap_or_else(|| panic!("no process shape kind: {v:#}"));
+        let pf = process["fields"].as_array().unwrap();
+        for want in ["x", "y", "width", "height"] {
+            assert!(pf.iter().any(|f| f["name"] == want), "{v:#}");
+        }
+        assert!(shapes.iter().any(|k| k["kind"] == "rect"), "{v:#}");
+        // Page-level HTML blocks don't extend SvgBlock.
+        assert!(!shapes.iter().any(|k| k["kind"] == "diagram"), "{v:#}");
+        // The authored component with its slot contract.
+        let comps = v["components"].as_array().unwrap();
+        let card = comps.iter().find(|c| c["name"] == "metric_card").unwrap();
+        let slots = card["slots"].as_array().unwrap();
+        assert_eq!(slots.len(), 2, "{v:#}");
+        let label = slots.iter().find(|s| s["name"] == "label").unwrap();
+        assert_eq!(label["required"], true);
+        let status_slot = slots.iter().find(|s| s["name"] == "status").unwrap();
+        assert_eq!(status_slot["required"], false);
+        assert_eq!(status_slot["default"], "ok");
+    }
 }

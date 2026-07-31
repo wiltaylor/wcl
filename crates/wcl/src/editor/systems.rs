@@ -46,7 +46,7 @@ use super::blocks::{
     KindInfo, bare_type, first_label, is_scalar, kind_entry, kind_links, value_string,
 };
 use super::data::classify_cell;
-use super::{EditorState, resolve_doc_entry, run_blocking};
+use super::{EditorState, Workspace, run_blocking};
 use crate::serve::query_param;
 
 /// Fields tried in order for a node's display title.
@@ -130,7 +130,7 @@ pub(super) async fn handle_systems(State(state): State<Arc<EditorState>>, uri: U
     let state2 = Arc::clone(&state);
     run_blocking(move || {
         let entry = entry.ok_or("missing entry")?;
-        systems(&state2, &entry, page_file.as_deref())
+        systems(&state2.ws, &entry, page_file.as_deref())
     })
     .await
 }
@@ -153,14 +153,13 @@ pub(super) async fn handle_systems_detail(
         Err(e) => return crate::serve::json_error(axum::http::StatusCode::BAD_REQUEST, &e),
     };
     let state2 = Arc::clone(&state);
-    run_blocking(move || systems_detail(&state2, &v)).await
+    run_blocking(move || systems_detail(&state2.ws, &v)).await
 }
 
-fn systems_detail(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let doc_entry = super::resolve_doc_entry_from(state, v)?;
+fn systems_detail(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let doc_entry = ws.doc_entry_from(v)?;
     let file_rel = crate::edit::str_field(v, "file")?;
-    let file = crate::serve::sandboxed(&state.root_dir, &state.root_dir.join(file_rel))
-        .ok_or_else(|| format!("file outside the served tree: {file_rel}"))?;
+    let file = ws.abs(file_rel)?;
     let span = super::blocks::span_field(v, "span")?;
     let text = crate::edit::read(&file)?;
     let src = parse_for_edit(&text, file.display().to_string()).map_err(super::err_str)?;
@@ -232,7 +231,7 @@ fn systems_detail(state: &EditorState, v: &serde_json::Value) -> Result<serde_js
                 "other_title": other.as_deref().and_then(title_of),
                 "label": field_string(&b, "label"),
                 "rel_kind": field_string(&b, "kind"),
-                "file": rel(state, &efile),
+                "file": rel(ws, &efile),
                 "span": super::span_json(b.span()),
             }));
         }
@@ -242,7 +241,7 @@ fn systems_detail(state: &EditorState, v: &serde_json::Value) -> Result<serde_js
         "ok": true,
         "kind": blk.kind,
         "id": id,
-        "file": rel(state, &file),
+        "file": rel(ws, &file),
         "span": super::span_json(span),
         "etag": crate::edit::content_etag(&text),
         "source": slice(span),
@@ -431,11 +430,11 @@ fn field_string(b: &wcl_lang::Block<'_>, name: &str) -> Option<String> {
 }
 
 fn systems(
-    state: &EditorState,
+    ws: &Workspace,
     entry: &str,
     page_file: Option<&str>,
 ) -> Result<serde_json::Value, String> {
-    let doc_entry = resolve_doc_entry(state, entry, page_file)?;
+    let doc_entry = ws.doc_entry(entry, page_file)?;
     let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(super::err_str)?;
 
     let infos: Vec<KindInfo> = kind_links(&doc);
@@ -466,7 +465,7 @@ fn systems(
         let Some(blk) = super::find_block_at(&src.items, span) else {
             continue;
         };
-        let rel = rel(state, &file);
+        let rel = rel(ws, &file);
         let etag = crate::edit::content_etag(text);
 
         if let Some((sf, df)) = &info.edge {
@@ -570,7 +569,7 @@ fn systems(
             path.map(Path::to_path_buf)
                 .unwrap_or_else(|| doc_entry.clone())
         })
-        .map(|p| rel(state, &p));
+        .map(|p| rel(ws, &p));
 
     Ok(serde_json::json!({
         "ok": true,
@@ -623,10 +622,10 @@ fn classify_field(e: &ast::Expr) -> serde_json::Value {
     }
 }
 
-fn rel(state: &EditorState, file: &Path) -> String {
+fn rel(ws: &Workspace, file: &Path) -> String {
     std::fs::canonicalize(file)
         .unwrap_or_else(|_| file.to_path_buf())
-        .strip_prefix(&state.root_dir)
+        .strip_prefix(ws.root_dir())
         .map(|p| p.to_string_lossy().replace('\\', "/"))
         .unwrap_or_else(|_| file.display().to_string())
 }
@@ -712,14 +711,8 @@ type D {
             format!("import \"./schema.wcl\"\n\n{data}"),
         )
         .expect("write main");
-        let state = EditorState {
-            root_dir: root,
-            root_file: None,
-            preview: crate::preview::Preview::new().expect("preview"),
-            preview_sessions: std::sync::Mutex::new(HashMap::new()),
-            review: None,
-        };
-        let v = systems(&state, "main.wcl", None).expect("systems");
+        let ws = Workspace::at(&root);
+        let v = systems(&ws, "main.wcl", None).expect("systems");
         drop(dir);
         v
     }
@@ -930,17 +923,11 @@ type D {
             format!("import \"./schema.wcl\"\n\n{data}"),
         )
         .expect("write main");
-        let state = EditorState {
-            root_dir: root.clone(),
-            root_file: None,
-            preview: crate::preview::Preview::new().expect("preview"),
-            preview_sessions: std::sync::Mutex::new(HashMap::new()),
-            review: None,
-        };
-        let model = systems(&state, "main.wcl", None).expect("systems");
+        let ws = Workspace::at(&root);
+        let model = systems(&ws, "main.wcl", None).expect("systems");
         let a = node(&model, "a");
         let v = systems_detail(
-            &state,
+            &ws,
             &serde_json::json!({
                 "entry": "main.wcl",
                 "file": a["file"],
@@ -997,17 +984,11 @@ type D {
             format!("import \"./schema.wcl\"\n\n{data}"),
         )
         .expect("write main");
-        let state = EditorState {
-            root_dir: root,
-            root_file: None,
-            preview: crate::preview::Preview::new().expect("preview"),
-            preview_sessions: std::sync::Mutex::new(HashMap::new()),
-            review: None,
-        };
-        let model = systems(&state, "main.wcl", None).expect("systems");
+        let ws = Workspace::at(&root);
+        let model = systems(&ws, "main.wcl", None).expect("systems");
         let p = node(&model, "p");
         let v = systems_detail(
-            &state,
+            &ws,
             &serde_json::json!({
                 "entry": "main.wcl",
                 "file": p["file"],

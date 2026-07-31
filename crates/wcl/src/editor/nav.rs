@@ -27,8 +27,9 @@ use wcl_lang::ast::{self, Expr, Item};
 use wcl_lang::{Document, Span, Value, edit as ast_edit, format as wcl_format, parse_for_edit};
 
 use super::blocks::{first_label, is_wskill, site_kind, unit_kinds, value_string};
-use super::{EditorState, run_blocking};
-use crate::serve::{json_error, parse_json_body, query_param, sandboxed};
+use super::preview::Sessions;
+use super::{EditorState, Workspace, run_blocking};
+use crate::serve::{json_error, parse_json_body, query_param};
 
 // ---------------------------------------------------------------------------
 // `GET /api/nav`
@@ -45,21 +46,20 @@ pub(super) async fn handle_nav(State(state): State<Arc<EditorState>>, uri: Uri) 
     let state2 = Arc::clone(&state);
     run_blocking(move || {
         let entry = entry.ok_or("missing entry")?;
-        nav(&state2, &entry, site.as_deref())
+        nav(&state2.ws, &entry, site.as_deref())
     })
     .await
 }
 
-fn nav(state: &EditorState, entry: &str, site: Option<&str>) -> Result<serde_json::Value, String> {
-    let entry_abs = sandboxed(&state.root_dir, &state.root_dir.join(entry))
-        .ok_or_else(|| format!("file outside the served tree: {entry}"))?;
+fn nav(ws: &Workspace, entry: &str, site: Option<&str>) -> Result<serde_json::Value, String> {
+    let entry_abs = ws.abs(entry)?;
     let doc = wcl_wdoc::open_doc_for_edit(&entry_abs).map_err(super::err_str)?;
     let wskill = is_wskill(&doc);
     let site_type = site_kind(&doc, site);
 
-    let pages = declared_pages(state, &doc, &entry_abs);
+    let pages = declared_pages(ws, &doc, &entry_abs);
     if wskill && site_type == "book" {
-        let (nav, units) = wskill_nav(state, &doc, &entry_abs)?;
+        let (nav, units) = wskill_nav(ws, &doc, &entry_abs)?;
         return Ok(serde_json::json!({
             "ok": true,
             "site_type": site_type,
@@ -70,7 +70,7 @@ fn nav(state: &EditorState, entry: &str, site: Option<&str>) -> Result<serde_jso
         }));
     }
 
-    let (nav, container) = static_site_nav(state, &entry_abs, site, site_type)?;
+    let (nav, container) = static_site_nav(ws, &entry_abs, site, site_type)?;
     Ok(serde_json::json!({
         "ok": true,
         "site_type": site_type,
@@ -83,7 +83,7 @@ fn nav(state: &EditorState, entry: &str, site: Option<&str>) -> Result<serde_jso
 
 /// Every declared `page` block (repeater-generated pages are projections,
 /// not blocks — they don't appear here).
-fn declared_pages(state: &EditorState, doc: &Document, entry_abs: &Path) -> Vec<serde_json::Value> {
+fn declared_pages(ws: &Workspace, doc: &Document, entry_abs: &Path) -> Vec<serde_json::Value> {
     doc.blocks_with_source()
         .filter(|(_, b)| b.kind() == "page")
         .filter_map(|(path, b)| {
@@ -97,16 +97,16 @@ fn declared_pages(state: &EditorState, doc: &Document, entry_abs: &Path) -> Vec<
             Some(serde_json::json!({
                 "name": name,
                 "title": title,
-                "source": source_binding(state, file, b.span()),
+                "source": source_binding(ws, file, b.span()),
             }))
         })
         .collect()
 }
 
-fn source_binding(state: &EditorState, file: &Path, span: Span) -> serde_json::Value {
+fn source_binding(ws: &Workspace, file: &Path, span: Span) -> serde_json::Value {
     let rel = std::fs::canonicalize(file)
         .unwrap_or_else(|_| file.to_path_buf())
-        .strip_prefix(&state.root_dir)
+        .strip_prefix(ws.root_dir())
         .map(|p| p.to_string_lossy().replace('\\', "/"))
         .unwrap_or_else(|_| file.display().to_string());
     serde_json::json!({
@@ -129,7 +129,7 @@ fn page_prefix(kind: &str) -> &str {
 }
 
 fn wskill_nav(
-    state: &EditorState,
+    ws: &Workspace,
     doc: &Document,
     entry_abs: &Path,
 ) -> Result<(Vec<serde_json::Value>, Vec<serde_json::Value>), String> {
@@ -170,7 +170,7 @@ fn wskill_nav(
             continue;
         }
         let file = path.unwrap_or(entry_abs);
-        nav.push(index_entry(state, &b, file, &units));
+        nav.push(index_entry(ws, &b, file, &units));
     }
 
     let units_json: Vec<serde_json::Value> = unit_order
@@ -182,7 +182,7 @@ fn wskill_nav(
                 "kind": kind,
                 "title": title,
                 "page": format!("{}_{id}", page_prefix(kind)),
-                "source": source_binding(state, file, *span),
+                "source": source_binding(ws, file, *span),
             }))
         })
         .collect();
@@ -190,7 +190,7 @@ fn wskill_nav(
 }
 
 fn index_entry(
-    state: &EditorState,
+    ws: &Workspace,
     b: &wcl_lang::Block<'_>,
     file: &Path,
     units: &HashMap<String, (String, String, PathBuf, Span)>,
@@ -216,7 +216,7 @@ fn index_entry(
                     "unit": { "kind": kind, "id": rid },
                     "title": title,
                     "page": format!("{}_{rid}", page_prefix(kind)),
-                    "source": source_binding(state, ufile, *uspan),
+                    "source": source_binding(ws, ufile, *uspan),
                 }),
                 None => serde_json::json!({
                     "kind": "unit",
@@ -229,14 +229,14 @@ fn index_entry(
         }
     }
     for child in b.blocks().filter(|c| c.kind() == "index") {
-        children.push(index_entry(state, &child, file, units));
+        children.push(index_entry(ws, &child, file, units));
     }
     serde_json::json!({
         "kind": "index",
         "id": id,
         "title": title,
         "page": has_body.then(|| format!("index_{id}")),
-        "source": source_binding(state, file, b.span()),
+        "source": source_binding(ws, file, b.span()),
         "children": children,
     })
 }
@@ -255,7 +255,7 @@ fn container_kind(site_type: &str) -> &'static str {
 }
 
 fn static_site_nav(
-    state: &EditorState,
+    ws: &Workspace,
     entry_abs: &Path,
     site: Option<&str>,
     site_type: &str,
@@ -287,22 +287,22 @@ fn static_site_nav(
         .items
         .iter()
         .filter_map(|it| match it {
-            Item::Block(b) => Some(static_entry(state, b, entry_abs)),
+            Item::Block(b) => Some(static_entry(ws, b, entry_abs)),
             _ => None,
         })
         .collect();
-    Ok((nav, source_binding(state, entry_abs, container.span)))
+    Ok((nav, source_binding(ws, entry_abs, container.span)))
 }
 
 /// One literal nav entry (`chapter` / `item` / `section` / `slide`) with its
 /// source binding; a `wdoc_repeater` becomes a read-only synthetic entry.
-fn static_entry(state: &EditorState, b: &ast::Block, entry_abs: &Path) -> serde_json::Value {
+fn static_entry(ws: &Workspace, b: &ast::Block, entry_abs: &Path) -> serde_json::Value {
     if b.kind == "wdoc_repeater" {
         return serde_json::json!({
             "kind": "generated",
             "title": "(generated entries)",
             "synthetic": true,
-            "source": source_binding(state, entry_abs, b.span),
+            "source": source_binding(ws, entry_abs, b.span),
         });
     }
     let title = super::blocks::ast_label(b);
@@ -329,7 +329,7 @@ fn static_entry(state: &EditorState, b: &ast::Block, entry_abs: &Path) -> serde_
         .items
         .iter()
         .filter_map(|it| match it {
-            Item::Block(c) => Some(static_entry(state, c, entry_abs)),
+            Item::Block(c) => Some(static_entry(ws, c, entry_abs)),
             _ => None,
         })
         .collect();
@@ -340,7 +340,7 @@ fn static_entry(state: &EditorState, b: &ast::Block, entry_abs: &Path) -> serde_
         "page": page,
         "href": href,
         "synthetic": synthetic,
-        "source": source_binding(state, entry_abs, b.span),
+        "source": source_binding(ws, entry_abs, b.span),
         "children": children,
     })
 }
@@ -381,17 +381,20 @@ pub(super) async fn handle_nav_op(State(state): State<Arc<EditorState>>, body: S
         Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
     };
     let state2 = Arc::clone(&state);
-    run_blocking(move || nav_op(&state2, &v)).await
+    run_blocking(move || nav_op(&state2.ws, &state2.sessions, &v)).await
 }
 
-fn nav_op(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Value, String> {
+pub(super) fn nav_op(
+    ws: &Workspace,
+    previews: &Sessions,
+    v: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
     let entry = crate::edit::str_field(v, "entry")?;
-    let entry_abs = sandboxed(&state.root_dir, &state.root_dir.join(entry))
-        .ok_or_else(|| format!("file outside the served tree: {entry}"))?;
+    let entry_abs = ws.abs(entry)?;
     let op = crate::edit::str_field(v, "op")?;
-    match op {
+    let result = match op {
         "rename" => {
-            let (file, span) = op_target(state, v)?;
+            let (file, span) = op_target(ws, v)?;
             let title = crate::edit::str_field(v, "title")?;
             edit_file(&entry_abs, &file, |src| {
                 let block = ast_edit::find_block_by_span(&mut src.items, span)
@@ -409,7 +412,7 @@ fn nav_op(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Valu
             })
         }
         "remove" => {
-            let (file, span) = op_target(state, v)?;
+            let (file, span) = op_target(ws, v)?;
             edit_file(&entry_abs, &file, |src| {
                 if !ast_edit::remove_block_by_span(&mut src.items, span) {
                     return Err(super::blocks::stale_span());
@@ -418,7 +421,7 @@ fn nav_op(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Valu
             })
         }
         "move" => {
-            let (file, span) = op_target(state, v)?;
+            let (file, span) = op_target(ws, v)?;
             let down = match crate::edit::str_field(v, "dir")? {
                 "down" => true,
                 "up" => false,
@@ -431,7 +434,7 @@ fn nav_op(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Valu
                 Ok(())
             })
         }
-        "add_section" => add_section(state, &entry_abs, v),
+        "add_section" => add_section(ws, &entry_abs, v),
         "add_page" => add_page(&entry_abs, v),
         // A training view's levels are the course itself, ordered by each
         // lesson's `n` rather than pinned by a `related` list — so they
@@ -444,20 +447,24 @@ fn nav_op(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Valu
         "unpin_unit" => related_op(&entry_abs, v, RelatedOp::Unpin),
         "reorder_children" if is_syllabus_level(&entry_abs, v)? => syllabus_reorder(&entry_abs, v),
         "reorder_children" => related_op(&entry_abs, v, RelatedOp::Reorder),
-        "create_index" => create_index(state, &entry_abs, v),
+        "create_index" => create_index(ws, &entry_abs, v),
         "delete_index" => delete_index(&entry_abs, v),
         "move_index" => move_index(&entry_abs, v),
         "promote_index" => promote_index(&entry_abs, v),
         "demote_index" => demote_index(&entry_abs, v),
         other => Err(format!("unknown nav op `{other}`")),
+    };
+    if result.is_ok() {
+        // Every nav op rewrites source: the disk moved under every built
+        // preview.
+        previews.invalidate();
     }
+    result
 }
 
 /// The op's target binding: `file` (repo-relative) + `span`.
-fn op_target(state: &EditorState, v: &serde_json::Value) -> Result<(PathBuf, Span), String> {
-    let file = crate::edit::str_field(v, "file")?;
-    let file_abs = sandboxed(&state.root_dir, &state.root_dir.join(file))
-        .ok_or_else(|| format!("file outside the served tree: {file}"))?;
+fn op_target(ws: &Workspace, v: &serde_json::Value) -> Result<(PathBuf, Span), String> {
+    let file_abs = ws.abs(crate::edit::str_field(v, "file")?)?;
     let span = super::blocks::span_field(v, "span")?;
     Ok((file_abs, span))
 }
@@ -477,7 +484,7 @@ fn edit_file(
 }
 
 fn add_section(
-    state: &EditorState,
+    ws: &Workspace,
     entry_abs: &Path,
     v: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
@@ -486,8 +493,7 @@ fn add_section(
         // Wskill: a new `index` block appended to the target file.
         Some(id) => {
             let file = crate::edit::str_field(v, "file")?;
-            let file_abs = sandboxed(&state.root_dir, &state.root_dir.join(file))
-                .ok_or_else(|| format!("file outside the served tree: {file}"))?;
+            let file_abs = ws.abs(file)?;
             let block = ast_edit::build_block(
                 "index",
                 &[],
@@ -502,7 +508,7 @@ fn add_section(
         // Static sites: a `chapter` / `item` / `section` inserted into the
         // container (or a parent entry) span.
         None => {
-            let (file, span) = op_target(state, v)?;
+            let (file, span) = op_target(ws, v)?;
             let kind = crate::edit::str_field(v, "kind")?;
             if !matches!(kind, "chapter" | "item" | "section") {
                 return Err(format!("`{kind}` is not a nav section kind"));
@@ -583,28 +589,10 @@ enum RelatedOp {
     Reorder,
 }
 
-/// Does this block's subtree contain an `index` with the given id?
-/// (Sub-indexes nest inside their parent block, so the owning *file* must
-/// be found by searching recursively — the block itself is then relocated
-/// by the equally recursive `find_block_by_kind_label`.)
-fn subtree_has_index(b: &wcl_lang::Block<'_>, id: &str) -> bool {
-    (b.kind() == "index" && first_label(b).as_deref() == Some(id))
-        || b.blocks().any(|c| subtree_has_index(&c, id))
-}
-
-/// The file declaring the `index` with `id` — sub-indexes nest inside their
-/// parent block, so the search recurses (the block itself is relocated by the
-/// equally recursive [`super::blocks::find_block_by_kind_label`]). Index ids
-/// are assumed document-unique; first match wins.
+/// The file declaring the `index` with `id`, opened fresh from disk.
 fn index_file(entry_abs: &Path, index_id: &str) -> Result<PathBuf, String> {
     let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(super::err_str)?;
-    doc.blocks_with_source()
-        .find(|(_, b)| subtree_has_index(b, index_id))
-        .map(|(p, _)| {
-            p.map(Path::to_path_buf)
-                .unwrap_or_else(|| entry_abs.to_path_buf())
-        })
-        .ok_or_else(|| format!("no `index` with id `{index_id}`"))
+    super::blocks::index_file(&doc, entry_abs, index_id)
 }
 
 /// Rewrite an index's `related` list: pin (append), unpin (remove), or
@@ -766,7 +754,7 @@ fn relocate_err(id: &str) -> String {
 /// A new `index` block: nested inside `parent_id`, else placed by the same
 /// convention `unit_create` uses (beside the existing indexes).
 fn create_index(
-    state: &EditorState,
+    ws: &Workspace,
     entry_abs: &Path,
     v: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
@@ -778,10 +766,7 @@ fn create_index(
     }
     let name = crate::edit::str_field(v, "name")?;
     let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(super::err_str)?;
-    if doc
-        .blocks_with_source()
-        .any(|(_, b)| subtree_has_index(&b, id))
-    {
+    if super::blocks::index_file(&doc, entry_abs, id).is_ok() {
         return Err(format!("an `index` with id `{id}` already exists"));
     }
     let block = ast_edit::build_block(
@@ -822,7 +807,7 @@ fn create_index(
             Ok(serde_json::json!({
                 "ok": true,
                 "id": id,
-                "file": super::blocks::rel_path(state, &file)?,
+                "file": ws.rel(&file)?,
             }))
         }
     }
@@ -996,4 +981,259 @@ fn syllabus_reorder(entry_abs: &Path, v: &serde_json::Value) -> Result<serde_jso
     }
     crate::edit::commit(entry_abs, writes)?;
     Ok(serde_json::json!({ "ok": true }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::preview::Sessions;
+    use crate::editor::testsupport::{
+        write_mini_wskill, write_mini_wskill_nested, write_mini_wskill_training,
+    };
+
+    fn setup(write: impl Fn(&Path)) -> (tempfile::TempDir, Workspace) {
+        let td = tempfile::tempdir().unwrap();
+        write(td.path());
+        let ws = Workspace::at(td.path());
+        (td, ws)
+    }
+
+    /// Nav ops are id- or span-addressed writes; nothing here needs a
+    /// preview scratch tree, only the handle that marks one stale.
+    fn op(ws: &Workspace, body: serde_json::Value) -> Result<serde_json::Value, String> {
+        nav_op(ws, &Sessions::default(), &body)
+    }
+
+    fn read(ws: &Workspace, rel: &str) -> String {
+        std::fs::read_to_string(ws.root_dir().join(rel)).unwrap()
+    }
+
+    #[test]
+    fn wskill_nav_model_and_related_ops() {
+        let (_td, ws) = setup(write_mini_wskill);
+
+        let v = nav(&ws, "main.wcl", Some("book")).expect("nav");
+        assert_eq!(v["wskill"], true);
+        assert_eq!(v["site_type"], "book");
+        let model = v["nav"].as_array().unwrap();
+        assert_eq!(model.len(), 1, "{v:#}");
+        assert_eq!(model[0]["kind"], "index");
+        assert_eq!(model[0]["title"], "Language");
+        let children = model[0]["children"].as_array().unwrap();
+        assert_eq!(children.len(), 2);
+        assert_eq!(children[0]["title"], "Alpha");
+        assert_eq!(children[0]["page"], "concept_alpha");
+        assert_eq!(children[0]["source"]["file"], "data/concepts/alpha.wcl");
+        assert_eq!(v["units"].as_array().unwrap().len(), 2);
+
+        // Reorder, unpin, re-pin.
+        op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl", "op": "reorder_children",
+                "index_id": "lang", "order": ["beta", "alpha"],
+            }),
+        )
+        .expect("reorder");
+        assert!(
+            read(&ws, "data/indexes.wcl").contains("related = [beta, alpha]"),
+            "{}",
+            read(&ws, "data/indexes.wcl")
+        );
+        op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl", "op": "unpin_unit",
+                "index_id": "lang", "unit_id": "alpha",
+            }),
+        )
+        .expect("unpin");
+        assert!(read(&ws, "data/indexes.wcl").contains("related = [beta]"));
+        op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl", "op": "pin_unit",
+                "index_id": "lang", "unit_id": "alpha",
+            }),
+        )
+        .expect("pin");
+        assert!(
+            read(&ws, "data/indexes.wcl").contains("related = [beta, alpha]"),
+            "{}",
+            read(&ws, "data/indexes.wcl")
+        );
+
+        // A bad permutation is rejected.
+        let e = op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl", "op": "reorder_children",
+                "index_id": "lang", "order": ["beta"],
+            }),
+        )
+        .unwrap_err();
+        assert!(e.contains("permutation"), "{e}");
+    }
+
+    #[test]
+    fn static_book_nav_and_ops() {
+        let doc = "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n  toc {\n    chapter \"Start\" {\n      page = index\n    }\n    chapter \"Guides\" {\n      chapter \"Deep\" {\n        page = deep\n      }\n    }\n  }\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hello\"\n}\n\npage deep {\n  title = \"Deep\"\n\n  h1 \"Deep\"\n}\n";
+        let (_td, ws) = setup(|root| std::fs::write(root.join("main.wcl"), doc).unwrap());
+
+        let v = nav(&ws, "main.wcl", Some("docs")).expect("nav");
+        assert_eq!(v["site_type"], "book");
+        let model = v["nav"].as_array().unwrap();
+        assert_eq!(model.len(), 2);
+        assert_eq!(model[0]["kind"], "chapter");
+        assert_eq!(model[0]["title"], "Start");
+        assert_eq!(model[0]["page"], "index");
+        assert_eq!(model[1]["children"][0]["title"], "Deep");
+        assert!(v["container"]["span"]["start"].is_u64());
+        assert_eq!(v["pages"].as_array().unwrap().len(), 2);
+
+        // Rename a chapter, move it, then add a page linked into the toc.
+        let start = model[0]["source"].clone();
+        op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl", "op": "rename", "kind": "chapter",
+                "file": start["file"], "span": start["span"], "title": "Begin",
+            }),
+        )
+        .expect("rename");
+        assert!(read(&ws, "main.wcl").contains("chapter \"Begin\""));
+
+        // Re-read (spans shifted), then move "Begin" down.
+        let v = nav(&ws, "main.wcl", Some("docs")).expect("nav");
+        let begin = v["nav"][0]["source"].clone();
+        op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl", "op": "move", "dir": "down",
+                "file": begin["file"], "span": begin["span"],
+            }),
+        )
+        .expect("move");
+        let text = read(&ws, "main.wcl");
+        assert!(
+            text.find("chapter \"Guides\"").unwrap() < text.find("chapter \"Begin\"").unwrap(),
+            "{text}"
+        );
+
+        // Add a page + its chapter entry in one op.
+        let v = nav(&ws, "main.wcl", Some("docs")).expect("nav");
+        let container = v["container"].clone();
+        op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl", "op": "add_page",
+                "name": "faq", "title": "FAQ",
+                "nav": { "container_span": container["span"], "kind": "chapter" },
+            }),
+        )
+        .expect("add_page");
+        let text = read(&ws, "main.wcl");
+        assert!(text.contains("page faq"), "{text}");
+        assert!(text.contains("chapter \"FAQ\""), "{text}");
+        // The new page + entry are in the model.
+        let v = nav(&ws, "main.wcl", Some("docs")).expect("nav");
+        assert!(
+            v["nav"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["title"] == "FAQ" && n["page"] == "faq"),
+            "{v:#}"
+        );
+    }
+
+    /// The id-addressed related ops reach nested sub-indexes (the owning
+    /// file used to be resolved with a top-level-only scan, so these all
+    /// errored for sub-index ids).
+    #[test]
+    fn op_targets_sub_index() {
+        let (_td, ws) = setup(write_mini_wskill_nested);
+
+        for body in [
+            serde_json::json!({
+                "entry": "main.wcl", "op": "pin_unit",
+                "index_id": "lang_sub", "unit_id": "alpha",
+            }),
+            serde_json::json!({
+                "entry": "main.wcl", "op": "reorder_children",
+                "index_id": "lang_sub", "order": ["alpha", "beta"],
+            }),
+            serde_json::json!({
+                "entry": "main.wcl", "op": "unpin_unit",
+                "index_id": "lang_sub", "unit_id": "beta",
+            }),
+        ] {
+            op(&ws, body.clone()).unwrap_or_else(|e| panic!("{body}: {e}"));
+        }
+
+        // The writes landed on the NESTED list; the top-level one is
+        // untouched.
+        let text = read(&ws, "data/indexes.wcl");
+        assert!(text.contains("related = [alpha]\n"), "{text}");
+        assert!(
+            text.matches("related = [alpha]").count() == 2,
+            "both levels hold exactly `alpha`: {text}"
+        );
+    }
+
+    /// Reordering the syllabus rewrites each lesson's `n` — the course has no
+    /// `related` list to permute — and pinning has no meaning there.
+    #[test]
+    fn syllabus_reorder_rewrites_lesson_order() {
+        let (_td, ws) = setup(write_mini_wskill_training);
+
+        op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl",
+                "op": "reorder_children",
+                "index_id": "__course",
+                "order": ["second", "first"],
+            }),
+        )
+        .expect("reorder");
+        // `n` carries the order, so the blocks stay where they were authored.
+        let text = read(&ws, "data/lessons.wcl");
+        let at = |id: &str| text.find(id).unwrap();
+        assert!(
+            at("lesson first") < at("lesson second"),
+            "source order is untouched"
+        );
+        let n_of = |id: &str| {
+            let rest = &text[at(&format!("lesson {id}"))..];
+            let at_n = rest.find("n = ").expect("an n field");
+            rest[at_n + 4..].trim_start().chars().next().unwrap()
+        };
+        assert_eq!(n_of("second"), '1', "second moved to the front: {text}");
+        assert_eq!(n_of("first"), '2', "first moved to the back: {text}");
+
+        // A permutation is required, so a stale client can't drop a lesson.
+        assert!(
+            op(
+                &ws,
+                serde_json::json!({
+                    "entry": "main.wcl", "op": "reorder_children",
+                    "index_id": "__course", "order": ["first"],
+                }),
+            )
+            .is_err()
+        );
+
+        // Pinning into a course is meaningless — every lesson is already in it.
+        assert!(
+            op(
+                &ws,
+                serde_json::json!({
+                    "entry": "main.wcl", "op": "pin_unit",
+                    "index_id": "__course", "unit_id": "first",
+                }),
+            )
+            .is_err()
+        );
+    }
 }
