@@ -65,9 +65,6 @@ export const cellNamed = (cells, name) => cells?.fields?.[name];
 /** A named field's text, '' when unset or when it has no single value. */
 export const cellText = (cells, name) => cellNamed(cells, name)?.text ?? '';
 
-/** A field's state: 'absent' when unset, else the server's classification. */
-export const fieldState = (field, cells) => cellOf(field, cells)?.state ?? 'absent';
-
 /** A field's current text ('' when unset). A list cell reads as its
     members on one comma-separated line — the same line every panel edits. */
 export function fieldText(field, cells) {
@@ -81,6 +78,29 @@ export function fieldText(field, cells) {
     source editor. */
 export const formEditable = (state) =>
   ['text', 'identifier', 'symbol', 'bool', 'number', 'list', 'absent'].includes(state);
+
+/**
+ * Why a cell has no form control, in the two lengths its hosts want: a
+ * compact marker for a table cell and an explanation for a disabled input.
+ * One vocabulary, so the same value is not "(expr)" in the Data table and
+ * something else in the form that opens over it.
+ */
+export const NOT_EDITABLE = {
+  rows: { short: '(grid)', long: '(a grid — edit as source)' },
+  computed: { short: '(expr)', long: '(computed — edit as source)' },
+};
+export const notEditable = (cell) => NOT_EDITABLE[cell?.state === 'rows' ? 'rows' : 'computed'];
+
+/**
+ * How a cell's value is written back: `text` is the ONLY state written as a
+ * string literal — every other state round-trips as parsed WCL (see the
+ * states in `editor/cell.rs`). {@link valueOp} types a write from the
+ * DECLARED type; this is for the structured editors that hold a cell but no
+ * schema field, so an `identifier` label (a `code` block's language) is not
+ * quietly rewritten as a quoted string.
+ */
+export const cellWrite = (cell, text) =>
+  (cell?.state ?? 'text') === 'text' ? { text } : { expr: text };
 
 /**
  * Which control a field wants, given its cell — the one decision every
@@ -124,7 +144,9 @@ export function valueOp(span, field, text) {
   const op = { op: 'set_field', span, field: field.name };
   if (isText(ty)) return { ...op, text };
   if (ty === 'bool') return { ...op, expr: text === 'true' ? 'true' : 'false' };
-  if (field.symbols) return { ...op, expr: `:${text}` };
+  // A cell's symbol text is the bare name, so writing one back re-adds the
+  // colon — for an open `symbol` field as much as for a symbol set's.
+  if (field.symbols || ty === 'symbol') return { ...op, expr: `:${text}` };
   if (isInt(ty)) return { ...op, expr: String(Math.round(Number(text))) };
   if (isFloat(ty)) {
     const n = Number(text);
@@ -142,7 +164,14 @@ export function valueOp(span, field, text) {
  *   commits one field must not rewrite the rest of the block)
  * - clearing an OPTIONAL field removes it; clearing a REQUIRED one (or an
  *   inline label, which cannot be absent) is ignored
- * - anything else writes the typed value ({@link valueOp})
+ * - anything else writes the typed value ({@link valueOp}, or a list
+ *   literal for a `list<…>` field)
+ *
+ * The clear branch runs before the list one, so an emptied optional list is
+ * REMOVED like every other emptied optional field rather than being the one
+ * field in the editor that clears to `[]`. A required list still clears to
+ * `[]`, because an empty list is a value it can legally hold — which is
+ * exactly what a required scalar lacks, and why clearing one is ignored.
  *
  * `fields` is the kind's schema metadata, `cells` the instance's current
  * values, `draft` the touched fields by name, `span` the block to write.
@@ -153,14 +182,14 @@ export function draftOps(fields, cells, draft, span) {
     if (!(f.name in draft)) continue;
     const text = draft[f.name];
     if (text === fieldText(f, cells)) continue;
-    if (isList(f)) {
-      ops.push({ op: 'set_field', span, field: f.name, expr: listExpr(f, text) });
+    if (text === '') {
+      if (isSlot(f)) continue;
+      if (f.optional !== false) ops.push({ op: 'remove_field', span, field: f.name });
+      else if (isList(f)) ops.push({ op: 'set_field', span, field: f.name, expr: '[]' });
       continue;
     }
-    if (text === '') {
-      if (!isSlot(f) && f.optional !== false) {
-        ops.push({ op: 'remove_field', span, field: f.name });
-      }
+    if (isList(f)) {
+      ops.push({ op: 'set_field', span, field: f.name, expr: listExpr(f, text) });
       continue;
     }
     ops.push(valueOp(span, f, text));
@@ -192,12 +221,15 @@ export function createFields(fields, draft) {
 }
 
 /** The JSON value for a create-form field (`/api/unit/create`'s `fields`),
-    typed the same way: identifiers and symbols keep their WCL shape rather
-    than becoming quoted strings. */
+    typed the same way {@link valueOp} types an edit: identifiers and symbols
+    keep their WCL shape rather than becoming quoted strings, and a type
+    neither of them recognises is the author's raw expression on both paths —
+    creating and editing a column must not disagree about how it is written. */
 export function createValue(field, text) {
   const ty = bareType(field);
+  if (isText(ty)) return text;
   if (ty === 'identifier') return { ident: text };
-  if (field.symbols) return { sym: text };
+  if (field.symbols || ty === 'symbol') return { sym: text };
   if (ty === 'bool') return text === 'true';
   if (isInt(ty) || isFloat(ty)) {
     const n = Number(text);
@@ -213,7 +245,7 @@ export function createValue(field, text) {
       .filter(Boolean)
       .map((s) => createValue(elem, s));
   }
-  return text;
+  return { expr: text };
 }
 
 /** The option value that means "let me type something new". */

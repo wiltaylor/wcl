@@ -124,19 +124,14 @@ pub(super) fn classify(e: &Expr) -> Cell {
 /// `rows` when every element is such a list, `computed` otherwise. An
 /// empty literal is an empty `list`.
 fn classify_list(elements: &[Expr]) -> Cell {
-    let cells: Option<Vec<Cell>> = elements
-        .iter()
-        .map(|e| match classify(e) {
-            Cell::Computed | Cell::List(_) | Cell::Rows(_) => None,
-            c => Some(c),
-        })
-        .collect();
-    if let Some(cells) = cells {
+    let cells: Vec<Cell> = elements.iter().map(classify).collect();
+    let scalar = |c: &Cell| !matches!(c, Cell::Computed | Cell::List(_) | Cell::Rows(_));
+    if cells.iter().all(scalar) {
         return Cell::List(cells);
     }
-    let rows: Option<Vec<Vec<Cell>>> = elements
-        .iter()
-        .map(|e| match classify(e) {
+    let rows: Option<Vec<Vec<Cell>>> = cells
+        .into_iter()
+        .map(|c| match c {
             Cell::List(items) => Some(items),
             _ => None,
         })
@@ -147,26 +142,44 @@ fn classify_list(elements: &[Expr]) -> Cell {
     }
 }
 
+/// The source text of a numeric literal, for both enums that hold one:
+/// `Expr`'s numeric variants and the [`wcl_lang::NumberLit`] a unit literal
+/// carries. The two use the same variant names, so one body serves both
+/// (the idiom `wcl_lang`'s `numeric_as_u64!` already follows) and a new
+/// numeric type is added to one list. Callers append their own tail arms.
+macro_rules! numeric_source_text {
+    ($val:expr, $ty:ident, $($tail:tt)*) => {
+        match $val {
+            $ty::I8(n) => n.to_string(),
+            $ty::I16(n) => n.to_string(),
+            $ty::I32(n) => n.to_string(),
+            $ty::I64(n) => n.to_string(),
+            $ty::I128(n) => n.to_string(),
+            $ty::Isize(n) => n.to_string(),
+            $ty::U8(n) => n.to_string(),
+            $ty::U16(n) => n.to_string(),
+            $ty::U32(n) => n.to_string(),
+            $ty::U64(n) => n.to_string(),
+            $ty::U128(n) => n.to_string(),
+            $ty::Usize(n) => n.to_string(),
+            $ty::F32(n) => n.to_string(),
+            $ty::F64(n) => n.to_string(),
+            $($tail)*
+        }
+    };
+}
+
 /// The source form of any numeric literal, including the type-suffixed
 /// (`5u8`) and unit-suffixed (`5MiB`) forms — `None` when the expression
 /// isn't a number at all.
+///
+/// The tail arms are inside a macro invocation, so rustfmt leaves them
+/// alone: keep them hand-wrapped to match the rest of the file.
 fn number_text(e: &Expr) -> Option<String> {
-    Some(match e {
-        Expr::I8(n) => n.to_string(),
-        Expr::I16(n) => n.to_string(),
-        Expr::I32(n) => n.to_string(),
-        Expr::I64(n) => n.to_string(),
-        Expr::I128(n) => n.to_string(),
-        Expr::Isize(n) => n.to_string(),
-        Expr::U8(n) => n.to_string(),
-        Expr::U16(n) => n.to_string(),
-        Expr::U32(n) => n.to_string(),
-        Expr::U64(n) => n.to_string(),
-        Expr::U128(n) => n.to_string(),
-        Expr::Usize(n) => n.to_string(),
-        Expr::F32(n) => n.to_string(),
-        Expr::F64(n) => n.to_string(),
-        Expr::UnitLiteral { value, unit, .. } => format!("{}{unit}", number_lit_text(value)),
+    Some(numeric_source_text!(e, Expr,
+        Expr::UnitLiteral { value, unit, .. } => {
+            format!("{}{unit}", number_lit_text(value))
+        }
         // The parser keeps `-7` as a negation over a literal; a form must
         // still see one editable number.
         Expr::Unary {
@@ -175,27 +188,12 @@ fn number_text(e: &Expr) -> Option<String> {
             ..
         } => format!("-{}", number_text(operand)?),
         _ => return None,
-    })
+    ))
 }
 
 fn number_lit_text(n: &wcl_lang::NumberLit) -> String {
     use wcl_lang::NumberLit as N;
-    match n {
-        N::I8(v) => v.to_string(),
-        N::I16(v) => v.to_string(),
-        N::I32(v) => v.to_string(),
-        N::I64(v) => v.to_string(),
-        N::I128(v) => v.to_string(),
-        N::Isize(v) => v.to_string(),
-        N::U8(v) => v.to_string(),
-        N::U16(v) => v.to_string(),
-        N::U32(v) => v.to_string(),
-        N::U64(v) => v.to_string(),
-        N::U128(v) => v.to_string(),
-        N::Usize(v) => v.to_string(),
-        N::F32(v) => v.to_string(),
-        N::F64(v) => v.to_string(),
-    }
+    numeric_source_text!(n, N,)
 }
 
 /// A block's inline labels, positionally.
@@ -301,6 +299,28 @@ mod tests {
         let v = cells_of("thing t { size = 5MiB }");
         assert_eq!(state(&v, "size"), "number");
         assert_eq!(text(&v, "size"), "5MiB");
+    }
+
+    /// The colon is syntax: it is in the SOURCE and never in the cell, so a
+    /// picker's options are names. The bare form of the same word is an
+    /// identifier — the two must not collapse into one state.
+    #[test]
+    fn symbols_drop_the_colon_identifiers_keep_the_name() {
+        let v = cells_of(
+            r#"thing t {
+              kind = :module
+              same = module
+              tags = [:one, :two]
+            }"#,
+        );
+        assert_eq!(state(&v, "kind"), "symbol");
+        assert_eq!(text(&v, "kind"), "module");
+        assert_eq!(state(&v, "same"), "identifier");
+        assert_eq!(text(&v, "same"), "module");
+        // A list of symbols carries bare names too, not `:one`.
+        assert_eq!(v["fields"]["tags"]["items"][0]["state"], "symbol");
+        assert_eq!(v["fields"]["tags"]["items"][0]["text"], "one");
+        assert_eq!(v["fields"]["tags"]["items"][1]["text"], "two");
     }
 
     #[test]

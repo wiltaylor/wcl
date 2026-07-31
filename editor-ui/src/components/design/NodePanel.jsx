@@ -5,9 +5,9 @@
    payload merged with the instance's cells, and every row is the shared
    FieldControl — so a kind added to the schema (and any symbol added to one
    of its vocabularies) gets a form with no change here, and the form matches
-   the details modal's exactly. The one thing this panel adds is `ids`: a
-   field naming another kind (`container`, `owner`) picks from that kind's
-   instances. Save batches every touched field into one atomic commit
+   the details modal's exactly — including the id picker a field naming
+   another kind (`container`, `owner`) gets, which both read from the shared
+   `idOptions`. Save batches every touched field into one atomic commit
    through the shared save rule. */
 
 import { For, Show, createEffect, createSignal } from 'solid-js';
@@ -21,6 +21,7 @@ import { revealSpan } from '../../state/views';
 import { busy, commitOpsQuiet, exitDesign, setPopover } from '../../state/design';
 import {
   deletePlan,
+  idOptions,
   kindOf,
   loadSystems,
   model,
@@ -48,17 +49,6 @@ export default function NodePanel(props) {
 
   const rows = () => orderFields(schema()?.fields ?? []);
   const cells = () => node()?.cells;
-
-  /** Ids this field may name, when it points at another kind. */
-  const idOptions = (f) => {
-    const link =
-      (schema()?.parents ?? []).find((p) => p.field === f.name)?.kind ??
-      (model()?.kinds ?? []).find((k) => k.kind === f.name)?.kind;
-    if (!link) return null;
-    return (model()?.nodes ?? [])
-      .filter((n) => n.kind === link && n.id !== node()?.id)
-      .map((n) => ({ value: n.id, label: `${n.title} (${n.id})` }));
-  };
 
   const save = async () => {
     const n = node();
@@ -163,7 +153,7 @@ export default function NodePanel(props) {
                   field={f}
                   cells={cells()}
                   schema={schema()}
-                  ids={idOptions(f)}
+                  ids={idOptions(schema(), f, node()?.id)}
                   value={f.name in draft() ? draft()[f.name] : undefined}
                   custom={custom()[f.name]}
                   onCustom={() => {
