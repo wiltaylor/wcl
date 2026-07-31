@@ -43,6 +43,9 @@ export const ATTR = {
   shape: 'data-wcl-shape',
   shapeId: 'data-wcl-shape-id',
   layout: 'data-wcl-layout',
+  // Stamped on every edit-mode edge path (`"from:to"` shape ids). Named
+  // here so the inventory is complete and the next reader extends this
+  // module rather than re-inventing the name; nothing reads it yet.
   edge: 'data-wcl-edge',
   slot: 'data-wf-slot',
   guide: 'data-wf-guide',
@@ -67,7 +70,6 @@ export const SEL = {
   /** Shapes that can be an edge endpoint (a connection names ids). */
   identifiedShape: `[${ATTR.shape}][${ATTR.shapeId}]`,
   diagram: `svg[${ATTR.layout}]`,
-  edge: `[${ATTR.edge}]`,
   slot: `[${ATTR.slot}]`,
   guide: `[${ATTR.guide}]`,
   field: `[${ATTR.fieldName}]`,
@@ -143,30 +145,28 @@ export function diagramOf(el) {
   return el?.closest?.(SEL.diagram) ?? null;
 }
 
-/** The effective layout mode of `el`'s diagram, or null outside one. */
+/** The effective layout mode of `el`'s diagram, or null outside one.
+
+    Usually the `<svg>` is `el` or an ancestor. An INTERACTIVE diagram
+    (`pan_zoom`, or any map) renders inside a viewport `<div>`, and the
+    block anchor lands on that div — so the layout sits one level BELOW the
+    anchored element there. Hence the direct-child fallback, which is tight
+    on purpose: a block that merely contains a diagram deeper down (a
+    `demo`, a list) is not itself a diagram and has no layout. */
 export function layoutOf(el) {
-  return diagramOf(el)?.getAttribute(ATTR.layout) ?? null;
+  const svg = diagramOf(el) ?? el?.querySelector?.(`:scope > ${SEL.diagram}`);
+  return svg?.getAttribute(ATTR.layout) ?? null;
 }
 
-/** The layout modes that honor per-shape x/y. An edit-mode diagram always
-    carries a layout (`free` by default), so a null one means `el` is not
-    in a diagram at all — nothing to place a shape into. */
+/** The layout modes that honor per-shape x/y. */
 const MANUAL_LAYOUTS = ['free', 'none'];
 
 /** Does this layout honor per-shape x/y? THE predicate behind dragging a
     shape, seeding a new one with coordinates and offering convert-to-manual
-    — asked of an anchor's `layout` so those three cannot disagree. */
+    — asked of an anchor's `layout` so those three cannot disagree. A null
+    layout means `el` is not a diagram at all: nothing to place into. */
 export function isManualLayout(layout) {
   return MANUAL_LAYOUTS.includes(layout ?? '');
-}
-
-/** The connection a drawn edge path names (`{from, to}` shape ids), read
-    from anywhere inside the path, or null. Malformed reads as absent. */
-export function edgeOf(el) {
-  const raw = el?.closest?.(SEL.edge)?.getAttribute?.(ATTR.edge);
-  const at = raw ? raw.indexOf(':') : -1;
-  if (at < 1 || at === raw.length - 1) return null;
-  return { from: raw.slice(0, at), to: raw.slice(at + 1) };
 }
 
 /** The insertion index of a layout-guide drop zone, or null when `el` is
@@ -208,7 +208,8 @@ export function visOf(el) {
     `shared` and `box` are derived on FIRST READ and then remembered: one
     scans the whole document and the other forces SVG layout, while the
     hottest callers (hover hit-testing, one anchor per gutter, the block
-    tree) read neither. Reading them is the same snapshot it always was. */
+    tree) read neither. Each is still a snapshot, taken at that first read
+    rather than when the anchor was built. */
 export function anchorOf(doc, el) {
   const span = spanOf(el);
   const file = el?.getAttribute?.(ATTR.file);
@@ -498,10 +499,14 @@ export function shapeBox(el) {
 
     `chromeInside` says the shape already carries injected chrome, so
     measuring now would swallow it and the stored measurement stands: that
-    is what stops the handles creeping outward on re-selection. A CLEAN
-    shape re-measures instead, so one whose geometry changed while its
-    element survived (an in-place commit) doesn't serve a stale box for the
-    life of that element. */
+    is what stops the handles creeping outward when the selected shape is
+    re-selected. A CLEAN shape — every other shape, and this one once the
+    selection has moved off it — re-measures instead, so one whose geometry
+    changed while its element survived (an in-place commit) doesn't serve a
+    stale box for the life of that element.
+
+    A dirty shape with nothing recorded is the one case with no good answer:
+    a live measurement including the chrome beats no geometry at all. */
 export function stashShapeBox(el, { chromeInside = false } = {}) {
   if (!el) return null;
   const live = chromeInside ? null : liveShapeBox(el);
