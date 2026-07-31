@@ -4,12 +4,15 @@
 //! business, not these.)
 //!
 //! They live here rather than in whichever handler happened to need them
-//! first: every one of them is used by three or more of the endpoint
-//! modules, and none of them is about the request handling any of those
-//! modules is named for.
+//! first: every one of them has callers in several endpoint modules, and
+//! none of them is about the request handling any of those modules is
+//! named for. What is NOT here is the block-source classification
+//! (`classify_expr`, `visibility_json`): those define the shape
+//! `/api/block/source` answers with, so they stay with that endpoint even
+//! though other modules read the same shape.
 
-use wcl_lang::Value;
 use wcl_lang::ast::{self, Expr, Item};
+use wcl_lang::{Span, Value};
 
 /// The first inline label of an AST block when it's a plain identifier or
 /// string literal.
@@ -77,4 +80,29 @@ pub(super) fn value_string(v: &Value) -> String {
         Value::F64(n) => n.to_string(),
         other => format!("{other:?}"),
     }
+}
+
+/// A `{start, end}` byte span from a JSON object field.
+pub(super) fn span_field(v: &serde_json::Value, key: &str) -> Result<Span, String> {
+    let s = v.get(key).ok_or_else(|| format!("missing `{key}`"))?;
+    let num = |k: &str| {
+        s.get(k)
+            .and_then(serde_json::Value::as_u64)
+            .map(|n| n as usize)
+            .ok_or_else(|| format!("missing `{key}.{k}`"))
+    };
+    Ok(Span::new(num("start")?, num("end")?))
+}
+
+/// What every span-addressed endpoint says when the span no longer names a
+/// block: the file moved under the client, so re-anchor and retry.
+pub(super) fn stale_span() -> String {
+    "no block at that span — the file changed; rebuild the preview".to_string()
+}
+
+/// Whether `s` can be written as a bare WCL identifier.
+pub(super) fn is_identifier(s: &str) -> bool {
+    let mut chars = s.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }

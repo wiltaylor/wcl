@@ -31,9 +31,12 @@
 //! ([`KindModel::json_with_suggestions`]): the Systems view asks, the
 //! palette does not.
 //!
-//! The model is the interface: nothing here hands out the [`Document`] or a
-//! raw [`TypeDecl`], so a surface cannot quietly grow a twelfth walk over
-//! the type declarations beside the one everything else reads.
+//! The model is the interface: nothing here hands out the [`Document`],
+//! and a nested kind is reached by naming its family
+//! ([`KindModel::describe_family`]) rather than by passing a
+//! [`TypeDecl`] back in — so a surface cannot quietly grow a twelfth walk
+//! over the type declarations beside the one everything else reads. A
+//! consumer that needs a new schema fact adds it to [`Kind`].
 
 use wcl_lang::{ChildFamily, DeclName, Document, ResolvedType, TypeDecl, TypeField};
 
@@ -373,9 +376,16 @@ impl<'a> KindModel<'a> {
     }
 
     /// Describe a nested block kind reached through a `@child`/`@children`
-    /// family, whose schema resolves through the declaring field's own type
-    /// (namespace-correct where a kind-name lookup is not).
-    pub(super) fn describe_decl(&self, kind: &str, schema: TypeDecl<'a>) -> Kind<'a> {
+    /// family. The schema comes from the declaring field's own type, which
+    /// is namespace-correct where a kind-name lookup is not — a WAD
+    /// `container` must not be schema'd by wdoc's diagram-grouping shape.
+    pub(super) fn describe_family(&self, family: &ChildFamily<'a>) -> Option<Kind<'a>> {
+        family
+            .schema()
+            .map(|d| self.describe_decl(family.kind(), *d))
+    }
+
+    fn describe_decl(&self, kind: &str, schema: TypeDecl<'a>) -> Kind<'a> {
         derive(kind.to_string(), schema, &self.kind_names())
     }
 

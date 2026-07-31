@@ -396,7 +396,7 @@ pub(super) fn nav_op(
             let title = crate::edit::str_field(v, "title")?;
             edit_file(&entry_abs, &file, |src| {
                 let block = ast_edit::find_block_by_span(&mut src.items, span)
-                    .ok_or_else(super::blocks::stale_span)?;
+                    .ok_or_else(super::util::stale_span)?;
                 if block.kind == "index" {
                     ast_edit::set_or_insert_field(
                         block,
@@ -413,7 +413,7 @@ pub(super) fn nav_op(
             let (file, span) = op_target(ws, v)?;
             edit_file(&entry_abs, &file, |src| {
                 if !ast_edit::remove_block_by_span(&mut src.items, span) {
-                    return Err(super::blocks::stale_span());
+                    return Err(super::util::stale_span());
                 }
                 Ok(())
             })
@@ -463,7 +463,7 @@ pub(super) fn nav_op(
 /// The op's target binding: `file` (repo-relative) + `span`.
 fn op_target(ws: &Workspace, v: &serde_json::Value) -> Result<(PathBuf, Span), String> {
     let file_abs = ws.abs(crate::edit::str_field(v, "file")?)?;
-    let span = super::blocks::span_field(v, "span")?;
+    let span = super::util::span_field(v, "span")?;
     Ok((file_abs, span))
 }
 
@@ -519,7 +519,7 @@ fn add_section(
             );
             edit_file(entry_abs, &file, |src| {
                 let parent = ast_edit::find_block_by_span(&mut src.items, span)
-                    .ok_or_else(super::blocks::stale_span)?;
+                    .ok_or_else(super::util::stale_span)?;
                 ast_edit::insert_block_at_index(&mut parent.items, usize::MAX, block);
                 Ok(())
             })
@@ -529,7 +529,7 @@ fn add_section(
 
 fn add_page(entry_abs: &Path, v: &serde_json::Value) -> Result<serde_json::Value, String> {
     let name = crate::edit::str_field(v, "name")?;
-    if !super::blocks::is_identifier(name) {
+    if !super::util::is_identifier(name) {
         return Err(format!("`{name}` is not a valid page name"));
     }
     let title = crate::edit::str_field(v, "title")?;
@@ -545,7 +545,7 @@ fn add_page(entry_abs: &Path, v: &serde_json::Value) -> Result<serde_json::Value
     edit_file(entry_abs, entry_abs, |src| {
         ast_edit::append_top_level_block(src, page);
         if let Some(nav) = nav {
-            let span = super::blocks::span_field(nav, "container_span")?;
+            let span = super::util::span_field(nav, "container_span")?;
             let kind = crate::edit::str_field(nav, "kind")?;
             let entry_block = match kind {
                 "chapter" | "item" => {
@@ -574,7 +574,7 @@ fn add_page(entry_abs: &Path, v: &serde_json::Value) -> Result<serde_json::Value
                 other => return Err(format!("`{other}` is not a nav entry kind")),
             };
             let parent = ast_edit::find_block_by_span(&mut src.items, span)
-                .ok_or_else(super::blocks::stale_span)?;
+                .ok_or_else(super::util::stale_span)?;
             ast_edit::insert_block_at_index(&mut parent.items, usize::MAX, entry_block);
         }
         Ok(())
@@ -780,7 +780,7 @@ fn create_index(
     v: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let id = crate::edit::str_field(v, "id")?;
-    if !super::blocks::is_identifier(id) {
+    if !super::util::is_identifier(id) {
         return Err(format!(
             "`{id}` is not a valid id (letters, digits, `_`, not starting with a digit)"
         ));
@@ -818,9 +818,9 @@ fn create_index(
             })
         }
         None => {
-            // Placed and staged inside this scope, so the model's borrow of
-            // the document — and the document — are gone before the commit
-            // rewrites the files they were read from.
+            // Placed and staged inside this scope so the model's borrow
+            // ends here; the document itself is released just below, before
+            // the commit rewrites the files it was read from.
             let (file, changes) = {
                 let model = KindModel::new(&doc);
                 let placement = super::placement::place_unit(&model, &doc, entry_abs, "index")?;

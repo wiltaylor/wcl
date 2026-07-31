@@ -151,7 +151,7 @@ fn systems_detail(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::V
     let doc_entry = ws.doc_entry_from(v)?;
     let file_rel = crate::edit::str_field(v, "file")?;
     let file = ws.abs(file_rel)?;
-    let span = super::blocks::span_field(v, "span")?;
+    let span = super::util::span_field(v, "span")?;
     let text = crate::edit::read(&file)?;
     let src = parse_for_edit(&text, file.display().to_string()).map_err(super::err_str)?;
     let blk = super::find_block_at(&src.items, span)
@@ -279,7 +279,7 @@ fn child_families<'a>(
                 _ => None,
             })
             .collect();
-        let described = family.schema().map(|d| model.describe_decl(kind, *d));
+        let described = model.describe_family(&family);
         out.push(serde_json::json!({
             "field": family.field(),
             "kind": kind,

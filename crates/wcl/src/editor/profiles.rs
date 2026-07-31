@@ -59,7 +59,7 @@ fn profile(
     let registry = crate::edit::str_field(v, "registry")?;
     let registry_abs = ws.abs(registry)?;
     let kind = crate::edit::str_field(v, "kind")?;
-    if !super::blocks::is_identifier(kind) {
+    if !super::util::is_identifier(kind) {
         return Err(format!("`{kind}` is not an artifact kind"));
     }
     let enable = v

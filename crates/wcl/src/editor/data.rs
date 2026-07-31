@@ -17,7 +17,7 @@ use axum::http::Uri;
 use axum::response::Response;
 
 use wcl_lang::ast::{self, Item};
-use wcl_lang::{Document, parse_for_edit};
+use wcl_lang::{DeclName, Document, parse_for_edit};
 
 use super::blocks::visibility_json;
 use super::kinds::KindModel;
@@ -87,8 +87,11 @@ fn data_types(
     // namespace collision `type_name` exists to prevent.)
     let types: Vec<serde_json::Value> = editable_types(&doc)
         .into_iter()
-        .map(|(kind, file_hint, decl)| {
-            let mut entry_json = model.describe_decl(&kind, decl).json();
+        .filter_map(|(kind, file_hint, decl)| {
+            // Addressed by the FULLY-QUALIFIED name of the decl the
+            // decorator walk found, so a kind name shared across schemas
+            // resolves to this one and not to whichever is declared first.
+            let mut entry_json = model.describe(&kind, Some(&decl.full_name()))?.json();
             // The target for new rows, repo-relative (hints are
             // entry-relative by convention).
             let file = file_hint.map(|f| {
@@ -100,7 +103,7 @@ fn data_types(
                     .unwrap_or(f)
             });
             entry_json["file"] = serde_json::json!(file);
-            entry_json
+            Some(entry_json)
         })
         .collect();
     Ok(serde_json::json!({ "ok": true, "types": types }))

@@ -24,7 +24,7 @@ use wcl_lang::{Span, edit as ast_edit, format as wcl_format, parse_expr, parse_f
 use super::kinds::{Kind, KindModel};
 use super::placement::{Placement, pin_into_index, place_unit, write_new_block};
 use super::preview::Sessions;
-use super::util::ast_label;
+use super::util::{ast_label, is_identifier, span_field, stale_span};
 use super::{EditorState, Workspace, run_blocking};
 use crate::serve::{json_error, parse_json_body};
 
@@ -35,18 +35,6 @@ use crate::serve::{json_error, parse_json_body};
 /// Sandbox-check a repo-relative file from the request body.
 fn file_field(ws: &Workspace, v: &serde_json::Value) -> Result<PathBuf, String> {
     ws.abs(crate::edit::str_field(v, "file")?)
-}
-
-/// A `{start, end}` byte span from a JSON object field.
-pub(super) fn span_field(v: &serde_json::Value, key: &str) -> Result<Span, String> {
-    let s = v.get(key).ok_or_else(|| format!("missing `{key}`"))?;
-    let num = |k: &str| {
-        s.get(k)
-            .and_then(serde_json::Value::as_u64)
-            .map(|n| n as usize)
-            .ok_or_else(|| format!("missing `{key}.{k}`"))
-    };
-    Ok(Span::new(num("start")?, num("end")?))
 }
 
 // ---------------------------------------------------------------------------
@@ -581,10 +569,6 @@ pub(super) fn block_ops(
     }))
 }
 
-pub(super) fn stale_span() -> String {
-    "no block at that span — the file changed; rebuild the preview".to_string()
-}
-
 fn find_block(items: &mut [Item], span: Span) -> Result<&mut ast::Block, String> {
     ast_edit::find_block_by_span(items, span).ok_or_else(stale_span)
 }
@@ -631,12 +615,6 @@ fn parse_fragment(source: &str) -> Result<ast::Block, String> {
         return Err("the fragment must be exactly one block".into());
     }
     Ok(blocks.remove(0))
-}
-
-pub(super) fn is_identifier(s: &str) -> bool {
-    let mut chars = s.chars();
-    matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// Move the block at `span` so it sits before/after the block at `target`
