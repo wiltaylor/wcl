@@ -360,7 +360,7 @@ mod tests {
     //! language-server bridge upgrades — plus the end-to-end guard that a
     //! write invalidates already-built previews.
 
-    use super::testsupport::{BODY_DOC, OBJECT_DOC, SITE_DOC, state_at};
+    use super::testsupport::{BODY_DOC, OBJECT_DOC, SITE_DOC, state_at, workspace_with};
     use super::*;
     use axum::body::Body;
     use axum::http::Request;
@@ -609,9 +609,7 @@ mod tests {
 
     #[tokio::test]
     async fn object_locate_finds_instance_by_label() {
-        let td = tempfile::tempdir().unwrap();
-        std::fs::write(td.path().join("main.wcl"), OBJECT_DOC).unwrap();
-        let ws = Workspace::at(td.path());
+        let (_td, ws) = workspace_with(OBJECT_DOC);
 
         let v = locate_object(
             &ws,
@@ -629,11 +627,13 @@ mod tests {
         assert!(text.starts_with("thing \"beta\""), "span slices {text:?}");
     }
 
+    /// The overlay is the handler's own job — turning the request's unsaved
+    /// buffers into what the lookup sees. The resolution rules themselves
+    /// (label match, ambiguity, unknown kind) are `crate::edit`'s and are
+    /// tested there.
     #[tokio::test]
-    async fn object_locate_respects_overlay_and_errors() {
-        let td = tempfile::tempdir().unwrap();
-        std::fs::write(td.path().join("main.wcl"), OBJECT_DOC).unwrap();
-        let ws = Workspace::at(td.path());
+    async fn object_locate_respects_overlay() {
+        let (_td, ws) = workspace_with(OBJECT_DOC);
 
         // Overlay renames beta → gamma: gamma resolves, beta no longer does.
         let edited = OBJECT_DOC.replace("thing \"beta\"", "thing \"gamma\"");
@@ -651,23 +651,16 @@ mod tests {
         );
         assert!(edited[start..end].starts_with("thing \"gamma\""));
 
-        // Unknown target → an error naming the kind.
+        // …and the pre-overlay name is gone with it.
         let e = locate_object(
             &ws,
             &serde_json::json!({
-                "entry": "main.wcl", "kind": "thing", "target": "nope", "files": [],
+                "entry": "main.wcl", "kind": "thing", "target": "beta",
+                "files": [{ "path": "main.wcl", "text": edited }],
             }),
         )
         .unwrap_err();
-        assert!(e.contains("thing"), "{e}");
-
-        // No target with two instances → an error listing the labels.
-        let e = locate_object(
-            &ws,
-            &serde_json::json!({ "entry": "main.wcl", "kind": "thing", "files": [] }),
-        )
-        .unwrap_err();
-        assert!(e.contains("alpha"), "{e}");
+        assert!(e.contains("beta"), "{e}");
     }
 
     #[test]

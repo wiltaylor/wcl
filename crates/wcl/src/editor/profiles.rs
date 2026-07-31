@@ -305,6 +305,7 @@ fn enable_profile(registry_abs: &Path, kind: &str) -> Result<serde_json::Value, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::editor::testsupport::workspace_built_by;
 
     /// Profile toggles on a real template-scaffolded wskill: disable
     /// removes the artifact + projection folder; enable scaffolds them
@@ -312,28 +313,28 @@ mod tests {
     /// still validates.
     #[test]
     fn disable_then_enable() {
-        let td = tempfile::tempdir().unwrap();
-        let root = td.path();
         // Scaffold a full wskill (with the presentation view) from the
         // built-in template.
-        let answers = std::collections::BTreeMap::from([
-            ("topic_id".to_string(), "demo".to_string()),
-            ("topic_name".to_string(), "Demo".to_string()),
-            ("include_presentation".to_string(), "yes".to_string()),
-            ("include_training".to_string(), "no".to_string()),
-        ]);
-        let (files, folders) = crate::scaffold::evaluate_template_tree("wskill", answers).unwrap();
-        for dir in &folders {
-            std::fs::create_dir_all(root.join(dir)).unwrap();
-        }
-        for (rel, content) in &files {
-            // The scaffold with training off still emits only wanted files.
-            let p = root.join(rel);
-            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-            std::fs::write(p, content).unwrap();
-        }
-        assert!(root.join("wdoc/presentation/main.wcl").is_file());
-        let ws = Workspace::at(root);
+        let (_td, ws) = workspace_built_by(|root| {
+            let answers = std::collections::BTreeMap::from([
+                ("topic_id".to_string(), "demo".to_string()),
+                ("topic_name".to_string(), "Demo".to_string()),
+                ("include_presentation".to_string(), "yes".to_string()),
+                ("include_training".to_string(), "no".to_string()),
+            ]);
+            let (files, folders) =
+                crate::scaffold::evaluate_template_tree("wskill", answers).unwrap();
+            for dir in &folders {
+                std::fs::create_dir_all(root.join(dir)).unwrap();
+            }
+            for (rel, content) in &files {
+                // The scaffold with training off still emits only wanted files.
+                let p = root.join(rel);
+                std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+                std::fs::write(p, content).unwrap();
+            }
+            assert!(root.join("wdoc/presentation/main.wcl").is_file());
+        });
         let root = ws.root_dir().to_path_buf();
         let previews = Sessions::default();
         let toggle = |kind: &str, enable: bool| {

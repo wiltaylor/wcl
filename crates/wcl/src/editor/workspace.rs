@@ -17,6 +17,9 @@ use std::path::{Path, PathBuf};
 
 use crate::serve::{sandboxed, sandboxed_create};
 
+/// Cloneable so a connection-lived task (the LSP bridge) can hold its own
+/// rather than the whole [`super::EditorState`] — it is two paths.
+#[derive(Clone)]
 pub(crate) struct Workspace {
     /// Canonical directory the editor serves — the sandbox root for every
     /// file operation.

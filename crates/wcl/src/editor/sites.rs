@@ -334,28 +334,29 @@ fn canon(p: &Path) -> PathBuf {
 mod tests {
     use super::*;
     use crate::editor::Workspace;
+    use crate::editor::testsupport::workspace_built_by;
 
-    fn scan(root: &Path) -> serde_json::Value {
-        scan_sites(&Workspace::at(root)).expect("scan")
+    fn scan(ws: &Workspace) -> serde_json::Value {
+        scan_sites(ws).expect("scan")
     }
 
     #[test]
     fn lists_nested_sites() {
-        let td = tempfile::tempdir().unwrap();
-        let root = td.path();
-        std::fs::write(
-            root.join("main.wcl"),
-            "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\nsite deck {\n  default_template = :ai_skill\n}\n\npage index {\n  title = \"Hi\"\n  sites = [:docs]\n\n  h1 \"Hi\"\n}\n\ninclude \"members\" {\n  entry = \"main.wcl\"\n}\n",
-        )
-        .unwrap();
-        std::fs::create_dir_all(root.join("members/alpha")).unwrap();
-        std::fs::write(
-            root.join("members/alpha/main.wcl"),
-            "import <wdoc.wcl>\n\nsite book {\n  title = \"Alpha Book\"\n}\n\npage index {\n  title = \"Alpha\"\n\n  h1 \"Alpha\"\n}\n",
-        )
-        .unwrap();
+        let (_td, ws) = workspace_built_by(|root| {
+            std::fs::write(
+                root.join("main.wcl"),
+                "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\nsite deck {\n  default_template = :ai_skill\n}\n\npage index {\n  title = \"Hi\"\n  sites = [:docs]\n\n  h1 \"Hi\"\n}\n\ninclude \"members\" {\n  entry = \"main.wcl\"\n}\n",
+            )
+            .unwrap();
+            std::fs::create_dir_all(root.join("members/alpha")).unwrap();
+            std::fs::write(
+                root.join("members/alpha/main.wcl"),
+                "import <wdoc.wcl>\n\nsite book {\n  title = \"Alpha Book\"\n}\n\npage index {\n  title = \"Alpha\"\n\n  h1 \"Alpha\"\n}\n",
+            )
+            .unwrap();
+        });
 
-        let v = scan(root);
+        let v = scan(&ws);
         let sites = v["sites"].as_array().unwrap();
         // The member is claimed by the include, so only main.wcl's two
         // sites list at the top level.
@@ -377,35 +378,35 @@ mod tests {
 
     #[test]
     fn groups_wskill_views() {
-        let td = tempfile::tempdir().unwrap();
-        let root = td.path();
-        std::fs::create_dir_all(root.join("wdoc/book")).unwrap();
-        std::fs::create_dir_all(root.join("wdoc/skill")).unwrap();
-        std::fs::write(
-            root.join("wskill.wcl"),
-            "topic demo {\n  name = \"Demo Topic\"\n}\n\n\
-             artifact book {\n  kind = :book\n  entry = \"wdoc/book/main.wcl\"\n}\n\n\
-             artifact ai_skill {\n  kind = :ai_skill\n  entry = \"wdoc/skill/main.wcl\"\n}\n",
-        )
-        .unwrap();
-        std::fs::write(
-            root.join("wdoc/book/main.wcl"),
-            "import <wdoc.wcl>\n\nsite book {\n  title = \"Demo Book\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n",
-        )
-        .unwrap();
-        std::fs::write(
-            root.join("wdoc/skill/main.wcl"),
-            "import <wdoc.wcl>\n\nsite skill {\n  default_template = :ai_skill\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n",
-        )
-        .unwrap();
-        // A plain, unrelated site stays a normal node.
-        std::fs::write(
-            root.join("other.wcl"),
-            "import <wdoc.wcl>\n\nsite docs {\n  title = \"Other\"\n  root = true\n}\n\npage index {\n  title = \"O\"\n\n  h1 \"O\"\n}\n",
-        )
-        .unwrap();
+        let (_td, ws) = workspace_built_by(|root| {
+            std::fs::create_dir_all(root.join("wdoc/book")).unwrap();
+            std::fs::create_dir_all(root.join("wdoc/skill")).unwrap();
+            std::fs::write(
+                root.join("wskill.wcl"),
+                "topic demo {\n  name = \"Demo Topic\"\n}\n\n\
+                 artifact book {\n  kind = :book\n  entry = \"wdoc/book/main.wcl\"\n}\n\n\
+                 artifact ai_skill {\n  kind = :ai_skill\n  entry = \"wdoc/skill/main.wcl\"\n}\n",
+            )
+            .unwrap();
+            std::fs::write(
+                root.join("wdoc/book/main.wcl"),
+                "import <wdoc.wcl>\n\nsite book {\n  title = \"Demo Book\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n",
+            )
+            .unwrap();
+            std::fs::write(
+                root.join("wdoc/skill/main.wcl"),
+                "import <wdoc.wcl>\n\nsite skill {\n  default_template = :ai_skill\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n",
+            )
+            .unwrap();
+            // A plain, unrelated site stays a normal node.
+            std::fs::write(
+                root.join("other.wcl"),
+                "import <wdoc.wcl>\n\nsite docs {\n  title = \"Other\"\n  root = true\n}\n\npage index {\n  title = \"O\"\n\n  h1 \"O\"\n}\n",
+            )
+            .unwrap();
+        });
 
-        let v = scan(root);
+        let v = scan(&ws);
         let sites = v["sites"].as_array().unwrap();
         let wskill = sites
             .iter()
@@ -437,26 +438,26 @@ mod tests {
     /// the parent's children.
     #[test]
     fn groups_wskill_views_nested_under_include() {
-        let td = tempfile::tempdir().unwrap();
-        let root = td.path();
-        std::fs::create_dir_all(root.join("skills/demo/wdoc/book")).unwrap();
-        std::fs::write(
-            root.join("main.wcl"),
-            "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n\ninclude \"skills\" {\n  entry = \"wdoc/book/main.wcl\"\n}\n",
-        )
-        .unwrap();
-        std::fs::write(
-            root.join("skills/demo/wskill.wcl"),
-            "topic demo {\n  name = \"Demo Topic\"\n}\n\nartifact book {\n  kind = :book\n  entry = \"wdoc/book/main.wcl\"\n}\n",
-        )
-        .unwrap();
-        std::fs::write(
-            root.join("skills/demo/wdoc/book/main.wcl"),
-            "import <wdoc.wcl>\n\nsite book {\n  title = \"Demo Book\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n",
-        )
-        .unwrap();
+        let (_td, ws) = workspace_built_by(|root| {
+            std::fs::create_dir_all(root.join("skills/demo/wdoc/book")).unwrap();
+            std::fs::write(
+                root.join("main.wcl"),
+                "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n\ninclude \"skills\" {\n  entry = \"wdoc/book/main.wcl\"\n}\n",
+            )
+            .unwrap();
+            std::fs::write(
+                root.join("skills/demo/wskill.wcl"),
+                "topic demo {\n  name = \"Demo Topic\"\n}\n\nartifact book {\n  kind = :book\n  entry = \"wdoc/book/main.wcl\"\n}\n",
+            )
+            .unwrap();
+            std::fs::write(
+                root.join("skills/demo/wdoc/book/main.wcl"),
+                "import <wdoc.wcl>\n\nsite book {\n  title = \"Demo Book\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n",
+            )
+            .unwrap();
+        });
 
-        let v = scan(root);
+        let v = scan(&ws);
         let sites = v["sites"].as_array().unwrap();
         let docs = sites.iter().find(|s| s["entry"] == "main.wcl").unwrap();
         // The included book left the docs node's children…

@@ -988,15 +988,8 @@ mod tests {
     use super::*;
     use crate::editor::preview::Sessions;
     use crate::editor::testsupport::{
-        write_mini_wskill, write_mini_wskill_nested, write_mini_wskill_training,
+        workspace_built_by, write_mini_wskill, write_mini_wskill_nested, write_mini_wskill_training,
     };
-
-    fn setup(write: impl Fn(&Path)) -> (tempfile::TempDir, Workspace) {
-        let td = tempfile::tempdir().unwrap();
-        write(td.path());
-        let ws = Workspace::at(td.path());
-        (td, ws)
-    }
 
     /// Nav ops are id- or span-addressed writes; nothing here needs a
     /// preview scratch tree, only the handle that marks one stale.
@@ -1010,7 +1003,7 @@ mod tests {
 
     #[test]
     fn wskill_nav_model_and_related_ops() {
-        let (_td, ws) = setup(write_mini_wskill);
+        let (_td, ws) = workspace_built_by(write_mini_wskill);
 
         let v = nav(&ws, "main.wcl", Some("book")).expect("nav");
         assert_eq!(v["wskill"], true);
@@ -1078,7 +1071,22 @@ mod tests {
     #[test]
     fn static_book_nav_and_ops() {
         let doc = "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n  toc {\n    chapter \"Start\" {\n      page = index\n    }\n    chapter \"Guides\" {\n      chapter \"Deep\" {\n        page = deep\n      }\n    }\n  }\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hello\"\n}\n\npage deep {\n  title = \"Deep\"\n\n  h1 \"Deep\"\n}\n";
-        let (_td, ws) = setup(|root| std::fs::write(root.join("main.wcl"), doc).unwrap());
+        let (_td, ws) =
+            workspace_built_by(|root| std::fs::write(root.join("main.wcl"), doc).unwrap());
+        // Every commit reprints the file, so a nav entry's span moves — both
+        // resolve against the model as it stands, exactly as the nav panel
+        // does when it refetches after a write.
+        let entry = |title: &str| {
+            let v = nav(&ws, "main.wcl", Some("docs")).expect("nav");
+            v["nav"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|n| n["title"] == title)
+                .unwrap_or_else(|| panic!("no `{title}` entry: {v:#}"))["source"]
+                .clone()
+        };
+        let container = || nav(&ws, "main.wcl", Some("docs")).expect("nav")["container"].clone();
 
         let v = nav(&ws, "main.wcl", Some("docs")).expect("nav");
         assert_eq!(v["site_type"], "book");
@@ -1092,7 +1100,7 @@ mod tests {
         assert_eq!(v["pages"].as_array().unwrap().len(), 2);
 
         // Rename a chapter, move it, then add a page linked into the toc.
-        let start = model[0]["source"].clone();
+        let start = entry("Start");
         op(
             &ws,
             serde_json::json!({
@@ -1103,9 +1111,7 @@ mod tests {
         .expect("rename");
         assert!(read(&ws, "main.wcl").contains("chapter \"Begin\""));
 
-        // Re-read (spans shifted), then move "Begin" down.
-        let v = nav(&ws, "main.wcl", Some("docs")).expect("nav");
-        let begin = v["nav"][0]["source"].clone();
+        let begin = entry("Begin");
         op(
             &ws,
             serde_json::json!({
@@ -1121,14 +1127,12 @@ mod tests {
         );
 
         // Add a page + its chapter entry in one op.
-        let v = nav(&ws, "main.wcl", Some("docs")).expect("nav");
-        let container = v["container"].clone();
         op(
             &ws,
             serde_json::json!({
                 "entry": "main.wcl", "op": "add_page",
                 "name": "faq", "title": "FAQ",
-                "nav": { "container_span": container["span"], "kind": "chapter" },
+                "nav": { "container_span": container()["span"], "kind": "chapter" },
             }),
         )
         .expect("add_page");
@@ -1152,7 +1156,7 @@ mod tests {
     /// errored for sub-index ids).
     #[test]
     fn op_targets_sub_index() {
-        let (_td, ws) = setup(write_mini_wskill_nested);
+        let (_td, ws) = workspace_built_by(write_mini_wskill_nested);
 
         for body in [
             serde_json::json!({
@@ -1185,7 +1189,7 @@ mod tests {
     /// `related` list to permute — and pinning has no meaning there.
     #[test]
     fn syllabus_reorder_rewrites_lesson_order() {
-        let (_td, ws) = setup(write_mini_wskill_training);
+        let (_td, ws) = workspace_built_by(write_mini_wskill_training);
 
         op(
             &ws,

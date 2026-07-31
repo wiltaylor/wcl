@@ -643,15 +643,8 @@ mod tests {
     use crate::editor::blocks::block_ops;
     use crate::editor::preview::Sessions;
     use crate::editor::testsupport::{
-        write_mini_wskill, write_mini_wskill_nested, write_mini_wskill_training,
+        workspace_built_by, write_mini_wskill, write_mini_wskill_nested, write_mini_wskill_training,
     };
-
-    fn setup(write: impl Fn(&Path)) -> (tempfile::TempDir, Workspace) {
-        let td = tempfile::tempdir().unwrap();
-        write(td.path());
-        let ws = Workspace::at(td.path());
-        (td, ws)
-    }
 
     fn model(ws: &Workspace, sites: &str, kinds: &str) -> serde_json::Value {
         graph(ws, "main.wcl", sites, kinds).expect("graph")
@@ -668,7 +661,7 @@ mod tests {
 
     #[test]
     fn lists_units_edges_and_view_visibility() {
-        let (_td, ws) = setup(|root| {
+        let (_td, ws) = workspace_built_by(|root| {
             write_mini_wskill(root);
             // Give alpha a body with one deck-hidden paragraph.
             std::fs::write(
@@ -727,7 +720,7 @@ mod tests {
     /// training filter highlighted the whole graph.
     #[test]
     fn routes_units_to_the_view_that_renders_them() {
-        let (_td, ws) = setup(write_mini_wskill_training);
+        let (_td, ws) = workspace_built_by(write_mini_wskill_training);
         let v = model(&ws, "book,course", "book=book,course=training");
 
         let alpha = node(&v, "alpha");
@@ -754,7 +747,7 @@ mod tests {
     /// training view; the graph synthesizes its structure instead.
     #[test]
     fn synthesizes_a_syllabus_for_a_training_view() {
-        let (_td, ws) = setup(write_mini_wskill_training);
+        let (_td, ws) = workspace_built_by(write_mini_wskill_training);
         let v = model(&ws, "book,course", "book=book,course=training");
         let syl = v["nodes"]
             .as_array()
@@ -780,7 +773,7 @@ mod tests {
 
     #[test]
     fn nested_index_children_and_pins() {
-        let (_td, ws) = setup(write_mini_wskill_nested);
+        let (_td, ws) = workspace_built_by(write_mini_wskill_nested);
         let v = model(&ws, "book", "");
         let idx = node(&v, "lang");
         assert_eq!(idx["pinned"], serde_json::json!(["alpha"]));
@@ -841,7 +834,7 @@ mod tests {
     /// ops on unit and index blocks, plus the `related_editable` flag.
     #[test]
     fn related_add_remove_roundtrip() {
-        let (_td, ws) = setup(|root| {
+        let (_td, ws) = workspace_built_by(|root| {
             write_mini_wskill(root);
             // Concepts need a `related` field for unit→unit edges.
             let main = std::fs::read_to_string(root.join("main.wcl")).unwrap();
@@ -852,16 +845,24 @@ mod tests {
             std::fs::write(root.join("main.wcl"), main).unwrap();
         });
         let previews = Sessions::default();
-        let ops = |file: &serde_json::Value, op: &str, span: &serde_json::Value, id: &str| {
-            serde_json::json!({
-                "entry": "main.wcl", "file": file,
-                "ops": [{ "op": op, "span": span, "id": id }],
-            })
+        // One edge write, addressed by node id. Every commit reprints the
+        // owning file, so the node's file+span are re-read from the model at
+        // call time — the same re-anchoring the graph view does on refetch.
+        let edge = |node_id: &str, op: &str, id: &str| {
+            let v = model(&ws, "book", "");
+            let n = node(&v, node_id);
+            block_ops(
+                &ws,
+                &previews,
+                &serde_json::json!({
+                    "entry": "main.wcl", "file": n["file"],
+                    "ops": [{ "op": op, "span": n["span"], "id": id }],
+                }),
+            )
         };
 
         let v = model(&ws, "book", "");
-        let alpha = node(&v, "alpha").clone();
-        assert_eq!(alpha["related_editable"], true);
+        assert_eq!(node(&v, "alpha")["related_editable"], true);
         assert!(
             !v["edges"]
                 .as_array()
@@ -872,12 +873,7 @@ mod tests {
         );
 
         // Connect alpha → beta.
-        block_ops(
-            &ws,
-            &previews,
-            &ops(&alpha["file"], "related_add", &alpha["span"], "beta"),
-        )
-        .expect("related_add");
+        edge("alpha", "related_add", "beta").expect("related_add");
         let text = std::fs::read_to_string(ws.root_dir().join("data/concepts/alpha.wcl")).unwrap();
         assert!(text.contains("related = [beta]"), "{text}");
         let v = model(&ws, "book", "");
@@ -888,29 +884,18 @@ mod tests {
             "{v:#}"
         );
 
-        // Duplicate, self-loop, and bad-id are refused (fresh spans each time).
-        let alpha = node(&v, "alpha").clone();
+        // Duplicate, self-loop, and bad-id are refused.
         for (id, msg) in [
             ("beta", "already related"),
             ("alpha", "itself"),
             ("not an id", "not a valid"),
         ] {
-            let e = block_ops(
-                &ws,
-                &previews,
-                &ops(&alpha["file"], "related_add", &alpha["span"], id),
-            )
-            .unwrap_err();
+            let e = edge("alpha", "related_add", id).unwrap_err();
             assert!(e.contains(msg), "{id}: {e}");
         }
 
         // Disconnect again; a second remove is refused.
-        block_ops(
-            &ws,
-            &previews,
-            &ops(&alpha["file"], "related_remove", &alpha["span"], "beta"),
-        )
-        .expect("related_remove");
+        edge("alpha", "related_remove", "beta").expect("related_remove");
         let v = model(&ws, "book", "");
         assert!(
             !v["edges"]
@@ -920,23 +905,10 @@ mod tests {
                 .any(|e| e["kind"] == "related"),
             "{v:#}"
         );
-        let alpha = node(&v, "alpha").clone();
-        let e = block_ops(
-            &ws,
-            &previews,
-            &ops(&alpha["file"], "related_remove", &alpha["span"], "beta"),
-        )
-        .unwrap_err();
+        let e = edge("alpha", "related_remove", "beta").unwrap_err();
         assert!(e.contains("not in the related"), "{e}");
 
         // The same ops drive index pins: unpin beta, then re-pin it.
-        let idx = node(&v, "lang").clone();
-        block_ops(
-            &ws,
-            &previews,
-            &ops(&idx["file"], "related_remove", &idx["span"], "beta"),
-        )
-        .expect("unpin");
         let pins = |v: &serde_json::Value| {
             v["edges"]
                 .as_array()
@@ -945,15 +917,9 @@ mod tests {
                 .filter(|e| e["kind"] == "pin")
                 .count()
         };
-        let v = model(&ws, "book", "");
-        assert_eq!(pins(&v), 1, "{v:#}");
-        let idx = node(&v, "lang").clone();
-        block_ops(
-            &ws,
-            &previews,
-            &ops(&idx["file"], "related_add", &idx["span"], "beta"),
-        )
-        .expect("re-pin");
+        edge("lang", "related_remove", "beta").expect("unpin");
+        assert_eq!(pins(&model(&ws, "book", "")), 1);
+        edge("lang", "related_add", "beta").expect("re-pin");
         assert_eq!(pins(&model(&ws, "book", "")), 2);
 
         // A computed related list: flagged not-editable, and the op refuses.
@@ -963,14 +929,8 @@ mod tests {
         )
         .unwrap();
         let v = model(&ws, "book", "");
-        let alpha = node(&v, "alpha").clone();
-        assert_eq!(alpha["related_editable"], false, "{v:#}");
-        let e = block_ops(
-            &ws,
-            &previews,
-            &ops(&alpha["file"], "related_add", &alpha["span"], "beta"),
-        )
-        .unwrap_err();
+        assert_eq!(node(&v, "alpha")["related_editable"], false, "{v:#}");
+        let e = edge("alpha", "related_add", "beta").unwrap_err();
         assert!(e.contains("computed"), "{e}");
     }
 }
