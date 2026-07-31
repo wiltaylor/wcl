@@ -24,7 +24,7 @@ import { For, Show, createEffect, createSignal } from 'solid-js';
 import { Button, Spinner, toast } from '@forge/ui';
 
 import { api } from '../../../api';
-import { clientToUser } from '../../../preview/diagram';
+import { clientToUser, isManualLayout } from '../../../preview/diagram';
 import { freshShapeId, shapeSnippet } from '../../../preview/schemaform';
 import { shapeOps } from '../../../preview/shapeops';
 import { markDropTarget, resolveWidgetDrop } from '../../../preview/widgetdnd';
@@ -32,7 +32,14 @@ import { anchorOf } from '../../../preview/wysiwyg';
 import WidgetTree from './WidgetTree';
 import { startPointerDrag } from './pointerDrag';
 import { dirtyFiles } from '../../../state/buffers';
-import { busy, commitOps, palette, selection, SURFACE_SCREEN } from '../../../state/design';
+import {
+  busy,
+  commitOps,
+  palette,
+  selection,
+  showRefusal,
+  SURFACE_SCREEN,
+} from '../../../state/design';
 import { activeEntry, activeSite } from '../../../state/sites';
 import { loadSystems, model } from '../../../state/systems';
 import EditSurface from '../EditSurface';
@@ -238,9 +245,7 @@ export default function ScreenEditor(props) {
     // Children stack inside containers; only top-of-diagram adds under a
     // manual layout get coordinates (the drop point, else the stagger).
     const manual =
-      t.mode === 'inside' &&
-      t.anchor.kind === 'diagram' &&
-      ['free', 'none'].includes(t.anchor.layout ?? 'free');
+      t.mode === 'inside' && t.anchor.kind === 'diagram' && isManualLayout(t.anchor.layout);
     const index = surfaceDoc()?.querySelectorAll?.('[data-wcl-shape]')?.length ?? 0;
     const snippet = shapeSnippet(entry, { uid, manual, index, at: manual ? at : null });
     const op =
@@ -345,7 +350,7 @@ export default function ScreenEditor(props) {
       },
       slot: target.slot ?? null,
     });
-    if (!res.ok) return toast(res.message, { duration: 5000 });
+    if (!res.ok) return showRefusal(res);
     commitOps(a.file, res.ops, { etag: src.etag, reveal: 'inserted' });
   };
 

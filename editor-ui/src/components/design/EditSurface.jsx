@@ -22,15 +22,16 @@
                     is the iframe URL (null = fallback slot); bumping
                     `reloadSeq()` with an unchanged src reloads in place
                     (scroll survives); `rebuild` — when the preview knows
-                    how to rebuild itself — takes over the commit tail
-                    while this surface is mounted.
+                    how to rebuild itself — is what the commit tail runs
+                    while this surface is mounted, in place of the main
+                    site build.
    - surfaceId    — which surface this is (state/design.js's SURFACE_*).
                     Genuine host knowledge: the same component is the
                     canvas, the content modal's pane and the screen editor
                     depending on where it is mounted, and the staleness
                     rules key on which.
    - ref          — callback receiving the mount-scoped surface handle
-                    ({ goto, doc, redecorate, merged, currentSite, live }),
+                    ({ goto, doc, redecorate, merged, currentSite }),
                     and `null` on unmount. The handle goes inert when
                     released, so a host holding it cannot act on a surface
                     that is gone.
@@ -86,12 +87,14 @@ import {
   palette,
   pendingReveal,
   pushSurfaceRebuild,
+  rebuildCurrentPage,
   selection,
   setCurrentPage,
   setEditingSession,
   setPendingReveal,
   setPopover,
   setSelection,
+  showRefusal,
 } from '../../state/design';
 import { parseSpanAttr } from '../../preview/anchors';
 import { injectBareCss, pageInfo } from '../../preview/frame';
@@ -116,10 +119,12 @@ import {
 import {
   clientToUser,
   installShapeDrag,
+  isManualLayout,
   readTranslate,
   refreshShapeHandles,
 } from '../../preview/diagram';
-import { MANUAL_LAYOUTS, shapeOps } from '../../preview/shapeops';
+import { createPageScopes } from '../../preview/pagescope';
+import { shapeOps } from '../../preview/shapeops';
 import { createSurfaceHandle } from '../../preview/surfaceref';
 import {
   cellCoords,
@@ -135,33 +140,10 @@ import ShapePanel from './ShapePanel';
 const DOCK_W = 332;
 const DOCK_GAP = 10;
 
-/* Who owns `currentPage`. It belongs to whichever editable surface is on
-   top: one mounted OVER another (a modal above the canvas) borrows it and
-   hands it back on close, so the canvas's targeted rebuild doesn't chase a
-   page it was never showing. Surfaces come and go out of order — a tab
-   switch mounts the next before dropping the last — so a surface that is no
-   longer on top gives nothing back; the one above it already owns the page.
-   A stack rather than a per-host `prevPage`, so a host cannot forget it. */
-const pageScopes = [];
-function pushPageScope() {
-  const entry = { outer: currentPage(), page: currentPage() };
-  pageScopes.push(entry);
-  return {
-    /** Record the page this surface is showing. */
-    note(page) {
-      entry.page = page;
-    },
-    release() {
-      const i = pageScopes.indexOf(entry);
-      if (i < 0) return;
-      const wasTop = i === pageScopes.length - 1;
-      pageScopes.splice(i, 1);
-      if (!wasTop) return;
-      const back = pageScopes[pageScopes.length - 1]?.page ?? entry.outer;
-      if (back) setCurrentPage(back);
-    },
-  };
-}
+/* Who owns `currentPage` while surfaces nest — see preview/pagescope.js.
+   One stack for every mounted surface; each one hands the page back to
+   whatever was under it, so a host never has to remember to. */
+const pageScopes = createPageScopes();
 
 const PROSE = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li']);
 const HEADING_KINDS = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
@@ -206,7 +188,7 @@ export default function EditSurface(props) {
   });
   props.ref?.(handle);
 
-  const pageScope = pushPageScope();
+  const pageScope = pageScopes.push(currentPage());
   /** The page the frame is showing — kept in the shared state AND in this
       surface's own scope, so unmounting hands the right one back. */
   const notePage = (d) => {
@@ -220,25 +202,26 @@ export default function EditSurface(props) {
     props.ref?.(null);
     setSelection(null);
     setEditingSession(null);
-    pageScope.release();
+    const back = pageScope.release();
+    if (back.restore) setCurrentPage(back.page);
   });
 
-  // A preview that knows how to rebuild itself owns the commit tail while
-  // this surface is mounted — and the busy gate with it: a rebuild that
-  // leaves nothing to reload releases it here rather than leaving the
-  // surface disabled (the reloading paths release from the frame's load).
-  if (props.preview?.rebuild) {
-    onCleanup(
-      pushSurfaceRebuild(async ({ changed }) => {
-        const href0 = src();
-        const seq0 = reloadSeq();
-        const res = await props.preview.rebuild({ changed });
-        const reloading = !!src() && (src() !== href0 || reloadSeq() !== seq0);
-        if (res?.ok && !reloading) frameReady();
-        return res;
-      }),
-    );
-  }
+  // This surface owns the commit tail while it is mounted — through its
+  // preview's own rebuild when it has one, else the main build the canvas
+  // shows. The busy gate comes with it: a rebuild that leaves nothing to
+  // reload (an unchanged href, or one refused because a build is already
+  // running) releases the gate here rather than leaving the surface
+  // disabled; the reloading paths release from the frame's load.
+  onCleanup(
+    pushSurfaceRebuild(async ({ changed }) => {
+      const href0 = src();
+      const seq0 = reloadSeq();
+      const res = await (props.preview?.rebuild ?? rebuildCurrentPage)({ changed });
+      const reloading = !!src() && (src() !== href0 || reloadSeq() !== seq0);
+      if (res?.ok && !reloading) frameReady();
+      return res;
+    }),
+  );
 
   // ------------------------------------------------------------------
   // Sessions
@@ -398,11 +381,6 @@ export default function EditSurface(props) {
   /** Does this shape kind nest children? (the schema-derived palette flag) */
   const acceptsChildren = (kind) => kindDefOf(kind)?.accepts_children === true;
 
-  /** Show a refused gesture's stated reason. */
-  const refused = (res) => {
-    toast(res.message, { duration: 5000 });
-  };
-
   const shapeMove = async (el, delta) => {
     const d = doc();
     const a = d && anchorOf(d, el);
@@ -417,7 +395,7 @@ export default function EditSurface(props) {
       source: src,
       delta,
     });
-    if (!res.ok) return refused(res);
+    if (!res.ok) return showRefusal(res);
     commitOps(a.file, res.ops, { etag: src.etag, reveal: 'edited' });
   };
 
@@ -438,7 +416,7 @@ export default function EditSurface(props) {
       // to the renderer start from what is on screen.
       box: el.__wclShapeBox ?? null,
     });
-    if (!res.ok) return refused(res);
+    if (!res.ok) return showRefusal(res);
     commitOps(a.file, res.ops, { etag: src.etag, reveal: 'edited' });
   };
 
@@ -453,7 +431,7 @@ export default function EditSurface(props) {
     const svg = fromEl.closest('svg[data-wcl-layout]');
     const owner = (svg && anchorOf(d, svg)) || null;
     const built = shapeOps({ gesture: 'connect', from, to, owner });
-    if (!built.ok) return refused(built);
+    if (!built.ok) return showRefusal(built);
     const src = await api.blockSource({ file: owner.file, span: owner.span });
     if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
     const res = await commitOps(owner.file, built.ops, { etag: src.etag, reveal: 'edited' });
@@ -472,6 +450,8 @@ export default function EditSurface(props) {
     if (!a || !t) return;
     const src = await api.blockSource({ file: a.file, span: a.span });
     if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
+    // Only meaningful on a manual-layout diagram; the builder decides.
+    const at = target.mode === 'diagram' ? clientToUser(target.el, point.x, point.y) : null;
     const res = shapeOps({
       gesture: 'relocate',
       slice: src.source,
@@ -482,11 +462,15 @@ export default function EditSurface(props) {
         layout: target.el.getAttribute?.('data-wcl-layout') ?? '',
         acceptsChildren: acceptsChildren(t.kind),
       },
-      // Only meaningful on a manual-layout diagram; the builder decides.
-      at: target.mode === 'diagram' ? clientToUser(target.el, point.x, point.y) : null,
+      at,
       slot: target.slot ?? null,
     });
-    if (!res.ok) return refused(res);
+    if (!res.ok) return showRefusal(res);
+    // The move is legal but the solver will place it: say so, rather than
+    // letting the shape land somewhere the author didn't drop it.
+    if (at && !res.positional) {
+      toast('This diagram lays its shapes out — the drop position was ignored', { duration: 4000 });
+    }
     commitOps(a.file, res.ops, { etag: src.etag, reveal: 'inserted' });
   };
 
@@ -510,7 +494,7 @@ export default function EditSurface(props) {
       });
     }
     const res = shapeOps({ gesture: 'convert', span: a.span, children });
-    if (!res.ok) return refused(res);
+    if (!res.ok) return showRefusal(res);
     if (res.skipped) {
       toast(`${res.skipped} shape(s) without x/y fields kept their defaults`, { duration: 4000 });
     }
@@ -925,7 +909,7 @@ export default function EditSurface(props) {
                     }
                     onChange={(k) => k !== (selection()?.layout ?? 'free') && setDiagramLayout(k)}
                   />
-                  <Show when={!MANUAL_LAYOUTS.includes(selection()?.layout ?? 'free')}>
+                  <Show when={!isManualLayout(selection()?.layout)}>
                     <IconButton
                       icon={Hand}
                       label="Convert to manual layout (keep positions)"

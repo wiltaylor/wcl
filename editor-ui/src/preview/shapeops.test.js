@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { numExpr, numField, shapeOps } from './shapeops';
+import { shapeOps } from './shapeops';
 
 /** A palette diagram_kinds entry. */
 const kindDef = (kind, fields) => ({
@@ -218,16 +218,21 @@ describe('shapeOps — relocate', () => {
 
   it('places the slice at the drop point on a manual-layout diagram', () => {
     const res = relocate({ mode: 'diagram', at: { x: 30, y: 40 } });
+    expect(res.positional).toBe(true);
     expect(res.ops[0].source).toContain('x = 30.0');
     expect(res.ops[0].source).toContain('y = 40.0');
   });
 
-  it('drops the drop point when the target layout places shapes itself', () => {
+  it('moves without the drop point when the target layout places shapes itself', () => {
+    // Not a refusal: the move is legal, only the coordinate is meaningless
+    // under a solver layout — `positional` says so.
     const res = relocate({
       mode: 'diagram',
       at: { x: 30, y: 40 },
       target: { file: 'a.wcl', span: { start: 40, end: 90 }, shared: false, layout: 'layered' },
     });
+    expect(res.ok).toBe(true);
+    expect(res.positional).toBe(false);
     expect(res.ops[0].source).toContain('x = 1.0');
   });
 
@@ -298,18 +303,5 @@ describe('shapeOps — entry point', () => {
   it('refuses an unknown gesture rather than throwing', () => {
     expect(shapeOps({ gesture: 'wiggle' }).reason).toBe('unknown-gesture');
     expect(shapeOps(undefined).ok).toBe(false);
-  });
-});
-
-describe('value helpers', () => {
-  it('reads absent / literal / computed fields', () => {
-    expect(numField(source({}), 'x')).toBe(0);
-    expect(numField(source({ x: 4 }), 'x')).toBe(4);
-    expect(Number.isNaN(numField(source({ x: computed }), 'x'))).toBe(true);
-  });
-
-  it('formats by the declared type', () => {
-    expect(numExpr(kindDef('k', [{ name: 'n', type: 'u32' }]), 'n', 4.6)).toBe('5');
-    expect(numExpr(kindDef('k', [{ name: 'n', type: 'f64' }]), 'n', 4)).toBe('4.0');
   });
 });

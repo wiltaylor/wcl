@@ -9,14 +9,15 @@
 
 /**
  * Wrap `impl` (a plain object of methods) in a handle whose members stop
- * working once `release()` runs.
+ * working once `release()` runs. The handle carries exactly `impl`'s
+ * members — a host asks the surface for things, it doesn't interrogate the
+ * reference.
  *
- * @returns {{ handle: object, release: () => void }} — `handle.live()`
- *   reports whether it is still attached.
+ * @returns {{ handle: object, release: () => void }}
  */
 export function createSurfaceHandle(impl) {
   let live = true;
-  const handle = { live: () => live };
+  const handle = {};
   for (const [name, fn] of Object.entries(impl)) {
     handle[name] = (...args) => (live ? fn(...args) : undefined);
   }

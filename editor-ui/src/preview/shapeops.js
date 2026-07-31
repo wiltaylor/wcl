@@ -14,10 +14,8 @@
    readTranslate, clientToUser); this is the other half — the schema guards
    and the op synthesis that used to sit inline in EditSurface. */
 
+import { isManualLayout } from './diagram';
 import { relocateOps } from './widgetdnd';
-
-/** Layouts that honour per-shape x/y (everything else is solver-placed). */
-export const MANUAL_LAYOUTS = ['free', 'none'];
 
 /** A resize never takes a shape below this, in user units. */
 const MIN_SIZE = 8;
@@ -48,21 +46,21 @@ export function shapeOps(input) {
   }
 }
 
-// --- schema / value helpers (exported for the callers' own guards) ---------
+// --- schema / value helpers -----------------------------------------------
 
 /** The declared type of a kind's field, or null when it has no such field. */
-export function fieldType(kindDef, name) {
+function fieldType(kindDef, name) {
   return kindDef?.fields?.find((f) => f.name === name)?.type ?? null;
 }
 
 /** Does this shape kind declare `name`? (An unknown kind declares nothing.) */
-export function hasField(kindDef, name) {
+function hasField(kindDef, name) {
   return fieldType(kindDef, name) != null;
 }
 
 /** A numeric field expr matching the schema's declared type: integer kinds
     get integers, everything else a decimal so f64 fields stay float-typed. */
-export function numExpr(kindDef, name, v) {
+function numExpr(kindDef, name, v) {
   const ty = fieldType(kindDef, name) ?? 'f64';
   if (/^[iu]/.test(ty)) return String(Math.round(v));
   const r = Math.round(v * 10) / 10;
@@ -72,7 +70,7 @@ export function numExpr(kindDef, name, v) {
 /** Current numeric value of a shape field from a block-source payload:
     absent → 0, number literal → its value, anything else → NaN (computed,
     so not form-writable). */
-export function numField(source, name) {
+function numField(source, name) {
   const slot = source?.fields?.[name];
   if (!slot) return 0;
   return slot.state === 'number' ? Number(slot.text) : NaN;
@@ -161,7 +159,8 @@ const GENERATED = 'This diagram is generated — edit its source data instead';
     source slice — after a leaf sibling, into a container widget, or out onto
     the diagram. `at` (user units) only survives when the target actually
     honours per-shape coordinates, so a drop on a solver-laid-out diagram
-    doesn't write a position the layout would ignore.
+    doesn't write a position the layout would ignore — the move still
+    happens; `positional` reports whether the drop point survived it.
     `{ slice, mode: 'after'|'inside'|'diagram', source: { file, span, shared },
        target: { kind, file, span, shared, layout, acceptsChildren }, at, slot }` */
 function relocateGestureOps({ slice, mode, source, target, at = null, slot = null }) {
@@ -177,9 +176,10 @@ function relocateGestureOps({ slice, mode, source, target, at = null, slot = nul
       `a ${target.kind ?? 'shape'} cannot contain other widgets`,
     );
   }
-  const positional = mode === 'diagram' && MANUAL_LAYOUTS.includes(target.layout ?? '');
+  const positional = mode === 'diagram' && isManualLayout(target.layout);
   return {
     ok: true,
+    positional,
     ops: relocateOps({
       slice,
       mode,

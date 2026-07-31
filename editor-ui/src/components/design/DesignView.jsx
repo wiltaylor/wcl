@@ -29,6 +29,7 @@ import {
   setPopover,
 } from '../../state/design';
 import { reloadGraph } from '../../state/graph';
+import { isManualLayout } from '../../preview/diagram';
 import { freshShapeId, shapeSnippet } from '../../preview/schemaform';
 import { wclString } from '../../preview/wysiwyg';
 import {
@@ -666,7 +667,7 @@ function AddShapeModal(props) {
   const insert = (entry) => {
     const a = props.anchor;
     const source = props.src.source ?? '';
-    const manual = ['free', 'none'].includes(a.layout ?? 'free');
+    const manual = isManualLayout(a.layout);
     const index =
       a.el?.querySelectorAll?.('[data-wcl-shape]')?.length ??
       (source.match(/\bid\s*=/g) ?? []).length;

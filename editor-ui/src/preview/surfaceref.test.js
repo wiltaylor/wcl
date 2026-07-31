@@ -9,14 +9,15 @@ describe('createSurfaceHandle', () => {
     handle.goto('/page.html');
     expect(goto).toHaveBeenCalledWith('/page.html');
     expect(handle.doc()).toBe('document');
-    expect(handle.live()).toBe(true);
+    // Exactly `impl`'s members: a host asks the surface for things, it
+    // doesn't interrogate the reference.
+    expect(Object.keys(handle).sort()).toEqual(['doc', 'goto']);
   });
 
   it('goes inert once released — a held reference cannot act', () => {
     const goto = vi.fn();
     const { handle, release } = createSurfaceHandle({ goto, doc: () => 'document' });
     release();
-    expect(handle.live()).toBe(false);
     expect(handle.doc()).toBeUndefined();
     handle.goto('/page.html');
     expect(goto).not.toHaveBeenCalled();

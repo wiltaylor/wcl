@@ -127,9 +127,7 @@ export async function commitOpsQuiet(file, ops, opts = {}) {
 
 /** Listeners for in-place commits (`commitOpsLocal`) — the content modal
     subscribes to mark its cached per-view builds stale without rebuilding
-    the surface the commit just patched. Each receives
-    `{ file, surface }` — the surface id that repaired itself in place, so a
-    listener can leave that one alone. */
+    the surface the commit just patched. Each receives `{ file }`. */
 const localCommitListeners = new Set();
 export function onLocalCommit(fn) {
   localCommitListeners.add(fn);
@@ -161,7 +159,7 @@ export async function commitOpsLocal(file, ops, opts = {}) {
   // The canvas is stale unless it IS the patched surface — setting the flag
   // there would trigger an immediate rebuild of what we just patched.
   if (opts.surface !== SURFACE_CANVAS) setCanvasStale(true);
-  for (const fn of localCommitListeners) fn({ file: res.file, surface: opts.surface ?? null });
+  for (const fn of localCommitListeners) fn({ file: res.file });
   setBusy(false); // no frame load coming — release directly
   return res;
 }
@@ -375,20 +373,29 @@ export function pushSurfaceRebuild(fn) {
 }
 const surfaceRebuild = () => surfaceRebuilds[surfaceRebuilds.length - 1]?.fn ?? null;
 
+/** The default rebuild: the main site preview, targeted at the page being
+    shown. Used when no surface is mounted, and by a mounted surface whose
+    preview doesn't know how to rebuild itself (the canvas shows the main
+    build) — so the busy gate is released in the one place either way. */
+export function rebuildCurrentPage({ changed }) {
+  const page = currentPage()?.name;
+  return rebuild({ ...(page ? { pages: [page] } : {}), changed: changed ?? [] });
+}
+
+/** Show a refused shape gesture's stated reason. The refusal comes back as
+    a value from `preview/shapeops.js`; every surface presents it alike. */
+export function showRefusal(res) {
+  toast(res.message, { duration: 5000 });
+}
+
 /** The shared tail of every commit: rebuild (targeted when possible — the
     server falls back to full on structural change), refresh models, release
     the busy gate once the iframe has reloaded (onFrameReady). */
 async function afterCommit({ changed, refreshNav }) {
   setSelection(null);
   setEditingSession(null);
-  const page = currentPage()?.name;
   const hook = surfaceRebuild();
-  const res = hook
-    ? await hook({ changed: changed ?? [] })
-    : await rebuild({
-        ...(page ? { pages: [page] } : {}),
-        changed: changed ?? [],
-      });
+  const res = hook ? await hook({ changed: changed ?? [] }) : await rebuildCurrentPage({ changed });
   if (!res.ok) {
     setBusy(false);
     toast('Rebuild failed — see the preview pane', { tone: 'danger', duration: 6000 });

@@ -49,8 +49,13 @@ svg.wcl-wys-drop > * { outline: none; }
 `;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-/** Layout modes whose shapes position by their own x/y (drag allowed). */
+/** Layout modes whose shapes position by their own x/y (drag allowed) —
+    everything else is solver-placed, so a written coordinate is ignored.
+    Takes a `layout` VALUE, absent meaning the schema default `:free`; the
+    DOM's `data-wcl-layout` is different (absent = not a diagram at all),
+    so reading the attribute keeps its own null check. */
 const MANUAL_LAYOUTS = ['free', 'none'];
+export const isManualLayout = (layout) => MANUAL_LAYOUTS.includes(layout ?? 'free');
 /** Client-pixel movement below this is a click, not a drag. */
 const DRAG_THRESHOLD = 3;
 
@@ -96,8 +101,9 @@ export function clientToUser(svg, x, y) {
 
 /** Whether `shapeEl`'s diagram honors per-shape x/y (manual layout). */
 export function isDraggable(shapeEl) {
-  const layout = shapeEl?.closest?.('svg[data-wcl-layout]')?.getAttribute('data-wcl-layout');
-  return MANUAL_LAYOUTS.includes(layout ?? '');
+  const attr = shapeEl?.closest?.('svg[data-wcl-layout]')?.getAttribute('data-wcl-layout');
+  // No enclosing diagram at all — not a missing field defaulting to :free.
+  return attr != null && isManualLayout(attr);
 }
 
 /** The geometry delta of a corner resize: pointer user-delta (du, dv) →
