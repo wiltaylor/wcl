@@ -26,7 +26,8 @@ use axum::response::Response;
 use wcl_lang::ast::{self, Expr, Item};
 use wcl_lang::{Document, Span, Value, edit as ast_edit, format as wcl_format, parse_for_edit};
 
-use super::blocks::{first_label, is_wskill, site_kind, unit_kinds, value_string};
+use super::blocks::{first_label, value_string};
+use super::kinds::KindModel;
 use super::preview::Sessions;
 use super::{EditorState, Workspace, run_blocking};
 use crate::serve::{json_error, parse_json_body, query_param};
@@ -54,8 +55,9 @@ pub(super) async fn handle_nav(State(state): State<Arc<EditorState>>, uri: Uri) 
 fn nav(ws: &Workspace, entry: &str, site: Option<&str>) -> Result<serde_json::Value, String> {
     let entry_abs = ws.abs(entry)?;
     let doc = wcl_wdoc::open_doc_for_edit(&entry_abs).map_err(super::err_str)?;
-    let wskill = is_wskill(&doc);
-    let site_type = site_kind(&doc, site);
+    let model = KindModel::new(&doc);
+    let wskill = model.is_wskill();
+    let site_type = model.site_kind(site);
 
     let pages = declared_pages(ws, &doc, &entry_abs);
     if wskill && site_type == "book" {
@@ -134,13 +136,8 @@ fn wskill_nav(
     entry_abs: &Path,
 ) -> Result<(Vec<serde_json::Value>, Vec<serde_json::Value>), String> {
     // Unit registry: id → (kind, title, file, span). Kinds come from the
-    // same palette introspection the add-unit form uses.
-    let kind_names: Vec<String> = unit_kinds(doc)
-        .iter()
-        .filter_map(|k| k.get("kind").and_then(serde_json::Value::as_str))
-        .filter(|k| *k != "index")
-        .map(str::to_string)
-        .collect();
+    // same kind model the add-unit palette reads.
+    let kind_names: Vec<String> = KindModel::new(doc).unit_kind_names();
     let mut units: HashMap<String, (String, String, PathBuf, Span)> = HashMap::new();
     let mut unit_order: Vec<String> = Vec::new();
     for (path, b) in doc.blocks_with_source() {
@@ -589,10 +586,31 @@ enum RelatedOp {
     Reorder,
 }
 
-/// The file declaring the `index` with `id`, opened fresh from disk.
+/// Does this block's subtree contain an `index` with the given id?
+/// (Sub-indexes nest inside their parent block, so the owning *file* must
+/// be found by searching recursively — the block itself is then relocated
+/// by the equally recursive `find_block_by_kind_label`.)
+fn subtree_has_index(b: &wcl_lang::Block<'_>, id: &str) -> bool {
+    (b.kind() == "index" && first_label(b).as_deref() == Some(id))
+        || b.blocks().any(|c| subtree_has_index(&c, id))
+}
+
+/// The file declaring the `index` with `id`. Index ids are assumed
+/// document-unique; first match wins.
+fn index_file_in(doc: &Document, entry_abs: &Path, index_id: &str) -> Result<PathBuf, String> {
+    doc.blocks_with_source()
+        .find(|(_, b)| subtree_has_index(b, index_id))
+        .map(|(p, _)| {
+            p.map(Path::to_path_buf)
+                .unwrap_or_else(|| entry_abs.to_path_buf())
+        })
+        .ok_or_else(|| format!("no `index` with id `{index_id}`"))
+}
+
+/// [`index_file_in`] for a caller with no document open yet.
 fn index_file(entry_abs: &Path, index_id: &str) -> Result<PathBuf, String> {
     let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(super::err_str)?;
-    super::blocks::index_file(&doc, entry_abs, index_id)
+    index_file_in(&doc, entry_abs, index_id)
 }
 
 /// Rewrite an index's `related` list: pin (append), unpin (remove), or
@@ -766,7 +784,7 @@ fn create_index(
     }
     let name = crate::edit::str_field(v, "name")?;
     let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(super::err_str)?;
-    if super::blocks::index_file(&doc, entry_abs, id).is_ok() {
+    if index_file_in(&doc, entry_abs, id).is_ok() {
         return Err(format!("an `index` with id `{id}` already exists"));
     }
     let block = ast_edit::build_block(
@@ -798,10 +816,12 @@ fn create_index(
             })
         }
         None => {
-            let placement = super::blocks::place_unit(&doc, entry_abs, "index")?;
+            let model = KindModel::new(&doc);
+            let placement = super::placement::place_unit(&model, entry_abs, "index")?;
             let mut changes: Vec<(PathBuf, String)> = Vec::new();
             let file =
-                super::blocks::write_new_block(placement, id, block, entry_abs, &mut changes)?;
+                super::placement::write_new_block(placement, id, block, entry_abs, &mut changes)?;
+            drop(model);
             drop(doc);
             crate::edit::commit(entry_abs, changes)?;
             Ok(serde_json::json!({

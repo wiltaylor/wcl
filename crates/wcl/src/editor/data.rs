@@ -17,9 +17,10 @@ use axum::http::Uri;
 use axum::response::Response;
 
 use wcl_lang::ast::{self, Item};
-use wcl_lang::{DeclName, Document, parse_for_edit};
+use wcl_lang::{Document, parse_for_edit};
 
-use super::blocks::{dec_first_string, first_label, kind_entry, visibility_json};
+use super::blocks::{dec_first_string, first_label, visibility_json};
+use super::kinds::KindModel;
 use super::{EditorState, Workspace, run_blocking};
 use crate::serve::query_param;
 
@@ -76,11 +77,17 @@ fn data_types(
 ) -> Result<serde_json::Value, String> {
     let doc_entry = ws.doc_entry(entry, page_file)?;
     let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(super::err_str)?;
+    let model = KindModel::new(&doc);
     let entry_dir = doc_entry.parent().unwrap_or(&doc_entry);
+    // The same kind shape every other endpoint serves — including
+    // `type_name`, the FULLY-QUALIFIED schema name the create path matches
+    // on. (Data mode used to serve the short name here; forwarding that
+    // would silently fall back to a name-only lookup, which is the
+    // namespace collision `type_name` exists to prevent.)
     let types: Vec<serde_json::Value> = editable_types(&doc)
         .into_iter()
         .map(|(kind, file_hint, decl)| {
-            let mut entry_json = kind_entry(&kind, &decl);
+            let mut entry_json = model.describe_decl(&kind, decl).json();
             // The target for new rows, repo-relative (hints are
             // entry-relative by convention).
             let file = file_hint.map(|f| {
@@ -92,7 +99,6 @@ fn data_types(
                     .unwrap_or(f)
             });
             entry_json["file"] = serde_json::json!(file);
-            entry_json["type_name"] = serde_json::json!(decl.name());
             entry_json
         })
         .collect();

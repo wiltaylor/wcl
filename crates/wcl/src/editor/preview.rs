@@ -366,11 +366,7 @@ fn append_synthetic_unit_page(
     let doc =
         wcl_wdoc::open_doc_for_edit_with_overlay(entry_abs, overlay.clone()).map_err(err_str)?;
     let gather = doc
-        .type_decls()
-        .filter(|d| d.decorators().any(|dec| dec.name() == "document"))
-        .flat_map(|d| d.effective_fields())
-        .find(|f| f.children_block_kind().as_deref() == Some(kind))
-        .map(|f| f.name().to_string())
+        .gather_field(kind)
         .ok_or_else(|| format!("no document gather for kind `{kind}`"))?;
     let unit = doc
         .blocks()

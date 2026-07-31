@@ -11,22 +11,21 @@
 //! new file text, so the client can re-anchor without re-reading.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::State;
-use axum::http::{StatusCode, Uri};
+use axum::http::StatusCode;
 use axum::response::Response;
 
 use wcl_lang::ast::{self, Expr, Item};
-use wcl_lang::{
-    DeclName, Document, ResolvedType, Span, Value, edit as ast_edit, format as wcl_format,
-    parse_expr, parse_for_edit,
-};
+use wcl_lang::{Span, Value, edit as ast_edit, format as wcl_format, parse_expr, parse_for_edit};
 
+use super::kinds::{Kind, KindModel};
+use super::placement::{Placement, pin_into_index, place_unit, write_new_block};
 use super::preview::Sessions;
 use super::{EditorState, Workspace, run_blocking};
-use crate::serve::{json_error, parse_json_body, query_param};
+use crate::serve::{json_error, parse_json_body};
 
 // ---------------------------------------------------------------------------
 // Request context
@@ -813,16 +812,16 @@ fn unit_field(
 // `POST /api/unit/create` — a new data-object instance with file placement
 // ---------------------------------------------------------------------------
 
-/// Body: `{ entry, page_file?, unit: { kind, id, fields? }, pin?: { index_id } }`.
+/// Body: `{ entry, page_file?, unit: { kind, id, file?, type_name? },
+/// fields?, pin?: { index_id } }`.
 ///
-/// File placement follows the document's own conventions: when existing
-/// instances of the kind live one-per-file in a single directory (the wskill
-/// `data/<kind>s/` layout), the unit gets its own `<id>.wcl` there — plus an
-/// `ensure_import` into the sibling `main.wcl` aggregator when one exists.
-/// Otherwise it's appended to the file holding the most instances of the
-/// kind (multi-block layout), falling back to the entry document itself.
-/// `pin` appends the id to the named `index` block's `related` list. All
-/// changes land in one [`crate::edit::commit`] (rollback covers them all).
+/// What to write comes from the [kind model](super::kinds): whether the id
+/// is an identifier or a string, and whether to seed an empty prose body.
+/// Where it goes comes from [`super::placement`] — an explicit `file`
+/// (Data mode's `@wdoc.editable` hint) overrides the convention-derived
+/// placement. `pin` appends the id to the named `index` block's `related`
+/// list. All changes land in one [`crate::edit::commit`] (rollback covers
+/// them all).
 pub(super) async fn handle_unit_create(
     State(state): State<Arc<EditorState>>,
     body: String,
@@ -854,27 +853,18 @@ pub(super) fn unit_create(
         return Err(format!("a `{kind}` with id `{id}` already exists"));
     }
 
-    // The inline-label expression: an identifier when the schema's
-    // `@inline(0)` field is identifier-typed (the wskill unit convention),
-    // else a string literal. `type_name` (the schema's fully-qualified name,
-    // served with every kind entry) disambiguates kind names shared across
-    // namespaces — a WAD `container` must not be schema'd by wdoc's
-    // diagram-grouping shape of the same name.
-    let schema = unit
-        .get("type_name")
-        .and_then(serde_json::Value::as_str)
-        .and_then(|full| doc.type_decls().find(|d| d.full_name() == full))
-        .or_else(|| doc.block_schema(kind));
-    let ident_label = schema
-        .as_ref()
-        .and_then(|s| {
-            s.effective_fields()
-                .into_iter()
-                .find(|f| f.inline_slot() == Some(0))
-        })
-        .map(|f| f.type_ref().to_string() == "identifier")
-        .unwrap_or(false);
-    let label = if ident_label {
+    // The kind model answers both schema questions this path asks — is the
+    // `@inline(0)` slot identifier-typed (the wskill unit convention), and
+    // does an instance carry a prose body. `type_name` (the fully-qualified
+    // schema name, served with every kind entry) disambiguates kind names
+    // shared across namespaces — a WAD `container` must not be schema'd by
+    // wdoc's diagram-grouping shape of the same name.
+    let model = KindModel::new(&doc);
+    let described = model.describe(
+        kind,
+        unit.get("type_name").and_then(serde_json::Value::as_str),
+    );
+    let label = if described.as_ref().is_some_and(Kind::id_is_identifier) {
         Expr::Identifier(id.to_string(), Span::new(0, 0))
     } else {
         ast_edit::string_literal_expr(id)
@@ -888,15 +878,7 @@ pub(super) fn unit_create(
     }
     let mut block = ast_edit::build_block(kind, &[], vec![label], fields);
     // An empty body child gives the canvas an insertion target right away.
-    let has_body = schema
-        .as_ref()
-        .map(|s| {
-            s.effective_fields()
-                .into_iter()
-                .any(|f| f.child_block_kind().as_deref() == Some("body"))
-        })
-        .unwrap_or(false);
-    if has_body {
+    if described.as_ref().is_some_and(Kind::has_body) {
         block.items.push(Item::Block(ast_edit::build_block(
             "body",
             &[],
@@ -918,7 +900,7 @@ pub(super) fn unit_create(
                 Placement::NewTarget { file: abs }
             }
         }
-        _ => place_unit(&doc, &doc_entry, kind)?,
+        _ => place_unit(&model, &doc_entry, kind)?,
     };
     let new_file = write_new_block(placement, id, block, &doc_entry, &mut changes)?;
 
@@ -926,6 +908,8 @@ pub(super) fn unit_create(
         let index_id = crate::edit::str_field(pin, "index_id")?;
         pin_into_index(&doc, &doc_entry, index_id, id, &mut changes)?;
     }
+    drop(described);
+    drop(model);
     drop(doc);
 
     crate::edit::commit(&doc_entry, changes)?;
@@ -935,295 +919,6 @@ pub(super) fn unit_create(
         "file": ws.rel(&new_file)?,
         "id": id,
     }))
-}
-
-/// Realise a [`Placement`] for a freshly built top-level block: stage the
-/// file writes (a new `<id>.wcl` plus its aggregator import, an append to an
-/// existing file, or a named new target imported from the entry) into
-/// `changes` and answer the file the block landed in. Shared by
-/// [`handle_unit_create`] and the nav model's `create_index`.
-pub(super) fn write_new_block(
-    placement: Placement,
-    id: &str,
-    block: ast::Block,
-    doc_entry: &Path,
-    changes: &mut Vec<(PathBuf, String)>,
-) -> Result<PathBuf, String> {
-    let new_file = match placement {
-        Placement::NewFile { dir, aggregator } => {
-            let file = dir.join(format!("{id}.wcl"));
-            if file.exists() {
-                return Err(format!("{} already exists", file.display()));
-            }
-            let mut src = ast::Source {
-                items: Vec::new(),
-                trailing_trivia: Vec::new(),
-            };
-            ast_edit::append_top_level_block(&mut src, block);
-            changes.push((file.clone(), wcl_format::to_source(&src)));
-            if let Some(agg) = aggregator {
-                let text = crate::edit::read(&agg)?;
-                let mut asrc =
-                    parse_for_edit(&text, agg.display().to_string()).map_err(super::err_str)?;
-                ast_edit::ensure_import(&mut asrc, &format!("./{id}.wcl"));
-                changes.push((agg, wcl_format::to_source(&asrc)));
-            }
-            file
-        }
-        Placement::Append { file } => {
-            let text = crate::edit::read(&file)?;
-            let mut src =
-                parse_for_edit(&text, file.display().to_string()).map_err(super::err_str)?;
-            ast_edit::append_top_level_block(&mut src, block);
-            changes.push((file.clone(), wcl_format::to_source(&src)));
-            file
-        }
-        Placement::NewTarget { file } => {
-            let mut src = ast::Source {
-                items: Vec::new(),
-                trailing_trivia: Vec::new(),
-            };
-            ast_edit::append_top_level_block(&mut src, block);
-            changes.push((file.clone(), wcl_format::to_source(&src)));
-            // Import it from the entry so the new instances gather.
-            let entry_dir = doc_entry.parent().unwrap_or(doc_entry);
-            if let Ok(rel) = file.strip_prefix(entry_dir) {
-                let text = crate::edit::read(doc_entry)?;
-                let mut esrc = parse_for_edit(&text, doc_entry.display().to_string())
-                    .map_err(super::err_str)?;
-                if ast_edit::ensure_import(&mut esrc, &rel.to_string_lossy().replace('\\', "/")) {
-                    changes.push((doc_entry.to_path_buf(), wcl_format::to_source(&esrc)));
-                }
-            }
-            file
-        }
-    };
-    Ok(new_file)
-}
-
-pub(super) enum Placement {
-    NewFile {
-        dir: PathBuf,
-        aggregator: Option<PathBuf>,
-    },
-    Append {
-        file: PathBuf,
-    },
-    /// An explicitly named file that doesn't exist yet: create it and
-    /// import it from the owning entry document.
-    NewTarget {
-        file: PathBuf,
-    },
-}
-
-/// Where a new instance of `kind` belongs, derived from where the existing
-/// instances live (see [`handle_unit_create`]).
-pub(super) fn place_unit(
-    doc: &Document,
-    doc_entry: &Path,
-    kind: &str,
-) -> Result<Placement, String> {
-    let mut per_file: Vec<(PathBuf, usize)> = Vec::new();
-    for (path, block) in doc.blocks_with_source() {
-        if block.kind() != kind {
-            continue;
-        }
-        let file = path
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| doc_entry.to_path_buf());
-        if is_generated(&file) {
-            continue;
-        }
-        match per_file.iter_mut().find(|(p, _)| *p == file) {
-            Some((_, n)) => *n += 1,
-            None => per_file.push((file, 1)),
-        }
-    }
-    if per_file.is_empty() {
-        // No instances to learn from. The entry document is the last resort,
-        // NOT the first: a projection entry (a WAD's book template, a
-        // wskill's) is a different namespace from the data it renders, and a
-        // block written there wouldn't even resolve to this schema. Look for
-        // a data file of a neighbouring kind instead — the kinds this one
-        // nests into, then the kinds that nest into it, then anything else
-        // declared in the same schema namespace.
-        return Ok(Placement::Append {
-            file: kin_file(doc, kind).unwrap_or_else(|| doc_entry.to_path_buf()),
-        });
-    }
-    // One-per-file layout: every instance alone in its file, all in one
-    // directory → a fresh `<id>.wcl` beside them.
-    let one_per_file = per_file.iter().all(|(_, n)| *n == 1);
-    let dirs: Vec<&Path> = per_file.iter().filter_map(|(p, _)| p.parent()).collect();
-    if one_per_file
-        && dirs.windows(2).all(|w| w[0] == w[1])
-        && let Some(dir) = dirs.first()
-    {
-        let aggregator = dir.join("main.wcl");
-        return Ok(Placement::NewFile {
-            dir: dir.to_path_buf(),
-            aggregator: aggregator.is_file().then_some(aggregator),
-        });
-    }
-    let (file, _) = per_file
-        .into_iter()
-        .max_by_key(|(_, n)| *n)
-        .expect("non-empty");
-    Ok(Placement::Append { file })
-}
-
-/// Is this file written by a generator? Extractor output carries a
-/// `GENERATED` banner and is overwritten wholesale on the next run — an
-/// object created there would be silently lost (and, where a CI gate checks
-/// the tree is fresh, would fail the build). Placement skips such files
-/// entirely; objects that are already in them stay editable in place.
-fn is_generated(file: &Path) -> bool {
-    let Ok(text) = std::fs::read_to_string(file) else {
-        return false;
-    };
-    // The banner is a leading comment, so only the head of the file matters.
-    text.lines()
-        .take(5)
-        .take_while(|l| {
-            let t = l.trim_start();
-            t.is_empty() || t.starts_with("//") || t.starts_with('#')
-        })
-        .any(|l| l.contains("GENERATED"))
-}
-
-/// The data file a brand-new instance of `kind` should join when the kind
-/// has no instances of its own: the file holding the most instances of a
-/// neighbouring kind, tried in order — the kinds it nests into, the kinds
-/// that nest into it, then any other kind declared in the same schema
-/// namespace. `None` when the document holds no such data at all.
-fn kin_file(doc: &Document, kind: &str) -> Option<PathBuf> {
-    let links = kind_links(doc);
-    let me = links.iter().find(|k| k.kind == kind)?;
-    let ns = me.schema.namespace().to_vec();
-    let parents: Vec<&str> = me.parents.iter().map(|(_, k)| k.as_str()).collect();
-    let children: Vec<&str> = links
-        .iter()
-        .filter(|k| k.parents.iter().any(|(_, p)| p == kind))
-        .map(|k| k.kind.as_str())
-        .collect();
-    let same_ns: Vec<&str> = links
-        .iter()
-        .filter(|k| k.kind != kind && k.schema.namespace() == ns)
-        .map(|k| k.kind.as_str())
-        .collect();
-
-    for tier in [&parents, &children, &same_ns] {
-        let mut per_file: Vec<(PathBuf, usize)> = Vec::new();
-        for (path, block) in doc.blocks_with_source() {
-            if !tier.contains(&block.kind()) {
-                continue;
-            }
-            let Some(file) = path.map(Path::to_path_buf) else {
-                continue;
-            };
-            if is_generated(&file) {
-                continue;
-            }
-            match per_file.iter_mut().find(|(p, _)| *p == file) {
-                Some((_, n)) => *n += 1,
-                None => per_file.push((file, 1)),
-            }
-        }
-        // Ties go to the first file in document order, so placement is
-        // deterministic rather than dependent on iteration order.
-        if let Some((file, _)) = per_file.into_iter().max_by_key(|(_, n)| *n) {
-            return Some(file);
-        }
-    }
-    None
-}
-
-/// Append `id` to the `related` list of the `index` block labelled
-/// `index_id`, layering on top of any pending change to the same file.
-/// Does this block's subtree declare an `index` with the given id?
-fn subtree_has_index(b: &wcl_lang::Block<'_>, id: &str) -> bool {
-    (b.kind() == "index" && first_label(b).as_deref() == Some(id))
-        || b.blocks().any(|c| subtree_has_index(&c, id))
-}
-
-/// The file declaring the `index` with `id`. Sub-indexes nest inside their
-/// parent block, so the search recurses (the block itself is then relocated
-/// by the equally recursive [`find_block_by_kind_label`]). Index ids are
-/// assumed document-unique; first match wins. Shared by `unit_create`'s pin
-/// and the nav model's id-addressed index ops — two callers that each used
-/// to walk the document themselves, one of them only at the top level.
-/// Collapsing them therefore *changed* `unit_create`: a pin naming a nested
-/// sub-index used to be refused as "no `index` with id" and now lands, which
-/// is what the nav ops already did.
-pub(super) fn index_file(
-    doc: &Document,
-    doc_entry: &Path,
-    index_id: &str,
-) -> Result<PathBuf, String> {
-    doc.blocks_with_source()
-        .find(|(_, b)| subtree_has_index(b, index_id))
-        .map(|(p, _)| {
-            p.map(Path::to_path_buf)
-                .unwrap_or_else(|| doc_entry.to_path_buf())
-        })
-        .ok_or_else(|| format!("no `index` with id `{index_id}`"))
-}
-
-fn pin_into_index(
-    doc: &Document,
-    doc_entry: &Path,
-    index_id: &str,
-    id: &str,
-    changes: &mut Vec<(PathBuf, String)>,
-) -> Result<(), String> {
-    let ifile = index_file(doc, doc_entry, index_id)?;
-    // Base text: a pending change to the same file, else disk. Located by
-    // kind + label (not span) because pending edits shift spans.
-    let base = match changes.iter().find(|(p, _)| *p == ifile) {
-        Some((_, text)) => text.clone(),
-        None => crate::edit::read(&ifile)?,
-    };
-    let mut src = parse_for_edit(&base, ifile.display().to_string()).map_err(super::err_str)?;
-    let block = find_block_by_kind_label(&mut src.items, "index", index_id)
-        .ok_or_else(|| format!("could not relocate index `{index_id}`"))?;
-    let related = block.items.iter_mut().find_map(|it| match it {
-        Item::Field(f) if f.name == "related" => Some(f),
-        _ => None,
-    });
-    let new_ident = Expr::Identifier(id.to_string(), Span::new(0, 0));
-    match related {
-        Some(f) => match &mut f.expr {
-            Expr::ListLit {
-                elements,
-                elem_trivia,
-                ..
-            } => {
-                elements.push(new_ident);
-                elem_trivia.push(Default::default());
-            }
-            _ => {
-                return Err(format!(
-                    "index `{index_id}`'s related list is computed — edit its source instead"
-                ));
-            }
-        },
-        None => ast_edit::set_or_insert_field(
-            block,
-            "related",
-            Expr::ListLit {
-                elements: vec![new_ident],
-                elem_trivia: vec![Default::default()],
-                trailing_trivia: Vec::new(),
-                span: Span::new(0, 0),
-            },
-        ),
-    }
-    let text = wcl_format::to_source(&src);
-    match changes.iter_mut().find(|(p, _)| *p == ifile) {
-        Some((_, pending)) => *pending = text,
-        None => changes.push((ifile, text)),
-    }
-    Ok(())
 }
 
 /// The first inline label of an AST block when it's a plain identifier or
@@ -1259,6 +954,24 @@ pub(super) fn first_label(b: &wcl_lang::Block<'_>) -> Option<String> {
     b.labels()
         .ok()
         .and_then(|ls| ls.first().map(value_string))
+        .filter(|s| !s.is_empty())
+}
+
+/// The first positional argument of a decorator, as a string.
+pub(super) fn dec_first_string(d: &wcl_lang::Decorator<'_>) -> Option<String> {
+    d.positional().ok()?.first().map(|v| match v {
+        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s.clone(),
+        other => format!("{other:?}"),
+    })
+}
+
+/// A document-view block's field value as a plain string, when it
+/// evaluates to a scalar. Forces the field's evaluation.
+pub(super) fn field_string(b: &wcl_lang::Block<'_>, name: &str) -> Option<String> {
+    b.field(name)
+        .and_then(|f| f.value().ok().cloned())
+        .as_ref()
+        .map(value_string)
         .filter(|s| !s.is_empty())
 }
 
@@ -1316,408 +1029,6 @@ fn json_to_expr(v: &serde_json::Value) -> Result<Expr, String> {
         J::Null => Err("null field value".into()),
     }
 }
-
-// ---------------------------------------------------------------------------
-// `GET /api/palette` — what the add-block UI can insert here
-// ---------------------------------------------------------------------------
-
-/// Query: `entry`, `site?`, `page_file?` → `{ site_type, wskill, unit_kinds,
-/// body_kinds, components }`. Unit kinds come from the merged `@document`
-/// gathers with schema introspection (field metadata drives the generated
-/// create form); body kinds are the curated wdoc content blocks with
-/// canonical insertion snippets; components are the `wdoc_component`
-/// declarations authored inside the served tree, with their slots.
-pub(super) async fn handle_palette(State(state): State<Arc<EditorState>>, uri: Uri) -> Response {
-    let entry = query_param(&uri, "entry");
-    let site = query_param(&uri, "site");
-    let page_file = query_param(&uri, "page_file");
-    let state2 = Arc::clone(&state);
-    run_blocking(move || {
-        let entry = entry.ok_or("missing entry")?;
-        palette(&state2.ws, &entry, site.as_deref(), page_file.as_deref())
-    })
-    .await
-}
-
-/// Wskill plumbing kinds that never belong in the add-a-unit palette.
-const UNIT_KIND_DENYLIST: &[&str] = &[
-    "topic",
-    "skill",
-    "artifact",
-    "source",
-    "question",
-    "wskill_ref",
-];
-
-/// The curated body-block palette: `(kind, label, canonical snippet)`.
-/// Static because most of these render via Rust fundamentals — there is no
-/// WCL schema rich enough to introspect an insertion template from.
-const BODY_KINDS: &[(&str, &str, &str)] = &[
-    ("p", "Paragraph", "p \"New paragraph\""),
-    ("h2", "Heading", "h2 \"New heading\""),
-    ("h3", "Subheading", "h3 \"New subheading\""),
-    (
-        "code",
-        "Code block",
-        "code \"text\" {\n  source = <<'SRC'\n\nSRC\n}",
-    ),
-    (
-        "callout",
-        "Callout",
-        "callout \"Note\" {\n  body = \"Callout text\"\n}",
-    ),
-    ("list", "List", "list {\n  li \"First item\"\n}"),
-    (
-        "table",
-        "Table",
-        "table {\n  rows:\n    | \"Column\" | \"Column\" |\n    | \"\" | \"\" |\n}",
-    ),
-    ("image", "Image", "image \"\" {\n  alt = \"\"\n}"),
-];
-
-fn palette(
-    ws: &Workspace,
-    entry: &str,
-    site: Option<&str>,
-    page_file: Option<&str>,
-) -> Result<serde_json::Value, String> {
-    let doc_entry = ws.doc_entry(entry, page_file)?;
-    let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(super::err_str)?;
-
-    let body_kinds: Vec<serde_json::Value> = BODY_KINDS
-        .iter()
-        .map(|(kind, label, snippet)| {
-            serde_json::json!({ "kind": kind, "label": label, "template_source": snippet })
-        })
-        .collect();
-
-    Ok(serde_json::json!({
-        "ok": true,
-        "site_type": site_kind(&doc, site),
-        "wskill": is_wskill(&doc),
-        "wad": is_wad(&doc),
-        "unit_kinds": unit_kinds(&doc),
-        "diagram_kinds": diagram_kinds(&doc),
-        "body_kinds": body_kinds,
-        "components": components(ws, &doc),
-    }))
-}
-
-/// Whether the document carries the wskill data model (a gathered `topic`).
-pub(super) fn is_wskill(doc: &Document) -> bool {
-    doc.blocks().any(|b| b.kind() == "topic")
-}
-
-/// Whether the document carries the WAD data model (its one `wad` root
-/// metadata block) — the flag that opens the Systems view.
-pub(super) fn is_wad(doc: &Document) -> bool {
-    doc.blocks().any(|b| b.kind() == "wad")
-}
-
-/// `book` / `website` / `presentation`, from the selected `site` block's
-/// nav-declaring child (`toc` / `menu` / `deck`).
-pub(super) fn site_kind(doc: &Document, site: Option<&str>) -> &'static str {
-    let block = doc.blocks().find(|b| {
-        b.kind() == "site"
-            && match site {
-                Some(name) => first_label(b).as_deref() == Some(name),
-                None => true,
-            }
-    });
-    let Some(site) = block else { return "book" };
-    let child_kinds: Vec<String> = site.blocks().map(|b| b.kind().to_string()).collect();
-    if child_kinds.iter().any(|k| k == "deck") {
-        "presentation"
-    } else if child_kinds.iter().any(|k| k == "menu") {
-        "website"
-    } else {
-        "book"
-    }
-}
-
-/// Every `@children`-gathered block kind of the document's merged
-/// `@document` schemas, minus wdoc's own infrastructure gathers (pages,
-/// sites, components, …, excluded by declaring namespace), as
-/// `(kind, schema)` in declaration order. The data-object surface every
-/// schema-driven view is built from.
-pub(super) fn gathered_kinds<'a>(doc: &'a Document) -> Vec<(String, wcl_lang::TypeDecl<'a>)> {
-    let mut seen: Vec<String> = Vec::new();
-    let mut out: Vec<(String, wcl_lang::TypeDecl<'a>)> = Vec::new();
-    for decl in doc.type_decls() {
-        if !decl.decorators().any(|d| d.name() == "document") {
-            continue;
-        }
-        for field in decl.effective_fields() {
-            let Some(kind) = field.children_block_kind() else {
-                continue;
-            };
-            if seen.contains(&kind) {
-                continue;
-            }
-            seen.push(kind.clone());
-            let Some(schema) = gather_elem_decl(&field).or_else(|| doc.block_schema(&kind)) else {
-                continue;
-            };
-            if schema.full_name().starts_with("wdoc.") {
-                continue;
-            }
-            out.push((kind, schema));
-        }
-    }
-    out
-}
-
-/// The type a gather field's element names, resolved through the field's own
-/// declared type. Namespace-correct where a bare [`Document::block_schema`]
-/// name lookup is not: a WAD's `wcl.wad.Container` and wdoc's diagram
-/// `container` shape share a *kind* name, and the name lookup answers
-/// whichever happens to be declared first.
-pub(super) fn gather_elem_decl<'a>(
-    field: &wcl_lang::TypeField<'a>,
-) -> Option<wcl_lang::TypeDecl<'a>> {
-    fn named(t: ResolvedType<'_>) -> Option<wcl_lang::TypeDecl<'_>> {
-        match t {
-            ResolvedType::Named(d) => Some(d),
-            ResolvedType::List(inner) | ResolvedType::Reference(inner) => named(*inner),
-            _ => None,
-        }
-    }
-    named(field.resolved_type())
-}
-
-/// One gathered kind's derived structure — how instances of it nest, what
-/// they reference, and whether the kind is an edge rather than a node.
-///
-/// The rules (shared by the Systems view and the create path's file
-/// placement, so both read the same model):
-///
-/// - a **parent link** is a scalar `identifier` field whose NAME is another
-///   gathered kind's name (`component.container`, `system.boundary`), plus
-///   `parent` for self-nesting (`infra_node.parent`). Inline id slots name
-///   the block itself and never count.
-/// - a **reference** is any other `identifier` / `list<identifier>` field.
-/// - an **edge kind** carries both a `source` and a `destination`
-///   identifier field; its endpoints are wiring, not containment.
-pub(super) struct KindInfo<'a> {
-    pub kind: String,
-    pub schema: wcl_lang::TypeDecl<'a>,
-    /// `(field name, parent kind)` in declaration order.
-    pub parents: Vec<(String, String)>,
-    /// `(field name, is a list)` — cross-references, not containment.
-    pub refs: Vec<(String, bool)>,
-    /// `(source field, destination field)` when the kind is an edge kind.
-    pub edge: Option<(String, String)>,
-}
-
-/// A field's declared type with a trailing `?` stripped.
-pub(super) fn bare_type(f: &wcl_lang::TypeField<'_>) -> String {
-    let ty = f.type_ref().to_string();
-    ty.strip_suffix('?').unwrap_or(&ty).to_string()
-}
-
-/// Scalar fields only: child blocks, child-block lists and connections are
-/// structure, not properties.
-pub(super) fn is_scalar(f: &wcl_lang::TypeField<'_>) -> bool {
-    f.child_kind_or_union().is_none()
-        && f.children_kind_or_union().is_none()
-        && f.connection_schema().is_none()
-}
-
-/// [`KindInfo`] for every gathered kind of the document.
-pub(super) fn kind_links<'a>(doc: &'a Document) -> Vec<KindInfo<'a>> {
-    let gathered = gathered_kinds(doc);
-    let names: Vec<String> = gathered.iter().map(|(k, _)| k.clone()).collect();
-    gathered
-        .into_iter()
-        .map(|(kind, schema)| {
-            let mut parents: Vec<(String, String)> = Vec::new();
-            let mut refs: Vec<(String, bool)> = Vec::new();
-            let mut source = None;
-            let mut destination = None;
-            for f in schema.effective_fields() {
-                if !is_scalar(&f) {
-                    continue;
-                }
-                let name = f.name().to_string();
-                let ty = bare_type(&f);
-                if ty == "identifier" {
-                    if name == "source" {
-                        source = Some(name.clone());
-                    } else if name == "destination" {
-                        destination = Some(name.clone());
-                    }
-                    if f.inline_slot().is_some() {
-                        continue;
-                    }
-                    if name == "parent" {
-                        parents.push((name, kind.clone()));
-                    } else if names.contains(&name) {
-                        parents.push((name.clone(), name));
-                    } else {
-                        refs.push((name, false));
-                    }
-                } else if ty == "list<identifier>" {
-                    refs.push((name, true));
-                }
-            }
-            let edge = match (source, destination) {
-                (Some(s), Some(d)) => Some((s, d)),
-                _ => None,
-            };
-            if let Some((s, d)) = &edge {
-                parents.retain(|(f, _)| f != s && f != d);
-                refs.retain(|(f, _)| f != s && f != d);
-            }
-            KindInfo {
-                kind,
-                schema,
-                parents,
-                refs,
-                edge,
-            }
-        })
-        .collect()
-}
-
-/// The addable data-object kinds: [`gathered_kinds`] minus wskill plumbing
-/// (by name). Field metadata feeds the generated create form.
-pub(super) fn unit_kinds(doc: &Document) -> Vec<serde_json::Value> {
-    gathered_kinds(doc)
-        .into_iter()
-        .filter(|(kind, _)| !UNIT_KIND_DENYLIST.contains(&kind.as_str()))
-        .map(|(kind, schema)| kind_entry(&kind, &schema))
-        .collect()
-}
-
-/// The first positional argument of a decorator, as a string.
-pub(super) fn dec_first_string(d: &wcl_lang::Decorator<'_>) -> Option<String> {
-    d.positional().ok()?.first().map(|v| match v {
-        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s.clone(),
-        other => format!("{other:?}"),
-    })
-}
-
-/// The addable diagram shape kinds: every `@block("kind")` type descending
-/// from `wdoc.SvgBlock`, with the same field metadata as `unit_kinds` (the
-/// shape properties form is generated from it). The client curates which
-/// kinds surface in the add-shape palette; the full list is served so any
-/// selected shape — including user-declared ones — gets a schema-driven form.
-pub(super) fn diagram_kinds(doc: &Document) -> Vec<serde_json::Value> {
-    let mut seen: Vec<String> = Vec::new();
-    let mut out: Vec<serde_json::Value> = Vec::new();
-    for decl in doc.type_decls() {
-        let Some(kind) = decl
-            .decorators()
-            .find(|d| d.name() == "block")
-            .and_then(|d| dec_first_string(&d))
-        else {
-            continue;
-        };
-        if seen.contains(&kind) || !decl.is_descendant_of("wdoc.SvgBlock") {
-            continue;
-        }
-        seen.push(kind.clone());
-        out.push(kind_entry(&kind, &decl));
-    }
-    out.sort_by(|a, b| a["kind"].as_str().cmp(&b["kind"].as_str()));
-    out
-}
-
-pub(super) fn kind_entry(kind: &str, schema: &wcl_lang::TypeDecl<'_>) -> serde_json::Value {
-    let mut fields: Vec<serde_json::Value> = Vec::new();
-    let mut has_body = false;
-    // Declares a `@children(...)` family — an `insert_child` may nest
-    // blocks inside instances of this kind (a wireframe container widget,
-    // a diagram grouping). The widget palette keys append-inside vs
-    // insert-after off it.
-    let mut accepts_children = false;
-    for f in schema.effective_fields() {
-        if f.child_block_kind().as_deref() == Some("body") {
-            has_body = true;
-        }
-        if f.children_kind_or_union().is_some() {
-            accepts_children = true;
-        }
-        // Child blocks / connections aren't form fields.
-        if f.child_kind_or_union().is_some()
-            || f.children_kind_or_union().is_some()
-            || f.connection_schema().is_some()
-        {
-            continue;
-        }
-        let ty = f.type_ref();
-        // Function-valued fields (an SvgBlock's `lower`, computed hooks)
-        // aren't form-editable properties.
-        if ty.to_string().starts_with("fn") {
-            continue;
-        }
-        // Resolved in the field's OWN namespace — a `wcl.wad` field typed
-        // `ContainerKind` must not pick up a same-named set elsewhere.
-        let symbols: Option<Vec<String>> = match f.resolved_type() {
-            ResolvedType::SymbolSet(ss) => {
-                Some(ss.symbols().map(|s| s.name().to_string()).collect())
-            }
-            _ => None,
-        };
-        fields.push(serde_json::json!({
-            "name": f.name(),
-            "type": ty.to_string(),
-            "optional": f.optional(),
-            "inline_slot": f.inline_slot(),
-            "symbols": symbols,
-            "default": f.default_value().as_ref().map(value_string),
-            "doc": f.doc_comment(),
-        }));
-    }
-    serde_json::json!({
-        "kind": kind,
-        "doc": schema.doc_comment(),
-        "fields": fields,
-        "has_body": has_body,
-        "accepts_children": accepts_children,
-    })
-}
-
-/// `wdoc_component` declarations authored inside the served tree (stdlib
-/// components are excluded — their sources live outside the root), with the
-/// slot list that drives the property form.
-fn components(ws: &Workspace, doc: &Document) -> Vec<serde_json::Value> {
-    let mut out = Vec::new();
-    for (path, block) in doc.blocks_with_source() {
-        if block.kind() != "wdoc_component" {
-            continue;
-        }
-        if let Some(p) = path
-            && !p.starts_with(ws.root_dir())
-        {
-            continue;
-        }
-        let Some(name) = first_label(&block) else {
-            continue;
-        };
-        let slots: Vec<serde_json::Value> = block
-            .blocks()
-            .filter(|b| b.kind() == "wdoc_slot")
-            .map(|slot| {
-                let default = slot
-                    .field("default")
-                    .and_then(|f| f.value().ok().cloned())
-                    .as_ref()
-                    .map(value_string);
-                let required = default.is_none();
-                serde_json::json!({
-                    "name": first_label(&slot),
-                    "default": default,
-                    "required": required,
-                })
-            })
-            .collect();
-        let file = path.and_then(|p| ws.rel(p).ok());
-        out.push(serde_json::json!({ "name": name, "file": file, "slots": slots }));
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2330,66 +1641,5 @@ mod tests {
         assert!(agg.contains("import \"./gamma.wcl\""), "{agg}");
         let idx = std::fs::read_to_string(root.join("data/indexes.wcl")).unwrap();
         assert!(idx.contains("related = [alpha, beta, gamma]"), "{idx}");
-    }
-
-    #[test]
-    fn palette_lists_kinds_and_components() {
-        let doc = format!(
-            "{OBJECT_DOC}\nwdoc_component metric_card {{\n  wdoc_slot label\n  wdoc_slot status {{\n    default = \"ok\"\n  }}\n  wdoc_body {{\n    p $\"${{label}}\"\n  }}\n}}\n"
-        );
-        let (_td, ws) = workspace_with(&doc);
-
-        let v = palette(&ws, "main.wcl", Some("docs"), None).expect("palette");
-        assert_eq!(v["site_type"], "book");
-        assert_eq!(v["wskill"], false);
-        // The user schema kind, with introspected fields.
-        let kinds = v["unit_kinds"].as_array().unwrap();
-        let thing = kinds
-            .iter()
-            .find(|k| k["kind"] == "thing")
-            .unwrap_or_else(|| panic!("no thing kind: {v:#}"));
-        let fields = thing["fields"].as_array().unwrap();
-        let name = fields.iter().find(|f| f["name"] == "name").unwrap();
-        assert_eq!(name["inline_slot"], 0);
-        assert_eq!(name["optional"], false);
-        let note = fields.iter().find(|f| f["name"] == "note").unwrap();
-        assert_eq!(note["optional"], true);
-        // wdoc's own document gathers (site, page, …) are not offered.
-        assert!(
-            !kinds
-                .iter()
-                .any(|k| k["kind"] == "site" || k["kind"] == "page"),
-            "{v:#}"
-        );
-        // Curated body kinds carry insertion snippets.
-        let body = v["body_kinds"].as_array().unwrap();
-        assert!(body.iter().any(|k| k["kind"] == "p"));
-        assert!(
-            body.iter()
-                .all(|k| k["template_source"].as_str().is_some_and(|s| !s.is_empty()))
-        );
-        // Diagram shape kinds: SvgBlock descendants with introspected fields.
-        let shapes = v["diagram_kinds"].as_array().unwrap();
-        let process = shapes
-            .iter()
-            .find(|k| k["kind"] == "process")
-            .unwrap_or_else(|| panic!("no process shape kind: {v:#}"));
-        let pf = process["fields"].as_array().unwrap();
-        for want in ["x", "y", "width", "height"] {
-            assert!(pf.iter().any(|f| f["name"] == want), "{v:#}");
-        }
-        assert!(shapes.iter().any(|k| k["kind"] == "rect"), "{v:#}");
-        // Page-level HTML blocks don't extend SvgBlock.
-        assert!(!shapes.iter().any(|k| k["kind"] == "diagram"), "{v:#}");
-        // The authored component with its slot contract.
-        let comps = v["components"].as_array().unwrap();
-        let card = comps.iter().find(|c| c["name"] == "metric_card").unwrap();
-        let slots = card["slots"].as_array().unwrap();
-        assert_eq!(slots.len(), 2, "{v:#}");
-        let label = slots.iter().find(|s| s["name"] == "label").unwrap();
-        assert_eq!(label["required"], true);
-        let status_slot = slots.iter().find(|s| s["name"] == "status").unwrap();
-        assert_eq!(status_slot["required"], false);
-        assert_eq!(status_slot["default"], "ok");
     }
 }
