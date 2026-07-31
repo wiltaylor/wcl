@@ -34,9 +34,9 @@ use axum::response::Response;
 use wcl_lang::ast::{self, Item};
 use wcl_lang::parse_for_edit;
 
-use super::blocks::{field_string, first_label};
 use super::data::classify_cell;
 use super::kinds::{Kind, KindModel};
+use super::util::{field_string, first_label};
 use super::{EditorState, Workspace, run_blocking};
 use crate::serve::query_param;
 
@@ -96,7 +96,7 @@ fn perspectives(all: &[Kind<'_>]) -> Vec<serde_json::Value> {
                     // Another perspective owns this kind outright.
                     || (all_seeds.contains(&info.kind()) && !present.contains(&info.kind()))
                     || info.kind() == parent
-                    || !info.parents().iter().any(|(_, p)| *p == parent)
+                    || !info.parents().iter().any(|p| p.kind == parent)
                 {
                     continue;
                 }
@@ -161,7 +161,7 @@ fn systems_detail(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::V
     let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(super::err_str)?;
     let model = KindModel::new(&doc);
     let info = model.get(&blk.kind);
-    let id = super::blocks::ast_label(blk);
+    let id = super::util::ast_label(blk);
 
     // One entry per `@child` / `@children` family the schema declares, with
     // the instances present in this block — recursively, so the modal can
@@ -170,7 +170,7 @@ fn systems_detail(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::V
     // wireframe diagram, a terminal mock-up) without evaluating anything.
     let (children, body_blk) = match info {
         Some(info) => (
-            child_families(&model, info.schema(), blk, &text, MAX_CHILD_DEPTH),
+            child_families(&model, info, blk, &text, MAX_CHILD_DEPTH),
             info.has_body().then(|| body_block(blk)).flatten(),
         ),
         None => (Vec::new(), None),
@@ -201,8 +201,8 @@ fn systems_detail(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::V
             let Some(edge) = model.get(b.kind()).and_then(Kind::edge) else {
                 continue;
             };
-            let from = field_string(&b, &edge.0);
-            let to = field_string(&b, &edge.1);
+            let from = field_string(&b, &edge.source);
+            let to = field_string(&b, &edge.destination);
             let direction = match (from.as_deref(), to.as_deref()) {
                 (Some(f), _) if f == id => "out",
                 (_, Some(t)) if t == id => "in",
@@ -233,7 +233,7 @@ fn systems_detail(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::V
         "etag": crate::edit::content_etag(&text),
         "source": slice(span),
         "cells": cells(blk),
-        "schema": info.map(|i| i.json_with_suggestions(&doc)),
+        "schema": info.map(|i| model.json_with_suggestions(i)),
         "children": children,
         "body": body,
         "relations": relations,
@@ -256,7 +256,7 @@ const MAX_CHILD_DEPTH: usize = 4;
 /// skipped here.
 fn child_families<'a>(
     model: &KindModel<'a>,
-    schema: &wcl_lang::TypeDecl<'a>,
+    kind: &Kind<'a>,
     blk: &ast::Block,
     text: &str,
     depth: usize,
@@ -266,7 +266,7 @@ fn child_families<'a>(
     }
     let slice = |s: wcl_lang::Span| text.get(s.start..s.end).unwrap_or_default().to_string();
     let mut out: Vec<serde_json::Value> = Vec::new();
-    for family in schema.child_families() {
+    for family in kind.child_families() {
         let kind = family.kind();
         if kind == "body" {
             continue;
@@ -279,8 +279,7 @@ fn child_families<'a>(
                 _ => None,
             })
             .collect();
-        let child_schema = family.schema().copied();
-        let described = child_schema.map(|d| model.describe_decl(kind, d));
+        let described = family.schema().map(|d| model.describe_decl(kind, *d));
         out.push(serde_json::json!({
             "field": family.field(),
             "kind": kind,
@@ -288,17 +287,17 @@ fn child_families<'a>(
             "doc": family.doc_comment(),
             "schema": described
                 .as_ref()
-                .map(|k| k.json_with_suggestions(model.document())),
+                .map(|k| model.json_with_suggestions(k)),
             "items": items
                 .iter()
                 .map(|b| serde_json::json!({
-                    "label": super::blocks::ast_label(b),
+                    "label": super::util::ast_label(b),
                     "span": super::span_json(b.span),
                     "source": slice(b.span),
                     "cells": cells(b),
-                    "children": child_schema
+                    "children": described
                         .as_ref()
-                        .map(|d| child_families(model, d, b, text, depth - 1))
+                        .map(|k| child_families(model, k, b, text, depth - 1))
                         .unwrap_or_default(),
                 }))
                 .collect::<Vec<_>>(),
@@ -377,8 +376,11 @@ fn systems(
         let rel = rel(ws, &file);
         let etag = crate::edit::content_etag(text);
 
-        if let Some((sf, df)) = info.edge() {
-            let (Some(from), Some(to)) = (field_string(&b, sf), field_string(&b, df)) else {
+        if let Some(e) = info.edge() {
+            let (Some(from), Some(to)) = (
+                field_string(&b, &e.source),
+                field_string(&b, &e.destination),
+            ) else {
                 continue;
             };
             edges.push(serde_json::json!({
@@ -405,9 +407,15 @@ fn systems(
         let parents: Vec<serde_json::Value> = info
             .parents()
             .iter()
-            .filter_map(|(field, pkind)| {
-                let pid = field_string(&b, field)?;
-                (pid != id).then(|| serde_json::json!({ "field": field, "kind": pkind, "id": pid }))
+            .filter_map(|link| {
+                let pid = field_string(&b, &link.field)?;
+                (pid != id).then(|| {
+                    serde_json::json!({
+                        "field": link.field,
+                        "kind": link.kind,
+                        "id": pid,
+                    })
+                })
             })
             .collect();
         ids.push(id.clone());
@@ -437,7 +445,7 @@ fn systems(
     let kinds: Vec<serde_json::Value> = model
         .kinds()
         .iter()
-        .map(|k| k.json_with_suggestions(&doc))
+        .map(|k| model.json_with_suggestions(k))
         .collect();
 
     // The WAD model root: the file declaring the `wad` block — an aggregator

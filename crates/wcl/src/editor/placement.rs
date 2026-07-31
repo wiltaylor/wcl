@@ -25,10 +25,10 @@
 use std::path::{Path, PathBuf};
 
 use wcl_lang::ast::{self, Expr, Item};
-use wcl_lang::{DeclName, Document, Span, edit as ast_edit, format as wcl_format, parse_for_edit};
+use wcl_lang::{Document, Span, edit as ast_edit, format as wcl_format, parse_for_edit};
 
-use super::blocks::{find_block_by_kind_label, first_label};
 use super::kinds::KindModel;
+use super::util::{find_block_by_kind_label, first_label};
 
 /// Where a freshly built top-level block should land.
 pub(super) enum Placement {
@@ -50,32 +50,19 @@ pub(super) enum Placement {
 /// instances live (see the module docs).
 pub(super) fn place_unit(
     model: &KindModel<'_>,
+    doc: &Document,
     doc_entry: &Path,
     kind: &str,
 ) -> Result<Placement, String> {
-    let doc = model.document();
-    let mut per_file: Vec<(PathBuf, usize)> = Vec::new();
-    for (path, block) in doc.blocks_with_source() {
-        if block.kind() != kind {
-            continue;
-        }
-        let file = path
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| doc_entry.to_path_buf());
-        if is_generated(&file) {
-            continue;
-        }
-        match per_file.iter_mut().find(|(p, _)| *p == file) {
-            Some((_, n)) => *n += 1,
-            None => per_file.push((file, 1)),
-        }
-    }
+    // A block the doc view can't attribute to a file came from the entry
+    // itself, so that is where its instances count.
+    let per_file = count_by_file(doc, Some(doc_entry), |k| k == kind);
     if per_file.is_empty() {
         // No instances to learn from. The entry document is the last
         // resort, NOT the first — look for a data file of a neighbouring
         // kind instead.
         return Ok(Placement::Append {
-            file: kin_file(model, kind).unwrap_or_else(|| doc_entry.to_path_buf()),
+            file: kin_file(model, doc, kind).unwrap_or_else(|| doc_entry.to_path_buf()),
         });
     }
     // One-per-file layout: every instance alone in its file, all in one
@@ -186,41 +173,27 @@ fn is_generated(file: &Path) -> bool {
 /// neighbouring kind, tried in order — the kinds it nests into, the kinds
 /// that nest into it, then any other kind declared in the same schema
 /// namespace. `None` when the document holds no such data at all.
-fn kin_file(model: &KindModel<'_>, kind: &str) -> Option<PathBuf> {
-    let doc = model.document();
+fn kin_file(model: &KindModel<'_>, doc: &Document, kind: &str) -> Option<PathBuf> {
     let me = model.get(kind)?;
-    let ns = me.schema().namespace().to_vec();
-    let parents: Vec<&str> = me.parents().iter().map(|(_, k)| k.as_str()).collect();
+    let ns = me.namespace();
+    let parents: Vec<&str> = me.parents().iter().map(|p| p.kind.as_str()).collect();
     let children: Vec<&str> = model
         .kinds()
         .iter()
-        .filter(|k| k.parents().iter().any(|(_, p)| p == kind))
+        .filter(|k| k.parents().iter().any(|p| p.kind == kind))
         .map(|k| k.kind())
         .collect();
     let same_ns: Vec<&str> = model
         .kinds()
         .iter()
-        .filter(|k| k.kind() != kind && k.schema().namespace() == ns)
+        .filter(|k| k.kind() != kind && k.namespace() == ns)
         .map(|k| k.kind())
         .collect();
 
     for tier in [&parents, &children, &same_ns] {
-        let mut per_file: Vec<(PathBuf, usize)> = Vec::new();
-        for (path, block) in doc.blocks_with_source() {
-            if !tier.contains(&block.kind()) {
-                continue;
-            }
-            let Some(file) = path.map(Path::to_path_buf) else {
-                continue;
-            };
-            if is_generated(&file) {
-                continue;
-            }
-            match per_file.iter_mut().find(|(p, _)| *p == file) {
-                Some((_, n)) => *n += 1,
-                None => per_file.push((file, 1)),
-            }
-        }
+        // A block with no source file came from the entry, which is exactly
+        // the file this fallback exists to avoid — so it doesn't count.
+        let per_file = count_by_file(doc, None, |k| tier.contains(&k));
         // Ties go to the first file in document order, so placement is
         // deterministic rather than dependent on iteration order.
         if let Some((file, _)) = per_file.into_iter().max_by_key(|(_, n)| *n) {
@@ -228,6 +201,37 @@ fn kin_file(model: &KindModel<'_>, kind: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// How many blocks matching `want` each file holds, in document order.
+/// Generated files never count — placement must not write to them. A block
+/// the doc view can't attribute to a file counts against `fallback`, or is
+/// skipped when there is none.
+fn count_by_file(
+    doc: &Document,
+    fallback: Option<&Path>,
+    want: impl Fn(&str) -> bool,
+) -> Vec<(PathBuf, usize)> {
+    let mut per_file: Vec<(PathBuf, usize)> = Vec::new();
+    for (path, block) in doc.blocks_with_source() {
+        if !want(block.kind()) {
+            continue;
+        }
+        let Some(file) = path
+            .map(Path::to_path_buf)
+            .or(fallback.map(Path::to_path_buf))
+        else {
+            continue;
+        };
+        if is_generated(&file) {
+            continue;
+        }
+        match per_file.iter_mut().find(|(p, _)| *p == file) {
+            Some((_, n)) => *n += 1,
+            None => per_file.push((file, 1)),
+        }
+    }
+    per_file
 }
 
 /// Append `id` to the `related` list of the `index` block labelled
@@ -342,7 +346,7 @@ mod tests {
 
         // `zone` has no instances; `system` (which nests into it) lives in
         // data.wcl, so that is where a new zone belongs.
-        match place_unit(&model, &entry, "zone").expect("placement") {
+        match place_unit(&model, &doc, &entry, "zone").expect("placement") {
             Placement::Append { file } => {
                 assert_eq!(file.file_name().and_then(|f| f.to_str()), Some("data.wcl"));
             }

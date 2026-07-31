@@ -26,9 +26,9 @@ use axum::response::Response;
 use wcl_lang::ast::{self, Expr, Item};
 use wcl_lang::{Document, Span, Value, edit as ast_edit, format as wcl_format, parse_for_edit};
 
-use super::blocks::{first_label, value_string};
-use super::kinds::KindModel;
+use super::kinds::{self, KindModel};
 use super::preview::Sessions;
+use super::util::{first_label, value_string};
 use super::{EditorState, Workspace, run_blocking};
 use crate::serve::{json_error, parse_json_body, query_param};
 
@@ -56,12 +56,12 @@ fn nav(ws: &Workspace, entry: &str, site: Option<&str>) -> Result<serde_json::Va
     let entry_abs = ws.abs(entry)?;
     let doc = wcl_wdoc::open_doc_for_edit(&entry_abs).map_err(super::err_str)?;
     let model = KindModel::new(&doc);
-    let wskill = model.is_wskill();
-    let site_type = model.site_kind(site);
+    let wskill = kinds::is_wskill(&doc);
+    let site_type = kinds::site_kind(&doc, site);
 
     let pages = declared_pages(ws, &doc, &entry_abs);
     if wskill && site_type == "book" {
-        let (nav, units) = wskill_nav(ws, &doc, &entry_abs)?;
+        let (nav, units) = wskill_nav(ws, &model, &doc, &entry_abs)?;
         return Ok(serde_json::json!({
             "ok": true,
             "site_type": site_type,
@@ -132,12 +132,13 @@ fn page_prefix(kind: &str) -> &str {
 
 fn wskill_nav(
     ws: &Workspace,
+    model: &KindModel<'_>,
     doc: &Document,
     entry_abs: &Path,
 ) -> Result<(Vec<serde_json::Value>, Vec<serde_json::Value>), String> {
     // Unit registry: id → (kind, title, file, span). Kinds come from the
     // same kind model the add-unit palette reads.
-    let kind_names: Vec<String> = KindModel::new(doc).unit_kind_names();
+    let kind_names: Vec<String> = model.unit_kind_names();
     let mut units: HashMap<String, (String, String, PathBuf, Span)> = HashMap::new();
     let mut unit_order: Vec<String> = Vec::new();
     for (path, b) in doc.blocks_with_source() {
@@ -267,7 +268,7 @@ fn static_site_nav(
             _ => None,
         })
         .find(|b| match site {
-            Some(name) => super::blocks::ast_label(b).as_deref() == Some(name),
+            Some(name) => super::util::ast_label(b).as_deref() == Some(name),
             None => true,
         })
         .ok_or("no site block in the entry document")?;
@@ -302,7 +303,7 @@ fn static_entry(ws: &Workspace, b: &ast::Block, entry_abs: &Path) -> serde_json:
             "source": source_binding(ws, entry_abs, b.span),
         });
     }
-    let title = super::blocks::ast_label(b);
+    let title = super::util::ast_label(b);
     let page = b.items.iter().find_map(|it| match it {
         Item::Field(f) if f.name == "page" => match &f.expr {
             Expr::Identifier(s, _) => Some(s.clone()),
@@ -595,8 +596,10 @@ fn subtree_has_index(b: &wcl_lang::Block<'_>, id: &str) -> bool {
         || b.blocks().any(|c| subtree_has_index(&c, id))
 }
 
-/// The file declaring the `index` with `id`. Index ids are assumed
-/// document-unique; first match wins.
+/// The file declaring the `index` with `id` — sub-indexes nest inside their
+/// parent block, so the search recurses (the block itself is relocated by the
+/// equally recursive [`super::util::find_block_by_kind_label`]). Index ids
+/// are assumed document-unique; first match wins.
 fn index_file_in(doc: &Document, entry_abs: &Path, index_id: &str) -> Result<PathBuf, String> {
     doc.blocks_with_source()
         .find(|(_, b)| subtree_has_index(b, index_id))
@@ -626,7 +629,7 @@ fn related_op(
 
     let ident = |s: &str| Expr::Identifier(s.to_string(), Span::new(0, 0));
     edit_file(entry_abs, &ifile, |src| {
-        let block = super::blocks::find_block_by_kind_label(&mut src.items, "index", index_id)
+        let block = super::util::find_block_by_kind_label(&mut src.items, "index", index_id)
             .ok_or_else(|| format!("could not relocate index `{index_id}`"))?;
         let current: Vec<String> = block
             .items
@@ -708,12 +711,12 @@ fn related_op(
 /// Is this AST item the `index` block labelled `id`?
 fn is_index_item(it: &Item, id: &str) -> bool {
     matches!(it, Item::Block(b)
-        if b.kind == "index" && super::blocks::ast_label(b).as_deref() == Some(id))
+        if b.kind == "index" && super::util::ast_label(b).as_deref() == Some(id))
 }
 
 /// Does this AST block's subtree declare an `index` with `id`?
 fn ast_subtree_has_index(b: &ast::Block, id: &str) -> bool {
-    (b.kind == "index" && super::blocks::ast_label(b).as_deref() == Some(id))
+    (b.kind == "index" && super::util::ast_label(b).as_deref() == Some(id))
         || b.items
             .iter()
             .any(|it| matches!(it, Item::Block(c) if ast_subtree_has_index(c, id)))
@@ -743,7 +746,7 @@ fn parent_index_id(items: &[Item], id: &str) -> Option<String> {
         let Item::Block(b) = it else { continue };
         if b.kind == "index"
             && b.items.iter().any(|c| is_index_item(c, id))
-            && let Some(label) = super::blocks::ast_label(b)
+            && let Some(label) = super::util::ast_label(b)
         {
             return Some(label);
         }
@@ -808,20 +811,29 @@ fn create_index(
                         "`{parent}` is itself nested under `{gp}` — sub-indexes nest one level deep"
                     ));
                 }
-                let pblock =
-                    super::blocks::find_block_by_kind_label(&mut src.items, "index", parent)
-                        .ok_or_else(|| relocate_err(parent))?;
+                let pblock = super::util::find_block_by_kind_label(&mut src.items, "index", parent)
+                    .ok_or_else(|| relocate_err(parent))?;
                 pblock.items.push(Item::Block(block));
                 Ok(())
             })
         }
         None => {
-            let model = KindModel::new(&doc);
-            let placement = super::placement::place_unit(&model, entry_abs, "index")?;
-            let mut changes: Vec<(PathBuf, String)> = Vec::new();
-            let file =
-                super::placement::write_new_block(placement, id, block, entry_abs, &mut changes)?;
-            drop(model);
+            // Placed and staged inside this scope, so the model's borrow of
+            // the document — and the document — are gone before the commit
+            // rewrites the files they were read from.
+            let (file, changes) = {
+                let model = KindModel::new(&doc);
+                let placement = super::placement::place_unit(&model, &doc, entry_abs, "index")?;
+                let mut changes: Vec<(PathBuf, String)> = Vec::new();
+                let file = super::placement::write_new_block(
+                    placement,
+                    id,
+                    block,
+                    entry_abs,
+                    &mut changes,
+                )?;
+                (file, changes)
+            };
             drop(doc);
             crate::edit::commit(entry_abs, changes)?;
             Ok(serde_json::json!({

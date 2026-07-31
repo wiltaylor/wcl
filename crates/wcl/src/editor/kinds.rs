@@ -27,23 +27,17 @@
 //! Every endpoint that describes a kind serves [`Kind::json`], so the
 //! client has one reader. The only member derived from instance data is
 //! `suggestions` — it walks every block of the kind and forces field
-//! evaluation, so it is opt-in ([`Kind::json_with_suggestions`]): the
-//! Systems view asks, the palette does not.
+//! evaluation, so it is opt-in
+//! ([`KindModel::json_with_suggestions`]): the Systems view asks, the
+//! palette does not.
 //!
-//! `GET /api/palette` lives here too: it is kind introspection with a
-//! curated body-block list bolted on.
+//! The model is the interface: nothing here hands out the [`Document`] or a
+//! raw [`TypeDecl`], so a surface cannot quietly grow a twelfth walk over
+//! the type declarations beside the one everything else reads.
 
-use std::sync::Arc;
+use wcl_lang::{ChildFamily, DeclName, Document, ResolvedType, TypeDecl, TypeField};
 
-use axum::extract::State;
-use axum::http::Uri;
-use axum::response::Response;
-
-use wcl_lang::{DeclName, Document, ResolvedType, TypeDecl, TypeField};
-
-use super::blocks::{dec_first_string, field_string, first_label, value_string};
-use super::{EditorState, Workspace, run_blocking};
-use crate::serve::query_param;
+use super::util::{dec_first_string, field_string, first_label, value_string};
 
 /// Wskill plumbing kinds that never belong in the add-a-unit palette.
 const UNIT_KIND_DENYLIST: &[&str] = &[
@@ -59,17 +53,41 @@ const UNIT_KIND_DENYLIST: &[&str] = &[
 /// vocabulary worth offering as a list.
 const MAX_SUGGESTIONS: usize = 40;
 
+/// A field that nests its instance inside another object: the field
+/// written, and the kind it names.
+#[derive(Clone)]
+pub(super) struct ParentLink {
+    pub(super) field: String,
+    pub(super) kind: String,
+}
+
+/// A field that names other objects without containing them.
+#[derive(Clone)]
+pub(super) struct RefField {
+    pub(super) field: String,
+    pub(super) list: bool,
+}
+
+/// The pair of identifier fields that make a kind wiring rather than a
+/// node.
+#[derive(Clone)]
+pub(super) struct EdgeFields {
+    pub(super) source: String,
+    pub(super) destination: String,
+}
+
 /// One kind's derived structure — its schema, how instances of it nest,
 /// what they reference, and whether the kind is an edge rather than a node.
+#[derive(Clone)]
 pub(super) struct Kind<'a> {
     kind: String,
     schema: TypeDecl<'a>,
-    /// `(field name, parent kind)` in declaration order.
-    parents: Vec<(String, String)>,
-    /// `(field name, is a list)` — cross-references, not containment.
-    refs: Vec<(String, bool)>,
-    /// `(source field, destination field)` when the kind is an edge kind.
-    edge: Option<(String, String)>,
+    /// In declaration order — an instance nests under the first it sets.
+    parents: Vec<ParentLink>,
+    /// Cross-references, not containment.
+    refs: Vec<RefField>,
+    /// Set when the kind is an edge kind.
+    edge: Option<EdgeFields>,
 }
 
 impl<'a> Kind<'a> {
@@ -77,8 +95,16 @@ impl<'a> Kind<'a> {
         &self.kind
     }
 
-    pub(super) fn schema(&self) -> &TypeDecl<'a> {
-        &self.schema
+    /// The namespace the schema is declared in — what makes two kinds
+    /// sharing a name neighbours or strangers.
+    pub(super) fn namespace(&self) -> Vec<String> {
+        self.schema.namespace()
+    }
+
+    /// The `@child` / `@children` families the schema declares, each
+    /// resolved through the declaring field's own type.
+    pub(super) fn child_families(&self) -> Vec<ChildFamily<'a>> {
+        self.schema.child_families()
     }
 
     /// The fully-qualified schema name — the value every endpoint echoes as
@@ -89,15 +115,15 @@ impl<'a> Kind<'a> {
         self.schema.full_name()
     }
 
-    /// `(field name, parent kind)` in declaration order — an instance nests
-    /// under the first of these it actually sets.
-    pub(super) fn parents(&self) -> &[(String, String)] {
+    /// The parent links in declaration order — an instance nests under the
+    /// first of these it actually sets.
+    pub(super) fn parents(&self) -> &[ParentLink] {
         &self.parents
     }
 
-    /// `(source field, destination field)` when the kind wires two objects
-    /// together rather than being one.
-    pub(super) fn edge(&self) -> Option<&(String, String)> {
+    /// The endpoint fields when the kind wires two objects together rather
+    /// than being one.
+    pub(super) fn edge(&self) -> Option<&EdgeFields> {
         self.edge.as_ref()
     }
 
@@ -197,29 +223,23 @@ impl<'a> Kind<'a> {
             "parents": self
                 .parents
                 .iter()
-                .map(|(field, kind)| serde_json::json!({ "field": field, "kind": kind }))
+                .map(|p| serde_json::json!({ "field": p.field, "kind": p.kind }))
                 .collect::<Vec<_>>(),
             "refs": self
                 .refs
                 .iter()
-                .map(|(field, list)| serde_json::json!({ "field": field, "list": list }))
+                .map(|r| serde_json::json!({ "field": r.field, "list": r.list }))
                 .collect::<Vec<_>>(),
             "edge": match &self.edge {
-                Some((s, d)) => serde_json::json!({ "source": s, "destination": d }),
+                Some(e) => serde_json::json!({
+                    "source": e.source,
+                    "destination": e.destination,
+                }),
                 None => serde_json::Value::Null,
             },
             "id_field": self.id_field_decl().map(|f| f.name().to_string()),
             "suggestions": serde_json::Value::Null,
         })
-    }
-
-    /// [`Kind::json`] with the values already in use for each free-text
-    /// field mined from `doc`'s instances. This forces evaluation of every
-    /// block of the kind, so only ask where a form wants the picker.
-    pub(super) fn json_with_suggestions(&self, doc: &Document) -> serde_json::Value {
-        let mut v = self.json();
-        v["suggestions"] = self.suggestions(doc);
-        v
     }
 
     /// The values already in use for each free-text field of the kind.
@@ -289,10 +309,6 @@ impl<'a> KindModel<'a> {
         Self { doc, kinds }
     }
 
-    pub(super) fn document(&self) -> &'a Document {
-        self.doc
-    }
-
     /// Every gathered data-object kind, in declaration order.
     pub(super) fn kinds(&self) -> &[Kind<'a>] {
         &self.kinds
@@ -300,6 +316,22 @@ impl<'a> KindModel<'a> {
 
     pub(super) fn get(&self, kind: &str) -> Option<&Kind<'a>> {
         self.kinds.iter().find(|k| k.kind == kind)
+    }
+
+    /// The gathered kind names — what makes a field name mean containment.
+    fn kind_names(&self) -> Vec<String> {
+        self.kinds.iter().map(|k| k.kind.clone()).collect()
+    }
+
+    /// [`Kind::json`] with the values already in use for each of the kind's
+    /// free-text fields mined from the document's instances. This forces
+    /// evaluation of every block of the kind, so only ask where a form
+    /// wants the picker — the model owns the instance walk precisely so
+    /// that cost is asked for by name.
+    pub(super) fn json_with_suggestions(&self, kind: &Kind<'a>) -> serde_json::Value {
+        let mut v = kind.json();
+        v["suggestions"] = kind.suggestions(self.doc);
+        v
     }
 
     /// The kinds the add-a-unit palette offers: the gathered kinds minus
@@ -325,28 +357,26 @@ impl<'a> KindModel<'a> {
     /// name shared across namespaces; a bare name lookup answers whichever
     /// happens to be declared first.
     pub(super) fn describe(&self, kind: &str, type_name: Option<&str>) -> Option<Kind<'a>> {
-        let names: Vec<String> = self.kinds.iter().map(|k| k.kind.clone()).collect();
         if let Some(full) = type_name.filter(|s| !s.is_empty()) {
             if let Some(k) = self.kinds.iter().find(|k| k.type_name() == full) {
-                return Some(derive(k.kind.clone(), k.schema, &names));
+                return Some(k.clone());
             }
             if let Some(decl) = self.doc.type_decls().find(|d| d.full_name() == full) {
-                return Some(derive(kind.to_string(), decl, &names));
+                return Some(self.describe_decl(kind, decl));
             }
         }
         if let Some(k) = self.get(kind) {
-            return Some(derive(k.kind.clone(), k.schema, &names));
+            return Some(k.clone());
         }
         let decl = self.doc.block_schema(kind)?;
-        Some(derive(kind.to_string(), decl, &names))
+        Some(self.describe_decl(kind, decl))
     }
 
     /// Describe a nested block kind reached through a `@child`/`@children`
     /// family, whose schema resolves through the declaring field's own type
     /// (namespace-correct where a kind-name lookup is not).
     pub(super) fn describe_decl(&self, kind: &str, schema: TypeDecl<'a>) -> Kind<'a> {
-        let names: Vec<String> = self.kinds.iter().map(|k| k.kind.clone()).collect();
-        derive(kind.to_string(), schema, &names)
+        derive(kind.to_string(), schema, &self.kind_names())
     }
 
     /// The addable diagram shape kinds: every `@block("kind")` type
@@ -354,7 +384,7 @@ impl<'a> KindModel<'a> {
     /// the add-shape palette; the full list is served so any selected shape
     /// — including user-declared ones — gets a schema-driven form.
     pub(super) fn diagram_kinds(&self) -> Vec<serde_json::Value> {
-        let names: Vec<String> = self.kinds.iter().map(|k| k.kind.clone()).collect();
+        let names = self.kind_names();
         let mut seen: Vec<String> = Vec::new();
         let mut out: Vec<serde_json::Value> = Vec::new();
         for decl in self.doc.type_decls() {
@@ -374,46 +404,55 @@ impl<'a> KindModel<'a> {
         out.sort_by(|a, b| a["kind"].as_str().cmp(&b["kind"].as_str()));
         out
     }
+}
 
-    /// Whether the document carries the wskill data model (a gathered
-    /// `topic`).
-    pub(super) fn is_wskill(&self) -> bool {
-        self.doc.blocks().any(|b| b.kind() == "topic")
-    }
+// ---------------------------------------------------------------------------
+// Which data model a document carries
+// ---------------------------------------------------------------------------
+//
+// These read the document's instances, not the kind model, so they are
+// free functions over the `Document` rather than methods reaching through
+// the model at it. They sit beside the model because they answer the same
+// question one step earlier: which vocabulary is this document written in,
+// and so which surface should the editor open.
 
-    /// Whether the document carries the WAD data model (its one `wad` root
-    /// metadata block) — the flag that opens the Systems view.
-    pub(super) fn is_wad(&self) -> bool {
-        self.doc.blocks().any(|b| b.kind() == "wad")
-    }
+/// Whether the document carries the wskill data model (a gathered `topic`).
+pub(super) fn is_wskill(doc: &Document) -> bool {
+    doc.blocks().any(|b| b.kind() == "topic")
+}
 
-    /// `book` / `website` / `presentation`, from the selected `site`
-    /// block's nav-declaring child (`toc` / `menu` / `deck`).
-    pub(super) fn site_kind(&self, site: Option<&str>) -> &'static str {
-        let block = self.doc.blocks().find(|b| {
-            b.kind() == "site"
-                && match site {
-                    Some(name) => first_label(b).as_deref() == Some(name),
-                    None => true,
-                }
-        });
-        let Some(site) = block else { return "book" };
-        let child_kinds: Vec<String> = site.blocks().map(|b| b.kind().to_string()).collect();
-        if child_kinds.iter().any(|k| k == "deck") {
-            "presentation"
-        } else if child_kinds.iter().any(|k| k == "menu") {
-            "website"
-        } else {
-            "book"
-        }
+/// Whether the document carries the WAD data model (its one `wad` root
+/// metadata block) — the flag that opens the Systems view.
+pub(super) fn is_wad(doc: &Document) -> bool {
+    doc.blocks().any(|b| b.kind() == "wad")
+}
+
+/// `book` / `website` / `presentation`, from the selected `site` block's
+/// nav-declaring child (`toc` / `menu` / `deck`).
+pub(super) fn site_kind(doc: &Document, site: Option<&str>) -> &'static str {
+    let block = doc.blocks().find(|b| {
+        b.kind() == "site"
+            && match site {
+                Some(name) => first_label(b).as_deref() == Some(name),
+                None => true,
+            }
+    });
+    let Some(site) = block else { return "book" };
+    let child_kinds: Vec<String> = site.blocks().map(|b| b.kind().to_string()).collect();
+    if child_kinds.iter().any(|k| k == "deck") {
+        "presentation"
+    } else if child_kinds.iter().any(|k| k == "menu") {
+        "website"
+    } else {
+        "book"
     }
 }
 
 /// Read one kind off its schema, against the gathered kind `names` that
 /// make a field name mean containment.
 fn derive<'a>(kind: String, schema: TypeDecl<'a>, names: &[String]) -> Kind<'a> {
-    let mut parents: Vec<(String, String)> = Vec::new();
-    let mut refs: Vec<(String, bool)> = Vec::new();
+    let mut parents: Vec<ParentLink> = Vec::new();
+    let mut refs: Vec<RefField> = Vec::new();
     let mut source = None;
     let mut destination = None;
     for f in schema.effective_fields() {
@@ -432,23 +471,38 @@ fn derive<'a>(kind: String, schema: TypeDecl<'a>, names: &[String]) -> Kind<'a> 
                 continue;
             }
             if name == "parent" {
-                parents.push((name, kind.clone()));
+                parents.push(ParentLink {
+                    field: name,
+                    kind: kind.clone(),
+                });
             } else if names.contains(&name) {
-                parents.push((name.clone(), name));
+                parents.push(ParentLink {
+                    field: name.clone(),
+                    kind: name,
+                });
             } else {
-                refs.push((name, false));
+                refs.push(RefField {
+                    field: name,
+                    list: false,
+                });
             }
         } else if ty == "list<identifier>" {
-            refs.push((name, true));
+            refs.push(RefField {
+                field: name,
+                list: true,
+            });
         }
     }
     let edge = match (source, destination) {
-        (Some(s), Some(d)) => Some((s, d)),
+        (Some(source), Some(destination)) => Some(EdgeFields {
+            source,
+            destination,
+        }),
         _ => None,
     };
-    if let Some((s, d)) = &edge {
-        parents.retain(|(f, _)| f != s && f != d);
-        refs.retain(|(f, _)| f != s && f != d);
+    if let Some(e) = &edge {
+        parents.retain(|p| p.field != e.source && p.field != e.destination);
+        refs.retain(|r| r.field != e.source && r.field != e.destination);
     }
     Kind {
         kind,
@@ -473,132 +527,9 @@ fn is_scalar(f: &TypeField<'_>) -> bool {
         && f.connection_schema().is_none()
 }
 
-// ---------------------------------------------------------------------------
-// `GET /api/palette` — what the add-block UI can insert here
-// ---------------------------------------------------------------------------
-
-/// The curated body-block palette: `(kind, label, canonical snippet)`.
-/// Static because most of these render via Rust fundamentals — there is no
-/// WCL schema rich enough to introspect an insertion template from.
-const BODY_KINDS: &[(&str, &str, &str)] = &[
-    ("p", "Paragraph", "p \"New paragraph\""),
-    ("h2", "Heading", "h2 \"New heading\""),
-    ("h3", "Subheading", "h3 \"New subheading\""),
-    (
-        "code",
-        "Code block",
-        "code \"text\" {\n  source = <<'SRC'\n\nSRC\n}",
-    ),
-    (
-        "callout",
-        "Callout",
-        "callout \"Note\" {\n  body = \"Callout text\"\n}",
-    ),
-    ("list", "List", "list {\n  li \"First item\"\n}"),
-    (
-        "table",
-        "Table",
-        "table {\n  rows:\n    | \"Column\" | \"Column\" |\n    | \"\" | \"\" |\n}",
-    ),
-    ("image", "Image", "image \"\" {\n  alt = \"\"\n}"),
-];
-
-/// Query: `entry`, `site?`, `page_file?` → `{ site_type, wskill, wad,
-/// unit_kinds, diagram_kinds, body_kinds, components }`. Unit and diagram
-/// kinds come from the kind model (the generated create and property forms
-/// are built from their `fields`); body kinds are the curated wdoc content
-/// blocks with canonical insertion snippets; components are the
-/// `wdoc_component` declarations authored inside the served tree, with
-/// their slots.
-///
-/// Nothing here mines suggestions: the palette must open promptly on a
-/// large model, and suggestions are the one member that evaluates every
-/// instance.
-pub(super) async fn handle_palette(State(state): State<Arc<EditorState>>, uri: Uri) -> Response {
-    let entry = query_param(&uri, "entry");
-    let site = query_param(&uri, "site");
-    let page_file = query_param(&uri, "page_file");
-    let state2 = Arc::clone(&state);
-    run_blocking(move || {
-        let entry = entry.ok_or("missing entry")?;
-        palette(&state2.ws, &entry, site.as_deref(), page_file.as_deref())
-    })
-    .await
-}
-
-fn palette(
-    ws: &Workspace,
-    entry: &str,
-    site: Option<&str>,
-    page_file: Option<&str>,
-) -> Result<serde_json::Value, String> {
-    let doc_entry = ws.doc_entry(entry, page_file)?;
-    let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(super::err_str)?;
-    let model = KindModel::new(&doc);
-
-    let body_kinds: Vec<serde_json::Value> = BODY_KINDS
-        .iter()
-        .map(|(kind, label, snippet)| {
-            serde_json::json!({ "kind": kind, "label": label, "template_source": snippet })
-        })
-        .collect();
-
-    Ok(serde_json::json!({
-        "ok": true,
-        "site_type": model.site_kind(site),
-        "wskill": model.is_wskill(),
-        "wad": model.is_wad(),
-        "unit_kinds": model.unit_kinds().map(Kind::json).collect::<Vec<_>>(),
-        "diagram_kinds": model.diagram_kinds(),
-        "body_kinds": body_kinds,
-        "components": components(ws, &doc),
-    }))
-}
-
-/// `wdoc_component` declarations authored inside the served tree (stdlib
-/// components are excluded — their sources live outside the root), with the
-/// slot list that drives the property form.
-fn components(ws: &Workspace, doc: &Document) -> Vec<serde_json::Value> {
-    let mut out = Vec::new();
-    for (path, block) in doc.blocks_with_source() {
-        if block.kind() != "wdoc_component" {
-            continue;
-        }
-        if let Some(p) = path
-            && !p.starts_with(ws.root_dir())
-        {
-            continue;
-        }
-        let Some(name) = first_label(&block) else {
-            continue;
-        };
-        let slots: Vec<serde_json::Value> = block
-            .blocks()
-            .filter(|b| b.kind() == "wdoc_slot")
-            .map(|slot| {
-                let default = slot
-                    .field("default")
-                    .and_then(|f| f.value().ok().cloned())
-                    .as_ref()
-                    .map(value_string);
-                let required = default.is_none();
-                serde_json::json!({
-                    "name": first_label(&slot),
-                    "default": default,
-                    "required": required,
-                })
-            })
-            .collect();
-        let file = path.and_then(|p| ws.rel(p).ok());
-        out.push(serde_json::json!({ "name": name, "file": file, "slots": slots }));
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::editor::testsupport::{OBJECT_DOC, workspace_with};
 
     /// A miniature schema exercising every derivation rule: a three-level
     /// containment chain, a two-candidate parent, a self-parent, plain
@@ -752,9 +683,6 @@ type D {
     }
 
     /// A nested kind's schema resolves through the declaring FIELD's type,
-    /// so a family names its own type even when a same-named `@block` kind
-    /// is declared elsewhere.
-    /// A nested kind's schema resolves through the declaring FIELD's type,
     /// not by looking the kind name up. That is what keeps a kind name
     /// shared across schemas (a WAD `container` vs wdoc's diagram-grouping
     /// shape) resolving to the type the field actually names — a name
@@ -775,7 +703,7 @@ type D {
         .expect("parse");
         let model = KindModel::new(&doc);
         let grid = model.get("grid").expect("grid");
-        let families = grid.schema().child_families();
+        let families = grid.child_families();
         let cells = families
             .iter()
             .find(|f| f.kind() == "cell")
@@ -819,7 +747,7 @@ type D {
              part c { name = \"C\"  kind = \"store\" }\n",
         );
         let model = KindModel::new(&doc);
-        let v = model.get("part").expect("part").json_with_suggestions(&doc);
+        let v = model.json_with_suggestions(model.get("part").expect("part"));
         assert_eq!(
             v["suggestions"]["kind"],
             serde_json::json!(["handler", "store"])
@@ -829,6 +757,39 @@ type D {
         // Identifier-typed and inline fields are never suggested.
         assert!(v["suggestions"].get("id").is_none());
         assert!(v["suggestions"].get("system").is_none());
+    }
+
+    /// Repetition alone isn't a vocabulary: past [`MAX_SUGGESTIONS`]
+    /// distinct values the field is free text with a long tail, and a
+    /// picker of that many options is worse than typing.
+    #[test]
+    fn too_many_distinct_values_suppress_the_suggestion() {
+        // Every value used twice, so only the distinct count decides.
+        let instances = |distinct: usize| {
+            (0..distinct)
+                .map(|i| {
+                    format!(
+                        "part a{i} {{ name = \"A{i}\"  kind = \"k{i}\" }}\n\
+                         part b{i} {{ name = \"B{i}\"  kind = \"k{i}\" }}\n"
+                    )
+                })
+                .collect::<String>()
+        };
+        let suggestions_for = |data: &str| {
+            let doc = open(data);
+            let model = KindModel::new(&doc);
+            model.json_with_suggestions(model.get("part").expect("part"))
+        };
+
+        let at_the_limit = suggestions_for(&instances(MAX_SUGGESTIONS));
+        assert_eq!(
+            at_the_limit["suggestions"]["kind"].as_array().map(Vec::len),
+            Some(MAX_SUGGESTIONS),
+            "{at_the_limit:#}"
+        );
+
+        let past_it = suggestions_for(&instances(MAX_SUGGESTIONS + 1));
+        assert!(past_it["suggestions"].get("kind").is_none(), "{past_it:#}");
     }
 
     #[test]
@@ -855,66 +816,5 @@ type D {
             .describe("widget", Some("nope.Widget"))
             .expect("widget");
         assert_eq!(k.type_name(), "app.Widget");
-    }
-
-    #[test]
-    fn palette_lists_kinds_and_components() {
-        let doc = format!(
-            "{OBJECT_DOC}\nwdoc_component metric_card {{\n  wdoc_slot label\n  wdoc_slot status {{\n    default = \"ok\"\n  }}\n  wdoc_body {{\n    p $\"${{label}}\"\n  }}\n}}\n"
-        );
-        let (_td, ws) = workspace_with(&doc);
-
-        let v = palette(&ws, "main.wcl", Some("docs"), None).expect("palette");
-        assert_eq!(v["site_type"], "book");
-        assert_eq!(v["wskill"], false);
-        // The user schema kind, with introspected fields.
-        let kinds = v["unit_kinds"].as_array().unwrap();
-        let thing = kinds
-            .iter()
-            .find(|k| k["kind"] == "thing")
-            .unwrap_or_else(|| panic!("no thing kind: {v:#}"));
-        let fields = thing["fields"].as_array().unwrap();
-        let name = fields.iter().find(|f| f["name"] == "name").unwrap();
-        assert_eq!(name["inline_slot"], 0);
-        assert_eq!(name["optional"], false);
-        let note = fields.iter().find(|f| f["name"] == "note").unwrap();
-        assert_eq!(note["optional"], true);
-        // wdoc's own document gathers (site, page, …) are not offered.
-        assert!(
-            !kinds
-                .iter()
-                .any(|k| k["kind"] == "site" || k["kind"] == "page"),
-            "{v:#}"
-        );
-        // Curated body kinds carry insertion snippets.
-        let body = v["body_kinds"].as_array().unwrap();
-        assert!(body.iter().any(|k| k["kind"] == "p"));
-        assert!(
-            body.iter()
-                .all(|k| k["template_source"].as_str().is_some_and(|s| !s.is_empty()))
-        );
-        // Diagram shape kinds: SvgBlock descendants with introspected fields.
-        let shapes = v["diagram_kinds"].as_array().unwrap();
-        let process = shapes
-            .iter()
-            .find(|k| k["kind"] == "process")
-            .unwrap_or_else(|| panic!("no process shape kind: {v:#}"));
-        let pf = process["fields"].as_array().unwrap();
-        for want in ["x", "y", "width", "height"] {
-            assert!(pf.iter().any(|f| f["name"] == want), "{v:#}");
-        }
-        assert!(shapes.iter().any(|k| k["kind"] == "rect"), "{v:#}");
-        // Page-level HTML blocks don't extend SvgBlock.
-        assert!(!shapes.iter().any(|k| k["kind"] == "diagram"), "{v:#}");
-        // The authored component with its slot contract.
-        let comps = v["components"].as_array().unwrap();
-        let card = comps.iter().find(|c| c["name"] == "metric_card").unwrap();
-        let slots = card["slots"].as_array().unwrap();
-        assert_eq!(slots.len(), 2, "{v:#}");
-        let label = slots.iter().find(|s| s["name"] == "label").unwrap();
-        assert_eq!(label["required"], true);
-        let status_slot = slots.iter().find(|s| s["name"] == "status").unwrap();
-        assert_eq!(status_slot["required"], false);
-        assert_eq!(status_slot["default"], "ok");
     }
 }

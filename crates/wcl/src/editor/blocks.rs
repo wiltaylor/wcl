@@ -11,7 +11,7 @@
 //! new file text, so the client can re-anchor without re-reading.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use axum::extract::State;
@@ -19,11 +19,12 @@ use axum::http::StatusCode;
 use axum::response::Response;
 
 use wcl_lang::ast::{self, Expr, Item};
-use wcl_lang::{Span, Value, edit as ast_edit, format as wcl_format, parse_expr, parse_for_edit};
+use wcl_lang::{Span, edit as ast_edit, format as wcl_format, parse_expr, parse_for_edit};
 
 use super::kinds::{Kind, KindModel};
 use super::placement::{Placement, pin_into_index, place_unit, write_new_block};
 use super::preview::Sessions;
+use super::util::ast_label;
 use super::{EditorState, Workspace, run_blocking};
 use crate::serve::{json_error, parse_json_body};
 
@@ -848,10 +849,36 @@ pub(super) fn unit_create(
             "`{id}` is not a valid id (letters, digits, `_`, not starting with a digit)"
         ));
     }
-    let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(super::err_str)?;
     if crate::edit::locate_object(&doc_entry, kind, Some(id), HashMap::new()).is_ok() {
         return Err(format!("a `{kind}` with id `{id}` already exists"));
     }
+
+    // Everything derived from the document is derived inside this scope, so
+    // the model's borrow of it — and the document itself — are gone by the
+    // time the commit rewrites the files they were read from.
+    let (new_file, changes) = build_unit(ws, &doc_entry, v, unit, kind, id)?;
+
+    crate::edit::commit(&doc_entry, changes)?;
+    previews.invalidate();
+    Ok(serde_json::json!({
+        "ok": true,
+        "file": ws.rel(&new_file)?,
+        "id": id,
+    }))
+}
+
+/// Build the new block and stage every file change creating it implies:
+/// the file it lands in, its aggregator import, and an optional index pin.
+/// Answers the file the block landed in.
+fn build_unit(
+    ws: &Workspace,
+    doc_entry: &Path,
+    v: &serde_json::Value,
+    unit: &serde_json::Value,
+    kind: &str,
+    id: &str,
+) -> Result<(PathBuf, Vec<(PathBuf, String)>), String> {
+    let doc = wcl_wdoc::open_doc_for_edit(doc_entry).map_err(super::err_str)?;
 
     // The kind model answers both schema questions this path asks — is the
     // `@inline(0)` slot identifier-typed (the wskill unit convention), and
@@ -900,91 +927,15 @@ pub(super) fn unit_create(
                 Placement::NewTarget { file: abs }
             }
         }
-        _ => place_unit(&model, &doc_entry, kind)?,
+        _ => place_unit(&model, &doc, doc_entry, kind)?,
     };
-    let new_file = write_new_block(placement, id, block, &doc_entry, &mut changes)?;
+    let new_file = write_new_block(placement, id, block, doc_entry, &mut changes)?;
 
     if let Some(pin) = v.get("pin") {
         let index_id = crate::edit::str_field(pin, "index_id")?;
-        pin_into_index(&doc, &doc_entry, index_id, id, &mut changes)?;
+        pin_into_index(&doc, doc_entry, index_id, id, &mut changes)?;
     }
-    drop(described);
-    drop(model);
-    drop(doc);
-
-    crate::edit::commit(&doc_entry, changes)?;
-    previews.invalidate();
-    Ok(serde_json::json!({
-        "ok": true,
-        "file": ws.rel(&new_file)?,
-        "id": id,
-    }))
-}
-
-/// The first inline label of an AST block when it's a plain identifier or
-/// string literal.
-pub(super) fn ast_label(b: &ast::Block) -> Option<String> {
-    match b.labels.first()? {
-        Expr::Utf8(s) | Expr::Ascii(s) => Some(s.clone()),
-        Expr::Identifier(s, _) => Some(s.clone()),
-        _ => None,
-    }
-}
-
-pub(super) fn find_block_by_kind_label<'a>(
-    items: &'a mut [Item],
-    kind: &str,
-    label: &str,
-) -> Option<&'a mut ast::Block> {
-    for item in items {
-        if let Item::Block(b) = item {
-            if b.kind == kind && ast_label(b).as_deref() == Some(label) {
-                return Some(b);
-            }
-            if let Some(found) = find_block_by_kind_label(&mut b.items, kind, label) {
-                return Some(found);
-            }
-        }
-    }
-    None
-}
-
-/// The first label of a document-view block as a plain string.
-pub(super) fn first_label(b: &wcl_lang::Block<'_>) -> Option<String> {
-    b.labels()
-        .ok()
-        .and_then(|ls| ls.first().map(value_string))
-        .filter(|s| !s.is_empty())
-}
-
-/// The first positional argument of a decorator, as a string.
-pub(super) fn dec_first_string(d: &wcl_lang::Decorator<'_>) -> Option<String> {
-    d.positional().ok()?.first().map(|v| match v {
-        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s.clone(),
-        other => format!("{other:?}"),
-    })
-}
-
-/// A document-view block's field value as a plain string, when it
-/// evaluates to a scalar. Forces the field's evaluation.
-pub(super) fn field_string(b: &wcl_lang::Block<'_>, name: &str) -> Option<String> {
-    b.field(name)
-        .and_then(|f| f.value().ok().cloned())
-        .as_ref()
-        .map(value_string)
-        .filter(|s| !s.is_empty())
-}
-
-pub(super) fn value_string(v: &Value) -> String {
-    match v {
-        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s.clone(),
-        Value::Symbol(s) => s.clone(),
-        Value::Bool(b) => b.to_string(),
-        Value::I64(n) => n.to_string(),
-        Value::U64(n) => n.to_string(),
-        Value::F64(n) => n.to_string(),
-        other => format!("{other:?}"),
-    }
+    Ok((new_file, changes))
 }
 
 /// A JSON value from the create form → a WCL expression. Strings become

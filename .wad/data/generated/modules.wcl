@@ -40,7 +40,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_editor {
     name = "editor"
     kind = "module"
-    summary = "16 files, 18 pub items"
+    summary = "18 files, 18 pub items"
     deps = [n_cg_wcl_edit, n_cg_wcl_serve, n_cg_wcl_xc_wcl_lang, n_cg_wcl_xc_wcl_wdoc]
   }
   code_node n_cg_wcl_gitspec {
@@ -74,7 +74,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_xc_wcl_lang {
     name = "wcl_lang (crate)"
     kind = "extern_crate"
-    summary = "uses Block, DeclName, Decorator, Document, +22 more"
+    summary = "uses Block, DeclName, Decorator, Document, +23 more"
   }
   code_node n_cg_wcl_xc_wcl_wdoc {
     name = "wcl_wdoc (crate)"

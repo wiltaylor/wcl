@@ -19,8 +19,9 @@ use axum::response::Response;
 use wcl_lang::ast::{self, Item};
 use wcl_lang::{Document, parse_for_edit};
 
-use super::blocks::{dec_first_string, first_label, visibility_json};
+use super::blocks::visibility_json;
 use super::kinds::KindModel;
+use super::util::{dec_first_string, first_label};
 use super::{EditorState, Workspace, run_blocking};
 use crate::serve::query_param;
 

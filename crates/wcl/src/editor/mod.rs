@@ -29,6 +29,7 @@ mod graph;
 mod kinds;
 mod lsp_bridge;
 mod nav;
+mod palette;
 mod placement;
 mod preview;
 mod profiles;
@@ -36,6 +37,7 @@ mod sites;
 mod systems;
 #[cfg(test)]
 mod testsupport;
+mod util;
 mod workspace;
 
 use std::path::{Path, PathBuf};
@@ -84,7 +86,7 @@ pub(crate) fn router(state: Arc<EditorState>) -> Router {
         .route("/api/block/ops", post(blocks::handle_block_ops))
         .route("/api/unit/field", post(blocks::handle_unit_field))
         .route("/api/unit/create", post(blocks::handle_unit_create))
-        .route("/api/palette", get(kinds::handle_palette))
+        .route("/api/palette", get(palette::handle_palette))
         .route("/api/nav", get(nav::handle_nav))
         .route("/api/nav/op", post(nav::handle_nav_op))
         .route("/api/wskill/profile", post(profiles::handle_profile))
