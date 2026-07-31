@@ -37,44 +37,51 @@ jobs:
         with:
           node-version: '22'
       - uses: Swatinem/rust-cache@v2
-      - run: cargo fmt --all -- --check
-      - run: just workspace-lint
-      - run: just workspace-test
+      # Every step below is one part of the merge bar, invoked through the
+      # `ci` just module (.just/ci/mod.just) so the workflow and the local
+      # gate cannot drift. `just ci::check` runs the same list in one go.
+      # Each part is independently runnable, so this job could be fanned out
+      # one-part-per-job; they share a job on purpose, because every part
+      # needs the same cargo build and a separate job would re-pay it.
+      - run: just ci::fmt-check
+      - run: just ci::workspace-lint
+      - run: just ci::workspace-test
       # Schema heredocs in the scaffold templates are canonical — fail on
       # drift between them and the live copies (docs/wskills/*, .wad/).
-      - run: just wskill-schema-check
+      - run: just ci::wskill-schema-check
       # The wskill scaffold's wdoc templates must match the live reference
       # implementation (docs/wskills/wskill) — improvements get back-ported
       # instead of stranding new scaffolds on stale templates.
-      - run: just wskill-template-check
+      - run: just ci::wskill-template-check
       # The other topics' copies of the topic-agnostic templates must match
       # the reference too (per-topic exemptions cover intentional divergence),
       # and every declared artifact entry file must exist.
-      - run: just wskill-crosstopic-check
-      - run: just wskill-artifact-check
-      - run: just wad-schema-check
+      - run: just ci::wskill-crosstopic-check
+      - run: just ci::wskill-artifact-check
+      - run: just ci::wcl-refcheck
+      - run: just ci::wad-schema-check
       # The reference WAD (.wad/) is the first wcl-init-wad consumer —
       # validate its model and build its book like docs-build below.
-      - run: just wad-check
+      - run: just ci::wad-check
       # Generated data freshness: re-run every extractor and fail if the
       # committed .wad/data/generated/ lags reality. The facts check pins the
       # wad wskill's hand-reflected tables to the current WAD schema version.
-      - run: just wad-extract-check
-      - run: just wad-facts-check
-      - run: just wad-build
+      - run: just ci::wad-extract-check
+      - run: just ci::wad-facts-check
+      - run: just ci::wad-build
       # The shipped wplan template must scaffold, check, and pass its
       # structural gates against the current binary — the moral equivalent
       # of the old "verified tarball".
-      - run: just wplan-template-check
+      - run: just ci::wplan-template-check
       # Every wskill's skill projection must build and match the committed
       # .claude/skills + .claude/agents artifacts (drift, agent-name
       # collisions, stale generated files) — the book-only docs-build below
       # never exercises `wcl wdoc skill`.
-      - run: just skills-check
+      - run: just ci::skills-check
       # The docs/ site is the largest real-world wdoc consumer — building it
       # catches renderer regressions that unit tests miss, and broken doc
       # pages, before they reach the deploy workflow.
-      - run: just docs-build
+      - run: just ci::docs-build
 
   # ── Fuzz smoke ────────────────────────────────────────────────────────────
   # Bounded sweep over every wcl_lang fuzz target (~15s each) so parser /
@@ -96,7 +103,7 @@ jobs:
         with:
           key: fuzz
           workspaces: crates/wcl_lang/fuzz
-      - run: just fuzz-sweep
+      - run: just ci::fuzz-sweep
 
   # ── Version ───────────────────────────────────────────────────────────────
   # Trailer-gated. Only `pre-release: true` cuts a GitHub pre-release (an -alpha

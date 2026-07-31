@@ -8,6 +8,14 @@ bin_dir := env('WCL_INSTALL_DIR', env('HOME') / '.local/bin')
 main:
     @just --list
 
+# The merge bar — everything a change must pass before it can land
+mod ci '.just/ci'
+
+# Recipes the `ci` module and this justfile both need. A module can't see its
+# parent's recipes, so the gate's constituents are defined once in
+# .just/shared.just and imported by both.
+import '.just/shared.just'
+
 # Build the workspace
 [group('build')]
 workspace-build:
@@ -44,11 +52,6 @@ cli-install: cli-build
     install -D -m 755 target/release/wcl {{ bin_dir }}/wcl
     @echo "Installed wcl to {{ bin_dir }}/wcl"
 
-# Run all tests (unit + integration)
-[group('test')]
-workspace-test:
-    cargo test --workspace
-
 # Run wdoc tests only (unit + integration in crates/wcl_wdoc)
 [group('test')]
 wdoc-test:
@@ -62,211 +65,22 @@ wdoc-test:
 fuzz-run TARGET *ARGS:
     cd crates/wcl_lang && cargo +nightly fuzz run --target "$(rustc +nightly -vV | sed -n 's/^host: //p')" {{TARGET}} {{ARGS}}
 
-# Bounded fuzz sweep across every target (~15s each, ~75s total)
-[group('test')]
-fuzz-sweep:
-    @host="$(rustc +nightly -vV | sed -n 's/^host: //p')"; \
-    for t in parse eval format_round_trip json_round_trip set_edit_path; do \
-        echo "==> fuzz $t" >&2; \
-        (cd crates/wcl_lang && cargo +nightly fuzz run --target "$host" "$t" -- -runs=2000 -max_total_time=15) || exit 1; \
-    done
-
 # Format all code
 [group('quality')]
 workspace-fmt:
     cargo fmt --all
 
-# Lint with clippy (warnings are errors)
-[group('quality')]
-workspace-lint:
-    cargo clippy --workspace --all-targets -- -D warnings
-
-# Print the canonical wskill base schema (the scaffold template's heredoc) to stdout
-[private]
-wskill-schema-extract:
-    @sed -n "/<<'WSK_SCHEMA_BASE_WCL'/,/^WSK_SCHEMA_BASE_WCL$/p" crates/wcl/src/scaffold/templates/wskill.wcl | sed '1d;$d'
-
-[private]
-wskill-training-schema-extract:
-    @sed -n "/<<'WSK_SCHEMA_TRAINING_WCL'/,/^WSK_SCHEMA_TRAINING_WCL$/p" crates/wcl/src/scaffold/templates/wskill.wcl | sed '1d;$d'
-
 # Propagate the canonical wskill base schema to every wskill under docs/wskills/
 [group('quality')]
 wskill-schema-sync:
-    @for d in docs/wskills/*; do \
+    @{{heredoc}}; for d in docs/wskills/*; do \
         [ -d "$d/schema" ] || continue; \
-        just wskill-schema-extract > "$d/schema/base.wcl"; \
+        heredoc {{wskill_template}} WSK_SCHEMA_BASE_WCL > "$d/schema/base.wcl"; \
         echo "synced $d/schema/base.wcl"; \
         [ ! -f "$d/schema/training.wcl" ] || { \
-            just wskill-training-schema-extract > "$d/schema/training.wcl"; \
+            heredoc {{wskill_template}} WSK_SCHEMA_TRAINING_WCL > "$d/schema/training.wcl"; \
             echo "synced $d/schema/training.wcl"; }; \
     done
-
-# Fail when a live wskill base.wcl drifts from the scaffold heredoc (runs in ci)
-[group('quality')]
-wskill-schema-check:
-    @for d in docs/wskills/*; do \
-        [ -d "$d/schema" ] || continue; \
-        diff <(just wskill-schema-extract) "$d/schema/base.wcl" >/dev/null \
-            || { echo "wskill schema drift: $d/schema/base.wcl — run 'just wskill-schema-sync'"; exit 1; }; \
-        [ ! -f "$d/schema/training.wcl" ] || \
-            diff <(just wskill-training-schema-extract) "$d/schema/training.wcl" >/dev/null \
-            || { echo "wskill schema drift: $d/schema/training.wcl — run 'just wskill-schema-sync'"; exit 1; }; \
-    done
-
-# Fail when the wskill scaffold's topic-agnostic wdoc templates drift from the
-# live reference implementation (docs/wskills/wskill) — improvements to the
-# meta wskill must be back-ported so new scaffolds don't strand on stale
-# templates (runs in ci). wdoc/skill/main.wcl is exempt: its skill description
-# is topic-tuned in the live instance.
-[group('quality')]
-wskill-template-check:
-    @for pair in \
-        WSK_WDOC_COMPONENT_COMMON_WCL:component/common.wcl \
-        WSK_WDOC_COMPONENT_SKILL_MD_WCL:component/skill_md.wcl \
-        WSK_WDOC_COMPONENT_CONCEPT_WCL:component/concept.wcl \
-        WSK_WDOC_COMPONENT_ENTITY_WCL:component/entity.wcl \
-        WSK_WDOC_COMPONENT_FACT_WCL:component/fact.wcl \
-        WSK_WDOC_COMPONENT_RESEARCH_WCL:component/research.wcl \
-        WSK_WDOC_COMPONENT_PROCESS_WCL:component/process.wcl \
-        WSK_WDOC_COMPONENT_TYPE_INDEX_WCL:component/type_index.wcl \
-        WSK_WDOC_PAGES_OVERVIEW_WCL:pages/overview.wcl \
-        WSK_WDOC_PAGES_CONCEPTS_WCL:pages/concepts.wcl \
-        WSK_WDOC_PAGES_ENTITIES_WCL:pages/entities.wcl \
-        WSK_WDOC_PAGES_FACTS_WCL:pages/facts.wcl \
-        WSK_WDOC_PAGES_PROCESSES_WCL:pages/processes.wcl \
-        WSK_WDOC_BOOK_MAIN_WCL:book/main.wcl \
-    ; do \
-        term="${pair%%:*}"; path="${pair#*:}"; \
-        diff <(sed -n "/<<'$term'/,/^$term$/p" crates/wcl/src/scaffold/templates/wskill.wcl | sed '1d;$d' | sed -z 's/\n*$/\n/') \
-             <(sed -z 's/\n*$/\n/' "docs/wskills/wskill/wdoc/$path") >/dev/null \
-            || { echo "wskill template drift: docs/wskills/wskill/wdoc/$path vs scaffold heredoc $term — back-port one side"; exit 1; }; \
-    done
-
-# Fail when a topic's copy of a topic-agnostic wdoc template drifts from the
-# reference implementation (docs/wskills/wskill/wdoc/). Per-topic exemptions
-# cover verified intentional divergence: skill/main.wcl everywhere (topic-tuned
-# description); wcl's common.wcl (builtins fn_signature superset), overview,
-# book (builtins/CLI projections); wdoc's book (index-nav TOC architecture).
-# Files a topic doesn't ship (wad: presentation/training) are skipped — a
-# deleted copy breaks that topic's book imports, which docs-build catches
-# (runs in ci).
-[group('quality')]
-wskill-crosstopic-check:
-    @fail=0; \
-    exempt_wcl="component/common.wcl pages/overview.wcl book/main.wcl"; \
-    exempt_wdoc="book/main.wcl"; \
-    exempt_wad=""; \
-    ref=docs/wskills/wskill/wdoc; \
-    for d in docs/wskills/*; do \
-        t=$(basename "$d"); [ "$t" = wskill ] && continue; [ -d "$d/wdoc" ] || continue; \
-        eval "exempt=\"\${exempt_$t:-} skill/main.wcl\""; \
-        for f in $(cd "$ref" && find . -type f -name '*.wcl' | sed 's|^\./||' | sort); do \
-            case " $exempt " in *" $f "*) continue;; esac; \
-            [ -f "$d/wdoc/$f" ] || continue; \
-            diff "$ref/$f" "$d/wdoc/$f" >/dev/null \
-                || { echo "cross-topic template drift: $d/wdoc/$f vs $ref/$f — sync from the reference (or add an exemption here if newly topic-tuned)"; fail=1; }; \
-        done; \
-    done; \
-    [ "$fail" -eq 0 ] && echo "wskill-crosstopic-check OK"; \
-    exit $fail
-
-# Fail when a wskill declares an `artifact` whose entry file does not exist —
-# entry paths are metadata (the registry landing and per-wskill justfiles
-# enumerate them), so a rename or deletion would otherwise dangle silently (runs in ci)
-[group('quality')]
-wskill-artifact-check:
-    @fail=0; \
-    for d in docs/wskills/*; do \
-        [ -f "$d/wskill.wcl" ] || continue; \
-        for e in $(grep -oE 'entry *= *"[^"]+"' "$d/wskill.wcl" | sed 's/.*"\(.*\)"/\1/'); do \
-            [ -f "$d/$e" ] || { echo "dangling artifact entry: $d/wskill.wcl declares $e but $d/$e does not exist"; fail=1; }; \
-        done; \
-    done; \
-    [ "$fail" -eq 0 ] && echo "wskill-artifact-check OK"; \
-    exit $fail
-
-# Fail when a wskill's skill projection breaks, when the committed artifacts
-# (.claude/skills/<name>/, .claude/agents/*.md) drift from their wskill sources,
-# when two wskills declare the same agent name (the flat install copy would
-# silently clobber), or when a committed generated skill/agent has no producing
-# wskill (runs in ci). Discovery and name extraction match skills-install.
-# Hand-authored skills (no wskill_schema_version metadata in SKILL.md) and
-# .claude/agents/README.md are exempt.
-[group('quality')]
-skills-check:
-    @rm -rf target/skills-check && mkdir -p target/skills-check
-    @fail=0; agent_names=""; skill_names=""; \
-    for d in docs/wskills/*; do \
-        [ -f "$d/wdoc/skill/main.wcl" ] || continue; \
-        topic=$(basename "$d"); \
-        stage="target/skills-check/$topic"; \
-        echo "==> $topic" >&2; \
-        cargo run -q -p wcl -- wdoc skill "$d/wdoc/skill/main.wcl" --out "$stage" \
-            || { echo "skill projection FAILED: $d/wdoc/skill/main.wcl"; exit 1; }; \
-        for md in "$stage/SKILL.md" "$stage"/*/SKILL.md; do \
-            [ -f "$md" ] || continue; \
-            sd=$(dirname "$md"); \
-            sn=$(sed -n 's/^name: *//p' "$md" | head -1 | sed 's/^"//; s/"$//'); \
-            skill_names="$skill_names $sn"; \
-            diff -r "$sd" ".claude/skills/$sn" >/dev/null 2>&1 \
-                || { echo "skill artifact drift: .claude/skills/$sn vs $d — run 'just skills-install' and commit"; \
-                     diff -r "$sd" ".claude/skills/$sn" 2>&1 | head -20; fail=1; }; \
-        done; \
-        if [ -d "$stage/agents" ]; then \
-            for a in "$stage/agents/"*.md; do \
-                an=$(basename "$a" .md); \
-                case " $agent_names " in *" $an "*) \
-                    echo "agent name collision: $an declared by more than one wskill"; fail=1;; \
-                esac; \
-                agent_names="$agent_names $an"; \
-                diff "$a" ".claude/agents/$an.md" >/dev/null 2>&1 \
-                    || { echo "agent artifact drift: .claude/agents/$an.md vs $d — run 'just skills-install' and commit"; fail=1; }; \
-            done; \
-        fi; \
-    done; \
-    for smd in .claude/skills/*/SKILL.md; do \
-        [ -f "$smd" ] || continue; \
-        grep -q 'wskill_schema_version' "$smd" || continue; \
-        sn=$(basename "$(dirname "$smd")"); \
-        case " $skill_names " in *" $sn "*) ;; *) \
-            echo "stale generated skill: .claude/skills/$sn — no wskill produces it; delete it or restore its source"; fail=1;; \
-        esac; \
-    done; \
-    for a in .claude/agents/*.md; do \
-        an=$(basename "$a" .md); [ "$an" = README ] && continue; \
-        case " $agent_names " in *" $an "*) ;; *) \
-            echo "stale agent: $a — no wskill produces it; delete it or restore its source"; fail=1;; \
-        esac; \
-    done; \
-    [ "$fail" -eq 0 ] && echo "skills-check OK — projections build clean and match committed artifacts"; \
-    exit $fail
-
-# Fail when the `wcl` wskill's reference drifts from the binary it documents:
-# the documented builtin names vs `builtin_names()`, and the documented
-# subcommand tree vs `wcl --help` / `wcl wdoc --help` / `wcl wad --help`
-# (runs in ci). The wskill IS the WCL language/CLI/builtin reference, so a
-# new builtin or subcommand must land in it or the docs quietly go stale.
-[group('quality')]
-wcl-refcheck:
-    @mkdir -p target/refcheck
-    @printf '@document\ntype D {\n  names: list<utf8>\n}\n\nnames = builtin_names()\n' > target/refcheck/builtins.wcl
-    @cargo run -q -p wcl -- eval target/refcheck/builtins.wcl names \
-        | tr -d '[]" ' | tr ',' '\n' | sed '/^$/d' | sort > target/refcheck/builtins-real.txt
-    @grep -oE '^  name *= *"[^"]+"' docs/wskills/wcl/data/builtins.wcl \
-        | sed 's/.*"\(.*\)"/\1/' | sort > target/refcheck/builtins-doc.txt
-    @diff target/refcheck/builtins-real.txt target/refcheck/builtins-doc.txt \
-        || { echo "wcl reference drift: builtins (< missing from docs/wskills/wcl/data/builtins.wcl, > documented but not a builtin)"; exit 1; }
-    @subs() { cargo run -q -p wcl -- $1 --help 2>&1 \
-        | sed -n '/^Commands:/,/^$/p' | sed -n 's/^  \([a-z][a-z-]*\) .*/\1/p' | grep -v '^help$'; }; \
-    { subs ""; subs wdoc | sed 's/^/wdoc /'; subs wad | sed 's/^/wad /'; } \
-        | sort > target/refcheck/commands-real.txt
-    @printf '{ let c = head(clis); join(flatten(map(c.subcommands, fn(s: Subcommand) -> list<utf8> { flatten([[s.name], map(s.subcommands, fn(n: Subcommand) -> utf8 { $"${s.name} ${n.name}" })]) })), "\\n") }\n' \
-        | cargo run -q -p wcl -- repl docs/wskills/wcl/wskill.wcl \
-        | sed 's/^"//; s/"$//' | sed 's/\\n/\n/g' | sort > target/refcheck/commands-doc.txt
-    @diff target/refcheck/commands-real.txt target/refcheck/commands-doc.txt \
-        || { echo "wcl reference drift: CLI subcommands (< missing from docs/wskills/wcl/data/reference/cli.wcl, > documented but not a subcommand)"; exit 1; }
-    @echo "wcl-refcheck OK — $(wc -l < target/refcheck/builtins-real.txt) builtins, $(wc -l < target/refcheck/commands-real.txt) subcommands match the binary"
 
 # Report book/skill audience coverage per wskill (units kept vs total per
 # projection) — informational, not a gate. An excluded unit is otherwise
@@ -282,69 +96,15 @@ wskill-coverage:
             | sed 's/^"//; s/"$//'; \
     done
 
-# Print the canonical WAD base schema (the scaffold template's heredoc) to stdout
-[private]
-wad-schema-extract:
-    @sed -n "/<<'WAD_SCHEMA_BASE_WCL'/,/^WAD_SCHEMA_BASE_WCL$/p" crates/wcl/src/scaffold/templates/wad.wcl | sed '1d;$d'
-
 # Propagate the canonical WAD base schema to .wad/schema/base.wcl
 [group('quality')]
 wad-schema-sync:
-    @just wad-schema-extract > .wad/schema/base.wcl && echo "synced .wad/schema/base.wcl"
-
-# Fail when .wad/schema/base.wcl drifts from the scaffold heredoc (runs in ci)
-[group('quality')]
-wad-schema-check:
-    @diff <(just wad-schema-extract) .wad/schema/base.wcl >/dev/null \
-        || { echo "wad schema drift: .wad/schema/base.wcl — run 'just wad-schema-sync'"; exit 1; }
-
-# Validate the WCL architecture document (.wad/) — model + book template
-[group('quality')]
-wad-check:
-    cargo run -p wcl -- check .wad/wad.wcl
-    cargo run -p wcl -- check .wad/wdoc/book/main.wcl
-
-# Fail when .wad/data/generated/ is stale — re-runs every extractor and requires a quiet git tree after (runs in ci; needs uv and full git history).
-# releases.wcl is exempt: it derives from git tags, and the release pipeline creates a tag AFTER the commit CI builds from, so it can never be
-# fresh at gate time — the keep-current sweep picks new releases up instead.
-[group('quality')]
-wad-extract-check: wad-extract
-    @if [ -n "$(git status --porcelain -- .wad/data/generated ':(exclude).wad/data/generated/releases.wcl')" ]; then \
-        git --no-pager diff -- .wad/data/generated ':(exclude).wad/data/generated/releases.wcl' | head -80; \
-        echo "wad generated-data drift: run 'just wad-extract' and commit the result"; \
-        exit 1; \
-    fi
-    @git checkout -q -- .wad/data/generated/releases.wcl 2>/dev/null || true
-    @echo "wad-extract-check OK — .wad/data/generated is fresh (releases.wcl exempt: tag-derived)"
-
-# Fail when the wad wskill's hand-reflected fact tables lag the WAD schema version (runs in ci)
-[group('quality')]
-wad-facts-check:
-    @V=$(grep -m1 'schema_version = ' crates/wcl/src/scaffold/templates/wad.wcl | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
-    grep -q "hand-reflected from schema $V" docs/wskills/wad/data/reference/facts.wcl \
-        || { echo "wad wskill facts drift: docs/wskills/wad/data/reference/facts.wcl must say 'hand-reflected from schema $V' — re-reflect the fact tables against the current WAD schema, then update the header"; exit 1; }
-    @echo "wad-facts-check OK"
+    @{{heredoc}}; heredoc {{wad_template}} WAD_SCHEMA_BASE_WCL > .wad/schema/base.wcl && echo "synced .wad/schema/base.wcl"
 
 # Print the canonical wplan plan schema (the scaffold template's heredoc) to stdout
 [private]
 wplan-schema-extract:
     @sed -n "/<<'WPLAN_SCHEMA_WCL'/,/^WPLAN_SCHEMA_WCL$/p" crates/wcl/src/scaffold/templates/wplan.wcl | sed '1d;$d'
-
-# Scaffold the shipped wplan template into target/ and run its structural gates (runs in ci)
-[group('quality')]
-wplan-template-check:
-    rm -rf target/wplan-template-check
-    cargo run -p wcl -- init wplan target/wplan-template-check --defaults
-    cargo run -p wcl -- check target/wplan-template-check/plan.wcl
-    cargo run -p wcl -- check target/wplan-template-check/gates.wcl
-    @for g in $(grep -oE '^gate [a-z_0-9]+' target/wplan-template-check/gates.wcl | cut -d' ' -f2 | grep -v '^signoffs_complete$'); do \
-        printf 'gate %-24s ' "$g"; \
-        cargo run -q -p wcl -- eval target/wplan-template-check/gates.wcl "gates.$g.ok" || exit 1; \
-    done
-
-# Full CI gate: fmt-check + workspace-lint + workspace-test + schema drift checks + doc builds
-[group('quality')]
-ci: fmt-check workspace-lint workspace-test wskill-schema-check wskill-template-check wskill-crosstopic-check wskill-artifact-check wcl-refcheck wad-schema-check wad-check wad-extract-check wad-facts-check wad-build wplan-template-check skills-check docs-build
 
 # Run the CLI: just cli-run -- parse examples/basic.wcl
 [group('dev')]
@@ -366,33 +126,15 @@ wdoc-serve *ARGS:
 docs-serve *ARGS:
     cargo run -p wcl -- wdoc serve docs/main.wcl --addr 127.0.0.1:8137 --edit {{ARGS}}
 
-# Build the project's docs/ site into docs/_site/ (gitignored)
-[group('dev')]
-docs-build *ARGS:
-    cargo run -p wcl -- wdoc build docs/main.wcl --out docs/_site {{ARGS}}
-
 # Serve the WCL architecture book (.wad/) — hot-reload dev server. Review comments live in `just editor`'s preview pane
 [group('dev')]
 wad-serve *ARGS:
     cargo run -p wcl -- wdoc serve .wad/wdoc/book/main.wcl --addr 127.0.0.1:8138 {{ARGS}}
 
-# Build the WCL architecture book (.wad/) into .wad/_site/ (gitignored).
-# The output dir is wiped first: a build never deletes pages that no longer
-# exist, so removed entities would otherwise linger as orphaned HTML.
-[group('dev')]
-wad-build *ARGS:
-    rm -rf .wad/_site
-    cargo run -p wcl -- wdoc build .wad/wdoc/book/main.wcl --out .wad/_site {{ARGS}}
-
 # Render the WCL architecture book as AI-consumable Markdown into .wad/_md/ (gitignored)
 [group('dev')]
 wad-md *ARGS:
     cargo run -p wcl -- wdoc markdown .wad/wdoc/book/main.wcl --out .wad/_md {{ARGS}}
-
-# Run every WAD extractor script (rewrites .wad/data/generated/), then re-validate
-[group('dev')]
-wad-extract: && wad-check
-    for s in .wad/scripts/extract_*.py; do echo "==> $s" >&2; uv run "$s"; done
 
 # Derive a change-spec skeleton for the WAD from a reviewed revision: just wad-spec HEAD~3
 [group('dev')]
@@ -465,7 +207,3 @@ examples-profile:
         cargo run -q -p wcl -- parse --profile "$f" >/dev/null; \
         echo >&2; \
     done
-
-[private]
-fmt-check:
-    cargo fmt --all -- --check
