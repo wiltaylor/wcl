@@ -40,7 +40,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_editor {
     name = "editor"
     kind = "module"
-    summary = "14 files, 18 pub items"
+    summary = "16 files, 18 pub items"
     deps = [n_cg_wcl_edit, n_cg_wcl_serve, n_cg_wcl_xc_wcl_lang, n_cg_wcl_xc_wcl_wdoc]
   }
   code_node n_cg_wcl_gitspec {
@@ -74,7 +74,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_xc_wcl_lang {
     name = "wcl_lang (crate)"
     kind = "extern_crate"
-    summary = "uses Block, DeclName, Decorator, Document, +21 more"
+    summary = "uses Block, DeclName, Decorator, Document, +22 more"
   }
   code_node n_cg_wcl_xc_wcl_wdoc {
     name = "wcl_wdoc (crate)"
@@ -114,7 +114,7 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_doc {
     name = "doc"
     kind = "module"
-    summary = "15 files, 63 pub items"
+    summary = "16 files, 65 pub items"
     deps = [n_cg_wcl_lang_ast, n_cg_wcl_lang_data, n_cg_wcl_lang_environment, n_cg_wcl_lang_error, n_cg_wcl_lang_lexer, n_cg_wcl_lang_numeric, n_cg_wcl_lang_parser, n_cg_wcl_lang_symbols, n_cg_wcl_lang_value]
   }
   code_node n_cg_wcl_lang_edit {
@@ -2619,7 +2619,7 @@ code_item code_api_doc_view {
       kind = "method"
     }
     code_member m_n_api_doc_view_Document_more {
-      signature = "… +74 more"
+      signature = "… +76 more"
       kind = "overflow"
     }
   }
@@ -2987,6 +2987,52 @@ code_item code_api_doc_view {
       deps = [n_api_doc_view_Decorator, n_api_doc_view_DecoratorCell]
     }
   }
+  code_node n_api_doc_view_GatheredKind {
+    name = "GatheredKind"
+    kind = "struct"
+    summary = "src/doc/gathers.rs"
+    code_member m_n_api_doc_view_GatheredKind_kind {
+      signature = "fn kind(&self) -> &str"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_GatheredKind_gather_field {
+      signature = "fn gather_field(&self) -> &str"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_GatheredKind_schema {
+      signature = "fn schema(&self) -> &TypeDecl<'a>"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_GatheredKind_into_schema {
+      signature = "fn into_schema(self) -> TypeDecl<'a>"
+      kind = "method"
+    }
+  }
+  code_node n_api_doc_view_ChildFamily {
+    name = "ChildFamily"
+    kind = "struct"
+    summary = "src/doc/gathers.rs"
+    code_member m_n_api_doc_view_ChildFamily_field {
+      signature = "fn field(&self) -> &str"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_ChildFamily_kind {
+      signature = "fn kind(&self) -> &str"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_ChildFamily_many {
+      signature = "fn many(&self) -> bool"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_ChildFamily_schema {
+      signature = "fn schema(&self) -> Option<&TypeDecl<'a>>"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_ChildFamily_doc_comment {
+      signature = "fn doc_comment(&self) -> Option<&str>"
+      kind = "method"
+    }
+  }
   code_node n_api_doc_view_imports_fns {
     name = "imports"
     kind = "fns"
@@ -3101,7 +3147,6 @@ code_item code_api_doc_view {
     code_member m_n_api_doc_view_ResolvedType_Connection {
       signature = "Connection(ConnectionDecl<'a>)"
       kind = "variant"
-      deps = [n_api_doc_view_ConnectionDecl]
     }
     code_member m_n_api_doc_view_ResolvedType_Reference {
       signature = "Reference(Box<ResolvedType<'a>>)"
@@ -3355,68 +3400,10 @@ code_item code_api_doc_view {
       kind = "method"
     }
   }
-  code_node n_api_doc_view_Connection {
-    name = "Connection"
-    kind = "struct"
-    summary = "src/doc/views.rs"
-    code_member m_n_api_doc_view_Connection_source {
-      signature = "fn source(&self) -> &'a str"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_Connection_destination {
-      signature = "fn destination(&self) -> &'a str"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_Connection_kind {
-      signature = "fn kind(&self) -> Option<&'a str>"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_Connection_span {
-      signature = "fn span(&self) -> Span"
-      kind = "method"
-    }
-  }
-  code_node n_api_doc_view_ConnectionDecl {
-    name = "ConnectionDecl"
-    kind = "struct"
-    summary = "src/doc/views.rs"
-    code_member m_n_api_doc_view_ConnectionDecl_impl_DeclName__a_ {
-      signature = "impl DeclName<'a>"
-      kind = "impl"
-    }
-    code_member m_n_api_doc_view_ConnectionDecl_span {
-      signature = "fn span(&self) -> Span"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_ConnectionDecl_source_type {
-      signature = "fn source_type(&self) -> &'a TypeRef"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_ConnectionDecl_destination_type {
-      signature = "fn destination_type(&self) -> &'a TypeRef"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_ConnectionDecl_kind_set_path {
-      signature = "fn kind_set_path(&self) -> &'a [String]"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_ConnectionDecl_kind_set {
-      signature = "fn kind_set(&self) -> Option<SymbolSetDecl<'a>>"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_ConnectionDecl_default_kind {
-      signature = "fn default_kind(&self) -> Option<String>"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_ConnectionDecl_is_dynamic {
-      signature = "fn is_dynamic(&self) -> bool"
-      kind = "method"
-    }
-  }
   code_node n_api_doc_view_more {
-    name = "… +13 more"
+    name = "… +15 more"
     kind = "overflow"
-    summary = "13 further public items — see the source."
+    summary = "15 further public items — see the source."
   }
 }
 
