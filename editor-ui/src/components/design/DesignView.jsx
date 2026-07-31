@@ -32,6 +32,7 @@ import { reloadGraph } from '../../state/graph';
 import { isManualLayout, shapeEls } from '../../preview/anchors';
 import { freshShapeId, shapeSnippet } from '../../preview/schemaform';
 import { wclString } from '../../preview/wysiwyg';
+import { cellNamed, cellText } from '../../preview/schemaform';
 import {
   delColAt,
   insertColAt,
@@ -340,8 +341,8 @@ function FragmentEditor(props) {
 // ---------------------------------------------------------------------------
 
 function CodeBlockEditor(props) {
-  const langSlot = () => props.src.labels?.[0];
-  const srcField = () => props.src.fields?.source;
+  const langSlot = () => props.src.cells?.labels?.[0];
+  const srcField = () => cellNamed(props.src.cells, 'source');
   // Computed language / source → fragment editing is the truth.
   if (langSlot()?.state === 'computed' || srcField()?.state === 'computed') {
     return <FragmentEditor {...props} />;
@@ -396,7 +397,7 @@ function TableEditor(props) {
       <FragmentEditor
         {...props}
         notice={
-          props.src.fields?.rows
+          cellNamed(props.src.cells, 'rows')
             ? 'This table is generated: its rows come from an expression over data, so there is no cell grid — edit the expression here, or edit the underlying data objects it draws from.'
             : 'No literal pipe rows found in this table — edit its source directly.'
         }
@@ -504,14 +505,20 @@ function TableEditor(props) {
 // ---------------------------------------------------------------------------
 
 function ImageEditor(props) {
-  const lit = (slot) => (slot?.state === 'literal' ? (slot.text ?? '') : null);
-  const source0 = lit(props.src.labels?.[0]);
+  // The source is a string; the rest are whatever scalar the author wrote
+  // (a width is a number), so they read through the shared cell text.
+  const str = (cell) => (cell?.state === 'text' ? (cell.text ?? '') : null);
+  const scalar = (name) => {
+    const cell = cellNamed(props.src.cells, name);
+    return cell && cell.state !== 'computed' ? (cell.text ?? '') : '';
+  };
+  const source0 = str(props.src.cells?.labels?.[0]);
   if (source0 === null) return <FragmentEditor {...props} />;
   const [form, setForm] = createSignal({
     source: source0,
-    alt: lit(props.src.fields?.alt) ?? '',
-    width: lit(props.src.fields?.width) ?? '',
-    height: lit(props.src.fields?.height) ?? '',
+    alt: scalar('alt'),
+    width: scalar('width'),
+    height: scalar('height'),
   });
   const save = () => {
     const f = form();
@@ -564,9 +571,9 @@ function ComponentEditor(props) {
   if (!def()) return <FragmentEditor {...props} />;
   const initial = {};
   for (const slot of def().slots) {
-    const f = props.src.fields?.[slot.name];
+    const f = cellNamed(props.src.cells, slot.name);
     initial[slot.name] = {
-      value: f?.state === 'literal' ? (f.text ?? '') : '',
+      value: f?.state === 'text' ? (f.text ?? '') : '',
       computed: f?.state === 'computed',
       present: !!f,
     };
@@ -577,7 +584,7 @@ function ComponentEditor(props) {
     for (const slot of def().slots) {
       const f = form()[slot.name];
       if (f.computed) continue;
-      const orig = props.src.fields?.[slot.name]?.text ?? '';
+      const orig = cellText(props.src.cells, slot.name);
       if (f.value === orig && f.present) continue;
       if (f.value === '' && !slot.required) continue;
       ops.push({ op: 'set_field', span: props.anchor.span, field: slot.name, text: f.value });

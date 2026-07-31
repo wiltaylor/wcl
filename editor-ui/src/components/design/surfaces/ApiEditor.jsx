@@ -6,24 +6,23 @@
 
 import { For, Show } from 'solid-js';
 
+import { cellText } from '../../../preview/schemaform';
 import { FamilySection, createDetail, defaultSummary } from './fields';
-
-const cell = (item, name) => item.cells?.[name]?.text ?? '';
 
 const endpointSummary = (item) => (
   <>
-    <span class="ed-surface-method">{(cell(item, 'method') || 'GET').toUpperCase()}</span>
-    <code>{cell(item, 'path') || item.label}</code>
-    <span class="ed-surface-desc">{cell(item, 'summary')}</span>
+    <span class="ed-surface-method">{(cellText(item.cells, 'method') || 'GET').toUpperCase()}</span>
+    <code>{cellText(item.cells, 'path') || item.label}</code>
+    <span class="ed-surface-desc">{cellText(item.cells, 'summary')}</span>
   </>
 );
 
 const paramSummary = (item) => (
   <>
-    <code>{cell(item, 'name') || item.label}</code>
-    <span class="ed-surface-note">{cell(item, 'location').replace(/^:/, '')}</span>
-    <span class="ed-surface-desc">{cell(item, 'description') || cell(item, 'type')}</span>
-    <Show when={cell(item, 'required') === 'true'}>
+    <code>{cellText(item.cells, 'name') || item.label}</code>
+    <span class="ed-surface-note">{cellText(item.cells, 'location')}</span>
+    <span class="ed-surface-desc">{cellText(item.cells, 'description') || cellText(item.cells, 'type')}</span>
+    <Show when={cellText(item.cells, 'required') === 'true'}>
       <span class="ed-surface-note">required</span>
     </Show>
   </>
@@ -31,8 +30,8 @@ const paramSummary = (item) => (
 
 const responseSummary = (item) => (
   <>
-    <span class="ed-surface-method">{cell(item, 'status') || item.label}</span>
-    <span class="ed-surface-desc">{cell(item, 'description')}</span>
+    <span class="ed-surface-method">{cellText(item.cells, 'status') || item.label}</span>
+    <span class="ed-surface-desc">{cellText(item.cells, 'description')}</span>
   </>
 );
 
@@ -53,8 +52,8 @@ export default function ApiEditor(props) {
   return (
     <Show when={d()} fallback={<div class="ed-empty">Loading the API…</div>}>
       <div class="ed-surface-api">
-        <Show when={d().cells?.summary?.text}>
-          <p class="ed-surface-summary">{d().cells.summary.text}</p>
+        <Show when={cellText(d().cells, 'summary')}>
+          <p class="ed-surface-summary">{cellText(d().cells, 'summary')}</p>
         </Show>
         <Show
           when={endpoints()}

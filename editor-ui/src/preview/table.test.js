@@ -98,16 +98,23 @@ describe('delColAt', () => {
 });
 
 describe('parseTable / tableCommit', () => {
+  /** A cell as the server serves it — the grid only takes plain strings. */
+  const text = (t) => ({ state: 'text', text: t });
   const listSrc = {
     source: 'table {…}',
-    fields: {
-      header: { state: 'list', items: ['A', 'B'] },
-      rows: { state: 'rows', rows: [['1', '2'], ['3', '4']] },
+    cells: {
+      fields: {
+        header: { state: 'list', items: ['A', 'B'].map(text) },
+        rows: {
+          state: 'rows',
+          rows: [['1', '2'].map(text), ['3', '4'].map(text)],
+        },
+      },
     },
   };
   const pipeSrc = {
     source: 'table {\n    rows:\n      | "A" | "B" |\n      | "1" | "2" |\n  }',
-    fields: {},
+    cells: { fields: {} },
   };
   const span = { start: 5, end: 9 };
 
@@ -132,9 +139,25 @@ describe('parseTable / tableCommit', () => {
     expect(w.source.startsWith('table {')).toBe(true);
   });
 
+  it('returns null for a grid holding anything but plain strings', () => {
+    // A grid requotes every cell on save, so an identifier or a number in
+    // one would be silently turned into a string.
+    const mixed = {
+      source: 'table {…}',
+      cells: {
+        fields: {
+          rows: { state: 'rows', rows: [[text('a'), { state: 'number', text: '1' }]] },
+        },
+      },
+    };
+    expect(parseTable(mixed)).toBeNull();
+  });
+
   it('returns null for computed tables', () => {
-    expect(parseTable({ source: 't', fields: { rows: { state: 'computed' } } })).toBeNull();
-    expect(parseTable({ source: 'table {\n}', fields: {} })).toBeNull();
+    expect(
+      parseTable({ source: 't', cells: { fields: { rows: { state: 'computed' } } } }),
+    ).toBeNull();
+    expect(parseTable({ source: 'table {\n}', cells: { fields: {} } })).toBeNull();
   });
 });
 

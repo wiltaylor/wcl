@@ -4,9 +4,10 @@
 //! `file_placement.wcl`); the editor then shows one table of all its
 //! instances with add / modify / remove. `GET /api/data/types` enumerates
 //! the registered types with the same field metadata the create forms use;
-//! `GET /api/data/rows` lists a kind's instances with per-cell literal /
-//! computed classification (the row editor reuses `/api/block/ops`; adds go
-//! through `/api/unit/create` with the resolved target `file`).
+//! `GET /api/data/rows` lists a kind's instances as the shared cell
+//! containers ([`super::cell`]) every other endpoint serves — positional
+//! `labels`, named `fields` (the row editor reuses `/api/block/ops`; adds
+//! go through `/api/unit/create` with the resolved target `file`).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -16,7 +17,7 @@ use axum::extract::State;
 use axum::http::Uri;
 use axum::response::Response;
 
-use wcl_lang::ast::{self, Item};
+use wcl_lang::ast;
 use wcl_lang::{DeclName, Document, parse_for_edit};
 
 use super::blocks::visibility_json;
@@ -110,8 +111,8 @@ fn data_types(
 }
 
 /// `GET /api/data/rows?entry=…&kind=…` → every instance of the kind, one
-/// row per block, cells classified literal / computed off the declaring
-/// file's AST (spans + etags ready for `/api/block/ops`).
+/// row per block, its cells classified off the declaring file's AST (spans
+/// + etags ready for `/api/block/ops`).
 pub(super) async fn handle_data_rows(State(state): State<Arc<EditorState>>, uri: Uri) -> Response {
     let entry = query_param(&uri, "entry");
     let page_file = query_param(&uri, "page_file");
@@ -152,24 +153,6 @@ fn data_rows(
         let Some(blk) = super::find_block_at(&src.items, span) else {
             continue;
         };
-        let labels: Vec<serde_json::Value> = blk
-            .labels
-            .iter()
-            .enumerate()
-            .map(|(slot, e)| {
-                let mut cell = classify_cell(e);
-                cell["slot"] = serde_json::json!(slot);
-                cell
-            })
-            .collect();
-        let cells: serde_json::Map<String, serde_json::Value> = blk
-            .items
-            .iter()
-            .filter_map(|it| match it {
-                Item::Field(f) => Some((f.name.clone(), classify_cell(&f.expr))),
-                _ => None,
-            })
-            .collect();
         rows.push(serde_json::json!({
             "label": first_label(&b),
             "file": std::fs::canonicalize(&file)
@@ -179,31 +162,11 @@ fn data_rows(
                 .unwrap_or_else(|_| file.display().to_string()),
             "span": super::span_json(span),
             "etag": crate::edit::content_etag(text),
-            "labels": labels,
-            "cells": cells,
+            "cells": super::cell::block_cells(blk),
             "visibility": visibility_json(blk),
         }));
     }
     Ok(serde_json::json!({ "ok": true, "kind": kind, "rows": rows }))
-}
-
-/// Table-cell classification — richer than the prose path's: scalar
-/// literals (numbers, bools, symbols, identifiers) are editable too, with
-/// `expr: true` telling the client to write them back as parsed WCL rather
-/// than a quoted string.
-pub(super) fn classify_cell(e: &wcl_lang::ast::Expr) -> serde_json::Value {
-    use wcl_lang::ast::Expr;
-    let (state, text, expr) = match e {
-        Expr::Utf8(s) | Expr::Ascii(s) => ("literal", Some(s.clone()), false),
-        Expr::Identifier(s, _) => ("literal", Some(s.clone()), true),
-        Expr::Symbol(s) => ("literal", Some(format!(":{s}")), true),
-        Expr::Bool(b) => ("literal", Some(b.to_string()), true),
-        Expr::I64(n) => ("literal", Some(n.to_string()), true),
-        Expr::U64(n) => ("literal", Some(n.to_string()), true),
-        Expr::F64(n) => ("literal", Some(n.to_string()), true),
-        _ => ("computed", None, false),
-    };
-    serde_json::json!({ "state": state, "text": text, "expr": expr })
 }
 
 #[cfg(test)]
@@ -247,12 +210,11 @@ mod tests {
         let list = v["rows"].as_array().unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0]["label"], "hero");
-        assert_eq!(list[0]["cells"]["name"]["state"], "literal");
-        assert_eq!(list[0]["cells"]["name"]["text"], "Hero");
-        // Numbers are editable too — written back as parsed WCL.
-        assert_eq!(list[0]["cells"]["hp"]["state"], "literal");
-        assert_eq!(list[0]["cells"]["hp"]["text"], "10");
-        assert_eq!(list[0]["cells"]["hp"]["expr"], true);
+        assert_eq!(list[0]["cells"]["fields"]["name"]["state"], "text");
+        assert_eq!(list[0]["cells"]["fields"]["name"]["text"], "Hero");
+        // Numbers are their own state — editable, written back as WCL.
+        assert_eq!(list[0]["cells"]["fields"]["hp"]["state"], "number");
+        assert_eq!(list[0]["cells"]["fields"]["hp"]["text"], "10");
 
         // Add a row into the decorator's target file (created + imported).
         let v = unit_create(

@@ -11,12 +11,15 @@ const kindDef = (kind, fields) => ({
 /** A /api/block/source payload with number-literal fields. */
 const source = (fields) => ({
   ok: true,
-  fields: Object.fromEntries(
-    Object.entries(fields).map(([name, v]) => [
-      name,
-      typeof v === 'object' ? v : { state: 'number', text: String(v) },
-    ]),
-  ),
+  cells: {
+    labels: [],
+    fields: Object.fromEntries(
+      Object.entries(fields).map(([name, v]) => [
+        name,
+        typeof v === 'object' ? v : { state: 'number', text: String(v) },
+      ]),
+    ),
+  },
 });
 
 const computed = { state: 'computed', text: 'a + b' };

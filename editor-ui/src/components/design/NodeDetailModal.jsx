@@ -34,7 +34,7 @@ import { CodeEditor } from '@forge/code';
 
 import { api } from '../../api';
 import { wclLanguage } from '../../lang/wcl';
-import { blockSnippet } from '../../preview/schemaform';
+import { blockSnippet, draftOps, slugify } from '../../preview/schemaform';
 import { openFile } from '../../state/buffers';
 import { revealSpan } from '../../state/views';
 import {
@@ -45,8 +45,8 @@ import {
 } from '../../state/design';
 import { activeEntry } from '../../state/sites';
 import { loadSystems, model } from '../../state/systems';
-import { SURFACES, attachedSurfaces, slugify, subtreeIds, surfaceOf } from './surfaces';
-import { FieldForm, draftOps, freshChildId } from './surfaces/fields';
+import { SURFACES, attachedSurfaces, subtreeIds, surfaceOf } from './surfaces';
+import { FieldForm, freshChildId } from './surfaces/fields';
 import ApiEditor from './surfaces/ApiEditor';
 import CliEditor from './surfaces/CliEditor';
 import ScreenEditor from './surfaces/ScreenEditor';
@@ -58,8 +58,11 @@ export default function NodeDetailModal(props) {
   const [detail, setDetail] = createSignal(null);
   const [tab, setTab] = createSignal('properties');
   const [draft, setDraft] = createSignal({});
-  /** Per-child drafts, keyed by `${family field}:${span.start}`. */
+  /** Per-child drafts. Keyed by the item's LABEL, which survives the
+      reformat every commit causes — a span-keyed draft would lose what you
+      were typing the moment you saved a sibling. */
   const [childDrafts, setChildDrafts] = createSignal({});
+  const childKey = (family, item) => `${family.field}:${item.label ?? item.span.start}`;
   const [source, setSource] = createSignal('');
   const [bodySource, setBodySource] = createSignal('');
   const [saving, setSaving] = createSignal(false);
@@ -123,13 +126,15 @@ export default function NodeDetailModal(props) {
   };
 
   const saveProperties = () =>
-    commit(draftOps(d().schema, draft(), d().span, d().cells), 'Saved properties');
+    commit(draftOps(d().schema?.fields, d().cells, draft(), d().span), 'Saved properties');
 
   const saveChild = (family, item) => {
-    const key = `${family.field}:${item.span.start}`;
-    const changes = childDrafts()[key];
+    const changes = childDrafts()[childKey(family, item)];
     if (!changes) return;
-    return commit(draftOps(family.schema, changes, item.span, item.cells), `Saved ${family.kind}`);
+    return commit(
+      draftOps(family.schema?.fields, item.cells, changes, item.span),
+      `Saved ${family.kind}`,
+    );
   };
 
   const addChild = (family) =>
@@ -272,7 +277,7 @@ export default function NodeDetailModal(props) {
                     </Show>
                     <For each={family.items}>
                       {(item) => {
-                        const key = `${family.field}:${item.span.start}`;
+                        const key = childKey(family, item);
                         const changes = () => childDrafts()[key] ?? {};
                         return (
                           <div class="ed-detail-child">

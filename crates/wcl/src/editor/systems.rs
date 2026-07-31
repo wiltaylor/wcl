@@ -34,7 +34,6 @@ use axum::response::Response;
 use wcl_lang::ast::{self, Item};
 use wcl_lang::parse_for_edit;
 
-use super::data::classify_cell;
 use super::kinds::{Kind, KindModel};
 use super::util::{field_string, first_label};
 use super::{EditorState, Workspace, run_blocking};
@@ -232,7 +231,7 @@ fn systems_detail(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::V
         "span": super::span_json(span),
         "etag": crate::edit::content_etag(&text),
         "source": slice(span),
-        "cells": cells(blk),
+        "cells": super::cell::block_cells(blk),
         "schema": info.map(|i| model.json_with_suggestions(i)),
         "children": children,
         "body": body,
@@ -294,7 +293,7 @@ fn child_families<'a>(
                     "label": super::util::ast_label(b),
                     "span": super::span_json(b.span),
                     "source": slice(b.span),
-                    "cells": cells(b),
+                    "cells": super::cell::block_cells(b),
                     "children": described
                         .as_ref()
                         .map(|k| child_families(model, k, b, text, depth - 1))
@@ -394,7 +393,7 @@ fn systems(
                 "file": rel,
                 "span": super::span_json(span),
                 "etag": etag,
-                "cells": cells(blk),
+                "cells": super::cell::block_cells(blk),
             }));
             continue;
         }
@@ -434,7 +433,7 @@ fn systems(
             "file": rel,
             "span": super::span_json(span),
             "etag": etag,
-            "cells": cells(blk),
+            "cells": super::cell::block_cells(blk),
         }));
     }
 
@@ -471,46 +470,6 @@ fn systems(
         "ids": ids,
         "model_entry": model_entry,
     }))
-}
-
-/// A block's own fields (and inline labels) classified for the property
-/// form — the same literal / scalar / computed split Data mode's rows use.
-fn cells(blk: &ast::Block) -> serde_json::Value {
-    let mut map: serde_json::Map<String, serde_json::Value> = blk
-        .items
-        .iter()
-        .filter_map(|it| match it {
-            Item::Field(f) => Some((f.name.clone(), classify_field(&f.expr))),
-            _ => None,
-        })
-        .collect();
-    for (slot, e) in blk.labels.iter().enumerate() {
-        let mut cell = classify_cell(e);
-        cell["slot"] = serde_json::json!(slot);
-        map.insert(format!("@{slot}"), cell);
-    }
-    serde_json::Value::Object(map)
-}
-
-/// [`classify_cell`] plus lists of scalars: `tags = ["a", "b"]` and
-/// `repos = [one, two]` report `state: "list"` with their rendered elements,
-/// so the details form can edit them instead of sending the user to the
-/// source. A list holding anything richer stays `computed`.
-fn classify_field(e: &ast::Expr) -> serde_json::Value {
-    let ast::Expr::ListLit { elements, .. } = e else {
-        return classify_cell(e);
-    };
-    let items: Option<Vec<serde_json::Value>> = elements
-        .iter()
-        .map(|el| {
-            let cell = classify_cell(el);
-            (cell["state"] == "literal").then_some(cell)
-        })
-        .collect();
-    match items {
-        Some(items) => serde_json::json!({ "state": "list", "items": items }),
-        None => serde_json::json!({ "state": "computed", "text": serde_json::Value::Null }),
-    }
 }
 
 fn rel(ws: &Workspace, file: &Path) -> String {
@@ -762,8 +721,8 @@ type D {
             "the block's own WCL comes back for the source editor"
         );
         // A list of literals is form-editable, not "computed".
-        assert_eq!(v["cells"]["tags"]["state"], "list");
-        assert_eq!(v["cells"]["tags"]["items"][1]["text"], "y");
+        assert_eq!(v["cells"]["fields"]["tags"]["state"], "list");
+        assert_eq!(v["cells"]["fields"]["tags"]["items"][1]["text"], "y");
         // The schema's form metadata rides along.
         assert_eq!(v["schema"]["kind"], "system");
         // Both ends of the edge are reported, from this object's viewpoint.
@@ -812,7 +771,7 @@ type D {
             .expect("endpoint family");
         let ep = &endpoints["items"][0];
         assert_eq!(ep["label"], "list_users");
-        assert_eq!(ep["cells"]["path"]["text"], "/users");
+        assert_eq!(ep["cells"]["fields"]["path"]["text"], "/users");
         // The nested family, with its own schema metadata and anchored items.
         let nested = ep["children"].as_array().expect("nested families");
         let params = nested
@@ -821,7 +780,10 @@ type D {
             .expect("param family");
         assert_eq!(params["schema"]["kind"], "wparam");
         assert_eq!(params["items"][0]["label"], "limit");
-        assert_eq!(params["items"][0]["cells"]["name"]["text"], "limit");
+        assert_eq!(
+            params["items"][0]["cells"]["fields"]["name"]["text"],
+            "limit"
+        );
         assert!(params["items"][0]["span"]["end"].as_u64().expect("end") > 0);
         // The body is source-edited prose; `block_kinds` hints at content.
         assert_eq!(
@@ -849,8 +811,10 @@ type D {
         assert_eq!(n["file"], "main.wcl");
         assert_eq!(n["title"], "S");
         assert!(n["span"]["end"].as_u64().expect("end") > 0);
-        assert_eq!(n["cells"]["name"]["state"], "literal");
-        assert_eq!(n["cells"]["repo"]["expr"], true);
-        assert_eq!(n["cells"]["@0"]["text"], "s");
+        assert_eq!(n["cells"]["fields"]["name"]["state"], "text");
+        // An identifier is its own state — editable, written back as WCL.
+        assert_eq!(n["cells"]["fields"]["repo"]["state"], "identifier");
+        // Labels are positional, not synthetic `@0` field keys.
+        assert_eq!(n["cells"]["labels"][0]["text"], "s");
     }
 }
