@@ -40,7 +40,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_editor {
     name = "editor"
     kind = "module"
-    summary = "19 files, 18 pub items"
+    summary = "19 files, 19 pub items"
     deps = [n_cg_wcl_edit, n_cg_wcl_serve, n_cg_wcl_xc_wcl_lang, n_cg_wcl_xc_wcl_wdoc]
   }
   code_node n_cg_wcl_gitspec {
@@ -893,6 +893,16 @@ code_item code_api_cli_commands {
     summary = "src/editor/preview.rs"
     code_member m_n_api_cli_commands_Sessions_invalidate {
       signature = "fn invalidate(&self)"
+      kind = "method"
+      visibility = "crate"
+    }
+  }
+  code_node n_api_cli_commands_PreviewTarget {
+    name = "PreviewTarget"
+    kind = "struct"
+    summary = "src/editor/preview.rs"
+    code_member m_n_api_cli_commands_PreviewTarget_slug {
+      signature = "fn slug(&self) -> String"
       kind = "method"
       visibility = "crate"
     }

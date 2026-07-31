@@ -33,7 +33,8 @@ import {
   saveBuffer,
 } from './state/buffers';
 import { treeData } from './state/tree';
-import { building, loadSites, rebuild, selected } from './state/sites';
+import { loadSites, selected } from './state/sites';
+import { mainPreview } from './state/preview';
 import { enterData, enterDesign, exitDesign, mode } from './state/design';
 
 export default function App() {
@@ -86,7 +87,7 @@ export default function App() {
   });
 
   const runRebuild = async () => {
-    const res = await rebuild();
+    const res = await mainPreview.build();
     if (!res.ok) toast('Build failed — see the preview pane', { tone: 'danger', duration: 4000 });
   };
 
@@ -118,10 +119,9 @@ export default function App() {
             onChange={async (m) => {
               if (m === mode()) return;
               if (m === 'design') {
-                const ok = await enterDesign();
-                // Always rebuild on entry: the canvas needs fresh anchors —
-                // an older build's byte spans may not match disk any more.
-                if (ok) runRebuild();
+                // enterDesign invalidates the main preview (its save pass
+                // changed disk); the canvas rebuilds as it mounts.
+                await enterDesign();
               } else if (m === 'data') {
                 await enterData();
               } else {
@@ -130,11 +130,11 @@ export default function App() {
             }}
           />
           <Show when={mode() === 'code'}>
-            <Button size="sm" onClick={runRebuild} disabled={!selected() || building()}>
+            <Button size="sm" onClick={runRebuild} disabled={!selected() || mainPreview.building()}>
               Rebuild
             </Button>
           </Show>
-          <Show when={building()}>
+          <Show when={mainPreview.building()}>
             <Spinner size={16} label="Building preview" />
           </Show>
           <div style={{ flex: 1 }} />
