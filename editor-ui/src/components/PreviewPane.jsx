@@ -34,7 +34,8 @@ import {
   startReviewPoll,
 } from '../state/comments';
 import { CommentMenu, CommentOverlays } from './CommentPanel';
-import { installEditButtons, injectCss, pageInfo, placePins } from '../preview/frame';
+import { pageInfo } from '../preview/anchors';
+import { installEditButtons, injectCss, placePins } from '../preview/frame';
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|bmp)$/i;
 

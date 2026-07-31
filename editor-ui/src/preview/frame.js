@@ -1,13 +1,16 @@
 /* Plain-DOM helpers the comment UI runs against the preview iframe's
    document (same origin). The locator pair locOf/elByLoc is a verbatim
-   port of the old `wdoc serve --comment` client: a block's children are
-   the nearest [data-wcl-block] descendants not separated by another
-   block, and a locator is the /-joined child-index path from the page
-   root ([data-wcl-page-file] wrapper) down to the element. Positional,
+   port of the old `wdoc serve --comment` client: a block's children come
+   from the anchor module's block-tree walk, and a locator is the /-joined
+   child-index path from the page root down to the element. Positional,
    not fuzzy — a stale locator resolves to null and its pin is dropped
-   (the record itself survives in the sidecar). */
+   (the record itself survives in the sidecar).
 
-import { parseSpanAttr } from './anchors';
+   The comment marks below (`data-wcl-comment*`) are this module's OWN
+   client-side attributes, not build stamps — everything the build stamps
+   is read through preview/anchors.js. */
+
+import { ATTR, SEL, blockChildren, editButtonOf, kindOf, pageInfo } from './anchors';
 
 const CSS_ID = 'wcl-comment-css';
 /* The iframe holds a plain wdoc build with no Forge tokens, so these are
@@ -25,19 +28,6 @@ body.wcl-picking, body.wcl-picking * { cursor: crosshair !important; }
 .wcl-flash { outline: 3px solid #d97706 !important; outline-offset: 3px;
   transition: outline-color .3s ease; }
 `;
-
-/** The anchored page in `doc`, or null (non-wdoc content, not yet loaded).
-    `span` (edit-mode builds only) is the page block's byte span in `file`. */
-export function pageInfo(doc) {
-  const el = doc?.querySelector?.('[data-wcl-page-file]');
-  if (!el) return null;
-  return {
-    el,
-    name: el.getAttribute('data-wcl-page-name'),
-    file: el.getAttribute('data-wcl-page-file'),
-    span: parseSpanAttr(el.getAttribute('data-wcl-page-span')),
-  };
-}
 
 /** Idempotently install the highlight/pin styles into the iframe head. */
 export function injectCss(doc) {
@@ -69,19 +59,6 @@ export function injectBareCss(doc) {
   doc.head.appendChild(style);
 }
 
-/** Nearest [data-wcl-block] descendants of `node` not separated from it
-    by another block — the block tree's direct children. */
-export function blockChildren(node) {
-  return [...node.querySelectorAll('[data-wcl-block]')].filter((b) => {
-    let p = b.parentElement;
-    while (p && p !== node) {
-      if (p.hasAttribute('data-wcl-block')) return false;
-      p = p.parentElement;
-    }
-    return p === node;
-  });
-}
-
 /** Child-index path from the page root to `el`, e.g. "0/2/1". */
 export function locOf(pageEl, el) {
   const path = [];
@@ -90,7 +67,7 @@ export function locOf(pageEl, el) {
     let p = cur.parentElement;
     let pb = null;
     while (p && p !== pageEl) {
-      if (p.hasAttribute('data-wcl-block')) {
+      if (p.hasAttribute(ATTR.block)) {
         pb = p;
         break;
       }
@@ -115,7 +92,7 @@ export function elByLoc(pageEl, loc) {
 
 /** Human description of a block: `kind — "first 60 chars"`. */
 export function descOf(el) {
-  const kind = el.getAttribute('data-wcl-kind') || 'block';
+  const kind = kindOf(el) || 'block';
   const txt = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 60);
   return txt ? `${kind} — "${txt}"` : kind;
 }
@@ -170,7 +147,7 @@ export function beginPick(doc, { onPick, onCancel }) {
     }
   };
   const move = (e) => {
-    const el = e.target.closest?.('[data-wcl-block]') ?? null;
+    const el = e.target.closest?.(SEL.block) ?? null;
     if (el !== hot) {
       clearHot();
       hot = el;
@@ -178,7 +155,7 @@ export function beginPick(doc, { onPick, onCancel }) {
     }
   };
   const click = (e) => {
-    const el = e.target.closest?.('[data-wcl-block]');
+    const el = e.target.closest?.(SEL.block);
     if (!el) return;
     e.preventDefault();
     e.stopPropagation();
@@ -214,14 +191,11 @@ export function installEditButtons(doc, onEdit, enabled = () => true) {
   doc.addEventListener(
     'click',
     (e) => {
-      const btn = e.target.closest?.('[data-wcl-edit-kind]');
+      const btn = editButtonOf(e.target);
       if (!btn || !enabled()) return;
       e.preventDefault();
       e.stopPropagation();
-      onEdit({
-        kind: btn.getAttribute('data-wcl-edit-kind'),
-        target: btn.getAttribute('data-wcl-edit-target') || null,
-      });
+      onEdit({ kind: btn.kind, target: btn.target });
     },
     true,
   );

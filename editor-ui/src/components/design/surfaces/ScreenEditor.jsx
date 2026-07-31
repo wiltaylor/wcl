@@ -26,7 +26,7 @@ import { api } from '../../../api';
 import { clientToUser } from '../../../preview/diagram';
 import { freshShapeId, shapeSnippet } from '../../../preview/schemaform';
 import { markDropTarget, relocateOps, resolveWidgetDrop } from '../../../preview/widgetdnd';
-import { anchorOf } from '../../../preview/wysiwyg';
+import { anchorOf, diagramIn, shapeEls } from '../../../preview/anchors';
 import WidgetTree from './WidgetTree';
 import { startPointerDrag } from './pointerDrag';
 import { dirtyFiles } from '../../../state/buffers';
@@ -220,7 +220,7 @@ export default function ScreenEditor(props) {
     }
     if (sel?.kind === 'diagram') return { anchor: sel, mode: 'inside' };
     const doc = surfaceDoc?.();
-    const svg = doc?.querySelector('svg[data-wcl-layout]');
+    const svg = doc && diagramIn(doc);
     const anchor = svg && anchorOf(doc, svg);
     return anchor ? { anchor, mode: 'inside' } : null;
   };
@@ -246,7 +246,7 @@ export default function ScreenEditor(props) {
       t.mode === 'inside' &&
       t.anchor.kind === 'diagram' &&
       ['free', 'none'].includes(t.anchor.layout ?? 'free');
-    const index = surfaceDoc?.()?.querySelectorAll?.('[data-wcl-shape]')?.length ?? 0;
+    const index = shapeEls(surfaceDoc?.()).length;
     const snippet = shapeSnippet(entry, { uid, manual, index, at: manual ? at : null });
     const op =
       t.mode === 'inside'

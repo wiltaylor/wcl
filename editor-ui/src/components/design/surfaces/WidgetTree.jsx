@@ -14,7 +14,8 @@ import { ChevronDown, ChevronRight } from 'lucide-solid';
 
 import { refreshShapeHandles } from '../../../preview/diagram';
 import { widgetTreeFrom } from '../../../preview/widgetdnd';
-import { anchorOf, markSelected } from '../../../preview/wysiwyg';
+import { anchorOf } from '../../../preview/anchors';
+import { markSelected } from '../../../preview/wysiwyg';
 import { busy, selection, setSelection } from '../../../state/design';
 import { startPointerDrag } from './pointerDrag';
 

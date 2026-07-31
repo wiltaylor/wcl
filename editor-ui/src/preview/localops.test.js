@@ -1,18 +1,11 @@
 /* Unit tests for the in-place-commit DOM helpers: anchor patching from a
-   span_map, same-file sibling resolution, the optimistic move + revert,
-   and the visibility restamp round-trip. Runs under happy-dom. */
+   span_map and the optimistic move + revert. The stamp readers/writers
+   they build on (sibling resolution, span re-stamping, the visibility
+   round-trip) are tested in anchors.test.js. Runs under happy-dom. */
 
 import { describe, expect, it } from 'vitest';
 
-import {
-  adjacentSameFileSibling,
-  elsBySpan,
-  mappedSpan,
-  moveDomBlock,
-  patchAnchors,
-  restampExcept,
-} from './localops';
-import { visOf } from './visgutter';
+import { mappedSpan, moveDomBlock, patchAnchors } from './localops';
 
 const PAGE = `
 <div data-wcl-page-file="unit.wcl" data-wcl-page-span="0:500" data-wcl-page-name="x">
@@ -61,34 +54,6 @@ describe('mappedSpan', () => {
   });
 });
 
-describe('elsBySpan', () => {
-  it('finds all instances for a file+span', () => {
-    setup();
-    expect(elsBySpan(document, 'unit.wcl', { start: 10, end: 20 }).map((e) => e.id)).toEqual([
-      'a',
-    ]);
-    expect(elsBySpan(document, 'template.wcl', { start: 10, end: 20 }).map((e) => e.id)).toEqual([
-      'tpl',
-    ]);
-  });
-});
-
-describe('adjacentSameFileSibling', () => {
-  it('skips other-file blocks and respects containers', () => {
-    setup();
-    const b = document.getElementById('b');
-    // Down from b: the template h1 is skipped → c.
-    expect(adjacentSameFileSibling(document, b, 'down')?.id).toBe('c');
-    expect(adjacentSameFileSibling(document, b, 'up')?.id).toBe('a');
-    // Nested container scopes its own siblings.
-    const li1 = document.getElementById('li1');
-    expect(adjacentSameFileSibling(document, li1, 'down')?.id).toBe('li2');
-    expect(adjacentSameFileSibling(document, li1, 'up')).toBeNull();
-    // Top edge.
-    expect(adjacentSameFileSibling(document, document.getElementById('a'), 'up')).toBeNull();
-  });
-});
-
 describe('moveDomBlock', () => {
   it('moves before a reference and reverts exactly', () => {
     setup();
@@ -109,17 +74,5 @@ describe('moveDomBlock', () => {
     expect(a.parentElement.lastElementChild).toBe(a);
     revert();
     expect(document.querySelector('[data-wcl-page-file]').children[0]).toBe(a);
-  });
-});
-
-describe('restampExcept', () => {
-  it('round-trips with visOf', () => {
-    setup();
-    const a = document.getElementById('a');
-    restampExcept(a, ['deck', 'training']);
-    expect(visOf(a).exceptSites).toEqual(['deck', 'training']);
-    restampExcept(a, []);
-    expect(a.hasAttribute('data-wcl-except')).toBe(false);
-    expect(visOf(a).exceptSites).toEqual([]);
   });
 });

@@ -31,7 +31,8 @@ import {
   setSelection,
 } from '../../state/design';
 import { reloadGraph } from '../../state/graph';
-import { elsBySpan, patchAnchors, restampExcept } from '../../preview/localops';
+import { anchorEls, restampExcept, shapeEls } from '../../preview/anchors';
+import { patchAnchors } from '../../preview/localops';
 import { freshShapeId, shapeSnippet } from '../../preview/schemaform';
 import { wclString } from '../../preview/wysiwyg';
 import {
@@ -248,7 +249,7 @@ function VisibilityEditor(props) {
       const s = props.surface;
       const d = s?.doc?.();
       if (!d) return true;
-      const els = elsBySpan(d, props.anchor.file, props.anchor.span);
+      const els = anchorEls(d, props.anchor.file, props.anchor.span);
       const site = s.currentSite();
       const hidesHere = !s.merged() && site && except.includes(site);
       const unhidesHere =
@@ -689,9 +690,7 @@ function AddShapeModal(props) {
     const a = props.anchor;
     const source = props.src.source ?? '';
     const manual = ['free', 'none'].includes(a.layout ?? 'free');
-    const index =
-      a.el?.querySelectorAll?.('[data-wcl-shape]')?.length ??
-      (source.match(/\bid\s*=/g) ?? []).length;
+    const index = a.el ? shapeEls(a.el).length : (source.match(/\bid\s*=/g) ?? []).length;
     const snippet = shapeSnippet(entry, { uid: freshShapeId(entry.kind, source), manual, index });
     props.onCommit(
       commitOps(

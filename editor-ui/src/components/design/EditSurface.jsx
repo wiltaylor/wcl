@@ -70,20 +70,24 @@ import {
   setPopover,
   setSelection,
 } from '../../state/design';
-import { parseSpanAttr } from '../../preview/anchors';
-import { injectBareCss, pageInfo } from '../../preview/frame';
 import {
   adjacentSameFileSibling,
-  elsBySpan,
-  mappedSpan,
-  moveDomBlock,
-  patchAnchors,
-} from '../../preview/localops';
+  anchorEls,
+  anchorOf,
+  closestOfKind,
+  diagramOf,
+  elBySpan,
+  pageInfo,
+  prevSiblingOfKind,
+  shapeChildren,
+  shapeIdOf,
+  spanOf,
+} from '../../preview/anchors';
+import { injectBareCss } from '../../preview/frame';
+import { mappedSpan, moveDomBlock, patchAnchors } from '../../preview/localops';
 import { placeVisGutters } from '../../preview/visgutter';
 import {
-  anchorOf,
   beginTextSession,
-  elBySpan,
   installDesign,
   markSelected,
   wclString,
@@ -340,12 +344,12 @@ export default function EditSurface(props) {
   const shapeConnect = async (fromEl, toEl) => {
     const d = doc();
     if (!d) return;
-    const from = fromEl.getAttribute('data-wcl-shape-id');
-    const to = toEl.getAttribute('data-wcl-shape-id');
+    const from = shapeIdOf(fromEl);
+    const to = shapeIdOf(toEl);
     if (!from || !to) {
       return toast('Both shapes need an id before they can be connected', { duration: 4000 });
     }
-    const svg = fromEl.closest('svg[data-wcl-layout]');
+    const svg = diagramOf(fromEl);
     const owner = svg && anchorOf(d, svg);
     if (!owner) return toast('No diagram found for these shapes', { duration: 4000 });
     // A generated diagram (a procedure's flowchart) shares one span across
@@ -388,8 +392,7 @@ export default function EditSurface(props) {
     const src = await api.blockSource({ file: a.file, span: a.span });
     if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
     const at =
-      target.mode === 'diagram' &&
-      MANUAL_LAYOUTS.includes(target.el.getAttribute('data-wcl-layout') ?? '')
+      target.mode === 'diagram' && MANUAL_LAYOUTS.includes(t.layout ?? '')
         ? clientToUser(target.el, point.x, point.y)
         : null;
     const ops = relocateOps({
@@ -420,7 +423,7 @@ export default function EditSurface(props) {
     };
     // Absent width/height start from the rendered bbox, not 0, so the first
     // grab of a default-sized shape doesn't collapse it.
-    const box = el.__wclShapeBox;
+    const box = a.box;
     if (!vals.width && box) vals.width = box.width;
     if (!vals.height && box) vals.height = box.height;
     const ops = [];
@@ -452,11 +455,9 @@ export default function EditSurface(props) {
     if (!a || a.kind !== 'diagram' || !d) return;
     const ops = [{ op: 'set_field', span: a.span, field: 'layout', expr: ':free' }];
     let skipped = 0;
-    for (const g of a.el.querySelectorAll('[data-wcl-shape]')) {
-      // Top-level children only: a container's nested shapes keep their
-      // container-local layout.
-      const parentAnchor = g.parentElement?.closest?.('[data-wcl-span][data-wcl-file]');
-      if (parentAnchor !== a.el) continue;
+    // Top-level children only: a container's nested shapes keep their
+    // container-local layout.
+    for (const g of shapeChildren(a.el)) {
       const sa = anchorOf(d, g);
       if (!sa || !shapeHasField(sa.kind, 'x') || !shapeHasField(sa.kind, 'y')) {
         skipped += 1;
@@ -538,7 +539,7 @@ export default function EditSurface(props) {
     redecorate: decorate,
   };
 
-  const spanOfEl = (e) => parseSpanAttr(e.getAttribute('data-wcl-span')) ?? { start: 0, end: 0 };
+  const spanOfEl = (e) => spanOf(e) ?? { start: 0, end: 0 };
 
   /** Gutter drag → in-place move + local commit; anchors patched from the
       response's span_map, so no rebuild or reload. The `move_to` op is
@@ -554,7 +555,7 @@ export default function EditSurface(props) {
       ? { before: spanOfEl(sameFile[dropIdx]) }
       : { after: spanOfEl(sameFile[sameFile.length - 1]) };
     const ops = [{ op: 'move_to', span, ...target }];
-    if (!d || elsBySpan(d, file, span).length > 1) {
+    if (!d || anchorEls(d, file, span).length > 1) {
       commitOps(file, ops, { reveal: 'edited' });
       return;
     }
@@ -775,8 +776,7 @@ export default function EditSurface(props) {
     if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
     let ops = null;
     if (indent) {
-      let prev = a.el.previousElementSibling;
-      while (prev && prev.getAttribute('data-wcl-kind') !== 'li') prev = prev.previousElementSibling;
+      const prev = prevSiblingOfKind(a.el, 'li');
       const prevAnchor = prev && anchorOf(d, prev);
       if (!prevAnchor) return toast('No previous item to nest under', { duration: 3000 });
       ops = [
@@ -784,7 +784,7 @@ export default function EditSurface(props) {
         { op: 'delete', span: a.span },
       ];
     } else {
-      const parentLi = a.el.parentElement?.closest?.('[data-wcl-kind="li"]');
+      const parentLi = closestOfKind(a.el.parentElement, 'li');
       const parentAnchor = parentLi && anchorOf(d, parentLi);
       if (!parentAnchor) return toast('Already at the top level', { duration: 3000 });
       ops = [
