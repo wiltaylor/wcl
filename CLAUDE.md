@@ -119,13 +119,30 @@ New deferred items get tracked alongside the slice that introduces them.
 
 ## Verification
 
-A task is **not done** until all of these pass:
+A task is **not done** until the merge bar passes:
+
+```bash
+just ci::check
+```
+
+That's the **`ci` just module** (`.just/ci/mod.just`) — the whole gate. `just ci::<part>`
+runs one part, which is exactly what each step of `.github/workflows/ci.yml` invokes, so
+the workflow and the local gate can't drift. While iterating, the three parts that fail
+most are worth running alone:
 
 ```bash
 just workspace-test    # unit + integration tests across the workspace
 just workspace-lint    # clippy --workspace -- -D warnings
-cargo fmt --all -- --check
+just fmt-check         # cargo fmt --all -- --check
 ```
+
+A module can't see its parent's recipes, so the gate's constituents live in
+`.just/shared.just`, imported by **both** the root justfile and the module (each defined
+once; `just workspace-test` and `just ci::workspace-test` are the same recipe). Two
+deliberate exceptions: `just ci::fuzz-sweep` is a part but not in `check` (it needs nightly
++ cargo-fuzz, and runs as its own CI job), and `wad-extract-check` is the one part that
+isn't side-effect-free — it regenerates the tracked files under `.wad/data/generated/`,
+which is how it judges their freshness.
 
 Run benches with `just workspace-bench` when changing the parser hot path.
 
