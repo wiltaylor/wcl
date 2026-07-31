@@ -501,7 +501,7 @@ code_item code_crate_wcl_wdoc {
     name = "wireframe"
     kind = "module"
     summary = "1 file, 4 pub items"
-    deps = [n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
+    deps = [n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_xc_wcl_lang {
     name = "wcl_lang (crate)"
