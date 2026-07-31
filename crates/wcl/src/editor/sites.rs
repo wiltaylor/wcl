@@ -192,10 +192,10 @@ fn read_wskill_registry(path: &Path) -> Option<WskillRegistry> {
                     },
                     _ => None,
                 });
-                topic_name = name.or_else(|| super::blocks::ast_label(b)).or(topic_name);
+                topic_name = name.or_else(|| super::util::ast_label(b)).or(topic_name);
             }
             "artifact" => {
-                let Some(id) = super::blocks::ast_label(b) else {
+                let Some(id) = super::util::ast_label(b) else {
                     continue;
                 };
                 let field = |name: &str| {

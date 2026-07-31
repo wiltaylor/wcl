@@ -25,7 +25,9 @@ use axum::response::Response;
 use wcl_lang::ast::{self, Item};
 use wcl_lang::{Document, Span, Value, parse_for_edit};
 
-use super::blocks::{ast_label, first_label, unit_kinds, value_string, visibility_json};
+use super::blocks::visibility_json;
+use super::kinds::KindModel;
+use super::util::{ast_label, first_label, value_string};
 
 use super::{EditorState, Workspace, run_blocking};
 use crate::serve::query_param;
@@ -152,12 +154,8 @@ fn graph(
         })
         .collect();
 
-    let kind_names: Vec<String> = unit_kinds(&doc)
-        .iter()
-        .filter_map(|k| k.get("kind").and_then(serde_json::Value::as_str))
-        .filter(|k| *k != "index")
-        .map(str::to_string)
-        .collect();
+    let model = KindModel::new(&doc);
+    let kind_names: Vec<String> = model.unit_kind_names();
 
     // Per-file AST cache: block-level detail (children, decorators) comes
     // from the parse, keyed by the doc view's spans.
@@ -210,7 +208,7 @@ fn graph(
             .field("audience")
             .and_then(|f| f.value().ok().cloned())
             .map(|v| value_string(&v))
-            .unwrap_or_else(|| default_audience(&doc, &kind));
+            .unwrap_or_else(|| default_audience(&model, &kind));
 
         // Edges.
         let related = related_ids(&b);
@@ -574,15 +572,10 @@ fn organized_sites(
 
 /// The declared `@default` of a kind schema's `audience` field, else
 /// `book` (the base schema's default for every unit kind except research).
-fn default_audience(doc: &Document, kind: &str) -> String {
-    doc.block_schema(kind)
-        .and_then(|schema| {
-            schema
-                .effective_fields()
-                .into_iter()
-                .find(|f| f.name() == "audience")
-                .and_then(|f| f.default_value().as_ref().map(value_string))
-        })
+fn default_audience(model: &KindModel<'_>, kind: &str) -> String {
+    model
+        .get(kind)
+        .and_then(|k| k.field_default("audience"))
         .unwrap_or_else(|| "book".to_string())
 }
 

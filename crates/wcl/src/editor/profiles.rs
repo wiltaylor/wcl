@@ -59,7 +59,7 @@ fn profile(
     let registry = crate::edit::str_field(v, "registry")?;
     let registry_abs = ws.abs(registry)?;
     let kind = crate::edit::str_field(v, "kind")?;
-    if !super::blocks::is_identifier(kind) {
+    if !super::util::is_identifier(kind) {
         return Err(format!("`{kind}` is not an artifact kind"));
     }
     let enable = v
@@ -185,7 +185,7 @@ fn enable_profile(registry_abs: &Path, kind: &str) -> Result<serde_json::Value, 
     };
     let mut answers = BTreeMap::new();
     if let Some(t) = topic {
-        if let Some(id) = super::blocks::ast_label(t) {
+        if let Some(id) = super::util::ast_label(t) {
             answers.insert("topic_id".to_string(), id);
         }
         if let Some(n) = field(t, "name") {

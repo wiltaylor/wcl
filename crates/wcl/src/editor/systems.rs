@@ -3,27 +3,19 @@
 //! `GET /api/systems?entry=…&page_file=…` answers every gathered data object
 //! of the document with the *parent* it hangs off, every relation edge
 //! between them, and the schema metadata the canvas needs to draw and edit
-//! them. Nothing about the WAD is hardcoded here — containment is derived
-//! from the schema:
+//! them.
 //!
-//! - a **parent link** is a scalar `identifier` field whose NAME is another
-//!   gathered kind's name (`component.container`, `container.system`,
-//!   `system.boundary`, `screen.component`), plus `parent` for self-nesting
-//!   (`infra_node.parent`). Declaration order is the preference order, and an
-//!   instance's real parent is the first such field actually set on it — so
-//!   `code_item`, which may name either a `component` or a `container`, lands
-//!   under whichever it declares.
-//! - a **reference** is any other `identifier` / `list<identifier>` field
-//!   (`repo`, `built_by`, `supersedes`, `nav_to`); the client draws them as
-//!   optional dashed edges.
-//! - an **edge kind** is a gathered kind carrying both a `source` and a
-//!   `destination` identifier field — `relation` in the base schema, and any
-//!   extension following the same convention.
-//!
-//! So a kind added to `schema/base.wcl` or `schema/extensions.wcl` (and any
-//! symbol added to a `kinds.wcl` vocabulary, which rides along in the shared
-//! [`super::blocks::kind_entry`] field metadata) shows up in the view without
-//! a change here. Writes go through the existing `/api/block/ops` and
+//! Nothing about the WAD is hardcoded here, because nothing about it is
+//! derived here: containment, references and edge roles all come off the
+//! [`KindModel`](super::kinds::KindModel), which reads them from the
+//! schema. So a kind added to `schema/base.wcl` or
+//! `schema/extensions.wcl` (and any symbol added to a `kinds.wcl`
+//! vocabulary, which rides along in the model's field metadata) shows up
+//! in the view without a change here — and describes itself the same way
+//! it does in the palette, the details modal and Data mode. What this
+//! module adds is the *instances*: which object each node's parent field
+//! actually names, which edges touch it, and the file/span anchors an edit
+//! addresses. Writes go through the existing `/api/block/ops` and
 //! `/api/unit/create` — this endpoint is read-only.
 //!
 //! The one curated thing is the **perspective** list (see [`PERSPECTIVES`]):
@@ -40,12 +32,11 @@ use axum::http::Uri;
 use axum::response::Response;
 
 use wcl_lang::ast::{self, Item};
-use wcl_lang::{DeclName, parse_for_edit};
+use wcl_lang::parse_for_edit;
 
-use super::blocks::{
-    KindInfo, bare_type, first_label, is_scalar, kind_entry, kind_links, value_string,
-};
 use super::data::classify_cell;
+use super::kinds::{Kind, KindModel};
+use super::util::{field_string, first_label};
 use super::{EditorState, Workspace, run_blocking};
 use crate::serve::query_param;
 
@@ -82,8 +73,8 @@ const PERSPECTIVES: &[(&str, &str, &[&str])] = &[
 /// actually declares) plus their containment closure, stopping at another
 /// perspective's seed. Always ends with an "All" perspective over every
 /// non-edge kind.
-fn perspectives(infos: &[KindInfo]) -> Vec<serde_json::Value> {
-    let declared = |k: &str| infos.iter().any(|i| i.kind == k && i.edge.is_none());
+fn perspectives(all: &[Kind<'_>]) -> Vec<serde_json::Value> {
+    let declared = |k: &str| all.iter().any(|i| i.kind() == k && i.edge().is_none());
     let all_seeds: Vec<&str> = PERSPECTIVES
         .iter()
         .flat_map(|(_, _, s)| *s)
@@ -99,26 +90,26 @@ fn perspectives(infos: &[KindInfo]) -> Vec<serde_json::Value> {
         let mut kinds: Vec<String> = present.iter().map(|k| k.to_string()).collect();
         let mut frontier = kinds.clone();
         while let Some(parent) = frontier.pop() {
-            for info in infos {
-                if info.edge.is_some()
-                    || kinds.contains(&info.kind)
+            for info in all {
+                if info.edge().is_some()
+                    || kinds.contains(&info.kind().to_string())
                     // Another perspective owns this kind outright.
-                    || (all_seeds.contains(&info.kind.as_str()) && !present.contains(&info.kind.as_str()))
-                    || info.kind == parent
-                    || !info.parents.iter().any(|(_, p)| *p == parent)
+                    || (all_seeds.contains(&info.kind()) && !present.contains(&info.kind()))
+                    || info.kind() == parent
+                    || !info.parents().iter().any(|p| p.kind == parent)
                 {
                     continue;
                 }
-                kinds.push(info.kind.clone());
-                frontier.push(info.kind.clone());
+                kinds.push(info.kind().to_string());
+                frontier.push(info.kind().to_string());
             }
         }
         out.push(serde_json::json!({ "id": id, "label": label, "kinds": kinds }));
     }
-    let every: Vec<&str> = infos
+    let every: Vec<&str> = all
         .iter()
-        .filter(|i| i.edge.is_none())
-        .map(|i| i.kind.as_str())
+        .filter(|i| i.edge().is_none())
+        .map(Kind::kind)
         .collect();
     out.push(serde_json::json!({ "id": "all", "label": "All", "kinds": every }));
     out
@@ -160,7 +151,7 @@ fn systems_detail(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::V
     let doc_entry = ws.doc_entry_from(v)?;
     let file_rel = crate::edit::str_field(v, "file")?;
     let file = ws.abs(file_rel)?;
-    let span = super::blocks::span_field(v, "span")?;
+    let span = super::util::span_field(v, "span")?;
     let text = crate::edit::read(&file)?;
     let src = parse_for_edit(&text, file.display().to_string()).map_err(super::err_str)?;
     let blk = super::find_block_at(&src.items, span)
@@ -168,9 +159,9 @@ fn systems_detail(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::V
     let slice = |s: wcl_lang::Span| text.get(s.start..s.end).unwrap_or_default().to_string();
 
     let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(super::err_str)?;
-    let links = kind_links(&doc);
-    let info = links.iter().find(|i| i.kind == blk.kind);
-    let id = super::blocks::ast_label(blk);
+    let model = KindModel::new(&doc);
+    let info = model.get(&blk.kind);
+    let id = super::util::ast_label(blk);
 
     // One entry per `@child` / `@children` family the schema declares, with
     // the instances present in this block — recursively, so the modal can
@@ -179,8 +170,8 @@ fn systems_detail(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::V
     // wireframe diagram, a terminal mock-up) without evaluating anything.
     let (children, body_blk) = match info {
         Some(info) => (
-            child_families(&doc, &info.schema, blk, &text, MAX_CHILD_DEPTH),
-            body_block(&info.schema, blk),
+            child_families(&model, info, blk, &text, MAX_CHILD_DEPTH),
+            info.has_body().then(|| body_block(blk)).flatten(),
         ),
         None => (Vec::new(), None),
     };
@@ -201,21 +192,17 @@ fn systems_detail(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::V
         let title_of = |other: &str| {
             doc.blocks()
                 .find(|b| {
-                    links.iter().any(|i| i.kind == b.kind() && i.edge.is_none())
+                    model.get(b.kind()).is_some_and(|i| i.edge().is_none())
                         && first_label(b).as_deref() == Some(other)
                 })
                 .and_then(|b| TITLE_FIELDS.iter().find_map(|f| field_string(&b, f)))
         };
         for (path, b) in doc.blocks_with_source() {
-            let Some(edge) = links
-                .iter()
-                .find(|i| i.kind == b.kind())
-                .and_then(|i| i.edge.as_ref())
-            else {
+            let Some(edge) = model.get(b.kind()).and_then(Kind::edge) else {
                 continue;
             };
-            let from = field_string(&b, &edge.0);
-            let to = field_string(&b, &edge.1);
+            let from = field_string(&b, &edge.source);
+            let to = field_string(&b, &edge.destination);
             let direction = match (from.as_deref(), to.as_deref()) {
                 (Some(f), _) if f == id => "out",
                 (_, Some(t)) if t == id => "in",
@@ -246,18 +233,7 @@ fn systems_detail(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::V
         "etag": crate::edit::content_etag(&text),
         "source": slice(span),
         "cells": cells(blk),
-        "schema": info.map(|i| {
-            let mut e = kind_entry(&i.kind, &i.schema);
-            e["type_name"] = serde_json::json!(i.schema.full_name());
-            e["suggestions"] = suggestions(&doc, &i.kind, &i.schema);
-            e["parents"] = serde_json::json!(
-                i.parents
-                    .iter()
-                    .map(|(field, kind)| serde_json::json!({ "field": field, "kind": kind }))
-                    .collect::<Vec<_>>()
-            );
-            e
-        }),
+        "schema": info.map(|i| model.json_with_suggestions(i)),
         "children": children,
         "body": body,
         "relations": relations,
@@ -273,13 +249,14 @@ const MAX_CHILD_DEPTH: usize = 4;
 /// The `@child` / `@children` families `schema` declares, with the
 /// instances present in `blk` — recursively: each item carries its own
 /// `children`, so an `api_endpoint`'s params and responses ride inside the
-/// `code_item` payload. Child schemas resolve through the FIELD's own type
-/// ([`super::blocks::gather_elem_decl`]), which is namespace-correct where
-/// a bare kind lookup is not. `body` families are prose, edited as source
-/// at the top level only — they are skipped here.
-fn child_families(
-    doc: &wcl_lang::Document,
-    schema: &wcl_lang::TypeDecl<'_>,
+/// `code_item` payload. The families (and the type schemaing each one, via
+/// the declaring field's own type) come from the language library, so the
+/// resolution is namespace-correct where a bare kind lookup is not. `body`
+/// families are prose, edited as source at the top level only — they are
+/// skipped here.
+fn child_families<'a>(
+    model: &KindModel<'a>,
+    kind: &Kind<'a>,
     blk: &ast::Block,
     text: &str,
     depth: usize,
@@ -289,12 +266,8 @@ fn child_families(
     }
     let slice = |s: wcl_lang::Span| text.get(s.start..s.end).unwrap_or_default().to_string();
     let mut out: Vec<serde_json::Value> = Vec::new();
-    for f in schema.effective_fields() {
-        let (kind, many) = match (f.child_block_kind(), f.children_block_kind()) {
-            (Some(k), _) => (k, false),
-            (_, Some(k)) => (k, true),
-            _ => continue,
-        };
+    for family in kind.child_families() {
+        let kind = family.kind();
         if kind == "body" {
             continue;
         }
@@ -306,28 +279,25 @@ fn child_families(
                 _ => None,
             })
             .collect();
-        let child_schema = super::blocks::gather_elem_decl(&f).or_else(|| doc.block_schema(&kind));
-        let schema_json = child_schema.as_ref().map(|d| {
-            let mut e = kind_entry(&kind, d);
-            e["suggestions"] = suggestions(doc, &kind, d);
-            e
-        });
+        let described = model.describe_family(&family);
         out.push(serde_json::json!({
-            "field": f.name(),
+            "field": family.field(),
             "kind": kind,
-            "many": many,
-            "doc": f.doc_comment(),
-            "schema": schema_json,
+            "many": family.many(),
+            "doc": family.doc_comment(),
+            "schema": described
+                .as_ref()
+                .map(|k| model.json_with_suggestions(k)),
             "items": items
                 .iter()
                 .map(|b| serde_json::json!({
-                    "label": super::blocks::ast_label(b),
+                    "label": super::util::ast_label(b),
                     "span": super::span_json(b.span),
                     "source": slice(b.span),
                     "cells": cells(b),
-                    "children": child_schema
+                    "children": described
                         .as_ref()
-                        .map(|d| child_families(doc, d, b, text, depth - 1))
+                        .map(|k| child_families(model, k, b, text, depth - 1))
                         .unwrap_or_default(),
                 }))
                 .collect::<Vec<_>>(),
@@ -336,15 +306,8 @@ fn child_families(
     out
 }
 
-/// The first `body` block of `blk`, when its schema declares one.
-fn body_block<'a>(schema: &wcl_lang::TypeDecl<'_>, blk: &'a ast::Block) -> Option<&'a ast::Block> {
-    let declared = schema.effective_fields().into_iter().any(|f| {
-        f.child_block_kind().as_deref() == Some("body")
-            || f.children_block_kind().as_deref() == Some("body")
-    });
-    if !declared {
-        return None;
-    }
+/// The first `body` block of `blk`.
+fn body_block(blk: &ast::Block) -> Option<&ast::Block> {
     blk.items.iter().find_map(|it| match it {
         Item::Block(b) if b.kind == "body" => Some(b),
         _ => None,
@@ -376,59 +339,6 @@ fn body_block_kinds(body: &ast::Block) -> Vec<String> {
     out
 }
 
-/// How many distinct values a free-text field may have and still read as a
-/// vocabulary worth offering as a list.
-const MAX_SUGGESTIONS: usize = 40;
-
-/// The values already in use for each free-text field of `kind`.
-///
-/// A `utf8` field whose values REPEAT across instances is a taxonomy in
-/// practice, even where the schema didn't spell it as a `symbol_set` — a
-/// `component`'s `kind` ("module" / "handler" / "store") is the base
-/// schema's own example. Offering those values back stops the editor from
-/// inventing a new category out of a typo; a field whose values are all
-/// distinct (every `name`, every `summary`) suggests nothing.
-fn suggestions(
-    doc: &wcl_lang::Document,
-    kind: &str,
-    schema: &wcl_lang::TypeDecl<'_>,
-) -> serde_json::Value {
-    let blocks: Vec<wcl_lang::Block<'_>> = doc.blocks().filter(|b| b.kind() == kind).collect();
-    let mut out = serde_json::Map::new();
-    for f in schema.effective_fields() {
-        // The inline id names the instance; it is never a shared vocabulary.
-        if f.inline_slot().is_some() || !is_scalar(&f) {
-            continue;
-        }
-        let ty = bare_type(&f);
-        if ty != "utf8" && ty != "ascii" {
-            continue;
-        }
-        let values: Vec<String> = blocks
-            .iter()
-            .filter_map(|b| field_string(b, f.name()))
-            .collect();
-        let mut distinct: Vec<String> = values.clone();
-        distinct.sort();
-        distinct.dedup();
-        if distinct.is_empty() || distinct.len() >= values.len() || distinct.len() > MAX_SUGGESTIONS
-        {
-            continue;
-        }
-        out.insert(f.name().to_string(), serde_json::json!(distinct));
-    }
-    serde_json::Value::Object(out)
-}
-
-/// A block's field value as a plain string, when it evaluates to a scalar.
-fn field_string(b: &wcl_lang::Block<'_>, name: &str) -> Option<String> {
-    b.field(name)
-        .and_then(|f| f.value().ok().cloned())
-        .as_ref()
-        .map(value_string)
-        .filter(|s| !s.is_empty())
-}
-
 fn systems(
     ws: &Workspace,
     entry: &str,
@@ -436,9 +346,7 @@ fn systems(
 ) -> Result<serde_json::Value, String> {
     let doc_entry = ws.doc_entry(entry, page_file)?;
     let doc = wcl_wdoc::open_doc_for_edit(&doc_entry).map_err(super::err_str)?;
-
-    let infos: Vec<KindInfo> = kind_links(&doc);
-    let info_of = |kind: &str| infos.iter().find(|i| i.kind == kind);
+    let model = KindModel::new(&doc);
 
     // Per-file AST + text cache: spans and etags come from the parse, keyed
     // by the doc view's blocks.
@@ -448,7 +356,7 @@ fn systems(
     let mut ids: Vec<String> = Vec::new();
 
     for (path, b) in doc.blocks_with_source() {
-        let Some(info) = info_of(b.kind()) else {
+        let Some(info) = model.get(b.kind()) else {
             continue;
         };
         let Some(id) = first_label(&b) else { continue };
@@ -468,13 +376,16 @@ fn systems(
         let rel = rel(ws, &file);
         let etag = crate::edit::content_etag(text);
 
-        if let Some((sf, df)) = &info.edge {
-            let (Some(from), Some(to)) = (field_string(&b, sf), field_string(&b, df)) else {
+        if let Some(e) = info.edge() {
+            let (Some(from), Some(to)) = (
+                field_string(&b, &e.source),
+                field_string(&b, &e.destination),
+            ) else {
                 continue;
             };
             edges.push(serde_json::json!({
-                "key": format!("{}:{id}", info.kind),
-                "kind": info.kind,
+                "key": format!("{}:{id}", info.kind()),
+                "kind": info.kind(),
                 "id": id,
                 "from": from,
                 "to": to,
@@ -494,17 +405,23 @@ fn systems(
         // under its environment in a deployment view, and under its
         // container in the C4 one, from the same data.
         let parents: Vec<serde_json::Value> = info
-            .parents
+            .parents()
             .iter()
-            .filter_map(|(field, pkind)| {
-                let pid = field_string(&b, field)?;
-                (pid != id).then(|| serde_json::json!({ "field": field, "kind": pkind, "id": pid }))
+            .filter_map(|link| {
+                let pid = field_string(&b, &link.field)?;
+                (pid != id).then(|| {
+                    serde_json::json!({
+                        "field": link.field,
+                        "kind": link.kind,
+                        "id": pid,
+                    })
+                })
             })
             .collect();
         ids.push(id.clone());
         nodes.push(serde_json::json!({
-            "key": format!("{}:{id}", info.kind),
-            "kind": info.kind,
+            "key": format!("{}:{id}", info.kind()),
+            "kind": info.kind(),
             "id": id,
             "title": TITLE_FIELDS
                 .iter()
@@ -521,40 +438,14 @@ fn systems(
         }));
     }
 
-    let kinds: Vec<serde_json::Value> = infos
+    // The canvas draws and edits from the kind model: containment, edge
+    // roles, the fully-qualified schema name the create path matches on,
+    // and the free-text vocabularies already in use (the one member that
+    // costs an instance walk, which is why the palette doesn't ask).
+    let kinds: Vec<serde_json::Value> = model
+        .kinds()
         .iter()
-        .map(|i| {
-            let mut entry = kind_entry(&i.kind, &i.schema);
-            entry["parents"] = serde_json::json!(
-                i.parents
-                    .iter()
-                    .map(|(field, kind)| serde_json::json!({ "field": field, "kind": kind }))
-                    .collect::<Vec<_>>()
-            );
-            entry["refs"] = serde_json::json!(
-                i.refs
-                    .iter()
-                    .map(|(field, list)| serde_json::json!({ "field": field, "list": list }))
-                    .collect::<Vec<_>>()
-            );
-            entry["edge"] = match &i.edge {
-                Some((s, d)) => serde_json::json!({ "source": s, "destination": d }),
-                None => serde_json::Value::Null,
-            };
-            // The fully-qualified schema name, echoed back by the create
-            // path so a kind name shared across namespaces (a WAD
-            // `container` vs wdoc's diagram shape) resolves unambiguously.
-            entry["type_name"] = serde_json::json!(i.schema.full_name());
-            entry["suggestions"] = suggestions(&doc, &i.kind, &i.schema);
-            entry["id_field"] = serde_json::json!(
-                i.schema
-                    .effective_fields()
-                    .into_iter()
-                    .find(|f| f.inline_slot() == Some(0))
-                    .map(|f| f.name().to_string())
-            );
-            entry
-        })
+        .map(|k| model.json_with_suggestions(k))
         .collect();
 
     // The WAD model root: the file declaring the `wad` block — an aggregator
@@ -574,7 +465,7 @@ fn systems(
     Ok(serde_json::json!({
         "ok": true,
         "kinds": kinds,
-        "perspectives": perspectives(&infos),
+        "perspectives": perspectives(model.kinds()),
         "nodes": nodes,
         "edges": edges,
         "ids": ids,
@@ -739,71 +630,31 @@ type D {
             .unwrap_or_else(|| panic!("no node {id}"))
     }
 
+    /// An instance nests under the FIRST parent field it sets. Which
+    /// fields are parent links at all is the kind model's business (and is
+    /// asserted there); this is about the instances.
     #[test]
-    fn derives_parent_links_from_field_names() {
-        let v = model("zone z { name = \"Z\" }\nsystem s { name = \"S\"  zone = z }\n");
-        // `system.zone` names a gathered kind → containment; `system.repo`
-        // does not → a plain reference.
-        assert_eq!(
-            kind(&v, "system")["parents"],
-            serde_json::json!([{ "field": "zone", "kind": "zone" }])
-        );
-        assert_eq!(
-            kind(&v, "system")["refs"],
-            serde_json::json!([{ "field": "repo", "list": false }])
-        );
-        // The inline id slot is never a parent link, and list<identifier>
-        // fields are references.
-        assert_eq!(
-            kind(&v, "part")["refs"],
-            serde_json::json!([{ "field": "tags", "list": true }])
-        );
-        assert_eq!(node(&v, "s")["parent"]["id"], "z");
-    }
-
-    #[test]
-    fn instance_picks_the_first_parent_field_it_sets() {
+    fn an_instance_nests_under_the_first_parent_field_it_sets() {
         let v = model(
             "zone z { name = \"Z\" }\nsystem s { name = \"S\" }\n\
              part a { name = \"A\"  system = s }\npart b { name = \"B\"  zone = z }\n",
         );
-        assert_eq!(
-            kind(&v, "part")["parents"],
-            serde_json::json!([
-                { "field": "system", "kind": "system" },
-                { "field": "zone", "kind": "zone" },
-            ])
-        );
         assert_eq!(node(&v, "a")["parent"]["field"], "system");
         assert_eq!(node(&v, "b")["parent"]["field"], "zone");
         assert_eq!(node(&v, "b")["parent"]["id"], "z");
-    }
-
-    #[test]
-    fn parent_field_self_nests() {
+        // A self-nesting `parent` field works the same way, and a root has
+        // no parent at all.
         let v = model("host h { name = \"H\" }\nhost c { name = \"C\"  parent = h }\n");
-        assert_eq!(
-            kind(&v, "host")["parents"],
-            serde_json::json!([{ "field": "parent", "kind": "host" }])
-        );
         assert_eq!(node(&v, "c")["parent"]["id"], "h");
         assert!(node(&v, "h")["parent"].is_null());
     }
 
     #[test]
-    fn source_destination_kinds_become_edges() {
+    fn an_edge_kind_yields_edges_rather_than_nodes() {
         let v = model(
             "system a { name = \"A\" }\nsystem b { name = \"B\" }\n\
              link l { source = a  destination = b  kind = \"calls\" }\n",
         );
-        assert_eq!(
-            kind(&v, "link")["edge"],
-            serde_json::json!({ "source": "source", "destination": "destination" })
-        );
-        // An edge block is not a node, and its endpoints are wiring rather
-        // than containment or references.
-        assert_eq!(kind(&v, "link")["parents"], serde_json::json!([]));
-        assert_eq!(kind(&v, "link")["refs"], serde_json::json!([]));
         assert_eq!(v["nodes"].as_array().expect("nodes").len(), 2);
         let edges = v["edges"].as_array().expect("edges");
         assert_eq!(edges.len(), 1);
@@ -811,44 +662,12 @@ type D {
         assert_eq!(edges[0]["to"], "b");
         assert_eq!(edges[0]["rel_kind"], "calls");
         assert_eq!(v["ids"], serde_json::json!(["a", "b"]));
-    }
-
-    /// A first-of-its-kind object must land in a DATA file, never in the
-    /// projection entry that renders it: the entry is a different namespace,
-    /// where the block wouldn't even resolve to this schema.
-    /// ([`super::super::blocks::place_unit`]'s neighbouring-kind fallback.)
-    #[test]
-    fn a_kind_with_no_instances_lands_beside_its_neighbours() {
-        let (_td, ws) = workspace_built_by(|root| {
-            std::fs::write(
-                root.join("schema.wcl"),
-                format!("namespace app\n{}", SCHEMA.replace("import <wdoc.wcl>", "")),
-            )
-            .expect("write schema");
-            std::fs::write(
-                root.join("data.wcl"),
-                "namespace app\n\nsystem s { name = \"S\" }\npart p { name = \"P\"  system = s }\n",
-            )
-            .expect("write data");
-            // The entry is the projection: it imports the model but declares
-            // none of it, and carries no `namespace`.
-            std::fs::write(
-                root.join("main.wcl"),
-                "import \"./schema.wcl\"\nimport \"./data.wcl\"\n",
-            )
-            .expect("write main");
-        });
-        let entry = ws.root_dir().join("main.wcl");
-        let doc = wcl_wdoc::open_doc_for_edit(&entry).expect("open");
-
-        // `zone` has no instances; `system` (which nests into it) lives in
-        // data.wcl, so that is where a new zone belongs.
-        match super::super::blocks::place_unit(&doc, &entry, "zone").expect("placement") {
-            super::super::blocks::Placement::Append { file } => {
-                assert_eq!(file.file_name().and_then(|f| f.to_str()), Some("data.wcl"));
-            }
-            _ => panic!("expected an append placement"),
-        }
+        // The schema half of the payload is the shared kind shape.
+        assert_eq!(
+            kind(&v, "link")["edge"],
+            serde_json::json!({ "source": "source", "destination": "destination" })
+        );
+        assert_eq!(kind(&v, "link")["type_name"], "Link");
     }
 
     #[test]
