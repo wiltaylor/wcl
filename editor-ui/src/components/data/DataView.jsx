@@ -4,14 +4,17 @@
    with add / edit / delete. Cell edits write through the same validated
    block-op pipeline as Design mode (disk-only; entering saved dirty
    buffers); adds go through /api/unit/create with the decorator's target
-   file, expr-valued cells (numbers, symbols, identifiers) round-trip as
-   parsed WCL. */
+   file. Rows and forms read the same cells, and offer the same controls,
+   as every other surface — scalar values (numbers, symbols, identifiers)
+   round-trip as parsed WCL. */
 
 import { For, Show, createEffect, createSignal } from 'solid-js';
 import { Plus, RefreshCw, Trash2 } from 'lucide-solid';
-import { Badge, Button, IconButton, Input, Modal, Select, Spinner, toast } from '@forge/ui';
+import { Badge, Button, IconButton, Input, Modal, Spinner, toast } from '@forge/ui';
 
 import { api } from '../../api';
+import { createFields, draftOps, fieldText, isSlot } from '../../preview/schemaform';
+import FieldControl from '../design/FieldControl';
 import { activeEntry } from '../../state/sites';
 import { busy, commitOpsQuiet } from '../../state/design';
 
@@ -26,7 +29,7 @@ export default function DataView() {
 
   const typeDef = () => types()?.find((t) => t.kind === activeKind());
   /** Scalar (non-inline) columns of the active type. */
-  const columns = () => (typeDef()?.fields ?? []).filter((f) => f.inline_slot == null);
+  const columns = () => (typeDef()?.fields ?? []).filter((f) => !isSlot(f));
   const idField = () => (typeDef()?.fields ?? []).find((f) => f.inline_slot === 0);
 
   const loadTypes = async () => {
@@ -79,30 +82,16 @@ export default function DataView() {
   };
 
   const openEdit = (row) => {
-    const seed = {};
-    for (const f of columns()) {
-      const cell = row.cells?.[f.name];
-      if (cell?.state === 'literal') seed[f.name] = cell.text ?? '';
-    }
-    setForm(seed);
+    // The dialog opens empty: a field only commits once it is touched, and
+    // the controls read the row's cells for what is already there.
+    setForm({});
     setDialog({ mode: 'edit', row });
   };
-
-  /** A form value → the unit_create JSON field value / block-op payload,
-      honouring the column's declared type. */
-  const isTextual = (f) => /utf8|ascii/.test(f.type ?? '') && !f.symbols;
 
   const submitAdd = async () => {
     const id = (form().__id ?? '').trim();
     if (!id) return toast('The row needs an id', { tone: 'danger', duration: 4000 });
-    const fields = {};
-    for (const f of columns()) {
-      const v = (form()[f.name] ?? '').trim();
-      if (v === '') continue;
-      if (f.symbols) fields[f.name] = { sym: v.replace(/^:/, '') };
-      else if (isTextual(f)) fields[f.name] = v;
-      else fields[f.name] = { expr: v };
-    }
+    const fields = createFields(columns(), form());
     const res = await api.unitCreate({
       entry: activeEntry(),
       unit: { kind: activeKind(), id, fields, file: typeDef()?.file ?? undefined },
@@ -117,22 +106,7 @@ export default function DataView() {
 
   const submitEdit = async () => {
     const { row } = dialog();
-    const ops = [];
-    for (const f of columns()) {
-      const cell = row.cells?.[f.name];
-      const next = form()[f.name];
-      if (next == null) continue;
-      const prev = cell?.state === 'literal' ? (cell.text ?? '') : null;
-      if (prev !== null && next === prev) continue;
-      if (prev === null && next.trim() === '') continue;
-      if (f.symbols) {
-        ops.push({ op: 'set_field', span: row.span, field: f.name, expr: `:${next.replace(/^:/, '')}` });
-      } else if (isTextual(f) && !cell?.expr) {
-        ops.push({ op: 'set_field', span: row.span, field: f.name, text: next });
-      } else {
-        ops.push({ op: 'set_field', span: row.span, field: f.name, expr: next });
-      }
-    }
+    const ops = draftOps(columns(), row.cells, form(), row.span);
     if (ops.length === 0) return setDialog(null);
     const res = await commitOpsQuiet(row.file, ops, { etag: row.etag });
     if (res.ok) {
@@ -154,10 +128,13 @@ export default function DataView() {
 
   // ------------------------------------------------------------------
 
-  const cellText = (row, name) => {
-    const c = row.cells?.[name];
-    if (!c) return '';
-    return c.state === 'literal' ? (c.text ?? '') : '(expr)';
+  /** A table cell: its value, or a marker for what a column can't show. */
+  const columnText = (row, f) => {
+    const state = row.cells?.fields?.[f.name]?.state;
+    if (!state) return '';
+    if (state === 'computed') return '(expr)';
+    if (state === 'rows') return '(grid)';
+    return fieldText(f, row.cells);
   };
 
   return (
@@ -224,7 +201,7 @@ export default function DataView() {
                   {(row) => (
                     <tr onDblClick={() => openEdit(row)}>
                       <td class="ed-data-id">{row.label}</td>
-                      <For each={columns()}>{(f) => <td>{cellText(row, f.name)}</td>}</For>
+                      <For each={columns()}>{(f) => <td>{columnText(row, f)}</td>}</For>
                       <td class="ed-data-actions">
                         <Button size="sm" onClick={() => openEdit(row)}>
                           Edit
@@ -278,34 +255,16 @@ export default function DataView() {
             />
           </Show>
           <For each={columns()}>
-            {(f) => {
-              const cell = () => dialog()?.row?.cells?.[f.name];
-              const locked = () => dialog()?.mode === 'edit' && cell()?.state === 'computed';
-              return (
-                <Show
-                  when={f.symbols}
-                  fallback={
-                    <Input
-                      value={form()[f.name] ?? ''}
-                      disabled={locked()}
-                      onInput={(e) => setForm({ ...form(), [f.name]: e.currentTarget.value })}
-                      placeholder={
-                        locked()
-                          ? `${f.name} (computed — edit in code)`
-                          : `${f.name}: ${f.type}${f.optional ? '?' : ''}`
-                      }
-                    />
-                  }
-                >
-                  <Select
-                    options={f.symbols.map((s) => ({ value: s, label: `:${s}` }))}
-                    value={(form()[f.name] ?? '').replace(/^:/, '') || undefined}
-                    placeholder={f.name}
-                    onChange={(v) => setForm({ ...form(), [f.name]: v })}
-                  />
-                </Show>
-              );
-            }}
+            {(f) => (
+              <FieldControl
+                field={f}
+                cells={dialog()?.mode === 'edit' ? dialog().row.cells : undefined}
+                schema={typeDef()}
+                value={f.name in form() ? form()[f.name] : undefined}
+                placeholder={`${f.name}: ${f.type}${f.optional ? '?' : ''}`}
+                onChange={(v) => setForm({ ...form(), [f.name]: v })}
+              />
+            )}
           </For>
         </div>
       </Modal>

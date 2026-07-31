@@ -150,8 +150,9 @@ export default function SystemsView() {
     const l = layout();
     const out = [];
     for (const n of model()?.nodes ?? []) {
-      for (const [name, cell] of Object.entries(n.cells ?? {})) {
-        if (!fields.has(name) || cell.state !== 'literal' || !cell.expr) continue;
+      for (const [name, cell] of Object.entries(n.cells?.fields ?? {})) {
+        // A reference names another object: an identifier, nothing else.
+        if (!fields.has(name) || cell.state !== 'identifier') continue;
         const fromKey = rollUp(n.id, f, l);
         const toKey = rollUp(cell.text, f, l);
         if (fromKey && toKey) out.push({ key: `${n.key}/${name}`, field: name, fromKey, toKey });

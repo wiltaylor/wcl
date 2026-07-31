@@ -15,6 +15,7 @@
    and the op synthesis that used to sit inline in EditSurface. */
 
 import { isManualLayout } from './anchors';
+import { cellNamed } from './schemaform';
 import { relocateOps } from './widgetdnd';
 
 /** A resize never takes a shape below this, in user units. */
@@ -71,13 +72,13 @@ function numExpr(kindDef, name, v) {
     absent → 0, number literal → its value, anything else → NaN (computed,
     so not form-writable). */
 function numField(source, name) {
-  const slot = source?.fields?.[name];
+  const slot = cellNamed(source?.cells, name);
   if (!slot) return 0;
   return slot.state === 'number' ? Number(slot.text) : NaN;
 }
 
 /** Is the field written at all (absent fields fall back to the render)? */
-const isSet = (source, name) => !!source?.fields?.[name];
+const isSet = (source, name) => !!cellNamed(source?.cells, name);
 
 // --- the gestures ---------------------------------------------------------
 

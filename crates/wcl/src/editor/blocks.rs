@@ -42,9 +42,10 @@ fn file_field(ws: &Workspace, v: &serde_json::Value) -> Result<PathBuf, String> 
 // ---------------------------------------------------------------------------
 
 /// Body: `{ file, span: {start, end} }` → the block's exact source slice
-/// plus a per-slot classification (`literal` slots carry their text and are
-/// inline-editable; `computed` slots — interpolations, expressions — lock the
-/// client to the fragment editor).
+/// plus the block's cells ([`super::cell`]): positional `labels` and named
+/// `fields`, each carrying the state its form control is chosen from
+/// (`text` slots are inline-editable; `computed` ones lock the client to
+/// the fragment editor).
 pub(super) async fn handle_block_source(
     State(state): State<Arc<EditorState>>,
     body: String,
@@ -67,23 +68,6 @@ fn block_source(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::Val
     let source = text
         .get(span.start..span.end)
         .ok_or("span out of bounds — the file changed; rebuild the preview")?;
-    let labels: Vec<serde_json::Value> = block
-        .labels
-        .iter()
-        .enumerate()
-        .map(|(slot, e)| {
-            let (state, text) = classify_expr(e);
-            serde_json::json!({ "slot": slot, "state": state, "text": text })
-        })
-        .collect();
-    let fields: serde_json::Map<String, serde_json::Value> = block
-        .items
-        .iter()
-        .filter_map(|it| match it {
-            Item::Field(f) => Some((f.name.clone(), field_json(&f.expr))),
-            _ => None,
-        })
-        .collect();
     // `a -> b` statements are items, not fields, so they'd be invisible to
     // the client otherwise — the edge editors read the wiring from here.
     let connections: Vec<serde_json::Value> = block
@@ -101,76 +85,10 @@ fn block_source(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::Val
         "kind": block.kind,
         "source": source,
         "etag": crate::edit::content_etag(&text),
-        "labels": labels,
-        "fields": fields,
+        "cells": super::cell::block_cells(block),
         "connections": connections,
         "visibility": visibility_json(block),
     }))
-}
-
-/// Field-value JSON for `/api/block/source`: the scalar classification,
-/// plus structured contents for all-string-literal lists — `state: "list"`
-/// with `items` for `header = ["…", …]`, `state: "rows"` with `rows` for
-/// `rows = [["…", …], …]` — so the Design-mode table editor can grid-edit
-/// list-literal tables, not just pipe rows.
-fn field_json(e: &Expr) -> serde_json::Value {
-    let (state, text) = classify_expr(e);
-    let mut v = serde_json::json!({ "state": state, "text": text });
-    let strings = |es: &[Expr]| -> Option<Vec<String>> {
-        es.iter()
-            .map(|e| match e {
-                Expr::Utf8(s) | Expr::Ascii(s) => Some(s.clone()),
-                _ => None,
-            })
-            .collect()
-    };
-    if let Expr::ListLit { elements, .. } = e {
-        if !elements.is_empty()
-            && let Some(items) = strings(elements)
-        {
-            v["state"] = "list".into();
-            v["items"] = serde_json::json!(items);
-        } else if let Some(rows) = elements
-            .iter()
-            .map(|e| match e {
-                Expr::ListLit { elements, .. } => strings(elements),
-                _ => None,
-            })
-            .collect::<Option<Vec<_>>>()
-        {
-            v["state"] = "rows".into();
-            v["rows"] = serde_json::json!(rows);
-        }
-    }
-    v
-}
-
-/// `literal` (plain string, editable in place), `number` / `bool` /
-/// `symbol` (scalar literals — form-editable, written back as exprs), vs
-/// `computed` (interpolation / expression — fragment-editor only). Callers
-/// that can only write strings gate on `literal`; the shape properties
-/// editors additionally consume the scalar states.
-pub(super) fn classify_expr(e: &Expr) -> (&'static str, Option<String>) {
-    match e {
-        Expr::Utf8(s) | Expr::Ascii(s) => ("literal", Some(s.clone())),
-        Expr::Bool(b) => ("bool", Some(b.to_string())),
-        Expr::Symbol(s) => ("symbol", Some(s.clone())),
-        Expr::I8(n) => ("number", Some(n.to_string())),
-        Expr::I16(n) => ("number", Some(n.to_string())),
-        Expr::I32(n) => ("number", Some(n.to_string())),
-        Expr::I64(n) => ("number", Some(n.to_string())),
-        Expr::I128(n) => ("number", Some(n.to_string())),
-        Expr::Isize(n) => ("number", Some(n.to_string())),
-        Expr::U8(n) => ("number", Some(n.to_string())),
-        Expr::U16(n) => ("number", Some(n.to_string())),
-        Expr::U32(n) => ("number", Some(n.to_string())),
-        Expr::U64(n) => ("number", Some(n.to_string())),
-        Expr::U128(n) => ("number", Some(n.to_string())),
-        Expr::Usize(n) => ("number", Some(n.to_string())),
-        Expr::F32(n) => ("number", Some(n.to_string())),
-        Expr::F64(n) => ("number", Some(n.to_string())),
-        _ => ("computed", None),
-    }
 }
 
 /// The block's visibility state as the toggles UI understands it: the
@@ -1297,11 +1215,14 @@ mod tests {
             &serde_json::json!({ "file": "main.wcl", "span": span_json(table) }),
         )
         .expect("source");
-        // All-string list → `list` with items; list-of-lists → `rows`.
-        assert_eq!(v["fields"]["header"]["state"], "list", "{v:#}");
-        assert_eq!(v["fields"]["header"]["items"][1], "Plain");
-        assert_eq!(v["fields"]["rows"]["state"], "rows", "{v:#}");
-        assert_eq!(v["fields"]["rows"]["rows"][1][0], "Lifespan");
+        // A list of cells → `list` with items; list-of-lists → `rows`.
+        assert_eq!(v["cells"]["fields"]["header"]["state"], "list", "{v:#}");
+        assert_eq!(v["cells"]["fields"]["header"]["items"][1]["text"], "Plain");
+        assert_eq!(v["cells"]["fields"]["rows"]["state"], "rows", "{v:#}");
+        assert_eq!(
+            v["cells"]["fields"]["rows"]["rows"][1][0]["text"],
+            "Lifespan"
+        );
 
         // A computed rows expression stays `computed` (no grid).
         let doc2 = doc.replace(
@@ -1315,7 +1236,7 @@ mod tests {
             &serde_json::json!({ "file": "main.wcl", "span": span_json(table) }),
         )
         .expect("source");
-        assert_eq!(v["fields"]["rows"]["state"], "computed", "{v:#}");
+        assert_eq!(v["cells"]["fields"]["rows"]["state"], "computed", "{v:#}");
     }
 
     #[test]
@@ -1417,16 +1338,16 @@ mod tests {
         .expect("literal");
         assert_eq!(v["kind"], "p");
         assert_eq!(v["source"], "p \"Literal text\"");
-        assert_eq!(v["labels"][0]["state"], "literal");
-        assert_eq!(v["labels"][0]["text"], "Literal text");
+        assert_eq!(v["cells"]["labels"][0]["state"], "text");
+        assert_eq!(v["cells"]["labels"][0]["text"], "Literal text");
 
         let v = block_source(
             &ws,
             &serde_json::json!({ "file": "main.wcl", "span": span_json(computed) }),
         )
         .expect("computed");
-        assert_eq!(v["labels"][0]["state"], "computed");
-        assert!(v["labels"][0]["text"].is_null());
+        assert_eq!(v["cells"]["labels"][0]["state"], "computed");
+        assert!(v["cells"]["labels"][0]["text"].is_null());
     }
 
     /// A per-block view toggle rides the `@except(sites = …)` decorator, and

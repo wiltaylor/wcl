@@ -113,6 +113,7 @@ import {
 } from '../../preview/anchors';
 import { injectBareCss } from '../../preview/frame';
 import { mappedSpan, moveDomBlock, patchAnchors } from '../../preview/localops';
+import { cellNamed } from '../../preview/schemaform';
 import { placeVisGutters } from '../../preview/visgutter';
 import {
   beginTextSession,
@@ -245,8 +246,10 @@ export default function EditSurface(props) {
       return;
     }
     const slot =
-      region.type === 'label' ? res.labels?.[region.slot] : res.fields?.[region.name];
-    if (!slot || slot.state !== 'literal') {
+      region.type === 'label'
+        ? res.cells?.labels?.[region.slot]
+        : cellNamed(res.cells, region.name);
+    if (!slot || slot.state !== 'text') {
       // Interpolated / computed content: the fragment editor is the truth.
       setPopover({ type: 'fragment', anchor });
       return;
@@ -353,8 +356,8 @@ export default function EditSurface(props) {
       return;
     }
     const src = await api.blockSource({ file: loc.file, span: loc.span });
-    const slot = src.ok ? src.fields?.[binding.field] : null;
-    if (!slot || slot.state !== 'literal') {
+    const slot = src.ok ? cellNamed(src.cells, binding.field) : null;
+    if (!slot || slot.state !== 'text') {
       toast(`${binding.field} is computed — edit it in the source`, {
         tone: 'danger',
         duration: 5000,

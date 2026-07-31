@@ -22,6 +22,7 @@
 
 mod assets;
 mod blocks;
+mod cell;
 mod comments;
 mod data;
 mod files;

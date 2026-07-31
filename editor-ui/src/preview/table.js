@@ -60,17 +60,27 @@ export function rowsExpr(grid) {
 
 // --- Table source model (shared by inline cell editing + the grid modal) ---
 
+/** A row of cells as display texts — null when any member isn't a plain
+    string, which a grid can't round-trip (it requotes every cell on save). */
+const textRow = (cells) => {
+  const out = (cells ?? []).map((c) => (c.state === 'text' ? c.text : null));
+  return out.some((t) => t === null) ? null : out;
+};
+
 /** Parse a table's /api/block/source payload into an editable grid model:
     `{ mode: 'lists'|'pipes', grid, headerRows: 0|1, lines?, rowIdx? }`.
-    `lists` = all-literal `header`/`rows` fields (grid row 0 is the header
+    `lists` = all-string `header`/`rows` fields (grid row 0 is the header
     when present); `pipes` = literal pipe rows (row 0 is the header).
     Returns null for computed tables — no grid representation. */
 export function parseTable(src) {
-  const rowsField = src.fields?.rows;
-  const headerItems = src.fields?.header?.state === 'list' ? src.fields.header.items : null;
+  const rowsField = src.cells?.fields?.rows;
+  const header = src.cells?.fields?.header;
+  const headerItems = header?.state === 'list' ? textRow(header.items) : null;
   if (rowsField) {
     if (rowsField.state !== 'rows') return null;
-    const grid = [...(headerItems ? [headerItems] : []), ...rowsField.rows].map((r) => [...r]);
+    const rows = rowsField.rows.map(textRow);
+    if (rows.some((r) => r === null)) return null;
+    const grid = [...(headerItems ? [headerItems] : []), ...rows].map((r) => [...r]);
     if (!grid.length) return null;
     const cols = Math.max(...grid.map((r) => r.length), 1);
     return { mode: 'lists', grid: padGrid(grid, cols), headerRows: headerItems ? 1 : 0 };

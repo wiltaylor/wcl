@@ -8,7 +8,9 @@
 import { For, Show, createSignal } from 'solid-js';
 import { Button, Input, Modal, Select, toast } from '@forge/ui';
 
+import { createFields, isSlot } from '../../preview/schemaform';
 import { busy, palette } from '../../state/design';
+import FieldControl from './FieldControl';
 
 export default function AddUnitDialog(props) {
   const [form, setForm] = createSignal({ kind: '', id: '', fields: {}, pin: '' });
@@ -21,13 +23,7 @@ export default function AddUnitDialog(props) {
       toast('Pick a kind and an id', { tone: 'danger', duration: 4000 });
       return;
     }
-    const fields = {};
-    for (const fd of kindDef()?.fields ?? []) {
-      if (fd.inline_slot != null) continue;
-      const v = f.fields?.[fd.name];
-      if (v == null || v === '') continue;
-      fields[fd.name] = fd.symbols ? { sym: v } : v;
-    }
+    const fields = createFields(kindDef()?.fields ?? [], f.fields);
     const res = await props.onSubmit(
       { kind: f.kind, id: f.id, fields },
       f.pin ? { index_id: f.pin } : null,
@@ -69,31 +65,17 @@ export default function AddUnitDialog(props) {
           onInput={(e) => patch({ id: e.currentTarget.value })}
           placeholder="id (identifier)"
         />
-        <Show when={(kindDef()?.fields ?? []).some((f) => f.inline_slot == null)}>
+        <Show when={(kindDef()?.fields ?? []).some((f) => !isSlot(f))}>
           <div class="ed-add-unit-fields">
-            <For each={kindDef()?.fields ?? []}>
+            <For each={(kindDef()?.fields ?? []).filter((f) => !isSlot(f))}>
               {(f) => (
-                <Show when={f.inline_slot == null}>
-                  <Show
-                    when={f.symbols}
-                    fallback={
-                      <Input
-                        value={form().fields?.[f.name] ?? ''}
-                        onInput={(e) =>
-                          patch({ fields: { ...form().fields, [f.name]: e.currentTarget.value } })
-                        }
-                        placeholder={`${f.name}${f.optional ? '' : ' (required)'}`}
-                      />
-                    }
-                  >
-                    <Select
-                      options={f.symbols.map((s) => ({ value: s, label: `:${s}` }))}
-                      value={form().fields?.[f.name] || undefined}
-                      placeholder={f.name}
-                      onChange={(v) => patch({ fields: { ...form().fields, [f.name]: v } })}
-                    />
-                  </Show>
-                </Show>
+                <FieldControl
+                  field={f}
+                  schema={kindDef()}
+                  value={form().fields?.[f.name] ?? ''}
+                  placeholder={`${f.name}${f.optional ? '' : ' (required)'}`}
+                  onChange={(v) => patch({ fields: { ...form().fields, [f.name]: v } })}
+                />
               )}
             </For>
           </div>
