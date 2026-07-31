@@ -6,14 +6,14 @@
      same-file siblings (committed as a batch of `move` ops);
    - a profile button — pops up the visibility editor (which profiles the
      block shows in). On merged builds the button doubles as the indicator:
-     amber when the block is hidden in some view (`data-wcl-except` stamps),
-     dashed when its visibility is custom (`@only` / other axes).
+     amber when the block is hidden in some view, dashed when its
+     visibility is custom (`@only` / other axes) — both read off the
+     anchor, so the indicator can't disagree with what was built.
 
    Plain-DOM, same-origin, like frame.js. The wysiwyg click/move handlers
    ignore `.wcl-vis-gutter` hits so the controls own their events. */
 
-import { anchorSpanOf } from './anchors';
-import { blockChildren, pageInfo } from './frame';
+import { anchorOf, blockChildren, pageInfo, sameFileSiblings } from './anchors';
 
 const CSS_ID = 'wcl-vis-css';
 /* The iframe holds a plain wdoc build with no Forge tokens — literal
@@ -58,22 +58,6 @@ export function injectVisCss(doc) {
   doc.head.appendChild(style);
 }
 
-/** Template chrome (sidebar, rails, layout parts) comes from stdlib /
-    registry sources (`<wcl-system>/…` paths) — no gutter. */
-function isChrome(el) {
-  return (el.getAttribute('data-wcl-file') ?? '').startsWith('<');
-}
-
-/** The visibility state stamped on a merged-build anchor. */
-export function visOf(el) {
-  const raw = el.getAttribute('data-wcl-except');
-  return {
-    exceptSites: raw ? raw.split(/\s+/).filter(Boolean) : [],
-    custom: el.getAttribute('data-wcl-vis') === 'custom',
-  };
-}
-
-
 /** How many positions (and in which direction) `from` must move among the
     ordered same-file block list `sameFile` to land before/after `to`. */
 export function moveSteps(sameFile, fromIdx, dropIdx) {
@@ -107,10 +91,11 @@ export function placeVisGutters(
   for (const g of doc.querySelectorAll('.wcl-vis-gutter, .wcl-vis-dropline')) g.remove();
   for (const h of doc.querySelectorAll('.wcl-vis-host')) h.classList.remove('wcl-vis-host');
   for (const h of doc.querySelectorAll('.wcl-vis-ghost')) h.classList.remove('wcl-vis-ghost');
-  const blocks = blockChildren(page.el).filter((el) => !isChrome(el) && anchorSpanOf(el));
-  for (const el of blocks) {
-    const { file, span } = anchorSpanOf(el);
-    const { exceptSites, custom } = visOf(el);
+  const anchors = blockChildren(page.el)
+    .map((el) => anchorOf(doc, el))
+    .filter((a) => a && !a.chrome);
+  for (const { el, file, span, except: exceptSites, vis } of anchors) {
+    const custom = vis === 'custom';
     el.classList.add('wcl-vis-host');
     if (currentSite && exceptSites.includes(currentSite)) el.classList.add('wcl-vis-ghost');
     const gutter = doc.createElement('div');
@@ -122,7 +107,7 @@ export function placeVisGutters(
       handle.className = 'wcl-vis-handle';
       handle.textContent = '⋮⋮';
       handle.title = 'Drag to re-order';
-      wireDrag(doc, handle, el, blocks, { onReorder, enabled });
+      wireDrag(doc, handle, el, { onReorder, enabled });
       gutter.appendChild(handle);
     }
 
@@ -156,13 +141,13 @@ export function placeVisGutters(
 /** Handle-drag → insertion index among the dragged block's SAME-FILE
     siblings → `onReorder({file, span, steps})`. The drop line previews the
     slot; cross-file drops are refused (a move op batches on one file). */
-function wireDrag(doc, handle, el, blocks, { onReorder, enabled }) {
+function wireDrag(doc, handle, el, { onReorder, enabled }) {
   handle.addEventListener('pointerdown', (down) => {
     if (!enabled()) return;
     down.preventDefault();
     down.stopPropagation();
-    const { file, span } = anchorSpanOf(el);
-    const sameFile = blocks.filter((b) => b.getAttribute('data-wcl-file') === file);
+    const { file, span } = anchorOf(doc, el);
+    const sameFile = sameFileSiblings(doc, el);
     const fromIdx = sameFile.indexOf(el);
     if (fromIdx < 0 || sameFile.length < 2) return;
     // No pointer capture — move/up listen on the document, and capturing a

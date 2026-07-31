@@ -1,11 +1,12 @@
 /* Unit tests for the per-block gutter: placement on top-level content
    blocks only, the profile button (with merged indicator tints), the
-   drag-reorder step math, and the chrome/nested-block exclusions. Runs
-   under happy-dom like the wysiwyg tests. */
+   drag-reorder step math, and the chrome/nested-block exclusions. The
+   stamps behind the tints are read through the anchor model (tested in
+   anchors.test.js). Runs under happy-dom like the wysiwyg tests. */
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { moveSteps, placeVisGutters, visOf } from './visgutter';
+import { moveSteps, placeVisGutters } from './visgutter';
 
 const PAGE = `
 <div data-wcl-page-file="main.wcl" data-wcl-page-name="concept_x">
@@ -35,18 +36,6 @@ function setup() {
     .setAttribute('data-wcl-file', '<wcl-system>/templates.wcl');
   return document;
 }
-
-describe('visOf', () => {
-  it('reads the stamped attributes', () => {
-    setup();
-    expect(visOf(document.getElementById('plain'))).toEqual({ exceptSites: [], custom: false });
-    expect(visOf(document.getElementById('hidden'))).toEqual({
-      exceptSites: ['deck', 'other'],
-      custom: false,
-    });
-    expect(visOf(document.getElementById('custom')).custom).toBe(true);
-  });
-});
 
 describe('moveSteps', () => {
   it('maps an insertion slot to a signed sibling displacement', () => {

@@ -16,8 +16,13 @@
 
    Pointer handling is capture-phase and stops propagation, so the bundled
    pan-zoom player (bubble-phase listeners on the <svg>) never pans while a
-   shape or handle is being dragged. */
+   shape or handle is being dragged.
 
+   Build stamps (shapes, ids, layouts) and shape geometry come from
+   preview/anchors.js; the `data-wcl-handle` / `data-wcl-port` marks below
+   are this layer's OWN injected chrome. */
+
+import { SEL, diagramOf, isShape, layoutOf, shapeBox, shapeIdOf } from './anchors';
 import { markDropTarget, resolveWidgetDrop } from './widgetdnd';
 
 const CSS_ID = 'wcl-diagram-css';
@@ -96,8 +101,7 @@ export function clientToUser(svg, x, y) {
 
 /** Whether `shapeEl`'s diagram honors per-shape x/y (manual layout). */
 export function isDraggable(shapeEl) {
-  const layout = shapeEl?.closest?.('svg[data-wcl-layout]')?.getAttribute('data-wcl-layout');
-  return MANUAL_LAYOUTS.includes(layout ?? '');
+  return MANUAL_LAYOUTS.includes(layoutOf(shapeEl) ?? '');
 }
 
 /** The geometry delta of a corner resize: pointer user-delta (du, dv) →
@@ -117,26 +121,15 @@ export function resizeDelta(corner, du, dv) {
   }
 }
 
-/** The shape's content bbox: the measurement `markSelected` stashed before
-    injecting selection chrome, else a live getBBox (which would include any
-    injected chrome — hence the stash). */
-function shapeBox(el) {
-  if (el.__wclShapeBox) return el.__wclShapeBox;
-  if (typeof el.getBBox !== 'function') return null;
-  try {
-    return el.getBBox();
-  } catch {
-    return null;
-  }
-}
-
 /** Create / refresh the corner resize handles inside the selected shape's
-    <g> (they ride its transform, including the live drag preview). Pass
-    `el = null` to remove all handles. Under a solver layout only the `se`
-    handle shows — a top/left resize shifts x/y, which the solver ignores. */
+    <g> (they ride its transform, including the live drag preview), sized
+    from the anchor module's stashed geometry so repeated selection can't
+    walk them outward. Pass `el = null` to remove all handles. Under a
+    solver layout only the `se` handle shows — a top/left resize shifts
+    x/y, which the solver ignores. */
 export function refreshShapeHandles(doc, el) {
   for (const g of doc.querySelectorAll('.wcl-wys-handles')) g.remove();
-  if (!el || !el.hasAttribute?.('data-wcl-shape')) return;
+  if (!el || !isShape(el)) return;
   const box = shapeBox(el);
   if (!box) return;
   injectCss(doc);
@@ -163,7 +156,7 @@ export function refreshShapeHandles(doc, el) {
   }
   // The out-port: drag it onto another shape to wire `a -> b`. Only shapes
   // that HAVE an id can be an edge endpoint (a connection names ids).
-  if (el.getAttribute('data-wcl-shape-id')) {
+  if (shapeIdOf(el)) {
     const port = doc.createElementNS(SVG_NS, 'circle');
     port.setAttribute('class', 'wcl-wys-port');
     port.setAttribute('data-wcl-port', '');
@@ -183,7 +176,7 @@ export function refreshShapeHandles(doc, el) {
     graph), so hit-testing goes through the document. */
 export function shapeAt(doc, x, y, exclude) {
   const hit = doc.elementFromPoint?.(x, y);
-  const shape = hit?.closest?.('[data-wcl-shape][data-wcl-shape-id]');
+  const shape = hit?.closest?.(SEL.identifiedShape);
   return shape && shape !== exclude ? shape : null;
 }
 
@@ -213,7 +206,7 @@ export function installShapeDrag(doc, handlers) {
     const selected = handlers.selectedShape?.();
     const port = e.target.closest?.('.wcl-wys-port');
     const handle = e.target.closest?.('.wcl-wys-handle');
-    const shape = e.target.closest?.('[data-wcl-shape]');
+    const shape = e.target.closest?.(SEL.shape);
     if (port && selected?.contains(port)) {
       gesture = {
         kind: 'connect',
@@ -276,13 +269,13 @@ export function installShapeDrag(doc, handlers) {
       an ordering intent: insert after it, inside its container. */
   const isPositional = (g, target) => {
     if (!target) return false;
-    const nested = g.el.parentElement?.closest?.('[data-wcl-shape]');
+    const nested = g.el.parentElement?.closest?.(SEL.shape);
     if (nested || !isDraggable(g.el)) return false;
-    if (target.mode === 'diagram') return target.el === g.el.closest('svg[data-wcl-layout]');
+    if (target.mode === 'diagram') return target.el === diagramOf(g.el);
     return (
       target.mode === 'after' &&
       target.el.closest('svg') === g.svg &&
-      !target.el.parentElement?.closest?.('[data-wcl-shape]')
+      !target.el.parentElement?.closest?.(SEL.shape)
     );
   };
 
