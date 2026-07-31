@@ -26,12 +26,9 @@ import {
   loadPalette,
   palette,
   popover,
-  selection,
   setPopover,
-  setSelection,
 } from '../../state/design';
 import { reloadGraph } from '../../state/graph';
-import { elsBySpan, patchAnchors, restampExcept } from '../../preview/localops';
 import { freshShapeId, shapeSnippet } from '../../preview/schemaform';
 import { wclString } from '../../preview/wysiwyg';
 import {
@@ -127,7 +124,7 @@ function BlockEditorModals() {
         <VisibilityEditor
           anchor={anchor()}
           src={src()}
-          surface={p()?.surface}
+          apply={p()?.apply}
           onClose={close}
           onCommit={commitAnd}
         />
@@ -231,6 +228,14 @@ function VisibilityEditor(props) {
   // @except names sites this wskill's views don't cover — preserve them.
   const foreign = [...initialExcept].filter((s) => !views().some((v) => v.site === s));
 
+  /* The editor decides WHAT to write and hands it to whoever opened it;
+     applying it is the opener's business. An editable surface applies it in
+     place on its own document (restamp / remove, no rebuild) — DOM mutation
+     stays on the side that owns the DOM. Opened from somewhere with no
+     surface (the content modal's block-list fallback), the plain in-place
+     commit runs and the graph reload inside it refreshes the rows. */
+  const applyDefault = (plan) => commitOpsLocal(plan.anchor.file, plan.ops, { etag: plan.etag });
+
   const save = () => {
     const except = [
       ...views()
@@ -238,42 +243,15 @@ function VisibilityEditor(props) {
         .map((v) => v.site),
       ...foreign,
     ];
-    // Apply IN PLACE on the owning surface — restamp (merged) or remove
-    // (hidden in the shown view); no rebuild, no iframe reload. Un-hiding
-    // a block absent from a non-merged DOM can't be shown without a
-    // render, so that one case falls back to the full loop (`false`).
-    // Without a surface (the content modal's block-list fallback) the
-    // graph reload inside commitOpsLocal refreshes the rows.
-    const onApplied = (res) => {
-      const s = props.surface;
-      const d = s?.doc?.();
-      if (!d) return true;
-      const els = elsBySpan(d, props.anchor.file, props.anchor.span);
-      const site = s.currentSite();
-      const hidesHere = !s.merged() && site && except.includes(site);
-      const unhidesHere =
-        !s.merged() && site && initialExcept.has(site) && !except.includes(site);
-      if (unhidesHere && els.length === 0) return false;
-      patchAnchors(d, props.anchor.file, res.span_map ?? []);
-      for (const el of els) {
-        if (hidesHere) el.remove();
-        else restampExcept(el, except);
-      }
-      if (hidesHere) {
-        const sel = selection();
-        if (sel && sel.file === props.anchor.file && sel.span.start === props.anchor.span.start) {
-          setSelection(null);
-        }
-      }
-      s.redecorate();
-      return true;
-    };
+    const apply = props.apply ?? applyDefault;
     props.onCommit(
-      commitOpsLocal(
-        props.anchor.file,
-        [{ op: 'set_visibility', span: props.anchor.span, except_sites: except }],
-        { etag: props.src.etag, onApplied },
-      ),
+      apply({
+        anchor: props.anchor,
+        ops: [{ op: 'set_visibility', span: props.anchor.span, except_sites: except }],
+        except,
+        wasExcept: [...initialExcept],
+        etag: props.src.etag,
+      }),
     );
   };
 

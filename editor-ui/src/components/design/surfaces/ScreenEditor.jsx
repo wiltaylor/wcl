@@ -12,33 +12,27 @@
    `accepts_children` (schema-derived) decides append-inside vs
    insert-after.
 
-   While mounted it owns the commit loop (setSurfaceRebuild): a WYSIWYG
-   commit rebuilds just the synthetic page, then refreshes the systems
-   model and tells the host to re-anchor (every span in the file moved).
+   The preview it hands the surface knows how to rebuild itself, so while
+   the surface is mounted it owns the commit loop: a WYSIWYG commit rebuilds
+   just the synthetic page, then refreshes the systems model and tells the
+   host to re-anchor (every span in the file moved).
 
    A screen with no body yet gets seed buttons instead — a starter
    wireframe (`diagram { wf_browser … }`) or terminal block. */
 
-import { For, Show, createEffect, createSignal, onCleanup } from 'solid-js';
+import { For, Show, createEffect, createSignal } from 'solid-js';
 import { Button, Spinner, toast } from '@forge/ui';
 
 import { api } from '../../../api';
 import { clientToUser } from '../../../preview/diagram';
 import { freshShapeId, shapeSnippet } from '../../../preview/schemaform';
-import { markDropTarget, relocateOps, resolveWidgetDrop } from '../../../preview/widgetdnd';
+import { shapeOps } from '../../../preview/shapeops';
+import { markDropTarget, resolveWidgetDrop } from '../../../preview/widgetdnd';
 import { anchorOf } from '../../../preview/wysiwyg';
 import WidgetTree from './WidgetTree';
 import { startPointerDrag } from './pointerDrag';
 import { dirtyFiles } from '../../../state/buffers';
-import {
-  busy,
-  commitOps,
-  palette,
-  selection,
-  setEditingSession,
-  setSelection,
-  setSurfaceRebuild,
-} from '../../../state/design';
+import { busy, commitOps, palette, selection, SURFACE_SCREEN } from '../../../state/design';
 import { activeEntry, activeSite } from '../../../state/sites';
 import { loadSystems, model } from '../../../state/systems';
 import EditSurface from '../EditSurface';
@@ -101,8 +95,9 @@ export default function ScreenEditor(props) {
   /** Bumped when the frame (re)loads — the structure tree rebuilds on it. */
   const [treeSeq, setTreeSeq] = createSignal(0);
   let inFlight = null;
-  /** EditSurface handle: () => the iframe's document. */
-  let surfaceDoc = null;
+  /** The mounted surface's handle (null while unmounted). */
+  const [surface, setSurface] = createSignal(null);
+  const surfaceDoc = () => surface()?.doc() ?? null;
 
   /** Build from the WAD model root when the payload names one: same
       content and anchors as the site entry, without evaluating the book's
@@ -165,22 +160,22 @@ export default function ScreenEditor(props) {
     }
   });
 
-  // Own the commit loop while mounted: a WYSIWYG commit inside the iframe
-  // rebuilds the synthetic page, then the model + host re-anchor (the
-  // reformat moved every span this editor and its host hold).
-  setSurfaceRebuild(async ({ changed }) => {
-    const res = await build(changed);
-    if (res.ok) {
-      await loadSystems({ keep: true });
-      await props.onCommitted?.();
-    }
-    return res;
-  });
-  onCleanup(() => {
-    setSurfaceRebuild(null);
-    setSelection(null);
-    setEditingSession(null);
-  });
+  // The surface's preview: the synthetic unit page, rebuilt in place. A
+  // WYSIWYG commit inside the iframe routes here while the surface is
+  // mounted, then the model + host re-anchor (the reformat moved every span
+  // this editor and its host hold).
+  const preview = {
+    src: href,
+    reloadSeq,
+    rebuild: async ({ changed }) => {
+      const res = await build(changed);
+      if (res.ok) {
+        await loadSystems({ keep: true });
+        await props.onCommitted?.();
+      }
+      return res;
+    },
+  };
 
   const isWireframe = () => bodyKinds().includes('diagram');
   const kindsBadge = () => {
@@ -219,7 +214,7 @@ export default function ScreenEditor(props) {
       return { anchor: sel, mode: acceptsChildren(sel.kind) ? 'inside' : 'after' };
     }
     if (sel?.kind === 'diagram') return { anchor: sel, mode: 'inside' };
-    const doc = surfaceDoc?.();
+    const doc = surfaceDoc();
     const svg = doc?.querySelector('svg[data-wcl-layout]');
     const anchor = svg && anchorOf(doc, svg);
     return anchor ? { anchor, mode: 'inside' } : null;
@@ -246,7 +241,7 @@ export default function ScreenEditor(props) {
       t.mode === 'inside' &&
       t.anchor.kind === 'diagram' &&
       ['free', 'none'].includes(t.anchor.layout ?? 'free');
-    const index = surfaceDoc?.()?.querySelectorAll?.('[data-wcl-shape]')?.length ?? 0;
+    const index = surfaceDoc()?.querySelectorAll?.('[data-wcl-shape]')?.length ?? 0;
     const snippet = shapeSnippet(entry, { uid, manual, index, at: manual ? at : null });
     const op =
       t.mode === 'inside'
@@ -278,7 +273,7 @@ export default function ScreenEditor(props) {
   /** The drop the cursor is over: hit-test inside the iframe, resolve with
       the shared semantics. Carries the iframe-space point for coordinates. */
   const dropAt = (p) => {
-    const frameDoc = surfaceDoc?.();
+    const frameDoc = surfaceDoc();
     const fp = framePoint(p);
     if (!frameDoc || !fp) return null;
     const t = resolveWidgetDrop(frameDoc.elementFromPoint?.(fp.x, fp.y), acceptsChildren);
@@ -295,11 +290,11 @@ export default function ScreenEditor(props) {
       onClick: () => addWidget(entry),
       onMove: (p) => {
         const t = dropAt(p);
-        markDropTarget(surfaceDoc?.(), t?.el ?? null, t?.cellEl ?? null);
+        markDropTarget(surfaceDoc(), t?.el ?? null, t?.cellEl ?? null);
       },
-      onCancel: () => markDropTarget(surfaceDoc?.(), null),
+      onCancel: () => markDropTarget(surfaceDoc(), null),
       onDrop: (p) => {
-        const frameDoc = surfaceDoc?.();
+        const frameDoc = surfaceDoc();
         markDropTarget(frameDoc, null);
         const t = dropAt(p);
         if (!t) return;
@@ -328,31 +323,30 @@ export default function ScreenEditor(props) {
     </button>
   );
 
-  /** A structure-tree drop: the same structural-move batch as canvas
-      drags — insert the widget's slice at the target, delete the original. */
+  /** A structure-tree drop: the same structural-move batch as canvas drags,
+      through the same op builder — insert the widget's slice at the target,
+      delete the original. */
   const relocateNode = async (srcNode, target) => {
-    const frameDoc = surfaceDoc?.();
+    const frameDoc = surfaceDoc();
     const a = frameDoc && anchorOf(frameDoc, srcNode.el);
     const t = frameDoc && anchorOf(frameDoc, target.el);
     if (!a || !t) return;
-    if (a.shared || t.shared) {
-      return toast('Generated content — edit its source data instead', { duration: 5000 });
-    }
-    if (a.file !== t.file) {
-      return toast('Cannot move a widget across files — edit the source instead', {
-        duration: 5000,
-      });
-    }
     const src = await api.blockSource({ file: a.file, span: a.span });
     if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
-    const ops = relocateOps({
+    const res = shapeOps({
+      gesture: 'relocate',
       slice: src.source,
       mode: target.mode,
-      targetSpan: t.span,
-      sourceSpan: a.span,
+      source: a,
+      target: {
+        ...t,
+        layout: target.el.getAttribute?.('data-wcl-layout') ?? '',
+        acceptsChildren: acceptsChildren(t.kind),
+      },
       slot: target.slot ?? null,
     });
-    commitOps(a.file, ops, { etag: src.etag, reveal: 'inserted' });
+    if (!res.ok) return toast(res.message, { duration: 5000 });
+    commitOps(a.file, res.ops, { etag: src.etag, reveal: 'inserted' });
   };
 
   return (
@@ -427,12 +421,10 @@ export default function ScreenEditor(props) {
                 }
               >
                 <EditSurface
-                  src={href}
-                  reloadSeq={reloadSeq}
+                  preview={preview}
+                  surfaceId={SURFACE_SCREEN}
                   hideChrome
-                  surfaceRef={(h) => {
-                    surfaceDoc = h.doc;
-                  }}
+                  ref={setSurface}
                   onFrameLoad={() => setTreeSeq((s) => s + 1)}
                   fallback={
                     <div class="ed-empty">
@@ -445,7 +437,7 @@ export default function ScreenEditor(props) {
             </div>
             <Show when={isWireframe()}>
               <WidgetTree
-                doc={() => surfaceDoc?.()}
+                doc={surfaceDoc}
                 seq={treeSeq}
                 acceptsChildren={acceptsChildren}
                 onRelocate={relocateNode}

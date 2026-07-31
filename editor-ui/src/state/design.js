@@ -127,7 +127,9 @@ export async function commitOpsQuiet(file, ops, opts = {}) {
 
 /** Listeners for in-place commits (`commitOpsLocal`) — the content modal
     subscribes to mark its cached per-view builds stale without rebuilding
-    the surface the commit just patched. */
+    the surface the commit just patched. Each receives
+    `{ file, surface }` — the surface id that repaired itself in place, so a
+    listener can leave that one alone. */
 const localCommitListeners = new Set();
 export function onLocalCommit(fn) {
   localCommitListeners.add(fn);
@@ -141,7 +143,9 @@ export function onLocalCommit(fn) {
     represented in place (e.g. un-hiding a block absent from this view's
     DOM) and the normal rebuild tail runs instead. Everything else — the
     graph payload, the canvas behind a modal, the other view tabs — is
-    marked stale and refreshes lazily. */
+    marked stale and refreshes lazily. `opts.surface` names the surface that
+    patched itself (the editable surface's own id) — everything else goes
+    stale, that one doesn't. */
 export async function commitOpsLocal(file, ops, opts = {}) {
   const res = await runCommit(blockOpsCall(file, ops, opts), { guardFile: file, sync: true });
   if (!res.ok) return res;
@@ -154,11 +158,10 @@ export async function commitOpsLocal(file, ops, opts = {}) {
   }
   // The graph payload's spans shifted with the reformat.
   reloadGraph({ keepPositions: true });
-  // The canvas is stale unless it IS the patched surface (no modal open,
-  // canvas tab showing) — setting the flag there would trigger an
-  // immediate rebuild of the surface we just patched.
-  if (surfaceRebuild || designTab() !== 'canvas') setCanvasStale(true);
-  for (const fn of localCommitListeners) fn({ file: res.file });
+  // The canvas is stale unless it IS the patched surface — setting the flag
+  // there would trigger an immediate rebuild of what we just patched.
+  if (opts.surface !== SURFACE_CANVAS) setCanvasStale(true);
+  for (const fn of localCommitListeners) fn({ file: res.file, surface: opts.surface ?? null });
   setBusy(false); // no frame load coming — release directly
   return res;
 }
@@ -345,14 +348,32 @@ export async function commitUnitCreate(unit, pin) {
   return res;
 }
 
-/** When set, the commit tail rebuilds through this hook instead of the main
-    preview — the graph content modal registers its own targeted view build
-    while it is open, so edits made inside it refresh its iframe (and not the
-    hidden canvas). Receives { changed } and must resolve to { ok }. */
-let surfaceRebuild = null;
-export function setSurfaceRebuild(fn) {
-  surfaceRebuild = fn;
+/** Surface identifiers (the `surface` key of an in-place commit, and what a
+    preview is keyed by): the Design canvas, the graph's content modal, and
+    the systems view's screen editor. The canvas is the only one the
+    staleness rules name, but a distinct id per surface keeps a commit from
+    having to infer which surface it patched from which tab is showing. */
+export const SURFACE_CANVAS = 'canvas';
+export const SURFACE_CONTENT = 'content';
+export const SURFACE_SCREEN = 'screen';
+
+/** The commit tail rebuilds through the innermost registered hook instead of
+    the main preview — an editable surface inside a modal registers its own
+    targeted build while it is mounted, so edits made there refresh its
+    iframe (and not the hidden canvas). A stack, not a slot: surfaces nest
+    and unmount out of order (a tab switch mounts the next before dropping
+    the last), so each registration is removed by identity. The hook receives
+    { changed } and must resolve to { ok }. */
+const surfaceRebuilds = [];
+export function pushSurfaceRebuild(fn) {
+  const entry = { fn };
+  surfaceRebuilds.push(entry);
+  return () => {
+    const i = surfaceRebuilds.indexOf(entry);
+    if (i >= 0) surfaceRebuilds.splice(i, 1);
+  };
 }
+const surfaceRebuild = () => surfaceRebuilds[surfaceRebuilds.length - 1]?.fn ?? null;
 
 /** The shared tail of every commit: rebuild (targeted when possible — the
     server falls back to full on structural change), refresh models, release
@@ -361,8 +382,9 @@ async function afterCommit({ changed, refreshNav }) {
   setSelection(null);
   setEditingSession(null);
   const page = currentPage()?.name;
-  const res = surfaceRebuild
-    ? await surfaceRebuild({ changed: changed ?? [] })
+  const hook = surfaceRebuild();
+  const res = hook
+    ? await hook({ changed: changed ?? [] })
     : await rebuild({
         ...(page ? { pages: [page] } : {}),
         changed: changed ?? [],
