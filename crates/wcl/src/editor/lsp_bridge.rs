@@ -64,7 +64,7 @@ async fn bridge(mut socket: WebSocket, state: Arc<EditorState>) {
                         text.to_string()
                     } else {
                         initialized = true;
-                        inject_root(&text, state.root_file.as_deref(), &state.root_dir)
+                        inject_root(&text, state.ws.root_file(), state.ws.root_dir())
                     };
                     if write_frame(&mut ws_write, &payload).await.is_err() {
                         break;

@@ -268,15 +268,22 @@ pub fn remove_connection(block: &mut ast::Block, lhs: &str, rhs: &str) -> bool {
     }
 }
 
-/// Drop every connection statement naming `id` at either end — what a shape
-/// deletion needs, since an edge to a shape that no longer exists renders
-/// nothing and warns at build time. Returns how many were removed.
-pub fn remove_connections_touching(block: &mut ast::Block, id: &str) -> usize {
-    let before = block.items.len();
-    block
-        .items
-        .retain(|it| !matches!(it, Item::Connection(c) if c.lhs == id || c.rhs == id));
-    before - block.items.len()
+/// Drop every connection statement naming `id` at either end, anywhere in
+/// the tree — what a shape deletion needs, since an edge to a shape that no
+/// longer exists renders nothing and warns at build time. The whole item
+/// tree is searched because a deletion knows the id, not the container that
+/// declared the edge (and an id is diagram-unique). Returns how many were
+/// removed.
+pub fn remove_connections_touching(items: &mut Vec<Item>, id: &str) -> usize {
+    let before = items.len();
+    items.retain(|it| !matches!(it, Item::Connection(c) if c.lhs == id || c.rhs == id));
+    let mut removed = before - items.len();
+    for item in items.iter_mut() {
+        if let Item::Block(b) = item {
+            removed += remove_connections_touching(&mut b.items, id);
+        }
+    }
+    removed
 }
 
 /// Index of the `lhs -> rhs` statement among `items`, if present. Direction
@@ -694,7 +701,11 @@ mod tests {
             _ => panic!(),
         };
         let block = find_block_by_span(&mut ast.items, span).unwrap();
-        assert_eq!(remove_connections_touching(block, "b"), 2, "a->b and b->c");
+        assert_eq!(
+            remove_connections_touching(&mut block.items, "b"),
+            2,
+            "a->b and b->c"
+        );
         let out = format::to_source(&ast);
         assert!(out.contains("c -> a"), "the untouched edge survives: {out}");
         assert!(!out.contains("-> b"), "{out}");
