@@ -3,7 +3,7 @@
    plus the canvas chrome — the Canvas|Graph tabs, the wskill view tabs,
    nav-driven page navigation, and the graph-staleness rebuild. */
 
-import { Show, createEffect } from 'solid-js';
+import { Show, createEffect, createSignal } from 'solid-js';
 import { FileCode2 } from 'lucide-solid';
 import { Button, Spinner, Tabs, ToggleGroup } from '@forge/ui';
 
@@ -31,6 +31,7 @@ import {
   setDesignTab,
   setGotoPage,
   setPopover,
+  SURFACE_CANVAS,
 } from '../../state/design';
 import EditSurface from './EditSurface';
 import SkillBrowser from './SkillBrowser';
@@ -38,7 +39,13 @@ import SkillBrowser from './SkillBrowser';
 export { viewLabel } from '../../state/sites';
 
 export default function DesignCanvas() {
-  let surface = null; // { goto(url) } from EditSurface
+  /** The mounted surface's handle (null while unmounted) — a signal, so a
+      navigation requested before the first build lands re-runs once the
+      surface is there. */
+  const [surface, setSurface] = createSignal(null);
+
+  /** The canvas's preview: the main site build. */
+  const preview = { src: previewHref, reloadSeq: buildSeq };
 
   // Graph-mode commits leave the canvas anchors stale — rebuild when the
   // canvas becomes the active surface again, targeting the canvas's own
@@ -60,9 +67,10 @@ export default function DesignCanvas() {
     const page = gotoPage();
     if (!page) return;
     const base = previewHref();
-    if (!base || !surface) return;
+    const s = surface();
+    if (!base || !s) return;
     setGotoPage(null);
-    surface.goto(`${base.slice(0, base.lastIndexOf('/') + 1)}${page}.html`);
+    s.goto(`${base.slice(0, base.lastIndexOf('/') + 1)}${page}.html`);
   });
 
   return (
@@ -119,12 +127,10 @@ export default function DesignCanvas() {
         }
       >
         <EditSurface
-          src={previewHref}
-          reloadSeq={buildSeq}
+          preview={preview}
+          surfaceId={SURFACE_CANVAS}
           site={activeSite()}
-          onNavigate={(handle) => {
-            surface = handle;
-          }}
+          ref={setSurface}
           fallback={
             <div class="ed-empty">
               {selected() ? 'Building the design canvas…' : 'No wdoc sites found in this directory'}

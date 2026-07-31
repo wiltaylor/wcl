@@ -2,8 +2,9 @@
    pane is the same WYSIWYG EditSurface as the design canvas — click a block
    to select it (the block toolbar carries move/insert/delete/visibility),
    click again to edit its contents in place; every commit rebuilds just the
-   unit's page in the shown view (setSurfaceRebuild routes the commit loop
-   here while the modal is open).
+   unit's page in the shown view (the modal registers its own rebuild for
+   the commit loop while it is open, and hands it to the mounted surface as
+   part of that surface's preview).
 
    Tabs: a Merged tab (the default landing) rendering the unit's page with
    EVERY block visible regardless of `@only` / `@except` — each block gets a
@@ -45,15 +46,12 @@ import {
   commitNavOpQuiet,
   commitOps,
   commitOpsLocal,
-  currentPage,
   onLocalCommit,
   frameReady,
+  pushSurfaceRebuild,
   setCanvasStale,
-  setCurrentPage,
-  setEditingSession,
   setPopover,
-  setSelection,
-  setSurfaceRebuild,
+  SURFACE_CONTENT,
 } from '../../state/design';
 import { graphData, indexLevelsForSite, pinCounts, reloadGraph } from '../../state/graph';
 import { wclLanguage } from '../../lang/wcl';
@@ -299,8 +297,12 @@ export default function ContentModal(props) {
   });
 
   // ---- route the commit loop here while the modal is open ----
-  const prevPage = currentPage();
-  setSurfaceRebuild(async ({ changed }) => {
+  // Modal-scoped, not surface-scoped: the Code / All / Skill tabs commit
+  // too, and no editable surface is mounted on them. The mounted surface
+  // registers this same handler for its own lifetime (its `preview`), which
+  // additionally releases the busy gate when a rebuild leaves nothing to
+  // reload; here that release is explicit below.
+  const surfaceRebuild = async ({ changed }) => {
     // Everything derived from the last build is stale now.
     setSkill(null);
     setSkillText(null);
@@ -331,13 +333,26 @@ export default function ContentModal(props) {
     // itself.
     if (activeTab() === 'all' || (!currentView() && !onMerged)) frameReady();
     return last;
-  });
+  };
+  const dropRebuild = pushSurfaceRebuild(surfaceRebuild);
+
+  // The preview each editable tab mounts. The surface owns the rest of the
+  // protocol — the rebuild registration, the busy release, restoring the
+  // page it borrowed, and clearing the selection and any editing session.
+  const mergedPreview = {
+    src: mergedSrc,
+    reloadSeq,
+    rebuild: surfaceRebuild,
+  };
+  const viewPreview = {
+    src: () => srcFor(currentView()),
+    reloadSeq,
+    rebuild: surfaceRebuild,
+  };
+
   onCleanup(() => {
     offLocal();
-    setSurfaceRebuild(null);
-    setSelection(null);
-    setEditingSession(null);
-    setCurrentPage(prevPage);
+    dropRebuild();
   });
 
   // ---- whole-unit visibility ----
@@ -748,8 +763,8 @@ export default function ContentModal(props) {
             <Show when={activeTab() === 'merged'}>
               <Show when={mergedView() !== false} fallback={mergedBlockList()}>
                 <EditSurface
-                  src={mergedSrc}
-                  reloadSeq={reloadSeq}
+                  preview={mergedPreview}
+                  surfaceId={SURFACE_CONTENT}
                   hideChrome
                   gutter={mergedGutter()}
                   fallback={<div class="ed-empty">Building the merged preview…</div>}
@@ -766,8 +781,8 @@ export default function ContentModal(props) {
                 }
               >
                 <EditSurface
-                  src={() => srcFor(currentView())}
-                  reloadSeq={reloadSeq}
+                  preview={viewPreview}
+                  surfaceId={SURFACE_CONTENT}
                   hideChrome
                   site={currentView().site}
                   fallback={<div class="ed-empty">Building preview…</div>}
