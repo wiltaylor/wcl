@@ -8,7 +8,7 @@ import { For, Show, createEffect, createSignal } from 'solid-js';
 import { FileText, Image as ImageIcon } from 'lucide-solid';
 import { Spinner } from '@forge/ui';
 
-import { skillPreview } from '../../state/sites';
+import { mainPreview } from '../../state/preview';
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i;
 
@@ -17,8 +17,8 @@ export default function SkillBrowser() {
   const [content, setContent] = createSignal(null);
   const [loading, setLoading] = createSignal(false);
 
-  const files = () => skillPreview()?.files ?? [];
-  const url = (path) => `${skillPreview()?.base ?? ''}${path}`;
+  const files = () => mainPreview.files();
+  const url = (path) => `${mainPreview.base() ?? ''}${path}`;
 
   // Default to SKILL.md (or the first file) whenever a build lands.
   createEffect(() => {
@@ -35,7 +35,7 @@ export default function SkillBrowser() {
   createEffect(() => {
     const path = active();
     // Re-fetch when a rebuild replaced the folder too.
-    void skillPreview();
+    void mainPreview.reloadSeq();
     setContent(null);
     if (!path || IMAGE_EXT.test(path)) return;
     setLoading(true);

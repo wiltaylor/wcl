@@ -3,7 +3,18 @@
 //! [`PreviewSession`] bookkeeping that remembers each build's inputs, and
 //! the lazy per-page rebuild that materializes stale pages when the iframe
 //! navigates to them ([`handle_preview_file`]).
+//!
+//! Two decisions used to be spread across the request handler, the build
+//! function and the client, and now each has exactly one owner:
+//!
+//! - **where a build lands** — [`PreviewTarget::slug`], called by the build
+//!   path and named verbatim in the `/api/preview/sites/<slug>/…` hrefs the
+//!   lazy fetch reads back.
+//! - **what a build renders** — [`BuildRequest::plan`] (a POST) and
+//!   [`PreviewSession::lazy_plan`] (a navigation), both answering the same
+//!   [`BuildPlan`] that [`run_preview_build`] executes.
 
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -42,6 +53,78 @@ impl Sessions {
     }
 }
 
+/// Everything that decides *which output directory* a preview build lands
+/// in: the entry document, the site selected within it, and the two render
+/// variants that must never share a directory with the plain one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PreviewTarget {
+    /// The entry as the client posted it (repo-relative) — what
+    /// distinguishes two selections in the site picker.
+    entry: String,
+    site: Option<String>,
+    /// The merged all-views render (`merged: true`): visibility bypassed,
+    /// per-block visibility stamped. Its pages must never shadow the normal
+    /// per-view output, nor be shadowed by it.
+    merged: bool,
+    /// A synthetic unit page rides in this directory. Unit previews share
+    /// ONE `__unit` directory per (entry, site): the extra page is always
+    /// named `__wcl_unit_preview`, so the dir's page set stays stable
+    /// across units and switching units is a warm targeted rebuild of that
+    /// one page instead of a cold full build per unit. (They must not share
+    /// the plain merged dir: without the unit overlay the document lacks
+    /// the synthetic page, and the page-set drift would force a full
+    /// rebuild on every alternation.)
+    unit: bool,
+}
+
+impl PreviewTarget {
+    /// The `sites/<slug>` output directory name for this target — the one
+    /// function the build path calls, and the name the served
+    /// `/api/preview/sites/<slug>/…` hrefs carry back to the lazy fetch.
+    ///
+    /// The readable prefix keeps the scratch tree browsable; the FNV-1a
+    /// suffix over the exact fields is what makes it *unique*. The prefix
+    /// alone collapses every non-alphanumeric byte, so `docs/main.wcl` and
+    /// `docs_main.wcl` would name one directory and serve each other's
+    /// pages — a failure that reads as inexplicable rather than as a bug.
+    pub(crate) fn slug(&self) -> String {
+        // NUL-separated so no field's contents can imitate a boundary, and
+        // an absent site is encoded apart from an empty one.
+        let key = format!(
+            "{}\0{}\0{}\0{}",
+            self.entry,
+            match &self.site {
+                Some(s) => format!("={s}"),
+                None => "-".to_string(),
+            },
+            self.merged,
+            self.unit,
+        );
+        let readable: String = self
+            .entry
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .collect();
+        format!(
+            "{readable}{}{}_{}",
+            if self.merged { "__merged" } else { "" },
+            if self.unit { "__unit" } else { "" },
+            fnv1a_hex(key.as_bytes()),
+        )
+    }
+}
+
+/// FNV-1a 64-bit as lowercase hex — dependency-free and stable, the same
+/// hash `wcl_wdoc`'s review handshake names its marker directories with.
+fn fnv1a_hex(bytes: &[u8]) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for &b in bytes {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{h:016x}")
+}
+
 /// What the last `/api/preview` build of one output slug rendered, and with
 /// which inputs — enough to lazily materialize a stale page on request.
 ///
@@ -51,25 +134,50 @@ impl Sessions {
 /// page is fresh iff the last build was full (`full_gen == generation`) or
 /// the page itself was rendered at the current generation. Lazy rebuilds
 /// materialize the *current* generation, so they never bump it.
+///
+/// A session existing at all is also what "the output directory is warm"
+/// means: the scratch tree is created with this process, so a slug has been
+/// built into iff its session is recorded.
 pub(crate) struct PreviewSession {
     entry_abs: PathBuf,
     site: Option<String>,
-    /// Whether this slug is the merged all-views build (`merged: true` on
-    /// the POST — visibility bypassed, per-block visibility stamped). Lazy
-    /// rebuilds must reuse it or a stale merged page would silently
-    /// re-render without the bypass.
+    /// Whether this slug is the merged all-views build. Lazy rebuilds must
+    /// reuse it or a stale merged page would silently re-render without the
+    /// visibility bypass.
     all_sites: bool,
     /// The unsaved buffers the last POST built with — lazy rebuilds reuse
     /// them so navigation stays consistent with the last Rebuild.
-    overlay: std::collections::HashMap<PathBuf, String>,
+    overlay: HashMap<PathBuf, String>,
     generation: u64,
     full_gen: u64,
-    page_gen: std::collections::HashMap<String, u64>,
+    page_gen: HashMap<String, u64>,
 }
 
 impl PreviewSession {
     fn is_fresh(&self, page: &str) -> bool {
         self.full_gen == self.generation || self.page_gen.get(page) == Some(&self.generation)
+    }
+
+    /// Cheap freshness pre-check for a served `<stem>.html`, answerable
+    /// without touching the disk. `index.html` is a copy of the start page,
+    /// so its freshness needs the manifest and it never short-circuits.
+    fn maybe_fresh(&self, stem: &str) -> bool {
+        self.full_gen == self.generation || (stem != "index" && self.is_fresh(stem))
+    }
+
+    /// What serving one page needs first: `None` when what's on disk
+    /// already reflects the current generation, else the plan that
+    /// materializes it. `page` is the manifest-resolved page name; `None`
+    /// (unknown stem, no manifest) can only be answered by a full build.
+    fn lazy_plan(&self, page: Option<&str>) -> Option<BuildPlan> {
+        match page {
+            Some(p) if self.is_fresh(p) => None,
+            Some(p) => Some(BuildPlan::Targeted {
+                pages: Some(HashSet::from([p.to_string()])),
+            }),
+            None if self.full_gen == self.generation => None,
+            None => Some(BuildPlan::Full),
+        }
     }
 
     /// Record what a build pass rendered at the current generation.
@@ -88,6 +196,50 @@ impl PreviewSession {
     }
 }
 
+/// What a preview build pass *should* render — the whole site, or only the
+/// pages a warm output directory needs refreshed. The single answer to the
+/// targeted-versus-full question; [`run_preview_build`] only executes it
+/// (and self-falls-back to a full pass when the engine reports it must).
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum BuildPlan {
+    Full,
+    /// Re-render into a warm output dir. `pages` is the explicit filter;
+    /// `None` means "whatever the changed files map onto".
+    Targeted {
+        pages: Option<HashSet<String>>,
+    },
+}
+
+/// The parts of a `/api/preview` POST the build decision depends on.
+struct BuildRequest {
+    target: PreviewTarget,
+    pages: Option<HashSet<String>>,
+    changed: Vec<PathBuf>,
+}
+
+impl BuildRequest {
+    /// The targeted-versus-full decision for this POST, as a pure function
+    /// of the request and the recorded session (`None` = nothing built into
+    /// this directory yet, so there is nothing to render *into*). The POST
+    /// half of the pair [`PreviewSession::lazy_plan`] answers for a
+    /// navigation.
+    ///
+    /// A unit preview is warm even on a cold directory: its slug only ever
+    /// serves the one synthetic page, so rendering the entry's other ~N
+    /// pages first is pure waste (a minute-plus on a big WAD in a debug
+    /// build). When that single-page render genuinely needs shared state (a
+    /// new icon), the build engine falls back to full on its own.
+    fn plan(&self, session: Option<&PreviewSession>) -> BuildPlan {
+        let warm = self.target.unit || session.is_some();
+        if !warm || (self.pages.is_none() && self.changed.is_empty()) {
+            return BuildPlan::Full;
+        }
+        BuildPlan::Targeted {
+            pages: self.pages.clone(),
+        }
+    }
+}
+
 /// What a preview build pass did — the session bookkeeping half of
 /// [`wcl_wdoc::RebuildOutcome`].
 enum PreviewBuild {
@@ -95,11 +247,11 @@ enum PreviewBuild {
     Targeted(Vec<String>),
 }
 
-/// `POST /api/preview` — full build of the selected site (`entry` +
-/// optional `site` name) with the posted unsaved buffers overlaid, into
-/// the preview scratch tree. Manual-rebuild semantics: the client only
-/// calls this from its Rebuild button, and the long-held POST is the
-/// build's progress signal. Serialized behind the preview gate and run
+/// `POST /api/preview` — build of the selected site (`entry` + optional
+/// `site` name) with the posted unsaved buffers overlaid, into the preview
+/// scratch tree. Manual-rebuild semantics: the client only calls this from
+/// its Rebuild button (or a design-mode commit), and the long-held POST is
+/// the build's progress signal. Serialized behind the preview gate and run
 /// off the async executor — a render is real work.
 pub(super) async fn handle_preview(
     State(state): State<Arc<EditorState>>,
@@ -117,9 +269,9 @@ pub(super) async fn handle_preview(
     api_result(result)
 }
 
-/// The blocking half of [`handle_preview`]: build the whole selected site
-/// into a per-(entry, site) subdirectory of the scratch tree and answer
-/// with the `/api/preview/…` href of its index page.
+/// The blocking half of [`handle_preview`]: build the selected site into
+/// its target's output directory and answer with the `/api/preview/…` href
+/// of its index page.
 fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Value, String> {
     let entry = crate::edit::str_field(v, "entry")?;
     let entry_abs = state.ws.abs(entry)?;
@@ -134,7 +286,8 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
     // block regardless of `@only` / `@except`, with per-block visibility
     // stamped on the edit-mode anchors.
     let merged = v.get("merged").and_then(serde_json::Value::as_bool) == Some(true);
-    if merged && v.get("skill").and_then(serde_json::Value::as_bool) == Some(true) {
+    let skill = v.get("skill").and_then(serde_json::Value::as_bool) == Some(true);
+    if merged && skill {
         return Err("merged has no meaning for a skill build".to_string());
     }
     // A merged build may additionally ask for a synthetic page for one unit
@@ -146,36 +299,23 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
     if unit.is_some() && !merged {
         return Err("unit previews are only available for merged builds".to_string());
     }
-
-    // A stable slug per (entry, site) so distinct selections coexist in
-    // the scratch tree and re-selecting one reuses its output. A merged
-    // build gets its own slug — its pages must never shadow the normal
-    // per-view output (and vice versa). Synthetic unit pages share ONE
-    // `__unit` slug per (entry, site): the extra page is always named
-    // `__wcl_unit_preview`, so the dir's page set stays stable across
-    // units and switching units is a warm targeted rebuild of that one
-    // page instead of a cold full build per unit. (Unit builds must not
-    // share the plain `__merged` dir: without the unit overlay the doc
-    // lacks the synthetic page, and the page-set drift would force a full
-    // rebuild on every alternation.)
     let unit_id = unit
         .map(|u| crate::edit::str_field(u, "id").map(str::to_string))
         .transpose()?;
-    let slug: String = format!(
-        "{entry}__{}{}{}",
-        site.as_deref().unwrap_or(""),
-        if merged { "__merged" } else { "" },
-        if unit_id.is_some() { "__unit" } else { "" },
-    )
-    .chars()
-    .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-    .collect();
+
+    let target = PreviewTarget {
+        entry: entry.to_string(),
+        site: site.clone(),
+        merged,
+        unit: unit_id.is_some(),
+    };
+    let slug = target.slug();
     let out = state.preview.root().join("sites").join(&slug);
 
     // A skill view builds the actual skill folder (the Markdown backend's
     // SKILL.md + references/ + assets) instead of an HTML site, and answers
     // with the file listing so the client can browse it.
-    if v.get("skill").and_then(serde_json::Value::as_bool) == Some(true) {
+    if skill {
         // A fresh dir per build: stale files from renamed pages would
         // otherwise linger in the listing. Any recorded session refers to
         // the wiped output, so it goes too.
@@ -194,51 +334,49 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
         }));
     }
 
-    // Targeted fast path: the client posts the page it's looking at (the
-    // manual Rebuild) or the pages a design-mode commit touched, plus the
-    // changed files — when the output dir is warm from a prior full build,
-    // only those pages re-render in place. [`run_preview_build`] falls back
-    // to a full build whenever that isn't safe.
-    let pages: Option<std::collections::HashSet<String>> = v
-        .get("pages")
-        .and_then(serde_json::Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|p| p.as_str().map(str::to_string))
-                .collect()
-        })
-        .filter(|s: &std::collections::HashSet<String>| !s.is_empty());
-    let changed: Vec<PathBuf> = v
-        .get("changed")
-        .and_then(serde_json::Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|p| p.as_str())
-                .filter_map(|p| state.ws.abs(p).ok())
-                .collect()
-        })
-        .unwrap_or_default();
+    // The client posts the page it wants on screen (its preview target) and
+    // the files a design-mode commit touched; whether that can be served by
+    // a targeted re-render is decided here and nowhere else.
+    let request = BuildRequest {
+        target,
+        pages: v
+            .get("pages")
+            .and_then(serde_json::Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|p| p.as_str().map(str::to_string))
+                    .collect()
+            })
+            .filter(|s: &HashSet<String>| !s.is_empty()),
+        changed: v
+            .get("changed")
+            .and_then(serde_json::Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|p| p.as_str())
+                    .filter_map(|p| state.ws.abs(p).ok())
+                    .collect()
+            })
+            .unwrap_or_default(),
+    };
+    let plan = request.plan(state.sessions.lock().get(&slug));
+
     let mut overlay = overlay;
     if let Some(u) = unit {
         let kind = crate::edit::str_field(u, "kind")?;
         let id = unit_id.as_deref().unwrap_or_default();
         append_synthetic_unit_page(&entry_abs, &mut overlay, kind, id)?;
     }
-    // Unit previews take the targeted path even on a COLD dir: the `__unit`
-    // slug only ever serves the one synthetic page, so rendering the other
-    // ~N book pages first is pure waste (a minute-plus on a big WAD in a
-    // debug build). When the single-page render genuinely needs shared
-    // state (a new icon), the build falls back to full on its own.
-    let built = run_preview_build(
-        &entry_abs,
-        &out,
-        site.as_deref(),
-        merged,
-        overlay.clone(),
-        pages,
-        &changed,
-        unit.is_some(),
-    )?;
+
+    let built = run_preview_build(BuildJob {
+        entry_abs: &entry_abs,
+        out: &out,
+        site: site.as_deref(),
+        all_sites: merged,
+        plan,
+        overlay: overlay.clone(),
+        changed: &request.changed,
+    })?;
     let mode = match &built {
         PreviewBuild::Targeted(_) => "targeted",
         PreviewBuild::Full => "full",
@@ -254,10 +392,10 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
             entry_abs: entry_abs.clone(),
             site: site.clone(),
             all_sites: merged,
-            overlay: std::collections::HashMap::new(),
+            overlay: HashMap::new(),
             generation: 0,
             full_gen: 0,
-            page_gen: std::collections::HashMap::new(),
+            page_gen: HashMap::new(),
         });
     session.entry_abs = entry_abs;
     session.site = site;
@@ -275,53 +413,51 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
     }))
 }
 
-/// One preview build pass into `out`: targeted when the dir is warm and the
-/// caller named pages (or changed files map cleanly onto pages), else a full
-/// build. Shared by the `/api/preview` POST and the lazy per-page rebuild in
-/// [`handle_preview_file`].
+/// One preview build pass — everything [`run_preview_build`] needs, so its
+/// call sites state their intent instead of a positional parameter list.
+struct BuildJob<'a> {
+    entry_abs: &'a Path,
+    out: &'a Path,
+    site: Option<&'a str>,
+    /// The merged all-views render: `@only` / `@except` visibility is
+    /// bypassed and each block's anchor carries its visibility stamps for
+    /// the client's per-view indicator gutter.
+    all_sites: bool,
+    plan: BuildPlan,
+    overlay: HashMap<PathBuf, String>,
+    /// Files a design-mode commit touched. Only consulted by a targeted
+    /// pass with no explicit page filter.
+    changed: &'a [PathBuf],
+}
+
+/// Execute one [`BuildPlan`] into `job.out`.
 ///
 /// comment_mode stamps the `data-wcl-block` / `data-wcl-page-*` anchors the
 /// preview pane's comment UI keys on; edit_mode adds the per-block
 /// `data-wcl-span` / `data-wcl-file` anchors and the `edit_object` "Edit
 /// this …" buttons the pane resolves via `/api/object/locate` — still no
-/// injected scripts. `all_sites` is the merged all-views render (the content
-/// modal's Merged tab): `@only` / `@except` visibility is bypassed and each
-/// block's anchor carries its visibility stamps for the client's per-view
-/// indicator gutter.
+/// injected scripts.
 ///
-/// An explicit `pages` filter that renders nothing (the viewed page isn't
-/// one of this entry's site pages — a chooser index, an included sub-site's
+/// An explicit page filter that renders nothing (the viewed page isn't one
+/// of this entry's site pages — a chooser index, an included sub-site's
 /// page, a renamed page) means the targeted path can't refresh it, so it
 /// falls back to a full build rather than reporting a no-op as success. The
 /// incremental engine itself also self-falls-back on structural change
 /// (page set, decks, new icons).
-///
-/// `assume_warm` skips the warm-dir gate — the unit-preview path, whose
-/// output dir never needs any page but the synthetic one.
-#[allow(clippy::too_many_arguments)]
-fn run_preview_build(
-    entry_abs: &Path,
-    out: &Path,
-    site: Option<&str>,
-    all_sites: bool,
-    overlay: std::collections::HashMap<PathBuf, String>,
-    pages: Option<std::collections::HashSet<String>>,
-    changed: &[PathBuf],
-    assume_warm: bool,
-) -> Result<PreviewBuild, String> {
+fn run_preview_build(job: BuildJob<'_>) -> Result<PreviewBuild, String> {
     let mut opts = wcl_wdoc::BuildOptions {
-        overlay: Some(overlay),
+        overlay: Some(job.overlay),
         comment_mode: true,
         edit_mode: true,
-        all_sites,
+        all_sites: job.all_sites,
         ..Default::default()
     };
-    let explicit = pages.is_some();
-    let warm = assume_warm || out.join("index.html").is_file() || index_page(out).is_some();
-    if warm && (explicit || !changed.is_empty()) {
+    if let BuildPlan::Targeted { pages } = job.plan {
+        let explicit = pages.is_some();
         opts.page_filter = pages;
-        let outcome = wcl_wdoc::build_incremental(entry_abs, out, site, &opts, changed)
-            .map_err(|e| e.render_plain())?;
+        let outcome =
+            wcl_wdoc::build_incremental(job.entry_abs, job.out, job.site, &opts, job.changed)
+                .map_err(|e| e.render_plain())?;
         // Per-render warnings would otherwise pile up for whoever drains next.
         let _ = wcl_wdoc::take_render_warnings();
         match outcome {
@@ -335,13 +471,15 @@ fn run_preview_build(
             wcl_wdoc::RebuildOutcome::Full { .. } => return Ok(PreviewBuild::Full),
         }
     }
-    wcl_wdoc::build_with_options(entry_abs, out, site, &opts).map_err(|e| e.render_plain())?;
+    wcl_wdoc::build_with_options(job.entry_abs, job.out, job.site, &opts)
+        .map_err(|e| e.render_plain())?;
     let _ = wcl_wdoc::take_render_warnings();
     Ok(PreviewBuild::Full)
 }
 
 /// The page name synthetic unit previews build under (the content modal's
-/// merged tab for units with no page of their own).
+/// merged tab for units with no page of their own, and the systems view's
+/// screen editor).
 pub(crate) const UNIT_PREVIEW_PAGE: &str = "__wcl_unit_preview";
 
 /// Append the merged preview's synthetic unit page to the entry's overlay:
@@ -353,7 +491,7 @@ pub(crate) const UNIT_PREVIEW_PAGE: &str = "__wcl_unit_preview";
 /// `body` (nothing to render — the client keeps its list fallback).
 fn append_synthetic_unit_page(
     entry_abs: &Path,
-    overlay: &mut std::collections::HashMap<PathBuf, String>,
+    overlay: &mut HashMap<PathBuf, String>,
     kind: &str,
     id: &str,
 ) -> Result<(), String> {
@@ -506,13 +644,11 @@ async fn lazy_page_rebuild(state: &Arc<EditorState>, rel: &str, file: &Path) {
     let slug = slug.to_string();
 
     // Cheap pre-check without the build gate: right after a full build
-    // (`full_gen == generation`, the common case) everything is fresh.
-    // `index.html` is a copy of the start page, so its freshness needs the
-    // manifest — resolved under the gate below.
+    // (the common case) everything is fresh.
     {
         let sessions = state.sessions.lock();
         let Some(s) = sessions.get(&slug) else { return };
-        if s.full_gen == s.generation || (stem != "index" && s.is_fresh(&stem)) {
+        if s.maybe_fresh(&stem) {
             return;
         }
     }
@@ -529,35 +665,30 @@ async fn lazy_page_rebuild(state: &Arc<EditorState>, rel: &str, file: &Path) {
         // included sub-site's page the root entry's targeted path can't
         // reach) ⇒ `None` ⇒ full rebuild.
         let page = manifest_page(&file2, &stem);
-        let (entry_abs, site, all_sites, overlay) = {
+        let (entry_abs, site, all_sites, overlay, plan) = {
             let sessions = state2.sessions.lock();
             let Some(s) = sessions.get(&slug) else { return };
-            let fresh = match &page {
-                Some(p) => s.is_fresh(p),
-                None => s.full_gen == s.generation,
-            };
-            if fresh {
+            let Some(plan) = s.lazy_plan(page.as_deref()) else {
                 return;
-            }
+            };
             (
                 s.entry_abs.clone(),
                 s.site.clone(),
                 s.all_sites,
                 s.overlay.clone(),
+                plan,
             )
         };
         let out = state2.preview.root().join("sites").join(&slug);
-        let filter = page.map(|p| std::collections::HashSet::from([p]));
-        match run_preview_build(
-            &entry_abs,
-            &out,
-            site.as_deref(),
+        match run_preview_build(BuildJob {
+            entry_abs: &entry_abs,
+            out: &out,
+            site: site.as_deref(),
             all_sites,
+            plan,
             overlay,
-            filter,
-            &[],
-            false,
-        ) {
+            changed: &[],
+        }) {
             Ok(built) => {
                 let mut sessions = state2.sessions.lock();
                 if let Some(s) = sessions.get_mut(&slug) {
@@ -856,7 +987,7 @@ mod tests {
         // synthetic page name is constant, so switching units is a warm
         // targeted rebuild instead of a cold full build per unit — and the
         // dir never collides with the plain merged output.
-        assert!(base.ends_with("__unit"), "shared unit slug: {base}");
+        assert!(base.contains("__unit"), "shared unit slug: {base}");
         let page = page_text(&state, &format!("{base}/{UNIT_PREVIEW_PAGE}.html")).await;
         assert!(page.contains("ALPHA_BODY_TEXT"), "body projected: {page}");
         // The projected blocks anchor to the REAL declaring file, so every
@@ -991,5 +1122,165 @@ mod tests {
         )
         .unwrap_err();
         assert!(e.contains("outside"), "{e}");
+    }
+
+    fn target(entry: &str, site: Option<&str>) -> PreviewTarget {
+        PreviewTarget {
+            entry: entry.to_string(),
+            site: site.map(str::to_string),
+            merged: false,
+            unit: false,
+        }
+    }
+
+    fn session(generation: u64, full_gen: u64, pages: &[(&str, u64)]) -> PreviewSession {
+        PreviewSession {
+            entry_abs: PathBuf::from("/tmp/main.wcl"),
+            site: None,
+            all_sites: false,
+            overlay: HashMap::new(),
+            generation,
+            full_gen,
+            page_gen: pages.iter().map(|(p, g)| ((*p).to_string(), *g)).collect(),
+        }
+    }
+
+    fn request(t: PreviewTarget, pages: &[&str], changed: &[&str]) -> BuildRequest {
+        BuildRequest {
+            target: t,
+            pages: (!pages.is_empty()).then(|| pages.iter().map(|p| (*p).to_string()).collect()),
+            changed: changed.iter().map(PathBuf::from).collect(),
+        }
+    }
+
+    fn targeted_pages(plan: &BuildPlan) -> Option<Vec<String>> {
+        match plan {
+            BuildPlan::Full => None,
+            BuildPlan::Targeted { pages } => Some({
+                let mut v: Vec<String> = pages.clone().unwrap_or_default().into_iter().collect();
+                v.sort();
+                v
+            }),
+        }
+    }
+
+    #[test]
+    fn slug_is_stable_for_the_same_target() {
+        assert_eq!(
+            target("docs/main.wcl", Some("book")).slug(),
+            target("docs/main.wcl", Some("book")).slug()
+        );
+    }
+
+    #[test]
+    fn slug_separates_entries_that_sanitize_alike() {
+        let a = target("docs/main.wcl", Some("book"));
+        let b = target("docs_main.wcl", Some("book"));
+        assert_ne!(a.slug(), b.slug());
+        // …and a site name can't imitate the entry/site boundary either.
+        assert_ne!(
+            target("docs", Some("a_b")).slug(),
+            target("docs", Some("a/b")).slug(),
+        );
+        assert_ne!(target("docs", None).slug(), target("docs", Some("")).slug());
+    }
+
+    #[test]
+    fn slug_separates_the_render_variants() {
+        let plain = target("docs/main.wcl", Some("book"));
+        let merged = PreviewTarget {
+            merged: true,
+            ..plain.clone()
+        };
+        let unit = PreviewTarget {
+            unit: true,
+            ..merged.clone()
+        };
+        let slugs = [plain.slug(), merged.slug(), unit.slug()];
+        assert_eq!(
+            slugs.iter().collect::<std::collections::HashSet<_>>().len(),
+            3
+        );
+        // The readable prefix still says which is which.
+        assert!(slugs[1].contains("__merged"), "{}", slugs[1]);
+        assert!(slugs[2].contains("__merged__unit"), "{}", slugs[2]);
+    }
+
+    #[test]
+    fn slug_is_a_safe_directory_name() {
+        let s = target("a/b/../c.wcl", Some("x y")).slug();
+        assert!(
+            s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
+            "{s}"
+        );
+    }
+
+    #[test]
+    fn plan_build_table() {
+        let t = target("docs/main.wcl", Some("book"));
+        let warm = session(1, 1, &[]);
+
+        // Cold output dir: nothing to render into, whatever the hints say.
+        assert_eq!(
+            request(t.clone(), &["alpha"], &[]).plan(None),
+            BuildPlan::Full
+        );
+        assert_eq!(
+            request(t.clone(), &[], &["a.wcl"]).plan(None),
+            BuildPlan::Full
+        );
+
+        // Warm with no hint at all: the whole site.
+        assert_eq!(
+            request(t.clone(), &[], &[]).plan(Some(&warm)),
+            BuildPlan::Full
+        );
+
+        // Warm with an explicit page: just that page.
+        let plan = request(t.clone(), &["alpha"], &[]).plan(Some(&warm));
+        assert_eq!(
+            targeted_pages(&plan).as_deref(),
+            Some(&["alpha".to_string()][..])
+        );
+
+        // Warm with only changed files: targeted, filter left to the engine.
+        let plan = request(t.clone(), &[], &["a.wcl"]).plan(Some(&warm));
+        assert_eq!(targeted_pages(&plan), Some(vec![]));
+
+        // A unit preview is warm on a cold dir — its slug only ever serves
+        // the one synthetic page.
+        let unit = PreviewTarget {
+            merged: true,
+            unit: true,
+            ..t
+        };
+        let plan = request(unit, &[UNIT_PREVIEW_PAGE], &[]).plan(None);
+        assert_eq!(
+            targeted_pages(&plan).as_deref(),
+            Some(&[UNIT_PREVIEW_PAGE.to_string()][..]),
+        );
+    }
+
+    #[test]
+    fn lazy_plan_table() {
+        // Right after a full build everything is fresh.
+        let full = session(3, 3, &[]);
+        assert_eq!(full.lazy_plan(Some("alpha")), None);
+        assert_eq!(full.lazy_plan(None), None);
+        assert!(full.maybe_fresh("index"));
+
+        // After a targeted rebuild only the rendered page is.
+        let targeted = session(4, 3, &[("alpha", 4)]);
+        assert_eq!(targeted.lazy_plan(Some("alpha")), None);
+        assert!(targeted.maybe_fresh("alpha"));
+        assert_eq!(
+            targeted_pages(&targeted.lazy_plan(Some("beta")).unwrap()).as_deref(),
+            Some(&["beta".to_string()][..]),
+        );
+        // An unresolvable stem can only be answered by a full build.
+        assert_eq!(targeted.lazy_plan(None), Some(BuildPlan::Full));
+        // index.html is a copy of the start page: its freshness needs the
+        // manifest, so the cheap pre-check never claims it.
+        assert!(!targeted.maybe_fresh("index"));
     }
 }

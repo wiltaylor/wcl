@@ -17,19 +17,13 @@
    and unmount, so a new host cannot forget it.
 
    Props:
-   - preview      — the preview to mount (from the host's preview module):
-                    { src(), reloadSeq(), rebuild?({ changed }) }. `src()`
-                    is the iframe URL (null = fallback slot); bumping
-                    `reloadSeq()` with an unchanged src reloads in place
-                    (scroll survives); `rebuild` — when the preview knows
-                    how to rebuild itself — is what the commit tail runs
-                    while this surface is mounted, in place of the main
-                    site build.
-   - surfaceId    — which surface this is (state/design.js's SURFACE_*).
-                    Genuine host knowledge: the same component is the
-                    canvas, the content modal's pane and the screen editor
-                    depending on where it is mounted, and the staleness
-                    rules key on which.
+   - preview      — the preview to mount (state/preview.js): `src()` is the
+                    iframe URL (null = fallback slot), bumping `reloadSeq()`
+                    with an unchanged src reloads in place (scroll survives),
+                    `build({ changed })` is what the commit tail runs while
+                    this surface is mounted, and `id` is the identity the
+                    commit bus keys staleness on — so a surface is named by
+                    the preview it shows rather than by a constant.
    - ref          — callback receiving the mount-scoped surface handle
                     ({ goto, doc, redecorate, merged, currentSite }),
                     and `null` on unmount. The handle goes inert when
@@ -80,22 +74,20 @@ import {
   commitOps,
   commitOpsLocal,
   commitUnitField,
-  currentPage,
   editingSession,
   frameReady,
   loadPalette,
   palette,
   pendingReveal,
   pushSurfaceRebuild,
-  rebuildCurrentPage,
   selection,
-  setCurrentPage,
   setEditingSession,
   setPendingReveal,
   setPopover,
   setSelection,
   showRefusal,
 } from '../../state/design';
+import { currentPage, setCurrentPage } from '../../state/preview';
 import {
   adjacentSameFileSibling,
   anchorEls,
@@ -218,13 +210,20 @@ export default function EditSurface(props) {
   // running) releases the gate here rather than leaving the surface
   // disabled; the reloading paths release from the frame's load.
   onCleanup(
-    pushSurfaceRebuild(async ({ changed }) => {
-      const href0 = src();
-      const seq0 = reloadSeq();
-      const res = await (props.preview?.rebuild ?? rebuildCurrentPage)({ changed });
-      const reloading = !!src() && (src() !== href0 || reloadSeq() !== seq0);
-      if (res?.ok && !reloading) frameReady();
-      return res;
+    pushSurfaceRebuild({
+      // Read at commit time, not at mount: one surface can be handed a
+      // different preview while it stays mounted (the content modal's tabs).
+      get id() {
+        return props.preview?.id ?? null;
+      },
+      run: async ({ changed }) => {
+        const href0 = src();
+        const seq0 = reloadSeq();
+        const res = (await props.preview?.build({ changed })) ?? { ok: false };
+        const reloading = !!src() && (src() !== href0 || reloadSeq() !== seq0);
+        if (res?.ok && !reloading) frameReady();
+        return res;
+      },
     }),
   );
 
@@ -594,7 +593,7 @@ export default function EditSurface(props) {
     };
     return commitOpsLocal(anchor.file, ops, {
       etag,
-      surface: props.surfaceId,
+      surface: props.preview?.id ?? null,
       onApplied,
     });
   };
@@ -625,7 +624,7 @@ export default function EditSurface(props) {
     const revert = moveDomBlock(el, ref);
     decorate();
     commitOpsLocal(file, ops, {
-      surface: props.surfaceId,
+      surface: props.preview?.id ?? null,
       onApplied(res) {
         patchAnchors(d, file, res.span_map ?? []);
         notePage(d);
@@ -791,7 +790,7 @@ export default function EditSurface(props) {
     const revert = dir === 'up' ? moveDomBlock(a.el, sib) : moveDomBlock(sib, a.el);
     decorate();
     commitOpsLocal(a.file, ops, {
-      surface: props.surfaceId,
+      surface: props.preview?.id ?? null,
       onApplied(res) {
         patchAnchors(d, a.file, res.span_map ?? []);
         setSelection({ ...a, span: mappedSpan(res.span_map ?? [], a.span) ?? a.span });

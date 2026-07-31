@@ -25,6 +25,7 @@
    "not in any … index" badge when no index visible in that view pins it. */
 
 import { For, Show, createEffect, createMemo, createResource, createSignal, onCleanup } from 'solid-js';
+
 import {
   Badge,
   Button,
@@ -39,24 +40,20 @@ import { CodeEditor } from '@forge/code';
 import { FileCode2, Minus, Trash2 } from 'lucide-solid';
 
 import { api } from '../../api';
-import { dirtyFiles } from '../../state/buffers';
 import { selected } from '../../state/sites';
 import {
   busy,
   commitNavOpQuiet,
   commitOps,
   commitOpsLocal,
-  onLocalCommit,
   frameReady,
   pushSurfaceRebuild,
-  setCanvasStale,
   setPopover,
-  SURFACE_CONTENT,
 } from '../../state/design';
+import { createPreview, currentPage, setCurrentPage } from '../../state/preview';
 import { graphData, indexLevelsForSite, pinCounts, reloadGraph } from '../../state/graph';
 import { wclLanguage } from '../../lang/wcl';
 import { injectBareCss } from '../../preview/frame';
-import { builtPageExists } from '../../preview/manifest';
 import EditSurface from './EditSurface';
 import { viewLabel } from './DesignCanvas';
 import FlowPanel from './FlowPanel';
@@ -70,9 +67,6 @@ export default function ContentModal(props) {
   const skillView = () => views().find((v) => v.skill) ?? null;
 
   const [tab, setTab] = createSignal(null);
-  const activeTab = () =>
-    tab() ?? (previewViews().length ? 'merged' : skillView() ? 'skill' : null);
-  const currentView = () => previewViews().find((v) => v.id === activeTab()) ?? null;
 
   const slug = () => {
     const n = node();
@@ -81,95 +75,56 @@ export default function ContentModal(props) {
     return `${prefix}_${n.id}`;
   };
 
-  // ---- per-view builds (targeted at the unit's page) ----
-  const [hrefs, setHrefs] = createSignal({});
-  const [reloadSeq, setReloadSeq] = createSignal(0);
-  const [buildingPreview, setBuildingPreview] = createSignal(false);
+  // ---- one preview per tab ----
+  // The view list is fixed for as long as the modal is open, so each tab
+  // gets its own preview: its own cache, its own in-flight guard, and its
+  // own identity on the commit bus — a commit that refreshed the tab on
+  // screen leaves that one alone and marks the rest stale, so a tab is
+  // never a snapshot from before the last edit.
+  //
+  // `viewList` is that snapshot, and it is what the TABS are built from too:
+  // a view appearing while the modal is open (a profile enabled from the
+  // graph toolbar) would otherwise offer a tab with no preview behind it.
+  // Re-opening the modal picks the new view up.
+  const viewList = previewViews();
+  const viewPreviews = new Map(
+    viewList.map((v) => [
+      v.id,
+      createPreview(() => ({ entry: v.entry, site: v.site, page: slug() }), {
+        active: () => activeTab() === v.id || activeTab() === 'all',
+      }),
+    ]),
+  );
+  const previewFor = (view) => (view ? (viewPreviews.get(view.id) ?? null) : null);
 
-  const doBuildView = async (view, changed) => {
-    setBuildingPreview(true);
-    const res = await api.preview(view.entry, view.site, dirtyFiles(), {
-      pages: [slug()],
-      changed,
-    });
-    setBuildingPreview(false);
-    if (!res.ok) {
-      toast(res.error, { tone: 'danger', duration: 6000 });
-      return res;
-    }
-    // Without a manifest entry the tab shows an explicit "no page in this
-    // view" state instead of the view's index.
-    const hasPage = await builtPageExists(res.href, slug());
-    setHrefs((h) => ({ ...h, [view.id]: { href: res.href, hasPage } }));
-    setReloadSeq((s) => s + 1);
-    return res;
-  };
-  // The tab-activation effect and the initial page-bearing-tab probe both
-  // build on mount — share one in-flight promise per view.
-  const inFlight = new Map();
-  const buildView = (view, changed = []) => {
-    const existing = inFlight.get(view.id);
-    if (existing) return existing;
-    const p = doBuildView(view, changed).finally(() => inFlight.delete(view.id));
-    inFlight.set(view.id, p);
-    return p;
-  };
+  const activeTab = () => tab() ?? (viewList.length ? 'merged' : skillView() ? 'skill' : null);
+  const currentView = () => viewList.find((v) => v.id === activeTab()) ?? null;
 
-  const hasPageIn = (view) => hrefs()[view?.id]?.hasPage === true;
-  const noPageIn = (view) => hrefs()[view?.id]?.hasPage === false;
+  // Without a manifest entry the tab shows an explicit "no page in this
+  // view" state instead of the view's index.
+  const hasPageIn = (view) => previewFor(view)?.hasPage() === true;
+  const noPageIn = (view) => previewFor(view)?.hasPage() === false;
+  const srcFor = (view) => previewFor(view)?.src() ?? null;
 
-  const srcFor = (view) => {
-    const entry = view && hrefs()[view.id];
-    if (!entry || !entry.hasPage) return null;
-    return `${entry.href.slice(0, entry.href.lastIndexOf('/') + 1)}${slug()}.html`;
-  };
-
-  // ---- the merged all-views build (the Merged tab) ----
+  // ---- the merged all-views preview (the Merged tab) ----
   // The merged page renders under one view's template with every block
   // visible; `mergedView` is that view (the first whose site builds the
-  // unit's page), `mergedHref` the built page (null = stale/unbuilt).
-  // Units with no page in ANY view get a server-side synthetic page
-  // (`unit: {kind, id}` — the unit's body projected standalone, anchors
-  // pointing at the real source) so they render and edit like the rest.
+  // unit's page). Units with no page in ANY view get a server-side
+  // synthetic page (`unit: {kind, id}` — the unit's body projected
+  // standalone, anchors pointing at the real source) so they render and
+  // edit like the rest. The probe below drives the target, so this preview
+  // owns a settable one rather than deriving it.
   const UNIT_PAGE = '__wcl_unit_preview';
   const [mergedView, setMergedView] = createSignal(null); // view | false (nothing renderable)
-  const [mergedHref, setMergedHref] = createSignal(null); // { href, hasPage } | null
-  const [mergedSynthetic, setMergedSynthetic] = createSignal(false);
-  const mergedPage = () => (mergedSynthetic() ? UNIT_PAGE : slug());
+  const merged = createPreview(null, { active: () => activeTab() === 'merged' });
 
-  const doBuildMerged = async (view, changed, { synthetic, quiet } = {}) => {
-    const useSynthetic = synthetic ?? mergedSynthetic();
-    const page = useSynthetic ? UNIT_PAGE : slug();
-    setBuildingPreview(true);
-    const res = await api.preview(view.entry, view.site, dirtyFiles(), {
-      pages: [page],
-      changed,
-      merged: true,
-      ...(useSynthetic ? { unit: { kind: node()?.kind, id: node()?.id } } : {}),
-    });
-    setBuildingPreview(false);
-    if (!res.ok) {
-      if (!quiet) toast(res.error, { tone: 'danger', duration: 6000 });
-      return res;
-    }
-    const hasPage = await builtPageExists(res.href, page);
-    setMergedHref({ href: res.href, hasPage });
-    setReloadSeq((s) => s + 1);
-    return res;
-  };
-  const buildMerged = (view, changed = [], opts = {}) => {
-    const existing = inFlight.get('merged');
-    if (existing) return existing;
-    const p = doBuildMerged(view, changed, opts).finally(() => inFlight.delete('merged'));
-    inFlight.set('merged', p);
-    return p;
-  };
-
-  const mergedSrc = () => {
-    const entry = mergedHref();
-    if (!entry || !entry.hasPage) return null;
-    return `${entry.href.slice(0, entry.href.lastIndexOf('/') + 1)}${mergedPage()}.html`;
-  };
+  const mergedTarget = (view, synthetic) => ({
+    entry: view.entry,
+    site: view.site,
+    page: synthetic ? UNIT_PAGE : slug(),
+    merged: true,
+    ...(synthetic ? { unit: { kind: node()?.kind, id: node()?.id } } : {}),
+  });
 
   // Land the Merged tab on a view that actually shows this unit: probe the
   // views in tab order with merged builds until one's manifest carries the
@@ -177,25 +132,26 @@ export default function ContentModal(props) {
   // book's). No page anywhere → the synthetic standalone body preview;
   // units with nothing to render (no body) keep the block-list fallback.
   (async () => {
-    for (const v of previewViews()) {
-      const res = await buildMerged(v, [], { synthetic: false });
-      if (!res?.ok) return; // build failed — the toast already said so
-      if (mergedHref()?.hasPage) {
+    for (const v of viewList) {
+      merged.setTarget(mergedTarget(v, false));
+      const res = await merged.build();
+      if (!res.ok) return; // the tab shows the error
+      if (merged.hasPage()) {
         setMergedView(v);
         return;
       }
     }
-    const v0 = previewViews()[0];
+    const v0 = viewList[0];
     if (v0 && node()?.type === 'unit') {
-      const res = await buildMerged(v0, [], { synthetic: true, quiet: true });
-      if (res?.ok && mergedHref()?.hasPage) {
-        setMergedSynthetic(true);
+      merged.setTarget(mergedTarget(v0, true));
+      const res = await merged.build();
+      if (res.ok && merged.hasPage()) {
         setMergedView(v0);
         return;
       }
     }
+    merged.setTarget(null);
     setMergedView(false);
-    setMergedHref(null);
   })();
 
   // Per-view index membership (shared pinCounts semantics with the graph's
@@ -214,146 +170,77 @@ export default function ContentModal(props) {
     </Show>
   );
 
-  // In-place commits (reorder / visibility) don't rebuild anything — the
-  // ACTIVE surface was patched directly. Its cached build is stale on disk
-  // though, so the next reactivation must rebuild. Plain non-reactive
-  // state on purpose: dropping the active href reactively would rebuild
-  // (and reload) the very iframe the commit just patched.
-  const staleViews = new Set();
-  let mergedStale = false;
-
-  // Build the shown view on activation (and every not-yet-built view when
-  // the All tab opens; the merged build when returning to a stale Merged
-  // tab after a commit elsewhere dropped it).
-  createEffect(() => {
-    const t = activeTab();
-    if (t === 'all') {
-      (async () => {
-        for (const v of previewViews()) {
-          if (!hrefs()[v.id] || staleViews.delete(v.id)) await buildView(v);
-        }
-      })();
-      return;
-    }
-    if (t === 'merged') {
-      const mv = mergedView();
-      if (mv && (!mergedHref() || mergedStale)) {
-        mergedStale = false;
-        buildMerged(mv);
-      }
-      return;
-    }
-    const v = currentView();
-    if (v && (!hrefs()[v.id] || staleViews.delete(v.id))) buildView(v);
-  });
-
   // ---- the skill projection's Markdown for this unit ----
-  const [skill, setSkill] = createSignal(null); // { base, files } | null
+  // The skill view builds a folder, not a site — same preview machinery,
+  // mounted as a file listing instead of an iframe.
+  const skillPreview = createPreview(
+    () => {
+      const sv = skillView();
+      return sv ? { entry: sv.entry, site: sv.site, skill: true } : null;
+    },
+    { active: () => activeTab() === 'skill' || activeTab() === 'all' },
+  );
   const [skillText, setSkillText] = createSignal(null);
   createEffect(() => {
-    const t = activeTab();
-    const sv = skillView();
-    if ((t !== 'skill' && t !== 'all') || !sv || skill()) return;
-    (async () => {
-      setBuildingPreview(true);
-      const res = await api.preview(sv.entry, sv.site, dirtyFiles(), { skill: true });
-      setBuildingPreview(false);
-      if (!res.ok) {
-        toast(res.error, { tone: 'danger', duration: 6000 });
-        return;
-      }
-      setSkill({ base: res.base, files: res.files ?? [] });
-    })();
-  });
-  createEffect(() => {
-    const s = skill();
+    void skillPreview.reloadSeq();
+    const list = skillPreview.files();
     setSkillText(null);
-    if (!s) return;
+    if (!list.length) return;
     const want = `${slug()}.md`;
     const file =
-      s.files.find((f) => f === `references/${want}`) ??
-      s.files.find((f) => f.endsWith(`/${want}`) || f === want);
+      list.find((f) => f === `references/${want}`) ??
+      list.find((f) => f.endsWith(`/${want}`) || f === want);
     if (!file) {
       setSkillText(false); // not part of the skill
       return;
     }
-    fetch(`${s.base}${file}`)
+    fetch(`${skillPreview.base()}${file}`)
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(r.statusText))))
       .then(setSkillText)
       .catch((e) => setSkillText(`(failed to load: ${e})`));
   });
 
-  // ---- react to in-place commits (no rebuild ran; caches went stale) ----
-  const offLocal = onLocalCommit(() => {
-    setSkill(null);
-    setSkillText(null);
-    // Drop every INACTIVE cached build; mark the active one stale for its
-    // next reactivation (it was patched in place — don't reload it now).
-    const activeId = currentView()?.id;
-    setHrefs((h) => (activeId && h[activeId] ? { [activeId]: h[activeId] } : {}));
-    if (activeId) staleViews.add(activeId);
-    if (activeTab() === 'merged' && mergedView()) mergedStale = true;
-    else setMergedHref(null);
-  });
+  /** The previews a commit made here must refresh: the tab on screen, or
+      every view tab on the All tab. */
+  const liveTabPreviews = () => {
+    if (activeTab() === 'all') return viewList.map((v) => viewPreviews.get(v.id));
+    if (activeTab() === 'merged') return mergedView() ? [merged] : [];
+    return previewFor(currentView()) ? [previewFor(currentView())] : [];
+  };
+  const buildingPreview = () =>
+    merged.building() || skillPreview.building() || liveTabPreviews().some((p) => p.building());
+  /** A build that failed over an ALREADY-MOUNTED tab: the surface keeps the
+      last good page (a failed build leaves `src` alone), so its own error
+      state never renders and nothing else here would say so. */
+  const failedPreview = () => liveTabPreviews().find((p) => p.error() && p.src()) ?? null;
 
   // ---- route the commit loop here while the modal is open ----
   // Modal-scoped, not surface-scoped: the Code / All / Skill tabs commit
-  // too, and no editable surface is mounted on them. The mounted surface
-  // registers this same handler for its own lifetime (its `preview`), which
-  // additionally releases the busy gate when a rebuild leaves nothing to
-  // reload; here that release is explicit below.
-  const surfaceRebuild = async ({ changed }) => {
-    // Everything derived from the last build is stale now.
-    setSkill(null);
-    setSkillText(null);
-    const onMerged = activeTab() === 'merged' && mergedView();
-    const targets =
-      activeTab() === 'all' ? previewViews() : currentView() ? [currentView()] : [];
-    // Keep only what's about to rebuild — a later tab switch rebuilds fresh.
-    setHrefs((h) => {
-      const keep = {};
-      for (const v of targets) if (h[v.id]) keep[v.id] = h[v.id];
-      return keep;
-    });
-    if (!onMerged && mergedHref()) setMergedHref(null);
-    let last = { ok: true };
-    if (onMerged) {
-      last = await buildMerged(mergedView(), changed);
-    } else {
-      for (const v of targets) {
-        last = await buildView(v, changed);
+  // too, and no editable surface is mounted on them. A mounted surface
+  // pushes its own on top of this one (the stack in state/design.js), so
+  // while a tab shows an EditSurface the commit tail goes through that.
+  const dropRebuild = pushSurfaceRebuild({
+    // Read at commit time: which tab is on screen decides what stays fresh.
+    get id() {
+      return liveTabPreviews().map((p) => p.id);
+    },
+    run: async ({ changed }) => {
+      const targets = liveTabPreviews();
+      let last = { ok: true };
+      for (const p of targets) {
+        last = await p.build({ changed });
         if (!last.ok) break;
       }
-    }
-    if (last.ok) {
-      reloadGraph({ keepPositions: true });
-      setCanvasStale(true);
-    }
-    // Only a view/merged tab's EditSurface reload releases the busy gate
-    // itself.
-    if (activeTab() === 'all' || (!currentView() && !onMerged)) frameReady();
-    return last;
-  };
-  const dropRebuild = pushSurfaceRebuild(surfaceRebuild);
-
-  // The preview each editable tab mounts. The surface owns the rest of the
-  // protocol — the rebuild registration, the busy release, restoring the
-  // page it borrowed, and clearing the selection and any editing session.
-  const mergedPreview = {
-    src: mergedSrc,
-    reloadSeq,
-    rebuild: surfaceRebuild,
-  };
-  const viewPreview = {
-    src: () => srcFor(currentView()),
-    reloadSeq,
-    rebuild: surfaceRebuild,
-  };
-
-  onCleanup(() => {
-    offLocal();
-    dropRebuild();
+      if (last.ok) reloadGraph({ keepPositions: true });
+      // Only a view/merged tab's EditSurface reload releases the busy gate
+      // itself.
+      if (activeTab() === 'all' || targets.length === 0) frameReady();
+      return last;
+    },
   });
+  // Selection, session and the borrowed page are the mounted surface's own
+  // to restore (EditSurface's mount scope).
+  onCleanup(dropRebuild);
 
   // ---- whole-unit visibility ----
   // Two mechanisms govern a top-level unit: the wskill `audience` field
@@ -417,6 +304,33 @@ export default function ContentModal(props) {
     merged: true,
     currentSite: mergedView() ? mergedView().site : undefined,
   });
+
+  /** One tab's editing surface. `preview` is an ACCESSOR: a non-keyed `Show`
+      builds its children once, so switching between two view tabs has to
+      reach the new preview through the props, not through a captured one.
+      A build that failed with nothing yet mounted shows the error and a
+      Retry here (this modal has no Rebuild button, so an error with nothing
+      to press is an indefinite "Building preview…"); one that failed OVER a
+      mounted page keeps that page, and the head bar's `failedPreview` strip
+      is what reports it. */
+  const previewSurface = (preview, { building, gutter, site } = {}) => (
+    <EditSurface
+      preview={preview()}
+      hideChrome
+      gutter={gutter?.()}
+      site={site?.()}
+      fallback={
+        <div class="ed-empty">
+          <Show when={preview()?.error()} fallback={building ?? 'Building preview…'}>
+            <p>The preview failed to build: {preview().error()}</p>
+            <Button size="sm" onClick={() => preview().build()}>
+              Retry
+            </Button>
+          </Show>
+        </div>
+      }
+    />
+  );
 
   // Not every unit has a body to render standalone (some kinds keep their
   // content in fields) — the merged tab then falls back to the graph
@@ -564,8 +478,8 @@ export default function ContentModal(props) {
     );
 
   const tabOptions = () => [
-    ...(previewViews().length ? [{ value: 'merged', label: 'Merged' }] : []),
-    ...previewViews().map((v) => ({ value: v.id, label: viewLabel(v.kind) })),
+    ...(viewList.length ? [{ value: 'merged', label: 'Merged' }] : []),
+    ...viewList.map((v) => ({ value: v.id, label: viewLabel(v.kind) })),
     ...(skillView() ? [{ value: 'skill', label: 'Skill' }] : []),
     { value: 'code', label: 'Code' },
     { value: 'all', label: 'All' },
@@ -759,16 +673,19 @@ export default function ContentModal(props) {
               <Show when={buildingPreview() || busy()}>
                 <Spinner size={12} label="Building preview" />
               </Show>
+              <Show when={failedPreview()}>
+                <span class="err">Build failed: {failedPreview().error()}</span>
+                <Button size="sm" onClick={() => failedPreview().build()}>
+                  Retry
+                </Button>
+              </Show>
             </div>
             <Show when={activeTab() === 'merged'}>
               <Show when={mergedView() !== false} fallback={mergedBlockList()}>
-                <EditSurface
-                  preview={mergedPreview}
-                  surfaceId={SURFACE_CONTENT}
-                  hideChrome
-                  gutter={mergedGutter()}
-                  fallback={<div class="ed-empty">Building the merged preview…</div>}
-                />
+                {previewSurface(() => merged, {
+                  building: 'Building the merged preview…',
+                  gutter: mergedGutter,
+                })}
               </Show>
             </Show>
             <Show when={currentView()}>
@@ -780,20 +697,16 @@ export default function ContentModal(props) {
                   </div>
                 }
               >
-                <EditSurface
-                  preview={viewPreview}
-                  surfaceId={SURFACE_CONTENT}
-                  hideChrome
-                  site={currentView().site}
-                  fallback={<div class="ed-empty">Building preview…</div>}
-                />
+                {previewSurface(() => previewFor(currentView()), {
+                  site: () => currentView().site,
+                })}
               </Show>
             </Show>
             <Show when={activeTab() === 'skill'}>{skillPane()}</Show>
             <Show when={activeTab() === 'code'}>{codePane()}</Show>
             <Show when={activeTab() === 'all'}>
               <div class="ed-content-all">
-                <For each={previewViews()}>
+                <For each={viewList}>
                   {(v) => (
                     <div class="ed-content-all-col">
                       <div class="ed-content-all-head">

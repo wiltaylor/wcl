@@ -12,7 +12,11 @@
    `accepts_children` (schema-derived) decides append-inside vs
    insert-after.
 
-   The preview it hands the surface knows how to rebuild itself, so while
+   The build is the host's preview (NodeDetailModal creates one for the
+   modal's lifetime): this editor only declares the target — the unit whose
+   body it shows — so re-opening a screen built earlier in the same modal
+   mounts it with no build at all, and opening a different one does not
+   discard it. The preview it hands the surface rebuilds itself, so while
    the surface is mounted it owns the commit loop: a WYSIWYG commit rebuilds
    just the synthetic page, then refreshes the systems model and tells the
    host to re-anchor (every span in the file moved).
@@ -31,14 +35,12 @@ import { markDropTarget, resolveWidgetDrop } from '../../../preview/widgetdnd';
 import { anchorOf, diagramIn, isManualLayout, shapeEls } from '../../../preview/anchors';
 import WidgetTree from './WidgetTree';
 import { startPointerDrag } from './pointerDrag';
-import { dirtyFiles } from '../../../state/buffers';
 import {
   busy,
   commitOps,
   palette,
   selection,
   showRefusal,
-  SURFACE_SCREEN,
 } from '../../../state/design';
 import { activeEntry, activeSite } from '../../../state/sites';
 import { loadSystems, model } from '../../../state/systems';
@@ -73,13 +75,6 @@ const wrapBody = (inner) =>
     .map((l) => `  ${l}`)
     .join('\n')}\n}`;
 
-/** The last successful synthetic build per (entry, site). Unit previews
-    share ONE server-side `__unit` slug, so the first screen pays the full
-    book build once and every other screen is a warm single-page rebuild;
-    this cache goes one further — re-opening the SAME screen reuses the
-    built page with no build at all (a stale page refreshes lazily on GET). */
-const builtCache = new Map(); // `${entry}|${site}` → { href, unitId }
-
 /** The palette's curated order; unlisted wf_* kinds land under "More". */
 const WIDGET_GROUPS = [
   { title: 'Frames', kinds: ['wf_browser', 'wf_window', 'wf_phone', 'wf_tablet'] },
@@ -95,13 +90,9 @@ export default function ScreenEditor(props) {
     onAfterCommit: props.onCommitted,
   });
   const d = detail;
-  const [href, setHref] = createSignal(null);
-  const [reloadSeq, setReloadSeq] = createSignal(0);
-  const [building, setBuilding] = createSignal(false);
-  const [buildError, setBuildError] = createSignal(null);
+  const preview = props.preview;
   /** Bumped when the frame (re)loads — the structure tree rebuilds on it. */
   const [treeSeq, setTreeSeq] = createSignal(0);
-  let inFlight = null;
   /** The mounted surface's handle (null while unmounted). */
   const [surface, setSurface] = createSignal(null);
   const surfaceDoc = () => surface()?.doc() ?? null;
@@ -114,68 +105,43 @@ export default function ScreenEditor(props) {
   const previewEntry = () => model()?.model_entry ?? activeEntry();
   const previewSite = () => (model()?.model_entry ? null : activeSite());
 
-  const doBuild = async (changed) => {
-    const dd = d();
-    const entry = previewEntry();
-    if (!dd?.body || !entry) return { ok: false, error: 'no body to render' };
-    setBuilding(true);
-    setBuildError(null);
-    const res = await api.preview(entry, previewSite(), dirtyFiles(), {
-      pages: [UNIT_PAGE],
-      merged: true,
-      changed,
-      unit: { kind: dd.kind, id: dd.id },
-    });
-    setBuilding(false);
-    if (!res.ok) {
-      // Sticky, with a Retry — a toast alone leaves "Rendering…" forever.
-      setBuildError(res.error ?? 'the preview build failed');
-      toast(res.error, { tone: 'danger', duration: 6000 });
-      return res;
-    }
-    const page = `${res.href.slice(0, res.href.lastIndexOf('/') + 1)}${UNIT_PAGE}.html`;
-    builtCache.set(`${entry}|${previewSite() ?? ''}`, { href: page, unitId: dd.id });
-    setHref(page);
-    setReloadSeq((s) => s + 1);
-    return res;
-  };
-  const build = (changed = []) => {
-    if (inFlight) return inFlight;
-    inFlight = doBuild(changed).finally(() => {
-      inFlight = null;
-    });
-    return inFlight;
-  };
-
   const bodyKinds = () => d()?.body?.block_kinds ?? [];
   /** An EMPTY body (a bare `body` from the dock's + child button) is the
       same as none: nothing to render, seed content into it instead. */
   const hasContent = () => bodyKinds().length > 0;
 
-  // First render once the detail lands with body CONTENT (and again after
-  // a seed commit fills it). Re-opening the screen last built reuses the
-  // page on disk without any build.
+  // Declare what to show once the detail lands with body CONTENT (and
+  // again after a seed commit fills it); the preview builds it, or mounts
+  // the build it already has for this screen.
   createEffect(() => {
     const dd = d();
-    if (!dd?.body || !hasContent() || href()) return;
-    const hit = builtCache.get(`${previewEntry()}|${previewSite() ?? ''}`);
-    if (hit && hit.unitId === dd.id) {
-      setHref(hit.href);
-      setReloadSeq((s) => s + 1);
-    } else {
-      build();
+    const entry = previewEntry();
+    if (!dd?.body || !hasContent() || !entry) {
+      preview.setTarget(null);
+      return;
     }
+    preview.setTarget({
+      entry,
+      site: previewSite(),
+      page: UNIT_PAGE,
+      merged: true,
+      unit: { kind: dd.kind, id: dd.id },
+    });
   });
 
-  // The surface's preview: the synthetic unit page, rebuilt in place. A
-  // WYSIWYG commit inside the iframe routes here while the surface is
-  // mounted, then the model + host re-anchor (the reformat moved every span
-  // this editor and its host hold).
-  const preview = {
-    src: href,
-    reloadSeq,
-    rebuild: async ({ changed }) => {
-      const res = await build(changed);
+  // What the surface mounts: the host's preview, plus what must follow a
+  // commit made INSIDE the iframe — the model and the host re-anchor,
+  // because the reformat moved every span this editor and its host hold.
+  // (EditSurface owns the commit loop while it is mounted; this only says
+  // what its rebuild entails here.)
+  const surfacePreview = {
+    get id() {
+      return preview.id;
+    },
+    src: preview.src,
+    reloadSeq: preview.reloadSeq,
+    build: async ({ changed } = {}) => {
+      const res = await preview.build({ changed });
       if (res.ok) {
         await loadSystems({ keep: true });
         await props.onCommitted?.();
@@ -183,6 +149,10 @@ export default function ScreenEditor(props) {
       return res;
     },
   };
+  // The host's preview outlives this editor; nothing should build for a
+  // screen no longer on screen. (Selection and session are the surface's
+  // own to clear on unmount.)
+  onCleanup(() => preview.setTarget(null));
 
   const isWireframe = () => bodyKinds().includes('diagram');
   const kindsBadge = () => {
@@ -384,7 +354,7 @@ export default function ScreenEditor(props) {
               move, re-nest and re-order them; corners resize, the dock edits properties.
             </span>
             <span class="spacer" />
-            <Show when={building() || busy()}>
+            <Show when={preview.building() || busy()}>
               <Spinner size={12} label="Building the preview" />
             </Show>
           </div>
@@ -411,19 +381,20 @@ export default function ScreenEditor(props) {
             </Show>
             <div class="ed-surface-frame" ref={frameWrap}>
               <Show
-                when={!buildError()}
+                when={!preview.error()}
                 fallback={
                   <div class="ed-empty">
-                    <p>The preview build failed: {buildError()}</p>
-                    <Button size="sm" onClick={() => build()}>
+                    {/* Sticky, with a Retry — a toast alone leaves
+                        "Rendering…" on screen forever. */}
+                    <p>The preview build failed: {preview.error()}</p>
+                    <Button size="sm" onClick={() => preview.build()}>
                       Retry
                     </Button>
                   </div>
                 }
               >
                 <EditSurface
-                  preview={preview}
-                  surfaceId={SURFACE_SCREEN}
+                  preview={surfacePreview}
                   hideChrome
                   ref={setSurface}
                   onFrameLoad={() => setTreeSeq((s) => s + 1)}

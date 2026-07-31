@@ -44,6 +44,7 @@ import {
   exitDesign,
 } from '../../state/design';
 import { activeEntry } from '../../state/sites';
+import { createPreview } from '../../state/preview';
 import { loadSystems, model } from '../../state/systems';
 import { SURFACES, attachedSurfaces, subtreeIds, surfaceOf } from './surfaces';
 import { FieldForm, freshChildId } from './surfaces/fields';
@@ -56,6 +57,12 @@ const EDITORS = { cli: CliEditor, api: ApiEditor, screen: ScreenEditor };
 
 export default function NodeDetailModal(props) {
   const [detail, setDetail] = createSignal(null);
+  // One preview for the modal's lifetime, handed to whichever surface
+  // editor mounts a rendered page (the screen editor). Its cache is keyed
+  // by target, so re-opening a screen shown earlier in this modal mounts
+  // it with no build and opening another one does not discard it; closing
+  // the modal takes the whole thing with it.
+  const surfacePreview = createPreview();
   const [tab, setTab] = createSignal('properties');
   const [draft, setDraft] = createSignal({});
   /** Per-child drafts. Keyed by the item's LABEL, which survives the
@@ -232,6 +239,7 @@ export default function NodeDetailModal(props) {
             <Dynamic
               component={EDITORS[ownSurface().id]}
               anchor={props.anchor}
+              preview={surfacePreview}
               onCommitted={reanchor}
             />
           </Show>
@@ -247,6 +255,7 @@ export default function NodeDetailModal(props) {
                   surface={s}
                   units={aggregates().find((a) => a.surface.id === s.id)?.units ?? []}
                   owner={d()}
+                  preview={surfacePreview}
                   onCommitted={reanchor}
                 />
               </Show>
@@ -560,6 +569,7 @@ function AggregateSurface(props) {
               <div class="ed-surface-detail">
                 <Editor
                   anchor={{ file: u().file, span: u().span }}
+                  preview={props.preview}
                   onCommitted={props.onCommitted}
                 />
               </div>
