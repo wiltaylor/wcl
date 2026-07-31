@@ -15,7 +15,6 @@ import {
   fieldBindingOf,
   isShape,
   outerAnchorEl,
-  shapeBox,
   stashShapeBox,
 } from './anchors';
 
@@ -158,15 +157,22 @@ export function markSelected(doc, el, shared) {
   }
 }
 
+/* The chrome THIS layer and the diagram gestures inject into a shape's own
+   <g>. A shape carrying any of it can no longer be measured for its own
+   size — which is the whole reason the anchor module keeps a geometry
+   store; it is told which case this is. */
+const SHAPE_CHROME = '.wcl-wys-sel-box, .wcl-wys-handles';
+
 /** Append a dashed selection rect inside the shape's own <g> (so it rides
-    the g's transform, including a live drag preview). Sized from the
-    anchor module's geometry store — the measurement taken before any
-    chrome went in, so re-selecting a shape can't grow its outline. Skipped
-    when the shape can't be measured (no SVG renderer, detached node). */
+    the g's transform, including a live drag preview). Sized through the
+    anchor module's geometry store, which re-measures a clean shape and
+    stands on its record for one that already holds chrome — so a shape
+    resized in place resizes its outline, and re-selecting one can't grow
+    it. Skipped when the shape can't be measured (no SVG renderer,
+    detached node). */
 function addShapeSelBox(doc, el, shared) {
-  const box = shapeBox(el);
+  const box = stashShapeBox(el, { chromeInside: !!el.querySelector?.(SHAPE_CHROME) });
   if (!box) return;
-  stashShapeBox(el, box);
   const pad = 3;
   const rect = doc.createElementNS('http://www.w3.org/2000/svg', 'rect');
   rect.setAttribute('class', `wcl-wys-sel-box${shared ? ' wcl-wys-shared' : ''}`);

@@ -15,10 +15,13 @@ import {
   anchorsIn,
   blockChildren,
   closestOfKind,
+  containerOf,
+  edgeOf,
   editButtonOf,
   elBySpan,
   fieldBindingOf,
   isChrome,
+  isManualLayout,
   outerAnchorEl,
   pageInfo,
   parseSpanAttr,
@@ -68,6 +71,9 @@ const PAGE = `
       <g id="btn" data-wcl-shape data-wcl-kind="wf_button"
          data-wcl-span="440:520" data-wcl-file="unit.wcl"><rect id="btnrect"></rect></g>
     </g>
+    <path id="edge" data-wcl-edge="frame:btn"></path>
+    <path id="edgehit" data-wcl-edge="frame:btn"><title id="edgetitle">x</title></path>
+    <path id="badedge" data-wcl-edge="oops"></path>
   </svg>
   <h2 id="bound" data-wcl-field-name="title" data-wcl-field-kind="screen"
       data-wcl-field-target="login" data-wcl-field-plain>Login</h2>
@@ -132,8 +138,10 @@ describe('anchorOf', () => {
       vis: 'custom',
     });
     // The same fact through the gutter's view of it.
-    expect(visOf(el('b'))).toEqual({ exceptSites: ['deck', 'training'], custom: true });
-    expect(visOf(el('a'))).toEqual({ exceptSites: [], custom: false });
+    // The read half speaks the anchor's own vocabulary — no renaming at
+    // the call site, so the two halves cannot drift apart.
+    expect(visOf(el('b'))).toEqual({ except: ['deck', 'training'], vis: 'custom' });
+    expect(visOf(el('a'))).toEqual({ except: [], vis: null });
   });
 
   it('reads the diagram family, layout inherited from the owning svg', () => {
@@ -146,6 +154,20 @@ describe('anchorOf', () => {
     expect(anchorOf(document, el('frame'))).toMatchObject({ shape: true, shapeId: 'frame' });
     // The diagram's own anchor IS the svg, so it exposes the layout too.
     expect(anchorOf(document, el('dia'))).toMatchObject({ kind: 'diagram', layout: 'free' });
+  });
+
+  it('derives the shared and geometry facts only when they are read', () => {
+    let measured = 0;
+    el('btn').getBBox = () => {
+      measured += 1;
+      return { x: 0, y: 0, width: 10, height: 10 };
+    };
+    const a = anchorOf(document, el('btn'));
+    expect(measured).toBe(0); // building the anchor forces no layout
+    expect(a.box).toEqual({ x: 0, y: 0, width: 10, height: 10 });
+    expect(a.box.width).toBe(10);
+    expect(measured).toBe(1); // and the answer is remembered
+    expect(a.shared).toBe(false);
   });
 
   it('is null for unanchored elements', () => {
@@ -204,6 +226,16 @@ describe('resolving anchors at a point', () => {
     expect(anchorElAt(null)).toBeNull();
   });
 
+  it('skips a malformed stamp rather than resolving to an element anchorOf rejects', () => {
+    // Otherwise a click lands on an element the anchor reader refuses, and
+    // silently does nothing.
+    expect(anchorElAt(el('badspan'))).toBeNull();
+    expect(anchorChainAt(el('badspan'))).toEqual([]);
+    // An outer anchor still wins when there is one.
+    el('list').appendChild(el('badspan'));
+    expect(anchorElAt(el('badspan'))).toBe(el('list'));
+  });
+
   it('collects the nesting chain innermost → outermost', () => {
     expect(anchorChainAt(el('btnrect')).map((e) => e.id)).toEqual(['btn', 'frame', 'dia']);
     expect(anchorChainAt(el('li1')).map((e) => e.id)).toEqual(['li1', 'list']);
@@ -247,6 +279,29 @@ describe('the page wrapper and the block tree', () => {
   it('walks direct shape children only', () => {
     expect(shapeChildren(el('dia')).map((e) => e.id)).toEqual(['frame']);
     expect(shapeChildren(el('frame')).map((e) => e.id)).toEqual(['btn']);
+  });
+
+  it('names the block an element sits in, the page root at top level', () => {
+    const page = pageInfo(document).el;
+    expect(containerOf(page, el('li1'))).toBe(el('list'));
+    expect(containerOf(page, el('sep'))).toBe(el('list'));
+    expect(containerOf(page, el('a'))).toBe(page);
+    // The container's block children are the sibling run `el` belongs to.
+    expect(blockChildren(containerOf(page, el('li1')))).toContain(el('li1'));
+  });
+});
+
+describe('the manual-layout predicate', () => {
+  it('is true for the layouts that honor per-shape x/y, false without a diagram', () => {
+    expect(isManualLayout('free')).toBe(true);
+    expect(isManualLayout('none')).toBe(true);
+    expect(isManualLayout('layered')).toBe(false);
+    // A layout of null means "no owning diagram" — nothing to place into.
+    expect(isManualLayout(null)).toBe(false);
+    expect(isManualLayout(undefined)).toBe(false);
+    // Read off an anchor, which is how every caller asks.
+    expect(isManualLayout(anchorOf(document, el('btn')).layout)).toBe(true);
+    expect(isManualLayout(anchorOf(document, el('a')).layout)).toBe(false);
   });
 });
 
@@ -310,6 +365,15 @@ describe('bindings stamped by the build', () => {
     expect(slotOf(el('cell2'))).toBe(2);
     expect(slotOf(el('btn'))).toBeNull();
   });
+
+  it('reads the connection an edge path draws, from anywhere inside it', () => {
+    expect(edgeOf(el('edge'))).toEqual({ from: 'frame', to: 'btn' });
+    expect(edgeOf(el('edgetitle'))).toEqual({ from: 'frame', to: 'btn' });
+    // A malformed stamp reads as no stamp, like a malformed span.
+    expect(edgeOf(el('badedge'))).toBeNull();
+    expect(edgeOf(el('btn'))).toBeNull();
+    expect(edgeOf(null)).toBeNull();
+  });
 });
 
 describe('re-stamping after an in-place commit', () => {
@@ -328,10 +392,10 @@ describe('re-stamping after an in-place commit', () => {
 
   it('round-trips the visibility stamp through visOf', () => {
     restampExcept(el('a'), ['deck', 'training']);
-    expect(visOf(el('a')).exceptSites).toEqual(['deck', 'training']);
+    expect(visOf(el('a')).except).toEqual(['deck', 'training']);
     expect(anchorOf(document, el('a')).except).toEqual(['deck', 'training']);
     restampExcept(el('a'), []);
-    expect(visOf(el('a')).exceptSites).toEqual([]);
+    expect(visOf(el('a')).except).toEqual([]);
     expect(anchorOf(document, el('a')).except).toEqual([]);
   });
 });
@@ -341,11 +405,28 @@ describe('the shape geometry store', () => {
 
   it('prefers a stashed measurement to a live one', () => {
     const shape = el('btn');
+    shape.getBBox = () => box(0, 0, 100, 40);
+    expect(stashShapeBox(shape)).toEqual(box(0, 0, 100, 40));
     shape.getBBox = () => box(0, 0, 200, 200); // "live", chrome included
-    stashShapeBox(shape, box(0, 0, 100, 40));
     expect(shapeBox(shape)).toEqual(box(0, 0, 100, 40));
     // And that is the geometry the anchor carries.
     expect(anchorOf(document, shape).box).toEqual(box(0, 0, 100, 40));
+  });
+
+  it('re-measures a clean shape, and stands on the stash when chrome is inside', () => {
+    const shape = el('btn');
+    shape.getBBox = () => box(0, 0, 100, 40);
+    stashShapeBox(shape);
+    // The shape grew from an in-place commit — its element survived, so
+    // nothing evicted the entry. Clean, therefore re-measured.
+    shape.getBBox = () => box(0, 0, 160, 40);
+    expect(stashShapeBox(shape)).toEqual(box(0, 0, 160, 40));
+    expect(shapeBox(shape)).toEqual(box(0, 0, 160, 40));
+    // With chrome inside, a live measurement would swallow it: the stash
+    // stands, which is why re-selecting a shape can't grow its outline.
+    shape.getBBox = () => box(-3, -3, 206, 86);
+    expect(stashShapeBox(shape, { chromeInside: true })).toEqual(box(0, 0, 160, 40));
+    expect(shapeBox(shape)).toEqual(box(0, 0, 160, 40));
   });
 
   it('falls back to a live measurement when nothing was stashed', () => {
@@ -367,7 +448,8 @@ describe('the shape geometry store', () => {
   });
 
   it('keys entries by element, so a rebuilt shape measures afresh', () => {
-    stashShapeBox(el('btn'), box(0, 0, 100, 40));
+    el('btn').getBBox = () => box(0, 0, 100, 40);
+    stashShapeBox(el('btn'));
     expect(shapeBox(el('btn'))).toEqual(box(0, 0, 100, 40));
     setup(); // a rebuild replaces the elements
     const rebuilt = el('btn');

@@ -22,7 +22,7 @@
    preview/anchors.js; the `data-wcl-handle` / `data-wcl-port` marks below
    are this layer's OWN injected chrome. */
 
-import { SEL, diagramOf, isShape, layoutOf, shapeBox, shapeIdOf } from './anchors';
+import { SEL, diagramOf, isManualLayout, isShape, layoutOf, shapeBox, shapeIdOf } from './anchors';
 import { markDropTarget, resolveWidgetDrop } from './widgetdnd';
 
 const CSS_ID = 'wcl-diagram-css';
@@ -54,8 +54,6 @@ svg.wcl-wys-drop > * { outline: none; }
 `;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-/** Layout modes whose shapes position by their own x/y (drag allowed). */
-const MANUAL_LAYOUTS = ['free', 'none'];
 /** Client-pixel movement below this is a click, not a drag. */
 const DRAG_THRESHOLD = 3;
 
@@ -101,7 +99,7 @@ export function clientToUser(svg, x, y) {
 
 /** Whether `shapeEl`'s diagram honors per-shape x/y (manual layout). */
 export function isDraggable(shapeEl) {
-  return MANUAL_LAYOUTS.includes(layoutOf(shapeEl) ?? '');
+  return isManualLayout(layoutOf(shapeEl));
 }
 
 /** The geometry delta of a corner resize: pointer user-delta (du, dv) →

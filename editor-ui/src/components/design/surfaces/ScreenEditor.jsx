@@ -26,7 +26,7 @@ import { api } from '../../../api';
 import { clientToUser } from '../../../preview/diagram';
 import { freshShapeId, shapeSnippet } from '../../../preview/schemaform';
 import { markDropTarget, relocateOps, resolveWidgetDrop } from '../../../preview/widgetdnd';
-import { anchorOf, diagramIn, shapeEls } from '../../../preview/anchors';
+import { anchorOf, diagramIn, isManualLayout, shapeEls } from '../../../preview/anchors';
 import WidgetTree from './WidgetTree';
 import { startPointerDrag } from './pointerDrag';
 import { dirtyFiles } from '../../../state/buffers';
@@ -243,9 +243,7 @@ export default function ScreenEditor(props) {
     // Children stack inside containers; only top-of-diagram adds under a
     // manual layout get coordinates (the drop point, else the stagger).
     const manual =
-      t.mode === 'inside' &&
-      t.anchor.kind === 'diagram' &&
-      ['free', 'none'].includes(t.anchor.layout ?? 'free');
+      t.mode === 'inside' && t.anchor.kind === 'diagram' && isManualLayout(t.anchor.layout);
     const index = shapeEls(surfaceDoc?.()).length;
     const snippet = shapeSnippet(entry, { uid, manual, index, at: manual ? at : null });
     const op =
