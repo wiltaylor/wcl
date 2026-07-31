@@ -25,7 +25,8 @@ import {
   setPicking,
   submitComment,
 } from '../state/comments';
-import { beginPick, descOf, elByLoc, jumpTo, locOf, pageInfo, selectionQuote } from '../preview/frame';
+import { pageInfo } from '../preview/anchors';
+import { beginPick, descOf, elByLoc, jumpTo, locOf, selectionQuote } from '../preview/frame';
 
 /** The expandable trigger + hint, rendered in the preview header strip. */
 export function CommentMenu(props) {

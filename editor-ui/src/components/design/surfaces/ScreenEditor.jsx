@@ -24,11 +24,11 @@ import { For, Show, createEffect, createSignal } from 'solid-js';
 import { Button, Spinner, toast } from '@forge/ui';
 
 import { api } from '../../../api';
-import { clientToUser, isManualLayout } from '../../../preview/diagram';
+import { clientToUser } from '../../../preview/diagram';
 import { freshShapeId, shapeSnippet } from '../../../preview/schemaform';
 import { shapeOps } from '../../../preview/shapeops';
 import { markDropTarget, resolveWidgetDrop } from '../../../preview/widgetdnd';
-import { anchorOf } from '../../../preview/wysiwyg';
+import { anchorOf, diagramIn, isManualLayout, shapeEls } from '../../../preview/anchors';
 import WidgetTree from './WidgetTree';
 import { startPointerDrag } from './pointerDrag';
 import { dirtyFiles } from '../../../state/buffers';
@@ -221,8 +221,8 @@ export default function ScreenEditor(props) {
       return { anchor: sel, mode: acceptsChildren(sel.kind) ? 'inside' : 'after' };
     }
     if (sel?.kind === 'diagram') return { anchor: sel, mode: 'inside' };
-    const doc = surfaceDoc();
-    const svg = doc?.querySelector('svg[data-wcl-layout]');
+    const doc = surfaceDoc?.();
+    const svg = doc && diagramIn(doc);
     const anchor = svg && anchorOf(doc, svg);
     return anchor ? { anchor, mode: 'inside' } : null;
   };
@@ -246,7 +246,7 @@ export default function ScreenEditor(props) {
     // manual layout get coordinates (the drop point, else the stagger).
     const manual =
       t.mode === 'inside' && t.anchor.kind === 'diagram' && isManualLayout(t.anchor.layout);
-    const index = surfaceDoc()?.querySelectorAll?.('[data-wcl-shape]')?.length ?? 0;
+    const index = shapeEls(surfaceDoc?.()).length;
     const snippet = shapeSnippet(entry, { uid, manual, index, at: manual ? at : null });
     const op =
       t.mode === 'inside'
@@ -343,11 +343,7 @@ export default function ScreenEditor(props) {
       slice: src.source,
       mode: target.mode,
       source: a,
-      target: {
-        ...t,
-        layout: target.el.getAttribute?.('data-wcl-layout') ?? '',
-        acceptsChildren: acceptsChildren(t.kind),
-      },
+      target: { ...t, acceptsChildren: acceptsChildren(t.kind) },
       slot: target.slot ?? null,
     });
     if (!res.ok) return showRefusal(res);

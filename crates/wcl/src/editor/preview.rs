@@ -11,8 +11,36 @@ use axum::extract::State;
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 
-use super::{EditorState, api_result, err_str, overlay_files};
+use super::{EditorState, api_result, err_str};
 use crate::serve::{content_type, json_error, parse_json_body};
+
+/// The warm preview state of every built output slug — and the handle a
+/// write path uses to invalidate it.
+///
+/// A write outside `/api/preview` changes the disk under every already-built
+/// page, so the lazy per-page rebuild must stop treating them as fresh.
+/// [`Sessions::invalidate`] is the whole of what a write handler may do here;
+/// the rest of the map is the preview module's own business, which is why
+/// only it takes the full [`EditorState`].
+#[derive(Default)]
+pub(crate) struct Sessions {
+    inner: std::sync::Mutex<std::collections::HashMap<String, PreviewSession>>,
+}
+
+impl Sessions {
+    /// Mark every built preview stale: bump each session's generation so the
+    /// lazy per-page GET re-renders instead of serving pre-commit HTML as
+    /// fresh (the in-place commit paths never POST `/api/preview`).
+    pub(crate) fn invalidate(&self) {
+        for s in self.inner.lock().unwrap().values_mut() {
+            s.generation += 1;
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, std::collections::HashMap<String, PreviewSession>> {
+        self.inner.lock().unwrap()
+    }
+}
 
 /// What the last `/api/preview` build of one output slug rendered, and with
 /// which inputs — enough to lazily materialize a stale page on request.
@@ -34,7 +62,7 @@ pub(crate) struct PreviewSession {
     /// The unsaved buffers the last POST built with — lazy rebuilds reuse
     /// them so navigation stays consistent with the last Rebuild.
     overlay: std::collections::HashMap<PathBuf, String>,
-    pub(crate) generation: u64,
+    generation: u64,
     full_gen: u64,
     page_gen: std::collections::HashMap<String, u64>,
 }
@@ -94,14 +122,13 @@ pub(super) async fn handle_preview(
 /// with the `/api/preview/…` href of its index page.
 fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Value, String> {
     let entry = crate::edit::str_field(v, "entry")?;
-    let entry_abs = crate::serve::sandboxed(&state.root_dir, &state.root_dir.join(entry))
-        .ok_or_else(|| format!("file outside the served tree: {entry}"))?;
+    let entry_abs = state.ws.abs(entry)?;
     let site = v
         .get("site")
         .and_then(serde_json::Value::as_str)
         .map(str::to_string);
 
-    let overlay = overlay_files(state, v)?;
+    let overlay = state.ws.overlay(v)?;
 
     // The merged all-views render (the content modal's Merged tab): every
     // block regardless of `@only` / `@except`, with per-block visibility
@@ -152,7 +179,7 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
         // A fresh dir per build: stale files from renamed pages would
         // otherwise linger in the listing. Any recorded session refers to
         // the wiped output, so it goes too.
-        state.preview_sessions.lock().unwrap().remove(&slug);
+        state.sessions.lock().remove(&slug);
         let _ = std::fs::remove_dir_all(&out);
         wcl_wdoc::skill(&entry_abs, &out, site.as_deref()).map_err(|e| e.render_plain())?;
         let _ = wcl_wdoc::take_render_warnings();
@@ -187,7 +214,7 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
         .map(|a| {
             a.iter()
                 .filter_map(|p| p.as_str())
-                .filter_map(|p| crate::serve::sandboxed(&state.root_dir, &state.root_dir.join(p)))
+                .filter_map(|p| state.ws.abs(p).ok())
                 .collect()
         })
         .unwrap_or_default();
@@ -220,7 +247,7 @@ fn preview_site(state: &EditorState, v: &serde_json::Value) -> Result<serde_json
     // Record the session so navigating to a page this build left stale can
     // lazily re-render it with the same inputs. A POST is a new generation:
     // its inputs (buffers, saved files) supersede whatever came before.
-    let mut sessions = state.preview_sessions.lock().unwrap();
+    let mut sessions = state.sessions.lock();
     let session = sessions
         .entry(slug.clone())
         .or_insert_with(|| PreviewSession {
@@ -423,24 +450,38 @@ pub(super) async fn handle_preview_file(
     State(state): State<Arc<EditorState>>,
     axum::extract::Path(path): axum::extract::Path<String>,
 ) -> Response {
-    let rel = Path::new(&path);
-    if rel
-        .components()
-        .any(|c| !matches!(c, std::path::Component::Normal(_)))
-    {
-        return json_error(StatusCode::BAD_REQUEST, "bad preview path");
-    }
-    let file = state.preview.root().join(rel);
-    lazy_page_rebuild(&state, &path, &file).await;
-    match tokio::fs::read(&file).await {
-        Ok(bytes) => (
+    match preview_file(&state, &path).await {
+        Ok((file, bytes)) => (
             StatusCode::OK,
             [(header::CONTENT_TYPE, content_type(&file))],
             bytes,
         )
             .into_response(),
-        Err(_) => json_error(StatusCode::NOT_FOUND, "no such preview file"),
+        Err(e) if e.starts_with("bad ") => json_error(StatusCode::BAD_REQUEST, &e),
+        Err(e) => json_error(StatusCode::NOT_FOUND, &e),
     }
+}
+
+/// Resolve a scratch-tree path, lazily re-render it if the last build left
+/// it stale, and read it back — the whole of what serving a preview file
+/// means, minus the response encoding.
+pub(super) async fn preview_file(
+    state: &Arc<EditorState>,
+    path: &str,
+) -> Result<(PathBuf, Vec<u8>), String> {
+    let rel = Path::new(path);
+    if rel
+        .components()
+        .any(|c| !matches!(c, std::path::Component::Normal(_)))
+    {
+        return Err("bad preview path".to_string());
+    }
+    let file = state.preview.root().join(rel);
+    lazy_page_rebuild(state, path, &file).await;
+    let bytes = tokio::fs::read(&file)
+        .await
+        .map_err(|_| "no such preview file".to_string())?;
+    Ok((file, bytes))
 }
 
 /// Lazily materialize a stale preview page before it's served. Only
@@ -473,7 +514,7 @@ async fn lazy_page_rebuild(state: &Arc<EditorState>, rel: &str, file: &Path) {
     // `index.html` is a copy of the start page, so its freshness needs the
     // manifest — resolved under the gate below.
     {
-        let sessions = state.preview_sessions.lock().unwrap();
+        let sessions = state.sessions.lock();
         let Some(s) = sessions.get(&slug) else { return };
         if s.full_gen == s.generation || (stem != "index" && s.is_fresh(&stem)) {
             return;
@@ -493,7 +534,7 @@ async fn lazy_page_rebuild(state: &Arc<EditorState>, rel: &str, file: &Path) {
         // reach) ⇒ `None` ⇒ full rebuild.
         let page = manifest_page(&file2, &stem);
         let (entry_abs, site, all_sites, overlay) = {
-            let sessions = state2.preview_sessions.lock().unwrap();
+            let sessions = state2.sessions.lock();
             let Some(s) = sessions.get(&slug) else { return };
             let fresh = match &page {
                 Some(p) => s.is_fresh(p),
@@ -522,7 +563,7 @@ async fn lazy_page_rebuild(state: &Arc<EditorState>, rel: &str, file: &Path) {
             false,
         ) {
             Ok(built) => {
-                let mut sessions = state2.preview_sessions.lock().unwrap();
+                let mut sessions = state2.sessions.lock();
                 if let Some(s) = sessions.get_mut(&slug) {
                     s.note(&built);
                 }
@@ -557,4 +598,402 @@ fn manifest_page(file: &Path, stem: &str) -> Option<String> {
         .filter_map(serde_json::Value::as_str)
         .find(|p| *p == stem)
         .map(str::to_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::testsupport::{BODY_DOC, OBJECT_DOC, SITE_DOC, state_at};
+
+    /// Two-page site for the targeted-rebuild / lazy-materialization tests:
+    /// `alpha` is the start page (so `index.html` is its copy), `beta` the
+    /// page a targeted alpha rebuild leaves stale.
+    const TWO_PAGE_DOC: &str = "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\npage alpha {\n  start = true\n\n  h1 \"Alpha\"\n\n  p \"alpha original\"\n}\n\npage beta {\n  h1 \"Beta\"\n\n  p \"beta original\"\n}\n";
+
+    /// Two-page site with per-site-hidden blocks for the merged all-views
+    /// preview tests: both pages carry an `@except(sites = [:docs])` block
+    /// a normal `docs` build drops.
+    const MERGED_DOC: &str = "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\npage alpha {\n  start = true\n\n  h1 \"Alpha\"\n\n  p \"alpha original\"\n\n  @except(sites = [:docs]) p \"ALPHA_HIDDEN\"\n}\n\npage beta {\n  h1 \"Beta\"\n\n  p \"beta original\"\n\n  @except(sites = [:docs]) p \"BETA_HIDDEN\"\n}\n";
+
+    /// A document with a gathered unit kind carrying an addressable `body`
+    /// — but NO page for the unit — for the synthetic merged unit preview.
+    const UNIT_BODY_DOC: &str = "import <wdoc.wcl>\n\n\
+        @document\ntype Doc {\n  @children(\"thing\") things: list<Thing>\n}\n\n\
+        @block(\"thing\")\ntype Thing {\n  @inline(0) id: identifier\n  @child(\"body\") body: wdoc.WdocAddressableBody?\n}\n\n\
+        site docs {\n  title = \"The Docs\"\n  root = true\n}\n\n\
+        thing alpha {\n  body {\n    p \"ALPHA_BODY_TEXT\"\n  }\n}\n\n\
+        thing beta {\n}\n\n\
+        page index {\n  start = true\n\n  h1 \"Home\"\n}\n";
+
+    fn write(dir: &Path, doc: &str) -> Arc<EditorState> {
+        std::fs::write(dir.join("main.wcl"), doc).unwrap();
+        state_at(dir)
+    }
+
+    /// The scratch-tree path behind a build's `href`.
+    fn rel_of(href: &str) -> String {
+        href.strip_prefix("/api/preview/").unwrap().to_string()
+    }
+
+    async fn page_text(state: &Arc<EditorState>, rel: &str) -> String {
+        let (_, bytes) = preview_file(state, rel)
+            .await
+            .unwrap_or_else(|e| panic!("GET {rel}: {e}"));
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+
+    #[tokio::test]
+    async fn builds_selected_site_with_overlay() {
+        let td = tempfile::tempdir().unwrap();
+        let state = write(td.path(), SITE_DOC);
+
+        let v = preview_site(
+            &state,
+            &serde_json::json!({ "entry": "main.wcl", "site": "docs", "files": [] }),
+        )
+        .expect("build");
+        let href = v["href"].as_str().unwrap().to_string();
+        assert!(href.starts_with("/api/preview/"), "{href}");
+        page_text(&state, &rel_of(&href)).await;
+
+        // Unsaved buffers overlay disk: the served HTML shows the edit.
+        let edited = SITE_DOC.replace("Hello preview", "Overlaid text");
+        let v = preview_site(
+            &state,
+            &serde_json::json!({
+                "entry": "main.wcl",
+                "site": "docs",
+                "files": [{ "path": "main.wcl", "text": edited }],
+            }),
+        )
+        .expect("rebuild");
+        let html = page_text(&state, &rel_of(v["href"].as_str().unwrap())).await;
+        assert!(html.contains("Overlaid text"), "overlay not applied");
+        // Comment anchors for the preview pane's comment UI, plus the
+        // edit-mode source anchors the edit_object jump keys on — but still
+        // no injected scripts (the SPA drives the iframe from outside).
+        assert!(html.contains("data-wcl-page-file"), "missing page anchor");
+        assert!(html.contains("data-wcl-block"), "missing block anchors");
+        assert!(
+            html.contains("data-wcl-span"),
+            "missing source span anchors"
+        );
+        assert!(!html.contains("<script"), "scripts injected into preview");
+    }
+
+    #[tokio::test]
+    async fn targeted_rebuild_lazily_materializes_stale_pages() {
+        let td = tempfile::tempdir().unwrap();
+        let state = write(td.path(), TWO_PAGE_DOC);
+
+        // Cold dir: even with a page hint the first build is full.
+        let v = preview_site(
+            &state,
+            &serde_json::json!({ "entry": "main.wcl", "files": [], "pages": ["alpha"] }),
+        )
+        .expect("cold build");
+        assert_eq!(v["mode"], "full");
+        let base = rel_of(v["href"].as_str().unwrap())
+            .rsplit_once('/')
+            .unwrap()
+            .0
+            .to_string();
+
+        // Warm dir + page hint: only alpha re-renders; beta.html goes stale.
+        let edited = TWO_PAGE_DOC
+            .replace("alpha original", "alpha edited")
+            .replace("beta original", "beta edited");
+        let v = preview_site(
+            &state,
+            &serde_json::json!({
+                "entry": "main.wcl",
+                "files": [{ "path": "main.wcl", "text": edited }],
+                "pages": ["alpha"],
+            }),
+        )
+        .expect("targeted build");
+        assert_eq!(v["mode"], "targeted");
+        let alpha = page_text(&state, &format!("{base}/alpha.html")).await;
+        assert!(alpha.contains("alpha edited"), "targeted page not rebuilt");
+
+        // Navigating to the stale page materializes it on request with the
+        // same overlay the last build used.
+        let beta = page_text(&state, &format!("{base}/beta.html")).await;
+        assert!(
+            beta.contains("beta edited"),
+            "stale page not lazily rebuilt"
+        );
+
+        // `index.html` is a copy of the start page: a targeted beta rebuild
+        // leaves it stale, and a lazy fetch resolves it to `alpha` through
+        // the pages.json manifest (re-copying the landing file).
+        let edited2 = edited.replace("alpha edited", "alpha edited again");
+        let v = preview_site(
+            &state,
+            &serde_json::json!({
+                "entry": "main.wcl",
+                "files": [{ "path": "main.wcl", "text": edited2 }],
+                "pages": ["beta"],
+            }),
+        )
+        .expect("targeted beta");
+        assert_eq!(v["mode"], "targeted");
+        let index = page_text(&state, &format!("{base}/index.html")).await;
+        assert!(
+            index.contains("alpha edited again"),
+            "stale start-page copy not lazily rebuilt"
+        );
+
+        // A page name that matches nothing in this entry's sites can't be
+        // refreshed by the targeted path — automatic full fallback.
+        let v = preview_site(
+            &state,
+            &serde_json::json!({ "entry": "main.wcl", "files": [], "pages": ["no-such-page"] }),
+        )
+        .expect("fallback build");
+        assert_eq!(v["mode"], "full");
+    }
+
+    #[tokio::test]
+    async fn merged_renders_all_blocks_in_its_own_slug() {
+        let td = tempfile::tempdir().unwrap();
+        let state = write(td.path(), MERGED_DOC);
+
+        // Normal build: the `@except(:docs)` block is dropped.
+        let v = preview_site(
+            &state,
+            &serde_json::json!({ "entry": "main.wcl", "site": "docs", "files": [] }),
+        )
+        .expect("normal build");
+        let normal_base = rel_of(v["href"].as_str().unwrap())
+            .rsplit_once('/')
+            .unwrap()
+            .0
+            .to_string();
+        assert!(!normal_base.contains("__merged"), "{normal_base}");
+        let alpha = page_text(&state, &format!("{normal_base}/alpha.html")).await;
+        assert!(!alpha.contains("ALPHA_HIDDEN"), "normal build filters");
+
+        // Merged build: its own slug, every block rendered, visibility
+        // stamped on the anchors.
+        let v = preview_site(
+            &state,
+            &serde_json::json!({
+                "entry": "main.wcl", "site": "docs", "merged": true, "files": [],
+            }),
+        )
+        .expect("merged build");
+        let merged_base = rel_of(v["href"].as_str().unwrap())
+            .rsplit_once('/')
+            .unwrap()
+            .0
+            .to_string();
+        assert!(merged_base.contains("__merged"), "{merged_base}");
+        let alpha = page_text(&state, &format!("{merged_base}/alpha.html")).await;
+        assert!(alpha.contains("ALPHA_HIDDEN"), "merged build shows all");
+        assert!(
+            alpha.contains("data-wcl-except=\"docs\""),
+            "merged build stamps visibility: {alpha}"
+        );
+
+        // The normal slug's output is untouched by the merged build.
+        let alpha = page_text(&state, &format!("{normal_base}/alpha.html")).await;
+        assert!(!alpha.contains("ALPHA_HIDDEN"), "normal output poisoned");
+
+        // A targeted merged rebuild of alpha leaves beta stale; the lazy
+        // materialization must remember the merged flag (or beta would
+        // silently re-render filtered).
+        let edited = MERGED_DOC.replace("beta original", "beta edited");
+        let v = preview_site(
+            &state,
+            &serde_json::json!({
+                "entry": "main.wcl",
+                "site": "docs",
+                "merged": true,
+                "files": [{ "path": "main.wcl", "text": edited }],
+                "pages": ["alpha"],
+            }),
+        )
+        .expect("targeted merged");
+        assert_eq!(v["mode"], "targeted");
+        let beta = page_text(&state, &format!("{merged_base}/beta.html")).await;
+        assert!(
+            beta.contains("beta edited"),
+            "stale page not lazily rebuilt"
+        );
+        assert!(
+            beta.contains("BETA_HIDDEN"),
+            "lazy merged rebuild lost the all-sites flag"
+        );
+
+        // merged + skill is meaningless — an explicit error.
+        let e = preview_site(
+            &state,
+            &serde_json::json!({
+                "entry": "main.wcl", "site": "docs", "merged": true, "skill": true, "files": [],
+            }),
+        )
+        .unwrap_err();
+        assert!(e.contains("merged"), "{e}");
+    }
+
+    #[tokio::test]
+    async fn merged_unit_builds_synthetic_body_page() {
+        let td = tempfile::tempdir().unwrap();
+        let state = write(td.path(), UNIT_BODY_DOC);
+
+        let v = preview_site(
+            &state,
+            &serde_json::json!({
+                "entry": "main.wcl", "site": "docs", "merged": true,
+                "unit": { "kind": "thing", "id": "alpha" },
+                "pages": [UNIT_PREVIEW_PAGE], "files": [],
+            }),
+        )
+        .expect("unit build");
+        let base = rel_of(v["href"].as_str().unwrap())
+            .rsplit_once('/')
+            .unwrap()
+            .0
+            .to_string();
+        // ONE shared `__unit` slug for every unit of the (entry, site): the
+        // synthetic page name is constant, so switching units is a warm
+        // targeted rebuild instead of a cold full build per unit — and the
+        // dir never collides with the plain merged output.
+        assert!(base.ends_with("__unit"), "shared unit slug: {base}");
+        let page = page_text(&state, &format!("{base}/{UNIT_PREVIEW_PAGE}.html")).await;
+        assert!(page.contains("ALPHA_BODY_TEXT"), "body projected: {page}");
+        // The projected blocks anchor to the REAL declaring file, so every
+        // editing op (reorder, visibility, text) targets real source.
+        assert!(
+            page.contains("main.wcl\""),
+            "anchors point at the unit's file: {page}"
+        );
+
+        // A unit without a body has nothing to render standalone.
+        let e = preview_site(
+            &state,
+            &serde_json::json!({
+                "entry": "main.wcl", "site": "docs", "merged": true,
+                "unit": { "kind": "thing", "id": "beta" }, "files": [],
+            }),
+        )
+        .unwrap_err();
+        assert!(e.contains("no body"), "{e}");
+
+        // `unit` without `merged` is an explicit error.
+        assert!(
+            preview_site(
+                &state,
+                &serde_json::json!({
+                    "entry": "main.wcl", "site": "docs",
+                    "unit": { "kind": "thing", "id": "alpha" }, "files": [],
+                }),
+            )
+            .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn renders_edit_object_button() {
+        let td = tempfile::tempdir().unwrap();
+        let state = write(td.path(), OBJECT_DOC);
+
+        let v = preview_site(
+            &state,
+            &serde_json::json!({ "entry": "main.wcl", "site": "docs", "files": [] }),
+        )
+        .expect("build");
+        let html = page_text(&state, &rel_of(v["href"].as_str().unwrap())).await;
+        assert!(
+            html.contains("data-wcl-edit-kind=\"thing\""),
+            "missing edit_object button: {html}"
+        );
+        assert!(html.contains("data-wcl-edit-target=\"alpha\""));
+    }
+
+    /// A skill view previews as the built skill folder: the file listing +
+    /// browsable contents, not an HTML site.
+    #[tokio::test]
+    async fn skill_builds_folder_listing() {
+        let td = tempfile::tempdir().unwrap();
+        let state = write(
+            td.path(),
+            "import <wdoc.wcl>\n\nsite skill {\n  default_template = :ai_skill\n  root = true\n\n  skill {\n    name = \"demo\"\n    description = \"A demo skill.\"\n  }\n}\n\npage index {\n  title = \"Demo skill\"\n  start = true\n\n  h1 \"Demo\"\n\n  p \"Start page prose.\"\n}\n\npage extra {\n  title = \"Extra\"\n\n  p \"Reference prose.\"\n}\n",
+        );
+
+        let v = preview_site(
+            &state,
+            &serde_json::json!({
+                "entry": "main.wcl", "site": "skill", "files": [], "skill": true,
+            }),
+        )
+        .expect("skill build");
+        assert_eq!(v["mode"], "skill");
+        let files: Vec<&str> = v["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|f| f.as_str())
+            .collect();
+        assert!(files.contains(&"SKILL.md"), "{files:?}");
+        assert!(
+            files.iter().any(|f| f.starts_with("references/")),
+            "{files:?}"
+        );
+        // The listed files serve through the preview file path.
+        let base = rel_of(v["base"].as_str().unwrap());
+        let text = page_text(&state, &format!("{base}SKILL.md")).await;
+        assert!(text.contains("Start page prose."), "{text}");
+    }
+
+    /// A targeted rebuild after a source edit picks the edit up: the client
+    /// commits, then asks for just the page it is looking at.
+    #[tokio::test]
+    async fn targeted_rebuild_after_edit() {
+        let td = tempfile::tempdir().unwrap();
+        let state = write(td.path(), BODY_DOC);
+
+        let v = preview_site(
+            &state,
+            &serde_json::json!({ "entry": "main.wcl", "site": "docs", "files": [] }),
+        )
+        .expect("cold build");
+        assert_eq!(v["mode"], "full");
+        let href = rel_of(v["href"].as_str().unwrap());
+
+        // A commit lands on disk; the client then asks for just the page it
+        // is looking at, naming the file that changed.
+        let disk = std::fs::read_to_string(td.path().join("main.wcl")).unwrap();
+        std::fs::write(
+            td.path().join("main.wcl"),
+            disk.replace("First paragraph", "Rebuilt text"),
+        )
+        .unwrap();
+        preview_site(
+            &state,
+            &serde_json::json!({
+                "entry": "main.wcl", "site": "docs", "files": [],
+                "pages": ["index"], "changed": ["main.wcl"],
+            }),
+        )
+        .expect("targeted rebuild");
+        let html = page_text(&state, &href).await;
+        assert!(
+            html.contains("Rebuilt text"),
+            "targeted rebuild missed the edit"
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_escaping_entry() {
+        let td = tempfile::tempdir().unwrap();
+        let state = state_at(td.path());
+        let e = preview_site(
+            &state,
+            &serde_json::json!({ "entry": "../escape.wcl", "site": null, "files": [] }),
+        )
+        .unwrap_err();
+        assert!(e.contains("outside"), "{e}");
+    }
 }

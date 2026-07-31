@@ -20,7 +20,7 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
-use super::EditorState;
+use super::{EditorState, Workspace};
 
 /// Size of the in-memory pipe between the WebSocket pump and the LSP
 /// session. Big enough that a bulky payload (workspace symbols, semantic
@@ -33,10 +33,13 @@ pub(crate) async fn handle_lsp_ws(
     ws: WebSocketUpgrade,
     State(state): State<Arc<EditorState>>,
 ) -> Response {
-    ws.on_upgrade(move |socket| bridge(socket, state))
+    // The bridge only ever reads the root document and served tree, so the
+    // connection-lived task holds a workspace rather than the whole state.
+    let workspace = state.ws.clone();
+    ws.on_upgrade(move |socket| bridge(socket, workspace))
 }
 
-async fn bridge(mut socket: WebSocket, state: Arc<EditorState>) {
+async fn bridge(mut socket: WebSocket, workspace: Workspace) {
     let (ws_io, lsp_io) = tokio::io::duplex(DUPLEX_BUF);
     let (lsp_read, lsp_write) = tokio::io::split(lsp_io);
     let session = tokio::spawn(wcl_lsp::serve_stream(lsp_read, lsp_write));
@@ -64,7 +67,7 @@ async fn bridge(mut socket: WebSocket, state: Arc<EditorState>) {
                         text.to_string()
                     } else {
                         initialized = true;
-                        inject_root(&text, state.root_file.as_deref(), &state.root_dir)
+                        inject_root(&text, workspace.root_file(), workspace.root_dir())
                     };
                     if write_frame(&mut ws_write, &payload).await.is_err() {
                         break;

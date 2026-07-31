@@ -14,7 +14,7 @@
    readTranslate, clientToUser); this is the other half — the schema guards
    and the op synthesis that used to sit inline in EditSurface. */
 
-import { isManualLayout } from './diagram';
+import { isManualLayout } from './anchors';
 import { relocateOps } from './widgetdnd';
 
 /** A resize never takes a shape below this, in user units. */

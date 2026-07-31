@@ -96,21 +96,26 @@ import {
   setSelection,
   showRefusal,
 } from '../../state/design';
-import { parseSpanAttr } from '../../preview/anchors';
-import { injectBareCss, pageInfo } from '../../preview/frame';
 import {
   adjacentSameFileSibling,
-  elsBySpan,
-  mappedSpan,
-  moveDomBlock,
-  patchAnchors,
+  anchorEls,
+  anchorOf,
+  closestOfKind,
+  diagramOf,
+  elBySpan,
+  isManualLayout,
+  pageInfo,
+  prevSiblingOfKind,
   restampExcept,
-} from '../../preview/localops';
+  shapeChildren,
+  shapeIdOf,
+  spanOf,
+} from '../../preview/anchors';
+import { injectBareCss } from '../../preview/frame';
+import { mappedSpan, moveDomBlock, patchAnchors } from '../../preview/localops';
 import { placeVisGutters } from '../../preview/visgutter';
 import {
-  anchorOf,
   beginTextSession,
-  elBySpan,
   installDesign,
   markSelected,
   wclString,
@@ -119,7 +124,6 @@ import {
 import {
   clientToUser,
   installShapeDrag,
-  isManualLayout,
   readTranslate,
   refreshShapeHandles,
 } from '../../preview/diagram';
@@ -412,9 +416,9 @@ export default function EditSurface(props) {
       span: a.span,
       source: src,
       delta,
-      // The measurement markSelected stashed: dimensions the source leaves
-      // to the renderer start from what is on screen.
-      box: el.__wclShapeBox ?? null,
+      // The anchor's stashed measurement: dimensions the source leaves to
+      // the renderer start from what is on screen.
+      box: a.box ?? null,
     });
     if (!res.ok) return showRefusal(res);
     commitOps(a.file, res.ops, { etag: src.etag, reveal: 'edited' });
@@ -426,10 +430,11 @@ export default function EditSurface(props) {
   const shapeConnect = async (fromEl, toEl) => {
     const d = doc();
     if (!d) return;
-    const from = fromEl.getAttribute('data-wcl-shape-id');
-    const to = toEl.getAttribute('data-wcl-shape-id');
-    const svg = fromEl.closest('svg[data-wcl-layout]');
-    const owner = (svg && anchorOf(d, svg)) || null;
+    const from = shapeIdOf(fromEl);
+    const to = shapeIdOf(toEl);
+    const owner = anchorOf(d, diagramOf(fromEl)) || null;
+    // Missing ids, a self-connection and a generated diagram (one span
+    // shared across every instance) are the builder's to refuse.
     const built = shapeOps({ gesture: 'connect', from, to, owner });
     if (!built.ok) return showRefusal(built);
     const src = await api.blockSource({ file: owner.file, span: owner.span });
@@ -450,18 +455,15 @@ export default function EditSurface(props) {
     if (!a || !t) return;
     const src = await api.blockSource({ file: a.file, span: a.span });
     if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
-    // Only meaningful on a manual-layout diagram; the builder decides.
+    // Only meaningful on a manual-layout diagram; the builder decides,
+    // off the anchor's own layout (which reads through a viewport wrapper).
     const at = target.mode === 'diagram' ? clientToUser(target.el, point.x, point.y) : null;
     const res = shapeOps({
       gesture: 'relocate',
       slice: src.source,
       mode: target.mode,
       source: a,
-      target: {
-        ...t,
-        layout: target.el.getAttribute?.('data-wcl-layout') ?? '',
-        acceptsChildren: acceptsChildren(t.kind),
-      },
+      target: { ...t, acceptsChildren: acceptsChildren(t.kind) },
       at,
       slot: target.slot ?? null,
     });
@@ -481,11 +483,9 @@ export default function EditSurface(props) {
     const d = doc();
     if (!a || a.kind !== 'diagram' || !d) return;
     const children = [];
-    for (const g of a.el.querySelectorAll('[data-wcl-shape]')) {
-      // Top-level children only: a container's nested shapes keep their
-      // container-local layout.
-      const parentAnchor = g.parentElement?.closest?.('[data-wcl-span][data-wcl-file]');
-      if (parentAnchor !== a.el) continue;
+    // Top-level children only: a container's nested shapes keep their
+    // container-local layout.
+    for (const g of shapeChildren(a.el)) {
       const sa = anchorOf(d, g);
       children.push({
         kindDef: sa && kindDefOf(sa.kind),
@@ -571,7 +571,7 @@ export default function EditSurface(props) {
       if (!d) return true;
       const merged = props.gutter?.merged ?? false;
       const site = props.gutter?.currentSite ?? props.site;
-      const els = elsBySpan(d, anchor.file, anchor.span);
+      const els = anchorEls(d, anchor.file, anchor.span);
       const hidesHere = !merged && site && except.includes(site);
       const unhidesHere = !merged && site && wasExcept.includes(site) && !except.includes(site);
       if (unhidesHere && els.length === 0) return false;
@@ -596,7 +596,7 @@ export default function EditSurface(props) {
     });
   };
 
-  const spanOfEl = (e) => parseSpanAttr(e.getAttribute('data-wcl-span')) ?? { start: 0, end: 0 };
+  const spanOfEl = (e) => spanOf(e) ?? { start: 0, end: 0 };
 
   /** Gutter drag → in-place move + local commit; anchors patched from the
       response's span_map, so no rebuild or reload. The `move_to` op is
@@ -612,7 +612,7 @@ export default function EditSurface(props) {
       ? { before: spanOfEl(sameFile[dropIdx]) }
       : { after: spanOfEl(sameFile[sameFile.length - 1]) };
     const ops = [{ op: 'move_to', span, ...target }];
-    if (!d || elsBySpan(d, file, span).length > 1) {
+    if (!d || anchorEls(d, file, span).length > 1) {
       commitOps(file, ops, { reveal: 'edited' });
       return;
     }
@@ -834,8 +834,7 @@ export default function EditSurface(props) {
     if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
     let ops = null;
     if (indent) {
-      let prev = a.el.previousElementSibling;
-      while (prev && prev.getAttribute('data-wcl-kind') !== 'li') prev = prev.previousElementSibling;
+      const prev = prevSiblingOfKind(a.el, 'li');
       const prevAnchor = prev && anchorOf(d, prev);
       if (!prevAnchor) return toast('No previous item to nest under', { duration: 3000 });
       ops = [
@@ -843,7 +842,7 @@ export default function EditSurface(props) {
         { op: 'delete', span: a.span },
       ];
     } else {
-      const parentLi = a.el.parentElement?.closest?.('[data-wcl-kind="li"]');
+      const parentLi = closestOfKind(a.el.parentElement, 'li');
       const parentAnchor = parentLi && anchorOf(d, parentLi);
       if (!parentAnchor) return toast('Already at the top level', { duration: 3000 });
       ops = [

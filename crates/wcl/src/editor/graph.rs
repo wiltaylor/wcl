@@ -27,8 +27,8 @@ use wcl_lang::{Document, Span, Value, parse_for_edit};
 
 use super::blocks::{ast_label, first_label, unit_kinds, value_string, visibility_json};
 
-use super::{EditorState, run_blocking};
-use crate::serve::{query_param, sandboxed};
+use super::{EditorState, Workspace, run_blocking};
+use crate::serve::query_param;
 
 pub(super) async fn handle_graph(State(state): State<Arc<EditorState>>, uri: Uri) -> Response {
     let entry = query_param(&uri, "entry");
@@ -37,7 +37,7 @@ pub(super) async fn handle_graph(State(state): State<Arc<EditorState>>, uri: Uri
     let state2 = Arc::clone(&state);
     run_blocking(move || {
         let entry = entry.ok_or("missing entry")?;
-        graph(&state2, &entry, &sites, &kinds)
+        graph(&state2.ws, &entry, &sites, &kinds)
     })
     .await
 }
@@ -130,13 +130,12 @@ fn index_children(
 }
 
 fn graph(
-    state: &EditorState,
+    ws: &Workspace,
     entry: &str,
     sites_csv: &str,
     kinds_csv: &str,
 ) -> Result<serde_json::Value, String> {
-    let entry_abs = sandboxed(&state.root_dir, &state.root_dir.join(entry))
-        .ok_or_else(|| format!("file outside the served tree: {entry}"))?;
+    let entry_abs = ws.abs(entry)?;
     let doc = wcl_wdoc::open_doc_for_edit(&entry_abs).map_err(super::err_str)?;
     let sites: Vec<String> = sites_csv
         .split(',')
@@ -199,7 +198,7 @@ fn graph(
             .map(visibility_json)
             .unwrap_or_else(|| serde_json::json!({ "except_sites": [], "custom": false }));
         let blocks = ast_block
-            .map(|blk| content_blocks(state, blk, &file, &sites))
+            .map(|blk| content_blocks(ws, blk, &file, &sites))
             .unwrap_or_default();
         // The out-port is editable only when the `related` field is absent
         // or a literal list — a computed expression must not be clobbered.
@@ -298,7 +297,7 @@ fn graph(
                 "id": n.id,
                 "kind": n.kind,
                 "title": n.title,
-                "file": rel(state, &n.file),
+                "file": rel(ws, &n.file),
                 "span": super::span_json(n.span),
                 "x": x, "y": y, "w": w, "h": h,
                 "visibility": n.visibility,
@@ -324,7 +323,7 @@ fn graph(
         })
         .collect();
     let mut nodes_json = nodes_json;
-    nodes_json.extend(syllabus_nodes(&doc, &sites, &site_kinds, state, &entry_abs));
+    nodes_json.extend(syllabus_nodes(&doc, &sites, &site_kinds, ws, &entry_abs));
     Ok(serde_json::json!({
         "ok": true,
         "sites": sites,
@@ -350,7 +349,7 @@ fn syllabus_nodes(
     doc: &Document,
     sites: &[String],
     site_kinds: &HashMap<String, String>,
-    state: &EditorState,
+    ws: &Workspace,
     entry_abs: &Path,
 ) -> Vec<serde_json::Value> {
     let training: Vec<&String> = sites
@@ -387,7 +386,7 @@ fn syllabus_nodes(
         "id": SYLLABUS_ID,
         "kind": "index",
         "title": "Course",
-        "file": rel(state, entry_abs),
+        "file": rel(ws, entry_abs),
         "span": super::span_json(Span::new(0, 0)),
         "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0,
         "visibility": serde_json::json!({ "except_sites": [], "custom": false }),
@@ -465,10 +464,10 @@ fn order_of(b: &wcl_lang::Block<'_>) -> u64 {
         .unwrap_or(u64::MAX)
 }
 
-fn rel(state: &EditorState, file: &Path) -> String {
+fn rel(ws: &Workspace, file: &Path) -> String {
     std::fs::canonicalize(file)
         .unwrap_or_else(|_| file.to_path_buf())
-        .strip_prefix(&state.root_dir)
+        .strip_prefix(ws.root_dir())
         .map(|p| p.to_string_lossy().replace('\\', "/"))
         .unwrap_or_else(|_| file.display().to_string())
 }
@@ -591,7 +590,7 @@ fn default_audience(doc: &Document, kind: &str) -> String {
 /// transparent containers (`body`, the addressable per-step `bodies`)
 /// spliced so the graph shows the blocks that actually render.
 fn content_blocks(
-    state: &EditorState,
+    ws: &Workspace,
     unit: &ast::Block,
     file: &Path,
     sites: &[String],
@@ -602,19 +601,19 @@ fn content_blocks(
         if b.kind == "body" {
             for inner in &b.items {
                 if let Item::Block(c) = inner {
-                    out.push(block_entry(state, c, file, sites, None));
+                    out.push(block_entry(ws, c, file, sites, None));
                 }
             }
         } else {
             let label = ast_label(b);
-            out.push(block_entry(state, b, file, sites, label.as_deref()));
+            out.push(block_entry(ws, b, file, sites, label.as_deref()));
         }
     }
     out
 }
 
 fn block_entry(
-    state: &EditorState,
+    ws: &Workspace,
     b: &ast::Block,
     file: &Path,
     sites: &[String],
@@ -631,9 +630,307 @@ fn block_entry(
     serde_json::json!({
         "kind": b.kind,
         "preview": preview,
-        "file": rel(state, file),
+        "file": rel(ws, file),
         "span": super::span_json(b.span),
         "views": views_map(sites, &visibility),
         "visibility": visibility,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::blocks::block_ops;
+    use crate::editor::preview::Sessions;
+    use crate::editor::testsupport::{
+        workspace_built_by, write_mini_wskill, write_mini_wskill_nested, write_mini_wskill_training,
+    };
+
+    fn model(ws: &Workspace, sites: &str, kinds: &str) -> serde_json::Value {
+        graph(ws, "main.wcl", sites, kinds).expect("graph")
+    }
+
+    fn node<'a>(v: &'a serde_json::Value, id: &str) -> &'a serde_json::Value {
+        v["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["id"] == id)
+            .unwrap_or_else(|| panic!("no node `{id}`: {v:#}"))
+    }
+
+    #[test]
+    fn lists_units_edges_and_view_visibility() {
+        let (_td, ws) = workspace_built_by(|root| {
+            write_mini_wskill(root);
+            // Give alpha a body with one deck-hidden paragraph.
+            std::fs::write(
+                root.join("data/concepts/alpha.wcl"),
+                "concept alpha {\n  name = \"Alpha\"\n  body {\n    p \"Everywhere\"\n\n    @except(sites = [:deck])\n    p \"Book only\"\n  }\n}\n",
+            )
+            .unwrap();
+            // The mini-wskill schema has no body child; extend it.
+            let main = std::fs::read_to_string(root.join("main.wcl")).unwrap();
+            let main = main.replace(
+                "@block(\"concept\")\ntype Concept {\n  @inline(0) id: identifier\n  name: utf8\n}",
+                "@block(\"body\") @schemaless\ntype UnitBody {\n}\n\n@block(\"concept\")\ntype Concept {\n  @inline(0) id: identifier\n  name: utf8\n  @child(\"body\") body: UnitBody?\n}",
+            );
+            std::fs::write(root.join("main.wcl"), main).unwrap();
+        });
+
+        let v = model(&ws, "book,deck", "");
+        // alpha, beta, and the lang index.
+        let alpha = node(&v, "alpha");
+        assert_eq!(alpha["type"], "unit");
+        assert_eq!(alpha["kind"], "concept");
+        assert_eq!(alpha["title"], "Alpha");
+        assert!(alpha["x"].is_number() && alpha["y"].is_number());
+        let idx = node(&v, "lang");
+        assert_eq!(idx["type"], "index");
+        // Ordered pin list — the index panel edits this order.
+        assert_eq!(idx["pinned"], serde_json::json!(["alpha", "beta"]));
+        // Edges: the index pins alpha + beta.
+        let edges = v["edges"].as_array().unwrap();
+        assert!(
+            edges.iter().any(|e| e["from"] == "index:lang"
+                && e["to"] == "concept:alpha"
+                && e["kind"] == "pin"),
+            "{v:#}"
+        );
+        // Block-level per-view visibility: the body's paragraphs, with the
+        // second hidden from the deck.
+        let blocks = alpha["blocks"].as_array().unwrap();
+        let hidden = blocks
+            .iter()
+            .find(|b| b["preview"] == "Book only")
+            .unwrap_or_else(|| panic!("no body block listing: {v:#}"));
+        assert_eq!(hidden["views"]["book"], true);
+        assert_eq!(hidden["views"]["deck"], false);
+        assert_eq!(hidden["visibility"]["custom"], false);
+        let shown = blocks
+            .iter()
+            .find(|b| b["preview"] == "Everywhere")
+            .unwrap();
+        assert_eq!(shown["views"]["deck"], true);
+    }
+
+    /// A unit kind belongs to the ONE view built from it: a lesson is not book
+    /// content, and a concept is not part of the course. Before this, every
+    /// non-index unit reported visible in a training view, so selecting the
+    /// training filter highlighted the whole graph.
+    #[test]
+    fn routes_units_to_the_view_that_renders_them() {
+        let (_td, ws) = workspace_built_by(write_mini_wskill_training);
+        let v = model(&ws, "book,course", "book=book,course=training");
+
+        let alpha = node(&v, "alpha");
+        assert_eq!(alpha["views"]["book"], true, "a concept is book content");
+        assert_eq!(
+            alpha["views"]["course"], false,
+            "a concept is not part of the course"
+        );
+
+        let first = node(&v, "first");
+        assert_eq!(first["views"]["course"], true, "a lesson is course content");
+        assert_eq!(
+            first["views"]["book"], false,
+            "the book renders no lesson pages"
+        );
+        assert_eq!(
+            first["organized"],
+            serde_json::json!(["course"]),
+            "lessons are organized structurally, not index-pinned"
+        );
+    }
+
+    /// A course has no `index` blocks, so the index panel would be empty for a
+    /// training view; the graph synthesizes its structure instead.
+    #[test]
+    fn synthesizes_a_syllabus_for_a_training_view() {
+        let (_td, ws) = workspace_built_by(write_mini_wskill_training);
+        let v = model(&ws, "book,course", "book=book,course=training");
+        let syl = v["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["syllabus"] == true)
+            .unwrap_or_else(|| panic!("no syllabus node: {v:#}"));
+        assert_eq!(syl["type"], "index");
+        assert_eq!(syl["pinned"], serde_json::json!(["first", "second"]));
+        assert_eq!(syl["views"]["course"], true);
+        assert_eq!(syl["views"]["book"], false, "the syllabus is course-only");
+
+        // No syllabus without a training view among the sites.
+        let v2 = model(&ws, "book", "book=book");
+        assert!(
+            !v2["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["syllabus"] == true)
+        );
+    }
+
+    #[test]
+    fn nested_index_children_and_pins() {
+        let (_td, ws) = workspace_built_by(write_mini_wskill_nested);
+        let v = model(&ws, "book", "");
+        let idx = node(&v, "lang");
+        assert_eq!(idx["pinned"], serde_json::json!(["alpha"]));
+        let children = idx["children"].as_array().unwrap();
+        assert_eq!(children.len(), 1, "{v:#}");
+        assert_eq!(children[0]["id"], "lang_sub");
+        assert_eq!(children[0]["title"], "Sub");
+        assert_eq!(children[0]["pinned"], serde_json::json!(["beta"]));
+        assert_eq!(children[0]["related_editable"], true);
+        assert_eq!(children[0]["children"], serde_json::json!([]));
+        // The sub-index never becomes a node of its own.
+        assert!(
+            !v["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["id"] == "lang_sub"),
+            "{v:#}"
+        );
+        let edges = v["edges"].as_array().unwrap();
+        assert!(
+            edges.iter().any(|e| e["from"] == "index:lang"
+                && e["to"] == "concept:alpha"
+                && e["kind"] == "pin"
+                && e["index_id"] == "lang"),
+            "{v:#}"
+        );
+        assert!(
+            edges.iter().any(|e| e["from"] == "index:lang"
+                && e["to"] == "concept:beta"
+                && e["kind"] == "pin"
+                && e["index_id"] == "lang_sub"),
+            "{v:#}"
+        );
+
+        // Pin alpha into the sub-index too: two pin edges to alpha, one
+        // per owning level.
+        crate::editor::nav::nav_op(
+            &ws,
+            &Sessions::default(),
+            &serde_json::json!({
+                "entry": "main.wcl", "op": "pin_unit",
+                "index_id": "lang_sub", "unit_id": "alpha",
+            }),
+        )
+        .expect("pin");
+        let v = model(&ws, "book", "");
+        let alpha_pins: Vec<&serde_json::Value> = v["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|e| e["kind"] == "pin" && e["to"] == "concept:alpha")
+            .collect();
+        assert_eq!(alpha_pins.len(), 2, "{v:#}");
+    }
+
+    /// The graph view's edge writes: `related_add` / `related_remove` block
+    /// ops on unit and index blocks, plus the `related_editable` flag.
+    #[test]
+    fn related_add_remove_roundtrip() {
+        let (_td, ws) = workspace_built_by(|root| {
+            write_mini_wskill(root);
+            // Concepts need a `related` field for unit→unit edges.
+            let main = std::fs::read_to_string(root.join("main.wcl")).unwrap();
+            let main = main.replace(
+                "@block(\"concept\")\ntype Concept {\n  @inline(0) id: identifier\n  name: utf8\n}",
+                "@block(\"concept\")\ntype Concept {\n  @inline(0) id: identifier\n  name: utf8\n  related: list<identifier>?\n}",
+            );
+            std::fs::write(root.join("main.wcl"), main).unwrap();
+        });
+        let previews = Sessions::default();
+        // One edge write, addressed by node id. Every commit reprints the
+        // owning file, so the node's file+span are re-read from the model at
+        // call time — the same re-anchoring the graph view does on refetch.
+        let edge = |node_id: &str, op: &str, id: &str| {
+            let v = model(&ws, "book", "");
+            let n = node(&v, node_id);
+            block_ops(
+                &ws,
+                &previews,
+                &serde_json::json!({
+                    "entry": "main.wcl", "file": n["file"],
+                    "ops": [{ "op": op, "span": n["span"], "id": id }],
+                }),
+            )
+        };
+
+        let v = model(&ws, "book", "");
+        assert_eq!(node(&v, "alpha")["related_editable"], true);
+        assert!(
+            !v["edges"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["kind"] == "related"),
+            "{v:#}"
+        );
+
+        // Connect alpha → beta.
+        edge("alpha", "related_add", "beta").expect("related_add");
+        let text = std::fs::read_to_string(ws.root_dir().join("data/concepts/alpha.wcl")).unwrap();
+        assert!(text.contains("related = [beta]"), "{text}");
+        let v = model(&ws, "book", "");
+        assert!(
+            v["edges"].as_array().unwrap().iter().any(|e| {
+                e["from"] == "concept:alpha" && e["to"] == "concept:beta" && e["kind"] == "related"
+            }),
+            "{v:#}"
+        );
+
+        // Duplicate, self-loop, and bad-id are refused.
+        for (id, msg) in [
+            ("beta", "already related"),
+            ("alpha", "itself"),
+            ("not an id", "not a valid"),
+        ] {
+            let e = edge("alpha", "related_add", id).unwrap_err();
+            assert!(e.contains(msg), "{id}: {e}");
+        }
+
+        // Disconnect again; a second remove is refused.
+        edge("alpha", "related_remove", "beta").expect("related_remove");
+        let v = model(&ws, "book", "");
+        assert!(
+            !v["edges"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["kind"] == "related"),
+            "{v:#}"
+        );
+        let e = edge("alpha", "related_remove", "beta").unwrap_err();
+        assert!(e.contains("not in the related"), "{e}");
+
+        // The same ops drive index pins: unpin beta, then re-pin it.
+        let pins = |v: &serde_json::Value| {
+            v["edges"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|e| e["kind"] == "pin")
+                .count()
+        };
+        edge("lang", "related_remove", "beta").expect("unpin");
+        assert_eq!(pins(&model(&ws, "book", "")), 1);
+        edge("lang", "related_add", "beta").expect("re-pin");
+        assert_eq!(pins(&model(&ws, "book", "")), 2);
+
+        // A computed related list: flagged not-editable, and the op refuses.
+        std::fs::write(
+            ws.root_dir().join("data/concepts/alpha.wcl"),
+            "concept alpha {\n  name = \"Alpha\"\n  related = concat([], [])\n}\n",
+        )
+        .unwrap();
+        let v = model(&ws, "book", "");
+        assert_eq!(node(&v, "alpha")["related_editable"], false, "{v:#}");
+        let e = edge("alpha", "related_add", "beta").unwrap_err();
+        assert!(e.contains("computed"), "{e}");
+    }
 }

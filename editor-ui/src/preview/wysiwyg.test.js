@@ -1,17 +1,12 @@
 /* Unit tests for the Design-mode iframe layer: the source-swap text
-   session (commit / cancel / Enter-split semantics), the marker-wrapping
-   string surgery, and the WCL string escaper. Runs under happy-dom. */
+   session (commit / cancel / Enter-split semantics), the drill-in
+   selection behaviour, the marker-wrapping string surgery, and the WCL
+   string escaper. The anchor walks it selects through are tested in
+   anchors.test.js. Runs under happy-dom. */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  anchorChainAt,
-  beginTextSession,
-  blockAt,
-  installDesign,
-  wclString,
-  wrapSelection,
-} from './wysiwyg';
+import { beginTextSession, installDesign, wclString, wrapSelection } from './wysiwyg';
 import { cellDisplay, cellRaw, splitPipeRow } from './table';
 
 function setup(html) {
@@ -94,25 +89,6 @@ describe('wrapSelection', () => {
   });
 });
 
-describe('blockAt', () => {
-  it('skips template chrome and finds content blocks', () => {
-    setup(
-      '<div id="chromeblock" data-wcl-span="0:9">' +
-        '<a id="chrome">nav</a></div>' +
-        '<p data-wcl-span="10:30" data-wcl-file="data/x.wcl"><em id="content">t</em></p>',
-    );
-    // Set via the DOM: innerHTML entity handling for `<` in attribute
-    // values differs between happy-dom and browsers.
-    document
-      .getElementById('chromeblock')
-      .setAttribute('data-wcl-file', '<wcl-system>/wdoc/templates.wcl');
-    expect(blockAt(document.getElementById('chrome'))).toBeNull();
-    expect(blockAt(document.getElementById('content'))?.getAttribute('data-wcl-file')).toBe(
-      'data/x.wcl',
-    );
-  });
-});
-
 /* A nested-anchor page: a diagram <svg> anchor containing shape anchors
    (as the edit-mode build stamps them). happy-dom renders SVG as generic
    elements, which is fine — the chain/selection logic is pure DOM. */
@@ -123,15 +99,6 @@ const NESTED = `
       <rect id="inner" />
     </g>
   </svg>`;
-
-describe('anchorChainAt', () => {
-  it('collects anchors innermost to outermost', () => {
-    setup(NESTED);
-    const chain = anchorChainAt(document.getElementById('inner'));
-    expect(chain.map((el) => el.id)).toEqual(['shape', 'dia']);
-    expect(anchorChainAt(document.getElementById('para')).map((el) => el.id)).toEqual(['para']);
-  });
-});
 
 describe('installDesign drill-in selection', () => {
   const wire = () => {

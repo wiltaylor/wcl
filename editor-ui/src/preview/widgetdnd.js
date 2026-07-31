@@ -13,6 +13,16 @@
    native HTML5 drag from the parent document into the iframe proved
    unreliable in real browsers and impossible to drive from tests. */
 
+import {
+  SEL,
+  closestMatching,
+  diagramOf,
+  kindOf,
+  shapeChildren,
+  shapeIdOf,
+  slotOf,
+  slotZoneIn,
+} from './anchors';
 import { injectCss } from './diagram';
 
 /**
@@ -34,22 +44,20 @@ import { injectCss } from './diagram';
  */
 export function resolveWidgetDrop(hitEl, acceptsChildren, exclude = null) {
   if (!hitEl) return null;
-  let el = hitEl.closest?.('[data-wcl-shape]') ?? null;
-  while (el && exclude && (el === exclude || exclude.contains(el))) {
-    el = el.parentElement?.closest?.('[data-wcl-shape]') ?? null;
-  }
+  // The same nearest-anchor walk selection uses, skipping the subtree being
+  // moved instead of template chrome — so what can be dropped onto matches
+  // what can be selected.
+  const el = closestMatching(
+    hitEl,
+    SEL.shape,
+    (c) => !!exclude && (c === exclude || exclude.contains(c)),
+  );
   if (el) {
-    if (!acceptsChildren(el.getAttribute('data-wcl-kind') ?? '')) return { mode: 'after', el };
-    const cell = hitEl.closest?.('[data-wf-slot]');
-    const slot = cell && el.contains(cell) ? Number(cell.getAttribute('data-wf-slot')) : null;
-    return {
-      mode: 'inside',
-      el,
-      slot: Number.isInteger(slot) ? slot : null,
-      cellEl: Number.isInteger(slot) ? cell : null,
-    };
+    if (!acceptsChildren(kindOf(el) ?? '')) return { mode: 'after', el };
+    const cell = slotZoneIn(hitEl, el);
+    return { mode: 'inside', el, slot: cell ? slotOf(cell) : null, cellEl: cell };
   }
-  const svg = hitEl.closest?.('svg[data-wcl-layout]');
+  const svg = diagramOf(hitEl);
   if (svg && (!exclude || !exclude.contains(svg))) return { mode: 'diagram', el: svg };
   return null;
 }
@@ -119,8 +127,8 @@ export function relocateOps({ slice, mode, targetSpan, sourceSpan, at = null, sl
 
 /**
  * The rendered frame's widget structure, walked from the anchored shapes:
- * one root per `svg[data-wcl-layout]` (`kind: 'diagram'`), children the
- * DIRECT-descendant `[data-wcl-shape]` anchors (nested anchors recurse).
+ * one root per diagram (`kind: 'diagram'`), children its DIRECT-descendant
+ * shape anchors (nested anchors recurse).
  * Labels prefer the shape id, then the widget's first rendered text line,
  * then the bare kind. Everything keeps its live element so callers can
  * select/scroll/drag without another lookup.
@@ -128,27 +136,19 @@ export function relocateOps({ slice, mode, targetSpan, sourceSpan, at = null, sl
 export function widgetTreeFrom(doc) {
   if (!doc) return [];
   const nodeFor = (el) => ({
-    kind: el.getAttribute('data-wcl-kind') ?? 'widget',
+    kind: kindOf(el) ?? 'widget',
     el,
-    shapeId: el.getAttribute('data-wcl-shape-id') || null,
+    shapeId: shapeIdOf(el),
     label: labelFor(el),
-    children: directShapeChildren(el).map(nodeFor),
+    children: shapeChildren(el).map(nodeFor),
   });
-  return [...doc.querySelectorAll('svg[data-wcl-layout]')].map((svg) => ({
+  return [...doc.querySelectorAll(SEL.diagram)].map((svg) => ({
     kind: 'diagram',
     el: svg,
     shapeId: null,
     label: 'wireframe',
-    children: directShapeChildren(svg).map(nodeFor),
+    children: shapeChildren(svg).map(nodeFor),
   }));
-}
-
-/** The `[data-wcl-shape]` descendants of `root` with no OTHER shape anchor
-    between them and `root` — its direct structural children. */
-function directShapeChildren(root) {
-  return [...root.querySelectorAll('[data-wcl-shape]')].filter(
-    (g) => g.parentElement?.closest('[data-wcl-shape], svg[data-wcl-layout]') === root,
-  );
 }
 
 /** A display label for a widget anchor: its own first rendered text line
@@ -156,8 +156,8 @@ function directShapeChildren(root) {
     and capped. */
 function labelFor(el) {
   for (const t of el.querySelectorAll('text')) {
-    if (t.closest('[data-wcl-shape]') !== el) continue;
-    if (t.closest('[data-wf-guide]')) continue;
+    if (t.closest(SEL.shape) !== el) continue;
+    if (t.closest(SEL.guide)) continue;
     const s = t.textContent?.trim();
     if (s) return s.length > 24 ? `${s.slice(0, 24)}…` : s;
   }

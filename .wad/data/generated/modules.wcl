@@ -40,7 +40,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_editor {
     name = "editor"
     kind = "module"
-    summary = "13 files, 17 pub items"
+    summary = "14 files, 18 pub items"
     deps = [n_cg_wcl_edit, n_cg_wcl_serve, n_cg_wcl_xc_wcl_lang, n_cg_wcl_xc_wcl_wdoc]
   }
   code_node n_cg_wcl_gitspec {
@@ -796,45 +796,33 @@ code_item code_api_cli_commands {
       visibility = "crate"
     }
   }
-  code_node n_api_cli_commands_EditorState {
-    name = "EditorState"
-    kind = "struct"
-    summary = "src/editor/mod.rs"
-  }
   code_node n_api_cli_commands_editor_fns {
     name = "editor"
     kind = "fns"
     summary = "src/editor/mod.rs"
-    code_member m_n_api_cli_commands_editor_fns_serve {
-      signature = "fn serve( root: Option<PathBuf>, addr: BindSpec, ) -> Result<()…"
-      kind = "fn"
-      visibility = "crate"
-    }
     code_member m_n_api_cli_commands_editor_fns_router {
       signature = "fn router(state: Arc<EditorState>) -> Router"
       kind = "fn"
       visibility = "crate"
       deps = [n_api_cli_commands_EditorState]
     }
+    code_member m_n_api_cli_commands_editor_fns_serve {
+      signature = "fn serve( root: Option<PathBuf>, addr: BindSpec, ) -> Result<()…"
+      kind = "fn"
+      visibility = "crate"
+    }
     code_member m_n_api_cli_commands_editor_fns_err_str {
       signature = "fn err_str(e: impl std::fmt::Display) -> String"
       kind = "fn"
       visibility = "crate"
     }
-    code_member m_n_api_cli_commands_editor_fns_resolve_doc_entry {
-      signature = "fn resolve_doc_entry( state: &EditorState, entry: &str, page_fi…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_cli_commands_EditorState]
-    }
-    code_member m_n_api_cli_commands_editor_fns_resolve_doc_entry_from {
-      signature = "fn resolve_doc_entry_from( state: &EditorState, v: &serde_json:…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_cli_commands_EditorState]
-    }
     code_member m_n_api_cli_commands_editor_fns_span_json {
       signature = "fn span_json(span: wcl_lang::Span) -> serde_json::Value"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_editor_fns_find_block {
+      signature = "fn find_block<'a>( items: &'a [wcl_lang::ast::Item], pred: &imp…"
       kind = "fn"
       visibility = "crate"
     }
@@ -843,6 +831,11 @@ code_item code_api_cli_commands {
       kind = "fn"
       visibility = "crate"
     }
+  }
+  code_node n_api_cli_commands_EditorState {
+    name = "EditorState"
+    kind = "struct"
+    summary = "src/editor/mod.rs"
   }
   code_node n_api_cli_commands_assets_fns {
     name = "assets"
@@ -859,24 +852,28 @@ code_item code_api_cli_commands {
     kind = "fns"
     summary = "src/editor/files.rs"
     code_member m_n_api_cli_commands_files_fns_list_tree {
-      signature = "fn list_tree(root_dir: &Path) -> Result<serde_json::Value, Stri…"
+      signature = "fn list_tree(ws: &Workspace) -> Result<serde_json::Value, Strin…"
       kind = "fn"
       visibility = "crate"
+      deps = [n_api_cli_commands_Workspace]
     }
     code_member m_n_api_cli_commands_files_fns_read_text {
-      signature = "fn read_text(root_dir: &Path, path: &str) -> Result<serde_json:…"
+      signature = "fn read_text(ws: &Workspace, path: &str) -> Result<serde_json::…"
       kind = "fn"
       visibility = "crate"
+      deps = [n_api_cli_commands_Workspace]
     }
     code_member m_n_api_cli_commands_files_fns_read_raw {
-      signature = "fn read_raw(root_dir: &Path, path: &str) -> Result<(PathBuf, Ve…"
+      signature = "fn read_raw(ws: &Workspace, path: &str) -> Result<(PathBuf, Vec…"
       kind = "fn"
       visibility = "crate"
+      deps = [n_api_cli_commands_Workspace]
     }
     code_member m_n_api_cli_commands_files_fns_save_file {
-      signature = "fn save_file( root_dir: &Path, root_file: Option<&Path>, body: …"
+      signature = "fn save_file( ws: &Workspace, previews: &Sessions, body: &serde…"
       kind = "fn"
       visibility = "crate"
+      deps = [n_api_cli_commands_Workspace, n_api_cli_commands_Sessions]
     }
   }
   code_node n_api_cli_commands_lsp_bridge_fns {
@@ -890,15 +887,20 @@ code_item code_api_cli_commands {
       deps = [n_api_cli_commands_EditorState]
     }
   }
+  code_node n_api_cli_commands_Sessions {
+    name = "Sessions"
+    kind = "struct"
+    summary = "src/editor/preview.rs"
+    code_member m_n_api_cli_commands_Sessions_invalidate {
+      signature = "fn invalidate(&self)"
+      kind = "method"
+      visibility = "crate"
+    }
+  }
   code_node n_api_cli_commands_PreviewSession {
     name = "PreviewSession"
     kind = "struct"
     summary = "src/editor/preview.rs"
-    code_member m_n_api_cli_commands_PreviewSession_generation {
-      signature = "generation: u64"
-      kind = "field"
-      visibility = "crate"
-    }
   }
   code_node n_api_cli_commands_preview_fns {
     name = "preview"
@@ -915,8 +917,64 @@ code_item code_api_cli_commands {
     kind = "fns"
     summary = "src/editor/sites.rs"
     code_member m_n_api_cli_commands_sites_fns_scan_sites {
-      signature = "fn scan_sites( root_dir: &Path, root_file: Option<&Path>, ) -> …"
+      signature = "fn scan_sites(ws: &super::Workspace) -> Result<serde_json::Valu…"
       kind = "fn"
+      visibility = "crate"
+      deps = [n_api_cli_commands_Workspace]
+    }
+  }
+  code_node n_api_cli_commands_Workspace {
+    name = "Workspace"
+    kind = "struct"
+    summary = "src/editor/workspace.rs"
+    code_member m_n_api_cli_commands_Workspace_new {
+      signature = "fn new(root_dir: PathBuf, root_file: Option<PathBuf>) -> Self"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_root_dir {
+      signature = "fn root_dir(&self) -> &Path"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_root_file {
+      signature = "fn root_file(&self) -> Option<&Path>"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_abs {
+      signature = "fn abs(&self, rel: &str) -> Result<PathBuf, String>"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_abs_new {
+      signature = "fn abs_new(&self, rel: &str) -> Result<PathBuf, String>"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_rel {
+      signature = "fn rel(&self, file: &Path) -> Result<String, String>"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_doc_entry {
+      signature = "fn doc_entry( &self, entry: &str, page_file: Option<&str>, ) ->…"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_doc_entry_from {
+      signature = "fn doc_entry_from(&self, v: &serde_json::Value) -> Result<PathB…"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_overlay {
+      signature = "fn overlay( &self, v: &serde_json::Value, ) -> Result<HashMap<P…"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_at {
+      signature = "fn at(dir: &Path) -> Self"
+      kind = "method"
       visibility = "crate"
     }
   }

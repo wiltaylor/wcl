@@ -22,10 +22,8 @@ const MAX_DEPTH: usize = 8;
 /// `GET /api/sites` — every previewable site under `root_dir`, nested.
 /// A wskill's projection entries (registered by its `artifact` blocks)
 /// collapse into one `{ wskill: true, views: […] }` node.
-pub(crate) fn scan_sites(
-    root_dir: &Path,
-    root_file: Option<&Path>,
-) -> Result<serde_json::Value, String> {
+pub(crate) fn scan_sites(ws: &super::Workspace) -> Result<serde_json::Value, String> {
+    let root_dir = ws.root_dir();
     let mut candidates: BTreeSet<PathBuf> = BTreeSet::new();
     let mut registries: Vec<PathBuf> = Vec::new();
     let walk = ignore::WalkBuilder::new(root_dir)
@@ -51,7 +49,7 @@ pub(crate) fn scan_sites(
             registries.push(canon(path));
         }
     }
-    if let Some(rf) = root_file {
+    if let Some(rf) = ws.root_file() {
         candidates.insert(canon(rf));
     }
 
@@ -330,4 +328,161 @@ fn nodes_for_entry(
 
 fn canon(p: &Path) -> PathBuf {
     std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::Workspace;
+    use crate::editor::testsupport::workspace_built_by;
+
+    fn scan(ws: &Workspace) -> serde_json::Value {
+        scan_sites(ws).expect("scan")
+    }
+
+    #[test]
+    fn lists_nested_sites() {
+        let (_td, ws) = workspace_built_by(|root| {
+            std::fs::write(
+                root.join("main.wcl"),
+                "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\nsite deck {\n  default_template = :ai_skill\n}\n\npage index {\n  title = \"Hi\"\n  sites = [:docs]\n\n  h1 \"Hi\"\n}\n\ninclude \"members\" {\n  entry = \"main.wcl\"\n}\n",
+            )
+            .unwrap();
+            std::fs::create_dir_all(root.join("members/alpha")).unwrap();
+            std::fs::write(
+                root.join("members/alpha/main.wcl"),
+                "import <wdoc.wcl>\n\nsite book {\n  title = \"Alpha Book\"\n}\n\npage index {\n  title = \"Alpha\"\n\n  h1 \"Alpha\"\n}\n",
+            )
+            .unwrap();
+        });
+
+        let v = scan(&ws);
+        let sites = v["sites"].as_array().unwrap();
+        // The member is claimed by the include, so only main.wcl's two
+        // sites list at the top level.
+        assert_eq!(sites.len(), 2, "{v:#}");
+        let docs = &sites[0];
+        assert_eq!(docs["entry"], "main.wcl");
+        assert_eq!(docs["site"], "docs");
+        assert_eq!(docs["label"], "The Docs");
+        assert_eq!(docs["skill"], false);
+        let children = docs["children"].as_array().unwrap();
+        assert_eq!(children.len(), 1);
+        assert_eq!(children[0]["entry"], "members/alpha/main.wcl");
+        assert_eq!(children[0]["label"], "Alpha Book");
+        let deck = &sites[1];
+        assert_eq!(deck["site"], "deck");
+        assert_eq!(deck["skill"], true);
+        assert!(deck["children"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn groups_wskill_views() {
+        let (_td, ws) = workspace_built_by(|root| {
+            std::fs::create_dir_all(root.join("wdoc/book")).unwrap();
+            std::fs::create_dir_all(root.join("wdoc/skill")).unwrap();
+            std::fs::write(
+                root.join("wskill.wcl"),
+                "topic demo {\n  name = \"Demo Topic\"\n}\n\n\
+                 artifact book {\n  kind = :book\n  entry = \"wdoc/book/main.wcl\"\n}\n\n\
+                 artifact ai_skill {\n  kind = :ai_skill\n  entry = \"wdoc/skill/main.wcl\"\n}\n",
+            )
+            .unwrap();
+            std::fs::write(
+                root.join("wdoc/book/main.wcl"),
+                "import <wdoc.wcl>\n\nsite book {\n  title = \"Demo Book\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n",
+            )
+            .unwrap();
+            std::fs::write(
+                root.join("wdoc/skill/main.wcl"),
+                "import <wdoc.wcl>\n\nsite skill {\n  default_template = :ai_skill\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n",
+            )
+            .unwrap();
+            // A plain, unrelated site stays a normal node.
+            std::fs::write(
+                root.join("other.wcl"),
+                "import <wdoc.wcl>\n\nsite docs {\n  title = \"Other\"\n  root = true\n}\n\npage index {\n  title = \"O\"\n\n  h1 \"O\"\n}\n",
+            )
+            .unwrap();
+        });
+
+        let v = scan(&ws);
+        let sites = v["sites"].as_array().unwrap();
+        let wskill = sites
+            .iter()
+            .find(|s| s["wskill"] == true)
+            .unwrap_or_else(|| panic!("no grouped wskill node: {v:#}"));
+        assert_eq!(wskill["label"], "Demo Topic");
+        assert_eq!(wskill["root"], "");
+        let views = wskill["views"].as_array().unwrap();
+        assert_eq!(views.len(), 2, "{v:#}");
+        assert_eq!(views[0]["kind"], "book");
+        assert_eq!(views[0]["entry"], "wdoc/book/main.wcl");
+        assert_eq!(views[0]["site"], "book");
+        assert_eq!(views[0]["skill"], false);
+        assert_eq!(views[1]["kind"], "ai_skill");
+        assert_eq!(views[1]["skill"], true);
+        // The projections no longer list as separate top-level nodes; the
+        // unrelated site does.
+        assert!(
+            !sites
+                .iter()
+                .any(|s| s["entry"] == "wdoc/book/main.wcl" || s["entry"] == "wdoc/skill/main.wcl"),
+            "{v:#}"
+        );
+        assert!(sites.iter().any(|s| s["entry"] == "other.wcl"));
+    }
+
+    /// A projection pulled in by a parent site's `include` must not list
+    /// twice: it moves into the grouped wskill node and disappears from
+    /// the parent's children.
+    #[test]
+    fn groups_wskill_views_nested_under_include() {
+        let (_td, ws) = workspace_built_by(|root| {
+            std::fs::create_dir_all(root.join("skills/demo/wdoc/book")).unwrap();
+            std::fs::write(
+                root.join("main.wcl"),
+                "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n\ninclude \"skills\" {\n  entry = \"wdoc/book/main.wcl\"\n}\n",
+            )
+            .unwrap();
+            std::fs::write(
+                root.join("skills/demo/wskill.wcl"),
+                "topic demo {\n  name = \"Demo Topic\"\n}\n\nartifact book {\n  kind = :book\n  entry = \"wdoc/book/main.wcl\"\n}\n",
+            )
+            .unwrap();
+            std::fs::write(
+                root.join("skills/demo/wdoc/book/main.wcl"),
+                "import <wdoc.wcl>\n\nsite book {\n  title = \"Demo Book\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n",
+            )
+            .unwrap();
+        });
+
+        let v = scan(&ws);
+        let sites = v["sites"].as_array().unwrap();
+        let docs = sites.iter().find(|s| s["entry"] == "main.wcl").unwrap();
+        // The included book left the docs node's children…
+        assert!(
+            docs["children"].as_array().unwrap().is_empty(),
+            "included projection must move into the wskill node: {v:#}"
+        );
+        // …and lives exactly once, as the grouped wskill's view.
+        let wskill = sites.iter().find(|s| s["wskill"] == true).unwrap();
+        assert_eq!(wskill["label"], "Demo Topic");
+        let views = wskill["views"].as_array().unwrap();
+        assert_eq!(views.len(), 1, "{v:#}");
+        assert_eq!(views[0]["entry"], "skills/demo/wdoc/book/main.wcl");
+        fn count_entry(nodes: &[serde_json::Value], entry: &str) -> usize {
+            nodes
+                .iter()
+                .map(|n| {
+                    usize::from(n["entry"] == entry)
+                        + n["children"]
+                            .as_array()
+                            .map(|c| count_entry(c, entry))
+                            .unwrap_or(0)
+                })
+                .sum()
+        }
+        assert_eq!(count_entry(sites, "skills/demo/wdoc/book/main.wcl"), 0);
+    }
 }

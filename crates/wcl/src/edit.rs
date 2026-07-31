@@ -198,3 +198,155 @@ fn value_label(v: &Value) -> String {
 fn render_err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A document with a `page` (whose `title` the schema requires) plus a
+    /// second file to commit alongside it.
+    const DOC: &str = "import <wdoc.wcl>\nimport \"extra.wcl\"\n\nsite docs {\n  title = \"D\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hello\"\n}\n";
+
+    /// A temp dir holding `main.wcl` + `extra.wcl`, and the root file's path.
+    fn project() -> (tempfile::TempDir, PathBuf) {
+        let td = tempfile::tempdir().unwrap();
+        let root = td.path().join("main.wcl");
+        std::fs::write(&root, DOC).unwrap();
+        std::fs::write(td.path().join("extra.wcl"), "let unused = 1\n").unwrap();
+        (td, root)
+    }
+
+    #[test]
+    fn etag_tracks_content_and_format_is_canonical() {
+        assert_eq!(content_etag("a = 1\n"), content_etag("a = 1\n"));
+        assert_ne!(content_etag("a = 1\n"), content_etag("a = 2\n"));
+
+        let v = format_source(&serde_json::json!({ "text": "name=\"x\"" })).expect("format");
+        assert_eq!(v["text"], "name = \"x\"\n");
+        // A syntax error is an error, so the caller keeps the buffer.
+        assert!(format_source(&serde_json::json!({ "text": "block {{{" })).is_err());
+        // …as is a body with no `text` at all.
+        assert!(format_source(&serde_json::json!({ "nope": true })).is_err());
+    }
+
+    #[test]
+    fn commit_writes_every_change_atomically() {
+        let (td, root) = project();
+        let edited = DOC.replace("Hello", "Edited");
+        commit(
+            &root,
+            vec![
+                (root.clone(), edited.clone()),
+                (td.path().join("extra.wcl"), "let unused = 2\n".to_string()),
+            ],
+        )
+        .expect("commit");
+        assert_eq!(std::fs::read_to_string(&root).unwrap(), edited);
+        assert_eq!(
+            std::fs::read_to_string(td.path().join("extra.wcl")).unwrap(),
+            "let unused = 2\n"
+        );
+    }
+
+    /// The semantic gate: an edit that *introduces* a schema error is rolled
+    /// back across every file it touched, not just the offending one.
+    #[test]
+    fn commit_rolls_back_a_schema_violation_across_all_files() {
+        let (td, root) = project();
+        let extra = td.path().join("extra.wcl");
+        let before = (
+            std::fs::read_to_string(&root).unwrap(),
+            std::fs::read_to_string(&extra).unwrap(),
+        );
+
+        let e = commit(
+            &root,
+            vec![
+                // `title` must be a string.
+                (root.clone(), DOC.replace("title = \"Hi\"", "title = 42")),
+                (extra.clone(), "let unused = 3\n".to_string()),
+            ],
+        )
+        .unwrap_err();
+        assert!(
+            e.contains("title"),
+            "the schema error names the offending field: {e}"
+        );
+        assert_eq!(std::fs::read_to_string(&root).unwrap(), before.0);
+        assert_eq!(
+            std::fs::read_to_string(&extra).unwrap(),
+            before.1,
+            "the innocent file rolls back too"
+        );
+    }
+
+    /// Rollback of a file that did not exist deletes it — a half-created
+    /// unit must not survive a refused commit.
+    #[test]
+    fn commit_rollback_deletes_files_it_created() {
+        let (td, root) = project();
+        let fresh = td.path().join("new/unit.wcl");
+        assert!(
+            commit(
+                &root,
+                vec![
+                    (root.clone(), DOC.replace("title = \"Hi\"", "title = 42")),
+                    (fresh.clone(), "let x = 1\n".to_string()),
+                ],
+            )
+            .is_err()
+        );
+        assert!(!fresh.exists(), "a created file must not survive rollback");
+    }
+
+    /// Schema errors already on disk are the caller's problem, not this
+    /// edit's: the baseline is captured before the write so a pre-existing
+    /// violation cannot block an unrelated change.
+    #[test]
+    fn commit_allows_an_edit_over_a_pre_existing_schema_error() {
+        let (_td, root) = project();
+        let broken = DOC.replace("title = \"Hi\"", "title = 42");
+        std::fs::write(&root, &broken).unwrap();
+
+        let edited = broken.replace("h1 \"Hello\"", "h1 \"Still broken, still saved\"");
+        commit(&root, vec![(root.clone(), edited.clone())])
+            .expect("a pre-existing error must not block an unrelated edit");
+        assert_eq!(std::fs::read_to_string(&root).unwrap(), edited);
+    }
+
+    /// Unparseable output is caught before anything reaches disk — the
+    /// syntax gate runs over every change first.
+    #[test]
+    fn commit_refuses_unparseable_output_before_writing() {
+        let (_td, root) = project();
+        let before = std::fs::read_to_string(&root).unwrap();
+        let e = commit(&root, vec![(root.clone(), "page index {{{".to_string())]).unwrap_err();
+        assert!(e.contains("unparseable"), "{e}");
+        assert_eq!(std::fs::read_to_string(&root).unwrap(), before);
+    }
+
+    #[test]
+    fn locate_object_resolves_by_label_and_reports_ambiguity() {
+        let doc = "import <wdoc.wcl>\n\n\
+            @document\ntype Doc {\n  @children(\"thing\") things: list<Thing>\n}\n\n\
+            @block(\"thing\")\ntype Thing {\n  @inline(0) name: utf8\n}\n\n\
+            site docs {\n  title = \"D\"\n  root = true\n}\n\n\
+            thing \"alpha\" {}\n\nthing \"beta\" {}\n\n\
+            page index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n";
+        let td = tempfile::tempdir().unwrap();
+        let root = td.path().join("main.wcl");
+        std::fs::write(&root, doc).unwrap();
+
+        let (file, span) =
+            locate_object(&root, "thing", Some("beta"), HashMap::new()).expect("locate");
+        assert_eq!(file, root);
+        assert!(doc[span.start..span.end].starts_with("thing \"beta\""));
+
+        // No target with two instances lists the labels; an unknown kind
+        // says so.
+        let e = locate_object(&root, "thing", None, HashMap::new()).unwrap_err();
+        assert!(e.contains("alpha") && e.contains("beta"), "{e}");
+        let e = locate_object(&root, "nothing", None, HashMap::new()).unwrap_err();
+        assert!(e.contains("no `nothing` instances"), "{e}");
+    }
+}

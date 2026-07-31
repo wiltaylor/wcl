@@ -2,17 +2,28 @@
    Hover/selection chrome and the contenteditable source-swap sessions live
    in-frame (they track content geometry natively through scroll/reflow);
    all Forge chrome (toolbar, modals) stays in the parent, positioned from
-   rects (see DesignView). Blocks are addressed by the edit-mode anchors the
-   build stamps: data-wcl-kind / data-wcl-span ("start:end" byte offsets) /
-   data-wcl-file, plus the edit_field bindings data-wcl-field-*. */
+   rects (see DesignView). Blocks are addressed through preview/anchors.js,
+   which owns the edit-mode stamp format — this layer names no attributes. */
 
-import { parseSpanAttr, spanSelector } from './anchors';
+import {
+  ATTR,
+  SEL,
+  anchorChainAt,
+  anchorElAt,
+  anchorOf,
+  editButtonOf,
+  fieldBindingOf,
+  isShape,
+  outerAnchorEl,
+  stashShapeBox,
+} from './anchors';
+import { hasShapeHandles } from './diagram';
 
 const CSS_ID = 'wcl-design-css';
 /* The iframe holds a plain wdoc build with no Forge tokens — literal colors:
    blue for hover/selection, violet for field bindings, amber while editing. */
 const FRAME_CSS = `
-[data-wcl-span], [data-wcl-field-name] { cursor: default; }
+[${ATTR.span}], ${SEL.field} { cursor: default; }
 .wcl-wys-hot { outline: 1px solid rgba(59,130,246,.55) !important; outline-offset: 2px; }
 .wcl-wys-selected { outline: 2px solid #3b82f6 !important; outline-offset: 2px; }
 .wcl-wys-selected.wcl-wys-shared { outline-color: #8b5cf6 !important; }
@@ -42,76 +53,6 @@ export function injectDesignCss(doc) {
   doc.head.appendChild(style);
 }
 
-/** The anchor info of a block element: file + span + kind, plus whether the
-    same (file, span) renders more than once in the page (repeater/template
-    output — an edit affects every instance). */
-export function anchorOf(doc, el) {
-  const span = el.getAttribute('data-wcl-span');
-  const file = el.getAttribute('data-wcl-file');
-  if (!span || !file) return null;
-  const { start, end } = parseSpanAttr(span);
-  const dup = doc.querySelectorAll(spanSelector(file, { start, end }));
-  // A diagram child (an SVG shape anchor) carries data-wcl-shape, and its
-  // owning <svg> the diagram's effective layout mode — the Design layer
-  // gates dragging (manual layouts only) off it. The diagram block itself
-  // exposes the layout too (its anchor IS the <svg>).
-  const svg = el.closest?.('svg[data-wcl-layout]') ?? null;
-  return {
-    el,
-    file,
-    span: { start, end },
-    kind: el.getAttribute('data-wcl-kind') || 'block',
-    shared: dup.length > 1,
-    shape: el.hasAttribute('data-wcl-shape'),
-    layout: svg?.getAttribute('data-wcl-layout') ?? null,
-  };
-}
-
-/** The `edit_field` binding on (or above) `el`, or null. */
-export function fieldBindingOf(el) {
-  const bound = el.closest?.('[data-wcl-field-name]');
-  if (!bound) return null;
-  return {
-    el: bound,
-    kind: bound.getAttribute('data-wcl-field-kind'),
-    target: bound.getAttribute('data-wcl-field-target') || null,
-    field: bound.getAttribute('data-wcl-field-name'),
-    plain: bound.hasAttribute('data-wcl-field-plain'),
-  };
-}
-
-/** Template chrome (sidebar, rails, layout parts) comes from stdlib /
-    registry sources (`<wcl-system>/…` paths) — not editable content. */
-function isChrome(el) {
-  const file = el?.getAttribute?.('data-wcl-file') ?? '';
-  return file.startsWith('<');
-}
-
-/** The nearest selectable content-block element for an event target —
-    skipping template chrome so its links/toggles keep working. */
-export function blockAt(target) {
-  let el = target?.closest?.('[data-wcl-span][data-wcl-file]') ?? null;
-  while (el && isChrome(el)) {
-    el = el.parentElement?.closest?.('[data-wcl-span][data-wcl-file]') ?? null;
-  }
-  return el;
-}
-
-/** Every selectable anchor at or above `target`, innermost → outermost
-    (chrome skipped). Nested anchors happen for diagram shapes (shape inside
-    the diagram's <svg>, possibly inside a container's <g>) and nested HTML
-    blocks (an `li` inside a `list`, a table inside a `demo`). */
-export function anchorChainAt(target) {
-  const chain = [];
-  let el = blockAt(target);
-  while (el) {
-    chain.push(el);
-    el = el.parentElement ? blockAt(el.parentElement) : null;
-  }
-  return chain;
-}
-
-
 /** Install the Design-mode interaction layer. `handlers`:
     - onSelect(anchor|null) — click selected/deselected a block
     - onEditIntent(anchor, regionEl) — click inside the already-selected
@@ -134,7 +75,7 @@ export function installDesign(doc, handlers) {
       clearHot();
       return;
     }
-    const el = blockAt(e.target) ?? fieldBindingOf(e.target)?.el ?? null;
+    const el = anchorElAt(e.target) ?? fieldBindingOf(e.target)?.el ?? null;
     if (el !== hot) {
       clearHot();
       hot = el;
@@ -144,7 +85,7 @@ export function installDesign(doc, handlers) {
   const click = (e) => {
     if (!handlers.enabled()) return;
     // Let the existing edit_object buttons keep their own capture handler.
-    if (e.target.closest?.('[data-wcl-edit-kind]')) return;
+    if (editButtonOf(e.target)) return;
     // The merged view's visibility chips own their clicks (visgutter.js).
     if (e.target.closest?.('.wcl-vis-gutter')) return;
     // An editing session owns its element's clicks.
@@ -187,7 +128,7 @@ export function installDesign(doc, handlers) {
     if (!selected) return;
     e.preventDefault();
     // Pop the selection one anchor level up; at the top, deselect.
-    const parent = selected.parentElement ? blockAt(selected.parentElement) : null;
+    const parent = outerAnchorEl(selected);
     handlers.onSelect?.(parent ? anchorOf(doc, parent) : null);
   };
   doc.addEventListener('mousemove', move);
@@ -213,25 +154,28 @@ export function markSelected(doc, el, shared) {
   if (el) {
     el.classList.add('wcl-wys-selected');
     if (shared) el.classList.add('wcl-wys-shared');
-    if (el.hasAttribute?.('data-wcl-shape')) addShapeSelBox(doc, el, shared);
+    if (isShape(el)) addShapeSelBox(doc, el, shared);
   }
 }
 
+/* Is any editing chrome currently inside the shape's own <g>? Each layer
+   answers for what it injects: the selection rect below is this module's,
+   the resize handles and port are the diagram gesture layer's. A shape
+   holding either can no longer be measured for its own size, which is what
+   the anchor module's geometry store is for — so it is told which case
+   this is rather than guessing. */
+const holdsChrome = (el) => !!el.querySelector?.('.wcl-wys-sel-box') || hasShapeHandles(el);
+
 /** Append a dashed selection rect inside the shape's own <g> (so it rides
-    the g's transform, including a live drag preview). Feature-detected —
-    getBBox is unavailable outside real SVG renderers (tests). */
+    the g's transform, including a live drag preview). Sized through the
+    anchor module's geometry store, which re-measures a clean shape and
+    stands on its record for one that already holds chrome — so a shape
+    resized in place picks up its new size on the next selection, while
+    re-selecting the one already selected can't grow its outline. Skipped
+    when the shape can't be measured (no SVG renderer, detached node). */
 function addShapeSelBox(doc, el, shared) {
-  if (typeof el.getBBox !== 'function') return;
-  let box;
-  try {
-    box = el.getBBox();
-  } catch {
-    return; // detached/unrendered SVG
-  }
-  // Stash the content bbox before injecting chrome — later measurements
-  // (resize handles, drag preview in preview/diagram.js) would otherwise
-  // include the padded selection rect itself.
-  el.__wclShapeBox = box;
+  const box = stashShapeBox(el, { chromeInside: holdsChrome(el) });
+  if (!box) return;
   const pad = 3;
   const rect = doc.createElementNS('http://www.w3.org/2000/svg', 'rect');
   rect.setAttribute('class', `wcl-wys-sel-box${shared ? ' wcl-wys-shared' : ''}`);
@@ -240,12 +184,6 @@ function addShapeSelBox(doc, el, shared) {
   rect.setAttribute('width', box.width + 2 * pad);
   rect.setAttribute('height', box.height + 2 * pad);
   el.appendChild(rect);
-}
-
-/** Find a block element by its source binding (after a rebuild refreshed
-    the anchors). */
-export function elBySpan(doc, file, span) {
-  return doc?.querySelector?.(spanSelector(file, span));
 }
 
 // ---------------------------------------------------------------------------
