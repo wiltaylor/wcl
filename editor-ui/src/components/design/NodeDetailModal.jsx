@@ -34,7 +34,7 @@ import { CodeEditor } from '@forge/code';
 
 import { api } from '../../api';
 import { wclLanguage } from '../../lang/wcl';
-import { blockSnippet, draftOps, slugify } from '../../preview/schemaform';
+import { blockSnippet, createValue, draftOps, slugify } from '../../preview/schemaform';
 import { openFile } from '../../state/buffers';
 import { revealSpan } from '../../state/views';
 import {
@@ -222,6 +222,7 @@ export default function NodeDetailModal(props) {
             <FieldForm
               schema={d().schema}
               cells={d().cells}
+              selfId={d().id}
               draft={draft()}
               onChange={setDraft}
             />
@@ -474,21 +475,24 @@ function AggregateSurface(props) {
     const taken = new Set((model()?.ids ?? []).concat(props.units.map((u) => u.id)));
     let id = base;
     for (let n = 2; taken.has(id); n += 1) id = `${base}_${n}`;
+    // Required fields are seeded and typed by the SAME rule the create
+    // forms use, so an aggregate Add and the add dialog agree about a
+    // kind's shape.
     const fields = { [pf]: { ident: owner.id } };
     for (const f of entry.fields ?? []) {
       if (f.inline_slot != null || f.optional !== false || f.default != null) continue;
       if (f.name in fields) continue;
       const hint = props.surface.create?.[f.name];
-      if (f.name === 'name' || f.name === 'title') fields[f.name] = nm;
-      else if (f.symbols?.length) fields[f.name] = { sym: hint ?? f.symbols[0] };
-      else fields[f.name] = hint ?? '';
+      const seed =
+        f.name === 'name' || f.name === 'title' ? nm : (hint ?? f.symbols?.[0] ?? '');
+      fields[f.name] = createValue(f, seed);
     }
     // Surface gate fields must be set even when the schema calls them
     // optional — without them the new unit wouldn't appear in this tab.
     for (const [k, v] of Object.entries(props.surface.create ?? {})) {
       if (k in fields) continue;
       const f = (entry.fields ?? []).find((x) => x.name === k);
-      fields[k] = f?.symbols ? { sym: v } : v;
+      fields[k] = f ? createValue(f, v) : v;
     }
     setAdding(true);
     const res = await commitUnitCreateQuiet({

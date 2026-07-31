@@ -13,7 +13,14 @@ import { Plus, RefreshCw, Trash2 } from 'lucide-solid';
 import { Badge, Button, IconButton, Input, Modal, Spinner, toast } from '@forge/ui';
 
 import { api } from '../../api';
-import { createFields, draftOps, fieldText, isSlot } from '../../preview/schemaform';
+import {
+  createFields,
+  draftOps,
+  fieldText,
+  formEditable,
+  isSlot,
+  notEditable,
+} from '../../preview/schemaform';
 import FieldControl from '../design/FieldControl';
 import { activeEntry } from '../../state/sites';
 import { busy, commitOpsQuiet } from '../../state/design';
@@ -128,12 +135,12 @@ export default function DataView() {
 
   // ------------------------------------------------------------------
 
-  /** A table cell: its value, or a marker for what a column can't show. */
+  /** A table cell: its value, or the shared marker for what no column (and
+      no form) can show — the same vocabulary the row's form uses. */
   const columnText = (row, f) => {
-    const state = row.cells?.fields?.[f.name]?.state;
-    if (!state) return '';
-    if (state === 'computed') return '(expr)';
-    if (state === 'rows') return '(grid)';
+    const cell = row.cells?.fields?.[f.name];
+    if (!cell) return '';
+    if (!formEditable(cell.state)) return notEditable(cell).short;
     return fieldText(f, row.cells);
   };
 

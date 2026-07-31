@@ -30,9 +30,14 @@ import {
 } from '../../state/design';
 import { reloadGraph } from '../../state/graph';
 import { isManualLayout, shapeEls } from '../../preview/anchors';
-import { freshShapeId, shapeSnippet } from '../../preview/schemaform';
+import {
+  cellNamed,
+  cellText,
+  cellWrite,
+  freshShapeId,
+  shapeSnippet,
+} from '../../preview/schemaform';
 import { wclString } from '../../preview/wysiwyg';
-import { cellNamed, cellText } from '../../preview/schemaform';
 import {
   delColAt,
   insertColAt,
@@ -349,13 +354,21 @@ function CodeBlockEditor(props) {
   }
   const [lang, setLang] = createSignal(langSlot()?.text ?? 'text');
   const [text, setText] = createSignal(srcField()?.text ?? '');
+  // Each value goes back the way its cell came: the language slot is
+  // declared `identifier`, so quoting it here would write `code "rust"` and
+  // fail schema validation on commit.
   const save = () =>
     props.onCommit(
       commitOps(
         props.anchor.file,
         [
-          { op: 'set_label', span: props.anchor.span, slot: 0, text: lang() },
-          { op: 'set_field', span: props.anchor.span, field: 'source', text: text() },
+          { op: 'set_label', span: props.anchor.span, slot: 0, ...cellWrite(langSlot(), lang()) },
+          {
+            op: 'set_field',
+            span: props.anchor.span,
+            field: 'source',
+            ...cellWrite(srcField(), text()),
+          },
         ],
         { etag: props.src.etag, reveal: 'edited' },
       ),
@@ -572,10 +585,18 @@ function ComponentEditor(props) {
   const initial = {};
   for (const slot of def().slots) {
     const f = cellNamed(props.src.cells, slot.name);
+    // A slot is untyped, so it holds whatever the instance wrote — a string
+    // label, a number (`metric_card { value = 42 }`). Anything with a single
+    // value is editable and goes back the way it came ({@link cellWrite});
+    // a computed slot, or a list, has no such value and belongs in the
+    // source editor.
+    const scalar = !f || f.text != null;
     initial[slot.name] = {
-      value: f?.state === 'text' ? (f.text ?? '') : '',
-      computed: f?.state === 'computed',
+      value: scalar ? (f?.text ?? '') : '',
+      readOnly: !scalar,
+      state: f?.state,
       present: !!f,
+      cell: f,
     };
   }
   const [form, setForm] = createSignal(initial);
@@ -583,11 +604,16 @@ function ComponentEditor(props) {
     const ops = [];
     for (const slot of def().slots) {
       const f = form()[slot.name];
-      if (f.computed) continue;
+      if (f.readOnly) continue;
       const orig = cellText(props.src.cells, slot.name);
       if (f.value === orig && f.present) continue;
       if (f.value === '' && !slot.required) continue;
-      ops.push({ op: 'set_field', span: props.anchor.span, field: slot.name, text: f.value });
+      ops.push({
+        op: 'set_field',
+        span: props.anchor.span,
+        field: slot.name,
+        ...cellWrite(f.cell, f.value),
+      });
     }
     if (ops.length === 0) return props.onClose();
     props.onCommit(
@@ -613,7 +639,7 @@ function ComponentEditor(props) {
           {(slot) => (
             <Input
               value={form()[slot.name].value}
-              disabled={form()[slot.name].computed}
+              disabled={form()[slot.name].readOnly}
               onInput={(e) =>
                 setForm({
                   ...form(),
@@ -621,8 +647,8 @@ function ComponentEditor(props) {
                 })
               }
               placeholder={
-                form()[slot.name].computed
-                  ? `${slot.name} (computed — edit as source)`
+                form()[slot.name].readOnly
+                  ? `${slot.name} (${form()[slot.name].state} — edit as source)`
                   : `${slot.name}${slot.required ? ' (required)' : slot.default ? ` (default: ${slot.default})` : ''}`
               }
             />

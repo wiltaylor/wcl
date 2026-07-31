@@ -18,6 +18,7 @@ import {
   cellOf,
   controlFor,
   fieldText,
+  notEditable,
   suggestOptions,
 } from '../../preview/schemaform';
 
@@ -54,14 +55,11 @@ export default function FieldControl(props) {
     (control() === 'list'
       ? 'comma separated'
       : (props.field.default ?? (optional() ? '(unset)' : '')));
-  /** What a form can't edit, and why — never a silently dead input. */
-  const why = () =>
-    cell()?.state === 'rows' ? '(a grid — edit as source)' : '(computed — edit as source)';
 
   return (
     <Switch>
       <Match when={control() === 'computed'}>
-        <Input value={why()} disabled title="Edit it in the source instead" />
+        <Input value={notEditable(cell()).long} disabled title="Edit it in the source instead" />
       </Match>
       <Match when={control() === 'symbol'}>
         <Select

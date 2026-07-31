@@ -17,6 +17,14 @@ import FieldControl from './FieldControl';
 
 export default function AddNodeDialog(props) {
   const [form, setForm] = createSignal({ kind: '', id: '', idTouched: false, fields: {} });
+  /** Free-text fields switched to typing by picking "Custom…" — a kind's
+      suggestions are what other instances use, never the whole vocabulary.
+      Cleared with the form: the escape belongs to one field of one kind. */
+  const [custom, setCustom] = createSignal({});
+  const reset = (kind = '') => {
+    setForm({ kind, id: '', idTouched: false, fields: {} });
+    setCustom({});
+  };
   const patch = (p) => setForm({ ...form(), ...p });
   const kinds = () => props.kinds ?? [];
   const def = () => kinds().find((k) => k.kind === form().kind) ?? null;
@@ -33,7 +41,7 @@ export default function AddNodeDialog(props) {
     if (!props.open) return;
     const cur = form().kind;
     const want = list.some((k) => k.kind === cur) ? cur : list.length === 1 ? list[0].kind : '';
-    if (want !== cur) setForm({ kind: want, id: '', idTouched: false, fields: {} });
+    if (want !== cur) reset(want);
   });
 
   /** Editable fields: the kind's own, minus the locked parent link. */
@@ -85,7 +93,7 @@ export default function AddNodeDialog(props) {
       fields: out,
     });
     if (res?.ok) {
-      setForm({ kind: '', id: '', idTouched: false, fields: {} });
+      reset();
       props.onClose();
     }
   };
@@ -113,7 +121,12 @@ export default function AddNodeDialog(props) {
             options={kinds().map((k) => ({ value: k.kind, label: k.kind }))}
             value={form().kind || undefined}
             placeholder="Kind…"
-            onChange={(kind) => patch({ kind, fields: {} })}
+            onChange={(kind) => {
+              // The id survives a kind change (it may already be typed);
+              // the field values and their Custom… escapes do not.
+              patch({ kind, fields: {} });
+              setCustom({});
+            }}
           />
           <Input
             value={form().id}
@@ -139,6 +152,11 @@ export default function AddNodeDialog(props) {
                   schema={def()}
                   value={form().fields[f.name] ?? ''}
                   placeholder={`${f.name}${f.optional === false ? ' (required)' : ''}`}
+                  custom={custom()[f.name]}
+                  onCustom={() => {
+                    setCustom({ ...custom(), [f.name]: true });
+                    setField(f.name, '');
+                  }}
                   onChange={(v) => setField(f.name, v)}
                 />
               )}

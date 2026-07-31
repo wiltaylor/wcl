@@ -21,10 +21,15 @@ import { api } from '../../../api';
 import { blockSnippet, cellText, draftOps, orderFields } from '../../../preview/schemaform';
 import { busy, commitOpsQuiet } from '../../../state/design';
 import { activeEntry } from '../../../state/sites';
-import { loadSystems, model } from '../../../state/systems';
+import { idOptions, loadSystems, model } from '../../../state/systems';
 import FieldControl from '../FieldControl';
 
-/** A form row per editable field, shared by the object and its children. */
+/**
+ * A form row per editable field, shared by the object and its children.
+ * `selfId` is the object being edited, so a reference field's picker leaves
+ * it out — the ids come from the same `idOptions` the canvas dock uses, so
+ * opening an object two ways offers the same controls.
+ */
 export function FieldForm(props) {
   const rows = () => orderFields(props.schema?.fields ?? []);
   const set = (name, value) => props.onChange({ ...props.draft, [name]: value });
@@ -48,6 +53,7 @@ export function FieldForm(props) {
               field={f}
               cells={props.cells}
               schema={props.schema}
+              ids={idOptions(props.schema, f, props.selfId)}
               value={f.name in props.draft ? props.draft[f.name] : undefined}
               custom={custom()[f.name]}
               onCustom={() => {
