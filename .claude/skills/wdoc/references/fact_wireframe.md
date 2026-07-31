@@ -412,7 +412,7 @@ diagram {
 
 | Property | Type | Required | Description |
 | --- | --- | --- | --- |
-| `columns` | `i64` | yes | Number of equal-width columns; children flow across the rows. |
+| `columns` | `i64` | no | Number of equal-width columns (default 2); children flow across the rows. |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
 | `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
