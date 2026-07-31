@@ -77,6 +77,7 @@ import {
   closestOfKind,
   diagramOf,
   elBySpan,
+  isManualLayout,
   pageInfo,
   prevSiblingOfKind,
   shapeChildren,
@@ -117,7 +118,6 @@ const DOCK_GAP = 10;
 const PROSE = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li']);
 const HEADING_KINDS = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
 const DIAGRAM_LAYOUTS = ['free', 'grid', 'layered', 'force', 'radial'];
-const MANUAL_LAYOUTS = ['free', 'none'];
 
 export default function EditSurface(props) {
   let iframe;
@@ -392,7 +392,7 @@ export default function EditSurface(props) {
     const src = await api.blockSource({ file: a.file, span: a.span });
     if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
     const at =
-      target.mode === 'diagram' && MANUAL_LAYOUTS.includes(t.layout ?? '')
+      target.mode === 'diagram' && isManualLayout(t.layout)
         ? clientToUser(target.el, point.x, point.y)
         : null;
     const ops = relocateOps({
@@ -850,7 +850,7 @@ export default function EditSurface(props) {
                     }
                     onChange={(k) => k !== (selection()?.layout ?? 'free') && setDiagramLayout(k)}
                   />
-                  <Show when={!MANUAL_LAYOUTS.includes(selection()?.layout ?? 'free')}>
+                  <Show when={!isManualLayout(selection()?.layout)}>
                     <IconButton
                       icon={Hand}
                       label="Convert to manual layout (keep positions)"

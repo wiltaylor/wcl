@@ -10,7 +10,7 @@
    client-side attributes, not build stamps — everything the build stamps
    is read through preview/anchors.js. */
 
-import { ATTR, SEL, blockChildren, editButtonOf, kindOf, pageInfo } from './anchors';
+import { SEL, blockChildren, containerOf, editButtonOf, kindOf, pageInfo } from './anchors';
 
 const CSS_ID = 'wcl-comment-css';
 /* The iframe holds a plain wdoc build with no Forge tokens, so these are
@@ -64,17 +64,9 @@ export function locOf(pageEl, el) {
   const path = [];
   let cur = el;
   while (cur && cur !== pageEl) {
-    let p = cur.parentElement;
-    let pb = null;
-    while (p && p !== pageEl) {
-      if (p.hasAttribute(ATTR.block)) {
-        pb = p;
-        break;
-      }
-      p = p.parentElement;
-    }
-    path.unshift(blockChildren(pb || pageEl).indexOf(cur));
-    cur = pb;
+    const container = containerOf(pageEl, cur);
+    path.unshift(blockChildren(container).indexOf(cur));
+    cur = container; // the page root ends the walk
   }
   return path.join('/');
 }

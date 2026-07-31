@@ -31,7 +31,7 @@ import {
   setSelection,
 } from '../../state/design';
 import { reloadGraph } from '../../state/graph';
-import { anchorEls, restampExcept, shapeEls } from '../../preview/anchors';
+import { anchorEls, isManualLayout, restampExcept, shapeEls } from '../../preview/anchors';
 import { patchAnchors } from '../../preview/localops';
 import { freshShapeId, shapeSnippet } from '../../preview/schemaform';
 import { wclString } from '../../preview/wysiwyg';
@@ -689,7 +689,7 @@ function AddShapeModal(props) {
   const insert = (entry) => {
     const a = props.anchor;
     const source = props.src.source ?? '';
-    const manual = ['free', 'none'].includes(a.layout ?? 'free');
+    const manual = isManualLayout(a.layout);
     const index = a.el ? shapeEls(a.el).length : (source.match(/\bid\s*=/g) ?? []).length;
     const snippet = shapeSnippet(entry, { uid: freshShapeId(entry.kind, source), manual, index });
     props.onCommit(

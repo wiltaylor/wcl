@@ -9,9 +9,11 @@
    wrapper's `data-wcl-page-*`, the `edit_field` bindings
    (`data-wcl-field-*`) and the `edit_object` buttons (`data-wcl-edit-*`).
 
-   Every reader in the preview layer comes through here. The attribute names
-   live in `ATTR`/`SEL` and nowhere else, and the facts callers used to
-   recompute for themselves are fields on the anchor `anchorOf` returns:
+   Every reader in the preview layer comes through here. The names of the
+   attributes the BUILD stamps live in `ATTR`/`SEL` and nowhere else (each
+   editing layer's own injected chrome — comment pins, resize handles and
+   ports, tree rows — is that layer's to name), and the facts callers used
+   to recompute for themselves are fields on the anchor `anchorOf` returns:
 
      - `chrome` — the declaring file is a stdlib/registry source, so the
        element is template chrome rather than editable content;
@@ -41,6 +43,7 @@ export const ATTR = {
   shape: 'data-wcl-shape',
   shapeId: 'data-wcl-shape-id',
   layout: 'data-wcl-layout',
+  edge: 'data-wcl-edge',
   slot: 'data-wf-slot',
   guide: 'data-wf-guide',
   except: 'data-wcl-except',
@@ -64,6 +67,7 @@ export const SEL = {
   /** Shapes that can be an edge endpoint (a connection names ids). */
   identifiedShape: `[${ATTR.shape}][${ATTR.shapeId}]`,
   diagram: `svg[${ATTR.layout}]`,
+  edge: `[${ATTR.edge}]`,
   slot: `[${ATTR.slot}]`,
   guide: `[${ATTR.guide}]`,
   field: `[${ATTR.fieldName}]`,
@@ -144,6 +148,27 @@ export function layoutOf(el) {
   return diagramOf(el)?.getAttribute(ATTR.layout) ?? null;
 }
 
+/** The layout modes that honor per-shape x/y. An edit-mode diagram always
+    carries a layout (`free` by default), so a null one means `el` is not
+    in a diagram at all — nothing to place a shape into. */
+const MANUAL_LAYOUTS = ['free', 'none'];
+
+/** Does this layout honor per-shape x/y? THE predicate behind dragging a
+    shape, seeding a new one with coordinates and offering convert-to-manual
+    — asked of an anchor's `layout` so those three cannot disagree. */
+export function isManualLayout(layout) {
+  return MANUAL_LAYOUTS.includes(layout ?? '');
+}
+
+/** The connection a drawn edge path names (`{from, to}` shape ids), read
+    from anywhere inside the path, or null. Malformed reads as absent. */
+export function edgeOf(el) {
+  const raw = el?.closest?.(SEL.edge)?.getAttribute?.(ATTR.edge);
+  const at = raw ? raw.indexOf(':') : -1;
+  if (at < 1 || at === raw.length - 1) return null;
+  return { from: raw.slice(0, at), to: raw.slice(at + 1) };
+}
+
 /** The insertion index of a layout-guide drop zone, or null when `el` is
     not one. */
 export function slotOf(el) {
@@ -160,14 +185,16 @@ export function slotZoneIn(hitEl, containerEl) {
 }
 
 /** The visibility state stamped on a merged-build anchor: the profiles the
-    block is hidden in, and whether its visibility is custom (`@only` /
-    other axes, which the checkbox editor can't represent). Written back by
+    block is hidden in (`except`), and `vis` = 'custom' when its visibility
+    is custom (`@only` / other axes, which the checkbox editor can't
+    represent). These ARE the anchor's two visibility fields, under the same
+    names, so nothing renames them on the way through. Written back by
     `restampExcept` — read and write live together so they cannot drift. */
 export function visOf(el) {
   const raw = el?.getAttribute?.(ATTR.except);
   return {
-    exceptSites: raw ? raw.split(/\s+/).filter(Boolean) : [],
-    custom: el?.getAttribute?.(ATTR.vis) === 'custom',
+    except: raw ? raw.split(/\s+/).filter(Boolean) : [],
+    vis: el?.getAttribute?.(ATTR.vis) === 'custom' ? 'custom' : null,
   };
 }
 
@@ -176,14 +203,20 @@ export function visOf(el) {
 // ---------------------------------------------------------------------------
 
 /** Everything stamped on `el`, plus the derived facts — or null when `el`
-    carries no (file, span) anchor. */
+    carries no (file, span) anchor.
+
+    `shared` and `box` are derived on FIRST READ and then remembered: one
+    scans the whole document and the other forces SVG layout, while the
+    hottest callers (hover hit-testing, one anchor per gutter, the block
+    tree) read neither. Reading them is the same snapshot it always was. */
 export function anchorOf(doc, el) {
   const span = spanOf(el);
   const file = el?.getAttribute?.(ATTR.file);
   if (!span || !file) return null;
   const shape = isShape(el);
-  const { exceptSites, custom } = visOf(el);
   const owner = doc ?? el.ownerDocument;
+  let shared;
+  let box;
   return {
     el,
     file,
@@ -192,11 +225,16 @@ export function anchorOf(doc, el) {
     shape,
     shapeId: shapeIdOf(el),
     layout: layoutOf(el),
-    except: exceptSites,
-    vis: custom ? 'custom' : null,
+    ...visOf(el),
     chrome: isChrome(el),
-    shared: (owner?.querySelectorAll?.(spanSelector(file, span))?.length ?? 0) > 1,
-    box: shape ? shapeBox(el) : null,
+    get shared() {
+      shared ??= (owner?.querySelectorAll?.(spanSelector(file, span))?.length ?? 0) > 1;
+      return shared;
+    },
+    get box() {
+      if (box === undefined) box = shape ? shapeBox(el) : null;
+      return box;
+    },
   };
 }
 
@@ -231,9 +269,12 @@ export function closestMatching(el, selector, skip) {
 }
 
 /** The nearest selectable content-block element at `target` — template
-    chrome skipped so its links/toggles keep working. */
+    chrome skipped so its links/toggles keep working, and a malformed span
+    skipped too: `SEL.anchor` matches the attribute's PRESENCE, so without
+    this a click could resolve to an element `anchorOf` then rejects and
+    silently do nothing. */
 export function anchorElAt(target) {
-  return closestMatching(target, SEL.anchor, isChrome);
+  return closestMatching(target, SEL.anchor, (el) => isChrome(el) || !spanOf(el));
 }
 
 /** The anchor enclosing `el` — the outward step (Esc pops the selection
@@ -301,8 +342,11 @@ export function blockChildren(node) {
 }
 
 /** The block container `el` sits in: its nearest [data-wcl-block] ancestor
-    below the page root, else the page root itself. */
-function containerOf(pageEl, el) {
+    below the page root, else the page root itself. The other half of the
+    block-tree walk — `blockChildren(containerOf(page, el))` is the sibling
+    run `el` belongs to, which is how both the reorder walk and the comment
+    locator address a block. */
+export function containerOf(pageEl, el) {
   let p = el?.parentElement;
   while (p && p !== pageEl) {
     if (p.hasAttribute(ATTR.block)) return p;
@@ -408,10 +452,11 @@ export function restampPageSpan(el, span) {
   el.setAttribute(ATTR.pageSpan, spanKey(span));
 }
 
-/** Rewrite the merged-build visibility stamp to `exceptSites` (space-
-    joined; removed when empty) — the write half of `visOf`. */
-export function restampExcept(el, exceptSites) {
-  if (exceptSites?.length) el.setAttribute(ATTR.except, exceptSites.join(' '));
+/** Rewrite the merged-build visibility stamp to `except` (space-joined;
+    removed when empty) — the write half of `visOf`, taking back exactly the
+    field it hands out. */
+export function restampExcept(el, except) {
+  if (except?.length) el.setAttribute(ATTR.except, except.join(' '));
   else el.removeAttribute(ATTR.except);
 }
 
@@ -428,14 +473,10 @@ export function restampExcept(el, exceptSites) {
    with the elements a rebuild replaces. */
 const shapeBoxes = new WeakMap();
 
-/** A shape's CONTENT geometry: the stashed measurement in preference to a
-    live one (which would include whatever chrome is currently inside it),
-    falling back to `getBBox` when nothing was stashed. Null outside a real
-    SVG renderer (happy-dom tests) or for a detached/unrendered shape. */
-export function shapeBox(el) {
-  if (!el) return null;
-  if (shapeBoxes.has(el)) return shapeBoxes.get(el);
-  if (typeof el.getBBox !== 'function') return null;
+/** A live `getBBox`, or null outside a real SVG renderer (happy-dom tests)
+    and for a detached/unrendered shape. */
+function liveShapeBox(el) {
+  if (typeof el?.getBBox !== 'function') return null;
   try {
     return el.getBBox();
   } catch {
@@ -443,10 +484,27 @@ export function shapeBox(el) {
   }
 }
 
-/** Record a shape's content geometry: the selection layer stashes what it
-    measured BEFORE injecting its chrome, so every later reader (resize
-    handles, drag/connect previews, the anchor's `box`) measures the shape
-    and not the chrome — and re-selecting one can't grow its outline. */
-export function stashShapeBox(el, box) {
-  if (el && box) shapeBoxes.set(el, box);
+/** A shape's CONTENT geometry: the stashed measurement in preference to a
+    live one (which would include whatever chrome is currently inside it),
+    falling back to a live measurement when nothing was stashed. */
+export function shapeBox(el) {
+  if (!el) return null;
+  if (shapeBoxes.has(el)) return shapeBoxes.get(el);
+  return liveShapeBox(el);
+}
+
+/** Record and return a shape's content geometry — the ONE writer, called by
+    the selection layer as it (re-)selects a shape.
+
+    `chromeInside` says the shape already carries injected chrome, so
+    measuring now would swallow it and the stored measurement stands: that
+    is what stops the handles creeping outward on re-selection. A CLEAN
+    shape re-measures instead, so one whose geometry changed while its
+    element survived (an in-place commit) doesn't serve a stale box for the
+    life of that element. */
+export function stashShapeBox(el, { chromeInside = false } = {}) {
+  if (!el) return null;
+  const live = chromeInside ? null : liveShapeBox(el);
+  if (live) shapeBoxes.set(el, live);
+  return live ?? shapeBox(el);
 }

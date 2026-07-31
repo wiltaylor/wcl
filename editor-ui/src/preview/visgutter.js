@@ -94,10 +94,9 @@ export function placeVisGutters(
   const anchors = blockChildren(page.el)
     .map((el) => anchorOf(doc, el))
     .filter((a) => a && !a.chrome);
-  for (const { el, file, span, except: exceptSites, vis } of anchors) {
-    const custom = vis === 'custom';
+  for (const { el, file, span, except, vis } of anchors) {
     el.classList.add('wcl-vis-host');
-    if (currentSite && exceptSites.includes(currentSite)) el.classList.add('wcl-vis-ghost');
+    if (currentSite && except.includes(currentSite)) el.classList.add('wcl-vis-ghost');
     const gutter = doc.createElement('div');
     gutter.className = 'wcl-vis-gutter';
 
@@ -116,12 +115,12 @@ export function placeVisGutters(
       btn.type = 'button';
       btn.className = 'wcl-vis-profile';
       btn.textContent = '◐';
-      if (merged && custom) {
+      if (merged && vis === 'custom') {
         btn.classList.add('is-custom');
         btn.title = 'Custom visibility (@only / other axes) — opens the editor';
-      } else if (merged && exceptSites.length) {
+      } else if (merged && except.length) {
         btn.classList.add('is-partial');
-        btn.title = `Hidden in: ${exceptSites.join(', ')} — click to change`;
+        btn.title = `Hidden in: ${except.join(', ')} — click to change`;
       } else {
         btn.title = 'Set which profiles this block shows in';
       }
