@@ -195,6 +195,17 @@ pub enum EvalError {
         span: SourceSpan,
     },
 
+    #[error("operator '{op}' cannot {reason}")]
+    #[diagnostic(code(wcl::eval::arithmetic))]
+    Arithmetic {
+        op: String,
+        /// What the operator could not do, phrased to follow "cannot":
+        /// `"divide by zero"`, `"represent the result in i8 (overflow)"`.
+        reason: String,
+        #[label("no representable result")]
+        span: SourceSpan,
+    },
+
     #[error("cannot evaluate {kind} as a leaf value")]
     #[diagnostic(code(wcl::eval::not_a_leaf))]
     NotALeaf {
@@ -582,6 +593,18 @@ impl EvalError {
             op: op.into(),
             lhs_type: lhs_type.into(),
             rhs_type: rhs_type.into(),
+            span: span_to_miette(span),
+        }
+    }
+
+    pub(crate) fn arithmetic(
+        op: impl Into<String>,
+        reason: impl Into<String>,
+        span: crate::ast::Span,
+    ) -> Self {
+        Self::Arithmetic {
+            op: op.into(),
+            reason: reason.into(),
             span: span_to_miette(span),
         }
     }

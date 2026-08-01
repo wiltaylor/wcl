@@ -40,3 +40,9 @@ target (~15s each) — as part of every push.
 Each target has its own `corpus/<target>/` directory seeded from
 `examples/*.wcl`. Add new seeds as the language grows — small files
 that exercise specific syntax are more useful than large ones.
+
+A seed that reproduced a real crash keeps its exact bytes, so the
+fixed path stays covered: `json_round_trip/divide_by_zero.txt` is the
+artifact from the integer-`/`-by-zero panic (issue #30), and
+`modulo_by_zero.txt` / `int_overflow.txt` cover the sibling faults
+found alongside it.

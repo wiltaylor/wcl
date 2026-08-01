@@ -4292,7 +4292,7 @@ code_item code_api_wcl_lang_error {
       kind = "variant"
     }
     code_member m_n_api_wcl_lang_error_EvalError_more {
-      signature = "… +32 more"
+      signature = "… +34 more"
       kind = "overflow"
     }
   }

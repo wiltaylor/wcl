@@ -33,9 +33,11 @@ macro_rules! for_each_numeric_variant {
     };
 }
 
-/// Like [`for_each_numeric_variant!`] but only signed integers and floats.
-/// Used by unary negation, where unsigned types are rejected.
-macro_rules! for_each_signed_numeric_variant {
+/// Like [`for_each_numeric_variant!`] but only the integer variants.
+/// Integers and floats part company wherever an operation can fail —
+/// integers have `checked_*` and a zero divisor is fatal, floats have
+/// neither — so arithmetic walks the two lists separately.
+macro_rules! for_each_integer_numeric_variant {
     ($mac:ident) => {
         $mac!(i8, I8);
         $mac!(i16, I16);
@@ -43,6 +45,31 @@ macro_rules! for_each_signed_numeric_variant {
         $mac!(i64, I64);
         $mac!(i128, I128);
         $mac!(isize, Isize);
+        $mac!(u8, U8);
+        $mac!(u16, U16);
+        $mac!(u32, U32);
+        $mac!(u64, U64);
+        $mac!(u128, U128);
+        $mac!(usize, Usize);
+    };
+}
+
+/// The signed half of [`for_each_integer_numeric_variant!`]. Used by unary
+/// negation, where unsigned types are rejected outright.
+macro_rules! for_each_signed_integer_numeric_variant {
+    ($mac:ident) => {
+        $mac!(i8, I8);
+        $mac!(i16, I16);
+        $mac!(i32, I32);
+        $mac!(i64, I64);
+        $mac!(i128, I128);
+        $mac!(isize, Isize);
+    };
+}
+
+/// The float half of [`for_each_numeric_variant!`].
+macro_rules! for_each_float_numeric_variant {
+    ($mac:ident) => {
         $mac!(f32, F32);
         $mac!(f64, F64);
     };
@@ -100,8 +127,10 @@ macro_rules! numeric_as_path_segment {
     };
 }
 
+pub(crate) use for_each_float_numeric_variant;
+pub(crate) use for_each_integer_numeric_variant;
 pub(crate) use for_each_numeric_variant;
-pub(crate) use for_each_signed_numeric_variant;
+pub(crate) use for_each_signed_integer_numeric_variant;
 pub(crate) use numeric_as_path_segment;
 pub(crate) use numeric_as_u64;
 

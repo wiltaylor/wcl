@@ -8,7 +8,10 @@
 
 use crate::ast::{self, Span};
 use crate::error::EvalError;
-use crate::numeric::{for_each_numeric_variant, for_each_signed_numeric_variant};
+use crate::numeric::{
+    for_each_float_numeric_variant, for_each_integer_numeric_variant, for_each_numeric_variant,
+    for_each_signed_integer_numeric_variant,
+};
 use crate::value::Value;
 
 pub(super) fn format_member_path(expr: &ast::Expr) -> String {
@@ -97,14 +100,26 @@ pub(super) fn op_name(op: ast::BinOp) -> &'static str {
 pub(super) fn apply_unary(op: ast::UnaryOp, v: Value, span: Span) -> Result<Value, EvalError> {
     match op {
         ast::UnaryOp::Neg => {
-            macro_rules! arm {
+            // Integers negate through `checked_neg` — `-i8::MIN` has no
+            // answer in `i8` and must be a diagnostic, not a debug panic.
+            macro_rules! int_arm {
+                ($t:ty, $variant:ident) => {
+                    if let Value::$variant(n) = &v {
+                        return n.checked_neg().map(Value::$variant).ok_or_else(|| {
+                            EvalError::arithmetic("-", overflow_reason(stringify!($t)), span)
+                        });
+                    }
+                };
+            }
+            for_each_signed_integer_numeric_variant!(int_arm);
+            macro_rules! float_arm {
                 ($t:ty, $variant:ident) => {
                     if let Value::$variant(n) = &v {
                         return Ok(Value::$variant(-*n));
                     }
                 };
             }
-            for_each_signed_numeric_variant!(arm);
+            for_each_float_numeric_variant!(float_arm);
             Err(EvalError::type_mismatch("-", v.type_name(), "—", span))
         }
         ast::UnaryOp::Not => match v {
@@ -114,27 +129,75 @@ pub(super) fn apply_unary(op: ast::UnaryOp, v: Value, span: Span) -> Result<Valu
     }
 }
 
+/// Why a same-variant arithmetic operation has no answer. Distinct from a
+/// type mismatch: the operands *were* compatible, the result simply isn't
+/// representable (or, for `/` and `%`, isn't defined at all).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArithFault {
+    DivideByZero,
+    /// Overflowed the operands' shared variant, named for the message.
+    Overflow(&'static str),
+}
+
+fn overflow_reason(ty: &str) -> String {
+    format!("represent the result in {ty} (overflow)")
+}
+
+impl ArithFault {
+    fn into_error(self, op: ast::BinOp, span: Span) -> EvalError {
+        let reason = match self {
+            Self::DivideByZero => "divide by zero".to_string(),
+            Self::Overflow(ty) => overflow_reason(ty),
+        };
+        EvalError::arithmetic(op_name(op), reason, span)
+    }
+}
+
+/// Define one same-variant arithmetic function. `$checked` drives the
+/// integer variants (so overflow and a zero divisor become faults rather
+/// than debug panics / wrapped results) and `$op` the floats, which have
+/// neither problem — IEEE already answers `1.0 / 0.0`.
+///
+/// The result reads on three levels: `Ok(Some(v))` is the answer,
+/// `Ok(None)` means the operands weren't the same numeric variant and the
+/// caller should promote and retry, and `Err` means they were but the
+/// operation has no result.
 macro_rules! arith_fn {
-    ($name:ident, $op:tt) => {
-        fn $name(l: &Value, r: &Value) -> Option<Value> {
-            macro_rules! arm {
+    ($name:ident, $checked:ident, $op:tt) => {
+        fn $name(l: &Value, r: &Value) -> Result<Option<Value>, ArithFault> {
+            macro_rules! int_arm {
+                ($t:ty, $variant:ident) => {
+                    if let (Value::$variant(a), Value::$variant(b)) = (l, r) {
+                        return match a.$checked(*b) {
+                            Some(n) => Ok(Some(Value::$variant(n))),
+                            // Only `/` and `%` fail on a zero right-hand
+                            // side; for the others a zero operand can't
+                            // overflow, so this arm is theirs alone.
+                            None if *b == 0 => Err(ArithFault::DivideByZero),
+                            None => Err(ArithFault::Overflow(stringify!($t))),
+                        };
+                    }
+                };
+            }
+            for_each_integer_numeric_variant!(int_arm);
+            macro_rules! float_arm {
                                 ($t:ty, $variant:ident) => {
                                     if let (Value::$variant(a), Value::$variant(b)) = (l, r) {
-                                        return Some(Value::$variant(*a $op *b));
+                                        return Ok(Some(Value::$variant(*a $op *b)));
                                     }
                                 };
                             }
-            for_each_numeric_variant!(arm);
-            None
+            for_each_float_numeric_variant!(float_arm);
+            Ok(None)
         }
     };
 }
 
-arith_fn!(arith_add, +);
-arith_fn!(arith_sub, -);
-arith_fn!(arith_mul, *);
-arith_fn!(arith_div, /);
-arith_fn!(arith_mod, %);
+arith_fn!(arith_add, checked_add, +);
+arith_fn!(arith_sub, checked_sub, -);
+arith_fn!(arith_mul, checked_mul, *);
+arith_fn!(arith_div, checked_div, /);
+arith_fn!(arith_mod, checked_rem, %);
 
 /// Promote two numeric values to a common variant for arithmetic /
 /// comparison. Returns `None` when either operand is non-numeric.
@@ -165,13 +228,17 @@ pub(super) fn apply_binary(
 
     // Helper: try same-typed dispatch first (fast path, preserves
     // the operand's numeric variant); on miss, fall back to a
-    // promoted pair and retry.
-    let arith = |same: fn(&Value, &Value) -> Option<Value>| -> Result<Value, EvalError> {
-        if let Some(v) = same(&l, &r) {
+    // promoted pair and retry. A fault (zero divisor, overflow) is
+    // final — the operands matched, so promoting would only re-run the
+    // same impossible operation in a wider type.
+    type Arith = fn(&Value, &Value) -> Result<Option<Value>, ArithFault>;
+    let arith = |same: Arith| -> Result<Value, EvalError> {
+        let fault = |f: ArithFault| f.into_error(op, span);
+        if let Some(v) = same(&l, &r).map_err(fault)? {
             return Ok(v);
         }
         if let Some((pl, pr)) = promote_pair(&l, &r)
-            && let Some(v) = same(&pl, &pr)
+            && let Some(v) = same(&pl, &pr).map_err(fault)?
         {
             return Ok(v);
         }
