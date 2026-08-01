@@ -1,4 +1,5 @@
 use super::*;
+use crate::error::ArithmeticFault;
 
 fn open(src: &str) -> Document {
     // The strict-validation default rejects any top-level field
@@ -1108,11 +1109,27 @@ fn eval_integer_division_by_zero_errors() {
     for src in ["x = 4 / 0", "x = 4 % 0", "x = 4u8 / 0u8", "x = 4u8 % 0u8"] {
         let doc = open_with_builtins(src);
         let err = doc.field("x").unwrap().value().unwrap_err();
-        let EvalError::Arithmetic { reason, .. } = &err else {
+        let EvalError::Arithmetic { fault, .. } = &err else {
             panic!("expected Arithmetic for `{src}`, got {err:?}");
         };
-        assert!(reason.contains("divide by zero"), "{src}: {reason}");
+        assert_eq!(*fault, ArithmeticFault::DivideByZero, "{src}");
     }
+}
+
+/// The diagnostic points at the operation, not at the whole field: the
+/// span is the failing binary expression's, so `miette` underlines the
+/// inner `4 / 0` of `1 + 4 / 0` and a host can seek straight to it.
+#[test]
+fn eval_arithmetic_error_span_covers_the_failing_expression() {
+    // Spans index the source the document was opened over, wrap included.
+    let src = laxify_for_tests("x = 1 + 4 / 0");
+    let doc = open_with_builtins("x = 1 + 4 / 0");
+    let err = doc.field("x").unwrap().value().unwrap_err();
+    let EvalError::Arithmetic { span, .. } = &err else {
+        panic!("expected Arithmetic, got {err:?}");
+    };
+    let start = span.offset();
+    assert_eq!(&src[start..start + span.len()], "4 / 0");
 }
 
 /// Float division keeps IEEE semantics — `inf` / `NaN`, never an error.
@@ -1129,18 +1146,18 @@ fn eval_float_division_by_zero_is_infinite() {
 /// both are wrong for a config language, so overflow is a diagnostic too.
 #[test]
 fn eval_integer_overflow_errors() {
-    for src in [
-        "x = 127i8 + 1i8",
-        "x = -128i8 - 1i8",
-        "x = 127i8 * 2i8",
-        "x = 255u8 + 1u8",
+    for (src, ty) in [
+        ("x = 127i8 + 1i8", "i8"),
+        ("x = -128i8 - 1i8", "i8"),
+        ("x = 127i8 * 2i8", "i8"),
+        ("x = 255u8 + 1u8", "u8"),
     ] {
         let doc = open_with_builtins(src);
         let err = doc.field("x").unwrap().value().unwrap_err();
-        let EvalError::Arithmetic { reason, .. } = &err else {
+        let EvalError::Arithmetic { fault, .. } = &err else {
             panic!("expected Arithmetic for `{src}`, got {err:?}");
         };
-        assert!(reason.contains("overflow"), "{src}: {reason}");
+        assert_eq!(*fault, ArithmeticFault::overflow(ty), "{src}");
     }
 }
 
@@ -1149,10 +1166,10 @@ fn eval_integer_overflow_errors() {
 fn eval_unary_neg_overflow_errors() {
     let doc = open_with_builtins("low = -128i8\nx = -low");
     let err = doc.field("x").unwrap().value().unwrap_err();
-    let EvalError::Arithmetic { reason, .. } = &err else {
+    let EvalError::Arithmetic { fault, .. } = &err else {
         panic!("expected Arithmetic, got {err:?}");
     };
-    assert!(reason.contains("overflow"), "{reason}");
+    assert_eq!(*fault, ArithmeticFault::overflow("i8"));
 }
 
 /// `MIN % -1` is `0`, even though the matching division overflows —
@@ -1163,10 +1180,10 @@ fn eval_min_rem_negative_one_is_zero_but_div_overflows() {
     let doc = open_with_builtins("low = -128i8\nr = low % -1i8\nd = low / -1i8");
     assert_eq!(doc.field("r").unwrap().value().unwrap(), &Value::I8(0));
     let err = doc.field("d").unwrap().value().unwrap_err();
-    let EvalError::Arithmetic { reason, .. } = &err else {
+    let EvalError::Arithmetic { fault, .. } = &err else {
         panic!("expected Arithmetic, got {err:?}");
     };
-    assert!(reason.contains("overflow"), "{reason}");
+    assert_eq!(*fault, ArithmeticFault::overflow("i8"));
 }
 
 /// An arithmetic fault is an ordinary evaluation error, so `try`/`catch`

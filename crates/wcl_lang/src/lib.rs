@@ -47,7 +47,7 @@ pub use doc::{
     overlay_loader,
 };
 pub use environment::{BuiltType, DecoratorBuilder, Environment, TypeBuilder, TypeFieldBuilder};
-pub use error::{EvalError, ParseError, SchemaViolationKind, SyntaxError};
+pub use error::{ArithmeticFault, EvalError, ParseError, SchemaViolationKind, SyntaxError};
 pub use lexer::{
     LexError, Lexer, NumberLit, StringEncoding, StringLit, StringPart, Token, TokenKind,
 };
