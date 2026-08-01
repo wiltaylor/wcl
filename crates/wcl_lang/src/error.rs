@@ -195,13 +195,13 @@ pub enum EvalError {
         span: SourceSpan,
     },
 
-    #[error("operator '{op}' cannot {reason}")]
+    #[error("operator '{op}' cannot {fault}")]
     #[diagnostic(code(wcl::eval::arithmetic))]
     Arithmetic {
         op: String,
-        /// What the operator could not do, phrased to follow "cannot":
-        /// `"divide by zero"`, `"represent the result in i8 (overflow)"`.
-        reason: String,
+        /// Which fault, so tools can act on it without parsing the
+        /// rendered message.
+        fault: ArithmeticFault,
         #[label("no result for these operands")]
         span: SourceSpan,
     },
@@ -276,6 +276,40 @@ pub enum EvalError {
         #[label("needs a unit-bearing type in context")]
         span: SourceSpan,
     },
+}
+
+/// Why an arithmetic operator had no answer for operands it *did* accept.
+/// Distinct from a type mismatch: the operands were compatible, the result
+/// simply isn't representable (or, for `/` and `%`, isn't defined at all).
+///
+/// Structured rather than pre-formatted so tools can act on it without
+/// parsing the message — the same reason [`SchemaViolationKind`] exists.
+/// `Display` is the phrasing that follows "cannot", and is the one copy of
+/// that wording: `EvalError::Arithmetic` and the `sum` builtin both render
+/// through it, so one fault reads the same wherever it surfaces.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArithmeticFault {
+    /// `/` or `%` with a zero divisor — undefined, not merely
+    /// unrepresentable, so no wider type would rescue it.
+    DivideByZero,
+    /// The result doesn't fit the numeric variant the operands share,
+    /// carried in `ty` as WCL spells it (`i8`, `usize`).
+    Overflow { ty: String },
+}
+
+impl ArithmeticFault {
+    pub fn overflow(ty: impl Into<String>) -> Self {
+        Self::Overflow { ty: ty.into() }
+    }
+}
+
+impl std::fmt::Display for ArithmeticFault {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DivideByZero => f.write_str("divide by zero"),
+            Self::Overflow { ty } => write!(f, "represent the result in {ty} (overflow)"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -599,12 +633,12 @@ impl EvalError {
 
     pub(crate) fn arithmetic(
         op: impl Into<String>,
-        reason: impl Into<String>,
+        fault: ArithmeticFault,
         span: crate::ast::Span,
     ) -> Self {
         Self::Arithmetic {
             op: op.into(),
-            reason: reason.into(),
+            fault,
             span: span_to_miette(span),
         }
     }

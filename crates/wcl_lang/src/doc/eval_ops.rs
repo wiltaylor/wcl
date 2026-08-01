@@ -7,7 +7,7 @@
 //! it needs by reference.
 
 use crate::ast::{self, Span};
-use crate::error::EvalError;
+use crate::error::{ArithmeticFault, EvalError};
 use crate::numeric::{
     for_each_float_numeric_variant, for_each_integer_numeric_variant, for_each_numeric_variant,
     for_each_signed_integer_numeric_variant,
@@ -106,7 +106,11 @@ pub(super) fn apply_unary(op: ast::UnaryOp, v: Value, span: Span) -> Result<Valu
                 ($t:ty, $variant:ident) => {
                     if let Value::$variant(n) = &v {
                         return n.checked_neg().map(Value::$variant).ok_or_else(|| {
-                            EvalError::arithmetic("-", overflow_reason(stringify!($t)), span)
+                            EvalError::arithmetic(
+                                "-",
+                                ArithmeticFault::overflow(v.type_name()),
+                                span,
+                            )
                         });
                     }
                 };
@@ -129,53 +133,30 @@ pub(super) fn apply_unary(op: ast::UnaryOp, v: Value, span: Span) -> Result<Valu
     }
 }
 
-/// Why a same-variant arithmetic operation has no answer. Distinct from a
-/// type mismatch: the operands *were* compatible, the result simply isn't
-/// representable (or, for `/` and `%`, isn't defined at all).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ArithFault {
-    DivideByZero,
-    /// Overflowed the operands' shared variant, named for the message.
-    Overflow(&'static str),
-}
-
-fn overflow_reason(ty: &str) -> String {
-    format!("represent the result in {ty} (overflow)")
-}
-
-impl ArithFault {
-    fn into_error(self, op: ast::BinOp, span: Span) -> EvalError {
-        let reason = match self {
-            Self::DivideByZero => "divide by zero".to_string(),
-            Self::Overflow(ty) => overflow_reason(ty),
-        };
-        EvalError::arithmetic(op_name(op), reason, span)
-    }
-}
-
-/// Define one same-variant arithmetic function. `$checked` drives the
-/// integer variants (so overflow and a zero divisor become faults rather
-/// than debug panics / wrapped results) and `$op` the floats, which have
-/// neither problem — IEEE already answers `1.0 / 0.0`.
+/// Define one same-variant arithmetic function: the integer half of the
+/// numeric ladder runs `$int`, which answers or names the fault, while the
+/// float half takes the raw `$op` — floats have neither problem, IEEE
+/// already answers `1.0 / 0.0`. Stating each op's integer rule in full is
+/// the point: what a fallible integer operation *means* differs per
+/// operator, and `checked_*` alone gets `%` wrong.
+///
+/// `$int` is written as a closure-like `|a, b, overflow|` over the two
+/// operands (by value, already the same variant) and a constructor for the
+/// overflow fault, already carrying the variant's name.
 ///
 /// The result reads on three levels: `Ok(Some(v))` is the answer,
 /// `Ok(None)` means the operands weren't the same numeric variant and the
 /// caller should promote and retry, and `Err` means they were but the
 /// operation has no result.
 macro_rules! arith_fn {
-    ($name:ident, $checked:ident, $op:tt) => {
-        fn $name(l: &Value, r: &Value) -> Result<Option<Value>, ArithFault> {
+    ($name:ident, $op:tt, |$a:ident, $b:ident, $overflow:ident| $int:expr) => {
+        fn $name(l: &Value, r: &Value) -> Result<Option<Value>, ArithmeticFault> {
+            let $overflow = || ArithmeticFault::overflow(l.type_name());
             macro_rules! int_arm {
                 ($t:ty, $variant:ident) => {
                     if let (Value::$variant(a), Value::$variant(b)) = (l, r) {
-                        return match a.$checked(*b) {
-                            Some(n) => Ok(Some(Value::$variant(n))),
-                            // Only `/` and `%` fail on a zero right-hand
-                            // side; for the others a zero operand can't
-                            // overflow, so this arm is theirs alone.
-                            None if *b == 0 => Err(ArithFault::DivideByZero),
-                            None => Err(ArithFault::Overflow(stringify!($t))),
-                        };
+                        let ($a, $b) = (*a, *b);
+                        return $int.map(|n| Some(Value::$variant(n)));
                     }
                 };
             }
@@ -193,39 +174,30 @@ macro_rules! arith_fn {
     };
 }
 
-arith_fn!(arith_add, checked_add, +);
-arith_fn!(arith_sub, checked_sub, -);
-arith_fn!(arith_mul, checked_mul, *);
-arith_fn!(arith_div, checked_div, /);
+// A zero operand can't make `+`/`-`/`*` miss, so a `checked_*` miss there
+// is an overflow and nothing else.
+arith_fn!(arith_add, +, |a, b, overflow| a.checked_add(b).ok_or_else(overflow));
+arith_fn!(arith_sub, -, |a, b, overflow| a.checked_sub(b).ok_or_else(overflow));
+arith_fn!(arith_mul, *, |a, b, overflow| a.checked_mul(b).ok_or_else(overflow));
 
-/// `%` is the one op `arith_fn!` can't generate: `checked_rem` reports
-/// `MIN % -1` as an overflow because the matching *division* overflows,
-/// but the remainder itself is plainly `0`. Reporting that as "no
-/// representable result" would be a lie, so `%` guards the divisor
-/// directly and takes the wrapping result — which, for a remainder, is
-/// the mathematically correct one for every operand pair.
-fn arith_mod(l: &Value, r: &Value) -> Result<Option<Value>, ArithFault> {
-    macro_rules! int_arm {
-        ($t:ty, $variant:ident) => {
-            if let (Value::$variant(a), Value::$variant(b)) = (l, r) {
-                if *b == 0 {
-                    return Err(ArithFault::DivideByZero);
-                }
-                return Ok(Some(Value::$variant(a.wrapping_rem(*b))));
-            }
-        };
-    }
-    for_each_integer_numeric_variant!(int_arm);
-    macro_rules! float_arm {
-        ($t:ty, $variant:ident) => {
-            if let (Value::$variant(a), Value::$variant(b)) = (l, r) {
-                return Ok(Some(Value::$variant(*a % *b)));
-            }
-        };
-    }
-    for_each_float_numeric_variant!(float_arm);
-    Ok(None)
-}
+// `/` misses on two counts, so the divisor is guarded before `checked_div`
+// to tell them apart: what's left is `MIN / -1`, a genuine overflow.
+arith_fn!(arith_div, /, |a, b, overflow| if b == 0 {
+    Err(ArithmeticFault::DivideByZero)
+} else {
+    a.checked_div(b).ok_or_else(overflow)
+});
+
+// `%` can't use `checked_rem` at all: it reports `MIN % -1` as an overflow
+// because the matching *division* overflows, but the remainder itself is
+// plainly `0`. Calling that "no representable result" would be a lie, so
+// `%` guards the divisor and takes the wrapping result — which, for a
+// remainder, is the mathematically correct one for every operand pair.
+arith_fn!(arith_mod, %, |a, b, _overflow| if b == 0 {
+    Err(ArithmeticFault::DivideByZero)
+} else {
+    Ok(a.wrapping_rem(b))
+});
 
 /// Promote two numeric values to a common variant for arithmetic /
 /// comparison. Returns `None` when either operand is non-numeric.
@@ -259,9 +231,9 @@ pub(super) fn apply_binary(
     // promoted pair and retry. A fault (zero divisor, overflow) is
     // final — the operands matched, so promoting would only re-run the
     // same impossible operation in a wider type.
-    type Arith = fn(&Value, &Value) -> Result<Option<Value>, ArithFault>;
+    type Arith = fn(&Value, &Value) -> Result<Option<Value>, ArithmeticFault>;
     let arith = |same: Arith| -> Result<Value, EvalError> {
-        let fault = |f: ArithFault| f.into_error(op, span);
+        let fault = |f: ArithmeticFault| EvalError::arithmetic(op_name(op), f, span);
         if let Some(v) = same(&l, &r).map_err(fault)? {
             return Ok(v);
         }

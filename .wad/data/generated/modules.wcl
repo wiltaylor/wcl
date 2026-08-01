@@ -103,7 +103,7 @@ code_item code_crate_wcl_lang {
     name = "collections"
     kind = "module"
     summary = "1 file, 2 pub items"
-    deps = [n_cg_wcl_lang_builtins, n_cg_wcl_lang_environment, n_cg_wcl_lang_numeric, n_cg_wcl_lang_value]
+    deps = [n_cg_wcl_lang_builtins, n_cg_wcl_lang_environment, n_cg_wcl_lang_error, n_cg_wcl_lang_numeric, n_cg_wcl_lang_value]
   }
   code_node n_cg_wcl_lang_data {
     name = "data"
@@ -132,7 +132,7 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_error {
     name = "error"
     kind = "module"
-    summary = "1 file, 4 pub items"
+    summary = "1 file, 5 pub items"
   }
   code_node n_cg_wcl_lang_format {
     name = "format"
@@ -4294,6 +4294,27 @@ code_item code_api_wcl_lang_error {
     code_member m_n_api_wcl_lang_error_EvalError_more {
       signature = "… +34 more"
       kind = "overflow"
+    }
+  }
+  code_node n_api_wcl_lang_error_ArithmeticFault {
+    name = "ArithmeticFault"
+    kind = "enum"
+    summary = "src/error.rs"
+    code_member m_n_api_wcl_lang_error_ArithmeticFault_DivideByZero {
+      signature = "DivideByZero"
+      kind = "variant"
+    }
+    code_member m_n_api_wcl_lang_error_ArithmeticFault_Overflow {
+      signature = "Overflow{ ty: String }"
+      kind = "variant"
+    }
+    code_member m_n_api_wcl_lang_error_ArithmeticFault_overflow {
+      signature = "fn overflow(ty: impl Into<String>) -> Self"
+      kind = "method"
+    }
+    code_member m_n_api_wcl_lang_error_ArithmeticFault_impl_std__fmt__Display {
+      signature = "impl std::fmt::Display"
+      kind = "impl"
     }
   }
   code_node n_api_wcl_lang_error_SchemaViolationKind {

@@ -1,6 +1,6 @@
 //! End-to-end tests for the string and list builtins added in slice 5.
 
-use wcl_lang::{Document, Value};
+use wcl_lang::{ArithmeticFault, Document, Value};
 
 fn eval(src: &str) -> Value {
     let doc = Document::open(src, "test").unwrap();
@@ -267,9 +267,13 @@ fn sort_connected_recurses_into_children() {
 #[test]
 fn sum_overflow_is_an_error_not_a_panic() {
     // `sum` accumulates in the element's own variant, so a narrow type
-    // can run out of room part-way through the list.
+    // can run out of room part-way through the list. It phrases the fault
+    // exactly as the `+` it stands in for — one wording, one `ArithmeticFault`.
     let msg = eval_err("@schemaless result = sum([127i8, 1i8])\n");
-    assert!(msg.contains("overflow"), "{msg}");
+    assert!(
+        msg.contains(&format!("{}", ArithmeticFault::overflow("i8"))),
+        "{msg}"
+    );
 }
 
 // ── eval ──────────────────────────────────────────────────────────

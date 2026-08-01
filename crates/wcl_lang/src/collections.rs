@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::builtins::{BuiltinFn, Caller, from_fn};
 use crate::environment::Environment;
+use crate::error::ArithmeticFault;
 use crate::numeric::{for_each_float_numeric_variant, for_each_integer_numeric_variant};
 use crate::value::{Value, VariantPayload};
 
@@ -1319,10 +1320,13 @@ fn sum_pure(v: Value) -> Result<Value, String> {
         ($t:ty, $variant:ident) => {
             sum_variant_with!($t, $variant, |acc: $t, n: $t| acc
                 .checked_add(n)
-                .ok_or_else(|| format!(
-                    "sum: overflowed {} part-way through the list",
-                    stringify!($t)
-                )));
+                .ok_or_else(|| {
+                    // A builtin answers with a plain `String`, so this
+                    // can't be an `EvalError` — but it renders through the
+                    // same fault, so `sum([127i8, 1i8])` reads like the
+                    // `127i8 + 1i8` it is.
+                    format!("sum: cannot {}", ArithmeticFault::overflow(stringify!($t)))
+                }));
         };
     }
     macro_rules! sum_float {
