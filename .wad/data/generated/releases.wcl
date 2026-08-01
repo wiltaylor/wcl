@@ -2,6 +2,78 @@
 // Source: git tags (v*) and the commit subjects between them
 namespace wcl.wad
 
+release rel_v0_33_2_alpha {
+  version = "v0.33.2-alpha"
+  date    = "2026-07-28"
+  repo    = wcl_monorepo
+  summary = "15 changes since v0.33.1-alpha"
+  highlights = [
+    "build(deps): bump criterion to 0.8 and refresh the lockfile",
+    "build: bump the Rust toolchain to 1.97.1",
+    "build(editor-ui): update the frontend toolchain and the forge pin",
+    "build(vscode): update the extension toolchain and language client",
+    "build(tree-sitter): bump tree-sitter-cli to 0.26",
+    "ci: bump the GitHub Actions pins",
+    "chore: cut pre-release",
+    "ci: pin setup-uv to an exact patch tag",
+    "… and 7 more changes",
+  ]
+  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.33.2-alpha"
+}
+
+release rel_v0_33_1_alpha {
+  version = "v0.33.1-alpha"
+  date    = "2026-07-27"
+  repo    = wcl_monorepo
+  summary = "5 changes since v0.33.0-alpha"
+  highlights = [
+    "docs(wskill): complete the WCL reference and add authoring guidance",
+    "fix(wcl_lang): let an optional field hold an explicit `none`",
+    "chore: cut pre-release",
+    "chore(wad): refresh the generated architecture data",
+    "chore: cut pre-release",
+  ]
+  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.33.1-alpha"
+}
+
+release rel_v0_33_0_alpha {
+  version = "v0.33.0-alpha"
+  date    = "2026-07-27"
+  repo    = wcl_monorepo
+  summary = "27 changes since v0.32.0-alpha"
+  highlights = [
+    "feat(editor): WYSIWYG design/data modes and the interactive unit graph",
+    "feat(editor): merged all-views editing with a per-block gutter",
+    "feat(editor): in-place block reorder and visibility — no page reloads",
+    "feat(editor): units-only graph with structural membership and unit delete",
+    "refactor: dedupe editor span/anchor helpers",
+    "refactor: shared editor entry resolution + commit wrapper",
+    "refactor: split editor preview module; wdoc block-kind consts",
+    "docs: point CLAUDE.md at the new editor/preview.rs locations",
+    "… and 19 more changes",
+  ]
+  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.33.0-alpha"
+}
+
+release rel_v0_32_0_alpha {
+  version = "v0.32.0-alpha"
+  date    = "2026-07-18"
+  repo    = wcl_monorepo
+  summary = "21 changes since v0.31.0-alpha"
+  highlights = [
+    "fix(lang): identifier coercion + duplicate-id detection; wad authoring guardrails",
+    "fix(wad-skill): the externals scan probe taught models to file libraries as externals",
+    "feat(wskill): researching_a_topic pipeline — research a topic into a wskill",
+    "fix(lang): capture block leading trivia before parsing the body",
+    "feat: add browser editor and Forge theme",
+    "fix(wskill): back-port comment-UI wording; refresh stale wdoc skill install",
+    "feat(lang): warn when @document gather fields shadow across co-governing schemas",
+    "ci(wskill): gate the skill projection, cross-topic templates, and artifact entries",
+    "… and 13 more changes",
+  ]
+  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.32.0-alpha"
+}
+
 release rel_v0_31_0_alpha {
   version = "v0.31.0-alpha"
   date    = "2026-07-05"
@@ -220,60 +292,4 @@ release rel_v0_21_0_alpha {
     "chore: cut pre-release",
   ]
   url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.21.0-alpha"
-}
-
-release rel_v0_20_1_alpha {
-  version = "v0.20.1-alpha"
-  date    = "2026-06-19"
-  repo    = wcl_monorepo
-  summary = "2 changes since v0.20.0-alpha"
-  highlights = [
-    "fix(cli): report a real version for source builds",
-    "chore: cut pre-release",
-  ]
-  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.20.1-alpha"
-}
-
-release rel_v0_20_0_alpha {
-  version = "v0.20.0-alpha"
-  date    = "2026-06-19"
-  repo    = wcl_monorepo
-  summary = "3 changes since v0.19.0-alpha"
-  highlights = [
-    "feat(diff): WCL-tree output, value detail, and git-revision inputs",
-    "feat(init): scaffold projects from WCL templates",
-    "chore: cut pre-release",
-  ]
-  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.20.0-alpha"
-}
-
-release rel_v0_19_0_alpha {
-  version = "v0.19.0-alpha"
-  date    = "2026-06-17"
-  repo    = wcl_monorepo
-  summary = "2 changes since v0.18.0-alpha"
-  highlights = [
-    "feat(wdoc): collapse book TOC to the active path (mdbook-style)",
-    "fix(serve): hard-stop the dev server on Ctrl+C",
-  ]
-  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.19.0-alpha"
-}
-
-release rel_v0_18_0_alpha {
-  version = "v0.18.0-alpha"
-  date    = "2026-06-17"
-  repo    = wcl_monorepo
-  summary = "9 changes since v0.17.0-alpha"
-  highlights = [
-    "fix(lang): registry lookups tolerate platform path separators — system-import keys are rebuilt with backslashes on Windows, so every import <...> failed there with 'no system import registered'",
-    "feat(lang): string-literal field keys in @schemaless blocks",
-    "feat(wdoc): public template-parts API for custom page templates",
-    "fix(wdoc): drop two tests that depend on uncommitted WIP src",
-    "feat(wdoc): ship player JS/CSS for features inside component bodies",
-    "feat(lang): @ref integrity, symbol_set membership, polymorphic connection endpoints",
-    "feat(cli): `wcl diff <old> <new>` — WCL-aware document diff",
-    "fix(wdoc): inline code spans are verbatim — no emphasis leak",
-    "… and 1 more changes",
-  ]
-  url     = "https://github.com/wiltaylor/wcl/releases/tag/v0.18.0-alpha"
 }
