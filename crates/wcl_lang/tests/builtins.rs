@@ -262,6 +262,16 @@ fn sort_connected_recurses_into_children() {
     assert_eq!(ids, ["c1", "c3", "c2"]);
 }
 
+// ── sum ───────────────────────────────────────────────────────────
+
+#[test]
+fn sum_overflow_is_an_error_not_a_panic() {
+    // `sum` accumulates in the element's own variant, so a narrow type
+    // can run out of room part-way through the list.
+    let msg = eval_err("@schemaless result = sum([127i8, 1i8])\n");
+    assert!(msg.contains("overflow"), "{msg}");
+}
+
 // ── eval ──────────────────────────────────────────────────────────
 
 /// Error rendering for a `result` field that fails to evaluate.
