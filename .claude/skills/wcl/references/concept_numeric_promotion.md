@@ -18,7 +18,7 @@ Same-typed integer operands keep their own type, so an operation whose result wi
 
 ```wcl
 a = 4 / 0          // error: operator '/' cannot divide by zero
-b = 127i8 + 1i8    // error: cannot represent the result in i8 (overflow)
+b = 127i8 + 1i8    // error: operator '+' cannot represent the result in i8 (overflow)
 c = 4.0 / 0.0      // inf — floats are unaffected
 d = try 4 / 0 catch e { 0 }   // recoverable like any evaluation error
 ```

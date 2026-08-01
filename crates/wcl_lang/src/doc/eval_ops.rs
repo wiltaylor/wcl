@@ -197,7 +197,35 @@ arith_fn!(arith_add, checked_add, +);
 arith_fn!(arith_sub, checked_sub, -);
 arith_fn!(arith_mul, checked_mul, *);
 arith_fn!(arith_div, checked_div, /);
-arith_fn!(arith_mod, checked_rem, %);
+
+/// `%` is the one op `arith_fn!` can't generate: `checked_rem` reports
+/// `MIN % -1` as an overflow because the matching *division* overflows,
+/// but the remainder itself is plainly `0`. Reporting that as "no
+/// representable result" would be a lie, so `%` guards the divisor
+/// directly and takes the wrapping result — which, for a remainder, is
+/// the mathematically correct one for every operand pair.
+fn arith_mod(l: &Value, r: &Value) -> Result<Option<Value>, ArithFault> {
+    macro_rules! int_arm {
+        ($t:ty, $variant:ident) => {
+            if let (Value::$variant(a), Value::$variant(b)) = (l, r) {
+                if *b == 0 {
+                    return Err(ArithFault::DivideByZero);
+                }
+                return Ok(Some(Value::$variant(a.wrapping_rem(*b))));
+            }
+        };
+    }
+    for_each_integer_numeric_variant!(int_arm);
+    macro_rules! float_arm {
+        ($t:ty, $variant:ident) => {
+            if let (Value::$variant(a), Value::$variant(b)) = (l, r) {
+                return Ok(Some(Value::$variant(*a % *b)));
+            }
+        };
+    }
+    for_each_float_numeric_variant!(float_arm);
+    Ok(None)
+}
 
 /// Promote two numeric values to a common variant for arithmetic /
 /// comparison. Returns `None` when either operand is non-numeric.

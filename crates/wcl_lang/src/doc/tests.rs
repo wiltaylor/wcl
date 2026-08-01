@@ -1155,6 +1155,20 @@ fn eval_unary_neg_overflow_errors() {
     assert!(reason.contains("overflow"), "{reason}");
 }
 
+/// `MIN % -1` is `0`, even though the matching division overflows —
+/// `checked_rem` reports it as an overflow, and `%` must not repeat that.
+/// `MIN / -1` really has no answer, so it stays an error.
+#[test]
+fn eval_min_rem_negative_one_is_zero_but_div_overflows() {
+    let doc = open_with_builtins("low = -128i8\nr = low % -1i8\nd = low / -1i8");
+    assert_eq!(doc.field("r").unwrap().value().unwrap(), &Value::I8(0));
+    let err = doc.field("d").unwrap().value().unwrap_err();
+    let EvalError::Arithmetic { reason, .. } = &err else {
+        panic!("expected Arithmetic, got {err:?}");
+    };
+    assert!(reason.contains("overflow"), "{reason}");
+}
+
 /// An arithmetic fault is an ordinary evaluation error, so `try`/`catch`
 /// recovers from it like any other.
 #[test]
