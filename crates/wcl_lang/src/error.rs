@@ -202,7 +202,7 @@ pub enum EvalError {
         /// What the operator could not do, phrased to follow "cannot":
         /// `"divide by zero"`, `"represent the result in i8 (overflow)"`.
         reason: String,
-        #[label("no representable result")]
+        #[label("no result for these operands")]
         span: SourceSpan,
     },
 

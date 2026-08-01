@@ -5,10 +5,14 @@
 //! part, optional exponent, optional suffix). All range-checking and
 //! base conversion happens here.
 //!
-//! This module also owns the canonical list of numeric `Value` variants via
-//! the [`for_each_numeric_variant!`] macro. Other modules that need to walk
-//! the numeric variants (host-binding traits, arithmetic, comparisons) use
-//! that macro rather than re-enumerating the list.
+//! This module also owns the canonical list of numeric `Value` variants,
+//! handed out as [`for_each_numeric_variant!`] and the subsets an operation
+//! that only makes sense for part of the ladder needs
+//! ([`for_each_integer_numeric_variant!`],
+//! [`for_each_signed_integer_numeric_variant!`],
+//! [`for_each_float_numeric_variant!`]). Other modules that need to walk the
+//! numeric variants (host-binding traits, arithmetic, comparisons) use these
+//! macros rather than re-enumerating the list.
 
 use crate::lexer::NumberLit;
 
