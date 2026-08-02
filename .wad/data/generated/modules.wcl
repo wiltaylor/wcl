@@ -424,7 +424,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_native {
     name = "native"
     kind = "module"
-    summary = "1 file, 2 pub items"
+    summary = "1 file, 3 pub items"
     deps = [n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_node_table {
@@ -448,7 +448,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_render {
     name = "render"
     kind = "module"
-    summary = "15 files, 223 pub items"
+    summary = "15 files, 224 pub items"
     deps = [n_cg_wcl_wdoc_content, n_cg_wcl_wdoc_dopesheet, n_cg_wcl_wdoc_force, n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_layered, n_cg_wcl_wdoc_map, n_cg_wcl_wdoc_radial, n_cg_wcl_wdoc_routing, n_cg_wcl_wdoc_text, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_review {
@@ -3615,6 +3615,11 @@ code_item code_api_evaluator {
     }
     code_member m_n_api_evaluator_ScopeFrame_bindings {
       signature = "bindings: Option<std::sync::Arc<Vec<(String, Value)>>>"
+      kind = "field"
+      visibility = "crate"
+    }
+    code_member m_n_api_evaluator_ScopeFrame_content {
+      signature = "content: Option<std::rc::Rc<Vec<Block<'a>>>>"
       kind = "field"
       visibility = "crate"
     }
@@ -6785,13 +6790,23 @@ code_item code_api_wdoc_html_renderer {
       deps = [n_api_wdoc_html_renderer_ProjectGuard]
     }
     code_member m_n_api_wdoc_html_renderer_expand_fns_walk_structural {
-      signature = "fn walk_structural<E>( doc: &Document, block: &Block<'_>, patte…"
+      signature = "fn walk_structural<'a, E>( doc: &'a Document, block: &Block<'a>…"
       kind = "fn"
       visibility = "crate"
       deps = [n_api_wdoc_html_renderer_InlinePatterns]
     }
     code_member m_n_api_wdoc_html_renderer_expand_fns_expand_component_children {
       signature = "fn expand_component_children<'a>( instance: &Block<'a>, def: &B…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_expand_fns_walk_component {
+      signature = "fn walk_component<'a, E>( instance: &Block<'a>, def: &Block<'a>…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_expand_fns_fill_content_slot {
+      signature = "fn fill_content_slot<'a, E>( marker: &Block<'a>, recurse: &mut …"
       kind = "fn"
       visibility = "crate"
     }
@@ -7090,11 +7105,6 @@ code_item code_api_wdoc_html_renderer {
       kind = "const"
       visibility = "crate"
     }
-    code_member m_n_api_wdoc_html_renderer_lower_fns_WF_CONTENT_SLOT {
-      signature = "const WF_CONTENT_SLOT: &str"
-      kind = "const"
-      visibility = "crate"
-    }
     code_member m_n_api_wdoc_html_renderer_lower_fns_lookup_block_lower {
       signature = "fn lookup_block_lower(doc: &Document, block: &Block<'_>, kind: …"
       kind = "fn"
@@ -7115,8 +7125,13 @@ code_item code_api_wdoc_html_renderer {
       kind = "fn"
       visibility = "crate"
     }
+    code_member m_n_api_wdoc_html_renderer_lower_fns_lower_to_values {
+      signature = "fn lower_to_values(doc: &Document, block: &Block<'_>, kind: &st…"
+      kind = "fn"
+      visibility = "crate"
+    }
     code_member m_n_api_wdoc_html_renderer_lower_fns_more {
-      signature = "… +17 more"
+      signature = "… +16 more"
       kind = "overflow"
     }
   }
@@ -8561,6 +8576,11 @@ code_item code_api_wcl_wdoc_native {
     }
     code_member m_n_api_wcl_wdoc_native_native_fns_native_errors {
       signature = "fn native_errors(doc: &Document) -> Vec<Report>"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_native_native_fns_has_wdoc_native_declaration {
+      signature = "fn has_wdoc_native_declaration(doc: &Document) -> bool"
       kind = "fn"
       visibility = "crate"
     }
