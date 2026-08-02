@@ -16,9 +16,9 @@ namespace wdoc
 class "wdoc-axis"        { stroke = "currentColor"  opacity = "0.45" }
 class "wdoc-grid"        { stroke = "currentColor"  opacity = "0.12" }
 class "wdoc-axis-label"  { fill = "currentColor"  opacity = "0.75" }
-class "wdoc-chart-title" { fill = "currentColor"  bold = true }
+class "wdoc-chart-title" { fill = "currentColor"  css = "font-weight:bold;" }
 class "wdoc-legend"      { fill = "currentColor"  opacity = "0.85" }
-class "wdoc-line"        { fill = "none"  stroke_width = "2"  stroke_linejoin = "round"  stroke_linecap = "round" }
+class "wdoc-line"        { fill = "none"  stroke_width = "2"  css = "stroke-linejoin:round;stroke-linecap:round;" }
 class "wdoc-series-1"    { fill = "#5e81ac"  stroke = "#5e81ac" }
 class "wdoc-series-2"    { fill = "#a3be8c"  stroke = "#a3be8c" }
 class "wdoc-series-3"    { fill = "#ebcb8b"  stroke = "#ebcb8b" }
@@ -33,7 +33,7 @@ class "wdoc-series-8"    { fill = "#8fbcbb"  stroke = "#8fbcbb" }
 // `ChartPoint` markers + labels. Both paint with `currentColor` so an
 // unthemed doc renders; a themed site recolours them via render/theme.rs.
 class "wdoc-point-label" { fill = "currentColor"  opacity = "0.7" }
-class "wdoc-annotation"  { fill = "currentColor"  bold = true }
+class "wdoc-annotation"  { fill = "currentColor"  css = "font-weight:bold;" }
 
 // Default styling for flowchart shapes (`process` / `decision` / `terminator`
 // / `node`) authored with no `fill` / `stroke` / `class` — otherwise they'd be
@@ -52,7 +52,7 @@ class "wdoc-shape-text" { fill = "#2e3440" }
 // with a bold muted label. The web theme (render/theme.rs APPLY) recolours
 // these per mode and adds a dashed border; this is the static / PDF default.
 class "wdoc-boundary"       { fill = "none"  stroke = "#4c566a" }
-class "wdoc-boundary-label" { fill = "#4c566a"  bold = true }
+class "wdoc-boundary-label" { fill = "#4c566a"  css = "font-weight:bold;" }
 
 // Edge labels (a computed edge record's `label` field, and statechart
 // transition triggers): muted text at the edge's midpoint.
@@ -88,33 +88,32 @@ class "wdoc-timeline-divider"     { stroke = "currentColor"  opacity = "0.5"  st
 class "wdoc-timeline-marker"      { fill = "currentColor" }
 class "wdoc-timeline-connector"   { stroke = "currentColor"  opacity = "0.5" }
 class "wdoc-timeline-label"       { fill = "currentColor" }
-class "wdoc-timeline-phase-label" { fill = "currentColor"  bold = true }
+class "wdoc-timeline-phase-label" { fill = "currentColor"  css = "font-weight:bold;" }
 
 // Bare-class colour rules lifted out of the `webpage` / `book` template
 // CSS. Their surrounding layout (flex, fixed sidebar, descendant +
 // `:hover` selectors) is not expressible as a class and stays in Rust.
-class "site-header"  { bold = true  font_size = "1.4rem"  padding = "0.5rem 0" }
+class "site-header"  { css = "font-weight:bold;font-size:1.4rem;padding:0.5rem 0;" }
 // TOC links inherit the (themed) body colour rather than a fixed grey,
 // so the sidebar is readable on both light and dark books — an `<a>`
 // would otherwise fall back to the browser's link blue. Emphasis/muting
 // comes from `book_css` (weight + opacity), not the colour.
-class "book-chapter" { color = "inherit" }
-class "book-section" { color = "inherit" }
-class "current"      { bold = true }
+class "book-chapter" { css = "color:inherit;" }
+class "book-section" { css = "color:inherit;" }
+class "current"      { css = "font-weight:bold;" }
 
 // Heading hierarchy. `h1`..`h6` lower to a `Content::Heading`, which the
 // HTML backend renders as `<hN class="heading-N">` — the level is a
 // number on the node and this class is the style hook derived from it;
 // these give each level its weight and descending scale. Now bare single-class
-// rules (the class system carries `font_weight` / `line_height` /
-// `text_transform` / `letter_spacing`), so a user `class "heading-1"`
+// rules (with declarations carried by `css`), so a user `class "heading-1"`
 // overrides them by cascade — same as every other bundled class.
-class "heading-1" { font_size = "2.6rem"   font_weight = "700"  line_height = "1.1"   letter_spacing = "-0.02em"   margin = "1.6rem 0 0.7rem" }
-class "heading-2" { font_size = "1.85rem"  font_weight = "600"  line_height = "1.2"   letter_spacing = "-0.015em"  margin = "1.5rem 0 0.6rem" }
-class "heading-3" { font_size = "1.35rem"  font_weight = "600"  line_height = "1.3"   letter_spacing = "-0.01em"   margin = "1.2rem 0 0.4rem" }
-class "heading-4" { font_size = "1.12rem"  font_weight = "600"  margin = "1rem 0 0.3rem" }
-class "heading-5" { font_size = "1rem"     font_weight = "600"  margin = "0.9rem 0 0.3rem" }
-class "heading-6" { font_size = "0.85rem"  font_weight = "700"  text_transform = "uppercase"  letter_spacing = "0.06em"  margin = "0.9rem 0 0.3rem" }
+class "heading-1" { css = "font-weight:700;font-size:2.6rem;line-height:1.1;letter-spacing:-0.02em;margin:1.6rem 0 0.7rem;" }
+class "heading-2" { css = "font-weight:600;font-size:1.85rem;line-height:1.2;letter-spacing:-0.015em;margin:1.5rem 0 0.6rem;" }
+class "heading-3" { css = "font-weight:600;font-size:1.35rem;line-height:1.3;letter-spacing:-0.01em;margin:1.2rem 0 0.4rem;" }
+class "heading-4" { css = "font-weight:600;font-size:1.12rem;margin:1rem 0 0.3rem;" }
+class "heading-5" { css = "font-weight:600;font-size:1rem;margin:0.9rem 0 0.3rem;" }
+class "heading-6" { css = "font-weight:700;font-size:0.85rem;text-transform:uppercase;letter-spacing:0.06em;margin:0.9rem 0 0.3rem;" }
 
 // Built-in inline emphasis. The `**bold**` / `_italic_` / `` `code` ``
 // patterns lower to `<span class="bold|italic|code">`; these are their
@@ -124,7 +123,6 @@ class "heading-6" { font_size = "0.85rem"  font_weight = "700"  text_transform =
 // theme apply rules in render/theme.rs (`.bold` takes a hue, `.code` a
 // themed chip), so emphasis looks right — and differs — across themes. A
 // user `class "bold" { … }` (optionally `sites = […]`) overrides either.
-class "bold"   { bold = true }
-class "italic" { italic = true }
-class "code"   { font_family = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"  font_size = "0.92em" }
-
+class "bold"   { css = "font-weight:bold;" }
+class "italic" { css = "font-style:italic;" }
+class "code"   { css = "font-size:0.92em;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;" }

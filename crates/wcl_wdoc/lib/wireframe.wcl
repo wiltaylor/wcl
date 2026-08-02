@@ -15,8 +15,8 @@
 //
 // Theming follows the terminal pattern (read in Rust): default text and
 // icons paint with the resolved UI-theme palette baked to concrete hex,
-// and a widget's `class` list is read for `background` / `color` /
-// `border` overrides baked onto its box — so a custom class (e.g. the
+// and a widget's `class` list is read for SVG `fill` / `stroke`
+// overrides baked onto its box — so a custom class (e.g. the
 // example's `primary`) still recolours.
 
 // A wireframe widget. Extends SvgBlock so a widget is a legal diagram /
@@ -28,7 +28,7 @@ namespace wdoc
 interface Widget extends SvgBlock {
   @doc("Optional HTML id (also the edge-connection / anchor name).")
   id:       identifier?
-  @doc("Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides).")
+  @doc("Extra CSS classes read for SVG `fill` / `stroke` box overrides.")
   class:    list<utf8>?
   @doc("When `true`, dims the control (renders at reduced opacity).")
   disabled: bool?
@@ -326,7 +326,7 @@ type WfNode {
   x: f64?
   @doc("Optional explicit y placement (pins the node; otherwise auto-laid-out).")
   y: f64?
-  @doc("Extra CSS classes (read for `background` / `color` / `border` overrides).")
+  @doc("Extra CSS classes read for SVG `fill` / `stroke` box overrides.")
   class: list<utf8>?
 }
 

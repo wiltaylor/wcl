@@ -27,8 +27,7 @@ include "wskills" { entry = "wdoc/training/main.wcl"      prefix = "training" }
 // Reused in hero prose: paints with the active theme's accent hue so it
 // stays readable on dark and light.
 class accent {
-  color = "var(--wdoc-accent)"
-  bold  = true
+  css = "color:var(--wdoc-accent);font-weight:bold;"
 }
 
 // The WCL landing: the `website` template (sticky header + regions),

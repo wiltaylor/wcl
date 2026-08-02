@@ -7,9 +7,8 @@
 // `color` is the default text colour. dark/light modes ride along with
 // the rest of the class system.
 class "term-mocha" {
-  background = "#1e1e2e"
-  color      = "#cdd6f4"
-  light { background = "#eff1f5"  color = "#4c4f69" }
+  css = "background:#1e1e2e;color:#cdd6f4;"
+  light { css = "background:#eff1f5;color:#4c4f69;" }
 }
 
 // A custom TUI control, built by extending the `TermPrimitive` base — a

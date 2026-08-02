@@ -159,7 +159,7 @@ page wireframe { sites = [:showcase]
   h2 "Per-widget class overrides"
 
   text {
-    span "A widget's `class` background / color / border are read and baked onto its box and label — add one to a single instance (the primary button carries `class = [\"primary\"]`)."
+    span "A widget's class `fill` / `stroke` paint and raw `color` declaration are read and baked onto its box and label — add one to a single instance (the primary button carries `class = [\"primary\"]`)."
   }
 
   diagram {
@@ -173,12 +173,13 @@ page wireframe { sites = [:showcase]
 }
 
 // Recolour the primary button through the class system. The widget reads
-// its class `background` / `color` / `border` and bakes them onto the box;
+// its class `fill` / `stroke` and raw `color` declaration and bakes them onto
+// the box and label;
 // the `dark` / `light` blocks adapt it to the reader's theme.
 class primary {
-  background = "#1f6feb"
-  color      = "#ffffff"
-  border     = "1px solid #1f6feb"
-  dark  { background = "#388bfd"  border = "1px solid #388bfd" }
-  light { background = "#0969da"  border = "1px solid #0969da" }
+  fill   = "#1f6feb"
+  stroke = "#1f6feb"
+  css    = "color:#ffffff;"
+  dark  { fill = "#388bfd"  stroke = "#388bfd" }
+  light { fill = "#0969da"  stroke = "#0969da" }
 }

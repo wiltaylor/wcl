@@ -44,6 +44,134 @@ fn build_ok(file: &Path, out: &Path) -> usize {
 }
 
 #[test]
+fn css_block_vocabulary_reproduces_representative_rules_losslessly() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("css-vocabulary.wcl");
+    write_fixture(
+        &src,
+        r#"
+base ".__css_roundtrip_start" { css = "--roundtrip:start;" }
+
+class "card" {
+  fill = "currentColor"
+  css = "display:grid;"
+  nest ".title" { css = "font-weight:700;" }
+  nest "&:hover" { css = "transform:scale(1.05);" }
+  nest ".subtitle, &.featured" { css = "opacity:0.8;" }
+  nest "[data-label=\"A&B\"]" { css = "text-decoration:none;" }
+}
+
+class "nest-only" {
+  nest ".child" { css = "display:block;" }
+}
+
+base "body,.wdoc-body" { css = "margin:0;" }
+
+font_face "Inter" {
+  src = "url('inter.woff2') format('woff2')"
+  weight = "400"
+  style = "normal"
+  display = "swap"
+}
+
+media "(max-width: 40rem)" {
+  class "card" {
+    css = "display:block;"
+    nest "&.featured" { css = "grid-column:1;" }
+  }
+}
+
+keyframes "pulse" {
+  base "from" { css = "opacity:0;" }
+  base "50%" { css = "opacity:0.5;" }
+  base "to" { css = "opacity:1;" }
+}
+
+base ".__css_roundtrip_end" { css = "--roundtrip:end;" }
+
+page index { p "CSS vocabulary" }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+
+    let representative_css = concat!(
+        ".__css_roundtrip_start { --roundtrip:start; }\n",
+        ".card { fill:currentColor;display:grid; }\n",
+        ".card .title { font-weight:700; }\n",
+        ".card:hover { transform:scale(1.05); }\n",
+        ".card .subtitle, .card.featured { opacity:0.8; }\n",
+        ".card [data-label=\"A&B\"] { text-decoration:none; }\n",
+        ".nest-only .child { display:block; }\n",
+        "body,.wdoc-body { margin:0; }\n",
+        "@font-face { font-family:Inter;src:url('inter.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap; }\n",
+        "@media (max-width: 40rem) { .card { display:block; }\n",
+        ".card.featured { grid-column:1; } }\n",
+        "@keyframes pulse { from { opacity:0; }\n",
+        "50% { opacity:0.5; }\n",
+        "to { opacity:1; } }\n",
+        ".__css_roundtrip_end { --roundtrip:end; }",
+    );
+    let start = html
+        .find(".__css_roundtrip_start")
+        .expect("round-trip start marker");
+    let end_rule = ".__css_roundtrip_end { --roundtrip:end; }";
+    let end = html[start..]
+        .find(end_rule)
+        .map(|offset| start + offset + end_rule.len())
+        .expect("round-trip end marker");
+    assert_eq!(&html[start..end], representative_css);
+}
+
+#[test]
+fn class_vocabulary_rejects_tag_and_retired_shorthand_fields_in_every_mode() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("retired-class-fields.wcl");
+    let retired_fields = r#"
+    color = "red"
+    background = "black"
+    bold = true
+    italic = true
+    underline = true
+    font_weight = "700"
+    font_size = "1rem"
+    line_height = "1.5"
+    font_family = "sans-serif"
+    text_align = "center"
+    text_transform = "uppercase"
+    letter_spacing = "0.1em"
+    padding = "1rem"
+    margin = "1rem"
+    border = "1px solid"
+    stroke_linejoin = "round"
+    stroke_linecap = "round"
+"#;
+    write_fixture(
+        &src,
+        format!(
+            r#"
+class "legacy" {{
+  tag = "div"
+{retired_fields}
+  dark {{ {retired_fields} }}
+  light {{ {retired_fields} }}
+}}
+page index {{ p "Retired fields" }}
+"#,
+        ),
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::Schema(52)) => {}
+        Err(_) => panic!("expected 52 schema violations for tag + retired fields"),
+        Ok(_) => panic!("tag and retired class shorthand fields were accepted"),
+    }
+}
+
+#[test]
 fn build_emits_fundamentals_for_example_site() {
     // examples/wdoc/main.wcl declares four sites (showcase / docs / blog /
     // talk). `showcase` is the `root` site, so it renders flat at the
@@ -6169,8 +6297,8 @@ fn class_light_dark_modes_emit_themed_css() {
         &src,
         r##"
 class "panel" {
-  dark  { background = "#2e3440" }
-  light { background = "#eceff4" }
+  dark  { css = "background:#2e3440;" }
+  light { css = "background:#eceff4;" }
 }
 page index { text { span "hi" {} } }
 "##,
@@ -6207,8 +6335,8 @@ fn class_with_only_light_mode_still_emits_dark_toggle_rule() {
         &src,
         r##"
 class "wdoc-body" {
-  color = "#d8dee9"  background = "#2e3440"
-  light { color = "#2e3440"  background = "#eceff4" }
+  css = "color:#d8dee9;background:#2e3440;"
+  light { css = "color:#2e3440;background:#eceff4;" }
 }
 page index { text { span "hi" {} } }
 "##,
@@ -6246,7 +6374,7 @@ fn class_without_modes_is_unchanged() {
     write_fixture(
         &src,
         r##"
-class accent { color = "#003a8c"  bold = true }
+class accent { css = "color:#003a8c;font-weight:bold;" }
 page index { p "hi" { class = ["accent"] } }
 "##,
     );
@@ -6380,13 +6508,12 @@ fn book_theme_classes_and_toggle() {
 site { default_template = :book  theme_toggle = true }
 
 class "wdoc-body" {
-  color = "#d8dee9"
-  background = "#2e3440"
-  light { color = "#2e3440"  background = "#eceff4" }
+  css = "color:#d8dee9;background:#2e3440;"
+  light { css = "color:#2e3440;background:#eceff4;" }
 }
-class "heading-1" { color = "#88c0d0" }
-class "heading-2" { color = "#8fbcbb" }
-class "link"      { color = "#88c0d0" }
+class "heading-1" { css = "color:#88c0d0;" }
+class "heading-2" { css = "color:#8fbcbb;" }
+class "link"      { css = "color:#88c0d0;" }
 
 page introduction { h1 "Introduction" {} }
 page syntax {
@@ -8477,21 +8604,25 @@ fn wireframe_state_classes_and_icons() {
 }
 
 #[test]
-fn wireframe_class_field_bakes_background_onto_box() {
-    // A custom class on a widget has its `background` read in Rust and baked
-    // onto the widget's box fill (the terminal-style theming path).
+fn wireframe_class_paint_and_raw_color_are_baked_onto_widget() {
+    // A custom class on a widget has its SVG `fill` shorthand and retired
+    // `color` declaration read in Rust and baked onto the widget.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("wf.wcl");
     write_fixture(
         &src,
-        "page index {\n  diagram { width = 200  height = 60\n    wf_button \"P\" { class = [\"primary\"] }\n  }\n}\nclass primary { background = \"#1f6feb\" }\n",
+        "page index {\n  diagram { width = 200  height = 60\n    wf_button \"P\" { class = [\"primary\"] }\n  }\n}\nclass primary { fill = \"#1f6feb\"  css = \"color:#ffffff;\" }\n",
     );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
     assert!(
         html.contains("fill=\"#1f6feb\""),
-        "class background not baked onto the button box:\n{html}"
+        "class fill not baked onto the button box:\n{html}"
+    );
+    assert!(
+        html.contains("fill=\"#ffffff\""),
+        "class raw color not baked onto the button label:\n{html}"
     );
 }
 
@@ -8827,7 +8958,7 @@ fn class_sites_field_scopes_css_per_site() {
     let src = r##"
 site docs { default_template = :webpage  title = "Docs" }
 site blog { default_template = :webpage  title = "Blog" }
-class "wdoc-body" { sites = [:docs]  background = "#2e3440" }
+class "wdoc-body" { sites = [:docs]  css = "background:#2e3440;" }
 page index { sites = [:docs, :blog]  h1 "Home" {} }
 "##;
     with_multisite_build(src, None, |out| {
@@ -8968,7 +9099,7 @@ fn untagged_non_page_blocks_stay_global_in_a_multi_site_document() {
     let src = r##"
 site docs { default_template = :webpage  title = "Docs" }
 site blog { default_template = :webpage  title = "Blog" }
-class "wdoc-body" { background = "#2e3440" }
+class "wdoc-body" { css = "background:#2e3440;" }
 page a { sites = [:docs]  h1 "A" {} }
 page b { sites = [:blog]  h1 "B" {} }
 "##;
@@ -9586,7 +9717,7 @@ page index {
     }
   }
 }
-class "town-pin" { color = "#3b82f6" }
+class "town-pin" { css = "color:#3b82f6;" }
 "##;
     let (index, out) = build_map(src, &[("map.png", 1024, 1024)]);
 
@@ -10494,7 +10625,7 @@ let tokens = [
   { name: "brand-accent",  hex: "#bf616a" },
 ]
 wdoc_repeater { each = tokens  as = :t
-  class $"${t.name}" { color = t.hex }
+  class $"${t.name}" { css = $"color:${t.hex};" }
 }
 page index { p "Body." }
 "##,

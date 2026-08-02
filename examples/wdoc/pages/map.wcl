@@ -10,8 +10,8 @@
 
 // Pin theming rides the `class` system (icons paint with currentColor).
 class "pin-city" {
-  color = "#fbbf24"
-  dark  { color = "#fcd34d" }
+  css = "color:#fbbf24;"
+  dark  { css = "color:#fcd34d;" }
 }
 
 page map { sites = [:showcase]
