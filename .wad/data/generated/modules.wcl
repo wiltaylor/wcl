@@ -2774,8 +2774,8 @@ code_item code_api_doc_view {
       kind = "fn"
       visibility = "crate"
     }
-    code_member m_n_api_doc_view_doc_fns_symbol_set_membership_error {
-      signature = "fn symbol_set_membership_error( doc: &Document, ty: &TypeRef, v…"
+    code_member m_n_api_doc_view_doc_fns_symbol_set_membership_error_in {
+      signature = "fn symbol_set_membership_error_in( doc: &Document, ty: &TypeRef…"
       kind = "fn"
       visibility = "crate"
       deps = [n_api_doc_view_Document]

@@ -34,7 +34,7 @@ fn decorator_slot_value_error(
         return None;
     }
 
-    let declared_type = doc.resolve_alias(slot.type_ref());
+    let declared_type = doc.resolve_alias_in(slot.type_ref(), slot.file_ns);
     if !crate::doc::value_matches_declared(value, &declared_type, slot.optional()) {
         return Some(EvalError::schema_violation_named(
             Kind::FieldTypeMismatch,
@@ -49,12 +49,24 @@ fn decorator_slot_value_error(
             span,
         ));
     }
-    if let Some(error) =
-        crate::doc::symbol_set_membership_error(doc, &declared_type, value, slot.name(), span)
-    {
+    if let Some(error) = crate::doc::symbol_set_membership_error_in(
+        doc,
+        &declared_type,
+        value,
+        slot.name(),
+        span,
+        slot.file_ns,
+    ) {
         return Some(error);
     }
-    constraint_violation(doc, &slot.ast.decorators, slot.type_ref(), value).map(|message| {
+    constraint_violation(
+        doc,
+        &slot.ast.decorators,
+        slot.type_ref(),
+        slot.file_ns,
+        value,
+    )
+    .map(|message| {
         EvalError::schema_violation_named(
             Kind::ConstraintViolation,
             format!(
@@ -84,6 +96,38 @@ pub(super) fn decorator_argument_errors(
         return Vec::new();
     };
     let mut errors = Vec::new();
+    let named_slots: HashSet<&str> = decorator.named().map(|arg| arg.name()).collect();
+    let has_structural_arguments = values.iter().enumerate().any(|(index, _)| {
+        schema
+            .fields()
+            .all(|field| field.inline_slot() != Some(index as u64))
+    }) || decorator
+        .named()
+        .any(|argument| schema.field(argument.name()).is_none());
+    let structural_union_slot = if has_structural_arguments {
+        let mut candidates = schema.fields().filter(|slot| {
+            let filled_by_name = named_slots.contains(slot.name());
+            let filled_positionally = slot
+                .inline_slot()
+                .is_some_and(|index| (index as usize) < values.len());
+            !filled_by_name
+                && !filled_positionally
+                && matches!(slot.resolved_type(), super::ResolvedType::Union(_))
+        });
+        let candidate = candidates.next();
+        if candidates.next().is_none() {
+            candidate
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    if let Some(slot) = structural_union_slot
+        && let Some(Err(error)) = decorator.resolved_arg_value(slot.name())
+    {
+        errors.push(error);
+    }
     for (index, value) in values.iter().enumerate() {
         // Parsed and synthetic decorators keep these vectors aligned. Falling
         // back to the decorator span makes a manually mutated AST noisy rather
@@ -97,6 +141,9 @@ pub(super) fn decorator_argument_errors(
             .fields()
             .find(|field| field.inline_slot() == Some(index as u64))
         else {
+            if structural_union_slot.is_some() {
+                continue;
+            }
             errors.push(EvalError::schema_violation(
                 Kind::UnknownField,
                 format!(
@@ -116,6 +163,9 @@ pub(super) fn decorator_argument_errors(
     }
     for named in decorator.named() {
         let Some(slot) = schema.field(named.name()) else {
+            if structural_union_slot.is_some() {
+                continue;
+            }
             errors.push(EvalError::schema_violation_named(
                 Kind::UnknownField,
                 format!(
@@ -136,7 +186,6 @@ pub(super) fn decorator_argument_errors(
             errors.push(error);
         }
     }
-    let named_slots: HashSet<&str> = decorator.named().map(|arg| arg.name()).collect();
     for slot in schema.fields() {
         if slot.optional() || slot.default_value().is_some() {
             continue;
@@ -145,7 +194,9 @@ pub(super) fn decorator_argument_errors(
         let filled_positionally = slot
             .inline_slot()
             .is_some_and(|index| (index as usize) < values.len());
-        if !filled_by_name && !filled_positionally {
+        let filled_structurally =
+            structural_union_slot.is_some_and(|structural| structural.name() == slot.name());
+        if !filled_by_name && !filled_positionally && !filled_structurally {
             errors.push(EvalError::schema_violation_named(
                 Kind::MissingRequired,
                 format!(
@@ -175,9 +226,10 @@ pub(super) fn constraint_violation(
     doc: &Document,
     field_decorators: &[ast::Decorator],
     declared_ty: &crate::value::TypeRef,
+    context_ns: &[String],
     value: &Value,
 ) -> Option<String> {
-    let chain = doc.alias_chain(declared_ty);
+    let chain = doc.alias_chain_in(declared_ty, context_ns);
     let alias_decorators = chain.iter().flat_map(|link| link.ast.decorators.iter());
     for d in field_decorators.iter().chain(alias_decorators) {
         match registered_constraint(doc, d) {
@@ -814,7 +866,9 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         // Resolve type aliases once: a field declared with an alias
         // (`port: Port` where `type Port = u16`) validates against the
         // target type, and an alias of a union dispatches like the union.
-        let resolved_ty = block.doc.resolve_alias(declared.type_ref());
+        let resolved_ty = block
+            .doc
+            .resolve_alias_in(declared.type_ref(), declared.file_ns);
 
         // Union path — preserved verbatim.
         if let crate::value::TypeRef::Named { path, .. } = &resolved_ty
@@ -865,18 +919,20 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
                 ),
                 literal_field.span(),
             ));
-        } else if let Some(err) = crate::doc::symbol_set_membership_error(
+        } else if let Some(err) = crate::doc::symbol_set_membership_error_in(
             block.doc,
             &resolved_ty,
             value,
             literal_field.name(),
             literal_field.span(),
+            declared.file_ns,
         ) {
             errs.push(err);
         } else if let Some(msg) = constraint_violation(
             block.doc,
             &declared.ast.decorators,
             declared.type_ref(),
+            declared.file_ns,
             value,
         ) {
             errs.push(EvalError::schema_violation(

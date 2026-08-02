@@ -1,0 +1,7 @@
+@decorator("dev")
+@applies_to(on = [:type])
+type Dev {}
+@document type Root { @child("vm") vm: Vm }
+@block("vm") type Vm {}
+@dev
+vm {}

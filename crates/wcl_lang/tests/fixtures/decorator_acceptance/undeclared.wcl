@@ -1,0 +1,4 @@
+@document type Root { @child("vm") vm: Vm }
+@block("vm") type Vm {}
+@dve
+vm {}

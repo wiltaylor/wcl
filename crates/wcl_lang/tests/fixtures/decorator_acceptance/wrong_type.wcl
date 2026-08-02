@@ -1,0 +1,5 @@
+@decorator("dev") type Dev { workspace: utf8? }
+@document type Root { @child("vm") vm: Vm }
+@block("vm") type Vm {}
+@dev(workspace = 42)
+vm {}

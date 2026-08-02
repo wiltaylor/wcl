@@ -1460,38 +1460,89 @@ impl Document {
     /// back unchanged. Used by the schema value checks so a field
     /// declared with an alias validates against the target type.
     pub fn resolve_alias(&self, ty: &crate::value::TypeRef) -> crate::value::TypeRef {
+        self.resolve_alias_in(ty, &self.file_ns)
+    }
+
+    pub(crate) fn resolve_alias_in(
+        &self,
+        ty: &crate::value::TypeRef,
+        context_ns: &[String],
+    ) -> crate::value::TypeRef {
         use crate::value::TypeRef as T;
-        fn go(doc: &Document, ty: &T, depth: u8) -> T {
+        fn go(doc: &Document, ty: &T, context_ns: &[String], depth: u8) -> T {
             if depth == 0 {
                 return ty.clone(); // alias cycle — give up, stay permissive
             }
             match ty {
-                T::Named { path, .. } => {
-                    let fqn = path.join(".");
-                    match doc.type_decl(&fqn).and_then(|t| t.ast.alias.clone()) {
-                        Some(target) => go(doc, &target, depth - 1),
-                        None => ty.clone(),
+                T::Named { path, args } => {
+                    let resolved_path = doc
+                        .resolve_path_in(path, context_ns)
+                        .unwrap_or_else(|| path.clone());
+                    match doc.type_decl(&resolved_path.join(".")) {
+                        Some(declaration) if declaration.ast.alias.is_some() => go(
+                            doc,
+                            declaration.ast.alias.as_ref().expect("alias checked"),
+                            declaration.file_ns(),
+                            depth - 1,
+                        ),
+                        _ => T::Named {
+                            // Preserve the authored path for runtime value
+                            // matching, which deliberately accepts a shorter
+                            // suffix (`RelatedEdge` against a namespaced
+                            // variant tag). Namespace resolution above is
+                            // needed only to locate an alias declaration.
+                            path: path.clone(),
+                            args: args
+                                .iter()
+                                .map(|arg| go(doc, arg, context_ns, depth - 1))
+                                .collect(),
+                        },
                     }
                 }
-                T::List(inner) => T::List(Box::new(go(doc, inner, depth - 1))),
-                T::Reference(inner) => T::Reference(Box::new(go(doc, inner, depth - 1))),
+                T::List(inner) => T::List(Box::new(go(doc, inner, context_ns, depth - 1))),
+                T::Reference(inner) => {
+                    T::Reference(Box::new(go(doc, inner, context_ns, depth - 1)))
+                }
+                T::Tensor { element, dims } => T::Tensor {
+                    element: Box::new(go(doc, element, context_ns, depth - 1)),
+                    dims: dims.clone(),
+                },
+                T::Function { params, return_ty } => T::Function {
+                    params: params
+                        .iter()
+                        .map(|param| go(doc, param, context_ns, depth - 1))
+                        .collect(),
+                    return_ty: Box::new(go(doc, return_ty, context_ns, depth - 1)),
+                },
                 other => other.clone(),
             }
         }
-        go(self, ty, views::ALIAS_DEPTH)
+        go(self, ty, context_ns, views::ALIAS_DEPTH)
     }
 
     /// The chain of alias declarations behind `ty`, outermost first —
     /// empty for a non-alias type. Constraint decorators on each link
     /// apply to values of the aliased type.
     pub(crate) fn alias_chain(&self, ty: &crate::value::TypeRef) -> Vec<TypeDecl<'_>> {
+        self.alias_chain_in(ty, &self.file_ns)
+    }
+
+    pub(crate) fn alias_chain_in(
+        &self,
+        ty: &crate::value::TypeRef,
+        context_ns: &[String],
+    ) -> Vec<TypeDecl<'_>> {
         let mut out = Vec::new();
         let mut current = ty.clone();
+        let mut current_ns = context_ns;
         for _ in 0..views::ALIAS_DEPTH {
             let crate::value::TypeRef::Named { path, .. } = &current else {
                 break;
             };
-            let Some(decl) = self.type_decl(&path.join(".")) else {
+            let resolved = self
+                .resolve_path_in(path, current_ns)
+                .unwrap_or_else(|| path.clone());
+            let Some(decl) = self.type_decl(&resolved.join(".")) else {
                 break;
             };
             let Some(target) = decl.ast.alias.clone() else {
@@ -1499,6 +1550,7 @@ impl Document {
             };
             out.push(decl);
             current = target;
+            current_ns = decl.file_ns();
         }
         out
     }
@@ -2851,7 +2903,10 @@ impl Document {
                     f.span(),
                 );
             }
-        } else if !value_matches_type_ref(v, &self.resolve_alias(declared.type_ref())) {
+        } else if !value_matches_type_ref(
+            v,
+            &self.resolve_alias_in(declared.type_ref(), declared.file_ns),
+        ) {
             EvalError::push_schema_violation(
                 out,
                 Kind::FieldTypeMismatch,
@@ -2863,18 +2918,20 @@ impl Document {
                 ),
                 f.span(),
             );
-        } else if let Some(err) = symbol_set_membership_error(
+        } else if let Some(err) = symbol_set_membership_error_in(
             self,
-            &self.resolve_alias(declared.type_ref()),
+            &self.resolve_alias_in(declared.type_ref(), declared.file_ns),
             v,
             f.name(),
             f.span(),
+            declared.file_ns,
         ) {
             out.push(err);
         } else if let Some(msg) = schema_check::constraint_violation(
             self,
             &declared.ast.decorators,
             declared.type_ref(),
+            declared.file_ns,
             v,
         ) {
             EvalError::push_schema_violation(
@@ -3163,11 +3220,15 @@ impl Document {
                 ));
                 continue;
             };
-            // Block and data-field arguments are checked by their public
-            // schema-validation paths. Every other decorator-bearing AST
-            // position is checked here by the grammar-shaped source walk.
-            if position != "block" && position != "field" {
-                out.extend(schema_check::decorator_argument_errors(self, &decorator));
+            // The grammar-shaped walk is the only path guaranteed to reach
+            // every node (union-dispatched and contextual blocks deliberately
+            // bypass recursive block validation). Public block/field checks
+            // may already have emitted the same argument error, so retain one
+            // diagnostic per offending source span.
+            for error in schema_check::decorator_argument_errors(self, &decorator) {
+                if !out.contains(&error) {
+                    out.push(error);
+                }
             }
             let canonical_name = schema.full_name();
             let repeatable = schema
@@ -4033,17 +4094,21 @@ pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
 /// field rejects an out-of-set symbol identically whether the block is a
 /// document child or nested — `value_matches_type_ref` stays permissive
 /// for `(Symbol, Named)` because it lacks the declaration to check.
-pub(crate) fn symbol_set_membership_error(
+pub(crate) fn symbol_set_membership_error_in(
     doc: &Document,
     ty: &TypeRef,
     value: &Value,
     field_name: &str,
     span: crate::ast::Span,
+    context_ns: &[String],
 ) -> Option<EvalError> {
     let TypeRef::Named { path, .. } = ty else {
         return None;
     };
-    let ss = doc.symbol_set(&path.join("."))?;
+    let resolved = doc
+        .resolve_path_in(path, context_ns)
+        .unwrap_or_else(|| path.clone());
+    let ss = doc.symbol_set(&resolved.join("."))?;
     let Value::Symbol(sym) = value else {
         return None;
     };

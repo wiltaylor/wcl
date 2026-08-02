@@ -205,7 +205,6 @@ fn synthesized_single_slot_builtins_are_positional_and_still_resolve() {
         "inline",
         "default",
         "child",
-        "children",
         "table",
         "connections",
         "document",
@@ -228,6 +227,17 @@ fn synthesized_single_slot_builtins_are_positional_and_still_resolve() {
             .all(|field| field.inline_slot().is_none()),
         "@block constraint slots are named-only"
     );
+
+    let children = doc
+        .decorator_schema("children")
+        .expect("@children schema exists");
+    let children_fields: Vec<_> = children.fields().collect();
+    assert_eq!(children_fields.len(), 3);
+    assert_eq!(children_fields[0].name(), "kind");
+    assert_eq!(children_fields[0].inline_slot(), Some(0));
+    assert_eq!(children_fields[1].name(), "min");
+    assert_eq!(children_fields[2].name(), "max");
+    assert!(children_fields[1..].iter().all(|field| field.optional()));
 
     let decorator = doc
         .decorator_schema("decorator")
@@ -470,6 +480,68 @@ fn qualified_decorator_arguments_use_the_selected_namespace_schema() {
 }
 
 #[test]
+fn qualified_decorator_slots_resolve_aliases_in_the_schema_namespace() {
+    let mut registry = Registry::new();
+    registry.register(
+        "lib.wcl",
+        r#"
+namespace lib
+type Count = i64
+symbol_set Level { low }
+@decorator("note") type Note { count: Count  level: Level }
+"#,
+    );
+    let document = Document::open_at_with_loader(
+        "import <lib.wcl>\n@lib.note(count = 7, level = :low) type Target {}\n",
+        "decorator_arguments.wcl",
+        None,
+        &Environment::new(),
+        registry.loader(disk_loader()),
+    )
+    .expect("source opens");
+
+    let errors = document.schema_errors();
+    assert!(errors.is_empty(), "{errors:#?}");
+}
+
+#[test]
+fn qualified_decorator_slots_check_symbol_sets_in_the_schema_namespace() {
+    let mut registry = Registry::new();
+    registry.register(
+        "lib.wcl",
+        r#"
+namespace lib
+symbol_set Level { low }
+@decorator("note") type Note { level: Level }
+"#,
+    );
+    let document = Document::open_at_with_loader(
+        "import <lib.wcl>\n@lib.note(level = :high) type Target {}\n",
+        "decorator_arguments.wcl",
+        None,
+        &Environment::new(),
+        registry.loader(disk_loader()),
+    )
+    .expect("source opens");
+
+    let errors = document.schema_errors();
+    assert_eq!(
+        errors
+            .iter()
+            .filter(|error| matches!(
+                error,
+                EvalError::SchemaViolation {
+                    kind: SchemaViolationKind::SymbolNotInSet,
+                    ..
+                }
+            ))
+            .count(),
+        1,
+        "{errors:#?}"
+    );
+}
+
+#[test]
 fn annotation_exemptions_skip_every_decorator_check_in_every_position() {
     for exemption in ["@schemaless", "@schemaless(annotations = true)"] {
         let decorators = format!("{exemption}\n@typed(\"wrong\")\n@typed(\"wrong\")");
@@ -505,12 +577,50 @@ thing {
 }
 
 #[test]
+fn union_dispatched_block_decorator_arguments_are_checked() {
+    let source = r#"
+@decorator("typed") type Typed { @inline(0) value: i64 }
+union Shape { Circle { radius: f64 } }
+@document type Root { @child("scene") scene: Scene }
+@block("scene") type Scene { @children(Shape) shapes: list<Shape> }
+scene "main" { @typed("wrong") circle { radius = 1.5 } }
+"#;
+
+    let errors = schema_errors(source);
+    assert!(
+        errors.iter().any(|error| matches!(
+            error,
+            EvalError::SchemaViolation {
+                kind: SchemaViolationKind::FieldTypeMismatch,
+                ..
+            }
+        )),
+        "{errors:#?}"
+    );
+}
+
+#[test]
+fn structural_union_payload_is_not_treated_as_unknown_decorator_fields() {
+    let source = r#"
+union Choice { Two { message: utf8 } }
+@decorator("select") type Select { value: Choice }
+@select(message = "selected") type Target {}
+"#;
+
+    let errors = schema_errors(source);
+    assert!(errors.is_empty(), "{errors:#?}");
+}
+
+#[test]
 fn omitted_union_typed_slot_uses_its_declared_default() {
     let source = r#"
 union Choice { One { code: i64 } }
 @decorator("select")
-type Select { @default(Choice::One { code: 7 }) value: Choice }
-@select
+type Select {
+  @inline(0) label: utf8?
+  @default(Choice::One { code: 7 }) value: Choice
+}
+@select("label")
 type Target {}
 "#;
     let document = Document::open(source, "decorator_arguments.wcl").expect("source opens");
