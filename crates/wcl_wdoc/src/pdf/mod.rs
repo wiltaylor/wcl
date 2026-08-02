@@ -13,6 +13,7 @@
 //! single PDF named from the source file.
 
 mod collect;
+mod content;
 pub(crate) mod ir;
 mod layout;
 mod page;

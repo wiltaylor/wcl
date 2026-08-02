@@ -8,6 +8,7 @@ use std::path::Path;
 use miette::NamedSource;
 use wcl_lang::{Block, Document, EvalError, FnValue, Value, VariantPayload};
 
+use crate::content::Content;
 use crate::inline::InlinePatterns;
 
 use super::*;
@@ -247,6 +248,123 @@ pub(crate) fn lower_to_values_named(
     }
 }
 
+/// One node a block's `lower` produced.
+///
+/// A lowering returns either the **semantic content IR** — the closed,
+/// target-neutral vocabulary every backend consumes from one declaration
+/// (`lib/content.wcl`) — or a member of the HTML element vocabulary, which
+/// only the HTML backend understands and the others reverse-engineer.
+/// Splitting them here is what lets a backend match the IR exhaustively:
+/// a `Content` node reaches it typed, so a variant nobody handles is a
+/// compile error rather than silence.
+pub(crate) enum Lowered {
+    /// A typed content node — rendered from the same declaration on every
+    /// backend.
+    Content(Content),
+    /// An `HtmlFundamental` (or a custom variant that will expand into one),
+    /// still carried as a raw value for the per-backend walkers.
+    Html(Value),
+}
+
+/// Lower `block` and classify what came back: [`lower_to_values`] plus the
+/// `Value` → [`Content`] conversion for every node that belongs to the
+/// content union.
+///
+/// A value tagged `Content` that fails to convert is a genuine authoring
+/// error (a required field missing, a number out of range) — it records a
+/// lowering diagnostic so the backend surfaces it and exits non-zero,
+/// rather than the node quietly vanishing.
+pub(crate) fn lower_block(doc: &Document, block: &Block<'_>, kind: &str) -> Option<Vec<Lowered>> {
+    let values = lower_to_values(doc, block, kind)?;
+    Some(
+        values
+            .iter()
+            .filter_map(|value| classify(block, kind, value))
+            .collect(),
+    )
+}
+
+/// The content node a *recursively* lowered value carries, if any.
+///
+/// The value came out of another lowering rather than off a block, so
+/// there is no span to point a diagnostic at; a conversion failure is
+/// recorded as a render warning naming the error instead of a spanned
+/// build failure. A block's own lowering still hard-fails, via
+/// [`lower_block`].
+pub(crate) fn recursed_content(value: &Value) -> Option<Content> {
+    match crate::content::as_content(value)? {
+        Ok(node) => Some(node),
+        Err(e) => {
+            record_render_warning(format!(
+                "a lowering produced a malformed content node ({e}) — it renders as nothing"
+            ));
+            None
+        }
+    }
+}
+
+/// Classify one lowered value.
+///
+/// A content node that fails to convert records a spanned diagnostic (the
+/// build exits non-zero) and yields `None`: falling back to the HTML walker
+/// would render the broken node as whichever fundamental shares its variant
+/// name, which is a confusing thing to put in a build that has already
+/// failed.
+fn classify(block: &Block<'_>, kind: &str, value: &Value) -> Option<Lowered> {
+    match crate::content::as_content(value) {
+        Some(Ok(node)) => Some(Lowered::Content(node)),
+        Some(Err(e)) => {
+            record_lower_error(
+                block,
+                EvalError::user_error(
+                    format!("block '{kind}' lowered to a malformed content node: {e}"),
+                    block.span(),
+                ),
+            );
+            None
+        }
+        None => Some(Lowered::Html(value.clone())),
+    }
+}
+
+/// Whether `value` belongs to the HTML element vocabulary.
+///
+/// A walker that handles only *some* of that vocabulary needs this before
+/// it treats an unhandled variant as a custom one: `kind_for_variant` maps
+/// `HtmlFundamental::Table` to the kind name `table`, which is a real
+/// stdlib block whose `lower` would then be called with the fundamental's
+/// payload. Its lowering is a stub today, so nothing renders differently —
+/// but the day `table` grows a real one, the mistake would surface as
+/// output nobody asked for.
+pub(crate) fn is_html_fundamental(value: &Value) -> bool {
+    matches!(value, Value::Variant { union, .. }
+        if union.last().map(String::as_str) == Some("HtmlFundamental"))
+}
+
+/// Expand one custom (non-fundamental) variant: rebuild its record, resolve
+/// its kind's `lower`, and return the values that lowering produced. Empty
+/// when the kind declares no `lower` or the call fails — a custom variant
+/// nothing can lower contributes nothing, as it always has.
+///
+/// This is the recursion that used to exist only on the HTML path, which is
+/// why a user block whose `lower` returned another custom variant rendered
+/// in the book and nowhere else. Every backend's fundamental walker calls
+/// it now.
+pub(crate) fn expand_custom_variant(
+    doc: &Document,
+    map: &BTreeMap<String, Value>,
+    kind: &str,
+) -> Vec<Value> {
+    let arg = payload_to_record(map, kind);
+    let Some(fv) = lookup_type_lower(doc, kind) else {
+        return Vec::new();
+    };
+    let Ok(Value::List(items)) = doc.call_value(&fv, &[arg]) else {
+        return Vec::new();
+    };
+    std::sync::Arc::unwrap_or_clone(items)
+}
+
 /// Custom diagram-shape lowering. Resolves the block's `lower`
 /// function, calls it with a record built from the block's fields,
 /// and renders each returned variant. `links` is the inline-pattern
@@ -280,16 +398,20 @@ pub(crate) fn lower_html_block(
     patterns: &InlinePatterns,
     base_dir: Option<&Path>,
 ) -> String {
-    // Route through `lower_to_values` so HTML shares the other backends'
+    // Route through `lower_block` so HTML shares the other backends'
     // error handling: a `lower` body that errors records a fatal eval
     // diagnostic (it used to be silently swallowed here), and a missing
-    // lowering records a warning.
-    let Some(items) = lower_to_values(doc, block, kind) else {
+    // lowering records a warning. A block lowering to the content IR
+    // renders through the shared reading of it (`render_content`).
+    let Some(items) = lower_block(doc, block, kind) else {
         return String::new();
     };
     let out: String = items
         .iter()
-        .map(|v| render_html_variant(doc, v, 0, patterns))
+        .map(|item| match item {
+            Lowered::Content(node) => render_content(doc, node, patterns),
+            Lowered::Html(value) => render_html_variant(doc, value, 0, patterns),
+        })
         .collect();
     // A container widget's `lower` marks where its children go with an
     // `HtmlFundamental::Children` slot (rendered as WF_CHILDREN_SLOT).
@@ -321,14 +443,10 @@ fn lower_recurse(
     depth: usize,
     render_each: impl Fn(&Value, usize) -> String,
 ) -> String {
-    let arg = payload_to_record(map, kind);
-    let Some(fv) = lookup_type_lower(doc, kind) else {
-        return String::new();
-    };
-    let Ok(Value::List(items)) = doc.call_value(&fv, &[arg]) else {
-        return String::new();
-    };
-    items.iter().map(|v| render_each(v, depth + 1)).collect()
+    expand_custom_variant(doc, map, kind)
+        .iter()
+        .map(|v| render_each(v, depth + 1))
+        .collect()
 }
 
 // `_parent_w` / `_parent_h` are threaded through so future variant
@@ -469,8 +587,12 @@ pub(crate) fn render_html_variant(
         // LaTeX → self-contained SVG via RaTeX. Like `highlighted`, the
         // SVG is a Rust leaf; the centring `<div>` wrapper is in math.rs.
         "math" => crate::math::render_math_fundamental(map),
-        other => lower_recurse(doc, map, other, depth, |v, d| {
-            render_html_variant(doc, v, d, patterns)
+        // A custom variant: expand it through its kind's own `lower`. What
+        // that produces may be content — a user block is free to lower to
+        // the semantic IR through a chain of its own variants.
+        other => lower_recurse(doc, map, other, depth, |v, d| match recursed_content(v) {
+            Some(node) => render_content(doc, &node, patterns),
+            None => render_html_variant(doc, v, d, patterns),
         }),
     }
 }

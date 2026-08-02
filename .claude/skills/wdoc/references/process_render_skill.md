@@ -39,12 +39,14 @@ The `start` page becomes `SKILL.md` at the root with its front matter from the `
 
 > [!WARNING]
 > **Use the skill target**
+>
 > Running `wcl wdoc build` on an `:ai_skill` site fails with a message pointing you at `wcl wdoc skill` — `:ai_skill` is a Markdown-only target.
 
 If `wcl wdoc build` errors on this site, that is expected: skill sites only render through `wcl wdoc skill`.
 
 > [!TIP]
 > **Verification**
+>
 > `out/skill/SKILL.md` exists with name/description front matter, and the non-start pages appear under `out/skill/references/`.
 
 ## Related

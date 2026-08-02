@@ -31,26 +31,32 @@ callout "Success" {
 
 > [!NOTE]
 > **Note**
+>
 > Background context the reader should remember.
 
 > [!NOTE]
 > **Info**
+>
 > Neutral information worth surfacing.
 
 > [!TIP]
 > **Tip**
+>
 > A helpful shortcut or best practice.
 
 > [!WARNING]
 > **Warning**
+>
 > Something to be careful about.
 
 > [!CAUTION]
 > **Error**
+>
 > A failure or hard constraint.
 
 > [!TIP]
 > **Success**
+>
 > Confirm an action completed.
 
 | Property | Type | Required | Description |
@@ -86,6 +92,7 @@ callout "Deploying" {
 
 > [!NOTE]
 > **Deploying**
+>
 > A **custom** type — the `deploy` class sets its accent colour, and `icon` picks the glyph.
 
 ```wcl

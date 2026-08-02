@@ -66,6 +66,7 @@ units exist,
 
 > [!TIP]
 > **Verification**
+>
 > `just wskill-check` passes and `just render` writes out/book and out/skill; the served book shows your topic name, and each unit you add appears as its own page on the next render.
 
 ## Related

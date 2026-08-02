@@ -36,6 +36,7 @@ Fix what you found (plan edits, then just check again), or record a deliberate a
 
 > [!TIP]
 > **Verification**
+>
 > No unmeasurable :must requirement, no terminology drift across artifacts, and the spot-checked briefs stand alone; just check still green.
 
 [← Back to SKILL.md](../SKILL.md)

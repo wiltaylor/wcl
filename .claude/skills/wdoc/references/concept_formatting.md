@@ -150,10 +150,12 @@ callout "Warning" {
 
 > [!NOTE]
 > **Note**
+>
 > Background context the reader should remember.
 
 > [!WARNING]
 > **Warning**
+>
 > Something to be careful about — composes **inline patterns** too.
 
 ## Block reference

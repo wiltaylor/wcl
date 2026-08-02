@@ -24,6 +24,7 @@ For each merge-ready spec (:reviewed, all deps :merged), in dependency order: 1.
 
 > [!TIP]
 > **Verification**
+>
 > Merges land in dependency order with the post-merge check green; conflicts route through the fix loop, never hand-resolved.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -32,9 +32,12 @@
 // `content` module (the enum, the supporting types, and the
 // `Value` → `Content` conversion). Edit the union, not the Rust.
 //
-// NOTE: nothing lowers to this union yet — the blocks still lower to
-// `HtmlFundamental` (see `core.wcl`). Wiring the backends onto it is
-// the contraction half of the change; this file is the expand half.
+// `callout` is the first block routed through it (`callout.wcl`): all
+// four backends read its `Callout` node from this declaration, matching
+// the union exhaustively, and the hand-written re-implementations the
+// PDF and Markdown backends each carried are gone. The rest of the
+// blocks still lower to `HtmlFundamental` (see `core.wcl`) and move over
+// one concept at a time.
 
 namespace wdoc
 

@@ -39,6 +39,7 @@ After the items are :done, offer the user promotion: a finding that is durable a
 
 > [!TIP]
 > **Verification**
+>
 > The research_done gate passes and every finding file is imported from plan.wcl.
 
 [← Back to SKILL.md](../SKILL.md)

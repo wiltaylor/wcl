@@ -53,6 +53,7 @@ Serve the book and walk every chapter with the user. Corrections loop back into 
 
 > [!TIP]
 > **Verification**
+>
 > Every view has content or an explicit open-question marker; the user has walked the rendered book and corrected it.
 
 ## Related

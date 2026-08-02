@@ -36,6 +36,7 @@ With specs and contracts in: map each spec to its container in SPEC_CONTAINER, `
 
 > [!TIP]
 > **Verification**
+>
 > just check green: DAG acyclic, ownership disjoint, status covered, surfaces implemented exactly once, models defined exactly once, contract order holds, harnesses present.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -2,6 +2,7 @@
 
 > [!WARNING]
 > **Outputs, not systems**
+>
 > A docs site, a rendered book, a skill folder, a README — anything the project publishes \*to be read\* — is a **documentation artefact**, never a `system` or `container` in view 4. Test: does it execute, or is it read? Read → `doc_item`. Where a published artefact is hosted goes in its `hosted_on` field, not in a system of its own.
 
 | Block | Fields | Notes |

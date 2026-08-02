@@ -18,6 +18,7 @@ page index { sites = [:mysite]  start = true
 
 > [!NOTE]
 > **Per-site page names**
+>
 > Page names are unique per site, so two different sites can each have a page called `index`. Once a document declares more than one site, every page must name its `sites` — a page carrying none is a build error, and a shared page says so with `sites = [:docs, :blog]`. A single-site document needs no `sites` field anywhere.
 
 ## Cross-page links

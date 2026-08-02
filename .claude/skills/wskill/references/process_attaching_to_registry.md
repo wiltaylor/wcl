@@ -47,6 +47,7 @@ missing card means the entry file isn't at `wskills/<name>/wdoc/book/main.wcl`.
 
 > [!TIP]
 > **Verification**
+>
 > The rebuilt landing lists the new wskill with working links to each of its shipped views.
 
 ## Related

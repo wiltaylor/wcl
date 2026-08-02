@@ -41,14 +41,17 @@ dv_metric {
 
 > [!WARNING]
 > **CPU**
+>
 > Currently at **42%**
 
 > [!NOTE]
 > **Memory**
+>
 > Currently at **88%**
 
 > [!TIP]
 > **Interpolating slots**
+>
 > Slot values land in text via WCL's `$"…"` interpolated strings — note the `$` prefix. A plain `"…"` string is literal. Bare references in a field (like `class = [status]`) need no prefix.
 
 ## Repeating over data
@@ -78,14 +81,17 @@ wdoc_repeater {
 
 > [!WARNING]
 > **CPU**
+>
 > Currently at **42%**
 
 > [!CAUTION]
 > **Memory**
+>
 > Currently at **88%**
 
 > [!TIP]
 > **Disk**
+>
 > Currently at **31%**
 
 ## Generating pages and navigation
@@ -116,6 +122,7 @@ site docbook {
 
 > [!NOTE]
 > **Routes must be slug-safe and unique**
+>
 > A generated route is its interpolated label, so it must be non-empty, contain only `A-Za-z0-9_-`, and be unique within its site. Build a slug from prose with `to_lower(replace(s, " ", "-"))`.
 
 ## Render by reference
@@ -185,6 +192,7 @@ collect aside
 
 > [!NOTE]
 > **Scope and limits**
+>
 > Collection is **document-global**: a `collect` gathers matching partials from the root document and every file pulled in by a top-level `import`. Partials in block-scoped (lazily imported) files aren't reached, and a collected body should avoid `id`s.
 
 ## Content fragments on data (body and project)
@@ -214,6 +222,7 @@ page fleet {
 
 > [!NOTE]
 > **Addressing**
+>
 > A single `@child("body")` slot is addressed by its slot, so the body needs no name. A body in a `@children("body")` list, or one declared at the document root, is addressed by its `@inline(0)` name. The record carrying a body may be nested (a step inside a tutorial). A `body` never renders where it's declared, only where projected.
 
 ## Documenting schema types

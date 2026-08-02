@@ -26,6 +26,7 @@ Who populates: systems/containers/components by hand (interview or scan); code i
 
 > [!WARNING]
 > **Reference fields are bare identifiers**
+>
 > `system`, `container`, `repo`, `owner`, relation endpoints — every field that names another block's id is written **bare**, never quoted: `system = shop_system`, not `system = "shop_system"`. Newer wcl coerces a quoted ref to the identifier it names, but older binaries treat it as a plain string that equals nothing — every derived view (the drill-down, roll-ups, screen attachment) then silently renders empty while `wcl check` stays green. Bare is the canonical form; follow the shape below.
 
 The drill-down authored in full — one system, a container, a component, all linked by bare ids:

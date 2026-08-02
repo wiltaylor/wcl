@@ -41,6 +41,7 @@ Open the book in `wcl editor`'s preview pane, have the user walk it against real
 
 > [!TIP]
 > **Verification**
+>
 > Every probe ran; extractors own the machine-derivable views; the gap interview covered the rest; the user spot-checked the rendered book against reality.
 
 ## Related

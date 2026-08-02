@@ -29,6 +29,7 @@ users:
 
 > [!NOTE]
 > **Cells are expressions**
+>
 > Each cell is an expression in the row type's field position: strings, numbers, booleans, symbols, even computed values via let bindings.
 
 ## Examples

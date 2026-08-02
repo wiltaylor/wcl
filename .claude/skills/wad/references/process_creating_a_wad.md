@@ -33,6 +33,7 @@ Two strategies: designing something new → [Design a new system (the interview)
 
 > [!TIP]
 > **Verification**
+>
 > `wcl check wad.wcl` is green and the twelve-chapter book renders with stubs.
 
 ## Related

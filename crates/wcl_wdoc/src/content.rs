@@ -12,11 +12,53 @@
 //! generated type, so a lowered WCL value becomes a typed node — or a
 //! precise [`ContentError`] naming the variant and field that failed.
 //!
-//! Nothing lowers to this IR yet: the blocks still lower to
-//! `HtmlFundamental`, and the four backends still walk that. This module is
-//! the declaration those backends will be moved onto.
+//! `callout` is the first block routed through it: its `lower` returns a
+//! `Content::Callout` and all four backends render that node from this one
+//! declaration, matching the union **exhaustively**. The remaining blocks
+//! still lower to `HtmlFundamental` and are moved over per concept.
 
-use wcl_lang::Value;
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use wcl_lang::{Value, VariantPayload};
+
+/// The name of the content union, as WCL declares it.
+const CONTENT_UNION: &str = "Content";
+
+/// The meta line under a [`Content::ChapterHeader`]'s title: whichever of
+/// reading time, updated date and version the chapter carries, in that
+/// order. The separator is a fact about the line, not about any one
+/// backend, so all three read it from here.
+pub(crate) fn chapter_meta_line(
+    reading_time: &Option<String>,
+    updated: &Option<String>,
+    version: &Option<String>,
+) -> Option<String> {
+    let parts: Vec<&str> = [reading_time, updated, version]
+        .into_iter()
+        .flatten()
+        .map(String::as_str)
+        .collect();
+    (!parts.is_empty()).then(|| parts.join(" · "))
+}
+
+/// Read `value` as a content node, or `None` when it isn't one.
+///
+/// The test is the **union tag**, not the variant name: the content IR and
+/// the HTML element vocabulary both declare `Paragraph`, `Table` and
+/// `Math`, so a name-based test would read one as the other. `None` means
+/// "not content" — an `HtmlFundamental`, or a custom variant its own kind
+/// will lower further. `Some(Err(_))` is a content node that didn't
+/// convert, which is an authoring error the caller must surface rather
+/// than swallow.
+pub(crate) fn as_content(value: &Value) -> Option<Result<Content, ContentError>> {
+    match value {
+        Value::Variant { union, .. } if union.last().map(String::as_str) == Some(CONTENT_UNION) => {
+            Some(Content::try_from(value))
+        }
+        _ => None,
+    }
+}
 
 /// Where a conversion failed: the owning type (`Content::Heading`,
 /// `ContentTocEntry`, …) and the field being read.
@@ -299,6 +341,167 @@ mod read {
 use read::*;
 
 include!(concat!(env!("OUT_DIR"), "/content_ir.rs"));
+
+/// Put a typed [`SvgFundamental`] back into the `Value` the SVG renderer
+/// reads.
+///
+/// `Content::Drawing` carries the shape vocabulary typed, but the shape
+/// renderer (and the viewBox fitter beside it) is written against the raw
+/// variant payloads every diagram already hands it. Rather than grow a
+/// second SVG renderer for the typed form, a drawing's shapes cross back
+/// over this seam and go through the existing one.
+///
+/// The match is exhaustive for the same reason the backends' are: a shape
+/// added to the WCL union stops compiling here instead of silently
+/// disappearing from every drawing.
+impl From<&SvgFundamental> for Value {
+    fn from(shape: &SvgFundamental) -> Value {
+        /// A field that carries a value, skipping the absent ones — a
+        /// missing key and an explicit `none` read the same downstream.
+        fn put<T>(
+            map: &mut BTreeMap<String, Value>,
+            name: &str,
+            v: &Option<T>,
+            f: impl Fn(&T) -> Value,
+        ) {
+            if let Some(v) = v {
+                map.insert(name.to_string(), f(v));
+            }
+        }
+        let num = |f: &f64| Value::F64(*f);
+        let text = |s: &String| Value::Utf8(s.clone());
+        let ident = |s: &String| Value::Identifier(s.clone());
+        let classes =
+            |c: &Vec<String>| Value::list(c.iter().map(|s| Value::Utf8(s.clone())).collect());
+
+        let mut map = BTreeMap::new();
+        let variant = match shape {
+            SvgFundamental::Rect {
+                x,
+                y,
+                width,
+                height,
+                rx,
+                fill,
+                stroke,
+                id,
+                class,
+            } => {
+                put(&mut map, "x", x, num);
+                put(&mut map, "y", y, num);
+                put(&mut map, "width", width, num);
+                put(&mut map, "height", height, num);
+                put(&mut map, "rx", rx, num);
+                put(&mut map, "fill", fill, text);
+                put(&mut map, "stroke", stroke, text);
+                put(&mut map, "id", id, ident);
+                put(&mut map, "class", class, classes);
+                "Rect"
+            }
+            SvgFundamental::Circle {
+                cx,
+                cy,
+                r,
+                fill,
+                stroke,
+                id,
+                class,
+            } => {
+                put(&mut map, "cx", cx, num);
+                put(&mut map, "cy", cy, num);
+                put(&mut map, "r", r, num);
+                put(&mut map, "fill", fill, text);
+                put(&mut map, "stroke", stroke, text);
+                put(&mut map, "id", id, ident);
+                put(&mut map, "class", class, classes);
+                "Circle"
+            }
+            SvgFundamental::Line {
+                x1,
+                y1,
+                x2,
+                y2,
+                stroke,
+                dash,
+                id,
+                class,
+            } => {
+                put(&mut map, "x1", x1, num);
+                put(&mut map, "y1", y1, num);
+                put(&mut map, "x2", x2, num);
+                put(&mut map, "y2", y2, num);
+                put(&mut map, "stroke", stroke, text);
+                put(&mut map, "dash", dash, text);
+                put(&mut map, "id", id, ident);
+                put(&mut map, "class", class, classes);
+                "Line"
+            }
+            SvgFundamental::Label {
+                content,
+                x,
+                y,
+                font_size,
+                fit_width,
+                fit_height,
+                fill,
+                id,
+                class,
+            } => {
+                map.insert("content".to_string(), Value::Utf8(content.clone()));
+                put(&mut map, "x", x, num);
+                put(&mut map, "y", y, num);
+                put(&mut map, "font_size", font_size, num);
+                put(&mut map, "fit_width", fit_width, num);
+                put(&mut map, "fit_height", fit_height, num);
+                put(&mut map, "fill", fill, text);
+                put(&mut map, "id", id, ident);
+                put(&mut map, "class", class, classes);
+                "Label"
+            }
+            SvgFundamental::Polygon {
+                points,
+                fill,
+                stroke,
+                id,
+                class,
+            } => {
+                map.insert("points".to_string(), Value::Utf8(points.clone()));
+                put(&mut map, "fill", fill, text);
+                put(&mut map, "stroke", stroke, text);
+                put(&mut map, "id", id, ident);
+                put(&mut map, "class", class, classes);
+                "Polygon"
+            }
+            SvgFundamental::Polyline {
+                points,
+                stroke,
+                dash,
+                id,
+                class,
+            } => {
+                map.insert("points".to_string(), Value::Utf8(points.clone()));
+                put(&mut map, "stroke", stroke, text);
+                put(&mut map, "dash", dash, text);
+                put(&mut map, "id", id, ident);
+                put(&mut map, "class", class, classes);
+                "Polyline"
+            }
+            SvgFundamental::Link { href, children } => {
+                map.insert("href".to_string(), Value::Utf8(href.clone()));
+                map.insert(
+                    "children".to_string(),
+                    Value::list(children.iter().map(Value::from).collect()),
+                );
+                "Link"
+            }
+        };
+        Value::Variant {
+            union: vec!["wdoc".to_string(), "SvgFundamental".to_string()],
+            variant: variant.to_string(),
+            payload: VariantPayload::Record(Arc::new(map)),
+        }
+    }
+}
 
 /// The emitter that produced the `include!`d module, compiled a second
 /// time so its own refusals can be tested: a build script is not reached
@@ -646,6 +849,98 @@ mod tests {
             "namespace wdoc\nunion Content { Odd { type: utf8 } }\n",
         ));
         assert!(rust.contains("r#type: String,"), "{rust}");
+    }
+
+    // ── The `Value` seams the backends read through ───────────────
+
+    #[test]
+    fn a_content_value_is_recognised_by_its_union_not_its_variant_name() {
+        // `Paragraph` is declared by BOTH the content IR and the HTML
+        // element vocabulary, so the classifier that routes a lowered value
+        // must read the union tag.
+        let content = eval("node", r#"node = Content::Paragraph { text: "hi" }"#);
+        assert!(matches!(
+            as_content(&content),
+            Some(Ok(Content::Paragraph { .. }))
+        ));
+
+        let html = Value::Variant {
+            union: vec!["wdoc".to_string(), "HtmlFundamental".to_string()],
+            variant: "Paragraph".to_string(),
+            payload: VariantPayload::Record(Arc::new(BTreeMap::new())),
+        };
+        assert!(
+            as_content(&html).is_none(),
+            "an HTML fundamental is not content"
+        );
+    }
+
+    #[test]
+    fn a_drawings_shapes_cross_back_to_the_svg_renderer_intact() {
+        // `Content::Drawing` types its shapes; the SVG renderer reads
+        // payload maps. Absent optionals must not become present `none`s
+        // the renderer would then draw from.
+        let value = Value::from(&SvgFundamental::Rect {
+            x: Some(1.0),
+            y: Some(2.0),
+            width: Some(30.0),
+            height: Some(40.0),
+            rx: None,
+            fill: Some("#abc".to_string()),
+            stroke: None,
+            id: Some("box".to_string()),
+            class: Some(vec!["accent".to_string()]),
+        });
+        let Value::Variant {
+            union,
+            variant,
+            payload: VariantPayload::Record(map),
+        } = &value
+        else {
+            panic!("expected a record variant");
+        };
+        assert_eq!(union.last().map(String::as_str), Some("SvgFundamental"));
+        assert_eq!(variant, "Rect");
+        assert_eq!(map.get("width"), Some(&Value::F64(30.0)));
+        assert_eq!(map.get("fill"), Some(&Value::Utf8("#abc".to_string())));
+        assert_eq!(map.get("id"), Some(&Value::Identifier("box".to_string())));
+        assert_eq!(
+            map.get("class"),
+            Some(&Value::list(vec![Value::Utf8("accent".to_string())]))
+        );
+        assert_eq!(map.get("rx"), None, "an absent optional stays absent");
+        assert_eq!(map.get("stroke"), None);
+    }
+
+    #[test]
+    fn a_nested_drawing_link_carries_its_children_over() {
+        let value = Value::from(&SvgFundamental::Link {
+            href: "guide".to_string(),
+            children: vec![SvgFundamental::Circle {
+                cx: Some(5.0),
+                cy: Some(5.0),
+                r: Some(3.0),
+                fill: None,
+                stroke: None,
+                id: None,
+                class: None,
+            }],
+        });
+        let Value::Variant {
+            payload: VariantPayload::Record(map),
+            ..
+        } = &value
+        else {
+            panic!("expected a record variant");
+        };
+        let Some(Value::List(children)) = map.get("children") else {
+            panic!("expected a children list");
+        };
+        assert_eq!(children.len(), 1);
+        assert!(matches!(
+            &children[0],
+            Value::Variant { variant, .. } if variant == "Circle"
+        ));
     }
 
     #[test]

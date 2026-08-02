@@ -31,6 +31,7 @@ $ wcl set site.wcl service.web.port 9090u32
 
 > [!WARNING]
 > **Quoting**
+>
 > The value is parsed as a WCL expression — quote shell-special characters, e.g. `wcl set site.wcl name '"alpha"'`.
 
 Run `wcl set site.wcl <path> <value>` to rewrite the field. `wcl set` follows the import chain and edits the file that actually declares the field.
@@ -48,6 +49,7 @@ Run `wcl diff <old> <new>` over the evaluated views to see exactly what changed.
 
 > [!TIP]
 > **Verification**
+>
 > `wcl eval` returns the new value and `wcl diff` reports a single modified field — confirming the edit landed where you intended.
 
 ## Related

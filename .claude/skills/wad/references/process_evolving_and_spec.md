@@ -47,6 +47,7 @@ When the work lands and the user confirms (for a plan-executed change: build mod
 
 > [!TIP]
 > **Verification**
+>
 > Each spec is schema-valid, carries authored instructions an implementer can follow without the full context, and its status tracks the work truthfully.
 
 ## Related

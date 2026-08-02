@@ -332,7 +332,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_content {
     name = "content"
     kind = "module"
-    summary = "1 file, 2 pub items"
+    summary = "1 file, 4 pub items"
     deps = [n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_demo {
@@ -396,7 +396,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_kinds {
     name = "kinds"
     kind = "module"
-    summary = "1 file, 20 pub items"
+    summary = "1 file, 19 pub items"
   }
   code_node n_cg_wcl_wdoc_layered {
     name = "layered"
@@ -412,13 +412,13 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_markdown {
     name = "markdown"
     kind = "module"
-    summary = "4 files, 8 pub items"
-    deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_terminal, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
+    summary = "5 files, 8 pub items"
+    deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_content, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_terminal, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_math {
     name = "math"
     kind = "module"
-    summary = "1 file, 2 pub items"
+    summary = "1 file, 3 pub items"
     deps = [n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_native {
@@ -436,8 +436,8 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_pdf {
     name = "pdf"
     kind = "module"
-    summary = "9 files, 45 pub items"
-    deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
+    summary = "10 files, 46 pub items"
+    deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_content, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_radial {
     name = "radial"
@@ -448,8 +448,8 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_render {
     name = "render"
     kind = "module"
-    summary = "14 files, 214 pub items"
-    deps = [n_cg_wcl_wdoc_dopesheet, n_cg_wcl_wdoc_force, n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_layered, n_cg_wcl_wdoc_map, n_cg_wcl_wdoc_radial, n_cg_wcl_wdoc_routing, n_cg_wcl_wdoc_text, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
+    summary = "15 files, 223 pub items"
+    deps = [n_cg_wcl_wdoc_content, n_cg_wcl_wdoc_dopesheet, n_cg_wcl_wdoc_force, n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_layered, n_cg_wcl_wdoc_map, n_cg_wcl_wdoc_radial, n_cg_wcl_wdoc_routing, n_cg_wcl_wdoc_text, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_review {
     name = "review"
@@ -4082,7 +4082,7 @@ code_item code_api_host_bindings {
       kind = "variant"
     }
     code_member m_n_api_host_bindings_Value_more {
-      signature = "… +28 more"
+      signature = "… +29 more"
       kind = "overflow"
     }
   }
@@ -6042,6 +6042,22 @@ code_item code_api_wcl_wdoc_content {
   name      = "Public surface — content"
   summary   = "Pub / pub(crate) types, traits, and functions — the surface a sibling component sees (tree-sitter over wcl_wdoc::content)."
   kind      = :module_api
+  code_node n_api_wcl_wdoc_content_content_fns {
+    name = "content"
+    kind = "fns"
+    summary = "src/content.rs"
+    code_member m_n_api_wcl_wdoc_content_content_fns_chapter_meta_line {
+      signature = "fn chapter_meta_line( reading_time: &Option<String>, updated: &…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_content_content_fns_as_content {
+      signature = "fn as_content(value: &Value) -> Option<Result<Content, ContentE…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_wcl_wdoc_content_ContentError]
+    }
+  }
   code_node n_api_wcl_wdoc_content_At {
     name = "At"
     kind = "struct"
@@ -6676,6 +6692,17 @@ code_item code_api_wdoc_html_renderer {
       kind = "overflow"
     }
   }
+  code_node n_api_wdoc_html_renderer_content_html_fns {
+    name = "content_html"
+    kind = "fns"
+    summary = "src/render/content_html.rs"
+    code_member m_n_api_wdoc_html_renderer_content_html_fns_render_content {
+      signature = "fn render_content(doc: &Document, node: &Content, patterns: &In…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_wdoc_html_renderer_InlinePatterns]
+    }
+  }
   code_node n_api_wdoc_html_renderer_css_fns {
     name = "css"
     kind = "fns"
@@ -7069,8 +7096,21 @@ code_item code_api_wdoc_html_renderer {
       visibility = "crate"
     }
     code_member m_n_api_wdoc_html_renderer_lower_fns_more {
-      signature = "… +13 more"
+      signature = "… +17 more"
       kind = "overflow"
+    }
+  }
+  code_node n_api_wdoc_html_renderer_Lowered {
+    name = "Lowered"
+    kind = "enum"
+    summary = "src/render/lower.rs"
+    code_member m_n_api_wdoc_html_renderer_Lowered_Content {
+      signature = "Content(Content)"
+      kind = "variant"
+    }
+    code_member m_n_api_wdoc_html_renderer_Lowered_Html {
+      signature = "Html(Value)"
+      kind = "variant"
     }
   }
   code_node n_api_wdoc_html_renderer_ShapeMetrics {
@@ -7394,114 +7434,10 @@ code_item code_api_wdoc_html_renderer {
       kind = "overflow"
     }
   }
-  code_node n_api_wdoc_html_renderer_EdgeStyle {
-    name = "EdgeStyle"
-    kind = "struct"
-    summary = "src/render/svg/edges.rs"
-    code_member m_n_api_wdoc_html_renderer_EdgeStyle_from {
-      signature = "from: String"
-      kind = "field"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_EdgeStyle_to {
-      signature = "to: String"
-      kind = "field"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_EdgeStyle_kind {
-      signature = "kind: Option<String>"
-      kind = "field"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_EdgeStyle_label {
-      signature = "label: Option<String>"
-      kind = "field"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_EdgeStyle_dash {
-      signature = "dash: Option<String>"
-      kind = "field"
-      visibility = "crate"
-    }
-  }
-  code_node n_api_wdoc_html_renderer_primitives_fns {
-    name = "primitives"
-    kind = "fns"
-    summary = "src/render/svg/primitives.rs"
-    code_member m_n_api_wdoc_html_renderer_primitives_fns_render_rect {
-      signature = "fn render_rect(block: &Block<'_>, parent_w: f64, parent_h: f64)…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_primitives_fns_render_circle {
-      signature = "fn render_circle(block: &Block<'_>, parent_w: f64, parent_h: f6…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_primitives_fns_render_line {
-      signature = "fn render_line(block: &Block<'_>, parent_w: f64, parent_h: f64)…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_primitives_fns_render_label {
-      signature = "fn render_label(block: &Block<'_>, parent_w: f64, parent_h: f64…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_primitives_fns_render_polygon {
-      signature = "fn render_polygon(block: &Block<'_>, parent_w: f64, parent_h: f…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_primitives_fns_render_rect_payload {
-      signature = "fn render_rect_payload(map: &BTreeMap<String, Value>) -> String"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_primitives_fns_render_circle_payload {
-      signature = "fn render_circle_payload(map: &BTreeMap<String, Value>) -> Stri…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_primitives_fns_render_line_payload {
-      signature = "fn render_line_payload(map: &BTreeMap<String, Value>) -> String"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_primitives_fns_render_polyline_payload {
-      signature = "fn render_polyline_payload(map: &BTreeMap<String, Value>) -> St…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_primitives_fns_render_label_payload {
-      signature = "fn render_label_payload(map: &BTreeMap<String, Value>) -> String"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_primitives_fns_render_polygon_payload {
-      signature = "fn render_polygon_payload(map: &BTreeMap<String, Value>) -> Str…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_primitives_fns_resolve_label_font_size {
-      signature = "fn resolve_label_font_size( content: &str, font_size: Option<f6…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_primitives_fns_emit_text {
-      signature = "fn emit_text( content: &str, cx: f64, cy: f64, font_size: f64, …"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_primitives_fns_more {
-      signature = "… +12 more"
-      kind = "overflow"
-    }
-  }
   code_node n_api_wdoc_html_renderer_more {
-    name = "… +5 more"
+    name = "… +8 more"
     kind = "overflow"
-    summary = "5 further public items — see the source."
+    summary = "8 further public items — see the source."
   }
 }
 
@@ -7867,7 +7803,7 @@ code_item code_api_wcl_wdoc_kinds {
       visibility = "crate"
     }
     code_member m_n_api_wcl_wdoc_kinds_kinds_fns_more {
-      signature = "… +7 more"
+      signature = "… +6 more"
       kind = "overflow"
     }
   }
@@ -8070,6 +8006,17 @@ code_item code_api_wdoc_backends {
     summary = "src/pdf/collect.rs"
     code_member m_n_api_wdoc_backends_collect_fns_collect_page {
       signature = "fn collect_page( doc: &Document, page: &Block<'_>, patterns: &I…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_wdoc_backends_BlockNode]
+    }
+  }
+  code_node n_api_wdoc_backends_content_fns {
+    name = "content"
+    kind = "fns"
+    summary = "src/pdf/content.rs"
+    code_member m_n_api_wdoc_backends_content_fns_collect_content {
+      signature = "fn collect_content( doc: &Document, node: &Content, patterns: &…"
       kind = "fn"
       visibility = "crate"
       deps = [n_api_wdoc_backends_BlockNode]
@@ -8544,29 +8491,10 @@ code_item code_api_wdoc_backends {
       visibility = "crate"
     }
   }
-  code_node n_api_wdoc_backends_Palette {
-    name = "Palette"
-    kind = "struct"
-    summary = "src/pdf/palette.rs"
-    code_member m_n_api_wdoc_backends_Palette_impl_Default {
-      signature = "impl Default"
-      kind = "impl"
-    }
-    code_member m_n_api_wdoc_backends_Palette_fg_hex {
-      signature = "fn fg_hex(&self) -> String"
-      kind = "method"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_backends_Palette_svg_style_sheet {
-      signature = "fn svg_style_sheet(&self) -> String"
-      kind = "method"
-      visibility = "crate"
-    }
-  }
   code_node n_api_wdoc_backends_more {
-    name = "… +8 more"
+    name = "… +9 more"
     kind = "overflow"
-    summary = "8 further public items — see the source."
+    summary = "9 further public items — see the source."
   }
 }
 
@@ -8581,6 +8509,11 @@ code_item code_api_wcl_wdoc_math {
     summary = "src/math.rs"
     code_member m_n_api_wcl_wdoc_math_math_fns_render_math_fundamental {
       signature = "fn render_math_fundamental(map: &BTreeMap<String, Value>) -> St…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_math_math_fns_render_math_block {
+      signature = "fn render_math_block( latex: &str, display: bool, class: &[Stri…"
       kind = "fn"
       visibility = "crate"
     }

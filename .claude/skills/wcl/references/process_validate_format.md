@@ -23,6 +23,7 @@ ok
 
 > [!NOTE]
 > **Exit codes**
+>
 > 0 = valid, 1 = parse error, 2 = schema violation. Script against these for CI gates.
 
 Run `wcl check config.wcl`. A clean run prints `ok` and exits 0; fix any reported parse or schema errors before moving on.
@@ -46,6 +47,7 @@ Formatting never changes meaning, but re-run `wcl check` as a cheap confirmation
 
 > [!TIP]
 > **Verification**
+>
 > `wcl check` prints `ok` and exits 0, and a second `wcl fmt` run produces no further changes.
 
 ## Related

@@ -40,6 +40,7 @@ m_t = tensor_reshape(m, [3, 2])     // re-view the same numbers as 3x2
 
 > [!NOTE]
 > **When to reach for a tensor**
+>
 > Use a tensor when the data is genuinely rectangular and the rank matters (matrices, images, batches). For ragged or one-dimensional data, a list<T> is simpler.
 
 ## Related

@@ -26,15 +26,68 @@ pub(crate) fn render_lowered_svg_block(
     let Some(items) = lower_to_values_named(doc, block, kind, "lower_svg") else {
         return String::new();
     };
+    fit_lowered_svg(
+        doc,
+        &items,
+        SvgFrame {
+            width: field_f64(block, "width"),
+            height: None,
+            class_attr: &class_attr(block),
+            id: field_id(block, "id").as_deref(),
+            desc: field_utf8(block, "desc").as_deref(),
+        },
+        patterns,
+    )
+}
+
+/// The width a fitted `<svg>` takes when nothing declares one — the same
+/// default `sequence_diagram` / `state_diagram` carry, so a page-level
+/// drawing is the width of a diagram beside it.
+pub(crate) const DEFAULT_SVG_WIDTH: f64 = 640.0;
+
+/// The frame a fitted `<svg>` is drawn in: the declared width, an optional
+/// explicit height (absent ⇒ the content's aspect ratio decides), and the
+/// attributes the element carries.
+pub(crate) struct SvgFrame<'a> {
+    /// Absent ⇒ [`DEFAULT_SVG_WIDTH`].
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+    /// A pre-built ` class="…"` attribute; empty for none.
+    pub class_attr: &'a str,
+    pub id: Option<&'a str>,
+    /// The accessible name (`role="img"` + `aria-label` + `<title>`).
+    pub desc: Option<&'a str>,
+}
+
+/// Fit a self-contained `<svg>` around already-lowered shape fundamentals.
+///
+/// Shared by [`render_lowered_svg_block`] (which reads the geometry off a
+/// block's `lower_svg`) and the content IR's `Drawing` node (which carries
+/// the shape vocabulary directly), so a page-level drawing is fitted the
+/// same way whichever side produced it. `height`, when given, overrides the
+/// aspect-derived one.
+pub(crate) fn fit_lowered_svg(
+    doc: &Document,
+    items: &[Value],
+    frame: SvgFrame<'_>,
+    patterns: &InlinePatterns,
+) -> String {
+    let SvgFrame {
+        width,
+        height,
+        class_attr: cls,
+        id,
+        desc,
+    } = frame;
+    let width = width.unwrap_or(DEFAULT_SVG_WIDTH);
     let mut bboxes: Vec<(f64, f64, f64, f64)> = Vec::new();
-    for v in &items {
+    for v in items {
         collect_fundamental_bbox(v, &mut bboxes);
     }
     let body: String = items
         .iter()
         .map(|v| render_svg_variant(doc, v, 0.0, 0.0, 0, Some(patterns)))
         .collect();
-    let width = field_f64(block, "width").unwrap_or(640.0);
     // Fit the viewBox to the content (same 10px pad as diagrams) and
     // derive the rendered height from its aspect ratio, so the block
     // never clips or letterboxes regardless of how tall the lowering's
@@ -45,18 +98,16 @@ pub(crate) fn render_lowered_svg_block(
         Some(v) => v,
         None => (format!("0 0 {width} 40"), width, 40.0),
     };
-    let height = if vbw > 0.0 { width * vbh / vbw } else { width };
-    let cls = class_attr(block);
+    let height = height.unwrap_or(if vbw > 0.0 { width * vbh / vbw } else { width });
     let mut out = format!("<svg{cls}");
-    append_attr(&mut out, "id", field_id(block, "id").as_deref());
+    append_attr(&mut out, "id", id);
     // Accessibility, mirroring `diagram`: `desc` becomes the accessible
     // name (`role="img"` + `aria-label`) plus a `<title>` first child.
-    let desc = field_utf8(block, "desc");
-    if let Some(d) = &desc {
+    if let Some(d) = desc {
         write!(out, " role=\"img\" aria-label=\"{}\"", escape_html(d)).expect("write to String");
     }
     let title = desc
-        .map(|d| format!("<title>{}</title>", escape_html(&d)))
+        .map(|d| format!("<title>{}</title>", escape_html(d)))
         .unwrap_or_default();
     write!(
         out,

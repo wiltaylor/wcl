@@ -36,6 +36,7 @@ The phase ends when you can think of no question whose unknown answer could chan
 
 > [!TIP]
 > **Verification**
+>
 > The questions_closed gate passes and the user has confirmed the interview feels complete.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -48,6 +48,7 @@ Change into the new folder and run `wcl check` on its `main.wcl` to confirm the 
 
 > [!TIP]
 > **Verification**
+>
 > The destination contains the template's files and `wcl check` on its entry `main.wcl` exits 0.
 
 ## Related

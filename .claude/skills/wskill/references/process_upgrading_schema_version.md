@@ -55,6 +55,7 @@ Set `schema_version` in `wskill.wcl` to the new base's version, re-render every 
 
 > [!TIP]
 > **Verification**
+>
 > `wcl check` passes on the new base, `schema_version` matches the base header, and every shipped view renders.
 
 ## Related

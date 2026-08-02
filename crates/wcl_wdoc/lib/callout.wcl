@@ -3,11 +3,18 @@
 // are selected by putting the name in `class`; each supplies an accent
 // colour (CALLOUT_CSS) and a default icon (from the bundled Lucide pack,
 // so it works with no `iconset` declared). `icon` overrides the default.
-// It is NOT a fundamental: it lowers (below) to plain `<div>`s plus an
-// `Icon` fundamental, composing the existing HTML fundamentals. The
-// `body` runs through the inline-pattern engine (like `p "…"`), so
-// `**bold**` / `` `code` `` / `[links](url)` / `:icons:` / `$math$`
-// work; the `heading` stays a plain span.
+//
+// This is the **first block routed through the semantic content IR**: the
+// lowering below returns a `Content::Callout`, one node carrying the
+// admonition's meaning — a typed `kind`, a heading, and body content —
+// and every backend renders it from that. Before, the lowering built
+// `<div>`s out of HTML fundamentals, which only the HTML backend could
+// read; the PDF and Markdown backends each hand-reimplemented `callout`
+// in Rust, matching the type by class name, and a user block whose own
+// lowering returned another custom variant rendered in the book and
+// nowhere else. The `body` runs through the inline-pattern engine (like
+// `p "…"`), so `**bold**` / `` `code` `` / `[links](url)` / `:icons:` /
+// `$math$` work; the `heading` stays a plain span.
 namespace wdoc
 
 @block("callout")
@@ -23,51 +30,32 @@ type Callout extends WdocBlock {
   @doc("Override the default icon (any `pack.name` from a built-in or declared iconset).")
   icon:  utf8?
 
-  lower = fn(c: Callout) -> list<HtmlFundamental> {
+  lower = fn(c: Callout) -> list<Content> {
     let cls = if c.class == none { [] } else { c.class };
-    // Default icon by built-in type (overridden by an explicit `icon`).
-    let kind_icon =
-      if list_contains(cls, "warning") { "lucide.triangle-alert" }
-      else if list_contains(cls, "error") { "lucide.circle-x" }
-      else if list_contains(cls, "success") { "lucide.circle-check" }
-      else if list_contains(cls, "tip") { "lucide.lightbulb" }
-      else if list_contains(cls, "info") { "lucide.info" }
-      else if list_contains(cls, "note") { "lucide.info" }
-      else { "" };
-    let icon_name = if c.icon == none { kind_icon } else { c.icon };
-    let title = HtmlFundamental::Paragraph {
-      class: ["callout-title"], spans: [c.heading],
-    };
-    let head_children =
-      if icon_name == "" { [title] }
-      else {
-        [
-          HtmlFundamental::Icon { name: icon_name, class: ["callout-icon"] },
-          title,
-        ]
-      };
+    // The built-in type, read off `class` once and carried as a symbol
+    // from the declared vocabulary. Each backend maps it to its own
+    // accent / icon / alert keyword — none of them matches a class name
+    // by hand any more.
+    let kind =
+      if list_contains(cls, "warning") { :warning }
+      else if list_contains(cls, "error") { :error }
+      else if list_contains(cls, "success") { :success }
+      else if list_contains(cls, "tip") { :tip }
+      else if list_contains(cls, "info") { :info }
+      else if list_contains(cls, "note") { :note }
+      else { none };
     [
-      HtmlFundamental::Element {
-        tag: "div", id: c.id, class: flatten([["callout"], cls]),
-        children: [
-          HtmlFundamental::Element {
-            tag: "div", class: ["callout-heading"],
-            children: head_children,
-          },
-          HtmlFundamental::Element {
-            tag: "div", class: ["callout-body"],
-            children: [
-              // A `<p>` wrapping an `Inline` fundamental, so the body
-              // runs through the inline-pattern engine like `p "…"` —
-              // `**bold**`, `` `code` ``, `[links](url)`, `:icons:`, and
-              // `$math$` all work. The heading stays a plain span.
-              HtmlFundamental::Element {
-                tag: "p",
-                children: [HtmlFundamental::Inline { text: c.body }],
-              },
-            ],
-          },
-        ],
+      Content::Callout {
+        kind: kind,
+        heading: c.heading,
+        // The body is content, not a string: a `Paragraph` so it runs
+        // through the inline-pattern engine on every backend.
+        body: [Content::Paragraph { text: c.body }],
+        // `icon` is the author's override only — the per-kind default
+        // belongs to whichever backend draws icons.
+        icon: c.icon,
+        id: c.id,
+        class: c.class,
       },
     ]
   }

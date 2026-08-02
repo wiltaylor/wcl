@@ -45,11 +45,29 @@ const EM: f64 = 40.0;
 /// Render an `HtmlFundamental::Math` (the block `math` lower) — a
 /// centred display equation wrapped in `<div class="wdoc-math …">`.
 pub(crate) fn render_math_fundamental(map: &BTreeMap<String, Value>) -> String {
-    let latex = map_utf8(map, "latex").unwrap_or_default();
-    let display = map_bool(map, "display").unwrap_or(true);
-    let class_attr = wrapper_class(map, "wdoc-math");
-    let svg = math_svg(&latex, display, false);
-    format!("<div{class_attr}>{svg}</div>")
+    render_math_block(
+        &map_utf8(map, "latex").unwrap_or_default(),
+        map_bool(map, "display").unwrap_or(true),
+        &map_utf8_list(map, "class"),
+        None,
+    )
+}
+
+/// [`render_math_fundamental`] from typed parts — the content IR's `Math`
+/// node, which carries its LaTeX, classes and anchor id rather than a
+/// payload map.
+pub(crate) fn render_math_block(
+    latex: &str,
+    display: bool,
+    class: &[String],
+    id: Option<&str>,
+) -> String {
+    let mut names = vec!["wdoc-math".to_string()];
+    names.extend_from_slice(class);
+    let class_attr = classes_attr_from_names(&names);
+    let mut out = format!("<div{class_attr}");
+    crate::render::append_attr(&mut out, "id", id);
+    format!("{out}>{}</div>", math_svg(latex, display, false))
 }
 
 /// Render an `InlineSpan::Math` (the `$…$` / `$$…$$` inline patterns) —

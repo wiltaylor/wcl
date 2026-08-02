@@ -18,6 +18,7 @@ Both decorators take the same three optional arguments, each a list of symbols.
 
 > [!NOTE]
 > **The skill target names itself**
+>
 > `wcl wdoc skill` runs the Markdown emitter but reports itself as `:skill`, so a skill folder and a Markdown site can be scoped apart. `@except(backends=[:markdown])` does not hide a block from the skill build — say `[:markdown, :skill]` to hide it from both.
 
 ## Examples
@@ -45,6 +46,7 @@ page home {
 
 > [!NOTE]
 > **Template kind is per-site**
+>
 > Filtering on `templates` uses the site's `default_template`. A page-level `template` override does not change which template axis a block matches.
 
 ## Waiving a block a target can't render

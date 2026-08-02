@@ -37,6 +37,7 @@ Add the one `import "./<thing>.wcl"` line in `data/generated/main.wcl` (once, co
 
 > [!TIP]
 > **Verification**
+>
 > Running the script twice leaves `git status` quiet; `wcl check` stays green; the output file's blocks render in the book.
 
 ## Related

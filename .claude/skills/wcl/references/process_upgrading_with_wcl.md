@@ -33,6 +33,7 @@ $ wcl check wskill.wcl
 
 > [!NOTE]
 > **Exit codes**
+>
 > 0 = valid, 1 = parse error, 2 = schema violation — a new release can tighten either.
 
 Run `wcl check` on the model's root document with the new binary. A release can add constraints, change builtin behaviour, or deprecate syntax, so a file that was clean under the old version may now report errors.
@@ -64,6 +65,7 @@ Record the upgrade: bump `topic.version`, and update each touched source's `last
 
 > [!TIP]
 > **Verification**
+>
 > `wcl check` is clean under the new binary, the projections rebuild, and every source's `reflects_version` matches `wcl --version`.
 
 ## Related

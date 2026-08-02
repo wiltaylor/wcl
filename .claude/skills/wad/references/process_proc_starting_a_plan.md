@@ -45,6 +45,7 @@ Scaffolds `wad/` - the architecture book of the future system (see the plan's-WA
 
 > [!TIP]
 > **Verification**
+>
 > just check prints OK twice and every default gate passing; wad/wad.wcl checks green.
 
 [← Back to SKILL.md](../SKILL.md)

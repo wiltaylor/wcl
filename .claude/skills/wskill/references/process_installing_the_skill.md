@@ -48,6 +48,7 @@ never triggers, sharpen the `description` in the `skill` block — it is the tri
 
 > [!TIP]
 > **Verification**
+>
 > `.claude/skills/<name>/SKILL.md` exists with the expected frontmatter, and an agent session in that repo invokes the skill on a matching request.
 
 ## Related

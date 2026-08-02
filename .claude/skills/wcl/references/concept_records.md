@@ -51,6 +51,7 @@ let doubled  = map_values({ low: 1, high: 9 }, fn(x: i64) -> i64 x * 2)
 
 > [!NOTE]
 > **Records and blocks**
+>
 > A record becomes a block kind when decorated with @block("kind") — see Schema & Decorators. The block's labels then bind positionally to fields marked @inline(N).
 
 ## Examples

@@ -12,6 +12,7 @@ type Step {
 
 > [!NOTE]
 > **Lazy and cycle-checked**
+>
 > Function values participate in WCL's lazy field evaluation. Each call evaluates its body in a fresh context, and circular references between fields are detected and reported.
 
 ## Related

@@ -33,6 +33,7 @@ service "web" {
 
 > [!NOTE]
 > **Navigators, not copies**
+>
 > self and parent reify to references resolved lazily through lexical scope (innermost block out, then the document root) — the same resolution a `&T` field uses. See [References](../references/concept_references.md).
 
 ## Related

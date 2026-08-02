@@ -7,6 +7,7 @@ The `include` block builds \*other\* wdoc documents found under a folder and shi
 
 > [!NOTE]
 > **Include vs import**
+>
 > `import` pulls another file's declarations into \*this\* document (one merged site). `include` builds another document on its own and copies the result in (many independent sites under one output tree).
 
 ## Discovery: pattern vs entry
@@ -51,6 +52,7 @@ site main { root = true  default_template = :webpage
 
 > [!WARNING]
 > **Multi-site hrefs**
+>
 > `included_sites` returns **root-relative** hrefs (`members/foo/`). A non-root site renders under `/<site>/`, so its menu must reach a sibling sub-site with a `../` prefix (`../members/foo/`).
 
 ## Skill collections

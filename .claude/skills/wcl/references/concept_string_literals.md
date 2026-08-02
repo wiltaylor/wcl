@@ -25,6 +25,7 @@ quad  = utf32"hello"
 
 > [!NOTE]
 > **Encoding is metadata**
+>
 > The encoding is part of the value's type: a utf8 field rejects an ascii literal; widen or convert at the host layer.
 
 ## Escapes

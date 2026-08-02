@@ -1287,3 +1287,62 @@ fn a_file_block_inside_a_card_still_refuses_to_build_a_pdf() {
         Err(_) => panic!("expected PdfError::Eval"),
     }
 }
+
+#[test]
+fn a_user_block_lowering_to_the_content_ir_renders_in_pdf() {
+    // The PDF backend reads the content IR through the same exhaustive
+    // match as the others, so a custom block reaches it without the
+    // backend knowing the block's kind.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("ir.wcl");
+    write_fixture(
+        &src,
+        "@block(\"gadget\")\n\
+         type Gadget extends WdocBlock {\n  \
+           @inline(0) name: utf8\n  id: identifier?\n  \
+           lower = fn(g: Gadget) -> list<Content> [\n    \
+             Content::Callout { kind: :warning, heading: g.name,\n      \
+               body: [Content::Paragraph { text: \"Mind the **gap**.\" }] },\n  ]\n\
+         }\n\
+         page c {\n  gadget \"Heads up\"\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    pdf_ok(&src, out.path(), PageSize::A4);
+    let bytes = std::fs::read(out.path().join("ir.pdf")).expect("read pdf");
+    assert!(bytes.starts_with(b"%PDF-"));
+    // The bold heading + bold body emphasis embed the serif bold face.
+    assert!(String::from_utf8_lossy(&bytes).contains("NotoSerif-Bold"));
+}
+
+#[test]
+fn a_lowering_returning_another_custom_variant_recurses_in_pdf() {
+    // `outer` lowers to a custom `Inner` variant, which lowers again to
+    // content. Before the shared seam this chain resolved only in HTML,
+    // because the recursion lived in the HTML renderer alone.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("chain.wcl");
+    write_fixture(
+        &src,
+        "union Step { Inner { text: utf8 } }\n\
+         @block(\"inner\")\n\
+         type Inner extends WdocBlock {\n  \
+           text: utf8\n  id: identifier?\n  \
+           lower = fn(i: Inner) -> list<Content> [Content::Paragraph { text: i.text }]\n\
+         }\n\
+         @block(\"outer\")\n\
+         type Outer extends WdocBlock {\n  \
+           @inline(0) text: utf8\n  id: identifier?\n  \
+           lower = fn(o: Outer) -> list<Step> [Step::Inner { text: o.text }]\n\
+         }\n\
+         page c {\n  outer \"through the chain\"\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    pdf_ok(&src, out.path(), PageSize::A4);
+    let bytes = std::fs::read(out.path().join("chain.pdf")).expect("read pdf");
+    // The chain resolved to prose: the body serif face is embedded, which an
+    // empty page would not do.
+    assert!(
+        String::from_utf8_lossy(&bytes).contains("NotoSerif"),
+        "empty page"
+    );
+}

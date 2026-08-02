@@ -754,3 +754,98 @@ fn a_covered_block_renders_on_the_skill_target_under_its_own_symbol() {
         "a `:skill` exception hides the block:\n{md}"
     );
 }
+
+// ── The semantic content IR ───────────────────────────────────────
+
+#[test]
+fn a_user_block_lowering_to_the_content_ir_renders_in_markdown() {
+    // The extension mechanism used to be HTML-only: `lower_recurse` lived in
+    // the HTML renderer alone, so a custom block whose lowering wasn't one of
+    // Markdown's hand-listed kinds rendered in the book and nowhere else.
+    // Lowering to the content IR is read by every backend from one
+    // declaration.
+    let (_t, out) = build(
+        "@block(\"gadget\")\n\
+         type Gadget extends WdocBlock {\n  \
+           @inline(0) name: utf8\n  id: identifier?\n  \
+           lower = fn(g: Gadget) -> list<Content> [\n    \
+             Content::Heading { level: 3, text: g.name },\n    \
+             Content::Paragraph { text: \"A **gadget**.\" },\n  ]\n\
+         }\n\
+         page p {\n  gadget \"Widget\"\n}\n",
+    );
+    let md = read(&out, "p.md");
+    assert!(md.contains("### Widget"), "heading level from the IR: {md}");
+    assert!(md.contains("A **gadget**."), "paragraph prose: {md}");
+}
+
+#[test]
+fn a_lowering_returning_another_custom_variant_recurses_in_markdown() {
+    // `outer` lowers to a custom `Inner` variant, which lowers again to
+    // content. Before the shared seam this chain resolved only in HTML.
+    let (_t, out) = build(
+        "union Step { Inner { text: utf8 } }\n\
+         @block(\"inner\")\n\
+         type Inner extends WdocBlock {\n  \
+           text: utf8\n  id: identifier?\n  \
+           lower = fn(i: Inner) -> list<Content> [Content::Paragraph { text: i.text }]\n\
+         }\n\
+         @block(\"outer\")\n\
+         type Outer extends WdocBlock {\n  \
+           @inline(0) text: utf8\n  id: identifier?\n  \
+           lower = fn(o: Outer) -> list<Step> [Step::Inner { text: o.text }]\n\
+         }\n\
+         page p {\n  outer \"through the chain\"\n}\n",
+    );
+    let md = read(&out, "p.md");
+    assert!(md.contains("through the chain"), "chain resolved: {md}");
+}
+
+#[test]
+fn a_callout_body_is_content_not_a_string() {
+    // The body is a `list<Content>`, so richer body content quotes into the
+    // alert block instead of being flattened into one paragraph string.
+    let (_t, out) = build(
+        "@block(\"boxed\")\n\
+         type Boxed extends WdocBlock {\n  \
+           id: identifier?\n  \
+           lower = fn(b: Boxed) -> list<Content> [\n    \
+             Content::Callout {\n      \
+               kind: :tip, heading: \"Try it\",\n      \
+               body: [\n        \
+                 Content::Paragraph { text: \"Run this:\" },\n        \
+                 Content::Code { source: \"cargo test\", language: \"sh\" },\n      ],\n    },\n  ]\n\
+         }\n\
+         page p {\n  boxed { }\n}\n",
+    );
+    let md = read(&out, "p.md");
+    assert!(md.contains("> [!TIP]"), "kind → alert keyword: {md}");
+    assert!(md.contains("> **Try it**"), "heading: {md}");
+    assert!(
+        md.contains("> ```sh"),
+        "nested code fence stays quoted: {md}"
+    );
+    assert!(md.contains("> cargo test"), "code body quoted: {md}");
+}
+
+#[test]
+fn a_malformed_content_node_fails_the_build() {
+    // A `Content` value missing a required field is an authoring error, not
+    // a node that quietly renders nothing.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "@block(\"broken\")\n\
+         type Broken extends WdocBlock {\n  \
+           id: identifier?\n  \
+           lower = fn(b: Broken) -> list<Content> [Content::Heading { level: 900 }]\n\
+         }\n\
+         page p {\n  broken { }\n}\n",
+    );
+    let out = tmp.path().join("out");
+    assert!(
+        markdown(&src, &out, None).is_err(),
+        "a malformed content node must fail the build"
+    );
+}

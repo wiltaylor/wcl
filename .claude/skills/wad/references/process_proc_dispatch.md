@@ -65,6 +65,7 @@ When the runner exits: exit 0 **and** the branch has new commits - set `:impleme
 
 > [!TIP]
 > **Verification**
+>
 > Prompt file contains the whole brief; status row moved; runner logged; outcome classified on exit.
 
 [← Back to SKILL.md](../SKILL.md)

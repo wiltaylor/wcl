@@ -48,6 +48,7 @@ Render the skill folder with `wcl wdoc skill` — it writes `SKILL.md` plus `ref
 
 > [!TIP]
 > **Verification**
+>
 > `wcl wdoc skill` produces a `SKILL.md` whose reference section lists your `:ai`/`:both` indexes, with a `references/` page per `:ai`/`:both` unit.
 
 ## Related

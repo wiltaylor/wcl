@@ -29,6 +29,7 @@ Commit, and record the revision — a tag (`wad-reviewed-2026-07`) or the sha no
 
 > [!TIP]
 > **Verification**
+>
 > No unresolved comments, and the reviewed revision (tag or sha) is recorded.
 
 ## Related

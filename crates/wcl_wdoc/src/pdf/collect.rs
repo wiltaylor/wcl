@@ -2,10 +2,13 @@
 //!
 //! This is the PDF twin of the HTML render dispatch: rather than calling
 //! `render_html_variant` (which emits HTML strings), it reuses the shared
-//! lowering ([`lower_to_values`](crate::render::lower_to_values), which runs a
-//! block's WCL `lower` and hands back the raw `HtmlFundamental` values) and
-//! walks those fundamentals into block/inline IR nodes. Inline text runs
-//! through the shared inline-pattern engine via
+//! lowering ([`lower_block`](crate::render::lower_block), which runs a block's
+//! WCL `lower` and hands back what it produced) and walks that into
+//! block/inline IR nodes. A block lowering to the **semantic content IR**
+//! is read by [`content`](super::content), which matches the union
+//! exhaustively; one still lowering to `HtmlFundamental` is walked by
+//! [`walk_block_variant`] here. Inline text runs through the shared
+//! inline-pattern engine via
 //! [`InlinePatterns::render_runs`](crate::inline::InlinePatterns::render_runs),
 //! so `**bold**` / `_italic_` / `` `code` `` / `[links](page)` resolve exactly
 //! as on the HTML path. Non-prose fundamentals are skipped at this phase and
@@ -18,12 +21,13 @@ use wcl_lang::{Block, Document, Value};
 use crate::inline::InlinePatterns;
 use crate::kinds;
 use crate::render::{
-    MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_component_children,
-    expand_repeater_children, field_f64, field_symbol, field_utf8, field_utf8_list,
-    gather_inline_text, heading_level, instance_target_def, lower_to_values, map_list, map_utf8,
-    map_utf8_list, render_diagram,
+    Lowered, MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_component_children,
+    expand_repeater_children, field_f64, field_symbol, field_utf8, gather_inline_text,
+    heading_level, instance_target_def, lower_block, map_list, map_utf8, map_utf8_list,
+    render_diagram,
 };
 
+use super::content;
 use super::ir::{BlockNode, CardSpec, CodeSpan, FontFamily, InlineRun, ListLine, TextStyle};
 use super::svg_embed;
 
@@ -157,21 +161,6 @@ fn collect_block(
         collect_video(block, base_dir, out);
         return;
     }
-    if kind == kinds::CALLOUT {
-        let classes = field_utf8_list(block, "class");
-        let heading = patterns
-            .render_runs(doc, &li_text(block))
-            .into_iter()
-            .map(bold_run)
-            .collect();
-        let body = patterns.render_runs(doc, &field_utf8(block, "body").unwrap_or_default());
-        out.push(BlockNode::Callout {
-            accent: callout_accent(&classes),
-            heading,
-            body,
-        });
-        return;
-    }
     // Generators expand exactly as on the HTML / Markdown paths (the
     // shared helpers in `render/expand.rs`), so data-generated content
     // reaches the PDF too. A repeater stamps its body once per element
@@ -213,11 +202,16 @@ fn collect_block(
         collect_component(doc, block, &def, patterns, base_dir, out);
         return;
     }
-    let Some(values) = lower_to_values(doc, block, kind) else {
+    let Some(values) = lower_block(doc, block, kind) else {
         return;
     };
-    for v in &values {
-        walk_block_variant(doc, v, patterns, out);
+    for value in &values {
+        match value {
+            // A content node is read from the one declaration every backend
+            // shares — see `pdf::content`.
+            Lowered::Content(node) => content::collect_content(doc, node, patterns, base_dir, out),
+            Lowered::Html(value) => walk_block_variant(doc, value, 0, patterns, base_dir, out),
+        }
     }
 }
 
@@ -248,12 +242,19 @@ fn collect_component(
 }
 
 /// Turn one fundamental value into block-level IR, pushing onto `out`.
+/// `depth` bounds the custom-variant recursion below, the same way the
+/// HTML renderer bounds its own.
 fn walk_block_variant(
     doc: &Document,
     value: &Value,
+    depth: usize,
     patterns: &InlinePatterns,
+    base_dir: Option<&Path>,
     out: &mut Vec<BlockNode>,
 ) {
+    if depth > MAX_LOWER_DEPTH {
+        return;
+    }
     let Some((kind, map)) = as_record_variant(value) else {
         return;
     };
@@ -300,7 +301,7 @@ fn walk_block_variant(
                 // Unknown wrapper: descend, treating children as blocks.
                 _ => {
                     for c in children {
-                        walk_block_variant(doc, c, patterns, out);
+                        walk_block_variant(doc, c, depth + 1, patterns, base_dir, out);
                     }
                 }
             }
@@ -334,7 +335,23 @@ fn walk_block_variant(
                 .collect();
             out.push(BlockNode::Code { lines });
         }
-        _ => {}
+        // An unhandled member of the HTML element vocabulary is not a
+        // custom variant, so it must not be expanded as one — it simply
+        // has no PDF reading, as it always had none.
+        _ if crate::render::is_html_fundamental(value) => {}
+        // A custom variant — expand it through its kind's own `lower` and
+        // walk what that produced (content or another fundamental). This
+        // recursion used to live only in the HTML renderer, which is why a
+        // user block whose lowering returned another custom variant
+        // rendered in the book and nowhere else.
+        other => {
+            for v in crate::render::expand_custom_variant(doc, map, other) {
+                match crate::render::recursed_content(&v) {
+                    Some(node) => content::collect_content(doc, &node, patterns, base_dir, out),
+                    None => walk_block_variant(doc, &v, depth + 1, patterns, base_dir, out),
+                }
+            }
+        }
     }
 }
 
@@ -473,6 +490,23 @@ fn collect_image(block: &Block<'_>, base_dir: Option<&Path>) -> Option<BlockNode
         Value::Utf8(s) | Value::Ascii(s) => s,
         _ => return None,
     };
+    image_node(
+        &source,
+        base_dir,
+        field_f64(block, "width").map(|v| v as f32),
+        field_f64(block, "height").map(|v| v as f32),
+    )
+}
+
+/// Load an image source for raster embedding, at an optional display size.
+/// Skips remote (`http(s):`) and `data:` sources — there is no network at
+/// build time. Shared with the content IR's `Image` / `Video` nodes.
+pub(super) fn image_node(
+    source: &str,
+    base_dir: Option<&Path>,
+    disp_w: Option<f32>,
+    disp_h: Option<f32>,
+) -> Option<BlockNode> {
     if source.starts_with("http://")
         || source.starts_with("https://")
         || source.starts_with("data:")
@@ -480,8 +514,8 @@ fn collect_image(block: &Block<'_>, base_dir: Option<&Path>) -> Option<BlockNode
         return None;
     }
     let path = match base_dir {
-        Some(dir) => dir.join(&source),
-        None => Path::new(&source).to_path_buf(),
+        Some(dir) => dir.join(source),
+        None => Path::new(source).to_path_buf(),
     };
     let bytes = match std::fs::read(&path) {
         Ok(b) => b,
@@ -497,8 +531,8 @@ fn collect_image(block: &Block<'_>, base_dir: Option<&Path>) -> Option<BlockNode
     };
     Some(BlockNode::Image {
         bytes,
-        disp_w: field_f64(block, "width").map(|v| v as f32),
-        disp_h: field_f64(block, "height").map(|v| v as f32),
+        disp_w,
+        disp_h,
     })
 }
 
@@ -548,28 +582,12 @@ fn collect_video(block: &Block<'_>, base_dir: Option<&Path>, out: &mut Vec<Block
     }
 }
 
-/// The accent colour for a callout, keyed on its type class (mirrors the
-/// `--callout-accent` values in lib/callout.wcl).
-fn callout_accent(classes: &[String]) -> (u8, u8, u8) {
-    for c in classes {
-        match c.as_str() {
-            "note" | "info" => return (94, 129, 172),
-            "tip" => return (136, 192, 208),
-            "warning" => return (208, 135, 112),
-            "error" => return (191, 97, 106),
-            "success" => return (163, 190, 140),
-            _ => {}
-        }
-    }
-    (136, 136, 136)
-}
-
 /// Force every run in a (header) cell bold.
 fn bold_cell(runs: Vec<InlineRun>) -> Vec<InlineRun> {
     runs.into_iter().map(bold_run).collect()
 }
 
-fn bold_run(run: InlineRun) -> InlineRun {
+pub(super) fn bold_run(run: InlineRun) -> InlineRun {
     match run {
         InlineRun::Text { text, mut style } => {
             style.bold = true;
@@ -644,7 +662,7 @@ fn collect_li_group(
     }
 }
 
-fn bullet(depth: u8) -> &'static str {
+pub(super) fn bullet(depth: u8) -> &'static str {
     match depth % 3 {
         0 => "•",
         1 => "◦",

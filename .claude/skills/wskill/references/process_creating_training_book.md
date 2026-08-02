@@ -76,6 +76,7 @@ Walk the built course as a learner would: do every exercise, then answer every c
 
 > [!TIP]
 > **Verification**
+>
 > out/training/ renders a syllabus rail plus one page per section in order; every exercise's expected result is verifiable from the section alone; multiple-choice checks grade in the page and mark the section complete; and under `wcl wdoc serve` a `:text` answer reaches `training.wcl`, lists via `wcl wdoc training`, and its graded verdict appears in the page without a rebuild.
 
 ## Related

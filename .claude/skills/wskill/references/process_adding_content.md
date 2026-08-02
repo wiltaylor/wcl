@@ -55,6 +55,7 @@ $ just wskill-check && just render
 
 > [!TIP]
 > **Verification**
+>
 > The new unit has its own page in the rendered book, appears under its index in the nav, and its related links resolve in both directions.
 
 ## Related

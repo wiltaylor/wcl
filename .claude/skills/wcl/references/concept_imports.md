@@ -23,6 +23,7 @@ import <wdoc.wcl>
 
 > [!NOTE]
 > **Import the wdoc stdlib once, at the root**
+>
 > Start the document you pass to wcl wdoc build with import <wdoc.wcl>, and the stdlib is in scope there and in every page file it imports. Imported page files do not repeat the line.
 
 ## How imports compose
