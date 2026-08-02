@@ -1,0 +1,96 @@
+// ── The `el` constructor family ────────────────────────────────────
+//
+// Shorthands for the HTML element vocabulary — the tree-shaped
+// `HtmlFundamental` variants that templates and `lower`s build by the
+// hundred. Each constructor is exactly its long form with the field
+// names dropped:
+//
+//   el("div", ["book-toc-row"], kids)
+//   HtmlFundamental::Element { tag: "div", class: ["book-toc-row"], children: kids }
+//
+// Three element constructors rather than one, because a WCL parameter
+// list is fixed at declaration — the language has neither default nor
+// named arguments, so every call fills every parameter and `id` /
+// `attrs` each need a name of their own:
+//
+//   el(tag, cls, kids)          the common shape
+//   ela(tag, cls, attrs, kids)  … with attributes
+//   eli(tag, id, cls, kids)     … with an explicit HTML id
+//
+// plus four leaves — `raw` (verbatim HTML), `inl` (a prose run through
+// the inline-pattern engine), `icon`, and `para`.
+//
+// `icon` and `para` currently have no caller in this stdlib: their one
+// user was `callout`, which now lowers to `Content::Callout` instead of
+// building `<div>`s. They are not dead — `Icon` and `Paragraph` are
+// live variants any user `lower` may return, and most of the element
+// vocabulary's construction sites are OUTSIDE this stdlib (the docs
+// landing page, the scaffold templates, the wskill projections). Both
+// are covered by `tests/el.rs`.
+//
+// `ela` and `eli` take the SAME number of arguments, so arity — the one
+// positional mistake WCL catches — does not separate them: calling one
+// where you meant the other drops the id or the attrs silently. Pick by
+// what you are passing, and reach for the long form when an element
+// needs both.
+//
+// An empty `class` / `attrs` list emits no attribute at all (not
+// `class=""`), so `el("li", [], kids)` renders `<li>` — passing `[]`
+// costs nothing over omitting the field. An optional field goes
+// straight in: `el("p", t.class, kids)` with `t.class` unset renders
+// exactly as an omitted `class` does. The parameters below cannot SAY
+// so — `?` in a parameter list is a parse error, so every wdoc `fn`
+// annotates its optionals as though they were required and lets the
+// `none` flow through (see `icon_lead` in `flowchart.wcl`).
+//
+// SCOPE: the HTML element vocabulary ONLY. `SvgFundamental` and the
+// semantic content IR keep the named-field literal, because they are
+// field-shaped — a positional constructor over them is the same record
+// with its field names deleted, and WCL checks argument ARITY but never
+// argument TYPES. Transposing two of an SVG `Label`'s four
+// interchangeable `f64`s would render silently wrong where the long
+// form raises a shape mismatch, and the saving there is an order of
+// magnitude smaller than it is here. `callout.wcl` is the worked
+// example on the IR side: it names its fields.
+//
+// The long form stays legal everywhere, and is the escape hatch for a
+// combination this family doesn't name — an element carrying both an id
+// and attrs, a `Paragraph` with an id, a `Head`, a `Table`. These are
+// plain `let` bindings, so they resolve by BARE NAME once a document
+// does `import <wdoc.wcl>`; don't shadow one with a `let` of your own.
+
+namespace wdoc
+
+// `<tag class="…">children</tag>`.
+let el = fn(tag: utf8, cls: list<utf8>, kids: list<HtmlFundamental>) -> HtmlFundamental
+  HtmlFundamental::Element { tag: tag, class: cls, children: kids }
+
+// … with attributes — `attrs` is a list of `[name, value]` pairs, e.g.
+// `[["href", p.href]]` (values escaped).
+let ela = fn(tag: utf8, cls: list<utf8>, attrs: list<list<utf8>>, kids: list<HtmlFundamental>) -> HtmlFundamental
+  HtmlFundamental::Element { tag: tag, class: cls, attrs: attrs, children: kids }
+
+// … with an explicit HTML id (the anchor target).
+let eli = fn(tag: utf8, id: identifier, cls: list<utf8>, kids: list<HtmlFundamental>) -> HtmlFundamental
+  HtmlFundamental::Element { tag: tag, id: id, class: cls, children: kids }
+
+// Verbatim, pre-rendered HTML — NOT escaped. Embeds already-rendered
+// content (a page's `content`, an icon's SVG markup) into a template.
+let raw = fn(html: utf8) -> HtmlFundamental
+  HtmlFundamental::Raw { html: html }
+
+// An inline prose run: fed through the inline-pattern engine, so
+// `**bold**` / `` `code` `` / `[links](url)` / `:icons:` / `$math$` all
+// apply. Wrap it yourself (`el("p", [], [inl(txt)])`).
+let inl = fn(text: utf8) -> HtmlFundamental
+  HtmlFundamental::Inline { text: text }
+
+// An icon, resolved against the declared `iconset`s and the built-in
+// packs (`pack.name`, e.g. `"lucide.info"`).
+let icon = fn(name: utf8, cls: list<utf8>) -> HtmlFundamental
+  HtmlFundamental::Icon { name: name, class: cls }
+
+// A `<p>` of `spans`, each run through the inline-pattern engine. A
+// paragraph that needs an id writes the long form.
+let para = fn(cls: list<utf8>, spans: list<utf8>) -> HtmlFundamental
+  HtmlFundamental::Paragraph { class: cls, spans: spans }

@@ -17,6 +17,7 @@ import <theme.wcl>            // ColourTheme / Palette + built-in colour themes
 import <fonts.wcl>            // @font-face faces + --wdoc-font-* defaults
 import <css-classes.wcl>      // bundled default `class` instances
 import <diagram-core.wcl>     // diagram, container, SVG shapes, fundamentals
+import <el.wcl>               // el / ela / eli + raw / inl / icon / para constructors
 import <text.wcl>             // text / span / column
 import <callout.wcl>          // admonition
 import <wireframe.wcl>        // wireframe UI widgets (window/button/…)

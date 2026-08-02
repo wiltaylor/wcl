@@ -132,33 +132,20 @@ let presentation_css = <<CSS
 // Static deck chrome: the progress bar, slide counter, and nav-hint
 // arrows. The player updates the bar width, counter text, and which
 // arrows are lit; here we just emit the scaffolding.
-let deck_chrome = HtmlFundamental::Raw {
-  html: "<div class=\"deck-progress\"><div class=\"deck-progress-bar\"></div></div><div class=\"deck-counter\"></div><div class=\"deck-nav-hint\"><span class=\"deck-hint-up\">↑</span><span class=\"deck-hint-left\">←</span><span class=\"deck-hint-down\">↓</span><span class=\"deck-hint-right\">→</span></div>",
-}
+let deck_chrome = raw(
+  "<div class=\"deck-progress\"><div class=\"deck-progress-bar\"></div></div><div class=\"deck-counter\"></div><div class=\"deck-nav-hint\"><span class=\"deck-hint-up\">↑</span><span class=\"deck-hint-left\">←</span><span class=\"deck-hint-down\">↓</span><span class=\"deck-hint-right\">→</span></div>")
 
 // One slide → `<div class="deck-slide">` holding the rendered body and a
 // hidden speaker-notes aside.
 let deck_slide_el = fn(s: DeckSlide) -> HtmlFundamental
-  HtmlFundamental::Element {
-    tag: "div", class: ["deck-slide"],
-    children: [
-      HtmlFundamental::Element {
-        tag: "div", class: ["deck-slide-inner"],
-        children: [ HtmlFundamental::Raw { html: s.content } ],
-      },
-      HtmlFundamental::Element {
-        tag: "aside", class: ["deck-notes"],
-        children: [ HtmlFundamental::Raw { html: s.notes } ],
-      },
-    ],
-  }
+  el("div", ["deck-slide"], [
+    el("div", ["deck-slide-inner"], [raw(s.content)]),
+    el("aside", ["deck-notes"], [raw(s.notes)]),
+  ])
 
 // One section → `<section class="deck-section">` holding its slides.
 let deck_section_el = fn(sec: DeckSection) -> HtmlFundamental
-  HtmlFundamental::Element {
-    tag: "section", class: ["deck-section"],
-    children: map(sec.slides, deck_slide_el),
-  }
+  el("section", ["deck-section"], map(sec.slides, deck_slide_el))
 
 // ── Public template parts (presentation) ────────────────────────────
 //
@@ -168,19 +155,13 @@ let deck_section_el = fn(sec: DeckSection) -> HtmlFundamental
 // The deck's `<style>` block — full-viewport slides, fragment fades, the
 // progress bar / counter / nav-hint / notes-overlay styling.
 let wdoc_part_presentation_css = fn() -> list<HtmlFundamental> [
-  HtmlFundamental::Element {
-    tag: "style",
-    children: [ HtmlFundamental::Raw { html: presentation_css } ],
-  },
+  el("style", [], [raw(presentation_css)]),
 ]
 
 // The slide grid (`<div class="deck">`): one `<section>` per deck section,
 // each holding its slides. Driven by the bundled `presentation.js` player.
 let wdoc_part_deck = fn(c: TemplateCtx) -> list<HtmlFundamental> [
-  HtmlFundamental::Element {
-    tag: "div", class: ["deck"],
-    children: map(c.deck, deck_section_el),
-  },
+  el("div", ["deck"], map(c.deck, deck_section_el)),
 ]
 
 // The static deck chrome: the progress bar, slide counter, and nav-hint

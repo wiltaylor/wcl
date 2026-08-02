@@ -30,27 +30,18 @@ type Code extends WdocBlock {
     let name = if c.filename == none { "" } else { format("<span class=\"code-name\">{}</span>", c.filename ?? "") };
     let header = format("<div class=\"code-filename\">{}{}<span class=\"code-lang\">{}</span></div>", dots, name, c.language);
     [
-      HtmlFundamental::Element {
-        tag: "figure", class: ["code-card"],
-        children: [
-          HtmlFundamental::Raw { html: header },
-          HtmlFundamental::Element {
-            tag: "pre", id: c.id,
-            class: flatten([["code-block"], if c.class == none { [] } else { c.class }]),
-            children: [
-              HtmlFundamental::Element {
-                tag: "code",
-                class: [format("language-{}", c.language)],
-                children: [
-                  HtmlFundamental::Highlighted {
-                    source: c.source, language: format("{}", c.language),
-                  },
-                ],
+      el("figure", ["code-card"], [
+        raw(header),
+        eli("pre", c.id,
+          flatten([["code-block"], if c.class == none { [] } else { c.class }]),
+          [
+            el("code", [format("language-{}", c.language)], [
+              HtmlFundamental::Highlighted {
+                source: c.source, language: format("{}", c.language),
               },
-            ],
-          },
-        ],
-      },
+            ]),
+          ]),
+      ]),
     ]
   }
 }

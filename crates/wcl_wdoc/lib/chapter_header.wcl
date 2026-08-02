@@ -26,35 +26,24 @@ type ChapterHeader extends WdocBlock {
   lower = fn(c: ChapterHeader) -> list<HtmlFundamental> {
     let kicker =
       if c.kicker == none { [] }
-      else { [ HtmlFundamental::Element {
-        tag: "p", class: ["book-kicker"],
-        children: [ HtmlFundamental::Raw { html: c.kicker ?? "" } ],
-      } ] };
+      else { [ el("p", ["book-kicker"], [raw(c.kicker ?? "")]) ] };
+    let meta_item = fn(text: utf8) -> HtmlFundamental
+      el("span", ["book-meta-item"], [raw(text)]);
     let meta_items = flatten([
-      if c.reading_time == none { [] } else { [ HtmlFundamental::Element {
-        tag: "span", class: ["book-meta-item"],
-        children: [ HtmlFundamental::Raw { html: c.reading_time ?? "" } ] } ] },
-      if c.updated == none { [] } else { [ HtmlFundamental::Element {
-        tag: "span", class: ["book-meta-item"],
-        children: [ HtmlFundamental::Raw { html: c.updated ?? "" } ] } ] },
-      if c.version == none { [] } else { [ HtmlFundamental::Element {
-        tag: "span", class: ["book-meta-item"],
-        children: [ HtmlFundamental::Raw { html: c.version ?? "" } ] } ] },
+      if c.reading_time == none { [] } else { [ meta_item(c.reading_time ?? "") ] },
+      if c.updated == none { [] } else { [ meta_item(c.updated ?? "") ] },
+      if c.version == none { [] } else { [ meta_item(c.version ?? "") ] },
     ]);
     let meta =
       if len(meta_items) == 0 { [] }
-      else { [ HtmlFundamental::Element {
-        tag: "div", class: ["book-meta"], children: meta_items,
-      } ] };
+      else { [ el("div", ["book-meta"], meta_items) ] };
     [
-      HtmlFundamental::Element {
-        tag: "header", class: ["book-chapter-header"],
-        children: flatten([
-          kicker,
-          [ HtmlFundamental::Paragraph { id: c.id, class: ["heading-1"], spans: [c.title] } ],
-          meta,
-        ]),
-      },
+      el("header", ["book-chapter-header"], flatten([
+        kicker,
+        // The `id` keeps this a long-form `Paragraph`: `para` names no id.
+        [ HtmlFundamental::Paragraph { id: c.id, class: ["heading-1"], spans: [c.title] } ],
+        meta,
+      ])),
     ]
   }
 }

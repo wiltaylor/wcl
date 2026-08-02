@@ -389,11 +389,7 @@ let webpage_css = <<CSS
 let home_link = fn(c: TemplateCtx, cls: utf8) -> list<HtmlFundamental>
   if c.home_href == "" { [] }
   else {
-    [ HtmlFundamental::Element {
-        tag: "a", class: [cls],
-        attrs: [["href", c.home_href]],
-        children: [ HtmlFundamental::Raw { html: format("← {}", c.home_title) } ],
-    } ]
+    [ ela("a", [cls], [["href", c.home_href]], [raw(format("← {}", c.home_title))]) ]
   }
 
 // One navbar menu entry: a click-toggle `<button>` when it has children
@@ -401,23 +397,11 @@ let home_link = fn(c: TemplateCtx, cls: utf8) -> list<HtmlFundamental>
 // `<span>` label otherwise. The current page's link carries `current`.
 let menu_entry = fn(m: MenuEntry) -> HtmlFundamental
   if len(m.children) > 0 {
-    HtmlFundamental::Element {
-      tag: "button", class: ["menu-toggle"],
-      attrs: [["type", "button"]],
-      children: [ HtmlFundamental::Raw { html: m.label } ],
-    }
+    ela("button", ["menu-toggle"], [["type", "button"]], [raw(m.label)])
   } else if m.href == "" {
-    HtmlFundamental::Element {
-      tag: "span", class: ["menu-label"],
-      children: [ HtmlFundamental::Raw { html: m.label } ],
-    }
+    el("span", ["menu-label"], [raw(m.label)])
   } else {
-    HtmlFundamental::Element {
-      tag: "a",
-      class: ["menu-link", if m.current { "current" }],
-      attrs: [["href", m.href]],
-      children: [ HtmlFundamental::Raw { html: m.label } ],
-    }
+    ela("a", ["menu-link", if m.current { "current" }], [["href", m.href]], [raw(m.label)])
   }
 
 // Render menu entries as a nested `<ul class="menu">` — recursive, so
@@ -426,24 +410,18 @@ let menu_entry = fn(m: MenuEntry) -> HtmlFundamental
 let site_menu = fn(entries: list<MenuEntry>) -> list<HtmlFundamental>
   if len(entries) == 0 { [] }
   else {
-    [ HtmlFundamental::Element {
-        tag: "ul", class: ["menu"],
-        children: map(entries, fn(e: MenuEntry) -> HtmlFundamental
-          HtmlFundamental::Element {
-            tag: "li",
-            class: if len(e.children) > 0 { ["has-submenu"] } else { none },
-            children: flatten([ [menu_entry(e)], site_menu(e.children) ]),
-          }),
-      } ]
+    [ el("ul", ["menu"], map(entries, fn(e: MenuEntry) -> HtmlFundamental
+        el("li",
+          if len(e.children) > 0 { ["has-submenu"] } else { none },
+          flatten([ [menu_entry(e)], site_menu(e.children) ])))) ]
   }
 
 // One-time click-toggle script for the navbar dropdowns: a single
 // delegated document listener flips `open` on the clicked toggle's
 // `<li>` (closing any open item that isn't an ancestor, so nested
 // dropdowns work), and a click anywhere else closes all open menus.
-let menu_script = HtmlFundamental::Raw {
-  html: "<script>(function(){function closeAll(keep){var o=document.querySelectorAll('.site-nav li.open');for(var i=0;i<o.length;i++){if(!keep||!o[i].contains(keep)){o[i].classList.remove('open');}}}document.addEventListener('click',function(e){var t=e.target.closest&&e.target.closest('.site-nav .menu-toggle');if(t){e.preventDefault();var li=t.parentNode;var willOpen=!li.classList.contains('open');closeAll(li);if(willOpen){li.classList.add('open');}else{li.classList.remove('open');}}else{closeAll(null);}});})();</script>",
-}
+let menu_script = raw(
+  "<script>(function(){function closeAll(keep){var o=document.querySelectorAll('.site-nav li.open');for(var i=0;i<o.length;i++){if(!keep||!o[i].contains(keep)){o[i].classList.remove('open');}}}document.addEventListener('click',function(e){var t=e.target.closest&&e.target.closest('.site-nav .menu-toggle');if(t){e.preventDefault();var li=t.parentNode;var willOpen=!li.classList.contains('open');closeAll(li);if(willOpen){li.classList.add('open');}else{li.classList.remove('open');}}else{closeAll(null);}});})();</script>")
 
 // Stdlib `webpage` template: a Hugo-style site shell — a title header,
 // a nav, and the page content in <main>. The nav comes from the site's
@@ -472,24 +450,13 @@ let wdoc_search_css = <<CSS
 let wdoc_search_box = fn(enabled: bool) -> list<HtmlFundamental>
   if enabled {
     [
-      HtmlFundamental::Element {
-        tag: "style",
-        children: [ HtmlFundamental::Raw { html: wdoc_search_css } ],
-      },
-      HtmlFundamental::Element {
-        tag: "div", class: ["wdoc-search"],
-        children: [
-          HtmlFundamental::Element {
-            tag: "input", class: ["wdoc-search-input"],
-            attrs: [["type", "search"], ["placeholder", "Search…"], ["aria-label", "Search this site"]],
-            children: [],
-          },
-          HtmlFundamental::Element {
-            tag: "div", class: ["wdoc-search-results"],
-            children: [],
-          },
-        ],
-      },
+      el("style", [], [raw(wdoc_search_css)]),
+      el("div", ["wdoc-search"], [
+        ela("input", ["wdoc-search-input"],
+          [["type", "search"], ["placeholder", "Search…"], ["aria-label", "Search this site"]],
+          []),
+        el("div", ["wdoc-search-results"], []),
+      ]),
     ]
   } else { [] }
 
@@ -525,49 +492,33 @@ let wdoc_part_home_link = fn(c: TemplateCtx, cls: utf8) -> list<HtmlFundamental>
 // The `webpage` template's `<style>` block — include it to inherit the
 // stdlib header / nav / content-card styling, or omit it and supply your own.
 let wdoc_part_webpage_css = fn() -> list<HtmlFundamental> [
-  HtmlFundamental::Element {
-    tag: "style",
-    children: [ HtmlFundamental::Raw { html: webpage_css } ],
-  },
+  el("style", [], [raw(webpage_css)]),
 ]
 
 // The site title header (`<header class="site-header">`).
 let wdoc_part_header = fn(c: TemplateCtx) -> list<HtmlFundamental> [
-  HtmlFundamental::Element {
-    tag: "header", class: ["site-header"],
-    children: [ HtmlFundamental::Raw { html: c.title } ],
-  },
+  el("header", ["site-header"], [raw(c.title)]),
 ]
 
 // The top navigation bar (`<nav class="site-nav">`): the back-to-root link,
 // the search box (when enabled), and the menu — the curated `menu` tree, or
 // a flat link per page when no `menu` is declared.
 let wdoc_part_navbar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
-  HtmlFundamental::Element {
-    tag: "nav", class: ["site-nav"],
-    children: flatten([
-      home_link(c, "site-home"),
-      wdoc_search_box(c.search),
-      if len(c.menu) == 0 {
-        map(c.pages, fn(p: PageRef) -> HtmlFundamental
-          HtmlFundamental::Element {
-            tag: "a",
-            attrs: [["href", p.href]],
-            children: [ HtmlFundamental::Raw { html: p.name } ],
-          })
-      } else {
-        site_menu(c.menu)
-      },
-    ]),
-  },
+  el("nav", ["site-nav"], flatten([
+    home_link(c, "site-home"),
+    wdoc_search_box(c.search),
+    if len(c.menu) == 0 {
+      map(c.pages, fn(p: PageRef) -> HtmlFundamental
+        ela("a", [], [["href", p.href]], [raw(p.name)]))
+    } else {
+      site_menu(c.menu)
+    },
+  ])),
 ]
 
 // The page content wrapped in the reading card (`<main class="site-main">`).
 let wdoc_part_content = fn(c: TemplateCtx) -> list<HtmlFundamental> [
-  HtmlFundamental::Element {
-    tag: "main", class: ["site-main"],
-    children: [ HtmlFundamental::Raw { html: c.content } ],
-  },
+  el("main", ["site-main"], [raw(c.content)]),
 ]
 
 // The one-time dropdown-toggle script — emit it once when the navbar uses a
@@ -600,17 +551,9 @@ template webpage {
 // (empty href), otherwise an `<a>` link (with `current` highlighting).
 let book_toc_link = fn(e: TocEntry) -> HtmlFundamental
   if e.href == "" {
-    HtmlFundamental::Element {
-      tag: "span", class: ["book-section"],
-      children: [ HtmlFundamental::Raw { html: e.title } ],
-    }
+    el("span", ["book-section"], [raw(e.title)])
   } else {
-    HtmlFundamental::Element {
-      tag: "a",
-      class: ["book-chapter", if e.current { "current" }],
-      attrs: [["href", e.href]],
-      children: [ HtmlFundamental::Raw { html: e.title } ],
-    }
+    ela("a", ["book-chapter", if e.current { "current" }], [["href", e.href]], [raw(e.title)])
   }
 
 // True when this entry is the current page, or an ancestor of it — i.e. the
@@ -623,9 +566,7 @@ let toc_active = fn(e: TocEntry) -> bool
 // The expand/collapse affordance at the head of a TOC row. Always emitted
 // (so leaf and branch rows stay aligned); the chevron is drawn by CSS only
 // for branch `<li>`s, and the click handler ignores leaf rows.
-let book_toc_toggle = HtmlFundamental::Element {
-  tag: "span", class: ["book-toc-toggle"], children: [],
-}
+let book_toc_toggle = el("span", ["book-toc-toggle"], [])
 
 // Render a list of TOC entries as a nested `<ul>` — recursive, so the tree
 // nests to any depth. An empty list renders nothing (no stray `<ul>`), which
@@ -635,23 +576,15 @@ let book_toc_toggle = HtmlFundamental::Element {
 let book_toc = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
   if len(entries) == 0 { [] }
   else {
-    [ HtmlFundamental::Element {
-        tag: "ul", class: ["book-toc"],
-        children: map(entries, fn(e: TocEntry) -> HtmlFundamental {
-          let has_children = len(e.children) > 0;
-          HtmlFundamental::Element {
-            tag: "li",
-            class: if has_children { ["book-branch", if toc_active(e) { "open" }] } else { none },
-            children: flatten([
-              [ HtmlFundamental::Element {
-                  tag: "div", class: ["book-toc-row"],
-                  children: [ book_toc_toggle, book_toc_link(e) ],
-              } ],
-              book_toc(e.children),
-            ]),
-          }
-        }),
-      } ]
+    [ el("ul", ["book-toc"], map(entries, fn(e: TocEntry) -> HtmlFundamental {
+        let has_children = len(e.children) > 0;
+        el("li",
+          if has_children { ["book-branch", if toc_active(e) { "open" }] } else { none },
+          flatten([
+            [ el("div", ["book-toc-row"], [ book_toc_toggle, book_toc_link(e) ]) ],
+            book_toc(e.children),
+          ]))
+      })) ]
   }
 
 // Flatten the TOC tree into book reading order, keeping only entries
@@ -679,25 +612,16 @@ let book_pagenav = fn(toc: list<TocEntry>) -> list<HtmlFundamental> {
   if idx < 0 { [] } else {
     let prev = if idx > 0 {
       let p = at(flow, idx - 1);
-      [ HtmlFundamental::Element {
-          tag: "a", class: ["book-nav", "book-nav-prev"],
-          attrs: [["href", p.href]],
-          children: [ HtmlFundamental::Raw { html: format("← {}", p.title) } ],
-      } ]
+      [ ela("a", ["book-nav", "book-nav-prev"], [["href", p.href]],
+          [raw(format("← {}", p.title))]) ]
     } else { [] };
     let next = if idx < n - 1 {
       let nx = at(flow, idx + 1);
-      [ HtmlFundamental::Element {
-          tag: "a", class: ["book-nav", "book-nav-next"],
-          attrs: [["href", nx.href]],
-          children: [ HtmlFundamental::Raw { html: format("{} →", nx.title) } ],
-      } ]
+      [ ela("a", ["book-nav", "book-nav-next"], [["href", nx.href]],
+          [raw(format("{} →", nx.title))]) ]
     } else { [] };
     if len(prev) == 0 && len(next) == 0 { [] } else {
-      [ HtmlFundamental::Element {
-          tag: "nav", class: ["book-pagenav"],
-          children: flatten([prev, next]),
-      } ]
+      [ el("nav", ["book-pagenav"], flatten([prev, next])) ]
     }
   }
 }
@@ -762,10 +686,7 @@ let book_css = <<CSS
 // The `book` template's `<style>` block — the fixed sidebar, nested TOC,
 // reading column, and theme toggle. Include it for stdlib book styling.
 let wdoc_part_book_css = fn() -> list<HtmlFundamental> [
-  HtmlFundamental::Element {
-    tag: "style",
-    children: [ HtmlFundamental::Raw { html: book_css } ],
-  },
+  el("style", [], [raw(book_css)]),
 ]
 
 // One pinned sidebar-footer button: an icon-only `<a class="book-footer-btn">`
@@ -775,16 +696,9 @@ let wdoc_part_book_css = fn() -> list<HtmlFundamental> [
 // name) rather than visible text; a button with no icon falls back to its
 // label as text so it is never empty.
 let book_footer_button = fn(b: FooterButton) -> HtmlFundamental
-  HtmlFundamental::Element {
-    tag: "a",
-    class: ["book-footer-btn", if b.current { "current" }],
-    attrs: [["href", b.href], ["title", b.label], ["aria-label", b.label]],
-    children: if b.icon == "" {
-        [ HtmlFundamental::Raw { html: b.label } ]
-      } else {
-        [ HtmlFundamental::Raw { html: b.icon } ]
-      },
-  }
+  ela("a", ["book-footer-btn", if b.current { "current" }],
+    [["href", b.href], ["title", b.label], ["aria-label", b.label]],
+    if b.icon == "" { [raw(b.label)] } else { [raw(b.icon)] })
 
 // The pinned sidebar footer (`<div class="book-sidebar-footer">`): one button
 // per `c.footer` entry. Empty (renders nothing) when the site declares no
@@ -792,10 +706,7 @@ let book_footer_button = fn(b: FooterButton) -> HtmlFundamental
 let wdoc_part_sidebar_footer = fn(c: TemplateCtx) -> list<HtmlFundamental>
   if len(c.footer) == 0 { [] }
   else {
-    [ HtmlFundamental::Element {
-        tag: "div", class: ["book-sidebar-footer"],
-        children: map(c.footer, book_footer_button),
-      } ]
+    [ el("div", ["book-sidebar-footer"], map(c.footer, book_footer_button)) ]
   }
 
 // The fixed left sidebar (`<nav class="book-sidebar">`): the book title, the
@@ -805,21 +716,15 @@ let wdoc_part_sidebar_footer = fn(c: TemplateCtx) -> list<HtmlFundamental>
 // script executes at parse time, so it sees its sibling chapter `<a>`s) and
 // centres the current chapter.
 let wdoc_part_sidebar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
-  HtmlFundamental::Element {
-    tag: "nav", class: ["book-sidebar"],
-    children: flatten([
-      [ HtmlFundamental::Element {
-          tag: "div", class: ["book-title"],
-          children: [ HtmlFundamental::Raw { html: c.title } ],
-        } ],
-      home_link(c, "book-home"),
-      wdoc_search_box(c.search),
-      if c.theme_toggle { book_theme_toggle } else { [] },
-      book_toc(c.toc),
-      wdoc_part_sidebar_footer(c),
-      [book_sidebar_scroll, book_sidebar_toggle],
-    ]),
-  },
+  el("nav", ["book-sidebar"], flatten([
+    [ el("div", ["book-title"], [raw(c.title)]) ],
+    home_link(c, "book-home"),
+    wdoc_search_box(c.search),
+    if c.theme_toggle { book_theme_toggle } else { [] },
+    book_toc(c.toc),
+    wdoc_part_sidebar_footer(c),
+    [book_sidebar_scroll, book_sidebar_toggle],
+  ])),
 ]
 
 // The page content in the book reading column (`<main class="book-content">`),
@@ -827,36 +732,25 @@ let wdoc_part_sidebar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
 // inner `book-measure` caps the reading width and centres the column between
 // the fixed sidebar and rail.
 let wdoc_part_book_content = fn(c: TemplateCtx) -> list<HtmlFundamental> [
-  HtmlFundamental::Element {
-    tag: "main", class: ["book-content"],
-    children: [
-      HtmlFundamental::Element {
-        tag: "div", class: ["book-measure"],
-        children: flatten([
-          [ HtmlFundamental::Raw { html: c.content } ],
-          book_pagenav(c.toc),
-        ]),
-      },
-    ],
-  },
+  el("main", ["book-content"], [
+    el("div", ["book-measure"], flatten([
+      [ raw(c.content) ],
+      book_pagenav(c.toc),
+    ])),
+  ]),
 ]
 
 // One "on this page" rail link (`<a class="book-onpage-link level-N">`),
 // anchoring to the heading's synthesised id; `level-2` / `level-3` drive the
 // indent. The title is pre-escaped HTML, embedded via `Raw`.
 let book_onpage_link = fn(h: OnPageHeading) -> HtmlFundamental
-  HtmlFundamental::Element {
-    tag: "a",
-    class: ["book-onpage-link", format("level-{}", h.level)],
-    attrs: [["href", format("#{}", h.id)]],
-    children: [ HtmlFundamental::Raw { html: h.title } ],
-  }
+  ela("a", ["book-onpage-link", format("level-{}", h.level)],
+    [["href", format("#{}", h.id)]], [raw(h.title)])
 
 // Highlights the rail link whose section is currently in view, via an
 // IntersectionObserver over the heading anchors.
-let book_rail_script = HtmlFundamental::Raw {
-  html: "<script>(function(){var ls=[].slice.call(document.querySelectorAll('.book-onpage-link'));if(!ls.length||!window.IntersectionObserver)return;var m={};ls.forEach(function(a){m[a.getAttribute('href').slice(1)]=a;});var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){ls.forEach(function(a){a.classList.remove('active');});var a=m[e.target.id];if(a)a.classList.add('active');}});},{rootMargin:'0px 0px -75% 0px'});ls.forEach(function(a){var el=document.getElementById(a.getAttribute('href').slice(1));if(el)io.observe(el);});})();</script>",
-}
+let book_rail_script = raw(
+  "<script>(function(){var ls=[].slice.call(document.querySelectorAll('.book-onpage-link'));if(!ls.length||!window.IntersectionObserver)return;var m={};ls.forEach(function(a){m[a.getAttribute('href').slice(1)]=a;});var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){ls.forEach(function(a){a.classList.remove('active');});var a=m[e.target.id];if(a)a.classList.add('active');}});},{rootMargin:'0px 0px -75% 0px'});ls.forEach(function(a){var el=document.getElementById(a.getAttribute('href').slice(1));if(el)io.observe(el);});})();</script>")
 
 // The right-hand "on this page" rail (`<aside class="book-rail">`): the
 // current page's h2/h3 headings as anchor links plus the scroll-spy script.
@@ -864,20 +758,11 @@ let book_rail_script = HtmlFundamental::Raw {
 let wdoc_part_book_rail = fn(c: TemplateCtx) -> list<HtmlFundamental>
   if len(c.on_this_page) == 0 { [] }
   else {
-    [ HtmlFundamental::Element {
-        tag: "aside", class: ["book-rail"],
-        children: flatten([
-          [ HtmlFundamental::Element {
-              tag: "div", class: ["book-rail-title"],
-              children: [ HtmlFundamental::Raw { html: "On this page" } ],
-          } ],
-          [ HtmlFundamental::Element {
-              tag: "nav", class: ["book-onpage"],
-              children: map(c.on_this_page, book_onpage_link),
-          } ],
-          [ book_rail_script ],
-        ]),
-    } ]
+    [ el("aside", ["book-rail"], flatten([
+        [ el("div", ["book-rail-title"], [raw("On this page")]) ],
+        [ el("nav", ["book-onpage"], map(c.on_this_page, book_onpage_link)) ],
+        [ book_rail_script ],
+      ])) ]
   }
 
 // The nested TOC list (`<ul class="book-toc">`) on its own — the sidebar's
@@ -912,14 +797,9 @@ template book {
 // `data-theme` set, the `class` `@media (prefers-color-scheme: light)`
 // rules follow the system; the attribute (toggle) overrides them.
 let book_theme_toggle = [
-  HtmlFundamental::Element {
-    tag: "button", class: ["theme-toggle"],
-    attrs: [["onclick", "wdocToggleTheme()"]],
-    children: [ HtmlFundamental::Raw { html: "◐ Theme" } ],
-  },
-  HtmlFundamental::Raw {
-    html: "<script>(function(){var r=document.documentElement;try{var s=localStorage.getItem('wdoc-theme');if(s){r.setAttribute('data-theme',s);}}catch(e){}window.wdocToggleTheme=function(){var lt=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches;var cur=r.getAttribute('data-theme')||(lt?'light':'dark');var n=(cur==='dark')?'light':'dark';r.setAttribute('data-theme',n);try{localStorage.setItem('wdoc-theme',n);}catch(e){}};})();</script>",
-  },
+  ela("button", ["theme-toggle"], [["onclick", "wdocToggleTheme()"]], [raw("◐ Theme")]),
+  raw(
+    "<script>(function(){var r=document.documentElement;try{var s=localStorage.getItem('wdoc-theme');if(s){r.setAttribute('data-theme',s);}}catch(e){}window.wdocToggleTheme=function(){var lt=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches;var cur=r.getAttribute('data-theme')||(lt?'light':'dark');var n=(cur==='dark')?'light':'dark';r.setAttribute('data-theme',n);try{localStorage.setItem('wdoc-theme',n);}catch(e){}};})();</script>"),
 ]
 
 // Centre the current chapter in the sidebar's scroll viewport on page load.
@@ -928,9 +808,8 @@ let book_theme_toggle = [
 // visible height to centre; the browser clamps out-of-range scrollTop values
 // to [0, scrollHeight - clientHeight], so chapters near the top or bottom
 // need no special-case.
-let book_sidebar_scroll = HtmlFundamental::Raw {
-  html: "<script>(function(){var c=document.querySelector('.book-chapter.current');if(!c)return;var n=document.querySelector('.book-sidebar');if(n)n.scrollTop=c.offsetTop-n.clientHeight/2;})();</script>",
-}
+let book_sidebar_scroll = raw(
+  "<script>(function(){var c=document.querySelector('.book-chapter.current');if(!c)return;var n=document.querySelector('.book-sidebar');if(n)n.scrollTop=c.offsetTop-n.clientHeight/2;})();</script>")
 
 // Manual expand/collapse: a delegated click handler on the sidebar toggles a
 // branch's `open` class. Clicking anywhere on a branch's row — the toggle arrow
@@ -939,6 +818,5 @@ let book_sidebar_scroll = HtmlFundamental::Raw {
 // (a branch that also links to a page still opens that page from its label), and
 // a leaf row (no branch) is ignored. Server-side rendering already opens the
 // active path; this just lets the reader override it.
-let book_sidebar_toggle = HtmlFundamental::Raw {
-  html: "<script>(function(){var s=document.querySelector('.book-sidebar');if(!s)return;s.addEventListener('click',function(e){if(!e.target.closest)return;if(e.target.closest('a'))return;var row=e.target.closest('.book-toc-row');if(!row)return;var li=row.parentNode;if(li&&li.classList&&li.classList.contains('book-branch')){e.preventDefault();li.classList.toggle('open');}});})();</script>",
-}
+let book_sidebar_toggle = raw(
+  "<script>(function(){var s=document.querySelector('.book-sidebar');if(!s)return;s.addEventListener('click',function(e){if(!e.target.closest)return;if(e.target.closest('a'))return;var row=e.target.closest('.book-toc-row');if(!row)return;var li=row.parentNode;if(li&&li.classList&&li.classList.contains('book-branch')){e.preventDefault();li.classList.toggle('open');}});})();</script>")

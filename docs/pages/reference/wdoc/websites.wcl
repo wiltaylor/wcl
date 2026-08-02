@@ -18,7 +18,7 @@ page wdoc_websites { sites = [:reference]  title = "Websites"
 
   h2 "Authoring a layout"
 
-  p "A `template` is a function returning fundamentals. For a website, return one `Raw` fundamental holding the design, with the slots interpolated — `${c.title}`, `${c.content}`, and `${wdoc_region(c, \"name\")}` for each region. Use the interpolating heredoc form (`$<<HTML`):"
+  p "A `template` is a function returning fundamentals. For a website, return one `raw(...)` fundamental holding the design, with the slots interpolated — `${c.title}`, `${c.content}`, and `${wdoc_region(c, \"name\")}` for each region. Use the interpolating heredoc form (`$<<HTML`):"
 
   code wcl {
     source = <<'WCL'
@@ -28,7 +28,7 @@ template site_main {
       // Head content the layout owns (the site's `stylesheets` /
       // `scripts` add the rest).
       wdoc_head_meta("viewport", "width=device-width, initial-scale=1"),
-      [ HtmlFundamental::Raw { html: $<<HTML
+      [ raw($<<HTML
         <header class="nav">
           <a class="brand" href="index.html">${c.title}</a>
           <nav><a href="index.html">Home</a></nav>
@@ -37,14 +37,14 @@ template site_main {
         <main class="content">${c.content}</main>
         <footer class="foot">${wdoc_region(c, "footer")}</footer>
       HTML
-      } ],
+      ) ],
     ])
 }
 WCL
   }
 
   callout "Heredoc terminator" { class = ["note"]
-    body = "The closing `HTML` delimiter must sit alone on its line — `HTML } ],` on one line is an unterminated heredoc. Put `}` on the next line."
+    body = "The closing `HTML` delimiter must sit alone on its line — `HTML ) ],` on one line is an unterminated heredoc. Put the closing bracket on the next line."
   }
 
   h2 "Authoring content with regions"
