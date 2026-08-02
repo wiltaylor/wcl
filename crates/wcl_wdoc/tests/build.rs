@@ -5801,9 +5801,8 @@ page usage { h1 "Usage" {} }
 
 #[test]
 fn custom_template_reuses_deck() {
-    // Overriding `template presentation` (the deck build path is keyed to
-    // that name) to compose the deck parts plus extra chrome still renders
-    // the slide grid and the deck progress/counter scaffolding.
+    // A custom collection template can compose the deck parts plus extra
+    // chrome while declaring the two per-member slots those parts place.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("site.wcl");
     write_fixture(
@@ -5811,6 +5810,7 @@ fn custom_template_reuses_deck() {
         r#"
 template presentation {
   slot content: content*
+  slot notes: content* = fn(c: SlotOwner) -> list<Html> []
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_presentation_layout(c),
@@ -9648,6 +9648,135 @@ page index {
 // ── Presentation decks ─────────────────────────────────────────────
 
 #[test]
+fn user_collection_template_renders_members_to_one_file() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("collection.wcl");
+    write_fixture(
+        &src,
+        r#"
+template digest {
+  slot content: content*
+  slot aside: content* = fn(c: SlotOwner) -> list<Html> []
+  slot intro: content
+  render = fn(c: TemplateCtx) -> list<Html> flatten([
+    [el("header", [], slot(c, :intro))],
+    map(c.members, fn(member: PageHandle) -> Html
+      ela("article", [], [["data-member", member.name], ["data-title", member.title]], flatten([
+        slot(member, :content),
+        [el("aside", [], slot(member, :aside))],
+      ]))),
+  ])
+}
+site {
+  default_template = :digest
+  intro { h1 "Weekly digest" {} }
+}
+page first  {
+  title = "First headline"
+  p "First story"
+  aside { p "First aside" }
+}
+page second { p "Second story" }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(build_ok(&src, out.path()), 1);
+
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
+    assert!(index.contains("Weekly digest"), "{index}");
+    assert!(
+        index.contains("data-member=\"first\" data-title=\"First headline\"><p>First story</p>"),
+        "{index}"
+    );
+    assert!(
+        index.contains("data-member=\"second\" data-title=\"second\"><p>Second story</p>"),
+        "{index}"
+    );
+    assert!(index.contains("<aside><p>First aside</p>"), "{index}");
+    assert!(!out.path().join("first.html").exists());
+    assert!(!out.path().join("second.html").exists());
+}
+
+#[test]
+fn collection_slot_requirements_follow_their_arity() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("collection-slots.wcl");
+    write_fixture(
+        &src,
+        r#"
+template digest {
+  slot content: content*
+  slot aside: content*
+  slot intro: content
+  render = fn(c: TemplateCtx) -> list<Html> []
+}
+site { default_template = :digest  intro { h1 "Intro" {} } }
+page complete {
+  p "Body"
+  aside { p "Aside" }
+}
+page missing  { p "No aside" }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::BadPage(message)) => {
+            assert!(message.contains("page `missing`"), "{message}");
+            assert!(message.contains("required slot `aside`"), "{message}");
+        }
+        Err(_) => panic!("expected BadPage for missing per-member slot"),
+        Ok(_) => panic!("expected missing per-member slot error"),
+    }
+
+    write_fixture(
+        &src,
+        r#"
+template digest {
+  slot content: content*
+  slot intro: content
+  render = fn(c: TemplateCtx) -> list<Html> []
+}
+site { default_template = :digest }
+page member { p "Body" }
+"#,
+    );
+    match build(&src, out.path(), None) {
+        Err(BuildError::BadPage(message)) => {
+            assert!(message.contains("site: required slot `intro`"), "{message}");
+        }
+        Err(_) => panic!("expected BadPage for missing site slot"),
+        Ok(_) => panic!("expected missing site slot error"),
+    }
+}
+
+#[test]
+fn collection_template_forces_only_placed_members() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("lazy-collection.wcl");
+    write_fixture(
+        &src,
+        r#"
+template first_only {
+  slot content: content*
+  render = fn(c: TemplateCtx) -> list<Html>
+    map(take(c.members, 1), fn(member: PageHandle) -> Html
+      el("article", [], slot(member, :content)))
+}
+site { default_template = :first_only }
+page placed   { p "Placed member" }
+page unplaced { image "missing.png" {} }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
+    assert!(index.contains("Placed member"), "{index}");
+    assert!(!index.contains("missing.png"), "{index}");
+}
+
+#[test]
 fn presentation_site_renders_single_deck_file() {
     // A `presentation` site renders all its slides into one index.html,
     // grouped into the `deck` grid (sections = columns, slides = rows).
@@ -9764,22 +9893,29 @@ page real { h1 "Real" {} }
 }
 
 #[test]
-fn presentation_without_deck_is_build_error() {
+fn presentation_without_deck_uses_member_order() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("talk.wcl");
     write_fixture(
         &src,
         r#"
 site { default_template = :presentation }
-page only { h1 "Only" {} }
+page first  { h1 "First" {} }
+page second { h1 "Second" {} }
 "#,
     );
     let out = TempDir::new().expect("mkdir out");
-    match build(&src, out.path(), None) {
-        Err(BuildError::BadTemplate(msg)) => assert!(msg.contains("deck"), "got: {msg}"),
-        Err(_) => panic!("expected BadTemplate"),
-        Ok(_) => panic!("expected BadTemplate, got Ok"),
-    }
+    build_ok(&src, out.path());
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
+    assert_eq!(
+        index.matches("class=\"deck-section\"").count(),
+        1,
+        "{index}"
+    );
+    assert!(
+        index.find("First").unwrap() < index.find("Second").unwrap(),
+        "{index}"
+    );
 }
 
 #[test]

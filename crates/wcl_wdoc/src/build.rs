@@ -11,11 +11,11 @@ use wcl_lang::{
 use crate::highlight;
 use crate::inline::InlinePatterns;
 use crate::render::{
-    DeckSectionNode, FooterButtonNode, MAX_LOWER_DEPTH, MenuNode, TocNode, escape_html,
-    expand_component_children, expand_instance_children, expand_repeater_children, field_bool,
-    field_id, field_symbol, field_symbol_list_opt, field_utf8, field_utf8_list, find_template,
-    flat_toc_to_value, footer_to_value, label_string, menu_to_value, pages_to_value, read_deck,
-    read_menu, read_sidebar_footer, read_toc, render_block, render_class, render_page,
+    CollectionTemplateInput, DeckSectionNode, FooterButtonNode, MAX_LOWER_DEPTH, MenuNode, TocNode,
+    escape_html, expand_component_children, expand_instance_children, expand_repeater_children,
+    field_bool, field_id, field_symbol, field_symbol_list_opt, field_utf8, field_utf8_list,
+    find_template, flat_toc_to_value, footer_to_value, label_string, menu_to_value, pages_to_value,
+    read_deck, read_menu, read_sidebar_footer, read_toc, render_block, render_class, render_page,
     render_template, site_theme_css, toc_to_value,
 };
 
@@ -1703,10 +1703,17 @@ fn build_site(
         .as_ref()
         .map(read_sidebar_footer)
         .unwrap_or_default();
-    // A `presentation` site renders all its slides into one `index.html`
-    // (a deck), rather than one file per page. The `deck` block supplies
-    // the slide grid; `default_template = :presentation` selects it.
-    let is_presentation = default_template.as_deref() == Some("presentation");
+    // A repeated slot declares a collection template. Collection-ness comes
+    // entirely from the selected layout contract, never from its name.
+    let collection_template = default_template
+        .as_deref()
+        .and_then(|name| find_template(doc, name))
+        .filter(|template| {
+            declared_slots(template)
+                .iter()
+                .any(|slot| slot.declaration.slot_repeated())
+        });
+    let is_collection = collection_template.is_some();
 
     // Ordered (name, href) list of this site's pages for template nav,
     // and the name set the inline link pattern resolves `[text](page)`
@@ -1774,17 +1781,10 @@ fn build_site(
             "sidebar_footer button links to unknown page \"{missing}\""
         )));
     }
-    if is_presentation {
-        if deck_nodes.is_empty() {
-            return Err(BuildError::BadTemplate(
-                "a `presentation` site needs a `deck { section { slide … } }` block".into(),
-            ));
-        }
-        if let Some(missing) = deck_missing_slide(&deck_nodes, &page_names) {
-            return Err(BuildError::BadTemplate(format!(
-                "deck slide links to unknown page \"{missing}\""
-            )));
-        }
+    if let Some(missing) = deck_missing_slide(&deck_nodes, &page_names) {
+        return Err(BuildError::BadTemplate(format!(
+            "deck slide links to unknown page \"{missing}\""
+        )));
     }
 
     // Asset registries — fresh per site so the icon sprite + copied
@@ -1907,9 +1907,9 @@ fn build_site(
         search,
     };
 
-    // A presentation deck renders all its slides into one `index.html`, so a
-    // single-page edit can't be isolated — bail to a full rebuild.
-    if is_presentation && target.is_some() {
+    // A collection renders all members into one `index.html`, so a
+    // single-member edit cannot be isolated.
+    if is_collection && target.is_some() {
         return Ok(SiteBuild {
             count: 0,
             rendered: Vec::new(),
@@ -1917,13 +1917,13 @@ fn build_site(
         });
     }
 
-    // A `presentation` site renders all its slides into a single deck
-    // `index.html`; every other site renders one file per page. On the
+    // A collection site renders all members into a single `index.html`;
+    // every ordinary site renders one file per page. On the
     // incremental path only the pages named in `target` are re-rendered.
     let mut search_entries: Vec<SearchEntry> = Vec::new();
     let mut rendered: Vec<String> = Vec::new();
-    let count = if is_presentation {
-        build_presentation_page(&ctx)?
+    let count = if let Some(template) = collection_template {
+        build_collection_page(&ctx, &template)?
     } else {
         let mut count = 0;
         let total = spec.pages.len();
@@ -2050,6 +2050,20 @@ fn validate_slot_contracts(doc: &Document, spec: &SiteSpec<'_>) -> Result<(), Bu
         .map(|slot| slot.name)
         .collect();
     let site_slot_names = site_declared_slot_names(doc, spec);
+    let mut validated_collection_templates = HashSet::new();
+    if let Some(template_name) = spec
+        .block
+        .as_ref()
+        .and_then(|site| site.field("default_template"))
+        .and_then(|field| field.literal_symbol())
+        && let Some(template) = find_template(doc, template_name)
+    {
+        let slots = declared_slots(&template);
+        if slots.iter().any(|slot| slot.declaration.slot_repeated()) {
+            validate_collection_site_slots(spec, template_name, &slots)?;
+            validated_collection_templates.insert(template_name.to_string());
+        }
+    }
 
     // Root repeater-generated pages deliberately stay quiet: their layout
     // pairing is dynamic. Direct authored pages are checked once each, while
@@ -2080,8 +2094,8 @@ fn validate_slot_contracts(doc: &Document, spec: &SiteSpec<'_>) -> Result<(), Bu
         let Some(template) = find_template(doc, &template_name) else {
             continue; // the existing unknown-template diagnostic owns this case
         };
-        let slots = declared_slots(&template);
-        if let Some(slot) = slots.iter().find(|slot| {
+        let declared = declared_slots(&template);
+        if let Some(slot) = declared.iter().find(|slot| {
             slot.name == "content"
                 && !matches!(
                     slot.declaration.slot_type_ref(),
@@ -2096,6 +2110,27 @@ fn validate_slot_contracts(doc: &Document, spec: &SiteSpec<'_>) -> Result<(), Bu
                     .map_or_else(|| "unknown".to_string(), ToString::to_string)
             )));
         }
+        let collection = declared.iter().any(|slot| slot.declaration.slot_repeated());
+        if collection
+            && spec
+                .block
+                .as_ref()
+                .and_then(|site| site.field("default_template"))
+                .and_then(|field| field.literal_symbol())
+                != Some(template_name.as_str())
+        {
+            let page_name = page_name(page).unwrap_or_else(|| "<unnamed>".to_string());
+            return Err(BuildError::BadPage(format!(
+                "page `{page_name}` selects collection template `{template_name}`, but collection templates must be selected by the site"
+            )));
+        }
+        if collection && validated_collection_templates.insert(template_name.clone()) {
+            validate_collection_site_slots(spec, &template_name, &declared)?;
+        }
+        let slots: Vec<_> = declared
+            .into_iter()
+            .filter(|slot| !collection || slot.declaration.slot_repeated())
+            .collect();
         let slot_names: HashSet<&str> = slots.iter().map(|slot| slot.name.as_str()).collect();
         let page_name = page_name(page).unwrap_or_else(|| "<unnamed>".to_string());
         let mut fills: BTreeMap<String, usize> = BTreeMap::new();
@@ -2192,6 +2227,80 @@ fn validate_slot_contracts(doc: &Document, spec: &SiteSpec<'_>) -> Result<(), Bu
                 }
                 return Err(BuildError::BadPage(format!(
                     "page `{page_name}`: slot `{}` accepts `{accepted}`, but found `{}`",
+                    slot.name,
+                    child.kind()
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_collection_site_slots(
+    spec: &SiteSpec<'_>,
+    template_name: &str,
+    slots: &[DeclaredSlot<'_>],
+) -> Result<(), BuildError> {
+    let site_slots: Vec<&DeclaredSlot<'_>> = slots
+        .iter()
+        .filter(|slot| !slot.declaration.slot_repeated())
+        .collect();
+    let names: HashSet<&str> = site_slots.iter().map(|slot| slot.name.as_str()).collect();
+    let mut fills: BTreeMap<String, usize> = BTreeMap::new();
+    let mut fill_children: BTreeMap<String, Vec<Block<'_>>> = BTreeMap::new();
+    let mut loose_content = Vec::new();
+
+    if let Some(site) = &spec.block {
+        for child in site.blocks() {
+            if names.contains(child.kind()) {
+                *fills.entry(child.kind().to_string()).or_default() += 1;
+                fill_children
+                    .entry(child.kind().to_string())
+                    .or_default()
+                    .extend(child.blocks());
+            } else if child
+                .schema()
+                .is_some_and(|schema| schema.is_descendant_of("wdoc.WdocBlock"))
+            {
+                loose_content.push(child);
+            }
+        }
+    }
+    if !loose_content.is_empty() {
+        if !names.contains("content") {
+            return Err(BuildError::BadPage(format!(
+                "site has loose content, but collection template `{template_name}` does not declare a non-repeated `content` slot"
+            )));
+        }
+        *fills.entry("content".to_string()).or_default() += 1;
+        fill_children.insert("content".to_string(), loose_content);
+    }
+    if let Some((name, _)) = fills.iter().find(|(_, count)| **count > 1) {
+        return Err(BuildError::BadPage(format!(
+            "site fills slot `{name}` more than once"
+        )));
+    }
+    for slot in site_slots {
+        let required =
+            !slot.declaration.slot_optional() && slot.declaration.field("default").is_none();
+        if required && !fills.contains_key(&slot.name) {
+            return Err(BuildError::BadPage(format!(
+                "site: required slot `{}` is unfilled for collection template `{template_name}`",
+                slot.name
+            )));
+        }
+        let Some(accepted) = slot.declaration.slot_type_ref().and_then(|ty| match ty {
+            TypeRef::Named { path, args } if path.last().is_some_and(|name| name == "content") => {
+                args.first()
+            }
+            _ => None,
+        }) else {
+            continue;
+        };
+        for child in fill_children.get(&slot.name).into_iter().flatten() {
+            if !block_matches_accepted_type(child, accepted) {
+                return Err(BuildError::BadPage(format!(
+                    "site: slot `{}` accepts `{accepted}`, but found `{}`",
                     slot.name,
                     child.kind()
                 )));
@@ -2501,8 +2610,8 @@ impl PlayerScripts {
     }
 }
 
-/// Per-site rendering context shared by [`build_presentation_page`] and
-/// [`build_normal_page`] — everything [`build_site`] resolves once that the
+/// Per-site rendering context shared by collection and ordinary page builds
+/// — everything [`build_site`] resolves once that the
 /// page-rendering paths read but never mutate.
 struct PageRenderCtx<'a> {
     doc: &'a Document,
@@ -2529,88 +2638,23 @@ struct PageRenderCtx<'a> {
     search: bool,
 }
 
-/// Render a `presentation` site: every `slide` page becomes one section of
-/// a single deck `index.html`, driven by the `presentation` template +
-/// keyboard player. Returns the page count (always 1).
-fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError> {
-    // Resolve each `slide` page to its rendered body + speaker notes,
-    // building the `list<DeckSection>` the template lays out. Ids are
-    // unique across the whole deck (it's one HTML document).
-    let page_by_name: BTreeMap<String, &Block> = ctx
-        .spec
-        .pages
-        .iter()
-        .filter_map(|p| page_name(p).map(|n| (n, p)))
-        .collect();
-    let mut dup_seen = HashSet::new();
-    let mut sections_val = Vec::new();
-    for sec in ctx.deck_nodes {
-        let mut slides_val = Vec::new();
-        for slide_page in &sec.slides {
-            let Some(&page) = page_by_name.get(slide_page) else {
-                continue; // unreachable: validated by deck_missing_slide
-            };
-            if let Some(dup) = collect_duplicate_id(page, &mut dup_seen) {
-                return Err(BuildError::DuplicateId {
-                    page: slide_page.clone(),
-                    id: dup,
-                });
-            }
-            // Visible content: the page's blocks minus its `notes`.
-            let mut content = String::new();
-            for b in page
-                .blocks()
-                .filter(|b| b.kind() != "notes")
-                .filter_map(|b| render_block(ctx.doc, &b, ctx.inline_patterns, ctx.base_dir))
-            {
-                content.push_str(&b);
-                content.push('\n');
-            }
-            // Speaker notes: the children of any `notes` block.
-            let mut notes = String::new();
-            for nb in page.blocks().filter(|b| b.kind() == "notes") {
-                for cb in nb
-                    .blocks()
-                    .filter_map(|b| render_block(ctx.doc, &b, ctx.inline_patterns, ctx.base_dir))
-                {
-                    notes.push_str(&cb);
-                    notes.push('\n');
-                }
-            }
-            let mut m = BTreeMap::new();
-            m.insert("content".to_string(), Value::Utf8(content));
-            m.insert("notes".to_string(), Value::Utf8(notes));
-            m.insert("title".to_string(), Value::Utf8(slide_page.clone()));
-            slides_val.push(Value::Record {
-                ty: vec!["DeckSlide".to_string()],
-                fields: std::sync::Arc::new(m),
-            });
-        }
-        let mut sm = BTreeMap::new();
-        sm.insert("title".to_string(), Value::Utf8(sec.title.clone()));
-        sm.insert(
-            "slides".to_string(),
-            Value::List(std::sync::Arc::new(slides_val)),
-        );
-        sections_val.push(Value::Record {
-            ty: vec!["DeckSection".to_string()],
-            fields: std::sync::Arc::new(sm),
-        });
-    }
-
-    let Some(tmpl) = find_template(ctx.doc, "presentation") else {
-        return Err(BuildError::BadTemplate("presentation".into()));
-    };
+/// Render any collection template once to the site's `index.html`. Member
+/// handles are resolved only when the evaluated template places their slots.
+fn build_collection_page(
+    ctx: &PageRenderCtx<'_>,
+    template: &Block<'_>,
+) -> Result<usize, BuildError> {
+    let (content_blocks, slot_blocks) = collection_site_fills(ctx.spec, template);
     let title = ctx
         .site_title
         .map(str::to_string)
         .or_else(|| ctx.spec.name.clone())
-        .unwrap_or_else(|| "Presentation".to_string());
+        .unwrap_or_else(|| "Collection".to_string());
     let mut rendered = render_template(
         ctx.doc,
-        &tmpl,
-        &[],
-        &[],
+        template,
+        &content_blocks,
+        &slot_blocks,
         None,
         ctx.base_dir,
         &title,
@@ -2619,7 +2663,10 @@ fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError>
         ctx.toc,
         ctx.menu,
         ctx.footer,
-        Value::List(std::sync::Arc::new(sections_val)),
+        Some(CollectionTemplateInput {
+            pages: &ctx.spec.pages,
+            deck: ctx.deck_nodes,
+        }),
         ctx.theme_toggle,
         ctx.home_href,
         ctx.home_title,
@@ -2629,21 +2676,55 @@ fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError>
     // The slides may use the same interactive assets a normal page can.
     ctx.players
         .inject(&mut rendered.body, ctx.inline_patterns.videos().is_used());
-    // The deck keyboard-navigation player.
-    write_asset(
-        ctx.out_dir,
-        "presentation.js",
-        crate::render::PRESENTATION_PLAYER_JS,
-    )?;
-    rendered
-        .body
-        .push_str("\n<script src=\"_wdoc/presentation.js\" defer></script>\n");
+    // A deck is ordinary collection metadata, but it still needs its bundled
+    // browser player. No template-name dispatch is involved.
+    if !ctx.deck_nodes.is_empty() {
+        write_asset(
+            ctx.out_dir,
+            "presentation.js",
+            crate::render::PRESENTATION_PLAYER_JS,
+        )?;
+        rendered
+             .body
+             .push_str("\n<script src=\"_wdoc/presentation.js\" defer></script>\n");
+    }
     let head = format!("{}{}", ctx.head_extra, rendered.head);
     let html = render_page(&title, ctx.css, &rendered.body, Some(ctx.favicon), &head);
     let out_path = ctx.out_dir.join("index.html");
     fs::write(&out_path, html)
         .map_err(|e| BuildError::Io(e, format!("write {}", out_path.display())))?;
     Ok(1)
+}
+
+fn collection_site_fills<'a>(
+    spec: &'a SiteSpec<'a>,
+    template: &Block<'a>,
+) -> (Vec<Block<'a>>, Vec<(String, Vec<Block<'a>>)>) {
+    let names: HashSet<String> = declared_slots(template)
+        .into_iter()
+        .filter(|slot| !slot.declaration.slot_repeated())
+        .map(|slot| slot.name)
+        .collect();
+    let mut content = Vec::new();
+    let mut named: BTreeMap<String, Vec<Block<'a>>> = BTreeMap::new();
+    let Some(site) = &spec.block else {
+        return (content, Vec::new());
+    };
+    for child in site.blocks() {
+        if names.contains(child.kind()) {
+            named
+                .entry(child.kind().to_string())
+                .or_default()
+                .extend(child.blocks());
+        } else if names.contains("content")
+            && child
+                .schema()
+                .is_some_and(|schema| schema.is_descendant_of("wdoc.WdocBlock"))
+        {
+            content.push(child);
+        }
+    }
+    (content, named.into_iter().collect())
 }
 
 /// A page's first authored top-level heading, used anywhere a human-facing
@@ -2775,7 +2856,7 @@ fn build_normal_page(
                 ctx.toc,
                 ctx.menu,
                 ctx.footer,
-                Value::List(std::sync::Arc::new(Vec::new())),
+                None,
                 ctx.theme_toggle,
                 ctx.home_href,
                 ctx.home_title,

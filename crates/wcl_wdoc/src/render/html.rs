@@ -397,6 +397,14 @@ pub(crate) struct Rendered {
     pub page_heading: Option<String>,
 }
 
+/// Site members supplied to a collection template. The pages are reified as
+/// typed handles during template evaluation; their authored bodies stay lazy
+/// until the returned HTML tree places one of their repeated slots.
+pub(crate) struct CollectionTemplateInput<'a> {
+    pub pages: &'a [Block<'a>],
+    pub deck: &'a [DeckSectionNode],
+}
+
 /// Render a page through `template`'s `render` function. Builds a
 /// `TemplateCtx` record (authored block handles + site context) and invokes
 /// the WCL function, then renders the returned
@@ -418,7 +426,7 @@ pub(crate) fn render_template<'a>(
     toc: &Value,
     menu: &Value,
     footer: &Value,
-    deck: Value,
+    collection: Option<CollectionTemplateInput<'a>>,
     theme_toggle: bool,
     home_href: &str,
     home_title: &str,
@@ -448,12 +456,20 @@ pub(crate) fn render_template<'a>(
         })
         .collect();
     let content = Value::list(content_handles.clone());
+    let declarations: Vec<Block<'a>> = template
+        .blocks()
+        .filter(|block| block.kind() == "slot")
+        .collect();
+    let site_declarations: Vec<Block<'a>> = declarations
+        .iter()
+        .filter(|declaration| collection.is_none() || !declaration.slot_repeated())
+        .cloned()
+        .collect();
     let slots = Value::list(
-        template
-            .blocks()
-            .filter(|block| block.kind() == "slot")
+        site_declarations
+            .iter()
             .filter_map(|declaration| {
-                let name = label_string(&declaration)?;
+                let name = label_string(declaration)?;
                 let handles = if name == "content" {
                     content_handles.clone()
                 } else {
@@ -490,12 +506,54 @@ pub(crate) fn render_template<'a>(
             })
             .collect(),
     );
+    let mut member_pages = BTreeMap::new();
+    let members = if let Some(input) = &collection {
+        let repeated: Vec<Block<'a>> = declarations
+            .iter()
+            .filter(|declaration| declaration.slot_repeated())
+            .cloned()
+            .collect();
+        let values = input
+            .pages
+            .iter()
+            .filter_map(|member| {
+                let name = label_string(member)?;
+                let value = page_handle_value(
+                    member,
+                    &name,
+                    &repeated,
+                    &mut blocks,
+                    patterns,
+                    &mut active_projects,
+                    &mut page_heading,
+                );
+                member_pages.insert(name, member.clone());
+                Some(value)
+            })
+            .collect::<Vec<_>>();
+        Value::list(values)
+    } else {
+        Value::list(Vec::new())
+    };
+    let deck = collection
+        .as_ref()
+        .map(|input| deck_to_page_handles(input.deck, &members))
+        .unwrap_or_else(|| Value::list(Vec::new()));
     let mut ctx = BTreeMap::new();
     ctx.insert("content".to_string(), content);
     ctx.insert("slots".to_string(), slots);
+    ctx.insert(
+        "owner".to_string(),
+        if page_name.is_empty() {
+            Value::None
+        } else {
+            Value::Utf8(page_name.to_string())
+        },
+    );
     ctx.insert("title".to_string(), Value::Utf8(title.to_string()));
     ctx.insert("page_name".to_string(), Value::Utf8(page_name.to_string()));
     ctx.insert("pages".to_string(), pages.clone());
+    ctx.insert("members".to_string(), members);
     ctx.insert("toc".to_string(), toc.clone());
     ctx.insert("menu".to_string(), menu.clone());
     ctx.insert("footer".to_string(), footer.clone());
@@ -525,48 +583,50 @@ pub(crate) fn render_template<'a>(
     // a returned handle call into the ordinary renderer.
     let heading_state = std::cell::RefCell::new(HeadingSequence::default());
     let placed_slots = RefCell::new(std::collections::HashSet::new());
-    let render_blocks = |handles: &[Value], slot: Option<&str>, fallback: &str| {
-        if let Some(slot) = slot {
-            placed_slots.borrow_mut().insert(slot.to_string());
-        }
-        let mut body = String::new();
-        for handle in handles {
-            let Some(index) = block_handle_index(handle) else {
-                continue;
-            };
-            let Some(block) = blocks.get(index) else {
-                continue;
-            };
-            if let Some(html) = render_block(doc, block, patterns, base_dir) {
-                if html.is_empty() {
+    let render_blocks =
+        |handles: &[Value], slot: Option<&str>, owner: Option<&str>, fallback: &str| {
+            if let Some(slot) = slot {
+                placed_slots.borrow_mut().insert(slot.to_string());
+            }
+            let mut body = String::new();
+            for handle in handles {
+                let Some(index) = block_handle_index(handle) else {
                     continue;
-                }
-                body.push_str(&html);
-                body.push('\n');
-            }
-        }
-        if handles.is_empty() {
-            body.push_str(fallback);
-        }
-        let body = process_page_headings(&body, &mut heading_state.borrow_mut());
-        match (patterns.anchor_mode(), page) {
-            (true, Some(page)) => {
-                let slot = slot.unwrap_or("content");
-                if handles.is_empty()
-                    && !fallback.is_empty()
-                    && let Some(declaration) = template
-                        .blocks()
-                        .filter(|block| block.kind() == "slot")
-                        .find(|block| label_string(block).as_deref() == Some(slot))
-                {
-                    wrap_layout_fallback(&declaration, page_name, slot, &body)
-                } else {
-                    wrap_page_content(page, page_name, slot, &body)
+                };
+                let Some(block) = blocks.get(index) else {
+                    continue;
+                };
+                if let Some(html) = render_block(doc, block, patterns, base_dir) {
+                    if html.is_empty() {
+                        continue;
+                    }
+                    body.push_str(&html);
+                    body.push('\n');
                 }
             }
-            _ => body,
-        }
-    };
+            if handles.is_empty() {
+                body.push_str(fallback);
+            }
+            let body = process_page_headings(&body, &mut heading_state.borrow_mut());
+            let owner_page = owner.and_then(|name| member_pages.get(name)).or(page);
+            match (patterns.anchor_mode(), owner_page) {
+                (true, Some(page)) => {
+                    let slot = slot.unwrap_or("content");
+                    if handles.is_empty()
+                        && !fallback.is_empty()
+                        && let Some(declaration) = template
+                            .blocks()
+                            .filter(|block| block.kind() == "slot")
+                            .find(|block| label_string(block).as_deref() == Some(slot))
+                    {
+                        wrap_layout_fallback(&declaration, owner.unwrap_or(page_name), slot, &body)
+                    } else {
+                        wrap_page_content(page, owner.unwrap_or(page_name), slot, &body)
+                    }
+                }
+                _ => body,
+            }
+        };
     // Partition the template's top-level fundamentals: a `Head` hoists its
     // children into `<head>`; everything else renders into the `<body>`.
     let mut rendered = Rendered {
@@ -604,6 +664,120 @@ pub(crate) fn render_template<'a>(
     }
     rendered.body = process_footnotes(&rendered.body);
     rendered
+}
+
+fn page_handle_value<'a>(
+    page: &Block<'a>,
+    name: &str,
+    declarations: &[Block<'a>],
+    blocks: &mut Vec<Block<'a>>,
+    patterns: &InlinePatterns,
+    active_projects: &mut Vec<String>,
+    page_heading: &mut Option<String>,
+) -> Value {
+    let slot_names: std::collections::HashSet<String> =
+        declarations.iter().filter_map(label_string).collect();
+    let mut expanded = Vec::new();
+    for child in page.blocks() {
+        expand_template_page_blocks(child, &mut expanded);
+    }
+    let mut content = Vec::new();
+    let mut named: BTreeMap<String, Vec<Block<'a>>> = BTreeMap::new();
+    for child in expanded {
+        if slot_names.contains(child.kind()) {
+            named
+                .entry(child.kind().to_string())
+                .or_default()
+                .extend(child.blocks());
+        } else if !child.is_conditional() {
+            content.push(child);
+        }
+    }
+
+    let slots = declarations
+        .iter()
+        .filter_map(|declaration| {
+            let slot_name = label_string(declaration)?;
+            let children: &[Block<'a>] = if slot_name == "content" {
+                content.as_slice()
+            } else {
+                named.get(&slot_name).map(Vec::as_slice).unwrap_or(&[])
+            };
+            let handles = children
+                .iter()
+                .map(|block| {
+                    block_handle_value(block, blocks, patterns, active_projects, page_heading)
+                })
+                .collect();
+            let mut fields = BTreeMap::new();
+            fields.insert("name".to_string(), Value::Symbol(slot_name));
+            fields.insert("blocks".to_string(), Value::list(handles));
+            fields.insert(
+                "default".to_string(),
+                declaration
+                    .field("default")
+                    .and_then(|field| field.value().ok().cloned())
+                    .unwrap_or(Value::None),
+            );
+            Some(Value::record(vec!["TemplateSlot".to_string()], fields))
+        })
+        .collect();
+
+    let mut fields = BTreeMap::new();
+    fields.insert("name".to_string(), Value::Utf8(name.to_string()));
+    fields.insert("href".to_string(), Value::Utf8(format!("{name}.html")));
+    fields.insert(
+        "title".to_string(),
+        Value::Utf8(field_utf8(page, "title").unwrap_or_else(|| name.to_string())),
+    );
+    fields.insert("slots".to_string(), Value::list(slots));
+    fields.insert("owner".to_string(), Value::Utf8(name.to_string()));
+    Value::record(vec!["PageHandle".to_string()], fields)
+}
+
+fn expand_template_page_blocks<'a>(block: Block<'a>, out: &mut Vec<Block<'a>>) {
+    if block.kind() == kinds::REPEATER {
+        for generated in expand_repeater_children(&block) {
+            expand_template_page_blocks(generated, out);
+        }
+    } else {
+        out.push(block);
+    }
+}
+
+fn deck_to_page_handles(nodes: &[DeckSectionNode], members: &Value) -> Value {
+    let Value::List(member_values) = members else {
+        return Value::list(Vec::new());
+    };
+    let by_name: BTreeMap<&str, &Value> = member_values
+        .iter()
+        .filter_map(|member| {
+            let Value::Record { fields, .. } = member else {
+                return None;
+            };
+            let name = match fields.get("name")? {
+                Value::Utf8(name) | Value::Ascii(name) | Value::Identifier(name) => name.as_str(),
+                _ => return None,
+            };
+            Some((name, member))
+        })
+        .collect();
+    Value::list(
+        nodes
+            .iter()
+            .map(|section| {
+                let slides = section
+                    .slides
+                    .iter()
+                    .filter_map(|name| by_name.get(name.as_str()).map(|value| (*value).clone()))
+                    .collect();
+                let mut fields = BTreeMap::new();
+                fields.insert("title".to_string(), Value::Utf8(section.title.clone()));
+                fields.insert("slides".to_string(), Value::list(slides));
+                Value::record(vec!["DeckSection".to_string()], fields)
+            })
+            .collect(),
+    )
 }
 
 /// Reify one authored block into the public, immutable query shape while

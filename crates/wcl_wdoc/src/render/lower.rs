@@ -12,7 +12,8 @@ use crate::inline::InlinePatterns;
 
 use super::*;
 
-pub(crate) type BlockRenderer<'a> = dyn Fn(&[Value], Option<&str>, &str) -> String + 'a;
+pub(crate) type BlockRenderer<'a> =
+    dyn Fn(&[Value], Option<&str>, Option<&str>, &str) -> String + 'a;
 
 thread_local! {
     /// First eval error swallowed while lowering a block during the
@@ -516,6 +517,12 @@ pub(crate) fn render_html_variant_with_blocks(
                     | Value::Ascii(name) => Some(name.as_str()),
                     _ => None,
                 });
+                let owner = map.get("owner").and_then(|value| match value {
+                    Value::Identifier(name) | Value::Utf8(name) | Value::Ascii(name) => {
+                        Some(name.as_str())
+                    }
+                    _ => None,
+                });
                 let fallback = if handles.is_empty() {
                     match map.get("fallback") {
                         Some(Value::List(items)) => items
@@ -535,7 +542,7 @@ pub(crate) fn render_html_variant_with_blocks(
                 } else {
                     String::new()
                 };
-                render(handles, slot, &fallback)
+                render(handles, slot, owner, &fallback)
             }
             _ => String::new(),
         },
