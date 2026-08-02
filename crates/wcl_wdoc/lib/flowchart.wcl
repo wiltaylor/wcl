@@ -27,9 +27,11 @@ let centered_label = fn(text: utf8, cx: f64, cy: f64, fit_w: f64, fit_h: f64, cl
 // the inset + badge + a trailing gap of the same inset. Returns 0 when
 // there's no icon or the author placed it elsewhere, so the label
 // stays centred in those cases. (Params are non-optional per the WCL
-// param-annotation rule; a `none` value flows through and is guarded.)
-let icon_lead = fn(icon: utf8, icon_pos: IconPos, icon_size: f64, w: f64, h: f64) -> f64
-  if icon != none && (icon_pos == none || icon_pos == :left) {
+// param-annotation rule; a `none` value flows through and is guarded.
+// `icon_name`, not `icon`, so the param doesn't shadow the stdlib
+// `icon(name, cls)` constructor — see `el.wcl`.)
+let icon_lead = fn(icon_name: utf8, icon_pos: IconPos, icon_size: f64, w: f64, h: f64) -> f64
+  if icon_name != none && (icon_pos == none || icon_pos == :left) {
     let m = min(w, h);
     let size = if icon_size == none { m * 0.4 } else { icon_size };
     size + m * 0.2

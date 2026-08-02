@@ -8,8 +8,10 @@
 //   el("div", ["book-toc-row"], kids)
 //   HtmlFundamental::Element { tag: "div", class: ["book-toc-row"], children: kids }
 //
-// Three element constructors, split by arity because WCL has neither
-// default nor named arguments — every call fills every parameter:
+// Three element constructors rather than one, because a WCL parameter
+// list is fixed at declaration — the language has neither default nor
+// named arguments, so every call fills every parameter and `id` /
+// `attrs` each need a name of their own:
 //
 //   el(tag, cls, kids)          the common shape
 //   ela(tag, cls, attrs, kids)  … with attributes
@@ -18,11 +20,28 @@
 // plus four leaves — `raw` (verbatim HTML), `inl` (a prose run through
 // the inline-pattern engine), `icon`, and `para`.
 //
+// `icon` and `para` currently have no caller in this stdlib: their one
+// user was `callout`, which now lowers to `Content::Callout` instead of
+// building `<div>`s. They are not dead — `Icon` and `Paragraph` are
+// live variants any user `lower` may return, and most of the element
+// vocabulary's construction sites are OUTSIDE this stdlib (the docs
+// landing page, the scaffold templates, the wskill projections). Both
+// are covered by `tests/el.rs`.
+//
+// `ela` and `eli` take the SAME number of arguments, so arity — the one
+// positional mistake WCL catches — does not separate them: calling one
+// where you meant the other drops the id or the attrs silently. Pick by
+// what you are passing, and reach for the long form when an element
+// needs both.
+//
 // An empty `class` / `attrs` list emits no attribute at all (not
 // `class=""`), so `el("li", [], kids)` renders `<li>` — passing `[]`
 // costs nothing over omitting the field. An optional field goes
 // straight in: `el("p", t.class, kids)` with `t.class` unset renders
-// exactly as an omitted `class` does.
+// exactly as an omitted `class` does. The parameters below cannot SAY
+// so — `?` in a parameter list is a parse error, so every wdoc `fn`
+// annotates its optionals as though they were required and lets the
+// `none` flow through (see `icon_lead` in `flowchart.wcl`).
 //
 // SCOPE: the HTML element vocabulary ONLY. `SvgFundamental` and the
 // semantic content IR keep the named-field literal, because they are
@@ -31,7 +50,8 @@
 // argument TYPES. Transposing two of an SVG `Label`'s four
 // interchangeable `f64`s would render silently wrong where the long
 // form raises a shape mismatch, and the saving there is an order of
-// magnitude smaller than it is here.
+// magnitude smaller than it is here. `callout.wcl` is the worked
+// example on the IR side: it names its fields.
 //
 // The long form stays legal everywhere, and is the escape hatch for a
 // combination this family doesn't name — an element carrying both an id

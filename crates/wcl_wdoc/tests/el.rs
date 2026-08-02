@@ -27,6 +27,7 @@ type ElForm extends WdocBlock {
       ela("a", ["link"], [["href", "x.html"], ["title", "T & U"]], [raw("<b>raw</b>")]),
       el("p", [], [inl("**bold** and `code`")]),
       el("span", none, []),
+      ela("em", [], [], []),
       icon("lucide.info", ["ic"]),
       para(["cap"], ["one", "two"]),
     ]),
@@ -50,6 +51,7 @@ type LongForm extends WdocBlock {
           children: [ HtmlFundamental::Inline { text: "**bold** and `code`" } ],
         },
         HtmlFundamental::Element { tag: "span", children: [] },
+        HtmlFundamental::Element { tag: "em", children: [] },
         HtmlFundamental::Icon { name: "lucide.info", class: ["ic"] },
         HtmlFundamental::Paragraph { class: ["cap"], spans: ["one", "two"] },
       ],
@@ -141,5 +143,8 @@ fn unset_id_and_class_emit_no_attribute() {
     );
     assert!(short.contains("<div class=\"wrap outer\">"), "{short}");
     assert!(!short.contains("id=\"\""), "{short}");
-    assert!(short.contains("<span></span>"), "{short}");
+    assert!(!short.contains("class=\"\""), "{short}");
+    // `el("span", none, [])` and `ela("em", [], [], [])` — the unset and
+    // the empty-list forms of both attribute-bearing parameters.
+    assert!(short.contains("<span></span><em></em>"), "{short}");
 }

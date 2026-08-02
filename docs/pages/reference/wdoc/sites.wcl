@@ -176,7 +176,12 @@ WCL
       | "`para(cls, spans)`"           | "a `<p>` of inline-patterned spans" |
   }
 
-  p "There are three element constructors rather than one because WCL has neither default nor named arguments: every call fills every parameter. An empty `class` or `attrs` list emits no attribute at all, so passing `[]` costs nothing over omitting the field, and an optional field goes straight in (`el(\"p\", t.class, kids)` with `t.class` unset renders as an omitted `class`)."
+  p "There are three element constructors rather than one because a WCL parameter list is fixed at declaration — the language has neither default nor named arguments, so every call fills every parameter and `id` / `attrs` each need a name of their own. An empty `class` or `attrs` list emits no attribute at all, so passing `[]` costs nothing over omitting the field, and an optional field goes straight in (`el(\"p\", t.class, kids)` with `t.class` unset renders as an omitted `class`)."
+
+  callout "`ela` and `eli` take the same number of arguments" {
+    class = ["warning"]
+    body  = "Arity is the one positional mistake WCL catches, and it can't tell these two apart — calling one where you meant the other drops the id or the attributes silently. Pick by what you're passing, and write the record when an element needs both."
+  }
 
   callout "The long form stays legal" {
     class = ["note"]
