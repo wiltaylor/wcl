@@ -61,6 +61,6 @@ So author a `poster` for any video you expect to appear in a PDF — otherwise t
 
 ## Related
 
-- [image](../references/fact_images.md)
+- [image](../references/fact_images.md) — image supports video: `image` embeds a static image.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -273,8 +273,8 @@ A `notes` block: speaker notes inside a slide — hidden in the deck, shown in t
 
 ## Related
 
-- [Pages](../references/concept_pages.md)
+- [Pages](../references/concept_pages.md) — Pages supports Templates: The `page` block: id, title, the sites it joins, and the start page.
 
-- [Skill folders](../references/concept_skills.md)
+- [Skill folders](../references/concept_skills.md) — Skill folders supports Templates: The `:ai_skill` target: the `skill { }` block, folder layout, front matter, and `file` blocks.
 
 [← Back to SKILL.md](../SKILL.md)

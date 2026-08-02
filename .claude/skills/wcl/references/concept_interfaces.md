@@ -51,6 +51,6 @@ interface Sized extends Drawable {
 
 ## Related
 
-- [References](../references/concept_references.md)
+- [References](../references/concept_references.md) — References supports Interfaces: &T fields that accept any value structurally satisfying an interface.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -44,6 +44,6 @@ is _not_ `none`, since that is what its readers will see.
 
 ## Related
 
-- [if let](../references/concept_if_let.md)
+- [if let](../references/concept_if_let.md) — if let supports if / else: Binds and branches in a single step when you only care about a single variant or pattern.
 
 [← Back to SKILL.md](../SKILL.md)

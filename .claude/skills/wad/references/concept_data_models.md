@@ -17,6 +17,6 @@ often settles persistence details, so refine after research like surfaces.
 
 ## Related
 
-- [Surfaces](../references/concept_surfaces.md)
+- [Surfaces](../references/concept_surfaces.md) — Surfaces supports Data models: Every screen, command and endpoint is a typed contract - elements, required states, interactions - defined during the PRD and delivered by exactly one spec.
 
 [← Back to SKILL.md](../SKILL.md)

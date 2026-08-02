@@ -76,6 +76,6 @@ spec spec_010_fix_login_timeout {
 
 ## Related
 
-- [File ownership](../references/concept_ownership.md)
+- [File ownership](../references/concept_ownership.md) — File ownership supports Brownfield spec shapes: Each path has exactly one owning spec; disjoint ownership - not luck - is what makes parallel agents merge-safe.
 
 [← Back to SKILL.md](../SKILL.md)

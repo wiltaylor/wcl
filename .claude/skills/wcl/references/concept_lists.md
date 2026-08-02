@@ -82,6 +82,6 @@ middle    = slice([1, 2, 3, 4], 1, 3)                          // [2, 3]
 
 ## Related
 
-- [Tables](../references/concept_tables.md)
+- [Tables](../references/concept_tables.md) — Tables supports Lists: Pipe-row syntax for writing many records of the same shape compactly.
 
 [← Back to SKILL.md](../SKILL.md)

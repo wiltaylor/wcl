@@ -23,6 +23,6 @@ graph flow {
 
 ## Related
 
-- [Connections](../references/concept_connections.md)
+- [Connections](../references/concept_connections.md) — Connections supports @connections: Typed relationships between block instances, populated by arrow statements.
 
 [← Back to SKILL.md](../SKILL.md)

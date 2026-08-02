@@ -7,6 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
+use predicates::prelude::*;
 use tempfile::TempDir;
 
 fn wcl() -> Command {
@@ -151,6 +152,36 @@ fn graph_of(args: &[&str]) -> serde_json::Value {
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+#[test]
+fn check_rejects_semantic_edges_without_reasons() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+
+    for (related, diagnostic) in [
+        ("[beta]", "unresolved reference 'beta'"),
+        (
+            "[{ id: \"beta\" }]",
+            "no variant of 'RelatedEdge' matches the supplied shape",
+        ),
+    ] {
+        write_units(
+            &dest,
+            &format!(
+                "concept beta {{\n  name    = \"Beta\"\n  summary = \"The second idea.\"\n}}\n\n\
+                 concept linked {{\n  name    = \"Linked\"\n  summary = \"A bare semantic edge.\"\n  related = {related}\n}}\n"
+            ),
+        );
+
+        wcl()
+            .arg("check")
+            .arg(dest.join("wskill.wcl"))
+            .assert()
+            .code(2)
+            .stderr(predicate::str::contains("schema violation"))
+            .stderr(predicate::str::contains(diagnostic));
+    }
 }
 
 #[test]

@@ -33,6 +33,6 @@ The view is optional. Ship it by declaring `artifact training { kind = :training
 
 ## Related
 
-- [Process](../references/concept_process.md)
+- [Process](../references/concept_process.md) — Process supports The training view: A unit (authored as a procedure) that captures the reliable sequence for doing a task — ordered steps, for someone who already knows the topic.
 
 [← Back to SKILL.md](../SKILL.md)

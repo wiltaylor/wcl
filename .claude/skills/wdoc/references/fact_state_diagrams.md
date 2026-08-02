@@ -113,6 +113,6 @@ state-machine model can generate its figure. See [data views](../references/conc
 
 ## Related
 
-- [diagram](../references/fact_diagrams.md)
+- [diagram](../references/fact_diagrams.md) — diagram supports state_diagram: A `diagram` is wdoc's drawing surface.
 
 [← Back to SKILL.md](../SKILL.md)

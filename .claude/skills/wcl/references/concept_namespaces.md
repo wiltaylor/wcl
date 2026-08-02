@@ -56,6 +56,6 @@ names stay qualified under the imported file's path. See [Imports & Modules](../
 
 ## Related
 
-- [Imports & Modules](../references/concept_imports.md)
+- [Imports & Modules](../references/concept_imports.md) — Imports & Modules supports Namespaces: Pull another file's declarations into the document — disk and system forms.
 
 [← Back to SKILL.md](../SKILL.md)

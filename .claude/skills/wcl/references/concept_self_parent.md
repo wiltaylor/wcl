@@ -49,6 +49,6 @@ service "web" {
 
 ## Related
 
-- [References](../references/concept_references.md)
+- [References](../references/concept_references.md) — References supports self & parent: &T fields that accept any value structurally satisfying an interface.
 
 [← Back to SKILL.md](../SKILL.md)

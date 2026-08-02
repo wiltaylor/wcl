@@ -56,8 +56,8 @@ users:
 
 ## Related
 
-- [Lists](../references/concept_lists.md)
+- [Lists](../references/concept_lists.md) — Lists supports Tables: Ordered, homogeneous sequences — list<T> — and the collection builtins over them.
 
-- [Records](../references/concept_records.md)
+- [Records](../references/concept_records.md) — Records supports Tables: Named records via the type keyword — fixed sets of named, typed fields.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -137,6 +137,6 @@ As a shape badge, `icon_pos` accepts `:center`, `:top_left` (default), `:top_rig
 
 ## Related
 
-- [diagram](../references/fact_diagrams.md)
+- [diagram](../references/fact_diagrams.md) — diagram supports iconset / icon_def / icon: A `diagram` is wdoc's drawing surface.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -14,6 +14,6 @@ target rendered with `wcl wdoc skill`.
 
 ## Related
 
-- [Templates](../references/concept_templates.md)
+- [Templates](../references/concept_templates.md) — Templates supports Built-in site templates: The built-in templates webpage / book / presentation / ai_skill, their navigation blocks, and writing a custom template.
 
 [← Back to SKILL.md](../SKILL.md)

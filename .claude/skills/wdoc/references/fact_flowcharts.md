@@ -328,6 +328,6 @@ diagram {
 
 ## Related
 
-- [diagram](../references/fact_diagrams.md)
+- [diagram](../references/fact_diagrams.md) — diagram supports flowchart shapes: A `diagram` is wdoc's drawing surface.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -35,6 +35,6 @@ b = scale(4.5)    // 9.0
 
 ## Related
 
-- [Function Literals](../references/concept_function_literals.md)
+- [Function Literals](../references/concept_function_literals.md) — Function Literals supports let bindings: Inline `fn(params) -> Return body` function values.
 
 [← Back to SKILL.md](../SKILL.md)

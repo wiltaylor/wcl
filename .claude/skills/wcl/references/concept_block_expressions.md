@@ -14,6 +14,6 @@ result = {
 
 ## Related
 
-- [let bindings](../references/concept_let_bindings.md)
+- [let bindings](../references/concept_let_bindings.md) — let bindings supports Block Expressions: A let names a reusable value or function; resolves by name but is not document data.
 
 [← Back to SKILL.md](../SKILL.md)

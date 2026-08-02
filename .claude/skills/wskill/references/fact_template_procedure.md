@@ -93,6 +93,6 @@ SH
 
 ## Related
 
-- [Process](../references/concept_process.md)
+- [Process](../references/concept_process.md) — Process supports Template — process (procedure): A unit (authored as a procedure) that captures the reliable sequence for doing a task — ordered steps, for someone who already knows the topic.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -52,10 +52,10 @@ area = match shape {
 
 ## Related
 
-- [Patterns](../references/fact_patterns.md)
+- [Patterns](../references/fact_patterns.md) — Patterns supports match: Patterns destructure and test values in `match`, `if let`, and guard arms.
 
-- [Unions](../references/concept_unions.md)
+- [Unions](../references/concept_unions.md) — Unions supports match: Tagged variant sets — a value that is exactly one of several alternatives.
 
-- [Optionals](../references/concept_optionals.md)
+- [Optionals](../references/concept_optionals.md) — Optionals supports match: Values that may be present or absent — the none literal and the ? type suffix.
 
 [← Back to SKILL.md](../SKILL.md)

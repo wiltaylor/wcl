@@ -58,6 +58,6 @@ the skills, shipped once per wskill.
 
 ## Related
 
-- [Different Views](../references/concept_views.md)
+- [Different Views](../references/concept_views.md) — Different Views supports Anatomy of the AI skill: One data model, four projections: the book and the AI skill are standard; the presentation deck and the training book are optional.
 
 [← Back to SKILL.md](../SKILL.md)

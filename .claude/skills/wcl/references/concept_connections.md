@@ -84,6 +84,6 @@ endpoints are always literal, so typos stay caught.
 
 ## Related
 
-- [References](../references/concept_references.md)
+- [References](../references/concept_references.md) — References supports Connections: &T fields that accept any value structurally satisfying an interface.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -75,6 +75,6 @@ fact exit_codes {
 
 ## Related
 
-- [Fact](../references/concept_fact.md)
+- [Fact](../references/concept_fact.md) — Fact supports Template — fact: A unit that holds factual data — a value, a constant, a value table.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -186,6 +186,6 @@ a repeated scenario model can generate its figure. See [data views](../reference
 
 ## Related
 
-- [diagram](../references/fact_diagrams.md)
+- [diagram](../references/fact_diagrams.md) — diagram supports sequence_diagram: A `diagram` is wdoc's drawing surface.
 
 [← Back to SKILL.md](../SKILL.md)

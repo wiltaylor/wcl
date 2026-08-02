@@ -35,6 +35,6 @@ t = { name: "release", kind: :stable }
 
 ## Related
 
-- [Symbol Sets](../references/concept_symbol_set.md)
+- [Symbol Sets](../references/concept_symbol_set.md) — Symbol Sets supports Symbols: A symbol_set names a closed vocabulary of symbols — an enum-like type.
 
 [← Back to SKILL.md](../SKILL.md)

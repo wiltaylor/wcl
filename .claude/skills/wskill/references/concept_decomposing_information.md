@@ -30,6 +30,6 @@ forcing it into prose.
 
 ## Related
 
-- [Structured data](../references/concept_structured_data.md)
+- [Structured data](../references/concept_structured_data.md) — Structured data supports Decomposing information: Information captured in a defined format — a schema — so every instance is uniform and the templates can read and project it reliably.
 
 [← Back to SKILL.md](../SKILL.md)

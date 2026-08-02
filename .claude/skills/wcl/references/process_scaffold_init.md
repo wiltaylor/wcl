@@ -53,6 +53,6 @@ Change into the new folder and run `wcl check` on its `main.wcl` to confirm the 
 
 ## Related
 
-- [wcl](../references/entity_wcl_cli.md)
+- [wcl](../references/entity_wcl_cli.md) — wcl supports Scaffold a new project with wcl init: The wcl command-line tool: one binary for parsing, checking, editing, formatting, scaffolding, the editor, and wdoc.
 
 [← Back to SKILL.md](../SKILL.md)

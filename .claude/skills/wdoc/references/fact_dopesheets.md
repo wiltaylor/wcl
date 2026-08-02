@@ -88,8 +88,8 @@ diagram {
 
 ## Related
 
-- [image](../references/fact_images.md)
+- [image](../references/fact_images.md) — image supports dopesheet: `image` embeds a static image.
 
-- [diagram](../references/fact_diagrams.md)
+- [diagram](../references/fact_diagrams.md) — diagram supports dopesheet: A `diagram` is wdoc's drawing surface.
 
 [← Back to SKILL.md](../SKILL.md)
