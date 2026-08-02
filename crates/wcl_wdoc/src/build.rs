@@ -1194,6 +1194,34 @@ pub(crate) fn collect_site_specs<'a>(
         }
     }
 
+    // In a document declaring more than one site, every page names its
+    // sites. An untagged page used to belong to all of them, which was
+    // harmless while a site was only an output folder — but the site also
+    // chooses the page's template, so adding a site would re-render every
+    // untagged page under it without the page changing. A genuinely shared
+    // page says so (`sites = [:docs, :blog]`). Single-site documents (every
+    // wskill projection, most user documents) are unaffected, and only
+    // `Page.sites` is required: a `class` or `stylesheet` with no `sites`
+    // list stays global.
+    if site_blocks.len() > 1 {
+        for p in all_pages {
+            if block_sites(p).is_none_or(|list| list.is_empty()) {
+                let name = page_name(p).unwrap_or_else(|| "<unnamed>".to_string());
+                let known: Vec<&str> = names.iter().flatten().map(String::as_str).collect();
+                return Err(BuildError::BadPage(format!(
+                    "page \"{name}\" declares no `sites` — in a document with more \
+                     than one site every page must name the sites it belongs to \
+                     (declared: {})",
+                    known
+                        .iter()
+                        .map(|n| format!(":{n}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )));
+            }
+        }
+    }
+
     Ok(site_blocks
         .iter()
         .zip(names)
@@ -1228,7 +1256,9 @@ fn block_sites(block: &Block<'_>) -> Option<Vec<String>> {
 }
 
 /// Whether a block belongs to the site named `site_name`. An absent or
-/// empty `sites` list means every site.
+/// empty `sites` list means every site — which for a `page` can only
+/// happen in a single-site document, since [`collect_site_specs`] rejects
+/// an untagged page as soon as a second site is declared.
 fn block_in_site(block: &Block<'_>, site_name: Option<&str>) -> bool {
     match block_sites(block) {
         None => true,

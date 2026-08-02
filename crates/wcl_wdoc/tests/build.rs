@@ -7567,7 +7567,7 @@ fn with_multisite_build(src: &str, site: Option<&str>, check: impl FnOnce(&Path)
 const TWO_SITES: &str = r##"
 site docs { default_template = :webpage  title = "Docs" }
 site blog { default_template = :webpage  title = "Blog" }
-page index { h1 "Home" {} }
+page index { sites = [:docs, :blog]  h1 "Home" {} }
 page guide { sites = [:docs]  h1 "Guide" {} }
 page post1 { sites = [:blog]  h1 "Post" {} }
 page shared { sites = [:docs, :blog]  h1 "Shared" {} }
@@ -7593,8 +7593,7 @@ fn multi_site_builds_subdirs_and_chooser() {
 #[test]
 fn page_membership_scopes_per_site() {
     with_multisite_build(TWO_SITES, None, |out| {
-        // No `sites` ⇒ in every site; `sites = [:docs]` ⇒ docs only;
-        // `sites = [:docs, :blog]` ⇒ both.
+        // `sites = [:docs]` ⇒ docs only; `sites = [:docs, :blog]` ⇒ both.
         assert!(out.join("docs/index.html").exists() && out.join("blog/index.html").exists());
         assert!(
             out.join("docs/guide.html").exists(),
@@ -7658,13 +7657,13 @@ fn site_filter_builds_one_flat() {
 #[test]
 fn class_sites_field_scopes_css_per_site() {
     // A `class` with a `sites` list themes only that site's pages; the
-    // other sites are unaffected. The shared `index` page (no `sites`)
-    // renders into both, so it's a clean before/after comparison.
+    // other sites are unaffected. The shared `index` page renders into
+    // both, so it's a clean before/after comparison.
     let src = r##"
 site docs { default_template = :webpage  title = "Docs" }
 site blog { default_template = :webpage  title = "Blog" }
 class "wdoc-body" { sites = [:docs]  background = "#2e3440" }
-page index { h1 "Home" {} }
+page index { sites = [:docs, :blog]  h1 "Home" {} }
 "##;
     with_multisite_build(src, None, |out| {
         let docs = std::fs::read_to_string(out.join("docs/index.html")).expect("docs index");
@@ -7735,6 +7734,93 @@ page a { sites = [:nope]  h1 "A" {} }
         build(&file, out.path(), None),
         Err(BuildError::BadPage(_))
     ));
+}
+
+/// The `sites` field of `build`'s multi-site error, as a string.
+fn multisite_error(src: &str) -> String {
+    let tmp = TempDir::new().unwrap();
+    let file = tmp.path().join("ms.wcl");
+    write_fixture(&file, src);
+    let out = TempDir::new().unwrap();
+    match build(&file, out.path(), None) {
+        Err(BuildError::BadPage(msg)) => msg,
+        Err(e) => {
+            e.report();
+            panic!("expected a BadPage error, got the error reported above");
+        }
+        Ok(_) => panic!("expected the build to fail"),
+    }
+}
+
+#[test]
+fn untagged_page_in_a_multi_site_document_is_an_error() {
+    // With more than one site the site chooses the page's template, so a
+    // page belonging to every site by default would be re-templated by a
+    // site added later without the page changing. Naming it is required.
+    let msg = multisite_error(
+        r##"
+site docs { default_template = :webpage  title = "Docs" }
+site blog { default_template = :webpage  title = "Blog" }
+page guide { sites = [:docs]  h1 "Guide" {} }
+page loose { h1 "Loose" {} }
+"##,
+    );
+    assert!(
+        msg.contains("loose") && msg.contains("sites"),
+        "the error should name the untagged page and the field: {msg}"
+    );
+}
+
+#[test]
+fn empty_sites_list_in_a_multi_site_document_is_an_error() {
+    // `sites = []` was the same "every site" default spelled out; it must
+    // not survive as a backdoor to the behaviour the rule removes.
+    let msg = multisite_error(
+        r##"
+site docs { default_template = :webpage  title = "Docs" }
+site blog { default_template = :webpage  title = "Blog" }
+page loose { sites = []  h1 "Loose" {} }
+"##,
+    );
+    assert!(
+        msg.contains("loose"),
+        "the error should name the page: {msg}"
+    );
+}
+
+#[test]
+fn untagged_page_in_a_single_site_document_still_builds() {
+    // The rule is scoped to documents declaring more than one site — the
+    // shape every wskill projection and most user documents have.
+    let src = r##"
+site docs { default_template = :webpage  title = "Docs" }
+page index { h1 "Home" {} }
+"##;
+    with_multisite_build(src, None, |out| {
+        assert!(out.join("index.html").exists(), "single-site build");
+    });
+}
+
+#[test]
+fn untagged_non_page_blocks_stay_global_in_a_multi_site_document() {
+    // Only `Page.sites` is required — a `class` (or `stylesheet`) with no
+    // `sites` list still applies to every site.
+    let src = r##"
+site docs { default_template = :webpage  title = "Docs" }
+site blog { default_template = :webpage  title = "Blog" }
+class "wdoc-body" { background = "#2e3440" }
+page a { sites = [:docs]  h1 "A" {} }
+page b { sites = [:blog]  h1 "B" {} }
+"##;
+    with_multisite_build(src, None, |out| {
+        for page in ["docs/a.html", "blog/b.html"] {
+            let html = std::fs::read_to_string(out.join(page)).expect(page);
+            assert!(
+                html.contains(".wdoc-body { background:#2e3440; }"),
+                "{page} should carry the global class:\n{html}"
+            );
+        }
+    });
 }
 
 #[test]
