@@ -362,31 +362,14 @@ JS
 // in; a module heading (a TOC entry with no page) renders as a label.
 let tr_nav_entry = fn(e: TocEntry) -> HtmlFundamental
   if e.href == "" {
-    HtmlFundamental::Element {
-      tag: "li", class: ["tr-nav-module"],
-      children: [ HtmlFundamental::Raw { html: e.title } ],
-    }
+    el("li", ["tr-nav-module"], [raw(e.title)])
   } else {
-    HtmlFundamental::Element {
-      tag: "li", class: ["tr-nav-item"],
-      children: [
-        HtmlFundamental::Element {
-          tag: "a",
-          class: if e.current { ["current"] } else { none },
-          attrs: [["href", e.href]],
-          children: [
-            HtmlFundamental::Element {
-              tag: "span", class: ["tr-nav-mark"],
-              children: [ HtmlFundamental::Raw { html: "○" } ],
-            },
-            HtmlFundamental::Element {
-              tag: "span",
-              children: [ HtmlFundamental::Raw { html: e.title } ],
-            },
-          ],
-        },
-      ],
-    }
+    el("li", ["tr-nav-item"], [
+        ela("a", if e.current { ["current"] } else { none }, [["href", e.href]], [
+            el("span", ["tr-nav-mark"], [raw("○")]),
+            el("span", [], [raw(e.title)]),
+          ]),
+      ])
   }
 
 // The syllabus rail: module headings and their lessons, flattened to one list
@@ -396,63 +379,28 @@ let tr_nav_items = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
     flatten([[tr_nav_entry(e)], map(e.children, tr_nav_entry)])))
 
 let tr_nav = fn(c: TemplateCtx) -> list<HtmlFundamental> [
-  HtmlFundamental::Element {
-    tag: "nav", class: ["tr-nav"],
-    children: [
-      HtmlFundamental::Element {
-        tag: "div", class: ["tr-nav-title"],
-        children: [ HtmlFundamental::Raw { html: c.title } ],
-      },
-      HtmlFundamental::Element {
-        tag: "div", class: ["tr-progress"],
-        children: [
-          HtmlFundamental::Element {
-            tag: "div", class: ["tr-progress-label"],
-            children: [ HtmlFundamental::Raw { html: "Not started" } ],
-          },
-          HtmlFundamental::Element {
-            tag: "div", class: ["tr-progress-bar"],
-            children: [ HtmlFundamental::Element {
-              tag: "div", class: ["tr-progress-fill"], children: [],
-            } ],
-          },
-        ],
-      },
-      HtmlFundamental::Element {
-        tag: "ul",
-        children: tr_nav_items(c.toc),
-      },
-      HtmlFundamental::Element {
-        tag: "button", class: ["tr-reset"], attrs: [["type", "button"]],
-        children: [ HtmlFundamental::Raw { html: "Reset progress" } ],
-      },
-    ],
-  },
+  el("nav", ["tr-nav"], [
+      el("div", ["tr-nav-title"], [raw(c.title)]),
+      el("div", ["tr-progress"], [
+          el("div", ["tr-progress-label"], [raw("Not started")]),
+          el("div", ["tr-progress-bar"], [ el("div", ["tr-progress-fill"], []) ]),
+        ]),
+      el("ul", [], tr_nav_items(c.toc)),
+      ela("button", ["tr-reset"], [["type", "button"]], [raw("Reset progress")]),
+    ]),
 ]
 
 template training {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental>
     flatten([
-      [ HtmlFundamental::Element {
-          tag: "style",
-          children: [ HtmlFundamental::Raw { html: training_css } ],
-      } ],
+      [ el("style", [], [raw(training_css) ])],
       tr_nav(c),
-      [ HtmlFundamental::Element {
-          tag: "main", class: ["tr-main"],
-          children: flatten([
-            [ HtmlFundamental::Element {
-                tag: "div", class: ["tr-topbar"],
-                children: wdoc_part_theme_toggle(c.theme_toggle),
-            } ],
-            [ HtmlFundamental::Raw { html: c.content } ],
-            [ HtmlFundamental::Element {
-                tag: "div", class: ["tr-pagenav"],
-                children: wdoc_part_pagenav(c.toc),
-            } ],
-          ]),
-      } ],
-      [ HtmlFundamental::Raw { html: training_js } ],
+      [ el("main", ["tr-main"], flatten([
+            [ el("div", ["tr-topbar"], wdoc_part_theme_toggle(c.theme_toggle)) ],
+            [raw(c.content)],
+            [ el("div", ["tr-pagenav"], wdoc_part_pagenav(c.toc)) ],
+          ])) ],
+      [raw(training_js)],
     ])
 }
 

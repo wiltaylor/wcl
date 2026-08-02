@@ -99,97 +99,45 @@ stylesheet "wcl-landing" {
 // A call-to-action button: a styled `<p><a></a></p>` whose link rides
 // the inline-pattern engine, so Markdown keeps a real `[label](href)`.
 let lp_cta_el = fn(x: LpCta) -> HtmlFundamental
-  HtmlFundamental::Element {
-    tag: "p",
-    class: ["lp-cta", if x.primary == true { "lp-cta-primary" } else { "lp-cta-ghost" }],
-    children: [ HtmlFundamental::Inline { text: $"[${x.label}](${x.href})" } ],
-  }
+  el("p", ["lp-cta", if x.primary == true { "lp-cta-primary" } else { "lp-cta-ghost" }], [inl($"[${x.label}](${x.href})")])
 
 // One feature card: icon chip, title, body prose.
 let lp_feature_el = fn(f: LpFeature) -> HtmlFundamental {
   let icon_name = if f.icon == none { "lucide.sparkles" } else { f.icon };
-  HtmlFundamental::Element {
-    tag: "article", class: ["lp-card"],
-    children: [
-      HtmlFundamental::Element {
-        tag: "p", class: ["lp-card-icon"],
-        children: [ HtmlFundamental::Icon { name: icon_name } ],
-      },
-      HtmlFundamental::Element {
-        tag: "h3",
-        children: [ HtmlFundamental::Inline { text: f.title } ],
-      },
-      HtmlFundamental::Element {
-        tag: "p",
-        children: [ HtmlFundamental::Inline { text: f.body } ],
-      },
-    ],
-  }
+  el("article", ["lp-card"], [
+      el("p", ["lp-card-icon"], [icon(icon_name, [])]),
+      el("h3", [], [inl(f.title)]),
+      el("p", [], [inl(f.body)]),
+    ])
 }
 
 // One reference-manual card, built from a data record (see `lp_cards`).
 let lp_refcard_el = fn(r: LpRefCard) -> HtmlFundamental
-  HtmlFundamental::Element {
-    tag: "article", class: ["lp-refcard"],
-    children: [
-      HtmlFundamental::Element {
-        tag: "header", class: ["lp-refcard-head"],
-        children: [
-          HtmlFundamental::Element {
-            tag: "p", class: ["lp-card-icon"],
-            children: [ HtmlFundamental::Icon { name: r.icon } ],
-          },
-          HtmlFundamental::Element {
-            tag: "p", class: ["lp-refcard-name"],
-            children: [ HtmlFundamental::Inline { text: $"**${r.name}**" } ],
-          },
-        ],
-      },
-      HtmlFundamental::Element {
-        tag: "p", class: ["lp-refcard-body"],
-        children: [ HtmlFundamental::Inline { text: r.summary } ],
-      },
-      HtmlFundamental::Element {
-        tag: "p", class: ["lp-refcard-cta"],
-        children: [ HtmlFundamental::Inline { text: $"[Read the manual](${r.href})${r.links}" } ],
-      },
-    ],
-  }
+  el("article", ["lp-refcard"], [
+      el("header", ["lp-refcard-head"], [
+          el("p", ["lp-card-icon"], [icon(r.icon, [])]),
+          el("p", ["lp-refcard-name"], [inl($"**${r.name}**")]),
+        ]),
+      el("p", ["lp-refcard-body"], [inl(r.summary)]),
+      el("p", ["lp-refcard-cta"], [inl($"[Read the manual](${r.href})${r.links}")]),
+    ])
 
 // One getting-started step: a numbered row (the number is a CSS counter)
 // with a title and a command line rendered as inline code.
 let lp_step_el = fn(s: LpStep) -> HtmlFundamental
-  HtmlFundamental::Element {
-    tag: "li",
-    children: [
-      HtmlFundamental::Element {
-        tag: "p", class: ["lp-step-title"],
-        children: [ HtmlFundamental::Inline { text: s.title } ],
-      },
-      HtmlFundamental::Element {
-        tag: "p", class: ["lp-cmd"],
-        children: [ HtmlFundamental::Inline { text: $"`${s.command}`" } ],
-      },
-    ],
-  }
+  el("li", [], [
+      el("p", ["lp-step-title"], [inl(s.title)]),
+      el("p", ["lp-cmd"], [inl($"`${s.command}`")]),
+    ])
 
 // One footer column: an uppercase heading over a list of links.
 let lp_footcol_el = fn(col: LpFootcol) -> HtmlFundamental {
   let links = if col.links == none { [] } else { col.links };
-  HtmlFundamental::Element {
-    tag: "section", class: ["lp-footcol"],
-    children: flatten([
-      [ HtmlFundamental::Element {
-          tag: "p", class: ["lp-foothead"],
-          children: [ HtmlFundamental::Inline { text: col.title } ],
-      } ],
+  el("section", ["lp-footcol"], flatten([
+      [ el("p", ["lp-foothead"], [inl(col.title) ])],
       map(links, fn(l: LpFootlink) -> HtmlFundamental
-        HtmlFundamental::Element {
-          tag: "p", class: ["lp-footlink"],
-          children: [ HtmlFundamental::Inline { text: $"[${l.label}](${l.href})" } ],
-        }),
-    ]),
-  }
+        el("p", ["lp-footlink"], [inl($"[${l.label}](${l.href})")])),
+    ]))
 }
 
 // The eyebrow / title / lede header shared by the section wrappers.
@@ -200,32 +148,20 @@ let lp_section_head = fn(eyebrow: utf8, title: utf8, lede: utf8, cls: utf8) -> l
   let parts = flatten([
     if eyebrow == none || eyebrow == "" { [] }
     else {
-      [ HtmlFundamental::Element {
-          tag: "p", class: ["lp-eyebrow"],
-          children: [ HtmlFundamental::Inline { text: eyebrow } ],
-      } ]
+      [ el("p", ["lp-eyebrow"], [inl(eyebrow) ])]
     },
     if title == none || title == "" { [] }
     else {
-      [ HtmlFundamental::Element {
-          tag: "h2",
-          children: [ HtmlFundamental::Inline { text: title } ],
-      } ]
+      [ el("h2", [], [inl(title) ])]
     },
     if lede == none || lede == "" { [] }
     else {
-      [ HtmlFundamental::Element {
-          tag: "p", class: ["lp-lede"],
-          children: [ HtmlFundamental::Inline { text: lede } ],
-      } ]
+      [ el("p", ["lp-lede"], [inl(lede) ])]
     },
   ]);
   if len(parts) == 0 { [] }
   else {
-    [ HtmlFundamental::Element {
-        tag: "header", class: [cls],
-        children: parts,
-    } ]
+    [ el("header", [cls], parts) ]
   }
 }
 
@@ -249,44 +185,23 @@ type LpHero extends WdocBlock {
   lower = fn(b: LpHero) -> list<HtmlFundamental> {
     let ctas = if b.ctas == none { [] } else { b.ctas };
     [
-      HtmlFundamental::Element {
-        tag: "section", id: b.id, class: ["lp-hero"],
-        children: flatten([
-          [ HtmlFundamental::Element {
-              tag: "div", class: ["lp-hero-bg"],
-              attrs: [["aria-hidden", "true"]], children: [],
-          } ],
+      eli("section", b.id, ["lp-hero"], flatten([
+          [ ela("div", ["lp-hero-bg"], [["aria-hidden", "true"]], []) ],
           if b.badge == none { [] }
           else {
-            [ HtmlFundamental::Element {
-                tag: "p", class: ["lp-badge"],
-                children: [ HtmlFundamental::Inline { text: b.badge } ],
-            } ]
+            [ el("p", ["lp-badge"], [inl(b.badge) ])]
           },
-          [ HtmlFundamental::Element {
-              tag: "h1",
-              children: [ HtmlFundamental::Inline { text: b.heading } ],
-          } ],
-          [ HtmlFundamental::Element {
-              tag: "p", class: ["lp-lede"],
-              children: [ HtmlFundamental::Inline { text: b.lede } ],
-          } ],
+          [ el("h1", [], [inl(b.heading) ])],
+          [ el("p", ["lp-lede"], [inl(b.lede) ])],
           if len(ctas) == 0 { [] }
           else {
-            [ HtmlFundamental::Element {
-                tag: "nav", class: ["lp-ctas"],
-                children: map(ctas, lp_cta_el),
-            } ]
+            [ el("nav", ["lp-ctas"], map(ctas, lp_cta_el)) ]
           },
           if b.footnote == none { [] }
           else {
-            [ HtmlFundamental::Element {
-                tag: "p", class: ["lp-hero-footnote"],
-                children: [ HtmlFundamental::Inline { text: b.footnote } ],
-            } ]
+            [ el("p", ["lp-hero-footnote"], [inl(b.footnote) ])]
           },
-        ]),
-      },
+        ])),
     ]
   }
 }
@@ -314,19 +229,13 @@ type LpFeatures extends WdocBlock {
   lower = fn(b: LpFeatures) -> list<HtmlFundamental> {
     let items = if b.items == none { [] } else { b.items };
     [
-      HtmlFundamental::Element {
-        tag: "section", id: b.id, class: ["lp-section"],
-        children: flatten([
+      eli("section", b.id, ["lp-section"], flatten([
           lp_section_head(b.eyebrow, b.title, b.lede, "lp-section-head"),
           if len(items) == 0 { [] }
           else {
-            [ HtmlFundamental::Element {
-                tag: "section", class: ["lp-grid"],
-                children: map(items, lp_feature_el),
-            } ]
+            [ el("section", ["lp-grid"], map(items, lp_feature_el)) ]
           },
-        ]),
-      },
+        ])),
     ]
   }
 }
@@ -366,19 +275,13 @@ type LpCards extends WdocBlock {
   lower = fn(b: LpCards) -> list<HtmlFundamental> {
     let cards = if b.cards == none { [] } else { b.cards };
     [
-      HtmlFundamental::Element {
-        tag: "section", id: b.id, class: ["lp-section"],
-        children: flatten([
+      eli("section", b.id, ["lp-section"], flatten([
           lp_section_head(b.eyebrow, b.title, b.lede, "lp-section-head"),
           if len(cards) == 0 { [] }
           else {
-            [ HtmlFundamental::Element {
-                tag: "section", class: ["lp-grid"],
-                children: map(cards, lp_refcard_el),
-            } ]
+            [ el("section", ["lp-grid"], map(cards, lp_refcard_el)) ]
           },
-        ]),
-      },
+        ])),
     ]
   }
 }
@@ -404,44 +307,23 @@ type LpShowcase extends WdocBlock {
         let fname = if sn.filename == none { "" } else { sn.filename };
         let lang = format("{}", sn.language);
         [
-          HtmlFundamental::Element {
-            tag: "figure", class: ["lp-codepanel"],
-            children: [
-              HtmlFundamental::Element {
-                tag: "figcaption", class: ["lp-codehead"],
-                children: [
-                  HtmlFundamental::Icon { name: "lucide.file-text" },
-                  HtmlFundamental::Element {
-                    tag: "span", class: ["lp-codename"],
-                    children: [ HtmlFundamental::Raw { html: fname } ],
-                  },
-                  HtmlFundamental::Element {
-                    tag: "span", class: ["lp-codetag"],
-                    children: [ HtmlFundamental::Raw { html: lang } ],
-                  },
-                ],
-              },
-              HtmlFundamental::Element {
-                tag: "pre", class: ["lp-code"],
-                children: [
-                  HtmlFundamental::Element {
-                    tag: "code", class: [format("language-{}", lang)],
-                    children: [ HtmlFundamental::Highlighted { source: sn.source, language: lang } ],
-                  },
-                ],
-              },
-            ],
-          },
+          el("figure", ["lp-codepanel"], [
+              el("figcaption", ["lp-codehead"], [
+                  icon("lucide.file-text", []),
+                  el("span", ["lp-codename"], [raw(fname)]),
+                  el("span", ["lp-codetag"], [raw(lang)]),
+                ]),
+              el("pre", ["lp-code"], [
+                  el("code", [format("language-{}", lang)], [ HtmlFundamental::Highlighted { source: sn.source, language: lang } ]),
+                ]),
+            ]),
         ]
       };
     [
-      HtmlFundamental::Element {
-        tag: "section", id: b.id, class: ["lp-section", "lp-showcase"],
-        children: flatten([
+      eli("section", b.id, ["lp-section", "lp-showcase"], flatten([
           panel,
           lp_section_head(b.eyebrow, b.heading, b.body, "lp-showcase-text"),
-        ]),
-      },
+        ])),
     ]
   }
 }
@@ -459,24 +341,15 @@ type LpSteps extends WdocBlock {
   lower = fn(b: LpSteps) -> list<HtmlFundamental> {
     let steps = if b.steps == none { [] } else { b.steps };
     [
-      HtmlFundamental::Element {
-        tag: "section", id: b.id, class: ["lp-section"],
-        children: [
-          HtmlFundamental::Element {
-            tag: "article", class: ["lp-steps-panel"],
-            children: flatten([
+      eli("section", b.id, ["lp-section"], [
+          el("article", ["lp-steps-panel"], flatten([
               lp_section_head(b.eyebrow, b.title, b.lede, "lp-section-head"),
               if len(steps) == 0 { [] }
               else {
-                [ HtmlFundamental::Element {
-                    tag: "ol", class: ["lp-steps"],
-                    children: map(steps, lp_step_el),
-                } ]
+                [ el("ol", ["lp-steps"], map(steps, lp_step_el)) ]
               },
-            ]),
-          },
-        ],
-      },
+            ])),
+        ]),
     ]
   }
 }
@@ -509,51 +382,27 @@ type LpFooter extends WdocBlock {
     let bottom = flatten([
       if b.copyright == none { [] }
       else {
-        [ HtmlFundamental::Element {
-            tag: "p",
-            children: [ HtmlFundamental::Inline { text: b.copyright } ],
-        } ]
+        [ el("p", [], [inl(b.copyright) ])]
       },
       if b.note == none { [] }
       else {
-        [ HtmlFundamental::Element {
-            tag: "p",
-            children: [ HtmlFundamental::Inline { text: b.note } ],
-        } ]
+        [ el("p", [], [inl(b.note) ])]
       },
     ]);
     flatten([
-      [ HtmlFundamental::Element {
-          tag: "nav", id: b.id, class: ["lp-footgrid"],
-          children: flatten([
-            [ HtmlFundamental::Element {
-                tag: "header", class: ["lp-footbrand"],
-                children: [
-                  HtmlFundamental::Element {
-                    tag: "p", class: ["lp-footlogo"],
-                    children: [
-                      HtmlFundamental::Icon { name: "lucide.layers" },
-                      HtmlFundamental::Element {
-                        tag: "span",
-                        children: [ HtmlFundamental::Raw { html: brand } ],
-                      },
-                    ],
-                  },
-                  HtmlFundamental::Element {
-                    tag: "p", class: ["lp-foottag"],
-                    children: [ HtmlFundamental::Inline { text: b.tagline } ],
-                  },
-                ],
-            } ],
+      [ eli("nav", b.id, ["lp-footgrid"], flatten([
+            [ el("header", ["lp-footbrand"], [
+                  el("p", ["lp-footlogo"], [
+                      icon("lucide.layers", []),
+                      el("span", [], [raw(brand)]),
+                    ]),
+                  el("p", ["lp-foottag"], [inl(b.tagline)]),
+                ]) ],
             map(cols, lp_footcol_el),
-          ]),
-      } ],
+          ])) ],
       if len(bottom) == 0 { [] }
       else {
-        [ HtmlFundamental::Element {
-            tag: "section", class: ["lp-footbottom"],
-            children: bottom,
-        } ]
+        [ el("section", ["lp-footbottom"], bottom) ]
       },
     ])
   }
@@ -577,9 +426,6 @@ type LpFootlink extends WdocBlock {
   href: utf8
   id: identifier?
   lower = fn(l: LpFootlink) -> list<HtmlFundamental> [
-    HtmlFundamental::Element {
-      tag: "p", class: ["lp-footlink"],
-      children: [ HtmlFundamental::Inline { text: $"[${l.label}](${l.href})" } ],
-    },
+    el("p", ["lp-footlink"], [inl($"[${l.label}](${l.href})")]),
   ]
 }

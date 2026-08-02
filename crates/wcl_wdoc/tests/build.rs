@@ -4541,13 +4541,10 @@ template custom {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental>
     flatten([
       wdoc_head_stylesheet("theme.css"),
-      [ HtmlFundamental::Element {
-          tag: "main",
-          children: [
-            HtmlFundamental::Raw { html: c.content },
-            HtmlFundamental::Head { children: [ HtmlFundamental::Raw { html: "<!--LEAK-->" } ] },
-          ],
-      } ],
+      [ el("main", [], [
+          raw(c.content),
+          HtmlFundamental::Head { children: [raw("<!--LEAK-->")] },
+      ]) ],
     ])
 }
 page index { h1 "Hi" {} }
@@ -4610,18 +4607,12 @@ fn template_uses_user_defined_part_function() {
         &src,
         r##"
 let footer = fn(c: TemplateCtx) -> list<HtmlFundamental> [
-  HtmlFundamental::Element {
-    tag: "footer", class: ["ft"], attrs: [["data-x", "a\"b"]],
-    children: [ HtmlFundamental::Raw { html: c.title } ],
-  }
+  ela("footer", ["ft"], [["data-x", "a\"b"]], [raw(c.title)])
 ]
 template mini {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental>
     flatten([
-      [ HtmlFundamental::Element {
-          tag: "main",
-          children: [ HtmlFundamental::Raw { html: c.content } ],
-      } ],
+      [ el("main", [], [raw(c.content)]) ],
       footer(c),
     ])
 }
@@ -4843,10 +4834,7 @@ template blog {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental>
     flatten([
       wdoc_webpage_layout(c),
-      [ HtmlFundamental::Element {
-          tag: "footer", class: ["site-footer"],
-          children: [ HtmlFundamental::Raw { html: "the footer" } ],
-      } ],
+      [ el("footer", ["site-footer"], [raw("the footer")]) ],
     ])
 }
 site { default_template = :blog  title = "Blog" }
@@ -4885,10 +4873,7 @@ template app_home {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental>
     flatten([
       wdoc_part_webpage_css(),
-      [ HtmlFundamental::Element {
-          tag: "header", class: ["hero"],
-          children: [ HtmlFundamental::Raw { html: c.title } ],
-      } ],
+      [ el("header", ["hero"], [raw(c.title)]) ],
       wdoc_part_navbar(c),
       wdoc_part_content(c),
     ])
@@ -4968,10 +4953,7 @@ template presentation {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental>
     flatten([
       wdoc_presentation_layout(c),
-      [ HtmlFundamental::Element {
-          tag: "div", class: ["my-banner"],
-          children: [ HtmlFundamental::Raw { html: "BANNER" } ],
-      } ],
+      [ el("div", ["my-banner"], [raw("BANNER")]) ],
     ])
 }
 site { default_template = :presentation  title = "Deck"
@@ -10569,7 +10551,7 @@ fn lower_body_eval_error_fails_the_html_build() {
 type Boom extends WdocBlock {
   id: identifier?
   lower = fn(b: Boom) -> list<HtmlFundamental> [
-    HtmlFundamental::Raw { html: no_such_helper(b) }
+    raw(no_such_helper(b))
   ]
 }
 page t {
