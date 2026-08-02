@@ -16,6 +16,6 @@ workflow procedures in order and keep the gates green.
 
 ## Related
 
-- [Gates are blocks, not lets](../references/concept_gates.md)
+- [Gates are blocks, not lets](../references/concept_gates.md) — Gates are blocks, not lets supports The gated pipeline: A gate is a block whose `ok` field asserts a condition; `wcl eval gates.wcl gates.<id>.ok` forces it and exits non-zero on failure.
 
 [← Back to SKILL.md](../SKILL.md)

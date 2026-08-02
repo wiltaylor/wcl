@@ -91,8 +91,8 @@ live inside a `diagram` too; wiring is covered by the
 
 ## Related
 
-- [flowchart shapes](../references/fact_flowcharts.md)
+- [flowchart shapes](../references/fact_flowcharts.md) — flowchart shapes supports diagram: Flowchart shapes plus the layered auto-layout mode turn a `diagram` into a flowchart: declare the shapes and the edges, and the renderer ranks them topologically and elbow-routes the connections.
 
-- [charts](../references/fact_charts.md)
+- [charts](../references/fact_charts.md) — charts supports diagram: wdoc ships three chart kinds — `bar_chart`, `line_chart`, and `pie_chart` — that lower to SVG via pure-WCL geometry.
 
 [← Back to SKILL.md](../SKILL.md)

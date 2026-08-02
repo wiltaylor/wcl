@@ -135,6 +135,7 @@ you meant the other drops the id or the attributes silently.
 
 ```wcl
 template blog {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_webpage_layout(c),
@@ -163,6 +164,12 @@ A `template` block: a custom output shape — a `render` function from a `Templa
 | Property | Type | Required | Description |
 | --- | --- | --- | --- |
 | `name` | `identifier` | yes |  |
+
+#### Child blocks
+
+| Slot | Accepts | Multiple | Description |
+| --- | --- | --- | --- |
+| `slots` | `slot` | yes |  |
 
 A `menu` block: the top navbar navigation for the `webpage` template, holding `item` entries.
 
@@ -273,8 +280,8 @@ A `notes` block: speaker notes inside a slide — hidden in the deck, shown in t
 
 ## Related
 
-- [Pages](../references/concept_pages.md)
+- [Pages](../references/concept_pages.md) — Pages supports Templates: The `page` block: id, title, the sites it joins, and the start page.
 
-- [Skill folders](../references/concept_skills.md)
+- [Skill folders](../references/concept_skills.md) — Skill folders supports Templates: The `:ai_skill` target: the `skill { }` block, folder layout, front matter, and `file` blocks.
 
 [← Back to SKILL.md](../SKILL.md)

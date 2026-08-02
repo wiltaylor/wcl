@@ -25,6 +25,6 @@ server web { port = 8080u16 }   // instance fields use `=`, not the `:` of a typ
 
 ## Related
 
-- [@children](../references/fact_dec_children.md)
+- [@children](../references/fact_dec_children.md) — @children supports @document: `@children("kind")` declares a field that holds a **list** of nested blocks of a kind.
 
 [← Back to SKILL.md](../SKILL.md)

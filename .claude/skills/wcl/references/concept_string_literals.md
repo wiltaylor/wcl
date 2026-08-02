@@ -101,6 +101,6 @@ TEX
 
 ## Related
 
-- [String Interpolation](../references/concept_string_interpolation.md)
+- [String Interpolation](../references/concept_string_interpolation.md) — String Interpolation supports String Literals: Opt-in with a `$` prefix; `${ ... }` slots splice evaluated expressions into the string.
 
 [← Back to SKILL.md](../SKILL.md)

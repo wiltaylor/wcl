@@ -27,10 +27,10 @@ concept, not inside the entity.
 
 ## Related
 
-- [Concept](../references/concept_concept.md)
+- [Concept](../references/concept_concept.md) — Concept supports Entity: A unit that captures an idea or mental model of something.
 
-- [Fact](../references/concept_fact.md)
+- [Fact](../references/concept_fact.md) — Fact supports Entity: A unit that holds factual data — a value, a constant, a value table.
 
-- [Process](../references/concept_process.md)
+- [Process](../references/concept_process.md) — Process supports Entity: A unit (authored as a procedure) that captures the reliable sequence for doing a task — ordered steps, for someone who already knows the topic.
 
 [← Back to SKILL.md](../SKILL.md)

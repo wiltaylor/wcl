@@ -15,6 +15,6 @@ done when all scenarios pass - not when the last spec merges.
 
 ## Related
 
-- [Surfaces](../references/concept_surfaces.md)
+- [Surfaces](../references/concept_surfaces.md) — Surfaces supports Usage scenarios: Every screen, command and endpoint is a typed contract - elements, required states, interactions - defined during the PRD and delivered by exactly one spec.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -53,6 +53,6 @@ each site renders into its own subdirectory.
 
 ## Related
 
-- [Sites](../references/concept_sites.md)
+- [Sites](../references/concept_sites.md) — Sites supports Render a document to PDF or Markdown: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search.
 
 [← Back to SKILL.md](../SKILL.md)

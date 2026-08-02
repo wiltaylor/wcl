@@ -21,6 +21,6 @@ service api {
 
 ## Related
 
-- [@children](../references/fact_dec_children.md)
+- [@children](../references/fact_dec_children.md) — @children supports @child: `@children("kind")` declares a field that holds a **list** of nested blocks of a kind.
 
 [← Back to SKILL.md](../SKILL.md)

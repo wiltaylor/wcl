@@ -155,6 +155,6 @@ diagram { width = 360  height = 200
 
 ## Related
 
-- [diagram](../references/fact_diagrams.md)
+- [diagram](../references/fact_diagrams.md) — diagram supports charts: A `diagram` is wdoc's drawing surface.
 
 [← Back to SKILL.md](../SKILL.md)

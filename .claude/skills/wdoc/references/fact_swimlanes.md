@@ -195,8 +195,8 @@ single "X and everything it talks to" picture instead of lanes, reach for the `:
 
 ## Related
 
-- [flowchart shapes](../references/fact_flowcharts.md)
+- [flowchart shapes](../references/fact_flowcharts.md) — flowchart shapes supports swim-lane flowcharts: Flowchart shapes plus the layered auto-layout mode turn a `diagram` into a flowchart: declare the shapes and the edges, and the renderer ranks them topologically and elbow-routes the connections.
 
-- [diagram](../references/fact_diagrams.md)
+- [diagram](../references/fact_diagrams.md) — diagram supports swim-lane flowcharts: A `diagram` is wdoc's drawing surface.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -159,8 +159,8 @@ page overview { start = true
 
 ## Related
 
-- [Sites](../references/concept_sites.md)
+- [Sites](../references/concept_sites.md) — Sites supports Skill folders: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search.
 
-- [Markdown output](../references/concept_markdown.md)
+- [Markdown output](../references/concept_markdown.md) — Markdown output supports Skill folders: The `wcl wdoc markdown` render target, its block mapping, caveats, and frontmatter.
 
 [← Back to SKILL.md](../SKILL.md)

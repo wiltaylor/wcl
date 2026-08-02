@@ -184,8 +184,8 @@ diagram {
 
 ## Related
 
-- [diagram](../references/fact_diagrams.md)
+- [diagram](../references/fact_diagrams.md) — diagram supports Diagram and container layout modes: A `diagram` is wdoc's drawing surface.
 
-- [flowchart shapes](../references/fact_flowcharts.md)
+- [flowchart shapes](../references/fact_flowcharts.md) — flowchart shapes supports Diagram and container layout modes: Flowchart shapes plus the layered auto-layout mode turn a `diagram` into a flowchart: declare the shapes and the edges, and the renderer ranks them topologically and elbow-routes the connections.
 
 [← Back to SKILL.md](../SKILL.md)

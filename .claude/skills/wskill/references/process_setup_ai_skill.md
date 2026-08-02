@@ -68,8 +68,8 @@ and how to verify the agent actually loads it.
 
 ## Related
 
-- [Building the wskill index](../references/process_building_the_index.md)
+- [Building the wskill index](../references/process_building_the_index.md) — Building the wskill index supports Setting up AI skill generation: Declare the wskill's shape during scoping by writing a bodied `index` tree, then place units under the node whose scope owns them.
 
-- [Building and installing the AI skill](../references/process_installing_the_skill.md)
+- [Building and installing the AI skill](../references/process_installing_the_skill.md) — Building and installing the AI skill supports Setting up AI skill generation by rendering and installing the configured skill so an agent can load it.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -86,8 +86,8 @@ Maps ride the `class` system: a pin's `class` themes its marker, `card_class` th
 
 ## Related
 
-- [diagram](../references/fact_diagrams.md)
+- [diagram](../references/fact_diagrams.md) — diagram supports map: A `diagram` is wdoc's drawing surface.
 
-- [image](../references/fact_images.md)
+- [image](../references/fact_images.md) — image supports map: `image` embeds a static image.
 
 [← Back to SKILL.md](../SKILL.md)

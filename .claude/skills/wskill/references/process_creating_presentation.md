@@ -77,6 +77,6 @@ the topic automatically.
 
 ## Related
 
-- [The presentation view](../references/concept_presentation_view.md)
+- [The presentation view](../references/concept_presentation_view.md) — The presentation view supports Creating the presentation view: An optional overview deck introducing the topic — slides feature existing units; the detail stays in the book.
 
 [← Back to SKILL.md](../SKILL.md)

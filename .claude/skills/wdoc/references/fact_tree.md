@@ -75,8 +75,8 @@ Icons resolve from any declared [iconset](../references/fact_icons.md); a node's
 
 ## Related
 
-- [diagram](../references/fact_diagrams.md)
+- [diagram](../references/fact_diagrams.md) — diagram supports tree: A `diagram` is wdoc's drawing surface.
 
-- [iconset / icon_def / icon](../references/fact_icons.md)
+- [iconset / icon_def / icon](../references/fact_icons.md) — The icon system supports trees by supplying the glyphs rendered inside tree nodes.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -70,6 +70,6 @@ concept fast_forward {
 
 ## Related
 
-- [Concept](../references/concept_concept.md)
+- [Concept](../references/concept_concept.md) — Concept supports Template — concept: A unit that captures an idea or mental model of something.
 
 [← Back to SKILL.md](../SKILL.md)

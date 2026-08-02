@@ -22,6 +22,6 @@ oversize = width > 100u32 || height > 100u32
 
 ## Related
 
-- [Operators](../references/fact_operators.md)
+- [Operators](../references/fact_operators.md) — Operators supports Booleans: WCL's complete operator set.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -27,6 +27,6 @@ Everything below was tested while building the template. The installed wcl may h
 
 ## Related
 
-- [Gates are blocks, not lets](../references/concept_gates.md)
+- [Gates are blocks, not lets](../references/concept_gates.md) — Gates are blocks, not lets supports WCL behaviour verified against the binary (0.29/0.30-alpha): A gate is a block whose `ok` field asserts a condition; `wcl eval gates.wcl gates.<id>.ok` forces it and exits non-zero on failure.
 
 [← Back to SKILL.md](../SKILL.md)

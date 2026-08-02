@@ -22,8 +22,8 @@ with the gate message on failure. `just check` evaluates all of them.
 
 ## Related
 
-- [Gates are blocks, not lets](../references/concept_gates.md)
+- [Gates are blocks, not lets](../references/concept_gates.md) — Gates are blocks, not lets supports The thirteen default gates: A gate is a block whose `ok` field asserts a condition; `wcl eval gates.wcl gates.<id>.ok` forces it and exits non-zero on failure.
 
-- [File ownership](../references/concept_ownership.md)
+- [File ownership](../references/concept_ownership.md) — File ownership supports The thirteen default gates: Each path has exactly one owning spec; disjoint ownership - not luck - is what makes parallel agents merge-safe.
 
 [← Back to SKILL.md](../SKILL.md)

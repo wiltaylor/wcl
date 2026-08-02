@@ -78,6 +78,6 @@ WCL
 
 ## Related
 
-- [Sites](../references/concept_sites.md)
+- [Sites](../references/concept_sites.md) — Sites supports Pages: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search.
 
 [← Back to SKILL.md](../SKILL.md)

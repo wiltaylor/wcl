@@ -91,8 +91,8 @@ A `site` block configuring one output target — its template, title, theme, nav
 
 ## Related
 
-- [Pages](../references/concept_pages.md)
+- [Pages](../references/concept_pages.md) — Pages supports Sites: The `page` block: id, title, the sites it joins, and the start page.
 
-- [Templates](../references/concept_templates.md)
+- [Templates](../references/concept_templates.md) — Templates supports Sites: The built-in templates webpage / book / presentation / ai_skill, their navigation blocks, and writing a custom template.
 
 [← Back to SKILL.md](../SKILL.md)

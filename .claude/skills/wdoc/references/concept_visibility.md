@@ -73,10 +73,10 @@ page overview { start = true
 
 ## Related
 
-- [Sites](../references/concept_sites.md)
+- [Sites](../references/concept_sites.md) — Sites supports Block Visibility: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search.
 
-- [Templates](../references/concept_templates.md)
+- [Templates](../references/concept_templates.md) — Templates supports Block Visibility: The built-in templates webpage / book / presentation / ai_skill, their navigation blocks, and writing a custom template.
 
-- [Markdown output](../references/concept_markdown.md)
+- [Markdown output](../references/concept_markdown.md) — Markdown output supports Block Visibility: The `wcl wdoc markdown` render target, its block mapping, caveats, and frontmatter.
 
 [← Back to SKILL.md](../SKILL.md)

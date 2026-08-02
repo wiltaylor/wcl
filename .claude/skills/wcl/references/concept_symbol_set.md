@@ -33,6 +33,6 @@ edge kinds, named layout modes, palette hues.
 
 ## Related
 
-- [Symbols](../references/concept_symbols.md)
+- [Symbols](../references/concept_symbols.md) — Symbols supports Symbol Sets: Identifier-like :name values for tags and enum-like choices, plus symbol_set vocabularies.
 
 [← Back to SKILL.md](../SKILL.md)

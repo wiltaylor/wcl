@@ -22,6 +22,6 @@ cannot be verified quickly, mark it stale rather than deleting it.
 
 ## Related
 
-- [Self-contained briefs](../references/concept_briefs.md)
+- [Self-contained briefs](../references/concept_briefs.md) — Self-contained briefs supports The project context file: Every exported spec .md must stand alone: rules, context and findings are copied in, never referenced.
 
 [← Back to SKILL.md](../SKILL.md)

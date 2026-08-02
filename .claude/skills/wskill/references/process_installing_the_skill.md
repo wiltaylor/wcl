@@ -52,6 +52,6 @@ never triggers, sharpen the `description` in the `skill` block — it is the tri
 
 ## Related
 
-- [Setting up AI skill generation](../references/process_setup_ai_skill.md)
+- [Setting up AI skill generation](../references/process_setup_ai_skill.md) — Setting up AI skill generation supports Building and installing the AI skill by defining the skill block, audience, and indexes that installation renders.
 
 [← Back to SKILL.md](../SKILL.md)

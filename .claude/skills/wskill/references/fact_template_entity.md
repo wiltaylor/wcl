@@ -81,6 +81,6 @@ entity ripgrep {
 
 ## Related
 
-- [Entity](../references/concept_entity.md)
+- [Entity](../references/concept_entity.md) — Entity supports Template — entity: A concrete NAMED thing in the topic's world — a person, software, a place, an organisation. Reserved: never a catch-all.
 
 [← Back to SKILL.md](../SKILL.md)

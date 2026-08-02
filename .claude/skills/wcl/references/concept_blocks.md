@@ -43,6 +43,6 @@ service "web" {
 
 ## Related
 
-- [Fields](../references/concept_fields.md)
+- [Fields](../references/concept_fields.md) — Fields supports Blocks: A field binds a name to a value with `=`; the value is any expression.
 
 [← Back to SKILL.md](../SKILL.md)

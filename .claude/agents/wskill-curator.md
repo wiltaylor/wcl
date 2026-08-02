@@ -44,9 +44,9 @@ All source mutations go through one `wcl wskill op` invocation. Build an id-addr
 
 - Allowed: add a related edge only while authoring its reason; remove an edge; re-kind a concept/fact/entity when the installed op vocabulary supports it; pin, unpin or reorder index membership; create, delete or nest an index; file a curator comment.
 - Never edit a unit body, summary, name or other prose.
-- Never backfill a reason onto a pre-existing bare edge. Remove it or leave it and file a comment.
+- Never invent a reason for an invalid pre-existing bare edge. Remove it, or file a comment when the evidence does not support a reason.
 - Never merge, split or delete a content unit.
-- A `related_add` is safe only if its JSON carries `why` and `--dry-run` prints that reason back. If the installed CLI drops or refuses the reason, file a comment instead of creating a bare edge.
+- A `related_add` is safe only if its JSON carries `why` and `--dry-run` prints that reason back. If the installed CLI drops or refuses the reason, file a comment instead of creating the edge.
 - If an allowed operation is absent from the installed id-addressed vocabulary, file a comment; never work around the gate by editing the source directly.
 
 # Comments for findings you cannot fix

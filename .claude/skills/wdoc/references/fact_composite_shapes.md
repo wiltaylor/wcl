@@ -215,6 +215,6 @@ One row of a node_table.
 
 ## Related
 
-- [diagram](../references/fact_diagrams.md)
+- [diagram](../references/fact_diagrams.md) — diagram supports composite shapes: A `diagram` is wdoc's drawing surface.
 
 [← Back to SKILL.md](../SKILL.md)

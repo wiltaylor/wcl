@@ -28,6 +28,6 @@ users; say so and fix the trivial thing.
 
 ## Related
 
-- [Codebase reconnaissance](../references/process_proc_recon.md)
+- [Codebase reconnaissance](../references/process_proc_recon.md) — Codebase reconnaissance supports Issue mode: wplan compressed for brownfield: Replace plan mode's open-ended research with findings complete enough that spec bodies can copy from them and no implementation agent ever explores the codebase blind.
 
 [← Back to SKILL.md](../SKILL.md)
