@@ -75,7 +75,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_wskill {
     name = "wskill"
     kind = "module"
-    summary = "1 file, 2 pub items"
+    summary = "1 file, 3 pub items"
   }
   code_node n_cg_wcl_xc_wcl_lang {
     name = "wcl_lang (crate)"
@@ -362,7 +362,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_git {
     name = "git"
     kind = "module"
-    summary = "1 file, 3 pub items"
+    summary = "1 file, 4 pub items"
   }
   code_node n_cg_wcl_wdoc_highlight {
     name = "highlight"
@@ -1045,7 +1045,12 @@ code_item code_api_cli_commands {
       visibility = "crate"
     }
     code_member m_n_api_cli_commands_wskill_fns_run_lint {
-      signature = "fn run_lint( entry: &Path, format: crate::LintFormat, severity:…"
+      signature = "fn run_lint( entry: &Path, format: crate::ReportFormat, severit…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_wskill_fns_run_audit {
+      signature = "fn run_audit(entry: &Path, range: &str, format: crate::ReportFo…"
       kind = "fn"
       visibility = "crate"
     }
@@ -6417,6 +6422,10 @@ code_item code_api_wcl_wdoc_git {
     }
     code_member m_n_api_wcl_wdoc_git_git_fns_resolve_rev {
       signature = "fn resolve_rev(rev: &str, root: &Path) -> Result<String, String>"
+      kind = "fn"
+    }
+    code_member m_n_api_wcl_wdoc_git_git_fns_merge_base {
+      signature = "fn merge_base(a: &str, b: &str, root: &Path) -> Result<String, …"
       kind = "fn"
     }
     code_member m_n_api_wcl_wdoc_git_git_fns_materialize_rev {

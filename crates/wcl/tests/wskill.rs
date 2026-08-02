@@ -42,9 +42,22 @@ fn scaffolded_wskill(tmp: &TempDir) -> PathBuf {
 /// parameterised by what the index pins and what beta is called — the two
 /// things the revision test changes between commits.
 fn write_reference(dest: &Path, pinned: &str, beta_name: &str) {
+    write_units(
+        dest,
+        &format!(
+            "concept beta {{\n  name    = \"{beta_name}\"\n  summary = \"The second idea.\"\n}}\n\n\
+             index reference {{\n  name    = \"Reference\"\n  summary = \"Everything, pinned.\"\n  \
+             related = {pinned}\n}}\n"
+        ),
+    );
+}
+
+/// Rewrite the reference file as `alpha` plus whatever the test authors,
+/// keeping the scaffold's authoring guide above it. `alpha` is always there
+/// so the guide stays findable however often the file is rewritten.
+fn write_units(dest: &Path, units: &str) {
     let path = dest.join("data/reference/reference.wcl");
     let template = std::fs::read_to_string(&path).unwrap();
-    // Keep the scaffold's authoring guide above the content.
     let guide = template
         .split("\nconcept alpha {")
         .next()
@@ -54,13 +67,32 @@ fn write_reference(dest: &Path, pinned: &str, beta_name: &str) {
         &path,
         format!(
             "{guide}\nconcept alpha {{\n  name    = \"Alpha\"\n  summary = \"The first idea.\"\n\n  \
-             body {{\n    p \"Alpha explained.\"\n  }}\n}}\n\n\
-             concept beta {{\n  name    = \"{beta_name}\"\n  summary = \"The second idea.\"\n}}\n\n\
-             index reference {{\n  name    = \"Reference\"\n  summary = \"Everything, pinned.\"\n  \
-             related = {pinned}\n}}\n"
+             body {{\n    p \"Alpha explained.\"\n  }}\n}}\n\n{units}"
         ),
     )
     .unwrap();
+}
+
+/// Turn `dir` into a git repo with everything in it committed.
+fn git_init(dir: &Path) {
+    git(dir, &["init", "-q"]);
+    commit(dir, "baseline");
+}
+
+fn commit(dir: &Path, message: &str) {
+    git(dir, &["add", "-A"]);
+    git(
+        dir,
+        &[
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-qm",
+            message,
+        ],
+    );
 }
 
 fn graph_of(args: &[&str]) -> serde_json::Value {
@@ -136,20 +168,7 @@ fn graph_emits_the_model_as_json() {
 fn graph_reads_the_model_at_a_git_revision() {
     let tmp = TempDir::new().unwrap();
     let dest = scaffolded_wskill(&tmp);
-    git(&dest, &["init", "-q"]);
-    git(&dest, &["add", "-A"]);
-    git(
-        &dest,
-        &[
-            "-c",
-            "user.email=t@example.com",
-            "-c",
-            "user.name=t",
-            "commit",
-            "-qm",
-            "baseline",
-        ],
-    );
+    git_init(&dest);
     // Diverge the working tree: pin beta too, and rename it.
     write_reference(&dest, "[alpha, beta]", "Beta, renamed");
 
@@ -282,6 +301,232 @@ fn lint_writes_nothing() {
         .assert()
         .success();
     assert_eq!(before, tree_snapshot(&dest));
+}
+
+/// The reference file of the authoring commit the audit tests review: `beta`
+/// deleted, two unpinned concepts written in its place, one of them linking
+/// back to `alpha`.
+const AUTHORED: &str = "concept gamma {\n  name    = \"Gamma\"\n  \
+     summary = \"The third idea.\"\n  related = [alpha]\n}\n\n\
+     concept delta {\n  name    = \"Delta\"\n  summary = \"The fourth idea.\"\n}\n\n\
+     index reference {\n  name    = \"Reference\"\n  summary = \"Everything, pinned.\"\n  \
+     related = [alpha]\n}\n";
+
+/// The same file before it: `beta`, linking to `alpha` and pinned by nothing.
+const BASELINE: &str = "concept beta {\n  name    = \"Beta\"\n  \
+     summary = \"The second idea.\"\n  related = [alpha]\n}\n\n\
+     index reference {\n  name    = \"Reference\"\n  summary = \"Everything, pinned.\"\n  \
+     related = [alpha]\n}\n";
+
+fn audit_out(args: &[&str]) -> std::process::Output {
+    let out = wcl().args(["wskill", "audit"]).args(args).output().unwrap();
+    assert!(
+        out.status.success(),
+        "wcl wskill audit {args:?} failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    out
+}
+
+/// A real authoring commit — units added *and* deleted — read back as the
+/// union graph, which is the whole reason an audit is not the after-state.
+#[test]
+fn audit_reports_the_union_of_both_revisions() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    write_units(&dest, BASELINE);
+    git_init(&dest);
+    write_units(&dest, AUTHORED);
+    commit(&dest, "atomize the reference");
+
+    let out = audit_out(&[dest.to_str().unwrap(), "--range", "HEAD~1..HEAD"]);
+    let text = String::from_utf8(out.stdout).unwrap();
+
+    // The header: counts, then the metrics that moved the wrong way.
+    assert!(text.contains("units +2 -1"), "{text}");
+    assert!(text.contains("edges +1 -1"), "{text}");
+    assert!(
+        text.contains("worse   units no index pins 1 → 2"),
+        "health is header material, not a report: {text}"
+    );
+
+    // The deletion — and the edge that died with it. Neither exists in the
+    // after-state, so neither is in a live graph.
+    assert!(text.contains("- concept:beta \"Beta\""), "{text}");
+    assert!(text.contains("- related → concept:alpha"), "{text}");
+
+    // The addition, carrying the finding the range gave it. Every unit of
+    // the measured commit landed unpinned and nothing said so at the time;
+    // this is the line that says so.
+    assert!(text.contains("+ concept:gamma \"Gamma\""), "{text}");
+    assert!(text.contains("warn [unindexed]"), "{text}");
+    assert!(text.contains("+ related → concept:alpha"), "{text}");
+
+    // `alpha` and the index were not touched and are not news — findings are
+    // scoped to the range, not to the corpus.
+    assert!(!text.contains("concept:alpha \""), "{text}");
+    let summary = String::from_utf8(out.stderr).unwrap();
+    assert!(
+        summary.contains("3 nodes changed, 2 new findings"),
+        "{summary}"
+    );
+}
+
+/// The default range is the previous commit against the working tree, so an
+/// agent's output can be audited before it is committed.
+#[test]
+fn audit_defaults_to_the_previous_commit_and_the_working_tree() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    write_units(&dest, BASELINE);
+    git_init(&dest);
+    write_units(&dest, AUTHORED);
+    commit(&dest, "atomize the reference");
+    // …and one more unit the agent has not committed yet.
+    write_units(
+        &dest,
+        &format!(
+            "{AUTHORED}\nconcept epsilon {{\n  name    = \"Epsilon\"\n  \
+                  summary = \"The fifth idea.\"\n}}\n"
+        ),
+    );
+
+    let text = String::from_utf8(audit_out(&[dest.to_str().unwrap()]).stdout).unwrap();
+    assert!(text.contains("(working tree)"), "{text}");
+    // The baseline is HEAD~1 and the other side is the tree as it stands, so
+    // both the committed authoring and the uncommitted unit are in scope.
+    assert!(text.contains("units +3 -1"), "{text}");
+    assert!(text.contains("- concept:beta \"Beta\""), "{text}");
+    assert!(text.contains("+ concept:epsilon \"Epsilon\""), "{text}");
+}
+
+/// `a...b` starts where the branches diverged: reviewing a topic branch must
+/// not report the trunk's own work as the branch's doing.
+#[test]
+fn audit_starts_a_three_dot_range_at_the_merge_base() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    write_units(&dest, BASELINE);
+    git_init(&dest);
+    git(&dest, &["checkout", "-b", "base", "-q"]);
+    git(&dest, &["checkout", "-b", "topic", "-q"]);
+    write_units(&dest, AUTHORED);
+    commit(&dest, "atomize the reference");
+    // Meanwhile, the trunk renames `beta`.
+    git(&dest, &["checkout", "base", "-q"]);
+    write_reference(&dest, "[alpha]", "Beta, renamed on the trunk");
+    commit(&dest, "meanwhile, on the trunk");
+    git(&dest, &["checkout", "topic", "-q"]);
+
+    let dest_str = dest.to_str().unwrap();
+    let branch =
+        String::from_utf8(audit_out(&[dest_str, "--range", "base...HEAD"]).stdout).unwrap();
+    assert!(branch.contains("- concept:beta \"Beta\""), "{branch}");
+    assert!(
+        !branch.contains("renamed on the trunk"),
+        "the trunk's rename is not the branch's doing: {branch}"
+    );
+
+    // The two-dot range is the other question — what this branch differs
+    // from the trunk's tip by — and answers it differently on purpose.
+    let tips = String::from_utf8(audit_out(&[dest_str, "--range", "base..HEAD"]).stdout).unwrap();
+    assert!(tips.contains("renamed on the trunk"), "{tips}");
+}
+
+/// The wire shape the editor's audit view renders.
+#[test]
+fn audit_emits_the_union_graph_as_json() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    write_units(&dest, BASELINE);
+    git_init(&dest);
+    write_units(&dest, AUTHORED);
+    commit(&dest, "atomize the reference");
+
+    let out = audit_out(&[
+        dest.to_str().unwrap(),
+        "--range",
+        "HEAD~1..HEAD",
+        "--format",
+        "json",
+    ]);
+    let a: serde_json::Value = serde_json::from_slice(&out.stdout).expect("stdout is JSON");
+
+    assert_eq!(a["entry"], "wskill.wcl");
+    assert_eq!(a["before"].as_str().map(str::len), Some(40));
+    assert_eq!(a["after"].as_str().map(str::len), Some(40));
+    assert_eq!(
+        a["summary"],
+        serde_json::json!({
+            "units": {"added": 2, "removed": 1, "modified": 0},
+            "indexes": {"added": 0, "removed": 0, "modified": 0},
+            "edges": {"added": 1, "removed": 1},
+        })
+    );
+
+    let node = |id: &str| {
+        a["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["id"] == id)
+            .unwrap_or_else(|| panic!("no node `{id}` in {a:#}"))
+            .clone()
+    };
+    // Both revisions' nodes are here, each marked — including the ones the
+    // range left alone, because the view draws a graph and not a list.
+    assert_eq!(node("beta")["change"], "removed");
+    assert_eq!(node("beta")["kind"], "concept");
+    assert_eq!(node("gamma")["change"], "added");
+    assert_eq!(node("gamma")["findings"][0]["rule"], "unindexed");
+    assert_eq!(node("alpha")["change"], "unchanged");
+    assert_eq!(node("alpha")["findings"], serde_json::json!([]));
+    assert_eq!(node("reference")["kind"], "index");
+
+    let edge = |from: &str, to: &str| {
+        a["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["from"] == from && e["to"] == to)
+            .unwrap_or_else(|| panic!("no edge {from} → {to} in {a:#}"))
+            .clone()
+    };
+    assert_eq!(edge("concept:beta", "concept:alpha")["change"], "removed");
+    assert_eq!(edge("concept:gamma", "concept:alpha")["change"], "added");
+    assert_eq!(
+        edge("index:reference", "concept:alpha")["change"],
+        "unchanged"
+    );
+
+    let health = a["health"].as_array().unwrap();
+    let unindexed = health
+        .iter()
+        .find(|m| m["key"] == "unindexed_units")
+        .unwrap();
+    assert_eq!(unindexed["before"], 1.0);
+    assert_eq!(unindexed["after"], 2.0);
+    assert_eq!(unindexed["worse"], true);
+}
+
+/// A range git cannot resolve is a tool failure (2), like an unreadable
+/// model — the caller's question is the same one.
+#[test]
+fn audit_reports_an_unresolvable_range_as_a_tool_failure() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    git_init(&dest);
+    wcl()
+        .args([
+            "wskill",
+            "audit",
+            dest.to_str().unwrap(),
+            "--range",
+            "no-such-rev",
+        ])
+        .assert()
+        .failure()
+        .code(2);
 }
 
 /// Every file under `dir` with its bytes — enough to catch a write, a
