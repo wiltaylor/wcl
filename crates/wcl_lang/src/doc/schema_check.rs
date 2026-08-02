@@ -19,6 +19,49 @@ use crate::value::Value;
 use super::cells::ItemCellKind;
 use super::{Block, BuiltinDecorator, DeclName, Document, TypeField};
 
+fn decorator_slot_value_error(
+    doc: &Document,
+    decorator: &super::Decorator<'_>,
+    slot: TypeField<'_>,
+    value: &Value,
+    span: ast::Span,
+) -> Option<EvalError> {
+    use crate::error::SchemaViolationKind as Kind;
+
+    let declared_type = doc.resolve_alias(slot.type_ref());
+    if !crate::doc::value_matches_declared(value, &declared_type, slot.optional()) {
+        return Some(EvalError::schema_violation_named(
+            Kind::FieldTypeMismatch,
+            format!(
+                "argument for decorator '@{}' slot '{}' is declared as {} but the value is {}",
+                decorator.full_name(),
+                slot.name(),
+                slot.type_ref(),
+                value.type_name(),
+            ),
+            slot.name(),
+            span,
+        ));
+    }
+    if let Some(error) =
+        crate::doc::symbol_set_membership_error(doc, &declared_type, value, slot.name(), span)
+    {
+        return Some(error);
+    }
+    constraint_violation(doc, &slot.ast.decorators, slot.type_ref(), value).map(|message| {
+        EvalError::schema_violation_named(
+            Kind::ConstraintViolation,
+            format!(
+                "argument for decorator '@{}' slot '{}': {message}",
+                decorator.full_name(),
+                slot.name(),
+            ),
+            slot.name(),
+            span,
+        )
+    })
+}
+
 /// Check the values written into a declared decorator's positional slots.
 /// Slot numbers come from `@inline(N)`; declaration order is not positional.
 /// Undeclared decorators are left to the declaration validator.
@@ -35,7 +78,15 @@ pub(super) fn decorator_argument_errors(
         return Vec::new();
     };
     let mut errors = Vec::new();
-    for (index, (value, span)) in values.iter().zip(decorator.positional_spans()).enumerate() {
+    for (index, value) in values.iter().enumerate() {
+        // Parsed and synthetic decorators keep these vectors aligned. Falling
+        // back to the decorator span makes a manually mutated AST noisy rather
+        // than silently dropping validation through a truncating `zip`.
+        let span = decorator
+            .positional_spans()
+            .get(index)
+            .copied()
+            .unwrap_or_else(|| decorator.span());
         let Some(slot) = schema
             .fields()
             .find(|field| field.inline_slot() == Some(index as u64))
@@ -49,41 +100,12 @@ pub(super) fn decorator_argument_errors(
                     index,
                     schema.name(),
                 ),
-                *span,
+                span,
             ));
             continue;
         };
-        let declared_type = doc.resolve_alias(slot.type_ref());
-        if !crate::doc::value_matches_declared(value, &declared_type, slot.optional()) {
-            errors.push(EvalError::schema_violation_named(
-                Kind::FieldTypeMismatch,
-                format!(
-                    "argument for decorator '@{}' slot '{}' is declared as {} but the value is {}",
-                    decorator.full_name(),
-                    slot.name(),
-                    slot.type_ref(),
-                    value.type_name(),
-                ),
-                slot.name(),
-                *span,
-            ));
-        } else if let Some(error) =
-            crate::doc::symbol_set_membership_error(doc, &declared_type, value, slot.name(), *span)
-        {
+        if let Some(error) = decorator_slot_value_error(doc, decorator, slot, value, span) {
             errors.push(error);
-        } else if let Some(message) =
-            constraint_violation(doc, &slot.ast.decorators, slot.type_ref(), value)
-        {
-            errors.push(EvalError::schema_violation_named(
-                Kind::ConstraintViolation,
-                format!(
-                    "argument for decorator '@{}' slot '{}': {message}",
-                    decorator.full_name(),
-                    slot.name(),
-                ),
-                slot.name(),
-                *span,
-            ));
         }
     }
     for named in decorator.named() {
@@ -103,41 +125,9 @@ pub(super) fn decorator_argument_errors(
         let Ok(value) = named.value() else {
             continue;
         };
-        let declared_type = doc.resolve_alias(slot.type_ref());
-        if !crate::doc::value_matches_declared(&value, &declared_type, slot.optional()) {
-            errors.push(EvalError::schema_violation_named(
-                Kind::FieldTypeMismatch,
-                format!(
-                    "argument for decorator '@{}' slot '{}' is declared as {} but the value is {}",
-                    decorator.full_name(),
-                    slot.name(),
-                    slot.type_ref(),
-                    value.type_name(),
-                ),
-                slot.name(),
-                named.span(),
-            ));
-        } else if let Some(error) = crate::doc::symbol_set_membership_error(
-            doc,
-            &declared_type,
-            &value,
-            slot.name(),
-            named.span(),
-        ) {
-            errors.push(error);
-        } else if let Some(message) =
-            constraint_violation(doc, &slot.ast.decorators, slot.type_ref(), &value)
+        if let Some(error) = decorator_slot_value_error(doc, decorator, slot, &value, named.span())
         {
-            errors.push(EvalError::schema_violation_named(
-                Kind::ConstraintViolation,
-                format!(
-                    "argument for decorator '@{}' slot '{}': {message}",
-                    decorator.full_name(),
-                    slot.name(),
-                ),
-                slot.name(),
-                named.span(),
-            ));
+            errors.push(error);
         }
     }
     let named_slots: HashSet<&str> = decorator.named().map(|arg| arg.name()).collect();
