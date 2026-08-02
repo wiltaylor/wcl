@@ -122,6 +122,7 @@ import {
 } from '../../preview/diagram';
 import { createPageScopes } from '../../preview/pagescope';
 import { shapeOps } from '../../preview/shapeops';
+import { placeEmptySlots, slotInsertOp, slotMoveOps } from '../../preview/slots';
 import { createSurfaceHandle } from '../../preview/surfaceref';
 import {
   cellCoords,
@@ -552,7 +553,11 @@ export default function EditSurface(props) {
       currentSite: props.gutter?.currentSite,
       onProfile: (a) => openVisibility(a),
       onReorder: reorderLocal,
+      onSlotDrop: dropIntoSlot,
       enabled: () => !busy(),
+    });
+    placeEmptySlots(d, {
+      onInsert: (anchor) => setPopover({ type: 'insert', anchor }),
     });
   };
 
@@ -599,6 +604,26 @@ export default function EditSurface(props) {
   };
 
   const spanOfEl = (e) => spanOf(e) ?? { start: 0, end: 0 };
+
+  /** Gutter drag → empty named slot. Slot fills belong directly to the page,
+      so this is one same-file insert+delete batch. Empty named wrappers are
+      retained as visible editing surfaces and can be filled again later. */
+  const dropIntoSlot = async ({ source, target }) => {
+    if (source.file !== target.file) {
+      toast('A slot can only take content authored in the same page file', {
+        tone: 'danger',
+        duration: 5000,
+      });
+      return;
+    }
+    const src = await api.blockSource({ file: source.file, span: source.span });
+    if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
+    commitOps(
+      source.file,
+      slotMoveOps(source, target, src.source),
+      { etag: src.etag, reveal: 'inserted' },
+    );
+  };
 
   /** Gutter drag → in-place move + local commit; anchors patched from the
       response's span_map, so no rebuild or reload. The `move_to` op is
@@ -887,6 +912,9 @@ export default function EditSurface(props) {
             fallback={
               <>
                 <span class="ed-design-kind">{selection()?.kind}</span>
+                <Show when={selection()?.slot}>
+                  <Badge>slot · {selection().slot}</Badge>
+                </Show>
                 <Show when={selection()?.shared}>
                   <Badge tone="warning">edits affect all instances</Badge>
                 </Show>

@@ -224,6 +224,7 @@ export function anchorOf(doc, el) {
     file,
     span,
     kind: kindOf(el) || 'block',
+    slot: pageSlotOf(slotRootOf(el)),
     shape,
     shapeId: shapeIdOf(el),
     layout: layoutOf(el),
@@ -323,6 +324,13 @@ export function pageInfo(doc) {
     provenance instead). */
 export function pageRootOf(el) {
   return el?.closest?.(SEL.page) ?? null;
+}
+
+/** The resolved layout-slot wrapper enclosing `el`, whether page-owned or
+    layout-owned fallback content. This is the DOM ancestor lookup Design
+    mode uses to report which hole a selected block occupies. */
+export function slotRootOf(el) {
+  return el?.closest?.(`[${ATTR.pageSlot}]`) ?? null;
 }
 
 /** The declared slot name stamped on a page wrapper. */

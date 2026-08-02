@@ -93,6 +93,10 @@ const PAGE = `
       data-wcl-span="890:895" data-wcl-file="unit.wcl">Hero</h1>
   <p id="hero-copy" data-wcl-block data-wcl-kind="p"
      data-wcl-span="896:899" data-wcl-file="unit.wcl">Copy</p>
+</div>
+<div id="fallback-slot" data-wcl-page-name="concept_x" data-wcl-slot="footer"
+     data-wcl-file="layout.wcl" data-wcl-span="40:80">
+  <footer id="fallback-content">Layout footer</footer>
 </div>`;
 
 function setup() {
@@ -228,6 +232,19 @@ describe('the shared-instance rule', () => {
     expect(anchorOf(document, el('dup2')).shared).toBe(true);
     // A span collision across FILES is not a shared instance.
     expect(anchorOf(document, el('tpl')).shared).toBe(false);
+  });
+});
+
+describe('slot ownership', () => {
+  it('reports the owning slot on every selected block', () => {
+    expect(anchorOf(document, el('a')).slot).toBe('content');
+    expect(anchorOf(document, el('hero-title')).slot).toBe('hero');
+  });
+
+  it('keeps fallback content owned by the layout declaration', () => {
+    const fallback = anchorOf(document, el('fallback-slot'));
+    expect(fallback).toMatchObject({ file: 'layout.wcl', slot: 'footer' });
+    expect(anchorElAt(el('fallback-content'))).toBe(el('fallback-slot'));
   });
 });
 

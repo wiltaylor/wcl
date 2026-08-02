@@ -38,6 +38,7 @@ import {
   shapeSnippet,
 } from '../../preview/schemaform';
 import { wclString } from '../../preview/wysiwyg';
+import { slotInsertOp } from '../../preview/slots';
 import {
   delColAt,
   insertColAt,
@@ -764,7 +765,9 @@ function InsertPalette(props) {
     // A container (an empty addressable `body`, or any selected `body`)
     // takes the new block as its child; everything else gets a sibling.
     const op =
-      a.kind === 'body'
+      a.kind === 'slot'
+        ? slotInsertOp(a, source)
+        : a.kind === 'body'
         ? { op: 'insert_child', span: a.span, index: 9999, source }
         : { op: 'insert_after', span: a.span, source };
     props.onCommit(commitOps(a.file, [op], { reveal: 'inserted' }));
@@ -788,7 +791,7 @@ function InsertPalette(props) {
     <Modal
       open
       onClose={props.onClose}
-      title="Insert block"
+      title={props.anchor?.slot ? `Insert into ${props.anchor.slot}` : 'Insert block'}
       footer={
         <Show when={compForm()}>
           <Button onClick={() => setCompForm(null)}>Back</Button>

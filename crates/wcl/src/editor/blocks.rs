@@ -129,6 +129,8 @@ pub(super) fn visibility_json(block: &ast::Block) -> serde_json::Value {
 /// - `replace_source { source }` — swap the whole block for a fragment
 /// - `insert_after { source }` — a new sibling block after the target
 /// - `insert_child { index, source }` — a new child at block-index `index`
+/// - `insert_slot { slot, source }` — a new page child routed through the
+///   named layout slot (`content` remains a loose page child)
 /// - `append_top_level { source }` — a new top-level block (no `span`)
 /// - `set_visibility { except_sites: [names] }` — rewrite the block's
 ///   `@except(sites = [:…])` decorator (empty list removes it)
@@ -258,6 +260,35 @@ pub(super) fn block_ops(
                 block.span = mark;
                 let parent = find_block(&mut src.items, span)?;
                 ast_edit::insert_block_at_index(&mut parent.items, index, block);
+                tracked.push(("inserted", mark));
+            }
+            "insert_slot" => {
+                let span = span_field(op, "span")?;
+                let slot = crate::edit::str_field(op, "slot")?;
+                if !is_identifier(slot) {
+                    return Err(format!("`{slot}` is not a valid slot name"));
+                }
+                let mut block = parse_fragment(crate::edit::str_field(op, "source")?)?;
+                let mark = sentinel();
+                block.span = mark;
+                let page = find_block(&mut src.items, span)?;
+                if page.kind != "page" {
+                    return Err("insert_slot must target a page block".into());
+                }
+                if slot == "content" {
+                    ast_edit::insert_block_at_index(&mut page.items, usize::MAX, block);
+                } else if let Some(fill) = page.items.iter_mut().find_map(|item| match item {
+                    Item::Block(fill) if fill.kind == slot => Some(fill),
+                    _ => None,
+                }) {
+                    ast_edit::insert_block_at_index(&mut fill.items, usize::MAX, block);
+                } else {
+                    let mut fill = ast_edit::build_block(slot, &[], vec![], vec![]);
+                    fill.items.push(Item::Block(block));
+                    ast_edit::insert_block_at_index(&mut page.items, usize::MAX, fill);
+                }
+                // Track the authored content, not the transparent named-slot
+                // wrapper, so the client can select it after the rebuild.
                 tracked.push(("inserted", mark));
             }
             "append_top_level" => {
@@ -971,6 +1002,100 @@ mod tests {
         ed.run(|at| serde_json::json!([{ "op": "delete", "span": at(&kind_is("callout")) }]))
             .expect("delete");
         assert!(!ed.text().contains("callout"), "{}", ed.text());
+    }
+
+    #[test]
+    fn insert_slot_places_content_under_the_page_and_reveals_the_inner_block() {
+        let (_td, ws) = workspace_with(BODY_DOC);
+        let ed = Edits::main(&ws);
+
+        let named = ed
+            .run(|at| {
+                serde_json::json!([{
+                    "op": "insert_slot",
+                    "span": at(&kind_is("page")),
+                    "slot": "hero",
+                    "source": "h1 \"New hero\"",
+                }])
+            })
+            .expect("insert named slot");
+        let text = ed.text();
+        assert!(text.contains("hero {\n    h1 \"New hero\"\n  }"), "{text}");
+
+        let inserted = named["spans"]
+            .as_array()
+            .and_then(|spans| spans.iter().find(|span| span["role"] == "inserted"))
+            .expect("inserted span");
+        let start = inserted["span"]["start"].as_u64().unwrap() as usize;
+        let end = inserted["span"]["end"].as_u64().unwrap() as usize;
+        assert_eq!(&text[start..end], "h1 \"New hero\"");
+
+        ed.run(|at| {
+            serde_json::json!([{
+                "op": "insert_slot",
+                "span": at(&kind_is("page")),
+                "slot": "content",
+                "source": "p \"Last paragraph\"",
+            }])
+        })
+        .expect("insert content slot");
+        let text = ed.text();
+        assert!(text.contains("p \"Last paragraph\""), "{text}");
+        assert!(
+            !text.contains("content {"),
+            "reserved content stays loose: {text}"
+        );
+    }
+
+    #[test]
+    fn insert_slot_batches_a_drop_move_without_duplicating_the_block() {
+        let (_td, ws) = workspace_with(BODY_DOC);
+        let ed = Edits::main(&ws);
+
+        ed.run(|at| {
+            let first = at(&labelled("p", "First paragraph"));
+            serde_json::json!([
+                {
+                    "op": "insert_slot",
+                    "span": at(&kind_is("page")),
+                    "slot": "hero",
+                    "source": "p \"First paragraph\"",
+                },
+                { "op": "delete", "span": first },
+            ])
+        })
+        .expect("drop into hero");
+
+        let text = ed.text();
+        assert_eq!(text.matches("First paragraph").count(), 1, "{text}");
+        assert!(
+            text.contains("hero {\n    p \"First paragraph\"\n  }"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn insert_slot_fills_an_existing_empty_named_slot_wrapper() {
+        let doc = "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  hero {\n  }\n}\n";
+        let (_td, ws) = workspace_with(doc);
+        let ed = Edits::main(&ws);
+
+        ed.run(|at| {
+            serde_json::json!([{
+                "op": "insert_slot",
+                "span": at(&kind_is("page")),
+                "slot": "hero",
+                "source": "h1 \"Filled hero\"",
+            }])
+        })
+        .expect("fill existing named slot wrapper");
+
+        let text = ed.text();
+        assert_eq!(text.matches("hero {").count(), 1, "{text}");
+        assert!(
+            text.contains("hero {\n    h1 \"Filled hero\"\n  }"),
+            "{text}"
+        );
     }
 
     /// `move_to` resolves at the common-ancestor level: dragging a
