@@ -4963,3 +4963,146 @@ fn by_ref_direct_member_access_yields_datapath() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// `TypeField::shape` — the typed reading of a field's declared type
+// ---------------------------------------------------------------------------
+
+/// The schema field named `field` on the type declared as `decl`.
+fn shape_of<'a>(doc: &'a Document, decl: &str, field: &str) -> FieldShape<'a> {
+    doc.type_decl(decl)
+        .unwrap_or_else(|| panic!("no type {decl}"))
+        .effective_fields()
+        .into_iter()
+        .find(|f| f.name() == field)
+        .unwrap_or_else(|| panic!("no field {field} on {decl}"))
+        .shape()
+}
+
+fn shapes_doc() -> Document {
+    Document::open(
+        r#"
+type NodeId = identifier
+type Label = NodeId
+symbol_set Kind { module store }
+type Inner { name: utf8 }
+
+// A declaration whose NAME begins with the `fn` keyword's letters. It is
+// a block type, not a function — only the rendering says otherwise.
+type fnord { name: utf8 }
+
+@block("thing")
+type Thing {
+  @inline(0) id: NodeId
+  plain: identifier
+  title: utf8
+  tags: list<Label>
+  numbers: list<u32>
+  kind: Kind?
+  inner: Inner?
+  boxed: fnord?
+  lower: fn(utf8) -> utf8
+  matrix: tensor<f64, [2, 2]>
+  linked: &Inner?
+}
+
+@document
+type D { @children("thing") things: list<Thing> }
+"#,
+        "test.wcl",
+    )
+    .expect("open")
+}
+
+#[test]
+fn field_shape_reads_builtin_scalars_and_lists() {
+    let doc = shapes_doc();
+    assert_eq!(
+        shape_of(&doc, "Thing", "plain").builtin(),
+        Some(BuiltinType::Identifier)
+    );
+    assert_eq!(
+        shape_of(&doc, "Thing", "title").builtin(),
+        Some(BuiltinType::Utf8)
+    );
+    assert_eq!(
+        shape_of(&doc, "Thing", "numbers")
+            .list_element()
+            .and_then(FieldShape::builtin),
+        Some(BuiltinType::U32)
+    );
+}
+
+/// A type alias is transparent. `id: NodeId` where `type NodeId =
+/// identifier` IS an identifier field; only its *rendering* is `NodeId`,
+/// which is why comparing the printed type silently loses it.
+#[test]
+fn field_shape_sees_through_type_aliases() {
+    let doc = shapes_doc();
+    let id = doc
+        .type_decl("Thing")
+        .unwrap()
+        .effective_fields()
+        .into_iter()
+        .find(|f| f.name() == "id")
+        .unwrap();
+    assert_eq!(id.type_ref().to_string(), "NodeId", "the printed form");
+    assert_eq!(id.shape().builtin(), Some(BuiltinType::Identifier));
+
+    // Through a chain, and inside a list.
+    assert_eq!(
+        shape_of(&doc, "Thing", "tags")
+            .list_element()
+            .and_then(FieldShape::builtin),
+        Some(BuiltinType::Identifier)
+    );
+}
+
+/// A declaration whose name merely starts with `fn` is a block, not a
+/// function — the distinction `starts_with("fn")` on the rendering cannot
+/// make.
+#[test]
+fn field_shape_separates_functions_from_types_named_like_them() {
+    let doc = shapes_doc();
+    assert!(shape_of(&doc, "Thing", "lower").is_function());
+    let boxed = shape_of(&doc, "Thing", "boxed");
+    assert!(!boxed.is_function());
+    assert!(matches!(boxed, FieldShape::Block(d) if d.name() == "fnord"));
+}
+
+#[test]
+fn field_shape_names_the_remaining_forms() {
+    let doc = shapes_doc();
+    assert!(matches!(
+        shape_of(&doc, "Thing", "kind"),
+        FieldShape::Symbols(ss) if ss.name() == "Kind"
+    ));
+    assert!(matches!(
+        shape_of(&doc, "Thing", "inner"),
+        FieldShape::Block(d) if d.name() == "Inner"
+    ));
+    assert!(matches!(
+        shape_of(&doc, "Thing", "matrix"),
+        FieldShape::Tensor(e) if e.builtin() == Some(BuiltinType::F64)
+    ));
+    assert!(matches!(
+        shape_of(&doc, "Thing", "linked"),
+        FieldShape::Reference(e) if matches!(*e, FieldShape::Block(_))
+    ));
+    // None of the container shapes answer `builtin()` — that accessor
+    // means "this field holds one builtin scalar", nothing looser.
+    assert_eq!(shape_of(&doc, "Thing", "tags").builtin(), None);
+    assert_eq!(shape_of(&doc, "Thing", "inner").builtin(), None);
+}
+
+/// A cyclic alias can't be peeled; the walk is capped and stays
+/// permissive rather than hanging.
+#[test]
+fn field_shape_survives_an_alias_cycle() {
+    let doc = Document::open(
+        "type A = B\ntype B = A\ntype T { x: A }\n@document\ntype D { }\n",
+        "test.wcl",
+    )
+    .expect("open");
+    assert!(matches!(shape_of(&doc, "T", "x"), FieldShape::Block(_)));
+}

@@ -23,9 +23,10 @@ pub use gathers::{ChildFamily, GatheredKind};
 pub use imports::SYSTEM_IMPORT_ROOT;
 pub use loader::{FileLoader, Registry, disk_loader, overlay_loader};
 pub use views::{
-    Block, ChildKind, Connection, ConnectionDecl, DeclName, Decorator, Field, InterfaceDecl,
-    NamedArg, ResolvedType, RowView, SymbolEntry, SymbolSetDecl, TableView, TypeDecl, TypeField,
-    UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem, VariantBodyView,
+    Block, ChildKind, Connection, ConnectionDecl, DeclName, Decorator, Field, FieldShape,
+    InterfaceDecl, NamedArg, ResolvedType, RowView, SymbolEntry, SymbolSetDecl, TableView,
+    TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
+    VariantBodyView,
 };
 pub(crate) use views::{BuiltinDecorator, LetView, UnionChildKind};
 

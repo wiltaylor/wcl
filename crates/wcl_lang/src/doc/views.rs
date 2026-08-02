@@ -136,6 +136,107 @@ pub enum ResolvedType<'a> {
     },
 }
 
+/// How many alias links [`TypeField::shape`] will peel before giving up.
+/// Matches [`Document::resolve_alias`]'s cap; a cycle stops the walk
+/// rather than hanging it.
+const ALIAS_DEPTH: u8 = 8;
+
+/// The **shape** of a schema field's declared type: what a consumer needs
+/// in order to decide how to treat the field, without printing the type
+/// and matching on the text.
+///
+/// [`ResolvedType`] answers "what does this name point at", one link at a
+/// time. A shape answers the question a form, a graph or a validator
+/// actually asks — is this field one scalar, a list of them, a closed
+/// vocabulary, a nested block, a function? Two differences from rendering
+/// [`TypeField::type_ref`] and comparing the text matter, because both of
+/// them fail *silently* — the field simply stops being whatever the
+/// consumer was classifying it as:
+///
+/// - **Aliases are transparent.** A field declared `id: NodeId`, where
+///   `type NodeId = identifier`, has the shape `Scalar(Identifier)` —
+///   what the field *is*. Its rendering is `NodeId`, which matches no
+///   string a consumer would have thought to write.
+/// - **Names can't collide with syntax.** A field typed by a declaration
+///   named `fnord` is a `Block`; `starts_with("fn")` on the rendering
+///   says it is a function.
+#[derive(Debug, Clone)]
+pub enum FieldShape<'a> {
+    /// One builtin scalar — `utf8`, `identifier`, `bool`, `u32`, …
+    Scalar(BuiltinType),
+    /// A closed vocabulary (`symbol_set`).
+    Symbols(SymbolSetDecl<'a>),
+    /// A declared record / block type.
+    Block(TypeDecl<'a>),
+    /// A declared `interface`.
+    Interface(InterfaceDecl<'a>),
+    /// A declared `union`.
+    Union(UnionDecl<'a>),
+    /// A declared `connection`.
+    Connection(ConnectionDecl<'a>),
+    /// `list<T>`, carrying the element's shape.
+    List(Box<FieldShape<'a>>),
+    /// `&T`, carrying the referent's shape.
+    Reference(Box<FieldShape<'a>>),
+    /// `tensor<T, [...]>`, carrying the element's shape.
+    Tensor(Box<FieldShape<'a>>),
+    /// A function-valued field. The signature is not part of the shape —
+    /// ask [`TypeField::resolved_type`] for it.
+    Function,
+}
+
+impl<'a> FieldShape<'a> {
+    /// The builtin behind a scalar field; `None` for every other shape,
+    /// containers included. "This field holds one builtin scalar" is the
+    /// question — a `list<utf8>` is not a `utf8`.
+    pub fn builtin(&self) -> Option<BuiltinType> {
+        match self {
+            FieldShape::Scalar(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    /// The element shape of a `list<T>`; `None` for every other shape.
+    pub fn list_element(&self) -> Option<&FieldShape<'a>> {
+        match self {
+            FieldShape::List(inner) => Some(inner),
+            _ => None,
+        }
+    }
+
+    /// Whether the field holds a function.
+    pub fn is_function(&self) -> bool {
+        matches!(self, FieldShape::Function)
+    }
+
+    /// Read a resolved type as a shape, peeling transparent type aliases
+    /// (`type Port = u16`) as it goes. Only alias links spend `depth`:
+    /// `list<list<Port>>` is as peelable as `Port`.
+    fn from_resolved(doc: &'a Document, ty: ResolvedType<'a>, depth: u8) -> Self {
+        let nest = |inner: Box<ResolvedType<'a>>| Box::new(Self::from_resolved(doc, *inner, depth));
+        match ty {
+            ResolvedType::Builtin(b) => FieldShape::Scalar(b),
+            ResolvedType::SymbolSet(ss) => FieldShape::Symbols(ss),
+            ResolvedType::Interface(i) => FieldShape::Interface(i),
+            ResolvedType::Union(u) => FieldShape::Union(u),
+            ResolvedType::Connection(c) => FieldShape::Connection(c),
+            ResolvedType::Named(d) => match d.ast.alias.as_ref() {
+                // The alias target resolves in the ALIAS's namespace, not
+                // the field's — `type Port = u16` means what it meant
+                // where it was written.
+                Some(target) if depth > 0 => {
+                    Self::from_resolved(doc, doc.resolve_in(target, d.file_ns), depth - 1)
+                }
+                _ => FieldShape::Block(d),
+            },
+            ResolvedType::List(inner) => FieldShape::List(nest(inner)),
+            ResolvedType::Reference(inner) => FieldShape::Reference(nest(inner)),
+            ResolvedType::Tensor { element, .. } => FieldShape::Tensor(nest(element)),
+            ResolvedType::Function { .. } => FieldShape::Function,
+        }
+    }
+}
+
 /// Shared accessors for the four top-level declaration views (`TypeDecl`,
 /// `InterfaceDecl`, `UnionDecl`, `SymbolSetDecl`). All four hold a
 /// segment-path name plus the surrounding file namespace; the rendering of
@@ -1326,6 +1427,15 @@ impl<'a> TypeField<'a> {
     /// namespace (`wdoc.Container` for a `wcl.wad` field typed `Container`).
     pub fn resolved_type(&self) -> ResolvedType<'a> {
         self.doc.resolve_in(&self.ast.ty, self.file_ns)
+    }
+
+    /// The field's [`FieldShape`] — the typed answer to "what kind of
+    /// thing does this field hold", resolved in the declaring namespace
+    /// with type aliases peeled. Prefer this over matching on
+    /// `type_ref().to_string()`, which an alias or a type whose name
+    /// starts with `fn` defeats without saying so.
+    pub fn shape(&self) -> FieldShape<'a> {
+        FieldShape::from_resolved(self.doc, self.resolved_type(), ALIAS_DEPTH)
     }
 
     /// If this field carries an `@inline(N)` decorator, returns N.
