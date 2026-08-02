@@ -2697,8 +2697,8 @@ fn build_collection_page(
             crate::render::PRESENTATION_PLAYER_JS,
         )?;
         rendered
-             .body
-             .push_str("\n<script src=\"_wdoc/presentation.js\" defer></script>\n");
+            .body
+            .push_str("\n<script src=\"_wdoc/presentation.js\" defer></script>\n");
     }
     let head = format!("{}{}", ctx.head_extra, rendered.head);
     let html = render_page(&title, ctx.css, &rendered.body, Some(ctx.favicon), &head);
