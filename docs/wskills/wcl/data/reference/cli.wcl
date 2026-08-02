@@ -265,5 +265,16 @@ cli wcl_cli_ref {
       cli_switch sw_format  { long = "--format"  value_name = "FORMAT"  description = "Output format: `text` (default, a header strip and one row per changed node) or `json` (the whole union graph, which is what an audit view renders)." }
       code_example { lang = "console"  code = "wcl wskill audit docs/wskills/wcl --range main... --format json" }
     }
+
+    subcommand cmd_wskill_op {
+      name = "op"
+      description = "Apply structural ops to a wskill — the one id-addressed op vocabulary the browser editor writes through, as JSON on the command line."
+      remarks = "Ten ops: `pin_unit`, `unpin_unit`, `reorder_children`, `related_add`, `related_remove`, `create_index`, `delete_index`, `move_index`, `promote_index`, `demote_index`. Each is a JSON object whose `op` names it and whose targets are **ids**, not spans — spans shift under every reformat and a curator has never seen a rendered page. A target is a bare id (`\"alpha\"`, whose kind is inferred when it names exactly one node), a qualified id (`\"concept:alpha\"`, needed where one id names two kinds), or an object (`{\"kind\": \"concept\", \"id\": \"alpha\"}`). Ops apply **in order, one commit each**, through the same write / validate / roll-back pipeline the editor uses: an op whose result violates the schema is rolled back and the run stops there, leaving the ops before it applied and reporting how far it got. The whole batch is decoded before the first write, so a typo in the last op writes nothing at all. Ops target the wskill root (`wskill.wcl`) rather than a projection entry — the curator edits the format, not one view of it — so naming a book's `main.wcl` still edits the wskill above it. Exit codes: `0` every op applied, `1` an op was refused, `2` the ops or the model could not be read."
+      cli_arg    arg_entry { name = "entry"  required = false  description = "The wskill folder, or any `.wcl` inside it."  remarks = "Default: the current directory. The wskill root above the named path is what the ops target." }
+      cli_switch sw_op      { long = "--op"       value_name = "JSON"  description = "One op, as JSON (repeatable). A JSON array of ops works too." }
+      cli_switch sw_file    { long = "--file"     value_name = "PATH"  description = "Read the ops from a file (an op object or an array of them); `-` reads stdin."  remarks = "Default when no `--op` is given: stdin, so a curator can pipe the list it just built." }
+      cli_switch sw_dry_run { long = "--dry-run"  description = "Print the ops that would be applied and write nothing."  remarks = "The printed list is the same JSON the editor sends, so it can be fed straight back in. It is not resolved against the model: each op is addressed against the tree the ops before it left." }
+      code_example { lang = "console"  code = "wcl wskill op docs/wskills/wcl --op '{\"op\":\"pin_unit\",\"index\":\"reference\",\"unit\":\"alpha\"}'" }
+    }
   }
 }

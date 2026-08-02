@@ -10,9 +10,9 @@ description = "The wskill model: a wskill folder's unit graph, read as typed Rus
 wcl_lang = { workspace = true }
 wcl_wdoc = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
-serde_json = { workspace = true }
 tempfile = { workspace = true }
 
 [lints]

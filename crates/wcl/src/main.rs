@@ -412,6 +412,48 @@ enum WskillCommand {
         #[arg(long, value_enum, default_value_t = ReportFormat::Text)]
         format: ReportFormat,
     },
+    /// Apply structural ops to a wskill — the one id-addressed vocabulary
+    /// the browser editor writes through, as JSON on the command line.
+    ///
+    /// Ops: pin_unit, unpin_unit, reorder_children, related_add,
+    /// related_remove, create_index, delete_index, move_index,
+    /// promote_index, demote_index. Each is an object naming its targets by
+    /// id — `"alpha"`, or `"concept:alpha"` where one id names two kinds:
+    ///
+    ///   {"op": "pin_unit", "index": "reference", "unit": "alpha"}
+    ///   {"op": "related_add", "from": "alpha", "to": "beta"}
+    ///   {"op": "create_index", "id": "usage", "name": "Usage",
+    ///    "file": "data/indexes.wcl"}
+    ///
+    /// Ops apply in order, one commit each, through the same validating
+    /// pipeline the editor uses: an op that would violate the schema is
+    /// rolled back and the run stops there, leaving the ops before it
+    /// applied. They target the wskill root (`wskill.wcl`), not a projection
+    /// entry — the curator edits the format, not one view of it.
+    ///
+    /// Exit codes: 0 every op applied, 1 an op was refused, 2 the ops or the
+    /// model could not be read.
+    ///
+    /// Examples:
+    ///   wcl wskill op docs/wskills/wcl --op '{"op":"unpin_unit","index":"reference","unit":"alpha"}'
+    ///   wcl wskill op docs/wskills/wcl --file ops.json --dry-run
+    ///   curator --emit-ops | wcl wskill op docs/wskills/wcl
+    Op {
+        /// The wskill folder (or any `.wcl` inside it — the wskill root
+        /// above it is what the ops target). Defaults to the current
+        /// directory.
+        entry: Option<PathBuf>,
+        /// One op, as JSON (repeatable). A JSON array of ops works too.
+        #[arg(long = "op", value_name = "JSON")]
+        op: Vec<String>,
+        /// Read the ops from a file (an op object or an array of them);
+        /// `-` reads stdin. Default when no `--op` is given: stdin.
+        #[arg(long, value_name = "PATH")]
+        file: Option<PathBuf>,
+        /// Print the ops that would be applied and write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 /// A `--severity` / `--deny` value, in the model's own vocabulary — the
@@ -830,6 +872,15 @@ fn main() -> ExitCode {
             } => {
                 let entry = entry.unwrap_or_else(|| PathBuf::from("."));
                 wskill::run_audit(&entry, &range, format)
+            }
+            WskillCommand::Op {
+                entry,
+                op,
+                file,
+                dry_run,
+            } => {
+                let entry = entry.unwrap_or_else(|| PathBuf::from("."));
+                wskill::run_op(&entry, &op, file.as_deref(), dry_run)
             }
         },
         Command::Wad { cmd } => match cmd {

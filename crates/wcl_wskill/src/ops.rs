@@ -31,7 +31,7 @@ use wcl_lang::edit::find_block_by_kind_label;
 use wcl_lang::{Span, edit as ast_edit, format as wcl_format, is_identifier, parse_for_edit};
 
 use crate::Error;
-use crate::model::{Graph, Index};
+use crate::model::{Graph, Index, NodeKey};
 use crate::registry::ast_label;
 
 /// The id addressing a training course's top level — the one nav level with
@@ -66,6 +66,16 @@ impl NodeRef {
         NodeRef {
             kind: Some(kind.into()),
             id: id.into(),
+        }
+    }
+
+    /// A reference written as text — `concept:alpha`, or a bare `alpha` for
+    /// the kind-inferred form. The inverse of [`Display`](fmt::Display), so
+    /// what a host prints it can read back.
+    pub fn parse(s: &str) -> NodeRef {
+        match s.split_once(':') {
+            Some((kind, id)) if !kind.is_empty() => NodeRef::kinded(kind, id),
+            _ => NodeRef::new(s.trim_start_matches(':')),
         }
     }
 }
@@ -141,6 +151,252 @@ pub struct Change {
 }
 
 type Result<T> = std::result::Result<T, Error>;
+
+// ---------------------------------------------------------------------------
+// The wire form: ONE JSON dialect for the vocabulary
+// ---------------------------------------------------------------------------
+//
+// Both hosts speak JSON at their edge — the editor receives it from a
+// browser, the CLI reads it from a file or a pipe — so the dialect lives
+// here with the vocabulary rather than being read twice. That is what makes
+// `wcl wskill op --dry-run`'s output the same JSON the editor would have
+// sent, and it is why [`to_json`] sits next to [`from_json`]: two halves of
+// one format, close enough that they cannot drift apart unnoticed.
+
+/// Every op name, in the vocabulary's declared order.
+pub const OP_NAMES: [&str; 10] = [
+    "pin_unit",
+    "unpin_unit",
+    "reorder_children",
+    "related_add",
+    "related_remove",
+    "create_index",
+    "delete_index",
+    "move_index",
+    "promote_index",
+    "demote_index",
+];
+
+/// Whether `name` is one of this vocabulary's ops — for a host that
+/// dispatches a wider set of requests and needs to know which ones are ours.
+pub fn is_op(name: &str) -> bool {
+    OP_NAMES.contains(&name)
+}
+
+/// Decode one op from its JSON form: an object whose `op` names the op and
+/// whose remaining keys are its arguments.
+///
+/// ```json
+/// { "op": "pin_unit", "index": "lang", "unit": "concept:alpha" }
+/// { "op": "reorder_children", "index": "lang", "order": ["beta", "alpha"] }
+/// { "op": "create_index", "id": "usage", "name": "Using it", "file": "data/indexes.wcl" }
+/// ```
+///
+/// A node is named by a bare id (`"alpha"`, kind inferred), a qualified id
+/// (`"concept:alpha"`) or an object (`{"kind": "concept", "id": "alpha"}`).
+/// Keys the caller doesn't recognise are ignored, so a host may carry its own
+/// (the editor's `entry`) in the same object.
+pub fn from_json(v: &serde_json::Value) -> Result<Op> {
+    let name = text(v, &["op"]).ok_or("missing `op`")?;
+    Ok(match name {
+        "pin_unit" => Op::PinUnit {
+            index: index_arg(v)?,
+            unit: node_arg(v, &["unit", "unit_id"])?,
+        },
+        "unpin_unit" => Op::UnpinUnit {
+            index: index_arg(v)?,
+            unit: node_arg(v, &["unit", "unit_id"])?,
+        },
+        "reorder_children" => Op::ReorderChildren {
+            index: index_arg(v)?,
+            order: id_list(v, "order")?,
+        },
+        "related_add" => Op::RelatedAdd {
+            from: node_arg(v, &["from", "from_id"])?,
+            to: node_arg(v, &["to", "to_id"])?,
+        },
+        "related_remove" => Op::RelatedRemove {
+            from: node_arg(v, &["from", "from_id"])?,
+            to: node_arg(v, &["to", "to_id"])?,
+        },
+        "create_index" => Op::CreateIndex {
+            id: text(v, &["id"]).ok_or("missing `id`")?.to_string(),
+            name: text(v, &["name"]).ok_or("missing `name`")?.to_string(),
+            home: index_home(v)?,
+        },
+        "delete_index" => Op::DeleteIndex {
+            index: index_arg(v)?,
+        },
+        "move_index" => Op::MoveIndex {
+            index: index_arg(v)?,
+            dir: match text(v, &["dir"]).ok_or("missing `dir`")? {
+                "up" => Dir::Up,
+                "down" => Dir::Down,
+                other => return Err(format!("`dir` must be `up` or `down`, not `{other}`").into()),
+            },
+        },
+        "promote_index" => Op::PromoteIndex {
+            index: index_arg(v)?,
+        },
+        "demote_index" => Op::DemoteIndex {
+            index: index_arg(v)?,
+        },
+        other => {
+            return Err(format!(
+                "unknown op `{other}` — expected one of {}",
+                OP_NAMES.join(", ")
+            )
+            .into());
+        }
+    })
+}
+
+/// The JSON form of an op — exactly what [`from_json`] reads back, in the
+/// canonical spelling of every key.
+pub fn to_json(op: &Op) -> serde_json::Value {
+    let obj = |name: &str, rest: Vec<(&str, serde_json::Value)>| {
+        let mut m = serde_json::Map::new();
+        m.insert("op".to_string(), serde_json::json!(name));
+        m.extend(rest.into_iter().map(|(k, v)| (k.to_string(), v)));
+        serde_json::Value::Object(m)
+    };
+    let node = |r: &NodeRef| serde_json::json!(r.to_string());
+    match op {
+        Op::PinUnit { index, unit } => obj(
+            "pin_unit",
+            vec![("index", node(index)), ("unit", node(unit))],
+        ),
+        Op::UnpinUnit { index, unit } => obj(
+            "unpin_unit",
+            vec![("index", node(index)), ("unit", node(unit))],
+        ),
+        Op::ReorderChildren { index, order } => obj(
+            "reorder_children",
+            vec![("index", node(index)), ("order", serde_json::json!(order))],
+        ),
+        Op::RelatedAdd { from, to } => {
+            obj("related_add", vec![("from", node(from)), ("to", node(to))])
+        }
+        Op::RelatedRemove { from, to } => obj(
+            "related_remove",
+            vec![("from", node(from)), ("to", node(to))],
+        ),
+        Op::CreateIndex { id, name, home } => obj(
+            "create_index",
+            vec![
+                ("id", serde_json::json!(id)),
+                ("name", serde_json::json!(name)),
+                match home {
+                    IndexHome::Under(parent) => ("parent", node(parent)),
+                    IndexHome::InFile(path) => (
+                        "file",
+                        serde_json::json!(path.to_string_lossy().replace('\\', "/")),
+                    ),
+                },
+            ],
+        ),
+        Op::DeleteIndex { index } => obj("delete_index", vec![("index", node(index))]),
+        Op::MoveIndex { index, dir } => obj(
+            "move_index",
+            vec![
+                ("index", node(index)),
+                (
+                    "dir",
+                    serde_json::json!(match dir {
+                        Dir::Up => "up",
+                        Dir::Down => "down",
+                    }),
+                ),
+            ],
+        ),
+        Op::PromoteIndex { index } => obj("promote_index", vec![("index", node(index))]),
+        Op::DemoteIndex { index } => obj("demote_index", vec![("index", node(index))]),
+    }
+}
+
+/// The first of `keys` the object carries, as a string. The canonical key
+/// comes first and a host's older spelling after it (`index` / `index_id`),
+/// so one dialect covers both without the editor's wire changing.
+fn text<'a>(v: &'a serde_json::Value, keys: &[&str]) -> Option<&'a str> {
+    keys.iter()
+        .find_map(|k| v.get(k))
+        .and_then(serde_json::Value::as_str)
+        .filter(|s| !s.is_empty())
+}
+
+/// A node argument: `"alpha"`, `"concept:alpha"`, or `{kind?, id}`.
+fn node_arg(v: &serde_json::Value, keys: &[&str]) -> Result<NodeRef> {
+    let field = keys[0];
+    let raw = keys
+        .iter()
+        .find_map(|k| v.get(k))
+        .ok_or_else(|| Error::Op(format!("missing `{field}`")))?;
+    match raw {
+        serde_json::Value::String(s) => {
+            let r = NodeRef::parse(s);
+            if r.id.is_empty() {
+                return Err(format!("`{field}` names no id").into());
+            }
+            Ok(r)
+        }
+        serde_json::Value::Object(_) => Ok(NodeRef {
+            kind: text(raw, &["kind"]).map(str::to_string),
+            id: text(raw, &["id"])
+                .ok_or_else(|| Error::Op(format!("`{field}` names no id")))?
+                .to_string(),
+        }),
+        _ => Err(format!(
+            "`{field}` must be an id (\"alpha\" or \"concept:alpha\") or an object with `id` and an optional `kind`"
+        )
+        .into()),
+    }
+}
+
+/// The index an op acts on. Its kind is never inferred — an `index` is the
+/// only thing these ops address, so naming it makes the refusal say so.
+fn index_arg(v: &serde_json::Value) -> Result<NodeRef> {
+    let r = node_arg(v, &["index", "index_id"])?;
+    match r.kind.as_deref() {
+        None => Ok(NodeRef::kinded("index", r.id)),
+        Some("index") => Ok(r),
+        Some(k) => Err(format!("`index` must name an index, not a `{k}`").into()),
+    }
+}
+
+fn id_list(v: &serde_json::Value, key: &str) -> Result<Vec<String>> {
+    let items = v
+        .get(key)
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| Error::Op(format!("missing `{key}` (a list of ids)")))?;
+    items
+        .iter()
+        .map(|s| {
+            s.as_str()
+                .map(str::to_string)
+                .ok_or_else(|| Error::Op(format!("`{key}` must hold ids, not {s}")))
+        })
+        .collect()
+}
+
+/// Where a new index goes: nested under an existing one, or appended to the
+/// file the caller's placement chose. One or the other — the library owns
+/// nesting, the host owns files, and neither can be guessed here.
+fn index_home(v: &serde_json::Value) -> Result<IndexHome> {
+    if v.get("parent").or_else(|| v.get("parent_id")).is_some() {
+        return Ok(IndexHome::Under(NodeRef::kinded(
+            "index",
+            node_arg(v, &["parent", "parent_id"])?.id,
+        )));
+    }
+    match text(v, &["file"]) {
+        Some(file) => Ok(IndexHome::InFile(PathBuf::from(file))),
+        None => Err(
+            "`create_index` needs a `parent` (the index to nest it under) \
+                     or a `file` (where the new block lands)"
+                .into(),
+        ),
+    }
+}
 
 /// Apply one op against `graph`, returning the files it rewrites.
 ///
@@ -563,21 +819,57 @@ struct Site {
 
 /// Resolve a reference against the graph — a unit, else an index.
 fn locate(graph: &Graph, r: &NodeRef) -> Result<Site> {
-    if r.kind.as_deref() != Some("index")
-        && let Some(u) = graph.unit(&r.id)
-        && r.kind.as_ref().is_none_or(|k| *k == u.kind)
-    {
-        return Ok(Site {
-            node: NodeRef::kinded(u.kind.clone(), u.id.clone()),
-            file: graph.root.join(&u.anchor.file),
-        });
-    }
-    if r.kind.as_ref().is_none_or(|k| k == "index")
-        && let Some(i) = graph.index(&r.id)
+    let key = resolve(graph, r)?;
+    if key.kind == "index"
+        && let Some(i) = graph.index(&key.id)
     {
         return Ok(site_of_index(graph, i));
     }
-    Err(no_such(r))
+    let u = graph
+        .units
+        .iter()
+        .find(|u| u.id == key.id && u.kind == key.kind)
+        .ok_or_else(|| no_such(r))?;
+    Ok(Site {
+        node: NodeRef::kinded(u.kind.clone(), u.id.clone()),
+        file: graph.root.join(&u.anchor.file),
+    })
+}
+
+/// The ONE node a reference addresses.
+///
+/// A kind the caller gave narrows; a kind it omitted is **inferred when the
+/// id names exactly one node**, so an agent writing ops by hand isn't
+/// punished for leaving it out. Two answers is a refusal rather than a
+/// first-hit guess: ids are unique across kinds only by convention, and an
+/// op landing on the wrong kind is the failure this addressing exists to
+/// prevent.
+fn resolve(graph: &Graph, r: &NodeRef) -> Result<NodeKey> {
+    let mut named = graph.nodes_named(&r.id);
+    if let Some(kind) = &r.kind {
+        named.retain(|k| k.kind == *kind);
+    }
+    match named.len() {
+        1 => Ok(named.remove(0)),
+        0 => Err(no_such(r)),
+        // Same id under two kinds: nameable, so the refusal says how.
+        _ if named.iter().any(|k| k.kind != named[0].kind) => Err(Error::Op(format!(
+            "`{}` names {} nodes ({}) — address it by kind, as `kind:id`",
+            r.id,
+            named.len(),
+            named
+                .iter()
+                .map(NodeKey::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))),
+        // Same id under ONE kind: naming the kind wouldn't help, and the
+        // duplicate declaration is the thing to fix (`lint`'s `duplicate-id`).
+        n => Err(Error::Op(format!(
+            "`{}` is declared {n} times — ids must be unique",
+            named[0]
+        ))),
+    }
 }
 
 fn index_site(graph: &Graph, r: &NodeRef) -> Result<Site> {
@@ -1032,6 +1324,162 @@ mod tests {
         )
         .unwrap_err();
         assert!(e.to_string().contains("no pins"), "{e}");
+    }
+
+    /// A bare id is resolved by inference; an id two kinds declare is a
+    /// refusal that says how to disambiguate, rather than a silent landing on
+    /// whichever kind was loaded first.
+    #[test]
+    fn infers_the_kind_when_the_id_names_one_node() {
+        let td = mini_wskill();
+        let root = td.path();
+        // `gamma` becomes a second `alpha`, in another kind.
+        write(
+            root,
+            "data/concepts/gamma.wcl",
+            "research alpha {\n  name = \"Alpha, again\"\n}\n",
+        );
+
+        let e = run(
+            root,
+            Op::RelatedAdd {
+                from: NodeRef::new("alpha"),
+                to: NodeRef::new("beta"),
+            },
+        )
+        .unwrap_err();
+        assert!(
+            e.to_string().contains("concept:alpha, research:alpha")
+                && e.to_string().contains("address it by kind"),
+            "{e}"
+        );
+
+        // Naming the kind resolves it, and the write lands on that kind's
+        // file — the other `alpha` is untouched.
+        run(
+            root,
+            Op::RelatedRemove {
+                from: NodeRef::kinded("concept", "alpha"),
+                to: NodeRef::new("beta"),
+            },
+        )
+        .expect("kinded");
+        assert!(read(root, "data/concepts/alpha.wcl").contains("related = []"));
+        assert!(!read(root, "data/concepts/gamma.wcl").contains("related"));
+
+        // An id nothing declares still reads as absent, not ambiguous.
+        let e = run(
+            root,
+            Op::RelatedRemove {
+                from: NodeRef::new("nobody"),
+                to: NodeRef::new("beta"),
+            },
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("named `nobody`"), "{e}");
+    }
+
+    /// The JSON dialect is the vocabulary's own: every op round-trips through
+    /// it unchanged, which is what lets `--dry-run` print ops a host can send
+    /// back verbatim.
+    #[test]
+    fn every_op_round_trips_through_its_json_form() {
+        let canonical = [
+            serde_json::json!({"op": "pin_unit", "index": "index:lang", "unit": "concept:alpha"}),
+            serde_json::json!({"op": "unpin_unit", "index": "index:lang", "unit": "alpha"}),
+            serde_json::json!({"op": "reorder_children", "index": "index:lang", "order": ["beta", "alpha"]}),
+            serde_json::json!({"op": "related_add", "from": "concept:alpha", "to": "beta"}),
+            serde_json::json!({"op": "related_remove", "from": "alpha", "to": "beta"}),
+            serde_json::json!({"op": "create_index", "id": "usage", "name": "Usage", "parent": "index:lang"}),
+            serde_json::json!({"op": "create_index", "id": "usage", "name": "Usage", "file": "data/indexes.wcl"}),
+            serde_json::json!({"op": "delete_index", "index": "index:lang"}),
+            serde_json::json!({"op": "move_index", "index": "index:lang", "dir": "up"}),
+            serde_json::json!({"op": "promote_index", "index": "index:lang"}),
+            serde_json::json!({"op": "demote_index", "index": "index:lang"}),
+        ];
+        for v in &canonical {
+            let op = from_json(v).unwrap_or_else(|e| panic!("{v}: {e}"));
+            assert_eq!(to_json(&op), *v, "round trip");
+        }
+        // Every name in the vocabulary is decodable — no op reachable only
+        // from Rust.
+        for name in OP_NAMES {
+            assert!(canonical.iter().any(|v| v["op"] == name), "{name}");
+            assert!(is_op(name));
+        }
+        assert!(!is_op("rename"));
+    }
+
+    /// The editor's own spelling of the same ops decodes too — one dialect,
+    /// so a browser drag and a curated op are the same request.
+    #[test]
+    fn the_editors_wire_names_are_the_same_dialect() {
+        let op = from_json(&serde_json::json!({
+            "entry": "main.wcl", "op": "pin_unit",
+            "index_id": "lang", "unit_id": "alpha",
+        }))
+        .expect("editor form");
+        assert_eq!(
+            to_json(&op),
+            serde_json::json!({"op": "pin_unit", "index": "index:lang", "unit": "alpha"}),
+        );
+        let op = from_json(&serde_json::json!({
+            "op": "create_index", "id": "usage", "name": "Usage", "parent_id": "lang",
+        }))
+        .expect("editor form");
+        assert!(matches!(op, Op::CreateIndex { home: IndexHome::Under(p), .. } if p.id == "lang"));
+
+        // A node may also be spelt out, for a caller building JSON from a
+        // record rather than a string.
+        let op = from_json(&serde_json::json!({
+            "op": "related_add", "from": {"kind": "concept", "id": "alpha"}, "to": {"id": "beta"},
+        }))
+        .expect("object form");
+        assert_eq!(
+            to_json(&op),
+            serde_json::json!({"op": "related_add", "from": "concept:alpha", "to": "beta"}),
+        );
+    }
+
+    /// A malformed op is refused with a message written for whoever typed it
+    /// — the JSON is hand-written by an agent, so the error is the interface.
+    #[test]
+    fn refuses_malformed_op_json() {
+        for (v, msg) in [
+            (serde_json::json!({"index": "lang"}), "missing `op`"),
+            (serde_json::json!({"op": "nope"}), "unknown op `nope`"),
+            (
+                serde_json::json!({"op": "pin_unit", "unit": "a"}),
+                "missing `index`",
+            ),
+            (
+                serde_json::json!({"op": "pin_unit", "index": "concept:lang", "unit": "a"}),
+                "must name an index",
+            ),
+            (
+                serde_json::json!({"op": "reorder_children", "index": "lang"}),
+                "missing `order`",
+            ),
+            (
+                serde_json::json!({"op": "reorder_children", "index": "lang", "order": [1]}),
+                "must hold ids",
+            ),
+            (
+                serde_json::json!({"op": "move_index", "index": "lang", "dir": "sideways"}),
+                "`up` or `down`",
+            ),
+            (
+                serde_json::json!({"op": "create_index", "id": "x", "name": "X"}),
+                "needs a `parent`",
+            ),
+            (
+                serde_json::json!({"op": "related_add", "from": 7, "to": "b"}),
+                "must be an id",
+            ),
+        ] {
+            let e = from_json(&v).unwrap_err();
+            assert!(e.to_string().contains(msg), "{v}: {e}");
+        }
     }
 
     /// The span-addressed path a rendered UI needs: resolve the block to its

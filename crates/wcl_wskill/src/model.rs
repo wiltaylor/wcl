@@ -372,6 +372,21 @@ impl Graph {
         self.units.iter().find(|u| u.id == id)
     }
 
+    /// Every node an id names — units of any kind first, then index levels.
+    ///
+    /// Ids are unique per wskill **in practice and unenforced**, which is why
+    /// an [op](crate::ops) addressed by a bare id asks this rather than
+    /// taking the first hit: two answers means the kind has to be named, and
+    /// an op that silently lands on the wrong kind is the failure mode.
+    pub fn nodes_named(&self, id: &str) -> Vec<NodeKey> {
+        self.units
+            .iter()
+            .filter(|u| u.id == id)
+            .map(Unit::key)
+            .chain(self.index_levels().filter(|i| i.id == id).map(Index::key))
+            .collect()
+    }
+
     /// Every index level in the graph, top-level and nested alike, in
     /// declaration order — the walk anything asking "which indexes?" wants,
     /// since a sub-index pins as truly as its parent.
