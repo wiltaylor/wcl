@@ -6,10 +6,11 @@
 //! can read, check, install and structurally edit a wskill without a browser
 //! editor running.
 //!
-//! `op` is the one write half, and it writes the way the editor does: the
-//! library turns an op into file changes, and [`crate::edit::commit`] — the
-//! editor's own write / validate / roll-back pipeline — puts them on disk. So
-//! a curated op and a browser drag are one operation validated one way.
+//! `op` and lint autofixes are the write hosts, and both write the way the
+//! editor does: the library turns an op into file changes, and
+//! [`crate::edit::commit`] — the editor's own write / validate / roll-back
+//! pipeline — puts them on disk. So a lint fix, a curated op and a browser
+//! drag are one operation validated one way.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Read;

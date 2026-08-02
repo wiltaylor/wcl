@@ -394,6 +394,69 @@ fn lint_fix_filters_bare_edges_and_reports_the_survivors() {
     assert!(summary.contains("applied 1 op"), "{summary}");
 }
 
+/// Relationship metadata is not prose evidence for a different bare edge.
+/// In particular, an authored reason may name another target without saying
+/// that the source unit itself is intentionally related to that target.
+#[test]
+fn lint_fix_ignores_related_metadata_when_filtering_bare_edges() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    write_units(
+        &dest,
+        "concept gamma {\n  name = \"Gamma\"\n}\n\n\
+         concept delta {\n  name = \"Delta\"\n}\n",
+    );
+    let path = dest.join("data/reference/reference.wcl");
+    let source = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(
+        &path,
+        source.replace(
+            "concept alpha {\n  name    = \"Alpha\"\n  summary = \"The first idea.\"",
+            "concept alpha {\n  name    = \"Alpha\"\n  summary = \"The first idea.\"\n  \
+             related = [gamma, { id: \"delta\", why: \"Gamma follows Delta.\" }]",
+        ),
+    )
+    .unwrap();
+
+    let findings = wcl()
+        .args([
+            "wskill",
+            "lint",
+            dest.to_str().unwrap(),
+            "--format=json",
+            "--severity=candidate",
+        ])
+        .output()
+        .unwrap();
+    let findings = String::from_utf8(findings.stdout).unwrap();
+    assert!(
+        findings.contains("bare `related` edge to `gamma` has no prose mention"),
+        "{findings}\n{}",
+        std::fs::read_to_string(&path).unwrap()
+    );
+
+    let out = wcl()
+        .args([
+            "wskill",
+            "lint",
+            dest.to_str().unwrap(),
+            "--fix=bare-related",
+            "--dry-run",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let ops: Vec<serde_json::Value> = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        ops,
+        [serde_json::json!({
+            "op": "related_remove",
+            "from": "concept:alpha",
+            "to": "gamma",
+        })]
+    );
+}
+
 /// Autofixes commit through the same validating path as explicit ops: a
 /// removal that introduces a schema violation is rolled back and reported.
 #[test]
