@@ -2197,48 +2197,45 @@ impl Document {
                 },
             );
         }
-        // A typed content slot introduces a contextual bare-name fill kind.
-        // The schema is intentionally permissive: which layout/container is
-        // active and which child type it accepts are host build-time facts,
-        // not global language-schema facts. Populate these after ordinary
-        // `@declares_kind` entries so a real component declaration wins a
-        // same-name collision.
-        for b in self.blocks() {
-            // Read literal AST children directly. Calling `b.blocks()` here
-            // would demand its computed-children OnceLock while this kind map
-            // may itself have been requested by that computation.
-            for item in &b.ast.items {
+        out
+    }
+
+    /// Whether `ty`, as written in `file_ns`, names a type marked
+    /// `@block_slot`. The marker keeps `slot` derivation independent of any
+    /// host's chosen type name (wdoc uses `content`).
+    fn type_ref_is_block_slot(&self, ty: &TypeRef, file_ns: &[String]) -> bool {
+        let Some(fqn) = self.resolve_type_fqn_in(ty, file_ns) else {
+            return false;
+        };
+        self.type_decl(&fqn).is_some_and(|decl| {
+            decl.decorators()
+                .any(|dec| dec.is(BuiltinDecorator::BlockSlot))
+        })
+    }
+
+    /// Whether some top-level holder declares `kind` as a bare nested-block
+    /// slot. This is only a generic-validation escape for otherwise
+    /// *unregistered* wrapper names; it does not install a schema or decide
+    /// which holder is active. The host still owns scoped contract checks.
+    pub(crate) fn is_possible_block_slot_fill(&self, kind: &str) -> bool {
+        self.blocks().any(|holder| {
+            holder.ast.items.iter().any(|item| {
                 let ast::Item::Block(slot) = item else {
-                    continue;
+                    return false;
                 };
                 if slot.kind != "slot" {
-                    continue;
+                    return false;
                 }
-                let is_content = slot.slot_decl.as_ref().is_some_and(|decl| {
-                    matches!(&decl.ty, TypeRef::Named { path, .. } if path.last().is_some_and(|name| name == "content"))
-                });
-                if !is_content {
-                    continue;
-                }
-                let Some(ast::Expr::Identifier(name, _)) = slot.labels.first() else {
-                    continue;
+                let Some(decl) = &slot.slot_decl else {
+                    return false;
                 };
-                if out.contains_key(name) {
-                    continue;
-                }
-                let derived = derive_content_fill_schema(name);
-                let cells = ItemCells::build(&ast::Item::TypeDecl(derived.clone()), None);
-                out.insert(
-                    name.clone(),
-                    DeclaredKind {
-                        declarer: None,
-                        ast: derived,
-                        cells,
-                    },
+                let names_kind = matches!(
+                    slot.labels.first(),
+                    Some(ast::Expr::Identifier(name, _)) if name == kind
                 );
-            }
-        }
-        out
+                names_kind && self.type_ref_is_block_slot(&decl.ty, holder.file_ns)
+            })
+        })
     }
 
     /// The host's [`Expander`](crate::Expander), consulted when a
@@ -2577,6 +2574,9 @@ impl Document {
             return;
         }
         if !self.is_registered_kind(b.kind()) {
+            if self.is_possible_block_slot_fill(b.kind()) {
+                return;
+            }
             let mut msg = format!(
                 "block kind '{}' has no @block or @table declaration",
                 b.kind()
@@ -3107,11 +3107,11 @@ const PARAM_DEFAULT_FIELD: &str = "default";
 /// Derive the `@block` schema for the kind `kind`, declared by the
 /// instance `declarer` (whose own type is `schema`, carrying `contract`).
 ///
-/// One field per param block, in declaration order: optional when the
-/// param carries a `default`, listed in `required_fields` when it
-/// doesn't. Every field is `@schemaless` and nominally `utf8` — a param
-/// is filled with whatever the host's expansion binds it to, and the
-/// language has no business type-checking a value it does not interpret.
+/// One scalar field per param block, in declaration order: optional when the
+/// param carries a `default`/`?`, listed in `required_fields` when it does
+/// not. Typed slots preserve their `TypeRef`; legacy untyped params remain
+/// permissive `@schemaless utf8`. A slot whose type carries `@block_slot` is
+/// a host-checked nested-block hole and therefore emits no scalar field.
 /// The type carries `@contextual`: an instance emits whatever the
 /// declarer's body expands to, which is the host's business too.
 fn derive_kind_schema(
@@ -3136,9 +3136,9 @@ fn derive_kind_schema(
             // Content slots describe nested block holes, not instance
             // parameter fields. Their host validates/fills them against the
             // resolved container contract at build/render time.
-            if p.slot_type_ref().is_some_and(|ty| {
-                matches!(ty, TypeRef::Named { path, .. } if path.last().is_some_and(|name| name == "content"))
-            }) {
+            if p.slot_type_ref()
+                .is_some_and(|ty| p.doc.type_ref_is_block_slot(ty, p.file_ns))
+            {
                 continue;
             }
             if fields.iter().any(|f| f.name == name) {
@@ -3198,32 +3198,6 @@ fn derive_kind_schema(
             synthetic_decorator(BuiltinDecorator::Contextual.as_str(), Vec::new()),
         ],
         span: declarer.span(),
-        leading_trivia: Vec::new(),
-        trailing_comment: None,
-        trailing_trivia: Vec::new(),
-    }
-}
-
-/// Permissive schema for a bare-name content fill introduced by
-/// `slot name: content<T>`. Slot names are scoped by their host contract,
-/// so this global schema exists only to let the authored block survive the
-/// generic validation walk; the host checks declaration, cardinality and
-/// accepted child type against the resolved container at build time.
-fn derive_content_fill_schema(kind: &str) -> ast::TypeDecl {
-    ast::TypeDecl {
-        name: vec![format!("SlotFill_{kind}")],
-        extends: Vec::new(),
-        alias: None,
-        fields: Vec::new(),
-        decorators: vec![
-            synthetic_decorator(
-                BuiltinDecorator::Block.as_str(),
-                vec![ast::Expr::Utf8(kind.to_string())],
-            ),
-            synthetic_decorator(BuiltinDecorator::Contextual.as_str(), Vec::new()),
-            synthetic_decorator(BuiltinDecorator::Schemaless.as_str(), Vec::new()),
-        ],
-        span: synthetic_span(),
         leading_trivia: Vec::new(),
         trailing_comment: None,
         trailing_trivia: Vec::new(),

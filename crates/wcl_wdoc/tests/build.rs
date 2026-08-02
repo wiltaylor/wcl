@@ -1729,6 +1729,209 @@ page index { badge { label = "Typed" } }
 }
 
 #[test]
+fn component_content_slots_are_named_scoped_and_placed() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("named-component-slots.wcl");
+    write_fixture(
+        &src,
+        r#"
+wdoc_component split_card {
+  slot header: content
+  slot body: content
+  wdoc_body {
+    column {
+      header {}
+      body {}
+    }
+  }
+}
+page index {
+  split_card {
+    header { h2 "Named header" }
+    body { p "Named body." }
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    assert!(
+        html.contains("Named header") && html.contains("Named body."),
+        "component holes were not placed independently:\n{html}"
+    );
+}
+
+#[test]
+fn component_content_slots_check_required_duplicate_and_accepted_type() {
+    let cases = [
+        (
+            "missing",
+            r#"
+wdoc_component split_card {
+  slot header: content
+  wdoc_body { header {} }
+}
+page index { split_card {} }
+"#,
+            "required slot `header` is unfilled",
+        ),
+        (
+            "duplicate",
+            r#"
+wdoc_component split_card {
+  slot header: content
+  wdoc_body { header {} }
+}
+page index { split_card { header { h2 "One" } header { h2 "Two" } } }
+"#,
+            "fills slot `header` more than once",
+        ),
+        (
+            "accepted",
+            r#"
+wdoc_component canvas {
+  slot shapes: content<SvgBlock>
+  wdoc_body { shapes {} }
+}
+page index { canvas { shapes { p "not a shape" } } }
+"#,
+            "slot `shapes` accepts `SvgBlock`, but found `p`",
+        ),
+    ];
+
+    for (name, body, expected) in cases {
+        let tmp = TempDir::new().expect("mkdir tempdir");
+        let src = tmp.path().join(format!("{name}.wcl"));
+        write_fixture(&src, body);
+        let out = TempDir::new().expect("mkdir out");
+        let err = build(&src, out.path(), None).expect_err(name);
+        assert!(
+            err.render_plain().contains(expected),
+            "{name}: expected {expected:?}, got {}",
+            err.render_plain()
+        );
+    }
+}
+
+#[test]
+fn layout_slot_fill_does_not_inherit_a_same_named_component_contract() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("scoped-layout-slot.wcl");
+    write_fixture(
+        &src,
+        r#"
+wdoc_component hero {
+  slot label: utf8
+  wdoc_body { h2 $"${label}" }
+}
+template article {
+  slot content: content
+  slot hero: content
+  render = fn(c: TemplateCtx) -> list<Html>
+    flatten([slot(c, :hero), slot(c, :content)])
+}
+site { default_template = :article }
+page index {
+  hero { h1 "Layout hero" }
+  p "Body."
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    assert!(
+        html.contains("Layout hero") && html.contains("Body."),
+        "{html}"
+    );
+}
+
+#[test]
+fn defaulted_content_slot_renders_layout_owned_fallback_and_page_override() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("slot-fallback.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  slot footer: content = fn(c: TemplateCtx) -> list<Html> [
+    el("footer", ["fallback"], [raw(c.title)])
+  ]
+  render = fn(c: TemplateCtx) -> list<Html>
+    flatten([slot(c, :content), slot(c, :footer)])
+}
+site { default_template = :article title = "Layout fallback" }
+page absent { p "No page footer." }
+page filled { footer { p "Page footer." } p "Body." }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let absent = std::fs::read_to_string(out.path().join("absent.html")).expect("read absent");
+    let filled = std::fs::read_to_string(out.path().join("filled.html")).expect("read filled");
+    assert!(
+        absent.contains("<footer class=\"fallback\">Layout fallback</footer>"),
+        "{absent}"
+    );
+    assert!(
+        filled.contains("Page footer.") && !filled.contains("class=\"fallback\""),
+        "{filled}"
+    );
+}
+
+#[test]
+fn conditional_fill_using_an_ordinary_block_kind_is_still_a_typo() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("conditional-known-kind.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)
+}
+site { default_template = :article }
+page index { callout? "Not a slot" { body = "x" } }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let err = build(&src, out.path(), None).expect_err("conditional typo must fail");
+    assert!(
+        err.render_plain()
+            .contains("no layout used by this site declares it"),
+        "{}",
+        err.render_plain()
+    );
+}
+
+#[test]
+fn repeater_generated_page_slot_pairing_is_left_to_render_time() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("generated-pages-slot-silence.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  slot hero: content
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)
+}
+site { default_template = :article }
+let rows = [{ id: "one" }, { id: "two" }]
+wdoc_repeater { each = rows as = :row
+  page $"${row.id}" { p "Generated." }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    assert!(out.path().join("one.html").exists());
+    assert!(out.path().join("two.html").exists());
+}
+
+#[test]
 fn build_renders_nested_component_content_structurally() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("nested-components.wcl");

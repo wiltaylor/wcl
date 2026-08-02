@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 
 use miette::{NamedSource, Report};
 use wcl_lang::{
-    Block, DeclName, Document, Environment, Registry, TypeRef, Value, disk_loader, from_fn,
+    Block, DeclName, Document, Environment, EvalError, Registry, TypeRef, Value, disk_loader,
+    from_fn,
 };
 
 use crate::highlight;
@@ -167,8 +168,8 @@ pub fn wdoc_environment(base_dir: Option<&Path>) -> Environment {
     env.set_expander(std::sync::Arc::new(crate::render::WdocExpander));
     crate::page_metadata::register(&mut env);
     env.add_builtin(
-        "__wdoc_slot_blocks",
-        from_fn(|slots: Value, requested: Value| -> Result<Value, String> {
+        "__wdoc_slot",
+        from_fn(|slots: Value, requested: Value, field: Value| -> Result<Value, String> {
             let requested = match requested {
                 Value::Symbol(name)
                 | Value::Identifier(name)
@@ -184,6 +185,18 @@ pub fn wdoc_environment(base_dir: Option<&Path>) -> Environment {
             let Value::List(slots) = slots else {
                 return Err("template slot table is not a list".to_string());
             };
+            let field = match field {
+                Value::Symbol(name)
+                | Value::Identifier(name)
+                | Value::Utf8(name)
+                | Value::Ascii(name) => name,
+                other => {
+                    return Err(format!(
+                        "slot field must be a symbol, found {}",
+                        other.type_name()
+                    ));
+                }
+            };
             for slot in slots.iter() {
                 let Value::Record { fields, .. } = slot else {
                     continue;
@@ -194,10 +207,10 @@ pub fn wdoc_environment(base_dir: Option<&Path>) -> Environment {
                         if name == &requested
                 );
                 if matches {
-                    return Ok(fields
-                        .get("blocks")
+                    return fields
+                        .get(&field)
                         .cloned()
-                        .unwrap_or_else(|| Value::list(Vec::new())));
+                        .ok_or_else(|| format!("template slot has no `{field}` field"));
                 }
             }
             Err(format!(
@@ -630,6 +643,91 @@ pub(crate) fn contract_errors(doc: &Document) -> Vec<Report> {
     out
 }
 
+/// Generic schema validation with wdoc's locally-scoped bare fills removed
+/// from the generic error stream. A bare fill deliberately has no global
+/// `@block` schema: its meaning comes from the resolved layout or component,
+/// and the corresponding build-time contract checks below own its
+/// cardinality and accepted child type. Keeping this filtering in the host
+/// prevents a slot named like an unrelated component from inheriting that
+/// component's schema.
+pub(crate) fn schema_errors(doc: &Document) -> Vec<EvalError> {
+    fn span_key(block: &Block<'_>) -> (usize, usize) {
+        let span = block.span();
+        (span.start, span.end.saturating_sub(span.start))
+    }
+
+    fn content_slot_names(holder: &Block<'_>) -> HashSet<String> {
+        holder
+            .blocks()
+            .filter(|block| block.kind() == "slot")
+            .filter(|slot| {
+                matches!(
+                    slot.slot_type_ref(),
+                    Some(TypeRef::Named { path, .. })
+                        if path.last().is_some_and(|name| name == "content")
+                )
+            })
+            .filter_map(|slot| label_string(&slot))
+            .collect()
+    }
+
+    fn mark_layout_fills(
+        block: &Block<'_>,
+        names: &HashSet<String>,
+        spans: &mut HashSet<(usize, usize)>,
+    ) {
+        for child in block.blocks() {
+            if names.contains(child.kind()) {
+                spans.insert(span_key(&child));
+            }
+            if child.kind() == "wdoc_repeater" {
+                mark_layout_fills(&child, names, spans);
+            }
+        }
+    }
+
+    fn mark_component_fills(
+        doc: &Document,
+        block: &Block<'_>,
+        spans: &mut HashSet<(usize, usize)>,
+    ) {
+        if let Some(def) = doc.kind_declarer(block.kind()) {
+            let names = content_slot_names(&def);
+            for child in block.blocks() {
+                if names.contains(child.kind()) {
+                    spans.insert(span_key(&child));
+                }
+            }
+        }
+        for child in block.blocks() {
+            mark_component_fills(doc, &child, spans);
+        }
+    }
+
+    let layout_names: HashSet<String> = doc
+        .blocks()
+        .filter(|block| block.kind() == "template")
+        .flat_map(|template| content_slot_names(&template))
+        .collect();
+    let mut fill_spans = HashSet::new();
+    for block in doc.blocks() {
+        if block.kind() == "page" {
+            mark_layout_fills(&block, &layout_names, &mut fill_spans);
+        }
+        mark_component_fills(doc, &block, &mut fill_spans);
+    }
+
+    doc.schema_errors()
+        .into_iter()
+        .filter(|error| match error {
+            EvalError::SchemaViolation { span, .. } => {
+                !fill_spans.contains(&(span.offset(), span.len()))
+            }
+            _ => true,
+        })
+        .collect()
+}
+
 /// Emit a build-progress line to stderr, only when stderr is a
 /// terminal — an interactive `wcl wdoc build` (and `wdoc serve`) can
 /// tell a slow build from a stuck one, while tests, CI, and piped
@@ -826,7 +924,7 @@ fn build_inner(
     }
     let doc = doc;
 
-    let errs = doc.schema_errors();
+    let errs = schema_errors(&doc);
     if !errs.is_empty() {
         let n = errs.len();
         let src = NamedSource::new(name.clone(), user_src.clone());
@@ -1943,6 +2041,7 @@ fn declared_slots<'a>(template: &Block<'a>) -> Vec<DeclaredSlot<'a>> {
 /// a page whose template cannot be resolved is left quiet, because a false
 /// positive is worse than deferring the check to render.
 fn validate_slot_contracts(doc: &Document, spec: &SiteSpec<'_>) -> Result<(), BuildError> {
+    validate_component_slot_contracts(doc)?;
     let global_slot_names: HashSet<String> = doc
         .blocks()
         .filter(|block| block.kind() == "template")
@@ -1951,7 +2050,15 @@ fn validate_slot_contracts(doc: &Document, spec: &SiteSpec<'_>) -> Result<(), Bu
         .collect();
     let site_slot_names = site_declared_slot_names(doc, spec);
 
-    for page in &spec.pages {
+    // Root repeater-generated pages deliberately stay quiet: their layout
+    // pairing is dynamic. Direct authored pages are checked once each, while
+    // repeaters *inside* a page are inspected structurally as possible fills.
+    let authored_pages: Vec<Block<'_>> = doc
+        .blocks()
+        .filter(|block| block.kind() == "page")
+        .filter(|page| block_in_site(page, spec.name.as_deref()))
+        .collect();
+    for page in &authored_pages {
         let template_name = if let Some(field) = page.field("template") {
             let Some(name) = field.literal_symbol() else {
                 continue;
@@ -2119,6 +2226,109 @@ fn site_declared_slot_names(doc: &Document, spec: &SiteSpec<'_>) -> HashSet<Stri
         .collect()
 }
 
+/// Check named content holes on component instances using the declaring
+/// component as the scope. Scalar parameters remain owned by the generic
+/// `@declares_kind` schema; this is the content half whose bare wrapper names
+/// cannot be represented by a document-global block schema.
+fn validate_component_slot_contracts(doc: &Document) -> Result<(), BuildError> {
+    fn visit(doc: &Document, block: &Block<'_>, depth: usize) -> Result<(), BuildError> {
+        if depth > MAX_LOWER_DEPTH {
+            return Ok(());
+        }
+        if let Some(def) = doc.kind_declarer(block.kind()) {
+            let slots: Vec<DeclaredSlot<'_>> = declared_slots(&def)
+                .into_iter()
+                .filter(|slot| {
+                    matches!(
+                        slot.declaration.slot_type_ref(),
+                        Some(TypeRef::Named { path, .. })
+                            if path.last().is_some_and(|name| name == "content")
+                    )
+                })
+                .collect();
+            if !slots.is_empty() {
+                let names: HashSet<&str> = slots.iter().map(|slot| slot.name.as_str()).collect();
+                let mut fills: BTreeMap<String, usize> = BTreeMap::new();
+                let mut fill_children: BTreeMap<String, Vec<Block<'_>>> = BTreeMap::new();
+                let mut loose = Vec::new();
+                for child in block.blocks() {
+                    if names.contains(child.kind()) {
+                        *fills.entry(child.kind().to_string()).or_default() += 1;
+                        fill_children
+                            .entry(child.kind().to_string())
+                            .or_default()
+                            .extend(child.blocks());
+                    } else {
+                        loose.push(child);
+                    }
+                }
+                if names.contains("content") && !loose.is_empty() {
+                    *fills.entry("content".to_string()).or_default() += 1;
+                    fill_children.insert("content".to_string(), loose.clone());
+                }
+                if let Some((name, _)) = fills.iter().find(|(_, count)| **count > 1) {
+                    return Err(BuildError::BadPage(format!(
+                        "component `{}` fills slot `{name}` more than once",
+                        block.kind()
+                    )));
+                }
+                for slot in &slots {
+                    let required = !slot.declaration.slot_optional()
+                        && slot.declaration.field("default").is_none();
+                    if required && !fills.contains_key(&slot.name) {
+                        return Err(BuildError::BadPage(format!(
+                            "component `{}`: required slot `{}` is unfilled",
+                            block.kind(),
+                            slot.name
+                        )));
+                    }
+                    let Some(accepted) = slot.declaration.slot_type_ref().and_then(|ty| match ty {
+                        TypeRef::Named { path, args }
+                            if path.last().is_some_and(|name| name == "content") =>
+                        {
+                            args.first()
+                        }
+                        _ => None,
+                    }) else {
+                        continue;
+                    };
+                    for child in fill_children.get(&slot.name).into_iter().flatten() {
+                        if !block_matches_accepted_type(child, accepted) {
+                            return Err(BuildError::BadPage(format!(
+                                "component `{}`: slot `{}` accepts `{accepted}`, but found `{}`",
+                                block.kind(),
+                                slot.name,
+                                child.kind()
+                            )));
+                        }
+                    }
+                }
+                for child in block.blocks() {
+                    if names.contains(child.kind()) {
+                        for nested in child.blocks() {
+                            visit(doc, &nested, depth + 1)?;
+                        }
+                    } else {
+                        visit(doc, &child, depth + 1)?;
+                    }
+                }
+                return Ok(());
+            }
+        }
+        for child in block.blocks() {
+            visit(doc, &child, depth + 1)?;
+        }
+        Ok(())
+    }
+
+    for root in doc.blocks() {
+        if root.kind() == "page" || root.kind() == "wdoc_repeater" {
+            visit(doc, &root, 0)?;
+        }
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn record_slot_fill<'a>(
     fill: &Block<'a>,
@@ -2138,6 +2348,11 @@ fn record_slot_fill<'a>(
             .or_default()
             .extend(fill.blocks());
         return Ok(true);
+    }
+    if fill.is_conditional() && !site_slot_names.contains(name) {
+        return Err(BuildError::BadPage(format!(
+            "page `{page_name}` conditionally fills slot `{name}`, but no layout used by this site declares it"
+        )));
     }
     if site_slot_names.contains(name) {
         if fill.is_conditional() {

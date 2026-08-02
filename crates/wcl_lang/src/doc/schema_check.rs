@@ -791,6 +791,9 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     //   - `@contextual` kinds: context-polymorphic bodies that only have
     //     meaning once expanded with bindings.
     for nested in block.blocks() {
+        if nested.schema().is_none() && block.doc.is_possible_block_slot_fill(nested.kind()) {
+            continue;
+        }
         if allowed.iter().any(|k| k == nested.kind()) {
             if !nested.is_contextual() {
                 errs.extend(nested.schema_errors().iter().cloned());

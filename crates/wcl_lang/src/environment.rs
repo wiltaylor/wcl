@@ -227,6 +227,11 @@ fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
             "reason",
             TypeRef::Builtin(BuiltinType::Utf8),
         ),
+        // `@block_slot` marks a type used by `slot name: Type` as a nested
+        // block hole rather than a scalar parameter. Hosts choose the type
+        // and its accepted child vocabulary; the language only keeps the
+        // declaration form host-neutral.
+        synth_marker_decorator_schema("BlockSlot", "block_slot"),
         // `@declares_kind(name = 0, params = "…", body = "…")` marks a
         // block type whose *instances* declare block kinds of their own.
         // Kind lookup falls back to a schema derived from the named
@@ -235,6 +240,23 @@ fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
         // rather than the one-field helper.
         declares_kind_schema(),
     ]
+}
+
+fn synth_marker_decorator_schema(type_name: &str, decorator_name: &str) -> ast::TypeDecl {
+    ast::TypeDecl {
+        name: vec![type_name.to_string()],
+        extends: Vec::new(),
+        alias: None,
+        fields: Vec::new(),
+        decorators: vec![synthetic_decorator(
+            "decorator",
+            vec![ast::Expr::Utf8(decorator_name.to_string())],
+        )],
+        span: synthetic_span(),
+        leading_trivia: Vec::new(),
+        trailing_comment: None,
+        trailing_trivia: Vec::new(),
+    }
 }
 
 /// Schema for `@declares_kind(name = 0, params = "slots", body = "body")`.

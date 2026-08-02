@@ -313,7 +313,34 @@ pub(crate) fn walk_structural<'a, E>(
     if !crate::visibility::block_visible(block, patterns) {
         return Some(Ok(()));
     }
-    if block.is_slot_fill() {
+    let structural_name = if block.kind() == "wdoc_content" {
+        "content"
+    } else {
+        block.kind()
+    };
+    if let Some(children) = block.structural_slot_content(structural_name) {
+        for child in &children {
+            if let Err(err) = recurse(child) {
+                return Some(Err(err));
+            }
+        }
+        return Some(Ok(()));
+    }
+    // Static projections do not apply an HTML layout, but a bare named fill
+    // still contributes its children in source order. Slot declarations are
+    // host-scoped (there is intentionally no global language schema), so the
+    // host recognizes the wrapper from its own template vocabulary here.
+    let is_layout_fill = doc
+        .blocks()
+        .filter(|candidate| candidate.kind() == "template")
+        .any(|template| {
+            template
+                .blocks()
+                .filter(|candidate| candidate.kind() == "slot")
+                .filter_map(|slot| label_string(&slot))
+                .any(|name| name == block.kind())
+        });
+    if is_layout_fill {
         for child in block.blocks() {
             if let Err(err) = recurse(&child) {
                 return Some(Err(err));
@@ -403,6 +430,7 @@ pub(crate) fn expand_component_children<'a>(
     def: &Block<'a>,
 ) -> Vec<Block<'a>> {
     let mut bindings: Vec<(String, Value)> = Vec::new();
+    let mut content_slots = std::collections::BTreeSet::new();
     for slot in def
         .blocks()
         .filter(|b| matches!(b.kind(), "slot" | "wdoc_slot"))
@@ -410,6 +438,14 @@ pub(crate) fn expand_component_children<'a>(
         let Some(name) = label_string(&slot) else {
             continue;
         };
+        if matches!(
+            slot.slot_type_ref(),
+            Some(wcl_lang::TypeRef::Named { path, .. })
+                if path.last().is_some_and(|name| name == "content")
+        ) {
+            content_slots.insert(name);
+            continue;
+        }
         // An *absent* instance field falls to the slot's `default`; a
         // *present* field whose expression fails to evaluate is a genuine
         // error — record it so the build surfaces a diagnostic instead of
@@ -429,9 +465,25 @@ pub(crate) fn expand_component_children<'a>(
     let Some(body) = def.block("wdoc_body") else {
         return Vec::new();
     };
-    let content = Rc::new(instance.blocks().collect());
+    let mut structural_slots: std::collections::BTreeMap<String, Vec<Block<'a>>> = content_slots
+        .iter()
+        .map(|name| (name.clone(), Vec::new()))
+        .collect();
+    for child in instance.blocks() {
+        if content_slots.contains(child.kind()) {
+            structural_slots
+                .entry(child.kind().to_string())
+                .or_default()
+                .extend(child.blocks());
+        } else {
+            structural_slots
+                .entry("content".to_string())
+                .or_default()
+                .push(child);
+        }
+    }
     instance
-        .expand_bodies_with_content(&body, vec![Arc::new(bindings)], content)
+        .expand_bodies_with_slots(&body, vec![Arc::new(bindings)], Rc::new(structural_slots))
         .into_iter()
         .next()
         .unwrap_or_default()

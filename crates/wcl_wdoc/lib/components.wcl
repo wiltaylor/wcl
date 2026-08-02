@@ -54,7 +54,9 @@ type WdocComponent {
 // A typed slot declaration. `content` distinguishes content holes from
 // parameter values; `content<T>` restricts the accepted child kind/interface.
 // The parser retains the TypeRef and `?` / `*` modifiers on this ordinary
-// block so hosts can inspect them without teaching schema validation wdoc.
+// block. `@block_slot` is the host-neutral language marker that separates a
+// nested block hole from a scalar component parameter; wdoc owns its checks.
+@block_slot
 type content {}
 
 @block("slot")

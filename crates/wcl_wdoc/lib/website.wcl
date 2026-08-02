@@ -141,12 +141,10 @@ let website_body = fn(c: TemplateCtx) -> Html {
   ]))
 }
 
-// The site footer: the `footer` slot when filled, else the site title.
-let website_footer = fn(c: TemplateCtx) -> Html {
-  let footer = slot_blocks(c, :footer);
-  el("footer", ["ws-footer"],
-    if len(footer) == 0 { [raw(c.title)] } else { slot(c, :footer) })
-}
+// The site footer. Its title fallback belongs to the slot declaration below,
+// so every caller places the same resolved slot value.
+let website_footer = fn(c: TemplateCtx) -> Html
+  el("footer", ["ws-footer"], slot(c, :footer))
 
 // The full default `website` layout: style, header, optional banner and
 // hero slot, the content body (+ optional sidebar), and the footer.
@@ -168,7 +166,7 @@ template website {
   slot banner: content?
   slot hero: content?
   slot sidebar: content?
-  slot footer: content?
+  slot footer: content = fn(c: TemplateCtx) -> list<Html> [raw(c.title)]
   render = fn(c: TemplateCtx) -> list<Html>
     wdoc_website_layout(c)
 }

@@ -110,6 +110,7 @@ type TemplateCtx {
 type TemplateSlot {
   name:   symbol
   blocks: list<BlockHandle>
+  default: fn(TemplateCtx) -> list<Html>?
 }
 
 // Place authored block handles as one structural run. Evaluation merely
@@ -122,12 +123,17 @@ let wdoc_blocks = fn(blocks: list<BlockHandle>) -> list<Html> [
 // Resolve a declared slot and preserve its identity through placement. The
 // host builtin errors when the calling template does not declare `name`.
 let slot_blocks = fn(c: TemplateCtx, name: symbol) -> list<BlockHandle>
-  __wdoc_slot_blocks(c.slots, name)
+  __wdoc_slot(c.slots, name, :blocks)
 
 let slot = fn(c: TemplateCtx, name: symbol) -> list<Html> [
   Html::Blocks {
     blocks: slot_blocks(c, name),
-    slot: name
+    slot: name,
+    fallback: if len(slot_blocks(c, name)) > 0 { [] }
+      else {
+        let fallback = __wdoc_slot(c.slots, name, :default);
+        if fallback == none { [] } else { fallback(c) }
+      }
   }
 ]
 

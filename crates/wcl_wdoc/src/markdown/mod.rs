@@ -59,7 +59,7 @@ pub fn markdown(
     )
     .map_err(|e| BuildError::Parse(Report::new(e)))?;
 
-    let errs = doc.schema_errors();
+    let errs = crate::build::schema_errors(&doc);
     if !errs.is_empty() {
         let n = errs.len();
         let src = NamedSource::new(name.clone(), user_src.clone());

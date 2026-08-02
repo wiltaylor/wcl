@@ -479,6 +479,13 @@ pub(crate) fn render_template<'a>(
                 let mut fields = BTreeMap::new();
                 fields.insert("name".to_string(), Value::Symbol(name));
                 fields.insert("blocks".to_string(), Value::list(handles));
+                fields.insert(
+                    "default".to_string(),
+                    declaration
+                        .field("default")
+                        .and_then(|field| field.value().ok().cloned())
+                        .unwrap_or(Value::None),
+                );
                 Some(Value::record(vec!["TemplateSlot".to_string()], fields))
             })
             .collect(),
@@ -518,7 +525,7 @@ pub(crate) fn render_template<'a>(
     // a returned handle call into the ordinary renderer.
     let heading_state = std::cell::RefCell::new(HeadingSequence::default());
     let placed_slots = RefCell::new(std::collections::HashSet::new());
-    let render_blocks = |handles: &[Value], slot: Option<&str>| {
+    let render_blocks = |handles: &[Value], slot: Option<&str>, fallback: &str| {
         if let Some(slot) = slot {
             placed_slots.borrow_mut().insert(slot.to_string());
         }
@@ -538,10 +545,24 @@ pub(crate) fn render_template<'a>(
                 body.push('\n');
             }
         }
+        if handles.is_empty() {
+            body.push_str(fallback);
+        }
         let body = process_page_headings(&body, &mut heading_state.borrow_mut());
         match (patterns.anchor_mode(), page) {
             (true, Some(page)) => {
-                wrap_page_content(page, page_name, slot.unwrap_or("content"), &body)
+                let slot = slot.unwrap_or("content");
+                if handles.is_empty()
+                    && !fallback.is_empty()
+                    && let Some(declaration) = template
+                        .blocks()
+                        .filter(|block| block.kind() == "slot")
+                        .find(|block| label_string(block).as_deref() == Some(slot))
+                {
+                    wrap_layout_fallback(&declaration, page_name, slot, &body)
+                } else {
+                    wrap_page_content(page, page_name, slot, &body)
+                }
             }
             _ => body,
         }
@@ -722,6 +743,25 @@ fn wrap_page_content(page: &Block<'_>, page_name: &str, slot: &str, content: &st
         span.start,
         span.end,
         escape_html(slot),
+    )
+}
+
+fn wrap_layout_fallback(
+    declaration: &Block<'_>,
+    page_name: &str,
+    slot: &str,
+    content: &str,
+) -> String {
+    let src = declaration.named_source();
+    let span = declaration.span();
+    format!(
+        "<div data-wcl-page-name=\"{}\" data-wcl-slot=\"{}\" \
+         data-wcl-file=\"{}\" data-wcl-span=\"{}:{}\" style=\"display:contents\">\n{content}</div>\n",
+        escape_html(page_name),
+        escape_html(slot),
+        escape_html(src.name()),
+        span.start,
+        span.end,
     )
 }
 
