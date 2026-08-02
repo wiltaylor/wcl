@@ -17,11 +17,11 @@ import { pageHref } from '../../preview/pages';
 import {
   busy,
   designTab,
+  designTabOptions,
   gotoPage,
   loadNav,
   loadPalette,
   openPageSource,
-  palette,
   setDesignTab,
   setGotoPage,
   setPopover,
@@ -61,15 +61,11 @@ export default function DesignCanvas() {
   return (
     <div class="ed-design-col">
       <div class="ed-design-note">
-        {/* The second surface depends on the document: a wskill has a unit
-            graph, a WAD has its systems model, anything else has neither. */}
+        {/* Which surfaces this document offers is designTabOptions()' — a
+            wskill has a unit graph and an audit, a WAD has its systems
+            model, anything else has neither. */}
         <ToggleGroup
-          options={[
-            { value: 'canvas', label: 'Canvas' },
-            ...(palette()?.wad && !selected()?.wskill
-              ? [{ value: 'systems', label: 'Systems' }]
-              : [{ value: 'graph', label: 'Graph', disabled: !selected()?.wskill }]),
-          ]}
+          options={designTabOptions()}
           value={designTab()}
           onChange={(t) => setDesignTab(t)}
         />

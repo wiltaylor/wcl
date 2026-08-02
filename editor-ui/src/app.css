@@ -539,7 +539,7 @@ g.is-hidden > .ed-graph-edge-hit { display: none; }
 }
 .ed-flow-row:hover { background: var(--bg-2); border-radius: var(--r-sm); }
 .ed-flow-ends { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ed-flow-kind { color: var(--accent); font-family: var(--font-mono, monospace); }
+.ed-flow-kind { color: var(--accent); font-family: var(--font-mono); }
 .ed-flow-add {
   display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2);
   margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--border-subtle);
@@ -762,7 +762,7 @@ g:has(> .ed-sys-edge-hit:hover) > .ed-sys-edge { stroke: var(--accent); }
 }
 .ed-sys-panel-head { display: flex; align-items: center; gap: var(--sp-2); }
 .ed-sys-panel-head .spacer { flex: 1; }
-.ed-sys-panel-id { margin: 0; font: 600 var(--fs-sm) var(--font-mono, monospace); color: var(--fg-0); }
+.ed-sys-panel-id { margin: 0; font: 600 var(--fs-sm) var(--font-mono); color: var(--fg-0); }
 .ed-sys-panel-parent { margin: 0; font-size: var(--fs-xs); color: var(--fg-3); }
 .ed-sys-panel-doc { margin: 0; font-size: var(--fs-xs); color: var(--fg-2); }
 .ed-sys-panel-actions {
@@ -975,3 +975,125 @@ g:has(> .ed-sys-edge-hit:hover) > .ed-sys-edge { stroke: var(--accent); }
 }
 .ed-surface-widget:hover:not(:disabled) { color: var(--fg-0); border-color: var(--accent); }
 .ed-surface-widget:disabled { opacity: 0.5; cursor: default; }
+
+/* ---------------------------------------------------------------------------
+   The audit view — one surface over a git range: the changelog, with the
+   union graph as its second pane and health as a header strip. Severity is
+   what the tag colours carry, and a CANDIDATE is deliberately not an error:
+   candidates are nominations, and badging them alike would misrepresent the
+   whole mechanical/judgement split.
+   --------------------------------------------------------------------- */
+.ed-audit {
+  /* A candidate's own colour, distinct from the danger red of an error, the
+     amber of a warning and the accent a modified node wears — so no reading
+     of the tags can collapse a nomination into a defect. */
+  --ed-candidate: oklch(0.72 0.16 300);
+  height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.ed-audit-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ed-audit-range { width: 170px; flex: none; margin-left: var(--sp-2); }
+.ed-audit-error {
+  padding: var(--sp-2) var(--sp-3); color: var(--danger); white-space: pre-wrap;
+  border-bottom: 1px solid var(--border); background: var(--bg-1);
+}
+
+/* Header strip: the counts, the severities and the metrics that got worse,
+   on one line with the named units directly below. */
+.ed-audit-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3); font-size: var(--fs-xs);
+  background: var(--bg-1); border-bottom: 1px solid var(--border);
+}
+.ed-audit-range-label { color: var(--accent); font-family: var(--font-mono); }
+.ed-audit-counts { color: var(--fg-2); }
+.ed-audit-counts b { color: var(--fg-0); }
+.ed-audit-dim { color: var(--fg-3); }
+.ed-audit-sev { font-weight: 600; }
+.ed-audit-sev.is-error { color: var(--danger); }
+.ed-audit-sev.is-warn { color: var(--warning); }
+.ed-audit-sev.is-candidate { color: var(--ed-candidate); }
+.ed-audit-health {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-3);
+  padding-left: var(--sp-3); border-left: 1px solid var(--border);
+}
+.ed-audit-health > b { color: var(--fg-1); }
+.ed-audit-health > b.is-worse { color: var(--danger); }
+.ed-audit-metric { color: var(--fg-3); }
+.ed-audit-metric b { color: var(--danger); }
+
+/* A · the changelog */
+.ed-audit-log { flex: 1; min-height: 0; overflow: auto; padding: var(--sp-3); }
+.ed-audit-section { margin-bottom: var(--sp-4); }
+.ed-audit-section h2 {
+  margin: 0 0 var(--sp-2); font-size: var(--fs-xs); font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-3);
+}
+.ed-audit-rowgroup { margin-bottom: 2px; }
+.ed-audit-row, .ed-audit-edge {
+  display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0;
+  padding: 2px var(--sp-2); border-left: 2px solid transparent;
+  font-size: var(--fs-sm);
+}
+.ed-audit-row { cursor: pointer; }
+.ed-audit-row:hover { background: var(--bg-2); }
+.ed-audit-row.is-added, .ed-audit-edge.is-added { border-left-color: var(--success); }
+.ed-audit-row.is-removed, .ed-audit-edge.is-removed { border-left-color: var(--danger); }
+.ed-audit-row.is-modified { border-left-color: var(--accent); }
+.ed-audit-row.is-broken { border-left-color: var(--warning); }
+.ed-audit-edge { padding-left: calc(var(--sp-2) + 22px); color: var(--fg-3); }
+.ed-audit-marker { flex: none; width: 10px; color: var(--fg-3); }
+.ed-audit-kind { flex: none; width: 72px; color: var(--fg-3); font-size: var(--fs-xs); }
+.ed-audit-id { flex: none; min-width: 200px; color: var(--fg-0); }
+.ed-audit-title {
+  flex: 1; min-width: 0; color: var(--fg-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ed-audit-tag {
+  flex: none; font-size: var(--fs-xs); padding: 0 6px; border-radius: 9px;
+  border: 1px solid var(--border); color: var(--fg-3);
+}
+.ed-audit-tag.is-error { color: var(--danger); border-color: var(--danger); }
+.ed-audit-tag.is-warn { color: var(--warning); border-color: var(--warning); }
+/* A nomination, not a defect — its own colour and a dashed edge, so it can
+   never be mistaken for either of the two above. */
+.ed-audit-tag.is-candidate {
+  color: var(--ed-candidate); border-color: var(--ed-candidate); border-style: dashed;
+}
+
+/* B · the union graph */
+.ed-audit-graph { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ed-audit-ctl {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3); font-size: var(--fs-xs); color: var(--fg-2);
+}
+.ed-audit-legend { display: inline-flex; gap: var(--sp-3); }
+.ed-audit-sw {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  margin-right: 4px; vertical-align: middle; border: 1px solid transparent;
+}
+.ed-audit-sw.is-added { background: var(--success); }
+.ed-audit-sw.is-modified { background: var(--accent); }
+.ed-audit-sw.is-unchanged { background: var(--bg-2); border-color: var(--border); }
+.ed-audit-sw.is-removed { background: transparent; border: 1px dashed var(--danger); }
+.ed-audit-svg {
+  flex: 1; min-height: 0; background: var(--bg-0); cursor: grab;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.ed-audit-svg:active { cursor: grabbing; }
+.ed-audit-gedge { fill: none; stroke: var(--border); stroke-width: 1; }
+.ed-audit-gedge.is-added { stroke: var(--success); stroke-width: 1.6; }
+.ed-audit-gedge.is-removed {
+  stroke: var(--danger); stroke-width: 1.6; stroke-dasharray: 4 3;
+}
+.ed-audit-gnode rect { fill: var(--bg-1); stroke: var(--border); stroke-width: 1.6; }
+.ed-audit-gnode text {
+  fill: var(--fg-1); font: 600 11px system-ui, sans-serif; text-anchor: middle;
+  pointer-events: none;
+}
+.ed-audit-gnode .ed-audit-gkind { fill: var(--fg-3); font: 400 9px system-ui, sans-serif; }
+.ed-audit-gnode.is-added rect { stroke: var(--success); }
+.ed-audit-gnode.is-modified rect { stroke: var(--accent); }
+/* Ghosted, never absent: half of an audit is what stopped existing. */
+.ed-audit-gnode.is-removed rect {
+  fill: none; stroke: var(--danger); stroke-dasharray: 3 2;
+}
+.ed-audit-gnode.is-removed text { fill: var(--danger); }

@@ -46,6 +46,7 @@ import {
   commitOpsQuiet,
   commitUnitCreateQuiet,
   designTab,
+  designTabOptions,
   exitDesign,
   loadNav,
   loadPalette,
@@ -728,10 +729,7 @@ export default function GraphView() {
     <div class="ed-graph">
       <div class="ed-design-note">
         <ToggleGroup
-          options={[
-            { value: 'canvas', label: 'Canvas' },
-            { value: 'graph', label: 'Graph' },
-          ]}
+          options={designTabOptions()}
           value={designTab()}
           onChange={(t) => setDesignTab(t)}
         />
