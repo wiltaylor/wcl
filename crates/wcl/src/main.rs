@@ -1666,13 +1666,16 @@ fn run_check(file: &Path, json: bool) -> u8 {
     };
     match doc {
         Ok(doc) => {
-            let errs = doc.schema_errors();
+            let diagnostics = doc.schema_diagnostics();
             let warns = doc.schema_warnings();
             if json {
-                let errors = errs.iter().map(|e| diagnostic_json(e)).collect();
+                let errors = diagnostics
+                    .iter()
+                    .map(|(error, _)| diagnostic_json(error))
+                    .collect();
                 let warnings = warns.iter().map(|w| diagnostic_json(w)).collect();
                 println!("{}", check_report_json(&name, errors, warnings));
-                return if errs.is_empty() {
+                return if diagnostics.is_empty() {
                     EXIT_OK
                 } else {
                     EXIT_SCHEMA
@@ -1690,19 +1693,17 @@ fn run_check(file: &Path, json: bool) -> u8 {
                     if count == 1 { "" } else { "s" }
                 );
             }
-            if errs.is_empty() {
+            if diagnostics.is_empty() {
                 println!("OK");
                 EXIT_OK
             } else {
-                let count = errs.len();
-                let source_name = doc.source().name().to_string();
-                let source_text = doc.source().inner().clone();
-                for e in &errs {
-                    let source = miette::NamedSource::new(&source_name, source_text.clone());
-                    eprintln!(
-                        "{:?}",
-                        miette::Report::new(e.clone()).with_source_code(source)
-                    );
+                let count = diagnostics.len();
+                for (error, source) in diagnostics {
+                    let report = miette::Report::new(error);
+                    match source {
+                        Some(source) => eprintln!("{:?}", report.with_source_code(source)),
+                        None => eprintln!("{report:?}"),
+                    }
                 }
                 eprintln!(
                     "{name}: {count} schema violation{}",

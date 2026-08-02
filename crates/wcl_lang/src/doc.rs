@@ -214,12 +214,15 @@ struct SourceView<'a> {
     symbols: &'a SymbolIndex,
     items: &'a [ast::Item],
     cells: &'a [ItemCells],
+    source: &'a str,
     file_ns: &'a [String],
     /// Resolved path on disk. `None` for the root document (the host
     /// typically supplies that path itself, e.g. via the LSP request
     /// URI); `Some` for every eagerly-loaded import.
     path: Option<&'a Path>,
 }
+
+type CollectedSchemaErrors = Vec<(EvalError, Option<NamedSource<String>>)>;
 
 /// The set of `@document` schemas governing one namespace, root-authored
 /// first. Their *merge* forms the effective document schema: a top-level
@@ -584,6 +587,13 @@ impl Document {
         NamedSource::new(self.src.name(), self.src.inner().clone())
     }
 
+    fn named_source_for_view(&self, source: SourceView<'_>) -> NamedSource<String> {
+        match source.path {
+            Some(path) => NamedSource::new(path.display().to_string(), source.source.to_string()),
+            None => self.root_named_source(),
+        }
+    }
+
     /// The miette source (name + text) of the file that declares the
     /// block `target` points into — the root document, or the imported
     /// file that carries it. Hosts (e.g. the wdoc renderer) use this to
@@ -596,9 +606,43 @@ impl Document {
         if block_in_items(&self.ast.items, target) {
             return self.root_named_source();
         }
+        if let Some(source) =
+            named_source_for_block_in_lazy(&self.ast.items, &self.cells.items, target)
+        {
+            return source;
+        }
         for imp in &self.eager_imports {
             if let Some(src) = named_source_in_import(imp, target) {
                 return src;
+            }
+        }
+        self.root_named_source()
+    }
+
+    pub(crate) fn named_source_for_field(&self, target: *const ast::Field) -> NamedSource<String> {
+        if field_in_items(&self.ast.items, target, &self.cells.items) {
+            return self.root_named_source();
+        }
+        if let Some(source) =
+            named_source_for_field_in_lazy(&self.ast.items, &self.cells.items, target)
+        {
+            return source;
+        }
+        for imp in &self.eager_imports {
+            if let Some(source) = named_source_for_field_in_import(imp, target) {
+                return source;
+            }
+        }
+        self.root_named_source()
+    }
+
+    fn named_source_for_union(&self, target: *const ast::UnionDecl) -> NamedSource<String> {
+        if union_in_items(&self.ast.items, target) {
+            return self.root_named_source();
+        }
+        for imp in &self.eager_imports {
+            if let Some(source) = named_source_for_union_in_import(imp, target) {
+                return source;
             }
         }
         self.root_named_source()
@@ -609,6 +653,7 @@ impl Document {
             symbols: &self.symbols,
             items: &self.ast.items,
             cells: &self.cells.items,
+            source: self.src.inner(),
             file_ns: &self.file_ns,
             path: None,
         }];
@@ -618,6 +663,7 @@ impl Document {
                     symbols: &imp.symbols,
                     items: &imp.items,
                     cells: &imp.cells,
+                    source: &imp.source,
                     file_ns: &imp.file_ns,
                     path: Some(imp.path.as_path()),
                 });
@@ -2311,6 +2357,20 @@ impl Document {
     /// `@block`/`@table`. Each top-level block then has its
     /// `Block::schema_errors()` collected recursively.
     pub fn schema_errors(&self) -> Vec<EvalError> {
+        self.collect_schema_errors()
+            .into_iter()
+            .map(|(error, _)| error)
+            .collect()
+    }
+
+    /// Strict-mode validation paired with a source when its provenance is
+    /// known. Hosts should omit a snippet for `None` rather than attach the
+    /// root document to a recursively-produced cross-file error.
+    pub fn schema_diagnostics(&self) -> Vec<(EvalError, Option<NamedSource<String>>)> {
+        self.collect_schema_errors()
+    }
+
+    fn collect_schema_errors(&self) -> CollectedSchemaErrors {
         use crate::error::SchemaViolationKind as Kind;
         use std::collections::BTreeMap;
         let mut out = Vec::new();
@@ -2330,17 +2390,19 @@ impl Document {
         }
         for decls in by_ns.values() {
             for extra in decls.iter().filter(|d| !d.is_imported()).skip(1) {
-                EvalError::push_schema_violation(
-                    &mut out,
-                    Kind::MultipleDocumentSchemas,
-                    format!(
-                        "type '{}' declares a second root @document schema \
+                out.push((
+                    EvalError::schema_violation(
+                        Kind::MultipleDocumentSchemas,
+                        format!(
+                            "type '{}' declares a second root @document schema \
                          (only one root-authored @document is allowed per namespace; \
                          imported library schemas merge automatically)",
-                        extra.name()
+                            extra.name()
+                        ),
+                        extra.span(),
                     ),
-                    extra.span(),
-                );
+                    Some(self.root_named_source()),
+                ));
             }
         }
 
@@ -2376,17 +2438,19 @@ impl Document {
             }
             for ((_, kind), decls) in &by_kind {
                 for extra in decls.iter().filter(|d| !d.is_imported()).skip(1) {
-                    EvalError::push_schema_violation(
-                        &mut out,
-                        Kind::DuplicateBlockKind,
-                        format!(
-                            "type '{}' redeclares @{dec_name}(\"{kind}\") already declared \
+                    out.push((
+                        EvalError::schema_violation(
+                            Kind::DuplicateBlockKind,
+                            format!(
+                                "type '{}' redeclares @{dec_name}(\"{kind}\") already declared \
                              in this namespace (kinds must be unique per namespace; \
                              qualify across namespaces with `::`)",
-                            extra.name()
+                                extra.name()
+                            ),
+                            extra.span(),
                         ),
-                        extra.span(),
-                    );
+                        Some(self.root_named_source()),
+                    ));
                 }
             }
         }
@@ -2411,28 +2475,27 @@ impl Document {
             let Some(declarer) = self.kind_declarer(&name) else {
                 continue;
             };
-            EvalError::push_schema_violation(
-                &mut out,
-                Kind::DeclaredKindCollision,
-                format!(
-                    "block '{}' declares the kind '{name}', which collides with the \
+            out.push((
+                EvalError::schema_violation(
+                    Kind::DeclaredKindCollision,
+                    format!(
+                        "block '{}' declares the kind '{name}', which collides with the \
                      @block/@table kind \"{name}\" declared by type '{}' — rename it",
-                    declarer.kind(),
-                    t.full_name()
+                        declarer.kind(),
+                        t.full_name()
+                    ),
+                    declarer.span(),
                 ),
-                declarer.span(),
-            );
+                Some(declarer.named_source()),
+            ));
         }
 
         // Walk every source (the main file + every eagerly-imported
         // file). Each source's items are validated against the merged
         // `@document` schema for that source's namespace, if any.
         for src in self.all_sources() {
-            out.extend(crate::doc::schema_check::validate_item_decorators(
-                self,
-                src.items,
-                src.file_ns,
-            ));
+            let mut errors =
+                crate::doc::schema_check::validate_item_decorators(self, src.items, src.file_ns);
             let schemas = self.doc_schemas_for_ns(src.file_ns);
 
             // Pre-compute the merged schema's union-typed children
@@ -2445,7 +2508,7 @@ impl Document {
                 if has_schemaless(&f.ast.decorators) {
                     continue;
                 }
-                self.validate_root_field(&f, &schemas, &mut out);
+                self.validate_root_field(&f, &schemas, &mut errors);
             }
 
             // Walk the top-level blocks in this source.
@@ -2453,8 +2516,22 @@ impl Document {
                 if has_schemaless(&b.ast.decorators) {
                     continue;
                 }
-                self.validate_root_block(&b, &schemas, &root_union_slots, &mut out);
+                self.validate_root_block(&b, &schemas, &root_union_slots, &mut errors);
             }
+            let source = self.named_source_for_view(src);
+            out.extend(errors.into_iter().map(|error| {
+                let is_undeclared_decorator = matches!(
+                    &error,
+                    EvalError::SchemaViolation {
+                        kind: Kind::UndeclaredDecorator,
+                        ..
+                    }
+                );
+                let error_source = error
+                    .schema_source()
+                    .or_else(|| is_undeclared_decorator.then(|| source.clone()));
+                (error, error_source)
+            }));
         }
 
         // Duplicate identity labels among top-level blocks, grouped per
@@ -2475,7 +2552,11 @@ impl Document {
                 }
             }
             for blocks in by_ns.into_values() {
-                crate::doc::schema_check::duplicate_id_violations(blocks.into_iter(), &mut out);
+                out.extend(
+                    crate::doc::schema_check::duplicate_id_errors(blocks.into_iter())
+                        .into_iter()
+                        .map(|(error, block)| (error, Some(block.named_source()))),
+                );
             }
         }
 
@@ -2483,16 +2564,27 @@ impl Document {
         // chain, duplicate variants across that chain, and structural
         // collisions between variant bodies.
         for u in self.union_decls() {
-            out.extend(validate_union(self, u.ast));
+            let source = self.named_source_for_union(u.ast);
+            out.extend(
+                validate_union(self, u.ast)
+                    .into_iter()
+                    .map(|error| (error, Some(source.clone()))),
+            );
         }
 
         // Top-level connection statements: dispatch and kind checks.
         for src in self.all_sources() {
-            out.extend(crate::doc::schema_check::validate_connection_stmts(
+            let errors = crate::doc::schema_check::validate_connection_stmts(
                 self,
                 src.items,
                 &Scope::root(),
-            ));
+            );
+            let source = self.named_source_for_view(src);
+            out.extend(
+                errors
+                    .into_iter()
+                    .map(|error| (error, Some(source.clone()))),
+            );
         }
 
         out
@@ -3627,6 +3719,12 @@ fn block_in_items(items: &[ast::Item], target: *const ast::Block) -> bool {
     false
 }
 
+fn union_in_items(items: &[ast::Item], target: *const ast::UnionDecl) -> bool {
+    items
+        .iter()
+        .any(|item| matches!(item, ast::Item::UnionDecl(union) if std::ptr::eq(union, target)))
+}
+
 /// The miette source (name + text) of `imp` (or a transitive eager
 /// import) when it declares the block `target` points into.
 fn named_source_in_import(
@@ -3639,9 +3737,103 @@ fn named_source_in_import(
             imp.source.clone(),
         ));
     }
+    if let Some(source) = named_source_for_block_in_lazy(&imp.items, &imp.cells, target) {
+        return Some(source);
+    }
     for child in &imp.eager_imports {
         if let Some(src) = named_source_in_import(child, target) {
             return Some(src);
+        }
+    }
+    None
+}
+
+fn named_source_for_block_in_lazy(
+    items: &[ast::Item],
+    cells: &[ItemCells],
+    target: *const ast::Block,
+) -> Option<NamedSource<String>> {
+    for (item, cell) in items.iter().zip(cells) {
+        match (item, &cell.kind) {
+            (ast::Item::Block(block), ItemCellKind::Block { items, .. }) => {
+                if let Some(source) = named_source_for_block_in_lazy(&block.items, items, target) {
+                    return Some(source);
+                }
+            }
+            (ast::Item::Import(_), ItemCellKind::Import { loaded, .. }) => {
+                let Some(Ok(import)) = loaded.get() else {
+                    continue;
+                };
+                if let Some(source) = named_source_in_import(import, target) {
+                    return Some(source);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn named_source_for_field_in_import(
+    imp: &cells::LoadedImport,
+    target: *const ast::Field,
+) -> Option<NamedSource<String>> {
+    if field_in_items(&imp.items, target, &imp.cells) {
+        return Some(NamedSource::new(
+            imp.path.display().to_string(),
+            imp.source.clone(),
+        ));
+    }
+    if let Some(source) = named_source_for_field_in_lazy(&imp.items, &imp.cells, target) {
+        return Some(source);
+    }
+    for child in &imp.eager_imports {
+        if let Some(source) = named_source_for_field_in_import(child, target) {
+            return Some(source);
+        }
+    }
+    None
+}
+
+fn named_source_for_field_in_lazy(
+    items: &[ast::Item],
+    cells: &[ItemCells],
+    target: *const ast::Field,
+) -> Option<NamedSource<String>> {
+    for (item, cell) in items.iter().zip(cells) {
+        match (item, &cell.kind) {
+            (ast::Item::Block(block), ItemCellKind::Block { items, .. }) => {
+                if let Some(source) = named_source_for_field_in_lazy(&block.items, items, target) {
+                    return Some(source);
+                }
+            }
+            (ast::Item::Import(_), ItemCellKind::Import { loaded, .. }) => {
+                let Some(Ok(import)) = loaded.get() else {
+                    continue;
+                };
+                if let Some(source) = named_source_for_field_in_import(import, target) {
+                    return Some(source);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn named_source_for_union_in_import(
+    imp: &cells::LoadedImport,
+    target: *const ast::UnionDecl,
+) -> Option<NamedSource<String>> {
+    if union_in_items(&imp.items, target) {
+        return Some(NamedSource::new(
+            imp.path.display().to_string(),
+            imp.source.clone(),
+        ));
+    }
+    for child in &imp.eager_imports {
+        if let Some(source) = named_source_for_union_in_import(child, target) {
+            return Some(source);
         }
     }
     None

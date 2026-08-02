@@ -97,7 +97,7 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_ast {
     name = "ast"
     kind = "module"
-    summary = "1 file, 45 pub items"
+    summary = "1 file, 46 pub items"
   }
   code_node n_cg_wcl_lang_builtins {
     name = "builtins"
@@ -138,7 +138,7 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_error {
     name = "error"
     kind = "module"
-    summary = "1 file, 5 pub items"
+    summary = "1 file, 6 pub items"
   }
   code_node n_cg_wcl_lang_format {
     name = "format"
@@ -1795,6 +1795,25 @@ code_item code_api_wcl_lang_ast {
       kind = "field"
       deps = [n_api_wcl_lang_ast_Span]
     }
+    code_member m_n_api_wcl_lang_ast_Decorator_schemaless_mode {
+      signature = "fn schemaless_mode(&self) -> Option<SchemalessMode>"
+      kind = "method"
+      visibility = "crate"
+      deps = [n_api_wcl_lang_ast_SchemalessMode]
+    }
+  }
+  code_node n_api_wcl_lang_ast_SchemalessMode {
+    name = "SchemalessMode"
+    kind = "enum"
+    summary = "src/ast.rs"
+    code_member m_n_api_wcl_lang_ast_SchemalessMode_Full {
+      signature = "Full"
+      kind = "variant"
+    }
+    code_member m_n_api_wcl_lang_ast_SchemalessMode_AnnotationsOnly {
+      signature = "AnnotationsOnly"
+      kind = "variant"
+    }
   }
   code_node n_api_wcl_lang_ast_NamedArg {
     name = "NamedArg"
@@ -2188,51 +2207,10 @@ code_item code_api_wcl_lang_ast {
       deps = [n_api_wcl_lang_ast_Expr]
     }
   }
-  code_node n_api_wcl_lang_ast_UnionDecl {
-    name = "UnionDecl"
-    kind = "struct"
-    summary = "src/ast.rs"
-    code_member m_n_api_wcl_lang_ast_UnionDecl_name {
-      signature = "name: Vec<String>"
-      kind = "field"
-    }
-    code_member m_n_api_wcl_lang_ast_UnionDecl_extends {
-      signature = "extends: Vec<Vec<String>>"
-      kind = "field"
-    }
-    code_member m_n_api_wcl_lang_ast_UnionDecl_variants {
-      signature = "variants: Vec<UnionVariant>"
-      kind = "field"
-    }
-    code_member m_n_api_wcl_lang_ast_UnionDecl_decorators {
-      signature = "decorators: Vec<Decorator>"
-      kind = "field"
-      deps = [n_api_wcl_lang_ast_Decorator]
-    }
-    code_member m_n_api_wcl_lang_ast_UnionDecl_span {
-      signature = "span: Span"
-      kind = "field"
-      deps = [n_api_wcl_lang_ast_Span]
-    }
-    code_member m_n_api_wcl_lang_ast_UnionDecl_leading_trivia {
-      signature = "leading_trivia: Vec<Trivia>"
-      kind = "field"
-      deps = [n_api_wcl_lang_ast_Trivia]
-    }
-    code_member m_n_api_wcl_lang_ast_UnionDecl_trailing_comment {
-      signature = "trailing_comment: Option<String>"
-      kind = "field"
-    }
-    code_member m_n_api_wcl_lang_ast_UnionDecl_trailing_trivia {
-      signature = "trailing_trivia: Vec<Trivia>"
-      kind = "field"
-      deps = [n_api_wcl_lang_ast_Trivia]
-    }
-  }
   code_node n_api_wcl_lang_ast_more {
-    name = "… +11 more"
+    name = "… +12 more"
     kind = "overflow"
-    summary = "11 further public items — see the source."
+    summary = "12 further public items — see the source."
   }
 }
 
@@ -2698,7 +2676,7 @@ code_item code_api_doc_view {
       kind = "method"
     }
     code_member m_n_api_doc_view_Document_more {
-      signature = "… +81 more"
+      signature = "… +83 more"
       kind = "overflow"
     }
   }
@@ -4364,6 +4342,16 @@ code_item code_api_wcl_lang_error {
   name      = "Public surface — error"
   summary   = "Pub / pub(crate) types, traits, and functions — the surface a sibling component sees (tree-sitter over wcl_lang::error)."
   kind      = :module_api
+  code_node n_api_wcl_lang_error_SchemaDiagnosticSource {
+    name = "SchemaDiagnosticSource"
+    kind = "struct"
+    summary = "src/error.rs"
+    code_member m_n_api_wcl_lang_error_SchemaDiagnosticSource_named_source {
+      signature = "fn named_source(&self) -> NamedSource<String>"
+      kind = "method"
+      visibility = "crate"
+    }
+  }
   code_node n_api_wcl_lang_error_ParseError {
     name = "ParseError"
     kind = "enum"
@@ -4474,7 +4462,7 @@ code_item code_api_wcl_lang_error {
       kind = "variant"
     }
     code_member m_n_api_wcl_lang_error_EvalError_more {
-      signature = "… +36 more"
+      signature = "… +38 more"
       kind = "overflow"
     }
   }

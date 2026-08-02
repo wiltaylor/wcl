@@ -448,6 +448,29 @@ pub struct Decorator {
     pub span: Span,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SchemalessMode {
+    Full,
+    AnnotationsOnly,
+}
+
+impl Decorator {
+    pub(crate) fn schemaless_mode(&self) -> Option<SchemalessMode> {
+        if self.name.len() != 1 || self.name[0] != "schemaless" {
+            return None;
+        }
+        if self
+            .named
+            .iter()
+            .any(|arg| arg.name == "annotations" && matches!(arg.value, Expr::Bool(true)))
+        {
+            Some(SchemalessMode::AnnotationsOnly)
+        } else {
+            Some(SchemalessMode::Full)
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NamedArg {
     pub name: String,

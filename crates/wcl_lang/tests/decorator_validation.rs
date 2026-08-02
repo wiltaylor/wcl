@@ -23,6 +23,53 @@ item {}
 }
 
 #[test]
+fn undeclared_decorator_on_root_union_variant_is_rejected() {
+    let source = r#"@document type Root { @children(Shape) shapes: list<Shape> }
+union Shape { Circle { radius: f64 } }
+@missing
+circle { radius = 1.0 }
+"#;
+    let doc = Document::open(source, "decorators.wcl").expect("document opens");
+
+    assert!(doc.schema_errors().iter().any(|error| matches!(
+        error,
+        EvalError::SchemaViolation {
+            kind: SchemaViolationKind::UndeclaredDecorator,
+            detail: Some(name),
+            span,
+            ..
+        } if name == "missing"
+            && span.offset() == source.find("missing").unwrap()
+            && span.len() == "missing".len()
+    )));
+}
+
+#[test]
+fn undeclared_decorator_on_nested_union_variant_is_rejected() {
+    let source = r#"@document type Root { @children("container") containers: list<Container> }
+@block("container") type Container { @children(Shape) shapes: list<Shape> }
+union Shape { Circle { radius: f64 } }
+container {
+  @missing
+  circle { radius = 1.0 }
+}
+"#;
+    let doc = Document::open(source, "decorators.wcl").expect("document opens");
+
+    assert!(doc.schema_errors().iter().any(|error| matches!(
+        error,
+        EvalError::SchemaViolation {
+            kind: SchemaViolationKind::UndeclaredDecorator,
+            detail: Some(name),
+            span,
+            ..
+        } if name == "missing"
+            && span.offset() == source.find("missing").unwrap()
+            && span.len() == "missing".len()
+    )));
+}
+
+#[test]
 fn undeclared_decorator_on_document_field_is_a_schema_violation() {
     let source = r#"@document type Root { title: utf8 }
 @missing

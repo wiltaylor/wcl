@@ -4,9 +4,9 @@
 //! source driving and shared token helpers.
 
 use crate::ast::{
-    Block, Decorator, Expr, Field, ImportDecl, Item, NamedArg, NamespaceDecl, Span, SymbolEntry,
-    SymbolSetDecl, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDecl, UseForm, UseItem,
-    VariantBody,
+    Block, Decorator, Expr, Field, ImportDecl, Item, NamedArg, NamespaceDecl, SchemalessMode, Span,
+    SymbolEntry, SymbolSetDecl, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDecl, UseForm,
+    UseItem, VariantBody,
 };
 use crate::error::ParseError;
 use crate::lexer::{StringLit, TokenKind};
@@ -30,14 +30,9 @@ fn has_default_decorator(decorators: &[Decorator]) -> bool {
 /// depend on the doc layer. Drives string-literal field-key acceptance in
 /// `parse_block`.
 fn decorator_is_schemaless(decorators: &[Decorator]) -> bool {
-    decorators.iter().any(|decorator| {
-        decorator.name.len() == 1
-            && decorator.name[0] == "schemaless"
-            && !decorator
-                .named
-                .iter()
-                .any(|arg| arg.name == "annotations" && matches!(&arg.value, Expr::Bool(true)))
-    })
+    decorators
+        .iter()
+        .any(|decorator| matches!(decorator.schemaless_mode(), Some(SchemalessMode::Full)))
 }
 
 /// Infer a `TypeRef` from an expression used as an inline default in
