@@ -595,15 +595,21 @@ fn default_audience(model: &KindModel<'_>, kind: &str) -> String {
         .unwrap_or_else(|| "book".to_string())
 }
 
-/// Every literal string a block's subtree carries, in source order and
-/// newline-joined: its string labels, its scalar string fields and list
-/// elements, then the same again for every nested block — a unit's `body`
-/// paragraphs, its tables, a procedure's steps. This is the searchable
-/// prose behind the editor's find-a-unit box, so it is deliberately only
-/// the *content*: field names, block kinds, identifiers and symbols stay
-/// out, or searching "related" would hit every unit that declares the
-/// field rather than the one whose prose says the word. Nothing is
-/// truncated — a hit the box can't show is a hit the reader can't find.
+/// The string literals a block's subtree carries, in source order and
+/// newline-joined: its string labels, its string-valued fields (through
+/// lists, interpolations and record literals), then the same again for
+/// every nested block — a unit's `body` paragraphs, its tables, a
+/// procedure's steps. This is the searchable prose behind the editor's
+/// find-a-unit box, so it is deliberately only the *content*: field names,
+/// block kinds, identifiers and symbols stay out, or searching "related"
+/// would hit every unit that declares the field rather than the one whose
+/// prose says the word. Strings a *computed* field would produce are
+/// likewise absent — this reads the source, not an evaluation.
+///
+/// Nothing is truncated: a hit the box can't show is a hit the reader
+/// can't find. The cost is bounded by what a wskill is — the largest one
+/// in this repo (`docs/wskills/wcl`, 189 units, ~3x the size the box was
+/// asked to stay usable at) contributes 138 KB to a 402 KB payload.
 ///
 /// The ids and names the box also searches ride on the node itself, so
 /// they need no extraction here (they land in the text as well, being
@@ -642,6 +648,14 @@ fn collect_expr_strings(e: &ast::Expr, out: &mut Vec<String>) {
         ast::Expr::ListLit { elements, .. } => {
             for el in elements {
                 collect_expr_strings(el, out);
+            }
+        }
+        // A bare record literal is a value like any other — a `wdoc` block
+        // field can hold a list of them (chart series, table rows), and
+        // their strings are as much prose as a paragraph's.
+        ast::Expr::Record { fields, .. } => {
+            for f in fields {
+                collect_expr_strings(&f.value, out);
             }
         }
         _ => {}
@@ -797,7 +811,8 @@ mod tests {
                 root.join("data/concepts/alpha.wcl"),
                 "concept alpha {\n  name = \"Alpha\"\n  summary = \"Spans address bytes\"\n  \
                  body {\n    p \"A span is a byte range into the source.\"\n    \
-                 table {\n      row \"start | end\"\n    }\n  }\n}\n",
+                 table {\n      row \"start | end\"\n    }\n    \
+                 chart {\n      series = [{ label: \"Widened spans\" }]\n    }\n  }\n}\n",
             )
             .unwrap();
             let main = std::fs::read_to_string(root.join("main.wcl")).unwrap();
@@ -818,6 +833,8 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("start | end"), "{text}");
+        // Through a list of record literals, too — a chart's series.
+        assert!(text.contains("Widened spans"), "{text}");
         // Field names, block kinds and identifiers are schema vocabulary,
         // not prose: searching "concept" must not match every concept.
         assert!(!text.contains("summary"), "{text}");

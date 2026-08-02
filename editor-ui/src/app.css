@@ -370,9 +370,11 @@ g.is-hidden > .ed-graph-edge-hit { display: none; }
 .ed-unitsearch { position: relative; min-width: 0; }
 /* The toolbar variant: a fixed, modest width so the filters keep their room. */
 .ed-unitsearch-inline { width: 190px; flex: none; margin-left: var(--sp-2); }
+/* Viewport-positioned (left/top/width/max-height set inline by the
+   component): two of the three hosts are narrow scroll containers, which
+   would clip an absolutely-positioned list. */
 .ed-unitsearch-results {
-  position: absolute; z-index: 40; top: calc(100% + 4px); left: 0;
-  min-width: 100%; width: max(100%, 380px); max-height: 340px; overflow-y: auto;
+  position: fixed; z-index: 40; overflow-y: auto;
   border: 1px solid var(--border); border-radius: var(--r-md);
   background: var(--bg-1); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   padding: 4px;

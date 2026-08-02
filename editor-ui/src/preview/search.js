@@ -45,7 +45,9 @@ function placement(text, term, at) {
   return /[\w]/.test(text[at - 1]) ? 0 : 10;
 }
 
-/** The line of `text` containing byte `at`, and the offset within it. */
+/** The line of `text` containing index `at`, and the offset within it.
+    Indices are the string's own (UTF-16 code units) throughout — nothing
+    here travels back to the server, where spans are byte offsets. */
 function lineAt(text, at) {
   const start = text.lastIndexOf('\n', at) + 1;
   const end = text.indexOf('\n', at);
