@@ -1130,7 +1130,8 @@ pub(crate) fn root_site_name(specs: &[SiteSpec<'_>]) -> Result<Option<String>, B
 /// Whether `spec` is a skill site (`default_template = :ai_skill`). Such a
 /// site is built only by the skill target (`wcl wdoc skill`); the HTML /
 /// PDF / Markdown targets skip it, so a single document can carry a web book
-/// and a skill that share pages.
+/// and a skill that share pages — such a document declares two sites, so
+/// each page names the ones it belongs to (a shared page lists both).
 pub(crate) fn is_skill_site(spec: &SiteSpec<'_>) -> bool {
     spec.block.as_ref().is_some_and(is_skill_site_block)
 }
@@ -1180,6 +1181,29 @@ pub(crate) fn collect_site_specs<'a>(
                 return Err(BuildError::BadPage(format!("duplicate site name \"{n}\"")));
             }
         }
+        // Every page names its sites. An untagged page used to belong to
+        // all of them, which was harmless while a site was only an output
+        // folder — but the site also chooses the page's template, so adding
+        // a site would re-render every untagged page under it without the
+        // page changing. A genuinely shared page says so
+        // (`sites = [:docs, :blog]`). Only `Page.sites` is required: a
+        // `class` or `stylesheet` with no `sites` list stays global.
+        for p in all_pages {
+            if block_sites(p).is_none_or(|list| list.is_empty()) {
+                let name = page_name(p).unwrap_or_else(|| "<unnamed>".to_string());
+                return Err(BuildError::BadPage(format!(
+                    "page \"{name}\" declares no `sites` — in a document with more \
+                     than one site every page must name the sites it belongs to \
+                     (declared: {})",
+                    names
+                        .iter()
+                        .flatten()
+                        .map(|n| format!(":{n}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )));
+            }
+        }
     }
 
     // A page's `sites` list must reference declared site names.
@@ -1189,34 +1213,6 @@ pub(crate) fn collect_site_specs<'a>(
             if !known.contains(r.as_str()) {
                 return Err(BuildError::BadPage(format!(
                     "page references unknown site \"{r}\""
-                )));
-            }
-        }
-    }
-
-    // In a document declaring more than one site, every page names its
-    // sites. An untagged page used to belong to all of them, which was
-    // harmless while a site was only an output folder — but the site also
-    // chooses the page's template, so adding a site would re-render every
-    // untagged page under it without the page changing. A genuinely shared
-    // page says so (`sites = [:docs, :blog]`). Single-site documents (every
-    // wskill projection, most user documents) are unaffected, and only
-    // `Page.sites` is required: a `class` or `stylesheet` with no `sites`
-    // list stays global.
-    if site_blocks.len() > 1 {
-        for p in all_pages {
-            if block_sites(p).is_none_or(|list| list.is_empty()) {
-                let name = page_name(p).unwrap_or_else(|| "<unnamed>".to_string());
-                let known: Vec<&str> = names.iter().flatten().map(String::as_str).collect();
-                return Err(BuildError::BadPage(format!(
-                    "page \"{name}\" declares no `sites` — in a document with more \
-                     than one site every page must name the sites it belongs to \
-                     (declared: {})",
-                    known
-                        .iter()
-                        .map(|n| format!(":{n}"))
-                        .collect::<Vec<_>>()
-                        .join(", ")
                 )));
             }
         }

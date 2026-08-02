@@ -533,11 +533,16 @@ fn add_page(entry_abs: &Path, v: &serde_json::Value) -> Result<serde_json::Value
         return Err(format!("`{name}` is not a valid page name"));
     }
     let title = crate::edit::str_field(v, "title")?;
+    let mut fields = Vec::new();
+    if let Some(sites) = page_sites_field(entry_abs, v)? {
+        fields.push(sites);
+    }
+    fields.push(("title".to_string(), ast_edit::string_literal_expr(title)));
     let page = ast_edit::build_block(
         "page",
         &[],
         vec![Expr::Identifier(name.to_string(), Span::new(0, 0))],
-        vec![("title".to_string(), ast_edit::string_literal_expr(title))],
+        fields,
     );
     // The nav entry that links the page (optional — a page can be added
     // unlinked): `{ file, container_span, kind }`.
@@ -579,6 +584,54 @@ fn add_page(entry_abs: &Path, v: &serde_json::Value) -> Result<serde_json::Value
         }
         Ok(())
     })
+}
+
+/// The `sites = [:name]` field a new page must carry, or `None` when the
+/// entry declares at most one site (where the field is optional and every
+/// page is a member anyway).
+///
+/// A document declaring more than one site rejects an untagged page at
+/// build time — the site chooses the page's template — so the op tags the
+/// new page with the site whose nav it is editing, which is the `site`
+/// every nav op already carries. Reading the entry's own top-level `site`
+/// blocks matches `static_site_nav`: the client's `site` came from the nav
+/// model, which addresses exactly those.
+fn page_sites_field(
+    entry_abs: &Path,
+    v: &serde_json::Value,
+) -> Result<Option<(String, Expr)>, String> {
+    let text = crate::edit::read(entry_abs)?;
+    let src = parse_for_edit(&text, entry_abs.display().to_string()).map_err(super::err_str)?;
+    let declared: Vec<Option<String>> = src
+        .items
+        .iter()
+        .filter_map(|it| match it {
+            Item::Block(b) if b.kind == "site" => Some(super::util::ast_label(b)),
+            _ => None,
+        })
+        .collect();
+    if declared.len() < 2 {
+        return Ok(None);
+    }
+    let names: Vec<&str> = declared.iter().flatten().map(String::as_str).collect();
+    let site = v.get("site").and_then(serde_json::Value::as_str);
+    let Some(site) = site.filter(|s| names.contains(s)) else {
+        return Err(format!(
+            "this document declares {} sites, so a new page must name the one \
+             it belongs to (declared: {})",
+            declared.len(),
+            names.join(", ")
+        ));
+    };
+    Ok(Some((
+        "sites".to_string(),
+        Expr::ListLit {
+            elements: vec![Expr::Symbol(site.to_string())],
+            elem_trivia: vec![Default::default()],
+            trailing_trivia: Vec::new(),
+            span: Span::new(0, 0),
+        },
+    )))
 }
 
 enum RelatedOp {
@@ -1181,6 +1234,84 @@ mod tests {
                 .any(|n| n["title"] == "FAQ" && n["page"] == "faq"),
             "{v:#}"
         );
+    }
+
+    /// A multi-site document requires `sites` on every page, so `add_page`
+    /// tags the new one with the site whose nav it is editing — the `site`
+    /// every nav op already carries. Without it the op would leave the
+    /// document unbuildable, and every later preview build would fail.
+    #[test]
+    fn add_page_tags_the_site_in_a_multi_site_document() {
+        let doc = "import <wdoc.wcl>\n\nsite docs {\n  title = \"Docs\"\n  root = true\n  \
+                   toc {\n    chapter \"Start\" {\n      page = index\n    }\n  }\n}\n\n\
+                   site blog {\n  title = \"Blog\"\n  toc {\n    chapter \"Posts\" {\n      \
+                   page = post\n    }\n  }\n}\n\npage index {\n  sites = [:docs]\n  \
+                   title = \"Hi\"\n\n  h1 \"Hello\"\n}\n\npage post {\n  sites = [:blog]\n  \
+                   title = \"Post\"\n\n  h1 \"Post\"\n}\n";
+        let (_td, ws) = workspace_built_by(|root| {
+            std::fs::write(root.join("main.wcl"), doc).unwrap();
+        });
+        let container = |site: &str| nav(&ws, "main.wcl", Some(site)).unwrap()["container"].clone();
+
+        op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl", "op": "add_page", "site": "blog",
+                "name": "faq", "title": "FAQ",
+                "nav": { "container_span": container("blog")["span"], "kind": "chapter" },
+            }),
+        )
+        .expect("add_page");
+        let text = read(&ws, "main.wcl");
+        assert!(
+            text.contains("page faq {\n  sites = [:blog]"),
+            "the new page joins the site whose nav was edited:\n{text}"
+        );
+
+        // The document still builds — which is the whole point of tagging.
+        assert!(
+            wcl_wdoc::open_doc_for_edit_with_overlay(
+                &ws.root_dir().join("main.wcl"),
+                Default::default()
+            )
+            .is_ok(),
+            "the entry should still open cleanly:\n{text}"
+        );
+
+        // No site named ⇒ refused with the choices, rather than writing a
+        // page the build will reject.
+        let e = op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl", "op": "add_page",
+                "name": "loose", "title": "Loose",
+            }),
+        )
+        .expect_err("an untagged page must be refused");
+        assert!(e.contains("docs") && e.contains("blog"), "{e}");
+        assert!(!read(&ws, "main.wcl").contains("page loose"), "not written");
+    }
+
+    /// A single-site document is unaffected — no `sites` field is written.
+    #[test]
+    fn add_page_writes_no_sites_in_a_single_site_document() {
+        let doc = "import <wdoc.wcl>\n\nsite docs {\n  title = \"Docs\"\n  toc {\n    \
+                   chapter \"Start\" {\n      page = index\n    }\n  }\n}\n\npage index {\n  \
+                   title = \"Hi\"\n\n  h1 \"Hello\"\n}\n";
+        let (_td, ws) = workspace_built_by(|root| {
+            std::fs::write(root.join("main.wcl"), doc).unwrap();
+        });
+        op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl", "op": "add_page", "site": "docs",
+                "name": "faq", "title": "FAQ",
+            }),
+        )
+        .expect("add_page");
+        let text = read(&ws, "main.wcl");
+        assert!(text.contains("page faq"), "{text}");
+        assert!(!text.contains("sites = "), "no sites field:\n{text}");
     }
 
     /// The id-addressed related ops reach nested sub-indexes (the owning
