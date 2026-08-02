@@ -55,6 +55,7 @@ The rendered skill must contain `references/research_<id>.md` for the new findin
 
 > [!TIP]
 > **Verification**
+>
 > `references/research_<id>.md` exists in the rendered skill, `index_research.md` lists it, and SKILL.md's Research section links it with its checked date.
 
 ## Related

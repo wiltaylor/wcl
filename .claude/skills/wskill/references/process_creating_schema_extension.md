@@ -59,6 +59,7 @@ Project the gathered list in BOTH the book and the skill templates — a table, 
 
 > [!TIP]
 > **Verification**
+>
 > `just wskill-check` passes with instances present, and both the book and the skill show the new section on the next render.
 
 ## Related

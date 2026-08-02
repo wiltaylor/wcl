@@ -37,6 +37,7 @@ Write `.wbuild/reports/<spec>-review-<N>.md` in the same self-contained, literal
 
 > [!TIP]
 > **Verification**
+>
 > Every merged spec carries either :reviewed or (pre-1.3.0) an approval report; no spec was blocked on suggestions alone.
 
 [← Back to SKILL.md](../SKILL.md)

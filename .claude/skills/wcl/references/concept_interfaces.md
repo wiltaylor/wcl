@@ -20,6 +20,7 @@ interface Sized extends Drawable {
 
 > [!NOTE]
 > **Structural, not nominal**
+>
 > A type need not be declared as a parent or implement anything explicitly. If it happens to have all the interface's fields with compatible types, it satisfies the interface.
 
 Interfaces have one common consumer: **reference fields** (`&T`), which accept any value that structurally satisfies the interface. See [References](../references/concept_references.md).

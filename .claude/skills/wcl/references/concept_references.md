@@ -45,6 +45,7 @@ s2 = { focus: { x: 10.0, y: 10.0, side:   8.0 } }   // square-shaped
 
 > [!NOTE]
 > **Structural, not nominal**
+>
 > A type need not explicitly extend or implement the interface. If it has all the required fields with compatible types, a &T field accepts it.
 
 ## Related

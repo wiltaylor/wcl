@@ -42,6 +42,7 @@ Columns can hold any wdoc content — paragraphs, headings, callouts, code block
 
 > [!NOTE]
 > **Page columns vs diagram columns**
+>
 > On a page, a `column` holds any block. Inside a wdoc `column` cell used as a book-step gutter, only paragraph / heading content fits — code, lists, callouts and `project` can't sit in such a cell.
 
 ## Block reference

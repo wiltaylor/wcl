@@ -346,3 +346,18 @@ fn multiple_skill_sites_render_side_by_side_with_shared_agents() {
         "agents are not duplicated into the skill folders"
     );
 }
+
+#[test]
+fn a_callout_renders_in_the_skill_folder() {
+    // The skill target runs the Markdown backend, so the content IR's
+    // `Callout` reaches it through the same exhaustive match — the fourth
+    // of the four backends.
+    let (_t, out) = build(&format!(
+        "{SITE}page overview {{ start = true\n  \
+           callout \"Heads up\" {{ class = [\"warning\"]  body = \"Careful **here**.\" }}\n}}\n"
+    ));
+    let md = read(&out, "SKILL.md");
+    assert!(md.contains("> [!WARNING]"), "alert keyword: {md}");
+    assert!(md.contains("> **Heads up**"), "heading: {md}");
+    assert!(md.contains("> Careful **here**."), "body prose: {md}");
+}

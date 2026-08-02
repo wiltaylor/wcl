@@ -49,6 +49,7 @@ preview page.
 
 > [!TIP]
 > **Verification**
+>
 > The edited value appears in the data file (git diff shows a clean, minimal change) and on the rebuilt preview page.
 
 ## Related

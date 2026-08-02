@@ -50,6 +50,7 @@ sidebar. See \*Setting up AI skill generation\*.
 
 > [!TIP]
 > **Verification**
+>
 > Each `index` appears as a chapter in the book sidebar (and, when `:ai`/`:both`, as a section in `SKILL.md`), listing links to the units it pins.
 
 ## Related

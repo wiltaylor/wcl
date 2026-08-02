@@ -28,6 +28,7 @@ The `none` an untaken branch leaves behind is a _value_, so it has to land somew
 
 > [!NOTE]
 > **if let still needs an else**
+>
 > Only the plain `if` may omit its `else`. An `if let` still requires one — the shorthand is not supported there yet.
 
 ## Related

@@ -2,10 +2,12 @@
 
 > [!WARNING]
 > **Users, not builders**
+>
 > A persona is a kind of **user of the system** — who it exists for. The people and agents who \*build, maintain, or operate\* it (the maintainer, contributors, an AI implementation agent, the on-call engineer) are **stakeholders** (view 1) with RACI rows, never personas. Test: would this party still exist if the system were bought instead of built? Yes → persona; no → stakeholder.
 
 > [!WARNING]
 > **Access grants are security controls**
+>
 > An `access_grant` records a **security control**: SSO, an approved signup, an admin invite — something that \*gates\* access, with an approver where one exists. Installing freely-available software is NOT access control; a system with no access control honestly has **no** access grants, not a grant that says “installs it”.
 
 | Block | Fields | Notes |

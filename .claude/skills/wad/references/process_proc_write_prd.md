@@ -52,6 +52,7 @@ Present the PRD, surfaces, models and scenarios (the WAD walk usually IS this pr
 
 > [!TIP]
 > **Verification**
+>
 > just check-full green and explicit user approval recorded in the conversation.
 
 [← Back to SKILL.md](../SKILL.md)

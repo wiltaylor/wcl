@@ -45,6 +45,7 @@ After the final wave merges, execute every usage scenario from out/specs/index.m
 
 > [!TIP]
 > **Verification**
+>
 > Every spec is :merged in status.wcl and every usage scenario passes on trunk.
 
 [← Back to SKILL.md](../SKILL.md)

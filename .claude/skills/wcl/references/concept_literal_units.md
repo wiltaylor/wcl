@@ -24,6 +24,7 @@ Three unit types are always in scope, no import needed. Each is an ordinary `i64
 
 > [!NOTE]
 > **Define your own**
+>
 > The mechanism is not special to `std.*`: hang `@unit(name, factor)` decorators on any numeric type alias and that type gains those units. `@unit("kg", 1000) @unit("g", 1) type Grams = i64` makes `5kg` resolve to `5000`.
 
 ## Formatting back

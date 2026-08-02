@@ -40,6 +40,7 @@ Anything decided since the last sweep becomes an `adr` now, while the context is
 
 > [!TIP]
 > **Verification**
+>
 > Extractors are git-quiet after a re-run, `wcl diff` against the baseline shows only intended drift, and spot-checked chapters match reality.
 
 ## Related

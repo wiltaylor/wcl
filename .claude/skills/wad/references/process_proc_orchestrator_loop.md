@@ -43,6 +43,7 @@ When all specs are `:merged`: 1. Run the post-merge check one final time on trun
 
 > [!TIP]
 > **Verification**
+>
 > Every spec :merged, every scenario green on trunk, knowledge folded back (capabilities, project-context, the WAD), worktrees pruned.
 
 [← Back to SKILL.md](../SKILL.md)

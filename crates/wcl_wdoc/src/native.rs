@@ -26,11 +26,18 @@
 //!    until they agree.
 //!
 //! What is deliberately **not** here: blocks with a real `lower` that a
-//! backend nonetheless special-cases. `callout` (PDF + Markdown) and `code`
-//! (Markdown) are hand-reimplementations of a lowering those backends can't
-//! follow, because `lower_recurse` exists only in HTML. They are lowered
-//! blocks with a backend shortcut, not native ones, and listing them here
-//! would declare the HTML build's `callout` native too.
+//! backend nonetheless special-cases. `code` (Markdown) is a
+//! hand-reimplementation of a lowering that backend can't follow — its
+//! HTML lowering builds a code-card out of markup chrome, so Markdown reads
+//! the block's fields instead. That is a lowered block with a backend
+//! shortcut, not a native one, and listing it here would declare the HTML
+//! build's `code` native too.
+//!
+//! `callout` was the second such entry until it was routed through the
+//! semantic content IR (`lib/content.wcl`): its lowering now returns a
+//! node every backend reads from one declaration, so both hand-copies are
+//! gone and there is nothing here to exempt. That is the shape the
+//! remaining shortcut is headed for.
 
 use miette::Report;
 use wcl_lang::{Block, DeclName, Document, EvalError, TypeDecl, Value};

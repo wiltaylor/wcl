@@ -5,6 +5,7 @@
 //! `crate::render::*` paths are unchanged:
 //!
 //! - [`accessors`] — field / map / value readers + HTML escaping
+//! - [`content_html`] — the HTML reading of the semantic content IR
 //! - [`css`] — injected style constants + `class`-block lowering
 //! - [`expand`] — `wdoc_repeater` / `wdoc_component` body expansion, shared
 //!   by the HTML and SVG (diagram) paths
@@ -14,6 +15,7 @@
 //! - [`theme`] — `ColourTheme` → `--wdoc-*` custom-property CSS
 
 mod accessors;
+mod content_html;
 mod css;
 mod expand;
 mod headings;
@@ -23,6 +25,7 @@ mod svg;
 mod theme;
 
 pub(crate) use accessors::*;
+pub(crate) use content_html::*;
 pub(crate) use css::*;
 pub(crate) use expand::*;
 pub(crate) use html::*;

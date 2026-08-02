@@ -60,6 +60,7 @@ Open the built single-file deck: ← → move between sections, ↑ ↓ within o
 
 > [!TIP]
 > **Verification**
+>
 > `out/presentation/index.html` opens as a navigable deck: title slide from the topic, one slide per pres_slide, featured units showing their headline and summary.
 
 ## Related

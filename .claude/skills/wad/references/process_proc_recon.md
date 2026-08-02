@@ -55,6 +55,7 @@ Read code before forming theories; record what the code \*does\*, not what the i
 
 > [!TIP]
 > **Verification**
+>
 > The research_done gate passes; every finding stands alone; bugs have a verbatim reproduction or an open interview question.
 
 [← Back to SKILL.md](../SKILL.md)

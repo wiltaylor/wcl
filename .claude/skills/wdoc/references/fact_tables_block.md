@@ -29,6 +29,7 @@ Cells are expressions in the row schema's field positions. utf8 cells run throug
 
 > [!WARNING]
 > **Pipes in cells**
+>
 > A literal pipe outside a quoted cell splits the row, so wrap any cell that contains a pipe in a string literal.
 
 ## Related

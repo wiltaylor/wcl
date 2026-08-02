@@ -67,6 +67,7 @@ Render with the ordinary `build` target (or iterate under `wcl wdoc serve`). Ope
 
 > [!TIP]
 > **Verification**
+>
 > `out/talk/index.html` opens as a deck: arrow keys move between slides, Space reveals fragments, and **s** toggles the notes overlay.
 
 ## Related

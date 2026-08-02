@@ -56,6 +56,7 @@ So author a `poster` for any video you expect to appear in a PDF — otherwise t
 
 > [!TIP]
 > **Rule of thumb**
+>
 > Always give a local-file `video` a `poster`: it's the HTML facade thumbnail **and** the PDF still. YouTube derives its own poster from the video id, so an embed can skip it.
 
 ## Related

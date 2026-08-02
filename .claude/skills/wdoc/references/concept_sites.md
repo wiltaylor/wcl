@@ -22,6 +22,7 @@ Set `search = true` on a site to add client-side full-text search. The build wri
 
 > [!NOTE]
 > **Served, not opened**
+>
 > The widget fetches the index over HTTP, so search works when the site is hosted (or under `wcl wdoc serve`), not when a page is opened directly from disk.
 
 ## Block reference

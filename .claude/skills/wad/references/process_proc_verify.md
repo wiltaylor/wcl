@@ -49,6 +49,7 @@ Write `.wbuild/reports/<spec>-attempt-<N>.md` and set the row back to `:in_progr
 
 > [!TIP]
 > **Verification**
+>
 > A verdict recorded in status.wcl (or a failure report written); just check green in the plan folder.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -64,6 +64,7 @@ middle    = slice([1, 2, 3, 4], 1, 3)                          // [2, 3]
 
 > [!NOTE]
 > **Tabular data lives in lists**
+>
 > A field declared list<RowType> can be populated by a list literal or by the pipe-row table syntax — see Tables.
 
 ## Related

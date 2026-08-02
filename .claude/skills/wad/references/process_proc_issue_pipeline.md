@@ -61,6 +61,7 @@ Run the analyze pass first (the plan-mode analyze runbook applies unchanged) - g
 
 > [!TIP]
 > **Verification**
+>
 > just check-full green; out/specs/ rendered; the user approved the mini-PRD and deltas; build mode can run the plan unchanged.
 
 [← Back to SKILL.md](../SKILL.md)

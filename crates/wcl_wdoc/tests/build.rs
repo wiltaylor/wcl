@@ -11363,3 +11363,83 @@ fn edit_field_binds_children_in_edit_mode_only() {
         "plain build must not emit field bindings, got:\n{plain}"
     );
 }
+
+// ── The semantic content IR ───────────────────────────────────────
+
+/// Build one fixture and return `index.html`.
+fn build_index(src: &str) -> String {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("main.wcl");
+    write_fixture(&file, src);
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&file, out.path());
+    std::fs::read_to_string(out.path().join("index.html")).expect("read index.html")
+}
+
+#[test]
+fn a_user_block_lowering_to_the_content_ir_renders_in_html() {
+    let html = build_index(
+        "@block(\"gadget\")\n\
+         type Gadget extends WdocBlock {\n  \
+           @inline(0) name: utf8\n  id: identifier?\n  \
+           lower = fn(g: Gadget) -> list<Content> [\n    \
+             Content::Heading { level: 3, text: g.name },\n    \
+             Content::Paragraph { text: \"A **gadget**.\" },\n  ]\n\
+         }\n\
+         page index {\n  gadget \"Widget\"\n}\n",
+    );
+    // A real `<h3>` — the level is a number on the node, not something the
+    // backend parses back out of a class. The `heading-3` class rides along
+    // as the theme's style hook, derived from that number.
+    assert!(
+        html.contains("<h3 class=\"heading-3\">Widget</h3>"),
+        "{html}"
+    );
+    assert!(
+        html.contains("<p>A <span class=\"bold\">gadget</span>.</p>"),
+        "prose runs through the inline engine: {html}"
+    );
+}
+
+#[test]
+fn a_content_drawing_renders_its_shapes_as_svg() {
+    // `Drawing` carries the SVG shape vocabulary, not SVG markup — the
+    // closed IR's answer to a bespoke page-level drawing.
+    let html = build_index(
+        "@block(\"badge\")\n\
+         type Badge extends WdocBlock {\n  \
+           id: identifier?\n  \
+           lower = fn(b: Badge) -> list<Content> [\n    \
+             Content::Drawing {\n      \
+               width: 100.0,\n      \
+               shapes: [\n        \
+                 SvgFundamental::Rect { x: 0.0, y: 0.0, width: 40.0, height: 20.0, fill: \"#abc\" },\n      ],\n    },\n  ]\n\
+         }\n\
+         page index {\n  badge { }\n}\n",
+    );
+    assert!(html.contains("<svg"), "a drawing emits an svg: {html}");
+    assert!(
+        html.contains("width=\"40\"") && html.contains("fill=\"#abc\""),
+        "the shape's own geometry survives: {html}"
+    );
+}
+
+#[test]
+fn a_malformed_content_node_fails_the_html_build() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("main.wcl");
+    write_fixture(
+        &file,
+        "@block(\"broken\")\n\
+         type Broken extends WdocBlock {\n  \
+           id: identifier?\n  \
+           lower = fn(b: Broken) -> list<Content> [Content::Heading { level: 900 }]\n\
+         }\n\
+         page index {\n  broken { }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert!(
+        build(&file, out.path(), None).is_err(),
+        "an out-of-range `level` is an authoring error, not a silent skip"
+    );
+}

@@ -56,6 +56,7 @@ The wskill faithfully reflects its sources again, and the version pin records wh
 
 > [!TIP]
 > **Verification**
+>
 > `wcl check wskill.wcl` passes, every touched `source` has a current `last_checked` / `reflects_version`, and `topic.version` reflects the upstream the wskill now describes.
 
 ## Related

@@ -1,7 +1,8 @@
 //! Walk a page's blocks into Markdown, the Markdown twin of
 //! [`pdf::collect`](crate::pdf). It reuses the shared lowering seam
-//! ([`lower_to_values`](crate::render::lower_to_values), which runs a
-//! block's WCL `lower` and returns raw `HtmlFundamental` values) and the
+//! ([`lower_block`](crate::render::lower_block), which runs a block's WCL
+//! `lower` and returns what it produced — a semantic content node, read by
+//! [`content`](super::content), or an `HtmlFundamental`) and the
 //! shared inline engine
 //! ([`InlinePatterns::render_markdown`](crate::inline::InlinePatterns::render_markdown)),
 //! so prose, emphasis and links resolve exactly as on the HTML / PDF paths.
@@ -9,9 +10,9 @@
 //! Block-level dispatch mirrors `pdf::collect::collect_block`: diagrams (and
 //! the wireframes / charts / timelines / maps nested in them) and terminals
 //! render to a self-contained **static** SVG written to `_wdoc/` and referenced
-//! with `![](…)`; lists, tables, code, callouts, images and math map to native
+//! with `![](…)`; lists, tables, code, images and math map to native
 //! Markdown; videos become links (a local file is copied into `_wdoc/` and
-//! linked); everything else lowers to fundamentals.
+//! linked); everything else lowers.
 
 use std::fs;
 use std::path::Path;
@@ -22,10 +23,10 @@ use crate::build::BuildError;
 use crate::inline::InlinePatterns;
 use crate::kinds;
 use crate::render::{
-    MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_component_children,
-    expand_repeater_children, field_symbol, field_utf8, field_utf8_list, gather_inline_text,
-    heading_level, instance_target_def, label_string, lower_to_values, map_list, map_utf8,
-    map_utf8_list, render_diagram_static,
+    Lowered, MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_component_children,
+    expand_repeater_children, field_symbol, field_utf8, gather_inline_text, heading_level,
+    instance_target_def, label_string, lower_block, map_list, map_utf8, map_utf8_list,
+    render_diagram_static,
 };
 use crate::terminal::ASSET_DIR;
 
@@ -111,9 +112,12 @@ pub(crate) fn body_to_markdown(
     Ok(md)
 }
 
-struct Emitter<'a> {
-    doc: &'a Document,
-    patterns: &'a InlinePatterns,
+pub(super) struct Emitter<'a> {
+    // `doc` and `patterns` are the two the content walker in `super::content`
+    // reads directly; the rest it reaches only through the methods that own
+    // them (`write_svg` alone advances `svg_seq`).
+    pub(super) doc: &'a Document,
+    pub(super) patterns: &'a InlinePatterns,
     base_dir: Option<&'a Path>,
     /// The site output directory; SVG assets go in `<out_dir>/_wdoc/`.
     out_dir: &'a Path,
@@ -219,7 +223,6 @@ impl Emitter<'_> {
                     out.push(s);
                 }
             }
-            kinds::CALLOUT => out.push(self.callout(block)),
             // A `demo` degrades to its example source (a fenced `wcl` block)
             // plus one static render of the children — Markdown has no theming,
             // so the dual light/dark preview collapses to a single pass.
@@ -258,9 +261,15 @@ impl Emitter<'_> {
                 // declarative body with the instance's slots bound.
                 if let Some(def) = self.doc.kind_declarer(kind) {
                     self.component(block, &def, out)?;
-                } else if let Some(values) = lower_to_values(self.doc, block, kind) {
-                    for v in &values {
-                        self.fundamental(v, out);
+                } else if let Some(values) = lower_block(self.doc, block, kind) {
+                    for value in &values {
+                        match value {
+                            // A content node is read from the one
+                            // declaration every backend shares — see
+                            // `markdown::content`.
+                            Lowered::Content(node) => self.content(node, out)?,
+                            Lowered::Html(value) => self.fundamental(value, 0, out),
+                        }
                     }
                 }
             }
@@ -292,8 +301,13 @@ impl Emitter<'_> {
         Ok(())
     }
 
-    /// Turn one lowered `HtmlFundamental` into Markdown blocks.
-    fn fundamental(&self, value: &Value, out: &mut Vec<String>) {
+    /// Turn one lowered `HtmlFundamental` into Markdown blocks. `depth`
+    /// bounds the custom-variant recursion below, the same way the HTML
+    /// renderer bounds its own.
+    fn fundamental(&mut self, value: &Value, depth: usize, out: &mut Vec<String>) {
+        if depth > MAX_LOWER_DEPTH {
+            return;
+        }
         let Some((kind, map)) = as_record_variant(value) else {
             return;
         };
@@ -327,7 +341,7 @@ impl Emitter<'_> {
                     // Unknown wrapper: descend, treating children as blocks.
                     _ => {
                         for c in children {
-                            self.fundamental(c, out);
+                            self.fundamental(c, depth + 1, out);
                         }
                     }
                 }
@@ -352,17 +366,37 @@ impl Emitter<'_> {
                     out.push(html);
                 }
             }
-            _ => {}
+            // An unhandled member of the HTML element vocabulary is not a
+            // custom variant, so it must not be expanded as one — it simply
+            // has no Markdown reading, as it always had none.
+            _ if crate::render::is_html_fundamental(value) => {}
+            // A custom variant — expand it through its kind's own `lower`
+            // and emit what that produced (content or another
+            // fundamental). This recursion used to live only in the HTML
+            // renderer, which is why a user block whose lowering returned
+            // another custom variant rendered in the book and nowhere else.
+            other => {
+                for v in crate::render::expand_custom_variant(self.doc, map, other) {
+                    match crate::render::recursed_content(&v) {
+                        // A nested content node can't abort the page: its
+                        // own I/O failure degrades to nothing rendered.
+                        Some(node) => {
+                            let _ = self.content(&node, out);
+                        }
+                        None => self.fundamental(&v, depth + 1, out),
+                    }
+                }
+            }
         }
     }
 
     /// Run inline text through the shared pattern engine, in Markdown mode.
-    fn inline(&self, text: &str) -> String {
+    pub(super) fn inline(&self, text: &str) -> String {
         self.patterns.render_markdown(self.doc, text)
     }
 
     /// Push a paragraph unless it renders empty.
-    fn push_para(&self, text: &str, out: &mut Vec<String>) {
+    pub(super) fn push_para(&self, text: &str, out: &mut Vec<String>) {
         let s = self.inline(text);
         if !s.trim().is_empty() {
             out.push(s);
@@ -371,7 +405,7 @@ impl Emitter<'_> {
 
     /// Write an SVG to `<out_dir>/_wdoc/<page>-<kind>-<n>.svg` and return the
     /// page-relative reference (`_wdoc/…`).
-    fn write_svg(&mut self, kind: &str, svg: &str) -> Result<String, BuildError> {
+    pub(super) fn write_svg(&mut self, kind: &str, svg: &str) -> Result<String, BuildError> {
         self.svg_seq += 1;
         let file = format!("{}-{kind}-{}.svg", sanitize(self.page), self.svg_seq);
         let dir = self.out_dir.join(ASSET_DIR);
@@ -487,7 +521,7 @@ impl Emitter<'_> {
 
     /// Prefix a root-relative asset URL with the current page's `../` depth
     /// (skill reference pages). External URLs pass through unchanged.
-    fn asset_href(&self, url: &str) -> String {
+    pub(super) fn asset_href(&self, url: &str) -> String {
         let prefix = self.patterns.asset_prefix();
         if prefix.is_empty() || crate::image::is_external(url) {
             url.to_string()
@@ -524,45 +558,16 @@ impl Emitter<'_> {
         let title = field_utf8(block, "title").unwrap_or_else(|| url.clone());
         Some(format!("[{}]({url})", escape_link_text(&title)))
     }
-
-    /// A callout → a GitHub-style alert blockquote.
-    fn callout(&self, block: &Block<'_>) -> String {
-        let classes = field_utf8_list(block, "class");
-        let heading = self.inline(&label_string(block).unwrap_or_default());
-        let body = self.inline(&field_utf8(block, "body").unwrap_or_default());
-        let mut lines = vec![format!("> [!{}]", callout_alert(&classes))];
-        if !heading.trim().is_empty() {
-            lines.push(format!("> **{heading}**"));
-        }
-        for line in body.split('\n') {
-            lines.push(format!("> {line}"));
-        }
-        lines.join("\n")
-    }
 }
 
 /// A Markdown image reference, alt text lightly escaped.
-fn image_ref(alt: &str, url: &str) -> String {
+pub(super) fn image_ref(alt: &str, url: &str) -> String {
     format!("![{}]({url})", escape_link_text(alt))
-}
-
-/// Map a callout's type class to a GitHub alert keyword.
-fn callout_alert(classes: &[String]) -> &'static str {
-    for c in classes {
-        match c.as_str() {
-            "note" | "info" => return "NOTE",
-            "tip" | "success" => return "TIP",
-            "warning" => return "WARNING",
-            "error" => return "CAUTION",
-            _ => {}
-        }
-    }
-    "NOTE"
 }
 
 /// Build a GitHub-flavoured pipe table from header + body cells. Width is the
 /// widest row; short rows pad with empty cells.
-fn render_pipe_table(header: &[String], rows: &[Vec<String>]) -> String {
+pub(super) fn render_pipe_table(header: &[String], rows: &[Vec<String>]) -> String {
     let cols = header
         .len()
         .max(rows.iter().map(Vec::len).max().unwrap_or(0));
@@ -588,7 +593,7 @@ fn render_pipe_table(header: &[String], rows: &[Vec<String>]) -> String {
 
 /// A fenced code block, widening the fence past any backtick run in the
 /// source so embedded triple-backticks survive.
-fn fence(lang: &str, source: &str) -> String {
+pub(super) fn fence(lang: &str, source: &str) -> String {
     let ticks = "`".repeat(longest_backtick_run(source).max(2) + 1);
     let src = source.strip_suffix('\n').unwrap_or(source);
     format!("{ticks}{lang}\n{src}\n{ticks}")
@@ -619,7 +624,7 @@ fn ensure_svg_namespace(svg: &str) -> String {
 }
 
 /// Escape characters that would break Markdown link / image text.
-fn escape_link_text(s: &str) -> String {
+pub(super) fn escape_link_text(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('[', "\\[")
         .replace(']', "\\]")
@@ -627,7 +632,7 @@ fn escape_link_text(s: &str) -> String {
 }
 
 /// Escape a table cell: pipes are literal, newlines collapse to a space.
-fn escape_cell(s: &str) -> String {
+pub(super) fn escape_cell(s: &str) -> String {
     s.replace('|', "\\|").replace('\n', " ")
 }
 

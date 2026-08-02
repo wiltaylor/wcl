@@ -16,6 +16,7 @@ summary = try {
 
 > [!NOTE]
 > **Catches everything**
+>
 > try makes any evaluation failure recoverable, including cycles and upstream field errors — use it where a fallback is meaningful, not to paper over schema mistakes (wcl check still reports those).
 
 ## Related

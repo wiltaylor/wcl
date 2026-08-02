@@ -22,6 +22,7 @@ A bare kind prefers a declaration in the referencing file's own namespace; other
 
 > [!NOTE]
 > **import vs namespace vs use**
+>
 > An import decides which files participate. The imported file's namespace decides what its declarations are called, and your use declarations (or :: qualifiers) decide how you refer to them.
 
 ## Related

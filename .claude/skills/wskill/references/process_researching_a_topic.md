@@ -97,6 +97,7 @@ comments back into the units.
 
 > [!TIP]
 > **Verification**
+>
 > No `:open` research_item questions remain; every research unit renders at references/research_<id>.md and is listed in index_research.md; every distilled unit has a page, cites its research id, and sits under an index; `just wskill-check` and `just render` are green.
 
 ## Related

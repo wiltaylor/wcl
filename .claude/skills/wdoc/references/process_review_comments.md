@@ -28,6 +28,7 @@ Run `wcl editor` and press **Rebuild** to render the site in the preview pane â€
 
 > [!NOTE]
 > **Click to comment**
+>
 > Pick any rendered block to attach a note to it. Each comment is keyed by page and locator, so it stays pinned to that block across reloads.
 
 In the preview header's comment menu, choose **Comment on a block**, click the block the note is about, and type the comment (or **Comment on this page** for a page-level note). Repeat on any page of the site; everything lands in the `comments.wcl` sidecar.
@@ -52,6 +53,7 @@ An agent working the loop runs `wcl wdoc review` instead: it blocks until the re
 
 > [!TIP]
 > **Verification**
+>
 > `wcl wdoc comments .` shows the notes pinned in the browser, and a resolved id no longer appears in the open list.
 
 ## Related

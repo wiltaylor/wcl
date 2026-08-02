@@ -25,6 +25,7 @@ Imported (library) `@document` schemas merge silently. Only a **second root-auth
 
 > [!NOTE]
 > **Reflection**
+>
 > decorator_names(T) and decorator_arg(T, name, slot) read decorators back at evaluation time — used by libraries (like wdoc) that dispatch on a block's declared kind.
 
 ## Examples

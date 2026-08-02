@@ -43,6 +43,7 @@ Run `wcl wdoc serve` to start a dev server that watches the source for `.wcl` ch
 
 > [!TIP]
 > **Verification**
+>
 > `out/` holds one `.html` per page, and editing the source under `wcl wdoc serve` updates the served page after a refresh.
 
 ## Related

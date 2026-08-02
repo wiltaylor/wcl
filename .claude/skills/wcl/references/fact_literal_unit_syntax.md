@@ -41,6 +41,7 @@ type ByteSize = i64
 
 > [!NOTE]
 > **Scientific notation needs a decimal point**
+>
 > `2e3` is \*not\* a float here — `e3` reads as a unit suffix. Write `2.0e3` for scientific notation (see [Number literals](../references/fact_number_literals.md)).
 
 ## Related

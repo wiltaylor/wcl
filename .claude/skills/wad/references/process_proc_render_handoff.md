@@ -29,6 +29,7 @@ Implementation agents get ONLY their out/specs/spec_<id>.md. The orchestrator ge
 
 > [!TIP]
 > **Verification**
+>
 > out/book and out/specs exist; each brief is standalone; index.md lists the waves.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -95,6 +95,7 @@ The built-ins are not special: a template is just a function from a `TemplateCtx
 
 > [!NOTE]
 > **Parts resolve by bare name**
+>
 > Template parts are plain functions reached by name through `import <wdoc.wcl>` — don't define a `let` of your own named `wdoc_part_*` or `wdoc_*_layout`, or it will shadow the stdlib one.
 
 ## Block reference

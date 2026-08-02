@@ -1,11 +1,16 @@
 //! Block-kind names the render backends dispatch on.
 //!
 //! The HTML ([`crate::render`]), Markdown ([`crate::markdown`]) and PDF
-//! ([`crate::pdf`]) backends each special-case the same block vocabulary;
-//! their dispatch matches use these constants so renaming a kind is a
-//! compiler-checked change across all three, not a grep. Kinds a single
-//! backend owns (page chrome, wireframe widgets) stay as literals at their
-//! one site.
+//! ([`crate::pdf`]) backends each special-case a block vocabulary; their
+//! dispatch matches use these constants so renaming a kind is a
+//! compiler-checked change, not a grep. Kinds a single backend owns (page
+//! chrome, wireframe widgets) stay as literals at their one site.
+//!
+//! **The three sets are not the same set, and never were.** That is what
+//! the semantic content IR ([`crate::content`]) is retiring: a kind routed
+//! through it has no entry here at all, because every backend reads it
+//! from one declaration rather than special-casing the block. `callout`
+//! was the first to go.
 
 pub(crate) const COLUMN: &str = "column";
 pub(crate) const FRAGMENT: &str = "fragment";
@@ -22,7 +27,6 @@ pub(crate) const CODE: &str = "code";
 pub(crate) const IMAGE: &str = "image";
 pub(crate) const FILE: &str = "file";
 pub(crate) const VIDEO: &str = "video";
-pub(crate) const CALLOUT: &str = "callout";
 pub(crate) const DEMO: &str = "demo";
 pub(crate) const REPEATER: &str = "wdoc_repeater";
 pub(crate) const INSTANCE: &str = "wdoc_instance";

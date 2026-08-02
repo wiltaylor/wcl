@@ -20,6 +20,7 @@ Anything inherently visual — diagrams (and the charts, timelines, maps and til
 
 > [!NOTE]
 > **Skipped blocks**
+>
 > Videos are skipped: an online video (YouTube / Vimeo) leaves a plain Markdown link, and a local video file is dropped (a static `.md` can't play it).
 
 ## Front matter
@@ -42,6 +43,7 @@ page intro { sites = [:demo]
 
 > [!NOTE]
 > **Arbitrary keys are fine**
+>
 > The `frontmatter` type is declared `@schemaless` in the stdlib, so undeclared keys pass WCL's strict schema check — no per-instance marker is needed.
 
 ## Block reference

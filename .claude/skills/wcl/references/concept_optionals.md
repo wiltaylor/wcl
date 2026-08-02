@@ -78,6 +78,7 @@ label  = trim(raw_label) ?? "untitled"   // (trim(raw_label)) ?? "untitled"
 
 > [!NOTE]
 > **Optionals vs unions**
+>
 > Use T? when the only states are present and absent. When absence carries information (a reason, a fallback, multiple shapes), reach for a union instead.
 
 ## Examples

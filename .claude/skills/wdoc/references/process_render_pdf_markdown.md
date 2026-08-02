@@ -40,6 +40,7 @@ When a document declares several sites, pass `--site <name>` to render just one;
 
 > [!TIP]
 > **Verification**
+>
 > `out/<name>.pdf` opens as a paginated document, and `out/md/` holds one `.md` per page with referenced `.svg` assets alongside.
 
 ## Related
