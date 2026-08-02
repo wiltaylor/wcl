@@ -15,9 +15,9 @@ page charts { sites = [:showcase]
 
   text {
     span "Bar, line, and pie charts are custom shapes that lower to SVG fundamentals through pure-WCL geometry. Set the scale with "
-    span "y_min" { class = ["accent"] }
+    span "`y_min`"
     span " / "
-    span "y_max" { class = ["accent"] }
+    span "`y_max`"
     span ", label the axes, and pass any number of series."
   }
 
@@ -70,11 +70,11 @@ page charts { sites = [:showcase]
 
   text {
     span "Set "
-    span "point_labels = true" { class = ["accent"] }
+    span "`point_labels = true`"
     span " to print every point's value, and pass "
-    span "points" { class = ["accent"] }
+    span "`points`"
     span " — a list of "
-    span "{ label, category, value }" { class = ["accent"] }
+    span "`{ label, category, value }`"
     span " records — to pin a labelled marker to a specific point (category is a 0-based index along the x axis). Annotations pick up the site accent."
   }
 

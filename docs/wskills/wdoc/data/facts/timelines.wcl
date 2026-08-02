@@ -43,7 +43,7 @@ fact timelines {
           start = "2026-01-01"
           end   = "2026-12-31"
           card { on = "2026-02-01"  title = "1.0"  width = 210.0  height = 104.0
-            text { span "First " {} span "stable" { class = ["accent"] } span " release. APIs frozen." {} }
+            text { span "First " {} span "**stable**" {} span " release. APIs frozen." {} }
           }
         }
       }

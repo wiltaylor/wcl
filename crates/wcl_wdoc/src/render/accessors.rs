@@ -317,19 +317,6 @@ pub(crate) fn cell_text(v: &Value) -> String {
     }
 }
 
-/// The heading level (1–6) encoded in a `heading-N` class, if any.
-pub(crate) fn heading_level(classes: &[String]) -> Option<u8> {
-    for c in classes {
-        if let Some(n) = c.strip_prefix("heading-")
-            && let Ok(level) = n.parse::<u8>()
-            && (1..=6).contains(&level)
-        {
-            return Some(level);
-        }
-    }
-    None
-}
-
 /// The concatenated raw text of an element's inline children (so the inline
 /// engine runs once over the whole paragraph, and headings get their text
 /// without re-running the emphasis engine).

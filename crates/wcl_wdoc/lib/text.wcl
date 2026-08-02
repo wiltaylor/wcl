@@ -1,11 +1,20 @@
 // Paragraph — an optional inline label plus spans rendered in source
-// order. Lowers to a `<p>` whose children are the label run and the
-// `<span>`s; text runs through the inline-pattern engine via the `Inline`
-// fundamental (the regex engine is Rust, but the `<p>` / `<span>`
-// structure is authored here). The label slot matters beyond convenience:
-// inside HTML bodies rendered by Rust hosts (card bodies, node_table
-// rows), `text "…"` is the natural authoring form — without the slot the
-// label silently vanished.
+// order. Lowers to a `Content::Paragraph`, the semantic content IR's
+// body-prose node, so every backend renders it from one declaration; the
+// prose runs through the inline-pattern engine there, exactly as it did
+// through the `Inline` fundamental before. The label slot matters beyond
+// convenience: inside HTML bodies rendered by Rust hosts (card bodies,
+// node_table rows), `text "…"` is the natural authoring form — without
+// the slot the label silently vanished.
+//
+// **A span's `id` / `class` do not reach the IR.** The content IR carries
+// prose as a string, not a list of styled runs, so the label and the
+// spans concatenate into one paragraph. Outside HTML this changes
+// nothing — the Markdown and PDF walkers already flattened a `text` to
+// its concatenated child text and dropped the `<span>` wrappers — but in
+// the book a `span "…" { class = ["accent"] }` no longer paints. The
+// inline-run concept the IR needs to carry it back is its own piece of
+// work; the fields stay declared so existing documents keep validating.
 namespace wdoc
 
 @block("text")
@@ -14,28 +23,33 @@ type Text extends WdocBlock {
   @inline(0) text: utf8?
   @doc("Optional explicit HTML id.")
   id:    identifier?
-  @doc("Optional class list applied to the `<p>`.")
+  @doc("Optional class list applied to the paragraph.")
   class: list<utf8>?
-  @doc("The styled segments, rendered as `<span>`s in source order.")
+  @doc("The segments, concatenated into the paragraph's prose in source order.")
   @children("span") spans: list<Span>
-  lower = fn(t: Text) -> list<HtmlFundamental> [
-    eli("p", t.id, t.class, flatten([
-      match t.text { none => [], tx => [inl(tx)] },
-      map(t.spans, fn(s: Span) -> HtmlFundamental
-        eli("span", s.id, s.class, [inl(s.text)])),
-    ])),
+  lower = fn(t: Text) -> list<Content> [
+    Content::Paragraph {
+      text: join(flatten([
+        match t.text { none => [], tx => [tx] },
+        map(t.spans, fn(s: Span) -> utf8 s.text),
+      ]), ""),
+      id: t.id,
+      class: t.class,
+    },
   ]
 }
 
 // Inline run inside a `text`. Style fields beyond `class` are
 // intentionally absent — style flows through @block("class") rules.
+// `id` / `class` are carried but not yet rendered: see the note at the
+// top of this file.
 @block("span")
 type Span {
   @doc("The span text (the inline label slot); inline patterns are applied.")
   @inline(0) text: utf8
-  @doc("Optional explicit HTML id.")
+  @doc("Optional explicit HTML id. Not currently rendered — see `text`.")
   id:    identifier?
-  @doc("Optional style classes for this span.")
+  @doc("Optional style classes for this span. Not currently rendered — see `text`.")
   class: list<utf8>?
 }
 

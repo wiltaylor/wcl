@@ -97,13 +97,14 @@ figcaption{color:var(--wdoc-fg-muted);}
 .code-dots span{background:color-mix(in srgb, var(--wdoc-fg) 22%, transparent);}
 .code-card .code-line::before{color:var(--wdoc-fg-subtle);}
 .heading-marker{color:var(--wdoc-accent);font-family:var(--wdoc-font-mono);}
-.book-kicker{color:var(--wdoc-accent);font-family:var(--wdoc-font-mono);}
-.book-meta{color:var(--wdoc-fg-muted);border-top:1px solid var(--wdoc-border);}
+.chapter-kicker{color:var(--wdoc-accent);font-family:var(--wdoc-font-mono);}
+.chapter-meta{color:var(--wdoc-fg-muted);border-top:1px solid var(--wdoc-border);}
+.chapter-subtitle{color:var(--wdoc-fg-muted);}
 .book-rail-title,.book-onpage-title{color:var(--wdoc-fg-subtle);}
 .book-onpage-link{color:var(--wdoc-fg-muted);border-left:2px solid transparent;}
 .book-onpage-link:hover{color:var(--wdoc-fg);}
 .book-onpage-link.active{color:var(--wdoc-accent);border-left-color:var(--wdoc-accent);}
-.footnotes{border-top:1px solid var(--wdoc-border);color:var(--wdoc-fg-muted);}
+.wdoc-footnotes{border-top:1px solid var(--wdoc-border);color:var(--wdoc-fg-muted);}
 .footnote-ref{color:var(--wdoc-accent);}
 .wdoc-badge{font-family:var(--wdoc-font-head);background:color-mix(in srgb, var(--wdoc-accent) 16%, var(--wdoc-book-bg));color:var(--wdoc-accent);border:1px solid color-mix(in srgb, var(--wdoc-accent) 32%, transparent);}
 pre.code-block{background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);font-family:var(--wdoc-font-mono);}

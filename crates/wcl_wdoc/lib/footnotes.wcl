@@ -8,13 +8,26 @@
 // `↩` back-link up to the reference. Only references whose `id` has a
 // definition are rewritten, so a literal `[^…]` in a code sample (a regex
 // character class) is left untouched.
+//
+// The block lowers to a `Content::Footnotes` — the semantic content IR's
+// apparatus node, carrying the section title and the resolved notes. Each
+// note's `marker` is its `id`, which is the key the link is anchored on:
+// the HTML backend anchors the item at `fn-<marker>`, which is exactly
+// what the `[^id]` rewrite looks for, and the Markdown backend emits
+// `[^marker]: …`, a real GFM footnote label. (A `[^id]` *reference* in
+// prose still escapes on the Markdown target: the inline engine can't
+// tell one from a regex character class without the page's definitions
+// — the same fact that makes the HTML rewrite conditional.) Before this,
+// the section was `Element` / `Raw` markup: the "Footnotes" title and the
+// `<ol>` numbering were HTML chrome, and outside the book the notes fell
+// out as bare paragraphs.
 
 namespace wdoc
 
 // A single definition. Not a `WdocBlock`: it never renders on its own —
-// the parent `footnotes` block's `lower` maps it into one `<li>` — so it
-// has neither a lowering of its own nor a native implementation, exactly
-// like an `li` under a `list`.
+// the parent `footnotes` block's `lower` maps it into one entry of the
+// content node — so it has neither a lowering of its own nor a native
+// implementation, exactly like an `li` under a `list`.
 @block("footnote")
 type Footnote {
   @doc("The footnote id (its inline label slot) — the `[^id]` reference target.")
@@ -27,31 +40,32 @@ type Footnote {
 type Footnotes extends WdocBlock {
   @doc("The footnote definitions, in number order.")
   @children("footnote") items: list<Footnote>
-  lower = fn(f: Footnotes) -> list<HtmlFundamental> [
-    el("section", ["footnotes"], [
-      el("div", ["footnotes-title"], [raw("Footnotes")]),
-      el("ol", ["footnote-list"], map(f.items, footnote_item)),
-    ]),
+  lower = fn(f: Footnotes) -> list<Content> [
+    Content::Footnotes {
+      title: "Footnotes",
+      notes: map(f.items, resolve_footnote),
+    },
   ]
 }
 
-// One footnote `<li id="fn-ID">`: the note body (inline patterns apply) and
-// a `↩` back-link to its reference. The id rides `attrs` (a computed utf8),
-// not the `identifier?` id slot.
-let footnote_item = fn(f: Footnote) -> HtmlFundamental
-  ela("li", ["footnote-item"], [["id", format("fn-{}", f.id)]], [
-    inl(f.text),
-    raw(format(" <a class=\"footnote-back\" href=\"#fnref-{}\">↩</a>", f.id)),
-  ])
+// A definition, resolved into the IR's note. The `marker` is the
+// definition's `id` — the key both ends of the link are anchored on, and a
+// real GFM footnote label in the Markdown output.
+// (Parenthesised: a `{` straight after the return type opens a block
+// expression, so the record literal needs the parens to be read as one.)
+let resolve_footnote = fn(n: Footnote) -> ContentFootnote
+  ({ marker: format("{}", n.id), text: n.text })
 
-// Footnotes styling; colours come from the theme apply rules.
+// Footnotes styling; colours come from the theme apply rules. The class
+// names are the ones the content IR's HTML reading emits
+// (`render/content_html.rs`), not names authored here.
 stylesheet "wdoc-footnotes" {
   css = <<CSS
-    .footnotes { margin-top: 3rem; padding-top: 1.2rem; font-size: 0.9rem; }
-    .footnotes-title { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.6rem; }
-    .footnote-list { margin: 0; padding-left: 1.4rem; }
-    .footnote-item { margin-bottom: 0.4rem; }
-    .footnote-back { text-decoration: none; border: none; margin-left: 0.3rem; }
+    .wdoc-footnotes { margin-top: 3rem; padding-top: 1.2rem; font-size: 0.9rem; }
+    .wdoc-footnotes-title { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.6rem; }
+    .wdoc-footnote-list { margin: 0; padding-left: 1.4rem; }
+    .wdoc-footnote-item { margin-bottom: 0.4rem; }
+    .wdoc-footnote-back { text-decoration: none; border: none; margin-left: 0.3rem; }
     .footnote-ref { font-size: 0.75em; line-height: 0; }
     .footnote-ref a { border: none; padding: 0 0.1em; }
     CSS

@@ -2343,19 +2343,16 @@ fn html_to_text(html: &str) -> String {
     decoded.trim().to_string()
 }
 
-/// The text of the page's first top-level heading, if any. Headings
-/// lower to `<p class="heading-1">…</p>`; raw-HTML `<h1>` is the
-/// fallback.
+/// The text of the page's first top-level heading, if any. An `h1` block
+/// and a chapter header's title both render as a real `<h1>` now (the
+/// content IR carries the level as a number), so one scan covers them and
+/// raw-HTML `<h1>` alike. That also makes this honestly first-in-document
+/// -order: it used to prefer a heading *block* (`<p class="heading-1">`)
+/// over a raw `<h1>` wherever each sat, because they were different
+/// shapes and it looked for one before the other. They are one shape now.
+/// Only the page's own content is scanned (the caller passes it before
+/// the template wraps it), so template chrome can't win.
 fn first_h1_text(html: &str) -> Option<String> {
-    if let Some(start) = html.find("heading-1")
-        && let Some(open_end) = html[start..].find('>').map(|i| start + i + 1)
-        && let Some(close) = html[open_end..].find("</p>").map(|i| open_end + i)
-    {
-        let text = html_to_text(&html[open_end..close]);
-        if !text.is_empty() {
-            return Some(text);
-        }
-    }
     let lower = html.to_ascii_lowercase();
     let start = lower.find("<h1")?;
     let open_end = html[start..].find('>')? + start + 1;

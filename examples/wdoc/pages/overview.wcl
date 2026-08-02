@@ -4,11 +4,12 @@
 page overview { sites = [:showcase]  start = true
   h1 "Pipeline overview"
 
+  // A `text` runs its spans together into one paragraph; `class` styles
+  // that paragraph.
   text {
+    class = ["accent"]
     span "Welcome to wdoc "
-    span "— now with classes." {
-      class = ["accent"]
-    }
+    span "— now with classes."
   }
 
   // Callouts are admonitions: an icon + a coloured heading + a body. The

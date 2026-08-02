@@ -16,7 +16,7 @@ page wdoc_styling { sites = [:reference]  title = "Styling"
 
   h2 "Classes"
 
-  p "A `class <name> { … }` block declares a CSS class. Apply it by listing the name in any block's `class` field (or a span's). Fields cover text, box, and SVG paint properties; per-mode overrides go in `dark { }` / `light { }` sub-blocks."
+  p "A `class <name> { … }` block declares a CSS class. Apply it by listing the name in any block's `class` field. Fields cover text, box, and SVG paint properties; per-mode overrides go in `dark { }` / `light { }` sub-blocks."
 
   h3 "Authoring"
 
@@ -29,22 +29,17 @@ class accent {
   light { color = "#5e81ac" }
 }
 
-// Use the class on a span:
-text {
-  span "highlighted segment" { class = ["accent"] }
-}
+// Use the class on a block:
+p "highlighted paragraph" { class = ["accent"] }
 WCL
   }
 
-  p "Live — the `sty-accent` class declared at the top of this page, applied to a span (and following the light/dark mode):"
+  p "Live — the `sty-accent` class declared at the top of this page, applied to a paragraph (and following the light/dark mode):"
 
   diagram { width = 460  height = 90
     card { x = 16.0  y = 12.0  width = 428.0  height = 66.0
-      text {
-        span "Plain text, then a "
-        span "highlighted segment" { class = ["sty-accent"] }
-        span " styled by a class."
-      }
+      p "Plain text above." { }
+      p "A highlighted paragraph, styled by a class." { class = ["sty-accent"] }
     }
   }
 

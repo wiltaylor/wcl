@@ -368,19 +368,30 @@ pub(crate) fn render_content(doc: &Document, node: &Content, patterns: &InlinePa
             id,
             class,
         } => {
+            // The visible number is the `<ol>`'s, not the marker: the
+            // marker is the *key* both ends of the link are anchored on
+            // (`fn-<marker>` here, `fnref-<marker>` on the reference the
+            // `[^id]` rewrite plants — see `super::headings`). A title is
+            // a section label rather than a document heading, so it stays
+            // out of the page outline.
             let mut out = format!("<section{}", classes_attr(&["wdoc-footnotes"], class));
             append_attr(&mut out, "id", id.as_deref());
             out.push('>');
             if let Some(title) = title {
-                write!(out, "<h2>{}</h2>", escape_html(title)).expect("write to String");
-            }
-            out.push_str("<ol>");
-            for ContentFootnote { marker, text } in notes {
                 write!(
                     out,
-                    "<li id=\"fn-{}\"><span class=\"wdoc-footnote-marker\">{}</span>{}</li>",
-                    escape_html(marker),
-                    escape_html(marker),
+                    "<div class=\"wdoc-footnotes-title\">{}</div>",
+                    escape_html(title)
+                )
+                .expect("write to String");
+            }
+            out.push_str("<ol class=\"wdoc-footnote-list\">");
+            for ContentFootnote { marker, text } in notes {
+                let marker = escape_html(marker);
+                write!(
+                    out,
+                    "<li class=\"wdoc-footnote-item\" id=\"fn-{marker}\">{}\
+                     <a class=\"wdoc-footnote-back\" href=\"#fnref-{marker}\">↩</a></li>",
                     patterns.render(doc, text),
                 )
                 .expect("write to String");
@@ -409,7 +420,17 @@ pub(crate) fn render_content(doc: &Document, node: &Content, patterns: &InlinePa
                 )
                 .expect("write to String");
             }
-            write!(out, "<h1>{}</h1>", patterns.render(doc, title)).expect("write to String");
+            // The `heading-1` hook is what sizes a level-1 heading
+            // (`lib/css-classes.wcl`) and what the per-page heading pass
+            // stamps an anchor id onto, so a chapter title carries it for
+            // the same reason a `Content::Heading` does — derived from the
+            // level, never read back out of it.
+            write!(
+                out,
+                "<h1 class=\"heading-1\">{}</h1>",
+                patterns.render(doc, title)
+            )
+            .expect("write to String");
             if let Some(subtitle) = subtitle {
                 write!(
                     out,

@@ -396,7 +396,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_kinds {
     name = "kinds"
     kind = "module"
-    summary = "1 file, 19 pub items"
+    summary = "1 file, 18 pub items"
   }
   code_node n_cg_wcl_wdoc_layered {
     name = "layered"
@@ -448,7 +448,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_render {
     name = "render"
     kind = "module"
-    summary = "15 files, 224 pub items"
+    summary = "15 files, 223 pub items"
     deps = [n_cg_wcl_wdoc_content, n_cg_wcl_wdoc_dopesheet, n_cg_wcl_wdoc_force, n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_layered, n_cg_wcl_wdoc_map, n_cg_wcl_wdoc_radial, n_cg_wcl_wdoc_routing, n_cg_wcl_wdoc_text, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_review {
@@ -6718,7 +6718,7 @@ code_item code_api_wdoc_html_renderer {
       visibility = "crate"
     }
     code_member m_n_api_wdoc_html_renderer_accessors_fns_more {
-      signature = "… +17 more"
+      signature = "… +16 more"
       kind = "overflow"
     }
   }
@@ -7832,18 +7832,18 @@ code_item code_api_wcl_wdoc_kinds {
       kind = "const"
       visibility = "crate"
     }
-    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_CODE {
-      signature = "const CODE: &str"
-      kind = "const"
-      visibility = "crate"
-    }
     code_member m_n_api_wcl_wdoc_kinds_kinds_fns_IMAGE {
       signature = "const IMAGE: &str"
       kind = "const"
       visibility = "crate"
     }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_FILE {
+      signature = "const FILE: &str"
+      kind = "const"
+      visibility = "crate"
+    }
     code_member m_n_api_wcl_wdoc_kinds_kinds_fns_more {
-      signature = "… +6 more"
+      signature = "… +5 more"
       kind = "overflow"
     }
   }

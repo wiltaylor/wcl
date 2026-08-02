@@ -14,15 +14,15 @@ page timeline { sites = [:showcase]
 
   text {
     span "A "
-    span "timeline" { class = ["accent"] }
+    span "`timeline`"
     span " tracks calendar time along an axis — horizontal or vertical. Each "
-    span "item" { class = ["accent"] }
+    span "`item`"
     span " is pinned to a date with "
-    span "on" { class = ["accent"] }
+    span "`on`"
     span "; "
-    span "phases" { class = ["accent"] }
+    span "`phases`"
     span " mark named date spans; and "
-    span "unit" { class = ["accent"] }
+    span "`unit`"
     span " (minutes…years) sets the tick granularity."
   }
 
@@ -86,7 +86,7 @@ page timeline { sites = [:showcase]
 
   text {
     span "Phase dividers and headings carry a cycled palette class, and markers / connectors paint with "
-    span "currentColor" { class = ["accent"] }
+    span "`currentColor`"
     span " — so a site theme or a `class` override recolours a timeline like anything else."
   }
 
@@ -94,9 +94,9 @@ page timeline { sites = [:showcase]
 
   text {
     span "An event "
-    span "card" { class = ["accent"] }
+    span "`card`"
     span " is a child of the timeline pinned to a date with "
-    span "on" { class = ["accent"] }
+    span "`on`"
     span ", filled with formatted wdoc content. It renders in place on the axis."
   }
 
@@ -113,10 +113,10 @@ page timeline { sites = [:showcase]
       start  = "2026-01-01"
       end    = "2026-12-31"
       card { on = "2026-02-01"  title = "1.0"  width = 210.0  height = 104.0
-        text { span "First " {} span "stable" { class = ["accent"] } span " release. APIs frozen." {} }
+        text { span "First " {} span "`stable`" span " release. APIs frozen." {} }
       }
       card { on = "2026-05-15"  side = :far  title = "1.4"  width = 210.0  height = 104.0
-        text { span "Plugin system + the " {} span "wdoc" { class = ["accent"] } span " generator." {} }
+        text { span "Plugin system + the " {} span "`wdoc`" span " generator." {} }
       }
       card { on = "2026-10-01"  title = "2.0"  width = 210.0  height = 104.0
         text { span "Rewrite: lazy eval, schema check, LSP." {} }
@@ -128,9 +128,9 @@ page timeline { sites = [:showcase]
 
   text {
     span "Because a "
-    span "card" { class = ["accent"] }
+    span "`card`"
     span " is an ordinary diagram shape, you can drop one into any "
-    span "diagram" { class = ["accent"] }
+    span "`diagram`"
     span " — positioned with x/y or anchors, and connectable by edges."
   }
 
@@ -140,7 +140,7 @@ page timeline { sites = [:showcase]
     card {
       x = 20.0  y = 20.0  width = 280.0  height = 130.0
       title = "Standalone card"
-      text { span "The " {} span "same" { class = ["accent"] } span " wdoc content as a timeline event — text, code, callouts." {} }
+      text { span "The " {} span "`same`" span " wdoc content as a timeline event — text, code, callouts." {} }
     }
   }
 }

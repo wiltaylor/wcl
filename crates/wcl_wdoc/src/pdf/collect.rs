@@ -22,9 +22,8 @@ use crate::inline::InlinePatterns;
 use crate::kinds;
 use crate::render::{
     Lowered, MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_repeater_children, field_f64,
-    field_symbol, field_utf8, fill_content_slot, gather_inline_text, heading_level,
-    instance_target_def, lower_block, map_list, map_utf8, map_utf8_list, render_diagram,
-    walk_component,
+    field_symbol, field_utf8, fill_content_slot, gather_inline_text, instance_target_def,
+    lower_block, map_list, map_utf8, map_utf8_list, render_diagram, walk_component,
 };
 
 use super::content;
@@ -244,24 +243,15 @@ fn walk_block_variant(
         return;
     };
     match kind.as_str() {
+        // A paragraph fundamental is prose. A heading is *not* one of these
+        // any more: it reaches this backend as a `Content::Heading` whose
+        // level is a number, so nothing here parses a level back out of a
+        // CSS class.
         "paragraph" => {
             let text = map_utf8_list(map, "spans").join("");
-            let classes = map_utf8_list(map, "class");
-            if let Some(level) = heading_level(&classes) {
-                // Headings render as a single styled run (inline emphasis in a
-                // heading is rare and would fight the heading style).
-                out.push(BlockNode::Heading {
-                    level,
-                    runs: vec![InlineRun::Text {
-                        text,
-                        style: TextStyle::heading(),
-                    }],
-                });
-            } else {
-                out.push(BlockNode::Paragraph {
-                    runs: patterns.render_runs(doc, &text),
-                });
-            }
+            out.push(BlockNode::Paragraph {
+                runs: patterns.render_runs(doc, &text),
+            });
         }
         "element" => {
             let tag = map_utf8(map, "tag").unwrap_or_default();

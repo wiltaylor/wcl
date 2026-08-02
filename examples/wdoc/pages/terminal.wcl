@@ -38,7 +38,7 @@ page terminal { sites = [:showcase]
 
   text {
     span "wdoc renders terminals as a true character grid in inline SVG, drawn with an embedded Nerd Font. Colours come from the WCL "
-    span "class" { class = ["code"] }
+    span "`class`"
     span " system; build them from primitives, inline text, or an asciinema replay."
   }
 
