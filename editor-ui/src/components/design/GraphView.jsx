@@ -24,6 +24,7 @@ import {
   ListFilter,
   RefreshCw,
   SlidersHorizontal,
+  Sparkles,
 } from 'lucide-solid';
 import {
   Button,
@@ -45,11 +46,13 @@ import {
   commitNavOpQuiet,
   commitOpsQuiet,
   commitUnitCreateQuiet,
+  curatorRunning,
   designTab,
   designTabOptions,
   exitDesign,
   loadNav,
   loadPalette,
+  runCurator,
   setDesignTab,
   setGotoPage,
   setPopover,
@@ -775,9 +778,16 @@ export default function GraphView() {
           </div>
         </Show>
         <Show when={loading() || busy()}>
-          <Spinner size={12} label="Loading graph" />
+          <Spinner size={12} label={curatorRunning() ? 'Curator running' : 'Updating graph'} />
         </Show>
         <span class="spacer" />
+        <Button
+          size="sm"
+          disabled={busy() || !data()}
+          onClick={() => runCurator({ scope: 'whole_graph' })}
+        >
+          <Sparkles size={13} /> Curate graph
+        </Button>
         <Button size="sm" disabled={busy() || !data()} onClick={() => setAddOpen(true)}>
           <FilePlus size={13} /> Add unit
         </Button>

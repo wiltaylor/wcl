@@ -28,7 +28,14 @@ import { api } from '../../api';
 import { openFile } from '../../state/buffers';
 import { revealSpan } from '../../state/views';
 import { activeEntry, selected } from '../../state/sites';
-import { designTab, designTabOptions, exitDesign, setDesignTab } from '../../state/design';
+import {
+  designTab,
+  designTabOptions,
+  exitDesign,
+  pendingAuditRange,
+  setDesignTab,
+  setPendingAuditRange,
+} from '../../state/design';
 import {
   countsText,
   graphModel,
@@ -47,7 +54,12 @@ import {
 const DEFAULT_RANGE = 'HEAD~1';
 
 export default function AuditView() {
-  const [range, setRange] = createSignal(DEFAULT_RANGE);
+  // A curator result is a one-shot navigation request: consume its exact
+  // before..after range on mount, then let later manual visits use the
+  // audit's ordinary default again.
+  const requestedRange = pendingAuditRange();
+  const [range, setRange] = createSignal(requestedRange ?? DEFAULT_RANGE);
+  if (requestedRange) setPendingAuditRange(null);
   const [data, setData] = createSignal(null);
   const [error, setError] = createSignal(null);
   const [loading, setLoading] = createSignal(false);

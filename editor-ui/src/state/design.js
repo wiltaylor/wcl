@@ -30,6 +30,8 @@ const [palette, setPalette] = createSignal(null);
 const [selection, setSelection] = createSignal(null);
 /** Commit → rebuild in flight: all canvas affordances disabled. */
 const [busy, setBusy] = createSignal(false);
+/** The busy gate belongs specifically to a headless curator pass. */
+const [curatorRunning, setCuratorRunning] = createSignal(false);
 /** An active text session exists (the toolbar shows marker buttons). */
 const [editingSession, setEditingSession] = createSignal(null);
 /** Re-anchor instruction applied on the next frame load:
@@ -43,6 +45,8 @@ const [gotoPage, setGotoPage] = createSignal(null);
 /** Which design surface shows: the WYSIWYG canvas, the wskill unit graph,
     the audit of a git range, or a WAD's systems model. */
 const [designTab, setDesignTab] = createSignal('canvas'); // 'canvas' | 'graph' | 'audit' | 'systems'
+/** One-shot range handed from a completed curator pass to AuditView. */
+const [pendingAuditRange, setPendingAuditRange] = createSignal(null);
 
 export {
   mode,
@@ -52,6 +56,7 @@ export {
   setSelection,
   busy,
   setBusy,
+  curatorRunning,
   editingSession,
   setEditingSession,
   pendingReveal,
@@ -62,7 +67,44 @@ export {
   setGotoPage,
   designTab,
   setDesignTab,
+  pendingAuditRange,
+  setPendingAuditRange,
 };
+
+/** Run the installed curator without supervising it. The only in-flight UI
+    is the shared busy gate; after a commit, the exact returned range is
+    handed to AuditView before switching tabs. A no-op stays on the current
+    surface, and a failed gate is reported verbatim. */
+export async function runCurator(scope) {
+  const entry = selected()?.registry ?? activeEntry();
+  if (!entry || busy()) return { ok: false, error: busy() ? 'busy' : 'no wskill selected' };
+  setBusy(true);
+  setCuratorRunning(true);
+  const res = await api.curator(entry, scope);
+  setCuratorRunning(false);
+  setBusy(false);
+  if (!res.ok) {
+    toast(res.error, { tone: 'danger', duration: 8000 });
+    return res;
+  }
+  if (res.status === 'no_changes') {
+    toast(res.message || 'The curator found nothing to change', {
+      tone: 'success',
+      duration: 4000,
+    });
+    return res;
+  }
+  if (res.status !== 'committed' || !res.range) {
+    const error = 'The curator completed without an auditable commit range';
+    toast(error, { tone: 'danger', duration: 8000 });
+    return { ok: false, error };
+  }
+  emitCommit({ surface: null });
+  setPendingAuditRange(res.range);
+  setDesignTab('audit');
+  toast('Curator pass committed — opening its audit', { tone: 'success', duration: 3000 });
+  return res;
+}
 
 /** The shared scaffolding of every commit: the entry + busy gate, the
     dirty-open-buffer guard, the busy flag around the API call, the danger

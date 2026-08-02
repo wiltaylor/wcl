@@ -25,6 +25,7 @@ mod audit;
 mod blocks;
 mod cell;
 mod comments;
+mod curator;
 mod data;
 mod files;
 mod graph;
@@ -81,6 +82,7 @@ pub(crate) fn router(state: Arc<EditorState>) -> Router {
         .route("/api/comments/edit", post(comments::handle_comment_edit))
         .route("/api/review/status", get(comments::handle_review_status))
         .route("/api/review/ready", post(comments::handle_review_ready))
+        .route("/api/curator", post(curator::handle_curator))
         .route("/api/preview", post(preview::handle_preview))
         .route("/api/preview/{*path}", get(preview::handle_preview_file))
         .route("/api/object/locate", post(handle_object_locate))
@@ -428,6 +430,18 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(v["text"], "name = \"x\"\n");
+
+        // The curator trigger is a POST route and validates its public body
+        // before it can launch the headless agent.
+        let (status, v) = send(
+            router(Arc::clone(&state)),
+            "POST",
+            "/api/curator",
+            Some(serde_json::json!({ "scope": "whole_graph" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(v["error"].as_str().unwrap().contains("entry"), "{v}");
 
         // A save with the current etag lands; replaying it is a conflict,
         // and the `conflict:` prefix is what makes it a 409.
