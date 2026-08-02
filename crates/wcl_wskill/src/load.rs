@@ -660,8 +660,10 @@ enum Reading {
 /// Field names, kinds, identifiers and symbols are deliberately out: they are
 /// the author's structure, not their words, and searching "related" should
 /// hit the unit whose prose says it rather than every unit that declares the
-/// field. Strings a *computed* field would produce are likewise absent —
-/// this reads the source, not an evaluation.
+/// field. The prose reading also excludes the `related` field's string-valued
+/// edge records: link metadata is not evidence in the source unit's prose.
+/// Strings a *computed* field would produce are likewise absent — this reads
+/// the source, not an evaluation.
 fn body_literals(block: &ast::Block, reading: Reading) -> Vec<String> {
     fn expr(e: &ast::Expr, out: &mut Vec<String>) {
         match e {
@@ -702,6 +704,7 @@ fn body_literals(block: &ast::Block, reading: Reading) -> Vec<String> {
         }
         for item in &b.items {
             match item {
+                Item::Field(f) if reading == Reading::Prose && f.name == "related" => {}
                 Item::Field(f) => expr(&f.expr, out),
                 Item::Block(c) => walk(c, out, reading, false),
                 _ => {}
