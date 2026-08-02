@@ -19,7 +19,7 @@
 // (`fill` / `stroke` / `color`, with `dark` / `light`), its `card_class`
 // themes the popup (`background` / `color` / `border`), and the map's
 // `class` themes the group. The built-in look ships as bare-class
-// defaults in `stylesheet "wdoc-map"` (so user `class`es override) that
+// defaults in the structured rules below (so user `class`es override) that
 // read `var(--wdoc-*)`, so a themed site styles maps for free.
 namespace wdoc
 
@@ -119,26 +119,25 @@ type MapPin {
 // rules in render/theme.rs. Holds only what a bare `class` can't express
 // (position / shadow / cursor / the [hidden] toggle / the close button /
 // image-rendering).
-stylesheet "wdoc-map" {
-  css = <<CSS
-    .wdoc-map image { pointer-events: none; user-select: none; -webkit-user-drag: none; }
-    .wdoc-map.pixelated image { image-rendering: pixelated; }
-    .wdoc-map-pin { cursor: pointer; }
-    .wdoc-map-card {
-      position: absolute; box-sizing: border-box; max-width: 17rem; z-index: 5;
-      padding: 0.55rem 0.7rem; border-radius: 6px; font-size: 0.9rem; line-height: 1.4;
-      border: 1px solid #444; background: #262b33; color: #e6e6e6;
-      box-shadow: 0 4px 18px rgba(0,0,0,0.35);
-    }
-    .wdoc-map-card[hidden] { display: none; }
-    .wdoc-map-card > :first-child { margin-top: 0; }
-    .wdoc-map-card > :last-child { margin-bottom: 0; }
-    .wdoc-map-card-title { font-weight: 600; margin: 0 1.2rem 0.3rem 0; }
-    .wdoc-map-card-close {
-      position: absolute; top: 2px; right: 4px; padding: 0; line-height: 1;
-      font: inherit; font-size: 0.95rem; color: inherit; cursor: pointer;
-      background: none; border: none; opacity: 0.55;
-    }
-    .wdoc-map-card-close:hover { opacity: 1; }
-    CSS
+class "wdoc-map" {
+  nest "image" { css = "pointer-events: none; user-select: none; -webkit-user-drag: none;" }
+}
+class "wdoc-map" {
+  nest "&.pixelated image" { css = "image-rendering: pixelated;" }
+}
+class "wdoc-map-pin" { css = "cursor: pointer;" }
+class "wdoc-map-card" { css = "position: absolute; box-sizing: border-box; max-width: 17rem; z-index: 5;\n  padding: 0.55rem 0.7rem; border-radius: 6px; font-size: 0.9rem; line-height: 1.4;\n  border: 1px solid #444; background: #262b33; color: #e6e6e6;\n  box-shadow: 0 4px 18px rgba(0,0,0,0.35);" }
+class "wdoc-map-card" {
+  nest "&[hidden]" { css = "display: none;" }
+}
+class "wdoc-map-card" {
+  nest "> :first-child" { css = "margin-top: 0;" }
+}
+class "wdoc-map-card" {
+  nest "> :last-child" { css = "margin-bottom: 0;" }
+}
+class "wdoc-map-card-title" { css = "font-weight: 600; margin: 0 1.2rem 0.3rem 0;" }
+class "wdoc-map-card-close" { css = "position: absolute; top: 2px; right: 4px; padding: 0; line-height: 1;\n  font: inherit; font-size: 0.95rem; color: inherit; cursor: pointer;\n  background: none; border: none; opacity: 0.55;" }
+class "wdoc-map-card-close" {
+  nest "&:hover" { css = "opacity: 1;" }
 }

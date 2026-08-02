@@ -550,6 +550,18 @@ pub(crate) fn render_html_variant_with_blocks(
         "table" => render_table_payload(map),
         "element" => render_element_payload(doc, map, depth, patterns, block_renderer),
         "raw" => render_raw_payload(map),
+        "style" => map
+            .get("name")
+            .and_then(|value| match value {
+                Value::Symbol(name)
+                | Value::Identifier(name)
+                | Value::Utf8(name)
+                | Value::Ascii(name) => Some(name.as_str()),
+                _ => None,
+            })
+            .and_then(|name| patterns.style(name))
+            .map(|css| format!("<style>{css}</style>"))
+            .unwrap_or_default(),
         // A `Head` reached in body context renders to nothing — its
         // children are hoisted into `<head>` only when the fundamental is
         // returned at a template's top level (see `head_fundamental_html`).

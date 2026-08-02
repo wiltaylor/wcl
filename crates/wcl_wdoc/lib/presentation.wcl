@@ -95,31 +95,39 @@ type Notes extends ContentBlock {
 // a slide counter, on-screen nav hints, and a notes overlay. Consumes the
 // theme `--wdoc-*` vars so it themes for free.
 //
-// IMPORTANT: emitted verbatim into the page <style>, so it must be pure
-// CSS — never a `//` line (CSS has no `//` comment; a stray one swallows
-// every rule after it). Keep prose in WCL `//` comments out here.
-let presentation_css = <<CSS
-  .wdoc-body { overflow: hidden; }
-  .deck { position: fixed; inset: 0; }
-  .deck-section { position: absolute; inset: 0; }
-  .deck-slide { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box; padding: 4vh 6vw; overflow: auto; opacity: 0; visibility: hidden; transform: scale(0.98); transition: opacity 0.35s ease, transform 0.35s ease; }
-  .deck-slide.active { opacity: 1; visibility: visible; transform: none; z-index: 1; }
-  .deck-slide-inner { width: 100%; max-width: 60rem; margin-inline: auto; }
-  .wdoc-fragment { opacity: 0; transition: opacity 0.3s ease; }
-  .wdoc-fragment.revealed { opacity: 1; }
-  .deck-progress { position: fixed; top: 0; left: 0; right: 0; height: 3px; background: var(--wdoc-border, rgba(127,127,127,0.3)); z-index: 6; }
-  .deck-progress-bar { height: 100%; width: 0; background: var(--wdoc-accent, #4c9aff); transition: width 0.3s ease; }
-  .deck-counter { position: fixed; bottom: 0.9rem; right: 1.25rem; font-size: 0.85rem; opacity: 0.65; z-index: 6; }
-  .deck-nav-hint { position: fixed; bottom: 0.8rem; left: 1.25rem; display: grid; grid-template-columns: repeat(3, 1.1rem); grid-template-rows: repeat(2, 1.1rem); gap: 1px; z-index: 6; line-height: 1.1rem; text-align: center; font-size: 0.9rem; }
-  .deck-nav-hint span { opacity: 0.2; }
-  .deck-nav-hint span.on { opacity: 0.8; }
-  .deck-hint-up { grid-area: 1 / 2; }
-  .deck-hint-left { grid-area: 2 / 1; }
-  .deck-hint-down { grid-area: 2 / 2; }
-  .deck-hint-right { grid-area: 2 / 3; }
-  .deck-notes { display: none; }
-  .deck.show-notes .deck-slide.active .deck-notes { display: block; position: fixed; left: 50%; bottom: 3rem; transform: translateX(-50%); width: 80vw; max-width: 50rem; max-height: 32vh; overflow: auto; padding: 0.75rem 1rem; box-sizing: border-box; background: var(--wdoc-bg-inset, var(--wdoc-bg-alt, rgba(127,127,127,0.12))); border: 1px solid var(--wdoc-border, rgba(127,127,127,0.4)); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); z-index: 7; }
-  CSS
+// Selectors remain structured WCL blocks; declarations stay CSS text.
+style "presentation_css" {
+  class "wdoc-body" { css = "overflow: hidden;" }
+  class "deck" { css = "position: fixed; inset: 0;" }
+  class "deck-section" { css = "position: absolute; inset: 0;" }
+  class "deck-slide" { css = "position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box; padding: 4vh 6vw; overflow: auto; opacity: 0; visibility: hidden; transform: scale(0.98); transition: opacity 0.35s ease, transform 0.35s ease;" }
+  class "deck-slide" {
+    nest "&.active" { css = "opacity: 1; visibility: visible; transform: none; z-index: 1;" }
+  }
+  class "deck-slide-inner" { css = "width: 100%; max-width: 60rem; margin-inline: auto;" }
+  class "wdoc-fragment" { css = "opacity: 0; transition: opacity 0.3s ease;" }
+  class "wdoc-fragment" {
+    nest "&.revealed" { css = "opacity: 1;" }
+  }
+  class "deck-progress" { css = "position: fixed; top: 0; left: 0; right: 0; height: 3px; background: var(--wdoc-border, rgba(127,127,127,0.3)); z-index: 6;" }
+  class "deck-progress-bar" { css = "height: 100%; width: 0; background: var(--wdoc-accent, #4c9aff); transition: width 0.3s ease;" }
+  class "deck-counter" { css = "position: fixed; bottom: 0.9rem; right: 1.25rem; font-size: 0.85rem; opacity: 0.65; z-index: 6;" }
+  class "deck-nav-hint" { css = "position: fixed; bottom: 0.8rem; left: 1.25rem; display: grid; grid-template-columns: repeat(3, 1.1rem); grid-template-rows: repeat(2, 1.1rem); gap: 1px; z-index: 6; line-height: 1.1rem; text-align: center; font-size: 0.9rem;" }
+  class "deck-nav-hint" {
+    nest "span" { css = "opacity: 0.2;" }
+  }
+  class "deck-nav-hint" {
+    nest "span.on" { css = "opacity: 0.8;" }
+  }
+  class "deck-hint-up" { css = "grid-area: 1 / 2;" }
+  class "deck-hint-left" { css = "grid-area: 2 / 1;" }
+  class "deck-hint-down" { css = "grid-area: 2 / 2;" }
+  class "deck-hint-right" { css = "grid-area: 2 / 3;" }
+  class "deck-notes" { css = "display: none;" }
+  class "deck" {
+    nest "&.show-notes .deck-slide.active .deck-notes" { css = "display: block; position: fixed; left: 50%; bottom: 3rem; transform: translateX(-50%); width: 80vw; max-width: 50rem; max-height: 32vh; overflow: auto; padding: 0.75rem 1rem; box-sizing: border-box; background: var(--wdoc-bg-inset, var(--wdoc-bg-alt, rgba(127,127,127,0.12))); border: 1px solid var(--wdoc-border, rgba(127,127,127,0.4)); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); z-index: 7;" }
+  }
+}
 
 // Static deck chrome: the progress bar, slide counter, and nav-hint
 // arrows. The player updates the bar width, counter text, and which
@@ -147,7 +155,7 @@ let deck_section_el = fn(sec: DeckSection) -> Html
 // The deck's `<style>` block — full-viewport slides, fragment fades, the
 // progress bar / counter / nav-hint / notes-overlay styling.
 let wdoc_part_presentation_css = fn() -> list<Html> [
-  el("style", [], [raw(presentation_css)]),
+  css_style(:presentation_css),
 ]
 
 // The slide grid (`<div class="deck">`): one `<section>` per deck section,

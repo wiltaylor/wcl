@@ -5,19 +5,18 @@
 //! `palette` children and emits the themed stylesheet: the `--wdoc-*`
 //! custom properties on `:root` for the dark palette (the default), under
 //! `@media (prefers-color-scheme: light)` for the light palette, and per
-//! explicit `:root[data-theme=…]` (the book toggle), plus the [`APPLY`]
-//! rules that paint everything the renderer produces with `var(--wdoc-*)`.
+//! explicit `:root[data-theme=…]` (the book toggle), then appends the
+//! structured rules in `lib/theme-rules.wcl`.
 //! `build.rs::site_css` splices the result between the library `class`
 //! rules and the user ones, so a theme overrides the built-in defaults
-//! (chart palette, syntax tokens) while user `class` blocks still win. The
-//! palette *data* lives in WCL; only this CSS template is Rust (mirroring
-//! the other `*_CSS` constants).
+//! (chart palette, syntax tokens) while user `class` blocks still win. Rust
+//! only generates selectors whose declarations come from palette/site data.
 
 use std::fmt::Write as _;
 
 use wcl_lang::{Block, Document};
 
-use super::{field_symbol, field_utf8, label_string};
+use super::{field_symbol, field_utf8, label_string, render_styles};
 
 const DEFAULT_THEME: &str = "forge";
 
@@ -39,7 +38,7 @@ const ROLES: &[(&str, &str)] = &[
     ("selection", "selection"),
     // The palette's own accent is emitted as `--wdoc-accent-pal`; the
     // active `--wdoc-accent` points at it (or at a `site.accent` hue) via
-    // the APPLY rule, so the override still wins by source order.
+    // the generated accent rule, so the override still wins by source order.
     ("accent", "accent-pal"),
     ("accent_2", "accent2"),
     ("link", "link"),
@@ -61,118 +60,12 @@ const ROLES: &[(&str, &str)] = &[
     ("pink", "pink"),
 ];
 
-/// Default `--wdoc-font-*` stacks (matching the `wdoc-fonts` `@font-face`
-/// families). Emitted only for themed sites; a theme's `font_*` fields
-/// override these by source order.
-const FONT_DEFAULTS: &str = ":root{--wdoc-font-head:'IBM Plex Sans',system-ui,sans-serif;--wdoc-font-body:'Source Serif 4',Georgia,serif;--wdoc-font-mono:'JetBrains Mono',ui-monospace,monospace;}\n";
-
 /// The hue roles a site's `accent` may name; anything else falls back to
 /// `blue`.
 const HUES: &[&str] = &[
     "red", "orange", "yellow", "green", "cyan", "blue", "purple", "pink",
 ];
 
-/// Maps the theme vars onto everything the renderer emits. Selectors
-/// match the existing stylesheets/classes (so the cascade overrides
-/// them) and the syntax-token classes from `assets/code-theme.css`
-/// (compound selectors matched at equal specificity). Mode-independent
-/// — it only references `var(--wdoc-*)` — so it is emitted once.
-/// `{ACCENT}` is replaced with the chosen hue.
-const APPLY: &str = "\
-:root{--wdoc-accent:{ACCENT_EXPR};}
-body,.wdoc-body{background:var(--wdoc-bg);color:var(--wdoc-fg);font-family:var(--wdoc-font-body);font-size:17px;line-height:1.7;}
-::selection{background:color-mix(in srgb, var(--wdoc-selection) 28%, transparent);}
-a,.link{color:var(--wdoc-link);text-decoration:none;border-bottom:1px solid color-mix(in srgb, var(--wdoc-link) 35%, transparent);}
-a:hover,.link:hover{border-bottom-color:var(--wdoc-link);}
-.heading-1,.heading-2,.heading-3,.heading-4,.heading-5,.heading-6{color:var(--wdoc-heading);font-family:var(--wdoc-font-head);}
-strong,.bold{color:var(--wdoc-heading);}
-.code,code,kbd{font-family:var(--wdoc-font-mono);background:var(--wdoc-bg-alt);border:1px solid var(--wdoc-border);border-radius:4px;padding:0.05em 0.35em;}
-kbd{border-color:var(--wdoc-border-strong);border-bottom-width:2px;color:var(--wdoc-fg-muted);}
-blockquote{border-left:3px solid var(--wdoc-accent);color:var(--wdoc-fg-muted);}
-hr{border:none;border-top:1px solid var(--wdoc-border);}
-figcaption{color:var(--wdoc-fg-muted);}
-.code-card{background:var(--wdoc-bg-alt);border:1px solid var(--wdoc-border);}
-.code-filename{color:var(--wdoc-fg-muted);border-bottom:1px solid var(--wdoc-border);font-family:var(--wdoc-font-mono);}
-.code-lang{color:var(--wdoc-fg-subtle);}
-.code-dots span{background:color-mix(in srgb, var(--wdoc-fg) 22%, transparent);}
-.code-card .code-line::before{color:var(--wdoc-fg-subtle);}
-.heading-marker{color:var(--wdoc-accent);font-family:var(--wdoc-font-mono);}
-.chapter-kicker{color:var(--wdoc-accent);font-family:var(--wdoc-font-mono);}
-.chapter-meta{color:var(--wdoc-fg-muted);border-top:1px solid var(--wdoc-border);}
-.chapter-subtitle{color:var(--wdoc-fg-muted);}
-.book-rail-title,.book-onpage-title{color:var(--wdoc-fg-subtle);}
-.book-onpage-link{color:var(--wdoc-fg-muted);border-left:2px solid transparent;}
-.book-onpage-link:hover{color:var(--wdoc-fg);}
-.book-onpage-link.active{color:var(--wdoc-accent);border-left-color:var(--wdoc-accent);}
-.wdoc-footnotes{border-top:1px solid var(--wdoc-border);color:var(--wdoc-fg-muted);}
-.footnote-ref{color:var(--wdoc-accent);}
-.wdoc-badge{font-family:var(--wdoc-font-head);background:color-mix(in srgb, var(--wdoc-accent) 16%, var(--wdoc-book-bg));color:var(--wdoc-accent);border:1px solid color-mix(in srgb, var(--wdoc-accent) 32%, transparent);}
-pre.code-block{background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);font-family:var(--wdoc-font-mono);}
-.tok-comment{color:var(--wdoc-syn-comment);}
-.tok-keyword{color:var(--wdoc-syn-kw);}
-.tok-storage{color:var(--wdoc-syn-kw);}
-.tok-storage.tok-type{color:var(--wdoc-syn-type);}
-.tok-string{color:var(--wdoc-syn-str);}
-.tok-constant{color:var(--wdoc-syn-num);}
-.tok-constant.tok-numeric{color:var(--wdoc-syn-num);}
-.tok-entity.tok-name.tok-function{color:var(--wdoc-syn-fn);}
-.tok-entity.tok-name.tok-tag{color:var(--wdoc-red);}
-.tok-entity.tok-name.tok-class{color:var(--wdoc-syn-type);}
-.tok-variable{color:var(--wdoc-fg);}
-.tok-support{color:var(--wdoc-syn-type);}
-.tok-punctuation{color:var(--wdoc-syn-punct);}
-.tok-meta.tok-tag{color:var(--wdoc-red);}
-.tok-invalid{color:var(--wdoc-bg);background:var(--wdoc-red);}
-.wdoc-series-1{fill:var(--wdoc-blue);stroke:var(--wdoc-blue);}
-.wdoc-series-2{fill:var(--wdoc-green);stroke:var(--wdoc-green);}
-.wdoc-series-3{fill:var(--wdoc-yellow);stroke:var(--wdoc-yellow);}
-.wdoc-series-4{fill:var(--wdoc-red);stroke:var(--wdoc-red);}
-.wdoc-series-5{fill:var(--wdoc-purple);stroke:var(--wdoc-purple);}
-.wdoc-series-6{fill:var(--wdoc-cyan);stroke:var(--wdoc-cyan);}
-.wdoc-series-7{fill:var(--wdoc-orange);stroke:var(--wdoc-orange);}
-.wdoc-series-8{fill:var(--wdoc-pink);stroke:var(--wdoc-pink);}
-.wdoc-annotation{fill:var(--wdoc-accent);}
-.wdoc-point-label{fill:var(--wdoc-fg-muted);}
-.wdoc-process{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-blue);}
-.wdoc-decision{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-orange);}
-.wdoc-terminator{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-green);}
-.wdoc-node{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-border);}
-.wdoc-shape-text{fill:var(--wdoc-fg);}
-.wdoc-boundary{fill:none;stroke:var(--wdoc-fg-muted);stroke-dasharray:6 4;}
-.wdoc-boundary-label{fill:var(--wdoc-fg-muted);font-weight:600;}
-.wdoc-edge-label{fill:var(--wdoc-fg-muted);}
-.wdoc-participant{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-blue);}
-.wdoc-participant-line{stroke:var(--wdoc-blue);}
-.wdoc-lifeline{stroke:var(--wdoc-fg-muted);}
-.wdoc-seq-message{stroke:var(--wdoc-fg);}
-.wdoc-seq-arrow{fill:var(--wdoc-fg);}
-.wdoc-seq-text{fill:var(--wdoc-fg);}
-.wdoc-note{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-yellow);}
-.wdoc-note-text{fill:var(--wdoc-fg);}
-.wdoc-state{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-blue);}
-.wdoc-state-initial{fill:var(--wdoc-fg);}
-.callout.note{--callout-accent:var(--wdoc-blue);}
-.callout.info{--callout-accent:var(--wdoc-cyan);}
-.callout.tip{--callout-accent:var(--wdoc-green);}
-.callout.warning{--callout-accent:var(--wdoc-yellow);}
-.callout.error{--callout-accent:var(--wdoc-red);}
-.callout.success{--callout-accent:var(--wdoc-green);}
-.callout{background:color-mix(in srgb, var(--callout-accent) 9%, var(--wdoc-book-bg));}
-.wdoc-terminal-error,.wdoc-math-error{color:var(--wdoc-red);}
-.wdoc-table th{background:var(--wdoc-bg-alt);color:var(--wdoc-fg-muted);font-family:var(--wdoc-font-head);}
-.wdoc-table th,.wdoc-table td{border-color:var(--wdoc-border);}
-.wdoc-table tbody tr:nth-child(even){background:color-mix(in srgb, var(--wdoc-fg) 4%, transparent);}
-.wdoc-map-card{background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);}
-.wdoc-card{background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);}
-.wdoc-preview{background:var(--wdoc-bg);color:var(--wdoc-fg);border-color:var(--wdoc-border);}
-.wdoc-node-table-frame{fill:var(--wdoc-bg-alt);stroke:var(--wdoc-border);}
-.wdoc-node-table-sep{stroke:var(--wdoc-border);}
-.wdoc-node-table-port{fill:var(--wdoc-blue);stroke:var(--wdoc-border);}
-.wdoc-node-table-title,.wdoc-node-row{color:var(--wdoc-fg);}
-.wdoc-tree-label{fill:var(--wdoc-fg);}
-.wdoc-tree-guide{stroke:var(--wdoc-border-strong);}";
-
-/// Append `--wdoc-<role>:<hex>;` for every role the palette block sets.
 fn palette_vars(pal: &Block<'_>, out: &mut String) {
     for (field, var) in ROLES {
         if let Some(c) = field_utf8(pal, field) {
@@ -377,10 +270,14 @@ pub(crate) fn site_theme_css(doc: &Document, site_block: Option<&Block<'_>>) -> 
         }
     }
 
+    let styles = render_styles(doc);
     let mut out = String::new();
     // Default font stacks (themed sites only — keeps a site-less doc bare).
     // A theme's `font_*` fields override these via `theme_font_vars` below.
-    out.push_str(FONT_DEFAULTS);
+    if let Some(defaults) = styles.get("wdoc-theme-font-defaults") {
+        out.push_str(defaults);
+        out.push('\n');
+    }
     writeln!(out, ":root{{{dv}}}").expect("write to String");
     writeln!(out, "@media (prefers-color-scheme: light){{:root{{{lv}}}}}")
         .expect("write to String");
@@ -395,6 +292,11 @@ pub(crate) fn site_theme_css(doc: &Document, site_block: Option<&Block<'_>>) -> 
     writeln!(out, ".wdoc-theme-light{{{lv}}}").expect("write to String");
     // Theme font stacks (mode-independent), after the palette blocks.
     theme_font_vars(&theme, &mut out);
-    out.push_str(&APPLY.replace("{ACCENT_EXPR}", &accent_expr));
+    // The accent selector is generated because its declaration comes from
+    // site data. Every static authored rule lives in WCL below it.
+    writeln!(out, ":root{{--wdoc-accent:{accent_expr};}}").expect("write to String");
+    if let Some(apply) = styles.get("wdoc-theme-apply") {
+        out.push_str(apply);
+    }
     Some(out)
 }

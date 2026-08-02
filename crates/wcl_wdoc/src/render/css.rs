@@ -1,9 +1,10 @@
 //! Lowering for wdoc's typed CSS structure: class-rooted rules (including
 //! nesting), base selectors, font faces, media queries, and keyframes.
 
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use wcl_lang::Block;
+use wcl_lang::{Block, Document};
 
 use super::*;
 
@@ -237,24 +238,23 @@ pub(crate) fn render_base(block: &Block<'_>) -> Option<String> {
 pub(crate) fn render_font_face(block: &Block<'_>) -> Option<String> {
     let family = label_string(block)?;
     let src = field_utf8(block, "src")?;
-    let mut props = String::new();
-    push_css(&mut props, "font-family", Some(&family));
-    push_css(&mut props, "src", Some(&src));
-    push_css(
+    let mut props = format!("font-family: {family};");
+    push_spaced_css(
         &mut props,
         "font-weight",
         field_utf8(block, "weight").as_deref(),
     );
-    push_css(
+    push_spaced_css(
         &mut props,
         "font-style",
         field_utf8(block, "style").as_deref(),
     );
-    push_css(
+    push_spaced_css(
         &mut props,
         "font-display",
         field_utf8(block, "display").as_deref(),
     );
+    push_spaced_css(&mut props, "src", Some(&src));
     Some(format!("@font-face {{ {props} }}"))
 }
 
@@ -263,8 +263,7 @@ pub(crate) fn render_media(block: &Block<'_>) -> Option<String> {
     let query = label_string(block)?;
     let rules = block
         .blocks()
-        .filter(|child| child.kind() == "class")
-        .filter_map(|child| render_class(&child))
+        .filter_map(|child| render_css_block(&child))
         .collect::<Vec<_>>()
         .join("\n");
     Some(format!("@media {query} {{ {rules} }}"))
@@ -282,8 +281,43 @@ pub(crate) fn render_keyframes(block: &Block<'_>) -> Option<String> {
     Some(format!("@keyframes {name} {{ {frames} }}"))
 }
 
+/// Render one structured CSS block. Containers call this after they have
+/// already decided placement and site visibility.
+pub(crate) fn render_css_block(block: &Block<'_>) -> Option<String> {
+    match block.kind() {
+        "class" => render_class(block),
+        "base" => render_base(block),
+        "font_face" => render_font_face(block),
+        "media" => render_media(block),
+        "keyframes" => render_keyframes(block),
+        _ => None,
+    }
+}
+
+/// Render every named style once for reuse across a site's page loop.
+pub(crate) fn render_styles(doc: &Document) -> BTreeMap<String, String> {
+    doc.blocks()
+        .filter(|block| block.kind() == "style")
+        .filter_map(|style| {
+            let name = label_string(&style)?;
+            let css = style
+                .blocks()
+                .filter_map(|block| render_css_block(&block))
+                .collect::<Vec<_>>()
+                .join("\n");
+            Some((name, css))
+        })
+        .collect()
+}
+
 pub(crate) fn push_css(out: &mut String, prop: &str, value: Option<&str>) {
     if let Some(v) = value {
         write!(out, "{prop}:{v};").expect("write to String");
+    }
+}
+
+fn push_spaced_css(out: &mut String, prop: &str, value: Option<&str>) {
+    if let Some(value) = value {
+        write!(out, " {prop}: {value};").expect("write to String");
     }
 }

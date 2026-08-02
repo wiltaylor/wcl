@@ -41,16 +41,20 @@ type Code extends ContentBlock {
 
 // Code-card chrome + line-number gutter. Element+descendant selectors a
 // bare `class` can't express; colours come from the theme apply rules.
-stylesheet "wdoc-code" {
-  css = <<CSS
-    .code-card { margin: 1.2rem 0; border-radius: 8px; overflow: hidden; }
-    .code-filename { display: flex; align-items: center; gap: 0.55rem; padding: 0.45rem 0.85rem; font-size: 0.78rem; }
-    .code-dots { display: inline-flex; gap: 4px; }
-    .code-dots span { width: 9px; height: 9px; border-radius: 999px; }
-    .code-lang { margin-left: auto; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.68rem; }
-    .code-card pre.code-block { margin: 0; border: none; border-radius: 0; padding-left: 3.3rem; counter-reset: code-line; }
-    .code-card .code-line { display: block; position: relative; counter-increment: code-line; }
-    .code-card .code-line::before { content: counter(code-line); position: absolute; left: -2.7rem; width: 2.2rem; text-align: right; color: #999; opacity: 0.75; user-select: none; }
-    CSS
+class "code-card" { css = "margin: 1.2rem 0; border-radius: 8px; overflow: hidden;" }
+class "code-filename" { css = "display: flex; align-items: center; gap: 0.55rem; padding: 0.45rem 0.85rem; font-size: 0.78rem;" }
+class "code-dots" { css = "display: inline-flex; gap: 4px;" }
+class "code-dots" {
+  nest "span" { css = "width: 9px; height: 9px; border-radius: 999px;" }
+}
+class "code-lang" { css = "margin-left: auto; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.68rem;" }
+class "code-card" {
+  nest "pre.code-block" { css = "margin: 0; border: none; border-radius: 0; padding-left: 3.3rem; counter-reset: code-line;" }
+}
+class "code-card" {
+  nest ".code-line" { css = "display: block; position: relative; counter-increment: code-line;" }
+}
+class "code-card" {
+  nest ".code-line::before" { css = "content: counter(code-line); position: absolute; left: -2.7rem; width: 2.2rem; text-align: right; color: #999; opacity: 0.75; user-select: none;" }
 }
 

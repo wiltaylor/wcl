@@ -20,7 +20,7 @@
 // `:root` — once for its `dark` palette (the default), once under
 // `@media (prefers-color-scheme: light)` for the `light` palette, and once
 // per explicit `:root[data-theme=…]` (the book template's toggle).
-// Everything else — the stylesheets, the `class` system, the templates —
+// Everything else — structured rules, the `class` system, the templates —
 // paints with `var(--wdoc-*)`, so adding a new template needs no theme
 // work: just reference the vars. The accent picks one hue, exposed as
 // `--wdoc-accent`.

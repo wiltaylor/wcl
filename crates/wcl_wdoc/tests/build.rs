@@ -108,7 +108,7 @@ page index { p "CSS vocabulary" }
         ".card [data-label=\"A&B\"] { text-decoration:none; }\n",
         ".nest-only .child { display:block; }\n",
         "body,.wdoc-body { margin:0; }\n",
-        "@font-face { font-family:Inter;src:url('inter.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap; }\n",
+        "@font-face { font-family: Inter; font-weight: 400; font-style: normal; font-display: swap; src: url('inter.woff2') format('woff2'); }\n",
         "@media (max-width: 40rem) { .card { display:block; }\n",
         ".card.featured { grid-column:1; } }\n",
         "@keyframes pulse { from { opacity:0; }\n",
@@ -476,7 +476,7 @@ page index {
 fn class_accent_field_themes_a_custom_callout() {
     // A `class`'s `accent` field emits the `--callout-accent` custom
     // property, so a custom callout type is themed from WCL — no
-    // hand-written CSS / `stylesheet`. The user class rule is emitted
+    // an opaque CSS block. The user class rule is emitted
     // after the library default, so it wins for a custom type.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("accent.wcl");
@@ -5391,7 +5391,7 @@ page about {
         html.contains(".site-main { display: block; background:"),
         "webpage content should be a card:\n{html}"
     );
-    // The template CSS heredoc must be pure CSS — a leaked `// ` line
+    // The rendered template CSS must be pure CSS — a leaked `// ` line
     // comment (which CSS doesn't support) silently swallows later rules.
     assert!(
         !html.contains("// "),
@@ -6465,12 +6465,12 @@ page index { sites = [:home]
     // Per-theme colour, driven by the palette (so it differs per theme):
     // bold takes the heading ink, inline code a themed chip.
     assert!(
-        html.contains("strong,.bold{color:var(--wdoc-heading);}"),
+        html.contains("strong,.bold { color:var(--wdoc-heading); }"),
         "{html}"
     );
     assert!(
         html.contains(
-            ".code,code,kbd{font-family:var(--wdoc-font-mono);background:var(--wdoc-bg-alt);"
+            ".code,code,kbd { font-family:var(--wdoc-font-mono);background:var(--wdoc-bg-alt);"
         ),
         "{html}"
     );
@@ -9136,8 +9136,8 @@ page index { h1 "Home" {} }
 
 #[test]
 fn untagged_non_page_blocks_stay_global_in_a_multi_site_document() {
-    // Only `Page.sites` is required — a `class` (or `stylesheet`) with no
-    // `sites` list still applies to every site.
+    // Only `Page.sites` is required — a structured CSS rule with no `sites`
+    // list still applies to every site.
     let src = r##"
 site docs { default_template = :webpage  title = "Docs" }
 site blog { default_template = :webpage  title = "Blog" }
@@ -9414,17 +9414,22 @@ page index { text { span "Hi" {} } }
         html.contains("--wdoc-accent:var(--wdoc-green);"),
         "accent var missing:\n{html}"
     );
-    assert!(html.contains("a,.link{color:var(--wdoc-link);"), "{html}");
+    assert!(html.contains("a,.link { color:var(--wdoc-link);"), "{html}");
     // Apply rules reach the body and the chart palette.
     assert!(
         html.contains(
-            "body,.wdoc-body{background:var(--wdoc-bg);color:var(--wdoc-fg);font-family:"
+            "body,.wdoc-body { background:var(--wdoc-bg);color:var(--wdoc-fg);font-family:"
         ),
         "{html}"
     );
     assert!(
-        html.contains(".wdoc-series-1{fill:var(--wdoc-blue);stroke:var(--wdoc-blue);}"),
+        html.contains(".wdoc-series-1 { fill:var(--wdoc-blue);stroke:var(--wdoc-blue); }"),
         "{html}"
+    );
+    assert_eq!(
+        html.matches(".tok-comment {").count(),
+        1,
+        "syntax-token rules should have one source of truth:\n{html}"
     );
 }
 
@@ -9515,8 +9520,9 @@ page index { text { span "Hi" {} } }
 
 #[test]
 fn bare_document_without_site_is_unthemed() {
-    // No `site` block ⇒ pages render bare, with no theme vars (output
-    // unchanged from before colour themes existed).
+    // No `site` block ⇒ pages render bare, with no theme variable
+    // declarations. Static syntax rules may reference variables because
+    // each reference carries its standalone fallback colour.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("bare.wcl");
     write_fixture(&src, "page index { text { span \"Hi\" {} } }\n");
@@ -9525,8 +9531,8 @@ fn bare_document_without_site_is_unthemed() {
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
 
     assert!(
-        !html.contains("--wdoc-"),
-        "a bare document should emit no theme custom properties:\n{html}"
+        !html.contains("--wdoc-bg:#") && !html.contains(":root{--wdoc-"),
+        "a bare document should emit no theme custom-property declarations:\n{html}"
     );
 }
 

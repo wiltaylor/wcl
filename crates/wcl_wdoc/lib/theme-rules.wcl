@@ -1,0 +1,108 @@
+namespace wdoc
+
+style "wdoc-theme-font-defaults" {
+  base ":root" { css = "--wdoc-font-head:'IBM Plex Sans',system-ui,sans-serif;--wdoc-font-body:'Source Serif 4',Georgia,serif;--wdoc-font-mono:'JetBrains Mono',ui-monospace,monospace;" }
+}
+
+style "wdoc-theme-apply" {
+  base "body,.wdoc-body" { css = "background:var(--wdoc-bg);color:var(--wdoc-fg);font-family:var(--wdoc-font-body);font-size:17px;line-height:1.7;" }
+  base "::selection" { css = "background:color-mix(in srgb, var(--wdoc-selection) 28%, transparent);" }
+  base "a,.link" { css = "color:var(--wdoc-link);text-decoration:none;border-bottom:1px solid color-mix(in srgb, var(--wdoc-link) 35%, transparent);" }
+  base "a:hover,.link:hover" { css = "border-bottom-color:var(--wdoc-link);" }
+  base ".heading-1,.heading-2,.heading-3,.heading-4,.heading-5,.heading-6" { css = "color:var(--wdoc-heading);font-family:var(--wdoc-font-head);" }
+  base "strong,.bold" { css = "color:var(--wdoc-heading);" }
+  base ".code,code,kbd" { css = "font-family:var(--wdoc-font-mono);background:var(--wdoc-bg-alt);border:1px solid var(--wdoc-border);border-radius:4px;padding:0.05em 0.35em;" }
+  base "kbd" { css = "border-color:var(--wdoc-border-strong);border-bottom-width:2px;color:var(--wdoc-fg-muted);" }
+  base "blockquote" { css = "border-left:3px solid var(--wdoc-accent);color:var(--wdoc-fg-muted);" }
+  base "hr" { css = "border:none;border-top:1px solid var(--wdoc-border);" }
+  base "figcaption" { css = "color:var(--wdoc-fg-muted);" }
+  class "code-card" { css = "background:var(--wdoc-bg-alt);border:1px solid var(--wdoc-border);" }
+  class "code-filename" { css = "color:var(--wdoc-fg-muted);border-bottom:1px solid var(--wdoc-border);font-family:var(--wdoc-font-mono);" }
+  class "code-lang" { css = "color:var(--wdoc-fg-subtle);" }
+  class "code-dots" {
+    nest "span" { css = "background:color-mix(in srgb, var(--wdoc-fg) 22%, transparent);" }
+  }
+  class "code-card" {
+    nest ".code-line::before" { css = "color:var(--wdoc-fg-subtle);" }
+  }
+  class "heading-marker" { css = "color:var(--wdoc-accent);font-family:var(--wdoc-font-mono);" }
+  class "chapter-kicker" { css = "color:var(--wdoc-accent);font-family:var(--wdoc-font-mono);" }
+  class "chapter-meta" { css = "color:var(--wdoc-fg-muted);border-top:1px solid var(--wdoc-border);" }
+  class "chapter-subtitle" { css = "color:var(--wdoc-fg-muted);" }
+  base ".book-rail-title,.book-onpage-title" { css = "color:var(--wdoc-fg-subtle);" }
+  class "book-onpage-link" { css = "color:var(--wdoc-fg-muted);border-left:2px solid transparent;" }
+  class "book-onpage-link" {
+    nest "&:hover" { css = "color:var(--wdoc-fg);" }
+  }
+  class "book-onpage-link" {
+    nest "&.active" { css = "color:var(--wdoc-accent);border-left-color:var(--wdoc-accent);" }
+  }
+  class "wdoc-footnotes" { css = "border-top:1px solid var(--wdoc-border);color:var(--wdoc-fg-muted);" }
+  class "footnote-ref" { css = "color:var(--wdoc-accent);" }
+  class "wdoc-badge" { css = "font-family:var(--wdoc-font-head);background:color-mix(in srgb, var(--wdoc-accent) 16%, var(--wdoc-book-bg));color:var(--wdoc-accent);border:1px solid color-mix(in srgb, var(--wdoc-accent) 32%, transparent);" }
+  base "pre.code-block" { css = "background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);font-family:var(--wdoc-font-mono);" }
+  class "wdoc-series-1" { css = "fill:var(--wdoc-blue);stroke:var(--wdoc-blue);" }
+  class "wdoc-series-2" { css = "fill:var(--wdoc-green);stroke:var(--wdoc-green);" }
+  class "wdoc-series-3" { css = "fill:var(--wdoc-yellow);stroke:var(--wdoc-yellow);" }
+  class "wdoc-series-4" { css = "fill:var(--wdoc-red);stroke:var(--wdoc-red);" }
+  class "wdoc-series-5" { css = "fill:var(--wdoc-purple);stroke:var(--wdoc-purple);" }
+  class "wdoc-series-6" { css = "fill:var(--wdoc-cyan);stroke:var(--wdoc-cyan);" }
+  class "wdoc-series-7" { css = "fill:var(--wdoc-orange);stroke:var(--wdoc-orange);" }
+  class "wdoc-series-8" { css = "fill:var(--wdoc-pink);stroke:var(--wdoc-pink);" }
+  class "wdoc-annotation" { css = "fill:var(--wdoc-accent);" }
+  class "wdoc-point-label" { css = "fill:var(--wdoc-fg-muted);" }
+  class "wdoc-process" { css = "fill:var(--wdoc-bg-alt);stroke:var(--wdoc-blue);" }
+  class "wdoc-decision" { css = "fill:var(--wdoc-bg-alt);stroke:var(--wdoc-orange);" }
+  class "wdoc-terminator" { css = "fill:var(--wdoc-bg-alt);stroke:var(--wdoc-green);" }
+  class "wdoc-node" { css = "fill:var(--wdoc-bg-alt);stroke:var(--wdoc-border);" }
+  class "wdoc-shape-text" { css = "fill:var(--wdoc-fg);" }
+  class "wdoc-boundary" { css = "fill:none;stroke:var(--wdoc-fg-muted);stroke-dasharray:6 4;" }
+  class "wdoc-boundary-label" { css = "fill:var(--wdoc-fg-muted);font-weight:600;" }
+  class "wdoc-edge-label" { css = "fill:var(--wdoc-fg-muted);" }
+  class "wdoc-participant" { css = "fill:var(--wdoc-bg-alt);stroke:var(--wdoc-blue);" }
+  class "wdoc-participant-line" { css = "stroke:var(--wdoc-blue);" }
+  class "wdoc-lifeline" { css = "stroke:var(--wdoc-fg-muted);" }
+  class "wdoc-seq-message" { css = "stroke:var(--wdoc-fg);" }
+  class "wdoc-seq-arrow" { css = "fill:var(--wdoc-fg);" }
+  class "wdoc-seq-text" { css = "fill:var(--wdoc-fg);" }
+  class "wdoc-note" { css = "fill:var(--wdoc-bg-alt);stroke:var(--wdoc-yellow);" }
+  class "wdoc-note-text" { css = "fill:var(--wdoc-fg);" }
+  class "wdoc-state" { css = "fill:var(--wdoc-bg-alt);stroke:var(--wdoc-blue);" }
+  class "wdoc-state-initial" { css = "fill:var(--wdoc-fg);" }
+  class "callout" {
+    nest "&.note" { css = "--callout-accent:var(--wdoc-blue);" }
+  }
+  class "callout" {
+    nest "&.info" { css = "--callout-accent:var(--wdoc-cyan);" }
+  }
+  class "callout" {
+    nest "&.tip" { css = "--callout-accent:var(--wdoc-green);" }
+  }
+  class "callout" {
+    nest "&.warning" { css = "--callout-accent:var(--wdoc-yellow);" }
+  }
+  class "callout" {
+    nest "&.error" { css = "--callout-accent:var(--wdoc-red);" }
+  }
+  class "callout" {
+    nest "&.success" { css = "--callout-accent:var(--wdoc-green);" }
+  }
+  class "callout" { css = "background:color-mix(in srgb, var(--callout-accent) 9%, var(--wdoc-book-bg));" }
+  base ".wdoc-terminal-error,.wdoc-math-error" { css = "color:var(--wdoc-red);" }
+  class "wdoc-table" {
+    nest "th" { css = "background:var(--wdoc-bg-alt);color:var(--wdoc-fg-muted);font-family:var(--wdoc-font-head);" }
+  }
+  base ".wdoc-table th,.wdoc-table td" { css = "border-color:var(--wdoc-border);" }
+  class "wdoc-table" {
+    nest "tbody tr:nth-child(even)" { css = "background:color-mix(in srgb, var(--wdoc-fg) 4%, transparent);" }
+  }
+  class "wdoc-map-card" { css = "background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);" }
+  class "wdoc-card" { css = "background:var(--wdoc-bg-alt);color:var(--wdoc-fg);border-color:var(--wdoc-border);" }
+  class "wdoc-preview" { css = "background:var(--wdoc-bg);color:var(--wdoc-fg);border-color:var(--wdoc-border);" }
+  class "wdoc-node-table-frame" { css = "fill:var(--wdoc-bg-alt);stroke:var(--wdoc-border);" }
+  class "wdoc-node-table-sep" { css = "stroke:var(--wdoc-border);" }
+  class "wdoc-node-table-port" { css = "fill:var(--wdoc-blue);stroke:var(--wdoc-border);" }
+  base ".wdoc-node-table-title,.wdoc-node-row" { css = "color:var(--wdoc-fg);" }
+  class "wdoc-tree-label" { css = "fill:var(--wdoc-fg);" }
+  class "wdoc-tree-guide" { css = "stroke:var(--wdoc-border-strong);" }
+}

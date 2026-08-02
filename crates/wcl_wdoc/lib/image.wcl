@@ -44,10 +44,6 @@ type Image extends ContentBlock, SvgBlock {
 }
 
 // Responsive default for page images. `img.wdoc-image` is an
-// element+class selector (not a bare class), so it's a `stylesheet` rather
+// element+class selector (not a bare class), so it uses a `base` rule rather
 // than a `class`; a user `class` on the image still cascades over it.
-stylesheet "wdoc-image" {
-  css = <<CSS
-    img.wdoc-image { max-width: 100%; height: auto; }
-    CSS
-}
+base "img.wdoc-image" { css = "max-width: 100%; height: auto;" }

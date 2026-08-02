@@ -46,7 +46,7 @@ The `@document` root: the set of tags legal at the top level of a wdoc document 
 | `font_faces` | `font_face` | yes |  |
 | `media` | `media` | yes |  |
 | `keyframes` | `keyframes` | yes |  |
-| `stylesheets` | `stylesheet` | yes |  |
+| `styles` | `style` | yes |  |
 | `pages` | `page` | yes |  |
 | `patterns` | `inline_pattern` | yes |  |
 | `templates` | `template` | yes |  |

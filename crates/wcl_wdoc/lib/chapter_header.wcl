@@ -46,12 +46,10 @@ type ChapterHeader extends ContentBlock {
 // class names are the ones the content IR's HTML reading emits
 // (`render/content_html.rs`), not names authored here — a
 // `Content::ChapterHeader` renders the same however it was produced.
-stylesheet "wdoc-chapter-header" {
-  css = <<CSS
-    .chapter-header { margin: 0 0 2.5rem; }
-    .chapter-kicker { font-size: 0.8rem; letter-spacing: 0.04em; margin: 0 0 0.6rem; }
-    .chapter-header h1 { margin-top: 0; }
-    .chapter-subtitle { font-size: 1.05rem; margin: 0.4rem 0 0; }
-    .chapter-meta { display: flex; flex-wrap: wrap; gap: 0.5rem 1.1rem; margin: 1rem 0 0; padding-top: 0.9rem; font-size: 0.82rem; white-space: pre-wrap; }
-    CSS
+class "chapter-header" { css = "margin: 0 0 2.5rem;" }
+class "chapter-kicker" { css = "font-size: 0.8rem; letter-spacing: 0.04em; margin: 0 0 0.6rem;" }
+class "chapter-header" {
+  nest "h1" { css = "margin-top: 0;" }
 }
+class "chapter-subtitle" { css = "font-size: 1.05rem; margin: 0.4rem 0 0;" }
+class "chapter-meta" { css = "display: flex; flex-wrap: wrap; gap: 0.5rem 1.1rem; margin: 1rem 0 0; padding-top: 0.9rem; font-size: 0.82rem; white-space: pre-wrap;" }

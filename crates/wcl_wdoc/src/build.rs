@@ -8,16 +8,14 @@ use wcl_lang::{
     from_fn,
 };
 
-use crate::highlight;
 use crate::inline::InlinePatterns;
 use crate::render::{
     CollectionTemplateInput, DeckSectionNode, FooterButtonNode, MAX_LOWER_DEPTH, MenuNode, TocNode,
     escape_html, expand_component_children, expand_instance_children, expand_repeater_children,
     field_bool, field_id, field_symbol, field_symbol_list_opt, field_utf8, field_utf8_list,
     find_template, flat_toc_to_value, footer_to_value, label_string, menu_to_value, pages_to_value,
-    read_deck, read_menu, read_sidebar_footer, read_toc, render_base, render_block, render_class,
-    render_font_face, render_keyframes, render_media, render_page, render_template, site_theme_css,
-    toc_to_value,
+    read_deck, read_menu, read_sidebar_footer, read_toc, render_block, render_css_block,
+    render_page, render_template, site_theme_css, toc_to_value,
 };
 
 /// The wdoc standard library, embedded in the binary and registered
@@ -32,7 +30,12 @@ pub fn schema_registry() -> Registry {
     r.register("wdoc.wcl", include_str!("../lib/wdoc.wcl"));
     r.register("wdoc/prelude.wcl", include_str!("../lib/prelude.wcl"));
     r.register("wdoc/core.wcl", include_str!("../lib/core.wcl"));
+    r.register("wdoc/highlight.wcl", include_str!("../lib/highlight.wcl"));
     r.register("wdoc/theme.wcl", include_str!("../lib/theme.wcl"));
+    r.register(
+        "wdoc/theme-rules.wcl",
+        include_str!("../lib/theme-rules.wcl"),
+    );
     r.register("wdoc/fonts.wcl", include_str!("../lib/fonts.wcl"));
     r.register(
         "wdoc/css-classes.wcl",
@@ -1202,7 +1205,7 @@ fn build_inner(
 /// The decision is purely structural and conservative: a change is targetable
 /// only when every changed file maps, through block origins
 /// ([`Document::blocks_with_source`]), to `page` blocks *and nothing else*.
-/// A changed file that declares a `site` / `class` / `stylesheet` / `iconset`
+/// A changed file that declares a `site` / structured CSS rule / `iconset`
 /// / `component` (or any non-page block), a top-level `wdoc_repeater` (whose
 /// generated page set may shift), or that declares no top-level block at all
 /// (a pure `fn` / `type` helper library imported for its definitions) all
@@ -1386,7 +1389,7 @@ pub(crate) fn collect_site_specs<'a>(
         // a site would re-render every untagged page under it without the
         // page changing. A genuinely shared page says so
         // (`sites = [:docs, :blog]`). Only `Page.sites` is required: a
-        // `class` or `stylesheet` with no `sites` list stays global.
+        // CSS rule with no `sites` list stays global.
         for p in all_pages {
             if block_sites(p).is_none_or(|list| list.is_empty()) {
                 let name = page_name(p).unwrap_or_else(|| "<unnamed>".to_string());
@@ -1462,9 +1465,8 @@ fn block_in_site(block: &Block<'_>, site_name: Option<&str>) -> bool {
     }
 }
 
-/// Build the document's `<style>` content for one site: the bundled
-/// syntax-highlight theme, then every `@block("stylesheet")`, then every
-/// `@block("class")` rule — each group ordered library-before-user
+/// Build the document's `<style>` content for one site from structured CSS
+/// rules, ordered library-before-user
 /// (imported blocks first) so user declarations override by cascade, and
 /// each filtered to the blocks belonging to `site_name` (blocks with no
 /// `sites` field are global). This lets one site carry its own theme in a
@@ -1475,19 +1477,16 @@ fn block_in_site(block: &Block<'_>, site_name: Option<&str>) -> bool {
 /// rules, so it overrides the built-in defaults (chart palette, syntax
 /// tokens) while user `class` blocks still win. `site_block` is the
 /// `@block("site")` carrying the selection (`None` ⇒ bare/unthemed).
-/// The four CSS buckets `site_css` assembles — legacy `stylesheet` text and
-/// rendered structured CSS rules, split by library (embedded-stdlib) vs user
-/// origin so the colour theme can be spliced between them.
+/// Rules are split by library (embedded-stdlib) vs user origin so the colour
+/// theme can be spliced between them.
 #[derive(Default)]
 struct CssBuckets {
-    lib_sheets: Vec<String>,
-    user_sheets: Vec<String>,
     lib_rules: Vec<String>,
     user_rules: Vec<String>,
 }
 
-/// Collect a top-level block's CSS contribution into `css`. A `stylesheet`
-/// or structured CSS block deposits directly; a generator (`wdoc_repeater`,
+/// Collect a top-level block's CSS contribution into `css`. A structured CSS
+/// block deposits directly; a generator (`wdoc_repeater`,
 /// `wdoc_instance`, or a `wdoc_component` instance) is expanded and its
 /// generated blocks collected recursively — so a repeater driven by data
 /// can emit `class` blocks (the "repeater anywhere" hook for design-system
@@ -1495,26 +1494,8 @@ struct CssBuckets {
 /// non-generator blocks (pages, etc.) contribute nothing, exactly as before.
 fn collect_css_block(b: &Block<'_>, is_lib: bool, css: &mut CssBuckets) {
     match b.kind() {
-        "stylesheet" => {
-            if let Some(text) = field_utf8(b, "css") {
-                if is_lib {
-                    &mut css.lib_sheets
-                } else {
-                    &mut css.user_sheets
-                }
-                .push(text);
-            }
-        }
-        kind @ ("class" | "base" | "font_face" | "media" | "keyframes") => {
-            let rule = match kind {
-                "class" => render_class(b),
-                "base" => render_base(b),
-                "font_face" => render_font_face(b),
-                "media" => render_media(b),
-                "keyframes" => render_keyframes(b),
-                _ => unreachable!("matched a structured CSS block"),
-            };
-            if let Some(rule) = rule {
+        "class" | "base" | "font_face" | "media" | "keyframes" => {
+            if let Some(rule) = render_css_block(b) {
                 if is_lib {
                     &mut css.lib_rules
                 } else {
@@ -1557,29 +1538,18 @@ fn site_css(doc: &Document, site_name: Option<&str>, site_block: Option<&Block<'
         collect_css_block(&b, origin.is_some(), &mut css);
     }
     let CssBuckets {
-        lib_sheets,
-        user_sheets,
         lib_rules,
         user_rules,
     } = css;
-    let stylesheet_css = lib_sheets
-        .into_iter()
-        .chain(user_sheets)
-        .collect::<Vec<_>>()
-        .join("\n");
     // The colour theme sits between the library rules (whose defaults it
     // overrides) and the user rules (which still win).
     let theme_css = site_theme_css(doc, site_block);
-    let structured_css = lib_rules
+    lib_rules
         .into_iter()
         .chain(theme_css.into_iter().filter(|s| !s.is_empty()))
         .chain(user_rules)
         .collect::<Vec<_>>()
-        .join("\n");
-    format!(
-        "{}\n{stylesheet_css}\n{structured_css}",
-        highlight::theme_css()
-    )
+        .join("\n")
 }
 
 /// The output dir, URL prefix, and home back-link for one site within the
@@ -1654,7 +1624,7 @@ fn build_site(
     // folders, the search index and icon sprite) rather than rewriting them.
     let write_shared = target.is_none();
 
-    // The page <style>: bundled theme + stylesheets + class rules, scoped
+    // The page <style>: bundled theme + structured rules, scoped
     // to this site (global blocks plus those whose `sites` list names it).
     let css = site_css(doc, spec.name.as_deref(), spec.block.as_ref());
 

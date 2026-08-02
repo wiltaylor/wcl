@@ -65,33 +65,54 @@ let wdoc_head_raw = fn(html: utf8) -> list<Html> [
 // your own design. It paints from the same `--wdoc-*` theme variables as
 // the rest of wdoc, so it follows the site `theme` / `accent`.
 //
-// IMPORTANT: this heredoc is emitted verbatim into the page <style>, so
-// it must be pure CSS — never a `//` line (CSS has no `//` comment).
-let website_css = <<CSS
-  html { scroll-padding-top: 4.5rem; }
-  .ws-header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding: 0.9rem clamp(1rem, 5vw, 3rem); background: var(--wdoc-bg, #fff); border-bottom: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); }
-  .ws-header .ws-brand { font-weight: 700; font-size: 1.15rem; color: inherit; text-decoration: none; }
-  .ws-header ul.menu { list-style: none; margin: 0; padding: 0; display: flex; gap: 1.25rem; align-items: center; }
-  .ws-header ul.menu a { color: inherit; text-decoration: none; opacity: 0.85; }
-  .ws-header ul.menu a:hover, .ws-header ul.menu a.current { opacity: 1; color: var(--wdoc-accent, inherit); }
-  .ws-header .ws-controls { display: flex; align-items: center; gap: 0.6rem; }
-  .ws-header .ws-controls .wdoc-search { margin: 0; min-width: 12rem; }
-  .ws-header .ws-controls .theme-toggle { margin: 0; padding: 0.25rem 0.7rem; cursor: pointer; background: transparent; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.4)); border-radius: 999px; color: inherit; font: inherit; font-size: 0.8rem; white-space: nowrap; }
-  .ws-header .ws-controls .theme-toggle:hover { border-color: var(--wdoc-border-strong, rgba(127,127,127,0.7)); }
-  .ws-banner { border-bottom: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); padding: 0 clamp(1rem, 5vw, 3rem); }
-  .ws-hero { padding: clamp(3rem, 10vw, 6rem) clamp(1rem, 5vw, 3rem); text-align: center; background: color-mix(in srgb, var(--wdoc-accent, #4060ff) 12%, var(--wdoc-bg)); border-bottom: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); }
-  .ws-hero h1 { font-size: clamp(2rem, 6vw, 3.5rem); margin: 0 0 0.75rem; }
-  .ws-layout { display: grid; grid-template-columns: 1fr; gap: 2.5rem; max-width: 70rem; margin: 0 auto; padding: clamp(2rem, 5vw, 3.5rem) clamp(1rem, 5vw, 3rem); box-sizing: border-box; }
-  .ws-layout.has-aside { grid-template-columns: minmax(0, 1fr) 16rem; }
-  @media (max-width: 48rem) { .ws-layout.has-aside { grid-template-columns: 1fr; } }
-  .ws-aside { font-size: 0.95rem; }
-  .ws-footer { padding: 2rem clamp(1rem, 5vw, 3rem); text-align: center; opacity: 0.7; border-top: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); }
-  CSS
+// Selectors remain structured WCL blocks; declarations stay CSS text.
+style "website_css" {
+  base "html" { css = "scroll-padding-top: 4.5rem;" }
+  class "ws-header" { css = "position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding: 0.9rem clamp(1rem, 5vw, 3rem); background: var(--wdoc-bg, #fff); border-bottom: 1px solid var(--wdoc-border, rgba(127,127,127,0.3));" }
+  class "ws-header" {
+    nest ".ws-brand" { css = "font-weight: 700; font-size: 1.15rem; color: inherit; text-decoration: none;" }
+  }
+  class "ws-header" {
+    nest "ul.menu" { css = "list-style: none; margin: 0; padding: 0; display: flex; gap: 1.25rem; align-items: center;" }
+  }
+  class "ws-header" {
+    nest "ul.menu a" { css = "color: inherit; text-decoration: none; opacity: 0.85;" }
+  }
+  base ".ws-header ul.menu a:hover, .ws-header ul.menu a.current" { css = "opacity: 1; color: var(--wdoc-accent, inherit);" }
+  class "ws-header" {
+    nest ".ws-controls" { css = "display: flex; align-items: center; gap: 0.6rem;" }
+  }
+  class "ws-header" {
+    nest ".ws-controls .wdoc-search" { css = "margin: 0; min-width: 12rem;" }
+  }
+  class "ws-header" {
+    nest ".ws-controls .theme-toggle" { css = "margin: 0; padding: 0.25rem 0.7rem; cursor: pointer; background: transparent; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.4)); border-radius: 999px; color: inherit; font: inherit; font-size: 0.8rem; white-space: nowrap;" }
+  }
+  class "ws-header" {
+    nest ".ws-controls .theme-toggle:hover" { css = "border-color: var(--wdoc-border-strong, rgba(127,127,127,0.7));" }
+  }
+  class "ws-banner" { css = "border-bottom: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); padding: 0 clamp(1rem, 5vw, 3rem);" }
+  class "ws-hero" { css = "padding: clamp(3rem, 10vw, 6rem) clamp(1rem, 5vw, 3rem); text-align: center; background: color-mix(in srgb, var(--wdoc-accent, #4060ff) 12%, var(--wdoc-bg)); border-bottom: 1px solid var(--wdoc-border, rgba(127,127,127,0.3));" }
+  class "ws-hero" {
+    nest "h1" { css = "font-size: clamp(2rem, 6vw, 3.5rem); margin: 0 0 0.75rem;" }
+  }
+  class "ws-layout" { css = "display: grid; grid-template-columns: 1fr; gap: 2.5rem; max-width: 70rem; margin: 0 auto; padding: clamp(2rem, 5vw, 3.5rem) clamp(1rem, 5vw, 3rem); box-sizing: border-box;" }
+  class "ws-layout" {
+    nest "&.has-aside" { css = "grid-template-columns: minmax(0, 1fr) 16rem;" }
+  }
+  media "(max-width: 48rem)" {
+    class "ws-layout" {
+      nest "&.has-aside" { css = "grid-template-columns: 1fr;" }
+    }
+  }
+  class "ws-aside" { css = "font-size: 0.95rem;" }
+  class "ws-footer" { css = "padding: 2rem clamp(1rem, 5vw, 3rem); text-align: center; opacity: 0.7; border-top: 1px solid var(--wdoc-border, rgba(127,127,127,0.3));" }
+}
 
 // The `website` template's `<style>` block — include it to inherit the
 // default header / hero / layout / footer styling, or drop it for your own.
 let wdoc_part_website_css = fn() -> list<Html> [
-  el("style", [], [raw(website_css)]),
+  css_style(:website_css),
 ]
 
 // The sticky site header: the title as a home link plus the curated

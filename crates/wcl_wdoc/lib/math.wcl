@@ -46,10 +46,8 @@ type Math extends ContentBlock {
 // error marker. No blanket `path { fill }` rule — the Rust renderer
 // rewrites only the *default* black to `currentColor`, so an explicit
 // `\textcolor{…}` keeps its colour; a CSS override would clobber it.
-stylesheet "wdoc-math" {
-  css = <<CSS
-    .wdoc-math { display: block; text-align: center; margin: 1em 0; overflow-x: auto; overflow-y: hidden; }
-    .wdoc-math svg { max-width: 100%; }
-    .wdoc-math-error { font-family: monospace; color: #bf616a; }
-    CSS
+class "wdoc-math" { css = "display: block; text-align: center; margin: 1em 0; overflow-x: auto; overflow-y: hidden;" }
+class "wdoc-math" {
+  nest "svg" { css = "max-width: 100%;" }
 }
+class "wdoc-math-error" { css = "font-family: monospace; color: #bf616a;" }

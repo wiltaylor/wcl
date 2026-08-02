@@ -12,10 +12,11 @@
 
 namespace wdoc
 
+import <highlight.wcl>        // code-block layout + the one syntax-token vocabulary
 import <core.wcl>             // @document Site, block interfaces, Page, Class
 import <theme.wcl>            // ColourTheme / Palette + built-in colour themes
+import <theme-rules.wcl>      // static rules applied after generated palette variables
 import <fonts.wcl>            // @font-face faces + --wdoc-font-* defaults
-import <css-classes.wcl>      // bundled default `class` instances
 import <diagram-core.wcl>     // diagram, container, SVG shapes, fundamentals
 import <el.wcl>               // el / ela / eli + raw / inl / icon / para constructors
 import <text.wcl>             // text / span / column
@@ -62,4 +63,5 @@ import <comment.wcl>          // @comment review notes (the wcl editor preview p
 import <file_placement.wcl>   // @wdoc::file object placement hint for editor tooling
 import <edit_object.wcl>      // edit_object button (the wcl editor preview pane)
 import <edit_field.wcl>       // edit_field inline-editing binding (Design mode)
+import <css-classes.wcl>      // bundled fallback classes, after structural rules
 import <content.wcl>          // the semantic content IR (generates the Rust enum)

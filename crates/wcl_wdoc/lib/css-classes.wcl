@@ -41,7 +41,7 @@ class "wdoc-annotation"  { fill = "currentColor"  css = "font-weight:bold;" }
 // label text via `wdoc-shape-text`. These are the *light* palette values
 // (readable on white): they are what the always-light PDF uses, and what an
 // unthemed doc renders. A themed web site recolours them per dark/light mode
-// via render/theme.rs's APPLY (which references `var(--wdoc-*)`).
+// via the structured rules in `theme-rules.wcl`.
 class "wdoc-process"    { fill = "#eceff4"  stroke = "#5e81ac" }
 class "wdoc-decision"   { fill = "#eceff4"  stroke = "#d08770" }
 class "wdoc-terminator" { fill = "#eceff4"  stroke = "#a3be8c" }
@@ -49,7 +49,7 @@ class "wdoc-node"       { fill = "#eceff4"  stroke = "#4c566a" }
 class "wdoc-shape-text" { fill = "#2e3440" }
 
 // Diagram `boundary` overlay: a muted, fill-free box behind its members
-// with a bold muted label. The web theme (render/theme.rs APPLY) recolours
+// with a bold muted label. The web theme rules recolour
 // these per mode and adds a dashed border; this is the static / PDF default.
 class "wdoc-boundary"       { fill = "none"  stroke = "#4c566a" }
 class "wdoc-boundary-label" { fill = "#4c566a"  css = "font-weight:bold;" }
@@ -59,7 +59,7 @@ class "wdoc-boundary-label" { fill = "#4c566a"  css = "font-weight:bold;" }
 class "wdoc-edge-label" { fill = "#4c566a" }
 
 // Sequence-diagram defaults (heads / lifelines / message arrows /
-// margin notes). Static light values; render/theme.rs APPLY recolours
+// margin notes). Static light values; the theme rules recolour
 // per mode. An author's `class` on a participant replaces the head's
 // theme classes like any flowchart shape. Stroke-only classes carry no
 // `fill` — a CSS fill would override the open shapes' inline

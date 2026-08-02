@@ -1,6 +1,6 @@
 # Styling
 
-_Class blocks, stylesheets, and themes — how a site looks._
+_Structured CSS blocks and themes — how a site looks._
 
 Two layers control how a site looks: `class` blocks style individual elements, and a site
 `theme` sets the palette every built-in element draws from. Classes always win over theme
@@ -39,6 +39,14 @@ Hyphenated class names may be written bare — `class wdoc-series-1 { fill = "#8
 quoted; both are equivalent. This is how you override built-in classes like the chart palette
 or callout styles. Set `sites = [:foo]` on a class to scope it to one site in a multi-site
 document; omit the field and the class applies everywhere.
+
+
+## Selectors and at-rules
+
+Use `nest` for descendant or compound selectors rooted at a class, `base` for element,
+reset, and selector-list rules, `font_face` for typed font descriptors, `media` for grouped
+responsive rules, and `keyframes` for animations. A named `style` groups structured rules
+that a template emits in place through `css_style(:name)`.
 
 
 ## Themes
@@ -126,13 +134,67 @@ The `light` sub-block of a `class`: field overrides applied under a prefers-ligh
 | `stroke_width` | `utf8` | no |  |
 | `opacity` | `utf8` | no |  |
 
-A `stylesheet` block: raw CSS injected verbatim into the rendered site, for styling beyond the `class` field set.
+A `base` block: an element, reset, selector-list, or other rule whose root is not one bare class.
+
+| Property | Type | Required | Description |
+| --- | --- | --- | --- |
+| `selector` | `utf8` | yes |  |
+| `css` | `utf8` | yes |  |
+| `sites` | `list<symbol>` | no |  |
+
+A `font_face` block: typed family, source, weight, style, and display descriptors.
+
+| Property | Type | Required | Description |
+| --- | --- | --- | --- |
+| `family` | `utf8` | yes |  |
+| `src` | `utf8` | yes |  |
+| `weight` | `utf8` | no |  |
+| `style` | `utf8` | no |  |
+| `display` | `utf8` | no |  |
+| `sites` | `list<symbol>` | no |  |
+
+A `media` block containing structured class and base rules.
+
+| Property | Type | Required | Description |
+| --- | --- | --- | --- |
+| `query` | `utf8` | yes |  |
+| `sites` | `list<symbol>` | no |  |
+
+#### Child blocks
+
+| Slot | Accepts | Multiple | Description |
+| --- | --- | --- | --- |
+| `classes` | `class` | yes |  |
+| `bases` | `base` | yes |  |
+
+A `keyframes` block containing `base` frame selectors.
+
+| Property | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | `utf8` | yes |  |
+| `sites` | `list<symbol>` | no |  |
+
+#### Child blocks
+
+| Slot | Accepts | Multiple | Description |
+| --- | --- | --- | --- |
+| `frames` | `base` | yes |  |
+
+A named `style` bundle containing structured rules that a template can render in place with `css_style(:name)`.
 
 | Property | Type | Required | Description |
 | --- | --- | --- | --- |
 | `name` | `identifier` | yes |  |
-| `css` | `utf8` | yes |  |
-| `sites` | `list<symbol>` | no |  |
+
+#### Child blocks
+
+| Slot | Accepts | Multiple | Description |
+| --- | --- | --- | --- |
+| `classes` | `class` | yes |  |
+| `bases` | `base` | yes |  |
+| `font_faces` | `font_face` | yes |  |
+| `media` | `media` | yes |  |
+| `keyframes` | `keyframes` | yes |  |
 
 A `theme` block: a named palette plus the `dark` / `light` `palette` sub-blocks that map colours onto every built-in element.
 

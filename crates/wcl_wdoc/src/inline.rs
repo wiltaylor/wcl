@@ -23,7 +23,7 @@ use crate::file::FileRegistry;
 use crate::icons::IconRegistry;
 use crate::image::ImageRegistry;
 use crate::pdf::ir::{FontFamily, InlineRun, TextStyle};
-use crate::render::escape_html;
+use crate::render::{escape_html, render_styles};
 use crate::tileset::TilesetRegistry;
 use crate::video::VideoRegistry;
 
@@ -66,6 +66,9 @@ impl Backend {
 
 pub(crate) struct InlinePatterns {
     compiled: Vec<CompiledPattern>,
+    /// Named structured styles, rendered once per site rather than resolving
+    /// and re-rendering their blocks for every page template invocation.
+    styles: BTreeMap<String, String>,
     /// Names of every `page` in the current site, used by `render_link`
     /// to recognise bare `[text](page_name)` references and rewrite them
     /// to `page_name.html`.
@@ -242,6 +245,7 @@ impl InlinePatterns {
         }
         InlinePatterns {
             compiled,
+            styles: render_styles(doc),
             page_names,
             current_site,
             current_prefix,
@@ -265,6 +269,11 @@ impl InlinePatterns {
             edit_mode: Cell::new(false),
             all_sites: Cell::new(false),
         }
+    }
+
+    /// CSS for a named structured style referenced by an `Html::Style`.
+    pub(crate) fn style(&self, name: &str) -> Option<&str> {
+        self.styles.get(name).map(String::as_str)
     }
 
     /// Enable comment-mode markup for this build (the `wcl editor` preview).

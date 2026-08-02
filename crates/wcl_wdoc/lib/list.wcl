@@ -65,11 +65,7 @@ type Li extends ListNode {
 // `ol.wdoc-list-numbered` resets its own counter, and `counters(…, ".")`
 // joins every level in scope. Uses element+class selectors and no
 // `--wdoc-*` vars (markers follow the surrounding text colour), so it's a
-// stylesheet rather than a bare class and a user `class` still cascades over it.
-stylesheet "wdoc-list" {
-  css = <<CSS
-    ol.wdoc-list-numbered { counter-reset: wdoc-li; }
-    ol.wdoc-list-numbered > li { counter-increment: wdoc-li; }
-    ol.wdoc-list-numbered > li::marker { content: counters(wdoc-li, ".") ". "; }
-    CSS
-}
+// structured base rules rather than a bare class; user rules still cascade over it.
+base "ol.wdoc-list-numbered" { css = "counter-reset: wdoc-li;" }
+base "ol.wdoc-list-numbered > li" { css = "counter-increment: wdoc-li;" }
+base "ol.wdoc-list-numbered > li::marker" { css = "content: counters(wdoc-li, \".\") \". \";" }

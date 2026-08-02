@@ -9,12 +9,11 @@
 //   components.wcl     — starter landing components (hero / features / steps /
 //                        footer), themed via `--wdoc-*` — edit or replace them
 //   content.wcl        — the page: components + named slots + default content
-//   assets/site.css    — the design's stylesheet (shipped verbatim)
 //   assets/app.js      — the design's script (shipped verbatim)
 //
 // The `site` block copies the whole `assets/` folder into the output
 // (`assets = ["assets"]`) — the same path an externally-built bundle (a
-// Vite/webpack `dist/`) takes — and links it via `stylesheets` / `scripts`.
+// Vite/webpack `dist/`) takes — and links its script via `scripts`.
 //
 // Only `main.wcl` interpolates a scaffold answer (`${answer("name")}`), so
 // it uses an interpolating heredoc; the others are raw (`<<'TAG'`) so their
@@ -31,8 +30,8 @@ file "main.wcl" {
   content = $<<MAIN
 // Project root: pull in the wdoc schema, your layout + components +
 // content, then declare the site. `assets = ["assets"]` copies the folder
-// verbatim into the build output; `stylesheets` / `scripts` link the
-// copied files into every page `<head>`. `theme_toggle = true` puts the
+// verbatim into the build output; `scripts` links the copied script into
+// every page `<head>`. `theme_toggle = true` puts the
 // standard light/dark toggle in the header (see theme.wcl).
 import <wdoc.wcl>
 import "./theme.wcl"
@@ -45,7 +44,6 @@ site web {
   root         = true
   theme_toggle = true
   assets       = ["assets"]
-  stylesheets  = ["assets/site.css"]
   scripts      = ["assets/app.js"]
 }
 MAIN
@@ -63,7 +61,7 @@ file "theme.wcl" {
 // Raw HTML and stdlib parts compose freely: the header below is raw HTML
 // split around `wdoc_part_theme_toggle` (the standard light/dark button),
 // and `wdoc_head_*` helpers add `<head>` content (here, a viewport meta);
-// the site's `stylesheets` / `scripts` add the rest.
+// the site's `scripts` add the rest.
 template site_main {
   slot content: content
   slot footer: content?
@@ -101,63 +99,160 @@ file "components.wcl" {
 // Everything paints from `var(--wdoc-*, fallback)`, so the design
 // follows the site `theme` / `accent` and the standard theme toggle.
 
-// IMPORTANT: the heredoc is emitted verbatim into <head>, so it must be
-// pure CSS — never a `//` line (CSS has no `//` comment).
-stylesheet "site-components" {
+// The design shell and component selectors are structured blocks;
+// declaration bodies remain CSS text.
+base "*" { sites = [:web]  css = "box-sizing: border-box;" }
+base "body" { sites = [:web]  css = "margin: 0;" }
+base "html" { sites = [:web]  css = "scroll-padding-top: 4.5rem;" }
+
+class "nav" {
   sites = [:web]
-  css = <<CSS
-    .lp-hero { position: relative; text-align: center; padding: 4.5rem 0 3rem; }
-    .lp-hero > :not(.lp-hero-bg) { position: relative; }
-    .lp-hero-bg { position: absolute; inset: 0; pointer-events: none; opacity: 0.55; background-image: linear-gradient(var(--wdoc-border, rgba(127,127,127,0.25)) 1px, transparent 1px), linear-gradient(90deg, var(--wdoc-border, rgba(127,127,127,0.25)) 1px, transparent 1px); background-size: 44px 44px; -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 0%, transparent 72%); mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 0%, transparent 72%); }
-    .lp-badge { display: inline-flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0.3rem 0.8rem; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 999px; background: var(--wdoc-bg-alt, transparent); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--wdoc-fg-muted, inherit); }
-    .lp-badge::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--wdoc-accent, #4060ff); }
-    .lp-hero h1 { margin: 1.4rem auto 0; max-width: 16ch; font-size: clamp(2.4rem, 6vw, 4rem); line-height: 1.05; letter-spacing: -0.03em; text-wrap: balance; }
-    .lp-hero .lp-lede { margin: 1.3rem auto 0; }
-    .lp-lede { max-width: 60ch; font-size: 1.05rem; line-height: 1.6; color: var(--wdoc-fg-muted, inherit); }
-    .lp-ctas { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 2rem; }
-    .lp-ctas p { margin: 0; }
-    .lp-cta a { display: inline-flex; align-items: center; gap: 0.5rem; height: 2.6rem; padding: 0 1.25rem; border-radius: 6px; font-weight: 600; font-size: 0.9rem; text-decoration: none; }
-    .lp-cta-primary a { background: var(--wdoc-accent, #4060ff); color: var(--wdoc-on-accent, #fff); border: 1px solid transparent; }
-    .lp-cta-primary a::after { content: "→"; }
-    .lp-cta-primary a:hover { background: color-mix(in srgb, var(--wdoc-accent, #4060ff) 85%, var(--wdoc-fg, #000) 15%); }
-    .lp-cta-ghost a { background: transparent; color: inherit; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); font-weight: 500; }
-    .lp-cta-ghost a:hover { border-color: var(--wdoc-border-strong, rgba(127,127,127,0.7)); background: var(--wdoc-bg-alt, transparent); }
-    .lp-hero-footnote { margin-top: 1.4rem; font-size: 0.8rem; color: var(--wdoc-fg-subtle, inherit); }
-    .lp-section { padding: 2.75rem 0 1rem; }
-    .lp-section-head { display: block; text-align: center; max-width: 60ch; margin: 0 auto 2.25rem; }
-    .lp-section-head h2 { margin: 0.7rem 0 0; font-size: 1.9rem; letter-spacing: -0.02em; line-height: 1.12; }
-    .lp-section-head .lp-lede { margin: 0.85rem auto 0; font-size: 1rem; }
-    .lp-eyebrow { margin: 0; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--wdoc-fg-subtle, inherit); }
-    .lp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(17.5rem, 1fr)); gap: 1rem; }
-    .lp-card { display: flex; flex-direction: column; margin: 0; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 8px; background: var(--wdoc-bg-alt, transparent); padding: 1.4rem; }
-    .lp-card:hover { border-color: var(--wdoc-border-strong, rgba(127,127,127,0.7)); }
-    .lp-card-icon { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; margin: 0 0 0.85rem; border-radius: 8px; background: color-mix(in srgb, var(--wdoc-accent, #4060ff) 14%, transparent); color: var(--wdoc-accent, #4060ff); }
-    .lp-card-icon svg.wdoc-icon { width: 1.2rem; height: 1.2rem; }
-    .lp-card h3 { margin: 0 0 0.4rem; font-size: 1rem; }
-    .lp-card p:last-child { margin: 0; font-size: 0.88rem; line-height: 1.6; color: var(--wdoc-fg-muted, inherit); }
-    .lp-steps-panel { border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 8px; background: var(--wdoc-bg-alt, transparent); padding: 1.9rem; }
-    .lp-steps-panel .lp-section-head { text-align: left; margin: 0 0 1.5rem; max-width: 60ch; }
-    ol.lp-steps { list-style: none; counter-reset: lp-step; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1rem; }
-    ol.lp-steps > li { position: relative; padding-left: 2.5rem; }
-    ol.lp-steps > li::before { counter-increment: lp-step; content: counter(lp-step); position: absolute; left: 0; top: 0; width: 1.5rem; height: 1.5rem; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 999px; font-size: 0.75rem; font-weight: 600; font-family: var(--wdoc-font-mono, ui-monospace, monospace); color: var(--wdoc-fg-muted, inherit); }
-    .lp-step-title { margin: 0 0 0.5rem; font-weight: 500; }
-    .lp-cmd { margin: 0; padding: 0.65rem 0.9rem; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.25)); border-radius: 6px; background: var(--wdoc-bg-inset, rgba(127,127,127,0.06)); font-size: 0.85rem; overflow-x: auto; white-space: nowrap; }
-    .lp-cmd::before { content: "$ "; color: var(--wdoc-fg-subtle, inherit); font-family: var(--wdoc-font-mono, ui-monospace, monospace); }
-    .lp-cmd code { background: none; border: 0; padding: 0; }
-    .lp-footgrid { max-width: 70rem; margin: 0 auto; padding: 2.75rem clamp(1rem, 5vw, 3rem); display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 2rem; }
-    .lp-footbrand p { margin: 0 0 0.75rem; }
-    .lp-footlogo { display: flex; align-items: center; gap: 0.6rem; font-family: var(--wdoc-font-mono, ui-monospace, monospace); font-weight: 600; color: var(--wdoc-heading, inherit); }
-    .lp-footlogo svg.wdoc-icon { width: 1.1rem; height: 1.1rem; color: var(--wdoc-accent, #4060ff); }
-    .lp-foottag { max-width: 34ch; font-size: 0.85rem; line-height: 1.6; color: var(--wdoc-fg-subtle, inherit); }
-    .lp-footcol p { margin: 0 0 0.55rem; font-size: 0.85rem; }
-    .lp-foothead { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--wdoc-fg-subtle, inherit); }
-    .lp-footlink a { color: var(--wdoc-fg-muted, inherit); text-decoration: none; }
-    .lp-footlink a:hover { color: var(--wdoc-fg, inherit); }
-    .lp-footbottom { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: space-between; max-width: 70rem; margin: 0 auto; padding: 1rem clamp(1rem, 5vw, 3rem); border-top: 1px solid var(--wdoc-border, rgba(127,127,127,0.2)); }
-    .lp-footbottom p { margin: 0; font-size: 0.75rem; color: var(--wdoc-fg-subtle, inherit); }
-    @media (max-width: 48rem) { .lp-footgrid { grid-template-columns: 1fr 1fr; } }
-    @media (prefers-reduced-motion: reduce) { .lp-hero-bg { opacity: 0.3; } }
-    CSS
+  css = "display: flex; align-items: center; gap: 1.5rem; padding: 0.9rem clamp(1rem, 5vw, 3rem); border-bottom: 1px solid var(--wdoc-border, #e6e8ee); position: sticky; top: 0; z-index: 10; background: var(--wdoc-bg, #fff);"
+  nest ".brand" { css = "font-weight: 700; font-size: 1.15rem; text-decoration: none; color: inherit;" }
+  nest "nav" { css = "margin-left: auto; display: flex; gap: 1.25rem;" }
+  nest "nav a" { css = "color: inherit; opacity: 0.8; text-decoration: none;" }
+  nest "nav a:hover" { css = "opacity: 1; color: var(--wdoc-accent, #4060ff);" }
+  nest ".theme-toggle" { css = "margin: 0; padding: 0.25rem 0.7rem; cursor: pointer; background: transparent; border: 1px solid var(--wdoc-border, #dcdfe4); border-radius: 999px; color: inherit; font: inherit; font-size: 0.8rem; white-space: nowrap;" }
+  nest ".theme-toggle:hover" { css = "border-color: var(--wdoc-border-strong, #b6bbc4);" }
+}
+
+class "content" { sites = [:web]  css = "max-width: 70rem; margin: 0 auto; padding: 1rem clamp(1rem, 5vw, 3rem) 3rem;" }
+class "foot" { sites = [:web]  css = "border-top: 1px solid var(--wdoc-border, #e6e8ee);" }
+
+class "lp-hero" { sites = [:web]  css = "position: relative; text-align: center; padding: 4.5rem 0 3rem;" }
+class "lp-hero" {
+  sites = [:web]
+  nest "> :not(.lp-hero-bg)" { css = "position: relative;" }
+}
+class "lp-hero-bg" { sites = [:web]  css = "position: absolute; inset: 0; pointer-events: none; opacity: 0.55; background-image: linear-gradient(var(--wdoc-border, rgba(127,127,127,0.25)) 1px, transparent 1px), linear-gradient(90deg, var(--wdoc-border, rgba(127,127,127,0.25)) 1px, transparent 1px); background-size: 44px 44px; -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 0%, transparent 72%); mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 0%, transparent 72%);" }
+class "lp-badge" { sites = [:web]  css = "display: inline-flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0.3rem 0.8rem; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 999px; background: var(--wdoc-bg-alt, transparent); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--wdoc-fg-muted, inherit);" }
+class "lp-badge" {
+  sites = [:web]
+  nest "&::before" { css = "content: \"\"; width: 6px; height: 6px; border-radius: 999px; background: var(--wdoc-accent, #4060ff);" }
+}
+class "lp-hero" {
+  sites = [:web]
+  nest "h1" { css = "margin: 1.4rem auto 0; max-width: 16ch; font-size: clamp(2.4rem, 6vw, 4rem); line-height: 1.05; letter-spacing: -0.03em; text-wrap: balance;" }
+}
+class "lp-hero" {
+  sites = [:web]
+  nest ".lp-lede" { css = "margin: 1.3rem auto 0;" }
+}
+class "lp-lede" { sites = [:web]  css = "max-width: 60ch; font-size: 1.05rem; line-height: 1.6; color: var(--wdoc-fg-muted, inherit);" }
+class "lp-ctas" { sites = [:web]  css = "display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 2rem;" }
+class "lp-ctas" {
+  sites = [:web]
+  nest "p" { css = "margin: 0;" }
+}
+class "lp-cta" {
+  sites = [:web]
+  nest "a" { css = "display: inline-flex; align-items: center; gap: 0.5rem; height: 2.6rem; padding: 0 1.25rem; border-radius: 6px; font-weight: 600; font-size: 0.9rem; text-decoration: none;" }
+}
+class "lp-cta-primary" {
+  sites = [:web]
+  nest "a" { css = "background: var(--wdoc-accent, #4060ff); color: var(--wdoc-on-accent, #fff); border: 1px solid transparent;" }
+}
+class "lp-cta-primary" {
+  sites = [:web]
+  nest "a::after" { css = "content: \"→\";" }
+}
+class "lp-cta-primary" {
+  sites = [:web]
+  nest "a:hover" { css = "background: color-mix(in srgb, var(--wdoc-accent, #4060ff) 85%, var(--wdoc-fg, #000) 15%);" }
+}
+class "lp-cta-ghost" {
+  sites = [:web]
+  nest "a" { css = "background: transparent; color: inherit; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); font-weight: 500;" }
+}
+class "lp-cta-ghost" {
+  sites = [:web]
+  nest "a:hover" { css = "border-color: var(--wdoc-border-strong, rgba(127,127,127,0.7)); background: var(--wdoc-bg-alt, transparent);" }
+}
+class "lp-hero-footnote" { sites = [:web]  css = "margin-top: 1.4rem; font-size: 0.8rem; color: var(--wdoc-fg-subtle, inherit);" }
+class "lp-section" { sites = [:web]  css = "padding: 2.75rem 0 1rem;" }
+class "lp-section-head" { sites = [:web]  css = "display: block; text-align: center; max-width: 60ch; margin: 0 auto 2.25rem;" }
+class "lp-section-head" {
+  sites = [:web]
+  nest "h2" { css = "margin: 0.7rem 0 0; font-size: 1.9rem; letter-spacing: -0.02em; line-height: 1.12;" }
+}
+class "lp-section-head" {
+  sites = [:web]
+  nest ".lp-lede" { css = "margin: 0.85rem auto 0; font-size: 1rem;" }
+}
+class "lp-eyebrow" { sites = [:web]  css = "margin: 0; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--wdoc-fg-subtle, inherit);" }
+class "lp-grid" { sites = [:web]  css = "display: grid; grid-template-columns: repeat(auto-fit, minmax(17.5rem, 1fr)); gap: 1rem;" }
+class "lp-card" { sites = [:web]  css = "display: flex; flex-direction: column; margin: 0; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 8px; background: var(--wdoc-bg-alt, transparent); padding: 1.4rem;" }
+class "lp-card" {
+  sites = [:web]
+  nest "&:hover" { css = "border-color: var(--wdoc-border-strong, rgba(127,127,127,0.7));" }
+}
+class "lp-card-icon" { sites = [:web]  css = "display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; margin: 0 0 0.85rem; border-radius: 8px; background: color-mix(in srgb, var(--wdoc-accent, #4060ff) 14%, transparent); color: var(--wdoc-accent, #4060ff);" }
+class "lp-card-icon" {
+  sites = [:web]
+  nest "svg.wdoc-icon" { css = "width: 1.2rem; height: 1.2rem;" }
+}
+class "lp-card" {
+  sites = [:web]
+  nest "h3" { css = "margin: 0 0 0.4rem; font-size: 1rem;" }
+}
+class "lp-card" {
+  sites = [:web]
+  nest "p:last-child" { css = "margin: 0; font-size: 0.88rem; line-height: 1.6; color: var(--wdoc-fg-muted, inherit);" }
+}
+class "lp-steps-panel" { sites = [:web]  css = "border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 8px; background: var(--wdoc-bg-alt, transparent); padding: 1.9rem;" }
+class "lp-steps-panel" {
+  sites = [:web]
+  nest ".lp-section-head" { css = "text-align: left; margin: 0 0 1.5rem; max-width: 60ch;" }
+}
+base "ol.lp-steps" { sites = [:web]  css = "list-style: none; counter-reset: lp-step; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1rem;" }
+base "ol.lp-steps > li" { sites = [:web]  css = "position: relative; padding-left: 2.5rem;" }
+base "ol.lp-steps > li::before" { sites = [:web]  css = "counter-increment: lp-step; content: counter(lp-step); position: absolute; left: 0; top: 0; width: 1.5rem; height: 1.5rem; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 999px; font-size: 0.75rem; font-weight: 600; font-family: var(--wdoc-font-mono, ui-monospace, monospace); color: var(--wdoc-fg-muted, inherit);" }
+class "lp-step-title" { sites = [:web]  css = "margin: 0 0 0.5rem; font-weight: 500;" }
+class "lp-cmd" { sites = [:web]  css = "margin: 0; padding: 0.65rem 0.9rem; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.25)); border-radius: 6px; background: var(--wdoc-bg-inset, rgba(127,127,127,0.06)); font-size: 0.85rem; overflow-x: auto; white-space: nowrap;" }
+class "lp-cmd" {
+  sites = [:web]
+  nest "&::before" { css = "content: \"$ \"; color: var(--wdoc-fg-subtle, inherit); font-family: var(--wdoc-font-mono, ui-monospace, monospace);" }
+}
+class "lp-cmd" {
+  sites = [:web]
+  nest "code" { css = "background: none; border: 0; padding: 0;" }
+}
+class "lp-footgrid" { sites = [:web]  css = "max-width: 70rem; margin: 0 auto; padding: 2.75rem clamp(1rem, 5vw, 3rem); display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 2rem;" }
+class "lp-footbrand" {
+  sites = [:web]
+  nest "p" { css = "margin: 0 0 0.75rem;" }
+}
+class "lp-footlogo" { sites = [:web]  css = "display: flex; align-items: center; gap: 0.6rem; font-family: var(--wdoc-font-mono, ui-monospace, monospace); font-weight: 600; color: var(--wdoc-heading, inherit);" }
+class "lp-footlogo" {
+  sites = [:web]
+  nest "svg.wdoc-icon" { css = "width: 1.1rem; height: 1.1rem; color: var(--wdoc-accent, #4060ff);" }
+}
+class "lp-foottag" { sites = [:web]  css = "max-width: 34ch; font-size: 0.85rem; line-height: 1.6; color: var(--wdoc-fg-subtle, inherit);" }
+class "lp-footcol" {
+  sites = [:web]
+  nest "p" { css = "margin: 0 0 0.55rem; font-size: 0.85rem;" }
+}
+class "lp-foothead" { sites = [:web]  css = "font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--wdoc-fg-subtle, inherit);" }
+class "lp-footlink" {
+  sites = [:web]
+  nest "a" { css = "color: var(--wdoc-fg-muted, inherit); text-decoration: none;" }
+}
+class "lp-footlink" {
+  sites = [:web]
+  nest "a:hover" { css = "color: var(--wdoc-fg, inherit);" }
+}
+class "lp-footbottom" { sites = [:web]  css = "display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: space-between; max-width: 70rem; margin: 0 auto; padding: 1rem clamp(1rem, 5vw, 3rem); border-top: 1px solid var(--wdoc-border, rgba(127,127,127,0.2));" }
+class "lp-footbottom" {
+  sites = [:web]
+  nest "p" { css = "margin: 0; font-size: 0.75rem; color: var(--wdoc-fg-subtle, inherit);" }
+}
+media "(max-width: 48rem)" {
+  sites = [:web]
+  class "lp-footgrid" { css = "grid-template-columns: 1fr 1fr;" }
+}
+media "(prefers-reduced-motion: reduce)" {
+  sites = [:web]
+  class "lp-hero-bg" { css = "opacity: 0.3;" }
 }
 
 // ── Child-element helpers ────────────────────────────────────────────
@@ -419,7 +514,7 @@ file "content.wcl" {
 page index { sites = [:web]  start = true
   lp_hero "Build something great" {
     badge    = "A wdoc starter"
-    lede     = "A starter website — the layout lives in theme.wcl, the components in components.wcl, the design in assets/site.css, and the words live here."
+    lede     = "A starter website — the layout lives in theme.wcl, the components and design rules in components.wcl, and the words live here."
     footnote = "Built with WCL + wdoc."
     lp_cta "Get started" { href = "#start"  primary = true }
     lp_cta "Learn wdoc"  { href = "https://wcl.dev/wskills/wdoc/" }
@@ -473,27 +568,6 @@ page index { sites = [:web]  start = true
   }
 }
 CONTENT
-}
-
-file "assets/site.css" {
-  content = <<'CSS'
-/* The design's shell (header, content column, footer). Shipped verbatim
-   and linked into every page <head>. It paints from var(--wdoc-*)
-   fallbacks so it follows the site theme and the theme toggle; replace
-   it with your own (or an externally-built bundle). */
-* { box-sizing: border-box; }
-body { margin: 0; }
-.nav { display: flex; align-items: center; gap: 1.5rem; padding: 0.9rem clamp(1rem, 5vw, 3rem); border-bottom: 1px solid var(--wdoc-border, #e6e8ee); position: sticky; top: 0; z-index: 10; background: var(--wdoc-bg, #fff); }
-.nav .brand { font-weight: 700; font-size: 1.15rem; text-decoration: none; color: inherit; }
-.nav nav { margin-left: auto; display: flex; gap: 1.25rem; }
-.nav nav a { color: inherit; opacity: 0.8; text-decoration: none; }
-.nav nav a:hover { opacity: 1; color: var(--wdoc-accent, #4060ff); }
-.nav .theme-toggle { margin: 0; padding: 0.25rem 0.7rem; cursor: pointer; background: transparent; border: 1px solid var(--wdoc-border, #dcdfe4); border-radius: 999px; color: inherit; font: inherit; font-size: 0.8rem; white-space: nowrap; }
-.nav .theme-toggle:hover { border-color: var(--wdoc-border-strong, #b6bbc4); }
-.content { max-width: 70rem; margin: 0 auto; padding: 1rem clamp(1rem, 5vw, 3rem) 3rem; }
-.foot { border-top: 1px solid var(--wdoc-border, #e6e8ee); }
-html { scroll-padding-top: 4.5rem; }
-CSS
 }
 
 file "assets/app.js" {

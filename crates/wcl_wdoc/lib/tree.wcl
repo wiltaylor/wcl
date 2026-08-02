@@ -78,12 +78,5 @@ type TreeNode extends SvgBlock {
 // Default tree styling. Bare-class selectors so user `class`es win,
 // neutral defaults and no `var(--wdoc-*)` (so a `site`-less doc stays
 // unthemed); a themed site recolours these via render/theme.rs.
-stylesheet "wdoc-tree" {
-  css = <<CSS
-    .wdoc-tree-guide { stroke: #5a606b; stroke-width: 1; fill: none; }
-    .wdoc-tree-label {
-      font-size: 0.82rem; fill: #e6e6e6;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    }
-    CSS
-}
+class "wdoc-tree-guide" { css = "stroke: #5a606b; stroke-width: 1; fill: none;" }
+class "wdoc-tree-label" { css = "font-size: 0.82rem; fill: #e6e6e6;\n  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;" }

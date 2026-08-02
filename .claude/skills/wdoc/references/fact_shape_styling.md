@@ -78,6 +78,6 @@ class "accent-box" {
 
 - [diagram](../references/fact_diagrams.md) — diagram supports styling shapes with classes: A `diagram` is wdoc's drawing surface.
 
-- [Styling](../references/concept_styling.md) — Styling supports styling shapes with classes: Class blocks, stylesheets, and themes — how a site looks.
+- [Styling](../references/concept_styling.md) — Styling supports styling shapes with classes: Structured CSS blocks and themes — how a site looks.
 
 [← Back to SKILL.md](../SKILL.md)

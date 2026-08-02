@@ -102,10 +102,10 @@ type WdocContent extends ContentBlock {
 //     element (the page's interpolated label becomes the route);
 //   • inside a `toc` / `chapter` its body is `chapter` blocks — one TOC entry
 //     per element.
-// The `page` / `chapter` / `class` / `stylesheet` slots below register those
+// The `page` / `chapter` / structured-CSS slots below register those
 // placements so the validator accepts them. They take effect only where the
 // renderer looks for them (document root for pages, the TOC reader for
-// chapters, the CSS-collection pass for classes / stylesheets); a slot block
+// chapters, the CSS-collection pass for structured rules); a slot block
 // placed where its consumer doesn't look is structurally legal but ignored.
 // `@contextual`: placement is decided by context, not by kind — the
 // repeater is legal wherever children are allowed at all, and its body is
@@ -121,7 +121,10 @@ type WdocRepeater extends ContentBlock {
   @children("page")       pages:    list<Page>
   @children("chapter")    chapters: list<Chapter>
   @children("class")      classes:  list<Class>
-  @children("stylesheet") sheets:   list<Stylesheet>
+  @children("base")       bases:    list<Base>
+  @children("font_face")  fonts:    list<FontFace>
+  @children("media")      media:    list<Media>
+  @children("keyframes")  keyframes: list<Keyframes>
 }
 
 // Opaque element type for a repeater's `each` list. The renderer reads

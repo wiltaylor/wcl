@@ -349,7 +349,7 @@ pub(super) fn grid_svg(
 /// the `.term-*` CSS: `None` ⇒ the CSS-styled HTML path; `Some(fg)` ⇒
 /// the self-contained PDF path, where the bar fill / title fill / close
 /// stroke are emitted inline (same hues + opacities the CSS uses), since
-/// usvg never sees the `wdoc-terminal` stylesheet.
+/// usvg never sees the `wdoc-terminal` structured browser rules.
 fn chrome_svg(g: &Geom, title: Option<&str>, replay: bool, sc_fg: Option<(u8, u8, u8)>) -> String {
     if g.chrome_h <= 0.0 {
         return String::new();

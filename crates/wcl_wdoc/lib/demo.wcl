@@ -47,19 +47,20 @@ type Demo extends ContentBlock {
 // stays unthemed, like `wdoc-card`); a themed site recolours `.wdoc-preview`
 // via the theme apply rules in render/theme.rs, where the palette-scoped
 // `.wdoc-theme-light` / `.wdoc-theme-dark` wrappers feed each pane its colours.
-stylesheet "wdoc-demo" {
-  css = <<CSS
-    .wdoc-demo { margin: 0.75rem 0; }
-    .wdoc-demo-label { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.7; margin: 0.4rem 0 0.2rem; }
-    .wdoc-preview-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; align-items: start; }
-    /* `min-height: 0` resets the 100vh the shared `wdoc-body` class carries
-       (core.wcl) — a preview pane sizes to its content, not the viewport. */
-    .wdoc-preview { padding: 0.8rem; border-radius: 6px; border: 1px solid #444; background: #262b33; color: #e6e6e6; overflow: auto; min-height: 0; }
-    .wdoc-preview > :first-child { margin-top: 0; }
-    .wdoc-preview > :last-child  { margin-bottom: 0; }
-    /* Diagram previews: centre the (scaled-to-fit) diagram in its pane. */
-    .wdoc-preview-diagram .wdoc-preview { display: flex; align-items: center; justify-content: center; }
-    .wdoc-preview-diagram .wdoc-preview .wdoc-diagram-viewport, .wdoc-preview-diagram .wdoc-preview svg { max-width: 100%; }
-    @media (max-width: 48rem) { .wdoc-preview-row { grid-template-columns: 1fr; } }
-    CSS
+class "wdoc-demo" { css = "margin: 0.75rem 0;" }
+class "wdoc-demo-label" { css = "font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.7; margin: 0.4rem 0 0.2rem;" }
+class "wdoc-preview-row" { css = "display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; align-items: start;" }
+class "wdoc-preview" { css = "padding: 0.8rem; border-radius: 6px; border: 1px solid #444; background: #262b33; color: #e6e6e6; overflow: auto; min-height: 0;" }
+class "wdoc-preview" {
+  nest "> :first-child" { css = "margin-top: 0;" }
+}
+class "wdoc-preview" {
+  nest "> :last-child" { css = "margin-bottom: 0;" }
+}
+class "wdoc-preview-diagram" {
+  nest ".wdoc-preview" { css = "display: flex; align-items: center; justify-content: center;" }
+}
+base ".wdoc-preview-diagram .wdoc-preview .wdoc-diagram-viewport, .wdoc-preview-diagram .wdoc-preview svg" { css = "max-width: 100%;" }
+media "(max-width: 48rem)" {
+  class "wdoc-preview-row" { css = "grid-template-columns: 1fr;" }
 }

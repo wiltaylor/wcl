@@ -76,12 +76,12 @@ let referenced_by = fn(uid: identifier, outgoing: list<identifier>) -> list<Unit
 // The per-unit "Related" / "Referenced by" two-column block: top-align the two
 // columns and tighten the bullet rows (grid cells don't collapse margins, which
 // otherwise leaves the lists looking double-spaced).
-stylesheet "related-cols" {
-  css = <<CSS
-.related-cols { align-items: start; margin-top: 2.75rem; padding-top: 1.6rem; border-top: 1px solid var(--wdoc-border, rgba(127,127,127,0.3)); }
-.related-cols p { margin: 0.15rem 0; }
-.related-cols .heading-2 { margin: 0 0 0.35rem; }
-CSS
+class "related-cols" { css = "align-items: start; margin-top: 2.75rem; padding-top: 1.6rem; border-top: 1px solid var(--wdoc-border, rgba(127,127,127,0.3));" }
+class "related-cols" {
+  nest "p" { css = "margin: 0.15rem 0;" }
+}
+class "related-cols" {
+  nest ".heading-2" { css = "margin: 0 0 0.35rem;" }
 }
 
 // --- site -------------------------------------------------------------------

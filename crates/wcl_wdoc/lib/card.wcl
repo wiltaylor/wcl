@@ -12,7 +12,7 @@
 // produced by the block
 // renderer + inline engine, which isn't expressible in WCL. The
 // renderer emits an SVG `<foreignObject>` holding a `wdoc-card` `<div>`.
-// Default styling is the `wdoc-card` stylesheet below; a themed site
+// Default styling is the structured `wdoc-card` rules below; a themed site
 // recolours `.wdoc-card` via the theme apply rules in render/theme.rs.
 
 namespace wdoc
@@ -59,16 +59,11 @@ type Card extends SvgBlock {
 // Default card styling. Bare-class selectors so user `class`es win, with
 // neutral defaults and no `var(--wdoc-*)` (so a `site`-less doc stays
 // unthemed); a themed site recolours `.wdoc-card` via render/theme.rs.
-stylesheet "wdoc-card" {
-  css = <<CSS
-    .wdoc-card {
-      box-sizing: border-box; overflow: hidden; height: 100%;
-      padding: 0.5rem 0.6rem; border-radius: 6px;
-      font-size: 0.85rem; line-height: 1.4;
-      border: 1px solid #444; background: #262b33; color: #e6e6e6;
-    }
-    .wdoc-card > :first-child { margin-top: 0; }
-    .wdoc-card > :last-child  { margin-bottom: 0; }
-    .wdoc-card-title { font-weight: 600; margin: 0 0 0.3rem; }
-    CSS
+class "wdoc-card" { css = "box-sizing: border-box; overflow: hidden; height: 100%;\n  padding: 0.5rem 0.6rem; border-radius: 6px;\n  font-size: 0.85rem; line-height: 1.4;\n  border: 1px solid #444; background: #262b33; color: #e6e6e6;" }
+class "wdoc-card" {
+  nest "> :first-child" { css = "margin-top: 0;" }
 }
+class "wdoc-card" {
+  nest "> :last-child" { css = "margin-bottom: 0;" }
+}
+class "wdoc-card-title" { css = "font-weight: 600; margin: 0 0 0.3rem;" }

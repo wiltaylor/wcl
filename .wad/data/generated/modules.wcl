@@ -315,7 +315,7 @@ code_item code_crate_wcl_wdoc {
     name = "build"
     kind = "module"
     summary = "1 file, 29 pub items"
-    deps = [n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
+    deps = [n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_card {
     name = "card"
@@ -367,7 +367,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_highlight {
     name = "highlight"
     kind = "module"
-    summary = "1 file, 4 pub items"
+    summary = "1 file, 3 pub items"
   }
   code_node n_cg_wcl_wdoc_icons {
     name = "icons"
@@ -449,7 +449,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_render {
     name = "render"
     kind = "module"
-    summary = "15 files, 231 pub items"
+    summary = "15 files, 233 pub items"
     deps = [n_cg_wcl_wdoc_content, n_cg_wcl_wdoc_dopesheet, n_cg_wcl_wdoc_force, n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_layered, n_cg_wcl_wdoc_map, n_cg_wcl_wdoc_radial, n_cg_wcl_wdoc_routing, n_cg_wcl_wdoc_text, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_review {
@@ -6595,11 +6595,6 @@ code_item code_api_wdoc_html_renderer {
       kind = "fn"
       visibility = "crate"
     }
-    code_member m_n_api_wdoc_html_renderer_highlight_fns_theme_css {
-      signature = "fn theme_css() -> &'static str"
-      kind = "fn"
-      visibility = "crate"
-    }
     code_member m_n_api_wdoc_html_renderer_highlight_fns_CodeLine {
       signature = "type CodeLine = Vec<(String, (u8, u8, u8))>"
       kind = "type"
@@ -6646,6 +6641,11 @@ code_item code_api_wdoc_html_renderer {
       kind = "method"
       visibility = "crate"
       deps = [n_api_wdoc_html_renderer_Backend]
+    }
+    code_member m_n_api_wdoc_html_renderer_InlinePatterns_style {
+      signature = "fn style(&self, name: &str) -> Option<&str>"
+      kind = "method"
+      visibility = "crate"
     }
     code_member m_n_api_wdoc_html_renderer_InlinePatterns_set_comment_mode {
       signature = "fn set_comment_mode(&self, on: bool)"
@@ -6703,13 +6703,8 @@ code_item code_api_wdoc_html_renderer {
       kind = "method"
       visibility = "crate"
     }
-    code_member m_n_api_wdoc_html_renderer_InlinePatterns_ui_theme {
-      signature = "fn ui_theme(&self) -> crate::render::UiTheme"
-      kind = "method"
-      visibility = "crate"
-    }
     code_member m_n_api_wdoc_html_renderer_InlinePatterns_more {
-      signature = "… +16 more"
+      signature = "… +17 more"
       kind = "overflow"
     }
   }
@@ -6864,6 +6859,16 @@ code_item code_api_wdoc_html_renderer {
     }
     code_member m_n_api_wdoc_html_renderer_css_fns_render_keyframes {
       signature = "fn render_keyframes(block: &Block<'_>) -> Option<String>"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_css_fns_render_css_block {
+      signature = "fn render_css_block(block: &Block<'_>) -> Option<String>"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_css_fns_render_styles {
+      signature = "fn render_styles(doc: &Document) -> BTreeMap<String, String>"
       kind = "fn"
       visibility = "crate"
     }
@@ -9367,7 +9372,7 @@ code_item code_mod_wdoc_stdlib {
       "media",
       "nest",
       "page",
-      "stylesheet",
+      "style",
       "terminal",
     ]
   }
