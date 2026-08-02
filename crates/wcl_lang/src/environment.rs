@@ -1,10 +1,10 @@
-//! The host environment: synthetic schema types + registered built-in functions
-//! + the expander for `@contextual` block kinds.
+//! The host environment: synthetic schema declarations + registered built-in
+//! functions + the expander for `@contextual` block kinds.
 //!
-//! Lets a Rust embedder ship "built-in" type declarations and Rust callables
+//! Lets a Rust embedder ship "built-in" declarations and Rust callables
 //! that participate in a document's type registry and evaluator. Language-defined
-//! decorators are pre-registered in every [`Environment::new`] so they use the
-//! same registry as user declarations.
+//! decorator schemas and their closed position vocabulary are pre-registered in
+//! every [`Environment::new`] so they use the same registry as user declarations.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -33,7 +33,7 @@ pub trait Expander: Send + Sync {
     fn expand<'a>(&self, block: &Block<'a>) -> Vec<Block<'a>>;
 }
 
-/// Host-supplied bundle of synthetic types and built-in functions merged
+/// Host-supplied bundle of synthetic declarations and built-in functions merged
 /// into a [`Document`](crate::Document) at open time.
 ///
 /// Use [`Environment::new`] for an environment pre-populated with the
@@ -42,6 +42,7 @@ pub trait Expander: Send + Sync {
 #[derive(Clone, Default)]
 pub struct Environment {
     types: Vec<ast::TypeDecl>,
+    symbol_sets: Vec<ast::SymbolSetDecl>,
     builtins: HashMap<String, BuiltinFn>,
     expander: Option<Arc<dyn Expander>>,
 }
@@ -50,6 +51,7 @@ impl std::fmt::Debug for Environment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Environment")
             .field("types", &self.types.len())
+            .field("symbol_sets", &self.symbol_sets.len())
             .field("builtins", &self.builtins.keys().collect::<Vec<_>>())
             .field("expander", &self.expander.is_some())
             .finish()
@@ -62,6 +64,7 @@ impl Environment {
     pub fn new() -> Self {
         let mut env = Self::empty();
         env.types.extend(builtin_decorator_schemas());
+        env.symbol_sets.push(decorator_position_set());
         env.types.extend(stdlib_unit_types());
         crate::collections::register(&mut env);
         crate::math::register(&mut env);
@@ -75,6 +78,7 @@ impl Environment {
     pub fn empty() -> Self {
         Self {
             types: Vec::new(),
+            symbol_sets: Vec::new(),
             builtins: HashMap::new(),
             expander: None,
         }
@@ -110,6 +114,10 @@ impl Environment {
 
     pub(crate) fn types(&self) -> &[ast::TypeDecl] {
         &self.types
+    }
+
+    pub(crate) fn symbol_sets(&self) -> &[ast::SymbolSetDecl] {
+        &self.symbol_sets
     }
 
     pub(crate) fn builtin(&self, name: &str) -> Option<&BuiltinFn> {
@@ -155,12 +163,9 @@ fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
             "name",
             TypeRef::Builtin(BuiltinType::Utf8),
         ),
-        synth_decorator_schema(
-            "Decorator",
-            "decorator",
-            "name",
-            TypeRef::Builtin(BuiltinType::Utf8),
-        ),
+        decorator_schema(),
+        applies_to_schema(),
+        unit_schema(),
         synth_decorator_schema(
             "Inline",
             "inline",
@@ -226,7 +231,6 @@ fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
         ),
         synth_marker_decorator_schema("ByRefDecorator", "by_ref"),
         synth_marker_decorator_schema("DynamicDecorator", "dynamic"),
-        unit_decorator_schema(),
         // `@document` marks a type as the schema for the document
         // root. The single declared positional arg is ignored at
         // recognition time; only the decorator name matters.
@@ -285,19 +289,111 @@ fn schemaless_decorator_schema() -> ast::TypeDecl {
     }
 }
 
-fn unit_decorator_schema() -> ast::TypeDecl {
+fn decorator_schema() -> ast::TypeDecl {
+    let mut name = synthetic_field("name", TypeRef::Builtin(BuiltinType::Utf8), false);
+    name.decorators
+        .push(synthetic_decorator("inline", vec![ast::Expr::U64(0)]));
+    let mut repeatable = synthetic_field("repeatable", TypeRef::Builtin(BuiltinType::Bool), true);
+    repeatable.default_expr = Some(ast::Expr::Bool(false));
     ast::TypeDecl {
-        name: vec!["UnitDecorator".to_string()],
+        name: vec!["Decorator".to_string()],
+        extends: Vec::new(),
+        alias: None,
+        fields: vec![name, repeatable],
+        decorators: vec![synthetic_decorator(
+            "decorator",
+            vec![ast::Expr::Utf8("decorator".to_string())],
+        )],
+        span: synthetic_span(),
+        leading_trivia: Vec::new(),
+        trailing_comment: None,
+        trailing_trivia: Vec::new(),
+    }
+}
+
+fn applies_to_schema() -> ast::TypeDecl {
+    ast::TypeDecl {
+        name: vec!["AppliesTo".to_string()],
+        extends: Vec::new(),
+        alias: None,
+        fields: vec![
+            synthetic_field(
+                "on",
+                TypeRef::List(Box::new(TypeRef::named(vec![
+                    "DecoratorPosition".to_string(),
+                ]))),
+                false,
+            ),
+            synthetic_field(
+                "kinds",
+                TypeRef::List(Box::new(TypeRef::Builtin(BuiltinType::Utf8))),
+                true,
+            ),
+        ],
+        decorators: vec![synthetic_decorator(
+            "decorator",
+            vec![ast::Expr::Utf8("applies_to".to_string())],
+        )],
+        span: synthetic_span(),
+        leading_trivia: Vec::new(),
+        trailing_comment: None,
+        trailing_trivia: Vec::new(),
+    }
+}
+
+fn unit_schema() -> ast::TypeDecl {
+    let mut declaration =
+        synthetic_decorator("decorator", vec![ast::Expr::Utf8("unit".to_string())]);
+    declaration.named.push(ast::NamedArg {
+        name: "repeatable".to_string(),
+        value: ast::Expr::Bool(true),
+        span: synthetic_span(),
+        leading_trivia: Vec::new(),
+        trailing_comment: None,
+    });
+    ast::TypeDecl {
+        name: vec!["Unit".to_string()],
         extends: Vec::new(),
         alias: None,
         fields: vec![
             synthetic_field("name", TypeRef::Builtin(BuiltinType::Utf8), false),
             synthetic_field("factor", TypeRef::Builtin(BuiltinType::F64), false),
         ],
-        decorators: vec![synthetic_decorator(
-            "decorator",
-            vec![ast::Expr::Utf8("unit".to_string())],
-        )],
+        decorators: vec![declaration],
+        span: synthetic_span(),
+        leading_trivia: Vec::new(),
+        trailing_comment: None,
+        trailing_trivia: Vec::new(),
+    }
+}
+
+fn decorator_position_set() -> ast::SymbolSetDecl {
+    const POSITIONS: [&str; 11] = [
+        "field",
+        "fn",
+        "block",
+        "type",
+        "interface",
+        "type_field",
+        "union",
+        "variant",
+        "symbol_set",
+        "symbol",
+        "connection",
+    ];
+    ast::SymbolSetDecl {
+        name: vec!["DecoratorPosition".to_string()],
+        symbols: POSITIONS
+            .into_iter()
+            .map(|name| ast::SymbolEntry {
+                name: name.to_string(),
+                decorators: Vec::new(),
+                span: synthetic_span(),
+                leading_trivia: Vec::new(),
+                trailing_comment: None,
+            })
+            .collect(),
+        decorators: Vec::new(),
         span: synthetic_span(),
         leading_trivia: Vec::new(),
         trailing_comment: None,

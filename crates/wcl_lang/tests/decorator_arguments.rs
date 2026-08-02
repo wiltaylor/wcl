@@ -200,7 +200,6 @@ fn synthesized_single_slot_builtins_are_positional_and_still_resolve() {
 
     for name in [
         "block",
-        "decorator",
         "inline",
         "default",
         "child",
@@ -215,6 +214,40 @@ fn synthesized_single_slot_builtins_are_positional_and_still_resolve() {
         assert_eq!(fields.len(), 1, "@{name} should have one slot");
         assert_eq!(fields[0].inline_slot(), Some(0), "@{name} slot");
     }
+
+    let decorator = doc
+        .decorator_schema("decorator")
+        .expect("@decorator schema exists");
+    assert_eq!(
+        decorator
+            .field("name")
+            .and_then(|field| field.inline_slot()),
+        Some(0)
+    );
+    assert_eq!(
+        decorator
+            .field("repeatable")
+            .and_then(|field| field.inline_slot()),
+        None,
+        "repeatable is named-only"
+    );
+
+    let schemaless = doc
+        .decorator_schema("schemaless")
+        .expect("@schemaless schema exists");
+    assert_eq!(
+        schemaless
+            .field("reason")
+            .and_then(|field| field.inline_slot()),
+        Some(0)
+    );
+    assert_eq!(
+        schemaless
+            .field("annotations")
+            .and_then(|field| field.inline_slot()),
+        None,
+        "annotations is named-only"
+    );
 
     let service = doc.type_decl("Service").expect("service declaration");
     let block = service

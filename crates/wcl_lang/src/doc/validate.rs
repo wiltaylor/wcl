@@ -96,12 +96,13 @@ pub(crate) fn open_error(
 pub(crate) fn validate_document(
     ast: &ast::Source,
     symbols: &SymbolIndex,
-    synthetic: &[ast::TypeDecl],
+    synthetic: (&[ast::TypeDecl], &[ast::SymbolSetDecl]),
     imported_symbols: &[&SymbolIndex],
     import_namespaces: &[Vec<String>],
     source: &str,
     file: &str,
 ) -> Result<Resolved, ParseError> {
+    let (synthetic_types, synthetic_symbol_sets) = synthetic;
     // 1. Namespace must be first if present; at most one.
     let mut file_ns: Vec<String> = Vec::new();
     let mut saw_ns = false;
@@ -136,8 +137,15 @@ pub(crate) fn validate_document(
     // shapes that the rest of this function expects.
     let mut declared: HashSet<Vec<String>> = HashSet::new();
     let mut prefixes: HashSet<Vec<String>> = HashSet::new();
-    for t in synthetic {
+    for t in synthetic_types {
         let fqn = t.name.clone();
+        declared.insert(fqn.clone());
+        for n in 1..fqn.len() {
+            prefixes.insert(fqn[..n].to_vec());
+        }
+    }
+    for set in synthetic_symbol_sets {
+        let fqn = set.name.clone();
         declared.insert(fqn.clone());
         for n in 1..fqn.len() {
             prefixes.insert(fqn[..n].to_vec());
@@ -159,7 +167,7 @@ pub(crate) fn validate_document(
         }
         let fqn: Vec<String> = rec.fqn.split('.').map(str::to_string).collect();
         if !declared.insert(fqn.clone()) {
-            // A registry-injected (synthetic) type already owns this FQN.
+            // A registry-injected (synthetic) declaration already owns this FQN.
             return Err(open_error(
                 source,
                 file,

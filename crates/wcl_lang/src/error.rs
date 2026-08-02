@@ -353,6 +353,15 @@ pub enum SchemaViolationKind {
     /// A decorator name that resolves to no type carrying a matching
     /// `@decorator("name")` declaration.
     UndeclaredDecorator,
+    /// A declared decorator was written in a syntactic position excluded
+    /// by its decorator schema's `@applies_to` declaration.
+    DecoratorNotApplicable,
+    /// An `@applies_to` declaration is internally inconsistent or attached
+    /// to a type that declares no decorator schema.
+    InvalidDecoratorApplicability,
+    /// A non-repeatable decorator occurred more than once on one syntax
+    /// node. The violation points at the repeated occurrence.
+    DecoratorCardinality,
     DisallowedChild,
     MissingRequired,
     ChildrenTooFew,

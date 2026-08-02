@@ -3956,6 +3956,11 @@ code_item code_api_host_bindings {
       kind = "method"
       visibility = "crate"
     }
+    code_member m_n_api_host_bindings_Environment_symbol_sets {
+      signature = "fn symbol_sets(&self) -> &[ast::SymbolSetDecl]"
+      kind = "method"
+      visibility = "crate"
+    }
     code_member m_n_api_host_bindings_Environment_builtin {
       signature = "fn builtin(&self, name: &str) -> Option<&BuiltinFn>"
       kind = "method"
@@ -4495,6 +4500,18 @@ code_item code_api_wcl_lang_error {
       signature = "UndeclaredDecorator"
       kind = "variant"
     }
+    code_member m_n_api_wcl_lang_error_SchemaViolationKind_DecoratorNotApplicable {
+      signature = "DecoratorNotApplicable"
+      kind = "variant"
+    }
+    code_member m_n_api_wcl_lang_error_SchemaViolationKind_InvalidDecoratorApplicability {
+      signature = "InvalidDecoratorApplicability"
+      kind = "variant"
+    }
+    code_member m_n_api_wcl_lang_error_SchemaViolationKind_DecoratorCardinality {
+      signature = "DecoratorCardinality"
+      kind = "variant"
+    }
     code_member m_n_api_wcl_lang_error_SchemaViolationKind_DisallowedChild {
       signature = "DisallowedChild"
       kind = "variant"
@@ -4544,7 +4561,7 @@ code_item code_api_wcl_lang_error {
       kind = "variant"
     }
     code_member m_n_api_wcl_lang_error_SchemaViolationKind_more {
-      signature = "… +16 more"
+      signature = "… +19 more"
       kind = "overflow"
     }
   }
