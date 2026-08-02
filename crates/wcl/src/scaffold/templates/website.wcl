@@ -18,7 +18,7 @@
 //
 // Only `main.wcl` interpolates a scaffold answer (`${answer("name")}`), so
 // it uses an interpolating heredoc; the others are raw (`<<'TAG'`) so their
-// `${c.content}` / `$<<HTML …` / `$"…"` slots reach the generated files
+// `wdoc_blocks(c.content)` / `$<<HTML …` / `$"…"` expressions reach the generated files
 // verbatim and are evaluated by `wcl wdoc build`, not at scaffold time.
 import <scaffold.wcl>
 
@@ -57,8 +57,7 @@ file "theme.wcl" {
 // artifact, a hand-built theme) and mark the slots:
 //
 //   ${c.title}                — the site title
-//   ${c.content}              — the page's default content (everything
-//                               outside a `region`)
+//   wdoc_blocks(c.content)    — typed placement of the page's authored blocks
 //   ${wdoc_region(c, "name")} — a named `region "name" { … }` block, or ""
 //
 // Raw HTML and stdlib parts compose freely: the header below is raw HTML
@@ -78,7 +77,12 @@ template site_main {
       wdoc_part_theme_toggle(c.theme_toggle),
       [raw($<<HTML
         </header>
-        <main class="content">${c.content}</main>
+        <main class="content">
+      HTML
+      ) ],
+      wdoc_blocks(c.content),
+      [raw($<<HTML
+        </main>
         <footer class="foot">${wdoc_region(c, "footer")}</footer>
       HTML
       ) ],
@@ -415,8 +419,8 @@ file "content.wcl" {
   content = <<'CONTENT'
 // The page content, authored in wdoc from the starter components in
 // components.wcl. `region` blocks render into the matching
-// `${wdoc_region(c, "name")}` slot in theme.wcl; everything else becomes
-// the default `${c.content}`.
+// `${wdoc_region(c, "name")}` slot in theme.wcl; authored page blocks are
+// placed by `wdoc_blocks(c.content)`.
 page index { sites = [:web]  start = true
   lp_hero "Build something great" {
     badge    = "A wdoc starter"

@@ -489,6 +489,9 @@ union SvgFundamental {
 }
 
 union HtmlFundamental {
+  // Typed authored-block placement. The renderer resolves these handles
+  // only after template evaluation has returned the complete element tree.
+  Blocks { blocks: list<BlockHandle> }
   Paragraph { id: identifier? class: list<utf8>? spans: list<utf8> }
   // Table — `header` is the heading row (rendered as <th> inside
   // <thead>; omit or leave empty for a header-less table); `rows` are

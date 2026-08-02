@@ -12,6 +12,8 @@ use crate::inline::InlinePatterns;
 
 use super::*;
 
+pub(crate) type BlockRenderer<'a> = dyn Fn(&[Value]) -> String + 'a;
+
 thread_local! {
     /// First eval error swallowed while lowering a block during the
     /// current render pass. The lowering primitives recover (a failed
@@ -479,10 +481,11 @@ pub(crate) fn render_svg_variant(
 /// If `value` is an `HtmlFundamental::Head`, render its `children` (the
 /// head fragment) and return it; otherwise `None`. Lets `render_template`
 /// hoist a template's top-level head fundamentals into the page `<head>`.
-pub(crate) fn head_fundamental_html(
+pub(crate) fn head_fundamental_html_with_blocks(
     doc: &Document,
     value: &Value,
     patterns: &InlinePatterns,
+    block_renderer: Option<&BlockRenderer<'_>>,
 ) -> Option<String> {
     let Value::Variant {
         variant, payload, ..
@@ -499,7 +502,7 @@ pub(crate) fn head_fundamental_html(
     let head = match map.get("children") {
         Some(Value::List(items)) => items
             .iter()
-            .map(|v| render_html_variant(doc, v, 0, patterns))
+            .map(|v| render_html_variant_with_blocks(doc, v, 0, patterns, block_renderer))
             .collect(),
         _ => String::new(),
     };
@@ -511,6 +514,16 @@ pub(crate) fn render_html_variant(
     value: &Value,
     depth: usize,
     patterns: &InlinePatterns,
+) -> String {
+    render_html_variant_with_blocks(doc, value, depth, patterns, None)
+}
+
+pub(crate) fn render_html_variant_with_blocks(
+    doc: &Document,
+    value: &Value,
+    depth: usize,
+    patterns: &InlinePatterns,
+    block_renderer: Option<&BlockRenderer<'_>>,
 ) -> String {
     if depth > MAX_LOWER_DEPTH {
         return depth_marker();
@@ -526,9 +539,13 @@ pub(crate) fn render_html_variant(
         return String::new();
     };
     match kind.as_str() {
+        "blocks" => match (map.get("blocks"), block_renderer) {
+            (Some(Value::List(handles)), Some(render)) => render(handles),
+            _ => String::new(),
+        },
         "paragraph" => render_paragraph_payload(doc, map, patterns),
         "table" => render_table_payload(map),
-        "element" => render_element_payload(doc, map, depth, patterns),
+        "element" => render_element_payload(doc, map, depth, patterns, block_renderer),
         "raw" => render_raw_payload(map),
         // A `Head` reached in body context renders to nothing — its
         // children are hoisted into `<head>` only when the fundamental is
@@ -553,7 +570,7 @@ pub(crate) fn render_html_variant(
         // the semantic IR through a chain of its own variants.
         other => lower_recurse(doc, map, other, depth, |v, d| match recursed_content(v) {
             Some(node) => render_content(doc, &node, patterns),
-            None => render_html_variant(doc, v, d, patterns),
+            None => render_html_variant_with_blocks(doc, v, d, patterns, block_renderer),
         }),
     }
 }

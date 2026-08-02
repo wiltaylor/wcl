@@ -1,11 +1,12 @@
 //! HTML page rendering: the document shell, templates, the page-level
 //! blocks (text / span / column / code / table), and the HTML fundamentals.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
-use wcl_lang::{Block, Document, Value};
+use wcl_lang::{Block, DeclName, Document, Value};
 
 use crate::highlight;
 use crate::icons::IconRegistry;
@@ -365,10 +366,13 @@ pub(crate) struct Rendered {
 /// the rest of the lowering pipeline. When `toc_nodes` is empty the
 /// `toc` falls back to a flat entry per page.
 #[allow(clippy::too_many_arguments)] // cohesive per-page render inputs
-pub(crate) fn render_template(
-    doc: &Document,
-    template: &Block<'_>,
+pub(crate) fn render_template<'a>(
+    doc: &'a Document,
+    template: &Block<'a>,
     content: &str,
+    content_blocks: &[Block<'a>],
+    page: Option<&Block<'a>>,
+    base_dir: Option<&Path>,
     regions: Value,
     title: &str,
     page_name: &str,
@@ -426,13 +430,19 @@ pub(crate) fn render_template(
     } else {
         toc_to_value(toc_nodes, page_name)
     };
-    // Stamp heading anchors + section markers and collect the in-page
-    // heading list for the "on this page" rail (book template), then link
-    // any `[^id]` footnote references to their definitions.
-    let (content, page_headings) = super::headings::process_page_headings(content);
-    let content = super::headings::process_footnotes(&content);
+    // Keep the old book-rail metadata until #52 derives it from authored
+    // blocks. The HTML itself is rendered later, when the template's typed
+    // placement handles are resolved.
+    let (_, page_headings) = super::headings::process_page_headings(content);
+    let mut blocks = Vec::new();
+    let content = Value::list(
+        content_blocks
+            .iter()
+            .map(|block| block_handle_value(block, &mut blocks))
+            .collect(),
+    );
     let mut ctx = BTreeMap::new();
-    ctx.insert("content".to_string(), Value::Utf8(content));
+    ctx.insert("content".to_string(), content);
     ctx.insert(
         "on_this_page".to_string(),
         super::headings::on_this_page_value(&page_headings),
@@ -495,18 +505,149 @@ pub(crate) fn render_template(
     let Ok(Value::List(items)) = doc.call_value(&fv, &[arg]) else {
         return Rendered::default();
     };
+    // Template evaluation is now complete. Only from this point onward may
+    // a returned handle call into the ordinary renderer.
+    let heading_state = RefCell::new(super::headings::HeadingState::default());
+    let render_blocks = |handles: &[Value]| {
+        let mut body = String::new();
+        for handle in handles {
+            let Some(index) = block_handle_index(handle) else {
+                continue;
+            };
+            let Some(block) = blocks.get(index) else {
+                continue;
+            };
+            if let Some(html) = render_block(doc, block, patterns, base_dir) {
+                if html.is_empty() {
+                    continue;
+                }
+                body.push_str(&html);
+                body.push('\n');
+            }
+        }
+        let (body, _) = super::headings::process_page_headings_with_state(
+            &body,
+            &mut heading_state.borrow_mut(),
+        );
+        match (patterns.anchor_mode(), page) {
+            (true, Some(page)) => wrap_page_content(page, page_name, &body),
+            _ => body,
+        }
+    };
     // Partition the template's top-level fundamentals: a `Head` hoists its
     // children into `<head>`; everything else renders into the `<body>`.
     let mut rendered = Rendered::default();
     for v in items.iter() {
-        match head_fundamental_html(doc, v, patterns) {
+        match head_fundamental_html_with_blocks(doc, v, patterns, Some(&render_blocks)) {
             Some(h) => rendered.head.push_str(&h),
-            None => rendered
-                .body
-                .push_str(&render_html_variant(doc, v, 0, patterns)),
+            None => rendered.body.push_str(&render_html_variant_with_blocks(
+                doc,
+                v,
+                0,
+                patterns,
+                Some(&render_blocks),
+            )),
         }
     }
+    rendered.body = super::headings::process_footnotes(&rendered.body);
     rendered
+}
+
+/// Reify one authored block into the public, immutable query shape while
+/// retaining its renderer-only identity in `blocks`. Descendants become
+/// handles recursively, independent of their schema's child-slot shape.
+fn block_handle_value<'a>(block: &Block<'a>, blocks: &mut Vec<Block<'a>>) -> Value {
+    let handle = blocks.len();
+    blocks.push(block.clone());
+    let contextual = block.schema().is_some_and(|schema| {
+        schema
+            .decorators()
+            .any(|decorator| decorator.name() == "contextual")
+    });
+    let child_blocks = if contextual {
+        block.expand_children().unwrap_or_default()
+    } else {
+        block.blocks().collect()
+    };
+    let children = child_blocks
+        .iter()
+        .map(|child| block_handle_value(child, blocks))
+        .collect();
+    let mut fields = BTreeMap::new();
+    fields.insert("kind".to_string(), Value::Utf8(block.kind().to_string()));
+    fields.insert("block".to_string(), authored_block_value(block));
+    fields.insert("children".to_string(), Value::list(children));
+    fields.insert("handle".to_string(), Value::U64(handle as u64));
+    Value::record(vec!["BlockHandle".to_string()], fields)
+}
+
+/// Reify the authored scalar fields without evaluating child projections.
+/// Children have their own `BlockHandle` tree; asking the ordinary record
+/// reifier for them here would eagerly evaluate a contextual body's raw AST
+/// before its repeater/component bindings exist.
+fn authored_block_value(block: &Block<'_>) -> Value {
+    let Some(schema) = block.schema() else {
+        let fields = block
+            .fields()
+            .filter_map(|field| {
+                field
+                    .value()
+                    .ok()
+                    .cloned()
+                    .map(|v| (field.name().to_string(), v))
+            })
+            .collect();
+        return Value::record(vec![block.kind().to_string()], fields);
+    };
+
+    let labels = block.labels().unwrap_or_default();
+    let mut fields = BTreeMap::new();
+    for field_schema in schema.fields() {
+        if field_schema.children_kind_or_union().is_some()
+            || field_schema.child_kind_or_union().is_some()
+        {
+            continue;
+        }
+        let name = field_schema.name();
+        let value = if let Some(slot) = field_schema.inline_slot() {
+            labels
+                .get(slot as usize)
+                .cloned()
+                .or_else(|| block.field(name)?.value().ok().cloned())
+                .or_else(|| field_schema.default_value())
+        } else {
+            block
+                .field(name)
+                .and_then(|field| field.value().ok().cloned())
+                .or_else(|| block.typed_field(name).and_then(|field| field.value().ok()))
+                .or_else(|| field_schema.default_value())
+        };
+        fields.insert(name.to_string(), value.unwrap_or(Value::None));
+    }
+    Value::record(vec![schema.name().to_string()], fields)
+}
+
+fn block_handle_index(value: &Value) -> Option<usize> {
+    let Value::Record { ty, fields } = value else {
+        return None;
+    };
+    if ty.last().map(String::as_str) != Some("BlockHandle") {
+        return None;
+    }
+    fields.get("handle")?.as_u64().map(|n| n as usize)
+}
+
+fn wrap_page_content(page: &Block<'_>, page_name: &str, content: &str) -> String {
+    let src = page.named_source();
+    let span = page.span();
+    format!(
+        "<div data-wcl-page-file=\"{}\" data-wcl-page-name=\"{}\" \
+         data-wcl-page-span=\"{}:{}\" style=\"display:contents\">\n{content}</div>\n",
+        escape_html(src.name()),
+        escape_html(page_name),
+        span.start,
+        span.end,
+    )
 }
 
 pub(crate) fn render_block(
@@ -1264,6 +1405,7 @@ pub(crate) fn render_element_payload(
     map: &BTreeMap<String, Value>,
     depth: usize,
     patterns: &InlinePatterns,
+    block_renderer: Option<&BlockRenderer<'_>>,
 ) -> String {
     let tag = map_utf8(map, "tag").unwrap_or_else(|| "div".to_string());
     // Only allow simple alphanumeric tag names so a stray value can't
@@ -1292,7 +1434,13 @@ pub(crate) fn render_element_payload(
     out.push('>');
     if let Some(Value::List(children)) = map.get("children") {
         for child in children.iter() {
-            out.push_str(&render_html_variant(doc, child, depth + 1, patterns));
+            out.push_str(&render_html_variant_with_blocks(
+                doc,
+                child,
+                depth + 1,
+                patterns,
+                block_renderer,
+            ));
         }
     }
     write!(out, "</{tag}>").expect("write to String");

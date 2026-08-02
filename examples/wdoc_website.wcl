@@ -4,8 +4,8 @@
 //   wcl wdoc build --out _site examples/wdoc_website.wcl
 //
 // The page authors named `region`s (hero / sidebar / footer) plus default
-// content; the custom `landing` layout — authored as a raw-HTML heredoc
-// with `${…}` slots — places each region and adds `<head>` content with the
+// content; the custom `landing` layout uses raw-HTML fragments around a
+// typed `wdoc_blocks` placement and adds `<head>` content with the
 // `wdoc_head_*` helpers. (A real site would link an external stylesheet via
 // the site's `stylesheets` field; here the design CSS is inlined so the
 // example is a single self-contained file.)
@@ -46,7 +46,14 @@ template landing {
           </header>
           <section class="hero">${wdoc_region(c, "hero")}</section>
           <div class="wrap">
-            <main>${c.content}</main>
+            <main>
+        HTML
+        ),
+      ],
+      wdoc_blocks(c.content),
+      [
+        raw($<<HTML
+            </main>
             <aside>${wdoc_region(c, "sidebar")}</aside>
           </div>
           <footer class="foot">${wdoc_region(c, "footer")}</footer>
