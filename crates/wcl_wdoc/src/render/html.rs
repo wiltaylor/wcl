@@ -816,16 +816,7 @@ pub(crate) fn render_block(
         // `as` is set. Special-cased in Rust like `image` — the copy + path
         // rewrite aren't expressible in WCL.
         kinds::FILE => Some(crate::file::render_html(block, patterns.files())),
-        // A page video — like `image`, the asset copy, URL classification,
-        // and click-to-play facade are special-cased in Rust. Records usage
-        // in the video registry (driving the local-file/poster copy).
-        kinds::VIDEO => Some(crate::video::render_html(block, patterns.videos())),
         kinds::DIAGRAM => Some(render_diagram(doc, block, patterns, base_dir)),
-        // Page-level SVG blocks whose geometry is a WCL `lower_svg` fn
-        // (fitted viewBox, auto height) — see render/svg/standalone.rs.
-        kind @ (kinds::SEQUENCE_DIAGRAM | kinds::STATE_DIAGRAM) => {
-            Some(render_lowered_svg_block(doc, block, kind, patterns))
-        }
         // The terminal is special-cased in Rust: its grid model, ANSI
         // handling, and asciinema replay aren't expressible in WCL.
         // `base_dir` lets a `source` recording path resolve relative to

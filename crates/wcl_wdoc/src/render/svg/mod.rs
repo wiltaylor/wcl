@@ -115,7 +115,7 @@ pub(crate) const DOPESHEET_PLAYER_JS: &str = include_str!("../../../assets/dopes
 
 /// The bundled video player (click-to-play facade → real `<video>` /
 /// `<iframe>`), written to `_wdoc/` and loaded once per page when any
-/// `video` block is present. Mirrors the dopesheet/terminal player pattern.
+/// content-IR video is rendered. Mirrors the dopesheet/terminal player pattern.
 pub(crate) const WDOC_VIDEO_JS: &str = include_str!("../../../assets/wdoc-video.js");
 
 /// The bundled presentation (deck) navigation player, written to

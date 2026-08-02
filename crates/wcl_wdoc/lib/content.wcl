@@ -33,14 +33,55 @@
 // `Value` → `Content` conversion). Edit the union, not the Rust.
 //
 // `callout` was the first block routed through it (`callout.wcl`); the
-// five that built their own markup followed — `chapter_header`, `code`,
-// `footnotes`, `p` and `text` — along with `h1`..`h6`, whose level used
-// to ride in a CSS class each non-HTML backend parsed back out. All four
-// backends read those nodes from this declaration, matching the union
-// exhaustively; the hand-written re-implementations the PDF and Markdown
-// backends carried are gone, and so is `heading_level()`. The rest of the
-// blocks still lower to `Html` (see `core.wcl`) and move over
-// one concept at a time.
+// markup-using blocks followed, and the final payload-shaped page blocks
+// (`math`, `video`, `sequence_diagram`, `state_diagram`) complete the
+// classification below. All four backends read these nodes from this
+// declaration and match the union exhaustively.
+//
+// ── Page-content classification ───────────────────────────────────
+//
+// The test is mechanical: a block whose lowering can carry a fixed payload
+// becomes a `Content` producer; a block that needs the authored block
+// subtree (or renderer-only state that no IR payload can hold) is `@native`.
+// This is the complete inventory of the 35 stdlib `WdocBlock` types.
+//
+// Content producers (16):
+//
+//   block(s)                       test and reason
+//   ─────────────────────────────  ────────────────────────────────────────
+//   callout                        fixed heading/kind/icon + authored body prose
+//   chapter_header                 fixed title/kicker/meta payload
+//   code                           fixed source/language/filename payload
+//   footnotes                      child records resolve to fixed note records
+//   h1, h2, h3, h4, h5, h6         fixed level/text payload
+//   math                           fixed LaTeX/display payload
+//   p, text                        fixed prose payload (`text` joins span records)
+//   sequence_diagram               child records lower completely to `Drawing.shapes`
+//   state_diagram                  child records lower completely to `Drawing.shapes`
+//   video                          fixed source/poster/title/size payload
+//
+// Native blocks (19):
+//
+//   block(s)                       test and reason
+//   ─────────────────────────────  ────────────────────────────────────────
+//   column, fragment, notes        need arbitrary child `WdocBlock` subtrees
+//   list                           needs nested `li`/`list` block structure
+//   terminal                       needs its terminal-widget subtree and Rust grid
+//   diagram                        needs its arbitrary `SvgBlock` subtree/layout
+//   demo, markdown_source          need child source text and rendered subtrees
+//   edit_field                     needs a child subtree plus editor binding state
+//   wdoc_content, wdoc_repeater,
+//   wdoc_instance                  need component/repeater expansion context
+//   partial, collect, project       need cross-tree lookup, expansion and cycle guards
+//   image                          one type is both page content and a native SVG shape;
+//                                  asset metadata/dual placement cannot declare one lower
+//   table                          pipe rows live in authored block syntax, not its value
+//   file                           shipping is an output side effect and PDF is uncovered
+//   edit_object                    edit mode is renderer state, absent from a payload
+//
+// A native block can still represent a document concept; `@native` says why
+// its *authored value* cannot cross this IR seam. The corresponding union
+// variants remain available to user lowerings and to future producers.
 
 namespace wdoc
 
@@ -105,13 +146,19 @@ union Content {
   @doc("A raster or vector image asset, sized in user units.")
   Image     { source: utf8 alt: utf8? caption: utf8? width: f64? height: f64? id: identifier? class: list<utf8>? }
   @doc("An embedded video asset.")
-  Video     { source: utf8 poster: utf8? caption: utf8? autoplay: bool? id: identifier? class: list<utf8>? }
+  Video     {
+    source: utf8 poster: utf8? title: utf8? width: f64? height: f64?
+    caption: utf8? id: identifier? class: list<utf8>?
+  }
   @doc("A file shipped with the output and offered for download.")
   File      { path: utf8 label: utf8? id: identifier? class: list<utf8>? }
   @doc("A block equation, carried as LaTeX for the backend to typeset.")
   Math      { latex: utf8 display: bool? id: identifier? class: list<utf8>? }
   @doc("A page-level drawing: the SVG shape vocabulary, not SVG markup.")
-  Drawing   { shapes: list<Svg> width: f64? height: f64? caption: utf8? id: identifier? class: list<utf8>? }
+  Drawing   {
+    shapes: list<Svg> width: f64? height: f64? caption: utf8? desc: utf8?
+    id: identifier? class: list<utf8>?
+  }
   @doc("A terminal session: the resolved screen, one string per line.")
   Terminal  { lines: list<utf8> title: utf8? id: identifier? class: list<utf8>? }
 

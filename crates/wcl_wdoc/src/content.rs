@@ -12,13 +12,10 @@
 //! generated type, so a lowered WCL value becomes a typed node — or a
 //! precise [`ContentError`] naming the variant and field that failed.
 //!
-//! Six blocks are routed through it: `callout` (the first), and then the
-//! five that built their own markup — `chapter_header`, `code`,
-//! `footnotes`, `p` and `text` — plus `h1`..`h6`, whose level used to ride
-//! in a CSS class the non-HTML backends parsed back out. Each returns a
-//! typed node all four backends render from this one declaration, matching
-//! the union **exhaustively**. The remaining blocks still lower to
-//! `Html` and are moved over per concept.
+//! The stdlib's payload-shaped page blocks return typed nodes that all four
+//! backends render from this one declaration, matching the union
+//! **exhaustively**. `lib/content.wcl` records the complete page-block
+//! classification and why every remaining block is native.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

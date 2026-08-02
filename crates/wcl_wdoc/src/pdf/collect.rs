@@ -110,13 +110,6 @@ fn collect_block(
         out.push(collect_diagram(doc, block, svg, patterns, base_dir));
         return;
     }
-    // Page-level SVG blocks lowered from WCL (`lower_svg`): a complete
-    // `<svg>` like `diagram`, with no `card` shapes — plain vector embed.
-    if kind == kinds::SEQUENCE_DIAGRAM || kind == kinds::STATE_DIAGRAM {
-        let svg = crate::render::render_lowered_svg_block(doc, block, kind, patterns);
-        out.push(collect_diagram(doc, block, svg, patterns, base_dir));
-        return;
-    }
     // Lists are fundamental HTML blocks (no usable `lower`); read their nested
     // `li` structure directly into flattened, marked lines.
     if kind == kinds::LIST {
@@ -148,10 +141,6 @@ fn collect_block(
     }
     // A page-level video: in static PDF it can't play, so show the poster
     // thumbnail and — for an online video only — a link to it.
-    if kind == kinds::VIDEO {
-        collect_video(block, base_dir, out);
-        return;
-    }
     // Generators expand exactly as on the HTML / Markdown paths (the
     // shared helpers in `render/expand.rs`), so data-generated content
     // reaches the PDF too. A repeater stamps its body once per element
@@ -501,77 +490,6 @@ pub(super) fn image_node(
         disp_w,
         disp_h,
     })
-}
-
-/// Collect a page `video` into static PDF nodes: the poster thumbnail (when
-/// it's an embeddable local image) plus, for an online video, a link to it.
-/// A local video gets only its poster — a `file:`-style path is useless in a
-/// distributed PDF — so it gets no link.
-fn collect_video(block: &Block<'_>, base_dir: Option<&Path>, out: &mut Vec<BlockNode>) {
-    let before = out.len();
-
-    // Poster: only a local file can be embedded (there's no network at build
-    // time), so a remote poster / YouTube auto-thumbnail is skipped here.
-    if let Some(poster) = field_utf8(block, "poster")
-        && !poster.starts_with("http://")
-        && !poster.starts_with("https://")
-        && !poster.starts_with("data:")
-    {
-        let path = match base_dir {
-            Some(dir) => dir.join(&poster),
-            None => Path::new(&poster).to_path_buf(),
-        };
-        if let Ok(bytes) = std::fs::read(path) {
-            out.push(BlockNode::Image {
-                bytes,
-                disp_w: field_f64(block, "width").map(|v| v as f32),
-                disp_h: field_f64(block, "height").map(|v| v as f32),
-            });
-        }
-    }
-
-    let source = block
-        .labels()
-        .ok()
-        .and_then(|l| l.into_iter().next())
-        .and_then(|v| match v {
-            Value::Utf8(s) | Value::Ascii(s) => Some(s),
-            _ => None,
-        });
-    let online = source.as_deref().and_then(crate::video::online_url);
-    if let Some(url) = online {
-        let label = field_utf8(block, "title").unwrap_or_else(|| url.clone());
-        out.push(BlockNode::Paragraph {
-            runs: vec![InlineRun::Link {
-                runs: vec![InlineRun::Text {
-                    text: label,
-                    style: TextStyle::body(),
-                }],
-                href: url,
-            }],
-        });
-    }
-
-    // Nothing embeddable and nothing to link — a local file with no poster.
-    // `video` declares itself native on :pdf, so it owes the page *something*
-    // rather than disappearing between the paragraphs either side of it: name
-    // the video in italics. Still no path, because a link (or a filename read
-    // as one) into a distributed PDF's neighbourhood points at a file the
-    // reader hasn't got.
-    if out.len() == before {
-        let label = field_utf8(block, "title")
-            .map(|t| format!("Video: {t}"))
-            .unwrap_or_else(|| "Video".to_string());
-        out.push(BlockNode::Paragraph {
-            runs: vec![InlineRun::Text {
-                text: label,
-                style: TextStyle {
-                    italic: true,
-                    ..TextStyle::body()
-                },
-            }],
-        });
-    }
 }
 
 /// Force every run in a (header) cell bold.

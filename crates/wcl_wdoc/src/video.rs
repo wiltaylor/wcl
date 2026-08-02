@@ -6,22 +6,20 @@
 //! The `source` is classified into one of four kinds: a local file
 //! (`<video>`, copied into `_wdoc/` like an `image`), a YouTube or Vimeo
 //! URL (an embed `<iframe>`, with YouTube posters auto-derived), or any
-//! other web URL (a generic embed `<iframe>`). Like `image` it is `@native`
-//! (see [`crate::native`]) rather than lowered in WCL. The asset copy reuses
-//! `image`'s deterministic `_wdoc/` naming ([`is_external`], [`sanitize`],
-//! [`fnv1a`]).
+//! other web URL (a generic embed `<iframe>`). The WCL block lowers its fixed
+//! payload to `Content::Video`; this module owns the HTML reading and asset
+//! registry. The asset copy reuses `image`'s deterministic `_wdoc/` naming
+//! ([`is_external`], [`sanitize`], [`fnv1a`]).
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use wcl_lang::Block;
-
 use crate::build::BuildError;
 use crate::image::{fnv1a, is_external, sanitize};
-use crate::render::{escape_html, field_f64, field_id, field_utf8, field_utf8_list, label_string};
+use crate::render::escape_html;
 
 /// How a `video` `source` is embedded.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -69,12 +67,6 @@ pub(crate) fn online_url(source: &str) -> Option<String> {
     }
 }
 
-/// `true` if any block in this subtree is a `video` (drives the per-page
-/// inclusion of the bundled `wdoc-video.js` player).
-pub(crate) fn uses_video(block: &Block<'_>) -> bool {
-    crate::render::block_tree_any(block, &|b| b.kind() == "video")
-}
-
 /// One resolved local asset (a video file or a poster) to copy.
 #[derive(Clone)]
 struct VideoEntry {
@@ -94,6 +86,7 @@ struct VideoEntry {
 pub(crate) struct VideoRegistry {
     base_dir: Option<PathBuf>,
     entries: RefCell<BTreeMap<String, VideoEntry>>,
+    used: Cell<bool>,
 }
 
 impl VideoRegistry {
@@ -101,7 +94,13 @@ impl VideoRegistry {
         VideoRegistry {
             base_dir,
             entries: RefCell::new(BTreeMap::new()),
+            used: Cell::new(false),
         }
+    }
+
+    /// Whether rendering has emitted a video facade through this registry.
+    pub(crate) fn is_used(&self) -> bool {
+        self.used.get()
     }
 
     /// Resolve `source`, recording it for copying when local, and return
@@ -170,21 +169,40 @@ impl VideoRegistry {
     }
 }
 
-/// Render a page `@block("video")` to a click-to-play facade `<div>`. The
+/// The target-neutral video payload borrowed from a [`crate::content::Content`]
+/// node for the HTML backend's facade renderer.
+pub(crate) struct VideoPayload<'a> {
+    pub source: &'a str,
+    pub poster: Option<&'a str>,
+    pub title: Option<&'a str>,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+    pub id: Option<&'a str>,
+    pub class: &'a [String],
+}
+
+/// Render a content-IR video to a click-to-play facade `<div>`. The
 /// real player swaps in on click (driven by `wdoc-video.js`), reading
 /// `data-kind` (which element to build) and `data-src` (the playable /
 /// embed URL). The poster is an explicit `poster`, else a YouTube
 /// auto-thumbnail, else a styled placeholder.
-pub(crate) fn render_html(block: &Block<'_>, registry: &VideoRegistry) -> String {
-    let Some(source) = label_string(block) else {
-        return String::new();
-    };
+pub(crate) fn render_html(payload: VideoPayload<'_>, registry: &VideoRegistry) -> String {
+    let VideoPayload {
+        source,
+        poster,
+        title,
+        width,
+        height,
+        id,
+        class,
+    } = payload;
     if source.is_empty() {
         return String::new();
     }
-    let kind = classify(&source);
+    registry.used.set(true);
+    let kind = classify(source);
     let (kind_str, play_url) = match &kind {
-        VideoSource::Local => ("local", registry.register(&source, "video")),
+        VideoSource::Local => ("local", registry.register(source, "video")),
         VideoSource::YouTube(id) => (
             "youtube",
             format!("https://www.youtube.com/embed/{id}?autoplay=1"),
@@ -193,12 +211,12 @@ pub(crate) fn render_html(block: &Block<'_>, registry: &VideoRegistry) -> String
             "vimeo",
             format!("https://player.vimeo.com/video/{id}?autoplay=1"),
         ),
-        VideoSource::Generic => ("generic", source.clone()),
+        VideoSource::Generic => ("generic", source.to_string()),
     };
 
     // Poster: explicit field (copied if local) → YouTube auto-thumbnail → none.
-    let poster = field_utf8(block, "poster")
-        .map(|p| registry.register(&p, "poster"))
+    let poster = poster
+        .map(|p| registry.register(p, "poster"))
         .or_else(|| match &kind {
             VideoSource::YouTube(id) => {
                 Some(format!("https://img.youtube.com/vi/{id}/hqdefault.jpg"))
@@ -207,45 +225,41 @@ pub(crate) fn render_html(block: &Block<'_>, registry: &VideoRegistry) -> String
         });
 
     let mut classes = vec!["wdoc-video".to_string()];
-    classes.extend(field_utf8_list(block, "class"));
+    classes.extend(class.iter().cloned());
     let cls = classes
         .iter()
         .map(|s| escape_html(s))
         .collect::<Vec<_>>()
         .join(" ");
 
-    let title = field_utf8(block, "title");
-
     let mut out = format!(
         "<div class=\"{cls}\" data-kind=\"{kind_str}\" data-src=\"{}\"",
         escape_html(&play_url)
     );
-    if let Some(t) = &title {
+    if let Some(t) = title {
         let _ = write!(out, " aria-label=\"{}\"", escape_html(t));
     }
     // Sizing rides on an inline style (the facade is a `<div>`, not an
     // `<img>`), so the swapped-in player inherits the same box.
-    let w = field_f64(block, "width");
-    let h = field_f64(block, "height");
-    if w.is_some() || h.is_some() {
+    if width.is_some() || height.is_some() {
         let mut style = String::new();
-        if let Some(w) = w {
+        if let Some(w) = width {
             let _ = write!(style, "width:{w}px;");
         }
-        if let Some(h) = h {
+        if let Some(h) = height {
             let _ = write!(style, "height:{h}px;");
         }
         let _ = write!(out, " style=\"{style}\"");
     }
-    if let Some(id) = field_id(block, "id") {
-        let _ = write!(out, " id=\"{}\"", escape_html(&id));
+    if let Some(id) = id {
+        let _ = write!(out, " id=\"{}\"", escape_html(id));
     }
     out.push('>');
 
     match poster {
         Some(url) => {
             let _ = write!(out, "<img src=\"{}\"", escape_html(&url));
-            if let Some(t) = &title {
+            if let Some(t) = title {
                 let _ = write!(out, " alt=\"{}\"", escape_html(t));
             }
             out.push_str(" />");

@@ -14,7 +14,7 @@
 
 use std::fmt::Write as _;
 
-use wcl_lang::{Document, Value};
+use wcl_lang::Document;
 
 use crate::content::{
     CalloutKind, Content, ContentFootnote, ContentTocEntry, ListStyle, chapter_meta_line,
@@ -237,30 +237,25 @@ pub(crate) fn render_content(doc: &Document, node: &Content, patterns: &InlinePa
         Content::Video {
             source,
             poster,
+            title,
+            width,
+            height,
             caption,
-            autoplay,
             id,
             class,
         } => {
-            let (kind, url) = match crate::video::online_url(source) {
-                // An online video plays from its own host; a local one is
-                // copied into the output like an image.
-                Some(url) => ("online", url),
-                None => ("local", patterns.videos().register(source, "video")),
-            };
-            let poster = poster
-                .as_ref()
-                .map(|p| patterns.videos().register(p, "poster"));
-            let mut out = format!("<video{}", classes_attr(&["wdoc-video"], class));
-            append_attr(&mut out, "id", id.as_deref());
-            append_attr(&mut out, "src", Some(&url));
-            append_attr(&mut out, "poster", poster.as_deref());
-            append_attr(&mut out, "data-kind", Some(kind));
-            out.push_str(" controls");
-            if *autoplay == Some(true) {
-                out.push_str(" autoplay muted");
-            }
-            out.push_str("></video>");
+            let out = crate::video::render_html(
+                crate::video::VideoPayload {
+                    source,
+                    poster: poster.as_deref(),
+                    title: title.as_deref(),
+                    width: *width,
+                    height: *height,
+                    id: id.as_deref(),
+                    class: class.as_deref().unwrap_or(&[]),
+                },
+                patterns.videos(),
+            );
             wrap_caption(doc, out, caption.as_deref(), patterns)
         }
         Content::File {
@@ -297,21 +292,19 @@ pub(crate) fn render_content(doc: &Document, node: &Content, patterns: &InlinePa
             width,
             height,
             caption,
+            desc,
             id,
             class,
         } => {
-            let values: Vec<Value> = shapes.iter().map(Value::from).collect();
-            let svg = fit_lowered_svg(
+            let svg = fit_content_drawing(
                 doc,
-                &values,
+                shapes,
                 SvgFrame {
                     width: *width,
                     height: *height,
                     class_attr: &classes_attr(&[], class),
                     id: id.as_deref(),
-                    // The caption below is visible: an `aria-label` here
-                    // would override it as the accessible name.
-                    desc: None,
+                    desc: desc.as_deref(),
                 },
                 patterns,
             );
