@@ -438,12 +438,9 @@ mod tests {
         // `class: ["base", if cond { "extra" }]` — an untaken else-less
         // `if` contributes a `none` element, and every consumer of a
         // `list<utf8>` field must drop it rather than render it.
-        let src = "@schemaless\n@document\ntype Root {}\n@block(\"marker\")\n\
-                   type Marker { names: list<utf8>? }\n\
-                   marker { names = [\"base\", if false { \"extra\" }] }\n";
-        let doc = Document::open(src, "test.wcl").expect("doc parses");
-        let block = doc.blocks().next().expect("one block");
-        assert_eq!(field_utf8_list(&block, "names"), vec!["base".to_string()]);
+        with_block("  names = [\"base\", if false { \"extra\" }]", |block| {
+            assert_eq!(field_utf8_list(block, "names"), vec!["base".to_string()]);
+        });
     }
 
     #[test]
@@ -468,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    fn classes_attr_from_names_joins_and_skips_empty() {
+    fn classes_attr_from_names_omits_the_attribute_for_an_empty_list() {
         assert_eq!(classes_attr_from_names(&[]), "");
         assert_eq!(
             classes_attr_from_names(&["a".into(), "b".into()]),

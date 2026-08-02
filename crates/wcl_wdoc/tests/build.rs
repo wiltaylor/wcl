@@ -4675,9 +4675,17 @@ page index {
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
     assert!(html.contains("class=\"chip\""), "{html}");
+    // Pin the all-`none` shape itself: the circle must carry no `class` at
+    // all. A page-wide `class=""` search would also pass if the circle were
+    // never rendered.
+    let circle = html
+        .split("<circle")
+        .nth(1)
+        .and_then(|rest| rest.split('>').next())
+        .expect("the all-`none` circle is rendered");
     assert!(
-        !html.contains("class=\"\""),
-        "empty class attribute:\n{html}"
+        !circle.contains("class"),
+        "circle carries a class attribute: <circle{circle}>"
     );
 }
 
