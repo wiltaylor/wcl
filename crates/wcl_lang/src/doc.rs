@@ -2401,6 +2401,9 @@ impl Document {
         // file). Each source's items are validated against the merged
         // `@document` schema for that source's namespace, if any.
         for src in self.all_sources() {
+            out.extend(crate::doc::schema_check::validate_item_decorators(
+                self, src.items,
+            ));
             let schemas = self.doc_schemas_for_ns(src.file_ns);
 
             // Pre-compute the merged schema's union-typed children

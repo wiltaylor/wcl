@@ -392,6 +392,7 @@ pub fn set_or_remove_decorator(block: &mut ast::Block, name: &str, named: Vec<(S
     }
     block.decorators.push(ast::Decorator {
         name: vec![name.to_string()],
+        name_span: Span::new(0, 0),
         positional: Vec::new(),
         named: named
             .into_iter()

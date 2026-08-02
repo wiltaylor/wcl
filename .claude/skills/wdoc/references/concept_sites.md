@@ -78,6 +78,7 @@ A `site` block configuring one output target — its template, title, theme, nav
 | `ui_theme` | `symbol` | no | UI theme for `wf_*` wireframe elements (the mocked app's theme), separate from the document `theme`. Falls back to `theme`. |
 | `ui_accent` | `symbol` | no | Accent hue for `wf_*` wireframe elements; falls back to `accent`. |
 | `ui_mode` | `symbol` | no | Mode for `wf_*` wireframe elements — `:dark` (default) or `:light`. |
+| `children` | `list<WdocBlock>` | yes | Site-level content for non-repeated slots on a collection template. |
 
 #### Child blocks
 
@@ -88,7 +89,6 @@ A `site` block configuring one output target — its template, title, theme, nav
 | `sidebar_footer` | `sidebar_footer` | no | Pinned buttons at the bottom of the `book` sidebar. |
 | `deck` | `deck` | no | Slide grid for the `presentation` template. |
 | `skill` | `skill` | no | Skill metadata for the `:ai_skill` target — populates SKILL.md's front matter. |
-| `children` | `WdocBlock` | yes | Site-level content for non-repeated slots on a collection template. |
 
 ## Related
 

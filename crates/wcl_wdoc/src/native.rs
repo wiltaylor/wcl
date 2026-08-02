@@ -538,6 +538,27 @@ mod tests {
     }
 
     #[test]
+    fn the_stdlib_declares_every_decorator_it_uses() {
+        let doc = open_wdoc("");
+        let errs: Vec<_> = crate::build::schema_errors(&doc)
+            .into_iter()
+            .filter(|error| {
+                matches!(
+                    error,
+                    wcl_lang::EvalError::SchemaViolation {
+                        kind: wcl_lang::SchemaViolationKind::UndeclaredDecorator,
+                        ..
+                    }
+                )
+            })
+            .collect();
+        assert!(
+            errs.is_empty(),
+            "wdoc stdlib uses undeclared decorators: {errs:#?}"
+        );
+    }
+
+    #[test]
     fn a_block_with_neither_lowering_nor_native_is_refused() {
         let errs = messages(&open_wdoc(
             "@block(\"mine\")\ntype Mine extends wdoc.ContentBlock { }\n",

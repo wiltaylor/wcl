@@ -141,6 +141,33 @@ type MaxLen {
   value: u64
 }
 
+# Metadata annotations use the same declared, typed decorator schemas as
+# language decorators. Misspelling any of these names is a schema error.
+@decorator("deprecated")
+type Deprecated {
+  @inline(0) message: utf8
+}
+
+@decorator("validate")
+type Validate {
+  min: i64?
+  max: i64?
+}
+
+@decorator("hidden")
+type Hidden {}
+
+@decorator("internal")
+type Internal {}
+
+@decorator("ui")
+type Ui {
+  @inline(0) control: utf8
+}
+
+@decorator("ui_default")
+type UiDefault {}
+
 brush primary "matte" {
   port = 9000u32
 }

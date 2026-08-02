@@ -154,6 +154,7 @@ impl<'a> Parser<'a> {
         }
         Ok(Decorator {
             name,
+            name_span,
             positional,
             named,
             span: Span::new(start, end),

@@ -2,9 +2,9 @@
 //! + the expander for `@contextual` block kinds.
 //!
 //! Lets a Rust embedder ship "built-in" type declarations and Rust callables
-//! that participate in a document's type registry and evaluator. The four
-//! schema decorators that the language treats specially (`block`, `decorator`,
-//! `inline`, `default`) are pre-registered in every [`Environment::new`].
+//! that participate in a document's type registry and evaluator. Language-defined
+//! decorators are pre-registered in every [`Environment::new`] so they use the
+//! same registry as user declarations.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -36,8 +36,8 @@ pub trait Expander: Send + Sync {
 /// Host-supplied bundle of synthetic types and built-in functions merged
 /// into a [`Document`](crate::Document) at open time.
 ///
-/// Use [`Environment::new`] for an environment pre-populated with the four
-/// language-built-in decorator schemas and no builtins; use
+/// Use [`Environment::new`] for an environment pre-populated with the
+/// language-built-in decorator schemas and functions; use
 /// [`Environment::empty`] for a strictly empty one.
 #[derive(Clone, Default)]
 pub struct Environment {
@@ -199,6 +199,34 @@ fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
             "schema",
             TypeRef::Builtin(BuiltinType::Utf8),
         ),
+        synth_decorator_schema(
+            "DocDecorator",
+            "doc",
+            "text",
+            TypeRef::Builtin(BuiltinType::Utf8),
+        ),
+        synth_decorator_schema(
+            "MinDecorator",
+            "min",
+            "value",
+            TypeRef::Builtin(BuiltinType::F64),
+        ),
+        synth_decorator_schema(
+            "MaxDecorator",
+            "max",
+            "value",
+            TypeRef::Builtin(BuiltinType::F64),
+        ),
+        synth_marker_decorator_schema("NonEmptyDecorator", "non_empty"),
+        synth_decorator_schema(
+            "RefDecorator",
+            "ref",
+            "kind",
+            TypeRef::Builtin(BuiltinType::Utf8),
+        ),
+        synth_marker_decorator_schema("ByRefDecorator", "by_ref"),
+        synth_marker_decorator_schema("DynamicDecorator", "dynamic"),
+        unit_decorator_schema(),
         // `@document` marks a type as the schema for the document
         // root. The single declared positional arg is ignored at
         // recognition time; only the decorator name matters.
@@ -208,14 +236,9 @@ fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
             "name",
             TypeRef::Builtin(BuiltinType::Utf8),
         ),
-        // `@schemaless` opts a block or field out of strict schema
-        // validation. Same shape — only the decorator name is read.
-        synth_decorator_schema(
-            "Schemaless",
-            "schemaless",
-            "reason",
-            TypeRef::Builtin(BuiltinType::Utf8),
-        ),
+        // The bare form opts a block or field out of strict validation;
+        // `annotations = true` exempts only decorators on that node.
+        schemaless_decorator_schema(),
         // `@contextual` marks a block kind whose placement is decided by
         // context rather than by kind: it is legal wherever children are
         // allowed at all, its body is not recursed into by the child
@@ -240,6 +263,46 @@ fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
         // rather than the one-field helper.
         declares_kind_schema(),
     ]
+}
+
+fn schemaless_decorator_schema() -> ast::TypeDecl {
+    ast::TypeDecl {
+        name: vec!["Schemaless".to_string()],
+        extends: Vec::new(),
+        alias: None,
+        fields: vec![
+            synthetic_field("reason", TypeRef::Builtin(BuiltinType::Utf8), true),
+            synthetic_field("annotations", TypeRef::Builtin(BuiltinType::Bool), true),
+        ],
+        decorators: vec![synthetic_decorator(
+            "decorator",
+            vec![ast::Expr::Utf8("schemaless".to_string())],
+        )],
+        span: synthetic_span(),
+        leading_trivia: Vec::new(),
+        trailing_comment: None,
+        trailing_trivia: Vec::new(),
+    }
+}
+
+fn unit_decorator_schema() -> ast::TypeDecl {
+    ast::TypeDecl {
+        name: vec!["UnitDecorator".to_string()],
+        extends: Vec::new(),
+        alias: None,
+        fields: vec![
+            synthetic_field("name", TypeRef::Builtin(BuiltinType::Utf8), false),
+            synthetic_field("factor", TypeRef::Builtin(BuiltinType::F64), false),
+        ],
+        decorators: vec![synthetic_decorator(
+            "decorator",
+            vec![ast::Expr::Utf8("unit".to_string())],
+        )],
+        span: synthetic_span(),
+        leading_trivia: Vec::new(),
+        trailing_comment: None,
+        trailing_trivia: Vec::new(),
+    }
 }
 
 fn synth_marker_decorator_schema(type_name: &str, decorator_name: &str) -> ast::TypeDecl {
@@ -440,6 +503,7 @@ impl DecoratorBuilder {
     pub(crate) fn build(self) -> ast::Decorator {
         ast::Decorator {
             name: self.name,
+            name_span: synthetic_span(),
             positional: self.positional,
             named: self.named,
             span: synthetic_span(),

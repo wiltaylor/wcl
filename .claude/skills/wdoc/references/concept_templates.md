@@ -264,7 +264,7 @@ A `fragment` block: a step-reveal group inside a slide, hidden until the present
 
 | Slot | Accepts | Multiple | Description |
 | --- | --- | --- | --- |
-| `body` | `WdocBlock` | yes |  |
+| `body` | `ContentBlock` | yes |  |
 
 A `notes` block: speaker notes inside a slide — hidden in the deck, shown in the presenter overlay.
 
@@ -276,7 +276,7 @@ A `notes` block: speaker notes inside a slide — hidden in the deck, shown in t
 
 | Slot | Accepts | Multiple | Description |
 | --- | --- | --- | --- |
-| `body` | `WdocBlock` | yes |  |
+| `body` | `ContentBlock` | yes |  |
 
 ## Related
 
