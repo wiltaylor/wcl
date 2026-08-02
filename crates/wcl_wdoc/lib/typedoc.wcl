@@ -39,6 +39,7 @@ type FieldInfo {
   is_function: bool
   optional:    bool
   has_default: bool
+  default:     any?
   is_block:    bool
   repeated:    bool
   accepts:     utf8

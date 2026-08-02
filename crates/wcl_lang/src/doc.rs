@@ -1863,6 +1863,20 @@ impl Document {
         self.find_schema(BuiltinDecorator::Decorator, name)
     }
 
+    /// Decorator schemas applicable to a block of `kind`. Both ordinary
+    /// `@block` kinds and instance-derived kinds resolve through
+    /// [`block_schema`](Self::block_schema). An unknown kind has no
+    /// applicable schemas.
+    pub fn decorator_schemas_for_block_kind(&self, kind: &str) -> Vec<TypeDecl<'_>> {
+        if self.block_schema(kind).is_none() {
+            return Vec::new();
+        }
+        self.declared_decorators()
+            .map(|(_, schema)| schema)
+            .filter(|schema| schema.decorator_applies_to("block", Some(kind)))
+            .collect()
+    }
+
     /// Look up the type that schemas a table of the given name, i.e.
     /// the first type carrying an `@table("name")` decorator.
     pub fn table_schema(&self, name: &str) -> Option<TypeDecl<'_>> {

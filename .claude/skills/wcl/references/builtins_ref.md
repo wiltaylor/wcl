@@ -1204,6 +1204,19 @@ List the names of the decorators attached to a referenced declaration.
 decorator_names(Image)   // the decorators on the Image type → ["block", "schemaless", ...]
 ```
 
+### decorators_for_kind(kind: utf8) → \[&T\]
+
+List references to decorator schemas applicable to a block kind. Pair with `decl_info`, `doc_comment`, and `type_fields` to render them.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| kind | utf8 | The block kind as a string; instance-derived kinds are supported. |
+| returns | \[&T\] | One reference per applicable decorator-schema declaration. |
+
+```wcl
+decorators_for_kind("image")   // decorator schemas legal on image blocks → [Visibility, ...]
+```
+
 ### doc_comment(target: &T) → utf8
 
 The doc comment — the contiguous run of `#` / `//` lines immediately above a declaration — attached to a reference, or `\"\"` when there is none. Complements `decorator_arg(x, \"doc\", …)` for `@doc(\"…\")` metadata.
@@ -1276,7 +1289,7 @@ Reflect a type or interface into a list of field-description records (own fields
 | Parameter | Type | Description |
 | --- | --- | --- |
 | target | &T | A reference to a type or interface declaration. |
-| returns | \[record\] | One record per field: `{ name, type, is_function, optional, has_default, is_block, repeated, accepts, decorators }`. |
+| returns | \[record\] | One record per field: `{ name, type, is_function, optional, has_default, default, is_block, repeated, accepts, decorators }`. |
 
 ```wcl
 type_fields(Image)   // reflect the Image type into field records → [{ name: "source", type: "utf8", ... }, ...]

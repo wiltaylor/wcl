@@ -40,7 +40,7 @@ pub(crate) fn register(env: &mut Environment) {
             .param("target", "&T", "A reference to a type or interface declaration.")
             .returns(
                 "[record]",
-                "One record per field: `{ name, type, is_function, optional, has_default, is_block, repeated, accepts, decorators }`.",
+                "One record per field: `{ name, type, is_function, optional, has_default, default, is_block, repeated, accepts, decorators }`.",
             ),
     );
     env.add_builtin(
@@ -65,6 +65,20 @@ pub(crate) fn register(env: &mut Environment) {
             .returns(
                 "[&T]",
                 "One reference per declaration: types first, then interfaces, unions, symbol sets, in source order.",
+            ),
+    );
+    env.add_builtin(
+        "decorators_for_kind",
+        BuiltinFn::hof(1, decorators_for_kind_hof)
+            .doc("List references to decorator schemas applicable to a block kind. Pair with `decl_info`, `doc_comment`, and `type_fields` to render them.")
+            .param(
+                "kind",
+                "utf8",
+                "The block kind as a string; instance-derived kinds are supported.",
+            )
+            .returns(
+                "[&T]",
+                "One reference per applicable decorator-schema declaration.",
             ),
     );
     env.add_builtin(
@@ -456,6 +470,23 @@ fn namespace_decls_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value,
     Ok(Value::list(refs))
 }
 
+/// `decorators_for_kind(kind)` — references to the decorator-schema
+/// declarations applicable to a block kind. The returned paths deliberately
+/// reuse the declaration-reflection pipeline rather than introducing a
+/// decorator-specific record shape.
+fn decorators_for_kind_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
+    let kind = String::from_value(&args[0])?;
+    let refs = caller
+        .decorator_schemas_for_kind(&kind)
+        .iter()
+        .map(|dr| Value::DataPath {
+            kind: dr.kind().to_string(),
+            segments: decl_fqn_segments(dr),
+        })
+        .collect();
+    Ok(Value::list(refs))
+}
+
 /// FQN segments of the declaration a namespace-level navigator points at,
 /// so the returned `DataPath` re-resolves from any namespace.
 fn decl_fqn_segments(dr: &DataRef<'_>) -> Vec<String> {
@@ -621,6 +652,10 @@ fn field_record<'a>(f: &TypeField<'a>, decs: &HashMap<String, Vec<Decorator<'a>>
         Value::Bool(f.default_value().is_some()),
     );
     m.insert(
+        "default".to_string(),
+        f.default_value().unwrap_or(Value::None),
+    );
+    m.insert(
         "is_block".to_string(),
         Value::Bool(child.is_some() || children.is_some()),
     );
@@ -696,6 +731,115 @@ mod tests {
     }
 
     #[test]
+    fn decorators_for_kind_returns_composable_applicable_schema_references() {
+        let v = eval_field(
+            r#"
+            @decorator("applies_to")
+            type AppliesTo {
+              on: list<symbol>
+              kinds: list<utf8>?
+            }
+            @block("svc") type Svc {}
+
+            # Offered for services.
+            @decorator("svc_note")
+            @applies_to(on = [:block], kinds = ["svc"])
+            type SvcNote {
+              # Text shown beside the service.
+              @default("note") text: utf8
+            }
+
+            @decorator("type_note")
+            @applies_to(on = [:type])
+            type TypeNote {}
+
+            @schemaless out = map(
+              decorators_for_kind("svc"),
+              fn(d: any) -> any {
+                let info = decl_info(d);
+                {
+                  info: info,
+                  doc: doc_comment(d),
+                  fields: type_fields(d),
+                  slot_doc: if info.decorator_name == "svc_note" {
+                    doc_comment(d.text)
+                  } else { "" }
+                }
+              }
+            )
+            "#,
+            "out",
+        );
+        let Value::List(items) = v else {
+            panic!("expected a list, got {v:?}");
+        };
+        let svc_note = items
+            .iter()
+            .find(|item| {
+                record_field(record_field(item, "info"), "decorator_name")
+                    == &Value::Utf8("svc_note".into())
+            })
+            .expect("the block-applicable decorator is returned");
+        assert_eq!(
+            record_field(svc_note, "doc"),
+            &Value::Utf8("Offered for services.".into())
+        );
+        assert_eq!(
+            record_field(svc_note, "slot_doc"),
+            &Value::Utf8("Text shown beside the service.".into())
+        );
+        let Value::List(fields) = record_field(svc_note, "fields") else {
+            panic!("fields is a list");
+        };
+        assert_eq!(
+            record_field(&fields[0], "default"),
+            &Value::Utf8("note".into())
+        );
+        assert!(
+            !items.iter().any(|item| {
+                record_field(record_field(item, "info"), "decorator_name")
+                    == &Value::Utf8("type_note".into())
+            }),
+            "a type-only decorator is not applicable to a block"
+        );
+    }
+
+    #[test]
+    fn decorators_for_kind_resolves_instance_derived_kinds() {
+        let v = eval_field(
+            r#"
+            @document type Root { @children("widget") widgets: list<Widget> }
+            @block("widget") @declares_kind(name = 0, params = "params")
+            type Widget {
+              @inline(0) name: identifier
+              @children("param") params: list<Param>
+            }
+            @block("param") type Param { @inline(0) name: identifier }
+            widget card { param title }
+
+            @decorator("applies_to")
+            type AppliesTo { on: list<symbol>  kinds: list<utf8>? }
+            @decorator("card_note")
+            @applies_to(on = [:block], kinds = ["card"])
+            type CardNote {}
+
+            @schemaless out = map(
+              decorators_for_kind("card"),
+              fn(d: any) -> utf8 { let info = decl_info(d); info.decorator_name }
+            )
+            "#,
+            "out",
+        );
+        let Value::List(names) = v else {
+            panic!("expected a list, got {v:?}");
+        };
+        assert!(
+            names.contains(&Value::Utf8("card_note".into())),
+            "{names:?}"
+        );
+    }
+
+    #[test]
     fn decorator_arg_reads_positional_via_schema_slot() {
         let v = eval_field(
             r#"
@@ -745,6 +889,21 @@ mod tests {
             "out",
         );
         assert_eq!(v, Value::None);
+    }
+
+    #[test]
+    fn decorator_arg_uses_the_schema_slots_default_when_omitted() {
+        let v = eval_field(
+            r#"
+            @decorator("theme")
+            type Theme { @default("dark") color: utf8 }
+            @theme
+            type Svc {}
+            @schemaless out = decorator_arg(Svc, "theme", "color")
+            "#,
+            "out",
+        );
+        assert_eq!(v, Value::Utf8("dark".into()));
     }
 
     #[test]
@@ -842,6 +1001,25 @@ mod tests {
 
         // Inherited `id`: optional, last.
         assert_eq!(record_field(&fields[4], "optional"), &Value::Bool(true));
+    }
+
+    #[test]
+    fn type_fields_reports_raw_default_values_and_none_when_absent() {
+        let v = eval_field(
+            r#"
+            type Settings {
+              @default(3) retries: u32
+              enabled: bool?
+            }
+            @schemaless out = type_fields(Settings)
+            "#,
+            "out",
+        );
+        let Value::List(fields) = v else {
+            panic!("expected a list, got {v:?}");
+        };
+        assert_eq!(record_field(&fields[0], "default"), &Value::I64(3));
+        assert_eq!(record_field(&fields[1], "default"), &Value::None);
     }
 
     #[test]

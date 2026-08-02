@@ -19,6 +19,27 @@ fn round_trip(src: &str) -> String {
 }
 
 #[test]
+fn block_instance_decorators_round_trip_in_every_argument_form() {
+    let out = round_trip(
+        r#"
+@audit("critical") @ops.visible(level = "team") @flag
+server prod {
+  @bare(reason = "legacy") child api
+}
+"#,
+    );
+
+    for expected in [
+        "@audit(\"critical\")",
+        "@ops.visible(level = \"team\")",
+        "@flag",
+        "@bare(reason = \"legacy\")",
+    ] {
+        assert!(out.contains(expected), "missing {expected:?}:\n{out}");
+    }
+}
+
+#[test]
 fn newline_escape_string_stays_quoted() {
     // Variant 2 of the report: a `"\n"` separator inside a call used to
     // become a whitespace heredoc whose closer glued onto the `)` —

@@ -218,6 +218,14 @@ impl<'a> crate::builtins::Caller for EvalCaller<'a, '_> {
         out
     }
 
+    fn decorator_schemas_for_kind<'r>(&'r self, kind: &str) -> Vec<crate::data::DataRef<'r>> {
+        self.doc
+            .decorator_schemas_for_block_kind(kind)
+            .into_iter()
+            .map(crate::data::DataRef::from_type)
+            .collect()
+    }
+
     fn builtin_info(&self, name: &str) -> Option<crate::builtins::BuiltinSignature> {
         self.doc
             .environment()
@@ -446,7 +454,9 @@ impl Document {
                 span,
             } => {
                 let dr = self.eval_to_dataref(expr, ctx)?;
-                let segments = expr_to_path_segments(expr).unwrap_or_default();
+                let segments = bound_data_path_segments(expr, ctx)
+                    .or_else(|| expr_to_path_segments(expr))
+                    .unwrap_or_default();
                 return materialise_dataref_value(dr, segments, *span);
             }
             E::Paren { inner, .. } => return self.eval_in(inner, ctx),
@@ -1120,6 +1130,18 @@ impl Document {
                 // downstream member access can project record/variant
                 // fields without re-evaluating the receiver.
                 if let Some(v) = ctx.lookup(name) {
+                    if let Value::DataPath { segments, .. } = v {
+                        let segments: Vec<&str> = segments.iter().map(String::as_str).collect();
+                        let ctx_ns = ctx
+                            .scope
+                            .frames()
+                            .last()
+                            .map(|f| f.file_ns)
+                            .unwrap_or(&self.file_ns);
+                        return self.resolve_segments_in(&segments, ctx_ns).ok_or_else(|| {
+                            EvalError::unresolved_reference(segments.join("."), span_of(expr))
+                        });
+                    }
                     return Ok(crate::data::DataRef::from_variant_value(v.clone()));
                 }
                 // Outer `?` turns a missing name into "unresolved
@@ -1300,5 +1322,25 @@ impl Document {
                 self.frame_as_block(scope, n - 2),
             )),
         }
+    }
+}
+
+/// Recover the resolvable path behind member access on a local binding that
+/// carries a reflective `DataPath`. The ordinary syntax path (`d.text`) is
+/// not resolvable once `d` came from an enumerated declaration reference;
+/// this preserves its bound FQN (`SvcNote.text`) instead.
+fn bound_data_path_segments(expr: &ast::Expr, ctx: &EvalCtx<'_>) -> Option<Vec<String>> {
+    match expr {
+        ast::Expr::Identifier(name, _) => match ctx.lookup(name) {
+            Some(Value::DataPath { segments, .. }) => Some(segments.clone()),
+            _ => None,
+        },
+        ast::Expr::Member { recv, name, .. } => {
+            let mut segments = bound_data_path_segments(recv, ctx)?;
+            segments.push(name.clone());
+            Some(segments)
+        }
+        ast::Expr::Paren { inner, .. } => bound_data_path_segments(inner, ctx),
+        _ => None,
     }
 }
