@@ -237,7 +237,7 @@ impl<'a> crate::builtins::Caller for EvalCaller<'a, '_> {
     }
 
     fn unit_factor(&self, type_name: &str, unit: &str) -> Option<f64> {
-        let ty = crate::value::TypeRef::Named(type_name.split('.').map(str::to_string).collect());
+        let ty = crate::value::TypeRef::named(type_name.split('.').map(str::to_string).collect());
         self.doc.unit_factor(&ty, unit).and_then(|v| v.as_f64())
     }
 }

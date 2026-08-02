@@ -50,7 +50,12 @@ impl<'a> Parser<'a> {
         let head = self.peek()?;
         if matches!(head.kind, TokenKind::Ident(_)) {
             let (path, path_span) = self.parse_path()?;
-            Ok((path_to_type_ref(&path), path_span))
+            if !matches!(self.peek()?.kind, TokenKind::Lt) {
+                return Ok((path_to_type_ref(&path, Vec::new()), path_span));
+            }
+            let (args, args_span) = self.parse_type_args()?;
+            let span = Span::new(path_span.start, args_span.end);
+            Ok((path_to_type_ref(&path, args), span))
         } else {
             let span = head.span;
             let kind_desc = describe(&head.kind);
@@ -60,6 +65,52 @@ impl<'a> Parser<'a> {
                 "expected type",
             ))
         }
+    }
+
+    /// Parse the `<A, B>` suffix of a named type reference, positioned on
+    /// the `<`. Purely syntactic: the arguments are recorded on the
+    /// `TypeRef` and never checked against a declaration (there is no
+    /// `type Foo<T>` form to check against).
+    fn parse_type_args(&mut self) -> Result<(Vec<TypeRef>, Span), ParseError> {
+        let lt = self.bump()?; // '<'
+        let mut args: Vec<TypeRef> = Vec::new();
+        loop {
+            if matches!(self.peek()?.kind, TokenKind::Gt) {
+                break;
+            }
+            let (arg, _) = self.parse_type_ref()?;
+            args.push(arg);
+            match self.peek()?.kind {
+                TokenKind::Comma => {
+                    self.bump()?;
+                }
+                TokenKind::Gt => break,
+                _ => {
+                    let tok = self.peek()?;
+                    let span = tok.span;
+                    let kind = describe(&tok.kind);
+                    return Err(self.err(
+                        format!("expected ',' or '>' in type arguments, found {kind}"),
+                        span,
+                        "expected ',' or '>'",
+                    ));
+                }
+            }
+        }
+        let gt = self.expect(TokenKind::Gt, "expected '>' to close type arguments")?;
+        let span = Span::new(lt.span.start, gt.span.end);
+        if args.is_empty() {
+            // An empty list isn't an argument list — there is nothing to
+            // print, so `wcl fmt` would silently delete the `<>`. (A
+            // *trailing* comma is accepted and normalised away, as it is
+            // in tensor dimensions: that's formatting, not deletion.)
+            return Err(self.err(
+                "type argument list cannot be empty",
+                span,
+                "expected at least one type argument",
+            ));
+        }
+        Ok((args, span))
     }
 
     /// Parse a `keyword<body>` form: bump the keyword, expect `<`, run
@@ -158,12 +209,20 @@ impl<'a> Parser<'a> {
 }
 
 /// Promote a parsed path into either a builtin scalar (`u32`, `utf8`,
-/// …) or a named-type reference.
-pub(super) fn path_to_type_ref(path: &[String]) -> TypeRef {
-    if path.len() == 1
+/// …) or a named-type reference carrying `args`.
+///
+/// A builtin never takes type arguments, so `u32<T>` stays a named
+/// reference — an unknown type, reported by the usual resolution pass
+/// rather than by a special case here.
+pub(super) fn path_to_type_ref(path: &[String], args: Vec<TypeRef>) -> TypeRef {
+    if args.is_empty()
+        && path.len() == 1
         && let Some(b) = BuiltinType::from_name(&path[0])
     {
         return TypeRef::Builtin(b);
     }
-    TypeRef::Named(path.to_vec())
+    TypeRef::Named {
+        path: path.to_vec(),
+        args,
+    }
 }

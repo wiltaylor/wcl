@@ -324,7 +324,7 @@ fn parse_empty_type_body() {
 fn parse_type_with_named_ref() {
     let s = parse("type Tree { parent: Tree? }");
     let t = type_decls(&s.items)[0];
-    assert_eq!(t.fields[0].ty, TypeRef::Named(vec!["Tree".into()]));
+    assert_eq!(t.fields[0].ty, TypeRef::named(vec!["Tree".into()]));
     assert!(t.fields[0].optional);
 }
 
@@ -334,7 +334,7 @@ fn parse_reference_type_to_named() {
     let t = type_decls(&s.items)[0];
     assert_eq!(
         t.fields[0].ty,
-        TypeRef::Reference(Box::new(TypeRef::Named(vec!["User".into()])))
+        TypeRef::Reference(Box::new(TypeRef::named(vec!["User".into()])))
     );
     assert!(t.fields[0].optional);
 }
@@ -431,7 +431,7 @@ fn parse_union_with_all_three_body_forms() {
     assert_eq!(u.variants[1].name, "Polygon");
     match &u.variants[1].body {
         VariantBody::TypeRef { ty, .. } => {
-            assert_eq!(*ty, TypeRef::Named(vec!["Point".into()]))
+            assert_eq!(*ty, TypeRef::named(vec!["Point".into()]))
         }
         _ => panic!("expected TypeRef body"),
     }
@@ -517,7 +517,7 @@ fn parse_list_of_reference() {
         .unwrap();
     assert_eq!(
         t.fields[0].ty,
-        TypeRef::List(Box::new(TypeRef::Reference(Box::new(TypeRef::Named(
+        TypeRef::List(Box::new(TypeRef::Reference(Box::new(TypeRef::named(
             vec!["User".into()]
         )))))
     );
@@ -604,7 +604,7 @@ fn list_keyword_as_type_name_still_works() {
         .into_iter()
         .find(|t| t.name == vec!["Q".to_string()])
         .unwrap();
-    assert_eq!(q.fields[0].ty, TypeRef::Named(vec!["list".into()]));
+    assert_eq!(q.fields[0].ty, TypeRef::named(vec!["list".into()]));
 }
 
 #[test]
@@ -909,7 +909,7 @@ fn parse_named_symbol_set_field() {
         .into_iter()
         .find(|t| t.name == vec!["Q".to_string()])
         .unwrap();
-    assert_eq!(q.fields[0].ty, TypeRef::Named(vec!["C".into()]));
+    assert_eq!(q.fields[0].ty, TypeRef::named(vec!["C".into()]));
 }
 
 #[test]
@@ -1016,7 +1016,7 @@ fn parse_dotted_type_ref() {
     match &s.items[0] {
         Item::TypeDecl(t) => assert_eq!(
             t.fields[0].ty,
-            TypeRef::Named(vec!["a".to_string(), "b".to_string(), "X".to_string()])
+            TypeRef::named(vec!["a".to_string(), "b".to_string(), "X".to_string()])
         ),
         _ => panic!("expected TypeDecl"),
     }
@@ -1028,7 +1028,7 @@ fn parse_dotted_reference_type() {
     match &s.items[0] {
         Item::TypeDecl(t) => assert_eq!(
             t.fields[0].ty,
-            TypeRef::Reference(Box::new(TypeRef::Named(vec![
+            TypeRef::Reference(Box::new(TypeRef::named(vec![
                 "a".to_string(),
                 "b".to_string(),
                 "X".to_string()
@@ -1036,6 +1036,108 @@ fn parse_dotted_reference_type() {
         ),
         _ => panic!("expected TypeDecl"),
     }
+}
+
+// ---- syntax-only type arguments (`content<SvgBlock>`) ----
+//
+// The parser records the arguments and nothing else reads them: no
+// arity check, no substitution, no `type Foo<T>` declaration form.
+
+#[track_caller]
+fn field_ty(src: &str) -> TypeRef {
+    let s = parse(src);
+    match &s.items[0] {
+        Item::TypeDecl(t) => t.fields[0].ty.clone(),
+        other => panic!("expected TypeDecl, got {other:?}"),
+    }
+}
+
+#[test]
+fn parse_type_ref_with_one_type_argument() {
+    assert_eq!(
+        field_ty("type Q { f: content<SvgBlock> }"),
+        TypeRef::Named {
+            path: vec!["content".into()],
+            args: vec![TypeRef::named(vec!["SvgBlock".into()])],
+        }
+    );
+}
+
+#[test]
+fn parse_type_ref_with_several_type_arguments() {
+    assert_eq!(
+        field_ty("type Q { f: a.b.Path<x.Y, u32> }"),
+        TypeRef::Named {
+            path: vec!["a".into(), "b".into(), "Path".into()],
+            args: vec![
+                TypeRef::named(vec!["x".into(), "Y".into()]),
+                TypeRef::Builtin(BuiltinType::U32),
+            ],
+        }
+    );
+}
+
+#[test]
+fn type_arguments_nest() {
+    assert_eq!(
+        field_ty("type Q { f: Outer<Inner<Leaf>> }"),
+        TypeRef::Named {
+            path: vec!["Outer".into()],
+            args: vec![TypeRef::Named {
+                path: vec!["Inner".into()],
+                args: vec![TypeRef::named(vec!["Leaf".into()])],
+            }],
+        }
+    );
+}
+
+#[test]
+fn type_arguments_compose_with_the_other_type_forms() {
+    // `list<...>` / `&...` keep their meaning on both sides of an argument list.
+    assert_eq!(
+        field_ty("type Q { f: list<Slot<&User>> }"),
+        TypeRef::List(Box::new(TypeRef::Named {
+            path: vec!["Slot".into()],
+            args: vec![TypeRef::Reference(Box::new(TypeRef::named(vec![
+                "User".into()
+            ])))],
+        }))
+    );
+    assert_eq!(
+        field_ty("type Q { f: &Slot<Page> }"),
+        TypeRef::Reference(Box::new(TypeRef::Named {
+            path: vec!["Slot".into()],
+            args: vec![TypeRef::named(vec!["Page".into()])],
+        }))
+    );
+}
+
+#[test]
+fn type_arguments_are_optional() {
+    // The no-argument form is unchanged — `args` stays empty, so nothing
+    // downstream that matches on the path sees a difference.
+    assert_eq!(
+        field_ty("type Q { f: content }"),
+        TypeRef::named(vec!["content".into()])
+    );
+}
+
+#[test]
+fn empty_type_argument_list_errors() {
+    // `Foo<>` would print back as `Foo`, so reject it rather than let
+    // `wcl fmt` quietly rewrite it.
+    assert_syntax_err(
+        parse_err("type Q { f: Foo<> }"),
+        "type argument list cannot be empty",
+    );
+}
+
+#[test]
+fn unterminated_type_argument_list_errors() {
+    assert_syntax_err(
+        parse_err("type Q { f: Foo<Bar }"),
+        "expected ',' or '>' in type arguments",
+    );
 }
 
 #[test]

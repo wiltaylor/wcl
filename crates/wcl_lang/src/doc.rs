@@ -1159,7 +1159,7 @@ impl Document {
     /// `namespace lib` resolves its endpoints to `lib.Adr`.
     pub(crate) fn resolve_type_fqn_in(&self, t: &TypeRef, file_ns: &[String]) -> Option<String> {
         match t {
-            TypeRef::Named(path) => self.resolve_path_in(path, file_ns).map(|p| p.join(".")),
+            TypeRef::Named { path, .. } => self.resolve_path_in(path, file_ns).map(|p| p.join(".")),
             TypeRef::Reference(inner) => self.resolve_type_fqn_in(inner, file_ns),
             _ => None,
         }
@@ -1348,7 +1348,7 @@ impl Document {
                 return ty.clone(); // alias cycle — give up, stay permissive
             }
             match ty {
-                T::Named(path) => {
+                T::Named { path, .. } => {
                     let fqn = path.join(".");
                     match doc.type_decl(&fqn).and_then(|t| t.ast.alias.clone()) {
                         Some(target) => go(doc, &target, depth - 1),
@@ -1370,7 +1370,7 @@ impl Document {
         let mut out = Vec::new();
         let mut current = ty.clone();
         for _ in 0..8 {
-            let crate::value::TypeRef::Named(path) = &current else {
+            let crate::value::TypeRef::Named { path, .. } = &current else {
                 break;
             };
             let Some(decl) = self.type_decl(&path.join(".")) else {
@@ -1572,7 +1572,7 @@ impl Document {
     pub fn resolve_in<'a>(&'a self, t: &'a TypeRef, file_ns: &[String]) -> ResolvedType<'a> {
         match t {
             TypeRef::Builtin(b) => ResolvedType::Builtin(*b),
-            TypeRef::Named(path) => {
+            TypeRef::Named { path, .. } => {
                 let fqn = self
                     .resolve_path_in(path, file_ns)
                     .expect("named ref validated at Document::open");
@@ -2289,7 +2289,7 @@ impl Document {
         if declared.optional() && matches!(v, Value::None) {
             return;
         }
-        if let TypeRef::Named(path) = declared.type_ref()
+        if let TypeRef::Named { path, .. } = declared.type_ref()
             && let Some(union_decl) = self.union_decl(&path.join("."))
         {
             if let Value::Variant { union, variant, .. } = v
@@ -2967,7 +2967,7 @@ pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
         // A symbol against a named type is (typically) a `symbol_set`
         // member — checking membership would need the declaration, which
         // `Value` doesn't carry, so stay permissive.
-        (Value::Symbol(_), TypeRef::Named(_)) => true,
+        (Value::Symbol(_), TypeRef::Named { .. }) => true,
         (Value::None, _) => false, // None doesn't satisfy any concrete type
         // Numeric values satisfy any numeric builtin type: the evaluator
         // promotes numerics (an `f64` field authored as `520` holds an
@@ -2975,14 +2975,16 @@ pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
         // the eval path accepts.
         (v, TypeRef::Builtin(b)) if v.is_numeric() && b.is_numeric() => true,
         // Variant value against a named union type: compare FQN.
-        (Value::Variant { union, .. }, TypeRef::Named(path)) => path_matches_suffix(path, union),
+        (Value::Variant { union, .. }, TypeRef::Named { path, .. }) => {
+            path_matches_suffix(path, union)
+        }
         // Record value against a named (non-union) type. Builtin-produced
         // records (e.g. `@connections` projections) carry the producing
         // declaration's FQN in `ty` — compare it. Bare record literals
         // (`ty` empty) stay permissive: matching them by shape would need
         // the declaration, which `Value` doesn't carry (mirrors the
         // tensor / function pass-through below).
-        (Value::Record { ty, .. }, TypeRef::Named(path)) => {
+        (Value::Record { ty, .. }, TypeRef::Named { path, .. }) => {
             ty.is_empty() || path_matches_suffix(path, ty)
         }
         // Lists check element type recursively.
@@ -3014,7 +3016,7 @@ pub(crate) fn symbol_set_membership_error(
     field_name: &str,
     span: crate::ast::Span,
 ) -> Option<EvalError> {
-    let TypeRef::Named(path) = ty else {
+    let TypeRef::Named { path, .. } = ty else {
         return None;
     };
     let ss = doc.symbol_set(&path.join("."))?;
@@ -3143,11 +3145,15 @@ fn validate_union(doc: &Document, u: &ast::UnionDecl) -> Vec<EvalError> {
 /// Bodies "collide" when they're indistinguishable for dispatch:
 /// same set of record-field (name, type) pairs, or identical Unit /
 /// TypeRef / InterfaceRef references.
+///
+/// Type arguments don't distinguish anything — dispatch resolves a
+/// named type by path — so `A(S<X>)` and `B(S<Y>)` collide just as
+/// `A(S)` and `B(S)` do.
 fn variant_bodies_collide(a: &ast::VariantBody, b: &ast::VariantBody) -> bool {
     use ast::VariantBody as VB;
     match (a, b) {
         (VB::Unit, VB::Unit) => true,
-        (VB::TypeRef { ty: a, .. }, VB::TypeRef { ty: b, .. }) => a == b,
+        (VB::TypeRef { ty: a, .. }, VB::TypeRef { ty: b, .. }) => a.same_ignoring_type_args(b),
         (VB::InterfaceRef { iface: a, .. }, VB::InterfaceRef { iface: b, .. }) => a == b,
         (VB::Record { fields: af, .. }, VB::Record { fields: bf, .. }) => {
             if af.len() != bf.len() {
@@ -3159,7 +3165,10 @@ fn variant_bodies_collide(a: &ast::VariantBody, b: &ast::VariantBody) -> bool {
                 bf.iter().map(|f| (&f.name, &f.ty)).collect();
             a_sorted.sort_by_key(|(n, _)| (*n).clone());
             b_sorted.sort_by_key(|(n, _)| (*n).clone());
-            a_sorted == b_sorted
+            a_sorted
+                .iter()
+                .zip(b_sorted.iter())
+                .all(|((an, at), (bn, bt))| an == bn && at.same_ignoring_type_args(bt))
         }
         _ => false,
     }

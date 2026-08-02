@@ -379,7 +379,7 @@ pub(crate) fn validate_document(
                             // accepted (the same rule that lets `&Iface`
                             // appear in field types).
                             check_type_ref(
-                                &crate::value::TypeRef::Named(iface.clone()),
+                                &crate::value::TypeRef::named(iface.clone()),
                                 *iface_span,
                                 true,
                                 &cx,
@@ -648,11 +648,16 @@ fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Result<(), Pars
 /// purely structural: the child may narrow a parent's
 /// `fn(&Iface) -> R` to `fn(Concrete) -> Whatever`. Mirrors the
 /// relaxation in `interfaces::iface_field_type_compatible`.
+///
+/// "Equality" here ignores type arguments — they are metadata, so an
+/// override that differs only in them is the same type. The interface
+/// path compares `ResolvedType`s, which never carry arguments at all;
+/// this keeps the two in agreement.
 fn extends_field_types_compatible(a: &TypeRef, b: &TypeRef) -> bool {
     if matches!((a, b), (TypeRef::Function { .. }, TypeRef::Function { .. })) {
         return true;
     }
-    a == b
+    a.same_ignoring_type_args(b)
 }
 
 /// Snapshot of the bookkeeping `validate_document` builds up before it
@@ -678,7 +683,7 @@ fn check_type_ref(
 ) -> Result<(), ParseError> {
     match t {
         TypeRef::Builtin(_) => Ok(()),
-        TypeRef::Named(path) => {
+        TypeRef::Named { path, .. } => {
             let Some(resolved) = resolve_path(
                 path,
                 cx.file_ns,

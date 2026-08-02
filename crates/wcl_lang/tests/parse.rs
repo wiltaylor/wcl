@@ -59,7 +59,7 @@ fn fixture_union_shape_resolves() {
     // Polygon's body is `P` (alias) — source form unresolved; resolve follows.
     match polygon.body() {
         VariantBodyView::TypeRef(t) => {
-            assert_eq!(*t, TypeRef::Named(vec!["P".into()]));
+            assert_eq!(*t, TypeRef::named(vec!["P".into()]));
             match doc.resolve(t) {
                 ResolvedType::Named(d) => assert_eq!(d.full_name(), "company.utils.Point"),
                 _ => panic!("expected Named after resolve"),
