@@ -456,18 +456,19 @@ enum WskillCommand {
     ///   {"op": "create_index", "id": "usage", "name": "Usage",
     ///    "file": "data/indexes.wcl"}
     ///
-    /// Ops apply in order, one commit each, through the same validating
-    /// pipeline the editor uses: an op that would violate the schema is
-    /// rolled back and the run stops there, leaving the ops before it
-    /// applied. They target the wskill root (`wskill.wcl`), not a projection
-    /// entry — the curator edits the format, not one view of it.
+    /// A real run requires a clean git tree. Ops apply in order through the
+    /// same validating pipeline the editor uses, then every declared
+    /// projection builds and lint counts are compared with the run's
+    /// in-memory baseline. Any failure restores the whole run; success lands
+    /// one git commit. `--comment` includes deferred findings in that commit.
+    /// Ops target the wskill root (`wskill.wcl`), not a projection entry.
     ///
-    /// Exit codes: 0 every op applied, 1 an op was refused, 2 the ops or the
-    /// model could not be read.
+    /// Exit codes: 0 the gated run committed, 1 an op or run gate was
+    /// refused, 2 the input, model or git operation failed.
     ///
     /// Examples:
     ///   wcl wskill op docs/wskills/wcl --op '{"op":"unpin_unit","index":"reference","unit":"alpha"}'
-    ///   wcl wskill op docs/wskills/wcl --file ops.json --dry-run
+    ///   wcl wskill op docs/wskills/wcl --file ops.json --dry-run --message "curate reference links"
     ///   curator --emit-ops | wcl wskill op docs/wskills/wcl
     Op {
         /// The wskill folder (or any `.wcl` inside it — the wskill root
@@ -477,13 +478,25 @@ enum WskillCommand {
         /// One op, as JSON (repeatable). A JSON array of ops works too.
         #[arg(long = "op", value_name = "JSON")]
         op: Vec<String>,
+        /// File a sidecar comment in the same gated commit (repeatable JSON).
+        /// A comment needs `body` plus `page`, or `object_kind` + `object_id`.
+        #[arg(long = "comment", value_name = "JSON")]
+        comment: Vec<String>,
         /// Read the ops from a file (an op object or an array of them);
-        /// `-` reads stdin. Default when no `--op` is given: stdin.
+        /// `-` reads stdin. Default when neither `--op` nor `--comment` is
+        /// given: stdin.
         #[arg(long, value_name = "PATH")]
         file: Option<PathBuf>,
-        /// Print the ops that would be applied and write nothing.
+        /// Print the ops and comments that would be applied and write nothing.
         #[arg(long)]
         dry_run: bool,
+        /// Git commit subject for the successful gated run.
+        #[arg(
+            long,
+            default_value = "chore(wskill): apply structural curation",
+            value_name = "SUBJECT"
+        )]
+        message: String,
     },
 }
 
@@ -915,11 +928,13 @@ fn main() -> ExitCode {
             WskillCommand::Op {
                 entry,
                 op,
+                comment,
                 file,
                 dry_run,
+                message,
             } => {
                 let entry = entry.unwrap_or_else(|| PathBuf::from("."));
-                wskill::run_op(&entry, &op, file.as_deref(), dry_run)
+                wskill::run_op(&entry, &op, &comment, file.as_deref(), dry_run, &message)
             }
         },
         Command::Wad { cmd } => match cmd {
@@ -1396,10 +1411,17 @@ fn print_comments(root: &Path, format: CommentFormat) -> u8 {
                 let where_ = match r.scope {
                     wcl_wdoc::CommentScope::Block => format!(
                         "page {} → {}",
-                        r.page,
+                        r.page.as_deref().unwrap_or("(unknown)"),
                         r.target.as_deref().unwrap_or("(block)")
                     ),
-                    wcl_wdoc::CommentScope::Page => format!("page {}", r.page),
+                    wcl_wdoc::CommentScope::Page => {
+                        format!("page {}", r.page.as_deref().unwrap_or("(unknown)"))
+                    }
+                    wcl_wdoc::CommentScope::Object => format!(
+                        "{}:{}",
+                        r.object_kind.as_deref().unwrap_or("object"),
+                        r.object_id.as_deref().unwrap_or("(unknown)")
+                    ),
                 };
                 println!("[{}] {} — {}", r.id, where_.trim(), r.body);
                 if let Some(q) = &r.quote {
@@ -1420,6 +1442,8 @@ pub(crate) fn comment_record_json(r: &wcl_wdoc::CommentRecord) -> serde_json::Va
         "file": r.file.display().to_string(),
         "page": r.page,
         "page_file": r.page_file,
+        "object_kind": r.object_kind,
+        "object_id": r.object_id,
         "loc": r.loc,
         "target": r.target,
         "quote": r.quote,
