@@ -4368,6 +4368,120 @@ page index {
 }
 
 #[test]
+fn page_metadata_answers_reading_order_neighbours_active_path_and_headings() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("page-metadata.wcl");
+    write_fixture(
+        &src,
+        r#"
+site {
+  default_template = :inspect_metadata
+  toc {
+    chapter "Introduction" { page = intro }
+    chapter "Guide" {
+      chapter "Using it" { page = usage }
+      chapter "Details" { page = details }
+    }
+    chapter "Appendix" { page = appendix }
+  }
+}
+
+template inspect_metadata {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental> {
+    let m = page_metadata(c);
+    [
+      el("div", ["previous"], [raw(m.previous.title)]),
+      el("div", ["current"], [raw(m.current.title)]),
+      el("div", ["next"], [raw(m.next.title)]),
+      el("ol", ["reading-order"], map(m.reading_order, fn(e: TocEntry) -> HtmlFundamental
+        el("li", [], [raw(e.title)]))),
+      el("ol", ["active-path"], map(m.active_path, fn(e: TocEntry) -> HtmlFundamental
+        el("li", [], [raw(e.title)]))),
+      el("ol", ["headings"], map(m.headings, fn(h: OnPageHeading) -> HtmlFundamental
+        el("li", [], [raw(format("{}:{}:{}", h.number, h.id, h.title))]))),
+    ]
+  }
+}
+
+page intro { h1 "Intro" }
+page usage {
+  h1 "Usage"
+  h2 "First steps"
+  h3 "Try it"
+  h2 "First steps"
+}
+page details { h1 "Details" }
+page appendix { h1 "Appendix" }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+
+    let html = std::fs::read_to_string(out.path().join("usage.html")).expect("read usage");
+    assert!(
+        html.contains("<div class=\"previous\">Introduction</div>"),
+        "previous page:\n{html}"
+    );
+    assert!(
+        html.contains("<div class=\"current\">Using it</div>"),
+        "current page:\n{html}"
+    );
+    assert!(
+        html.contains("<div class=\"next\">Details</div>"),
+        "next page:\n{html}"
+    );
+    assert!(
+        html.contains(
+            "<ol class=\"reading-order\"><li>Introduction</li><li>Using it</li><li>Details</li><li>Appendix</li></ol>"
+        ),
+        "reading order:\n{html}"
+    );
+    assert!(
+        html.contains("<ol class=\"active-path\"><li>Guide</li><li>Using it</li></ol>"),
+        "active path:\n{html}"
+    );
+    assert!(
+        html.contains(
+            "<ol class=\"headings\"><li>1:first-steps:First steps</li><li>1.1:try-it:Try it</li><li>2:first-steps-2:First steps</li></ol>"
+        ),
+        "authored heading metadata:\n{html}"
+    );
+}
+
+#[test]
+fn metadata_only_template_does_not_force_page_lowering() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("metadata-only.wcl");
+    write_fixture(
+        &src,
+        r#"
+@block("boom")
+type Boom extends WdocBlock {
+  lower = fn(b: Boom) -> list<HtmlFundamental> [ raw(no_such_helper(b)) ]
+}
+
+site {
+  default_template = :metadata_only
+  toc { chapter "Index" { page = index } }
+}
+
+template metadata_only {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental> {
+    let m = page_metadata(c);
+    [el("p", [], [raw(m.current.title)])]
+  }
+}
+
+page index { boom {} }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
+    assert!(html.contains("<p>Index</p>"), "{html}");
+}
+
+#[test]
 fn template_wraps_content_in_header_nav_main() {
     // `site { default_template = :webpage }` wraps every page in the
     // bundled webpage layout: a title <header>, a <nav> built from the
@@ -5096,7 +5210,7 @@ fn wdoc_part_menu_tree_renders_bare_ul() {
         r#"
 template menu_only {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental>
-    flatten([ wdoc_part_menu_tree(c.menu), wdoc_part_content(c) ])
+    flatten([ wdoc_part_menu_tree(c), wdoc_part_content(c) ])
 }
 site {
   default_template = :menu_only

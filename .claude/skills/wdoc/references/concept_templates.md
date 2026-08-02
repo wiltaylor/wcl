@@ -114,6 +114,9 @@ all resolved by bare name once you `import <wdoc.wcl>`.
 The page arrives as read-only authored handles in `c.content`, not pre-rendered HTML. Query
 `BlockHandle.kind`, its concrete `block` fields, or recursive `children`, then place the
 selected handles with `wdoc_blocks(handles)`; resolution happens after the template returns.
+For cross-page navigation, `page_metadata(c)` returns memoised reading order, neighbours and
+active path without evaluating another page body; it also derives the current page's h2/h3
+metadata from those authored handles.
 
 
 Where no part fits, build the markup with the `el` constructor family — shorthands for the

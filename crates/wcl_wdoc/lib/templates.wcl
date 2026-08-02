@@ -25,44 +25,39 @@ type Region { name: utf8  content: utf8 }
 
 // A node in the resolved table of contents handed to templates. Built
 // by the renderer from the `site`'s `toc` block. `href` is empty for a
-// grouping heading (a `chapter` with no `page`); `current` is true for
-// the entry linking to the page being rendered; `children` are nested
-// entries (any depth).
+// grouping heading (a `chapter` with no `page`); `children` are nested
+// entries (any depth). Current-page facts live in `PageMetadata`.
 type TocEntry {
   title:    utf8
   href:     utf8
-  current:  bool
   children: list<TocEntry>
 }
 
 // A node in the resolved navbar menu handed to templates. Built by the
 // renderer from the `site`'s `menu` block. `href` is the link target
 // (`<page>.html` for an internal `page`, the raw URL for an external
-// `href`, empty for a parent/grouping item with neither); `current` is
-// true for the entry linking to the page being rendered; `children` are
-// nested sub-menu entries (any depth).
+// `href`, empty for a parent/grouping item with neither); `children` are
+// nested sub-menu entries (any depth). Templates compare an entry href with
+// `format("{}.html", TemplateCtx.page_name)` for current-page styling.
 type MenuEntry {
   label:    utf8
   href:     utf8
-  current:  bool
   children: list<MenuEntry>
 }
 
 // A resolved sidebar-footer button handed to templates. Built by the
 // renderer from the `site`'s `sidebar_footer` block. `href` is the link
 // target (`<page>.html` for an internal `page`, the raw URL for an external
-// `href`, empty for neither); `current` is true when it links to the page
-// being rendered; `icon` is the button's icon already rendered to SVG markup
-// (embed it with `Raw`), empty when the button declares none.
+// `href`, empty for neither); `icon` is the button's icon already rendered to
+// SVG markup (embed it with `Raw`), empty when the button declares none.
 type FooterButton {
   label:   utf8
   href:    utf8
-  current: bool
   icon:    utf8
 }
 
-// One in-page heading for the book's "on this page" rail. Built by the
-// renderer from the current page's `h2` / `h3` headings: `level` is 2 or 3,
+// One authored in-page heading for the book's "on this page" rail. Derived
+// on demand by `page_metadata(c)` from h2 / h3 handles: `level` is 2 or 3,
 // `id` the (synthesised) anchor target, `title` the heading text, `number`
 // the `§` section number (e.g. `"4.1"`).
 type OnPageHeading {
@@ -70,6 +65,22 @@ type OnPageHeading {
   id:     utf8
   title:  utf8
   number: utf8
+}
+
+// Metadata derived for the current page. `reading_order` is the TOC flattened
+// to linked entries; neighbours are absent at either end (or when the page is
+// outside the TOC); `active_path` runs from the TOC root to `current`.
+// `headings` comes from the current page's authored h2/h3 handles. The
+// `page_metadata(c)` builtin memoises the site-level index and never evaluates
+// another page's body.
+type PageMetadata {
+  reading_order: list<TocEntry>
+  previous:      TocEntry?
+  current:       TocEntry?
+  current_href:  utf8
+  next:          TocEntry?
+  active_path:   list<TocEntry>
+  headings:      list<OnPageHeading>
 }
 
 // Context handed to a template's (and any part function's) `render`.
@@ -86,8 +97,6 @@ type TemplateCtx {
   pages:        list<PageRef>
   @doc("The book TOC tree; flat (one entry per page) when the site declares no `toc`.")
   toc:          list<TocEntry>
-  @doc("The current page's `h2`/`h3` headings, for the book's 'on this page' rail. Empty when the page has none.")
-  on_this_page: list<OnPageHeading>
   @doc("The site's curated navbar menu; empty when the site declares no `menu`.")
   menu:         list<MenuEntry>
   @doc("Pinned sidebar-footer buttons (the site's `sidebar_footer`); empty when none declared. Each carries its icon already rendered to SVG markup.")
@@ -402,25 +411,25 @@ let home_link = fn(c: TemplateCtx, cls: utf8) -> list<HtmlFundamental>
 // One navbar menu entry: a click-toggle `<button>` when it has children
 // (a dropdown parent), an `<a>` when it links somewhere, or a plain
 // `<span>` label otherwise. The current page's link carries `current`.
-let menu_entry = fn(m: MenuEntry) -> HtmlFundamental
+let menu_entry = fn(m: MenuEntry, current_href: utf8) -> HtmlFundamental
   if len(m.children) > 0 {
     ela("button", ["menu-toggle"], [["type", "button"]], [raw(m.label)])
   } else if m.href == "" {
     el("span", ["menu-label"], [raw(m.label)])
   } else {
-    ela("a", ["menu-link", if m.current { "current" }], [["href", m.href]], [raw(m.label)])
+    ela("a", ["menu-link", if m.href == current_href { "current" }], [["href", m.href]], [raw(m.label)])
   }
 
 // Render menu entries as a nested `<ul class="menu">` — recursive, so
 // the tree nests to any depth. An empty list renders nothing (no stray
 // `<ul>`), which also terminates the recursion at the leaves.
-let site_menu = fn(entries: list<MenuEntry>) -> list<HtmlFundamental>
+let site_menu = fn(entries: list<MenuEntry>, current_href: utf8) -> list<HtmlFundamental>
   if len(entries) == 0 { [] }
   else {
     [ el("ul", ["menu"], map(entries, fn(e: MenuEntry) -> HtmlFundamental
         el("li",
           if len(e.children) > 0 { ["has-submenu"] } else { none },
-          flatten([ [menu_entry(e)], site_menu(e.children) ])))) ]
+          flatten([ [menu_entry(e, current_href)], site_menu(e.children, current_href) ])))) ]
   }
 
 // One-time click-toggle script for the navbar dropdowns: a single
@@ -518,7 +527,7 @@ let wdoc_part_navbar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
       map(c.pages, fn(p: PageRef) -> HtmlFundamental
         ela("a", [], [["href", p.href]], [raw(p.name)]))
     } else {
-      site_menu(c.menu)
+      site_menu(c.menu, format("{}.html", c.page_name))
     },
   ])),
 ]
@@ -535,8 +544,8 @@ let wdoc_part_menu_script = fn(menu: list<MenuEntry>) -> list<HtmlFundamental>
 
 // The bare nested menu list (`<ul class="menu">`) — the navbar's menu without
 // the surrounding `<nav>`, for placing a dropdown menu anywhere you like.
-let wdoc_part_menu_tree = fn(entries: list<MenuEntry>) -> list<HtmlFundamental>
-  site_menu(entries)
+let wdoc_part_menu_tree = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  site_menu(c.menu, format("{}.html", c.page_name))
 
 // The full default `webpage` layout: style, header, navbar, content, and the
 // menu script. The `webpage` template is exactly this.
@@ -556,19 +565,12 @@ template webpage {
 
 // One sidebar entry: a `<span>` heading when the entry has no page
 // (empty href), otherwise an `<a>` link (with `current` highlighting).
-let book_toc_link = fn(e: TocEntry) -> HtmlFundamental
+let book_toc_link = fn(e: TocEntry, current_href: utf8) -> HtmlFundamental
   if e.href == "" {
     el("span", ["book-section"], [raw(e.title)])
   } else {
-    ela("a", ["book-chapter", if e.current { "current" }], [["href", e.href]], [raw(e.title)])
+    ela("a", ["book-chapter", if e.href == current_href { "current" }], [["href", e.href]], [raw(e.title)])
   }
-
-// True when this entry is the current page, or an ancestor of it — i.e. the
-// current page lives somewhere in its subtree. Drives mdbook-style sidebar
-// expansion: the active path is rendered open, every other branch collapsed.
-let toc_active = fn(e: TocEntry) -> bool
-  e.current || fold(e.children, false, fn(acc: bool, c: TocEntry) -> bool
-    acc || toc_active(c))
 
 // The expand/collapse affordance at the head of a TOC row. Always emitted
 // (so leaf and branch rows stay aligned); the chevron is drawn by CSS only
@@ -580,57 +582,37 @@ let book_toc_toggle = el("span", ["book-toc-toggle"], [])
 // also terminates the recursion at the leaves. A branch `<li>` carries
 // `book-branch` (plus `open` when it's on the active path), so its child
 // `<ul>` collapses by default and only the current page's ancestry expands.
-let book_toc = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
+let book_toc = fn(entries: list<TocEntry>, m: PageMetadata) -> list<HtmlFundamental>
   if len(entries) == 0 { [] }
   else {
     [ el("ul", ["book-toc"], map(entries, fn(e: TocEntry) -> HtmlFundamental {
         let has_children = len(e.children) > 0;
         el("li",
-          if has_children { ["book-branch", if toc_active(e) { "open" }] } else { none },
+          if has_children { ["book-branch", if list_contains(m.active_path, e) { "open" }] } else { none },
           flatten([
-            [ el("div", ["book-toc-row"], [ book_toc_toggle, book_toc_link(e) ]) ],
-            book_toc(e.children),
+            [ el("div", ["book-toc-row"], [ book_toc_toggle, book_toc_link(e, m.current_href) ]) ],
+            book_toc(e.children, m),
           ]))
       })) ]
   }
 
-// Flatten the TOC tree into book reading order, keeping only entries
-// that link to a page — a grouping `chapter` with no `page` has an empty
-// `href` and is skipped (its children are still kept). Recursive, mirroring
-// `book_toc`. Drives the bottom-of-page previous/next links.
-let book_pageflow = fn(entries: list<TocEntry>) -> list<TocEntry>
-  flatten(map(entries, fn(e: TocEntry) -> list<TocEntry>
-    flatten([
-      if e.href == "" { [] } else { [e] },
-      book_pageflow(e.children),
-    ])))
-
 // Bottom-of-page previous/next pagination, derived from the book reading
-// order (the flattened TOC). The current page is the entry flagged
-// `current`; its neighbours become the links. Empty when the page isn't
-// in the TOC; at the ends only the one existing neighbour is shown.
-let book_pagenav = fn(toc: list<TocEntry>) -> list<HtmlFundamental> {
-  let flow = book_pageflow(toc);
-  let n = len(flow);
-  let idx = fold(range(0, n), 0 - 1, fn(acc: i64, i: i64) -> i64 {
-    let e = at(flow, i);
-    if e.current { i } else { acc }
-  });
-  if idx < 0 { [] } else {
-    let prev = if idx > 0 {
-      let p = at(flow, idx - 1);
+// order supplied by `page_metadata`. Empty when the page isn't in the TOC;
+// at the ends only the one existing neighbour is shown.
+let book_pagenav = fn(m: PageMetadata) -> list<HtmlFundamental> {
+    let prev = if m.previous != none {
+      let p = m.previous;
       [ ela("a", ["book-nav", "book-nav-prev"], [["href", p.href]],
           [raw(format("← {}", p.title))]) ]
     } else { [] };
-    let next = if idx < n - 1 {
-      let nx = at(flow, idx + 1);
+    let next = if m.next != none {
+      let nx = m.next;
       [ ela("a", ["book-nav", "book-nav-next"], [["href", nx.href]],
           [raw(format("{} →", nx.title))]) ]
     } else { [] };
     if len(prev) == 0 && len(next) == 0 { [] } else {
       [ el("nav", ["book-pagenav"], flatten([prev, next])) ]
     }
-  }
 }
 
 // The `book` template's own CSS — the fixed left sidebar, the nested TOC
@@ -702,8 +684,8 @@ let wdoc_part_book_css = fn() -> list<HtmlFundamental> [
 // The label drives the `title` / `aria-label` (a hover tooltip + accessible
 // name) rather than visible text; a button with no icon falls back to its
 // label as text so it is never empty.
-let book_footer_button = fn(b: FooterButton) -> HtmlFundamental
-  ela("a", ["book-footer-btn", if b.current { "current" }],
+let book_footer_button = fn(b: FooterButton, current_href: utf8) -> HtmlFundamental
+  ela("a", ["book-footer-btn", if b.href == current_href { "current" }],
     [["href", b.href], ["title", b.label], ["aria-label", b.label]],
     if b.icon == "" { [raw(b.label)] } else { [raw(b.icon)] })
 
@@ -713,7 +695,8 @@ let book_footer_button = fn(b: FooterButton) -> HtmlFundamental
 let wdoc_part_sidebar_footer = fn(c: TemplateCtx) -> list<HtmlFundamental>
   if len(c.footer) == 0 { [] }
   else {
-    [ el("div", ["book-sidebar-footer"], map(c.footer, book_footer_button)) ]
+    [ el("div", ["book-sidebar-footer"], map(c.footer, fn(b: FooterButton) -> HtmlFundamental
+        book_footer_button(b, format("{}.html", c.page_name)))) ]
   }
 
 // The fixed left sidebar (`<nav class="book-sidebar">`): the book title, the
@@ -722,30 +705,36 @@ let wdoc_part_sidebar_footer = fn(c: TemplateCtx) -> list<HtmlFundamental>
 // book order. The scroll script runs after the TOC is in the DOM (an inline
 // script executes at parse time, so it sees its sibling chapter `<a>`s) and
 // centres the current chapter.
-let wdoc_part_sidebar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+let wdoc_part_sidebar_with_metadata = fn(c: TemplateCtx, m: PageMetadata) -> list<HtmlFundamental> [
   el("nav", ["book-sidebar"], flatten([
     [ el("div", ["book-title"], [raw(c.title)]) ],
     home_link(c, "book-home"),
     wdoc_search_box(c.search),
     if c.theme_toggle { book_theme_toggle } else { [] },
-    book_toc(c.toc),
+    book_toc(c.toc, m),
     wdoc_part_sidebar_footer(c),
     [book_sidebar_scroll, book_sidebar_toggle],
   ])),
 ]
 
+let wdoc_part_sidebar = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  wdoc_part_sidebar_with_metadata(c, page_metadata(c))
+
 // The page content in the book reading column (`<main class="book-content">`),
 // followed by the previous/next pagination derived from the TOC order. The
 // inner `book-measure` caps the reading width and centres the column between
 // the fixed sidebar and rail.
-let wdoc_part_book_content = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+let wdoc_part_book_content_with_metadata = fn(c: TemplateCtx, m: PageMetadata) -> list<HtmlFundamental> [
   el("main", ["book-content"], [
     el("div", ["book-measure"], flatten([
       wdoc_blocks(c.content),
-      book_pagenav(c.toc),
+      book_pagenav(m),
     ])),
   ]),
 ]
+
+let wdoc_part_book_content = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  wdoc_part_book_content_with_metadata(c, page_metadata(c))
 
 // One "on this page" rail link (`<a class="book-onpage-link level-N">`),
 // anchoring to the heading's synthesised id; `level-2` / `level-3` drive the
@@ -762,35 +751,40 @@ let book_rail_script = raw(
 // The right-hand "on this page" rail (`<aside class="book-rail">`): the
 // current page's h2/h3 headings as anchor links plus the scroll-spy script.
 // Empty (renders nothing) on a page with no such headings.
-let wdoc_part_book_rail = fn(c: TemplateCtx) -> list<HtmlFundamental>
-  if len(c.on_this_page) == 0 { [] }
+let wdoc_part_book_rail_with_metadata = fn(m: PageMetadata) -> list<HtmlFundamental>
+  if len(m.headings) == 0 { [] }
   else {
     [ el("aside", ["book-rail"], flatten([
         [ el("div", ["book-rail-title"], [raw("On this page")]) ],
-        [ el("nav", ["book-onpage"], map(c.on_this_page, book_onpage_link)) ],
+        [ el("nav", ["book-onpage"], map(m.headings, book_onpage_link)) ],
         [ book_rail_script ],
       ])) ]
   }
 
+let wdoc_part_book_rail = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  wdoc_part_book_rail_with_metadata(page_metadata(c))
+
 // The nested TOC list (`<ul class="book-toc">`) on its own — the sidebar's
 // chapter tree without the surrounding `<nav>`.
-let wdoc_part_toc_tree = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
-  book_toc(entries)
+let wdoc_part_toc_tree = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  book_toc(c.toc, page_metadata(c))
 
 // The bottom-of-page previous/next pagination, derived from the TOC reading
 // order (empty when the current page isn't in the TOC).
-let wdoc_part_pagenav = fn(toc: list<TocEntry>) -> list<HtmlFundamental>
-  book_pagenav(toc)
+let wdoc_part_pagenav = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  book_pagenav(page_metadata(c))
 
 // The full default `book` layout: style, sidebar, content-with-pagination.
 // The `book` template is exactly this.
-let wdoc_book_layout = fn(c: TemplateCtx) -> list<HtmlFundamental>
+let wdoc_book_layout = fn(c: TemplateCtx) -> list<HtmlFundamental> {
+  let m = page_metadata(c);
   flatten([
     wdoc_part_book_css(),
-    wdoc_part_sidebar(c),
-    wdoc_part_book_content(c),
-    wdoc_part_book_rail(c),
+    wdoc_part_sidebar_with_metadata(c, m),
+    wdoc_part_book_content_with_metadata(c, m),
+    wdoc_part_book_rail_with_metadata(m),
   ])
+}
 
 template book {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental>

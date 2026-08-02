@@ -18,9 +18,9 @@ mod accessors;
 mod content_html;
 mod css;
 mod expand;
-mod headings;
 mod html;
 mod lower;
+mod postprocess;
 mod svg;
 mod theme;
 
@@ -30,6 +30,7 @@ pub(crate) use css::*;
 pub(crate) use expand::*;
 pub(crate) use html::*;
 pub(crate) use lower::*;
+pub(crate) use postprocess::*;
 pub(crate) use svg::*;
 pub(crate) use theme::*;
 

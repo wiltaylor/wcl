@@ -29,6 +29,7 @@ pub use markdown::GENERATED_AGENT_MARKER;
 mod math;
 mod native;
 mod node_table;
+mod page_metadata;
 pub mod pdf;
 mod radial;
 mod render;

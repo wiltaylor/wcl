@@ -136,7 +136,9 @@ WCL
 
   type_table { type = TemplateCtx }
 
-  p "`c.content` is the current page's read-only authored block tree as `list<BlockHandle>`: each handle exposes its concrete `block`, `kind`, and recursive `children`. A template may filter or reorder those handles freely, then places them with `wdoc_blocks(handles)` (or `HtmlFundamental::Blocks { blocks: handles }`). The renderer resolves placements only after the template function returns. Cross-page access remains limited to the prepared site context fields."
+  p "`c.content` is the current page's read-only authored block tree as `list<BlockHandle>`: each handle exposes its concrete `block`, `kind`, and recursive `children`. A template may filter or reorder those handles freely, then places them with `wdoc_blocks(handles)` (or `HtmlFundamental::Blocks { blocks: handles }`). The renderer resolves placements only after the template function returns. Call `page_metadata(c)` for memoised reading order, previous/current/next entries, the active TOC path, and the current page's authored h2/h3 metadata; it indexes site navigation once and never evaluates another page body."
+
+  type_table { type = PageMetadata }
 
   p "You rarely build a template from raw fundamentals. The stdlib exposes its own chrome as composable **parts** — each a function returning `list<HtmlFundamental>` — plus one `wdoc_*_layout` function per built-in that is its whole default composition. Parts resolve by bare name once you `import <wdoc.wcl>`."
 
@@ -148,13 +150,13 @@ WCL
       | "`wdoc_part_header(c)`"                   | "The site-title `<header>`" |
       | "`wdoc_part_navbar(c)`"                   | "The top `<nav>` — back-link, search, and the `menu` (or a flat page list)" |
       | "`wdoc_part_content(c)`"                  | "The page content in the reading card `<main>`" |
-      | "`wdoc_part_menu_tree(c.menu)`"           | "Just the nested `<ul class=\"menu\">`, no surrounding nav" |
+      | "`wdoc_part_menu_tree(c)`"                | "Just the nested `<ul class=\"menu\">`, no surrounding nav" |
       | "`wdoc_book_layout(c)`"                   | "The whole `book` body: css + sidebar + content-with-pagination" |
       | "`wdoc_part_sidebar(c)`"                  | "The fixed `book-sidebar` — title, back-link, search, toggle, TOC, footer, scroll" |
       | "`wdoc_part_sidebar_footer(c)`"           | "The pinned `book-sidebar-footer` buttons (empty unless `sidebar_footer` declared)" |
       | "`wdoc_part_book_content(c)`"             | "The reading column `<main>` plus prev/next pagination" |
-      | "`wdoc_part_toc_tree(c.toc)`"             | "Just the nested `<ul class=\"book-toc\">`" |
-      | "`wdoc_part_pagenav(c.toc)`"              | "The bottom prev/next pagination links" |
+      | "`wdoc_part_toc_tree(c)`"                 | "Just the nested `<ul class=\"book-toc\">`" |
+      | "`wdoc_part_pagenav(c)`"                  | "The bottom prev/next pagination links" |
       | "`wdoc_presentation_layout(c)`"           | "The whole deck body: css + slide grid + chrome" |
       | "`wdoc_part_deck(c)`"                     | "The `<div class=\"deck\">` slide grid" |
       | "`wdoc_part_search_box(c.search)`"        | "The search box + its style (empty unless enabled)" |

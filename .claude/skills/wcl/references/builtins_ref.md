@@ -1245,6 +1245,19 @@ List references to every top-level declaration (`type` / `interface` / `union` /
 namespace_decls("wdoc")   // every top-level decl in the wdoc namespace → [&Page, &Site, ...]
 ```
 
+### page_metadata(ctx: TemplateCtx) → PageMetadata
+
+Derive the current wdoc template page's reading order, neighbours, active TOC path, and heading outline from its TemplateCtx. The shared site index is memoised and no page body is lowered.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| ctx | TemplateCtx | The current wdoc template context. |
+| returns | PageMetadata | Navigation and authored-heading metadata for the current template page. |
+
+```wcl
+let m = page_metadata(c); m.next   // next TOC entry without walking the site tree
+```
+
 ### type_fields(target: &T) → \[record\]
 
 Reflect a type or interface into a list of field-description records (own fields first, then inherited via `extends`).
