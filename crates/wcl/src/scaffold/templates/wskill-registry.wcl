@@ -488,14 +488,11 @@ template registry {
     flatten([
       wdoc_head_font("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"),
       [
-        HtmlFundamental::Element {
-          tag: "style",
-          children: [ HtmlFundamental::Raw { html: registry_css } ],
-        },
-        HtmlFundamental::Raw { html: registry_top },
-        HtmlFundamental::Raw { html: cards_html },
-        HtmlFundamental::Raw { html: registry_bottom },
-        HtmlFundamental::Raw { html: registry_js },
+        el("style", [], [raw(registry_css)]),
+        raw(registry_top),
+        raw(cards_html),
+        raw(registry_bottom),
+        raw(registry_js),
       ],
     ])
 }

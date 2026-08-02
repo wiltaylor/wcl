@@ -140,66 +140,32 @@ type Quiz extends WdocBlock {
     // One selectable answer: the button carries the key, the note is revealed
     // after answering (hidden until then by the stylesheet).
     let choice_item = fn(c: Choice) -> HtmlFundamental {
-      HtmlFundamental::Element {
-        tag: "li", class: ["quiz-choice"],
-        children: [
-          HtmlFundamental::Element {
-            tag: "button", class: ["quiz-choice-btn"],
-            attrs: [
+      el("li", ["quiz-choice"], [
+          ela("button", ["quiz-choice-btn"], [
               ["type", "button"],
               ["data-choice", $"${c.id}"],
               ["data-correct", if c.correct { "1" } else { "0" }],
-            ],
-            children: [ HtmlFundamental::Inline { text: c.label } ],
-          },
-          HtmlFundamental::Element {
-            tag: "div", class: ["quiz-choice-note"],
-            children: [ HtmlFundamental::Inline { text: c.note ?? "" } ],
-          },
-        ],
-      }
+            ], [inl(c.label)]),
+          el("div", ["quiz-choice-note"], [inl(c.note ?? "")]),
+        ])
     };
 
-    let prompt_el = HtmlFundamental::Element {
-      tag: "div", class: ["quiz-prompt"],
-      children: [ HtmlFundamental::Inline { text: q.prompt } ],
-    };
+    let prompt_el = el("div", ["quiz-prompt"], [inl(q.prompt)]);
 
     // Free text: a box, a submit button, and the slot the verdict lands in.
     // The rubric doubles as the self-check when no server is grading.
     let text_body = [
-      HtmlFundamental::Element {
-        tag: "textarea", class: ["quiz-answer"],
-        attrs: [["rows", "6"], ["placeholder", "Write your answer…"]],
-        children: [],
-      },
-      HtmlFundamental::Element {
-        tag: "button", class: ["quiz-submit"], attrs: [["type", "button"]],
-        children: [ HtmlFundamental::Raw { html: "Submit answer" } ],
-      },
-      HtmlFundamental::Element {
-        tag: "div", class: ["quiz-verdict"], children: [],
-      },
-      HtmlFundamental::Element {
-        tag: "div", class: ["quiz-rubric"],
-        children: [
-          HtmlFundamental::Element {
-            tag: "div", class: ["quiz-rubric-label"],
-            children: [ HtmlFundamental::Raw { html: "A good answer covers" } ],
-          },
-          HtmlFundamental::Element {
-            tag: "div", class: ["quiz-rubric-body"],
-            children: [ HtmlFundamental::Inline { text: q.rubric ?? "" } ],
-          },
-        ],
-      },
+      ela("textarea", ["quiz-answer"], [["rows", "6"], ["placeholder", "Write your answer…"]], []),
+      ela("button", ["quiz-submit"], [["type", "button"]], [raw("Submit answer")]),
+      el("div", ["quiz-verdict"], []),
+      el("div", ["quiz-rubric"], [
+          el("div", ["quiz-rubric-label"], [raw("A good answer covers")]),
+          el("div", ["quiz-rubric-body"], [inl(q.rubric ?? "")]),
+        ]),
     ];
 
     let choice_body = [
-      HtmlFundamental::Element {
-        tag: "ul", class: ["quiz-choices"],
-        children: map(q.choices, choice_item),
-      },
+      el("ul", ["quiz-choices"], map(q.choices, choice_item)),
     ];
 
     let body = if q.kind == :text { text_body } else { choice_body };
@@ -208,14 +174,13 @@ type Quiz extends WdocBlock {
       if (q.explanation ?? "") == "" { [] }
       else {
         [
-          HtmlFundamental::Element {
-            tag: "div", class: ["quiz-explanation"],
-            children: [ HtmlFundamental::Inline { text: q.explanation } ],
-          },
+          el("div", ["quiz-explanation"], [inl(q.explanation)]),
         ]
       };
 
     [
+      // Both `id` and `attrs`: the long form is the constructor family's
+      // deliberate escape hatch for a shape none of `el` / `ela` / `eli` covers.
       HtmlFundamental::Element {
         tag: "section", id: q.id, class: ["wdoc-quiz"],
         attrs: [["data-quiz", q.qid], ["data-kind", kind_str]],

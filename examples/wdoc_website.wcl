@@ -38,11 +38,8 @@ template landing {
       wdoc_head_meta("viewport", "width=device-width, initial-scale=1"),
       wdoc_head_meta("description", "Nimbus — ship faster."),
       [
-        HtmlFundamental::Element {
-          tag: "style",
-          children: [ HtmlFundamental::Raw { html: landing_css } ],
-        },
-        HtmlFundamental::Raw { html: $<<HTML
+        el("style", [], [raw(landing_css)]),
+        raw($<<HTML
           <header class="nav">
             <span class="brand">${c.title}</span>
             <nav><a href="index.html">Home</a></nav>
@@ -54,7 +51,7 @@ template landing {
           </div>
           <footer class="foot">${wdoc_region(c, "footer")}</footer>
         HTML
-        },
+        ),
       ],
     ])
 }
