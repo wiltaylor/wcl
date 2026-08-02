@@ -110,7 +110,7 @@ dev_command dev_md_build {
 dev_command dev_skills_install {
   name        = "skills-install"
   command     = "just skills-install"
-  description = "replaced wholesale so removed pages don't linger. Smoke-tests `wcl wdoc skill`."
+  description = "Install generated skills/agents and remove stale generated output."
   category    = "dev"
 }
 
@@ -180,7 +180,7 @@ dev_command dev_fmt_check {
 dev_command dev_skills_check {
   name        = "skills-check"
   command     = "just skills-check"
-  description = "Fail when a skill projection breaks or the committed .claude/ artifacts drift from their wskill sources (runs in ci)"
+  description = "Fail on drift, collisions, or stale output; exempt hand-authored artifacts."
   category    = "quality"
 }
 
@@ -247,17 +247,17 @@ dev_command dev_wplan_template_check {
   category    = "quality"
 }
 
-dev_command dev_wskill_artifact_check {
-  name        = "wskill-artifact-check"
-  command     = "just wskill-artifact-check"
-  description = "Fail when a wskill declares an `artifact` whose entry file does not exist (runs in ci)"
+dev_command dev_wskill_check {
+  name        = "wskill-check"
+  command     = "just wskill-check"
+  description = "Build every declared projection in scratch space and report coverage."
   category    = "quality"
 }
 
-dev_command dev_wskill_coverage {
-  name        = "wskill-coverage"
-  command     = "just wskill-coverage"
-  description = "authored without `audience = :both` silently never reaches the skill."
+dev_command dev_wskill_lint {
+  name        = "wskill-lint"
+  command     = "just wskill-lint"
+  description = "Fail on certain lint errors while keeping advisory warnings non-blocking."
   category    = "quality"
 }
 

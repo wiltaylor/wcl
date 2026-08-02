@@ -10,14 +10,14 @@ procedure installing_the_skill {
     title = "Render the skill folder"
     body screen {
       code "console" {
-        source = "$ just skill-build          # → out/skill/  (SKILL.md + references/)\n"
+        source = "$ wcl wskill check .        # model + every declared projection + coverage\n"
       }
     }
     body steps {
       p <<DOC
-        `wcl wdoc skill` writes `SKILL.md`, one `references/*.md` per `:ai`/`:both` unit, and any
-        bundled `scripts/`/`assets/` files. The build fails loudly on broken links or schema errors
-        — fix and re-run.
+        `check` resolves artifacts from the parsed wskill model and builds every declared projection
+        in scratch space. It fails loudly on broken entries, links, schema errors, or template/render
+        errors, and reports how many model nodes each view reaches without writing generated output.
       DOC
     }
   }
@@ -27,17 +27,16 @@ procedure installing_the_skill {
     title = "Install into the host repo"
     body screen {
       code "console" {
-        source = "$ cp -r out/skill <repo>/.claude/skills/<name>\n"
+        source = "$ wcl wskill install . --repo <repo>\n"
       }
     }
     body steps {
       p <<DOC
-        Copy the rendered folder into the target repo's `.claude/skills/<name>/`. Use the `name`
-        from the generated SKILL.md frontmatter — that is what the agent invokes. If the render has
-        an `agents/` folder (the skill ships subagents), also copy `agents/*.md` into the repo's
-        `.claude/agents/` — subagent files load at session start, so restart after installing. A
-        repo that hosts the wskill source usually wraps this in its own just recipe so the installed
-        copy regenerates with the model.
+        `install` renders the AI-skill artifact itself, reads each generated SKILL.md name, and
+        replaces the matching `.claude/skills/<name>/` folder wholesale so removed pages do not
+        linger. It installs generated agents into `.claude/agents/` after checking the flat agent
+        namespace for collisions. Use `--check` in CI to detect drift and stale generated output
+        without writing; subagent files load at session start, so restart after installing.
       DOC
     }
   }
@@ -57,5 +56,5 @@ procedure installing_the_skill {
   build -> install
   install -> verify
 
-  verification = "`.claude/skills/<name>/SKILL.md` exists with the expected frontmatter, and an agent session in that repo invokes the skill on a matching request."
+  verification = "`wcl wskill install . --repo <repo> --check` passes, `.claude/skills/<name>/SKILL.md` has the expected frontmatter, and an agent session in that repo invokes the skill on a matching request."
 }

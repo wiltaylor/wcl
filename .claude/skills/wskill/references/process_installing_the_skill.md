@@ -17,26 +17,25 @@ Render the skill projection and install it where an agent loads it.
 ### Step 1: Render the skill folder
 
 ```console
-$ just skill-build          # → out/skill/  (SKILL.md + references/)
+$ wcl wskill check .        # model + every declared projection + coverage
 ```
 
-`wcl wdoc skill` writes `SKILL.md`, one `references/*.md` per `:ai`/`:both` unit, and any
-bundled `scripts/`/`assets/` files. The build fails loudly on broken links or schema errors
-— fix and re-run.
+`check` resolves artifacts from the parsed wskill model and builds every declared projection
+in scratch space. It fails loudly on broken entries, links, schema errors, or template/render
+errors, and reports how many model nodes each view reaches without writing generated output.
 
 
 ### Step 2: Install into the host repo
 
 ```console
-$ cp -r out/skill <repo>/.claude/skills/<name>
+$ wcl wskill install . --repo <repo>
 ```
 
-Copy the rendered folder into the target repo's `.claude/skills/<name>/`. Use the `name`
-from the generated SKILL.md frontmatter — that is what the agent invokes. If the render has
-an `agents/` folder (the skill ships subagents), also copy `agents/*.md` into the repo's
-`.claude/agents/` — subagent files load at session start, so restart after installing. A
-repo that hosts the wskill source usually wraps this in its own just recipe so the installed
-copy regenerates with the model.
+`install` renders the AI-skill artifact itself, reads each generated SKILL.md name, and
+replaces the matching `.claude/skills/<name>/` folder wholesale so removed pages do not
+linger. It installs generated agents into `.claude/agents/` after checking the flat agent
+namespace for collisions. Use `--check` in CI to detect drift and stale generated output
+without writing; subagent files load at session start, so restart after installing.
 
 
 ### Step 3: Verify the agent loads it
@@ -49,7 +48,7 @@ never triggers, sharpen the `description` in the `skill` block — it is the tri
 > [!TIP]
 > **Verification**
 >
-> `.claude/skills/<name>/SKILL.md` exists with the expected frontmatter, and an agent session in that repo invokes the skill on a matching request.
+> `wcl wskill install . --repo <repo> --check` passes, `.claude/skills/<name>/SKILL.md` has the expected frontmatter, and an agent session in that repo invokes the skill on a matching request.
 
 ## Related
 

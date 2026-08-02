@@ -7,14 +7,10 @@
 main:
 	@just --list
 
-# Validate the wskill model and every projection template against the schema
+# Validate the model, build every declared projection, and report coverage
 [group('check')]
 wskill-check:
-	wcl check wskill.wcl
-	wcl check wdoc/book/main.wcl
-	wcl check wdoc/skill/main.wcl
-	@[ ! -f wdoc/presentation/main.wcl ] || wcl check wdoc/presentation/main.wcl
-	@[ ! -f wdoc/training/main.wcl ] || wcl check wdoc/training/main.wcl
+	wcl wskill check .
 
 # Render the human-readable book projection to out/book
 [group('render')]

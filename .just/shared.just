@@ -80,79 +80,27 @@ fuzz-sweep: require-cargo-fuzz
         (cd crates/wcl_lang && cargo +nightly fuzz run --target "$host" "$t" -- -runs=2000 -max_total_time=15) || exit 1; \
     done
 
-# Entry paths are metadata (the registry landing and per-wskill justfiles
-# enumerate them), so a rename or deletion would otherwise dangle silently.
-
-# Fail when a wskill declares an `artifact` whose entry file does not exist (runs in ci)
+# Validate every wskill model and resolve artifact entries from parsed data.
+# Build every declared projection in scratch space and report coverage.
 [group('quality')]
-wskill-artifact-check:
-    @fail=0; \
-    for d in docs/wskills/*; do \
+wskill-check: require-cargo
+    cargo run -p wcl -- wskill check docs/wskills
+
+# Run mechanically certain lint rules in CI; warnings remain advisory.
+# Fail on certain lint errors while keeping advisory warnings non-blocking.
+[group('quality')]
+wskill-lint: require-cargo
+    @for d in docs/wskills/*; do \
         [ -f "$d/wskill.wcl" ] || continue; \
-        for e in $(grep -oE 'entry *= *"[^"]+"' "$d/wskill.wcl" | sed 's/.*"\(.*\)"/\1/'); do \
-            [ -f "$d/$e" ] || { echo "dangling artifact entry: $d/wskill.wcl declares $e but $d/$e does not exist"; fail=1; }; \
-        done; \
-    done; \
-    [ "$fail" -eq 0 ] && echo "wskill-artifact-check OK"; \
-    exit $fail
+        cargo run -q -p wcl -- wskill lint "$d" --severity error || exit 1; \
+    done
 
-# Covers four failures: the projection breaking; the committed artifacts
-# (.claude/skills/<name>/, .claude/agents/*.md) drifting from their wskill
-# sources; two wskills declaring the same agent name (the flat install copy
-# would silently clobber); and a committed generated skill/agent with no
-# producing wskill. Discovery and name extraction match skills-install.
-# Hand-authored skills (no wskill_schema_version metadata in SKILL.md) and
-# .claude/agents/README.md are exempt.
-
-# Fail when a skill projection breaks or the committed .claude/ artifacts drift from their wskill sources (runs in ci)
+# Render the install set in scratch space and compare it to committed output.
+# Cover artifact drift, cross-wskill agent collisions, and stale output.
+# Fail on drift, collisions, or stale output; exempt hand-authored artifacts.
 [group('quality')]
 skills-check: require-cargo
-    @rm -rf target/skills-check && mkdir -p target/skills-check
-    @fail=0; agent_names=""; skill_names=""; \
-    for d in docs/wskills/*; do \
-        [ -f "$d/wdoc/skill/main.wcl" ] || continue; \
-        topic=$(basename "$d"); \
-        stage="target/skills-check/$topic"; \
-        echo "==> $topic" >&2; \
-        cargo run -q -p wcl -- wdoc skill "$d/wdoc/skill/main.wcl" --out "$stage" \
-            || { echo "skill projection FAILED: $d/wdoc/skill/main.wcl"; exit 1; }; \
-        for md in "$stage/SKILL.md" "$stage"/*/SKILL.md; do \
-            [ -f "$md" ] || continue; \
-            sd=$(dirname "$md"); \
-            sn=$(sed -n 's/^name: *//p' "$md" | head -1 | sed 's/^"//; s/"$//'); \
-            skill_names="$skill_names $sn"; \
-            diff -r "$sd" ".claude/skills/$sn" >/dev/null 2>&1 \
-                || { echo "skill artifact drift: .claude/skills/$sn vs $d — run 'just skills-install' and commit"; \
-                     diff -r "$sd" ".claude/skills/$sn" 2>&1 | head -20; fail=1; }; \
-        done; \
-        if [ -d "$stage/agents" ]; then \
-            for a in "$stage/agents/"*.md; do \
-                an=$(basename "$a" .md); \
-                case " $agent_names " in *" $an "*) \
-                    echo "agent name collision: $an declared by more than one wskill"; fail=1;; \
-                esac; \
-                agent_names="$agent_names $an"; \
-                diff "$a" ".claude/agents/$an.md" >/dev/null 2>&1 \
-                    || { echo "agent artifact drift: .claude/agents/$an.md vs $d — run 'just skills-install' and commit"; fail=1; }; \
-            done; \
-        fi; \
-    done; \
-    for smd in .claude/skills/*/SKILL.md; do \
-        [ -f "$smd" ] || continue; \
-        grep -q 'wskill_schema_version' "$smd" || continue; \
-        sn=$(basename "$(dirname "$smd")"); \
-        case " $skill_names " in *" $sn "*) ;; *) \
-            echo "stale generated skill: .claude/skills/$sn — no wskill produces it; delete it or restore its source"; fail=1;; \
-        esac; \
-    done; \
-    for a in .claude/agents/*.md; do \
-        an=$(basename "$a" .md); [ "$an" = README ] && continue; \
-        case " $agent_names " in *" $an "*) ;; *) \
-            echo "stale agent: $a — no wskill produces it; delete it or restore its source"; fail=1;; \
-        esac; \
-    done; \
-    [ "$fail" -eq 0 ] && echo "skills-check OK — projections build clean and match committed artifacts"; \
-    exit $fail
+    cargo run -p wcl -- wskill install docs/wskills --repo . --check
 
 # Two comparisons: the documented builtin names vs `builtin_names()`, and the
 # documented subcommand tree vs `wcl --help` / `wcl wdoc --help` /

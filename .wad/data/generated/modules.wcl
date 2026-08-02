@@ -75,7 +75,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_wskill {
     name = "wskill"
     kind = "module"
-    summary = "1 file, 4 pub items"
+    summary = "4 files, 6 pub items"
   }
   code_node n_cg_wcl_xc_wcl_lang {
     name = "wcl_lang (crate)"
@@ -412,7 +412,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_markdown {
     name = "markdown"
     kind = "module"
-    summary = "5 files, 8 pub items"
+    summary = "5 files, 9 pub items"
     deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_content, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_terminal, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_math {
@@ -448,7 +448,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_render {
     name = "render"
     kind = "module"
-    summary = "15 files, 223 pub items"
+    summary = "15 files, 224 pub items"
     deps = [n_cg_wcl_wdoc_content, n_cg_wcl_wdoc_dopesheet, n_cg_wcl_wdoc_force, n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_layered, n_cg_wcl_wdoc_map, n_cg_wcl_wdoc_radial, n_cg_wcl_wdoc_routing, n_cg_wcl_wdoc_text, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_review {
@@ -1059,6 +1059,11 @@ code_item code_api_cli_commands {
       kind = "fn"
       visibility = "crate"
     }
+  }
+  code_node n_api_cli_commands_more {
+    name = "… +2 more"
+    kind = "overflow"
+    summary = "2 further public items — see the source."
   }
 }
 
@@ -3615,6 +3620,11 @@ code_item code_api_evaluator {
     }
     code_member m_n_api_evaluator_ScopeFrame_bindings {
       signature = "bindings: Option<std::sync::Arc<Vec<(String, Value)>>>"
+      kind = "field"
+      visibility = "crate"
+    }
+    code_member m_n_api_evaluator_ScopeFrame_content {
+      signature = "content: Option<std::rc::Rc<Vec<Block<'a>>>>"
       kind = "field"
       visibility = "crate"
     }
@@ -6785,13 +6795,23 @@ code_item code_api_wdoc_html_renderer {
       deps = [n_api_wdoc_html_renderer_ProjectGuard]
     }
     code_member m_n_api_wdoc_html_renderer_expand_fns_walk_structural {
-      signature = "fn walk_structural<E>( doc: &Document, block: &Block<'_>, patte…"
+      signature = "fn walk_structural<'a, E>( doc: &'a Document, block: &Block<'a>…"
       kind = "fn"
       visibility = "crate"
       deps = [n_api_wdoc_html_renderer_InlinePatterns]
     }
     code_member m_n_api_wdoc_html_renderer_expand_fns_expand_component_children {
       signature = "fn expand_component_children<'a>( instance: &Block<'a>, def: &B…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_expand_fns_walk_component {
+      signature = "fn walk_component<'a, E>( instance: &Block<'a>, def: &Block<'a>…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_expand_fns_fill_content_slot {
+      signature = "fn fill_content_slot<'a, E>( marker: &Block<'a>, recurse: &mut …"
       kind = "fn"
       visibility = "crate"
     }
@@ -7090,11 +7110,6 @@ code_item code_api_wdoc_html_renderer {
       kind = "const"
       visibility = "crate"
     }
-    code_member m_n_api_wdoc_html_renderer_lower_fns_WF_CONTENT_SLOT {
-      signature = "const WF_CONTENT_SLOT: &str"
-      kind = "const"
-      visibility = "crate"
-    }
     code_member m_n_api_wdoc_html_renderer_lower_fns_lookup_block_lower {
       signature = "fn lookup_block_lower(doc: &Document, block: &Block<'_>, kind: …"
       kind = "fn"
@@ -7115,8 +7130,13 @@ code_item code_api_wdoc_html_renderer {
       kind = "fn"
       visibility = "crate"
     }
+    code_member m_n_api_wdoc_html_renderer_lower_fns_lower_to_values {
+      signature = "fn lower_to_values(doc: &Document, block: &Block<'_>, kind: &st…"
+      kind = "fn"
+      visibility = "crate"
+    }
     code_member m_n_api_wdoc_html_renderer_lower_fns_more {
-      signature = "… +17 more"
+      signature = "… +16 more"
       kind = "overflow"
     }
   }
@@ -7889,6 +7909,10 @@ code_item code_api_wdoc_backends {
     name = "skill"
     kind = "fns"
     summary = "src/markdown/skill.rs"
+    code_member m_n_api_wdoc_backends_skill_fns_GENERATED_AGENT_MARKER {
+      signature = "const GENERATED_AGENT_MARKER: &str"
+      kind = "const"
+    }
     code_member m_n_api_wdoc_backends_skill_fns_skill {
       signature = "fn skill(file: &Path, out_dir: &Path, site_filter: Option<&str>…"
       kind = "fn"

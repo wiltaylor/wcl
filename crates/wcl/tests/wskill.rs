@@ -39,6 +39,32 @@ fn scaffolded_wskill(tmp: &TempDir) -> PathBuf {
     dest
 }
 
+fn scaffold_named_wskill(parent: &Path, id: &str) -> PathBuf {
+    let dest = parent.join(id);
+    wcl()
+        .args(["init", "wskill"])
+        .arg(&dest)
+        .args([
+            "-D",
+            &format!("topic_id={id}"),
+            "-D",
+            &format!("topic_name={id}"),
+            "--defaults",
+        ])
+        .assert()
+        .success();
+    dest
+}
+
+fn append_agent(dest: &Path, name: &str) {
+    let path = dest.join("wskill.wcl");
+    let mut source = std::fs::read_to_string(&path).unwrap();
+    source.push_str(&format!(
+        "\nagent \"{name}\" {{\n  description = \"A generated test agent.\"\n  body {{ p \"Do the test task.\" }}\n}}\n"
+    ));
+    std::fs::write(path, source).unwrap();
+}
+
 /// Rewrite the scaffold's reference file with the two concepts and the index,
 /// parameterised by what the index pins and what beta is called — the two
 /// things the revision test changes between commits.
@@ -564,6 +590,231 @@ fn lint_writes_nothing() {
         .assert()
         .success();
     assert_eq!(before, tree_snapshot(&dest));
+}
+
+/// `check` is the expensive wskill gate: it reads artifact entries from the
+/// parsed registry, builds every declared projection, and reports model
+/// coverage without leaving generated output in the wskill.
+#[test]
+fn check_builds_declared_artifacts_and_reports_coverage() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    let before = tree_snapshot(&dest);
+
+    let out = wcl()
+        .args(["wskill", "check", dest.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "check failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(text.contains("checked 2 artifacts"), "{text}");
+    assert!(text.contains("coverage book:"), "{text}");
+    assert!(text.contains("coverage ai_skill:"), "{text}");
+    assert_eq!(before, tree_snapshot(&dest), "check must not write output");
+}
+
+/// Artifact resolution comes from the parsed model. Whitespace that defeats
+/// the old grep still resolves, while a genuinely missing entry is a tool
+/// failure with the artifact identity in the diagnostic.
+#[test]
+fn check_resolves_artifacts_from_the_parsed_model() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    let registry = dest.join("wskill.wcl");
+    let source = std::fs::read_to_string(&registry).unwrap();
+    std::fs::write(
+        &registry,
+        source.replace(
+            "entry = \"wdoc/book/main.wcl\"",
+            "entry\n    =\n    \"wdoc/book/main.wcl\"",
+        ),
+    )
+    .unwrap();
+    wcl()
+        .args(["wskill", "check", dest.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let source = std::fs::read_to_string(&registry).unwrap();
+    std::fs::write(
+        &registry,
+        source.replace("wdoc/book/main.wcl", "wdoc/book/missing.wcl"),
+    )
+    .unwrap();
+    let out = wcl()
+        .args(["wskill", "check", dest.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let error = String::from_utf8(out.stderr).unwrap();
+    assert!(error.contains("artifact `book`"), "{error}");
+    assert!(error.contains("wdoc/book/missing.wcl"), "{error}");
+}
+
+#[test]
+fn check_accepts_an_entry_file_inside_the_wskill() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    wcl()
+        .args(["wskill", "check"])
+        .arg(dest.join("wdoc/book/main.wcl"))
+        .assert()
+        .success();
+}
+
+/// Install renders from the wskill source straight into the canonical
+/// repository locations. Its check mode is read-only and detects both skill
+/// and agent drift.
+#[test]
+fn install_writes_skills_and_agents_and_check_detects_drift() {
+    let tmp = TempDir::new().unwrap();
+    let collection = tmp.path().join("wskills");
+    std::fs::create_dir(&collection).unwrap();
+    let dest = scaffold_named_wskill(&collection, "demo");
+    append_agent(&dest, "demo-helper");
+    let repo = tmp.path().join("repo");
+    std::fs::create_dir(&repo).unwrap();
+
+    wcl()
+        .args(["wskill", "install"])
+        .arg(&collection)
+        .args(["--repo"])
+        .arg(&repo)
+        .assert()
+        .success();
+    let skill = repo.join(".claude/skills/demo/SKILL.md");
+    let agent = repo.join(".claude/agents/demo-helper.md");
+    assert!(skill.is_file(), "skill was not installed");
+    assert!(agent.is_file(), "agent was not installed");
+    wcl()
+        .args(["wskill", "install"])
+        .arg(&collection)
+        .args(["--repo"])
+        .arg(&repo)
+        .arg("--check")
+        .assert()
+        .success();
+
+    std::fs::write(&skill, "drifted\n").unwrap();
+    let before = tree_snapshot(&repo);
+    let out = wcl()
+        .args(["wskill", "install"])
+        .arg(&collection)
+        .args(["--repo"])
+        .arg(&repo)
+        .arg("--check")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        String::from_utf8(out.stderr)
+            .unwrap()
+            .contains("skill artifact drift"),
+        "check should explain the drift"
+    );
+    assert_eq!(
+        before,
+        tree_snapshot(&repo),
+        "--check must not repair drift"
+    );
+}
+
+/// Collection check mode owns the complete generated set, so it can catch
+/// outputs whose producing wskill disappeared without treating hand-authored
+/// skills or agents as generated artifacts.
+#[test]
+fn install_check_detects_stale_generated_output() {
+    let tmp = TempDir::new().unwrap();
+    let collection = tmp.path().join("wskills");
+    std::fs::create_dir(&collection).unwrap();
+    scaffold_named_wskill(&collection, "demo");
+    let repo = tmp.path().join("repo");
+    let stale_skill = repo.join(".claude/skills/stale");
+    let agents = repo.join(".claude/agents");
+    std::fs::create_dir_all(&stale_skill).unwrap();
+    std::fs::create_dir_all(&agents).unwrap();
+    std::fs::write(
+        stale_skill.join("SKILL.md"),
+        "---\nname: stale\nwskill_schema_version: 1.3.0\n---\n",
+    )
+    .unwrap();
+    std::fs::write(
+        agents.join("stale-agent.md"),
+        format!("{}\nstale\n", wcl_wdoc::GENERATED_AGENT_MARKER),
+    )
+    .unwrap();
+    std::fs::write(agents.join("README.md"), "hand-authored\n").unwrap();
+    std::fs::write(agents.join("hand-authored.md"), "hand-authored\n").unwrap();
+
+    let out = wcl()
+        .args(["wskill", "install"])
+        .arg(&collection)
+        .args(["--repo"])
+        .arg(&repo)
+        .arg("--check")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let error = String::from_utf8(out.stderr).unwrap();
+    assert!(error.contains("stale generated skill"), "{error}");
+    assert!(error.contains("stale agent"), "{error}");
+    assert!(!error.contains("README.md"), "{error}");
+    assert!(!error.contains("hand-authored.md"), "{error}");
+
+    wcl()
+        .args(["wskill", "install"])
+        .arg(&collection)
+        .args(["--repo"])
+        .arg(&repo)
+        .assert()
+        .success();
+    assert!(!stale_skill.exists(), "stale generated skill is removed");
+    assert!(
+        !agents.join("stale-agent.md").exists(),
+        "stale generated agent is removed"
+    );
+    assert!(
+        agents.join("hand-authored.md").is_file(),
+        "hand-authored agent is preserved"
+    );
+}
+
+/// Agents install into one flat namespace. Detect the collision before any
+/// destination is touched, in normal and check modes alike.
+#[test]
+fn install_refuses_agent_name_collisions() {
+    let tmp = TempDir::new().unwrap();
+    let collection = tmp.path().join("wskills");
+    std::fs::create_dir(&collection).unwrap();
+    let alpha = scaffold_named_wskill(&collection, "alpha");
+    let beta = scaffold_named_wskill(&collection, "beta");
+    append_agent(&alpha, "shared-helper");
+    append_agent(&beta, "shared-helper");
+    let repo = tmp.path().join("repo");
+    std::fs::create_dir(&repo).unwrap();
+
+    let out = wcl()
+        .args(["wskill", "install"])
+        .arg(&collection)
+        .args(["--repo"])
+        .arg(&repo)
+        .arg("--check")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let error = String::from_utf8(out.stderr).unwrap();
+    assert!(
+        error.contains("agent name collision: shared-helper"),
+        "{error}"
+    );
+    assert!(
+        !repo.join(".claude").exists(),
+        "collision must write nothing"
+    );
 }
 
 /// The reference file of the authoring commit the audit tests review: `beta`

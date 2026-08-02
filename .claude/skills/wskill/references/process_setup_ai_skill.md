@@ -40,16 +40,16 @@ Every unit defaults to `audience = :book`, so it stays out of the skill. Mark th
 ### Step 4: Build and install the skill
 
 ```console
-$ wcl wdoc skill wdoc/skill/main.wcl --out out/skill
-$ cp -r out/skill <repo>/.claude/skills/<name>
+$ wcl wskill check .
+$ wcl wskill install . --repo <repo>
 ```
 
-Render the skill folder with `wcl wdoc skill` — it writes `SKILL.md` plus `references/*.md`. Install it by copying `out/skill` into a repo's `.claude/skills/<name>/`; [Building and installing the AI skill](../references/process_installing_the_skill.md) covers the install and how to verify the agent actually loads it.
+Run `wcl wskill check .` to build every declared projection in scratch space, then `wcl wskill install . --repo <repo>` to render and install `SKILL.md`, `references/*.md`, bundled files, and any agents. [Building and installing the AI skill](../references/process_installing_the_skill.md) covers drift checking and how to verify the agent actually loads it.
 
 > [!TIP]
 > **Verification**
 >
-> `wcl wdoc skill` produces a `SKILL.md` whose reference section lists your `:ai`/`:both` indexes, with a `references/` page per `:ai`/`:both` unit.
+> `wcl wskill install . --repo <repo> --check` passes and the installed `SKILL.md` lists your `:ai`/`:both` indexes, with a `references/` page per `:ai`/`:both` unit.
 
 ## Related
 

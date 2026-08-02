@@ -26,4 +26,4 @@ main:
 
 # Everything a change must pass before it can merge: fmt, lint, tests, WAD schema drift, artifact freshness, doc builds
 [group('ci')]
-check: fmt-check workspace-lint workspace-test wskill-artifact-check wcl-refcheck wad-schema-check wad-check wad-extract-check wad-facts-check wad-build wplan-template-check skills-check docs-build
+check: fmt-check workspace-lint workspace-test wskill-lint wskill-check wcl-refcheck wad-schema-check wad-check wad-extract-check wad-facts-check wad-build wplan-template-check skills-check docs-build

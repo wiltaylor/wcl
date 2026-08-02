@@ -18,7 +18,7 @@ pub(crate) mod emit;
 mod skill;
 mod yaml;
 
-pub use skill::skill;
+pub use skill::{GENERATED_AGENT_MARKER, skill};
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
