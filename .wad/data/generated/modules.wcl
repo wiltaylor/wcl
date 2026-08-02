@@ -1054,6 +1054,11 @@ code_item code_api_cli_commands {
       kind = "fn"
       visibility = "crate"
     }
+    code_member m_n_api_cli_commands_wskill_fns_run_op {
+      signature = "fn run_op(entry: &Path, inline: &[String], file: Option<&Path>,…"
+      kind = "fn"
+      visibility = "crate"
+    }
   }
 }
 

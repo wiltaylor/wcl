@@ -1,7 +1,8 @@
-//! Integration tests for `wcl wskill graph` — the model on stdout, with no
-//! editor and no build. Each test scaffolds a real wskill with
-//! `wcl init wskill`, so the assertions run against the shipped base schema
-//! rather than a hand-written miniature.
+//! Integration tests for `wcl wskill` — the model on stdout (`graph`), its
+//! findings (`lint`) and the structural writes (`op`), with no editor and no
+//! build. Each test scaffolds a real wskill with `wcl init wskill`, so the
+//! assertions run against the shipped base schema rather than a hand-written
+//! miniature.
 
 use std::path::{Path, PathBuf};
 
@@ -276,6 +277,226 @@ fn lint_reports_findings_as_text_and_json() {
     let findings: Vec<serde_json::Value> = serde_json::from_slice(&out.stdout).unwrap();
     assert!(!findings.is_empty());
     assert!(findings.iter().all(|f| f["severity"] == "candidate"));
+}
+
+// ---------------------------------------------------------------------------
+// `op` — the id-addressed write vocabulary
+// ---------------------------------------------------------------------------
+
+/// The `related` line of the block `header` opens — the index's pin list, or
+/// a unit's own links, both of which the ops rewrite in place.
+fn related_line(dest: &Path, header: &str) -> String {
+    let text = std::fs::read_to_string(dest.join("data/reference/reference.wcl")).unwrap();
+    let at = text
+        .find(header)
+        .unwrap_or_else(|| panic!("no `{header}` in:\n{text}"));
+    text[at..]
+        .lines()
+        .find(|l| l.trim_start().starts_with("related ="))
+        .unwrap_or_else(|| panic!("no `related` line under `{header}` in:\n{text}"))
+        .trim()
+        .to_string()
+}
+
+/// The index's pin list — what every pin, unpin and reorder op rewrites.
+fn pinned_line(dest: &Path) -> String {
+    related_line(dest, "index reference {")
+}
+
+/// The vocabulary applies from the command line, in the same JSON the editor
+/// sends — a bare id where it is unambiguous, a `kind:id` where the caller
+/// wants to be sure — and a batch is one command.
+#[test]
+fn op_applies_the_vocabulary_and_a_dry_run_writes_nothing() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    let dest_str = dest.to_str().unwrap();
+    assert_eq!(pinned_line(&dest), "related = [alpha]");
+
+    // A dry run prints the ops it would apply and touches nothing.
+    let before = tree_snapshot(&dest);
+    let out = wcl()
+        .args(["wskill", "op", dest_str, "--dry-run"])
+        .args([
+            "--op",
+            r#"{"op":"pin_unit","index":"reference","unit":"beta"}"#,
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(before, tree_snapshot(&dest), "a dry run writes nothing");
+    let printed: Vec<serde_json::Value> = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        printed,
+        vec![serde_json::json!({
+            "op": "pin_unit", "index": "index:reference", "unit": "beta",
+        })],
+        "the op list is the vocabulary's own JSON"
+    );
+
+    // Applied for real, as a batch piped in — the printed ops decode back.
+    let out = wcl()
+        .args(["wskill", "op", dest_str])
+        .write_stdin(
+            r#"[{"op":"pin_unit","index":"reference","unit":"concept:beta"},
+                {"op":"reorder_children","index":"reference","order":["beta","alpha"]}]"#,
+        )
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(pinned_line(&dest), "related = [beta, alpha]");
+    let applied: Vec<serde_json::Value> = String::from_utf8(out.stdout)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).expect("each applied op is JSON"))
+        .collect();
+    assert_eq!(applied.len(), 2, "one line per applied op");
+    assert_eq!(applied[0]["unit"], "concept:beta");
+
+    // And back the other way, through the other half of the vocabulary.
+    wcl()
+        .args(["wskill", "op", dest_str])
+        .args([
+            "--op",
+            r#"{"op":"unpin_unit","index":"reference","unit":"beta"}"#,
+        ])
+        .args(["--op", r#"{"op":"related_add","from":"alpha","to":"beta"}"#])
+        .assert()
+        .success();
+    assert_eq!(pinned_line(&dest), "related = [alpha]");
+    assert_eq!(
+        related_line(&dest, "concept alpha {"),
+        "related = [beta]",
+        "the link landed on `alpha` itself"
+    );
+}
+
+/// Ops apply one commit at a time and stop at the first refusal, saying how
+/// far they got — a curator resumes rather than re-runs blind.
+#[test]
+fn op_stops_at_a_refusal_and_reports_how_far_it_got() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+
+    let out = wcl()
+        .args(["wskill", "op", dest.to_str().unwrap()])
+        .write_stdin(
+            r#"[{"op":"unpin_unit","index":"reference","unit":"alpha"},
+                {"op":"unpin_unit","index":"reference","unit":"nobody"},
+                {"op":"pin_unit","index":"reference","unit":"beta"}]"#,
+        )
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "a refusal fails the run");
+    let err = String::from_utf8(out.stderr).unwrap();
+    assert!(
+        err.contains("op 2:") && err.contains("not pinned here"),
+        "{err}"
+    );
+    assert!(err.contains("applied 1 of 3 ops"), "{err}");
+    // The first op stands; the third never ran.
+    assert_eq!(pinned_line(&dest), "related = []");
+
+    // A malformed op is a tool failure, and nothing is attempted: the whole
+    // batch decodes before the first write.
+    let before = tree_snapshot(&dest);
+    let out = wcl()
+        .args(["wskill", "op", dest.to_str().unwrap()])
+        .write_stdin(
+            r#"[{"op":"pin_unit","index":"reference","unit":"beta"},
+                {"op":"pin_unit","index":"reference"}]"#,
+        )
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        String::from_utf8(out.stderr)
+            .unwrap()
+            .contains("op 2: missing `unit`"),
+    );
+    assert_eq!(before, tree_snapshot(&dest), "nothing was applied");
+}
+
+/// Every op goes through the editor's validating commit pipeline, so an edit
+/// the schema rejects is rolled back rather than left on disk.
+#[test]
+fn op_rolls_back_an_edit_the_schema_rejects() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    // Make an index's pin list constrained, so emptying it is a violation.
+    let schema = dest.join("schema/base.wcl");
+    let src = std::fs::read_to_string(&schema).unwrap();
+    let (head, tail) = src.split_at(src.find("@block(\"index\")").expect("the index type"));
+    std::fs::write(
+        &schema,
+        format!(
+            "{head}{}",
+            tail.replacen(
+                "@default([]) related: list<identifier>",
+                "@default([alpha]) @non_empty related: list<identifier>",
+                1,
+            )
+        ),
+    )
+    .unwrap();
+
+    let out = wcl()
+        .args(["wskill", "op", dest.to_str().unwrap()])
+        .args([
+            "--op",
+            r#"{"op":"unpin_unit","index":"reference","unit":"alpha"}"#,
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let err = String::from_utf8(out.stderr).unwrap();
+    assert!(
+        err.contains("non_empty"),
+        "the constraint is reported: {err}"
+    );
+    assert_eq!(
+        pinned_line(&dest),
+        "related = [alpha]",
+        "the rejected edit was rolled back"
+    );
+}
+
+/// Ops target the wskill root even when the caller names a projection entry:
+/// the curator edits the format, not one view of it.
+#[test]
+fn op_targets_the_wskill_root_from_a_projection_entry() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+
+    wcl()
+        .args([
+            "wskill",
+            "op",
+            dest.join("wdoc/book/main.wcl").to_str().unwrap(),
+        ])
+        .args([
+            "--op",
+            r#"{"op":"unpin_unit","index":"reference","unit":"alpha"}"#,
+        ])
+        .assert()
+        .success();
+    assert_eq!(pinned_line(&dest), "related = []");
+
+    // Outside a wskill there is nothing to target, and that is a tool failure.
+    wcl()
+        .args(["wskill", "op", tmp.path().to_str().unwrap()])
+        .args([
+            "--op",
+            r#"{"op":"unpin_unit","index":"reference","unit":"alpha"}"#,
+        ])
+        .assert()
+        .failure()
+        .code(2);
 }
 
 /// A wskill that cannot be read is a tool failure (2), not a finding (1) —

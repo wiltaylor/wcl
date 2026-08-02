@@ -322,22 +322,16 @@ fn static_entry(ws: &Workspace, b: &ast::Block, entry_abs: &Path) -> serde_json:
 ///   `section` (inserted into the container / parent span)
 /// - `add_page { name, title, nav: { file, container_span, kind } }` — a
 ///   new top-level `page` block in the entry plus its nav entry
-/// - `pin_unit { index_id, unit_id }` / `unpin_unit { index_id, unit_id }`
-/// - `reorder_children { index_id, order: [ids] }` — rewrite a `related`
-///   list to exactly `order`
-///
-/// The wskill model's `index` blocks are structural, so they have their own
-/// id-addressed op family (spans shift under every reformat; ids don't):
-///
 /// - `create_index { id, name, parent_id? }` — a new `index` block, either
 ///   placed by convention beside the existing ones or nested in `parent_id`
-/// - `delete_index { index_id }` — remove it and its subtree
-/// - `move_index { index_id, dir }` — swap with the adjacent `index` sibling
-/// - `promote_index { index_id }` — a sub-index becomes its parent's next
-///   sibling; `demote_index { index_id }` nests it under the index above
 ///
-/// Every one of those is [`wcl_wskill::ops`]'s; this module translates the
-/// request into an [`Op`], commits what it returns, and marks the previews
+/// Anything else the wskill vocabulary names ([`wops::is_op`] — `pin_unit`,
+/// `unpin_unit`, `reorder_children`, `delete_index`, `move_index`,
+/// `promote_index`, `demote_index`, `related_add`, `related_remove`) is
+/// **decoded by the library** ([`wops::from_json`]) rather than translated
+/// here: the request body IS an op in the one JSON dialect `wcl wskill op`
+/// reads, id-addressed because spans shift under every reformat and ids
+/// don't. This module commits what the op returns and marks the previews
 /// stale.
 pub(super) async fn handle_nav_op(State(state): State<Arc<EditorState>>, body: String) -> Response {
     let v = match parse_json_body(&body) {
@@ -397,54 +391,13 @@ pub(super) fn nav_op(
         "add_section" => add_section(ws, &entry_abs, v),
         "add_page" => add_page(&entry_abs, v),
         "create_index" => create_index(ws, &entry_abs, v),
-        // Everything below is the wskill op vocabulary, defined once in
-        // `wcl_wskill::ops` and addressed by id.
-        "pin_unit" => wskill_op(
-            &entry_abs,
-            Op::PinUnit {
-                index: index_ref(v)?,
-                unit: NodeRef::new(crate::edit::str_field(v, "unit_id")?),
-            },
-        ),
-        "unpin_unit" => wskill_op(
-            &entry_abs,
-            Op::UnpinUnit {
-                index: index_ref(v)?,
-                unit: NodeRef::new(crate::edit::str_field(v, "unit_id")?),
-            },
-        ),
-        "reorder_children" => wskill_op(
-            &entry_abs,
-            Op::ReorderChildren {
-                index: index_ref(v)?,
-                order: id_list(v, "order")?,
-            },
-        ),
-        "delete_index" => wskill_op(
-            &entry_abs,
-            Op::DeleteIndex {
-                index: index_ref(v)?,
-            },
-        ),
-        "move_index" => wskill_op(
-            &entry_abs,
-            Op::MoveIndex {
-                index: index_ref(v)?,
-                dir: move_dir(v)?,
-            },
-        ),
-        "promote_index" => wskill_op(
-            &entry_abs,
-            Op::PromoteIndex {
-                index: index_ref(v)?,
-            },
-        ),
-        "demote_index" => wskill_op(
-            &entry_abs,
-            Op::DemoteIndex {
-                index: index_ref(v)?,
-            },
-        ),
+        // Everything the library's vocabulary names is decoded and applied by
+        // the library: the request IS an op, in the one JSON dialect
+        // `wcl wskill op` reads, so the panel and the curator send the same
+        // thing rather than two spellings of it.
+        other if wops::is_op(other) => {
+            wskill_op(&entry_abs, wops::from_json(v).map_err(|e| e.to_string())?)
+        }
         other => Err(format!("unknown nav op `{other}`")),
     };
     if result.is_ok() {
@@ -629,27 +582,8 @@ fn page_sites_field(
 }
 
 // ---------------------------------------------------------------------------
-// The wskill op vocabulary — translated, applied, committed
+// The wskill op vocabulary — decoded by the library, applied, committed
 // ---------------------------------------------------------------------------
-
-/// `index_id` as the id-addressed reference the ops speak. The wire carries
-/// bare ids because an index kind is always `index`; the kind rides along so
-/// a refusal names what it looked for.
-fn index_ref(v: &serde_json::Value) -> Result<NodeRef, String> {
-    Ok(NodeRef::kinded(
-        "index",
-        crate::edit::str_field(v, "index_id")?,
-    ))
-}
-
-fn id_list(v: &serde_json::Value, key: &str) -> Result<Vec<String>, String> {
-    Ok(v.get(key)
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| format!("missing `{key}`"))?
-        .iter()
-        .filter_map(|s| s.as_str().map(str::to_string))
-        .collect())
-}
 
 fn move_dir(v: &serde_json::Value) -> Result<Dir, String> {
     match crate::edit::str_field(v, "dir")? {
