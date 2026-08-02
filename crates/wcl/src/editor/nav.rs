@@ -28,7 +28,7 @@ use axum::response::Response;
 
 use wcl_lang::ast::{self, Expr, Item};
 use wcl_lang::{Document, Span, edit as ast_edit, format as wcl_format, parse_for_edit};
-use wcl_wskill::ops::{self as wops, Dir, IndexHome, NodeRef, Op};
+use wcl_wskill::ops::{self as wops, Dir, IndexHome, Op};
 
 use super::graph::open_graph;
 use super::kinds::{self, KindModel};
@@ -620,19 +620,14 @@ fn create_index(
 ) -> Result<serde_json::Value, String> {
     let id = crate::edit::str_field(v, "id")?;
     let name = crate::edit::str_field(v, "name")?;
-    let parent = v
-        .get("parent_id")
+    // A named parent makes this an ordinary library op, so it is decoded as
+    // one rather than rebuilt here. Only the no-parent case is the editor's
+    // to answer.
+    if v.get("parent_id")
         .and_then(serde_json::Value::as_str)
-        .filter(|s| !s.is_empty());
-    if let Some(parent) = parent {
-        return wskill_op(
-            entry_abs,
-            Op::CreateIndex {
-                id: id.to_string(),
-                name: name.to_string(),
-                home: IndexHome::Under(NodeRef::kinded("index", parent)),
-            },
-        );
+        .is_some_and(|s| !s.is_empty())
+    {
+        return wskill_op(entry_abs, wops::from_json(v).map_err(|e| e.to_string())?);
     }
 
     let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(super::err_str)?;

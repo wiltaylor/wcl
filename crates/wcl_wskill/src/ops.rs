@@ -288,6 +288,9 @@ pub fn to_json(op: &Op) -> serde_json::Value {
                 ("name", serde_json::json!(name)),
                 match home {
                     IndexHome::Under(parent) => ("parent", node(parent)),
+                    // Forward slashes on every platform: a wskill's paths are
+                    // written that way in the WCL it imports, and an op list
+                    // printed on Windows should still read on Linux.
                     IndexHome::InFile(path) => (
                         "file",
                         serde_json::json!(path.to_string_lossy().replace('\\', "/")),
@@ -363,6 +366,10 @@ fn index_arg(v: &serde_json::Value) -> Result<NodeRef> {
     }
 }
 
+/// A list of **bare** ids. Qualified ones are refused rather than silently
+/// stripped: `order` is checked as a permutation of the ids already in the
+/// list, so a kind here would be dropped on the way to the file and the
+/// caller would never learn it went unread.
 fn id_list(v: &serde_json::Value, key: &str) -> Result<Vec<String>> {
     let items = v
         .get(key)
@@ -371,16 +378,24 @@ fn id_list(v: &serde_json::Value, key: &str) -> Result<Vec<String>> {
     items
         .iter()
         .map(|s| {
-            s.as_str()
-                .map(str::to_string)
-                .ok_or_else(|| Error::Op(format!("`{key}` must hold ids, not {s}")))
+            let id = s
+                .as_str()
+                .ok_or_else(|| Error::Op(format!("`{key}` must hold ids, not {s}")))?;
+            if id.contains(':') {
+                return Err(Error::Op(format!(
+                    "`{key}` holds bare ids — write `{}`, not `{id}`",
+                    NodeRef::parse(id).id
+                )));
+            }
+            Ok(id.to_string())
         })
         .collect()
 }
 
 /// Where a new index goes: nested under an existing one, or appended to the
-/// file the caller's placement chose. One or the other — the library owns
-/// nesting, the host owns files, and neither can be guessed here.
+/// file the caller's placement chose (relative to the wskill root, unless it
+/// is absolute). One or the other — the library owns nesting, the host owns
+/// files, and neither can be guessed here.
 fn index_home(v: &serde_json::Value) -> Result<IndexHome> {
     if v.get("parent").or_else(|| v.get("parent_id")).is_some() {
         return Ok(IndexHome::Under(NodeRef::kinded(
@@ -555,10 +570,35 @@ pub fn node_ref(block: &ast::Block) -> Option<NodeRef> {
 }
 
 fn related(graph: &Graph, from: &NodeRef, to: &NodeRef, add: bool) -> Result<Vec<Change>> {
+    check_target(graph, to)?;
     let site = locate(graph, from)?;
     let from = site.node.clone();
     let target = to.id.clone();
     edit_block(&site, move |block| edit_related(block, &from, &target, add))
+}
+
+/// Check a node an op only NAMES — the unit an index pins, the id a
+/// `related` list points at. Unlike a source it is never located: the write
+/// lands on the source's block and only the id goes into the list.
+///
+/// It is deliberately not required to exist. Unpinning a dangling id is
+/// exactly how an author clears one (the editor's nav panel renders those
+/// pins as missing so they CAN be cleared), and a link may be written before
+/// its target. But a kind the caller *did* name is checked against the
+/// graph: quietly pinning `concept:alpha` for a request that said
+/// `research:alpha` is the failure this addressing exists to prevent.
+fn check_target(graph: &Graph, r: &NodeRef) -> Result<()> {
+    let Some(kind) = r.kind.as_deref() else {
+        return Ok(());
+    };
+    let named = graph.nodes_named(&r.id);
+    if named.iter().any(|k| k.kind == kind) {
+        return Ok(());
+    }
+    Err(match named.first() {
+        Some(k) => Error::Op(format!("`{}` is a `{}`, not a `{kind}`", r.id, k.kind)),
+        None => no_such(r),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -571,6 +611,7 @@ fn pin(graph: &Graph, index: &NodeRef, unit: &NodeRef, add: bool) -> Result<Vec<
             "a course has no pins — a lesson belongs to it by existing; reorder it instead".into(),
         );
     }
+    check_target(graph, unit)?;
     let site = index_site(graph, index)?;
     let unit_id = unit.id.clone();
     edit_block(&site, move |block| {
@@ -719,10 +760,21 @@ fn create_index(graph: &Graph, id: &str, name: &str, home: &IndexHome) -> Result
                 Ok(())
             })
         }
-        IndexHome::InFile(file) => edit_file(file, move |src| {
-            ast_edit::append_top_level_block(src, block);
-            Ok(())
-        }),
+        // A relative file is **wskill-root-relative**, like every [`Anchor`]
+        // the model hands out — so an op list means the same thing wherever
+        // it is run from. An absolute one (a host that resolved placement
+        // itself) is taken as given.
+        IndexHome::InFile(file) => {
+            let file = if file.is_absolute() {
+                file.clone()
+            } else {
+                graph.root.join(file)
+            };
+            edit_file(&file, move |src| {
+                ast_edit::append_top_level_block(src, block);
+                Ok(())
+            })
+        }
     }
 }
 
@@ -1283,6 +1335,20 @@ mod tests {
         )
         .unwrap_err();
         assert!(e.to_string().contains("not a valid id"), "{e}");
+
+        // A RELATIVE file is wskill-root-relative — like every anchor the
+        // model reports — so an op list means the same thing wherever it is
+        // run from.
+        run(
+            root,
+            Op::CreateIndex {
+                id: "howto".into(),
+                name: "How to".into(),
+                home: IndexHome::InFile(PathBuf::from("data/indexes.wcl")),
+            },
+        )
+        .expect("create");
+        assert!(read(root, "data/indexes.wcl").contains("index howto"));
     }
 
     /// A course reorders by rewriting each lesson's `n`; it has no pins.
@@ -1379,6 +1445,69 @@ mod tests {
         assert!(e.to_string().contains("named `nobody`"), "{e}");
     }
 
+    /// A kind on the node an op merely NAMES is checked too — pinning
+    /// `research:alpha` must not quietly pin the concept of that id, which is
+    /// the whole reason the vocabulary carries kinds. What it must NOT do is
+    /// require the target to exist: clearing a dangling pin is how an author
+    /// fixes one.
+    #[test]
+    fn a_kind_named_on_a_target_is_checked_not_ignored() {
+        let td = mini_wskill();
+        let root = td.path();
+
+        let e = run(
+            root,
+            Op::PinUnit {
+                index: NodeRef::new("lang"),
+                unit: NodeRef::kinded("research", "beta"),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(e.to_string(), "`beta` is a `concept`, not a `research`");
+        assert!(
+            read(root, "data/indexes.wcl").contains("related = [alpha, beta]"),
+            "nothing was written"
+        );
+        // The same check on a `related` target.
+        let e = run(
+            root,
+            Op::RelatedAdd {
+                from: NodeRef::new("beta"),
+                to: NodeRef::kinded("concept", "gamma"),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(e.to_string(), "`gamma` is a `research`, not a `concept`");
+
+        // Named with its real kind, it lands.
+        run(
+            root,
+            Op::RelatedAdd {
+                from: NodeRef::new("beta"),
+                to: NodeRef::kinded("research", "gamma"),
+            },
+        )
+        .expect("kinded target");
+        assert!(read(root, "data/concepts/beta.wcl").contains("related = [gamma]"));
+
+        // A bare id nothing declares is still writable — a link may precede
+        // its target, and a dangling pin has to be removable.
+        write(
+            root,
+            "data/indexes.wcl",
+            "index lang {\n  name = \"Language\"\n  related = [alpha, ghost]\n}\n",
+        );
+        run(
+            root,
+            Op::UnpinUnit {
+                index: NodeRef::new("lang"),
+                unit: NodeRef::new("ghost"),
+            },
+        )
+        .expect("a dangling pin is removable");
+        assert!(read(root, "data/indexes.wcl").contains("related = [alpha]"));
+    }
+
     /// The JSON dialect is the vocabulary's own: every op round-trips through
     /// it unchanged, which is what lets `--dry-run` print ops a host can send
     /// back verbatim.
@@ -1463,6 +1592,10 @@ mod tests {
             (
                 serde_json::json!({"op": "reorder_children", "index": "lang", "order": [1]}),
                 "must hold ids",
+            ),
+            (
+                serde_json::json!({"op": "reorder_children", "index": "lang", "order": ["concept:beta"]}),
+                "holds bare ids — write `beta`",
             ),
             (
                 serde_json::json!({"op": "move_index", "index": "lang", "dir": "sideways"}),

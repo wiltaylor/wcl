@@ -402,6 +402,24 @@ fn op_stops_at_a_refusal_and_reports_how_far_it_got() {
     // The first op stands; the third never ran.
     assert_eq!(pinned_line(&dest), "related = []");
 
+    // A kind the caller names is checked, not echoed back: pinning
+    // `research:beta` must not quietly pin the concept of that id.
+    let out = wcl()
+        .args(["wskill", "op", dest.to_str().unwrap()])
+        .args([
+            "--op",
+            r#"{"op":"pin_unit","index":"reference","unit":"research:beta"}"#,
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        String::from_utf8(out.stderr)
+            .unwrap()
+            .contains("`beta` is a `concept`, not a `research`")
+    );
+    assert_eq!(pinned_line(&dest), "related = []");
+
     // A malformed op is a tool failure, and nothing is attempted: the whole
     // batch decodes before the first write.
     let before = tree_snapshot(&dest);
@@ -428,28 +446,31 @@ fn op_stops_at_a_refusal_and_reports_how_far_it_got() {
 fn op_rolls_back_an_edit_the_schema_rejects() {
     let tmp = TempDir::new().unwrap();
     let dest = scaffolded_wskill(&tmp);
-    // Make an index's pin list constrained, so emptying it is a violation.
-    let schema = dest.join("schema/base.wcl");
-    let src = std::fs::read_to_string(&schema).unwrap();
-    let (head, tail) = src.split_at(src.find("@block(\"index\")").expect("the index type"));
+    // A topic-declared unit kind whose links are constrained, so emptying
+    // them is a violation. The base schema ships embedded and is never
+    // edited; `schema/extensions.wcl` is where a wskill adds its own.
+    let extensions = dest.join("schema/extensions.wcl");
+    let src = std::fs::read_to_string(&extensions).unwrap();
     std::fs::write(
-        &schema,
+        &extensions,
         format!(
-            "{head}{}",
-            tail.replacen(
-                "@default([]) related: list<identifier>",
-                "@default([alpha]) @non_empty related: list<identifier>",
-                1,
-            )
+            "{src}\n@block(\"gadget\")\ntype Gadget {{\n  @inline(0) id: identifier\n  \
+             name: utf8\n  summary: utf8\n  @non_empty related: list<identifier>\n}}\n\n\
+             @document\ntype Extensions {{\n  @children(\"gadget\") gadgets: list<Gadget>\n}}\n"
         ),
     )
     .unwrap();
+    write_units(
+        &dest,
+        "gadget widget {\n  name    = \"Widget\"\n  summary = \"A gadget.\"\n  \
+         related = [alpha]\n}\n",
+    );
 
     let out = wcl()
         .args(["wskill", "op", dest.to_str().unwrap()])
         .args([
             "--op",
-            r#"{"op":"unpin_unit","index":"reference","unit":"alpha"}"#,
+            r#"{"op":"related_remove","from":"widget","to":"alpha"}"#,
         ])
         .output()
         .unwrap();
@@ -460,7 +481,7 @@ fn op_rolls_back_an_edit_the_schema_rejects() {
         "the constraint is reported: {err}"
     );
     assert_eq!(
-        pinned_line(&dest),
+        related_line(&dest, "gadget widget {"),
         "related = [alpha]",
         "the rejected edit was rolled back"
     );
@@ -487,16 +508,37 @@ fn op_targets_the_wskill_root_from_a_projection_entry() {
         .success();
     assert_eq!(pinned_line(&dest), "related = []");
 
-    // Outside a wskill there is nothing to target, and that is a tool failure.
+    // A new index lands in the file the caller names, read relative to the
+    // wskill root — so an op list means the same thing wherever it is run.
     wcl()
-        .args(["wskill", "op", tmp.path().to_str().unwrap()])
+        .args(["wskill", "op", dest.to_str().unwrap()])
         .args([
             "--op",
-            r#"{"op":"unpin_unit","index":"reference","unit":"alpha"}"#,
+            r#"{"op":"create_index","id":"howto","name":"How to","file":"data/reference/reference.wcl"}"#,
         ])
         .assert()
-        .failure()
-        .code(2);
+        .success();
+    assert!(
+        std::fs::read_to_string(dest.join("data/reference/reference.wcl"))
+            .unwrap()
+            .contains("index howto"),
+    );
+
+    // Outside a wskill there is nothing to target, and that is a tool
+    // failure — a dry run says so too, rather than approving ops against a
+    // target that isn't there.
+    for args in [vec!["--dry-run"], vec![]] {
+        wcl()
+            .args(["wskill", "op", tmp.path().to_str().unwrap()])
+            .args([
+                "--op",
+                r#"{"op":"unpin_unit","index":"reference","unit":"alpha"}"#,
+            ])
+            .args(args)
+            .assert()
+            .failure()
+            .code(2);
+    }
 }
 
 /// A wskill that cannot be read is a tool failure (2), not a finding (1) —

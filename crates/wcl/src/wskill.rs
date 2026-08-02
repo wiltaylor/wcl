@@ -149,11 +149,23 @@ pub(crate) fn run_op(entry: &Path, inline: &[String], file: Option<&Path>, dry_r
         }
     };
 
+    // The target is resolved even for a dry run: pointing at something that
+    // is not a wskill is a mistake worth hearing about before the ops are
+    // approved, and it costs a stat.
+    let root = match root_doc(entry) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("{e}");
+            return WSKILL_TOOL_FAILURE;
+        }
+    };
+
     // `--dry-run` prints the ops and touches nothing — deliberately WITHOUT
     // resolving them against the model: each op is addressed against the tree
     // the ops before it left, so anything past the first is unanswerable
     // until they have actually applied. What it does show is the op list as
-    // the vocabulary spells it, which is the same JSON the editor sends.
+    // the vocabulary spells it, which is the same JSON the editor sends —
+    // and which this command reads back.
     if dry_run {
         let list: Vec<serde_json::Value> = ops.iter().map(ops::to_json).collect();
         println!(
@@ -164,13 +176,6 @@ pub(crate) fn run_op(entry: &Path, inline: &[String], file: Option<&Path>, dry_r
         return WSKILL_OK;
     }
 
-    let root = match root_doc(entry) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("{e}");
-            return WSKILL_TOOL_FAILURE;
-        }
-    };
     for (i, op) in ops.iter().enumerate() {
         if let Err(e) = apply_one(&root, op) {
             eprintln!("op {}: {e}", i + 1);
