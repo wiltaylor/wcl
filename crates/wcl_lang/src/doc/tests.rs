@@ -942,6 +942,39 @@ fn decorator_schema_lookup() {
 }
 
 #[test]
+fn declared_decorators_include_builtins_local_and_imported_schemas() {
+    let doc = open_with_libs(
+        "import <decorators.wcl>\n@decorator(\"local\") @decorator(\"local_alias\") type Local {}\n",
+        &[(
+            "decorators.wcl",
+            "@decorator(\"imported\") type Imported {}\n",
+        )],
+    );
+
+    let declared: Vec<_> = doc
+        .declared_decorators()
+        .map(|(name, schema)| (name, schema.name().to_string()))
+        .collect();
+
+    assert!(
+        declared.contains(&("connections".to_string(), "Connections".to_string())),
+        "{declared:?}"
+    );
+    assert!(
+        declared.contains(&("local".to_string(), "Local".to_string())),
+        "{declared:?}"
+    );
+    assert!(
+        declared.contains(&("local_alias".to_string(), "Local".to_string())),
+        "{declared:?}"
+    );
+    assert!(
+        declared.contains(&("imported".to_string(), "Imported".to_string())),
+        "{declared:?}"
+    );
+}
+
+#[test]
 fn inline_slot_helper() {
     let doc = open("type Q { @inline(2) f: utf8 }");
     let q = doc.type_decl("Q").unwrap();

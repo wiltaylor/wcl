@@ -1,7 +1,7 @@
 //! `textDocument/completion` handler. The cursor's preceding byte
 //! decides which catalogue to propose:
 //!
-//!   - `@` → every type carrying `@decorator(...)` plus the builtins
+//!   - `@` → every decorator declared in the document environment
 //!   - `:` (in type-ref position) → every declared type/union + builtin types
 //!   - `&` → same list as `:`
 //!   - anything else (manual invoke / identifier letter) → locals in the
@@ -35,23 +35,6 @@ fn push_unique(
     }
 }
 
-/// Builtin decorator names (registered by `Environment`, not declared
-/// in source). Listed here because `Environment` exposes no
-/// enumeration accessor.
-const BUILTIN_DECORATORS: &[&str] = &[
-    "document",
-    "schemaless",
-    "block",
-    "table",
-    "child",
-    "children",
-    "inline",
-    "default",
-    "decorator",
-    "contextual",
-    "declares_kind",
-];
-
 /// Builtin scalar / string type names the user can write in a type
 /// position. Mirrors the set parsed by `value::BuiltinType`.
 const BUILTIN_TYPES: &[&str] = &[
@@ -73,7 +56,11 @@ pub(crate) fn completions(
     // completions.
     let local_doc = Document::open(source, uri).ok();
     match preceding_non_ws(source, offset) {
-        Some(b'@') => decorator_items(local_doc.as_ref(), root_doc),
+        Some(b'@') => {
+            let fallback_doc = (local_doc.is_none() && root_doc.is_none())
+                .then(|| Document::open("", uri).expect("empty completion document opens"));
+            decorator_items(local_doc.as_ref(), root_doc, fallback_doc.as_ref())
+        }
         Some(b':') | Some(b'&') => type_items(local_doc.as_ref(), root_doc),
         _ => identifier_items(local_doc.as_ref(), root_doc, source, uri, offset),
     }
@@ -82,41 +69,19 @@ pub(crate) fn completions(
 fn decorator_items(
     local_doc: Option<&Document>,
     root_doc: Option<&Document>,
+    fallback_doc: Option<&Document>,
 ) -> Vec<CompletionItem> {
     let mut out = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
-    for name in BUILTIN_DECORATORS {
-        push_unique(
-            &mut out,
-            &mut seen,
-            (*name).to_string(),
-            CompletionItemKind::FUNCTION,
-            "builtin decorator".to_string(),
-        );
-    }
-    for doc in [root_doc, local_doc].into_iter().flatten() {
-        // Types carrying `@decorator("foo")` declare decorator `foo`.
-        for td in doc.type_decls() {
-            for d in td.decorators() {
-                if d.full_name() != "decorator" {
-                    continue;
-                }
-                let Ok(args) = d.positional() else { continue };
-                let Some(first) = args.into_iter().next() else {
-                    continue;
-                };
-                let label = match first {
-                    wcl_lang::Value::Utf8(s) | wcl_lang::Value::Ascii(s) => s,
-                    _ => continue,
-                };
-                push_unique(
-                    &mut out,
-                    &mut seen,
-                    label,
-                    CompletionItemKind::FUNCTION,
-                    format!("decorator (schema: {})", td.name_segments().join(".")),
-                );
-            }
+    for doc in [root_doc, local_doc, fallback_doc].into_iter().flatten() {
+        for (label, schema) in doc.declared_decorators() {
+            push_unique(
+                &mut out,
+                &mut seen,
+                label,
+                CompletionItemKind::FUNCTION,
+                format!("decorator (schema: {})", schema.name_segments().join(".")),
+            );
         }
     }
     out
@@ -248,6 +213,7 @@ fn identifier_items(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wcl_lang::{DecoratorBuilder, Environment, TypeBuilder, Value};
 
     fn labels(items: Vec<CompletionItem>) -> Vec<String> {
         items.into_iter().map(|c| c.label).collect()
@@ -263,7 +229,25 @@ mod tests {
         let cursor = src.find("\n@\n").unwrap() + 2; // just past the `@`
         let labs = labels(completions(src, "test.wcl", cursor, None));
         assert!(labs.iter().any(|l| l == "block"), "{labs:?}");
+        assert!(labs.iter().any(|l| l == "connections"), "{labs:?}");
         assert!(labs.iter().any(|l| l == "max_len"), "{labs:?}");
+    }
+
+    #[test]
+    fn at_prefix_uses_the_documents_declared_decorators() {
+        let mut env = Environment::new();
+        env.add_type(
+            TypeBuilder::new(["FreshDecorator"])
+                .decorator(
+                    DecoratorBuilder::new(["decorator"]).positional(Value::Utf8("fresh".into())),
+                )
+                .build(),
+        );
+        let root = Document::open_with("", "root.wcl", &env).expect("root document opens");
+
+        let labs = labels(completions("@", "test.wcl", 1, Some(&root)));
+
+        assert!(labs.iter().any(|l| l == "fresh"), "{labs:?}");
     }
 
     #[test]

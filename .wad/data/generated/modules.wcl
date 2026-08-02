@@ -2689,7 +2689,7 @@ code_item code_api_doc_view {
       kind = "method"
     }
     code_member m_n_api_doc_view_Document_more {
-      signature = "… +78 more"
+      signature = "… +79 more"
       kind = "overflow"
     }
   }

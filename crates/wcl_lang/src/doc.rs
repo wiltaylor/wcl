@@ -185,6 +185,16 @@ enum DeclLoc {
     Synthetic(usize),
 }
 
+/// The first positional argument when it evaluates to a UTF-8 string.
+/// Schema discovery uses this common shape for declarations such as
+/// `@block("kind")` and `@decorator("name")`.
+fn first_positional_utf8(decorator: &Decorator<'_>) -> Option<String> {
+    match decorator.positional().ok()?.into_iter().next()? {
+        Value::Utf8(value) => Some(value),
+        _ => None,
+    }
+}
+
 impl std::fmt::Debug for Document {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Document")
@@ -1503,6 +1513,25 @@ impl Document {
         mine_and_imports.chain(syn)
     }
 
+    /// Every declared decorator and the type that schemas it, in
+    /// [`type_decls`](Self::type_decls) order. This includes declarations
+    /// from eager imports and synthetic types supplied by the environment.
+    pub fn declared_decorators(&self) -> impl Iterator<Item = (String, TypeDecl<'_>)> + '_ {
+        self.type_decls().flat_map(|schema| {
+            let names: Vec<_> = schema
+                .decorators()
+                .filter_map(|decorator| {
+                    if decorator.is(BuiltinDecorator::Decorator) {
+                        first_positional_utf8(&decorator)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            names.into_iter().map(move |name| (name, schema))
+        })
+    }
+
     /// Look up an interface declaration by fully-qualified name.
     /// Mirrors `type_decl` / `union_decl`.
     pub fn interface(&self, fqn: &str) -> Option<InterfaceDecl<'_>> {
@@ -2653,8 +2682,7 @@ impl Document {
         let mut map: HashMap<(String, String), Vec<usize>> = HashMap::new();
         for (i, t) in self.type_decls().enumerate() {
             for d in t.decorators() {
-                let Ok(args) = d.positional() else { continue };
-                let Some(Value::Utf8(v)) = args.into_iter().next() else {
+                let Some(v) = first_positional_utf8(&d) else {
                     continue;
                 };
                 map.entry((d.full_name(), v)).or_default().push(i);
