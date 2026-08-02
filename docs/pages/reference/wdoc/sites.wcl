@@ -160,6 +160,29 @@ WCL
       | "`wdoc_part_home_link(c, cls)`"           | "The back-to-root link for sub-sites" |
   }
 
+  h3 "The `el` constructor family"
+
+  p "Where a part doesn't already exist, you build the markup yourself. The stdlib ships shorthands for the HTML element vocabulary, so a `<div>` is a call rather than a record. Each is exactly the long form with the field names dropped — `el(\"div\", [\"row\"], kids)` is `HtmlFundamental::Element { tag: \"div\", class: [\"row\"], children: kids }`."
+
+  table {
+    rows:
+      | "Constructor"                  | "Builds" |
+      | "`el(tag, cls, kids)`"         | "`<tag class>children</tag>` — the common shape" |
+      | "`ela(tag, cls, attrs, kids)`" | "…with attributes: a list of `[name, value]` pairs" |
+      | "`eli(tag, id, cls, kids)`"    | "…with an explicit HTML id" |
+      | "`raw(html)`"                  | "verbatim, pre-rendered HTML (not escaped)" |
+      | "`inl(text)`"                  | "an inline prose run through the inline patterns" |
+      | "`icon(name, cls)`"            | "an icon from a declared `iconset` or a built-in pack" |
+      | "`para(cls, spans)`"           | "a `<p>` of inline-patterned spans" |
+  }
+
+  p "There are three element constructors rather than one because WCL has neither default nor named arguments: every call fills every parameter. An empty `class` or `attrs` list emits no attribute at all, so passing `[]` costs nothing over omitting the field, and an optional field goes straight in (`el(\"p\", t.class, kids)` with `t.class` unset renders as an omitted `class`)."
+
+  callout "The long form stays legal" {
+    class = ["note"]
+    body  = "The family covers the HTML **element** vocabulary only. `SvgFundamental` and the semantic content IR keep the named-field literal — they are field-shaped, and WCL checks argument arity but never argument types, so transposing two of a shape's interchangeable `f64`s would render silently wrong where the record raises a shape mismatch. Write the record for anything the family doesn't name, too: an element with both an id and attrs, a `Paragraph` with an id, a `Head`, a `Table`."
+  }
+
   h3 "Extend a built-in"
 
   p "To keep a whole built-in but add your own chrome, call its layout and append parts. This is the full `webpage` plus a footer:"
@@ -170,10 +193,7 @@ template blog {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental>
     flatten([
       wdoc_webpage_layout(c),
-      [ HtmlFundamental::Element {
-          tag: "footer", class: ["site-footer"],
-          children: [ HtmlFundamental::Raw { html: "© 2026 — built with wdoc" } ],
-      } ],
+      [ el("footer", ["site-footer"], [raw("© 2026 — built with wdoc")]) ],
     ])
 }
 
@@ -190,13 +210,10 @@ WCL
 template app_home {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental>
     flatten([
-      wdoc_part_webpage_css(),      // keep the stdlib styling…
-      [ HtmlFundamental::Element {  // …a hero masthead instead of wdoc_part_header
-          tag: "header", class: ["hero"],
-          children: [ HtmlFundamental::Raw { html: c.title } ],
-      } ],
-      wdoc_part_navbar(c),          // …reuse the stdlib nav
-      wdoc_part_content(c),         // …standard content <main>
+      wdoc_part_webpage_css(),                    // keep the stdlib styling…
+      [ el("header", ["hero"], [raw(c.title)]) ], // …a hero masthead instead of wdoc_part_header
+      wdoc_part_navbar(c),                        // …reuse the stdlib nav
+      wdoc_part_content(c),                       // …standard content <main>
     ])
 }
 WCL
@@ -204,6 +221,6 @@ WCL
 
   callout "Parts resolve by bare name" {
     class = ["note"]
-    body  = "Template parts are plain functions reached by name through `import <wdoc.wcl>` — they are not `wdoc::`-qualified. Don't define a `let` of your own named `wdoc_part_*` or `wdoc_*_layout`, or it will shadow the stdlib one."
+    body  = "Template parts and the `el` family are plain functions reached by name through `import <wdoc.wcl>` — they are not `wdoc::`-qualified. Don't define a `let` of your own named `wdoc_part_*`, `wdoc_*_layout`, `el`/`ela`/`eli`, `raw`, `inl`, `icon` or `para`, or it will shadow the stdlib one."
   }
 }

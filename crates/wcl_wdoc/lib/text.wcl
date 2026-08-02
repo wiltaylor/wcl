@@ -19,17 +19,11 @@ type Text extends WdocBlock {
   @doc("The styled segments, rendered as `<span>`s in source order.")
   @children("span") spans: list<Span>
   lower = fn(t: Text) -> list<HtmlFundamental> [
-    HtmlFundamental::Element {
-      tag: "p", id: t.id, class: t.class,
-      children: flatten([
-        match t.text { none => [], tx => [HtmlFundamental::Inline { text: tx }] },
-        map(t.spans, fn(s: Span) -> HtmlFundamental
-          HtmlFundamental::Element {
-            tag: "span", id: s.id, class: s.class,
-            children: [ HtmlFundamental::Inline { text: s.text } ],
-          }),
-      ]),
-    },
+    eli("p", t.id, t.class, flatten([
+      match t.text { none => [], tx => [inl(tx)] },
+      map(t.spans, fn(s: Span) -> HtmlFundamental
+        eli("span", s.id, s.class, [inl(s.text)])),
+    ])),
   ]
 }
 

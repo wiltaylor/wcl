@@ -59,22 +59,14 @@ let wdoc_region = fn(c: TemplateCtx, name: utf8) -> utf8 {
 // shipped `file`. Return it at a template's top level to take effect.
 let wdoc_head_stylesheet = fn(href: utf8) -> list<HtmlFundamental> [
   HtmlFundamental::Head { children: [
-    HtmlFundamental::Element {
-      tag: "link",
-      attrs: [["rel", "stylesheet"], ["href", href]],
-      children: [],
-    },
+    ela("link", [], [["rel", "stylesheet"], ["href", href]], []),
   ] },
 ]
 
 // A deferred `<script src defer>` added to the page `<head>`.
 let wdoc_head_script = fn(src: utf8) -> list<HtmlFundamental> [
   HtmlFundamental::Head { children: [
-    HtmlFundamental::Element {
-      tag: "script",
-      attrs: [["src", src], ["defer", ""]],
-      children: [],
-    },
+    ela("script", [], [["src", src], ["defer", ""]], []),
   ] },
 ]
 
@@ -87,18 +79,14 @@ let wdoc_head_font = fn(href: utf8) -> list<HtmlFundamental>
 // viewport, an Open Graph `og:*` name, …).
 let wdoc_head_meta = fn(name: utf8, content: utf8) -> list<HtmlFundamental> [
   HtmlFundamental::Head { children: [
-    HtmlFundamental::Element {
-      tag: "meta",
-      attrs: [["name", name], ["content", content]],
-      children: [],
-    },
+    ela("meta", [], [["name", name], ["content", content]], []),
   ] },
 ]
 
 // Verbatim head HTML — an escape hatch for anything the typed helpers
 // don't cover (a `<base>`, a preconnect, an inline `<style>`, …).
 let wdoc_head_raw = fn(html: utf8) -> list<HtmlFundamental> [
-  HtmlFundamental::Head { children: [ HtmlFundamental::Raw { html: html } ] },
+  HtmlFundamental::Head { children: [ raw(html) ] },
 ]
 
 // ── The default layout ──────────────────────────────────────────────
@@ -133,10 +121,7 @@ let website_css = <<CSS
 // The `website` template's `<style>` block — include it to inherit the
 // default header / hero / layout / footer styling, or drop it for your own.
 let wdoc_part_website_css = fn() -> list<HtmlFundamental> [
-  HtmlFundamental::Element {
-    tag: "style",
-    children: [ HtmlFundamental::Raw { html: website_css } ],
-  },
+  el("style", [], [raw(website_css)]),
 ]
 
 // The sticky site header: the title as a home link plus the curated
@@ -144,46 +129,28 @@ let wdoc_part_website_css = fn() -> list<HtmlFundamental> [
 // right-side controls cluster — the search box and the light/dark theme
 // toggle — when the site enables them (`search` / `theme_toggle`).
 let website_header = fn(c: TemplateCtx) -> HtmlFundamental
-  HtmlFundamental::Element {
-    tag: "header", class: ["ws-header"],
-    children: flatten([
-      [ HtmlFundamental::Element {
-          tag: "a", class: ["ws-brand"],
-          attrs: [["href", if c.home_href == "" { "index.html" } else { c.home_href }]],
-          children: [ HtmlFundamental::Raw { html: c.title } ],
-      } ],
-      if len(c.menu) == 0 {
-        [ HtmlFundamental::Element {
-            tag: "ul", class: ["menu"],
-            children: map(c.pages, fn(p: PageRef) -> HtmlFundamental
-              HtmlFundamental::Element {
-                tag: "li",
-                children: [ HtmlFundamental::Element {
-                  tag: "a",
-                  attrs: [["href", p.href]],
-                  children: [ HtmlFundamental::Raw { html: p.name } ],
-                } ],
-              }),
-        } ]
-      } else {
-        wdoc_part_menu_tree(c.menu)
-      },
-      website_header_controls(c),
-    ]),
-  }
+  el("header", ["ws-header"], flatten([
+    [ ela("a", ["ws-brand"],
+        [["href", if c.home_href == "" { "index.html" } else { c.home_href }]],
+        [raw(c.title)]) ],
+    if len(c.menu) == 0 {
+      [ el("ul", ["menu"], map(c.pages, fn(p: PageRef) -> HtmlFundamental
+          el("li", [], [ ela("a", [], [["href", p.href]], [raw(p.name)]) ]))) ]
+    } else {
+      wdoc_part_menu_tree(c.menu)
+    },
+    website_header_controls(c),
+  ]))
 
 // The header's right-side controls: search + theme toggle, wrapped in a
 // `.ws-controls` cluster. Empty when neither feature is enabled, so
 // sites that set neither flag get exactly the header they had before.
 let website_header_controls = fn(c: TemplateCtx) -> list<HtmlFundamental>
   if c.search || c.theme_toggle {
-    [ HtmlFundamental::Element {
-        tag: "div", class: ["ws-controls"],
-        children: flatten([
-          wdoc_part_search_box(c.search),
-          wdoc_part_theme_toggle(c.theme_toggle),
-        ]),
-    } ]
+    [ el("div", ["ws-controls"], flatten([
+        wdoc_part_search_box(c.search),
+        wdoc_part_theme_toggle(c.theme_toggle),
+      ])) ]
   } else { [] }
 
 // A named region wrapped in `<tag class>`, or nothing when the page
@@ -191,46 +158,24 @@ let website_header_controls = fn(c: TemplateCtx) -> list<HtmlFundamental>
 let website_region_section = fn(c: TemplateCtx, name: utf8, tag: utf8, cls: utf8) -> list<HtmlFundamental> {
   let html = wdoc_region(c, name);
   if html == "" { [] }
-  else {
-    [ HtmlFundamental::Element {
-        tag: tag, class: [cls],
-        children: [ HtmlFundamental::Raw { html: html } ],
-    } ]
-  }
+  else { [ el(tag, [cls], [raw(html)]) ] }
 }
 
 // The main content area: the default `content` plus, when the page
 // declares a `region "sidebar"`, an `<aside>` next to it (two-column).
 let website_body = fn(c: TemplateCtx) -> HtmlFundamental {
   let aside = wdoc_region(c, "sidebar");
-  HtmlFundamental::Element {
-    tag: "div",
-    class: ["ws-layout", if aside != "" { "has-aside" }],
-    children: flatten([
-      [ HtmlFundamental::Element {
-          tag: "main", class: ["ws-main"],
-          children: [ HtmlFundamental::Raw { html: c.content } ],
-      } ],
-      if aside == "" { [] }
-      else {
-        [ HtmlFundamental::Element {
-            tag: "aside", class: ["ws-aside"],
-            children: [ HtmlFundamental::Raw { html: aside } ],
-        } ]
-      },
-    ]),
-  }
+  el("div", ["ws-layout", if aside != "" { "has-aside" }], flatten([
+    [ el("main", ["ws-main"], [raw(c.content)]) ],
+    if aside == "" { [] }
+    else { [ el("aside", ["ws-aside"], [raw(aside)]) ] },
+  ]))
 }
 
 // The site footer: a `region "footer"` when declared, else the site title.
 let website_footer = fn(c: TemplateCtx) -> HtmlFundamental {
   let footer = wdoc_region(c, "footer");
-  HtmlFundamental::Element {
-    tag: "footer", class: ["ws-footer"],
-    children: [ HtmlFundamental::Raw {
-      html: if footer == "" { c.title } else { footer },
-    } ],
-  }
+  el("footer", ["ws-footer"], [raw(if footer == "" { c.title } else { footer })])
 }
 
 // The full default `website` layout: style, header, optional banner and

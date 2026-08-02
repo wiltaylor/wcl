@@ -93,10 +93,26 @@ A fourth built-in: `default_template = :ai_skill` makes the site a Claude / agen
 The built-ins are not special: a template is just a function from a `TemplateCtx` to a list of HTML fundamentals. Declare a `template <name> { render = fn(c: TemplateCtx) -> list<HtmlFundamental> … }` and select it with a site's `default_template` (e.g. `:blog`) or a page's `template` field. The stdlib exposes its chrome as composable parts (`wdoc_part_*`) plus one `wdoc_*_layout` per built-in, all resolved by bare name once you `import <wdoc.wcl>`.
 
 
+Where no part fits, build the markup with the `el` constructor family — shorthands for the HTML element vocabulary, each exactly the long form with the field names dropped. `el(tag, cls, kids)` is the common shape, `ela(tag, cls, attrs, kids)` adds attributes (a list of `[name, value]` pairs) and `eli(tag, id, cls, kids)` an explicit id; the leaves are `raw(html)` (verbatim, unescaped), `inl(text)` (an inline-patterned prose run), `icon(name, cls)` and `para(cls, spans)`. There are three element constructors rather than one because WCL has neither default nor named arguments — every call fills every parameter. An empty `class` / `attrs` list emits no attribute, so `[]` costs nothing over omitting the field.
+
+
+```wcl
+template blog {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+    flatten([
+      wdoc_webpage_layout(c),
+      [ el("footer", ["site-footer"], [raw("© 2026 — built with wdoc")]) ],
+    ])
+}
+```
+
+The family covers the HTML **element** vocabulary only. `SvgFundamental` and the semantic content IR keep the named-field literal: they are field-shaped, and WCL checks argument arity but never argument types, so transposing two of a shape's interchangeable `f64`s would render silently wrong where the record raises a shape mismatch. Write the record for anything the family doesn't name, too — an element with both an id and attrs, a `Paragraph` with an id, a `Head`, a `Table`.
+
+
 > [!NOTE]
 > **Parts resolve by bare name**
 >
-> Template parts are plain functions reached by name through `import <wdoc.wcl>` — don't define a `let` of your own named `wdoc_part_*` or `wdoc_*_layout`, or it will shadow the stdlib one.
+> Template parts and the `el` family are plain functions reached by name through `import <wdoc.wcl>` — don't define a `let` of your own named `wdoc_part_*`, `wdoc_*_layout`, `el`/`ela`/`eli`, `raw`, `inl`, `icon` or `para`, or it will shadow the stdlib one.
 
 ## Block reference
 
