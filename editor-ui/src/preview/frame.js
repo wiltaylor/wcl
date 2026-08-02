@@ -98,8 +98,27 @@ export function selectionQuote(win) {
   }
 }
 
-/** Re-place comment pins: clear previous marks, then mark every block
-    comment whose locator still resolves. `onPin(comment)` handles clicks. */
+function objectAnchor(doc, comment) {
+  if (!comment.object_kind || !comment.object_id) return null;
+  for (const el of doc.querySelectorAll(SEL.editButton)) {
+    const object = editButtonOf(el);
+    if (object?.kind === comment.object_kind && object.target === comment.object_id) return el;
+  }
+  return null;
+}
+
+/** Object addresses exposed by the rendered page's edit-object anchors. */
+export function objectAddresses(doc) {
+  if (!doc) return [];
+  return [...doc.querySelectorAll(SEL.editButton)]
+    .map((el) => editButtonOf(el))
+    .filter((object) => object?.kind && object.target)
+    .map((object) => ({ kind: object.kind, id: object.target }));
+}
+
+/** Re-place comment pins: clear previous marks, then mark every comment
+    whose block locator or object address resolves. `onPin(comment)` handles
+    clicks. */
 export function placePins(doc, comments, onPin) {
   const page = pageInfo(doc);
   if (!page) return;
@@ -109,8 +128,7 @@ export function placePins(doc, comments, onPin) {
     el.querySelectorAll(':scope > .wcl-pin').forEach((p) => p.remove());
   }
   for (const c of comments) {
-    if (!c.loc) continue;
-    const el = elByLoc(page.el, c.loc);
+    const el = c.loc ? elByLoc(page.el, c.loc) : objectAnchor(doc, c);
     if (!el) continue;
     el.setAttribute('data-wcl-comment-id', c.id);
     el.setAttribute('data-wcl-comment', c.body);

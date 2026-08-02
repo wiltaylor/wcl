@@ -117,24 +117,33 @@ impl NewComment<'_> {
     /// Check the cross-field address invariant the flat WCL schema cannot
     /// express: page or a complete object pair, with loc scoped to a page.
     pub fn validate(&self) -> Result<(), BuildError> {
-        let page = self.page.filter(|s| !s.is_empty());
-        let object_kind = self.object_kind.filter(|s| !s.is_empty());
-        let object_id = self.object_id.filter(|s| !s.is_empty());
-        if object_kind.is_some() != object_id.is_some() {
-            return Err(BuildError::BadPage(
-                "a comment object address needs both `object_kind` and `object_id`".into(),
-            ));
-        }
-        if page.is_none() && object_kind.is_none() {
-            return Err(BuildError::BadPage(
-                "a comment needs a `page` or an object address".into(),
-            ));
-        }
-        if page.is_none() && self.loc.is_some_and(|loc| !loc.is_empty()) {
-            return Err(BuildError::BadPage("a comment `loc` needs a `page`".into()));
-        }
-        Ok(())
+        validate_address(self.page, self.object_kind, self.object_id, self.loc)
     }
+}
+
+fn validate_address(
+    page: Option<&str>,
+    object_kind: Option<&str>,
+    object_id: Option<&str>,
+    loc: Option<&str>,
+) -> Result<(), BuildError> {
+    let page = page.filter(|s| !s.is_empty());
+    let object_kind = object_kind.filter(|s| !s.is_empty());
+    let object_id = object_id.filter(|s| !s.is_empty());
+    if object_kind.is_some() != object_id.is_some() {
+        return Err(BuildError::BadPage(
+            "a comment object address needs both `object_kind` and `object_id`".into(),
+        ));
+    }
+    if page.is_none() && object_kind.is_none() {
+        return Err(BuildError::BadPage(
+            "a comment needs a `page` or an object address".into(),
+        ));
+    }
+    if page.is_none() && loc.is_some_and(|loc| !loc.is_empty()) {
+        return Err(BuildError::BadPage("a comment `loc` needs a `page`".into()));
+    }
+    Ok(())
 }
 
 /// The `comments.wcl` that owns comments for a page defined in `page_file`:
@@ -169,9 +178,13 @@ fn read_file(path: &Path) -> Vec<CommentRecord> {
         let loc = fields.remove("loc").filter(|s| !s.is_empty());
         let object_kind = fields.remove("object_kind").filter(|s| !s.is_empty());
         let object_id = fields.remove("object_id").filter(|s| !s.is_empty());
-        if (object_kind.is_some() != object_id.is_some())
-            || (page.is_none() && object_kind.is_none())
-            || (page.is_none() && loc.is_some())
+        if validate_address(
+            page.as_deref(),
+            object_kind.as_deref(),
+            object_id.as_deref(),
+            loc.as_deref(),
+        )
+        .is_err()
         {
             continue;
         }

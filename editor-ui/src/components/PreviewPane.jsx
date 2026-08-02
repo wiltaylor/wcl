@@ -27,7 +27,7 @@ import {
 } from '../state/comments';
 import { CommentMenu, CommentOverlays } from './CommentPanel';
 import { pageInfo } from '../preview/anchors';
-import { installEditButtons, injectCss, placePins } from '../preview/frame';
+import { installEditButtons, injectCss, objectAddresses, placePins } from '../preview/frame';
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|bmp)$/i;
 
@@ -45,7 +45,8 @@ export default function PreviewPane() {
     const doc = iframe?.contentDocument;
     if (!doc) return;
     injectCss(doc);
-    setCommentPage(pageInfo(doc));
+    const currentPage = pageInfo(doc);
+    setCommentPage(currentPage ? { ...currentPage, objects: objectAddresses(doc) } : null);
     placePins(doc, pageComments(), onPin);
   };
 
