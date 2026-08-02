@@ -30,15 +30,15 @@ struct Decls {
     unions: BTreeMap<String, UnionDecl>,
     records: BTreeMap<String, TypeDecl>,
     symbol_sets: BTreeMap<String, SymbolSetDecl>,
+    /// Names the stdlib declares more than once (`Image` is both a page
+    /// block and a typedoc one). Harmless until the IR reaches one, at
+    /// which point which declaration it meant is a coin toss — so
+    /// reaching an ambiguous name fails the build.
+    ambiguous: BTreeSet<String>,
 }
 
 /// Parse `lib/*.wcl` and emit the content IR module source.
 pub(crate) fn generate(lib_dir: &Path) -> String {
-    let decls = parse_lib(lib_dir);
-    emit(&decls)
-}
-
-fn parse_lib(lib_dir: &Path) -> Decls {
     let mut files: Vec<_> = std::fs::read_dir(lib_dir)
         .unwrap_or_else(|e| panic!("read {}: {e}", lib_dir.display()))
         .filter_map(|e| e.ok().map(|e| e.path()))
@@ -46,29 +46,70 @@ fn parse_lib(lib_dir: &Path) -> Decls {
         .collect();
     files.sort();
 
+    let sources: Vec<(String, String)> = files
+        .into_iter()
+        .map(|path| {
+            let src = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+            (path.display().to_string(), src)
+        })
+        .collect();
+    generate_from(&sources)
+}
+
+/// The body of [`generate`], over already-read sources — the seam its
+/// tests drive with a synthetic stdlib.
+pub(crate) fn generate_from(sources: &[(String, String)]) -> String {
+    emit(&parse_all(sources))
+}
+
+fn parse_all(sources: &[(String, String)]) -> Decls {
     let mut decls = Decls::default();
-    for path in files {
-        let src = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-        let name = path.display().to_string();
-        let source = wcl_lang::parse_for_edit(&src, name.clone())
+    for (name, src) in sources {
+        let source = wcl_lang::parse_for_edit(src, name.clone())
             .unwrap_or_else(|e| panic!("parse {name}: {e}"));
         for item in source.items {
             match item {
-                Item::UnionDecl(u) => {
-                    decls.unions.insert(bare(&u.name), u);
-                }
-                Item::TypeDecl(t) => {
-                    decls.records.insert(bare(&t.name), t);
-                }
-                Item::SymbolSetDecl(s) => {
-                    decls.symbol_sets.insert(bare(&s.name), s);
-                }
+                Item::UnionDecl(u) => decls.declare_union(u),
+                Item::TypeDecl(t) => decls.declare_record(t),
+                Item::SymbolSetDecl(s) => decls.declare_symbol_set(s),
                 _ => {}
             }
         }
     }
     decls
+}
+
+impl Decls {
+    fn note(&mut self, name: &str, taken: bool) {
+        if taken {
+            self.ambiguous.insert(name.to_string());
+        }
+    }
+
+    fn declares(&self, name: &str) -> bool {
+        self.unions.contains_key(name)
+            || self.records.contains_key(name)
+            || self.symbol_sets.contains_key(name)
+    }
+
+    fn declare_union(&mut self, decl: UnionDecl) {
+        let name = bare(&decl.name);
+        self.note(&name, self.declares(&name));
+        self.unions.insert(name, decl);
+    }
+
+    fn declare_record(&mut self, decl: TypeDecl) {
+        let name = bare(&decl.name);
+        self.note(&name, self.declares(&name));
+        self.records.insert(name, decl);
+    }
+
+    fn declare_symbol_set(&mut self, decl: SymbolSetDecl) {
+        let name = bare(&decl.name);
+        self.note(&name, self.declares(&name));
+        self.symbol_sets.insert(name, decl);
+    }
 }
 
 /// The last segment of a declaration's dotted name.
@@ -102,12 +143,16 @@ fn kind_of(decls: &Decls, name: &str) -> Option<Kind> {
 fn reachable(decls: &Decls) -> Vec<String> {
     let mut seen: BTreeSet<String> = BTreeSet::new();
     let mut order: Vec<String> = Vec::new();
-    let mut queue: Vec<String> = vec![ROOT_UNION.to_string()];
-    while let Some(name) = queue.first().cloned() {
-        queue.remove(0);
+    let mut queue: std::collections::VecDeque<String> =
+        std::collections::VecDeque::from([ROOT_UNION.to_string()]);
+    while let Some(name) = queue.pop_front() {
         if !seen.insert(name.clone()) {
             continue;
         }
+        assert!(
+            !decls.ambiguous.contains(&name),
+            "content IR: the wdoc stdlib declares `{name}` more than once, so which declaration the IR means is ambiguous"
+        );
         let mut next: BTreeSet<String> = BTreeSet::new();
         match kind_of(decls, &name) {
             Some(Kind::Union) => {
@@ -223,9 +268,7 @@ fn emit_union(out: &mut String, union: &UnionDecl) {
 
     // `TryFrom<&Value>`: dispatch on the variant name, then read each
     // field out of the payload map by name.
-    writeln!(out, "impl TryFrom<&Value> for {name} {{").unwrap();
-    out.push_str("    type Error = ContentError;\n");
-    out.push_str("    fn try_from(value: &Value) -> Result<Self, ContentError> {\n");
+    emit_try_from_header(out, &name);
     writeln!(
         out,
         "        let (variant, map) = variant_payload(value, {name:?})?;"
@@ -280,9 +323,7 @@ fn emit_record(out: &mut String, record: &TypeDecl) {
     }
     out.push_str("}\n\n");
 
-    writeln!(out, "impl TryFrom<&Value> for {name} {{").unwrap();
-    out.push_str("    type Error = ContentError;\n");
-    out.push_str("    fn try_from(value: &Value) -> Result<Self, ContentError> {\n");
+    emit_try_from_header(out, &name);
     writeln!(out, "        let map = record_fields(value, {name:?})?;").unwrap();
     for field in &record.fields {
         emit_field_read(out, "        ", &name, field);
@@ -326,9 +367,7 @@ fn emit_symbol_set(out: &mut String, set: &SymbolSetDecl) {
     }
     out.push_str("        }\n    }\n}\n\n");
 
-    writeln!(out, "impl TryFrom<&Value> for {name} {{").unwrap();
-    out.push_str("    type Error = ContentError;\n");
-    out.push_str("    fn try_from(value: &Value) -> Result<Self, ContentError> {\n");
+    emit_try_from_header(out, &name);
     writeln!(out, "        match symbol_name(value, {name:?})? {{").unwrap();
     for symbol in &set.symbols {
         writeln!(
@@ -346,6 +385,14 @@ fn emit_symbol_set(out: &mut String, set: &SymbolSetDecl) {
     .unwrap();
     out.push_str("        }\n    }\n}\n\n");
     emit_owned_try_from(out, &name);
+}
+
+/// The opening of a `TryFrom<&Value>` impl — every generated type reads
+/// from a borrowed value and fails with the one error type.
+fn emit_try_from_header(out: &mut String, name: &str) {
+    writeln!(out, "impl TryFrom<&Value> for {name} {{").unwrap();
+    out.push_str("    type Error = ContentError;\n");
+    out.push_str("    fn try_from(value: &Value) -> Result<Self, ContentError> {\n");
 }
 
 /// The by-value conversion, forwarding to the by-reference one so there
@@ -390,18 +437,7 @@ fn emit_field_read(out: &mut String, indent: &str, owner: &str, field: &TypeFiel
 /// don't shadow each other.
 fn read_expr(ty: &TypeRef, at: &str, src: &str, depth: usize) -> String {
     match ty {
-        TypeRef::Builtin(b) => {
-            let reader = match b {
-                BuiltinType::Bool => "as_bool".to_string(),
-                BuiltinType::Utf8 | BuiltinType::Ascii => "as_string".to_string(),
-                BuiltinType::Identifier => "as_identifier".to_string(),
-                BuiltinType::Symbol => "as_symbol".to_string(),
-                BuiltinType::F32 => "as_f32".to_string(),
-                BuiltinType::F64 => "as_f64".to_string(),
-                other => format!("as_int::<{}>", int_rust_name(*other)),
-            };
-            format!("{reader}({src}, {at})")
-        }
+        TypeRef::Builtin(b) => format!("{}({src}, {at})", builtin(*b).reader),
         TypeRef::List(inner) => {
             let binding = format!("it{depth}");
             format!(
@@ -410,28 +446,26 @@ fn read_expr(ty: &TypeRef, at: &str, src: &str, depth: usize) -> String {
             )
         }
         TypeRef::Named { path, args } => format!("{}::try_from({src})", named(path, args)),
-        other => panic!(
-            "content IR: a field typed `{other}` cannot cross the backend boundary — the IR carries scalars, lists, records, unions and symbol sets"
-        ),
+        other => panic!("content IR: {}", uncarryable(other)),
     }
+}
+
+/// The one wording for a field type the IR cannot carry — the same
+/// refusal whether the emitter met it while spelling the Rust type or
+/// while writing the reader.
+fn uncarryable(ty: &TypeRef) -> String {
+    format!(
+        "a field typed `{ty}` cannot cross the backend boundary — the IR carries scalars, lists, records, unions and symbol sets"
+    )
 }
 
 /// The Rust spelling of a declared field type.
 fn rust_type(ty: &TypeRef, optional: bool) -> String {
     let inner = match ty {
-        TypeRef::Builtin(b) => match b {
-            BuiltinType::Bool => "bool".to_string(),
-            BuiltinType::Utf8 | BuiltinType::Ascii | BuiltinType::Identifier => {
-                "String".to_string()
-            }
-            BuiltinType::Symbol => "String".to_string(),
-            BuiltinType::F32 => "f32".to_string(),
-            BuiltinType::F64 => "f64".to_string(),
-            other => int_rust_name(*other).to_string(),
-        },
+        TypeRef::Builtin(b) => builtin(*b).rust.to_string(),
         TypeRef::List(inner) => format!("Vec<{}>", rust_type(inner, false)),
         TypeRef::Named { path, args } => named(path, args),
-        other => panic!("content IR: unsupported field type `{other}`"),
+        other => panic!("content IR: {}", uncarryable(other)),
     };
     if optional {
         format!("Option<{inner}>")
@@ -440,25 +474,45 @@ fn rust_type(ty: &TypeRef, optional: bool) -> String {
     }
 }
 
-fn int_rust_name(b: BuiltinType) -> &'static str {
-    match b {
-        BuiltinType::I8 => "i8",
-        BuiltinType::I16 => "i16",
-        BuiltinType::I32 => "i32",
-        BuiltinType::I64 => "i64",
-        BuiltinType::I128 => "i128",
-        BuiltinType::Isize => "isize",
-        BuiltinType::U8 => "u8",
-        BuiltinType::U16 => "u16",
-        BuiltinType::U32 => "u32",
-        BuiltinType::U64 => "u64",
-        BuiltinType::U128 => "u128",
-        BuiltinType::Usize => "usize",
+/// How a WCL builtin crosses into Rust.
+struct Crossing {
+    /// The Rust type the generated field carries.
+    rust: &'static str,
+    /// The `src/content.rs` reader that pulls it out of a `Value`.
+    reader: &'static str,
+}
+
+/// The one table pairing a builtin with its Rust type and its reader —
+/// declared together so the two can't disagree about a builtin, and so
+/// teaching the IR a new one is a single row.
+fn builtin(b: BuiltinType) -> Crossing {
+    let (rust, reader) = match b {
+        BuiltinType::Bool => ("bool", "as_bool"),
+        BuiltinType::Utf8 | BuiltinType::Ascii => ("String", "as_string"),
+        BuiltinType::Identifier => ("String", "as_identifier"),
+        BuiltinType::Symbol => ("String", "as_symbol"),
+        BuiltinType::F32 => ("f32", "as_f32"),
+        BuiltinType::F64 => ("f64", "as_f64"),
+        BuiltinType::I8 => ("i8", "as_int::<i8>"),
+        BuiltinType::I16 => ("i16", "as_int::<i16>"),
+        BuiltinType::I32 => ("i32", "as_int::<i32>"),
+        BuiltinType::I64 => ("i64", "as_int::<i64>"),
+        BuiltinType::I128 => ("i128", "as_int::<i128>"),
+        BuiltinType::Isize => ("isize", "as_int::<isize>"),
+        BuiltinType::U8 => ("u8", "as_int::<u8>"),
+        BuiltinType::U16 => ("u16", "as_int::<u16>"),
+        BuiltinType::U32 => ("u32", "as_int::<u32>"),
+        BuiltinType::U64 => ("u64", "as_int::<u64>"),
+        BuiltinType::U128 => ("u128", "as_int::<u128>"),
+        BuiltinType::Usize => ("usize", "as_int::<usize>"),
+        // `utf16` / `utf32` have no reader: a document's prose is utf8,
+        // and a backend that wanted another encoding would convert.
         other => panic!(
-            "content IR: `{}` is not a numeric type",
+            "content IR: a field typed `{}` has no Rust crossing",
             TypeRef::Builtin(other)
         ),
-    }
+    };
+    Crossing { rust, reader }
 }
 
 // ── Naming and doc comments ───────────────────────────────────────
