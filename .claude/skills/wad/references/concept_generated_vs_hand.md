@@ -16,6 +16,6 @@ data would vanish from the old side of every diff.
 
 ## Related
 
-- [Extractor scripts](../references/fact_extractor_anatomy.md)
+- [Extractor scripts](../references/fact_extractor_anatomy.md) — Extractor scripts supports Generated vs hand-authored data: Extractors are single-file Python scripts run with `uv run`: a `# /// script` inline-metadata header declares dependencies, so any source of truth — a database, workflow YAML, cargo metadata, an HTTP API — is one dependency line away.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -75,7 +75,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_wskill {
     name = "wskill"
     kind = "module"
-    summary = "4 files, 8 pub items"
+    summary = "4 files, 6 pub items"
   }
   code_node n_cg_wcl_xc_wcl_lang {
     name = "wcl_lang (crate)"
@@ -97,7 +97,7 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_ast {
     name = "ast"
     kind = "module"
-    summary = "1 file, 44 pub items"
+    summary = "1 file, 45 pub items"
   }
   code_node n_cg_wcl_lang_builtins {
     name = "builtins"
@@ -314,7 +314,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_build {
     name = "build"
     kind = "module"
-    summary = "1 file, 28 pub items"
+    summary = "1 file, 29 pub items"
     deps = [n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_card {
@@ -396,7 +396,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_kinds {
     name = "kinds"
     kind = "module"
-    summary = "1 file, 18 pub items"
+    summary = "1 file, 17 pub items"
   }
   code_node n_cg_wcl_wdoc_layered {
     name = "layered"
@@ -535,7 +535,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_xc_wcl_lang {
     name = "wcl_lang (crate)"
     kind = "extern_crate"
-    summary = "uses Block, Document, Environment, Registry, +8 more"
+    summary = "uses Block, DeclName, Document, Environment, +9 more"
   }
 }
 
@@ -1041,23 +1041,35 @@ code_item code_api_cli_commands {
       deps = [n_api_cli_commands_SpecFormat]
     }
   }
-  code_node n_api_cli_commands_FixSelection {
-    name = "FixSelection"
-    kind = "enum"
+  code_node n_api_cli_commands_wskill_fns {
+    name = "wskill"
+    kind = "fns"
     summary = "src/wskill.rs"
-    code_member m_n_api_cli_commands_FixSelection_All {
-      signature = "All"
-      kind = "variant"
+    code_member m_n_api_cli_commands_wskill_fns_run_graph {
+      signature = "fn run_graph(entry: &Path, rev: Option<&str>) -> u8"
+      kind = "fn"
+      visibility = "crate"
     }
-    code_member m_n_api_cli_commands_FixSelection_Rule {
-      signature = "Rule(Rule)"
-      kind = "variant"
+    code_member m_n_api_cli_commands_wskill_fns_run_lint {
+      signature = "fn run_lint( entry: &Path, format: crate::ReportFormat, severit…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_wskill_fns_run_op {
+      signature = "fn run_op( entry: &Path, inline: &[String], comment_texts: &[St…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_wskill_fns_run_audit {
+      signature = "fn run_audit(entry: &Path, range: &str, format: crate::ReportFo…"
+      kind = "fn"
+      visibility = "crate"
     }
   }
   code_node n_api_cli_commands_more {
-    name = "… +3 more"
+    name = "… +2 more"
     kind = "overflow"
-    summary = "3 further public items — see the source."
+    summary = "2 further public items — see the source."
   }
 }
 
@@ -1889,6 +1901,15 @@ code_item code_api_wcl_lang_ast {
       signature = "kind_ns: Vec<String>"
       kind = "field"
     }
+    code_member m_n_api_wcl_lang_ast_Block_conditional {
+      signature = "conditional: bool"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_lang_ast_Block_slot_decl {
+      signature = "slot_decl: Option<SlotDecl>"
+      kind = "field"
+      deps = [n_api_wcl_lang_ast_SlotDecl]
+    }
     code_member m_n_api_wcl_lang_ast_Block_labels {
       signature = "labels: Vec<Expr>"
       kind = "field"
@@ -1921,6 +1942,28 @@ code_item code_api_wcl_lang_ast {
       signature = "trailing_trivia: Vec<Trivia>"
       kind = "field"
       deps = [n_api_wcl_lang_ast_Trivia]
+    }
+  }
+  code_node n_api_wcl_lang_ast_SlotDecl {
+    name = "SlotDecl"
+    kind = "struct"
+    summary = "src/ast.rs"
+    code_member m_n_api_wcl_lang_ast_SlotDecl_ty {
+      signature = "ty: crate::value::TypeRef"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_lang_ast_SlotDecl_ty_span {
+      signature = "ty_span: Span"
+      kind = "field"
+      deps = [n_api_wcl_lang_ast_Span]
+    }
+    code_member m_n_api_wcl_lang_ast_SlotDecl_optional {
+      signature = "optional: bool"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_lang_ast_SlotDecl_repeated {
+      signature = "repeated: bool"
+      kind = "field"
     }
   }
   code_node n_api_wcl_lang_ast_NamespaceDecl {
@@ -2155,7 +2198,6 @@ code_item code_api_wcl_lang_ast {
     code_member m_n_api_wcl_lang_ast_UnionDecl_variants {
       signature = "variants: Vec<UnionVariant>"
       kind = "field"
-      deps = [n_api_wcl_lang_ast_UnionVariant]
     }
     code_member m_n_api_wcl_lang_ast_UnionDecl_decorators {
       signature = "decorators: Vec<Decorator>"
@@ -2182,42 +2224,10 @@ code_item code_api_wcl_lang_ast {
       deps = [n_api_wcl_lang_ast_Trivia]
     }
   }
-  code_node n_api_wcl_lang_ast_UnionVariant {
-    name = "UnionVariant"
-    kind = "struct"
-    summary = "src/ast.rs"
-    code_member m_n_api_wcl_lang_ast_UnionVariant_name {
-      signature = "name: String"
-      kind = "field"
-    }
-    code_member m_n_api_wcl_lang_ast_UnionVariant_body {
-      signature = "body: VariantBody"
-      kind = "field"
-    }
-    code_member m_n_api_wcl_lang_ast_UnionVariant_decorators {
-      signature = "decorators: Vec<Decorator>"
-      kind = "field"
-      deps = [n_api_wcl_lang_ast_Decorator]
-    }
-    code_member m_n_api_wcl_lang_ast_UnionVariant_span {
-      signature = "span: Span"
-      kind = "field"
-      deps = [n_api_wcl_lang_ast_Span]
-    }
-    code_member m_n_api_wcl_lang_ast_UnionVariant_leading_trivia {
-      signature = "leading_trivia: Vec<Trivia>"
-      kind = "field"
-      deps = [n_api_wcl_lang_ast_Trivia]
-    }
-    code_member m_n_api_wcl_lang_ast_UnionVariant_trailing_comment {
-      signature = "trailing_comment: Option<String>"
-      kind = "field"
-    }
-  }
   code_node n_api_wcl_lang_ast_more {
-    name = "… +10 more"
+    name = "… +11 more"
     kind = "overflow"
-    summary = "10 further public items — see the source."
+    summary = "11 further public items — see the source."
   }
 }
 
@@ -2679,7 +2689,7 @@ code_item code_api_doc_view {
       kind = "method"
     }
     code_member m_n_api_doc_view_Document_more {
-      signature = "… +77 more"
+      signature = "… +78 more"
       kind = "overflow"
     }
   }
@@ -3154,6 +3164,10 @@ code_item code_api_doc_view {
       signature = "Contextual"
       kind = "variant"
     }
+    code_member m_n_api_doc_view_BuiltinDecorator_BlockSlot {
+      signature = "BlockSlot"
+      kind = "variant"
+    }
     code_member m_n_api_doc_view_BuiltinDecorator_DeclaresKind {
       signature = "DeclaresKind"
       kind = "variant"
@@ -3178,12 +3192,8 @@ code_item code_api_doc_view {
       signature = "Connections"
       kind = "variant"
     }
-    code_member m_n_api_doc_view_BuiltinDecorator_Dynamic {
-      signature = "Dynamic"
-      kind = "variant"
-    }
     code_member m_n_api_doc_view_BuiltinDecorator_more {
-      signature = "… +3 more"
+      signature = "… +4 more"
       kind = "overflow"
     }
   }
@@ -3618,7 +3628,7 @@ code_item code_api_evaluator {
       visibility = "crate"
     }
     code_member m_n_api_evaluator_ScopeFrame_content {
-      signature = "content: Option<std::rc::Rc<Vec<Block<'a>>>>"
+      signature = "content: Option<std::rc::Rc<std::collections::BTreeMap<String, …"
       kind = "field"
       visibility = "crate"
     }
@@ -5774,6 +5784,11 @@ code_item code_api_wcl_wdoc_build {
       kind = "fn"
       visibility = "crate"
     }
+    code_member m_n_api_wcl_wdoc_build_build_fns_schema_errors {
+      signature = "fn schema_errors(doc: &Document) -> Vec<EvalError>"
+      kind = "fn"
+      visibility = "crate"
+    }
     code_member m_n_api_wcl_wdoc_build_build_fns_build {
       signature = "fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>…"
       kind = "fn"
@@ -5784,12 +5799,8 @@ code_item code_api_wcl_wdoc_build {
       kind = "fn"
       deps = [n_api_wcl_wdoc_build_BuildOptions, n_api_wcl_wdoc_build_BuildError]
     }
-    code_member m_n_api_wcl_wdoc_build_build_fns_PAGES_MANIFEST_HREF {
-      signature = "const PAGES_MANIFEST_HREF: &str"
-      kind = "const"
-    }
     code_member m_n_api_wcl_wdoc_build_build_fns_more {
-      signature = "… +10 more"
+      signature = "… +11 more"
       kind = "overflow"
     }
   }
@@ -7091,7 +7102,7 @@ code_item code_api_wdoc_html_renderer {
     kind = "fns"
     summary = "src/render/lower.rs"
     code_member m_n_api_wdoc_html_renderer_lower_fns_BlockRenderer {
-      signature = "type BlockRenderer = dyn Fn(&[Value]) -> String + 'a"
+      signature = "type BlockRenderer = dyn Fn(&[Value], Option<&str>, &str) -> St…"
       kind = "type"
       visibility = "crate"
     }
@@ -7848,11 +7859,6 @@ code_item code_api_wcl_wdoc_kinds {
       kind = "const"
       visibility = "crate"
     }
-    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_REGION {
-      signature = "const REGION: &str"
-      kind = "const"
-      visibility = "crate"
-    }
     code_member m_n_api_wcl_wdoc_kinds_kinds_fns_EDIT_FIELD {
       signature = "const EDIT_FIELD: &str"
       kind = "const"
@@ -7903,8 +7909,13 @@ code_item code_api_wcl_wdoc_kinds {
       kind = "const"
       visibility = "crate"
     }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_VIDEO {
+      signature = "const VIDEO: &str"
+      kind = "const"
+      visibility = "crate"
+    }
     code_member m_n_api_wcl_wdoc_kinds_kinds_fns_more {
-      signature = "… +5 more"
+      signature = "… +4 more"
       kind = "overflow"
     }
   }
@@ -9385,6 +9396,7 @@ code_item code_mod_wdoc_stdlib {
     members = [
       "collect",
       "partial",
+      "slot",
       "wdoc_body",
       "wdoc_component",
       "wdoc_content",
@@ -9678,12 +9690,6 @@ code_item code_mod_wdoc_stdlib {
     name = "video"
     members = [
       "video",
-    ]
-  }
-  code_node n_wdoc_stdlib_website {
-    name = "website"
-    members = [
-      "region",
     ]
   }
   code_node n_wdoc_stdlib_wireframe {

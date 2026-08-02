@@ -15,6 +15,6 @@ Patterns destructure and test values in `match`, `if let`, and guard arms.
 
 ## Related
 
-- [match](../references/concept_match_expr.md)
+- [match](../references/concept_match_expr.md) — match supports Patterns: Tests a value against a sequence of patterns, returning the body of the first that matches.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -244,6 +244,6 @@ An `inline_pattern` block: a custom inline text pattern recognised in prose, map
 
 ## Related
 
-- [Sites](../references/concept_sites.md)
+- [Sites](../references/concept_sites.md) — Sites supports Styling: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search.
 
 [← Back to SKILL.md](../SKILL.md)

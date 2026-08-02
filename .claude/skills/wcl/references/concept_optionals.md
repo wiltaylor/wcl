@@ -107,10 +107,10 @@ theme   = page.theme ?? site.theme ?? :nord
 
 ## Related
 
-- [Unions](../references/concept_unions.md)
+- [Unions](../references/concept_unions.md) — Unions supports Optionals: Tagged variant sets — a value that is exactly one of several alternatives.
 
-- [match](../references/concept_match_expr.md)
+- [match](../references/concept_match_expr.md) — match supports Optionals: Tests a value against a sequence of patterns, returning the body of the first that matches.
 
-- [if let](../references/concept_if_let.md)
+- [if let](../references/concept_if_let.md) — if let supports Optionals: Binds and branches in a single step when you only care about a single variant or pattern.
 
 [← Back to SKILL.md](../SKILL.md)

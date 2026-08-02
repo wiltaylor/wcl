@@ -5355,6 +5355,40 @@ fn declares_kind_derives_a_block_schema_from_the_params() {
 }
 
 #[test]
+fn block_slot_marker_not_a_literal_type_name_separates_content_holes() {
+    let src = r#"
+@document("d") type D { @children("maker") makers: list<Maker> }
+@block("maker") @declares_kind(name = 0, params = "slots")
+type Maker {
+  @inline(0) name: identifier
+  @children("slot") slots: list<Slot>
+}
+@block("slot") type Slot {
+  @inline(0) name: identifier
+  @schemaless default: utf8?
+}
+@block_slot type Hole {}
+type content {}
+
+maker panel {
+  slot body: Hole
+  slot value: content
+}
+"#;
+    let doc = declares_kind_doc(src);
+    let schema = doc.block_schema("panel").expect("derived panel schema");
+    assert!(
+        schema.field("body").is_none(),
+        "a type marked @block_slot is a host-owned nested hole"
+    );
+    assert!(
+        schema.field("value").is_some(),
+        "an unrelated type literally named content remains an ordinary scalar slot"
+    );
+    assert_eq!(schema.required_fields(), ["value"]);
+}
+
+#[test]
 fn a_derived_schema_is_reachable_through_the_typed_introspection_api() {
     // The constraint from the spec: derived schemas must be readable
     // through the same typed surface as declared ones — a consumer that

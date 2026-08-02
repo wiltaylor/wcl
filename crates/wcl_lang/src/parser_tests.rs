@@ -178,6 +178,30 @@ fn parse_empty_block_with_label() {
 }
 
 #[test]
+fn slot_declaration_grammar_round_trips() {
+    let src = r#"template card {
+  slot title: utf8
+  slot status: utf8 = "ok"
+  slot sidebar: content?
+  slot shapes: content<SvgBlock>
+  slot content: content*
+}
+"#;
+    let parsed = parse(src);
+    assert_eq!(crate::format::to_source(&parsed), src);
+}
+
+#[test]
+fn conditional_fill_grammar_round_trips() {
+    let src = "page intro {\n  aside? {\n    p \"Optional\"\n  }\n}\n";
+    let parsed = parse(src);
+    let page = blocks(&parsed.items)[0];
+    let aside = blocks(&page.items)[0];
+    assert!(aside.conditional);
+    assert_eq!(crate::format::to_source(&parsed), src);
+}
+
+#[test]
 fn parse_empty_block_with_multiple_labels() {
     // Multi-label empty block (e.g. a Terraform-style `resource "type" "name"`
     // with no body).

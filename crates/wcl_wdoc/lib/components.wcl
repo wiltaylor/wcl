@@ -44,8 +44,25 @@ namespace wdoc
 @declares_kind(name = 0, params = "slots", body = "body")
 type WdocComponent {
   @inline(0) name: identifier
-  @children("wdoc_slot") slots: list<WdocSlot>
+  @children("slot")      slots: list<Slot>
+  // Compatibility for existing documents while `slot name: Type` replaces
+  // the old untyped spelling. The derived component contract reads both.
+  @children("wdoc_slot") legacy_slots: list<WdocSlot>
   @child("wdoc_body")    body:  WdocBody
+}
+
+// A typed slot declaration. `content` distinguishes content holes from
+// parameter values; `content<T>` restricts the accepted child kind/interface.
+// The parser retains the TypeRef and `?` / `*` modifiers on this ordinary
+// block. `@block_slot` is the host-neutral language marker that separates a
+// nested block hole from a scalar component parameter; wdoc owns its checks.
+@block_slot
+type content {}
+
+@block("slot")
+type Slot {
+  @inline(0) name: identifier
+  @schemaless default: utf8?
 }
 
 // One slot (parameter). A `default` makes the slot optional; without one

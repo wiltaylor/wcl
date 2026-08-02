@@ -20,7 +20,7 @@ fn md_ok(file: &Path, out: &Path, site: Option<&str>) -> usize {
         Err(BuildError::Schema(n)) => panic!("markdown schema error: {n} violations"),
         Err(BuildError::BadPage(m)) => panic!("markdown bad-page error: {m}"),
         Err(BuildError::BadLink(m)) => panic!("markdown bad-link error: {m:?}"),
-        Err(_) => panic!("markdown error"),
+        Err(err) => panic!("markdown error: {}", err.render_plain()),
     }
 }
 
@@ -63,29 +63,29 @@ fn edit_field_children_render_in_place() {
 }
 
 #[test]
-fn region_children_render_in_place() {
-    // A named `region` slots into an HTML template; Markdown has no
-    // template, so the region's children render where the block sits
+fn named_slot_fill_children_render_in_place() {
+    // A named slot fills an HTML template; Markdown has no template, so
+    // the fill's children render where the block sits
     // instead of being dropped.
     let (_t, out) = build(
-        "page index {\n  region \"hero\" {\n    h1 \"Welcome\"\n  }\n  p \"Body.\"\n  region \"footer\" {\n    p \"Footer note.\"\n  }\n}\n",
+        "template article {\n  slot content: content\n  slot hero: content?\n  slot footer: content?\n  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)\n}\nsite { default_template = :article }\npage index {\n  hero {\n    h1 \"Welcome\"\n  }\n  p \"Body.\"\n  footer {\n    p \"Footer note.\"\n  }\n}\n",
     );
     let md = read(&out, "index.md");
     assert!(
         md.contains("# Welcome"),
-        "hero region heading survives:\n{md}"
+        "hero slot heading survives:\n{md}"
     );
     assert!(md.contains("Body."), "default content survives:\n{md}");
     assert!(
         md.contains("Footer note."),
-        "footer region content survives:\n{md}"
+        "footer slot content survives:\n{md}"
     );
     let hero = md.find("# Welcome").expect("hero present");
     let body = md.find("Body.").expect("body present");
     let foot = md.find("Footer note.").expect("footer present");
     assert!(
         hero < body && body < foot,
-        "region content renders in document order:\n{md}"
+        "slot content renders in document order:\n{md}"
     );
 }
 

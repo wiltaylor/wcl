@@ -21,8 +21,8 @@ own schema and be checked before anything consumes it.
 
 ## Related
 
-- [Fields](../references/concept_fields.md)
+- [Fields](../references/concept_fields.md) — Fields supports What WCL Is: A field binds a name to a value with `=`; the value is any expression.
 
-- [Blocks](../references/concept_blocks.md)
+- [Blocks](../references/concept_blocks.md) — Blocks supports What WCL Is: A named group of fields that can also nest other blocks; the schema sets its labels and fields.
 
 [← Back to SKILL.md](../SKILL.md)

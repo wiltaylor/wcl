@@ -144,6 +144,7 @@ concept templates {
     code "wcl" {
       source = <<DOC
         template blog {
+          slot content: content
           render = fn(c: TemplateCtx) -> list<Html>
             flatten([
               wdoc_webpage_layout(c),

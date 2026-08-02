@@ -1,6 +1,6 @@
 // WCL landing page. `start = true` makes it the page served at `/`.
 // Rendered through the stdlib `website` template: the warning banner and
-// the footer are named `region`s (slotted by the template), everything
+// the footer are named slot fills (placed by the template), everything
 // else is ordinary page content built from the landing components in
 // landing-parts.wcl. The same content degrades to the Markdown / PDF
 // backends — no parallel fallback copy needed.
@@ -34,7 +34,7 @@ let ref_cards = map(wskill_books, fn(s: IncludeEntry) -> LpRefCard {
 let ref_links = map(wskill_books, fn(s: IncludeEntry) -> LpFootlink { { label: s.name, href: $"./${s.href}" } })
 
 page index { sites = [:wcl]  title = "Why WCL?"  start = true
-  region "banner" {
+  banner {
     callout "Heavy development — not production ready." {
       class = ["warning"]
       body  = "The language, APIs, and `wdoc` output can change at any time without notice."
@@ -131,7 +131,7 @@ page index { sites = [:wcl]  title = "Why WCL?"  start = true
     lp_step "…or a presentation deck"  { command = "wcl init presentation ./my-deck" }
   }
 
-  region "footer" {
+  footer {
     lp_footer {
       brand     = "wcl.dev"
       tagline   = "A typed configuration and schema language. Open source, built in the open."

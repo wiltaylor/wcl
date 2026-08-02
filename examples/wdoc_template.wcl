@@ -24,6 +24,7 @@ let footer = fn(c: TemplateCtx) -> list<Html> [
 
 // A custom template: the stdlib nav + content, plus the footer part.
 template guide {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       [

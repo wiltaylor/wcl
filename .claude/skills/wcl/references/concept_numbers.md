@@ -27,6 +27,6 @@ depending on the platform.
 
 ## Related
 
-- [Numeric Promotion](../references/concept_numeric_promotion.md)
+- [Numeric Promotion](../references/concept_numeric_promotion.md) — Numeric Promotion supports Numbers: Arithmetic and comparison widen mixed numeric operands to a common type.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -37,6 +37,6 @@ flow back into the planning template per the lessons loop.
 
 ## Related
 
-- [The review procedure](../references/process_proc_review.md)
+- [The review procedure](../references/process_proc_review.md) — The review procedure supports States and status.wcl: A strong-model code review of each verified spec's diff before merge - verification asked whether it complies with the brief; review asks whether it is good.
 
 [← Back to SKILL.md](../SKILL.md)

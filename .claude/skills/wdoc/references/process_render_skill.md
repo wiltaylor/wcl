@@ -58,6 +58,6 @@ If `wcl wdoc build` errors on this site, that is expected: skill sites only rend
 
 ## Related
 
-- [Sites](../references/concept_sites.md)
+- [Sites](../references/concept_sites.md) — Sites supports Render a document into a Claude skill folder: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search.
 
 [← Back to SKILL.md](../SKILL.md)

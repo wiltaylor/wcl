@@ -31,12 +31,12 @@ An idea is never an entity. A table of values is never an entity.
 
 ## Related
 
-- [Concept](../references/concept_concept.md)
+- [Concept](../references/concept_concept.md) — Concept supports Which unit kind? — the decision guide: A unit that captures an idea or mental model of something.
 
-- [Entity](../references/concept_entity.md)
+- [Entity](../references/concept_entity.md) — Entity supports Which unit kind? — the decision guide: A concrete NAMED thing in the topic's world — a person, software, a place, an organisation. Reserved: never a catch-all.
 
-- [Fact](../references/concept_fact.md)
+- [Fact](../references/concept_fact.md) — Fact supports Which unit kind? — the decision guide: A unit that holds factual data — a value, a constant, a value table.
 
-- [Process](../references/concept_process.md)
+- [Process](../references/concept_process.md) — Process supports Which unit kind? — the decision guide: A unit (authored as a procedure) that captures the reliable sequence for doing a task — ordered steps, for someone who already knows the topic.
 
 [← Back to SKILL.md](../SKILL.md)

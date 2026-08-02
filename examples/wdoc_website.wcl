@@ -3,9 +3,9 @@
 //
 //   wcl wdoc build --out _site examples/wdoc_website.wcl
 //
-// The page authors named `region`s (hero / sidebar / footer) plus default
-// content; the custom `landing` layout uses raw-HTML fragments around a
-// typed `wdoc_blocks` placement and adds `<head>` content with the
+// The page authors named slots (hero / sidebar / footer) plus default
+// content; the custom `landing` layout places typed slot handles and adds
+// `<head>` content with the
 // `wdoc_head_*` helpers. (A real site would link an external stylesheet via
 // the site's `stylesheets` field; here the design CSS is inlined so the
 // example is a single self-contained file.)
@@ -33,43 +33,37 @@ let landing_css = <<CSS
 // comes from the `wdoc_head_*` helpers (top-level `Head` fundamentals)
 // plus the site's `fonts` field.
 template landing {
+  slot content: content
+  slot hero: content?
+  slot sidebar: content?
+  slot footer: content?
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_head_meta("viewport", "width=device-width, initial-scale=1"),
       wdoc_head_meta("description", "Nimbus — ship faster."),
       [
         el("style", [], [raw(landing_css)]),
-        raw($<<HTML
-          <header class="nav">
-            <span class="brand">${c.title}</span>
-            <nav><a href="index.html">Home</a></nav>
-          </header>
-          <section class="hero">${wdoc_region(c, "hero")}</section>
-          <div class="wrap">
-            <main>
-        HTML
-        ),
-      ],
-      wdoc_blocks(c.content),
-      [
-        raw($<<HTML
-            </main>
-            <aside>${wdoc_region(c, "sidebar")}</aside>
-          </div>
-          <footer class="foot">${wdoc_region(c, "footer")}</footer>
-        HTML
-        ),
+        el("header", ["nav"], [
+          el("span", ["brand"], [raw(c.title)]),
+          el("nav", [], [raw("<a href=\"index.html\">Home</a>")]),
+        ]),
+        el("section", ["hero"], slot(c, :hero)),
+        el("div", ["wrap"], [
+          el("main", [], slot(c, :content)),
+          el("aside", [], slot(c, :sidebar)),
+        ]),
+        el("footer", ["foot"], slot(c, :footer)),
       ],
     ])
 }
 
 page index { sites = [:web]  start = true
-  region "hero" {
+  hero {
     h1 "Ship faster with Nimbus"
     p "The deployment platform that gets out of your way."
   }
 
-  region "sidebar" {
+  sidebar {
     h3 "On this page"
     list {
       li "Why Nimbus"
@@ -77,14 +71,14 @@ page index { sites = [:web]  start = true
     }
   }
 
-  region "footer" {
+  footer {
     p "© 2026 Nimbus. Built with WCL + wdoc."
   }
 
   h2 "Why Nimbus"
-  p "Everything outside a `region` renders into the default content slot — write it in wdoc and it picks up the site theme."
+  p "Everything outside a named fill renders into the default content slot — write it in wdoc and it picks up the site theme."
 
   h2 "How it works"
-  p "Author your design once, drop content into regions, and rebuild."
+  p "Author your design once, drop content into slots, and rebuild."
   code bash { source = "wcl wdoc build site/main.wcl --out site/_site" }
 }

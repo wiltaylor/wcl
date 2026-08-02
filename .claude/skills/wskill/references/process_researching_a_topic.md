@@ -117,6 +117,6 @@ and fold review comments back into the units.
 
 ## Related
 
-- [Creating a new wskill](../references/process_creating_a_wskill.md)
+- [Creating a new wskill](../references/process_creating_a_wskill.md) — Creating a new wskill supports Researching a topic into a wskill: Start a new wskill for a topic from the wcl template, set its topic, and prove the empty model renders.
 
 [← Back to SKILL.md](../SKILL.md)

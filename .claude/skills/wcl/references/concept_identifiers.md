@@ -68,6 +68,6 @@ Pick a style and stay consistent.
 
 ## Related
 
-- [Symbols](../references/concept_symbols.md)
+- [Symbols](../references/concept_symbols.md) — Symbols supports Identifiers: Identifier-like :name values for tags and enum-like choices, plus symbol_set vocabularies.
 
 [← Back to SKILL.md](../SKILL.md)

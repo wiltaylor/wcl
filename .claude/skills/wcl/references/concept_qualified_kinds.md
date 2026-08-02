@@ -34,8 +34,8 @@ different namespaces is fine — disambiguate at the instance with `::`.
 
 ## Related
 
-- [Namespaces](../references/concept_namespaces.md)
+- [Namespaces](../references/concept_namespaces.md) — Namespaces supports Qualified Block Kinds: Scope declarations under a dotted path; use and :: control how names resolve.
 
-- [use Declarations](../references/concept_use_declarations.md)
+- [use Declarations](../references/concept_use_declarations.md) — use Declarations supports Qualified Block Kinds: use pulls qualified names from other namespaces into local scope so they can be written bare.
 
 [← Back to SKILL.md](../SKILL.md)

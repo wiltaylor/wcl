@@ -49,6 +49,6 @@ Hybrid (some code exists) → scan first, interview the gaps.
 
 ## Related
 
-- [wcl init wad](../references/entity_wcl_init_wad.md)
+- [wcl init wad](../references/entity_wcl_init_wad.md) — wcl init wad supports Create a new WAD: Scaffolds a complete WAD: schema, empty per-view data hubs, the book templates, extractor starter, justfile.
 
 [← Back to SKILL.md](../SKILL.md)

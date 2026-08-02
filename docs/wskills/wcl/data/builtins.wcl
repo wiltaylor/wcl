@@ -3,6 +3,16 @@
 // and projected into per-function + per-category pages by the wdoc templates.
 // (No `language`/`feature` wrapper — language features were removed.)
 
+function fn___wdoc_slot {
+  name        = "__wdoc_slot"
+  category    = "reflection"
+  description = "Resolve one field of a declared template slot for the wdoc standard library."
+  returns     = "T"
+  returns_description = "The requested field; an undeclared slot or field is an evaluation error."
+  parameter slots { type = "list<TemplateSlot>"  description = "The resolved template slot table." }
+  parameter name { type = "symbol"  description = "The declared slot name." }
+  parameter field { type = "symbol"  description = "The slot field to return (`blocks` or `default`)." }
+}
 function fn_abs {
   name        = "abs"
   category    = "math"

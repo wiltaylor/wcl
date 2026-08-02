@@ -167,7 +167,10 @@ pub struct Document {
 /// check is concerned.
 struct DeclaredKind {
     /// The declarer's position in `blocks()` order.
-    declarer: usize,
+    /// `None` for a content-fill kind synthesised from a `slot` declaration:
+    /// it has a permissive contextual schema but is not a component whose
+    /// body the host expander should enter.
+    declarer: Option<usize>,
     /// The derived `@block` type, plus its evaluation cells (a type
     /// declaration is viewed through both).
     ast: ast::TypeDecl,
@@ -2100,7 +2103,7 @@ impl Document {
         if name.is_empty() {
             return None;
         }
-        let pos = self.declared_kinds()?.get(name)?.declarer;
+        let pos = self.declared_kinds()?.get(name)?.declarer?;
         self.blocks().nth(pos)
     }
 
@@ -2188,13 +2191,51 @@ impl Document {
             out.insert(
                 name,
                 DeclaredKind {
-                    declarer: i,
+                    declarer: Some(i),
                     ast: derived,
                     cells,
                 },
             );
         }
         out
+    }
+
+    /// Whether `ty`, as written in `file_ns`, names a type marked
+    /// `@block_slot`. The marker keeps `slot` derivation independent of any
+    /// host's chosen type name (wdoc uses `content`).
+    fn type_ref_is_block_slot(&self, ty: &TypeRef, file_ns: &[String]) -> bool {
+        let Some(fqn) = self.resolve_type_fqn_in(ty, file_ns) else {
+            return false;
+        };
+        self.type_decl(&fqn).is_some_and(|decl| {
+            decl.decorators()
+                .any(|dec| dec.is(BuiltinDecorator::BlockSlot))
+        })
+    }
+
+    /// Whether some top-level holder declares `kind` as a bare nested-block
+    /// slot. This is only a generic-validation escape for otherwise
+    /// *unregistered* wrapper names; it does not install a schema or decide
+    /// which holder is active. The host still owns scoped contract checks.
+    pub(crate) fn is_possible_block_slot_fill(&self, kind: &str) -> bool {
+        self.blocks().any(|holder| {
+            holder.ast.items.iter().any(|item| {
+                let ast::Item::Block(slot) = item else {
+                    return false;
+                };
+                if slot.kind != "slot" {
+                    return false;
+                }
+                let Some(decl) = &slot.slot_decl else {
+                    return false;
+                };
+                let names_kind = matches!(
+                    slot.labels.first(),
+                    Some(ast::Expr::Identifier(name, _)) if name == kind
+                );
+                names_kind && self.type_ref_is_block_slot(&decl.ty, holder.file_ns)
+            })
+        })
     }
 
     /// The host's [`Expander`](crate::Expander), consulted when a
@@ -2533,6 +2574,9 @@ impl Document {
             return;
         }
         if !self.is_registered_kind(b.kind()) {
+            if self.is_possible_block_slot_fill(b.kind()) {
+                return;
+            }
             let mut msg = format!(
                 "block kind '{}' has no @block or @table declaration",
                 b.kind()
@@ -3063,11 +3107,11 @@ const PARAM_DEFAULT_FIELD: &str = "default";
 /// Derive the `@block` schema for the kind `kind`, declared by the
 /// instance `declarer` (whose own type is `schema`, carrying `contract`).
 ///
-/// One field per param block, in declaration order: optional when the
-/// param carries a `default`, listed in `required_fields` when it
-/// doesn't. Every field is `@schemaless` and nominally `utf8` — a param
-/// is filled with whatever the host's expansion binds it to, and the
-/// language has no business type-checking a value it does not interpret.
+/// One scalar field per param block, in declaration order: optional when the
+/// param carries a `default`/`?`, listed in `required_fields` when it does
+/// not. Typed slots preserve their `TypeRef`; legacy untyped params remain
+/// permissive `@schemaless utf8`. A slot whose type carries `@block_slot` is
+/// a host-checked nested-block hole and therefore emits no scalar field.
 /// The type carries `@contextual`: an instance emits whatever the
 /// declarer's body expands to, which is the host's business too.
 fn derive_kind_schema(
@@ -3082,26 +3126,45 @@ fn derive_kind_schema(
     let mut fields: Vec<ast::TypeField> = Vec::new();
     let mut required: Vec<String> = Vec::new();
     if let Some(param_kind) = param_kind {
-        for p in declarer.blocks().filter(|b| b.kind() == param_kind) {
+        for p in declarer
+            .blocks()
+            .filter(|b| b.kind() == param_kind || (param_kind == "slot" && b.kind() == "wdoc_slot"))
+        {
             let Some(name) = block_first_label(&p) else {
                 continue;
             };
+            // Content slots describe nested block holes, not instance
+            // parameter fields. Their host validates/fills them against the
+            // resolved container contract at build/render time.
+            if p.slot_type_ref()
+                .is_some_and(|ty| p.doc.type_ref_is_block_slot(ty, p.file_ns))
+            {
+                continue;
+            }
             if fields.iter().any(|f| f.name == name) {
                 continue;
             }
-            let optional = p.field(PARAM_DEFAULT_FIELD).is_some();
+            let optional = p.field(PARAM_DEFAULT_FIELD).is_some() || p.slot_optional();
             if !optional {
                 required.push(name.clone());
             }
+            let typed = p.slot_type_ref().cloned();
             let mut field = synthetic_field(
                 &name,
-                TypeRef::Builtin(crate::value::BuiltinType::Utf8),
+                typed
+                    .clone()
+                    .unwrap_or(TypeRef::Builtin(crate::value::BuiltinType::Utf8)),
                 optional,
             );
-            field.decorators.push(synthetic_decorator(
-                BuiltinDecorator::Schemaless.as_str(),
-                Vec::new(),
-            ));
+            // Legacy `wdoc_slot` declarations were deliberately untyped.
+            // Preserve that contract while typed `slot` declarations use
+            // ordinary schema checking.
+            if typed.is_none() {
+                field.decorators.push(synthetic_decorator(
+                    BuiltinDecorator::Schemaless.as_str(),
+                    Vec::new(),
+                ));
+            }
             fields.push(field);
         }
     }

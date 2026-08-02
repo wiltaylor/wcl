@@ -52,8 +52,8 @@ page index { sites = [:mysite]  start = true
 
 ## Related
 
-- [Pages](../references/concept_pages.md)
+- [Pages](../references/concept_pages.md) — Pages supports wdoc Overview: The `page` block: id, title, the sites it joins, and the start page.
 
-- [Sites](../references/concept_sites.md)
+- [Sites](../references/concept_sites.md) — Sites supports wdoc Overview: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search.
 
 [← Back to SKILL.md](../SKILL.md)

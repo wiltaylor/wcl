@@ -185,6 +185,6 @@ Composite shapes — `container`, `card`, `node_table` — get their own page; s
 
 ## Related
 
-- [diagram](../references/fact_diagrams.md)
+- [diagram](../references/fact_diagrams.md) — diagram supports primitive shapes: A `diagram` is wdoc's drawing surface.
 
 [← Back to SKILL.md](../SKILL.md)

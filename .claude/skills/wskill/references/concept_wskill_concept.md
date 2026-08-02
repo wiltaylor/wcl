@@ -16,6 +16,6 @@ Capture once, render everywhere — nothing is hand-duplicated between views.
 
 ## Related
 
-- [Different Views](../references/concept_views.md)
+- [Different Views](../references/concept_views.md) — Different Views supports What is it?: One data model, four projections: the book and the AI skill are standard; the presentation deck and the training book are optional.
 
 [← Back to SKILL.md](../SKILL.md)

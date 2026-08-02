@@ -32,10 +32,10 @@ treats the scan as backfill rather than a cold start.
 
 ## Related
 
-- [Surfaces](../references/concept_surfaces.md)
+- [Surfaces](../references/concept_surfaces.md) — Surfaces supports The plan's WAD: Every screen, command and endpoint is a typed contract - elements, required states, interactions - defined during the PRD and delivered by exactly one spec.
 
-- [Interface contracts and as-built notes](../references/concept_contracts.md)
+- [Interface contracts and as-built notes](../references/concept_contracts.md) — Interface contracts and as-built notes supports The plan's WAD: Exact signatures crossing spec boundaries, plus verifier-recorded deviations - the two halves of keeping parallel specs semantically compatible.
 
-- [Usage scenarios](../references/concept_scenarios.md)
+- [Usage scenarios](../references/concept_scenarios.md) — Usage scenarios supports The plan's WAD: End-to-end action/expect walks through the finished application - the system-level definition of done that survives all the per-spec merges.
 
 [← Back to SKILL.md](../SKILL.md)

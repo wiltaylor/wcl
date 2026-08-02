@@ -8,7 +8,7 @@
 //   theme.wcl          — your custom `template`, authored as raw HTML + slots
 //   components.wcl     — starter landing components (hero / features / steps /
 //                        footer), themed via `--wdoc-*` — edit or replace them
-//   content.wcl        — the page: components + regions + default content
+//   content.wcl        — the page: components + named slots + default content
 //   assets/site.css    — the design's stylesheet (shipped verbatim)
 //   assets/app.js      — the design's script (shipped verbatim)
 //
@@ -57,35 +57,31 @@ file "theme.wcl" {
 // artifact, a hand-built theme) and mark the slots:
 //
 //   ${c.title}                — the site title
-//   wdoc_blocks(c.content)    — typed placement of the page's authored blocks
-//   ${wdoc_region(c, "name")} — a named `region "name" { … }` block, or ""
+//   slot(c, :content)         — typed placement of the page's authored blocks
+//   slot(c, :name)            — typed placement of a declared named slot
 //
 // Raw HTML and stdlib parts compose freely: the header below is raw HTML
 // split around `wdoc_part_theme_toggle` (the standard light/dark button),
 // and `wdoc_head_*` helpers add `<head>` content (here, a viewport meta);
 // the site's `stylesheets` / `scripts` add the rest.
 template site_main {
+  slot content: content
+  slot footer: content?
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_head_meta("viewport", "width=device-width, initial-scale=1"),
-      [raw($<<HTML
-        <header class="nav">
+      [el("header", ["nav"], flatten([
+        [raw($<<HTML
           <a class="brand" href="index.html">${c.title}</a>
           <nav><a href="#features">Features</a><a href="#start">Get started</a></nav>
         HTML
-      ) ],
-      wdoc_part_theme_toggle(c.theme_toggle),
-      [raw($<<HTML
-        </header>
-        <main class="content">
-      HTML
-      ) ],
-      wdoc_blocks(c.content),
-      [raw($<<HTML
-        </main>
-        <footer class="foot">${wdoc_region(c, "footer")}</footer>
-      HTML
-      ) ],
+        )],
+        wdoc_part_theme_toggle(c.theme_toggle),
+      ]))],
+      [
+        el("main", ["content"], slot(c, :content)),
+        el("footer", ["foot"], slot(c, :footer)),
+      ],
     ])
 }
 THEME
@@ -418,9 +414,8 @@ COMPONENTS
 file "content.wcl" {
   content = <<'CONTENT'
 // The page content, authored in wdoc from the starter components in
-// components.wcl. `region` blocks render into the matching
-// `${wdoc_region(c, "name")}` slot in theme.wcl; authored page blocks are
-// placed by `wdoc_blocks(c.content)`.
+// components.wcl. Named fills render into the matching declaration in
+// theme.wcl; other authored page blocks fill the reserved `content` slot.
 page index { sites = [:web]  start = true
   lp_hero "Build something great" {
     badge    = "A wdoc starter"
@@ -446,7 +441,7 @@ page index { sites = [:web]  start = true
     }
     lp_feature "Any wdoc block" {
       icon = "lucide.sparkles"
-      body = "Headings, lists, code, tables, diagrams — everything outside a `region` lands in the default content slot."
+      body = "Headings, lists, code, tables, diagrams — everything outside a named fill lands in the default content slot."
     }
   }
 
@@ -460,7 +455,7 @@ page index { sites = [:web]  start = true
     lp_step "Build the static site"   { command = "wcl wdoc build main.wcl --out _site" }
   }
 
-  region "footer" {
+  footer {
     lp_footer {
       brand   = "my-site"
       tagline = "A starter website built with WCL + wdoc."

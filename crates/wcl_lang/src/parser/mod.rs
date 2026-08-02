@@ -546,6 +546,7 @@ impl<'a> Parser<'a> {
             TokenKind::Str(_)
             | TokenKind::LBrace
             | TokenKind::Ident(_)
+            | TokenKind::Question
             | TokenKind::Number(_)
             | TokenKind::NumberWithUnit(..)
             | TokenKind::Bool(_)
@@ -559,6 +560,8 @@ impl<'a> Parser<'a> {
                 Ok(Item::Block(Block {
                     kind: name,
                     kind_ns: Vec::new(),
+                    conditional: false,
+                    slot_decl: None,
                     labels: Vec::new(),
                     items: Vec::new(),
                     decorators,

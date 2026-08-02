@@ -26,6 +26,6 @@ use company.shapes.{Circle, Square as Sq}   // pick several members at once
 
 ## Related
 
-- [Namespaces](../references/concept_namespaces.md)
+- [Namespaces](../references/concept_namespaces.md) — Namespaces supports use Declarations: Scope declarations under a dotted path; use and :: control how names resolve.
 
 [← Back to SKILL.md](../SKILL.md)

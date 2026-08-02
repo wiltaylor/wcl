@@ -27,6 +27,6 @@ status spec_020_core { state = :verified  by = "verifier-1"  note = "all checks 
 
 ## Related
 
-- [Self-contained briefs](../references/concept_briefs.md)
+- [Self-contained briefs](../references/concept_briefs.md) — Self-contained briefs supports Implementation vs verification: Every exported spec .md must stand alone: rules, context and findings are copied in, never referenced.
 
 [← Back to SKILL.md](../SKILL.md)

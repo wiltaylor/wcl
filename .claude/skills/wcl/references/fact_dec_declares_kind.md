@@ -58,12 +58,12 @@ page dash {
 
 ## Related
 
-- [@block](../references/fact_dec_block.md)
+- [@block](../references/fact_dec_block.md) — @block supports @declares_kind: `@block("kind")` makes a type a nestable block of a named kind.
 
-- [@contextual](../references/fact_dec_contextual.md)
+- [@contextual](../references/fact_dec_contextual.md) — @contextual supports @declares_kind: `@contextual` on a `@block` type says its placement is decided by **context**, not by kind.
 
-- [@inline](../references/fact_dec_inline.md)
+- [@inline](../references/fact_dec_inline.md) — @inline supports @declares_kind: `@inline(slot)` binds a block's positional label to a field by zero-based slot index.
 
-- [Block Schema](../references/concept_block_schema.md)
+- [Block Schema](../references/concept_block_schema.md) — Block Schema supports @declares_kind: Declaring nestable blocks with @block, @inline, @child/@children, and @default.
 
 [← Back to SKILL.md](../SKILL.md)

@@ -86,8 +86,8 @@ the next note.
 
 ## Related
 
-- [Decomposing information](../references/concept_decomposing_information.md)
+- [Decomposing information](../references/concept_decomposing_information.md) — Decomposing information supports Adding content to a wskill: Break a topic into atomic notes — one idea each — then file each as the unit kind that fits it: concept, entity, fact or process.
 
-- [Building the wskill index](../references/process_building_the_index.md)
+- [Building the wskill index](../references/process_building_the_index.md) — Building the wskill index supports Adding content to a wskill: Declare the wskill's shape during scoping by writing a bodied `index` tree, then place units under the node whose scope owns them.
 
 [← Back to SKILL.md](../SKILL.md)

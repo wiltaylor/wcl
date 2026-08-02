@@ -170,13 +170,6 @@ impl Emitter<'_> {
                     self.block(&c, out)?;
                 }
             }
-            // A named `region` slots into an HTML template; Markdown has no
-            // template, so its children render in place.
-            kinds::REGION => {
-                for c in block.blocks() {
-                    self.block(&c, out)?;
-                }
-            }
             // An `edit_field` binds its children to a data-object field for
             // the editor's Design mode — a transparent wrapper here.
             kinds::EDIT_FIELD => {

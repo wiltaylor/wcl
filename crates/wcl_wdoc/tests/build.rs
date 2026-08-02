@@ -1262,6 +1262,7 @@ wdoc_component badge {
     callout $"${label}" { class = [kind]  body = "x" }
   }
 }
+
 wdoc_component panel {
   wdoc_slot title
   wdoc_body {
@@ -1299,6 +1300,635 @@ page index {
         html.contains("<h3 class=\"heading-3\">Logs</h3><p>line one</p><p>line two</p>"),
         "panel content slot:\n{html}"
     );
+}
+
+#[test]
+fn build_rejects_an_unfilled_required_layout_slot() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("required-slot.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  slot hero: content
+  render = fn(c: TemplateCtx) -> list<Html> wdoc_blocks(c.content)
+}
+site { default_template = :article }
+page index { p "Body." }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let err = build(&src, out.path(), None).expect_err("required hero must fail");
+    assert!(
+        err.render_plain()
+            .contains("required slot `hero` is unfilled"),
+        "unexpected error: {}",
+        err.render_plain()
+    );
+}
+
+#[test]
+fn reserved_content_slot_must_accept_content() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("reserved-content-slot.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: utf8
+  render = fn(c: TemplateCtx) -> list<Html> []
+}
+site { default_template = :article }
+page index { p "Body." }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let err = build(&src, out.path(), None).expect_err("reserved content type must fail");
+    assert!(
+        err.render_plain()
+            .contains("reserved slot `content` must have a `content` type"),
+        "unexpected error: {}",
+        err.render_plain()
+    );
+}
+
+#[test]
+fn build_places_bare_named_fills_through_the_layout_slot_handle() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("named-slot.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  slot hero: content
+  render = fn(c: TemplateCtx) -> list<Html>
+    flatten([
+      [el("header", ["hero"], slot(c, :hero))],
+      [el("main", [], slot(c, :content))],
+    ])
+}
+site { default_template = :article }
+page index {
+  hero { h1 "Welcome" }
+  p "Body."
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    assert!(
+        html.contains("<header class=\"hero\"><h1 class=\"heading-1\"")
+            && html.contains("<main><p>Body.</p>"),
+        "named and implicit slots were not placed independently:\n{html}"
+    );
+}
+
+#[test]
+fn build_rejects_fill_content_outside_the_slots_accepted_type() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("typed-slot.wcl");
+    write_fixture(
+        &src,
+        r#"
+template canvas {
+  slot content: content
+  slot shapes: content<SvgBlock>
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)
+}
+site { default_template = :canvas }
+page index {
+  shapes { p "not a shape" }
+  p "Body."
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let err = build(&src, out.path(), None).expect_err("typed fill must fail");
+    assert!(
+        err.render_plain()
+            .contains("slot `shapes` accepts `SvgBlock`, but found `p`"),
+        "unexpected error: {}",
+        err.render_plain()
+    );
+}
+
+#[test]
+fn conditional_fill_is_dropped_only_when_another_site_layout_declares_it() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("conditional-slot.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)
+}
+
+template marketing {
+  slot content: content
+  slot promo: content?
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)
+}
+site { default_template = :article }
+page index {
+  promo? { h1 "Sale" }
+  p "Body."
+}
+page landing { template = :marketing p "Landing." }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    assert!(html.contains("Body.") && !html.contains("Sale"), "{html}");
+}
+
+#[test]
+fn conditional_fill_typo_is_still_an_error() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("conditional-typo.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)
+}
+site { default_template = :article }
+page index { prommo? { h1 "Typo" } p "Body." }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert!(
+        build(&src, out.path(), None).is_err(),
+        "a conditional fill name absent from every site layout must fail"
+    );
+}
+
+#[test]
+fn unconditional_fill_for_another_layout_is_an_error() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("wrong-layout-slot.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)
+}
+template marketing {
+  slot content: content
+  slot promo: content?
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)
+}
+site { default_template = :article }
+page index { promo { h1 "Sale" } p "Body." }
+page landing { template = :marketing p "Landing." }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let err = build(&src, out.path(), None).expect_err("unconditional fill must fail");
+    assert!(
+        err.render_plain().contains("does not declare it"),
+        "{}",
+        err.render_plain()
+    );
+}
+
+#[test]
+fn duplicate_slot_fills_are_an_error() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("duplicate-slot.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  slot hero: content
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)
+}
+site { default_template = :article }
+page index { hero { h1 "One" } hero { h1 "Two" } p "Body." }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let err = build(&src, out.path(), None).expect_err("duplicate fill must fail");
+    assert!(
+        err.render_plain()
+            .contains("fills slot `hero` more than once"),
+        "{}",
+        err.render_plain()
+    );
+}
+
+#[test]
+fn template_reference_to_an_undeclared_slot_errors_at_render() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("undeclared-reference.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  render = fn(c: TemplateCtx) -> list<Html>
+    flatten([slot(c, :content), slot(c, :heor)])
+}
+site { default_template = :article }
+page index { p "Body." }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let err = build(&src, out.path(), None).expect_err("undeclared reference must fail");
+    assert!(
+        err.render_plain().contains("references slot `heor`"),
+        "{}",
+        err.render_plain()
+    );
+}
+
+#[test]
+fn repeater_fill_site_possibly_fills_a_required_slot() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("possible-slot.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  slot hero: content
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)
+}
+site { default_template = :article }
+let promos = []
+page index {
+  wdoc_repeater { each = promos as = :promo
+    hero { h1 "Sale" }
+  }
+  p "Body."
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+}
+
+#[test]
+fn repeater_generated_fills_are_routed_to_the_named_slot() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("generated-slot.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  slot hero: content
+  render = fn(c: TemplateCtx) -> list<Html> [
+    el("header", [], slot(c, :hero)),
+    el("main", [], slot(c, :content)),
+  ]
+}
+site { default_template = :article }
+let promos = ["Sale"]
+page index {
+  wdoc_repeater { each = promos as = :promo
+    hero { h1 $"${promo}" }
+  }
+  p "Body."
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    let header = html
+        .split_once("<header>")
+        .and_then(|(_, rest)| rest.split_once("</header>"))
+        .map(|(body, _)| body)
+        .unwrap_or_default();
+    let main = html
+        .split_once("<main>")
+        .and_then(|(_, rest)| rest.split_once("</main>"))
+        .map(|(body, _)| body)
+        .unwrap_or_default();
+    assert!(header.contains("Sale"), "named slot was empty:\n{html}");
+    assert!(
+        main.contains("Body.") && !main.contains("Sale"),
+        "fill leaked into content:\n{html}"
+    );
+}
+
+#[test]
+fn repeater_only_named_fill_does_not_require_a_content_slot() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("fill-only-collection.wcl");
+    write_fixture(
+        &src,
+        r#"
+template banner {
+  slot hero: content
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :hero)
+}
+site { default_template = :banner }
+let promos = ["Sale"]
+page index {
+  wdoc_repeater { each = promos as = :promo
+    hero { h1 $"${promo}" }
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    assert!(html.contains("Sale"), "{html}");
+}
+
+#[test]
+fn unconditional_repeater_fill_for_another_layout_is_an_error() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("wrong-generated-slot.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)
+}
+template marketing {
+  slot content: content
+  slot promo: content?
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)
+}
+site { default_template = :article }
+let promos = ["Sale"]
+page index {
+  wdoc_repeater { each = promos as = :promo
+    promo { h1 $"${promo}" }
+  }
+  p "Body."
+}
+page landing { template = :marketing p "Landing." }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let err = build(&src, out.path(), None).expect_err("wrong-layout fill must fail");
+    assert!(
+        err.render_plain().contains("does not declare it"),
+        "{}",
+        err.render_plain()
+    );
+}
+
+#[test]
+fn computed_page_template_suppresses_static_slot_diagnostics() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("computed-template.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  slot hero: content
+  render = fn(c: TemplateCtx) -> list<Html> wdoc_blocks(c.content)
+}
+site { default_template = :article }
+let selected = :article
+page index { template = selected p "Body." }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+}
+
+#[test]
+fn typed_slot_declarations_preserve_the_component_parameter_contract() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("typed-component-slot.wcl");
+    write_fixture(
+        &src,
+        r#"
+wdoc_component badge {
+  slot label: utf8
+  slot tone: utf8 = "note"
+  slot emphasized: bool = true
+  wdoc_body { callout $"${label}" { class = [tone] body = "x" } }
+}
+page index { badge { label = "Typed" } }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    assert!(
+        html.contains("callout note") && html.contains("Typed"),
+        "{html}"
+    );
+}
+
+#[test]
+fn component_content_slots_are_named_scoped_and_placed() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("named-component-slots.wcl");
+    write_fixture(
+        &src,
+        r#"
+wdoc_component split_card {
+  slot header: content
+  slot body: content
+  wdoc_body {
+    column {
+      header {}
+      body {}
+    }
+  }
+}
+page index {
+  split_card {
+    header { h2 "Named header" }
+    body { p "Named body." }
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    assert!(
+        html.contains("Named header") && html.contains("Named body."),
+        "component holes were not placed independently:\n{html}"
+    );
+}
+
+#[test]
+fn component_content_slots_check_required_duplicate_and_accepted_type() {
+    let cases = [
+        (
+            "missing",
+            r#"
+wdoc_component split_card {
+  slot header: content
+  wdoc_body { header {} }
+}
+page index { split_card {} }
+"#,
+            "required slot `header` is unfilled",
+        ),
+        (
+            "duplicate",
+            r#"
+wdoc_component split_card {
+  slot header: content
+  wdoc_body { header {} }
+}
+page index { split_card { header { h2 "One" } header { h2 "Two" } } }
+"#,
+            "fills slot `header` more than once",
+        ),
+        (
+            "accepted",
+            r#"
+wdoc_component canvas {
+  slot shapes: content<SvgBlock>
+  wdoc_body { shapes {} }
+}
+page index { canvas { shapes { p "not a shape" } } }
+"#,
+            "slot `shapes` accepts `SvgBlock`, but found `p`",
+        ),
+    ];
+
+    for (name, body, expected) in cases {
+        let tmp = TempDir::new().expect("mkdir tempdir");
+        let src = tmp.path().join(format!("{name}.wcl"));
+        write_fixture(&src, body);
+        let out = TempDir::new().expect("mkdir out");
+        let err = build(&src, out.path(), None).expect_err(name);
+        assert!(
+            err.render_plain().contains(expected),
+            "{name}: expected {expected:?}, got {}",
+            err.render_plain()
+        );
+    }
+}
+
+#[test]
+fn layout_slot_fill_does_not_inherit_a_same_named_component_contract() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("scoped-layout-slot.wcl");
+    write_fixture(
+        &src,
+        r#"
+wdoc_component hero {
+  slot label: utf8
+  wdoc_body { h2 $"${label}" }
+}
+template article {
+  slot content: content
+  slot hero: content
+  render = fn(c: TemplateCtx) -> list<Html>
+    flatten([slot(c, :hero), slot(c, :content)])
+}
+site { default_template = :article }
+page index {
+  hero { h1 "Layout hero" }
+  p "Body."
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    assert!(
+        html.contains("Layout hero") && html.contains("Body."),
+        "{html}"
+    );
+}
+
+#[test]
+fn defaulted_content_slot_renders_layout_owned_fallback_and_page_override() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("slot-fallback.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  slot footer: content = fn(c: TemplateCtx) -> list<Html> [
+    el("footer", ["fallback"], [raw(c.title)])
+  ]
+  render = fn(c: TemplateCtx) -> list<Html>
+    flatten([slot(c, :content), slot(c, :footer)])
+}
+site { default_template = :article title = "Layout fallback" }
+page absent { p "No page footer." }
+page filled { footer { p "Page footer." } p "Body." }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let absent = std::fs::read_to_string(out.path().join("absent.html")).expect("read absent");
+    let filled = std::fs::read_to_string(out.path().join("filled.html")).expect("read filled");
+    assert!(
+        absent.contains("<footer class=\"fallback\">Layout fallback</footer>"),
+        "{absent}"
+    );
+    assert!(
+        filled.contains("Page footer.") && !filled.contains("class=\"fallback\""),
+        "{filled}"
+    );
+}
+
+#[test]
+fn conditional_fill_using_an_ordinary_block_kind_is_still_a_typo() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("conditional-known-kind.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)
+}
+site { default_template = :article }
+page index { callout? "Not a slot" { body = "x" } }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let err = build(&src, out.path(), None).expect_err("conditional typo must fail");
+    assert!(
+        err.render_plain()
+            .contains("no layout used by this site declares it"),
+        "{}",
+        err.render_plain()
+    );
+}
+
+#[test]
+fn repeater_generated_page_slot_pairing_is_left_to_render_time() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("generated-pages-slot-silence.wcl");
+    write_fixture(
+        &src,
+        r#"
+template article {
+  slot content: content
+  slot hero: content
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)
+}
+site { default_template = :article }
+let rows = [{ id: "one" }, { id: "two" }]
+wdoc_repeater { each = rows as = :row
+  page $"${row.id}" { p "Generated." }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    assert!(out.path().join("one.html").exists());
+    assert!(out.path().join("two.html").exists());
 }
 
 #[test]
@@ -4265,6 +4895,7 @@ fn template_queries_authored_blocks_and_places_typed_handles() {
 site { default_template = :inspect  title = "Prepared site context" }
 
 template inspect {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html> {
     let notice = head(filter(c.content, fn(h: BlockHandle) -> bool
       h.kind == "callout" && h.block.heading == "Notice"));
@@ -4323,6 +4954,7 @@ fn separate_typed_placements_share_page_heading_and_footnote_state() {
 site { default_template = :split }
 
 template split {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html> [
     el("main", [], flatten([
       wdoc_blocks([at(c.content, 0), at(c.content, 1)]),
@@ -4387,12 +5019,13 @@ site {
 }
 
 template inspect_metadata {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html> {
     let m = page_metadata(c);
     [
-      el("div", ["previous"], [raw(m.previous.title)]),
-      el("div", ["current"], [raw(m.current.title)]),
-      el("div", ["next"], [raw(m.next.title)]),
+      el("div", ["previous"], [raw(if m.previous != none { m.previous.title } else { "" })]),
+      el("div", ["current"], [raw(if m.current != none { m.current.title } else { "" })]),
+      el("div", ["next"], [raw(if m.next != none { m.next.title } else { "" })]),
       el("ol", ["reading-order"], map(m.reading_order, fn(e: TocEntry) -> Html
         el("li", [], [raw(e.title)]))),
       el("ol", ["active-path"], map(m.active_path, fn(e: TocEntry) -> Html
@@ -4466,6 +5099,7 @@ site {
 }
 
 template metadata_only {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html> {
     let m = page_metadata(c);
     [el("p", [], [raw(m.current.title)])]
@@ -4577,10 +5211,10 @@ fn split_head_body(html: &str) -> (&str, &str) {
 }
 
 #[test]
-fn website_template_renders_regions_and_content() {
-    // The `:website` template splits a page into named `region`s and the
-    // default content: a `region "hero"` lands in the hero section, a
-    // `region "sidebar"` makes a two-column layout, and everything else
+fn website_template_renders_slots_and_content() {
+    // The `:website` template splits a page into named slots and the
+    // default content: `hero` lands in the hero section, `sidebar` makes
+    // a two-column layout, and everything else
     // is the default content `<main>`.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("site.wcl");
@@ -4589,10 +5223,10 @@ fn website_template_renders_regions_and_content() {
         r#"
 site { default_template = :website  title = "Acme" }
 page index {
-  region "hero" {
+  hero {
     h1 "Welcome" {}
   }
-  region "sidebar" {
+  sidebar {
     p "Side note." {}
   }
   h2 "Body heading" {}
@@ -4603,27 +5237,29 @@ page index {
     let out = TempDir::new().expect("mkdir out");
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
-    // The hero region renders inside the hero section.
+    // The hero slot renders inside the hero section.
     assert!(
-        html.contains("<section class=\"ws-hero\"><h1 class=\"heading-1\">Welcome</h1>"),
-        "hero region should fill the hero section:\n{html}"
+        html.contains(
+            "<section class=\"ws-hero\"><h1 class=\"heading-1\" id=\"welcome\">Welcome</h1>"
+        ),
+        "hero slot should fill the hero section:\n{html}"
     );
-    // A sidebar region switches the layout to two columns and renders the
-    // region in an <aside>.
+    // A sidebar slot switches the layout to two columns and renders its
+    // content in an <aside>.
     assert!(
         html.contains("class=\"ws-layout has-aside\""),
-        "a sidebar region should switch to the two-column layout:\n{html}"
+        "a sidebar slot should switch to the two-column layout:\n{html}"
     );
     assert!(
         html.contains("<aside class=\"ws-aside\"><p>Side note.</p>"),
-        "sidebar region should render in the aside:\n{html}"
+        "sidebar slot should render in the aside:\n{html}"
     );
-    // The non-region blocks form the default content <main>.
+    // The loose blocks form the default content <main>.
     assert!(
         html.contains("<main class=\"ws-main\"><h2 class=\"heading-2\" id=\"body-heading\"><span class=\"heading-marker\">§ 1</span>Body heading"),
-        "non-region blocks should be the default content:\n{html}"
+        "loose blocks should be the default content:\n{html}"
     );
-    // Region content must not be duplicated into the default content <main>.
+    // Named slot content must not be duplicated into the default content <main>.
     let main = html
         .split_once("<main class=\"ws-main\">")
         .and_then(|(_, rest)| rest.split_once("</main>"))
@@ -4631,14 +5267,14 @@ page index {
         .unwrap_or("");
     assert!(
         !main.contains("Welcome") && !main.contains("Side note."),
-        "region content must not leak into the default content <main>:\n{main}"
+        "named slot content must not leak into the default content <main>:\n{main}"
     );
 }
 
 #[test]
-fn website_template_header_controls_and_banner_region() {
+fn website_template_header_controls_and_banner_slot() {
     // `theme_toggle = true` puts the standard light/dark toggle in the
-    // header's `.ws-controls` cluster, and a `region "banner"` renders in
+    // header's `.ws-controls` cluster, and a `banner` slot renders in
     // a `.ws-banner` strip between the header and the content.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("site.wcl");
@@ -4647,7 +5283,7 @@ fn website_template_header_controls_and_banner_region() {
         r#"
 site { default_template = :website  title = "Acme"  theme_toggle = true }
 page index {
-  region "banner" {
+  banner {
     p "Heads up." {}
   }
   h2 "Body heading" {}
@@ -4668,7 +5304,7 @@ page index {
     );
     assert!(
         html.contains("<div class=\"ws-banner\"><p>Heads up.</p>"),
-        "the banner region should render in the .ws-banner strip:\n{html}"
+        "the banner slot should render in the .ws-banner strip:\n{html}"
     );
     let banner_at = html.find("ws-banner").expect("banner present");
     let main_at = html.find("<main class=\"ws-main\"").expect("main present");
@@ -4759,6 +5395,7 @@ fn template_head_fundamental_hoisted_to_head() {
         r##"
 site { default_template = :custom  title = "Acme" }
 template custom {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_head_stylesheet("theme.css"),
@@ -4831,6 +5468,7 @@ let footer = fn(c: TemplateCtx) -> list<Html> [
   ela("footer", ["ft"], [["data-x", "a\"b"]], [raw(c.title)])
 ]
 template mini {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       [ el("main", [], wdoc_blocks(c.content)) ],
@@ -5016,6 +5654,7 @@ fn custom_template_composes_public_parts() {
         &src,
         r#"
 template parts_only {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([ wdoc_part_navbar(c), wdoc_part_content(c) ])
 }
@@ -5049,6 +5688,7 @@ fn template_extends_layout_with_custom_footer() {
         &src,
         r#"
 template blog {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_webpage_layout(c),
@@ -5088,6 +5728,7 @@ fn template_overrides_header_keeps_navbar() {
         &src,
         r#"
 template app_home {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_part_webpage_css(),
@@ -5128,6 +5769,7 @@ fn custom_template_reuses_book_sidebar() {
         &src,
         r#"
 template mybook {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([ wdoc_part_book_css(), wdoc_part_sidebar(c), wdoc_part_book_content(c) ])
 }
@@ -5168,6 +5810,7 @@ fn custom_template_reuses_deck() {
         &src,
         r#"
 template presentation {
+  slot content: content*
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_presentation_layout(c),
@@ -5209,6 +5852,7 @@ fn wdoc_part_menu_tree_renders_bare_ul() {
         &src,
         r#"
 template menu_only {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([ wdoc_part_menu_tree(c), wdoc_part_content(c) ])
 }
@@ -5249,6 +5893,7 @@ fn wdoc_part_search_box_gated() {
     // nothing when disabled — driven by the site `search` flag via c.search.
     let body = r#"
 template searchable {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([ wdoc_part_search_box(c.search), wdoc_part_content(c) ])
 }
@@ -11472,6 +12117,10 @@ fn edit_mode_stamps_source_span_and_file_anchors() {
         html.contains("data-wcl-page-span=\""),
         "expected the page-block span on the wrapper, got:\n{html}"
     );
+    assert!(
+        html.contains("data-wcl-slot=\"content\""),
+        "expected the reserved content slot on the page wrapper, got:\n{html}"
+    );
 
     // A plain build leaks none of the editor markup.
     if build_with_options(&main, out.path(), None, &BuildOptions::default()).is_err() {
@@ -11482,6 +12131,34 @@ fn edit_mode_stamps_source_span_and_file_anchors() {
         !plain.contains("data-wcl-span=") && !plain.contains("data-wcl-block"),
         "plain build must not emit editor anchors, got:\n{plain}"
     );
+}
+
+#[test]
+fn edit_mode_exposes_unfilled_layout_slots_as_empty_wrappers() {
+    let tmp = TempDir::new().expect("tempdir");
+    let out = TempDir::new().expect("out");
+    let main = tmp.path().join("main.wcl");
+    write_fixture(
+        &main,
+        r#"
+template article {
+  slot content: content
+  slot sidebar: content?
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)
+}
+site { default_template = :article }
+page index { p "Body." }
+"#,
+    );
+    let opts = BuildOptions {
+        edit_mode: true,
+        ..Default::default()
+    };
+    if let Err(err) = build_with_options(&main, out.path(), None, &opts) {
+        panic!("edit build: {}", err.render_plain());
+    }
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    assert!(html.contains("data-wcl-slot=\"sidebar\""), "{html}");
 }
 
 /// Edit mode anchors each diagram child shape: a free-layout child gets a

@@ -54,6 +54,6 @@ type ByteSize = i64
 
 ## Related
 
-- [Number literals](../references/fact_number_literals.md)
+- [Number literals](../references/fact_number_literals.md) — Number literals supports literal-unit syntax by defining the numeric forms and suffix behavior that literal units extend.
 
 [← Back to SKILL.md](../SKILL.md)

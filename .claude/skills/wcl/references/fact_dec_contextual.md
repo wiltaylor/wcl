@@ -45,8 +45,8 @@ deck main {
 
 ## Related
 
-- [@block](../references/fact_dec_block.md)
+- [@block](../references/fact_dec_block.md) — @block supports @contextual: `@block("kind")` makes a type a nestable block of a named kind.
 
-- [@children](../references/fact_dec_children.md)
+- [@children](../references/fact_dec_children.md) — @children supports @contextual: `@children("kind")` declares a field that holds a **list** of nested blocks of a kind.
 
 [← Back to SKILL.md](../SKILL.md)

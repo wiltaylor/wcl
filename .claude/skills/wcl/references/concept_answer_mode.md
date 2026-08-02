@@ -48,6 +48,6 @@ the validating edit pipeline, so an interrupted session loses nothing.
 
 ## Related
 
-- [wcl](../references/entity_wcl_cli.md)
+- [wcl](../references/entity_wcl_cli.md) — wcl supports Answer Mode: The wcl command-line tool: one binary for parsing, checking, editing, formatting, scaffolding, the editor, and wdoc.
 
 [← Back to SKILL.md](../SKILL.md)

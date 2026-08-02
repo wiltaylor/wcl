@@ -180,6 +180,7 @@ let wdoc_presentation_layout = fn(c: TemplateCtx) -> list<Html>
 // site renders to one `index.html`; ← → navigate sections, ↑ ↓ the
 // slides within a section (driven by the bundled `presentation.js`).
 template presentation {
+  slot content: content*
   render = fn(c: TemplateCtx) -> list<Html>
     wdoc_presentation_layout(c)
 }

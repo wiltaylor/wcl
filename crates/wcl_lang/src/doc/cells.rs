@@ -267,6 +267,8 @@ impl ItemCells {
                             let synth_block = ast::Block {
                                 kind: String::new(),
                                 kind_ns: Vec::new(),
+                                conditional: false,
+                                slot_decl: None,
                                 labels: r.values.clone(),
                                 items: Vec::new(),
                                 decorators: Vec::new(),

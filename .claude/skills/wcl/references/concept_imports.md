@@ -47,6 +47,6 @@ subtree into its own file. The spliced instances are validated against the paren
 
 ## Related
 
-- [Namespaces](../references/concept_namespaces.md)
+- [Namespaces](../references/concept_namespaces.md) — Namespaces supports Imports & Modules: Scope declarations under a dotted path; use and :: control how names resolve.
 
 [← Back to SKILL.md](../SKILL.md)

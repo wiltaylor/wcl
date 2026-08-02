@@ -88,7 +88,6 @@ const NATIVE_DISPATCH: &[NativeKind] = &[
     every("project"),
     // Transparent / layout wrappers with a per-backend arm.
     every(kinds::FRAGMENT),
-    every(kinds::REGION),
     every(kinds::EDIT_FIELD),
     // An editor affordance: it renders a button only in the `wcl editor`
     // preview's edit mode, and deliberately nothing anywhere else. Every

@@ -1,6 +1,7 @@
 //! HTML page rendering: the document shell, templates, the page-level
 //! blocks (text / span / column / code / table), and the HTML fundamentals.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
@@ -408,9 +409,9 @@ pub(crate) fn render_template<'a>(
     doc: &'a Document,
     template: &Block<'a>,
     content_blocks: &[Block<'a>],
+    slot_blocks: &[(String, Vec<Block<'a>>)],
     page: Option<&Block<'a>>,
     base_dir: Option<&Path>,
-    regions: Value,
     title: &str,
     page_name: &str,
     pages: &Value,
@@ -434,23 +435,64 @@ pub(crate) fn render_template<'a>(
     let mut blocks = Vec::new();
     let mut active_projects = Vec::new();
     let mut page_heading = None;
-    let content = Value::list(
-        content_blocks
-            .iter()
-            .map(|block| {
-                block_handle_value(
-                    block,
-                    &mut blocks,
-                    patterns,
-                    &mut active_projects,
-                    &mut page_heading,
-                )
+    let content_handles: Vec<Value> = content_blocks
+        .iter()
+        .map(|block| {
+            block_handle_value(
+                block,
+                &mut blocks,
+                patterns,
+                &mut active_projects,
+                &mut page_heading,
+            )
+        })
+        .collect();
+    let content = Value::list(content_handles.clone());
+    let slots = Value::list(
+        template
+            .blocks()
+            .filter(|block| block.kind() == "slot")
+            .filter_map(|declaration| {
+                let name = label_string(&declaration)?;
+                let handles = if name == "content" {
+                    content_handles.clone()
+                } else {
+                    slot_blocks
+                        .iter()
+                        .find(|(candidate, _)| candidate == &name)
+                        .map(|(_, children)| {
+                            children
+                                .iter()
+                                .map(|block| {
+                                    block_handle_value(
+                                        block,
+                                        &mut blocks,
+                                        patterns,
+                                        &mut active_projects,
+                                        &mut page_heading,
+                                    )
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                };
+                let mut fields = BTreeMap::new();
+                fields.insert("name".to_string(), Value::Symbol(name));
+                fields.insert("blocks".to_string(), Value::list(handles));
+                fields.insert(
+                    "default".to_string(),
+                    declaration
+                        .field("default")
+                        .and_then(|field| field.value().ok().cloned())
+                        .unwrap_or(Value::None),
+                );
+                Some(Value::record(vec!["TemplateSlot".to_string()], fields))
             })
             .collect(),
     );
     let mut ctx = BTreeMap::new();
     ctx.insert("content".to_string(), content);
-    ctx.insert("regions".to_string(), regions);
+    ctx.insert("slots".to_string(), slots);
     ctx.insert("title".to_string(), Value::Utf8(title.to_string()));
     ctx.insert("page_name".to_string(), Value::Utf8(page_name.to_string()));
     ctx.insert("pages".to_string(), pages.clone());
@@ -471,13 +513,22 @@ pub(crate) fn render_template<'a>(
         ty: vec!["TemplateCtx".to_string()],
         fields: std::sync::Arc::new(ctx),
     };
-    let Ok(Value::List(items)) = doc.call_value(&fv, &[arg]) else {
-        return Rendered::default();
+    let items = match doc.call_value(&fv, &[arg]) {
+        Ok(Value::List(items)) => items,
+        Ok(_) => return Rendered::default(),
+        Err(err) => {
+            super::record_lower_error(template, err);
+            return Rendered::default();
+        }
     };
     // Template evaluation is now complete. Only from this point onward may
     // a returned handle call into the ordinary renderer.
     let heading_state = std::cell::RefCell::new(HeadingSequence::default());
-    let render_blocks = |handles: &[Value]| {
+    let placed_slots = RefCell::new(std::collections::HashSet::new());
+    let render_blocks = |handles: &[Value], slot: Option<&str>, fallback: &str| {
+        if let Some(slot) = slot {
+            placed_slots.borrow_mut().insert(slot.to_string());
+        }
         let mut body = String::new();
         for handle in handles {
             let Some(index) = block_handle_index(handle) else {
@@ -494,9 +545,25 @@ pub(crate) fn render_template<'a>(
                 body.push('\n');
             }
         }
+        if handles.is_empty() {
+            body.push_str(fallback);
+        }
         let body = process_page_headings(&body, &mut heading_state.borrow_mut());
         match (patterns.anchor_mode(), page) {
-            (true, Some(page)) => wrap_page_content(page, page_name, &body),
+            (true, Some(page)) => {
+                let slot = slot.unwrap_or("content");
+                if handles.is_empty()
+                    && !fallback.is_empty()
+                    && let Some(declaration) = template
+                        .blocks()
+                        .filter(|block| block.kind() == "slot")
+                        .find(|block| label_string(block).as_deref() == Some(slot))
+                {
+                    wrap_layout_fallback(&declaration, page_name, slot, &body)
+                } else {
+                    wrap_page_content(page, page_name, slot, &body)
+                }
+            }
             _ => body,
         }
     };
@@ -516,6 +583,23 @@ pub(crate) fn render_template<'a>(
                 patterns,
                 Some(&render_blocks),
             )),
+        }
+    }
+    // Edit mode needs every declared hole to exist in the DOM even when it is
+    // empty or the template chose not to place it. The invisible wrapper is
+    // the direct-manipulation target for adding the first block.
+    if patterns.edit_mode()
+        && let Some(page) = page
+    {
+        for declaration in template.blocks().filter(|block| block.kind() == "slot") {
+            let Some(slot) = label_string(&declaration) else {
+                continue;
+            };
+            if !placed_slots.borrow().contains(&slot) {
+                rendered
+                    .body
+                    .push_str(&wrap_page_content(page, page_name, &slot, ""));
+            }
         }
     }
     rendered.body = process_footnotes(&rendered.body);
@@ -648,14 +732,34 @@ fn block_handle_index(value: &Value) -> Option<usize> {
     fields.get("handle")?.as_u64().map(|n| n as usize)
 }
 
-fn wrap_page_content(page: &Block<'_>, page_name: &str, content: &str) -> String {
+fn wrap_page_content(page: &Block<'_>, page_name: &str, slot: &str, content: &str) -> String {
     let src = page.named_source();
     let span = page.span();
     format!(
         "<div data-wcl-page-file=\"{}\" data-wcl-page-name=\"{}\" \
-         data-wcl-page-span=\"{}:{}\" style=\"display:contents\">\n{content}</div>\n",
+         data-wcl-page-span=\"{}:{}\" data-wcl-slot=\"{}\" style=\"display:contents\">\n{content}</div>\n",
         escape_html(src.name()),
         escape_html(page_name),
+        span.start,
+        span.end,
+        escape_html(slot),
+    )
+}
+
+fn wrap_layout_fallback(
+    declaration: &Block<'_>,
+    page_name: &str,
+    slot: &str,
+    content: &str,
+) -> String {
+    let src = declaration.named_source();
+    let span = declaration.span();
+    format!(
+        "<div data-wcl-page-name=\"{}\" data-wcl-slot=\"{}\" \
+         data-wcl-file=\"{}\" data-wcl-span=\"{}:{}\" style=\"display:contents\">\n{content}</div>\n",
+        escape_html(page_name),
+        escape_html(slot),
+        escape_html(src.name()),
         span.start,
         span.end,
     )
@@ -690,11 +794,6 @@ pub(crate) fn render_block(
     }
     let rendered = match block.kind() {
         kinds::COLUMN => Some(render_column(doc, block, patterns, base_dir)),
-        // A `region` is a named content slot pulled out and rendered
-        // separately by `build_normal_page` (it becomes a `TemplateCtx`
-        // region). Reached here only when nested outside the page top
-        // level — render nothing so it never leaks into the default body.
-        kinds::REGION => Some(String::new()),
         // A presentation `fragment` wraps its children in a step-reveal
         // box (`<div class="wdoc-fragment">`); the deck player reveals
         // them one keypress at a time. Like `column`, the `@children`
@@ -817,8 +916,7 @@ fn anchor_block(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> S
     // their own anchors plus the field-binding attributes.
     if matches!(
         kind,
-        kinds::REGION
-            | kinds::COLUMN
+        kinds::COLUMN
             | kinds::FRAGMENT
             | kinds::REPEATER
             | kinds::INSTANCE

@@ -59,7 +59,8 @@ const MAX_EXPANSION_DEPTH: usize = 32;
 /// schema dispatch (`@block`, `@table`, `@document`, `@decorator`),
 /// field shape (`@inline`, `@default`, `@child`, `@children`),
 /// connection decomposition (`@connections`), per-block schema opt-out
-/// (`@schemaless`), and context-decided placement (`@contextual`).
+/// (`@schemaless`), context-decided placement (`@contextual`), and the
+/// host-neutral nested slot-type marker (`@block_slot`).
 /// User-defined decorators are matched by their declared name and don't
 /// go through this enum.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -70,6 +71,7 @@ pub(crate) enum BuiltinDecorator {
     Decorator,
     Schemaless,
     Contextual,
+    BlockSlot,
     DeclaresKind,
     Inline,
     Default,
@@ -90,6 +92,7 @@ impl BuiltinDecorator {
             BuiltinDecorator::Decorator => "decorator",
             BuiltinDecorator::Schemaless => "schemaless",
             BuiltinDecorator::Contextual => "contextual",
+            BuiltinDecorator::BlockSlot => "block_slot",
             BuiltinDecorator::DeclaresKind => "declares_kind",
             BuiltinDecorator::Inline => "inline",
             BuiltinDecorator::Default => "default",
@@ -639,6 +642,8 @@ fn synth_child_from_value(
     let synth_block = ast::Block {
         kind: String::new(),
         kind_ns: Vec::new(),
+        conditional: false,
+        slot_decl: None,
         labels: vec![ast::Expr::None; label_len],
         items,
         decorators: Vec::new(),
@@ -1767,6 +1772,16 @@ impl<'a> Field<'a> {
         self.ast.span
     }
 
+    /// Return the authored symbol when this field is exactly a symbol
+    /// literal (`template = :book`). Computed expressions deliberately
+    /// return `None`; hosts use this to avoid false-positive static checks.
+    pub fn literal_symbol(&self) -> Option<&'a str> {
+        match &self.ast.expr {
+            ast::Expr::Symbol(name) => Some(name.as_str()),
+            _ => None,
+        }
+    }
+
     /// Pretty-printed source for this field (`name = expr`).
     pub fn to_source(&self) -> String {
         crate::format::to_source_item(&ast::Item::Field(self.ast.clone()))
@@ -2164,6 +2179,34 @@ impl<'a> Block<'a> {
         self.kind_override.unwrap_or(&self.ast.kind)
     }
 
+    /// Whether this block was authored as a conditional bare-name fill
+    /// (`aside? { ... }`). Hosts interpret conditionality against their
+    /// resolved slot contract.
+    pub fn is_conditional(&self) -> bool {
+        self.ast.conditional
+    }
+
+    /// Declared type of a `slot name: Type` block.
+    pub fn slot_type_ref(&self) -> Option<&'a TypeRef> {
+        self.ast.slot_decl.as_ref().map(|slot| &slot.ty)
+    }
+
+    /// `true` for a declaration carrying `?` after its type.
+    pub fn slot_optional(&self) -> bool {
+        self.ast
+            .slot_decl
+            .as_ref()
+            .is_some_and(|slot| slot.optional)
+    }
+
+    /// `true` for a declaration carrying `*` after its type.
+    pub fn slot_repeated(&self) -> bool {
+        self.ast
+            .slot_decl
+            .as_ref()
+            .is_some_and(|slot| slot.repeated)
+    }
+
     /// The document this block belongs to. Lets host renderers reach
     /// document-level lookups (e.g. `kind_declarer`) from a block view.
     pub fn doc(&self) -> &'a Document {
@@ -2293,11 +2336,19 @@ impl<'a> Block<'a> {
     /// feed them back through the caller's normal recursion without lowering
     /// them to a value or rendered string first.
     pub fn structural_content(&self) -> Option<Vec<Block<'a>>> {
+        self.structural_slot_content("content")
+    }
+
+    /// Structural block nodes supplied for the named slot by the nearest
+    /// renderer-driven expansion. Unlike a global block-kind lookup, this is
+    /// scoped to one instantiated holder, so two components may declare the
+    /// same slot name with unrelated contracts.
+    pub fn structural_slot_content(&self, name: &str) -> Option<Vec<Block<'a>>> {
         self.scope
             .frames()
             .iter()
             .rev()
-            .find_map(|frame| frame.content.as_deref().map(|blocks| blocks.to_vec()))
+            .find_map(|frame| frame.content.as_deref()?.get(name).cloned())
     }
 
     /// Expand `body`'s child blocks once per binding set, each under a
@@ -2333,14 +2384,29 @@ impl<'a> Block<'a> {
         binding_sets: Vec<std::sync::Arc<Vec<(String, Value)>>>,
         content: std::rc::Rc<Vec<Block<'a>>>,
     ) -> Vec<Vec<Block<'a>>> {
-        self.expand_bodies_inner(body, binding_sets, Some(content))
+        let slots = std::rc::Rc::new(std::collections::BTreeMap::from([(
+            "content".to_string(),
+            content.as_ref().clone(),
+        )]));
+        self.expand_bodies_inner(body, binding_sets, Some(slots))
+    }
+
+    /// [`expand_bodies`](Self::expand_bodies) with several independently
+    /// named structural content slots attached to the expansion scope.
+    pub fn expand_bodies_with_slots(
+        &self,
+        body: &Block<'a>,
+        binding_sets: Vec<std::sync::Arc<Vec<(String, Value)>>>,
+        slots: std::rc::Rc<std::collections::BTreeMap<String, Vec<Block<'a>>>>,
+    ) -> Vec<Vec<Block<'a>>> {
+        self.expand_bodies_inner(body, binding_sets, Some(slots))
     }
 
     fn expand_bodies_inner(
         &self,
         body: &Block<'a>,
         binding_sets: Vec<std::sync::Arc<Vec<(String, Value)>>>,
-        content: Option<std::rc::Rc<Vec<Block<'a>>>>,
+        content: Option<std::rc::Rc<std::collections::BTreeMap<String, Vec<Block<'a>>>>>,
     ) -> Vec<Vec<Block<'a>>> {
         let ItemCellKind::Block { expansions, .. } = &self.cells.kind else {
             return Vec::new();

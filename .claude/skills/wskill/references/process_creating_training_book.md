@@ -97,6 +97,6 @@ be graded consistently. Serve the course to exercise the grading loop end to end
 
 ## Related
 
-- [The training view](../references/concept_training_view.md)
+- [The training view](../references/concept_training_view.md) — The training view supports Creating the training view: An optional interactive course — ordered sections of material ending in graded checks, for learners rather than practitioners.
 
 [← Back to SKILL.md](../SKILL.md)

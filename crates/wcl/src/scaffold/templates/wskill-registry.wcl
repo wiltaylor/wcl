@@ -484,6 +484,7 @@ page index { sites = [:landing]  start = true
 // search script. `c.content` is intentionally ignored — the page body above is
 // the Markdown / PDF fallback.
 template registry {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_head_font("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"),

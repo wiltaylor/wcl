@@ -39,6 +39,6 @@ service "api" { port = 9090u32  region = "eu-west-1" }
 
 ## Related
 
-- [Blocks](../references/concept_blocks.md)
+- [Blocks](../references/concept_blocks.md) — Blocks supports Block Schema: A named group of fields that can also nest other blocks; the schema sets its labels and fields.
 
 [← Back to SKILL.md](../SKILL.md)

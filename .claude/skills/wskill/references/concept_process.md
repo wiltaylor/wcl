@@ -17,10 +17,10 @@ the concepts, entities and facts it touches.
 
 ## Related
 
-- [Concept](../references/concept_concept.md)
+- [Concept](../references/concept_concept.md) — Concept supports Process: A unit that captures an idea or mental model of something.
 
-- [Entity](../references/concept_entity.md)
+- [Entity](../references/concept_entity.md) — Entity supports Process: A concrete NAMED thing in the topic's world — a person, software, a place, an organisation. Reserved: never a catch-all.
 
-- [Fact](../references/concept_fact.md)
+- [Fact](../references/concept_fact.md) — Fact supports Process: A unit that holds factual data — a value, a constant, a value table.
 
 [← Back to SKILL.md](../SKILL.md)
