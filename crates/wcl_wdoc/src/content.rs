@@ -103,10 +103,12 @@ impl std::fmt::Display for ContentError {
 impl std::error::Error for ContentError {}
 
 /// The [`Value`] readers the generated conversions are written in terms
-/// of. Which ones a build uses follows from the declaration — a reader
-/// no current field needs is still the one the next field will, so the
-/// set is complete rather than pruned to today's union.
-#[allow(dead_code)]
+/// of. Which ones a build uses follows from the declaration: the emitter
+/// pairs every WCL builtin with the reader that carries it (its
+/// `Crossing` table), so a reader the current union happens not to reach
+/// is the one the next field to declare that builtin needs. Those carry
+/// their own `dead_code` waiver; a reader nothing at all pairs with is a
+/// genuine leftover and still warns.
 mod read {
     use std::collections::BTreeMap;
 
@@ -193,6 +195,11 @@ mod read {
         }
     }
 
+    /// The reader for a bare `symbol` field. Today's union types its one
+    /// symbol field as a declared vocabulary (`CalloutKind`) instead, so
+    /// nothing reaches this — the `Crossing` table still pairs `symbol`
+    /// with it.
+    #[allow(dead_code)]
     pub(super) fn as_symbol(value: &Value, at: At) -> Result<String, ContentError> {
         match value {
             Value::Symbol(s) => Ok(s.clone()),
@@ -220,6 +227,9 @@ mod read {
         })
     }
 
+    /// The reader for an `f32` field. The IR's measurements are all
+    /// `f64`; the `Crossing` table still pairs `f32` with it.
+    #[allow(dead_code)]
     pub(super) fn as_f32(value: &Value, at: At) -> Result<f32, ContentError> {
         float(value)
             .map(|f| f as f32)
@@ -289,6 +299,13 @@ mod read {
 use read::*;
 
 include!(concat!(env!("OUT_DIR"), "/content_ir.rs"));
+
+/// The emitter that produced the `include!`d module, compiled a second
+/// time so its own refusals can be tested: a build script is not reached
+/// by `cargo test`, and its panics are the closedness guarantee.
+#[cfg(test)]
+#[path = "../build/content_ir.rs"]
+mod emitter;
 
 // ── Tests ─────────────────────────────────────────────────────────
 
@@ -536,6 +553,99 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    // ── The emitter ───────────────────────────────────────────────
+
+    /// A one-file synthetic stdlib for the emitter's refusals.
+    fn sources(wcl: &str) -> Vec<(String, String)> {
+        vec![("synthetic.wcl".to_string(), wcl.to_string())]
+    }
+
+    #[test]
+    fn the_included_module_is_what_the_emitter_produces_from_the_stdlib() {
+        let lib = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("lib");
+        assert_eq!(
+            super::emitter::generate(&lib),
+            include_str!(concat!(env!("OUT_DIR"), "/content_ir.rs"))
+        );
+    }
+
+    #[test]
+    fn a_field_type_that_cannot_cross_a_backend_boundary_is_refused() {
+        let err = std::panic::catch_unwind(|| {
+            super::emitter::generate_from(&sources(
+                "namespace wdoc\nunion Content { Odd { draw: fn(utf8) -> utf8 } }\n",
+            ))
+        })
+        .expect_err("a fn-typed field must fail the build");
+        let msg = err.downcast_ref::<String>().expect("panic message");
+        assert!(msg.contains("cannot cross the backend boundary"), "{msg}");
+    }
+
+    #[test]
+    fn a_variant_the_backends_could_not_read_by_name_is_refused() {
+        // A positional variant has no field names in its payload, so a
+        // backend has nothing to read it by.
+        let err = std::panic::catch_unwind(|| {
+            super::emitter::generate_from(&sources(
+                "namespace wdoc\n\
+                 type Note { text: utf8 }\n\
+                 union Content { Aside Note }\n",
+            ))
+        })
+        .expect_err("a positional variant must fail the build");
+        let msg = err.downcast_ref::<String>().expect("panic message");
+        assert!(msg.contains("must be a record variant"), "{msg}");
+    }
+
+    #[test]
+    fn an_ambiguously_declared_type_is_refused() {
+        // The parser catches a name declared twice in ONE file; two
+        // files are how the stdlib actually does it (`Image` is both a
+        // page block and a typedoc one), and only the emitter sees that.
+        let err = std::panic::catch_unwind(|| {
+            super::emitter::generate_from(&[
+                (
+                    "one.wcl".to_string(),
+                    "namespace wdoc\ntype Note { text: utf8 }\n".to_string(),
+                ),
+                (
+                    "two.wcl".to_string(),
+                    "namespace wdoc\n\
+                     type Note { body: utf8 }\n\
+                     union Content { Aside { note: Note } }\n"
+                        .to_string(),
+                ),
+            ])
+        })
+        .expect_err("two declarations of a reached name must fail the build");
+        let msg = err.downcast_ref::<String>().expect("panic message");
+        assert!(msg.contains("more than once"), "{msg}");
+    }
+
+    #[test]
+    fn a_parameterised_type_is_refused() {
+        // Type arguments are syntax only — nothing substitutes them, so
+        // generating `Note` and dropping the `<utf8>` would be a lie.
+        let err = std::panic::catch_unwind(|| {
+            super::emitter::generate_from(&sources(
+                "namespace wdoc\n\
+                 type Note { text: utf8 }\n\
+                 union Content { Aside { note: Note<utf8> } }\n",
+            ))
+        })
+        .expect_err("a parameterised field type must fail the build");
+        let msg = err.downcast_ref::<String>().expect("panic message");
+        assert!(msg.contains("type arguments"), "{msg}");
+    }
+
+    #[test]
+    fn a_field_named_after_a_rust_keyword_is_escaped() {
+        let rust = super::emitter::generate_from(&sources(
+            "namespace wdoc\nunion Content { Odd { type: utf8 } }\n",
+        ));
+        assert!(rust.contains("r#type: String,"), "{rust}");
     }
 
     #[test]
