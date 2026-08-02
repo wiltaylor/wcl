@@ -533,10 +533,36 @@ fn append_synthetic_unit_page(
             .map_err(|e| format!("read {}: {e}", entry_abs.display()))?,
     };
     let synthetic = format!(
-        "\n\npage {UNIT_PREVIEW_PAGE} {{\n  title = \"{id}\"\n  project {{ from = {gather}.{id}.body }}\n}}\n"
+        "\n\npage {UNIT_PREVIEW_PAGE} {{\n{}  title = \"{id}\"\n  project {{ from = {gather}.{id}.body }}\n}}\n",
+        unit_page_sites(&doc)
     );
     overlay.insert(entry_abs.to_path_buf(), base + &synthetic);
     Ok(())
+}
+
+/// The `sites` line the synthetic unit page needs, or `""` when the
+/// document declares at most one site.
+///
+/// A multi-site document rejects an untagged page, and this one joins
+/// EVERY declared site: it is built under whichever site the caller
+/// targets — all of them on a merged build — so naming one would be a
+/// second answer that could disagree with the build target.
+fn unit_page_sites(doc: &wcl_lang::Document) -> String {
+    let declared: Vec<Option<String>> = doc
+        .blocks()
+        .filter(|b| b.kind() == "site")
+        .map(|b| match b.labels().ok()?.into_iter().next()? {
+            wcl_lang::Value::Identifier(s)
+            | wcl_lang::Value::Utf8(s)
+            | wcl_lang::Value::Symbol(s) => Some(s),
+            _ => None,
+        })
+        .collect();
+    if declared.len() < 2 {
+        return String::new();
+    }
+    let names: Vec<String> = declared.iter().flatten().map(|n| format!(":{n}")).collect();
+    format!("  sites = [{}]\n", names.join(", "))
 }
 
 /// Every file under `root`, as `/`-separated paths relative to it.
@@ -751,6 +777,16 @@ mod tests {
         thing alpha {\n  body {\n    p \"ALPHA_BODY_TEXT\"\n  }\n}\n\n\
         thing beta {\n}\n\n\
         page index {\n  start = true\n\n  h1 \"Home\"\n}\n";
+
+    /// [`UNIT_BODY_DOC`] with a second site — where an untagged page is a
+    /// build error, so the synthetic unit page has to name its sites.
+    const UNIT_BODY_MULTISITE_DOC: &str = "import <wdoc.wcl>\n\n\
+        @document\ntype Doc {\n  @children(\"thing\") things: list<Thing>\n}\n\n\
+        @block(\"thing\")\ntype Thing {\n  @inline(0) id: identifier\n  @child(\"body\") body: wdoc.WdocAddressableBody?\n}\n\n\
+        site docs {\n  title = \"The Docs\"\n  root = true\n}\n\n\
+        site blog {\n  title = \"The Blog\"\n}\n\n\
+        thing alpha {\n  body {\n    p \"ALPHA_BODY_TEXT\"\n  }\n}\n\n\
+        page index {\n  sites = [:docs, :blog]\n  start = true\n\n  h1 \"Home\"\n}\n";
 
     fn write(dir: &Path, doc: &str) -> Arc<EditorState> {
         std::fs::write(dir.join("main.wcl"), doc).unwrap();
@@ -1019,6 +1055,32 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    /// A multi-site entry rejects an untagged page, so the synthetic unit
+    /// page joins every declared site — otherwise the content modal's
+    /// merged tab and the screen editor would hard-fail on such an entry.
+    #[tokio::test]
+    async fn merged_unit_page_joins_every_site_in_a_multi_site_document() {
+        let td = tempfile::tempdir().unwrap();
+        let state = write(td.path(), UNIT_BODY_MULTISITE_DOC);
+
+        let v = preview_site(
+            &state,
+            &serde_json::json!({
+                "entry": "main.wcl", "site": "docs", "merged": true,
+                "unit": { "kind": "thing", "id": "alpha" },
+                "pages": [UNIT_PREVIEW_PAGE], "files": [],
+            }),
+        )
+        .expect("unit build in a multi-site document");
+        let base = rel_of(v["href"].as_str().unwrap())
+            .rsplit_once('/')
+            .unwrap()
+            .0
+            .to_string();
+        let page = page_text(&state, &format!("{base}/{UNIT_PREVIEW_PAGE}.html")).await;
+        assert!(page.contains("ALPHA_BODY_TEXT"), "body projected: {page}");
     }
 
     #[tokio::test]

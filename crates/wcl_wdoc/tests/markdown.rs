@@ -102,8 +102,8 @@ fn skill_site_is_skipped_and_rejected_when_named() {
     let src = tmp.path().join("doc.wcl");
     write_fixture(&src, body);
 
-    // Build all → only the non-skill page `doc` (no `sites`) is written; the
-    // skill site's `home` page is not.
+    // Build all → only the non-skill page `doc` is written; the skill
+    // site's `home` page is not.
     let out = tmp.path().join("out");
     md_ok(&src, &out, None);
     assert!(out.join("doc.md").is_file(), "non-skill page written");

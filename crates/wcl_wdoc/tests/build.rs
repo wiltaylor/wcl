@@ -7736,19 +7736,14 @@ page a { sites = [:nope]  h1 "A" {} }
     ));
 }
 
-/// The `sites` field of `build`'s multi-site error, as a string.
-fn multisite_error(src: &str) -> String {
-    let tmp = TempDir::new().unwrap();
-    let file = tmp.path().join("ms.wcl");
-    write_fixture(&file, src);
-    let out = TempDir::new().unwrap();
-    match build(&file, out.path(), None) {
-        Err(BuildError::BadPage(msg)) => msg,
-        Err(e) => {
+/// Build `src` and return the `BadPage` message it must fail with.
+fn bad_page_message(src: &str) -> String {
+    match build_err(src) {
+        BuildError::BadPage(msg) => msg,
+        e => {
             e.report();
             panic!("expected a BadPage error, got the error reported above");
         }
-        Ok(_) => panic!("expected the build to fail"),
     }
 }
 
@@ -7757,7 +7752,7 @@ fn untagged_page_in_a_multi_site_document_is_an_error() {
     // With more than one site the site chooses the page's template, so a
     // page belonging to every site by default would be re-templated by a
     // site added later without the page changing. Naming it is required.
-    let msg = multisite_error(
+    let msg = bad_page_message(
         r##"
 site docs { default_template = :webpage  title = "Docs" }
 site blog { default_template = :webpage  title = "Blog" }
@@ -7775,7 +7770,7 @@ page loose { h1 "Loose" {} }
 fn empty_sites_list_in_a_multi_site_document_is_an_error() {
     // `sites = []` was the same "every site" default spelled out; it must
     // not survive as a backdoor to the behaviour the rule removes.
-    let msg = multisite_error(
+    let msg = bad_page_message(
         r##"
 site docs { default_template = :webpage  title = "Docs" }
 site blog { default_template = :webpage  title = "Blog" }
