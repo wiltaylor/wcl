@@ -1,28 +1,25 @@
 concept numbers {
-  name     = "Numbers"
-  summary  = "Fixed-width signed and unsigned integers plus two float widths, with literal suffixes."
-  related  = [lists, numeric_promotion]
+  name = "Numbers"
+  summary = "Fixed-width signed and unsigned integers plus two float widths, with literal suffixes."
+  related = [numeric_promotion]
   audience = :both
   body {
-    p <<PROSE
-WCL has fixed-width signed and unsigned integers plus two float widths. A bare
-integer literal defaults to `i64`; a suffix pins the exact type. See
-[Numeric promotion](concept_numeric_promotion) for how mixed operands widen to a
-common type, and [Number literals](fact_number_literals) for the literal syntax —
-radixes, width suffixes, and digit grouping.
-PROSE
+    p <<DOC
+      WCL has fixed-width signed and unsigned integers plus two float widths. A bare
+      integer literal defaults to `i64`; a suffix pins the exact type. See
+      [Numeric promotion](concept_numeric_promotion) for how mixed operands widen to a
+      common type, and [Number literals](fact_number_literals) for the literal syntax —
+      radixes, width suffixes, and digit grouping.
+    DOC
     h2 "Types"
     table {
       header = ["Width", "Signed", "Unsigned", "Float"]
-      rows = [
-        ["8-bit",   "`i8`",    "`u8`",    "—"],
-        ["16-bit",  "`i16`",   "`u16`",   "—"],
-        ["32-bit",  "`i32`",   "`u32`",   "`f32`"],
-        ["64-bit",  "`i64`",   "`u64`",   "`f64`"],
-        ["128-bit", "`i128`",  "`u128`",  "—"],
-        ["platform default size", "`isize`", "`usize`", "—"],
-      ]
+      rows = [["8-bit", "`i8`", "`u8`", "—"], ["16-bit", "`i16`", "`u16`", "—"], ["32-bit", "`i32`", "`u32`", "`f32`"], ["64-bit", "`i64`", "`u64`", "`f64`"], ["128-bit", "`i128`", "`u128`", "—"], ["platform default size", "`isize`", "`usize`", "—"]]
     }
-    p "The platform-default size (`isize` / `usize`) is the pointer width of the machine WCL runs on — 64-bit on most desktops/servers, 32-bit on smaller targets — so its exact width changes depending on the platform."
+    p <<DOC
+      The platform-default size (`isize` / `usize`) is the pointer width of the machine WCL runs on
+      — 64-bit on most desktops/servers, 32-bit on smaller targets — so its exact width changes
+      depending on the platform.
+    DOC
   }
 }

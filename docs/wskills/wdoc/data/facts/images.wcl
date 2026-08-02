@@ -1,32 +1,49 @@
 import <wdoc.wcl>
 
 fact images {
-  title    = "image"
-  related  = [diagrams, videos, maps]
+  title = "image"
+  related = [diagrams]
   audience = :both
   body {
     block_doc {
-      type        = Image
+      type = Image
       description = "`image` embeds a static image. The source path resolves relative to the build entry file and the file is copied verbatim into `_wdoc/` at build time, so the output site is self-contained. Because it's referenced by a relative `_wdoc/` URL, it only resolves when the site is served — not when the page is opened directly from disk (same as icons and tilemaps)."
     }
     h2 "On a page"
-    p "An `image` block directly under a `page` renders as a standalone `<img>`. The source is the inline label; set `width` / `height` to size it, `alt` for accessibility, and a `class` for styling (live below — a Kenney CC0 spritesheet, scaled down):"
+    p <<DOC
+      An `image` block directly under a `page` renders as a standalone `<img>`. The source is the
+      inline label; set `width` / `height` to size it, `alt` for accessibility, and a `class` for
+      styling (live below — a Kenney CC0 spritesheet, scaled down):
+    DOC
     demo {
       image "../../assets/kenney-platformer.png" {
-        alt   = "A platformer tile sheet"
+        alt = "A platformer tile sheet"
         width = 240.0
       }
     }
     h2 "Inside a diagram"
-    p "`image` is also a placeable `SvgBlock`, so it can sit in a `diagram` / `container` alongside `rect` / `circle`, positioned by `x` / `y` (or anchors)."
+    p <<DOC
+      `image` is also a placeable `SvgBlock`, so it can sit in a `diagram` / `container` alongside
+      `rect` / `circle`, positioned by `x` / `y` (or anchors).
+    DOC
     demo {
       diagram = true
       diagram {
-        width = 280  height = 140
+        width = 280
+        height = 140
         image "../../assets/kenney-platformer.png" {
-          x = 20.0  y = 20.0  width = 100.0  height = 100.0
+          x = 20.0
+          y = 20.0
+          width = 100.0
+          height = 100.0
         }
-        rect { x = 150.0  y = 45.0  width = 100.0  height = 50.0  fill = "#a3be8c" }
+        rect {
+          x = 150.0
+          y = 45.0
+          width = 100.0
+          height = 50.0
+          fill = "#a3be8c"
+        }
       }
     }
   }

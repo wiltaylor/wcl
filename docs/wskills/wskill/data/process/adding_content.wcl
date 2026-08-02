@@ -1,54 +1,105 @@
 procedure adding_content {
-  title   = "Adding content to a wskill"
+  title = "Adding content to a wskill"
   purpose = "The core capture loop: decompose a piece of knowledge, classify it, write the unit, link it, pin it, render."
   preconditions = ["An existing wskill folder that checks clean (`just wskill-check`)."]
-  related = [decomposing_information, unit_decision_guide, atomic_note, building_the_index, selfcontained]
+  related = [decomposing_information, building_the_index]
   audience = :both
 
-  step decompose { n = 1
+  step decompose {
+    n = 1
     title = "Decompose to atomic notes"
-    body steps { p "Break the knowledge into single-idea pieces — one idea, thing, value or task per note. If a draft note needs an \"and\" in its summary, split it. See [Decomposing information](concept_decomposing_information)." }
+    body steps {
+      p <<DOC
+        Break the knowledge into single-idea pieces — one idea, thing, value or task per note. If a
+        draft note needs an "and" in its summary, split it. See
+        [Decomposing information](concept_decomposing_information).
+      DOC
+    }
   }
 
-  step classify { n = 2
+  step classify {
+    n = 2
     title = "Classify with the decision guide"
     shape = :decision
-    body steps { p "Run each note through [the decision guide](fact_unit_decision_guide): a dated finding from an investigation → `research` (see [Capturing research](process_capturing_research)); a repeatable task → `procedure`; a concrete NAMED thing (person, software, place, …) → `entity` with a `kind` from `schema/kinds.wcl`; an indisputable value/table (including a glossary) → `fact`; otherwise → `concept`. Never default to entity." }
+    body steps {
+      p <<DOC
+        Run each note through
+        [the decision guide](fact_unit_decision_guide): a dated finding from an investigation → `research` (see [Capturing research](process_capturing_research));
+        a repeatable task → `procedure`; a concrete NAMED thing (person, software, place, …) →
+        `entity` with a `kind` from `schema/kinds.wcl`; an indisputable value/table (including a
+        glossary) → `fact`; otherwise → `concept`. Never default to entity.
+      DOC
+    }
   }
 
-  step write { n = 3
+  step write {
+    n = 3
     title = "Write the unit file"
-    body screen { code "wcl" { source = <<'WCL'
-// data/reference/<id>.wcl (or the per-kind folder)
-concept <id> {
-  name     = "<Headline>"
-  summary  = "<One-liner the indexes show.>"
-  audience = :both              // opt into the skill when the agent needs it
-  related  = [<other_ids>]
-  body { p "The substance — capture it here, never defer to an external source." }
-}
-WCL
-    } }
-    body steps { p "Write the block instance in `data/` (one file per unit as the wskill grows; add the import line to the folder's `main.wcl`). Start from the kind's fill-out template (Unit templates) and follow the house style — [Writing style](fact_writing_style). Give it a stable `id`, a headline, a summary, and a self-contained body. Attach worked examples as `example` blocks with `unit = <id>`." }
+    body screen {
+      code "wcl" {
+        source = <<DOC
+          // data/reference/<id>.wcl (or the per-kind folder)
+          concept <id> {
+            name     = "<Headline>"
+            summary  = "<One-liner the indexes show.>"
+            audience = :both              // opt into the skill when the agent needs it
+            related  = [<other_ids>]
+            body { p "The substance — capture it here, never defer to an external source." }
+          }
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        Write the block instance in `data/` (one file per unit as the wskill grows; add the import
+        line to the folder's `main.wcl`). Start from the kind's fill-out template (Unit templates)
+        and follow the house style — [Writing style](fact_writing_style). Give it a stable `id`, a
+        headline, a summary, and a self-contained body. Attach worked examples as `example` blocks
+        with `unit = <id>`.
+      DOC
+    }
   }
 
-  step link { n = 4
+  step link {
+    n = 4
     title = "Link it into the web"
-    body steps { p "Fill `related` with the few ids a reader would go to next — roughly 3-5, not everything related. Links resolve both ways (each page also lists what references it), so a careless link adds noise at both ends; see [Linking discipline](fact_linking_discipline). A unit with no links at all is usually misfiled or not atomic." }
+    body steps {
+      p <<DOC
+        Fill `related` with the few ids a reader would go to next — roughly 3-5, not everything
+        related. Links resolve both ways (each page also lists what references it), so a careless
+        link adds noise at both ends; see [Linking discipline](fact_linking_discipline). A unit with
+        no links at all is usually misfiled or not atomic.
+      DOC
+    }
   }
 
-  step pin { n = 5
+  step pin {
+    n = 5
     title = "Pin it into an index"
-    body steps { p "Add the id to the `related` list of the `index` that owns its area (or create a new index branch — see [Building the wskill index](process_building_the_index)). Unpinned units stay reachable via links but invisible in the nav." }
+    body steps {
+      p <<DOC
+        Add the id to the `related` list of the `index` that owns its area (or create a new index
+        branch — see [Building the wskill index](process_building_the_index)). Unpinned units stay
+        reachable via links but invisible in the nav.
+      DOC
+    }
   }
 
-  step render { n = 6
+  step render {
+    n = 6
     title = "Check and render"
-    body screen { code "console" { source = <<'SH'
-$ just wskill-check && just render
-SH
-    } }
-    body steps { p "`wcl check` catches schema violations (a wrong entity kind, a missing required field) with file/line errors; the render makes the new pages. Fix anything it reports before moving to the next note." }
+    body screen {
+      code "console" {
+        source = "$ just wskill-check && just render\n"
+      }
+    }
+    body steps {
+      p <<DOC
+        `wcl check` catches schema violations (a wrong entity kind, a missing required field) with
+        file/line errors; the render makes the new pages. Fix anything it reports before moving to
+        the next note.
+      DOC
+    }
   }
 
   decompose -> classify

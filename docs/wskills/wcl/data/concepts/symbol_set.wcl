@@ -1,30 +1,37 @@
 concept symbol_set {
-  name     = "Symbol Sets"
-  summary  = "A symbol_set names a closed vocabulary of symbols — an enum-like type."
-  related  = [symbols, unions]
+  name = "Symbol Sets"
+  summary = "A symbol_set names a closed vocabulary of symbols — an enum-like type."
+  related = [symbols]
   audience = :both
   body {
     h2 "Symbol sets"
-    p "A `symbol_set` names a **closed vocabulary** of symbols. A field typed by the symbol set is restricted to exactly those members, giving an enum-like type without the weight of a union."
-    code "wcl" { source = <<'SRC'
-symbol_set Color {
-  red
-  green
-  blue
-}
+    p <<DOC
+      A `symbol_set` names a **closed vocabulary** of symbols. A field typed by the symbol set is
+      restricted to exactly those members, giving an enum-like type without the weight of a union.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        symbol_set Color {
+          red
+          green
+          blue
+        }
 
-type Paint {
-  shade: Color     // only :red, :green, or :blue
-}
+        type Paint {
+          shade: Color     // only :red, :green, or :blue
+        }
 
-@document
-type Doc {
-  cream: Paint
-}
+        @document
+        type Doc {
+          cream: Paint
+        }
 
-cream = { shade: :red }
-SRC
+        cream = { shade: :red }
+      DOC
     }
-    p "Use a symbol set wherever you would reach for an enum in another language: severity levels, edge kinds, named layout modes, palette hues."
+    p <<DOC
+      Use a symbol set wherever you would reach for an enum in another language: severity levels,
+      edge kinds, named layout modes, palette hues.
+    DOC
   }
 }

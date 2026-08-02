@@ -287,7 +287,7 @@ let checklist_views = [{ key: "overview", name: "Overview / decisions" }, { key:
 
 fact interview_question_bank {
   title = "Interview question bank (per view)"
-  related = [designing_new_system, scan_checklist]
+  related = []
   audience = :both
   body {
     p <<DOC
@@ -319,7 +319,7 @@ fact interview_question_bank {
 
 fact scan_checklist {
   title = "Codebase scan checklist (per view)"
-  related = [documenting_existing_system, interview_question_bank]
+  related = []
   audience = :both
   body {
     p <<DOC

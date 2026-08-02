@@ -1,20 +1,17 @@
 fact themes {
   title = "Built-in colour themes"
-  related = [styling, theme_forge, theme_nord, theme_tokyonight, theme_gruvbox, theme_catppuccin, theme_rose, theme_paper]
+  related = []
   audience = :both
   body {
-    p "Set `theme = :<name>` on a `site` to recolour the whole site in one line. Seven palettes ship, each with co-ordinated dark and light variants and its own typography; add `theme_toggle = true` for a light/dark toggle button. By default the accent comes from the theme; override it with `accent = :<hue>`. Each row links to a live swatch preview."
+    p <<DOC
+      Set `theme = :<name>` on a `site` to recolour the whole site in one line. Seven palettes ship,
+      each with co-ordinated dark and light variants and its own typography; add
+      `theme_toggle = true` for a light/dark toggle button. By default the accent comes from the
+      theme; override it with `accent = :<hue>`. Each row links to a live swatch preview.
+    DOC
     table {
       header = ["Theme", "Notes"]
-      rows = [
-        ["forge", "Forge control palette, the default — [preview](fact_theme_forge)"],
-        ["nord", "Cool blue-grey — [preview](fact_theme_nord)"],
-        ["tokyonight", "Vivid night palette — [preview](fact_theme_tokyonight)"],
-        ["gruvbox", "Warm retro — [preview](fact_theme_gruvbox)"],
-        ["catppuccin", "Soft pastel — [preview](fact_theme_catppuccin)"],
-        ["rose", "Muted rosé — [preview](fact_theme_rose)"],
-        ["paper", "Warm print look, serif headings — [preview](fact_theme_paper)"],
-      ]
+      rows = [["forge", "Forge control palette, the default — [preview](fact_theme_forge)"], ["nord", "Cool blue-grey — [preview](fact_theme_nord)"], ["tokyonight", "Vivid night palette — [preview](fact_theme_tokyonight)"], ["gruvbox", "Warm retro — [preview](fact_theme_gruvbox)"], ["catppuccin", "Soft pastel — [preview](fact_theme_catppuccin)"], ["rose", "Muted rosé — [preview](fact_theme_rose)"], ["paper", "Warm print look, serif headings — [preview](fact_theme_paper)"]]
     }
   }
 }

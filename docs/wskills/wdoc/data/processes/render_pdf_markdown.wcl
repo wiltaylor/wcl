@@ -2,34 +2,57 @@ procedure render_pdf_markdown {
   title = "Render a document to PDF or Markdown"
   purpose = "Produce a paginated PDF or a folder of Markdown files (one per page) from the same wdoc source."
   preconditions = ["A WCL file declaring one or more `page` blocks"]
-  related = [pages, sites]
+  related = [sites]
   audience = :both
 
-  step pdf { n = 1
+  step pdf {
+    n = 1
     title = "Render a PDF"
-    body screen { code "console" { source = <<'SH'
-$ wcl wdoc pdf site.wcl --out out
-SH
-    } }
-    body steps { p "Render each `site` to `out/<name>.pdf` — a pure-Rust PDF, no browser or external tools. Prose, headings and more paginate onto A4 by default; pass `--page-size letter` for US Letter." }
+    body screen {
+      code "console" {
+        source = "$ wcl wdoc pdf site.wcl --out out\n"
+      }
+    }
+    body steps {
+      p <<DOC
+        Render each `site` to `out/<name>.pdf` — a pure-Rust PDF, no browser or external tools.
+        Prose, headings and more paginate onto A4 by default; pass `--page-size letter` for US
+        Letter.
+      DOC
+    }
   }
 
-  step markdown { n = 2
+  step markdown {
+    n = 2
     title = "Render Markdown"
-    body screen { code "console" { source = <<'SH'
-$ wcl wdoc markdown site.wcl --out out/md
-SH
-    } }
-    body steps { p "Render every page to one `.md` file per page under `out/md`. Diagrams, terminals and wireframes are written as standalone `.svg` files the Markdown references; equations stay as LaTeX and videos are skipped — aimed at AI / text consumers." }
+    body screen {
+      code "console" {
+        source = "$ wcl wdoc markdown site.wcl --out out/md\n"
+      }
+    }
+    body steps {
+      p <<DOC
+        Render every page to one `.md` file per page under `out/md`. Diagrams, terminals and
+        wireframes are written as standalone `.svg` files the Markdown references; equations stay as
+        LaTeX and videos are skipped — aimed at AI / text consumers.
+      DOC
+    }
   }
 
-  step pick_site { n = 3
+  step pick_site {
+    n = 3
     title = "Pick a single site"
-    body screen { code "console" { source = <<'SH'
-$ wcl wdoc markdown site.wcl --out out/md --site book
-SH
-    } }
-    body steps { p "When a document declares several sites, pass `--site <name>` to render just one; otherwise each site renders into its own subdirectory." }
+    body screen {
+      code "console" {
+        source = "$ wcl wdoc markdown site.wcl --out out/md --site book\n"
+      }
+    }
+    body steps {
+      p <<DOC
+        When a document declares several sites, pass `--site <name>` to render just one; otherwise
+        each site renders into its own subdirectory.
+      DOC
+    }
   }
 
   pdf -> markdown

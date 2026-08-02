@@ -382,7 +382,8 @@ enum WskillCommand {
     },
     /// Run every wskill rule over the model and report the findings —
     /// errors, warnings and curator candidates from one pass. Reads the
-    /// data model only: no build, no editor, and lint never writes.
+    /// data model only: no build and no editor. It writes only when `--fix`
+    /// is explicitly requested.
     ///
     /// Errors are mechanically certain (a `related` id naming nothing, an id
     /// declared twice, a link to a body-less index). Warnings carry a real
@@ -397,6 +398,7 @@ enum WskillCommand {
     ///   wcl wskill lint docs/wskills/wcl
     ///   wcl wskill lint --severity error,warn --deny warn
     ///   wcl wskill lint --format json --severity candidate
+    ///   wcl wskill lint docs/wskills/wcl --fix=bare-related --dry-run
     Lint {
         /// The wskill folder (or an entry `.wcl` inside it). Defaults to
         /// the current directory.
@@ -412,6 +414,20 @@ enum WskillCommand {
         /// `warn`, `candidate`. Only reported severities count.
         #[arg(long, value_parser = parse_severity, default_value = "error")]
         deny: wcl_wskill::Severity,
+        /// Apply every available autofix, or one rule's autofix with
+        /// `--fix=<rule>`. Findings are recomputed after the ops apply.
+        #[arg(
+            long,
+            value_name = "RULE",
+            num_args = 0..=1,
+            require_equals = true,
+            default_missing_value = "all",
+            value_parser = wskill::parse_fix
+        )]
+        fix: Option<wskill::FixSelection>,
+        /// Print the structural ops `--fix` would apply and write nothing.
+        #[arg(long, requires = "fix")]
+        dry_run: bool,
     },
     /// Diff the model across a git range: the union graph — before ∪ after,
     /// with removed units and edges marked removed — plus the findings each
@@ -914,9 +930,11 @@ fn main() -> ExitCode {
                 format,
                 severity,
                 deny,
+                fix,
+                dry_run,
             } => {
                 let entry = entry.unwrap_or_else(|| PathBuf::from("."));
-                wskill::run_lint(&entry, format, &severity, deny)
+                wskill::run_lint(&entry, format, &severity, deny, fix, dry_run)
             }
             WskillCommand::Audit {
                 entry,

@@ -1,66 +1,92 @@
 import <wdoc.wcl>
 
-// A custom widget used in the "Custom widgets" section below: a coloured
-// status badge. It extends Widget (so it's a legal diagram shape) and its
-// `lower` returns SVG fundamentals — a rounded box with a centred label —
-// positioned at its own `x` / `y`, exactly like the built-in `process` shape.
+# A custom widget used in the "Custom widgets" section below: a coloured
+# status badge. It extends Widget (so it's a legal diagram shape) and its
+# `lower` returns SVG fundamentals — a rounded box with a centred label —
+# positioned at its own `x` / `y`, exactly like the built-in `process` shape.
 @block("wf_badge")
 type WfBadge extends Widget {
   @inline(0) text: utf8
   fill = "#2e7d32"
-  id: identifier?  class: list<utf8>?  disabled: bool?
-  x = 0.0  y = 0.0  width = 96.0  height = 26.0
-  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+  id: identifier?
+  class: list<utf8>?
+  disabled: bool?
+  x = 0.0
+  y = 0.0
+  width = 96.0
+  height = 26.0
+  anchor_left: f64?
+  anchor_right: f64?
+  anchor_top: f64?
+  anchor_bottom: f64?
   connect_points: list<AnchorSide>?
-  theme: symbol?  accent: symbol?  mode: symbol?
-  lower = fn(b: WfBadge) -> list<SvgFundamental> {
-    [ SvgFundamental::Rect {
-        x: b.x, y: b.y, width: b.width, height: b.height,
-        fill: b.fill, class: b.class,
-      },
-      SvgFundamental::Label {
-        content: b.text,
-        x: b.x + b.width / 2.0,
-        y: b.y + b.height / 2.0 + 4.0,
-        fit_width: b.width, fit_height: b.height,
-        fill: "#ffffff",
-      } ]
-  }
+  theme: symbol?
+  accent: symbol?
+  mode: symbol?
+  lower = fn(b: WfBadge) -> list<SvgFundamental> { [SvgFundamental::Rect { x: b.x, y: b.y, width: b.width, height: b.height, fill: b.fill, class: b.class }, SvgFundamental::Label { content: b.text, x: b.x + b.width / 2.0, y: b.y + b.height / 2.0 + 4.0, fit_width: b.width, fit_height: b.height, fill: "#ffffff" }] }
 }
 
 fact wireframe {
-  title    = "Wireframes"
-  related  = [terminals, diagrams]
+  title = "Wireframes"
+  related = [diagrams]
   audience = :both
   body {
-    p "Wireframe widgets mock up a UI — windows, device frames (browser / phone / tablet), panels, inputs, controls — as **diagram shapes**. Each `wf_*` block extends `SvgBlock`, so it lives inside a `diagram`: place it with `x` / `y` (or anchors), connect widgets with edges, and mix them with any other shape. Container widgets nest other widgets, so you compose a window of panels of rows of controls. They're static SVG mockups, not interactive."
+    p <<DOC
+      Wireframe widgets mock up a UI — windows, device frames (browser / phone / tablet), panels,
+      inputs, controls — as **diagram shapes**. Each `wf_*` block extends `SvgBlock`, so it lives
+      inside a `diagram`: place it with `x` / `y` (or anchors), connect widgets with edges, and mix
+      them with any other shape. Container widgets nest other widgets, so you compose a window of
+      panels of rows of controls. They're static SVG mockups, not interactive.
+    DOC
     demo {
       diagram = true
       diagram {
-        width = 300  height = 200
+        width = 300
+        height = 200
         wf_window "Account settings" {
-          wf_panel { title = "Profile"
-            wf_input "Display name" { value = "Wil Taylor" }
-            wf_input "Email"        { value = "ai@wiltaylor.dev" }
+          wf_panel {
+            title = "Profile"
+            wf_input "Display name" {
+              value = "Wil Taylor"
+            }
+            wf_input "Email" {
+              value = "ai@wiltaylor.dev"
+            }
           }
           wf_row {
             wf_button "Cancel"
-            wf_button "Save" { icon = "lucide.check" }
+            wf_button "Save" {
+              icon = "lucide.check"
+            }
           }
         }
       }
     }
 
     h2 "Placing and connecting widgets"
-    p "Because widgets are diagram shapes, place them by `x` / `y` and draw edges between them by `id` — just like connecting any two shapes. A widget is sized by its content, so you only position the top-left corner. Under an auto-layout `diagram` (`layout = :layered` / `:force`), omit `x` / `y` and let the solver flow them."
+    p <<DOC
+      Because widgets are diagram shapes, place them by `x` / `y` and draw edges between them by
+      `id` — just like connecting any two shapes. A widget is sized by its content, so you only
+      position the top-left corner. Under an auto-layout `diagram` (`layout = :layered` / `:force`),
+      omit `x` / `y` and let the solver flow them.
+    DOC
     demo {
       diagram = true
       diagram {
-        width = 360  height = 170
-        wf_button "Open settings" { id = launch  x = 20.0  y = 65.0 }
+        width = 360
+        height = 170
+        wf_button "Open settings" {
+          id = launch
+          x = 20.0
+          y = 65.0
+        }
         wf_window "Settings" {
-          id = win  x = 180.0  y = 20.0
-          wf_checkbox "Dark mode" { checked = true }
+          id = win
+          x = 180.0
+          y = 20.0
+          wf_checkbox "Dark mode" {
+            checked = true
+          }
           wf_button "Close"
         }
         launch -> win
@@ -68,120 +94,190 @@ fact wireframe {
     }
 
     h2 "Containers"
-    p "Every container takes `@children(Widget)` — drop any other widget inside, nested arbitrarily. The Rust renderer measures and lays the children out internally (their `x` / `y` are ignored; only the root widget's placement positions the whole group). Device frames have a realistic fixed default size; everything else is sized to its content."
+    p <<DOC
+      Every container takes `@children(Widget)` — drop any other widget inside, nested arbitrarily.
+      The Rust renderer measures and lays the children out internally (their `x` / `y` are ignored;
+      only the root widget's placement positions the whole group). Device frames have a realistic
+      fixed default size; everything else is sized to its content.
+    DOC
 
     h3 "wf_window"
-    p "The outer desktop chrome: a titlebar (traffic-light controls, hidden by `controls = false`) over a body that hosts other widgets, stacked vertically."
+    p <<DOC
+      The outer desktop chrome: a titlebar (traffic-light controls, hidden by `controls = false`)
+      over a body that hosts other widgets, stacked vertically.
+    DOC
     demo {
       diagram = true
-      diagram { width = 300  height = 110
+      diagram {
+        width = 300
+        height = 110
         wf_window "Settings" {
           wf_label "The window body stacks its children vertically."
         }
       }
     }
-    type_table { type = WfWindow }
+    type_table {
+      type = WfWindow
+    }
 
     h3 "wf_browser"
-    p "A web-browser frame: a toolbar with traffic-light dots and an address bar (the inline label is the URL) over a content area. Drop a `wf_window` or any controls inside to mock up a web app."
+    p <<DOC
+      A web-browser frame: a toolbar with traffic-light dots and an address bar (the inline label is
+      the URL) over a content area. Drop a `wf_window` or any controls inside to mock up a web app.
+    DOC
     demo {
       diagram = true
-      diagram { width = 480  height = 260
+      diagram {
+        width = 480
+        height = 260
         wf_browser "app.example.com/dashboard" {
-          wf_panel { title = "Welcome back"
+          wf_panel {
+            title = "Welcome back"
             wf_input "Search…"
             wf_row {
               wf_button "Open"
-              wf_button "New" { icon = "lucide.check" }
+              wf_button "New" {
+                icon = "lucide.check"
+              }
             }
           }
         }
       }
     }
-    type_table { type = WfBrowser }
+    type_table {
+      type = WfBrowser
+    }
 
     h3 "wf_phone"
-    p "A phone shell — a bezel around a screen with a status bar (the inline label is an optional caption) and a home-indicator pill. Set `orientation = :landscape` to rotate it; the default is `:portrait`."
+    p <<DOC
+      A phone shell — a bezel around a screen with a status bar (the inline label is an optional
+      caption) and a home-indicator pill. Set `orientation = :landscape` to rotate it; the default
+      is `:portrait`.
+    DOC
     demo {
       diagram = true
-      diagram { width = 320  height = 480
+      diagram {
+        width = 320
+        height = 480
         wf_phone "9:41" {
-          wf_panel { title = "Account"
-            wf_input "Email" { value = "ada@example.com" }
-            wf_toggle "Notifications" { on = true }
+          wf_panel {
+            title = "Account"
+            wf_input "Email" {
+              value = "ada@example.com"
+            }
+            wf_toggle "Notifications" {
+              on = true
+            }
           }
-          wf_button "Sign in" { icon = "lucide.check" }
+          wf_button "Sign in" {
+            icon = "lucide.check"
+          }
         }
       }
     }
-    type_table { type = WfPhone }
+    type_table {
+      type = WfPhone
+    }
 
     h3 "wf_tablet"
-    p "A tablet shell — the same chrome as `wf_phone` on a larger, squarer frame. Shown here in landscape:"
+    p <<DOC
+      A tablet shell — the same chrome as `wf_phone` on a larger, squarer frame. Shown here in
+      landscape:
+    DOC
     demo {
       diagram = true
-      diagram { width = 460  height = 320
-        wf_tablet { orientation = :landscape
+      diagram {
+        width = 460
+        height = 320
+        wf_tablet {
+          orientation = :landscape
           wf_row {
-            wf_panel { title = "Library"
+            wf_panel {
+              title = "Library"
               wf_label "Recent"
               wf_label "Favourites"
             }
-            wf_panel { title = "Reader"
+            wf_panel {
+              title = "Reader"
               wf_label "Select an item to read."
             }
           }
         }
       }
     }
-    type_table { type = WfTablet }
+    type_table {
+      type = WfTablet
+    }
 
     h3 "wf_panel"
     p "A bordered group with an optional `title` caption — box a set of related controls."
     demo {
       diagram = true
-      diagram { width = 220  height = 120
-        wf_panel { title = "Network"
-          wf_toggle "Wi-Fi" { on = true }
+      diagram {
+        width = 220
+        height = 120
+        wf_panel {
+          title = "Network"
+          wf_toggle "Wi-Fi" {
+            on = true
+          }
           wf_toggle "Bluetooth"
         }
       }
     }
-    type_table { type = WfPanel }
+    type_table {
+      type = WfPanel
+    }
 
     h3 "wf_row"
     p "Lay children out **horizontally** (a panel / window body stacks vertically by default)."
     demo {
       diagram = true
-      diagram { width = 320  height = 50
+      diagram {
+        width = 320
+        height = 50
         wf_row {
           wf_button "Back"
           wf_button "Next"
-          wf_button "Finish" { icon = "lucide.check" }
+          wf_button "Finish" {
+            icon = "lucide.check"
+          }
         }
       }
     }
-    type_table { type = WfRow }
+    type_table {
+      type = WfRow
+    }
 
     h3 "wf_column"
-    p "Stack children **vertically** — the default flow, useful for an explicit column inside a `wf_row` or `wf_grid`."
+    p <<DOC
+      Stack children **vertically** — the default flow, useful for an explicit column inside a
+      `wf_row` or `wf_grid`.
+    DOC
     demo {
       diagram = true
-      diagram { width = 220  height = 80
+      diagram {
+        width = 220
+        height = 80
         wf_column {
           wf_label "Name"
           wf_input "Full name"
         }
       }
     }
-    type_table { type = WfColumn }
+    type_table {
+      type = WfColumn
+    }
 
     h3 "wf_grid"
     p "A grid of equal-width columns; `columns` sets the count and children flow across the rows."
     demo {
       diagram = true
-      diagram { width = 280  height = 120
-        wf_grid { columns = 3
+      diagram {
+        width = 280
+        height = 120
+        wf_grid {
+          columns = 3
           wf_button "1"
           wf_button "2"
           wf_button "3"
@@ -191,170 +287,279 @@ fact wireframe {
         }
       }
     }
-    type_table { type = WfGrid }
+    type_table {
+      type = WfGrid
+    }
 
     h2 "Node graphs"
-    p "A `wf_node_graph` mocks up a node editor — a shader graph, a blueprint, a dataflow pipeline. Each `wf_node` is a titled box with labelled `inputs` down its left edge and `outputs` down its right; a `wf_link` wires `\"node.port\"` → `\"node.port\"`. Nodes auto-lay-out left-to-right from the link graph (set `direction = :top_to_bottom` to flow downward, or give a node an explicit `x` / `y` to pin it)."
+    p <<DOC
+      A `wf_node_graph` mocks up a node editor — a shader graph, a blueprint, a dataflow pipeline.
+      Each `wf_node` is a titled box with labelled `inputs` down its left edge and `outputs` down
+      its right; a `wf_link` wires `"node.port"` → `"node.port"`. Nodes auto-lay-out left-to-right
+      from the link graph (set `direction = :top_to_bottom` to flow downward, or give a node an
+      explicit `x` / `y` to pin it).
+    DOC
     demo {
       diagram = true
-      diagram { width = 560  height = 240
+      diagram {
+        width = 560
+        height = 240
         wf_node_graph {
-          wf_node "Texture"  { id = tex   outputs = ["RGB", "Alpha"] }
-          wf_node "Fresnel"  { id = fres  outputs = ["Factor"] }
-          wf_node "Multiply" { id = mul   inputs = ["A", "B"]  outputs = ["Result"] }
-          wf_node "Output"   { id = out   inputs = ["Color"] }
-          wf_link "tex.RGB"     { to = "mul.A" }
-          wf_link "fres.Factor" { to = "mul.B" }
-          wf_link "mul.Result"  { to = "out.Color" }
+          wf_node "Texture" {
+            id = tex
+            outputs = ["RGB", "Alpha"]
+          }
+          wf_node "Fresnel" {
+            id = fres
+            outputs = ["Factor"]
+          }
+          wf_node "Multiply" {
+            id = mul
+            inputs = ["A", "B"]
+            outputs = ["Result"]
+          }
+          wf_node "Output" {
+            id = out
+            inputs = ["Color"]
+          }
+          wf_link "tex.RGB" {
+            to = "mul.A"
+          }
+          wf_link "fres.Factor" {
+            to = "mul.B"
+          }
+          wf_link "mul.Result" {
+            to = "out.Color"
+          }
         }
       }
     }
-    type_table { type = WfNodeGraph }
+    type_table {
+      type = WfNodeGraph
+    }
     block_doc {
-      type        = WfNode
+      type = WfNode
       description = "A titled node box with named `inputs` (left edge) and `outputs` (right edge) ports."
     }
     block_doc {
-      type        = WfLink
+      type = WfLink
       description = "Within a `wf_node_graph`, wires one node's port to another (`\"node.port\"` → `\"node.port\"`; a bare `\"node\"` targets its first port)."
     }
 
     h2 "Controls"
-    p "The leaf controls — text, buttons, fields, and toggles — drop into any container (or directly into a `diagram`)."
+    p <<DOC
+      The leaf controls — text, buttons, fields, and toggles — drop into any container (or directly
+      into a `diagram`).
+    DOC
 
     h3 "wf_label"
     p "A plain text label."
     demo {
       diagram = true
-      diagram { width = 220  height = 30
+      diagram {
+        width = 220
+        height = 30
         wf_label "Just some label text."
       }
     }
-    type_table { type = WfLabel }
+    type_table {
+      type = WfLabel
+    }
 
     h3 "wf_button"
-    p "A button caption, with an optional leading `icon` (any `pack.name`); `disabled = true` greys it out."
+    p <<DOC
+      A button caption, with an optional leading `icon` (any `pack.name`); `disabled = true` greys
+      it out.
+    DOC
     demo {
       diagram = true
-      diagram { width = 320  height = 50
+      diagram {
+        width = 320
+        height = 50
         wf_row {
-          wf_button "Save" { icon = "lucide.check" }
+          wf_button "Save" {
+            icon = "lucide.check"
+          }
           wf_button "Cancel"
-          wf_button "Delete" { disabled = true }
+          wf_button "Delete" {
+            disabled = true
+          }
         }
       }
     }
-    type_table { type = WfButton }
+    type_table {
+      type = WfButton
+    }
 
     h3 "wf_input"
-    p "A text field. With no `value` the `@inline` placeholder shows greyed; a `value` fills it with solid text."
+    p <<DOC
+      A text field. With no `value` the `@inline` placeholder shows greyed; a `value` fills it with
+      solid text.
+    DOC
     demo {
       diagram = true
-      diagram { width = 240  height = 90
+      diagram {
+        width = 240
+        height = 90
         wf_column {
           wf_input "Search projects…"
-          wf_input "Name" { value = "Ada Lovelace" }
+          wf_input "Name" {
+            value = "Ada Lovelace"
+          }
         }
       }
     }
-    type_table { type = WfInput }
+    type_table {
+      type = WfInput
+    }
 
     h3 "wf_dropdown"
     p "A select field showing the currently-chosen option label with a chevron."
     demo {
       diagram = true
-      diagram { width = 200  height = 44
+      diagram {
+        width = 200
+        height = 44
         wf_dropdown "Release build"
       }
     }
-    type_table { type = WfDropdown }
+    type_table {
+      type = WfDropdown
+    }
 
     h3 "wf_checkbox"
     p "An on/off checkbox; `checked = true` fills the box with a tick."
     demo {
       diagram = true
-      diagram { width = 240  height = 70
+      diagram {
+        width = 240
+        height = 70
         wf_column {
-          wf_checkbox "Enable telemetry" { checked = true }
+          wf_checkbox "Enable telemetry" {
+            checked = true
+          }
           wf_checkbox "Join the beta"
         }
       }
     }
-    type_table { type = WfCheckbox }
+    type_table {
+      type = WfCheckbox
+    }
 
     h3 "wf_radio"
-    p "A radio button — like a checkbox but round; mark the active one with `selected = true` in a group you lay out yourself."
+    p <<DOC
+      A radio button — like a checkbox but round; mark the active one with `selected = true` in a
+      group you lay out yourself.
+    DOC
     demo {
       diagram = true
-      diagram { width = 160  height = 70
+      diagram {
+        width = 160
+        height = 70
         wf_column {
-          wf_radio "Dark" { selected = true }
+          wf_radio "Dark" {
+            selected = true
+          }
           wf_radio "Light"
         }
       }
     }
-    type_table { type = WfRadio }
+    type_table {
+      type = WfRadio
+    }
 
     h3 "wf_toggle"
     p "A sliding on/off switch with an optional trailing label; `on = true` slides the knob across."
     demo {
       diagram = true
-      diagram { width = 220  height = 70
+      diagram {
+        width = 220
+        height = 70
         wf_column {
-          wf_toggle "Notifications" { on = true }
+          wf_toggle "Notifications" {
+            on = true
+          }
           wf_toggle "Do not disturb"
         }
       }
     }
-    type_table { type = WfToggle }
+    type_table {
+      type = WfToggle
+    }
 
     h2 "Common fields"
-    p "Every widget extends a shared `Widget` interface — its diagram placement geometry (`x` / `y` / anchors / `connect_points`) plus per-element theming hints:"
-    type_table { type = Widget }
+    p <<DOC
+      Every widget extends a shared `Widget` interface — its diagram placement geometry (`x` / `y` /
+      anchors / `connect_points`) plus per-element theming hints:
+    DOC
+    type_table {
+      type = Widget
+    }
 
     h2 "Custom widgets"
-    p "Wireframe widgets are user-extensible diagram shapes. Declare a `@block(\"name\") type … extends Widget` with a `lower` that returns `list<SvgFundamental>`, and it plugs into the diagram render path like any custom shape — placed directly in a `diagram` by its own `x` / `y` and connectable by edges. (The built-in containers only lay out the built-in widgets, so a custom widget renders as a standalone shape, not nested inside a `wf_window`.)"
-    p "Here's a coloured status `wf_badge`. The `lower` reads its `x` / `y` and emits a filled box with a centred label — exactly how the built-in `process` shape lowers — and a `fill` field recolours an individual instance:"
+    p <<DOC
+      Wireframe widgets are user-extensible diagram shapes. Declare a
+      `@block("name") type … extends Widget` with a `lower` that returns `list<SvgFundamental>`, and
+      it plugs into the diagram render path like any custom shape — placed directly in a `diagram`
+      by its own `x` / `y` and connectable by edges. (The built-in containers only lay out the
+      built-in widgets, so a custom widget renders as a standalone shape, not nested inside a
+      `wf_window`.)
+    DOC
+    p <<DOC
+      Here's a coloured status `wf_badge`. The `lower` reads its `x` / `y` and emits a filled box
+      with a centred label — exactly how the built-in `process` shape lowers — and a `fill` field
+      recolours an individual instance:
+    DOC
     demo {
       diagram = true
-      diagram { width = 320  height = 40
-        wf_badge "passing" { x = 12.0  y = 7.0 }
-        wf_badge "failing" { x = 130.0 y = 7.0  fill = "#c62828" }
+      diagram {
+        width = 320
+        height = 40
+        wf_badge "passing" {
+          x = 12.0
+          y = 7.0
+        }
+        wf_badge "failing" {
+          x = 130.0
+          y = 7.0
+          fill = "#c62828"
+        }
       }
     }
-    code "wcl" { source = <<'SRC'
-// Extends Widget → a diagram shape. The lower returns SVG fundamentals
-// positioned at the widget's own x/y (like the built-in `process`), and a
-// `fill` field recolours a single instance.
-@block("wf_badge")
-type WfBadge extends Widget {
-  @inline(0) text: utf8
-  fill = "#2e7d32"
-  id: identifier?  class: list<utf8>?  disabled: bool?
-  x = 0.0  y = 0.0  width = 96.0  height = 26.0
-  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
-  connect_points: list<AnchorSide>?
-  theme: symbol?  accent: symbol?  mode: symbol?
-  lower = fn(b: WfBadge) -> list<SvgFundamental> {
-    [ SvgFundamental::Rect {
-        x: b.x, y: b.y, width: b.width, height: b.height,
-        fill: b.fill, class: b.class,
-      },
-      SvgFundamental::Label {
-        content: b.text,
-        x: b.x + b.width / 2.0,
-        y: b.y + b.height / 2.0 + 4.0,
-        fit_width: b.width, fit_height: b.height,
-        fill: "#ffffff",
-      } ]
-  }
-}
+    code "wcl" {
+      source = <<DOC
+        // Extends Widget → a diagram shape. The lower returns SVG fundamentals
+        // positioned at the widget's own x/y (like the built-in `process`), and a
+        // `fill` field recolours a single instance.
+        @block("wf_badge")
+        type WfBadge extends Widget {
+          @inline(0) text: utf8
+          fill = "#2e7d32"
+          id: identifier?  class: list<utf8>?  disabled: bool?
+          x = 0.0  y = 0.0  width = 96.0  height = 26.0
+          anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
+          connect_points: list<AnchorSide>?
+          theme: symbol?  accent: symbol?  mode: symbol?
+          lower = fn(b: WfBadge) -> list<SvgFundamental> {
+            [ SvgFundamental::Rect {
+                x: b.x, y: b.y, width: b.width, height: b.height,
+                fill: b.fill, class: b.class,
+              },
+              SvgFundamental::Label {
+                content: b.text,
+                x: b.x + b.width / 2.0,
+                y: b.y + b.height / 2.0 + 4.0,
+                fit_width: b.width, fit_height: b.height,
+                fill: "#ffffff",
+              } ]
+          }
+        }
 
-diagram { width = 320  height = 40
-  wf_badge "passing" { x = 12.0  y = 7.0 }
-  wf_badge "failing" { x = 130.0 y = 7.0  fill = "#c62828" }
-}
-SRC
+        diagram { width = 320  height = 40
+          wf_badge "passing" { x = 12.0  y = 7.0 }
+          wf_badge "failing" { x = 130.0 y = 7.0  fill = "#c62828" }
+        }
+      DOC
     }
   }
 }

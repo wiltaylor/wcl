@@ -1,29 +1,46 @@
 concept if_else {
-  name     = "if / else"
-  summary  = "An if is an expression; branches must agree on a type, else if chains for multi-way branches, and an omitted else yields none."
-  related  = [match_expr, if_let, optionals]
+  name = "if / else"
+  summary = "An if is an expression; branches must agree on a type, else if chains for multi-way branches, and an omitted else yields none."
+  related = [if_let]
   audience = :both
   body {
-    p "An `if` is an expression. The branches must agree on a type. `else if` chains for multi-way branches."
-    code "wcl" { source = <<'SRC'
-sign = if x < 0 { :neg } else if x > 0 { :pos } else { :zero }
-SRC
+    p <<DOC
+      An `if` is an expression. The branches must agree on a type. `else if` chains for multi-way
+      branches.
+    DOC
+    code "wcl" {
+      source = "sign = if x < 0 { :neg } else if x > 0 { :pos } else { :zero }\n"
     }
     h2 "The else branch is optional"
-    p "Omit `else` and the untaken branch evaluates to `none` — so an else-less `if` has type `T?`. This is the concise form for a conditional list element or an optional field, where writing `else { none }` at every site only adds noise. A chain may end without an `else` too; if no branch is taken the whole expression is `none`."
-    code "wcl" { source = <<'SRC'
-// Conditional list element — `none` when the condition is false.
-// A `none` element is legal in a `list<utf8>`; consumers drop it.
-class = ["nav-item", if entry.current { "current" }]
+    p <<DOC
+      Omit `else` and the untaken branch evaluates to `none` — so an else-less `if` has type `T?`.
+      This is the concise form for a conditional list element or an optional field, where writing
+      `else { none }` at every site only adds noise. A chain may end without an `else` too; if no
+      branch is taken the whole expression is `none`.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        // Conditional list element — `none` when the condition is false.
+        // A `none` element is legal in a `list<utf8>`; consumers drop it.
+        class = ["nav-item", if entry.current { "current" }]
 
-// A chain with no final else.
-badge = if count == 0 { "empty" } else if count > 99 { "many" }
+        // A chain with no final else.
+        badge = if count == 0 { "empty" } else if count > 99 { "many" }
 
-// An optional field, without the `else { none }` ceremony.
-subtitle = if page.tagline != "" { page.tagline }
-SRC
+        // An optional field, without the `else { none }` ceremony.
+        subtitle = if page.tagline != "" { page.tagline }
+      DOC
     }
-    p "The `none` an untaken branch leaves behind is a _value_, so it has to land somewhere that accepts absence: a field declared optional (`subtitle: utf8?`), or any list element. A **required** field still rejects it — assigning an else-less `if` to `title: utf8` is a schema violation whenever the condition is false. A `@non_empty` list needs at least one element that is _not_ `none`, since that is what its readers will see."
-    callout "if let still needs an else" { class = ["note"]  body = "Only the plain `if` may omit its `else`. An `if let` still requires one — the shorthand is not supported there yet." }
+    p <<DOC
+      The `none` an untaken branch leaves behind is a _value_, so it has to land somewhere that
+      accepts absence: a field declared optional (`subtitle: utf8?`), or any list element. A
+      **required** field still rejects it — assigning an else-less `if` to `title: utf8` is a schema
+      violation whenever the condition is false. A `@non_empty` list needs at least one element that
+      is _not_ `none`, since that is what its readers will see.
+    DOC
+    callout "if let still needs an else" {
+      class = ["note"]
+      body = "Only the plain `if` may omit its `else`. An `if let` still requires one — the shorthand is not supported there yet."
+    }
   }
 }

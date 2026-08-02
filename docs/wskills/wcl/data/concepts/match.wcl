@@ -1,30 +1,39 @@
 concept match_expr {
-  name     = "match"
-  summary  = "Tests a value against a sequence of patterns, returning the body of the first that matches."
-  related  = [patterns, if_let, unions, optionals]
+  name = "match"
+  summary = "Tests a value against a sequence of patterns, returning the body of the first that matches."
+  related = [patterns, unions, optionals]
   audience = :both
   body {
-    p "`match` tests a value against a sequence of patterns, returning the body of the first that matches. It is WCL's primary tool for destructuring unions, optionals, and any shape with multiple cases."
-    code "wcl" { source = <<'SRC'
-area = match shape {
-  Shape::Circle { radius, .. } => pi() * radius * radius,
-  Shape::Polygon(n) if n > 2   => 0.0,
-  Shape::Empty                 => 0.0,
-  _                            => 0.0,
-}
-SRC
+    p <<DOC
+      `match` tests a value against a sequence of patterns, returning the body of the first that
+      matches. It is WCL's primary tool for destructuring unions, optionals, and any shape with
+      multiple cases.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        area = match shape {
+          Shape::Circle { radius, .. } => pi() * radius * radius,
+          Shape::Polygon(n) if n > 2   => 0.0,
+          Shape::Empty                 => 0.0,
+          _                            => 0.0,
+        }
+      DOC
     }
     p "See [Patterns](fact_patterns) for the full pattern syntax."
     h2 "Guards"
-    p "An `if expr` after a pattern adds a runtime test; the arm fires only when both the pattern matches and the guard is true."
-    code "wcl" { source = <<'SRC'
-classify = match n {
-  k if k < 0  => :neg,
-  0           => :zero,
-  k if k > 10 => :big,
-  _           => :small,
-}
-SRC
+    p <<DOC
+      An `if expr` after a pattern adds a runtime test; the arm fires only when both the pattern
+      matches and the guard is true.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        classify = match n {
+          k if k < 0  => :neg,
+          0           => :zero,
+          k if k > 10 => :big,
+          _           => :small,
+        }
+      DOC
     }
   }
 }

@@ -1,28 +1,26 @@
 concept use_declarations {
-  name     = "use Declarations"
-  summary  = "use pulls qualified names from other namespaces into local scope so they can be written bare."
-  related  = [namespaces, qualified_kinds, imports]
+  name = "use Declarations"
+  summary = "use pulls qualified names from other namespaces into local scope so they can be written bare."
+  related = [namespaces]
   audience = :both
   body {
     h2 "use declarations"
-    p "`use` brings qualified names into local scope so they can be written bare. It is top-level only; an unknown target or duplicate alias is an error when the document is opened."
-    code "wcl" { source = <<'SRC'
-use company.utils.Point          // bind the leaf: write `Point`
-use company.utils.Point as P     // leaf under another name: `P`
-use company.utils                // whole namespace: every member resolves bare
-use company.utils as U           // namespace alias: `U.Point`
-use company.shapes.{Circle, Square as Sq}   // pick several members at once
-SRC
+    p <<DOC
+      `use` brings qualified names into local scope so they can be written bare. It is top-level
+      only; an unknown target or duplicate alias is an error when the document is opened.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        use company.utils.Point          // bind the leaf: write `Point`
+        use company.utils.Point as P     // leaf under another name: `P`
+        use company.utils                // whole namespace: every member resolves bare
+        use company.utils as U           // namespace alias: `U.Point`
+        use company.shapes.{Circle, Square as Sq}   // pick several members at once
+      DOC
     }
     table {
       header = ["Form", "Effect"]
-      rows = [
-        ["`use ns.Name`", "Binds `Name` locally"],
-        ["`use ns.Name as Alias`", "Binds the member under `Alias`"],
-        ["`use ns`", "Adds the namespace to the bare-name search path"],
-        ["`use ns as Alias`", "Namespace alias — members reachable as `Alias.Name`"],
-        ["`use ns.{A, B as C}`", "Binds several members in one declaration"],
-      ]
+      rows = [["`use ns.Name`", "Binds `Name` locally"], ["`use ns.Name as Alias`", "Binds the member under `Alias`"], ["`use ns`", "Adds the namespace to the bare-name search path"], ["`use ns as Alias`", "Namespace alias — members reachable as `Alias.Name`"], ["`use ns.{A, B as C}`", "Binds several members in one declaration"]]
     }
   }
 }

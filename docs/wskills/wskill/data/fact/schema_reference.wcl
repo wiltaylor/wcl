@@ -74,7 +74,7 @@ let example_for = fn(n: utf8) -> list<utf8> { map(filter(block_examples, fn(e: B
 
 fact block_topic {
   title = "Topic block"
-  related = [structured_data]
+  related = []
   body {
     p <<DOC
       The overarching subject — exactly one per wskill — plus the document's own metadata (creation
@@ -95,7 +95,7 @@ fact block_topic {
 
 fact block_skill {
   title = "Skill block"
-  related = [structured_data]
+  related = []
   body {
     p <<DOC
       Configures the generated `SKILL.md` — tool permissions, summary, parameters and boundaries —
@@ -129,7 +129,7 @@ fact block_skill {
 
 fact block_source {
   title = "Source block"
-  related = [structured_data]
+  related = []
   body {
     p <<DOC
       Where authoritative information about the topic lives; drives the update workflow only — it is
@@ -150,7 +150,7 @@ fact block_source {
 
 fact block_research {
   title = "Research block"
-  related = [structured_data, capturing_research]
+  related = []
   body {
     p <<DOC
       A captured research finding — dated, evidence-linked, and rendered: the skill ships it at
@@ -175,7 +175,7 @@ fact block_research {
 
 fact block_wskill_ref {
   title = "WskillRef block"
-  related = [structured_data]
+  related = []
   body {
     p "A cross-reference to another wskill, resolved by name against repo peers or by url."
     type_table {
@@ -193,7 +193,7 @@ fact block_wskill_ref {
 
 fact block_concept {
   title = "Concept block"
-  related = [structured_data, concept]
+  related = [concept]
   body {
     p <<DOC
       An idea the reader must understand — captured as a thin record plus an addressable wdoc
@@ -214,7 +214,7 @@ fact block_concept {
 
 fact block_entity {
   title = "Entity block"
-  related = [structured_data, entity]
+  related = [entity]
   body {
     p <<DOC
       A concrete, named thing in the topic's world (a tool, a command, a file type, an
@@ -235,7 +235,7 @@ fact block_entity {
 
 fact block_fact {
   title = "Fact block"
-  related = [structured_data, fact]
+  related = [fact]
   body {
     p "A factual unit — a container for values, constants or value tables; the body holds the data."
     type_table {
@@ -253,7 +253,7 @@ fact block_fact {
 
 fact block_index {
   title = "Index block"
-  related = [structured_data]
+  related = []
   body {
     p <<DOC
       A curated landing page that groups links to other units into a meaningful tree; may nest child
@@ -274,7 +274,7 @@ fact block_index {
 
 fact block_example {
   title = "Example block"
-  related = [structured_data]
+  related = []
   body {
     p <<DOC
       A worked example or code sample; it projects onto the unit named by its `unit` field rather
@@ -295,7 +295,7 @@ fact block_example {
 
 fact block_procedure {
   title = "Procedure block"
-  related = [structured_data, process]
+  related = [process]
   body {
     p <<DOC
       A runbook for doing a task as ordered steps — the `process` unit. Each step carries
@@ -327,7 +327,7 @@ fact block_procedure {
 
 fact block_artifact {
   title = "Artifact block"
-  related = [structured_data, views]
+  related = []
   body {
     p <<DOC
       Declares one shipped view — its kind (from `schema/kinds.wcl`), projection entry file, and
@@ -348,7 +348,7 @@ fact block_artifact {
 
 fact block_presentation {
   title = "Presentation blocks (optional module)"
-  related = [structured_data, presentation_view]
+  related = []
   body {
     p <<DOC
       The overview-deck view's data (`<wskill/presentation.wcl>`, in the prelude): one `presentation` holding
@@ -378,7 +378,7 @@ fact block_presentation {
 
 fact block_lesson {
   title = "Training blocks (optional module)"
-  related = [structured_data, training_view]
+  related = [training_view]
   body {
     p <<DOC
       The training view's data (`<wskill/training.wcl>`, in the prelude): ordered `lesson`s (grouped into `module`s when
@@ -408,7 +408,7 @@ fact block_lesson {
 # The @document roots that gather the blocks, plus shared types (Attr, Audience).
 fact schema_internals {
   title = "Document roots & shared types"
-  related = [structured_data]
+  related = []
   body {
     p "The `@document` roots that gather every block, and the shared types they use."
     wdoc_repeater {

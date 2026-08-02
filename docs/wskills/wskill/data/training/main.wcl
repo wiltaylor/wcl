@@ -7,7 +7,7 @@ lesson scaffold_first_wskill {
   title = "Scaffold your first wskill"
   summary = "Create a wskill folder with `wcl init` and take the tour."
   objectives = ["Scaffold a new wskill folder from the built-in template", "Name the parts of the generated tree and what each is for", "Validate the empty model with `wcl check`"]
-  related = [wskill_concept, creating_a_wskill, folder_layout]
+  related = []
   body {
     p <<DOC
       A wskill starts from the built-in scaffold: one command generates the whole folder — the
@@ -65,7 +65,7 @@ lesson capture_first_units {
   summary = "Decompose a corner of the topic and classify each piece with the decision guide."
   objectives = ["Classify a piece of knowledge as concept, entity, fact, or process", "Write a unit file with a body and related links", "Render the book and find your unit's page"]
   prerequisites = [scaffold_first_wskill]
-  related = [decomposing_information, unit_decision_guide, concept, entity, fact]
+  related = [concept, entity, fact]
   body {
     p <<DOC
       Content lives in `data/` as block instances. Pick one small corner of your topic and split it
@@ -134,7 +134,7 @@ lesson processes_and_index {
   summary = "Capture a runbook as steps, then pin everything into a navigable tree."
   objectives = ["Write a procedure with steps, flow edges, and a verification", "Curate an index so the book nav reflects the topic's shape"]
   prerequisites = [capture_first_units]
-  related = [process, adding_content, building_the_index]
+  related = []
   body {
     p <<DOC
       A repeatable task is a `procedure`: ordered `step`s (each with a `body screen` showing what's
@@ -160,7 +160,7 @@ lesson processes_and_index {
         first -> second
         verification = "How you know it worked."
       }
-      
+
       index basics {
         name    = "Basics"
         related = [my_first_idea, daily_task]
@@ -200,7 +200,7 @@ lesson ship_the_skill {
   summary = "Curate what an agent sees, render the skill, and install it."
   objectives = ["Opt units into the skill with `audience`", "Configure the skill block (description, parameters, boundaries)", "Build and install the skill where an agent loads it"]
   prerequisites = [processes_and_index]
-  related = [skill_anatomy, setup_ai_skill, installing_the_skill]
+  related = []
   body {
     p <<DOC
       The skill is curated up: every unit defaults to `:book`, so mark what the agent needs `:both`
@@ -256,7 +256,7 @@ lesson optional_views {
   summary = "Add the optional presentation and training views when the topic warrants them."
   objectives = ["Decide when a topic deserves a deck or a training course", "Author slide and lesson data and render the optional views"]
   prerequisites = [ship_the_skill]
-  related = [views, presentation_view, training_view, creating_presentation, creating_training_book]
+  related = [views, presentation_view]
   body {
     p <<DOC
       The deck introduces (slides feature existing units — `unit = <id>` pulls the headline and
@@ -315,7 +315,7 @@ lesson keep_it_alive {
   summary = "The maintenance loop: browser editing, the human⇄agent review handshake, and source-driven updates."
   objectives = ["Edit units from the rendered book with wcl editor", "Run the comment/review loop between a reviewer and an agent", "Use source blocks to drive update sweeps"]
   prerequisites = [ship_the_skill]
-  related = [editing_via_serve, updating_a_wskill]
+  related = []
   body {
     p <<DOC
       A wskill is alive: `wcl editor wdoc/book/main.wcl` gives you in-browser editing (every unit

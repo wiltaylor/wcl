@@ -1,53 +1,94 @@
 procedure capturing_research {
-  title   = "Capturing research into a wskill"
+  title = "Capturing research into a wskill"
   purpose = "Turn the durable output of an investigation into `research` blocks other agents — and external pipelines like a planner's researcher — can reuse instead of re-investigating."
   preconditions = ["An existing wskill folder that checks clean (`just wskill-check`)."]
-  related = [adding_content, updating_a_wskill, unit_decision_guide, researching_a_topic]
+  related = []
   audience = :both
 
-  step investigate { n = 1
+  step investigate {
+    n = 1
     title = "Investigate and keep the evidence"
-    body steps { p "Do the research (web, docs, source-diving) and keep every locator you actually used — URLs, paths, versions. The bar for a finding: exact names and versions, specific calls or commands, the gotcha that cost time. \"Check the docs\" is not a finding." }
+    body steps {
+      p <<DOC
+        Do the research (web, docs, source-diving) and keep every locator you actually used — URLs,
+        paths, versions. The bar for a finding: exact names and versions, specific calls or
+        commands, the gotcha that cost time. "Check the docs" is not a finding.
+      DOC
+    }
   }
 
-  step distill { n = 2
+  step distill {
+    n = 2
     title = "Distill one finding per research block"
-    body screen { code "wcl" { source = <<'WCL'
-// data/research/<id>.wcl (import it from data/research/main.wcl)
-research <id> {
-  topic    = "<Headline of the finding>"
-  question = "<What the investigation set out to answer.>"
-  summary  = "<One-line finding — shown in the research index.>"
-  checked  = "<YYYY-MM-DD>"
-  applies_to = "<subject/version it holds for, e.g. bevy 0.18>"
-  source_ids = [<source block ids>]
-  locators   = ["<ad-hoc evidence URLs/paths>"]
-  body { p "The full findings — exact names, versions, calls, gotchas." }
-}
-WCL
-    } }
-    body steps { p "One finding per block, dated with `checked` and scoped with `applies_to`. Project-specific conclusions stay in the project that researched them; only durable, topic-level findings belong in the wskill." }
+    body screen {
+      code "wcl" {
+        source = <<DOC
+          // data/research/<id>.wcl (import it from data/research/main.wcl)
+          research <id> {
+            topic    = "<Headline of the finding>"
+            question = "<What the investigation set out to answer.>"
+            summary  = "<One-line finding — shown in the research index.>"
+            checked  = "<YYYY-MM-DD>"
+            applies_to = "<subject/version it holds for, e.g. bevy 0.18>"
+            source_ids = [<source block ids>]
+            locators   = ["<ad-hoc evidence URLs/paths>"]
+            body { p "The full findings — exact names, versions, calls, gotchas." }
+          }
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        One finding per block, dated with `checked` and scoped with `applies_to`. Project-specific
+        conclusions stay in the project that researched them; only durable, topic-level findings
+        belong in the wskill.
+      DOC
+    }
   }
 
-  step evidence { n = 3
+  step evidence {
+    n = 3
     title = "Link the evidence"
-    body steps { p "Register durable upstreams as `source` blocks and reference them via `source_ids`; one-off URLs go straight in `locators`. Fill `related` with the unit ids the finding touches." }
+    body steps {
+      p <<DOC
+        Register durable upstreams as `source` blocks and reference them via `source_ids`; one-off
+        URLs go straight in `locators`. Fill `related` with the unit ids the finding touches.
+      DOC
+    }
   }
 
-  step fold { n = 4
+  step fold {
+    n = 4
     title = "Fold what's settled into real units"
     shape = :decision
-    body steps { p "If part of the finding is settled, reusable knowledge (a value, a behaviour, a runbook step), ALSO capture it as the proper unit kind via [the decision guide](fact_unit_decision_guide) — the research block keeps the dated evidence trail; the unit carries the knowledge." }
+    body steps {
+      p <<DOC
+        If part of the finding is settled, reusable knowledge (a value, a behaviour, a runbook
+        step), ALSO capture it as the proper unit kind via
+        [the decision guide](fact_unit_decision_guide) — the research block keeps the dated evidence
+        trail; the unit carries the knowledge.
+      DOC
+    }
   }
 
-  step render { n = 5
+  step render {
+    n = 5
     title = "Check, render, verify the contract"
-    body screen { code "console" { source = <<'SH'
-$ just wskill-check && just render
-$ ls out/skill/references/research_*.md out/skill/references/index_research.md
-SH
-    } }
-    body steps { p "The rendered skill must contain `references/research_<id>.md` for the new finding, list it in `references/index_research.md`, and show it under SKILL.md's `## Research` section — that fixed layout is what external consumers glob." }
+    body screen {
+      code "console" {
+        source = <<DOC
+          $ just wskill-check && just render
+          $ ls out/skill/references/research_*.md out/skill/references/index_research.md
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        The rendered skill must contain `references/research_<id>.md` for the new finding, list it
+        in `references/index_research.md`, and show it under SKILL.md's `## Research` section — that
+        fixed layout is what external consumers glob.
+      DOC
+    }
   }
 
   investigate -> distill

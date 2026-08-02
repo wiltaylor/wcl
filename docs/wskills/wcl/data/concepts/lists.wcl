@@ -1,60 +1,85 @@
 concept lists {
-  name     = "Lists"
-  summary  = "Ordered, homogeneous sequences — list<T> — and the collection builtins over them."
-  related  = [tables, tensors]
+  name = "Lists"
+  summary = "Ordered, homogeneous sequences — list<T> — and the collection builtins over them."
+  related = [tables]
   audience = :both
   body {
-    p "A `list<T>` is an ordered, homogeneous sequence of values of type `T`. Lists are how you write any many-of-the-same-thing — including the data flowing through `@children`, `@connections`, and table rows."
+    p <<DOC
+      A `list<T>` is an ordered, homogeneous sequence of values of type `T`. Lists are how you write
+      any many-of-the-same-thing — including the data flowing through `@children`, `@connections`,
+      and table rows.
+    DOC
     h2 "Literals"
-    p "Write a list literal with square brackets and commas. The element type is inferred from its contents, or pinned by the field's declared type."
-    code "wcl" { source = <<'SRC'
-@document
-type Doc {
-  xs:    list<i64>
-  names: list<utf8>
-  empty: list<i64>
-}
+    p <<DOC
+      Write a list literal with square brackets and commas. The element type is inferred from its
+      contents, or pinned by the field's declared type.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        @document
+        type Doc {
+          xs:    list<i64>
+          names: list<utf8>
+          empty: list<i64>
+        }
 
-xs    = [1, 2, 3, 4]
-names = ["alice", "bob"]
-empty = []
-SRC
+        xs    = [1, 2, 3, 4]
+        names = ["alice", "bob"]
+        empty = []
+      DOC
     }
     h2 "Nested lists"
-    p "List elements can themselves be lists. Use this for matrices, lookup tables, or any rectangular grid."
-    code "wcl" { source = <<'SRC'
-@document
-type Doc {
-  grid: list<list<i64>>
-}
+    p <<DOC
+      List elements can themselves be lists. Use this for matrices, lookup tables, or any
+      rectangular grid.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        @document
+        type Doc {
+          grid: list<list<i64>>
+        }
 
-grid = [
-  [1, 2, 3],
-  [4, 5, 6],
-  [7, 8, 9],
-]
-SRC
+        grid = [
+          [1, 2, 3],
+          [4, 5, 6],
+          [7, 8, 9],
+        ]
+      DOC
     }
     h2 "Working with lists"
-    p "The collection builtins — `map`, `filter`, `fold`, `len`, `sum`, `head`, `tail`, `range`, `flatten`, `zip`, `reverse`, `sort`, `unique`, `list_contains`, `index_of`, `at`, `take`, `drop`, `slice`, `enumerate` — operate on `list<T>`."
-    code "wcl" { source = <<'SRC'
-doubled = map([1, 2, 3], fn(x: i64) -> i64 x * 2)        // [2, 4, 6]
-evens   = filter(range(0, 10), fn(x: i64) -> bool x % 2 == 0)
-total   = fold([1, 2, 3], 0, fn(a: i64, x: i64) -> i64 a + x)
-SRC
+    p <<DOC
+      The collection builtins — `map`, `filter`, `fold`, `len`, `sum`, `head`, `tail`, `range`,
+      `flatten`, `zip`, `reverse`, `sort`, `unique`, `list_contains`, `index_of`, `at`, `take`,
+      `drop`, `slice`, `enumerate` — operate on `list<T>`.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        doubled = map([1, 2, 3], fn(x: i64) -> i64 x * 2)        // [2, 4, 6]
+        evens   = filter(range(0, 10), fn(x: i64) -> bool x % 2 == 0)
+        total   = fold([1, 2, 3], 0, fn(a: i64, x: i64) -> i64 a + x)
+      DOC
     }
     h2 "Higher-order helpers"
-    p "Beyond `map`/`filter`/`fold`, predicate and key-function helpers cover the common shapes: `any`, `all`, and `find` test or search; `sort_by`, `min_by`, and `max_by` order or pick by a key; `group_by` buckets elements into `{ key, items }` records."
-    code "wcl" { source = <<'SRC'
-has_admin = any(users, fn(u: User) -> bool u.role == :admin)
-first_big = find([3, 8, 12], fn(x: i64) -> bool x > 5)        // 8
-by_len    = sort_by(["ccc", "a", "bb"], fn(s: utf8) -> i64 len(s))
-buckets   = group_by([1, 2, 3, 4], fn(x: i64) -> i64 x % 2)
-// [{ key: 1, items: [1, 3] }, { key: 0, items: [2, 4] }]
-pairs     = enumerate(["a", "b"])                              // [[0, "a"], [1, "b"]]
-middle    = slice([1, 2, 3, 4], 1, 3)                          // [2, 3]
-SRC
+    p <<DOC
+      Beyond `map`/`filter`/`fold`, predicate and key-function helpers cover the common shapes:
+      `any`, `all`, and `find` test or search; `sort_by`, `min_by`, and `max_by` order or pick by a
+      key; `group_by` buckets elements into `{ key, items }` records.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        has_admin = any(users, fn(u: User) -> bool u.role == :admin)
+        first_big = find([3, 8, 12], fn(x: i64) -> bool x > 5)        // 8
+        by_len    = sort_by(["ccc", "a", "bb"], fn(s: utf8) -> i64 len(s))
+        buckets   = group_by([1, 2, 3, 4], fn(x: i64) -> i64 x % 2)
+        // [{ key: 1, items: [1, 3] }, { key: 0, items: [2, 4] }]
+        pairs     = enumerate(["a", "b"])                              // [[0, "a"], [1, "b"]]
+        middle    = slice([1, 2, 3, 4], 1, 3)                          // [2, 3]
+      DOC
     }
-    callout "Tabular data lives in lists" { class = ["info"]  body = "A field declared list<RowType> can be populated by a list literal or by the pipe-row table syntax — see Tables." }
+    callout "Tabular data lives in lists" {
+      class = ["info"]
+      body = "A field declared list<RowType> can be populated by a list literal or by the pipe-row table syntax — see Tables."
+    }
   }
 }

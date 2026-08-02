@@ -1,31 +1,42 @@
 concept child_count_constraints {
-  name     = "Child-count Constraints"
-  summary  = "Constraining a block's contents with max_children, required_children and required_fields on @block."
-  related  = [block_schema, document_schema, ref_integrity]
+  name = "Child-count Constraints"
+  summary = "Constraining a block's contents with max_children, required_children and required_fields on @block."
+  related = []
   audience = :both
   body {
     h2 "Child-count constraints on @block"
-    p "`@block` accepts two named arguments that constrain nested children: `max_children = N` caps the total nested-block count, and `required_children = [\"kind\", ...]` demands at least one child of each listed kind. Both are enforced by `wcl check`."
-    code "wcl" { source = <<'SRC'
-@block("stage", max_children = 4, required_children = ["step"])
-type Stage {
-  @inline(0) name: utf8
-  @children("step") steps: list<Step>
-}
-SRC
+    p <<DOC
+      `@block` accepts two named arguments that constrain nested children: `max_children = N` caps
+      the total nested-block count, and `required_children = ["kind", ...]` demands at least one
+      child of each listed kind. Both are enforced by `wcl check`.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        @block("stage", max_children = 4, required_children = ["step"])
+        type Stage {
+          @inline(0) name: utf8
+          @children("step") steps: list<Step>
+        }
+      DOC
     }
     h2 "Required fields"
-    p "`required_fields = [\"name\", ...]` is the same idea for fields: every listed field must be written in an instance. Declaring a field non-optional describes its *type*, not whether an instance must supply it — a schema that means it says so here, and `wcl check` reports a missing one as a schema violation."
-    code "wcl" { source = <<'SRC'
-@block("stage", required_fields = ["owner"])
-type Stage {
-  @inline(0) name: utf8
-  owner: utf8
-  notes: utf8?
-}
+    p <<DOC
+      `required_fields = ["name", ...]` is the same idea for fields: every listed field must be
+      written in an instance. Declaring a field non-optional describes its *type*, not whether an
+      instance must supply it — a schema that means it says so here, and `wcl check` reports a
+      missing one as a schema violation.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        @block("stage", required_fields = ["owner"])
+        type Stage {
+          @inline(0) name: utf8
+          owner: utf8
+          notes: utf8?
+        }
 
-stage build { owner = "platform" }   // omitting `owner` is a violation
-SRC
+        stage build { owner = "platform" }   // omitting `owner` is a violation
+      DOC
     }
   }
 }

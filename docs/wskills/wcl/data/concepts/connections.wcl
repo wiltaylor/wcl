@@ -1,58 +1,88 @@
 concept connections {
-  name     = "Connections"
-  summary  = "Typed relationships between block instances, populated by arrow statements."
-  related  = [references, symbols]
+  name = "Connections"
+  summary = "Typed relationships between block instances, populated by arrow statements."
+  related = [references]
   audience = :both
   body {
-    p "A `connection` declaration defines a typed relationship between block instances; arrow statements then populate it. The result is a list of records that hosts can consume — render edges, build dependency graphs, validate references."
+    p <<DOC
+      A `connection` declaration defines a typed relationship between block instances; arrow
+      statements then populate it. The result is a list of records that hosts can consume — render
+      edges, build dependency graphs, validate references.
+    DOC
     h2 "Declaring a connection"
-    p "A `connection` names a relationship's source type, destination type, and optionally a tag drawn from a `symbol_set`."
-    code "wcl" { source = <<'SRC'
-symbol_set EdgeKind { uses  depends_on }
-connection DependsOn: Service -> Service : EdgeKind
-SRC
+    p <<DOC
+      A `connection` names a relationship's source type, destination type, and optionally a tag
+      drawn from a `symbol_set`.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        symbol_set EdgeKind { uses  depends_on }
+        connection DependsOn: Service -> Service : EdgeKind
+      DOC
     }
     h2 "Connection statements"
-    p "Inside a `@connections(SchemaName)` field, write `source -> destination :tag` to populate it. The tag is optional; omit the `:kind` for an untagged edge."
-    code "wcl" { source = <<'SRC'
-symbol_set EdgeKind { uses  depends_on }
-connection DependsOn: Service -> Service : EdgeKind
+    p <<DOC
+      Inside a `@connections(SchemaName)` field, write `source -> destination :tag` to populate it.
+      The tag is optional; omit the `:kind` for an untagged edge.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        symbol_set EdgeKind { uses  depends_on }
+        connection DependsOn: Service -> Service : EdgeKind
 
-@block("service") type Service { @inline(0) id: identifier }
+        @block("service") type Service { @inline(0) id: identifier }
 
-@document
-type Config {
-  @children("service")    services: list<Service>
-  @connections(DependsOn) edges:    list<DependsOn>
-}
+        @document
+        type Config {
+          @children("service")    services: list<Service>
+          @connections(DependsOn) edges:    list<DependsOn>
+        }
 
-service web {}
-service db {}
-service cache {}
-service api {}
+        service web {}
+        service db {}
+        service cache {}
+        service api {}
 
-web   -> db                   // untagged
-web   -> cache :uses
-api   -> db    :depends_on
-SRC
+        web   -> db                   // untagged
+        web   -> cache :uses
+        api   -> db    :depends_on
+      DOC
     }
-    p "Each statement produces a record with `source`, `destination`, and `kind` slots, ready for a host to interpret."
+    p <<DOC
+      Each statement produces a record with `source`, `destination`, and `kind` slots, ready for a
+      host to interpret.
+    DOC
     h2 "Polymorphic endpoints"
-    p "An endpoint type need not be a single concrete block type. A connection matches a statement when each operand's concrete type satisfies the endpoint: a nominal match (the exact type, or a subtype via `extends`), an **interface endpoint** (`&Iface`) the operand implements, or a **union endpoint** the operand is a variant member of. See [References](concept_references)."
-    code "wcl" { source = <<'SRC'
-interface Entity { name: utf8 }
-symbol_set RelKind { implements }
-connection Rel: &Entity -> &Entity : RelKind   // any Entity -> any Entity
-SRC
+    p <<DOC
+      An endpoint type need not be a single concrete block type. A connection matches a statement
+      when each operand's concrete type satisfies the endpoint: a nominal match (the exact type, or
+      a subtype via `extends`), an **interface endpoint** (`&Iface`) the operand implements, or a
+      **union endpoint** the operand is a variant member of. See [References](concept_references).
+    DOC
+    code "wcl" {
+      source = <<DOC
+        interface Entity { name: utf8 }
+        symbol_set RelKind { implements }
+        connection Rel: &Entity -> &Entity : RelKind   // any Entity -> any Entity
+      DOC
     }
     h2 "Dynamic endpoints"
-    p "By default every operand must name a literal block in scope; an operand resolving to nothing is a schema error. Tag the declaration with `@dynamic` to relax that: an unresolved operand is projected as its raw id string instead of being dropped, and `wcl check` no longer flags it. This is for endpoints a host materialises at consume time."
-    code "wcl" { source = <<'SRC'
-symbol_set EdgeKind { uses }
-@dynamic
-connection DependsOn: Service -> Service : EdgeKind
-SRC
+    p <<DOC
+      By default every operand must name a literal block in scope; an operand resolving to nothing
+      is a schema error. Tag the declaration with `@dynamic` to relax that: an unresolved operand is
+      projected as its raw id string instead of being dropped, and `wcl check` no longer flags it.
+      This is for endpoints a host materialises at consume time.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        symbol_set EdgeKind { uses }
+        @dynamic
+        connection DependsOn: Service -> Service : EdgeKind
+      DOC
     }
-    p "A still-unmatched id is the host's responsibility. Leave `@dynamic` off for connections whose endpoints are always literal, so typos stay caught."
+    p <<DOC
+      A still-unmatched id is the host's responsibility. Leave `@dynamic` off for connections whose
+      endpoints are always literal, so typos stay caught.
+    DOC
   }
 }

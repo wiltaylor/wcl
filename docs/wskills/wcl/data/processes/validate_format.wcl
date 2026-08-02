@@ -1,44 +1,67 @@
 procedure validate_format {
-  title   = "Validate and format a WCL file"
+  title = "Validate and format a WCL file"
   purpose = "Confirm a file conforms to its schema, then normalise its layout before committing."
   preconditions = ["The file and any files it imports are on disk."]
-  related = [wcl_cli, block_schema]
+  related = [wcl_cli]
   audience = :both
 
-  step check { n = 1
+  step check {
+    n = 1
     title = "Check it parses and validates"
     body screen {
-      code "console" { source = <<'SH'
-$ wcl check config.wcl
-ok
-SH
+      code "console" {
+        source = <<DOC
+          $ wcl check config.wcl
+          ok
+        DOC
       }
-      callout "Exit codes" { class = ["info"]  body = "0 = valid, 1 = parse error, 2 = schema violation. Script against these for CI gates." }
+      callout "Exit codes" {
+        class = ["info"]
+        body = "0 = valid, 1 = parse error, 2 = schema violation. Script against these for CI gates."
+      }
     }
-    body steps { p "Run `wcl check config.wcl`. A clean run prints `ok` and exits 0; fix any reported parse or schema errors before moving on." }
+    body steps {
+      p <<DOC
+        Run `wcl check config.wcl`. A clean run prints `ok` and exits 0; fix any reported parse or
+        schema errors before moving on.
+      DOC
+    }
   }
 
-  step format { n = 2
+  step format {
+    n = 2
     title = "Format in place"
     body screen {
-      code "console" { source = <<'SH'
-$ wcl fmt config.wcl --in-place
-SH
+      code "console" {
+        source = "$ wcl fmt config.wcl --in-place\n"
       }
     }
-    body steps { p "Run `wcl fmt config.wcl --in-place` to rewrite the file in canonical form. Indentation, brace style, number radix and string delimiters are normalised; comments and blank-line groupings survive." }
+    body steps {
+      p <<DOC
+        Run `wcl fmt config.wcl --in-place` to rewrite the file in canonical form. Indentation,
+        brace style, number radix and string delimiters are normalised; comments and blank-line
+        groupings survive.
+      DOC
+    }
   }
 
-  step recheck { n = 3
+  step recheck {
+    n = 3
     title = "Re-check the formatted file"
     body screen {
-      code "console" { source = <<'SH'
-$ wcl check config.wcl
-ok
-SH
+      code "console" {
+        source = <<DOC
+          $ wcl check config.wcl
+          ok
+        DOC
       }
     }
-    body steps { p "Formatting never changes meaning, but re-run `wcl check` as a cheap confirmation that the rewrite is still valid." }
+    body steps {
+      p <<DOC
+        Formatting never changes meaning, but re-run `wcl check` as a cheap confirmation that the
+        rewrite is still valid.
+      DOC
+    }
   }
 
   check -> format

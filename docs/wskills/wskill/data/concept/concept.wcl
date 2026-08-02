@@ -1,16 +1,14 @@
 concept concept {
-  name     = "Concept"
-  summary  = "A unit that captures an idea or mental model of something."
+  name = "Concept"
+  summary = "A unit that captures an idea or mental model of something."
   audience = :both
-  related  = [entity, fact, process, datapresentation]
+  related = [process]
   body {
-    p <<BODY
+    p <<DOC
       A concept is a unit of knowledge that describes an idea of something. This is usually an idea,
       a mental modal.
-    BODY
+    DOC
 
-    p <<BODY
-      Some examples of a concept are: A mental modal, mathimatical process or a software pattern.
-    BODY
+    p "Some examples of a concept are: A mental modal, mathimatical process or a software pattern.\n"
   }
 }

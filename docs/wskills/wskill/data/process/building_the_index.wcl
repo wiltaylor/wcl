@@ -1,7 +1,7 @@
 procedure building_the_index {
   title = "Building the wskill index"
   purpose = "Curate the wskill's navigation by writing `index` blocks that group units into a meaningful tree."
-  related = [structured_data, creating_a_wskill]
+  related = []
   audience = :both
 
   step add {

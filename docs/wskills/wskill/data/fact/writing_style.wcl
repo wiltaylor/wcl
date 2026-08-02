@@ -1,10 +1,10 @@
-// House style for wskill prose. Referenced from the skill boundary and the
-// capture loop, so it is read before a unit is written rather than after.
+# House style for wskill prose. Referenced from the skill boundary and the
+# capture loop, so it is read before a unit is written rather than after.
 
 fact writing_style {
-  title    = "Writing style for wskill content"
+  title = "Writing style for wskill content"
   audience = :both
-  related  = [atomic_note, linking_discipline, selfcontained]
+  related = []
   body {
     p <<DOC
       A wskill is read two ways: a person scanning a book page, and an agent pulling the
@@ -15,54 +15,35 @@ fact writing_style {
     h2 "The rules"
     table {
       header = ["Rule", "Why"]
-      rows = [
-        ["Lead with the answer, then the detail", "A reader who stops after one sentence should still have the fact"],
-        ["Present tense, active voice, second person for instructions", "\"`wcl check` reports the violation\", not \"violations will be reported\""],
-        ["State the rule, then its exception", "Exceptions buried first read as the rule"],
-        ["One idea per paragraph; 2-4 sentences", "Long paragraphs hide the sentence that matters"],
-        ["Enumerable values go in a table, syntax goes in a code block", "Prose is the worst container for a list of options"],
-        ["Name the concrete thing", "\"the `@children` field\" beats \"the relevant field\""],
-        ["Every claim must be checkable", "If you can't test or cite it, it is an opinion — say so or cut it"],
-      ]
+      rows = [["Lead with the answer, then the detail", "A reader who stops after one sentence should still have the fact"], ["Present tense, active voice, second person for instructions", "\"`wcl check` reports the violation\", not \"violations will be reported\""], ["State the rule, then its exception", "Exceptions buried first read as the rule"], ["One idea per paragraph; 2-4 sentences", "Long paragraphs hide the sentence that matters"], ["Enumerable values go in a table, syntax goes in a code block", "Prose is the worst container for a list of options"], ["Name the concrete thing", "\"the `@children` field\" beats \"the relevant field\""], ["Every claim must be checkable", "If you can't test or cite it, it is an opinion — say so or cut it"]]
     }
 
     h2 "Do not write"
     table {
       header = ["Avoid", "Instead"]
-      rows = [
-        ["Marketing adjectives — powerful, seamless, blazing, simply, just", "Say what it does. \"Simply run X\" reads as \"you should have known this\""],
-        ["\"As we saw above\", \"as mentioned earlier\"", "Every page is read standalone, and the skill splits pages into separate files. Restate the clause or link it"],
-        ["\"See the official docs for details\"", "Capture the substance here — a wskill that defers is not [self-contained](concept_selfcontained)"],
-        ["Hedges — generally, typically, in most cases", "Either it is true, or state the condition under which it isn't"],
-        ["Repeating a sibling unit's explanation", "One fact lives in exactly one unit. Link, or restate a single clause — never a whole section"],
-      ]
+      rows = [["Marketing adjectives — powerful, seamless, blazing, simply, just", "Say what it does. \"Simply run X\" reads as \"you should have known this\""], ["\"As we saw above\", \"as mentioned earlier\"", "Every page is read standalone, and the skill splits pages into separate files. Restate the clause or link it"], ["\"See the official docs for details\"", "Capture the substance here — a wskill that defers is not [self-contained](concept_selfcontained)"], ["Hedges — generally, typically, in most cases", "Either it is true, or state the condition under which it isn't"], ["Repeating a sibling unit's explanation", "One fact lives in exactly one unit. Link, or restate a single clause — never a whole section"]]
     }
 
     h2 "Field conventions"
-    p "The record fields are read far more often than the body — they are the index rows, the nav labels, and the link text."
+    p <<DOC
+      The record fields are read far more often than the body — they are the index rows, the nav
+      labels, and the link text.
+    DOC
     table {
       header = ["Field", "Write it as"]
-      rows = [
-        ["`name` / `title`", "A noun phrase naming the thing, in sentence case. Not a sentence, no trailing period"],
-        ["`summary`", "One sentence, under ~140 characters, that stands alone in an index. If it needs an \"and\", the unit is not [atomic](concept_atomic_note)"],
-        ["`purpose` (procedure)", "What the reader will have achieved when the steps are done"],
-        ["`verification` (procedure)", "The observable signal it worked — a command's output, a file that now exists"],
-        ["`audience`", "Set it deliberately: `:book` is the default, so a unit an agent needs must say `:both`"],
-      ]
+      rows = [["`name` / `title`", "A noun phrase naming the thing, in sentence case. Not a sentence, no trailing period"], ["`summary`", "One sentence, under ~140 characters, that stands alone in an index. If it needs an \"and\", the unit is not [atomic](concept_atomic_note)"], ["`purpose` (procedure)", "What the reader will have achieved when the steps are done"], ["`verification` (procedure)", "The observable signal it worked — a command's output, a file that now exists"], ["`audience`", "Set it deliberately: `:book` is the default, so a unit an agent needs must say `:both`"]]
     }
 
     h2 "Wrong vs right"
     table {
       header = ["Tempting (wrong)", "Correct", "Why"]
-      rows = [
-        ["\"WCL has a powerful and flexible type system that lets you do many things.\"", "\"WCL types are fixed-width integers, two float widths, four string encodings, symbols, lists, tensors, records, unions and interfaces.\"", "The second sentence can be checked; the first cannot"],
-        ["\"You'll probably want to run `wcl check` here.\"", "\"Run `wcl check`: it reports schema violations with file and line.\"", "Say what to do and what it gives you"],
-        ["A concept that re-explains the three fields of the fact it links to", "A concept that states the model and links the fact once", "Duplicated text drifts — one of the two copies will go stale"],
-        ["\"See https://example.com/docs for the full list.\"", "The full list, as a table, in the unit", "The skill has no browser; a link is not content"],
-      ]
+      rows = [["\"WCL has a powerful and flexible type system that lets you do many things.\"", "\"WCL types are fixed-width integers, two float widths, four string encodings, symbols, lists, tensors, records, unions and interfaces.\"", "The second sentence can be checked; the first cannot"], ["\"You'll probably want to run `wcl check` here.\"", "\"Run `wcl check`: it reports schema violations with file and line.\"", "Say what to do and what it gives you"], ["A concept that re-explains the three fields of the fact it links to", "A concept that states the model and links the fact once", "Duplicated text drifts — one of the two copies will go stale"], ["\"See https://example.com/docs for the full list.\"", "The full list, as a table, in the unit", "The skill has no browser; a link is not content"]]
     }
 
     h2 "Length"
-    p "A unit that runs past roughly a screen of prose is usually two units. Split it and link the halves — see [Linking discipline](fact_linking_discipline)."
+    p <<DOC
+      A unit that runs past roughly a screen of prose is usually two units. Split it and link the
+      halves — see [Linking discipline](fact_linking_discipline).
+    DOC
   }
 }

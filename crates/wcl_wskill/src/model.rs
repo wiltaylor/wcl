@@ -188,6 +188,11 @@ pub struct Unit {
     /// the unit's prose as a searchable blob. See [`Index::text`] for why it
     /// is only the content.
     pub text: String,
+    /// Explanatory prose only, excluding verbatim code, terminal, and math
+    /// blocks. Kept internal because it supports curator rules rather than
+    /// the public graph/search representation.
+    #[serde(skip)]
+    pub(crate) prose: String,
     /// The `audience` routing symbol (`book` / `ai` / `both`) — the block's
     /// own field, else its schema's declared default.
     pub audience: String,
