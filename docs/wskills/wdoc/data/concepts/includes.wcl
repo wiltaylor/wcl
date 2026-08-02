@@ -3,7 +3,7 @@ import <wdoc.wcl>
 concept includes {
   name = "Including sub-sites"
   summary = "The `include` block and `included_sites` builtin discover and embed other wdoc documents."
-  related = [sites]
+  related = [{ id: "sites", why: "Sites supports Including sub-sites: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search." }]
   audience = :both
   body {
     p <<DOC

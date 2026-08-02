@@ -1,7 +1,7 @@
 fact template_entity {
   title = "Template — entity"
   audience = :both
-  related = [entity]
+  related = [{ id: "entity", why: "Entity supports Template — entity: A concrete NAMED thing in the topic's world — a person, software, a place, an organisation. Reserved: never a catch-all." }]
   body {
     p <<DOC
       An **entity** is a concrete NAMED thing in the topic's world: a person, an organisation, a

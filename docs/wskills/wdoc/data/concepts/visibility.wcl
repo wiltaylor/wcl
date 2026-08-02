@@ -1,7 +1,7 @@
 concept visibility {
   name     = "Block Visibility"
   summary  = "The @only / @except decorators scope a block by site, template kind, or backend."
-  related  = [sites, templates, markdown]
+  related  = [{ id: "sites", why: "Sites supports Block Visibility: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search." }, { id: "templates", why: "Templates supports Block Visibility: The built-in templates webpage / book / presentation / ai_skill, their navigation blocks, and writing a custom template." }, { id: "markdown", why: "Markdown output supports Block Visibility: The `wcl wdoc markdown` render target, its block mapping, caveats, and frontmatter." }]
   audience = :both
   body {
     p <<PROSE

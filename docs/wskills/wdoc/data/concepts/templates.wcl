@@ -3,7 +3,7 @@ import <wdoc.wcl>
 concept templates {
   name = "Templates"
   summary = "The built-in templates webpage / book / presentation / ai_skill, their navigation blocks, and writing a custom template."
-  related = [pages, skills]
+  related = [{ id: "pages", why: "Pages supports Templates: The `page` block: id, title, the sites it joins, and the start page." }, { id: "skills", why: "Skill folders supports Templates: The `:ai_skill` target: the `skill { }` block, folder layout, front matter, and `file` blocks." }]
   audience = :both
   body {
     p <<DOC

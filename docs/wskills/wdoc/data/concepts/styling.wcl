@@ -3,7 +3,7 @@ import <wdoc.wcl>
 concept styling {
   name = "Styling"
   summary = "Class blocks, stylesheets, and themes — how a site looks."
-  related = [sites]
+  related = [{ id: "sites", why: "Sites supports Styling: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search." }]
   audience = :both
   body {
     p <<DOC

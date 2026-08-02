@@ -1,7 +1,7 @@
 concept blocks {
   name = "Blocks"
   summary = "A named group of fields that can also nest other blocks; the schema sets its labels and fields."
-  related = [fields]
+  related = [{ id: "fields", why: "Fields supports Blocks: A field binds a name to a value with `=`; the value is any expression." }]
   audience = :both
   body {
     p <<DOC

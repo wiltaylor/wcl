@@ -2,7 +2,7 @@ procedure researching_a_topic {
   title = "Researching a topic into a wskill"
   purpose = "Author a whole wskill shape-first: scope a provisional bodied index tree, research each area in parallel, revise the tree against all findings, then fill it with distilled units."
   preconditions = ["A wskill folder for the topic that checks clean — scaffold one first via [Creating a new wskill](process_creating_a_wskill) if none exists."]
-  related = [creating_a_wskill]
+  related = [{ id: "creating_a_wskill", why: "Creating a new wskill supports Researching a topic into a wskill: Start a new wskill for a topic from the wcl template, set its topic, and prove the empty model renders." }]
   audience = :both
 
   step scope {

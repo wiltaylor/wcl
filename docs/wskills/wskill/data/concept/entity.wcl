@@ -2,7 +2,7 @@ concept entity {
   name = "Entity"
   summary = "A concrete NAMED thing in the topic's world — a person, software, a place, an organisation. Reserved: never a catch-all."
   audience = :both
-  related = [concept, fact, process]
+  related = [{ id: "concept", why: "Concept supports Entity: A unit that captures an idea or mental model of something." }, { id: "fact", why: "Fact supports Entity: A unit that holds factual data — a value, a constant, a value table." }, { id: "process", why: "Process supports Entity: A unit (authored as a procedure) that captures the reliable sequence for doing a task — ordered steps, for someone who already knows the topic." }]
   body {
     p <<DOC
       An entity is a unit of knowledge that is a noun and an actual, named instance of something:

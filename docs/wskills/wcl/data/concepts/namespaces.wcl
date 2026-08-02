@@ -1,7 +1,7 @@
 concept namespaces {
   name = "Namespaces"
   summary = "Scope declarations under a dotted path; use and :: control how names resolve."
-  related = [imports]
+  related = [{ id: "imports", why: "Imports & Modules supports Namespaces: Pull another file's declarations into the document — disk and system forms." }]
   audience = :both
   body {
     p <<DOC

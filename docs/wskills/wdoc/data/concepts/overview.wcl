@@ -1,7 +1,7 @@
 concept overview {
   name = "wdoc Overview"
   summary = "What wdoc is and the page → site → template → render-target model."
-  related = [pages, sites]
+  related = [{ id: "pages", why: "Pages supports wdoc Overview: The `page` block: id, title, the sites it joins, and the start page." }, { id: "sites", why: "Sites supports wdoc Overview: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search." }]
   audience = :both
   body {
     p <<DOC

@@ -186,12 +186,12 @@ file "data/reference/reference.wcl" {
 // unit ids (any kind — ids are unique across them), resolved to links.
 //
 //   concept <id> {
-//     name = "…"  summary = "…"  related = [other_unit]
+//     name = "…"  summary = "…"  related = [{ id: "other_unit", why: "Why this connection matters." }]
 //     body { p "The body — paragraphs, tables, links." }
 //   }
 //
 //   entity <id> {                    // reserved for concrete NAMED things
-//     name = "…"  kind = :software  summary = "…"  related = [other_unit]
+//     name = "…"  kind = :software  summary = "…"  related = [{ id: "other_unit", why: "Why this connection matters." }]
 //     // kind is a closed vocabulary — see schema/kinds.wcl (extend it there)
 //     body {
 //       table { header = ["Attribute", "Value"]  rows = [["key", "value"]] }
@@ -199,7 +199,7 @@ file "data/reference/reference.wcl" {
 //   }
 //
 //   fact <id> {                       // a container of factual data
-//     title = "…"  related = [other_unit]
+//     title = "…"  related = [{ id: "other_unit", why: "Why this connection matters." }]
 //     body { table { header = ["…"]  rows = [["…"]] } }
 //   }
 //
@@ -765,7 +765,7 @@ let all_units = flatten([
   map(facts,      fn(f: Fact)      -> UnitRef { { id: f.id, name: f.title, href: $"fact_${f.id}",    linkable: true, related: f.related } }),
   map(procedures, fn(p: Procedure) -> UnitRef { { id: p.id, name: p.title, href: $"process_${p.id}", linkable: true, related: p.related } }),
   map(research_units, fn(r: Research) -> UnitRef { { id: r.id, name: r.topic, href: $"research_${r.id}", linkable: true, related: r.related } }),
-  map(content_indexes, fn(ix: Index) -> UnitRef { { id: ix.id, name: ix.name, href: $"index_${ix.id}", linkable: true, related: ix.related } }),
+  map(content_indexes, fn(ix: Index) -> UnitRef { { id: ix.id, name: ix.name, href: $"index_${ix.id}", linkable: true, related: [] } }),
 ])
 let related_targets = flatten([all_units, map(nav_indexes, fn(ix: Index) -> UnitRef { { id: ix.id, name: ix.name, href: "", linkable: false, related: [] } })])
 
@@ -1533,7 +1533,7 @@ import "./data/research/research.wcl"
 ${match answer("include_presentation") { "yes" => "", _ => "// " }}import "./data/presentation/main.wcl"
 ${match answer("include_training") { "yes" => "", _ => "// " }}import "./data/training/main.wcl"
 
-schema_version = "1.5.0"
+schema_version = "1.6.0"
 
 topic ${answer("topic_id")} {
   name    = "${answer("topic_name")}"

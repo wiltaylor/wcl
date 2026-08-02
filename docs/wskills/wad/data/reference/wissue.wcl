@@ -10,7 +10,7 @@ concept issue_mode {
   name = "Issue mode: wplan compressed for brownfield"
   summary = "The same schema, gates, briefs and ledger as plan mode - with recon instead of open research, a targeted interview, a mini-PRD of scope fences, and the greenfield bootstraps removed."
   audience = :both
-  related = [proc_recon]
+  related = [{ id: "proc_recon", why: "Codebase reconnaissance supports Issue mode: wplan compressed for brownfield: Replace plan mode's open-ended research with findings complete enough that spec bodies can copy from them and no implementation agent ever explores the codebase blind." }]
   body {
     p <<DOC
       Issue mode turns a change request against an existing codebase into a real wplan plan folder
@@ -43,7 +43,7 @@ concept spec_shapes {
   name = "Brownfield spec shapes"
   summary = "The bug-fix spec (test-first, usually the whole DAG), feature decomposition along ownership lines, ownership in an existing tree, and the conditional prep spec."
   audience = :both
-  related = [ownership]
+  related = [{ id: "ownership", why: "File ownership supports Brownfield spec shapes: Each path has exactly one owning spec; disjoint ownership - not luck - is what makes parallel agents merge-safe." }]
   body {
     p <<DOC
       Specs use wplan's schema unchanged (`spec` blocks with `title`, `objective`, `depends_on`,

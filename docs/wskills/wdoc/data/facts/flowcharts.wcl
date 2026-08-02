@@ -2,7 +2,7 @@ import <wdoc.wcl>
 
 fact flowcharts {
   title = "flowchart shapes"
-  related = [diagrams]
+  related = [{ id: "diagrams", why: "diagram supports flowchart shapes: A `diagram` is wdoc's drawing surface." }]
   audience = :both
   body {
     p <<DOC

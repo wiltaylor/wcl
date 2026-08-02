@@ -12,7 +12,7 @@ tileset platformer {
 
 fact tilemaps {
   title = "tilemaps"
-  related = [images, diagrams]
+  related = [{ id: "images", why: "image supports tilemaps: `image` embeds a static image." }, { id: "diagrams", why: "diagram supports tilemaps: A `diagram` is wdoc's drawing surface." }]
   audience = :both
   body {
     p <<DOC

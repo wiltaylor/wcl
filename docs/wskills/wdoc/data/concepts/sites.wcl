@@ -3,7 +3,7 @@ import <wdoc.wcl>
 concept sites {
   name = "Sites"
   summary = "The `site` block: one output target — template, title, theme, multi-site routing, and full-text search."
-  related = [pages, templates]
+  related = [{ id: "pages", why: "Pages supports Sites: The `page` block: id, title, the sites it joins, and the start page." }, { id: "templates", why: "Templates supports Sites: The built-in templates webpage / book / presentation / ai_skill, their navigation blocks, and writing a custom template." }]
   audience = :both
   body {
     p <<DOC

@@ -2,7 +2,7 @@ import <wdoc.wcl>
 
 fact layout_modes {
   title = "Diagram and container layout modes"
-  related = [diagrams, flowcharts]
+  related = [{ id: "diagrams", why: "diagram supports Diagram and container layout modes: A `diagram` is wdoc's drawing surface." }, { id: "flowcharts", why: "flowchart shapes supports Diagram and container layout modes: Flowchart shapes plus the layered auto-layout mode turn a `diagram` into a flowchart: declare the shapes and the edges, and the renderer ranks them topologically and elbow-routes the connections." }]
   audience = :both
   body {
     p <<DOC

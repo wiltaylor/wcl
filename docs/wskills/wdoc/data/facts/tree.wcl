@@ -2,7 +2,7 @@ import <wdoc.wcl>
 
 fact tree {
   title    = "tree"
-  related  = [diagrams, icons]
+  related  = [{ id: "diagrams", why: "diagram supports tree: A `diagram` is wdoc's drawing surface." }, { id: "icons", why: "The icon system supports trees by supplying the glyphs rendered inside tree nodes." }]
   audience = :both
   body {
     p "`tree` renders an **indented file-tree**: one row per `tree_node`, indented by depth with the classic file-explorer connector guides drawn between a parent and its children. Each node carries a `title` (its positional label) plus an optional `icon` and `color`, and nodes nest arbitrarily, so it suits a directory layout, a config tree, or any hierarchy. A `tree` is a diagram shape, so it lives inside a `diagram` and is placed by `x` / `y` (or anchors)."

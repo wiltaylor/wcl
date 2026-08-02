@@ -1,7 +1,7 @@
 concept booleans {
   name = "Booleans"
   summary = "The bool type with exactly two values, true and false."
-  related = [operators]
+  related = [{ id: "operators", why: "Operators supports Booleans: WCL's complete operator set." }]
   audience = :both
   body {
     p "The `bool` type has exactly two values: `true` and `false`."

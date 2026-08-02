@@ -2,7 +2,7 @@ import <wdoc.wcl>
 
 fact icons {
   title = "iconset / icon_def / icon"
-  related = [diagrams]
+  related = [{ id: "diagrams", why: "diagram supports iconset / icon_def / icon: A `diagram` is wdoc's drawing surface." }]
   audience = :both
   body {
     p <<DOC

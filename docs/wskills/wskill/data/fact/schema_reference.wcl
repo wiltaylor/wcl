@@ -26,8 +26,11 @@ let is_doc = fn(d: FieldInfo) -> bool {
 # symbol_set is rendered as a plain list of its members instead.
 let has_fields = fn(d: FieldInfo) -> bool { match decl_kind(d) {
   "symbol_set" => false,
+  "union" => false,
   _ => true,
 } }
+let is_symbol_set = fn(d: FieldInfo) -> bool { decl_kind(d) == "symbol_set" }
+let is_union = fn(d: FieldInfo) -> bool { decl_kind(d) == "union" }
 # Reflection has no symbol_set member accessor, so parse them from the declaration's
 # source — slice between its LAST `{`/`}` (so braces in a doc comment don't interfere)
 # and split on whitespace.
@@ -61,7 +64,7 @@ type BlockExample {
   name: utf8
   code: utf8
 }
-let block_examples = [{ name: "Topic", code: "topic git {\n  name    = \"Git\"\n  summary = \"Distributed version control — the model and the everyday commands.\"\n  version = \"1.0.0\"\n  created = \"2026-06-23\"\n  maintainer = \"Wil Taylor\"\n}\n" }, { name: "Source", code: "source upstream_docs {\n  kind         = \"url\"\n  locator      = \"https://git-scm.com/doc\"\n  covers       = \"command and config reference\"\n  last_checked = \"2026-06-23\"\n}\n" }, { name: "Research", code: "research submodule_pitfalls {\n  topic    = \"Submodule update pitfalls\"\n  question = \"Why do submodules detach HEAD after `git submodule update`?\"\n  summary  = \"`git submodule update` checks out the recorded commit directly, so the submodule is left on a detached HEAD by design.\"\n  checked  = \"2026-06-23\"\n  applies_to = \"git 2.45\"\n  source_ids = [upstream_docs]\n  locators   = [\"https://git-scm.com/book/en/v2/Git-Tools-Submodules\"]\n  body { p \"The recorded gitlink names a commit, not a branch — use `update --remote --merge` (or `branch = <name>` in .gitmodules) to track a branch instead.\" }\n}\n" }, { name: "Question", code: "question q_version_policy {\n  question = \"Which upstream version should this wskill pin?\"\n  kind     = :single_select        // omit to infer: options → single, none → free text\n  context  = \"The topic block's version field is unset.\"\n  option latest { label = \"Track latest\" }\n  option pinned { label = \"Pin the current stable\" }\n}\n// Answer it without touching WCL:\n//   wcl answer wskill.wcl                          — interactive walk-through\n//   wcl answer wskill.wcl --list                   — pending questions as JSON\n" }, { name: "WskillRef", code: "wskill_ref wdoc {\n  name     = \"wdoc\"\n  relation = \"peer — the renderer this format uses\"\n  status   = \"exists\"\n  url      = \"../wdoc/\"\n}\n" }, { name: "Concept", code: "concept fast_forward {\n  name    = \"Fast-forward merge\"\n  summary = \"Advancing a branch pointer when history hasn't diverged.\"\n  related = [merge]\n  body { p \"When the target already contains the source's history, Git just moves the pointer — no merge commit.\" }\n}\n" }, { name: "Entity", code: "entity git_cli {\n  name    = \"git\"\n  kind    = :tool\n  summary = \"The Git command-line client.\"\n  body { p \"Installed via your package manager; check with `git --version`.\" }\n}\n" }, { name: "Fact", code: "fact default_branch {\n  title = \"Default branch name\"\n  body { p \"Since Git 2.28 the initial branch is set by `init.defaultBranch` (commonly `main`).\" }\n}\n" }, { name: "Index", code: "index commands {\n  name = \"Commands\"\n  body { p \"The everyday command set, grouped by workflow stage.\" }\n}\n" }, { name: "Example", code: "example clone_cmd {\n  title     = \"Cloning a repository\"\n  unit      = git_cli\n  narrative = \"Copy a remote repository locally.\"\n  code_lang = \"console\"\n  code = <<'SH'\n$ git clone https://github.com/owner/repo\nSH\n  expected = \"A repo/ directory with full history.\"\n}\n" }, { name: "Procedure", code: "procedure first_commit {\n  title   = \"Make your first commit\"\n  purpose = \"Record an initial snapshot in a new repository.\"\n  step 1 {\n    title = \"Stage files\"\n    body steps { p \"Run `git add .` to stage everything.\" }\n  }\n  step 2 {\n    title = \"Commit\"\n    body steps { p \"Run `git commit -m 'initial'`.\" }\n  }\n  verification = \"`git log` shows one commit.\"\n}\n" }, { name: "Step", code: "step 1 {\n  title = \"Stage files\"\n  body steps { p \"Run `git add .` to stage the changes.\" }\n}\n" }, { name: "Artifact", code: "artifact book   { kind = :book          entry = \"wdoc/book/main.wcl\"          output = \"out/book\" }\nartifact slides { kind = :presentation  entry = \"wdoc/presentation/main.wcl\"  output = \"out/presentation\" }\n" }, { name: "Presentation", code: "presentation intro {\n  summary = \"One-line deck subtitle.\"\n  pres_section what {\n    title = \"What & why\"\n    pres_slide opening {\n      unit = fast_forward            // pulls that unit's headline + summary\n      speaker_notes = \"What to say while this slide is up.\"\n    }\n  }\n}\n" }, { name: "Lesson", code: "lesson first_commit {\n  n          = 1\n  title      = \"Your first commit\"\n  objectives = [\"Record a snapshot in a new repository\"]\n  related    = [git_cli]\n  body { p \"The lesson material — any wdoc blocks.\" }\n  exercise commit_it {\n    title    = \"Commit a file\"\n    task     = \"Stage and commit README.md.\"\n    code_lang = \"bash\"\n    code     = \"git add README.md && git commit -m 'docs: add readme'\"\n    expected = \"`git log --oneline` shows your commit at the top.\"\n  }\n}\n" }]
+let block_examples = [{ name: "Topic", code: "topic git {\n  name    = \"Git\"\n  summary = \"Distributed version control — the model and the everyday commands.\"\n  version = \"1.0.0\"\n  created = \"2026-06-23\"\n  maintainer = \"Wil Taylor\"\n}\n" }, { name: "Source", code: "source upstream_docs {\n  kind         = \"url\"\n  locator      = \"https://git-scm.com/doc\"\n  covers       = \"command and config reference\"\n  last_checked = \"2026-06-23\"\n}\n" }, { name: "Research", code: "research submodule_pitfalls {\n  topic    = \"Submodule update pitfalls\"\n  question = \"Why do submodules detach HEAD after `git submodule update`?\"\n  summary  = \"`git submodule update` checks out the recorded commit directly, so the submodule is left on a detached HEAD by design.\"\n  checked  = \"2026-06-23\"\n  applies_to = \"git 2.45\"\n  source_ids = [upstream_docs]\n  locators   = [\"https://git-scm.com/book/en/v2/Git-Tools-Submodules\"]\n  body { p \"The recorded gitlink names a commit, not a branch — use `update --remote --merge` (or `branch = <name>` in .gitmodules) to track a branch instead.\" }\n}\n" }, { name: "Question", code: "question q_version_policy {\n  question = \"Which upstream version should this wskill pin?\"\n  kind     = :single_select        // omit to infer: options → single, none → free text\n  context  = \"The topic block's version field is unset.\"\n  option latest { label = \"Track latest\" }\n  option pinned { label = \"Pin the current stable\" }\n}\n// Answer it without touching WCL:\n//   wcl answer wskill.wcl                          — interactive walk-through\n//   wcl answer wskill.wcl --list                   — pending questions as JSON\n" }, { name: "WskillRef", code: "wskill_ref wdoc {\n  name     = \"wdoc\"\n  relation = \"peer — the renderer this format uses\"\n  status   = \"exists\"\n  url      = \"../wdoc/\"\n}\n" }, { name: "Concept", code: "concept fast_forward {\n  name    = \"Fast-forward merge\"\n  summary = \"Advancing a branch pointer when history hasn't diverged.\"\n  related = [{ id: \"merge\", why: \"Merge is the operation whose fast-forward case this concept explains.\" }]\n  body { p \"When the target already contains the source's history, Git just moves the pointer — no merge commit.\" }\n}\n" }, { name: "Entity", code: "entity git_cli {\n  name    = \"git\"\n  kind    = :tool\n  summary = \"The Git command-line client.\"\n  body { p \"Installed via your package manager; check with `git --version`.\" }\n}\n" }, { name: "Fact", code: "fact default_branch {\n  title = \"Default branch name\"\n  body { p \"Since Git 2.28 the initial branch is set by `init.defaultBranch` (commonly `main`).\" }\n}\n" }, { name: "Index", code: "index commands {\n  name = \"Commands\"\n  body { p \"The everyday command set, grouped by workflow stage.\" }\n}\n" }, { name: "Example", code: "example clone_cmd {\n  title     = \"Cloning a repository\"\n  unit      = git_cli\n  narrative = \"Copy a remote repository locally.\"\n  code_lang = \"console\"\n  code = <<'SH'\n$ git clone https://github.com/owner/repo\nSH\n  expected = \"A repo/ directory with full history.\"\n}\n" }, { name: "Procedure", code: "procedure first_commit {\n  title   = \"Make your first commit\"\n  purpose = \"Record an initial snapshot in a new repository.\"\n  step 1 {\n    title = \"Stage files\"\n    body steps { p \"Run `git add .` to stage everything.\" }\n  }\n  step 2 {\n    title = \"Commit\"\n    body steps { p \"Run `git commit -m 'initial'`.\" }\n  }\n  verification = \"`git log` shows one commit.\"\n}\n" }, { name: "Step", code: "step 1 {\n  title = \"Stage files\"\n  body steps { p \"Run `git add .` to stage the changes.\" }\n}\n" }, { name: "Artifact", code: "artifact book   { kind = :book          entry = \"wdoc/book/main.wcl\"          output = \"out/book\" }\nartifact slides { kind = :presentation  entry = \"wdoc/presentation/main.wcl\"  output = \"out/presentation\" }\n" }, { name: "Presentation", code: "presentation intro {\n  summary = \"One-line deck subtitle.\"\n  pres_section what {\n    title = \"What & why\"\n    pres_slide opening {\n      unit = fast_forward            // pulls that unit's headline + summary\n      speaker_notes = \"What to say while this slide is up.\"\n    }\n  }\n}\n" }, { name: "Lesson", code: "lesson first_commit {\n  n          = 1\n  title      = \"Your first commit\"\n  objectives = [\"Record a snapshot in a new repository\"]\n  related    = [{ id: \"git_cli\", why: \"The git CLI is the tool this lesson teaches learners to use.\" }]\n  body { p \"The lesson material — any wdoc blocks.\" }\n  exercise commit_it {\n    title    = \"Commit a file\"\n    task     = \"Stage and commit README.md.\"\n    code_lang = \"bash\"\n    code     = \"git add README.md && git commit -m 'docs: add readme'\"\n    expected = \"`git log --oneline` shows your commit at the top.\"\n  }\n}\n" }]
 let example_for = fn(n: utf8) -> list<utf8> { map(filter(block_examples, fn(e: BlockExample) -> bool { e.name == n }), fn(e: BlockExample) -> utf8 { e.code }) }
 
 # One fact per schema block type. Each renders the block's `type_table` (its
@@ -193,7 +196,7 @@ fact block_wskill_ref {
 
 fact block_concept {
   title = "Concept block"
-  related = [concept]
+  related = [{ id: "concept", why: "Concept supports Concept block: A unit that captures an idea or mental model of something." }]
   body {
     p <<DOC
       An idea the reader must understand — captured as a thin record plus an addressable wdoc
@@ -214,7 +217,7 @@ fact block_concept {
 
 fact block_entity {
   title = "Entity block"
-  related = [entity]
+  related = [{ id: "entity", why: "Entity supports Entity block: A concrete NAMED thing in the topic's world — a person, software, a place, an organisation. Reserved: never a catch-all." }]
   body {
     p <<DOC
       A concrete, named thing in the topic's world (a tool, a command, a file type, an
@@ -235,7 +238,7 @@ fact block_entity {
 
 fact block_fact {
   title = "Fact block"
-  related = [fact]
+  related = [{ id: "fact", why: "Fact supports Fact block: A unit that holds factual data — a value, a constant, a value table." }]
   body {
     p "A factual unit — a container for values, constants or value tables; the body holds the data."
     type_table {
@@ -295,7 +298,7 @@ fact block_example {
 
 fact block_procedure {
   title = "Procedure block"
-  related = [process]
+  related = [{ id: "process", why: "Process supports Procedure block: A unit (authored as a procedure) that captures the reliable sequence for doing a task — ordered steps, for someone who already knows the topic." }]
   body {
     p <<DOC
       A runbook for doing a task as ordered steps — the `process` unit. Each step carries
@@ -378,7 +381,7 @@ fact block_presentation {
 
 fact block_lesson {
   title = "Training blocks (optional module)"
-  related = [training_view]
+  related = [{ id: "training_view", why: "The training view supports Training blocks (optional module): An optional interactive course — ordered sections of material ending in graded checks, for learners rather than practitioners." }]
   body {
     p <<DOC
       The training view's data (`<wskill/training.wcl>`, in the prelude): ordered `lesson`s (grouped into `module`s when
@@ -427,12 +430,15 @@ fact schema_internals {
         }
       }
       wdoc_repeater {
-        each = match has_fields(x) {
-          false => [true],
-          _ => [],
-        }
+        each = if is_symbol_set(x) { [true] } else { [] }
         as = :_s
         p $"A `symbol_set` — one of: ${join(map(symbol_members(x), fn(m: utf8) -> utf8 { $"`${m}`" }), ", ")}."
+      }
+      wdoc_repeater {
+        each = if is_union(x) { [true] } else { [] }
+        as = :_u
+        p $"${doc_comment(x)}"
+        code "wcl" { source = ast_string(x) }
       }
     }
   }

@@ -1,6 +1,6 @@
 fact patterns {
   title = "Patterns"
-  related = [match_expr]
+  related = [{ id: "match_expr", why: "match supports Patterns: Tests a value against a sequence of patterns, returning the body of the first that matches." }]
   audience = :both
   body {
     p "Patterns destructure and test values in `match`, `if let`, and guard arms."

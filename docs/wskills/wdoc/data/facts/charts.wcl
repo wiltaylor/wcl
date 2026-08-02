@@ -2,7 +2,7 @@ import <wdoc.wcl>
 
 fact charts {
   title = "charts"
-  related = [diagrams]
+  related = [{ id: "diagrams", why: "diagram supports charts: A `diagram` is wdoc's drawing surface." }]
   audience = :both
   body {
     p <<DOC

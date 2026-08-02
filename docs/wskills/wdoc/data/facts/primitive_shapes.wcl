@@ -2,7 +2,7 @@ import <wdoc.wcl>
 
 fact primitive_shapes {
   title = "primitive shapes"
-  related = [diagrams]
+  related = [{ id: "diagrams", why: "diagram supports primitive shapes: A `diagram` is wdoc's drawing surface." }]
   audience = :both
   body {
     p <<DOC

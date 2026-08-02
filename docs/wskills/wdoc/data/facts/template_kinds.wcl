@@ -1,6 +1,6 @@
 fact template_kinds {
   title = "Built-in site templates"
-  related = [templates]
+  related = [{ id: "templates", why: "Templates supports Built-in site templates: The built-in templates webpage / book / presentation / ai_skill, their navigation blocks, and writing a custom template." }]
   audience = :both
   body {
     p <<DOC

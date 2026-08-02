@@ -2,7 +2,7 @@ procedure creating_training_book {
   title = "Creating the training view"
   purpose = "Ship the optional interactive course: declare the artifact, design the sections, author material, exercises and checks, render."
   preconditions = ["The reference content exists — lessons teach toward the book, they don't replace it."]
-  related = [training_view]
+  related = [{ id: "training_view", why: "The training view supports Creating the training view: An optional interactive course — ordered sections of material ending in graded checks, for learners rather than practitioners." }]
   audience = :both
 
   step enable {

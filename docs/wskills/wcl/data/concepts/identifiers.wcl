@@ -1,7 +1,7 @@
 concept identifiers {
   name = "Identifiers"
   summary = "The naming rule for fields, types, kinds, labels, and bindings, plus reserved words."
-  related = [symbols]
+  related = [{ id: "symbols", why: "Symbols supports Identifiers: Identifier-like :name values for tags and enum-like choices, plus symbol_set vocabularies." }]
   audience = :both
   body {
     p <<DOC

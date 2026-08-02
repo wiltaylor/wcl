@@ -2,7 +2,7 @@ concept decomposing_information {
   name = "Decomposing information"
   summary = "Break a topic into atomic notes — one idea each — then file each as the unit kind that fits it: concept, entity, fact or process."
   audience = :both
-  related = [structured_data]
+  related = [{ id: "structured_data", why: "Structured data supports Decomposing information: Information captured in a defined format — a schema — so every instance is uniform and the templates can read and project it reliably." }]
   body {
     p <<DOC
       Knowledge goes into a wskill as atomic notes: each unit captures exactly one idea, thing,

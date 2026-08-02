@@ -1,7 +1,7 @@
 concept block_expressions {
   name     = "Block Expressions"
   summary  = "A { ... } expression holds let bindings followed by a tail expression, which is the block's value."
-  related  = [let_bindings]
+  related  = [{ id: "let_bindings", why: "let bindings supports Block Expressions: A let names a reusable value or function; resolves by name but is not document data." }]
   audience = :both
   body {
     p "A `{ ... }` expression holds zero or more `let ... ;` bindings followed by a tail expression, which is the block's value."

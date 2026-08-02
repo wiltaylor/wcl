@@ -1,7 +1,7 @@
 concept lists {
   name = "Lists"
   summary = "Ordered, homogeneous sequences — list<T> — and the collection builtins over them."
-  related = [tables]
+  related = [{ id: "tables", why: "Tables supports Lists: Pipe-row syntax for writing many records of the same shape compactly." }]
   audience = :both
   body {
     p <<DOC

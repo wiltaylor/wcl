@@ -540,8 +540,29 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         if has_schemaless(&declared.ast.decorators) {
             continue;
         }
-        let Ok(value) = literal_field.value() else {
-            continue;
+        let value = match literal_field.value() {
+            Ok(value) => value,
+            Err(error) => {
+                // A literal list whose element type is a union is static
+                // authored data: failure to infer one of its record variants
+                // is a schema error. Surface it here instead of silently
+                // accepting the field. Keep computed fields lazy — template
+                // expressions may legitimately refer to lambda bindings that
+                // do not exist until evaluation.
+                let resolved = block.doc.resolve_alias(declared.type_ref());
+                let literal_union_list = matches!(
+                    (&literal_field.ast.expr, &resolved),
+                    (
+                        ast::Expr::ListLit { .. },
+                        crate::value::TypeRef::List(inner)
+                    ) if matches!(inner.as_ref(), crate::value::TypeRef::Named { path, .. }
+                        if block.doc.union_fqn_for_path(path).is_some())
+                );
+                if literal_union_list {
+                    errs.push(error.clone());
+                }
+                continue;
+            }
         };
 
         // An optional field written out as `none` is absent, not

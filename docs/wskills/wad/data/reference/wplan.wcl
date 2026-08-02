@@ -9,7 +9,7 @@ concept pipeline {
   name = "The gated pipeline"
   summary = "Five phases - interview, research, PRD, spec breakdown, render - each blocked by checkable gates."
   audience = :both
-  related = [gates]
+  related = [{ id: "gates", why: "Gates are blocks, not lets supports The gated pipeline: A gate is a block whose `ok` field asserts a condition; `wcl eval gates.wcl gates.<id>.ok` forces it and exits non-zero on failure." }]
   body {
     p <<DOC
       A plan moves through five phases: **interview** (questions.wcl), **research** (research.wcl
@@ -141,7 +141,7 @@ concept scenarios {
   name = "Usage scenarios"
   summary = "End-to-end action/expect walks through the finished application - the system-level definition of done that survives all the per-spec merges."
   audience = :both
-  related = [surfaces]
+  related = [{ id: "surfaces", why: "Surfaces supports Usage scenarios: Every screen, command and endpoint is a typed contract - elements, required states, interactions - defined during the PRD and delivered by exactly one spec." }]
   body {
     p <<DOC
       Per-spec acceptance proves parts; scenarios prove the whole. Each `scenario` block captures a
@@ -185,7 +185,7 @@ concept data_models {
   name = "Data models"
   summary = "Every stored or shared entity as a typed contract - fields, validation, persistence - defined by exactly one spec and copied into every brief that touches it."
   audience = :both
-  related = [surfaces]
+  related = [{ id: "surfaces", why: "Surfaces supports Data models: Every screen, command and endpoint is a typed contract - elements, required states, interactions - defined during the PRD and delivered by exactly one spec." }]
   body {
     p <<DOC
       The same failure as screens, one layer down: nothing enumerates the entities, so two specs
@@ -229,7 +229,7 @@ concept role_split {
   name = "Implementation vs verification"
   summary = "Implementation agents build; a separate verification agent judges, records status, and controls merges - so agents never mark their own work done."
   audience = :both
-  related = [briefs]
+  related = [{ id: "briefs", why: "Self-contained briefs supports Implementation vs verification: Every exported spec .md must stand alone: rules, context and findings are copied in, never referenced." }]
   body {
     p <<DOC
       status.wcl is edited by the verification agent only. Implementation briefs never mention it -
@@ -249,7 +249,7 @@ concept project_context {
   name = "The project context file"
   summary = "Durable, repo-level knowledge - stack, commands, conventions, landmines - kept at plans/project-context.md, verified (not regenerated) by each plan, and copied into briefs like any finding."
   audience = :both
-  related = [briefs]
+  related = [{ id: "briefs", why: "Self-contained briefs supports The project context file: Every exported spec .md must stand alone: rules, context and findings are copied in, never referenced." }]
   body {
     p <<DOC
       Individual plans are islands; the repo's build commands, conventions and landmines are not.
@@ -292,7 +292,7 @@ concept plan_wad {
   name = "The plan's WAD"
   summary = "A browsable architecture book of the future system, derived from the plan - the steering surface during planning, the living WAD after the build."
   audience = :both
-  related = [surfaces, contracts, scenarios]
+  related = [{ id: "surfaces", why: "Surfaces supports The plan's WAD: Every screen, command and endpoint is a typed contract - elements, required states, interactions - defined during the PRD and delivered by exactly one spec." }, { id: "contracts", why: "Interface contracts and as-built notes supports The plan's WAD: Exact signatures crossing spec boundaries, plus verifier-recorded deviations - the two halves of keeping parallel specs semantically compatible." }, { id: "scenarios", why: "Usage scenarios supports The plan's WAD: End-to-end action/expect walks through the finished application - the system-level definition of done that survives all the per-spec merges." }]
   body {
     p <<DOC
       Every scaffolded plan can carry a WAD (Wil's Architecture Document) at `wad/`:
@@ -344,7 +344,7 @@ fact fact_folder_layout {
 fact fact_default_gates {
   title = "The thirteen default gates"
   audience = :both
-  related = [gates, ownership]
+  related = [{ id: "gates", why: "Gates are blocks, not lets supports The thirteen default gates: A gate is a block whose `ok` field asserts a condition; `wcl eval gates.wcl gates.<id>.ok` forces it and exits non-zero on failure." }, { id: "ownership", why: "File ownership supports The thirteen default gates: Each path has exactly one owning spec; disjoint ownership - not luck - is what makes parallel agents merge-safe." }]
   body {
     table {
       header = ["Gate", "Asserts", "Blocks"]
@@ -372,7 +372,7 @@ fact fact_state_vocab {
 fact fact_wcl_notes {
   title = "WCL behaviour verified against the binary (0.29/0.30-alpha)"
   audience = :both
-  related = [gates]
+  related = [{ id: "gates", why: "Gates are blocks, not lets supports WCL behaviour verified against the binary (0.29/0.30-alpha): A gate is a block whose `ok` field asserts a condition; `wcl eval gates.wcl gates.<id>.ok` forces it and exits non-zero on failure." }]
   body {
     p <<DOC
       Everything below was tested while building the template. The installed wcl may have moved past

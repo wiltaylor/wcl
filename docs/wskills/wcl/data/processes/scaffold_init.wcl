@@ -2,7 +2,7 @@ procedure scaffold_init {
   title   = "Scaffold a new project with wcl init"
   purpose = "Start a new WCL project from a built-in template instead of an empty file."
   preconditions = ["You have chosen a destination directory that is empty (or will use `--force`)."]
-  related = [wcl_cli]
+  related = [{ id: "wcl_cli", why: "wcl supports Scaffold a new project with wcl init: The wcl command-line tool: one binary for parsing, checking, editing, formatting, scaffolding, the editor, and wdoc." }]
   audience = :both
 
   step list_templates { n = 1

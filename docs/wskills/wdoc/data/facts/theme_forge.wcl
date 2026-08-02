@@ -4,7 +4,7 @@ import <wdoc.wcl>
 // `forge` palettes (dark + light). Keep in sync with that file by hand.
 fact theme_forge {
   title = "Forge theme"
-  related = [themes]
+  related = [{ id: "themes", why: "Built-in colour themes supports Forge theme: Set `theme = :<name>` on a `site` to recolour the whole site in one line." }]
   audience = :both
   body {
     p "`theme = :forge` — the Forge control palette and wdoc default. Dark (top) and light (bottom): page, surface, border, accent, accent-2, tip, warn, danger, keyword. See [all themes](fact_themes)."

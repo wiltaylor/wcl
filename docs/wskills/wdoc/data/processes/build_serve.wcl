@@ -2,7 +2,7 @@ procedure build_serve {
   title = "Render a site and live-preview it"
   purpose = "Get a finished HTML build of a wdoc document, and a watch-rebuild server while you iterate on it."
   preconditions = ["A WCL file declaring at least one `page` block", "A `wcl` CLI on your PATH"]
-  related = [sites]
+  related = [{ id: "sites", why: "Sites supports Render a site and live-preview it: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search." }]
   audience = :both
 
   step render {

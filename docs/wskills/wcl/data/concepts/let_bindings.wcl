@@ -1,7 +1,7 @@
 concept let_bindings {
   name = "let bindings"
   summary = "A let names a reusable value or function; resolves by name but is not document data."
-  related = [function_literals]
+  related = [{ id: "function_literals", why: "Function Literals supports let bindings: Inline `fn(params) -> Return body` function values." }]
   audience = :both
   body {
     p <<DOC

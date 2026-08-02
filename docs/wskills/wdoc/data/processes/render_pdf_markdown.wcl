@@ -2,7 +2,7 @@ procedure render_pdf_markdown {
   title = "Render a document to PDF or Markdown"
   purpose = "Produce a paginated PDF or a folder of Markdown files (one per page) from the same wdoc source."
   preconditions = ["A WCL file declaring one or more `page` blocks"]
-  related = [sites]
+  related = [{ id: "sites", why: "Sites supports Render a document to PDF or Markdown: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search." }]
   audience = :both
 
   step pdf {

@@ -3,7 +3,7 @@ import <wdoc.wcl>
 concept pages {
   name = "Pages"
   summary = "The `page` block: id, title, the sites it joins, and the start page."
-  related = [sites]
+  related = [{ id: "sites", why: "Sites supports Pages: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search." }]
   audience = :both
   body {
     p <<DOC

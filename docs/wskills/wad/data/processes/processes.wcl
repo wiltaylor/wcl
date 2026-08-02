@@ -7,7 +7,7 @@ procedure creating_a_wad {
   purpose = "Go from nothing to a validated, rendering architecture document ready to populate."
   preconditions = ["The `wcl` CLI installed", "A folder (usually a repo) the WAD will live in"]
   verification = "`wcl check wad.wcl` is green and the twelve-chapter book renders with stubs."
-  related = [wcl_init_wad]
+  related = [{ id: "wcl_init_wad", why: "wcl init wad supports Create a new WAD: Scaffolds a complete WAD: schema, empty per-view data hubs, the book templates, extractor starter, justfile." }]
   audience = :both
 
   step scaffold {

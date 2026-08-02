@@ -325,17 +325,13 @@ impl<'a> Builder<'a> {
             // Body blocks, the searchable prose and the word count all come
             // from the parse: the model lists what is *written*, not what an
             // evaluation would produce.
-            let (blocks, text, prose, words) = match self.ast_block_at(&file, b.span()) {
-                Some(blk) => {
-                    let (prose, words) = body_prose(blk);
-                    (
-                        self.content_blocks(blk, &file),
-                        body_text(blk),
-                        prose,
-                        words,
-                    )
-                }
-                None => (Vec::new(), String::new(), String::new(), 0),
+            let (blocks, text, words) = match self.ast_block_at(&file, b.span()) {
+                Some(blk) => (
+                    self.content_blocks(blk, &file),
+                    body_text(blk),
+                    body_word_count(blk),
+                ),
+                None => (Vec::new(), String::new(), 0),
             };
             let summary = field_string(&b, "summary");
 
@@ -369,7 +365,6 @@ impl<'a> Builder<'a> {
                     title,
                     summary,
                     text,
-                    prose,
                     anchor,
                     visibility,
                     related,
@@ -736,15 +731,12 @@ fn body_text(b: &ast::Block) -> String {
     body_literals(b, Reading::Search).join("\n")
 }
 
-/// The prose and its word count are derived from one walk so curator rules
-/// cannot disagree about which literals count as explanatory prose.
-fn body_prose(b: &ast::Block) -> (String, usize) {
-    let literals = body_literals(b, Reading::Prose);
-    let words = literals
+/// The number of authored prose words in a block subtree.
+fn body_word_count(b: &ast::Block) -> usize {
+    body_literals(b, Reading::Prose)
         .iter()
         .map(|line| line.split_whitespace().count())
-        .sum();
-    (literals.join("\n"), words)
+        .sum()
 }
 
 /// A `related` list may be rewritten only when it is absent or a literal

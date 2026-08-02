@@ -1,7 +1,7 @@
 concept symbols {
   name = "Symbols"
   summary = "Identifier-like :name values for tags and enum-like choices, plus symbol_set vocabularies."
-  related = [symbol_set]
+  related = [{ id: "symbol_set", why: "Symbol Sets supports Symbols: A symbol_set names a closed vocabulary of symbols — an enum-like type." }]
   audience = :both
   body {
     p <<DOC

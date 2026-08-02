@@ -2,7 +2,7 @@ concept skill_anatomy {
   name = "Anatomy of the AI skill"
   summary = "What `wcl wdoc skill` emits: SKILL.md (frontmatter, boundaries, parameters, index-driven Reference) plus references/, scripts/, assets/, agents/."
   audience = :both
-  related = [views]
+  related = [{ id: "views", why: "Different Views supports Anatomy of the AI skill: One data model, four projections: the book and the AI skill are standard; the presentation deck and the training book are optional." }]
   body {
     p <<DOC
       The AI-skill view renders the wskill into a Claude Code skill folder. Its shape is fixed,

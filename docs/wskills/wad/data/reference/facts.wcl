@@ -374,7 +374,7 @@ fact wad_kinds {
 
 fact wad_cli {
   title = "WAD command table"
-  related = [wcl_init_wad]
+  related = [{ id: "wcl_init_wad", why: "wcl init wad supports WAD command table: Scaffolds a complete WAD: schema, empty per-view data hubs, the book templates, extractor starter, justfile." }]
   audience = :both
   body {
     table {
@@ -391,7 +391,7 @@ fact wad_cli {
 
 fact extractor_anatomy {
   title = "Extractor scripts"
-  related = [uv]
+  related = [{ id: "uv", why: "uv supports Extractor scripts: The Python runner behind WAD extractors — single-file scripts with inline PEP 723 dependency metadata." }]
   audience = :both
   body {
     p <<DOC

@@ -28,7 +28,7 @@ type WfBadge extends Widget {
 
 fact wireframe {
   title = "Wireframes"
-  related = [diagrams]
+  related = [{ id: "diagrams", why: "diagram supports Wireframes: A `diagram` is wdoc's drawing surface." }]
   audience = :both
   body {
     p <<DOC

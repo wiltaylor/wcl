@@ -2,7 +2,7 @@
 concept answer_mode {
   name = "Answer Mode"
   summary = "The `@answerable` decorator turns question blocks into a guided interview: `wcl answer` walks the pending ones and writes the answers back."
-  related = [wcl_cli]
+  related = [{ id: "wcl_cli", why: "wcl supports Answer Mode: The wcl command-line tool: one binary for parsing, checking, editing, formatting, scaffolding, the editor, and wdoc." }]
   audience = :both
   body {
     p <<DOC

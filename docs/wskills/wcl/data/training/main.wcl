@@ -7,7 +7,7 @@ lesson install_and_first_file {
   title = "Install wcl and check your first file"
   summary = "Get the toolchain running, write a tiny typed document, and check and evaluate it."
   objectives = ["Install the `wcl` binary and verify it runs", "Write a minimal document: a `@document` type plus a few fields", "Validate with `wcl check` and read a value with `wcl eval`"]
-  related = [fields, wcl_cli]
+  related = [{ id: "fields", why: "Fields supports Install wcl and check your first file: A field binds a name to a value with `=`; the value is any expression." }, { id: "wcl_cli", why: "wcl supports Install wcl and check your first file: The wcl command-line tool: one binary for parsing, checking, editing, formatting, scaffolding, the editor, and wdoc." }]
   body {
     p <<DOC
       WCL ships as one binary, `wcl`. Install the newest pre-release with the install script
@@ -76,7 +76,7 @@ lesson fields_blocks_comments {
   summary = "The two structural pieces every document is made of, plus how to annotate them."
   objectives = ["Bind names to expression values with `=`", "Author block instances with one or more labels", "Comment WCL source with `//`"]
   prerequisites = [install_and_first_file]
-  related = [fields, blocks, comments]
+  related = [{ id: "fields", why: "Fields supports Fields, blocks, and comments: A field binds a name to a value with `=`; the value is any expression." }, { id: "blocks", why: "Blocks supports Fields, blocks, and comments: A named group of fields that can also nest other blocks; the schema sets its labels and fields." }, { id: "comments", why: "Comments supports Fields, blocks, and comments: Line comments with `//` or `#`, preserved across fmt and edits." }]
   body {
     p <<DOC
       A field binds a name to a value with `=`, and the value is any expression — a literal, a
@@ -145,7 +145,7 @@ lesson primitive_types {
   summary = "Numbers with width suffixes, strings and heredocs, symbols, and booleans."
   objectives = ["Pin a number's exact type with a width suffix", "Write multi-line text with a heredoc", "Use symbols for enum-like tagged values"]
   prerequisites = [fields_blocks_comments]
-  related = [numbers, symbols, booleans]
+  related = [{ id: "numbers", why: "Numbers supports Primitive types and literals: Fixed-width signed and unsigned integers plus two float widths, with literal suffixes." }, { id: "symbols", why: "Symbols supports Primitive types and literals: Identifier-like :name values for tags and enum-like choices, plus symbol_set vocabularies." }, { id: "booleans", why: "Booleans supports Primitive types and literals: The bool type with exactly two values, true and false." }]
   body {
     p <<DOC
       WCL's numbers are fixed-width: signed `i8`–`i128`, unsigned `u8`–`u128`, floats `f32`/`f64`,
@@ -223,7 +223,7 @@ lesson lists_records_tables {
   summary = "The composite shapes: ordered lists, named-field records, and compact row tables."
   objectives = ["Author lists and bare record literals", "Declare a `@table` row type and write pipe-rows", "Know when a table beats a list of records"]
   prerequisites = [primitive_types]
-  related = [lists, records, tables]
+  related = [{ id: "lists", why: "Lists supports Lists, records, and pipe-tables: Ordered, homogeneous sequences — list<T> — and the collection builtins over them." }, { id: "records", why: "Records supports Lists, records, and pipe-tables: Named records via the type keyword — fixed sets of named, typed fields." }, { id: "tables", why: "Tables supports Lists, records, and pipe-tables: Pipe-row syntax for writing many records of the same shape compactly." }]
   body {
     p <<DOC
       A list is square brackets over any element type: `tags = ["alpha", "beta"]`. A record is named
@@ -309,7 +309,7 @@ lesson declaring_types {
   summary = "Turn record types into an authoring vocabulary with @block, @inline, and @default."
   objectives = ["Declare a nestable block kind with `@block(\"kind\")`", "Bind block labels to fields with `@inline(slot)`", "Fill omitted fields with `@default(expr)`"]
   prerequisites = [lists_records_tables]
-  related = [dec_block, dec_inline, dec_default]
+  related = [{ id: "dec_block", why: "@block supports Declaring types and decorators: `@block(\"kind\")` makes a type a nestable block of a named kind." }, { id: "dec_inline", why: "@inline supports Declaring types and decorators: `@inline(slot)` binds a block's positional label to a field by zero-based slot index." }, { id: "dec_default", why: "@default supports Declaring types and decorators: `@default(expr)` supplies the value a field takes when the author omits it." }]
   body {
     p <<DOC
       Decorators are prefix annotations that turn a plain record type into schema.
@@ -378,7 +378,7 @@ lesson document_and_gathering {
   summary = "How one root schema collects every block instance into a single validated document."
   objectives = ["Declare a `@document` root with `@child` / `@children` slots", "Gather several block kinds into one document", "Explain how document schemas merge per namespace"]
   prerequisites = [declaring_types]
-  related = [document_schema, dec_document, dec_children, dec_child]
+  related = [{ id: "document_schema", why: "Document Schema supports The @document and gathering: Marking a document root with @document, and how schemas merge per namespace." }, { id: "dec_document", why: "@document supports The @document and gathering: `@document` marks a type as the document-root schema." }, { id: "dec_children", why: "@children supports The @document and gathering: `@children(\"kind\")` declares a field that holds a **list** of nested blocks of a kind." }, { id: "dec_child", why: "@child supports The @document and gathering: `@child(\"kind\")` declares a field that holds a **single** nested block of the given kind." }]
   body {
     p <<DOC
       `@document` marks the root schema. The toolchain *gathers*: every top-level block instance
@@ -455,7 +455,7 @@ lesson optionals_unions_match {
   summary = "Model absence with `T?` and `none`, alternatives with unions, and consume both with match."
   objectives = ["Declare optional fields and default them with `??`", "Construct union variants and dispatch bare records by shape", "Destructure values with `match`, ending in a `_` or binding arm"]
   prerequisites = [document_and_gathering]
-  related = [optionals, unions, match_expr]
+  related = [{ id: "optionals", why: "Optionals supports Optionals, unions, and match: Values that may be present or absent — the none literal and the ? type suffix." }, { id: "unions", why: "Unions supports Optionals, unions, and match: Tagged variant sets — a value that is exactly one of several alternatives." }, { id: "match_expr", why: "match supports Optionals, unions, and match: Tests a value against a sequence of patterns, returning the body of the first that matches." }]
   body {
     p <<DOC
       A `T?` field accepts a value or the literal `none`; the `??` operator supplies the default
@@ -531,7 +531,7 @@ lesson functions {
   summary = "Named fn items, fn literals, and the map/filter/fold trio."
   objectives = ["Declare a named function with `fn name(...) -> T { ... }`", "Pass fn literals to `map`, `filter`, and `fold`", "Decide when computation belongs in the document"]
   prerequisites = [optionals_unions_match]
-  related = [fn_items]
+  related = [{ id: "fn_items", why: "fn Items supports Functions and higher-order patterns: The `fn` item form — a reusable named function declaration." }]
   body {
     p <<DOC
       Functions are first-class values. A named `fn` item declares a reusable function at file
@@ -601,7 +601,7 @@ lesson imports_namespaces {
   summary = "Split a model across files and keep independently-authored names from colliding."
   objectives = ["Import declarations from disk with a quoted path", "Scope a file's declarations with `namespace`", "Reference a namespaced type by its qualified path"]
   prerequisites = [functions]
-  related = [imports, namespaces]
+  related = [{ id: "imports", why: "Imports & Modules supports Imports and namespaces: Pull another file's declarations into the document — disk and system forms." }, { id: "namespaces", why: "Namespaces supports Imports and namespaces: Scope declarations under a dotted path; use and :: control how names resolve." }]
   body {
     p <<DOC
       A quoted `import "./types.wcl"` pulls a file's declarations in from disk, resolved relative to
@@ -675,7 +675,7 @@ lesson tooling_day_to_day {
   summary = "The edit loop around a living document: fmt, set, diff, and the repl."
   objectives = ["Normalise a file with `wcl fmt`", "Edit a field from the shell with `wcl set` and see it with `wcl diff`", "Explore a document interactively with `wcl repl`"]
   prerequisites = [imports_namespaces]
-  related = [wcl_cli]
+  related = [{ id: "wcl_cli", why: "wcl supports Tooling day-to-day: The wcl command-line tool: one binary for parsing, checking, editing, formatting, scaffolding, the editor, and wdoc." }]
   body {
     p <<DOC
       Once a document exists, most work is small edits. `wcl fmt --in-place` rewrites to canonical
@@ -735,7 +735,7 @@ lesson capstone_config {
   summary = "Put it all together — vocabulary, constraints, document root, and instances for a deployment config."
   objectives = ["Design a closed vocabulary with `symbol_set`", "Declare block kinds with labels, defaults, and list fields", "Validate instances against the schema and evaluate the result"]
   prerequisites = [tooling_day_to_day]
-  related = [symbol_set, dec_default]
+  related = [{ id: "symbol_set", why: "Symbol Sets supports Capstone: schema a real config: A symbol_set names a closed vocabulary of symbols — an enum-like type." }, { id: "dec_default", why: "@default supports Capstone: schema a real config: `@default(expr)` supplies the value a field takes when the author omits it." }]
   body {
     p <<DOC
       The capstone is the workflow you'll actually use: pick a config your project needs

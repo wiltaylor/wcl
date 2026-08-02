@@ -1,7 +1,7 @@
 concept optionals {
   name     = "Optionals"
   summary  = "Values that may be present or absent — the none literal and the ? type suffix."
-  related  = [unions, match_expr, if_let]
+  related  = [{ id: "unions", why: "Unions supports Optionals: Tagged variant sets — a value that is exactly one of several alternatives." }, { id: "match_expr", why: "match supports Optionals: Tests a value against a sequence of patterns, returning the body of the first that matches." }, { id: "if_let", why: "if let supports Optionals: Binds and branches in a single step when you only care about a single variant or pattern." }]
   audience = :both
   body {
     p "An **optional** is a value that may be present or absent. The literal `none` represents absence; a `?` suffix on a type makes its values optional. Together they let a field be omitted, a function return no answer, or a slot be cleared explicitly."

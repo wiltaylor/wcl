@@ -1,6 +1,6 @@
 fact dec_document {
   title = "@document"
-  related = [dec_children]
+  related = [{ id: "dec_children", why: "@children supports @document: `@children(\"kind\")` declares a field that holds a **list** of nested blocks of a kind." }]
   audience = :both
   body {
     p <<DOC
@@ -56,7 +56,7 @@ fact dec_block {
 
 fact dec_child {
   title = "@child"
-  related = [dec_children]
+  related = [{ id: "dec_children", why: "@children supports @child: `@children(\"kind\")` declares a field that holds a **list** of nested blocks of a kind." }]
   audience = :both
   body {
     p <<DOC
@@ -288,7 +288,7 @@ fact dec_only_except {
 
 fact dec_connections {
   title = "@connections"
-  related = [connections]
+  related = [{ id: "connections", why: "Connections supports @connections: Typed relationships between block instances, populated by arrow statements." }]
   audience = :both
   body {
     p <<DOC
@@ -354,7 +354,7 @@ fact dec_schemaless {
 
 fact dec_contextual {
   title = "@contextual"
-  related = [dec_block, dec_children]
+  related = [{ id: "dec_block", why: "@block supports @contextual: `@block(\"kind\")` makes a type a nestable block of a named kind." }, { id: "dec_children", why: "@children supports @contextual: `@children(\"kind\")` declares a field that holds a **list** of nested blocks of a kind." }]
   audience = :both
   body {
     p <<DOC
@@ -406,7 +406,7 @@ fact dec_contextual {
 
 fact dec_declares_kind {
   title = "@declares_kind"
-  related = [dec_block, dec_contextual, dec_inline, block_schema]
+  related = [{ id: "dec_block", why: "@block supports @declares_kind: `@block(\"kind\")` makes a type a nestable block of a named kind." }, { id: "dec_contextual", why: "@contextual supports @declares_kind: `@contextual` on a `@block` type says its placement is decided by **context**, not by kind." }, { id: "dec_inline", why: "@inline supports @declares_kind: `@inline(slot)` binds a block's positional label to a field by zero-based slot index." }, { id: "block_schema", why: "Block Schema supports @declares_kind: Declaring nestable blocks with @block, @inline, @child/@children, and @default." }]
   audience = :both
   body {
     p <<DOC

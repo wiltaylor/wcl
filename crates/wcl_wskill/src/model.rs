@@ -150,18 +150,13 @@ pub struct ContentBlock {
 
 /// One `related` link: the id it names, and the author's reason for it.
 ///
-/// The reason is `None` for the bare `related = [other]` form the corpus is
-/// written in today, and `Some` for the `{id, why}` record form. Reading
-/// both is what lets the reason-shaped screens
-/// ([`Rule::DuplicateReason`](crate::lint::Rule::DuplicateReason),
-/// [`Rule::MirroredPin`](crate::lint::Rule::MirroredPin)) be one rule rather
-/// than two, before and after the format carries reasons.
+/// The schema requires the `{id, why}` record form. The optional Rust field
+/// keeps the loader defensive for custom schemas and historical revisions.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Link {
     pub id: String,
-    /// Absent rather than null in the serialized form: the corpus is 725
-    /// bare edges, and a reader asking "is there a reason?" should not have
-    /// to distinguish two spellings of no.
+    /// Absent rather than null in the serialized form for a historical or
+    /// custom-schema edge that lacks a reason.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
 }
@@ -188,11 +183,6 @@ pub struct Unit {
     /// the unit's prose as a searchable blob. See [`Index::text`] for why it
     /// is only the content.
     pub text: String,
-    /// Explanatory prose only, excluding verbatim code, terminal, and math
-    /// blocks. Kept internal because it supports curator rules rather than
-    /// the public graph/search representation.
-    #[serde(skip)]
-    pub(crate) prose: String,
     /// The `audience` routing symbol (`book` / `ai` / `both`) — the block's
     /// own field, else its schema's declared default.
     pub audience: String,
@@ -205,10 +195,8 @@ pub struct Unit {
     pub related_editable: bool,
     /// The unit's body blocks, one level deep.
     pub blocks: Vec<ContentBlock>,
-    /// How many words of prose the body carries — every literal string in
-    /// the block subtree, whitespace-split. The denominator of the
-    /// words-per-link screen, and the only body measurement the model
-    /// takes: a curator that wants the prose itself reads the file.
+    /// How many words of prose the body carries. The denominator of the
+    /// words-per-link screen.
     pub words: usize,
 }
 

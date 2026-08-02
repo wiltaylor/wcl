@@ -20,18 +20,14 @@ type UnitRef {
   href: utf8
   // Bodyless indexes are present only so naming one can fail explicitly.
   linkable: bool
-  // Dynamic while both the legacy bare-id and annotated record forms coexist.
+  // Template adapter: author-facing fields are strict `RelatedEdge` lists,
+  // while this flattened view stays dynamic so anonymous record values can
+  // cross component/function boundaries.
   @schemaless related: list<identifier>
 }
 
-// Normalize either accepted edge form for templates. A bare identifier has no
-// `.id` / `.why`, so `try` falls back to the legacy value or no suffix.
-let related_id = fn(edge: identifier) -> identifier {
-  try edge.id catch e => edge
-}
-let related_reason_suffix = fn(edge: identifier) -> utf8 {
-  try $" — ${edge.why}" catch e => ""
-}
+let related_id = fn(edge: identifier) -> identifier { try edge.id catch e => edge }
+let related_reason_suffix = fn(edge: identifier) -> utf8 { try $" — ${edge.why}" catch e => "" }
 let relates_to = fn(edges: list<identifier>, id: identifier) -> bool {
   len(filter(edges, fn(edge: identifier) -> bool { $"${related_id(edge)}" == $"${id}" })) > 0
 }

@@ -2,7 +2,7 @@ import <wdoc.wcl>
 
 fact images {
   title = "image"
-  related = [diagrams]
+  related = [{ id: "diagrams", why: "diagram supports image: A `diagram` is wdoc's drawing surface." }]
   audience = :both
   body {
     block_doc {

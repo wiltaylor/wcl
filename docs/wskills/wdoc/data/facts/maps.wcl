@@ -2,7 +2,7 @@ import <wdoc.wcl>
 
 fact maps {
   title    = "map"
-  related  = [diagrams, images]
+  related  = [{ id: "diagrams", why: "diagram supports map: A `diagram` is wdoc's drawing surface." }, { id: "images", why: "image supports map: `image` embeds a static image." }]
   audience = :both
   body {
     block_doc {

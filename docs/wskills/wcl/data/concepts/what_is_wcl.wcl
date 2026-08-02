@@ -1,7 +1,7 @@
 concept what_is_wcl {
   name = "What WCL Is"
   summary = "A typed configuration & schema language: declare types, compose a document, validate and evaluate it."
-  related = [fields, blocks]
+  related = [{ id: "fields", why: "Fields supports What WCL Is: A field binds a name to a value with `=`; the value is any expression." }, { id: "blocks", why: "Blocks supports What WCL Is: A named group of fields that can also nest other blocks; the schema sets its labels and fields." }]
   audience = :both
   body {
     p <<DOC

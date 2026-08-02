@@ -5,7 +5,7 @@
 fact unit_decision_guide {
   title = "Which unit kind? — the decision guide"
   audience = :both
-  related = [concept, entity, fact, process]
+  related = [{ id: "concept", why: "Concept supports Which unit kind? — the decision guide: A unit that captures an idea or mental model of something." }, { id: "entity", why: "Entity supports Which unit kind? — the decision guide: A concrete NAMED thing in the topic's world — a person, software, a place, an organisation. Reserved: never a catch-all." }, { id: "fact", why: "Fact supports Which unit kind? — the decision guide: A unit that holds factual data — a value, a constant, a value table." }, { id: "process", why: "Process supports Which unit kind? — the decision guide: A unit (authored as a procedure) that captures the reliable sequence for doing a task — ordered steps, for someone who already knows the topic." }]
   body {
     p <<DOC
       File every atomic note as the kind it *is* — not the kind that feels convenient. The most

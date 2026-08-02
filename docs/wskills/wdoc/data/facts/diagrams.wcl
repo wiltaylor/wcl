@@ -2,7 +2,7 @@ import <wdoc.wcl>
 
 fact diagrams {
   title = "diagram"
-  related = [flowcharts, charts]
+  related = [{ id: "flowcharts", why: "flowchart shapes supports diagram: Flowchart shapes plus the layered auto-layout mode turn a `diagram` into a flowchart: declare the shapes and the edges, and the renderer ranks them topologically and elbow-routes the connections." }, { id: "charts", why: "charts supports diagram: wdoc ships three chart kinds — `bar_chart`, `line_chart`, and `pie_chart` — that lower to SVG via pure-WCL geometry." }]
   audience = :both
   body {
     p <<DOC
