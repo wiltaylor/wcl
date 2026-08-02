@@ -52,23 +52,37 @@ let book_base = $"../../wskills/${topic.id}/"
 // Every reference unit that has a book page of its own, as `(id, name, href)`.
 // Mirrors the book's own `all_units` table — examples and terms render inside
 // other pages, so they are not linkable targets.
-type RefUnit { id: identifier  name: utf8  href: utf8 }
+type RefUnit { id: identifier  name: utf8  href: utf8  linkable: bool }
+let training_child_indexes = flatten(map(indexes, fn(ix: Index) -> list<Index> { ix.children }))
+let training_indexes = flatten([indexes, training_child_indexes])
+let training_content_indexes = filter(training_indexes, fn(ix: Index) -> bool { match ix.body { none => false, _ => true } })
+let training_nav_indexes = filter(training_indexes, fn(ix: Index) -> bool { match ix.body { none => true, _ => false } })
 let ref_units = flatten([
-  map(concepts,       fn(c: Concept)   -> RefUnit { { id: c.id, name: c.name,  href: $"concept_${c.id}" } }),
-  map(entities,       fn(e: Entity)    -> RefUnit { { id: e.id, name: e.name,  href: $"entity_${e.id}"  } }),
-  map(facts,          fn(f: Fact)      -> RefUnit { { id: f.id, name: f.title, href: $"fact_${f.id}"    } }),
-  map(procedures,     fn(p: Procedure) -> RefUnit { { id: p.id, name: p.title, href: $"process_${p.id}" } }),
-  map(research_units, fn(r: Research)  -> RefUnit { { id: r.id, name: r.topic, href: $"research_${r.id}" } }),
+  map(concepts,       fn(c: Concept)   -> RefUnit { { id: c.id, name: c.name,  href: $"concept_${c.id}", linkable: true } }),
+  map(entities,       fn(e: Entity)    -> RefUnit { { id: e.id, name: e.name,  href: $"entity_${e.id}",  linkable: true } }),
+  map(facts,          fn(f: Fact)      -> RefUnit { { id: f.id, name: f.title, href: $"fact_${f.id}",    linkable: true } }),
+  map(procedures,     fn(p: Procedure) -> RefUnit { { id: p.id, name: p.title, href: $"process_${p.id}", linkable: true } }),
+  map(research_units, fn(r: Research)  -> RefUnit { { id: r.id, name: r.topic, href: $"research_${r.id}", linkable: true } }),
+  map(training_content_indexes, fn(ix: Index) -> RefUnit { { id: ix.id, name: ix.name, href: $"index_${ix.id}", linkable: true } }),
+  map(training_nav_indexes, fn(ix: Index) -> RefUnit { { id: ix.id, name: ix.name, href: "", linkable: false } }),
 ])
 
 // A reference id resolved to a markdown link into the book. Empty when the id
 // matches no unit, so a stale `related` entry degrades to nothing.
-let ref_link = fn(uid: identifier) -> list<utf8> {
-  map(filter(ref_units, fn(u: RefUnit) -> bool { u.id == uid }),
-      fn(u: RefUnit) -> utf8 { $"[${u.name}](${book_base}${u.href}.html)" })
+let training_related_id = fn(edge: identifier) -> identifier { try edge.id catch e => edge }
+let training_related_reason = fn(edge: identifier) -> utf8 { try $" — ${edge.why}" catch e => "" }
+let training_ref_link = fn(u: RefUnit, edge: identifier) -> utf8 {
+  match u.linkable {
+    false => error($"`related` names bodyless index `${u.id}`"),
+    _ => $"[${u.name}](${book_base}${u.href}.html)${training_related_reason(edge)}"
+  }
 }
-let ref_links = fn(ids: list<identifier>) -> utf8 {
-  join(flatten(map(ids, ref_link)), " · ")
+let ref_link = fn(edge: identifier) -> list<utf8> {
+  map(filter(ref_units, fn(u: RefUnit) -> bool { $"${u.id}" == $"${training_related_id(edge)}" }),
+      fn(u: RefUnit) -> utf8 { training_ref_link(u, edge) })
+}
+let ref_links = fn(edges: list<identifier>) -> utf8 {
+  join(flatten(map(edges, ref_link)), " · ")
 }
 
 // ---------------------------------------------------------------------------

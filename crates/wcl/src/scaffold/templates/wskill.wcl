@@ -747,7 +747,12 @@ let concepts   = filter(concepts,   fn(c: Concept)   -> bool { in_skill(c.audien
 let entities   = filter(entities,   fn(e: Entity)    -> bool { in_skill(e.audience) })
 let facts      = filter(facts,      fn(f: Fact)      -> bool { in_skill(f.audience) })
 let examples   = filter(examples,   fn(x: Example)   -> bool { in_skill(x.audience) })
+let all_index_levels = flatten([indexes, flatten(map(indexes, fn(x: Index) -> list<Index> { x.children }))])
 let indexes    = filter(indexes,    fn(x: Index)      -> bool { in_skill(x.audience) })
+let child_indexes = filter(flatten(map(indexes, fn(x: Index) -> list<Index> { x.children })), fn(x: Index) -> bool { in_skill(x.audience) })
+let all_indexes = flatten([indexes, child_indexes])
+let content_indexes = filter(all_indexes, fn(ix: Index) -> bool { match ix.body { none => false, _ => true } })
+let nav_indexes = filter(all_index_levels, fn(ix: Index) -> bool { match ix.body { none => true, _ => false } })
 let procedures = filter(procedures, fn(p: Procedure) -> bool { in_skill(p.audience) })
 let research_units = filter(research_units, fn(r: Research) -> bool { in_skill(r.audience) })
 
@@ -755,12 +760,14 @@ let research_units = filter(research_units, fn(r: Research) -> bool { in_skill(r
 // unit's `related` ids resolve to links (UnitRef + the components live in
 // `<wskill/component/common.wcl>`).
 let all_units = flatten([
-  map(concepts,   fn(c: Concept)   -> UnitRef { { id: c.id, name: c.name,  href: $"concept_${c.id}", related: c.related } }),
-  map(entities,   fn(e: Entity)    -> UnitRef { { id: e.id, name: e.name,  href: $"entity_${e.id}",  related: e.related } }),
-  map(facts,      fn(f: Fact)      -> UnitRef { { id: f.id, name: f.title, href: $"fact_${f.id}",    related: f.related } }),
-  map(procedures, fn(p: Procedure) -> UnitRef { { id: p.id, name: p.title, href: $"process_${p.id}", related: p.related } }),
-  map(research_units, fn(r: Research) -> UnitRef { { id: r.id, name: r.topic, href: $"research_${r.id}", related: r.related } }),
+  map(concepts,   fn(c: Concept)   -> UnitRef { { id: c.id, name: c.name,  href: $"concept_${c.id}", linkable: true, related: c.related } }),
+  map(entities,   fn(e: Entity)    -> UnitRef { { id: e.id, name: e.name,  href: $"entity_${e.id}",  linkable: true, related: e.related } }),
+  map(facts,      fn(f: Fact)      -> UnitRef { { id: f.id, name: f.title, href: $"fact_${f.id}",    linkable: true, related: f.related } }),
+  map(procedures, fn(p: Procedure) -> UnitRef { { id: p.id, name: p.title, href: $"process_${p.id}", linkable: true, related: p.related } }),
+  map(research_units, fn(r: Research) -> UnitRef { { id: r.id, name: r.topic, href: $"research_${r.id}", linkable: true, related: r.related } }),
+  map(content_indexes, fn(ix: Index) -> UnitRef { { id: ix.id, name: ix.name, href: $"index_${ix.id}", linkable: true, related: ix.related } }),
 ])
+let related_targets = flatten([all_units, map(nav_indexes, fn(ix: Index) -> UnitRef { { id: ix.id, name: ix.name, href: "", linkable: false, related: [] } })])
 
 site skill {
   default_template = :ai_skill
@@ -789,12 +796,22 @@ page index { sites = [:skill]  start = true
   skill_md_body { topic = topic  skill = skill  indexes = indexes  concepts = concepts  entities = entities  facts = facts  procedures = procedures  research_units = research_units  extra_refs = bundle_refs  artifacts = artifacts }
 }
 
+wdoc_repeater { each = all_indexes  as = :ix
+  wdoc_repeater { each = match ix.body { none => [], _ => [true] }  as = :_pg
+    page $"index_${ix.id}" { sites = [:skill]  title = $"${ix.name}"
+      index_body { unit = ix  all_units = related_targets  backlinks = []
+        p "[← Back to SKILL.md](index)"
+      }
+    }
+  }
+}
+
 // One page per concept. The body is the addressable `body`, projected here;
 // `related` ids resolve to links to the matching unit's page (any kind). There
 // is no per-kind index page — a concept is reached via a curated `index`.
 wdoc_repeater { each = concepts  as = :c
   page $"concept_${c.id}" { sites = [:skill]  title = $"${c.name}"
-    concept_body { unit = c  examples = examples  all_units = all_units  backlinks = []
+    concept_body { unit = c  examples = examples  all_units = related_targets  backlinks = []
       p "[← Back to SKILL.md](index)"
     }
   }
@@ -803,7 +820,7 @@ wdoc_repeater { each = concepts  as = :c
 // One page per entity — reached via a curated `index`.
 wdoc_repeater { each = entities  as = :e
   page $"entity_${e.id}" { sites = [:skill]  title = $"${e.name}"
-    entity_body { unit = e  examples = examples  all_units = all_units  backlinks = []
+    entity_body { unit = e  examples = examples  all_units = related_targets  backlinks = []
       p "[← Back to SKILL.md](index)"
     }
   }
@@ -812,7 +829,7 @@ wdoc_repeater { each = entities  as = :e
 // One page per fact — reached via a curated `index`.
 wdoc_repeater { each = facts  as = :f
   page $"fact_${f.id}" { sites = [:skill]  title = $"${f.title}"
-    fact_body { unit = f  examples = examples  all_units = all_units  backlinks = []
+    fact_body { unit = f  examples = examples  all_units = related_targets  backlinks = []
       p "[← Back to SKILL.md](index)"
     }
   }
@@ -823,7 +840,7 @@ wdoc_repeater { each = facts  as = :f
 // references/index_research.md menu page, emitted only when findings exist.
 wdoc_repeater { each = research_units  as = :r
   page $"research_${r.id}" { sites = [:skill]  title = $"${r.topic}"
-    research_body { unit = r  sources = sources  all_units = all_units  backlinks = []
+    research_body { unit = r  sources = sources  all_units = related_targets  backlinks = []
       p "[← Back to SKILL.md](index)"
     }
   }
@@ -841,7 +858,7 @@ wdoc_repeater { each = match len(research_units) { 0 => [], _ => [true] }  as = 
 // via a curated `index`; there is no per-kind process index page.
 wdoc_repeater { each = procedures  as = :pr
   page $"process_${pr.id}" { sites = [:skill]  title = $"${pr.title}"
-    process_body { unit = pr  all_units = all_units  step_style = "skill"  backlinks = []
+    process_body { unit = pr  all_units = related_targets  step_style = "skill"  backlinks = []
       p "[← Back to SKILL.md](index)"
     }
   }
@@ -1017,23 +1034,37 @@ let book_base = "../book/"
 // Every reference unit that has a book page of its own, as `(id, name, href)`.
 // Mirrors the book's own `all_units` table — examples and terms render inside
 // other pages, so they are not linkable targets.
-type RefUnit { id: identifier  name: utf8  href: utf8 }
+type RefUnit { id: identifier  name: utf8  href: utf8  linkable: bool }
+let training_child_indexes = flatten(map(indexes, fn(ix: Index) -> list<Index> { ix.children }))
+let training_indexes = flatten([indexes, training_child_indexes])
+let training_content_indexes = filter(training_indexes, fn(ix: Index) -> bool { match ix.body { none => false, _ => true } })
+let training_nav_indexes = filter(training_indexes, fn(ix: Index) -> bool { match ix.body { none => true, _ => false } })
 let ref_units = flatten([
-  map(concepts,       fn(c: Concept)   -> RefUnit { { id: c.id, name: c.name,  href: $"concept_${c.id}" } }),
-  map(entities,       fn(e: Entity)    -> RefUnit { { id: e.id, name: e.name,  href: $"entity_${e.id}"  } }),
-  map(facts,          fn(f: Fact)      -> RefUnit { { id: f.id, name: f.title, href: $"fact_${f.id}"    } }),
-  map(procedures,     fn(p: Procedure) -> RefUnit { { id: p.id, name: p.title, href: $"process_${p.id}" } }),
-  map(research_units, fn(r: Research)  -> RefUnit { { id: r.id, name: r.topic, href: $"research_${r.id}" } }),
+  map(concepts,       fn(c: Concept)   -> RefUnit { { id: c.id, name: c.name,  href: $"concept_${c.id}", linkable: true } }),
+  map(entities,       fn(e: Entity)    -> RefUnit { { id: e.id, name: e.name,  href: $"entity_${e.id}",  linkable: true } }),
+  map(facts,          fn(f: Fact)      -> RefUnit { { id: f.id, name: f.title, href: $"fact_${f.id}",    linkable: true } }),
+  map(procedures,     fn(p: Procedure) -> RefUnit { { id: p.id, name: p.title, href: $"process_${p.id}", linkable: true } }),
+  map(research_units, fn(r: Research)  -> RefUnit { { id: r.id, name: r.topic, href: $"research_${r.id}", linkable: true } }),
+  map(training_content_indexes, fn(ix: Index) -> RefUnit { { id: ix.id, name: ix.name, href: $"index_${ix.id}", linkable: true } }),
+  map(training_nav_indexes, fn(ix: Index) -> RefUnit { { id: ix.id, name: ix.name, href: "", linkable: false } }),
 ])
 
 // A reference id resolved to a markdown link into the book. Empty when the id
 // matches no unit, so a stale `related` entry degrades to nothing.
-let ref_link = fn(uid: identifier) -> list<utf8> {
-  map(filter(ref_units, fn(u: RefUnit) -> bool { u.id == uid }),
-      fn(u: RefUnit) -> utf8 { $"[${u.name}](${book_base}${u.href}.html)" })
+let training_related_id = fn(edge: identifier) -> identifier { try edge.id catch e => edge }
+let training_related_reason = fn(edge: identifier) -> utf8 { try $" — ${edge.why}" catch e => "" }
+let training_ref_link = fn(u: RefUnit, edge: identifier) -> utf8 {
+  match u.linkable {
+    false => error($"`related` names bodyless index `${u.id}`"),
+    _ => $"[${u.name}](${book_base}${u.href}.html)${training_related_reason(edge)}"
+  }
 }
-let ref_links = fn(ids: list<identifier>) -> utf8 {
-  join(flatten(map(ids, ref_link)), " · ")
+let ref_link = fn(edge: identifier) -> list<utf8> {
+  map(filter(ref_units, fn(u: RefUnit) -> bool { $"${u.id}" == $"${training_related_id(edge)}" }),
+      fn(u: RefUnit) -> utf8 { training_ref_link(u, edge) })
+}
+let ref_links = fn(edges: list<identifier>) -> utf8 {
+  join(flatten(map(edges, ref_link)), " · ")
 }
 
 // ---------------------------------------------------------------------------
@@ -1554,7 +1585,7 @@ import "./data/research/research.wcl"
 ${match answer("include_presentation") { "yes" => "", _ => "// " }}import "./data/presentation/main.wcl"
 ${match answer("include_training") { "yes" => "", _ => "// " }}import "./data/training/main.wcl"
 
-schema_version = "1.3.0"
+schema_version = "1.4.0"
 
 topic ${answer("topic_id")} {
   name    = "${answer("topic_name")}"

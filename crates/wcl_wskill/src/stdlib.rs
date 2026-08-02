@@ -163,12 +163,10 @@ mod tests {
         }
     }
 
-    /// A wskill built the way the scaffold now writes one — a root that
-    /// imports the library and a two-line book entry — loads as a model, and
-    /// the book projection resolves. This is the end-to-end proof that
-    /// `import <wskill.wcl>` needs no copies on disk.
+    /// The embedded schema and book projection support both edge forms,
+    /// reciprocal dedupe, and linkable content indexes without local copies.
     #[test]
-    fn a_wskill_carrying_no_copies_loads_and_its_book_entry_resolves() {
+    fn embedded_book_supports_reasoned_edges_and_linkable_indexes() {
         let td = tempfile::tempdir().unwrap();
         let root = td.path();
         crate::testsupport::write(
@@ -178,7 +176,7 @@ mod tests {
              import <wskill.wcl>\n\
              import \"./schema/kinds.wcl\"\n\
              import \"./data/main.wcl\"\n\n\
-             schema_version = \"1.3.0\"\n\n\
+             schema_version = \"1.4.0\"\n\n\
              topic demo {\n  name = \"Demo\"\n  summary = \"A demo.\"\n  created = \"1970-01-01\"\n}\n\n\
              wcl.wskill::skill {\n}\n\n\
              artifact book {\n  kind = :book\n  entry = \"wdoc/book/main.wcl\"\n}\n",
@@ -194,8 +192,13 @@ mod tests {
             root,
             "data/main.wcl",
             "concept alpha {\n  name = \"Alpha\"\n  summary = \"The first idea.\"\n  \
+             related = [{ id: \"beta\", why: \"Beta puts the idea into practice.\" }, { id: \"nested\", why: \"The nested guide explains Alpha.\" }]\n  \
              body { p \"Alpha's body.\" }\n}\n\n\
-             index start {\n  name = \"Start here\"\n  related = [alpha]\n}\n",
+             concept beta {\n  name = \"Beta\"\n  summary = \"The second idea.\"\n  \
+             related = [alpha]\n}\n\n\
+             index start {\n  name = \"Start here\"\n  related = [alpha, beta]\n}\n\n\
+             index area {\n  name = \"Area guide\"\n  summary = \"A guided area.\"\n  related = [alpha]\n  body { p \"Area body.\" }\n\n  \
+               index nested {\n    name = \"Nested guide\"\n    related = [beta]\n    body { p \"Nested body.\" }\n  }\n}\n",
         );
         crate::testsupport::write(
             root,
@@ -203,10 +206,29 @@ mod tests {
             "import \"../../wskill.wcl\"\nimport <wskill/book.wcl>\n",
         );
 
+        install_stdlib();
+        let root_doc = wcl_wdoc::open_doc_for_edit(&root.join(crate::ROOT_MARKER))
+            .expect("root document opens");
+        let related = root_doc
+            .blocks()
+            .find(|b| b.kind() == "concept")
+            .and_then(|b| b.field("related"))
+            .expect("alpha.related");
+        assert!(
+            related.value().is_ok(),
+            "alpha.related: {:?}",
+            related.value()
+        );
+
         let graph = crate::Graph::open(root).expect("model loads");
-        assert_eq!(graph.units.len(), 1);
+        assert_eq!(graph.units.len(), 2);
         assert_eq!(graph.units[0].id, "alpha");
-        assert_eq!(graph.indexes.len(), 1);
+        assert_eq!(graph.units[0].related[0].id, "beta");
+        assert_eq!(
+            graph.units[0].related[0].why.as_deref(),
+            Some("Beta puts the idea into practice.")
+        );
+        assert_eq!(graph.indexes.len(), 2);
 
         // The book entry is a document in its own right: it must open and
         // validate, since that is what `wcl wdoc build` does to it.
@@ -219,6 +241,63 @@ mod tests {
             doc.blocks().any(|b| b.kind() == "site"),
             "the book part contributed no site"
         );
+
+        let out = root.join("out/book");
+        if let Err(error) = wcl_wdoc::build(&root.join("wdoc/book/main.wcl"), &out, None) {
+            error.report();
+            panic!("book builds");
+        }
+        let alpha =
+            std::fs::read_to_string(out.join("concept_alpha.html")).expect("alpha page rendered");
+        assert!(
+            alpha.contains("Beta puts the idea into practice."),
+            "annotated edge reason did not render: {alpha}"
+        );
+        assert_eq!(
+            alpha
+                .matches("<p>- <a class=\"link\" href=\"concept_beta.html\">Beta</a>")
+                .count(),
+            1,
+            "a reciprocal edge must not repeat under Referenced by"
+        );
+        assert!(
+            alpha.contains("The nested guide explains Alpha."),
+            "a related edge to a bodied nested index must render its reason"
+        );
+        assert!(
+            alpha.contains("href=\"index_nested.html\""),
+            "a bodied nested index must be linkable as a related target"
+        );
+        assert!(
+            out.join("index_area.html").is_file(),
+            "a top-level bodied index must get a page"
+        );
+        assert!(
+            out.join("index_nested.html").is_file(),
+            "a nested bodied index must get a page"
+        );
+
+        crate::testsupport::write(
+            root,
+            "data/main.wcl",
+            "concept alpha {\n  name = \"Alpha\"\n  summary = \"The first idea.\"\n  related = [start]\n}\n\n\
+             index start {\n  name = \"Start here\"\n  audience = :ai\n  related = [alpha]\n}\n",
+        );
+        match wcl_wdoc::build(
+            &root.join("wdoc/book/main.wcl"),
+            &root.join("out/bodyless"),
+            None,
+        ) {
+            Err(wcl_wdoc::BuildError::Eval(report)) => assert!(
+                format!("{report:?}").contains("bodyless index `start`"),
+                "the build error should identify the bodyless related target"
+            ),
+            Err(error) => {
+                error.report();
+                panic!("a bodyless related target should be an evaluation error");
+            }
+            Ok(_) => panic!("a related edge to a bodyless index must fail the build"),
+        }
     }
 
     fn registered() -> Vec<(String, String)> {

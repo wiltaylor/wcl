@@ -23,7 +23,7 @@ import "./data/main.wcl"
 import "./data/presentation/main.wcl"
 import "./data/training/main.wcl"
 
-schema_version = "1.3.0"
+schema_version = "1.4.0"
 
 topic wdoc {
   name    = "wdoc"

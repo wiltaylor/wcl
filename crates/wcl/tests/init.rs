@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
+use std::io::Write;
 use tempfile::TempDir;
 
 fn wcl() -> Command {
@@ -517,6 +518,20 @@ fn init_wskill_scaffolds_entries_only_and_builds_every_projection() {
         "wskill: book entry does not import the shared template: {book}"
     );
 
+    // A content index must project in both link-bearing views. Keep this in
+    // the scaffold test because the skill entry is topic-owned generated code,
+    // while the book entry delegates to the embedded template.
+    writeln!(
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(dest.join("data/reference/reference.wcl"))
+            .expect("open reference data"),
+        "\nconcept alpha {{\n  name = \"Alpha\"\n  summary = \"First.\"\n  audience = :both\n  related = [{{ id: \"beta\", why: \"Beta follows Alpha.\" }}]\n}}\n\n\
+         concept beta {{\n  name = \"Beta\"\n  summary = \"Second.\"\n  audience = :both\n}}\n\n\
+         index guided {{\n  name = \"Guided area\"\n  audience = :both\n  related = [alpha, beta]\n  body {{ p \"Guidance.\" }}\n}}"
+    )
+    .expect("append bodied index");
+
     for rel in [
         "wskill.wcl",
         "wdoc/book/main.wcl",
@@ -545,4 +560,43 @@ fn init_wskill_scaffolds_entries_only_and_builds_every_projection() {
         dest.join("out/skill/SKILL.md").exists(),
         "wskill: the skill projection wrote no SKILL.md"
     );
+    assert!(
+        dest.join("out/book/index_guided.html").exists(),
+        "wskill: the book projection wrote no bodied-index page"
+    );
+    assert!(
+        dest.join("out/skill/references/index_guided.md").exists(),
+        "wskill: the skill projection wrote no bodied-index page"
+    );
+    let alpha_skill = std::fs::read_to_string(dest.join("out/skill/references/concept_alpha.md"))
+        .expect("read rendered skill unit");
+    assert!(
+        alpha_skill.contains("Beta follows Alpha."),
+        "wskill: the skill projection dropped a related-edge reason"
+    );
+
+    writeln!(
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(dest.join("data/reference/reference.wcl"))
+            .expect("open reference data"),
+        "\nindex nav_only {{\n  name = \"Navigation only\"\n  audience = :book\n}}"
+    )
+    .expect("append bodyless index");
+    writeln!(
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(dest.join("data/training/main.wcl"))
+            .expect("open training data"),
+        "\nlesson invalid_link {{\n  title = \"Invalid link\"\n  n = 99\n  related = [nav_only]\n}}"
+    )
+    .expect("append invalid training edge");
+    wcl()
+        .args(["wdoc", "build"])
+        .arg(dest.join("wdoc/training/main.wcl"))
+        .arg("--out")
+        .arg(dest.join("out/invalid-training"))
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("bodyless index `nav_only`"));
 }

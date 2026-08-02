@@ -1,7 +1,9 @@
 // wskill base schema — embedded in the toolchain, reached with
 // `import <wskill.wcl>` (or `import <wskill/schema.wcl>` on its own).
 //
-// Schema version: 1.3.0 (mirror it in `schema_version` in wskill.wcl).
+// Schema version: 1.4.0 (mirror it in `schema_version` in wskill.wcl).
+// 1.4.0 is additive over 1.3.0: `related` accepts an optional reason, and
+// body-carrying indexes become linkable content units in every projection.
 // 1.3.0 is additive over 1.2.0: multiple skills per wskill (`skill` gains
 // optional name/description identity overrides; each extra skill pairs with
 // its own `:ai_skill` site) and shipped subagents (document-level wdoc
@@ -232,7 +234,7 @@ type Research {
   @default([]) source_ids: list<identifier> // backing `source` block ids
   @default([]) locators:   list<utf8>     // ad-hoc evidence (URLs/paths) not worth a source block
   superseded_by: identifier?              // replacement research unit, when :superseded
-  @default([]) related: list<identifier>  // ids of related units (any kind)
+  @schemaless @default([]) related: list<identifier> // bare id or RelatedEdge record
   @default(:ai) audience: Audience        // :ai (default) | :book | :both
   @default([]) tags: list<utf8>
   // The findings — an addressable `body { …wdoc… }`, projected onto its page.
@@ -337,13 +339,20 @@ type Artifact {
 // `step` inherits its procedure's choice.
 symbol_set Audience { book ai both }
 
+// A reason-carrying graph edge. `related` fields remain schemaless
+// `list<identifier>` during the corpus migration so the existing bare-id form
+// keeps its identifier-literal evaluation while records can enter alongside
+// it. The record form is `{ id: "other", why: "…" }`; a later corpus flip can
+// make `RelatedEdge` the required element type.
+type RelatedEdge { id: identifier  why: utf8? }
+
 // An idea the reader must understand.
 @block("concept")
 type Concept {
   @inline(0) id: identifier
   name:    utf8                          // headline (also the link text)
   summary: utf8                          // one-liner for the concept index
-  @default([]) related: list<identifier> // ids of related units (concept/entity/fact)
+  @schemaless @default([]) related: list<identifier> // bare id or RelatedEdge record
   @default(:book) audience: Audience     // :book (default) | :ai | :both
   @default([]) tags: list<utf8>
   // The body — an addressable `body { …wdoc… }`, projected onto the page.
@@ -361,7 +370,7 @@ type Entity {
   name:    utf8
   kind:    EntityKind                    // e.g. :software, :person (see schema/kinds.wcl)
   summary: utf8?                         // optional one-liner for the index
-  @default([]) related: list<identifier>
+  @schemaless @default([]) related: list<identifier>
   @default(:book) audience: Audience     // :book (default) | :ai | :both
   @default([]) tags: list<utf8>
   // The body — an addressable `body { …wdoc… }` (attributes go in a table here).
@@ -374,7 +383,7 @@ type Entity {
 type Fact {
   @inline(0) id: identifier
   title:   utf8                          // headline (also the link text)
-  @default([]) related: list<identifier>
+  @schemaless @default([]) related: list<identifier>
   @default(:book) audience: Audience     // :book (default) | :ai | :both
   @default([]) tags: list<utf8>
   // The body — an addressable `body { …wdoc… }`, projected onto the page.
@@ -400,7 +409,7 @@ type Index {
   @inline(0) id: identifier
   name:    utf8
   summary: utf8?
-  @default([]) related: list<identifier>
+  @schemaless @default([]) related: list<identifier> // bare id or RelatedEdge record
   @default(:book) audience: Audience     // :book (default) | :ai | :both
   @default([]) tags: list<utf8>
   @child("body") body: WdocAddressableBody?
@@ -475,7 +484,7 @@ type Procedure {
   purpose:       utf8
   @default([]) preconditions: list<utf8>
   verification:  utf8?         // "how you know it worked"
-  @default([]) related: list<identifier>   // ids of related units (any kind)
+  @schemaless @default([]) related: list<identifier> // bare id or RelatedEdge record
   @default(:book) audience: Audience     // :book (default) | :ai | :both
   @default(:graph) style: ProcedureStyle // :graph (default) draws the flow chart
   @default([]) tags: list<utf8>
