@@ -29,12 +29,12 @@ c = Shape::Empty
 An **optional** (`field?`) member of a record body defaults to `none` when omitted, so `stroke: none` says nothing that leaving `stroke` out doesn't. Only required fields have to be supplied.
 
 ```wcl
-union Shape {
+union Outline {
   Circle { radius: f64  stroke: f64?  fill: utf8? }
 }
 
-a = Shape::Circle { radius: 5.0 }                  // stroke and fill are `none`
-b = Shape::Circle { radius: 5.0, stroke: none }    // identical, and the `stroke:` is dead weight
+a = Outline::Circle { radius: 5.0 }                // stroke and fill are `none`
+b = Outline::Circle { radius: 5.0, stroke: none }  // identical, and the `stroke:` is dead weight
 ```
 
 ## Inferring the variant from shape
