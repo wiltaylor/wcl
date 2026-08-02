@@ -1,6 +1,6 @@
 fact literal_unit_syntax {
   title = "Literal unit syntax"
-  related = [number_literals]
+  related = [{ id: "number_literals", why: "Number literals supports literal-unit syntax by defining the numeric forms and suffix behavior that literal units extend." }]
   audience = :both
   body {
     p <<DOC

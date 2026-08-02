@@ -2,7 +2,7 @@ procedure adding_content {
   title = "Adding content to a wskill"
   purpose = "The shape-first capture loop: decompose a piece of knowledge, classify it, place it in the index, then write, link and render it."
   preconditions = ["An existing wskill folder that checks clean (`just wskill-check`)."]
-  related = [decomposing_information, building_the_index]
+  related = [{ id: "decomposing_information", why: "Decomposing information supports Adding content to a wskill: Break a topic into atomic notes — one idea each — then file each as the unit kind that fits it: concept, entity, fact or process." }, { id: "building_the_index", why: "Building the wskill index supports Adding content to a wskill: Declare the wskill's shape during scoping by writing a bodied `index` tree, then place units under the node whose scope owns them." }]
   audience = :both
 
   step decompose {

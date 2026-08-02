@@ -2,7 +2,7 @@ procedure attaching_to_registry {
   title = "Attaching a wskill to a registry"
   purpose = "Add a wskill to a collection so its views are discovered, built, and linked from the landing page."
   preconditions = ["A registry/collection repo (scaffold one with `wcl init wskill-registry`)."]
-  related = [views]
+  related = [{ id: "views", why: "Different Views supports Attaching a wskill to a registry: One data model, four projections: the book and the AI skill are standard; the presentation deck and the training book are optional." }]
   audience = :both
 
   step place {

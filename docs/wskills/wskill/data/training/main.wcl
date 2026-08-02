@@ -65,7 +65,7 @@ lesson capture_first_units {
   summary = "Decompose a corner of the topic and classify each piece with the decision guide."
   objectives = ["Classify a piece of knowledge as concept, entity, fact, or process", "Write a unit file with a body and related links", "Render the book and find your unit's page"]
   prerequisites = [scaffold_first_wskill]
-  related = [concept, entity, fact]
+  related = [{ id: "concept", why: "Concept supports Capture your first units: A unit that captures an idea or mental model of something." }, { id: "entity", why: "Entity supports Capture your first units: A concrete NAMED thing in the topic's world — a person, software, a place, an organisation. Reserved: never a catch-all." }, { id: "fact", why: "Fact supports Capture your first units: A unit that holds factual data — a value, a constant, a value table." }]
   body {
     p <<DOC
       Content lives in `data/` as block instances. Pick one small corner of your topic and split it
@@ -76,7 +76,8 @@ lesson capture_first_units {
     DOC
     p <<DOC
       Every unit gets an id, a headline, and a `body { … }` of wdoc blocks. Link units to each other
-      with `related = [other_id]` — the projections turn those into links both ways.
+      with `related = [{ id: "other_id", why: "Why this connection matters." }]` — the projections
+      turn those into links both ways and show the authored reason.
     DOC
   }
   exercise first_concept {
@@ -256,7 +257,7 @@ lesson optional_views {
   summary = "Add the optional presentation and training views when the topic warrants them."
   objectives = ["Decide when a topic deserves a deck or a training course", "Author slide and lesson data and render the optional views"]
   prerequisites = [ship_the_skill]
-  related = [views, presentation_view]
+  related = [{ id: "views", why: "Different Views supports Ship a deck or a course: One data model, four projections: the book and the AI skill are standard; the presentation deck and the training book are optional." }, { id: "presentation_view", why: "The presentation view supports Ship a deck or a course: An optional overview deck introducing the topic — slides feature existing units; the detail stays in the book." }]
   body {
     p <<DOC
       The deck introduces (slides feature existing units — `unit = <id>` pulls the headline and

@@ -1,7 +1,7 @@
 concept qualified_kinds {
   name = "Qualified Block Kinds"
   summary = "Block and table kinds are namespace-scoped; a ::-qualified kind picks a schema from a specific namespace."
-  related = [namespaces, use_declarations]
+  related = [{ id: "namespaces", why: "Namespaces supports Qualified Block Kinds: Scope declarations under a dotted path; use and :: control how names resolve." }, { id: "use_declarations", why: "use Declarations supports Qualified Block Kinds: use pulls qualified names from other namespaces into local scope so they can be written bare." }]
   audience = :both
   body {
     h2 "Qualified block kinds"

@@ -1,7 +1,7 @@
 concept self_parent {
   name = "self & parent"
   summary = "Keywords that navigate the enclosing scope — self is the current block, parent the one around it."
-  related = [references]
+  related = [{ id: "references", why: "References supports self & parent: &T fields that accept any value structurally satisfying an interface." }]
   audience = :both
   body {
     p <<DOC

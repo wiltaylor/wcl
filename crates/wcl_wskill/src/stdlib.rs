@@ -176,7 +176,7 @@ mod tests {
              import <wskill.wcl>\n\
              import \"./schema/kinds.wcl\"\n\
              import \"./data/main.wcl\"\n\n\
-             schema_version = \"1.5.0\"\n\n\
+             schema_version = \"1.6.0\"\n\n\
              topic demo {\n  name = \"Demo\"\n  summary = \"A demo.\"\n  created = \"1970-01-01\"\n}\n\n\
              wcl.wskill::skill {\n}\n\n\
              artifact book {\n  kind = :book\n  entry = \"wdoc/book/main.wcl\"\n}\n",
@@ -195,7 +195,7 @@ mod tests {
              related = [{ id: \"beta\", why: \"Beta puts the idea into practice.\" }, { id: \"nested\", why: \"The nested guide explains Alpha.\" }]\n  \
              body { p \"Alpha's body.\" }\n}\n\n\
              concept beta {\n  name = \"Beta\"\n  summary = \"The second idea.\"\n  \
-             related = [alpha]\n}\n\n\
+             related = [{ id: \"alpha\", why: \"Alpha introduces the idea Beta applies.\" }]\n}\n\n\
              index start {\n  name = \"Start here\"\n  related = [alpha, beta]\n}\n\n\
              index area {\n  name = \"Area guide\"\n  summary = \"A guided area.\"\n  related = [alpha]\n  body { p \"Area body.\" }\n\n  \
                index nested {\n    name = \"Nested guide\"\n    related = [beta]\n    body { p \"Nested body.\" }\n  }\n}\n\n\
@@ -286,7 +286,7 @@ mod tests {
         crate::testsupport::write(
             root,
             "data/main.wcl",
-            "concept alpha {\n  name = \"Alpha\"\n  summary = \"The first idea.\"\n  related = [start]\n}\n\n\
+            "concept alpha {\n  name = \"Alpha\"\n  summary = \"The first idea.\"\n  related = [{ id: \"start\", why: \"The start guide should explain where Alpha belongs.\" }]\n}\n\n\
              index start {\n  name = \"Start here\"\n  audience = :ai\n  related = [alpha]\n}\n",
         );
         match wcl_wdoc::build(
@@ -303,6 +303,47 @@ mod tests {
                 panic!("a bodyless related target should be an evaluation error");
             }
             Ok(_) => panic!("a related edge to a bodyless index must fail the build"),
+        }
+    }
+
+    #[test]
+    fn embedded_schema_requires_a_reason_on_semantic_edges() {
+        let td = tempfile::tempdir().unwrap();
+        let root = td.path();
+        crate::testsupport::write(
+            root,
+            crate::ROOT_MARKER,
+            "import <wdoc.wcl>\n\
+             import <wskill.wcl>\n\
+             import \"./schema/kinds.wcl\"\n\
+             import \"./data/main.wcl\"\n\n\
+             schema_version = \"1.6.0\"\n\n\
+             topic demo {\n  name = \"Demo\"\n  summary = \"A demo.\"\n  created = \"1970-01-01\"\n}\n\n\
+             wcl.wskill::skill {}\n",
+        );
+        crate::testsupport::write(
+            root,
+            "schema/kinds.wcl",
+            "namespace wcl.wskill\n\n\
+             symbol_set EntityKind { software }\n\
+             symbol_set ArtifactKind { book ai_skill presentation training }\n",
+        );
+        install_stdlib();
+        for related in ["[beta]", "[{ id: \"beta\" }]"] {
+            crate::testsupport::write(
+                root,
+                "data/main.wcl",
+                &format!(
+                    "concept alpha {{\n  name = \"Alpha\"\n  summary = \"The first idea.\"\n  related = {related}\n}}\n\n\
+                     concept beta {{\n  name = \"Beta\"\n  summary = \"The second idea.\"\n}}\n"
+                ),
+            );
+            let doc = wcl_wdoc::open_doc_for_edit(&root.join(crate::ROOT_MARKER))
+                .expect("an invalid edge still parses as source");
+            assert!(
+                !doc.schema_errors().is_empty(),
+                "`related = {related}` must fail schema validation before lint"
+            );
         }
     }
 

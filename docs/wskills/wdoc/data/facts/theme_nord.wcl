@@ -4,7 +4,7 @@ import <wdoc.wcl>
 // `nord` palettes (dark + light). Keep in sync with that file by hand.
 fact theme_nord {
   title = "Nordic theme"
-  related = [themes]
+  related = [{ id: "themes", why: "Built-in colour themes supports Nordic theme: Set `theme = :<name>` on a `site` to recolour the whole site in one line." }]
   audience = :both
   body {
     p "`theme = :nord` — cool blue-grey. Dark (top) and light (bottom): page, surface, border, accent, accent-2, tip, warn, danger, keyword. See [all themes](fact_themes)."

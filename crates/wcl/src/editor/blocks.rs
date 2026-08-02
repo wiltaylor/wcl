@@ -135,9 +135,9 @@ pub(super) fn visibility_json(block: &ast::Block) -> serde_json::Value {
 /// - `connect_add { from, to, kind? }` / `connect_remove { from, to }` — add or
 ///   drop an `a -> b` connection statement on the addressed container block
 ///   (a diagram wiring its shapes, a procedure wiring its steps).
-/// - `related_add { id }` / `related_remove { id }` — append to / remove from
-///   the block's `related` identifier list (the graph view's edge writes;
-///   refuses computed lists, duplicates, and self-loops)
+/// - `related_add { id, why }` / `related_remove { id }` — append to / remove
+///   from the block's `related` list (the graph view's edge writes; refuses
+///   missing reasons, computed lists, duplicates, and self-loops)
 /// - `delete {}` — remove the block
 /// - `move { dir: "up"|"down" }` — swap with the adjacent block sibling
 /// - `move_to { before: span | after: span }` — move relative to another
@@ -321,7 +321,8 @@ pub(super) fn block_ops(
                 let block = find_block(&mut src.items, span)?;
                 let from = wcl_wskill::ops::node_ref(block)
                     .ok_or("the block has no id, so nothing can relate to it")?;
-                wcl_wskill::ops::edit_related(block, &from, id, name == "related_add")
+                let why = op.get("why").and_then(serde_json::Value::as_str);
+                wcl_wskill::ops::edit_related(block, &from, id, why, name == "related_add")
                     .map_err(|e| e.to_string())?;
                 tracked.push(("edited", span));
             }

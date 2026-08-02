@@ -588,7 +588,7 @@ fn init_wskill_scaffolds_entries_only_and_builds_every_projection() {
             .append(true)
             .open(dest.join("data/training/main.wcl"))
             .expect("open training data"),
-        "\nlesson invalid_link {{\n  title = \"Invalid link\"\n  n = 99\n  related = [nav_only]\n}}"
+        "\nlesson invalid_link {{\n  title = \"Invalid link\"\n  n = 99\n  related = [{{ id: \"nav_only\", why: \"The navigation-only index cannot provide a lesson page.\" }}]\n}}"
     )
     .expect("append invalid training edge");
     wcl()

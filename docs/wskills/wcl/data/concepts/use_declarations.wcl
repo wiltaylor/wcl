@@ -1,7 +1,7 @@
 concept use_declarations {
   name = "use Declarations"
   summary = "use pulls qualified names from other namespaces into local scope so they can be written bare."
-  related = [namespaces]
+  related = [{ id: "namespaces", why: "Namespaces supports use Declarations: Scope declarations under a dotted path; use and :: control how names resolve." }]
   audience = :both
   body {
     h2 "use declarations"

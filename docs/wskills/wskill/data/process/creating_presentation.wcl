@@ -2,7 +2,7 @@ procedure creating_presentation {
   title = "Creating the presentation view"
   purpose = "Ship the optional overview deck: declare the artifact, author the slides, render and present."
   preconditions = ["The reference content the deck will feature already exists — a deck arranges units, it doesn't replace them."]
-  related = [presentation_view]
+  related = [{ id: "presentation_view", why: "The presentation view supports Creating the presentation view: An optional overview deck introducing the topic — slides feature existing units; the detail stays in the book." }]
   audience = :both
 
   step enable {

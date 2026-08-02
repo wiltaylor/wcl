@@ -1,7 +1,7 @@
 fact template_procedure {
   title = "Template — process (procedure)"
   audience = :both
-  related = [process]
+  related = [{ id: "process", why: "Process supports Template — process (procedure): A unit (authored as a procedure) that captures the reliable sequence for doing a task — ordered steps, for someone who already knows the topic." }]
   body {
     p <<DOC
       A **process** is a repeatable task written as ordered steps, for someone who already knows the

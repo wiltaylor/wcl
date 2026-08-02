@@ -6,13 +6,11 @@
 //! can read, check, install and structurally edit a wskill without a browser
 //! editor running.
 //!
-//! `op` and lint autofixes are the write hosts, and both write the way the
-//! editor does: the library turns an op into file changes, and
+//! `op` is the write host: the library turns an op into file changes, and
 //! [`crate::edit::commit`] — the editor's own write / validate / roll-back
-//! pipeline — puts them on disk. So a lint fix, a curated op and a browser
-//! drag are one operation validated one way.
+//! pipeline — puts them on disk.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -51,45 +49,6 @@ mod support;
 pub(crate) use check::run as run_check;
 pub(crate) use install::run as run_install;
 
-/// Which lint autofixes the caller requested. Bare `--fix` selects every
-/// rule that declares one; `--fix=<rule>` narrows the same pass to one rule.
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum FixSelection {
-    All,
-    Rule(Rule),
-}
-
-impl FixSelection {
-    fn includes(self, rule: Rule) -> bool {
-        match self {
-            FixSelection::All => rule.has_autofix(),
-            FixSelection::Rule(selected) => rule == selected,
-        }
-    }
-}
-
-/// Parse the optional value of `--fix` in the library's rule vocabulary.
-pub(crate) fn parse_fix(s: &str) -> Result<FixSelection, String> {
-    if s == "all" {
-        return Ok(FixSelection::All);
-    }
-    let rule = Rule::parse(s).ok_or_else(|| {
-        format!(
-            "expected `all` or one of {}",
-            Rule::ALL
-                .iter()
-                .filter(|rule| rule.has_autofix())
-                .map(Rule::slug)
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-    })?;
-    if !rule.has_autofix() {
-        return Err(format!("rule `{rule}` does not declare an autofix"));
-    }
-    Ok(FixSelection::Rule(rule))
-}
-
 /// How much of a commit sha an audit header shows. Long enough to paste back
 /// into `git`, short enough that the two ends of a range fit on the line
 /// with the path.
@@ -126,9 +85,8 @@ pub(crate) fn run_graph(entry: &Path, rev: Option<&str>) -> u8 {
     }
 }
 
-/// Run `wcl wskill lint [<entry>] [--format …] [--severity …] [--deny …]
-/// [--fix[=<rule>] [--dry-run]]`: report the rule engine's findings, applying
-/// any requested autofix ops before the final pass.
+/// Run `wcl wskill lint [<entry>] [--format …] [--severity …] [--deny …]`:
+/// report the rule engine's findings.
 ///
 /// `severity` empty means every severity — a filter nobody set filters
 /// nothing. Note that it filters the exit code too: findings the caller asked
@@ -139,42 +97,14 @@ pub(crate) fn run_lint(
     format: crate::ReportFormat,
     severity: &[Severity],
     deny: Severity,
-    fix: Option<FixSelection>,
-    dry_run: bool,
 ) -> u8 {
-    let mut graph = match wcl_wskill::Graph::open(entry) {
+    let graph = match wcl_wskill::Graph::open(entry) {
         Ok(g) => g,
         Err(e) => {
             report(e);
             return WSKILL_TOOL_FAILURE;
         }
     };
-
-    if let Some(selection) = fix {
-        let mut seen = HashSet::new();
-        let fixes: Vec<Op> = wcl_wskill::lint(&graph)
-            .into_iter()
-            .filter(|finding| selection.includes(finding.rule))
-            .filter_map(|finding| finding.fix)
-            .filter(|op| seen.insert(ops::to_json(op).to_string()))
-            .collect();
-
-        if dry_run {
-            print_lint_dry_run(&fixes);
-            return WSKILL_OK;
-        }
-
-        if apply_lint_fixes(&graph.root.join(wcl_wskill::ROOT_MARKER), &fixes).is_err() {
-            return WSKILL_FINDINGS;
-        }
-        graph = match wcl_wskill::Graph::open(entry) {
-            Ok(g) => g,
-            Err(e) => {
-                report(e);
-                return WSKILL_TOOL_FAILURE;
-            }
-        };
-    }
 
     let findings: Vec<Finding> = wcl_wskill::lint(&graph)
         .into_iter()
@@ -370,35 +300,6 @@ pub(crate) fn run_op(
     }
     eprintln!("applied {}", plural(ops.len(), "op"));
     WSKILL_OK
-}
-
-fn print_lint_dry_run(operations: &[Op]) {
-    let list: Vec<serde_json::Value> = operations.iter().map(ops::to_json).collect();
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&list).expect("ops serialize")
-    );
-    eprintln!("{} — nothing written", plural(operations.len(), "op"));
-}
-
-fn apply_lint_fixes(root: &Path, operations: &[Op]) -> Result<(), ()> {
-    let mut rollback = RunRollback::default();
-    for (i, op) in operations.iter().enumerate() {
-        if let Err(e) = apply_one(root, op, &mut rollback) {
-            rollback_run(
-                &rollback,
-                &format!(
-                    "op {}: {e}\nrolled back {} of {}",
-                    i + 1,
-                    i,
-                    plural(operations.len(), "op")
-                ),
-            );
-            return Err(());
-        }
-    }
-    eprintln!("applied {}", plural(operations.len(), "op"));
-    Ok(())
 }
 
 #[derive(Debug)]

@@ -1,7 +1,7 @@
 procedure setup_ai_skill {
   title = "Setting up AI skill generation"
   purpose = "Configure the wskill so it projects into a Claude Code skill, and choose what the agent sees."
-  related = [building_the_index, installing_the_skill]
+  related = [{ id: "building_the_index", why: "Building the wskill index supports Setting up AI skill generation: Declare the wskill's shape during scoping by writing a bodied `index` tree, then place units under the node whose scope owns them." }, { id: "installing_the_skill", why: "Building and installing the AI skill supports Setting up AI skill generation by rendering and installing the configured skill so an agent can load it." }]
   audience = :both
 
   step configure {

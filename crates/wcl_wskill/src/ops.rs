@@ -108,7 +108,11 @@ pub enum Op {
     /// so a stale caller cannot drop a member.
     ReorderChildren { index: NodeRef, order: Vec<String> },
     /// Link one node to another (`related`). An index source is a pin.
-    RelatedAdd { from: NodeRef, to: NodeRef },
+    RelatedAdd {
+        from: NodeRef,
+        to: NodeRef,
+        why: Option<String>,
+    },
     /// Unlink one node from another.
     RelatedRemove { from: NodeRef, to: NodeRef },
     /// A new `index` block, at the [`IndexHome`] the caller names.
@@ -217,6 +221,7 @@ pub fn from_json(v: &serde_json::Value) -> Result<Op> {
         "related_add" => Op::RelatedAdd {
             from: node_arg(v, &["from", "from_id"])?,
             to: node_arg(v, &["to", "to_id"])?,
+            why: text(v, &["why"]).map(str::to_owned),
         },
         "related_remove" => Op::RelatedRemove {
             from: node_arg(v, &["from", "from_id"])?,
@@ -281,8 +286,12 @@ pub fn to_json(op: &Op) -> serde_json::Value {
             "reorder_children",
             vec![("index", node(index)), ("order", serde_json::json!(order))],
         ),
-        Op::RelatedAdd { from, to } => {
-            obj("related_add", vec![("from", node(from)), ("to", node(to))])
+        Op::RelatedAdd { from, to, why } => {
+            let mut fields = vec![("from", node(from)), ("to", node(to))];
+            if let Some(why) = why {
+                fields.push(("why", serde_json::json!(why)));
+            }
+            obj("related_add", fields)
         }
         Op::RelatedRemove { from, to } => obj(
             "related_remove",
@@ -438,8 +447,8 @@ pub fn apply(graph: &Graph, op: &Op) -> Result<Vec<Change>> {
         Op::PinUnit { index, unit } => pin(graph, index, unit, true),
         Op::UnpinUnit { index, unit } => pin(graph, index, unit, false),
         Op::ReorderChildren { index, order } => reorder(graph, index, order),
-        Op::RelatedAdd { from, to } => related(graph, from, to, true),
-        Op::RelatedRemove { from, to } => related(graph, from, to, false),
+        Op::RelatedAdd { from, to, why } => related(graph, from, to, why.as_deref(), true),
+        Op::RelatedRemove { from, to } => related(graph, from, to, None, false),
         Op::CreateIndex { id, name, home } => create_index(graph, id, name, home),
         Op::SetIndexBody { index, source } => set_index_body(graph, index, source),
         Op::DeleteIndex { index } => delete_index(graph, index),
@@ -485,8 +494,36 @@ fn bare_related_id(expr: &Expr) -> Option<&str> {
     }
 }
 
-/// Rewrite a block's `related` field to exactly `ids`.
-pub fn set_related(block: &mut ast::Block, ids: &[String]) {
+fn related_id(expr: &Expr) -> Option<&str> {
+    match expr {
+        Expr::Record { fields, .. } => fields
+            .iter()
+            .find(|field| field.name == "id")
+            .and_then(|field| bare_related_id(&field.value)),
+        other => bare_related_id(other),
+    }
+}
+
+fn reasoned_related(id: &str, why: &str) -> Expr {
+    let field = |name: &str, value: Expr| ast::NamedArg {
+        name: name.to_string(),
+        value,
+        span: Span::new(0, 0),
+        leading_trivia: Vec::new(),
+        trailing_comment: None,
+    };
+    Expr::Record {
+        fields: vec![
+            field("id", Expr::Utf8(id.to_string())),
+            field("why", Expr::Utf8(why.to_string())),
+        ],
+        trailing_trivia: Vec::new(),
+        span: Span::new(0, 0),
+    }
+}
+
+/// Rewrite an index block's navigation pins to exactly `ids`.
+fn set_pin_ids(block: &mut ast::Block, ids: &[String]) {
     ast_edit::set_or_insert_field(
         block,
         "related",
@@ -505,7 +542,7 @@ pub fn set_related(block: &mut ast::Block, ids: &[String]) {
 /// The same field, two vocabularies: a unit *relates* to another unit, an
 /// index *pins* one. Only the wording differs, so only the wording is
 /// carried — [`rewrite_related`] is the single rewrite behind both.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Wording {
     Related,
     Pin,
@@ -541,25 +578,66 @@ impl Wording {
 
 /// Add or remove one id in a block's `related` list — the single rewrite,
 /// which every op that touches the field goes through.
-fn rewrite_related(block: &mut ast::Block, id: &str, add: bool, words: Wording) -> Result<()> {
+fn rewrite_related(
+    block: &mut ast::Block,
+    id: &str,
+    why: Option<&str>,
+    add: bool,
+    words: Wording,
+) -> Result<()> {
     if !add {
-        return remove_bare_related(block, id, words);
+        return remove_related(block, id, words);
     }
 
-    let current = declared_related(block).ok_or_else(|| words.computed())?;
-    if current.iter().any(|s| s == id) {
+    if !block
+        .items
+        .iter()
+        .any(|item| matches!(item, Item::Field(field) if field.name == "related"))
+    {
+        set_pin_ids(block, &[]);
+    }
+    let expr = block
+        .items
+        .iter_mut()
+        .find_map(|item| match item {
+            Item::Field(field) if field.name == "related" => Some(&mut field.expr),
+            _ => None,
+        })
+        .expect("related was inserted above");
+    let Expr::ListLit {
+        elements,
+        elem_trivia,
+        ..
+    } = expr
+    else {
+        return Err(words.computed());
+    };
+    if elements
+        .iter()
+        .any(|element| related_id(element) == Some(id))
+    {
         return Err(words.already(id));
     }
-    let mut next = current;
-    next.push(id.to_string());
-    set_related(block, &next);
+    let element = match words {
+        Wording::Pin => Expr::Identifier(id.to_string(), Span::new(0, 0)),
+        Wording::Related => {
+            let why = why
+                .map(str::trim)
+                .filter(|why| !why.is_empty())
+                .ok_or_else(|| {
+                    Error::Op("`related_add` requires a non-empty `why` reason".to_string())
+                })?;
+            reasoned_related(id, why)
+        }
+    };
+    elements.push(element);
+    elem_trivia.push(Default::default());
     Ok(())
 }
 
-/// Remove bare occurrences of `id` from a literal list in place. Keeping the
-/// surviving AST elements is important for mixed lists: reconstructing the
-/// list from ids would erase the `why` fields on annotated links.
-fn remove_bare_related(block: &mut ast::Block, id: &str, words: Wording) -> Result<()> {
+/// Remove occurrences of `id` from a literal list in place, preserving every
+/// surviving reason and its formatting trivia.
+fn remove_related(block: &mut ast::Block, id: &str, words: Wording) -> Result<()> {
     let Some(expr) = block.items.iter_mut().find_map(|item| match item {
         Item::Field(field) if field.name == "related" => Some(&mut field.expr),
         _ => None,
@@ -578,7 +656,7 @@ fn remove_bare_related(block: &mut ast::Block, id: &str, words: Wording) -> Resu
     let indexes: Vec<usize> = elements
         .iter()
         .enumerate()
-        .filter_map(|(i, element)| (bare_related_id(element) == Some(id)).then_some(i))
+        .filter_map(|(i, element)| (related_id(element) == Some(id)).then_some(i))
         .collect();
     if indexes.is_empty() {
         return Err(words.absent(id));
@@ -603,14 +681,25 @@ fn remove_bare_related(block: &mut ast::Block, id: &str, words: Wording) -> Resu
 /// `from` is the resolved node the link is written ON: it is what the
 /// self-link check and every refusal name, so a host that resolved a span
 /// gets a message about the node rather than about a byte range.
-pub fn edit_related(block: &mut ast::Block, from: &NodeRef, to: &str, add: bool) -> Result<()> {
+pub fn edit_related(
+    block: &mut ast::Block,
+    from: &NodeRef,
+    to: &str,
+    why: Option<&str>,
+    add: bool,
+) -> Result<()> {
     if !is_identifier(to) {
         return Err(format!("`{to}` is not a valid unit id").into());
     }
     if from.id == to {
         return Err(format!("`{from}` cannot relate to itself").into());
     }
-    rewrite_related(block, to, add, Wording::Related)
+    let words = if from.kind.as_deref() == Some("index") {
+        Wording::Pin
+    } else {
+        Wording::Related
+    };
+    rewrite_related(block, to, why, add, words)
 }
 
 /// The `(kind, id)` a parsed block is addressed by — how a host holding a
@@ -620,12 +709,20 @@ pub fn node_ref(block: &ast::Block) -> Option<NodeRef> {
     Some(NodeRef::kinded(block.kind.clone(), ast_label(block)?))
 }
 
-fn related(graph: &Graph, from: &NodeRef, to: &NodeRef, add: bool) -> Result<Vec<Change>> {
+fn related(
+    graph: &Graph,
+    from: &NodeRef,
+    to: &NodeRef,
+    why: Option<&str>,
+    add: bool,
+) -> Result<Vec<Change>> {
     check_target(graph, to)?;
     let site = locate(graph, from)?;
     let from = site.node.clone();
     let target = to.id.clone();
-    edit_block(&site, move |block| edit_related(block, &from, &target, add))
+    edit_block(&site, move |block| {
+        edit_related(block, &from, &target, why, add)
+    })
 }
 
 /// Check a node an op only NAMES — the unit an index pins, the id a
@@ -666,7 +763,7 @@ fn pin(graph: &Graph, index: &NodeRef, unit: &NodeRef, add: bool) -> Result<Vec<
     let site = index_site(graph, index)?;
     let unit_id = unit.id.clone();
     edit_block(&site, move |block| {
-        rewrite_related(block, &unit_id, add, Wording::Pin)
+        rewrite_related(block, &unit_id, None, add, Wording::Pin)
     })
 }
 
@@ -681,7 +778,7 @@ fn reorder(graph: &Graph, index: &NodeRef, order: &[String]) -> Result<Vec<Chang
         if !is_permutation(&current, &order) {
             return Err("`order` must be a permutation of the current list".into());
         }
-        set_related(block, &order);
+        set_pin_ids(block, &order);
         Ok(())
     })
 }
@@ -1247,6 +1344,7 @@ mod tests {
             Op::RelatedAdd {
                 from: NodeRef::kinded("fact", "alpha"),
                 to: NodeRef::new("beta"),
+                why: Some("test reason".into()),
             },
         )
         .unwrap_err();
@@ -1272,16 +1370,20 @@ mod tests {
             Op::RelatedAdd {
                 from: NodeRef::new("alpha"),
                 to: NodeRef::new("beta"),
+                why: Some("test reason".into()),
             },
         )
         .expect("add");
-        assert!(read(root, "data/concepts/alpha.wcl").contains("related = [beta]"));
+        let text = read(root, "data/concepts/alpha.wcl");
+        assert!(text.contains("id: \"beta\""), "{text}");
+        assert!(text.contains("why: \"test reason\""), "{text}");
 
         for (op, msg) in [
             (
                 Op::RelatedAdd {
                     from: NodeRef::new("alpha"),
                     to: NodeRef::new("beta"),
+                    why: Some("test reason".into()),
                 },
                 "already related",
             ),
@@ -1289,6 +1391,7 @@ mod tests {
                 Op::RelatedAdd {
                     from: NodeRef::new("alpha"),
                     to: NodeRef::new("alpha"),
+                    why: Some("test reason".into()),
                 },
                 "itself",
             ),
@@ -1315,6 +1418,7 @@ mod tests {
             Op::RelatedAdd {
                 from: NodeRef::new("alpha"),
                 to: NodeRef::new("beta"),
+                why: Some("test reason".into()),
             },
         )
         .unwrap_err();
@@ -1523,6 +1627,7 @@ mod tests {
             Op::RelatedAdd {
                 from: NodeRef::new("alpha"),
                 to: NodeRef::new("beta"),
+                why: Some("test reason".into()),
             },
         )
         .unwrap_err();
@@ -1586,6 +1691,7 @@ mod tests {
             Op::RelatedAdd {
                 from: NodeRef::new("beta"),
                 to: NodeRef::kinded("concept", "gamma"),
+                why: Some("test reason".into()),
             },
         )
         .unwrap_err();
@@ -1597,10 +1703,13 @@ mod tests {
             Op::RelatedAdd {
                 from: NodeRef::new("beta"),
                 to: NodeRef::kinded("research", "gamma"),
+                why: Some("test reason".into()),
             },
         )
         .expect("kinded target");
-        assert!(read(root, "data/concepts/beta.wcl").contains("related = [gamma]"));
+        let text = read(root, "data/concepts/beta.wcl");
+        assert!(text.contains("id: \"gamma\""), "{text}");
+        assert!(text.contains("why: \"test reason\""), "{text}");
 
         // A bare id nothing declares is still writable — a link may precede
         // its target, and a dangling pin has to be removable.
@@ -1740,22 +1849,33 @@ mod tests {
         };
         let from = node_ref(block).expect("a labelled block resolves");
         assert_eq!(from, NodeRef::kinded("concept", "alpha"));
-        edit_related(block, &from, "beta", true).expect("add");
-        assert_eq!(declared_related(block).unwrap(), ["beta"]);
+        edit_related(block, &from, "beta", Some("Beta explains Alpha."), true).expect("add");
+        let Expr::ListLit { elements, .. } = block
+            .items
+            .iter()
+            .find_map(|item| match item {
+                Item::Field(field) if field.name == "related" => Some(&field.expr),
+                _ => None,
+            })
+            .expect("related field")
+        else {
+            panic!("related is not a list");
+        };
+        assert_eq!(
+            elements.iter().filter_map(related_id).collect::<Vec<_>>(),
+            ["beta"]
+        );
         // The resolved ref is load-bearing, not decoration: it is what the
         // self-link check reads and what the refusal names, so a host that
         // came in holding a span hears about the node.
-        let e = edit_related(block, &from, "alpha", true).unwrap_err();
+        let e = edit_related(block, &from, "alpha", Some("self"), true).unwrap_err();
         assert_eq!(e.to_string(), "`concept:alpha` cannot relate to itself");
     }
 
-    /// An annotated link (`{id, why}` — the `Link` form the model already
-    /// reads) prevents whole-list rewrites such as adding a pin: that would
-    /// drop the author's reasons. The refusal is the computed-list one,
-    /// because it is the same rule — "I can read this, I must not replace
-    /// it".
+    /// Element-wise edits preserve annotated siblings instead of rebuilding
+    /// the whole list and dropping their reasons.
     #[test]
-    fn refuses_to_rewrite_an_annotated_related_list() {
+    fn preserves_an_annotated_related_list() {
         let td = mini_wskill();
         let root = td.path();
         write(
@@ -1764,16 +1884,17 @@ mod tests {
             "index lang {\n  name = \"Language\"\n  \
              related = [{ id: alpha, why: \"start here\" }, beta]\n}\n",
         );
-        let e = run(
+        run(
             root,
             Op::PinUnit {
                 index: NodeRef::new("lang"),
                 unit: NodeRef::new("gamma"),
             },
         )
-        .unwrap_err();
-        assert!(e.to_string().contains("computed"), "{e}");
-        assert!(read(root, "data/indexes.wcl").contains("why:"), "untouched");
+        .expect("append pin");
+        let text = read(root, "data/indexes.wcl");
+        assert!(text.contains("why: \"start here\""), "{text}");
+        assert!(text.contains("gamma"), "{text}");
     }
 
     #[test]
@@ -1824,6 +1945,7 @@ mod tests {
             Op::RelatedAdd {
                 from: NodeRef::new("alpha"),
                 to: NodeRef::new("beta"),
+                why: Some("test reason".into()),
             },
         )
         .unwrap_err();

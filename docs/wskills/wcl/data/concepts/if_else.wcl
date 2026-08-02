@@ -1,7 +1,7 @@
 concept if_else {
   name = "if / else"
   summary = "An if is an expression; branches must agree on a type, else if chains for multi-way branches, and an omitted else yields none."
-  related = [if_let]
+  related = [{ id: "if_let", why: "if let supports if / else: Binds and branches in a single step when you only care about a single variant or pattern." }]
   audience = :both
   body {
     p <<DOC

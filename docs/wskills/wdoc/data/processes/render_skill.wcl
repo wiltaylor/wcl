@@ -2,7 +2,7 @@ procedure render_skill {
   title = "Render a document into a Claude skill folder"
   purpose = "Project an `:ai_skill` site into a SKILL.md plus references/, scripts/, and assets/."
   preconditions = ["A `site` with `default_template = :ai_skill` and a `skill { }` block", "A page marked `start = true`"]
-  related = [sites]
+  related = [{ id: "sites", why: "Sites supports Render a document into a Claude skill folder: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search." }]
   audience = :both
 
   step run {

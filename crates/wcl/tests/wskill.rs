@@ -282,7 +282,7 @@ fn lint_reports_findings_as_text_and_json() {
         &path,
         src.replace(
             "concept beta {\n  name    = \"Beta\"",
-            "concept beta {\n  related = [nobody]\n  name    = \"Beta\"",
+            "concept beta {\n  related = [{ id: \"nobody\", why: \"This deliberately names a missing target.\" }]\n  name    = \"Beta\"",
         ),
     )
     .unwrap();
@@ -326,179 +326,6 @@ fn lint_reports_findings_as_text_and_json() {
     assert!(findings.iter().all(|f| f["severity"] == "candidate"));
 }
 
-/// `lint --fix` is the write face of autofixing rules: its dry run emits the
-/// shared op vocabulary, and a real run applies those ops before reporting
-/// the evidence-backed survivors as ordinary findings.
-#[test]
-fn lint_fix_filters_bare_edges_and_reports_the_survivors() {
-    let tmp = TempDir::new().unwrap();
-    let dest = scaffolded_wskill(&tmp);
-    write_units(
-        &dest,
-        "concept beta {\n  name = \"Beta\"\n  summary = \"The second idea.\"\n}\n\n\
-         concept gamma {\n  name = \"Gamma\"\n  summary = \"The third idea.\"\n}\n\n\
-         index reference {\n  name = \"Reference\"\n  summary = \"Everything, pinned.\"\n  \
-         related = [alpha, beta, gamma]\n}\n",
-    );
-    let path = dest.join("data/reference/reference.wcl");
-    let source = std::fs::read_to_string(&path).unwrap();
-    std::fs::write(
-        &path,
-        source.replace(
-            "concept alpha {\n  name    = \"Alpha\"\n  summary = \"The first idea.\"",
-            "concept alpha {\n  name    = \"Alpha\"\n  summary = \"The first idea.\"\n  related = [beta, gamma]",
-        )
-        .replace("Alpha explained.", "Read Beta next."),
-    )
-    .unwrap();
-
-    let before = tree_snapshot(&dest);
-    let out = wcl()
-        .args([
-            "wskill",
-            "lint",
-            dest.to_str().unwrap(),
-            "--fix=bare-related",
-            "--dry-run",
-        ])
-        .output()
-        .unwrap();
-    assert_eq!(out.status.code(), Some(0));
-    assert_eq!(before, tree_snapshot(&dest), "a dry run writes nothing");
-    let ops: Vec<serde_json::Value> = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(
-        ops,
-        [serde_json::json!({
-            "op": "related_remove",
-            "from": "concept:alpha",
-            "to": "gamma",
-        })]
-    );
-
-    let out = wcl()
-        .args(["wskill", "lint", dest.to_str().unwrap(), "--fix"])
-        .output()
-        .unwrap();
-    assert_eq!(
-        out.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    assert_eq!(related_line(&dest, "concept alpha {"), "related = [beta]");
-    let findings = String::from_utf8(out.stdout).unwrap();
-    assert!(findings.contains("candidate [bare-related] concept:alpha"));
-    assert!(findings.contains("edge to `beta` is mentioned in the prose"));
-    assert!(!findings.contains("edge to `gamma`"), "{findings}");
-    let summary = String::from_utf8(out.stderr).unwrap();
-    assert!(summary.contains("applied 1 op"), "{summary}");
-}
-
-/// Relationship metadata is not prose evidence for a different bare edge.
-/// In particular, an authored reason may name another target without saying
-/// that the source unit itself is intentionally related to that target.
-#[test]
-fn lint_fix_ignores_related_metadata_when_filtering_bare_edges() {
-    let tmp = TempDir::new().unwrap();
-    let dest = scaffolded_wskill(&tmp);
-    write_units(
-        &dest,
-        "concept gamma {\n  name = \"Gamma\"\n}\n\n\
-         concept delta {\n  name = \"Delta\"\n}\n",
-    );
-    let path = dest.join("data/reference/reference.wcl");
-    let source = std::fs::read_to_string(&path).unwrap();
-    std::fs::write(
-        &path,
-        source.replace(
-            "concept alpha {\n  name    = \"Alpha\"\n  summary = \"The first idea.\"",
-            "concept alpha {\n  name    = \"Alpha\"\n  summary = \"The first idea.\"\n  \
-             related = [gamma, { id: \"delta\", why: \"Gamma follows Delta.\" }]",
-        ),
-    )
-    .unwrap();
-
-    let findings = wcl()
-        .args([
-            "wskill",
-            "lint",
-            dest.to_str().unwrap(),
-            "--format=json",
-            "--severity=candidate",
-        ])
-        .output()
-        .unwrap();
-    let findings = String::from_utf8(findings.stdout).unwrap();
-    assert!(
-        findings.contains("bare `related` edge to `gamma` has no prose mention"),
-        "{findings}\n{}",
-        std::fs::read_to_string(&path).unwrap()
-    );
-
-    let out = wcl()
-        .args([
-            "wskill",
-            "lint",
-            dest.to_str().unwrap(),
-            "--fix=bare-related",
-            "--dry-run",
-        ])
-        .output()
-        .unwrap();
-    assert_eq!(out.status.code(), Some(0));
-    let ops: Vec<serde_json::Value> = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(
-        ops,
-        [serde_json::json!({
-            "op": "related_remove",
-            "from": "concept:alpha",
-            "to": "gamma",
-        })]
-    );
-}
-
-/// Autofixes commit through the same validating path as explicit ops: a
-/// removal that introduces a schema violation is rolled back and reported.
-#[test]
-fn lint_fix_rolls_back_a_schema_violating_removal() {
-    let tmp = TempDir::new().unwrap();
-    let dest = scaffolded_wskill(&tmp);
-    let extensions = dest.join("schema/extensions.wcl");
-    let src = std::fs::read_to_string(&extensions).unwrap();
-    std::fs::write(
-        &extensions,
-        format!(
-            "{src}\n@block(\"gadget\")\ntype Gadget {{\n  @inline(0) id: identifier\n  \
-             name: utf8\n  @non_empty related: list<identifier>\n}}\n\n\
-             @document\ntype Extensions {{\n  @children(\"gadget\") gadgets: list<Gadget>\n}}\n"
-        ),
-    )
-    .unwrap();
-    write_units(
-        &dest,
-        "gadget widget {\n  name = \"Widget\"\n  related = [alpha]\n}\n",
-    );
-
-    let out = wcl()
-        .args([
-            "wskill",
-            "lint",
-            dest.to_str().unwrap(),
-            "--fix=bare-related",
-        ])
-        .output()
-        .unwrap();
-    assert_eq!(out.status.code(), Some(1));
-    let error = String::from_utf8(out.stderr).unwrap();
-    assert!(error.contains("non_empty"), "{error}");
-    assert!(error.contains("rolled back 0 of 1 op"), "{error}");
-    assert_eq!(
-        related_line(&dest, "gadget widget {"),
-        "related = [alpha]",
-        "the rejected autofix was rolled back"
-    );
-}
-
 // ---------------------------------------------------------------------------
 // `op` — the id-addressed write vocabulary
 // ---------------------------------------------------------------------------
@@ -533,15 +360,14 @@ fn op_applies_the_vocabulary_and_a_dry_run_writes_nothing() {
     let dest_str = dest.to_str().unwrap();
     assert_eq!(pinned_line(&dest), "related = [alpha]");
 
-    // The later link swap keeps the bare-edge finding count level: both the
-    // old and new target have authored prose support, so the curator's
-    // run-level lint gate can exercise both removal and addition.
+    // The later link swap lets the run-level lint gate exercise both removal
+    // and addition while every semantic edge remains authored.
     let reference = dest.join("data/reference/reference.wcl");
     let source = std::fs::read_to_string(&reference).unwrap();
     let source = source
         .replace(
             "summary = \"The first idea.\"",
-            "summary = \"The first idea.\"\n  related = [gamma]",
+            "summary = \"The first idea.\"\n  related = [{ id: \"gamma\", why: \"Gamma prepares the idea Alpha explains.\" }]",
         )
         .replace("Alpha explained.", "Read gamma before Beta.");
     std::fs::write(
@@ -608,7 +434,10 @@ fn op_applies_the_vocabulary_and_a_dry_run_writes_nothing() {
             "--op",
             r#"{"op":"related_remove","from":"alpha","to":"gamma"}"#,
         ])
-        .args(["--op", r#"{"op":"related_add","from":"alpha","to":"beta"}"#])
+        .args([
+            "--op",
+            r#"{"op":"related_add","from":"alpha","to":"beta","why":"Beta extends Alpha."}"#,
+        ])
         .args([
             "--op",
             r#"{"op":"create_index","id":"secondary","name":"Secondary","file":"data/reference/reference.wcl"}"#,
@@ -633,7 +462,7 @@ fn op_applies_the_vocabulary_and_a_dry_run_writes_nothing() {
     );
     assert_eq!(
         related_line(&dest, "concept alpha {"),
-        "related = [beta]",
+        "related = [{ id: \"beta\", why: \"Beta extends Alpha.\" }]",
         "the link landed on `alpha` itself"
     );
 }
@@ -1259,7 +1088,7 @@ fn wskill_projection_ships_the_two_phase_curator_contract() {
         "--severity candidate",
         "flagged units and their 1-hop neighbours",
         "Never edit a unit body",
-        "Never backfill",
+        "Never invent a reason",
         "object_kind",
         "object_id",
         "author = \"curator\"",
@@ -1278,14 +1107,14 @@ fn wskill_projection_ships_the_two_phase_curator_contract() {
 /// deleted, two unpinned concepts written in its place, one of them linking
 /// back to `alpha`.
 const AUTHORED: &str = "concept gamma {\n  name    = \"Gamma\"\n  \
-     summary = \"The third idea.\"\n  related = [alpha]\n}\n\n\
+     summary = \"The third idea.\"\n  related = [{ id: \"alpha\", why: \"Alpha supplies the foundation Gamma extends.\" }]\n}\n\n\
      concept delta {\n  name    = \"Delta\"\n  summary = \"The fourth idea.\"\n}\n\n\
      index reference {\n  name    = \"Reference\"\n  summary = \"Everything, pinned.\"\n  \
      related = [alpha]\n}\n";
 
 /// The same file before it: `beta`, linking to `alpha` and pinned by nothing.
 const BASELINE: &str = "concept beta {\n  name    = \"Beta\"\n  \
-     summary = \"The second idea.\"\n  related = [alpha]\n}\n\n\
+     summary = \"The second idea.\"\n  related = [{ id: \"alpha\", why: \"Alpha supplies the foundation Beta extends.\" }]\n}\n\n\
      index reference {\n  name    = \"Reference\"\n  summary = \"Everything, pinned.\"\n  \
      related = [alpha]\n}\n";
 
@@ -1327,18 +1156,16 @@ fn audit_reports_the_union_of_both_revisions() {
     assert!(text.contains("- related → concept:alpha"), "{text}");
 
     // The addition, carrying the findings the range gave it. Every unit of
-    // the measured commit landed unpinned and nothing said so at the time;
-    // its unsupported bare edge is also now nominated for autofix.
+    // the measured commit landed unpinned and nothing said so at the time.
     assert!(text.contains("+ concept:gamma \"Gamma\""), "{text}");
     assert!(text.contains("warn [unindexed]"), "{text}");
-    assert!(text.contains("candidate [bare-related]"), "{text}");
     assert!(text.contains("+ related → concept:alpha"), "{text}");
 
     // `alpha` and the index were not touched and are not news — findings are
     // scoped to the range, not to the corpus.
     assert!(!text.contains("concept:alpha \""), "{text}");
     let summary = String::from_utf8(out.stderr).unwrap();
-    assert!(summary.contains("3 nodes changed, 3 findings"), "{summary}");
+    assert!(summary.contains("3 nodes changed, 2 findings"), "{summary}");
 }
 
 /// The default range is the previous commit against the working tree, so an

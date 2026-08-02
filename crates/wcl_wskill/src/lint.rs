@@ -8,9 +8,7 @@
 //! there is one [`Rule`] vocabulary and one [`Finding`], and the only thing a
 //! caller chooses is which severities it cares about.
 //!
-//! **The rule engine never writes.** It takes `&Graph` and returns findings;
-//! an autofix is a shared structural op attached to a finding for a host to
-//! dry-run or apply through its validating commit path.
+//! **The rule engine never writes.** It takes `&Graph` and returns findings.
 //!
 //! The three tiers are drawn by how certain a rule is, not by how much it
 //! matters:
@@ -33,7 +31,6 @@ use std::path::PathBuf;
 use wcl_lang::Span;
 
 use crate::model::{Anchor, Graph, Index, NodeKey, Unit};
-use crate::ops::{NodeRef, Op};
 
 /// The `related` cap for a content unit. The guidance is 3–5 links, so 5 is
 /// the last legal value; indexes are explicitly exempt (a curated index is a
@@ -63,11 +60,6 @@ const PREFIX_MIN: usize = 3;
 /// Jaccard similarity over reason word sets at or above which two reasons
 /// are "the same reason twice".
 const REASON_SIMILARITY: f64 = 0.8;
-
-/// Fewest reasonless co-pinned links before the mirroring screen fires. One
-/// is a coincidence: co-pinned units genuinely are the likeliest to depend on
-/// each other.
-const MIRROR_MIN: usize = 2;
 
 /// How certain a finding is — and therefore who acts on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
@@ -105,9 +97,8 @@ impl std::fmt::Display for Severity {
     }
 }
 
-/// What was checked. The slug is the stable name — it is what a `--fix=<rule>`
-/// selects and what an agent greps for — so it belongs to the rule, not to
-/// any one message.
+/// What was checked. The slug is the stable name an agent and UI use, so it
+/// belongs to the rule, not to any one message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 #[serde(into = "&'static str")]
 pub enum Rule {
@@ -124,9 +115,6 @@ pub enum Rule {
     Unindexed,
     /// A unit that renders in none of the declared projections.
     NoProjection,
-    /// A reasonless edge awaiting either mechanical removal or an author's
-    /// reason, depending on whether its target is named in the source prose.
-    BareRelated,
     /// Hub screen: many links over little prose.
     LinkDensity,
     /// Hub screen: the targets are named after the source.
@@ -135,26 +123,21 @@ pub enum Rule {
     DuplicateReason,
     /// An index with no body — nothing can link to it.
     BodylessIndex,
-    /// Mirroring screen: reasonless links to units already co-pinned with
-    /// this one, which say no more than the shared index already does.
-    MirroredPin,
 }
 
 impl Rule {
     /// Every rule, in severity order.
-    pub const ALL: [Rule; 12] = [
+    pub const ALL: [Rule; 10] = [
         Rule::DanglingRelated,
         Rule::DuplicateId,
         Rule::RelatedBodylessIndex,
         Rule::RelatedOverCap,
         Rule::Unindexed,
         Rule::NoProjection,
-        Rule::BareRelated,
         Rule::LinkDensity,
         Rule::NamePrefixCluster,
         Rule::DuplicateReason,
         Rule::BodylessIndex,
-        Rule::MirroredPin,
     ];
 
     pub fn slug(&self) -> &'static str {
@@ -165,12 +148,10 @@ impl Rule {
             Rule::RelatedOverCap => "related-over-cap",
             Rule::Unindexed => "unindexed",
             Rule::NoProjection => "no-projection",
-            Rule::BareRelated => "bare-related",
             Rule::LinkDensity => "link-density",
             Rule::NamePrefixCluster => "name-prefix-cluster",
             Rule::DuplicateReason => "duplicate-reason",
             Rule::BodylessIndex => "bodyless-index",
-            Rule::MirroredPin => "mirrored-pin",
         }
     }
 
@@ -183,18 +164,11 @@ impl Rule {
                 Severity::Error
             }
             Rule::RelatedOverCap | Rule::Unindexed | Rule::NoProjection => Severity::Warn,
-            Rule::BareRelated
-            | Rule::LinkDensity
+            Rule::LinkDensity
             | Rule::NamePrefixCluster
             | Rule::DuplicateReason
-            | Rule::BodylessIndex
-            | Rule::MirroredPin => Severity::Candidate,
+            | Rule::BodylessIndex => Severity::Candidate,
         }
-    }
-
-    /// Whether this rule can attach structural ops to its findings.
-    pub fn has_autofix(&self) -> bool {
-        matches!(self, Rule::BareRelated)
     }
 
     /// The rule named by a CLI slug.
@@ -234,11 +208,6 @@ pub struct Finding {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub span: Option<Span>,
     pub message: String,
-    /// The shared structural op that fixes this occurrence, when it is
-    /// mechanically safe. Findings keep their established JSON shape: the
-    /// op is execution metadata for hosts, not a second wire format.
-    #[serde(skip)]
-    pub fix: Option<Op>,
 }
 
 impl Finding {
@@ -250,7 +219,6 @@ impl Finding {
             file: anchor.file.clone(),
             span: Some(anchor.span),
             message,
-            fix: None,
         }
     }
 }
@@ -269,12 +237,10 @@ pub fn lint(graph: &Graph) -> Vec<Finding> {
     ctx.over_cap(&mut out);
     ctx.unindexed(&mut out);
     ctx.no_projection(&mut out);
-    ctx.bare_related(&mut out);
     ctx.link_density(&mut out);
     ctx.clustering(&mut out);
     ctx.duplicate_reasons(&mut out);
     ctx.bodyless_indexes(&mut out);
-    ctx.mirrored_pins(&mut out);
     out.sort_by(|a, b| {
         (
             a.severity,
@@ -302,10 +268,6 @@ struct Ctx<'a> {
     /// Every unit by id (the first declaration wins — a duplicate is its own
     /// finding).
     units: HashMap<&'a str, &'a Unit>,
-    /// Unit id → the ids of every unit co-pinned with it under some index.
-    co_pinned: HashMap<&'a str, HashSet<&'a str>>,
-    /// Unit id → an index that pins it, for messages.
-    pinning_index: HashMap<&'a str, &'a str>,
 }
 
 impl<'a> Ctx<'a> {
@@ -316,27 +278,10 @@ impl<'a> Ctx<'a> {
         for u in &graph.units {
             units.entry(u.id.as_str()).or_insert(u);
         }
-        let mut co_pinned: HashMap<&str, HashSet<&str>> = HashMap::new();
-        let mut pinning_index: HashMap<&str, &str> = HashMap::new();
-        // Walked in declaration order, not over the id map: `pinning_index`
-        // keeps the FIRST index it sees, and hash order would make that a
-        // different one per run — which two lint outputs must not differ by.
-        for idx in graph.index_levels() {
-            for a in &idx.pinned {
-                pinning_index.entry(a.as_str()).or_insert(&idx.id);
-                for b in &idx.pinned {
-                    if a != b {
-                        co_pinned.entry(a.as_str()).or_default().insert(b.as_str());
-                    }
-                }
-            }
-        }
         Ctx {
             graph,
             indexes,
             units,
-            co_pinned,
-            pinning_index,
         }
     }
 
@@ -473,55 +418,6 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    /// The migration filter for reasonless edges. Evidence in prose keeps
-    /// the edge as an ordinary candidate finding for an author to reason;
-    /// no evidence attaches the same `related_remove` op every host uses.
-    fn bare_related(&self, out: &mut Vec<Finding>) {
-        for unit in &self.graph.units {
-            for link in &unit.related {
-                if link.why.is_some() {
-                    continue;
-                }
-                let title = self
-                    .units
-                    .get(link.id.as_str())
-                    .map(|target| target.title.as_str())
-                    .or_else(|| {
-                        self.indexes
-                            .get(link.id.as_str())
-                            .map(|target| target.title.as_str())
-                    });
-                let mentioned = mentions_name(&unit.prose, &link.id)
-                    || title.is_some_and(|title| mentions_name(&unit.prose, title));
-                let mut finding = Finding::new(
-                    Rule::BareRelated,
-                    unit.key(),
-                    &unit.anchor,
-                    if mentioned {
-                        format!(
-                            "bare `related` edge to `{}` is mentioned in the prose; author its reason",
-                            link.id
-                        )
-                    } else if !unit.related_editable {
-                        format!(
-                            "bare `related` edge to `{}` has no prose mention; its computed list cannot be autofixed",
-                            link.id
-                        )
-                    } else {
-                        format!("bare `related` edge to `{}` has no prose mention", link.id)
-                    },
-                );
-                if !mentioned && unit.related_editable {
-                    finding.fix = Some(Op::RelatedRemove {
-                        from: NodeRef::kinded(unit.kind.clone(), unit.id.clone()),
-                        to: NodeRef::new(link.id.clone()),
-                    });
-                }
-                out.push(finding);
-            }
-        }
-    }
-
     /// Words per link: many links over little prose is the shape of a hub
     /// note. It cannot tell a hub from a genuinely atomic unit, which is why
     /// it nominates.
@@ -551,11 +447,8 @@ impl<'a> Ctx<'a> {
     /// source, which is what a family of members hanging off one label looks
     /// like — a table of contents wearing a unit's clothes.
     ///
-    /// The other half of §5.4.3's pairing, "targets all co-pinned under me",
-    /// is NOT here: co-membership has exactly one owner, [`Ctx::mirrored_pins`],
-    /// and reading it twice nominated the same units under two rules for the
-    /// same evidence (42 of 43 overlapped on the corpus). A curator reading a
-    /// bounded list must not read one unit twice.
+    /// Co-membership is not evidence by itself: reasons now explain whether a
+    /// link adds meaning beyond two units sharing an index.
     fn clustering(&self, out: &mut Vec<Finding>) {
         for u in &self.graph.units {
             let links = u.related.len();
@@ -630,60 +523,6 @@ impl<'a> Ctx<'a> {
             }
         }
     }
-
-    /// Anti-mirroring: co-pinned units genuinely are the likeliest to depend
-    /// on each other, so the check is co-pinned **and** the reason adds
-    /// nothing beyond the co-membership the index already states.
-    fn mirrored_pins(&self, out: &mut Vec<Finding>) {
-        for u in &self.graph.units {
-            let Some(co) = self.co_pinned.get(u.id.as_str()) else {
-                continue;
-            };
-            let empty = u
-                .related
-                .iter()
-                .filter(|l| co.contains(l.id.as_str()) && self.reason_adds_nothing(u, l))
-                .count();
-            if empty >= MIRROR_MIN {
-                out.push(Finding::new(
-                    Rule::MirroredPin,
-                    u.key(),
-                    &u.anchor,
-                    format!(
-                        "{empty} of {} `related` links point at units co-pinned with it under \
-                         `{}` and say nothing the index doesn't",
-                        u.related.len(),
-                        self.pinning_index
-                            .get(u.id.as_str())
-                            .copied()
-                            .unwrap_or("an index")
-                    ),
-                ));
-            }
-        }
-    }
-
-    /// Whether a link's reason says more than "we are filed together": no
-    /// reason at all, or one built only out of the names already on screen
-    /// (the two units' titles and the index's).
-    fn reason_adds_nothing(&self, from: &Unit, link: &crate::model::Link) -> bool {
-        let Some(why) = link.why.as_deref() else {
-            return true;
-        };
-        let mut known = words_of(&from.title);
-        if let Some(t) = self.units.get(link.id.as_str()) {
-            known.extend(words_of(&t.title));
-        }
-        if let Some(idx) = self
-            .pinning_index
-            .get(from.id.as_str())
-            .and_then(|id| self.indexes.get(id))
-        {
-            known.extend(words_of(&idx.title));
-        }
-        let said = words_of(why);
-        !said.is_empty() && said.is_subset(&known)
-    }
 }
 
 /// Whether two ids share a leading name segment: `wdoc_theme` and `wdoc_css`
@@ -724,26 +563,6 @@ fn jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
     a.intersection(b).count() as f64 / union as f64
 }
 
-/// Case-insensitive whole-name matching. Identifiers and titles count when
-/// they stand alone in prose (including Markdown link destinations), not as
-/// a coincidental fragment such as id `op` inside "option".
-fn mentions_name(text: &str, name: &str) -> bool {
-    if name.is_empty() {
-        return false;
-    }
-    let text = text.to_lowercase();
-    let name = name.to_lowercase();
-    text.match_indices(&name).any(|(start, matched)| {
-        let before = text[..start].chars().next_back();
-        let after = text[start + matched.len()..].chars().next();
-        !before.is_some_and(name_char) && !after.is_some_and(name_char)
-    })
-}
-
-fn name_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_'
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -767,8 +586,8 @@ mod tests {
             .collect()
     }
 
-    /// The fixture as authored: a nav index with no body, one unit no index
-    /// pins, and one unsupported bare edge awaiting the migration autofix.
+    /// The fixture as authored: a nav index with no body and one unit no
+    /// index pins.
     #[test]
     fn the_fixture_reports_its_standing_findings() {
         let td = mini_wskill();
@@ -776,77 +595,8 @@ mod tests {
             found(&td),
             [
                 ("unindexed".to_string(), "gamma".to_string()),
-                ("bare-related".to_string(), "alpha".to_string()),
                 ("bodyless-index".to_string(), "lang".to_string()),
             ]
-        );
-    }
-
-    /// A bare edge with prose evidence survives for an author pass; one
-    /// without evidence carries the shared structural op that removes it.
-    #[test]
-    fn bare_related_edges_are_filtered_by_target_mentions() {
-        let td = mini_wskill();
-        write(
-            td.path(),
-            "data/concepts/beta.wcl",
-            "concept beta {\n  name = \"Second Idea\"\n}\n",
-        );
-        write(
-            td.path(),
-            "data/concepts/gamma.wcl",
-            "research gamma {\n  name = \"Third Idea\"\n}\n\n\
-             concept delta {\n  name = \"Delta\"\n}\n\n\
-             concept epsilon {\n  name = \"Epsilon\"\n}\n",
-        );
-        write(
-            td.path(),
-            "data/concepts/alpha.wcl",
-            "concept alpha {\n  name = \"Alpha\"\n  related = [beta, gamma, delta, epsilon]\n\n  \
-             body {\n    p \"Read the SECOND IDEA, then use gamma; deltaRay is not the \
-             target's whole name.\"\n    code wcl { source = \"epsilon\" }\n  }\n}\n",
-        );
-        let graph = crate::Graph::open(td.path()).expect("graph");
-        let findings: Vec<Finding> = lint(&graph)
-            .into_iter()
-            .filter(|f| f.rule == Rule::BareRelated)
-            .collect();
-
-        assert_eq!(
-            findings
-                .iter()
-                .map(|f| (f.node.id.as_str(), f.message.as_str(), f.fix.is_some()))
-                .collect::<Vec<_>>(),
-            [
-                (
-                    "alpha",
-                    "bare `related` edge to `beta` is mentioned in the prose; author its reason",
-                    false,
-                ),
-                (
-                    "alpha",
-                    "bare `related` edge to `gamma` is mentioned in the prose; author its reason",
-                    false,
-                ),
-                (
-                    "alpha",
-                    "bare `related` edge to `delta` has no prose mention",
-                    true,
-                ),
-                (
-                    "alpha",
-                    "bare `related` edge to `epsilon` has no prose mention",
-                    true,
-                ),
-            ]
-        );
-        assert_eq!(
-            findings[2].fix.as_ref().map(crate::ops::to_json),
-            Some(serde_json::json!({
-                "op": "related_remove",
-                "from": "concept:alpha",
-                "to": "delta",
-            }))
         );
     }
 
@@ -1097,48 +847,6 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(render(lint(&graph)), render(lint(&graph)));
-    }
-
-    #[test]
-    fn reasonless_links_between_co_pinned_units_are_nominated() {
-        let td = mini_wskill();
-        write(
-            td.path(),
-            "data/indexes.wcl",
-            "index lang {\n  name = \"Language\"\n  related = [alpha, beta, delta, gamma]\n}\n",
-        );
-        write(
-            td.path(),
-            "data/concepts/alpha.wcl",
-            "concept alpha {\n  name = \"Alpha\"\n  related = [beta, delta, gamma]\n}\n",
-        );
-        write(
-            td.path(),
-            "data/concepts/beta.wcl",
-            "concept beta {\n  name = \"Beta\"\n}\nconcept delta { name = \"Delta\" }\n",
-        );
-        let f = found(&td);
-        assert_eq!(of_rule(&f, Rule::MirroredPin), ["alpha"]);
-        // Co-membership has ONE owner. The clustering screen reads names,
-        // not pins, so it does not nominate the same unit for the same
-        // evidence.
-        assert!(of_rule(&f, Rule::NamePrefixCluster).is_empty(), "{f:?}");
-
-        // A reason that says something the index doesn't clears it; one
-        // built only from the names already on the page does not.
-        with_link_reasons(td.path());
-        write(
-            td.path(),
-            "data/concepts/alpha.wcl",
-            "concept alpha {\n  name = \"Alpha\"\n  related = [\n    \
-             {id: \"beta\", why: \"beta and alpha, in the language index\"},\n    \
-             {id: \"delta\", why: \"parsing fails without delta's escape table\"},\n  ]\n}\n",
-        );
-        let found = found(&td);
-        assert!(
-            of_rule(&found, Rule::MirroredPin).is_empty(),
-            "one bare-in-effect reason is below the threshold: {found:?}"
-        );
     }
 
     /// Findings sort by severity first: the certain ones are what a CI log

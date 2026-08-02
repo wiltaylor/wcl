@@ -1,7 +1,7 @@
 concept match_expr {
   name = "match"
   summary = "Tests a value against a sequence of patterns, returning the body of the first that matches."
-  related = [patterns, unions, optionals]
+  related = [{ id: "patterns", why: "Patterns supports match: Patterns destructure and test values in `match`, `if let`, and guard arms." }, { id: "unions", why: "Unions supports match: Tagged variant sets — a value that is exactly one of several alternatives." }, { id: "optionals", why: "Optionals supports match: Values that may be present or absent — the none literal and the ? type suffix." }]
   audience = :both
   body {
     p <<DOC

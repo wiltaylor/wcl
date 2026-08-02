@@ -1,7 +1,7 @@
 concept connections {
   name = "Connections"
   summary = "Typed relationships between block instances, populated by arrow statements."
-  related = [references]
+  related = [{ id: "references", why: "References supports Connections: &T fields that accept any value structurally satisfying an interface." }]
   audience = :both
   body {
     p <<DOC

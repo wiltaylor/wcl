@@ -2,7 +2,7 @@ import <wdoc.wcl>
 
 fact swimlanes {
   title = "swim-lane flowcharts"
-  related = [flowcharts, diagrams]
+  related = [{ id: "flowcharts", why: "flowchart shapes supports swim-lane flowcharts: Flowchart shapes plus the layered auto-layout mode turn a `diagram` into a flowchart: declare the shapes and the edges, and the renderer ranks them topologically and elbow-routes the connections." }, { id: "diagrams", why: "diagram supports swim-lane flowcharts: A `diagram` is wdoc's drawing surface." }]
   audience = :both
   body {
     p <<DOC

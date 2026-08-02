@@ -94,7 +94,7 @@ concept data_vs_presentation {
 concept generated_vs_hand {
   name = "Generated vs hand-authored data"
   summary = "Two ownership zones under data/: extractor-owned generated/ files (overwritten wholesale) and human-owned everything else."
-  related = [extractor_anatomy]
+  related = [{ id: "extractor_anatomy", why: "Extractor scripts supports Generated vs hand-authored data: Extractors are single-file Python scripts run with `uv run`: a `# /// script` inline-metadata header declares dependencies, so any source of truth — a database, workflow YAML, cargo metadata, an HTTP API — is one dependency line away." }]
   audience = :both
   body {
     p <<DOC
@@ -227,7 +227,7 @@ concept living_wad {
 concept lifecycle {
   name = "The lifecycle: how the four modes hand off"
   summary = "plan and issue produce plans, build executes them, doc records the result — and every seam is an explicit step, not a convention."
-  related = [plan_wad]
+  related = [{ id: "plan_wad", why: "The plan's WAD supports The lifecycle: how the four modes hand off: A browsable architecture book of the future system, derived from the plan - the steering surface during planning, the living WAD after the build." }]
   body {
     p <<DOC
       **New software:** plan mode scaffolds the plan *and* a WAD of the future system

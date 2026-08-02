@@ -13,7 +13,7 @@ class "accent-box" {
 
 fact shape_styling {
   title = "styling shapes with classes"
-  related = [diagrams, styling]
+  related = [{ id: "diagrams", why: "diagram supports styling shapes with classes: A `diagram` is wdoc's drawing surface." }, { id: "styling", why: "Styling supports styling shapes with classes: Class blocks, stylesheets, and themes — how a site looks." }]
   audience = :both
   body {
     p <<DOC

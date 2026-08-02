@@ -1,7 +1,7 @@
 concept block_schema {
   name = "Block Schema"
   summary = "Declaring nestable blocks with @block, @inline, @child/@children, and @default."
-  related = [blocks]
+  related = [{ id: "blocks", why: "Blocks supports Block Schema: A named group of fields that can also nest other blocks; the schema sets its labels and fields." }]
   audience = :both
   body {
     p <<DOC

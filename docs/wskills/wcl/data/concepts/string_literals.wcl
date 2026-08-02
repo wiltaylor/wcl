@@ -1,7 +1,7 @@
 concept string_literals {
   name = "String Literals"
   summary = "UTF-8 by default; ascii/utf16/utf32 prefixes select another encoding, heredocs carry multi-line and verbatim text."
-  related = [string_interpolation]
+  related = [{ id: "string_interpolation", why: "String Interpolation supports String Literals: Opt-in with a `$` prefix; `${ ... }` slots splice evaluated expressions into the string." }]
   audience = :both
   body {
     p <<DOC

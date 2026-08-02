@@ -569,8 +569,10 @@ export default function GraphView() {
   const connectEdge = async (fromKey, toKey) => {
     const a = node(fromKey);
     const b = node(toKey);
+    const why = window.prompt(`Why does ${a.title ?? a.id} relate to ${b.title ?? b.id}?`);
+    if (!why?.trim()) return;
     const res = await commitOpsQuiet(a.file, [
-      { op: 'related_add', span: a.span, id: b.id },
+      { op: 'related_add', span: a.span, id: b.id, why: why.trim() },
     ]);
     if (res.ok) {
       toast(`Linked ${a.id} → ${b.id}`, { duration: 3000 });
@@ -605,7 +607,12 @@ export default function GraphView() {
     let msg = `Removed ${a.id} → ${oldB.id}`;
     if (toKey) {
       const b = node(toKey);
-      ops.push({ op: 'related_add', span: a.span, id: b.id });
+      const why = window.prompt(`Why does ${a.title ?? a.id} relate to ${b.title ?? b.id}?`);
+      if (!why?.trim()) {
+        setHiddenEdge(null);
+        return;
+      }
+      ops.push({ op: 'related_add', span: a.span, id: b.id, why: why.trim() });
       msg = `Moved ${a.id} → ${b.id}`;
     }
     const res = await commitOpsQuiet(a.file, ops);

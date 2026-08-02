@@ -61,7 +61,7 @@ let all_units = flatten([
   map(facts,      fn(f: Fact)      -> UnitRef { { id: f.id, name: f.title, href: $"fact_${f.id}",    linkable: true, related: f.related } }),
   map(procedures, fn(p: Procedure) -> UnitRef { { id: p.id, name: p.title, href: $"process_${p.id}", linkable: true, related: p.related } }),
   map(research_book, fn(r: Research) -> UnitRef { { id: r.id, name: r.topic, href: $"research_${r.id}", linkable: true, related: r.related } }),
-  map(content_indexes, fn(ix: Index) -> UnitRef { { id: ix.id, name: ix.name, href: $"index_${ix.id}", linkable: true, related: ix.related } }),
+  map(content_indexes, fn(ix: Index) -> UnitRef { { id: ix.id, name: ix.name, href: $"index_${ix.id}", linkable: true, related: [] } }),
 ])
 let related_targets = flatten([
   all_units,

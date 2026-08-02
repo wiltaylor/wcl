@@ -2,7 +2,7 @@ procedure upgrading_with_wcl {
   title = "Upgrade a document when WCL moves"
   purpose = "Bring a WCL model back in sync after installing a newer wcl release."
   preconditions = ["A model with `source` blocks recording `reflects_version`, and a newly-installed `wcl` binary."]
-  related = [wcl_cli]
+  related = [{ id: "wcl_cli", why: "wcl supports Upgrade a document when WCL moves: The wcl command-line tool: one binary for parsing, checking, editing, formatting, scaffolding, the editor, and wdoc." }]
   audience = :both
 
   step compare_versions {

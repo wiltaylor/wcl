@@ -2,7 +2,7 @@ procedure inspect_values {
   title = "Inspect and edit values with eval, set and diff"
   purpose = "Read a single field, change it from the command line, and confirm exactly what changed."
   preconditions = ["A valid WCL file whose fields you want to read or edit."]
-  related = [wcl_cli]
+  related = [{ id: "wcl_cli", why: "wcl supports Inspect and edit values with eval, set and diff: The wcl command-line tool: one binary for parsing, checking, editing, formatting, scaffolding, the editor, and wdoc." }]
   audience = :both
 
   step read {

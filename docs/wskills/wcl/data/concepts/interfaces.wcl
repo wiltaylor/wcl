@@ -1,7 +1,7 @@
 concept interfaces {
   name = "Interfaces"
   summary = "Structural contracts — a set of fields a type must have, satisfied automatically."
-  related = [references]
+  related = [{ id: "references", why: "References supports Interfaces: &T fields that accept any value structurally satisfying an interface." }]
   audience = :both
   body {
     p <<DOC

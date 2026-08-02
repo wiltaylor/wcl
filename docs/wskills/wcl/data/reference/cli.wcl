@@ -7,7 +7,7 @@
 // subcommands of `wdoc`, `wad` and `wskill`.
 //
 // The id is `wcl_cli_ref`, not `wcl_cli`: the binary-as-a-thing is `entity wcl_cli`
-// (data/entities/wcl_cli.wcl), the target of ten `related = [wcl_cli]` links. Unit
+// (data/entities/wcl_cli.wcl), the target of ten semantic links to `wcl_cli`. Unit
 // kinds share ONE id namespace (`source` and the other plumbing kinds are outside
 // it), and the model resolves an id to the first unit that declares it — so two
 // units called `wcl_cli` would leave the graph, the editor's index panel and every
@@ -265,15 +265,13 @@ cli wcl_cli_ref {
 
     subcommand cmd_wskill_lint {
       name = "lint"
-      description = "Run every wskill rule over the model and report the findings — errors, warnings and curator candidates from one pass. Reads the data model only unless `--fix` is explicitly requested."
-      remarks = "Three severities, one finding shape. **Errors** are mechanically certain (a `related` id naming nothing, an id declared twice, a link to an index with no body — which has no page). **Warnings** carry a real exception rate (more than five `related` links, a unit no index pins, a unit no projection renders) and never fail on their own. **Candidates** are nominations to the curator and fail nothing: bare edges awaiting removal or an authored reason, link density per word, targets named after their source or already co-pinned with it, one reason given twice, a body-less index, and reasonless links between co-pinned units. A finding carries its severity, rule, unit identity, file, span and message — the span is what lets an editor pin it and an agent jump to it. Exit codes: `0` clean, `1` findings at or above the denied severity or a refused fix, `2` the model could not be read."
+      description = "Run every wskill rule over the model and report the findings — errors, warnings and curator candidates from one pass. Reads the data model only."
+      remarks = "Three severities, one finding shape. **Errors** are mechanically certain (a `related` id naming nothing, an id declared twice, a link to an index with no body — which has no page). **Warnings** carry a real exception rate (more than five `related` links, a unit no index pins, a unit no projection renders) and never fail on their own. **Candidates** are nominations to the curator and fail nothing: link density per word, targets named after their source, one reason given twice, and a body-less index. Every semantic `related` edge must carry a reason; the schema rejects a bare edge before lint runs. A finding carries its severity, rule, unit identity, file, span and message — the span is what lets an editor pin it and an agent jump to it. Exit codes: `0` clean, `1` findings at or above the denied severity, `2` the model could not be read."
       cli_arg    arg_entry { name = "entry"  required = false  description = "The wskill folder, or an entry `.wcl` inside it."  remarks = "Default: the current directory." }
       cli_switch sw_format   { long = "--format"    value_name = "FORMAT"    description = "Output format: `text` (default, one line per finding) or `json` (an array of finding objects)." }
       cli_switch sw_severity { long = "--severity"  value_name = "LIST"      description = "Report only these severities: `error`, `warn`, `candidate` (comma-separated, repeatable). Default: all three."  remarks = "Filtering hides findings from the exit code too, which is what makes `--severity candidate` a read rather than a gate." }
       cli_switch sw_deny     { long = "--deny"      value_name = "SEVERITY"  description = "Fail on findings this certain or more: `error` (default), `warn`, `candidate`." }
-      cli_switch sw_fix      { long = "--fix"       value_name = "RULE"      description = "Apply every available autofix, or one rule with `--fix=<rule>`; findings are recomputed after the ops apply."  remarks = "The bare-edge migration rule is `bare-related`." }
-      cli_switch sw_dry_run  { long = "--dry-run"                           description = "Print the structural ops `--fix` would apply and write nothing."  remarks = "Requires `--fix`; output is the shared op JSON accepted by `wcl wskill op`." }
-      code_example { lang = "console"  code = "wcl wskill lint docs/wskills/wcl --fix=bare-related --dry-run" }
+      code_example { lang = "console"  code = "wcl wskill lint docs/wskills/wcl --severity candidate --format json" }
     }
 
     subcommand cmd_wskill_audit {

@@ -2,7 +2,7 @@ import <wdoc.wcl>
 
 fact timelines {
   title = "timeline"
-  related = [diagrams]
+  related = [{ id: "diagrams", why: "diagram supports timeline: A `diagram` is wdoc's drawing surface." }]
   audience = :both
   body {
     p <<DOC

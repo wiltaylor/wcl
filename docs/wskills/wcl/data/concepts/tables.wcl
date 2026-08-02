@@ -1,7 +1,7 @@
 concept tables {
   name     = "Tables"
   summary  = "Pipe-row syntax for writing many records of the same shape compactly."
-  related  = [lists, records]
+  related  = [{ id: "lists", why: "Lists supports Tables: Ordered, homogeneous sequences — list<T> — and the collection builtins over them." }, { id: "records", why: "Records supports Tables: Named records via the type keyword — fixed sets of named, typed fields." }]
   audience = :both
   body {
     p "Repeated rows of the same shape can be written with pipe-table syntax under a field name. Each `| ... |` row becomes one record."

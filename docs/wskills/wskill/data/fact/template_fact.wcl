@@ -1,7 +1,7 @@
 fact template_fact {
   title = "Template — fact"
   audience = :both
-  related = [fact]
+  related = [{ id: "fact", why: "Fact supports Template — fact: A unit that holds factual data — a value, a constant, a value table." }]
   body {
     p <<DOC
       A **fact** is a container of values: a default, a limit, a lookup table, a version matrix, an

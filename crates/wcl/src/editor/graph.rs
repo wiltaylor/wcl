@@ -841,7 +841,7 @@ mod tests {
             let main = std::fs::read_to_string(root.join("main.wcl")).unwrap();
             let main = main.replace(
                 "@block(\"concept\")\ntype Concept {\n  @inline(0) id: identifier\n  name: utf8\n}",
-                "@block(\"concept\")\ntype Concept {\n  @inline(0) id: identifier\n  name: utf8\n  related: list<identifier>?\n}",
+                "type RelatedEdge { id: utf8  why: utf8 }\n\n@block(\"concept\")\ntype Concept {\n  @inline(0) id: identifier\n  name: utf8\n  related: list<RelatedEdge>?\n}",
             );
             std::fs::write(root.join("main.wcl"), main).unwrap();
         });
@@ -857,7 +857,10 @@ mod tests {
                 &previews,
                 &serde_json::json!({
                     "entry": "main.wcl", "file": n["file"],
-                    "ops": [{ "op": op, "span": n["span"], "id": id }],
+                    "ops": [{
+                        "op": op, "span": n["span"], "id": id,
+                        "why": "Beta extends Alpha."
+                    }],
                 }),
             )
         };
@@ -876,7 +879,10 @@ mod tests {
         // Connect alpha → beta.
         edge("alpha", "related_add", "beta").expect("related_add");
         let text = std::fs::read_to_string(ws.root_dir().join("data/concepts/alpha.wcl")).unwrap();
-        assert!(text.contains("related = [beta]"), "{text}");
+        assert!(
+            text.contains("related = [{ id: \"beta\", why: \"Beta extends Alpha.\" }]"),
+            "{text}"
+        );
         let v = model(&ws, "book", "");
         assert!(
             v["edges"].as_array().unwrap().iter().any(|e| {

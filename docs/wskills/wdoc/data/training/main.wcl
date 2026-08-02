@@ -71,7 +71,7 @@ lesson book_site {
   summary = "Group pages into a `site`, pick the `:book` template, and wire the sidebar with `toc`."
   objectives = ["Declare a `site` and join pages to it via `sites`", "Select a template with `default_template`", "Build a nested sidebar with `toc` chapters and mark the start page"]
   prerequisites = [first_page]
-  related = [sites, pages]
+  related = [{ id: "sites", why: "Sites supports A book site and its table of contents: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search." }, { id: "pages", why: "Pages supports A book site and its table of contents: The `page` block: id, title, the sites it joins, and the start page." }]
   body {
     p <<DOC
       A `site` block configures one output target: its template, title, theme, and navigation. Each
@@ -148,7 +148,7 @@ lesson everyday_formatting {
   summary = "The everyday blocks: inline patterns, admonition callouts, and side-by-side layout."
   objectives = ["Use the inline patterns in any paragraph, cell, or list item", "Pick the right callout class for an admonition", "Lay content out side by side with `column` and `widths`"]
   prerequisites = [book_site]
-  related = [formatting, callouts, columns]
+  related = [{ id: "formatting", why: "Formatting supports Formatting, callouts, and columns: Inline patterns (bold / italic / code / links / icons / math), headings, code, lists, callouts." }, { id: "callouts", why: "callout supports Formatting, callouts, and columns: A `callout` is an admonition: an icon, a coloured heading, and a body." }, { id: "columns", why: "Columns supports Formatting, callouts, and columns: The `column` layout block and its content (any wdoc block, per-slot widths)." }]
   body {
     p <<DOC
       Inline patterns light up automatically wherever prose renders: `**bold**`, `_italic_`
@@ -214,7 +214,7 @@ lesson tables_and_lists {
   summary = "Pipe-row tables and nestable lists — with inline patterns inside every cell and item."
   objectives = ["Author a `table` with WCL's native pipe-row syntax", "Build bulleted and numbered `list`s and nest sublists"]
   prerequisites = [everyday_formatting]
-  related = [tables_block]
+  related = [{ id: "tables_block", why: "table supports Tables and lists: A `table { rows: | … | }` renders a tabular data grid using WCL's native pipe-row syntax." }]
   body {
     p <<DOC
       A `table { rows: | … | }` uses WCL's pipe-row syntax: the first row becomes the header, the
@@ -285,7 +285,7 @@ lesson images_and_assets {
   summary = "Embed images on pages and in diagrams, and understand how assets ship with the build."
   objectives = ["Embed an `image` with alt text and an explicit size", "Explain where copied assets land in the output tree", "Drop inline icons into prose"]
   prerequisites = [everyday_formatting]
-  related = [images, icons]
+  related = [{ id: "images", why: "image supports Images and assets: `image` embeds a static image." }, { id: "icons", why: "The icon system supports Images and assets by providing the bundled glyph packs and self-contained output sprite." }]
   body {
     p <<DOC
       An `image` block takes its source path as the inline label, resolved relative to the build
@@ -349,7 +349,7 @@ lesson first_diagram {
   summary = "Shapes on a canvas, `a -> b` connections, and letting the layered layout place a flowchart."
   objectives = ["Place primitive shapes on a sized `diagram` canvas", "Connect shapes by id with `a -> b` edges", "Switch on `:layered` auto-layout for a flowchart"]
   prerequisites = [book_site]
-  related = [diagrams, primitive_shapes, connections, flowcharts]
+  related = [{ id: "diagrams", why: "diagram supports Your first diagram: A `diagram` is wdoc's drawing surface." }, { id: "primitive_shapes", why: "primitive shapes supports Your first diagram: The base shapes a `diagram` is built from — everything else (flowchart nodes, cards, trees) lowers to these." }, { id: "connections", why: "Connections supports Your first diagram: Edges between diagram blocks: source -> destination :kind, generated endpoints, computed edges, routing." }, { id: "flowcharts", why: "flowchart shapes supports Your first diagram: Flowchart shapes plus the layered auto-layout mode turn a `diagram` into a flowchart: declare the shapes and the edges, and the renderer ranks them topologically and elbow-routes the connections." }]
   body {
     p <<DOC
       A `diagram` is the drawing surface: it declares a `width` / `height` and holds shapes that
@@ -416,7 +416,7 @@ lesson charts_from_data {
   summary = "Plot series data with `bar_chart` and put real dates on a `timeline` — both inside a `diagram`."
   objectives = ["Plot grouped series with `bar_chart` categories and series records", "Lay events and phases on a real-calendar `timeline`"]
   prerequisites = [first_diagram]
-  related = [charts, timelines, diagrams]
+  related = [{ id: "charts", why: "charts supports Charts and timelines from data: wdoc ships three chart kinds — `bar_chart`, `line_chart`, and `pie_chart` — that lower to SVG via pure-WCL geometry." }, { id: "timelines", why: "timeline supports Charts and timelines from data: `timeline` is a **real-time axis** — dates are ISO strings (`\"2026-03-15\"` / `\"…14:30\"`) and tick boundaries land on real calendar dates." }, { id: "diagrams", why: "diagram supports Charts and timelines from data: A `diagram` is wdoc's drawing surface." }]
   body {
     p <<DOC
       The chart kinds — `bar_chart`, `line_chart`, `pie_chart` — are diagram shapes, so each sits
@@ -659,7 +659,7 @@ lesson render_targets {
   summary = "One model, four outputs: HTML, Markdown, a skill folder, and PDF."
   objectives = ["Render the same document to HTML, Markdown, and PDF", "Project an `:ai_skill` site into a skill folder", "Pick a single site out of a multi-site document with `--site`"]
   prerequisites = [book_site]
-  related = [markdown]
+  related = [{ id: "markdown", why: "Markdown output supports Render targets: The `wcl wdoc markdown` render target, its block mapping, caveats, and frontmatter." }]
   body {
     p <<DOC
       The render targets all consume the same document: `wcl wdoc build` writes HTML, `markdown`
@@ -722,7 +722,7 @@ lesson visibility_and_themes {
   summary = "Scope blocks per site, template, or backend with `@only` / `@except`, and restyle a whole site in one line."
   objectives = ["Scope a block to a subset of the build with `@only` / `@except`", "Switch a site's palette with `theme` and add a light/dark toggle"]
   prerequisites = [render_targets]
-  related = [visibility, themes, styling]
+  related = [{ id: "visibility", why: "Block Visibility supports Visibility and themes: The @only / @except decorators scope a block by site, template kind, or backend." }, { id: "themes", why: "Built-in colour themes supports Visibility and themes: Set `theme = :<name>` on a `site` to recolour the whole site in one line." }, { id: "styling", why: "Styling supports Visibility and themes: Class blocks, stylesheets, and themes — how a site looks." }]
   body {
     p <<DOC
       Any block can carry `@only(...)` or `@except(...)` to scope it by three axes: `sites` (site

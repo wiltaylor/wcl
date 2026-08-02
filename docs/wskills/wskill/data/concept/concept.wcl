@@ -2,7 +2,7 @@ concept concept {
   name = "Concept"
   summary = "A unit that captures an idea or mental model of something."
   audience = :both
-  related = [process]
+  related = [{ id: "process", why: "Process supports Concept: A unit (authored as a procedure) that captures the reliable sequence for doing a task — ordered steps, for someone who already knows the topic." }]
   body {
     p <<DOC
       A concept is a unit of knowledge that describes an idea of something. This is usually an idea,

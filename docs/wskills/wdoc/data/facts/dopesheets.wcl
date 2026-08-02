@@ -2,7 +2,7 @@ import <wdoc.wcl>
 
 fact dopesheets {
   title = "dopesheet"
-  related = [images, diagrams]
+  related = [{ id: "images", why: "image supports dopesheet: `image` embeds a static image." }, { id: "diagrams", why: "diagram supports dopesheet: A `diagram` is wdoc's drawing surface." }]
   audience = :both
   body {
     p <<DOC

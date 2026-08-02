@@ -1,7 +1,7 @@
 fact template_concept {
   title = "Template — concept"
   audience = :both
-  related = [concept]
+  related = [{ id: "concept", why: "Concept supports Template — concept: A unit that captures an idea or mental model of something." }]
   body {
     p <<DOC
       A **concept** captures one idea the reader must understand: a model, a pattern, a principle,

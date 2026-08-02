@@ -2,7 +2,7 @@ import <wdoc.wcl>
 
 fact videos {
   title    = "video"
-  related  = [images]
+  related  = [{ id: "images", why: "image supports video: `image` embeds a static image." }]
   audience = :both
   body {
     block_doc {
