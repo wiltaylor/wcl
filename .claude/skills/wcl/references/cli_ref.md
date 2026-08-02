@@ -388,3 +388,21 @@ Print the wskill's model — units, index trees, `related` and pin edges, per-un
 ```console
 wcl wskill graph docs/wskills/wcl --rev HEAD~1
 ```
+
+### wcl wskill lint
+
+Run every wskill rule over the model and report the findings — errors, warnings and curator candidates from one pass. Reads the data model only: no build, no editor, and lint never writes.
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| entry | optional | The wskill folder, or an entry `.wcl` inside it. |
+
+| Switch | Value | Description |
+| --- | --- | --- |
+| --format | FORMAT | Output format: `text` (default, one line per finding) or `json` (an array of finding objects). |
+| --severity | LIST | Report only these severities: `error`, `warn`, `candidate` (comma-separated, repeatable). Default: all three. |
+| --deny | SEVERITY | Fail on findings this certain or more: `error` (default), `warn`, `candidate`. |
+
+```console
+wcl wskill lint docs/wskills/wcl --severity error --deny error
+```

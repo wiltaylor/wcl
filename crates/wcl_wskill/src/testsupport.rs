@@ -108,6 +108,19 @@ pub(crate) fn write(dir: &Path, rel: &str, text: &str) {
     std::fs::write(path, text).unwrap();
 }
 
+/// Re-declare the fixture's schema so a `related` entry is a `{id, why}`
+/// record instead of a bare id — the annotated form the model reads, which
+/// is the only way to exercise the reason-shaped lint screens.
+pub(crate) fn with_link_reasons(root: &Path) {
+    let doc = ROOT_DOC
+        .replace("related: list<identifier>", "related: list<Link>")
+        .replace(
+            "@block(\"topic\")",
+            "type Link {\n  id: identifier\n  why: utf8?\n}\n\n@block(\"topic\")",
+        );
+    write(root, crate::ROOT_MARKER, &doc);
+}
+
 /// A temp dir holding the fixture wskill. Hold the guard for the test's
 /// length — dropping it removes the folder.
 pub(crate) fn mini_wskill() -> tempfile::TempDir {

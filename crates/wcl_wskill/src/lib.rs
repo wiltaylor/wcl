@@ -31,15 +31,17 @@
 //! wire shapes of any HTTP endpoint, and rendering. The model says what the
 //! wskill is.
 
+pub mod lint;
 mod load;
 mod model;
 mod registry;
 #[cfg(test)]
 mod testsupport;
 
+pub use lint::{Finding, Rule, Severity, lint};
 pub use load::Error;
 pub use model::{
-    Anchor, ContentBlock, Course, CourseModule, Edge, EdgeKind, Graph, Index, NodeKey, Topic, Unit,
-    View, Visibility, routes_to, structural_view_kind,
+    Anchor, ContentBlock, Course, CourseModule, Edge, EdgeKind, Graph, Index, Link, NodeKey, Topic,
+    Unit, View, Visibility, routes_to, structural_view_kind,
 };
 pub use registry::{Artifact, ROOT_MARKER, Registry};

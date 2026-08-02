@@ -75,7 +75,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_wskill {
     name = "wskill"
     kind = "module"
-    summary = "1 file, 1 pub items"
+    summary = "1 file, 2 pub items"
   }
   code_node n_cg_wcl_xc_wcl_lang {
     name = "wcl_lang (crate)"
@@ -1035,6 +1035,11 @@ code_item code_api_cli_commands {
     summary = "src/wskill.rs"
     code_member m_n_api_cli_commands_wskill_fns_run_graph {
       signature = "fn run_graph(entry: &Path, rev: Option<&str>) -> u8"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_wskill_fns_run_lint {
+      signature = "fn run_lint( entry: &Path, format: crate::LintFormat, severity:…"
       kind = "fn"
       visibility = "crate"
     }

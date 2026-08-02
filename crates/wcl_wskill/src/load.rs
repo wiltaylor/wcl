@@ -15,8 +15,8 @@ use wcl_lang::ast::{self, Item};
 use wcl_lang::{DeclName, Document, Span, Value, parse_for_edit};
 
 use crate::model::{
-    Anchor, ContentBlock, Course, CourseModule, Edge, EdgeKind, Graph, Index, NodeKey, Topic, Unit,
-    Visibility,
+    Anchor, ContentBlock, Course, CourseModule, Edge, EdgeKind, Graph, Index, Link, NodeKey, Topic,
+    Unit, Visibility,
 };
 use crate::registry::{ROOT_MARKER, Registry};
 
@@ -32,6 +32,11 @@ const PLUMBING_KINDS: &[&str] = &[
 
 /// How much of a block's label a content-block preview keeps.
 const PREVIEW_CHARS: usize = 60;
+
+/// Blocks whose strings are literal content rather than prose, and so are
+/// not counted by [`body_words`]: a code sample, a terminal session, a
+/// LaTeX formula.
+const VERBATIM_KINDS: &[&str] = &["code", "terminal", "math"];
 
 /// The audience a unit kind gets when neither the block nor its schema says
 /// (the base schema defaults every kind but `research` to `:book`).
@@ -232,31 +237,36 @@ impl<'a> Builder<'a> {
                 .iter()
                 .find_map(|f| field_string(&b, f))
                 .unwrap_or_else(|| id.clone());
-            let related = related_ids(&b);
+            let related = related_links(&b);
 
             if is_index {
                 let children = self.index_children(&b, &id, &file);
-                for rid in &related {
+                for link in &related {
                     self.pins.push(Pin {
                         top_index: id.clone(),
                         owning_index: id.clone(),
-                        unit: rid.clone(),
+                        unit: link.id.clone(),
                     });
                 }
+                let blocks = self
+                    .ast_block_at(&file, b.span())
+                    .map(|blk| self.content_blocks(blk, &file))
+                    .unwrap_or_default();
                 indexes.push(Index {
                     audience: self.audience_of(&b, &kind),
                     id,
                     title,
                     anchor,
                     visibility,
-                    pinned: related,
+                    pinned: related.into_iter().map(|l| l.id).collect(),
                     related_editable,
+                    blocks,
                     children,
                 });
             } else {
-                let blocks = self
+                let (blocks, words) = self
                     .ast_block_at(&file, b.span())
-                    .map(|blk| self.content_blocks(blk, &file))
+                    .map(|blk| (self.content_blocks(blk, &file), body_words(blk)))
                     .unwrap_or_default();
                 units.push(Unit {
                     audience: self.audience_of(&b, &kind),
@@ -268,6 +278,7 @@ impl<'a> Builder<'a> {
                     related,
                     related_editable,
                     blocks,
+                    words,
                 });
             }
         }
@@ -339,7 +350,7 @@ impl<'a> Builder<'a> {
         let mut out = Vec::new();
         for c in b.blocks().filter(|c| c.kind() == "index") {
             let Some(id) = first_label(&c) else { continue };
-            let pinned = related_ids(&c);
+            let pinned: Vec<String> = related_links(&c).into_iter().map(|l| l.id).collect();
             for rid in &pinned {
                 self.pins.push(Pin {
                     top_index: top_id.to_string(),
@@ -357,6 +368,9 @@ impl<'a> Builder<'a> {
                 visibility: ast_block.map(visibility_of).unwrap_or_default(),
                 pinned,
                 related_editable: related_editable_of(ast_block),
+                blocks: ast_block
+                    .map(|blk| self.content_blocks(blk, file))
+                    .unwrap_or_default(),
                 children,
             });
         }
@@ -366,10 +380,17 @@ impl<'a> Builder<'a> {
     /// A unit's content blocks, flattened one level: its direct children with
     /// the transparent `body` container spliced, so the model lists the
     /// blocks that actually render.
+    ///
+    /// A nested `index` is skipped: an index's sub-indexes are structure
+    /// (they are its [`Index::children`]), and counting them as content
+    /// would make every nav heading look like it carried a body.
     fn content_blocks(&self, unit: &ast::Block, file: &Path) -> Vec<ContentBlock> {
         let mut out = Vec::new();
         for item in &unit.items {
             let Item::Block(b) = item else { continue };
+            if b.kind == "index" {
+                continue;
+            }
             if b.kind == "body" {
                 out.extend(b.items.iter().filter_map(|inner| match inner {
                     Item::Block(c) => Some(self.content_block(c, file)),
@@ -405,8 +426,8 @@ impl<'a> Builder<'a> {
             .collect();
         let mut out: Vec<Edge> = Vec::new();
         for u in units {
-            for rid in &u.related {
-                if let Some(to) = keys.get(rid.as_str()) {
+            for rid in u.related_ids() {
+                if let Some(to) = keys.get(rid) {
                     out.push(Edge {
                         from: u.key(),
                         to: to.clone(),
@@ -532,13 +553,98 @@ fn related_editable_of(block: Option<&ast::Block>) -> bool {
     })
 }
 
-/// The ordered `related` ids of a block (empty when absent or not
+/// The ordered `related` links of a block (empty when absent or not
 /// list-valued).
-fn related_ids(b: &wcl_lang::Block<'_>) -> Vec<String> {
+fn related_links(b: &wcl_lang::Block<'_>) -> Vec<Link> {
     match b.field("related").and_then(|f| f.value().ok().cloned()) {
-        Some(Value::List(items)) => items.iter().map(value_string).collect(),
+        Some(Value::List(items)) => items.iter().filter_map(link_of).collect(),
         _ => Vec::new(),
     }
+}
+
+/// One `related` element as a link. A bare id is the form the corpus is
+/// written in; a record carrying `id` (and optionally `why`) is the annotated
+/// form. Anything else — a list, a function — names nothing and is dropped.
+fn link_of(v: &Value) -> Option<Link> {
+    let fields = match v {
+        Value::Record { fields, .. } => fields.clone(),
+        Value::Variant {
+            payload: wcl_lang::VariantPayload::Record(fields),
+            ..
+        } => fields.clone(),
+        Value::List(_) | Value::Function(_) | Value::None => return None,
+        scalar => return Some(Link::bare(value_string(scalar))),
+    };
+    let id = fields
+        .get("id")
+        .map(value_string)
+        .filter(|s| !s.is_empty())?;
+    let why = fields
+        .get("why")
+        .filter(|v| !matches!(v, Value::None))
+        .map(value_string)
+        .filter(|s| !s.is_empty());
+    Some(Link { id, why })
+}
+
+/// The prose word count of a block: every literal string below it — its own
+/// text fields (`summary` and the like) and its body's prose —
+/// whitespace-split.
+///
+/// Three things are deliberately out. Field names, kinds, identifiers and
+/// symbols: they are the author's structure, not their words. The block's own
+/// label: an id is not prose. And the contents of a [`VERBATIM_KINDS`] block:
+/// a hundred lines of sample code say nothing about how much a unit
+/// *explains*, and this number's only consumer divides links by it.
+///
+/// (The editor's search index walks the same literals for a different
+/// purpose — `block_text` in `crates/wcl/src/editor/graph.rs`. Issue #56
+/// rebuilds that endpoint on this crate, which is where the two meet.)
+fn body_words(block: &ast::Block) -> usize {
+    fn expr_words(e: &ast::Expr, n: &mut usize) {
+        match e {
+            ast::Expr::Utf8(s) | ast::Expr::Ascii(s) => *n += s.split_whitespace().count(),
+            ast::Expr::InterpolatedString { parts, .. } => {
+                for part in parts {
+                    match part {
+                        ast::TemplatePart::Literal(s) => *n += s.split_whitespace().count(),
+                        ast::TemplatePart::Expr(inner) => expr_words(inner, n),
+                    }
+                }
+            }
+            ast::Expr::ListLit { elements, .. } => {
+                for el in elements {
+                    expr_words(el, n);
+                }
+            }
+            ast::Expr::Record { fields, .. } => {
+                for f in fields {
+                    expr_words(&f.value, n);
+                }
+            }
+            _ => {}
+        }
+    }
+    fn block_words(b: &ast::Block, n: &mut usize, top: bool) {
+        if !top {
+            if VERBATIM_KINDS.contains(&b.kind.as_str()) {
+                return;
+            }
+            for label in &b.labels {
+                expr_words(label, n);
+            }
+        }
+        for item in &b.items {
+            match item {
+                Item::Field(f) => expr_words(&f.expr, n),
+                Item::Block(c) => block_words(c, n, false),
+                _ => {}
+            }
+        }
+    }
+    let mut n = 0;
+    block_words(block, &mut n, true);
+    n
 }
 
 /// A course block's `n` (its position); missing / non-numeric sorts last.

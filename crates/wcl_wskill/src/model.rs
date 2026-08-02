@@ -130,6 +130,34 @@ pub struct ContentBlock {
     pub visibility: Visibility,
 }
 
+/// One `related` link: the id it names, and the author's reason for it.
+///
+/// The reason is `None` for the bare `related = [other]` form the corpus is
+/// written in today, and `Some` for the `{id, why}` record form. Reading
+/// both is what lets the reason-shaped screens
+/// ([`Rule::DuplicateReason`](crate::lint::Rule::DuplicateReason),
+/// [`Rule::MirroredPin`](crate::lint::Rule::MirroredPin)) be one rule rather
+/// than two, before and after the format carries reasons.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Link {
+    pub id: String,
+    /// Absent rather than null in the serialized form: the corpus is 725
+    /// bare edges, and a reader asking "is there a reason?" should not have
+    /// to distinguish two spellings of no.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub why: Option<String>,
+}
+
+impl Link {
+    /// A bare link — the `related = [other]` form.
+    pub fn bare(id: impl Into<String>) -> Link {
+        Link {
+            id: id.into(),
+            why: None,
+        }
+    }
+}
+
 /// A reference unit: a `concept` / `fact` / `procedure` / `lesson` / … block.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Unit {
@@ -141,13 +169,18 @@ pub struct Unit {
     pub audience: String,
     pub anchor: Anchor,
     pub visibility: Visibility,
-    /// Ids this unit links to (its `related` list, in authored order).
-    pub related: Vec<String>,
+    /// The links this unit declares (its `related` list, in authored order).
+    pub related: Vec<Link>,
     /// Whether `related` may be rewritten: false when the field is a
     /// computed expression, which a pin/unpin/reorder write must not clobber.
     pub related_editable: bool,
     /// The unit's body blocks, one level deep.
     pub blocks: Vec<ContentBlock>,
+    /// How many words of prose the body carries — every literal string in
+    /// the block subtree, whitespace-split. The denominator of the
+    /// words-per-link screen, and the only body measurement the model
+    /// takes: a curator that wants the prose itself reads the file.
+    pub words: usize,
 }
 
 impl Unit {
@@ -156,6 +189,11 @@ impl Unit {
             kind: self.kind.clone(),
             id: self.id.clone(),
         }
+    }
+
+    /// The ids this unit links to, in authored order.
+    pub fn related_ids(&self) -> impl Iterator<Item = &str> {
+        self.related.iter().map(|l| l.id.as_str())
     }
 
     /// Whether this unit renders in `view`: its declared visibility AND the
@@ -181,6 +219,9 @@ pub struct Index {
     pub pinned: Vec<String>,
     /// Whether the pin list may be rewritten (see [`Unit::related_editable`]).
     pub related_editable: bool,
+    /// The index's own body blocks — its sub-indexes excluded, since those
+    /// are structure, not content.
+    pub blocks: Vec<ContentBlock>,
     pub children: Vec<Index>,
 }
 
@@ -190,6 +231,13 @@ impl Index {
             kind: "index".to_string(),
             id: self.id.clone(),
         }
+    }
+
+    /// Whether this index carries a body — which is what makes it a
+    /// linkable node rather than a pure nav heading: a body-less index has
+    /// no page, so a `related` id naming one resolves to nothing.
+    pub fn has_body(&self) -> bool {
+        !self.blocks.is_empty()
     }
 
     /// This index and every sub-index below it, outermost first.
@@ -274,19 +322,21 @@ impl Graph {
         self.units.iter().find(|u| u.id == id)
     }
 
+    /// Every index level in the graph, top-level and nested alike, in
+    /// declaration order — the walk anything asking "which indexes?" wants,
+    /// since a sub-index pins as truly as its parent.
+    pub fn index_levels(&self) -> impl Iterator<Item = &Index> {
+        self.indexes.iter().flat_map(Index::levels)
+    }
+
     /// An index by id, at any nesting level.
     pub fn index(&self, id: &str) -> Option<&Index> {
-        self.indexes
-            .iter()
-            .flat_map(Index::levels)
-            .find(|i| i.id == id)
+        self.index_levels().find(|i| i.id == id)
     }
 
     /// Every index level that pins `unit_id`, at any nesting depth.
     pub fn indexes_pinning(&self, unit_id: &str) -> Vec<&Index> {
-        self.indexes
-            .iter()
-            .flat_map(Index::levels)
+        self.index_levels()
             .filter(|i| i.pinned.iter().any(|p| p == unit_id))
             .collect()
     }

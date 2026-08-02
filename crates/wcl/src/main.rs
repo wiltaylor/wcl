@@ -349,6 +349,59 @@ enum WskillCommand {
         #[arg(long)]
         rev: Option<String>,
     },
+    /// Run every wskill rule over the model and report the findings —
+    /// errors, warnings and curator candidates from one pass. Reads the
+    /// data model only: no build, no editor, and lint never writes.
+    ///
+    /// Errors are mechanically certain (a `related` id naming nothing, an id
+    /// declared twice, a link to a body-less index). Warnings carry a real
+    /// exception rate (over-cap links, an unpinned unit, a unit no
+    /// projection renders) and never fail on their own. Candidates are
+    /// nominations to the curator and fail nothing.
+    ///
+    /// Exit codes: 0 clean, 1 findings at or above the denied severity
+    /// (errors by default), 2 the model could not be read.
+    ///
+    /// Examples:
+    ///   wcl wskill lint docs/wskills/wcl
+    ///   wcl wskill lint --severity error,warn --deny warn
+    ///   wcl wskill lint --format json --severity candidate
+    Lint {
+        /// The wskill folder (or an entry `.wcl` inside it). Defaults to
+        /// the current directory.
+        entry: Option<PathBuf>,
+        /// Output format: `text` (default) or `json`.
+        #[arg(long, value_enum, default_value_t = LintFormat::Text)]
+        format: LintFormat,
+        /// Report only these severities: `error`, `warn`, `candidate`
+        /// (comma-separated, repeatable). Default: all three.
+        #[arg(long, value_delimiter = ',', value_parser = parse_severity)]
+        severity: Vec<wcl_wskill::Severity>,
+        /// Fail on findings this certain or more: `error` (default),
+        /// `warn`, `candidate`. Only reported severities count.
+        #[arg(long, value_parser = parse_severity, default_value = "error")]
+        deny: wcl_wskill::Severity,
+    },
+}
+
+/// A `--severity` / `--deny` value, in the model's own vocabulary — the
+/// severities are the library's, so the CLI parses into them rather than
+/// keeping a second copy that could drift.
+fn parse_severity(s: &str) -> Result<wcl_wskill::Severity, String> {
+    wcl_wskill::Severity::parse(s).ok_or_else(|| {
+        format!(
+            "expected one of {}",
+            wcl_wskill::Severity::ALL.map(|s| s.as_str()).join(", ")
+        )
+    })
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum LintFormat {
+    /// One line per finding, most certain first.
+    Text,
+    /// JSON array, one object per finding.
+    Json,
 }
 
 #[derive(Subcommand)]
@@ -725,6 +778,15 @@ fn main() -> ExitCode {
             WskillCommand::Graph { entry, rev } => {
                 let entry = entry.unwrap_or_else(|| PathBuf::from("."));
                 wskill::run_graph(&entry, rev.as_deref())
+            }
+            WskillCommand::Lint {
+                entry,
+                format,
+                severity,
+                deny,
+            } => {
+                let entry = entry.unwrap_or_else(|| PathBuf::from("."));
+                wskill::run_lint(&entry, format, &severity, deny)
             }
         },
         Command::Wad { cmd } => match cmd {
