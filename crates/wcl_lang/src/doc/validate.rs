@@ -178,7 +178,7 @@ pub(crate) fn validate_document(
 
     // 2b. Declarations from eagerly-imported files also participate in
     // name resolution for this file's type references (e.g. a user
-    // `lower` returning `list<SvgFundamental>` where the union lives in
+    // `lower` returning `list<Svg>` where the union lives in
     // an imported schema file). Insert-only: imported FQNs never trigger
     // the duplicate-declaration check — a local declaration may
     // legitimately coexist with, or shadow, an imported one.
@@ -315,7 +315,7 @@ pub(crate) fn validate_document(
     // A namespaced library brought in by `import <…>` contributes its
     // namespace as a resolution search path, so this file's bare
     // references to imported declarations (e.g. a user `lower` returning
-    // `list<SvgFundamental>`) resolve to `wdoc.SvgFundamental` without an
+    // `list<Svg>`) resolve to `wdoc.Svg` without an
     // explicit `use wdoc`.
     for ns in import_namespaces {
         if !ns.is_empty() && !wildcards.contains(ns) {

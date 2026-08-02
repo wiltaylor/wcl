@@ -134,12 +134,12 @@ type Quiz extends WdocBlock {
   @default([]) choices: list<Choice>
   id: identifier?
 
-  lower = fn(q: Quiz) -> list<HtmlFundamental> {
+  lower = fn(q: Quiz) -> list<Html> {
     let kind_str = match q.kind { :text => "text", :multi => "multi", _ => "single" };
 
     // One selectable answer: the button carries the key, the note is revealed
     // after answering (hidden until then by the stylesheet).
-    let choice_item = fn(c: Choice) -> HtmlFundamental {
+    let choice_item = fn(c: Choice) -> Html {
       el("li", ["quiz-choice"], [
           ela("button", ["quiz-choice-btn"], [
               ["type", "button"],
@@ -181,7 +181,7 @@ type Quiz extends WdocBlock {
     [
       // Both `id` and `attrs`: the long form is the constructor family's
       // deliberate escape hatch for a shape none of `el` / `ela` / `eli` covers.
-      HtmlFundamental::Element {
+      Html::Element {
         tag: "section", id: q.id, class: ["wdoc-quiz"],
         attrs: [["data-quiz", q.qid], ["data-kind", kind_str]],
         children: flatten([[prompt_el], body, explanation_el]),

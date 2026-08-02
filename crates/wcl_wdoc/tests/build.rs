@@ -200,8 +200,8 @@ union ChainStep {
 @block("inner")
 type Inner extends SvgBlock {
   fill: utf8?
-  lower = fn(i: Inner) -> list<SvgFundamental> [
-    SvgFundamental::Rect {
+  lower = fn(i: Inner) -> list<Svg> [
+    Svg::Rect {
       x: 5.0, y: 5.0, width: 20.0, height: 20.0,
       fill: i.fill,
     }
@@ -330,8 +330,8 @@ type Badge extends SvgBlock {
   @inline(0) text: utf8
   id: identifier?
   x: f64?  y: f64?
-  lower = fn(b: Badge) -> list<SvgFundamental> [
-    SvgFundamental::Label {
+  lower = fn(b: Badge) -> list<Svg> [
+    Svg::Label {
       content: b.text, x: b.x, y: b.y,
       id: b.id,
     }
@@ -4216,7 +4216,7 @@ page index {
 #[test]
 fn custom_block_lowers_to_table_fundamental() {
     // A custom WdocBlock whose `lower` returns an
-    // HtmlFundamental::Table renders through render_table_payload.
+    // Html::Table renders through render_table_payload.
     // `header` is the heading row; `rows` are the body. Cells on this
     // path are plain escaped text.
     let tmp = TempDir::new().expect("mkdir tempdir");
@@ -4227,8 +4227,8 @@ fn custom_block_lowers_to_table_fundamental() {
 @block("datatable")
 type DataTable extends WdocBlock {
   id: identifier?
-  lower = fn(d: DataTable) -> list<HtmlFundamental> [
-    HtmlFundamental::Table {
+  lower = fn(d: DataTable) -> list<Html> [
+    Html::Table {
       header: ["A", "B"],
       rows: [["1", "2"], ["3", "4"]],
     }
@@ -4265,7 +4265,7 @@ fn template_queries_authored_blocks_and_places_typed_handles() {
 site { default_template = :inspect  title = "Prepared site context" }
 
 template inspect {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental> {
+  render = fn(c: TemplateCtx) -> list<Html> {
     let notice = head(filter(c.content, fn(h: BlockHandle) -> bool
       h.kind == "callout" && h.block.heading == "Notice"));
     let column_handle = at(c.content, 2);
@@ -4273,7 +4273,7 @@ template inspect {
     [
       el("main", [], [
         el("strong", [], [raw(c.title)]),
-        HtmlFundamental::Blocks { blocks: [notice, nested, at(c.content, 0)] },
+        Html::Blocks { blocks: [notice, nested, at(c.content, 0)] },
       ]),
     ]
   }
@@ -4323,7 +4323,7 @@ fn separate_typed_placements_share_page_heading_and_footnote_state() {
 site { default_template = :split }
 
 template split {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+  render = fn(c: TemplateCtx) -> list<Html> [
     el("main", [], flatten([
       wdoc_blocks([at(c.content, 0), at(c.content, 1)]),
       [el("hr", [], [])],
@@ -4387,17 +4387,17 @@ site {
 }
 
 template inspect_metadata {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental> {
+  render = fn(c: TemplateCtx) -> list<Html> {
     let m = page_metadata(c);
     [
       el("div", ["previous"], [raw(m.previous.title)]),
       el("div", ["current"], [raw(m.current.title)]),
       el("div", ["next"], [raw(m.next.title)]),
-      el("ol", ["reading-order"], map(m.reading_order, fn(e: TocEntry) -> HtmlFundamental
+      el("ol", ["reading-order"], map(m.reading_order, fn(e: TocEntry) -> Html
         el("li", [], [raw(e.title)]))),
-      el("ol", ["active-path"], map(m.active_path, fn(e: TocEntry) -> HtmlFundamental
+      el("ol", ["active-path"], map(m.active_path, fn(e: TocEntry) -> Html
         el("li", [], [raw(e.title)]))),
-      el("ol", ["headings"], map(m.headings, fn(h: OnPageHeading) -> HtmlFundamental
+      el("ol", ["headings"], map(m.headings, fn(h: OnPageHeading) -> Html
         el("li", [], [raw(format("{}:{}:{}", h.number, h.id, h.title))]))),
     ]
   }
@@ -4457,7 +4457,7 @@ fn metadata_only_template_does_not_force_page_lowering() {
         r#"
 @block("boom")
 type Boom extends WdocBlock {
-  lower = fn(b: Boom) -> list<HtmlFundamental> [ raw(no_such_helper(b)) ]
+  lower = fn(b: Boom) -> list<Html> [ raw(no_such_helper(b)) ]
 }
 
 site {
@@ -4466,7 +4466,7 @@ site {
 }
 
 template metadata_only {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental> {
+  render = fn(c: TemplateCtx) -> list<Html> {
     let m = page_metadata(c);
     [el("p", [], [raw(m.current.title)])]
   }
@@ -4749,7 +4749,7 @@ page index { h1 "Hi" {} }
 
 #[test]
 fn template_head_fundamental_hoisted_to_head() {
-    // A template that returns an `HtmlFundamental::Head` at the top level
+    // A template that returns an `Html::Head` at the top level
     // has its children hoisted into <head>; a `Head` nested inside the
     // body renders to nothing (it must not leak into <head> or <body>).
     let tmp = TempDir::new().expect("mkdir tempdir");
@@ -4759,12 +4759,12 @@ fn template_head_fundamental_hoisted_to_head() {
         r##"
 site { default_template = :custom  title = "Acme" }
 template custom {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_head_stylesheet("theme.css"),
       [ el("main", [], [
-          HtmlFundamental::Blocks { blocks: c.content },
-          HtmlFundamental::Head { children: [raw("<!--LEAK-->")] },
+          Html::Blocks { blocks: c.content },
+          Html::Head { children: [raw("<!--LEAK-->")] },
       ]) ],
     ])
 }
@@ -4820,18 +4820,18 @@ page index { h1 "Hi" {} }
 fn template_uses_user_defined_part_function() {
     // A "part" is just a top-level function returning fundamentals; a
     // custom template calls it (resolved at document scope) and embeds
-    // its result. Also exercises HtmlFundamental::Element nesting +
+    // its result. Also exercises Html::Element nesting +
     // Raw, and attribute escaping.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("site.wcl");
     write_fixture(
         &src,
         r##"
-let footer = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+let footer = fn(c: TemplateCtx) -> list<Html> [
   ela("footer", ["ft"], [["data-x", "a\"b"]], [raw(c.title)])
 ]
 template mini {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       [ el("main", [], wdoc_blocks(c.content)) ],
       footer(c),
@@ -4869,7 +4869,7 @@ fn omitted_optional_variant_field_matches_an_explicit_none() {
             r##"
 @block("probe")
 type Probe extends WdocBlock {{
-  lower = fn(p: Probe) -> list<HtmlFundamental> [ {el} ]
+  lower = fn(p: Probe) -> list<Html> [ {el} ]
 }}
 site {{ title = "T" }}
 page index {{ probe {{}} }}
@@ -4879,18 +4879,18 @@ page index {{ probe {{}} }}
     write_fixture(
         &long,
         page(
-            r#"HtmlFundamental::Element {
+            r#"Html::Element {
                  tag: "div", id: none, class: none, attrs: none,
-                 children: [ HtmlFundamental::Raw { html: "x" } ],
+                 children: [ Html::Raw { html: "x" } ],
                }"#,
         ),
     );
     write_fixture(
         &short,
         page(
-            r#"HtmlFundamental::Element {
+            r#"Html::Element {
                  tag: "div",
-                 children: [ HtmlFundamental::Raw { html: "x" } ],
+                 children: [ Html::Raw { html: "x" } ],
                }"#,
         ),
     );
@@ -4918,17 +4918,17 @@ fn class_and_attrs_drop_none_entries() {
 @block("probe")
 type Probe extends WdocBlock {
   on: bool
-  lower = fn(p: Probe) -> list<HtmlFundamental> [
-    HtmlFundamental::Element {
+  lower = fn(p: Probe) -> list<Html> [
+    Html::Element {
       tag: "div",
       class: ["base", if p.on { "hot" }],
       attrs: [["data-keep", "1"], if p.on { ["data-hot", "1"] }],
-      children: [ HtmlFundamental::Raw { html: "x" } ],
+      children: [ Html::Raw { html: "x" } ],
     },
-    HtmlFundamental::Element {
+    Html::Element {
       tag: "span",
       class: [if p.on { "hot" }],
-      children: [ HtmlFundamental::Raw { html: "y" } ],
+      children: [ Html::Raw { html: "y" } ],
     },
   ]
 }
@@ -4970,12 +4970,12 @@ fn svg_shape_class_drops_none_entries() {
 @block("chip")
 type Chip extends SvgBlock {
   on: bool
-  lower = fn(c: Chip) -> list<SvgFundamental> [
-    SvgFundamental::Rect {
+  lower = fn(c: Chip) -> list<Svg> [
+    Svg::Rect {
       x: 5.0, y: 5.0, width: 20.0, height: 20.0,
       class: ["chip", if c.on { "hot" }],
     },
-    SvgFundamental::Circle {
+    Svg::Circle {
       cx: 40.0, cy: 15.0, r: 5.0,
       class: [if c.on { "hot" }],
     },
@@ -5016,7 +5016,7 @@ fn custom_template_composes_public_parts() {
         &src,
         r#"
 template parts_only {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     flatten([ wdoc_part_navbar(c), wdoc_part_content(c) ])
 }
 site { default_template = :parts_only  title = "Site" }
@@ -5049,7 +5049,7 @@ fn template_extends_layout_with_custom_footer() {
         &src,
         r#"
 template blog {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_webpage_layout(c),
       [ el("footer", ["site-footer"], [raw("the footer")]) ],
@@ -5088,7 +5088,7 @@ fn template_overrides_header_keeps_navbar() {
         &src,
         r#"
 template app_home {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_part_webpage_css(),
       [ el("header", ["hero"], [raw(c.title)]) ],
@@ -5128,7 +5128,7 @@ fn custom_template_reuses_book_sidebar() {
         &src,
         r#"
 template mybook {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     flatten([ wdoc_part_book_css(), wdoc_part_sidebar(c), wdoc_part_book_content(c) ])
 }
 site {
@@ -5168,7 +5168,7 @@ fn custom_template_reuses_deck() {
         &src,
         r#"
 template presentation {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_presentation_layout(c),
       [ el("div", ["my-banner"], [raw("BANNER")]) ],
@@ -5209,7 +5209,7 @@ fn wdoc_part_menu_tree_renders_bare_ul() {
         &src,
         r#"
 template menu_only {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     flatten([ wdoc_part_menu_tree(c), wdoc_part_content(c) ])
 }
 site {
@@ -5249,7 +5249,7 @@ fn wdoc_part_search_box_gated() {
     // nothing when disabled — driven by the site `search` flag via c.search.
     let body = r#"
 template searchable {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     flatten([ wdoc_part_search_box(c.search), wdoc_part_content(c) ])
 }
 site { default_template = :searchable  title = "S"  search = SEARCH }
@@ -10105,7 +10105,7 @@ fn children_records_reach_custom_svg_lower() {
 type Itm extends SvgBlock {
   @inline(0) id: utf8
   note: utf8?
-  lower = fn(i: Itm) -> list<SvgFundamental> []
+  lower = fn(i: Itm) -> list<Svg> []
 }
 
 @block("seqtest")
@@ -10115,8 +10115,8 @@ type SeqTest extends SvgBlock {
   width = 100.0
   height = 40.0
   @children("itm") items: list<Itm>
-  lower = fn(s: SeqTest) -> list<SvgFundamental>
-    map(s.items, fn(i: Itm) -> SvgFundamental SvgFundamental::Label {
+  lower = fn(s: SeqTest) -> list<Svg>
+    map(s.items, fn(i: Itm) -> Svg Svg::Label {
       content: format("{}={}", i.id, i.note ?? "-"),
       x: 0.0,
       y: 0.0,
@@ -10167,7 +10167,7 @@ let names = ["a", "b"]
 type Itm extends SvgBlock {
   @inline(0) id: utf8
   note: utf8?
-  lower = fn(i: Itm) -> list<SvgFundamental> []
+  lower = fn(i: Itm) -> list<Svg> []
 }
 
 @block("seqtest")
@@ -10177,8 +10177,8 @@ type SeqTest extends SvgBlock {
   width = 100.0
   height = 40.0
   @children("itm") items: list<Itm>
-  lower = fn(s: SeqTest) -> list<SvgFundamental>
-    map(s.items, fn(i: Itm) -> SvgFundamental SvgFundamental::Label {
+  lower = fn(s: SeqTest) -> list<Svg>
+    map(s.items, fn(i: Itm) -> Svg Svg::Label {
       content: format("{}={}", i.id, i.note ?? "-"),
       x: 0.0,
       y: 0.0,
@@ -10520,7 +10520,7 @@ fn root_redeclaration_of_rust_dispatched_kind_is_a_schema_error() {
 @block("diagram")
 type MyDiagram extends WdocBlock {
   msg: utf8
-  lower = fn(d: MyDiagram) -> list<HtmlFundamental> []
+  lower = fn(d: MyDiagram) -> list<Html> []
 }
 page t {
   diagram { msg = "hi" }
@@ -10731,7 +10731,7 @@ type NonList extends SvgBlock {
   y = 0.0
   width = 40.0
   height = 20.0
-  lower = fn(s: NonList) -> list<SvgFundamental> 42
+  lower = fn(s: NonList) -> list<Svg> 42
 }
 page t {
   diagram { width = 100  height = 60
@@ -10764,7 +10764,7 @@ fn lower_body_eval_error_fails_the_html_build() {
 @block("boom")
 type Boom extends WdocBlock {
   id: identifier?
-  lower = fn(b: Boom) -> list<HtmlFundamental> [
+  lower = fn(b: Boom) -> list<Html> [
     raw(no_such_helper(b))
   ]
 }
@@ -11725,7 +11725,7 @@ fn a_content_drawing_renders_its_shapes_as_svg() {
              Content::Drawing {\n      \
                width: 100.0,\n      \
                shapes: [\n        \
-                 SvgFundamental::Rect { x: 0.0, y: 0.0, width: 40.0, height: 20.0, fill: \"#abc\" },\n      ],\n    },\n  ]\n\
+                 Svg::Rect { x: 0.0, y: 0.0, width: 40.0, height: 20.0, fill: \"#abc\" },\n      ],\n    },\n  ]\n\
          }\n\
          page index {\n  badge { }\n}\n",
     );

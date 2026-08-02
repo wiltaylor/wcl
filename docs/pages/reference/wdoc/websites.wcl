@@ -13,7 +13,7 @@ page wdoc_websites { sites = [:reference]  title = "Websites"
   list {
     li "**Named regions** — a page declares `region \"hero\" { … }` blocks whose wdoc bodies render independently. A layout pulls each out by name with `wdoc_region(c, \"hero\")` (returns `\"\"` when the page declares no such region). The authored page tree is available as typed handles in `c.content`."
     li "**Head assets** — the `site` block's `stylesheets` / `scripts` / `fonts` fields add `<link>` / `<script>` to every page `<head>`; the `assets` field copies a whole folder (a Vite/webpack `dist/`) into the output verbatim. A layout can also emit head content itself with the `wdoc_head_*` helpers."
-    li "**Raw-HTML layouts** — author the shell as a heredoc with `${…}` slots and paste your design in, instead of building `HtmlFundamental` trees by hand."
+    li "**Raw-HTML layouts** — author the shell as a heredoc with `${…}` slots and paste your design in, instead of building `Html` trees by hand."
   }
 
   h2 "Authoring a layout"
@@ -23,7 +23,7 @@ page wdoc_websites { sites = [:reference]  title = "Websites"
   code wcl {
     source = <<'WCL'
 template site_main {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       // Head content the layout owns (the site's `stylesheets` /
       // `scripts` add the rest).

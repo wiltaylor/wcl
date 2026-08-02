@@ -1,12 +1,12 @@
 // ── The `el` constructor family ────────────────────────────────────
 //
 // Shorthands for the HTML element vocabulary — the tree-shaped
-// `HtmlFundamental` variants that templates and `lower`s build by the
+// `Html` variants that templates and `lower`s build by the
 // hundred. Each constructor is exactly its long form with the field
 // names dropped:
 //
 //   el("div", ["book-toc-row"], kids)
-//   HtmlFundamental::Element { tag: "div", class: ["book-toc-row"], children: kids }
+//   Html::Element { tag: "div", class: ["book-toc-row"], children: kids }
 //
 // Three element constructors rather than one, because a WCL parameter
 // list is fixed at declaration — the language has neither default nor
@@ -46,7 +46,7 @@
 // annotates its optionals as though they were required and lets the
 // `none` flow through (see `icon_lead` in `flowchart.wcl`).
 //
-// SCOPE: the HTML element vocabulary ONLY. `SvgFundamental` and the
+// SCOPE: the HTML element vocabulary ONLY. `Svg` and the
 // semantic content IR keep the named-field literal, because they are
 // field-shaped — a positional constructor over them is the same record
 // with its field names deleted, and WCL checks argument ARITY but never
@@ -65,35 +65,35 @@
 namespace wdoc
 
 // `<tag class="…">children</tag>`.
-let el = fn(tag: utf8, cls: list<utf8>, kids: list<HtmlFundamental>) -> HtmlFundamental
-  HtmlFundamental::Element { tag: tag, class: cls, children: kids }
+let el = fn(tag: utf8, cls: list<utf8>, kids: list<Html>) -> Html
+  Html::Element { tag: tag, class: cls, children: kids }
 
 // … with attributes — `attrs` is a list of `[name, value]` pairs, e.g.
 // `[["href", p.href]]` (values escaped).
-let ela = fn(tag: utf8, cls: list<utf8>, attrs: list<list<utf8>>, kids: list<HtmlFundamental>) -> HtmlFundamental
-  HtmlFundamental::Element { tag: tag, class: cls, attrs: attrs, children: kids }
+let ela = fn(tag: utf8, cls: list<utf8>, attrs: list<list<utf8>>, kids: list<Html>) -> Html
+  Html::Element { tag: tag, class: cls, attrs: attrs, children: kids }
 
 // … with an explicit HTML id (the anchor target).
-let eli = fn(tag: utf8, id: identifier, cls: list<utf8>, kids: list<HtmlFundamental>) -> HtmlFundamental
-  HtmlFundamental::Element { tag: tag, id: id, class: cls, children: kids }
+let eli = fn(tag: utf8, id: identifier, cls: list<utf8>, kids: list<Html>) -> Html
+  Html::Element { tag: tag, id: id, class: cls, children: kids }
 
 // Verbatim, pre-rendered HTML — NOT escaped. Embeds already-rendered
 // content (a page's `content`, an icon's SVG markup) into a template.
-let raw = fn(html: utf8) -> HtmlFundamental
-  HtmlFundamental::Raw { html: html }
+let raw = fn(html: utf8) -> Html
+  Html::Raw { html: html }
 
 // An inline prose run: fed through the inline-pattern engine, so
 // `**bold**` / `` `code` `` / `[links](url)` / `:icons:` / `$math$` all
 // apply. Wrap it yourself (`el("p", [], [inl(txt)])`).
-let inl = fn(text: utf8) -> HtmlFundamental
-  HtmlFundamental::Inline { text: text }
+let inl = fn(text: utf8) -> Html
+  Html::Inline { text: text }
 
 // An icon, resolved against the declared `iconset`s and the built-in
 // packs (`pack.name`, e.g. `"lucide.info"`).
-let icon = fn(name: utf8, cls: list<utf8>) -> HtmlFundamental
-  HtmlFundamental::Icon { name: name, class: cls }
+let icon = fn(name: utf8, cls: list<utf8>) -> Html
+  Html::Icon { name: name, class: cls }
 
 // A `<p>` of `spans`, each run through the inline-pattern engine. A
 // paragraph that needs an id writes the long form.
-let para = fn(cls: list<utf8>, spans: list<utf8>) -> HtmlFundamental
-  HtmlFundamental::Paragraph { class: cls, spans: spans }
+let para = fn(cls: list<utf8>, spans: list<utf8>) -> Html
+  Html::Paragraph { class: cls, spans: spans }

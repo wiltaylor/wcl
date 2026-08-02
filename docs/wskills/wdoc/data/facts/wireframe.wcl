@@ -23,7 +23,7 @@ type WfBadge extends Widget {
   theme: symbol?
   accent: symbol?
   mode: symbol?
-  lower = fn(b: WfBadge) -> list<SvgFundamental> { [SvgFundamental::Rect { x: b.x, y: b.y, width: b.width, height: b.height, fill: b.fill, class: b.class }, SvgFundamental::Label { content: b.text, x: b.x + b.width / 2.0, y: b.y + b.height / 2.0 + 4.0, fit_width: b.width, fit_height: b.height, fill: "#ffffff" }] }
+  lower = fn(b: WfBadge) -> list<Svg> { [Svg::Rect { x: b.x, y: b.y, width: b.width, height: b.height, fill: b.fill, class: b.class }, Svg::Label { content: b.text, x: b.x + b.width / 2.0, y: b.y + b.height / 2.0 + 4.0, fit_width: b.width, fit_height: b.height, fill: "#ffffff" }] }
 }
 
 fact wireframe {
@@ -499,7 +499,7 @@ fact wireframe {
     h2 "Custom widgets"
     p <<DOC
       Wireframe widgets are user-extensible diagram shapes. Declare a
-      `@block("name") type … extends Widget` with a `lower` that returns `list<SvgFundamental>`, and
+      `@block("name") type … extends Widget` with a `lower` that returns `list<Svg>`, and
       it plugs into the diagram render path like any custom shape — placed directly in a `diagram`
       by its own `x` / `y` and connectable by edges. (The built-in containers only lay out the
       built-in widgets, so a custom widget renders as a standalone shape, not nested inside a
@@ -540,12 +540,12 @@ fact wireframe {
           anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
           connect_points: list<AnchorSide>?
           theme: symbol?  accent: symbol?  mode: symbol?
-          lower = fn(b: WfBadge) -> list<SvgFundamental> {
-            [ SvgFundamental::Rect {
+          lower = fn(b: WfBadge) -> list<Svg> {
+            [ Svg::Rect {
                 x: b.x, y: b.y, width: b.width, height: b.height,
                 fill: b.fill, class: b.class,
               },
-              SvgFundamental::Label {
+              Svg::Label {
                 content: b.text,
                 x: b.x + b.width / 2.0,
                 y: b.y + b.height / 2.0 + 4.0,

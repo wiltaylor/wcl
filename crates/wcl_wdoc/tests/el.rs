@@ -1,6 +1,6 @@
 //! The `el` constructor family (`lib/el.wcl`) against the long form.
 //!
-//! Every constructor is meant to be *exactly* its `HtmlFundamental`
+//! Every constructor is meant to be *exactly* its `Html`
 //! record with the field names dropped, which is what let the stdlib's
 //! element construction sites be ported without moving a byte of output.
 //! These tests build the same markup both ways in one document and
@@ -22,7 +22,7 @@ const DOC: &str = r#"import <wdoc.wcl>
 @block("el_form")
 type ElForm extends WdocBlock {
   id: identifier?
-  lower = fn(b: ElForm) -> list<HtmlFundamental> [
+  lower = fn(b: ElForm) -> list<Html> [
     eli("div", b.id, ["wrap", "outer"], [
       ela("a", ["link"], [["href", "x.html"], ["title", "T & U"]], [raw("<b>raw</b>")]),
       el("p", [], [inl("**bold** and `code`")]),
@@ -37,23 +37,23 @@ type ElForm extends WdocBlock {
 @block("long_form")
 type LongForm extends WdocBlock {
   id: identifier?
-  lower = fn(b: LongForm) -> list<HtmlFundamental> [
-    HtmlFundamental::Element {
+  lower = fn(b: LongForm) -> list<Html> [
+    Html::Element {
       tag: "div", id: b.id, class: ["wrap", "outer"],
       children: [
-        HtmlFundamental::Element {
+        Html::Element {
           tag: "a", class: ["link"],
           attrs: [["href", "x.html"], ["title", "T & U"]],
-          children: [ HtmlFundamental::Raw { html: "<b>raw</b>" } ],
+          children: [ Html::Raw { html: "<b>raw</b>" } ],
         },
-        HtmlFundamental::Element {
+        Html::Element {
           tag: "p",
-          children: [ HtmlFundamental::Inline { text: "**bold** and `code`" } ],
+          children: [ Html::Inline { text: "**bold** and `code`" } ],
         },
-        HtmlFundamental::Element { tag: "span", children: [] },
-        HtmlFundamental::Element { tag: "em", children: [] },
-        HtmlFundamental::Icon { name: "lucide.info", class: ["ic"] },
-        HtmlFundamental::Paragraph { class: ["cap"], spans: ["one", "two"] },
+        Html::Element { tag: "span", children: [] },
+        Html::Element { tag: "em", children: [] },
+        Html::Icon { name: "lucide.info", class: ["ic"] },
+        Html::Paragraph { class: ["cap"], spans: ["one", "two"] },
       ],
     },
   ]

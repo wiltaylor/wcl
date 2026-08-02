@@ -65,7 +65,7 @@ file "theme.wcl" {
 // and `wdoc_head_*` helpers add `<head>` content (here, a viewport meta);
 // the site's `stylesheets` / `scripts` add the rest.
 template site_main {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_head_meta("viewport", "width=device-width, initial-scale=1"),
       [raw($<<HTML
@@ -170,11 +170,11 @@ stylesheet "site-components" {
 
 // A call-to-action button: a styled `<p><a></a></p>` whose link rides
 // the inline-pattern engine, so Markdown keeps a real `[label](href)`.
-let lp_cta_el = fn(x: LpCta) -> HtmlFundamental
+let lp_cta_el = fn(x: LpCta) -> Html
   el("p", ["lp-cta", if x.primary == true { "lp-cta-primary" } else { "lp-cta-ghost" }], [inl($"[${x.label}](${x.href})")])
 
 // One feature card: icon chip, title, body prose.
-let lp_feature_el = fn(f: LpFeature) -> HtmlFundamental {
+let lp_feature_el = fn(f: LpFeature) -> Html {
   let icon_name = if f.icon == none { "lucide.sparkles" } else { f.icon };
   el("article", ["lp-card"], [
       el("p", ["lp-card-icon"], [icon(icon_name, [])]),
@@ -185,18 +185,18 @@ let lp_feature_el = fn(f: LpFeature) -> HtmlFundamental {
 
 // One getting-started step: a numbered row (the number is a CSS counter)
 // with a title and a command line rendered as inline code.
-let lp_step_el = fn(s: LpStep) -> HtmlFundamental
+let lp_step_el = fn(s: LpStep) -> Html
   el("li", [], [
       el("p", ["lp-step-title"], [inl(s.title)]),
       el("p", ["lp-cmd"], [inl($"`${s.command}`")]),
     ])
 
 // One footer column: an uppercase heading over a list of links.
-let lp_footcol_el = fn(col: LpFootcol) -> HtmlFundamental {
+let lp_footcol_el = fn(col: LpFootcol) -> Html {
   let links = if col.links == none { [] } else { col.links };
   el("section", ["lp-footcol"], flatten([
       [ el("p", ["lp-foothead"], [inl(col.title) ])],
-      map(links, fn(l: LpFootlink) -> HtmlFundamental
+      map(links, fn(l: LpFootlink) -> Html
         el("p", ["lp-footlink"], [inl($"[${l.label}](${l.href})")])),
     ]))
 }
@@ -204,7 +204,7 @@ let lp_footcol_el = fn(col: LpFootcol) -> HtmlFundamental {
 // The eyebrow / title / lede header shared by the section wrappers. The
 // wrapper is a `<header>` (not a `<div>`) so Markdown descends into it
 // as blocks and the `<h2>` survives as a `##` heading.
-let lp_section_head = fn(eyebrow: utf8, title: utf8, lede: utf8, cls: utf8) -> list<HtmlFundamental> {
+let lp_section_head = fn(eyebrow: utf8, title: utf8, lede: utf8, cls: utf8) -> list<Html> {
   let parts = flatten([
     if eyebrow == none || eyebrow == "" { [] }
     else {
@@ -242,7 +242,7 @@ type LpHero extends WdocBlock {
   id: identifier?
   @children("lp_cta") ctas: list<LpCta>?
 
-  lower = fn(b: LpHero) -> list<HtmlFundamental> {
+  lower = fn(b: LpHero) -> list<Html> {
     let ctas = if b.ctas == none { [] } else { b.ctas };
     [
       eli("section", b.id, ["lp-hero"], flatten([
@@ -274,7 +274,7 @@ type LpCta extends WdocBlock {
   href: utf8
   primary: bool?
   id: identifier?
-  lower = fn(x: LpCta) -> list<HtmlFundamental> [ lp_cta_el(x) ]
+  lower = fn(x: LpCta) -> list<Html> [ lp_cta_el(x) ]
 }
 
 // A feature-card grid section with an optional centred header.
@@ -286,7 +286,7 @@ type LpFeatures extends WdocBlock {
   id: identifier?
   @children("lp_feature") items: list<LpFeature>?
 
-  lower = fn(b: LpFeatures) -> list<HtmlFundamental> {
+  lower = fn(b: LpFeatures) -> list<Html> {
     let items = if b.items == none { [] } else { b.items };
     [
       eli("section", b.id, ["lp-section"], flatten([
@@ -308,7 +308,7 @@ type LpFeature extends WdocBlock {
   @doc("Icon as `pack.name` (default `lucide.sparkles`).")
   icon: utf8?
   id: identifier?
-  lower = fn(f: LpFeature) -> list<HtmlFundamental> [ lp_feature_el(f) ]
+  lower = fn(f: LpFeature) -> list<Html> [ lp_feature_el(f) ]
 }
 
 // A getting-started panel: header plus numbered steps, each a title over
@@ -321,7 +321,7 @@ type LpSteps extends WdocBlock {
   id: identifier?
   @children("lp_step") steps: list<LpStep>?
 
-  lower = fn(b: LpSteps) -> list<HtmlFundamental> {
+  lower = fn(b: LpSteps) -> list<Html> {
     let steps = if b.steps == none { [] } else { b.steps };
     [
       eli("section", b.id, ["lp-section"], [
@@ -343,7 +343,7 @@ type LpStep extends WdocBlock {
   @inline(0) title: utf8
   command: utf8
   id: identifier?
-  lower = fn(s: LpStep) -> list<HtmlFundamental> [ lp_step_el(s) ]
+  lower = fn(s: LpStep) -> list<Html> [ lp_step_el(s) ]
 }
 
 // The multi-column site footer: a brand cell (icon + wordmark + tagline)
@@ -359,7 +359,7 @@ type LpFooter extends WdocBlock {
   id: identifier?
   @children("lp_footcol") columns: list<LpFootcol>?
 
-  lower = fn(b: LpFooter) -> list<HtmlFundamental> {
+  lower = fn(b: LpFooter) -> list<Html> {
     let cols = if b.columns == none { [] } else { b.columns };
     let brand = if b.brand == none { "" } else { b.brand };
     let bottom = flatten([
@@ -399,7 +399,7 @@ type LpFootcol extends WdocBlock {
   @inline(0) title: utf8
   id: identifier?
   @children("lp_footlink") links: list<LpFootlink>?
-  lower = fn(col: LpFootcol) -> list<HtmlFundamental> [ lp_footcol_el(col) ]
+  lower = fn(col: LpFootcol) -> list<Html> [ lp_footcol_el(col) ]
 }
 
 // One footer link (child of `lp_footcol`).
@@ -408,7 +408,7 @@ type LpFootlink extends WdocBlock {
   @inline(0) label: utf8
   href: utf8
   id: identifier?
-  lower = fn(l: LpFootlink) -> list<HtmlFundamental> [
+  lower = fn(l: LpFootlink) -> list<Html> [
     el("p", ["lp-footlink"], [inl($"[${l.label}](${l.href})")]),
   ]
 }

@@ -4,7 +4,7 @@
 //
 // A `site` block sets the default template; pages may override it with
 // their own `template` field. Templates are WCL functions returning
-// `HtmlFundamental`s; they lay out the page body and embed the
+// `Html`s; they lay out the page body and embed the
 // framework-provided `content` part (the page's own blocks) plus
 // anything they build themselves from the document context.
 //
@@ -18,16 +18,16 @@ site {
 
 // A "part" is just a function returning fundamentals. Templates call
 // it and embed the result — there's no special part syntax.
-let footer = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+let footer = fn(c: TemplateCtx) -> list<Html> [
   el("footer", ["site-footer"], [raw(c.title)])
 ]
 
 // A custom template: the stdlib nav + content, plus the footer part.
 template guide {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       [
-        el("nav", ["site-nav"], map(c.pages, fn(p: PageRef) -> HtmlFundamental
+        el("nav", ["site-nav"], map(c.pages, fn(p: PageRef) -> Html
             ela("a", [], [["href", p.href]], [raw(p.name)]))),
         el("main", ["site-main"], wdoc_blocks(c.content)),
       ],

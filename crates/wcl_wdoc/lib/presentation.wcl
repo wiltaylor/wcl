@@ -137,14 +137,14 @@ let deck_chrome = raw(
 
 // One slide → `<div class="deck-slide">` holding the rendered body and a
 // hidden speaker-notes aside.
-let deck_slide_el = fn(s: DeckSlide) -> HtmlFundamental
+let deck_slide_el = fn(s: DeckSlide) -> Html
   el("div", ["deck-slide"], [
     el("div", ["deck-slide-inner"], [raw(s.content)]),
     el("aside", ["deck-notes"], [raw(s.notes)]),
   ])
 
 // One section → `<section class="deck-section">` holding its slides.
-let deck_section_el = fn(sec: DeckSection) -> HtmlFundamental
+let deck_section_el = fn(sec: DeckSection) -> Html
   el("section", ["deck-section"], map(sec.slides, deck_slide_el))
 
 // ── Public template parts (presentation) ────────────────────────────
@@ -154,22 +154,22 @@ let deck_section_el = fn(sec: DeckSection) -> HtmlFundamental
 
 // The deck's `<style>` block — full-viewport slides, fragment fades, the
 // progress bar / counter / nav-hint / notes-overlay styling.
-let wdoc_part_presentation_css = fn() -> list<HtmlFundamental> [
+let wdoc_part_presentation_css = fn() -> list<Html> [
   el("style", [], [raw(presentation_css)]),
 ]
 
 // The slide grid (`<div class="deck">`): one `<section>` per deck section,
 // each holding its slides. Driven by the bundled `presentation.js` player.
-let wdoc_part_deck = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+let wdoc_part_deck = fn(c: TemplateCtx) -> list<Html> [
   el("div", ["deck"], map(c.deck, deck_section_el)),
 ]
 
 // The static deck chrome: the progress bar, slide counter, and nav-hint
 // arrows (the player updates them as you navigate).
-let wdoc_part_deck_chrome = fn() -> list<HtmlFundamental> [deck_chrome]
+let wdoc_part_deck_chrome = fn() -> list<Html> [deck_chrome]
 
 // The full default `presentation` layout: style, deck grid, deck chrome.
-let wdoc_presentation_layout = fn(c: TemplateCtx) -> list<HtmlFundamental>
+let wdoc_presentation_layout = fn(c: TemplateCtx) -> list<Html>
   flatten([
     wdoc_part_presentation_css(),
     wdoc_part_deck(c),
@@ -180,6 +180,6 @@ let wdoc_presentation_layout = fn(c: TemplateCtx) -> list<HtmlFundamental>
 // site renders to one `index.html`; ← → navigate sections, ↑ ↓ the
 // slides within a section (driven by the bundled `presentation.js`).
 template presentation {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     wdoc_presentation_layout(c)
 }

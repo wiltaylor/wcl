@@ -162,7 +162,7 @@ pub(crate) fn lookup_type_lower_named(doc: &Document, kind: &str, field: &str) -
 }
 
 /// Call a block's `lower` function and return the raw list of
-/// `SvgFundamental` variant values. `None` when the block has no
+/// `Svg` variant values. `None` when the block has no
 /// record, no `lower`, the call errors, or the result isn't a list.
 /// Shared by [`lower_svg_block`] and the `timeline` renderer (which
 /// intercepts `Card` variants before rendering the rest).
@@ -249,7 +249,7 @@ pub(crate) enum Lowered {
     /// A typed content node — rendered from the same declaration on every
     /// backend.
     Content(Content),
-    /// An `HtmlFundamental` (or a custom variant that will expand into one),
+    /// An `Html` (or a custom variant that will expand into one),
     /// still carried as a raw value for the per-backend walkers.
     Html(Value),
 }
@@ -319,14 +319,14 @@ fn classify(block: &Block<'_>, kind: &str, value: &Value) -> Option<Lowered> {
 ///
 /// A walker that handles only *some* of that vocabulary needs this before
 /// it treats an unhandled variant as a custom one: `kind_for_variant` maps
-/// `HtmlFundamental::Table` to the kind name `table`, which is a real
+/// `Html::Table` to the kind name `table`, which is a real
 /// stdlib block whose `lower` would then be called with the fundamental's
 /// payload. Its lowering is a stub today, so nothing renders differently —
 /// but the day `table` grows a real one, the mistake would surface as
 /// output nobody asked for.
 pub(crate) fn is_html_fundamental(value: &Value) -> bool {
     matches!(value, Value::Variant { union, .. }
-        if union.last().map(String::as_str) == Some("HtmlFundamental"))
+        if union.last().map(String::as_str) == Some("Html"))
 }
 
 /// Expand one custom (non-fundamental) variant: rebuild its record, resolve
@@ -478,7 +478,7 @@ pub(crate) fn render_svg_variant(
     }
 }
 
-/// If `value` is an `HtmlFundamental::Head`, render its `children` (the
+/// If `value` is an `Html::Head`, render its `children` (the
 /// head fragment) and return it; otherwise `None`. Lets `render_template`
 /// hoist a template's top-level head fundamentals into the page `<head>`.
 pub(crate) fn head_fundamental_html_with_blocks(

@@ -3,7 +3,7 @@
 //! Like `terminal` and the `Highlighted` code body, the SVG comes from a
 //! crate that isn't expressible in WCL, so it's produced in Rust. Two
 //! leaf payloads feed in: the block `math` lower emits an
-//! `HtmlFundamental::Math` (rendered by [`render_math_fundamental`]), and
+//! `Html::Math` (rendered by [`render_math_fundamental`]), and
 //! the inline `$…$` / `$$…$$` patterns emit an `InlineSpan::Math`
 //! (rendered by [`render_inline_math`]). Both carry `{ latex, display,
 //! class }` and share the [`math_svg`] core.
@@ -42,7 +42,7 @@ use crate::render::{classes_attr_from_names, escape_html, map_utf8, map_utf8_lis
 /// scaled to a CSS box.
 const EM: f64 = 40.0;
 
-/// Render an `HtmlFundamental::Math` (the block `math` lower) — a
+/// Render an `Html::Math` (the block `math` lower) — a
 /// centred display equation wrapped in `<div class="wdoc-math …">`.
 pub(crate) fn render_math_fundamental(map: &BTreeMap<String, Value>) -> String {
     render_math_block(

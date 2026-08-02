@@ -6,7 +6,7 @@
 //! WCL `lower` and hands back what it produced) and walks that into
 //! block/inline IR nodes. A block lowering to the **semantic content IR**
 //! is read by [`content`](super::content), which matches the union
-//! exhaustively; one still lowering to `HtmlFundamental` is walked by
+//! exhaustively; one still lowering to `Html` is walked by
 //! [`walk_block_variant`] here. Inline text runs through the shared
 //! inline-pattern engine via
 //! [`InlinePatterns::render_runs`](crate::inline::InlinePatterns::render_runs),
@@ -289,12 +289,12 @@ fn walk_block_variant(
                 out.push(BlockNode::Paragraph { runs });
             }
         }
-        // A block equation lowers to an `HtmlFundamental::Math` carrying a
+        // A block equation lowers to an `Html::Math` carrying a
         // self-contained `<svg>` (RaTeX) — embed it.
         "math" => out.push(BlockNode::Svg {
             svg: crate::math::render_math_fundamental(map),
         }),
-        // A code block lowers to an `HtmlFundamental::Highlighted` — re-run
+        // A code block lowers to an `Html::Highlighted` — re-run
         // syntect to get coloured token runs for native drawing.
         "highlighted" => {
             let source = map_utf8(map, "source").unwrap_or_default();
